@@ -21,6 +21,8 @@ state/catalog.db
 state/*.db
 state/*.sqlite
 state/*.sqlite3
+state/console/*
+!state/console/.gitkeep
 state/locks/*
 !state/locks/.gitkeep
 
@@ -31,4 +33,3 @@ cache/chunks/*
 # Legacy temporary outputs
 fresh_slotlab/runs/
 fresh_slotlab/__pycache__/
-

@@ -1,0 +1,110 @@
+{
+  "guideline_id": "classic_slots_report_guideline_v1",
+  "source": "configs/classic_slots_guideline.md",
+  "checks": [
+    {
+      "id": "Q1_CI_HALF_WIDTH",
+      "section": "Sampling Quality Gate",
+      "severity": "high",
+      "description": "CI half-width should be <= 0.5pp for report-grade output.",
+      "path": "sampling.achieved_halfwidth_pp",
+      "operator": "<=",
+      "target": 0.5
+    },
+    {
+      "id": "Q2_SAMPLE_SIZE",
+      "section": "Sampling Quality Gate",
+      "severity": "high",
+      "description": "Total spins should usually be >= 2,000,000.",
+      "path": "sampling.total_spins",
+      "operator": ">=",
+      "target": 2000000
+    },
+    {
+      "id": "Q3_BUCKETS_COMPLETE",
+      "section": "Sampling Quality Gate",
+      "severity": "high",
+      "description": "Multiplier buckets and tail metrics must exist.",
+      "path": "guideline_assessment.data_quality.buckets_complete",
+      "operator": "==",
+      "target": true
+    },
+    {
+      "id": "Q4_BANKRUPTCY_LADDER",
+      "section": "Sampling Quality Gate",
+      "severity": "high",
+      "description": "Bankruptcy probe should include at least 3 bankroll multipliers.",
+      "path": "guideline_assessment.data_quality.bankruptcy_ladder_met",
+      "operator": "==",
+      "target": true
+    },
+    {
+      "id": "A2_ZERO_PROFIT_BALANCE",
+      "section": "Report Alert Rules",
+      "severity": "high",
+      "description": "If zero_win_rate > 0.80, profit_spin_rate should be >= 0.10.",
+      "when": {
+        "path": "player_impact.hit_and_payout.zero_win_rate",
+        "operator": ">",
+        "target": 0.8
+      },
+      "path": "player_impact.hit_and_payout.profit_spin_rate",
+      "operator": ">=",
+      "target": 0.1
+    },
+    {
+      "id": "A3_LOSS_STREAK_P95",
+      "section": "Report Alert Rules",
+      "severity": "medium",
+      "description": "Loss streak p95 should stay below 15.",
+      "path": "player_impact.streaks.loss_streak_p95",
+      "operator": "<",
+      "target": 15
+    },
+    {
+      "id": "A4_TAIL_DEPENDENCY",
+      "section": "Report Alert Rules",
+      "severity": "high",
+      "description": "tail_dependency should stay below 0.45.",
+      "path": "guideline_assessment.derived_metrics.tail_dependency",
+      "operator": "<",
+      "target": 0.45
+    },
+    {
+      "id": "A5_BANKRUPTCY_X200",
+      "section": "Report Alert Rules",
+      "severity": "high",
+      "description": "x200 bankruptcy rate should stay below 0.10.",
+      "path": "guideline_assessment.bankruptcy_checks.x200_bankruptcy_rate",
+      "operator": "<",
+      "target": 0.1
+    },
+    {
+      "id": "P1_PAYLINE_TOP1",
+      "section": "Payline Concentration",
+      "severity": "medium",
+      "description": "Top-1 payline share should stay <= 0.20.",
+      "path": "guideline_assessment.concentration_checks.payline_top1_share",
+      "operator": "<=",
+      "target": 0.2
+    },
+    {
+      "id": "P2_PAYLINE_TOP3",
+      "section": "Payline Concentration",
+      "severity": "medium",
+      "description": "Top-3 payline share should stay <= 0.55.",
+      "path": "guideline_assessment.concentration_checks.payline_top3_share",
+      "operator": "<=",
+      "target": 0.55
+    },
+    {
+      "id": "S1_SYMBOL_DISTRIBUTION_SKEW",
+      "section": "Symbol Balance",
+      "severity": "medium",
+      "description": "Symbol distribution skew flag should be false.",
+      "path": "guideline_assessment.symbol_checks.symbol_distribution_skew",
+      "operator": "==",
+      "target": false
+    }
+  ]
+}

@@ -1,0 +1,653 @@
+{
+  "report_id": "impact_M14_mode1_20260414T230710Z",
+  "run_id": "410794d3275e",
+  "machine": "M14",
+  "mode": 1,
+  "output_all_robots_result": true,
+  "sampling": {
+    "target_halfwidth_pp": 5.0,
+    "achieved_halfwidth_pp": null,
+    "chunk_spin_times": 20,
+    "chunk_robot_count": 2,
+    "batch_concurrency": 1,
+    "chunks": 1,
+    "total_spins": 40,
+    "stop_reason": "max_chunks_reached",
+    "duration_seconds": 0.599,
+    "started_at": "2026-04-14T23:07:08.952632Z",
+    "finished_at": "2026-04-14T23:07:09.551723Z"
+  },
+  "rtp": {
+    "point_pct": 55.00000000000001,
+    "ci95_interval_pct": null
+  },
+  "storage": {
+    "raw_round_data_persisted": false,
+    "reason": "Only aggregated metrics are persisted to keep local storage bounded."
+  },
+  "player_impact": {
+    "volatility": {
+      "avg_return_x": 0.55,
+      "std_return_x": 2.3498816118569867,
+      "max_observed_return_x": 11.55,
+      "return_bucket_rate": {
+        "eq0": 0.9,
+        "gt0_lt0.5": 0.025,
+        "ge0.5_lt1": 0.025,
+        "ge1_lt2": 0.0,
+        "ge2_lt5": 0.0,
+        "ge5_lt10": 0.025,
+        "ge10_lt20": 0.025,
+        "ge20_lt50": 0.0,
+        "ge50_lt100": 0.0,
+        "ge100": 0.0
+      }
+    },
+    "multiplier_profile": {
+      "metric": "ret_x = win_credits / bet_credits",
+      "buckets": [
+        {
+          "bucket": "eq0",
+          "spin_count": 36,
+          "spin_rate": 0.9,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "gt0_lt0.5",
+          "spin_count": 1,
+          "spin_rate": 0.025,
+          "avg_return_x_in_bucket": 0.22,
+          "rtp_contribution_pp": 0.5499999999999999,
+          "win_share": 0.01
+        },
+        {
+          "bucket": "ge0.5_lt1",
+          "spin_count": 1,
+          "spin_rate": 0.025,
+          "avg_return_x_in_bucket": 0.55,
+          "rtp_contribution_pp": 1.375,
+          "win_share": 0.025
+        },
+        {
+          "bucket": "ge1_lt2",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge2_lt5",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge5_lt10",
+          "spin_count": 1,
+          "spin_rate": 0.025,
+          "avg_return_x_in_bucket": 9.68,
+          "rtp_contribution_pp": 24.2,
+          "win_share": 0.44
+        },
+        {
+          "bucket": "ge10_lt20",
+          "spin_count": 1,
+          "spin_rate": 0.025,
+          "avg_return_x_in_bucket": 11.55,
+          "rtp_contribution_pp": 28.875,
+          "win_share": 0.525
+        },
+        {
+          "bucket": "ge20_lt50",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge50_lt100",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge100",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        }
+      ],
+      "tail_spin_rate_ge10x": 0.025,
+      "tail_rtp_contribution_pp_ge10x": 28.875,
+      "tail_win_share_ge10x": 0.525
+    },
+    "hit_and_payout": {
+      "win_hit_rate": 0.1,
+      "zero_win_rate": 0.9,
+      "profit_spin_rate": 0.05,
+      "breakeven_or_more_rate": 0.05,
+      "big_win_x10_rate": 0.025,
+      "avg_win_when_hit_x": 5.5,
+      "lack_credit_spin_rate": 0.0
+    },
+    "streaks": {
+      "loss_streak_p50": 7,
+      "loss_streak_p90": 11,
+      "loss_streak_p95": 11,
+      "loss_streak_max": 11,
+      "win_streak_p50": 1,
+      "win_streak_p90": 2,
+      "win_streak_p95": 2,
+      "win_streak_max": 2
+    },
+    "paylines_top20": [
+      {
+        "payline_id": "7",
+        "hit_count": 2,
+        "hit_rate": 0.05,
+        "approx_win_credits": 12100.0,
+        "approx_rtp_contribution_pp": 30.25
+      },
+      {
+        "payline_id": "1",
+        "hit_count": 1,
+        "hit_rate": 0.025,
+        "approx_win_credits": 220.0,
+        "approx_rtp_contribution_pp": 0.5499999999999999
+      },
+      {
+        "payline_id": "2",
+        "hit_count": 1,
+        "hit_rate": 0.025,
+        "approx_win_credits": 4840.0,
+        "approx_rtp_contribution_pp": 12.1
+      },
+      {
+        "payline_id": "3",
+        "hit_count": 1,
+        "hit_rate": 0.025,
+        "approx_win_credits": 4840.0,
+        "approx_rtp_contribution_pp": 12.1
+      }
+    ],
+    "symbols_top20": [
+      {
+        "symbol": "blank",
+        "count": 191,
+        "rate": 0.5305555555555556
+      },
+      {
+        "symbol": "cherry",
+        "count": 66,
+        "rate": 0.18333333333333332
+      },
+      {
+        "symbol": "1bar",
+        "count": 32,
+        "rate": 0.08888888888888889
+      },
+      {
+        "symbol": "2bar",
+        "count": 29,
+        "rate": 0.08055555555555556
+      },
+      {
+        "symbol": "high7",
+        "count": 17,
+        "rate": 0.04722222222222222
+      },
+      {
+        "symbol": "3bar",
+        "count": 10,
+        "rate": 0.027777777777777776
+      },
+      {
+        "symbol": "7x_wild",
+        "count": 4,
+        "rate": 0.011111111111111112
+      },
+      {
+        "symbol": "5x_wild",
+        "count": 4,
+        "rate": 0.011111111111111112
+      },
+      {
+        "symbol": "35x_wild",
+        "count": 4,
+        "rate": 0.011111111111111112
+      },
+      {
+        "symbol": "jackpot",
+        "count": 3,
+        "rate": 0.008333333333333333
+      }
+    ],
+    "symbols_by_column_top10": {
+      "0": [
+        {
+          "symbol": "blank",
+          "count": 64,
+          "rate": 0.5333333333333333
+        },
+        {
+          "symbol": "cherry",
+          "count": 26,
+          "rate": 0.21666666666666667
+        },
+        {
+          "symbol": "2bar",
+          "count": 12,
+          "rate": 0.1
+        },
+        {
+          "symbol": "1bar",
+          "count": 10,
+          "rate": 0.08333333333333333
+        },
+        {
+          "symbol": "high7",
+          "count": 2,
+          "rate": 0.016666666666666666
+        },
+        {
+          "symbol": "3bar",
+          "count": 2,
+          "rate": 0.016666666666666666
+        },
+        {
+          "symbol": "5x_wild",
+          "count": 1,
+          "rate": 0.008333333333333333
+        },
+        {
+          "symbol": "jackpot",
+          "count": 1,
+          "rate": 0.008333333333333333
+        },
+        {
+          "symbol": "35x_wild",
+          "count": 1,
+          "rate": 0.008333333333333333
+        },
+        {
+          "symbol": "7x_wild",
+          "count": 1,
+          "rate": 0.008333333333333333
+        }
+      ],
+      "1": [
+        {
+          "symbol": "blank",
+          "count": 63,
+          "rate": 0.525
+        },
+        {
+          "symbol": "cherry",
+          "count": 17,
+          "rate": 0.14166666666666666
+        },
+        {
+          "symbol": "high7",
+          "count": 13,
+          "rate": 0.10833333333333334
+        },
+        {
+          "symbol": "2bar",
+          "count": 9,
+          "rate": 0.075
+        },
+        {
+          "symbol": "1bar",
+          "count": 8,
+          "rate": 0.06666666666666667
+        },
+        {
+          "symbol": "3bar",
+          "count": 3,
+          "rate": 0.025
+        },
+        {
+          "symbol": "7x_wild",
+          "count": 2,
+          "rate": 0.016666666666666666
+        },
+        {
+          "symbol": "35x_wild",
+          "count": 2,
+          "rate": 0.016666666666666666
+        },
+        {
+          "symbol": "jackpot",
+          "count": 2,
+          "rate": 0.016666666666666666
+        },
+        {
+          "symbol": "5x_wild",
+          "count": 1,
+          "rate": 0.008333333333333333
+        }
+      ],
+      "2": [
+        {
+          "symbol": "blank",
+          "count": 64,
+          "rate": 0.5333333333333333
+        },
+        {
+          "symbol": "cherry",
+          "count": 23,
+          "rate": 0.19166666666666668
+        },
+        {
+          "symbol": "1bar",
+          "count": 14,
+          "rate": 0.11666666666666667
+        },
+        {
+          "symbol": "2bar",
+          "count": 8,
+          "rate": 0.06666666666666667
+        },
+        {
+          "symbol": "3bar",
+          "count": 5,
+          "rate": 0.041666666666666664
+        },
+        {
+          "symbol": "high7",
+          "count": 2,
+          "rate": 0.016666666666666666
+        },
+        {
+          "symbol": "5x_wild",
+          "count": 2,
+          "rate": 0.016666666666666666
+        },
+        {
+          "symbol": "7x_wild",
+          "count": 1,
+          "rate": 0.008333333333333333
+        },
+        {
+          "symbol": "35x_wild",
+          "count": 1,
+          "rate": 0.008333333333333333
+        }
+      ]
+    },
+    "bankruptcy_probe": [
+      {
+        "bankroll_multiplier": 100,
+        "init_credits": 100000,
+        "session_spins": 200,
+        "robots": 2,
+        "bankrupt_robots": 0,
+        "completed_robots": 2,
+        "bankruptcy_rate": 0.0,
+        "avg_spins_completed": 200.0
+      },
+      {
+        "bankroll_multiplier": 200,
+        "init_credits": 200000,
+        "session_spins": 200,
+        "robots": 2,
+        "bankrupt_robots": 0,
+        "completed_robots": 2,
+        "bankruptcy_rate": 0.0,
+        "avg_spins_completed": 200.0
+      },
+      {
+        "bankroll_multiplier": 500,
+        "init_credits": 500000,
+        "session_spins": 200,
+        "robots": 2,
+        "bankrupt_robots": 0,
+        "completed_robots": 2,
+        "bankruptcy_rate": 0.0,
+        "avg_spins_completed": 200.0
+      }
+    ]
+  },
+  "guideline_assessment": {
+    "guideline": "classic_slots_report_guideline_v1",
+    "data_quality": {
+      "quality_label": "EXPLORATORY",
+      "ci_met": false,
+      "sample_size_met": false,
+      "buckets_complete": true,
+      "bankruptcy_ladder_met": true
+    },
+    "derived_metrics": {
+      "recovery_gap": 0.05,
+      "tail_dependency": 0.5249999999999999
+    },
+    "classification": {
+      "volatility_class": "Very High",
+      "experience_archetype": "Boom-Bust"
+    },
+    "concentration_checks": {
+      "payline_top1_share": 0.55,
+      "payline_top3_share": 0.78,
+      "payline_top1_concentrated": true,
+      "payline_top3_concentrated": true
+    },
+    "symbol_checks": {
+      "blank_like_rate": 0.5305555555555556,
+      "blank_like_rate_by_column": {
+        "0": 0.5333333333333333,
+        "1": 0.525,
+        "2": 0.5333333333333333
+      },
+      "blank_like_col_spread": 0.008333333333333304,
+      "symbol_distribution_skew": false
+    },
+    "bankruptcy_checks": {
+      "x100_bankruptcy_rate": 0.0,
+      "x200_bankruptcy_rate": 0.0,
+      "x500_bankruptcy_rate": 0.0
+    },
+    "alerts": [
+      {
+        "code": "A1_CI_NOT_REACHED",
+        "severity": "high",
+        "message": "CI half-width target not reached."
+      },
+      {
+        "code": "A2_DRY_AND_LOW_PROFIT",
+        "severity": "high",
+        "message": "High dead-spin rate with low profit-spin rate."
+      },
+      {
+        "code": "A4_HIGH_TAIL_DEPENDENCY",
+        "severity": "medium",
+        "message": "RTP depends heavily on >=10x tail outcomes."
+      },
+      {
+        "code": "A6_PAYLINE_CONCENTRATION",
+        "severity": "medium",
+        "message": "Payline RTP contribution is concentrated."
+      }
+    ],
+    "action_recommendations": [
+      "Increase low/mid return buckets (gt0_lt0.5 and ge0.5_lt1) to reduce dry feel.",
+      "Reduce >=10x tail RTP share slightly and reallocate to ge1_lt2 or ge2_lt5."
+    ],
+    "conclusion_template": {
+      "data_confidence": "CI half-width=None, target<=5.0, spins=40, quality=EXPLORATORY.",
+      "player_feel": "Boom-Bust feel with Very High volatility: zero_win_rate=0.9000, loss_streak_p95=11.",
+      "rtp_structure": ">=10x tail contributes 28.8750pp RTP (dependency=0.5250).",
+      "session_risk": "Bankruptcy ladder: x100=0.0000, x200=0.0000, x500=0.0000.",
+      "design_action": "Increase low/mid return buckets (gt0_lt0.5 and ge0.5_lt1) to reduce dry feel."
+    }
+  },
+  "guideline_comparison": {
+    "guideline_id": "classic_slots_report_guideline_v1",
+    "rules_path": "C:\\Users\\pangg\\Documents\\Projects\\LHS\\User_Managerment_GPT\\configs\\classic_slots_guideline_rules.json",
+    "evaluated_at": "2026-04-14T23:07:10.785279Z",
+    "overall_status": "FAIL",
+    "pass_count": 5,
+    "fail_count": 6,
+    "not_applicable_count": 0,
+    "missing_count": 0,
+    "hard_fail_count": 4,
+    "check_count": 11,
+    "failed_check_ids": [
+      "Q1_CI_HALF_WIDTH",
+      "Q2_SAMPLE_SIZE",
+      "A2_ZERO_PROFIT_BALANCE",
+      "A4_TAIL_DEPENDENCY",
+      "P1_PAYLINE_TOP1",
+      "P2_PAYLINE_TOP3"
+    ],
+    "checks": [
+      {
+        "id": "Q1_CI_HALF_WIDTH",
+        "section": "Sampling Quality Gate",
+        "severity": "high",
+        "description": "CI half-width should be <= 0.5pp for report-grade output.",
+        "path": "sampling.achieved_halfwidth_pp",
+        "operator": "<=",
+        "target": 0.5,
+        "status": "fail",
+        "observed": null,
+        "deviation": null
+      },
+      {
+        "id": "Q2_SAMPLE_SIZE",
+        "section": "Sampling Quality Gate",
+        "severity": "high",
+        "description": "Total spins should usually be >= 2,000,000.",
+        "path": "sampling.total_spins",
+        "operator": ">=",
+        "target": 2000000,
+        "status": "fail",
+        "observed": 40,
+        "deviation": 1999960.0
+      },
+      {
+        "id": "Q3_BUCKETS_COMPLETE",
+        "section": "Sampling Quality Gate",
+        "severity": "high",
+        "description": "Multiplier buckets and tail metrics must exist.",
+        "path": "guideline_assessment.data_quality.buckets_complete",
+        "operator": "==",
+        "target": true,
+        "status": "pass",
+        "observed": true,
+        "deviation": 0.0
+      },
+      {
+        "id": "Q4_BANKRUPTCY_LADDER",
+        "section": "Sampling Quality Gate",
+        "severity": "high",
+        "description": "Bankruptcy probe should include at least 3 bankroll multipliers.",
+        "path": "guideline_assessment.data_quality.bankruptcy_ladder_met",
+        "operator": "==",
+        "target": true,
+        "status": "pass",
+        "observed": true,
+        "deviation": 0.0
+      },
+      {
+        "id": "A2_ZERO_PROFIT_BALANCE",
+        "section": "Report Alert Rules",
+        "severity": "high",
+        "description": "If zero_win_rate > 0.80, profit_spin_rate should be >= 0.10.",
+        "path": "player_impact.hit_and_payout.profit_spin_rate",
+        "operator": ">=",
+        "target": 0.1,
+        "status": "fail",
+        "when": {
+          "path": "player_impact.hit_and_payout.zero_win_rate",
+          "operator": ">",
+          "target": 0.8,
+          "observed": 0.9
+        },
+        "observed": 0.05,
+        "deviation": 0.05
+      },
+      {
+        "id": "A3_LOSS_STREAK_P95",
+        "section": "Report Alert Rules",
+        "severity": "medium",
+        "description": "Loss streak p95 should stay below 15.",
+        "path": "player_impact.streaks.loss_streak_p95",
+        "operator": "<",
+        "target": 15,
+        "status": "pass",
+        "observed": 11,
+        "deviation": -4.0
+      },
+      {
+        "id": "A4_TAIL_DEPENDENCY",
+        "section": "Report Alert Rules",
+        "severity": "high",
+        "description": "tail_dependency should stay below 0.45.",
+        "path": "guideline_assessment.derived_metrics.tail_dependency",
+        "operator": "<",
+        "target": 0.45,
+        "status": "fail",
+        "observed": 0.5249999999999999,
+        "deviation": 0.0749999999999999
+      },
+      {
+        "id": "A5_BANKRUPTCY_X200",
+        "section": "Report Alert Rules",
+        "severity": "high",
+        "description": "x200 bankruptcy rate should stay below 0.10.",
+        "path": "guideline_assessment.bankruptcy_checks.x200_bankruptcy_rate",
+        "operator": "<",
+        "target": 0.1,
+        "status": "pass",
+        "observed": 0.0,
+        "deviation": -0.1
+      },
+      {
+        "id": "P1_PAYLINE_TOP1",
+        "section": "Payline Concentration",
+        "severity": "medium",
+        "description": "Top-1 payline share should stay <= 0.20.",
+        "path": "guideline_assessment.concentration_checks.payline_top1_share",
+        "operator": "<=",
+        "target": 0.2,
+        "status": "fail",
+        "observed": 0.55,
+        "deviation": 0.35000000000000003
+      },
+      {
+        "id": "P2_PAYLINE_TOP3",
+        "section": "Payline Concentration",
+        "severity": "medium",
+        "description": "Top-3 payline share should stay <= 0.55.",
+        "path": "guideline_assessment.concentration_checks.payline_top3_share",
+        "operator": "<=",
+        "target": 0.55,
+        "status": "fail",
+        "observed": 0.78,
+        "deviation": 0.22999999999999998
+      },
+      {
+        "id": "S1_SYMBOL_DISTRIBUTION_SKEW",
+        "section": "Symbol Balance",
+        "severity": "medium",
+        "description": "Symbol distribution skew flag should be false.",
+        "path": "guideline_assessment.symbol_checks.symbol_distribution_skew",
+        "operator": "==",
+        "target": false,
+        "status": "pass",
+        "observed": false,
+        "deviation": 0.0
+      }
+    ]
+  }
+}

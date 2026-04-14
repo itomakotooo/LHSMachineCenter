@@ -1,0 +1,518 @@
+{
+  "report_id": "impact_M14_mode1_20260414T030632Z",
+  "run_id": "46b88c9edcc1",
+  "machine": "M14",
+  "mode": 1,
+  "output_all_robots_result": true,
+  "sampling": {
+    "target_halfwidth_pp": 5.0,
+    "achieved_halfwidth_pp": null,
+    "chunk_spin_times": 100,
+    "chunk_robot_count": 2,
+    "batch_concurrency": 1,
+    "chunks": 1,
+    "total_spins": 200,
+    "stop_reason": "max_chunks_reached",
+    "duration_seconds": 1.086,
+    "started_at": "2026-04-14T03:06:30.225117Z",
+    "finished_at": "2026-04-14T03:06:31.311196Z"
+  },
+  "rtp": {
+    "point_pct": 52.25,
+    "ci95_interval_pct": null
+  },
+  "storage": {
+    "raw_round_data_persisted": false,
+    "reason": "Only aggregated metrics are persisted to keep local storage bounded."
+  },
+  "player_impact": {
+    "volatility": {
+      "avg_return_x": 0.5225,
+      "std_return_x": 2.087416414238463,
+      "max_observed_return_x": 15.4,
+      "return_bucket_rate": {
+        "eq0": 0.83,
+        "gt0_lt0.5": 0.06,
+        "ge0.5_lt1": 0.02,
+        "ge1_lt2": 0.025,
+        "ge2_lt5": 0.03,
+        "ge5_lt10": 0.015,
+        "ge10_lt20": 0.02,
+        "ge20_lt50": 0.0,
+        "ge50_lt100": 0.0,
+        "ge100": 0.0
+      }
+    },
+    "multiplier_profile": {
+      "metric": "ret_x = win_credits / bet_credits",
+      "buckets": [
+        {
+          "bucket": "eq0",
+          "spin_count": 166,
+          "spin_rate": 0.83,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "gt0_lt0.5",
+          "spin_count": 12,
+          "spin_rate": 0.06,
+          "avg_return_x_in_bucket": 0.3025,
+          "rtp_contribution_pp": 1.815,
+          "win_share": 0.034736842105263156
+        },
+        {
+          "bucket": "ge0.5_lt1",
+          "spin_count": 4,
+          "spin_rate": 0.02,
+          "avg_return_x_in_bucket": 0.605,
+          "rtp_contribution_pp": 1.21,
+          "win_share": 0.023157894736842106
+        },
+        {
+          "bucket": "ge1_lt2",
+          "spin_count": 5,
+          "spin_rate": 0.025,
+          "avg_return_x_in_bucket": 1.54,
+          "rtp_contribution_pp": 3.85,
+          "win_share": 0.07368421052631578
+        },
+        {
+          "bucket": "ge2_lt5",
+          "spin_count": 6,
+          "spin_rate": 0.03,
+          "avg_return_x_in_bucket": 2.8783333333333334,
+          "rtp_contribution_pp": 8.635,
+          "win_share": 0.16526315789473683
+        },
+        {
+          "bucket": "ge5_lt10",
+          "spin_count": 3,
+          "spin_rate": 0.015,
+          "avg_return_x_in_bucket": 6.82,
+          "rtp_contribution_pp": 10.23,
+          "win_share": 0.1957894736842105
+        },
+        {
+          "bucket": "ge10_lt20",
+          "spin_count": 4,
+          "spin_rate": 0.02,
+          "avg_return_x_in_bucket": 13.255,
+          "rtp_contribution_pp": 26.51,
+          "win_share": 0.5073684210526316
+        },
+        {
+          "bucket": "ge20_lt50",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge50_lt100",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge100",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        }
+      ],
+      "tail_spin_rate_ge10x": 0.02,
+      "tail_rtp_contribution_pp_ge10x": 26.51,
+      "tail_win_share_ge10x": 0.5073684210526316
+    },
+    "hit_and_payout": {
+      "win_hit_rate": 0.17,
+      "zero_win_rate": 0.83,
+      "profit_spin_rate": 0.09,
+      "breakeven_or_more_rate": 0.09,
+      "big_win_x10_rate": 0.02,
+      "avg_win_when_hit_x": 3.073529411764706,
+      "lack_credit_spin_rate": 0.0
+    },
+    "streaks": {
+      "loss_streak_p50": 5,
+      "loss_streak_p90": 15,
+      "loss_streak_p95": 15,
+      "loss_streak_max": 20,
+      "win_streak_p50": 1,
+      "win_streak_p90": 2,
+      "win_streak_p95": 2,
+      "win_streak_max": 3
+    },
+    "paylines_top20": [
+      {
+        "payline_id": "3",
+        "hit_count": 11,
+        "hit_rate": 0.055,
+        "approx_win_credits": 38060.0,
+        "approx_rtp_contribution_pp": 19.03
+      },
+      {
+        "payline_id": "2",
+        "hit_count": 9,
+        "hit_rate": 0.045,
+        "approx_win_credits": 17930.0,
+        "approx_rtp_contribution_pp": 8.965
+      },
+      {
+        "payline_id": "5",
+        "hit_count": 5,
+        "hit_rate": 0.025,
+        "approx_win_credits": 4840.0,
+        "approx_rtp_contribution_pp": 2.42
+      },
+      {
+        "payline_id": "6",
+        "hit_count": 5,
+        "hit_rate": 0.025,
+        "approx_win_credits": 19910.0,
+        "approx_rtp_contribution_pp": 9.955
+      },
+      {
+        "payline_id": "8",
+        "hit_count": 4,
+        "hit_rate": 0.02,
+        "approx_win_credits": 5720.0,
+        "approx_rtp_contribution_pp": 2.86
+      },
+      {
+        "payline_id": "1",
+        "hit_count": 4,
+        "hit_rate": 0.02,
+        "approx_win_credits": 1210.0,
+        "approx_rtp_contribution_pp": 0.605
+      },
+      {
+        "payline_id": "9",
+        "hit_count": 3,
+        "hit_rate": 0.015,
+        "approx_win_credits": 9020.0,
+        "approx_rtp_contribution_pp": 4.51
+      },
+      {
+        "payline_id": "4",
+        "hit_count": 2,
+        "hit_rate": 0.01,
+        "approx_win_credits": 7480.0,
+        "approx_rtp_contribution_pp": 3.74
+      },
+      {
+        "payline_id": "7",
+        "hit_count": 1,
+        "hit_rate": 0.005,
+        "approx_win_credits": 330.0,
+        "approx_rtp_contribution_pp": 0.165
+      }
+    ],
+    "symbols_top20": [
+      {
+        "symbol": "blank",
+        "count": 888,
+        "rate": 0.49333333333333335
+      },
+      {
+        "symbol": "cherry",
+        "count": 320,
+        "rate": 0.17777777777777778
+      },
+      {
+        "symbol": "1bar",
+        "count": 161,
+        "rate": 0.08944444444444444
+      },
+      {
+        "symbol": "2bar",
+        "count": 126,
+        "rate": 0.07
+      },
+      {
+        "symbol": "high7",
+        "count": 106,
+        "rate": 0.058888888888888886
+      },
+      {
+        "symbol": "3bar",
+        "count": 100,
+        "rate": 0.05555555555555555
+      },
+      {
+        "symbol": "5x_wild",
+        "count": 39,
+        "rate": 0.021666666666666667
+      },
+      {
+        "symbol": "7x_wild",
+        "count": 31,
+        "rate": 0.017222222222222222
+      },
+      {
+        "symbol": "35x_wild",
+        "count": 22,
+        "rate": 0.012222222222222223
+      },
+      {
+        "symbol": "jackpot",
+        "count": 7,
+        "rate": 0.0038888888888888888
+      }
+    ],
+    "symbols_by_column_top10": {
+      "0": [
+        {
+          "symbol": "blank",
+          "count": 298,
+          "rate": 0.49666666666666665
+        },
+        {
+          "symbol": "cherry",
+          "count": 100,
+          "rate": 0.16666666666666666
+        },
+        {
+          "symbol": "1bar",
+          "count": 66,
+          "rate": 0.11
+        },
+        {
+          "symbol": "2bar",
+          "count": 46,
+          "rate": 0.07666666666666666
+        },
+        {
+          "symbol": "3bar",
+          "count": 28,
+          "rate": 0.04666666666666667
+        },
+        {
+          "symbol": "high7",
+          "count": 25,
+          "rate": 0.041666666666666664
+        },
+        {
+          "symbol": "5x_wild",
+          "count": 16,
+          "rate": 0.02666666666666667
+        },
+        {
+          "symbol": "7x_wild",
+          "count": 12,
+          "rate": 0.02
+        },
+        {
+          "symbol": "35x_wild",
+          "count": 8,
+          "rate": 0.013333333333333334
+        },
+        {
+          "symbol": "jackpot",
+          "count": 1,
+          "rate": 0.0016666666666666668
+        }
+      ],
+      "1": [
+        {
+          "symbol": "blank",
+          "count": 299,
+          "rate": 0.49833333333333335
+        },
+        {
+          "symbol": "cherry",
+          "count": 97,
+          "rate": 0.16166666666666665
+        },
+        {
+          "symbol": "high7",
+          "count": 57,
+          "rate": 0.095
+        },
+        {
+          "symbol": "2bar",
+          "count": 47,
+          "rate": 0.07833333333333334
+        },
+        {
+          "symbol": "1bar",
+          "count": 36,
+          "rate": 0.06
+        },
+        {
+          "symbol": "3bar",
+          "count": 31,
+          "rate": 0.051666666666666666
+        },
+        {
+          "symbol": "5x_wild",
+          "count": 13,
+          "rate": 0.021666666666666667
+        },
+        {
+          "symbol": "7x_wild",
+          "count": 9,
+          "rate": 0.015
+        },
+        {
+          "symbol": "35x_wild",
+          "count": 7,
+          "rate": 0.011666666666666667
+        },
+        {
+          "symbol": "jackpot",
+          "count": 4,
+          "rate": 0.006666666666666667
+        }
+      ],
+      "2": [
+        {
+          "symbol": "blank",
+          "count": 291,
+          "rate": 0.485
+        },
+        {
+          "symbol": "cherry",
+          "count": 123,
+          "rate": 0.205
+        },
+        {
+          "symbol": "1bar",
+          "count": 59,
+          "rate": 0.09833333333333333
+        },
+        {
+          "symbol": "3bar",
+          "count": 41,
+          "rate": 0.06833333333333333
+        },
+        {
+          "symbol": "2bar",
+          "count": 33,
+          "rate": 0.055
+        },
+        {
+          "symbol": "high7",
+          "count": 24,
+          "rate": 0.04
+        },
+        {
+          "symbol": "7x_wild",
+          "count": 10,
+          "rate": 0.016666666666666666
+        },
+        {
+          "symbol": "5x_wild",
+          "count": 10,
+          "rate": 0.016666666666666666
+        },
+        {
+          "symbol": "35x_wild",
+          "count": 7,
+          "rate": 0.011666666666666667
+        },
+        {
+          "symbol": "jackpot",
+          "count": 2,
+          "rate": 0.0033333333333333335
+        }
+      ]
+    },
+    "bankruptcy_probe": [
+      {
+        "bankroll_multiplier": 100,
+        "init_credits": 100000,
+        "session_spins": 100,
+        "robots": 2,
+        "bankrupt_robots": 0,
+        "completed_robots": 2,
+        "bankruptcy_rate": 0.0,
+        "avg_spins_completed": 100.0
+      }
+    ]
+  },
+  "guideline_assessment": {
+    "guideline": "classic_slots_report_guideline_v1",
+    "data_quality": {
+      "quality_label": "EXPLORATORY",
+      "ci_met": false,
+      "sample_size_met": false,
+      "buckets_complete": true,
+      "bankruptcy_ladder_met": false
+    },
+    "derived_metrics": {
+      "recovery_gap": 0.08000000000000002,
+      "tail_dependency": 0.5073684210526316
+    },
+    "classification": {
+      "volatility_class": "Very High",
+      "experience_archetype": "Boom-Bust"
+    },
+    "concentration_checks": {
+      "payline_top1_share": 0.3642105263157895,
+      "payline_top3_share": 0.5821052631578947,
+      "payline_top1_concentrated": true,
+      "payline_top3_concentrated": true
+    },
+    "symbol_checks": {
+      "blank_like_rate": 0.49333333333333335,
+      "blank_like_rate_by_column": {
+        "0": 0.49666666666666665,
+        "1": 0.49833333333333335,
+        "2": 0.485
+      },
+      "blank_like_col_spread": 0.013333333333333364,
+      "symbol_distribution_skew": false
+    },
+    "bankruptcy_checks": {
+      "x100_bankruptcy_rate": 0.0,
+      "x200_bankruptcy_rate": 0.0,
+      "x500_bankruptcy_rate": 0.0
+    },
+    "alerts": [
+      {
+        "code": "A1_CI_NOT_REACHED",
+        "severity": "high",
+        "message": "CI half-width target not reached."
+      },
+      {
+        "code": "A2_DRY_AND_LOW_PROFIT",
+        "severity": "high",
+        "message": "High dead-spin rate with low profit-spin rate."
+      },
+      {
+        "code": "A3_LONG_LOSS_STREAK",
+        "severity": "medium",
+        "message": "Loss streak p95 is high."
+      },
+      {
+        "code": "A4_HIGH_TAIL_DEPENDENCY",
+        "severity": "medium",
+        "message": "RTP depends heavily on >=10x tail outcomes."
+      },
+      {
+        "code": "A6_PAYLINE_CONCENTRATION",
+        "severity": "medium",
+        "message": "Payline RTP contribution is concentrated."
+      }
+    ],
+    "action_recommendations": [
+      "Increase low/mid return buckets (gt0_lt0.5 and ge0.5_lt1) to reduce dry feel.",
+      "Reduce >=10x tail RTP share slightly and reallocate to ge1_lt2 or ge2_lt5."
+    ],
+    "conclusion_template": {
+      "data_confidence": "CI half-width=None, target<=5.0, spins=200, quality=EXPLORATORY.",
+      "player_feel": "Boom-Bust feel with Very High volatility: zero_win_rate=0.8300, loss_streak_p95=15.",
+      "rtp_structure": ">=10x tail contributes 26.5100pp RTP (dependency=0.5074).",
+      "session_risk": "Bankruptcy ladder: x100=0.0000, x200=0.0000, x500=0.0000.",
+      "design_action": "Increase low/mid return buckets (gt0_lt0.5 and ge0.5_lt1) to reduce dry feel."
+    }
+  }
+}

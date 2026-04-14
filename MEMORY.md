@@ -22,6 +22,10 @@ These are the project-level hard constraints from the user. They have highest pr
 13. Any chunk not yet consumed by a generated report must never be deleted.
 14. Report data and aggregated metrics are core assets and must be version-managed.
 15. Project should be managed in a Git repository for long-term management.
+16. Report generation stays script-driven and deterministic; LLM is only for interpretation/comparison.
+17. Web console model selector must be 3-way provider choice:
+    `gemini`, `gpt`, `claude`, with a single API key input.
+18. Cache cleanup is manual-trigger only, and UI must show clear warnings before cleanup.
 
 Update policy:
 - This section can only be changed when user explicitly says to add/remove/modify a hard rule.
@@ -32,7 +36,8 @@ This section is for execution efficiency and can be updated as long as section A
 
 1. Recommended directory split:
    - temp artifacts: `fresh_slotlab/runs/`
-   - long-term reports: `reports/<machine>/mode_<id>/latest/` and `history/`
+   - long-term reports: `reports/<machine>/mode_<id>/index.json`,
+     `latest.json`, and `versions/<report_version>/...`
 2. Practical sampling starting point:
    `chunk_spin_times=5000`, `robot_count=20`, `batch_concurrency=2`,
    then tune by measured throughput and stability.
@@ -54,6 +59,14 @@ This section is for execution efficiency and can be updated as long as section A
 10. Report default:
    include `guideline_assessment` with quality gate, classification,
    alert rules, and filled conclusion template.
+11. Console status:
+   local web console MVP is available at `/console` via FastAPI backend,
+   started by `scripts/start_console.ps1`.
+12. Model-routing status:
+   backend runtime model config supports provider switch
+   (`gemini`/`gpt`/`claude`) and single-key update API.
+13. Safety default:
+   never persist user API keys into repository files or reports.
 
 Update policy:
 - Assistant may update this section after execution, and must explicitly state:

@@ -29,6 +29,9 @@ RETURN_BUCKET_ORDER = [
     "ge100",
 ]
 TAIL_GEX10_BUCKETS = {"ge10_lt20", "ge20_lt50", "ge50_lt100", "ge100"}
+DEFAULT_GUIDELINE_RULES_PATH = (
+    Path(__file__).resolve().parents[1] / "configs" / "classic_slots_guideline_rules.json"
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,6 +48,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-chunks", type=int, default=120)
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--run-id", default=None, help="optional external run id for orchestration")
+    parser.add_argument(
+        "--progress-file",
+        type=Path,
+        default=None,
+        help="optional jsonl file path for chunk-level progress events",
+    )
     parser.add_argument("--bankruptcy-session-spins", type=int, default=500)
     parser.add_argument(
         "--bankruptcy-bankroll-multipliers",
@@ -56,6 +66,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="optional override for bankruptcy probe robot count; defaults to chunk-robot-count",
+    )
+    parser.add_argument(
+        "--guideline-rules",
+        type=Path,
+        default=DEFAULT_GUIDELINE_RULES_PATH,
+        help="path to external deterministic guideline check rules JSON",
     )
     return parser.parse_args()
 
@@ -180,6 +196,197 @@ def quantile_from_hist(hist: dict[int, int], q: float) -> int:
 
 def safe_div(numerator: float, denominator: float) -> float:
     return (numerator / denominator) if denominator > 0 else 0.0
+
+
+def append_jsonl(path: Path | None, payload: dict[str, Any]) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def _metric_path_get(payload: dict[str, Any], path: str) -> tuple[Any, bool]:
+    cur: Any = payload
+    for part in path.split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
+            return (None, False)
+    return (cur, True)
+
+
+def _eval_operator(observed: Any, operator: str, target: Any) -> bool:
+    if observed is None and operator in ("<", "<=", ">", ">=", "between"):
+        return False
+    try:
+        if operator == "<":
+            return observed < target
+        if operator == "<=":
+            return observed <= target
+        if operator == ">":
+            return observed > target
+        if operator == ">=":
+            return observed >= target
+        if operator == "==":
+            return observed == target
+        if operator == "!=":
+            return observed != target
+        if operator == "between":
+            if not isinstance(target, dict):
+                return False
+            low = target.get("min")
+            high = target.get("max")
+            if low is None or high is None:
+                return False
+            return low <= observed <= high
+    except TypeError:
+        return False
+    raise ValueError(f"unsupported operator: {operator}")
+
+
+def _deviation(observed: Any, operator: str, target: Any) -> float | None:
+    if not isinstance(observed, (int, float)):
+        return None
+    if operator in ("<", "<=") and isinstance(target, (int, float)):
+        return float(observed - target)
+    if operator in (">", ">=") and isinstance(target, (int, float)):
+        return float(target - observed)
+    if operator == "between" and isinstance(target, dict):
+        low = target.get("min")
+        high = target.get("max")
+        if isinstance(low, (int, float)) and observed < low:
+            return float(low - observed)
+        if isinstance(high, (int, float)) and observed > high:
+            return float(observed - high)
+        return 0.0
+    return 0.0
+
+
+def evaluate_guideline_comparison(summary: dict[str, Any], rules_path: Path) -> dict[str, Any]:
+    if not rules_path.exists():
+        return {
+            "guideline_id": "unknown",
+            "rules_path": str(rules_path),
+            "overall_status": "ERROR",
+            "error": "rules_file_not_found",
+            "checks": [],
+        }
+    try:
+        rules_payload = json.loads(rules_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {
+            "guideline_id": "unknown",
+            "rules_path": str(rules_path),
+            "overall_status": "ERROR",
+            "error": "rules_json_parse_failed",
+            "checks": [],
+        }
+
+    checks = rules_payload.get("checks", [])
+    if not isinstance(checks, list):
+        return {
+            "guideline_id": rules_payload.get("guideline_id", "unknown"),
+            "rules_path": str(rules_path),
+            "overall_status": "ERROR",
+            "error": "rules_checks_not_list",
+            "checks": [],
+        }
+
+    results: list[dict[str, Any]] = []
+    pass_count = 0
+    fail_count = 0
+    na_count = 0
+    missing_count = 0
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        row = {
+            "id": check.get("id", "UNKNOWN"),
+            "section": check.get("section", "General"),
+            "severity": check.get("severity", "medium"),
+            "description": check.get("description", ""),
+            "path": check.get("path", ""),
+            "operator": check.get("operator", ""),
+            "target": check.get("target"),
+            "status": "missing",
+        }
+        when = check.get("when")
+        if isinstance(when, dict):
+            when_path = str(when.get("path", ""))
+            when_op = str(when.get("operator", "=="))
+            when_target = when.get("target")
+            when_observed, when_ok = _metric_path_get(summary, when_path)
+            row["when"] = {
+                "path": when_path,
+                "operator": when_op,
+                "target": when_target,
+                "observed": when_observed if when_ok else None,
+            }
+            if not when_ok:
+                row["status"] = "missing"
+                row["error"] = f"missing_when_path:{when_path}"
+                missing_count += 1
+                results.append(row)
+                continue
+            try:
+                when_passed = _eval_operator(when_observed, when_op, when_target)
+            except Exception as exc:  # noqa: BLE001
+                row["status"] = "missing"
+                row["error"] = f"when_eval_error:{exc.__class__.__name__}"
+                missing_count += 1
+                results.append(row)
+                continue
+            if not when_passed:
+                row["status"] = "not_applicable"
+                na_count += 1
+                results.append(row)
+                continue
+
+        path = str(check.get("path", ""))
+        operator = str(check.get("operator", "=="))
+        target = check.get("target")
+        observed, found = _metric_path_get(summary, path)
+        if not found:
+            row["status"] = "missing"
+            row["error"] = f"missing_path:{path}"
+            missing_count += 1
+            results.append(row)
+            continue
+        row["observed"] = observed
+        try:
+            passed = _eval_operator(observed, operator, target)
+        except Exception as exc:  # noqa: BLE001
+            row["status"] = "missing"
+            row["error"] = f"eval_error:{exc.__class__.__name__}"
+            missing_count += 1
+            results.append(row)
+            continue
+        row["deviation"] = _deviation(observed, operator, target)
+        if passed:
+            row["status"] = "pass"
+            pass_count += 1
+        else:
+            row["status"] = "fail"
+            fail_count += 1
+        results.append(row)
+
+    hard_fail_count = sum(1 for r in results if r.get("status") == "fail" and r.get("severity") == "high")
+    overall_status = "FAIL" if (fail_count > 0 or missing_count > 0) else "PASS"
+    return {
+        "guideline_id": rules_payload.get("guideline_id", "unknown"),
+        "rules_path": str(rules_path),
+        "evaluated_at": utc_now(),
+        "overall_status": overall_status,
+        "pass_count": pass_count,
+        "fail_count": fail_count,
+        "not_applicable_count": na_count,
+        "missing_count": missing_count,
+        "hard_fail_count": hard_fail_count,
+        "check_count": len(results),
+        "failed_check_ids": [r.get("id") for r in results if r.get("status") == "fail"],
+        "checks": results,
+    }
 
 
 def classify_volatility(zero_win_rate: float, loss_streak_p95: int, tail_dependency: float) -> str:
@@ -543,8 +750,25 @@ def main() -> int:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
+    run_id = args.run_id or f"run_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    progress_file = args.progress_file
+
     started_at = utc_now()
     t0 = time.time()
+    append_jsonl(
+        progress_file,
+        {
+            "event": "started",
+            "run_id": run_id,
+            "machine": args.machine,
+            "mode": args.rtp_mode,
+            "target_halfwidth_pp": args.target_halfwidth_pp,
+            "chunk_spin_times": args.chunk_spin_times,
+            "chunk_robot_count": args.chunk_robot_count,
+            "batch_concurrency": args.batch_concurrency,
+            "started_at": started_at,
+        },
+    )
 
     total_spins = 0
     total_bet = 0.0
@@ -615,6 +839,18 @@ def main() -> int:
         error = next((r for r in batch_results if not bool(r.get("ok"))), None)
         if error is not None:
             stop_reason = str(error.get("error") or "unknown_error")
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "failed",
+                    "run_id": run_id,
+                    "reason": stop_reason,
+                    "chunks": chunks,
+                    "total_spins": total_spins,
+                    "elapsed_seconds": round(time.time() - t0, 3),
+                    "ts": utc_now(),
+                },
+            )
             break
 
         for rec in sorted(batch_results, key=lambda x: int(x["index"])):
@@ -675,6 +911,22 @@ def main() -> int:
             hw = ci_halfwidth_pp(chunk_rtps_pct)
             if math.isfinite(hw):
                 achieved_halfwidth_pp = hw
+
+            current_rtp_pct = (total_win / total_bet) * 100.0 if total_bet > 0 else 0.0
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "chunk_progress",
+                    "run_id": run_id,
+                    "chunk_index": chunks,
+                    "total_spins": total_spins,
+                    "current_rtp_pct": current_rtp_pct,
+                    "current_halfwidth_pp": achieved_halfwidth_pp,
+                    "target_halfwidth_pp": args.target_halfwidth_pp,
+                    "elapsed_seconds": round(time.time() - t0, 3),
+                    "ts": utc_now(),
+                },
+            )
 
         if len(chunk_rtps_pct) >= 2 and achieved_halfwidth_pp is not None:
             if achieved_halfwidth_pp <= args.target_halfwidth_pp:
@@ -959,6 +1211,7 @@ def main() -> int:
 
     summary = {
         "report_id": f"impact_{args.machine}_mode{args.rtp_mode}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+        "run_id": run_id,
         "machine": args.machine,
         "mode": args.rtp_mode,
         "output_all_robots_result": True,
@@ -1072,6 +1325,9 @@ def main() -> int:
         },
     }
 
+    guideline_comparison = evaluate_guideline_comparison(summary, args.guideline_rules)
+    summary["guideline_comparison"] = guideline_comparison
+
     out_json = args.output_dir / "player_impact_summary.json"
     out_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -1133,6 +1389,33 @@ def main() -> int:
         ]
     )
 
+    md_lines.extend(
+        [
+            "",
+            "## Guideline Rule Comparison (External Rules)",
+            f"- guideline_id: {guideline_comparison.get('guideline_id', 'unknown')}",
+            f"- overall_status: {guideline_comparison.get('overall_status', 'UNKNOWN')}",
+            (
+                "- checks: total={check_count} pass={pass_count} fail={fail_count} "
+                "missing={missing_count} not_applicable={not_applicable_count}".format(
+                    check_count=guideline_comparison.get("check_count", 0),
+                    pass_count=guideline_comparison.get("pass_count", 0),
+                    fail_count=guideline_comparison.get("fail_count", 0),
+                    missing_count=guideline_comparison.get("missing_count", 0),
+                    not_applicable_count=guideline_comparison.get("not_applicable_count", 0),
+                )
+            ),
+        ]
+    )
+    for row in guideline_comparison.get("checks", []):
+        status = row.get("status", "unknown")
+        if status == "pass":
+            continue
+        md_lines.append(
+            f"- [{status}] {row.get('id', 'UNKNOWN')} ({row.get('severity', 'medium')}): "
+            f"{row.get('description', '')} observed={row.get('observed', 'N/A')} target={row.get('target', 'N/A')}"
+        )
+
     if alerts:
         md_lines.append("- alerts:")
         for alert in alerts:
@@ -1192,6 +1475,25 @@ def main() -> int:
 
     out_md = args.output_dir / "player_impact_report.md"
     out_md.write_text("\n".join(md_lines) + "\n", encoding="utf-8")
+
+    append_jsonl(
+        progress_file,
+        {
+            "event": "completed",
+            "run_id": run_id,
+            "stop_reason": stop_reason,
+            "total_spins": total_spins,
+            "chunks": chunks,
+            "duration_seconds": duration_seconds,
+            "rtp_point_pct": rtp_point_pct,
+            "ci95_interval_pct": ci_interval,
+            "output_dir": str(args.output_dir),
+            "summary_file": str(out_json),
+            "report_file": str(out_md),
+            "quality_label": quality_label,
+            "ts": utc_now(),
+        },
+    )
 
     print(json.dumps(summary, ensure_ascii=False))
     return 0

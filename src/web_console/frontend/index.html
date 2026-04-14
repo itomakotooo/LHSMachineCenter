@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Slot Console</title>
+    <link rel="stylesheet" href="/console/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Slot Console</h1>
+        <p class="subtitle">Machine tuning, player-impact telemetry, and guideline diagnostics</p>
+      </div>
+      <div id="health" class="health">Checking...</div>
+    </header>
+    <div id="globalWarning" class="global-warning hidden"></div>
+
+    <main class="layout">
+      <section class="panel controls">
+        <h2>Run Controls</h2>
+        <div class="grid two">
+          <label>Machine
+            <select id="machineSelect"></select>
+          </label>
+          <label>Mode
+            <select id="modeSelect"></select>
+          </label>
+          <label>Target CI Half-width (pp)
+            <input id="ciInput" type="number" step="0.01" value="0.5" />
+          </label>
+          <label>Model Provider
+            <select id="providerSelect"></select>
+          </label>
+          <label>Model
+            <select id="modelSelect"></select>
+          </label>
+          <label>Chunk Spin Times
+            <input id="spinInput" type="number" value="5000" />
+          </label>
+          <label>Chunk Robot Count
+            <input id="robotInput" type="number" value="20" />
+          </label>
+          <label>Batch Concurrency
+            <input id="concInput" type="number" value="2" />
+          </label>
+          <label>Max Chunks
+            <input id="maxChunksInput" type="number" value="120" />
+          </label>
+          <label>Timeout (sec)
+            <input id="timeoutInput" type="number" value="300" />
+          </label>
+          <label>Bankruptcy Session Spins
+            <input id="bankSessionInput" type="number" value="500" />
+          </label>
+          <label class="full">Bankroll Multipliers
+            <input id="bankMultInput" type="text" value="100,200,500" />
+          </label>
+          <label class="full">API Key
+            <input id="apiKeyInput" type="password" placeholder="paste one provider api key" />
+          </label>
+        </div>
+        <div class="actions">
+          <button id="saveModelCfgBtn">Save Model Config</button>
+          <button id="startBtn">Start Run</button>
+          <button id="stopBtn">Stop Run</button>
+          <button id="refreshBtn">Refresh</button>
+        </div>
+      </section>
+
+      <section class="panel status">
+        <h2>Current Run Progress</h2>
+        <div id="runMeta" class="meta">No run selected.</div>
+        <div class="progressWrap">
+          <div id="progressBar" class="progressBar"></div>
+        </div>
+      </section>
+
+      <section class="panel autotune">
+        <h2>Auto Tune Parallelism</h2>
+        <div class="meta">
+          One-click quick stress test. It benchmarks candidate robot/concurrency pairs and auto-fills recommended values.
+        </div>
+        <div class="actions">
+          <button id="autotuneBtn">Run Auto Tune</button>
+        </div>
+        <div id="autotuneMeta" class="pre compact">No auto tune run yet.</div>
+      </section>
+
+      <section class="panel kpis">
+        <h2>Impact Indicators</h2>
+        <div class="kpi-grid">
+          <article class="kpi"><span>RTP %</span><strong id="kpiRtp">N/A</strong></article>
+          <article class="kpi"><span>CI Half-width</span><strong id="kpiCi">N/A</strong></article>
+          <article class="kpi"><span>Total Spins</span><strong id="kpiSpins">N/A</strong></article>
+          <article class="kpi"><span>Zero Win Rate</span><strong id="kpiZero">N/A</strong></article>
+          <article class="kpi"><span>Tail Dependency</span><strong id="kpiTail">N/A</strong></article>
+          <article class="kpi"><span>Guideline Status</span><strong id="kpiGuide">N/A</strong></article>
+        </div>
+      </section>
+
+      <section class="panel charts">
+        <h2>Live Charts</h2>
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h3>CI Half-width Trend</h3>
+            <canvas id="ciChart"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>RTP Trend</h3>
+            <canvas id="rtpChart"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Multiplier Bucket Spin Rate</h3>
+            <canvas id="bucketChart"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Bankruptcy Curve</h3>
+            <canvas id="bankChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel report">
+        <h2>Guideline Assessment</h2>
+        <div id="assessment" class="pre">No report yet.</div>
+      </section>
+
+      <section class="panel interpretation">
+        <h2>Model Interpretation</h2>
+        <div id="modelStatus" class="meta warnMeta"></div>
+        <div class="actions">
+          <button id="interpretBtn">Generate Interpretation</button>
+        </div>
+        <pre id="interpretationText" class="pre"></pre>
+      </section>
+
+      <section class="panel versions">
+        <h2>Report Versions</h2>
+        <table id="versionsTable">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Run</th>
+              <th>Created</th>
+              <th>RTP</th>
+              <th>Quality</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="panel cache">
+        <h2>Chunk Cache</h2>
+        <div id="cacheWarning" class="warnBox">
+          Cleanup is manual only. While runs are active, cleanup is blocked by backend.
+        </div>
+        <div id="cacheMeta" class="meta"></div>
+        <div class="actions">
+          <button id="cacheRefreshBtn">Refresh Cache</button>
+          <button id="cacheCleanupBtn">Cleanup Cache</button>
+        </div>
+      </section>
+
+      <section class="panel logs">
+        <h2>Progress Events</h2>
+        <pre id="eventsText" class="pre"></pre>
+      </section>
+    </main>
+
+    <script src="/console/app.js"></script>
+  </body>
+  </html>
