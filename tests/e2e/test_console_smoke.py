@@ -240,6 +240,47 @@ def test_start_disabled_without_autotune(console_page, clean_runs):
     assert page.locator("#startBtn").is_disabled() is False
 
 
+def test_start_inserts_submitted_placeholder_in_run_meta(console_page, clean_runs):
+    """After clicking Start, runMeta must show the localized
+    'submitted, waiting for analyzer to spawn...' placeholder before any
+    progress event arrives. Without this the user has no signal at all."""
+    page = console_page
+    _wait_for_pure_loaded(page)
+    # Simulate Auto Tune filling robot/conc so Start is enabled.
+    page.evaluate(
+        "() => { "
+        "  document.getElementById('robotInput').value = '8'; "
+        "  document.getElementById('concInput').value = '1'; "
+        "  document.getElementById('ciSelect').dispatchEvent(new Event('change')); "
+        "}"
+    )
+    page.wait_for_function(
+        "() => document.getElementById('startBtn').disabled === false",
+        timeout=2000,
+    )
+    # We don't care if the POST succeeds against the real test API; we only
+    # care that the placeholder lands in the DOM synchronously after click.
+    page.click("#startBtn")
+    page.wait_for_function(
+        "() => /提交|submitted/.test(document.getElementById('runMeta').textContent)",
+        timeout=2000,
+    )
+
+
+def test_autotune_click_lights_up_progress_panel(console_page, clean_runs):
+    """Clicking Auto Tune should immediately replace the autotuneMeta
+    body with at least the 'starting...' line written by startAutotunePolling."""
+    page = console_page
+    _wait_for_pure_loaded(page)
+    page.click("#autotuneBtn")
+    # Either "压测启动中..." (zh) or "autotune starting..." (en) depending on
+    # localStorage state; matching either keeps this test locale-independent.
+    page.wait_for_function(
+        "() => /启动中|starting/.test(document.getElementById('autotuneMeta').textContent)",
+        timeout=3000,
+    )
+
+
 def test_start_button_disabled_when_run_active(live_server, page, clean_runs, clean_cache):
     # Seed AFTER the server has booted: startup recovery already ran and won't
     # touch this row. The frontend's polling (~4.5s) will then notice it.

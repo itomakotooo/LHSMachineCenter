@@ -89,6 +89,29 @@ This section is for execution efficiency and can be updated as long as section A
    Long 200/500/1000). Non-Standard presets bypass the x100/x200/x500
    guideline-rule thresholds until rules.json becomes dynamic; tooltip
    must surface that caveat.
+19. Progress feedback channels (always HTTP polling, 1 Hz, snapshot dicts):
+   - Per-run events: GET /api/runs/{run_id}/progress (jsonl replay).
+     Frontend fast timer activates only while currentRunStatus === "running".
+     Live status line via pure.summarizeRunEvent; progress bar via
+     pure.computeRunProgressPct.
+   - Autotune: GET /api/autotune/progress reads app.state.autotune_progress
+     under app.state.autotune_progress_lock. Mutated by the progress
+     callback that create_app() injects into run_auto_tune; phases are
+     start / candidate / finish (with finish always running in finally).
+   - Global warning bar reserved for system + model notices. Per-run
+     failure detail lives inside the runMeta panel; backend always
+     persists a structured error_message that includes exit_code +
+     missing artefacts.
+20. Player-impact drilldown surface:
+   - summary.player_impact.paylines_top20 (existing): payline_id /
+     hit_count / hit_rate / approx_rtp_contribution_pp / win_share.
+   - summary.player_impact.symbols_top20 + symbols_by_column_top10
+     (existing): overall + per-column symbol frequency.
+   - summary.player_impact.payout_groups_top20 (added by analyzer in
+     P1.a/d round): {group_id, hit_count, hit_rate, total_win,
+     avg_win_when_hit_x, rtp_contribution_pp}. Group 0 = no payout.
+   - All three rendered as their own panel below assessment; the next
+     UI restructure round consolidates positioning + visual language.
 
 Update policy:
 - Assistant may update this section after execution, and must explicitly state:

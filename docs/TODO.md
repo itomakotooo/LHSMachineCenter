@@ -75,6 +75,27 @@ This file tracks executable next steps for the current phase.
       select (Standard / Short / Long). Tooltip warns that only
       Standard aligns with the x100/x200/x500 thresholds in
       `classic_slots_guideline_rules.json`.
+- [x] Backend `_watch_run` failure message now structured: includes
+      analyzer exit_code and lists missing summary/report files even
+      when stderr/stdout are empty. Frontend "unknown error" gone.
+- [x] New `/api/autotune/progress` endpoint exposes a 1 Hz snapshot
+      of the autotune candidate grid so the UI can render
+      "X/Y candidates done · last result" while the POST is in flight.
+- [x] Global warning bar scoped to system + model only. Per-run
+      failure / cancellation detail moved into the runMeta panel.
+- [x] Frontend split-cadence polling: 4.5 s for system / runs / cache,
+      1 s for the active run. Run progress bar driven by chunks/max
+      (or total_spins/1M for fuzzy). New live event summary line.
+- [x] Auto Tune live progress panel: 1 s polling against
+      `/api/autotune/progress`, formatted via `pure.formatAutotuneProgress`.
+- [x] KPI grid expanded from 6 to 12 cards (added volatility class /
+      experience archetype / loss streak p95 / max return x / 10x+
+      big win rate / x500 bankruptcy rate). Tone classification in
+      `pure.extractMetricCards`.
+- [x] Three new player-impact drilldown panels: paylines (top 20),
+      symbols (overall + by column), payout groups (top 20). Analyzer
+      now aggregates `PayoutGroupId` per spin and emits
+      `summary.player_impact.payout_groups_top20`.
 
 ## Work Mode
 

@@ -156,7 +156,54 @@ must stay safe against a direct curl that skips the UI.
 No global state is shared across tests; each uses a `tmp_path`-scoped
 directory tree.
 
-## 11. Troubleshooting
+## 11. Progress feedback channel
+
+Two HTTP endpoints serve as the live-data spine for the run / autotune
+panels. Both are 1 Hz polled from the frontend and intentionally
+shaped like simple read snapshots so the backend stays state-free
+beyond what's already in SQLite + memory.
+
+- `GET /api/runs/{run_id}/progress` -- existing endpoint that replays
+  the per-run jsonl events file. The frontend's "fast" 1 s timer hits
+  this only while `currentRunStatus === "running"`. The latest event
+  goes through `pure.summarizeRunEvent` to produce the readable
+  status line that lives in the runMeta panel; the same event drives
+  `pure.computeRunProgressPct` for the progress bar (chunks/maxChunks
+  for normal runs, total_spins/1_000_000 for fuzzy).
+
+- `GET /api/autotune/progress` -- in-memory snapshot mutated under
+  `app.state.autotune_progress_lock` by the progress callback that
+  `create_app()` injects into `run_auto_tune`. Polled at 1 s by the
+  frontend only while `state.autoTuneRunning` is true. Rendered via
+  `pure.formatAutotuneProgress` into the autotuneMeta panel.
+
+Whatever future modules (health dashboard, report comparison, ...)
+need to push live values to the UI should follow the same shape:
+**a small REST endpoint returning a snapshot dict**, with a pure
+formatter helper that turns the dict into a localized string.
+
+## 12. Player-impact drilldown data
+
+The summary already carries everything the UI needs; the frontend
+just renders it. Three drilldown panels live below the assessment
+block:
+
+- `paylines_top20` -> #paylineTable (rendered by
+  `pure.formatPaylineRows` + `app.renderPaylineDrilldown`).
+- `payout_groups_top20` -> #payoutGroupTable (rendered by
+  `pure.formatPayoutGroupRows` + `app.renderPayoutGroupDrilldown`).
+  Added in commit 9 -- the analyzer aggregates `PayoutGroupId` per
+  spin (group 0 = no payout, kept as a baseline reference row).
+- `symbols_top20` + `symbols_by_column_top10` -> #symbolOverallTable
+  + #symbolByColMatrix (rendered by `pure.formatSymbolRows` +
+  `pure.symbolByColMatrix` + `app.renderSymbolDrilldown`).
+
+All four formatters are pure functions; extend them when adding new
+drilldowns rather than threading raw summary objects through DOM
+code. Tone classification (good / warn / bad) follows the same
+pattern as `pure.extractMetricCards` for the KPI grid.
+
+## 13. Troubleshooting
 
 - **`scripts/lint.ps1` fails on `check_no_global_state.py`**: somebody
   reintroduced module-level `StateStore()` / `RunManager()` /
