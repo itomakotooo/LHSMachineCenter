@@ -51,6 +51,34 @@ TAIL_GEX10_BUCKETS = {
     "ge1000_lt5000",
     "ge5000",
 }
+# Multi-threshold tail slices for tail_dependency_ge{N}x breakdown.
+# Each set is a strict superset filter on RETURN_BUCKET_ORDER; the
+# analyzer computes win_share + rtp_contribution_pp for each threshold
+# so the operator sees how the tail fattens as x increases.
+TAIL_GEX20_BUCKETS = {
+    "ge20_lt50",
+    "ge50_lt100",
+    "ge100_lt200",
+    "ge200_lt500",
+    "ge500_lt1000",
+    "ge1000_lt5000",
+    "ge5000",
+}
+TAIL_GEX50_BUCKETS = {
+    "ge50_lt100",
+    "ge100_lt200",
+    "ge200_lt500",
+    "ge500_lt1000",
+    "ge1000_lt5000",
+    "ge5000",
+}
+TAIL_GEX100_BUCKETS = {
+    "ge100_lt200",
+    "ge200_lt500",
+    "ge500_lt1000",
+    "ge1000_lt5000",
+    "ge5000",
+}
 DEFAULT_GUIDELINE_RULES_PATH = (
     Path(__file__).resolve().parents[1] / "configs" / "classic_slots_guideline_rules.json"
 )
@@ -484,6 +512,88 @@ def blank_like_symbol(symbol: str) -> bool:
     return ("blank" in s) or ("empty" in s) or (s == "none")
 
 
+# ReMarks annotation parsers. M272 bonus rounds carry strings like:
+#   "Freespin 18; CollectCount:64; AddCollectCount:6; ExtraRatio:200; "
+#   "Freespin 19; CollectCount:68; AddCollectCount:4; ExtraRatio:200; AddFreespins; 1"
+# which tell us (a) that this round is inside a bonus chain, (b) what
+# multiplier the chain is currently at, and (c) whether it self-
+# retriggered. All three drive the bonus_chain_dynamics surface.
+# Machines without this field (M14) silently skip -- parse returns None.
+_REMARKS_FREESPIN_RE = re.compile(r"Freespin\s+(\d+)")
+_REMARKS_EXTRARATIO_RE = re.compile(r"ExtraRatio:(\d+)")
+_REMARKS_ADDFREESPINS_COUNT_RE = re.compile(r"AddFreespins;\s*(\d+)")
+
+
+def parse_freespin_remarks(remarks: Any) -> dict[str, Any] | None:
+    """Return freespin annotation metadata, or None if the string is
+    not a freespin line. Tolerant of missing fields -- extra_ratio
+    defaults to 100 (the baseline ratio observed in M272 early chain).
+    """
+    if not isinstance(remarks, str) or "Freespin" not in remarks:
+        return None
+    m_fs = _REMARKS_FREESPIN_RE.search(remarks)
+    if not m_fs:
+        return None
+    try:
+        fs_idx = int(m_fs.group(1))
+    except ValueError:
+        return None
+    m_er = _REMARKS_EXTRARATIO_RE.search(remarks)
+    extra_ratio = 100
+    if m_er:
+        try:
+            extra_ratio = int(m_er.group(1))
+        except ValueError:
+            pass
+    m_af = _REMARKS_ADDFREESPINS_COUNT_RE.search(remarks)
+    retrigger_count = 0
+    if m_af:
+        try:
+            retrigger_count = int(m_af.group(1))
+        except ValueError:
+            pass
+    return {
+        "freespin_index": fs_idx,
+        "extra_ratio": extra_ratio,
+        "has_retrigger": "AddFreespins" in remarks,
+        "retrigger_count": retrigger_count,
+    }
+
+
+def bonus_chain_depth_bucket(fs_idx: int) -> str:
+    """Bucket a freespin index into a small depth class so the
+    bonus_chain_dynamics extra_ratio_by_depth curve stays compact."""
+    if fs_idx <= 1:
+        return "1"
+    if fs_idx <= 5:
+        return "2-5"
+    if fs_idx <= 10:
+        return "6-10"
+    if fs_idx <= 20:
+        return "11-20"
+    return "21+"
+
+
+def parse_rln_codes(rln: Any) -> list[str]:
+    """RewardLastNode values look like ['3-', '7-', '668-'] -- numeric
+    symbol codes with a trailing '-' separator. Upstream populates this
+    on most winning spins (M14 + M272 both use it). Returning the
+    stripped codes lets the paylines drilldown credit winning symbols
+    directly instead of relying on the left-3-col intersection heuristic.
+    """
+    if not isinstance(rln, list):
+        return []
+    out: list[str] = []
+    for item in rln:
+        s = str(item).strip()
+        if s.endswith("-"):
+            s = s[:-1]
+        s = s.strip()
+        if s:
+            out.append(s)
+    return out
+
+
 def make_payload(
     machine: str,
     rtp_mode: int,
@@ -638,8 +748,22 @@ def run_sampling_chunk(
     # chunk_win it surfaces any drift between our aggregator and the
     # upstream's. Best-effort: any malformed analysisResult is skipped
     # (no crash; the sanity check just won't include that robot).
+    #
+    # FeatureWin is also parsed here: it's a dict keyed by the upstream
+    # feature name (a *string* like "Normal" / "NormalCollectionSpin" /
+    # "NewFreespin") -- different from the round-level SpinType int --
+    # with each entry a dict of {payout_id: {WinCredits, Times, ...}}.
+    # This is authoritative upstream bonus-mechanic attribution: for
+    # M272 it separates the MapCollection feature (NormalCollectionSpin,
+    # triggered by PayId 666 among others) from the NewFreespin feature.
+    # We aggregate per (feature, payout_id) so the summary can surface
+    # "which bonus chains contribute how much RTP".
     upstream_chunk_total_win = 0.0
     upstream_chunk_robots_seen = 0
+    # feature_name -> {payout_id (str) -> {"win": float, "times": int}}
+    feature_chunk_tally: dict[str, dict[str, dict[str, float]]] = defaultdict(
+        lambda: defaultdict(lambda: {"win": 0.0, "times": 0})
+    )
     for robot in resp:
         if not isinstance(robot, dict):
             continue
@@ -650,18 +774,42 @@ def run_sampling_chunk(
             parsed = json.loads(ar)
         except (json.JSONDecodeError, TypeError, ValueError):
             continue
-        tw = parsed.get("TotalWin") if isinstance(parsed, dict) else None
+        if not isinstance(parsed, dict):
+            continue
+        tw = parsed.get("TotalWin")
         if isinstance(tw, str):
             try:
                 tw = json.loads(tw)
             except (json.JSONDecodeError, TypeError, ValueError):
                 tw = None
-        if not isinstance(tw, dict):
-            continue
-        upstream_chunk_robots_seen += 1
-        for v in tw.values():
-            if isinstance(v, dict):
-                upstream_chunk_total_win += to_float(v.get("WinCredits"), default=0.0)
+        if isinstance(tw, dict):
+            upstream_chunk_robots_seen += 1
+            for v in tw.values():
+                if isinstance(v, dict):
+                    upstream_chunk_total_win += to_float(v.get("WinCredits"), default=0.0)
+        fw = parsed.get("FeatureWin")
+        if isinstance(fw, str):
+            try:
+                fw = json.loads(fw)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                fw = None
+        if isinstance(fw, dict):
+            for feat_name, feat_payouts in fw.items():
+                if not isinstance(feat_payouts, dict):
+                    continue
+                for pid, entry in feat_payouts.items():
+                    if not isinstance(entry, dict):
+                        continue
+                    pid_str = str(pid)
+                    feature_chunk_tally[str(feat_name)][pid_str]["win"] += to_float(
+                        entry.get("WinCredits"), default=0.0
+                    )
+                    try:
+                        feature_chunk_tally[str(feat_name)][pid_str]["times"] += int(
+                            entry.get("Times", 0) or 0
+                        )
+                    except (TypeError, ValueError):
+                        pass
 
     # Schema sanity check on the first non-empty round. Without this, an
     # upstream field rename (e.g. WinCredits -> winCredits) would slip
@@ -761,10 +909,22 @@ def run_sampling_chunk(
     # how much of total RTP comes from main vs bonus, and what fraction
     # of round volume is bonus -- a key insight for collect-mechanic
     # machines that the aggregate RTP / hit_rate alone can't reveal.
+    #
+    # Two separate bet tallies so the UI can draw an honest per-type
+    # RTP: spin_type_bet sums the face BetAmount (mostly for reference)
+    # while spin_type_paid_bet sums only CostCredits>0 amounts (the
+    # actual player-paid cost). For free-spin types, paid_bet is 0 and
+    # a real per-type RTP is undefined -- their wins belong to the
+    # triggering session anyway. spin_type_paid_rounds counts
+    # is_paid=True rounds so the UI can derive a behavioral label
+    # (paid / free / mixed) without hardcoding machine-specific
+    # SpinType semantics.
     spin_type_spins: dict[int, int] = defaultdict(int)
     spin_type_bet: dict[int, float] = defaultdict(float)
+    spin_type_paid_bet: dict[int, float] = defaultdict(float)
     spin_type_win: dict[int, float] = defaultdict(float)
     spin_type_wins: dict[int, int] = defaultdict(int)  # count of winning rounds per type
+    spin_type_paid_rounds: dict[int, int] = defaultdict(int)  # CostCredits>0 rounds per type
 
     # Collect-mechanic accumulation. M272's mode 1/2 carries CollectCount
     # (per-robot monotonic counter of triggered collects) and AccCredits
@@ -795,6 +955,45 @@ def run_sampling_chunk(
     payline_winning_symbols: dict[str, dict[str, int]] = defaultdict(
         lambda: defaultdict(int)
     )
+    # RLN-based (authoritative) winning symbols per payline. Upstream
+    # populates RewardLastNode on most winning rounds with the numeric
+    # symbol codes that actually paid. When present, this is the source
+    # of truth; payline_winning_symbols (heuristic) is only used as a
+    # fallback when RLN is empty for a given spin.
+    payline_winning_symbols_rln: dict[str, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+
+    # Bonus-chain dynamics (from ReMarks). A "chain" is a contiguous run
+    # of Freespin-annotated rounds within one robot. We track per chain:
+    # final length, peak ExtraRatio, self-retrigger hits; plus per-round
+    # depth-bucketed ExtraRatio so the summary can draw the
+    # energy-ramp curve. M14 and other non-MapCollection machines emit
+    # no Freespin ReMarks -- the accumulators stay empty and the summary
+    # flags the surface as applicable=False.
+    chunk_bonus_chain_lengths: list[int] = []
+    chunk_bonus_chain_max_ratios: list[int] = []
+    chunk_bonus_chain_retrigger_events: list[int] = []  # per-chain retrigger count
+    chunk_bonus_total_rounds = 0
+    chunk_bonus_retrigger_rounds = 0
+    chunk_bonus_extra_ratio_counts: dict[int, int] = defaultdict(int)
+    # Depth-bucket -> sum of extra_ratio / count of rounds (for mean).
+    chunk_bonus_depth_ratio_sum: dict[str, float] = defaultdict(float)
+    chunk_bonus_depth_ratio_count: dict[str, int] = defaultdict(int)
+
+    # Per-robot bonus-chain state. Flushed on chain end or robot end.
+    active_chain = {"length": 0, "max_ratio": 0, "retriggers": 0, "open": False}
+
+    def _flush_bonus_chain() -> None:
+        if not active_chain["open"]:
+            return
+        chunk_bonus_chain_lengths.append(int(active_chain["length"]))
+        chunk_bonus_chain_max_ratios.append(int(active_chain["max_ratio"]))
+        chunk_bonus_chain_retrigger_events.append(int(active_chain["retriggers"]))
+        active_chain["length"] = 0
+        active_chain["max_ratio"] = 0
+        active_chain["retriggers"] = 0
+        active_chain["open"] = False
 
     # Session state shared across the inner spin loop and its post-loop
     # flush. Kept as a mutable holder so the inline close() helper can
@@ -991,9 +1190,39 @@ def run_sampling_chunk(
                 sp_type = 0
             spin_type_spins[sp_type] += 1
             spin_type_bet[sp_type] += bet_amt
+            if is_paid:
+                spin_type_paid_bet[sp_type] += bet_amt
+                spin_type_paid_rounds[sp_type] += 1
             spin_type_win[sp_type] += win_amt
             if win_amt > 0:
                 spin_type_wins[sp_type] += 1
+
+            # Bonus-chain ReMarks parsing. Freespin-annotated rounds
+            # accumulate into the active chain; non-annotated rounds
+            # close it (so mid-chain paid spins -- which don't happen
+            # on M272 -- would still produce clean chain boundaries
+            # if some future machine interleaves). End-of-robot is
+            # handled after this inner loop.
+            fs_meta = parse_freespin_remarks(r.get("ReMarks"))
+            if fs_meta is not None:
+                if not active_chain["open"]:
+                    active_chain["open"] = True
+                # length tracks the highest Freespin index seen (they
+                # come in order but we max-of to be defensive).
+                if fs_meta["freespin_index"] > active_chain["length"]:
+                    active_chain["length"] = fs_meta["freespin_index"]
+                if fs_meta["extra_ratio"] > active_chain["max_ratio"]:
+                    active_chain["max_ratio"] = fs_meta["extra_ratio"]
+                if fs_meta["has_retrigger"]:
+                    active_chain["retriggers"] += 1
+                    chunk_bonus_retrigger_rounds += 1
+                chunk_bonus_total_rounds += 1
+                chunk_bonus_extra_ratio_counts[fs_meta["extra_ratio"]] += 1
+                depth = bonus_chain_depth_bucket(fs_meta["freespin_index"])
+                chunk_bonus_depth_ratio_sum[depth] += fs_meta["extra_ratio"]
+                chunk_bonus_depth_ratio_count[depth] += 1
+            elif active_chain["open"]:
+                _flush_bonus_chain()
 
             # Collect mechanic (M272+): track max CollectCount (per-robot
             # monotonic counter of triggered collect bonuses) and max
@@ -1055,14 +1284,27 @@ def run_sampling_chunk(
                         total_symbol_slots += 1
 
             # Infer the winning symbol(s) for each line that paid this
-            # spin. Take the intersection of stopped-symbol sets across
-            # the leftmost three columns (classic slot pays 3+ matching
-            # symbols left-to-right) AFTER filtering blank-like symbols
-            # (paylines almost never pay blanks; crediting them is
-            # noise when blanks happen to appear in all 3 cols beside
-            # the actual winner). If no intersection (atypical bonus
-            # payout), fall back to any non-blank symbol on the leftmost
-            # column so the line is still represented.
+            # spin. Two streams run in parallel:
+            #   - RLN (authoritative): RewardLastNode lists the numeric
+            #     symbol codes that actually paid. When present, it's
+            #     what we credit -- upstream-true.
+            #   - Heuristic fallback: intersect the stopped-symbol sets
+            #     across the leftmost three columns (classic slot pays
+            #     3+ matching left-to-right) after filtering blank-like
+            #     symbols; fall back to any non-blank leftmost symbol
+            #     if intersection is empty (atypical bonus payout).
+            # Emitting both streams lets the summary prefer RLN per
+            # payline-id while falling back to heuristic for any ID
+            # whose RLN stream happens to be empty (typically when the
+            # winning rounds used a non-RLN code path).
+            rln_codes = parse_rln_codes(r.get("RewardLastNode"))
+            if line_ids and rln_codes:
+                # de-dupe within the spin so a code that appeared twice
+                # in RLN on multi-line wins doesn't overweight.
+                unique_codes = set(rln_codes)
+                for lid in line_ids:
+                    for code in unique_codes:
+                        payline_winning_symbols_rln[lid][code] += 1
             if line_ids and len(col_symbol_sets) >= 3:
                 c0 = {s for s in col_symbol_sets[0] if not blank_like_symbol(s)}
                 c1 = {s for s in col_symbol_sets[1] if not blank_like_symbol(s)}
@@ -1080,6 +1322,12 @@ def run_sampling_chunk(
         if cur_win > 0:
             win_streak_hist[cur_win] += 1
             max_win_streak = max(max_win_streak, cur_win)
+
+        # Flush any in-progress bonus chain so the chain doesn't span
+        # robot boundaries silently (bonus chains are inherently per-
+        # robot runs; the API never mixes them across robots, but we
+        # defensively close at robot end).
+        _flush_bonus_chain()
 
         # Finalize the last open session (if any) at the robot boundary,
         # then flush the session-level streak histograms so open streaks
@@ -1137,6 +1385,17 @@ def run_sampling_chunk(
         "payline_winning_symbols": {
             str(lid): dict(syms) for lid, syms in payline_winning_symbols.items()
         },
+        "payline_winning_symbols_rln": {
+            str(lid): dict(codes) for lid, codes in payline_winning_symbols_rln.items()
+        },
+        "bonus_chain_lengths": list(chunk_bonus_chain_lengths),
+        "bonus_chain_max_ratios": list(chunk_bonus_chain_max_ratios),
+        "bonus_chain_retrigger_events": list(chunk_bonus_chain_retrigger_events),
+        "bonus_total_rounds": chunk_bonus_total_rounds,
+        "bonus_retrigger_rounds": chunk_bonus_retrigger_rounds,
+        "bonus_extra_ratio_counts": {str(k): v for k, v in chunk_bonus_extra_ratio_counts.items()},
+        "bonus_depth_ratio_sum": dict(chunk_bonus_depth_ratio_sum),
+        "bonus_depth_ratio_count": dict(chunk_bonus_depth_ratio_count),
         "symbol_counts": dict(symbol_counts),
         "symbol_counts_by_col": {str(k): dict(v) for k, v in symbol_counts_by_col.items()},
         "total_symbol_slots": total_symbol_slots,
@@ -1153,8 +1412,14 @@ def run_sampling_chunk(
         "payout_id_win": dict(payout_id_win),
         "spin_type_spins": {str(k): v for k, v in spin_type_spins.items()},
         "spin_type_bet": {str(k): v for k, v in spin_type_bet.items()},
+        "spin_type_paid_bet": {str(k): v for k, v in spin_type_paid_bet.items()},
         "spin_type_win": {str(k): v for k, v in spin_type_win.items()},
         "spin_type_wins": {str(k): v for k, v in spin_type_wins.items()},
+        "spin_type_paid_rounds": {str(k): v for k, v in spin_type_paid_rounds.items()},
+        "upstream_feature_tally": {
+            feat: {pid: dict(v) for pid, v in payouts.items()}
+            for feat, payouts in feature_chunk_tally.items()
+        },
         "upstream_chunk_total_win": upstream_chunk_total_win,
         "upstream_chunk_robots_seen": upstream_chunk_robots_seen,
         "collect_count_total": chunk_collect_count_total,
@@ -1321,6 +1586,21 @@ def main() -> int:
     payline_winning_symbols: dict[str, dict[str, int]] = defaultdict(
         lambda: defaultdict(int)
     )
+    payline_winning_symbols_rln: dict[str, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+
+    # Bonus-chain dynamics aggregators (M272 MapCollection / future
+    # machines). All stay empty when no ReMarks freespin lines were
+    # seen across the sample; applicable=false in that case.
+    bonus_chain_lengths: list[int] = []
+    bonus_chain_max_ratios: list[int] = []
+    bonus_chain_retrigger_events: list[int] = []
+    bonus_total_rounds_global = 0
+    bonus_retrigger_rounds_global = 0
+    bonus_extra_ratio_counts: dict[int, int] = defaultdict(int)
+    bonus_depth_ratio_sum: dict[str, float] = defaultdict(float)
+    bonus_depth_ratio_count: dict[str, int] = defaultdict(int)
 
     symbol_counts: dict[str, int] = defaultdict(int)
     symbol_counts_by_col: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -1341,8 +1621,15 @@ def main() -> int:
     payout_id_win: dict[str, float] = defaultdict(float)
     spin_type_spins: dict[int, int] = defaultdict(int)
     spin_type_bet: dict[int, float] = defaultdict(float)
+    spin_type_paid_bet: dict[int, float] = defaultdict(float)
     spin_type_win: dict[int, float] = defaultdict(float)
     spin_type_wins: dict[int, int] = defaultdict(int)
+    spin_type_paid_rounds: dict[int, int] = defaultdict(int)
+    # Upstream FeatureWin aggregation across chunks. feature_name (str)
+    # -> payout_id (str) -> {"win": float, "times": int}.
+    upstream_feature_tally: dict[str, dict[str, dict[str, float]]] = defaultdict(
+        lambda: defaultdict(lambda: {"win": 0.0, "times": 0})
+    )
     upstream_total_win = 0.0
     upstream_robots_seen = 0
     collect_count_total = 0
@@ -1437,6 +1724,29 @@ def main() -> int:
                 if isinstance(smap, dict):
                     for sym, c in smap.items():
                         payline_winning_symbols[str(lid)][str(sym)] += int(c)
+            # payline_winning_symbols_rln added in the RLN-auth commit.
+            for lid, smap in (rec.get("payline_winning_symbols_rln") or {}).items():
+                if isinstance(smap, dict):
+                    for code, c in smap.items():
+                        payline_winning_symbols_rln[str(lid)][str(code)] += int(c)
+            # bonus_chain_* added in the MapCollection dynamics commit.
+            for L in rec.get("bonus_chain_lengths") or []:
+                bonus_chain_lengths.append(int(L))
+            for L in rec.get("bonus_chain_max_ratios") or []:
+                bonus_chain_max_ratios.append(int(L))
+            for L in rec.get("bonus_chain_retrigger_events") or []:
+                bonus_chain_retrigger_events.append(int(L))
+            bonus_total_rounds_global += int(rec.get("bonus_total_rounds", 0) or 0)
+            bonus_retrigger_rounds_global += int(rec.get("bonus_retrigger_rounds", 0) or 0)
+            for ratio_str, c in (rec.get("bonus_extra_ratio_counts") or {}).items():
+                try:
+                    bonus_extra_ratio_counts[int(ratio_str)] += int(c)
+                except (TypeError, ValueError):
+                    pass
+            for depth, s in (rec.get("bonus_depth_ratio_sum") or {}).items():
+                bonus_depth_ratio_sum[str(depth)] += float(s)
+            for depth, c in (rec.get("bonus_depth_ratio_count") or {}).items():
+                bonus_depth_ratio_count[str(depth)] += int(c)
 
             for sym, c in rec["symbol_counts"].items():
                 symbol_counts[str(sym)] += int(c)
@@ -1478,10 +1788,29 @@ def main() -> int:
                 spin_type_spins[int(st)] += int(c)
             for st, b in (rec.get("spin_type_bet") or {}).items():
                 spin_type_bet[int(st)] += float(b)
+            for st, b in (rec.get("spin_type_paid_bet") or {}).items():
+                spin_type_paid_bet[int(st)] += float(b)
             for st, w in (rec.get("spin_type_win") or {}).items():
                 spin_type_win[int(st)] += float(w)
             for st, c in (rec.get("spin_type_wins") or {}).items():
                 spin_type_wins[int(st)] += int(c)
+            for st, c in (rec.get("spin_type_paid_rounds") or {}).items():
+                spin_type_paid_rounds[int(st)] += int(c)
+            # upstream feature tally merge: additive per (feature, payid).
+            # Older chunk records (pre-feature) lack the key -- safe via
+            # .get() default.
+            for feat, payouts in (rec.get("upstream_feature_tally") or {}).items():
+                if not isinstance(payouts, dict):
+                    continue
+                for pid, entry in payouts.items():
+                    if not isinstance(entry, dict):
+                        continue
+                    upstream_feature_tally[str(feat)][str(pid)]["win"] += float(
+                        entry.get("win", 0.0) or 0.0
+                    )
+                    upstream_feature_tally[str(feat)][str(pid)]["times"] += int(
+                        entry.get("times", 0) or 0
+                    )
             # upstream analysis cross-check (older chunk records lack
             # these fields; .get() default keeps the comparison neutral).
             upstream_total_win += float(rec.get("upstream_chunk_total_win", 0.0) or 0.0)
@@ -1650,14 +1979,25 @@ def main() -> int:
     )
     tail_spins_ge10 = sum(mb_bucket_spins.get(k, 0) for k in TAIL_GEX10_BUCKETS)
     tail_win_ge10 = sum(mb_bucket_win.get(k, 0.0) for k in TAIL_GEX10_BUCKETS)
+    tail_win_ge20 = sum(mb_bucket_win.get(k, 0.0) for k in TAIL_GEX20_BUCKETS)
+    tail_win_ge50 = sum(mb_bucket_win.get(k, 0.0) for k in TAIL_GEX50_BUCKETS)
+    tail_win_ge100 = sum(mb_bucket_win.get(k, 0.0) for k in TAIL_GEX100_BUCKETS)
 
     payline_rows = []
     for lid, hits in sorted(payline_hits.items(), key=lambda kv: kv[1], reverse=True):
-        # Top winning symbols for this payline (heuristic: leftmost-3-col
-        # intersection per spin). Take top 5 by frequency so the UI table
-        # can show the dominant symbols without bloating the row.
-        sym_counts = payline_winning_symbols.get(lid, {})
-        top_syms = sorted(sym_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        # Top winning symbols for this payline. RLN (RewardLastNode)
+        # is upstream-authoritative -- when we captured codes for this
+        # payline, use them; otherwise fall back to the left-3-col
+        # intersection heuristic. top_symbols_source tells the UI which
+        # path fired so the display can optionally badge it.
+        rln_counts = payline_winning_symbols_rln.get(lid, {})
+        if rln_counts:
+            top_syms = sorted(rln_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+            top_symbols_source = "rln"
+        else:
+            sym_counts = payline_winning_symbols.get(lid, {})
+            top_syms = sorted(sym_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+            top_symbols_source = "heuristic"
         payline_rows.append(
             {
                 "payline_id": lid,
@@ -1668,6 +2008,7 @@ def main() -> int:
                     (payline_win_approx[lid] / total_bet) * 100.0 if total_bet > 0 else 0.0
                 ),
                 "top_symbols": [{"symbol": s, "count": c} for s, c in top_syms],
+                "top_symbols_source": top_symbols_source,
             }
         )
 
@@ -1695,22 +2036,53 @@ def main() -> int:
     # SpinType breakdown: per-type spins / bet / win + share of total.
     # Order by spins desc so the dominant type lands first; for collect
     # mechanics this immediately surfaces "X% of rounds are bonus".
+    #
+    # RTP denominator note: older versions summed BetAmount blindly,
+    # which makes free-spin types look like rtp_pct=243% (M272 SpinType
+    # 126 carries BetAmount=1000 but CostCredits=0 because the player
+    # doesn't pay for bonus rounds). We now compute per-type RTP from
+    # total_paid_bet (CostCredits>0 only); free-spin types get
+    # rtp_pct=None so the UI can render "N/A" instead of a nonsense
+    # percentage. Their wins are still attributed to total RTP via
+    # rtp_contribution_pp, which uses the overall total_bet denominator.
+    #
+    # behavior_name is derived from the per-type paid-round count --
+    # "paid" when every round cost the player, "free" when none did,
+    # "mixed" otherwise -- so machine-specific SpinType semantics stay
+    # out of the analyzer (a new machine's types auto-classify).
     spin_type_rows: list[dict[str, Any]] = []
     for st, spins in sorted(spin_type_spins.items(), key=lambda kv: -kv[1]):
-        bet = float(spin_type_bet.get(st, 0.0))
+        bet_face = float(spin_type_bet.get(st, 0.0))
+        bet_paid = float(spin_type_paid_bet.get(st, 0.0))
         win = float(spin_type_win.get(st, 0.0))
         win_rounds = int(spin_type_wins.get(st, 0))
+        paid_rounds = int(spin_type_paid_rounds.get(st, 0))
+        spins_int = int(spins)
+        if paid_rounds == 0:
+            behavior = "free"
+        elif paid_rounds == spins_int:
+            behavior = "paid"
+        else:
+            behavior = "mixed"
+        rtp_pct: float | None = (
+            (win / bet_paid) * 100.0 if bet_paid > 0 else None
+        )
         spin_type_rows.append(
             {
                 "spin_type": int(st),
-                "spins": int(spins),
+                "spins": spins_int,
                 "share_pct": (spins / total_spins) * 100.0 if total_spins > 0 else 0.0,
                 "win_rounds": win_rounds,
+                "paid_rounds": paid_rounds,
                 "hit_rate": (win_rounds / spins) if spins > 0 else 0.0,
-                "total_bet": bet,
+                "total_bet": bet_face,
+                "total_paid_bet": bet_paid,
                 "total_win": win,
-                "rtp_pct": (win / bet) * 100.0 if bet > 0 else 0.0,
+                # rtp_pct is win / paid_bet -- nonsense for all-free
+                # types so we emit null (JSON) for those rows.
+                "rtp_pct": rtp_pct,
                 "rtp_contribution_pp": (win / total_bet) * 100.0 if total_bet > 0 else 0.0,
+                "behavior_name": behavior,
             }
         )
 
@@ -1759,6 +2131,131 @@ def main() -> int:
                 }
             )
         symbol_by_col_rows[str(ci)] = rows
+
+    # Upstream FeatureWin breakdown. The upstream API groups payouts by
+    # a semantic feature name (string: e.g. "Normal", "NormalCollectionSpin",
+    # "NewFreespin") -- richer than the round-level SpinType int. For
+    # single-feature machines (M14: just "Normal") this block is redundant
+    # with payout_ids_top20 so we flag it as non-actionable. For multi-
+    # feature machines (M272 mode 1/2) it's the authoritative per-bonus
+    # attribution the operator needs to understand where the RTP actually
+    # comes from.
+    upstream_feature_rows: list[dict[str, Any]] = []
+    for feat_name, payouts in upstream_feature_tally.items():
+        feat_total_win = sum(p.get("win", 0.0) for p in payouts.values())
+        feat_total_times = sum(int(p.get("times", 0)) for p in payouts.values())
+        payout_rows = []
+        for pid, entry in sorted(
+            payouts.items(),
+            key=lambda kv: (-float(kv[1].get("win", 0.0)), kv[0]),
+        ):
+            payout_rows.append(
+                {
+                    "payout_id": str(pid),
+                    "win_credits": float(entry.get("win", 0.0)),
+                    "times": int(entry.get("times", 0)),
+                    "share_of_feature_win": (
+                        float(entry.get("win", 0.0)) / feat_total_win
+                        if feat_total_win > 0 else 0.0
+                    ),
+                }
+            )
+        upstream_feature_rows.append(
+            {
+                "feature_name": str(feat_name),
+                "total_win": feat_total_win,
+                "total_times": feat_total_times,
+                "rtp_contribution_pp": (
+                    (feat_total_win / effective_bet_for_rtp) * 100.0
+                    if effective_bet_for_rtp > 0 else 0.0
+                ),
+                "share_of_total_win": (
+                    feat_total_win / upstream_total_win
+                    if upstream_total_win > 0 else 0.0
+                ),
+                "payouts": payout_rows,
+            }
+        )
+    upstream_feature_rows.sort(key=lambda row: -float(row["total_win"]))
+    # Machines with a single "Normal" feature carry no bonus-mechanic
+    # info in this block (it's a duplicate of payout_ids_top20 through a
+    # different field). Flagging applicable=False lets the UI / LLM
+    # suppress the section for those machines.
+    has_multiple_features = len(upstream_feature_tally) > 1
+    has_bonus_named_feature = any(
+        name != "Normal" for name in upstream_feature_tally.keys()
+    )
+    upstream_feature_applicable = bool(
+        upstream_feature_tally and (has_multiple_features or has_bonus_named_feature)
+    )
+
+    # Bonus-chain dynamics aggregation from ReMarks. On machines
+    # without freespin annotations (M14), all the collected lists are
+    # empty and the block flags applicable=False. On MapCollection
+    # machines (M272) this gives quantiles of chain length, peak ratio,
+    # and the energy-ramp curve -- the real window into the "map
+    # collection bonus" experience the aggregate RTP can't describe.
+    def _quantiles(xs: list[int]) -> dict[str, int | float]:
+        if not xs:
+            return {"p50": 0, "p90": 0, "p95": 0, "max": 0, "avg": 0.0}
+        xs_sorted = sorted(xs)
+        n = len(xs_sorted)
+        def q(p: float) -> int:
+            if n == 0:
+                return 0
+            idx = min(n - 1, max(0, int(round(p * (n - 1)))))
+            return int(xs_sorted[idx])
+        return {
+            "p50": q(0.50),
+            "p90": q(0.90),
+            "p95": q(0.95),
+            "max": int(xs_sorted[-1]),
+            "avg": sum(xs_sorted) / n,
+        }
+
+    depth_curve: list[dict[str, Any]] = []
+    for bucket in ("1", "2-5", "6-10", "11-20", "21+"):
+        cnt = bonus_depth_ratio_count.get(bucket, 0)
+        tot = bonus_depth_ratio_sum.get(bucket, 0.0)
+        depth_curve.append(
+            {
+                "depth_bucket": bucket,
+                "rounds": int(cnt),
+                "avg_extra_ratio": (tot / cnt) if cnt > 0 else 0.0,
+            }
+        )
+    bonus_chain_count = len(bonus_chain_lengths)
+    bonus_chain_dynamics = {
+        "applicable": bonus_chain_count > 0,
+        "source": "ReMarks (Freespin annotation)",
+        "chain_count": bonus_chain_count,
+        "bonus_round_count": bonus_total_rounds_global,
+        "avg_chain_length": (
+            sum(bonus_chain_lengths) / bonus_chain_count
+            if bonus_chain_count > 0 else 0.0
+        ),
+        "chain_length_quantiles": _quantiles(bonus_chain_lengths),
+        "chain_max_ratio_quantiles": _quantiles(bonus_chain_max_ratios),
+        "self_retrigger_round_rate": (
+            bonus_retrigger_rounds_global / bonus_total_rounds_global
+            if bonus_total_rounds_global > 0 else 0.0
+        ),
+        "avg_retriggers_per_chain": (
+            sum(bonus_chain_retrigger_events) / bonus_chain_count
+            if bonus_chain_count > 0 else 0.0
+        ),
+        # Sorted by ratio ascending so the histogram reads naturally
+        # left-to-right; counts are per-round (same round may not
+        # double-count because each round emits exactly one ratio).
+        "extra_ratio_histogram": [
+            {"ratio": r, "rounds": bonus_extra_ratio_counts[r]}
+            for r in sorted(bonus_extra_ratio_counts.keys())
+        ],
+        # Energy ramp: average ExtraRatio at each chain depth bucket.
+        # Shows how the MapCollection multiplier escalates as the
+        # chain extends.
+        "extra_ratio_by_chain_depth": depth_curve,
+    }
 
     # Session-level streak quantiles (player perspective: runs of
     # losing / winning paid sessions). Falls back to spin-level if no
@@ -1836,8 +2333,30 @@ def main() -> int:
     tail_rtp_contribution_pp_ge10x = (
         (tail_win_ge10 / effective_bet_for_rtp) * 100.0 if effective_bet_for_rtp > 0 else 0.0
     )
+    tail_rtp_contribution_pp_ge20x = (
+        (tail_win_ge20 / effective_bet_for_rtp) * 100.0 if effective_bet_for_rtp > 0 else 0.0
+    )
+    tail_rtp_contribution_pp_ge50x = (
+        (tail_win_ge50 / effective_bet_for_rtp) * 100.0 if effective_bet_for_rtp > 0 else 0.0
+    )
+    tail_rtp_contribution_pp_ge100x = (
+        (tail_win_ge100 / effective_bet_for_rtp) * 100.0 if effective_bet_for_rtp > 0 else 0.0
+    )
     tail_win_share_ge10x = tail_win_ge10 / total_win if total_win > 0 else 0.0
-    tail_dependency = safe_div(tail_rtp_contribution_pp_ge10x, rtp_point_pct)
+    # Multi-threshold tail_dependency: what share of total RTP comes
+    # from >=Nx wins. ge10x remains the canonical input to
+    # classify_volatility / classify_experience_archetype; ge20x / ge50x
+    # / ge100x surface the tail shape (how fast the mass decays as x
+    # grows). Boom-Bust machines show a slow decay; grindy machines
+    # decay sharply.
+    tail_dependency_ge10x = safe_div(tail_rtp_contribution_pp_ge10x, rtp_point_pct)
+    tail_dependency_ge20x = safe_div(tail_rtp_contribution_pp_ge20x, rtp_point_pct)
+    tail_dependency_ge50x = safe_div(tail_rtp_contribution_pp_ge50x, rtp_point_pct)
+    tail_dependency_ge100x = safe_div(tail_rtp_contribution_pp_ge100x, rtp_point_pct)
+    # Legacy alias. All call sites that matter (classify_volatility,
+    # classify_experience_archetype, alert thresholds) use this name;
+    # keep it pointing at the ge10x figure.
+    tail_dependency = tail_dependency_ge10x
 
     volatility_class = classify_volatility(
         zero_win_rate=zero_win_rate,
@@ -2054,6 +2573,12 @@ def main() -> int:
             "payout_groups_top20": payout_group_rows[:20],
             "payout_ids_top20": payout_id_rows[:20],
             "spin_type_breakdown": spin_type_rows,
+            "upstream_feature_breakdown": {
+                "applicable": upstream_feature_applicable,
+                "source": "analysisResult.FeatureWin",
+                "features": upstream_feature_rows,
+            },
+            "bonus_chain_dynamics": bonus_chain_dynamics,
             "symbols_top20": symbol_rows[:20],
             "symbols_by_column_top10": {k: v[:10] for k, v in symbol_by_col_rows.items()},
             "bankruptcy_probe": bankruptcy_rows,
@@ -2150,7 +2675,23 @@ def main() -> int:
             },
             "derived_metrics": {
                 "recovery_gap": recovery_gap,
+                # Canonical tail_dependency (ge10x) preserved so
+                # classify_volatility / classify_experience_archetype
+                # and alert thresholds keep reading the same name.
                 "tail_dependency": tail_dependency,
+                # Four-point breakdown: how RTP dependency on the
+                # >=Nx tail evolves as the threshold rises. Small
+                # drop from ge10x to ge20x means most tail value
+                # lives in modest 10-20x wins; large drop means
+                # the tail concentrates in deep 50x+ hits.
+                "tail_dependency_ge10x": tail_dependency_ge10x,
+                "tail_dependency_ge20x": tail_dependency_ge20x,
+                "tail_dependency_ge50x": tail_dependency_ge50x,
+                "tail_dependency_ge100x": tail_dependency_ge100x,
+                "tail_rtp_contribution_pp_ge10x": tail_rtp_contribution_pp_ge10x,
+                "tail_rtp_contribution_pp_ge20x": tail_rtp_contribution_pp_ge20x,
+                "tail_rtp_contribution_pp_ge50x": tail_rtp_contribution_pp_ge50x,
+                "tail_rtp_contribution_pp_ge100x": tail_rtp_contribution_pp_ge100x,
             },
             "classification": {
                 "volatility_class": volatility_class,
@@ -2222,6 +2763,9 @@ def main() -> int:
         "## Multiplier Buckets (ret_x = win/bet)",
         f"- tail_spin_rate_ge10x: {(tail_spins_ge10 / total_spins) if total_spins > 0 else 0.0:.6f}",
         f"- tail_rtp_contribution_pp_ge10x: {((tail_win_ge10 / total_bet) * 100.0) if total_bet > 0 else 0.0:.6f}",
+        f"- tail_rtp_contribution_pp_ge20x: {((tail_win_ge20 / total_bet) * 100.0) if total_bet > 0 else 0.0:.6f}",
+        f"- tail_rtp_contribution_pp_ge50x: {((tail_win_ge50 / total_bet) * 100.0) if total_bet > 0 else 0.0:.6f}",
+        f"- tail_rtp_contribution_pp_ge100x: {((tail_win_ge100 / total_bet) * 100.0) if total_bet > 0 else 0.0:.6f}",
         f"- tail_win_share_ge10x: {(tail_win_ge10 / total_win) if total_win > 0 else 0.0:.6f}",
     ]
     for row in multiplier_bucket_rows:
