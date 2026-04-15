@@ -417,3 +417,115 @@ def test_delete_run_not_found(client):
     c, _app = client
     resp = c.delete("/api/runs/does-not-exist-xyz")
     assert resp.status_code == 404
+
+
+# ---------- backfill RTP/CI ----------
+
+
+def test_backfill_rtp_ci_from_summaries(app_factory, tmp_path):
+    """Legacy rows from before the achieved_rtp_pct / _halfwidth_pp
+    migration show as "\u2014" in the manage-tab history table forever
+    unless backfilled. The backfill method walks completed rows where
+    either column is NULL, reads their on-disk summary.json, and
+    populates the columns. Safe to run on every startup (no-op for
+    already-populated rows; skips rows whose summary_file is missing)."""
+    import sqlite3
+
+    # Instantiate the app so the schema + migrations run.
+    app_factory()
+
+    # Seed a completed row that has no achieved_rtp_pct / halfwidth
+    # (simulating pre-migration data) but points at a summary file we
+    # write on disk.
+    summary_path = tmp_path / "legacy_summary.json"
+    summary_path.write_text(
+        json.dumps({
+            "rtp": {"point_pct": 92.35},
+            "sampling": {"achieved_halfwidth_pp": 0.48},
+        }),
+        encoding="utf-8",
+    )
+
+    conn = sqlite3.connect(str(app_factory.db_path))
+    try:
+        conn.execute(
+            """
+            INSERT INTO runs (
+              run_id, machine, mode, status, model_id, created_at,
+              started_at, target_halfwidth_pp, chunk_spin_times,
+              chunk_robot_count, batch_concurrency, max_chunks, timeout,
+              bankruptcy_session_spins, bankruptcy_bankroll_multipliers,
+              report_version, output_dir, progress_file, summary_file
+            ) VALUES (
+              'legacy_run_x', 'M14', 1, 'completed', 'gpt', '2026-04-01T00:00:00Z',
+              '2026-04-01T00:00:00Z', 0.5, 5000, 20, 2, 120, 300,
+              500, '100,200,500', 'rv_legacy', ?, ?, ?
+            )
+            """,
+            (str(tmp_path), str(tmp_path / "p.jsonl"), str(summary_path)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Also seed a row whose summary file does NOT exist -- should be
+    # counted as skipped_no_file, not updated.
+    conn = sqlite3.connect(str(app_factory.db_path))
+    try:
+        conn.execute(
+            """
+            INSERT INTO runs (
+              run_id, machine, mode, status, model_id, created_at,
+              started_at, target_halfwidth_pp, chunk_spin_times,
+              chunk_robot_count, batch_concurrency, max_chunks, timeout,
+              bankruptcy_session_spins, bankruptcy_bankroll_multipliers,
+              report_version, output_dir, progress_file, summary_file
+            ) VALUES (
+              'ghost_run', 'M14', 1, 'completed', 'gpt', '2026-04-01T00:00:00Z',
+              '2026-04-01T00:00:00Z', 0.5, 5000, 20, 2, 120, 300,
+              500, '100,200,500', 'rv_ghost', '/nx', '/nx/p.jsonl', '/nx/summary.json'
+            )
+            """,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Trigger the backfill directly (startup already ran once on empty DB).
+    from src.web_console.backend.app import StateStore
+    store = StateStore(app_factory.db_path)
+    result = store.backfill_rtp_ci_from_summaries()
+
+    assert result["scanned"] == 2
+    assert result["updated"] == 1
+    assert result["skipped_no_file"] == 1
+
+    # Verify the legacy row now has both columns filled.
+    conn = sqlite3.connect(str(app_factory.db_path))
+    try:
+        row = conn.execute(
+            "SELECT achieved_rtp_pct, achieved_halfwidth_pp FROM runs WHERE run_id = ?",
+            ("legacy_run_x",),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row[0] == 92.35
+    assert row[1] == 0.48
+
+    # Ghost row remains null.
+    conn = sqlite3.connect(str(app_factory.db_path))
+    try:
+        row = conn.execute(
+            "SELECT achieved_rtp_pct, achieved_halfwidth_pp FROM runs WHERE run_id = ?",
+            ("ghost_run",),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row[0] is None
+    assert row[1] is None
+
+    # Running a second time is a no-op (idempotent).
+    result2 = store.backfill_rtp_ci_from_summaries()
+    assert result2["scanned"] == 1  # legacy_run_x is now populated, only ghost remains null
+    assert result2["updated"] == 0
+    assert result2["skipped_no_file"] == 1

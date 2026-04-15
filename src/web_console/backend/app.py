@@ -289,6 +289,73 @@ class StateStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def backfill_rtp_ci_from_summaries(self) -> dict[str, Any]:
+        """One-shot migration: for every completed row missing
+        achieved_rtp_pct OR achieved_halfwidth_pp, read the on-disk
+        summary.json and populate the column. Old rows (from before
+        _update_report_index started persisting these two fields)
+        would otherwise render as "\u2014" in the manage-tab history
+        table forever.
+
+        Safe to run on every startup: rows with values already set are
+        skipped; rows whose summary_file is missing or malformed are
+        left null (the UI still shows "\u2014" for them).
+        """
+        scanned = 0
+        updated = 0
+        skipped_no_file = 0
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT run_id, status, summary_file, achieved_rtp_pct,
+                       achieved_halfwidth_pp
+                FROM runs
+                WHERE status = 'completed'
+                  AND (achieved_rtp_pct IS NULL OR achieved_halfwidth_pp IS NULL)
+                """
+            ).fetchall()
+            for r in rows:
+                scanned += 1
+                path_text = r["summary_file"]
+                if not path_text:
+                    skipped_no_file += 1
+                    continue
+                summary_path = Path(path_text)
+                if not summary_path.exists():
+                    skipped_no_file += 1
+                    continue
+                try:
+                    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                rtp = summary.get("rtp", {}).get("point_pct") if isinstance(summary, dict) else None
+                hw = (
+                    summary.get("sampling", {}).get("achieved_halfwidth_pp")
+                    if isinstance(summary, dict) else None
+                )
+                # Write whichever fields had a null stored + a real
+                # value available; leave others alone.
+                patch_pairs: list[tuple[str, float]] = []
+                if r["achieved_rtp_pct"] is None and rtp is not None:
+                    patch_pairs.append(("achieved_rtp_pct", float(rtp)))
+                if r["achieved_halfwidth_pp"] is None and hw is not None:
+                    patch_pairs.append(("achieved_halfwidth_pp", float(hw)))
+                if not patch_pairs:
+                    continue
+                sets = ", ".join(f"{name}=?" for name, _ in patch_pairs)
+                values = [v for _, v in patch_pairs] + [r["run_id"]]
+                conn.execute(
+                    f"UPDATE runs SET {sets} WHERE run_id=?",
+                    values,
+                )
+                updated += 1
+            conn.commit()
+        return {
+            "scanned": scanned,
+            "updated": updated,
+            "skipped_no_file": skipped_no_file,
+        }
+
     def delete_run(self, run_id: str) -> bool:
         """Drop the run row and its cascade children (interpretations).
 
@@ -1431,6 +1498,10 @@ def create_app(
     az = analyzer_path if analyzer_path is not None else ANALYZER
 
     store = StateStore(db_path)
+    # Backfill achieved_rtp_pct / achieved_halfwidth_pp from on-disk
+    # summary.json for completed rows predating those columns -- quick
+    # scan, safe on every startup (no-op once populated).
+    store.backfill_rtp_ci_from_summaries()
     model_runtime = RuntimeModelConfig(model_config_path)
     manager = RunManager(
         store,
