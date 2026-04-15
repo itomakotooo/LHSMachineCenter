@@ -555,7 +555,19 @@ def _run_parallel_candidate(
     }
 
 
-def run_auto_tune(req: AutoTuneRequest) -> dict[str, Any]:
+def run_auto_tune(
+    req: AutoTuneRequest,
+    progress_callback: Callable[[str, dict[str, Any] | None], None] | None = None,
+) -> dict[str, Any]:
+    """Run the autotune candidate grid.
+
+    Emits progress via ``progress_callback(phase, payload)`` where phase is
+    one of ``"start" | "candidate" | "finish"``:
+
+    - ``start`` payload: ``{"total_candidates": N, "machine": ..., "mode": ...}``
+    - ``candidate`` payload: the candidate result dict just produced
+    - ``finish`` payload: ``{"status": "completed" | "error"}``
+    """
     robots = _sanitize_int_candidates(req.robot_candidates, lower=1, upper=200)
     concs = _sanitize_int_candidates(req.concurrency_candidates, lower=1, upper=16)
     if not robots:
@@ -565,10 +577,16 @@ def run_auto_tune(req: AutoTuneRequest) -> dict[str, Any]:
 
     started = utc_now()
     candidates: list[dict[str, Any]] = []
-    for robot in robots:
-        for conc in concs:
-            candidates.append(
-                _run_parallel_candidate(
+    total = len(robots) * len(concs)
+    if progress_callback is not None:
+        progress_callback(
+            "start",
+            {"total_candidates": total, "machine": req.machine, "mode": req.mode},
+        )
+    try:
+        for robot in robots:
+            for conc in concs:
+                result = _run_parallel_candidate(
                     machine=req.machine,
                     mode=req.mode,
                     spin_times=req.spin_times,
@@ -578,7 +596,15 @@ def run_auto_tune(req: AutoTuneRequest) -> dict[str, Any]:
                     timeout=req.timeout,
                     bet=req.bet,
                 )
-            )
+                candidates.append(result)
+                if progress_callback is not None:
+                    progress_callback("candidate", result)
+    except BaseException:
+        if progress_callback is not None:
+            progress_callback("finish", {"status": "error"})
+        raise
+    if progress_callback is not None:
+        progress_callback("finish", {"status": "completed"})
 
     ranked = sorted(
         candidates,
@@ -1214,6 +1240,49 @@ def create_app(
     app.state.db_path = db_path
     app.state.machines_config = mc
     app.state.analyzer = az
+    # Autotune progress snapshot: an in-memory dict protected by a lock.
+    # Mutated by run_auto_tune via the progress_callback injected below,
+    # read via GET /api/autotune/progress.
+    app.state.autotune_progress_lock = threading.Lock()
+    app.state.autotune_progress = {
+        "status": "idle",
+        "started_at": None,
+        "finished_at": None,
+        "total_candidates": 0,
+        "completed_candidates": 0,
+        "last_result": None,
+        "machine": None,
+        "mode": None,
+    }
+
+    def _autotune_progress_sink(phase: str, payload: dict[str, Any] | None) -> None:
+        with app.state.autotune_progress_lock:
+            p = app.state.autotune_progress
+            if phase == "start":
+                p.update(
+                    {
+                        "status": "running",
+                        "started_at": utc_now(),
+                        "finished_at": None,
+                        "total_candidates": int((payload or {}).get("total_candidates", 0)),
+                        "completed_candidates": 0,
+                        "last_result": None,
+                        "machine": (payload or {}).get("machine"),
+                        "mode": (payload or {}).get("mode"),
+                    }
+                )
+            elif phase == "candidate" and payload is not None:
+                p["completed_candidates"] = int(p.get("completed_candidates", 0)) + 1
+                p["last_result"] = {
+                    "robot_count": payload.get("robot_count"),
+                    "batch_concurrency": payload.get("batch_concurrency"),
+                    "success_rate": payload.get("success_rate"),
+                    "throughput_spins_per_sec": payload.get("throughput_spins_per_sec"),
+                    "p95_latency_s": payload.get("p95_latency_s"),
+                }
+            elif phase == "finish":
+                p["status"] = str((payload or {}).get("status", "completed"))
+                p["finished_at"] = utc_now()
 
     @app.get("/")
     def root() -> FileResponse:
@@ -1285,9 +1354,17 @@ def create_app(
             snap = ops.snapshot()
             raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
         try:
-            return run_auto_tune(req)
+            return run_auto_tune(req, progress_callback=_autotune_progress_sink)
         finally:
             ops.release()
+
+    @app.get("/api/autotune/progress")
+    def autotune_progress() -> dict[str, Any]:
+        """Snapshot of autotune progress. Safe to poll at 1s cadence from
+        the frontend while a compute is in flight; returns {"status":"idle"}
+        when nothing has been run yet this process lifetime."""
+        with app.state.autotune_progress_lock:
+            return dict(app.state.autotune_progress)
 
     @app.get("/api/runs")
     def runs() -> dict[str, Any]:
