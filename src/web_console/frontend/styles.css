@@ -575,25 +575,42 @@ button:disabled {
 .chart-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  /* 8px gap between chart cards per dashboard plan -- the 12px .layout
+     gap above still gives every panel its breathing room. */
+  gap: 8px;
 }
 
 .chart-card {
   border: 1px solid #d5dfea;
   border-radius: 12px;
   background: #fff;
-  padding: 8px;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.chart-card:hover {
+  border-color: #b6c4d8;
+  box-shadow: 0 6px 14px #0f172a14;
 }
 
 .chart-card h3 {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   color: var(--muted);
   font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
+/* Uniform canvas height across all 4 charts so the 2x2 grid reads as
+   one composed block instead of four mismatched tiles. Chart.js uses
+   maintainAspectRatio:false (see buildCharts) so it fills this height
+   exactly. */
 .chart-card canvas {
   width: 100% !important;
-  height: 230px !important;
+  height: 220px !important;
 }
 
 .catalog-list {
