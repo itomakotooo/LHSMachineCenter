@@ -341,6 +341,27 @@ function fillCiTierOptions() {
   }
   // Preserve user selection across language re-render; default to 0.5.
   sel.value = prev || "0.5";
+  applyModeCiConstraint();
+}
+
+// Mode 2 / 5 are high-volatility bonus/freegame paths that must use the
+// fuzzy tier (value "0"); force the select there and gray out the other
+// options. Mode 1 / 7 (regular-player modes) re-enable the full set.
+function applyModeCiConstraint() {
+  const modeSel = byId("modeSelect");
+  const ciSel = byId("ciSelect");
+  if (!modeSel || !ciSel) return;
+  const mode = Number(modeSel.value);
+  const forceFuzzy = mode === 2 || mode === 5;
+  for (const opt of ciSel.options) {
+    opt.disabled = forceFuzzy && opt.value !== "0";
+  }
+  if (forceFuzzy) {
+    ciSel.value = "0";
+  } else if (ciSel.value === "0") {
+    // User coming back from mode 2/5 -- reset to the standard default.
+    ciSel.value = "0.5";
+  }
 }
 
 function fillProviders() {
@@ -587,10 +608,12 @@ function bindEvents() {
   byId("tabBtnManage").addEventListener("click", () => switchTab("manage"));
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();
+    applyModeCiConstraint();
     clearSummaryPanels();
     await refreshVersions();
   });
   byId("modeSelect").addEventListener("change", async () => {
+    applyModeCiConstraint();
     clearSummaryPanels();
     await refreshVersions();
   });
