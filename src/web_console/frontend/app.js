@@ -19,14 +19,6 @@ const state = {
   timer: null,
   fastTimer: null,
   autotuneTimer: null,
-  // Mid-area tab selection (assessment / interpretation / events). Pure
-  // UI state -- switching never refetches data because all three panes
-  // share the DOM and are kept up to date by the existing render funcs.
-  midTab: "assessment",
-  // Drilldown tab selection (paylines / payouts / symbols). Switching
-  // re-runs the matching renderXxxDrilldown(state.latestSummary) so the
-  // active table always reflects the last summary; never refetches.
-  drilldownTab: "paylines",
   // Captured at the moment Start is clicked so the polling code can
   // compute fuzzy-aware progress without re-deriving from API state.
   lastSubmittedFuzzy: false,
@@ -118,41 +110,6 @@ function switchTab(tab) {
   document.querySelectorAll(".tab-page").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
 }
 
-// Mid-area tab switch (assessment / interpretation / events). Toggles
-// .active on both the button and the matching pane; never refetches
-// data -- the panes' content is owned by the existing render path.
-function switchMidTab(tab) {
-  state.midTab = tab;
-  document.querySelectorAll(".mid-tab-btn").forEach((b) => {
-    const on = b.dataset.midTab === tab;
-    b.classList.toggle("active", on);
-    b.setAttribute("aria-selected", on ? "true" : "false");
-  });
-  document.querySelectorAll(".mid-tab-pane").forEach((p) =>
-    p.classList.toggle("active", p.dataset.midTab === tab),
-  );
-}
-
-// Drilldown tab switch (paylines / payouts / symbols). Re-runs the
-// matching renderXxxDrilldown so the visible table always reflects
-// state.latestSummary -- the render funcs handle null/empty summary
-// gracefully so switching before any report exists is a no-op.
-function switchDrilldownTab(tab) {
-  state.drilldownTab = tab;
-  document.querySelectorAll(".drilldown-tab-btn").forEach((b) => {
-    const on = b.dataset.drilldownTab === tab;
-    b.classList.toggle("active", on);
-    b.setAttribute("aria-selected", on ? "true" : "false");
-  });
-  document.querySelectorAll(".drilldown-tab-pane").forEach((p) =>
-    p.classList.toggle("active", p.dataset.drilldownTab === tab),
-  );
-  const s = state.latestSummary;
-  if (!s) return;
-  if (tab === "paylines") renderPaylineDrilldown(s);
-  else if (tab === "payouts") renderPayoutGroupDrilldown(s);
-  else if (tab === "symbols") renderSymbolDrilldown(s);
-}
 
 function setHealth(ok, suffix = "") {
   const el = byId("health");
@@ -951,12 +908,6 @@ function bindEvents() {
   });
   byId("tabBtnDebug").addEventListener("click", () => switchTab("debug"));
   byId("tabBtnManage").addEventListener("click", () => switchTab("manage"));
-  document.querySelectorAll(".mid-tab-btn").forEach((b) => {
-    b.addEventListener("click", () => switchMidTab(b.dataset.midTab));
-  });
-  document.querySelectorAll(".drilldown-tab-btn").forEach((b) => {
-    b.addEventListener("click", () => switchDrilldownTab(b.dataset.drilldownTab));
-  });
   // Mobile drawer: hamburger toggles the sidebar on/off; tapping the
   // dimmed backdrop (anywhere inside .dashboard that isn't the sidebar
   // or the toggle itself) closes it. CSS hides .sidebar-toggle above

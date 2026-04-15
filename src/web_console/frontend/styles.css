@@ -198,13 +198,9 @@ body {
   color: var(--muted);
 }
 
-/* Run-control sits at the bottom of the sidebar (last child) and lays
-   out its 4 buttons in a fixed 2x2 grid so Start/Auto land on the top
-   row regardless of locale label width. */
-.dash-sidebar .panel.run-actions {
-  margin-top: auto;
-}
-
+/* Run-control sits at the TOP of the sidebar (first child); the 4
+   buttons stay in a 2x2 grid so Start/Auto land on the top row
+   regardless of locale label width. */
 .dash-sidebar .panel.run-actions .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -391,103 +387,16 @@ body {
   grid-column: span 8;
 }
 
+/* Mid panels (interpretation / report / logs) and drilldown panels
+   (paylines / payout-groups / symbols) all span the full 12-col main
+   row -- they're text/table-heavy and read better full-width than
+   side-by-side. */
+.interpretation,
 .report,
-.interpretation {
-  /* Legacy 4-col placement -- the .panel.mid-tabs now fronts these
-     three sections via internal tab switching. Rules left in place so
-     manage-tab style overrides keyed on .layout > .panel keep working
-     without surprise specificity changes. */
-  grid-column: span 4;
-}
-
-/* Mid-tab panel: combined assessment / interpretation / events. Spans
-   the full 12-col main row since the tab bar replaces the old
-   side-by-side report+interpretation layout. */
-.mid-tabs {
+.paylines,
+.payout-groups,
+.symbols {
   grid-column: span 12;
-}
-
-.mid-tab-bar {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--line);
-  margin: -2px 0 10px;
-}
-
-.mid-tab-btn {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  padding: 8px 16px 10px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 13px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  border-radius: 0;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.mid-tab-btn:hover {
-  color: var(--ink);
-}
-
-.mid-tab-btn.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
-
-.mid-tab-pane {
-  display: none;
-}
-
-.mid-tab-pane.active {
-  display: block;
-}
-
-/* Drilldown tab panel: combined paylines / payouts / symbols. Same
-   visual treatment as .mid-tabs (underline-active) so the dashboard
-   speaks one tab dialect. */
-.drilldown-tabs {
-  grid-column: span 12;
-}
-
-.drilldown-tab-bar {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--line);
-  margin: -2px 0 10px;
-}
-
-.drilldown-tab-btn {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  padding: 8px 16px 10px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 13px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  border-radius: 0;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.drilldown-tab-btn:hover {
-  color: var(--ink);
-}
-
-.drilldown-tab-btn.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
-
-.drilldown-tab-pane {
-  display: none;
-}
-
-.drilldown-tab-pane.active {
-  display: block;
 }
 
 .machine-catalog,
@@ -870,8 +779,9 @@ tbody tr.active-row {
   .report,
   .interpretation,
   .logs,
-  .mid-tabs,
-  .drilldown-tabs,
+  .paylines,
+  .payout-groups,
+  .symbols,
   .machine-catalog,
   .run-history,
   .system-status,
@@ -1046,40 +956,15 @@ table.drilldown-table .bar-cell::after {
   box-shadow: 0 12px 28px #0f172a14;
 }
 
-/* Tab active state -- bold weight + subtle scale punch on click. */
-.mid-tab-btn.active,
-.drilldown-tab-btn.active {
-  font-weight: 700;
-}
-
-.mid-tab-btn,
-.drilldown-tab-btn {
-  position: relative;
-}
-
-.mid-tab-btn.active::after,
-.drilldown-tab-btn.active::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: -2px;
-  transform: translateX(-50%);
-  width: 24px;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 999px;
-}
-
 /* Accessibility: consistent focus ring on every interactive element.
    The existing .help-dot:focus-visible rule already lives above; this
    block extends the same accent ring + 2px offset to inputs / selects /
-   buttons / tabs / sidebar toggle so keyboard navigation is obvious. */
+   buttons / debug/manage tab buttons / sidebar toggle so keyboard
+   navigation is obvious. */
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 .tab-btn:focus-visible,
-.mid-tab-btn:focus-visible,
-.drilldown-tab-btn:focus-visible,
 .sidebar-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

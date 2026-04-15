@@ -44,6 +44,21 @@
              selectors are by ID so the move is invisible to them. -->
         <div class="dashboard">
           <aside class="dash-sidebar">
+            <!-- Run-control sits at the top of the sidebar so the
+                 Start/Auto buttons are the first thing the operator
+                 sees on page load (per user feedback after first
+                 dashboard pass). -->
+            <section class="panel run-actions sidebar-control">
+              <h2 data-i18n="panelRunControl">运行控制</h2>
+              <div class="actions">
+                <button id="startBtn" data-i18n="btnStart">▶ 开始</button>
+                <button id="autotuneBtn" data-i18n="btnAutoTune">⚙ 调参</button>
+                <button id="stopBtn" data-i18n="btnStop">■ 停止</button>
+                <button id="refreshBtn" data-i18n="btnRefresh">↻ 刷新</button>
+              </div>
+              <div id="autotuneMeta" class="pre compact">No auto tune run yet.</div>
+            </section>
+
             <section class="panel run-config">
               <h2 data-i18n="panelRunConfig">运行参数</h2>
               <div class="grid two">
@@ -132,22 +147,6 @@
               </div>
               <div id="modelStatus" class="meta warnMeta"></div>
             </section>
-
-            <!-- Run-control sits last in the sidebar so the Start/Auto buttons
-                 land at the bottom of the sticky column (closest to thumb on
-                 short laptop screens). Buttons use icon + short label per
-                 plan; the verbose strings are the i18n fallbacks now in
-                 pure.js. -->
-            <section class="panel run-actions sidebar-control">
-              <h2 data-i18n="panelRunControl">运行控制</h2>
-              <div class="actions">
-                <button id="startBtn" data-i18n="btnStart">▶ 开始</button>
-                <button id="autotuneBtn" data-i18n="btnAutoTune">⚙ 调参</button>
-                <button id="stopBtn" data-i18n="btnStop">■ 停止</button>
-                <button id="refreshBtn" data-i18n="btnRefresh">↻ 刷新</button>
-              </div>
-              <div id="autotuneMeta" class="pre compact">No auto tune run yet.</div>
-            </section>
           </aside>
           <div class="dash-main">
             <div class="layout">
@@ -199,87 +198,80 @@
             </div>
           </section>
 
-          <!-- Mid-tab panel: rolls assessment / interpretation / events
-               into one panel with internal tab switching. The
-               #assessment / #interpretationText / #eventsText IDs are
-               preserved so the existing render pipeline (and the events
-               poll feeding eventsText) keeps working. Tab switching
-               only toggles classes -- no data refetch. -->
-          <section class="panel mid-tabs">
-            <nav class="mid-tab-bar" role="tablist">
-              <button class="mid-tab-btn active" data-mid-tab="assessment" role="tab" aria-selected="true" data-i18n="panelAssessment">规则评估</button>
-              <button class="mid-tab-btn" data-mid-tab="interpretation" role="tab" aria-selected="false" data-i18n="panelInterpretation">模型解读</button>
-              <button class="mid-tab-btn" data-mid-tab="events" role="tab" aria-selected="false" data-i18n="panelEvents">运行事件</button>
-            </nav>
-            <div class="mid-tab-pane active" data-mid-tab="assessment" role="tabpanel">
-              <div id="assessment" class="pre">No report yet.</div>
+          <!-- Mid panels are stacked (not tabbed) per user feedback after
+               first dashboard pass: interpretation goes first because
+               that's the headline narrative, followed by the rules
+               assessment and the raw events log. -->
+          <section class="panel interpretation">
+            <h2 data-i18n="panelInterpretation">模型解读</h2>
+            <div class="actions">
+              <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
             </div>
-            <div class="mid-tab-pane" data-mid-tab="interpretation" role="tabpanel">
-              <div class="actions">
-                <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
-              </div>
-              <pre id="interpretationText" class="pre"></pre>
-            </div>
-            <div class="mid-tab-pane" data-mid-tab="events" role="tabpanel">
-              <pre id="eventsText" class="pre"></pre>
-            </div>
+            <pre id="interpretationText" class="pre"></pre>
           </section>
 
-          <!-- Drilldown tab panel: rolls paylines / payout-groups /
-               symbols into one panel with internal tab switching.
-               Switching a tab calls renderXxxDrilldown(state.latestSummary)
-               so the active tab always reflects the latest summary
-               without refetching the report. -->
-          <section class="panel drilldown-tabs">
-            <nav class="drilldown-tab-bar" role="tablist">
-              <button class="drilldown-tab-btn active" data-drilldown-tab="paylines" role="tab" aria-selected="true" data-i18n="drilldownTabPaylines">支付线</button>
-              <button class="drilldown-tab-btn" data-drilldown-tab="payouts" role="tab" aria-selected="false" data-i18n="drilldownTabPayouts">Pay ID</button>
-              <button class="drilldown-tab-btn" data-drilldown-tab="symbols" role="tab" aria-selected="false" data-i18n="drilldownTabSymbols">符号</button>
-            </nav>
-            <div class="drilldown-tab-pane active" data-drilldown-tab="paylines" role="tabpanel">
-              <table id="paylineTable" class="drilldown-table">
-                <thead>
-                  <tr>
-                    <th data-i18n="thPaylineId">Payline ID</th>
-                    <th data-i18n="thHitCount">命中次数</th>
-                    <th data-i18n="thHitRate">命中率</th>
-                    <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
-                    <th data-i18n="thWinShare">Win 占比</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-            <div class="drilldown-tab-pane" data-drilldown-tab="payouts" role="tabpanel">
-              <p class="drilldown-hint" data-i18n="payoutGroupZeroHint">Group 0 = 未中奖，仅展示作对照。</p>
-              <table id="payoutGroupTable" class="drilldown-table">
-                <thead>
-                  <tr>
-                    <th data-i18n="thGroupId">Group ID</th>
-                    <th data-i18n="thHitCount">命中次数</th>
-                    <th data-i18n="thHitRate">命中率</th>
-                    <th data-i18n="thAvgWinX">命中均赢(x)</th>
-                    <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-            <div class="drilldown-tab-pane" data-drilldown-tab="symbols" role="tabpanel">
-              <h3 data-i18n="symbolsOverallHeader" class="drilldown-subhead">整体 Top 20</h3>
-              <table id="symbolOverallTable" class="drilldown-table">
-                <thead>
-                  <tr>
-                    <th data-i18n="thSymbol">符号</th>
-                    <th data-i18n="thCount">次数</th>
-                    <th data-i18n="thRate">占比</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-              <h3 data-i18n="symbolsByColHeader" class="drilldown-subhead">按列分布 Top 10（每列）</h3>
-              <div id="symbolByColMatrix" class="symbol-matrix"></div>
-            </div>
+          <section class="panel report">
+            <h2 data-i18n="panelAssessment">规则评估</h2>
+            <div id="assessment" class="pre">No report yet.</div>
+          </section>
+
+          <section class="panel logs">
+            <h2 data-i18n="panelEvents">运行事件</h2>
+            <pre id="eventsText" class="pre"></pre>
+          </section>
+
+          <!-- Drilldown panels are stacked (not tabbed) per user feedback:
+               switching tabs is more friction than scroll for these
+               three tables. paylines / payouts / symbols each get their
+               own panel below the mid-area block. -->
+          <section class="panel paylines">
+            <h2 data-i18n="panelPaylines">支付线深度（Top 20）</h2>
+            <table id="paylineTable" class="drilldown-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thPaylineId">Payline ID</th>
+                  <th data-i18n="thHitCount">命中次数</th>
+                  <th data-i18n="thHitRate">命中率</th>
+                  <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
+                  <th data-i18n="thWinShare">Win 占比</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
+
+          <section class="panel payout-groups">
+            <h2 data-i18n="panelPayoutGroups">Pay ID 深度（PayoutGroupId Top 20）</h2>
+            <p class="drilldown-hint" data-i18n="payoutGroupZeroHint">Group 0 = 未中奖，仅展示作对照。</p>
+            <table id="payoutGroupTable" class="drilldown-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thGroupId">Group ID</th>
+                  <th data-i18n="thHitCount">命中次数</th>
+                  <th data-i18n="thHitRate">命中率</th>
+                  <th data-i18n="thAvgWinX">命中均赢(x)</th>
+                  <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
+
+          <section class="panel symbols">
+            <h2 data-i18n="panelSymbols">符号深度（整体 + 按列）</h2>
+            <h3 data-i18n="symbolsOverallHeader" class="drilldown-subhead">整体 Top 20</h3>
+            <table id="symbolOverallTable" class="drilldown-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thSymbol">符号</th>
+                  <th data-i18n="thCount">次数</th>
+                  <th data-i18n="thRate">占比</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <h3 data-i18n="symbolsByColHeader" class="drilldown-subhead">按列分布 Top 10（每列）</h3>
+            <div id="symbolByColMatrix" class="symbol-matrix"></div>
           </section>
 
             </div>

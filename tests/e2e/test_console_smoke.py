@@ -326,55 +326,54 @@ def test_live_status_strip_shows_idle_brief(console_page, clean_runs):
     assert machine and machine in text, f"expected '{machine}' in strip, got: {text!r}"
 
 
-def test_mid_tab_switch_changes_active_pane(console_page):
-    """Mid-area tab switch is a pure DOM toggle: click another tab and
-    only the matching .mid-tab-pane should become visible. No data
-    refetch is exercised here -- this guards against the next refactor
-    accidentally re-introducing one."""
+def test_mid_panels_stacked(console_page):
+    """User feedback after the first dashboard pass: assessment /
+    interpretation / events should be stacked panels (not tabs).
+    Verify all three render as independent .panel sections in the
+    main area."""
     page = console_page
     _wait_for_pure_loaded(page)
 
-    # Default: assessment pane is the only one visible.
-    assert page.locator(".mid-tab-pane[data-mid-tab='assessment']").is_visible()
-    assert not page.locator(".mid-tab-pane[data-mid-tab='interpretation']").is_visible()
-    assert not page.locator(".mid-tab-pane[data-mid-tab='events']").is_visible()
-
-    page.click(".mid-tab-btn[data-mid-tab='interpretation']")
-    page.wait_for_selector(".mid-tab-pane[data-mid-tab='interpretation'].active", timeout=2000)
-    assert page.locator(".mid-tab-pane[data-mid-tab='interpretation']").is_visible()
-    assert not page.locator(".mid-tab-pane[data-mid-tab='assessment']").is_visible()
-
-    # Tab button aria-selected mirrors the active pane.
-    aria = page.locator(".mid-tab-btn[data-mid-tab='interpretation']").get_attribute(
-        "aria-selected"
-    )
-    assert aria == "true"
+    # All three panels exist and are visible (stacked layout, not tabbed).
+    assert page.locator(".dash-main .panel.interpretation").count() == 1
+    assert page.locator(".dash-main .panel.report").count() == 1
+    assert page.locator(".dash-main .panel.logs").count() == 1
+    # Headline IDs still wired:
+    assert page.locator("#interpretBtn").is_visible()
+    assert page.locator("#assessment").count() == 1
+    assert page.locator("#eventsText").count() == 1
 
 
-def test_drilldown_tab_switch_changes_active_pane(console_page):
-    """Drilldown tab switch toggles which drilldown table is visible.
-    Like mid-tabs, this never refetches; switchDrilldownTab simply
-    re-runs the matching renderXxxDrilldown(state.latestSummary) which
-    is a no-op when no summary is loaded yet."""
+def test_drilldown_panels_stacked(console_page):
+    """Drilldown panels (paylines / payout-groups / symbols) are
+    independent stacked panels too -- tab switching was more friction
+    than scroll for these tables per user feedback."""
     page = console_page
     _wait_for_pure_loaded(page)
 
-    assert page.locator(".drilldown-tab-pane[data-drilldown-tab='paylines']").is_visible()
-    assert not page.locator(".drilldown-tab-pane[data-drilldown-tab='symbols']").is_visible()
+    assert page.locator(".dash-main .panel.paylines").count() == 1
+    assert page.locator(".dash-main .panel.payout-groups").count() == 1
+    assert page.locator(".dash-main .panel.symbols").count() == 1
+    # Drilldown table IDs preserved.
+    assert page.locator("#paylineTable").count() == 1
+    assert page.locator("#payoutGroupTable").count() == 1
+    assert page.locator("#symbolOverallTable").count() == 1
+    assert page.locator("#symbolByColMatrix").count() == 1
 
-    page.click(".drilldown-tab-btn[data-drilldown-tab='symbols']")
-    page.wait_for_selector(
-        ".drilldown-tab-pane[data-drilldown-tab='symbols'].active", timeout=2000
+
+def test_sidebar_run_actions_first(console_page):
+    """Run-control panel sits at the top of the sidebar so the
+    Start/Auto buttons are immediately visible on page load."""
+    page = console_page
+    _wait_for_pure_loaded(page)
+
+    # First .panel inside .dash-sidebar must be the run-actions block.
+    first_panel_classes = page.evaluate(
+        "() => document.querySelector('.dash-sidebar > .panel').className"
     )
-    assert page.locator(".drilldown-tab-pane[data-drilldown-tab='symbols']").is_visible()
-    assert not page.locator(".drilldown-tab-pane[data-drilldown-tab='paylines']").is_visible()
-
-    # The symbol pane carries the existing #symbolOverallTable and
-    # #symbolByColMatrix IDs (no e2e selector breakage). symbolByColMatrix
-    # has zero rendered height when empty, so we only check the table is
-    # visible and both IDs still resolve to a DOM node inside the pane.
-    assert page.locator("#symbolOverallTable").is_visible()
-    assert page.locator(".drilldown-tab-pane[data-drilldown-tab='symbols'] #symbolByColMatrix").count() == 1
+    assert "run-actions" in first_panel_classes, (
+        f"sidebar's first panel should be run-actions; got: {first_panel_classes!r}"
+    )
 
 
 def test_start_button_disabled_when_run_active(live_server, page, clean_runs, clean_cache):
