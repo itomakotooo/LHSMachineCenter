@@ -202,8 +202,11 @@ body {
 }
 
 /* Live-status strip rides between the title block and the lang/health
-   actions. Commit 3 fills it with a 1 Hz summarized run snapshot; until
-   then the :empty rule keeps the topbar visually identical to v0. */
+   actions. The 1 Hz refreshCurrentRun() poll fills it with the
+   summarizeRunEvent line + a mini progress bar while running, and falls
+   back to a "machine . mode . status" brief when idle. The :empty rule
+   keeps the topbar visually identical to v0 before the bootstrap
+   populates the machine selector. */
 .live-status-strip {
   display: flex;
   align-items: center;
@@ -214,10 +217,38 @@ body {
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.01em;
+  min-width: 0;
 }
 
 .live-status-strip:empty {
   display: none;
+}
+
+.live-status-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60ch;
+}
+
+.live-status-text--idle {
+  color: #6b7a92;
+  font-weight: 400;
+}
+
+.live-status-bar {
+  flex: 0 0 120px;
+  height: 6px;
+  border-radius: 999px;
+  background: #d8e2ee;
+  overflow: hidden;
+}
+
+.live-status-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-soft), var(--accent));
+  transition: width 0.25s ease;
 }
 
 @media (max-width: 1120px) {

@@ -47,7 +47,50 @@ function applyI18n() {
   setSystemStatePanel();
   renderCacheRiskMeta();
   updateChartLabels();
+  renderLiveStatusStrip();
   if (byId("startBtn")) updateActionStates();
+}
+
+// Topbar live-status strip. When a run is active the running poll passes
+// the same summarizeRunEvent line + computed percent into here so the
+// strip mirrors what runMeta shows in the panel; when idle/completed/no
+// run we degrade to a "machine . mode . status" brief so the strip
+// still communicates context. Kept entirely in DOM-land -- pure formatting
+// of the running summary line still happens via PURE.summarizeRunEvent.
+function renderLiveStatusStrip(opts) {
+  const el = byId("liveStatusStrip");
+  if (!el) return;
+  el.innerHTML = "";
+  if (opts && typeof opts.summary === "string" && opts.summary.length) {
+    const text = document.createElement("span");
+    text.className = "live-status-text";
+    text.textContent = opts.summary;
+    el.appendChild(text);
+    if (typeof opts.pct === "number" && isFinite(opts.pct) && opts.pct >= 0) {
+      const bar = document.createElement("div");
+      bar.className = "live-status-bar";
+      const fill = document.createElement("div");
+      fill.className = "live-status-bar-fill";
+      fill.style.width = `${Math.min(100, Math.max(0, opts.pct))}%`;
+      bar.appendChild(fill);
+      el.appendChild(bar);
+    }
+    return;
+  }
+  // Idle path -- "machine . mode . status" brief, suppressed entirely
+  // until the bootstrap fills the machine selector.
+  const machineEl = byId("machineSelect");
+  const modeEl = byId("modeSelect");
+  const machine = (machineEl && machineEl.value) || "";
+  const mode = (modeEl && modeEl.value) || "";
+  if (!machine) return;
+  const parts = [machine];
+  if (mode) parts.push(`mode ${mode}`);
+  if (state.currentRunStatus) parts.push(statusText(state.currentRunStatus));
+  const text = document.createElement("span");
+  text.className = "live-status-text live-status-text--idle";
+  text.textContent = parts.join(" \u00b7 ");
+  el.appendChild(text);
 }
 
 function applyFieldHelpHints() {
@@ -571,6 +614,7 @@ async function refreshRunList(autoSelect = true) {
 async function refreshCurrentRun() {
   if (!state.currentRunId) {
     byId("runMeta").textContent = fmt("noRun");
+    renderLiveStatusStrip();
     updateActionStates();
     return;
   }
@@ -582,6 +626,7 @@ async function refreshCurrentRun() {
       state.currentRunId = "";
       state.currentRunStatus = "";
       byId("runMeta").textContent = fmt("noRun");
+      renderLiveStatusStrip();
       updateActionStates();
       return;
     }
@@ -621,6 +666,15 @@ async function refreshCurrentRun() {
     runMetaLines.push(`${fmt("runCancelledLabel")}: ${fmt("runCancelledText")}`);
   }
   byId("runMeta").textContent = runMetaLines.join("\n");
+  // Mirror the run summary into the topbar live-status strip. While the
+  // run is active we show summarizeRunEvent + a mini progress bar; once
+  // the run leaves "running" the strip falls back to the idle brief on
+  // the next refresh tick (handled by renderLiveStatusStrip's idle path).
+  if (String(state.currentRunStatus || "").toLowerCase() === "running") {
+    renderLiveStatusStrip({ summary: summaryLine, pct });
+  } else {
+    renderLiveStatusStrip();
+  }
   setKpi("kpiRtp", latest.current_rtp_pct != null ? `${fNum(latest.current_rtp_pct)}%` : "N/A");
   setKpi("kpiCi", hw != null ? fNum(hw) : "N/A");
   setKpi("kpiSpins", latest.total_spins != null ? fInt(latest.total_spins) : "N/A");
@@ -840,12 +894,14 @@ function bindEvents() {
     applyModeCiConstraint();
     clearConcurrencyInputs();
     clearSummaryPanels();
+    renderLiveStatusStrip();
     await refreshVersions();
   });
   byId("modeSelect").addEventListener("change", async () => {
     applyModeCiConstraint();
     clearConcurrencyInputs();
     clearSummaryPanels();
+    renderLiveStatusStrip();
     await refreshVersions();
   });
   byId("ciSelect").addEventListener("change", () => updateActionStates());
