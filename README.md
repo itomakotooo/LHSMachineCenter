@@ -79,6 +79,35 @@ Optional custom port:
 powershell -ExecutionPolicy Bypass -File scripts\start_console.ps1 -Port 8899
 ```
 
+## Local Development Checks
+
+Install dev deps (first time only):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\test.ps1 -Install
+```
+
+Lint (Python compileall + AST side-effect guard + ruff if installed + Node syntax check):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\lint.ps1
+```
+
+Backend + frontend unit tests (fast):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\test.ps1
+```
+
+Full suite including Playwright end-to-end:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\test.ps1 -E2E
+```
+
+Both scripts default to strict mode; pass `-AllowMissingNode` on a
+machine without Node 18+ to skip the frontend pure-function suite.
+
 ## Analyzer CLI (Direct)
 
 Example run:

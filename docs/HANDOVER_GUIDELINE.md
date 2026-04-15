@@ -45,11 +45,12 @@ Guide for engineers taking over this repository.
 
 ## 5. Required Validation Before Merge
 
-- Backend:
-  run tests for API behavior touched by your change.
-- Frontend:
-  verify main flows in browser:
-  run start/stop, auto tune, report view, cache cleanup protections, language switch.
+- Lint must pass:
+  `scripts\lint.ps1` (compileall + AST no-global-state guard + optional ruff + JS syntax).
+- Backend tests must pass:
+  `scripts\test.ps1` (runs `pytest tests/backend` + Node `pure.test.cjs`).
+- For UI-touching changes, add e2e pass:
+  `scripts\test.ps1 -E2E` (Playwright headless Chromium on a free port).
 - Data contract:
   ensure report schema and API response compatibility unless intentionally changed.
 - Operational:
@@ -82,11 +83,57 @@ Guide for engineers taking over this repository.
 
 - `fresh_slotlab/`:
   analyzer and metrics logic.
-- `src/web_console/backend/`:
-  API, orchestration, safety interlock, persistence.
-- `src/web_console/frontend/`:
-  console UI, interaction guards, bilingual UX.
+- `src/web_console/backend/app.py`:
+  `create_app()` factory, routes, safety interlock, persistence.
+  **Side-effect free at module level**; a lint guard enforces this
+  (see `scripts/check_no_global_state.py`).
+- `src/web_console/backend/main.py`:
+  Production uvicorn entrypoint (constructs the default app).
+- `src/web_console/backend/e2e_launch.py`:
+  Playwright-only entrypoint driven by `SLOT_E2E_*` env vars.
+- `src/web_console/frontend/pure.js`:
+  DOM-free helpers (I18N, fmt, cacheRiskTier, ...) in an IIFE;
+  exposed via `window.PURE` and `module.exports`.
+- `src/web_console/frontend/app.js`:
+  DOM wiring that reads from `state` and delegates to `PURE`.
 - `configs/`:
   machine configs and guideline rules.
 - `docs/`:
   operational and contract documentation.
+
+## 9. Test Layout
+
+- `tests/backend/`:
+  FastAPI `TestClient` integration tests that build isolated apps via
+  `create_app(state_dir=tmp, ...)`. `conftest.py` stubs
+  `subprocess.Popen` via an injected factory on `RunManager` so nothing
+  real is spawned. `_seed.py` provides `insert_run_row` for startup
+  recovery tests (self-contained; does NOT import app.py).
+- `tests/frontend/pure.test.cjs`:
+  Node built-in `node:test` runner against `pure.js`. No third-party
+  deps. Run via `node --test tests/frontend/pure.test.cjs`.
+- `tests/e2e/`:
+  pytest-playwright + headless Chromium. `live_server` fixture spawns
+  `python -m uvicorn src.web_console.backend.e2e_launch:app` on a free
+  port with tmp state dirs and shrunk risk thresholds
+  (`SLOT_RISK_MEDIUM_BYTES=2048`, `SLOT_RISK_HIGH_BYTES=8192`).
+
+No global state is shared across tests; each uses a `tmp_path`-scoped
+directory tree.
+
+## 10. Troubleshooting
+
+- **`scripts/lint.ps1` fails on `check_no_global_state.py`**: somebody
+  reintroduced module-level `StateStore()` / `RunManager()` /
+  `OperationCoordinator()` / `RuntimeModelConfig()` / `FastAPI()` /
+  `create_app()` in `src/web_console/backend/app.py`. Move the call
+  into `create_app()` (or `main.py` for the default instance).
+- **`scripts/test.ps1` exits 1 with 'node is required'**: install
+  Node 18+ (https://nodejs.org) or pass `-AllowMissingNode` to skip
+  the frontend `pure.test.cjs` suite. The backend suite always runs.
+- **`scripts/test.ps1 -E2E` fails 'Playwright chromium not installed'**:
+  run `python -m playwright install chromium` (~120 MB one-time) or
+  pass `-Install` so the script installs it for you.
+- **E2E test seeds a run row but startup recovery wipes it**: seed
+  AFTER the server is up. The `live_server` fixture exposes
+  `db_path` precisely for this pattern.
