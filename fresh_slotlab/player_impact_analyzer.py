@@ -1585,7 +1585,11 @@ def main() -> int:
         std_return_x = math.sqrt(max(variance, 0.0))
     else:
         std_return_x = 0.0
-    max_observed_return_x = total_session_max_return_x if total_paid_sessions > 0 else max_return_x
+    # Prefer session-level peak when we have paid sessions; otherwise
+    # keep the spin-level max_observed_return_x already aggregated above
+    # (variable carries the sum from rec["max_return_x"] across chunks).
+    if total_paid_sessions > 0:
+        max_observed_return_x = total_session_max_return_x
 
     hit_rate = (
         (total_session_wins / effective_session_count) if effective_session_count > 0 else 0.0
