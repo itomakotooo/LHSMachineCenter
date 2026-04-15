@@ -129,6 +129,18 @@ This file tracks executable next steps for the current phase.
       classify_volatility / classify_experience_archetype / alert
       thresholds, expands output structure to 6 sections with a
       mandatory "支付线与符号热点" narrative.
+- [x] Analyzer parsing test suite + upstream schema drift defense:
+      `_check_round_schema` validates first parsed round against
+      `_REQUIRED_ROUND_FIELDS` (BetAmount / WinCredits /
+      PayoutByPayline / StopSymbolsByCol / PayoutGroupId); a
+      field-rename drift in the test API now aborts the run with
+      "schema_drift_missing_fields:..." instead of silently producing
+      all-zero metrics. `tests/backend/test_analyzer_parsing.py` (33
+      cases) monkey-patches post_json to lock the parsing contract:
+      schema check, 12-bin bucket classification, payline winning-
+      symbol heuristic (left-3 intersection + blank filter), payout-
+      group aggregation. Payline heuristic now also filters
+      blank-like symbols from the intersection.
 
 ## Work Mode
 

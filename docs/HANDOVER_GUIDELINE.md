@@ -301,6 +301,24 @@ panel stack so the cache-cleanup risk-tier e2e fixtures (which
 target `#cacheRefreshBtn` / `#cacheCleanupBtn` and rely on the
 manage tab being a flat panel list) keep working without changes.
 
+## 13a. Upstream API schema drift
+
+`run_sampling_chunk` now sanity-checks the first parsed round of every
+chunk against `_REQUIRED_ROUND_FIELDS` (`BetAmount`, `WinCredits`,
+`PayoutByPayline`, `StopSymbolsByCol`, `PayoutGroupId`). If the
+upstream test API silently renames or drops one of these, the chunk
+returns
+`{ok: False, error: "schema_drift_missing_fields:WinCredits,..."}`,
+the main loop aborts the run, and `_watch_run` surfaces the field
+list in `error_message` so the operator sees exactly what changed
+instead of debugging an all-zero RTP report.
+
+If you intentionally add or drop a required field, update both
+`_REQUIRED_ROUND_FIELDS` in `fresh_slotlab/player_impact_analyzer.py`
+AND `tests/backend/test_analyzer_parsing.py::
+test_check_round_schema_required_fields_constant_locked` so the
+contract change is explicit in code review.
+
 ## 14. Troubleshooting
 
 - **`scripts/lint.ps1` fails on `check_no_global_state.py`**: somebody

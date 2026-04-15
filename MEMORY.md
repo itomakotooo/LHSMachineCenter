@@ -167,6 +167,18 @@ This section is for execution efficiency and can be updated as long as section A
    - Output: each row in summary.player_impact.paylines_top20 carries
      top_symbols [{symbol, count}, ...] (top 5 by frequency). Frontend
      paylines table renders top 3 via PURE.formatPaylineTopSymbols.
+24a. Upstream API schema drift defense:
+   - run_sampling_chunk sanity-checks the first parsed round against
+     _REQUIRED_ROUND_FIELDS = (BetAmount, WinCredits, PayoutByPayline,
+     StopSymbolsByCol, PayoutGroupId). Field-rename drift returns
+     "schema_drift_missing_fields:..." and the main loop aborts the
+     run; _watch_run surfaces the missing fields in error_message.
+   - tests/backend/test_analyzer_parsing.py monkey-patches post_json
+     to feed crafted round shapes through run_sampling_chunk, locking:
+     schema check (positive + negative cases), 12-bin bucket
+     classification, payline winning-symbol heuristic (left-3 col
+     intersection + blank filter + fallback), payout group aggregation
+     (numeric + string + garbage ids).
 24. Interpretation prompt contract (backend build_interpretation_prompt):
    - Subset includes paylines_top20 / payout_groups_top20 /
      symbols_top20 / symbols_by_column_top10 alongside the existing

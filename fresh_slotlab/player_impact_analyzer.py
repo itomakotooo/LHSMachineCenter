@@ -179,8 +179,40 @@ def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             return []
         return parsed if isinstance(parsed, list) else []
-    if isinstance(rr, list):
-        return rr
+    return rr if isinstance(rr, list) else []
+
+
+# Round-level fields that the sampling parser depends on. If the upstream
+# test API silently renames or drops one of these (e.g. WinCredits ->
+# winCredits), every downstream metric would quietly become 0 because of
+# the .get(default=0) fallbacks in the parsing loop. _check_round_schema
+# pulls the first non-empty round from a chunk response and reports
+# missing fields so run_sampling_chunk can fail loudly instead.
+_REQUIRED_ROUND_FIELDS = (
+    "BetAmount",
+    "WinCredits",
+    "PayoutByPayline",
+    "StopSymbolsByCol",
+    "PayoutGroupId",
+)
+
+
+def _check_round_schema(resp: list[Any]) -> list[str]:
+    """Return the names of required round-level fields missing from the
+    first parsed round, or [] if the schema is intact (or no rounds were
+    found, in which case the existing parse_failed_zero_chunk error
+    handles it downstream).
+    """
+    if not isinstance(resp, list):
+        return []
+    for robot in resp:
+        if not isinstance(robot, dict):
+            continue
+        rounds = parse_rounds(robot)
+        for round_obj in rounds:
+            if isinstance(round_obj, dict):
+                missing = [f for f in _REQUIRED_ROUND_FIELDS if f not in round_obj]
+                return missing
     return []
 
 
@@ -554,6 +586,20 @@ def run_sampling_chunk(
     if not isinstance(resp, list) or not resp:
         return {"ok": False, "index": chunk_index, "error": "parse_failed_empty_response"}
 
+    # Schema sanity check on the first non-empty round. Without this, an
+    # upstream field rename (e.g. WinCredits -> winCredits) would slip
+    # through every .get(default=0) fallback in the parsing loop and
+    # silently produce all-zero metrics. _watch_run will surface the
+    # "schema_drift_missing_fields:..." reason in error_message so the
+    # operator sees exactly which field went missing.
+    schema_missing = _check_round_schema(resp)
+    if schema_missing:
+        return {
+            "ok": False,
+            "index": chunk_index,
+            "error": "schema_drift_missing_fields:" + ",".join(schema_missing),
+        }
+
     chunk_spins = 0
     chunk_bet = 0.0
     chunk_win = 0.0
@@ -693,14 +739,19 @@ def run_sampling_chunk(
             # Infer the winning symbol(s) for each line that paid this
             # spin. Take the intersection of stopped-symbol sets across
             # the leftmost three columns (classic slot pays 3+ matching
-            # symbols left-to-right). If multiple symbols qualify (rare)
-            # all of them are credited; if no intersection (atypical
-            # bonus payout), fall back to the leftmost column's first
-            # symbol so the line is still represented.
+            # symbols left-to-right) AFTER filtering blank-like symbols
+            # (paylines almost never pay blanks; crediting them is
+            # noise when blanks happen to appear in all 3 cols beside
+            # the actual winner). If no intersection (atypical bonus
+            # payout), fall back to any non-blank symbol on the leftmost
+            # column so the line is still represented.
             if line_ids and len(col_symbol_sets) >= 3:
-                first3 = col_symbol_sets[0] & col_symbol_sets[1] & col_symbol_sets[2]
-                if not first3 and col_symbol_sets[0]:
-                    first3 = {next(iter(col_symbol_sets[0]))}
+                c0 = {s for s in col_symbol_sets[0] if not blank_like_symbol(s)}
+                c1 = {s for s in col_symbol_sets[1] if not blank_like_symbol(s)}
+                c2 = {s for s in col_symbol_sets[2] if not blank_like_symbol(s)}
+                first3 = c0 & c1 & c2
+                if not first3 and c0:
+                    first3 = {next(iter(c0))}
                 for lid in line_ids:
                     for sym in first3:
                         payline_winning_symbols[lid][sym] += 1
