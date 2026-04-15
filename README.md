@@ -124,6 +124,8 @@ Important request flags used by the analyzer/autotune path:
 - API reference: `docs/API_REFERENCE.md`
 - Report schema and metrics: `docs/REPORT_SPEC.md`
 - Console operations and troubleshooting: `docs/CONSOLE_OPERATIONS.md`
+- Engineering TODO: `docs/TODO.md`
+- Handover guideline for new developers: `docs/HANDOVER_GUIDELINE.md`
 
 ## Git Boundary
 
