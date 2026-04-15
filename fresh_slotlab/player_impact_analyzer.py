@@ -567,6 +567,13 @@ def run_sampling_chunk(
     multiplier_bucket_bet: dict[str, float] = defaultdict(float)
     multiplier_bucket_win: dict[str, float] = defaultdict(float)
 
+    # Per-PayoutGroupId tally. Group id 0 typically means "no payout"; any
+    # positive id corresponds to a payout group defined by the slot's table.
+    # Aggregating it lets the console show which payout groups actually
+    # carry the RTP, similar to the existing payline drilldown.
+    payout_group_hits: dict[int, int] = defaultdict(int)
+    payout_group_win: dict[int, float] = defaultdict(float)
+
     for robot in resp:
         if not isinstance(robot, dict):
             continue
@@ -625,6 +632,15 @@ def run_sampling_chunk(
             if bool(r.get("IsLackCreditsSpin", False)):
                 lack_credit_spins += 1
 
+            # PayoutGroupId aggregation: each spin reports one group id.
+            # Group 0 means "no payout"; non-zero ids carry the win.
+            try:
+                pg_id = int(r.get("PayoutGroupId", 0) or 0)
+            except (TypeError, ValueError):
+                pg_id = 0
+            payout_group_hits[pg_id] += 1
+            payout_group_win[pg_id] += win_amt
+
             line_ids = parse_paylines(str(r.get("PayoutByPayline") or ""))
             if line_ids:
                 share = win_amt / len(line_ids)
@@ -680,6 +696,8 @@ def run_sampling_chunk(
         "multiplier_bucket_spins": dict(multiplier_bucket_spins),
         "multiplier_bucket_bet": dict(multiplier_bucket_bet),
         "multiplier_bucket_win": dict(multiplier_bucket_win),
+        "payout_group_hits": {str(k): v for k, v in payout_group_hits.items()},
+        "payout_group_win": {str(k): v for k, v in payout_group_win.items()},
     }
 
 
@@ -803,6 +821,9 @@ def main() -> int:
     multiplier_bucket_bet: dict[str, float] = defaultdict(float)
     multiplier_bucket_win: dict[str, float] = defaultdict(float)
 
+    payout_group_hits: dict[int, int] = defaultdict(int)
+    payout_group_win: dict[int, float] = defaultdict(float)
+
     lack_credit_spins = 0
     chunks = 0
     stop_reason = "max_chunks_reached"
@@ -908,6 +929,11 @@ def main() -> int:
             for k, v in rec["multiplier_bucket_win"].items():
                 multiplier_bucket_win[str(k)] += float(v)
 
+            for k, c in (rec.get("payout_group_hits") or {}).items():
+                payout_group_hits[int(k)] += int(c)
+            for k, w in (rec.get("payout_group_win") or {}).items():
+                payout_group_win[int(k)] += float(w)
+
             hw = ci_halfwidth_pp(chunk_rtps_pct)
             if math.isfinite(hw):
                 achieved_halfwidth_pp = hw
@@ -980,6 +1006,27 @@ def main() -> int:
                 "approx_win_credits": payline_win_approx[lid],
                 "approx_rtp_contribution_pp": (
                     (payline_win_approx[lid] / total_bet) * 100.0 if total_bet > 0 else 0.0
+                ),
+            }
+        )
+
+    payout_group_rows: list[dict[str, Any]] = []
+    for gid, hits in sorted(payout_group_hits.items(), key=lambda kv: kv[1], reverse=True):
+        wins = float(payout_group_win.get(gid, 0.0))
+        win_spins_in_group = hits if gid != 0 else 0
+        payout_group_rows.append(
+            {
+                "group_id": int(gid),
+                "hit_count": int(hits),
+                "hit_rate": (hits / total_spins) if total_spins > 0 else 0.0,
+                "total_win": wins,
+                "avg_win_when_hit_x": (
+                    (wins / win_spins_in_group) / args.bet
+                    if win_spins_in_group > 0 and args.bet > 0
+                    else 0.0
+                ),
+                "rtp_contribution_pp": (
+                    (wins / total_bet) * 100.0 if total_bet > 0 else 0.0
                 ),
             }
         )
@@ -1275,6 +1322,7 @@ def main() -> int:
                 "win_streak_max": max_win_streak,
             },
             "paylines_top20": payline_rows[:20],
+            "payout_groups_top20": payout_group_rows[:20],
             "symbols_top20": symbol_rows[:20],
             "symbols_by_column_top10": {k: v[:10] for k, v in symbol_by_col_rows.items()},
             "bankruptcy_probe": bankruptcy_rows,
