@@ -29,7 +29,11 @@ It contains:
 4. Web console:
    - run start/stop/progress
    - one-click parallelism auto-tune (`/api/autotune`)
+   - field-level usage tooltips for all key parameters (CN/EN switch)
    - KPI cards and charts (CI trend, RTP trend, multiplier buckets, bankruptcy curve)
+   - operation safety interlock (UI mutex + backend mutex)
+   - restart recovery for stale running tasks (with stale process cleanup attempt)
+   - cache cleanup risk-tier confirmation (low/medium/high)
    - model interpretation routing (`gemini` / `gpt` / `claude`)
 
 ## Repository Layout
@@ -131,4 +135,3 @@ Do not track:
 
 - runtime db/logs/progress files and local API keys under `state/console/`
 - temporary chunk cache under `cache/chunks/`
-

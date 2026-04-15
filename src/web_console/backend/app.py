@@ -3,6 +3,7 @@
 import concurrent.futures
 import json
 import os
+import signal
 import sqlite3
 import statistics
 import subprocess
@@ -27,6 +28,9 @@ from pydantic import BaseModel, Field
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+APP_STARTED_AT = utc_now()
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -207,6 +211,9 @@ class StateStore:
                 )
                 """
             )
+            run_columns = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+            if "process_pid" not in run_columns:
+                conn.execute("ALTER TABLE runs ADD COLUMN process_pid INTEGER")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interpretations (
@@ -252,6 +259,14 @@ class StateStore:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM runs ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_runs_by_status(self, status: str, limit: int = 2000) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM runs WHERE status=? ORDER BY created_at DESC LIMIT ?",
+                (status, limit),
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -330,6 +345,63 @@ def load_machines() -> list[dict[str, Any]]:
         if isinstance(machines, list):
             return machines
     return [{"machine": "M14", "modes": [1]}]
+
+
+class OperationCoordinator:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._busy = False
+        self._name = ""
+        self._since = ""
+
+    def acquire(self, name: str) -> bool:
+        with self._lock:
+            if self._busy:
+                return False
+            self._busy = True
+            self._name = name
+            self._since = utc_now()
+            return True
+
+    def release(self) -> None:
+        with self._lock:
+            self._busy = False
+            self._name = ""
+            self._since = ""
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "busy": self._busy,
+                "operation": self._name,
+                "since": self._since,
+            }
+
+
+def _coerce_pid(value: Any) -> int | None:
+    try:
+        pid = int(value)
+    except (TypeError, ValueError):
+        return None
+    return pid if pid > 0 else None
+
+
+def _terminate_pid_if_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        if os.name == "nt":
+            result = subprocess.run(  # noqa: S603
+                ["taskkill", "/PID", str(pid), "/T", "/F"],  # noqa: S607
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            return result.returncode == 0
+        os.kill(pid, signal.SIGTERM)
+        return True
+    except OSError:
+        return False
 
 
 def _sanitize_int_candidates(values: list[int], lower: int, upper: int) -> list[int]:
@@ -732,6 +804,55 @@ class RunManager:
         self.store = store
         self._lock = threading.Lock()
         self._running: dict[str, ManagedRun] = {}
+        self._startup_recovery = self._recover_orphan_running_runs()
+
+    def _recover_orphan_running_runs(self) -> dict[str, Any]:
+        stale = self.store.list_runs_by_status("running", limit=5000)
+        if not stale:
+            return {
+                "recovered_count": 0,
+                "run_ids": [],
+                "terminated_pids": [],
+                "failed_to_terminate_pids": [],
+            }
+        recovered_ids: list[str] = []
+        terminated_pids: list[int] = []
+        failed_to_terminate_pids: list[int] = []
+        for row in stale:
+            run_id = str(row.get("run_id", "")).strip()
+            if not run_id:
+                continue
+            pid = _coerce_pid(row.get("process_pid"))
+            message = "run interrupted by console restart; please rerun if needed"
+            if pid is not None:
+                if _terminate_pid_if_running(pid):
+                    terminated_pids.append(pid)
+                    message += " (stale worker process terminated)"
+                else:
+                    failed_to_terminate_pids.append(pid)
+                    message += " (stale worker process may still exist)"
+            self.store.update_run(
+                run_id,
+                {
+                    "status": "failed",
+                    "finished_at": utc_now(),
+                    "error_message": message,
+                },
+            )
+            recovered_ids.append(run_id)
+        return {
+            "recovered_count": len(recovered_ids),
+            "run_ids": recovered_ids,
+            "terminated_pids": terminated_pids,
+            "failed_to_terminate_pids": failed_to_terminate_pids,
+        }
+
+    def startup_recovery_snapshot(self) -> dict[str, Any]:
+        return dict(self._startup_recovery)
+
+    def running_count(self) -> int:
+        with self._lock:
+            return len(self._running)
 
     def start_run(self, req: RunCreateRequest) -> dict[str, Any]:
         if not ANALYZER.exists():
@@ -823,6 +944,7 @@ class RunManager:
                 "summary_file": str(summary_file),
                 "report_file": str(report_file),
                 "error_message": None,
+                "process_pid": process.pid,
             }
         )
 
@@ -919,6 +1041,23 @@ class RunManager:
 
 store = StateStore(DB_PATH)
 manager = RunManager(store)
+ops = OperationCoordinator()
+
+
+def current_system_state() -> dict[str, Any]:
+    snap = ops.snapshot()
+    running = store.list_runs_by_status("running", limit=2000)
+    return {
+        "ts": utc_now(),
+        "app_started_at": APP_STARTED_AT,
+        "operation_busy": bool(snap["busy"]),
+        "operation_name": snap["operation"],
+        "operation_since": snap["since"],
+        "running_runs_count": len(running),
+        "running_run_ids": [str(r.get("run_id", "")) for r in running if r.get("run_id")],
+        "in_memory_running_count": manager.running_count(),
+        "startup_recovery": manager.startup_recovery_snapshot(),
+    }
 
 app = FastAPI(title="Slot Console API", version="0.1.0")
 app.add_middleware(
@@ -938,7 +1077,21 @@ def root() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "ts": utc_now()}
+    state = current_system_state()
+    return {
+        "ok": True,
+        "ts": state["ts"],
+        "app_started_at": state["app_started_at"],
+        "operation_busy": state["operation_busy"],
+        "running_runs_count": state["running_runs_count"],
+        "startup_recovery_count": state["startup_recovery"].get("recovered_count", 0),
+        "startup_terminated_pid_count": len(state["startup_recovery"].get("terminated_pids", [])),
+    }
+
+
+@app.get("/api/system-state")
+def system_state() -> dict[str, Any]:
+    return current_system_state()
 
 
 @app.get("/api/machines")
@@ -964,15 +1117,31 @@ def update_model_config(req: ModelConfigUpdateRequest) -> dict[str, Any]:
 
 @app.post("/api/runs")
 def create_run(req: RunCreateRequest) -> dict[str, Any]:
-    return manager.start_run(req)
+    existing = store.list_runs_by_status("running", limit=2)
+    if existing:
+        rid = str(existing[0].get("run_id", ""))
+        raise HTTPException(status_code=409, detail=f"run already active: {rid}")
+    if not ops.acquire("start_run"):
+        snap = ops.snapshot()
+        raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
+    try:
+        return manager.start_run(req)
+    finally:
+        ops.release()
 
 
 @app.post("/api/autotune")
 def auto_tune(req: AutoTuneRequest) -> dict[str, Any]:
-    running = [r for r in store.list_runs(limit=200) if r.get("status") == "running"]
+    running = store.list_runs_by_status("running", limit=2000)
     if running:
         raise HTTPException(status_code=409, detail="auto tune is blocked while runs are active")
-    return run_auto_tune(req)
+    if not ops.acquire("auto_tune"):
+        snap = ops.snapshot()
+        raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
+    try:
+        return run_auto_tune(req)
+    finally:
+        ops.release()
 
 
 @app.get("/api/runs")
@@ -1044,7 +1213,7 @@ def folder_bytes(path: Path) -> tuple[int, int]:
 @app.get("/api/cache/status")
 def cache_status() -> dict[str, Any]:
     total_bytes, file_count = folder_bytes(CACHE_ROOT)
-    running = [r for r in store.list_runs(limit=200) if r.get("status") == "running"]
+    running = store.list_runs_by_status("running", limit=2000)
     return {
         "cache_root": str(CACHE_ROOT),
         "total_bytes": total_bytes,
@@ -1056,25 +1225,31 @@ def cache_status() -> dict[str, Any]:
 
 @app.post("/api/cache/cleanup")
 def cache_cleanup(req: CacheCleanupRequest) -> dict[str, Any]:
-    running = [r for r in store.list_runs(limit=200) if r.get("status") == "running"]
+    running = store.list_runs_by_status("running", limit=2000)
     if running:
         return {"deleted_files": 0, "deleted_bytes": 0, "message": "cleanup blocked while runs are active"}
+    if not ops.acquire("cache_cleanup"):
+        snap = ops.snapshot()
+        raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
 
-    deleted_files = 0
-    deleted_bytes = 0
-    targets = sorted(
-        [p for p in CACHE_ROOT.rglob("*") if p.is_file()],
-        key=lambda p: p.stat().st_mtime,
-    )
-    max_delete = req.max_delete_bytes if req.max_delete_bytes > 0 else (10**18)
-    for file in targets:
-        size = file.stat().st_size
-        if deleted_bytes + size > max_delete:
-            break
-        file.unlink(missing_ok=True)
-        deleted_files += 1
-        deleted_bytes += size
-    return {"deleted_files": deleted_files, "deleted_bytes": deleted_bytes}
+    try:
+        deleted_files = 0
+        deleted_bytes = 0
+        targets = sorted(
+            [p for p in CACHE_ROOT.rglob("*") if p.is_file()],
+            key=lambda p: p.stat().st_mtime,
+        )
+        max_delete = req.max_delete_bytes if req.max_delete_bytes > 0 else (10**18)
+        for file in targets:
+            size = file.stat().st_size
+            if deleted_bytes + size > max_delete:
+                break
+            file.unlink(missing_ok=True)
+            deleted_files += 1
+            deleted_bytes += size
+        return {"deleted_files": deleted_files, "deleted_bytes": deleted_bytes}
+    finally:
+        ops.release()
 
 
 @app.post("/api/interpretations")

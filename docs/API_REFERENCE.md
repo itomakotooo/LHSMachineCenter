@@ -17,9 +17,25 @@ Response:
 ```json
 {
   "ok": true,
-  "ts": "2026-04-14T03:00:00.000000Z"
+  "ts": "2026-04-14T03:00:00.000000Z",
+  "app_started_at": "2026-04-14T02:58:49.000000Z",
+  "operation_busy": false,
+  "running_runs_count": 0,
+  "startup_recovery_count": 0,
+  "startup_terminated_pid_count": 0
 }
 ```
+
+### `GET /api/system-state`
+
+Returns detailed runtime safety state:
+
+- operation mutex snapshot (`operation_busy`, `operation_name`, `operation_since`)
+- running run count + ids
+- startup recovery result:
+  - recovered stale run ids
+  - terminated stale process pid list
+  - failed-to-terminate stale process pid list
 
 ## Machine and Model Metadata
 
@@ -88,6 +104,11 @@ Response:
 }
 ```
 
+Safety behavior:
+
+- returns `409` if another run is already active
+- returns `409` if system mutex is occupied by another write operation
+
 ### `GET /api/runs`
 
 List recent runs with summarized progress.
@@ -145,6 +166,7 @@ Response includes:
 Behavior:
 
 - blocked with `409` if there is an active run
+- blocked with `409` if system mutex is occupied by another write operation
 
 ## Versioned Reports
 
@@ -175,6 +197,10 @@ Notes:
 
 - cleanup is manual-only
 - cleanup is blocked while runs are active
+- if system mutex is occupied, endpoint returns `409`
+- frontend applies additional risk-tier confirmation before calling this endpoint:
+  - low risk: one confirm
+  - medium/high risk: confirm + token input (`DELETE`)
 
 ## Interpretation
 
@@ -198,4 +224,3 @@ Returns interpreted content plus:
 ### `GET /api/interpretations/{run_id}`
 
 Get latest interpretation for a run.
-

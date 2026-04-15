@@ -37,6 +37,7 @@ Stop:
 ## 3. Recommended Run Workflow
 
 1. Select machine and mode.
+   - hover/focus the `i` hint beside each field to view usage guidance
 2. Click `Run Auto Tune` first.
 3. Use returned recommended:
    - `Chunk Robot Count`
@@ -70,9 +71,25 @@ Safety:
 - cache path: `cache/chunks/`
 - cache cleanup is manual-only from UI
 - cleanup is blocked while runs are active
+- cleanup has risk-tier confirmation:
+  - low risk: one confirmation dialog
+  - medium/high risk: confirmation + token input (`DELETE`)
 - report assets are stored in `reports/` and intended for long-term retention
 
-## 6. Model Routing
+## 6. Safety Interlock and Recovery
+
+- UI layer:
+  - write actions are mutex-controlled to avoid conflicting clicks
+  - cache cleanup button is marked as dangerous and risk-highlighted
+- backend layer:
+  - write endpoints use an operation mutex (`start_run`, `auto_tune`, `cache_cleanup`)
+  - duplicate run start is hard-blocked
+- restart recovery:
+  - stale `running` rows are auto-marked `failed` at service startup
+  - system attempts to terminate stale worker processes using stored `process_pid`
+  - recovery summary is exposed via `/api/health` and `/api/system-state`
+
+## 7. Model Routing
 
 Providers:
 
@@ -86,7 +103,7 @@ Fallback:
 
 - if remote model fails or no key is set, system falls back to deterministic rule-based interpretation
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 ### UI opens but no data
 
@@ -102,12 +119,17 @@ Fallback:
 
 - active run exists; stop/cancel current run first
 
+### Cache cleanup not clickable
+
+- check `reclaimable_est` in cache panel; button is disabled when reclaimable bytes are zero
+- cleanup remains disabled while any run is active or system is busy
+
 ### No interpretation text
 
 - verify provider/model mapping and API key
 - check if fallback warning is returned from `/api/interpretations`
 
-## 8. Local Runtime Files
+## 9. Local Runtime Files
 
 Expected local runtime files under `state/console/`:
 
@@ -117,4 +139,3 @@ Expected local runtime files under `state/console/`:
 - `model_config.json`
 
 These are local operational artifacts and should not contain in-repo report truth.
-

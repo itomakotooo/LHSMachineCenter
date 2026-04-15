@@ -1,20 +1,343 @@
+const I18N = {
+  zh: {
+    appTitle: "老虎机控制台",
+    subtitle: "机台调试、指标分析与版本管理",
+    languageLabel: "语言",
+    healthChecking: "检查中...",
+    healthOk: "API 正常",
+    healthFail: "API 异常",
+    tabDebug: "调试机台",
+    tabManage: "全面管理",
+    panelRunConfig: "运行参数",
+    panelModelConfig: "模型配置",
+    panelRunControl: "运行控制",
+    panelProgress: "当前运行进度",
+    panelKpi: "关键指标",
+    panelCharts: "图形分析",
+    panelAssessment: "规则评估",
+    panelInterpretation: "模型解读",
+    panelEvents: "运行事件",
+    panelMachineCatalog: "机台目录",
+    panelRunHistory: "运行历史",
+    panelReportVersions: "报告版本",
+    panelCache: "Chunk 缓存",
+    panelSystemState: "系统状态与恢复",
+    labelMachine: "机台",
+    labelMode: "RTP Mode",
+    labelCiTarget: "目标 CI 半宽 (pp)",
+    labelChunkSpins: "每 Chunk Spin 次数",
+    labelRobotCount: "每 Chunk 机器人数",
+    labelConcurrency: "批并发数",
+    labelMaxChunks: "最大 Chunk 数",
+    labelTimeout: "单请求超时 (秒)",
+    labelBankSession: "破产探测回合数",
+    labelBankMultipliers: "资金倍数梯度",
+    labelProvider: "模型供应商",
+    labelModel: "模型",
+    labelApiKey: "API Key",
+    placeholderApiKey: "粘贴一个 API Key",
+    btnSaveModel: "保存模型配置",
+    btnStart: "开始运行",
+    btnStop: "停止运行",
+    btnRefresh: "刷新状态",
+    btnAutoTune: "一键压测并调参",
+    btnAutoTuneBusy: "压测中...",
+    btnInterpret: "生成解读",
+    btnCacheRefresh: "刷新缓存状态",
+    btnCacheCleanup: "清理缓存",
+    btnLoadRun: "载入",
+    paramGuideTitle: "参数说明（新手）",
+    helpMachine: "机台：选择目标机台（建议先固定单机台做基线）。",
+    helpMode: "RTP Mode：同机台不同数值模式，报告必须按 mode 分开对比。",
+    helpCiTarget: "目标 CI 半宽：统计置信精度目标，越小越准，耗时越长。",
+    helpChunkSpins: "每 Chunk Spin 次数：单次采样请求中每个机器人执行的转动次数。",
+    helpRobotCount: "每 Chunk 机器人数：单次请求同时模拟的机器人数量。",
+    helpConcurrency: "批并发数：同一轮并发发送多少个采样请求。",
+    helpMaxChunks: "最大 Chunk 数：达到后强制停止，防止无限采样。",
+    helpTimeout: "单请求超时：网络或服务慢时的超时保护。",
+    helpBankSession: "破产探测回合数：用于估算会话期内破产率。",
+    helpBankMultipliers: "资金倍数梯度：例如 100,200,500，对应不同起始资金强度。",
+    helpProvider: "供应商：选择解读调用的模型厂商。",
+    helpModel: "模型：选择具体解读模型，必须属于当前供应商。",
+    helpApiKey: "API Key：仅用于模型解读调用；留空则回退规则解读。",
+    helpIconLabel: "参数说明",
+    kpiRtp: "RTP %",
+    kpiCi: "CI 半宽",
+    kpiSpins: "总 Spins",
+    kpiZero: "空转率",
+    kpiTail: "尾部依赖度",
+    kpiGuide: "规则状态",
+    chartCiTitle: "CI 半宽趋势",
+    chartRtpTitle: "RTP 趋势",
+    chartBucketTitle: "倍率分桶占比",
+    chartBankTitle: "破产曲线",
+    chartCiLabel: "CI 半宽",
+    chartRtpLabel: "RTP %",
+    chartBucketLabel: "Spin 占比 %",
+    chartBankLabel: "破产率 %",
+    thRunId: "Run ID",
+    thStatus: "状态",
+    thMachine: "机台",
+    thMode: "Mode",
+    thCreated: "创建时间",
+    thAction: "操作",
+    thVersion: "版本",
+    thRun: "Run",
+    thRtp: "RTP",
+    thQuality: "质量",
+    noRun: "未选择运行。",
+    noReport: "暂无报告。",
+    noInterpret: "暂无解读。",
+    noEvents: "暂无事件。",
+    noAutoTune: "尚未执行自动调优。",
+    noMachines: "暂无机台配置。",
+    noRuns: "暂无运行记录。",
+    noVersions: "暂无版本记录。",
+    assessmentQuality: "数据质量",
+    assessmentVolatility: "波动性分类",
+    assessmentArchetype: "体验类型",
+    assessmentRecoveryGap: "恢复缺口",
+    assessmentTail: "尾部依赖度",
+    assessmentRule: "规则对比",
+    assessmentAlerts: "告警",
+    assessmentActions: "建议动作",
+    cacheWarnRunning: "有运行任务进行中，缓存清理已被阻止。",
+    cacheWarnIdle: "清理为手动触发。确认无活动运行后再执行缓存清理。",
+    cacheNoReclaim: "当前没有可回收的缓存文件。",
+    cacheRiskLine: "清理风险等级={tier}，预计可回收={reclaimable}",
+    cacheRiskNoneHint: "风险说明：当前不建议执行清理（无可回收空间）。",
+    cacheRiskLowHint: "风险说明：低风险，建议在确认无运行任务后执行。",
+    cacheRiskMediumHint: "风险说明：中风险，删除量较大，执行前应确认当前分析任务全部完成。",
+    cacheRiskHighHint: "风险说明：高风险，删除量非常大，建议先导出必要资料并由负责人确认。",
+    riskNone: "无",
+    riskLow: "低",
+    riskMedium: "中",
+    riskHigh: "高",
+    confirmCleanupLow: "将执行缓存清理（低风险）。预计删除：{reclaimable}。是否继续？",
+    confirmCleanupMedium: "将执行缓存清理（中风险）。预计删除：{reclaimable}。是否继续？",
+    confirmCleanupHigh: "将执行缓存清理（高风险）。预计删除：{reclaimable}。是否继续？",
+    confirmCleanupToken: "DELETE",
+    confirmCleanupTokenPrompt: "当前为{tier}风险。请输入确认口令：{token}",
+    confirmCleanupTokenMismatch: "确认口令不匹配，已取消清理。",
+    confirmCleanup: "警告：将删除当前可回收的本地 Chunk 缓存文件，是否继续？",
+    statusRunning: "运行中",
+    statusCompleted: "已完成",
+    statusFailed: "失败",
+    statusCancelled: "已取消",
+    statusUnknown: "未知",
+    warnModelMismatch: "所选模型不属于当前供应商。",
+    warnApiKeyEmpty: "{provider} API Key 为空，解读会回退到规则模式。",
+    warnRecovered: "检测到服务重启后恢复了 {count} 个遗留 running 任务（已标记为 failed）。",
+    warnRecoveredPidRisk: "检测到 {count} 个遗留子进程未能自动终止，请在服务器上确认是否仍有分析进程残留。",
+    warnSystemBusy: "系统正在执行 {op}，写操作已互斥保护。",
+    warnRunFailed: "运行失败：{msg}",
+    warnRunCancelled: "运行已取消。",
+    warnAutoTuneLowSuccess: "自动调优最佳成功率仅 {rate}，建议降低并发。",
+    systemMeta:
+      "服务启动时间={startedAt}\\n当前系统操作={operation}\\n操作开始时间={opSince}\\n运行中任务数={runningCount}\\n启动恢复数={recovered}\\n启动已终止遗留进程数={terminatedPids}\\n遗留进程终止失败数={failedPids}",
+    safetyTipBase:
+      "安全策略：按钮互斥 + 后端操作互斥；服务重启后会自动修正遗留 running 状态，避免出现假运行。",
+    safetyTipBusy: "当前有进行中的系统操作：{op}。",
+  },
+  en: {
+    appTitle: "Slot Console",
+    subtitle: "Machine debugging, metrics analysis, and version management",
+    languageLabel: "Language",
+    healthChecking: "Checking...",
+    healthOk: "API OK",
+    healthFail: "API ERROR",
+    tabDebug: "Machine Debug",
+    tabManage: "Fleet Management",
+    panelRunConfig: "Run Parameters",
+    panelModelConfig: "Model Config",
+    panelRunControl: "Run Control",
+    panelProgress: "Current Run Progress",
+    panelKpi: "Key Indicators",
+    panelCharts: "Visual Analytics",
+    panelAssessment: "Guideline Assessment",
+    panelInterpretation: "Model Interpretation",
+    panelEvents: "Run Events",
+    panelMachineCatalog: "Machine Catalog",
+    panelRunHistory: "Run History",
+    panelReportVersions: "Report Versions",
+    panelCache: "Chunk Cache",
+    panelSystemState: "System State & Recovery",
+    labelMachine: "Machine",
+    labelMode: "RTP Mode",
+    labelCiTarget: "Target CI Half-width (pp)",
+    labelChunkSpins: "Chunk Spin Times",
+    labelRobotCount: "Chunk Robot Count",
+    labelConcurrency: "Batch Concurrency",
+    labelMaxChunks: "Max Chunks",
+    labelTimeout: "Request Timeout (sec)",
+    labelBankSession: "Bankruptcy Session Spins",
+    labelBankMultipliers: "Bankroll Multipliers",
+    labelProvider: "Provider",
+    labelModel: "Model",
+    labelApiKey: "API Key",
+    placeholderApiKey: "Paste one API key",
+    btnSaveModel: "Save Model Config",
+    btnStart: "Start Run",
+    btnStop: "Stop Run",
+    btnRefresh: "Refresh",
+    btnAutoTune: "Auto Tune Parallelism",
+    btnAutoTuneBusy: "Auto Tuning...",
+    btnInterpret: "Generate Interpretation",
+    btnCacheRefresh: "Refresh Cache",
+    btnCacheCleanup: "Cleanup Cache",
+    btnLoadRun: "Load",
+    paramGuideTitle: "Parameter Guide (for newcomers)",
+    helpMachine: "Machine: select target machine (use one machine first for baseline).",
+    helpMode: "RTP Mode: treat each mode as a separate numeric profile when comparing reports.",
+    helpCiTarget: "Target CI half-width: smaller gives higher confidence but takes longer.",
+    helpChunkSpins: "Chunk Spin Times: spins per robot in one sample request.",
+    helpRobotCount: "Chunk Robot Count: robots simulated per sample request.",
+    helpConcurrency: "Batch Concurrency: number of sample requests sent in parallel per round.",
+    helpMaxChunks: "Max Chunks: hard stop to prevent unbounded sampling.",
+    helpTimeout: "Request Timeout: per-request network timeout protection.",
+    helpBankSession: "Bankruptcy Session Spins: session horizon for bankruptcy-rate probing.",
+    helpBankMultipliers: "Bankroll Multipliers: e.g. 100,200,500 for different starting bankroll levels.",
+    helpProvider: "Provider: selects the vendor for interpretation calls.",
+    helpModel: "Model: concrete interpretation model; must belong to current provider.",
+    helpApiKey: "API key: used only for interpretation calls; empty key falls back to rule-based text.",
+    helpIconLabel: "Parameter help",
+    kpiRtp: "RTP %",
+    kpiCi: "CI Half-width",
+    kpiSpins: "Total Spins",
+    kpiZero: "Zero Win Rate",
+    kpiTail: "Tail Dependency",
+    kpiGuide: "Guideline Status",
+    chartCiTitle: "CI Half-width Trend",
+    chartRtpTitle: "RTP Trend",
+    chartBucketTitle: "Multiplier Bucket Rate",
+    chartBankTitle: "Bankruptcy Curve",
+    chartCiLabel: "CI Half-width",
+    chartRtpLabel: "RTP %",
+    chartBucketLabel: "Spin Rate %",
+    chartBankLabel: "Bankruptcy Rate %",
+    thRunId: "Run ID",
+    thStatus: "Status",
+    thMachine: "Machine",
+    thMode: "Mode",
+    thCreated: "Created At",
+    thAction: "Action",
+    thVersion: "Version",
+    thRun: "Run",
+    thRtp: "RTP",
+    thQuality: "Quality",
+    noRun: "No run selected.",
+    noReport: "No report yet.",
+    noInterpret: "No interpretation yet.",
+    noEvents: "No events yet.",
+    noAutoTune: "No auto tune run yet.",
+    noMachines: "No machine config found.",
+    noRuns: "No runs yet.",
+    noVersions: "No versions yet.",
+    assessmentQuality: "quality_label",
+    assessmentVolatility: "volatility_class",
+    assessmentArchetype: "experience_archetype",
+    assessmentRecoveryGap: "recovery_gap",
+    assessmentTail: "tail_dependency",
+    assessmentRule: "guideline_compare",
+    assessmentAlerts: "alerts",
+    assessmentActions: "actions",
+    cacheWarnRunning: "Cleanup is blocked while runs are active.",
+    cacheWarnIdle: "Cleanup is manual only. Confirm no active run before cleanup.",
+    cacheNoReclaim: "No reclaimable cache files at the moment.",
+    cacheRiskLine: "Cleanup risk={tier}, reclaimable={reclaimable}",
+    cacheRiskNoneHint: "Risk note: cleanup is not needed now (nothing reclaimable).",
+    cacheRiskLowHint: "Risk note: low risk. Run cleanup after confirming no active runs.",
+    cacheRiskMediumHint: "Risk note: medium risk. Large deletion volume; ensure all analyses are finished first.",
+    cacheRiskHighHint: "Risk note: high risk. Very large deletion volume; require owner confirmation first.",
+    riskNone: "none",
+    riskLow: "low",
+    riskMedium: "medium",
+    riskHigh: "high",
+    confirmCleanupLow: "Run cache cleanup (low risk). Estimated deletion: {reclaimable}. Continue?",
+    confirmCleanupMedium: "Run cache cleanup (medium risk). Estimated deletion: {reclaimable}. Continue?",
+    confirmCleanupHigh: "Run cache cleanup (high risk). Estimated deletion: {reclaimable}. Continue?",
+    confirmCleanupToken: "DELETE",
+    confirmCleanupTokenPrompt: "Current risk is {tier}. Type confirmation token: {token}",
+    confirmCleanupTokenMismatch: "Confirmation token mismatch. Cleanup canceled.",
+    confirmCleanup: "WARNING: this will delete local reclaimable chunk files. Continue?",
+    statusRunning: "running",
+    statusCompleted: "completed",
+    statusFailed: "failed",
+    statusCancelled: "cancelled",
+    statusUnknown: "unknown",
+    warnModelMismatch: "Selected model does not belong to current provider.",
+    warnApiKeyEmpty: "{provider} API key is empty. Interpretation will fallback to rule-based.",
+    warnRecovered: "Recovered {count} stale running tasks after service restart (marked as failed).",
+    warnRecoveredPidRisk: "{count} stale worker process(es) could not be terminated automatically; please verify server-side leftovers.",
+    warnSystemBusy: "System is executing {op}; write operations are mutex-protected.",
+    warnRunFailed: "Run failed: {msg}",
+    warnRunCancelled: "Run cancelled.",
+    warnAutoTuneLowSuccess: "Best auto-tune success rate is only {rate}; consider lower concurrency.",
+    systemMeta:
+      "app_started_at={startedAt}\\noperation={operation}\\noperation_since={opSince}\\nrunning_runs={runningCount}\\nstartup_recovered={recovered}\\nstartup_terminated_pids={terminatedPids}\\nstartup_failed_to_terminate_pids={failedPids}",
+    safetyTipBase:
+      "Safety policy: UI mutex + backend operation mutex. On service restart, stale running states are auto-corrected.",
+    safetyTipBusy: "Current system operation in progress: {op}.",
+  },
+};
+
 const state = {
+  lang: localStorage.getItem("slot_console_lang") || "zh",
   currentRunId: "",
+  currentRunStatus: "",
   machines: [],
-  modes: [],
-  models: [],
+  runs: [],
   modelMeta: {},
+  latestSummary: null,
+  cacheStatus: null,
+  systemState: null,
   timer: null,
+  autoTuneRunning: false,
+  busyActions: new Set(),
   ciChart: null,
   rtpChart: null,
   bucketChart: null,
   bankChart: null,
-  latestSummary: null,
-  autoTuneRunning: false,
 };
 
-function byId(id) {
-  return document.getElementById(id);
+const byId = (id) => document.getElementById(id);
+const fmt = (k, vars = {}) =>
+  Object.keys(vars).reduce((s, n) => s.replaceAll(`{${n}}`, String(vars[n])), (I18N[state.lang] || I18N.en)[k] || k);
+
+function applyI18n() {
+  if (!I18N[state.lang]) state.lang = "zh";
+  localStorage.setItem("slot_console_lang", state.lang);
+  document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en";
+  document.title = fmt("appTitle");
+  byId("langSelect").value = state.lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = fmt(el.dataset.i18n)));
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => (el.placeholder = fmt(el.dataset.i18nPlaceholder)));
+  applyFieldHelpHints();
+  byId("autotuneBtn").textContent = state.autoTuneRunning ? fmt("btnAutoTuneBusy") : fmt("btnAutoTune");
+  setSystemStatePanel();
+  renderCacheRiskMeta();
+  updateChartLabels();
+  if (byId("startBtn")) updateActionStates();
+}
+
+function applyFieldHelpHints() {
+  document.querySelectorAll("[data-help-key]").forEach((el) => {
+    const key = el.dataset.helpKey || "";
+    const txt = fmt(key);
+    el.title = txt;
+    el.setAttribute("aria-label", `${fmt("helpIconLabel")}: ${txt}`);
+  });
+}
+
+function switchTab(tab) {
+  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".tab-page").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
+}
+
+function setHealth(ok, suffix = "") {
+  const el = byId("health");
+  el.textContent = `${ok ? fmt("healthOk") : fmt("healthFail")} ${suffix}`.trim();
+  el.style.color = ok ? "#0f766e" : "#b91c1c";
 }
 
 async function apiGet(url) {
@@ -24,58 +347,176 @@ async function apiGet(url) {
 }
 
 async function apiPost(url, payload) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload || {}),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${url}: ${res.status} ${text}`);
-  }
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload || {}) });
+  if (!res.ok) throw new Error(`${url}: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
-function setHealth(text, ok = true) {
-  const el = byId("health");
-  el.textContent = text;
-  el.style.color = ok ? "#0f766e" : "#b91c1c";
+const fNum = (v, d = 3) => (v === null || v === undefined || Number.isNaN(Number(v)) ? "N/A" : Number(v).toFixed(d));
+const fInt = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? "N/A" : new Intl.NumberFormat("en-US").format(Number(v)));
+const fRate = (v, d = 2) => (v === null || v === undefined || Number.isNaN(Number(v)) ? "N/A" : `${(Number(v) * 100).toFixed(d)}%`);
+
+function statusText(s) {
+  const k = `status${String(s || "unknown").charAt(0).toUpperCase()}${String(s || "unknown").slice(1)}`;
+  return fmt(k in I18N[state.lang] ? k : "statusUnknown");
 }
 
-function setMeta(text) {
-  byId("runMeta").textContent = text;
+function setSystemStatePanel() {
+  const elMeta = byId("systemStateMeta");
+  const elTips = byId("safetyTips");
+  if (!elMeta || !elTips) return;
+  const s = state.systemState || {};
+  const startup = s.startup_recovery || {};
+  const opName = s.operation_busy ? s.operation_name || "unknown" : "idle";
+  const opSince = s.operation_busy ? s.operation_since || "-" : "-";
+  const terminatedPids = Number(Array.isArray(startup.terminated_pids) ? startup.terminated_pids.length : 0);
+  const failedPids = Number(Array.isArray(startup.failed_to_terminate_pids) ? startup.failed_to_terminate_pids.length : 0);
+  elMeta.textContent = fmt("systemMeta", {
+    startedAt: s.app_started_at || "-",
+    operation: opName,
+    opSince,
+    runningCount: s.running_runs_count ?? 0,
+    recovered: startup.recovered_count ?? 0,
+    terminatedPids,
+    failedPids,
+  });
+  const tips = [fmt("safetyTipBase")];
+  if (s.operation_busy) tips.push(fmt("safetyTipBusy", { op: opName }));
+  if (failedPids > 0) tips.push(fmt("warnRecoveredPidRisk", { count: failedPids }));
+  elTips.textContent = tips.join("\n");
+}
+
+function collectSystemWarnings() {
+  const out = [];
+  const startup = state.systemState?.startup_recovery || {};
+  const recovered = Number(startup.recovered_count || 0);
+  const failedPids = Number(Array.isArray(startup.failed_to_terminate_pids) ? startup.failed_to_terminate_pids.length : 0);
+  if (recovered > 0) out.push(fmt("warnRecovered", { count: recovered }));
+  if (failedPids > 0) out.push(fmt("warnRecoveredPidRisk", { count: failedPids }));
+  if (state.systemState?.operation_busy) out.push(fmt("warnSystemBusy", { op: state.systemState.operation_name || "unknown" }));
+  return out;
+}
+
+function fBytes(value) {
+  const n = Number(value || 0);
+  if (n <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let idx = 0;
+  let num = n;
+  while (num >= 1024 && idx < units.length - 1) {
+    num /= 1024;
+    idx += 1;
+  }
+  return `${num.toFixed(idx === 0 ? 0 : 2)} ${units[idx]}`;
+}
+
+function cacheRiskTier(reclaimableBytes) {
+  const b = Number(reclaimableBytes || 0);
+  if (b <= 0) return "none";
+  if (b >= 2 * 1024 * 1024 * 1024) return "high";
+  if (b >= 512 * 1024 * 1024) return "medium";
+  return "low";
+}
+
+function cacheRiskView(cachedStatus) {
+  const c = cachedStatus || {};
+  const bytes = Number(c.reclaimable_bytes_estimate || 0);
+  const tier = cacheRiskTier(bytes);
+  const tierKey = tier === "high" ? "riskHigh" : tier === "medium" ? "riskMedium" : tier === "low" ? "riskLow" : "riskNone";
+  const tierLabel = fmt(tierKey);
+  const hintKey = tier === "high" ? "cacheRiskHighHint" : tier === "medium" ? "cacheRiskMediumHint" : tier === "low" ? "cacheRiskLowHint" : "cacheRiskNoneHint";
+  return {
+    bytes,
+    tier,
+    tierLabel,
+    hint: fmt(hintKey),
+  };
+}
+
+function renderCacheRiskMeta() {
+  const el = byId("cacheRiskMeta");
+  if (!el) return;
+  const runningCount = Number(state.cacheStatus?.running_runs || 0);
+  const risk = cacheRiskView(state.cacheStatus);
+  const lines = [fmt("cacheRiskLine", { tier: risk.tierLabel, reclaimable: fBytes(risk.bytes) }), risk.hint];
+  if (runningCount > 0) lines.push(fmt("cacheWarnRunning"));
+  el.textContent = lines.join("\n");
+}
+
+async function confirmCacheCleanup() {
+  if (!state.cacheStatus) await refreshCache();
+  const runningCount = Number(state.cacheStatus?.running_runs || 0);
+  if (runningCount > 0) {
+    alert(fmt("cacheWarnRunning"));
+    return false;
+  }
+  const risk = cacheRiskView(state.cacheStatus);
+  if (risk.tier === "none") {
+    alert(fmt("cacheNoReclaim"));
+    return false;
+  }
+  const confirmKey = risk.tier === "high" ? "confirmCleanupHigh" : risk.tier === "medium" ? "confirmCleanupMedium" : "confirmCleanupLow";
+  if (!window.confirm(fmt(confirmKey, { reclaimable: fBytes(risk.bytes) }))) return false;
+  if (risk.tier === "medium" || risk.tier === "high") {
+    const token = fmt("confirmCleanupToken");
+    const typed = window.prompt(fmt("confirmCleanupTokenPrompt", { token, tier: risk.tierLabel }), "");
+    if ((typed || "").trim() !== token) {
+      alert(fmt("confirmCleanupTokenMismatch"));
+      return false;
+    }
+  }
+  return true;
+}
+
+async function refreshSystemState() {
+  state.systemState = await apiGet("/api/system-state");
+  setSystemStatePanel();
+  if (!state.currentRunId) {
+    const warnings = [...modelWarnings(), ...collectSystemWarnings()];
+    setGlobalWarning(warnings);
+  }
+}
+
+function updateActionStates() {
+  const localBusy = state.busyActions.size > 0 || state.autoTuneRunning;
+  const serverBusy = Boolean(state.systemState?.operation_busy);
+  const anyRunRunning = state.runs.some((r) => String(r.status).toLowerCase() === "running");
+  const hasCurrent = Boolean(state.currentRunId);
+  const currentStatus = String(state.currentRunStatus || "").toLowerCase();
+  const reclaimable = Number(state.cacheStatus?.reclaimable_bytes_estimate ?? 0);
+  const tier = cacheRiskTier(reclaimable);
+
+  byId("saveModelCfgBtn").disabled = localBusy || serverBusy;
+  byId("startBtn").disabled = localBusy || serverBusy || anyRunRunning;
+  byId("autotuneBtn").disabled = localBusy || serverBusy || anyRunRunning;
+  byId("stopBtn").disabled = localBusy || serverBusy || !hasCurrent || currentStatus !== "running";
+  byId("refreshBtn").disabled = localBusy || !hasCurrent;
+  byId("interpretBtn").disabled = localBusy || serverBusy || !hasCurrent || currentStatus !== "completed";
+  byId("cacheRefreshBtn").disabled = localBusy;
+  const runningCount = Number(state.cacheStatus?.running_runs ?? state.systemState?.running_runs_count ?? 0);
+  byId("cacheCleanupBtn").disabled = localBusy || serverBusy || runningCount > 0 || reclaimable <= 0;
+  byId("cacheCleanupBtn").classList.toggle("danger-high", tier === "high");
+  byId("autotuneBtn").textContent = state.autoTuneRunning ? fmt("btnAutoTuneBusy") : fmt("btnAutoTune");
+}
+
+async function withAction(name, fn) {
+  if (state.busyActions.size > 0) return;
+  state.busyActions.add(name);
+  updateActionStates();
+  try {
+    return await fn();
+  } finally {
+    state.busyActions.delete(name);
+    updateActionStates();
+  }
 }
 
 function setGlobalWarning(lines) {
   const el = byId("globalWarning");
-  const cleaned = (lines || []).filter((x) => String(x || "").trim().length > 0);
-  if (!cleaned.length) {
-    el.textContent = "";
-    el.classList.add("hidden");
-    return;
-  }
-  el.textContent = cleaned.join(" | ");
+  const arr = (lines || []).filter(Boolean);
+  if (!arr.length) return el.classList.add("hidden"), (el.textContent = "");
+  el.textContent = arr.join(" | ");
   el.classList.remove("hidden");
-}
-
-function setProgress(rate) {
-  const pct = Math.max(0, Math.min(100, rate));
-  byId("progressBar").style.width = `${pct}%`;
-}
-
-function formatNum(v, d = 4) {
-  if (v === null || v === undefined || Number.isNaN(v)) return "N/A";
-  return Number(v).toFixed(d);
-}
-
-function formatInt(v) {
-  if (v === null || v === undefined || Number.isNaN(v)) return "N/A";
-  return new Intl.NumberFormat("en-US").format(Number(v));
-}
-
-function formatRatePct(rate, d = 2) {
-  if (rate === null || rate === undefined || Number.isNaN(rate)) return "N/A";
-  return `${(Number(rate) * 100).toFixed(d)}%`;
 }
 
 function setKpi(id, text, tone = "neutral") {
@@ -84,16 +525,17 @@ function setKpi(id, text, tone = "neutral") {
   el.dataset.tone = tone;
 }
 
-function resetKpis() {
+function clearSummaryPanels() {
+  byId("assessment").textContent = fmt("noReport");
+  byId("interpretationText").textContent = fmt("noInterpret");
+  byId("eventsText").textContent = fmt("noEvents");
+  if (!state.autoTuneRunning) byId("autotuneMeta").textContent = fmt("noAutoTune");
   setKpi("kpiRtp", "N/A");
   setKpi("kpiCi", "N/A");
   setKpi("kpiSpins", "N/A");
   setKpi("kpiZero", "N/A");
   setKpi("kpiTail", "N/A");
   setKpi("kpiGuide", "N/A");
-}
-
-function clearDistributionCharts() {
   if (state.bucketChart) {
     state.bucketChart.data.labels = [];
     state.bucketChart.data.datasets[0].data = [];
@@ -106,418 +548,139 @@ function clearDistributionCharts() {
   }
 }
 
-function clearSummaryPanels() {
-  state.latestSummary = null;
-  byId("assessment").textContent = "No report yet.";
-  resetKpis();
-  clearDistributionCharts();
-}
-
 function buildCharts() {
-  const ciCtx = byId("ciChart").getContext("2d");
-  const rtpCtx = byId("rtpChart").getContext("2d");
-  const bucketCtx = byId("bucketChart").getContext("2d");
-  const bankCtx = byId("bankChart").getContext("2d");
+  const mk = (ctx, type, label, color, bg) =>
+    new Chart(ctx, {
+      type,
+      data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: bg, tension: 0.2, pointRadius: 2, borderWidth: 1 }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: type !== "bar" } }, scales: { y: { beginAtZero: type !== "line" } } },
+    });
+  state.ciChart = mk(byId("ciChart").getContext("2d"), "line", fmt("chartCiLabel"), "#0f766e", "rgba(13,148,136,0.15)");
+  state.rtpChart = mk(byId("rtpChart").getContext("2d"), "line", fmt("chartRtpLabel"), "#2563eb", "rgba(37,99,235,0.15)");
+  state.bucketChart = mk(byId("bucketChart").getContext("2d"), "bar", fmt("chartBucketLabel"), "#0f766e", "rgba(13,148,136,0.35)");
+  state.bankChart = mk(byId("bankChart").getContext("2d"), "line", fmt("chartBankLabel"), "#f97316", "rgba(249,115,22,0.2)");
+}
 
-  state.ciChart = new Chart(ciCtx, {
-    type: "line",
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: "CI Half-width",
-          data: [],
-          borderColor: "#0f766e",
-          backgroundColor: "rgba(13,148,136,0.15)",
-          tension: 0.2,
-          pointRadius: 2,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      scales: {
-        y: { beginAtZero: true, title: { display: true, text: "pp" } },
-      },
-    },
-  });
+function updateChartLabels() {
+  if (state.ciChart) state.ciChart.data.datasets[0].label = fmt("chartCiLabel");
+  if (state.rtpChart) state.rtpChart.data.datasets[0].label = fmt("chartRtpLabel");
+  if (state.bucketChart) state.bucketChart.data.datasets[0].label = fmt("chartBucketLabel");
+  if (state.bankChart) state.bankChart.data.datasets[0].label = fmt("chartBankLabel");
+  state.ciChart?.update();
+  state.rtpChart?.update();
+  state.bucketChart?.update();
+  state.bankChart?.update();
+}
 
-  state.rtpChart = new Chart(rtpCtx, {
-    type: "line",
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: "RTP %",
-          data: [],
-          borderColor: "#2563eb",
-          backgroundColor: "rgba(37,99,235,0.15)",
-          tension: 0.2,
-          pointRadius: 2,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      scales: {
-        y: { beginAtZero: false, title: { display: true, text: "%" } },
-      },
-    },
-  });
-
-  state.bucketChart = new Chart(bucketCtx, {
-    type: "bar",
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: "Spin Rate %",
-          data: [],
-          backgroundColor: "#0d9488",
-          borderColor: "#0f766e",
-          borderWidth: 1,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: true, title: { display: true, text: "%" } },
-      },
-    },
-  });
-
-  state.bankChart = new Chart(bankCtx, {
-    type: "line",
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: "Bankruptcy Rate %",
-          data: [],
-          borderColor: "#f97316",
-          backgroundColor: "rgba(249,115,22,0.18)",
-          tension: 0.25,
-          pointRadius: 3,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      scales: {
-        y: { beginAtZero: true, title: { display: true, text: "%" } },
-      },
-    },
+function renderMachineCatalog() {
+  const wrap = byId("machineCatalog");
+  wrap.innerHTML = "";
+  if (!state.machines.length) return (wrap.textContent = fmt("noMachines"));
+  state.machines.forEach((m) => {
+    const d = document.createElement("div");
+    d.className = "catalog-item";
+    d.innerHTML = `<div class="catalog-title">${m.machine}</div><div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`;
+    wrap.appendChild(d);
   });
 }
 
-function updateCharts(events) {
-  const chunk = events.filter((e) => e.event === "chunk_progress");
-  const labels = chunk.map((e) => String(e.chunk_index));
-  const ci = chunk.map((e) => e.current_halfwidth_pp ?? null);
-  const rtp = chunk.map((e) => e.current_rtp_pct ?? null);
-  state.ciChart.data.labels = labels;
-  state.ciChart.data.datasets[0].data = ci;
-  state.ciChart.update();
-  state.rtpChart.data.labels = labels;
-  state.rtpChart.data.datasets[0].data = rtp;
-  state.rtpChart.update();
-}
-
-function updateEvents(events) {
-  const lines = events.slice(-50).map((e) => JSON.stringify(e));
-  byId("eventsText").textContent = lines.join("\n");
-}
-
-function updateDistributionCharts(summary) {
-  const buckets = summary?.player_impact?.multiplier_profile?.buckets || [];
-  const bucketLabels = buckets.map((b) => String(b.bucket || ""));
-  const bucketRates = buckets.map((b) => {
-    const value = Number(b.spin_rate);
-    if (!Number.isFinite(value)) return null;
-    return value <= 1 ? value * 100 : value;
+function renderRunHistory() {
+  const body = byId("runListTable").querySelector("tbody");
+  body.innerHTML = "";
+  if (!state.runs.length) return (body.innerHTML = `<tr><td colspan="6">${fmt("noRuns")}</td></tr>`);
+  state.runs.forEach((r) => {
+    const tr = document.createElement("tr");
+    if (r.run_id === state.currentRunId) tr.classList.add("active-row");
+    tr.innerHTML = `<td>${r.run_id}</td><td>${statusText(r.status)}</td><td>${r.machine}</td><td>${r.mode}</td><td>${r.created_at || ""}</td><td><button class="load-run-btn" data-id="${r.run_id}">${fmt("btnLoadRun")}</button></td>`;
+    body.appendChild(tr);
   });
-  state.bucketChart.data.labels = bucketLabels;
-  state.bucketChart.data.datasets[0].data = bucketRates;
-  state.bucketChart.update();
-
-  const bank = summary?.player_impact?.bankruptcy_probe || [];
-  const bankLabels = bank.map((b) => `x${b.bankroll_multiplier}`);
-  const bankRates = bank.map((b) => {
-    const value = Number(b.bankruptcy_rate);
-    if (!Number.isFinite(value)) return null;
-    return value <= 1 ? value * 100 : value;
+  body.querySelectorAll(".load-run-btn").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (state.busyActions.size > 0) return;
+      state.currentRunId = b.dataset.id;
+      renderRunHistory();
+      switchTab("debug");
+      await refreshCurrentRun();
+    })
+  );
+  body.querySelectorAll(".load-run-btn").forEach((b) => {
+    b.disabled = state.busyActions.size > 0;
   });
-  state.bankChart.data.labels = bankLabels;
-  state.bankChart.data.datasets[0].data = bankRates;
-  state.bankChart.update();
 }
 
-function updateLiveKpis(latest) {
-  setKpi("kpiRtp", latest?.current_rtp_pct != null ? `${formatNum(latest.current_rtp_pct, 3)}%` : "N/A");
-  setKpi("kpiCi", latest?.current_halfwidth_pp != null ? formatNum(latest.current_halfwidth_pp, 3) : "N/A");
-  setKpi("kpiSpins", latest?.total_spins != null ? formatInt(latest.total_spins) : "N/A");
-  if (!state.latestSummary) {
-    setKpi("kpiZero", "N/A");
-    setKpi("kpiTail", "N/A");
-    setKpi("kpiGuide", "N/A");
-  }
-}
-
-function updateSummaryKpis(summary) {
-  const rtpPoint = summary?.rtp?.point_pct;
-  const sampling = summary?.sampling || {};
-  const ciInterval = summary?.rtp?.ci95_interval_pct;
-  let achievedHalfwidth = sampling?.achieved_halfwidth_pp;
-  if (
-    achievedHalfwidth == null &&
-    Array.isArray(ciInterval) &&
-    ciInterval.length === 2 &&
-    Number.isFinite(Number(ciInterval[0])) &&
-    Number.isFinite(Number(ciInterval[1]))
-  ) {
-    achievedHalfwidth = Math.abs(Number(ciInterval[1]) - Number(ciInterval[0])) / 2;
-  }
-  const spins = sampling?.total_spins;
-  const zeroRate = summary?.player_impact?.hit_and_payout?.zero_win_rate;
-  const tailDep = summary?.guideline_assessment?.derived_metrics?.tail_dependency;
-  const guidelineStatus =
-    summary?.guideline_comparison?.overall_status || summary?.guideline_assessment?.data_quality?.quality_label || "N/A";
-
-  setKpi("kpiRtp", rtpPoint != null ? `${formatNum(rtpPoint, 3)}%` : "N/A");
-  setKpi("kpiCi", achievedHalfwidth != null ? formatNum(achievedHalfwidth, 3) : "N/A");
-  setKpi("kpiSpins", spins != null ? formatInt(spins) : "N/A");
-  setKpi("kpiZero", formatRatePct(zeroRate, 2));
-  setKpi("kpiTail", tailDep != null ? formatNum(tailDep, 3) : "N/A");
-  const tone = guidelineStatus === "PASS" ? "good" : guidelineStatus === "FAIL" ? "bad" : "warn";
-  setKpi("kpiGuide", guidelineStatus, tone);
-}
-
-function updateAssessment(summary) {
-  if (!summary || Object.keys(summary).length === 0) {
-    byId("assessment").textContent = "No report yet.";
+function renderAssessment(summary) {
+  if (!summary || !summary.guideline_assessment) {
+    byId("assessment").textContent = fmt("noReport");
     return;
   }
   const ga = summary.guideline_assessment || {};
   const gc = summary.guideline_comparison || {};
-  const cls = ga.classification || {};
-  const q = ga.data_quality || {};
   const d = ga.derived_metrics || {};
-  const alerts = ga.alerts || [];
-  const actions = ga.action_recommendations || [];
-  const block = [];
-  block.push(`quality_label: ${q.quality_label || "N/A"}`);
-  block.push(`volatility_class: ${cls.volatility_class || "N/A"}`);
-  block.push(`experience_archetype: ${cls.experience_archetype || "N/A"}`);
-  block.push(`recovery_gap: ${formatNum(d.recovery_gap)}`);
-  block.push(`tail_dependency: ${formatNum(d.tail_dependency)}`);
-  if (gc.overall_status) {
-    block.push(
-      `guideline_compare: ${gc.overall_status} (pass=${gc.pass_count ?? 0}, fail=${gc.fail_count ?? 0}, missing=${gc.missing_count ?? 0}, na=${gc.not_applicable_count ?? 0})`
-    );
-  }
-  const failedChecks = Array.isArray(gc.checks)
-    ? gc.checks.filter((x) => x.status === "fail" || x.status === "missing")
-    : [];
-  if (failedChecks.length) {
-    block.push("guideline_failures:");
-    failedChecks.slice(0, 8).forEach((x) => {
-      block.push(
-        `- [${x.severity || "medium"}][${x.status}] ${x.id || "UNKNOWN"}: observed=${x.observed ?? "N/A"} target=${JSON.stringify(
-          x.target ?? "N/A"
-        )}`
-      );
-    });
-  }
-  if (alerts.length) {
-    block.push("alerts:");
-    alerts.forEach((a) => block.push(`- [${a.severity}] ${a.code}: ${a.message}`));
-  } else {
-    block.push("alerts: none");
-  }
-  if (actions.length) {
-    block.push("actions:");
-    actions.forEach((a, i) => block.push(`${i + 1}. ${a}`));
-  }
-  byId("assessment").textContent = block.join("\n");
-}
-
-function summaryWarnings(summary) {
-  const warnings = [];
-  const ga = summary.guideline_assessment || {};
-  const gc = summary.guideline_comparison || {};
-  const quality = ga.data_quality?.quality_label || "";
-  if (quality === "EXPLORATORY") {
-    warnings.push("REPORT QUALITY = EXPLORATORY. Do not use this result for balancing decisions.");
-  }
-  if (gc.overall_status === "FAIL") {
-    warnings.push(
-      `GUIDELINE CHECK FAIL: fail=${gc.fail_count ?? 0}, missing=${gc.missing_count ?? 0}, hard_fail=${gc.hard_fail_count ?? 0}`
-    );
-  }
+  const lines = [];
+  lines.push(`${fmt("assessmentQuality")}: ${ga.data_quality?.quality_label || "N/A"}`);
+  lines.push(`${fmt("assessmentVolatility")}: ${ga.classification?.volatility_class || "N/A"}`);
+  lines.push(`${fmt("assessmentArchetype")}: ${ga.classification?.experience_archetype || "N/A"}`);
+  lines.push(`${fmt("assessmentRecoveryGap")}: ${fNum(d.recovery_gap)}`);
+  lines.push(`${fmt("assessmentTail")}: ${fNum(d.tail_dependency)}`);
+  lines.push(
+    `${fmt("assessmentRule")}: ${gc.overall_status || "N/A"} (pass=${gc.pass_count ?? 0}, fail=${gc.fail_count ?? 0}, missing=${gc.missing_count ?? 0})`
+  );
   const alerts = Array.isArray(ga.alerts) ? ga.alerts : [];
-  alerts
-    .filter((a) => ["high", "critical"].includes(String(a?.severity || "").toLowerCase()))
-    .slice(0, 3)
-    .forEach((a) => warnings.push(`ALERT ${a.code || "UNKNOWN"}: ${a.message || ""}`));
-  return warnings;
-}
-
-function setModelStatus(info) {
-  byId("modelStatus").textContent = info || "";
-}
-
-function modeValue() {
-  return Number(byId("modeSelect").value || "1");
-}
-
-function machineValue() {
-  return byId("machineSelect").value || "M14";
-}
-
-function providerValue() {
-  return byId("providerSelect").value || state.modelMeta.active_provider || "gemini";
-}
-
-function modelValue() {
-  return byId("modelSelect").value || "gemini-3-flash-preview";
-}
-
-function modelSelectionWarning() {
-  const provider = providerValue();
-  const selected = modelValue();
-  const models = providerModels(provider);
-  if (!models.includes(selected)) {
-    return `Selected model does not belong to provider=${provider}.`;
+  if (alerts.length) {
+    lines.push(`${fmt("assessmentAlerts")}:`);
+    alerts.slice(0, 6).forEach((a) => lines.push(`- [${a.severity}] ${a.code}: ${a.message}`));
   }
-  if (!state.modelMeta.has_api_key) {
-    return `${provider.toUpperCase()} API key is empty. Interpretation will fallback to rule-based.`;
+  const actions = Array.isArray(ga.action_recommendations) ? ga.action_recommendations : [];
+  if (actions.length) {
+    lines.push(`${fmt("assessmentActions")}:`);
+    actions.slice(0, 6).forEach((a, i) => lines.push(`${i + 1}. ${a}`));
   }
-  return "";
+  byId("assessment").textContent = lines.join("\n");
 }
 
 function fillMachineModeSelectors() {
-  const machineSel = byId("machineSelect");
-  machineSel.innerHTML = "";
-  state.machines.forEach((m) => {
-    const opt = document.createElement("option");
-    opt.value = m.machine;
-    opt.textContent = m.machine;
-    machineSel.appendChild(opt);
-  });
+  const mSel = byId("machineSelect");
+  mSel.innerHTML = "";
+  state.machines.forEach((m) => mSel.appendChild(new Option(m.machine, m.machine)));
   refreshModes();
 }
 
 function refreshModes() {
-  const selected = machineValue();
-  const machine = state.machines.find((m) => m.machine === selected) || state.machines[0];
+  const machine = state.machines.find((m) => m.machine === byId("machineSelect").value) || state.machines[0] || { modes: [1] };
   const modeSel = byId("modeSelect");
   modeSel.innerHTML = "";
-  (machine?.modes || [1]).forEach((mode) => {
-    const opt = document.createElement("option");
-    opt.value = mode;
-    opt.textContent = String(mode);
-    modeSel.appendChild(opt);
-  });
-}
-
-function providerModels(provider) {
-  const catalog = state.modelMeta.provider_catalog || {};
-  const models = catalog[provider];
-  return Array.isArray(models) ? models : [];
+  (machine.modes || [1]).forEach((m) => modeSel.appendChild(new Option(String(m), String(m))));
 }
 
 function fillProviders() {
-  const providerSel = byId("providerSelect");
-  providerSel.innerHTML = "";
-  const options = state.modelMeta.provider_options || ["gemini", "gpt", "claude"];
-  options.forEach((p) => {
-    const opt = document.createElement("option");
-    opt.value = p;
-    opt.textContent = p;
-    providerSel.appendChild(opt);
-  });
+  const sel = byId("providerSelect");
+  sel.innerHTML = "";
+  (state.modelMeta.provider_options || ["gemini", "gpt", "claude"]).forEach((p) => sel.appendChild(new Option(p, p)));
+  sel.value = state.modelMeta.active_provider || "gemini";
 }
 
 function fillModelsForProvider(provider, preferred = "") {
-  const modelSel = byId("modelSelect");
-  modelSel.innerHTML = "";
-  const models = providerModels(provider);
-  models.forEach((m) => {
-    const opt = document.createElement("option");
-    opt.value = m;
-    opt.textContent = m;
-    modelSel.appendChild(opt);
-  });
-  if (preferred && models.includes(preferred)) {
-    modelSel.value = preferred;
-  } else if (models.length) {
-    modelSel.value = models[0];
-  }
+  const sel = byId("modelSelect");
+  sel.innerHTML = "";
+  const models = (state.modelMeta.provider_catalog || {})[provider] || [];
+  models.forEach((m) => sel.appendChild(new Option(m, m)));
+  if (preferred && models.includes(preferred)) sel.value = preferred;
 }
 
-async function loadBootstrap() {
-  const [health, machines, models] = await Promise.all([apiGet("/api/health"), apiGet("/api/machines"), apiGet("/api/models")]);
-  setHealth(`API OK ${health.ts}`, true);
-  state.machines = machines.machines || [];
-  state.models = models.models || [];
-  state.modelMeta = models || {};
-  fillMachineModeSelectors();
-  fillProviders();
-  byId("providerSelect").value = state.modelMeta.active_provider || "gemini";
-  fillModelsForProvider(providerValue(), state.modelMeta.default_model || "");
-  setModelStatus(
-    `provider=${state.modelMeta.active_provider || "unknown"} has_api_key=${String(
-      !!state.modelMeta.has_api_key
-    )} persisted=${String(!!state.modelMeta.config_persisted)} cleanup_policy=${state.modelMeta.cleanup_policy || "manual_only"}`
-  );
-  const bootWarnings = [...(state.modelMeta.warnings || [])];
-  const selectedWarning = modelSelectionWarning();
-  if (selectedWarning) bootWarnings.push(selectedWarning);
-  setGlobalWarning(bootWarnings);
-  byId("autotuneMeta").textContent = "No auto tune run yet.";
-  clearSummaryPanels();
-  await refreshCache();
-  await refreshVersions();
-  await refreshRunListAndAutoSelect();
-}
-
-async function saveModelConfig() {
-  const payload = {
-    provider: providerValue(),
-    api_key: byId("apiKeyInput").value || "",
-  };
-  const models = await apiPost("/api/model-config", payload);
-  state.modelMeta = models || {};
-  state.models = models.models || [];
-  fillProviders();
-  byId("providerSelect").value = state.modelMeta.active_provider || providerValue();
-  fillModelsForProvider(providerValue(), state.modelMeta.default_model || "");
-  byId("apiKeyInput").value = "";
-  setModelStatus(
-    `provider=${state.modelMeta.active_provider || "unknown"} has_api_key=${String(
-      !!state.modelMeta.has_api_key
-    )} persisted=${String(!!state.modelMeta.config_persisted)} cleanup_policy=${state.modelMeta.cleanup_policy || "manual_only"}`
-  );
-  const warnings = [...(state.modelMeta.warnings || [])];
-  const selectedWarning = modelSelectionWarning();
-  if (selectedWarning) warnings.push(selectedWarning);
-  setGlobalWarning(warnings);
+function modelWarnings() {
+  const provider = byId("providerSelect").value || state.modelMeta.active_provider || "gemini";
+  const selected = byId("modelSelect").value || "";
+  const models = ((state.modelMeta.provider_catalog || {})[provider] || []).map(String);
+  const out = [];
+  if (selected && models.length && !models.includes(selected)) out.push(fmt("warnModelMismatch"));
+  if (!state.modelMeta.has_api_key) out.push(fmt("warnApiKeyEmpty", { provider: provider.toUpperCase() }));
+  return out;
 }
 
 function readRunPayload() {
   return {
-    machine: machineValue(),
-    mode: modeValue(),
+    machine: byId("machineSelect").value,
+    mode: Number(byId("modeSelect").value),
     target_halfwidth_pp: Number(byId("ciInput").value),
     chunk_spin_times: Number(byId("spinInput").value),
     chunk_robot_count: Number(byId("robotInput").value),
@@ -526,278 +689,294 @@ function readRunPayload() {
     timeout: Number(byId("timeoutInput").value),
     bankruptcy_session_spins: Number(byId("bankSessionInput").value),
     bankruptcy_bankroll_multipliers: byId("bankMultInput").value,
-    model_id: modelValue(),
+    model_id: byId("modelSelect").value,
   };
 }
 
-function sanitizeIntCandidates(values, lower, upper) {
-  return [...new Set(values.map((v) => Math.round(Number(v))).filter((v) => Number.isFinite(v) && v >= lower && v <= upper))].sort(
-    (a, b) => a - b
-  );
+async function refreshRunList(autoSelect = true) {
+  const data = await apiGet("/api/runs");
+  state.runs = data.runs || [];
+  if (autoSelect && !state.currentRunId && state.runs.length) state.currentRunId = state.runs[0].run_id;
+  if (state.currentRunId) {
+    const cur = state.runs.find((r) => r.run_id === state.currentRunId);
+    if (cur) state.currentRunStatus = cur.status || "";
+  }
+  renderRunHistory();
+  updateActionStates();
 }
 
-function buildAutoTunePayload() {
-  const baseRobot = Number(byId("robotInput").value || "20");
-  const baseConc = Number(byId("concInput").value || "2");
-  const spinRaw = Number(byId("spinInput").value || "120");
-  const spinTimes = Math.max(60, Math.min(240, Number.isFinite(spinRaw) ? Math.round(spinRaw) : 120));
-  const robotCandidates = sanitizeIntCandidates(
-    [baseRobot - 8, baseRobot - 4, baseRobot, baseRobot + 4, baseRobot + 8],
-    4,
-    200
-  );
-  const concurrencyCandidates = sanitizeIntCandidates([1, baseConc - 1, baseConc, baseConc + 1, baseConc + 2], 1, 16);
-  return {
-    machine: machineValue(),
-    mode: modeValue(),
-    spin_times: spinTimes,
-    robot_candidates: robotCandidates.length ? robotCandidates : [8, 12, 16, 20, 24],
-    concurrency_candidates: concurrencyCandidates.length ? concurrencyCandidates : [1, 2, 3, 4],
-    rounds: 2,
-    timeout: 45,
-    bet: 1000,
-  };
+async function refreshCurrentRun() {
+  if (!state.currentRunId) {
+    byId("runMeta").textContent = fmt("noRun");
+    updateActionStates();
+    return;
+  }
+  let run;
+  try {
+    run = await apiGet(`/api/runs/${state.currentRunId}`);
+  } catch (err) {
+    if (String(err?.message || "").includes("404")) {
+      state.currentRunId = "";
+      state.currentRunStatus = "";
+      byId("runMeta").textContent = fmt("noRun");
+      updateActionStates();
+      return;
+    }
+    throw err;
+  }
+  state.currentRunStatus = run.status || "";
+  const p = run.progress || {};
+  const latest = p.latest_event || {};
+  const hw = latest.current_halfwidth_pp;
+  const target = run.target_halfwidth_pp;
+  const pct = hw == null || !target ? 0 : hw <= target ? 100 : Math.min(100, (target / hw) * 100);
+  byId("progressBar").style.width = `${pct}%`;
+  byId("runMeta").textContent = `run=${run.run_id} status=${statusText(run.status)} machine=${run.machine} mode=${run.mode} spins=${latest.total_spins || 0} chunks=${p.chunk_count || 0} ci=${fNum(hw)} target=${target}`;
+  setKpi("kpiRtp", latest.current_rtp_pct != null ? `${fNum(latest.current_rtp_pct)}%` : "N/A");
+  setKpi("kpiCi", hw != null ? fNum(hw) : "N/A");
+  setKpi("kpiSpins", latest.total_spins != null ? fInt(latest.total_spins) : "N/A");
+
+  const events = (await apiGet(`/api/runs/${state.currentRunId}/progress`)).events || [];
+  byId("eventsText").textContent = events.length ? events.slice(-80).map((e) => JSON.stringify(e)).join("\n") : fmt("noEvents");
+  const chunks = events.filter((e) => e.event === "chunk_progress");
+  state.ciChart.data.labels = chunks.map((e) => String(e.chunk_index));
+  state.ciChart.data.datasets[0].data = chunks.map((e) => e.current_halfwidth_pp ?? null);
+  state.rtpChart.data.labels = chunks.map((e) => String(e.chunk_index));
+  state.rtpChart.data.datasets[0].data = chunks.map((e) => e.current_rtp_pct ?? null);
+  state.ciChart.update();
+  state.rtpChart.update();
+
+  const warnings = modelWarnings();
+  if (run.status === "failed") warnings.push(fmt("warnRunFailed", { msg: run.error_message || "unknown error" }));
+  if (run.status === "cancelled") warnings.push(fmt("warnRunCancelled"));
+
+  if (run.status === "completed") {
+    const report = await apiGet(`/api/runs/${state.currentRunId}/report`);
+    const s = report.summary || {};
+    state.latestSummary = s;
+    renderAssessment(s);
+    setKpi("kpiRtp", s.rtp?.point_pct != null ? `${fNum(s.rtp.point_pct)}%` : "N/A");
+    setKpi("kpiCi", s.sampling?.achieved_halfwidth_pp != null ? fNum(s.sampling.achieved_halfwidth_pp) : "N/A");
+    setKpi("kpiSpins", s.sampling?.total_spins != null ? fInt(s.sampling.total_spins) : "N/A");
+    setKpi("kpiZero", fRate(s.player_impact?.hit_and_payout?.zero_win_rate));
+    setKpi("kpiTail", fNum(s.guideline_assessment?.derived_metrics?.tail_dependency));
+    const gs = s.guideline_comparison?.overall_status || "UNKNOWN";
+    setKpi("kpiGuide", gs, gs === "PASS" ? "good" : gs === "FAIL" ? "bad" : "warn");
+    const buckets = s.player_impact?.multiplier_profile?.buckets || [];
+    state.bucketChart.data.labels = buckets.map((b) => b.bucket);
+    state.bucketChart.data.datasets[0].data = buckets.map((b) => (Number(b.spin_rate) <= 1 ? Number(b.spin_rate) * 100 : Number(b.spin_rate)));
+    state.bucketChart.update();
+    const bank = s.player_impact?.bankruptcy_probe || [];
+    state.bankChart.data.labels = bank.map((b) => `x${b.bankroll_multiplier}`);
+    state.bankChart.data.datasets[0].data = bank.map((b) => (Number(b.bankruptcy_rate) <= 1 ? Number(b.bankruptcy_rate) * 100 : Number(b.bankruptcy_rate)));
+    state.bankChart.update();
+    await refreshVersions();
+    await refreshInterpretation();
+  }
+  warnings.push(...collectSystemWarnings());
+  setGlobalWarning([...new Set(warnings)]);
+  updateActionStates();
 }
 
-function setAutoTuneBusy(isBusy) {
-  state.autoTuneRunning = isBusy;
-  const btn = byId("autotuneBtn");
-  btn.disabled = isBusy;
-  btn.textContent = isBusy ? "Auto Tuning..." : "Run Auto Tune";
-}
-
-function renderAutoTuneResult(result, payload) {
-  const reco = result?.recommendation || {};
-  if (reco.chunk_robot_count != null) byId("robotInput").value = String(reco.chunk_robot_count);
-  if (reco.batch_concurrency != null) byId("concInput").value = String(reco.batch_concurrency);
-
-  const lines = [];
-  lines.push(`machine=${result.machine} mode=${result.mode} spin_times=${result.spin_times} rounds=${result.rounds}`);
-  lines.push(`tested=${result.tested} candidates`);
-  lines.push(`recommended chunk_robot_count=${reco.chunk_robot_count} batch_concurrency=${reco.batch_concurrency}`);
-  const best = result.best || {};
-  lines.push(
-    `best throughput=${formatNum(best.throughput_spins_per_sec, 2)} spins/s success=${formatRatePct(
-      best.success_rate,
-      1
-    )} p95=${formatNum(best.p95_latency_s, 3)}s wall=${formatNum(best.wall_elapsed_s, 2)}s`
-  );
-  lines.push("top results:");
-  (result.results || []).slice(0, 8).forEach((item, idx) => {
-    lines.push(
-      `${idx + 1}. robot=${item.robot_count} conc=${item.batch_concurrency} success=${formatRatePct(
-        item.success_rate,
-        1
-      )} throughput=${formatNum(item.throughput_spins_per_sec, 2)} p95=${formatNum(item.p95_latency_s, 3)}s`
-    );
+async function refreshVersions() {
+  const d = await apiGet(`/api/reports/${byId("machineSelect").value || "M14"}/${Number(byId("modeSelect").value || 1)}`);
+  const body = byId("versionsTable").querySelector("tbody");
+  body.innerHTML = "";
+  const arr = (d.versions || []).slice().reverse();
+  if (!arr.length) return (body.innerHTML = `<tr><td colspan="5">${fmt("noVersions")}</td></tr>`);
+  arr.forEach((v) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${v.report_version || ""}</td><td>${v.run_id || ""}</td><td>${v.created_at || ""}</td><td>${v.rtp_point_pct ?? ""}</td><td>${v.quality_label || ""}</td>`;
+    body.appendChild(tr);
   });
-  lines.push(
-    `payload robots=[${(payload.robot_candidates || []).join(",")}] conc=[${(payload.concurrency_candidates || []).join(",")}]`
-  );
-  byId("autotuneMeta").textContent = lines.join("\n");
+}
+
+async function refreshCache() {
+  state.cacheStatus = await apiGet("/api/cache/status");
+  const c = state.cacheStatus;
+  byId("cacheMeta").textContent = `root=${c.cache_root}\nfiles=${c.file_count}\ntotal_bytes=${fBytes(c.total_bytes)} (${c.total_bytes})\nrunning_runs=${c.running_runs}\nreclaimable_est=${fBytes(c.reclaimable_bytes_estimate)} (${c.reclaimable_bytes_estimate})`;
+  byId("cacheWarning").textContent = Number(c.running_runs || 0) > 0 ? fmt("cacheWarnRunning") : Number(c.reclaimable_bytes_estimate || 0) > 0 ? fmt("cacheWarnIdle") : fmt("cacheNoReclaim");
+  renderCacheRiskMeta();
+  updateActionStates();
 }
 
 async function runAutoTune() {
   if (state.autoTuneRunning) return;
-  const payload = buildAutoTunePayload();
-  setAutoTuneBusy(true);
-  byId("autotuneMeta").textContent =
-    `Running quick stress test...\nmachine=${payload.machine} mode=${payload.mode} spin_times=${payload.spin_times}\n` +
-    `robots=[${payload.robot_candidates.join(",")}] conc=[${payload.concurrency_candidates.join(",")}]`;
+  state.autoTuneRunning = true;
+  updateActionStates();
+  const rc = Number(byId("robotInput").value || 20);
+  const cc = Number(byId("concInput").value || 2);
+  const payload = {
+    machine: byId("machineSelect").value || "M14",
+    mode: Number(byId("modeSelect").value || 1),
+    spin_times: Math.max(60, Math.min(240, Number(byId("spinInput").value || 120))),
+    robot_candidates: [...new Set([rc - 8, rc - 4, rc, rc + 4, rc + 8].map((x) => Math.max(4, x)).filter((x) => x <= 200))],
+    concurrency_candidates: [...new Set([1, cc - 1, cc, cc + 1, cc + 2].map((x) => Math.max(1, x)).filter((x) => x <= 16))],
+    rounds: 2,
+    timeout: 45,
+    bet: 1000,
+  };
+  byId("autotuneMeta").textContent = `machine=${payload.machine} mode=${payload.mode}\nrobots=[${payload.robot_candidates.join(",")}]\nconc=[${payload.concurrency_candidates.join(",")}]`;
   try {
-    const result = await apiPost("/api/autotune", payload);
-    renderAutoTuneResult(result, payload);
-    const best = result?.best || {};
-    if (best.success_rate != null && Number(best.success_rate) < 0.95) {
-      setGlobalWarning([
-        ...(state.modelMeta.warnings || []),
-        `Auto tune best success rate is ${formatRatePct(best.success_rate, 1)} (<95%). Consider reducing concurrency.`,
-      ]);
+    const r = await apiPost("/api/autotune", payload);
+    if (r.recommendation?.chunk_robot_count != null) byId("robotInput").value = r.recommendation.chunk_robot_count;
+    if (r.recommendation?.batch_concurrency != null) byId("concInput").value = r.recommendation.batch_concurrency;
+    const rows = (r.results || []).slice(0, 8).map((x, i) => `${i + 1}. robot=${x.robot_count} conc=${x.batch_concurrency} success=${fRate(x.success_rate, 1)} throughput=${fNum(x.throughput_spins_per_sec, 2)} p95=${fNum(x.p95_latency_s, 3)}s`);
+    byId("autotuneMeta").textContent = `tested=${r.tested}\nrecommend robot=${r.recommendation?.chunk_robot_count} conc=${r.recommendation?.batch_concurrency}\n${rows.join("\n")}`;
+    if (Number(r.best?.success_rate || 0) < 0.95) {
+      setGlobalWarning([...modelWarnings(), fmt("warnAutoTuneLowSuccess", { rate: fRate(r.best?.success_rate, 1) })]);
     }
   } finally {
-    setAutoTuneBusy(false);
+    state.autoTuneRunning = false;
+    updateActionStates();
   }
-}
-
-async function startRun() {
-  clearSummaryPanels();
-  byId("interpretationText").textContent = "";
-  const payload = readRunPayload();
-  const res = await apiPost("/api/runs", payload);
-  state.currentRunId = res.run_id;
-  await refreshCurrentRun();
-}
-
-async function stopRun() {
-  if (!state.currentRunId) return;
-  await apiPost(`/api/runs/${state.currentRunId}/cancel`, {});
-  await refreshCurrentRun();
-}
-
-async function refreshRunListAndAutoSelect() {
-  const data = await apiGet("/api/runs");
-  const runs = data.runs || [];
-  if (!state.currentRunId && runs.length) {
-    state.currentRunId = runs[0].run_id;
-  }
-  if (state.currentRunId) {
-    await refreshCurrentRun();
-  }
-}
-
-async function refreshCurrentRun() {
-  if (!state.currentRunId) return;
-  const run = await apiGet(`/api/runs/${state.currentRunId}`);
-  const p = run.progress || {};
-  const latest = p.latest_event || {};
-  const chunkCount = p.chunk_count || 0;
-  const target = run.target_halfwidth_pp;
-  const hw = latest.current_halfwidth_pp ?? null;
-  const progressPct =
-    hw === null || hw === undefined || !target ? 0 : hw <= target ? 100 : Math.min(100, (target / hw) * 100);
-  setProgress(progressPct);
-  setMeta(
-    `run=${run.run_id} status=${run.status} machine=${run.machine} mode=${run.mode} spins=${latest.total_spins ?? 0} chunks=${chunkCount} ci=${formatNum(hw)} target=${target}`
-  );
-  updateLiveKpis(latest);
-
-  const eventsData = await apiGet(`/api/runs/${state.currentRunId}/progress`);
-  const events = eventsData.events || [];
-  updateCharts(events);
-  updateEvents(events);
-
-  const warnings = [];
-  if (Array.isArray(state.modelMeta.warnings)) warnings.push(...state.modelMeta.warnings);
-  const selectedWarning = modelSelectionWarning();
-  if (selectedWarning) warnings.push(selectedWarning);
-  if (run.status === "failed") warnings.push(`RUN FAILED: ${run.error_message || "unknown error"}`);
-  if (run.status === "cancelled") warnings.push("RUN CANCELLED by user.");
-
-  if (run.status === "completed") {
-    const report = await apiGet(`/api/runs/${state.currentRunId}/report`);
-    state.latestSummary = report.summary || null;
-    updateAssessment(report.summary);
-    updateSummaryKpis(report.summary);
-    updateDistributionCharts(report.summary);
-    warnings.push(...summaryWarnings(report.summary));
-    await refreshVersions();
-    await refreshInterpretation();
-  }
-  setGlobalWarning([...new Set(warnings)]);
-}
-
-async function refreshVersions() {
-  const data = await apiGet(`/api/reports/${machineValue()}/${modeValue()}`);
-  const body = byId("versionsTable").querySelector("tbody");
-  body.innerHTML = "";
-  (data.versions || [])
-    .slice()
-    .reverse()
-    .forEach((v) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-      <td>${v.report_version || ""}</td>
-      <td>${v.run_id || ""}</td>
-      <td>${v.created_at || ""}</td>
-      <td>${v.rtp_point_pct ?? ""}</td>
-      <td>${v.quality_label || ""}</td>
-    `;
-      body.appendChild(tr);
-    });
-}
-
-async function refreshCache() {
-  const data = await apiGet("/api/cache/status");
-  byId("cacheMeta").textContent =
-    `root=${data.cache_root}\nfiles=${data.file_count} total_bytes=${data.total_bytes}\nrunning_runs=${data.running_runs} reclaimable_est=${data.reclaimable_bytes_estimate}`;
-  const cleanupBtn = byId("cacheCleanupBtn");
-  cleanupBtn.disabled = Number(data.running_runs || 0) > 0;
-  byId("cacheWarning").textContent =
-    Number(data.running_runs || 0) > 0
-      ? "Cleanup is blocked while runs are active. Stop all runs before cleanup."
-      : "Cleanup is manual only. Click Cleanup Cache only when you confirm no active run needs cached chunks.";
-}
-
-async function cleanupCache() {
-  const ok = window.confirm(
-    "WARNING: this will delete local chunk cache files that are not currently protected by active runs. Continue?"
-  );
-  if (!ok) return;
-  await apiPost("/api/cache/cleanup", { max_delete_bytes: 0 });
-  await refreshCache();
 }
 
 async function generateInterpretation() {
   if (!state.currentRunId) return;
-  const res = await apiPost("/api/interpretations", {
-    run_id: state.currentRunId,
-    model_id: modelValue(),
-  });
-  byId("interpretationText").textContent = res.content || "";
-  const modelInfo = `provider=${res.provider || providerValue()} model=${res.model_id || ""} source=${res.source || "unknown"}`;
-  setModelStatus(res.warning ? `${modelInfo} | ${res.warning}` : modelInfo);
-  if (res.warning) {
-    setGlobalWarning([...(state.modelMeta.warnings || []), res.warning]);
-  }
+  const r = await apiPost("/api/interpretations", { run_id: state.currentRunId, model_id: byId("modelSelect").value });
+  byId("interpretationText").textContent = r.content || fmt("noInterpret");
 }
 
 async function refreshInterpretation() {
   if (!state.currentRunId) return;
-  const res = await apiGet(`/api/interpretations/${state.currentRunId}`);
-  byId("interpretationText").textContent = res.content || "";
-  if (res.model_id) {
-    const modelInfo = `model=${res.model_id || ""} source=${res.source || "unknown"}`;
-    setModelStatus(res.warning ? `${modelInfo} | ${res.warning}` : modelInfo);
-  }
+  const r = await apiGet(`/api/interpretations/${state.currentRunId}`);
+  byId("interpretationText").textContent = r.content || fmt("noInterpret");
+}
+
+async function loadBootstrap() {
+  const [h, m, models] = await Promise.all([apiGet("/api/health"), apiGet("/api/machines"), apiGet("/api/models")]);
+  setHealth(Boolean(h.ok), h.ts || "");
+  state.machines = m.machines || [];
+  state.modelMeta = models || {};
+  fillMachineModeSelectors();
+  fillProviders();
+  fillModelsForProvider(byId("providerSelect").value, state.modelMeta.default_model || "");
+  renderMachineCatalog();
+  byId("runMeta").textContent = fmt("noRun");
+  byId("assessment").textContent = fmt("noReport");
+  byId("interpretationText").textContent = fmt("noInterpret");
+  byId("eventsText").textContent = fmt("noEvents");
+  byId("autotuneMeta").textContent = fmt("noAutoTune");
+  await refreshSystemState();
+  await refreshCache();
+  await refreshVersions();
+  await refreshRunList(true);
+  if (state.currentRunId) await refreshCurrentRun();
+  setSystemStatePanel();
+  updateActionStates();
+  const warnings = [...modelWarnings(), ...collectSystemWarnings()];
+  setGlobalWarning(warnings);
 }
 
 function bindEvents() {
+  byId("langSelect").addEventListener("change", async (e) => {
+    state.lang = e.target.value;
+    applyI18n();
+    renderMachineCatalog();
+    renderRunHistory();
+    setSystemStatePanel();
+    await refreshVersions().catch(() => {});
+    await refreshCache().catch(() => {});
+    await refreshSystemState().catch(() => {});
+    if (state.currentRunId) {
+      await refreshCurrentRun().catch(() => {});
+    } else {
+      byId("runMeta").textContent = fmt("noRun");
+      byId("assessment").textContent = fmt("noReport");
+      byId("interpretationText").textContent = fmt("noInterpret");
+      byId("eventsText").textContent = fmt("noEvents");
+      byId("autotuneMeta").textContent = fmt("noAutoTune");
+    }
+    updateActionStates();
+  });
+  byId("tabBtnDebug").addEventListener("click", () => switchTab("debug"));
+  byId("tabBtnManage").addEventListener("click", () => switchTab("manage"));
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();
     clearSummaryPanels();
-    byId("interpretationText").textContent = "";
     await refreshVersions();
   });
   byId("modeSelect").addEventListener("change", async () => {
     clearSummaryPanels();
-    byId("interpretationText").textContent = "";
     await refreshVersions();
   });
-  byId("providerSelect").addEventListener("change", () => {
-    fillModelsForProvider(providerValue());
-    const selectedWarning = modelSelectionWarning();
-    setGlobalWarning([...(state.modelMeta.warnings || []), ...(selectedWarning ? [selectedWarning] : [])]);
-  });
-  byId("modelSelect").addEventListener("change", () => {
-    const selectedWarning = modelSelectionWarning();
-    setGlobalWarning([...(state.modelMeta.warnings || []), ...(selectedWarning ? [selectedWarning] : [])]);
-  });
-  byId("saveModelCfgBtn").addEventListener("click", () => saveModelConfig().catch((e) => alert(e.message)));
-  byId("startBtn").addEventListener("click", () => startRun().catch((e) => alert(e.message)));
-  byId("stopBtn").addEventListener("click", () => stopRun().catch((e) => alert(e.message)));
-  byId("refreshBtn").addEventListener("click", () => refreshCurrentRun().catch((e) => alert(e.message)));
-  byId("cacheRefreshBtn").addEventListener("click", () => refreshCache().catch((e) => alert(e.message)));
-  byId("cacheCleanupBtn").addEventListener("click", () => cleanupCache().catch((e) => alert(e.message)));
-  byId("interpretBtn").addEventListener("click", () => generateInterpretation().catch((e) => alert(e.message)));
-  byId("autotuneBtn").addEventListener("click", () => runAutoTune().catch((e) => alert(e.message)));
+  byId("providerSelect").addEventListener("change", () => (fillModelsForProvider(byId("providerSelect").value), setGlobalWarning(modelWarnings())));
+  byId("modelSelect").addEventListener("change", () => setGlobalWarning(modelWarnings()));
+  byId("saveModelCfgBtn").addEventListener("click", () =>
+    withAction("save_model", async () => {
+      state.modelMeta = await apiPost("/api/model-config", { provider: byId("providerSelect").value, api_key: byId("apiKeyInput").value || "" });
+      byId("apiKeyInput").value = "";
+      fillProviders();
+      fillModelsForProvider(byId("providerSelect").value, state.modelMeta.default_model || "");
+      setGlobalWarning(modelWarnings());
+    }).catch((e) => alert(String(e.message || e)))
+  );
+  byId("startBtn").addEventListener("click", () =>
+    withAction("start_run", async () => {
+      const r = await apiPost("/api/runs", readRunPayload());
+      state.currentRunId = r.run_id;
+      await refreshRunList(false);
+      await refreshCurrentRun();
+    }).catch((e) => alert(String(e.message || e)))
+  );
+  byId("stopBtn").addEventListener("click", () =>
+    withAction("stop_run", async () => {
+      if (!state.currentRunId) return;
+      await apiPost(`/api/runs/${state.currentRunId}/cancel`, {});
+      await refreshRunList(false);
+      await refreshCurrentRun();
+    }).catch((e) => alert(String(e.message || e)))
+  );
+  byId("refreshBtn").addEventListener("click", () =>
+    withAction("refresh_run", async () => {
+      await refreshSystemState();
+      await refreshRunList(false);
+      await refreshCache();
+      await refreshCurrentRun();
+    }).catch((e) => alert(String(e.message || e)))
+  );
+  byId("autotuneBtn").addEventListener("click", () =>
+    withAction("autotune", runAutoTune).catch((e) => alert(String(e.message || e)))
+  );
+  byId("interpretBtn").addEventListener("click", () =>
+    withAction("interpret", generateInterpretation).catch((e) => alert(String(e.message || e)))
+  );
+  byId("cacheRefreshBtn").addEventListener("click", () =>
+    withAction("cache_refresh", refreshCache).catch((e) => alert(String(e.message || e)))
+  );
+  byId("cacheCleanupBtn").addEventListener("click", () =>
+    withAction("cache_cleanup", async () => {
+      if (!(await confirmCacheCleanup())) return;
+      await apiPost("/api/cache/cleanup", { max_delete_bytes: 0 });
+      await refreshCache();
+    }).catch((e) => alert(String(e.message || e)))
+  );
 }
 
 function startPolling() {
   if (state.timer) clearInterval(state.timer);
   state.timer = setInterval(() => {
-    if (!state.currentRunId) return;
-    refreshCurrentRun().catch(() => {});
-  }, 2500);
+    refreshSystemState().catch(() => {});
+    refreshRunList(false).catch(() => {});
+    refreshCache().catch(() => {});
+    if (state.currentRunId) {
+      refreshCurrentRun().catch(() => {});
+    } else {
+      updateActionStates();
+    }
+  }, 4500);
 }
 
 async function boot() {
+  applyI18n();
   buildCharts();
   bindEvents();
   try {
     await loadBootstrap();
     startPolling();
-  } catch (err) {
-    setHealth(`API ERROR: ${err.message}`, false);
+  } catch (e) {
+    setHealth(false, String(e.message || e));
   }
 }
 

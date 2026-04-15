@@ -67,6 +67,15 @@ This section is for execution efficiency and can be updated as long as section A
    (`gemini`/`gpt`/`claude`) and single-key update API.
 13. Safety default:
    never persist user API keys into repository files or reports.
+14. Console UX default:
+   all critical run/model parameters should expose field-level tooltip hints
+   (CN/EN synchronized with language switch).
+15. Cache safety default:
+   cache cleanup follows risk-tier confirmation:
+   low risk = one confirm; medium/high risk = confirm + `DELETE` token.
+16. Restart robustness default:
+   startup recovery must auto-fail stale `running` tasks and attempt stale
+   worker termination via persisted `process_pid`, then expose recovery snapshot in API.
 
 Update policy:
 - Assistant may update this section after execution, and must explicitly state:

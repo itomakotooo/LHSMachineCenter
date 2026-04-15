@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,167 +9,248 @@
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <h1>Slot Console</h1>
-        <p class="subtitle">Machine tuning, player-impact telemetry, and guideline diagnostics</p>
+      <div class="title-wrap">
+        <h1 data-i18n="appTitle">老虎机控制台</h1>
+        <p class="subtitle" data-i18n="subtitle">机台调试、指标分析与版本管理</p>
       </div>
-      <div id="health" class="health">Checking...</div>
+      <div class="topbar-actions">
+        <label class="lang-switch">
+          <span data-i18n="languageLabel">语言</span>
+          <select id="langSelect">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+        <div id="health" class="health" data-i18n="healthChecking">检查中...</div>
+      </div>
     </header>
+
     <div id="globalWarning" class="global-warning hidden"></div>
 
-    <main class="layout">
-      <section class="panel controls">
-        <h2>Run Controls</h2>
-        <div class="grid two">
-          <label>Machine
-            <select id="machineSelect"></select>
-          </label>
-          <label>Mode
-            <select id="modeSelect"></select>
-          </label>
-          <label>Target CI Half-width (pp)
-            <input id="ciInput" type="number" step="0.01" value="0.5" />
-          </label>
-          <label>Model Provider
-            <select id="providerSelect"></select>
-          </label>
-          <label>Model
-            <select id="modelSelect"></select>
-          </label>
-          <label>Chunk Spin Times
-            <input id="spinInput" type="number" value="5000" />
-          </label>
-          <label>Chunk Robot Count
-            <input id="robotInput" type="number" value="20" />
-          </label>
-          <label>Batch Concurrency
-            <input id="concInput" type="number" value="2" />
-          </label>
-          <label>Max Chunks
-            <input id="maxChunksInput" type="number" value="120" />
-          </label>
-          <label>Timeout (sec)
-            <input id="timeoutInput" type="number" value="300" />
-          </label>
-          <label>Bankruptcy Session Spins
-            <input id="bankSessionInput" type="number" value="500" />
-          </label>
-          <label class="full">Bankroll Multipliers
-            <input id="bankMultInput" type="text" value="100,200,500" />
-          </label>
-          <label class="full">API Key
-            <input id="apiKeyInput" type="password" placeholder="paste one provider api key" />
-          </label>
-        </div>
-        <div class="actions">
-          <button id="saveModelCfgBtn">Save Model Config</button>
-          <button id="startBtn">Start Run</button>
-          <button id="stopBtn">Stop Run</button>
-          <button id="refreshBtn">Refresh</button>
+    <nav class="tabs">
+      <button id="tabBtnDebug" class="tab-btn active" data-tab="debug" data-i18n="tabDebug">调试机台</button>
+      <button id="tabBtnManage" class="tab-btn" data-tab="manage" data-i18n="tabManage">全面管理</button>
+    </nav>
+
+    <main class="tab-pages">
+      <section id="tab-debug" class="tab-page active">
+        <div class="layout">
+          <section class="panel run-config">
+            <h2 data-i18n="panelRunConfig">运行参数</h2>
+            <div class="grid two">
+              <label>
+                <span class="label-with-help"><span data-i18n="labelMachine">机台</span><span class="help-dot" data-help-key="helpMachine" tabindex="0" role="note">i</span></span>
+                <select id="machineSelect"></select>
+              </label>
+              <label>
+                <span class="label-with-help"><span data-i18n="labelMode">RTP Mode</span><span class="help-dot" data-help-key="helpMode" tabindex="0" role="note">i</span></span>
+                <select id="modeSelect"></select>
+              </label>
+              <label>
+                <span class="label-with-help"><span data-i18n="labelCiTarget">目标 CI 半宽 (pp)</span><span class="help-dot" data-help-key="helpCiTarget" tabindex="0" role="note">i</span></span>
+                <input id="ciInput" type="number" step="0.01" value="0.5" />
+              </label>
+              <label>
+                <span class="label-with-help"><span data-i18n="labelChunkSpins">每 Chunk Spin 次数</span><span class="help-dot" data-help-key="helpChunkSpins" tabindex="0" role="note">i</span></span>
+                <input id="spinInput" type="number" value="5000" />
+              </label>
+              <label>
+                <span class="label-with-help"><span data-i18n="labelRobotCount">每 Chunk 机器人数</span><span class="help-dot" data-help-key="helpRobotCount" tabindex="0" role="note">i</span></span>
+                <input id="robotInput" type="number" value="20" />
+              </label>
+              <label>
+                <span class="label-with-help"><span data-i18n="labelConcurrency">批并发数</span><span class="help-dot" data-help-key="helpConcurrency" tabindex="0" role="note">i</span></span>
+                <input id="concInput" type="number" value="2" />
+              </label>
+              <label>
+                <span class="label-with-help"><span data-i18n="labelMaxChunks">最大 Chunk 数</span><span class="help-dot" data-help-key="helpMaxChunks" tabindex="0" role="note">i</span></span>
+                <input id="maxChunksInput" type="number" value="120" />
+              </label>
+              <label>
+                <span class="label-with-help"><span data-i18n="labelTimeout">单请求超时 (秒)</span><span class="help-dot" data-help-key="helpTimeout" tabindex="0" role="note">i</span></span>
+                <input id="timeoutInput" type="number" value="300" />
+              </label>
+              <label>
+                <span class="label-with-help"><span data-i18n="labelBankSession">破产探测回合数</span><span class="help-dot" data-help-key="helpBankSession" tabindex="0" role="note">i</span></span>
+                <input id="bankSessionInput" type="number" value="500" />
+              </label>
+              <label class="full">
+                <span class="label-with-help"><span data-i18n="labelBankMultipliers">资金倍数梯度</span><span class="help-dot" data-help-key="helpBankMultipliers" tabindex="0" role="note">i</span></span>
+                <input id="bankMultInput" type="text" value="100,200,500" />
+              </label>
+            </div>
+            <details class="param-help" open>
+              <summary data-i18n="paramGuideTitle">参数说明（新手）</summary>
+              <ul class="help-list">
+                <li data-i18n="helpMachine">机台：选择目标机台（建议先固定单机台做基线）。</li>
+                <li data-i18n="helpMode">RTP Mode：同机台不同数值模式，报告必须按 mode 分开对比。</li>
+                <li data-i18n="helpCiTarget">目标 CI 半宽：统计置信精度目标，越小越准，耗时越长。</li>
+                <li data-i18n="helpChunkSpins">每 Chunk Spin 次数：单次采样请求内每机器人转动次数。</li>
+                <li data-i18n="helpRobotCount">每 Chunk 机器人数：单次请求并行机器人数量。</li>
+                <li data-i18n="helpConcurrency">批并发数：同一轮同时发起多少个请求。</li>
+                <li data-i18n="helpMaxChunks">最大 Chunk 数：达到后强制停止，防止无限采样。</li>
+                <li data-i18n="helpTimeout">单请求超时：每个网络请求的超时上限。</li>
+                <li data-i18n="helpBankSession">破产探测回合数：用于估算会话中破产率。</li>
+                <li data-i18n="helpBankMultipliers">资金倍数梯度：例如 100,200,500，对应不同初始资金强度。</li>
+              </ul>
+            </details>
+          </section>
+
+          <section class="panel model-config">
+            <h2 data-i18n="panelModelConfig">模型配置</h2>
+            <div class="grid one">
+              <label>
+                <span class="label-with-help"><span data-i18n="labelProvider">模型供应商</span><span class="help-dot" data-help-key="helpProvider" tabindex="0" role="note">i</span></span>
+                <select id="providerSelect"></select>
+              </label>
+              <label>
+                <span class="label-with-help"><span data-i18n="labelModel">模型</span><span class="help-dot" data-help-key="helpModel" tabindex="0" role="note">i</span></span>
+                <select id="modelSelect"></select>
+              </label>
+              <label>
+                <span class="label-with-help"><span data-i18n="labelApiKey">API Key</span><span class="help-dot" data-help-key="helpApiKey" tabindex="0" role="note">i</span></span>
+                <input id="apiKeyInput" type="password" data-i18n-placeholder="placeholderApiKey" placeholder="粘贴一个 Key" />
+              </label>
+            </div>
+            <div class="actions">
+              <button id="saveModelCfgBtn" data-i18n="btnSaveModel">保存模型配置</button>
+            </div>
+            <div id="modelStatus" class="meta warnMeta"></div>
+          </section>
+
+          <section class="panel run-actions">
+            <h2 data-i18n="panelRunControl">运行控制</h2>
+            <div class="actions">
+              <button id="startBtn" data-i18n="btnStart">开始运行</button>
+              <button id="stopBtn" data-i18n="btnStop">停止运行</button>
+              <button id="refreshBtn" data-i18n="btnRefresh">刷新状态</button>
+              <button id="autotuneBtn" data-i18n="btnAutoTune">一键压测并调参</button>
+            </div>
+            <div id="autotuneMeta" class="pre compact">No auto tune run yet.</div>
+          </section>
+
+          <section class="panel status">
+            <h2 data-i18n="panelProgress">当前运行进度</h2>
+            <div id="runMeta" class="meta">No run selected.</div>
+            <div class="progressWrap">
+              <div id="progressBar" class="progressBar"></div>
+            </div>
+          </section>
+
+          <section class="panel kpis">
+            <h2 data-i18n="panelKpi">关键指标</h2>
+            <div class="kpi-grid">
+              <article class="kpi"><span data-i18n="kpiRtp">RTP %</span><strong id="kpiRtp">N/A</strong></article>
+              <article class="kpi"><span data-i18n="kpiCi">CI 半宽</span><strong id="kpiCi">N/A</strong></article>
+              <article class="kpi"><span data-i18n="kpiSpins">总 Spins</span><strong id="kpiSpins">N/A</strong></article>
+              <article class="kpi"><span data-i18n="kpiZero">空转率</span><strong id="kpiZero">N/A</strong></article>
+              <article class="kpi"><span data-i18n="kpiTail">尾部依赖度</span><strong id="kpiTail">N/A</strong></article>
+              <article class="kpi"><span data-i18n="kpiGuide">规则状态</span><strong id="kpiGuide">N/A</strong></article>
+            </div>
+          </section>
+
+          <section class="panel charts">
+            <h2 data-i18n="panelCharts">图形分析</h2>
+            <div class="chart-grid">
+              <div class="chart-card">
+                <h3 data-i18n="chartCiTitle">CI 半宽趋势</h3>
+                <canvas id="ciChart"></canvas>
+              </div>
+              <div class="chart-card">
+                <h3 data-i18n="chartRtpTitle">RTP 趋势</h3>
+                <canvas id="rtpChart"></canvas>
+              </div>
+              <div class="chart-card">
+                <h3 data-i18n="chartBucketTitle">倍率分桶占比</h3>
+                <canvas id="bucketChart"></canvas>
+              </div>
+              <div class="chart-card">
+                <h3 data-i18n="chartBankTitle">破产曲线</h3>
+                <canvas id="bankChart"></canvas>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel report">
+            <h2 data-i18n="panelAssessment">规则评估</h2>
+            <div id="assessment" class="pre">No report yet.</div>
+          </section>
+
+          <section class="panel interpretation">
+            <h2 data-i18n="panelInterpretation">模型解读</h2>
+            <div class="actions">
+              <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
+            </div>
+            <pre id="interpretationText" class="pre"></pre>
+          </section>
+
+          <section class="panel logs">
+            <h2 data-i18n="panelEvents">运行事件</h2>
+            <pre id="eventsText" class="pre"></pre>
+          </section>
         </div>
       </section>
 
-      <section class="panel status">
-        <h2>Current Run Progress</h2>
-        <div id="runMeta" class="meta">No run selected.</div>
-        <div class="progressWrap">
-          <div id="progressBar" class="progressBar"></div>
-        </div>
-      </section>
+      <section id="tab-manage" class="tab-page">
+        <div class="layout">
+          <section class="panel system-status">
+            <h2 data-i18n="panelSystemState">系统状态与恢复</h2>
+            <div id="systemStateMeta" class="meta"></div>
+            <div id="safetyTips" class="warnBox"></div>
+          </section>
 
-      <section class="panel autotune">
-        <h2>Auto Tune Parallelism</h2>
-        <div class="meta">
-          One-click quick stress test. It benchmarks candidate robot/concurrency pairs and auto-fills recommended values.
-        </div>
-        <div class="actions">
-          <button id="autotuneBtn">Run Auto Tune</button>
-        </div>
-        <div id="autotuneMeta" class="pre compact">No auto tune run yet.</div>
-      </section>
+          <section class="panel machine-catalog">
+            <h2 data-i18n="panelMachineCatalog">机台目录</h2>
+            <div id="machineCatalog" class="catalog-list"></div>
+          </section>
 
-      <section class="panel kpis">
-        <h2>Impact Indicators</h2>
-        <div class="kpi-grid">
-          <article class="kpi"><span>RTP %</span><strong id="kpiRtp">N/A</strong></article>
-          <article class="kpi"><span>CI Half-width</span><strong id="kpiCi">N/A</strong></article>
-          <article class="kpi"><span>Total Spins</span><strong id="kpiSpins">N/A</strong></article>
-          <article class="kpi"><span>Zero Win Rate</span><strong id="kpiZero">N/A</strong></article>
-          <article class="kpi"><span>Tail Dependency</span><strong id="kpiTail">N/A</strong></article>
-          <article class="kpi"><span>Guideline Status</span><strong id="kpiGuide">N/A</strong></article>
+          <section class="panel run-history">
+            <h2 data-i18n="panelRunHistory">运行历史</h2>
+            <table id="runListTable">
+              <thead>
+                <tr>
+                  <th data-i18n="thRunId">Run ID</th>
+                  <th data-i18n="thStatus">状态</th>
+                  <th data-i18n="thMachine">机台</th>
+                  <th data-i18n="thMode">Mode</th>
+                  <th data-i18n="thCreated">创建时间</th>
+                  <th data-i18n="thAction">操作</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
+
+          <section class="panel versions">
+            <h2 data-i18n="panelReportVersions">报告版本</h2>
+            <table id="versionsTable">
+              <thead>
+                <tr>
+                  <th data-i18n="thVersion">版本</th>
+                  <th data-i18n="thRun">Run</th>
+                  <th data-i18n="thCreated">创建时间</th>
+                  <th data-i18n="thRtp">RTP</th>
+                  <th data-i18n="thQuality">质量</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
+
+          <section class="panel cache">
+            <h2 data-i18n="panelCache">Chunk 缓存</h2>
+            <div id="cacheWarning" class="warnBox"></div>
+            <div id="cacheRiskMeta" class="meta dangerMeta"></div>
+            <div id="cacheMeta" class="meta"></div>
+            <div class="actions">
+              <button id="cacheRefreshBtn" data-i18n="btnCacheRefresh">刷新缓存状态</button>
+              <button id="cacheCleanupBtn" class="danger-btn" data-i18n="btnCacheCleanup">清理缓存</button>
+            </div>
+          </section>
         </div>
-      </section>
-
-      <section class="panel charts">
-        <h2>Live Charts</h2>
-        <div class="chart-grid">
-          <div class="chart-card">
-            <h3>CI Half-width Trend</h3>
-            <canvas id="ciChart"></canvas>
-          </div>
-          <div class="chart-card">
-            <h3>RTP Trend</h3>
-            <canvas id="rtpChart"></canvas>
-          </div>
-          <div class="chart-card">
-            <h3>Multiplier Bucket Spin Rate</h3>
-            <canvas id="bucketChart"></canvas>
-          </div>
-          <div class="chart-card">
-            <h3>Bankruptcy Curve</h3>
-            <canvas id="bankChart"></canvas>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel report">
-        <h2>Guideline Assessment</h2>
-        <div id="assessment" class="pre">No report yet.</div>
-      </section>
-
-      <section class="panel interpretation">
-        <h2>Model Interpretation</h2>
-        <div id="modelStatus" class="meta warnMeta"></div>
-        <div class="actions">
-          <button id="interpretBtn">Generate Interpretation</button>
-        </div>
-        <pre id="interpretationText" class="pre"></pre>
-      </section>
-
-      <section class="panel versions">
-        <h2>Report Versions</h2>
-        <table id="versionsTable">
-          <thead>
-            <tr>
-              <th>Version</th>
-              <th>Run</th>
-              <th>Created</th>
-              <th>RTP</th>
-              <th>Quality</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </section>
-
-      <section class="panel cache">
-        <h2>Chunk Cache</h2>
-        <div id="cacheWarning" class="warnBox">
-          Cleanup is manual only. While runs are active, cleanup is blocked by backend.
-        </div>
-        <div id="cacheMeta" class="meta"></div>
-        <div class="actions">
-          <button id="cacheRefreshBtn">Refresh Cache</button>
-          <button id="cacheCleanupBtn">Cleanup Cache</button>
-        </div>
-      </section>
-
-      <section class="panel logs">
-        <h2>Progress Events</h2>
-        <pre id="eventsText" class="pre"></pre>
       </section>
     </main>
 
     <script src="/console/app.js"></script>
   </body>
-  </html>
+</html>
