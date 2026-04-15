@@ -169,16 +169,60 @@ This section is for execution efficiency and can be updated as long as section A
      paylines table renders top 3 via PURE.formatPaylineTopSymbols.
 24a. Upstream API schema drift defense:
    - run_sampling_chunk sanity-checks the first parsed round against
-     _REQUIRED_ROUND_FIELDS = (BetAmount, WinCredits, PayoutByPayline,
-     StopSymbolsByCol, PayoutGroupId). Field-rename drift returns
+     _REQUIRED_ROUND_FIELDS = (WinCredits, StopSymbolsByCol). These
+     are the only fields that should appear on EVERY spin regardless
+     of win/lose state. PayoutByPayline / PayoutGroupId are NOT
+     strict-checked because lose / no-payout spins legitimately omit
+     them (the very first spin of most chunks is statistically a lose
+     spin, so strict-checking them aborted every run -- learned the
+     hard way during the dashboard follow-up round).
+   - BetAmount uses a union check ("BetAmount|CostCredits" -- at
+     least one must exist) since CostCredits is the documented fallback.
+   - On drift, run_sampling_chunk returns
      "schema_drift_missing_fields:..." and the main loop aborts the
      run; _watch_run surfaces the missing fields in error_message.
-   - tests/backend/test_analyzer_parsing.py monkey-patches post_json
-     to feed crafted round shapes through run_sampling_chunk, locking:
-     schema check (positive + negative cases), 12-bin bucket
-     classification, payline winning-symbol heuristic (left-3 col
-     intersection + blank filter + fallback), payout group aggregation
-     (numeric + string + garbage ids).
+   - tests/backend/test_analyzer_parsing.py (44 cases) monkey-patches
+     post_json to feed crafted round shapes through run_sampling_chunk,
+     locking: schema check (positive + negative cases including the
+     lose-spin-first regression), 12-bin bucket classification, payline
+     winning-symbol heuristic (left-3 col intersection + blank filter
+     + fallback), payout group aggregation (numeric + string + garbage
+     ids), CostCredits fallback when BetAmount is absent.
+24b. Zero-spin run guard (backend _watch_run):
+   - The analyzer's main loop breaks on the first failed chunk and
+     writes an empty summary with sampling.total_spins=0 plus
+     sampling.stop_reason recording the cause (e.g. request_failed_
+     http_504 from an upstream gateway timeout). exit_code is 0 and
+     both summary+report files exist, so the watcher would call that
+     "completed" -- presenting the operator with a green run that has
+     zero data and no error message.
+   - The watcher now reads sampling.total_spins on success and, if 0,
+     promotes the run to "failed" with error_message of the form
+     "sampling produced 0 spins after N chunk(s); stop_reason=...".
+     The empty report is also kept out of the report index / latest.json
+     so manage-tab navigation isn't polluted.
+   - Locked by tests/backend/test_run_lifecycle.py (4 cases): happy-
+     path POST -> mock analyzer writes summary+report -> watcher flips
+     status -> GET report endpoint returns; happy path also updates
+     report index + latest.json; zero-spin guard exact error_message
+     contract; unknown-stop_reason edge.
+24c. Autotune wall-time optimization:
+   - Default candidate grid compacted from 5x4=20 to 3x3=9 ({8,16,24}
+     x {1,2,4}). Frontend defaults match.
+   - Per-robot early exit in run_auto_tune: once a (robot, conc)
+     candidate's success_rate < 0.7, every subsequent (robot, conc)
+     pair with the same robot is skipped (more parallel load on an
+     already-stressed worker pool will only fail harder). Skip events
+     are still emitted via progress_callback with skipped=True so the
+     operator sees why the sweep finished early.
+   - Default rounds dropped from 2 to 1 in the frontend payload (less
+     averaging, but shaves ~50% of remote requests).
+   - Combined effect: autotune typically completes in well under half
+     the previous wall time without losing the low/mid/high coverage.
+   - Locked by tests/backend/test_autotune_progress.py: default grid
+     is 3x3, healthy run produces all 9, saturation at lowest conc
+     skips higher conc for that robot, partial saturation only affects
+     the offending robot.
 24. Interpretation prompt contract (backend build_interpretation_prompt):
    - Subset includes paylines_top20 / payout_groups_top20 /
      symbols_top20 / symbols_by_column_top10 alongside the existing

@@ -749,26 +749,30 @@ async function runAutoTune() {
   state.autoTuneRunning = true;
   updateActionStates();
   // robotInput / concInput are filled by Auto Tune itself, so on the first
-  // click they are empty. Fall back to a broad candidate grid in that case;
-  // subsequent clicks refine around the previously recommended values.
+  // click they are empty. Fall back to a compact candidate grid (3 robots
+  // x 3 concs = 9 candidates) in that case; subsequent clicks refine
+  // around the previously recommended values with the same compact grid.
+  // Combined with the backend's per-robot early-exit on low success_rate,
+  // this typically cuts autotune wall time more than half compared to
+  // the previous 5x4 = 20 candidate sweep.
   const rcRaw = byId("robotInput").value;
   const ccRaw = byId("concInput").value;
   const hasPrev = rcRaw !== "" && ccRaw !== "";
-  const rc = Number(rcRaw || 20);
+  const rc = Number(rcRaw || 16);
   const cc = Number(ccRaw || 2);
   const robotCandidates = hasPrev
-    ? [...new Set([rc - 8, rc - 4, rc, rc + 4, rc + 8].map((x) => Math.max(4, x)).filter((x) => x <= 200))]
-    : [8, 12, 16, 20, 24];
+    ? [...new Set([rc - 6, rc, rc + 6].map((x) => Math.max(4, x)).filter((x) => x <= 200))]
+    : [8, 16, 24];
   const concurrencyCandidates = hasPrev
-    ? [...new Set([1, cc - 1, cc, cc + 1, cc + 2].map((x) => Math.max(1, x)).filter((x) => x <= 16))]
-    : [1, 2, 3, 4];
+    ? [...new Set([Math.max(1, cc - 1), cc, cc + 1].filter((x) => x >= 1 && x <= 16))]
+    : [1, 2, 4];
   const payload = {
     machine: byId("machineSelect").value || "M14",
     mode: Number(byId("modeSelect").value || 1),
     spin_times: Math.max(60, Math.min(240, Number(byId("spinInput").value || 120))),
     robot_candidates: robotCandidates,
     concurrency_candidates: concurrencyCandidates,
-    rounds: 2,
+    rounds: 1,
     timeout: 45,
     bet: 1000,
   };

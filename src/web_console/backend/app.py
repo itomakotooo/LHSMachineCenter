@@ -167,8 +167,13 @@ class AutoTuneRequest(BaseModel):
     machine: str
     mode: int
     spin_times: int = Field(default=120, gt=0)
-    robot_candidates: list[int] = Field(default_factory=lambda: [8, 12, 16, 20, 24])
-    concurrency_candidates: list[int] = Field(default_factory=lambda: [1, 2, 3, 4])
+    # Compact 3x3 default grid (was 5x4): the user's first dashboard
+    # round flagged autotune as too slow. Combined with the per-robot
+    # early-exit in run_auto_tune, this typically cuts wall time more
+    # than half versus the prior sweep without losing coverage of the
+    # interesting (low / mid / high) load points.
+    robot_candidates: list[int] = Field(default_factory=lambda: [8, 16, 24])
+    concurrency_candidates: list[int] = Field(default_factory=lambda: [1, 2, 4])
     rounds: int = Field(default=2, gt=0, le=8)
     timeout: float = Field(default=30.0, gt=0, le=180.0)
     bet: int = Field(default=1000, gt=0)
@@ -569,11 +574,11 @@ def run_auto_tune(
     - ``finish`` payload: ``{"status": "completed" | "error"}``
     """
     robots = _sanitize_int_candidates(req.robot_candidates, lower=1, upper=200)
-    concs = _sanitize_int_candidates(req.concurrency_candidates, lower=1, upper=16)
+    concs = sorted(_sanitize_int_candidates(req.concurrency_candidates, lower=1, upper=16))
     if not robots:
-        robots = [8, 12, 16, 20, 24]
+        robots = [8, 16, 24]
     if not concs:
-        concs = [1, 2, 3, 4]
+        concs = [1, 2, 4]
 
     started = utc_now()
     candidates: list[dict[str, Any]] = []
@@ -583,9 +588,31 @@ def run_auto_tune(
             "start",
             {"total_candidates": total, "machine": req.machine, "mode": req.mode},
         )
+    # Early-exit bookkeeping: once a (robot, conc) candidate's success_rate
+    # falls below SATURATION_THRESHOLD, every larger conc with the same
+    # robot is guaranteed to fail at least as hard (more parallel load on
+    # an already-stressed worker pool). Skip them, but still pre-emit a
+    # "candidate" progress payload tagged skipped=True so the operator
+    # sees why the sweep finished early.
+    SATURATION_THRESHOLD = 0.7
+    saturated_robots: set[int] = set()
     try:
         for robot in robots:
             for conc in concs:
+                if robot in saturated_robots:
+                    skip_payload = {
+                        "robot_count": robot,
+                        "batch_concurrency": conc,
+                        "spin_times": req.spin_times,
+                        "rounds": req.rounds,
+                        "skipped": True,
+                        "skip_reason": "saturated_at_lower_concurrency",
+                        "success_rate": 0.0,
+                        "throughput_spins_per_sec": 0.0,
+                    }
+                    if progress_callback is not None:
+                        progress_callback("candidate", skip_payload)
+                    continue
                 result = _run_parallel_candidate(
                     machine=req.machine,
                     mode=req.mode,
@@ -599,6 +626,8 @@ def run_auto_tune(
                 candidates.append(result)
                 if progress_callback is not None:
                     progress_callback("candidate", result)
+                if float(result.get("success_rate", 0.0)) < SATURATION_THRESHOLD:
+                    saturated_robots.add(robot)
     except BaseException:
         if progress_callback is not None:
             progress_callback("finish", {"status": "error"})

@@ -130,17 +130,36 @@ This file tracks executable next steps for the current phase.
       thresholds, expands output structure to 6 sections with a
       mandatory "支付线与符号热点" narrative.
 - [x] Analyzer parsing test suite + upstream schema drift defense:
-      `_check_round_schema` validates first parsed round against
-      `_REQUIRED_ROUND_FIELDS` (BetAmount / WinCredits /
-      PayoutByPayline / StopSymbolsByCol / PayoutGroupId); a
-      field-rename drift in the test API now aborts the run with
-      "schema_drift_missing_fields:..." instead of silently producing
-      all-zero metrics. `tests/backend/test_analyzer_parsing.py` (33
-      cases) monkey-patches post_json to lock the parsing contract:
-      schema check, 12-bin bucket classification, payline winning-
-      symbol heuristic (left-3 intersection + blank filter), payout-
-      group aggregation. Payline heuristic now also filters
-      blank-like symbols from the intersection.
+      `_check_round_schema` validates first parsed round; required set
+      narrowed to {WinCredits, StopSymbolsByCol} after lose-spin
+      regression (PayoutByPayline / PayoutGroupId legitimately absent
+      on lose / no-payout spins). BetAmount checked via union with
+      CostCredits. `tests/backend/test_analyzer_parsing.py` (44 cases)
+      locks the parsing contract: schema check (incl. lose-spin-first
+      regression + CostCredits fallback), 12-bin bucket classification,
+      payline winning-symbol heuristic (left-3 intersection + blank
+      filter), payout-group aggregation.
+- [x] Zero-spin run guard: `_watch_run` promotes "exit 0 + summary +
+      report files but sampling.total_spins=0" runs (e.g. upstream API
+      504s for the first chunk) from "completed" to "failed" with
+      error_message recording the analyzer's stop_reason. Empty
+      reports are kept out of the report index / latest.json.
+      Locked by `tests/backend/test_run_lifecycle.py` (4 cases) which
+      also covers the happy path end-to-end (POST -> mock analyzer
+      writes artefacts -> GET /api/runs/{id}/report serves summary +
+      index/latest updated).
+- [x] Autotune wall-time speedup (per user feedback): default
+      candidate grid compacted from 5x4=20 to 3x3=9
+      ({8,16,24} x {1,2,4}); per-robot early exit in `run_auto_tune`
+      skips higher concurrency for any robot whose lower-concurrency
+      candidate falls below success_rate=0.7; frontend default rounds
+      dropped from 2 to 1. Combined effect: autotune typically
+      completes in well under half the previous wall time. Locked by
+      4 new cases in `tests/backend/test_autotune_progress.py`.
+- [x] Events panel moved to bottom of debug tab (per user feedback:
+      raw jsonl events are low-readability and only consulted when
+      something looks off; assessment + drilldowns get screen
+      priority).
 
 ## Work Mode
 
