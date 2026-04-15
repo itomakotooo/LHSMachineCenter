@@ -17,7 +17,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -107,11 +107,11 @@ class RuntimeModelConfig:
             return {"provider": self._provider, "api_key": self._api_key}
 
 
-MODEL_RUNTIME = RuntimeModelConfig(MODEL_CONFIG_PATH)
-
-
-def get_model_config_view() -> dict[str, Any]:
-    snap = MODEL_RUNTIME.snapshot()
+def get_model_config_view(
+    model_runtime: "RuntimeModelConfig",
+    model_config_path: Path,
+) -> dict[str, Any]:
+    snap = model_runtime.snapshot()
     provider = snap["provider"]
     models = PROVIDER_MODELS[provider]
     warnings: list[str] = []
@@ -122,8 +122,8 @@ def get_model_config_view() -> dict[str, Any]:
         "provider_catalog": PROVIDER_MODELS,
         "active_provider": provider,
         "has_api_key": bool(snap["api_key"]),
-        "config_persisted": MODEL_CONFIG_PATH.exists(),
-        "config_path": str(MODEL_CONFIG_PATH),
+        "config_persisted": model_config_path.exists(),
+        "config_path": str(model_config_path),
         "default_model": models[0],
         "cleanup_policy": "manual_only",
         "warnings": warnings,
@@ -338,9 +338,10 @@ def summarize_progress(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def load_machines() -> list[dict[str, Any]]:
-    if MACHINES_CONFIG.exists():
-        payload = read_json(MACHINES_CONFIG)
+def load_machines(path: Path | None = None) -> list[dict[str, Any]]:
+    target = path if path is not None else MACHINES_CONFIG
+    if target.exists():
+        payload = read_json(target)
         machines = payload.get("machines", [])
         if isinstance(machines, list):
             return machines
@@ -786,10 +787,25 @@ def call_remote_interpreter(summary: dict[str, Any], model_id: str, provider: st
     raise ValueError(f"unsupported provider: {provider}")
 
 
+def _default_popen_factory(cmd: list[str], cwd: Path) -> subprocess.Popen[str]:
+    """Default subprocess factory used by RunManager.
+
+    Tests inject a stub via ``RunManager(popen_factory=...)`` so they don't
+    spawn real processes.
+    """
+    return subprocess.Popen(  # noqa: S603
+        cmd,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
 @dataclass
 class ManagedRun:
     run_id: str
-    process: subprocess.Popen[str]
+    process: Any  # actual: subprocess.Popen[str] or test stub with .pid/.communicate/.terminate/.returncode
     output_dir: Path
     progress_file: Path
     summary_file: Path
@@ -800,8 +816,20 @@ class ManagedRun:
 
 
 class RunManager:
-    def __init__(self, store: StateStore) -> None:
+    def __init__(
+        self,
+        store: StateStore,
+        *,
+        analyzer: Path | None = None,
+        reports_root: Path | None = None,
+        progress_dir: Path | None = None,
+        popen_factory: "Callable[[list[str], Path], Any] | None" = None,
+    ) -> None:
         self.store = store
+        self._analyzer = analyzer if analyzer is not None else ANALYZER
+        self._reports_root = reports_root if reports_root is not None else REPORTS_ROOT
+        self._progress_dir = progress_dir if progress_dir is not None else PROGRESS_DIR
+        self._popen_factory = popen_factory if popen_factory is not None else _default_popen_factory
         self._lock = threading.Lock()
         self._running: dict[str, ManagedRun] = {}
         self._startup_recovery = self._recover_orphan_running_runs()
@@ -855,15 +883,15 @@ class RunManager:
             return len(self._running)
 
     def start_run(self, req: RunCreateRequest) -> dict[str, Any]:
-        if not ANALYZER.exists():
+        if not self._analyzer.exists():
             raise HTTPException(status_code=500, detail="analyzer script not found")
 
         run_id = uuid.uuid4().hex[:12]
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         report_version = f"rv_{ts}_{run_id[:8]}"
 
-        output_dir = REPORTS_ROOT / req.machine / f"mode_{req.mode}" / "versions" / report_version
-        progress_file = PROGRESS_DIR / f"{run_id}.jsonl"
+        output_dir = self._reports_root / req.machine / f"mode_{req.mode}" / "versions" / report_version
+        progress_file = self._progress_dir / f"{run_id}.jsonl"
         summary_file = output_dir / "player_impact_summary.json"
         report_file = output_dir / "player_impact_report.md"
 
@@ -872,7 +900,7 @@ class RunManager:
 
         cmd = [
             sys.executable,
-            str(ANALYZER),
+            str(self._analyzer),
             "--machine",
             req.machine,
             "--rtp-mode",
@@ -901,13 +929,7 @@ class RunManager:
             str(progress_file),
         ]
 
-        process = subprocess.Popen(  # noqa: S603
-            cmd,
-            cwd=str(ROOT),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        process = self._popen_factory(cmd, ROOT)
         managed = ManagedRun(
             run_id=run_id,
             process=process,
@@ -984,7 +1006,7 @@ class RunManager:
             self._running.pop(managed.run_id, None)
 
     def _update_report_index(self, managed: ManagedRun) -> None:
-        mode_dir = REPORTS_ROOT / managed.machine / f"mode_{managed.mode}"
+        mode_dir = self._reports_root / managed.machine / f"mode_{managed.mode}"
         index_path = mode_dir / "index.json"
         latest_path = mode_dir / "latest.json"
         summary = read_json(managed.summary_file)
@@ -1039,12 +1061,11 @@ class RunManager:
         return {"run_id": run_id, "status": "cancelled"}
 
 
-store = StateStore(DB_PATH)
-manager = RunManager(store)
-ops = OperationCoordinator()
-
-
-def current_system_state() -> dict[str, Any]:
+def current_system_state(
+    store: StateStore,
+    manager: RunManager,
+    ops: OperationCoordinator,
+) -> dict[str, Any]:
     snap = ops.snapshot()
     running = store.list_runs_by_status("running", limit=2000)
     return {
@@ -1059,144 +1080,6 @@ def current_system_state() -> dict[str, Any]:
         "startup_recovery": manager.startup_recovery_snapshot(),
     }
 
-app = FastAPI(title="Slot Console API", version="0.1.0")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.mount("/console", StaticFiles(directory=FRONTEND_DIR, html=True), name="console")
-
-
-@app.get("/")
-def root() -> FileResponse:
-    return FileResponse(FRONTEND_DIR / "index.html")
-
-
-@app.get("/api/health")
-def health() -> dict[str, Any]:
-    state = current_system_state()
-    return {
-        "ok": True,
-        "ts": state["ts"],
-        "app_started_at": state["app_started_at"],
-        "operation_busy": state["operation_busy"],
-        "running_runs_count": state["running_runs_count"],
-        "startup_recovery_count": state["startup_recovery"].get("recovered_count", 0),
-        "startup_terminated_pid_count": len(state["startup_recovery"].get("terminated_pids", [])),
-    }
-
-
-@app.get("/api/system-state")
-def system_state() -> dict[str, Any]:
-    return current_system_state()
-
-
-@app.get("/api/machines")
-def machines() -> dict[str, Any]:
-    return {"machines": load_machines()}
-
-
-@app.get("/api/models")
-def models() -> dict[str, Any]:
-    return get_model_config_view()
-
-
-@app.post("/api/model-config")
-def update_model_config(req: ModelConfigUpdateRequest) -> dict[str, Any]:
-    try:
-        MODEL_RUNTIME.update(req.provider, req.api_key)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"persist_failed:{exc.__class__.__name__}") from exc
-    return get_model_config_view()
-
-
-@app.post("/api/runs")
-def create_run(req: RunCreateRequest) -> dict[str, Any]:
-    existing = store.list_runs_by_status("running", limit=2)
-    if existing:
-        rid = str(existing[0].get("run_id", ""))
-        raise HTTPException(status_code=409, detail=f"run already active: {rid}")
-    if not ops.acquire("start_run"):
-        snap = ops.snapshot()
-        raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
-    try:
-        return manager.start_run(req)
-    finally:
-        ops.release()
-
-
-@app.post("/api/autotune")
-def auto_tune(req: AutoTuneRequest) -> dict[str, Any]:
-    running = store.list_runs_by_status("running", limit=2000)
-    if running:
-        raise HTTPException(status_code=409, detail="auto tune is blocked while runs are active")
-    if not ops.acquire("auto_tune"):
-        snap = ops.snapshot()
-        raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
-    try:
-        return run_auto_tune(req)
-    finally:
-        ops.release()
-
-
-@app.get("/api/runs")
-def runs() -> dict[str, Any]:
-    return {"runs": manager.list_runs()}
-
-
-@app.get("/api/runs/{run_id}")
-def run_detail(run_id: str) -> dict[str, Any]:
-    return manager.get_run_with_progress(run_id)
-
-
-@app.get("/api/runs/{run_id}/progress")
-def run_progress(run_id: str) -> dict[str, Any]:
-    row = store.get_run(run_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="run not found")
-    events = read_progress_events(Path(row["progress_file"]))
-    return {"run_id": run_id, "events": events}
-
-
-@app.post("/api/runs/{run_id}/cancel")
-def run_cancel(run_id: str) -> dict[str, Any]:
-    return manager.cancel_run(run_id)
-
-
-@app.get("/api/runs/{run_id}/report")
-def run_report(run_id: str) -> dict[str, Any]:
-    row = store.get_run(run_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="run not found")
-    summary_path = Path(row["summary_file"])
-    report_path = Path(row["report_file"])
-    if not summary_path.exists():
-        raise HTTPException(status_code=404, detail="summary not generated yet")
-    summary = read_json(summary_path)
-    report_text = report_path.read_text(encoding="utf-8") if report_path.exists() else ""
-    return {
-        "run_id": run_id,
-        "summary": summary,
-        "report_markdown": report_text,
-        "summary_file": str(summary_path),
-        "report_file": str(report_path),
-    }
-
-
-@app.get("/api/reports/{machine}/{mode}")
-def report_versions(machine: str, mode: int) -> dict[str, Any]:
-    mode_dir = REPORTS_ROOT / machine / f"mode_{mode}"
-    index_path = mode_dir / "index.json"
-    latest_path = mode_dir / "latest.json"
-    index_payload = read_json(index_path) if index_path.exists() else []
-    latest_payload = read_json(latest_path) if latest_path.exists() else {}
-    return {"machine": machine, "mode": mode, "versions": index_payload, "latest": latest_payload}
-
 
 def folder_bytes(path: Path) -> tuple[int, int]:
     size = 0
@@ -1210,112 +1093,281 @@ def folder_bytes(path: Path) -> tuple[int, int]:
     return (size, files)
 
 
-@app.get("/api/cache/status")
-def cache_status() -> dict[str, Any]:
-    total_bytes, file_count = folder_bytes(CACHE_ROOT)
-    running = store.list_runs_by_status("running", limit=2000)
-    return {
-        "cache_root": str(CACHE_ROOT),
-        "total_bytes": total_bytes,
-        "file_count": file_count,
-        "running_runs": len(running),
-        "reclaimable_bytes_estimate": total_bytes if not running else 0,
-    }
+def create_app(
+    state_dir: Path | None = None,
+    reports_root: Path | None = None,
+    cache_root: Path | None = None,
+    machines_config: Path | None = None,
+    analyzer_path: Path | None = None,
+) -> FastAPI:
+    """Build a FastAPI app with all stateful singletons scoped to this instance.
 
+    Each call constructs its own StateStore, RunManager, OperationCoordinator,
+    and RuntimeModelConfig, and registers all routes via closures over them.
+    Tests pass tmp paths to get a fully isolated app; ``main.py`` calls this
+    with no arguments to get the default production app.
+    """
+    sd = state_dir if state_dir is not None else STATE_DIR
+    sd.mkdir(parents=True, exist_ok=True)
+    progress_dir = sd / "progress"
+    progress_dir.mkdir(parents=True, exist_ok=True)
 
-@app.post("/api/cache/cleanup")
-def cache_cleanup(req: CacheCleanupRequest) -> dict[str, Any]:
-    running = store.list_runs_by_status("running", limit=2000)
-    if running:
-        return {"deleted_files": 0, "deleted_bytes": 0, "message": "cleanup blocked while runs are active"}
-    if not ops.acquire("cache_cleanup"):
-        snap = ops.snapshot()
-        raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
+    db_path = sd / "console.db"
+    model_config_path = sd / "model_config.json"
+    rr = reports_root if reports_root is not None else REPORTS_ROOT
+    cr = cache_root if cache_root is not None else CACHE_ROOT
+    mc = machines_config if machines_config is not None else MACHINES_CONFIG
+    az = analyzer_path if analyzer_path is not None else ANALYZER
 
-    try:
-        deleted_files = 0
-        deleted_bytes = 0
-        targets = sorted(
-            [p for p in CACHE_ROOT.rglob("*") if p.is_file()],
-            key=lambda p: p.stat().st_mtime,
-        )
-        max_delete = req.max_delete_bytes if req.max_delete_bytes > 0 else (10**18)
-        for file in targets:
-            size = file.stat().st_size
-            if deleted_bytes + size > max_delete:
-                break
-            file.unlink(missing_ok=True)
-            deleted_files += 1
-            deleted_bytes += size
-        return {"deleted_files": deleted_files, "deleted_bytes": deleted_bytes}
-    finally:
-        ops.release()
+    store = StateStore(db_path)
+    model_runtime = RuntimeModelConfig(model_config_path)
+    manager = RunManager(
+        store,
+        analyzer=az,
+        reports_root=rr,
+        progress_dir=progress_dir,
+    )
+    ops = OperationCoordinator()
 
+    app = FastAPI(title="Slot Console API", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.mount("/console", StaticFiles(directory=FRONTEND_DIR, html=True), name="console")
 
-@app.post("/api/interpretations")
-def create_interpretation(req: InterpretationRequest) -> dict[str, Any]:
-    row = store.get_run(req.run_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="run not found")
-    summary_path = Path(row["summary_file"])
-    if not summary_path.exists():
-        raise HTTPException(status_code=400, detail="run summary not ready")
-    summary = read_json(summary_path)
-    runtime = MODEL_RUNTIME.snapshot()
-    provider = runtime["provider"]
-    api_key = runtime["api_key"]
-    allowed_models = PROVIDER_MODELS.get(provider, [])
-    if req.model_id not in allowed_models:
-        raise HTTPException(
-            status_code=400,
-            detail=f"model_id not allowed for provider={provider}: {req.model_id}",
-        )
+    # Expose live singletons on app.state so tests / e2e fixtures can poke them
+    # without monkeypatching module globals.
+    app.state.store = store
+    app.state.manager = manager
+    app.state.ops = ops
+    app.state.model_runtime = model_runtime
+    app.state.cache_root = cr
+    app.state.reports_root = rr
+    app.state.db_path = db_path
+    app.state.machines_config = mc
+    app.state.analyzer = az
 
-    content = ""
-    source = "rule-based"
-    warning = ""
-    if not api_key:
-        warning = f"{provider.upper()} API key is empty; switched to rule-based interpretation."
-        content = create_interpretation_content(summary, req.model_id)
-    else:
+    @app.get("/")
+    def root() -> FileResponse:
+        return FileResponse(FRONTEND_DIR / "index.html")
+
+    @app.get("/api/health")
+    def health() -> dict[str, Any]:
+        s = current_system_state(store, manager, ops)
+        return {
+            "ok": True,
+            "ts": s["ts"],
+            "app_started_at": s["app_started_at"],
+            "operation_busy": s["operation_busy"],
+            "running_runs_count": s["running_runs_count"],
+            "startup_recovery_count": s["startup_recovery"].get("recovered_count", 0),
+            "startup_terminated_pid_count": len(s["startup_recovery"].get("terminated_pids", [])),
+        }
+
+    @app.get("/api/system-state")
+    def system_state() -> dict[str, Any]:
+        return current_system_state(store, manager, ops)
+
+    @app.get("/api/machines")
+    def machines() -> dict[str, Any]:
+        return {"machines": load_machines(mc)}
+
+    @app.get("/api/models")
+    def models() -> dict[str, Any]:
+        return get_model_config_view(model_runtime, model_config_path)
+
+    @app.post("/api/model-config")
+    def update_model_config(req: ModelConfigUpdateRequest) -> dict[str, Any]:
         try:
-            content = call_remote_interpreter(summary, req.model_id, provider, api_key)
-            source = f"remote-{provider}"
-        except Exception as exc:
-            warning = (
-                f"{provider.upper()} remote model failed ({type(exc).__name__}); "
-                "switched to rule-based interpretation."
-            )
-            content = create_interpretation_content(summary, req.model_id)
+            model_runtime.update(req.provider, req.api_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"persist_failed:{exc.__class__.__name__}") from exc
+        return get_model_config_view(model_runtime, model_config_path)
 
-    store.insert_interpretation(req.run_id, req.model_id, content, source=source, warning=warning)
-    return {
-        "run_id": req.run_id,
-        "model_id": req.model_id,
-        "provider": provider,
-        "source": source,
-        "warning": warning,
-        "content": content,
-    }
+    @app.post("/api/runs")
+    def create_run(req: RunCreateRequest) -> dict[str, Any]:
+        existing = store.list_runs_by_status("running", limit=2)
+        if existing:
+            rid = str(existing[0].get("run_id", ""))
+            raise HTTPException(status_code=409, detail=f"run already active: {rid}")
+        if not ops.acquire("start_run"):
+            snap = ops.snapshot()
+            raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
+        try:
+            return manager.start_run(req)
+        finally:
+            ops.release()
 
+    @app.post("/api/autotune")
+    def auto_tune(req: AutoTuneRequest) -> dict[str, Any]:
+        running = store.list_runs_by_status("running", limit=2000)
+        if running:
+            raise HTTPException(status_code=409, detail="auto tune is blocked while runs are active")
+        if not ops.acquire("auto_tune"):
+            snap = ops.snapshot()
+            raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
+        try:
+            return run_auto_tune(req)
+        finally:
+            ops.release()
 
-@app.get("/api/interpretations/{run_id}")
-def latest_interpretation(run_id: str) -> dict[str, Any]:
-    payload = store.latest_interpretation(run_id)
-    if not payload:
+    @app.get("/api/runs")
+    def runs() -> dict[str, Any]:
+        return {"runs": manager.list_runs()}
+
+    @app.get("/api/runs/{run_id}")
+    def run_detail(run_id: str) -> dict[str, Any]:
+        return manager.get_run_with_progress(run_id)
+
+    @app.get("/api/runs/{run_id}/progress")
+    def run_progress(run_id: str) -> dict[str, Any]:
+        row = store.get_run(run_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="run not found")
+        events = read_progress_events(Path(row["progress_file"]))
+        return {"run_id": run_id, "events": events}
+
+    @app.post("/api/runs/{run_id}/cancel")
+    def run_cancel(run_id: str) -> dict[str, Any]:
+        return manager.cancel_run(run_id)
+
+    @app.get("/api/runs/{run_id}/report")
+    def run_report(run_id: str) -> dict[str, Any]:
+        row = store.get_run(run_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="run not found")
+        summary_path = Path(row["summary_file"])
+        report_path = Path(row["report_file"])
+        if not summary_path.exists():
+            raise HTTPException(status_code=404, detail="summary not generated yet")
+        summary = read_json(summary_path)
+        report_text = report_path.read_text(encoding="utf-8") if report_path.exists() else ""
         return {
             "run_id": run_id,
-            "content": "",
-            "model_id": "",
-            "source": "",
-            "warning": "",
-            "created_at": "",
+            "summary": summary,
+            "report_markdown": report_text,
+            "summary_file": str(summary_path),
+            "report_file": str(report_path),
         }
-    return payload
 
+    @app.get("/api/reports/{machine}/{mode}")
+    def report_versions(machine: str, mode: int) -> dict[str, Any]:
+        mode_dir = rr / machine / f"mode_{mode}"
+        index_path = mode_dir / "index.json"
+        latest_path = mode_dir / "latest.json"
+        index_payload = read_json(index_path) if index_path.exists() else []
+        latest_payload = read_json(latest_path) if latest_path.exists() else {}
+        return {"machine": machine, "mode": mode, "versions": index_payload, "latest": latest_payload}
 
-if __name__ == "__main__":
-    import uvicorn
+    @app.get("/api/cache/status")
+    def cache_status() -> dict[str, Any]:
+        total_bytes, file_count = folder_bytes(cr)
+        running = store.list_runs_by_status("running", limit=2000)
+        return {
+            "cache_root": str(cr),
+            "total_bytes": total_bytes,
+            "file_count": file_count,
+            "running_runs": len(running),
+            "reclaimable_bytes_estimate": total_bytes if not running else 0,
+        }
 
-    uvicorn.run("src.web_console.backend.app:app", host="127.0.0.1", port=8765, reload=False)
+    @app.post("/api/cache/cleanup")
+    def cache_cleanup(req: CacheCleanupRequest) -> dict[str, Any]:
+        running = store.list_runs_by_status("running", limit=2000)
+        if running:
+            return {
+                "deleted_files": 0,
+                "deleted_bytes": 0,
+                "message": "cleanup blocked while runs are active",
+            }
+        if not ops.acquire("cache_cleanup"):
+            snap = ops.snapshot()
+            raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
+
+        try:
+            deleted_files = 0
+            deleted_bytes = 0
+            targets = sorted(
+                [p for p in cr.rglob("*") if p.is_file()],
+                key=lambda p: p.stat().st_mtime,
+            )
+            max_delete = req.max_delete_bytes if req.max_delete_bytes > 0 else (10**18)
+            for file in targets:
+                size = file.stat().st_size
+                if deleted_bytes + size > max_delete:
+                    break
+                file.unlink(missing_ok=True)
+                deleted_files += 1
+                deleted_bytes += size
+            return {"deleted_files": deleted_files, "deleted_bytes": deleted_bytes}
+        finally:
+            ops.release()
+
+    @app.post("/api/interpretations")
+    def create_interpretation(req: InterpretationRequest) -> dict[str, Any]:
+        row = store.get_run(req.run_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="run not found")
+        summary_path = Path(row["summary_file"])
+        if not summary_path.exists():
+            raise HTTPException(status_code=400, detail="run summary not ready")
+        summary = read_json(summary_path)
+        runtime = model_runtime.snapshot()
+        provider = runtime["provider"]
+        api_key = runtime["api_key"]
+        allowed_models = PROVIDER_MODELS.get(provider, [])
+        if req.model_id not in allowed_models:
+            raise HTTPException(
+                status_code=400,
+                detail=f"model_id not allowed for provider={provider}: {req.model_id}",
+            )
+
+        content = ""
+        source = "rule-based"
+        warning = ""
+        if not api_key:
+            warning = f"{provider.upper()} API key is empty; switched to rule-based interpretation."
+            content = create_interpretation_content(summary, req.model_id)
+        else:
+            try:
+                content = call_remote_interpreter(summary, req.model_id, provider, api_key)
+                source = f"remote-{provider}"
+            except Exception as exc:
+                warning = (
+                    f"{provider.upper()} remote model failed ({type(exc).__name__}); "
+                    "switched to rule-based interpretation."
+                )
+                content = create_interpretation_content(summary, req.model_id)
+
+        store.insert_interpretation(req.run_id, req.model_id, content, source=source, warning=warning)
+        return {
+            "run_id": req.run_id,
+            "model_id": req.model_id,
+            "provider": provider,
+            "source": source,
+            "warning": warning,
+            "content": content,
+        }
+
+    @app.get("/api/interpretations/{run_id}")
+    def latest_interpretation(run_id: str) -> dict[str, Any]:
+        payload = store.latest_interpretation(run_id)
+        if not payload:
+            return {
+                "run_id": run_id,
+                "content": "",
+                "model_id": "",
+                "source": "",
+                "warning": "",
+                "created_at": "",
+            }
+        return payload
+
+    return app
 

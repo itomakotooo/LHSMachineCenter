@@ -12,9 +12,11 @@ python -m compileall -q src tests scripts
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "=== Module-global guard (AST self-test) ==="
-# Step 2 baseline: only the guard's own self-test runs here. Step 3 (the
-# create_app refactor commit) flips this to scan src/web_console/backend/app.py.
 python scripts/check_no_global_state.py --self-test
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host "=== Module-global guard (backend/app.py is side-effect free) ==="
+python scripts/check_no_global_state.py src/web_console/backend/app.py
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "=== Ruff (if installed) ==="
