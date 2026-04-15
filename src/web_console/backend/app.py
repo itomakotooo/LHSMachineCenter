@@ -733,13 +733,21 @@ def build_interpretation_prompt(summary: dict[str, Any]) -> str:
             "bankruptcy_probe": pi.get("bankruptcy_probe"),
             # Drilldown surfaces -- give the model the same data the
             # console operator stares at so it can comment on payline /
-            # payout-group / symbol hotspots instead of stopping at the
+            # payout-id / symbol hotspots instead of stopping at the
             # aggregate volatility numbers.
             "paylines_top20": pi.get("paylines_top20"),
             "payout_groups_top20": pi.get("payout_groups_top20"),
+            "payout_ids_top20": pi.get("payout_ids_top20"),
+            "spin_type_breakdown": pi.get("spin_type_breakdown"),
             "symbols_top20": pi.get("symbols_top20"),
             "symbols_by_column_top10": pi.get("symbols_by_column_top10"),
         },
+        # Cross-cutting context the LLM needs to interpret the metrics:
+        # upstream_analysis carries the server-side total_win sanity
+        # check; collect_mechanic flags whether the machine has a
+        # collect bonus (M272+) so the model can surface it explicitly.
+        "upstream_analysis": summary.get("upstream_analysis"),
+        "collect_mechanic": summary.get("collect_mechanic"),
         "guideline_assessment": summary.get("guideline_assessment"),
         "guideline_comparison": summary.get("guideline_comparison"),
     }

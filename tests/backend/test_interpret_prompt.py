@@ -84,3 +84,58 @@ def test_prompt_handles_missing_drilldown_gracefully():
     # Key still rendered (as null) so the model knows it's intentionally
     # absent and can call out the legacy-report case.
     assert '"payout_groups_top20": null' in prompt
+
+
+def test_prompt_subset_carries_new_surfaces():
+    """payout_ids_top20, spin_type_breakdown, upstream_analysis, and
+    collect_mechanic must reach the LLM so it can comment on those
+    structural insights (Pay ID hotspots, bonus contribution, server
+    sanity check, collect mechanic if applicable)."""
+    summary = _summary_with_drilldown()
+    summary["player_impact"]["payout_ids_top20"] = [
+        {"payout_id": "1", "hit_count": 100, "total_win": 333300, "rtp_contribution_pp": 73.0},
+    ]
+    summary["player_impact"]["spin_type_breakdown"] = [
+        {"spin_type": 140, "spins": 200, "share_pct": 64.5, "win_rounds": 30, "rtp_contribution_pp": 50.0},
+        {"spin_type": 126, "spins": 110, "share_pct": 35.5, "win_rounds": 25, "rtp_contribution_pp": 30.0},
+    ]
+    summary["upstream_analysis"] = {
+        "server_total_win": 1664300.0,
+        "our_total_win": 1664300.0,
+        "delta": 0.0,
+        "matches": True,
+        "server_robots_seen": 8,
+    }
+    summary["collect_mechanic"] = {
+        "applicable": True,
+        "robots_with_data": 4,
+        "total_collects": 23,
+        "max_acc_credits_observed": 5000,
+        "avg_spins_between_collects": 78.5,
+    }
+    prompt = build_interpretation_prompt(summary)
+    assert '"payout_ids_top20"' in prompt
+    assert '"333300"' in prompt or "333300" in prompt
+    assert '"spin_type_breakdown"' in prompt
+    assert '"spin_type": 140' in prompt
+    assert '"upstream_analysis"' in prompt
+    assert '"matches": true' in prompt
+    assert '"collect_mechanic"' in prompt
+    assert '"applicable": true' in prompt
+
+
+def test_prompt_collect_mechanic_marked_inapplicable_for_m14():
+    """M14-style summary (no collect mechanic) still passes the
+    collect_mechanic block through with applicable=false so the LLM
+    can suppress that section instead of inventing data."""
+    summary = _summary_with_drilldown()
+    summary["collect_mechanic"] = {
+        "applicable": False,
+        "robots_with_data": 0,
+        "total_collects": 0,
+        "max_acc_credits_observed": 0,
+        "avg_spins_between_collects": None,
+    }
+    prompt = build_interpretation_prompt(summary)
+    assert '"applicable": false' in prompt
+    assert '"avg_spins_between_collects": null' in prompt

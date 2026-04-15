@@ -639,6 +639,71 @@ def test_run_sampling_chunk_upstream_analysis_malformed_string_skipped(patch_pos
     assert rec["upstream_chunk_robots_seen"] == 0
 
 
+def test_run_sampling_chunk_collect_mechanic_m14_absent(patch_post_json):
+    """M14-shape rounds carry neither CollectCount nor AccCredits;
+    the chunk record reports zero collects + collect_robots_seen=0."""
+    rounds = [_full_round(WinCredits=0) for _ in range(3)]
+    # Make sure the helper doesn't accidentally inject collect fields.
+    for r in rounds:
+        r.pop("CollectCount", None)
+        r.pop("AccCredits", None)
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=3)
+    assert rec["collect_count_total"] == 0
+    assert rec["acc_credits_max"] == 0
+    assert rec["collect_robots_seen"] == 0
+
+
+def test_run_sampling_chunk_collect_mechanic_m272_robot_max(patch_post_json):
+    """M272-shape rounds: CollectCount monotonically increases per
+    robot; chunk_collect_count_total takes the max per robot. AccCredits
+    peak across all rounds is captured."""
+    # Single robot, 5 rounds with CollectCount 1->2->3->3->4 (rises to 4)
+    # and AccCredits up to 1500.
+    rounds = [
+        _full_round(WinCredits=0, CollectCount=1, AccCredits=100),
+        _full_round(WinCredits=0, CollectCount=2, AccCredits=300),
+        _full_round(WinCredits=0, CollectCount=3, AccCredits=900),
+        _full_round(WinCredits=0, CollectCount=3, AccCredits=1200),
+        _full_round(WinCredits=0, CollectCount=4, AccCredits=1500),
+    ]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=5)
+    assert rec["collect_count_total"] == 4
+    assert rec["acc_credits_max"] == 1500
+    assert rec["collect_robots_seen"] == 1
+
+
+def test_run_sampling_chunk_collect_mechanic_multi_robot_sums(patch_post_json):
+    """Two robots, max CollectCount 5 and 7 respectively -> chunk total
+    is 12 (sum across robots)."""
+    # Robot 1: max CollectCount=5
+    rounds_a = [_full_round(WinCredits=0, CollectCount=k, AccCredits=k * 100) for k in range(1, 6)]
+    # Robot 2: max CollectCount=7, peak AccCredits=2100
+    rounds_b = [_full_round(WinCredits=0, CollectCount=k, AccCredits=k * 300) for k in range(1, 8)]
+    patch_post_json([
+        {"roundResult": json.dumps(rounds_a)},
+        {"roundResult": json.dumps(rounds_b)},
+    ])
+    rec = _run(spin_times=12)
+    assert rec["collect_count_total"] == 5 + 7  # sum of robot maxes
+    assert rec["acc_credits_max"] == 2100      # peak across all robots
+    assert rec["collect_robots_seen"] == 2
+
+
+def test_run_sampling_chunk_collect_mechanic_garbage_values_safe(patch_post_json):
+    """Non-numeric CollectCount / AccCredits coerce to 0, no crash."""
+    rounds = [_full_round(WinCredits=0, CollectCount="weird", AccCredits=None)]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=1)
+    assert rec["collect_count_total"] == 0
+    assert rec["acc_credits_max"] == 0
+    # CollectCount key still PRESENT in the round (just non-numeric), so
+    # the robot is "observed" -- tells the user the API returned the
+    # field but with a value we couldn't parse.
+    assert rec["collect_robots_seen"] == 1
+
+
 def test_run_sampling_chunk_upstream_analysis_totalwin_as_object_not_string(patch_post_json):
     """Some replays may send TotalWin already as a dict instead of a
     string-encoded JSON. Both paths should be handled."""

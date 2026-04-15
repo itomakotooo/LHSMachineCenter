@@ -725,6 +725,14 @@ def run_sampling_chunk(
     spin_type_win: dict[int, float] = defaultdict(float)
     spin_type_wins: dict[int, int] = defaultdict(int)  # count of winning rounds per type
 
+    # Collect-mechanic accumulation. M272's mode 1/2 carries CollectCount
+    # (per-robot monotonic counter of triggered collects) and AccCredits
+    # (cumulative collected credits). M14 has neither; chunk_collect_seen
+    # stays at 0 and the summary marks the surface as not applicable.
+    chunk_collect_count_total = 0  # sum of max CollectCount across robots
+    chunk_acc_credits_max = 0      # peak AccCredits seen this chunk
+    chunk_collect_seen = 0         # robots whose rounds carried the fields
+
     # Per-payline winning-symbol inference. The API returns
     # PayoutByPayline (which line ids paid) and StopSymbolsByCol (the
     # 5 columns of stopped symbols), but no direct payline->position
@@ -743,6 +751,11 @@ def run_sampling_chunk(
         rounds = parse_rounds(robot)
         cur_loss = 0
         cur_win = 0
+        # Per-robot collect tracking: max CollectCount + max AccCredits
+        # observed within this robot's rounds.
+        robot_max_collect_count = 0
+        robot_max_acc_credits = 0
+        robot_collect_observed = False
 
         for r in rounds:
             if not isinstance(r, dict):
@@ -819,6 +832,28 @@ def run_sampling_chunk(
             if win_amt > 0:
                 spin_type_wins[sp_type] += 1
 
+            # Collect mechanic (M272+): track max CollectCount (per-robot
+            # monotonic counter of triggered collect bonuses) and max
+            # AccCredits (peak accumulated credit balance). Fields are
+            # absent on M14 / non-collect machines -- we only mark this
+            # robot as "observed" when at least one of the two appears.
+            cc_raw = r.get("CollectCount")
+            ac_raw = r.get("AccCredits")
+            if cc_raw is not None or ac_raw is not None:
+                robot_collect_observed = True
+            try:
+                cc_int = int(cc_raw or 0)
+            except (TypeError, ValueError):
+                cc_int = 0
+            try:
+                ac_int = int(ac_raw or 0)
+            except (TypeError, ValueError):
+                ac_int = 0
+            if cc_int > robot_max_collect_count:
+                robot_max_collect_count = cc_int
+            if ac_int > robot_max_acc_credits:
+                robot_max_acc_credits = ac_int
+
             # PayoutIdToWinAmount aggregation: dict of {payout_id: win}
             # populated on winning rounds. Sum win and count occurrences
             # per id so the drilldown can rank by total contribution.
@@ -874,6 +909,13 @@ def run_sampling_chunk(
             win_streak_hist[cur_win] += 1
             max_win_streak = max(max_win_streak, cur_win)
 
+        # Roll the per-robot collect totals into the chunk-level tally.
+        chunk_collect_count_total += robot_max_collect_count
+        if robot_max_acc_credits > chunk_acc_credits_max:
+            chunk_acc_credits_max = robot_max_acc_credits
+        if robot_collect_observed:
+            chunk_collect_seen += 1
+
     if chunk_spins <= 0 or chunk_bet <= 0:
         return {"ok": False, "index": chunk_index, "error": "parse_failed_zero_chunk"}
 
@@ -920,6 +962,9 @@ def run_sampling_chunk(
         "spin_type_wins": {str(k): v for k, v in spin_type_wins.items()},
         "upstream_chunk_total_win": upstream_chunk_total_win,
         "upstream_chunk_robots_seen": upstream_chunk_robots_seen,
+        "collect_count_total": chunk_collect_count_total,
+        "acc_credits_max": chunk_acc_credits_max,
+        "collect_robots_seen": chunk_collect_seen,
     }
 
 
@@ -1056,6 +1101,9 @@ def main() -> int:
     spin_type_wins: dict[int, int] = defaultdict(int)
     upstream_total_win = 0.0
     upstream_robots_seen = 0
+    collect_count_total = 0
+    acc_credits_max_global = 0
+    collect_robots_seen_total = 0
 
     lack_credit_spins = 0
     chunks = 0
@@ -1192,6 +1240,12 @@ def main() -> int:
             # these fields; .get() default keeps the comparison neutral).
             upstream_total_win += float(rec.get("upstream_chunk_total_win", 0.0) or 0.0)
             upstream_robots_seen += int(rec.get("upstream_chunk_robots_seen", 0) or 0)
+            # collect-mechanic accumulators (M272+; absent on M14).
+            collect_count_total += int(rec.get("collect_count_total", 0) or 0)
+            chunk_acc_max = int(rec.get("acc_credits_max", 0) or 0)
+            if chunk_acc_max > acc_credits_max_global:
+                acc_credits_max_global = chunk_acc_max
+            collect_robots_seen_total += int(rec.get("collect_robots_seen", 0) or 0)
 
             hw = ci_halfwidth_pp(chunk_rtps_pct)
             if math.isfinite(hw):
@@ -1661,6 +1715,23 @@ def main() -> int:
                 else None
             ),
             "server_robots_seen": upstream_robots_seen,
+        },
+        "collect_mechanic": {
+            # M272+ collect mechanic: total CollectCount triggers across
+            # all robots, plus peak AccCredits seen. M14 (and any other
+            # non-collect machine) reports applicable=false so the
+            # frontend / interpretation can suppress the section
+            # entirely. avg_spins_between_collects is null when no
+            # triggers were observed (avoids div-by-zero).
+            "applicable": collect_robots_seen_total > 0,
+            "robots_with_data": collect_robots_seen_total,
+            "total_collects": collect_count_total,
+            "max_acc_credits_observed": acc_credits_max_global,
+            "avg_spins_between_collects": (
+                (total_spins / collect_count_total)
+                if collect_count_total > 0
+                else None
+            ),
         },
         "guideline_assessment": {
             "guideline": "classic_slots_report_guideline_v1",
