@@ -18,17 +18,32 @@ ENDPOINT_URL = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpi
 PAYLINE_RE = re.compile(r"(\d+):")
 RETURN_BUCKET_ORDER = [
     "eq0",
-    "gt0_lt0.5",
-    "ge0.5_lt1",
-    "ge1_lt2",
-    "ge2_lt5",
+    "gt0_lt1",
+    "ge1_lt5",
     "ge5_lt10",
     "ge10_lt20",
     "ge20_lt50",
     "ge50_lt100",
-    "ge100",
+    "ge100_lt200",
+    "ge200_lt500",
+    "ge500_lt1000",
+    "ge1000_lt5000",
+    "ge5000",
 ]
-TAIL_GEX10_BUCKETS = {"ge10_lt20", "ge20_lt50", "ge50_lt100", "ge100"}
+# Tail dependency uses every bucket >= 10x. The previous schema lumped
+# everything >=100 into one bucket; the refined schema splits it into
+# 100-200 / 200-500 / 500-1000 / 1000-5000 / 5000+ so the tail is more
+# than just a pile.
+TAIL_GEX10_BUCKETS = {
+    "ge10_lt20",
+    "ge20_lt50",
+    "ge50_lt100",
+    "ge100_lt200",
+    "ge200_lt500",
+    "ge500_lt1000",
+    "ge1000_lt5000",
+    "ge5000",
+}
 DEFAULT_GUIDELINE_RULES_PATH = (
     Path(__file__).resolve().parents[1] / "configs" / "classic_slots_guideline_rules.json"
 )
@@ -449,14 +464,10 @@ def make_payload(
 def return_bucket(ret_x: float) -> str:
     if ret_x <= 0.0:
         return "eq0"
-    if ret_x < 0.5:
-        return "gt0_lt0.5"
     if ret_x < 1.0:
-        return "ge0.5_lt1"
-    if ret_x < 2.0:
-        return "ge1_lt2"
+        return "gt0_lt1"
     if ret_x < 5.0:
-        return "ge2_lt5"
+        return "ge1_lt5"
     if ret_x < 10.0:
         return "ge5_lt10"
     if ret_x < 20.0:
@@ -465,7 +476,15 @@ def return_bucket(ret_x: float) -> str:
         return "ge20_lt50"
     if ret_x < 100.0:
         return "ge50_lt100"
-    return "ge100"
+    if ret_x < 200.0:
+        return "ge100_lt200"
+    if ret_x < 500.0:
+        return "ge200_lt500"
+    if ret_x < 1000.0:
+        return "ge500_lt1000"
+    if ret_x < 5000.0:
+        return "ge1000_lt5000"
+    return "ge5000"
 
 
 def build_multiplier_bucket_rows(
@@ -1227,11 +1246,11 @@ def main() -> int:
     action_recommendations: list[str] = []
     if zero_win_rate > 0.80 or loss_streak_p95 >= 15:
         action_recommendations.append(
-            "Increase low/mid return buckets (gt0_lt0.5 and ge0.5_lt1) to reduce dry feel."
+            "Increase low return bucket (gt0_lt1) to reduce dry feel."
         )
     if tail_dependency >= 0.45:
         action_recommendations.append(
-            "Reduce >=10x tail RTP share slightly and reallocate to ge1_lt2 or ge2_lt5."
+            "Reduce >=10x tail RTP share slightly and reallocate to ge1_lt5."
         )
     if x200_br >= 0.10:
         action_recommendations.append(

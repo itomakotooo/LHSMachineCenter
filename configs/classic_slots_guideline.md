@@ -34,18 +34,21 @@ If any gate fails, report must be marked `EXPLORATORY` (not final).
 
 ## 4) Multiplier Bucket Standard (ret_x = win / bet)
 
-Use this exact bucket schema:
+Use this exact bucket schema (12 buckets; refined tail per dashboard
+revision so `>=100` is not collapsed into one pile):
 
 1. `eq0`
-2. `gt0_lt0.5`
-3. `ge0.5_lt1`
-4. `ge1_lt2`
-5. `ge2_lt5`
-6. `ge5_lt10`
-7. `ge10_lt20`
-8. `ge20_lt50`
-9. `ge50_lt100`
-10. `ge100`
+2. `gt0_lt1`
+3. `ge1_lt5`
+4. `ge5_lt10`
+5. `ge10_lt20`
+6. `ge20_lt50`
+7. `ge50_lt100`
+8. `ge100_lt200`
+9. `ge200_lt500`
+10. `ge500_lt1000`
+11. `ge1000_lt5000`
+12. `ge5000`
 
 For each bucket, report:
 
@@ -168,16 +171,16 @@ Each report conclusion should follow this order:
 
 When player feel is too dry:
 
-1. Increase `gt0_lt0.5` and `ge0.5_lt1` spin share first.
+1. Increase `gt0_lt1` (small wins) spin share first.
 2. Keep `tail_rtp_contribution_pp_ge10x` stable unless targeting volatility shift.
 
 When machine feels too flat:
 
-1. Increase `ge10` tail share moderately.
-2. Avoid raising tail share without controlling `zero_win_rate` and streak length.
+1. Increase `ge10_lt20` / `ge20_lt50` tail share moderately.
+2. Avoid raising deep-tail (`ge100_lt200` and beyond) share without controlling `zero_win_rate` and streak length.
 
 When session bust is too high:
 
-1. Improve mid buckets (`ge1_lt2`, `ge2_lt5`) before extreme tail.
+1. Improve mid bucket (`ge1_lt5`) before extreme tail.
 2. Target lower `loss_streak_p95` and lower `x100/x200` bust rates.
 

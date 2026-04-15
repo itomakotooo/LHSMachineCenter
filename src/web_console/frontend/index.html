@@ -176,24 +176,16 @@
             </div>
           </section>
 
+          <!-- Only the multiplier-bucket chart survives the dashboard
+               revision. CI / RTP / bankruptcy values are already
+               surfaced as KPI cards above; their per-chunk trend lines
+               added little value beyond the headline number. -->
           <section class="panel charts">
             <h2 data-i18n="panelCharts">图形分析</h2>
-            <div class="chart-grid">
-              <div class="chart-card">
-                <h3 data-i18n="chartCiTitle">CI 半宽趋势</h3>
-                <canvas id="ciChart"></canvas>
-              </div>
-              <div class="chart-card">
-                <h3 data-i18n="chartRtpTitle">RTP 趋势</h3>
-                <canvas id="rtpChart"></canvas>
-              </div>
+            <div class="chart-grid chart-grid--single">
               <div class="chart-card">
                 <h3 data-i18n="chartBucketTitle">倍率分桶占比</h3>
                 <canvas id="bucketChart"></canvas>
-              </div>
-              <div class="chart-card">
-                <h3 data-i18n="chartBankTitle">破产曲线</h3>
-                <canvas id="bankChart"></canvas>
               </div>
             </div>
           </section>

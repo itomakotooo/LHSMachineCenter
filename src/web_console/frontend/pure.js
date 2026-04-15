@@ -142,14 +142,8 @@ const I18N = {
     kpiZero: "空转率",
     kpiTail: "尾部依赖度",
     kpiGuide: "规则状态",
-    chartCiTitle: "CI 半宽趋势",
-    chartRtpTitle: "RTP 趋势",
     chartBucketTitle: "倍率分桶占比",
-    chartBankTitle: "破产曲线",
-    chartCiLabel: "CI 半宽",
-    chartRtpLabel: "RTP %",
     chartBucketLabel: "Spin 占比 %",
-    chartBankLabel: "破产率 %",
     thRunId: "Run ID",
     thStatus: "状态",
     thMachine: "机台",
@@ -343,14 +337,8 @@ const I18N = {
     kpiZero: "Zero Win Rate",
     kpiTail: "Tail Dependency",
     kpiGuide: "Guideline Status",
-    chartCiTitle: "CI Half-width Trend",
-    chartRtpTitle: "RTP Trend",
     chartBucketTitle: "Multiplier Bucket Rate",
-    chartBankTitle: "Bankruptcy Curve",
-    chartCiLabel: "CI Half-width",
-    chartRtpLabel: "RTP %",
     chartBucketLabel: "Spin Rate %",
-    chartBankLabel: "Bankruptcy Rate %",
     thRunId: "Run ID",
     thStatus: "Status",
     thMachine: "Machine",
@@ -589,6 +577,33 @@ function computeRunProgressPct(latestEvent, opts) {
   const idx = Number(latestEvent.chunk_index || 0);
   if (maxChunks <= 0) return 0;
   return Math.max(0, Math.min(100, (idx / maxChunks) * 100));
+}
+
+// Pretty-print analyzer's multiplier-bucket key into a chart-friendly
+// label ("100-200" instead of "ge100_lt200"). Falls back to the raw
+// key for unknown buckets so an old report's labels still render.
+function prettyBucketLabel(key) {
+  switch (key) {
+    case "eq0":            return "0";
+    case "gt0_lt1":        return "0\u20131";
+    case "ge1_lt5":        return "1\u20135";
+    case "ge5_lt10":       return "5\u201310";
+    case "ge10_lt20":      return "10\u201320";
+    case "ge20_lt50":      return "20\u201350";
+    case "ge50_lt100":     return "50\u2013100";
+    case "ge100_lt200":    return "100\u2013200";
+    case "ge200_lt500":    return "200\u2013500";
+    case "ge500_lt1000":   return "500\u20131000";
+    case "ge1000_lt5000":  return "1000\u20135000";
+    case "ge5000":         return "\u22655000";
+    // Legacy bucket labels (old reports) -- best-effort pretty form.
+    case "gt0_lt0.5":      return "0\u20130.5";
+    case "ge0.5_lt1":      return "0.5\u20131";
+    case "ge1_lt2":        return "1\u20132";
+    case "ge2_lt5":        return "2\u20135";
+    case "ge100":          return "\u2265100";
+    default:               return String(key);
+  }
 }
 
 // Format payout_groups_top20 (added by analyzer commit 9). Sorts by
@@ -875,6 +890,7 @@ const PURE = {
   formatSymbolRows,
   symbolByColMatrix,
   formatPayoutGroupRows,
+  prettyBucketLabel,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;

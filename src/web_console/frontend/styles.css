@@ -672,6 +672,13 @@ button:disabled {
   gap: 8px;
 }
 
+/* Single-chart variant: only the multiplier-bucket survives the
+   dashboard revision, so let it take the full width of the .charts
+   panel instead of leaving a 2-col grid with 1 lonely tile. */
+.chart-grid--single {
+  grid-template-columns: 1fr;
+}
+
 .chart-card {
   border: 1px solid #d5dfea;
   border-radius: 12px;

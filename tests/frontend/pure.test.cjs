@@ -353,6 +353,29 @@ test("computeRunProgressPct: null event -> 0", () => {
   assert.equal(PURE.computeRunProgressPct(null, { maxChunks: 120 }), 0);
 });
 
+// ---------- prettyBucketLabel ----------
+
+test("prettyBucketLabel: new 12-bucket schema renders compact ranges", () => {
+  // Anchor labels for the new bin set so a future analyzer change can't
+  // silently shift the chart x-axis.
+  assert.equal(PURE.prettyBucketLabel("eq0"), "0");
+  assert.equal(PURE.prettyBucketLabel("gt0_lt1"), "0\u20131");
+  assert.equal(PURE.prettyBucketLabel("ge1_lt5"), "1\u20135");
+  assert.equal(PURE.prettyBucketLabel("ge100_lt200"), "100\u2013200");
+  assert.equal(PURE.prettyBucketLabel("ge5000"), "\u22655000");
+});
+
+test("prettyBucketLabel: legacy bucket keys still render", () => {
+  // Old reports (pre-bucket-redefinition commit) keep their original
+  // chart labels so the chart never shows a raw "ge100" key.
+  assert.equal(PURE.prettyBucketLabel("gt0_lt0.5"), "0\u20130.5");
+  assert.equal(PURE.prettyBucketLabel("ge100"), "\u2265100");
+});
+
+test("prettyBucketLabel: unknown key falls back to the raw key", () => {
+  assert.equal(PURE.prettyBucketLabel("future_label_x"), "future_label_x");
+});
+
 // ---------- formatPayoutGroupRows ----------
 
 test("formatPayoutGroupRows: empty -> []", () => {

@@ -25,10 +25,9 @@ const state = {
   lastSubmittedMaxChunks: 120,
   autoTuneRunning: false,
   busyActions: new Set(),
-  ciChart: null,
-  rtpChart: null,
+  // Only the multiplier-bucket chart survives the dashboard revision;
+  // CI / RTP / bankruptcy already render as KPI cards.
   bucketChart: null,
-  bankChart: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -298,11 +297,6 @@ function clearSummaryPanels() {
     state.bucketChart.data.datasets[0].data = [];
     state.bucketChart.update();
   }
-  if (state.bankChart) {
-    state.bankChart.data.labels = [];
-    state.bankChart.data.datasets[0].data = [];
-    state.bankChart.update();
-  }
 }
 
 function buildCharts() {
@@ -312,21 +306,12 @@ function buildCharts() {
       data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: bg, tension: 0.2, pointRadius: 2, borderWidth: 1 }] },
       options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: type !== "bar" } }, scales: { y: { beginAtZero: type !== "line" } } },
     });
-  state.ciChart = mk(byId("ciChart").getContext("2d"), "line", fmt("chartCiLabel"), "#0f766e", "rgba(13,148,136,0.15)");
-  state.rtpChart = mk(byId("rtpChart").getContext("2d"), "line", fmt("chartRtpLabel"), "#2563eb", "rgba(37,99,235,0.15)");
   state.bucketChart = mk(byId("bucketChart").getContext("2d"), "bar", fmt("chartBucketLabel"), "#0f766e", "rgba(13,148,136,0.35)");
-  state.bankChart = mk(byId("bankChart").getContext("2d"), "line", fmt("chartBankLabel"), "#f97316", "rgba(249,115,22,0.2)");
 }
 
 function updateChartLabels() {
-  if (state.ciChart) state.ciChart.data.datasets[0].label = fmt("chartCiLabel");
-  if (state.rtpChart) state.rtpChart.data.datasets[0].label = fmt("chartRtpLabel");
   if (state.bucketChart) state.bucketChart.data.datasets[0].label = fmt("chartBucketLabel");
-  if (state.bankChart) state.bankChart.data.datasets[0].label = fmt("chartBankLabel");
-  state.ciChart?.update();
-  state.rtpChart?.update();
   state.bucketChart?.update();
-  state.bankChart?.update();
 }
 
 function renderMachineCatalog() {
@@ -696,13 +681,6 @@ async function refreshCurrentRun() {
 
   const events = (await apiGet(`/api/runs/${state.currentRunId}/progress`)).events || [];
   byId("eventsText").textContent = events.length ? events.slice(-80).map((e) => JSON.stringify(e)).join("\n") : fmt("noEvents");
-  const chunks = events.filter((e) => e.event === "chunk_progress");
-  state.ciChart.data.labels = chunks.map((e) => String(e.chunk_index));
-  state.ciChart.data.datasets[0].data = chunks.map((e) => e.current_halfwidth_pp ?? null);
-  state.rtpChart.data.labels = chunks.map((e) => String(e.chunk_index));
-  state.rtpChart.data.datasets[0].data = chunks.map((e) => e.current_rtp_pct ?? null);
-  state.ciChart.update();
-  state.rtpChart.update();
 
   // Per-run failures / cancellations are shown inside runMeta (above).
   // Global warning area stays reserved for system + model notices.
@@ -728,13 +706,9 @@ async function refreshCurrentRun() {
       setKpi(domId, c.value, c.tone);
     }
     const buckets = s.player_impact?.multiplier_profile?.buckets || [];
-    state.bucketChart.data.labels = buckets.map((b) => b.bucket);
+    state.bucketChart.data.labels = buckets.map((b) => PURE.prettyBucketLabel(b.bucket));
     state.bucketChart.data.datasets[0].data = buckets.map((b) => (Number(b.spin_rate) <= 1 ? Number(b.spin_rate) * 100 : Number(b.spin_rate)));
     state.bucketChart.update();
-    const bank = s.player_impact?.bankruptcy_probe || [];
-    state.bankChart.data.labels = bank.map((b) => `x${b.bankroll_multiplier}`);
-    state.bankChart.data.datasets[0].data = bank.map((b) => (Number(b.bankruptcy_rate) <= 1 ? Number(b.bankruptcy_rate) * 100 : Number(b.bankruptcy_rate)));
-    state.bankChart.update();
     renderPaylineDrilldown(s);
     renderPayoutGroupDrilldown(s);
     renderSymbolDrilldown(s);
