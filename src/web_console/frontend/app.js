@@ -352,6 +352,18 @@ function fillCiTierOptions() {
   applyModeCiConstraint();
 }
 
+function fillBankMultOptions() {
+  const sel = byId("bankMultSelect");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = "";
+  for (const { value, label } of PURE.bankrollMultiplierPresets(state.lang)) {
+    sel.appendChild(new Option(label, value));
+  }
+  // Default: Standard preset; preserve user's previous choice across re-renders.
+  sel.value = prev || "100,200,500";
+}
+
 // Reset the autotune-filled inputs so the Start button re-locks until
 // the operator runs Auto Tune again. Called on machine / mode change.
 function clearConcurrencyInputs() {
@@ -418,7 +430,7 @@ function readRunPayload() {
     max_chunks: Number(byId("maxChunksInput").value),
     timeout: Number(byId("timeoutInput").value),
     bankruptcy_session_spins: Number(byId("bankSessionInput").value),
-    bankruptcy_bankroll_multipliers: byId("bankMultInput").value,
+    bankruptcy_bankroll_multipliers: byId("bankMultSelect").value,
     model_id: byId("modelSelect").value,
   };
 }
@@ -593,6 +605,7 @@ async function loadBootstrap() {
   state.modelMeta = models || {};
   fillMachineModeSelectors();
   fillCiTierOptions();
+  fillBankMultOptions();
   fillProviders();
   fillModelsForProvider(byId("providerSelect").value, state.modelMeta.default_model || "");
   renderMachineCatalog();
@@ -617,6 +630,7 @@ function bindEvents() {
     state.lang = e.target.value;
     applyI18n();
     fillCiTierOptions();
+    fillBankMultOptions();
     renderMachineCatalog();
     renderRunHistory();
     setSystemStatePanel();

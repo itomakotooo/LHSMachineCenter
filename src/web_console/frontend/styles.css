@@ -552,3 +552,21 @@ input.autotune-filled:focus {
   outline: none;
   border-color: var(--line);
 }
+
+/* Advanced parameters fold (chunk_spin_times / max_chunks / timeout). */
+details.advanced-params {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background-color: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+details.advanced-params > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 2px 0;
+}
+details.advanced-params[open] > summary {
+  margin-bottom: 10px;
+}

@@ -60,6 +60,20 @@ test("i18n: run-config validation keys are non-empty in both locales", () => {
   }
 });
 
+test("i18n: advanced + bankroll keys are non-empty in both locales", () => {
+  const required = [
+    "labelAdvancedParams",
+    "bankMultStandard",
+    "bankMultShort",
+    "bankMultLong",
+    "helpBankMultiplierWarn",
+  ];
+  for (const k of required) {
+    assert.ok(PURE.I18N.zh[k], `zh.${k} missing`);
+    assert.ok(PURE.I18N.en[k], `en.${k} missing`);
+  }
+});
+
 // ---------- fmt ----------
 
 test("fmt: substitutes vars", () => {
@@ -203,6 +217,31 @@ test("ciTierOptions: labels localized for en", () => {
   const opts = PURE.ciTierOptions("en");
   const fuzzy = opts.find((o) => o.value === "0");
   assert.ok(fuzzy.label.toLowerCase().includes("fuzzy"));
+});
+
+// ---------- bankrollMultiplierPresets ----------
+
+test("bankrollMultiplierPresets: returns 3 presets with stable values", () => {
+  const presets = PURE.bankrollMultiplierPresets("zh");
+  assert.equal(presets.length, 3);
+  assert.deepStrictEqual(
+    presets.map((p) => p.value),
+    ["100,200,500", "50,100,200", "200,500,1000"]
+  );
+});
+
+test("bankrollMultiplierPresets: labels localized (zh 标准/短/长)", () => {
+  const presets = PURE.bankrollMultiplierPresets("zh");
+  assert.ok(presets[0].label.includes("标准"));
+  assert.ok(presets[1].label.includes("短会话"));
+  assert.ok(presets[2].label.includes("长会话"));
+});
+
+test("bankrollMultiplierPresets: labels localized (en Standard/Short/Long)", () => {
+  const presets = PURE.bankrollMultiplierPresets("en");
+  assert.ok(presets[0].label.toLowerCase().includes("standard"));
+  assert.ok(presets[1].label.toLowerCase().includes("short"));
+  assert.ok(presets[2].label.toLowerCase().includes("long"));
 });
 
 // ---------- validateRunConfig ----------

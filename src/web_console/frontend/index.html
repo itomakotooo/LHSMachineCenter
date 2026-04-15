@@ -51,10 +51,6 @@
                 <select id="ciSelect"></select>
               </label>
               <label>
-                <span class="label-with-help"><span data-i18n="labelChunkSpins">每 Chunk Spin 次数</span><span class="help-dot" data-help-key="helpChunkSpins" tabindex="0" role="note">i</span></span>
-                <input id="spinInput" type="number" value="5000" />
-              </label>
-              <label>
                 <span class="label-with-help"><span data-i18n="labelRobotCount">每 Chunk 机器人数</span><span class="help-dot" data-help-key="helpRobotCount" tabindex="0" role="note">i</span></span>
                 <input id="robotInput" type="number" readonly class="autotune-filled" data-i18n-placeholder="placeholderAutotuneFill" placeholder="由压测自动填充" />
               </label>
@@ -63,22 +59,31 @@
                 <input id="concInput" type="number" readonly class="autotune-filled" data-i18n-placeholder="placeholderAutotuneFill" placeholder="由压测自动填充" />
               </label>
               <label>
-                <span class="label-with-help"><span data-i18n="labelMaxChunks">最大 Chunk 数</span><span class="help-dot" data-help-key="helpMaxChunks" tabindex="0" role="note">i</span></span>
-                <input id="maxChunksInput" type="number" value="120" />
-              </label>
-              <label>
-                <span class="label-with-help"><span data-i18n="labelTimeout">单请求超时 (秒)</span><span class="help-dot" data-help-key="helpTimeout" tabindex="0" role="note">i</span></span>
-                <input id="timeoutInput" type="number" value="300" />
-              </label>
-              <label>
                 <span class="label-with-help"><span data-i18n="labelBankSession">破产探测回合数</span><span class="help-dot" data-help-key="helpBankSession" tabindex="0" role="note">i</span></span>
                 <input id="bankSessionInput" type="number" value="500" />
               </label>
               <label class="full">
                 <span class="label-with-help"><span data-i18n="labelBankMultipliers">资金倍数梯度</span><span class="help-dot" data-help-key="helpBankMultipliers" tabindex="0" role="note">i</span></span>
-                <input id="bankMultInput" type="text" value="100,200,500" />
+                <select id="bankMultSelect"></select>
               </label>
             </div>
+            <details class="advanced-params">
+              <summary data-i18n="labelAdvancedParams">高级参数</summary>
+              <div class="grid two">
+                <label>
+                  <span class="label-with-help"><span data-i18n="labelChunkSpins">每 Chunk Spin 次数</span><span class="help-dot" data-help-key="helpChunkSpins" tabindex="0" role="note">i</span></span>
+                  <input id="spinInput" type="number" value="5000" />
+                </label>
+                <label>
+                  <span class="label-with-help"><span data-i18n="labelMaxChunks">最大 Chunk 数</span><span class="help-dot" data-help-key="helpMaxChunks" tabindex="0" role="note">i</span></span>
+                  <input id="maxChunksInput" type="number" value="120" />
+                </label>
+                <label>
+                  <span class="label-with-help"><span data-i18n="labelTimeout">单请求超时 (秒)</span><span class="help-dot" data-help-key="helpTimeout" tabindex="0" role="note">i</span></span>
+                  <input id="timeoutInput" type="number" value="300" />
+                </label>
+              </div>
+            </details>
             <details class="param-help" open>
               <summary data-i18n="paramGuideTitle">参数说明（新手）</summary>
               <ul class="help-list">
@@ -92,6 +97,7 @@
                 <li data-i18n="helpTimeout">单请求超时：每个网络请求的超时上限。</li>
                 <li data-i18n="helpBankSession">破产探测回合数：用于估算会话中破产率。</li>
                 <li data-i18n="helpBankMultipliers">资金倍数梯度：例如 100,200,500，对应不同初始资金强度。</li>
+                <li data-i18n="helpBankMultiplierWarn">仅「标准」档位与 guideline rules 里的 x100/x200/x500 阈值对齐；切换到其他档位时破产相关的 A5 规则不会触发。</li>
               </ul>
             </details>
           </section>

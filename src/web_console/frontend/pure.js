@@ -48,6 +48,11 @@ const I18N = {
     placeholderAutotuneFill: "由压测自动填充",
     validateAutotuneFirst: "请先点「一键压测并调参」获得并发推荐值。",
     validateMode25RequireFuzzy: "mode 2 和 5 必须使用模糊档位（CI 半宽 = 模糊）。",
+    labelAdvancedParams: "高级参数",
+    bankMultStandard: "标准 (100x / 200x / 500x) — 推荐",
+    bankMultShort: "短会话 (50x / 100x / 200x)",
+    bankMultLong: "长会话 (200x / 500x / 1000x)",
+    helpBankMultiplierWarn: "仅「标准」档位与 guideline rules 里的 x100/x200/x500 阈值对齐；切换到其他档位时破产相关的 A5 规则不会触发。",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
     labelConcurrency: "批并发数",
@@ -197,6 +202,11 @@ const I18N = {
     placeholderAutotuneFill: "filled by Auto Tune",
     validateAutotuneFirst: "Click 'Auto Tune Parallelism' first to get recommended concurrency values.",
     validateMode25RequireFuzzy: "Mode 2 and 5 must use the fuzzy CI tier.",
+    labelAdvancedParams: "Advanced parameters",
+    bankMultStandard: "Standard (100x / 200x / 500x) — recommended",
+    bankMultShort: "Short session (50x / 100x / 200x)",
+    bankMultLong: "Long session (200x / 500x / 1000x)",
+    helpBankMultiplierWarn: "Only the Standard preset aligns with the guideline rules' x100/x200/x500 thresholds; other presets skip the bankruptcy A5 rule.",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
     labelConcurrency: "Batch Concurrency",
@@ -391,6 +401,18 @@ function ciTierOptions(lang) {
   ];
 }
 
+// Bankroll multiplier presets for bankruptcy probe. Only the "standard"
+// preset aligns with the hard-coded x100/x200/x500 thresholds in
+// guideline_assessment + configs/classic_slots_guideline_rules.json;
+// other presets sample different points and skip the A5 rule.
+function bankrollMultiplierPresets(lang) {
+  return [
+    { value: "100,200,500", label: fmt(lang, "bankMultStandard") },
+    { value: "50,100,200", label: fmt(lang, "bankMultShort") },
+    { value: "200,500,1000", label: fmt(lang, "bankMultLong") },
+  ];
+}
+
 // Pure validator used by the frontend to gate the Start button. Returns
 // {blocking: string[], warnings: string[], canStart: bool}. Blocking
 // strings are localized and meant to be shown to the operator.
@@ -473,6 +495,7 @@ const PURE = {
   collectSystemWarnings,
   ciTierOptions,
   validateRunConfig,
+  bankrollMultiplierPresets,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;
