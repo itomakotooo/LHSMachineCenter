@@ -19,6 +19,10 @@ const state = {
   timer: null,
   fastTimer: null,
   autotuneTimer: null,
+  // Mid-area tab selection (assessment / interpretation / events). Pure
+  // UI state -- switching never refetches data because all three panes
+  // share the DOM and are kept up to date by the existing render funcs.
+  midTab: "assessment",
   // Captured at the moment Start is clicked so the polling code can
   // compute fuzzy-aware progress without re-deriving from API state.
   lastSubmittedFuzzy: false,
@@ -105,6 +109,21 @@ function applyFieldHelpHints() {
 function switchTab(tab) {
   document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll(".tab-page").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
+}
+
+// Mid-area tab switch (assessment / interpretation / events). Toggles
+// .active on both the button and the matching pane; never refetches
+// data -- the panes' content is owned by the existing render path.
+function switchMidTab(tab) {
+  state.midTab = tab;
+  document.querySelectorAll(".mid-tab-btn").forEach((b) => {
+    const on = b.dataset.midTab === tab;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  document.querySelectorAll(".mid-tab-pane").forEach((p) =>
+    p.classList.toggle("active", p.dataset.midTab === tab),
+  );
 }
 
 function setHealth(ok, suffix = "") {
@@ -900,6 +919,9 @@ function bindEvents() {
   });
   byId("tabBtnDebug").addEventListener("click", () => switchTab("debug"));
   byId("tabBtnManage").addEventListener("click", () => switchTab("manage"));
+  document.querySelectorAll(".mid-tab-btn").forEach((b) => {
+    b.addEventListener("click", () => switchMidTab(b.dataset.midTab));
+  });
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();
     applyModeCiConstraint();

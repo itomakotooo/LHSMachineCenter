@@ -304,7 +304,56 @@ body {
 
 .report,
 .interpretation {
+  /* Legacy 4-col placement -- the .panel.mid-tabs now fronts these
+     three sections via internal tab switching. Rules left in place so
+     manage-tab style overrides keyed on .layout > .panel keep working
+     without surprise specificity changes. */
   grid-column: span 4;
+}
+
+/* Mid-tab panel: combined assessment / interpretation / events. Spans
+   the full 12-col main row since the tab bar replaces the old
+   side-by-side report+interpretation layout. */
+.mid-tabs {
+  grid-column: span 12;
+}
+
+.mid-tab-bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  margin: -2px 0 10px;
+}
+
+.mid-tab-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 16px 10px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 0;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.mid-tab-btn:hover {
+  color: var(--ink);
+}
+
+.mid-tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.mid-tab-pane {
+  display: none;
+}
+
+.mid-tab-pane.active {
+  display: block;
 }
 
 .machine-catalog,
@@ -687,6 +736,7 @@ tbody tr.active-row {
   .report,
   .interpretation,
   .logs,
+  .mid-tabs,
   .machine-catalog,
   .run-history,
   .system-status,

@@ -198,17 +198,30 @@
             </div>
           </section>
 
-          <section class="panel report">
-            <h2 data-i18n="panelAssessment">规则评估</h2>
-            <div id="assessment" class="pre">No report yet.</div>
-          </section>
-
-          <section class="panel interpretation">
-            <h2 data-i18n="panelInterpretation">模型解读</h2>
-            <div class="actions">
-              <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
+          <!-- Mid-tab panel: rolls assessment / interpretation / events
+               into one panel with internal tab switching. The
+               #assessment / #interpretationText / #eventsText IDs are
+               preserved so the existing render pipeline (and the events
+               poll feeding eventsText) keeps working. Tab switching
+               only toggles classes -- no data refetch. -->
+          <section class="panel mid-tabs">
+            <nav class="mid-tab-bar" role="tablist">
+              <button class="mid-tab-btn active" data-mid-tab="assessment" role="tab" aria-selected="true" data-i18n="panelAssessment">规则评估</button>
+              <button class="mid-tab-btn" data-mid-tab="interpretation" role="tab" aria-selected="false" data-i18n="panelInterpretation">模型解读</button>
+              <button class="mid-tab-btn" data-mid-tab="events" role="tab" aria-selected="false" data-i18n="panelEvents">运行事件</button>
+            </nav>
+            <div class="mid-tab-pane active" data-mid-tab="assessment" role="tabpanel">
+              <div id="assessment" class="pre">No report yet.</div>
             </div>
-            <pre id="interpretationText" class="pre"></pre>
+            <div class="mid-tab-pane" data-mid-tab="interpretation" role="tabpanel">
+              <div class="actions">
+                <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
+              </div>
+              <pre id="interpretationText" class="pre"></pre>
+            </div>
+            <div class="mid-tab-pane" data-mid-tab="events" role="tabpanel">
+              <pre id="eventsText" class="pre"></pre>
+            </div>
           </section>
 
           <section class="panel paylines">
@@ -261,10 +274,6 @@
             <div id="symbolByColMatrix" class="symbol-matrix"></div>
           </section>
 
-          <section class="panel logs">
-            <h2 data-i18n="panelEvents">运行事件</h2>
-            <pre id="eventsText" class="pre"></pre>
-          </section>
             </div>
           </div>
         </div>
