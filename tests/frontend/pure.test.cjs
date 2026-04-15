@@ -51,7 +51,7 @@ test("i18n: CI tier option keys are non-empty in both locales", () => {
 test("i18n: run-config validation keys are non-empty in both locales", () => {
   const required = [
     "placeholderAutotuneFill",
-    "validateAutotuneFirst",
+    "validateConcurrencyRequired",
     "validateMode25RequireFuzzy",
   ];
   for (const k of required) {

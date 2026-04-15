@@ -46,7 +46,7 @@ const I18N = {
     ciOptionFuzzy: "模糊 (高波动 mode)",
     helpCiTargetFuzzy: "模糊档：跳过 CI 停止条件，直接按约 100 万 spin 采样，用于 mode 2/5 这类 RTP 爆炸的特殊机制。",
     placeholderAutotuneFill: "由压测自动填充",
-    validateAutotuneFirst: "请先点「一键压测并调参」获得并发推荐值。",
+    validateConcurrencyRequired: "请填写每 Chunk 机器人数和批并发数（或点「一键压测并调参」获得机台实测推荐值）。",
     validateMode25RequireFuzzy: "mode 2 和 5 必须使用模糊档位（CI 半宽 = 模糊）。",
     labelAdvancedParams: "高级参数",
     bankMultStandard: "标准 (100x / 200x / 500x) — 推荐",
@@ -249,7 +249,7 @@ const I18N = {
     ciOptionFuzzy: "Fuzzy (high-volatility mode)",
     helpCiTargetFuzzy: "Fuzzy tier: CI stop is bypassed; sampling targets ~1M spins via max_chunks. Required for mode 2/5 (RTP-exploding special mechanics).",
     placeholderAutotuneFill: "filled by Auto Tune",
-    validateAutotuneFirst: "Click 'Auto Tune Parallelism' first to get recommended concurrency values.",
+    validateConcurrencyRequired: "Fill in robot count and concurrency (or click 'Auto Tune Parallelism' to probe machine-specific recommendations).",
     validateMode25RequireFuzzy: "Mode 2 and 5 must use the fuzzy CI tier.",
     labelAdvancedParams: "Advanced parameters",
     bankMultStandard: "Standard (100x / 200x / 500x) — recommended",
@@ -902,7 +902,7 @@ function validateRunConfig(opts) {
     cc === "" ||
     Number(cc) <= 0;
   if (missingConc) {
-    blocking.push(fmt(lang, "validateAutotuneFirst"));
+    blocking.push(fmt(lang, "validateConcurrencyRequired"));
   }
 
   return { blocking, warnings, canStart: blocking.length === 0 };

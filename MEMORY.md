@@ -99,9 +99,19 @@ This section is for execution efficiency and can be updated as long as section A
      recomputes max_chunks so sampling targets ~1M spins; analyzer receives
      halfwidth=999 so the CI-stop branch never fires);
    - mode 1 and 7 support 0.5 / 1 / 2 / 5 pp or fuzzy;
-   - frontend chunk_robot_count and batch_concurrency inputs are readonly
-     and only Auto Tune populates them;
-   - mode / machine change clears those two inputs to force a fresh tune.
+   - chunk_robot_count / batch_concurrency are editable inputs with
+     preset defaults (robot=24, conc=2; validated against M272 mode 1
+     via run_auto_tune probe -- that combo achieved 100% success rate
+     at throughput=922 spins/s p95=8.1s, the best stable point below
+     the higher-p95 conc=4 tail);
+   - Auto Tune button remains available to refine per machine; on
+     machine / mode change the two inputs reset back to preset so the
+     screen always carries sensible defaults;
+   - advanced params default to chunk_spin_times=5000 /
+     max_chunks=60 / timeout=120 (previously 120 / 300; tightened
+     after the autotune probe showed M272 mode 1 achieves CI target
+     in well under 60 chunks at the preset concurrency, and per-chunk
+     latency p95=10s leaves ample margin within timeout=120).
 18. Bankroll multiplier presets:
    UI exposes three fixed presets (Standard 100/200/500, Short 50/100/200,
    Long 200/500/1000). Non-Standard presets bypass the x100/x200/x500

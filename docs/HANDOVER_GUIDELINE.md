@@ -95,12 +95,15 @@ Console operators build a run payload through these gated steps:
    so the CI-stop branch never fires. The backend also returns 400
    when mode ∈ {2, 5} is paired with a non-zero half-width, so the
    constraint is enforced server-side even on direct API calls.
-3. Click "Auto Tune Parallelism". The first click uses a wide default
-   candidate grid `[8,12,16,20,24]` × `[1,2,3,4]`; subsequent clicks
-   refine around the last recommendation. chunk_robot_count and
-   batch_concurrency inputs are readonly -- the autotune result is
-   the only way to populate them. Changing machine or mode clears
-   both inputs and re-disables Start.
+3. (Optional) Click "Auto Tune Parallelism" to probe the current upstream
+   load and get a machine-specific recommendation. The compact candidate
+   grid `[8,16,24]` × `[1,2,4]` (3x3) balances coverage vs wall time; a
+   per-robot early-exit skips higher conc once a lower one saturates.
+   chunk_robot_count and batch_concurrency are **editable inputs** with
+   preset defaults (robot=24, conc=2) validated against M272 mode 1 --
+   the operator can Start immediately or refine via Auto Tune.
+   Changing machine or mode resets both inputs back to the preset so
+   the screen always carries sensible defaults.
 4. Optionally tweak advanced params (chunk_spin_times / max_chunks /
    timeout) in the collapsed "Advanced parameters" section.
 5. Pick bankroll multiplier preset. Only "Standard (100x / 200x /

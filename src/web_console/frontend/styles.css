@@ -832,18 +832,6 @@ tbody tr.active-row {
   }
 }
 
-/* Inputs filled only by Auto Tune (chunk_robot_count, batch_concurrency).
-   Visual cue so operators don't try to edit them directly. */
-input.autotune-filled {
-  background-color: #f1f5f9;
-  color: var(--muted);
-  cursor: not-allowed;
-}
-input.autotune-filled:focus {
-  outline: none;
-  border-color: var(--line);
-}
-
 /* Advanced parameters fold (chunk_spin_times / max_chunks / timeout). */
 details.advanced-params {
   margin-top: 12px;

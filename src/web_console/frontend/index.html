@@ -76,11 +76,11 @@
                 </label>
                 <label>
                   <span class="label-with-help"><span data-i18n="labelRobotCount">每 Chunk 机器人数</span><span class="help-dot" data-help-key="helpRobotCount" tabindex="0" role="note">i</span></span>
-                  <input id="robotInput" type="number" readonly class="autotune-filled" data-i18n-placeholder="placeholderAutotuneFill" placeholder="由压测自动填充" />
+                  <input id="robotInput" type="number" value="24" />
                 </label>
                 <label>
                   <span class="label-with-help"><span data-i18n="labelConcurrency">批并发数</span><span class="help-dot" data-help-key="helpConcurrency" tabindex="0" role="note">i</span></span>
-                  <input id="concInput" type="number" readonly class="autotune-filled" data-i18n-placeholder="placeholderAutotuneFill" placeholder="由压测自动填充" />
+                  <input id="concInput" type="number" value="2" />
                 </label>
                 <label>
                   <span class="label-with-help"><span data-i18n="labelBankSession">破产探测回合数</span><span class="help-dot" data-help-key="helpBankSession" tabindex="0" role="note">i</span></span>
@@ -100,11 +100,11 @@
                   </label>
                   <label>
                     <span class="label-with-help"><span data-i18n="labelMaxChunks">最大 Chunk 数</span><span class="help-dot" data-help-key="helpMaxChunks" tabindex="0" role="note">i</span></span>
-                    <input id="maxChunksInput" type="number" value="120" />
+                    <input id="maxChunksInput" type="number" value="60" />
                   </label>
                   <label>
                     <span class="label-with-help"><span data-i18n="labelTimeout">单请求超时 (秒)</span><span class="help-dot" data-help-key="helpTimeout" tabindex="0" role="note">i</span></span>
-                    <input id="timeoutInput" type="number" value="300" />
+                    <input id="timeoutInput" type="number" value="120" />
                   </label>
                 </div>
               </details>

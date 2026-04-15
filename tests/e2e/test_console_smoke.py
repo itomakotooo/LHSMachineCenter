@@ -206,26 +206,40 @@ def test_mode_2_forces_fuzzy_option(console_page, clean_runs):
     assert restored == [False, False, False, False, False]
 
 
-def test_start_disabled_without_autotune(console_page, clean_runs):
-    """Fresh page load: Start button must be disabled because robotInput /
-    concInput are empty (autotune-filled only). Manually populating both
-    inputs (simulating a successful autotune fill) re-enables Start."""
+def test_start_enabled_with_preset_concurrency(console_page, clean_runs):
+    """Fresh page load: Start button must be ENABLED because robotInput /
+    concInput carry preset defaults (validated on M272 mode 1 via Auto Tune).
+    Clearing either input re-locks Start until it's repopulated."""
     page = console_page
     _wait_for_pure_loaded(page)
 
-    # Assert initial disabled state.
+    # Presets are in place on first load -> Start enabled.
+    page.wait_for_function(
+        "() => document.getElementById('startBtn').disabled === false",
+        timeout=3000,
+    )
+    # Sanity: the preset values came through.
+    robot_val = page.evaluate("() => document.getElementById('robotInput').value")
+    conc_val = page.evaluate("() => document.getElementById('concInput').value")
+    assert int(robot_val) > 0, f"robot preset missing: {robot_val!r}"
+    assert int(conc_val) > 0, f"conc preset missing: {conc_val!r}"
+
+    # Clear both inputs -> Start should re-disable with a validation tip.
+    page.evaluate(
+        "() => { "
+        "  document.getElementById('robotInput').value = ''; "
+        "  document.getElementById('concInput').value = ''; "
+        "  document.getElementById('ciSelect').dispatchEvent(new Event('change')); "
+        "}"
+    )
     page.wait_for_function(
         "() => document.getElementById('startBtn').disabled === true",
-        timeout=3000,
+        timeout=2000,
     )
     tip = page.locator("#startBtn").get_attribute("title") or ""
     assert "Auto Tune" in tip or "压测" in tip, f"unexpected start tooltip: {tip}"
 
-    # Simulate Auto Tune filling both inputs and re-running updateActionStates.
-    # We fire a ciSelect change event so the frontend recomputes validation;
-    # this is how the real autotune button's completion path also triggers
-    # updateActionStates(), but here we avoid a real /api/autotune roundtrip
-    # against the remote test API.
+    # Repopulate -> Start re-enables.
     page.evaluate(
         "() => { "
         "  document.getElementById('robotInput').value = '16'; "

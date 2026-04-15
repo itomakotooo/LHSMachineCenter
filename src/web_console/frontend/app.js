@@ -588,13 +588,16 @@ function fillBankMultOptions() {
   sel.value = prev || "100,200,500";
 }
 
-// Reset the autotune-filled inputs so the Start button re-locks until
-// the operator runs Auto Tune again. Called on machine / mode change.
-function clearConcurrencyInputs() {
+// Reset the robot/concurrency inputs to their preset defaults from the
+// HTML `value` attribute (validated against M272 mode 1 via autotune).
+// Called on machine / mode change so the operator always starts with
+// sensible values; Auto Tune remains available for machine-specific
+// refinement.
+function resetConcurrencyInputsToPreset() {
   const r = byId("robotInput");
   const c = byId("concInput");
-  if (r) r.value = "";
-  if (c) c.value = "";
+  if (r) r.value = r.defaultValue || "";
+  if (c) c.value = c.defaultValue || "";
   updateActionStates();
 }
 
@@ -969,14 +972,14 @@ function bindEvents() {
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();
     applyModeCiConstraint();
-    clearConcurrencyInputs();
+    resetConcurrencyInputsToPreset();
     clearSummaryPanels();
     renderLiveStatusStrip();
     await refreshVersions();
   });
   byId("modeSelect").addEventListener("change", async () => {
     applyModeCiConstraint();
-    clearConcurrencyInputs();
+    resetConcurrencyInputsToPreset();
     clearSummaryPanels();
     renderLiveStatusStrip();
     await refreshVersions();
