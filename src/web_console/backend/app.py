@@ -4,6 +4,7 @@ import concurrent.futures
 import json
 import math
 import os
+import shutil
 import signal
 import sqlite3
 import statistics
@@ -223,6 +224,15 @@ class StateStore:
             run_columns = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
             if "process_pid" not in run_columns:
                 conn.execute("ALTER TABLE runs ADD COLUMN process_pid INTEGER")
+            # Run-history surfaces in the manage tab read these two columns
+            # so the operator can eyeball RTP + achieved CI without clicking
+            # "Load" on every row. Populated from the summary JSON in
+            # _update_report_index(); legacy rows from before this migration
+            # stay NULL and render as "\u2014".
+            if "achieved_rtp_pct" not in run_columns:
+                conn.execute("ALTER TABLE runs ADD COLUMN achieved_rtp_pct REAL")
+            if "achieved_halfwidth_pp" not in run_columns:
+                conn.execute("ALTER TABLE runs ADD COLUMN achieved_halfwidth_pp REAL")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interpretations (
@@ -278,6 +288,19 @@ class StateStore:
                 (status, limit),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def delete_run(self, run_id: str) -> bool:
+        """Drop the run row and its cascade children (interpretations).
+
+        Returns True if the row was actually removed. Callers are expected
+        to have already refused deletes for running rows and cleaned up
+        on-disk artefacts (progress/summary/report/report-version-dir).
+        """
+        with self._connect() as conn:
+            conn.execute("DELETE FROM interpretations WHERE run_id=?", (run_id,))
+            cur = conn.execute("DELETE FROM runs WHERE run_id=?", (run_id,))
+            conn.commit()
+            return cur.rowcount > 0
 
     def insert_interpretation(
         self,
@@ -1185,18 +1208,30 @@ class RunManager:
                     index_payload = raw
             except Exception:
                 index_payload = []
+        rtp_point_pct = summary.get("rtp", {}).get("point_pct")
+        achieved_hw_pp = summary.get("sampling", {}).get("achieved_halfwidth_pp")
         item = {
             "report_version": managed.report_version,
             "run_id": managed.run_id,
             "created_at": utc_now(),
             "summary_file": str(managed.summary_file),
             "report_file": str(managed.report_file),
-            "rtp_point_pct": summary.get("rtp", {}).get("point_pct"),
+            "rtp_point_pct": rtp_point_pct,
             "quality_label": summary.get("guideline_assessment", {}).get("data_quality", {}).get("quality_label"),
         }
         index_payload.append(item)
         write_json(index_path, index_payload)
         write_json(latest_path, item)
+        # Persist the achieved RTP + CI onto the runs row too, so the
+        # manage-tab history table can show them without reading every
+        # summary.json on list.
+        patch: dict[str, Any] = {}
+        if rtp_point_pct is not None:
+            patch["achieved_rtp_pct"] = float(rtp_point_pct)
+        if achieved_hw_pp is not None:
+            patch["achieved_halfwidth_pp"] = float(achieved_hw_pp)
+        if patch:
+            self.store.update_run(managed.run_id, patch)
 
     def get_run_with_progress(self, run_id: str) -> dict[str, Any]:
         run = self.store.get_run(run_id)
@@ -1225,6 +1260,88 @@ class RunManager:
             {"status": "cancelled", "finished_at": utc_now(), "error_message": "terminated by user"},
         )
         return {"run_id": run_id, "status": "cancelled"}
+
+    def delete_run(self, run_id: str) -> dict[str, Any]:
+        """Delete a run row plus its on-disk artefacts.
+
+        Refuses to delete a run that is still running -- the operator has
+        to cancel it first. Removes the per-run progress / summary /
+        report files, the report version directory under
+        ``reports/<machine>/mode_<n>/versions/<rv>/``, and rolls back
+        ``index.json`` + ``latest.json`` so the manage-tab version panel
+        doesn't dangle.
+        """
+        run = self.store.get_run(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="run not found")
+        status = str(run.get("status", "")).lower()
+        if status == "running":
+            raise HTTPException(
+                status_code=409,
+                detail="run is still running; cancel it before deleting",
+            )
+        with self._lock:
+            if run_id in self._running:
+                raise HTTPException(
+                    status_code=409,
+                    detail="run is still running; cancel it before deleting",
+                )
+
+        removed_paths: list[str] = []
+        # Per-run artefacts. Best-effort unlink; we don't abort the DB
+        # delete on a missing file since partial failures would otherwise
+        # create un-deletable ghost rows.
+        for key in ("progress_file", "summary_file", "report_file"):
+            raw = run.get(key)
+            if not raw:
+                continue
+            p = Path(raw)
+            try:
+                if p.exists():
+                    p.unlink()
+                    removed_paths.append(str(p))
+            except OSError:
+                pass
+
+        # Report version directory + the two machine-mode manifests.
+        report_version = (run.get("report_version") or "").strip()
+        if report_version:
+            mode_dir = self._reports_root / str(run["machine"]) / f"mode_{run['mode']}"
+            version_dir = mode_dir / "versions" / report_version
+            if version_dir.exists():
+                try:
+                    shutil.rmtree(version_dir)
+                    removed_paths.append(str(version_dir))
+                except OSError:
+                    pass
+            index_path = mode_dir / "index.json"
+            latest_path = mode_dir / "latest.json"
+            if index_path.exists():
+                try:
+                    raw = read_json(index_path)
+                    if isinstance(raw, list):
+                        filtered = [
+                            item for item in raw
+                            if isinstance(item, dict)
+                            and item.get("report_version") != report_version
+                        ]
+                        write_json(index_path, filtered)
+                        # latest.json rolls back to the newest remaining
+                        # item (list is append-ordered); if we just drained
+                        # the last version, clear latest too.
+                        if filtered:
+                            write_json(latest_path, filtered[-1])
+                        elif latest_path.exists():
+                            latest_path.unlink()
+                except Exception:
+                    pass
+
+        removed = self.store.delete_run(run_id)
+        return {
+            "run_id": run_id,
+            "deleted": bool(removed),
+            "removed_paths": removed_paths,
+        }
 
 
 def current_system_state(
@@ -1489,6 +1606,22 @@ def create_app(
     @app.post("/api/runs/{run_id}/cancel")
     def run_cancel(run_id: str) -> dict[str, Any]:
         return manager.cancel_run(run_id)
+
+    @app.delete("/api/runs/{run_id}")
+    def run_delete(run_id: str) -> dict[str, Any]:
+        # Mutex under the shared ops coordinator so deletes don't race
+        # a run that's just finishing its _watch_run cleanup, and so
+        # the cache-cleanup / start-run paths can't interleave either.
+        if not ops.acquire("delete_run"):
+            snap = ops.snapshot()
+            raise HTTPException(
+                status_code=409,
+                detail=f"system busy: {snap.get('operation') or 'unknown'}",
+            )
+        try:
+            return manager.delete_run(run_id)
+        finally:
+            ops.release()
 
     @app.get("/api/runs/{run_id}/report")
     def run_report(run_id: str) -> dict[str, Any]:

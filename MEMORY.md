@@ -301,6 +301,28 @@ This section is for execution efficiency and can be updated as long as section A
      status -> GET report endpoint returns; happy path also updates
      report index + latest.json; zero-spin guard exact error_message
      contract; unknown-stop_reason edge.
+24d. Manage-tab run-history surface:
+   - runs table columns: Run ID / Status / Machine / Mode / Created At
+     / RTP / CI\u00b1 / Action(Load+Delete). RTP and CI come from two
+     new DB columns `achieved_rtp_pct` and `achieved_halfwidth_pp`
+     populated by _update_report_index() when a run completes; legacy
+     rows migrated via ALTER TABLE stay NULL and render as "\u2014".
+   - DELETE /api/runs/{id} removes the DB row + interpretations cascade
+     + per-run progress/summary/report files + the report version
+     directory under reports/<machine>/mode_<n>/versions/<rv>/, and
+     filters the entry from index.json; latest.json rolls back to the
+     newest remaining version (or is removed if the last was dropped).
+     Protected server-side: 409 if the row's status is "running" (both
+     via DB status check and the in-memory _running dict). Protected
+     by tests/backend/test_run_lifecycle.py::
+     test_delete_run_removes_row_and_report_artefacts / _rolls_back_
+     latest_to_previous_version / _refuses_running / _not_found.
+   - Frontend state.runFilterMachine drives a clickable machine catalog
+     panel: each .catalog-item carries role=button + keyboard focus;
+     click toggles filter and re-renders the history table. When a
+     filter is active, #runFilterBanner shows the active machine + a
+     clear button. Clear also triggers by clicking the active catalog
+     row a second time.
 24c. Autotune wall-time optimization:
    - Default candidate grid compacted from 5x4=20 to 3x3=9 ({8,16,24}
      x {1,2,4}). Frontend defaults match.

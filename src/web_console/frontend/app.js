@@ -28,6 +28,10 @@ const state = {
   // Only the multiplier-bucket chart survives the dashboard revision;
   // CI / RTP / bankruptcy already render as KPI cards.
   bucketChart: null,
+  // Manage-tab run-history filter. null = show all; a machine string
+  // filters the runs table. Driven by clicking a row in the machine
+  // catalog panel; cleared via the filter banner's "clear" button.
+  runFilterMachine: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -124,6 +128,12 @@ async function apiGet(url) {
 
 async function apiPost(url, payload) {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload || {}) });
+  if (!res.ok) throw new Error(`${url}: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+async function apiDelete(url) {
+  const res = await fetch(url, { method: "DELETE" });
   if (!res.ok) throw new Error(`${url}: ${res.status} ${await res.text()}`);
   return res.json();
 }
@@ -321,32 +331,133 @@ function renderMachineCatalog() {
   state.machines.forEach((m) => {
     const d = document.createElement("div");
     d.className = "catalog-item";
+    if (state.runFilterMachine === m.machine) d.classList.add("active");
+    d.dataset.machine = m.machine;
+    d.setAttribute("role", "button");
+    d.setAttribute("tabindex", "0");
     d.innerHTML = `<div class="catalog-title">${m.machine}</div><div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`;
     wrap.appendChild(d);
   });
+  // Click (or keyboard-activate) any catalog row to filter the run
+  // history table to that machine. Clicking the currently active row
+  // clears the filter.
+  wrap.querySelectorAll(".catalog-item").forEach((el) => {
+    const toggle = () => {
+      const machine = el.dataset.machine;
+      state.runFilterMachine =
+        state.runFilterMachine === machine ? null : machine;
+      renderMachineCatalog();
+      renderRunHistory();
+    };
+    el.addEventListener("click", toggle);
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggle();
+      }
+    });
+  });
+}
+
+function renderRunFilterBanner() {
+  const banner = byId("runFilterBanner");
+  if (!banner) return;
+  if (!state.runFilterMachine) {
+    banner.innerHTML = "";
+    banner.style.display = "none";
+    return;
+  }
+  banner.style.display = "";
+  banner.innerHTML =
+    `<span class="filter-label">${fmt("runFilterActive", { machine: state.runFilterMachine })}</span>` +
+    `<button type="button" class="clear-filter-btn">${fmt("btnClearFilter")}</button>`;
+  const clearBtn = banner.querySelector(".clear-filter-btn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      state.runFilterMachine = null;
+      renderMachineCatalog();
+      renderRunHistory();
+    });
+  }
+}
+
+// Format a number field that may be null/undefined (legacy rows persisted
+// before the achieved_rtp_pct / achieved_halfwidth_pp migration) as an em
+// dash. `precision` digits, trailing "%" or " pp" suffix optional.
+function fMetricCell(value, precision, suffix) {
+  if (value === null || value === undefined || value === "") return "\u2014";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "\u2014";
+  return n.toFixed(precision) + (suffix || "");
 }
 
 function renderRunHistory() {
+  renderRunFilterBanner();
   const body = byId("runListTable").querySelector("tbody");
   body.innerHTML = "";
-  if (!state.runs.length) return (body.innerHTML = `<tr><td colspan="6">${fmt("noRuns")}</td></tr>`);
-  state.runs.forEach((r) => {
+  const filter = state.runFilterMachine;
+  const rows = filter
+    ? state.runs.filter((r) => r.machine === filter)
+    : state.runs;
+  if (!rows.length) {
+    const msg = filter ? fmt("noRunsForMachine") : fmt("noRuns");
+    body.innerHTML = `<tr><td colspan="8">${msg}</td></tr>`;
+    return;
+  }
+  rows.forEach((r) => {
     const tr = document.createElement("tr");
     if (r.run_id === state.currentRunId) tr.classList.add("active-row");
-    tr.innerHTML = `<td>${r.run_id}</td><td>${statusText(r.status)}</td><td>${r.machine}</td><td>${r.mode}</td><td>${r.created_at || ""}</td><td><button class="load-run-btn" data-id="${r.run_id}">${fmt("btnLoadRun")}</button></td>`;
+    const rtpCell = fMetricCell(r.achieved_rtp_pct, 2, "%");
+    const ciCell = fMetricCell(r.achieved_halfwidth_pp, 3, " pp");
+    tr.innerHTML =
+      `<td>${r.run_id}</td>` +
+      `<td>${statusText(r.status)}</td>` +
+      `<td>${r.machine}</td>` +
+      `<td>${r.mode}</td>` +
+      `<td>${r.created_at || ""}</td>` +
+      `<td>${rtpCell}</td>` +
+      `<td>${ciCell}</td>` +
+      `<td><button class="load-run-btn" data-id="${r.run_id}">${fmt("btnLoadRun")}</button>` +
+      ` <button class="delete-run-btn danger-btn" data-id="${r.run_id}" data-machine="${r.machine}" data-mode="${r.mode}">${fmt("btnDeleteRun")}</button></td>`;
     body.appendChild(tr);
   });
-  body.querySelectorAll(".load-run-btn").forEach((b) =>
+  body.querySelectorAll(".load-run-btn").forEach((b) => {
+    b.disabled = state.busyActions.size > 0;
     b.addEventListener("click", async () => {
       if (state.busyActions.size > 0) return;
       state.currentRunId = b.dataset.id;
       renderRunHistory();
       switchTab("debug");
       await refreshCurrentRun();
-    })
-  );
-  body.querySelectorAll(".load-run-btn").forEach((b) => {
+    });
+  });
+  body.querySelectorAll(".delete-run-btn").forEach((b) => {
+    // Running rows are protected server-side (409). Keep the button
+    // enabled so the operator gets a clear error dialog rather than a
+    // silent no-op.
     b.disabled = state.busyActions.size > 0;
+    b.addEventListener("click", async () => {
+      if (state.busyActions.size > 0) return;
+      const runId = b.dataset.id;
+      if (!window.confirm(fmt("confirmDeleteRun", { runId }))) return;
+      state.busyActions.add("delete_run");
+      updateActionStates();
+      try {
+        await apiDelete(`/api/runs/${encodeURIComponent(runId)}`);
+        if (state.currentRunId === runId) {
+          state.currentRunId = "";
+          state.currentRunStatus = "";
+          clearSummaryPanels();
+        }
+        await refreshRunList(false);
+        await refreshVersions().catch(() => {});
+      } catch (err) {
+        window.alert(fmt("runDeleteFailed", { error: String(err && err.message ? err.message : err) }));
+      } finally {
+        state.busyActions.delete("delete_run");
+        updateActionStates();
+      }
+    });
   });
 }
 

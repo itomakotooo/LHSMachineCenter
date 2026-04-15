@@ -309,6 +309,22 @@ panel stack so the cache-cleanup risk-tier e2e fixtures (which
 target `#cacheRefreshBtn` / `#cacheCleanupBtn` and rely on the
 manage tab being a flat panel list) keep working without changes.
 
+Run-history table columns: Run ID / Status / Machine / Mode /
+Created At / RTP / CI half-width / Action (Load + Delete). RTP and
+CI come from the `achieved_rtp_pct` / `achieved_halfwidth_pp`
+columns on the `runs` row, populated by `_update_report_index()`
+when a run completes (legacy rows from before that migration render
+as "\u2014"). Delete is wired to `DELETE /api/runs/{id}`; the backend
+refuses running rows (409), removes per-run artefacts, the report
+version directory, and rolls back `index.json` + `latest.json` if the
+run had produced a report version. The machine catalog panel above
+the run-history table is click-to-filter: each `.catalog-item` is a
+button (role=button, keyboard-activatable) that toggles
+`state.runFilterMachine`; a `#runFilterBanner` above the table shows
+the active filter with a "clear" button. Clicking the currently
+active machine or the clear button drops back to the unfiltered
+list.
+
 ## 13a. Upstream API shape + schema drift
 
 `run_sampling_chunk` does two layers of sanity checking on every

@@ -223,6 +223,18 @@ def test_run_lifecycle_happy_path_updates_report_index(
     latest = json.loads(latest_path.read_text(encoding="utf-8"))
     assert latest.get("run_id") == run_id
 
+    # The run row also gets achieved_rtp_pct / achieved_halfwidth_pp
+    # written so the manage-tab history table can show them without
+    # re-reading every summary.json on list.
+    row = c.get(f"/api/runs/{run_id}").json()
+    assert row.get("achieved_rtp_pct") == 95.43, (
+        f"RTP not persisted onto run row: {row.get('achieved_rtp_pct')!r}"
+    )
+    assert row.get("achieved_halfwidth_pp") == 0.42, (
+        f"CI halfwidth not persisted onto run row: "
+        f"{row.get('achieved_halfwidth_pp')!r}"
+    )
+
 
 # ---------- zero-spin guard ----------
 
@@ -297,3 +309,111 @@ def test_run_lifecycle_zero_spin_with_unknown_stop_reason(
     msg = c.get(f"/api/runs/{run_id}").json().get("error_message") or ""
     assert "0 spins" in msg
     assert "stop_reason=unknown" in msg
+
+
+# ---------- delete ----------
+
+
+def test_delete_run_removes_row_and_report_artefacts(
+    client, app_factory, wait_until_fixture
+):
+    """DELETE /api/runs/{id} must drop the row, delete the per-run
+    artefacts (progress/summary/report), remove the report-version
+    directory under reports/<machine>/mode_<n>/versions/<rv>/, and
+    roll back index.json + latest.json."""
+    c, _app = client
+    resp = c.post("/api/runs", json=_run_payload())
+    run_id = resp.json()["run_id"]
+    summary_file, report_file = _spawned_run_paths(app_factory, run_id)
+    summary_file.parent.mkdir(parents=True, exist_ok=True)
+    summary_file.write_text(json.dumps(_good_summary()), encoding="utf-8")
+    report_file.write_text("# r\n", encoding="utf-8")
+    app_factory.stub_popen.processes[-1].finish(code=0)
+    wait_until_fixture(
+        lambda: c.get(f"/api/runs/{run_id}").json().get("status") == "completed",
+        timeout=5.0,
+    )
+
+    # Pre-conditions: the index carries this run, latest points at it,
+    # and the version dir exists on disk.
+    index_path = app_factory.reports_dir / "M14" / "mode_1" / "index.json"
+    latest_path = app_factory.reports_dir / "M14" / "mode_1" / "latest.json"
+    version_dir = summary_file.parent
+    assert version_dir.is_dir()
+    assert any(e.get("run_id") == run_id for e in json.loads(index_path.read_text(encoding="utf-8")))
+    assert json.loads(latest_path.read_text(encoding="utf-8")).get("run_id") == run_id
+
+    resp = c.delete(f"/api/runs/{run_id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["deleted"] is True
+
+    # Row gone.
+    assert c.get(f"/api/runs/{run_id}").status_code == 404
+
+    # Version directory + manifests rolled back.
+    assert not version_dir.exists(), "report version dir was not removed"
+    index_now = json.loads(index_path.read_text(encoding="utf-8"))
+    assert not any(e.get("run_id") == run_id for e in index_now), (
+        "run still present in index.json after delete"
+    )
+    # Only one version existed -> latest.json cleared entirely.
+    assert not latest_path.exists(), "latest.json should be removed when the last version is deleted"
+
+
+def test_delete_run_rolls_back_latest_to_previous_version(
+    client, app_factory, wait_until_fixture
+):
+    """When deleting the currently-latest version but older versions
+    remain, latest.json must roll back to the newest surviving entry
+    rather than dangling."""
+    c, _app = client
+
+    def _complete_run():
+        resp = c.post("/api/runs", json=_run_payload())
+        rid = resp.json()["run_id"]
+        sfile, rfile = _spawned_run_paths(app_factory, rid)
+        sfile.parent.mkdir(parents=True, exist_ok=True)
+        sfile.write_text(json.dumps(_good_summary()), encoding="utf-8")
+        rfile.write_text("# r\n", encoding="utf-8")
+        app_factory.stub_popen.processes[-1].finish(code=0)
+        wait_until_fixture(
+            lambda: c.get(f"/api/runs/{rid}").json().get("status") == "completed",
+            timeout=5.0,
+        )
+        return rid
+
+    run_a = _complete_run()
+    run_b = _complete_run()  # run_b is the newest -> latest.json points at it
+
+    latest_path = app_factory.reports_dir / "M14" / "mode_1" / "latest.json"
+    assert json.loads(latest_path.read_text(encoding="utf-8")).get("run_id") == run_b
+
+    # Delete the newest; latest should roll back to run_a.
+    resp = c.delete(f"/api/runs/{run_b}")
+    assert resp.status_code == 200
+    assert latest_path.exists(), "latest.json must still exist when older versions remain"
+    assert json.loads(latest_path.read_text(encoding="utf-8")).get("run_id") == run_a
+
+
+def test_delete_run_refuses_running(
+    client, app_factory
+):
+    """Running runs are protected -- DELETE returns 409 and leaves the
+    row alone so the operator can't nuke an in-flight analyzer."""
+    c, _app = client
+    resp = c.post("/api/runs", json=_run_payload())
+    run_id = resp.json()["run_id"]
+    assert resp.json()["status"] == "running"
+
+    delete_resp = c.delete(f"/api/runs/{run_id}")
+    assert delete_resp.status_code == 409, delete_resp.text
+
+    # Row still present (status polled back from DB).
+    assert c.get(f"/api/runs/{run_id}").status_code == 200
+
+
+def test_delete_run_not_found(client):
+    c, _app = client
+    resp = c.delete("/api/runs/does-not-exist-xyz")
+    assert resp.status_code == 404
