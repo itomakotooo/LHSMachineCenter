@@ -229,15 +229,16 @@
           </section>
 
           <section class="panel payout-groups">
-            <h2 data-i18n="panelPayoutGroups">Pay ID 深度（PayoutGroupId Top 20）</h2>
-            <p class="drilldown-hint" data-i18n="payoutGroupZeroHint">Group 0 = 未中奖，仅展示作对照。</p>
+            <h2 data-i18n="panelPayoutGroups">Pay ID 深度（PayoutId Top 20）</h2>
+            <p class="drilldown-hint" data-i18n="payoutGroupZeroHint">按 PayoutIdToWinAmount 聚合，按总 Win 倒序展示。</p>
             <table id="payoutGroupTable" class="drilldown-table">
               <thead>
                 <tr>
-                  <th data-i18n="thGroupId">Group ID</th>
+                  <th data-i18n="thGroupId">Pay ID</th>
                   <th data-i18n="thHitCount">命中次数</th>
                   <th data-i18n="thHitRate">命中率</th>
-                  <th data-i18n="thAvgWinX">命中均赢(x)</th>
+                  <th data-i18n="thTotalWin">总 Win</th>
+                  <th data-i18n="thAvgWinX">命中均赢</th>
                   <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
                 </tr>
               </thead>

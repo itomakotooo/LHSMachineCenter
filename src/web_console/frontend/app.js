@@ -351,24 +351,30 @@ function renderRunHistory() {
 }
 
 function renderPayoutGroupDrilldown(summary) {
+  // Reads payout_ids_top20 (from PayoutIdToWinAmount) -- the actual
+  // payout-source breakdown. The legacy payout_groups_top20 surface
+  // (always group 0 for M14/M272 mode 1/2) is no longer rendered;
+  // PURE.formatPayoutGroupRows is kept exported for back-compat but
+  // unused here. Falls back to the empty-row hint when the report
+  // pre-dates the payout_ids_top20 commit.
   const tbody = byId("payoutGroupTable") && byId("payoutGroupTable").querySelector("tbody");
   if (!tbody) return;
-  const rows = PURE.formatPayoutGroupRows(summary);
+  const rows = PURE.formatPayoutIdRows(summary);
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="5">${fmt("payoutGroupEmpty")}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">${fmt("payoutGroupEmpty")}</td></tr>`;
     return;
   }
   const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
   tbody.innerHTML = rows
     .map((r) => {
       const bar = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
-      const winX = r.group_id === 0 ? "—" : r.avg_win_when_hit_x.toFixed(2);
       return (
         `<tr>` +
-        `<td>${r.group_id}</td>` +
+        `<td>${r.payout_id}</td>` +
         `<td>${fInt(r.hit_count)}</td>` +
         `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
-        `<td>${winX}</td>` +
+        `<td>${fInt(r.total_win)}</td>` +
+        `<td>${r.avg_win_when_hit.toFixed(2)}</td>` +
         `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(4)}</td>` +
         `</tr>`
       );

@@ -437,3 +437,77 @@ def test_run_sampling_chunk_payout_group_garbage_id_falls_back_to_zero(patch_pos
     patch_post_json(_stub_chunk_resp(rounds))
     rec = _run(spin_times=1)
     assert rec["payout_group_hits"]["0"] == 1
+
+
+# ---------- PayoutIdToWinAmount aggregation ----------
+
+
+def test_run_sampling_chunk_payout_id_basic_aggregation(patch_post_json):
+    # 3 winning rounds at PayoutId=6 (300 each), 1 at PayoutId=2 (50),
+    # 2 lose rounds (no PayoutIdToWinAmount).
+    rounds = (
+        [_full_round(WinCredits=300, PayoutByPayline="1:300", PayoutGroupId=0,
+                     PayoutIdToWinAmount={"6": 300}) for _ in range(3)]
+        + [_full_round(WinCredits=50, PayoutByPayline="2:50", PayoutGroupId=0,
+                       PayoutIdToWinAmount={"2": 50})]
+        + [_full_round(WinCredits=0) for _ in range(2)]
+    )
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=len(rounds))
+    assert rec["payout_id_hits"]["6"] == 3
+    assert rec["payout_id_hits"]["2"] == 1
+    assert rec["payout_id_win"]["6"] == 900  # 3 * 300
+    assert rec["payout_id_win"]["2"] == 50
+    # Lose rounds don't add anything.
+    assert "0" not in rec["payout_id_hits"]
+
+
+def test_run_sampling_chunk_payout_id_multi_id_per_round(patch_post_json):
+    """A single round can win multiple payout ids at once (e.g. wild
+    triggers two payouts). Each id gets its own hit_count tick."""
+    rounds = [_full_round(
+        WinCredits=420, PayoutByPayline="1:200, 5:220", PayoutGroupId=0,
+        PayoutIdToWinAmount={"3": 200, "5": 220},
+    )]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=1)
+    assert rec["payout_id_hits"] == {"3": 1, "5": 1}
+    assert rec["payout_id_win"] == {"3": 200, "5": 220}
+
+
+def test_run_sampling_chunk_payout_id_zero_amount_still_counts(patch_post_json):
+    """PayoutId 666 shows up with amount 0 in real M272 data (special
+    indicator). hit_count should still tick so the operator sees that
+    the id appeared, even though it doesn't move RTP."""
+    rounds = [_full_round(
+        WinCredits=0, PayoutByPayline="", PayoutGroupId=0,
+        PayoutIdToWinAmount={"666": 0},
+    )]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=1)
+    assert rec["payout_id_hits"] == {"666": 1}
+    assert rec["payout_id_win"] == {"666": 0}
+
+
+def test_run_sampling_chunk_payout_id_string_amounts_coerced(patch_post_json):
+    """API replays sometimes deliver numeric fields as strings; to_float
+    must coerce so the tally stays numeric."""
+    rounds = [_full_round(
+        WinCredits=100, PayoutByPayline="1:100", PayoutGroupId=0,
+        PayoutIdToWinAmount={"4": "100"},
+    )]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=1)
+    assert rec["payout_id_win"]["4"] == 100.0
+
+
+def test_run_sampling_chunk_payout_id_missing_dict_is_safe(patch_post_json):
+    """Old reports / unfamiliar machines may omit PayoutIdToWinAmount
+    entirely; the chunk still completes with an empty payout_id tally."""
+    rd = _full_round(WinCredits=100)
+    rd.pop("PayoutIdToWinAmount", None)
+    patch_post_json(_stub_chunk_resp([rd]))
+    rec = _run(spin_times=1)
+    assert rec["ok"] is True
+    assert rec["payout_id_hits"] == {}
+    assert rec["payout_id_win"] == {}

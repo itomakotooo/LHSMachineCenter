@@ -404,6 +404,66 @@ test("formatPayoutGroupRows: sorts by rtp contribution desc, group 0 kept", () =
   assert.equal(rows[2].avg_win_when_hit_x, 0);
 });
 
+// ---------- formatPayoutIdRows ----------
+
+test("formatPayoutIdRows: empty / missing surface -> []", () => {
+  assert.deepStrictEqual(PURE.formatPayoutIdRows({}), []);
+  assert.deepStrictEqual(PURE.formatPayoutIdRows({ player_impact: {} }), []);
+});
+
+test("formatPayoutIdRows: sorts by rtp_contribution_pp desc", () => {
+  // Realistic M272 mode 2 shape (3 dominant ids).
+  const s = {
+    player_impact: {
+      payout_ids_top20: [
+        { payout_id: "1", hit_count: 30, hit_rate: 0.05, total_win: 333300, avg_win_when_hit: 11110, rtp_contribution_pp: 73.0 },
+        { payout_id: "2", hit_count: 5, hit_rate: 0.008, total_win: 49950, avg_win_when_hit: 9990, rtp_contribution_pp: 11.0 },
+        { payout_id: "8", hit_count: 4, hit_rate: 0.006, total_win: 16500, avg_win_when_hit: 4125, rtp_contribution_pp: 4.0 },
+      ],
+    },
+  };
+  const rows = PURE.formatPayoutIdRows(s);
+  assert.equal(rows.length, 3);
+  assert.deepStrictEqual(
+    rows.map((r) => r.payout_id),
+    ["1", "2", "8"]
+  );
+  assert.equal(rows[0].rtp_contribution_pp, 73.0);
+  assert.equal(rows[0].hit_rate_pct, 5);
+  assert.equal(rows[0].avg_win_when_hit, 11110);
+  assert.equal(rows[0].total_win, 333300);
+});
+
+test("formatPayoutIdRows: tolerates missing fields with zero defaults", () => {
+  const s = {
+    player_impact: {
+      payout_ids_top20: [
+        { payout_id: "666", hit_count: 1 }, // hit but no win info
+      ],
+    },
+  };
+  const rows = PURE.formatPayoutIdRows(s);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].payout_id, "666");
+  assert.equal(rows[0].hit_count, 1);
+  assert.equal(rows[0].hit_rate_pct, 0);
+  assert.equal(rows[0].total_win, 0);
+  assert.equal(rows[0].avg_win_when_hit, 0);
+  assert.equal(rows[0].rtp_contribution_pp, 0);
+});
+
+test("formatPayoutIdRows: payout_id is always coerced to string", () => {
+  // Analyzer emits string already, but defensive coercion matters when
+  // tests / older fixtures pass a number.
+  const s = {
+    player_impact: {
+      payout_ids_top20: [{ payout_id: 6, hit_count: 1, total_win: 100 }],
+    },
+  };
+  const rows = PURE.formatPayoutIdRows(s);
+  assert.strictEqual(rows[0].payout_id, "6");
+});
+
 // ---------- formatSymbolRows + symbolByColMatrix ----------
 
 test("formatSymbolRows: empty -> []", () => {

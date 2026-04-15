@@ -666,12 +666,20 @@ def run_sampling_chunk(
     multiplier_bucket_bet: dict[str, float] = defaultdict(float)
     multiplier_bucket_win: dict[str, float] = defaultdict(float)
 
-    # Per-PayoutGroupId tally. Group id 0 typically means "no payout"; any
-    # positive id corresponds to a payout group defined by the slot's table.
-    # Aggregating it lets the console show which payout groups actually
-    # carry the RTP, similar to the existing payline drilldown.
+    # Per-PayoutGroupId tally. Both M14 and M272 mode 1/2 always return
+    # PayoutGroupId=0 in practice (the field doesn't differentiate), so
+    # the drilldown built from this is informationally empty; kept for
+    # backward compat in case other modes / machines actually fill it.
     payout_group_hits: dict[int, int] = defaultdict(int)
     payout_group_win: dict[int, float] = defaultdict(float)
+
+    # Per-PayoutId tally from PayoutIdToWinAmount. This is the actual
+    # payout-source breakdown the operator wants ("PayoutId 1 contributes
+    # 73% of RTP via 333,300 win"). Both M14 and M272 winning rounds
+    # populate it (unlike PayoutGroupId which is always 0). hit_count
+    # increments per (round, payout_id) appearance, win sums the amount.
+    payout_id_hits: dict[str, int] = defaultdict(int)
+    payout_id_win: dict[str, float] = defaultdict(float)
 
     # Per-payline winning-symbol inference. The API returns
     # PayoutByPayline (which line ids paid) and StopSymbolsByCol (the
@@ -751,6 +759,16 @@ def run_sampling_chunk(
                 pg_id = 0
             payout_group_hits[pg_id] += 1
             payout_group_win[pg_id] += win_amt
+
+            # PayoutIdToWinAmount aggregation: dict of {payout_id: win}
+            # populated on winning rounds. Sum win and count occurrences
+            # per id so the drilldown can rank by total contribution.
+            pid_to_win = r.get("PayoutIdToWinAmount") or {}
+            if isinstance(pid_to_win, dict):
+                for pid_raw, amount_raw in pid_to_win.items():
+                    pid = str(pid_raw)
+                    payout_id_hits[pid] += 1
+                    payout_id_win[pid] += to_float(amount_raw, default=0.0)
 
             line_ids = parse_paylines(str(r.get("PayoutByPayline") or ""))
             if line_ids:
@@ -835,6 +853,8 @@ def run_sampling_chunk(
         "multiplier_bucket_win": dict(multiplier_bucket_win),
         "payout_group_hits": {str(k): v for k, v in payout_group_hits.items()},
         "payout_group_win": {str(k): v for k, v in payout_group_win.items()},
+        "payout_id_hits": dict(payout_id_hits),
+        "payout_id_win": dict(payout_id_win),
     }
 
 
@@ -963,6 +983,8 @@ def main() -> int:
 
     payout_group_hits: dict[int, int] = defaultdict(int)
     payout_group_win: dict[int, float] = defaultdict(float)
+    payout_id_hits: dict[str, int] = defaultdict(int)
+    payout_id_win: dict[str, float] = defaultdict(float)
 
     lack_credit_spins = 0
     chunks = 0
@@ -1079,6 +1101,12 @@ def main() -> int:
                 payout_group_hits[int(k)] += int(c)
             for k, w in (rec.get("payout_group_win") or {}).items():
                 payout_group_win[int(k)] += float(w)
+            # payout_id_* added in the PayoutIdToWinAmount commit; old
+            # chunk records (pre-feature) tolerate missing via .get().
+            for pid, c in (rec.get("payout_id_hits") or {}).items():
+                payout_id_hits[str(pid)] += int(c)
+            for pid, w in (rec.get("payout_id_win") or {}).items():
+                payout_id_win[str(pid)] += float(w)
 
             hw = ci_halfwidth_pp(chunk_rtps_pct)
             if math.isfinite(hw):
@@ -1179,6 +1207,28 @@ def main() -> int:
                 ),
                 "rtp_contribution_pp": (
                     (wins / total_bet) * 100.0 if total_bet > 0 else 0.0
+                ),
+            }
+        )
+
+    # PayoutIdToWinAmount-derived drilldown. Sort by total_win desc so the
+    # operator immediately sees which payout ids carry the RTP. Unlike
+    # payout_groups_top20 (which is informationally empty for M14/M272 mode
+    # 1/2 because the field is always 0), this surface actually
+    # discriminates between payout sources.
+    payout_id_rows: list[dict[str, Any]] = []
+    for pid, wins in sorted(payout_id_win.items(), key=lambda kv: kv[1], reverse=True):
+        hits = int(payout_id_hits.get(pid, 0))
+        wins_f = float(wins)
+        payout_id_rows.append(
+            {
+                "payout_id": str(pid),
+                "hit_count": hits,
+                "hit_rate": (hits / total_spins) if total_spins > 0 else 0.0,
+                "total_win": wins_f,
+                "avg_win_when_hit": (wins_f / hits) if hits > 0 else 0.0,
+                "rtp_contribution_pp": (
+                    (wins_f / total_bet) * 100.0 if total_bet > 0 else 0.0
                 ),
             }
         )
@@ -1475,6 +1525,7 @@ def main() -> int:
             },
             "paylines_top20": payline_rows[:20],
             "payout_groups_top20": payout_group_rows[:20],
+            "payout_ids_top20": payout_id_rows[:20],
             "symbols_top20": symbol_rows[:20],
             "symbols_by_column_top10": {k: v[:10] for k, v in symbol_by_col_rows.items()},
             "bankruptcy_probe": bankruptcy_rows,

@@ -95,11 +95,12 @@ const I18N = {
     thRate: "占比",
     symbolsEmpty: "暂无符号数据。",
     symbolColLabel: "列 {idx}",
-    panelPayoutGroups: "Pay ID 深度（PayoutGroupId Top 20）",
-    thGroupId: "Group ID",
-    thAvgWinX: "命中均赢(x)",
-    payoutGroupEmpty: "暂无 PayoutGroupId 数据。",
-    payoutGroupZeroHint: "Group 0 = 未中奖，仅展示作对照。",
+    panelPayoutGroups: "Pay ID 深度（PayoutId Top 20）",
+    thGroupId: "Pay ID",
+    thAvgWinX: "命中均赢",
+    thTotalWin: "总 Win",
+    payoutGroupEmpty: "暂无 Pay ID 数据。",
+    payoutGroupZeroHint: "按 PayoutIdToWinAmount 聚合，按总 Win 倒序展示。",
     sidebarToggleLabel: "切换侧边栏",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
@@ -291,11 +292,12 @@ const I18N = {
     thRate: "Rate",
     symbolsEmpty: "No symbol data yet.",
     symbolColLabel: "Col {idx}",
-    panelPayoutGroups: "Pay ID Drilldown (PayoutGroupId Top 20)",
-    thGroupId: "Group ID",
-    thAvgWinX: "Avg Win when Hit (x)",
-    payoutGroupEmpty: "No PayoutGroupId data yet.",
-    payoutGroupZeroHint: "Group 0 = no payout; shown for reference only.",
+    panelPayoutGroups: "Pay ID Drilldown (PayoutId Top 20)",
+    thGroupId: "Pay ID",
+    thAvgWinX: "Avg Win when Hit",
+    thTotalWin: "Total Win",
+    payoutGroupEmpty: "No Pay ID data yet.",
+    payoutGroupZeroHint: "Aggregated from PayoutIdToWinAmount, sorted by total win desc.",
     sidebarToggleLabel: "Toggle sidebar",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
@@ -627,6 +629,27 @@ function formatPayoutGroupRows(summary) {
   }));
 }
 
+// Format payout_ids_top20 (added in the PayoutIdToWinAmount commit).
+// This is the actual payout-source breakdown (M14 + M272 both populate
+// it); the older payout_groups_top20 is kept as a fallback for legacy
+// reports. Sorts by rtp_contribution_pp desc so the dominant payout
+// source lands at the top of the table.
+function formatPayoutIdRows(summary) {
+  const rows = ((summary || {}).player_impact || {}).payout_ids_top20 || [];
+  const ranked = [...rows].sort(
+    (a, b) =>
+      Number(b.rtp_contribution_pp || 0) - Number(a.rtp_contribution_pp || 0)
+  );
+  return ranked.map((r) => ({
+    payout_id: String(r.payout_id != null ? r.payout_id : "?"),
+    hit_count: Number(r.hit_count || 0),
+    hit_rate_pct: Number(r.hit_rate || 0) * 100,
+    total_win: Number(r.total_win || 0),
+    avg_win_when_hit: Number(r.avg_win_when_hit || 0),
+    rtp_contribution_pp: Number(r.rtp_contribution_pp || 0),
+  }));
+}
+
 // Format the overall symbols_top20 table. Returns rows ready for <td>.
 function formatSymbolRows(summary) {
   const rows = ((summary || {}).player_impact || {}).symbols_top20 || [];
@@ -915,6 +938,7 @@ const PURE = {
   formatSymbolRows,
   symbolByColMatrix,
   formatPayoutGroupRows,
+  formatPayoutIdRows,
   prettyBucketLabel,
 };
 
