@@ -129,6 +129,66 @@ body {
   display: block;
 }
 
+/* Grafana-style dashboard shell. The sidebar column is intentionally empty
+   in this commit; Commit 2 moves the run-config / model-config / run-actions
+   panels into it. The .layout grid lives one level deeper inside .dash-main
+   so existing 12-col placement of every panel is preserved (e2e selectors
+   query by ID, never by structural class). */
+.dashboard {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.dash-sidebar {
+  position: sticky;
+  top: 92px; /* clears the sticky topbar */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dash-main {
+  min-width: 0;
+}
+
+/* Live-status strip rides between the title block and the lang/health
+   actions. Commit 3 fills it with a 1 Hz summarized run snapshot; until
+   then the :empty rule keeps the topbar visually identical to v0. */
+.live-status-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.live-status-strip:empty {
+  display: none;
+}
+
+@media (max-width: 1120px) {
+  .dashboard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-sidebar {
+    position: static;
+    /* Hidden until Commit 2 fills it; the dashboard collapses to single
+       column at this width and below regardless. */
+  }
+
+  .dash-sidebar:empty {
+    display: none;
+  }
+}
+
 .layout {
   display: grid;
   gap: 12px;

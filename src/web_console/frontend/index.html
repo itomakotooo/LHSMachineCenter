@@ -8,11 +8,15 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
-    <header class="topbar">
+    <header class="topbar dash-topbar">
       <div class="title-wrap">
         <h1 data-i18n="appTitle">老虎机控制台</h1>
         <p class="subtitle" data-i18n="subtitle">机台调试、指标分析与版本管理</p>
       </div>
+      <!-- Filled by the 1 Hz live-status poll once Commit 3 lands.
+           Stays empty (and CSS-hidden) until then so the topbar layout is
+           identical to the pre-refactor version. -->
+      <div id="liveStatusStrip" class="live-status-strip"></div>
       <div class="topbar-actions">
         <label class="lang-switch">
           <span data-i18n="languageLabel">语言</span>
@@ -34,7 +38,13 @@
 
     <main class="tab-pages">
       <section id="tab-debug" class="tab-page active">
-        <div class="layout">
+        <!-- Dashboard shell: sidebar (filled by Commit 2) + main (current
+             panels). Sidebar stays empty in this commit; the .layout grid
+             keeps every panel in place so e2e selectors are unaffected. -->
+        <div class="dashboard">
+          <aside class="dash-sidebar"></aside>
+          <div class="dash-main">
+            <div class="layout">
           <section class="panel run-config">
             <h2 data-i18n="panelRunConfig">运行参数</h2>
             <div class="grid two">
@@ -250,6 +260,8 @@
             <h2 data-i18n="panelEvents">运行事件</h2>
             <pre id="eventsText" class="pre"></pre>
           </section>
+            </div>
+          </div>
         </div>
       </section>
 
