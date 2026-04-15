@@ -48,6 +48,18 @@ test("i18n: CI tier option keys are non-empty in both locales", () => {
   }
 });
 
+test("i18n: run-config validation keys are non-empty in both locales", () => {
+  const required = [
+    "placeholderAutotuneFill",
+    "validateAutotuneFirst",
+    "validateMode25RequireFuzzy",
+  ];
+  for (const k of required) {
+    assert.ok(PURE.I18N.zh[k], `zh.${k} missing`);
+    assert.ok(PURE.I18N.en[k], `en.${k} missing`);
+  }
+});
+
 // ---------- fmt ----------
 
 test("fmt: substitutes vars", () => {
@@ -191,6 +203,91 @@ test("ciTierOptions: labels localized for en", () => {
   const opts = PURE.ciTierOptions("en");
   const fuzzy = opts.find((o) => o.value === "0");
   assert.ok(fuzzy.label.toLowerCase().includes("fuzzy"));
+});
+
+// ---------- validateRunConfig ----------
+
+test("validateRunConfig: mode 1 happy path -> canStart=true", () => {
+  const r = PURE.validateRunConfig({
+    mode: 1,
+    halfwidthPp: "0.5",
+    robotCount: "20",
+    concurrency: "2",
+    lang: "en",
+  });
+  assert.equal(r.canStart, true);
+  assert.deepStrictEqual(r.blocking, []);
+});
+
+test("validateRunConfig: mode 7 + fuzzy + filled concurrency -> canStart=true", () => {
+  const r = PURE.validateRunConfig({
+    mode: 7,
+    halfwidthPp: "0",
+    robotCount: 16,
+    concurrency: 1,
+    lang: "en",
+  });
+  assert.equal(r.canStart, true);
+});
+
+test("validateRunConfig: mode 2 with non-fuzzy halfwidth -> blocking", () => {
+  const r = PURE.validateRunConfig({
+    mode: 2,
+    halfwidthPp: "0.5",
+    robotCount: "20",
+    concurrency: "2",
+    lang: "en",
+  });
+  assert.equal(r.canStart, false);
+  assert.ok(r.blocking.some((m) => m.toLowerCase().includes("fuzzy")));
+});
+
+test("validateRunConfig: mode 5 with fuzzy is fine", () => {
+  const r = PURE.validateRunConfig({
+    mode: 5,
+    halfwidthPp: "0",
+    robotCount: "24",
+    concurrency: "4",
+    lang: "en",
+  });
+  assert.equal(r.canStart, true);
+});
+
+test("validateRunConfig: empty robotCount produces autotune-first blocker", () => {
+  const r = PURE.validateRunConfig({
+    mode: 1,
+    halfwidthPp: "0.5",
+    robotCount: "",
+    concurrency: "2",
+    lang: "en",
+  });
+  assert.equal(r.canStart, false);
+  assert.ok(r.blocking.some((m) => m.toLowerCase().includes("auto tune")));
+});
+
+test("validateRunConfig: empty concurrency also triggers autotune-first", () => {
+  const r = PURE.validateRunConfig({
+    mode: 7,
+    halfwidthPp: "0.5",
+    robotCount: "20",
+    concurrency: "",
+    lang: "zh",
+  });
+  assert.equal(r.canStart, false);
+  // zh locale should produce a zh-localized message, not a key fallback.
+  assert.ok(r.blocking.some((m) => m.includes("压测")));
+});
+
+test("validateRunConfig: stacked failures (mode 2 non-fuzzy + empty conc)", () => {
+  const r = PURE.validateRunConfig({
+    mode: 2,
+    halfwidthPp: "1",
+    robotCount: "",
+    concurrency: "",
+    lang: "en",
+  });
+  assert.equal(r.canStart, false);
+  assert.equal(r.blocking.length, 2);
 });
 
 // ---------- statusText ----------

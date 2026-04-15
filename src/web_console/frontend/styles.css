@@ -540,3 +540,15 @@ tbody tr.active-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Inputs filled only by Auto Tune (chunk_robot_count, batch_concurrency).
+   Visual cue so operators don't try to edit them directly. */
+input.autotune-filled {
+  background-color: #f1f5f9;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+input.autotune-filled:focus {
+  outline: none;
+  border-color: var(--line);
+}

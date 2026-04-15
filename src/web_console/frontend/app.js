@@ -164,9 +164,17 @@ function updateActionStates() {
   const currentStatus = String(state.currentRunStatus || "").toLowerCase();
   const reclaimable = Number(state.cacheStatus?.reclaimable_bytes_estimate ?? 0);
   const tier = cacheRiskTier(reclaimable);
+  const validation = PURE.validateRunConfig({
+    mode: Number(byId("modeSelect").value),
+    halfwidthPp: byId("ciSelect") ? byId("ciSelect").value : "0.5",
+    robotCount: byId("robotInput").value,
+    concurrency: byId("concInput").value,
+    lang: state.lang,
+  });
 
   byId("saveModelCfgBtn").disabled = localBusy || serverBusy;
-  byId("startBtn").disabled = localBusy || serverBusy || anyRunRunning;
+  byId("startBtn").disabled = localBusy || serverBusy || anyRunRunning || !validation.canStart;
+  byId("startBtn").title = validation.blocking.join(" ");
   byId("autotuneBtn").disabled = localBusy || serverBusy || anyRunRunning;
   byId("stopBtn").disabled = localBusy || serverBusy || !hasCurrent || currentStatus !== "running";
   byId("refreshBtn").disabled = localBusy || !hasCurrent;
@@ -344,6 +352,16 @@ function fillCiTierOptions() {
   applyModeCiConstraint();
 }
 
+// Reset the autotune-filled inputs so the Start button re-locks until
+// the operator runs Auto Tune again. Called on machine / mode change.
+function clearConcurrencyInputs() {
+  const r = byId("robotInput");
+  const c = byId("concInput");
+  if (r) r.value = "";
+  if (c) c.value = "";
+  updateActionStates();
+}
+
 // Mode 2 / 5 are high-volatility bonus/freegame paths that must use the
 // fuzzy tier (value "0"); force the select there and gray out the other
 // options. Mode 1 / 7 (regular-player modes) re-enable the full set.
@@ -516,14 +534,26 @@ async function runAutoTune() {
   if (state.autoTuneRunning) return;
   state.autoTuneRunning = true;
   updateActionStates();
-  const rc = Number(byId("robotInput").value || 20);
-  const cc = Number(byId("concInput").value || 2);
+  // robotInput / concInput are filled by Auto Tune itself, so on the first
+  // click they are empty. Fall back to a broad candidate grid in that case;
+  // subsequent clicks refine around the previously recommended values.
+  const rcRaw = byId("robotInput").value;
+  const ccRaw = byId("concInput").value;
+  const hasPrev = rcRaw !== "" && ccRaw !== "";
+  const rc = Number(rcRaw || 20);
+  const cc = Number(ccRaw || 2);
+  const robotCandidates = hasPrev
+    ? [...new Set([rc - 8, rc - 4, rc, rc + 4, rc + 8].map((x) => Math.max(4, x)).filter((x) => x <= 200))]
+    : [8, 12, 16, 20, 24];
+  const concurrencyCandidates = hasPrev
+    ? [...new Set([1, cc - 1, cc, cc + 1, cc + 2].map((x) => Math.max(1, x)).filter((x) => x <= 16))]
+    : [1, 2, 3, 4];
   const payload = {
     machine: byId("machineSelect").value || "M14",
     mode: Number(byId("modeSelect").value || 1),
     spin_times: Math.max(60, Math.min(240, Number(byId("spinInput").value || 120))),
-    robot_candidates: [...new Set([rc - 8, rc - 4, rc, rc + 4, rc + 8].map((x) => Math.max(4, x)).filter((x) => x <= 200))],
-    concurrency_candidates: [...new Set([1, cc - 1, cc, cc + 1, cc + 2].map((x) => Math.max(1, x)).filter((x) => x <= 16))],
+    robot_candidates: robotCandidates,
+    concurrency_candidates: concurrencyCandidates,
     rounds: 2,
     timeout: 45,
     bet: 1000,
@@ -609,14 +639,17 @@ function bindEvents() {
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();
     applyModeCiConstraint();
+    clearConcurrencyInputs();
     clearSummaryPanels();
     await refreshVersions();
   });
   byId("modeSelect").addEventListener("change", async () => {
     applyModeCiConstraint();
+    clearConcurrencyInputs();
     clearSummaryPanels();
     await refreshVersions();
   });
+  byId("ciSelect").addEventListener("change", () => updateActionStates());
   byId("providerSelect").addEventListener("change", () => (fillModelsForProvider(byId("providerSelect").value), setGlobalWarning(modelWarnings())));
   byId("modelSelect").addEventListener("change", () => setGlobalWarning(modelWarnings()));
   byId("saveModelCfgBtn").addEventListener("click", () =>

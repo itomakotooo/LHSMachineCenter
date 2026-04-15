@@ -45,6 +45,9 @@ const I18N = {
     ciOption5: "5.0 pp (探索)",
     ciOptionFuzzy: "模糊 (高波动 mode)",
     helpCiTargetFuzzy: "模糊档：跳过 CI 停止条件，直接按约 100 万 spin 采样，用于 mode 2/5 这类 RTP 爆炸的特殊机制。",
+    placeholderAutotuneFill: "由压测自动填充",
+    validateAutotuneFirst: "请先点「一键压测并调参」获得并发推荐值。",
+    validateMode25RequireFuzzy: "mode 2 和 5 必须使用模糊档位（CI 半宽 = 模糊）。",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
     labelConcurrency: "批并发数",
@@ -191,6 +194,9 @@ const I18N = {
     ciOption5: "5.0 pp (exploratory)",
     ciOptionFuzzy: "Fuzzy (high-volatility mode)",
     helpCiTargetFuzzy: "Fuzzy tier: CI stop is bypassed; sampling targets ~1M spins via max_chunks. Required for mode 2/5 (RTP-exploding special mechanics).",
+    placeholderAutotuneFill: "filled by Auto Tune",
+    validateAutotuneFirst: "Click 'Auto Tune Parallelism' first to get recommended concurrency values.",
+    validateMode25RequireFuzzy: "Mode 2 and 5 must use the fuzzy CI tier.",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
     labelConcurrency: "Batch Concurrency",
@@ -385,6 +391,38 @@ function ciTierOptions(lang) {
   ];
 }
 
+// Pure validator used by the frontend to gate the Start button. Returns
+// {blocking: string[], warnings: string[], canStart: bool}. Blocking
+// strings are localized and meant to be shown to the operator.
+function validateRunConfig(opts) {
+  const o = opts || {};
+  const mode = Number(o.mode);
+  const halfwidthPp = o.halfwidthPp;
+  const rc = o.robotCount;
+  const cc = o.concurrency;
+  const lang = o.lang || "en";
+  const blocking = [];
+  const warnings = [];
+
+  if ((mode === 2 || mode === 5) && Number(halfwidthPp) !== 0) {
+    blocking.push(fmt(lang, "validateMode25RequireFuzzy"));
+  }
+  const missingConc =
+    rc === null ||
+    rc === undefined ||
+    rc === "" ||
+    Number(rc) <= 0 ||
+    cc === null ||
+    cc === undefined ||
+    cc === "" ||
+    Number(cc) <= 0;
+  if (missingConc) {
+    blocking.push(fmt(lang, "validateAutotuneFirst"));
+  }
+
+  return { blocking, warnings, canStart: blocking.length === 0 };
+}
+
 function modelWarnings(opts) {
   const o = opts || {};
   const provider = o.provider || "";
@@ -434,6 +472,7 @@ const PURE = {
   modelWarnings,
   collectSystemWarnings,
   ciTierOptions,
+  validateRunConfig,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;
