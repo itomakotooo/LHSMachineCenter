@@ -356,6 +356,51 @@ body {
   display: block;
 }
 
+/* Drilldown tab panel: combined paylines / payouts / symbols. Same
+   visual treatment as .mid-tabs (underline-active) so the dashboard
+   speaks one tab dialect. */
+.drilldown-tabs {
+  grid-column: span 12;
+}
+
+.drilldown-tab-bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  margin: -2px 0 10px;
+}
+
+.drilldown-tab-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 16px 10px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 0;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.drilldown-tab-btn:hover {
+  color: var(--ink);
+}
+
+.drilldown-tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.drilldown-tab-pane {
+  display: none;
+}
+
+.drilldown-tab-pane.active {
+  display: block;
+}
+
 .machine-catalog,
 .run-history {
   grid-column: span 6;
@@ -737,6 +782,7 @@ tbody tr.active-row {
   .interpretation,
   .logs,
   .mid-tabs,
+  .drilldown-tabs,
   .machine-catalog,
   .run-history,
   .system-status,

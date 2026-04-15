@@ -23,6 +23,10 @@ const state = {
   // UI state -- switching never refetches data because all three panes
   // share the DOM and are kept up to date by the existing render funcs.
   midTab: "assessment",
+  // Drilldown tab selection (paylines / payouts / symbols). Switching
+  // re-runs the matching renderXxxDrilldown(state.latestSummary) so the
+  // active table always reflects the last summary; never refetches.
+  drilldownTab: "paylines",
   // Captured at the moment Start is clicked so the polling code can
   // compute fuzzy-aware progress without re-deriving from API state.
   lastSubmittedFuzzy: false,
@@ -124,6 +128,27 @@ function switchMidTab(tab) {
   document.querySelectorAll(".mid-tab-pane").forEach((p) =>
     p.classList.toggle("active", p.dataset.midTab === tab),
   );
+}
+
+// Drilldown tab switch (paylines / payouts / symbols). Re-runs the
+// matching renderXxxDrilldown so the visible table always reflects
+// state.latestSummary -- the render funcs handle null/empty summary
+// gracefully so switching before any report exists is a no-op.
+function switchDrilldownTab(tab) {
+  state.drilldownTab = tab;
+  document.querySelectorAll(".drilldown-tab-btn").forEach((b) => {
+    const on = b.dataset.drilldownTab === tab;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  document.querySelectorAll(".drilldown-tab-pane").forEach((p) =>
+    p.classList.toggle("active", p.dataset.drilldownTab === tab),
+  );
+  const s = state.latestSummary;
+  if (!s) return;
+  if (tab === "paylines") renderPaylineDrilldown(s);
+  else if (tab === "payouts") renderPayoutGroupDrilldown(s);
+  else if (tab === "symbols") renderSymbolDrilldown(s);
 }
 
 function setHealth(ok, suffix = "") {
@@ -921,6 +946,9 @@ function bindEvents() {
   byId("tabBtnManage").addEventListener("click", () => switchTab("manage"));
   document.querySelectorAll(".mid-tab-btn").forEach((b) => {
     b.addEventListener("click", () => switchMidTab(b.dataset.midTab));
+  });
+  document.querySelectorAll(".drilldown-tab-btn").forEach((b) => {
+    b.addEventListener("click", () => switchDrilldownTab(b.dataset.drilldownTab));
   });
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();

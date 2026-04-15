@@ -224,54 +224,61 @@
             </div>
           </section>
 
-          <section class="panel paylines">
-            <h2 data-i18n="panelPaylines">支付线深度（Top 20）</h2>
-            <table id="paylineTable" class="drilldown-table">
-              <thead>
-                <tr>
-                  <th data-i18n="thPaylineId">Payline ID</th>
-                  <th data-i18n="thHitCount">命中次数</th>
-                  <th data-i18n="thHitRate">命中率</th>
-                  <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
-                  <th data-i18n="thWinShare">Win 占比</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </section>
-
-          <section class="panel payout-groups">
-            <h2 data-i18n="panelPayoutGroups">Pay ID 深度（PayoutGroupId Top 20）</h2>
-            <p class="drilldown-hint" data-i18n="payoutGroupZeroHint">Group 0 = 未中奖，仅展示作对照。</p>
-            <table id="payoutGroupTable" class="drilldown-table">
-              <thead>
-                <tr>
-                  <th data-i18n="thGroupId">Group ID</th>
-                  <th data-i18n="thHitCount">命中次数</th>
-                  <th data-i18n="thHitRate">命中率</th>
-                  <th data-i18n="thAvgWinX">命中均赢(x)</th>
-                  <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </section>
-
-          <section class="panel symbols">
-            <h2 data-i18n="panelSymbols">符号深度（整体 + 按列）</h2>
-            <h3 data-i18n="symbolsOverallHeader" class="drilldown-subhead">整体 Top 20</h3>
-            <table id="symbolOverallTable" class="drilldown-table">
-              <thead>
-                <tr>
-                  <th data-i18n="thSymbol">符号</th>
-                  <th data-i18n="thCount">次数</th>
-                  <th data-i18n="thRate">占比</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-            <h3 data-i18n="symbolsByColHeader" class="drilldown-subhead">按列分布 Top 10（每列）</h3>
-            <div id="symbolByColMatrix" class="symbol-matrix"></div>
+          <!-- Drilldown tab panel: rolls paylines / payout-groups /
+               symbols into one panel with internal tab switching.
+               Switching a tab calls renderXxxDrilldown(state.latestSummary)
+               so the active tab always reflects the latest summary
+               without refetching the report. -->
+          <section class="panel drilldown-tabs">
+            <nav class="drilldown-tab-bar" role="tablist">
+              <button class="drilldown-tab-btn active" data-drilldown-tab="paylines" role="tab" aria-selected="true" data-i18n="drilldownTabPaylines">支付线</button>
+              <button class="drilldown-tab-btn" data-drilldown-tab="payouts" role="tab" aria-selected="false" data-i18n="drilldownTabPayouts">Pay ID</button>
+              <button class="drilldown-tab-btn" data-drilldown-tab="symbols" role="tab" aria-selected="false" data-i18n="drilldownTabSymbols">符号</button>
+            </nav>
+            <div class="drilldown-tab-pane active" data-drilldown-tab="paylines" role="tabpanel">
+              <table id="paylineTable" class="drilldown-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="thPaylineId">Payline ID</th>
+                    <th data-i18n="thHitCount">命中次数</th>
+                    <th data-i18n="thHitRate">命中率</th>
+                    <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
+                    <th data-i18n="thWinShare">Win 占比</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="drilldown-tab-pane" data-drilldown-tab="payouts" role="tabpanel">
+              <p class="drilldown-hint" data-i18n="payoutGroupZeroHint">Group 0 = 未中奖，仅展示作对照。</p>
+              <table id="payoutGroupTable" class="drilldown-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="thGroupId">Group ID</th>
+                    <th data-i18n="thHitCount">命中次数</th>
+                    <th data-i18n="thHitRate">命中率</th>
+                    <th data-i18n="thAvgWinX">命中均赢(x)</th>
+                    <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="drilldown-tab-pane" data-drilldown-tab="symbols" role="tabpanel">
+              <h3 data-i18n="symbolsOverallHeader" class="drilldown-subhead">整体 Top 20</h3>
+              <table id="symbolOverallTable" class="drilldown-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="thSymbol">符号</th>
+                    <th data-i18n="thCount">次数</th>
+                    <th data-i18n="thRate">占比</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <h3 data-i18n="symbolsByColHeader" class="drilldown-subhead">按列分布 Top 10（每列）</h3>
+              <div id="symbolByColMatrix" class="symbol-matrix"></div>
+            </div>
           </section>
 
             </div>
