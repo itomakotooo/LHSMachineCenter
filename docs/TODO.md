@@ -104,6 +104,31 @@ This file tracks executable next steps for the current phase.
       tabbed assessment/interpretation/events panel, tabbed drilldown
       (paylines/payouts/symbols) panel. Manage tab kept as single-
       column panel stack so cache-cleanup e2e keeps working unchanged.
+- [x] Dashboard follow-up (per user feedback after first pass):
+      sidebar reordered so run-actions sits at the top of the column
+      (Start/Auto above the fold). Mid-area and drilldown tab groups
+      unrolled into stacked panels because tabs added friction without
+      payoff for narrative + table content; mid order is now
+      interpretation -> assessment -> events.
+- [x] Multiplier bucket schema refined from 10 bins to 12: collapses
+      sub-1x buckets (gt0_lt1 unifies the old gt0_lt0.5 + ge0.5_lt1;
+      ge1_lt5 unifies ge1_lt2 + ge2_lt5) and splits the deep tail
+      (ge100 became ge100_lt200 / ge200_lt500 / ge500_lt1000 /
+      ge1000_lt5000 / ge5000). pure.prettyBucketLabel renders friendly
+      ranges and keeps fallbacks for legacy keys.
+- [x] Charts trimmed to bucket-only: CI / RTP / bankruptcy line charts
+      removed since their values are already KPI cards. Multiplier
+      bucket bar chart spans full panel width.
+- [x] Payline winning-symbol inference: analyzer heuristically tags
+      each winning payline with the symbol(s) shared by the leftmost
+      three stopped columns (classic 3+ left-to-right pattern). Each
+      paylines_top20 row carries top_symbols; the drilldown table
+      shows the top 3.
+- [x] Interpretation prompt overhauled: includes paylines / payouts /
+      symbols subsets, prepends a "参照阈值" reference block mirroring
+      classify_volatility / classify_experience_archetype / alert
+      thresholds, expands output structure to 6 sections with a
+      mandatory "支付线与符号热点" narrative.
 
 ## Work Mode
 

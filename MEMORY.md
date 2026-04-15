@@ -116,25 +116,69 @@ This section is for execution efficiency and can be updated as long as section A
      on tab switch.
 21. UI layout convention (Grafana-style dashboard, debug tab):
    - Three-region shell: sticky .dash-topbar (title / liveStatusStrip /
-     lang+health), .dash-sidebar (params + model-config + run-actions,
-     260px column on desktop, drawer toggled by #sidebarToggle below
-     1120px), .dash-main (KPI 3x4 strip with whole-card pastel tone bg +
-     2x2 chart grid + .panel.mid-tabs for assessment/interpretation/
-     events + .panel.drilldown-tabs for paylines/payouts/symbols).
+     lang+health), .dash-sidebar (run-actions + run-config + model-
+     config in that DOM order so Start/Auto are above the fold, 260px
+     column on desktop, drawer toggled by #sidebarToggle below 1120px),
+     .dash-main (KPI 3x4 strip with whole-card pastel tone bg + single
+     bucket chart + 3 stacked mid panels (interpretation, assessment,
+     events) + 3 stacked drilldown panels (paylines, payout-groups,
+     symbols)).
+   - Why: tabs were unrolled per user feedback after first dashboard
+     pass -- friction without payoff for narrative + table content.
+     CI / RTP / bankruptcy charts dropped because their values already
+     live in KPI cards.
    - All e2e selectors (#startBtn / #autotuneBtn / #ciSelect /
      #robotInput / #paylineTable / #payoutGroupTable /
      #symbolOverallTable / #symbolByColMatrix / 12 KPI strong IDs /
-     #liveStatusStrip / #sidebarToggle) preserved across the refactor;
-     IDs never queried by structural class.
+     #liveStatusStrip / #sidebarToggle / #bucketChart) preserved across
+     the refactor; IDs never queried by structural class.
    - Manage tab (#tab-manage) deliberately retains its single-column
      panel stack so the cache-cleanup risk-tier e2e fixtures targeting
      #cacheRefreshBtn / #cacheCleanupBtn keep working unchanged.
-   - Pure helpers untouched -- pure.js only gained 4 i18n keys
-     (drilldownTabPaylines / drilldownTabPayouts / drilldownTabSymbols /
-     sidebarToggleLabel), no signature changes.
+   - Pure helpers untouched -- only added i18n keys (sidebarToggleLabel
+     / thTopSymbols) and small formatting helpers (prettyBucketLabel,
+     formatPaylineTopSymbols). No business signature changes.
    - Dark-mode palette prepared as :root[data-theme="dark"] vars; not
      activated. Setting <html data-theme="dark"> would flip the theme
      without further CSS edits.
+22. Multiplier bucket schema (analyzer + frontend chart):
+   - 12 bins: eq0 / gt0_lt1 / ge1_lt5 / ge5_lt10 / ge10_lt20 /
+     ge20_lt50 / ge50_lt100 / ge100_lt200 / ge200_lt500 /
+     ge500_lt1000 / ge1000_lt5000 / ge5000.
+   - Refined from the prior 10-bin schema after dashboard feedback;
+     low buckets collapsed (gt0_lt1 unifies the old gt0_lt0.5 and
+     ge0.5_lt1; ge1_lt5 unifies ge1_lt2 and ge2_lt5) and the deep
+     tail split (old "ge100" became ge100_lt200 ... ge5000).
+   - TAIL_GEX10_BUCKETS expanded to include all tail bins so
+     tail_dependency aggregates the full >=10x set.
+   - Old reports keep their old labels in summary JSON;
+     PURE.prettyBucketLabel falls back gracefully so legacy charts
+     still render with the right ranges.
+23. Payline winning-symbol inference (analyzer):
+   - API exposes PayoutByPayline (winning line ids) and
+     StopSymbolsByCol (5 columns of stopped symbols) per spin, but no
+     payline -> position map (machines.json doesn't carry payline
+     definitions either).
+   - Heuristic: when a line pays, intersect the leftmost-3 column
+     symbol sets and credit the result(s) as the winning symbol(s)
+     for that line. Matches the classic 3+ left-to-right slot pattern.
+     Falls back to the leftmost column's first symbol when no
+     intersection (rare bonus payouts).
+   - Output: each row in summary.player_impact.paylines_top20 carries
+     top_symbols [{symbol, count}, ...] (top 5 by frequency). Frontend
+     paylines table renders top 3 via PURE.formatPaylineTopSymbols.
+24. Interpretation prompt contract (backend build_interpretation_prompt):
+   - Subset includes paylines_top20 / payout_groups_top20 /
+     symbols_top20 / symbols_by_column_top10 alongside the existing
+     aggregate fields so the LLM can comment on hotspots.
+   - Reference block precedes the JSON payload listing the exact
+     thresholds analyzer uses (volatility tiers, archetype rules,
+     sampling quality bar, loss-streak / bankruptcy / tail-dependency
+     alerts). Output prompt requires citation of these numbers.
+   - Output structure: 6 sections, including "4) 支付线与符号热点"
+     (must reference drilldown data) and "5) 关键风险与告警" (must
+     reference threshold numbers). Locked by
+     tests/backend/test_interpret_prompt.py.
 
 Update policy:
 - Assistant may update this section after execution, and must explicitly state:

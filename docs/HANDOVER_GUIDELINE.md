@@ -206,20 +206,26 @@ pattern as `pure.extractMetricCards` for the KPI grid.
 ## 13. Dashboard layout (debug tab)
 
 The debug tab uses a Grafana-style three-region shell. The structure
-lives entirely in `src/web_console/frontend/index.html` +
-`styles.css`; `app.js` and `pure.js` business logic are unchanged
-across this refactor.
+lives in `src/web_console/frontend/index.html` + `styles.css`. After
+the user-feedback follow-up round, mid-area and drilldown tabs were
+unrolled into stacked panels (tabs were friction without payoff for
+narrative + table content), and only the multiplier-bucket chart
+survived.
 
 ```
 +--------------------------------------------------------+
 | topbar (sticky): title | liveStatusStrip | lang/health |
 +--------+-----------------------------------------------+
 | side-  |  KPI strip (3x4 compact, whole-card tone bg)  |
-| bar    |  Charts (2x2 uniform 220px canvases)          |
-| 260px  |  Mid-tab panel: assessment / interpretation / |
-| (drawer|                 events  (state.midTab)        |
-| <1120) |  Drilldown tabs: paylines / payouts / symbols |
-|        |                  (state.drilldownTab)         |
+| bar    |  Charts (1x1, multiplier bucket only)         |
+| 260px  |  Interpretation panel  (#interpretationText)  |
+| (drawer|  Assessment panel      (#assessment)          |
+| <1120) |  Events panel          (#eventsText)          |
+|        |  Paylines drilldown    (#paylineTable)        |
+| order: |  Pay-ID drilldown      (#payoutGroupTable)    |
+| ctrl   |  Symbols drilldown     (#symbolOverallTable)  |
+| -> cfg |                                               |
+| -> mdl |                                               |
 +--------+-----------------------------------------------+
 ```
 
@@ -229,19 +235,47 @@ Layout-impacting CSS classes:
   to single-column at <=1120px and the sidebar becomes a fixed
   drawer toggled by `.sidebar-toggle` (hamburger). Open state is
   `.dashboard.sidebar-open`.
-- `.dash-sidebar` -- sticky column on desktop holding `.run-config
-  / .model-config / .run-actions`. Run-actions uses `margin-top:
-  auto` so the four short-label buttons (icon + verb) land at the
-  bottom of the column.
+- `.dash-sidebar` -- sticky column on desktop holding `.run-actions
+  / .run-config / .model-config` (in that DOM order). Run-control
+  is the FIRST child so Start/Auto are above the fold immediately
+  on page load.
 - `.dash-topbar` -- sticky topbar; `#liveStatusStrip` mirrors the
   active run summary (1 Hz, fed by `refreshCurrentRun()` calling
   `renderLiveStatusStrip({summary, pct})`) and degrades to a
   `machine . mode . status` brief when no run is active.
-- `.mid-tabs` / `.drilldown-tabs` -- single panel per tab group;
-  switching only toggles `.active` classes. Drilldown switching
-  also re-runs the matching `renderXxxDrilldown(state.latestSummary)`
-  so the visible table always reflects the latest summary without
-  a refetch.
+- Mid-area panels (`.interpretation`, `.report`, `.logs`) and
+  drilldown panels (`.paylines`, `.payout-groups`, `.symbols`) all
+  span the full 12-col main row and stack vertically. Per user
+  feedback, tabs added friction without earning their cost for these
+  text/table-heavy surfaces.
+- `.chart-grid--single` -- only `bucketChart` survives; the other
+  three (CI / RTP / bankruptcy) were dropped because their data
+  already lived in KPI cards. The bucket chart's x-axis labels go
+  through `PURE.prettyBucketLabel()` so the analyzer's internal
+  keys ("ge100_lt200") render as friendly ranges ("100-200").
+
+Multiplier bucket schema (analyzer + chart): refined from 10 to 12
+bins. Old 10-bin keys (`gt0_lt0.5`, `ge0.5_lt1`, `ge1_lt2`,
+`ge2_lt5`, `ge100`) collapsed into `gt0_lt1` + `ge1_lt5` and the
+deep tail split into `ge100_lt200` / `ge200_lt500` / `ge500_lt1000` /
+`ge1000_lt5000` / `ge5000`. `prettyBucketLabel()` keeps fallbacks
+for the legacy keys so old reports still render.
+
+Payline drilldown surfaces a `top_symbols` column populated by an
+analyzer heuristic: for every spin where a payline paid, intersect
+the leftmost-3 column symbol sets and credit the surviving symbol(s)
+(falls back to the leftmost column's first symbol when no
+intersection). machine config has no payline -> position mapping,
+so this is best-effort but matches the classic 3+ left-to-right
+slot pattern.
+
+Interpretation prompt (`backend/app.py build_interpretation_prompt`)
+includes `paylines_top20` / `payout_groups_top20` / `symbols_top20`
+/ `symbols_by_column_top10` plus a "参照阈值" reference block that
+mirrors `classify_volatility` / `classify_experience_archetype` and
+the alert thresholds in `classic_slots_guideline_rules.json`. Output
+structure has 6 sections; section 4 is "支付线与符号热点" and is
+required (regression-locked by `tests/backend/test_interpret_prompt.py`).
 
 E2E selectors that must be preserved across any future layout edits:
 
@@ -259,6 +293,8 @@ E2E selectors that must be preserved across any future layout edits:
 - KPI strong elements: `#kpiRtp / #kpiCi / #kpiSpins / #kpiZero /
   #kpiTail / #kpiGuide / #kpiVolatility / #kpiArchetype /
   #kpiLossStreak / #kpiMaxReturn / #kpiBigWin / #kpiBankruptX500`.
+- Chart canvas: `#bucketChart` (CI / RTP / bankruptcy canvases were
+  removed in the chart-trim commit).
 
 The manage tab (`#tab-manage`) deliberately keeps its single-column
 panel stack so the cache-cleanup risk-tier e2e fixtures (which
