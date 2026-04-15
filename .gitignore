@@ -33,3 +33,6 @@ cache/chunks/*
 # Legacy temporary outputs
 fresh_slotlab/runs/
 fresh_slotlab/__pycache__/
+
+# Local Claude Code tooling state (launch.json, plans, etc.)
+.claude/
