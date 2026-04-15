@@ -57,27 +57,55 @@ It contains:
 
 ## Quick Start (Local)
 
+**One-click (Windows):** double-click `start.bat` in the repo root. It
+runs the launcher with `-OpenBrowser` so the console tab opens after
+uvicorn is up. On first run pass `/install` to pip-install deps once:
+
+```
+start.bat /install
+```
+
+Subsequent launches just:
+
+```
+start.bat
+```
+
+Common variants:
+
+```
+start.bat /port 8899         # custom port
+start.bat /noopen            # skip auto-open browser
+```
+
+**Manual:** if you prefer the raw commands:
+
 1. Install dependencies:
 
 ```powershell
 python -m pip install -r src\web_console\requirements.txt
 ```
 
-2. Start console:
+2. Start console (add `-OpenBrowser` to auto-open the tab, `-Install`
+   to pip-install first):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\start_console.ps1
+powershell -ExecutionPolicy Bypass -File scripts\start_console.ps1 -OpenBrowser
 ```
 
-3. Open browser:
+3. Open browser if you didn't pass `-OpenBrowser`:
 
 - `http://127.0.0.1:8877/console/`
 
 Optional custom port:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\start_console.ps1 -Port 8899
+powershell -ExecutionPolicy Bypass -File scripts\start_console.ps1 -Port 8899 -OpenBrowser
 ```
+
+The launcher refuses to start if the target port is already in use
+(prints the offending PID list) and fails fast with a clear hint if
+`fastapi` / `uvicorn` aren't installed yet.
 
 ## Local Development Checks
 
