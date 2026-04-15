@@ -860,6 +860,17 @@ td.muted {
   font-style: italic;
 }
 
+/* Version cell in merged Run History -- monospace + tighter size so
+   long rv_{timestamp}_{hash} strings don't push other columns around. */
+td.version-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .catalog-title {
   font-size: 13px;
   font-weight: 700;

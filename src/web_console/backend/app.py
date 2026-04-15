@@ -233,6 +233,12 @@ class StateStore:
                 conn.execute("ALTER TABLE runs ADD COLUMN achieved_rtp_pct REAL")
             if "achieved_halfwidth_pp" not in run_columns:
                 conn.execute("ALTER TABLE runs ADD COLUMN achieved_halfwidth_pp REAL")
+            # quality_label feeds the merged Run History "Quality" column
+            # (report-grade / exploratory / ...). Populated from
+            # summary.guideline_assessment.data_quality.quality_label in
+            # _update_report_index(); backfilled on startup for legacy rows.
+            if "quality_label" not in run_columns:
+                conn.execute("ALTER TABLE runs ADD COLUMN quality_label TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interpretations (
@@ -308,10 +314,12 @@ class StateStore:
             rows = conn.execute(
                 """
                 SELECT run_id, status, summary_file, achieved_rtp_pct,
-                       achieved_halfwidth_pp
+                       achieved_halfwidth_pp, quality_label
                 FROM runs
                 WHERE status = 'completed'
-                  AND (achieved_rtp_pct IS NULL OR achieved_halfwidth_pp IS NULL)
+                  AND (achieved_rtp_pct IS NULL
+                       OR achieved_halfwidth_pp IS NULL
+                       OR quality_label IS NULL)
                 """
             ).fetchall()
             for r in rows:
@@ -333,13 +341,21 @@ class StateStore:
                     summary.get("sampling", {}).get("achieved_halfwidth_pp")
                     if isinstance(summary, dict) else None
                 )
+                ql = (
+                    summary.get("guideline_assessment", {})
+                    .get("data_quality", {})
+                    .get("quality_label")
+                    if isinstance(summary, dict) else None
+                )
                 # Write whichever fields had a null stored + a real
                 # value available; leave others alone.
-                patch_pairs: list[tuple[str, float]] = []
+                patch_pairs: list[tuple[str, Any]] = []
                 if r["achieved_rtp_pct"] is None and rtp is not None:
                     patch_pairs.append(("achieved_rtp_pct", float(rtp)))
                 if r["achieved_halfwidth_pp"] is None and hw is not None:
                     patch_pairs.append(("achieved_halfwidth_pp", float(hw)))
+                if r["quality_label"] is None and ql:
+                    patch_pairs.append(("quality_label", str(ql)))
                 if not patch_pairs:
                     continue
                 sets = ", ".join(f"{name}=?" for name, _ in patch_pairs)
@@ -1277,6 +1293,7 @@ class RunManager:
                 index_payload = []
         rtp_point_pct = summary.get("rtp", {}).get("point_pct")
         achieved_hw_pp = summary.get("sampling", {}).get("achieved_halfwidth_pp")
+        quality_label = summary.get("guideline_assessment", {}).get("data_quality", {}).get("quality_label")
         item = {
             "report_version": managed.report_version,
             "run_id": managed.run_id,
@@ -1284,19 +1301,21 @@ class RunManager:
             "summary_file": str(managed.summary_file),
             "report_file": str(managed.report_file),
             "rtp_point_pct": rtp_point_pct,
-            "quality_label": summary.get("guideline_assessment", {}).get("data_quality", {}).get("quality_label"),
+            "quality_label": quality_label,
         }
         index_payload.append(item)
         write_json(index_path, index_payload)
         write_json(latest_path, item)
-        # Persist the achieved RTP + CI onto the runs row too, so the
-        # manage-tab history table can show them without reading every
-        # summary.json on list.
+        # Persist the achieved RTP + CI + quality_label onto the runs
+        # row so the merged Run History table can show them without
+        # reading every summary.json on list.
         patch: dict[str, Any] = {}
         if rtp_point_pct is not None:
             patch["achieved_rtp_pct"] = float(rtp_point_pct)
         if achieved_hw_pp is not None:
             patch["achieved_halfwidth_pp"] = float(achieved_hw_pp)
+        if quality_label:
+            patch["quality_label"] = str(quality_label)
         if patch:
             self.store.update_run(managed.run_id, patch)
 

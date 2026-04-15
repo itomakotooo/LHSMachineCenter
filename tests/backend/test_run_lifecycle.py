@@ -442,6 +442,9 @@ def test_backfill_rtp_ci_from_summaries(app_factory, tmp_path):
         json.dumps({
             "rtp": {"point_pct": 92.35},
             "sampling": {"achieved_halfwidth_pp": 0.48},
+            "guideline_assessment": {
+                "data_quality": {"quality_label": "REPORT_GRADE"},
+            },
         }),
         encoding="utf-8",
     )
@@ -500,17 +503,19 @@ def test_backfill_rtp_ci_from_summaries(app_factory, tmp_path):
     assert result["updated"] == 1
     assert result["skipped_no_file"] == 1
 
-    # Verify the legacy row now has both columns filled.
+    # Verify the legacy row now has all three columns filled.
     conn = sqlite3.connect(str(app_factory.db_path))
     try:
         row = conn.execute(
-            "SELECT achieved_rtp_pct, achieved_halfwidth_pp FROM runs WHERE run_id = ?",
+            "SELECT achieved_rtp_pct, achieved_halfwidth_pp, quality_label "
+            "FROM runs WHERE run_id = ?",
             ("legacy_run_x",),
         ).fetchone()
     finally:
         conn.close()
     assert row[0] == 92.35
     assert row[1] == 0.48
+    assert row[2] == "REPORT_GRADE"
 
     # Ghost row remains null.
     conn = sqlite3.connect(str(app_factory.db_path))
@@ -524,8 +529,11 @@ def test_backfill_rtp_ci_from_summaries(app_factory, tmp_path):
     assert row[0] is None
     assert row[1] is None
 
-    # Running a second time is a no-op (idempotent).
+    # Running a second time is a no-op. legacy_run_x is now fully
+    # populated (RTP + CI + quality_label) so it drops out of the
+    # WHERE clause; only the ghost row remains, and it's still
+    # skipped because its summary file doesn't exist.
     result2 = store.backfill_rtp_ci_from_summaries()
-    assert result2["scanned"] == 1  # legacy_run_x is now populated, only ghost remains null
+    assert result2["scanned"] == 1
     assert result2["updated"] == 0
     assert result2["skipped_no_file"] == 1

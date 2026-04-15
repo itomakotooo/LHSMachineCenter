@@ -401,7 +401,7 @@ function renderRunHistory() {
     : state.runs;
   if (!rows.length) {
     const msg = filter ? fmt("noRunsForMachine") : fmt("noRuns");
-    body.innerHTML = `<tr><td colspan="8">${msg}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10">${msg}</td></tr>`;
     return;
   }
   rows.forEach((r) => {
@@ -409,6 +409,17 @@ function renderRunHistory() {
     if (r.run_id === state.currentRunId) tr.classList.add("active-row");
     const rtpCell = fMetricCell(r.achieved_rtp_pct, 2, "%");
     const ciCell = fMetricCell(r.achieved_halfwidth_pp, 3, " pp");
+    // Version + Quality: merged from the old Report Versions panel.
+    // report_version is pre-allocated at run creation so failed /
+    // cancelled rows carry a string that points to a non-existent
+    // directory; only show it for rows that actually produced a
+    // report (status=="completed"). quality_label comes from
+    // summary.guideline_assessment.data_quality.quality_label
+    // populated on completion (and backfilled on startup for legacy rows).
+    const statusLower = String(r.status || "").toLowerCase();
+    const versionCell = statusLower === "completed" && r.report_version
+      ? r.report_version : "\u2014";
+    const qualityCell = r.quality_label || "\u2014";
     tr.innerHTML =
       `<td>${r.run_id}</td>` +
       `<td>${statusText(r.status)}</td>` +
@@ -417,6 +428,8 @@ function renderRunHistory() {
       `<td>${r.created_at || ""}</td>` +
       `<td>${rtpCell}</td>` +
       `<td>${ciCell}</td>` +
+      `<td class="version-cell">${versionCell}</td>` +
+      `<td>${qualityCell}</td>` +
       `<td><button class="load-run-btn" data-id="${r.run_id}">${fmt("btnLoadRun")}</button>` +
       ` <button class="delete-run-btn danger-btn" data-id="${r.run_id}" data-machine="${r.machine}" data-mode="${r.mode}">${fmt("btnDeleteRun")}</button></td>`;
     body.appendChild(tr);
@@ -450,7 +463,6 @@ function renderRunHistory() {
           clearSummaryPanels();
         }
         await refreshRunList(false);
-        await refreshVersions().catch(() => {});
       } catch (err) {
         window.alert(fmt("runDeleteFailed", { error: String(err && err.message ? err.message : err) }));
       } finally {
@@ -1053,25 +1065,11 @@ async function refreshCurrentRun() {
     renderPaylineDrilldown(s);
     renderPayoutGroupDrilldown(s);
     renderSymbolDrilldown(s);
-    await refreshVersions();
     await refreshInterpretation();
   }
   warnings.push(...collectSystemWarnings());
   setGlobalWarning([...new Set(warnings)]);
   updateActionStates();
-}
-
-async function refreshVersions() {
-  const d = await apiGet(`/api/reports/${byId("machineSelect").value || "M14"}/${Number(byId("modeSelect").value || 1)}`);
-  const body = byId("versionsTable").querySelector("tbody");
-  body.innerHTML = "";
-  const arr = (d.versions || []).slice().reverse();
-  if (!arr.length) return (body.innerHTML = `<tr><td colspan="5">${fmt("noVersions")}</td></tr>`);
-  arr.forEach((v) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${v.report_version || ""}</td><td>${v.run_id || ""}</td><td>${v.created_at || ""}</td><td>${v.rtp_point_pct ?? ""}</td><td>${v.quality_label || ""}</td>`;
-    body.appendChild(tr);
-  });
 }
 
 async function refreshCache() {
@@ -1193,7 +1191,6 @@ async function loadBootstrap() {
   byId("autotuneMeta").textContent = fmt("noAutoTune");
   await refreshSystemState();
   await refreshCache();
-  await refreshVersions();
   await refreshRunList(true);
   if (state.currentRunId) await refreshCurrentRun();
   setSystemStatePanel();
@@ -1211,7 +1208,6 @@ function bindEvents() {
     renderMachineCatalog();
     renderRunHistory();
     setSystemStatePanel();
-    await refreshVersions().catch(() => {});
     await refreshCache().catch(() => {});
     await refreshSystemState().catch(() => {});
     if (state.currentRunId) {
@@ -1251,14 +1247,12 @@ function bindEvents() {
     resetConcurrencyInputsToPreset();
     clearSummaryPanels();
     renderLiveStatusStrip();
-    await refreshVersions();
   });
   byId("modeSelect").addEventListener("change", async () => {
     applyModeCiConstraint();
     resetConcurrencyInputsToPreset();
     clearSummaryPanels();
     renderLiveStatusStrip();
-    await refreshVersions();
   });
   byId("ciSelect").addEventListener("change", () => updateActionStates());
   byId("providerSelect").addEventListener("change", () => (fillModelsForProvider(byId("providerSelect").value), setGlobalWarning(modelWarnings())));
