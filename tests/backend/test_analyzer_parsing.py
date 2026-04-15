@@ -572,6 +572,110 @@ def test_run_sampling_chunk_spin_type_m272_main_plus_bonus(patch_post_json):
     assert rec["spin_type_bet"]["126"] >= 0
 
 
+def test_run_sampling_chunk_session_m14_pure_paid(patch_post_json):
+    """M14-style rounds (every round has CostCredits>0) -> each round is
+    its own paid session. paid_session_count == spins."""
+    rounds = [
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000),
+        _full_round(WinCredits=200, CostCredits=1000, BetAmount=1000,
+                    PayoutByPayline="1:200", PayoutGroupId=0,
+                    PayoutIdToWinAmount={"1": 200}),
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000),
+    ]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=3)
+    assert rec["paid_session_count"] == 3
+    assert rec["bonus_spin_count"] == 0
+    # 1 winning session out of 3.
+    assert rec["session_win_count"] == 1
+    assert rec["session_lose_count"] == 2
+
+
+def test_run_sampling_chunk_session_m272_paid_plus_bonus(patch_post_json):
+    """M272-style: 1 paid spin (CostCredits>0) triggers 2 bonus spins
+    (CostCredits=0). Should be 1 session whose win = paid win + both
+    bonus wins."""
+    rounds = [
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000,
+                    SpinType=140),  # paid, no direct win
+        _full_round(WinCredits=500, CostCredits=0, BetAmount=0,
+                    SpinType=126),  # bonus hit
+        _full_round(WinCredits=300, CostCredits=0, BetAmount=0,
+                    SpinType=126),  # bonus hit
+    ]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=3)
+    assert rec["paid_session_count"] == 1
+    assert rec["bonus_spin_count"] == 2
+    # Session win = 0 + 500 + 300 = 800, bet = 1000, ret_x = 0.8 -> gt0_lt1 bucket.
+    assert rec["session_win_count"] == 1  # session won
+    assert rec["session_win_sum"] == 800
+    assert rec["session_bucket_spins"]["gt0_lt1"] == 1
+    # Big-win x10 not triggered (0.8x < 10x).
+    assert rec["session_big_win_x10_count"] == 0
+    # Profit: session_win=800 < session_bet=1000 so not profit.
+    assert rec["session_profit_count"] == 0
+
+
+def test_run_sampling_chunk_session_multiple_paid_sessions(patch_post_json):
+    """3 paid spins interleaved with bonus spins. Each paid spin opens
+    a new session; preceding session is finalized."""
+    rounds = [
+        # Session 1: paid win 500, no bonus
+        _full_round(WinCredits=500, CostCredits=1000, BetAmount=1000,
+                    PayoutByPayline="1:500", PayoutIdToWinAmount={"1": 500}),
+        # Session 2: paid 0 + bonus win 2000 -> win 2000 (>=10x bet? 2000/1000=2, no)
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000),
+        _full_round(WinCredits=2000, CostCredits=0, BetAmount=0),
+        # Session 3: paid win 15000 (big-win x10)
+        _full_round(WinCredits=15000, CostCredits=1000, BetAmount=1000,
+                    PayoutByPayline="3:15", PayoutIdToWinAmount={"3": 15000}),
+    ]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=4)
+    assert rec["paid_session_count"] == 3
+    assert rec["bonus_spin_count"] == 1
+    assert rec["session_win_count"] == 3  # all three sessions had wins
+    assert rec["session_lose_count"] == 0
+    assert rec["session_win_sum"] == 500 + 2000 + 15000
+    # big-win x10: session 3 (15000/1000=15x).
+    assert rec["session_big_win_x10_count"] == 1
+    # profit: session 3 (15000 > 1000). Session 1 (500 < 1000) is not
+    # profit. Session 2 (2000 > 1000) is profit. So 2 profit sessions.
+    assert rec["session_profit_count"] == 2
+
+
+def test_run_sampling_chunk_session_orphan_bonus_ignored(patch_post_json):
+    """Bonus spins without a prior paid spin (anomalous) must not crash
+    the aggregator and must not create a phantom session."""
+    rounds = [
+        _full_round(WinCredits=100, CostCredits=0, BetAmount=0),  # orphan bonus
+        _full_round(WinCredits=50, CostCredits=1000, BetAmount=1000),  # first paid
+    ]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=2)
+    # Only the second round opens a session.
+    assert rec["paid_session_count"] == 1
+    assert rec["session_win_count"] == 1
+    # The orphan bonus is NOT counted as a bonus_spin (no session to
+    # attribute it to).
+    assert rec["bonus_spin_count"] == 0
+
+
+def test_run_sampling_chunk_session_cost_credits_missing_defaults_paid(patch_post_json):
+    """Legacy machines that don't emit CostCredits at all should be
+    treated as 'every round is a paid session' so old data still
+    produces the pre-refactor behavior."""
+    rounds = [_full_round(WinCredits=50)]
+    for r in rounds:
+        r.pop("CostCredits", None)  # simulate legacy machine
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=1)
+    assert rec["paid_session_count"] == 1
+    assert rec["bonus_spin_count"] == 0
+    assert rec["session_win_count"] == 1
+
+
 def test_run_sampling_chunk_spin_type_garbage_falls_back_to_zero(patch_post_json):
     """SpinType="weird" -> coerced to 0 by the int() except path."""
     rd = _full_round(SpinType="weird", WinCredits=5)

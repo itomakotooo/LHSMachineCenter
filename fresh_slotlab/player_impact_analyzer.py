@@ -4,8 +4,10 @@ import argparse
 import concurrent.futures
 import json
 import math
+import os
 import re
 import statistics
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -676,28 +678,59 @@ def run_sampling_chunk(
     ret_sq_sum = 0.0
     max_return_x = 0.0
 
+    # --- Spin-level counters (kept for back-compat + for surfaces that
+    #     are legitimately spin-level, like symbols / spin_type breakdown).
     win_spins = 0
     loss_spins = 0
     profit_spins = 0
     breakeven_or_more_spins = 0
     big_win_x10_spins = 0
     win_sum = 0.0
+    lack_credit_spins = 0
+    multiplier_bucket_spins: dict[str, int] = defaultdict(int)
+    multiplier_bucket_bet: dict[str, float] = defaultdict(float)
+    multiplier_bucket_win: dict[str, float] = defaultdict(float)
+    loss_streak_hist: dict[int, int] = defaultdict(int)
+    win_streak_hist: dict[int, int] = defaultdict(int)
+    max_loss_streak = 0
+    max_win_streak = 0
+
+    # --- Session-level counters (one "session" = a paid spin + every
+    #     bonus / free-spin that follows it, until the next paid spin or
+    #     the end of this robot's rounds). These drive the summary's
+    #     hit_and_payout / multiplier_profile / streaks / volatility so
+    #     the operator sees a player-perspective RTP profile (bonus wins
+    #     attributed back to the paid spin that triggered them) instead
+    #     of a per-spin tally that dilutes hit_rate with bonus chains.
+    #     Paid vs bonus is detected by CostCredits > 0 (robust: a paid
+    #     spin costs the player, a bonus free-spin doesn't).
+    paid_session_count = 0
+    session_win_count = 0
+    session_lose_count = 0
+    session_profit_count = 0
+    session_breakeven_count = 0
+    session_big_win_x10_count = 0
+    session_ret_count = 0
+    session_ret_sum = 0.0
+    session_ret_sq_sum = 0.0
+    session_max_return_x = 0.0
+    session_win_sum = 0.0
+    session_bucket_spins: dict[str, int] = defaultdict(int)
+    session_bucket_bet: dict[str, float] = defaultdict(float)
+    session_bucket_win: dict[str, float] = defaultdict(float)
+    session_loss_streak_hist: dict[int, int] = defaultdict(int)
+    session_win_streak_hist: dict[int, int] = defaultdict(int)
+    session_max_loss_streak = 0
+    session_max_win_streak = 0
+    # Stats about bonus-spin chain length (operator curiosity; not used
+    # in any derived metric here, but cheap to carry).
+    bonus_spin_count = 0
 
     payline_hits: dict[str, int] = defaultdict(int)
     payline_win_approx: dict[str, float] = defaultdict(float)
     symbol_counts: dict[str, int] = defaultdict(int)
     symbol_counts_by_col: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     total_symbol_slots = 0
-
-    loss_streak_hist: dict[int, int] = defaultdict(int)
-    win_streak_hist: dict[int, int] = defaultdict(int)
-    max_loss_streak = 0
-    max_win_streak = 0
-
-    lack_credit_spins = 0
-    multiplier_bucket_spins: dict[str, int] = defaultdict(int)
-    multiplier_bucket_bet: dict[str, float] = defaultdict(float)
-    multiplier_bucket_win: dict[str, float] = defaultdict(float)
 
     # Per-PayoutGroupId tally. Both M14 and M272 mode 1/2 always return
     # PayoutGroupId=0 in practice (the field doesn't differentiate), so
@@ -745,6 +778,76 @@ def run_sampling_chunk(
         lambda: defaultdict(int)
     )
 
+    # Session state shared across the inner spin loop and its post-loop
+    # flush. Kept as a mutable holder so the inline close() helper can
+    # mutate without a long nonlocal declaration.
+    sess_state = {
+        "open": False,
+        "bet": 0.0,
+        "win": 0.0,
+        "cur_loss_streak": 0,
+        "cur_win_streak": 0,
+    }
+
+    def _close_session() -> None:
+        # Finalize whatever session is currently open. Idempotent if no
+        # session is open (guarded at call site). Mutates all session-
+        # level chunk counters via `nonlocal`. Keeps the paid/bonus
+        # accounting honest: session's bet is the paid bet only; win is
+        # paid + all subsequent bonus wins that were attributed to it.
+        nonlocal paid_session_count
+        nonlocal session_win_count, session_lose_count
+        nonlocal session_profit_count, session_breakeven_count, session_big_win_x10_count
+        nonlocal session_ret_count, session_ret_sum, session_ret_sq_sum, session_max_return_x
+        nonlocal session_win_sum
+        nonlocal session_max_loss_streak, session_max_win_streak
+
+        if not sess_state["open"]:
+            return
+        s_bet = float(sess_state["bet"])
+        s_win = float(sess_state["win"])
+        ret_x_sess = (s_win / s_bet) if s_bet > 0 else 0.0
+
+        paid_session_count += 1
+        session_ret_count += 1
+        session_ret_sum += ret_x_sess
+        session_ret_sq_sum += ret_x_sess * ret_x_sess
+        if ret_x_sess > session_max_return_x:
+            session_max_return_x = ret_x_sess
+        b = return_bucket(ret_x_sess)
+        session_bucket_spins[b] += 1
+        session_bucket_bet[b] += s_bet
+        session_bucket_win[b] += s_win
+        session_win_sum += s_win
+
+        if s_win > 0:
+            session_win_count += 1
+            if s_win > s_bet:
+                session_profit_count += 1
+            if s_win >= s_bet:
+                session_breakeven_count += 1
+            if s_bet > 0 and s_win >= 10.0 * s_bet:
+                session_big_win_x10_count += 1
+            # Flip streak: if we were on a lose streak, close it.
+            if sess_state["cur_loss_streak"] > 0:
+                session_loss_streak_hist[sess_state["cur_loss_streak"]] += 1
+                if sess_state["cur_loss_streak"] > session_max_loss_streak:
+                    session_max_loss_streak = sess_state["cur_loss_streak"]
+                sess_state["cur_loss_streak"] = 0
+            sess_state["cur_win_streak"] += 1
+        else:
+            session_lose_count += 1
+            if sess_state["cur_win_streak"] > 0:
+                session_win_streak_hist[sess_state["cur_win_streak"]] += 1
+                if sess_state["cur_win_streak"] > session_max_win_streak:
+                    session_max_win_streak = sess_state["cur_win_streak"]
+                sess_state["cur_win_streak"] = 0
+            sess_state["cur_loss_streak"] += 1
+
+        sess_state["open"] = False
+        sess_state["bet"] = 0.0
+        sess_state["win"] = 0.0
+
     for robot in resp:
         if not isinstance(robot, dict):
             continue
@@ -756,6 +859,10 @@ def run_sampling_chunk(
         robot_max_collect_count = 0
         robot_max_acc_credits = 0
         robot_collect_observed = False
+        # Reset session-level streak state at robot boundary (streaks
+        # don't cross robots -- each is an independent player trajectory).
+        sess_state["cur_loss_streak"] = 0
+        sess_state["cur_win_streak"] = 0
 
         for r in rounds:
             if not isinstance(r, dict):
@@ -767,10 +874,37 @@ def run_sampling_chunk(
             if bet_amt <= 0.0:
                 bet_amt = float(bet)
 
+            # Paid vs bonus: CostCredits>0 means the player paid for this
+            # spin; CostCredits==0 means it's a free / bonus / re-spin
+            # that belongs to the paid session kicked off by an earlier
+            # paid spin. `is_paid` defaults to True when CostCredits is
+            # absent (old machines without the field behave as if every
+            # spin is paid, matching the pre-session-refactor semantics).
+            cost_credits_raw = r.get("CostCredits")
+            if cost_credits_raw is None:
+                is_paid = True
+            else:
+                is_paid = to_float(cost_credits_raw, default=0.0) > 0.0
+
             win_amt = to_float(r.get("WinCredits"), default=0.0)
             chunk_spins += 1
             chunk_bet += bet_amt
             chunk_win += win_amt
+
+            # Session accounting: close previous session on every new
+            # paid spin; bonus wins accrue into the currently-open session.
+            if is_paid:
+                _close_session()
+                sess_state["open"] = True
+                sess_state["bet"] = bet_amt
+                sess_state["win"] = win_amt
+            else:
+                if sess_state["open"]:
+                    sess_state["win"] += win_amt
+                    bonus_spin_count += 1
+                # else: orphan bonus (no prior paid spin seen) -- rare /
+                # anomalous; not counted toward any session. The spin is
+                # still counted in chunk_spins + spin_type_breakdown.
 
             ret_x = (win_amt / bet_amt) if bet_amt > 0 else 0.0
             max_return_x = max(max_return_x, ret_x)
@@ -909,6 +1043,21 @@ def run_sampling_chunk(
             win_streak_hist[cur_win] += 1
             max_win_streak = max(max_win_streak, cur_win)
 
+        # Finalize the last open session (if any) at the robot boundary,
+        # then flush the session-level streak histograms so open streaks
+        # don't silently roll into the next robot's counts.
+        _close_session()
+        if sess_state["cur_loss_streak"] > 0:
+            session_loss_streak_hist[sess_state["cur_loss_streak"]] += 1
+            if sess_state["cur_loss_streak"] > session_max_loss_streak:
+                session_max_loss_streak = sess_state["cur_loss_streak"]
+            sess_state["cur_loss_streak"] = 0
+        if sess_state["cur_win_streak"] > 0:
+            session_win_streak_hist[sess_state["cur_win_streak"]] += 1
+            if sess_state["cur_win_streak"] > session_max_win_streak:
+                session_max_win_streak = sess_state["cur_win_streak"]
+            sess_state["cur_win_streak"] = 0
+
         # Roll the per-robot collect totals into the chunk-level tally.
         chunk_collect_count_total += robot_max_collect_count
         if robot_max_acc_credits > chunk_acc_credits_max:
@@ -965,6 +1114,29 @@ def run_sampling_chunk(
         "collect_count_total": chunk_collect_count_total,
         "acc_credits_max": chunk_acc_credits_max,
         "collect_robots_seen": chunk_collect_seen,
+        # --- Session-level counters (see session refactor commit). Summary
+        #     derives hit_and_payout / multiplier_profile / streaks /
+        #     volatility from these so bonus wins attribute back to the
+        #     paid spin that triggered them, not to their own round.
+        "paid_session_count": paid_session_count,
+        "bonus_spin_count": bonus_spin_count,
+        "session_win_count": session_win_count,
+        "session_lose_count": session_lose_count,
+        "session_profit_count": session_profit_count,
+        "session_breakeven_count": session_breakeven_count,
+        "session_big_win_x10_count": session_big_win_x10_count,
+        "session_ret_count": session_ret_count,
+        "session_ret_sum": session_ret_sum,
+        "session_ret_sq_sum": session_ret_sq_sum,
+        "session_max_return_x": session_max_return_x,
+        "session_win_sum": session_win_sum,
+        "session_bucket_spins": dict(session_bucket_spins),
+        "session_bucket_bet": dict(session_bucket_bet),
+        "session_bucket_win": dict(session_bucket_win),
+        "session_loss_streak_hist": dict(session_loss_streak_hist),
+        "session_win_streak_hist": dict(session_win_streak_hist),
+        "session_max_loss_streak": session_max_loss_streak,
+        "session_max_win_streak": session_max_win_streak,
     }
 
 
@@ -1071,6 +1243,27 @@ def main() -> int:
     breakeven_or_more_spins = 0
     big_win_x10_spins = 0
     win_sum = 0.0
+
+    # Session-level totals (per-chunk records accumulate into these).
+    total_paid_sessions = 0
+    total_bonus_spins = 0
+    total_session_wins = 0
+    total_session_loses = 0
+    total_session_profits = 0
+    total_session_breakevens = 0
+    total_session_big_win_x10 = 0
+    total_session_ret_count = 0
+    total_session_ret_sum = 0.0
+    total_session_ret_sq_sum = 0.0
+    total_session_max_return_x = 0.0
+    total_session_win_sum = 0.0
+    session_bucket_spins: dict[str, int] = defaultdict(int)
+    session_bucket_bet: dict[str, float] = defaultdict(float)
+    session_bucket_win: dict[str, float] = defaultdict(float)
+    session_loss_streak_hist: dict[int, int] = defaultdict(int)
+    session_win_streak_hist: dict[int, int] = defaultdict(int)
+    total_session_max_loss_streak = 0
+    total_session_max_win_streak = 0
 
     payline_hits: dict[str, int] = defaultdict(int)
     payline_win_approx: dict[str, float] = defaultdict(float)
@@ -1247,6 +1440,39 @@ def main() -> int:
                 acc_credits_max_global = chunk_acc_max
             collect_robots_seen_total += int(rec.get("collect_robots_seen", 0) or 0)
 
+            # Session-level totals (session refactor commit). Older chunk
+            # records (pre-feature) silently add 0 via .get() fallback.
+            total_paid_sessions += int(rec.get("paid_session_count", 0) or 0)
+            total_bonus_spins += int(rec.get("bonus_spin_count", 0) or 0)
+            total_session_wins += int(rec.get("session_win_count", 0) or 0)
+            total_session_loses += int(rec.get("session_lose_count", 0) or 0)
+            total_session_profits += int(rec.get("session_profit_count", 0) or 0)
+            total_session_breakevens += int(rec.get("session_breakeven_count", 0) or 0)
+            total_session_big_win_x10 += int(rec.get("session_big_win_x10_count", 0) or 0)
+            total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
+            total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
+            total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
+            chunk_sess_max_ret = float(rec.get("session_max_return_x", 0.0) or 0.0)
+            if chunk_sess_max_ret > total_session_max_return_x:
+                total_session_max_return_x = chunk_sess_max_ret
+            total_session_win_sum += float(rec.get("session_win_sum", 0.0) or 0.0)
+            for b, c in (rec.get("session_bucket_spins") or {}).items():
+                session_bucket_spins[str(b)] += int(c)
+            for b, v in (rec.get("session_bucket_bet") or {}).items():
+                session_bucket_bet[str(b)] += float(v)
+            for b, v in (rec.get("session_bucket_win") or {}).items():
+                session_bucket_win[str(b)] += float(v)
+            for k, c in (rec.get("session_loss_streak_hist") or {}).items():
+                session_loss_streak_hist[int(k)] += int(c)
+            for k, c in (rec.get("session_win_streak_hist") or {}).items():
+                session_win_streak_hist[int(k)] += int(c)
+            chunk_sess_max_loss = int(rec.get("session_max_loss_streak", 0) or 0)
+            if chunk_sess_max_loss > total_session_max_loss_streak:
+                total_session_max_loss_streak = chunk_sess_max_loss
+            chunk_sess_max_win = int(rec.get("session_max_win_streak", 0) or 0)
+            if chunk_sess_max_win > total_session_max_win_streak:
+                total_session_max_win_streak = chunk_sess_max_win
+
             hw = ci_halfwidth_pp(chunk_rtps_pct)
             if math.isfinite(hw):
                 achieved_halfwidth_pp = hw
@@ -1275,39 +1501,95 @@ def main() -> int:
     duration_seconds = round(time.time() - t0, 3)
     finished_at = utc_now()
 
-    rtp_point_pct = (total_win / total_bet) * 100.0 if total_bet > 0 else 0.0
+    # Session-level aggregates that downstream RTP/bucket/volatility
+    # math depends on; computed up-front so later blocks can reference
+    # them without re-summing.
+    session_bet_sum = sum(float(v) for v in session_bucket_bet.values()) or total_bet
+    session_win_sum_agg = sum(float(v) for v in session_bucket_win.values()) or total_win
+
+    # RTP denominator is paid-session bet only (the old total_bet also
+    # added BetAmount for bonus / free spins, which the player doesn't
+    # actually pay -- the combined figure under-reports true RTP on
+    # bonus-heavy machines like M272 mode 2). Falls back to total_bet
+    # if the run had no paid sessions (shouldn't happen post-refactor,
+    # but stays safe for legacy chunk records).
+    effective_bet_for_rtp = session_bet_sum if total_paid_sessions > 0 else total_bet
+    rtp_point_pct = (
+        (total_win / effective_bet_for_rtp) * 100.0 if effective_bet_for_rtp > 0 else 0.0
+    )
     ci_interval = None
     if achieved_halfwidth_pp is not None:
         ci_interval = [rtp_point_pct - achieved_halfwidth_pp, rtp_point_pct + achieved_halfwidth_pp]
 
-    avg_return_x = (ret_sum / ret_count) if ret_count > 0 else 0.0
-    if ret_count > 1:
-        variance = (ret_sq_sum - (ret_sum * ret_sum / ret_count)) / (ret_count - 1)
+    # --- Session-level derived metrics (player-perspective view). A
+    #     "paid session" is a paid spin + any bonus spins it triggered;
+    #     hit_rate / RTP bucket / streaks are all based on these so
+    #     bonus chains don't dilute the player experience signal. ---
+    effective_session_count = total_paid_sessions if total_paid_sessions > 0 else total_spins
+    avg_return_x = (
+        (total_session_ret_sum / total_session_ret_count)
+        if total_session_ret_count > 0
+        else 0.0
+    )
+    if total_session_ret_count > 1:
+        variance = (
+            total_session_ret_sq_sum
+            - (total_session_ret_sum * total_session_ret_sum / total_session_ret_count)
+        ) / (total_session_ret_count - 1)
         std_return_x = math.sqrt(max(variance, 0.0))
     else:
         std_return_x = 0.0
+    max_observed_return_x = total_session_max_return_x if total_paid_sessions > 0 else max_return_x
 
-    hit_rate = (win_spins / total_spins) if total_spins > 0 else 0.0
-    zero_win_rate = (loss_spins / total_spins) if total_spins > 0 else 0.0
-    profit_spin_rate = (profit_spins / total_spins) if total_spins > 0 else 0.0
+    hit_rate = (
+        (total_session_wins / effective_session_count) if effective_session_count > 0 else 0.0
+    )
+    zero_win_rate = (
+        (total_session_loses / effective_session_count) if effective_session_count > 0 else 0.0
+    )
+    profit_spin_rate = (
+        (total_session_profits / effective_session_count) if effective_session_count > 0 else 0.0
+    )
     breakeven_or_more_rate = (
-        breakeven_or_more_spins / total_spins if total_spins > 0 else 0.0
+        (total_session_breakevens / effective_session_count) if effective_session_count > 0 else 0.0
     )
-    big_win_x10_rate = (big_win_x10_spins / total_spins) if total_spins > 0 else 0.0
+    big_win_x10_rate = (
+        (total_session_big_win_x10 / effective_session_count) if effective_session_count > 0 else 0.0
+    )
     avg_win_when_hit_x = (
-        (win_sum / win_spins) / args.bet if win_spins > 0 and args.bet > 0 else 0.0
+        (total_session_win_sum / total_session_wins) / args.bet
+        if total_session_wins > 0 and args.bet > 0
+        else 0.0
     )
 
+    # Multiplier bucket rows: session-level. Falls back to spin-level
+    # aggregates if session data is unavailable (e.g. empty chunk that
+    # somehow passed the zero-spin guard), so the summary never looks
+    # broken.
+    if total_paid_sessions > 0:
+        mb_bucket_spins = session_bucket_spins
+        mb_bucket_bet = session_bucket_bet
+        mb_bucket_win = session_bucket_win
+        mb_total_spins = total_paid_sessions
+        mb_total_bet = session_bet_sum
+        mb_total_win = session_win_sum_agg
+    else:
+        mb_bucket_spins = multiplier_bucket_spins
+        mb_bucket_bet = multiplier_bucket_bet
+        mb_bucket_win = multiplier_bucket_win
+        mb_total_spins = total_spins
+        mb_total_bet = total_bet
+        mb_total_win = total_win
     multiplier_bucket_rows = build_multiplier_bucket_rows(
-        bucket_spins=multiplier_bucket_spins,
-        bucket_bet=multiplier_bucket_bet,
-        bucket_win=multiplier_bucket_win,
-        total_spins=total_spins,
-        total_bet=total_bet,
-        total_win=total_win,
+        bucket_spins=mb_bucket_spins,
+        bucket_bet=mb_bucket_bet,
+        bucket_win=mb_bucket_win,
+        total_spins=mb_total_spins,
+        total_bet=mb_total_bet,
+        total_win=mb_total_win,
     )
-    tail_spins_ge10 = sum(multiplier_bucket_spins.get(k, 0) for k in TAIL_GEX10_BUCKETS)
-    tail_win_ge10 = sum(multiplier_bucket_win.get(k, 0.0) for k in TAIL_GEX10_BUCKETS)
+    tail_spins_ge10 = sum(mb_bucket_spins.get(k, 0) for k in TAIL_GEX10_BUCKETS)
+    tail_win_ge10 = sum(mb_bucket_win.get(k, 0.0) for k in TAIL_GEX10_BUCKETS)
 
     payline_rows = []
     for lid, hits in sorted(payline_hits.items(), key=lambda kv: kv[1], reverse=True):
@@ -1418,12 +1700,26 @@ def main() -> int:
             )
         symbol_by_col_rows[str(ci)] = rows
 
-    loss_streak_p50 = quantile_from_hist(loss_streak_hist, 0.50)
-    loss_streak_p90 = quantile_from_hist(loss_streak_hist, 0.90)
-    loss_streak_p95 = quantile_from_hist(loss_streak_hist, 0.95)
-    win_streak_p50 = quantile_from_hist(win_streak_hist, 0.50)
-    win_streak_p90 = quantile_from_hist(win_streak_hist, 0.90)
-    win_streak_p95 = quantile_from_hist(win_streak_hist, 0.95)
+    # Session-level streak quantiles (player perspective: runs of
+    # losing / winning paid sessions). Falls back to spin-level if no
+    # session data is available so legacy back-compat code paths stay
+    # meaningful.
+    if total_paid_sessions > 0:
+        loss_hist_src = session_loss_streak_hist
+        win_hist_src = session_win_streak_hist
+        max_loss_final = total_session_max_loss_streak
+        max_win_final = total_session_max_win_streak
+    else:
+        loss_hist_src = loss_streak_hist
+        win_hist_src = win_streak_hist
+        max_loss_final = max_loss_streak
+        max_win_final = max_win_streak
+    loss_streak_p50 = quantile_from_hist(loss_hist_src, 0.50)
+    loss_streak_p90 = quantile_from_hist(loss_hist_src, 0.90)
+    loss_streak_p95 = quantile_from_hist(loss_hist_src, 0.95)
+    win_streak_p50 = quantile_from_hist(win_hist_src, 0.50)
+    win_streak_p90 = quantile_from_hist(win_hist_src, 0.90)
+    win_streak_p95 = quantile_from_hist(win_hist_src, 0.95)
 
     bankruptcy_rows = []
     mults = [
@@ -1475,8 +1771,10 @@ def main() -> int:
     )
 
     recovery_gap = hit_rate - profit_spin_rate
+    # Tail metrics share RTP's paid-bet denominator so the percentage is
+    # comparable to rtp_point_pct (same units; the ratio is stable).
     tail_rtp_contribution_pp_ge10x = (
-        (tail_win_ge10 / total_bet) * 100.0 if total_bet > 0 else 0.0
+        (tail_win_ge10 / effective_bet_for_rtp) * 100.0 if effective_bet_for_rtp > 0 else 0.0
     )
     tail_win_share_ge10x = tail_win_ge10 / total_win if total_win > 0 else 0.0
     tail_dependency = safe_div(tail_rtp_contribution_pp_ge10x, rtp_point_pct)
@@ -1633,6 +1931,12 @@ def main() -> int:
             "batch_concurrency": args.batch_concurrency,
             "chunks": chunks,
             "total_spins": total_spins,
+            # Paid vs bonus split (session refactor). total_spins is
+            # paid_spins + bonus_spins. All derived metrics use
+            # paid_spins as the denominator; total_spins is kept for
+            # the quality gate ("did we sample enough rounds overall").
+            "paid_spins": total_paid_sessions,
+            "bonus_spins": total_bonus_spins,
             "stop_reason": stop_reason,
             "duration_seconds": duration_seconds,
             "started_at": started_at,
@@ -1657,10 +1961,10 @@ def main() -> int:
                 },
             },
             "multiplier_profile": {
-                "metric": "ret_x = win_credits / bet_credits",
+                "metric": "ret_x = session_win / session_bet (paid bet only)",
                 "buckets": multiplier_bucket_rows,
                 "tail_spin_rate_ge10x": (
-                    tail_spins_ge10 / total_spins if total_spins > 0 else 0.0
+                    tail_spins_ge10 / mb_total_spins if mb_total_spins > 0 else 0.0
                 ),
                 "tail_rtp_contribution_pp_ge10x": tail_rtp_contribution_pp_ge10x,
                 "tail_win_share_ge10x": tail_win_share_ge10x,
@@ -1675,14 +1979,16 @@ def main() -> int:
                 "lack_credit_spin_rate": (lack_credit_spins / total_spins) if total_spins > 0 else 0.0,
             },
             "streaks": {
+                # Session-level streaks (consecutive losing/winning paid
+                # sessions). Matches hit_rate / zero_win_rate semantics.
                 "loss_streak_p50": loss_streak_p50,
                 "loss_streak_p90": loss_streak_p90,
                 "loss_streak_p95": loss_streak_p95,
-                "loss_streak_max": max_loss_streak,
+                "loss_streak_max": max_loss_final,
                 "win_streak_p50": win_streak_p50,
                 "win_streak_p90": win_streak_p90,
                 "win_streak_p95": win_streak_p95,
-                "win_streak_max": max_win_streak,
+                "win_streak_max": max_win_final,
             },
             "paylines_top20": payline_rows[:20],
             "payout_groups_top20": payout_group_rows[:20],
@@ -1954,4 +2260,17 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Force-exit so any worker thread that ended up stuck in a slow
+    # urllib socket read (e.g. an upstream that trickles bytes under the
+    # socket-level timeout) cannot prevent the process from terminating.
+    # We've already printed + flushed the summary JSON by the time
+    # main() returns, so skipping atexit finalizers is safe here. If you
+    # ever register a real cleanup hook (temp files, locks, ...) do it
+    # before this point.
+    _rc = main()
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:  # noqa: BLE001
+        pass
+    os._exit(_rc)
