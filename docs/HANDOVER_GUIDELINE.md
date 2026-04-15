@@ -219,16 +219,23 @@ survived.
 +--------------------------------------------------------+
 | topbar (sticky): title | liveStatusStrip | lang/health |
 +--------+-----------------------------------------------+
-| side-  |  KPI strip (3x4 compact, whole-card tone bg)  |
-| bar    |  Charts (1x1, multiplier bucket only)         |
-| 260px  |  Interpretation panel  (#interpretationText)  |
-| (drawer|  Assessment panel      (#assessment)          |
-| <1120) |  Events panel          (#eventsText)          |
+| side-  |  KPI strip (3x4 compact, whole-card tone bg;  |
+| bar    |    kpiTail has ≥20/50/100x sub; kpiVolatility |
+| 260px  |    + kpiArchetype have lib-rank sub)          |
+| (drawer|  Charts (1x1, multiplier bucket only)         |
+| <1120) |  SpinType panel     (#spinTypeTable w/ beha-  |
+|        |    vior column + N/A for free-spin rtp_pct)   |
+| order: |  Feature panel      (#featureBreakdownPanel,  |
+| ctrl   |    hidden single-feature; M272: Normal-       |
+| -> cfg |    CollectionSpin + NewFreespin)              |
+| -> mdl |  Bonus-chain panel  (#bonusChainDynamicsPanel,|
+|        |    hidden when no Freespin ReMarks seen)      |
+|        |  Interpretation panel  (#interpretationText)  |
+|        |  Assessment panel      (#assessment)          |
+|        |  Events panel          (#eventsText)          |
 |        |  Paylines drilldown    (#paylineTable)        |
-| order: |  Pay-ID drilldown      (#payoutGroupTable)    |
-| ctrl   |  Symbols drilldown     (#symbolOverallTable)  |
-| -> cfg |                                               |
-| -> mdl |                                               |
+|        |  Pay-ID drilldown      (#payoutGroupTable)    |
+|        |  Symbols drilldown     (#symbolOverallTable)  |
 +--------+-----------------------------------------------+
 ```
 
@@ -301,6 +308,18 @@ E2E selectors that must be preserved across any future layout edits:
 - KPI strong elements: `#kpiRtp / #kpiCi / #kpiSpins / #kpiZero /
   #kpiTail / #kpiGuide / #kpiVolatility / #kpiArchetype /
   #kpiLossStreak / #kpiMaxReturn / #kpiBigWin / #kpiBankruptX500`.
+- KPI sub-line divs (populated per-card with multi-value or library
+  rank text): `#kpiTailSub` (≥10/20/50/100x breakdown),
+  `#kpiVolatilitySub` + `#kpiArchetypeSub` (library rank/count
+  suffix driven by /api/library/distributions).
+- Run-history extras: `#runListTable` (10 cols after Report Versions
+  merge), `#runFilterBanner` (shown when a machine filter is active),
+  `.load-run-btn` / `.delete-run-btn` (per-row).
+- Feature / bonus-chain panels added in the upstream-field-audit
+  round: `#featureBreakdownPanel` (+ `#featureBreakdownMeta` +
+  `#featureBreakdownBody`) and `#bonusChainDynamicsPanel` (+
+  `#bonusChainMeta` + `#bonusChainBody`). Both carry `.hidden` when
+  their respective summary block reports applicable=false.
 - Chart canvas: `#bucketChart` (CI / RTP / bankruptcy canvases were
   removed in the chart-trim commit).
 
@@ -309,16 +328,24 @@ panel stack so the cache-cleanup risk-tier e2e fixtures (which
 target `#cacheRefreshBtn` / `#cacheCleanupBtn` and rely on the
 manage tab being a flat panel list) keep working without changes.
 
-Run-history table columns: Run ID / Status / Machine / Mode /
-Created At / RTP / CI half-width / Action (Load + Delete). RTP and
-CI come from the `achieved_rtp_pct` / `achieved_halfwidth_pp`
-columns on the `runs` row, populated by `_update_report_index()`
-when a run completes (legacy rows from before that migration render
-as "\u2014"). Delete is wired to `DELETE /api/runs/{id}`; the backend
-refuses running rows (409), removes per-run artefacts, the report
-version directory, and rolls back `index.json` + `latest.json` if the
-run had produced a report version. The machine catalog panel above
-the run-history table is click-to-filter: each `.catalog-item` is a
+Run-history table columns (10 cols after the Report Versions merge
+in commit 718e955): Run ID / Status / Machine / Mode / Created At /
+RTP / CI half-width / Version / Quality / Action (Load + Delete).
+The separate "Report Versions" panel (section.versions,
+#versionsTable) was removed; all version+quality data now lives on
+the run row. RTP / CI / quality_label come from the `achieved_rtp_pct`
+/ `achieved_halfwidth_pp` / `quality_label` columns on the `runs`
+row, populated by `_update_report_index()` when a run completes and
+backfilled on every startup by
+`StateStore.backfill_rtp_ci_from_summaries()` (reads each legacy
+row's summary.json). Rows where status != "completed" show em-dash
+for Version (report_version is pre-allocated even for runs that
+eventually fail, pointing to a directory that was never written).
+Delete is wired to `DELETE /api/runs/{id}`; the backend refuses
+running rows (409), removes per-run artefacts, the report version
+directory, and rolls back `index.json` + `latest.json` if the run
+had produced a report version. The machine catalog panel above the
+run-history table is click-to-filter: each `.catalog-item` is a
 button (role=button, keyboard-activatable) that toggles
 `state.runFilterMachine`; a `#runFilterBanner` above the table shows
 the active filter with a "clear" button. Clicking the currently
@@ -449,6 +476,115 @@ analyzer change is needed -- CollectCount + AccCredits suffice.
 If the machine uses a different field name, surface it via a small
 extension to the collect tracking block (see commit history) so
 clamp_warning continues to fire for truncated-cycle chunks.
+
+## 13d. Upstream field audit: 4 additional surfaces
+
+Commit c3e7096 mined four fields the previous analyzer was either
+ignoring or aggregating too coarsely. All four are
+upstream-authoritative (no heuristic / no hardcoded semantics) so
+they generalize to any new machine automatically.
+
+- **Tail dependency multi-threshold** -- `guideline_assessment.
+  derived_metrics.tail_dependency_ge{10x,20x,50x,100x}` + matching
+  `tail_rtp_contribution_pp_ge{10x,20x,50x,100x}`. Shows how fast
+  the tail mass decays as x rises. Frontend `kpiTail` primary
+  displays ge10x (the canonical classify_volatility input);
+  `#kpiTailSub` renders the ≥20/50/100x breakdown as a compact
+  sub-line. Legacy `tail_dependency` alias preserved for
+  back-compat.
+
+- **Upstream feature breakdown** -- `player_impact.
+  upstream_feature_breakdown` parsed from `analysisResult.FeatureWin`
+  which groups payouts by a NAMED feature string ("Normal",
+  "NormalCollectionSpin", "NewFreespin", ...). Single-feature
+  machines (M14: only "Normal") emit applicable=false. Multi-feature
+  machines render `#featureBreakdownPanel` with per-feature
+  total_win / rtp_contribution_pp / share_of_total_win and a
+  per-payout_id table with share_of_feature_win bar. The feature
+  name itself is the operator-facing "SpinType name" the user asked
+  for -- derived from the machine's own labeling, not hardcoded.
+
+- **Bonus chain dynamics** -- `player_impact.bonus_chain_dynamics`
+  parsed from the `ReMarks` round field which M272 bonus rounds
+  populate with "Freespin N; CollectCount:X; AddCollectCount:Y;
+  ExtraRatio:R; [AddFreespins; M]". Per-chain length + peak ratio
+  quantiles (p50/p90/p95/max), self_retrigger_round_rate,
+  avg_retriggers_per_chain, extra_ratio_histogram, and an
+  extra_ratio_by_chain_depth curve that bucketizes chain depth into
+  1 / 2-5 / 6-10 / 11-20 / 21+ so the UI can draw the
+  energy-ramp view of MapCollection's multiplier escalation.
+  M14 rounds carry no Freespin annotations -- applicable=false and
+  `#bonusChainDynamicsPanel` hides.
+
+- **RewardLastNode-based winning symbols** -- `paylines_top20[].
+  top_symbols` now prefers the RLN numeric symbol codes (from the
+  upstream RewardLastNode field on the winning spin) when they're
+  present, and falls back to the left-3-col intersection heuristic
+  otherwise. `top_symbols_source` ("rln" / "heuristic") labels
+  each row so future UI work can badge which path fired.
+
+## 13e. SpinType breakdown RTP denominator fix
+
+The `player_impact.spin_type_breakdown` RTP denominator used to sum
+`BetAmount` across all rounds of a given SpinType, which made
+free-spin types (M272 SpinType=126: BetAmount=1000 but CostCredits=0
+because the player doesn't pay for bonus rounds) look like
+rtp_pct=243%. Fix: analyzer now maintains `spin_type_paid_bet`
+(sums CostCredits>0 amounts only) and emits `rtp_pct` as null for
+all-free types; UI renders "N/A" instead of a meaningless number.
+`behavior_name` is also added, derived from per-type paid-round
+count: "paid" / "free" / "mixed". The new `#spinTypeTable` has a
+`Behavior` column showing the localized label so the operator
+immediately sees which rows are free-spin.
+
+## 13f. Graceful Stop + cancelled status
+
+Commit 1714b93 replaced the old hard-terminate cancel with a
+cross-platform graceful-stop flow so partial data survives Stop.
+
+- Analyzer: new `--stop-flag-file PATH` arg. Main loop polls the
+  file's existence between chunks; on appearance, sets
+  `stop_reason="user_stop"` and falls through to the normal
+  summary-build path. SIGTERM / SIGINT handlers are also registered
+  on platforms that support them. Windows
+  subprocess.terminate()==TerminateProcess doesn't deliver a
+  catchable signal -- the flag file is what actually works cross-
+  platform.
+- Backend `cancel_run` writes `{progress_dir}/{run_id}.stop`
+  instead of calling process.terminate(); cancel response status
+  is "cancelling". Falls back to hard terminate() only if the flag
+  write fails.
+- `_watch_run` promotes exit-0 + user_stop + total_spins>0 to
+  status "cancelled" (NOT failed). The partial summary is written
+  to the report index/latest like a completed run. Zero-spin +
+  user_stop still flips to cancelled but with an error_message
+  noting "cancelled by user before any chunk completed". The
+  existing failed path still fires for non-user zero-spin (504 /
+  schema drift / network).
+- Frontend `refreshCurrentRun` renders the full panel stack for
+  status==completed OR cancelled; `interpretBtn` is enabled on
+  cancelled too (LLM can meaningfully comment on partial data).
+  `statusText()` auto-routes "cancelled" via the existing
+  status<Camel> i18n convention.
+
+## 13g. Library-wide relative ranking
+
+Commit ed90aa9 added `GET /api/library/distributions` which walks
+every `reports/<machine>/mode_<n>/latest.json` + its linked
+summary.json to emit per-metric distribution stats. Frontend calls
+this on each summary load (completed / cancelled paths) and feeds
+the result into `applyLibraryRanking()` which sets
+`#kpiVolatilitySub` ("全库 P87 (15/17)" for big libraries; "全库
+N/M" for 2-machine libraries because percentile on n=2 is noise)
+and `#kpiArchetypeSub` ("{count}/{total} 机台同类型", categorical).
+The volatility score is a composite max(zero_win/0.82,
+loss_p95/18, tail_ge10/0.50) -- 1.0 = Very High threshold reached
+-- so ranking it exposes continuous intensity the discrete
+Very High/High/Medium/Low label can't.
+
+`computeLibPercentile()` + `formatLibRank()` are pure helpers (locked
+by tests/frontend/pure.test.cjs) so the ranking logic stays DOM-free
+and testable.
 
 ## 14. Troubleshooting
 

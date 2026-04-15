@@ -85,6 +85,11 @@ Derived interpretation metrics:
    - Large gap means many "win but still net-loss" spins.
 2. `tail_dependency = tail_rtp_contribution_pp_ge10x / rtp_point_pct`
    - High value means RTP relies heavily on rare big events.
+   - Also emitted at `tail_dependency_ge20x / ge50x / ge100x` so the
+     operator can see how the tail mass decays as the threshold rises:
+     slow decay (ge10x ≈ ge50x) = Boom-Bust with a flat deep tail;
+     sharp decay (ge10x ≫ ge50x) = most tail value lives in modest
+     10-20x wins.
 3. `dryness = zero_win_rate + normalized(loss_streak_p95)`
    - Use as qualitative indicator, not a strict numeric score.
 

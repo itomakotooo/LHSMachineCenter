@@ -46,7 +46,8 @@ Response:
 ```json
 {
   "machines": [
-    { "machine": "M14", "modes": [1] }
+    { "machine": "M14", "modes": [1, 2, 5, 7] },
+    { "machine": "M272", "modes": [1, 2, 5, 7] }
   ]
 }
 ```
@@ -123,7 +124,45 @@ Get run event stream from jsonl progress file.
 
 ### `POST /api/runs/{run_id}/cancel`
 
-Terminate a running job.
+Request graceful stop. Returns `{run_id, status: "cancelling"}`. The
+backend writes a stop-flag file to the run's progress directory; the
+analyzer polls this file between chunks and exits 0 with
+`stop_reason="user_stop"` in its summary. `_watch_run` then flips
+the run status to **`cancelled`** (not failed) when there is partial
+data, preserving the summary / report / index / latest like a
+completed run. If no chunk had completed before cancel fires, status
+still flips to cancelled but `error_message` records "cancelled by
+user before any chunk completed".
+
+Cross-platform rationale: the Windows `subprocess.terminate()` maps
+to `TerminateProcess` which doesn't deliver a catchable signal, so
+the file-flag is the primary channel. Signal handlers (SIGTERM /
+SIGINT) are also registered where catchable.
+
+### `DELETE /api/runs/{run_id}`
+
+Delete a run's DB row and all its on-disk artefacts (progress /
+summary / report files + the report version directory under
+`reports/<machine>/mode_<n>/versions/<rv>/`). Filters the entry from
+`index.json` and rolls `latest.json` back to the newest remaining
+version (or removes it if the dropped run was the last version
+left). Cascades `interpretations` table cleanup.
+
+Behavior:
+- returns `409` if the run's status is `running` (cancel it first)
+- returns `404` if no such run_id
+- guarded by the shared operation mutex (`delete_run`) so it can't
+  race a concurrent start_run / cache_cleanup / _watch_run finish
+
+Response:
+
+```json
+{
+  "run_id": "...",
+  "deleted": true,
+  "removed_paths": ["...state/progress/X.jsonl", ...]
+}
+```
 
 ### `GET /api/runs/{run_id}/report`
 
@@ -143,20 +182,24 @@ Run a quick parallelism benchmark and return recommended:
 - `chunk_robot_count`
 - `batch_concurrency`
 
-Request:
+Request (defaults shown; frontend uses compact 3x3 grid):
 
 ```json
 {
   "machine": "M14",
   "mode": 1,
   "spin_times": 120,
-  "robot_candidates": [8, 12, 16, 20, 24],
-  "concurrency_candidates": [1, 2, 3, 4],
+  "robot_candidates": [8, 16, 24],
+  "concurrency_candidates": [1, 2, 4],
   "rounds": 2,
   "timeout": 30,
   "bet": 1000
 }
 ```
+
+The run_auto_tune loop has a per-robot early-exit: once a
+(robot, conc) candidate's success_rate drops below 0.7, all higher
+conc with that same robot are skipped (saturation indicator).
 
 Response includes:
 
@@ -176,6 +219,43 @@ Returns:
 
 - `versions` (history from `index.json`)
 - `latest` (pointer from `latest.json`)
+
+Note: as of the Run History merge (commit 718e955), the frontend no
+longer calls this endpoint -- Version + Quality moved onto the runs
+table directly via `achieved_rtp_pct` / `achieved_halfwidth_pp` /
+`quality_label` columns. Endpoint retained for back-compat / direct
+curl usage.
+
+### `GET /api/library/distributions`
+
+Across-library metric distributions for the KPI lib-rank suffix on
+Volatility + Archetype cards. Walks every
+`reports/<machine>/mode_<n>/latest.json` + its summary JSON and
+aggregates into per-metric distributions.
+
+Response:
+
+```json
+{
+  "machines_count": 17,
+  "metrics": {
+    "volatility_score":      { "values": [1.33, 1.38, ...], "count": 17 },
+    "zero_win_rate":         { "values": [...], "count": 17 },
+    "tail_dependency_ge10x": { "values": [...], "count": 17 },
+    "big_win_x10_rate":      { "values": [...], "count": 17 },
+    "profit_spin_rate":      { "values": [...], "count": 17 }
+  },
+  "archetype_counts":        { "Boom-Bust": 5, "Balanced": 10, "Grindy": 2 },
+  "volatility_class_counts": { "Very High": 4, "High": 8, "Medium": 3, "Low": 2 }
+}
+```
+
+`volatility_score` is composite:
+`max(zero_win/0.82, loss_p95/18, tail_ge10/0.50)`; 1.0 = Very High
+threshold reached, so ranking against this gives a continuous
+intensity reading the discrete Very High / High / Medium / Low
+label can't surface. No caching -- scales linearly with library
+size (hundreds of machines still well under a second).
 
 ## Cache Management
 

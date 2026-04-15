@@ -38,18 +38,37 @@ Stop:
 
 1. Select machine and mode.
    - hover/focus the `i` hint beside each field to view usage guidance
-2. Click `Run Auto Tune` first.
-3. Use returned recommended:
-   - `Chunk Robot Count`
-   - `Batch Concurrency`
-4. Set target CI half-width (default `0.5`).
-5. Start run and watch progress charts.
-6. After completion, review:
-   - KPI cards
-   - multiplier bucket chart
-   - bankruptcy curve
-   - guideline assessment and comparison
-7. Optionally trigger model interpretation.
+2. Set target CI half-width (default `0.5`; mode 2/5 locks to fuzzy).
+3. (Optional) Click `Auto Tune Parallelism` to probe per-machine
+   optimal robot / concurrency. Not required -- `Chunk Robot Count`
+   and `Batch Concurrency` ship with preset defaults (robot=24,
+   conc=2) validated against M272 mode 1.
+4. (Optional) Tweak advanced params in the collapsed section:
+   `chunk_spin_times` / `max_chunks` / `timeout`.
+5. Start run and watch progress in runMeta + liveStatusStrip.
+   Click `Stop` mid-run for a graceful cancel that preserves the
+   already-completed chunks (status becomes `cancelled`; the summary
+   is still viewable and interpretation is still available).
+6. After completion (or graceful cancellation), review in order:
+   - KPI cards (12 cards; Tail Dep shows the ≥10/20/50/100x ladder
+     in the sub-line; Volatility + Archetype carry a library-wide
+     rank sub when ≥2 machines exist).
+   - Multiplier bucket chart (11 win-bearing buckets; zero-win rate
+     lives in the KPI grid, not in the chart).
+   - Interpretation + Assessment panels, `rtpClampWarning` if the
+     collect mechanic truncated.
+   - Drilldowns: paylines, Pay ID (from PayoutIdToWinAmount),
+     symbols by column, SpinType breakdown (with `Behavior`
+     "paid"/"free"/"mixed" labels; free-spin RTP renders N/A), and
+     for machines with bonus features:
+     - `Upstream feature breakdown` (from analysisResult.FeatureWin;
+       M272 shows NormalCollectionSpin + NewFreespin)
+     - `Bonus chain dynamics` (from ReMarks Freespin annotations;
+       chain length quantiles, peak ExtraRatio, self-retrigger rate,
+       energy-ramp curve)
+   - Guideline assessment + comparison.
+7. Optionally trigger model interpretation. Available on `completed`
+   AND `cancelled` runs (LLM can comment on partial data).
 
 ## 4. Auto Tune Notes
 

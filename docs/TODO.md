@@ -65,10 +65,12 @@ This file tracks executable next steps for the current phase.
       ~1M spins via recomputed `max_chunks` and pass halfwidth=999
       to the analyzer so the CI-stop branch never fires. Mode 2 and
       5 are constrained to fuzzy (frontend forces, backend 400-rejects).
-- [x] chunk_robot_count + batch_concurrency are now readonly inputs
-      populated only by Auto Tune; Start button is disabled until
-      both are filled. Mode/machine change clears them to force a
-      fresh Auto Tune.
+- [x] ~~chunk_robot_count + batch_concurrency are now readonly inputs
+      populated only by Auto Tune~~ -- superseded. Those inputs are
+      now editable with preset defaults (robot=24, conc=2) validated
+      against M272 mode 1 autotune; Auto Tune remains optional for
+      machine-specific refinement. See "Preset run-config defaults"
+      entry below.
 - [x] chunk_spin_times / max_chunks / timeout moved into a collapsed
       "Advanced parameters" section so the primary panel is shorter.
 - [x] Bankruptcy multipliers freeform input replaced with a 3-preset
@@ -223,6 +225,65 @@ This file tracks executable next steps for the current phase.
       thread stuck in a slow socket read can't keep the process
       alive (defense against the orphan-process leak the user
       reported with 3 stuck CLI probes from upstream-trickle).
+- [x] Drop `eq0` multiplier bucket (commit 1c17b34). 11 win-bearing
+      bins remain; zero-win rate still lives in
+      `hit_and_payout.zero_win_rate`. `prettyBucketLabel` keeps the
+      legacy-key fallback so old reports still render.
+- [x] Preset run-config defaults + unlock robot/conc inputs
+      (commit 390e1c0). robot=24 / conc=2 / max_chunks=60 /
+      timeout=120 all validated on M272 mode 1 autotune (conc=4
+      top-ranked but p95=10s tail → preset conc=2 for safety
+      margin). Reset-to-preset on machine/mode change via
+      `resetConcurrencyInputsToPreset()` reading input.defaultValue.
+- [x] Manage-tab run history: RTP + CI cols, delete button, machine
+      filter via catalog click (commit 56903bc). `DELETE
+      /api/runs/{id}` cascades row + interpretations + per-run
+      artefacts + report version dir + index.json/latest.json
+      rollback. Locked by 4 delete tests.
+- [x] 4 new analyzer surfaces from upstream field audit
+      (commit c3e7096): multi-threshold tail_dependency_ge{10,20,50,
+      100}x; upstream_feature_breakdown from analysisResult.
+      FeatureWin (machine-named features like "NormalCollectionSpin"
+      / "NewFreespin"); bonus_chain_dynamics from ReMarks Freespin
+      annotations (chain length + peak ratio quantiles + self-
+      retrigger rate + depth-bucketed energy ramp curve);
+      RewardLastNode-based authoritative winning-symbol codes with
+      heuristic fallback. M272 mode 1 smoke validates all 4.
+- [x] SpinType breakdown RTP denominator fix (commit c3e7096): per-
+      type bet now uses CostCredits>0 amounts only (was BetAmount
+      blindly); free-spin types (M272 126) emit rtp_pct=null so UI
+      shows "N/A" instead of 243% nonsense. Analyzer-derived
+      behavior_name ("paid"/"free"/"mixed") added as new table col.
+- [x] Frontend panels for the 4 new surfaces (commit 94dae2f):
+      kpi-sub multi-threshold on tail card; feature breakdown
+      panel (#featureBreakdownPanel); bonus-chain dynamics panel
+      with 3 KPI pills + depth curve table + ratio histogram.
+- [x] Backfill achieved_rtp_pct / _halfwidth_pp / quality_label
+      from on-disk summaries on every startup (commit fd30707).
+      Legacy rows render "—" until first startup after migration;
+      after backfill they show real values.
+- [x] Merge Report Versions panel into Run History (commit 718e955).
+      Run-history table grew from 8 to 10 columns (added Version +
+      Quality). `section.versions` panel removed;
+      `refreshVersions()` fn deleted; `/api/reports/{m}/{n}` still
+      exists but unused by frontend. quality_label column added via
+      ALTER TABLE + populated in `_update_report_index`.
+- [x] Graceful Stop + cancelled status (commit 1714b93).
+      `--stop-flag-file` path the backend touches on cancel; the
+      analyzer polls it between chunks and exits 0 with
+      stop_reason="user_stop". `_watch_run` promotes to
+      "cancelled" (NOT failed) when there's any completed chunk;
+      status viewable, interpretation enabled. Cross-platform
+      alternative to SIGTERM (Windows TerminateProcess doesn't
+      deliver a catchable signal).
+- [x] Cross-library relative ranking (commit ed90aa9).
+      `GET /api/library/distributions` walks all latest.json +
+      summaries to emit per-metric {values, count} +
+      archetype_counts + volatility_class_counts. Frontend KPI
+      cards `kpiVolatilitySub` / `kpiArchetypeSub` render "全库 P87
+      (15/17)" for big libraries, "全库 N/M" for small ones.
+      Composite volatility_score = max(zero_win/0.82, loss_p95/18,
+      tail_ge10/0.50).
 
 ## Work Mode
 

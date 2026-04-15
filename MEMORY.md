@@ -190,16 +190,22 @@ This section is for execution efficiency and can be updated as long as section A
    reference thresholds (#24).
 20. Player-impact drilldown surface:
    - summary.player_impact.paylines_top20 (existing): payline_id /
-     hit_count / hit_rate / approx_rtp_contribution_pp / win_share.
+     hit_count / hit_rate / approx_rtp_contribution_pp / win_share /
+     top_symbols / top_symbols_source ("rln" when RewardLastNode was
+     present on the winning spins, "heuristic" when it fell back to
+     the left-3-col intersection).
    - summary.player_impact.symbols_top20 + symbols_by_column_top10
      (existing): overall + per-column symbol frequency.
-   - summary.player_impact.payout_groups_top20 (added by analyzer in
-     P1.a/d round): {group_id, hit_count, hit_rate, total_win,
-     avg_win_when_hit_x, rtp_contribution_pp}. Group 0 = no payout.
-   - All three rendered together inside the .panel.drilldown-tabs
-     panel as switchable tabs (paylines / payouts / symbols); the
-     visible table is always re-rendered against state.latestSummary
-     on tab switch.
+   - summary.player_impact.payout_ids_top20 (primary PayoutId
+     drilldown, from PayoutIdToWinAmount): {payout_id, hit_count,
+     hit_rate, total_win, avg_win_when_hit, rtp_contribution_pp}.
+     Replaces payout_groups_top20 in the UI (still emitted for back-
+     compat; M14 + M272 mode 1/2 always reported group 0).
+   - Rendered as stacked panels (NOT tabs -- the drilldown-tabs
+     component was unrolled in the dashboard follow-up round because
+     tabs added friction for text/table content): #paylineTable,
+     #payoutGroupTable (reads payout_ids_top20 despite the legacy id),
+     #symbolOverallTable + #symbolByColMatrix.
 21. UI layout convention (Grafana-style dashboard, debug tab):
    - Three-region shell: sticky .dash-topbar (title / liveStatusStrip /
      lang+health), .dash-sidebar (run-actions + run-config + model-
@@ -228,18 +234,24 @@ This section is for execution efficiency and can be updated as long as section A
      activated. Setting <html data-theme="dark"> would flip the theme
      without further CSS edits.
 22. Multiplier bucket schema (analyzer + frontend chart):
-   - 12 bins: eq0 / gt0_lt1 / ge1_lt5 / ge5_lt10 / ge10_lt20 /
-     ge20_lt50 / ge50_lt100 / ge100_lt200 / ge200_lt500 /
-     ge500_lt1000 / ge1000_lt5000 / ge5000.
-   - Refined from the prior 10-bin schema after dashboard feedback;
-     low buckets collapsed (gt0_lt1 unifies the old gt0_lt0.5 and
-     ge0.5_lt1; ge1_lt5 unifies ge1_lt2 and ge2_lt5) and the deep
-     tail split (old "ge100" became ge100_lt200 ... ge5000).
-   - TAIL_GEX10_BUCKETS expanded to include all tail bins so
-     tail_dependency aggregates the full >=10x set.
+   - 11 win-bearing bins: gt0_lt1 / ge1_lt5 / ge5_lt10 / ge10_lt20 /
+     ge20_lt50 / ge50_lt100 / ge100_lt200 / ge200_lt500 / ge500_lt1000
+     / ge1000_lt5000 / ge5000. No `eq0` row -- zero-win sessions are
+     tracked via hit_and_payout.zero_win_rate; a bucket where
+     avg_return_x / rtp_contribution_pp / win_share are structurally
+     0 is noise on the multiplier chart. return_bucket() returns ""
+     for zero-win and the accumulators skip empty keys, so the
+     summary never emits an eq0 entry (dropped in commit 1c17b34).
+   - Path from 10 -> 12 -> 11: the 10-bin schema was first refined to
+     12 (dashboard follow-up: low buckets collapsed, deep tail split)
+     then `eq0` was dropped.
+   - TAIL_GEX10_BUCKETS / TAIL_GEX20_BUCKETS / TAIL_GEX50_BUCKETS /
+     TAIL_GEX100_BUCKETS each include all bins at/above their
+     threshold so tail_dependency_ge{10x,20x,50x,100x} can emit a
+     4-point curve (see #25).
    - Old reports keep their old labels in summary JSON;
-     PURE.prettyBucketLabel falls back gracefully so legacy charts
-     still render with the right ranges.
+     PURE.prettyBucketLabel falls back gracefully for legacy keys
+     (including `eq0`) so pre-drop charts still render.
 23. Payline winning-symbol inference (analyzer):
    - API exposes PayoutByPayline (winning line ids) and
      StopSymbolsByCol (5 columns of stopped symbols) per spin, but no
@@ -276,13 +288,14 @@ This section is for execution efficiency and can be updated as long as section A
    - On drift, run_sampling_chunk returns
      "schema_drift_missing_fields:..." and the main loop aborts the
      run; _watch_run surfaces the missing fields in error_message.
-   - tests/backend/test_analyzer_parsing.py (44 cases) monkey-patches
+   - tests/backend/test_analyzer_parsing.py (70 cases) monkey-patches
      post_json to feed crafted round shapes through run_sampling_chunk,
      locking: schema check (positive + negative cases including the
-     lose-spin-first regression), 12-bin bucket classification, payline
-     winning-symbol heuristic (left-3 col intersection + blank filter
-     + fallback), payout group aggregation (numeric + string + garbage
-     ids), CostCredits fallback when BetAmount is absent.
+     lose-spin-first regression), 11-bin bucket classification (eq0
+     dropped, see #22), payline winning-symbol heuristic (left-3 col
+     intersection + blank filter + fallback), payout group
+     aggregation (numeric + string + garbage ids), CostCredits
+     fallback when BetAmount is absent.
 24b. Zero-spin run guard (backend _watch_run):
    - The analyzer's main loop breaks on the first failed chunk and
      writes an empty summary with sampling.total_spins=0 plus
@@ -296,11 +309,10 @@ This section is for execution efficiency and can be updated as long as section A
      "sampling produced 0 spins after N chunk(s); stop_reason=...".
      The empty report is also kept out of the report index / latest.json
      so manage-tab navigation isn't polluted.
-   - Locked by tests/backend/test_run_lifecycle.py (4 cases): happy-
-     path POST -> mock analyzer writes summary+report -> watcher flips
-     status -> GET report endpoint returns; happy path also updates
-     report index + latest.json; zero-spin guard exact error_message
-     contract; unknown-stop_reason edge.
+   - Locked by tests/backend/test_run_lifecycle.py (11 cases cover
+     happy-path + zero-spin guard + delete cascade + cancel graceful
+     + backfill; see #24d / #26 / #27 for the newer cases added since
+     the zero-spin guard first landed).
 24d. Manage-tab run-history surface:
    - runs table columns: Run ID / Status / Machine / Mode / Created At
      / RTP / CI\u00b1 / Action(Load+Delete). RTP and CI come from two
@@ -352,6 +364,129 @@ This section is for execution efficiency and can be updated as long as section A
      (must reference drilldown data) and "5) 关键风险与告警" (must
      reference threshold numbers). Locked by
      tests/backend/test_interpret_prompt.py.
+
+25. Round-level surfaces mined from the upstream field audit
+    (commits c3e7096 analyzer + 94dae2f frontend):
+   - Multi-threshold tail_dependency: guideline_assessment.
+     derived_metrics now emits tail_dependency_ge{10x,20x,50x,100x}
+     and matching tail_rtp_contribution_pp_ge{10x,20x,50x,100x}.
+     ge10x is the canonical input to classify_volatility /
+     classify_experience_archetype (back-compat alias
+     `tail_dependency` preserved). The 4-point curve exposes how
+     fast the tail mass decays -- slow decay = Boom-Bust with deep
+     bursts, sharp decay = grindy. KPI `kpiTail` primary shows
+     ge10x; `#kpiTailSub` renders the ≥20x/50x/100x breakdown.
+   - player_impact.upstream_feature_breakdown (from
+     analysisResult.FeatureWin): server-authoritative grouping by
+     feature NAME string ("Normal" / "NormalCollectionSpin" /
+     "NewFreespin" on M272 mode 1). Each feature lists
+     total_win, total_times, rtp_contribution_pp,
+     share_of_total_win, per-payout_id payouts[] with
+     share_of_feature_win. Single-feature machines (M14: "Normal"
+     only) emit applicable=false; frontend panel hides.
+   - player_impact.bonus_chain_dynamics (from round ReMarks
+     "Freespin N; CollectCount:X; ExtraRatio:R; [AddFreespins; M]"):
+     per-chain length + peak ExtraRatio quantiles (p50/p90/p95/max),
+     self_retrigger_round_rate, avg_retriggers_per_chain,
+     extra_ratio_histogram, extra_ratio_by_chain_depth (depth
+     buckets 1 / 2-5 / 6-10 / 11-20 / 21+ → avg ratio — the
+     MapCollection energy-ramp curve). M272 mode 1 smoke: avg chain
+     length 16.1, peak ratio 800x, 32.5% self-retrigger, ratio
+     ramps 122 -> 175 -> 263 -> 366 -> 528 across depth buckets.
+     M14 (no Freespin annotations) emits applicable=false.
+   - paylines_top20[].top_symbols now prefers RewardLastNode (RLN)
+     numeric symbol codes (upstream-authoritative) and falls back to
+     the left-3-col heuristic. top_symbols_source flag tells the UI
+     which path fired.
+   - SpinType breakdown fix: per-type RTP now uses spin_type_paid_bet
+     (CostCredits>0 rounds) as denominator; rtp_pct is null for
+     all-free types (avoided 243% nonsense on M272 SpinType=126 that
+     earlier path emitted). behavior_name ("paid"/"free"/"mixed") is
+     derived from per-type paid_rounds count so UI can badge the row
+     without hardcoding machine-specific int semantics.
+   - Reference: reports/M14/mode_1/versions/rv_20260415T100548Z_*
+     (pre-migration) vs reports/M272/mode_1/versions/rv_20260415T113518Z_*
+     (post-migration) as shape diff examples.
+   - Docs: reference_upstream_unmined_fields memory lists 7 fields
+     still unmined (CreditsSymbols / CurJackpotStoreWin /
+     PayLineGroupId / ReelSkin / SymbolIndexToRewards / LastCredits
+     / SummaryWin) to revisit when a new machine lands.
+
+26. Manage-tab consolidation (commits 56903bc + 718e955 + fd30707):
+   - Run History table now has 10 columns: Run ID / Status / Machine
+     / Mode / Created At / RTP / CI± / Version / Quality / Action
+     (Load + Delete). Report Versions panel (section.versions) was
+     removed; versions table was fully merged. GET
+     /api/reports/{machine}/{mode} still exists but nothing in
+     frontend calls refreshVersions anymore.
+   - DB columns achieved_rtp_pct / achieved_halfwidth_pp /
+     quality_label added via ALTER TABLE migrations; populated on
+     run completion in _update_report_index. StateStore.backfill_rtp_
+     ci_from_summaries() runs on every create_app() startup to fill
+     legacy rows (status IN completed/cancelled, any of the three
+     fields NULL) by re-reading summary.json. Test coverage:
+     test_backfill_rtp_ci_from_summaries.
+   - Machine-catalog click-to-filter: .catalog-item is role=button
+     keyboard-activatable; click toggles state.runFilterMachine;
+     #runFilterBanner appears above the table with a clear button.
+     Active row gets .active class. Click active again or clear
+     button to reset.
+
+27. Graceful Stop + cancelled status (commit 1714b93):
+   - Analyzer accepts --stop-flag-file PATH. Between-chunks loop
+     polls the file's existence (cross-platform; Windows
+     subprocess.terminate()==TerminateProcess doesn't deliver a
+     catchable signal). Also registers SIGTERM/SIGINT handlers
+     where catchable. On stop: breaks out of loop with
+     stop_reason="user_stop", builds summary with whatever chunks
+     completed, exits 0.
+   - cancel_run writes the flag file to progress_dir/{run_id}.stop
+     instead of calling process.terminate(); response status is
+     "cancelling". Falls back to hard terminate() only if the flag
+     write fails.
+   - _watch_run promotes exit-0 + user_stop + total_spins>0 runs
+     to status "cancelled" (NOT failed) and writes the report
+     index/latest like completed. zero-spin + user_stop -> still
+     cancelled (user intent) with error_message noting "cancelled
+     by user". Non-user zero-spin -> existing failed path
+     (504 / network etc).
+   - Frontend: refreshCurrentRun renders full panel stack for
+     status==completed OR cancelled. interpretBtn enables for
+     cancelled too (LLM can comment on partial data).
+     statusText auto-routes "cancelled" via status<Camel> i18n.
+     Tests: test_cancel_run_writes_stop_flag_and_completes_as_cancelled,
+     test_cancel_run_with_zero_spins_marks_cancelled_not_failed.
+
+28. Cross-library ranking (commit ed90aa9):
+   - GET /api/library/distributions walks reports/*/mode_*/latest.json
+     + their summary JSON, emits per-metric {values, count} +
+     archetype_counts + volatility_class_counts. Metrics tracked:
+     volatility_score (max(zero_win/0.82, loss_p95/18, tail_ge10/0.50)
+     -- a composite where 1.0 = Very High threshold, so rank
+     against this gives a continuous "intensity" reading discrete
+     labels can't). zero_win_rate / tail_dependency_ge10x /
+     big_win_x10_rate / profit_spin_rate also emitted.
+   - Frontend kpiVolatilitySub renders "全库 {P-rank} ({n}/{total})"
+     for library size >=3, "全库 {n}/{total}" for 2-machine libraries
+     (small sample; percentile is noise). kpiArchetypeSub shows
+     "{count}/{total} 机台同类型" (categorical; counts distribution
+     rather than rank). Applied via applyLibraryRanking() in
+     app.js; silently no-ops for single-machine library.
+
+29. Preset run-config defaults (commit 390e1c0):
+   - chunk_robot_count / batch_concurrency are editable inputs
+     (no longer readonly/autotune-only). Defaults robot=24 conc=2,
+     validated against M272 mode 1 autotune (100% success rate,
+     922 spins/s p95=8.1s; conc=4 was top-ranked but p95=10s
+     tail pushed it to preset conc=2 for safety margin).
+   - Advanced params: chunk_spin_times=5000 (unchanged),
+     max_chunks=60 (was 120), timeout=120 (was 300). Tightened
+     after autotune showed typical CI target hit in well under
+     60 chunks at preset concurrency.
+   - On machine/mode change: resetConcurrencyInputsToPreset()
+     fills inputs from input.defaultValue so the screen always
+     has sensible values ready. Auto Tune still refines per
+     machine if user wants.
 
 Update policy:
 - Assistant may update this section after execution, and must explicitly state:
