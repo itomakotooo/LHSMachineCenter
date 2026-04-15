@@ -350,6 +350,70 @@ test("computeRunProgressPct: null event -> 0", () => {
   assert.equal(PURE.computeRunProgressPct(null, { maxChunks: 120 }), 0);
 });
 
+// ---------- extractMetricCards ----------
+
+const _summaryFixture = () => ({
+  rtp: { point_pct: 95.123 },
+  sampling: { achieved_halfwidth_pp: 0.482, total_spins: 2400000 },
+  player_impact: {
+    hit_and_payout: { zero_win_rate: 0.78, big_win_x10_rate: 0.0123 },
+    volatility: { max_observed_return_x: 421.5 },
+    streaks: { loss_streak_p95: 14 },
+  },
+  guideline_assessment: {
+    classification: { volatility_class: "High", experience_archetype: "Boom-Bust" },
+    derived_metrics: { tail_dependency: 0.41 },
+    bankruptcy_checks: { x500_bankruptcy_rate: 0.012 },
+  },
+  guideline_comparison: { overall_status: "FAIL" },
+});
+
+test("extractMetricCards: pulls all 12 cards from a summary", () => {
+  const c = PURE.extractMetricCards(_summaryFixture());
+  for (const k of [
+    "rtp", "ci", "spins", "zeroWin", "tailDep", "guideline",
+    "volatility", "archetype", "lossStreak", "maxReturn", "bigWin", "bankruptX500",
+  ]) {
+    assert.ok(c[k] != null, `${k} missing`);
+    assert.ok("value" in c[k], `${k}.value missing`);
+    assert.ok("tone" in c[k], `${k}.tone missing`);
+  }
+  assert.equal(c.rtp.value, "95.12%");
+  assert.equal(c.ci.value, "0.482");
+  assert.equal(c.spins.value, "2,400,000");
+  assert.equal(c.zeroWin.value, "78.00%");
+  assert.equal(c.tailDep.value, "0.410");
+  assert.equal(c.volatility.value, "High");
+  assert.equal(c.archetype.value, "Boom-Bust");
+  assert.equal(c.lossStreak.value, "14");
+  assert.equal(c.maxReturn.value, "421.5x");
+  assert.equal(c.bigWin.value, "1.230%");
+  assert.equal(c.bankruptX500.value, "1.200%");
+  assert.equal(c.guideline.value, "FAIL");
+});
+
+test("extractMetricCards: tone classification respects guideline thresholds", () => {
+  const c = PURE.extractMetricCards(_summaryFixture());
+  assert.equal(c.zeroWin.tone, "warn");          // 0.78 in (0.75, 0.82]
+  assert.equal(c.tailDep.tone, "neutral");       // 0.41 in [0.20, 0.45)
+  assert.equal(c.lossStreak.tone, "good");       // 14 < 15
+  assert.equal(c.bankruptX500.tone, "warn");     // 0.012 in [0.01, 0.05)
+  assert.equal(c.guideline.tone, "bad");         // FAIL
+  assert.equal(c.rtp.tone, "neutral");
+  assert.equal(c.volatility.tone, "neutral");
+});
+
+test("extractMetricCards: missing summary fields -> N/A and neutral tone", () => {
+  const c = PURE.extractMetricCards({});
+  for (const k of ["rtp", "ci", "spins", "zeroWin", "tailDep", "guideline",
+                    "volatility", "archetype", "lossStreak", "maxReturn",
+                    "bigWin", "bankruptX500"]) {
+    assert.equal(c[k].value, "N/A", `${k}.value should be N/A`);
+  }
+  assert.equal(c.zeroWin.tone, "neutral");
+  assert.equal(c.guideline.tone, "warn"); // empty status falls into warn bucket
+});
+
 // ---------- formatAutotuneProgress ----------
 
 test("formatAutotuneProgress: idle status -> localized 'no autotune yet'", () => {

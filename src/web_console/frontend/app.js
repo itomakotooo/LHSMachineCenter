@@ -229,6 +229,12 @@ function clearSummaryPanels() {
   setKpi("kpiZero", "N/A");
   setKpi("kpiTail", "N/A");
   setKpi("kpiGuide", "N/A");
+  setKpi("kpiVolatility", "N/A");
+  setKpi("kpiArchetype", "N/A");
+  setKpi("kpiLossStreak", "N/A");
+  setKpi("kpiMaxReturn", "N/A");
+  setKpi("kpiBigWin", "N/A");
+  setKpi("kpiBankruptX500", "N/A");
   if (state.bucketChart) {
     state.bucketChart.data.labels = [];
     state.bucketChart.data.datasets[0].data = [];
@@ -529,13 +535,20 @@ async function refreshCurrentRun() {
     const s = report.summary || {};
     state.latestSummary = s;
     renderAssessment(s);
-    setKpi("kpiRtp", s.rtp?.point_pct != null ? `${fNum(s.rtp.point_pct)}%` : "N/A");
-    setKpi("kpiCi", s.sampling?.achieved_halfwidth_pp != null ? fNum(s.sampling.achieved_halfwidth_pp) : "N/A");
-    setKpi("kpiSpins", s.sampling?.total_spins != null ? fInt(s.sampling.total_spins) : "N/A");
-    setKpi("kpiZero", fRate(s.player_impact?.hit_and_payout?.zero_win_rate));
-    setKpi("kpiTail", fNum(s.guideline_assessment?.derived_metrics?.tail_dependency));
-    const gs = s.guideline_comparison?.overall_status || "UNKNOWN";
-    setKpi("kpiGuide", gs, gs === "PASS" ? "good" : gs === "FAIL" ? "bad" : "warn");
+    // Drive all 12 KPI cards from a single pure helper so tone classification
+    // stays in one place (testable without DOM).
+    const cards = PURE.extractMetricCards(s);
+    const kpiBindings = [
+      ["kpiRtp", "rtp"], ["kpiCi", "ci"], ["kpiSpins", "spins"],
+      ["kpiZero", "zeroWin"], ["kpiTail", "tailDep"], ["kpiGuide", "guideline"],
+      ["kpiVolatility", "volatility"], ["kpiArchetype", "archetype"],
+      ["kpiLossStreak", "lossStreak"], ["kpiMaxReturn", "maxReturn"],
+      ["kpiBigWin", "bigWin"], ["kpiBankruptX500", "bankruptX500"],
+    ];
+    for (const [domId, key] of kpiBindings) {
+      const c = cards[key] || { value: "N/A", tone: "neutral" };
+      setKpi(domId, c.value, c.tone);
+    }
     const buckets = s.player_impact?.multiplier_profile?.buckets || [];
     state.bucketChart.data.labels = buckets.map((b) => b.bucket);
     state.bucketChart.data.datasets[0].data = buckets.map((b) => (Number(b.spin_rate) <= 1 ? Number(b.spin_rate) * 100 : Number(b.spin_rate)));

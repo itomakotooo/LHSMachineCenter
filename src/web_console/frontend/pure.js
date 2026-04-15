@@ -73,6 +73,12 @@ const I18N = {
     autotuneProgressLast: "最近: robot={rc} conc={cc} 成功率={sr} 吞吐={tp} sps p95={p95}s",
     autotuneProgressDone: "已完成 · 共测 {total} 候选",
     autotuneProgressError: "出错 · 已测 {done}/{total} 候选",
+    kpiVolatility: "波动性",
+    kpiArchetype: "体验类型",
+    kpiLossStreak: "P95 败局连",
+    kpiMaxReturn: "最大单转倍率",
+    kpiBigWin: "10x+ 大奖率",
+    kpiBankruptX500: "x500 破产率",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
     labelConcurrency: "批并发数",
@@ -247,6 +253,12 @@ const I18N = {
     autotuneProgressLast: "last: robot={rc} conc={cc} success={sr} throughput={tp} sps p95={p95}s",
     autotuneProgressDone: "completed · {total} candidates tested",
     autotuneProgressError: "error · {done}/{total} candidates tested",
+    kpiVolatility: "Volatility",
+    kpiArchetype: "Archetype",
+    kpiLossStreak: "P95 Loss Streak",
+    kpiMaxReturn: "Max Return x",
+    kpiBigWin: "10x+ Big Win Rate",
+    kpiBankruptX500: "x500 Bankruptcy",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
     labelConcurrency: "Batch Concurrency",
@@ -537,6 +549,75 @@ function computeRunProgressPct(latestEvent, opts) {
   return Math.max(0, Math.min(100, (idx / maxChunks) * 100));
 }
 
+// Pull all KPI card values out of a player_impact_summary.json shape and
+// classify each into a tone (good / warn / bad / neutral). Returns
+// {[id]: {value, tone}}. Tone thresholds mirror guideline rules so the
+// frontend doesn't need to re-derive them from the alerts list.
+function extractMetricCards(summary) {
+  const s = summary || {};
+  const rtp = s.rtp || {};
+  const sampling = s.sampling || {};
+  const player = s.player_impact || {};
+  const hit = player.hit_and_payout || {};
+  const vol = player.volatility || {};
+  const streaks = player.streaks || {};
+  const ga = s.guideline_assessment || {};
+  const cls = ga.classification || {};
+  const derived = ga.derived_metrics || {};
+  const bank = ga.bankruptcy_checks || {};
+  const cmp = s.guideline_comparison || {};
+
+  const num = (v, fn) => (v == null ? "N/A" : fn(Number(v)));
+  const pct = (v, d = 2) => (v == null ? "N/A" : `${(Number(v) * 100).toFixed(d)}%`);
+
+  // tone helpers
+  const toneZeroWin = (v) =>
+    v == null ? "neutral" : v > 0.82 ? "bad" : v > 0.75 ? "warn" : "good";
+  const toneTailDep = (v) =>
+    v == null ? "neutral" : v >= 0.5 ? "bad" : v >= 0.45 ? "warn" : v >= 0.2 ? "neutral" : "good";
+  const toneLossStreak = (v) =>
+    v == null ? "neutral" : v >= 18 ? "bad" : v >= 15 ? "warn" : "good";
+  const toneBankruptX500 = (v) =>
+    v == null ? "neutral" : v >= 0.05 ? "bad" : v >= 0.01 ? "warn" : "good";
+  const toneGuideline = (status) => {
+    const u = String(status || "").toUpperCase();
+    return u === "PASS" ? "good" : u === "FAIL" ? "bad" : "warn";
+  };
+
+  return {
+    rtp: { value: num(rtp.point_pct, (x) => `${x.toFixed(2)}%`), tone: "neutral" },
+    ci: { value: num(sampling.achieved_halfwidth_pp, (x) => x.toFixed(3)), tone: "neutral" },
+    spins: {
+      value:
+        sampling.total_spins == null
+          ? "N/A"
+          : new Intl.NumberFormat("en-US").format(Number(sampling.total_spins)),
+      tone: "neutral",
+    },
+    zeroWin: { value: pct(hit.zero_win_rate), tone: toneZeroWin(hit.zero_win_rate) },
+    tailDep: {
+      value: num(derived.tail_dependency, (x) => x.toFixed(3)),
+      tone: toneTailDep(derived.tail_dependency),
+    },
+    guideline: { value: cmp.overall_status || "N/A", tone: toneGuideline(cmp.overall_status) },
+    volatility: { value: cls.volatility_class || "N/A", tone: "neutral" },
+    archetype: { value: cls.experience_archetype || "N/A", tone: "neutral" },
+    lossStreak: {
+      value: streaks.loss_streak_p95 == null ? "N/A" : String(streaks.loss_streak_p95),
+      tone: toneLossStreak(streaks.loss_streak_p95),
+    },
+    maxReturn: {
+      value: num(vol.max_observed_return_x, (x) => `${x.toFixed(1)}x`),
+      tone: "neutral",
+    },
+    bigWin: { value: pct(hit.big_win_x10_rate, 3), tone: "neutral" },
+    bankruptX500: {
+      value: pct(bank.x500_bankruptcy_rate, 3),
+      tone: toneBankruptX500(bank.x500_bankruptcy_rate),
+    },
+  };
+}
+
 // Multi-line readable autotune progress for the autotuneMeta panel.
 // Input is the dict returned by GET /api/autotune/progress.
 function formatAutotuneProgress(lang, progress) {
@@ -672,6 +753,7 @@ const PURE = {
   summarizeRunEvent,
   computeRunProgressPct,
   formatAutotuneProgress,
+  extractMetricCards,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;
