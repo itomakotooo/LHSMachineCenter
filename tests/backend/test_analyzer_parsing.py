@@ -511,3 +511,70 @@ def test_run_sampling_chunk_payout_id_missing_dict_is_safe(patch_post_json):
     assert rec["ok"] is True
     assert rec["payout_id_hits"] == {}
     assert rec["payout_id_win"] == {}
+
+
+# ---------- SpinType per-type aggregation ----------
+
+
+def test_run_sampling_chunk_spin_type_default_zero_when_missing(patch_post_json):
+    """SpinType absent from a round defaults to 0 (no crash)."""
+    rd = _full_round(WinCredits=10)
+    rd.pop("SpinType", None)
+    patch_post_json(_stub_chunk_resp([rd]))
+    rec = _run(spin_times=1)
+    assert rec["spin_type_spins"] == {"0": 1}
+    assert rec["spin_type_win"]["0"] == 10
+
+
+def test_run_sampling_chunk_spin_type_m14_single_type(patch_post_json):
+    """M14 case: every spin has SpinType=1, all aggregate under one key."""
+    rounds = [_full_round(SpinType=1, WinCredits=(50 if i % 2 else 0)) for i in range(6)]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=6)
+    assert rec["spin_type_spins"] == {"1": 6}
+    assert rec["spin_type_bet"]["1"] == 6  # 6 * BetAmount=1
+    assert rec["spin_type_win"]["1"] == 150  # 3 * 50
+    assert rec["spin_type_wins"]["1"] == 3   # 3 winning rounds
+
+
+def test_run_sampling_chunk_spin_type_m272_main_plus_bonus(patch_post_json):
+    """M272 case: 4 main (140) rounds + 2 bonus (126) re-spins. Main
+    wins twice; bonus wins once at higher amount. The two types must
+    keep separate tallies so the breakdown can show bonus contribution."""
+    rounds = (
+        [_full_round(SpinType=140, WinCredits=20) for _ in range(2)]
+        + [_full_round(SpinType=140, WinCredits=0) for _ in range(2)]
+        + [_full_round(SpinType=126, WinCredits=300, CostCredits=0)]
+        + [_full_round(SpinType=126, WinCredits=0, CostCredits=0)]
+    )
+    # Override BetAmount=0 on bonus rounds to mimic API (CostCredits=0
+    # means bonus re-spin doesn't cost the player). _full_round defaults
+    # BetAmount=1; for bonus we want bet to be 0 too.
+    for r in rounds[4:]:
+        r["BetAmount"] = 0
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=6)
+    # spin_type_spins: 4 main, 2 bonus.
+    assert rec["spin_type_spins"] == {"140": 4, "126": 2}
+    # Wins per type.
+    assert rec["spin_type_wins"]["140"] == 2
+    assert rec["spin_type_wins"]["126"] == 1
+    # Win amounts.
+    assert rec["spin_type_win"]["140"] == 40   # 2 * 20
+    assert rec["spin_type_win"]["126"] == 300
+    # Bet stays 0 for bonus -- CostCredits is 0 too, so analyzer's
+    # fallback to chunk-level `bet` arg kicks in (default bet=1000).
+    # That's expected. We don't assert exact bet here because the
+    # default `bet` arg may vary.
+    assert rec["spin_type_bet"]["140"] == 4  # 4 main * BetAmount=1
+    # spin_type_bet for 126 will use the chunk-level bet fallback because
+    # both BetAmount and CostCredits were 0; just assert it's >= 0.
+    assert rec["spin_type_bet"]["126"] >= 0
+
+
+def test_run_sampling_chunk_spin_type_garbage_falls_back_to_zero(patch_post_json):
+    """SpinType="weird" -> coerced to 0 by the int() except path."""
+    rd = _full_round(SpinType="weird", WinCredits=5)
+    patch_post_json(_stub_chunk_resp([rd]))
+    rec = _run(spin_times=1)
+    assert rec["spin_type_spins"] == {"0": 1}

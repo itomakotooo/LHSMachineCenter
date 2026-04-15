@@ -681,6 +681,17 @@ def run_sampling_chunk(
     payout_id_hits: dict[str, int] = defaultdict(int)
     payout_id_win: dict[str, float] = defaultdict(float)
 
+    # Per-SpinType tally. M14 mode 1 only emits SpinType=1 (Normal).
+    # M272 mode 1 emits 140 (main) + 126 (collect/bonus re-spin); mode
+    # 2 has ~36% bonus rounds. Tallying per type lets the drilldown show
+    # how much of total RTP comes from main vs bonus, and what fraction
+    # of round volume is bonus -- a key insight for collect-mechanic
+    # machines that the aggregate RTP / hit_rate alone can't reveal.
+    spin_type_spins: dict[int, int] = defaultdict(int)
+    spin_type_bet: dict[int, float] = defaultdict(float)
+    spin_type_win: dict[int, float] = defaultdict(float)
+    spin_type_wins: dict[int, int] = defaultdict(int)  # count of winning rounds per type
+
     # Per-payline winning-symbol inference. The API returns
     # PayoutByPayline (which line ids paid) and StopSymbolsByCol (the
     # 5 columns of stopped symbols), but no direct payline->position
@@ -759,6 +770,21 @@ def run_sampling_chunk(
                 pg_id = 0
             payout_group_hits[pg_id] += 1
             payout_group_win[pg_id] += win_amt
+
+            # SpinType per-spin tally. Type semantics are machine-specific
+            # (M14: 1; M272: 140 main + 126 bonus; future machines may
+            # introduce new types). Aggregating spins/bet/win per type
+            # lets the drilldown show per-mechanic RTP and bonus-share
+            # without us hardcoding any meaning.
+            try:
+                sp_type = int(r.get("SpinType", 0) or 0)
+            except (TypeError, ValueError):
+                sp_type = 0
+            spin_type_spins[sp_type] += 1
+            spin_type_bet[sp_type] += bet_amt
+            spin_type_win[sp_type] += win_amt
+            if win_amt > 0:
+                spin_type_wins[sp_type] += 1
 
             # PayoutIdToWinAmount aggregation: dict of {payout_id: win}
             # populated on winning rounds. Sum win and count occurrences
@@ -855,6 +881,10 @@ def run_sampling_chunk(
         "payout_group_win": {str(k): v for k, v in payout_group_win.items()},
         "payout_id_hits": dict(payout_id_hits),
         "payout_id_win": dict(payout_id_win),
+        "spin_type_spins": {str(k): v for k, v in spin_type_spins.items()},
+        "spin_type_bet": {str(k): v for k, v in spin_type_bet.items()},
+        "spin_type_win": {str(k): v for k, v in spin_type_win.items()},
+        "spin_type_wins": {str(k): v for k, v in spin_type_wins.items()},
     }
 
 
@@ -985,6 +1015,10 @@ def main() -> int:
     payout_group_win: dict[int, float] = defaultdict(float)
     payout_id_hits: dict[str, int] = defaultdict(int)
     payout_id_win: dict[str, float] = defaultdict(float)
+    spin_type_spins: dict[int, int] = defaultdict(int)
+    spin_type_bet: dict[int, float] = defaultdict(float)
+    spin_type_win: dict[int, float] = defaultdict(float)
+    spin_type_wins: dict[int, int] = defaultdict(int)
 
     lack_credit_spins = 0
     chunks = 0
@@ -1107,6 +1141,16 @@ def main() -> int:
                 payout_id_hits[str(pid)] += int(c)
             for pid, w in (rec.get("payout_id_win") or {}).items():
                 payout_id_win[str(pid)] += float(w)
+            # spin_type_* added in the SpinType-breakdown commit; old
+            # chunk records tolerate missing via .get().
+            for st, c in (rec.get("spin_type_spins") or {}).items():
+                spin_type_spins[int(st)] += int(c)
+            for st, b in (rec.get("spin_type_bet") or {}).items():
+                spin_type_bet[int(st)] += float(b)
+            for st, w in (rec.get("spin_type_win") or {}).items():
+                spin_type_win[int(st)] += float(w)
+            for st, c in (rec.get("spin_type_wins") or {}).items():
+                spin_type_wins[int(st)] += int(c)
 
             hw = ci_halfwidth_pp(chunk_rtps_pct)
             if math.isfinite(hw):
@@ -1208,6 +1252,28 @@ def main() -> int:
                 "rtp_contribution_pp": (
                     (wins / total_bet) * 100.0 if total_bet > 0 else 0.0
                 ),
+            }
+        )
+
+    # SpinType breakdown: per-type spins / bet / win + share of total.
+    # Order by spins desc so the dominant type lands first; for collect
+    # mechanics this immediately surfaces "X% of rounds are bonus".
+    spin_type_rows: list[dict[str, Any]] = []
+    for st, spins in sorted(spin_type_spins.items(), key=lambda kv: -kv[1]):
+        bet = float(spin_type_bet.get(st, 0.0))
+        win = float(spin_type_win.get(st, 0.0))
+        win_rounds = int(spin_type_wins.get(st, 0))
+        spin_type_rows.append(
+            {
+                "spin_type": int(st),
+                "spins": int(spins),
+                "share_pct": (spins / total_spins) * 100.0 if total_spins > 0 else 0.0,
+                "win_rounds": win_rounds,
+                "hit_rate": (win_rounds / spins) if spins > 0 else 0.0,
+                "total_bet": bet,
+                "total_win": win,
+                "rtp_pct": (win / bet) * 100.0 if bet > 0 else 0.0,
+                "rtp_contribution_pp": (win / total_bet) * 100.0 if total_bet > 0 else 0.0,
             }
         )
 
@@ -1526,6 +1592,7 @@ def main() -> int:
             "paylines_top20": payline_rows[:20],
             "payout_groups_top20": payout_group_rows[:20],
             "payout_ids_top20": payout_id_rows[:20],
+            "spin_type_breakdown": spin_type_rows,
             "symbols_top20": symbol_rows[:20],
             "symbols_by_column_top10": {k: v[:10] for k, v in symbol_by_col_rows.items()},
             "bankruptcy_probe": bankruptcy_rows,

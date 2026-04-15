@@ -395,7 +395,8 @@ body {
 .report,
 .paylines,
 .payout-groups,
-.symbols {
+.symbols,
+.spin-types {
   grid-column: span 12;
 }
 
@@ -789,6 +790,7 @@ tbody tr.active-row {
   .paylines,
   .payout-groups,
   .symbols,
+  .spin-types,
   .machine-catalog,
   .run-history,
   .system-status,

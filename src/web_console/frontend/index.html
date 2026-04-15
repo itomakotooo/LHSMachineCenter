@@ -190,6 +190,28 @@
             </div>
           </section>
 
+          <!-- SpinType breakdown: per-type spins / win / RTP. M14 mode 1
+               has only SpinType=1; M272 mode 1/2 splits main (140) vs
+               bonus / collect re-spin (126). Empty for legacy reports
+               that pre-date the spin_type_breakdown commit. -->
+          <section class="panel spin-types">
+            <h2 data-i18n="panelSpinType">SpinType 分布</h2>
+            <table id="spinTypeTable" class="drilldown-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thSpinType">SpinType</th>
+                  <th data-i18n="thHitCount">命中次数</th>
+                  <th data-i18n="thSpinShare">占比</th>
+                  <th data-i18n="thHitRate">命中率</th>
+                  <th data-i18n="thTotalWin">总 Win</th>
+                  <th data-i18n="thSpinRtpPct">本类 RTP</th>
+                  <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
+
           <!-- Mid panels are stacked (not tabbed) per user feedback after
                first dashboard pass: interpretation goes first because
                that's the headline narrative, followed by the rules

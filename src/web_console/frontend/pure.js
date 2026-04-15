@@ -95,6 +95,11 @@ const I18N = {
     thRate: "占比",
     symbolsEmpty: "暂无符号数据。",
     symbolColLabel: "列 {idx}",
+    panelSpinType: "SpinType 分布",
+    thSpinType: "SpinType",
+    thSpinShare: "占比",
+    thSpinRtpPct: "本类 RTP",
+    spinTypeEmpty: "暂无 SpinType 数据。",
     panelPayoutGroups: "Pay ID 深度（PayoutId Top 20）",
     thGroupId: "Pay ID",
     thAvgWinX: "命中均赢",
@@ -292,6 +297,11 @@ const I18N = {
     thRate: "Rate",
     symbolsEmpty: "No symbol data yet.",
     symbolColLabel: "Col {idx}",
+    panelSpinType: "SpinType Breakdown",
+    thSpinType: "SpinType",
+    thSpinShare: "Share",
+    thSpinRtpPct: "Type RTP",
+    spinTypeEmpty: "No SpinType data yet.",
     panelPayoutGroups: "Pay ID Drilldown (PayoutId Top 20)",
     thGroupId: "Pay ID",
     thAvgWinX: "Avg Win when Hit",
@@ -629,6 +639,25 @@ function formatPayoutGroupRows(summary) {
   }));
 }
 
+// Format spin_type_breakdown (added in the SpinType-breakdown commit).
+// Returns rows ready for <td> rendering. spin_type semantics are
+// machine-specific (M14: 1 only; M272: 140 main + 126 bonus); the
+// helper just formats whatever the analyzer aggregated. Sorted by
+// spins desc to match the analyzer's output.
+function formatSpinTypeRows(summary) {
+  const rows = ((summary || {}).player_impact || {}).spin_type_breakdown || [];
+  return rows.map((r) => ({
+    spin_type: Number(r.spin_type != null ? r.spin_type : 0),
+    spins: Number(r.spins || 0),
+    share_pct: Number(r.share_pct || 0),
+    win_rounds: Number(r.win_rounds || 0),
+    hit_rate_pct: Number(r.hit_rate || 0) * 100,
+    total_win: Number(r.total_win || 0),
+    rtp_pct: Number(r.rtp_pct || 0),
+    rtp_contribution_pp: Number(r.rtp_contribution_pp || 0),
+  }));
+}
+
 // Format payout_ids_top20 (added in the PayoutIdToWinAmount commit).
 // This is the actual payout-source breakdown (M14 + M272 both populate
 // it); the older payout_groups_top20 is kept as a fallback for legacy
@@ -939,6 +968,7 @@ const PURE = {
   symbolByColMatrix,
   formatPayoutGroupRows,
   formatPayoutIdRows,
+  formatSpinTypeRows,
   prettyBucketLabel,
 };
 

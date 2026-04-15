@@ -464,6 +464,47 @@ test("formatPayoutIdRows: payout_id is always coerced to string", () => {
   assert.strictEqual(rows[0].payout_id, "6");
 });
 
+// ---------- formatSpinTypeRows ----------
+
+test("formatSpinTypeRows: empty / missing -> []", () => {
+  assert.deepStrictEqual(PURE.formatSpinTypeRows({}), []);
+  assert.deepStrictEqual(PURE.formatSpinTypeRows({ player_impact: {} }), []);
+});
+
+test("formatSpinTypeRows: M272-shaped breakdown (main + bonus)", () => {
+  const s = {
+    player_impact: {
+      spin_type_breakdown: [
+        { spin_type: 140, spins: 200, share_pct: 64.5, win_rounds: 30, hit_rate: 0.15, total_win: 80000, rtp_pct: 80.0, rtp_contribution_pp: 50.0 },
+        { spin_type: 126, spins: 110, share_pct: 35.5, win_rounds: 25, hit_rate: 0.227, total_win: 50000, rtp_pct: 0.0, rtp_contribution_pp: 30.0 },
+      ],
+    },
+  };
+  const rows = PURE.formatSpinTypeRows(s);
+  assert.equal(rows.length, 2);
+  // hit_rate is converted to percent (0.15 -> 15).
+  assert.equal(rows[0].hit_rate_pct, 15);
+  assert.equal(rows[1].hit_rate_pct, 22.7);
+  // share_pct passes through unchanged (analyzer already in percent).
+  assert.equal(rows[0].share_pct, 64.5);
+  // spin_type stays numeric.
+  assert.strictEqual(rows[0].spin_type, 140);
+});
+
+test("formatSpinTypeRows: zero defaults for missing fields", () => {
+  const s = {
+    player_impact: {
+      spin_type_breakdown: [{ spin_type: 1, spins: 100 }],
+    },
+  };
+  const rows = PURE.formatSpinTypeRows(s);
+  assert.equal(rows[0].total_win, 0);
+  assert.equal(rows[0].rtp_pct, 0);
+  assert.equal(rows[0].rtp_contribution_pp, 0);
+  assert.equal(rows[0].win_rounds, 0);
+  assert.equal(rows[0].hit_rate_pct, 0);
+});
+
 // ---------- formatSymbolRows + symbolByColMatrix ----------
 
 test("formatSymbolRows: empty -> []", () => {

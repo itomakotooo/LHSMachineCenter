@@ -467,6 +467,36 @@ function renderPaylineDrilldown(summary) {
     .join("");
 }
 
+function renderSpinTypeBreakdown(summary) {
+  // Reads spin_type_breakdown (analyzer commit). Empty for older
+  // reports that pre-date the field; renders a single empty-state row
+  // so the panel doesn't look broken when an old report is loaded.
+  const tbody = byId("spinTypeTable") && byId("spinTypeTable").querySelector("tbody");
+  if (!tbody) return;
+  const rows = PURE.formatSpinTypeRows(summary);
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7">${fmt("spinTypeEmpty")}</td></tr>`;
+    return;
+  }
+  const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
+  tbody.innerHTML = rows
+    .map((r) => {
+      const bar = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
+      return (
+        `<tr>` +
+        `<td>${r.spin_type}</td>` +
+        `<td>${fInt(r.win_rounds)}</td>` +
+        `<td>${r.share_pct.toFixed(2)}%</td>` +
+        `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
+        `<td>${fInt(r.total_win)}</td>` +
+        `<td>${r.rtp_pct.toFixed(2)}%</td>` +
+        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(4)}</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+}
+
 function renderAssessment(summary) {
   if (!summary || !summary.guideline_assessment) {
     byId("assessment").textContent = fmt("noReport");
@@ -717,6 +747,7 @@ async function refreshCurrentRun() {
     state.bucketChart.data.labels = buckets.map((b) => PURE.prettyBucketLabel(b.bucket));
     state.bucketChart.data.datasets[0].data = buckets.map((b) => (Number(b.spin_rate) <= 1 ? Number(b.spin_rate) * 100 : Number(b.spin_rate)));
     state.bucketChart.update();
+    renderSpinTypeBreakdown(s);
     renderPaylineDrilldown(s);
     renderPayoutGroupDrilldown(s);
     renderSymbolDrilldown(s);
