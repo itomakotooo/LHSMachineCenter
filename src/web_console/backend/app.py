@@ -690,30 +690,63 @@ def create_interpretation_content(summary: dict[str, Any], model_id: str) -> str
 
 
 def build_interpretation_prompt(summary: dict[str, Any]) -> str:
+    pi = summary.get("player_impact", {}) or {}
     subset = {
         "machine": summary.get("machine"),
         "mode": summary.get("mode"),
         "sampling": summary.get("sampling"),
         "rtp": summary.get("rtp"),
         "player_impact": {
-            "volatility": summary.get("player_impact", {}).get("volatility"),
-            "multiplier_profile": summary.get("player_impact", {}).get("multiplier_profile"),
-            "hit_and_payout": summary.get("player_impact", {}).get("hit_and_payout"),
-            "streaks": summary.get("player_impact", {}).get("streaks"),
-            "bankruptcy_probe": summary.get("player_impact", {}).get("bankruptcy_probe"),
+            "volatility": pi.get("volatility"),
+            "multiplier_profile": pi.get("multiplier_profile"),
+            "hit_and_payout": pi.get("hit_and_payout"),
+            "streaks": pi.get("streaks"),
+            "bankruptcy_probe": pi.get("bankruptcy_probe"),
+            # Drilldown surfaces -- give the model the same data the
+            # console operator stares at so it can comment on payline /
+            # payout-group / symbol hotspots instead of stopping at the
+            # aggregate volatility numbers.
+            "paylines_top20": pi.get("paylines_top20"),
+            "payout_groups_top20": pi.get("payout_groups_top20"),
+            "symbols_top20": pi.get("symbols_top20"),
+            "symbols_by_column_top10": pi.get("symbols_by_column_top10"),
         },
         "guideline_assessment": summary.get("guideline_assessment"),
         "guideline_comparison": summary.get("guideline_comparison"),
     }
     payload = json.dumps(subset, ensure_ascii=False, indent=2)
+    # Reference thresholds keep the model's "波动性高" / "破产率偏高"
+    # assertions grounded in the same numbers analyzer uses internally
+    # (see classify_volatility, classify_experience_archetype, and the
+    # alert rules in configs/classic_slots_guideline_rules.json).
+    reference = (
+        "参照阈值（用于判断高/中/低与告警门槛，请在结论中显式引用）：\n"
+        "- 波动性 (player_impact.volatility.classification)：\n"
+        "  * Very High: zero_win_rate>0.82 OR loss_streak_p95>18 OR tail_dependency>0.50\n"
+        "  * High:      zero_win_rate>=0.75 OR loss_streak_p95>=13 OR tail_dependency>=0.35\n"
+        "  * Medium:    zero_win_rate>=0.65 OR loss_streak_p95>=9  OR tail_dependency>=0.20\n"
+        "  * Low:       以上均不满足\n"
+        "- 体验类型 (experience_archetype)：\n"
+        "  * Boom-Bust: zero_win_rate>=0.75 且 tail_dependency>=0.35 且 big_win_x10_rate>=0.015\n"
+        "  * Grindy:    zero_win_rate>=0.75 且 big_win_x10_rate<0.015，或 zero_win_rate>=0.78\n"
+        "  * Balanced:  其余（且 0.08<=profit_spin_rate<=0.16, tail_dependency<0.35 时强匹配）\n"
+        "- 数据可信度 (sampling)：CI half-width<=0.5pp 为报告级，total_spins>=2,000,000 为推荐量\n"
+        "- 损失连击 (streaks.loss_streak_p95)：>=15 触发告警，>=18 进入风险区\n"
+        "- 破产率 (bankruptcy_probe)：x100 bust>0.20 高，x200>0.10 高，x500>0.05 高\n"
+        "- 倍率桶尾部 (multiplier_profile.tail_dependency)：>=0.45 表示头重，<0.20 表示扁平\n"
+    )
     return (
         "你是老虎机数值分析助手。请使用中文输出，结构固定为：\n"
         "1) 数据可信度\n"
         "2) 玩家体感\n"
         "3) RTP结构与倍率分桶\n"
-        "4) 关键风险与告警\n"
-        "5) 优先调参建议（按优先级）\n"
-        "要求：结论可执行，避免空话，每点尽量量化。\n\n"
+        "4) 支付线与符号热点（必须基于 paylines_top20 / payout_groups_top20 /\n"
+        "   symbols_top20 / symbols_by_column_top10；如果 payout_groups_top20\n"
+        "   为空请说明该报告由旧版本 analyzer 生成）\n"
+        "5) 关键风险与告警（必须引用上方「参照阈值」中的具体数字）\n"
+        "6) 优先调参建议（按优先级，每条注明对应的指标和目标方向）\n"
+        "要求：结论可执行，避免空话，每点尽量量化；引用阈值时使用上方提供的数值。\n\n"
+        f"{reference}\n"
         f"输入数据:\n{payload}"
     )
 
