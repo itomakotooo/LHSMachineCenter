@@ -473,7 +473,15 @@ async function refreshCurrentRun() {
   const target = run.target_halfwidth_pp;
   const pct = hw == null || !target ? 0 : hw <= target ? 100 : Math.min(100, (target / hw) * 100);
   byId("progressBar").style.width = `${pct}%`;
-  byId("runMeta").textContent = `run=${run.run_id} status=${statusText(run.status)} machine=${run.machine} mode=${run.mode} spins=${latest.total_spins || 0} chunks=${p.chunk_count || 0} ci=${fNum(hw)} target=${target}`;
+  const runMetaLines = [
+    `run=${run.run_id} ${fmt("runStatusLabel")}=${statusText(run.status)} machine=${run.machine} mode=${run.mode} spins=${latest.total_spins || 0} chunks=${p.chunk_count || 0} ci=${fNum(hw)} target=${target}`,
+  ];
+  if (String(run.status).toLowerCase() === "failed") {
+    runMetaLines.push(`${fmt("runFailedLabel")}: ${PURE.formatRunFailureNote(state.lang, run.error_message)}`);
+  } else if (String(run.status).toLowerCase() === "cancelled") {
+    runMetaLines.push(`${fmt("runCancelledLabel")}: ${fmt("runCancelledText")}`);
+  }
+  byId("runMeta").textContent = runMetaLines.join("\n");
   setKpi("kpiRtp", latest.current_rtp_pct != null ? `${fNum(latest.current_rtp_pct)}%` : "N/A");
   setKpi("kpiCi", hw != null ? fNum(hw) : "N/A");
   setKpi("kpiSpins", latest.total_spins != null ? fInt(latest.total_spins) : "N/A");
@@ -488,9 +496,9 @@ async function refreshCurrentRun() {
   state.ciChart.update();
   state.rtpChart.update();
 
+  // Per-run failures / cancellations are shown inside runMeta (above).
+  // Global warning area stays reserved for system + model notices.
   const warnings = modelWarnings();
-  if (run.status === "failed") warnings.push(fmt("warnRunFailed", { msg: run.error_message || "unknown error" }));
-  if (run.status === "cancelled") warnings.push(fmt("warnRunCancelled"));
 
   if (run.status === "completed") {
     const report = await apiGet(`/api/runs/${state.currentRunId}/report`);

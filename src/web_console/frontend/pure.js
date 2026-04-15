@@ -53,6 +53,11 @@ const I18N = {
     bankMultShort: "短会话 (50x / 100x / 200x)",
     bankMultLong: "长会话 (200x / 500x / 1000x)",
     helpBankMultiplierWarn: "仅「标准」档位与 guideline rules 里的 x100/x200/x500 阈值对齐；切换到其他档位时破产相关的 A5 规则不会触发。",
+    runStatusLabel: "状态",
+    runFailedLabel: "上次失败原因",
+    runCancelledLabel: "上次结果",
+    runCancelledText: "已取消",
+    runFailureNoneCaptured: "未捕获到诊断信息（analyzer 未输出 stderr/stdout）",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
     labelConcurrency: "批并发数",
@@ -207,6 +212,11 @@ const I18N = {
     bankMultShort: "Short session (50x / 100x / 200x)",
     bankMultLong: "Long session (200x / 500x / 1000x)",
     helpBankMultiplierWarn: "Only the Standard preset aligns with the guideline rules' x100/x200/x500 thresholds; other presets skip the bankruptcy A5 rule.",
+    runStatusLabel: "Status",
+    runFailedLabel: "Last failure reason",
+    runCancelledLabel: "Last result",
+    runCancelledText: "Cancelled",
+    runFailureNoneCaptured: "No diagnostic captured (analyzer produced no stderr/stdout)",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
     labelConcurrency: "Batch Concurrency",
@@ -413,6 +423,16 @@ function bankrollMultiplierPresets(lang) {
   ];
 }
 
+// Build a readable failure note for runMeta. The backend now always puts
+// at least `analyzer exit_code=N | summary missing: ... | report missing: ...`
+// into error_message; the fallback covers older rows or the corner case
+// where the message is empty for some reason.
+function formatRunFailureNote(lang, errorMsg) {
+  const trimmed = (errorMsg == null ? "" : String(errorMsg)).trim();
+  if (!trimmed) return fmt(lang, "runFailureNoneCaptured");
+  return trimmed;
+}
+
 // Pure validator used by the frontend to gate the Start button. Returns
 // {blocking: string[], warnings: string[], canStart: bool}. Blocking
 // strings are localized and meant to be shown to the operator.
@@ -496,6 +516,7 @@ const PURE = {
   ciTierOptions,
   validateRunConfig,
   bankrollMultiplierPresets,
+  formatRunFailureNote,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;

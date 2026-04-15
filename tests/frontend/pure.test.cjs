@@ -60,6 +60,20 @@ test("i18n: run-config validation keys are non-empty in both locales", () => {
   }
 });
 
+test("i18n: run failure / cancellation keys are non-empty in both locales", () => {
+  const required = [
+    "runStatusLabel",
+    "runFailedLabel",
+    "runCancelledLabel",
+    "runCancelledText",
+    "runFailureNoneCaptured",
+  ];
+  for (const k of required) {
+    assert.ok(PURE.I18N.zh[k], `zh.${k} missing`);
+    assert.ok(PURE.I18N.en[k], `en.${k} missing`);
+  }
+});
+
 test("i18n: advanced + bankroll keys are non-empty in both locales", () => {
   const required = [
     "labelAdvancedParams",
@@ -217,6 +231,40 @@ test("ciTierOptions: labels localized for en", () => {
   const opts = PURE.ciTierOptions("en");
   const fuzzy = opts.find((o) => o.value === "0");
   assert.ok(fuzzy.label.toLowerCase().includes("fuzzy"));
+});
+
+// ---------- formatRunFailureNote ----------
+
+test("formatRunFailureNote: empty error falls back to localized note (zh)", () => {
+  assert.equal(
+    PURE.formatRunFailureNote("zh", ""),
+    PURE.I18N.zh.runFailureNoneCaptured
+  );
+  assert.equal(
+    PURE.formatRunFailureNote("zh", null),
+    PURE.I18N.zh.runFailureNoneCaptured
+  );
+  assert.equal(
+    PURE.formatRunFailureNote("zh", undefined),
+    PURE.I18N.zh.runFailureNoneCaptured
+  );
+});
+
+test("formatRunFailureNote: whitespace-only error also falls back", () => {
+  assert.equal(
+    PURE.formatRunFailureNote("en", "   \n\t "),
+    PURE.I18N.en.runFailureNoneCaptured
+  );
+});
+
+test("formatRunFailureNote: populated error passes through trimmed", () => {
+  assert.equal(
+    PURE.formatRunFailureNote(
+      "en",
+      "  analyzer exit_code=1 | summary missing: a.json  "
+    ),
+    "analyzer exit_code=1 | summary missing: a.json"
+  );
 });
 
 // ---------- bankrollMultiplierPresets ----------
