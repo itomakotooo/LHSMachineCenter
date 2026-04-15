@@ -65,7 +65,7 @@ def _good_summary() -> dict[str, Any]:
             "multiplier_profile": {
                 "tail_dependency": 0.31,
                 "buckets": [
-                    {"bucket": "eq0", "spin_count": 850000, "spin_rate": 0.708},
+                    {"bucket": "gt0_lt1", "spin_count": 190000, "spin_rate": 0.158},
                     {"bucket": "ge1_lt5", "spin_count": 200000, "spin_rate": 0.166},
                 ],
             },

@@ -34,21 +34,23 @@ If any gate fails, report must be marked `EXPLORATORY` (not final).
 
 ## 4) Multiplier Bucket Standard (ret_x = win / bet)
 
-Use this exact bucket schema (12 buckets; refined tail per dashboard
-revision so `>=100` is not collapsed into one pile):
+Use this exact bucket schema (11 win-bearing buckets; refined tail per
+dashboard revision so `>=100` is not collapsed into one pile). Zero-win
+sessions are tracked via `hit_and_payout.zero_win_rate`, not as a
+dedicated bucket -- the former `eq0` row was structurally zero across
+avg_return_x / rtp_contribution_pp / win_share and only added chart noise.
 
-1. `eq0`
-2. `gt0_lt1`
-3. `ge1_lt5`
-4. `ge5_lt10`
-5. `ge10_lt20`
-6. `ge20_lt50`
-7. `ge50_lt100`
-8. `ge100_lt200`
-9. `ge200_lt500`
-10. `ge500_lt1000`
-11. `ge1000_lt5000`
-12. `ge5000`
+1. `gt0_lt1`
+2. `ge1_lt5`
+3. `ge5_lt10`
+4. `ge10_lt20`
+5. `ge20_lt50`
+6. `ge50_lt100`
+7. `ge100_lt200`
+8. `ge200_lt500`
+9. `ge500_lt1000`
+10. `ge1000_lt5000`
+11. `ge5000`
 
 For each bucket, report:
 

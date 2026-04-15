@@ -254,12 +254,17 @@ Layout-impacting CSS classes:
   through `PURE.prettyBucketLabel()` so the analyzer's internal
   keys ("ge100_lt200") render as friendly ranges ("100-200").
 
-Multiplier bucket schema (analyzer + chart): refined from 10 to 12
-bins. Old 10-bin keys (`gt0_lt0.5`, `ge0.5_lt1`, `ge1_lt2`,
-`ge2_lt5`, `ge100`) collapsed into `gt0_lt1` + `ge1_lt5` and the
-deep tail split into `ge100_lt200` / `ge200_lt500` / `ge500_lt1000` /
-`ge1000_lt5000` / `ge5000`. `prettyBucketLabel()` keeps fallbacks
-for the legacy keys so old reports still render.
+Multiplier bucket schema (analyzer + chart): 11 win-bearing bins
+(`gt0_lt1` through `ge5000`). Refined from 10 bins to 12 bins during
+the dashboard pass (old 10-bin keys `gt0_lt0.5`/`ge0.5_lt1`/`ge1_lt2`/
+`ge2_lt5`/`ge100` collapsed into `gt0_lt1` + `ge1_lt5` and the deep
+tail split into `ge100_lt200` .. `ge5000`), then the `eq0` row was
+dropped because zero-win sessions carry no multiplier signal and
+duplicate `hit_and_payout.zero_win_rate`. `return_bucket()` returns
+`""` for zero-win and the accumulators skip empty keys, so the
+summary never emits an `eq0` bucket. `prettyBucketLabel()` keeps
+fallbacks for the legacy keys (including `eq0`) so old reports still
+render.
 
 Payline drilldown surfaces a `top_symbols` column populated by an
 analyzer heuristic: for every spin where a payline paid, intersect

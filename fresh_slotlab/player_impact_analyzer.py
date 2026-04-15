@@ -18,8 +18,13 @@ from typing import Any
 
 ENDPOINT_URL = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpin"
 PAYLINE_RE = re.compile(r"(\d+):")
+# 11 win-bearing buckets. The old `eq0` bucket carried zero-win sessions
+# which already live in summary.hit_and_payout.zero_win_rate; a bucket
+# where avg_x / rtp_pp / win_share are all structurally zero is noise
+# on the multiplier chart, so we exclude it from the ordered schema.
+# `return_bucket()` returns "" for those sessions and the accumulators
+# skip them.
 RETURN_BUCKET_ORDER = [
-    "eq0",
     "gt0_lt1",
     "ge1_lt5",
     "ge5_lt10",
@@ -505,8 +510,11 @@ def make_payload(
 
 
 def return_bucket(ret_x: float) -> str:
+    # Zero-win sessions carry no multiplier signal -- returning "" signals
+    # accumulators to skip them so the final summary never emits an `eq0`
+    # row. Zero-win session share lives in hit_and_payout.zero_win_rate.
     if ret_x <= 0.0:
-        return "eq0"
+        return ""
     if ret_x < 1.0:
         return "gt0_lt1"
     if ret_x < 5.0:
@@ -825,9 +833,10 @@ def run_sampling_chunk(
         if ret_x_sess > session_max_return_x:
             session_max_return_x = ret_x_sess
         b = return_bucket(ret_x_sess)
-        session_bucket_spins[b] += 1
-        session_bucket_bet[b] += s_bet
-        session_bucket_win[b] += s_win
+        if b:
+            session_bucket_spins[b] += 1
+            session_bucket_bet[b] += s_bet
+            session_bucket_win[b] += s_win
         session_win_sum += s_win
 
         if s_win > 0:
@@ -931,9 +940,10 @@ def run_sampling_chunk(
             ret_sum += ret_x
             ret_sq_sum += ret_x * ret_x
             bucket = return_bucket(ret_x)
-            multiplier_bucket_spins[bucket] += 1
-            multiplier_bucket_bet[bucket] += bet_amt
-            multiplier_bucket_win[bucket] += win_amt
+            if bucket:
+                multiplier_bucket_spins[bucket] += 1
+                multiplier_bucket_bet[bucket] += bet_amt
+                multiplier_bucket_win[bucket] += win_amt
 
             if win_amt > 0:
                 win_spins += 1

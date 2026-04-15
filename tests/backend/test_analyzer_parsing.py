@@ -307,7 +307,11 @@ def test_run_sampling_chunk_zero_chunk_failure(patch_post_json):
 @pytest.mark.parametrize(
     "ret_x, expected",
     [
-        (0.0, "eq0"),
+        # Zero-win sessions return "" so accumulators skip them; zero-win
+        # share lives in summary.hit_and_payout.zero_win_rate, so keeping
+        # an eq0 bucket row was pure noise on the multiplier chart.
+        (0.0, ""),
+        (-0.1, ""),
         (0.5, "gt0_lt1"),
         (0.99, "gt0_lt1"),
         (1.0, "ge1_lt5"),
@@ -324,22 +328,24 @@ def test_run_sampling_chunk_zero_chunk_failure(patch_post_json):
         (99999.0, "ge5000"),
     ],
 )
-def test_return_bucket_12_bin_schema(ret_x, expected):
+def test_return_bucket_11_bin_schema(ret_x, expected):
     assert return_bucket(ret_x) == expected
 
 
 def test_run_sampling_chunk_buckets_classification(patch_post_json):
     # Build spins covering several buckets; assert tally uses new keys.
+    # Zero-win rounds no longer produce a bucket entry (eq0 dropped).
     rounds = (
-        [_full_round(WinCredits=0)]                 # eq0
-        + [_full_round(WinCredits=0)]               # eq0 again
+        [_full_round(WinCredits=0)]                 # zero-win -> skipped
+        + [_full_round(WinCredits=0)]               # zero-win -> skipped
         + [_full_round(WinCredits=15, PayoutByPayline="1:15", PayoutGroupId=3)]  # ge10_lt20
         + [_full_round(WinCredits=120, PayoutByPayline="1:120", PayoutGroupId=4)]  # ge100_lt200
         + [_full_round(WinCredits=7000, PayoutByPayline="1:7000", PayoutGroupId=5)]  # ge5000
     )
     patch_post_json(_stub_chunk_resp(rounds))
     rec = _run(spin_times=len(rounds))
-    assert rec["multiplier_bucket_spins"]["eq0"] == 2
+    assert "eq0" not in rec["multiplier_bucket_spins"]
+    assert "" not in rec["multiplier_bucket_spins"]
     assert rec["multiplier_bucket_spins"]["ge10_lt20"] == 1
     assert rec["multiplier_bucket_spins"]["ge100_lt200"] == 1
     assert rec["multiplier_bucket_spins"]["ge5000"] == 1
