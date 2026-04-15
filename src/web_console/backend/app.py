@@ -1016,13 +1016,26 @@ class RunManager:
                 },
             )
         else:
-            message = (stderr or stdout or "").strip()
+            # Build a structured failure message so even silent analyzer
+            # crashes leave a diagnostic trail. Order: captured stderr/stdout
+            # first (truncated), then exit_code, then which artefacts are
+            # missing. Never persist absolute paths -- only file names.
+            parts: list[str] = []
+            raw = (stderr or stdout or "").strip()
+            if raw:
+                parts.append(raw[:3500])
+            parts.append(f"analyzer exit_code={code}")
+            if not managed.summary_file.exists():
+                parts.append(f"summary missing: {managed.summary_file.name}")
+            if not managed.report_file.exists():
+                parts.append(f"report missing: {managed.report_file.name}")
+            message = " | ".join(parts)[:4000]
             self.store.update_run(
                 managed.run_id,
                 {
                     "status": "failed",
                     "finished_at": utc_now(),
-                    "error_message": message[:4000],
+                    "error_message": message,
                 },
             )
         with self._lock:
