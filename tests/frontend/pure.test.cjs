@@ -492,6 +492,76 @@ test("formatPaylineRows: hit_rate gets converted to percent", () => {
   assert.equal(rows[0].hit_rate_pct, 1.23);
 });
 
+test("formatPaylineRows: top_symbols passthrough (analyzer winning-symbol commit)", () => {
+  // Newer reports include analyzer-inferred top winning symbols per
+  // payline. The pure formatter just pipes them through to the row.
+  const summary = {
+    player_impact: {
+      paylines_top20: [
+        {
+          payline_id: "1",
+          hit_count: 10,
+          hit_rate: 0.005,
+          approx_rtp_contribution_pp: 5.0,
+          top_symbols: [
+            { symbol: "cherry", count: 7 },
+            { symbol: "1bar", count: 2 },
+            { symbol: "blank", count: 1 },
+          ],
+        },
+      ],
+    },
+  };
+  const rows = PURE.formatPaylineRows(summary);
+  assert.equal(rows.length, 1);
+  assert.deepStrictEqual(rows[0].top_symbols, [
+    { symbol: "cherry", count: 7 },
+    { symbol: "1bar", count: 2 },
+    { symbol: "blank", count: 1 },
+  ]);
+});
+
+test("formatPaylineRows: top_symbols defaults to [] for old reports", () => {
+  const summary = {
+    player_impact: {
+      paylines_top20: [
+        { payline_id: "1", hit_count: 10, hit_rate: 0.005, approx_rtp_contribution_pp: 5.0 },
+      ],
+    },
+  };
+  const rows = PURE.formatPaylineRows(summary);
+  assert.deepStrictEqual(rows[0].top_symbols, []);
+});
+
+// ---------- formatPaylineTopSymbols ----------
+
+test("formatPaylineTopSymbols: empty -> em-dash", () => {
+  assert.equal(PURE.formatPaylineTopSymbols([]), "\u2014");
+  assert.equal(PURE.formatPaylineTopSymbols(null), "\u2014");
+  assert.equal(PURE.formatPaylineTopSymbols(undefined), "\u2014");
+});
+
+test("formatPaylineTopSymbols: top 3 by default, comma joined", () => {
+  const out = PURE.formatPaylineTopSymbols([
+    { symbol: "cherry", count: 7 },
+    { symbol: "1bar", count: 2 },
+    { symbol: "blank", count: 1 },
+    { symbol: "2bar", count: 1 },
+  ]);
+  assert.equal(out, "cherry, 1bar, blank");
+});
+
+test("formatPaylineTopSymbols: respects N override", () => {
+  const out = PURE.formatPaylineTopSymbols(
+    [
+      { symbol: "cherry", count: 7 },
+      { symbol: "1bar", count: 2 },
+    ],
+    1
+  );
+  assert.equal(out, "cherry");
+});
+
 // ---------- extractMetricCards ----------
 
 const _summaryFixture = () => ({

@@ -439,13 +439,14 @@ function renderPaylineDrilldown(summary) {
   if (!tbody) return;
   const rows = PURE.formatPaylineRows(summary);
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="5">${fmt("paylineEmpty")}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">${fmt("paylineEmpty")}</td></tr>`;
     return;
   }
   const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
   tbody.innerHTML = rows
     .map((r) => {
       const barPct = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
+      const topSyms = PURE.formatPaylineTopSymbols(r.top_symbols, 3);
       return (
         `<tr>` +
         `<td>${r.payline_id}</td>` +
@@ -453,6 +454,7 @@ function renderPaylineDrilldown(summary) {
         `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
         `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(4)}</td>` +
         `<td>${r.win_share_pct.toFixed(2)}%</td>` +
+        `<td>${topSyms}</td>` +
         `</tr>`
       );
     })

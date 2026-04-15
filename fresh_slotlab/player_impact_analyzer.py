@@ -593,6 +593,18 @@ def run_sampling_chunk(
     payout_group_hits: dict[int, int] = defaultdict(int)
     payout_group_win: dict[int, float] = defaultdict(float)
 
+    # Per-payline winning-symbol inference. The API returns
+    # PayoutByPayline (which line ids paid) and StopSymbolsByCol (the
+    # 5 columns of stopped symbols), but no direct payline->position
+    # mapping. Heuristic: classic slots pay 3+ same symbols left-to-
+    # right, so the symbol that appears in the leftmost three columns'
+    # stopped sets is almost certainly the winner for any line that
+    # hit on this spin. We tally per-(payline_id, symbol) frequency so
+    # the drilldown can show which symbols carry each payline's RTP.
+    payline_winning_symbols: dict[str, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+
     for robot in resp:
         if not isinstance(robot, dict):
             continue
@@ -668,12 +680,30 @@ def run_sampling_chunk(
                     payline_win_approx[lid] += share
 
             stop_cols = r.get("StopSymbolsByCol") or []
+            col_symbol_sets: list[set[str]] = []
             if isinstance(stop_cols, list):
                 for ci, col_text in enumerate(stop_cols):
-                    for sym in split_symbols(str(col_text)):
+                    col_syms = split_symbols(str(col_text))
+                    col_symbol_sets.append({s for s in col_syms if s})
+                    for sym in col_syms:
                         symbol_counts[sym] += 1
                         symbol_counts_by_col[ci][sym] += 1
                         total_symbol_slots += 1
+
+            # Infer the winning symbol(s) for each line that paid this
+            # spin. Take the intersection of stopped-symbol sets across
+            # the leftmost three columns (classic slot pays 3+ matching
+            # symbols left-to-right). If multiple symbols qualify (rare)
+            # all of them are credited; if no intersection (atypical
+            # bonus payout), fall back to the leftmost column's first
+            # symbol so the line is still represented.
+            if line_ids and len(col_symbol_sets) >= 3:
+                first3 = col_symbol_sets[0] & col_symbol_sets[1] & col_symbol_sets[2]
+                if not first3 and col_symbol_sets[0]:
+                    first3 = {next(iter(col_symbol_sets[0]))}
+                for lid in line_ids:
+                    for sym in first3:
+                        payline_winning_symbols[lid][sym] += 1
 
         if cur_loss > 0:
             loss_streak_hist[cur_loss] += 1
@@ -705,6 +735,9 @@ def run_sampling_chunk(
         "lack_credit_spins": lack_credit_spins,
         "payline_hits": dict(payline_hits),
         "payline_win_approx": dict(payline_win_approx),
+        "payline_winning_symbols": {
+            str(lid): dict(syms) for lid, syms in payline_winning_symbols.items()
+        },
         "symbol_counts": dict(symbol_counts),
         "symbol_counts_by_col": {str(k): dict(v) for k, v in symbol_counts_by_col.items()},
         "total_symbol_slots": total_symbol_slots,
@@ -826,6 +859,9 @@ def main() -> int:
 
     payline_hits: dict[str, int] = defaultdict(int)
     payline_win_approx: dict[str, float] = defaultdict(float)
+    payline_winning_symbols: dict[str, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
 
     symbol_counts: dict[str, int] = defaultdict(int)
     symbol_counts_by_col: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -923,6 +959,12 @@ def main() -> int:
                 payline_hits[str(lid)] += int(c)
             for lid, w in rec["payline_win_approx"].items():
                 payline_win_approx[str(lid)] += float(w)
+            # payline_winning_symbols was added in the symbol-inference
+            # commit; old chunk records (pre-feature) won't have it.
+            for lid, smap in (rec.get("payline_winning_symbols") or {}).items():
+                if isinstance(smap, dict):
+                    for sym, c in smap.items():
+                        payline_winning_symbols[str(lid)][str(sym)] += int(c)
 
             for sym, c in rec["symbol_counts"].items():
                 symbol_counts[str(sym)] += int(c)
@@ -1017,6 +1059,11 @@ def main() -> int:
 
     payline_rows = []
     for lid, hits in sorted(payline_hits.items(), key=lambda kv: kv[1], reverse=True):
+        # Top winning symbols for this payline (heuristic: leftmost-3-col
+        # intersection per spin). Take top 5 by frequency so the UI table
+        # can show the dominant symbols without bloating the row.
+        sym_counts = payline_winning_symbols.get(lid, {})
+        top_syms = sorted(sym_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
         payline_rows.append(
             {
                 "payline_id": lid,
@@ -1026,6 +1073,7 @@ def main() -> int:
                 "approx_rtp_contribution_pp": (
                     (payline_win_approx[lid] / total_bet) * 100.0 if total_bet > 0 else 0.0
                 ),
+                "top_symbols": [{"symbol": s, "count": c} for s, c in top_syms],
             }
         )
 

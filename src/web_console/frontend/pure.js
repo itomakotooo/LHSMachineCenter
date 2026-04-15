@@ -85,6 +85,7 @@ const I18N = {
     thHitRate: "命中率",
     thRtpContribution: "RTP 贡献(pp)",
     thWinShare: "Win 占比",
+    thTopSymbols: "中奖符号 Top",
     paylineEmpty: "暂无支付线数据。",
     panelSymbols: "符号深度（整体 + 按列）",
     symbolsOverallHeader: "整体 Top 20",
@@ -280,6 +281,7 @@ const I18N = {
     thHitRate: "Hit Rate",
     thRtpContribution: "RTP Contribution (pp)",
     thWinShare: "Win Share",
+    thTopSymbols: "Top Win Symbols",
     paylineEmpty: "No payline data yet.",
     panelSymbols: "Symbol Drilldown (Overall + by Column)",
     symbolsOverallHeader: "Overall Top 20",
@@ -669,6 +671,10 @@ function formatPaylineRows(summary, sortBy) {
   );
   return ranked.map((r) => {
     const rtp = Number(r.approx_rtp_contribution_pp || 0);
+    // top_symbols was added by the payline-winning-symbol commit.
+    // Old reports omit it; keep an empty array so the table renders
+    // cleanly across both schemas.
+    const topSymbols = Array.isArray(r.top_symbols) ? r.top_symbols : [];
     return {
       payline_id: String(r.payline_id != null ? r.payline_id : "?"),
       hit_count: Number(r.hit_count || 0),
@@ -677,8 +683,26 @@ function formatPaylineRows(summary, sortBy) {
       win_share_pct: Number(r.approx_rtp_contribution_pp != null && totalRtp > 0
         ? rtp / totalRtp
         : 0) * 100,
+      top_symbols: topSymbols.map((t) => ({
+        symbol: String((t && t.symbol) != null ? t.symbol : ""),
+        count: Number((t && t.count) || 0),
+      })),
     };
   });
+}
+
+// Pretty-print top winning symbols for a payline as "sym1, sym2, sym3"
+// truncated to the top N (default 3). Returns "—" when the payline has
+// no inferred symbols (old report or no winning spins).
+function formatPaylineTopSymbols(topSymbols, n) {
+  const limit = Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
+  const arr = Array.isArray(topSymbols) ? topSymbols : [];
+  if (!arr.length) return "\u2014";
+  return arr
+    .slice(0, limit)
+    .map((t) => (t && t.symbol ? String(t.symbol) : ""))
+    .filter((s) => s.length)
+    .join(", ");
 }
 
 // Pull all KPI card values out of a player_impact_summary.json shape and
@@ -887,6 +911,7 @@ const PURE = {
   formatAutotuneProgress,
   extractMetricCards,
   formatPaylineRows,
+  formatPaylineTopSymbols,
   formatSymbolRows,
   symbolByColMatrix,
   formatPayoutGroupRows,
