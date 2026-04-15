@@ -86,6 +86,14 @@ const I18N = {
     thRtpContribution: "RTP 贡献(pp)",
     thWinShare: "Win 占比",
     paylineEmpty: "暂无支付线数据。",
+    panelSymbols: "符号深度（整体 + 按列）",
+    symbolsOverallHeader: "整体 Top 20",
+    symbolsByColHeader: "按列分布 Top 10（每列）",
+    thSymbol: "符号",
+    thCount: "次数",
+    thRate: "占比",
+    symbolsEmpty: "暂无符号数据。",
+    symbolColLabel: "列 {idx}",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
     labelConcurrency: "批并发数",
@@ -273,6 +281,14 @@ const I18N = {
     thRtpContribution: "RTP Contribution (pp)",
     thWinShare: "Win Share",
     paylineEmpty: "No payline data yet.",
+    panelSymbols: "Symbol Drilldown (Overall + by Column)",
+    symbolsOverallHeader: "Overall Top 20",
+    symbolsByColHeader: "By Column Top 10 (each column)",
+    thSymbol: "Symbol",
+    thCount: "Count",
+    thRate: "Rate",
+    symbolsEmpty: "No symbol data yet.",
+    symbolColLabel: "Col {idx}",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
     labelConcurrency: "Batch Concurrency",
@@ -563,6 +579,35 @@ function computeRunProgressPct(latestEvent, opts) {
   return Math.max(0, Math.min(100, (idx / maxChunks) * 100));
 }
 
+// Format the overall symbols_top20 table. Returns rows ready for <td>.
+function formatSymbolRows(summary) {
+  const rows = ((summary || {}).player_impact || {}).symbols_top20 || [];
+  return rows.map((r) => ({
+    symbol: String(r.symbol != null ? r.symbol : "?"),
+    count: Number(r.count || 0),
+    rate_pct: Number(r.rate || 0) * 100,
+  }));
+}
+
+// Build a column-major matrix from symbols_by_column_top10. Returns:
+//   { columnIds: ["0", "1", ...], rowsByCol: { "0": [...], "1": [...] } }
+// Each row is {symbol, count, rate_pct}. Useful for rendering as a side-by
+// -side per-column table in the UI.
+function symbolByColMatrix(summary) {
+  const byCol = ((summary || {}).player_impact || {}).symbols_by_column_top10 || {};
+  const columnIds = Object.keys(byCol).sort((a, b) => Number(a) - Number(b));
+  const rowsByCol = {};
+  for (const col of columnIds) {
+    const list = Array.isArray(byCol[col]) ? byCol[col] : [];
+    rowsByCol[col] = list.map((r) => ({
+      symbol: String(r.symbol != null ? r.symbol : "?"),
+      count: Number(r.count || 0),
+      rate_pct: Number(r.rate || 0) * 100,
+    }));
+  }
+  return { columnIds, rowsByCol };
+}
+
 // Build display rows for the paylines drilldown table. Sorted by the
 // requested column descending (default: approx_rtp_contribution_pp).
 // Returns objects ready to drop into <td>.
@@ -796,6 +841,8 @@ const PURE = {
   formatAutotuneProgress,
   extractMetricCards,
   formatPaylineRows,
+  formatSymbolRows,
+  symbolByColMatrix,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;

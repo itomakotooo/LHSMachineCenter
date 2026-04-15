@@ -613,3 +613,34 @@ table.drilldown-table .bar-cell::after {
   width: var(--bar, 0%);
   opacity: 0.55;
 }
+
+/* Subheading inside drilldown panels (e.g. "Overall Top 20" / "By Column"). */
+.drilldown-subhead {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.drilldown-subhead:first-of-type {
+  margin-top: 4px;
+}
+
+/* Per-column symbol grid: each column gets its own narrow table side by side. */
+.symbol-matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.symbol-matrix .col-table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #fff;
+}
+.symbol-matrix .col-table h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}

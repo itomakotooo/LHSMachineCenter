@@ -307,6 +307,64 @@ function renderRunHistory() {
   });
 }
 
+function renderSymbolDrilldown(summary) {
+  // Overall top-20
+  const overallTbody = byId("symbolOverallTable") && byId("symbolOverallTable").querySelector("tbody");
+  if (overallTbody) {
+    const rows = PURE.formatSymbolRows(summary);
+    if (!rows.length) {
+      overallTbody.innerHTML = `<tr><td colspan="3">${fmt("symbolsEmpty")}</td></tr>`;
+    } else {
+      const maxCount = Math.max(...rows.map((r) => r.count), 0);
+      overallTbody.innerHTML = rows
+        .map((r) => {
+          const bar = maxCount > 0 ? Math.min(100, (r.count / maxCount) * 100) : 0;
+          return (
+            `<tr>` +
+            `<td>${r.symbol}</td>` +
+            `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${fInt(r.count)}</td>` +
+            `<td>${r.rate_pct.toFixed(3)}%</td>` +
+            `</tr>`
+          );
+        })
+        .join("");
+    }
+  }
+  // By-column matrix
+  const matrixHost = byId("symbolByColMatrix");
+  if (!matrixHost) return;
+  const matrix = PURE.symbolByColMatrix(summary);
+  if (!matrix.columnIds.length) {
+    matrixHost.textContent = fmt("symbolsEmpty");
+    return;
+  }
+  matrixHost.innerHTML = matrix.columnIds
+    .map((col) => {
+      const rows = matrix.rowsByCol[col] || [];
+      const headerLabel = fmt("symbolColLabel", { idx: col });
+      const max = rows.length ? Math.max(...rows.map((r) => r.count)) : 0;
+      const body = rows
+        .map((r) => {
+          const bar = max > 0 ? Math.min(100, (r.count / max) * 100) : 0;
+          return (
+            `<tr>` +
+            `<td>${r.symbol}</td>` +
+            `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${fInt(r.count)}</td>` +
+            `<td>${r.rate_pct.toFixed(2)}%</td>` +
+            `</tr>`
+          );
+        })
+        .join("");
+      return (
+        `<div class="col-table">` +
+        `<h4>${headerLabel}</h4>` +
+        `<table class="drilldown-table"><tbody>${body}</tbody></table>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
 function renderPaylineDrilldown(summary) {
   const tbody = byId("paylineTable") && byId("paylineTable").querySelector("tbody");
   if (!tbody) return;
@@ -583,6 +641,7 @@ async function refreshCurrentRun() {
     state.bankChart.data.datasets[0].data = bank.map((b) => (Number(b.bankruptcy_rate) <= 1 ? Number(b.bankruptcy_rate) * 100 : Number(b.bankruptcy_rate)));
     state.bankChart.update();
     renderPaylineDrilldown(s);
+    renderSymbolDrilldown(s);
     await refreshVersions();
     await refreshInterpretation();
   }

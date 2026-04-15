@@ -212,6 +212,23 @@
             </table>
           </section>
 
+          <section class="panel symbols">
+            <h2 data-i18n="panelSymbols">符号深度（整体 + 按列）</h2>
+            <h3 data-i18n="symbolsOverallHeader" class="drilldown-subhead">整体 Top 20</h3>
+            <table id="symbolOverallTable" class="drilldown-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thSymbol">符号</th>
+                  <th data-i18n="thCount">次数</th>
+                  <th data-i18n="thRate">占比</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <h3 data-i18n="symbolsByColHeader" class="drilldown-subhead">按列分布 Top 10（每列）</h3>
+            <div id="symbolByColMatrix" class="symbol-matrix"></div>
+          </section>
+
           <section class="panel logs">
             <h2 data-i18n="panelEvents">运行事件</h2>
             <pre id="eventsText" class="pre"></pre>

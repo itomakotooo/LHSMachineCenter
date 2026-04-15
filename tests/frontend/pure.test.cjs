@@ -350,6 +350,53 @@ test("computeRunProgressPct: null event -> 0", () => {
   assert.equal(PURE.computeRunProgressPct(null, { maxChunks: 120 }), 0);
 });
 
+// ---------- formatSymbolRows + symbolByColMatrix ----------
+
+test("formatSymbolRows: empty -> []", () => {
+  assert.deepStrictEqual(PURE.formatSymbolRows({}), []);
+});
+
+test("formatSymbolRows: maps symbol/count/rate_pct correctly", () => {
+  const s = {
+    player_impact: {
+      symbols_top20: [
+        { symbol: "blank", count: 5000, rate: 0.5 },
+        { symbol: "cherry", count: 1234, rate: 0.1234 },
+      ],
+    },
+  };
+  const rows = PURE.formatSymbolRows(s);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].symbol, "blank");
+  assert.equal(rows[0].count, 5000);
+  assert.equal(rows[0].rate_pct, 50);
+  assert.equal(rows[1].symbol, "cherry");
+  assert.equal(rows[1].rate_pct, 12.34);
+});
+
+test("symbolByColMatrix: empty -> {columnIds:[], rowsByCol:{}}", () => {
+  const m = PURE.symbolByColMatrix({});
+  assert.deepStrictEqual(m.columnIds, []);
+  assert.deepStrictEqual(m.rowsByCol, {});
+});
+
+test("symbolByColMatrix: numeric column ids sorted", () => {
+  const s = {
+    player_impact: {
+      symbols_by_column_top10: {
+        "2": [{ symbol: "high7", count: 100, rate: 0.05 }],
+        "0": [{ symbol: "blank", count: 5000, rate: 0.5 }],
+        "1": [{ symbol: "wild", count: 800, rate: 0.08 }],
+      },
+    },
+  };
+  const m = PURE.symbolByColMatrix(s);
+  assert.deepStrictEqual(m.columnIds, ["0", "1", "2"]);
+  assert.equal(m.rowsByCol["0"][0].symbol, "blank");
+  assert.equal(m.rowsByCol["0"][0].rate_pct, 50);
+  assert.equal(m.rowsByCol["2"][0].symbol, "high7");
+});
+
 // ---------- formatPaylineRows ----------
 
 test("formatPaylineRows: empty summary -> []", () => {
