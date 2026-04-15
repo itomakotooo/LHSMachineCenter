@@ -18,6 +18,7 @@ const state = {
   systemState: null,
   timer: null,
   fastTimer: null,
+  autotuneTimer: null,
   // Captured at the moment Start is clicked so the polling code can
   // compute fuzzy-aware progress without re-deriving from API state.
   lastSubmittedFuzzy: false,
@@ -601,7 +602,10 @@ async function runAutoTune() {
     timeout: 45,
     bet: 1000,
   };
-  byId("autotuneMeta").textContent = `machine=${payload.machine} mode=${payload.mode}\nrobots=[${payload.robot_candidates.join(",")}]\nconc=[${payload.concurrency_candidates.join(",")}]`;
+  byId("autotuneMeta").textContent = `machine=${payload.machine} mode=${payload.mode}\nrobots=[${payload.robot_candidates.join(",")}]\nconc=[${payload.concurrency_candidates.join(",")}]\n${fmt("autotuneProgressStarting")}`;
+  // Start a 1s poller against /api/autotune/progress so the user can see
+  // candidate-by-candidate progress while the POST is still in flight.
+  startAutotunePolling();
   try {
     const r = await apiPost("/api/autotune", payload);
     if (r.recommendation?.chunk_robot_count != null) byId("robotInput").value = r.recommendation.chunk_robot_count;
@@ -613,7 +617,32 @@ async function runAutoTune() {
     }
   } finally {
     state.autoTuneRunning = false;
+    stopAutotunePolling();
     updateActionStates();
+  }
+}
+
+function startAutotunePolling() {
+  if (state.autotuneTimer != null) return;
+  const tick = async () => {
+    try {
+      const progress = await apiGet("/api/autotune/progress");
+      // Don't overwrite the final formatted result the POST handler wrote;
+      // only overwrite while the autotune is still in flight on the server.
+      if (progress && (progress.status === "running" || progress.status === "starting")) {
+        const head = byId("autotuneMeta").textContent.split("\n").slice(0, 3).join("\n");
+        byId("autotuneMeta").textContent = `${head}\n${PURE.formatAutotuneProgress(state.lang, progress)}`;
+      }
+    } catch (_e) { /* keep polling silently on transient errors */ }
+  };
+  tick();  // first tick immediately so user sees state quickly
+  state.autotuneTimer = setInterval(tick, 1000);
+}
+
+function stopAutotunePolling() {
+  if (state.autotuneTimer != null) {
+    clearInterval(state.autotuneTimer);
+    state.autotuneTimer = null;
   }
 }
 

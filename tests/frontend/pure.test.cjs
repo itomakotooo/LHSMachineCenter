@@ -350,6 +350,61 @@ test("computeRunProgressPct: null event -> 0", () => {
   assert.equal(PURE.computeRunProgressPct(null, { maxChunks: 120 }), 0);
 });
 
+// ---------- formatAutotuneProgress ----------
+
+test("formatAutotuneProgress: idle status -> localized 'no autotune yet'", () => {
+  assert.equal(PURE.formatAutotuneProgress("en", { status: "idle" }), "no autotune yet");
+  assert.equal(PURE.formatAutotuneProgress("zh", { status: "idle" }), "未发起压测");
+});
+
+test("formatAutotuneProgress: running with no candidates yet -> 'starting'", () => {
+  assert.equal(
+    PURE.formatAutotuneProgress("en", { status: "running", total_candidates: 0 }),
+    "autotune starting..."
+  );
+});
+
+test("formatAutotuneProgress: running mid-flight shows X/Y + percent + last result", () => {
+  const out = PURE.formatAutotuneProgress("en", {
+    status: "running",
+    total_candidates: 20,
+    completed_candidates: 7,
+    last_result: {
+      robot_count: 16,
+      batch_concurrency: 2,
+      success_rate: 0.96,
+      throughput_spins_per_sec: 4200.5,
+      p95_latency_s: 0.553,
+    },
+  });
+  assert.ok(out.includes("7/20"), out);
+  assert.ok(out.includes("35%"), out);  // 7/20 = 35%
+  assert.ok(out.includes("robot=16"));
+  assert.ok(out.includes("96.0%"));
+  assert.ok(out.includes("4201"));  // 4200.5 -> toFixed(0) = "4201"
+  assert.ok(out.includes("0.553"));
+});
+
+test("formatAutotuneProgress: completed status uses 'completed' template", () => {
+  const out = PURE.formatAutotuneProgress("en", {
+    status: "completed",
+    total_candidates: 20,
+    completed_candidates: 20,
+  });
+  assert.ok(out.includes("completed"));
+  assert.ok(out.includes("20"));
+});
+
+test("formatAutotuneProgress: error status surfaces partial count", () => {
+  const out = PURE.formatAutotuneProgress("en", {
+    status: "error",
+    total_candidates: 20,
+    completed_candidates: 5,
+  });
+  assert.ok(out.includes("error"));
+  assert.ok(out.includes("5/20"));
+});
+
 // ---------- formatRunFailureNote ----------
 
 test("formatRunFailureNote: empty error falls back to localized note (zh)", () => {

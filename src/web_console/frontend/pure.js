@@ -67,6 +67,12 @@ const I18N = {
     runEventCompletedFuzzy: "已完成 · 总 spins={spins} · RTP={rtp}% · {sec}s（模糊档）",
     runEventFailed: "失败: {reason}",
     runSubmittedPlaceholder: "已提交，等待 analyzer 启动...",
+    autotuneProgressIdle: "未发起压测",
+    autotuneProgressStarting: "压测启动中...",
+    autotuneProgressLine1: "进度 {done}/{total} 候选完成 · {pctText}",
+    autotuneProgressLast: "最近: robot={rc} conc={cc} 成功率={sr} 吞吐={tp} sps p95={p95}s",
+    autotuneProgressDone: "已完成 · 共测 {total} 候选",
+    autotuneProgressError: "出错 · 已测 {done}/{total} 候选",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
     labelConcurrency: "批并发数",
@@ -235,6 +241,12 @@ const I18N = {
     runEventCompletedFuzzy: "completed · spins={spins} · RTP={rtp}% · {sec}s (fuzzy)",
     runEventFailed: "failed: {reason}",
     runSubmittedPlaceholder: "submitted, waiting for analyzer to spawn...",
+    autotuneProgressIdle: "no autotune yet",
+    autotuneProgressStarting: "autotune starting...",
+    autotuneProgressLine1: "{done}/{total} candidates done · {pctText}",
+    autotuneProgressLast: "last: robot={rc} conc={cc} success={sr} throughput={tp} sps p95={p95}s",
+    autotuneProgressDone: "completed · {total} candidates tested",
+    autotuneProgressError: "error · {done}/{total} candidates tested",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
     labelConcurrency: "Batch Concurrency",
@@ -525,6 +537,44 @@ function computeRunProgressPct(latestEvent, opts) {
   return Math.max(0, Math.min(100, (idx / maxChunks) * 100));
 }
 
+// Multi-line readable autotune progress for the autotuneMeta panel.
+// Input is the dict returned by GET /api/autotune/progress.
+function formatAutotuneProgress(lang, progress) {
+  const p = progress || {};
+  const status = String(p.status || "idle");
+  const done = Number(p.completed_candidates || 0);
+  const total = Number(p.total_candidates || 0);
+  if (status === "idle") return fmt(lang, "autotuneProgressIdle");
+  if (status === "running" && total === 0) return fmt(lang, "autotuneProgressStarting");
+  const pctText = total > 0 ? `${((done / total) * 100).toFixed(0)}%` : "?";
+  const lines = [];
+  if (status === "completed") {
+    lines.push(fmt(lang, "autotuneProgressDone", { total }));
+  } else if (status === "error") {
+    lines.push(fmt(lang, "autotuneProgressError", { done, total }));
+  } else {
+    lines.push(fmt(lang, "autotuneProgressLine1", { done, total, pctText }));
+  }
+  const last = p.last_result;
+  if (last) {
+    const sr = last.success_rate != null ? `${(Number(last.success_rate) * 100).toFixed(1)}%` : "?";
+    const tp = last.throughput_spins_per_sec != null
+      ? Number(last.throughput_spins_per_sec).toFixed(0)
+      : "?";
+    const p95 = last.p95_latency_s != null ? Number(last.p95_latency_s).toFixed(3) : "?";
+    lines.push(
+      fmt(lang, "autotuneProgressLast", {
+        rc: last.robot_count != null ? last.robot_count : "?",
+        cc: last.batch_concurrency != null ? last.batch_concurrency : "?",
+        sr,
+        tp,
+        p95,
+      })
+    );
+  }
+  return lines.join("\n");
+}
+
 // Build a readable failure note for runMeta. The backend now always puts
 // at least `analyzer exit_code=N | summary missing: ... | report missing: ...`
 // into error_message; the fallback covers older rows or the corner case
@@ -621,6 +671,7 @@ const PURE = {
   formatRunFailureNote,
   summarizeRunEvent,
   computeRunProgressPct,
+  formatAutotuneProgress,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;
