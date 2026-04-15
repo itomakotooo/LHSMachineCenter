@@ -765,6 +765,16 @@ def run_sampling_chunk(
     chunk_collect_count_total = 0  # sum of max CollectCount across robots
     chunk_acc_credits_max = 0      # peak AccCredits seen this chunk
     chunk_collect_seen = 0         # robots whose rounds carried the fields
+    # Trunk-clamp tracking: how many paid spins had elapsed in each robot
+    # since its last collect-trigger when the chunk's SpinTimes ran out.
+    # If chunks routinely end with substantial pending paid spins past
+    # the average collect interval, the upstream collect bonus that those
+    # spins would have eventually triggered never fires inside the
+    # sample, and observed RTP under-reports the true RTP. We surface
+    # these raw signals (no fabricated lost_pp number) so the operator
+    # can decide whether to widen chunk_spin_times.
+    chunk_clamp_pending_paid_spins = 0  # sum across robots
+    chunk_clamp_pending_robots = 0      # robots with pending > 0
 
     # Per-payline winning-symbol inference. The API returns
     # PayoutByPayline (which line ids paid) and StopSymbolsByCol (the
@@ -859,6 +869,15 @@ def run_sampling_chunk(
         robot_max_collect_count = 0
         robot_max_acc_credits = 0
         robot_collect_observed = False
+        # Trunk-clamp tracking per robot: walk the CollectCount sequence
+        # in order; remember the paid-spin index of the last collect
+        # transition. After the loop, the difference between the final
+        # paid-spin index and that pointer is "paid spins waiting on the
+        # next collect trigger" -- the size of the cycle that didn't
+        # close before SpinTimes ran out.
+        robot_paid_spin_idx = 0
+        robot_last_collect_paid_idx = 0
+        robot_prev_collect_count = 0
         # Reset session-level streak state at robot boundary (streaks
         # don't cross robots -- each is an independent player trajectory).
         sess_state["cur_loss_streak"] = 0
@@ -985,6 +1004,15 @@ def run_sampling_chunk(
                 ac_int = 0
             if cc_int > robot_max_collect_count:
                 robot_max_collect_count = cc_int
+            # Trunk-clamp pointer: every time CollectCount ticks up, mark
+            # the paid-spin index where it happened. Only paid spins
+            # advance the cycle counter (bonus spins ride on the
+            # currently-open paid session).
+            if is_paid:
+                robot_paid_spin_idx += 1
+            if cc_int > robot_prev_collect_count:
+                robot_last_collect_paid_idx = robot_paid_spin_idx
+                robot_prev_collect_count = cc_int
             if ac_int > robot_max_acc_credits:
                 robot_max_acc_credits = ac_int
 
@@ -1064,6 +1092,14 @@ def run_sampling_chunk(
             chunk_acc_credits_max = robot_max_acc_credits
         if robot_collect_observed:
             chunk_collect_seen += 1
+            # Trunk-clamp pending: paid spins that happened after this
+            # robot's last collect-trigger but before SpinTimes ran out.
+            # 0 means the chunk ended right on a fresh collect (no
+            # pending cycle); >0 means an in-progress cycle was clipped.
+            pending = robot_paid_spin_idx - robot_last_collect_paid_idx
+            if pending > 0:
+                chunk_clamp_pending_paid_spins += pending
+                chunk_clamp_pending_robots += 1
 
     if chunk_spins <= 0 or chunk_bet <= 0:
         return {"ok": False, "index": chunk_index, "error": "parse_failed_zero_chunk"}
@@ -1114,6 +1150,11 @@ def run_sampling_chunk(
         "collect_count_total": chunk_collect_count_total,
         "acc_credits_max": chunk_acc_credits_max,
         "collect_robots_seen": chunk_collect_seen,
+        # Trunk-clamp signals (only meaningful when collect mechanic is
+        # active for the machine). pending_paid_spins = sum across robots
+        # of paid spins waiting on the next collect at chunk-end.
+        "clamp_pending_paid_spins": chunk_clamp_pending_paid_spins,
+        "clamp_pending_robots": chunk_clamp_pending_robots,
         # --- Session-level counters (see session refactor commit). Summary
         #     derives hit_and_payout / multiplier_profile / streaks /
         #     volatility from these so bonus wins attribute back to the
@@ -1297,6 +1338,8 @@ def main() -> int:
     collect_count_total = 0
     acc_credits_max_global = 0
     collect_robots_seen_total = 0
+    clamp_pending_paid_spins_total = 0
+    clamp_pending_robots_total = 0
 
     lack_credit_spins = 0
     chunks = 0
@@ -1439,6 +1482,9 @@ def main() -> int:
             if chunk_acc_max > acc_credits_max_global:
                 acc_credits_max_global = chunk_acc_max
             collect_robots_seen_total += int(rec.get("collect_robots_seen", 0) or 0)
+            # Trunk-clamp totals.
+            clamp_pending_paid_spins_total += int(rec.get("clamp_pending_paid_spins", 0) or 0)
+            clamp_pending_robots_total += int(rec.get("clamp_pending_robots", 0) or 0)
 
             # Session-level totals (session refactor commit). Older chunk
             # records (pre-feature) silently add 0 via .get() fallback.
@@ -2038,6 +2084,46 @@ def main() -> int:
                 if collect_count_total > 0
                 else None
             ),
+            # Trunk-clamp warning. When chunk_spin_times truncates the
+            # robot's run mid-cycle (paid spins accumulated past the
+            # last collect-trigger but the next one never fires before
+            # SpinTimes runs out), the bonus that those pending paid
+            # spins would have eventually triggered is missing from the
+            # sample -- observed RTP under-reports the true RTP. We
+            # surface the raw signals (pending counts + avg paid spins
+            # per collect) instead of fabricating a lost_pp number,
+            # because the bonus payout per collect varies a lot per
+            # machine and a heuristic estimate gives false confidence.
+            # Operator interpretation: if pending_robots is large and
+            # pending_paid_spins / paid_spins is non-trivial, widen
+            # chunk_spin_times and rerun.
+            "clamp_warning": {
+                "applicable": (
+                    collect_robots_seen_total > 0
+                    and clamp_pending_robots_total > 0
+                ),
+                "pending_robots": clamp_pending_robots_total,
+                "total_pending_paid_spins": clamp_pending_paid_spins_total,
+                "pending_share_of_paid_spins": (
+                    (clamp_pending_paid_spins_total / total_paid_sessions)
+                    if total_paid_sessions > 0
+                    else None
+                ),
+                "avg_paid_spins_per_collect": (
+                    (total_paid_sessions / collect_count_total)
+                    if collect_count_total > 0
+                    else None
+                ),
+                "note": (
+                    "Pending paid spins were accumulating toward the next collect "
+                    "trigger when chunk_spin_times ran out; the bonus those spins "
+                    "would have triggered isn't in the sample. If this is a large "
+                    "fraction of total paid spins, widen chunk_spin_times and "
+                    "rerun to get a tighter RTP estimate."
+                ) if (
+                    collect_robots_seen_total > 0 and clamp_pending_robots_total > 0
+                ) else None,
+            },
         },
         "guideline_assessment": {
             "guideline": "classic_slots_report_guideline_v1",

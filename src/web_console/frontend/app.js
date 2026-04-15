@@ -467,6 +467,28 @@ function renderPaylineDrilldown(summary) {
     .join("");
 }
 
+function renderRtpClampWarning(summary) {
+  // Show the operator a heads-up when the analyzer detected truncated
+  // collect cycles in the sample (chunk_spin_times ran out before the
+  // next collect bonus could trigger). Hidden when the machine has no
+  // collect mechanic or when no robots ended mid-cycle.
+  const el = byId("rtpClampWarning");
+  if (!el) return;
+  const cw = ((summary || {}).collect_mechanic || {}).clamp_warning || {};
+  if (!cw.applicable) {
+    el.classList.add("hidden");
+    el.textContent = "";
+    return;
+  }
+  const avg = cw.avg_paid_spins_per_collect;
+  el.textContent = fmt("rtpClampWarning", {
+    robots: cw.pending_robots || 0,
+    pending: cw.total_pending_paid_spins || 0,
+    avg: typeof avg === "number" ? avg.toFixed(1) : "?",
+  });
+  el.classList.remove("hidden");
+}
+
 function renderSpinTypeBreakdown(summary) {
   // Reads spin_type_breakdown (analyzer commit). Empty for older
   // reports that pre-date the field; renders a single empty-state row
@@ -747,6 +769,7 @@ async function refreshCurrentRun() {
     state.bucketChart.data.labels = buckets.map((b) => PURE.prettyBucketLabel(b.bucket));
     state.bucketChart.data.datasets[0].data = buckets.map((b) => (Number(b.spin_rate) <= 1 ? Number(b.spin_rate) * 100 : Number(b.spin_rate)));
     state.bucketChart.update();
+    renderRtpClampWarning(s);
     renderSpinTypeBreakdown(s);
     renderPaylineDrilldown(s);
     renderPayoutGroupDrilldown(s);

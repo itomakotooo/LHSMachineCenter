@@ -795,6 +795,78 @@ def test_run_sampling_chunk_collect_mechanic_multi_robot_sums(patch_post_json):
     assert rec["collect_robots_seen"] == 2
 
 
+def test_run_sampling_chunk_clamp_pending_zero_when_no_collect(patch_post_json):
+    """Robot has no collect mechanic -> clamp pending counters stay at 0."""
+    rounds = [_full_round(WinCredits=0, CostCredits=1000, BetAmount=1000) for _ in range(3)]
+    for r in rounds:
+        r.pop("CollectCount", None)
+        r.pop("AccCredits", None)
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=3)
+    assert rec["clamp_pending_paid_spins"] == 0
+    assert rec["clamp_pending_robots"] == 0
+
+
+def test_run_sampling_chunk_clamp_pending_full_cycle_no_pending(patch_post_json):
+    """Robot's last paid spin coincided with a collect trigger ->
+    pending = 0 (cycle closed cleanly at chunk end)."""
+    rounds = [
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=1, AccCredits=100),
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=2, AccCredits=200),
+        # Last paid spin: CollectCount went up, so cycle closed here.
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=3, AccCredits=300),
+    ]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=3)
+    # After 3 paid spins with CollectCount ticking 1->2->3 each spin,
+    # the last collect trigger fired on paid_spin_idx=3, so pending=0.
+    assert rec["clamp_pending_paid_spins"] == 0
+    assert rec["clamp_pending_robots"] == 0
+
+
+def test_run_sampling_chunk_clamp_pending_truncated_mid_cycle(patch_post_json):
+    """Robot accumulated 3 paid spins toward the next collect trigger
+    after the last one fired -> pending = 3, robot flagged."""
+    rounds = [
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=1, AccCredits=100),
+        # Next 3 paid spins with CollectCount stuck at 1 -> mid-cycle
+        # accumulation that the chunk truncated.
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=1, AccCredits=200),
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=1, AccCredits=300),
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=1, AccCredits=400),
+    ]
+    patch_post_json(_stub_chunk_resp(rounds))
+    rec = _run(spin_times=4)
+    # paid_spin_idx ends at 4; last collect trigger was at idx=1 so
+    # pending = 4 - 1 = 3.
+    assert rec["clamp_pending_paid_spins"] == 3
+    assert rec["clamp_pending_robots"] == 1
+
+
+def test_run_sampling_chunk_clamp_pending_multi_robot_sums(patch_post_json):
+    """Two robots, both clipped mid-cycle with different pending counts
+    -> chunk-level totals sum across robots."""
+    # Robot A: pending=2 (1 collect at idx 1, 3 paid total)
+    rounds_a = [
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=1),
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=1),
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=1),
+    ]
+    # Robot B: pending=0 (collect tick on the last spin)
+    rounds_b = [
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=1),
+        _full_round(WinCredits=0, CostCredits=1000, BetAmount=1000, CollectCount=2),
+    ]
+    patch_post_json([
+        {"roundResult": json.dumps(rounds_a)},
+        {"roundResult": json.dumps(rounds_b)},
+    ])
+    rec = _run(spin_times=5)
+    # Only robot A contributed pending.
+    assert rec["clamp_pending_paid_spins"] == 2
+    assert rec["clamp_pending_robots"] == 1
+
+
 def test_run_sampling_chunk_collect_mechanic_garbage_values_safe(patch_post_json):
     """Non-numeric CollectCount / AccCredits coerce to 0, no crash."""
     rounds = [_full_round(WinCredits=0, CollectCount="weird", AccCredits=None)]

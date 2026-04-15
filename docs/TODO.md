@@ -199,6 +199,31 @@ This file tracks executable next steps for the current phase.
       Interpretation prompt subset includes all four blocks plus
       the reference thresholds.
 
+- [x] Paid-session refactor (per user feedback): hit_rate / RTP /
+      multiplier bucket / streaks / volatility all switched from
+      per-spin to per-paid-session math. Bonus / free-spin wins
+      attribute back to the paid spin that triggered them, so hit
+      rate isn't diluted by bonus chains. rtp.point_pct denominator
+      switched to session_bet_sum (paid bet only) -- the old
+      total_bet was also adding BetAmount for bonus spins, which the
+      player doesn't actually pay. On bonus-heavy machines (M272
+      mode 2: 46% bonus rounds) true RTP recovered from ~286% (under-
+      reported) to ~563%. sampling.paid_spins + sampling.bonus_spins
+      added so the split is visible. 5 new analyzer test cases lock
+      session-tracking semantics.
+- [x] Trunk-clamp warning: collect_mechanic.clamp_warning surfaces
+      raw signals when chunks ran out of SpinTimes mid-collect-cycle
+      (pending_robots, total_pending_paid_spins,
+      pending_share_of_paid_spins, avg_paid_spins_per_collect). Does
+      NOT fabricate an "estimated lost RTP pp" -- per-machine
+      collect bonus varies too much for a single heuristic. Frontend
+      interpretation panel renders a warning via #rtpClampWarning
+      when applicable=true. 4 new analyzer test cases.
+- [x] Defensive os._exit(rc) at analyzer main exit so any worker
+      thread stuck in a slow socket read can't keep the process
+      alive (defense against the orphan-process leak the user
+      reported with 3 stuck CLI probes from upstream-trickle).
+
 ## Work Mode
 
 - Keep report generation deterministic and script-driven.

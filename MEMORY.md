@@ -120,6 +120,37 @@ This section is for execution efficiency and can be updated as long as section A
      failure detail lives inside the runMeta panel; backend always
      persists a structured error_message that includes exit_code +
      missing artefacts.
+19b. Paid-session refactor (M272 collect-mechanic insight + RTP fix):
+   - "Paid session" = paid spin (CostCredits > 0) + any bonus /
+     free-spins it triggers, until the next paid spin or end of
+     robot's rounds. Legacy machines without CostCredits default
+     to is_paid=True (every round = its own session).
+   - hit_and_payout, multiplier_profile.buckets, streaks, and
+     volatility all derive from session-level counters now. Bonus
+     wins attribute to the session that triggered them; bonus rounds
+     don't dilute hit_rate / zero_win_rate.
+   - rtp.point_pct uses session_bet_sum (paid bet only) -- the old
+     total_bet also added BetAmount for bonus spins, which the player
+     doesn't pay; on bonus-heavy machines (M272 mode 2: 46% bonus
+     rounds) this had been under-reporting RTP by ~2x (286% vs 563%
+     true).
+   - sampling.paid_spins + sampling.bonus_spins added so the
+     paid/bonus split is visible. total_spins still records the
+     round-count for sample-size gates.
+   - collect_mechanic.clamp_warning flags chunks where SpinTimes
+     ran out mid-collect-cycle (paid spins accumulated past the
+     last collect trigger but the next one didn't fire). Reports
+     raw signals (pending_robots, total_pending_paid_spins,
+     pending_share_of_paid_spins, avg_paid_spins_per_collect) +
+     a note string; deliberately does NOT fabricate an
+     "estimated lost RTP pp" because per-collect bonus payout
+     varies too much per machine for a heuristic to be honest.
+     Frontend renders the warning via #rtpClampWarning when
+     clamp_warning.applicable=true.
+   - main() force-exits via os._exit(rc) after stdout/stderr flush
+     so any worker thread stuck in a slow socket read can't keep
+     the process alive past main return (defensive after observing
+     orphaned analyzer processes from upstream-trickle scenarios).
 19a. Round-level surfaces in summary.player_impact (added after the
    M14+M272 field investigation):
    - payout_ids_top20: PayoutIdToWinAmount aggregated as

@@ -218,6 +218,12 @@
                assessment and the raw events log. -->
           <section class="panel interpretation">
             <h2 data-i18n="panelInterpretation">模型解读</h2>
+            <!-- Trunk-clamp warning: filled by app.js when the latest
+                 summary's collect_mechanic.clamp_warning.applicable is
+                 true. Tells the operator that chunk_spin_times truncated
+                 some collect cycles, so observed RTP is likely a
+                 lower bound. -->
+            <div id="rtpClampWarning" class="warnBox hidden"></div>
             <div class="actions">
               <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
             </div>

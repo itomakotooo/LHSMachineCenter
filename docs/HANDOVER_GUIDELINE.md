@@ -381,6 +381,51 @@ build_interpretation_prompt`) carries all four so the LLM can
 comment on payout-id hotspots, bonus contribution, server sanity,
 and collect mechanic where applicable.
 
+## 13c. Paid-session metrics + trunk-clamp warning
+
+After the M272 round-level investigation surfaced two follow-up
+items, the analyzer was refactored from per-spin to per-paid-session
+metrics:
+
+- A "paid session" is a paid spin (CostCredits > 0) plus any
+  bonus / free spins it triggers, until the next paid spin or the
+  end of the robot's rounds. is_paid defaults to True when
+  CostCredits is missing so legacy machines without that field
+  behave like the pre-refactor (every round = a session).
+- Summary's `hit_and_payout` (win_hit_rate, zero_win_rate,
+  profit_spin_rate, breakeven_or_more_rate, big_win_x10_rate,
+  avg_win_when_hit_x), `multiplier_profile.buckets`, `streaks`
+  (loss/win streak quantiles + max), and `volatility` (avg/std/max
+  return_x, return_bucket_rate) all read from session-level
+  counters now. Bonus chains attribute their wins back to the
+  session that triggered them.
+- `rtp.point_pct` denominator switched to session_bet_sum (paid
+  bet only). The old total_bet also added BetAmount for bonus
+  spins -- on bonus-heavy machines (M272 mode 2: 46% bonus rounds)
+  this dragged true RTP from ~563% down to ~286%.
+- `sampling.paid_spins` + `sampling.bonus_spins` added so the
+  paid/bonus split is visible. `total_spins` still records the full
+  round count for sample-size gates.
+- `collect_mechanic.clamp_warning` flags chunks that ran out of
+  SpinTimes mid-collect-cycle: paid spins accumulated past the
+  last collect trigger but the next one never fires inside the
+  sample. We surface raw signals (pending_robots,
+  total_pending_paid_spins, pending_share_of_paid_spins,
+  avg_paid_spins_per_collect) instead of fabricating an
+  estimated lost RTP -- per-collect bonus payout varies too much
+  per machine for a heuristic to be honest.
+
+The frontend's interpretation panel renders the warning text via
+`#rtpClampWarning` (pure helper i18n key `rtpClampWarning`) when
+`clamp_warning.applicable` is true. The interpretation prompt
+subset already passes the full collect_mechanic block to the LLM.
+
+When adding a new machine with a different collect mechanic, no
+analyzer change is needed -- CollectCount + AccCredits suffice.
+If the machine uses a different field name, surface it via a small
+extension to the collect tracking block (see commit history) so
+clamp_warning continues to fire for truncated-cycle chunks.
+
 ## 14. Troubleshooting
 
 - **`scripts/lint.ps1` fails on `check_no_global_state.py`**: somebody
