@@ -15,6 +15,8 @@ Goals
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from fresh_slotlab import player_impact_analyzer as ana
@@ -238,6 +240,57 @@ def test_run_sampling_chunk_empty_response(patch_post_json):
     rec = _run(spin_times=1)
     assert rec["ok"] is False
     assert rec["error"] == "parse_failed_empty_response"
+
+
+# ---------- top-level shape catches ----------
+
+
+def test_run_sampling_chunk_top_level_dict_response(patch_post_json):
+    """Some upstream machines could return a single robot dict instead of
+    a list-of-robots envelope. We don't silently accept it -- we want a
+    descriptive error so the operator can ask for support to be added."""
+    patch_post_json({"roundResult": "[]", "analysisResult": "..."})
+    rec = _run(spin_times=1)
+    assert rec["ok"] is False
+    assert rec["error"].startswith("response_shape_unexpected:expected_list")
+    # The dict's keys are echoed so the operator can see what we actually got.
+    assert "roundResult" in rec["error"]
+    assert "analysisResult" in rec["error"]
+
+
+def test_run_sampling_chunk_top_level_string_response(patch_post_json):
+    """If the upstream returns a string (e.g. error body that wasn't
+    parsed), report the type instead of crashing on iteration."""
+    patch_post_json("Internal Server Error")
+    rec = _run(spin_times=1)
+    assert rec["ok"] is False
+    assert rec["error"].startswith("response_shape_unexpected:expected_list")
+    assert "got_type=str" in rec["error"]
+
+
+def test_run_sampling_chunk_list_of_strings(patch_post_json):
+    """A list of non-dict items (some malformed envelope) must also be
+    caught -- the parsing loop's `for robot in resp` would otherwise
+    iterate strings and skip everything, producing parse_failed_zero_chunk
+    without telling the operator the real shape problem."""
+    patch_post_json(["robot1", "robot2"])
+    rec = _run(spin_times=1)
+    assert rec["ok"] is False
+    assert rec["error"].startswith("response_shape_unexpected:expected_robot_dicts")
+    assert "str" in rec["error"]
+
+
+def test_run_sampling_chunk_list_with_one_dict_passes(patch_post_json):
+    """A list with at least one robot dict goes through normally even
+    if the rest are non-dicts (defensive against partial corruption).
+    The non-dict items are skipped by the existing isinstance check."""
+    patch_post_json([{"roundResult": json.dumps([_full_round(WinCredits=5,
+                                                              PayoutByPayline="1:5",
+                                                              PayoutGroupId=1)])},
+                     "garbage"])
+    rec = _run(spin_times=1)
+    assert rec["ok"] is True
+    assert rec["spins"] == 1
 
 
 def test_run_sampling_chunk_zero_chunk_failure(patch_post_json):

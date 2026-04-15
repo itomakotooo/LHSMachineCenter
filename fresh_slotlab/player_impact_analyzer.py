@@ -592,8 +592,33 @@ def run_sampling_chunk(
             "error": f"request_failed_{exc.__class__.__name__}",
         }
 
-    if not isinstance(resp, list) or not resp:
+    # Top-level shape sanity. Different machines can return slightly
+    # different envelopes (M14 returns list-of-robots, exploratory probes
+    # of new machines have surfaced single-dict variants). Catch and
+    # report explicitly so the operator can ask us to add support for the
+    # new shape rather than seeing silent all-zero data. The downstream
+    # code path assumes resp is a non-empty list of robot dicts.
+    if not isinstance(resp, list):
+        sample_keys = list(resp.keys())[:6] if isinstance(resp, dict) else None
+        detail = (
+            f"got_dict_keys={sample_keys}"
+            if sample_keys is not None
+            else f"got_type={type(resp).__name__}"
+        )
+        return {
+            "ok": False,
+            "index": chunk_index,
+            "error": f"response_shape_unexpected:expected_list:{detail}",
+        }
+    if not resp:
         return {"ok": False, "index": chunk_index, "error": "parse_failed_empty_response"}
+    if not any(isinstance(robot, dict) for robot in resp):
+        item_types = sorted({type(item).__name__ for item in resp[:5]})
+        return {
+            "ok": False,
+            "index": chunk_index,
+            "error": f"response_shape_unexpected:expected_robot_dicts:item_types={item_types}",
+        }
 
     # Schema sanity check on the first non-empty round. Without this, an
     # upstream field rename (e.g. WinCredits -> winCredits) would slip

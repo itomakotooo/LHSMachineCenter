@@ -160,6 +160,24 @@ This file tracks executable next steps for the current phase.
       raw jsonl events are low-readability and only consulted when
       something looks off; assessment + drilldowns get screen
       priority).
+- [x] M272 added to machines.json (modes 1, 2, 5, 7). Probed all
+      four modes, response shape is the same list-of-robots envelope
+      M14 uses; round-level schema satisfied (WinCredits +
+      StopSymbolsByCol present). Notes: M272 mode 1 is a collect
+      mechanic (SpinType 140 + 126 bonus re-spins), so round count
+      exceeds SpinTimes by ~10-30%; PayoutByPayline uses a richer
+      `id:mult-count(positions);` format that parse_paylines still
+      reduces to ids correctly. End-to-end smoke run: 1812 spin /
+      RTP=72.4% in 4 seconds.
+- [x] Analyzer top-level shape catch: when upstream returns a non-
+      list (e.g. single-dict envelope, raw error string) or a list
+      with no robot dicts, the chunk now fails with
+      `response_shape_unexpected:...` echoing the offending keys/
+      types, instead of iterating non-dict items and silently
+      producing parse_failed_zero_chunk. Operator can immediately
+      see the shape and ask for the new envelope to be supported.
+      5 new test cases lock dict / string / list-of-strings /
+      partial-corruption paths.
 
 ## Work Mode
 

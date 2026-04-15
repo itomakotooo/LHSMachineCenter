@@ -70,6 +70,17 @@ This section is for execution efficiency and can be updated as long as section A
 14. Console UX default:
    all critical run/model parameters should expose field-level tooltip hints
    (CN/EN synchronized with language switch).
+14a. Machine catalog (configs/machines.json) currently lists:
+   - M14 (modes 1, 2, 5, 7): classic 3-col slot, SpinType=1 only.
+   - M272 (modes 1, 2, 5, 7): collect/bonus mechanic, SpinType=140
+     (main) + 126 (bonus/re-spin); 4 cols of stopped symbols; round
+     count exceeds SpinTimes due to bonus triggers; PayoutByPayline
+     uses a richer "id:multiplier-count(positions);" format that
+     parse_paylines still reduces to id correctly.
+   When adding a new machine, probe it via curl to MultiRobotTestSpin
+   first; any envelope that's not [{roundResult, ...}, ...] will
+   be caught by Layer 1 of the schema check (see #24a) -- update
+   that path or wrap as needed before adding to machines.json.
 15. Cache safety default:
    cache cleanup follows risk-tier confirmation:
    low risk = one confirm; medium/high risk = confirm + `DELETE` token.
@@ -167,8 +178,17 @@ This section is for execution efficiency and can be updated as long as section A
    - Output: each row in summary.player_impact.paylines_top20 carries
      top_symbols [{symbol, count}, ...] (top 5 by frequency). Frontend
      paylines table renders top 3 via PURE.formatPaylineTopSymbols.
-24a. Upstream API schema drift defense:
-   - run_sampling_chunk sanity-checks the first parsed round against
+24a. Upstream API shape + schema drift defense:
+   - Two layers in run_sampling_chunk; both surface as structured
+     error strings in the chunk record's "error" field which the
+     main loop converts to a "failed" event reason and _watch_run
+     puts into error_message.
+   - Layer 1: top-level shape ("response_shape_unexpected:..."):
+     catches dict-envelope-instead-of-list, non-list/non-dict types,
+     and lists where no item is a robot dict. Echoes the offending
+     keys / types so the operator can ask for the new shape to be
+     supported.
+   - Layer 2: round-level schema ("schema_drift_missing_fields:..."):
      _REQUIRED_ROUND_FIELDS = (WinCredits, StopSymbolsByCol). These
      are the only fields that should appear on EVERY spin regardless
      of win/lose state. PayoutByPayline / PayoutGroupId are NOT

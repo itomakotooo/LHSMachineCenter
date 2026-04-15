@@ -301,23 +301,45 @@ panel stack so the cache-cleanup risk-tier e2e fixtures (which
 target `#cacheRefreshBtn` / `#cacheCleanupBtn` and rely on the
 manage tab being a flat panel list) keep working without changes.
 
-## 13a. Upstream API schema drift
+## 13a. Upstream API shape + schema drift
 
-`run_sampling_chunk` now sanity-checks the first parsed round of every
-chunk against `_REQUIRED_ROUND_FIELDS` (`BetAmount`, `WinCredits`,
-`PayoutByPayline`, `StopSymbolsByCol`, `PayoutGroupId`). If the
-upstream test API silently renames or drops one of these, the chunk
-returns
-`{ok: False, error: "schema_drift_missing_fields:WinCredits,..."}`,
-the main loop aborts the run, and `_watch_run` surfaces the field
-list in `error_message` so the operator sees exactly what changed
-instead of debugging an all-zero RTP report.
+`run_sampling_chunk` does two layers of sanity checking on every
+chunk response so that an unfamiliar machine or a silently renamed
+field surfaces as a clear error instead of all-zero metrics. Both
+errors propagate through the main loop's chunk-failure path and
+end up in `_watch_run`'s `error_message`.
 
-If you intentionally add or drop a required field, update both
-`_REQUIRED_ROUND_FIELDS` in `fresh_slotlab/player_impact_analyzer.py`
-AND `tests/backend/test_analyzer_parsing.py::
-test_check_round_schema_required_fields_constant_locked` so the
-contract change is explicit in code review.
+Layer 1 -- top-level shape (`response_shape_unexpected:...`):
+
+- `expected_list:got_dict_keys=[...]`: upstream returned a dict
+  envelope (e.g. `{roundResult, analysisResult}` instead of
+  `[{roundResult, ...}]`). Tells the operator what keys came back
+  so we can decide whether to add a wrapper.
+- `expected_list:got_type=str`: upstream returned a string (often an
+  un-decoded error body). Reports the type for diagnosis.
+- `expected_robot_dicts:item_types=[...]`: top-level was a list but
+  none of its items were dicts (some malformed envelope). Reports
+  what types we did see.
+
+A list with at least one robot dict goes through; non-dict items
+mixed in are skipped silently as before so the chunk still completes.
+
+Layer 2 -- round-level schema (`schema_drift_missing_fields:...`):
+
+- `_REQUIRED_ROUND_FIELDS = (WinCredits, StopSymbolsByCol)`: every
+  spin must carry these regardless of win state.
+- `BetAmount` is checked via union with `CostCredits` -- at least
+  one must exist (analyzer's documented fallback chain).
+- `PayoutByPayline` / `PayoutGroupId` are NOT strict-checked because
+  lose / no-payout spins legitimately omit them (the very first spin
+  of most chunks is statistically a lose spin).
+
+When you add support for a new machine and find its response shape
+differs (different envelope, extra wrapping, etc.), update the
+shape catch + add a fixture under `tests/backend/test_analyzer_parsing.py`.
+If you expand `_REQUIRED_ROUND_FIELDS`, also update
+`test_check_round_schema_required_fields_constant_locked` so the
+contract change shows up in code review.
 
 ## 14. Troubleshooting
 
