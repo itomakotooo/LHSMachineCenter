@@ -350,6 +350,34 @@ test("computeRunProgressPct: null event -> 0", () => {
   assert.equal(PURE.computeRunProgressPct(null, { maxChunks: 120 }), 0);
 });
 
+// ---------- formatPayoutGroupRows ----------
+
+test("formatPayoutGroupRows: empty -> []", () => {
+  assert.deepStrictEqual(PURE.formatPayoutGroupRows({}), []);
+});
+
+test("formatPayoutGroupRows: sorts by rtp contribution desc, group 0 kept", () => {
+  const s = {
+    player_impact: {
+      payout_groups_top20: [
+        { group_id: 0, hit_count: 1500, hit_rate: 0.75, total_win: 0, avg_win_when_hit_x: 0, rtp_contribution_pp: 0 },
+        { group_id: 7, hit_count: 200, hit_rate: 0.10, total_win: 50000, avg_win_when_hit_x: 2.5, rtp_contribution_pp: 25.0 },
+        { group_id: 3, hit_count: 100, hit_rate: 0.05, total_win: 80000, avg_win_when_hit_x: 8.0, rtp_contribution_pp: 40.0 },
+      ],
+    },
+  };
+  const rows = PURE.formatPayoutGroupRows(s);
+  assert.equal(rows.length, 3);
+  // Sorted by rtp_contribution_pp desc -> 3, 7, 0
+  assert.deepStrictEqual(
+    rows.map((r) => r.group_id),
+    [3, 7, 0]
+  );
+  assert.equal(rows[0].rtp_contribution_pp, 40.0);
+  assert.equal(rows[0].hit_rate_pct, 5);
+  assert.equal(rows[2].avg_win_when_hit_x, 0);
+});
+
 // ---------- formatSymbolRows + symbolByColMatrix ----------
 
 test("formatSymbolRows: empty -> []", () => {

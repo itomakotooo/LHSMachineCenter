@@ -644,3 +644,11 @@ table.drilldown-table .bar-cell::after {
   color: var(--muted);
   font-weight: 600;
 }
+
+/* Hint paragraph above a drilldown table (e.g. "Group 0 = no payout..."). */
+.drilldown-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}

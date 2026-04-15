@@ -307,6 +307,32 @@ function renderRunHistory() {
   });
 }
 
+function renderPayoutGroupDrilldown(summary) {
+  const tbody = byId("payoutGroupTable") && byId("payoutGroupTable").querySelector("tbody");
+  if (!tbody) return;
+  const rows = PURE.formatPayoutGroupRows(summary);
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5">${fmt("payoutGroupEmpty")}</td></tr>`;
+    return;
+  }
+  const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
+  tbody.innerHTML = rows
+    .map((r) => {
+      const bar = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
+      const winX = r.group_id === 0 ? "—" : r.avg_win_when_hit_x.toFixed(2);
+      return (
+        `<tr>` +
+        `<td>${r.group_id}</td>` +
+        `<td>${fInt(r.hit_count)}</td>` +
+        `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
+        `<td>${winX}</td>` +
+        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(4)}</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+}
+
 function renderSymbolDrilldown(summary) {
   // Overall top-20
   const overallTbody = byId("symbolOverallTable") && byId("symbolOverallTable").querySelector("tbody");
@@ -641,6 +667,7 @@ async function refreshCurrentRun() {
     state.bankChart.data.datasets[0].data = bank.map((b) => (Number(b.bankruptcy_rate) <= 1 ? Number(b.bankruptcy_rate) * 100 : Number(b.bankruptcy_rate)));
     state.bankChart.update();
     renderPaylineDrilldown(s);
+    renderPayoutGroupDrilldown(s);
     renderSymbolDrilldown(s);
     await refreshVersions();
     await refreshInterpretation();

@@ -94,6 +94,11 @@ const I18N = {
     thRate: "占比",
     symbolsEmpty: "暂无符号数据。",
     symbolColLabel: "列 {idx}",
+    panelPayoutGroups: "Pay ID 深度（PayoutGroupId Top 20）",
+    thGroupId: "Group ID",
+    thAvgWinX: "命中均赢(x)",
+    payoutGroupEmpty: "暂无 PayoutGroupId 数据。",
+    payoutGroupZeroHint: "Group 0 = 未中奖，仅展示作对照。",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
     labelConcurrency: "批并发数",
@@ -289,6 +294,11 @@ const I18N = {
     thRate: "Rate",
     symbolsEmpty: "No symbol data yet.",
     symbolColLabel: "Col {idx}",
+    panelPayoutGroups: "Pay ID Drilldown (PayoutGroupId Top 20)",
+    thGroupId: "Group ID",
+    thAvgWinX: "Avg Win when Hit (x)",
+    payoutGroupEmpty: "No PayoutGroupId data yet.",
+    payoutGroupZeroHint: "Group 0 = no payout; shown for reference only.",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
     labelConcurrency: "Batch Concurrency",
@@ -579,6 +589,25 @@ function computeRunProgressPct(latestEvent, opts) {
   return Math.max(0, Math.min(100, (idx / maxChunks) * 100));
 }
 
+// Format payout_groups_top20 (added by analyzer commit 9). Sorts by
+// rtp_contribution_pp descending so the most impactful pay groups
+// appear first; group_id 0 is kept in the list (it always carries the
+// non-winning spins and is useful as a reference baseline).
+function formatPayoutGroupRows(summary) {
+  const rows = ((summary || {}).player_impact || {}).payout_groups_top20 || [];
+  const ranked = [...rows].sort(
+    (a, b) =>
+      Number(b.rtp_contribution_pp || 0) - Number(a.rtp_contribution_pp || 0)
+  );
+  return ranked.map((r) => ({
+    group_id: Number(r.group_id != null ? r.group_id : 0),
+    hit_count: Number(r.hit_count || 0),
+    hit_rate_pct: Number(r.hit_rate || 0) * 100,
+    avg_win_when_hit_x: Number(r.avg_win_when_hit_x || 0),
+    rtp_contribution_pp: Number(r.rtp_contribution_pp || 0),
+  }));
+}
+
 // Format the overall symbols_top20 table. Returns rows ready for <td>.
 function formatSymbolRows(summary) {
   const rows = ((summary || {}).player_impact || {}).symbols_top20 || [];
@@ -843,6 +872,7 @@ const PURE = {
   formatPaylineRows,
   formatSymbolRows,
   symbolByColMatrix,
+  formatPayoutGroupRows,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;
