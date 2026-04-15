@@ -1065,6 +1065,40 @@ class RunManager:
         code = proc.returncode
 
         if code == 0 and managed.summary_file.exists() and managed.report_file.exists():
+            # Sanity guard: even with exit_code=0 + both artefacts present,
+            # the analyzer can have "successfully" exited after zero spins
+            # (the main loop breaks on the first failed chunk and writes
+            # an empty summary). The most common cause is the upstream
+            # sampling API returning 5xx for the first request -- the
+            # operator otherwise sees a "completed" run with empty KPIs
+            # and no idea why. Promote that case to failed with the
+            # analyzer-recorded stop_reason in error_message.
+            summary_payload = read_json(managed.summary_file) or {}
+            sampling_meta = summary_payload.get("sampling") or {}
+            try:
+                total_spins = int(sampling_meta.get("total_spins") or 0)
+            except (TypeError, ValueError):
+                total_spins = 0
+            if total_spins == 0:
+                stop_reason = str(sampling_meta.get("stop_reason") or "unknown")
+                try:
+                    chunks_done = int(sampling_meta.get("chunks") or 0)
+                except (TypeError, ValueError):
+                    chunks_done = 0
+                self.store.update_run(
+                    managed.run_id,
+                    {
+                        "status": "failed",
+                        "finished_at": utc_now(),
+                        "error_message": (
+                            f"sampling produced 0 spins after {chunks_done} chunk(s); "
+                            f"stop_reason={stop_reason}"
+                        )[:4000],
+                    },
+                )
+                with self._lock:
+                    self._running.pop(managed.run_id, None)
+                return
             self._update_report_index(managed)
             self.store.update_run(
                 managed.run_id,

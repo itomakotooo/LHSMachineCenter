@@ -72,15 +72,54 @@ def test_check_round_schema_missing_wincredits_detected():
 
 
 def test_check_round_schema_missing_multiple_fields():
-    # Drop StopSymbolsByCol AND PayoutGroupId at once.
+    # Drop StopSymbolsByCol AND WinCredits at once.
     bad_round = _full_round()
     bad_round.pop("StopSymbolsByCol")
-    bad_round.pop("PayoutGroupId")
+    bad_round.pop("WinCredits")
     resp = [{"roundResult": [bad_round]}]
     missing = _check_round_schema(resp)
     assert "StopSymbolsByCol" in missing
-    assert "PayoutGroupId" in missing
-    assert "WinCredits" not in missing
+    assert "WinCredits" in missing
+
+
+def test_check_round_schema_payout_by_payline_missing_is_ok():
+    # Lose spins legitimately omit PayoutByPayline; the schema check must
+    # NOT flag it as drift -- otherwise the very first chunk's first
+    # spin (statistically usually a lose spin) would abort every run.
+    bad_round = _full_round()
+    bad_round.pop("PayoutByPayline")
+    resp = [{"roundResult": [bad_round]}]
+    assert _check_round_schema(resp) == []
+
+
+def test_check_round_schema_payout_group_id_missing_is_ok():
+    # No-payout spins legitimately omit PayoutGroupId. Same reasoning.
+    bad_round = _full_round()
+    bad_round.pop("PayoutGroupId")
+    resp = [{"roundResult": [bad_round]}]
+    assert _check_round_schema(resp) == []
+
+
+def test_check_round_schema_bet_amount_alone_falls_back_to_cost_credits():
+    # BetAmount missing but CostCredits present -> analyzer's existing
+    # fallback chain handles it; schema must NOT flag it.
+    bad_round = _full_round()
+    bad_round.pop("BetAmount")
+    bad_round["CostCredits"] = 1
+    resp = [{"roundResult": [bad_round]}]
+    assert _check_round_schema(resp) == []
+
+
+def test_check_round_schema_bet_amount_and_cost_credits_both_missing():
+    # When neither BetAmount nor CostCredits is present, the analyzer
+    # would silently fall back to the chunk-level `bet` argument. That
+    # is acceptable but is also the most likely sign of a wholesale
+    # rename of both fields, so the schema check flags it.
+    bad_round = _full_round()
+    bad_round.pop("BetAmount")
+    resp = [{"roundResult": [bad_round]}]
+    missing = _check_round_schema(resp)
+    assert "BetAmount|CostCredits" in missing
 
 
 def test_check_round_schema_skips_robots_with_no_rounds():
@@ -93,17 +132,13 @@ def test_check_round_schema_skips_robots_with_no_rounds():
 
 
 def test_check_round_schema_required_fields_constant_locked():
-    # If you add a new required field here, make sure run_sampling_chunk
-    # actually depends on it (otherwise you break old reports for no
-    # reason). This test just locks the current set so additions are
-    # explicit code review.
-    assert set(_REQUIRED_ROUND_FIELDS) == {
-        "BetAmount",
-        "WinCredits",
-        "PayoutByPayline",
-        "StopSymbolsByCol",
-        "PayoutGroupId",
-    }
+    # The required set is intentionally narrow: only fields that should
+    # appear on EVERY spin regardless of win/lose state. PayoutByPayline
+    # / PayoutGroupId are legitimately absent on lose / no-payout spins
+    # so they're checked elsewhere (via empty drilldown signals) rather
+    # than as hard schema requirements. Adding here forces explicit code
+    # review of false-positive risk.
+    assert set(_REQUIRED_ROUND_FIELDS) == {"WinCredits", "StopSymbolsByCol"}
 
 
 # ---------- run_sampling_chunk via monkeypatch ----------
@@ -163,12 +198,39 @@ def test_run_sampling_chunk_schema_drift_aborts_chunk(patch_post_json):
 def test_run_sampling_chunk_schema_drift_multiple_fields(patch_post_json):
     bad = _full_round()
     bad.pop("StopSymbolsByCol")
-    bad.pop("PayoutGroupId")
+    bad.pop("WinCredits")
     patch_post_json(_stub_chunk_resp([bad]))
     rec = _run(spin_times=1)
     assert rec["ok"] is False
     assert "StopSymbolsByCol" in rec["error"]
-    assert "PayoutGroupId" in rec["error"]
+    assert "WinCredits" in rec["error"]
+
+
+def test_run_sampling_chunk_lose_spin_first_does_not_abort(patch_post_json):
+    """Regression for the 'every run aborts on the first lose spin'
+    bug. Lose spins legitimately omit PayoutByPayline + PayoutGroupId;
+    the schema check must let them through and treat them as normal
+    zero-win rounds."""
+    lose_round = _full_round()
+    lose_round.pop("PayoutByPayline")
+    lose_round.pop("PayoutGroupId")
+    patch_post_json(_stub_chunk_resp([lose_round]))
+    rec = _run(spin_times=1)
+    assert rec["ok"] is True
+    assert rec["spins"] == 1
+    assert rec["loss_spins"] == 1
+
+
+def test_run_sampling_chunk_bet_falls_back_to_cost_credits(patch_post_json):
+    """BetAmount missing but CostCredits present must NOT abort the
+    chunk -- analyzer's existing fallback chain consumes CostCredits."""
+    rd = _full_round(WinCredits=2)
+    rd.pop("BetAmount")
+    rd["CostCredits"] = 5
+    patch_post_json(_stub_chunk_resp([rd]))
+    rec = _run(spin_times=1)
+    assert rec["ok"] is True
+    assert rec["bet"] == 5  # CostCredits used as bet
 
 
 def test_run_sampling_chunk_empty_response(patch_post_json):

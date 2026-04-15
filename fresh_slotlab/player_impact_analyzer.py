@@ -182,26 +182,32 @@ def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
     return rr if isinstance(rr, list) else []
 
 
-# Round-level fields that the sampling parser depends on. If the upstream
-# test API silently renames or drops one of these (e.g. WinCredits ->
-# winCredits), every downstream metric would quietly become 0 because of
-# the .get(default=0) fallbacks in the parsing loop. _check_round_schema
-# pulls the first non-empty round from a chunk response and reports
-# missing fields so run_sampling_chunk can fail loudly instead.
+# Round-level fields that MUST appear on every spin regardless of
+# win / lose state. Missing one is almost certainly an upstream API
+# field rename and the analyzer should fail loudly instead of silently
+# producing all-zero metrics.
+#
+# Intentionally NOT in this set:
+#   - PayoutByPayline: legitimately absent on lose spins (no payline).
+#   - PayoutGroupId:   legitimately absent on no-payout spins.
+#   The first round of a chunk is statistically very likely to be a
+#   lose spin (RTP ~95% with hit_rate ~30% means ~70% lose), so
+#   strict-checking these caused false-positive run aborts.
 _REQUIRED_ROUND_FIELDS = (
-    "BetAmount",
     "WinCredits",
-    "PayoutByPayline",
     "StopSymbolsByCol",
-    "PayoutGroupId",
 )
+# Bet amount has a documented fallback chain (BetAmount -> CostCredits
+# -> the chunk-level `bet` arg). The schema check still wants AT LEAST
+# one of the first two to exist on a real round.
+_REQUIRED_BET_FIELDS_ANY = ("BetAmount", "CostCredits")
 
 
 def _check_round_schema(resp: list[Any]) -> list[str]:
-    """Return the names of required round-level fields missing from the
-    first parsed round, or [] if the schema is intact (or no rounds were
-    found, in which case the existing parse_failed_zero_chunk error
-    handles it downstream).
+    """Inspect the first parsed round of a chunk response and return the
+    names of required fields that are missing. Returns [] when the
+    schema is intact, or when there are no parsed rounds at all (the
+    existing parse_failed_zero_chunk path handles the empty case).
     """
     if not isinstance(resp, list):
         return []
@@ -210,9 +216,12 @@ def _check_round_schema(resp: list[Any]) -> list[str]:
             continue
         rounds = parse_rounds(robot)
         for round_obj in rounds:
-            if isinstance(round_obj, dict):
-                missing = [f for f in _REQUIRED_ROUND_FIELDS if f not in round_obj]
-                return missing
+            if not isinstance(round_obj, dict):
+                continue
+            missing = [f for f in _REQUIRED_ROUND_FIELDS if f not in round_obj]
+            if not any(f in round_obj for f in _REQUIRED_BET_FIELDS_ANY):
+                missing.append("BetAmount|CostCredits")
+            return missing
     return []
 
 
