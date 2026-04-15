@@ -32,6 +32,11 @@ const state = {
   // filters the runs table. Driven by clicking a row in the machine
   // catalog panel; cleared via the filter banner's "clear" button.
   runFilterMachine: null,
+  // Latest library-wide metric distributions (from
+  // GET /api/library/distributions). Drives the "lib-P{N}" suffix on
+  // Volatility + Archetype KPI cards so the operator sees where the
+  // current machine stands across the library.
+  libraryDistributions: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -930,6 +935,45 @@ function modelWarnings() {
   });
 }
 
+// Populate the Volatility + Archetype KPI cards' sub-lines with a
+// library-relative rank. Silently no-ops when the library has fewer
+// than 2 entries (ranking against oneself isn't informative).
+function applyLibraryRanking(summary, dist) {
+  if (!dist || !dist.metrics) return;
+  const total = Number(dist.machines_count || 0);
+  if (total < 2) return;
+  const ga = (summary || {}).guideline_assessment || {};
+  const derived = ga.derived_metrics || {};
+  const cls = ga.classification || {};
+  const hit = ((summary || {}).player_impact || {}).hit_and_payout || {};
+  const streaks = ((summary || {}).player_impact || {}).streaks || {};
+
+  // Volatility: rank the composite score against the library.
+  const zeroWin = hit.zero_win_rate;
+  const tailDep = derived.tail_dependency_ge10x ?? derived.tail_dependency;
+  const lossP95 = streaks.loss_streak_p95;
+  if (zeroWin != null && tailDep != null && lossP95 != null) {
+    const score = Math.max(
+      Number(zeroWin) / 0.82,
+      Number(lossP95) / 18.0,
+      Number(tailDep) / 0.50
+    );
+    const values = ((dist.metrics || {}).volatility_score || {}).values || [];
+    const rank = PURE.computeLibPercentile(score, values);
+    const sub = PURE.formatLibRank(rank, state.lang);
+    const el = byId("kpiVolatilitySub");
+    if (el) el.textContent = sub || "";
+  }
+
+  // Archetype: categorical -- show how common the label is.
+  const currentArchetype = cls.experience_archetype;
+  if (currentArchetype && dist.archetype_counts) {
+    const count = Number(dist.archetype_counts[currentArchetype] || 0);
+    const el = byId("kpiArchetypeSub");
+    if (el) el.textContent = fmt("archetypeShare", { count, total });
+  }
+}
+
 function readRunPayload() {
   return {
     machine: byId("machineSelect").value,
@@ -1049,7 +1093,8 @@ async function refreshCurrentRun() {
     const kpiBindings = [
       ["kpiRtp", "rtp"], ["kpiCi", "ci"], ["kpiSpins", "spins"],
       ["kpiZero", "zeroWin"], ["kpiTail", "tailDep", "kpiTailSub"], ["kpiGuide", "guideline"],
-      ["kpiVolatility", "volatility"], ["kpiArchetype", "archetype"],
+      ["kpiVolatility", "volatility", "kpiVolatilitySub"],
+      ["kpiArchetype", "archetype", "kpiArchetypeSub"],
       ["kpiLossStreak", "lossStreak"], ["kpiMaxReturn", "maxReturn"],
       ["kpiBigWin", "bigWin"], ["kpiBankruptX500", "bankruptX500"],
     ];
@@ -1064,6 +1109,18 @@ async function refreshCurrentRun() {
         const subEl = byId(subId);
         if (subEl) subEl.textContent = c.sub || "";
       }
+    }
+    // Across-library ranking: Volatility + Archetype cards get a
+    // lib-rank sub-line ("全库 P87 (15/17)" or "{count}/{total} share
+    // this archetype"). Pulled lazily per summary load -- hundreds of
+    // machines is still a sub-second fetch and skipping it silently
+    // on error keeps the panel working when the library is empty.
+    try {
+      const dist = await apiGet("/api/library/distributions");
+      state.libraryDistributions = dist;
+      applyLibraryRanking(s, dist);
+    } catch (_err) {
+      // Non-fatal: leave sub-lines cleared.
     }
     const buckets = s.player_impact?.multiplier_profile?.buckets || [];
     state.bucketChart.data.labels = buckets.map((b) => PURE.prettyBucketLabel(b.bucket));

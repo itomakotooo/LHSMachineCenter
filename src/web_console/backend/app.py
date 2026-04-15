@@ -1797,6 +1797,128 @@ def create_app(
         latest_payload = read_json(latest_path) if latest_path.exists() else {}
         return {"machine": machine, "mode": mode, "versions": index_payload, "latest": latest_payload}
 
+    @app.get("/api/library/distributions")
+    def library_distributions() -> dict[str, Any]:
+        """Across-library metric distributions built from every
+        reports/<machine>/mode_<n>/latest.json + its summary JSON.
+
+        Used by the frontend to show "lib-P87 (15/17)" style relative
+        ranking on KPI cards so the operator sees where the current
+        machine stands within the whole library instead of reading
+        absolute numbers in isolation.
+
+        Scales linearly with the number of (machine, mode) pairs --
+        each one is a single JSON read. For hundreds of machines
+        this runs in well under a second; no caching needed.
+
+        Shape:
+            {
+              "machines_count": N,
+              "metrics": {
+                "volatility_score": {"values": [...], "count": N},
+                "zero_win_rate": {...},
+                "tail_dependency_ge10x": {...},
+                "big_win_x10_rate": {...},
+                "profit_spin_rate": {...}
+              },
+              "archetype_counts": {"Boom-Bust": 2, "Balanced": 3, ...},
+              "volatility_class_counts": {"Very High": 4, "High": 1, ...}
+            }
+        """
+        from collections import defaultdict as _dd
+
+        metric_values: dict[str, list[float]] = _dd(list)
+        archetype_counts: dict[str, int] = _dd(int)
+        volatility_class_counts: dict[str, int] = _dd(int)
+        machine_count = 0
+
+        if not rr.exists():
+            return {
+                "machines_count": 0,
+                "metrics": {},
+                "archetype_counts": {},
+                "volatility_class_counts": {},
+            }
+        for machine_dir in sorted(rr.iterdir()):
+            if not machine_dir.is_dir():
+                continue
+            for mode_dir in sorted(machine_dir.glob("mode_*")):
+                latest_path = mode_dir / "latest.json"
+                if not latest_path.exists():
+                    continue
+                try:
+                    latest_data = json.loads(latest_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                summary_file = latest_data.get("summary_file")
+                if not summary_file:
+                    continue
+                summary_path = Path(summary_file)
+                if not summary_path.exists():
+                    continue
+                try:
+                    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                machine_count += 1
+                ga = summary.get("guideline_assessment", {}) or {}
+                derived = ga.get("derived_metrics", {}) or {}
+                cls = ga.get("classification", {}) or {}
+                player = summary.get("player_impact", {}) or {}
+                hit = player.get("hit_and_payout", {}) or {}
+                streaks = player.get("streaks", {}) or {}
+                zero_win = hit.get("zero_win_rate")
+                tail_ge10 = derived.get("tail_dependency_ge10x")
+                if tail_ge10 is None:
+                    tail_ge10 = derived.get("tail_dependency")
+                loss_p95 = streaks.get("loss_streak_p95")
+                big_win_x10 = hit.get("big_win_x10_rate")
+                profit_spin = hit.get("profit_spin_rate")
+
+                # Composite volatility score mirrors classify_volatility
+                # -- max(zero_win/0.82, loss_p95/18, tail/0.50). 1.0 is
+                # the Very High threshold; values above that fall into
+                # Very High territory. Ranking this across the library
+                # gives a continuous "how intense" reading that the
+                # discrete Very High/High/Medium/Low label can't.
+                if zero_win is not None and tail_ge10 is not None and loss_p95 is not None:
+                    try:
+                        vol_score = max(
+                            float(zero_win) / 0.82,
+                            float(loss_p95) / 18.0,
+                            float(tail_ge10) / 0.50,
+                        )
+                        metric_values["volatility_score"].append(vol_score)
+                    except (TypeError, ValueError):
+                        pass
+                for name, raw in (
+                    ("zero_win_rate", zero_win),
+                    ("tail_dependency_ge10x", tail_ge10),
+                    ("big_win_x10_rate", big_win_x10),
+                    ("profit_spin_rate", profit_spin),
+                ):
+                    if raw is None:
+                        continue
+                    try:
+                        metric_values[name].append(float(raw))
+                    except (TypeError, ValueError):
+                        pass
+                arch = cls.get("experience_archetype")
+                if arch:
+                    archetype_counts[str(arch)] += 1
+                vol_cls = cls.get("volatility_class")
+                if vol_cls:
+                    volatility_class_counts[str(vol_cls)] += 1
+
+        return {
+            "machines_count": machine_count,
+            "metrics": {
+                k: {"values": v, "count": len(v)} for k, v in metric_values.items()
+            },
+            "archetype_counts": dict(archetype_counts),
+            "volatility_class_counts": dict(volatility_class_counts),
+        }
+
     @app.get("/api/cache/status")
     def cache_status() -> dict[str, Any]:
         total_bytes, file_count = folder_bytes(cr)

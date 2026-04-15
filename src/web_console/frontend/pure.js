@@ -106,6 +106,9 @@ const I18N = {
     bonusChainDepthLabel: "能量敦线（按 chain 深度）",
     bonusChainHistogramLabel: "ExtraRatio 直方图（按 bonus round 计数）",
     bonusChainQuantileFmt: "p50 {p50} · p90 {p90} · p95 {p95} · max {max}",
+    libRank: "全库 {p}（{rank}/{total}）",
+    libRankSmall: "全库 {rank}/{total}",
+    archetypeShare: "{count}/{total} 机台同类型",
     thWinShare: "Win 占比",
     thTopSymbols: "中奖符号 Top",
     paylineEmpty: "暂无支付线数据。",
@@ -338,6 +341,9 @@ const I18N = {
     bonusChainDepthLabel: "Energy ramp (by chain depth)",
     bonusChainHistogramLabel: "ExtraRatio histogram (bonus rounds)",
     bonusChainQuantileFmt: "p50 {p50} · p90 {p90} · p95 {p95} · max {max}",
+    libRank: "lib {p} ({rank}/{total})",
+    libRankSmall: "lib {rank}/{total}",
+    archetypeShare: "{count}/{total} share this archetype",
     thWinShare: "Win Share",
     thTopSymbols: "Top Win Symbols",
     paylineEmpty: "No payline data yet.",
@@ -651,6 +657,47 @@ function computeRunProgressPct(latestEvent, opts) {
   const idx = Number(latestEvent.chunk_index || 0);
   if (maxChunks <= 0) return 0;
   return Math.max(0, Math.min(100, (idx / maxChunks) * 100));
+}
+
+// Compute the percentile rank of `value` within `values`. Returns the
+// count of values <= value as a percentage of total (0-100), or null
+// when the sample is empty, too small, or value is invalid. The
+// caller decides how to format: "P87" for a population of 17+,
+// "rank/total" for smaller libraries where a single-digit percentile
+// is noisy.
+function computeLibPercentile(value, values) {
+  if (value == null || Number.isNaN(Number(value))) return null;
+  if (!Array.isArray(values)) return null;
+  const v = Number(value);
+  const sorted = values.map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  let le = 0;
+  for (const x of sorted) if (x <= v) le++;
+  return {
+    percentile: (le / sorted.length) * 100,
+    rank: le,
+    total: sorted.length,
+  };
+}
+
+// Format a library-rank suffix for a KPI card. Small library (<3
+// machines) shows "lib-N/M"; bigger shows "lib-P{percentile} (N/M)"
+// so the operator always sees the raw fraction too.
+function formatLibRank(rank, lang) {
+  if (!rank || rank.total <= 0) return "";
+  if (rank.total < 3) {
+    return fmt(lang, "libRankSmall", {
+      rank: rank.rank,
+      total: rank.total,
+    });
+  }
+  const p = rank.percentile;
+  const pText = p >= 99 ? "P99+" : `P${Math.round(p)}`;
+  return fmt(lang, "libRank", {
+    p: pText,
+    rank: rank.rank,
+    total: rank.total,
+  });
 }
 
 // Pretty-print analyzer's multiplier-bucket key into a chart-friendly
@@ -1053,6 +1100,8 @@ const PURE = {
   formatPayoutIdRows,
   formatSpinTypeRows,
   prettyBucketLabel,
+  computeLibPercentile,
+  formatLibRank,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;

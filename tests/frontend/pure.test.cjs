@@ -513,6 +513,60 @@ test("formatSpinTypeRows: zero defaults for missing fields", () => {
   assert.equal(rows[0].behavior_name, "");
 });
 
+// ---------- computeLibPercentile + formatLibRank ----------
+
+test("computeLibPercentile: empty / invalid values -> null", () => {
+  assert.equal(PURE.computeLibPercentile(0.5, []), null);
+  assert.equal(PURE.computeLibPercentile(0.5, null), null);
+  assert.equal(PURE.computeLibPercentile(null, [1, 2, 3]), null);
+  assert.equal(PURE.computeLibPercentile(NaN, [1, 2, 3]), null);
+});
+
+test("computeLibPercentile: percentile rank is count(<=v)/total * 100", () => {
+  const r = PURE.computeLibPercentile(3, [1, 2, 3, 4, 5]);
+  assert.equal(r.rank, 3);
+  assert.equal(r.total, 5);
+  assert.equal(r.percentile, 60);
+});
+
+test("computeLibPercentile: value above all -> 100th percentile", () => {
+  const r = PURE.computeLibPercentile(100, [1, 2, 3]);
+  assert.equal(r.percentile, 100);
+  assert.equal(r.rank, 3);
+});
+
+test("computeLibPercentile: value below all -> 0th percentile", () => {
+  const r = PURE.computeLibPercentile(0, [1, 2, 3]);
+  assert.equal(r.percentile, 0);
+  assert.equal(r.rank, 0);
+});
+
+test("formatLibRank: small library (<3) uses rank/total shorthand", () => {
+  const rank = { rank: 2, total: 2, percentile: 100 };
+  const zh = PURE.formatLibRank(rank, "zh");
+  assert.ok(zh.includes("2/2"), `zh small form: ${zh}`);
+  const en = PURE.formatLibRank(rank, "en");
+  assert.ok(en.includes("2/2"), `en small form: ${en}`);
+});
+
+test("formatLibRank: big library shows percentile + fraction", () => {
+  const rank = { rank: 14, total: 17, percentile: 82.35 };
+  const out = PURE.formatLibRank(rank, "en");
+  assert.ok(out.includes("P82"), `percentile token: ${out}`);
+  assert.ok(out.includes("14/17"), `fraction token: ${out}`);
+});
+
+test("formatLibRank: >=99th percentile renders as P99+", () => {
+  const rank = { rank: 50, total: 50, percentile: 100 };
+  const out = PURE.formatLibRank(rank, "en");
+  assert.ok(out.includes("P99+"), `cap token: ${out}`);
+});
+
+test("formatLibRank: empty/invalid rank -> ''", () => {
+  assert.equal(PURE.formatLibRank(null, "en"), "");
+  assert.equal(PURE.formatLibRank({ total: 0 }, "en"), "");
+});
+
 test("formatSpinTypeRows: free-spin rtp_pct=null passes through untouched", () => {
   const s = {
     player_impact: {
