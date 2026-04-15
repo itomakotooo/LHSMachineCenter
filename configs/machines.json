@@ -2,7 +2,7 @@
   "machines": [
     {
       "machine": "M14",
-      "modes": [1]
+      "modes": [1, 2, 5, 7]
     }
   ]
 }
