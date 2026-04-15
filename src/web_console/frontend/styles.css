@@ -251,18 +251,91 @@ body {
   transition: width 0.25s ease;
 }
 
+/* Hamburger toggle lives in the topbar; CSS-hidden above the drawer
+   breakpoint so desktop never sees it. */
+.sidebar-toggle {
+  display: none;
+  border: 1px solid #c8d4e6;
+  background: #f7fafc;
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+  background: #eef3f8;
+}
+
 @media (max-width: 1120px) {
   .dashboard {
     grid-template-columns: minmax(0, 1fr);
+    position: relative;
+  }
+
+  /* Drawer mode: sidebar slides in from the left on hamburger click. */
+  .dash-sidebar {
+    position: fixed;
+    top: 92px;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    max-width: 86vw;
+    z-index: 30;
+    background: #fbfdff;
+    border-right: 1px solid var(--line);
+    padding: 14px;
+    overflow-y: auto;
+    max-height: none;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 0 0 30px #0f172a26;
+  }
+
+  .dashboard.sidebar-open .dash-sidebar {
+    transform: translateX(0);
+  }
+
+  /* Dim the rest of the page when the drawer is open. The backdrop is a
+     pseudo-element so we don't need an extra DOM node; the JS click
+     handler closes the drawer when the user taps anywhere outside the
+     sidebar, which gives the same UX. */
+  .dashboard.sidebar-open::before {
+    content: "";
+    position: fixed;
+    inset: 92px 0 0 0;
+    background: rgba(15, 23, 42, 0.32);
+    z-index: 25;
+  }
+
+  .sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 840px) {
+  /* Below 840 the dashboard is firmly mobile: tighter KPI tiles and
+     single-column charts so a phone-width viewport stays readable. */
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+
+  .chart-grid {
+    grid-template-columns: 1fr;
   }
 
   .dash-sidebar {
-    position: static;
-    /* Hidden until Commit 2 fills it; the dashboard collapses to single
-       column at this width and below regardless. */
+    width: 86vw;
+    max-width: 320px;
   }
 
-  .dash-sidebar:empty {
+  /* Topbar shrinks to a column on narrow screens (existing rule); hide
+     the live-status strip so the topbar doesn't wrap awkwardly. */
+  .live-status-strip {
     display: none;
   }
 }

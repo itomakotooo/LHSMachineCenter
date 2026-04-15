@@ -50,6 +50,9 @@ function applyI18n() {
   byId("langSelect").value = state.lang;
   document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = fmt(el.dataset.i18n)));
   document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => (el.placeholder = fmt(el.dataset.i18nPlaceholder)));
+  document.querySelectorAll("[data-i18n-aria]").forEach((el) =>
+    el.setAttribute("aria-label", fmt(el.dataset.i18nAria)),
+  );
   applyFieldHelpHints();
   byId("autotuneBtn").textContent = state.autoTuneRunning ? fmt("btnAutoTuneBusy") : fmt("btnAutoTune");
   setSystemStatePanel();
@@ -949,6 +952,24 @@ function bindEvents() {
   });
   document.querySelectorAll(".drilldown-tab-btn").forEach((b) => {
     b.addEventListener("click", () => switchDrilldownTab(b.dataset.drilldownTab));
+  });
+  // Mobile drawer: hamburger toggles the sidebar on/off; tapping the
+  // dimmed backdrop (anywhere inside .dashboard that isn't the sidebar
+  // or the toggle itself) closes it. CSS hides .sidebar-toggle above
+  // 1120px so this never fires on the desktop e2e path.
+  const sidebarToggle = byId("sidebarToggle");
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      document.querySelector(".dashboard")?.classList.toggle("sidebar-open");
+    });
+  }
+  document.querySelector(".dashboard")?.addEventListener("click", (e) => {
+    const dashboard = document.querySelector(".dashboard");
+    if (!dashboard?.classList.contains("sidebar-open")) return;
+    const sidebar = document.querySelector(".dash-sidebar");
+    if (sidebar?.contains(e.target) || (sidebarToggle && sidebarToggle.contains(e.target))) return;
+    dashboard.classList.remove("sidebar-open");
   });
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();
