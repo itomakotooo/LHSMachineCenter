@@ -281,6 +281,102 @@ def test_autotune_click_lights_up_progress_panel(console_page, clean_runs):
     )
 
 
+def test_dashboard_shell_renders_sidebar_with_run_actions(console_page):
+    """Layout-refactor smoke: the .dashboard shell exists, .dash-sidebar
+    holds the migrated run-config / model-config / run-actions panels,
+    and the four primary control buttons live inside the sidebar (not
+    in the main grid)."""
+    page = console_page
+    _wait_for_pure_loaded(page)
+
+    assert page.locator(".dashboard").count() == 1
+    assert page.locator(".dash-sidebar").count() == 1
+    assert page.locator(".dash-main").count() == 1
+
+    # Migrated panels live under .dash-sidebar (not under .dash-main).
+    assert page.locator(".dash-sidebar .panel.run-config").count() == 1
+    assert page.locator(".dash-sidebar .panel.model-config").count() == 1
+    assert page.locator(".dash-sidebar .panel.run-actions").count() == 1
+
+    # Run-control buttons relocated to the sidebar (commit 2 of the
+    # dashboard refactor); their IDs are unchanged so other e2e tests
+    # that target #startBtn / #autotuneBtn keep working.
+    for btn_id in ("startBtn", "autotuneBtn", "stopBtn", "refreshBtn"):
+        assert page.locator(f".dash-sidebar #{btn_id}").count() == 1, btn_id
+
+
+def test_live_status_strip_shows_idle_brief(console_page, clean_runs):
+    """When no run is active the topbar live-status strip degrades to a
+    "machine . mode . status" brief (renderLiveStatusStrip's idle path).
+    The bootstrap fills the machine selector, so the brief should be
+    non-empty within a couple of seconds of page load."""
+    page = console_page
+    _wait_for_pure_loaded(page)
+
+    # Wait for bootstrap to fill machineSelect so the idle brief renders.
+    page.wait_for_function(
+        "() => { const m = document.getElementById('machineSelect');"
+        "  return m && m.value && document.getElementById('liveStatusStrip').textContent.length > 0; }",
+        timeout=5000,
+    )
+    text = (page.locator("#liveStatusStrip").text_content() or "").strip()
+    # Brief is "machine . mode N" so at minimum the chosen machine name
+    # (e.g. M14) appears in the strip.
+    machine = page.evaluate("() => document.getElementById('machineSelect').value")
+    assert machine and machine in text, f"expected '{machine}' in strip, got: {text!r}"
+
+
+def test_mid_tab_switch_changes_active_pane(console_page):
+    """Mid-area tab switch is a pure DOM toggle: click another tab and
+    only the matching .mid-tab-pane should become visible. No data
+    refetch is exercised here -- this guards against the next refactor
+    accidentally re-introducing one."""
+    page = console_page
+    _wait_for_pure_loaded(page)
+
+    # Default: assessment pane is the only one visible.
+    assert page.locator(".mid-tab-pane[data-mid-tab='assessment']").is_visible()
+    assert not page.locator(".mid-tab-pane[data-mid-tab='interpretation']").is_visible()
+    assert not page.locator(".mid-tab-pane[data-mid-tab='events']").is_visible()
+
+    page.click(".mid-tab-btn[data-mid-tab='interpretation']")
+    page.wait_for_selector(".mid-tab-pane[data-mid-tab='interpretation'].active", timeout=2000)
+    assert page.locator(".mid-tab-pane[data-mid-tab='interpretation']").is_visible()
+    assert not page.locator(".mid-tab-pane[data-mid-tab='assessment']").is_visible()
+
+    # Tab button aria-selected mirrors the active pane.
+    aria = page.locator(".mid-tab-btn[data-mid-tab='interpretation']").get_attribute(
+        "aria-selected"
+    )
+    assert aria == "true"
+
+
+def test_drilldown_tab_switch_changes_active_pane(console_page):
+    """Drilldown tab switch toggles which drilldown table is visible.
+    Like mid-tabs, this never refetches; switchDrilldownTab simply
+    re-runs the matching renderXxxDrilldown(state.latestSummary) which
+    is a no-op when no summary is loaded yet."""
+    page = console_page
+    _wait_for_pure_loaded(page)
+
+    assert page.locator(".drilldown-tab-pane[data-drilldown-tab='paylines']").is_visible()
+    assert not page.locator(".drilldown-tab-pane[data-drilldown-tab='symbols']").is_visible()
+
+    page.click(".drilldown-tab-btn[data-drilldown-tab='symbols']")
+    page.wait_for_selector(
+        ".drilldown-tab-pane[data-drilldown-tab='symbols'].active", timeout=2000
+    )
+    assert page.locator(".drilldown-tab-pane[data-drilldown-tab='symbols']").is_visible()
+    assert not page.locator(".drilldown-tab-pane[data-drilldown-tab='paylines']").is_visible()
+
+    # The symbol pane carries the existing #symbolOverallTable and
+    # #symbolByColMatrix IDs (no e2e selector breakage). symbolByColMatrix
+    # has zero rendered height when empty, so we only check the table is
+    # visible and both IDs still resolve to a DOM node inside the pane.
+    assert page.locator("#symbolOverallTable").is_visible()
+    assert page.locator(".drilldown-tab-pane[data-drilldown-tab='symbols'] #symbolByColMatrix").count() == 1
+
+
 def test_start_button_disabled_when_run_active(live_server, page, clean_runs, clean_cache):
     # Seed AFTER the server has booted: startup recovery already ran and won't
     # touch this row. The frontend's polling (~4.5s) will then notice it.

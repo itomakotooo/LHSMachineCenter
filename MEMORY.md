@@ -110,8 +110,31 @@ This section is for execution efficiency and can be updated as long as section A
    - summary.player_impact.payout_groups_top20 (added by analyzer in
      P1.a/d round): {group_id, hit_count, hit_rate, total_win,
      avg_win_when_hit_x, rtp_contribution_pp}. Group 0 = no payout.
-   - All three rendered as their own panel below assessment; the next
-     UI restructure round consolidates positioning + visual language.
+   - All three rendered together inside the .panel.drilldown-tabs
+     panel as switchable tabs (paylines / payouts / symbols); the
+     visible table is always re-rendered against state.latestSummary
+     on tab switch.
+21. UI layout convention (Grafana-style dashboard, debug tab):
+   - Three-region shell: sticky .dash-topbar (title / liveStatusStrip /
+     lang+health), .dash-sidebar (params + model-config + run-actions,
+     260px column on desktop, drawer toggled by #sidebarToggle below
+     1120px), .dash-main (KPI 3x4 strip with whole-card pastel tone bg +
+     2x2 chart grid + .panel.mid-tabs for assessment/interpretation/
+     events + .panel.drilldown-tabs for paylines/payouts/symbols).
+   - All e2e selectors (#startBtn / #autotuneBtn / #ciSelect /
+     #robotInput / #paylineTable / #payoutGroupTable /
+     #symbolOverallTable / #symbolByColMatrix / 12 KPI strong IDs /
+     #liveStatusStrip / #sidebarToggle) preserved across the refactor;
+     IDs never queried by structural class.
+   - Manage tab (#tab-manage) deliberately retains its single-column
+     panel stack so the cache-cleanup risk-tier e2e fixtures targeting
+     #cacheRefreshBtn / #cacheCleanupBtn keep working unchanged.
+   - Pure helpers untouched -- pure.js only gained 4 i18n keys
+     (drilldownTabPaylines / drilldownTabPayouts / drilldownTabSymbols /
+     sidebarToggleLabel), no signature changes.
+   - Dark-mode palette prepared as :root[data-theme="dark"] vars; not
+     activated. Setting <html data-theme="dark"> would flip the theme
+     without further CSS edits.
 
 Update policy:
 - Assistant may update this section after execution, and must explicitly state:

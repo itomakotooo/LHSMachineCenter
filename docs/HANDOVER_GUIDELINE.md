@@ -203,7 +203,69 @@ drilldowns rather than threading raw summary objects through DOM
 code. Tone classification (good / warn / bad) follows the same
 pattern as `pure.extractMetricCards` for the KPI grid.
 
-## 13. Troubleshooting
+## 13. Dashboard layout (debug tab)
+
+The debug tab uses a Grafana-style three-region shell. The structure
+lives entirely in `src/web_console/frontend/index.html` +
+`styles.css`; `app.js` and `pure.js` business logic are unchanged
+across this refactor.
+
+```
++--------------------------------------------------------+
+| topbar (sticky): title | liveStatusStrip | lang/health |
++--------+-----------------------------------------------+
+| side-  |  KPI strip (3x4 compact, whole-card tone bg)  |
+| bar    |  Charts (2x2 uniform 220px canvases)          |
+| 260px  |  Mid-tab panel: assessment / interpretation / |
+| (drawer|                 events  (state.midTab)        |
+| <1120) |  Drilldown tabs: paylines / payouts / symbols |
+|        |                  (state.drilldownTab)         |
++--------+-----------------------------------------------+
+```
+
+Layout-impacting CSS classes:
+
+- `.dashboard` -- 2-column grid (260px sidebar + main); collapses
+  to single-column at <=1120px and the sidebar becomes a fixed
+  drawer toggled by `.sidebar-toggle` (hamburger). Open state is
+  `.dashboard.sidebar-open`.
+- `.dash-sidebar` -- sticky column on desktop holding `.run-config
+  / .model-config / .run-actions`. Run-actions uses `margin-top:
+  auto` so the four short-label buttons (icon + verb) land at the
+  bottom of the column.
+- `.dash-topbar` -- sticky topbar; `#liveStatusStrip` mirrors the
+  active run summary (1 Hz, fed by `refreshCurrentRun()` calling
+  `renderLiveStatusStrip({summary, pct})`) and degrades to a
+  `machine . mode . status` brief when no run is active.
+- `.mid-tabs` / `.drilldown-tabs` -- single panel per tab group;
+  switching only toggles `.active` classes. Drilldown switching
+  also re-runs the matching `renderXxxDrilldown(state.latestSummary)`
+  so the visible table always reflects the latest summary without
+  a refetch.
+
+E2E selectors that must be preserved across any future layout edits:
+
+- Form / control IDs: `#langSelect`, `#machineSelect`, `#modeSelect`,
+  `#ciSelect`, `#robotInput`, `#concInput`, `#spinInput`,
+  `#maxChunksInput`, `#timeoutInput`, `#bankSessionInput`,
+  `#bankMultSelect`, `#startBtn`, `#autotuneBtn`, `#stopBtn`,
+  `#refreshBtn`, `#interpretBtn`, `#cacheRefreshBtn`,
+  `#cacheCleanupBtn`, `#tabBtnDebug`, `#tabBtnManage`,
+  `#sidebarToggle`.
+- Drilldown tables: `#paylineTable`, `#payoutGroupTable`,
+  `#symbolOverallTable`, `#symbolByColMatrix`.
+- Status surfaces: `#runMeta`, `#autotuneMeta`, `#cacheRiskMeta`,
+  `#eventsText`, `#liveStatusStrip`.
+- KPI strong elements: `#kpiRtp / #kpiCi / #kpiSpins / #kpiZero /
+  #kpiTail / #kpiGuide / #kpiVolatility / #kpiArchetype /
+  #kpiLossStreak / #kpiMaxReturn / #kpiBigWin / #kpiBankruptX500`.
+
+The manage tab (`#tab-manage`) deliberately keeps its single-column
+panel stack so the cache-cleanup risk-tier e2e fixtures (which
+target `#cacheRefreshBtn` / `#cacheCleanupBtn` and rely on the
+manage tab being a flat panel list) keep working without changes.
+
+## 14. Troubleshooting
 
 - **`scripts/lint.ps1` fails on `check_no_global_state.py`**: somebody
   reintroduced module-level `StateStore()` / `RunManager()` /

@@ -906,6 +906,10 @@ async function loadBootstrap() {
   fillProviders();
   fillModelsForProvider(byId("providerSelect").value, state.modelMeta.default_model || "");
   renderMachineCatalog();
+  // Now that machineSelect is populated, seed the topbar idle brief.
+  // (applyI18n() ran before bootstrap when machineSelect was empty, so
+  // its renderLiveStatusStrip() call was a no-op.)
+  renderLiveStatusStrip();
   byId("runMeta").textContent = fmt("noRun");
   byId("assessment").textContent = fmt("noReport");
   byId("interpretationText").textContent = fmt("noInterpret");

@@ -96,6 +96,14 @@ This file tracks executable next steps for the current phase.
       symbols (overall + by column), payout groups (top 20). Analyzer
       now aggregates `PayoutGroupId` per spin and emits
       `summary.player_impact.payout_groups_top20`.
+- [x] Dashboard layout refactor (Grafana-style debug tab): three-region
+      shell -- sticky topbar with health/lang/liveStatusStrip; sidebar
+      (260px column on desktop, drawer below 1120px with hamburger
+      toggle) holding params/model/control buttons; main area with
+      compact 3x4 KPI strip (whole-card tone bg), 2x2 chart grid,
+      tabbed assessment/interpretation/events panel, tabbed drilldown
+      (paylines/payouts/symbols) panel. Manage tab kept as single-
+      column panel stack so cache-cleanup e2e keeps working unchanged.
 
 ## Work Mode
 
