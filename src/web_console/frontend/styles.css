@@ -571,3 +571,45 @@ details.advanced-params > summary {
 details.advanced-params[open] > summary {
   margin-bottom: 10px;
 }
+
+/* Drilldown tables (paylines / symbols / payout groups) -- compact data
+   tables with right-aligned numerics and a soft hover for legibility. */
+table.drilldown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+table.drilldown-table th,
+table.drilldown-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: right;
+}
+table.drilldown-table th:first-child,
+table.drilldown-table td:first-child {
+  text-align: left;
+}
+table.drilldown-table thead th {
+  background: #eef3f8;
+  color: var(--muted);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+table.drilldown-table tbody tr:hover {
+  background: #f8fafc;
+}
+table.drilldown-table .bar-cell {
+  position: relative;
+  min-width: 96px;
+}
+table.drilldown-table .bar-cell::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  bottom: 2px;
+  height: 2px;
+  background: var(--accent-soft);
+  width: var(--bar, 0%);
+  opacity: 0.55;
+}

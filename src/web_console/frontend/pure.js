@@ -79,6 +79,13 @@ const I18N = {
     kpiMaxReturn: "最大单转倍率",
     kpiBigWin: "10x+ 大奖率",
     kpiBankruptX500: "x500 破产率",
+    panelPaylines: "支付线深度（Top 20）",
+    thPaylineId: "Payline ID",
+    thHitCount: "命中次数",
+    thHitRate: "命中率",
+    thRtpContribution: "RTP 贡献(pp)",
+    thWinShare: "Win 占比",
+    paylineEmpty: "暂无支付线数据。",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
     labelConcurrency: "批并发数",
@@ -259,6 +266,13 @@ const I18N = {
     kpiMaxReturn: "Max Return x",
     kpiBigWin: "10x+ Big Win Rate",
     kpiBankruptX500: "x500 Bankruptcy",
+    panelPaylines: "Payline Drilldown (Top 20)",
+    thPaylineId: "Payline ID",
+    thHitCount: "Hit Count",
+    thHitRate: "Hit Rate",
+    thRtpContribution: "RTP Contribution (pp)",
+    thWinShare: "Win Share",
+    paylineEmpty: "No payline data yet.",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
     labelConcurrency: "Batch Concurrency",
@@ -549,6 +563,33 @@ function computeRunProgressPct(latestEvent, opts) {
   return Math.max(0, Math.min(100, (idx / maxChunks) * 100));
 }
 
+// Build display rows for the paylines drilldown table. Sorted by the
+// requested column descending (default: approx_rtp_contribution_pp).
+// Returns objects ready to drop into <td>.
+function formatPaylineRows(summary, sortBy) {
+  const rows = ((summary || {}).player_impact || {}).paylines_top20 || [];
+  const sortKey = sortBy || "approx_rtp_contribution_pp";
+  const ranked = [...rows].sort(
+    (a, b) => Number(b[sortKey] || 0) - Number(a[sortKey] || 0)
+  );
+  const totalRtp = ranked.reduce(
+    (acc, r) => acc + Number(r.approx_rtp_contribution_pp || 0),
+    0
+  );
+  return ranked.map((r) => {
+    const rtp = Number(r.approx_rtp_contribution_pp || 0);
+    return {
+      payline_id: String(r.payline_id != null ? r.payline_id : "?"),
+      hit_count: Number(r.hit_count || 0),
+      hit_rate_pct: Number(r.hit_rate || 0) * 100,
+      rtp_contribution_pp: rtp,
+      win_share_pct: Number(r.approx_rtp_contribution_pp != null && totalRtp > 0
+        ? rtp / totalRtp
+        : 0) * 100,
+    };
+  });
+}
+
 // Pull all KPI card values out of a player_impact_summary.json shape and
 // classify each into a tone (good / warn / bad / neutral). Returns
 // {[id]: {value, tone}}. Tone thresholds mirror guideline rules so the
@@ -754,6 +795,7 @@ const PURE = {
   computeRunProgressPct,
   formatAutotuneProgress,
   extractMetricCards,
+  formatPaylineRows,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;

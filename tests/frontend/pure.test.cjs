@@ -350,6 +350,47 @@ test("computeRunProgressPct: null event -> 0", () => {
   assert.equal(PURE.computeRunProgressPct(null, { maxChunks: 120 }), 0);
 });
 
+// ---------- formatPaylineRows ----------
+
+test("formatPaylineRows: empty summary -> []", () => {
+  assert.deepStrictEqual(PURE.formatPaylineRows({}), []);
+  assert.deepStrictEqual(PURE.formatPaylineRows({ player_impact: {} }), []);
+});
+
+test("formatPaylineRows: sorts by rtp contribution desc by default", () => {
+  const summary = {
+    player_impact: {
+      paylines_top20: [
+        { payline_id: "1", hit_count: 100, hit_rate: 0.05, approx_rtp_contribution_pp: 12.0 },
+        { payline_id: "2", hit_count: 200, hit_rate: 0.1, approx_rtp_contribution_pp: 30.0 },
+        { payline_id: "3", hit_count: 50, hit_rate: 0.025, approx_rtp_contribution_pp: 8.0 },
+      ],
+    },
+  };
+  const rows = PURE.formatPaylineRows(summary);
+  assert.equal(rows.length, 3);
+  assert.deepStrictEqual(
+    rows.map((r) => r.payline_id),
+    ["2", "1", "3"]
+  );
+  // win_share is computed against the sum of contributions (50pp total).
+  assert.equal(rows[0].win_share_pct, 60); // 30/50 = 60%
+  assert.equal(rows[1].win_share_pct, 24); // 12/50 = 24%
+  assert.equal(rows[2].win_share_pct, 16); // 8/50 = 16%
+});
+
+test("formatPaylineRows: hit_rate gets converted to percent", () => {
+  const summary = {
+    player_impact: {
+      paylines_top20: [
+        { payline_id: "1", hit_count: 100, hit_rate: 0.0123, approx_rtp_contribution_pp: 1.0 },
+      ],
+    },
+  };
+  const rows = PURE.formatPaylineRows(summary);
+  assert.equal(rows[0].hit_rate_pct, 1.23);
+});
+
 // ---------- extractMetricCards ----------
 
 const _summaryFixture = () => ({

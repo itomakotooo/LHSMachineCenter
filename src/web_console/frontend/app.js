@@ -307,6 +307,31 @@ function renderRunHistory() {
   });
 }
 
+function renderPaylineDrilldown(summary) {
+  const tbody = byId("paylineTable") && byId("paylineTable").querySelector("tbody");
+  if (!tbody) return;
+  const rows = PURE.formatPaylineRows(summary);
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5">${fmt("paylineEmpty")}</td></tr>`;
+    return;
+  }
+  const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
+  tbody.innerHTML = rows
+    .map((r) => {
+      const barPct = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
+      return (
+        `<tr>` +
+        `<td>${r.payline_id}</td>` +
+        `<td>${fInt(r.hit_count)}</td>` +
+        `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
+        `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(4)}</td>` +
+        `<td>${r.win_share_pct.toFixed(2)}%</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+}
+
 function renderAssessment(summary) {
   if (!summary || !summary.guideline_assessment) {
     byId("assessment").textContent = fmt("noReport");
@@ -557,6 +582,7 @@ async function refreshCurrentRun() {
     state.bankChart.data.labels = bank.map((b) => `x${b.bankroll_multiplier}`);
     state.bankChart.data.datasets[0].data = bank.map((b) => (Number(b.bankruptcy_rate) <= 1 ? Number(b.bankruptcy_rate) * 100 : Number(b.bankruptcy_rate)));
     state.bankChart.update();
+    renderPaylineDrilldown(s);
     await refreshVersions();
     await refreshInterpretation();
   }
