@@ -1093,6 +1093,34 @@ def folder_bytes(path: Path) -> tuple[int, int]:
     return (size, files)
 
 
+def _parse_threshold(env_key: str, default: int) -> int:
+    """Read a positive int from env var; fall back to default on missing/invalid."""
+    raw = os.environ.get(env_key, "")
+    if not raw:
+        return default
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return v if v > 0 else default
+
+
+def resolved_risk_thresholds() -> dict[str, int]:
+    """Return cache cleanup risk thresholds.
+
+    Defaults are 512 MiB (medium) and 2 GiB (high). Both can be overridden via
+    SLOT_RISK_MEDIUM_BYTES and SLOT_RISK_HIGH_BYTES (used by e2e tests to
+    trigger the medium/high tier without writing huge files). The function
+    enforces ``high >= medium > 0`` so the frontend never sees an inverted
+    pair.
+    """
+    medium = _parse_threshold("SLOT_RISK_MEDIUM_BYTES", 512 * 1024 * 1024)
+    high = _parse_threshold("SLOT_RISK_HIGH_BYTES", 2 * 1024 * 1024 * 1024)
+    if high < medium:
+        high = medium
+    return {"medium_bytes": medium, "high_bytes": high}
+
+
 def create_app(
     state_dir: Path | None = None,
     reports_root: Path | None = None,
@@ -1275,6 +1303,7 @@ def create_app(
             "file_count": file_count,
             "running_runs": len(running),
             "reclaimable_bytes_estimate": total_bytes if not running else 0,
+            "risk_thresholds": resolved_risk_thresholds(),
         }
 
     @app.post("/api/cache/cleanup")
