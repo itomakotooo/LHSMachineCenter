@@ -499,10 +499,39 @@ test("formatSpinTypeRows: zero defaults for missing fields", () => {
   };
   const rows = PURE.formatSpinTypeRows(s);
   assert.equal(rows[0].total_win, 0);
-  assert.equal(rows[0].rtp_pct, 0);
+  // rtp_pct defaults to null now (was 0): the analyzer emits null for
+  // free-spin types where the paid-bet denominator is 0 so the UI can
+  // render "N/A" instead of a meaningless 0% or a nonsense percentage.
+  // Legacy reports (field missing) also resolve to null so the UI
+  // picks the same "N/A" path rather than inventing a number.
+  assert.equal(rows[0].rtp_pct, null);
   assert.equal(rows[0].rtp_contribution_pp, 0);
   assert.equal(rows[0].win_rounds, 0);
   assert.equal(rows[0].hit_rate_pct, 0);
+  // behavior_name defaults to empty string for legacy rows without
+  // the analyzer's derived label.
+  assert.equal(rows[0].behavior_name, "");
+});
+
+test("formatSpinTypeRows: free-spin rtp_pct=null passes through untouched", () => {
+  const s = {
+    player_impact: {
+      spin_type_breakdown: [
+        {
+          spin_type: 126,
+          spins: 1520,
+          total_win: 3821000,
+          rtp_pct: null,
+          rtp_contribution_pp: 40.14,
+          behavior_name: "free",
+        },
+      ],
+    },
+  };
+  const rows = PURE.formatSpinTypeRows(s);
+  assert.equal(rows[0].rtp_pct, null);
+  assert.equal(rows[0].behavior_name, "free");
+  assert.ok(rows[0].rtp_contribution_pp > 0);
 });
 
 // ---------- formatSymbolRows + symbolByColMatrix ----------

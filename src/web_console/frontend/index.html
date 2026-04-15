@@ -165,7 +165,7 @@
               <article class="kpi"><span data-i18n="kpiCi">CI 半宽</span><strong id="kpiCi">N/A</strong></article>
               <article class="kpi"><span data-i18n="kpiSpins">总 Spins</span><strong id="kpiSpins">N/A</strong></article>
               <article class="kpi"><span data-i18n="kpiZero">空转率</span><strong id="kpiZero">N/A</strong></article>
-              <article class="kpi"><span data-i18n="kpiTail">尾部依赖度</span><strong id="kpiTail">N/A</strong></article>
+              <article class="kpi"><span data-i18n="kpiTail">尾部依赖度</span><strong id="kpiTail">N/A</strong><div class="kpi-sub" id="kpiTailSub"></div></article>
               <article class="kpi"><span data-i18n="kpiGuide">规则状态</span><strong id="kpiGuide">N/A</strong></article>
               <article class="kpi"><span data-i18n="kpiVolatility">波动性</span><strong id="kpiVolatility">N/A</strong></article>
               <article class="kpi"><span data-i18n="kpiArchetype">体验类型</span><strong id="kpiArchetype">N/A</strong></article>
@@ -200,6 +200,7 @@
               <thead>
                 <tr>
                   <th data-i18n="thSpinType">SpinType</th>
+                  <th data-i18n="thSpinTypeBehavior">类型</th>
                   <th data-i18n="thHitCount">命中次数</th>
                   <th data-i18n="thSpinShare">占比</th>
                   <th data-i18n="thHitRate">命中率</th>
@@ -210,6 +211,26 @@
               </thead>
               <tbody></tbody>
             </table>
+          </section>
+
+          <!-- Upstream feature breakdown (analysisResult.FeatureWin).
+               Machine-authoritative bonus-feature names + per-payout
+               attribution. Hidden for single-"Normal"-feature machines
+               (M14) where it would duplicate payout_ids_top20. -->
+          <section class="panel feature-breakdown hidden" id="featureBreakdownPanel">
+            <h2 data-i18n="panelFeatureBreakdown">上游 Feature 分布</h2>
+            <div id="featureBreakdownMeta" class="meta"></div>
+            <div id="featureBreakdownBody"></div>
+          </section>
+
+          <!-- Bonus-chain dynamics (ReMarks Freespin annotation). The
+               MapCollection energy-ramp view for M272 + any future
+               machine whose bonus rounds carry the Freespin string.
+               Hidden when no chain data was seen in the sample. -->
+          <section class="panel bonus-chain-dynamics hidden" id="bonusChainDynamicsPanel">
+            <h2 data-i18n="panelBonusChainDynamics">Bonus Chain 动态</h2>
+            <div id="bonusChainMeta" class="meta"></div>
+            <div id="bonusChainBody"></div>
           </section>
 
           <!-- Mid panels are stacked (not tabbed) per user feedback after

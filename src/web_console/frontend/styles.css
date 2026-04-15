@@ -633,6 +633,23 @@ button:disabled {
   line-height: 1.15;
 }
 
+/* Secondary line below the primary KPI value. Used for the tail
+   dependency card to show the ≥20/50/100x breakdown alongside the
+   primary ≥10x number without adding separate cards. Empty string
+   collapses the line visually. */
+.kpi .kpi-sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+.kpi .kpi-sub:empty {
+  display: none;
+}
+
 /* Per-card text-color tone (legacy, kept so non-card text stays
    readable when whole-card bg tone isn't set yet). */
 .kpi strong[data-tone="good"] {
@@ -767,6 +784,80 @@ button:disabled {
 }
 .run-filter-banner .clear-filter-btn:hover {
   background: #fed7aa;
+}
+
+/* Upstream feature breakdown panel: each feature renders as its own
+   block with a small inner header + per-payout table. */
+.feature-breakdown .feature-block + .feature-block {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+.feature-breakdown .feature-block h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: #1e293b;
+}
+.feature-breakdown .feature-block .meta {
+  margin-bottom: 6px;
+}
+
+/* Bonus chain dynamics panel: 3 headline KPIs on top, 2 tables below
+   side-by-side. */
+.bonus-chain-dynamics .bonus-chain-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.bonus-chain-dynamics .bcKpi {
+  background: #f8fafc;
+  border: 1px solid #d8e1ec;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.bonus-chain-dynamics .bcKpi span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.bonus-chain-dynamics .bcKpi strong {
+  display: block;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+.bonus-chain-dynamics .bcKpi em {
+  display: block;
+  margin-top: 2px;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.bonus-chain-dynamics .bonus-chain-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.bonus-chain-dynamics .bonus-chain-grid h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #1e293b;
+}
+@media (max-width: 900px) {
+  .bonus-chain-dynamics .bonus-chain-kpis,
+  .bonus-chain-dynamics .bonus-chain-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Muted cell style (used for spin_type_breakdown rtp_pct=null). */
+td.muted {
+  color: var(--muted);
+  font-style: italic;
 }
 
 .catalog-title {

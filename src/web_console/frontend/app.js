@@ -608,26 +608,181 @@ function renderSpinTypeBreakdown(summary) {
   if (!tbody) return;
   const rows = PURE.formatSpinTypeRows(summary);
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="7">${fmt("spinTypeEmpty")}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8">${fmt("spinTypeEmpty")}</td></tr>`;
     return;
   }
   const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
   tbody.innerHTML = rows
     .map((r) => {
       const bar = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
+      // behavior_name is "paid" / "free" / "mixed" (or "" for legacy
+      // reports). rtp_pct is null for all-free types -- render "N/A"
+      // so the operator doesn't misread a free-spin type's meaningless
+      // rtp_pct (old bug: SpinType 126 showed 243% because the
+      // denominator summed BetAmount instead of CostCredits).
+      // Map behavior label via i18n; fmt() falls back to the key text
+      // itself when absent, so unknown values (future machines) still
+      // render the raw label.
+      const behavior = r.behavior_name
+        ? fmt("spinTypeBehavior_" + r.behavior_name)
+        : "\u2014";
+      const rtpCell = r.rtp_pct == null
+        ? `<td class="muted">N/A</td>`
+        : `<td>${r.rtp_pct.toFixed(2)}%</td>`;
       return (
         `<tr>` +
         `<td>${r.spin_type}</td>` +
+        `<td>${behavior}</td>` +
         `<td>${fInt(r.win_rounds)}</td>` +
         `<td>${r.share_pct.toFixed(2)}%</td>` +
         `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
         `<td>${fInt(r.total_win)}</td>` +
-        `<td>${r.rtp_pct.toFixed(2)}%</td>` +
+        rtpCell +
         `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(4)}</td>` +
         `</tr>`
       );
     })
     .join("");
+}
+
+// Render the upstream_feature_breakdown panel from
+// summary.player_impact.upstream_feature_breakdown. Hidden when the
+// upstream only reports a single "Normal" feature (redundant with
+// payout_ids_top20). Each feature renders as a small header + per-
+// payout-id table.
+function renderFeatureBreakdownPanel(summary) {
+  const panel = byId("featureBreakdownPanel");
+  if (!panel) return;
+  const data = ((summary || {}).player_impact || {}).upstream_feature_breakdown;
+  if (!data || !data.applicable || !Array.isArray(data.features) || !data.features.length) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+  byId("featureBreakdownMeta").textContent = fmt("featureBreakdownMeta", {
+    count: data.features.length,
+  });
+  const body = byId("featureBreakdownBody");
+  body.innerHTML = data.features
+    .map((feat) => {
+      const rows = Array.isArray(feat.payouts) ? feat.payouts : [];
+      const maxShare = Math.max(
+        ...rows.map((p) => Number(p.share_of_feature_win || 0)),
+        0
+      );
+      const tblRows = rows
+        .map((p) => {
+          const share = Number(p.share_of_feature_win || 0);
+          const bar = maxShare > 0 ? Math.min(100, (share / maxShare) * 100) : 0;
+          return (
+            `<tr>` +
+            `<td>${String(p.payout_id)}</td>` +
+            `<td>${fInt(p.win_credits)}</td>` +
+            `<td>${fInt(p.times)}</td>` +
+            `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${(share * 100).toFixed(2)}%</td>` +
+            `</tr>`
+          );
+        })
+        .join("");
+      const headSummary = fmt("featureRowSummary", {
+        totalWin: fInt(feat.total_win),
+        rtpPp: Number(feat.rtp_contribution_pp || 0).toFixed(2),
+        shareTotal: (Number(feat.share_of_total_win || 0) * 100).toFixed(1) + "%",
+      });
+      return (
+        `<div class="feature-block">` +
+        `<h3>${String(feat.feature_name)}</h3>` +
+        `<div class="meta">${headSummary}</div>` +
+        `<table class="drilldown-table">` +
+        `<thead><tr>` +
+        `<th>${fmt("thFeaturePayId")}</th>` +
+        `<th>${fmt("thFeatureWinCredits")}</th>` +
+        `<th>${fmt("thFeatureTimes")}</th>` +
+        `<th>${fmt("thFeatureShare")}</th>` +
+        `</tr></thead>` +
+        `<tbody>${tblRows}</tbody>` +
+        `</table>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
+// Render the bonus_chain_dynamics panel (ReMarks-derived
+// MapCollection stats). Hidden when the sample contains no
+// Freespin-annotated chains.
+function renderBonusChainDynamicsPanel(summary) {
+  const panel = byId("bonusChainDynamicsPanel");
+  if (!panel) return;
+  const d = ((summary || {}).player_impact || {}).bonus_chain_dynamics;
+  if (!d || !d.applicable || !d.chain_count) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+  byId("bonusChainMeta").textContent = fmt("bonusChainMeta", {
+    chainCount: fInt(d.chain_count),
+    bonusRounds: fInt(d.bonus_round_count),
+  });
+
+  const q = d.chain_length_quantiles || {};
+  const rq = d.chain_max_ratio_quantiles || {};
+  const hist = Array.isArray(d.extra_ratio_histogram) ? d.extra_ratio_histogram : [];
+  const maxHistCount = Math.max(...hist.map((h) => Number(h.rounds || 0)), 0);
+  const histHtml = hist
+    .map((h) => {
+      const r = Number(h.rounds || 0);
+      const bar = maxHistCount > 0 ? Math.min(100, (r / maxHistCount) * 100) : 0;
+      return (
+        `<tr>` +
+        `<td>${fInt(h.ratio)}x</td>` +
+        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${fInt(r)}</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+  const depth = Array.isArray(d.extra_ratio_by_chain_depth) ? d.extra_ratio_by_chain_depth : [];
+  const maxDepthRatio = Math.max(...depth.map((b) => Number(b.avg_extra_ratio || 0)), 0);
+  const depthHtml = depth
+    .map((b) => {
+      const avg = Number(b.avg_extra_ratio || 0);
+      const bar = maxDepthRatio > 0 ? Math.min(100, (avg / maxDepthRatio) * 100) : 0;
+      return (
+        `<tr>` +
+        `<td>Freespin ${b.depth_bucket}</td>` +
+        `<td>${fInt(b.rounds)}</td>` +
+        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${avg.toFixed(0)}x</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+  const retriggerPct = (Number(d.self_retrigger_round_rate || 0) * 100).toFixed(1) + "%";
+  const retriggerDetail = fmt("bonusChainRetriggerDetail", {
+    avg: Number(d.avg_retriggers_per_chain || 0).toFixed(2),
+  });
+
+  byId("bonusChainBody").innerHTML =
+    `<div class="bonus-chain-kpis">` +
+    `<div class="bcKpi"><span>${fmt("bonusChainLenLabel")}</span>` +
+    `<strong>avg ${Number(d.avg_chain_length || 0).toFixed(1)}</strong>` +
+    `<em>${fmt("bonusChainQuantileFmt", { p50: q.p50, p90: q.p90, p95: q.p95, max: q.max })}</em></div>` +
+    `<div class="bcKpi"><span>${fmt("bonusChainRatioLabel")}</span>` +
+    `<strong>max ${rq.max}x</strong>` +
+    `<em>${fmt("bonusChainQuantileFmt", { p50: rq.p50 + "x", p90: rq.p90 + "x", p95: rq.p95 + "x", max: rq.max + "x" })}</em></div>` +
+    `<div class="bcKpi"><span>${fmt("bonusChainRetriggerLabel")}</span>` +
+    `<strong>${retriggerPct}</strong>` +
+    `<em>${retriggerDetail}</em></div>` +
+    `</div>` +
+    `<div class="bonus-chain-grid">` +
+    `<div><h3>${fmt("bonusChainDepthLabel")}</h3>` +
+    `<table class="drilldown-table">` +
+    `<thead><tr><th>Depth</th><th>Rounds</th><th>avg ExtraRatio</th></tr></thead>` +
+    `<tbody>${depthHtml}</tbody></table></div>` +
+    `<div><h3>${fmt("bonusChainHistogramLabel")}</h3>` +
+    `<table class="drilldown-table">` +
+    `<thead><tr><th>Ratio</th><th>Rounds</th></tr></thead>` +
+    `<tbody>${histHtml}</tbody></table></div>` +
+    `</div>`;
 }
 
 function renderAssessment(summary) {
@@ -870,14 +1025,22 @@ async function refreshCurrentRun() {
     const cards = PURE.extractMetricCards(s);
     const kpiBindings = [
       ["kpiRtp", "rtp"], ["kpiCi", "ci"], ["kpiSpins", "spins"],
-      ["kpiZero", "zeroWin"], ["kpiTail", "tailDep"], ["kpiGuide", "guideline"],
+      ["kpiZero", "zeroWin"], ["kpiTail", "tailDep", "kpiTailSub"], ["kpiGuide", "guideline"],
       ["kpiVolatility", "volatility"], ["kpiArchetype", "archetype"],
       ["kpiLossStreak", "lossStreak"], ["kpiMaxReturn", "maxReturn"],
       ["kpiBigWin", "bigWin"], ["kpiBankruptX500", "bankruptX500"],
     ];
-    for (const [domId, key] of kpiBindings) {
+    for (const binding of kpiBindings) {
+      const [domId, key, subId] = binding;
       const c = cards[key] || { value: "N/A", tone: "neutral" };
       setKpi(domId, c.value, c.tone);
+      // Optional sub-line (e.g. tail-dep breakdown ≥20/50/100). Cleared
+      // when no sub data is available so the card doesn't show stale
+      // text from a prior summary.
+      if (subId) {
+        const subEl = byId(subId);
+        if (subEl) subEl.textContent = c.sub || "";
+      }
     }
     const buckets = s.player_impact?.multiplier_profile?.buckets || [];
     state.bucketChart.data.labels = buckets.map((b) => PURE.prettyBucketLabel(b.bucket));
@@ -885,6 +1048,8 @@ async function refreshCurrentRun() {
     state.bucketChart.update();
     renderRtpClampWarning(s);
     renderSpinTypeBreakdown(s);
+    renderFeatureBreakdownPanel(s);
+    renderBonusChainDynamicsPanel(s);
     renderPaylineDrilldown(s);
     renderPayoutGroupDrilldown(s);
     renderSymbolDrilldown(s);

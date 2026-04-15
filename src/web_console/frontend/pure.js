@@ -84,6 +84,28 @@ const I18N = {
     thHitCount: "命中次数",
     thHitRate: "命中率",
     thRtpContribution: "RTP 贡献(pp)",
+    thSpinTypeBehavior: "类型",
+    spinTypeBehavior_paid: "付费",
+    spinTypeBehavior_free: "免费",
+    spinTypeBehavior_mixed: "混合",
+    panelFeatureBreakdown: "上游 Feature 分布",
+    panelBonusChainDynamics: "Bonus Chain 动态",
+    featureBreakdownMeta: "{count} 个 feature · 上游权威分组（analysisResult.FeatureWin）",
+    featureBreakdownEmpty: "本机台仅含单一 feature（Normal），已由 Pay ID 分布覆盖。",
+    featureRowSummary: "总 Win {totalWin} · RTP 贡献 {rtpPp}pp · 占总 win 比 {shareTotal}",
+    thFeaturePayId: "Pay ID",
+    thFeatureWinCredits: "Win Credits",
+    thFeatureTimes: "Times",
+    thFeatureShare: "Feature 内占比",
+    bonusChainMeta: "{chainCount} 条 chain · {bonusRounds} 个 bonus round",
+    bonusChainEmpty: "本机台未发现 Freespin 类型的 bonus chain。",
+    bonusChainLenLabel: "Chain 长度",
+    bonusChainRatioLabel: "Chain 最高 ExtraRatio",
+    bonusChainRetriggerLabel: "自重触发率",
+    bonusChainRetriggerDetail: "每条 chain 平均触发 {avg} 次自重",
+    bonusChainDepthLabel: "能量敦线（按 chain 深度）",
+    bonusChainHistogramLabel: "ExtraRatio 直方图（按 bonus round 计数）",
+    bonusChainQuantileFmt: "p50 {p50} · p90 {p90} · p95 {p95} · max {max}",
     thWinShare: "Win 占比",
     thTopSymbols: "中奖符号 Top",
     paylineEmpty: "暂无支付线数据。",
@@ -294,6 +316,28 @@ const I18N = {
     thHitCount: "Hit Count",
     thHitRate: "Hit Rate",
     thRtpContribution: "RTP Contribution (pp)",
+    thSpinTypeBehavior: "Behavior",
+    spinTypeBehavior_paid: "paid",
+    spinTypeBehavior_free: "free",
+    spinTypeBehavior_mixed: "mixed",
+    panelFeatureBreakdown: "Upstream feature breakdown",
+    panelBonusChainDynamics: "Bonus chain dynamics",
+    featureBreakdownMeta: "{count} feature(s) · upstream-authoritative grouping (analysisResult.FeatureWin)",
+    featureBreakdownEmpty: "Single-feature machine (Normal); already covered by Pay ID breakdown.",
+    featureRowSummary: "total win {totalWin} · RTP contrib {rtpPp}pp · {shareTotal} of total win",
+    thFeaturePayId: "Pay ID",
+    thFeatureWinCredits: "Win credits",
+    thFeatureTimes: "Times",
+    thFeatureShare: "Share of feature",
+    bonusChainMeta: "{chainCount} chains · {bonusRounds} bonus rounds",
+    bonusChainEmpty: "No Freespin-annotated bonus chains found on this machine.",
+    bonusChainLenLabel: "Chain length",
+    bonusChainRatioLabel: "Peak ExtraRatio per chain",
+    bonusChainRetriggerLabel: "Self-retrigger rate",
+    bonusChainRetriggerDetail: "avg {avg} retriggers per chain",
+    bonusChainDepthLabel: "Energy ramp (by chain depth)",
+    bonusChainHistogramLabel: "ExtraRatio histogram (bonus rounds)",
+    bonusChainQuantileFmt: "p50 {p50} · p90 {p90} · p95 {p95} · max {max}",
     thWinShare: "Win Share",
     thTopSymbols: "Top Win Symbols",
     paylineEmpty: "No payline data yet.",
@@ -664,12 +708,19 @@ function formatSpinTypeRows(summary) {
   const rows = ((summary || {}).player_impact || {}).spin_type_breakdown || [];
   return rows.map((r) => ({
     spin_type: Number(r.spin_type != null ? r.spin_type : 0),
+    // behavior_name is "paid" / "free" / "mixed" (derived by the
+    // analyzer from per-type CostCredits>0 round count). Old reports
+    // may lack it -- leave empty so the UI renders "—".
+    behavior_name: String(r.behavior_name || ""),
     spins: Number(r.spins || 0),
     share_pct: Number(r.share_pct || 0),
     win_rounds: Number(r.win_rounds || 0),
     hit_rate_pct: Number(r.hit_rate || 0) * 100,
     total_win: Number(r.total_win || 0),
-    rtp_pct: Number(r.rtp_pct || 0),
+    // rtp_pct is null (JSON) for all-free types (paid_bet denominator
+    // is 0) -- pass null through so the UI can render "N/A". Legacy
+    // rows always had a numeric rtp_pct; we still show those.
+    rtp_pct: r.rtp_pct === null || r.rtp_pct === undefined ? null : Number(r.rtp_pct),
     rtp_contribution_pp: Number(r.rtp_contribution_pp || 0),
   }));
 }
@@ -819,10 +870,26 @@ function extractMetricCards(summary) {
       tone: "neutral",
     },
     zeroWin: { value: pct(hit.zero_win_rate), tone: toneZeroWin(hit.zero_win_rate) },
-    tailDep: {
-      value: num(derived.tail_dependency, (x) => x.toFixed(3)),
-      tone: toneTailDep(derived.tail_dependency),
-    },
+    tailDep: (() => {
+      // Primary value shows ge10x (the canonical dependency that
+      // classify_volatility / classify_experience_archetype read).
+      // sub carries the compact ge20x / ge50x / ge100x breakdown so
+      // the operator sees how fast the tail decays.
+      const d10 = derived.tail_dependency_ge10x ?? derived.tail_dependency;
+      const d20 = derived.tail_dependency_ge20x;
+      const d50 = derived.tail_dependency_ge50x;
+      const d100 = derived.tail_dependency_ge100x;
+      const fmt1 = (v) => (v == null ? "\u2014" : (Number(v) * 100).toFixed(1) + "%");
+      const subParts = [];
+      if (d20 != null) subParts.push(`\u226520x ${fmt1(d20)}`);
+      if (d50 != null) subParts.push(`\u226550x ${fmt1(d50)}`);
+      if (d100 != null) subParts.push(`\u2265100x ${fmt1(d100)}`);
+      return {
+        value: num(d10, (x) => x.toFixed(3)),
+        tone: toneTailDep(d10),
+        sub: subParts.join(" \u00b7 "),
+      };
+    })(),
     guideline: { value: cmp.overall_status || "N/A", tone: toneGuideline(cmp.overall_status) },
     volatility: { value: cls.volatility_class || "N/A", tone: "neutral" },
     archetype: { value: cls.experience_archetype || "N/A", tone: "neutral" },
