@@ -106,8 +106,11 @@ test("fmt: unknown lang falls back to en", () => {
 });
 
 test("fmt: zh value is used when lang=zh", () => {
-  assert.equal(PURE.fmt("zh", "btnStart"), "开始运行");
-  assert.equal(PURE.fmt("en", "btnStart"), "Start Run");
+  // Sidebar refactor (Commit 2 of dashboard layout) shortened the run-control
+  // button labels from "开始运行" / "Start Run" to icon + short phrase so the
+  // 4 buttons fit a 2x2 grid in the 260px sidebar column.
+  assert.equal(PURE.fmt("zh", "btnStart"), "▶ 开始");
+  assert.equal(PURE.fmt("en", "btnStart"), "▶ Start");
 });
 
 // ---------- fNum / fInt / fRate ----------

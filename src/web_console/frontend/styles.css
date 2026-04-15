@@ -148,10 +148,57 @@ body {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  /* Long param + model + control stacks may exceed viewport on short
+     laptop screens; let the column scroll internally instead of pushing
+     run-actions off the screen. */
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
 }
 
 .dash-main {
   min-width: 0;
+}
+
+/* Panels inside the sidebar collapse to single-column grids (260px is
+   too narrow for the 2-col label/input grid that .layout used). The
+   12-col grid-column rules from .layout don't apply because .dash-sidebar
+   is a flex column, not a 12-col grid. */
+.dash-sidebar > .panel {
+  margin: 0;
+}
+
+.dash-sidebar .grid.two {
+  grid-template-columns: 1fr;
+}
+
+.dash-sidebar .grid .full {
+  grid-column: span 1;
+}
+
+.dash-sidebar .panel h2 {
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Run-control sits at the bottom of the sidebar (last child) and lays
+   out its 4 buttons in a fixed 2x2 grid so Start/Auto land on the top
+   row regardless of locale label width. */
+.dash-sidebar .panel.run-actions {
+  margin-top: auto;
+}
+
+.dash-sidebar .panel.run-actions .actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.dash-sidebar .panel.run-actions .actions button {
+  width: 100%;
+  white-space: nowrap;
 }
 
 /* Live-status strip rides between the title block and the lang/health

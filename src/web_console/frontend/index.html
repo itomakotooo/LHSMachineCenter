@@ -38,113 +38,118 @@
 
     <main class="tab-pages">
       <section id="tab-debug" class="tab-page active">
-        <!-- Dashboard shell: sidebar (filled by Commit 2) + main (current
-             panels). Sidebar stays empty in this commit; the .layout grid
-             keeps every panel in place so e2e selectors are unaffected. -->
+        <!-- Dashboard shell: sidebar holds the param/model/control panels;
+             .dash-main keeps the .layout grid that holds the rest. e2e
+             selectors are by ID so the move is invisible to them. -->
         <div class="dashboard">
-          <aside class="dash-sidebar"></aside>
-          <div class="dash-main">
-            <div class="layout">
-          <section class="panel run-config">
-            <h2 data-i18n="panelRunConfig">运行参数</h2>
-            <div class="grid two">
-              <label>
-                <span class="label-with-help"><span data-i18n="labelMachine">机台</span><span class="help-dot" data-help-key="helpMachine" tabindex="0" role="note">i</span></span>
-                <select id="machineSelect"></select>
-              </label>
-              <label>
-                <span class="label-with-help"><span data-i18n="labelMode">RTP Mode</span><span class="help-dot" data-help-key="helpMode" tabindex="0" role="note">i</span></span>
-                <select id="modeSelect"></select>
-              </label>
-              <label>
-                <span class="label-with-help"><span data-i18n="labelCiTarget">目标 CI 半宽</span><span class="help-dot" data-help-key="helpCiTarget" tabindex="0" role="note">i</span></span>
-                <select id="ciSelect"></select>
-              </label>
-              <label>
-                <span class="label-with-help"><span data-i18n="labelRobotCount">每 Chunk 机器人数</span><span class="help-dot" data-help-key="helpRobotCount" tabindex="0" role="note">i</span></span>
-                <input id="robotInput" type="number" readonly class="autotune-filled" data-i18n-placeholder="placeholderAutotuneFill" placeholder="由压测自动填充" />
-              </label>
-              <label>
-                <span class="label-with-help"><span data-i18n="labelConcurrency">批并发数</span><span class="help-dot" data-help-key="helpConcurrency" tabindex="0" role="note">i</span></span>
-                <input id="concInput" type="number" readonly class="autotune-filled" data-i18n-placeholder="placeholderAutotuneFill" placeholder="由压测自动填充" />
-              </label>
-              <label>
-                <span class="label-with-help"><span data-i18n="labelBankSession">破产探测回合数</span><span class="help-dot" data-help-key="helpBankSession" tabindex="0" role="note">i</span></span>
-                <input id="bankSessionInput" type="number" value="500" />
-              </label>
-              <label class="full">
-                <span class="label-with-help"><span data-i18n="labelBankMultipliers">资金倍数梯度</span><span class="help-dot" data-help-key="helpBankMultipliers" tabindex="0" role="note">i</span></span>
-                <select id="bankMultSelect"></select>
-              </label>
-            </div>
-            <details class="advanced-params">
-              <summary data-i18n="labelAdvancedParams">高级参数</summary>
+          <aside class="dash-sidebar">
+            <section class="panel run-config">
+              <h2 data-i18n="panelRunConfig">运行参数</h2>
               <div class="grid two">
                 <label>
-                  <span class="label-with-help"><span data-i18n="labelChunkSpins">每 Chunk Spin 次数</span><span class="help-dot" data-help-key="helpChunkSpins" tabindex="0" role="note">i</span></span>
-                  <input id="spinInput" type="number" value="5000" />
+                  <span class="label-with-help"><span data-i18n="labelMachine">机台</span><span class="help-dot" data-help-key="helpMachine" tabindex="0" role="note">i</span></span>
+                  <select id="machineSelect"></select>
                 </label>
                 <label>
-                  <span class="label-with-help"><span data-i18n="labelMaxChunks">最大 Chunk 数</span><span class="help-dot" data-help-key="helpMaxChunks" tabindex="0" role="note">i</span></span>
-                  <input id="maxChunksInput" type="number" value="120" />
+                  <span class="label-with-help"><span data-i18n="labelMode">RTP Mode</span><span class="help-dot" data-help-key="helpMode" tabindex="0" role="note">i</span></span>
+                  <select id="modeSelect"></select>
                 </label>
                 <label>
-                  <span class="label-with-help"><span data-i18n="labelTimeout">单请求超时 (秒)</span><span class="help-dot" data-help-key="helpTimeout" tabindex="0" role="note">i</span></span>
-                  <input id="timeoutInput" type="number" value="300" />
+                  <span class="label-with-help"><span data-i18n="labelCiTarget">目标 CI 半宽</span><span class="help-dot" data-help-key="helpCiTarget" tabindex="0" role="note">i</span></span>
+                  <select id="ciSelect"></select>
+                </label>
+                <label>
+                  <span class="label-with-help"><span data-i18n="labelRobotCount">每 Chunk 机器人数</span><span class="help-dot" data-help-key="helpRobotCount" tabindex="0" role="note">i</span></span>
+                  <input id="robotInput" type="number" readonly class="autotune-filled" data-i18n-placeholder="placeholderAutotuneFill" placeholder="由压测自动填充" />
+                </label>
+                <label>
+                  <span class="label-with-help"><span data-i18n="labelConcurrency">批并发数</span><span class="help-dot" data-help-key="helpConcurrency" tabindex="0" role="note">i</span></span>
+                  <input id="concInput" type="number" readonly class="autotune-filled" data-i18n-placeholder="placeholderAutotuneFill" placeholder="由压测自动填充" />
+                </label>
+                <label>
+                  <span class="label-with-help"><span data-i18n="labelBankSession">破产探测回合数</span><span class="help-dot" data-help-key="helpBankSession" tabindex="0" role="note">i</span></span>
+                  <input id="bankSessionInput" type="number" value="500" />
+                </label>
+                <label class="full">
+                  <span class="label-with-help"><span data-i18n="labelBankMultipliers">资金倍数梯度</span><span class="help-dot" data-help-key="helpBankMultipliers" tabindex="0" role="note">i</span></span>
+                  <select id="bankMultSelect"></select>
                 </label>
               </div>
-            </details>
-            <details class="param-help" open>
-              <summary data-i18n="paramGuideTitle">参数说明（新手）</summary>
-              <ul class="help-list">
-                <li data-i18n="helpMachine">机台：选择目标机台（建议先固定单机台做基线）。</li>
-                <li data-i18n="helpMode">RTP Mode：同机台不同数值模式，报告必须按 mode 分开对比。</li>
-                <li data-i18n="helpCiTarget">目标 CI 半宽：统计置信精度目标，越小越准，耗时越长。</li>
-                <li data-i18n="helpChunkSpins">每 Chunk Spin 次数：单次采样请求内每机器人转动次数。</li>
-                <li data-i18n="helpRobotCount">每 Chunk 机器人数：单次请求并行机器人数量。</li>
-                <li data-i18n="helpConcurrency">批并发数：同一轮同时发起多少个请求。</li>
-                <li data-i18n="helpMaxChunks">最大 Chunk 数：达到后强制停止，防止无限采样。</li>
-                <li data-i18n="helpTimeout">单请求超时：每个网络请求的超时上限。</li>
-                <li data-i18n="helpBankSession">破产探测回合数：用于估算会话中破产率。</li>
-                <li data-i18n="helpBankMultipliers">资金倍数梯度：例如 100,200,500，对应不同初始资金强度。</li>
-                <li data-i18n="helpBankMultiplierWarn">仅「标准」档位与 guideline rules 里的 x100/x200/x500 阈值对齐；切换到其他档位时破产相关的 A5 规则不会触发。</li>
-              </ul>
-            </details>
-          </section>
+              <details class="advanced-params">
+                <summary data-i18n="labelAdvancedParams">高级参数</summary>
+                <div class="grid two">
+                  <label>
+                    <span class="label-with-help"><span data-i18n="labelChunkSpins">每 Chunk Spin 次数</span><span class="help-dot" data-help-key="helpChunkSpins" tabindex="0" role="note">i</span></span>
+                    <input id="spinInput" type="number" value="5000" />
+                  </label>
+                  <label>
+                    <span class="label-with-help"><span data-i18n="labelMaxChunks">最大 Chunk 数</span><span class="help-dot" data-help-key="helpMaxChunks" tabindex="0" role="note">i</span></span>
+                    <input id="maxChunksInput" type="number" value="120" />
+                  </label>
+                  <label>
+                    <span class="label-with-help"><span data-i18n="labelTimeout">单请求超时 (秒)</span><span class="help-dot" data-help-key="helpTimeout" tabindex="0" role="note">i</span></span>
+                    <input id="timeoutInput" type="number" value="300" />
+                  </label>
+                </div>
+              </details>
+              <details class="param-help">
+                <summary data-i18n="paramGuideTitle">参数说明（新手）</summary>
+                <ul class="help-list">
+                  <li data-i18n="helpMachine">机台：选择目标机台（建议先固定单机台做基线）。</li>
+                  <li data-i18n="helpMode">RTP Mode：同机台不同数值模式，报告必须按 mode 分开对比。</li>
+                  <li data-i18n="helpCiTarget">目标 CI 半宽：统计置信精度目标，越小越准，耗时越长。</li>
+                  <li data-i18n="helpChunkSpins">每 Chunk Spin 次数：单次采样请求内每机器人转动次数。</li>
+                  <li data-i18n="helpRobotCount">每 Chunk 机器人数：单次请求并行机器人数量。</li>
+                  <li data-i18n="helpConcurrency">批并发数：同一轮同时发起多少个请求。</li>
+                  <li data-i18n="helpMaxChunks">最大 Chunk 数：达到后强制停止，防止无限采样。</li>
+                  <li data-i18n="helpTimeout">单请求超时：每个网络请求的超时上限。</li>
+                  <li data-i18n="helpBankSession">破产探测回合数：用于估算会话中破产率。</li>
+                  <li data-i18n="helpBankMultipliers">资金倍数梯度：例如 100,200,500，对应不同初始资金强度。</li>
+                  <li data-i18n="helpBankMultiplierWarn">仅「标准」档位与 guideline rules 里的 x100/x200/x500 阈值对齐；切换到其他档位时破产相关的 A5 规则不会触发。</li>
+                </ul>
+              </details>
+            </section>
 
-          <section class="panel model-config">
-            <h2 data-i18n="panelModelConfig">模型配置</h2>
-            <div class="grid one">
-              <label>
-                <span class="label-with-help"><span data-i18n="labelProvider">模型供应商</span><span class="help-dot" data-help-key="helpProvider" tabindex="0" role="note">i</span></span>
-                <select id="providerSelect"></select>
-              </label>
-              <label>
-                <span class="label-with-help"><span data-i18n="labelModel">模型</span><span class="help-dot" data-help-key="helpModel" tabindex="0" role="note">i</span></span>
-                <select id="modelSelect"></select>
-              </label>
-              <label>
-                <span class="label-with-help"><span data-i18n="labelApiKey">API Key</span><span class="help-dot" data-help-key="helpApiKey" tabindex="0" role="note">i</span></span>
-                <input id="apiKeyInput" type="password" data-i18n-placeholder="placeholderApiKey" placeholder="粘贴一个 Key" />
-              </label>
-            </div>
-            <div class="actions">
-              <button id="saveModelCfgBtn" data-i18n="btnSaveModel">保存模型配置</button>
-            </div>
-            <div id="modelStatus" class="meta warnMeta"></div>
-          </section>
+            <section class="panel model-config">
+              <h2 data-i18n="panelModelConfig">模型配置</h2>
+              <div class="grid one">
+                <label>
+                  <span class="label-with-help"><span data-i18n="labelProvider">模型供应商</span><span class="help-dot" data-help-key="helpProvider" tabindex="0" role="note">i</span></span>
+                  <select id="providerSelect"></select>
+                </label>
+                <label>
+                  <span class="label-with-help"><span data-i18n="labelModel">模型</span><span class="help-dot" data-help-key="helpModel" tabindex="0" role="note">i</span></span>
+                  <select id="modelSelect"></select>
+                </label>
+                <label>
+                  <span class="label-with-help"><span data-i18n="labelApiKey">API Key</span><span class="help-dot" data-help-key="helpApiKey" tabindex="0" role="note">i</span></span>
+                  <input id="apiKeyInput" type="password" data-i18n-placeholder="placeholderApiKey" placeholder="粘贴一个 Key" />
+                </label>
+              </div>
+              <div class="actions">
+                <button id="saveModelCfgBtn" data-i18n="btnSaveModel">保存模型配置</button>
+              </div>
+              <div id="modelStatus" class="meta warnMeta"></div>
+            </section>
 
-          <section class="panel run-actions">
-            <h2 data-i18n="panelRunControl">运行控制</h2>
-            <div class="actions">
-              <button id="startBtn" data-i18n="btnStart">开始运行</button>
-              <button id="stopBtn" data-i18n="btnStop">停止运行</button>
-              <button id="refreshBtn" data-i18n="btnRefresh">刷新状态</button>
-              <button id="autotuneBtn" data-i18n="btnAutoTune">一键压测并调参</button>
-            </div>
-            <div id="autotuneMeta" class="pre compact">No auto tune run yet.</div>
-          </section>
-
+            <!-- Run-control sits last in the sidebar so the Start/Auto buttons
+                 land at the bottom of the sticky column (closest to thumb on
+                 short laptop screens). Buttons use icon + short label per
+                 plan; the verbose strings are the i18n fallbacks now in
+                 pure.js. -->
+            <section class="panel run-actions sidebar-control">
+              <h2 data-i18n="panelRunControl">运行控制</h2>
+              <div class="actions">
+                <button id="startBtn" data-i18n="btnStart">▶ 开始</button>
+                <button id="autotuneBtn" data-i18n="btnAutoTune">⚙ 调参</button>
+                <button id="stopBtn" data-i18n="btnStop">■ 停止</button>
+                <button id="refreshBtn" data-i18n="btnRefresh">↻ 刷新</button>
+              </div>
+              <div id="autotuneMeta" class="pre compact">No auto tune run yet.</div>
+            </section>
+          </aside>
+          <div class="dash-main">
+            <div class="layout">
           <section class="panel status">
             <h2 data-i18n="panelProgress">当前运行进度</h2>
             <div id="runMeta" class="meta">No run selected.</div>
