@@ -178,6 +178,26 @@ This file tracks executable next steps for the current phase.
       see the shape and ask for the new envelope to be supported.
       5 new test cases lock dict / string / list-of-strings /
       partial-corruption paths.
+- [x] Round-level field investigation (M14 + M272) surfaces 4 new
+      summary blocks that previous versions either missed or showed
+      as informationally empty:
+      * `player_impact.payout_ids_top20` (PayoutIdToWinAmount-based
+        Pay ID drilldown -- M14 also shows 7 distinct ids contributing
+        ~RTP; the older payout_groups_top20 was always group 0 so
+        the UI now reads from this).
+      * `player_impact.spin_type_breakdown` (per-SpinType spins/
+        win/RTP -- exposes M272 mode 2's 36% bonus rounds).
+      * `paylines_top20[].top_symbols` (left-3-col intersection +
+        blank filter).
+      * `upstream_analysis` at summary top-level: server-side
+        analysisResult.TotalWin cross-checked against our parsed
+        total_win. M14 + M272 mode 1 both verified delta=0.
+      * `collect_mechanic` at summary top-level: M272 collect
+        bonus tally; M14 reports applicable=false.
+      Frontend renders payout_ids_top20 (replacing the empty
+      PayoutGroupId table) and spin_type_breakdown (new panel).
+      Interpretation prompt subset includes all four blocks plus
+      the reference thresholds.
 
 ## Work Mode
 

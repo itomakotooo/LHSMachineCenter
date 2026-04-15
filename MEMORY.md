@@ -71,16 +71,23 @@ This section is for execution efficiency and can be updated as long as section A
    all critical run/model parameters should expose field-level tooltip hints
    (CN/EN synchronized with language switch).
 14a. Machine catalog (configs/machines.json) currently lists:
-   - M14 (modes 1, 2, 5, 7): classic 3-col slot, SpinType=1 only.
+   - M14 (modes 1, 2, 5, 7): classic 3-col slot, SpinType=1 only,
+     no collect mechanic.
    - M272 (modes 1, 2, 5, 7): collect/bonus mechanic, SpinType=140
-     (main) + 126 (bonus/re-spin); 4 cols of stopped symbols; round
-     count exceeds SpinTimes due to bonus triggers; PayoutByPayline
-     uses a richer "id:multiplier-count(positions);" format that
-     parse_paylines still reduces to id correctly.
+     (main) + 126 (bonus/re-spin); 3 cols of stopped symbols (dash
+     separated, trailing dash); round count exceeds SpinTimes due
+     to bonus triggers (~10-30% on mode 1, ~36% on mode 2);
+     PayoutByPayline uses a richer "id:mult-count(positions);"
+     format that parse_paylines still reduces to id correctly.
+     CollectCount + AccCredits + CreditsSymbols carry the collect
+     mechanic state that summary.collect_mechanic exposes.
    When adding a new machine, probe it via curl to MultiRobotTestSpin
    first; any envelope that's not [{roundResult, ...}, ...] will
    be caught by Layer 1 of the schema check (see #24a) -- update
    that path or wrap as needed before adding to machines.json.
+   Both M14 and M272 winning rounds populate PayoutIdToWinAmount
+   (the Pay ID drilldown source) and analysisResult.TotalWin (the
+   sanity-check source); test before assuming a new machine does.
 15. Cache safety default:
    cache cleanup follows risk-tier confirmation:
    low risk = one confirm; medium/high risk = confirm + `DELETE` token.
@@ -113,6 +120,33 @@ This section is for execution efficiency and can be updated as long as section A
      failure detail lives inside the runMeta panel; backend always
      persists a structured error_message that includes exit_code +
      missing artefacts.
+19a. Round-level surfaces in summary.player_impact (added after the
+   M14+M272 field investigation):
+   - payout_ids_top20: PayoutIdToWinAmount aggregated as
+     {payout_id, hit_count, hit_rate, total_win, avg_win_when_hit,
+     rtp_contribution_pp}. Replaces payout_groups_top20 in the UI
+     (which was always group 0); old field still emitted for
+     back-compat.
+   - spin_type_breakdown: per-SpinType {spins, share_pct,
+     win_rounds, hit_rate, total_bet, total_win, rtp_pct,
+     rtp_contribution_pp}. Sorted by spins desc. Surfaces M272
+     mode 2's ~36% bonus contribution that aggregate RTP hides.
+   - paylines_top20[].top_symbols: per-payline winning-symbol
+     inference via leftmost-3-col intersection + blank filter.
+   Plus two cross-cutting blocks at summary top-level:
+   - upstream_analysis: server-side analysisResult.TotalWin
+     cross-check ({server_total_win, our_total_win, delta,
+     delta_pct, matches, server_robots_seen}). matches=true with
+     delta=0 confirms we agree with the upstream; future drift
+     surfaces here before bad data leaks into the report.
+   - collect_mechanic: M272+ collect tally ({applicable,
+     robots_with_data, total_collects, max_acc_credits_observed,
+     avg_spins_between_collects}). M14 reports applicable=false.
+   The interpretation prompt subset
+   (backend/app.py build_interpretation_prompt) now carries all
+   four so the LLM sees Pay-ID hotspots, bonus contribution,
+   server sanity, and collect mechanic together with the
+   reference thresholds (#24).
 20. Player-impact drilldown surface:
    - summary.player_impact.paylines_top20 (existing): payline_id /
      hit_count / hit_rate / approx_rtp_contribution_pp / win_share.

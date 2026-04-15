@@ -341,6 +341,46 @@ If you expand `_REQUIRED_ROUND_FIELDS`, also update
 `test_check_round_schema_required_fields_constant_locked` so the
 contract change shows up in code review.
 
+## 13b. Round-level surfaces in summary.player_impact
+
+After investigating M14 + M272 round-level fields, the analyzer
+emits four surfaces that previous versions either missed or showed
+as informationally empty:
+
+- `payout_ids_top20` -- ranks PayoutIdToWinAmount entries by total
+  win contribution. Both M14 and M272 winning rounds populate
+  PayoutIdToWinAmount, so this drilldown is the actual "Pay ID"
+  view (the older `payout_groups_top20` was always group 0 because
+  PayoutGroupId doesn't differentiate on M14/M272 mode 1/2 and is
+  kept only for back-compat).
+- `spin_type_breakdown` -- per-SpinType spins/bet/win/hit_rate/
+  share/RTP. M14 mode 1 has only SpinType=1; M272 mode 1/2 splits
+  140 (main) vs 126 (collect/bonus re-spin). Surfaces M272 mode 2's
+  ~36% bonus contribution that the aggregate RTP hides. The
+  analyzer hardcodes no SpinType meaning -- new machines/types
+  appear automatically.
+- `paylines_top20[].top_symbols` -- per-payline winning-symbol
+  inference (left-3-col intersection heuristic + blank filter).
+
+Plus two cross-cutting blocks at summary top-level:
+
+- `upstream_analysis` -- server-side analysisResult.TotalWin sum
+  cross-checked against our parsed total_win. Reports `matches`
+  (boolean within max(1.0, server*1e-6) tolerance) plus delta /
+  delta_pct. Real M14 + M272 mode 1 runs both produce `matches:
+  true` with delta=0, confirming our aggregator and the upstream
+  agree. Future drift would surface here before bad data leaks
+  into the report.
+- `collect_mechanic` -- M272+ collect bonus tally (CollectCount
+  per-robot max sum, peak AccCredits, avg_spins_between_collects).
+  M14 emits `applicable: false` so the LLM / future UI can suppress
+  the section instead of inventing data.
+
+The interpretation prompt subset (`backend/app.py
+build_interpretation_prompt`) carries all four so the LLM can
+comment on payout-id hotspots, bonus contribution, server sanity,
+and collect mechanic where applicable.
+
 ## 14. Troubleshooting
 
 - **`scripts/lint.ps1` fails on `check_no_global_state.py`**: somebody
