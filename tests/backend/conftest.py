@@ -105,13 +105,16 @@ class StubProcess:
 @pytest.fixture
 def stub_popen():
     processes: list[StubProcess] = []
+    cmds: list[list[str]] = []
 
     def factory(cmd: list[str], cwd: Path) -> StubProcess:
+        cmds.append(list(cmd))
         p = StubProcess()
         processes.append(p)
         return p
 
     factory.processes = processes  # type: ignore[attr-defined]
+    factory.cmds = cmds  # type: ignore[attr-defined]
     yield factory
     # Teardown: release any still-blocking stub so the watcher thread can
     # finish quickly. Daemon=True means it won't hang pytest exit even if

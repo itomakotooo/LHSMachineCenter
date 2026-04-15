@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import json
+import math
 import os
 import signal
 import sqlite3
@@ -134,7 +135,10 @@ def get_model_config_view(
 class RunCreateRequest(BaseModel):
     machine: str
     mode: int
-    target_halfwidth_pp: float = Field(default=0.5, gt=0)
+    # target_halfwidth_pp == 0 encodes the "fuzzy" tier (no CI stop;
+    # backend resolves max_chunks to target ~1M spins). Any positive
+    # value is a normal CI half-width in percentage points.
+    target_halfwidth_pp: float = Field(default=0.5, ge=0)
     chunk_spin_times: int = Field(default=5000, gt=0)
     chunk_robot_count: int = Field(default=20, gt=0)
     batch_concurrency: int = Field(default=2, gt=0)
@@ -882,6 +886,11 @@ class RunManager:
         with self._lock:
             return len(self._running)
 
+    #: Total spins targeted by the "fuzzy" CI tier. Chosen to keep
+    #: per-bucket counts high enough for stable multiplier / streak /
+    #: bankruptcy metrics in high-volatility modes, while still bounded.
+    FUZZY_TARGET_TOTAL_SPINS = 1_000_000
+
     def start_run(self, req: RunCreateRequest) -> dict[str, Any]:
         if not self._analyzer.exists():
             raise HTTPException(status_code=500, detail="analyzer script not found")
@@ -898,6 +907,20 @@ class RunManager:
         output_dir.mkdir(parents=True, exist_ok=True)
         progress_file.parent.mkdir(parents=True, exist_ok=True)
 
+        # Fuzzy tier: target_halfwidth_pp == 0 means "skip CI stop".
+        # We don't touch the analyzer; instead we feed it an impossible
+        # CI target (999 pp) so the CI-stop branch never fires, and
+        # override max_chunks so total spins ~= FUZZY_TARGET_TOTAL_SPINS.
+        if req.target_halfwidth_pp == 0:
+            per_chunk = req.chunk_spin_times * req.chunk_robot_count
+            effective_max_chunks = max(
+                1, math.ceil(self.FUZZY_TARGET_TOTAL_SPINS / per_chunk)
+            )
+            effective_halfwidth_pp = 999.0
+        else:
+            effective_max_chunks = req.max_chunks
+            effective_halfwidth_pp = req.target_halfwidth_pp
+
         cmd = [
             sys.executable,
             str(self._analyzer),
@@ -906,7 +929,7 @@ class RunManager:
             "--rtp-mode",
             str(req.mode),
             "--target-halfwidth-pp",
-            str(req.target_halfwidth_pp),
+            str(effective_halfwidth_pp),
             "--chunk-spin-times",
             str(req.chunk_spin_times),
             "--chunk-robot-count",
@@ -914,7 +937,7 @@ class RunManager:
             "--batch-concurrency",
             str(req.batch_concurrency),
             "--max-chunks",
-            str(req.max_chunks),
+            str(effective_max_chunks),
             "--timeout",
             str(req.timeout),
             "--bankruptcy-session-spins",
@@ -1220,6 +1243,14 @@ def create_app(
 
     @app.post("/api/runs")
     def create_run(req: RunCreateRequest) -> dict[str, Any]:
+        # Mode 2 and 5 are RTP-exploding / high-volatility paths where a
+        # narrow CI never converges; force the fuzzy tier (halfwidth_pp == 0)
+        # so the backend targets ~1M spins via max_chunks instead.
+        if req.mode in (2, 5) and req.target_halfwidth_pp != 0:
+            raise HTTPException(
+                status_code=400,
+                detail="mode 2 and 5 must use fuzzy target (target_halfwidth_pp=0)",
+            )
         existing = store.list_runs_by_status("running", limit=2)
         if existing:
             rid = str(existing[0].get("run_id", ""))
