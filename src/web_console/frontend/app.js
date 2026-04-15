@@ -259,6 +259,17 @@ function setKpi(id, text, tone = "neutral") {
   const el = byId(id);
   el.textContent = text;
   el.dataset.tone = tone;
+  // Mirror the tone onto the parent .kpi card via a BEM modifier so the
+  // whole-card background can react to status. We keep the old strong[
+  // data-tone] text-color rule alongside it (deliberate: bg + text-color
+  // both reinforce the tone, no class removal required for back-compat).
+  const card = el.closest(".kpi");
+  if (card) {
+    card.classList.remove("kpi--good", "kpi--warn", "kpi--bad");
+    if (tone === "good" || tone === "warn" || tone === "bad") {
+      card.classList.add(`kpi--${tone}`);
+    }
+  }
 }
 
 function clearSummaryPanels() {
