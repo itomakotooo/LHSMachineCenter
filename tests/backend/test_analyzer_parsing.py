@@ -578,3 +578,82 @@ def test_run_sampling_chunk_spin_type_garbage_falls_back_to_zero(patch_post_json
     patch_post_json(_stub_chunk_resp([rd]))
     rec = _run(spin_times=1)
     assert rec["spin_type_spins"] == {"0": 1}
+
+
+# ---------- analysisResult cross-check ----------
+
+
+def _stub_response_with_analysis(rounds, total_win_per_robot, robots=1):
+    """Wrap rounds as `robots` independent robot dicts, each carrying
+    an analysisResult string with TotalWin summing to total_win_per_robot.
+    """
+    analysis = json.dumps({
+        "TotalWin": json.dumps({
+            "0": {"WinCredits": float(total_win_per_robot), "SpinType": "Normal",
+                  "AnalysisType": 0, "Times": sum(1 for r in rounds if r.get("WinCredits", 0) > 0)},
+            "-1": {"WinCredits": 0.0, "SpinType": "Normal", "AnalysisType": 0,
+                   "Times": sum(1 for r in rounds if r.get("WinCredits", 0) == 0)},
+        }),
+        "FeatureWin": "{}",
+        "SummaryWin": "{}",
+    })
+    return [
+        {"roundResult": json.dumps(rounds), "analysisResult": analysis}
+        for _ in range(robots)
+    ]
+
+
+def test_run_sampling_chunk_upstream_analysis_total_win_sums(patch_post_json):
+    """Server's TotalWin across all robots in the chunk gets summed."""
+    rounds = [_full_round(WinCredits=100, PayoutByPayline="1:100", PayoutGroupId=0,
+                          PayoutIdToWinAmount={"1": 100}) for _ in range(3)]
+    # 2 robots, each robot's TotalWin=300 (3 wins x 100). Chunk total = 600.
+    patch_post_json(_stub_response_with_analysis(rounds, total_win_per_robot=300, robots=2))
+    rec = _run(spin_times=3)
+    assert rec["upstream_chunk_total_win"] == 600.0
+    assert rec["upstream_chunk_robots_seen"] == 2
+
+
+def test_run_sampling_chunk_upstream_analysis_missing_is_neutral(patch_post_json):
+    """Robots without analysisResult contribute nothing; chunk still
+    completes normally."""
+    rounds = [_full_round(WinCredits=50)]
+    # Plain robot dict with no analysisResult key.
+    patch_post_json([{"roundResult": json.dumps(rounds)}])
+    rec = _run(spin_times=1)
+    assert rec["ok"] is True
+    assert rec["upstream_chunk_total_win"] == 0.0
+    assert rec["upstream_chunk_robots_seen"] == 0
+
+
+def test_run_sampling_chunk_upstream_analysis_malformed_string_skipped(patch_post_json):
+    """A garbled analysisResult string mustn't crash the chunk; the
+    robot's contribution to upstream_chunk_total_win is just 0."""
+    patch_post_json([{
+        "roundResult": json.dumps([_full_round(WinCredits=10)]),
+        "analysisResult": "{not json",
+    }])
+    rec = _run(spin_times=1)
+    assert rec["ok"] is True
+    assert rec["upstream_chunk_total_win"] == 0.0
+    assert rec["upstream_chunk_robots_seen"] == 0
+
+
+def test_run_sampling_chunk_upstream_analysis_totalwin_as_object_not_string(patch_post_json):
+    """Some replays may send TotalWin already as a dict instead of a
+    string-encoded JSON. Both paths should be handled."""
+    rounds = [_full_round(WinCredits=50)]
+    analysis = json.dumps({
+        "TotalWin": {  # dict, not string
+            "1": {"WinCredits": 50.0, "Times": 1},
+        },
+        "FeatureWin": "{}",
+        "SummaryWin": "{}",
+    })
+    patch_post_json([{
+        "roundResult": json.dumps(rounds),
+        "analysisResult": analysis,
+    }])
+    rec = _run(spin_times=1)
+    assert rec["upstream_chunk_total_win"] == 50.0
+    assert rec["upstream_chunk_robots_seen"] == 1

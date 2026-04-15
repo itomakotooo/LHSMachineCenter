@@ -620,6 +620,39 @@ def run_sampling_chunk(
             "error": f"response_shape_unexpected:expected_robot_dicts:item_types={item_types}",
         }
 
+    # Capture the server-side analysisResult for cross-check. Each robot's
+    # analysisResult is a string-encoded JSON {"TotalWin", "FeatureWin",
+    # "SummaryWin"} where TotalWin maps payout_id -> {WinCredits, ...,
+    # Times}. Summing WinCredits across all keys yields the server's view
+    # of total credits won this chunk; compared against our parsed
+    # chunk_win it surfaces any drift between our aggregator and the
+    # upstream's. Best-effort: any malformed analysisResult is skipped
+    # (no crash; the sanity check just won't include that robot).
+    upstream_chunk_total_win = 0.0
+    upstream_chunk_robots_seen = 0
+    for robot in resp:
+        if not isinstance(robot, dict):
+            continue
+        ar = robot.get("analysisResult")
+        if not isinstance(ar, str):
+            continue
+        try:
+            parsed = json.loads(ar)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+        tw = parsed.get("TotalWin") if isinstance(parsed, dict) else None
+        if isinstance(tw, str):
+            try:
+                tw = json.loads(tw)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                tw = None
+        if not isinstance(tw, dict):
+            continue
+        upstream_chunk_robots_seen += 1
+        for v in tw.values():
+            if isinstance(v, dict):
+                upstream_chunk_total_win += to_float(v.get("WinCredits"), default=0.0)
+
     # Schema sanity check on the first non-empty round. Without this, an
     # upstream field rename (e.g. WinCredits -> winCredits) would slip
     # through every .get(default=0) fallback in the parsing loop and
@@ -885,6 +918,8 @@ def run_sampling_chunk(
         "spin_type_bet": {str(k): v for k, v in spin_type_bet.items()},
         "spin_type_win": {str(k): v for k, v in spin_type_win.items()},
         "spin_type_wins": {str(k): v for k, v in spin_type_wins.items()},
+        "upstream_chunk_total_win": upstream_chunk_total_win,
+        "upstream_chunk_robots_seen": upstream_chunk_robots_seen,
     }
 
 
@@ -1019,6 +1054,8 @@ def main() -> int:
     spin_type_bet: dict[int, float] = defaultdict(float)
     spin_type_win: dict[int, float] = defaultdict(float)
     spin_type_wins: dict[int, int] = defaultdict(int)
+    upstream_total_win = 0.0
+    upstream_robots_seen = 0
 
     lack_credit_spins = 0
     chunks = 0
@@ -1151,6 +1188,10 @@ def main() -> int:
                 spin_type_win[int(st)] += float(w)
             for st, c in (rec.get("spin_type_wins") or {}).items():
                 spin_type_wins[int(st)] += int(c)
+            # upstream analysis cross-check (older chunk records lack
+            # these fields; .get() default keeps the comparison neutral).
+            upstream_total_win += float(rec.get("upstream_chunk_total_win", 0.0) or 0.0)
+            upstream_robots_seen += int(rec.get("upstream_chunk_robots_seen", 0) or 0)
 
             hw = ci_halfwidth_pp(chunk_rtps_pct)
             if math.isfinite(hw):
@@ -1596,6 +1637,30 @@ def main() -> int:
             "symbols_top20": symbol_rows[:20],
             "symbols_by_column_top10": {k: v[:10] for k, v in symbol_by_col_rows.items()},
             "bankruptcy_probe": bankruptcy_rows,
+        },
+        "upstream_analysis": {
+            # Server-side analysisResult.TotalWin sum (across all chunk
+            # responses that included it). Used as a sanity check
+            # against our parsed total_win; persistent drift suggests
+            # our aggregator misses a field or mis-counts a SpinType.
+            "server_total_win": upstream_total_win,
+            "our_total_win": total_win,
+            "delta": total_win - upstream_total_win,
+            "delta_pct": (
+                ((total_win - upstream_total_win) / upstream_total_win) * 100.0
+                if upstream_total_win > 0
+                else None
+            ),
+            # Tolerate rounding to 0.5 credit per robot per chunk; below
+            # that, treat it as a match. server_robots_seen tells whether
+            # ANY response actually carried analysisResult (older
+            # machines may not).
+            "matches": (
+                abs(total_win - upstream_total_win) < max(1.0, upstream_total_win * 1e-6)
+                if upstream_robots_seen > 0
+                else None
+            ),
+            "server_robots_seen": upstream_robots_seen,
         },
         "guideline_assessment": {
             "guideline": "classic_slots_report_guideline_v1",
