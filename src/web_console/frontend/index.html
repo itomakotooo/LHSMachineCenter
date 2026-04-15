@@ -207,11 +207,6 @@
             <div id="assessment" class="pre">No report yet.</div>
           </section>
 
-          <section class="panel logs">
-            <h2 data-i18n="panelEvents">运行事件</h2>
-            <pre id="eventsText" class="pre"></pre>
-          </section>
-
           <!-- Drilldown panels are stacked (not tabbed) per user feedback:
                switching tabs is more friction than scroll for these
                three tables. paylines / payouts / symbols each get their
@@ -265,6 +260,15 @@
             </table>
             <h3 data-i18n="symbolsByColHeader" class="drilldown-subhead">按列分布 Top 10（每列）</h3>
             <div id="symbolByColMatrix" class="symbol-matrix"></div>
+          </section>
+
+          <!-- Events log sits at the bottom -- it's high-volume, low-
+               readability raw jsonl that the operator only consults
+               when something looks off. Drilldowns and assessment go
+               above it. -->
+          <section class="panel logs">
+            <h2 data-i18n="panelEvents">运行事件</h2>
+            <pre id="eventsText" class="pre"></pre>
           </section>
 
             </div>
