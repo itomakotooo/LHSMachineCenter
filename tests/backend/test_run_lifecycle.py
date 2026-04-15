@@ -419,6 +419,100 @@ def test_delete_run_not_found(client):
     assert resp.status_code == 404
 
 
+# ---------- graceful Stop + cancelled status ----------
+
+
+def test_cancel_run_writes_stop_flag_and_completes_as_cancelled(
+    client, app_factory, wait_until_fixture
+):
+    """POST /api/runs/{id}/cancel now writes a stop-flag file next to
+    the run's progress file (cross-platform alternative to SIGTERM)
+    instead of hard-terminating. The analyzer polls this file between
+    chunks and exits gracefully with stop_reason="user_stop" in its
+    summary; _watch_run recognizes this and flips the run to
+    "cancelled" (not failed) with the partial summary persisted into
+    reports index + latest like a normal completed run.
+    """
+    c, _app = client
+    resp = c.post("/api/runs", json=_run_payload())
+    run_id = resp.json()["run_id"]
+    summary_file, report_file = _spawned_run_paths(app_factory, run_id)
+
+    # Cancel while "running"; should not throw away the stub process
+    # -- it simulates the analyzer's graceful exit below.
+    cancel_resp = c.post(f"/api/runs/{run_id}/cancel")
+    assert cancel_resp.status_code == 200
+    assert cancel_resp.json()["status"] == "cancelling"
+
+    # Verify the stop-flag file exists after cancel. The analyzer
+    # would detect it and exit 0 with a user_stop summary.
+    stop_flag = app_factory.state_dir / "progress" / f"{run_id}.stop"
+    assert stop_flag.exists(), "cancel should have written the stop-flag file"
+
+    # Simulate the analyzer's graceful path: partial summary with
+    # non-zero spins + stop_reason="user_stop".
+    partial = _good_summary()
+    partial["sampling"]["total_spins"] = 400_000  # partial, not full
+    partial["sampling"]["stop_reason"] = "user_stop"
+    summary_file.parent.mkdir(parents=True, exist_ok=True)
+    summary_file.write_text(json.dumps(partial), encoding="utf-8")
+    report_file.write_text("# partial report\n", encoding="utf-8")
+    app_factory.stub_popen.processes[-1].finish(code=0)
+
+    wait_until_fixture(
+        lambda: c.get(f"/api/runs/{run_id}").json().get("status") in ("cancelled", "failed"),
+        timeout=5.0,
+    )
+    body = c.get(f"/api/runs/{run_id}").json()
+    assert body["status"] == "cancelled", (
+        f"graceful user_stop with data must map to cancelled: {body!r}"
+    )
+
+    # Partial summary is readable via the report endpoint.
+    rep = c.get(f"/api/runs/{run_id}/report")
+    assert rep.status_code == 200
+    assert rep.json()["summary"]["sampling"]["total_spins"] == 400_000
+    assert rep.json()["summary"]["sampling"]["stop_reason"] == "user_stop"
+
+    # The run is recorded in the report index + latest (like completed).
+    index_path = app_factory.reports_dir / "M14" / "mode_1" / "index.json"
+    latest_path = app_factory.reports_dir / "M14" / "mode_1" / "latest.json"
+    assert index_path.exists()
+    assert latest_path.exists()
+    latest = json.loads(latest_path.read_text(encoding="utf-8"))
+    assert latest["run_id"] == run_id
+
+
+def test_cancel_run_with_zero_spins_marks_cancelled_not_failed(
+    client, app_factory, wait_until_fixture
+):
+    """If the operator cancels before the first chunk completes, the
+    analyzer exits with an empty summary + stop_reason="user_stop".
+    Unlike the upstream-504 zero-spin case (which is marked failed),
+    user-initiated cancel stays 'cancelled' so the UI reflects the
+    operator's own action rather than calling it an error."""
+    c, _app = client
+    resp = c.post("/api/runs", json=_run_payload())
+    run_id = resp.json()["run_id"]
+    summary_file, report_file = _spawned_run_paths(app_factory, run_id)
+    c.post(f"/api/runs/{run_id}/cancel")
+
+    zero = _zero_spin_summary(stop_reason="user_stop")
+    summary_file.parent.mkdir(parents=True, exist_ok=True)
+    summary_file.write_text(json.dumps(zero), encoding="utf-8")
+    report_file.write_text("# empty\n", encoding="utf-8")
+    app_factory.stub_popen.processes[-1].finish(code=0)
+
+    wait_until_fixture(
+        lambda: c.get(f"/api/runs/{run_id}").json().get("status") in ("cancelled", "failed"),
+        timeout=5.0,
+    )
+    body = c.get(f"/api/runs/{run_id}").json()
+    assert body["status"] == "cancelled"
+    msg = body.get("error_message") or ""
+    assert "cancelled by user" in msg.lower(), f"error_message should note user cancel: {msg!r}"
+
+
 # ---------- backfill RTP/CI ----------
 
 

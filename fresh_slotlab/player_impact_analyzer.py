@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import signal
 import statistics
 import sys
 import time
@@ -91,6 +92,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--machine", default="M14")
     parser.add_argument("--rtp-mode", type=int, default=1)
     parser.add_argument("--bet", type=int, default=1000)
+    # Graceful-stop flag file. When set and the file exists, the main
+    # chunk loop bails out between chunks and the summary records
+    # stop_reason="user_stop". Cross-platform alternative to SIGTERM
+    # (the Windows subprocess.terminate() calls TerminateProcess which
+    # doesn't deliver a catchable signal). Backend writes this file
+    # when the operator clicks Stop.
+    parser.add_argument("--stop-flag-file", type=Path, default=None)
     parser.add_argument("--target-halfwidth-pp", type=float, default=0.5)
     parser.add_argument("--chunk-spin-times", type=int, default=5000)
     parser.add_argument("--chunk-robot-count", type=int, default=20)
@@ -1510,6 +1518,30 @@ def run_bankruptcy_probe(
 def main() -> int:
     args = parse_args()
 
+    # Graceful stop flag: SIGTERM / SIGINT sets this so the main chunk
+    # loop breaks between chunks and falls through to the normal
+    # summary-build path with whatever data we have. The backend sends
+    # SIGTERM when the operator clicks Stop; we want partial data to
+    # be usable (a cancelled run shouldn't throw away 10 completed
+    # chunks just because chunk 11 was mid-flight).
+    stop_requested = {"value": False}
+
+    def _graceful_stop_handler(signum, _frame):
+        stop_requested["value"] = True
+
+    try:
+        signal.signal(signal.SIGTERM, _graceful_stop_handler)
+    except (ValueError, OSError):
+        # Non-main-thread invocation or platform that doesn't allow it.
+        # On Windows the signal module's SIGTERM handling is limited;
+        # the signal is still delivered but catchable only on the main
+        # thread, which is where main() runs.
+        pass
+    try:
+        signal.signal(signal.SIGINT, _graceful_stop_handler)
+    except (ValueError, OSError):
+        pass
+
     if args.bet <= 0:
         raise SystemExit("--bet must be positive")
     if args.target_halfwidth_pp <= 0:
@@ -1645,6 +1677,17 @@ def main() -> int:
     next_chunk_index = 1
 
     while next_chunk_index <= args.max_chunks:
+        # Graceful-stop checkpoint: if the operator clicked Stop, bail
+        # out here so any completed chunks (aggregated up to the
+        # previous batch end) still reach the summary-build path. The
+        # summary will carry stop_reason="user_stop" so the watcher
+        # can flag the run as cancelled-with-data rather than failed.
+        if stop_requested["value"] or (
+            args.stop_flag_file is not None and args.stop_flag_file.exists()
+        ):
+            stop_reason = "user_stop"
+            break
+
         remaining = args.max_chunks - chunks
         batch_size = min(args.batch_concurrency, remaining)
         if batch_size <= 0:

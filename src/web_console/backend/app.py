@@ -311,12 +311,15 @@ class StateStore:
         updated = 0
         skipped_no_file = 0
         with self._connect() as conn:
+            # Include 'cancelled' status too: graceful-stop runs produce
+            # a valid partial summary that can be backfilled like any
+            # completed run.
             rows = conn.execute(
                 """
                 SELECT run_id, status, summary_file, achieved_rtp_pct,
                        achieved_halfwidth_pp, quality_label
                 FROM runs
-                WHERE status = 'completed'
+                WHERE status IN ('completed', 'cancelled')
                   AND (achieved_rtp_pct IS NULL
                        OR achieved_halfwidth_pp IS NULL
                        OR quality_label IS NULL)
@@ -1019,6 +1022,11 @@ class ManagedRun:
     machine: str
     mode: int
     report_version: str
+    # Path the backend touches on cancel_run to request graceful stop.
+    # The analyzer polls this file between chunks (cross-platform
+    # alternative to SIGTERM: Windows' TerminateProcess doesn't
+    # deliver a catchable signal).
+    stop_flag_file: Path
 
 
 class RunManager:
@@ -1153,6 +1161,11 @@ class RunManager:
             "--progress-file",
             str(progress_file),
         ]
+        # Stop-flag file lives next to the run's progress file so it's
+        # part of the run's on-disk footprint and gets cleaned up when
+        # delete_run removes the run artefacts.
+        stop_flag_file = self._progress_dir / f"{run_id}.stop"
+        cmd.extend(["--stop-flag-file", str(stop_flag_file)])
 
         process = self._popen_factory(cmd, ROOT)
         managed = ManagedRun(
@@ -1165,6 +1178,7 @@ class RunManager:
             machine=req.machine,
             mode=req.mode,
             report_version=report_version,
+            stop_flag_file=stop_flag_file,
         )
 
         self.store.insert_run(
@@ -1222,31 +1236,53 @@ class RunManager:
                 total_spins = int(sampling_meta.get("total_spins") or 0)
             except (TypeError, ValueError):
                 total_spins = 0
+            stop_reason = str(sampling_meta.get("stop_reason") or "unknown")
             if total_spins == 0:
-                stop_reason = str(sampling_meta.get("stop_reason") or "unknown")
                 try:
                     chunks_done = int(sampling_meta.get("chunks") or 0)
                 except (TypeError, ValueError):
                     chunks_done = 0
-                self.store.update_run(
-                    managed.run_id,
-                    {
-                        "status": "failed",
-                        "finished_at": utc_now(),
-                        "error_message": (
-                            f"sampling produced 0 spins after {chunks_done} chunk(s); "
-                            f"stop_reason={stop_reason}"
-                        )[:4000],
-                    },
-                )
+                # Zero-spin + user_stop = user cancelled before any
+                # chunk completed. Mark cancelled (not failed) so the
+                # operator sees their own intent reflected; no data
+                # available to surface, error_message notes the cause.
+                if stop_reason == "user_stop":
+                    self.store.update_run(
+                        managed.run_id,
+                        {
+                            "status": "cancelled",
+                            "finished_at": utc_now(),
+                            "error_message": (
+                                f"cancelled by user before any chunk completed; "
+                                f"{chunks_done} chunk(s) attempted"
+                            )[:4000],
+                        },
+                    )
+                else:
+                    self.store.update_run(
+                        managed.run_id,
+                        {
+                            "status": "failed",
+                            "finished_at": utc_now(),
+                            "error_message": (
+                                f"sampling produced 0 spins after {chunks_done} chunk(s); "
+                                f"stop_reason={stop_reason}"
+                            )[:4000],
+                        },
+                    )
                 with self._lock:
                     self._running.pop(managed.run_id, None)
                 return
+            # Non-zero spins with user_stop = graceful cancel with
+            # partial data. Persist the report like a completed run
+            # (index + latest), but mark status "cancelled" so the
+            # operator can distinguish and see the data.
             self._update_report_index(managed)
+            final_status = "cancelled" if stop_reason == "user_stop" else "completed"
             self.store.update_run(
                 managed.run_id,
                 {
-                    "status": "completed",
+                    "status": final_status,
                     "finished_at": utc_now(),
                     "error_message": None,
                 },
@@ -1340,12 +1376,21 @@ class RunManager:
             managed = self._running.get(run_id)
         if not managed:
             raise HTTPException(status_code=404, detail="run not running")
-        managed.process.terminate()
-        self.store.update_run(
-            run_id,
-            {"status": "cancelled", "finished_at": utc_now(), "error_message": "terminated by user"},
-        )
-        return {"run_id": run_id, "status": "cancelled"}
+        # Graceful stop: touch the flag file so the analyzer bails out
+        # between chunks with partial data intact, then writes its
+        # summary with stop_reason="user_stop". _watch_run detects that
+        # and marks the run "cancelled" while keeping the partial
+        # summary readable. Do NOT terminate immediately -- that would
+        # throw away all completed chunks.
+        try:
+            managed.stop_flag_file.parent.mkdir(parents=True, exist_ok=True)
+            managed.stop_flag_file.write_text(utc_now(), encoding="utf-8")
+        except OSError:
+            # Fall through to hard-terminate if we can't write the flag
+            # (read-only FS, no permission); better a lost-chunk cancel
+            # than a stuck run.
+            managed.process.terminate()
+        return {"run_id": run_id, "status": "cancelling"}
 
     def delete_run(self, run_id: str) -> dict[str, Any]:
         """Delete a run row plus its on-disk artefacts.
@@ -1386,6 +1431,17 @@ class RunManager:
                 if p.exists():
                     p.unlink()
                     removed_paths.append(str(p))
+            except OSError:
+                pass
+        # Stop-flag file (graceful-stop marker). Not stored in the row
+        # but derivable from the progress file's directory + run_id.
+        progress_raw = run.get("progress_file")
+        if progress_raw:
+            stop_flag = Path(progress_raw).parent / f"{run_id}.stop"
+            try:
+                if stop_flag.exists():
+                    stop_flag.unlink()
+                    removed_paths.append(str(stop_flag))
             except OSError:
                 pass
 

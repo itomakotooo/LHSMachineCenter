@@ -240,7 +240,13 @@ function updateActionStates() {
   byId("autotuneBtn").disabled = localBusy || serverBusy || anyRunRunning;
   byId("stopBtn").disabled = localBusy || serverBusy || !hasCurrent || currentStatus !== "running";
   byId("refreshBtn").disabled = localBusy || !hasCurrent;
-  byId("interpretBtn").disabled = localBusy || serverBusy || !hasCurrent || currentStatus !== "completed";
+  // Interpretation can run on any run that produced a valid summary
+  // -- "completed" (hit CI target / max_chunks) OR "cancelled"
+  // (graceful user stop with partial data). Not "failed" (no summary)
+  // or "running".
+  byId("interpretBtn").disabled = localBusy || serverBusy || !hasCurrent || (
+    currentStatus !== "completed" && currentStatus !== "cancelled"
+  );
   byId("cacheRefreshBtn").disabled = localBusy;
   const runningCount = Number(state.cacheStatus?.running_runs ?? state.systemState?.running_runs_count ?? 0);
   byId("cacheCleanupBtn").disabled = localBusy || serverBusy || runningCount > 0 || reclaimable <= 0;
@@ -1027,7 +1033,12 @@ async function refreshCurrentRun() {
   // Global warning area stays reserved for system + model notices.
   const warnings = modelWarnings();
 
-  if (run.status === "completed") {
+  // "completed" (ran to CI / max_chunks) and "cancelled" (graceful
+  // Stop with partial data) both have a readable summary. Show the
+  // full panel stack in either case; the status badge / topbar
+  // already distinguishes the two so the operator sees which path
+  // produced the data.
+  if (run.status === "completed" || run.status === "cancelled") {
     const report = await apiGet(`/api/runs/${state.currentRunId}/report`);
     const s = report.summary || {};
     state.latestSummary = s;
