@@ -233,6 +233,123 @@ test("ciTierOptions: labels localized for en", () => {
   assert.ok(fuzzy.label.toLowerCase().includes("fuzzy"));
 });
 
+// ---------- summarizeRunEvent + computeRunProgressPct ----------
+
+test("summarizeRunEvent: null event -> localized 'no events' text", () => {
+  assert.equal(PURE.summarizeRunEvent("en", null, {}), PURE.I18N.en.runEventNone);
+  assert.equal(PURE.summarizeRunEvent("zh", null, {}), PURE.I18N.zh.runEventNone);
+});
+
+test("summarizeRunEvent: started event includes machine/mode/target", () => {
+  const out = PURE.summarizeRunEvent(
+    "en",
+    { event: "started", machine: "M14", mode: 1 },
+    { target: 0.5, maxChunks: 120 }
+  );
+  assert.ok(out.includes("M14"));
+  assert.ok(out.includes("0.5pp"));
+});
+
+test("summarizeRunEvent: started in fuzzy mode says ~1M spins", () => {
+  const out = PURE.summarizeRunEvent(
+    "zh",
+    { event: "started", machine: "M14", mode: 2 },
+    { target: 0, isFuzzy: true }
+  );
+  assert.ok(out.includes("模糊"));
+});
+
+test("summarizeRunEvent: chunk_progress non-fuzzy uses idx/maxChunks + CI", () => {
+  const out = PURE.summarizeRunEvent(
+    "en",
+    {
+      event: "chunk_progress",
+      chunk_index: 15,
+      total_spins: 300000,
+      current_rtp_pct: 85.234,
+      current_halfwidth_pp: 1.2,
+    },
+    { maxChunks: 120, target: 0.5 }
+  );
+  assert.ok(out.includes("15/120"));
+  assert.ok(out.includes("300,000"));
+  assert.ok(out.includes("85.23"));
+  assert.ok(out.includes("1.200"));
+});
+
+test("summarizeRunEvent: chunk_progress fuzzy reports % vs 1M target", () => {
+  const out = PURE.summarizeRunEvent(
+    "en",
+    {
+      event: "chunk_progress",
+      chunk_index: 5,
+      total_spins: 250000,
+      current_rtp_pct: 200.5,
+      current_halfwidth_pp: 999.0,
+    },
+    { isFuzzy: true }
+  );
+  // 250_000 / 1_000_000 = 25.0%
+  assert.ok(out.includes("25.0%"), out);
+  assert.ok(out.includes("200.50"));
+  // No CI in fuzzy summary
+  assert.ok(!out.includes("CI="));
+});
+
+test("summarizeRunEvent: completed includes spins + duration", () => {
+  const out = PURE.summarizeRunEvent(
+    "en",
+    {
+      event: "completed",
+      total_spins: 2400000,
+      rtp_point_pct: 95.12,
+      ci95_interval_pct: [94.638, 95.602],
+      duration_seconds: 127,
+    },
+    {}
+  );
+  assert.ok(out.includes("2,400,000"));
+  assert.ok(out.includes("95.12"));
+  assert.ok(out.includes("127s"));
+});
+
+test("summarizeRunEvent: failed shows reason", () => {
+  const out = PURE.summarizeRunEvent(
+    "en",
+    { event: "failed", reason: "request_failed_HTTPError" },
+    {}
+  );
+  assert.ok(out.includes("request_failed_HTTPError"));
+});
+
+test("computeRunProgressPct: non-fuzzy uses chunks/max", () => {
+  assert.equal(
+    PURE.computeRunProgressPct({ chunk_index: 30 }, { maxChunks: 120 }),
+    25
+  );
+  assert.equal(PURE.computeRunProgressPct({ chunk_index: 0 }, { maxChunks: 120 }), 0);
+  // Saturates at 100
+  assert.equal(
+    PURE.computeRunProgressPct({ chunk_index: 999 }, { maxChunks: 120 }),
+    100
+  );
+});
+
+test("computeRunProgressPct: fuzzy uses spins/fuzzyTarget", () => {
+  assert.equal(
+    PURE.computeRunProgressPct({ total_spins: 500000 }, { isFuzzy: true }),
+    50
+  );
+  assert.equal(
+    PURE.computeRunProgressPct({ total_spins: 100000 }, { isFuzzy: true, fuzzyTarget: 200000 }),
+    50
+  );
+});
+
+test("computeRunProgressPct: null event -> 0", () => {
+  assert.equal(PURE.computeRunProgressPct(null, { maxChunks: 120 }), 0);
+});
+
 // ---------- formatRunFailureNote ----------
 
 test("formatRunFailureNote: empty error falls back to localized note (zh)", () => {

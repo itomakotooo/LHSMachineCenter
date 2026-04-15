@@ -17,6 +17,11 @@ const state = {
   cacheStatus: null,
   systemState: null,
   timer: null,
+  fastTimer: null,
+  // Captured at the moment Start is clicked so the polling code can
+  // compute fuzzy-aware progress without re-deriving from API state.
+  lastSubmittedFuzzy: false,
+  lastSubmittedMaxChunks: 120,
   autoTuneRunning: false,
   busyActions: new Set(),
   ciChart: null,
@@ -466,15 +471,33 @@ async function refreshCurrentRun() {
     }
     throw err;
   }
+  const prevStatus = state.currentRunStatus;
   state.currentRunStatus = run.status || "";
+  // If status flipped relative to last poll, re-evaluate fast polling.
+  if (prevStatus !== state.currentRunStatus) ensureFastPolling();
+
   const p = run.progress || {};
   const latest = p.latest_event || {};
   const hw = latest.current_halfwidth_pp;
   const target = run.target_halfwidth_pp;
-  const pct = hw == null || !target ? 0 : hw <= target ? 100 : Math.min(100, (target / hw) * 100);
+  // target_halfwidth_pp == 0 in DB means the user picked the fuzzy tier
+  // (backend rewrites to 999 for the analyzer; the DB still has 0).
+  const isFuzzy = Number(target) === 0;
+  const maxChunks = Number(run.max_chunks || state.lastSubmittedMaxChunks || 0);
+  const pct = PURE.computeRunProgressPct(latest, {
+    isFuzzy,
+    maxChunks,
+  });
   byId("progressBar").style.width = `${pct}%`;
+
+  const summaryLine = PURE.summarizeRunEvent(state.lang, latest && latest.event ? latest : null, {
+    isFuzzy,
+    maxChunks,
+    target,
+  });
   const runMetaLines = [
-    `run=${run.run_id} ${fmt("runStatusLabel")}=${statusText(run.status)} machine=${run.machine} mode=${run.mode} spins=${latest.total_spins || 0} chunks=${p.chunk_count || 0} ci=${fNum(hw)} target=${target}`,
+    `run=${run.run_id} ${fmt("runStatusLabel")}=${statusText(run.status)} machine=${run.machine} mode=${run.mode}`,
+    summaryLine,
   ];
   if (String(run.status).toLowerCase() === "failed") {
     runMetaLines.push(`${fmt("runFailedLabel")}: ${PURE.formatRunFailureNote(state.lang, run.error_message)}`);
@@ -685,8 +708,19 @@ function bindEvents() {
   );
   byId("startBtn").addEventListener("click", () =>
     withAction("start_run", async () => {
-      const r = await apiPost("/api/runs", readRunPayload());
+      const payload = readRunPayload();
+      // Capture fuzzy + max_chunks so the polling tick can compute
+      // progress correctly even before /api/runs/{id}/progress has any
+      // chunks logged.
+      state.lastSubmittedFuzzy = Number(payload.target_halfwidth_pp) === 0;
+      state.lastSubmittedMaxChunks = Number(payload.max_chunks) || 120;
+      // Immediate placeholder while uvicorn spawns the analyzer.
+      byId("runMeta").textContent = fmt("runSubmittedPlaceholder");
+      byId("progressBar").style.width = "0%";
+      const r = await apiPost("/api/runs", payload);
       state.currentRunId = r.run_id;
+      state.currentRunStatus = "running";
+      ensureFastPolling();
       await refreshRunList(false);
       await refreshCurrentRun();
     }).catch((e) => alert(String(e.message || e)))
@@ -726,17 +760,30 @@ function bindEvents() {
 }
 
 function startPolling() {
+  // Slow tick (4.5s): system / runs list / cache. Always on.
   if (state.timer) clearInterval(state.timer);
   state.timer = setInterval(() => {
     refreshSystemState().catch(() => {});
     refreshRunList(false).catch(() => {});
     refreshCache().catch(() => {});
-    if (state.currentRunId) {
-      refreshCurrentRun().catch(() => {});
-    } else {
-      updateActionStates();
-    }
+    if (!state.currentRunId) updateActionStates();
   }, 4500);
+  // Fast tick (1s): only the active run's progress. Created/torn down by
+  // ensureFastPolling() based on currentRunStatus.
+  ensureFastPolling();
+}
+
+function ensureFastPolling() {
+  const wantFast =
+    state.currentRunId && String(state.currentRunStatus || "").toLowerCase() === "running";
+  if (wantFast && state.fastTimer == null) {
+    state.fastTimer = setInterval(() => {
+      refreshCurrentRun().catch(() => {});
+    }, 1000);
+  } else if (!wantFast && state.fastTimer != null) {
+    clearInterval(state.fastTimer);
+    state.fastTimer = null;
+  }
 }
 
 async function boot() {

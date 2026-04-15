@@ -58,6 +58,15 @@ const I18N = {
     runCancelledLabel: "上次结果",
     runCancelledText: "已取消",
     runFailureNoneCaptured: "未捕获到诊断信息（analyzer 未输出 stderr/stdout）",
+    runEventNone: "无最新事件",
+    runEventStarted: "已提交 · machine={machine} mode={mode} 目标={target}",
+    runEventStartedFuzzy: "已提交 · machine={machine} mode={mode} 目标=模糊（约 100 万 spin）",
+    runEventChunk: "chunk {idx}/{max} · 总 spins={spins} · RTP={rtp}% · CI={ci}pp",
+    runEventChunkFuzzy: "chunk {idx} · 总 spins={spins} · RTP={rtp}% · 模糊采样进度 {pct}%",
+    runEventCompleted: "已完成 · 总 spins={spins} · RTP={rtp}% · CI={ci}pp · {sec}s",
+    runEventCompletedFuzzy: "已完成 · 总 spins={spins} · RTP={rtp}% · {sec}s（模糊档）",
+    runEventFailed: "失败: {reason}",
+    runSubmittedPlaceholder: "已提交，等待 analyzer 启动...",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
     labelConcurrency: "批并发数",
@@ -217,6 +226,15 @@ const I18N = {
     runCancelledLabel: "Last result",
     runCancelledText: "Cancelled",
     runFailureNoneCaptured: "No diagnostic captured (analyzer produced no stderr/stdout)",
+    runEventNone: "no events yet",
+    runEventStarted: "submitted · machine={machine} mode={mode} target={target}",
+    runEventStartedFuzzy: "submitted · machine={machine} mode={mode} target=fuzzy (~1M spins)",
+    runEventChunk: "chunk {idx}/{max} · spins={spins} · RTP={rtp}% · CI={ci}pp",
+    runEventChunkFuzzy: "chunk {idx} · spins={spins} · RTP={rtp}% · fuzzy progress {pct}%",
+    runEventCompleted: "completed · spins={spins} · RTP={rtp}% · CI={ci}pp · {sec}s",
+    runEventCompletedFuzzy: "completed · spins={spins} · RTP={rtp}% · {sec}s (fuzzy)",
+    runEventFailed: "failed: {reason}",
+    runSubmittedPlaceholder: "submitted, waiting for analyzer to spawn...",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
     labelConcurrency: "Batch Concurrency",
@@ -423,6 +441,90 @@ function bankrollMultiplierPresets(lang) {
   ];
 }
 
+// Default fuzzy target spins; mirrors backend.RunManager.FUZZY_TARGET_TOTAL_SPINS.
+const FUZZY_TARGET_SPINS_DEFAULT = 1_000_000;
+
+function _formatThousands(n) {
+  if (n == null || Number.isNaN(Number(n))) return "?";
+  return new Intl.NumberFormat("en-US").format(Number(n));
+}
+
+// One-line readable summary of the latest jsonl event from a run. Used in
+// the runMeta panel between status and the legacy events textarea.
+function summarizeRunEvent(lang, ev, opts) {
+  const o = opts || {};
+  const target = o.target;
+  const isFuzzy = o.isFuzzy === true;
+  const maxChunks = Number(o.maxChunks || 0);
+  const fuzzyTarget = Number(o.fuzzyTarget || FUZZY_TARGET_SPINS_DEFAULT);
+  if (ev == null) return fmt(lang, "runEventNone");
+  const phase = ev.event;
+
+  if (phase === "started") {
+    return fmt(lang, isFuzzy ? "runEventStartedFuzzy" : "runEventStarted", {
+      machine: ev.machine != null ? ev.machine : "?",
+      mode: ev.mode != null ? ev.mode : "?",
+      target: target != null ? `${target}pp` : "?",
+    });
+  }
+
+  if (phase === "chunk_progress") {
+    const idx = ev.chunk_index != null ? ev.chunk_index : "?";
+    const spins = _formatThousands(ev.total_spins);
+    const rtp = ev.current_rtp_pct != null ? Number(ev.current_rtp_pct).toFixed(2) : "?";
+    const ci = ev.current_halfwidth_pp != null
+      ? Number(ev.current_halfwidth_pp).toFixed(3)
+      : "?";
+    if (isFuzzy) {
+      const pct = fuzzyTarget > 0 && ev.total_spins != null
+        ? Math.min(100, (Number(ev.total_spins) / fuzzyTarget) * 100).toFixed(1)
+        : "?";
+      return fmt(lang, "runEventChunkFuzzy", { idx, spins, rtp, pct });
+    }
+    return fmt(lang, "runEventChunk", {
+      idx, max: maxChunks || "?", spins, rtp, ci,
+    });
+  }
+
+  if (phase === "completed") {
+    const spins = _formatThousands(ev.total_spins);
+    const rtp = ev.rtp_point_pct != null ? Number(ev.rtp_point_pct).toFixed(2) : "?";
+    const sec = ev.duration_seconds != null ? Number(ev.duration_seconds).toFixed(0) : "?";
+    if (isFuzzy) {
+      return fmt(lang, "runEventCompletedFuzzy", { spins, rtp, sec });
+    }
+    const ciInt = Array.isArray(ev.ci95_interval_pct) && ev.ci95_interval_pct.length === 2
+      ? ((ev.ci95_interval_pct[1] - ev.ci95_interval_pct[0]) / 2).toFixed(3)
+      : "?";
+    return fmt(lang, "runEventCompleted", { spins, rtp, ci: ciInt, sec });
+  }
+
+  if (phase === "failed") {
+    return fmt(lang, "runEventFailed", { reason: ev.reason || "?" });
+  }
+
+  return fmt(lang, "runEventNone");
+}
+
+// 0..100 number suitable for the progress bar width.
+// Non-fuzzy: chunks completed / max_chunks.
+// Fuzzy: total_spins / fuzzy_target.
+function computeRunProgressPct(latestEvent, opts) {
+  const o = opts || {};
+  const isFuzzy = o.isFuzzy === true;
+  const maxChunks = Number(o.maxChunks || 0);
+  const fuzzyTarget = Number(o.fuzzyTarget || FUZZY_TARGET_SPINS_DEFAULT);
+  if (latestEvent == null) return 0;
+  if (isFuzzy) {
+    const spins = Number(latestEvent.total_spins || 0);
+    if (fuzzyTarget <= 0) return 0;
+    return Math.max(0, Math.min(100, (spins / fuzzyTarget) * 100));
+  }
+  const idx = Number(latestEvent.chunk_index || 0);
+  if (maxChunks <= 0) return 0;
+  return Math.max(0, Math.min(100, (idx / maxChunks) * 100));
+}
+
 // Build a readable failure note for runMeta. The backend now always puts
 // at least `analyzer exit_code=N | summary missing: ... | report missing: ...`
 // into error_message; the fallback covers older rows or the corner case
@@ -517,6 +619,8 @@ const PURE = {
   validateRunConfig,
   bankrollMultiplierPresets,
   formatRunFailureNote,
+  summarizeRunEvent,
+  computeRunProgressPct,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;
