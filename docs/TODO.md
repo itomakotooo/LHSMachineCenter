@@ -58,6 +58,23 @@ This file tracks executable next steps for the current phase.
 - [x] `/api/cache/status` exposes `risk_thresholds` so the frontend
       risk tier can be tuned via `SLOT_RISK_MEDIUM_BYTES` /
       `SLOT_RISK_HIGH_BYTES` env vars (used by e2e fixtures).
+- [x] M14 now advertises modes 1 / 2 / 5 / 7 via
+      `configs/machines.json`; test API verified for all four.
+- [x] CI half-width input replaced with a 5-tier picker (0.5 / 1 / 2
+      / 5 / fuzzy). Fuzzy tier (value "0") makes the backend target
+      ~1M spins via recomputed `max_chunks` and pass halfwidth=999
+      to the analyzer so the CI-stop branch never fires. Mode 2 and
+      5 are constrained to fuzzy (frontend forces, backend 400-rejects).
+- [x] chunk_robot_count + batch_concurrency are now readonly inputs
+      populated only by Auto Tune; Start button is disabled until
+      both are filled. Mode/machine change clears them to force a
+      fresh Auto Tune.
+- [x] chunk_spin_times / max_chunks / timeout moved into a collapsed
+      "Advanced parameters" section so the primary panel is shorter.
+- [x] Bankruptcy multipliers freeform input replaced with a 3-preset
+      select (Standard / Short / Long). Tooltip warns that only
+      Standard aligns with the x100/x200/x500 thresholds in
+      `classic_slots_guideline_rules.json`.
 
 ## Work Mode
 

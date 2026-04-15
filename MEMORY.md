@@ -76,6 +76,19 @@ This section is for execution efficiency and can be updated as long as section A
 16. Restart robustness default:
    startup recovery must auto-fail stale `running` tasks and attempt stale
    worker termination via persisted `process_pid`, then expose recovery snapshot in API.
+17. Run config workflow:
+   - mode 2 and 5 must use fuzzy target (target_halfwidth_pp=0 -> backend
+     recomputes max_chunks so sampling targets ~1M spins; analyzer receives
+     halfwidth=999 so the CI-stop branch never fires);
+   - mode 1 and 7 support 0.5 / 1 / 2 / 5 pp or fuzzy;
+   - frontend chunk_robot_count and batch_concurrency inputs are readonly
+     and only Auto Tune populates them;
+   - mode / machine change clears those two inputs to force a fresh tune.
+18. Bankroll multiplier presets:
+   UI exposes three fixed presets (Standard 100/200/500, Short 50/100/200,
+   Long 200/500/1000). Non-Standard presets bypass the x100/x200/x500
+   guideline-rule thresholds until rules.json becomes dynamic; tooltip
+   must surface that caveat.
 
 Update policy:
 - Assistant may update this section after execution, and must explicitly state:

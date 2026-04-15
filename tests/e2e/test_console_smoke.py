@@ -167,6 +167,79 @@ def test_cache_cleanup_high_risk_requires_token(console_page, clean_cache, clean
     assert not (cache_dir / "big.bin").exists()
 
 
+def test_mode_2_forces_fuzzy_option(console_page, clean_runs):
+    """Switching to mode 2 must auto-select the fuzzy ciSelect option ("0")
+    and disable every other tier, since the backend rejects mode 2/5 with
+    a non-zero target_halfwidth_pp (Commit 3)."""
+    page = console_page
+    _wait_for_pure_loaded(page)
+    # Default mode is 1; sanity-check all options enabled.
+    state_before = page.evaluate(
+        "() => { const s = document.getElementById('ciSelect'); "
+        "return {value: s.value, disabled: Array.from(s.options).map(o => o.disabled)}; }"
+    )
+    assert state_before["value"] == "0.5"
+    assert state_before["disabled"] == [False, False, False, False, False]
+
+    page.select_option("#modeSelect", "2")
+    page.wait_for_function(
+        "() => document.getElementById('ciSelect').value === '0'",
+        timeout=2000,
+    )
+    state_after = page.evaluate(
+        "() => { const s = document.getElementById('ciSelect'); "
+        "return {value: s.value, disabled: Array.from(s.options).map(o => o.disabled)}; }"
+    )
+    assert state_after["value"] == "0"
+    # First four (0.5 / 1 / 2 / 5) disabled; fuzzy (index 4, value "0") enabled.
+    assert state_after["disabled"] == [True, True, True, True, False]
+
+    # Switching back to mode 7 must re-enable everything and snap to 0.5.
+    page.select_option("#modeSelect", "7")
+    page.wait_for_function(
+        "() => document.getElementById('ciSelect').value === '0.5'",
+        timeout=2000,
+    )
+    restored = page.evaluate(
+        "() => Array.from(document.getElementById('ciSelect').options).map(o => o.disabled)"
+    )
+    assert restored == [False, False, False, False, False]
+
+
+def test_start_disabled_without_autotune(console_page, clean_runs):
+    """Fresh page load: Start button must be disabled because robotInput /
+    concInput are empty (autotune-filled only). Manually populating both
+    inputs (simulating a successful autotune fill) re-enables Start."""
+    page = console_page
+    _wait_for_pure_loaded(page)
+
+    # Assert initial disabled state.
+    page.wait_for_function(
+        "() => document.getElementById('startBtn').disabled === true",
+        timeout=3000,
+    )
+    tip = page.locator("#startBtn").get_attribute("title") or ""
+    assert "Auto Tune" in tip or "压测" in tip, f"unexpected start tooltip: {tip}"
+
+    # Simulate Auto Tune filling both inputs and re-running updateActionStates.
+    # We fire a ciSelect change event so the frontend recomputes validation;
+    # this is how the real autotune button's completion path also triggers
+    # updateActionStates(), but here we avoid a real /api/autotune roundtrip
+    # against the remote test API.
+    page.evaluate(
+        "() => { "
+        "  document.getElementById('robotInput').value = '16'; "
+        "  document.getElementById('concInput').value = '2'; "
+        "  document.getElementById('ciSelect').dispatchEvent(new Event('change')); "
+        "}"
+    )
+    page.wait_for_function(
+        "() => document.getElementById('startBtn').disabled === false",
+        timeout=2000,
+    )
+    assert page.locator("#startBtn").is_disabled() is False
+
+
 def test_start_button_disabled_when_run_active(live_server, page, clean_runs, clean_cache):
     # Seed AFTER the server has booted: startup recovery already ran and won't
     # touch this row. The frontend's polling (~4.5s) will then notice it.

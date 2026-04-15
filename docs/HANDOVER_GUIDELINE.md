@@ -79,7 +79,42 @@ Guide for engineers taking over this repository.
 - Treat review findings as merge blockers if they affect:
   data correctness, safety guarantees, or API contract stability.
 
-## 8. File Ownership (Current)
+## 8. Run Config Workflow
+
+Console operators build a run payload through these gated steps:
+
+1. Pick machine and RTP mode. M14 exposes modes 1 / 2 / 5 / 7.
+   Mode 2 and 5 are "RTP-exploding" bonus/freegame paths that require
+   the fuzzy CI tier; switching there locks the ciSelect to value "0"
+   and disables every other tier.
+2. Pick target CI half-width. Mode 1 / 7 allow 0.5 / 1 / 2 / 5 pp or
+   the fuzzy tier. Selecting the fuzzy tier anywhere (value "0")
+   causes the backend to (a) compute `max_chunks = ceil(1_000_000 /
+   (chunk_spin_times * chunk_robot_count))` so sampling targets ~1M
+   spins, and (b) pass `--target-halfwidth-pp=999.0` to the analyzer
+   so the CI-stop branch never fires. The backend also returns 400
+   when mode ∈ {2, 5} is paired with a non-zero half-width, so the
+   constraint is enforced server-side even on direct API calls.
+3. Click "Auto Tune Parallelism". The first click uses a wide default
+   candidate grid `[8,12,16,20,24]` × `[1,2,3,4]`; subsequent clicks
+   refine around the last recommendation. chunk_robot_count and
+   batch_concurrency inputs are readonly -- the autotune result is
+   the only way to populate them. Changing machine or mode clears
+   both inputs and re-disables Start.
+4. Optionally tweak advanced params (chunk_spin_times / max_chunks /
+   timeout) in the collapsed "Advanced parameters" section.
+5. Pick bankroll multiplier preset. Only "Standard (100x / 200x /
+   500x)" aligns with the hard-coded x100 / x200 / x500 thresholds in
+   `configs/classic_slots_guideline_rules.json`; Short / Long presets
+   skip the A5 bankruptcy rule. The tooltip advertises this caveat.
+6. Start.
+
+The backend validates everything the frontend validates (mode 2/5
+must be fuzzy, Pydantic `Field(ge=0)` for half-width, `gt=0` for the
+other numeric fields). Redundant gates are intentional: the server
+must stay safe against a direct curl that skips the UI.
+
+## 9. File Ownership (Current)
 
 - `fresh_slotlab/`:
   analyzer and metrics logic.
@@ -101,7 +136,7 @@ Guide for engineers taking over this repository.
 - `docs/`:
   operational and contract documentation.
 
-## 9. Test Layout
+## 10. Test Layout
 
 - `tests/backend/`:
   FastAPI `TestClient` integration tests that build isolated apps via
@@ -121,7 +156,7 @@ Guide for engineers taking over this repository.
 No global state is shared across tests; each uses a `tmp_path`-scoped
 directory tree.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 - **`scripts/lint.ps1` fails on `check_no_global_state.py`**: somebody
   reintroduced module-level `StateStore()` / `RunManager()` /
