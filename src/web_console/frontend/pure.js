@@ -1,6 +1,16 @@
 // Pure-logic module: no DOM, no fetch, no localStorage.
 // Browser-friendly via window.PURE; Node-friendly via module.exports.
 // Tested by tests/frontend/pure.test.cjs.
+//
+// Everything is wrapped in an IIFE so the top-level const declarations
+// (I18N, fmt, fNum, fInt, fRate, fBytes, cacheRiskTier, cacheRiskView,
+// statusText, modelWarnings, collectSystemWarnings) do NOT pollute the
+// global binding scope shared by classic <script> tags -- otherwise
+// app.js would get a SyntaxError for any binding it wants to re-declare
+// (e.g. `const { fNum } = PURE`).
+
+(function () {
+"use strict";
 
 const I18N = {
   zh: {
@@ -403,3 +413,5 @@ const PURE = {
 
 if (typeof window !== "undefined") window.PURE = PURE;
 if (typeof module !== "undefined") module.exports = PURE;
+
+})();

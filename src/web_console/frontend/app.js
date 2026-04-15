@@ -1,7 +1,9 @@
-// I18N + pure helpers come from window.PURE (loaded by /console/pure.js).
+// Pure helpers come from window.PURE (loaded by /console/pure.js).
 // Lang-dependent helpers (fmt, statusText, cacheRiskTier, cacheRiskView,
-// collectSystemWarnings, modelWarnings) are wrapped below to read from `state`.
-const I18N = PURE.I18N;
+// collectSystemWarnings, modelWarnings) are wrapped below to read from
+// `state`. We read I18N through PURE.I18N directly rather than aliasing
+// it, because pure.js already declares `const I18N` at the top-level
+// binding scope; re-declaring it here breaks app.js with a SyntaxError.
 const { fNum, fInt, fRate, fBytes } = PURE;
 
 const state = {
@@ -27,7 +29,7 @@ const byId = (id) => document.getElementById(id);
 const fmt = (k, vars) => PURE.fmt(state.lang, k, vars);
 
 function applyI18n() {
-  if (!I18N[state.lang]) state.lang = "zh";
+  if (!PURE.I18N[state.lang]) state.lang = "zh";
   localStorage.setItem("slot_console_lang", state.lang);
   document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en";
   document.title = fmt("appTitle");
