@@ -33,6 +33,21 @@ test("i18n: critical risk-tier keys are non-empty in both locales", () => {
   }
 });
 
+test("i18n: CI tier option keys are non-empty in both locales", () => {
+  const required = [
+    "ciOption05",
+    "ciOption1",
+    "ciOption2",
+    "ciOption5",
+    "ciOptionFuzzy",
+    "helpCiTargetFuzzy",
+  ];
+  for (const k of required) {
+    assert.ok(PURE.I18N.zh[k], `zh.${k} missing`);
+    assert.ok(PURE.I18N.en[k], `en.${k} missing`);
+  }
+});
+
 // ---------- fmt ----------
 
 test("fmt: substitutes vars", () => {
@@ -153,6 +168,29 @@ test("cacheRiskView: respects injected risk_thresholds", () => {
     risk_thresholds: { medium_bytes: 1024, high_bytes: 4096 },
   });
   assert.equal(v.tier, "high");
+});
+
+// ---------- ciTierOptions ----------
+
+test("ciTierOptions: returns 5 options with stable values", () => {
+  const opts = PURE.ciTierOptions("zh");
+  assert.equal(opts.length, 5);
+  assert.deepStrictEqual(
+    opts.map((o) => o.value),
+    ["0.5", "1", "2", "5", "0"]
+  );
+});
+
+test("ciTierOptions: labels localized for zh", () => {
+  const opts = PURE.ciTierOptions("zh");
+  const fuzzy = opts.find((o) => o.value === "0");
+  assert.ok(fuzzy.label.includes("模糊"));
+});
+
+test("ciTierOptions: labels localized for en", () => {
+  const opts = PURE.ciTierOptions("en");
+  const fuzzy = opts.find((o) => o.value === "0");
+  assert.ok(fuzzy.label.toLowerCase().includes("fuzzy"));
 });
 
 // ---------- statusText ----------

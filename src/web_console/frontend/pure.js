@@ -38,7 +38,13 @@ const I18N = {
     panelSystemState: "系统状态与恢复",
     labelMachine: "机台",
     labelMode: "RTP Mode",
-    labelCiTarget: "目标 CI 半宽 (pp)",
+    labelCiTarget: "目标 CI 半宽",
+    ciOption05: "0.5 pp (高精度)",
+    ciOption1: "1.0 pp (标准)",
+    ciOption2: "2.0 pp (快速)",
+    ciOption5: "5.0 pp (探索)",
+    ciOptionFuzzy: "模糊 (高波动 mode)",
+    helpCiTargetFuzzy: "模糊档：跳过 CI 停止条件，直接按约 100 万 spin 采样，用于 mode 2/5 这类 RTP 爆炸的特殊机制。",
     labelChunkSpins: "每 Chunk Spin 次数",
     labelRobotCount: "每 Chunk 机器人数",
     labelConcurrency: "批并发数",
@@ -178,7 +184,13 @@ const I18N = {
     panelSystemState: "System State & Recovery",
     labelMachine: "Machine",
     labelMode: "RTP Mode",
-    labelCiTarget: "Target CI Half-width (pp)",
+    labelCiTarget: "Target CI Half-width",
+    ciOption05: "0.5 pp (high precision)",
+    ciOption1: "1.0 pp (standard)",
+    ciOption2: "2.0 pp (fast)",
+    ciOption5: "5.0 pp (exploratory)",
+    ciOptionFuzzy: "Fuzzy (high-volatility mode)",
+    helpCiTargetFuzzy: "Fuzzy tier: CI stop is bypassed; sampling targets ~1M spins via max_chunks. Required for mode 2/5 (RTP-exploding special mechanics).",
     labelChunkSpins: "Chunk Spin Times",
     labelRobotCount: "Chunk Robot Count",
     labelConcurrency: "Batch Concurrency",
@@ -361,6 +373,18 @@ function statusText(lang, s) {
   return k in dict ? dict[k] : fmt(lang, "statusUnknown");
 }
 
+// CI half-width tier picker. "0" is the fuzzy tier: CI stop disabled,
+// sampling relies on max_chunks to cover ~1M spins (handled backend-side).
+function ciTierOptions(lang) {
+  return [
+    { value: "0.5", label: fmt(lang, "ciOption05") },
+    { value: "1", label: fmt(lang, "ciOption1") },
+    { value: "2", label: fmt(lang, "ciOption2") },
+    { value: "5", label: fmt(lang, "ciOption5") },
+    { value: "0", label: fmt(lang, "ciOptionFuzzy") },
+  ];
+}
+
 function modelWarnings(opts) {
   const o = opts || {};
   const provider = o.provider || "";
@@ -409,6 +433,7 @@ const PURE = {
   statusText,
   modelWarnings,
   collectSystemWarnings,
+  ciTierOptions,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;

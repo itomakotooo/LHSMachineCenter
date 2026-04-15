@@ -331,6 +331,18 @@ function refreshModes() {
   (machine.modes || [1]).forEach((m) => modeSel.appendChild(new Option(String(m), String(m))));
 }
 
+function fillCiTierOptions() {
+  const sel = byId("ciSelect");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = "";
+  for (const { value, label } of PURE.ciTierOptions(state.lang)) {
+    sel.appendChild(new Option(label, value));
+  }
+  // Preserve user selection across language re-render; default to 0.5.
+  sel.value = prev || "0.5";
+}
+
 function fillProviders() {
   const sel = byId("providerSelect");
   sel.innerHTML = "";
@@ -360,7 +372,7 @@ function readRunPayload() {
   return {
     machine: byId("machineSelect").value,
     mode: Number(byId("modeSelect").value),
-    target_halfwidth_pp: Number(byId("ciInput").value),
+    target_halfwidth_pp: Number(byId("ciSelect").value),
     chunk_spin_times: Number(byId("spinInput").value),
     chunk_robot_count: Number(byId("robotInput").value),
     batch_concurrency: Number(byId("concInput").value),
@@ -529,6 +541,7 @@ async function loadBootstrap() {
   state.machines = m.machines || [];
   state.modelMeta = models || {};
   fillMachineModeSelectors();
+  fillCiTierOptions();
   fillProviders();
   fillModelsForProvider(byId("providerSelect").value, state.modelMeta.default_model || "");
   renderMachineCatalog();
@@ -552,6 +565,7 @@ function bindEvents() {
   byId("langSelect").addEventListener("change", async (e) => {
     state.lang = e.target.value;
     applyI18n();
+    fillCiTierOptions();
     renderMachineCatalog();
     renderRunHistory();
     setSystemStatePanel();
