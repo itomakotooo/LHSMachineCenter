@@ -1295,7 +1295,13 @@ button:disabled {
   font-style: italic;
 }
 
-/* Field discovery panel */
+/* Field discovery + machine mechanics panels */
+.field-discovery {
+  grid-column: span 6;
+}
+.machine-mechanics {
+  grid-column: span 6;
+}
 .field-discovery table code {
   font-size: 12px;
   background: #f1f5f9;
@@ -1597,6 +1603,7 @@ tbody tr.active-row {
   .symbols,
   .spin-types,
   .field-discovery,
+  .machine-mechanics,
   .batch-progress,
   .machine-catalog,
   .run-history,

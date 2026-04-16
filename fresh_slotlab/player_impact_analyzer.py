@@ -1017,6 +1017,30 @@ def parse_chunk_response(
             "error": "schema_drift_missing_fields:" + ",".join(schema_missing),
         }
 
+    # --- Pre-scan: detect if CostCredits is unreliable for this chunk.
+    # Some machines (M10, M23, M131, M133 — LockReSpin SpinType 13) report
+    # CostCredits=0 on ALL spins even though BetAmount>0. For these, the
+    # CostCredits-based paid/bonus classification fails. Detect by sampling
+    # the first robot: if every round has CostCredits==0 but BetAmount>0,
+    # treat ALL spins as paid (the machine has no meaningful free-spin
+    # distinction).
+    cost_credits_unreliable = False
+    _sample_robot = next((r for r in resp if isinstance(r, dict)), None)
+    if _sample_robot is not None:
+        _sample_rounds = parse_rounds(_sample_robot)
+        if _sample_rounds:
+            _all_zero_cost = all(
+                to_float(rd.get("CostCredits"), default=-1.0) == 0.0
+                for rd in _sample_rounds[:200]
+                if isinstance(rd, dict)
+            )
+            _any_positive_bet = any(
+                to_float(rd.get("BetAmount"), default=0.0) > 0.0
+                for rd in _sample_rounds[:200]
+                if isinstance(rd, dict)
+            )
+            cost_credits_unreliable = _all_zero_cost and _any_positive_bet
+
     # --- Extra-field discovery: track fields beyond _BASELINE_ROUND_FIELDS.
     extra_fields_seen: dict[str, int] = defaultdict(int)
 
@@ -1429,16 +1453,18 @@ def parse_chunk_response(
                 bet_amt = float(bet)
 
             # Paid vs bonus: CostCredits>0 means the player paid for this
-            # spin; CostCredits==0 means it's a free / bonus / re-spin
-            # that belongs to the paid session kicked off by an earlier
-            # paid spin. `is_paid` defaults to True when CostCredits is
-            # absent (old machines without the field behave as if every
-            # spin is paid, matching the pre-session-refactor semantics).
-            cost_credits_raw = r.get("CostCredits")
-            if cost_credits_raw is None:
+            # spin; CostCredits==0 means it's a free / bonus / re-spin.
+            # When CostCredits is unreliable (always 0 despite BetAmount>0),
+            # fall back to treating every spin as paid so session metrics
+            # are meaningful.
+            if cost_credits_unreliable:
                 is_paid = True
             else:
-                is_paid = to_float(cost_credits_raw, default=0.0) > 0.0
+                cost_credits_raw = r.get("CostCredits")
+                if cost_credits_raw is None:
+                    is_paid = True
+                else:
+                    is_paid = to_float(cost_credits_raw, default=0.0) > 0.0
 
             win_amt = to_float(r.get("WinCredits"), default=0.0)
             chunk_spins += 1
