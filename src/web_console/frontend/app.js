@@ -499,9 +499,7 @@ function renderRunHistory() {
     });
   });
 
-  // Rebuild (per-row): disabled by default; async-checks chunk
-  // compatibility before enabling. Incompatible chunks get a red
-  // warning tooltip.
+  // Rebuild (per-row): checks chunk compatibility, shows inline status.
   body.querySelectorAll(".rebuild-run-btn").forEach((b) => {
     b.disabled = true;
     b.title = fmt("rebuildNoChunks");
@@ -518,18 +516,29 @@ function renderRunHistory() {
     b.addEventListener("click", async () => {
       if (state.busyActions.size > 0) return;
       const runId = b.dataset.id;
+      // Inline progress: change button text to "重建中..." + disable
+      const origText = b.textContent;
+      b.textContent = "⟳ ...";
+      b.disabled = true;
       state.busyActions.add("rebuild");
       updateActionStates();
       try {
         const resp = await apiPost(`/api/runs/${encodeURIComponent(runId)}/rebuild`, {});
-        window.alert(fmt("rebuildSuccess", {
-          rtp: resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(2) : "?",
-          chunks: resp.chunks_reprocessed || 0,
-        }));
+        // Show result inline on the button for 3s then restore
+        b.textContent = `✓ RTP ${resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(1) + "%" : "?"}`;
+        b.classList.add("rebuild-done");
         await refreshRunList(false);
+        // If this is the current run, reload its data
+        if (state.currentRunId === runId) {
+          switchTab("debug");
+          await refreshCurrentRun();
+        }
+        setTimeout(() => { b.textContent = origText; b.classList.remove("rebuild-done"); }, 3000);
       } catch (err) {
         const errMsg = String(err && err.message ? err.message : err);
-        window.alert(errMsg.includes("404") ? fmt("rebuildNoChunks") : fmt("rebuildFailed", { error: errMsg }));
+        b.textContent = "✗";
+        b.title = errMsg.includes("404") ? fmt("rebuildNoChunks") : fmt("rebuildFailed", { error: errMsg });
+        setTimeout(() => { b.textContent = origText; }, 3000);
       } finally {
         state.busyActions.delete("rebuild");
         updateActionStates();
@@ -733,6 +742,7 @@ function renderFeatureBreakdownPanel(summary) {
   body.innerHTML =
     `<hr style="margin:14px 0;border:none;border-top:1px solid #d2dde9">` +
     `<h3 style="margin:0 0 8px;font-size:13px;color:var(--muted)">${fmt("panelFeatureBreakdown")}</h3>` +
+    `<div class="feature-blocks-grid">` +
     data.features.map((feat) => {
       const rows = Array.isArray(feat.payouts) ? feat.payouts : [];
       const maxShare = Math.max(
@@ -766,7 +776,7 @@ function renderFeatureBreakdownPanel(summary) {
         `</div>`
       );
     })
-    .join("");
+    .join("") + `</div>`;
 }
 
 // Render the bonus_chain_dynamics panel (ReMarks-derived
@@ -1181,8 +1191,32 @@ async function refreshCurrentRun() {
       // Non-fatal: leave sub-lines cleared.
     }
     const buckets = s.player_impact?.multiplier_profile?.buckets || [];
-    state.bucketChart.data.labels = buckets.map((b) => PURE.prettyBucketLabel(b.bucket));
+    // Labels show bucket range + exact percentage for readability.
+    state.bucketChart.data.labels = buckets.map((b) => {
+      const pct = (Number(b.spin_rate) * 100).toFixed(1);
+      return `${PURE.prettyBucketLabel(b.bucket)} (${pct}%)`;
+    });
     state.bucketChart.data.datasets[0].data = buckets.map((b) => (Number(b.spin_rate) <= 1 ? Number(b.spin_rate) * 100 : Number(b.spin_rate)));
+    // Add a second dataset for RTP contribution overlay.
+    if (!state.bucketChart.data.datasets[1]) {
+      state.bucketChart.data.datasets.push({
+        label: "RTP pp",
+        data: [],
+        backgroundColor: "rgba(239,68,68,0.45)",
+        borderColor: "#ef4444",
+        borderWidth: 1,
+        yAxisID: "y1",
+      });
+      // Add right-side y-axis for RTP pp.
+      state.bucketChart.options.scales = state.bucketChart.options.scales || {};
+      state.bucketChart.options.scales.y1 = {
+        position: "right",
+        beginAtZero: true,
+        grid: { drawOnChartArea: false },
+        title: { display: true, text: "RTP pp" },
+      };
+    }
+    state.bucketChart.data.datasets[1].data = buckets.map((b) => Number(b.rtp_contribution_pp || 0));
     state.bucketChart.update();
     renderRtpClampWarning(s);
     renderSpinTypeBreakdown(s);

@@ -787,14 +787,18 @@ button:disabled {
   background: #fed7aa;
 }
 
-/* Upstream feature breakdown: compact inline bar layout instead of
-   a full per-feature inner table. Each feature shows a heading
-   (feature name + RTP pp + share %) followed by horizontal bars
-   for each paying PayId. */
-.feature-breakdown .feature-block + .feature-block {
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: 1px solid #e5e7eb;
+/* Upstream feature breakdown: compact inline bar layout. Features
+   lay out horizontally (up to 3 per row) so the operator can compare
+   NormalCollectionSpin vs NewFreespin side-by-side. */
+.feature-inline-section .feature-blocks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.feature-breakdown .feature-block + .feature-block,
+.feature-inline-section .feature-block + .feature-block {
+  /* Vertical separator only in stacked mode; grid gap handles spacing
+     in grid mode. Keep for back-compat with standalone panel if any. */
 }
 .feature-breakdown .feature-block h3 {
   margin: 0 0 6px;
@@ -835,6 +839,7 @@ button:disabled {
   overflow: hidden;
 }
 .feature-bar {
+  display: block;
   height: 100%;
   background: #0f766e;
   border-radius: 4px;
@@ -935,6 +940,11 @@ button:disabled {
 .action-cell button.stale {
   opacity: 0.5;
   text-decoration: line-through;
+}
+.action-cell button.rebuild-done {
+  background: #dcfce7;
+  border-color: #0f766e;
+  color: #0f766e;
 }
 
 /* Muted cell style (used for spin_type_breakdown rtp_pct=null). */

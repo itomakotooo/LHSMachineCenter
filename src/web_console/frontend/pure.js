@@ -957,14 +957,17 @@ function extractMetricCards(summary) {
       const d50 = derived.tail_dependency_ge50x;
       const d100 = derived.tail_dependency_ge100x;
       const fmt1 = (v) => (v == null ? "\u2014" : (Number(v) * 100).toFixed(1) + "%");
-      const subParts = [];
-      if (d20 != null) subParts.push(`\u226520x ${fmt1(d20)}`);
-      if (d50 != null) subParts.push(`\u226550x ${fmt1(d50)}`);
-      if (d100 != null) subParts.push(`\u2265100x ${fmt1(d100)}`);
+      // Compact bar-like format: ≥10 68.6 → ≥20 48.2 → ≥50 21.6 → ≥100 5.0
+      // Uses → arrows to show the decay direction.
+      const parts = [];
+      if (d10 != null) parts.push(`\u226510x ${fmt1(d10)}`);
+      if (d20 != null) parts.push(`\u226520x ${fmt1(d20)}`);
+      if (d50 != null) parts.push(`\u226550x ${fmt1(d50)}`);
+      if (d100 != null) parts.push(`\u2265100x ${fmt1(d100)}`);
       return {
-        value: num(d10, (x) => x.toFixed(3)),
+        value: parts.length ? parts[0] : num(d10, (x) => x.toFixed(3)),
         tone: toneTailDep(d10),
-        sub: subParts.join(" \u00b7 "),
+        sub: parts.slice(1).join(" \u2192 "),
       };
     })(),
     guideline: { value: cmp.overall_status || "N/A", tone: toneGuideline(cmp.overall_status) },
