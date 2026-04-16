@@ -48,6 +48,7 @@ const state = {
   activeBatchId: null,
   servers: [],
   defaultServer: "",
+  catalogMechFilter: null,  // null = no filter, string = mechanic key
   versionHistoryMachine: null,
   versionHistoryMode: null,
   compareSelected: new Set(),
@@ -403,8 +404,15 @@ function renderMachineCatalog() {
   // Group machines by category.
   const groups = {};
   const CATEGORY_ORDER = ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Selector", "Other", "Unknown"];
+  const mechFilter = state.catalogMechFilter;
   state.machines.forEach((m) => {
     if (query && !m.machine.toLowerCase().includes(query) && !(m.category || "").toLowerCase().includes(query)) return;
+    // Mechanic filter: only show machines with the selected mechanic.
+    if (mechFilter) {
+      const sm = ((state.machinesSummary || {}).machines || {})[m.machine] || {};
+      const hasMech = Object.values(sm).some((d) => (d.mechanics || []).includes(mechFilter));
+      if (!hasMech) return;
+    }
     const cat = m.category || "Other";
     if (!groups[cat]) groups[cat] = [];
     groups[cat].push(m);
@@ -507,6 +515,39 @@ function renderMachineCatalog() {
     });
   });
   updateBatchRunHint();
+}
+
+// ── Catalog Mechanic Filters ──────────────────────────────────────
+
+function renderCatalogFilters() {
+  const el = byId("catalogFilters");
+  if (!el) return;
+  const mechDist = (state.machinesSummary || {}).mechanics_distribution || {};
+  if (!Object.keys(mechDist).length) { el.innerHTML = ""; return; }
+
+  const LABELS = { lock_lines: "Lock Lines", lock_symbols: "Lock Sym", jackpot: "Jackpot", free_spin: "FreeSpin", dollar_pick: "Dollar Pick" };
+  const active = state.catalogMechFilter;
+
+  el.innerHTML = Object.entries(mechDist)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => {
+      const cls = active === k ? "filter-chip active" : "filter-chip";
+      return `<button class="${cls}" data-mech="${k}">${MECH_ICONS[k] || ""} ${LABELS[k] || k} (${n})</button>`;
+    }).join("") + (active ? `<button class="filter-chip filter-clear">${fmt("filterClear")}</button>` : "");
+
+  el.querySelectorAll(".filter-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mech = btn.dataset.mech;
+      if (btn.classList.contains("filter-clear") || state.catalogMechFilter === mech) {
+        state.catalogMechFilter = null;
+      } else {
+        state.catalogMechFilter = mech;
+      }
+      renderCatalogFilters();
+      renderMachineCatalog();
+    });
+  });
 }
 
 // ── Machine Detail Panel ──────────────────────────────────────────
@@ -2138,6 +2179,7 @@ async function loadBootstrap() {
   fillBankMultOptions();
   fillProviders();
   fillModelsForProvider(byId("providerSelect").value, state.modelMeta.default_model || "");
+  renderCatalogFilters();
   renderMachineCatalog();
   renderFleetOverview();
   await refreshServers();

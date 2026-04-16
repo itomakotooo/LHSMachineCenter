@@ -901,6 +901,39 @@ button:disabled {
   font-size: 11px;
 }
 
+/* Catalog mechanic filter chips */
+.catalog-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.filter-chip {
+  padding: 3px 10px;
+  border: 1px solid #d4ddea;
+  border-radius: 14px;
+  background: #f9fafb;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-chip:hover {
+  background: #e0e7ff;
+  border-color: #6366f1;
+}
+.filter-chip.active {
+  background: #4f46e5;
+  color: #fff;
+  border-color: #4f46e5;
+}
+.filter-clear {
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+.filter-clear:hover {
+  background: #fee2e2;
+}
+
 /* Machine catalog toolbar */
 .catalog-toolbar {
   display: flex;
