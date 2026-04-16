@@ -495,7 +495,7 @@ function renderPayoutGroupDrilldown(summary) {
   if (!tbody) return;
   const rows = PURE.formatPayoutIdRows(summary);
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6">${fmt("payoutGroupEmpty")}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5">${fmt("payoutGroupEmpty")}</td></tr>`;
     return;
   }
   const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
@@ -507,9 +507,8 @@ function renderPayoutGroupDrilldown(summary) {
         `<td>${r.payout_id}</td>` +
         `<td>${fInt(r.hit_count)}</td>` +
         `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
-        `<td>${fInt(r.total_win)}</td>` +
-        `<td>${r.avg_win_when_hit.toFixed(2)}</td>` +
-        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(4)}</td>` +
+        `<td>${r.avg_win_when_hit.toFixed(1)}</td>` +
+        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(2)}</td>` +
         `</tr>`
       );
     })
@@ -631,21 +630,13 @@ function renderSpinTypeBreakdown(summary) {
   if (!tbody) return;
   const rows = PURE.formatSpinTypeRows(summary);
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="8">${fmt("spinTypeEmpty")}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">${fmt("spinTypeEmpty")}</td></tr>`;
     return;
   }
   const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
   tbody.innerHTML = rows
     .map((r) => {
       const bar = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
-      // behavior_name is "paid" / "free" / "mixed" (or "" for legacy
-      // reports). rtp_pct is null for all-free types -- render "N/A"
-      // so the operator doesn't misread a free-spin type's meaningless
-      // rtp_pct (old bug: SpinType 126 showed 243% because the
-      // denominator summed BetAmount instead of CostCredits).
-      // Map behavior label via i18n; fmt() falls back to the key text
-      // itself when absent, so unknown values (future machines) still
-      // render the raw label.
       const behavior = r.behavior_name
         ? fmt("spinTypeBehavior_" + r.behavior_name)
         : "\u2014";
@@ -656,12 +647,10 @@ function renderSpinTypeBreakdown(summary) {
         `<tr>` +
         `<td>${r.spin_type}</td>` +
         `<td>${behavior}</td>` +
-        `<td>${fInt(r.win_rounds)}</td>` +
-        `<td>${r.share_pct.toFixed(2)}%</td>` +
-        `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
-        `<td>${fInt(r.total_win)}</td>` +
+        `<td>${r.share_pct.toFixed(1)}%</td>` +
+        `<td>${r.hit_rate_pct.toFixed(2)}%</td>` +
         rtpCell +
-        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(4)}</td>` +
+        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(2)}</td>` +
         `</tr>`
       );
     })
@@ -693,38 +682,30 @@ function renderFeatureBreakdownPanel(summary) {
         ...rows.map((p) => Number(p.share_of_feature_win || 0)),
         0
       );
-      const tblRows = rows
+      // Only show paying payids (skip the "-1" / zero-win catch-all).
+      const payingRows = rows.filter((p) => Number(p.win_credits || 0) > 0);
+      const tblRows = payingRows
         .map((p) => {
           const share = Number(p.share_of_feature_win || 0);
           const bar = maxShare > 0 ? Math.min(100, (share / maxShare) * 100) : 0;
           return (
-            `<tr>` +
-            `<td>${String(p.payout_id)}</td>` +
-            `<td>${fInt(p.win_credits)}</td>` +
-            `<td>${fInt(p.times)}</td>` +
-            `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${(share * 100).toFixed(2)}%</td>` +
-            `</tr>`
+            `<span class="feature-bar-row">` +
+            `<span class="feature-bar-label">ID ${String(p.payout_id)}</span>` +
+            `<span class="feature-bar" style="width:${bar.toFixed(1)}%"></span>` +
+            `<span class="feature-bar-val">${(share * 100).toFixed(1)}%</span>` +
+            `</span>`
           );
         })
         .join("");
-      const headSummary = fmt("featureRowSummary", {
-        totalWin: fInt(feat.total_win),
-        rtpPp: Number(feat.rtp_contribution_pp || 0).toFixed(2),
-        shareTotal: (Number(feat.share_of_total_win || 0) * 100).toFixed(1) + "%",
-      });
+      const rtpPp = Number(feat.rtp_contribution_pp || 0).toFixed(2);
+      const sharePct = (Number(feat.share_of_total_win || 0) * 100).toFixed(1);
+      // Compact layout: feature name + headline metrics + minimal
+      // per-PayId rows (just payid + share bar — no "Win Credits"
+      // or "Times" columns, which the user flagged as noisy).
       return (
         `<div class="feature-block">` +
-        `<h3>${String(feat.feature_name)}</h3>` +
-        `<div class="meta">${headSummary}</div>` +
-        `<table class="drilldown-table">` +
-        `<thead><tr>` +
-        `<th>${fmt("thFeaturePayId")}</th>` +
-        `<th>${fmt("thFeatureWinCredits")}</th>` +
-        `<th>${fmt("thFeatureTimes")}</th>` +
-        `<th>${fmt("thFeatureShare")}</th>` +
-        `</tr></thead>` +
-        `<tbody>${tblRows}</tbody>` +
-        `</table>` +
+        `<h3>${String(feat.feature_name)} <span class="feature-metric">${rtpPp}pp · ${sharePct}%</span></h3>` +
+        `<div class="feature-payids">${tblRows}</div>` +
         `</div>`
       );
     })
