@@ -190,12 +190,28 @@
             </div>
           </section>
 
-          <!-- SpinType breakdown: per-type spins / win / RTP. M14 mode 1
-               has only SpinType=1; M272 mode 1/2 splits main (140) vs
-               bonus / collect re-spin (126). Empty for legacy reports
-               that pre-date the spin_type_breakdown commit. -->
+          <!-- Interpretation + assessment placed immediately after KPIs/chart
+               so the operator reads the headline narrative first (MEMORY B#3:
+               player experience → statistical evidence → risk notes). -->
+          <section class="panel interpretation">
+            <h2 data-i18n="panelInterpretation">模型解读</h2>
+            <div id="rtpClampWarning" class="warnBox hidden"></div>
+            <div class="actions">
+              <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
+            </div>
+            <pre id="interpretationText" class="pre"></pre>
+          </section>
+
+          <section class="panel report">
+            <h2 data-i18n="panelAssessment">规则评估</h2>
+            <div id="assessment" class="pre">No report yet.</div>
+          </section>
+
+          <!-- SpinType breakdown + upstream Feature breakdown merged into
+               one panel. Feature detail only renders when applicable
+               (multi-feature machines like M272). -->
           <section class="panel spin-types">
-            <h2 data-i18n="panelSpinType">SpinType 分布</h2>
+            <h2 data-i18n="panelSpinType">Spin 类型分布</h2>
             <table id="spinTypeTable" class="drilldown-table">
               <thead>
                 <tr>
@@ -209,50 +225,16 @@
               </thead>
               <tbody></tbody>
             </table>
+            <!-- Feature detail inserted by renderFeatureBreakdownPanel()
+                 when upstream FeatureWin has multiple features. -->
+            <div id="featureBreakdownInline" class="feature-inline-section"></div>
           </section>
 
-          <!-- Upstream feature breakdown (analysisResult.FeatureWin).
-               Machine-authoritative bonus-feature names + per-payout
-               attribution. Hidden for single-"Normal"-feature machines
-               (M14) where it would duplicate payout_ids_top20. -->
-          <section class="panel feature-breakdown hidden" id="featureBreakdownPanel">
-            <h2 data-i18n="panelFeatureBreakdown">上游 Feature 分布</h2>
-            <div id="featureBreakdownMeta" class="meta"></div>
-            <div id="featureBreakdownBody"></div>
-          </section>
-
-          <!-- Bonus-chain dynamics (ReMarks Freespin annotation). The
-               MapCollection energy-ramp view for M272 + any future
-               machine whose bonus rounds carry the Freespin string.
-               Hidden when no chain data was seen in the sample. -->
+          <!-- Bonus-chain dynamics (ReMarks Freespin annotation). -->
           <section class="panel bonus-chain-dynamics hidden" id="bonusChainDynamicsPanel">
             <h2 data-i18n="panelBonusChainDynamics">Bonus Chain 动态</h2>
             <div id="bonusChainMeta" class="meta"></div>
             <div id="bonusChainBody"></div>
-          </section>
-
-          <!-- Mid panels are stacked (not tabbed) per user feedback after
-               first dashboard pass: interpretation goes first because
-               that's the headline narrative, followed by the rules
-               assessment and the raw events log. -->
-          <section class="panel interpretation">
-            <h2 data-i18n="panelInterpretation">模型解读</h2>
-            <!-- Trunk-clamp warning: filled by app.js when the latest
-                 summary's collect_mechanic.clamp_warning.applicable is
-                 true. Tells the operator that chunk_spin_times truncated
-                 some collect cycles, so observed RTP is likely a
-                 lower bound. -->
-            <div id="rtpClampWarning" class="warnBox hidden"></div>
-            <div class="actions">
-              <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
-              <button id="rebuildBtn" data-i18n="btnRebuild" title="">基于缓存重建</button>
-            </div>
-            <pre id="interpretationText" class="pre"></pre>
-          </section>
-
-          <section class="panel report">
-            <h2 data-i18n="panelAssessment">规则评估</h2>
-            <div id="assessment" class="pre">No report yet.</div>
           </section>
 
           <!-- Drilldown panels are stacked (not tabbed) per user feedback:

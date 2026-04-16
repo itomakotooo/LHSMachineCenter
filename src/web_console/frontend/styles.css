@@ -397,7 +397,6 @@ body {
 .payout-groups,
 .symbols,
 .spin-types,
-.feature-breakdown,
 .bonus-chain-dynamics {
   grid-column: span 12;
 }

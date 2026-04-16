@@ -674,20 +674,21 @@ function renderSpinTypeBreakdown(summary) {
 // payout_ids_top20). Each feature renders as a small header + per-
 // payout-id table.
 function renderFeatureBreakdownPanel(summary) {
-  const panel = byId("featureBreakdownPanel");
-  if (!panel) return;
+  // Renders inside #featureBreakdownInline (merged into the SpinType
+  // panel) instead of a standalone section. Clears the div when not
+  // applicable so the SpinType table stands alone for single-feature
+  // machines.
+  const body = byId("featureBreakdownInline");
+  if (!body) return;
   const data = ((summary || {}).player_impact || {}).upstream_feature_breakdown;
   if (!data || !data.applicable || !Array.isArray(data.features) || !data.features.length) {
-    panel.classList.add("hidden");
+    body.innerHTML = "";
     return;
   }
-  panel.classList.remove("hidden");
-  byId("featureBreakdownMeta").textContent = fmt("featureBreakdownMeta", {
-    count: data.features.length,
-  });
-  const body = byId("featureBreakdownBody");
-  body.innerHTML = data.features
-    .map((feat) => {
+  body.innerHTML =
+    `<hr style="margin:14px 0;border:none;border-top:1px solid #d2dde9">` +
+    `<h3 style="margin:0 0 8px;font-size:13px;color:var(--muted)">${fmt("panelFeatureBreakdown")}</h3>` +
+    data.features.map((feat) => {
       const rows = Array.isArray(feat.payouts) ? feat.payouts : [];
       const maxShare = Math.max(
         ...rows.map((p) => Number(p.share_of_feature_win || 0)),
