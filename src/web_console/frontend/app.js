@@ -351,7 +351,7 @@ function updateChartLabels() {}
 const CATEGORY_COLORS = {
   Normal: "#6b7280", Collect: "#7c3aed", Lock: "#ea580c",
   FreeSpin: "#059669", ReSpin: "#0891b2", Wheel: "#d97706",
-  Fortunes: "#c026d3", Other: "#9ca3af", Unknown: "#9ca3af",
+  Fortunes: "#c026d3", Selector: "#6366f1", Other: "#9ca3af", Unknown: "#9ca3af",
 };
 const VOL_COLORS = { Low: "#059669", Medium: "#2563eb", High: "#ea580c", "Very High": "#dc2626" };
 
@@ -399,7 +399,7 @@ function renderMachineCatalog() {
 
   // Group machines by category.
   const groups = {};
-  const CATEGORY_ORDER = ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Other", "Unknown"];
+  const CATEGORY_ORDER = ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Selector", "Other", "Unknown"];
   state.machines.forEach((m) => {
     if (query && !m.machine.toLowerCase().includes(query) && !(m.category || "").toLowerCase().includes(query)) return;
     const cat = m.category || "Other";
@@ -1645,7 +1645,7 @@ function fillMachineModeSelectors() {
   mSel.innerHTML = "";
   // Group by category for optgroups.
   const groups = {};
-  const ORDER = ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Other", "Unknown"];
+  const ORDER = ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Selector", "Other", "Unknown"];
   state.machines.forEach((m) => {
     const cat = m.category || "Other";
     if (!groups[cat]) groups[cat] = [];

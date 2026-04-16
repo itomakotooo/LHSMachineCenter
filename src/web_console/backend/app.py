@@ -582,6 +582,7 @@ def _classify_machine(logic_classes: list[str]) -> str:
     names = {n for n in logic_classes}
     if not names:
         return "Unknown"
+    joined = " ".join(names).lower()
     if any("BuffCollection" in n for n in names):
         return "Collect"
     if any("LockReSpin" in n or "LockSpin" in n for n in names):
@@ -594,6 +595,13 @@ def _classify_machine(logic_classes: list[str]) -> str:
         return "Wheel"
     if any("FreeSpin" in n or "Rising" in n for n in names):
         return "FreeSpin"
+    # Broader ReSpin detection (WildRespin, DiamondRespin, etc.)
+    if "respin" in joined:
+        return "ReSpin"
+    if "selector" in joined:
+        return "Selector"
+    if "collection" in joined:
+        return "Collect"
     if all("Normal" in n or "RTP" in n for n in names):
         return "Normal"
     return "Other"
