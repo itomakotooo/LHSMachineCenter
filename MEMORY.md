@@ -12,7 +12,10 @@ These are the project-level hard constraints from the user. They have highest pr
 6. Reports must focus on player-impact metrics:
    volatility, paylines, symbol frequency, bankruptcy rate, losing/winning streaks.
 7. Do not include low-value metrics like hot/cold window.
-8. Do not persist raw per-spin data. Persist aggregated metrics only.
+8. Raw per-spin data may be cached locally for offline re-analysis and
+   report rebuild (the cache follows Rules #12-13 lifecycle). Reports
+   and long-term assets persist aggregated metrics only; raw cache is
+   operational, not archival.
 9. `runs` is a temporary directory, not a long-term archive.
 10. Memory must be split into two layers:
     `USER HARD RULES` and `ASSISTANT WORKING MEMORY`.
