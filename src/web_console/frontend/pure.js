@@ -215,6 +215,12 @@ const I18N = {
     noEvents: "暂无事件。",
     noAutoTune: "尚未执行自动调优。",
     noMachines: "暂无机台配置。",
+    catalogNoMatch: "无匹配机台。",
+    catalogSearchPlaceholder: "搜索机台...",
+    panelFieldDiscovery: "字段发现",
+    thFieldName: "字段名",
+    thFieldOccurrences: "出现次数",
+    thFieldRate: "出现率",
     noRuns: "暂无运行记录。",
     noVersions: "暂无版本记录。",
     assessmentQuality: "数据质量",
@@ -465,6 +471,12 @@ const I18N = {
     noEvents: "No events yet.",
     noAutoTune: "No auto tune run yet.",
     noMachines: "No machine config found.",
+    catalogNoMatch: "No matching machines.",
+    catalogSearchPlaceholder: "Search machines...",
+    panelFieldDiscovery: "Field Discovery",
+    thFieldName: "Field",
+    thFieldOccurrences: "Occurrences",
+    thFieldRate: "Rate",
     noRuns: "No runs yet.",
     noVersions: "No versions yet.",
     assessmentQuality: "quality_label",
@@ -799,6 +811,7 @@ function formatSpinTypeRows(summary) {
     // rows always had a numeric rtp_pct; we still show those.
     rtp_pct: r.rtp_pct === null || r.rtp_pct === undefined ? null : Number(r.rtp_pct),
     rtp_contribution_pp: Number(r.rtp_contribution_pp || 0),
+    rare: Boolean(r.rare),
   }));
 }
 

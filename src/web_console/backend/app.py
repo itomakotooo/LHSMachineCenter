@@ -456,14 +456,59 @@ def summarize_progress(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def load_machines(path: Path | None = None) -> list[dict[str, Any]]:
+def _classify_machine(logic_classes: list[str]) -> str:
+    """Derive a human-readable category from logicClassNames.
+
+    Priority ordered — the first matching pattern wins.  The categories
+    are intentionally broad; operators refine via the search bar.
+    """
+    names = {n for n in logic_classes}
+    if not names:
+        return "Unknown"
+    if any("BuffCollection" in n for n in names):
+        return "Collect"
+    if any("LockReSpin" in n or "LockSpin" in n for n in names):
+        return "Lock"
+    if any("Fortunes" in n for n in names):
+        return "Fortunes"
+    if any("RedHot" in n for n in names):
+        return "ReSpin"
+    if any("Wheel" in n for n in names):
+        return "Wheel"
+    if any("FreeSpin" in n or "Rising" in n for n in names):
+        return "FreeSpin"
+    if all("Normal" in n or "RTP" in n for n in names):
+        return "Normal"
+    return "Other"
+
+
+def load_machines(
+    path: Path | None = None,
+    reports_root: Path | None = None,
+) -> list[dict[str, Any]]:
     target = path if path is not None else MACHINES_CONFIG
+    rr = reports_root if reports_root is not None else REPORTS_ROOT
     if target.exists():
         payload = read_json(target)
         machines = payload.get("machines", [])
         if isinstance(machines, list):
+            for m in machines:
+                logic = m.get("logicClassNames", [])
+                m.setdefault("category", _classify_machine(logic))
+                m.setdefault("available", bool(logic))
+                # Count on-disk report versions for this machine.
+                report_count = 0
+                machine_dir = rr / m["machine"]
+                if machine_dir.is_dir():
+                    for mode_dir in machine_dir.iterdir():
+                        versions_dir = mode_dir / "versions"
+                        if versions_dir.is_dir():
+                            report_count += sum(
+                                1 for v in versions_dir.iterdir() if v.is_dir()
+                            )
+                m["report_count"] = report_count
             return machines
-    return [{"machine": "M14", "modes": [1]}]
+    return [{"machine": "M14", "modes": [1], "category": "Normal", "report_count": 0}]
 
 
 class OperationCoordinator:
@@ -1683,7 +1728,7 @@ def create_app(
 
     @app.get("/api/machines")
     def machines() -> dict[str, Any]:
-        return {"machines": load_machines(mc)}
+        return {"machines": load_machines(mc, rr)}
 
     @app.get("/api/models")
     def models() -> dict[str, Any]:

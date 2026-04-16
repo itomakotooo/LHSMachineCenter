@@ -813,17 +813,67 @@ button:disabled {
   height: 220px !important;
 }
 
+/* Machine catalog search */
+.catalog-search {
+  width: 100%;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  border: 1px solid #d4ddea;
+  border-radius: 6px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.catalog-search:focus {
+  outline: 2px solid var(--accent);
+  border-color: var(--accent);
+}
+
+/* Grouped catalog */
+.catalog-grouped {
+  max-height: 500px;
+  overflow-y: auto;
+}
+.catalog-group {
+  margin-bottom: 6px;
+}
+.catalog-group-header {
+  cursor: pointer;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+  border-radius: 6px;
+  transition: background 0.12s;
+}
+.catalog-group-header:hover {
+  background: #f0f4f8;
+}
+.catalog-group-arrow {
+  display: inline-block;
+  font-size: 10px;
+  width: 14px;
+}
+.catalog-group-count {
+  color: var(--muted);
+  font-weight: 400;
+}
+.catalog-group.collapsed .catalog-list {
+  display: none;
+}
+
 .catalog-list {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  padding: 4px 0 4px 18px;
 }
 
 .catalog-item {
   border: 1px solid #d4ddea;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #f9fcff;
-  padding: 8px;
+  padding: 6px 8px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
@@ -838,6 +888,33 @@ button:disabled {
 .catalog-item.active {
   background: #dcfce7;
   border-color: #0f766e;
+}
+.catalog-item.unavailable {
+  opacity: 0.45;
+}
+.catalog-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* Rare SpinType row highlight */
+.rare-row {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* Field discovery panel */
+.field-discovery table code {
+  font-size: 12px;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 .run-filter-banner {
@@ -1133,6 +1210,7 @@ tbody tr.active-row {
   .payout-groups,
   .symbols,
   .spin-types,
+  .field-discovery,
   .machine-catalog,
   .run-history,
   .system-status,

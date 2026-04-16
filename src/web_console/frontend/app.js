@@ -321,6 +321,8 @@ function clearSummaryPanels() {
   byId("kpiTailGrid").innerHTML = "";
   const bt = byId("bucketTable");
   if (bt) bt.querySelector("tbody").innerHTML = "";
+  const fdp = byId("fieldDiscoveryPanel");
+  if (fdp) fdp.classList.add("hidden");
 }
 
 // Chart.js removed — bucket distribution is now a table.
@@ -331,16 +333,64 @@ function renderMachineCatalog() {
   const wrap = byId("machineCatalog");
   wrap.innerHTML = "";
   if (!state.machines.length) return (wrap.textContent = fmt("noMachines"));
+
+  const searchEl = byId("catalogSearch");
+  const query = (searchEl ? searchEl.value : "").trim().toLowerCase();
+
+  // Group machines by category.
+  const groups = {};
+  const CATEGORY_ORDER = ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Other", "Unknown"];
   state.machines.forEach((m) => {
-    const d = document.createElement("div");
-    d.className = "catalog-item";
-    if (state.runFilterMachines.has(m.machine)) d.classList.add("active");
-    d.dataset.machine = m.machine;
-    d.setAttribute("role", "button");
-    d.setAttribute("tabindex", "0");
-    d.innerHTML = `<div class="catalog-title">${m.machine}</div><div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`;
-    wrap.appendChild(d);
+    // Filter by search query (match machine name or category).
+    if (query && !m.machine.toLowerCase().includes(query) && !(m.category || "").toLowerCase().includes(query)) return;
+    const cat = m.category || "Other";
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(m);
   });
+
+  // Render each group in priority order.
+  const orderedKeys = CATEGORY_ORDER.filter((k) => groups[k]);
+  // Append any categories not in CATEGORY_ORDER.
+  Object.keys(groups).forEach((k) => { if (!orderedKeys.includes(k)) orderedKeys.push(k); });
+
+  if (!orderedKeys.length) {
+    wrap.textContent = query ? fmt("catalogNoMatch") : fmt("noMachines");
+    return;
+  }
+
+  orderedKeys.forEach((cat) => {
+    const machines = groups[cat];
+    const section = document.createElement("div");
+    section.className = "catalog-group";
+
+    const header = document.createElement("div");
+    header.className = "catalog-group-header";
+    header.innerHTML = `<span class="catalog-group-arrow">&#9660;</span> <span class="catalog-group-name">${cat}</span> <span class="catalog-group-count">(${machines.length})</span>`;
+    header.addEventListener("click", () => {
+      section.classList.toggle("collapsed");
+      header.querySelector(".catalog-group-arrow").innerHTML = section.classList.contains("collapsed") ? "&#9654;" : "&#9660;";
+    });
+    section.appendChild(header);
+
+    const grid = document.createElement("div");
+    grid.className = "catalog-list";
+    machines.forEach((m) => {
+      const d = document.createElement("div");
+      d.className = "catalog-item";
+      if (state.runFilterMachines.has(m.machine)) d.classList.add("active");
+      if (m.available === false) d.classList.add("unavailable");
+      d.dataset.machine = m.machine;
+      d.setAttribute("role", "button");
+      d.setAttribute("tabindex", "0");
+      const reportBadge = m.report_count ? `<span class="catalog-badge">${m.report_count} reports</span>` : "";
+      d.innerHTML = `<div class="catalog-title">${m.machine}${reportBadge}</div><div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`;
+      grid.appendChild(d);
+    });
+    section.appendChild(grid);
+    wrap.appendChild(section);
+  });
+
+  // Attach click/keyboard handlers.
   wrap.querySelectorAll(".catalog-item").forEach((el) => {
     const toggle = () => {
       const machine = el.dataset.machine;
@@ -685,12 +735,13 @@ function renderRtpClampWarning(summary) {
 }
 
 function renderSpinTypeBreakdown(summary) {
-  // Reads spin_type_breakdown (analyzer commit). Empty for older
-  // reports that pre-date the field; renders a single empty-state row
-  // so the panel doesn't look broken when an old report is loaded.
   const tbody = byId("spinTypeTable") && byId("spinTypeTable").querySelector("tbody");
   if (!tbody) return;
   const rows = PURE.formatSpinTypeRows(summary);
+  const coverage = ((summary || {}).player_impact || {}).spin_type_coverage || 0;
+  // Update panel heading with coverage count.
+  const heading = document.querySelector(".spin-types h2");
+  if (heading) heading.textContent = fmt("panelSpinType") + (coverage > 0 ? ` (${coverage})` : "");
   if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="6">${fmt("spinTypeEmpty")}</td></tr>`;
     return;
@@ -705,9 +756,10 @@ function renderSpinTypeBreakdown(summary) {
       const rtpCell = r.rtp_pct == null
         ? `<td class="muted">N/A</td>`
         : `<td>${r.rtp_pct.toFixed(2)}%</td>`;
+      const rareClass = r.rare ? ' class="rare-row"' : "";
       return (
-        `<tr>` +
-        `<td>${r.spin_type}</td>` +
+        `<tr${rareClass}>` +
+        `<td>${r.spin_type}${r.rare ? " \u26a0" : ""}</td>` +
         `<td>${behavior}</td>` +
         `<td>${r.share_pct.toFixed(1)}%</td>` +
         `<td>${r.hit_rate_pct.toFixed(2)}%</td>` +
@@ -715,6 +767,25 @@ function renderSpinTypeBreakdown(summary) {
         `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(2)}</td>` +
         `</tr>`
       );
+    })
+    .join("");
+}
+
+function renderFieldDiscovery(summary) {
+  const panel = byId("fieldDiscoveryPanel");
+  if (!panel) return;
+  const fd = ((summary || {}).player_impact || {}).field_discovery;
+  if (!fd || !fd.extra_field_count) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+  const totalSpins = ((summary || {}).sampling || {}).total_spins || 1;
+  const tbody = byId("fieldDiscoveryTable").querySelector("tbody");
+  tbody.innerHTML = fd.extra_fields
+    .map((f) => {
+      const rate = ((f.occurrences / totalSpins) * 100).toFixed(1);
+      return `<tr><td><code>${f.field}</code></td><td>${f.occurrences.toLocaleString()}</td><td>${rate}%</td></tr>`;
     })
     .join("");
 }
@@ -889,7 +960,22 @@ function renderAssessment(summary) {
 function fillMachineModeSelectors() {
   const mSel = byId("machineSelect");
   mSel.innerHTML = "";
-  state.machines.forEach((m) => mSel.appendChild(new Option(m.machine, m.machine)));
+  // Group by category for optgroups.
+  const groups = {};
+  const ORDER = ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Other", "Unknown"];
+  state.machines.forEach((m) => {
+    const cat = m.category || "Other";
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(m);
+  });
+  const orderedKeys = ORDER.filter((k) => groups[k]);
+  Object.keys(groups).forEach((k) => { if (!orderedKeys.includes(k)) orderedKeys.push(k); });
+  orderedKeys.forEach((cat) => {
+    const og = document.createElement("optgroup");
+    og.label = `${cat} (${groups[cat].length})`;
+    groups[cat].forEach((m) => og.appendChild(new Option(m.machine, m.machine)));
+    mSel.appendChild(og);
+  });
   refreshModes();
 }
 
@@ -1228,6 +1314,7 @@ async function refreshCurrentRun() {
     renderRtpClampWarning(s);
     renderSpinTypeBreakdown(s);
     renderFeatureBreakdownPanel(s);
+    renderFieldDiscovery(s);
     renderBonusChainDynamicsPanel(s);
     renderPaylineDrilldown(s);
     renderPayoutGroupDrilldown(s);
@@ -1409,6 +1496,7 @@ function bindEvents() {
     if (sidebar?.contains(e.target) || (sidebarToggle && sidebarToggle.contains(e.target))) return;
     dashboard.classList.remove("sidebar-open");
   });
+  byId("catalogSearch").addEventListener("input", () => renderMachineCatalog());
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();
     applyModeCiConstraint();

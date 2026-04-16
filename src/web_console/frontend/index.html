@@ -231,6 +231,21 @@
             <div id="featureBreakdownInline" class="feature-inline-section"></div>
           </section>
 
+          <!-- Field Discovery: shows extra fields beyond baseline -->
+          <section class="panel field-discovery hidden" id="fieldDiscoveryPanel">
+            <h2 data-i18n="panelFieldDiscovery">字段发现</h2>
+            <table id="fieldDiscoveryTable" class="drilldown-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thFieldName">字段名</th>
+                  <th data-i18n="thFieldOccurrences">出现次数</th>
+                  <th data-i18n="thFieldRate">出现率</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
+
           <!-- Bonus chain: per-feature ONLY (no aggregate). -->
           <section class="panel bonus-chain-dynamics hidden" id="bonusChainDynamicsPanel">
             <h2 data-i18n="panelBonusChainDynamics">Bonus Chain 动态</h2>
@@ -316,7 +331,8 @@
 
           <section class="panel machine-catalog">
             <h2 data-i18n="panelMachineCatalog">机台目录</h2>
-            <div id="machineCatalog" class="catalog-list"></div>
+            <input type="text" id="catalogSearch" class="catalog-search" placeholder="搜索机台..." data-i18n-placeholder="catalogSearchPlaceholder" />
+            <div id="machineCatalog" class="catalog-grouped"></div>
           </section>
 
           <section class="panel run-history">

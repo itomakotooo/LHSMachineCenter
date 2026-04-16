@@ -57,7 +57,15 @@ def test_machines_endpoint(client):
     c, _app = client
     resp = c.get("/api/machines")
     assert resp.status_code == 200
-    assert resp.json() == {"machines": [{"machine": "M14", "modes": [1]}]}
+    data = resp.json()
+    assert "machines" in data
+    m0 = data["machines"][0]
+    assert m0["machine"] == "M14"
+    assert m0["modes"] == [1]
+    # Enrichment fields added by load_machines.
+    assert "category" in m0
+    assert "report_count" in m0
+    assert isinstance(m0["report_count"], int)
 
 
 def test_models_endpoint_default_provider(client):
