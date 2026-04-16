@@ -131,6 +131,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_GUIDELINE_RULES_PATH,
         help="path to external deterministic guideline check rules JSON",
     )
+    parser.add_argument(
+        "--chunk-cache-dir",
+        type=Path,
+        default=None,
+        help="optional dir for raw API response caching (full per-chunk data for offline rebuild)",
+    )
     return parser.parse_args()
 
 
@@ -685,6 +691,48 @@ def build_multiplier_bucket_rows(
     return rows
 
 
+# Cache envelope version. Bumped when the wrapping envelope changes
+# (not when analyzer code changes -- raw API data is analyzer-agnostic).
+CHUNK_CACHE_VERSION = 1
+
+
+def _save_chunk_cache(
+    resp: Any,
+    chunk_index: int,
+    machine: str,
+    rtp_mode: int,
+    bet: int,
+    spin_times: int,
+    robot_count: int,
+    cache_dir: Path | None,
+) -> None:
+    """Best-effort write of the raw API response to a cache file.
+
+    Silent on failure so a disk-full or permissions error doesn't abort
+    the sampling run. The operator will simply see "0 chunks cached"
+    in the manage tab and know the rebuild option is unavailable.
+    """
+    if cache_dir is None:
+        return
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        envelope = {
+            "_cache_version": CHUNK_CACHE_VERSION,
+            "_machine": machine,
+            "_mode": rtp_mode,
+            "_bet": bet,
+            "_spin_times": spin_times,
+            "_robot_count": robot_count,
+            "_chunk_index": chunk_index,
+            "_saved_at": utc_now(),
+            "response": resp,
+        }
+        out_path = cache_dir / f"chunk_{chunk_index:04d}.json"
+        out_path.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def run_sampling_chunk(
     chunk_index: int,
     machine: str,
@@ -693,6 +741,7 @@ def run_sampling_chunk(
     spin_times: int,
     robot_count: int,
     timeout: float,
+    chunk_cache_dir: Path | None = None,
 ) -> dict[str, Any]:
     payload = make_payload(
         machine=machine,
@@ -722,6 +771,13 @@ def run_sampling_chunk(
             "index": chunk_index,
             "error": f"request_failed_{exc.__class__.__name__}",
         }
+
+    # Persist the raw API response before ANY parsing so offline rebuild
+    # always has untouched upstream data. Best-effort: disk failure is
+    # silent (the run proceeds; the operator just can't rebuild later).
+    _save_chunk_cache(
+        resp, chunk_index, machine, rtp_mode, bet, spin_times, robot_count, chunk_cache_dir,
+    )
 
     # Top-level shape sanity. Different machines can return slightly
     # different envelopes (M14 returns list-of-robots, exploratory probes
@@ -1698,6 +1754,7 @@ def main() -> int:
         next_chunk_index += batch_size
 
         batch_results: list[dict[str, Any]] = []
+        chunk_cache = getattr(args, "chunk_cache_dir", None)
         with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as executor:
             futures = [
                 executor.submit(
@@ -1709,6 +1766,7 @@ def main() -> int:
                     args.chunk_spin_times,
                     args.chunk_robot_count,
                     args.timeout,
+                    chunk_cache_dir=chunk_cache,
                 )
                 for idx in indices
             ]
