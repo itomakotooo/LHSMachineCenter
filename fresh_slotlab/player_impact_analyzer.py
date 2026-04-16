@@ -1065,14 +1065,23 @@ def run_sampling_chunk(
     payline_winning_symbols: dict[str, dict[str, int]] = defaultdict(
         lambda: defaultdict(int)
     )
-    # RLN-based (authoritative) winning symbols per payline. Upstream
-    # populates RewardLastNode on most winning rounds with the numeric
-    # symbol codes that actually paid. When present, this is the source
-    # of truth; payline_winning_symbols (heuristic) is only used as a
-    # fallback when RLN is empty for a given spin.
+    # RLN-based (authoritative) winning symbols per payline.
     payline_winning_symbols_rln: dict[str, dict[str, int]] = defaultdict(
         lambda: defaultdict(int)
     )
+
+    # --- Raw-data analyses (need per-spin sequential context) ---
+    # Payline × Symbol joint: (payline_id, symbol_code) → {hits, win}
+    payline_symbol_joint: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"hits": 0, "win": 0.0}
+    )
+    # Session RTP curve: per-robot cumulative win/bet at sample points.
+    session_rtp_curves: list[list[dict[str, float]]] = []
+    # Chain ExtraRatio sequences: per-chain ordered ratio list.
+    chain_ratio_sequences: list[list[int]] = []
+    # Reel position distribution: from PayoutByPayline "(pos1,pos2,...)" groups.
+    reel_position_hits: dict[str, int] = defaultdict(int)
+    _POSITION_RE = re.compile(r"\(([0-9,]+)\)")
 
     # Bonus-chain dynamics (from ReMarks). A "chain" is a contiguous run
     # of Freespin-annotated rounds within one robot. We track per chain:
@@ -1092,7 +1101,7 @@ def run_sampling_chunk(
     chunk_bonus_depth_ratio_count: dict[str, int] = defaultdict(int)
 
     # Per-robot bonus-chain state. Flushed on chain end or robot end.
-    active_chain = {"length": 0, "max_ratio": 0, "retriggers": 0, "open": False}
+    active_chain = {"length": 0, "max_ratio": 0, "retriggers": 0, "open": False, "ratios": []}
 
     def _flush_bonus_chain() -> None:
         if not active_chain["open"]:
@@ -1100,9 +1109,12 @@ def run_sampling_chunk(
         chunk_bonus_chain_lengths.append(int(active_chain["length"]))
         chunk_bonus_chain_max_ratios.append(int(active_chain["max_ratio"]))
         chunk_bonus_chain_retrigger_events.append(int(active_chain["retriggers"]))
+        if active_chain["ratios"]:
+            chain_ratio_sequences.append(list(active_chain["ratios"]))
         active_chain["length"] = 0
         active_chain["max_ratio"] = 0
         active_chain["retriggers"] = 0
+        active_chain["ratios"] = []
         active_chain["open"] = False
 
     # Session state shared across the inner spin loop and its post-loop
@@ -1333,6 +1345,7 @@ def run_sampling_chunk(
                     active_chain["retriggers"] += 1
                     chunk_bonus_retrigger_rounds += 1
                 chunk_bonus_total_rounds += 1
+                active_chain["ratios"].append(fs_meta["extra_ratio"])
                 chunk_bonus_extra_ratio_counts[fs_meta["extra_ratio"]] += 1
                 depth = bonus_chain_depth_bucket(fs_meta["freespin_index"])
                 chunk_bonus_depth_ratio_sum[depth] += fs_meta["extra_ratio"]
@@ -1440,6 +1453,35 @@ def run_sampling_chunk(
                     for sym in first3:
                         payline_winning_symbols[lid][sym] += 1
 
+            # --- Raw-data per-spin analysis accumulation ---
+            # Payline × Symbol joint: credit each (payline, symbol) pair
+            # with this spin's per-line win share. Uses RLN codes when
+            # present; falls back to heuristic symbols.
+            if line_ids and win_amt > 0:
+                sym_for_joint = set(rln_codes) if rln_codes else (
+                    first3 if (len(col_symbol_sets) >= 3) else set()
+                )
+                per_line_win = win_amt / max(len(line_ids), 1)
+                for lid in line_ids:
+                    for sym in sym_for_joint:
+                        key = f"{lid}:{sym}"
+                        payline_symbol_joint[key]["hits"] += 1
+                        payline_symbol_joint[key]["win"] += per_line_win
+
+            # Reel position distribution: extract position groups from
+            # PayoutByPayline's "(pos1,pos2,...)" notation.
+            if line_ids and win_amt > 0:
+                pl_text = str(r.get("PayoutByPayline", ""))
+                for match in _POSITION_RE.finditer(pl_text):
+                    for pos in match.group(1).split(","):
+                        pos = pos.strip()
+                        if pos:
+                            reel_position_hits[pos] += 1
+
+        # Session RTP curve: sample cumulative RTP per robot.
+        # Track inside the robot's round loop is easier via post-loop.
+        # (Handled after the inner loop ends — see below.)
+
         if cur_loss > 0:
             loss_streak_hist[cur_loss] += 1
             max_loss_streak = max(max_loss_streak, cur_loss)
@@ -1447,10 +1489,37 @@ def run_sampling_chunk(
             win_streak_hist[cur_win] += 1
             max_win_streak = max(max_win_streak, cur_win)
 
+        # Session RTP curve: walk this robot's rounds to build cumulative
+        # RTP at sampled points. We sample ~50 points per robot for the
+        # summary curve (keeps output size bounded).
+        cum_bet_r = 0.0
+        cum_win_r = 0.0
+        paid_count_r = 0
+        sample_interval = max(1, robot_paid_spin_idx // 50) if robot_paid_spin_idx > 0 else 1
+        curve_points: list[dict[str, float]] = []
+        paid_i = 0
+        for rr in rounds:
+            if not isinstance(rr, dict):
+                continue
+            cost_r = to_float(rr.get("CostCredits"), default=0.0)
+            if cost_r > 0:
+                paid_i += 1
+                cum_bet_r += to_float(rr.get("BetAmount"), default=cost_r)
+                cum_win_r += to_float(rr.get("WinCredits"), default=0.0)
+                if paid_i % sample_interval == 0 or paid_i == robot_paid_spin_idx:
+                    curve_points.append({
+                        "spin": paid_i,
+                        "cum_rtp": (cum_win_r / cum_bet_r * 100.0) if cum_bet_r > 0 else 0.0,
+                    })
+            else:
+                # Bonus spin wins attribute to session but we track
+                # cumulative win for the curve.
+                cum_win_r += to_float(rr.get("WinCredits"), default=0.0)
+        if curve_points:
+            session_rtp_curves.append(curve_points)
+
         # Flush any in-progress bonus chain so the chain doesn't span
-        # robot boundaries silently (bonus chains are inherently per-
-        # robot runs; the API never mixes them across robots, but we
-        # defensively close at robot end).
+        # robot boundaries silently.
         _flush_bonus_chain()
 
         # Finalize the last open session (if any) at the robot boundary,
@@ -1568,6 +1637,11 @@ def run_sampling_chunk(
         "cycle_peaks": list(chunk_cycle_peaks),
         "final_cc_values": list(chunk_final_cc_values),
         "completed_cycles": chunk_completed_cycles,
+        # Raw-data analyses.
+        "payline_symbol_joint": {k: dict(v) for k, v in payline_symbol_joint.items()},
+        "session_rtp_curves": session_rtp_curves,
+        "chain_ratio_sequences": chain_ratio_sequences,
+        "reel_position_hits": dict(reel_position_hits),
         # --- Session-level counters (see session refactor commit). Summary
         #     derives hit_and_payout / multiplier_profile / streaks /
         #     volatility from these so bonus wins attribute back to the
@@ -1803,6 +1877,13 @@ def main() -> int:
     all_cycle_peaks: list[int] = []
     all_final_cc_values: list[int] = []
     total_completed_cycles = 0
+    # Raw-data analysis aggregation across chunks.
+    all_payline_symbol_joint: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"hits": 0, "win": 0.0}
+    )
+    all_session_rtp_curves: list[list[dict[str, float]]] = []
+    all_chain_ratio_sequences: list[list[int]] = []
+    all_reel_position_hits: dict[str, int] = defaultdict(int)
 
     lack_credit_spins = 0
     chunks = 0
@@ -2008,6 +2089,19 @@ def main() -> int:
             for fcc in rec.get("final_cc_values") or []:
                 all_final_cc_values.append(int(fcc))
             total_completed_cycles += int(rec.get("completed_cycles", 0) or 0)
+            # Raw-data analysis merge.
+            for key, entry in (rec.get("payline_symbol_joint") or {}).items():
+                if isinstance(entry, dict):
+                    all_payline_symbol_joint[key]["hits"] += int(entry.get("hits", 0))
+                    all_payline_symbol_joint[key]["win"] += float(entry.get("win", 0.0))
+            for curve in rec.get("session_rtp_curves") or []:
+                if isinstance(curve, list):
+                    all_session_rtp_curves.append(curve)
+            for seq in rec.get("chain_ratio_sequences") or []:
+                if isinstance(seq, list):
+                    all_chain_ratio_sequences.append(seq)
+            for pos, cnt in (rec.get("reel_position_hits") or {}).items():
+                all_reel_position_hits[str(pos)] += int(cnt)
 
             # Session-level totals (session refactor commit). Older chunk
             # records (pre-feature) silently add 0 via .get() fallback.
@@ -2763,6 +2857,46 @@ def main() -> int:
                 "features": upstream_feature_rows,
             },
             "bonus_chain_dynamics": bonus_chain_dynamics,
+            # --- Raw-data analysis surfaces ---
+            # Payline × Symbol joint: top 20 (payline, symbol) pairs
+            # by win contribution. Answers "which symbol on which line
+            # carries the most RTP?"
+            "payline_symbol_top20": sorted(
+                [
+                    {
+                        "payline_symbol": k,
+                        "payline_id": k.split(":")[0] if ":" in k else k,
+                        "symbol": k.split(":")[1] if ":" in k else "?",
+                        "hits": int(v["hits"]),
+                        "total_win": float(v["win"]),
+                        "rtp_contribution_pp": (
+                            (float(v["win"]) / effective_bet_for_rtp) * 100.0
+                            if effective_bet_for_rtp > 0 else 0.0
+                        ),
+                    }
+                    for k, v in all_payline_symbol_joint.items()
+                    if v["hits"] > 0
+                ],
+                key=lambda x: -x["rtp_contribution_pp"],
+            )[:20],
+            # Session RTP curve: cumulative RTP per robot at sampled
+            # paid-spin indices. Frontend can plot these as spaghetti
+            # lines or compute p10/p50/p90 envelope.
+            "session_rtp_curves": all_session_rtp_curves[:50],
+            # Chain ExtraRatio sequences: per-chain ordered ratio list.
+            # Shows how the multiplier escalates within each individual
+            # bonus chain (not just the depth-bucket average).
+            "chain_ratio_sequences": all_chain_ratio_sequences[:50],
+            # Reel position distribution: which PayoutByPayline positions
+            # hit most often. Answers "is the win distribution across
+            # reel positions uniform?"
+            "reel_position_top20": sorted(
+                [
+                    {"position": pos, "hits": cnt}
+                    for pos, cnt in all_reel_position_hits.items()
+                ],
+                key=lambda x: -x["hits"],
+            )[:20],
             "symbols_top20": symbol_rows[:20],
             "symbols_by_column_top10": {k: v[:10] for k, v in symbol_by_col_rows.items()},
             "bankruptcy_probe": bankruptcy_rows,
