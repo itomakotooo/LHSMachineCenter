@@ -552,6 +552,26 @@ This section is for execution efficiency and can be updated as long as section A
    - Convention: new machine → fetch fixture → compute baseline →
      write test module. No network needed at test time.
 
+34. Upstream API 完整文档 (MachineTest-TestSpin (3).md):
+   - POST /MachineTest/MachineConfigMd5 — 返回机台配置 MD5。
+     可用于 chunk cache 的双重兼容性检测：schema fingerprint
+     （字段结构）+ config md5（机台逻辑）。采样前存 → rebuild 时
+     比对 → 两者任一变 = 旧 cache 语义过期。尚未集成到 analyzer。
+   - Auth: 正式环境需 ?token= query 参数。buffalo-debug 目前免认证。
+   - MachineConfig 字段: 可传自定义 JSON 覆盖全局配置（A/B 测试）。
+   - BetStrategy: 0=FixBet（当前使用）/ 1=Alternating / 2=HalfHalf。
+   - POST /MachineTest/RTPTest: 上游原生批量 RTP 测试接口。
+   - POST /MachineTest/HistoryTestResult: 读取上次批量测试缓存。
+35. Debug tab 面板顺序（最新）：
+   interpretation → kpis → assessment → bucket-distribution (TABLE,
+   无 Chart.js) → spin-types+feature → bonus-chain (per-feature only,
+   含 depth curve + histogram) → paylines → pay-ids → symbols →
+   events。
+36. Bonus chain per-feature 分类规则：
+   trigger spin 有 PayoutIdToWinAmount → NormalCollectionSpin（随机）；
+   空 PID → NewFreespin（强制保底）。aggregate 汇总已删除，只保留
+   per-feature cards + 共享 depth/histogram 表。
+
 Update policy:
 - Assistant may update this section after execution, and must explicitly state:
   `updated assistant working memory`.

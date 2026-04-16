@@ -1,5 +1,7 @@
 # API Reference
 
+## Console API (our backend)
+
 Base URL (local):
 
 - `http://127.0.0.1:<port>`
@@ -348,3 +350,43 @@ Returns interpreted content plus:
 ### `GET /api/interpretations/{run_id}`
 
 Get latest interpretation for a run.
+
+---
+
+## Upstream API (GM MachineTest)
+
+Base URL: `http://buffalo-debug.citrusjoy.com` (test env, no auth)
+or `http://127.0.0.1:1111` (local GM, auth required).
+
+Full documentation: `MachineTest-TestSpin (3).md` in project root.
+
+### `POST /MachineTest/MultiRobotTestSpin`
+
+The endpoint we use for sampling. Request body = `MachineTestRequest`
+with `RobotCount` + `OutputAllRobotResult=true`. Response = array of
+robot dicts, each with `roundResult` (JSON string) and
+`analysisResult` (JSON string).
+
+Auth: `?token=YOUR_TOKEN` query param required on production GM.
+
+### `POST /MachineTest/MachineConfigMd5`
+
+Returns the current machine config hash. Useful for detecting config
+changes between sampling runs.
+
+Request: empty body.
+Response: raw `_machineConfigMd5` JToken from `cfg.json`.
+
+**Future integration**: store config MD5 alongside the schema
+fingerprint in chunk cache envelopes. On rebuild, compare both —
+schema drift = field renames; config drift = machine logic changed.
+
+### `POST /MachineTest/RTPTest`
+
+Upstream native batch RTP test across multiple machines. We implement
+our own sampling pipeline; this is an alternative for quick checks.
+
+### `POST /MachineTest/HistoryTestResult?machineName=X`
+
+Reads the last `RTPTest` cached result for a machine. No relation to
+our run/report system.

@@ -4,6 +4,12 @@ This file tracks executable next steps for the current phase.
 
 ## P0 (must complete first)
 
+- [ ] Integrate MachineConfigMd5: call `POST /MachineTest/MachineConfigMd5`
+  before sampling; store the config hash in the chunk cache envelope +
+  DB run row. On rebuild, compare both schema fingerprint (field structure)
+  AND config MD5 (machine logic). Either drift → flag as incompatible.
+  Ref: MachineTest-TestSpin (3).md in project root.
+
 - [ ] Consider CI integration when remote build is needed.
   For now the baseline is local-only (`scripts\lint.ps1` + `scripts\test.ps1 -E2E`).
 
@@ -319,6 +325,17 @@ This file tracks executable next steps for the current phase.
 - [x] Feature bar track container fix (commit f347242): bar width
       is now relative to a grey track div, not the full row.
       Bonus chain depth curve shows share% of total bonus rounds.
+
+- [x] Major UI redesign (commit 979be08): interpretation at very top,
+      Chart.js removed → table-based bucket distribution (count +
+      rate% + RTP pp + bar), tail dep 2×2 uniform grid, bonus chain
+      per-feature only with restored depth/histogram tables, rebuild
+      mutex + runMeta progress.
+- [x] Bonus chain per-feature split (commit 1ed1e83): NCS random
+      (PayId 666) vs NFS forced (empty PID at cycle boundary). prev_
+      round_pids indentation bug fixed.
+- [x] Bucket count column + restored bonus chain tables (commit
+      40dd34b).
 
 ## Work Mode
 

@@ -219,23 +219,20 @@ survived.
 +--------------------------------------------------------+
 | topbar (sticky): title | liveStatusStrip | lang/health |
 +--------+-----------------------------------------------+
-| side-  |  KPI strip (3x4 compact, whole-card tone bg;  |
-| bar    |    kpiTail has ≥20/50/100x sub; kpiVolatility |
-| 260px  |    + kpiArchetype have lib-rank sub)          |
-| (drawer|  Charts (1x1, multiplier bucket only)         |
-| <1120) |  SpinType panel     (#spinTypeTable w/ beha-  |
-|        |    vior column + N/A for free-spin rtp_pct)   |
-| order: |  Feature panel      (#featureBreakdownInline,  |
-| ctrl   |    hidden single-feature; M272: Normal-       |
-| -> cfg |    CollectionSpin + NewFreespin)              |
-| -> mdl |  Bonus-chain panel  (#bonusChainDynamicsPanel,|
-|        |    hidden when no Freespin ReMarks seen)      |
-|        |  Interpretation panel  (#interpretationText)  |
-|        |  Assessment panel      (#assessment)          |
-|        |  Events panel          (#eventsText)          |
+| side-  |  Interpretation  (#interpretationText)        |
+| bar    |  KPI strip (3x4; tail dep = 2×2 grid;        |
+| 260px  |    volatility + archetype have lib-rank sub)  |
+| (drawer|  Assessment      (#assessment)                |
+| <1120) |  Bucket distrib  (#bucketTable, TABLE-based,  |
+|        |    count + rate% + RTP pp + bar; no Chart.js) |
+| order: |  SpinType+Feature (#spinTypeTable +            |
+| ctrl   |    #featureBreakdownInline, merged)           |
+| -> cfg |  Bonus chain     (#bonusChainDynamicsPanel,   |
+| -> mdl |    per-feature cards + depth + histogram)     |
 |        |  Paylines drilldown    (#paylineTable)        |
 |        |  Pay-ID drilldown      (#payoutGroupTable)    |
 |        |  Symbols drilldown     (#symbolOverallTable)  |
+|        |  Events panel          (#eventsText)          |
 +--------+-----------------------------------------------+
 ```
 
