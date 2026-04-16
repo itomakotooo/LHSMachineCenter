@@ -339,6 +339,8 @@ function clearSummaryPanels() {
   if (bt) bt.querySelector("tbody").innerHTML = "";
   const fdp = byId("fieldDiscoveryPanel");
   if (fdp) fdp.classList.add("hidden");
+  const mmp = byId("machineMechanicsPanel");
+  if (mmp) mmp.classList.add("hidden");
 }
 
 // Chart.js removed — bucket distribution is now a table.
@@ -1192,6 +1194,58 @@ function renderSpinTypeBreakdown(summary) {
     .join("");
 }
 
+function renderMachineMechanics(summary) {
+  const panel = byId("machineMechanicsPanel");
+  if (!panel) return;
+  const mm = ((summary || {}).player_impact || {}).machine_mechanics;
+  if (!mm) { panel.classList.add("hidden"); return; }
+
+  const ll = mm.lock_lines || {};
+  const ls = mm.lock_symbols || {};
+  const jp = mm.jackpot || {};
+  const anyApplicable = ll.applicable || ls.applicable || jp.applicable;
+  if (!anyApplicable) { panel.classList.add("hidden"); return; }
+
+  panel.classList.remove("hidden");
+  const body = byId("mechanicsBody");
+  let html = "";
+
+  if (ll.applicable) {
+    html += `<div class="mech-section">
+      <h3>Lock Lines</h3>
+      <div class="mech-grid">
+        <div class="mech-stat"><span class="mech-label">${fmt("mechLockRate")}</span><span class="mech-value">${(ll.lock_rate * 100).toFixed(2)}%</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechLockSpins")}</span><span class="mech-value">${ll.lock_spins.toLocaleString()}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechAvgLines")}</span><span class="mech-value">${ll.avg_lines_per_lock.toFixed(1)}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechRtpContrib")}</span><span class="mech-value">${ll.lock_rtp_contribution_pp.toFixed(2)}pp</span></div>
+      </div>
+    </div>`;
+  }
+  if (ls.applicable) {
+    html += `<div class="mech-section">
+      <h3>Lock Symbols</h3>
+      <div class="mech-grid">
+        <div class="mech-stat"><span class="mech-label">${fmt("mechLockRate")}</span><span class="mech-value">${(ls.lock_rate * 100).toFixed(2)}%</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechLockSpins")}</span><span class="mech-value">${ls.lock_spins.toLocaleString()}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechUniqueSymbols")}</span><span class="mech-value">${ls.unique_symbol_count}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechRtpContrib")}</span><span class="mech-value">${ls.lock_rtp_contribution_pp.toFixed(2)}pp</span></div>
+      </div>
+    </div>`;
+  }
+  if (jp.applicable) {
+    html += `<div class="mech-section">
+      <h3>Jackpot</h3>
+      <div class="mech-grid">
+        <div class="mech-stat"><span class="mech-label">${fmt("mechTriggerRate")}</span><span class="mech-value">${(jp.trigger_rate * 100).toFixed(3)}%</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechTriggerSpins")}</span><span class="mech-value">${jp.trigger_spins.toLocaleString()}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechJackpotIds")}</span><span class="mech-value">${jp.jackpot_id_count}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechRtpContrib")}</span><span class="mech-value">${jp.rtp_contribution_pp.toFixed(2)}pp</span></div>
+      </div>
+    </div>`;
+  }
+  body.innerHTML = html;
+}
+
 function renderFieldDiscovery(summary) {
   const panel = byId("fieldDiscoveryPanel");
   if (!panel) return;
@@ -1736,6 +1790,7 @@ async function refreshCurrentRun() {
     renderSpinTypeBreakdown(s);
     renderFeatureBreakdownPanel(s);
     renderFieldDiscovery(s);
+    renderMachineMechanics(s);
     renderBonusChainDynamicsPanel(s);
     renderPaylineDrilldown(s);
     renderPayoutGroupDrilldown(s);

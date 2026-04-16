@@ -1075,6 +1075,37 @@ button:disabled {
 .delta-pos { color: #059669; }
 .delta-neg { color: #dc2626; }
 
+/* Machine mechanics panel */
+.mech-section {
+  margin-bottom: 12px;
+}
+.mech-section h3 {
+  font-size: 13px;
+  margin: 0 0 6px;
+  color: var(--accent);
+}
+.mech-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px;
+}
+.mech-stat {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+.mech-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+.mech-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+
 /* Rare SpinType row highlight */
 .rare-row {
   opacity: 0.6;

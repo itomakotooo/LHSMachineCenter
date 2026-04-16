@@ -1020,6 +1020,21 @@ def parse_chunk_response(
     # --- Extra-field discovery: track fields beyond _BASELINE_ROUND_FIELDS.
     extra_fields_seen: dict[str, int] = defaultdict(int)
 
+    # --- Per-machine mechanic accumulators (only populated when the
+    #     corresponding fields are present in the spin data). ---
+    # LockLines: count of spins with lock, total lock lines triggered.
+    lock_lines_spins = 0
+    lock_lines_total_lines = 0
+    lock_lines_win = 0.0
+    # LockSymbols: count of spins with lock symbols, unique symbols seen.
+    lock_symbols_spins = 0
+    lock_symbols_unique: set[str] = set()
+    lock_symbols_win = 0.0
+    # JackpotIds: count of spins with jackpot trigger, jackpot win total.
+    jackpot_spins = 0
+    jackpot_ids_seen: set[str] = set()
+    jackpot_win = 0.0
+
     chunk_spins = 0
     chunk_bet = 0.0
     chunk_win = 0.0
@@ -1346,6 +1361,31 @@ def parse_chunk_response(
             for k in r:
                 if k not in _BASELINE_ROUND_FIELDS:
                     extra_fields_seen[k] += 1
+
+            # --- Per-machine mechanic fields ---
+            _lock_lines = r.get("LockLines")
+            if _lock_lines and isinstance(_lock_lines, str) and _lock_lines.strip("-").strip():
+                lock_lines_spins += 1
+                lock_lines_total_lines += len([x for x in _lock_lines.split("-") if x.strip()])
+                lock_lines_win += to_float(r.get("WinCredits"), default=0.0)
+
+            _lock_syms = r.get("LockSymbols")
+            if _lock_syms and isinstance(_lock_syms, str) and _lock_syms.strip("| "):
+                lock_symbols_spins += 1
+                lock_symbols_win += to_float(r.get("WinCredits"), default=0.0)
+                for part in _lock_syms.split("|"):
+                    part = part.strip()
+                    if ":" in part:
+                        lock_symbols_unique.add(part.split(":")[0].strip())
+
+            _jackpot_ids = r.get("JackpotIds")
+            if _jackpot_ids and isinstance(_jackpot_ids, str) and _jackpot_ids.strip("-").strip():
+                jackpot_spins += 1
+                jackpot_win += to_float(r.get("WinCredits"), default=0.0)
+                for jid in _jackpot_ids.split("-"):
+                    jid = jid.strip()
+                    if jid:
+                        jackpot_ids_seen.add(jid)
 
             bet_amt = to_float(r.get("BetAmount"), default=0.0)
             if bet_amt <= 0.0:
@@ -1828,6 +1868,16 @@ def parse_chunk_response(
         # report's field_discovery section so operators know which
         # machine-specific data is available for future analysis.
         "extra_fields_seen": dict(extra_fields_seen),
+        # Per-machine mechanic accumulators.
+        "lock_lines_spins": lock_lines_spins,
+        "lock_lines_total_lines": lock_lines_total_lines,
+        "lock_lines_win": lock_lines_win,
+        "lock_symbols_spins": lock_symbols_spins,
+        "lock_symbols_unique": sorted(lock_symbols_unique),
+        "lock_symbols_win": lock_symbols_win,
+        "jackpot_spins": jackpot_spins,
+        "jackpot_ids_seen": sorted(jackpot_ids_seen),
+        "jackpot_win": jackpot_win,
     }
 
 
@@ -2062,6 +2112,16 @@ def main() -> int:
     lack_credit_spins = 0
     # Extra-field discovery aggregation across chunks.
     total_extra_fields_seen: dict[str, int] = defaultdict(int)
+    # Per-machine mechanic totals.
+    total_lock_lines_spins = 0
+    total_lock_lines_total_lines = 0
+    total_lock_lines_win = 0.0
+    total_lock_symbols_spins = 0
+    total_lock_symbols_unique: set[str] = set()
+    total_lock_symbols_win = 0.0
+    total_jackpot_spins = 0
+    total_jackpot_ids_seen: set[str] = set()
+    total_jackpot_win = 0.0
     chunks = 0
     stop_reason = "max_chunks_reached"
     achieved_halfwidth_pp: float | None = None
@@ -2262,6 +2322,18 @@ def main() -> int:
                     total_session_max_win_streak = chunk_sess_max_win
                 for fld, cnt in (rec.get("extra_fields_seen") or {}).items():
                     total_extra_fields_seen[str(fld)] += int(cnt)
+                # Per-machine mechanic merge.
+                total_lock_lines_spins += int(rec.get("lock_lines_spins", 0) or 0)
+                total_lock_lines_total_lines += int(rec.get("lock_lines_total_lines", 0) or 0)
+                total_lock_lines_win += float(rec.get("lock_lines_win", 0) or 0)
+                total_lock_symbols_spins += int(rec.get("lock_symbols_spins", 0) or 0)
+                for s in rec.get("lock_symbols_unique") or []:
+                    total_lock_symbols_unique.add(str(s))
+                total_lock_symbols_win += float(rec.get("lock_symbols_win", 0) or 0)
+                total_jackpot_spins += int(rec.get("jackpot_spins", 0) or 0)
+                for j in rec.get("jackpot_ids_seen") or []:
+                    total_jackpot_ids_seen.add(str(j))
+                total_jackpot_win += float(rec.get("jackpot_win", 0) or 0)
 
     # ── online sampling path (skipped when --from-cache) ──
     while args.from_cache is None and next_chunk_index <= args.max_chunks:
@@ -2523,6 +2595,18 @@ def main() -> int:
             # Extra-field discovery merge.
             for fld, cnt in (rec.get("extra_fields_seen") or {}).items():
                 total_extra_fields_seen[str(fld)] += int(cnt)
+            # Per-machine mechanic merge.
+            total_lock_lines_spins += int(rec.get("lock_lines_spins", 0) or 0)
+            total_lock_lines_total_lines += int(rec.get("lock_lines_total_lines", 0) or 0)
+            total_lock_lines_win += float(rec.get("lock_lines_win", 0) or 0)
+            total_lock_symbols_spins += int(rec.get("lock_symbols_spins", 0) or 0)
+            for s in rec.get("lock_symbols_unique") or []:
+                total_lock_symbols_unique.add(str(s))
+            total_lock_symbols_win += float(rec.get("lock_symbols_win", 0) or 0)
+            total_jackpot_spins += int(rec.get("jackpot_spins", 0) or 0)
+            for j in rec.get("jackpot_ids_seen") or []:
+                total_jackpot_ids_seen.add(str(j))
+            total_jackpot_win += float(rec.get("jackpot_win", 0) or 0)
 
             hw = ci_halfwidth_pp(chunk_rtps_pct)
             if math.isfinite(hw):
@@ -3267,7 +3351,6 @@ def main() -> int:
             "spin_type_breakdown": spin_type_rows,
             "spin_type_coverage": spin_type_coverage,
             # Extra fields discovered beyond _BASELINE_ROUND_FIELDS.
-            # Empty for machines using only baseline fields (most Normal-only).
             "field_discovery": {
                 "extra_fields": [
                     {"field": f, "occurrences": c}
@@ -3278,6 +3361,37 @@ def main() -> int:
                 ],
                 "extra_field_count": len(total_extra_fields_seen),
                 "baseline_field_count": len(_BASELINE_ROUND_FIELDS),
+            },
+            # Per-machine mechanic analysis. Sections are only present
+            # when the mechanic's fields were observed (applicable=true).
+            "machine_mechanics": {
+                "lock_lines": {
+                    "applicable": total_lock_lines_spins > 0,
+                    "lock_spins": total_lock_lines_spins,
+                    "lock_rate": (total_lock_lines_spins / total_spins) if total_spins > 0 else 0,
+                    "total_lines_locked": total_lock_lines_total_lines,
+                    "avg_lines_per_lock": (total_lock_lines_total_lines / total_lock_lines_spins) if total_lock_lines_spins > 0 else 0,
+                    "lock_win": total_lock_lines_win,
+                    "lock_rtp_contribution_pp": (total_lock_lines_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
+                },
+                "lock_symbols": {
+                    "applicable": total_lock_symbols_spins > 0,
+                    "lock_spins": total_lock_symbols_spins,
+                    "lock_rate": (total_lock_symbols_spins / total_spins) if total_spins > 0 else 0,
+                    "unique_symbols": sorted(total_lock_symbols_unique),
+                    "unique_symbol_count": len(total_lock_symbols_unique),
+                    "lock_win": total_lock_symbols_win,
+                    "lock_rtp_contribution_pp": (total_lock_symbols_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
+                },
+                "jackpot": {
+                    "applicable": total_jackpot_spins > 0,
+                    "trigger_spins": total_jackpot_spins,
+                    "trigger_rate": (total_jackpot_spins / total_spins) if total_spins > 0 else 0,
+                    "jackpot_ids": sorted(total_jackpot_ids_seen),
+                    "jackpot_id_count": len(total_jackpot_ids_seen),
+                    "total_win": total_jackpot_win,
+                    "rtp_contribution_pp": (total_jackpot_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
+                },
             },
             "upstream_feature_breakdown": {
                 "applicable": upstream_feature_applicable,
