@@ -1034,6 +1034,15 @@ def parse_chunk_response(
     jackpot_spins = 0
     jackpot_ids_seen: set[str] = set()
     jackpot_win = 0.0
+    # FreeSpin tracking: AddFreeSpin retriggers, chain length via CurFreeSpin.
+    freespin_chain_spins = 0
+    freespin_retriggers = 0
+    freespin_max_chain = 0
+    freespin_win = 0.0
+    # Dollar Pick mechanic.
+    dollar_pick_spins = 0
+    dollar_pick_total_dollars = 0
+    dollar_pick_win = 0.0
 
     chunk_spins = 0
     chunk_bet = 0.0
@@ -1386,6 +1395,32 @@ def parse_chunk_response(
                     jid = jid.strip()
                     if jid:
                         jackpot_ids_seen.add(jid)
+
+            _cur_fs = r.get("CurFreeSpin")
+            if _cur_fs is not None:
+                try:
+                    cur_idx = int(_cur_fs)
+                except (TypeError, ValueError):
+                    cur_idx = 0
+                if cur_idx > 0:
+                    freespin_chain_spins += 1
+                    freespin_win += to_float(r.get("WinCredits"), default=0.0)
+                    if cur_idx > freespin_max_chain:
+                        freespin_max_chain = cur_idx
+                    add_fs = r.get("AddFreeSpin")
+                    if add_fs is not None:
+                        try:
+                            add_val = int(add_fs)
+                        except (TypeError, ValueError):
+                            add_val = 0
+                        if add_val > 0:
+                            freespin_retriggers += add_val
+
+            _chosen_dollar = r.get("ChosenDollar")
+            if _chosen_dollar and isinstance(_chosen_dollar, str) and _chosen_dollar.strip("-").strip():
+                dollar_pick_spins += 1
+                dollar_pick_total_dollars += len([x for x in _chosen_dollar.split("-") if x.strip()])
+                dollar_pick_win += to_float(r.get("WinCredits"), default=0.0)
 
             bet_amt = to_float(r.get("BetAmount"), default=0.0)
             if bet_amt <= 0.0:
@@ -1878,6 +1913,13 @@ def parse_chunk_response(
         "jackpot_spins": jackpot_spins,
         "jackpot_ids_seen": sorted(jackpot_ids_seen),
         "jackpot_win": jackpot_win,
+        "freespin_chain_spins": freespin_chain_spins,
+        "freespin_retriggers": freespin_retriggers,
+        "freespin_max_chain": freespin_max_chain,
+        "freespin_win": freespin_win,
+        "dollar_pick_spins": dollar_pick_spins,
+        "dollar_pick_total_dollars": dollar_pick_total_dollars,
+        "dollar_pick_win": dollar_pick_win,
     }
 
 
@@ -2122,6 +2164,13 @@ def main() -> int:
     total_jackpot_spins = 0
     total_jackpot_ids_seen: set[str] = set()
     total_jackpot_win = 0.0
+    total_freespin_chain_spins = 0
+    total_freespin_retriggers = 0
+    total_freespin_max_chain = 0
+    total_freespin_win = 0.0
+    total_dollar_pick_spins = 0
+    total_dollar_pick_total_dollars = 0
+    total_dollar_pick_win = 0.0
     chunks = 0
     stop_reason = "max_chunks_reached"
     achieved_halfwidth_pp: float | None = None
@@ -2334,6 +2383,15 @@ def main() -> int:
                 for j in rec.get("jackpot_ids_seen") or []:
                     total_jackpot_ids_seen.add(str(j))
                 total_jackpot_win += float(rec.get("jackpot_win", 0) or 0)
+                total_freespin_chain_spins += int(rec.get("freespin_chain_spins", 0) or 0)
+                total_freespin_retriggers += int(rec.get("freespin_retriggers", 0) or 0)
+                fsmc = int(rec.get("freespin_max_chain", 0) or 0)
+                if fsmc > total_freespin_max_chain:
+                    total_freespin_max_chain = fsmc
+                total_freespin_win += float(rec.get("freespin_win", 0) or 0)
+                total_dollar_pick_spins += int(rec.get("dollar_pick_spins", 0) or 0)
+                total_dollar_pick_total_dollars += int(rec.get("dollar_pick_total_dollars", 0) or 0)
+                total_dollar_pick_win += float(rec.get("dollar_pick_win", 0) or 0)
 
     # ── online sampling path (skipped when --from-cache) ──
     while args.from_cache is None and next_chunk_index <= args.max_chunks:
@@ -2607,6 +2665,15 @@ def main() -> int:
             for j in rec.get("jackpot_ids_seen") or []:
                 total_jackpot_ids_seen.add(str(j))
             total_jackpot_win += float(rec.get("jackpot_win", 0) or 0)
+            total_freespin_chain_spins += int(rec.get("freespin_chain_spins", 0) or 0)
+            total_freespin_retriggers += int(rec.get("freespin_retriggers", 0) or 0)
+            fsmc = int(rec.get("freespin_max_chain", 0) or 0)
+            if fsmc > total_freespin_max_chain:
+                total_freespin_max_chain = fsmc
+            total_freespin_win += float(rec.get("freespin_win", 0) or 0)
+            total_dollar_pick_spins += int(rec.get("dollar_pick_spins", 0) or 0)
+            total_dollar_pick_total_dollars += int(rec.get("dollar_pick_total_dollars", 0) or 0)
+            total_dollar_pick_win += float(rec.get("dollar_pick_win", 0) or 0)
 
             hw = ci_halfwidth_pp(chunk_rtps_pct)
             if math.isfinite(hw):
@@ -3391,6 +3458,24 @@ def main() -> int:
                     "jackpot_id_count": len(total_jackpot_ids_seen),
                     "total_win": total_jackpot_win,
                     "rtp_contribution_pp": (total_jackpot_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
+                },
+                "free_spin": {
+                    "applicable": total_freespin_chain_spins > 0,
+                    "chain_spins": total_freespin_chain_spins,
+                    "chain_rate": (total_freespin_chain_spins / total_spins) if total_spins > 0 else 0,
+                    "retriggers": total_freespin_retriggers,
+                    "max_chain_length": total_freespin_max_chain,
+                    "total_win": total_freespin_win,
+                    "rtp_contribution_pp": (total_freespin_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
+                },
+                "dollar_pick": {
+                    "applicable": total_dollar_pick_spins > 0,
+                    "pick_spins": total_dollar_pick_spins,
+                    "pick_rate": (total_dollar_pick_spins / total_spins) if total_spins > 0 else 0,
+                    "total_dollars_picked": total_dollar_pick_total_dollars,
+                    "avg_dollars_per_pick": (total_dollar_pick_total_dollars / total_dollar_pick_spins) if total_dollar_pick_spins > 0 else 0,
+                    "total_win": total_dollar_pick_win,
+                    "rtp_contribution_pp": (total_dollar_pick_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
                 },
             },
             "upstream_feature_breakdown": {

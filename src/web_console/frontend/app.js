@@ -1311,6 +1311,31 @@ function renderMachineMechanics(summary) {
       </div>
     </div>`;
   }
+  const fs = mm.free_spin || {};
+  if (fs.applicable) {
+    html += `<div class="mech-section">
+      <h3>Free Spin</h3>
+      <div class="mech-grid">
+        <div class="mech-stat"><span class="mech-label">${fmt("mechChainRate")}</span><span class="mech-value">${(fs.chain_rate * 100).toFixed(2)}%</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechChainSpins")}</span><span class="mech-value">${fs.chain_spins.toLocaleString()}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechMaxChain")}</span><span class="mech-value">${fs.max_chain_length}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechRetriggers")}</span><span class="mech-value">${fs.retriggers}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechRtpContrib")}</span><span class="mech-value">${fs.rtp_contribution_pp.toFixed(2)}pp</span></div>
+      </div>
+    </div>`;
+  }
+  const dp = mm.dollar_pick || {};
+  if (dp.applicable) {
+    html += `<div class="mech-section">
+      <h3>Dollar Pick</h3>
+      <div class="mech-grid">
+        <div class="mech-stat"><span class="mech-label">${fmt("mechPickRate")}</span><span class="mech-value">${(dp.pick_rate * 100).toFixed(3)}%</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechPickSpins")}</span><span class="mech-value">${dp.pick_spins.toLocaleString()}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechAvgDollars")}</span><span class="mech-value">${dp.avg_dollars_per_pick.toFixed(1)}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechRtpContrib")}</span><span class="mech-value">${dp.rtp_contribution_pp.toFixed(2)}pp</span></div>
+      </div>
+    </div>`;
+  }
   body.innerHTML = html;
 }
 
