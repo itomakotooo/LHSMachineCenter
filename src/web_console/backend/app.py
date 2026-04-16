@@ -511,6 +511,93 @@ def load_machines(
     return [{"machine": "M14", "modes": [1], "category": "Normal", "report_count": 0}]
 
 
+def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
+    """Scan reports dir, pick best-CI report per machine-mode, return summary."""
+    import math
+
+    result: dict[str, dict[str, Any]] = {}
+    # Collect all volatility values for percentile ranking.
+    all_vol_values: list[tuple[str, int, float]] = []  # (machine, mode, zero_win_rate)
+
+    if not reports_root.is_dir():
+        return {"machines": {}, "volatility_ranking": []}
+
+    for machine_dir in reports_root.iterdir():
+        if not machine_dir.is_dir():
+            continue
+        machine = machine_dir.name
+        result[machine] = {}
+
+        for mode_dir in machine_dir.iterdir():
+            if not mode_dir.is_dir():
+                continue
+            # Extract mode from "mode_2"
+            mode_str = mode_dir.name
+            if not mode_str.startswith("mode_"):
+                continue
+            try:
+                mode = int(mode_str.split("_")[1])
+            except (IndexError, ValueError):
+                continue
+
+            versions_dir = mode_dir / "versions"
+            if not versions_dir.is_dir():
+                continue
+
+            best: dict[str, Any] | None = None
+            best_ci = float("inf")
+
+            for ver_dir in versions_dir.iterdir():
+                if not ver_dir.is_dir():
+                    continue
+                summary_file = ver_dir / "player_impact_summary.json"
+                if not summary_file.exists():
+                    continue
+                try:
+                    s = json.loads(summary_file.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+                sampling = s.get("sampling", {})
+                rtp_data = s.get("rtp", {})
+                pi = s.get("player_impact", {})
+                vol = pi.get("volatility", {})
+                ci_hw = sampling.get("achieved_halfwidth_pp")
+                ci_val = float(ci_hw) if ci_hw is not None else float("inf")
+
+                if best is None or ci_val < best_ci:
+                    best_ci = ci_val
+                    ga = s.get("guideline_assessment", {})
+                    ga_cls = ga.get("classification", {})
+                    ga_dm = ga.get("derived_metrics", {})
+                    hap = pi.get("hit_and_payout", {})
+                    best = {
+                        "rtp_pct": rtp_data.get("point_pct"),
+                        "ci_halfwidth_pp": ci_hw,
+                        "total_spins": sampling.get("total_spins", 0),
+                        "volatility_class": ga_cls.get("volatility_class", ""),
+                        "zero_win_rate": float(hap.get("zero_win_rate", 0) or 0),
+                        "tail_ge10x": float(ga_dm.get("tail_dependency", 0) or 0),
+                        "report_version": ver_dir.name,
+                    }
+
+            if best is not None:
+                result[machine][str(mode)] = best
+                zwr = best.get("zero_win_rate", 0)
+                if isinstance(zwr, (int, float)) and math.isfinite(zwr):
+                    all_vol_values.append((machine, mode, zwr))
+
+    # Compute percentile ranks for zero_win_rate across all machine-modes.
+    all_vol_values.sort(key=lambda x: x[2])
+    n = len(all_vol_values)
+    for rank, (m, mode, zwr) in enumerate(all_vol_values):
+        pct = round((rank / n) * 100) if n > 1 else 50
+        if m in result and str(mode) in result[m]:
+            result[m][str(mode)]["volatility_percentile"] = pct
+
+    return {"machines": result}
+
+
 class OperationCoordinator:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -1729,6 +1816,16 @@ def create_app(
     @app.get("/api/machines")
     def machines() -> dict[str, Any]:
         return {"machines": load_machines(mc, rr)}
+
+    @app.get("/api/machines/summary")
+    def machines_summary() -> dict[str, Any]:
+        """Per-machine-mode best-report summary for catalog cards.
+
+        Scans reports/{machine}/mode_{n}/versions/*/player_impact_summary.json,
+        picks the report with the smallest CI half-width for each machine-mode,
+        and returns RTP / CI / volatility metrics.
+        """
+        return _build_machines_summary(rr)
 
     @app.get("/api/models")
     def models() -> dict[str, Any]:

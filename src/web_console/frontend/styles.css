@@ -865,7 +865,7 @@ button:disabled {
 .catalog-list {
   display: grid;
   gap: 6px;
-  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   padding: 4px 0 4px 18px;
 }
 
@@ -892,6 +892,9 @@ button:disabled {
 .catalog-item.unavailable {
   opacity: 0.45;
 }
+.catalog-item {
+  border-left: 3px solid #d4ddea;
+}
 .catalog-badge {
   display: inline-block;
   background: var(--accent);
@@ -901,6 +904,41 @@ button:disabled {
   border-radius: 8px;
   margin-left: 4px;
   vertical-align: middle;
+}
+
+/* Category group dot */
+.catalog-group-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* Card per-mode metric rows */
+.cat-mode-row {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.cat-mode-label {
+  color: var(--muted);
+  min-width: 22px;
+}
+.cat-rtp {
+  font-weight: 600;
+  min-width: 44px;
+}
+.cat-ci {
+  color: var(--muted);
+  min-width: 36px;
+}
+.cat-vol {
+  font-size: 10px;
+  font-weight: 500;
 }
 
 /* Rare SpinType row highlight */

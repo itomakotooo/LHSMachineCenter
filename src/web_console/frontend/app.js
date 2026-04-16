@@ -41,6 +41,9 @@ const state = {
   // Volatility + Archetype KPI cards so the operator sees where the
   // current machine stands across the library.
   libraryDistributions: null,
+  // Per-machine-mode best-report summary (from GET /api/machines/summary).
+  // { machines: { M14: { "1": {rtp_pct, ci_halfwidth_pp, ...}, ... }, ... } }
+  machinesSummary: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -329,6 +332,30 @@ function clearSummaryPanels() {
 function buildCharts() {}
 function updateChartLabels() {}
 
+// Category → color mapping for badges and card tints.
+const CATEGORY_COLORS = {
+  Normal: "#6b7280", Collect: "#7c3aed", Lock: "#ea580c",
+  FreeSpin: "#059669", ReSpin: "#0891b2", Wheel: "#d97706",
+  Fortunes: "#c026d3", Other: "#9ca3af", Unknown: "#9ca3af",
+};
+const VOL_COLORS = { Low: "#059669", Medium: "#2563eb", High: "#ea580c", "Very High": "#dc2626" };
+
+function _catalogModeMetrics(machine) {
+  const sm = ((state.machinesSummary || {}).machines || {})[machine] || {};
+  const modes = Object.keys(sm).sort((a, b) => Number(a) - Number(b));
+  if (!modes.length) return "";
+  return modes.map((mode) => {
+    const d = sm[mode];
+    const rtp = d.rtp_pct != null ? d.rtp_pct.toFixed(1) + "%" : "—";
+    const ci = d.ci_halfwidth_pp != null ? "\u00b1" + d.ci_halfwidth_pp.toFixed(1) : "";
+    const vol = d.volatility_class || "";
+    const pct = d.volatility_percentile != null ? `P${d.volatility_percentile}` : "";
+    const vc = VOL_COLORS[vol] || "#888";
+    const volHtml = vol ? `<span class="cat-vol" style="color:${vc}">${vol} ${pct}</span>` : "";
+    return `<div class="cat-mode-row"><span class="cat-mode-label">m${mode}</span> <span class="cat-rtp">${rtp}</span> <span class="cat-ci">${ci}</span> ${volHtml}</div>`;
+  }).join("");
+}
+
 function renderMachineCatalog() {
   const wrap = byId("machineCatalog");
   wrap.innerHTML = "";
@@ -341,16 +368,13 @@ function renderMachineCatalog() {
   const groups = {};
   const CATEGORY_ORDER = ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Other", "Unknown"];
   state.machines.forEach((m) => {
-    // Filter by search query (match machine name or category).
     if (query && !m.machine.toLowerCase().includes(query) && !(m.category || "").toLowerCase().includes(query)) return;
     const cat = m.category || "Other";
     if (!groups[cat]) groups[cat] = [];
     groups[cat].push(m);
   });
 
-  // Render each group in priority order.
   const orderedKeys = CATEGORY_ORDER.filter((k) => groups[k]);
-  // Append any categories not in CATEGORY_ORDER.
   Object.keys(groups).forEach((k) => { if (!orderedKeys.includes(k)) orderedKeys.push(k); });
 
   if (!orderedKeys.length) {
@@ -360,12 +384,13 @@ function renderMachineCatalog() {
 
   orderedKeys.forEach((cat) => {
     const machines = groups[cat];
+    const catColor = CATEGORY_COLORS[cat] || "#9ca3af";
     const section = document.createElement("div");
     section.className = "catalog-group";
 
     const header = document.createElement("div");
     header.className = "catalog-group-header";
-    header.innerHTML = `<span class="catalog-group-arrow">&#9660;</span> <span class="catalog-group-name">${cat}</span> <span class="catalog-group-count">(${machines.length})</span>`;
+    header.innerHTML = `<span class="catalog-group-arrow">&#9660;</span> <span class="catalog-group-dot" style="background:${catColor}"></span> <span class="catalog-group-name">${cat}</span> <span class="catalog-group-count">(${machines.length})</span>`;
     header.addEventListener("click", () => {
       section.classList.toggle("collapsed");
       header.querySelector(".catalog-group-arrow").innerHTML = section.classList.contains("collapsed") ? "&#9654;" : "&#9660;";
@@ -377,20 +402,21 @@ function renderMachineCatalog() {
     machines.forEach((m) => {
       const d = document.createElement("div");
       d.className = "catalog-item";
+      d.style.borderLeftColor = catColor;
       if (state.runFilterMachines.has(m.machine)) d.classList.add("active");
       if (m.available === false) d.classList.add("unavailable");
       d.dataset.machine = m.machine;
       d.setAttribute("role", "button");
       d.setAttribute("tabindex", "0");
-      const reportBadge = m.report_count ? `<span class="catalog-badge">${m.report_count} reports</span>` : "";
-      d.innerHTML = `<div class="catalog-title">${m.machine}${reportBadge}</div><div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`;
+      const metrics = _catalogModeMetrics(m.machine);
+      const reportBadge = m.report_count ? `<span class="catalog-badge" style="background:${catColor}">${m.report_count}</span>` : "";
+      d.innerHTML = `<div class="catalog-title">${m.machine}${reportBadge}</div>${metrics || `<div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`}`;
       grid.appendChild(d);
     });
     section.appendChild(grid);
     wrap.appendChild(section);
   });
 
-  // Attach click/keyboard handlers.
   wrap.querySelectorAll(".catalog-item").forEach((el) => {
     const toggle = () => {
       const machine = el.dataset.machine;
@@ -1425,10 +1451,16 @@ async function refreshInterpretation() {
 }
 
 async function loadBootstrap() {
-  const [h, m, models] = await Promise.all([apiGet("/api/health"), apiGet("/api/machines"), apiGet("/api/models")]);
+  const [h, m, models, mSummary] = await Promise.all([
+    apiGet("/api/health"),
+    apiGet("/api/machines"),
+    apiGet("/api/models"),
+    apiGet("/api/machines/summary").catch(() => null),
+  ]);
   setHealth(Boolean(h.ok), h.ts || "");
   state.machines = m.machines || [];
   state.modelMeta = models || {};
+  state.machinesSummary = mSummary;
   fillMachineModeSelectors();
   fillCiTierOptions();
   fillBankMultOptions();
