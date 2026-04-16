@@ -478,14 +478,18 @@ function renderMachineCatalog() {
       }
       renderMachineCatalog();
       renderRunHistory();
-      // Show version history for the last selected machine.
+      // Show version history + detail for the last selected machine.
       if (state.runFilterMachines.has(machine)) {
         showVersionHistory(machine);
+        showMachineDetail(machine);
       } else if (state.runFilterMachines.size === 1) {
-        showVersionHistory([...state.runFilterMachines][0]);
+        const last = [...state.runFilterMachines][0];
+        showVersionHistory(last);
+        showMachineDetail(last);
       } else if (state.runFilterMachines.size === 0) {
         byId("versionHistoryPanel").classList.add("hidden");
         byId("reportComparisonPanel").classList.add("hidden");
+        byId("machineDetailPanel").classList.add("hidden");
       }
     };
     el.addEventListener("click", toggle);
@@ -494,6 +498,54 @@ function renderMachineCatalog() {
     });
   });
   updateBatchRunHint();
+}
+
+// ── Machine Detail Panel ──────────────────────────────────────────
+
+function showMachineDetail(machineName) {
+  const panel = byId("machineDetailPanel");
+  if (!panel) return;
+  const m = state.machines.find((x) => x.machine === machineName);
+  if (!m) { panel.classList.add("hidden"); return; }
+
+  panel.classList.remove("hidden");
+  byId("machineDetailTitle").textContent = `${machineName} — ${m.category || "?"}`;
+
+  const logic = (m.logicClassNames || []).join(", ") || "—";
+  const configMd5 = m.configSummaryMd5 ? m.configSummaryMd5.slice(0, 12) + "…" : "—";
+  const codeMd5 = m.codeSummaryMd5 ? m.codeSummaryMd5.slice(0, 12) + "…" : "—";
+
+  // Per-mode metrics from summary
+  const sm = ((state.machinesSummary || {}).machines || {})[machineName] || {};
+  const modes = Object.keys(sm).sort((a, b) => Number(a) - Number(b));
+  let metricsHtml = "";
+  if (modes.length) {
+    metricsHtml = `<table class="drilldown-table detail-metrics-table">
+      <thead><tr><th>Mode</th><th>RTP</th><th>CI\u00b1</th><th>Spins</th><th>${fmt("thVolatility")}</th></tr></thead>
+      <tbody>${modes.map((mode) => {
+        const d = sm[mode];
+        const vc = VOL_COLORS[d.volatility_class] || "#888";
+        return `<tr>
+          <td>m${mode}</td>
+          <td>${d.rtp_pct != null ? d.rtp_pct.toFixed(2) + "%" : "—"}</td>
+          <td>${d.ci_halfwidth_pp != null ? "\u00b1" + d.ci_halfwidth_pp.toFixed(2) : "—"}</td>
+          <td>${d.total_spins ? Number(d.total_spins).toLocaleString() : "—"}</td>
+          <td style="color:${vc}">${d.volatility_class || "—"} ${d.volatility_percentile != null ? "P" + d.volatility_percentile : ""}</td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table>`;
+  } else {
+    metricsHtml = `<div class="muted">${fmt("noVersions")}</div>`;
+  }
+
+  byId("machineDetailBody").innerHTML = `
+    <div class="detail-meta">
+      <div><span class="detail-label">${fmt("detailLogicClasses")}</span> <code>${logic}</code></div>
+      <div><span class="detail-label">${fmt("detailConfigMd5")}</span> <code>${configMd5}</code></div>
+      <div><span class="detail-label">${fmt("detailCodeMd5")}</span> <code>${codeMd5}</code></div>
+      <div><span class="detail-label">${fmt("detailReports")}</span> ${m.report_count || 0}</div>
+    </div>
+    ${metricsHtml}`;
 }
 
 // ── Fleet Overview ────────────────────────────────────────────────

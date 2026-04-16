@@ -854,6 +854,31 @@ button:disabled {
   border-radius: 10px;
 }
 
+/* Machine detail panel */
+.machine-detail {
+  grid-column: span 12;
+}
+.detail-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.detail-meta code {
+  font-size: 11px;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.detail-label {
+  color: var(--muted);
+  margin-right: 4px;
+}
+.detail-metrics-table td:first-child {
+  font-weight: 600;
+}
+
 /* Machine catalog toolbar */
 .catalog-toolbar {
   display: flex;
