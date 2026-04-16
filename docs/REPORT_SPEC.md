@@ -165,6 +165,29 @@ ExtraRatio:R; [AddFreespins; M]"`). Per sample:
 Emits `applicable=false` on machines without ReMarks Freespin
 annotations (M14).
 
+### `payline_symbol_top20`
+
+Joint (payline_id, symbol_code) analysis. Top 20 by rtp_contribution_pp.
+Per row: `payline_symbol` (composite key), `payline_id`, `symbol`,
+`hits`, `total_win`, `rtp_contribution_pp`.
+
+### `session_rtp_curves`
+
+Per-robot cumulative RTP at ~50 sampled paid-spin indices. Each entry
+is a list of `{spin, cum_rtp}`. Capped at 50 robots. Frontend can
+plot spaghetti lines or compute p10/p50/p90 envelope.
+
+### `chain_ratio_sequences`
+
+Per-chain ordered ExtraRatio list, e.g. `[100, 200, 300, 400, 500]`.
+Shows the complete multiplier escalation path within each bonus chain.
+Capped at 50 chains.
+
+### `reel_position_top20`
+
+Position codes from `PayoutByPayline`'s `(pos1,pos2,...)` groups,
+ranked by hit count. Per row: `position`, `hits`.
+
 ### `symbols_top20` and `symbols_by_column_top10`
 
 Symbol-level and reel/column-level frequency breakdown.
@@ -227,6 +250,14 @@ M272+ collect bonus tally:
   avg_paid_spins_per_collect, note}`. Fires when SpinTimes truncated
   mid-collect-cycle so observed RTP is a lower bound (frontend
   renders a warning via `#rtpClampWarning` when applicable=true).
+- `newfreespin_correction` -- `{applicable, detected_cycle_length,
+  completed_cycles_total, robots_with_pending_cycle,
+  avg_newfreespin_payout, estimated_correction_pp}`. Dynamically
+  detects the BuffCollectionMap cycle length from CC reset patterns
+  (M272 mode 1 = 1000 paid spins). Estimates lost RTP from
+  incomplete cycles. `estimated_correction_pp` is the additive
+  correction to apply to `rtp.point_pct`. Zero when
+  chunk_spin_times is perfectly aligned to the cycle length.
 
 ## `guideline_comparison`
 

@@ -285,6 +285,41 @@ This file tracks executable next steps for the current phase.
       Composite volatility_score = max(zero_win/0.82, loss_p95/18,
       tail_ge10/0.50).
 
+- [x] RTP denominator bug fix (commit 5ef2562): eq0 drop had
+      excluded zero-win session bets from the denominator, inflating
+      M272 RTP from 95% to 470%. return_bucket() restored to "eq0"
+      internally; RETURN_BUCKET_ORDER still excludes it from output.
+- [x] M272 + M14 full-pipeline regression fixtures + tests (commits
+      8586afc + a9ecd4e + 6757cf1). Raw API responses as offline
+      fixtures; 9 M272 + 7 M14 baseline assertions lock RTP, bucket
+      sum, upstream delta, classification, tail dep, output shape.
+- [x] Raw chunk cache: analyzer --chunk-cache-dir saves full API
+      response per chunk (~250KB each, ~15MB/run). Backend wires
+      cache dir; rebuild endpoint re-parses cached data through
+      current analyzer code (commit 1c98edd + f23f302).
+- [x] Upstream schema fingerprint + rebuild compatibility pre-check
+      (commit 199d14e). SHA256 of first round's sorted key set;
+      rebuild returns 409 when cached data is incompatible.
+- [x] Debug tab reorder: interpretation moved to top (right after
+      KPIs/chart); SpinType + Feature merged into one panel
+      (commit ccfb2ca). Feature detail only shown for multi-feature
+      machines.
+- [x] Manage tab overhaul (commit 67771e3 + f347242 + 3ad8f4d):
+      checkbox column + batch delete action bar; machine catalog
+      multi-select filter (Set); rebuild button per-row with
+      async chunk compatibility check (compatible ✓ / stale ✗).
+- [x] NewFreespin RTP truncation correction (commit 098fc98):
+      dynamic BuffCollectionMap cycle detection from CC resets;
+      estimates lost payout from incomplete cycles. M272 mode 1:
+      cycle=1000, correction=0pp when chunk_spin_times aligned.
+- [x] 4 raw-data analyses (commit ba33480): payline×symbol joint
+      top 20, session RTP curves (per-robot ~50 points), chain
+      ExtraRatio complete sequences (≤50 chains), reel position
+      hit frequency. Near-miss blocked (needs payline definitions).
+- [x] Feature bar track container fix (commit f347242): bar width
+      is now relative to a grey track div, not the full row.
+      Bonus chain depth curve shows share% of total bonus rounds.
+
 ## Work Mode
 
 - Keep report generation deterministic and script-driven.

@@ -139,6 +139,50 @@ to `TerminateProcess` which doesn't deliver a catchable signal, so
 the file-flag is the primary channel. Signal handlers (SIGTERM /
 SIGINT) are also registered where catchable.
 
+### `GET /api/runs/{run_id}/chunks`
+
+Chunk cache status with compatibility check.
+
+Response:
+
+```json
+{
+  "run_id": "...",
+  "chunk_count": 5,
+  "total_bytes": 1250000,
+  "fingerprint": "a3f8c2e1b9d04716",
+  "compatible": true,
+  "incompatible_reason": null,
+  "available": true
+}
+```
+
+`fingerprint` is SHA256[:16] of the first cached round's sorted key
+set. `compatible` is false when required fields are missing from the
+cached data (upstream schema drift). `available` = has chunks AND
+compatible.
+
+### `POST /api/runs/{run_id}/rebuild`
+
+Re-parse cached raw chunks through the current analyzer code and
+overwrite the run's summary + report.
+
+Pre-checks:
+- 404 if no cached chunks
+- 409 if cached chunks are schema-incompatible
+- 409 if system busy (operation mutex)
+
+Response:
+
+```json
+{
+  "run_id": "...",
+  "status": "rebuilt",
+  "chunks_reprocessed": 5,
+  "rtp_point_pct": 95.10
+}
+```
+
 ### `DELETE /api/runs/{run_id}`
 
 Delete a run's DB row and all its on-disk artefacts (progress /

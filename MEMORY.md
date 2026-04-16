@@ -415,13 +415,19 @@ This section is for execution efficiency and can be updated as long as section A
      PayLineGroupId / ReelSkin / SymbolIndexToRewards / LastCredits
      / SummaryWin) to revisit when a new machine lands.
 
-26. Manage-tab consolidation (commits 56903bc + 718e955 + fd30707):
-   - Run History table now has 10 columns: Run ID / Status / Machine
-     / Mode / Created At / RTP / CI± / Version / Quality / Action
-     (Load + Delete). Report Versions panel (section.versions) was
-     removed; versions table was fully merged. GET
-     /api/reports/{machine}/{mode} still exists but nothing in
-     frontend calls refreshVersions anymore.
+26. Manage-tab (current state):
+   - Run History table: 9 columns — checkbox / Run ID / Status /
+     Machine / Mode / RTP / CI± / Quality / Action (Load + Rebuild
+     + Delete). Report Versions panel removed; merged into run row.
+   - Batch operations: select-all checkbox in header; batch action
+     bar appears when ≥1 row checked with "删除选中 (N)" button.
+   - Rebuild per-row: async-checks GET /api/runs/{id}/chunks; shows
+     "N chunks ✓" when compatible, "N chunks ✗ 失效" when schema
+     drifted (button disabled + line-through style). POST rebuild
+     pre-checks compatibility → 409 if stale.
+   - Machine catalog: multi-select (Set<string>). Each catalog item
+     toggles independently. Empty set = show all. Filter banner
+     shows "M14 + M272" when both selected.
    - DB columns achieved_rtp_pct / achieved_halfwidth_pp /
      quality_label added via ALTER TABLE migrations; populated on
      run completion in _update_report_index. StateStore.backfill_rtp_
@@ -490,6 +496,61 @@ This section is for execution efficiency and can be updated as long as section A
      fills inputs from input.defaultValue so the screen always
      has sensible values ready. Auto Tune still refines per
      machine if user wants.
+
+30. Three-layer data architecture (fully implemented):
+   - Layer 1 (raw cache): cache/chunks/{run_id}/chunk_*.json saves
+     the full upstream API response (~250KB/chunk) with an envelope
+     carrying _cache_version, _upstream_schema_fingerprint (SHA256
+     of first round's sorted key set), and metadata. Cleaned by
+     existing /api/cache/cleanup; Rule #13 compliance: don't delete
+     chunks whose run still has a live report version.
+   - Layer 2 (aggregated intermediate): the 45-key dict returned by
+     run_sampling_chunk(). Lives in memory only; never persisted.
+     Rebuild re-computes it from Layer 1 every time.
+   - Layer 3 (report assets): reports/<machine>/mode_<n>/versions/
+     player_impact_summary.json + _report.md. Permanent. Version-
+     managed via index.json + latest.json.
+   - Rebuild: POST /api/runs/{id}/rebuild reads Layer 1, re-runs
+     full analyzer main() with monkey-patched post_json, overwrites
+     Layer 3. Pre-checks chunk compatibility (required round fields
+     present in cached data); returns 409 if schema drifted.
+31. NewFreespin RTP truncation correction
+    (summary.collect_mechanic.newfreespin_correction):
+   - Dynamic cycle detection: tracks CollectCount resets per robot.
+     Peak CC before each reset = cycle length (median of observed
+     peaks). Not hardcoded — works for any machine/mode.
+   - Correction = sum across robots of (final_cc / cycle_length) ×
+     avg_NewFreespin_payout / total_paid_bet × 100 = correction_pp.
+   - M272 mode 1: cycle_length=1000. chunk_spin_times=5000 (aligned)
+     → correction=0pp. chunk_spin_times=4500 → +5.92pp.
+   - BuffCollectionMap fires at each cycle completion (times=5 per
+     5000 spins) but produces 0 WinCredits — it's a progress marker.
+     NewFreespin is the forced bonus chain at cycle boundary (no
+     PayId 666 involved; trigger spin has PID={}).
+32. Raw-data analyses (need per-spin sequential context from Layer 1):
+   - payline_symbol_top20: joint (payline_id, symbol_code) → hits +
+     total_win + rtp_contribution_pp. Uses RLN when available.
+   - session_rtp_curves: per-robot cumulative RTP at ~50 sampled
+     points. Frontend can plot spaghetti / envelope.
+   - chain_ratio_sequences: per-chain ordered ExtraRatio list (the
+     complete escalation path, ≤50 chains).
+   - reel_position_top20: position codes from PayoutByPayline
+     ranked by hit count.
+   - Near-miss: BLOCKED — needs payline definition table the
+     upstream API doesn't expose. Noted in TODO.
+33. Test infrastructure:
+   - tests/fixtures/{machine}_mode{N}_r{robots}_s{spins}.json —
+     raw API responses for offline regression. Currently: M14 + M272.
+   - test_fixture_{machine}.py: chunk-level invariant tests (5 per
+     machine) — upstream delta=0, session_bet_sum correctness,
+     RTP plausible range, eq0 internal/external split, SpinType
+     behavior.
+   - test_full_pipeline_{machine}.py: end-to-end main() → summary
+     → baseline comparison (9 per M272, 7 per M14) — exact RTP,
+     bucket_sum=rtp, paid/bonus exact, classification match,
+     tail_dep tolerance, output shape.
+   - Convention: new machine → fetch fixture → compute baseline →
+     write test module. No network needed at test time.
 
 Update policy:
 - Assistant may update this section after execution, and must explicitly state:
