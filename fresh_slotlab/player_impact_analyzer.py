@@ -588,6 +588,45 @@ def bonus_chain_depth_bucket(fs_idx: int) -> str:
     return "21+"
 
 
+def _compute_nf_correction(
+    cycle_peaks: list[int],
+    final_cc_values: list[int],
+    feature_tally: dict[str, dict[str, dict[str, Any]]],
+    completed_cycles: int,
+    total_paid_bet: float,
+) -> float | None:
+    """Estimate the RTP correction (in pp) from truncated NewFreespin cycles.
+
+    Each robot that ends mid-cycle (final_cc < cycle_length) has lost a
+    fraction of the expected NewFreespin payout. The correction is:
+        sum across robots of (progress_fraction × avg_nf_payout)
+        / total_paid_bet × 100
+
+    Returns None when insufficient data (no cycles detected or no
+    NewFreespin payout data).
+    """
+    if not cycle_peaks or total_paid_bet <= 0:
+        return None
+    cycle_len = int(sorted(cycle_peaks)[len(cycle_peaks) // 2])
+    if cycle_len <= 0:
+        return None
+    # NewFreespin total payout from upstream feature tally.
+    nf_total_win = sum(
+        float(e.get("win", 0.0))
+        for e in feature_tally.get("NewFreespin", {}).values()
+    )
+    if completed_cycles <= 0 or nf_total_win <= 0:
+        return None
+    avg_nf_payout = nf_total_win / completed_cycles
+    # For each robot's final CC, compute progress fraction and lost payout.
+    total_lost = 0.0
+    for fcc in final_cc_values:
+        progress = min(fcc / cycle_len, 1.0)
+        if progress < 1.0:
+            total_lost += progress * avg_nf_payout
+    return (total_lost / total_paid_bet) * 100.0
+
+
 def parse_rln_codes(rln: Any) -> list[str]:
     """RewardLastNode values look like ['3-', '7-', '668-'] -- numeric
     symbol codes with a trailing '-' separator. Upstream populates this
@@ -1010,6 +1049,10 @@ def run_sampling_chunk(
     # can decide whether to widen chunk_spin_times.
     chunk_clamp_pending_paid_spins = 0  # sum across robots
     chunk_clamp_pending_robots = 0      # robots with pending > 0
+    # BuffCollectionMap cycle detection accumulators.
+    chunk_cycle_peaks: list[int] = []   # CC values at each detected reset
+    chunk_final_cc_values: list[int] = []  # final CC per robot at chunk end
+    chunk_completed_cycles = 0          # total complete cycles across robots
 
     # Per-payline winning-symbol inference. The API returns
     # PayoutByPayline (which line ids paid) and StopSymbolsByCol (the
@@ -1152,6 +1195,14 @@ def run_sampling_chunk(
         robot_paid_spin_idx = 0
         robot_last_collect_paid_idx = 0
         robot_prev_collect_count = 0
+        # BuffCollectionMap cycle detection: track CC resets to find the
+        # cycle length (e.g., M272 mode 1 = 1000 paid spins). The cycle
+        # length varies per machine/mode and is NOT hardcoded. We detect
+        # it by observing when CC drops from a high value back to a low
+        # value (reset). The peak CC before each reset = cycle length.
+        robot_cycle_peaks: list[int] = []  # CC value just before each reset
+        robot_prev_cc_for_cycle = 0  # previous CC (for reset detection)
+        robot_final_cc = 0  # CC at chunk end (for pending calculation)
         # Reset session-level streak state at robot boundary (streaks
         # don't cross robots -- each is an independent player trajectory).
         sess_state["cur_loss_streak"] = 0
@@ -1308,6 +1359,14 @@ def run_sampling_chunk(
                 ac_int = 0
             if cc_int > robot_max_collect_count:
                 robot_max_collect_count = cc_int
+            # Cycle detection: CC drops from a high value to a low value
+            # = one complete BuffCollectionMap cycle. Record the peak.
+            # Only track on paid spins (bonus spins have CC=None/0).
+            if is_paid and cc_int > 0:
+                if cc_int < robot_prev_cc_for_cycle and robot_prev_cc_for_cycle > 10:
+                    robot_cycle_peaks.append(robot_prev_cc_for_cycle)
+                robot_prev_cc_for_cycle = cc_int
+                robot_final_cc = cc_int
             # Trunk-clamp pointer: every time CollectCount ticks up, mark
             # the paid-spin index where it happened. Only paid spins
             # advance the cycle counter (bonus spins ride on the
@@ -1415,14 +1474,25 @@ def run_sampling_chunk(
             chunk_acc_credits_max = robot_max_acc_credits
         if robot_collect_observed:
             chunk_collect_seen += 1
-            # Trunk-clamp pending: paid spins that happened after this
-            # robot's last collect-trigger but before SpinTimes ran out.
-            # 0 means the chunk ended right on a fresh collect (no
-            # pending cycle); >0 means an in-progress cycle was clipped.
             pending = robot_paid_spin_idx - robot_last_collect_paid_idx
             if pending > 0:
                 chunk_clamp_pending_paid_spins += pending
                 chunk_clamp_pending_robots += 1
+        # BuffCollectionMap cycle peaks + final CC for NewFreespin
+        # correction. Cycle peaks let us detect the cycle length
+        # dynamically (not hardcoded); final_cc tells us how far into
+        # the current incomplete cycle this robot was when the chunk
+        # ended.
+        if robot_cycle_peaks:
+            chunk_cycle_peaks.extend(robot_cycle_peaks)
+        if robot_final_cc > 0:
+            chunk_final_cc_values.append(robot_final_cc)
+        # Detect NewFreespin chains: chains that started at exactly
+        # the cycle boundary (trigger spin has NO PayId 666 but CC was
+        # at cycle peak). We already tracked these as bonus chains —
+        # their wins contribute to the NewFreespin expected payout.
+        # For correction, we just need the cycle peaks + final CCs.
+        chunk_completed_cycles += len(robot_cycle_peaks)
 
     if chunk_spins <= 0 or chunk_bet <= 0:
         return {"ok": False, "index": chunk_index, "error": "parse_failed_zero_chunk"}
@@ -1495,6 +1565,9 @@ def run_sampling_chunk(
         # of paid spins waiting on the next collect at chunk-end.
         "clamp_pending_paid_spins": chunk_clamp_pending_paid_spins,
         "clamp_pending_robots": chunk_clamp_pending_robots,
+        "cycle_peaks": list(chunk_cycle_peaks),
+        "final_cc_values": list(chunk_final_cc_values),
+        "completed_cycles": chunk_completed_cycles,
         # --- Session-level counters (see session refactor commit). Summary
         #     derives hit_and_payout / multiplier_profile / streaks /
         #     volatility from these so bonus wins attribute back to the
@@ -1726,6 +1799,10 @@ def main() -> int:
     collect_robots_seen_total = 0
     clamp_pending_paid_spins_total = 0
     clamp_pending_robots_total = 0
+    # BuffCollectionMap cycle aggregation for NewFreespin correction.
+    all_cycle_peaks: list[int] = []
+    all_final_cc_values: list[int] = []
+    total_completed_cycles = 0
 
     lack_credit_spins = 0
     chunks = 0
@@ -1926,6 +2003,11 @@ def main() -> int:
             # Trunk-clamp totals.
             clamp_pending_paid_spins_total += int(rec.get("clamp_pending_paid_spins", 0) or 0)
             clamp_pending_robots_total += int(rec.get("clamp_pending_robots", 0) or 0)
+            for pk in rec.get("cycle_peaks") or []:
+                all_cycle_peaks.append(int(pk))
+            for fcc in rec.get("final_cc_values") or []:
+                all_final_cc_values.append(int(fcc))
+            total_completed_cycles += int(rec.get("completed_cycles", 0) or 0)
 
             # Session-level totals (session refactor commit). Older chunk
             # records (pre-feature) silently add 0 via .get() fallback.
@@ -2765,6 +2847,45 @@ def main() -> int:
                     collect_robots_seen_total > 0 and clamp_pending_robots_total > 0
                 ) else None,
             },
+            # NewFreespin truncation correction. When the BuffCollectionMap
+            # cycle doesn't complete (chunk ends mid-cycle), the forced
+            # bonus that fires at cycle completion is missing from the
+            # sample. Unlike clamp_warning (which just warns), this block
+            # estimates the lost RTP based on:
+            #   - detected cycle length (median of observed CC peaks
+            #     across all robot resets — varies per machine/mode)
+            #   - average NewFreespin payout (from upstream_feature_tally)
+            #   - each robot's final CC as fraction of cycle length
+            "newfreespin_correction": (lambda: {
+                "applicable": len(all_cycle_peaks) > 0,
+                "detected_cycle_length": (
+                    int(sorted(all_cycle_peaks)[len(all_cycle_peaks)//2])
+                    if all_cycle_peaks else None
+                ),
+                "completed_cycles_total": total_completed_cycles,
+                "robots_with_pending_cycle": sum(
+                    1 for fcc in all_final_cc_values
+                    if all_cycle_peaks and fcc < sorted(all_cycle_peaks)[len(all_cycle_peaks)//2]
+                ),
+                "avg_newfreespin_payout": (
+                    (lambda nf_total, nf_cycles: nf_total / nf_cycles if nf_cycles > 0 else None)(
+                        sum(
+                            float(e.get("win", 0.0))
+                            for e in upstream_feature_tally.get("NewFreespin", {}).values()
+                        ),
+                        total_completed_cycles,
+                    )
+                ),
+                "estimated_correction_pp": (
+                    (lambda: (
+                        _compute_nf_correction(
+                            all_cycle_peaks, all_final_cc_values,
+                            upstream_feature_tally, total_completed_cycles,
+                            effective_bet_for_rtp,
+                        )
+                    ))()
+                ),
+            })(),
         },
         "guideline_assessment": {
             "guideline": "classic_slots_report_guideline_v1",
