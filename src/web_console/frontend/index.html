@@ -360,6 +360,32 @@
             <button id="batchCancelBtn" class="danger-btn" data-i18n="btnBatchCancel">取消批量</button>
           </section>
 
+          <section class="panel version-history hidden" id="versionHistoryPanel">
+            <h2 id="versionHistoryTitle" data-i18n="panelVersionHistory">版本历史</h2>
+            <div class="version-mode-tabs" id="versionModeTabs"></div>
+            <table id="versionTable" class="drilldown-table">
+              <thead>
+                <tr>
+                  <th><input type="checkbox" id="compareSelectAll" title="全选"></th>
+                  <th data-i18n="thVersion">版本</th>
+                  <th data-i18n="thRtp">RTP</th>
+                  <th data-i18n="thCiHalfwidth">CI±</th>
+                  <th data-i18n="thSpins">Spins</th>
+                  <th data-i18n="thQuality">质量</th>
+                </tr>
+              </thead>
+              <tbody id="versionTableBody"></tbody>
+            </table>
+            <div class="version-actions">
+              <button id="compareBtn" class="primary-btn" disabled data-i18n="btnCompare">对比选中 (2)</button>
+            </div>
+          </section>
+
+          <section class="panel report-comparison hidden" id="reportComparisonPanel">
+            <h2 data-i18n="panelComparison">Report 对比</h2>
+            <div id="comparisonBody"></div>
+          </section>
+
           <section class="panel run-history">
             <h2 data-i18n="panelRunHistory">运行历史</h2>
             <div id="runFilterBanner" class="run-filter-banner"></div>

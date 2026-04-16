@@ -48,6 +48,9 @@ const state = {
   activeBatchId: null,
   servers: [],
   defaultServer: "",
+  versionHistoryMachine: null,
+  versionHistoryMode: null,
+  compareSelected: new Set(),
 };
 
 const byId = (id) => document.getElementById(id);
@@ -473,6 +476,15 @@ function renderMachineCatalog() {
       }
       renderMachineCatalog();
       renderRunHistory();
+      // Show version history for the last selected machine.
+      if (state.runFilterMachines.has(machine)) {
+        showVersionHistory(machine);
+      } else if (state.runFilterMachines.size === 1) {
+        showVersionHistory([...state.runFilterMachines][0]);
+      } else if (state.runFilterMachines.size === 0) {
+        byId("versionHistoryPanel").classList.add("hidden");
+        byId("reportComparisonPanel").classList.add("hidden");
+      }
     };
     el.addEventListener("click", toggle);
     el.addEventListener("keydown", (e) => {
@@ -667,6 +679,155 @@ async function addServer() {
   } catch (e) {
     alert(String(e.message || e));
   }
+}
+
+// ── Version History + Report Comparison ───────────────────────────
+
+async function showVersionHistory(machine) {
+  const panel = byId("versionHistoryPanel");
+  if (!panel) return;
+  state.versionHistoryMachine = machine;
+  state.versionHistoryMode = null;
+  state.compareSelected = new Set();
+  byId("versionHistoryTitle").textContent = `${fmt("panelVersionHistory")} — ${machine}`;
+  panel.classList.remove("hidden");
+
+  // Build mode tabs from machine config.
+  const mConfig = state.machines.find((m) => m.machine === machine);
+  const modes = (mConfig && mConfig.modes) || [1, 2, 5, 7];
+  const tabsEl = byId("versionModeTabs");
+  tabsEl.innerHTML = modes.map((m) => `<button class="mode-tab" data-mode="${m}">Mode ${m}</button>`).join("");
+  tabsEl.querySelectorAll(".mode-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      tabsEl.querySelectorAll(".mode-tab").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      loadVersionsForMode(machine, Number(btn.dataset.mode));
+    });
+  });
+  // Auto-select first mode with reports, fallback to mode 2 or first.
+  const sm = ((state.machinesSummary || {}).machines || {})[machine] || {};
+  const bestMode = modes.find((m) => sm[String(m)]) || (modes.includes(2) ? 2 : modes[0]);
+  const bestBtn = tabsEl.querySelector(`[data-mode="${bestMode}"]`);
+  if (bestBtn) { bestBtn.classList.add("active"); loadVersionsForMode(machine, bestMode); }
+}
+
+async function loadVersionsForMode(machine, mode) {
+  state.versionHistoryMode = mode;
+  state.compareSelected = new Set();
+  updateCompareBtn();
+  const tbody = byId("versionTableBody");
+  tbody.innerHTML = `<tr><td colspan="6" class="muted">Loading...</td></tr>`;
+
+  try {
+    const data = await apiGet(`/api/reports/${machine}/${mode}`);
+    const versions = data.versions || [];
+    if (!versions.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="muted">${fmt("noVersions")}</td></tr>`;
+      return;
+    }
+    // Sort newest first.
+    versions.sort((a, b) => (b.report_version || "").localeCompare(a.report_version || ""));
+    tbody.innerHTML = versions.map((v) => {
+      const rv = v.report_version || "?";
+      const rtp = v.achieved_rtp_pct != null ? v.achieved_rtp_pct.toFixed(2) + "%" : "—";
+      const ci = v.achieved_halfwidth_pp != null ? "\u00b1" + v.achieved_halfwidth_pp.toFixed(2) : "—";
+      const spins = v.total_spins != null ? Number(v.total_spins).toLocaleString() : "—";
+      const quality = v.quality_label || "—";
+      return (
+        `<tr data-version="${rv}">` +
+        `<td><input type="checkbox" class="compare-check" value="${rv}"></td>` +
+        `<td class="version-id">${rv}</td>` +
+        `<td>${rtp}</td><td>${ci}</td><td>${spins}</td><td>${quality}</td>` +
+        `</tr>`
+      );
+    }).join("");
+
+    // Wire checkboxes.
+    tbody.querySelectorAll(".compare-check").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        if (cb.checked) state.compareSelected.add(cb.value);
+        else state.compareSelected.delete(cb.value);
+        updateCompareBtn();
+      });
+    });
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">${e.message || e}</td></tr>`;
+  }
+}
+
+function updateCompareBtn() {
+  const btn = byId("compareBtn");
+  if (!btn) return;
+  const n = (state.compareSelected || new Set()).size;
+  btn.disabled = n !== 2;
+  btn.textContent = fmt("btnCompare") + ` (${n}/2)`;
+}
+
+async function compareReports() {
+  const selected = [...(state.compareSelected || [])];
+  if (selected.length !== 2) return;
+  const machine = state.versionHistoryMachine;
+  const mode = state.versionHistoryMode;
+  const panel = byId("reportComparisonPanel");
+  const body = byId("comparisonBody");
+  panel.classList.remove("hidden");
+  body.innerHTML = `<div class="muted">Loading...</div>`;
+
+  try {
+    const [a, b] = await Promise.all([
+      apiGet(`/api/reports/${machine}/${mode}/${selected[0]}`),
+      apiGet(`/api/reports/${machine}/${mode}/${selected[1]}`),
+    ]);
+    renderComparison(a, b, selected[0], selected[1]);
+  } catch (e) {
+    body.innerHTML = `<div class="muted">${e.message || e}</div>`;
+  }
+}
+
+function renderComparison(a, b, vA, vB) {
+  const body = byId("comparisonBody");
+  const sa = a.sampling || {};
+  const sb = b.sampling || {};
+  const ra = a.rtp || {};
+  const rb = b.rtp || {};
+  const pia = a.player_impact || {};
+  const pib = b.player_impact || {};
+  const hapa = pia.hit_and_payout || {};
+  const hapb = pib.hit_and_payout || {};
+  const ga_a = (a.guideline_assessment || {}).classification || {};
+  const ga_b = (b.guideline_assessment || {}).classification || {};
+
+  const rows = [
+    ["RTP %", fmtNum(ra.point_pct, 4), fmtNum(rb.point_pct, 4), diffPp(ra.point_pct, rb.point_pct)],
+    ["CI \u00b1pp", fmtNum(sa.achieved_halfwidth_pp, 2), fmtNum(sb.achieved_halfwidth_pp, 2), ""],
+    ["Total Spins", fmtInt(sa.total_spins), fmtInt(sb.total_spins), ""],
+    ["Paid / Bonus", `${fmtInt(sa.paid_spins)} / ${fmtInt(sa.bonus_spins)}`, `${fmtInt(sb.paid_spins)} / ${fmtInt(sb.bonus_spins)}`, ""],
+    ["Hit Rate", fmtPct(hapa.hit_rate), fmtPct(hapb.hit_rate), ""],
+    ["Zero Win Rate", fmtPct(hapa.zero_win_rate), fmtPct(hapb.zero_win_rate), ""],
+    ["Big Win x10 Rate", fmtPct(hapa.big_win_x10_rate), fmtPct(hapb.big_win_x10_rate), ""],
+    ["Volatility", ga_a.volatility_class || "—", ga_b.volatility_class || "—", ""],
+    ["Archetype", ga_a.experience_archetype || "—", ga_b.experience_archetype || "—", ""],
+  ];
+
+  body.innerHTML = `
+    <table class="drilldown-table comparison-table">
+      <thead><tr><th>${fmt("thMetric")}</th><th>${vA.slice(3, 18)}</th><th>${vB.slice(3, 18)}</th><th>\u0394</th></tr></thead>
+      <tbody>${rows.map((r) => {
+        const delta = r[3];
+        const cls = delta && delta.startsWith("+") ? "delta-pos" : delta && delta.startsWith("-") ? "delta-neg" : "";
+        return `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="${cls}">${delta}</td></tr>`;
+      }).join("")}</tbody>
+    </table>`;
+}
+
+function fmtNum(v, d) { return v != null ? Number(v).toFixed(d) : "—"; }
+function fmtInt(v) { return v != null ? Number(v).toLocaleString() : "—"; }
+function fmtPct(v) { return v != null ? (Number(v) * 100).toFixed(2) + "%" : "—"; }
+function diffPp(a, b) {
+  if (a == null || b == null) return "";
+  const d = Number(a) - Number(b);
+  const sign = d >= 0 ? "+" : "";
+  return `${sign}${d.toFixed(2)}pp`;
 }
 
 function renderRunFilterBanner() {
@@ -1768,6 +1929,7 @@ function bindEvents() {
   byId("batchRunBtn").addEventListener("click", () => startBatchRun());
   byId("batchCancelBtn").addEventListener("click", () => cancelBatchRun());
   byId("addServerBtn").addEventListener("click", () => addServer());
+  byId("compareBtn").addEventListener("click", () => compareReports());
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();
     applyModeCiConstraint();

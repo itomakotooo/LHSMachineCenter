@@ -2508,6 +2508,14 @@ def create_app(
         latest_payload = read_json(latest_path) if latest_path.exists() else {}
         return {"machine": machine, "mode": mode, "versions": index_payload, "latest": latest_payload}
 
+    @app.get("/api/reports/{machine}/{mode}/{version}")
+    def report_version_detail(machine: str, mode: int, version: str) -> dict[str, Any]:
+        """Load a specific report version's summary for comparison."""
+        summary_path = rr / machine / f"mode_{mode}" / "versions" / version / "player_impact_summary.json"
+        if not summary_path.exists():
+            raise HTTPException(status_code=404, detail="report version not found")
+        return read_json(summary_path) or {}
+
     @app.get("/api/library/distributions")
     def library_distributions() -> dict[str, Any]:
         """Across-library metric distributions built from every
