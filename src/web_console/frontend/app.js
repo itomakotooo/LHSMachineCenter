@@ -256,14 +256,6 @@ function updateActionStates() {
   byId("interpretBtn").disabled = localBusy || serverBusy || !hasCurrent || (
     currentStatus !== "completed" && currentStatus !== "cancelled"
   );
-  // Rebuild button: available when the run has a valid status + we have
-  // cached chunks. Chunk availability is checked asynchronously by
-  // refreshChunkStatus() and stored in state.currentChunksAvailable.
-  const rebuildBtn = byId("rebuildBtn");
-  if (rebuildBtn) {
-    rebuildBtn.disabled = localBusy || serverBusy || !hasCurrent || currentStatus === "running" || !state.currentChunksAvailable;
-    rebuildBtn.title = state.currentChunksAvailable ? "" : fmt("rebuildNoChunks");
-  }
   byId("cacheRefreshBtn").disabled = localBusy;
   const runningCount = Number(state.cacheStatus?.running_runs ?? state.systemState?.running_runs_count ?? 0);
   byId("cacheCleanupBtn").disabled = localBusy || serverBusy || runningCount > 0 || reclaimable <= 0;
@@ -1428,26 +1420,7 @@ function bindEvents() {
   byId("interpretBtn").addEventListener("click", () =>
     withAction("interpret", generateInterpretation).catch((e) => alert(String(e.message || e)))
   );
-  byId("rebuildBtn").addEventListener("click", () =>
-    withAction("rebuild", async () => {
-      const resp = await apiPost(`/api/runs/${encodeURIComponent(state.currentRunId)}/rebuild`, {});
-      const msg = fmt("rebuildSuccess", {
-        rtp: resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(2) : "?",
-        chunks: resp.chunks_reprocessed || 0,
-      });
-      window.alert(msg);
-      await refreshCurrentRun();
-    }).catch((e) => {
-      const errMsg = String(e && e.message ? e.message : e);
-      if (errMsg.includes("404")) {
-        window.alert(fmt("rebuildNoChunks"));
-      } else if (errMsg.includes("409")) {
-        window.alert(fmt("rebuildBusy"));
-      } else {
-        window.alert(fmt("rebuildFailed", { error: errMsg }));
-      }
-    })
-  );
+  // rebuildBtn moved to manage-tab per-row (renderRunHistory).
   byId("cacheRefreshBtn").addEventListener("click", () =>
     withAction("cache_refresh", refreshCache).catch((e) => alert(String(e.message || e)))
   );
