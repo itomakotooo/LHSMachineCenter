@@ -496,6 +496,63 @@ function renderMachineCatalog() {
   updateBatchRunHint();
 }
 
+// ── Fleet Overview ────────────────────────────────────────────────
+
+function renderFleetOverview() {
+  const el = byId("fleetStats");
+  if (!el) return;
+  const machines = state.machines || [];
+  const sm = (state.machinesSummary || {}).machines || {};
+
+  const total = machines.length;
+  const withReports = machines.filter((m) => m.report_count > 0).length;
+  const categories = {};
+  machines.forEach((m) => {
+    const c = m.category || "Other";
+    categories[c] = (categories[c] || 0) + 1;
+  });
+
+  // RTP distribution from summary data
+  const rtps = [];
+  const mechanics = { lock_lines: 0, lock_symbols: 0, jackpot: 0, free_spin: 0, dollar_pick: 0 };
+  Object.values(sm).forEach((modes) => {
+    Object.values(modes).forEach((d) => {
+      if (d.rtp_pct != null) rtps.push(d.rtp_pct);
+    });
+  });
+  // Count mechanics from latest summary (approximation from category)
+  // We'll use the field_discovery-style count from machines with reports
+  machines.forEach((m) => {
+    const mdata = sm[m.machine] || {};
+    // Heuristic: check category to estimate mechanic presence
+    const cat = m.category || "";
+    if (cat === "Lock") mechanics.lock_lines++;
+    else if (cat === "Collect") mechanics.lock_symbols++;
+    else if (cat === "Fortunes") mechanics.jackpot++;
+    else if (cat === "FreeSpin") mechanics.free_spin++;
+  });
+
+  const avgRtp = rtps.length ? (rtps.reduce((a, b) => a + b, 0) / rtps.length).toFixed(1) : "—";
+  const minRtp = rtps.length ? Math.min(...rtps).toFixed(1) : "—";
+  const maxRtp = rtps.length ? Math.max(...rtps).toFixed(1) : "—";
+
+  const catBadges = Object.entries(categories)
+    .sort((a, b) => b[1] - a[1])
+    .map(([c, n]) => {
+      const color = CATEGORY_COLORS[c] || "#9ca3af";
+      return `<span class="fleet-cat-badge" style="background:${color}">${c} ${n}</span>`;
+    }).join(" ");
+
+  el.innerHTML = `
+    <div class="fleet-grid">
+      <div class="fleet-stat"><span class="fleet-label">${fmt("fleetTotal")}</span><span class="fleet-value">${total}</span></div>
+      <div class="fleet-stat"><span class="fleet-label">${fmt("fleetWithReports")}</span><span class="fleet-value">${withReports}</span></div>
+      <div class="fleet-stat"><span class="fleet-label">${fmt("fleetAvgRtp")}</span><span class="fleet-value">${avgRtp}%</span></div>
+      <div class="fleet-stat"><span class="fleet-label">${fmt("fleetRtpRange")}</span><span class="fleet-value">${minRtp}–${maxRtp}%</span></div>
+    </div>
+    <div class="fleet-categories">${catBadges}</div>`;
+}
+
 // ── Batch Run UI ──────────────────────────────────────────────────
 
 function updateBatchRunHint() {
@@ -2010,6 +2067,7 @@ async function loadBootstrap() {
   fillProviders();
   fillModelsForProvider(byId("providerSelect").value, state.modelMeta.default_model || "");
   renderMachineCatalog();
+  renderFleetOverview();
   await refreshServers();
   // Now that machineSelect is populated, seed the topbar idle brief.
   // (applyI18n() ran before bootstrap when machineSelect was empty, so
