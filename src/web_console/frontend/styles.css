@@ -720,6 +720,18 @@ button:disabled {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+/* Depth curve + histogram tables below the per-feature cards. */
+.bonus-chain-dynamics .bonus-chain-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.bonus-chain-dynamics .bonus-chain-tables h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #1e293b;
+}
 
 /* Per-card text-color tone (legacy, kept so non-card text stays
    readable when whole-card bg tone isn't set yet). */

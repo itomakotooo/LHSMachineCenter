@@ -789,13 +789,9 @@ function renderBonusChainDynamicsPanel(summary) {
   }
   panel.classList.remove("hidden");
 
-  // Per-feature ONLY — no aggregate summary. Each feature gets its
-  // own card with KPI metrics + quantile lines.
+  // Per-feature cards with KPIs + depth curve + histogram.
   const byFeat = d.by_feature || {};
   const featNames = Object.keys(byFeat);
-
-  // If only 1 feature (or none), show from aggregate data under a
-  // single card with a generic name.
   const features = featNames.length >= 1
     ? featNames.map((fn) => ({ name: fn, data: byFeat[fn] }))
     : [{ name: "All", data: {
@@ -807,26 +803,57 @@ function renderBonusChainDynamicsPanel(summary) {
         self_retrigger_round_rate: d.self_retrigger_round_rate,
       }}];
 
-  const html = features.map((f) => {
+  // Aggregate depth curve + histogram (shared across features since
+  // per-feature breakdown doesn't carry these yet — they come from
+  // the global accumulators).
+  const totalBonusRounds = Number(d.bonus_round_count || 0);
+  const hist = Array.isArray(d.extra_ratio_histogram) ? d.extra_ratio_histogram : [];
+  const maxHistShare = Math.max(...hist.map((h) => Number(h.rounds || 0)), 0) / (totalBonusRounds || 1);
+  const histHtml = hist.map((h) => {
+    const r = Number(h.rounds || 0);
+    const share = totalBonusRounds > 0 ? (r / totalBonusRounds) : 0;
+    const bar = maxHistShare > 0 ? Math.min(100, (share / maxHistShare) * 100) : 0;
+    return `<tr><td>${fInt(h.ratio)}x</td><td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${(share * 100).toFixed(1)}%</td></tr>`;
+  }).join("");
+
+  const depth = Array.isArray(d.extra_ratio_by_chain_depth) ? d.extra_ratio_by_chain_depth : [];
+  const maxDepthRatio = Math.max(...depth.map((b) => Number(b.avg_extra_ratio || 0)), 0);
+  const depthHtml = depth.map((b) => {
+    const avg = Number(b.avg_extra_ratio || 0);
+    const rounds = Number(b.rounds || 0);
+    const sharePct = totalBonusRounds > 0 ? ((rounds / totalBonusRounds) * 100).toFixed(1) : "0.0";
+    const bar = maxDepthRatio > 0 ? Math.min(100, (avg / maxDepthRatio) * 100) : 0;
+    return `<tr><td>${b.depth_bucket}</td><td>${sharePct}%</td><td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${avg.toFixed(0)}x</td></tr>`;
+  }).join("");
+
+  const featHtml = features.map((f) => {
     const fd = f.data;
     const fq = fd.chain_length_quantiles || {};
     const frq = fd.chain_max_ratio_quantiles || {};
     const retrigger = (Number(fd.self_retrigger_round_rate || 0) * 100).toFixed(1);
     const chains = fd.chain_count || 0;
-    const rounds = fd.bonus_round_count || 0;
+    const rnds = fd.bonus_round_count || 0;
     return (
       `<div class="bcFeatCard">` +
-      `<h4>${f.name} <span class="bcFeatCount">${chains} chains · ${rounds} rounds</span></h4>` +
+      `<h4>${f.name} <span class="bcFeatCount">${chains} chains · ${rnds} rounds</span></h4>` +
       `<div class="bcFeatKpis">` +
       `<div class="bcFeatMetric"><em>${fmt("bonusChainLenLabel")}</em><b>avg ${Number(fd.avg_chain_length || 0).toFixed(1)}</b><span>p50 ${fq.p50 || 0} · p90 ${fq.p90 || 0} · max ${fq.max || 0}</span></div>` +
       `<div class="bcFeatMetric"><em>${fmt("bonusChainRatioLabel")}</em><b>p50 ${frq.p50 || 0}x</b><span>p90 ${frq.p90 || 0}x · max ${frq.max || 0}x</span></div>` +
       `<div class="bcFeatMetric"><em>${fmt("bonusChainRetriggerLabel")}</em><b>${retrigger}%</b></div>` +
-      `</div>` +
-      `</div>`
+      `</div></div>`
     );
   }).join("");
 
-  byId("bonusChainBody").innerHTML = `<div class="bcFeatGrid">${html}</div>`;
+  byId("bonusChainBody").innerHTML =
+    `<div class="bcFeatGrid">${featHtml}</div>` +
+    `<div class="bonus-chain-tables">` +
+    `<div><h3>${fmt("bonusChainDepthLabel")}</h3>` +
+    `<table class="drilldown-table"><thead><tr><th>Depth</th><th>Share</th><th>avg ExtraRatio</th></tr></thead>` +
+    `<tbody>${depthHtml}</tbody></table></div>` +
+    `<div><h3>${fmt("bonusChainHistogramLabel")}</h3>` +
+    `<table class="drilldown-table"><thead><tr><th>Ratio</th><th>Share</th></tr></thead>` +
+    `<tbody>${histHtml}</tbody></table></div>` +
+    `</div>`;
 }
 
 function renderAssessment(summary) {
@@ -1182,12 +1209,14 @@ async function refreshCurrentRun() {
       const maxRtp = Math.max(...buckets.map((b) => Number(b.rtp_contribution_pp || 0)), 0.001);
       bucketBody.innerHTML = buckets
         .map((b) => {
+          const count = fInt(b.spin_count);
           const spinPct = (Number(b.spin_rate || 0) * 100).toFixed(2);
           const rtpPp = Number(b.rtp_contribution_pp || 0).toFixed(2);
           const bar = Math.min(100, (Number(b.rtp_contribution_pp || 0) / maxRtp) * 100);
           return (
             `<tr>` +
             `<td>${PURE.prettyBucketLabel(b.bucket)}</td>` +
+            `<td>${count}</td>` +
             `<td>${spinPct}%</td>` +
             `<td>${rtpPp}pp</td>` +
             `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%"></td>` +
