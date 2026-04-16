@@ -934,6 +934,15 @@ button:disabled {
   background: #fee2e2;
 }
 
+/* Fleet actions */
+.fleet-actions {
+  margin-top: 8px;
+}
+.fleet-actions a {
+  text-decoration: none;
+  color: var(--accent);
+}
+
 /* Machine catalog toolbar */
 .catalog-toolbar {
   display: flex;

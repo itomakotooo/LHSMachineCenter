@@ -2636,6 +2636,84 @@ def create_app(
             raise HTTPException(status_code=404, detail="report version not found")
         return read_json(summary_path) or {}
 
+    @app.post("/api/reports/cleanup")
+    def cleanup_old_reports() -> dict[str, Any]:
+        """Keep only the newest report version per machine-mode, delete older ones."""
+        import shutil
+        deleted = 0
+        kept = 0
+        for machine_dir in rr.iterdir():
+            if not machine_dir.is_dir():
+                continue
+            for mode_dir in machine_dir.iterdir():
+                if not mode_dir.is_dir():
+                    continue
+                versions_dir = mode_dir / "versions"
+                if not versions_dir.is_dir():
+                    continue
+                versions = sorted(
+                    [v for v in versions_dir.iterdir() if v.is_dir()],
+                    reverse=True,
+                )
+                if len(versions) <= 1:
+                    kept += len(versions)
+                    continue
+                # Keep the newest, delete the rest.
+                kept += 1
+                for old in versions[1:]:
+                    shutil.rmtree(old, ignore_errors=True)
+                    deleted += 1
+                # Update index.json if it exists.
+                index_path = mode_dir / "index.json"
+                if index_path.exists():
+                    try:
+                        idx = read_json(index_path)
+                        if isinstance(idx, list) and len(idx) > 1:
+                            idx = [idx[0]]  # keep only newest entry
+                            index_path.write_text(
+                                json.dumps(idx, indent=2, ensure_ascii=False),
+                                encoding="utf-8",
+                            )
+                    except Exception:
+                        pass
+        return {"ok": True, "deleted": deleted, "kept": kept}
+
+    @app.get("/api/fleet/export-csv")
+    def export_fleet_csv() -> Any:
+        """Export fleet summary as CSV for offline analysis."""
+        import csv
+        import io
+        summary = _build_machines_summary(rr)
+        machines_data = summary.get("machines", {})
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["machine", "mode", "rtp_pct", "ci_halfwidth_pp", "total_spins",
+                          "volatility_class", "volatility_percentile", "zero_win_rate",
+                          "tail_ge10x", "mechanics", "report_version"])
+        for machine in sorted(machines_data.keys(),
+                              key=lambda k: int(k[1:]) if k[1:].isdigit() else 0):
+            modes = machines_data[machine]
+            for mode in sorted(modes.keys(), key=int):
+                d = modes[mode]
+                writer.writerow([
+                    machine, mode,
+                    round(d.get("rtp_pct") or 0, 4),
+                    round(d.get("ci_halfwidth_pp") or 0, 4) if d.get("ci_halfwidth_pp") is not None else "",
+                    d.get("total_spins", 0),
+                    d.get("volatility_class", ""),
+                    d.get("volatility_percentile", ""),
+                    round(d.get("zero_win_rate", 0), 6),
+                    round(d.get("tail_ge10x", 0), 6),
+                    "|".join(d.get("mechanics", [])),
+                    d.get("report_version", ""),
+                ])
+        from starlette.responses import Response
+        return Response(
+            content=buf.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=fleet_summary.csv"},
+        )
+
     @app.get("/api/library/distributions")
     def library_distributions() -> dict[str, Any]:
         """Across-library metric distributions built from every

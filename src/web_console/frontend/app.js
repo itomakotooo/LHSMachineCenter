@@ -2258,6 +2258,28 @@ function bindEvents() {
   byId("batchRunBtn").addEventListener("click", () => startBatchRun());
   byId("batchCancelBtn").addEventListener("click", () => cancelBatchRun());
   byId("addServerBtn").addEventListener("click", () => addServer());
+  byId("reportCleanupBtn").addEventListener("click", async () => {
+    if (!confirm(fmt("reportCleanupConfirm"))) return;
+    const btn = byId("reportCleanupBtn");
+    const result = byId("reportCleanupResult");
+    btn.disabled = true;
+    result.textContent = "...";
+    try {
+      const data = await apiPost("/api/reports/cleanup");
+      result.textContent = fmt("reportCleanupDone", { deleted: data.deleted, kept: data.kept });
+      // Refresh catalog to update report counts.
+      const [m, mSummary] = await Promise.all([apiGet("/api/machines"), apiGet("/api/machines/summary").catch(() => null)]);
+      state.machines = m.machines || [];
+      state.machinesSummary = mSummary;
+      renderCatalogFilters();
+      renderMachineCatalog();
+      renderFleetOverview();
+    } catch (e) {
+      result.textContent = String(e.message || e);
+    } finally {
+      btn.disabled = false;
+    }
+  });
   byId("compareServersBtn").addEventListener("click", () => compareServers());
   byId("compareBtn").addEventListener("click", () => compareReports());
   byId("machineSelect").addEventListener("change", async () => {

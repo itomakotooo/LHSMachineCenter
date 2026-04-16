@@ -342,6 +342,9 @@
           <section class="panel fleet-overview">
             <h2 data-i18n="panelFleetOverview">机台概览</h2>
             <div class="fleet-stats" id="fleetStats"></div>
+            <div class="fleet-actions">
+              <a href="/api/fleet/export-csv" class="small-btn" download="fleet_summary.csv" data-i18n="btnExportCsv">导出 CSV</a>
+            </div>
           </section>
 
           <section class="panel machine-catalog">
@@ -470,6 +473,8 @@
             <div class="actions">
               <button id="cacheRefreshBtn" data-i18n="btnCacheRefresh">刷新缓存状态</button>
               <button id="cacheCleanupBtn" class="danger-btn" data-i18n="btnCacheCleanup">清理缓存</button>
+              <button id="reportCleanupBtn" class="danger-btn" data-i18n="btnReportCleanup">清理旧版本 Report</button>
+              <span id="reportCleanupResult" class="muted"></span>
             </div>
           </section>
         </div>
