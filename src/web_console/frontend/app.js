@@ -44,6 +44,8 @@ const state = {
   // Per-machine-mode best-report summary (from GET /api/machines/summary).
   // { machines: { M14: { "1": {rtp_pct, ci_halfwidth_pp, ...}, ... }, ... } }
   machinesSummary: null,
+  // Active batch run state.
+  activeBatchId: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -433,6 +435,97 @@ function renderMachineCatalog() {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
     });
   });
+  updateBatchRunHint();
+}
+
+// ── Batch Run UI ──────────────────────────────────────────────────
+
+function updateBatchRunHint() {
+  const hint = byId("batchRunHint");
+  const btn = byId("batchRunBtn");
+  if (!hint || !btn) return;
+  const n = state.runFilterMachines.size;
+  if (n === 0) {
+    hint.textContent = fmt("batchHintNone");
+    btn.disabled = true;
+  } else {
+    hint.textContent = fmt("batchHintSelected", { n });
+    btn.disabled = !!state.activeBatchId;
+  }
+}
+
+async function startBatchRun() {
+  const selected = [...state.runFilterMachines];
+  if (!selected.length) return;
+  // Build items: each selected machine × mode 2 (default).
+  // Use all available modes for each machine.
+  const items = [];
+  selected.forEach((machineName) => {
+    const m = state.machines.find((x) => x.machine === machineName);
+    const modes = m && m.modes && m.modes.length ? m.modes : [2];
+    // For batch, run only mode 2 to keep it fast. Users can adjust.
+    items.push({ machine: machineName, mode: modes.includes(2) ? 2 : modes[0] });
+  });
+  try {
+    const result = await apiPost("/api/batch-run", { items, concurrency: 3 });
+    state.activeBatchId = result.batch_id;
+    updateBatchRunHint();
+    pollBatchProgress();
+  } catch (e) {
+    alert(String(e.message || e));
+  }
+}
+
+function pollBatchProgress() {
+  if (!state.activeBatchId) return;
+  const panel = byId("batchProgressPanel");
+  if (panel) panel.classList.remove("hidden");
+
+  const poll = async () => {
+    if (!state.activeBatchId) return;
+    try {
+      const data = await apiGet(`/api/batch-run/${state.activeBatchId}`);
+      renderBatchProgress(data);
+      if (data.status === "completed") {
+        state.activeBatchId = null;
+        updateBatchRunHint();
+        // Refresh catalog to show new reports.
+        const mSummary = await apiGet("/api/machines/summary").catch(() => null);
+        state.machinesSummary = mSummary;
+        renderMachineCatalog();
+        await refreshRunList(false);
+        return;
+      }
+    } catch (_) { /* ignore transient errors */ }
+    setTimeout(poll, 2000);
+  };
+  poll();
+}
+
+function renderBatchProgress(data) {
+  const meta = byId("batchProgressMeta");
+  const list = byId("batchProgressList");
+  const cancelBtn = byId("batchCancelBtn");
+  if (!meta || !list) return;
+
+  meta.textContent = `${data.completed} / ${data.total} ${fmt("batchProgressLabel")}`;
+  if (cancelBtn) cancelBtn.disabled = data.status !== "running";
+
+  const statusIcon = { pending: "\u23f3", running: "\u25b6", completed: "\u2705", failed: "\u274c", cancelled: "\u23f8" };
+  list.innerHTML = data.items
+    .map((it) => {
+      const icon = statusIcon[it.status] || "\u2753";
+      const err = it.error ? ` — ${it.error.slice(0, 60)}` : "";
+      return `<div class="batch-item batch-${it.status}">${icon} ${it.machine} m${it.mode}${err}</div>`;
+    })
+    .join("");
+}
+
+async function cancelBatchRun() {
+  if (!state.activeBatchId) return;
+  try {
+    await apiPost(`/api/batch-run/${state.activeBatchId}/cancel`);
+  } catch (_) { /* ignore */ }
 }
 
 function renderRunFilterBanner() {
@@ -1529,6 +1622,8 @@ function bindEvents() {
     dashboard.classList.remove("sidebar-open");
   });
   byId("catalogSearch").addEventListener("input", () => renderMachineCatalog());
+  byId("batchRunBtn").addEventListener("click", () => startBatchRun());
+  byId("batchCancelBtn").addEventListener("click", () => cancelBatchRun());
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();
     applyModeCiConstraint();

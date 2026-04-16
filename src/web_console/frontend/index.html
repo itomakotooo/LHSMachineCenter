@@ -333,6 +333,17 @@
             <h2 data-i18n="panelMachineCatalog">机台目录</h2>
             <input type="text" id="catalogSearch" class="catalog-search" placeholder="搜索机台..." data-i18n-placeholder="catalogSearchPlaceholder" />
             <div id="machineCatalog" class="catalog-grouped"></div>
+            <div class="batch-run-controls">
+              <button id="batchRunBtn" class="primary-btn" data-i18n="btnBatchRun">批量采样选中</button>
+              <span id="batchRunHint" class="muted"></span>
+            </div>
+          </section>
+
+          <section class="panel batch-progress hidden" id="batchProgressPanel">
+            <h2 data-i18n="panelBatchProgress">批量采样进度</h2>
+            <div id="batchProgressMeta" class="meta"></div>
+            <div id="batchProgressList" class="batch-list"></div>
+            <button id="batchCancelBtn" class="danger-btn" data-i18n="btnBatchCancel">取消批量</button>
           </section>
 
           <section class="panel run-history">

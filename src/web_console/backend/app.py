@@ -164,6 +164,23 @@ class CacheCleanupRequest(BaseModel):
     max_delete_bytes: int = Field(default=0, ge=0)
 
 
+class BatchRunItem(BaseModel):
+    machine: str
+    mode: int
+
+
+class BatchRunRequest(BaseModel):
+    items: list[BatchRunItem]
+    concurrency: int = Field(default=3, ge=1, le=10)
+    chunk_spin_times: int = Field(default=5000, gt=0)
+    chunk_robot_count: int = Field(default=20, gt=0)
+    batch_concurrency: int = Field(default=2, gt=0)
+    max_chunks: int = Field(default=120, gt=0)
+    timeout: float = Field(default=300.0, gt=0)
+    target_halfwidth_pp: float = Field(default=0.5, ge=0)
+    auto_cleanup_cache: bool = Field(default=True)
+
+
 class AutoTuneRequest(BaseModel):
     machine: str
     mode: int
@@ -596,6 +613,153 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
             result[m][str(mode)]["volatility_percentile"] = pct
 
     return {"machines": result}
+
+
+class BatchRunManager:
+    """Orchestrates parallel analyzer runs for multiple machines."""
+
+    def __init__(
+        self,
+        store: "StateStore",
+        run_manager: "RunManager",
+        cache_root: Path,
+    ) -> None:
+        self._store = store
+        self._run_manager = run_manager
+        self._cache_root = cache_root
+        self._lock = threading.Lock()
+        self._batches: dict[str, dict[str, Any]] = {}
+
+    def start_batch(self, req: BatchRunRequest) -> dict[str, Any]:
+        batch_id = uuid.uuid4().hex[:12]
+        items = [{"machine": it.machine, "mode": it.mode, "status": "pending", "run_id": None}
+                 for it in req.items]
+        batch = {
+            "batch_id": batch_id,
+            "status": "running",
+            "items": items,
+            "concurrency": req.concurrency,
+            "params": {
+                "chunk_spin_times": req.chunk_spin_times,
+                "chunk_robot_count": req.chunk_robot_count,
+                "batch_concurrency": req.batch_concurrency,
+                "max_chunks": req.max_chunks,
+                "timeout": req.timeout,
+                "target_halfwidth_pp": req.target_halfwidth_pp,
+                "auto_cleanup_cache": req.auto_cleanup_cache,
+            },
+            "created_at": utc_now(),
+            "cancel_requested": False,
+        }
+        with self._lock:
+            self._batches[batch_id] = batch
+
+        thread = threading.Thread(target=self._run_batch, args=(batch_id,), daemon=True)
+        thread.start()
+        return {"batch_id": batch_id, "status": "running", "total": len(items)}
+
+    def get_batch(self, batch_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            b = self._batches.get(batch_id)
+            if b is None:
+                return None
+            completed = sum(1 for it in b["items"] if it["status"] in ("completed", "failed"))
+            return {
+                "batch_id": b["batch_id"],
+                "status": b["status"],
+                "total": len(b["items"]),
+                "completed": completed,
+                "items": [
+                    {
+                        "machine": it["machine"],
+                        "mode": it["mode"],
+                        "status": it["status"],
+                        "run_id": it.get("run_id"),
+                        "error": it.get("error"),
+                    }
+                    for it in b["items"]
+                ],
+                "created_at": b["created_at"],
+            }
+
+    def cancel_batch(self, batch_id: str) -> bool:
+        with self._lock:
+            b = self._batches.get(batch_id)
+            if b is None:
+                return False
+            b["cancel_requested"] = True
+            return True
+
+    def _run_batch(self, batch_id: str) -> None:
+        with self._lock:
+            batch = self._batches[batch_id]
+
+        items = batch["items"]
+        params = batch["params"]
+        concurrency = batch["concurrency"]
+        semaphore = threading.Semaphore(concurrency)
+
+        def _run_one(item: dict[str, Any]) -> None:
+            if batch.get("cancel_requested"):
+                item["status"] = "cancelled"
+                return
+            semaphore.acquire()
+            try:
+                if batch.get("cancel_requested"):
+                    item["status"] = "cancelled"
+                    return
+                item["status"] = "running"
+                req = RunCreateRequest(
+                    machine=item["machine"],
+                    mode=item["mode"],
+                    chunk_spin_times=params["chunk_spin_times"],
+                    chunk_robot_count=params["chunk_robot_count"],
+                    batch_concurrency=params["batch_concurrency"],
+                    max_chunks=params["max_chunks"],
+                    timeout=params["timeout"],
+                    target_halfwidth_pp=params["target_halfwidth_pp"],
+                )
+                result = self._run_manager.start_run(req)
+                run_id = result.get("run_id")
+                item["run_id"] = run_id
+                # Wait for the run to complete.
+                self._wait_for_run(run_id)
+                row = self._store.get_run(run_id)
+                status = (row or {}).get("status", "failed")
+                item["status"] = "completed" if status == "completed" else "failed"
+                if status != "completed":
+                    item["error"] = (row or {}).get("error_message", "")[:200]
+                # Auto-cleanup chunk cache for this run.
+                if params.get("auto_cleanup_cache") and run_id:
+                    cache_dir = self._cache_root / run_id
+                    if cache_dir.is_dir():
+                        import shutil
+                        shutil.rmtree(cache_dir, ignore_errors=True)
+            except Exception as exc:  # noqa: BLE001
+                item["status"] = "failed"
+                item["error"] = str(exc)[:200]
+            finally:
+                semaphore.release()
+
+        threads: list[threading.Thread] = []
+        for item in items:
+            t = threading.Thread(target=_run_one, args=(item,), daemon=True)
+            threads.append(t)
+            t.start()
+
+        for t in threads:
+            t.join()
+
+        batch["status"] = "completed"
+
+    def _wait_for_run(self, run_id: str) -> None:
+        """Poll until the run is no longer 'running'."""
+        import time
+        for _ in range(7200):  # max ~2 hours
+            row = self._store.get_run(run_id)
+            if row and row.get("status") not in ("running", None):
+                return
+            time.sleep(1)
 
 
 class OperationCoordinator:
@@ -1725,6 +1889,7 @@ def create_app(
         progress_dir=progress_dir,
         cache_root=cr,
     )
+    batch_mgr = BatchRunManager(store, manager, cr)
     ops = OperationCoordinator()
 
     app = FastAPI(title="Slot Console API", version="0.1.0")
@@ -1826,6 +1991,25 @@ def create_app(
         and returns RTP / CI / volatility metrics.
         """
         return _build_machines_summary(rr)
+
+    @app.post("/api/batch-run")
+    def start_batch_run(req: BatchRunRequest) -> dict[str, Any]:
+        if not req.items:
+            raise HTTPException(status_code=400, detail="items list is empty")
+        return batch_mgr.start_batch(req)
+
+    @app.get("/api/batch-run/{batch_id}")
+    def get_batch_run(batch_id: str) -> dict[str, Any]:
+        result = batch_mgr.get_batch(batch_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="batch not found")
+        return result
+
+    @app.post("/api/batch-run/{batch_id}/cancel")
+    def cancel_batch_run(batch_id: str) -> dict[str, Any]:
+        if not batch_mgr.cancel_batch(batch_id):
+            raise HTTPException(status_code=404, detail="batch not found")
+        return {"ok": True}
 
     @app.get("/api/models")
     def models() -> dict[str, Any]:
