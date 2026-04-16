@@ -438,6 +438,16 @@
               <input type="text" id="newServerEndpoint" placeholder="http://..." />
               <button id="addServerBtn" class="primary-btn" data-i18n="btnAddServer">添加服务器</button>
             </div>
+            <div class="server-compare-controls">
+              <h3 data-i18n="serverCompareTitle">版本对比</h3>
+              <div class="compare-row">
+                <select id="compareServerA"></select>
+                <span>vs</span>
+                <select id="compareServerB"></select>
+                <button id="compareServersBtn" class="primary-btn" data-i18n="btnCompareServers">对比 MD5</button>
+              </div>
+              <div id="serverCompareResult" class="compare-result"></div>
+            </div>
           </section>
 
           <section class="panel cache">

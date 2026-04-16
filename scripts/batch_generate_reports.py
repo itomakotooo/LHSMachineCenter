@@ -61,6 +61,7 @@ def run_report(
     mode: int,
     chunk_dir: Path,
     reports_root: Path,
+    force: bool = False,
 ) -> dict:
     """Run analyzer --from-cache for one machine-mode."""
     from datetime import datetime, timezone
@@ -77,12 +78,13 @@ def run_report(
     report_version = f"rv_{ts}_devcache"
     output_dir = reports_root / machine / f"mode_{mode}" / "versions" / report_version
 
-    # Skip if a report already exists for this machine-mode
-    existing_versions = reports_root / machine / f"mode_{mode}" / "versions"
-    if existing_versions.is_dir():
-        existing = [d for d in existing_versions.iterdir() if d.is_dir() and (d / "player_impact_summary.json").exists()]
-        if existing:
-            return {"machine": machine, "mode": mode, "ok": True, "skipped": True}
+    # Skip if a report already exists for this machine-mode (unless --force).
+    if not force:
+        existing_versions = reports_root / machine / f"mode_{mode}" / "versions"
+        if existing_versions.is_dir():
+            existing = [d for d in existing_versions.iterdir() if d.is_dir() and (d / "player_impact_summary.json").exists()]
+            if existing:
+                return {"machine": machine, "mode": mode, "ok": True, "skipped": True}
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -148,6 +150,8 @@ def main() -> None:
     parser.add_argument("--machines", nargs="*", default=None,
                         help="Machine names or ranges (default: all in dev_rawdata)")
     parser.add_argument("--concurrency", type=int, default=4)
+    parser.add_argument("--force", action="store_true",
+                        help="Regenerate even if reports already exist")
     parser.add_argument("--rawdata-dir", type=Path, default=DEV_RAWDATA)
     parser.add_argument("--reports-root", type=Path, default=REPORTS_ROOT)
     args = parser.parse_args()
@@ -175,7 +179,7 @@ def main() -> None:
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
         future_map = {
-            pool.submit(run_report, m, mode, d, args.reports_root): (m, mode)
+            pool.submit(run_report, m, mode, d, args.reports_root, args.force): (m, mode)
             for m, mode, d in all_chunks
         }
         for future in concurrent.futures.as_completed(future_map):

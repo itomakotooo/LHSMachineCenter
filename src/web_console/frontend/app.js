@@ -595,6 +595,7 @@ async function refreshServers() {
     state.defaultServer = data.default_server || "";
     fillServerSelector();
     renderServerTable();
+    fillCompareSelectors();
   } catch (_) { /* ignore */ }
 }
 
@@ -633,12 +634,30 @@ function renderServerTable() {
       `<td>${s.name}</td>` +
       `<td>${epDisplay}</td>` +
       `<td>${statusBadge}</td>` +
-      `<td><button class="srv-edit-btn small-btn">${fmt("btnEdit")}</button> <button class="srv-delete-btn small-btn danger-btn">${fmt("btnDelete")}</button></td>` +
+      `<td><button class="srv-scan-btn small-btn">${fmt("btnScan")}</button> <button class="srv-edit-btn small-btn">${fmt("btnEdit")}</button> <button class="srv-delete-btn small-btn danger-btn">${fmt("btnDelete")}</button></td>` +
       `</tr>`
     );
   }).join("");
 
-  // Wire up edit/delete buttons.
+  // Wire up scan/edit/delete buttons.
+  tbody.querySelectorAll(".srv-scan-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = btn.closest("tr");
+      const sid = row.dataset.serverId;
+      btn.disabled = true;
+      btn.textContent = "...";
+      try {
+        const result = await apiPost(`/api/servers/${sid}/scan`);
+        btn.textContent = `${result.machine_count} machines`;
+        fillCompareSelectors();
+      } catch (e) {
+        btn.textContent = fmt("btnScan");
+        alert(String(e.message || e));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
   tbody.querySelectorAll(".srv-edit-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const row = btn.closest("tr");
@@ -830,6 +849,55 @@ function diffPp(a, b) {
   const d = Number(a) - Number(b);
   const sign = d >= 0 ? "+" : "";
   return `${sign}${d.toFixed(2)}pp`;
+}
+
+function fillCompareSelectors() {
+  const selA = byId("compareServerA");
+  const selB = byId("compareServerB");
+  if (!selA || !selB) return;
+  const servers = state.servers || [];
+  [selA, selB].forEach((sel) => {
+    const prev = sel.value;
+    sel.innerHTML = "";
+    servers.forEach((s) => sel.appendChild(new Option(`${s.name} (${s.id})`, s.id)));
+    if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  });
+  // Default: A = first, B = second (if available).
+  if (selA.options.length >= 2 && selA.value === selB.value) {
+    selB.selectedIndex = 1;
+  }
+}
+
+async function compareServers() {
+  const a = byId("compareServerA")?.value;
+  const b = byId("compareServerB")?.value;
+  const resultDiv = byId("serverCompareResult");
+  if (!a || !b || !resultDiv) return;
+  if (a === b) { resultDiv.innerHTML = `<div class="muted">${fmt("compareSelectDifferent")}</div>`; return; }
+
+  resultDiv.innerHTML = `<div class="muted">Loading...</div>`;
+  try {
+    const data = await apiGet(`/api/servers/compare?a=${a}&b=${b}`);
+    if (!data.diffs || data.diffs.length === 0) {
+      resultDiv.innerHTML = `<div class="compare-ok">${fmt("compareIdentical", {total: data.total_a})}</div>`;
+      return;
+    }
+    const rows = data.diffs.map((d) => {
+      let badge = "";
+      if (d.status === "only_in_a") badge = `<span class="diff-badge diff-only-a">only in ${a}</span>`;
+      else if (d.status === "only_in_b") badge = `<span class="diff-badge diff-only-b">only in ${b}</span>`;
+      else {
+        const parts = [];
+        if (d.config_changed) parts.push("config");
+        if (d.code_changed) parts.push("code");
+        badge = `<span class="diff-badge diff-changed">${parts.join("+")} changed</span>`;
+      }
+      return `<div class="diff-item">${d.machine} ${badge}</div>`;
+    }).join("");
+    resultDiv.innerHTML = `<div class="compare-summary">${data.diff_count} ${fmt("compareDiffs")} (${a}: ${data.total_a} | ${b}: ${data.total_b})</div>${rows}`;
+  } catch (e) {
+    resultDiv.innerHTML = `<div class="muted">${e.message || e}</div>`;
+  }
 }
 
 function renderRunFilterBanner() {
@@ -1984,6 +2052,7 @@ function bindEvents() {
   byId("batchRunBtn").addEventListener("click", () => startBatchRun());
   byId("batchCancelBtn").addEventListener("click", () => cancelBatchRun());
   byId("addServerBtn").addEventListener("click", () => addServer());
+  byId("compareServersBtn").addEventListener("click", () => compareServers());
   byId("compareBtn").addEventListener("click", () => compareReports());
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();

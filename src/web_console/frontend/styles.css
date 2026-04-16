@@ -1035,6 +1035,59 @@ button:disabled {
   background: #f0f4f8;
 }
 
+/* Server compare */
+.server-compare-controls {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+.server-compare-controls h3 {
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+.compare-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.compare-row select {
+  padding: 4px 8px;
+  border: 1px solid #d4ddea;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.compare-result {
+  margin-top: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.compare-ok {
+  color: #059669;
+  font-weight: 600;
+}
+.compare-summary {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.diff-item {
+  font-size: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.diff-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  font-weight: 600;
+}
+.diff-only-a { background: #fef3c7; color: #92400e; }
+.diff-only-b { background: #dbeafe; color: #1e40af; }
+.diff-changed { background: #fee2e2; color: #991b1b; }
+
 /* Version history */
 .version-history, .report-comparison {
   grid-column: span 12;

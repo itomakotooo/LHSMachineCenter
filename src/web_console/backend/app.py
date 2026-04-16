@@ -194,6 +194,65 @@ def save_servers(data: dict[str, Any], path: Path | None = None) -> None:
     )
 
 
+def _fetch_machine_config_md5(endpoint: str, timeout: float = 30.0) -> dict[str, Any] | None:
+    """Call MachineConfigMd5 on a server and return the parsed response."""
+    url = f"{endpoint.rstrip('/')}/MachineTest/MachineConfigMd5"
+    req = urllib.request.Request(url, method="POST",
+                                headers={"Content-Type": "application/json"},
+                                data=b"{}")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+        return json.loads(body)
+    except Exception:
+        return None
+
+
+def _save_server_snapshot(server_id: str, data: dict[str, Any]) -> Path:
+    """Save a MachineConfigMd5 snapshot for a server."""
+    snap_dir = ROOT / ".probe" / "server_snapshots"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    out_path = snap_dir / f"{server_id}.json"
+    out_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return out_path
+
+
+def _load_server_snapshot(server_id: str) -> dict[str, Any] | None:
+    snap_path = ROOT / ".probe" / "server_snapshots" / f"{server_id}.json"
+    if snap_path.exists():
+        return read_json(snap_path)
+    return None
+
+
+def _compare_snapshots(a: dict[str, Any], b: dict[str, Any]) -> list[dict[str, Any]]:
+    """Compare two MachineConfigMd5 snapshots. Returns list of diffs."""
+    diffs = []
+    all_keys = sorted(set(list(a.keys()) + list(b.keys())),
+                      key=lambda k: int(k[1:]) if k[1:].isdigit() else 0)
+    for key in all_keys:
+        ma = a.get(key)
+        mb = b.get(key)
+        if ma is None:
+            diffs.append({"machine": key, "status": "only_in_b"})
+        elif mb is None:
+            diffs.append({"machine": key, "status": "only_in_a"})
+        else:
+            config_a = ma.get("configSummaryMd5", "")
+            config_b = mb.get("configSummaryMd5", "")
+            code_a = ma.get("codeSummaryMd5", "")
+            code_b = mb.get("codeSummaryMd5", "")
+            if config_a != config_b or code_a != code_b:
+                diffs.append({
+                    "machine": key,
+                    "status": "changed",
+                    "config_changed": config_a != config_b,
+                    "code_changed": code_a != code_b,
+                    "config_a": config_a, "config_b": config_b,
+                    "code_a": code_a, "code_b": code_b,
+                })
+    return diffs
+
+
 def get_server_endpoint(server_id: str, path: Path | None = None) -> str:
     """Resolve the sampling API endpoint URL for a server."""
     cfg = load_servers(path)
@@ -2089,6 +2148,48 @@ def create_app(
             target["active"] = req.active
         save_servers(cfg, sc)
         return {"ok": True, "server": target}
+
+    @app.post("/api/servers/{server_id}/scan")
+    def scan_server(server_id: str) -> dict[str, Any]:
+        """Fetch MachineConfigMd5 from a server and cache the snapshot."""
+        cfg = load_servers(sc)
+        target = next((s for s in cfg.get("servers", []) if s["id"] == server_id), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail="server not found")
+        ep = target.get("endpoint", "").strip()
+        if not ep:
+            raise HTTPException(status_code=400, detail="server has no endpoint configured")
+        data = _fetch_machine_config_md5(ep)
+        if data is None:
+            raise HTTPException(status_code=502, detail="failed to fetch MachineConfigMd5 from server")
+        _save_server_snapshot(server_id, data)
+        return {"ok": True, "machine_count": len(data), "server_id": server_id}
+
+    @app.get("/api/servers/{server_id}/snapshot")
+    def get_server_snapshot(server_id: str) -> dict[str, Any]:
+        snap = _load_server_snapshot(server_id)
+        if snap is None:
+            raise HTTPException(status_code=404, detail="no snapshot for this server; run scan first")
+        return {"server_id": server_id, "machine_count": len(snap), "snapshot": snap}
+
+    @app.get("/api/servers/compare")
+    def compare_servers(a: str, b: str) -> dict[str, Any]:
+        """Compare MachineConfigMd5 snapshots between two servers."""
+        snap_a = _load_server_snapshot(a)
+        snap_b = _load_server_snapshot(b)
+        if snap_a is None:
+            raise HTTPException(status_code=404, detail=f"no snapshot for server '{a}'")
+        if snap_b is None:
+            raise HTTPException(status_code=404, detail=f"no snapshot for server '{b}'")
+        diffs = _compare_snapshots(snap_a, snap_b)
+        return {
+            "server_a": a,
+            "server_b": b,
+            "total_a": len(snap_a),
+            "total_b": len(snap_b),
+            "diffs": diffs,
+            "diff_count": len(diffs),
+        }
 
     @app.delete("/api/servers/{server_id}")
     def delete_server(server_id: str) -> dict[str, Any]:
