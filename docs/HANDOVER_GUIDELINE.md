@@ -225,7 +225,7 @@ survived.
 | (drawer|  Charts (1x1, multiplier bucket only)         |
 | <1120) |  SpinType panel     (#spinTypeTable w/ beha-  |
 |        |    vior column + N/A for free-spin rtp_pct)   |
-| order: |  Feature panel      (#featureBreakdownPanel,  |
+| order: |  Feature panel      (#featureBreakdownInline,  |
 | ctrl   |    hidden single-feature; M272: Normal-       |
 | -> cfg |    CollectionSpin + NewFreespin)              |
 | -> mdl |  Bonus-chain panel  (#bonusChainDynamicsPanel,|
@@ -316,7 +316,7 @@ E2E selectors that must be preserved across any future layout edits:
   merge), `#runFilterBanner` (shown when a machine filter is active),
   `.load-run-btn` / `.delete-run-btn` (per-row).
 - Feature / bonus-chain panels added in the upstream-field-audit
-  round: `#featureBreakdownPanel` (+ `#featureBreakdownMeta` +
+  round: `#featureBreakdownInline` (+ `#featureBreakdownMeta` +
   `#featureBreakdownBody`) and `#bonusChainDynamicsPanel` (+
   `#bonusChainMeta` + `#bonusChainBody`). Both carry `.hidden` when
   their respective summary block reports applicable=false.
@@ -498,7 +498,7 @@ they generalize to any new machine automatically.
   which groups payouts by a NAMED feature string ("Normal",
   "NormalCollectionSpin", "NewFreespin", ...). Single-feature
   machines (M14: only "Normal") emit applicable=false. Multi-feature
-  machines render `#featureBreakdownPanel` with per-feature
+  machines render `#featureBreakdownInline` with per-feature
   total_win / rtp_contribution_pp / share_of_total_win and a
   per-payout_id table with share_of_feature_win bar. The feature
   name itself is the operator-facing "SpinType name" the user asked

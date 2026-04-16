@@ -70,6 +70,28 @@ Stop:
 7. Optionally trigger model interpretation. Available on `completed`
    AND `cancelled` runs (LLM can comment on partial data).
 
+## 3a. Rebuild from Cache
+
+When the analyzer code changes (new surfaces, bug fixes, classification
+tweaks), you can rebuild an existing run's report from the same raw
+data without re-fetching from the upstream API:
+
+1. Go to "Fleet Management" tab.
+2. Find the run in the history table. The "Rebuild" button shows:
+   - **"N chunks ✓"**: cached data is compatible; click to rebuild.
+   - **"N chunks ✗ stale"**: upstream schema changed since sampling;
+     the cached data can't be parsed by the current analyzer. Delete
+     the stale cache and resample.
+   - **Disabled (greyed)**: no cached chunks exist for this run.
+3. Click "Rebuild" → the backend re-parses all cached raw API
+   responses through the current analyzer → overwrites summary +
+   report → updates RTP/CI/quality in the run history.
+
+Raw chunks are saved automatically during every run
+(`cache/chunks/{run_id}/chunk_*.json`, ~250KB each). The cache
+can be cleaned via the "Chunk Cache" panel at the bottom of the
+Fleet Management tab.
+
 ## 4. Auto Tune Notes
 
 Auto tune endpoint:
