@@ -1037,11 +1037,13 @@ class RunManager:
         analyzer: Path | None = None,
         reports_root: Path | None = None,
         progress_dir: Path | None = None,
+        cache_root: Path | None = None,
         popen_factory: "Callable[[list[str], Path], Any] | None" = None,
     ) -> None:
         self.store = store
         self._analyzer = analyzer if analyzer is not None else ANALYZER
         self._reports_root = reports_root if reports_root is not None else REPORTS_ROOT
+        self._cache_root = cache_root if cache_root is not None else CACHE_ROOT
         self._progress_dir = progress_dir if progress_dir is not None else PROGRESS_DIR
         self._popen_factory = popen_factory if popen_factory is not None else _default_popen_factory
         self._lock = threading.Lock()
@@ -1166,6 +1168,12 @@ class RunManager:
         # delete_run removes the run artefacts.
         stop_flag_file = self._progress_dir / f"{run_id}.stop"
         cmd.extend(["--stop-flag-file", str(stop_flag_file)])
+        # Chunk cache: raw API responses are persisted here for offline
+        # report rebuild. The cache root is the same cache/ tree that
+        # /api/cache/status + cleanup already operate on, so cleanup
+        # naturally covers it. Rule #13: cleanup must skip active chunks.
+        chunk_cache_dir = self._cache_root / run_id
+        cmd.extend(["--chunk-cache-dir", str(chunk_cache_dir)])
 
         process = self._popen_factory(cmd, ROOT)
         managed = ManagedRun(
@@ -1583,6 +1591,7 @@ def create_app(
         analyzer=az,
         reports_root=rr,
         progress_dir=progress_dir,
+        cache_root=cr,
     )
     ops = OperationCoordinator()
 
@@ -1752,6 +1761,239 @@ def create_app(
     @app.post("/api/runs/{run_id}/cancel")
     def run_cancel(run_id: str) -> dict[str, Any]:
         return manager.cancel_run(run_id)
+
+    @app.get("/api/runs/{run_id}/chunks")
+    def run_chunks(run_id: str) -> dict[str, Any]:
+        """Chunk cache status for a run. Returns count + size so the
+        manage-tab can show whether rebuild is available."""
+        chunk_dir = cr / run_id
+        if not chunk_dir.is_dir():
+            return {
+                "run_id": run_id,
+                "chunk_count": 0,
+                "total_bytes": 0,
+                "cache_version": None,
+                "available": False,
+            }
+        files = sorted(chunk_dir.glob("chunk_*.json"))
+        total_bytes = sum(f.stat().st_size for f in files)
+        # Read version from first file
+        cache_version = None
+        if files:
+            try:
+                first = json.loads(files[0].read_text(encoding="utf-8"))
+                cache_version = first.get("_cache_version")
+            except Exception:
+                pass
+        return {
+            "run_id": run_id,
+            "chunk_count": len(files),
+            "total_bytes": total_bytes,
+            "cache_version": cache_version,
+            "available": len(files) > 0,
+        }
+
+    @app.post("/api/runs/{run_id}/rebuild")
+    def run_rebuild(run_id: str) -> dict[str, Any]:
+        """Rebuild a run's report from cached raw chunk data.
+
+        Re-parses every cached chunk through the current analyzer code,
+        re-aggregates, and overwrites the summary + report files.
+        Requires cached chunks to exist under cache/chunks/{run_id}/.
+        """
+        row = store.get_run(run_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="run not found")
+        if str(row.get("status", "")).lower() == "running":
+            raise HTTPException(status_code=409, detail="run is still in progress")
+
+        chunk_dir = cr / run_id
+        if not chunk_dir.is_dir():
+            raise HTTPException(
+                status_code=404,
+                detail="no cached chunks for this run; resample required",
+            )
+        chunk_files = sorted(chunk_dir.glob("chunk_*.json"))
+        if not chunk_files:
+            raise HTTPException(
+                status_code=404,
+                detail="chunk cache directory is empty; resample required",
+            )
+
+        if not ops.acquire("rebuild_report"):
+            snap = ops.snapshot()
+            raise HTTPException(
+                status_code=409,
+                detail=f"system busy: {snap.get('operation') or 'unknown'}",
+            )
+        try:
+            from fresh_slotlab.player_impact_analyzer import (
+                CHUNK_CACHE_VERSION,
+                run_sampling_chunk,
+            )
+
+            # Load each cached raw response and re-parse through the
+            # current analyzer code.
+            chunk_records: list[dict[str, Any]] = []
+            for cf in chunk_files:
+                envelope = json.loads(cf.read_text(encoding="utf-8"))
+                raw_resp = envelope.get("response")
+                if raw_resp is None:
+                    continue
+                # Re-parse: monkey-patch is avoided by calling
+                # run_sampling_chunk with a patched post_json. Simpler:
+                # call the function with the response pre-loaded.
+                # We temporarily swap the module-level post_json.
+                import fresh_slotlab.player_impact_analyzer as pia
+                _saved_post = pia.post_json
+                pia.post_json = lambda payload, timeout, _r=raw_resp: _r
+                try:
+                    rec = run_sampling_chunk(
+                        chunk_index=int(envelope.get("_chunk_index", 0)),
+                        machine=str(row["machine"]),
+                        rtp_mode=int(row["mode"]),
+                        bet=1000,
+                        spin_times=int(row["chunk_spin_times"]),
+                        robot_count=int(row["chunk_robot_count"]),
+                        timeout=float(row["timeout"]),
+                    )
+                finally:
+                    pia.post_json = _saved_post
+                if rec.get("ok"):
+                    chunk_records.append(rec)
+
+            if not chunk_records:
+                raise HTTPException(
+                    status_code=422,
+                    detail="all cached chunks failed to re-parse",
+                )
+
+            # Feed the chunk records through main()'s aggregation by
+            # running main() with the cached data. Simpler: write a
+            # temp script... Actually simplest: re-run main() with
+            # post_json patched to return pre-loaded responses.
+            # Use the same approach as the regression test:
+            import sys as _sys
+            import tempfile
+            from io import StringIO
+            from pathlib import Path as _Path
+
+            import fresh_slotlab.player_impact_analyzer as pia2
+
+            # Prepare a response iterator: each call to post_json gets
+            # the next cached response.
+            _cached_responses = [
+                json.loads(cf.read_text(encoding="utf-8")).get("response")
+                for cf in chunk_files
+                if json.loads(cf.read_text(encoding="utf-8")).get("response") is not None
+            ]
+            _resp_iter = iter(_cached_responses)
+            _saved2 = pia2.post_json
+            pia2.post_json = lambda payload, timeout: next(_resp_iter)
+            _saved_exit = os._exit
+            os._exit = lambda rc: None
+
+            output_dir = _Path(row["summary_file"]).parent
+            output_dir.mkdir(parents=True, exist_ok=True)
+            progress_file = _Path(row["progress_file"])
+
+            test_argv = [
+                "analyzer",
+                "--machine", str(row["machine"]),
+                "--rtp-mode", str(row["mode"]),
+                "--bet", "1000",
+                "--chunk-spin-times", str(row["chunk_spin_times"]),
+                "--chunk-robot-count", str(row["chunk_robot_count"]),
+                "--batch-concurrency", "1",
+                "--max-chunks", str(len(_cached_responses)),
+                "--target-halfwidth-pp", "999",
+                "--timeout", str(row["timeout"]),
+                "--output-dir", str(output_dir),
+                "--progress-file", str(progress_file),
+                "--run-id", run_id,
+                "--bankruptcy-session-spins", str(row["bankruptcy_session_spins"]),
+                "--bankruptcy-bankroll-multipliers", row["bankruptcy_bankroll_multipliers"],
+            ]
+
+            old_argv = _sys.argv
+            _sys.argv = test_argv
+            captured = StringIO()
+            old_stdout = _sys.stdout
+            _sys.stdout = captured
+            try:
+                from fresh_slotlab.player_impact_analyzer import main
+                rc = main()
+            finally:
+                _sys.stdout = old_stdout
+                _sys.argv = old_argv
+                pia2.post_json = _saved2
+                os._exit = _saved_exit
+
+            if rc != 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"analyzer main() returned {rc} during rebuild",
+                )
+
+            # Re-read the rebuilt summary and update the DB row.
+            summary_path = _Path(row["summary_file"])
+            if summary_path.exists():
+                summary = read_json(summary_path)
+                rtp = summary.get("rtp", {}).get("point_pct")
+                hw = summary.get("sampling", {}).get("achieved_halfwidth_pp")
+                ql = (
+                    summary.get("guideline_assessment", {})
+                    .get("data_quality", {})
+                    .get("quality_label")
+                )
+                patch: dict[str, Any] = {}
+                if rtp is not None:
+                    patch["achieved_rtp_pct"] = float(rtp)
+                if hw is not None:
+                    patch["achieved_halfwidth_pp"] = float(hw)
+                if ql:
+                    patch["quality_label"] = str(ql)
+                if patch:
+                    store.update_run(run_id, patch)
+
+                # Update report index + latest.json
+                mode_dir = rr / str(row["machine"]) / f"mode_{row['mode']}"
+                index_path = mode_dir / "index.json"
+                latest_path = mode_dir / "latest.json"
+                report_version = row.get("report_version", "")
+                item = {
+                    "report_version": report_version,
+                    "run_id": run_id,
+                    "created_at": utc_now(),
+                    "summary_file": str(summary_path),
+                    "report_file": str(row.get("report_file", "")),
+                    "rtp_point_pct": rtp,
+                    "quality_label": ql,
+                }
+                # Replace existing entry or append.
+                index_payload = []
+                if index_path.exists():
+                    try:
+                        raw = read_json(index_path)
+                        if isinstance(raw, list):
+                            index_payload = [
+                                e for e in raw
+                                if isinstance(e, dict) and e.get("report_version") != report_version
+                            ]
+                    except Exception:
+                        pass
+                index_payload.append(item)
+                write_json(index_path, index_payload)
+                write_json(latest_path, item)
+
+            return {
+                "run_id": run_id,
+                "status": "rebuilt",
+                "chunks_reprocessed": len(chunk_records),
+                "rtp_point_pct": rtp if summary_path.exists() else None,
+            }
+        finally:
+            ops.release()
 
     @app.delete("/api/runs/{run_id}")
     def run_delete(run_id: str) -> dict[str, Any]:
