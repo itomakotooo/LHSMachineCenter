@@ -465,6 +465,12 @@ function renderMachineCatalog() {
       grid.appendChild(d);
     });
     section.appendChild(grid);
+    // Auto-collapse groups when no search query (too many cards).
+    // Expand all when user is searching.
+    if (!query) {
+      section.classList.add("collapsed");
+      header.querySelector(".catalog-group-arrow").innerHTML = "&#9654;";
+    }
     wrap.appendChild(section);
   });
 
@@ -2184,6 +2190,15 @@ function bindEvents() {
   });
   byId("catalogSearch").addEventListener("input", () => renderMachineCatalog());
   byId("catalogSort").addEventListener("change", () => renderMachineCatalog());
+  byId("catalogCollapseAll").addEventListener("click", () => {
+    const groups = document.querySelectorAll(".catalog-group");
+    const allCollapsed = [...groups].every((g) => g.classList.contains("collapsed"));
+    groups.forEach((g) => {
+      g.classList.toggle("collapsed", !allCollapsed);
+      const arrow = g.querySelector(".catalog-group-arrow");
+      if (arrow) arrow.innerHTML = allCollapsed ? "&#9660;" : "&#9654;";
+    });
+  });
   byId("batchRunBtn").addEventListener("click", () => startBatchRun());
   byId("batchCancelBtn").addEventListener("click", () => cancelBatchRun());
   byId("addServerBtn").addEventListener("click", () => addServer());
