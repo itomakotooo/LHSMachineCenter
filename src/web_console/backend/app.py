@@ -1762,35 +1762,85 @@ def create_app(
     def run_cancel(run_id: str) -> dict[str, Any]:
         return manager.cancel_run(run_id)
 
-    @app.get("/api/runs/{run_id}/chunks")
-    def run_chunks(run_id: str) -> dict[str, Any]:
-        """Chunk cache status for a run. Returns count + size so the
-        manage-tab can show whether rebuild is available."""
-        chunk_dir = cr / run_id
+    def _check_chunk_compatibility(chunk_dir: Path) -> dict[str, Any]:
+        """Read the first cached chunk and verify its upstream schema
+        fingerprint against the current analyzer's required fields.
+
+        Returns {compatible: bool, reason: str|None, fingerprint: str|None,
+        chunk_count: int, total_bytes: int}.
+        """
         if not chunk_dir.is_dir():
-            return {
-                "run_id": run_id,
-                "chunk_count": 0,
-                "total_bytes": 0,
-                "cache_version": None,
-                "available": False,
-            }
+            return {"compatible": False, "reason": "no_cache_dir",
+                    "fingerprint": None, "chunk_count": 0, "total_bytes": 0}
         files = sorted(chunk_dir.glob("chunk_*.json"))
+        if not files:
+            return {"compatible": False, "reason": "empty_cache",
+                    "fingerprint": None, "chunk_count": 0, "total_bytes": 0}
         total_bytes = sum(f.stat().st_size for f in files)
-        # Read version from first file
-        cache_version = None
-        if files:
-            try:
-                first = json.loads(files[0].read_text(encoding="utf-8"))
-                cache_version = first.get("_cache_version")
-            except Exception:
-                pass
+        try:
+            first = json.loads(files[0].read_text(encoding="utf-8"))
+        except Exception:
+            return {"compatible": False, "reason": "unreadable",
+                    "fingerprint": None, "chunk_count": len(files),
+                    "total_bytes": total_bytes}
+        stored_fp = first.get("_upstream_schema_fingerprint")
+        # Re-compute fingerprint from the cached response to compare
+        # against current analyzer expectations.
+        raw_resp = first.get("response")
+        if raw_resp is None:
+            return {"compatible": False, "reason": "no_response_in_envelope",
+                    "fingerprint": stored_fp, "chunk_count": len(files),
+                    "total_bytes": total_bytes}
+        # Quick schema check: does the first round have the required fields?
+        from fresh_slotlab.player_impact_analyzer import (
+            _REQUIRED_ROUND_FIELDS,
+            _REQUIRED_BET_FIELDS_ANY,
+        )
+        try:
+            for robot in (raw_resp if isinstance(raw_resp, list) else []):
+                if not isinstance(robot, dict):
+                    continue
+                rounds = json.loads(robot["roundResult"]) if isinstance(robot.get("roundResult"), str) else []
+                if not rounds:
+                    continue
+                first_round = rounds[0] if isinstance(rounds, list) and rounds else {}
+                missing = [f for f in _REQUIRED_ROUND_FIELDS if f not in first_round]
+                if not any(f in first_round for f in _REQUIRED_BET_FIELDS_ANY):
+                    missing.append("|".join(_REQUIRED_BET_FIELDS_ANY))
+                if missing:
+                    return {
+                        "compatible": False,
+                        "reason": f"schema_drift:{','.join(missing)}",
+                        "fingerprint": stored_fp,
+                        "chunk_count": len(files),
+                        "total_bytes": total_bytes,
+                    }
+                break  # only need to check first round
+        except Exception:
+            return {"compatible": False, "reason": "parse_error",
+                    "fingerprint": stored_fp, "chunk_count": len(files),
+                    "total_bytes": total_bytes}
         return {
-            "run_id": run_id,
+            "compatible": True,
+            "reason": None,
+            "fingerprint": stored_fp,
             "chunk_count": len(files),
             "total_bytes": total_bytes,
-            "cache_version": cache_version,
-            "available": len(files) > 0,
+        }
+
+    @app.get("/api/runs/{run_id}/chunks")
+    def run_chunks(run_id: str) -> dict[str, Any]:
+        """Chunk cache status for a run with compatibility check."""
+        chunk_dir = cr / run_id
+        compat = _check_chunk_compatibility(chunk_dir)
+        return {
+            "run_id": run_id,
+            "chunk_count": compat["chunk_count"],
+            "total_bytes": compat["total_bytes"],
+            "fingerprint": compat["fingerprint"],
+            "compatible": compat["compatible"],
+            "incompatible_reason": compat["reason"],
+            "available": compat["chunk_count"] > 0 and compat["compatible"],
         }
 
     @app.post("/api/runs/{run_id}/rebuild")
@@ -1808,17 +1858,18 @@ def create_app(
             raise HTTPException(status_code=409, detail="run is still in progress")
 
         chunk_dir = cr / run_id
-        if not chunk_dir.is_dir():
+        compat = _check_chunk_compatibility(chunk_dir)
+        if not compat["chunk_count"]:
             raise HTTPException(
                 status_code=404,
                 detail="no cached chunks for this run; resample required",
             )
-        chunk_files = sorted(chunk_dir.glob("chunk_*.json"))
-        if not chunk_files:
+        if not compat["compatible"]:
             raise HTTPException(
-                status_code=404,
-                detail="chunk cache directory is empty; resample required",
+                status_code=409,
+                detail=f"cached chunks incompatible with current analyzer: {compat['reason']}; resample required",
             )
+        chunk_files = sorted(chunk_dir.glob("chunk_*.json"))
 
         if not ops.acquire("rebuild_report"):
             snap = ops.snapshot()

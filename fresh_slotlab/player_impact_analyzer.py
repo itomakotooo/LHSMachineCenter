@@ -735,6 +735,37 @@ def build_multiplier_bucket_rows(
 CHUNK_CACHE_VERSION = 1
 
 
+def _compute_upstream_schema_fingerprint(resp: Any) -> str | None:
+    """Compute a deterministic fingerprint of the upstream round schema.
+
+    Takes the sorted key set from the first robot's first round and
+    hashes it. If the upstream renames / adds / removes a field, the
+    hash changes → cached data is flagged as incompatible.
+
+    Returns None when the response doesn't contain parseable rounds
+    (broken data — shouldn't normally happen).
+    """
+    import hashlib
+    try:
+        for robot in resp if isinstance(resp, list) else []:
+            if not isinstance(robot, dict):
+                continue
+            rr = robot.get("roundResult")
+            if not isinstance(rr, str):
+                continue
+            rounds = json.loads(rr)
+            if not isinstance(rounds, list) or not rounds:
+                continue
+            first_round = rounds[0]
+            if not isinstance(first_round, dict):
+                continue
+            keys = sorted(first_round.keys())
+            return hashlib.sha256("|".join(keys).encode()).hexdigest()[:16]
+    except Exception:
+        pass
+    return None
+
+
 def _save_chunk_cache(
     resp: Any,
     chunk_index: int,
@@ -764,6 +795,7 @@ def _save_chunk_cache(
             "_robot_count": robot_count,
             "_chunk_index": chunk_index,
             "_saved_at": utc_now(),
+            "_upstream_schema_fingerprint": _compute_upstream_schema_fingerprint(resp),
             "response": resp,
         }
         out_path = cache_dir / f"chunk_{chunk_index:04d}.json"

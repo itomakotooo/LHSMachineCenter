@@ -499,15 +499,20 @@ function renderRunHistory() {
     });
   });
 
-  // Rebuild (per-row): disabled by default; enabled only when chunk
-  // cache exists for this run. We check asynchronously per-row.
+  // Rebuild (per-row): disabled by default; async-checks chunk
+  // compatibility before enabling. Incompatible chunks get a red
+  // warning tooltip.
   body.querySelectorAll(".rebuild-run-btn").forEach((b) => {
-    b.disabled = true; // default disabled until chunk check
+    b.disabled = true;
     b.title = fmt("rebuildNoChunks");
     apiGet(`/api/runs/${encodeURIComponent(b.dataset.id)}/chunks`).then((d) => {
-      if (d.available && d.chunk_count > 0) {
+      if (d.available && d.compatible) {
         b.disabled = state.busyActions.size > 0;
-        b.title = fmt("chunkCacheLabel", { count: d.chunk_count });
+        b.title = fmt("chunkCompatible", { count: d.chunk_count });
+      } else if (d.chunk_count > 0 && !d.compatible) {
+        b.disabled = true;
+        b.title = fmt("rebuildIncompatible", { reason: d.incompatible_reason || "unknown" });
+        b.classList.add("stale");
       }
     }).catch(() => {});
     b.addEventListener("click", async () => {

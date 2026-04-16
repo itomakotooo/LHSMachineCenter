@@ -932,6 +932,10 @@ button:disabled {
   padding: 2px 6px;
   font-size: 11px;
 }
+.action-cell button.stale {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
 
 /* Muted cell style (used for spin_type_breakdown rtp_pct=null). */
 td.muted {
