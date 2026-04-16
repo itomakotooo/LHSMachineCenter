@@ -743,19 +743,25 @@ function renderBonusChainDynamicsPanel(summary) {
   const q = d.chain_length_quantiles || {};
   const rq = d.chain_max_ratio_quantiles || {};
   const hist = Array.isArray(d.extra_ratio_histogram) ? d.extra_ratio_histogram : [];
-  const maxHistCount = Math.max(...hist.map((h) => Number(h.rounds || 0)), 0);
+  // Histogram: show share of total bonus rounds instead of absolute count.
+  const totalBonusRounds = Number(d.bonus_round_count || 0);
+  const maxHistShare = Math.max(...hist.map((h) => Number(h.rounds || 0)), 0) / (totalBonusRounds || 1);
   const histHtml = hist
     .map((h) => {
       const r = Number(h.rounds || 0);
-      const bar = maxHistCount > 0 ? Math.min(100, (r / maxHistCount) * 100) : 0;
+      const share = totalBonusRounds > 0 ? (r / totalBonusRounds) : 0;
+      const bar = maxHistShare > 0 ? Math.min(100, (share / maxHistShare) * 100) : 0;
       return (
         `<tr>` +
         `<td>${fInt(h.ratio)}x</td>` +
-        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${fInt(r)}</td>` +
+        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${(share * 100).toFixed(1)}%</td>` +
         `</tr>`
       );
     })
     .join("");
+  // Depth curve: only show depth bucket + avg ExtraRatio (the
+  // escalation speed). "Rounds" column was confusing and carried
+  // no actionable signal.
   const depth = Array.isArray(d.extra_ratio_by_chain_depth) ? d.extra_ratio_by_chain_depth : [];
   const maxDepthRatio = Math.max(...depth.map((b) => Number(b.avg_extra_ratio || 0)), 0);
   const depthHtml = depth
@@ -764,8 +770,7 @@ function renderBonusChainDynamicsPanel(summary) {
       const bar = maxDepthRatio > 0 ? Math.min(100, (avg / maxDepthRatio) * 100) : 0;
       return (
         `<tr>` +
-        `<td>Freespin ${b.depth_bucket}</td>` +
-        `<td>${fInt(b.rounds)}</td>` +
+        `<td>${b.depth_bucket}</td>` +
         `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${avg.toFixed(0)}x</td>` +
         `</tr>`
       );
@@ -791,11 +796,11 @@ function renderBonusChainDynamicsPanel(summary) {
     `<div class="bonus-chain-grid">` +
     `<div><h3>${fmt("bonusChainDepthLabel")}</h3>` +
     `<table class="drilldown-table">` +
-    `<thead><tr><th>Depth</th><th>Rounds</th><th>avg ExtraRatio</th></tr></thead>` +
+    `<thead><tr><th>Depth</th><th>avg ExtraRatio</th></tr></thead>` +
     `<tbody>${depthHtml}</tbody></table></div>` +
     `<div><h3>${fmt("bonusChainHistogramLabel")}</h3>` +
     `<table class="drilldown-table">` +
-    `<thead><tr><th>Ratio</th><th>Rounds</th></tr></thead>` +
+    `<thead><tr><th>Ratio</th><th>Share</th></tr></thead>` +
     `<tbody>${histHtml}</tbody></table></div>` +
     `</div>`;
 }

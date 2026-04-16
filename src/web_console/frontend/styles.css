@@ -829,6 +829,10 @@ button:disabled {
   background: #0f766e;
   border-radius: 4px;
   flex-shrink: 0;
+  /* Cap width so bars don't push the row past the panel edge even
+     when the share is 100%. The actual visual width is set inline
+     as a percentage of this max. */
+  max-width: min(60%, 300px);
 }
 .feature-bar-val {
   min-width: 36px;
