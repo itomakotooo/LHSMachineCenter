@@ -158,6 +158,17 @@
             </div>
           </section>
 
+          <!-- Interpretation at the very top so the operator reads the
+               headline narrative first, before any numbers. -->
+          <section class="panel interpretation">
+            <h2 data-i18n="panelInterpretation">模型解读</h2>
+            <div id="rtpClampWarning" class="warnBox hidden"></div>
+            <div class="actions">
+              <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
+            </div>
+            <pre id="interpretationText" class="pre"></pre>
+          </section>
+
           <section class="panel kpis">
             <h2 data-i18n="panelKpi">关键指标</h2>
             <div class="kpi-grid">
@@ -165,7 +176,8 @@
               <article class="kpi"><span data-i18n="kpiCi">CI 半宽</span><strong id="kpiCi">N/A</strong></article>
               <article class="kpi"><span data-i18n="kpiSpins">总 Spins</span><strong id="kpiSpins">N/A</strong></article>
               <article class="kpi"><span data-i18n="kpiZero">空转率</span><strong id="kpiZero">N/A</strong></article>
-              <article class="kpi"><span data-i18n="kpiTail">尾部依赖度</span><strong id="kpiTail">N/A</strong><div class="kpi-sub" id="kpiTailSub"></div></article>
+              <!-- Tail dependency: 4 thresholds shown uniformly in a 2x2 grid -->
+              <article class="kpi kpi--tail"><span data-i18n="kpiTail">尾部依赖度</span><div class="kpi-tail-grid" id="kpiTailGrid"></div></article>
               <article class="kpi"><span data-i18n="kpiGuide">规则状态</span><strong id="kpiGuide">N/A</strong></article>
               <article class="kpi"><span data-i18n="kpiVolatility">波动性</span><strong id="kpiVolatility">N/A</strong><div class="kpi-sub" id="kpiVolatilitySub"></div></article>
               <article class="kpi"><span data-i18n="kpiArchetype">体验类型</span><strong id="kpiArchetype">N/A</strong><div class="kpi-sub" id="kpiArchetypeSub"></div></article>
@@ -176,40 +188,30 @@
             </div>
           </section>
 
-          <!-- Only the multiplier-bucket chart survives the dashboard
-               revision. CI / RTP / bankruptcy values are already
-               surfaced as KPI cards above; their per-chunk trend lines
-               added little value beyond the headline number. -->
-          <section class="panel charts">
-            <h2 data-i18n="panelCharts">图形分析</h2>
-            <div class="chart-grid chart-grid--single">
-              <div class="chart-card">
-                <h3 data-i18n="chartBucketTitle">倍率分桶占比</h3>
-                <canvas id="bucketChart"></canvas>
-              </div>
-            </div>
-          </section>
-
-          <!-- Interpretation + assessment placed immediately after KPIs/chart
-               so the operator reads the headline narrative first (MEMORY B#3:
-               player experience → statistical evidence → risk notes). -->
-          <section class="panel interpretation">
-            <h2 data-i18n="panelInterpretation">模型解读</h2>
-            <div id="rtpClampWarning" class="warnBox hidden"></div>
-            <div class="actions">
-              <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
-            </div>
-            <pre id="interpretationText" class="pre"></pre>
-          </section>
-
           <section class="panel report">
             <h2 data-i18n="panelAssessment">规则评估</h2>
             <div id="assessment" class="pre">No report yet.</div>
           </section>
 
-          <!-- SpinType breakdown + upstream Feature breakdown merged into
-               one panel. Feature detail only renders when applicable
-               (multi-feature machines like M272). -->
+          <!-- Bucket distribution: TABLE-based, replaces Chart.js canvas.
+               No dual-axis confusion, exact numbers visible, no tooltip
+               dependency. -->
+          <section class="panel bucket-distribution">
+            <h2 data-i18n="panelBuckets">倍率分布</h2>
+            <table id="bucketTable" class="drilldown-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thBucket">倍率区间</th>
+                  <th data-i18n="thSpinRate">出现率</th>
+                  <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
+
+          <!-- SpinType + Feature merged panel -->
           <section class="panel spin-types">
             <h2 data-i18n="panelSpinType">Spin 类型分布</h2>
             <table id="spinTypeTable" class="drilldown-table">
@@ -225,15 +227,12 @@
               </thead>
               <tbody></tbody>
             </table>
-            <!-- Feature detail inserted by renderFeatureBreakdownPanel()
-                 when upstream FeatureWin has multiple features. -->
             <div id="featureBreakdownInline" class="feature-inline-section"></div>
           </section>
 
-          <!-- Bonus-chain dynamics (ReMarks Freespin annotation). -->
+          <!-- Bonus chain: per-feature ONLY (no aggregate). -->
           <section class="panel bonus-chain-dynamics hidden" id="bonusChainDynamicsPanel">
             <h2 data-i18n="panelBonusChainDynamics">Bonus Chain 动态</h2>
-            <div id="bonusChainMeta" class="meta"></div>
             <div id="bonusChainBody"></div>
           </section>
 

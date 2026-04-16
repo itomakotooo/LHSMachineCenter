@@ -778,7 +778,8 @@ test("extractMetricCards: pulls all 12 cards from a summary", () => {
   assert.equal(c.ci.value, "0.482");
   assert.equal(c.spins.value, "2,400,000");
   assert.equal(c.zeroWin.value, "78.00%");
-  assert.equal(c.tailDep.value, "0.410");
+  // tailDep.value is now "≥10x N.N%" format (2×2 grid display).
+  assert.ok(c.tailDep.value.includes("41.0%"), `tailDep.value=${c.tailDep.value}`);
   assert.equal(c.volatility.value, "High");
   assert.equal(c.archetype.value, "Boom-Bust");
   assert.equal(c.lossStreak.value, "14");

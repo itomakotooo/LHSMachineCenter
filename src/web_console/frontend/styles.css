@@ -634,10 +634,7 @@ button:disabled {
   line-height: 1.15;
 }
 
-/* Secondary line below the primary KPI value. Used for the tail
-   dependency card to show the ≥20/50/100x breakdown alongside the
-   primary ≥10x number without adding separate cards. Empty string
-   collapses the line visually. */
+/* Secondary line below the primary KPI value. */
 .kpi .kpi-sub {
   display: block;
   margin-top: 2px;
@@ -649,6 +646,79 @@ button:disabled {
 }
 .kpi .kpi-sub:empty {
   display: none;
+}
+/* Tail dependency: 2×2 grid showing all 4 thresholds uniformly. */
+.kpi-tail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 8px;
+  margin-top: 3px;
+}
+.kpi-tail-grid .tail-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.kpi-tail-grid .tail-cell em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: none;
+  min-width: 36px;
+}
+.kpi-tail-grid .tail-cell b {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bucket distribution panel (table-based, replaces Chart.js). */
+.bucket-distribution {
+  grid-column: span 12;
+}
+
+/* Bonus chain per-feature card redesign. */
+.bcFeatCard {
+  background: #f8fafc;
+  border: 1px solid #d8e1ec;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.bcFeatCard h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #1e293b;
+}
+.bcFeatCard h4 .bcFeatCount {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 6px;
+}
+.bcFeatKpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+.bcFeatMetric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.bcFeatMetric em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.bcFeatMetric b {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.bcFeatMetric span {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Per-card text-color tone (legacy, kept so non-card text stays

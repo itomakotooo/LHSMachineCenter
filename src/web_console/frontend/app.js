@@ -27,7 +27,7 @@ const state = {
   busyActions: new Set(),
   // Only the multiplier-bucket chart survives the dashboard revision;
   // CI / RTP / bankruptcy already render as KPI cards.
-  bucketChart: null,
+  // bucketChart removed — bucket distribution is now a table.
   // Manage-tab run-history filter. Empty Set = show all; non-empty =
   // union of selected machines. Multi-select from machine catalog.
   runFilterMachines: new Set(),
@@ -285,6 +285,7 @@ function setGlobalWarning(lines) {
 
 function setKpi(id, text, tone = "neutral") {
   const el = byId(id);
+  if (!el) return; // element may have been replaced (e.g. kpiTail → kpiTailGrid)
   el.textContent = text;
   el.dataset.tone = tone;
   // Mirror the tone onto the parent .kpi card via a BEM modifier so the
@@ -309,7 +310,7 @@ function clearSummaryPanels() {
   setKpi("kpiCi", "N/A");
   setKpi("kpiSpins", "N/A");
   setKpi("kpiZero", "N/A");
-  setKpi("kpiTail", "N/A");
+  // kpiTail replaced by kpiTailGrid (2×2 grid, not a single <strong>).
   setKpi("kpiGuide", "N/A");
   setKpi("kpiVolatility", "N/A");
   setKpi("kpiArchetype", "N/A");
@@ -317,27 +318,14 @@ function clearSummaryPanels() {
   setKpi("kpiMaxReturn", "N/A");
   setKpi("kpiBigWin", "N/A");
   setKpi("kpiBankruptX500", "N/A");
-  if (state.bucketChart) {
-    state.bucketChart.data.labels = [];
-    state.bucketChart.data.datasets[0].data = [];
-    state.bucketChart.update();
-  }
+  byId("kpiTailGrid").innerHTML = "";
+  const bt = byId("bucketTable");
+  if (bt) bt.querySelector("tbody").innerHTML = "";
 }
 
-function buildCharts() {
-  const mk = (ctx, type, label, color, bg) =>
-    new Chart(ctx, {
-      type,
-      data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: bg, tension: 0.2, pointRadius: 2, borderWidth: 1 }] },
-      options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: type !== "bar" } }, scales: { y: { beginAtZero: type !== "line" } } },
-    });
-  state.bucketChart = mk(byId("bucketChart").getContext("2d"), "bar", fmt("chartBucketLabel"), "#0f766e", "rgba(13,148,136,0.35)");
-}
-
-function updateChartLabels() {
-  if (state.bucketChart) state.bucketChart.data.datasets[0].label = fmt("chartBucketLabel");
-  state.bucketChart?.update();
-}
+// Chart.js removed — bucket distribution is now a table.
+function buildCharts() {}
+function updateChartLabels() {}
 
 function renderMachineCatalog() {
   const wrap = byId("machineCatalog");
@@ -516,19 +504,27 @@ function renderRunHistory() {
     b.addEventListener("click", async () => {
       if (state.busyActions.size > 0) return;
       const runId = b.dataset.id;
-      // Inline progress: change button text to "重建中..." + disable
       const origText = b.textContent;
-      b.textContent = "⟳ ...";
-      b.disabled = true;
+      // Disable ALL action buttons in this row during rebuild.
+      const row = b.closest("tr");
+      const rowButtons = row ? row.querySelectorAll("button") : [];
+      rowButtons.forEach((btn) => (btn.disabled = true));
+      b.textContent = fmt("rebuildBusy");
       state.busyActions.add("rebuild");
       updateActionStates();
+      // Show progress in runMeta panel.
+      const metaEl = byId("runMeta");
+      const oldMeta = metaEl?.textContent;
+      if (metaEl) metaEl.textContent = fmt("rebuildBusy") + ` (${runId})...`;
       try {
         const resp = await apiPost(`/api/runs/${encodeURIComponent(runId)}/rebuild`, {});
-        // Show result inline on the button for 3s then restore
-        b.textContent = `✓ RTP ${resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(1) + "%" : "?"}`;
+        b.textContent = `✓ ${resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(1) + "%" : "done"}`;
         b.classList.add("rebuild-done");
+        if (metaEl) metaEl.textContent = fmt("rebuildSuccess", {
+          rtp: resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(2) : "?",
+          chunks: resp.chunks_reprocessed || 0,
+        });
         await refreshRunList(false);
-        // If this is the current run, reload its data
         if (state.currentRunId === runId) {
           switchTab("debug");
           await refreshCurrentRun();
@@ -537,10 +533,11 @@ function renderRunHistory() {
       } catch (err) {
         const errMsg = String(err && err.message ? err.message : err);
         b.textContent = "✗";
-        b.title = errMsg.includes("404") ? fmt("rebuildNoChunks") : fmt("rebuildFailed", { error: errMsg });
-        setTimeout(() => { b.textContent = origText; }, 3000);
+        if (metaEl) metaEl.textContent = fmt("rebuildFailed", { error: errMsg });
+        setTimeout(() => { b.textContent = origText; if (metaEl && oldMeta) metaEl.textContent = oldMeta; }, 3000);
       } finally {
         state.busyActions.delete("rebuild");
+        rowButtons.forEach((btn) => (btn.disabled = false));
         updateActionStates();
       }
     });
@@ -791,98 +788,45 @@ function renderBonusChainDynamicsPanel(summary) {
     return;
   }
   panel.classList.remove("hidden");
-  byId("bonusChainMeta").textContent = fmt("bonusChainMeta", {
-    chainCount: fInt(d.chain_count),
-    bonusRounds: fInt(d.bonus_round_count),
-  });
 
-  const q = d.chain_length_quantiles || {};
-  const rq = d.chain_max_ratio_quantiles || {};
-  const hist = Array.isArray(d.extra_ratio_histogram) ? d.extra_ratio_histogram : [];
-  // Histogram: show share of total bonus rounds instead of absolute count.
-  const totalBonusRounds = Number(d.bonus_round_count || 0);
-  const maxHistShare = Math.max(...hist.map((h) => Number(h.rounds || 0)), 0) / (totalBonusRounds || 1);
-  const histHtml = hist
-    .map((h) => {
-      const r = Number(h.rounds || 0);
-      const share = totalBonusRounds > 0 ? (r / totalBonusRounds) : 0;
-      const bar = maxHistShare > 0 ? Math.min(100, (share / maxHistShare) * 100) : 0;
-      return (
-        `<tr>` +
-        `<td>${fInt(h.ratio)}x</td>` +
-        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${(share * 100).toFixed(1)}%</td>` +
-        `</tr>`
-      );
-    })
-    .join("");
-  // Depth curve: depth bucket + share of total bonus rounds + avg ExtraRatio.
-  const depth = Array.isArray(d.extra_ratio_by_chain_depth) ? d.extra_ratio_by_chain_depth : [];
-  const maxDepthRatio = Math.max(...depth.map((b) => Number(b.avg_extra_ratio || 0)), 0);
-  const depthHtml = depth
-    .map((b) => {
-      const avg = Number(b.avg_extra_ratio || 0);
-      const rounds = Number(b.rounds || 0);
-      const sharePct = totalBonusRounds > 0 ? ((rounds / totalBonusRounds) * 100).toFixed(1) : "0.0";
-      const bar = maxDepthRatio > 0 ? Math.min(100, (avg / maxDepthRatio) * 100) : 0;
-      return (
-        `<tr>` +
-        `<td>${b.depth_bucket}</td>` +
-        `<td>${sharePct}%</td>` +
-        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${avg.toFixed(0)}x</td>` +
-        `</tr>`
-      );
-    })
-    .join("");
-  const retriggerPct = (Number(d.self_retrigger_round_rate || 0) * 100).toFixed(1) + "%";
-  const retriggerDetail = fmt("bonusChainRetriggerDetail", {
-    avg: Number(d.avg_retriggers_per_chain || 0).toFixed(2),
-  });
-
-  byId("bonusChainBody").innerHTML =
-    `<div class="bonus-chain-kpis">` +
-    `<div class="bcKpi"><span>${fmt("bonusChainLenLabel")}</span>` +
-    `<strong>avg ${Number(d.avg_chain_length || 0).toFixed(1)}</strong>` +
-    `<em>${fmt("bonusChainQuantileFmt", { p50: q.p50, p90: q.p90, p95: q.p95, max: q.max })}</em></div>` +
-    `<div class="bcKpi"><span>${fmt("bonusChainRatioLabel")}</span>` +
-    `<strong>max ${rq.max}x</strong>` +
-    `<em>${fmt("bonusChainQuantileFmt", { p50: rq.p50 + "x", p90: rq.p90 + "x", p95: rq.p95 + "x", max: rq.max + "x" })}</em></div>` +
-    `<div class="bcKpi"><span>${fmt("bonusChainRetriggerLabel")}</span>` +
-    `<strong>${retriggerPct}</strong>` +
-    `<em>${retriggerDetail}</em></div>` +
-    `</div>` +
-    `<div class="bonus-chain-grid">` +
-    `<div><h3>${fmt("bonusChainDepthLabel")}</h3>` +
-    `<table class="drilldown-table">` +
-    `<thead><tr><th>Depth</th><th>Share</th><th>avg ExtraRatio</th></tr></thead>` +
-    `<tbody>${depthHtml}</tbody></table></div>` +
-    `<div><h3>${fmt("bonusChainHistogramLabel")}</h3>` +
-    `<table class="drilldown-table">` +
-    `<thead><tr><th>Ratio</th><th>Share</th></tr></thead>` +
-    `<tbody>${histHtml}</tbody></table></div>` +
-    `</div>`;
-
-  // Per-feature breakdown (NormalCollectionSpin vs NewFreespin)
+  // Per-feature ONLY — no aggregate summary. Each feature gets its
+  // own card with KPI metrics + quantile lines.
   const byFeat = d.by_feature || {};
   const featNames = Object.keys(byFeat);
-  if (featNames.length > 1) {
-    const featHtml = featNames.map((fn) => {
-      const fd = byFeat[fn];
-      const fq = fd.chain_length_quantiles || {};
-      const frq = fd.chain_max_ratio_quantiles || {};
-      const fRetrigger = (Number(fd.self_retrigger_round_rate || 0) * 100).toFixed(0);
-      return (
-        `<div class="bcFeatCard">` +
-        `<h4>${fn}</h4>` +
-        `<div class="bcFeatRow">${fmt("bonusChainLenLabel")}: avg ${Number(fd.avg_chain_length || 0).toFixed(1)} · p90 ${fq.p90 || 0} · max ${fq.max || 0}</div>` +
-        `<div class="bcFeatRow">${fmt("bonusChainRatioLabel")}: p50 ${frq.p50 || 0}x · p90 ${frq.p90 || 0}x · max ${frq.max || 0}x</div>` +
-        `<div class="bcFeatRow">${fmt("bonusChainRetriggerLabel")}: ${fRetrigger}% · ${fd.chain_count || 0} chains (${fd.bonus_round_count || 0} rounds)</div>` +
-        `</div>`
-      );
-    }).join("");
-    byId("bonusChainBody").innerHTML +=
-      `<div class="bonus-chain-features"><h3 style="margin:12px 0 6px;font-size:13px;color:var(--muted)">By Feature</h3>` +
-      `<div class="bcFeatGrid">${featHtml}</div></div>`;
-  }
+
+  // If only 1 feature (or none), show from aggregate data under a
+  // single card with a generic name.
+  const features = featNames.length >= 1
+    ? featNames.map((fn) => ({ name: fn, data: byFeat[fn] }))
+    : [{ name: "All", data: {
+        chain_count: d.chain_count,
+        bonus_round_count: d.bonus_round_count,
+        avg_chain_length: d.avg_chain_length,
+        chain_length_quantiles: d.chain_length_quantiles,
+        chain_max_ratio_quantiles: d.chain_max_ratio_quantiles,
+        self_retrigger_round_rate: d.self_retrigger_round_rate,
+      }}];
+
+  const html = features.map((f) => {
+    const fd = f.data;
+    const fq = fd.chain_length_quantiles || {};
+    const frq = fd.chain_max_ratio_quantiles || {};
+    const retrigger = (Number(fd.self_retrigger_round_rate || 0) * 100).toFixed(1);
+    const chains = fd.chain_count || 0;
+    const rounds = fd.bonus_round_count || 0;
+    return (
+      `<div class="bcFeatCard">` +
+      `<h4>${f.name} <span class="bcFeatCount">${chains} chains · ${rounds} rounds</span></h4>` +
+      `<div class="bcFeatKpis">` +
+      `<div class="bcFeatMetric"><em>${fmt("bonusChainLenLabel")}</em><b>avg ${Number(fd.avg_chain_length || 0).toFixed(1)}</b><span>p50 ${fq.p50 || 0} · p90 ${fq.p90 || 0} · max ${fq.max || 0}</span></div>` +
+      `<div class="bcFeatMetric"><em>${fmt("bonusChainRatioLabel")}</em><b>p50 ${frq.p50 || 0}x</b><span>p90 ${frq.p90 || 0}x · max ${frq.max || 0}x</span></div>` +
+      `<div class="bcFeatMetric"><em>${fmt("bonusChainRetriggerLabel")}</em><b>${retrigger}%</b></div>` +
+      `</div>` +
+      `</div>`
+    );
+  }).join("");
+
+  byId("bonusChainBody").innerHTML = `<div class="bcFeatGrid">${html}</div>`;
 }
 
 function renderAssessment(summary) {
@@ -1183,7 +1127,7 @@ async function refreshCurrentRun() {
     const cards = PURE.extractMetricCards(s);
     const kpiBindings = [
       ["kpiRtp", "rtp"], ["kpiCi", "ci"], ["kpiSpins", "spins"],
-      ["kpiZero", "zeroWin"], ["kpiTail", "tailDep", "kpiTailSub"], ["kpiGuide", "guideline"],
+      ["kpiZero", "zeroWin"], ["kpiGuide", "guideline"],
       ["kpiVolatility", "volatility", "kpiVolatilitySub"],
       ["kpiArchetype", "archetype", "kpiArchetypeSub"],
       ["kpiLossStreak", "lossStreak"], ["kpiMaxReturn", "maxReturn"],
@@ -1201,6 +1145,24 @@ async function refreshCurrentRun() {
         if (subEl) subEl.textContent = c.sub || "";
       }
     }
+    // Tail dependency 2×2 grid (uniform, no emphasis on ≥10x).
+    const tailGrid = byId("kpiTailGrid");
+    if (tailGrid) {
+      const td = cards.tailDep || {};
+      const dm = s.guideline_assessment?.derived_metrics || {};
+      const fmt1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(1) + "%";
+      const tone = td.tone || "neutral";
+      tailGrid.innerHTML =
+        `<div class="tail-cell"><em>\u226510x</em><b>${fmt1(dm.tail_dependency_ge10x)}</b></div>` +
+        `<div class="tail-cell"><em>\u226520x</em><b>${fmt1(dm.tail_dependency_ge20x)}</b></div>` +
+        `<div class="tail-cell"><em>\u226550x</em><b>${fmt1(dm.tail_dependency_ge50x)}</b></div>` +
+        `<div class="tail-cell"><em>\u2265100x</em><b>${fmt1(dm.tail_dependency_ge100x)}</b></div>`;
+      const card = tailGrid.closest(".kpi");
+      if (card) {
+        card.classList.remove("kpi--good", "kpi--warn", "kpi--bad");
+        if (tone === "good" || tone === "warn" || tone === "bad") card.classList.add(`kpi--${tone}`);
+      }
+    }
     // Across-library ranking: Volatility + Archetype cards get a
     // lib-rank sub-line ("全库 P87 (15/17)" or "{count}/{total} share
     // this archetype"). Pulled lazily per summary load -- hundreds of
@@ -1213,34 +1175,27 @@ async function refreshCurrentRun() {
     } catch (_err) {
       // Non-fatal: leave sub-lines cleared.
     }
+    // Bucket distribution: table-based (replaces Chart.js canvas).
     const buckets = s.player_impact?.multiplier_profile?.buckets || [];
-    // Labels show bucket range + exact percentage for readability.
-    state.bucketChart.data.labels = buckets.map((b) => {
-      const pct = (Number(b.spin_rate) * 100).toFixed(1);
-      return `${PURE.prettyBucketLabel(b.bucket)} (${pct}%)`;
-    });
-    state.bucketChart.data.datasets[0].data = buckets.map((b) => (Number(b.spin_rate) <= 1 ? Number(b.spin_rate) * 100 : Number(b.spin_rate)));
-    // Add a second dataset for RTP contribution overlay.
-    if (!state.bucketChart.data.datasets[1]) {
-      state.bucketChart.data.datasets.push({
-        label: "RTP pp",
-        data: [],
-        backgroundColor: "rgba(239,68,68,0.45)",
-        borderColor: "#ef4444",
-        borderWidth: 1,
-        yAxisID: "y1",
-      });
-      // Add right-side y-axis for RTP pp.
-      state.bucketChart.options.scales = state.bucketChart.options.scales || {};
-      state.bucketChart.options.scales.y1 = {
-        position: "right",
-        beginAtZero: true,
-        grid: { drawOnChartArea: false },
-        title: { display: true, text: "RTP pp" },
-      };
+    const bucketBody = byId("bucketTable")?.querySelector("tbody");
+    if (bucketBody) {
+      const maxRtp = Math.max(...buckets.map((b) => Number(b.rtp_contribution_pp || 0)), 0.001);
+      bucketBody.innerHTML = buckets
+        .map((b) => {
+          const spinPct = (Number(b.spin_rate || 0) * 100).toFixed(2);
+          const rtpPp = Number(b.rtp_contribution_pp || 0).toFixed(2);
+          const bar = Math.min(100, (Number(b.rtp_contribution_pp || 0) / maxRtp) * 100);
+          return (
+            `<tr>` +
+            `<td>${PURE.prettyBucketLabel(b.bucket)}</td>` +
+            `<td>${spinPct}%</td>` +
+            `<td>${rtpPp}pp</td>` +
+            `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%"></td>` +
+            `</tr>`
+          );
+        })
+        .join("");
     }
-    state.bucketChart.data.datasets[1].data = buckets.map((b) => Number(b.rtp_contribution_pp || 0));
-    state.bucketChart.update();
     renderRtpClampWarning(s);
     renderSpinTypeBreakdown(s);
     renderFeatureBreakdownPanel(s);
