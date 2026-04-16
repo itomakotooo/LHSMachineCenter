@@ -68,6 +68,12 @@ def _good_summary() -> dict[str, Any]:
                     {"bucket": "gt0_lt1", "spin_count": 190000, "spin_rate": 0.158},
                     {"bucket": "ge1_lt5", "spin_count": 200000, "spin_rate": 0.166},
                 ],
+                # Note: eq0 is internally tracked for correct totals but
+                # excluded from RETURN_BUCKET_ORDER so it doesn't appear
+                # in the rows output. The mock here reflects the output
+                # shape (no eq0 row). Internal bucket_bet / bucket_win
+                # dicts do carry eq0 data -- see test_run_sampling_chunk_
+                # buckets_classification.
             },
             "paylines_top20": [
                 {

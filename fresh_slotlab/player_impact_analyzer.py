@@ -628,11 +628,14 @@ def make_payload(
 
 
 def return_bucket(ret_x: float) -> str:
-    # Zero-win sessions carry no multiplier signal -- returning "" signals
-    # accumulators to skip them so the final summary never emits an `eq0`
-    # row. Zero-win session share lives in hit_and_payout.zero_win_rate.
+    # Zero-win sessions return "eq0" so the internal bet/win/spin
+    # accumulators keep correct totals (session_bet_sum, mb_total_bet,
+    # tail calculations all derive from bucket sums). The eq0 key is
+    # NOT in RETURN_BUCKET_ORDER, so build_multiplier_bucket_rows()
+    # skips it when building the output rows -- the user never sees a
+    # zero-info bucket in the chart.
     if ret_x <= 0.0:
-        return ""
+        return "eq0"
     if ret_x < 1.0:
         return "gt0_lt1"
     if ret_x < 5.0:
@@ -1040,10 +1043,9 @@ def run_sampling_chunk(
         if ret_x_sess > session_max_return_x:
             session_max_return_x = ret_x_sess
         b = return_bucket(ret_x_sess)
-        if b:
-            session_bucket_spins[b] += 1
-            session_bucket_bet[b] += s_bet
-            session_bucket_win[b] += s_win
+        session_bucket_spins[b] += 1
+        session_bucket_bet[b] += s_bet
+        session_bucket_win[b] += s_win
         session_win_sum += s_win
 
         if s_win > 0:
@@ -1147,10 +1149,9 @@ def run_sampling_chunk(
             ret_sum += ret_x
             ret_sq_sum += ret_x * ret_x
             bucket = return_bucket(ret_x)
-            if bucket:
-                multiplier_bucket_spins[bucket] += 1
-                multiplier_bucket_bet[bucket] += bet_amt
-                multiplier_bucket_win[bucket] += win_amt
+            multiplier_bucket_spins[bucket] += 1
+            multiplier_bucket_bet[bucket] += bet_amt
+            multiplier_bucket_win[bucket] += win_amt
 
             if win_amt > 0:
                 win_spins += 1
