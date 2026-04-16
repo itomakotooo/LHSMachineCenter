@@ -335,7 +335,17 @@
 
           <section class="panel machine-catalog">
             <h2 data-i18n="panelMachineCatalog">机台目录</h2>
-            <input type="text" id="catalogSearch" class="catalog-search" placeholder="搜索机台..." data-i18n-placeholder="catalogSearchPlaceholder" />
+            <div class="catalog-toolbar">
+              <input type="text" id="catalogSearch" class="catalog-search" placeholder="搜索机台..." data-i18n-placeholder="catalogSearchPlaceholder" />
+              <select id="catalogSort" class="catalog-sort">
+                <option value="name" data-i18n="sortByName">按名称</option>
+                <option value="rtp_asc" data-i18n="sortByRtpAsc">RTP ↑</option>
+                <option value="rtp_desc" data-i18n="sortByRtpDesc">RTP ↓</option>
+                <option value="vol_asc" data-i18n="sortByVolAsc">波动性 ↑</option>
+                <option value="vol_desc" data-i18n="sortByVolDesc">波动性 ↓</option>
+                <option value="ci_asc" data-i18n="sortByCiAsc">CI ↑ (精度高优先)</option>
+              </select>
+            </div>
             <div id="machineCatalog" class="catalog-grouped"></div>
             <div class="batch-run-controls">
               <button id="batchRunBtn" class="primary-btn" data-i18n="btnBatchRun">批量采样选中</button>

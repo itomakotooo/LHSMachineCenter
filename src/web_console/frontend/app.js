@@ -366,6 +366,22 @@ function _catalogModeMetrics(machine) {
   }).join("");
 }
 
+// Extract the primary sort metric for a machine from its summary data.
+// Uses mode 2 preferentially (the user's default dev sample mode), falling
+// back to the lowest available mode.
+function _catalogSortKey(machineName, metric) {
+  const sm = ((state.machinesSummary || {}).machines || {})[machineName] || {};
+  const modes = Object.keys(sm);
+  if (!modes.length) return null;
+  const preferredMode = modes.includes("2") ? "2" : modes.sort((a, b) => Number(a) - Number(b))[0];
+  const d = sm[preferredMode];
+  if (!d) return null;
+  if (metric === "rtp") return d.rtp_pct;
+  if (metric === "vol") return d.volatility_percentile;
+  if (metric === "ci") return d.ci_halfwidth_pp;
+  return null;
+}
+
 function renderMachineCatalog() {
   const wrap = byId("machineCatalog");
   wrap.innerHTML = "";
@@ -373,6 +389,8 @@ function renderMachineCatalog() {
 
   const searchEl = byId("catalogSearch");
   const query = (searchEl ? searchEl.value : "").trim().toLowerCase();
+  const sortSel = byId("catalogSort");
+  const sortMode = sortSel ? sortSel.value : "name";
 
   // Group machines by category.
   const groups = {};
@@ -383,6 +401,24 @@ function renderMachineCatalog() {
     if (!groups[cat]) groups[cat] = [];
     groups[cat].push(m);
   });
+
+  // Sort machines within each group.
+  const INF = 1e18;
+  const sortFn = (a, b) => {
+    if (sortMode === "name") {
+      const na = parseInt(a.machine.slice(1)) || 0, nb = parseInt(b.machine.slice(1)) || 0;
+      return na - nb;
+    }
+    const metric = sortMode.startsWith("rtp") ? "rtp" : sortMode.startsWith("vol") ? "vol" : "ci";
+    const asc = sortMode.endsWith("_asc");
+    let va = _catalogSortKey(a.machine, metric), vb = _catalogSortKey(b.machine, metric);
+    // Null (no data) always sorts last.
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return asc ? va - vb : vb - va;
+  };
+  Object.values(groups).forEach((arr) => arr.sort(sortFn));
 
   const orderedKeys = CATEGORY_ORDER.filter((k) => groups[k]);
   Object.keys(groups).forEach((k) => { if (!orderedKeys.includes(k)) orderedKeys.push(k); });
@@ -1728,6 +1764,7 @@ function bindEvents() {
     dashboard.classList.remove("sidebar-open");
   });
   byId("catalogSearch").addEventListener("input", () => renderMachineCatalog());
+  byId("catalogSort").addEventListener("change", () => renderMachineCatalog());
   byId("batchRunBtn").addEventListener("click", () => startBatchRun());
   byId("batchCancelBtn").addEventListener("click", () => cancelBatchRun());
   byId("addServerBtn").addEventListener("click", () => addServer());

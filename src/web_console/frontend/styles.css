@@ -813,11 +813,15 @@ button:disabled {
   height: 220px !important;
 }
 
-/* Machine catalog search */
-.catalog-search {
-  width: 100%;
-  padding: 6px 10px;
+/* Machine catalog toolbar */
+.catalog-toolbar {
+  display: flex;
+  gap: 6px;
   margin-bottom: 10px;
+}
+.catalog-search {
+  flex: 1;
+  padding: 6px 10px;
   border: 1px solid #d4ddea;
   border-radius: 6px;
   font-size: 13px;
@@ -826,6 +830,14 @@ button:disabled {
 .catalog-search:focus {
   outline: 2px solid var(--accent);
   border-color: var(--accent);
+}
+.catalog-sort {
+  padding: 5px 8px;
+  border: 1px solid #d4ddea;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #fff;
+  cursor: pointer;
 }
 
 /* Grouped catalog */
