@@ -934,13 +934,93 @@ button:disabled {
   background: #fee2e2;
 }
 
-/* Fleet actions */
-.fleet-actions {
-  margin-top: 8px;
+/* Fleet summary row */
+.fleet-summary-row {
+  font-size: 14px;
+  margin-bottom: 8px;
 }
-.fleet-actions a {
+.fleet-summary-row strong {
+  font-size: 18px;
+}
+.fleet-summary-row a {
   text-decoration: none;
+}
+
+/* Catalog view tabs */
+.catalog-view-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0;
+}
+.view-tab {
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.15s;
+}
+.view-tab:hover {
+  color: var(--text);
+}
+.view-tab.active {
   color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Batch tab */
+.batch-config {
+  grid-column: span 12;
+}
+.batch-select-toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.batch-machine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+.batch-machine-item {
+  font-size: 12px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+.batch-machine-item:hover {
+  background: #f0f4f8;
+  border-radius: 4px;
+}
+.batch-params {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.batch-params label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+.batch-params select, .batch-params input {
+  padding: 4px 8px;
+  border: 1px solid #d4ddea;
+  border-radius: 6px;
+  width: 70px;
+}
+.batch-actions-bar {
+  margin-top: 8px;
 }
 
 /* Machine catalog toolbar */

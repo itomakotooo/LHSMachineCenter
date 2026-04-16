@@ -35,6 +35,7 @@
     <nav class="tabs">
       <button id="tabBtnDebug" class="tab-btn active" data-tab="debug" data-i18n="tabDebug">调试机台</button>
       <button id="tabBtnManage" class="tab-btn" data-tab="manage" data-i18n="tabManage">全面管理</button>
+      <button id="tabBtnBatch" class="tab-btn" data-tab="batch" data-i18n="tabBatch">批量采样</button>
     </nav>
 
     <main class="tab-pages">
@@ -333,52 +334,55 @@
 
       <section id="tab-manage" class="tab-page">
         <div class="layout">
-          <section class="panel system-status">
-            <h2 data-i18n="panelSystemState">系统状态与恢复</h2>
-            <div id="systemStateMeta" class="meta"></div>
-            <div id="safetyTips" class="warnBox"></div>
-          </section>
-
           <section class="panel fleet-overview">
             <h2 data-i18n="panelFleetOverview">机台概览</h2>
             <div class="fleet-stats" id="fleetStats"></div>
-            <div class="fleet-actions">
-              <a href="/api/fleet/export-csv" class="small-btn" download="fleet_summary.csv" data-i18n="btnExportCsv">导出 CSV</a>
-            </div>
           </section>
 
           <section class="panel machine-catalog">
             <h2 data-i18n="panelMachineCatalog">机台目录</h2>
             <div class="catalog-toolbar">
               <input type="text" id="catalogSearch" class="catalog-search" placeholder="搜索机台..." data-i18n-placeholder="catalogSearchPlaceholder" />
-              <button id="catalogCollapseAll" class="small-btn" title="折叠/展开全部">&#9660;</button>
-              <select id="catalogSort" class="catalog-sort">
-                <option value="name" data-i18n="sortByName">按名称</option>
-                <option value="rtp_asc" data-i18n="sortByRtpAsc">RTP ↑</option>
-                <option value="rtp_desc" data-i18n="sortByRtpDesc">RTP ↓</option>
-                <option value="vol_asc" data-i18n="sortByVolAsc">波动性 ↑</option>
-                <option value="vol_desc" data-i18n="sortByVolDesc">波动性 ↓</option>
-                <option value="ci_asc" data-i18n="sortByCiAsc">CI ↑ (精度高优先)</option>
-              </select>
             </div>
-            <div class="catalog-filters" id="catalogFilters"></div>
+            <div class="catalog-view-tabs" id="catalogViewTabs">
+              <button class="view-tab active" data-view="category" data-i18n="viewCategory">按玩法</button>
+              <button class="view-tab" data-view="name" data-i18n="viewName">按名称</button>
+              <button class="view-tab" data-view="volatility" data-i18n="viewVolatility">按波动性</button>
+              <button class="view-tab" data-view="rtp" data-i18n="viewRtp">按 RTP</button>
+              <button class="view-tab" data-view="mechanic" data-i18n="viewMechanic">按机制</button>
+            </div>
             <div id="machineCatalog" class="catalog-grouped"></div>
-            <div class="batch-run-controls">
-              <button id="batchRunBtn" class="primary-btn" data-i18n="btnBatchRun">批量采样选中</button>
-              <span id="batchRunHint" class="muted"></span>
+          </section>
+
+          <section class="panel run-history">
+            <h2 data-i18n="panelRunHistory">运行历史</h2>
+            <div id="runFilterBanner" class="run-filter-banner"></div>
+            <table id="runListTable">
+              <thead>
+                <tr>
+                  <th class="th-check"><input type="checkbox" id="selectAllRuns" title="全选/取消全选"></th>
+                  <th data-i18n="thRunId">Run ID</th>
+                  <th data-i18n="thStatus">状态</th>
+                  <th data-i18n="thMachine">机台</th>
+                  <th data-i18n="thMode">Mode</th>
+                  <th data-i18n="thRtp">RTP</th>
+                  <th data-i18n="thCiHalfwidth">CI±</th>
+                  <th data-i18n="thQuality">质量</th>
+                  <th data-i18n="thAction">操作</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div class="batch-actions" id="batchActionsBar" style="display:none">
+              <span id="batchCount">0</span>
+              <button id="batchDeleteBtn" class="danger-btn" data-i18n="btnBatchDelete">删除选中</button>
+              <button id="clearSelectionBtn" data-i18n="btnClearSelection">清除选择</button>
             </div>
           </section>
 
           <section class="panel machine-detail hidden" id="machineDetailPanel">
             <h2 id="machineDetailTitle"></h2>
             <div id="machineDetailBody"></div>
-          </section>
-
-          <section class="panel batch-progress hidden" id="batchProgressPanel">
-            <h2 data-i18n="panelBatchProgress">批量采样进度</h2>
-            <div id="batchProgressMeta" class="meta"></div>
-            <div id="batchProgressList" class="batch-list"></div>
-            <button id="batchCancelBtn" class="danger-btn" data-i18n="btnBatchCancel">取消批量</button>
           </section>
 
           <section class="panel version-history hidden" id="versionHistoryPanel">
@@ -407,30 +411,10 @@
             <div id="comparisonBody"></div>
           </section>
 
-          <section class="panel run-history">
-            <h2 data-i18n="panelRunHistory">运行历史</h2>
-            <div id="runFilterBanner" class="run-filter-banner"></div>
-            <table id="runListTable">
-              <thead>
-                <tr>
-                  <th class="th-check"><input type="checkbox" id="selectAllRuns" title="全选/取消全选"></th>
-                  <th data-i18n="thRunId">Run ID</th>
-                  <th data-i18n="thStatus">状态</th>
-                  <th data-i18n="thMachine">机台</th>
-                  <th data-i18n="thMode">Mode</th>
-                  <th data-i18n="thRtp">RTP</th>
-                  <th data-i18n="thCiHalfwidth">CI±</th>
-                  <th data-i18n="thQuality">质量</th>
-                  <th data-i18n="thAction">操作</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-            <div class="batch-actions" id="batchActionsBar" style="display:none">
-              <span id="batchCount">0</span>
-              <button id="batchDeleteBtn" class="danger-btn" data-i18n="btnBatchDelete">删除选中</button>
-              <button id="clearSelectionBtn" data-i18n="btnClearSelection">清除选择</button>
-            </div>
+          <section class="panel system-status">
+            <h2 data-i18n="panelSystemState">系统状态</h2>
+            <div id="systemStateMeta" class="meta"></div>
+            <div id="safetyTips" class="warnBox"></div>
           </section>
 
           <section class="panel server-management">
@@ -476,6 +460,37 @@
               <button id="reportCleanupBtn" class="danger-btn" data-i18n="btnReportCleanup">清理旧版本 Report</button>
               <span id="reportCleanupResult" class="muted"></span>
             </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="tab-batch" class="tab-page">
+        <div class="layout">
+          <section class="panel batch-config">
+            <h2 data-i18n="panelBatchConfig">批量采样配置</h2>
+            <div class="batch-machine-select">
+              <div class="batch-select-toolbar">
+                <input type="text" id="batchSearchInput" class="catalog-search" placeholder="搜索机台..." />
+                <button id="batchSelectAll" class="small-btn" data-i18n="btnSelectAll">全选</button>
+                <button id="batchSelectNone" class="small-btn" data-i18n="btnSelectNone">取消全选</button>
+                <span id="batchSelectedCount" class="muted"></span>
+              </div>
+              <div id="batchMachineGrid" class="batch-machine-grid"></div>
+            </div>
+            <div class="batch-params">
+              <label><span>Mode</span><select id="batchMode"><option value="1">1</option><option value="2" selected>2</option><option value="5">5</option><option value="7">7</option></select></label>
+              <label><span data-i18n="labelConcurrency">并发数</span><input type="number" id="batchConcurrency" value="3" min="1" max="10" /></label>
+            </div>
+            <div class="batch-actions-bar">
+              <button id="batchRunBtn" class="primary-btn" disabled data-i18n="btnBatchStart">开始批量采样</button>
+            </div>
+          </section>
+
+          <section class="panel batch-progress hidden" id="batchProgressPanel">
+            <h2 data-i18n="panelBatchProgress">批量采样进度</h2>
+            <div id="batchProgressMeta" class="meta"></div>
+            <div id="batchProgressList" class="batch-list"></div>
+            <button id="batchCancelBtn" class="danger-btn" data-i18n="btnBatchCancel">取消批量</button>
           </section>
         </div>
       </section>

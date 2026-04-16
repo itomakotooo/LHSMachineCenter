@@ -46,9 +46,10 @@ const state = {
   machinesSummary: null,
   // Active batch run state.
   activeBatchId: null,
+  batchSelectedMachines: new Set(),
   servers: [],
   defaultServer: "",
-  catalogMechFilter: null,  // null = no filter, string = mechanic key
+  catalogViewMode: "category",  // "category" | "name" | "volatility" | "rtp" | "mechanic"
   versionHistoryMachine: null,
   versionHistoryMode: null,
   compareSelected: new Set(),
@@ -375,20 +376,77 @@ function _catalogModeMetrics(machine) {
   }).join("");
 }
 
-// Extract the primary sort metric for a machine from its summary data.
-// Uses mode 2 preferentially (the user's default dev sample mode), falling
-// back to the lowest available mode.
-function _catalogSortKey(machineName, metric) {
+// Get the primary summary data for a machine (prefer mode 2, fallback lowest).
+function _machineData(machineName) {
   const sm = ((state.machinesSummary || {}).machines || {})[machineName] || {};
   const modes = Object.keys(sm);
   if (!modes.length) return null;
-  const preferredMode = modes.includes("2") ? "2" : modes.sort((a, b) => Number(a) - Number(b))[0];
-  const d = sm[preferredMode];
-  if (!d) return null;
-  if (metric === "rtp") return d.rtp_pct;
-  if (metric === "vol") return d.volatility_percentile;
-  if (metric === "ci") return d.ci_halfwidth_pp;
-  return null;
+  const best = modes.includes("2") ? "2" : modes.sort((a, b) => Number(a) - Number(b))[0];
+  return sm[best] || null;
+}
+
+// Card background color based on volatility percentile (heat map).
+function _cardBgColor(machineName) {
+  const d = _machineData(machineName);
+  if (!d || d.volatility_percentile == null) return "";
+  const p = d.volatility_percentile;
+  // Green (low vol) → Yellow → Orange → Red (high vol)
+  if (p < 25) return "#f0fdf4";
+  if (p < 50) return "#fefce8";
+  if (p < 75) return "#fff7ed";
+  return "#fef2f2";
+}
+
+// Group machines by the current view mode.
+function _groupMachines(machines, viewMode) {
+  const groups = {};
+  const sm = (state.machinesSummary || {}).machines || {};
+
+  machines.forEach((m) => {
+    let key;
+    if (viewMode === "name") {
+      key = "all";
+    } else if (viewMode === "category") {
+      key = m.category || "Other";
+    } else if (viewMode === "volatility") {
+      const d = _machineData(m.machine);
+      key = d?.volatility_class || "N/A";
+    } else if (viewMode === "rtp") {
+      const d = _machineData(m.machine);
+      const rtp = d?.rtp_pct;
+      if (rtp == null) key = "N/A";
+      else if (rtp < 90) key = "< 90%";
+      else if (rtp < 95) key = "90–95%";
+      else if (rtp < 100) key = "95–100%";
+      else if (rtp < 200) key = "100–200%";
+      else if (rtp < 400) key = "200–400%";
+      else key = "> 400%";
+    } else if (viewMode === "mechanic") {
+      const mdata = sm[m.machine] || {};
+      const allMechs = new Set();
+      Object.values(mdata).forEach((d) => (d.mechanics || []).forEach((mk) => allMechs.add(mk)));
+      if (allMechs.size === 0) key = "Normal";
+      else allMechs.forEach((mk) => {
+        if (!groups[mk]) groups[mk] = [];
+        groups[mk].push(m);
+      });
+      if (allMechs.size > 0) return; // already added
+      // fall through for Normal
+    } else {
+      key = "all";
+    }
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(m);
+  });
+  return groups;
+}
+
+function _groupOrder(viewMode) {
+  if (viewMode === "category") return ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Selector", "Other", "Unknown"];
+  if (viewMode === "volatility") return ["Low", "Medium", "High", "Very High", "N/A"];
+  if (viewMode === "rtp") return ["< 90%", "90–95%", "95–100%", "100–200%", "200–400%", "> 400%", "N/A"];
+  if (viewMode === "mechanic") return ["lock_lines", "lock_symbols", "jackpot", "free_spin", "dollar_pick", "Normal"];
+  return ["all"];
 }
 
 function renderMachineCatalog() {
@@ -396,74 +454,63 @@ function renderMachineCatalog() {
   wrap.innerHTML = "";
   if (!state.machines.length) return (wrap.textContent = fmt("noMachines"));
 
-  const searchEl = byId("catalogSearch");
-  const query = (searchEl ? searchEl.value : "").trim().toLowerCase();
-  const sortSel = byId("catalogSort");
-  const sortMode = sortSel ? sortSel.value : "name";
+  const query = (byId("catalogSearch")?.value || "").trim().toLowerCase();
+  const viewMode = state.catalogViewMode || "category";
 
-  // Group machines by category.
-  const groups = {};
-  const CATEGORY_ORDER = ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Selector", "Other", "Unknown"];
-  const mechFilter = state.catalogMechFilter;
-  state.machines.forEach((m) => {
-    if (query && !m.machine.toLowerCase().includes(query) && !(m.category || "").toLowerCase().includes(query)) return;
-    // Mechanic filter: only show machines with the selected mechanic.
-    if (mechFilter) {
-      const sm = ((state.machinesSummary || {}).machines || {})[m.machine] || {};
-      const hasMech = Object.values(sm).some((d) => (d.mechanics || []).includes(mechFilter));
-      if (!hasMech) return;
-    }
-    const cat = m.category || "Other";
-    if (!groups[cat]) groups[cat] = [];
-    groups[cat].push(m);
-  });
-
-  // Sort machines within each group.
-  const INF = 1e18;
-  const sortFn = (a, b) => {
-    if (sortMode === "name") {
-      const na = parseInt(a.machine.slice(1)) || 0, nb = parseInt(b.machine.slice(1)) || 0;
-      return na - nb;
-    }
-    const metric = sortMode.startsWith("rtp") ? "rtp" : sortMode.startsWith("vol") ? "vol" : "ci";
-    const asc = sortMode.endsWith("_asc");
-    let va = _catalogSortKey(a.machine, metric), vb = _catalogSortKey(b.machine, metric);
-    // Null (no data) always sorts last.
-    if (va == null && vb == null) return 0;
-    if (va == null) return 1;
-    if (vb == null) return -1;
-    return asc ? va - vb : vb - va;
-  };
-  Object.values(groups).forEach((arr) => arr.sort(sortFn));
-
-  const orderedKeys = CATEGORY_ORDER.filter((k) => groups[k]);
-  Object.keys(groups).forEach((k) => { if (!orderedKeys.includes(k)) orderedKeys.push(k); });
-
-  if (!orderedKeys.length) {
+  // Filter by search.
+  let filtered = state.machines;
+  if (query) {
+    filtered = filtered.filter((m) =>
+      m.machine.toLowerCase().includes(query) ||
+      (m.category || "").toLowerCase().includes(query)
+    );
+  }
+  if (!filtered.length) {
     wrap.textContent = query ? fmt("catalogNoMatch") : fmt("noMachines");
     return;
   }
 
-  orderedKeys.forEach((cat) => {
-    const machines = groups[cat];
-    const catColor = CATEGORY_COLORS[cat] || "#9ca3af";
+  const groups = _groupMachines(filtered, viewMode);
+  const order = _groupOrder(viewMode);
+  const orderedKeys = order.filter((k) => groups[k]);
+  Object.keys(groups).forEach((k) => { if (!orderedKeys.includes(k)) orderedKeys.push(k); });
+
+  // Sort within groups: by machine number for most views.
+  const numSort = (a, b) => (parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0);
+  Object.values(groups).forEach((arr) => arr.sort(numSort));
+
+  const isFlatView = viewMode === "name";
+
+  orderedKeys.forEach((groupKey) => {
+    const machines = groups[groupKey];
     const section = document.createElement("div");
     section.className = "catalog-group";
 
-    const header = document.createElement("div");
-    header.className = "catalog-group-header";
-    header.innerHTML = `<span class="catalog-group-arrow">&#9660;</span> <span class="catalog-group-dot" style="background:${catColor}"></span> <span class="catalog-group-name">${cat}</span> <span class="catalog-group-count">(${machines.length})</span>`;
-    header.addEventListener("click", () => {
-      section.classList.toggle("collapsed");
-      header.querySelector(".catalog-group-arrow").innerHTML = section.classList.contains("collapsed") ? "&#9654;" : "&#9660;";
-    });
-    section.appendChild(header);
+    if (!isFlatView) {
+      const catColor = CATEGORY_COLORS[groupKey] || VOL_COLORS[groupKey] || "#9ca3af";
+      const header = document.createElement("div");
+      header.className = "catalog-group-header";
+      header.innerHTML = `<span class="catalog-group-arrow">&#9660;</span> <span class="catalog-group-dot" style="background:${catColor}"></span> <span class="catalog-group-name">${groupKey}</span> <span class="catalog-group-count">(${machines.length})</span>`;
+      header.addEventListener("click", () => {
+        section.classList.toggle("collapsed");
+        header.querySelector(".catalog-group-arrow").innerHTML = section.classList.contains("collapsed") ? "&#9654;" : "&#9660;";
+      });
+      section.appendChild(header);
+      // Auto-collapse when no search.
+      if (!query) {
+        section.classList.add("collapsed");
+        header.querySelector(".catalog-group-arrow").innerHTML = "&#9654;";
+      }
+    }
 
     const grid = document.createElement("div");
     grid.className = "catalog-list";
     machines.forEach((m) => {
       const d = document.createElement("div");
       d.className = "catalog-item";
+      const bg = _cardBgColor(m.machine);
+      if (bg) d.style.background = bg;
+      const catColor = CATEGORY_COLORS[m.category] || "#9ca3af";
       d.style.borderLeftColor = catColor;
       if (state.runFilterMachines.has(m.machine)) d.classList.add("active");
       if (m.available === false) d.classList.add("unavailable");
@@ -476,45 +523,26 @@ function renderMachineCatalog() {
       grid.appendChild(d);
     });
     section.appendChild(grid);
-    // Auto-collapse groups when no search query (too many cards).
-    // Expand all when user is searching.
-    if (!query) {
-      section.classList.add("collapsed");
-      header.querySelector(".catalog-group-arrow").innerHTML = "&#9654;";
-    }
     wrap.appendChild(section);
   });
 
+  // Click handlers.
   wrap.querySelectorAll(".catalog-item").forEach((el) => {
     const toggle = () => {
       const machine = el.dataset.machine;
-      if (state.runFilterMachines.has(machine)) {
-        state.runFilterMachines.delete(machine);
-      } else {
-        state.runFilterMachines.add(machine);
-      }
+      // Single-select: clear previous selection, select this one.
+      state.runFilterMachines.clear();
+      state.runFilterMachines.add(machine);
       renderMachineCatalog();
       renderRunHistory();
-      // Show version history + detail for the last selected machine.
-      if (state.runFilterMachines.has(machine)) {
-        showVersionHistory(machine);
-        showMachineDetail(machine);
-      } else if (state.runFilterMachines.size === 1) {
-        const last = [...state.runFilterMachines][0];
-        showVersionHistory(last);
-        showMachineDetail(last);
-      } else if (state.runFilterMachines.size === 0) {
-        byId("versionHistoryPanel").classList.add("hidden");
-        byId("reportComparisonPanel").classList.add("hidden");
-        byId("machineDetailPanel").classList.add("hidden");
-      }
+      showVersionHistory(machine);
+      showMachineDetail(machine);
     };
     el.addEventListener("click", toggle);
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
     });
   });
-  updateBatchRunHint();
 }
 
 // ── Catalog Mechanic Filters ──────────────────────────────────────
@@ -605,99 +633,73 @@ function renderFleetOverview() {
   const el = byId("fleetStats");
   if (!el) return;
   const machines = state.machines || [];
-  const sm = (state.machinesSummary || {}).machines || {};
-
   const total = machines.length;
   const withReports = machines.filter((m) => m.report_count > 0).length;
   const categories = {};
-  machines.forEach((m) => {
-    const c = m.category || "Other";
-    categories[c] = (categories[c] || 0) + 1;
-  });
-
-  // RTP distribution from summary data
-  const rtps = [];
-  const mechanics = { lock_lines: 0, lock_symbols: 0, jackpot: 0, free_spin: 0, dollar_pick: 0 };
-  Object.values(sm).forEach((modes) => {
-    Object.values(modes).forEach((d) => {
-      if (d.rtp_pct != null) rtps.push(d.rtp_pct);
-    });
-  });
-  // Count mechanics from latest summary (approximation from category)
-  // We'll use the field_discovery-style count from machines with reports
-  machines.forEach((m) => {
-    const mdata = sm[m.machine] || {};
-    // Heuristic: check category to estimate mechanic presence
-    const cat = m.category || "";
-    if (cat === "Lock") mechanics.lock_lines++;
-    else if (cat === "Collect") mechanics.lock_symbols++;
-    else if (cat === "Fortunes") mechanics.jackpot++;
-    else if (cat === "FreeSpin") mechanics.free_spin++;
-  });
-
-  const avgRtp = rtps.length ? (rtps.reduce((a, b) => a + b, 0) / rtps.length).toFixed(1) : "—";
-  const minRtp = rtps.length ? Math.min(...rtps).toFixed(1) : "—";
-  const maxRtp = rtps.length ? Math.max(...rtps).toFixed(1) : "—";
+  machines.forEach((m) => { const c = m.category || "Other"; categories[c] = (categories[c] || 0) + 1; });
 
   const catBadges = Object.entries(categories)
     .sort((a, b) => b[1] - a[1])
-    .map(([c, n]) => {
-      const color = CATEGORY_COLORS[c] || "#9ca3af";
-      return `<span class="fleet-cat-badge" style="background:${color}">${c} ${n}</span>`;
-    }).join(" ");
+    .map(([c, n]) => `<span class="fleet-cat-badge" style="background:${CATEGORY_COLORS[c] || '#9ca3af'}">${c} ${n}</span>`)
+    .join(" ");
 
-  // Mechanics distribution
   const mechDist = (state.machinesSummary || {}).mechanics_distribution || {};
   const MECH_LABELS = { lock_lines: "Lock Lines", lock_symbols: "Lock Sym", jackpot: "Jackpot", free_spin: "FreeSpin", dollar_pick: "Dollar Pick" };
   const mechBadges = Object.entries(mechDist)
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1])
-    .map(([k, n]) => `<span class="fleet-mech-badge">${MECH_LABELS[k] || k} ${n}</span>`)
+    .map(([k, n]) => `<span class="fleet-mech-badge">${MECH_ICONS[k] || ""} ${MECH_LABELS[k] || k} ${n}</span>`)
     .join(" ");
 
   el.innerHTML = `
-    <div class="fleet-grid">
-      <div class="fleet-stat"><span class="fleet-label">${fmt("fleetTotal")}</span><span class="fleet-value">${total}</span></div>
-      <div class="fleet-stat"><span class="fleet-label">${fmt("fleetWithReports")}</span><span class="fleet-value">${withReports}</span></div>
-      <div class="fleet-stat"><span class="fleet-label">${fmt("fleetAvgRtp")}</span><span class="fleet-value">${avgRtp}%</span></div>
-      <div class="fleet-stat"><span class="fleet-label">${fmt("fleetRtpRange")}</span><span class="fleet-value">${minRtp}–${maxRtp}%</span></div>
+    <div class="fleet-summary-row">
+      <strong>${total}</strong> ${fmt("fleetTotal")} · <strong>${withReports}</strong> ${fmt("fleetWithReports")}
+      <a href="/api/fleet/export-csv" class="small-btn" download="fleet_summary.csv" style="margin-left:8px">${fmt("btnExportCsv")}</a>
     </div>
     <div class="fleet-categories">${catBadges}</div>
-    ${mechBadges ? `<div class="fleet-mechanics"><span class="fleet-mech-label">${fmt("fleetMechanics")}</span> ${mechBadges}</div>` : ""}`;
+    ${mechBadges ? `<div class="fleet-mechanics">${mechBadges}</div>` : ""}`;
 }
 
 // ── Batch Run UI ──────────────────────────────────────────────────
 
-function updateBatchRunHint() {
-  const hint = byId("batchRunHint");
+function renderBatchMachineGrid() {
+  const grid = byId("batchMachineGrid");
+  const countEl = byId("batchSelectedCount");
   const btn = byId("batchRunBtn");
-  if (!hint || !btn) return;
-  const n = state.runFilterMachines.size;
-  if (n === 0) {
-    hint.textContent = fmt("batchHintNone");
-    btn.disabled = true;
-  } else {
-    hint.textContent = fmt("batchHintSelected", { n });
-    btn.disabled = !!state.activeBatchId;
-  }
+  if (!grid) return;
+
+  const query = (byId("batchSearchInput")?.value || "").trim().toLowerCase();
+  let machines = state.machines || [];
+  if (query) machines = machines.filter((m) => m.machine.toLowerCase().includes(query));
+
+  grid.innerHTML = machines.map((m) => {
+    const checked = state.batchSelectedMachines.has(m.machine) ? "checked" : "";
+    return `<label class="batch-machine-item"><input type="checkbox" value="${m.machine}" ${checked} /> ${m.machine}</label>`;
+  }).join("");
+
+  grid.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) state.batchSelectedMachines.add(cb.value);
+      else state.batchSelectedMachines.delete(cb.value);
+      if (countEl) countEl.textContent = fmt("batchHintSelected", { n: state.batchSelectedMachines.size });
+      if (btn) btn.disabled = state.batchSelectedMachines.size === 0 || !!state.activeBatchId;
+    });
+  });
+
+  if (countEl) countEl.textContent = fmt("batchHintSelected", { n: state.batchSelectedMachines.size });
+  if (btn) btn.disabled = state.batchSelectedMachines.size === 0 || !!state.activeBatchId;
 }
 
 async function startBatchRun() {
-  const selected = [...state.runFilterMachines];
+  const selected = [...state.batchSelectedMachines];
   if (!selected.length) return;
-  // Build items: each selected machine × mode 2 (default).
-  // Use all available modes for each machine.
-  const items = [];
-  selected.forEach((machineName) => {
-    const m = state.machines.find((x) => x.machine === machineName);
-    const modes = m && m.modes && m.modes.length ? m.modes : [2];
-    // For batch, run only mode 2 to keep it fast. Users can adjust.
-    items.push({ machine: machineName, mode: modes.includes(2) ? 2 : modes[0] });
-  });
+  const mode = parseInt(byId("batchMode")?.value || "2");
+  const concurrency = parseInt(byId("batchConcurrency")?.value || "3");
+  const items = selected.map((machine) => ({ machine, mode }));
   try {
-    const result = await apiPost("/api/batch-run", { items, concurrency: 3 });
+    const result = await apiPost("/api/batch-run", { items, concurrency });
     state.activeBatchId = result.batch_id;
-    updateBatchRunHint();
+    renderBatchMachineGrid();
     pollBatchProgress();
   } catch (e) {
     alert(String(e.message || e));
@@ -2210,7 +2212,6 @@ async function loadBootstrap() {
   fillBankMultOptions();
   fillProviders();
   fillModelsForProvider(byId("providerSelect").value, state.modelMeta.default_model || "");
-  renderCatalogFilters();
   renderMachineCatalog();
   renderFleetOverview();
   await refreshServers();
@@ -2257,6 +2258,7 @@ function bindEvents() {
   });
   byId("tabBtnDebug").addEventListener("click", () => switchTab("debug"));
   byId("tabBtnManage").addEventListener("click", () => switchTab("manage"));
+  byId("tabBtnBatch").addEventListener("click", () => { switchTab("batch"); renderBatchMachineGrid(); });
   // Mobile drawer: hamburger toggles the sidebar on/off; tapping the
   // dimmed backdrop (anywhere inside .dashboard that isn't the sidebar
   // or the toggle itself) closes it. CSS hides .sidebar-toggle above
@@ -2276,18 +2278,20 @@ function bindEvents() {
     dashboard.classList.remove("sidebar-open");
   });
   byId("catalogSearch").addEventListener("input", () => renderMachineCatalog());
-  byId("catalogSort").addEventListener("change", () => renderMachineCatalog());
-  byId("catalogCollapseAll").addEventListener("click", () => {
-    const groups = document.querySelectorAll(".catalog-group");
-    const allCollapsed = [...groups].every((g) => g.classList.contains("collapsed"));
-    groups.forEach((g) => {
-      g.classList.toggle("collapsed", !allCollapsed);
-      const arrow = g.querySelector(".catalog-group-arrow");
-      if (arrow) arrow.innerHTML = allCollapsed ? "&#9660;" : "&#9654;";
-    });
+  // View tabs for catalog grouping mode.
+  byId("catalogViewTabs").addEventListener("click", (e) => {
+    const btn = e.target.closest(".view-tab");
+    if (!btn) return;
+    state.catalogViewMode = btn.dataset.view;
+    byId("catalogViewTabs").querySelectorAll(".view-tab").forEach((b) => b.classList.toggle("active", b === btn));
+    renderMachineCatalog();
   });
+  // Batch tab controls.
   byId("batchRunBtn").addEventListener("click", () => startBatchRun());
   byId("batchCancelBtn").addEventListener("click", () => cancelBatchRun());
+  byId("batchSelectAll")?.addEventListener("click", () => { state.batchSelectedMachines = new Set(state.machines.map((m) => m.machine)); renderBatchMachineGrid(); });
+  byId("batchSelectNone")?.addEventListener("click", () => { state.batchSelectedMachines = new Set(); renderBatchMachineGrid(); });
+  byId("batchSearchInput")?.addEventListener("input", () => renderBatchMachineGrid());
   byId("addServerBtn").addEventListener("click", () => addServer());
   byId("reportCleanupBtn").addEventListener("click", async () => {
     if (!confirm(fmt("reportCleanupConfirm"))) return;
