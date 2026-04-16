@@ -1133,11 +1133,38 @@ def run_sampling_chunk(
     chunk_bonus_depth_ratio_count: dict[str, int] = defaultdict(int)
 
     # Per-robot bonus-chain state. Flushed on chain end or robot end.
-    active_chain = {"length": 0, "max_ratio": 0, "retriggers": 0, "open": False, "ratios": []}
+    # trigger_feature: "NormalCollectionSpin" when the trigger spin
+    # carried PayId 666, "NewFreespin" when trigger spin had no PayIds
+    # (forced at cycle boundary), "unknown" otherwise.
+    active_chain = {
+        "length": 0, "max_ratio": 0, "retriggers": 0,
+        "open": False, "ratios": [], "trigger_feature": "unknown",
+    }
+
+    # Per-feature chain accumulators. Keyed by trigger_feature string.
+    chunk_chains_by_feature: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "lengths": [], "max_ratios": [], "retrigger_events": [],
+            "total_rounds": 0, "retrigger_rounds": 0,
+            "extra_ratio_counts": defaultdict(int),
+            "depth_ratio_sum": defaultdict(float),
+            "depth_ratio_count": defaultdict(int),
+            "ratio_sequences": [],
+        }
+    )
 
     def _flush_bonus_chain() -> None:
         if not active_chain["open"]:
             return
+        feat = active_chain["trigger_feature"]
+        fb = chunk_chains_by_feature[feat]
+        fb["lengths"].append(int(active_chain["length"]))
+        fb["max_ratios"].append(int(active_chain["max_ratio"]))
+        fb["retrigger_events"].append(int(active_chain["retriggers"]))
+        if active_chain["ratios"]:
+            fb["ratio_sequences"].append(list(active_chain["ratios"]))
+        # Also maintain the global (aggregate) accumulators for
+        # back-compat with the existing summary shape.
         chunk_bonus_chain_lengths.append(int(active_chain["length"]))
         chunk_bonus_chain_max_ratios.append(int(active_chain["max_ratio"]))
         chunk_bonus_chain_retrigger_events.append(int(active_chain["retriggers"]))
@@ -1147,6 +1174,7 @@ def run_sampling_chunk(
         active_chain["max_ratio"] = 0
         active_chain["retriggers"] = 0
         active_chain["ratios"] = []
+        active_chain["trigger_feature"] = "unknown"
         active_chain["open"] = False
 
     # Session state shared across the inner spin loop and its post-loop
@@ -1247,6 +1275,7 @@ def run_sampling_chunk(
         robot_cycle_peaks: list[int] = []  # CC value just before each reset
         robot_prev_cc_for_cycle = 0  # previous CC (for reset detection)
         robot_final_cc = 0  # CC at chunk end (for pending calculation)
+        prev_round_pids: dict[str, Any] = {}  # previous round's PayoutIdToWinAmount (for chain trigger classification)
         # Reset session-level streak state at robot boundary (streaks
         # don't cross robots -- each is an independent player trajectory).
         sess_state["cur_loss_streak"] = 0
@@ -1367,6 +1396,16 @@ def run_sampling_chunk(
             if fs_meta is not None:
                 if not active_chain["open"]:
                     active_chain["open"] = True
+                    # Classify trigger: look at the PREVIOUS main spin.
+                    # If it carried PayId 666 → NormalCollectionSpin
+                    # (random trigger). If it had empty PID →
+                    # NewFreespin (forced at cycle boundary). Generic:
+                    # any non-empty PID = random, empty = forced.
+                    prev_pids = prev_round_pids if prev_round_pids else {}
+                    if prev_pids:
+                        active_chain["trigger_feature"] = "NormalCollectionSpin"
+                    else:
+                        active_chain["trigger_feature"] = "NewFreespin"
                 # length tracks the highest Freespin index seen (they
                 # come in order but we max-of to be defensive).
                 if fs_meta["freespin_index"] > active_chain["length"]:
@@ -1382,6 +1421,15 @@ def run_sampling_chunk(
                 depth = bonus_chain_depth_bucket(fs_meta["freespin_index"])
                 chunk_bonus_depth_ratio_sum[depth] += fs_meta["extra_ratio"]
                 chunk_bonus_depth_ratio_count[depth] += 1
+                # Per-feature running stats (in addition to global).
+                feat = active_chain["trigger_feature"]
+                fb = chunk_chains_by_feature[feat]
+                fb["total_rounds"] += 1
+                if fs_meta["has_retrigger"]:
+                    fb["retrigger_rounds"] += 1
+                fb["extra_ratio_counts"][fs_meta["extra_ratio"]] += 1
+                fb["depth_ratio_sum"][depth] += fs_meta["extra_ratio"]
+                fb["depth_ratio_count"][depth] += 1
             elif active_chain["open"]:
                 _flush_bonus_chain()
 
@@ -1510,9 +1558,14 @@ def run_sampling_chunk(
                         if pos:
                             reel_position_hits[pos] += 1
 
-        # Session RTP curve: sample cumulative RTP per robot.
-        # Track inside the robot's round loop is easier via post-loop.
-        # (Handled after the inner loop ends — see below.)
+            # Track previous round's PayIds for chain trigger
+            # classification. MUST be the last thing inside the round
+            # loop so every paid spin updates it before the next
+            # iteration's chain-start check.
+            if is_paid:
+                prev_round_pids = r.get("PayoutIdToWinAmount") or {}
+
+        # --- End of per-round loop ---
 
         if cur_loss > 0:
             loss_streak_hist[cur_loss] += 1
@@ -1674,6 +1727,18 @@ def run_sampling_chunk(
         "session_rtp_curves": session_rtp_curves,
         "chain_ratio_sequences": chain_ratio_sequences,
         "reel_position_hits": dict(reel_position_hits),
+        "chains_by_feature": {
+            feat: {
+                "lengths": fb["lengths"],
+                "max_ratios": fb["max_ratios"],
+                "retrigger_events": fb["retrigger_events"],
+                "total_rounds": fb["total_rounds"],
+                "retrigger_rounds": fb["retrigger_rounds"],
+                "extra_ratio_counts": {str(k): v for k, v in fb["extra_ratio_counts"].items()},
+                "ratio_sequences": fb["ratio_sequences"],
+            }
+            for feat, fb in chunk_chains_by_feature.items()
+        },
         # --- Session-level counters (see session refactor commit). Summary
         #     derives hit_and_payout / multiplier_profile / streaks /
         #     volatility from these so bonus wins attribute back to the
@@ -1916,6 +1981,13 @@ def main() -> int:
     all_session_rtp_curves: list[list[dict[str, float]]] = []
     all_chain_ratio_sequences: list[list[int]] = []
     all_reel_position_hits: dict[str, int] = defaultdict(int)
+    # Per-feature chain aggregation.
+    all_chains_by_feature: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "lengths": [], "max_ratios": [], "retrigger_events": [],
+            "total_rounds": 0, "retrigger_rounds": 0,
+        }
+    )
 
     lack_credit_spins = 0
     chunks = 0
@@ -2134,6 +2206,18 @@ def main() -> int:
                     all_chain_ratio_sequences.append(seq)
             for pos, cnt in (rec.get("reel_position_hits") or {}).items():
                 all_reel_position_hits[str(pos)] += int(cnt)
+            for feat, fb in (rec.get("chains_by_feature") or {}).items():
+                if not isinstance(fb, dict):
+                    continue
+                afb = all_chains_by_feature[str(feat)]
+                for L in fb.get("lengths") or []:
+                    afb["lengths"].append(int(L))
+                for L in fb.get("max_ratios") or []:
+                    afb["max_ratios"].append(int(L))
+                for L in fb.get("retrigger_events") or []:
+                    afb["retrigger_events"].append(int(L))
+                afb["total_rounds"] += int(fb.get("total_rounds", 0) or 0)
+                afb["retrigger_rounds"] += int(fb.get("retrigger_rounds", 0) or 0)
 
             # Session-level totals (session refactor commit). Older chunk
             # records (pre-feature) silently add 0 via .get() fallback.
@@ -2565,6 +2649,28 @@ def main() -> int:
         # Shows how the MapCollection multiplier escalates as the
         # chain extends.
         "extra_ratio_by_chain_depth": depth_curve,
+        # Per-feature breakdown: same structure as aggregate but split
+        # by trigger type. NormalCollectionSpin = random (PayId 666),
+        # NewFreespin = forced at cycle boundary (no PayId). Empty
+        # features are omitted.
+        "by_feature": {
+            feat: {
+                "chain_count": len(afb["lengths"]),
+                "bonus_round_count": afb["total_rounds"],
+                "avg_chain_length": (
+                    sum(afb["lengths"]) / len(afb["lengths"])
+                    if afb["lengths"] else 0.0
+                ),
+                "chain_length_quantiles": _quantiles(afb["lengths"]),
+                "chain_max_ratio_quantiles": _quantiles(afb["max_ratios"]),
+                "self_retrigger_round_rate": (
+                    afb["retrigger_rounds"] / afb["total_rounds"]
+                    if afb["total_rounds"] > 0 else 0.0
+                ),
+            }
+            for feat, afb in all_chains_by_feature.items()
+            if afb["lengths"]
+        },
     }
 
     # Session-level streak quantiles (player perspective: runs of

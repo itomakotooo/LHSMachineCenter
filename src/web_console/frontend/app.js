@@ -860,6 +860,29 @@ function renderBonusChainDynamicsPanel(summary) {
     `<thead><tr><th>Ratio</th><th>Share</th></tr></thead>` +
     `<tbody>${histHtml}</tbody></table></div>` +
     `</div>`;
+
+  // Per-feature breakdown (NormalCollectionSpin vs NewFreespin)
+  const byFeat = d.by_feature || {};
+  const featNames = Object.keys(byFeat);
+  if (featNames.length > 1) {
+    const featHtml = featNames.map((fn) => {
+      const fd = byFeat[fn];
+      const fq = fd.chain_length_quantiles || {};
+      const frq = fd.chain_max_ratio_quantiles || {};
+      const fRetrigger = (Number(fd.self_retrigger_round_rate || 0) * 100).toFixed(0);
+      return (
+        `<div class="bcFeatCard">` +
+        `<h4>${fn}</h4>` +
+        `<div class="bcFeatRow">${fmt("bonusChainLenLabel")}: avg ${Number(fd.avg_chain_length || 0).toFixed(1)} · p90 ${fq.p90 || 0} · max ${fq.max || 0}</div>` +
+        `<div class="bcFeatRow">${fmt("bonusChainRatioLabel")}: p50 ${frq.p50 || 0}x · p90 ${frq.p90 || 0}x · max ${frq.max || 0}x</div>` +
+        `<div class="bcFeatRow">${fmt("bonusChainRetriggerLabel")}: ${fRetrigger}% · ${fd.chain_count || 0} chains (${fd.bonus_round_count || 0} rounds)</div>` +
+        `</div>`
+      );
+    }).join("");
+    byId("bonusChainBody").innerHTML +=
+      `<div class="bonus-chain-features"><h3 style="margin:12px 0 6px;font-size:13px;color:var(--muted)">By Feature</h3>` +
+      `<div class="bcFeatGrid">${featHtml}</div></div>`;
+  }
 }
 
 function renderAssessment(summary) {
