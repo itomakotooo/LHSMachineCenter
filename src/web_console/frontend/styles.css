@@ -819,22 +819,28 @@ button:disabled {
   font-size: 12px;
 }
 .feature-bar-label {
-  min-width: 42px;
+  flex: 0 0 42px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-.feature-bar {
+/* Track is the "100% runway" for the bar inside it. It fills all
+   remaining space between label and value. The bar's inline width:N%
+   is relative to THIS container, so 100% = full track, 50% = half. */
+.feature-bar-track {
+  flex: 1 1 0;
+  min-width: 0;
   height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.feature-bar {
+  height: 100%;
   background: #0f766e;
   border-radius: 4px;
-  flex-shrink: 0;
-  /* Cap width so bars don't push the row past the panel edge even
-     when the share is 100%. The actual visual width is set inline
-     as a percentage of this max. */
-  max-width: min(60%, 300px);
 }
 .feature-bar-val {
-  min-width: 36px;
+  flex: 0 0 42px;
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: #334155;

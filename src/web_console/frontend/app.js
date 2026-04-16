@@ -499,9 +499,17 @@ function renderRunHistory() {
     });
   });
 
-  // Rebuild (per-row)
+  // Rebuild (per-row): disabled by default; enabled only when chunk
+  // cache exists for this run. We check asynchronously per-row.
   body.querySelectorAll(".rebuild-run-btn").forEach((b) => {
-    b.disabled = state.busyActions.size > 0;
+    b.disabled = true; // default disabled until chunk check
+    b.title = fmt("rebuildNoChunks");
+    apiGet(`/api/runs/${encodeURIComponent(b.dataset.id)}/chunks`).then((d) => {
+      if (d.available && d.chunk_count > 0) {
+        b.disabled = state.busyActions.size > 0;
+        b.title = fmt("chunkCacheLabel", { count: d.chunk_count });
+      }
+    }).catch(() => {});
     b.addEventListener("click", async () => {
       if (state.busyActions.size > 0) return;
       const runId = b.dataset.id;
@@ -735,7 +743,7 @@ function renderFeatureBreakdownPanel(summary) {
           return (
             `<span class="feature-bar-row">` +
             `<span class="feature-bar-label">ID ${String(p.payout_id)}</span>` +
-            `<span class="feature-bar" style="width:${bar.toFixed(1)}%"></span>` +
+            `<span class="feature-bar-track"><span class="feature-bar" style="width:${bar.toFixed(1)}%"></span></span>` +
             `<span class="feature-bar-val">${(share * 100).toFixed(1)}%</span>` +
             `</span>`
           );
@@ -792,18 +800,19 @@ function renderBonusChainDynamicsPanel(summary) {
       );
     })
     .join("");
-  // Depth curve: only show depth bucket + avg ExtraRatio (the
-  // escalation speed). "Rounds" column was confusing and carried
-  // no actionable signal.
+  // Depth curve: depth bucket + share of total bonus rounds + avg ExtraRatio.
   const depth = Array.isArray(d.extra_ratio_by_chain_depth) ? d.extra_ratio_by_chain_depth : [];
   const maxDepthRatio = Math.max(...depth.map((b) => Number(b.avg_extra_ratio || 0)), 0);
   const depthHtml = depth
     .map((b) => {
       const avg = Number(b.avg_extra_ratio || 0);
+      const rounds = Number(b.rounds || 0);
+      const sharePct = totalBonusRounds > 0 ? ((rounds / totalBonusRounds) * 100).toFixed(1) : "0.0";
       const bar = maxDepthRatio > 0 ? Math.min(100, (avg / maxDepthRatio) * 100) : 0;
       return (
         `<tr>` +
         `<td>${b.depth_bucket}</td>` +
+        `<td>${sharePct}%</td>` +
         `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${avg.toFixed(0)}x</td>` +
         `</tr>`
       );
@@ -829,7 +838,7 @@ function renderBonusChainDynamicsPanel(summary) {
     `<div class="bonus-chain-grid">` +
     `<div><h3>${fmt("bonusChainDepthLabel")}</h3>` +
     `<table class="drilldown-table">` +
-    `<thead><tr><th>Depth</th><th>avg ExtraRatio</th></tr></thead>` +
+    `<thead><tr><th>Depth</th><th>Share</th><th>avg ExtraRatio</th></tr></thead>` +
     `<tbody>${depthHtml}</tbody></table></div>` +
     `<div><h3>${fmt("bonusChainHistogramLabel")}</h3>` +
     `<table class="drilldown-table">` +
