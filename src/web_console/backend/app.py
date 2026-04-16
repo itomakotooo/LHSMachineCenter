@@ -43,6 +43,7 @@ PROGRESS_DIR = STATE_DIR / "progress"
 REPORTS_ROOT = ROOT / "reports"
 CACHE_ROOT = ROOT / "cache" / "chunks"
 MACHINES_CONFIG = ROOT / "configs" / "machines.json"
+SERVERS_CONFIG = ROOT / "configs" / "servers.json"
 ANALYZER = ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
 FRONTEND_DIR = ROOT / "src" / "web_console" / "frontend"
 SLOT_SPIN_ENDPOINT = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpin"
@@ -136,6 +137,7 @@ def get_model_config_view(
 class RunCreateRequest(BaseModel):
     machine: str
     mode: int
+    server_id: str = Field(default="")
     # target_halfwidth_pp == 0 encodes the "fuzzy" tier (no CI stop;
     # backend resolves max_chunks to target ~1M spins). Any positive
     # value is a normal CI half-width in percentage points.
@@ -162,6 +164,45 @@ class ModelConfigUpdateRequest(BaseModel):
 
 class CacheCleanupRequest(BaseModel):
     max_delete_bytes: int = Field(default=0, ge=0)
+
+
+class ServerEntry(BaseModel):
+    id: str
+    name: str
+    endpoint: str = ""
+    active: bool = False
+
+
+class ServerUpdateRequest(BaseModel):
+    name: str | None = None
+    endpoint: str | None = None
+    active: bool | None = None
+
+
+def load_servers(path: Path | None = None) -> dict[str, Any]:
+    target = path if path is not None else SERVERS_CONFIG
+    if target.exists():
+        return read_json(target) or {"servers": [], "default_server": ""}
+    return {"servers": [], "default_server": ""}
+
+
+def save_servers(data: dict[str, Any], path: Path | None = None) -> None:
+    target = path if path is not None else SERVERS_CONFIG
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
+def get_server_endpoint(server_id: str, path: Path | None = None) -> str:
+    """Resolve the sampling API endpoint URL for a server."""
+    cfg = load_servers(path)
+    for s in cfg.get("servers", []):
+        if s.get("id") == server_id:
+            ep = s.get("endpoint", "").rstrip("/")
+            if ep:
+                return f"{ep}/MachineTest/MultiRobotTestSpin"
+    return SLOT_SPIN_ENDPOINT
 
 
 class BatchRunItem(BaseModel):
@@ -1470,6 +1511,10 @@ class RunManager:
         # naturally covers it. Rule #13: cleanup must skip active chunks.
         chunk_cache_dir = self._cache_root / run_id
         cmd.extend(["--chunk-cache-dir", str(chunk_cache_dir)])
+        # Server-specific endpoint URL.
+        if req.server_id:
+            endpoint = get_server_endpoint(req.server_id)
+            cmd.extend(["--endpoint-url", endpoint])
 
         process = self._popen_factory(cmd, ROOT)
         managed = ManagedRun(
@@ -1874,6 +1919,7 @@ def create_app(
     rr = reports_root if reports_root is not None else REPORTS_ROOT
     cr = cache_root if cache_root is not None else CACHE_ROOT
     mc = machines_config if machines_config is not None else MACHINES_CONFIG
+    sc = SERVERS_CONFIG
     az = analyzer_path if analyzer_path is not None else ANALYZER
 
     store = StateStore(db_path)
@@ -2009,6 +2055,52 @@ def create_app(
     def cancel_batch_run(batch_id: str) -> dict[str, Any]:
         if not batch_mgr.cancel_batch(batch_id):
             raise HTTPException(status_code=404, detail="batch not found")
+        return {"ok": True}
+
+    # ── Server management ──
+
+    @app.get("/api/servers")
+    def list_servers() -> dict[str, Any]:
+        return load_servers(sc)
+
+    @app.post("/api/servers")
+    def add_server(entry: ServerEntry) -> dict[str, Any]:
+        cfg = load_servers(sc)
+        servers = cfg.get("servers", [])
+        if any(s["id"] == entry.id for s in servers):
+            raise HTTPException(status_code=409, detail=f"server '{entry.id}' already exists")
+        servers.append(entry.model_dump())
+        cfg["servers"] = servers
+        save_servers(cfg, sc)
+        return {"ok": True, "server": entry.model_dump()}
+
+    @app.put("/api/servers/{server_id}")
+    def update_server(server_id: str, req: ServerUpdateRequest) -> dict[str, Any]:
+        cfg = load_servers(sc)
+        servers = cfg.get("servers", [])
+        target = next((s for s in servers if s["id"] == server_id), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail="server not found")
+        if req.name is not None:
+            target["name"] = req.name
+        if req.endpoint is not None:
+            target["endpoint"] = req.endpoint
+        if req.active is not None:
+            target["active"] = req.active
+        save_servers(cfg, sc)
+        return {"ok": True, "server": target}
+
+    @app.delete("/api/servers/{server_id}")
+    def delete_server(server_id: str) -> dict[str, Any]:
+        cfg = load_servers(sc)
+        servers = cfg.get("servers", [])
+        before = len(servers)
+        cfg["servers"] = [s for s in servers if s["id"] != server_id]
+        if len(cfg["servers"]) == before:
+            raise HTTPException(status_code=404, detail="server not found")
+        if cfg.get("default_server") == server_id:
+            cfg["default_server"] = cfg["servers"][0]["id"] if cfg["servers"] else ""
+        save_servers(cfg, sc)
         return {"ok": True}
 
     @app.get("/api/models")

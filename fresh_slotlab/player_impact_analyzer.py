@@ -17,7 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-ENDPOINT_URL = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpin"
+DEFAULT_ENDPOINT_URL = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpin"
+ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
 PAYLINE_RE = re.compile(r"(\d+):")
 # 11 win-bearing buckets. The old `eq0` bucket carried zero-win sessions
 # which already live in summary.hit_and_payout.zero_win_rate; a bucket
@@ -146,6 +147,12 @@ def parse_args() -> argparse.Namespace:
             "and run the full parse → accumulate → report pipeline offline. "
             "Each file must have the chunk-cache envelope with a 'response' key."
         ),
+    )
+    parser.add_argument(
+        "--endpoint-url",
+        type=str,
+        default=None,
+        help=f"override the sampling API endpoint (default: {DEFAULT_ENDPOINT_URL})",
     )
     return parser.parse_args()
 
@@ -1876,7 +1883,11 @@ def run_bankruptcy_probe(
 
 
 def main() -> int:
+    global ENDPOINT_URL
     args = parse_args()
+
+    if args.endpoint_url:
+        ENDPOINT_URL = args.endpoint_url
 
     # Graceful stop flag: SIGTERM / SIGINT sets this so the main chunk
     # loop breaks between chunks and falls through to the normal

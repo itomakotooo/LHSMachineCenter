@@ -63,6 +63,10 @@
               <h2 data-i18n="panelRunConfig">运行参数</h2>
               <div class="grid two">
                 <label>
+                  <span data-i18n="labelServer">服务器</span>
+                  <select id="serverSelect"></select>
+                </label>
+                <label>
                   <span class="label-with-help"><span data-i18n="labelMachine">机台</span><span class="help-dot" data-help-key="helpMachine" tabindex="0" role="note">i</span></span>
                   <select id="machineSelect"></select>
                 </label>
@@ -369,6 +373,28 @@
               <span id="batchCount">0</span>
               <button id="batchDeleteBtn" class="danger-btn" data-i18n="btnBatchDelete">删除选中</button>
               <button id="clearSelectionBtn" data-i18n="btnClearSelection">清除选择</button>
+            </div>
+          </section>
+
+          <section class="panel server-management">
+            <h2 data-i18n="panelServerManagement">服务器管理</h2>
+            <table id="serverTable" class="drilldown-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thServerId">ID</th>
+                  <th data-i18n="thServerName">名称</th>
+                  <th data-i18n="thServerEndpoint">地址</th>
+                  <th data-i18n="thServerStatus">状态</th>
+                  <th data-i18n="thAction">操作</th>
+                </tr>
+              </thead>
+              <tbody id="serverTableBody"></tbody>
+            </table>
+            <div class="server-add-form">
+              <input type="text" id="newServerId" placeholder="ID (如 test)" />
+              <input type="text" id="newServerName" placeholder="名称 (如 测试服)" />
+              <input type="text" id="newServerEndpoint" placeholder="http://..." />
+              <button id="addServerBtn" class="primary-btn" data-i18n="btnAddServer">添加服务器</button>
             </div>
           </section>
 

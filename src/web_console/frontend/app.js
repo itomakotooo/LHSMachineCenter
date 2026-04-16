@@ -46,6 +46,8 @@ const state = {
   machinesSummary: null,
   // Active batch run state.
   activeBatchId: null,
+  servers: [],
+  defaultServer: "",
 };
 
 const byId = (id) => document.getElementById(id);
@@ -142,6 +144,12 @@ async function apiGet(url) {
 
 async function apiPost(url, payload) {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload || {}) });
+  if (!res.ok) throw new Error(`${url}: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+async function apiPut(url, payload) {
+  const res = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload || {}) });
   if (!res.ok) throw new Error(`${url}: ${res.status} ${await res.text()}`);
   return res.json();
 }
@@ -526,6 +534,103 @@ async function cancelBatchRun() {
   try {
     await apiPost(`/api/batch-run/${state.activeBatchId}/cancel`);
   } catch (_) { /* ignore */ }
+}
+
+// ── Server Management ─────────────────────────────────────────────
+
+async function refreshServers() {
+  try {
+    const data = await apiGet("/api/servers");
+    state.servers = data.servers || [];
+    state.defaultServer = data.default_server || "";
+    fillServerSelector();
+    renderServerTable();
+  } catch (_) { /* ignore */ }
+}
+
+function fillServerSelector() {
+  const sel = byId("serverSelect");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = "";
+  (state.servers || []).forEach((s) => {
+    if (!s.active && !s.endpoint) return;
+    const opt = new Option(`${s.name} (${s.id})`, s.id);
+    sel.appendChild(opt);
+  });
+  if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  else if (state.defaultServer) sel.value = state.defaultServer;
+}
+
+function renderServerTable() {
+  const tbody = byId("serverTableBody");
+  if (!tbody) return;
+  const servers = state.servers || [];
+  if (!servers.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="muted">${fmt("noServers")}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = servers.map((s) => {
+    const statusBadge = s.active
+      ? `<span class="srv-active">${fmt("serverActive")}</span>`
+      : `<span class="srv-inactive">${fmt("serverInactive")}</span>`;
+    const epDisplay = s.endpoint
+      ? `<code class="srv-endpoint">${s.endpoint}</code>`
+      : `<span class="muted">${fmt("serverNoEndpoint")}</span>`;
+    return (
+      `<tr data-server-id="${s.id}">` +
+      `<td><strong>${s.id}</strong></td>` +
+      `<td>${s.name}</td>` +
+      `<td>${epDisplay}</td>` +
+      `<td>${statusBadge}</td>` +
+      `<td><button class="srv-edit-btn small-btn">${fmt("btnEdit")}</button> <button class="srv-delete-btn small-btn danger-btn">${fmt("btnDelete")}</button></td>` +
+      `</tr>`
+    );
+  }).join("");
+
+  // Wire up edit/delete buttons.
+  tbody.querySelectorAll(".srv-edit-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const row = btn.closest("tr");
+      const sid = row.dataset.serverId;
+      const s = servers.find((x) => x.id === sid);
+      if (!s) return;
+      const newName = prompt(fmt("serverPromptName"), s.name);
+      if (newName === null) return;
+      const newEndpoint = prompt(fmt("serverPromptEndpoint"), s.endpoint);
+      if (newEndpoint === null) return;
+      const newActive = confirm(fmt("serverPromptActive"));
+      apiPut(`/api/servers/${sid}`, { name: newName, endpoint: newEndpoint, active: newActive })
+        .then(() => refreshServers())
+        .catch((e) => alert(String(e.message || e)));
+    });
+  });
+  tbody.querySelectorAll(".srv-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const row = btn.closest("tr");
+      const sid = row.dataset.serverId;
+      if (!confirm(fmt("serverConfirmDelete", { id: sid }))) return;
+      apiDelete(`/api/servers/${sid}`)
+        .then(() => refreshServers())
+        .catch((e) => alert(String(e.message || e)));
+    });
+  });
+}
+
+async function addServer() {
+  const id = byId("newServerId").value.trim();
+  const name = byId("newServerName").value.trim();
+  const endpoint = byId("newServerEndpoint").value.trim();
+  if (!id || !name) return alert(fmt("serverRequiredFields"));
+  try {
+    await apiPost("/api/servers", { id, name, endpoint, active: !!endpoint });
+    byId("newServerId").value = "";
+    byId("newServerName").value = "";
+    byId("newServerEndpoint").value = "";
+    await refreshServers();
+  } catch (e) {
+    alert(String(e.message || e));
+  }
 }
 
 function renderRunFilterBanner() {
@@ -1560,6 +1665,7 @@ async function loadBootstrap() {
   fillProviders();
   fillModelsForProvider(byId("providerSelect").value, state.modelMeta.default_model || "");
   renderMachineCatalog();
+  await refreshServers();
   // Now that machineSelect is populated, seed the topbar idle brief.
   // (applyI18n() ran before bootstrap when machineSelect was empty, so
   // its renderLiveStatusStrip() call was a no-op.)
@@ -1624,6 +1730,7 @@ function bindEvents() {
   byId("catalogSearch").addEventListener("input", () => renderMachineCatalog());
   byId("batchRunBtn").addEventListener("click", () => startBatchRun());
   byId("batchCancelBtn").addEventListener("click", () => cancelBatchRun());
+  byId("addServerBtn").addEventListener("click", () => addServer());
   byId("machineSelect").addEventListener("change", async () => {
     refreshModes();
     applyModeCiConstraint();

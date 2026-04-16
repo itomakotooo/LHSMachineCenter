@@ -1,0 +1,23 @@
+{
+  "servers": [
+    {
+      "id": "dev",
+      "name": "开发服",
+      "endpoint": "http://buffalo-debug.citrusjoy.com",
+      "active": true
+    },
+    {
+      "id": "test",
+      "name": "测试服",
+      "endpoint": "",
+      "active": false
+    },
+    {
+      "id": "prod",
+      "name": "发布服",
+      "endpoint": "",
+      "active": false
+    }
+  ],
+  "default_server": "dev"
+}

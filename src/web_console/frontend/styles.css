@@ -977,6 +977,52 @@ button:disabled {
 .batch-completed { background: #f0fdf4; color: #059669; }
 .batch-failed { background: #fef2f2; color: #dc2626; }
 
+/* Server management */
+.server-management {
+  grid-column: span 12;
+}
+.server-add-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.server-add-form input {
+  padding: 5px 8px;
+  border: 1px solid #d4ddea;
+  border-radius: 6px;
+  font-size: 12px;
+  flex: 1;
+  min-width: 100px;
+}
+.srv-endpoint {
+  font-size: 11px;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+.srv-active {
+  color: #059669;
+  font-weight: 600;
+  font-size: 12px;
+}
+.srv-inactive {
+  color: var(--muted);
+  font-size: 12px;
+}
+.small-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #d4ddea;
+  background: #f9fafb;
+}
+.small-btn:hover {
+  background: #f0f4f8;
+}
+
 /* Rare SpinType row highlight */
 .rare-row {
   opacity: 0.6;
