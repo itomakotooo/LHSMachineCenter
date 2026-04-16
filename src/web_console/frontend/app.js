@@ -441,6 +441,15 @@ function _groupMachines(machines, viewMode) {
   return groups;
 }
 
+const MECH_GROUP_LABELS = {
+  lock_lines: "Lock Lines", lock_symbols: "Lock Symbols", jackpot: "Jackpot",
+  free_spin: "Free Spin", dollar_pick: "Dollar Pick", Normal: "Normal (无特殊机制)",
+};
+const MECH_GROUP_COLORS = {
+  lock_lines: "#ea580c", lock_symbols: "#d97706", jackpot: "#7c3aed",
+  free_spin: "#059669", dollar_pick: "#6366f1", Normal: "#6b7280",
+};
+
 function _groupOrder(viewMode) {
   if (viewMode === "category") return ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Selector", "Other", "Unknown"];
   if (viewMode === "volatility") return ["Low", "Medium", "High", "Very High", "N/A"];
@@ -487,10 +496,11 @@ function renderMachineCatalog() {
     section.className = "catalog-group";
 
     if (!isFlatView) {
-      const catColor = CATEGORY_COLORS[groupKey] || VOL_COLORS[groupKey] || "#9ca3af";
+      const catColor = CATEGORY_COLORS[groupKey] || VOL_COLORS[groupKey] || MECH_GROUP_COLORS[groupKey] || "#9ca3af";
+      const displayName = MECH_GROUP_LABELS[groupKey] || groupKey;
       const header = document.createElement("div");
       header.className = "catalog-group-header";
-      header.innerHTML = `<span class="catalog-group-arrow">&#9660;</span> <span class="catalog-group-dot" style="background:${catColor}"></span> <span class="catalog-group-name">${groupKey}</span> <span class="catalog-group-count">(${machines.length})</span>`;
+      header.innerHTML = `<span class="catalog-group-arrow">&#9660;</span> <span class="catalog-group-dot" style="background:${catColor}"></span> <span class="catalog-group-name">${displayName}</span> <span class="catalog-group-count">(${machines.length})</span>`;
       header.addEventListener("click", () => {
         section.classList.toggle("collapsed");
         header.querySelector(".catalog-group-arrow").innerHTML = section.classList.contains("collapsed") ? "&#9654;" : "&#9660;";
