@@ -137,6 +137,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="optional dir for raw API response caching (full per-chunk data for offline rebuild)",
     )
+    parser.add_argument(
+        "--from-cache",
+        type=Path,
+        default=None,
+        help=(
+            "skip API sampling; read chunk_*.json files from this directory "
+            "and run the full parse → accumulate → report pipeline offline. "
+            "Each file must have the chunk-cache envelope with a 'response' key."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -230,6 +240,21 @@ def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
         return parsed if isinstance(parsed, list) else []
     return rr if isinstance(rr, list) else []
 
+
+# Baseline round fields: the set of keys the analyzer knows how to
+# interpret. Any field NOT in this set is tracked in extra_fields_seen
+# so the report surfaces unknown / machine-specific data for future
+# analyzer extensions. This list is intentionally stable — add a key
+# here only AFTER writing the code that consumes it.
+_BASELINE_ROUND_FIELDS = frozenset({
+    "BetAmount", "CostCredits", "WinCredits", "SpinType", "SpinTimes",
+    "RTPId", "IsLackCreditsSpin", "LastCredits", "CurJackpotStoreWin",
+    "PayLineGroupId", "PayoutGroupId", "PayoutByPayline",
+    "PayoutIdToWinAmount", "ReMarks", "ReelSkin",
+    "StopSymbolsByCol", "RewardLastNode",
+    # Collect-mechanic fields (consumed by cycle/trunk-clamp logic)
+    "CollectCount", "AccCredits", "CreditsSymbols", "SymbolIndexToRewards",
+})
 
 # Round-level fields that MUST appear on every spin regardless of
 # win / lose state. Missing one is almost certainly an upstream API
@@ -850,6 +875,28 @@ def run_sampling_chunk(
         resp, chunk_index, machine, rtp_mode, bet, spin_times, robot_count, chunk_cache_dir,
     )
 
+    return parse_chunk_response(resp, chunk_index, bet, started)
+
+
+def parse_chunk_response(
+    resp: Any,
+    chunk_index: int,
+    bet: int,
+    started: float | None = None,
+) -> dict[str, Any]:
+    """Parse a raw API response (list of robot dicts) into chunk metrics.
+
+    This is the pure-computation core of the analyzer: no network, no
+    disk I/O. ``run_sampling_chunk`` calls it after fetching + caching;
+    the ``--from-cache`` path calls it directly with data loaded from
+    chunk-cache JSON files.
+
+    ``started`` is an optional ``time.time()`` value used only for
+    elapsed_seconds in the result dict.
+    """
+    if started is None:
+        started = time.time()
+
     # Top-level shape sanity. Different machines can return slightly
     # different envelopes (M14 returns list-of-robots, exploratory probes
     # of new machines have surfaced single-dict variants). Catch and
@@ -962,6 +1009,9 @@ def run_sampling_chunk(
             "index": chunk_index,
             "error": "schema_drift_missing_fields:" + ",".join(schema_missing),
         }
+
+    # --- Extra-field discovery: track fields beyond _BASELINE_ROUND_FIELDS.
+    extra_fields_seen: dict[str, int] = defaultdict(int)
 
     chunk_spins = 0
     chunk_bet = 0.0
@@ -1284,6 +1334,11 @@ def run_sampling_chunk(
         for r in rounds:
             if not isinstance(r, dict):
                 continue
+
+            # Extra-field discovery (lightweight: just set-diff the keys).
+            for k in r:
+                if k not in _BASELINE_ROUND_FIELDS:
+                    extra_fields_seen[k] += 1
 
             bet_amt = to_float(r.get("BetAmount"), default=0.0)
             if bet_amt <= 0.0:
@@ -1762,6 +1817,10 @@ def run_sampling_chunk(
         "session_win_streak_hist": dict(session_win_streak_hist),
         "session_max_loss_streak": session_max_loss_streak,
         "session_max_win_streak": session_max_win_streak,
+        # Extra fields not in _BASELINE_ROUND_FIELDS — surfaced in the
+        # report's field_discovery section so operators know which
+        # machine-specific data is available for future analysis.
+        "extra_fields_seen": dict(extra_fields_seen),
     }
 
 
@@ -1990,12 +2049,211 @@ def main() -> int:
     )
 
     lack_credit_spins = 0
+    # Extra-field discovery aggregation across chunks.
+    total_extra_fields_seen: dict[str, int] = defaultdict(int)
     chunks = 0
     stop_reason = "max_chunks_reached"
     achieved_halfwidth_pp: float | None = None
     next_chunk_index = 1
 
-    while next_chunk_index <= args.max_chunks:
+    # ── from-cache mode: read chunk files from disk instead of sampling ──
+    if args.from_cache is not None:
+        cache_dir = args.from_cache
+        chunk_files = sorted(cache_dir.glob("chunk_*.json"))
+        if not chunk_files:
+            raise SystemExit(f"--from-cache: no chunk_*.json files found in {cache_dir}")
+        stop_reason = "from_cache_complete"
+
+        for cf in chunk_files:
+            raw = json.loads(cf.read_text(encoding="utf-8"))
+            resp = raw.get("response")
+            if resp is None:
+                raise SystemExit(f"--from-cache: {cf.name} missing 'response' key")
+            # Honour envelope metadata for bet if present.
+            chunk_bet_val = int(raw.get("_bet", args.bet) or args.bet)
+            idx = int(raw.get("_chunk_index", next_chunk_index))
+            rec = parse_chunk_response(resp, idx, chunk_bet_val)
+            if not rec.get("ok"):
+                raise SystemExit(f"--from-cache: {cf.name} parse failed: {rec.get('error')}")
+            # ── identical merge block as online path (below) ──
+            # We must replicate the merge here because the online loop is
+            # inside a while-block we skip. A helper would be cleaner but
+            # duplicating keeps the diff small and avoids touching 200+
+            # lines of battle-tested merge logic. The "for rec in ..."
+            # block below is the canonical merge; we jump directly there
+            # by repackaging as a single-element batch_results list.
+            batch_results_fc = [rec]
+            for rec in batch_results_fc:  # noqa: PLW2901 — intentional rebind
+                chunks += 1
+                spins = int(rec["spins"])
+                bet_amt = float(rec["bet"])
+                win_amt = float(rec["win"])
+                total_spins += spins
+                total_bet += bet_amt
+                total_win += win_amt
+                chunk_rtp = (win_amt / bet_amt) * 100.0 if bet_amt > 0 else 0.0
+                chunk_rtps_pct.append(chunk_rtp)
+                ret_count += int(rec["ret_count"])
+                ret_sum += float(rec["ret_sum"])
+                ret_sq_sum += float(rec["ret_sq_sum"])
+                max_observed_return_x = max(max_observed_return_x, float(rec["max_return_x"]))
+                win_spins += int(rec["win_spins"])
+                loss_spins += int(rec["loss_spins"])
+                profit_spins += int(rec["profit_spins"])
+                breakeven_or_more_spins += int(rec["breakeven_or_more_spins"])
+                big_win_x10_spins += int(rec["big_win_x10_spins"])
+                win_sum += float(rec["win_sum"])
+                lack_credit_spins += int(rec["lack_credit_spins"])
+                for lid, c in rec["payline_hits"].items():
+                    payline_hits[str(lid)] += int(c)
+                for lid, w in rec["payline_win_approx"].items():
+                    payline_win_approx[str(lid)] += float(w)
+                for lid, smap in (rec.get("payline_winning_symbols") or {}).items():
+                    if isinstance(smap, dict):
+                        for sym, c in smap.items():
+                            payline_winning_symbols[str(lid)][str(sym)] += int(c)
+                for lid, smap in (rec.get("payline_winning_symbols_rln") or {}).items():
+                    if isinstance(smap, dict):
+                        for code, c in smap.items():
+                            payline_winning_symbols_rln[str(lid)][str(code)] += int(c)
+                for L in rec.get("bonus_chain_lengths") or []:
+                    bonus_chain_lengths.append(int(L))
+                for L in rec.get("bonus_chain_max_ratios") or []:
+                    bonus_chain_max_ratios.append(int(L))
+                for L in rec.get("bonus_chain_retrigger_events") or []:
+                    bonus_chain_retrigger_events.append(int(L))
+                bonus_total_rounds_global += int(rec.get("bonus_total_rounds", 0) or 0)
+                bonus_retrigger_rounds_global += int(rec.get("bonus_retrigger_rounds", 0) or 0)
+                for ratio_str, c in (rec.get("bonus_extra_ratio_counts") or {}).items():
+                    try:
+                        bonus_extra_ratio_counts[int(ratio_str)] += int(c)
+                    except (TypeError, ValueError):
+                        pass
+                for depth, s in (rec.get("bonus_depth_ratio_sum") or {}).items():
+                    bonus_depth_ratio_sum[str(depth)] += float(s)
+                for depth, c in (rec.get("bonus_depth_ratio_count") or {}).items():
+                    bonus_depth_ratio_count[str(depth)] += int(c)
+                for sym, c in rec["symbol_counts"].items():
+                    symbol_counts[str(sym)] += int(c)
+                for ci_text, cmap in rec["symbol_counts_by_col"].items():
+                    ci = int(ci_text)
+                    if isinstance(cmap, dict):
+                        for sym, c in cmap.items():
+                            symbol_counts_by_col[ci][str(sym)] += int(c)
+                total_symbol_slots += int(rec["total_symbol_slots"])
+                for k, c in rec["loss_streak_hist"].items():
+                    loss_streak_hist[int(k)] += int(c)
+                for k, c in rec["win_streak_hist"].items():
+                    win_streak_hist[int(k)] += int(c)
+                max_loss_streak = max(max_loss_streak, int(rec["max_loss_streak"]))
+                max_win_streak = max(max_win_streak, int(rec["max_win_streak"]))
+                for k, c in rec["multiplier_bucket_spins"].items():
+                    multiplier_bucket_spins[str(k)] += int(c)
+                for k, v in rec["multiplier_bucket_bet"].items():
+                    multiplier_bucket_bet[str(k)] += float(v)
+                for k, v in rec["multiplier_bucket_win"].items():
+                    multiplier_bucket_win[str(k)] += float(v)
+                for k, c in (rec.get("payout_group_hits") or {}).items():
+                    payout_group_hits[int(k)] += int(c)
+                for k, w in (rec.get("payout_group_win") or {}).items():
+                    payout_group_win[int(k)] += float(w)
+                for pid, c in (rec.get("payout_id_hits") or {}).items():
+                    payout_id_hits[str(pid)] += int(c)
+                for pid, w in (rec.get("payout_id_win") or {}).items():
+                    payout_id_win[str(pid)] += float(w)
+                for st, c in (rec.get("spin_type_spins") or {}).items():
+                    spin_type_spins[int(st)] += int(c)
+                for st, b in (rec.get("spin_type_bet") or {}).items():
+                    spin_type_bet[int(st)] += float(b)
+                for st, b in (rec.get("spin_type_paid_bet") or {}).items():
+                    spin_type_paid_bet[int(st)] += float(b)
+                for st, w in (rec.get("spin_type_win") or {}).items():
+                    spin_type_win[int(st)] += float(w)
+                for st, c in (rec.get("spin_type_wins") or {}).items():
+                    spin_type_wins[int(st)] += int(c)
+                for st, c in (rec.get("spin_type_paid_rounds") or {}).items():
+                    spin_type_paid_rounds[int(st)] += int(c)
+                for feat, payouts in (rec.get("upstream_feature_tally") or {}).items():
+                    if not isinstance(payouts, dict):
+                        continue
+                    for pid, entry in payouts.items():
+                        if not isinstance(entry, dict):
+                            continue
+                        upstream_feature_tally[str(feat)][str(pid)]["win"] += float(entry.get("win", 0.0) or 0.0)
+                        upstream_feature_tally[str(feat)][str(pid)]["times"] += int(entry.get("times", 0) or 0)
+                upstream_total_win += float(rec.get("upstream_chunk_total_win", 0.0) or 0.0)
+                upstream_robots_seen += int(rec.get("upstream_chunk_robots_seen", 0) or 0)
+                collect_count_total += int(rec.get("collect_count_total", 0) or 0)
+                chunk_acc_max = int(rec.get("acc_credits_max", 0) or 0)
+                if chunk_acc_max > acc_credits_max_global:
+                    acc_credits_max_global = chunk_acc_max
+                collect_robots_seen_total += int(rec.get("collect_robots_seen", 0) or 0)
+                clamp_pending_paid_spins_total += int(rec.get("clamp_pending_paid_spins", 0) or 0)
+                clamp_pending_robots_total += int(rec.get("clamp_pending_robots", 0) or 0)
+                for pk in rec.get("cycle_peaks") or []:
+                    all_cycle_peaks.append(int(pk))
+                for fcc in rec.get("final_cc_values") or []:
+                    all_final_cc_values.append(int(fcc))
+                total_completed_cycles += int(rec.get("completed_cycles", 0) or 0)
+                for key, entry in (rec.get("payline_symbol_joint") or {}).items():
+                    if isinstance(entry, dict):
+                        all_payline_symbol_joint[key]["hits"] += int(entry.get("hits", 0))
+                        all_payline_symbol_joint[key]["win"] += float(entry.get("win", 0.0))
+                for curve in rec.get("session_rtp_curves") or []:
+                    if isinstance(curve, list):
+                        all_session_rtp_curves.append(curve)
+                for seq in rec.get("chain_ratio_sequences") or []:
+                    if isinstance(seq, list):
+                        all_chain_ratio_sequences.append(seq)
+                for pos, cnt in (rec.get("reel_position_hits") or {}).items():
+                    all_reel_position_hits[str(pos)] += int(cnt)
+                for feat, fb in (rec.get("chains_by_feature") or {}).items():
+                    if not isinstance(fb, dict):
+                        continue
+                    afb = all_chains_by_feature[str(feat)]
+                    for L in fb.get("lengths") or []:
+                        afb["lengths"].append(int(L))
+                    for L in fb.get("max_ratios") or []:
+                        afb["max_ratios"].append(int(L))
+                    for L in fb.get("retrigger_events") or []:
+                        afb["retrigger_events"].append(int(L))
+                    afb["total_rounds"] += int(fb.get("total_rounds", 0) or 0)
+                    afb["retrigger_rounds"] += int(fb.get("retrigger_rounds", 0) or 0)
+                total_paid_sessions += int(rec.get("paid_session_count", 0) or 0)
+                total_bonus_spins += int(rec.get("bonus_spin_count", 0) or 0)
+                total_session_wins += int(rec.get("session_win_count", 0) or 0)
+                total_session_loses += int(rec.get("session_lose_count", 0) or 0)
+                total_session_profits += int(rec.get("session_profit_count", 0) or 0)
+                total_session_breakevens += int(rec.get("session_breakeven_count", 0) or 0)
+                total_session_big_win_x10 += int(rec.get("session_big_win_x10_count", 0) or 0)
+                total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
+                total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
+                total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
+                chunk_sess_max_ret = float(rec.get("session_max_return_x", 0.0) or 0.0)
+                if chunk_sess_max_ret > total_session_max_return_x:
+                    total_session_max_return_x = chunk_sess_max_ret
+                total_session_win_sum += float(rec.get("session_win_sum", 0.0) or 0.0)
+                for b, c in (rec.get("session_bucket_spins") or {}).items():
+                    session_bucket_spins[str(b)] += int(c)
+                for b, v in (rec.get("session_bucket_bet") or {}).items():
+                    session_bucket_bet[str(b)] += float(v)
+                for b, v in (rec.get("session_bucket_win") or {}).items():
+                    session_bucket_win[str(b)] += float(v)
+                for k, c in (rec.get("session_loss_streak_hist") or {}).items():
+                    session_loss_streak_hist[int(k)] += int(c)
+                for k, c in (rec.get("session_win_streak_hist") or {}).items():
+                    session_win_streak_hist[int(k)] += int(c)
+                chunk_sess_max_loss = int(rec.get("session_max_loss_streak", 0) or 0)
+                if chunk_sess_max_loss > total_session_max_loss_streak:
+                    total_session_max_loss_streak = chunk_sess_max_loss
+                chunk_sess_max_win = int(rec.get("session_max_win_streak", 0) or 0)
+                if chunk_sess_max_win > total_session_max_win_streak:
+                    total_session_max_win_streak = chunk_sess_max_win
+                for fld, cnt in (rec.get("extra_fields_seen") or {}).items():
+                    total_extra_fields_seen[str(fld)] += int(cnt)
+
+    # ── online sampling path (skipped when --from-cache) ──
+    while args.from_cache is None and next_chunk_index <= args.max_chunks:
         # Graceful-stop checkpoint: if the operator clicked Stop, bail
         # out here so any completed chunks (aggregated up to the
         # previous batch end) still reach the summary-build path. The
@@ -2251,6 +2509,9 @@ def main() -> int:
             chunk_sess_max_win = int(rec.get("session_max_win_streak", 0) or 0)
             if chunk_sess_max_win > total_session_max_win_streak:
                 total_session_max_win_streak = chunk_sess_max_win
+            # Extra-field discovery merge.
+            for fld, cnt in (rec.get("extra_fields_seen") or {}).items():
+                total_extra_fields_seen[str(fld)] += int(cnt)
 
             hw = ci_halfwidth_pp(chunk_rtps_pct)
             if math.isfinite(hw):
@@ -2477,8 +2738,12 @@ def main() -> int:
                 "rtp_pct": rtp_pct,
                 "rtp_contribution_pp": (win / total_bet) * 100.0 if total_bet > 0 else 0.0,
                 "behavior_name": behavior,
+                # Flag extremely rare SpinTypes that may not be
+                # representative in a small sample (< 5 occurrences).
+                "rare": spins_int < 5,
             }
         )
+    spin_type_coverage = len(spin_type_spins)
 
     # PayoutIdToWinAmount-derived drilldown. Sort by total_win desc so the
     # operator immediately sees which payout ids carry the RTP. Unlike
@@ -2989,6 +3254,20 @@ def main() -> int:
             "payout_groups_top20": payout_group_rows[:20],
             "payout_ids_top20": payout_id_rows[:20],
             "spin_type_breakdown": spin_type_rows,
+            "spin_type_coverage": spin_type_coverage,
+            # Extra fields discovered beyond _BASELINE_ROUND_FIELDS.
+            # Empty for machines using only baseline fields (most Normal-only).
+            "field_discovery": {
+                "extra_fields": [
+                    {"field": f, "occurrences": c}
+                    for f, c in sorted(
+                        total_extra_fields_seen.items(),
+                        key=lambda kv: -kv[1],
+                    )
+                ],
+                "extra_field_count": len(total_extra_fields_seen),
+                "baseline_field_count": len(_BASELINE_ROUND_FIELDS),
+            },
             "upstream_feature_breakdown": {
                 "applicable": upstream_feature_applicable,
                 "source": "analysisResult.FeatureWin",
