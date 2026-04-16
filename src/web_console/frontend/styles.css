@@ -894,6 +894,39 @@ button:disabled {
   color: #1e293b;
 }
 
+/* Batch-action bar for run history (below table, shows when ≥1 row checked). */
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  background: #fff1f2;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.batch-actions #batchCount {
+  font-weight: 600;
+  color: #991b1b;
+}
+
+/* Checkbox column in run history. */
+.th-check, .td-check {
+  width: 28px;
+  text-align: center;
+}
+
+/* Action cell: keep buttons tight. */
+.action-cell {
+  white-space: nowrap;
+}
+.action-cell button {
+  margin: 0 1px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
 /* Muted cell style (used for spin_type_breakdown rtp_pct=null). */
 td.muted {
   color: var(--muted);

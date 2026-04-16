@@ -325,20 +325,24 @@
             <table id="runListTable">
               <thead>
                 <tr>
+                  <th class="th-check"><input type="checkbox" id="selectAllRuns" title="全选/取消全选"></th>
                   <th data-i18n="thRunId">Run ID</th>
                   <th data-i18n="thStatus">状态</th>
                   <th data-i18n="thMachine">机台</th>
                   <th data-i18n="thMode">Mode</th>
-                  <th data-i18n="thCreated">创建时间</th>
                   <th data-i18n="thRtp">RTP</th>
-                  <th data-i18n="thCiHalfwidth">CI 半宽</th>
-                  <th data-i18n="thVersion">版本</th>
+                  <th data-i18n="thCiHalfwidth">CI±</th>
                   <th data-i18n="thQuality">质量</th>
                   <th data-i18n="thAction">操作</th>
                 </tr>
               </thead>
               <tbody></tbody>
             </table>
+            <div class="batch-actions" id="batchActionsBar" style="display:none">
+              <span id="batchCount">0</span>
+              <button id="batchDeleteBtn" class="danger-btn" data-i18n="btnBatchDelete">删除选中</button>
+              <button id="clearSelectionBtn" data-i18n="btnClearSelection">清除选择</button>
+            </div>
           </section>
 
           <section class="panel cache">

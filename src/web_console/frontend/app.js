@@ -28,10 +28,11 @@ const state = {
   // Only the multiplier-bucket chart survives the dashboard revision;
   // CI / RTP / bankruptcy already render as KPI cards.
   bucketChart: null,
-  // Manage-tab run-history filter. null = show all; a machine string
-  // filters the runs table. Driven by clicking a row in the machine
-  // catalog panel; cleared via the filter banner's "clear" button.
-  runFilterMachine: null,
+  // Manage-tab run-history filter. Empty Set = show all; non-empty =
+  // union of selected machines. Multi-select from machine catalog.
+  runFilterMachines: new Set(),
+  // Set of selected run_ids for batch operations.
+  selectedRuns: new Set(),
   // Whether the currently-loaded run has cached chunks available for
   // rebuild. Updated by refreshChunkStatus() after each run load.
   currentChunksAvailable: false,
@@ -353,30 +354,27 @@ function renderMachineCatalog() {
   state.machines.forEach((m) => {
     const d = document.createElement("div");
     d.className = "catalog-item";
-    if (state.runFilterMachine === m.machine) d.classList.add("active");
+    if (state.runFilterMachines.has(m.machine)) d.classList.add("active");
     d.dataset.machine = m.machine;
     d.setAttribute("role", "button");
     d.setAttribute("tabindex", "0");
     d.innerHTML = `<div class="catalog-title">${m.machine}</div><div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`;
     wrap.appendChild(d);
   });
-  // Click (or keyboard-activate) any catalog row to filter the run
-  // history table to that machine. Clicking the currently active row
-  // clears the filter.
   wrap.querySelectorAll(".catalog-item").forEach((el) => {
     const toggle = () => {
       const machine = el.dataset.machine;
-      state.runFilterMachine =
-        state.runFilterMachine === machine ? null : machine;
+      if (state.runFilterMachines.has(machine)) {
+        state.runFilterMachines.delete(machine);
+      } else {
+        state.runFilterMachines.add(machine);
+      }
       renderMachineCatalog();
       renderRunHistory();
     };
     el.addEventListener("click", toggle);
     el.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        toggle();
-      }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
     });
   });
 }
@@ -384,23 +382,29 @@ function renderMachineCatalog() {
 function renderRunFilterBanner() {
   const banner = byId("runFilterBanner");
   if (!banner) return;
-  if (!state.runFilterMachine) {
+  if (!state.runFilterMachines.size) {
     banner.innerHTML = "";
     banner.style.display = "none";
     return;
   }
   banner.style.display = "";
+  const label = Array.from(state.runFilterMachines).join(" + ");
   banner.innerHTML =
-    `<span class="filter-label">${fmt("runFilterActive", { machine: state.runFilterMachine })}</span>` +
+    `<span class="filter-label">${fmt("runFilterActive", { machine: label })}</span>` +
     `<button type="button" class="clear-filter-btn">${fmt("btnClearFilter")}</button>`;
-  const clearBtn = banner.querySelector(".clear-filter-btn");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-      state.runFilterMachine = null;
-      renderMachineCatalog();
-      renderRunHistory();
-    });
-  }
+  banner.querySelector(".clear-filter-btn").addEventListener("click", () => {
+    state.runFilterMachines.clear();
+    renderMachineCatalog();
+    renderRunHistory();
+  });
+}
+
+function updateBatchBar() {
+  const bar = byId("batchActionsBar");
+  const n = state.selectedRuns.size;
+  if (!bar) return;
+  bar.style.display = n > 0 ? "" : "none";
+  byId("batchCount").textContent = fmt("batchSelectedCount", { n });
 }
 
 // Format a number field that may be null/undefined (legacy rows persisted
@@ -417,45 +421,54 @@ function renderRunHistory() {
   renderRunFilterBanner();
   const body = byId("runListTable").querySelector("tbody");
   body.innerHTML = "";
-  const filter = state.runFilterMachine;
-  const rows = filter
-    ? state.runs.filter((r) => r.machine === filter)
+  const filterSet = state.runFilterMachines;
+  const rows = filterSet.size
+    ? state.runs.filter((r) => filterSet.has(r.machine))
     : state.runs;
   if (!rows.length) {
-    const msg = filter ? fmt("noRunsForMachine") : fmt("noRuns");
-    body.innerHTML = `<tr><td colspan="10">${msg}</td></tr>`;
+    const msg = filterSet.size ? fmt("noRunsForMachine") : fmt("noRuns");
+    body.innerHTML = `<tr><td colspan="9">${msg}</td></tr>`;
+    updateBatchBar();
     return;
   }
   rows.forEach((r) => {
     const tr = document.createElement("tr");
     if (r.run_id === state.currentRunId) tr.classList.add("active-row");
     const rtpCell = fMetricCell(r.achieved_rtp_pct, 2, "%");
-    const ciCell = fMetricCell(r.achieved_halfwidth_pp, 3, " pp");
-    // Version + Quality: merged from the old Report Versions panel.
-    // report_version is pre-allocated at run creation so failed /
-    // cancelled rows carry a string that points to a non-existent
-    // directory; only show it for rows that actually produced a
-    // report (status=="completed"). quality_label comes from
-    // summary.guideline_assessment.data_quality.quality_label
-    // populated on completion (and backfilled on startup for legacy rows).
-    const statusLower = String(r.status || "").toLowerCase();
-    const versionCell = statusLower === "completed" && r.report_version
-      ? r.report_version : "\u2014";
+    const ciCell = fMetricCell(r.achieved_halfwidth_pp, 3, "pp");
     const qualityCell = r.quality_label || "\u2014";
+    const checked = state.selectedRuns.has(r.run_id) ? "checked" : "";
     tr.innerHTML =
+      `<td class="td-check"><input type="checkbox" class="run-check" data-id="${r.run_id}" ${checked}></td>` +
       `<td>${r.run_id}</td>` +
       `<td>${statusText(r.status)}</td>` +
       `<td>${r.machine}</td>` +
       `<td>${r.mode}</td>` +
-      `<td>${r.created_at || ""}</td>` +
       `<td>${rtpCell}</td>` +
       `<td>${ciCell}</td>` +
-      `<td class="version-cell">${versionCell}</td>` +
       `<td>${qualityCell}</td>` +
-      `<td><button class="load-run-btn" data-id="${r.run_id}">${fmt("btnLoadRun")}</button>` +
-      ` <button class="delete-run-btn danger-btn" data-id="${r.run_id}" data-machine="${r.machine}" data-mode="${r.mode}">${fmt("btnDeleteRun")}</button></td>`;
+      `<td class="action-cell">` +
+      `<button class="load-run-btn" data-id="${r.run_id}">${fmt("btnLoadRun")}</button> ` +
+      `<button class="rebuild-run-btn" data-id="${r.run_id}">${fmt("btnRebuildRun")}</button> ` +
+      `<button class="delete-run-btn danger-btn" data-id="${r.run_id}">${fmt("btnDeleteRun")}</button>` +
+      `</td>`;
     body.appendChild(tr);
   });
+
+  // Checkbox handlers
+  body.querySelectorAll(".run-check").forEach((cb) =>
+    cb.addEventListener("change", () => {
+      if (cb.checked) state.selectedRuns.add(cb.dataset.id);
+      else state.selectedRuns.delete(cb.dataset.id);
+      updateBatchBar();
+      // Sync select-all checkbox
+      const all = body.querySelectorAll(".run-check");
+      const allChecked = Array.from(all).every((c) => c.checked);
+      byId("selectAllRuns").checked = allChecked;
+    })
+  );
+
+  // Load
   body.querySelectorAll(".load-run-btn").forEach((b) => {
     b.disabled = state.busyActions.size > 0;
     b.addEventListener("click", async () => {
@@ -466,10 +479,9 @@ function renderRunHistory() {
       await refreshCurrentRun();
     });
   });
+
+  // Delete (single)
   body.querySelectorAll(".delete-run-btn").forEach((b) => {
-    // Running rows are protected server-side (409). Keep the button
-    // enabled so the operator gets a clear error dialog rather than a
-    // silent no-op.
     b.disabled = state.busyActions.size > 0;
     b.addEventListener("click", async () => {
       if (state.busyActions.size > 0) return;
@@ -484,6 +496,7 @@ function renderRunHistory() {
           state.currentRunStatus = "";
           clearSummaryPanels();
         }
+        state.selectedRuns.delete(runId);
         await refreshRunList(false);
       } catch (err) {
         window.alert(fmt("runDeleteFailed", { error: String(err && err.message ? err.message : err) }));
@@ -493,6 +506,33 @@ function renderRunHistory() {
       }
     });
   });
+
+  // Rebuild (per-row)
+  body.querySelectorAll(".rebuild-run-btn").forEach((b) => {
+    b.disabled = state.busyActions.size > 0;
+    b.addEventListener("click", async () => {
+      if (state.busyActions.size > 0) return;
+      const runId = b.dataset.id;
+      state.busyActions.add("rebuild");
+      updateActionStates();
+      try {
+        const resp = await apiPost(`/api/runs/${encodeURIComponent(runId)}/rebuild`, {});
+        window.alert(fmt("rebuildSuccess", {
+          rtp: resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(2) : "?",
+          chunks: resp.chunks_reprocessed || 0,
+        }));
+        await refreshRunList(false);
+      } catch (err) {
+        const errMsg = String(err && err.message ? err.message : err);
+        window.alert(errMsg.includes("404") ? fmt("rebuildNoChunks") : fmt("rebuildFailed", { error: errMsg }));
+      } finally {
+        state.busyActions.delete("rebuild");
+        updateActionStates();
+      }
+    });
+  });
+
+  updateBatchBar();
 }
 
 function renderPayoutGroupDrilldown(summary) {
@@ -1418,6 +1458,48 @@ function bindEvents() {
       await refreshCache();
     }).catch((e) => alert(String(e.message || e)))
   );
+
+  // --- batch selection ---
+  byId("selectAllRuns").addEventListener("change", (e) => {
+    const checks = document.querySelectorAll("#runListTable .run-check");
+    checks.forEach((cb) => {
+      cb.checked = e.target.checked;
+      if (cb.checked) state.selectedRuns.add(cb.dataset.id);
+      else state.selectedRuns.delete(cb.dataset.id);
+    });
+    updateBatchBar();
+  });
+  byId("clearSelectionBtn").addEventListener("click", () => {
+    state.selectedRuns.clear();
+    document.querySelectorAll("#runListTable .run-check").forEach((cb) => (cb.checked = false));
+    byId("selectAllRuns").checked = false;
+    updateBatchBar();
+  });
+  byId("batchDeleteBtn").addEventListener("click", async () => {
+    const ids = Array.from(state.selectedRuns);
+    if (!ids.length) return;
+    if (!window.confirm(fmt("confirmBatchDelete", { n: ids.length }))) return;
+    state.busyActions.add("batch_delete");
+    updateActionStates();
+    let deleted = 0;
+    try {
+      for (const rid of ids) {
+        try {
+          await apiDelete(`/api/runs/${encodeURIComponent(rid)}`);
+          deleted++;
+          if (state.currentRunId === rid) {
+            state.currentRunId = "";
+            state.currentRunStatus = "";
+          }
+        } catch { /* skip failures silently for batch */ }
+      }
+      state.selectedRuns.clear();
+      await refreshRunList(false);
+    } finally {
+      state.busyActions.delete("batch_delete");
+      updateActionStates();
+    }
+  });
 }
 
 function startPolling() {
