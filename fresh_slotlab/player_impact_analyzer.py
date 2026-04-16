@@ -1058,6 +1058,9 @@ def parse_chunk_response(
     jackpot_spins = 0
     jackpot_ids_seen: set[str] = set()
     jackpot_win = 0.0
+    # LockReels: reel-level locking.
+    lock_reels_spins = 0
+    lock_reels_win = 0.0
     # FreeSpin tracking: AddFreeSpin retriggers, chain length via CurFreeSpin.
     freespin_chain_spins = 0
     freespin_retriggers = 0
@@ -1411,14 +1414,21 @@ def parse_chunk_response(
                     if ":" in part:
                         lock_symbols_unique.add(part.split(":")[0].strip())
 
-            _jackpot_ids = r.get("JackpotIds")
-            if _jackpot_ids and isinstance(_jackpot_ids, str) and _jackpot_ids.strip("-").strip():
-                jackpot_spins += 1
-                jackpot_win += to_float(r.get("WinCredits"), default=0.0)
-                for jid in _jackpot_ids.split("-"):
-                    jid = jid.strip()
-                    if jid:
-                        jackpot_ids_seen.add(jid)
+            _lock_reels = r.get("LockReels")
+            if _lock_reels and isinstance(_lock_reels, str) and _lock_reels.strip():
+                lock_reels_spins += 1
+                lock_reels_win += to_float(r.get("WinCredits"), default=0.0)
+
+            _jackpot_ids = r.get("JackpotIds") or r.get("JackpotID")
+            if _jackpot_ids is not None:
+                _jid_str = str(_jackpot_ids).strip("-").strip()
+                if _jid_str:
+                    jackpot_spins += 1
+                    jackpot_win += to_float(r.get("WinCredits"), default=0.0)
+                    for jid in str(_jackpot_ids).split("-"):
+                        jid = jid.strip()
+                        if jid:
+                            jackpot_ids_seen.add(jid)
 
             _cur_fs = r.get("CurFreeSpin")
             if _cur_fs is not None:
@@ -1936,6 +1946,8 @@ def parse_chunk_response(
         "lock_symbols_spins": lock_symbols_spins,
         "lock_symbols_unique": sorted(lock_symbols_unique),
         "lock_symbols_win": lock_symbols_win,
+        "lock_reels_spins": lock_reels_spins,
+        "lock_reels_win": lock_reels_win,
         "jackpot_spins": jackpot_spins,
         "jackpot_ids_seen": sorted(jackpot_ids_seen),
         "jackpot_win": jackpot_win,
@@ -2187,6 +2199,8 @@ def main() -> int:
     total_lock_symbols_spins = 0
     total_lock_symbols_unique: set[str] = set()
     total_lock_symbols_win = 0.0
+    total_lock_reels_spins = 0
+    total_lock_reels_win = 0.0
     total_jackpot_spins = 0
     total_jackpot_ids_seen: set[str] = set()
     total_jackpot_win = 0.0
@@ -2405,6 +2419,8 @@ def main() -> int:
                 for s in rec.get("lock_symbols_unique") or []:
                     total_lock_symbols_unique.add(str(s))
                 total_lock_symbols_win += float(rec.get("lock_symbols_win", 0) or 0)
+                total_lock_reels_spins += int(rec.get("lock_reels_spins", 0) or 0)
+                total_lock_reels_win += float(rec.get("lock_reels_win", 0) or 0)
                 total_jackpot_spins += int(rec.get("jackpot_spins", 0) or 0)
                 for j in rec.get("jackpot_ids_seen") or []:
                     total_jackpot_ids_seen.add(str(j))
@@ -2687,6 +2703,8 @@ def main() -> int:
             for s in rec.get("lock_symbols_unique") or []:
                 total_lock_symbols_unique.add(str(s))
             total_lock_symbols_win += float(rec.get("lock_symbols_win", 0) or 0)
+            total_lock_reels_spins += int(rec.get("lock_reels_spins", 0) or 0)
+            total_lock_reels_win += float(rec.get("lock_reels_win", 0) or 0)
             total_jackpot_spins += int(rec.get("jackpot_spins", 0) or 0)
             for j in rec.get("jackpot_ids_seen") or []:
                 total_jackpot_ids_seen.add(str(j))
@@ -3475,6 +3493,13 @@ def main() -> int:
                     "unique_symbol_count": len(total_lock_symbols_unique),
                     "lock_win": total_lock_symbols_win,
                     "lock_rtp_contribution_pp": (total_lock_symbols_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
+                },
+                "lock_reels": {
+                    "applicable": total_lock_reels_spins > 0,
+                    "lock_spins": total_lock_reels_spins,
+                    "lock_rate": (total_lock_reels_spins / total_spins) if total_spins > 0 else 0,
+                    "lock_win": total_lock_reels_win,
+                    "lock_rtp_contribution_pp": (total_lock_reels_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
                 },
                 "jackpot": {
                     "applicable": total_jackpot_spins > 0,

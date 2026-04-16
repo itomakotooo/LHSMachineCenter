@@ -357,7 +357,7 @@ const CATEGORY_COLORS = {
 };
 const VOL_COLORS = { Low: "#059669", Medium: "#2563eb", High: "#ea580c", "Very High": "#dc2626" };
 
-const MECH_ICONS = { lock_lines: "\ud83d\udd12", lock_symbols: "\ud83d\udcce", jackpot: "\ud83c\udfc6", free_spin: "\ud83c\udfb0", dollar_pick: "\ud83d\udcb5" };
+const MECH_ICONS = { lock_lines: "\ud83d\udd12", lock_symbols: "\ud83d\udcce", lock_reels: "\ud83c\udfaa", jackpot: "\ud83c\udfc6", free_spin: "\ud83c\udfb0", dollar_pick: "\ud83d\udcb5" };
 
 function _catalogModeMetrics(machine) {
   const sm = ((state.machinesSummary || {}).machines || {})[machine] || {};
@@ -442,19 +442,21 @@ function _groupMachines(machines, viewMode) {
 }
 
 const MECH_GROUP_LABELS = {
-  lock_lines: "Lock Lines", lock_symbols: "Lock Symbols", jackpot: "Jackpot",
-  free_spin: "Free Spin", dollar_pick: "Dollar Pick", Normal: "Normal (无特殊机制)",
+  lock_lines: "Lock Lines", lock_symbols: "Lock Symbols", lock_reels: "Lock Reels",
+  jackpot: "Jackpot", free_spin: "Free Spin", dollar_pick: "Dollar Pick",
+  Normal: "Normal (无特殊机制)",
 };
 const MECH_GROUP_COLORS = {
-  lock_lines: "#ea580c", lock_symbols: "#d97706", jackpot: "#7c3aed",
-  free_spin: "#059669", dollar_pick: "#6366f1", Normal: "#6b7280",
+  lock_lines: "#ea580c", lock_symbols: "#d97706", lock_reels: "#b45309",
+  jackpot: "#7c3aed", free_spin: "#059669", dollar_pick: "#6366f1",
+  Normal: "#6b7280",
 };
 
 function _groupOrder(viewMode) {
   if (viewMode === "category") return ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Selector", "Other", "Unknown"];
   if (viewMode === "volatility") return ["Low", "Medium", "High", "Very High", "N/A"];
   if (viewMode === "rtp") return ["< 90%", "90–95%", "95–100%", "100–200%", "200–400%", "> 400%", "N/A"];
-  if (viewMode === "mechanic") return ["lock_lines", "lock_symbols", "jackpot", "free_spin", "dollar_pick", "Normal"];
+  if (viewMode === "mechanic") return ["lock_lines", "lock_symbols", "lock_reels", "jackpot", "free_spin", "dollar_pick", "Normal"];
   return ["all"];
 }
 
@@ -1530,8 +1532,9 @@ function renderMachineMechanics(summary) {
 
   const ll = mm.lock_lines || {};
   const ls = mm.lock_symbols || {};
+  const lr = mm.lock_reels || {};
   const jp = mm.jackpot || {};
-  const anyApplicable = ll.applicable || ls.applicable || jp.applicable;
+  const anyApplicable = ll.applicable || ls.applicable || lr.applicable || jp.applicable;
   if (!anyApplicable) { panel.classList.add("hidden"); return; }
 
   panel.classList.remove("hidden");
@@ -1557,6 +1560,16 @@ function renderMachineMechanics(summary) {
         <div class="mech-stat"><span class="mech-label">${fmt("mechLockSpins")}</span><span class="mech-value">${ls.lock_spins.toLocaleString()}</span></div>
         <div class="mech-stat"><span class="mech-label">${fmt("mechUniqueSymbols")}</span><span class="mech-value">${ls.unique_symbol_count}</span></div>
         <div class="mech-stat"><span class="mech-label">${fmt("mechRtpContrib")}</span><span class="mech-value">${ls.lock_rtp_contribution_pp.toFixed(2)}pp</span></div>
+      </div>
+    </div>`;
+  }
+  if (lr.applicable) {
+    html += `<div class="mech-section">
+      <h3>Lock Reels</h3>
+      <div class="mech-grid">
+        <div class="mech-stat"><span class="mech-label">${fmt("mechLockRate")}</span><span class="mech-value">${(lr.lock_rate * 100).toFixed(2)}%</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechLockSpins")}</span><span class="mech-value">${lr.lock_spins.toLocaleString()}</span></div>
+        <div class="mech-stat"><span class="mech-label">${fmt("mechRtpContrib")}</span><span class="mech-value">${lr.lock_rtp_contribution_pp.toFixed(2)}pp</span></div>
       </div>
     </div>`;
   }

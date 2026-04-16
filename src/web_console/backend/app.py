@@ -701,7 +701,7 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
                     # Extract mechanics from this report version.
                     _mechs = []
                     _mm = pi.get("machine_mechanics", {})
-                    for _mk in ("lock_lines", "lock_symbols", "jackpot", "free_spin", "dollar_pick"):
+                    for _mk in ("lock_lines", "lock_symbols", "lock_reels", "jackpot", "free_spin", "dollar_pick"):
                         if _mm.get(_mk, {}).get("applicable"):
                             _mechs.append(_mk)
                     best = {
