@@ -2210,6 +2210,44 @@ def create_app(
             "diff_count": len(diffs),
         }
 
+    @app.post("/api/servers/{server_id}/check-changes")
+    def check_version_changes(server_id: str) -> dict[str, Any]:
+        """Scan server for MachineConfigMd5 and compare with previous snapshot."""
+        cfg = load_servers(sc)
+        target = next((s for s in cfg.get("servers", []) if s["id"] == server_id), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail="server not found")
+        ep = target.get("endpoint", "").strip()
+        if not ep:
+            raise HTTPException(status_code=400, detail="server has no endpoint configured")
+        # Load previous snapshot.
+        old_snap = _load_server_snapshot(server_id)
+        # Fetch current state.
+        new_data = _fetch_machine_config_md5(ep)
+        if new_data is None:
+            raise HTTPException(status_code=502, detail="failed to fetch from server")
+        # Save as new snapshot.
+        _save_server_snapshot(server_id, new_data)
+        # Compare.
+        if old_snap is None:
+            return {
+                "server_id": server_id,
+                "first_scan": True,
+                "machine_count": len(new_data),
+                "diffs": [],
+            }
+        diffs = _compare_snapshots(old_snap, new_data)
+        return {
+            "server_id": server_id,
+            "first_scan": False,
+            "machine_count": len(new_data),
+            "diffs": diffs,
+            "diff_count": len(diffs),
+            "changed_machines": [d["machine"] for d in diffs if d.get("status") == "changed"],
+            "config_changed": [d["machine"] for d in diffs if d.get("config_changed")],
+            "code_changed": [d["machine"] for d in diffs if d.get("code_changed")],
+        }
+
     @app.delete("/api/servers/{server_id}")
     def delete_server(server_id: str) -> dict[str, Any]:
         cfg = load_servers(sc)

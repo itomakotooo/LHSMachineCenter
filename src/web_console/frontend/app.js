@@ -804,12 +804,43 @@ function renderServerTable() {
       `<td>${s.name}</td>` +
       `<td>${epDisplay}</td>` +
       `<td>${statusBadge}</td>` +
-      `<td><button class="srv-scan-btn small-btn">${fmt("btnScan")}</button> <button class="srv-edit-btn small-btn">${fmt("btnEdit")}</button> <button class="srv-delete-btn small-btn danger-btn">${fmt("btnDelete")}</button></td>` +
+      `<td><button class="srv-scan-btn small-btn">${fmt("btnScan")}</button> <button class="srv-check-btn small-btn">${fmt("btnCheckChanges")}</button> <button class="srv-edit-btn small-btn">${fmt("btnEdit")}</button> <button class="srv-delete-btn small-btn danger-btn">${fmt("btnDelete")}</button></td>` +
       `</tr>`
     );
   }).join("");
 
-  // Wire up scan/edit/delete buttons.
+  // Wire up scan/check/edit/delete buttons.
+  tbody.querySelectorAll(".srv-check-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = btn.closest("tr");
+      const sid = row.dataset.serverId;
+      btn.disabled = true;
+      btn.textContent = "...";
+      try {
+        const result = await apiPost(`/api/servers/${sid}/check-changes`);
+        if (result.first_scan) {
+          btn.textContent = fmt("btnCheckChanges");
+          alert(fmt("checkFirstScan", { n: result.machine_count }));
+        } else if (result.diff_count === 0) {
+          btn.textContent = fmt("btnCheckChanges");
+          alert(fmt("checkNoChanges"));
+        } else {
+          btn.textContent = `${result.diff_count} changes`;
+          const configChanged = (result.config_changed || []).join(", ");
+          const codeChanged = (result.code_changed || []).join(", ");
+          let msg = fmt("checkChangesFound", { n: result.diff_count });
+          if (configChanged) msg += "\n\nConfig: " + configChanged;
+          if (codeChanged) msg += "\nCode: " + codeChanged;
+          alert(msg);
+        }
+      } catch (e) {
+        btn.textContent = fmt("btnCheckChanges");
+        alert(String(e.message || e));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
   tbody.querySelectorAll(".srv-scan-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = btn.closest("tr");
