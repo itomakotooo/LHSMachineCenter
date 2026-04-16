@@ -879,6 +879,28 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Fleet mechanics */
+.fleet-mechanics {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.fleet-mech-label {
+  color: var(--muted);
+  margin-right: 4px;
+}
+.fleet-mech-badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #e0e7ff;
+  color: #3730a3;
+  margin-right: 4px;
+}
+.cat-mech {
+  font-size: 11px;
+}
+
 /* Machine catalog toolbar */
 .catalog-toolbar {
   display: flex;

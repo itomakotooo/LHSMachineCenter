@@ -643,6 +643,8 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
     result: dict[str, dict[str, Any]] = {}
     # Collect all volatility values for percentile ranking.
     all_vol_values: list[tuple[str, int, float]] = []  # (machine, mode, zero_win_rate)
+    # Mechanics distribution across machines.
+    mechanics_dist: dict[str, int] = {}
 
     if not reports_root.is_dir():
         return {"machines": {}, "volatility_ranking": []}
@@ -690,12 +692,18 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
                 ci_hw = sampling.get("achieved_halfwidth_pp")
                 ci_val = float(ci_hw) if ci_hw is not None else float("inf")
 
-                if best is None or ci_val < best_ci:
+                if best is None or ci_val <= best_ci:
                     best_ci = ci_val
                     ga = s.get("guideline_assessment", {})
                     ga_cls = ga.get("classification", {})
                     ga_dm = ga.get("derived_metrics", {})
                     hap = pi.get("hit_and_payout", {})
+                    # Extract mechanics from this report version.
+                    _mechs = []
+                    _mm = pi.get("machine_mechanics", {})
+                    for _mk in ("lock_lines", "lock_symbols", "jackpot", "free_spin", "dollar_pick"):
+                        if _mm.get(_mk, {}).get("applicable"):
+                            _mechs.append(_mk)
                     best = {
                         "rtp_pct": rtp_data.get("point_pct"),
                         "ci_halfwidth_pp": ci_hw,
@@ -704,6 +712,7 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
                         "zero_win_rate": float(hap.get("zero_win_rate", 0) or 0),
                         "tail_ge10x": float(ga_dm.get("tail_dependency", 0) or 0),
                         "report_version": ver_dir.name,
+                        "mechanics": _mechs,
                     }
 
             if best is not None:
@@ -711,6 +720,8 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
                 zwr = best.get("zero_win_rate", 0)
                 if isinstance(zwr, (int, float)) and math.isfinite(zwr):
                     all_vol_values.append((machine, mode, zwr))
+                for mk in best.get("mechanics", []):
+                    mechanics_dist[mk] = mechanics_dist.get(mk, 0) + 1
 
     # Compute percentile ranks for zero_win_rate across all machine-modes.
     all_vol_values.sort(key=lambda x: x[2])
@@ -720,7 +731,7 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
         if m in result and str(mode) in result[m]:
             result[m][str(mode)]["volatility_percentile"] = pct
 
-    return {"machines": result}
+    return {"machines": result, "mechanics_distribution": dict(mechanics_dist)}
 
 
 class BatchRunManager:

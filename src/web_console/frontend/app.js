@@ -355,6 +355,8 @@ const CATEGORY_COLORS = {
 };
 const VOL_COLORS = { Low: "#059669", Medium: "#2563eb", High: "#ea580c", "Very High": "#dc2626" };
 
+const MECH_ICONS = { lock_lines: "\ud83d\udd12", lock_symbols: "\ud83d\udcce", jackpot: "\ud83c\udfc6", free_spin: "\ud83c\udfb0", dollar_pick: "\ud83d\udcb5" };
+
 function _catalogModeMetrics(machine) {
   const sm = ((state.machinesSummary || {}).machines || {})[machine] || {};
   const modes = Object.keys(sm).sort((a, b) => Number(a) - Number(b));
@@ -367,7 +369,8 @@ function _catalogModeMetrics(machine) {
     const pct = d.volatility_percentile != null ? `P${d.volatility_percentile}` : "";
     const vc = VOL_COLORS[vol] || "#888";
     const volHtml = vol ? `<span class="cat-vol" style="color:${vc}">${vol} ${pct}</span>` : "";
-    return `<div class="cat-mode-row"><span class="cat-mode-label">m${mode}</span> <span class="cat-rtp">${rtp}</span> <span class="cat-ci">${ci}</span> ${volHtml}</div>`;
+    const mechIcons = (d.mechanics || []).map((mk) => MECH_ICONS[mk] || "").join("");
+    return `<div class="cat-mode-row"><span class="cat-mode-label">m${mode}</span> <span class="cat-rtp">${rtp}</span> <span class="cat-ci">${ci}</span> ${volHtml}${mechIcons ? ` <span class="cat-mech" title="${d.mechanics.join(', ')}">${mechIcons}</span>` : ""}</div>`;
   }).join("");
 }
 
@@ -527,7 +530,7 @@ function showMachineDetail(machineName) {
   let metricsHtml = "";
   if (modes.length) {
     metricsHtml = `<table class="drilldown-table detail-metrics-table">
-      <thead><tr><th>Mode</th><th>RTP</th><th>CI\u00b1</th><th>Spins</th><th>${fmt("thVolatility")}</th></tr></thead>
+      <thead><tr><th>Mode</th><th>RTP</th><th>CI\u00b1</th><th>Spins</th><th>${fmt("thVolatility")}</th><th>${fmt("thMechanics")}</th></tr></thead>
       <tbody>${modes.map((mode) => {
         const d = sm[mode];
         const vc = VOL_COLORS[d.volatility_class] || "#888";
@@ -537,6 +540,7 @@ function showMachineDetail(machineName) {
           <td>${d.ci_halfwidth_pp != null ? "\u00b1" + d.ci_halfwidth_pp.toFixed(2) : "—"}</td>
           <td>${d.total_spins ? Number(d.total_spins).toLocaleString() : "—"}</td>
           <td style="color:${vc}">${d.volatility_class || "—"} ${d.volatility_percentile != null ? "P" + d.volatility_percentile : ""}</td>
+          <td>${(d.mechanics || []).map((mk) => MECH_ICONS[mk] || mk).join(" ") || "—"}</td>
         </tr>`;
       }).join("")}</tbody>
     </table>`;
@@ -601,6 +605,15 @@ function renderFleetOverview() {
       return `<span class="fleet-cat-badge" style="background:${color}">${c} ${n}</span>`;
     }).join(" ");
 
+  // Mechanics distribution
+  const mechDist = (state.machinesSummary || {}).mechanics_distribution || {};
+  const MECH_LABELS = { lock_lines: "Lock Lines", lock_symbols: "Lock Sym", jackpot: "Jackpot", free_spin: "FreeSpin", dollar_pick: "Dollar Pick" };
+  const mechBadges = Object.entries(mechDist)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `<span class="fleet-mech-badge">${MECH_LABELS[k] || k} ${n}</span>`)
+    .join(" ");
+
   el.innerHTML = `
     <div class="fleet-grid">
       <div class="fleet-stat"><span class="fleet-label">${fmt("fleetTotal")}</span><span class="fleet-value">${total}</span></div>
@@ -608,7 +621,8 @@ function renderFleetOverview() {
       <div class="fleet-stat"><span class="fleet-label">${fmt("fleetAvgRtp")}</span><span class="fleet-value">${avgRtp}%</span></div>
       <div class="fleet-stat"><span class="fleet-label">${fmt("fleetRtpRange")}</span><span class="fleet-value">${minRtp}–${maxRtp}%</span></div>
     </div>
-    <div class="fleet-categories">${catBadges}</div>`;
+    <div class="fleet-categories">${catBadges}</div>
+    ${mechBadges ? `<div class="fleet-mechanics"><span class="fleet-mech-label">${fmt("fleetMechanics")}</span> ${mechBadges}</div>` : ""}`;
 }
 
 // ── Batch Run UI ──────────────────────────────────────────────────
