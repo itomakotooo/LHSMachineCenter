@@ -986,12 +986,34 @@ button:disabled {
   flex-wrap: wrap;
 }
 .batch-machine-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 4px;
-  max-height: 300px;
+  max-height: 400px;
   overflow-y: auto;
   margin-bottom: 10px;
+}
+.batch-cat-group {
+  margin-bottom: 6px;
+}
+.batch-cat-header {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 0;
+}
+.batch-cat-header label {
+  cursor: pointer;
+}
+.batch-cat-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 2px;
+}
+.batch-cat-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 2px;
+  padding-left: 20px;
 }
 .batch-machine-item {
   font-size: 12px;

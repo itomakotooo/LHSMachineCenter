@@ -526,17 +526,30 @@ function renderMachineCatalog() {
     wrap.appendChild(section);
   });
 
-  // Click handlers.
+  // Click handlers — multi-select toggle.
   wrap.querySelectorAll(".catalog-item").forEach((el) => {
     const toggle = () => {
       const machine = el.dataset.machine;
-      // Single-select: clear previous selection, select this one.
-      state.runFilterMachines.clear();
-      state.runFilterMachines.add(machine);
+      if (state.runFilterMachines.has(machine)) {
+        state.runFilterMachines.delete(machine);
+      } else {
+        state.runFilterMachines.add(machine);
+      }
       renderMachineCatalog();
       renderRunHistory();
-      showVersionHistory(machine);
-      showMachineDetail(machine);
+      // Show detail for the last toggled machine (if selected).
+      if (state.runFilterMachines.has(machine)) {
+        showVersionHistory(machine);
+        showMachineDetail(machine);
+      } else if (state.runFilterMachines.size === 1) {
+        const last = [...state.runFilterMachines][0];
+        showVersionHistory(last);
+        showMachineDetail(last);
+      } else if (state.runFilterMachines.size === 0) {
+        byId("versionHistoryPanel")?.classList.add("hidden");
+        byId("reportComparisonPanel")?.classList.add("hidden");
+        byId("machineDetailPanel")?.classList.add("hidden");
+      }
     };
     el.addEventListener("click", toggle);
     el.addEventListener("keydown", (e) => {
@@ -670,24 +683,58 @@ function renderBatchMachineGrid() {
 
   const query = (byId("batchSearchInput")?.value || "").trim().toLowerCase();
   let machines = state.machines || [];
-  if (query) machines = machines.filter((m) => m.machine.toLowerCase().includes(query));
+  if (query) machines = machines.filter((m) => m.machine.toLowerCase().includes(query) || (m.category || "").toLowerCase().includes(query));
 
-  grid.innerHTML = machines.map((m) => {
-    const checked = state.batchSelectedMachines.has(m.machine) ? "checked" : "";
-    return `<label class="batch-machine-item"><input type="checkbox" value="${m.machine}" ${checked} /> ${m.machine}</label>`;
-  }).join("");
+  // Group by category for organized display.
+  const groups = {};
+  machines.forEach((m) => {
+    const cat = m.category || "Other";
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(m);
+  });
 
-  grid.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+  let html = "";
+  for (const [cat, items] of Object.entries(groups).sort((a, b) => b[1].length - a[1].length)) {
+    const allSelected = items.every((m) => state.batchSelectedMachines.has(m.machine));
+    const catColor = CATEGORY_COLORS[cat] || "#9ca3af";
+    html += `<div class="batch-cat-group">`;
+    html += `<div class="batch-cat-header"><label><input type="checkbox" class="batch-cat-check" data-cat="${cat}" ${allSelected ? "checked" : ""} /> <span class="batch-cat-dot" style="background:${catColor}"></span> ${cat} (${items.length})</label></div>`;
+    html += `<div class="batch-cat-items">`;
+    items.forEach((m) => {
+      const checked = state.batchSelectedMachines.has(m.machine) ? "checked" : "";
+      html += `<label class="batch-machine-item"><input type="checkbox" value="${m.machine}" data-cat="${cat}" ${checked} /> ${m.machine}</label>`;
+    });
+    html += `</div></div>`;
+  }
+  grid.innerHTML = html;
+
+  // Category-level checkbox: select/deselect all machines in a category.
+  grid.querySelectorAll(".batch-cat-check").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const cat = cb.dataset.cat;
+      const items = grid.querySelectorAll(`input[data-cat="${cat}"]:not(.batch-cat-check)`);
+      items.forEach((item) => {
+        item.checked = cb.checked;
+        if (cb.checked) state.batchSelectedMachines.add(item.value);
+        else state.batchSelectedMachines.delete(item.value);
+      });
+      _updateBatchCount();
+    });
+  });
+  // Individual machine checkbox.
+  grid.querySelectorAll("input[type=checkbox]:not(.batch-cat-check)").forEach((cb) => {
     cb.addEventListener("change", () => {
       if (cb.checked) state.batchSelectedMachines.add(cb.value);
       else state.batchSelectedMachines.delete(cb.value);
-      if (countEl) countEl.textContent = fmt("batchHintSelected", { n: state.batchSelectedMachines.size });
-      if (btn) btn.disabled = state.batchSelectedMachines.size === 0 || !!state.activeBatchId;
+      _updateBatchCount();
     });
   });
 
-  if (countEl) countEl.textContent = fmt("batchHintSelected", { n: state.batchSelectedMachines.size });
-  if (btn) btn.disabled = state.batchSelectedMachines.size === 0 || !!state.activeBatchId;
+  function _updateBatchCount() {
+    if (countEl) countEl.textContent = fmt("batchHintSelected", { n: state.batchSelectedMachines.size });
+    if (btn) btn.disabled = state.batchSelectedMachines.size === 0 || !!state.activeBatchId;
+  }
+  _updateBatchCount();
 }
 
 async function startBatchRun() {
@@ -2278,6 +2325,23 @@ function bindEvents() {
     dashboard.classList.remove("sidebar-open");
   });
   byId("catalogSearch").addEventListener("input", () => renderMachineCatalog());
+  byId("catalogCollapseAll").addEventListener("click", () => {
+    const groups = document.querySelectorAll(".catalog-group");
+    const allCollapsed = [...groups].every((g) => g.classList.contains("collapsed"));
+    groups.forEach((g) => {
+      g.classList.toggle("collapsed", !allCollapsed);
+      const arrow = g.querySelector(".catalog-group-arrow");
+      if (arrow) arrow.innerHTML = allCollapsed ? "&#9660;" : "&#9654;";
+    });
+  });
+  byId("catalogClearSelection").addEventListener("click", () => {
+    state.runFilterMachines.clear();
+    renderMachineCatalog();
+    renderRunHistory();
+    byId("versionHistoryPanel")?.classList.add("hidden");
+    byId("reportComparisonPanel")?.classList.add("hidden");
+    byId("machineDetailPanel")?.classList.add("hidden");
+  });
   // View tabs for catalog grouping mode.
   byId("catalogViewTabs").addEventListener("click", (e) => {
     const btn = e.target.closest(".view-tab");
