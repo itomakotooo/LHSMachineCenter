@@ -876,6 +876,7 @@ button:disabled {
 }
 .md5-match { color: #059669; font-weight: 700; }
 .md5-mismatch { color: #dc2626; font-weight: 700; }
+.md5-partial { font-weight: 700; cursor: help; filter: saturate(1.2); }
 
 /* Machine detail panel */
 .machine-detail {

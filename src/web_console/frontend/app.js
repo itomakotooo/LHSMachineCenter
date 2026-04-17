@@ -375,10 +375,18 @@ function _catalogModeMetrics(machine) {
     const volHtml = vol ? `<span class="cat-vol" style="color:${vc}">${vol} ${pct}</span>` : "";
     const mechIcons = (d.mechanics || []).map((mk) => MECH_ICONS[mk] || "").join("");
     const md5 = d.md5_status;
-    const md5Icon = md5 === "match" ? '<span class="md5-match" title="report MD5 匹配上游">✓</span>'
-      : md5 === "outdated" ? '<span class="md5-mismatch" title="机台版本已变更，report 过期">⚠</span>'
-      : md5 === "untagged" ? '<span class="muted" title="旧格式 report 无 MD5 标签">?</span>'
-      : '';
+    const ciVal = d.ci_halfwidth_pp;
+    const ciAccurate = ciVal != null && ciVal <= 0.5;
+    let md5Icon = '';
+    if (md5 === "match") {
+      md5Icon = ciAccurate
+        ? '<span class="md5-match" title="report MD5 匹配上游，CI ≤ 0.5pp">✓</span>'
+        : `<span class="md5-partial" title="report MD5 匹配但 CI 不精确 (${ciVal == null ? 'null' : '>' + '0.5pp'})">🟡</span>`;
+    } else if (md5 === "outdated") {
+      md5Icon = '<span class="md5-mismatch" title="机台版本已变更，report 过期">⚠</span>';
+    } else if (md5 === "untagged") {
+      md5Icon = '<span class="muted" title="旧格式 report 无 MD5 标签">?</span>';
+    }
     return `<div class="cat-mode-row">${md5Icon} <span class="cat-mode-label">m${mode}</span> <span class="cat-rtp">${rtp}</span> <span class="cat-ci">${ci}</span> ${volHtml}${mechIcons ? ` <span class="cat-mech" title="${d.mechanics.join(', ')}">${mechIcons}</span>` : ""}</div>`;
   }).join("");
 }
