@@ -793,7 +793,9 @@ def _compute_upstream_schema_fingerprint(resp: Any) -> str | None:
                 continue
             keys = sorted(first_round.keys())
             return hashlib.sha256("|".join(keys).encode()).hexdigest()[:16]
-    except Exception:
+    except (json.JSONDecodeError, TypeError, AttributeError, ValueError):
+        # Data-level: malformed upstream response shape. Fingerprint is
+        # best-effort diagnostic, not correctness-critical; fall through.
         pass
     return None
 
@@ -815,7 +817,9 @@ def _lookup_machine_md5(machine: str) -> tuple[str, str]:
                     str(m.get("configSummaryMd5", "")),
                     str(m.get("codeSummaryMd5", "")),
                 )
-    except Exception:
+    except (OSError, json.JSONDecodeError, TypeError):
+        # Data-level: missing / malformed machines.json. MD5 tagging is
+        # best-effort; reports stay valid without it.
         pass
     return "", ""
 

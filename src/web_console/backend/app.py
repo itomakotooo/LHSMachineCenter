@@ -1172,8 +1172,17 @@ class BatchRunManager:
                         if mr and mr.process:
                             try:
                                 mr.process.terminate()
-                            except Exception:
-                                pass
+                            except (OSError, ProcessLookupError) as exc:
+                                # Action-level: terminate() can fail if
+                                # process already exited, permissions
+                                # bug, or (on Windows) handle was closed.
+                                # Not fatal — the stop-flag file still
+                                # triggers graceful exit. Log for ops.
+                                print(
+                                    f"[cancel_batch] terminate({run_id}) failed: "
+                                    f"{type(exc).__name__}: {exc}",
+                                    flush=True,
+                                )
             return True
 
     def _run_batch(self, batch_id: str) -> None:
@@ -2307,7 +2316,11 @@ class RunManager:
                             write_json(latest_path, filtered[-1])
                         elif latest_path.exists():
                             latest_path.unlink()
-                except Exception:
+                except (OSError, json.JSONDecodeError, TypeError):
+                    # Data-level: index/latest manifest malformed or
+                    # unwritable. Run row still gets deleted below;
+                    # stale index entry at worst shows a dangling
+                    # version in 运行历史 until next write.
                     pass
 
         removed = self.store.delete_run(run_id)
@@ -3133,6 +3146,11 @@ def create_app(
         skipped = 0
         db_rows_created = 0
         machines_affected: set[str] = set()
+        # Data-level failures (bad file, bad row) — continue, but surface
+        # them so 1006/1002 import like the prior "166 silent fails"
+        # incident can't happen again.
+        db_failures: list[dict[str, str]] = []
+        file_failures: list[dict[str, str]] = []
 
         def _derive_run_id(version_name: str, machine_n: str, mode_n: int) -> str:
             # "rv_20260416T073355Z_9d60553e" → "9d60553e" (real run, globally unique)
@@ -3185,8 +3203,17 @@ def create_app(
                         run_id = run_id + "_i"  # suffix to disambiguate
                     try:
                         s = json.loads((dst / "player_impact_summary.json").read_text(encoding="utf-8"))
-                    except (OSError, json.JSONDecodeError):
+                    except (OSError, json.JSONDecodeError) as exc:
                         s = {}
+                        # Data-level: file exists (already copied) but
+                        # parse failed. Record, keep going — row will
+                        # still insert with whatever defaults apply.
+                        if len(file_failures) < 20:
+                            file_failures.append({
+                                "machine": machine_name, "mode": str(mode_int),
+                                "version": v.name,
+                                "error": f"{type(exc).__name__}: {exc}"[:200],
+                            })
                     sam = s.get("sampling", {})
                     rtp_pct = (s.get("rtp", {}) or {}).get("point_pct")
                     ci_hw = sam.get("achieved_halfwidth_pp")
@@ -3221,14 +3248,32 @@ def create_app(
                             "quality_label": qa,
                         })
                         db_rows_created += 1
-                    except Exception as _exc:
-                        # Log first failure to help diagnose; subsequent silently ignored.
-                        if db_rows_created == 0 and imported <= 2:
+                    except Exception as exc:  # noqa: BLE001
+                        # Data-level failure: one row's insert failed.
+                        # Keep going; the file is already copied and usable
+                        # via the file path; missing DB row just means it
+                        # won't show in 运行历史 until re-imported.
+                        # Collect up to 50 details so the caller can see
+                        # WHAT failed (prior implementation printed only
+                        # the first traceback to stdout).
+                        if len(db_failures) < 50:
+                            db_failures.append({
+                                "machine": machine_name, "mode": str(mode_int),
+                                "run_id": run_id,
+                                "error": f"{type(exc).__name__}: {exc}"[:200],
+                            })
+                        # Print first few to server log for operator
+                        # visibility. Keeps original diagnostic behavior.
+                        if len(db_failures) <= 3:
                             import traceback
                             traceback.print_exc()
         return {
             "imported": imported, "skipped": skipped,
             "db_rows_created": db_rows_created,
+            "db_failed": len(db_failures),
+            "file_failed": len(file_failures),
+            "db_failures": db_failures,
+            "file_failures": file_failures,
             "machines_affected": sorted(machines_affected),
         }
 
