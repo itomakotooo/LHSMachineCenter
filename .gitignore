@@ -36,3 +36,16 @@ fresh_slotlab/__pycache__/
 
 # Local Claude Code tooling state (launch.json, plans, etc.)
 .claude/
+
+# Dev rawdata (large, regenerable via batch_dev_sampler)
+dev_rawdata/
+
+# Probe snapshots (MachineConfigMd5 dumps, server snapshots)
+.probe/
+
+# Reports are generated data; only keep M14 as baseline reference.
+reports/*
+!reports/M14/
+!reports/.gitkeep
+# Ignore devcache report versions (regenerable from dev_rawdata).
+reports/*/*/versions/*_devcache/
