@@ -213,6 +213,71 @@ def _get_machine_md5(machine: str, machines_config: Path | None = None) -> tuple
     return "", ""
 
 
+def _empty_rawdata_status(**extra: Any) -> dict[str, Any]:
+    base = {
+        "exists": False, "usable_chunks": 0, "mismatch_chunks": 0,
+        "deleted_paths": [], "total_size_mb": 0.0,
+        "upstream_config_md5": "", "upstream_code_md5": "",
+        "saved_at": "", "unverifiable": False,
+    }
+    base.update(extra)
+    return base
+
+
+def _status_from_index_entry(
+    entry: dict[str, Any],
+    up_config: str,
+    up_code: str,
+    unverifiable: bool,
+) -> dict[str, Any] | None:
+    """Return a full status dict if the index entry is usable without a
+    filesystem scan; None if caller must fall back to per-chunk scan.
+
+    Conditions for the fast path:
+    - entry has consistent md5 across all chunks (not mixed)
+    - either upstream is unknown (accept everything) OR all chunks' md5
+      matches the current upstream md5 (no mismatches to report)
+    When md5 drifted or chunks are heterogeneous, the caller can't shortcut
+    — we need to know WHICH chunks are stale (for auto-delete, for the
+    mismatch_chunks count).
+    """
+    if entry.get("mixed_md5"):
+        return None
+    chunks_n = int(entry.get("chunks", 0))
+    if chunks_n == 0:
+        return _empty_rawdata_status(
+            upstream_config_md5=up_config, upstream_code_md5=up_code,
+            unverifiable=unverifiable,
+        )
+    cfg = str(entry.get("config_md5", ""))
+    code = str(entry.get("code_md5", ""))
+    if unverifiable:
+        pass  # accept whatever's there
+    else:
+        if not cfg and not code:
+            # Envelope has no md5 tags (legacy) — treat all as mismatch.
+            # Fall back so existing auto-delete + size accounting works.
+            return None
+        if cfg != up_config or code != up_code:
+            # All chunks stale (same md5 but wrong one). Fall back so
+            # the caller can mark them for auto-delete per-chunk if
+            # asked and enumerate them in deleted_paths.
+            return None
+    return {
+        "exists": True,
+        "usable_chunks": chunks_n,
+        "mismatch_chunks": 0,
+        "deleted_paths": [],
+        "total_size_mb": round(
+            int(entry.get("total_size_bytes", 0)) / (1024 * 1024), 2
+        ),
+        "upstream_config_md5": up_config,
+        "upstream_code_md5": up_code,
+        "saved_at": str(entry.get("last_saved_at", "")),
+        "unverifiable": unverifiable,
+    }
+
+
 def check_rawdata_status(
     machine: str,
     mode: int,
@@ -221,6 +286,12 @@ def check_rawdata_status(
     auto_delete_mismatched: bool = False,
 ) -> dict[str, Any]:
     """Per-chunk rawdata availability and MD5 match for a machine-mode.
+
+    Hot path: consults `<rawdata_root>/_index.json` (one open) when the
+    cached entry is consistent and all chunks match upstream md5. Cold
+    path (stale index, mixed md5, or md5 drift) falls back to a full
+    per-chunk envelope scan — the same logic as before — and rebuilds
+    the entry so the next call is fast again.
 
     Each chunk file is verified independently. Mismatched chunks can be
     auto-deleted (when auto_delete_mismatched=True). Usable chunks remain
@@ -242,24 +313,38 @@ def check_rawdata_status(
     root = rawdata_root if rawdata_root is not None else RAWDATA_ROOT
     mode_dir = root / machine / f"mode_{mode}"
     if not mode_dir.is_dir():
-        return {
-            "exists": False, "usable_chunks": 0, "mismatch_chunks": 0,
-            "deleted_paths": [], "total_size_mb": 0.0,
-            "upstream_config_md5": "", "upstream_code_md5": "",
-            "saved_at": "", "unverifiable": False,
-        }
-
-    chunks = sorted(mode_dir.glob("chunk_*.json"))
-    if not chunks:
-        return {
-            "exists": False, "usable_chunks": 0, "mismatch_chunks": 0,
-            "deleted_paths": [], "total_size_mb": 0.0,
-            "upstream_config_md5": "", "upstream_code_md5": "",
-            "saved_at": "", "unverifiable": False,
-        }
+        return _empty_rawdata_status()
 
     up_config, up_code = _get_machine_md5(machine, machines_config)
     unverifiable = not up_config and not up_code
+
+    # ── Fast path: try the cached index first ──
+    # Validated by matching entry.chunks against the actual glob count;
+    # any drift (external delete, failed writer, etc.) forces a rescan.
+    # Skipped when auto_delete_mismatched is requested since that path
+    # mutates chunks and must see per-chunk md5.
+    if not auto_delete_mismatched:
+        try:
+            from fresh_slotlab.rawdata_index import load_index, entry_key
+            idx = load_index(root)
+            entry = idx.get("entries", {}).get(entry_key(machine, mode))
+            if entry is not None:
+                actual_count = sum(1 for _ in mode_dir.glob("chunk_*.json"))
+                if actual_count == int(entry.get("chunks", -1)):
+                    status = _status_from_index_entry(
+                        entry, up_config, up_code, unverifiable
+                    )
+                    if status is not None:
+                        return status
+        except Exception:  # noqa: BLE001
+            # Index read failures shouldn't block the API call; fall
+            # through to the authoritative filesystem scan.
+            pass
+
+    # ── Cold path: full per-chunk scan + index rebuild ──
+    chunks = sorted(mode_dir.glob("chunk_*.json"))
+    if not chunks:
+        return _empty_rawdata_status()
 
     usable = 0
     mismatched: list[Path] = []
@@ -311,6 +396,15 @@ def check_rawdata_status(
         except OSError:
             pass
 
+    # Refresh the index entry so the next read hits the fast path again.
+    # Runs outside the main return so any failure here doesn't disturb
+    # the canonical scan result.
+    try:
+        from fresh_slotlab.rawdata_index import update_entry
+        update_entry(root, machine, mode, mode_dir)
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "exists": True,
         "usable_chunks": usable,
@@ -329,7 +423,12 @@ def delete_rawdata(
     mode: int | None = None,
     rawdata_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Delete rawdata for a machine. If mode given, delete only that mode dir."""
+    """Delete rawdata for a machine. If mode given, delete only that mode dir.
+
+    Also removes matching entries from the rawdata index so UI status
+    reflects the deletion immediately (no need to wait for a full
+    rescan to clear the stale entry).
+    """
     root = rawdata_root if rawdata_root is not None else RAWDATA_ROOT
     if mode is None:
         target = root / machine
@@ -338,6 +437,20 @@ def delete_rawdata(
     if not target.is_dir():
         return {"ok": True, "deleted": False, "reason": "not_found"}
     shutil.rmtree(target, ignore_errors=True)
+    try:
+        from fresh_slotlab.rawdata_index import remove_entry, load_index, _save_index
+        if mode is not None:
+            remove_entry(root, machine, mode)
+        else:
+            # Whole-machine delete — drop every `<machine>|*` entry.
+            data = load_index(root)
+            data["entries"] = {
+                k: v for k, v in data["entries"].items()
+                if not k.startswith(f"{machine}|")
+            }
+            _save_index(root, data)
+    except Exception:  # noqa: BLE001
+        pass
     return {"ok": True, "deleted": True, "path": str(target)}
 
 

@@ -920,6 +920,17 @@ def _save_chunk_cache(
         }
         tmp_path.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp_path, out_path)
+        # Update the rawdata index so UI reads stay O(1). Best-effort:
+        # failure here only means the next UI status refresh falls back
+        # to a filesystem scan (which self-heals the index).
+        try:
+            from fresh_slotlab.rawdata_index import update_entry
+            # cache_dir is `<rawdata_root>/<machine>/mode_<N>`; the index
+            # lives at `<rawdata_root>/_index.json`.
+            rawdata_root = cache_dir.parent.parent
+            update_entry(rawdata_root, machine, rtp_mode, cache_dir)
+        except Exception:  # noqa: BLE001
+            pass
     except Exception:  # noqa: BLE001
         # Clean up a stale .tmp so we don't accumulate partials from
         # repeated failures. The final chunk file (if any) is left
