@@ -854,6 +854,29 @@ button:disabled {
   border-radius: 10px;
 }
 
+/* Rawdata section (inside machine detail) */
+.rawdata-section {
+  margin-top: 14px;
+  padding: 10px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+.rawdata-header {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.rawdata-row {
+  font-size: 12px;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.md5-match { color: #059669; font-weight: 700; }
+.md5-mismatch { color: #dc2626; font-weight: 700; }
+
 /* Machine detail panel */
 .machine-detail {
   grid-column: span 12;

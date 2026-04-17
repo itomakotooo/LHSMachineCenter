@@ -744,7 +744,54 @@ function showMachineDetail(machineName) {
       <div><span class="detail-label">${fmt("detailCodeMd5")}</span> <code>${codeMd5}</code></div>
       <div><span class="detail-label">${fmt("detailReports")}</span> ${m.report_count || 0}</div>
     </div>
-    ${metricsHtml}`;
+    ${metricsHtml}
+    <div id="rawdataSection" class="rawdata-section"><div class="muted">加载本地 rawdata 状态…</div></div>`;
+
+  // Load rawdata status async.
+  _loadRawdataSection(machineName);
+}
+
+async function _loadRawdataSection(machineName) {
+  const section = byId("rawdataSection");
+  if (!section) return;
+  try {
+    const data = await apiGet(`/api/rawdata/${machineName}`);
+    const modes = Object.entries(data.modes || {});
+    if (!modes.length) {
+      section.innerHTML = `<div class="rawdata-header">📦 本地 Rawdata</div><div class="muted">无本地 rawdata</div>`;
+      return;
+    }
+    const rows = modes.sort((a, b) => Number(a[0]) - Number(b[0])).map(([mode, st]) => {
+      const statusIcon = st.usable_chunks > 0 ? "✓" : "✗";
+      const statusCls = st.usable_chunks > 0 ? "md5-match" : "md5-mismatch";
+      const unverifiable = st.unverifiable ? " (无上游 MD5 参考)" : "";
+      return `<div class="rawdata-row">
+        <span class="${statusCls}">${statusIcon}</span>
+        <strong>mode ${mode}</strong>
+        · ${st.usable_chunks} 可用 chunks${st.mismatch_chunks > 0 ? ` (${st.mismatch_chunks} 过期)` : ""}
+        · ${st.total_size_mb} MB${unverifiable}
+        <button class="small-btn rawdata-delete-btn" data-machine="${machineName}" data-mode="${mode}">删除</button>
+      </div>`;
+    }).join("");
+    section.innerHTML = `<div class="rawdata-header">📦 本地 Rawdata (采样时会自动复用)</div>${rows}
+      <div style="margin-top:6px"><button class="small-btn rawdata-delete-all-btn" data-machine="${machineName}">删除全部 mode</button></div>`;
+
+    section.querySelectorAll(".rawdata-delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const m = btn.dataset.machine, mo = btn.dataset.mode;
+        if (!confirm(`删除 ${m} mode ${mo} 的本地 rawdata？`)) return;
+        await apiDelete(`/api/rawdata/${m}?mode=${mo}`);
+        _loadRawdataSection(machineName);
+      });
+    });
+    section.querySelector(".rawdata-delete-all-btn")?.addEventListener("click", async () => {
+      if (!confirm(`删除 ${machineName} 的所有本地 rawdata？`)) return;
+      await apiDelete(`/api/rawdata/${machineName}`);
+      _loadRawdataSection(machineName);
+    });
+  } catch (e) {
+    section.innerHTML = `<div class="muted">加载失败: ${e.message || e}</div>`;
+  }
 }
 
 // ── Fleet Overview ────────────────────────────────────────────────

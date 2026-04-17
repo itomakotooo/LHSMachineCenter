@@ -138,6 +138,7 @@ class RunCreateRequest(BaseModel):
     machine: str
     mode: int
     server_id: str = Field(default="")
+    from_cache_dir: str = Field(default="")  # if set, analyzer uses --from-cache
     # target_halfwidth_pp == 0 encodes the "fuzzy" tier (no CI stop;
     # backend resolves max_chunks to target ~1M spins). Any positive
     # value is a normal CI half-width in percentage points.
@@ -192,6 +193,153 @@ def save_servers(data: dict[str, Any], path: Path | None = None) -> None:
     target.write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
+
+
+RAWDATA_ROOT = ROOT / "dev_rawdata"
+
+
+def _get_machine_md5(machine: str, machines_config: Path | None = None) -> tuple[str, str]:
+    """Look up (config_md5, code_md5) for a machine from machines.json."""
+    target = machines_config if machines_config is not None else MACHINES_CONFIG
+    if not target.exists():
+        return "", ""
+    try:
+        data = read_json(target) or {}
+        for m in data.get("machines", []):
+            if m.get("machine") == machine:
+                return (str(m.get("configSummaryMd5", "")), str(m.get("codeSummaryMd5", "")))
+    except Exception:
+        pass
+    return "", ""
+
+
+def check_rawdata_status(
+    machine: str,
+    mode: int,
+    rawdata_root: Path | None = None,
+    machines_config: Path | None = None,
+    auto_delete_mismatched: bool = False,
+) -> dict[str, Any]:
+    """Per-chunk rawdata availability and MD5 match for a machine-mode.
+
+    Each chunk file is verified independently. Mismatched chunks can be
+    auto-deleted (when auto_delete_mismatched=True). Usable chunks remain
+    for --from-cache reuse.
+
+    Returns:
+      {
+        "exists": bool,
+        "usable_chunks": int,       # chunks with matching MD5 (or unverifiable when upstream unknown)
+        "mismatch_chunks": int,     # chunks with stale MD5 (deleted if auto_delete)
+        "deleted_paths": list[str],
+        "total_size_mb": float,     # size of remaining usable chunks
+        "upstream_config_md5": str,
+        "upstream_code_md5": str,
+        "saved_at": str,            # earliest saved_at among usable chunks
+        "unverifiable": bool,       # upstream MD5 unknown → can't verify
+      }
+    """
+    root = rawdata_root if rawdata_root is not None else RAWDATA_ROOT
+    mode_dir = root / machine / f"mode_{mode}"
+    if not mode_dir.is_dir():
+        return {
+            "exists": False, "usable_chunks": 0, "mismatch_chunks": 0,
+            "deleted_paths": [], "total_size_mb": 0.0,
+            "upstream_config_md5": "", "upstream_code_md5": "",
+            "saved_at": "", "unverifiable": False,
+        }
+
+    chunks = sorted(mode_dir.glob("chunk_*.json"))
+    if not chunks:
+        return {
+            "exists": False, "usable_chunks": 0, "mismatch_chunks": 0,
+            "deleted_paths": [], "total_size_mb": 0.0,
+            "upstream_config_md5": "", "upstream_code_md5": "",
+            "saved_at": "", "unverifiable": False,
+        }
+
+    up_config, up_code = _get_machine_md5(machine, machines_config)
+    unverifiable = not up_config and not up_code
+
+    usable = 0
+    mismatched: list[Path] = []
+    deleted_paths: list[str] = []
+    saved_ats: list[str] = []
+    usable_size = 0
+
+    for chunk_path in chunks:
+        try:
+            data = json.loads(chunk_path.read_text(encoding="utf-8"))
+            cfg_md5 = str(data.get("_config_md5", ""))
+            code_md5 = str(data.get("_code_md5", ""))
+            saved = str(data.get("_saved_at", ""))
+        except Exception:
+            mismatched.append(chunk_path)
+            continue
+
+        if unverifiable:
+            # No upstream reference → accept as-is.
+            usable += 1
+            usable_size += chunk_path.stat().st_size
+            if saved:
+                saved_ats.append(saved)
+            continue
+
+        # Empty MD5 in envelope = old format, can't verify → treat as mismatch.
+        if not cfg_md5 and not code_md5:
+            mismatched.append(chunk_path)
+            continue
+        if cfg_md5 == up_config and code_md5 == up_code:
+            usable += 1
+            usable_size += chunk_path.stat().st_size
+            if saved:
+                saved_ats.append(saved)
+        else:
+            mismatched.append(chunk_path)
+
+    if auto_delete_mismatched and mismatched:
+        for p in mismatched:
+            try:
+                p.unlink()
+                deleted_paths.append(str(p))
+            except OSError:
+                pass
+        # Remove empty dir if nothing left.
+        try:
+            if not any(mode_dir.iterdir()):
+                mode_dir.rmdir()
+        except OSError:
+            pass
+
+    return {
+        "exists": True,
+        "usable_chunks": usable,
+        "mismatch_chunks": len(mismatched),
+        "deleted_paths": deleted_paths,
+        "total_size_mb": round(usable_size / (1024 * 1024), 2),
+        "upstream_config_md5": up_config,
+        "upstream_code_md5": up_code,
+        "saved_at": min(saved_ats) if saved_ats else "",
+        "unverifiable": unverifiable,
+    }
+
+
+def delete_rawdata(
+    machine: str,
+    mode: int | None = None,
+    rawdata_root: Path | None = None,
+) -> dict[str, Any]:
+    """Delete rawdata for a machine. If mode given, delete only that mode dir."""
+    import shutil
+    root = rawdata_root if rawdata_root is not None else RAWDATA_ROOT
+    if mode is None:
+        target = root / machine
+    else:
+        target = root / machine / f"mode_{mode}"
+    if not target.is_dir():
+        return {"ok": True, "deleted": False, "reason": "not_found"}
+    shutil.rmtree(target, ignore_errors=True)
+    return {"ok": True, "deleted": True, "path": str(target)}
 
 
 def _detect_machine_cycle(machine: str, reports_root: Path) -> dict[str, Any]:
@@ -851,6 +999,15 @@ class BatchRunManager:
             if chunk_size is None:
                 cycle_info = _detect_machine_cycle(it.machine, rr)
                 chunk_size = cycle_info["recommended_chunk_size"]
+
+            # Check local rawdata — per-chunk MD5 verification with auto-delete
+            # of mismatched chunks. Usable chunks get reused via --from-cache.
+            raw_status = check_rawdata_status(
+                it.machine, it.mode,
+                auto_delete_mismatched=True,
+            )
+            reuse_cache = raw_status["usable_chunks"] > 0
+
             items.append({
                 "machine": it.machine,
                 "mode": it.mode,
@@ -858,18 +1015,32 @@ class BatchRunManager:
                 "status": "pending",
                 "run_id": None,
                 "cycle_info": cycle_info,
+                "rawdata_status": raw_status,
+                "reuse_cache": reuse_cache,
             })
+            if raw_status["mismatch_chunks"] > 0:
+                events.append({
+                    "ts": utc_now(), "level": "warn",
+                    "machine": it.machine,
+                    "text": f"删除 {raw_status['mismatch_chunks']} 个 MD5 不匹配的 chunk（config/code 已变更）",
+                })
+            if reuse_cache:
+                events.append({
+                    "ts": utc_now(), "level": "info",
+                    "machine": it.machine,
+                    "text": f"♻ 使用本地 rawdata: {raw_status['usable_chunks']} chunks, {raw_status['total_size_mb']}MB (跳过 API 采样)",
+                })
+            else:
+                events.append({
+                    "ts": utc_now(), "level": "info",
+                    "machine": it.machine,
+                    "text": f"📥 无可用本地 rawdata，从 API 采样 (chunk_spin_times={chunk_size})",
+                })
             if cycle_info and cycle_info["source"] == "collect_detected_no_cycle":
                 events.append({
                     "ts": utc_now(), "level": "warn",
                     "machine": it.machine,
                     "text": f"Collect 机制已识别但未确认 cycle 长度，使用保守值 chunk_spin_times={chunk_size}",
-                })
-            elif cycle_info and cycle_info["source"] == "no_report":
-                events.append({
-                    "ts": utc_now(), "level": "info",
-                    "machine": it.machine,
-                    "text": f"无历史 report，使用默认 chunk_spin_times={chunk_size}",
                 })
             elif cycle_info and cycle_info["source"] == "cycle_peaks":
                 events.append({
@@ -1027,7 +1198,13 @@ class BatchRunManager:
                     item["status"] = "cancelled"
                     return
                 item["status"] = "running"
-                _log("info", f"开始采样 (chunk_spin_times={item['chunk_spin_times']})", item["machine"])
+                # Reuse local rawdata if usable chunks exist.
+                from_cache_dir = ""
+                if item.get("reuse_cache"):
+                    from_cache_dir = str(RAWDATA_ROOT / item["machine"] / f"mode_{item['mode']}")
+                    _log("info", f"♻ 使用本地 rawdata 解析 ({from_cache_dir})", item["machine"])
+                else:
+                    _log("info", f"开始 API 采样 (chunk_spin_times={item['chunk_spin_times']})", item["machine"])
                 req = RunCreateRequest(
                     machine=item["machine"],
                     mode=item["mode"],
@@ -1037,6 +1214,7 @@ class BatchRunManager:
                     max_chunks=params["max_chunks"],
                     timeout=params["timeout"],
                     target_halfwidth_pp=params["target_halfwidth_pp"],
+                    from_cache_dir=from_cache_dir,
                 )
                 result = self._run_manager.start_run(req)
                 run_id = result.get("run_id")
@@ -1802,6 +1980,9 @@ class RunManager:
         if req.server_id:
             endpoint = get_server_endpoint(req.server_id)
             cmd.extend(["--endpoint-url", endpoint])
+        # From-cache mode: reuse existing chunks, skip API sampling.
+        if req.from_cache_dir:
+            cmd.extend(["--from-cache", req.from_cache_dir])
 
         process = self._popen_factory(cmd, ROOT)
         managed = ManagedRun(
@@ -2334,6 +2515,29 @@ def create_app(
     @app.get("/api/disk-space")
     def disk_space() -> dict[str, Any]:
         return _get_disk_space_info(rr)
+
+    @app.get("/api/rawdata/{machine}")
+    def get_rawdata_status(machine: str) -> dict[str, Any]:
+        """Per-mode rawdata status for a machine (chunk-level MD5 verification)."""
+        result = {}
+        machine_dir = RAWDATA_ROOT / machine
+        if machine_dir.is_dir():
+            for mode_dir in machine_dir.iterdir():
+                if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                    continue
+                try:
+                    mode = int(mode_dir.name.split("_")[1])
+                except (IndexError, ValueError):
+                    continue
+                result[str(mode)] = check_rawdata_status(
+                    machine, mode, machines_config=mc, auto_delete_mismatched=False,
+                )
+        return {"machine": machine, "modes": result}
+
+    @app.delete("/api/rawdata/{machine}")
+    def delete_machine_rawdata(machine: str, mode: int | None = None) -> dict[str, Any]:
+        """Delete rawdata for a machine (all modes or specific mode)."""
+        return delete_rawdata(machine, mode)
 
     @app.get("/api/batch-run/{batch_id}")
     def get_batch_run(batch_id: str) -> dict[str, Any]:

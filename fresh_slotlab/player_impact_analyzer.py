@@ -764,7 +764,7 @@ def build_multiplier_bucket_rows(
 
 # Cache envelope version. Bumped when the wrapping envelope changes
 # (not when analyzer code changes -- raw API data is analyzer-agnostic).
-CHUNK_CACHE_VERSION = 1
+CHUNK_CACHE_VERSION = 2  # v2: added _config_md5 + _code_md5 to envelope
 
 
 def _compute_upstream_schema_fingerprint(resp: Any) -> str | None:
@@ -798,6 +798,28 @@ def _compute_upstream_schema_fingerprint(resp: Any) -> str | None:
     return None
 
 
+def _lookup_machine_md5(machine: str) -> tuple[str, str]:
+    """Look up (config_md5, code_md5) for a machine from configs/machines.json.
+
+    Returns ("", "") if not found — the envelope stores empty strings so
+    the file is still valid but MD5 verification is effectively disabled.
+    """
+    try:
+        cfg_path = Path(__file__).resolve().parent.parent / "configs" / "machines.json"
+        if not cfg_path.exists():
+            return "", ""
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        for m in data.get("machines", []):
+            if m.get("machine") == machine:
+                return (
+                    str(m.get("configSummaryMd5", "")),
+                    str(m.get("codeSummaryMd5", "")),
+                )
+    except Exception:
+        pass
+    return "", ""
+
+
 def _save_chunk_cache(
     resp: Any,
     chunk_index: int,
@@ -818,6 +840,7 @@ def _save_chunk_cache(
         return
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
+        config_md5, code_md5 = _lookup_machine_md5(machine)
         envelope = {
             "_cache_version": CHUNK_CACHE_VERSION,
             "_machine": machine,
@@ -827,6 +850,8 @@ def _save_chunk_cache(
             "_robot_count": robot_count,
             "_chunk_index": chunk_index,
             "_saved_at": utc_now(),
+            "_config_md5": config_md5,
+            "_code_md5": code_md5,
             "_upstream_schema_fingerprint": _compute_upstream_schema_fingerprint(resp),
             "response": resp,
         }

@@ -28,6 +28,7 @@ from fresh_slotlab.player_impact_analyzer import (
     post_json,
     utc_now,
     _compute_upstream_schema_fingerprint,
+    _lookup_machine_md5,
 )
 
 DEV_RAWDATA_DIR = Path(__file__).resolve().parent.parent / "dev_rawdata"
@@ -120,6 +121,7 @@ def fetch_machine(
     elapsed = time.time() - t0
 
     # Save in chunk-cache envelope format for compatibility
+    config_md5, code_md5 = _lookup_machine_md5(machine)
     envelope = {
         "_cache_version": CHUNK_CACHE_VERSION,
         "_machine": machine,
@@ -129,6 +131,8 @@ def fetch_machine(
         "_robot_count": robot_count,
         "_chunk_index": 1,
         "_saved_at": utc_now(),
+        "_config_md5": config_md5,
+        "_code_md5": code_md5,
         "_upstream_schema_fingerprint": _compute_upstream_schema_fingerprint(resp),
         "_dev_sample": True,
         "response": resp,
