@@ -3096,6 +3096,109 @@ def create_app(
             raise HTTPException(status_code=404, detail="report version not found")
         return read_json(summary_path) or {}
 
+    @app.post("/api/reports/import")
+    def import_reports(req: dict[str, Any]) -> dict[str, Any]:
+        """Import reports from an external folder into reports/.
+
+        Expected source layout: {source}/{machine}/mode_{n}/versions/{ver}/player_impact_summary.json
+        Mode 'merge' (default): copy new versions; skip if already exists.
+        Mode 'replace': delete target machine dirs first, then copy.
+        """
+        source = req.get("source_path", "").strip()
+        mode_arg = req.get("mode", "merge")
+        if not source:
+            raise HTTPException(status_code=400, detail="source_path required")
+        src = Path(source)
+        if not src.is_dir():
+            raise HTTPException(status_code=400, detail=f"source_path not a directory: {source}")
+        imported = 0
+        skipped = 0
+        machines_affected: set[str] = set()
+        for machine_dir in src.iterdir():
+            if not machine_dir.is_dir():
+                continue
+            machine_name = machine_dir.name
+            dst_machine = rr / machine_name
+            if mode_arg == "replace" and dst_machine.is_dir():
+                shutil.rmtree(dst_machine)
+            for mode_dir in machine_dir.iterdir():
+                if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                    continue
+                versions_dir = mode_dir / "versions"
+                if not versions_dir.is_dir():
+                    continue
+                for v in versions_dir.iterdir():
+                    if not v.is_dir():
+                        continue
+                    src_sum = v / "player_impact_summary.json"
+                    if not src_sum.exists():
+                        continue
+                    dst = rr / machine_name / mode_dir.name / "versions" / v.name
+                    if dst.exists():
+                        skipped += 1
+                        continue
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(v, dst)
+                    imported += 1
+                    machines_affected.add(machine_name)
+        return {
+            "imported": imported, "skipped": skipped,
+            "machines_affected": sorted(machines_affected),
+        }
+
+    @app.get("/api/report-validate/{machine}")
+    def validate_machine_reports(machine: str) -> dict[str, Any]:
+        """Check if each report's stored MD5 still matches current upstream MD5.
+
+        Outdated reports are flagged (md5_match=False). Frontend can show
+        warning badges next to them.
+        """
+        up_config, up_code = _get_machine_md5(machine, mc)
+        if not up_config and not up_code:
+            return {"machine": machine, "unverifiable": True, "reports": []}
+        results = []
+        machine_dir = rr / machine
+        if not machine_dir.is_dir():
+            return {"machine": machine, "unverifiable": False, "reports": []}
+        for mode_dir in machine_dir.iterdir():
+            if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                continue
+            try:
+                mode_val = int(mode_dir.name.split("_")[1])
+            except (IndexError, ValueError):
+                continue
+            versions_dir = mode_dir / "versions"
+            if not versions_dir.is_dir():
+                continue
+            for v in versions_dir.iterdir():
+                if not v.is_dir():
+                    continue
+                sf = v / "player_impact_summary.json"
+                if not sf.exists():
+                    continue
+                try:
+                    s = json.loads(sf.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                rpt_config = str(s.get("config_md5", ""))
+                rpt_code = str(s.get("code_md5", ""))
+                if not rpt_config and not rpt_code:
+                    md5_status = "untagged"
+                elif rpt_config == up_config and rpt_code == up_code:
+                    md5_status = "match"
+                else:
+                    md5_status = "outdated"
+                results.append({
+                    "mode": mode_val, "version": v.name,
+                    "md5_status": md5_status,
+                    "report_config_md5": rpt_config, "report_code_md5": rpt_code,
+                })
+        return {
+            "machine": machine, "unverifiable": False,
+            "upstream_config_md5": up_config, "upstream_code_md5": up_code,
+            "reports": results,
+        }
+
     @app.post("/api/reports/cleanup")
     def cleanup_old_reports() -> dict[str, Any]:
         """Keep only the newest report version per machine-mode, delete older ones."""

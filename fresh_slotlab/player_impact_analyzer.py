@@ -3408,11 +3408,16 @@ def main() -> int:
     )
     conclusion_design_action = action_recommendations[0]
 
+    # Capture machine MD5 at report build time for later validity checks.
+    # Primary source: machines.json (the ground truth at analyzer invocation).
+    _summary_config_md5, _summary_code_md5 = _lookup_machine_md5(args.machine)
     summary = {
         "report_id": f"impact_{args.machine}_mode{args.rtp_mode}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "run_id": run_id,
         "machine": args.machine,
         "mode": args.rtp_mode,
+        "config_md5": _summary_config_md5,
+        "code_md5": _summary_code_md5,
         "output_all_robots_result": True,
         "sampling": {
             "target_halfwidth_pp": args.target_halfwidth_pp,

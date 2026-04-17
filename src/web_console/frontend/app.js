@@ -1280,11 +1280,21 @@ async function loadVersionsForMode(machine, mode) {
   tbody.innerHTML = `<tr><td colspan="6" class="muted">Loading...</td></tr>`;
 
   try {
-    const data = await apiGet(`/api/reports/${machine}/${mode}`);
+    const [data, validation] = await Promise.all([
+      apiGet(`/api/reports/${machine}/${mode}`),
+      apiGet(`/api/report-validate/${machine}`).catch(() => null),
+    ]);
     const versions = data.versions || [];
     if (!versions.length) {
       tbody.innerHTML = `<tr><td colspan="6" class="muted">${fmt("noVersions")}</td></tr>`;
       return;
+    }
+    // Map version → md5_status.
+    const md5Map = {};
+    if (validation && validation.reports) {
+      validation.reports.filter((r) => r.mode === mode).forEach((r) => {
+        md5Map[r.version] = r.md5_status;
+      });
     }
     // Sort newest first.
     versions.sort((a, b) => (b.report_version || "").localeCompare(a.report_version || ""));
@@ -1294,10 +1304,15 @@ async function loadVersionsForMode(machine, mode) {
       const ci = v.achieved_halfwidth_pp != null ? "\u00b1" + v.achieved_halfwidth_pp.toFixed(2) : "—";
       const spins = v.total_spins != null ? Number(v.total_spins).toLocaleString() : "—";
       const quality = v.quality_label || "—";
+      const md5 = md5Map[rv] || "unknown";
+      const badge = md5 === "match" ? '<span class="md5-match" title="MD5 匹配">✓</span>'
+        : md5 === "outdated" ? '<span class="md5-mismatch" title="机台版本已变更">⚠ 过期</span>'
+        : md5 === "untagged" ? '<span class="muted" title="无 MD5 标签">—</span>'
+        : '';
       return (
         `<tr data-version="${rv}">` +
         `<td><input type="checkbox" class="compare-check" value="${rv}"></td>` +
-        `<td class="version-id">${rv}</td>` +
+        `<td class="version-id">${rv} ${badge}</td>` +
         `<td>${rtp}</td><td>${ci}</td><td>${spins}</td><td>${quality}</td>` +
         `</tr>`
       );
@@ -2665,6 +2680,24 @@ function bindEvents() {
   byId("sampleMode").addEventListener("change", () => updateSampleHint());
   byId("sampleCi").addEventListener("change", () => updateSampleHint());
   byId("addServerBtn").addEventListener("click", () => addServer());
+  byId("importReportsBtn").addEventListener("click", async () => {
+    const source = prompt("输入 Reports 源目录绝对路径（如 D:\\\\dev_reports 或 /path/to/dev_reports）:");
+    if (!source) return;
+    const mode = confirm("合并模式？\n[确定] 合并（跳过已存在）\n[取消] 替换（删除目标后导入）") ? "merge" : "replace";
+    try {
+      const r = await apiPost("/api/reports/import", { source_path: source, mode });
+      alert(`导入完成：新增 ${r.imported} 个版本，跳过 ${r.skipped} 个。\n影响机台：${r.machines_affected.join(", ") || "无"}`);
+      // Refresh UI
+      const [m, mSummary] = await Promise.all([apiGet("/api/machines"), apiGet("/api/machines/summary").catch(() => null)]);
+      state.machines = m.machines || [];
+      state.machinesSummary = mSummary;
+      renderCatalogFeatureChips();
+      renderMachineCatalog();
+      renderFleetOverview();
+    } catch (e) {
+      alert("导入失败：" + (e.message || e));
+    }
+  });
   byId("reportCleanupBtn").addEventListener("click", async () => {
     if (!confirm(fmt("reportCleanupConfirm"))) return;
     const btn = byId("reportCleanupBtn");

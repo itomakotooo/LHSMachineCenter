@@ -23,7 +23,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ANALYZER = ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
 DEV_RAWDATA = ROOT / "dev_rawdata"
-REPORTS_ROOT = ROOT / "reports"
+# Dev-only tool: default output to dev_reports/ to keep production reports/ clean.
+# Use --reports-root reports/ to override (e.g. for baseline generation).
+REPORTS_ROOT = ROOT / "dev_reports"
 
 
 def _expand_machine_range(token: str) -> list[str]:

@@ -40,12 +40,15 @@ fresh_slotlab/__pycache__/
 # Dev rawdata (large, regenerable via batch_dev_sampler)
 dev_rawdata/
 
+# Dev-generated reports (regenerable via batch_generate_reports from dev_rawdata).
+# Production reports go to reports/ only.
+dev_reports/
+
 # Probe snapshots (MachineConfigMd5 dumps, server snapshots)
 .probe/
 
 # Reports are generated data; only keep M14 as baseline reference.
+# Dev-generated reports (batch_generate_reports) go to dev_reports/ instead.
 reports/*
 !reports/M14/
 !reports/.gitkeep
-# Ignore devcache report versions (regenerable from dev_rawdata).
-reports/*/*/versions/*_devcache/
