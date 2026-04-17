@@ -176,6 +176,94 @@ class TestFaultToleranceThresholds:
             "cumulative-failed-chunks threshold must tolerate >= 5 total failures"
 
 
+class TestChunkEventsRetention:
+    """User reported: during a run with many chunk_failed events, the
+    chunk_events surfaced by /api/batch-run shrank as sampling
+    progressed and the failure records disappeared after completion
+    because the old window (last-12 of last-30) let chunk_progress
+    events displace chunk_failed ones. New rule: critical events
+    (chunk_failed / resume_from_cache / disk_guard_stop / failed) are
+    NEVER pruned; only chunk_progress rotates."""
+
+    def _seed_progress(self, path: Path, progress_count: int, fail_count: int) -> None:
+        """Fabricate a progress.jsonl where fail_count chunk_failed
+        events appeared early, then progress_count chunk_progress
+        events accumulate afterward — mimicking the pattern where
+        later success events push failures out of a small window."""
+        import json
+        lines = []
+        for i in range(1, fail_count + 1):
+            lines.append(json.dumps({
+                "event": "chunk_failed", "chunk_index": i,
+                "error": "request_failed_http_502",
+                "cumulative_failed": i,
+                "chunks_completed_so_far": 0, "total_spins_so_far": 0,
+                "ts": f"2026-04-17T10:00:{i:02d}Z",
+            }))
+        for i in range(fail_count + 1, fail_count + progress_count + 1):
+            lines.append(json.dumps({
+                "event": "chunk_progress", "chunk_index": i,
+                "total_spins": i * 1000, "current_rtp_pct": 92.0,
+                "current_halfwidth_pp": 1.0,
+                "ts": f"2026-04-17T10:01:{(i - fail_count):02d}Z",
+            }))
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def test_failures_survive_many_successes(
+        self, client, app_factory, tmp_path: Path
+    ):
+        """4 early failures + 30 later progress events. All 4 failures
+        must still be in chunk_events despite the 30 progress events
+        that would have displaced them under the old last-12 rule."""
+        from tests.backend._seed import insert_run_row
+
+        state_dir = app_factory.state_dir
+        progress_dir = state_dir / "progress"
+        progress_dir.mkdir(parents=True, exist_ok=True)
+        run_id = "retentionrun1"
+        pf = progress_dir / f"{run_id}.jsonl"
+        self._seed_progress(pf, progress_count=30, fail_count=4)
+        insert_run_row(
+            app_factory.db_path, run_id=run_id, machine="M99", mode=1,
+            status="running", progress_file=str(pf),
+        )
+
+        c, app = client
+        bm = app.state.batch_manager
+        batch_id = "retbatch1"
+        bm._batches[batch_id] = {
+            "batch_id": batch_id, "status": "running",
+            "items": [{
+                "machine": "M99", "mode": 1,
+                "chunk_spin_times": 5000,
+                "status": "running", "run_id": run_id,
+                "cycle_info": None, "rawdata_status": {},
+                "reuse_cache": False, "resume_cache": False,
+            }],
+            "events": [], "concurrency": 1, "params": {},
+            "reports_root": app_factory.reports_dir,
+            "created_at": "x", "cancel_requested": False,
+        }
+        try:
+            body = c.get(f"/api/batch-run/{batch_id}").json()
+            chunk_events = body["items"][0]["chunk_events"]
+            # All 4 chunk_failed events still present (regression: old
+            # code would have surfaced ≤1 of them since 12 most-recent
+            # are 12 chunk_progress events).
+            failed_events = [e for e in chunk_events if e["event"] == "chunk_failed"]
+            assert len(failed_events) == 4, (
+                f"expected all 4 chunk_failed events preserved, got {len(failed_events)}: {failed_events}"
+            )
+            # Last 8 chunk_progress (rotating window) also present.
+            progress_events = [e for e in chunk_events if e["event"] == "chunk_progress"]
+            assert len(progress_events) == 8
+            # Chronologically sorted.
+            ts = [e.get("ts") for e in chunk_events]
+            assert ts == sorted(ts), ts
+        finally:
+            bm._batches.pop(batch_id, None)
+
+
 class TestBackendProgressKeyMigration:
     """The UI's CI gauge was stuck at N/A because the backend read
     `halfwidth_pp` from progress events but the analyzer always wrote

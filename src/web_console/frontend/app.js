@@ -55,6 +55,10 @@ const state = {
   versionHistoryMachine: null,
   versionHistoryMode: null,
   compareSelected: new Set(),
+  // True for a short window right after a batch completes: blocks
+  // renderSamplingProgress so the final error log stays readable.
+  // Cleared when the user clicks 开始采样 for a fresh batch.
+  batchJustCompleted: false,
   // Autotune result cache. Keyed by `${machine}|${mode}` → {robot_count,
   // batch_concurrency, success_rate, throughput, tuned_at}. When the
   // user clicks 开始采样 and an entry matches the first selected machine
@@ -1110,6 +1114,11 @@ async function startSampling() {
   const btn = byId("sampleStartBtn");
   if (btn && btn.disabled) return;  // already clicked, ignore
   if (btn) btn.disabled = true;
+  // Clear frozen-log flag so renderSamplingProgress can render again
+  // once the new batch starts emitting events. The previous batch's
+  // log is about to be replaced wholesale, which is expected now that
+  // the user has opted in by clicking 开始采样.
+  state.batchJustCompleted = false;
   const selected = [...state.runFilterMachines];
   if (!selected.length) { if (btn) btn.disabled = false; return; }
   const mode = parseInt(byId("sampleMode")?.value || "2");
@@ -1181,6 +1190,21 @@ function pollSampling() {
       renderSamplingProgress(data);
       refreshDiskSpace();
       if (data.status === "completed") {
+        // Mark the log frozen so the user can read final state without
+        // the panel re-rendering under them. Also stamp a "批次已结束"
+        // banner at the top so it's obvious why nothing's moving.
+        const meta = byId("sampleProgressMeta");
+        if (meta) {
+          const failedChunks = (data.items || []).reduce((sum, it) =>
+            sum + (it.chunk_events || []).filter(e => e.event === "chunk_failed").length, 0);
+          const failedMachines = (data.items || []).filter(i => i.status === "failed").length;
+          const note = failedMachines > 0
+            ? ` · 机台失败 ${failedMachines}`
+            : "";
+          const fn = failedChunks > 0 ? ` · 总失败 chunk=${failedChunks}` : "";
+          meta.textContent = `✓ 批次已结束 · ${data.completed}/${data.total}${note}${fn} · 日志保留，点击开始采样可覆盖`;
+        }
+        state.batchJustCompleted = true;  // prevent further re-render
         state.activeBatchId = null;
         localStorage.removeItem("slot_console_activeBatchId");
         byId("sampleCancelBtn").classList.add("hidden");
@@ -1212,6 +1236,11 @@ function renderSamplingProgress(data) {
   const meta = byId("sampleProgressMeta");
   const log = byId("sampleProgressLog");
   if (!meta || !log) return;
+  // Freeze the log once a batch completes so the user can read the
+  // final state (especially error chunks) without it being rewritten
+  // by a late poll tick or a stale event fetch. Cleared when the user
+  // clicks 开始采样 to start a fresh batch.
+  if (state.batchJustCompleted) return;
 
   meta.textContent = `${data.completed} / ${data.total} 完成 · ${data.items.filter(i=>i.status==='running').length} 运行中`;
 

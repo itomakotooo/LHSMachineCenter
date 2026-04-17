@@ -1394,17 +1394,31 @@ class BatchRunManager:
                                         "session_level_halfwidth_pp": latest.get("session_level_halfwidth_pp"),
                                         "chunk_level_halfwidth_pp": latest.get("chunk_level_halfwidth_pp"),
                                     }
-                                # Also surface the last 8 chunk_progress
-                                # events so the UI can render a live
-                                # per-chunk summary log (issue 3: "log
-                                # not detailed enough"). Plus any
-                                # chunk_failed events so transient 504s
-                                # are visible instead of silent retries.
-                                recent = []
-                                for e in events[-30:]:
-                                    if e.get("event") in ("chunk_progress", "chunk_failed", "resume_from_cache", "disk_guard_stop", "failed"):
-                                        recent.append(e)
-                                entry["chunk_events"] = recent[-12:]
+                                # Surface per-chunk events to the UI.
+                                # Earlier version sliced the last 12 of
+                                # the last 30 events, which caused
+                                # chunk_failed events to fall out of
+                                # the window as the run progressed
+                                # (user reported the error log shrunk
+                                # during sampling and evaporated right
+                                # after the batch completed, "差点截不到图").
+                                # New rule: critical events
+                                # (chunk_failed / resume_from_cache /
+                                # disk_guard_stop / failed) are NEVER
+                                # pruned — they're the ones the operator
+                                # actually needs to read later. Only
+                                # chunk_progress rotates (last 8).
+                                _CRITICAL = {"chunk_failed", "resume_from_cache", "disk_guard_stop", "failed"}
+                                critical = [e for e in events if e.get("event") in _CRITICAL]
+                                progress_evts = [e for e in events if e.get("event") == "chunk_progress"]
+                                # Merge chronologically (events already
+                                # appended in order). Keep every critical
+                                # + last 8 progress ticks. Cap overall
+                                # at 60 to avoid unbounded growth for
+                                # multi-hour runs.
+                                merged = critical + progress_evts[-8:]
+                                merged.sort(key=lambda e: e.get("ts") or "")
+                                entry["chunk_events"] = merged[-60:]
                     except Exception:
                         pass
                 items_out.append(entry)
