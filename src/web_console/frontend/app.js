@@ -397,6 +397,20 @@ function _cardBgColor(machineName) {
   return "#fef2f2";
 }
 
+// Get all features a machine has across all its modes.
+function _machineFeatures(machineName) {
+  const modes = ((state.machinesSummary || {}).machines || {})[machineName] || {};
+  const features = new Set();
+  Object.values(modes).forEach((d) => (d.features || []).forEach((f) => features.add(f)));
+  return [...features];
+}
+
+// Features used by ≥2 machines are "primary"; singletons → "其他".
+function _featureIsSingleton(featureName) {
+  const dist = (state.machinesSummary || {}).feature_distribution || {};
+  return (dist[featureName] || 0) < 2;
+}
+
 // Group machines by the current view mode.
 function _groupMachines(machines, viewMode) {
   const groups = {};
@@ -407,7 +421,19 @@ function _groupMachines(machines, viewMode) {
     if (viewMode === "name") {
       key = "all";
     } else if (viewMode === "category") {
-      key = m.category || "Other";
+      // "按玩法" view: group by raw features (machines appear in each feature they have).
+      const features = _machineFeatures(m.machine);
+      if (!features.length) {
+        key = "未分类";
+      } else {
+        features.forEach((fn) => {
+          const groupKey = _featureIsSingleton(fn) ? "其他 (单机台独有)" : fn;
+          if (!groups[groupKey]) groups[groupKey] = [];
+          // Avoid duplicate insertion into "其他" group if machine has multiple singleton features.
+          if (!groups[groupKey].includes(m)) groups[groupKey].push(m);
+        });
+        return; // already added to groups; skip default path
+      }
     } else if (viewMode === "volatility") {
       const d = _machineData(m.machine);
       key = d?.volatility_class || "N/A";
@@ -453,7 +479,14 @@ const MECH_GROUP_COLORS = {
 };
 
 function _groupOrder(viewMode) {
-  if (viewMode === "category") return ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Selector", "Other", "Unknown"];
+  if (viewMode === "category") {
+    // Feature-based: sort by machine count desc, "其他"/"未分类" at end.
+    const dist = (state.machinesSummary || {}).feature_distribution || {};
+    const multi = Object.entries(dist).filter(([, n]) => n >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .map(([fn]) => fn);
+    return [...multi, "其他 (单机台独有)", "未分类"];
+  }
   if (viewMode === "volatility") return ["Low", "Medium", "High", "Very High", "N/A"];
   if (viewMode === "rtp") return ["< 90%", "90–95%", "95–100%", "100–200%", "200–400%", "> 400%", "N/A"];
   if (viewMode === "mechanic") return ["lock_lines", "lock_symbols", "lock_reels", "jackpot", "free_spin", "dollar_pick", "Normal"];
@@ -498,8 +531,9 @@ function renderMachineCatalog() {
     section.className = "catalog-group";
 
     if (!isFlatView) {
-      const catColor = CATEGORY_COLORS[groupKey] || VOL_COLORS[groupKey] || MECH_GROUP_COLORS[groupKey] || "#9ca3af";
-      const displayName = MECH_GROUP_LABELS[groupKey] || groupKey;
+      const isMechView = viewMode === "mechanic";
+      const catColor = CATEGORY_COLORS[groupKey] || VOL_COLORS[groupKey] || (isMechView ? MECH_GROUP_COLORS[groupKey] : null) || "#9ca3af";
+      const displayName = isMechView ? (MECH_GROUP_LABELS[groupKey] || groupKey) : groupKey;
       const header = document.createElement("div");
       header.className = "catalog-group-header";
       header.innerHTML = `<span class="catalog-group-arrow">&#9660;</span> <span class="catalog-group-dot" style="background:${catColor}"></span> <span class="catalog-group-name">${displayName}</span> <span class="catalog-group-count">(${machines.length})</span>`;

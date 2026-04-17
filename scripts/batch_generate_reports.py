@@ -105,7 +105,7 @@ def run_report(
             cmd,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=600,
         )
         elapsed = time.time() - t0
         if result.returncode != 0:

@@ -645,6 +645,8 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
     all_vol_values: list[tuple[str, int, float]] = []  # (machine, mode, zero_win_rate)
     # Mechanics distribution across machines.
     mechanics_dist: dict[str, int] = {}
+    # Feature distribution: feature_name → set of machines (then count).
+    feature_machines: dict[str, set[str]] = {}
 
     if not reports_root.is_dir():
         return {"machines": {}, "volatility_ranking": []}
@@ -704,6 +706,13 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
                     for _mk in ("lock_lines", "lock_symbols", "lock_reels", "jackpot", "free_spin", "dollar_pick"):
                         if _mm.get(_mk, {}).get("applicable"):
                             _mechs.append(_mk)
+                    # Extract upstream features (raw feature names from the game).
+                    _features = []
+                    _ufb = pi.get("upstream_feature_breakdown", {})
+                    for _f in _ufb.get("features", []) or []:
+                        _fn = _f.get("feature_name", "")
+                        if _fn:
+                            _features.append(_fn)
                     best = {
                         "rtp_pct": rtp_data.get("point_pct"),
                         "ci_halfwidth_pp": ci_hw,
@@ -713,6 +722,7 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
                         "tail_ge10x": float(ga_dm.get("tail_dependency", 0) or 0),
                         "report_version": ver_dir.name,
                         "mechanics": _mechs,
+                        "features": _features,
                     }
 
             if best is not None:
@@ -722,6 +732,11 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
                     all_vol_values.append((machine, mode, zwr))
                 for mk in best.get("mechanics", []):
                     mechanics_dist[mk] = mechanics_dist.get(mk, 0) + 1
+                # Track features per machine (not per machine-mode, dedupe with set).
+                for fn in best.get("features", []):
+                    if fn not in feature_machines:
+                        feature_machines[fn] = set()
+                    feature_machines[fn].add(machine)
 
     # Compute percentile ranks for zero_win_rate across all machine-modes.
     all_vol_values.sort(key=lambda x: x[2])
@@ -731,7 +746,12 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
         if m in result and str(mode) in result[m]:
             result[m][str(mode)]["volatility_percentile"] = pct
 
-    return {"machines": result, "mechanics_distribution": dict(mechanics_dist)}
+    feature_distribution = {fn: len(ms) for fn, ms in feature_machines.items()}
+    return {
+        "machines": result,
+        "mechanics_distribution": dict(mechanics_dist),
+        "feature_distribution": feature_distribution,
+    }
 
 
 class BatchRunManager:
