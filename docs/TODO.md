@@ -4,11 +4,10 @@ This file tracks executable next steps for the current phase.
 
 ## P0 (must complete first)
 
-- [ ] Integrate MachineConfigMd5: call `POST /MachineTest/MachineConfigMd5`
-  before sampling; store the config hash in the chunk cache envelope +
-  DB run row. On rebuild, compare both schema fingerprint (field structure)
-  AND config MD5 (machine logic). Either drift → flag as incompatible.
-  Ref: MachineTest-TestSpin (3).md in project root.
+- [ ] Multi-server implementation: user will provide test/prod server addresses.
+  Infra is ready (`configs/servers.json` CRUD, `/api/servers/compare` MD5 diff,
+  analyzer `--endpoint-url`). Pending: per-server report directory isolation,
+  actual test-server smoke run.
 
 - [ ] Consider CI integration when remote build is needed.
   For now the baseline is local-only (`scripts\lint.ps1` + `scripts\test.ps1 -E2E`).
@@ -38,6 +37,30 @@ This file tracks executable next steps for the current phase.
 
 ## Done Recently
 
+- [x] **253-machine platform** (2026-04 build):
+      auto-synced `configs/machines.json` from MachineConfigMd5,
+      9-category auto-classification, raw-feature filter chips (multi-select OR),
+      5-view catalog (category/name/volatility/RTP/mechanic),
+      per-machine detail panel with logicClassNames + MD5 + per-mode metrics,
+      version history + report comparison, machine mechanics analysis
+      (LockLines / LockSymbols / LockReels / Jackpot / FreeSpin / DollarPick).
+- [x] **Rawdata MD5 tagging + auto-reuse**:
+      chunk envelope v2 stores `_config_md5` + `_code_md5` from machines.json;
+      per-chunk MD5 verification on batch-run with auto-delete of stale chunks;
+      analyzer `--from-cache` mode when usable chunks exist (skip API sampling).
+- [x] **Inline sampling panel**: mode+CI selectors (0.5/1/5pp/fuzzy),
+      auto-lock fuzzy for mode 2/5, smart chunk_spin_times per machine
+      (detects cycle from historical reports), real-time chunk-level progress,
+      detailed event log (info/warn/error/danger), disk-space monitor with
+      auto-stop < 2GB, subprocess-kill on cancel.
+- [x] **Multi-server architecture**:
+      `configs/servers.json` CRUD + scan + MD5 diff; analyzer `--endpoint-url`
+      CLI arg; version change detection endpoint.
+- [x] **Fleet overview headlines**: mode-completeness + per-mode expected-RTP
+      range checks (mode 1 ~90%, mode 7 ~80%, mode 2 >150%, mode 5 > mode 2).
+- [x] **CostCredits unreliable fix**: pre-scan chunk; if all CostCredits=0
+      but BetAmount>0 (LockReSpin machines M10/M23/M131/M133), treat all
+      spins as paid so session metrics don't collapse to zero.
 - [x] CN/EN console switch and tabbed layout.
 - [x] Field-level parameter help tooltips for newcomer usability.
 - [x] UI + backend operation mutex for safer writes.

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import concurrent.futures
 import json
@@ -330,7 +330,6 @@ def delete_rawdata(
     rawdata_root: Path | None = None,
 ) -> dict[str, Any]:
     """Delete rawdata for a machine. If mode given, delete only that mode dir."""
-    import shutil
     root = rawdata_root if rawdata_root is not None else RAWDATA_ROOT
     if mode is None:
         target = root / machine
@@ -399,7 +398,6 @@ def _detect_machine_cycle(machine: str, reports_root: Path) -> dict[str, Any]:
 
 def _get_disk_space_info(path: Path) -> dict[str, int]:
     """Return free/total disk space in GB for the given path."""
-    import shutil
     try:
         usage = shutil.disk_usage(str(path))
         return {
@@ -1238,7 +1236,6 @@ class BatchRunManager:
                 if params.get("auto_cleanup_cache") and run_id:
                     cache_dir = self._cache_root / run_id
                     if cache_dir.is_dir():
-                        import shutil
                         shutil.rmtree(cache_dir, ignore_errors=True)
             except Exception as exc:  # noqa: BLE001
                 item["status"] = "failed"
@@ -2925,15 +2922,23 @@ def create_app(
             import fresh_slotlab.player_impact_analyzer as pia2
 
             # Prepare a response iterator: each call to post_json gets
-            # the next cached response.
-            _cached_responses = [
-                json.loads(cf.read_text(encoding="utf-8")).get("response")
-                for cf in chunk_files
-                if json.loads(cf.read_text(encoding="utf-8")).get("response") is not None
-            ]
+            # the next cached response. Parse each file once and keep
+            # only entries that actually have a 'response' field.
+            _cached_responses = []
+            for cf in chunk_files:
+                try:
+                    parsed = json.loads(cf.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                resp = parsed.get("response")
+                if resp is not None:
+                    _cached_responses.append(resp)
             _resp_iter = iter(_cached_responses)
             _saved2 = pia2.post_json
-            pia2.post_json = lambda payload, timeout: next(_resp_iter)
+            # StopIteration safety: if analyzer calls more times than
+            # we have responses, return an empty list (the analyzer
+            # already handles parse_failed_zero_chunk downstream).
+            pia2.post_json = lambda payload, timeout: next(_resp_iter, [])
             _saved_exit = os._exit
             os._exit = lambda rc: None
 
@@ -3094,7 +3099,6 @@ def create_app(
     @app.post("/api/reports/cleanup")
     def cleanup_old_reports() -> dict[str, Any]:
         """Keep only the newest report version per machine-mode, delete older ones."""
-        import shutil
         deleted = 0
         kept = 0
         for machine_dir in rr.iterdir():
