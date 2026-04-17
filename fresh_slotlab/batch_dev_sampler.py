@@ -29,6 +29,7 @@ from fresh_slotlab.player_impact_analyzer import (
     CHUNK_CACHE_VERSION,
     make_payload,
     post_json,
+    post_json_with_retry,
     utc_now,
     _compute_upstream_schema_fingerprint,
     _lookup_machine_md5,
@@ -37,44 +38,12 @@ from fresh_slotlab.player_impact_analyzer import (
 
 DEV_RAWDATA_DIR = Path(__file__).resolve().parent.parent / "dev_rawdata"
 
-# Retry policy for upstream calls. Only retry transient server errors +
-# network/timeout conditions. Anything else (404, bad JSON response,
-# auth failures, etc.) should fail fast so the operator sees the real
-# cause rather than a stack of retry-then-give-up messages.
-_RETRYABLE_HTTP_CODES = frozenset({500, 502, 503, 504})
-
-
-def _post_json_with_retry(
-    payload: dict[str, Any],
-    timeout: float,
-    max_attempts: int = 3,
-    initial_backoff_s: float = 1.0,
-) -> Any:
-    """Call post_json with exp-backoff retry on transient failures.
-
-    Retries on 5xx (overloaded upstream), URLError (DNS/TCP issues),
-    TimeoutError, and socket.timeout. Backoff doubles each attempt
-    (1s → 2s → 4s by default).
-
-    Non-retryable errors (4xx, JSONDecodeError, etc.) propagate on the
-    first occurrence — retrying won't help and would just delay the
-    error visibility.
-    """
-    last_exc: BaseException | None = None
-    for attempt in range(max_attempts):
-        try:
-            return post_json(payload, timeout)
-        except urllib.error.HTTPError as exc:
-            last_exc = exc
-            if exc.code not in _RETRYABLE_HTTP_CODES:
-                raise
-        except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
-            last_exc = exc
-        if attempt + 1 < max_attempts:
-            sleep_s = initial_backoff_s * (2 ** attempt)
-            time.sleep(sleep_s)
-    assert last_exc is not None  # loop always assigns on failure
-    raise last_exc
+# post_json_with_retry has moved to player_impact_analyzer so the live
+# sampling loop and this dev sampler share one retry policy. The local
+# `_post_json_with_retry` alias is preserved below for tests that
+# monkey-patch it at the sampler module (they only import this module
+# so patching the analyzer symbol wouldn't reach them).
+_post_json_with_retry = post_json_with_retry
 
 
 def _atomic_write_envelope(out_path: Path, envelope: dict[str, Any]) -> None:

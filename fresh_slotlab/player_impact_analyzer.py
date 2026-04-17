@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import shutil
 import signal
 import statistics
 import sys
@@ -199,6 +200,45 @@ def post_json(payload: dict[str, Any], timeout: float) -> Any:
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         body = resp.read().decode("utf-8")
     return json.loads(body)
+
+
+# 5xx / transient-network retry policy shared by the live sampling loop
+# (run_sampling_chunk) and the dev batch sampler. One 5xx or timeout on
+# a long overnight run used to abort the whole machine; this wrapper
+# rides through them. Non-retryable errors (4xx / JSONDecodeError /
+# anything else) propagate on the first occurrence — retrying won't
+# help and would just delay the real cause.
+_RETRYABLE_HTTP_CODES = frozenset({500, 502, 503, 504})
+
+
+def post_json_with_retry(
+    payload: dict[str, Any],
+    timeout: float,
+    max_attempts: int = 3,
+    initial_backoff_s: float = 1.0,
+) -> Any:
+    """Call post_json with exp-backoff on 5xx / URLError / TimeoutError.
+
+    Backoff doubles each attempt (1s → 2s → 4s by default). Non-
+    retryable errors (e.g. 404) re-raise immediately. After
+    max_attempts, the last retryable error is re-raised so the caller's
+    existing error handling can report it.
+    """
+    import socket
+    last_exc: BaseException | None = None
+    for attempt in range(max_attempts):
+        try:
+            return post_json(payload, timeout)
+        except urllib.error.HTTPError as exc:
+            last_exc = exc
+            if exc.code not in _RETRYABLE_HTTP_CODES:
+                raise
+        except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+            last_exc = exc
+        if attempt + 1 < max_attempts:
+            time.sleep(initial_backoff_s * (2 ** attempt))
+    assert last_exc is not None
+    raise last_exc
 
 
 def t_critical_95(df: int) -> float:
@@ -1003,7 +1043,10 @@ def run_sampling_chunk(
 
     started = time.time()
     try:
-        resp = post_json(payload, timeout)
+        # Wrapped with retry so one 5xx / transient timeout doesn't
+        # kill an overnight long-sample run. Non-retryable errors
+        # (4xx, etc.) still propagate on first occurrence.
+        resp = post_json_with_retry(payload, timeout)
     except urllib.error.HTTPError as exc:
         return {"ok": False, "index": chunk_index, "error": f"request_failed_http_{exc.code}"}
     except (urllib.error.URLError, TimeoutError) as exc:
@@ -2623,6 +2666,16 @@ def main() -> int:
                 },
             )
 
+    # Mid-run disk guard: pre-run check (in backend start_batch) only
+    # sees the state at kickoff; an overnight 3M-spin run can fill the
+    # disk mid-sample. We check here every iteration and stop gracefully
+    # (summary still builds with partial data) when free space drops
+    # below 2 GB on the output dir's filesystem. Cheap os.statvfs /
+    # shutil.disk_usage — ~microseconds. Skips when output_dir's parent
+    # doesn't exist (shouldn't happen post-argparse).
+    _DISK_GUARD_MIN_FREE_GB = 2.0
+    _disk_guard_path = args.output_dir if args.output_dir.exists() else args.output_dir.parent
+
     # ── online sampling path (skipped in read-only --from-cache mode) ──
     while not skip_sampling_loop and next_chunk_index <= args.max_chunks:
         # Graceful-stop checkpoint: if the operator clicked Stop, bail
@@ -2635,6 +2688,29 @@ def main() -> int:
         ):
             stop_reason = "user_stop"
             break
+
+        # Mid-run disk guard.
+        try:
+            free_gb = shutil.disk_usage(_disk_guard_path).free / (1024 ** 3)
+            if free_gb < _DISK_GUARD_MIN_FREE_GB:
+                stop_reason = f"disk_low_{free_gb:.2f}GB"
+                append_jsonl(
+                    progress_file,
+                    {
+                        "event": "disk_guard_stop",
+                        "run_id": run_id,
+                        "free_gb": round(free_gb, 3),
+                        "threshold_gb": _DISK_GUARD_MIN_FREE_GB,
+                        "chunks_completed": chunks,
+                        "total_spins": total_spins,
+                        "ts": utc_now(),
+                    },
+                )
+                break
+        except OSError:
+            # Disk check failure (weird FS, permission, etc.) shouldn't
+            # abort sampling — log quietly and keep going.
+            pass
 
         remaining = args.max_chunks - chunks
         batch_size = min(args.batch_concurrency, remaining)

@@ -19,6 +19,12 @@ from pathlib import Path
 import pytest
 
 import fresh_slotlab.batch_dev_sampler as sampler
+import fresh_slotlab.player_impact_analyzer as analyzer
+
+# post_json_with_retry lives in analyzer now (shared with the live
+# sampling loop). The helper's internal `post_json` call and `time.sleep`
+# both resolve to analyzer's module namespace, so monkeypatches must
+# target analyzer — not sampler — to take effect.
 
 
 class _StubResp:
@@ -46,14 +52,14 @@ class TestPostJsonWithRetry:
             calls["n"] += 1
             return [{"ok": True}]
 
-        monkeypatch.setattr(sampler, "post_json", post_ok)
+        monkeypatch.setattr(analyzer, "post_json", post_ok)
         result = sampler._post_json_with_retry({}, timeout=1.0)
         assert result == [{"ok": True}]
         assert calls["n"] == 1
 
     def test_retries_on_502_then_succeeds(self, monkeypatch):
         sleeps: list[float] = []
-        monkeypatch.setattr(sampler.time, "sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: sleeps.append(s))
         attempts = {"n": 0}
 
         def post(payload, timeout):
@@ -62,7 +68,7 @@ class TestPostJsonWithRetry:
                 raise _http_error(502)
             return [{"final": True}]
 
-        monkeypatch.setattr(sampler, "post_json", post)
+        monkeypatch.setattr(analyzer, "post_json", post)
         result = sampler._post_json_with_retry(
             {}, timeout=1.0, max_attempts=3, initial_backoff_s=1.0
         )
@@ -72,7 +78,7 @@ class TestPostJsonWithRetry:
         assert sleeps == [1.0, 2.0]
 
     def test_retries_on_url_error(self, monkeypatch):
-        monkeypatch.setattr(sampler.time, "sleep", lambda s: None)
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: None)
         attempts = {"n": 0}
 
         def post(payload, timeout):
@@ -81,13 +87,13 @@ class TestPostJsonWithRetry:
                 raise urllib.error.URLError("connection refused")
             return [{"ok": True}]
 
-        monkeypatch.setattr(sampler, "post_json", post)
+        monkeypatch.setattr(analyzer, "post_json", post)
         result = sampler._post_json_with_retry({}, timeout=1.0)
         assert result == [{"ok": True}]
         assert attempts["n"] == 2
 
     def test_retries_on_timeout(self, monkeypatch):
-        monkeypatch.setattr(sampler.time, "sleep", lambda s: None)
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: None)
         attempts = {"n": 0}
 
         def post(payload, timeout):
@@ -96,11 +102,11 @@ class TestPostJsonWithRetry:
                 raise TimeoutError("read timeout")
             return [{"ok": True}]
 
-        monkeypatch.setattr(sampler, "post_json", post)
+        monkeypatch.setattr(analyzer, "post_json", post)
         assert sampler._post_json_with_retry({}, timeout=1.0)[0]["ok"]
 
     def test_retries_on_socket_timeout(self, monkeypatch):
-        monkeypatch.setattr(sampler.time, "sleep", lambda s: None)
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: None)
         attempts = {"n": 0}
 
         def post(payload, timeout):
@@ -109,20 +115,20 @@ class TestPostJsonWithRetry:
                 raise socket.timeout("connect")
             return [{"ok": True}]
 
-        monkeypatch.setattr(sampler, "post_json", post)
+        monkeypatch.setattr(analyzer, "post_json", post)
         assert sampler._post_json_with_retry({}, timeout=1.0)[0]["ok"]
 
     def test_non_retryable_http_error_fails_fast(self, monkeypatch):
         # 404 is not retryable — operator bug, retrying masks it.
         sleeps: list[float] = []
-        monkeypatch.setattr(sampler.time, "sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: sleeps.append(s))
         attempts = {"n": 0}
 
         def post(payload, timeout):
             attempts["n"] += 1
             raise _http_error(404)
 
-        monkeypatch.setattr(sampler, "post_json", post)
+        monkeypatch.setattr(analyzer, "post_json", post)
         with pytest.raises(urllib.error.HTTPError):
             sampler._post_json_with_retry({}, timeout=1.0)
         assert attempts["n"] == 1
@@ -131,27 +137,27 @@ class TestPostJsonWithRetry:
     def test_json_decode_propagates_immediately(self, monkeypatch):
         # post_json's json.loads failure surfaces as JSONDecodeError;
         # that's a data problem, not a transient upstream problem.
-        monkeypatch.setattr(sampler.time, "sleep", lambda s: None)
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: None)
         attempts = {"n": 0}
 
         def post(payload, timeout):
             attempts["n"] += 1
             raise json.JSONDecodeError("bad", "x", 0)
 
-        monkeypatch.setattr(sampler, "post_json", post)
+        monkeypatch.setattr(analyzer, "post_json", post)
         with pytest.raises(json.JSONDecodeError):
             sampler._post_json_with_retry({}, timeout=1.0)
         assert attempts["n"] == 1
 
     def test_all_attempts_exhausted_raises_last_error(self, monkeypatch):
-        monkeypatch.setattr(sampler.time, "sleep", lambda s: None)
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: None)
         attempts = {"n": 0}
 
         def post(payload, timeout):
             attempts["n"] += 1
             raise urllib.error.URLError(f"fail-{attempts['n']}")
 
-        monkeypatch.setattr(sampler, "post_json", post)
+        monkeypatch.setattr(analyzer, "post_json", post)
         with pytest.raises(urllib.error.URLError) as exc_info:
             sampler._post_json_with_retry({}, timeout=1.0, max_attempts=3)
         assert attempts["n"] == 3

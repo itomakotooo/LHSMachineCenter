@@ -1129,6 +1129,26 @@ class BatchRunManager:
         self._cache_root = cache_root
         self._lock = threading.Lock()
         self._batches: dict[str, dict[str, Any]] = {}
+        # Per-(machine, mode) busy set. Two concurrent batches that
+        # include the same key would otherwise race on chunk_cache_dir
+        # writes (chunk_NNNN.json.tmp from one process colliding with
+        # the other's rename). The lock is held only during item
+        # execution — not across the whole batch — so disjoint items
+        # in one batch can still run in parallel with disjoint items
+        # in another.
+        self._busy_keys: set[tuple[str, int]] = set()
+
+    def _try_acquire_key(self, machine: str, mode: int) -> bool:
+        with self._lock:
+            key = (machine, int(mode))
+            if key in self._busy_keys:
+                return False
+            self._busy_keys.add(key)
+            return True
+
+    def _release_key(self, machine: str, mode: int) -> None:
+        with self._lock:
+            self._busy_keys.discard((machine, int(mode)))
 
     def start_batch(self, req: BatchRunRequest, reports_root: Path | None = None) -> dict[str, Any]:
         batch_id = uuid.uuid4().hex[:12]
@@ -1362,6 +1382,19 @@ class BatchRunManager:
                 item["status"] = "cancelled"
                 _log("info", "采样被取消（队列中）", item["machine"])
                 return
+            # Per-key lock: reject if another batch is actively sampling
+            # this same (machine, mode). Writing concurrent analyzers
+            # into one chunk_cache_dir races on chunk_*.json.tmp renames
+            # and corrupts the cache.
+            if not self._try_acquire_key(item["machine"], item["mode"]):
+                item["status"] = "failed"
+                item["error"] = "another batch is sampling this machine+mode"
+                _log(
+                    "warn",
+                    f"跳过：另一个批次正在采样 {item['machine']} mode {item['mode']}",
+                    item["machine"],
+                )
+                return
             semaphore.acquire()
             try:
                 # Disk space check before each run.
@@ -1432,6 +1465,7 @@ class BatchRunManager:
                 _log("error", f"异常: {str(exc)[:80]}", item["machine"])
             finally:
                 semaphore.release()
+                self._release_key(item["machine"], item["mode"])
 
         threads: list[threading.Thread] = []
         for item in items:
@@ -2678,6 +2712,7 @@ def create_app(
     # without monkeypatching module globals.
     app.state.store = store
     app.state.manager = manager
+    app.state.batch_manager = batch_mgr
     app.state.ops = ops
     app.state.model_runtime = model_runtime
     app.state.cache_root = cr
