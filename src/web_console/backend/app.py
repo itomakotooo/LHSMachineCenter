@@ -1292,20 +1292,23 @@ class BatchRunManager:
                                 stop_flag.write_text("stop", encoding="utf-8")
                             except OSError:
                                 pass
-                    # Also kill the subprocess directly via ManagedRun in RunManager.
+                    # Also kill the subprocess tree via ManagedRun in
+                    # RunManager. Tree kill (not bare terminate) so the
+                    # analyzer's internal worker threads / mid-flight
+                    # urllib requests get cleaned up with the parent.
                     with self._run_manager._lock:
                         mr = self._run_manager._running.get(run_id)
                         if mr and mr.process:
                             try:
-                                mr.process.terminate()
+                                _terminate_process_tree(mr.process)
                             except (OSError, ProcessLookupError) as exc:
-                                # Action-level: terminate() can fail if
-                                # process already exited, permissions
-                                # bug, or (on Windows) handle was closed.
-                                # Not fatal — the stop-flag file still
-                                # triggers graceful exit. Log for ops.
+                                # Action-level: tree-kill can still fail
+                                # (already exited, permission, handle
+                                # closed). Stop-flag file already
+                                # triggered graceful exit — log for ops
+                                # and move on.
                                 print(
-                                    f"[cancel_batch] terminate({run_id}) failed: "
+                                    f"[cancel_batch] terminate_tree({run_id}) failed: "
                                     f"{type(exc).__name__}: {exc}",
                                     flush=True,
                                 )
@@ -1473,6 +1476,68 @@ def _terminate_pid_if_running(pid: int) -> bool:
         return True
     except OSError:
         return False
+
+
+def _terminate_process_tree(proc_or_pid: Any, timeout: float = 5.0) -> bool:
+    """Terminate a process AND all its descendants.
+
+    `subprocess.Popen.terminate()` kills only the root pid; the analyzer
+    spawns its own internal ThreadPoolExecutor workers and (on real
+    sampling runs) can have urllib request threads mid-flight. A bare
+    terminate leaves those to get cleaned up by the OS only when the
+    parent fully exits — on Windows, "已 stop 但 orphan 还跑" is the
+    common complaint this helper prevents.
+
+    Windows: delegates to `taskkill /T /F` (built-in tree kill).
+    POSIX with psutil: walks `Process.children(recursive=True)`,
+      terminates each, waits up to `timeout`, then `kill()` on stragglers.
+    POSIX without psutil: falls back to `os.kill(SIGTERM)` on root only
+      (children may leak — logs a warning).
+
+    Accepts either a `Popen` instance (reads `.pid`) or an int pid.
+    Returns True if the tree-kill attempt was issued; False if the
+    pid was invalid or the initial lookup failed.
+    """
+    pid = int(getattr(proc_or_pid, "pid", proc_or_pid) or 0)
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        # taskkill already implements the tree-kill we want.
+        return _terminate_pid_if_running(pid)
+    try:
+        import psutil  # type: ignore[import-not-found]
+    except ImportError:
+        print(
+            f"[terminate_process_tree] psutil not installed; "
+            f"falling back to single-pid SIGTERM for {pid} "
+            f"— children may leak",
+            flush=True,
+        )
+        return _terminate_pid_if_running(pid)
+    try:
+        root = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return False
+    try:
+        children = root.children(recursive=True)
+    except psutil.NoSuchProcess:
+        children = []
+    for child in children:
+        try:
+            child.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    try:
+        root.terminate()
+    except psutil.NoSuchProcess:
+        pass
+    _, alive = psutil.wait_procs(children + [root], timeout=timeout)
+    for straggler in alive:
+        try:
+            straggler.kill()
+        except psutil.NoSuchProcess:
+            pass
+    return True
 
 
 def _sanitize_int_candidates(values: list[int], lower: int, upper: int) -> list[int]:
@@ -2355,8 +2420,9 @@ class RunManager:
         except OSError:
             # Fall through to hard-terminate if we can't write the flag
             # (read-only FS, no permission); better a lost-chunk cancel
-            # than a stuck run.
-            managed.process.terminate()
+            # than a stuck run. Tree-kill so analyzer's worker threads /
+            # urllib handles go with the parent.
+            _terminate_process_tree(managed.process)
         return {"run_id": run_id, "status": "cancelling"}
 
     def delete_run(self, run_id: str) -> dict[str, Any]:
