@@ -15,9 +15,12 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import os
 import re
+import socket
 import sys
 import time
+import urllib.error
 from pathlib import Path
 from typing import Any
 
@@ -29,9 +32,69 @@ from fresh_slotlab.player_impact_analyzer import (
     utc_now,
     _compute_upstream_schema_fingerprint,
     _lookup_machine_md5,
+    _payload_sha256,
 )
 
 DEV_RAWDATA_DIR = Path(__file__).resolve().parent.parent / "dev_rawdata"
+
+# Retry policy for upstream calls. Only retry transient server errors +
+# network/timeout conditions. Anything else (404, bad JSON response,
+# auth failures, etc.) should fail fast so the operator sees the real
+# cause rather than a stack of retry-then-give-up messages.
+_RETRYABLE_HTTP_CODES = frozenset({500, 502, 503, 504})
+
+
+def _post_json_with_retry(
+    payload: dict[str, Any],
+    timeout: float,
+    max_attempts: int = 3,
+    initial_backoff_s: float = 1.0,
+) -> Any:
+    """Call post_json with exp-backoff retry on transient failures.
+
+    Retries on 5xx (overloaded upstream), URLError (DNS/TCP issues),
+    TimeoutError, and socket.timeout. Backoff doubles each attempt
+    (1s → 2s → 4s by default).
+
+    Non-retryable errors (4xx, JSONDecodeError, etc.) propagate on the
+    first occurrence — retrying won't help and would just delay the
+    error visibility.
+    """
+    last_exc: BaseException | None = None
+    for attempt in range(max_attempts):
+        try:
+            return post_json(payload, timeout)
+        except urllib.error.HTTPError as exc:
+            last_exc = exc
+            if exc.code not in _RETRYABLE_HTTP_CODES:
+                raise
+        except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+            last_exc = exc
+        if attempt + 1 < max_attempts:
+            sleep_s = initial_backoff_s * (2 ** attempt)
+            time.sleep(sleep_s)
+    assert last_exc is not None  # loop always assigns on failure
+    raise last_exc
+
+
+def _atomic_write_envelope(out_path: Path, envelope: dict[str, Any]) -> None:
+    """Write the chunk envelope atomically (.tmp + os.replace).
+
+    Mirrors _save_chunk_cache's v3 atomicity. Without this, a crash or
+    disk-full mid-write leaves a half-JSON chunk that the analyzer's
+    load_chunk_envelope will reject on the next read.
+    """
+    tmp = out_path.with_name(out_path.name + ".tmp")
+    try:
+        tmp.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, out_path)
+    except OSError:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 # ── CLI ─────────────────────────────────────────────────────────────
 
@@ -109,7 +172,7 @@ def fetch_machine(
 
     t0 = time.time()
     try:
-        resp = post_json(payload, timeout)
+        resp = _post_json_with_retry(payload, timeout)
     except Exception as exc:  # noqa: BLE001
         return {
             "machine": machine,
@@ -120,7 +183,8 @@ def fetch_machine(
         }
     elapsed = time.time() - t0
 
-    # Save in chunk-cache envelope format for compatibility
+    # Save in chunk-cache envelope format (v3 — atomic + sha256) for
+    # parity with _save_chunk_cache. See player_impact_analyzer.py.
     config_md5, code_md5 = _lookup_machine_md5(machine)
     envelope = {
         "_cache_version": CHUNK_CACHE_VERSION,
@@ -134,10 +198,11 @@ def fetch_machine(
         "_config_md5": config_md5,
         "_code_md5": code_md5,
         "_upstream_schema_fingerprint": _compute_upstream_schema_fingerprint(resp),
+        "_payload_sha256": _payload_sha256(resp),
         "_dev_sample": True,
         "response": resp,
     }
-    out_path.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_envelope(out_path, envelope)
     size_mb = out_path.stat().st_size / (1024 * 1024)
 
     return {
