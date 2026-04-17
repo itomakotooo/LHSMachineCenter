@@ -1169,17 +1169,23 @@ class BatchRunManager:
                 it.machine, it.mode,
                 auto_delete_mismatched=True,
             )
-            # Cache routing: three paths. fuzzy+cache → reuse (read-only).
-            # precise+cache → resume (seed state from chunks, continue
-            # live sampling on top until CI target hits). precise+no cache
-            # or fuzzy+no cache → fresh sample. This replaces the older
-            # binary "reuse or not" decision which silently under-delivered
-            # on precise targets by returning 12.9pp CI from a 10k-spin
-            # cache when the user asked for 0.5pp.
+            # Cache routing (simplified 2026-04-17): cache always acts
+            # as a resume starting point for user-initiated batch runs.
+            # Fuzzy with cache used to be read-only which made the Fuzzy
+            # sample hint lie ("约 1M spins" but a 20k-cache run returned
+            # in 1s with 12.9pp CI). Resume handles both cases naturally:
+            # - cache already exceeds max_chunks/target → loop exits
+            #   immediately, same observable behavior as old reuse
+            # - cache is smaller than max_chunks → continues sampling up
+            #   to the budget; stops at CI target (precise) or max_chunks
+            #   (fuzzy).
+            # The read-only `--from-cache` flag is still used by
+            # batch_generate_reports.py for offline re-analysis; it's
+            # just not reachable from /api/batch-run any more.
             target_pp = float(req.target_halfwidth_pp or 0)
             cache_usable = raw_status["usable_chunks"] > 0
-            reuse_cache = cache_usable and target_pp == 0
-            resume_cache = cache_usable and target_pp > 0
+            reuse_cache = False  # kept for wire-format stability; unused
+            resume_cache = cache_usable
 
             items.append({
                 "machine": it.machine,
@@ -1198,20 +1204,15 @@ class BatchRunManager:
                     "machine": it.machine,
                     "text": f"删除 {raw_status['mismatch_chunks']} 个 MD5 不匹配的 chunk（config/code 已变更）",
                 })
-            if reuse_cache:
-                events.append({
-                    "ts": utc_now(), "level": "info",
-                    "machine": it.machine,
-                    "text": f"♻ 使用本地 rawdata: {raw_status['usable_chunks']} chunks, {raw_status['total_size_mb']}MB (Fuzzy 档跳过 API 采样)",
-                })
-            elif resume_cache:
+            if resume_cache:
+                target_label = "Fuzzy" if target_pp == 0 else f"±{target_pp}pp"
                 events.append({
                     "ts": utc_now(), "level": "info",
                     "machine": it.machine,
                     "text": (
                         f"♻ 续采: 复用 {raw_status['usable_chunks']} chunks / "
                         f"{raw_status['total_size_mb']}MB，从下一个 chunk 继续采到 "
-                        f"±{target_pp}pp 精度 (chunk_spin_times={chunk_size})"
+                        f"{target_label} (chunk_spin_times={chunk_size})"
                     ),
                 })
             else:
@@ -1409,17 +1410,16 @@ class BatchRunManager:
                     item["status"] = "cancelled"
                     return
                 item["status"] = "running"
-                # Three paths (decided in start_batch, flags stored on item):
-                #   reuse_cache  (fuzzy + cache) → --from-cache (read-only)
-                #   resume_cache (precise + cache) → --resume-from-cache
-                #   neither → fresh API sample
+                # Two paths (decided in start_batch):
+                #   resume_cache=True → --resume-from-cache (seed from
+                #     cached chunks, continue live sampling; handles
+                #     fuzzy + precise identically — loop exits either
+                #     at max_chunks or when session CI ≤ target)
+                #   resume_cache=False → fresh API sample
                 from_cache_dir = ""
                 resume_from_cache_dir = ""
                 cache_dir_str = str(RAWDATA_ROOT / item["machine"] / f"mode_{item['mode']}")
-                if item.get("reuse_cache"):
-                    from_cache_dir = cache_dir_str
-                    _log("info", f"♻ 使用本地 rawdata 解析 ({from_cache_dir})", item["machine"])
-                elif item.get("resume_cache"):
+                if item.get("resume_cache"):
                     resume_from_cache_dir = cache_dir_str
                     _log("info", f"♻ 续采 from {cache_dir_str} (chunk_spin_times={item['chunk_spin_times']})", item["machine"])
                 else:

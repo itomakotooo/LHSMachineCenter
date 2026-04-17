@@ -59,9 +59,48 @@ const state = {
   // batch_concurrency, success_rate, throughput, tuned_at}. When the
   // user clicks 开始采样 and an entry matches the first selected machine
   // + current sampleMode, those tuned values override the hardcoded
-  // preset (robot=20 / concurrency=2). Invalidated on mode change.
-  tunedSamplingParams: {},
+  // preset (robot=20 / concurrency=2). Persisted in localStorage so
+  // tuning effort isn't wasted on page reload.
+  tunedSamplingParams: (() => {
+    try { return JSON.parse(localStorage.getItem("slot_console_tunedParams") || "{}"); }
+    catch { return {}; }
+  })(),
 };
+
+// Persist the sampling-panel selections + autotune cache across page
+// reloads. Language handling already follows this pattern (line 71).
+function _saveSamplingPrefs() {
+  try {
+    const mode = byId("sampleMode")?.value;
+    const ci = byId("sampleCi")?.value;
+    if (mode != null) localStorage.setItem("slot_console_sampleMode", mode);
+    if (ci != null) localStorage.setItem("slot_console_sampleCi", ci);
+    localStorage.setItem(
+      "slot_console_tunedParams",
+      JSON.stringify(state.tunedSamplingParams || {})
+    );
+  } catch {
+    // localStorage can throw (quota, private-browsing) — best-effort
+    // persistence, silent failure.
+  }
+}
+
+function _restoreSamplingPrefs() {
+  try {
+    const mode = localStorage.getItem("slot_console_sampleMode");
+    const ci = localStorage.getItem("slot_console_sampleCi");
+    const modeSel = byId("sampleMode");
+    const ciSel = byId("sampleCi");
+    if (modeSel && mode && [...modeSel.options].some((o) => o.value === mode)) {
+      modeSel.value = mode;
+    }
+    if (ciSel && ci && [...ciSel.options].some((o) => o.value === ci)) {
+      ciSel.value = ci;
+    }
+  } catch {
+    // no-op
+  }
+}
 
 const byId = (id) => document.getElementById(id);
 const fmt = (k, vars) => PURE.fmt(state.lang, k, vars);
@@ -2661,6 +2700,7 @@ async function runAutoTune() {
         throughput: Number(r.best?.throughput_spins_per_sec || 0),
         tuned_at: new Date().toISOString(),
       };
+      _saveSamplingPrefs();  // persist the cache across page reloads
     }
     const rows = (r.results || []).slice(0, 8).map((x, i) =>
       `${i + 1}. robot=${x.robot_count} conc=${x.batch_concurrency} success=${fRate(x.success_rate, 1)} throughput=${fNum(x.throughput_spins_per_sec, 2)} p95=${fNum(x.p95_latency_s, 3)}s`
@@ -2740,6 +2780,7 @@ async function loadBootstrap() {
   renderCatalogFeatureChips();
   renderMachineCatalog();
   renderFleetOverview();
+  _restoreSamplingPrefs();  // hydrate sampleMode/sampleCi from localStorage
   updateSampleHint();
   refreshDiskSpace();
   await refreshServers();
@@ -2841,8 +2882,8 @@ function bindEvents() {
   // Inline sampling panel controls.
   byId("sampleStartBtn").addEventListener("click", () => startSampling());
   byId("sampleCancelBtn").addEventListener("click", () => cancelSampling());
-  byId("sampleMode").addEventListener("change", () => updateSampleHint());
-  byId("sampleCi").addEventListener("change", () => updateSampleHint());
+  byId("sampleMode").addEventListener("change", () => { updateSampleHint(); _saveSamplingPrefs(); });
+  byId("sampleCi").addEventListener("change", () => { updateSampleHint(); _saveSamplingPrefs(); });
   byId("addServerBtn").addEventListener("click", () => addServer());
   byId("refreshMd5Btn").addEventListener("click", async () => {
     const btn = byId("refreshMd5Btn");

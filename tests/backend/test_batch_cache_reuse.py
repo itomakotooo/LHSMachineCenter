@@ -58,18 +58,16 @@ def _batch_payload(machine: str, mode: int, target: float) -> dict[str, Any]:
 
 
 class TestBatchCacheReuseGate:
-    def test_fuzzy_target_reuses_cache(
+    def test_fuzzy_target_resumes_cache(
         self, client, tmp_path: Path, app_factory, monkeypatch
     ):
-        """target=0 (fuzzy) → reuse_cache=True when local chunks exist."""
+        """target=0 (fuzzy) + cache → resume (not the old read-only
+        reuse). Resume with max_chunks-bounded budget produces ~1M
+        spins like the UI hint promises, using the cache as prefix."""
         c, app = client
-        # Point the backend's RAWDATA_ROOT at our tmp so seeded chunks are
-        # found by check_rawdata_status.
         import src.web_console.backend.app as app_mod
         raw_root = tmp_path / "dev_rawdata"
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
-        # Also force unverifiable path (no machines.json lookup) so the
-        # seeded chunks count as usable without MD5 match.
         monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
         _seed_v3_chunks(raw_root, "M273", 1, n=3)
 
@@ -77,10 +75,15 @@ class TestBatchCacheReuseGate:
         assert r.status_code == 200
         batch_id = r.json()["batch_id"]
         b = c.get(f"/api/batch-run/{batch_id}").json()
-        assert len(b["items"]) == 1
-        # reuse_cache True is reflected in the info event text.
+        it = b["items"][0]
+        # Fuzzy with cache now resumes, not reuses.
+        assert it["resume_cache"] is True
+        assert it["reuse_cache"] is False
         event_texts = " ".join(e["text"] for e in b["events"])
-        assert "跳过 API 采样" in event_texts, event_texts
+        assert "续采" in event_texts, event_texts
+        # The old "跳过 API 采样" event no longer fires — that was the
+        # read-only shortcut that left users stuck at cache CI.
+        assert "跳过 API 采样" not in event_texts, event_texts
 
     def test_precise_target_resumes_cache(
         self, client, tmp_path: Path, app_factory, monkeypatch
