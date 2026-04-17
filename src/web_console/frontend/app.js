@@ -374,7 +374,12 @@ function _catalogModeMetrics(machine) {
     const vc = VOL_COLORS[vol] || "#888";
     const volHtml = vol ? `<span class="cat-vol" style="color:${vc}">${vol} ${pct}</span>` : "";
     const mechIcons = (d.mechanics || []).map((mk) => MECH_ICONS[mk] || "").join("");
-    return `<div class="cat-mode-row"><span class="cat-mode-label">m${mode}</span> <span class="cat-rtp">${rtp}</span> <span class="cat-ci">${ci}</span> ${volHtml}${mechIcons ? ` <span class="cat-mech" title="${d.mechanics.join(', ')}">${mechIcons}</span>` : ""}</div>`;
+    const md5 = d.md5_status;
+    const md5Icon = md5 === "match" ? '<span class="md5-match" title="report MD5 匹配上游">✓</span>'
+      : md5 === "outdated" ? '<span class="md5-mismatch" title="机台版本已变更，report 过期">⚠</span>'
+      : md5 === "untagged" ? '<span class="muted" title="旧格式 report 无 MD5 标签">?</span>'
+      : '';
+    return `<div class="cat-mode-row">${md5Icon} <span class="cat-mode-label">m${mode}</span> <span class="cat-rtp">${rtp}</span> <span class="cat-ci">${ci}</span> ${volHtml}${mechIcons ? ` <span class="cat-mech" title="${d.mechanics.join(', ')}">${mechIcons}</span>` : ""}</div>`;
   }).join("");
 }
 
@@ -2680,6 +2685,27 @@ function bindEvents() {
   byId("sampleMode").addEventListener("change", () => updateSampleHint());
   byId("sampleCi").addEventListener("change", () => updateSampleHint());
   byId("addServerBtn").addEventListener("click", () => addServer());
+  byId("refreshMd5Btn").addEventListener("click", async () => {
+    const btn = byId("refreshMd5Btn");
+    btn.disabled = true;
+    btn.textContent = "拉取中…";
+    try {
+      const r = await apiPost("/api/machines/refresh-md5", { server_id: "dev" });
+      alert(`刷新完成：拉取 ${r.machines_fetched} 台，${r.machines_updated} 台 MD5 变更`);
+      // Re-fetch machines + summary to refresh UI with new MD5 comparison.
+      const [m, mSummary] = await Promise.all([apiGet("/api/machines"), apiGet("/api/machines/summary").catch(() => null)]);
+      state.machines = m.machines || [];
+      state.machinesSummary = mSummary;
+      renderCatalogFeatureChips();
+      renderMachineCatalog();
+      renderFleetOverview();
+    } catch (e) {
+      alert("刷新失败：" + (e.message || e));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "刷新机台 MD5";
+    }
+  });
   byId("importReportsBtn").addEventListener("click", async () => {
     const source = prompt("输入 Reports 源目录绝对路径（如 D:\\\\dev_reports 或 /path/to/dev_reports）:");
     if (!source) return;

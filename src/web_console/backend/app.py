@@ -929,6 +929,9 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
                         _fn = _f.get("feature_name", "")
                         if _fn:
                             _features.append(_fn)
+                    # Report's own MD5 (added in session-MD5-tagging commit).
+                    _rpt_cfg = str(s.get("config_md5", ""))
+                    _rpt_code = str(s.get("code_md5", ""))
                     best = {
                         "rtp_pct": rtp_data.get("point_pct"),
                         "ci_halfwidth_pp": ci_hw,
@@ -939,9 +942,24 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
                         "report_version": ver_dir.name,
                         "mechanics": _mechs,
                         "features": _features,
+                        "config_md5": _rpt_cfg,
+                        "code_md5": _rpt_code,
                     }
 
             if best is not None:
+                # Compute MD5 status vs current machines.json (upstream).
+                up_cfg, up_code = _get_machine_md5(machine)
+                r_cfg = best.get("config_md5", "")
+                r_code = best.get("code_md5", "")
+                if not r_cfg and not r_code:
+                    best["md5_status"] = "untagged"
+                elif not up_cfg and not up_code:
+                    best["md5_status"] = "unverifiable"
+                elif r_cfg == up_cfg and r_code == up_code:
+                    best["md5_status"] = "match"
+                else:
+                    best["md5_status"] = "outdated"
+
                 result[machine][str(mode)] = best
                 zwr = best.get("zero_win_rate", 0)
                 if isinstance(zwr, (int, float)) and math.isfinite(zwr):
@@ -3098,11 +3116,11 @@ def create_app(
 
     @app.post("/api/reports/import")
     def import_reports(req: dict[str, Any]) -> dict[str, Any]:
-        """Import reports from an external folder into reports/.
+        """Import reports from an external folder into reports/ + create DB rows.
 
-        Expected source layout: {source}/{machine}/mode_{n}/versions/{ver}/player_impact_summary.json
-        Mode 'merge' (default): copy new versions; skip if already exists.
-        Mode 'replace': delete target machine dirs first, then copy.
+        Each imported version becomes a completed run visible in 运行历史,
+        loadable via the 载入 button. Run IDs are derived from the version
+        suffix (last 12 chars after the final underscore).
         """
         source = req.get("source_path", "").strip()
         mode_arg = req.get("mode", "merge")
@@ -3113,7 +3131,19 @@ def create_app(
             raise HTTPException(status_code=400, detail=f"source_path not a directory: {source}")
         imported = 0
         skipped = 0
+        db_rows_created = 0
         machines_affected: set[str] = set()
+
+        def _derive_run_id(version_name: str) -> str:
+            # "rv_20260416T073355Z_9d60553e" → "9d60553e" (real run)
+            # "rv_20260416T110557Z_devcache" → hash of full name for stability
+            parts = version_name.split("_")
+            tail = parts[-1] if parts else version_name
+            if tail in ("devcache",) or len(tail) < 8:
+                import hashlib
+                return hashlib.md5(version_name.encode()).hexdigest()[:12]
+            return tail[:12]
+
         for machine_dir in src.iterdir():
             if not machine_dir.is_dir():
                 continue
@@ -3123,6 +3153,10 @@ def create_app(
                 shutil.rmtree(dst_machine)
             for mode_dir in machine_dir.iterdir():
                 if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                    continue
+                try:
+                    mode_int = int(mode_dir.name.split("_")[1])
+                except (IndexError, ValueError):
                     continue
                 versions_dir = mode_dir / "versions"
                 if not versions_dir.is_dir():
@@ -3141,9 +3175,110 @@ def create_app(
                     shutil.copytree(v, dst)
                     imported += 1
                     machines_affected.add(machine_name)
+
+                    # Create DB row so the import shows in 运行历史 and is loadable.
+                    run_id = _derive_run_id(v.name)
+                    # Avoid collision with existing run.
+                    if store.get_run(run_id):
+                        run_id = run_id + "_i"  # suffix to disambiguate
+                    try:
+                        s = json.loads((dst / "player_impact_summary.json").read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        s = {}
+                    sam = s.get("sampling", {})
+                    rtp_pct = (s.get("rtp", {}) or {}).get("point_pct")
+                    ci_hw = sam.get("achieved_halfwidth_pp")
+                    qa = s.get("guideline_assessment", {}).get("quality_label") or s.get("quality_label")
+                    try:
+                        store.insert_run({
+                            "run_id": run_id,
+                            "machine": machine_name,
+                            "mode": mode_int,
+                            "status": "completed",
+                            "model_id": "",
+                            "created_at": sam.get("started_at") or utc_now(),
+                            "started_at": sam.get("started_at") or utc_now(),
+                            "finished_at": sam.get("finished_at") or utc_now(),
+                            "target_halfwidth_pp": sam.get("target_halfwidth_pp", 0.5),
+                            "chunk_spin_times": sam.get("chunk_spin_times", 0),
+                            "chunk_robot_count": sam.get("chunk_robot_count", 0),
+                            "batch_concurrency": sam.get("batch_concurrency", 1),
+                            "max_chunks": sam.get("chunks", 0),
+                            "timeout": 300.0,
+                            "bankruptcy_session_spins": 500,
+                            "bankruptcy_bankroll_multipliers": "100,200,500",
+                            "report_version": v.name,
+                            "output_dir": str(dst),
+                            "progress_file": str(dst / "progress.jsonl"),
+                            "summary_file": str(dst / "player_impact_summary.json"),
+                            "report_file": str(dst / "player_impact_report.md"),
+                            "error_message": None,
+                            "process_pid": 0,
+                            "achieved_rtp_pct": rtp_pct,
+                            "achieved_halfwidth_pp": ci_hw,
+                            "quality_label": qa,
+                            "total_spins": sam.get("total_spins", 0),
+                        })
+                        db_rows_created += 1
+                    except Exception:
+                        pass  # best-effort; file import still succeeded
         return {
             "imported": imported, "skipped": skipped,
+            "db_rows_created": db_rows_created,
             "machines_affected": sorted(machines_affected),
+        }
+
+    @app.post("/api/machines/refresh-md5")
+    def refresh_machines_md5(req: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Fetch current MachineConfigMd5 from the active server and update machines.json.
+
+        After this, report-validate will reflect the latest upstream MD5.
+        Optionally takes {"server_id": "dev"} to pick a server; defaults to 'dev'.
+        """
+        payload = req or {}
+        server_id = payload.get("server_id", "dev")
+        cfg = load_servers(sc)
+        target = next((s for s in cfg.get("servers", []) if s["id"] == server_id), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail=f"server '{server_id}' not found")
+        ep = target.get("endpoint", "").strip()
+        if not ep:
+            raise HTTPException(status_code=400, detail="server has no endpoint configured")
+        data = _fetch_machine_config_md5(ep)
+        if data is None:
+            raise HTTPException(status_code=502, detail="failed to fetch MachineConfigMd5")
+
+        # Merge new MD5 into machines.json.
+        try:
+            existing = json.loads(Path(mc).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            existing = {"machines": []}
+        updated_count = 0
+        machines_list = existing.get("machines", [])
+        machines_by_name = {m["machine"]: m for m in machines_list}
+        for machine_name, upstream in data.items():
+            entry = machines_by_name.get(machine_name)
+            if entry is None:
+                # New machine that wasn't in machines.json before.
+                entry = {"machine": machine_name, "modes": [1, 2, 5, 7]}
+                machines_list.append(entry)
+                machines_by_name[machine_name] = entry
+            new_cfg = str(upstream.get("configSummaryMd5", ""))
+            new_code = str(upstream.get("codeSummaryMd5", ""))
+            if entry.get("configSummaryMd5") != new_cfg or entry.get("codeSummaryMd5") != new_code:
+                entry["configSummaryMd5"] = new_cfg
+                entry["codeSummaryMd5"] = new_code
+                entry["logicClassNames"] = upstream.get("logicClassNames", entry.get("logicClassNames", []))
+                updated_count += 1
+        existing["machines"] = machines_list
+        Path(mc).write_text(json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        # Also snapshot server state.
+        _save_server_snapshot(server_id, data)
+        return {
+            "ok": True,
+            "server_id": server_id,
+            "machines_fetched": len(data),
+            "machines_updated": updated_count,
         }
 
     @app.get("/api/report-validate/{machine}")
