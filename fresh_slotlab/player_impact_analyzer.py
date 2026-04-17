@@ -2881,14 +2881,20 @@ def main() -> int:
     chunk_level_halfwidth_pp = achieved_halfwidth_pp
     session_level_halfwidth_pp: float | None = None
     if total_session_ret_count > 1:
-        _var_ret_x = (
-            total_session_ret_sq_sum
-            - (total_session_ret_sum * total_session_ret_sum / total_session_ret_count)
-        ) / (total_session_ret_count - 1)
-        if _var_ret_x > 0:
-            _se_mean = math.sqrt(_var_ret_x / total_session_ret_count)
-            _t = t_critical_95(total_session_ret_count - 1)
-            session_level_halfwidth_pp = _t * _se_mean * 100.0
+        # Clamp to 0 before sqrt: sample variance computed as
+        # `sq_sum - sum²/N` can produce a tiny negative from float
+        # cancellation when every session paid out the same amount
+        # (legitimate zero-variance case, e.g. synthetic test data).
+        _var_ret_x = max(
+            0.0,
+            (
+                total_session_ret_sq_sum
+                - (total_session_ret_sum * total_session_ret_sum / total_session_ret_count)
+            ) / (total_session_ret_count - 1),
+        )
+        _se_mean = math.sqrt(_var_ret_x / total_session_ret_count)
+        _t = t_critical_95(total_session_ret_count - 1)
+        session_level_halfwidth_pp = _t * _se_mean * 100.0
     if session_level_halfwidth_pp is not None:
         achieved_halfwidth_pp = session_level_halfwidth_pp
 
