@@ -1298,12 +1298,36 @@ class BatchRunManager:
                                 chunks = [e for e in events if e.get("event") == "chunk_progress"]
                                 if chunks:
                                     latest = chunks[-1]
+                                    # Analyzer event key is
+                                    # `current_halfwidth_pp`, not
+                                    # `halfwidth_pp` — the old key was
+                                    # always None which is why the UI
+                                    # never showed live CI. Both keys
+                                    # accepted for backward-compat with
+                                    # any stale progress files.
                                     entry["progress"] = {
                                         "chunks_done": latest.get("chunk_index", 0),
                                         "total_spins": latest.get("total_spins", 0),
                                         "current_rtp_pct": latest.get("current_rtp_pct"),
-                                        "halfwidth_pp": latest.get("halfwidth_pp"),
+                                        "halfwidth_pp": (
+                                            latest.get("current_halfwidth_pp")
+                                            if latest.get("current_halfwidth_pp") is not None
+                                            else latest.get("halfwidth_pp")
+                                        ),
+                                        "session_level_halfwidth_pp": latest.get("session_level_halfwidth_pp"),
+                                        "chunk_level_halfwidth_pp": latest.get("chunk_level_halfwidth_pp"),
                                     }
+                                # Also surface the last 8 chunk_progress
+                                # events so the UI can render a live
+                                # per-chunk summary log (issue 3: "log
+                                # not detailed enough"). Plus any
+                                # chunk_failed events so transient 504s
+                                # are visible instead of silent retries.
+                                recent = []
+                                for e in events[-30:]:
+                                    if e.get("event") in ("chunk_progress", "chunk_failed", "resume_from_cache", "disk_guard_stop", "failed"):
+                                        recent.append(e)
+                                entry["chunk_events"] = recent[-12:]
                     except Exception:
                         pass
                 items_out.append(entry)
@@ -1448,7 +1472,29 @@ class BatchRunManager:
                     ci = row.get("achieved_halfwidth_pp")
                     rtp_str = f"{rtp:.2f}%" if rtp is not None else "—"
                     ci_str = f"±{ci:.2f}pp" if ci is not None else "(no CI)"
-                    _log("ok", f"完成 RTP={rtp_str} {ci_str}", item["machine"])
+                    # Pull stop_reason + chunk/spin counts from the
+                    # summary so the operator sees WHY sampling ended
+                    # (e.g. "upstream_unstable:... vs target_ci_reached
+                    # vs max_chunks_reached"). Previously the only
+                    # signal was the final CI value, which hid whether
+                    # the target was met or the run bailed from errors.
+                    stop_tail = ""
+                    try:
+                        summary_path = Path(row.get("summary_file", ""))
+                        if summary_path.exists():
+                            s = json.loads(summary_path.read_text(encoding="utf-8"))
+                            sam = s.get("sampling", {})
+                            sr = sam.get("stop_reason", "?")
+                            n_chunks = sam.get("chunks", 0)
+                            n_spins = sam.get("total_spins", 0)
+                            dur = sam.get("duration_seconds", 0)
+                            stop_tail = (
+                                f" · stop={sr} · chunks={n_chunks} · "
+                                f"spins={n_spins:,} · {dur:.0f}s"
+                            )
+                    except Exception:  # noqa: BLE001
+                        pass
+                    _log("ok", f"完成 RTP={rtp_str} {ci_str}{stop_tail}", item["machine"])
                 else:
                     item["status"] = "failed"
                     err = (row or {}).get("error_message", "")[:200]

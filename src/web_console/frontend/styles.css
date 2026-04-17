@@ -1085,6 +1085,19 @@ button:disabled {
   padding: 2px 4px;
   border-radius: 3px;
 }
+/* Per-chunk rows nested under an item's status line. Indented + smaller
+   + less saturated so the outer status stays the dominant signal. */
+.sample-chunk-row {
+  padding: 1px 4px 1px 20px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #64748b;
+  line-height: 1.5;
+}
+.sample-chunk-row.sample-warn { color: #92400e; background: transparent; }
+.sample-chunk-row.sample-info { color: #1e40af; }
+.sample-chunk-row.sample-danger { color: #991b1b; font-weight: 600; }
+.sample-chunk-row.sample-failed { color: #dc2626; font-weight: 600; }
 .sample-pending { color: var(--muted); }
 .sample-running { background: #eff6ff; color: #2563eb; font-weight: 600; }
 .sample-completed { background: #f0fdf4; color: #059669; }

@@ -1211,12 +1211,44 @@ function renderSamplingProgress(data) {
     if (it.status === "running" && it.progress) {
       const p = it.progress;
       const rtp = p.current_rtp_pct != null ? p.current_rtp_pct.toFixed(2) + "%" : "—";
-      const hw = p.halfwidth_pp != null ? "±" + p.halfwidth_pp.toFixed(2) : "";
+      const hw = p.halfwidth_pp != null ? "±" + Number(p.halfwidth_pp).toFixed(3) + "pp" : "";
       progress = ` · chunk ${p.chunks_done} · ${(p.total_spins || 0).toLocaleString()} spins · RTP=${rtp} ${hw}`;
     } else if (it.status === "running") {
       progress = " · 启动中…";
     }
-    return `<div class="sample-log-item sample-${it.status}">${icon} ${it.machine} m${it.mode}${chunk}${progress}${err}</div>`;
+    // Per-chunk mini-log, surfaced from the analyzer's progress.jsonl
+    // via the backend (issue 3: "log 不够详细"). Shows last few
+    // chunk_progress / chunk_failed / resume_from_cache events so the
+    // operator sees a live timeline of what's happening inside each
+    // run, not just the outer status line.
+    let chunkLog = "";
+    if (it.chunk_events && it.chunk_events.length) {
+      const rows = it.chunk_events.slice(-8).map((ev) => {
+        const ts = (ev.ts || "").slice(11, 19);
+        if (ev.event === "chunk_progress") {
+          const rtp = ev.current_rtp_pct != null ? Number(ev.current_rtp_pct).toFixed(2) + "%" : "—";
+          const hwRaw = ev.current_halfwidth_pp != null ? ev.current_halfwidth_pp : ev.halfwidth_pp;
+          const hw = hwRaw != null ? "±" + Number(hwRaw).toFixed(3) + "pp" : "";
+          const sp = ev.total_spins != null ? Number(ev.total_spins).toLocaleString() : "";
+          return `<div class="sample-chunk-row">  ${ts} chunk ${ev.chunk_index} · ${sp} spins · RTP=${rtp} ${hw}</div>`;
+        }
+        if (ev.event === "chunk_failed") {
+          return `<div class="sample-chunk-row sample-warn">  ${ts} ✗ chunk ${ev.chunk_index}失败 · ${(ev.error || '').slice(0,80)} · 累计失败 ${ev.cumulative_failed}</div>`;
+        }
+        if (ev.event === "resume_from_cache") {
+          return `<div class="sample-chunk-row sample-info">  ${ts} ♻ 续采: 已有 ${ev.existing_chunks} chunks / ${(ev.existing_spins || 0).toLocaleString()} spins · 下一个 chunk_${ev.next_chunk_index}</div>`;
+        }
+        if (ev.event === "disk_guard_stop") {
+          return `<div class="sample-chunk-row sample-danger">  ${ts} ⛔ 磁盘低 ${ev.free_gb}GB < ${ev.threshold_gb}GB · graceful stop</div>`;
+        }
+        if (ev.event === "failed") {
+          return `<div class="sample-chunk-row sample-failed">  ${ts} ⛔ 终止: ${(ev.reason || '').slice(0,100)}</div>`;
+        }
+        return "";
+      }).join("");
+      chunkLog = rows;
+    }
+    return `<div class="sample-log-item sample-${it.status}">${icon} ${it.machine} m${it.mode}${chunk}${progress}${err}</div>${chunkLog}`;
   }).join("");
 
   // Event log below.

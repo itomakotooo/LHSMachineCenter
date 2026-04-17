@@ -2402,6 +2402,14 @@ def main() -> int:
     stop_reason = "max_chunks_reached"
     achieved_halfwidth_pp: float | None = None
     next_chunk_index = 1
+    # Fault-tolerance counters. A single chunk failure no longer kills
+    # the run (merge successful siblings, log the failure, continue).
+    # These thresholds detect sustained upstream breakage vs one-off
+    # 504 during an otherwise-OK sample.
+    cumulative_failed_chunks = 0
+    consecutive_failed_batches = 0
+    _MAX_CONSECUTIVE_FAILED_BATCHES = 3  # 3 fully-failed batches in a row
+    _MAX_CUMULATIVE_FAILED_CHUNKS = 20  # 20 total failures across the run
 
     # ── Cache read phase ─────────────────────────────────────────────
     # Two modes share the reader, differ only in what happens after:
@@ -2740,9 +2748,49 @@ def main() -> int:
             for future in concurrent.futures.as_completed(futures):
                 batch_results.append(future.result())
 
-        error = next((r for r in batch_results if not bool(r.get("ok"))), None)
-        if error is not None:
-            stop_reason = str(error.get("error") or "unknown_error")
+        # Partition results: merge successful chunks, log + count failures.
+        # Previously ANY chunk failure aborted the whole run, discarding
+        # the successful siblings in the same batch. A single 504 during
+        # a multi-hour 3M-spin run would throw away the ~1M spins
+        # already collected. Now: keep the successes, log each failure,
+        # keep going unless the failure rate shows sustained upstream
+        # breakage.
+        successful_results = [r for r in batch_results if bool(r.get("ok"))]
+        failed_results = [r for r in batch_results if not bool(r.get("ok"))]
+        for fr in failed_results:
+            cumulative_failed_chunks = cumulative_failed_chunks + 1
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "chunk_failed",
+                    "run_id": run_id,
+                    "chunk_index": fr.get("index"),
+                    "error": fr.get("error"),
+                    "cumulative_failed": cumulative_failed_chunks,
+                    "chunks_completed_so_far": chunks,
+                    "total_spins_so_far": total_spins,
+                    "ts": utc_now(),
+                },
+            )
+        if failed_results and not successful_results:
+            # Entire batch failed → consecutive failure counter bumps.
+            # N consecutive fully-failed batches = sustained upstream
+            # breakage; bail out rather than burn the retry helper
+            # indefinitely.
+            consecutive_failed_batches += 1
+        else:
+            consecutive_failed_batches = 0
+        if (
+            consecutive_failed_batches >= _MAX_CONSECUTIVE_FAILED_BATCHES
+            or cumulative_failed_chunks >= _MAX_CUMULATIVE_FAILED_CHUNKS
+        ):
+            last_err = failed_results[0] if failed_results else {}
+            stop_reason = (
+                f"upstream_unstable:"
+                f"consecutive_failed_batches={consecutive_failed_batches},"
+                f"cumulative_failed_chunks={cumulative_failed_chunks},"
+                f"last_error={last_err.get('error', '?')}"
+            )
             append_jsonl(
                 progress_file,
                 {
@@ -2757,7 +2805,7 @@ def main() -> int:
             )
             break
 
-        for rec in sorted(batch_results, key=lambda x: int(x["index"])):
+        for rec in sorted(successful_results, key=lambda x: int(x["index"])):
             chunks += 1
             spins = int(rec["spins"])
             bet_amt = float(rec["bet"])
