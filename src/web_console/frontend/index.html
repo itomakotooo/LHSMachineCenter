@@ -35,7 +35,6 @@
     <nav class="tabs">
       <button id="tabBtnDebug" class="tab-btn active" data-tab="debug" data-i18n="tabDebug">调试机台</button>
       <button id="tabBtnManage" class="tab-btn" data-tab="manage" data-i18n="tabManage">全面管理</button>
-      <button id="tabBtnBatch" class="tab-btn" data-tab="batch" data-i18n="tabBatch">批量采样</button>
     </nav>
 
     <main class="tab-pages">
@@ -337,6 +336,37 @@
           <section class="panel fleet-overview">
             <h2 data-i18n="panelFleetOverview">机台概览</h2>
             <div class="fleet-stats" id="fleetStats"></div>
+            <div id="diskSpaceBar" class="disk-space-bar"></div>
+          </section>
+
+          <section class="panel sampling-panel">
+            <h2 data-i18n="panelSampling">采样选中机台</h2>
+            <div class="sampling-controls">
+              <span id="sampleSelectedCount" class="muted"></span>
+              <label><span>Mode</span>
+                <select id="sampleMode">
+                  <option value="1">1</option>
+                  <option value="2" selected>2</option>
+                  <option value="5">5</option>
+                  <option value="7">7</option>
+                </select>
+              </label>
+              <label><span>CI 目标</span>
+                <select id="sampleCi">
+                  <option value="0.5">精确 ±0.5pp</option>
+                  <option value="1">标准 ±1pp</option>
+                  <option value="5">粗略 ±5pp</option>
+                  <option value="0">Fuzzy (无 CI 停止)</option>
+                </select>
+              </label>
+              <button id="sampleStartBtn" class="primary-btn" disabled data-i18n="btnSampleStart">开始采样</button>
+              <button id="sampleCancelBtn" class="danger-btn hidden" data-i18n="btnBatchCancel">停止</button>
+            </div>
+            <div id="sampleHint" class="muted sample-hint"></div>
+            <div id="sampleProgressPanel" class="sample-progress hidden">
+              <div id="sampleProgressMeta" class="meta"></div>
+              <div id="sampleProgressLog" class="sample-log"></div>
+            </div>
           </section>
 
           <section class="panel machine-catalog">
@@ -467,36 +497,6 @@
         </div>
       </section>
 
-      <section id="tab-batch" class="tab-page">
-        <div class="layout">
-          <section class="panel batch-config">
-            <h2 data-i18n="panelBatchConfig">批量采样配置</h2>
-            <div class="batch-machine-select">
-              <div class="batch-select-toolbar">
-                <input type="text" id="batchSearchInput" class="catalog-search" placeholder="搜索机台..." />
-                <button id="batchSelectAll" class="small-btn" data-i18n="btnSelectAll">全选</button>
-                <button id="batchSelectNone" class="small-btn" data-i18n="btnSelectNone">取消全选</button>
-                <span id="batchSelectedCount" class="muted"></span>
-              </div>
-              <div id="batchMachineGrid" class="batch-machine-grid"></div>
-            </div>
-            <div class="batch-params">
-              <label><span>Mode</span><select id="batchMode"><option value="1">1</option><option value="2" selected>2</option><option value="5">5</option><option value="7">7</option></select></label>
-              <label><span data-i18n="labelConcurrency">并发数</span><input type="number" id="batchConcurrency" value="3" min="1" max="10" /></label>
-            </div>
-            <div class="batch-actions-bar">
-              <button id="batchRunBtn" class="primary-btn" disabled data-i18n="btnBatchStart">开始批量采样</button>
-            </div>
-          </section>
-
-          <section class="panel batch-progress hidden" id="batchProgressPanel">
-            <h2 data-i18n="panelBatchProgress">批量采样进度</h2>
-            <div id="batchProgressMeta" class="meta"></div>
-            <div id="batchProgressList" class="batch-list"></div>
-            <button id="batchCancelBtn" class="danger-btn" data-i18n="btnBatchCancel">取消批量</button>
-          </section>
-        </div>
-      </section>
     </main>
 
     <script src="/console/pure.js"></script>

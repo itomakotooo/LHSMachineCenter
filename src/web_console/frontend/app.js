@@ -636,6 +636,7 @@ function renderMachineCatalog() {
       }
       renderMachineCatalog();
       renderRunHistory();
+      updateSampleHint();
       // Show detail for the last toggled machine (if selected).
       if (state.runFilterMachines.has(machine)) {
         showVersionHistory(machine);
@@ -849,101 +850,118 @@ function renderFleetOverview() {
 
 // ── Batch Run UI ──────────────────────────────────────────────────
 
-function renderBatchMachineGrid() {
-  const grid = byId("batchMachineGrid");
-  const countEl = byId("batchSelectedCount");
-  const btn = byId("batchRunBtn");
-  if (!grid) return;
+// ── Inline Sampling Panel ─────────────────────────────────────────
 
-  const query = (byId("batchSearchInput")?.value || "").trim().toLowerCase();
-  let machines = state.machines || [];
-  if (query) machines = machines.filter((m) => m.machine.toLowerCase().includes(query) || (m.category || "").toLowerCase().includes(query));
+function updateSampleHint() {
+  const countEl = byId("sampleSelectedCount");
+  const btn = byId("sampleStartBtn");
+  const hint = byId("sampleHint");
+  const mode = parseInt(byId("sampleMode")?.value || "2");
+  const ciSel = byId("sampleCi");
+  const n = state.runFilterMachines.size;
 
-  // Group by category for organized display.
-  const groups = {};
-  machines.forEach((m) => {
-    const cat = m.category || "Other";
-    if (!groups[cat]) groups[cat] = [];
-    groups[cat].push(m);
-  });
+  if (countEl) countEl.textContent = n ? `已选 ${n} 台` : "未选机台";
 
-  let html = "";
-  for (const [cat, items] of Object.entries(groups).sort((a, b) => b[1].length - a[1].length)) {
-    const allSelected = items.every((m) => state.batchSelectedMachines.has(m.machine));
-    const catColor = CATEGORY_COLORS[cat] || "#9ca3af";
-    html += `<div class="batch-cat-group">`;
-    html += `<div class="batch-cat-header"><label><input type="checkbox" class="batch-cat-check" data-cat="${cat}" ${allSelected ? "checked" : ""} /> <span class="batch-cat-dot" style="background:${catColor}"></span> ${cat} (${items.length})</label></div>`;
-    html += `<div class="batch-cat-items">`;
-    items.forEach((m) => {
-      const checked = state.batchSelectedMachines.has(m.machine) ? "checked" : "";
-      html += `<label class="batch-machine-item"><input type="checkbox" value="${m.machine}" data-cat="${cat}" ${checked} /> ${m.machine}</label>`;
-    });
-    html += `</div></div>`;
+  // Mode 2/5 force fuzzy.
+  if (ciSel) {
+    const isLucky = mode === 2 || mode === 5;
+    if (isLucky) {
+      ciSel.value = "0";
+      ciSel.disabled = true;
+    } else {
+      ciSel.disabled = false;
+    }
   }
-  grid.innerHTML = html;
 
-  // Category-level checkbox: select/deselect all machines in a category.
-  grid.querySelectorAll(".batch-cat-check").forEach((cb) => {
-    cb.addEventListener("change", () => {
-      const cat = cb.dataset.cat;
-      const items = grid.querySelectorAll(`input[data-cat="${cat}"]:not(.batch-cat-check)`);
-      items.forEach((item) => {
-        item.checked = cb.checked;
-        if (cb.checked) state.batchSelectedMachines.add(item.value);
-        else state.batchSelectedMachines.delete(item.value);
-      });
-      _updateBatchCount();
-    });
-  });
-  // Individual machine checkbox.
-  grid.querySelectorAll("input[type=checkbox]:not(.batch-cat-check)").forEach((cb) => {
-    cb.addEventListener("change", () => {
-      if (cb.checked) state.batchSelectedMachines.add(cb.value);
-      else state.batchSelectedMachines.delete(cb.value);
-      _updateBatchCount();
-    });
-  });
-
-  function _updateBatchCount() {
-    if (countEl) countEl.textContent = fmt("batchHintSelected", { n: state.batchSelectedMachines.size });
-    if (btn) btn.disabled = state.batchSelectedMachines.size === 0 || !!state.activeBatchId;
+  // Hint text based on mode.
+  if (hint) {
+    if (mode === 2 || mode === 5) {
+      hint.textContent = `Mode ${mode} 为幸运模式（RTP 高波动），仅支持 Fuzzy 采样，固定 20 chunks`;
+    } else {
+      const ci = parseFloat(byId("sampleCi")?.value || "0.5");
+      if (ci === 0) hint.textContent = `Fuzzy 模式，固定 chunks，约 1M spins`;
+      else hint.textContent = `目标 ±${ci}pp 精度，上限 10M spins`;
+    }
   }
-  _updateBatchCount();
+
+  if (btn) btn.disabled = n === 0 || !!state.activeBatchId;
 }
 
-async function startBatchRun() {
-  const selected = [...state.batchSelectedMachines];
+async function startSampling() {
+  const selected = [...state.runFilterMachines];
   if (!selected.length) return;
-  const mode = parseInt(byId("batchMode")?.value || "2");
-  const concurrency = parseInt(byId("batchConcurrency")?.value || "3");
-  const items = selected.map((machine) => ({ machine, mode }));
+  const mode = parseInt(byId("sampleMode")?.value || "2");
+  let ci = parseFloat(byId("sampleCi")?.value || "0.5");
+  if (mode === 2 || mode === 5) ci = 0;
+
+  // Build items with smart chunk size per machine (category-based initial heuristic).
+  const items = selected.map((machine) => {
+    const m = state.machines.find((x) => x.machine === machine);
+    const cat = m?.category || "";
+    let chunk_spin_times = 1000;
+    if (cat === "Collect") chunk_spin_times = 5000;
+    else if (cat === "Lock" || cat === "ReSpin" || cat === "FreeSpin") chunk_spin_times = 2000;
+    return { machine, mode, chunk_spin_times };
+  });
+
+  // Max chunks based on mode + CI.
+  let max_chunks;
+  if (ci === 0) max_chunks = 20;  // fuzzy
+  else {
+    // Cap at 10M spins total: max_chunks * 20 robots * chunk_spin_times_avg
+    const avgChunk = items.reduce((s, i) => s + i.chunk_spin_times, 0) / items.length;
+    max_chunks = Math.floor(10_000_000 / (20 * avgChunk));
+  }
+
+  const payload = {
+    items,
+    concurrency: 2,
+    chunk_spin_times: 1000,  // overridden per-item below (not yet supported, needs backend update)
+    chunk_robot_count: 20,
+    max_chunks,
+    target_halfwidth_pp: ci,
+    batch_concurrency: 2,
+    timeout: 300,
+    auto_cleanup_cache: true,
+  };
+
   try {
-    const result = await apiPost("/api/batch-run", { items, concurrency });
+    const result = await apiPost("/api/batch-run", payload);
     state.activeBatchId = result.batch_id;
-    renderBatchMachineGrid();
-    pollBatchProgress();
+    updateSampleHint();
+    byId("sampleCancelBtn").classList.remove("hidden");
+    byId("sampleStartBtn").classList.add("hidden");
+    pollSampling();
   } catch (e) {
     alert(String(e.message || e));
   }
 }
 
-function pollBatchProgress() {
+function pollSampling() {
   if (!state.activeBatchId) return;
-  const panel = byId("batchProgressPanel");
+  const panel = byId("sampleProgressPanel");
   if (panel) panel.classList.remove("hidden");
 
   const poll = async () => {
     if (!state.activeBatchId) return;
     try {
       const data = await apiGet(`/api/batch-run/${state.activeBatchId}`);
-      renderBatchProgress(data);
+      renderSamplingProgress(data);
+      refreshDiskSpace();
       if (data.status === "completed") {
         state.activeBatchId = null;
-        updateBatchRunHint();
-        // Refresh catalog to show new reports.
-        const mSummary = await apiGet("/api/machines/summary").catch(() => null);
+        byId("sampleCancelBtn").classList.add("hidden");
+        byId("sampleStartBtn").classList.remove("hidden");
+        updateSampleHint();
+        // Refresh catalog with new reports.
+        const [m, mSummary] = await Promise.all([
+          apiGet("/api/machines"), apiGet("/api/machines/summary").catch(() => null),
+        ]);
+        state.machines = m.machines || [];
         state.machinesSummary = mSummary;
+        renderCatalogFeatureChips();
         renderMachineCatalog();
+        renderFleetOverview();
         await refreshRunList(false);
         return;
       }
@@ -953,26 +971,55 @@ function pollBatchProgress() {
   poll();
 }
 
-function renderBatchProgress(data) {
-  const meta = byId("batchProgressMeta");
-  const list = byId("batchProgressList");
-  const cancelBtn = byId("batchCancelBtn");
-  if (!meta || !list) return;
+function renderSamplingProgress(data) {
+  const meta = byId("sampleProgressMeta");
+  const log = byId("sampleProgressLog");
+  if (!meta || !log) return;
 
-  meta.textContent = `${data.completed} / ${data.total} ${fmt("batchProgressLabel")}`;
-  if (cancelBtn) cancelBtn.disabled = data.status !== "running";
+  meta.textContent = `${data.completed} / ${data.total} 完成 · ${data.items.filter(i=>i.status==='running').length} 运行中`;
 
-  const statusIcon = { pending: "\u23f3", running: "\u25b6", completed: "\u2705", failed: "\u274c", cancelled: "\u23f8" };
-  list.innerHTML = data.items
-    .map((it) => {
-      const icon = statusIcon[it.status] || "\u2753";
-      const err = it.error ? ` — ${it.error.slice(0, 60)}` : "";
-      return `<div class="batch-item batch-${it.status}">${icon} ${it.machine} m${it.mode}${err}</div>`;
-    })
-    .join("");
+  // Build combined timeline: machine status summary + events log.
+  const levelIcon = { info: "ℹ", warn: "⚠", ok: "✓", error: "✗", danger: "⛔" };
+  const levelClass = { info: "sample-info", warn: "sample-warn", ok: "sample-completed", error: "sample-failed", danger: "sample-danger" };
+  // Per-machine status rows at top.
+  const statusIcon = { pending: "⏳", running: "▶", completed: "✓", failed: "✗", cancelled: "⏸" };
+  const statusRows = data.items.map((it) => {
+    const icon = statusIcon[it.status] || "?";
+    const chunk = it.chunk_spin_times ? ` (chunk=${it.chunk_spin_times})` : "";
+    const err = it.error ? ` — ${it.error.slice(0, 60)}` : "";
+    return `<div class="sample-log-item sample-${it.status}">${icon} ${it.machine} m${it.mode}${chunk}${err}</div>`;
+  }).join("");
+
+  // Event log below.
+  const eventRows = (data.events || []).map((ev) => {
+    const icon = levelIcon[ev.level] || "·";
+    const cls = levelClass[ev.level] || "";
+    const machine = ev.machine ? `[${ev.machine}] ` : "";
+    const ts = (ev.ts || "").slice(11, 19);
+    return `<div class="sample-log-item ${cls}">${ts} ${icon} ${machine}${ev.text}</div>`;
+  }).join("");
+
+  log.innerHTML = `<div class="sample-log-section-title">机台状态</div>${statusRows}
+    <div class="sample-log-section-title">事件日志 (最近 ${(data.events || []).length})</div>${eventRows}`;
+  log.scrollTop = log.scrollHeight;
 }
 
-async function cancelBatchRun() {
+async function refreshDiskSpace() {
+  const bar = byId("diskSpaceBar");
+  if (!bar) return;
+  try {
+    const d = await apiGet("/api/disk-space");
+    const free = d.free_gb || 0;
+    const total = d.total_gb || 0;
+    let cls = "";
+    if (free < 2) cls = "danger";
+    else if (free < 10) cls = "warn";
+    bar.className = `disk-space-bar ${cls}`;
+    bar.textContent = `磁盘可用 ${free}GB / ${total}GB`;
+  } catch (_) { /* ignore */ }
+}
+
+async function cancelSampling() {
   if (!state.activeBatchId) return;
   try {
     await apiPost(`/api/batch-run/${state.activeBatchId}/cancel`);
@@ -2447,6 +2494,8 @@ async function loadBootstrap() {
   renderCatalogFeatureChips();
   renderMachineCatalog();
   renderFleetOverview();
+  updateSampleHint();
+  refreshDiskSpace();
   await refreshServers();
   // Now that machineSelect is populated, seed the topbar idle brief.
   // (applyI18n() ran before bootstrap when machineSelect was empty, so
@@ -2491,7 +2540,6 @@ function bindEvents() {
   });
   byId("tabBtnDebug").addEventListener("click", () => switchTab("debug"));
   byId("tabBtnManage").addEventListener("click", () => switchTab("manage"));
-  byId("tabBtnBatch").addEventListener("click", () => { switchTab("batch"); renderBatchMachineGrid(); });
   // Mobile drawer: hamburger toggles the sidebar on/off; tapping the
   // dimmed backdrop (anywhere inside .dashboard that isn't the sidebar
   // or the toggle itself) closes it. CSS hides .sidebar-toggle above
@@ -2537,12 +2585,11 @@ function bindEvents() {
     renderCatalogFeatureChips();
     renderMachineCatalog();
   });
-  // Batch tab controls.
-  byId("batchRunBtn").addEventListener("click", () => startBatchRun());
-  byId("batchCancelBtn").addEventListener("click", () => cancelBatchRun());
-  byId("batchSelectAll")?.addEventListener("click", () => { state.batchSelectedMachines = new Set(state.machines.map((m) => m.machine)); renderBatchMachineGrid(); });
-  byId("batchSelectNone")?.addEventListener("click", () => { state.batchSelectedMachines = new Set(); renderBatchMachineGrid(); });
-  byId("batchSearchInput")?.addEventListener("input", () => renderBatchMachineGrid());
+  // Inline sampling panel controls.
+  byId("sampleStartBtn").addEventListener("click", () => startSampling());
+  byId("sampleCancelBtn").addEventListener("click", () => cancelSampling());
+  byId("sampleMode").addEventListener("change", () => updateSampleHint());
+  byId("sampleCi").addEventListener("change", () => updateSampleHint());
   byId("addServerBtn").addEventListener("click", () => addServer());
   byId("reportCleanupBtn").addEventListener("click", async () => {
     if (!confirm(fmt("reportCleanupConfirm"))) return;

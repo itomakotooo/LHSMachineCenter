@@ -194,6 +194,75 @@ def save_servers(data: dict[str, Any], path: Path | None = None) -> None:
     )
 
 
+def _detect_machine_cycle(machine: str, reports_root: Path) -> dict[str, Any]:
+    """Inspect the newest report of a machine and infer cycle_spin_times.
+
+    Returns:
+      {"detected": bool, "cycle_length": int | None, "source": str, "recommended_chunk_size": int}
+    """
+    machine_dir = reports_root / machine
+    if not machine_dir.is_dir():
+        return {"detected": False, "cycle_length": None, "source": "no_report",
+                "recommended_chunk_size": 1000}
+
+    # Find newest report across all modes.
+    newest: Path | None = None
+    newest_mtime = 0.0
+    for mode_dir in machine_dir.iterdir():
+        versions = mode_dir / "versions"
+        if not versions.is_dir():
+            continue
+        for v in versions.iterdir():
+            sf = v / "player_impact_summary.json"
+            if sf.exists():
+                mtime = sf.stat().st_mtime
+                if mtime > newest_mtime:
+                    newest_mtime = mtime
+                    newest = sf
+
+    if newest is None:
+        return {"detected": False, "cycle_length": None, "source": "no_summary",
+                "recommended_chunk_size": 1000}
+
+    try:
+        s = json.loads(newest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"detected": False, "cycle_length": None, "source": "parse_failed",
+                "recommended_chunk_size": 1000}
+
+    pi = s.get("player_impact", {}) or {}
+    collect = pi.get("collect", {}) or {}
+    cycle_peaks = collect.get("cycle_peaks") or []
+    bcd = pi.get("bonus_chain_dynamics", {}) or {}
+
+    if cycle_peaks:
+        cycle = max(int(x) for x in cycle_peaks if x)
+        return {"detected": True, "cycle_length": cycle, "source": "cycle_peaks",
+                "recommended_chunk_size": max(cycle * 2, 1000)}
+
+    # Collect mechanic applicable but no cycle peaks recorded → sampling was too short.
+    if collect.get("applicable") or bcd.get("applicable"):
+        return {"detected": False, "cycle_length": None, "source": "collect_detected_no_cycle",
+                "recommended_chunk_size": 10000}
+
+    return {"detected": True, "cycle_length": None, "source": "no_cycle_mechanic",
+            "recommended_chunk_size": 1000}
+
+
+def _get_disk_space_info(path: Path) -> dict[str, int]:
+    """Return free/total disk space in GB for the given path."""
+    import shutil
+    try:
+        usage = shutil.disk_usage(str(path))
+        return {
+            "free_gb": round(usage.free / (1024**3), 1),
+            "total_gb": round(usage.total / (1024**3), 1),
+            "used_gb": round(usage.used / (1024**3), 1),
+        }
+    except OSError:
+        return {"free_gb": 0, "total_gb": 0, "used_gb": 0}
+
+
 def _fetch_machine_config_md5(endpoint: str, timeout: float = 30.0) -> dict[str, Any] | None:
     """Call MachineConfigMd5 on a server and return the parsed response."""
     url = f"{endpoint.rstrip('/')}/MachineTest/MachineConfigMd5"
@@ -267,6 +336,7 @@ def get_server_endpoint(server_id: str, path: Path | None = None) -> str:
 class BatchRunItem(BaseModel):
     machine: str
     mode: int
+    chunk_spin_times: int | None = None  # per-item override
 
 
 class BatchRunRequest(BaseModel):
@@ -769,14 +839,58 @@ class BatchRunManager:
         self._lock = threading.Lock()
         self._batches: dict[str, dict[str, Any]] = {}
 
-    def start_batch(self, req: BatchRunRequest) -> dict[str, Any]:
+    def start_batch(self, req: BatchRunRequest, reports_root: Path | None = None) -> dict[str, Any]:
         batch_id = uuid.uuid4().hex[:12]
-        items = [{"machine": it.machine, "mode": it.mode, "status": "pending", "run_id": None}
-                 for it in req.items]
+        rr = reports_root or REPORTS_ROOT
+        # Compute per-item chunk_spin_times if not set.
+        items = []
+        events: list[dict[str, Any]] = []
+        for it in req.items:
+            chunk_size = it.chunk_spin_times
+            cycle_info = None
+            if chunk_size is None:
+                cycle_info = _detect_machine_cycle(it.machine, rr)
+                chunk_size = cycle_info["recommended_chunk_size"]
+            items.append({
+                "machine": it.machine,
+                "mode": it.mode,
+                "chunk_spin_times": chunk_size,
+                "status": "pending",
+                "run_id": None,
+                "cycle_info": cycle_info,
+            })
+            if cycle_info and cycle_info["source"] == "collect_detected_no_cycle":
+                events.append({
+                    "ts": utc_now(), "level": "warn",
+                    "machine": it.machine,
+                    "text": f"Collect 机制已识别但未确认 cycle 长度，使用保守值 chunk_spin_times={chunk_size}",
+                })
+            elif cycle_info and cycle_info["source"] == "no_report":
+                events.append({
+                    "ts": utc_now(), "level": "info",
+                    "machine": it.machine,
+                    "text": f"无历史 report，使用默认 chunk_spin_times={chunk_size}",
+                })
+            elif cycle_info and cycle_info["source"] == "cycle_peaks":
+                events.append({
+                    "ts": utc_now(), "level": "info",
+                    "machine": it.machine,
+                    "text": f"从历史 report 识别 cycle={cycle_info['cycle_length']}, chunk_spin_times={chunk_size}",
+                })
+
+        # Disk space check.
+        disk = _get_disk_space_info(rr)
+        if disk["free_gb"] < 5:
+            events.append({
+                "ts": utc_now(), "level": "danger",
+                "text": f"磁盘剩余空间仅 {disk['free_gb']}GB，建议先清理缓存",
+            })
+
         batch = {
             "batch_id": batch_id,
             "status": "running",
             "items": items,
+            "events": events,
             "concurrency": req.concurrency,
             "params": {
                 "chunk_spin_times": req.chunk_spin_times,
@@ -787,6 +901,7 @@ class BatchRunManager:
                 "target_halfwidth_pp": req.target_halfwidth_pp,
                 "auto_cleanup_cache": req.auto_cleanup_cache,
             },
+            "reports_root": rr,
             "created_at": utc_now(),
             "cancel_requested": False,
         }
@@ -802,7 +917,7 @@ class BatchRunManager:
             b = self._batches.get(batch_id)
             if b is None:
                 return None
-            completed = sum(1 for it in b["items"] if it["status"] in ("completed", "failed"))
+            completed = sum(1 for it in b["items"] if it["status"] in ("completed", "failed", "cancelled"))
             return {
                 "batch_id": b["batch_id"],
                 "status": b["status"],
@@ -812,12 +927,14 @@ class BatchRunManager:
                     {
                         "machine": it["machine"],
                         "mode": it["mode"],
+                        "chunk_spin_times": it.get("chunk_spin_times"),
                         "status": it["status"],
                         "run_id": it.get("run_id"),
                         "error": it.get("error"),
                     }
                     for it in b["items"]
                 ],
+                "events": list(b.get("events", []))[-100:],  # rolling last 100 events
                 "created_at": b["created_at"],
             }
 
@@ -836,22 +953,42 @@ class BatchRunManager:
         items = batch["items"]
         params = batch["params"]
         concurrency = batch["concurrency"]
+        reports_root = batch.get("reports_root") or REPORTS_ROOT
         semaphore = threading.Semaphore(concurrency)
+        events = batch["events"]
+
+        def _log(level: str, text: str, machine: str | None = None) -> None:
+            events.append({
+                "ts": utc_now(),
+                "level": level,
+                "machine": machine,
+                "text": text,
+            })
 
         def _run_one(item: dict[str, Any]) -> None:
             if batch.get("cancel_requested"):
                 item["status"] = "cancelled"
+                _log("info", "采样被取消（队列中）", item["machine"])
                 return
             semaphore.acquire()
             try:
+                # Disk space check before each run.
+                disk = _get_disk_space_info(reports_root)
+                if disk["free_gb"] < 2:
+                    batch["cancel_requested"] = True
+                    _log("danger", f"磁盘剩余 {disk['free_gb']}GB，自动停止批量采样")
+                    item["status"] = "cancelled"
+                    item["error"] = "disk_low"
+                    return
                 if batch.get("cancel_requested"):
                     item["status"] = "cancelled"
                     return
                 item["status"] = "running"
+                _log("info", f"开始采样 (chunk_spin_times={item['chunk_spin_times']})", item["machine"])
                 req = RunCreateRequest(
                     machine=item["machine"],
                     mode=item["mode"],
-                    chunk_spin_times=params["chunk_spin_times"],
+                    chunk_spin_times=item["chunk_spin_times"],
                     chunk_robot_count=params["chunk_robot_count"],
                     batch_concurrency=params["batch_concurrency"],
                     max_chunks=params["max_chunks"],
@@ -861,14 +998,22 @@ class BatchRunManager:
                 result = self._run_manager.start_run(req)
                 run_id = result.get("run_id")
                 item["run_id"] = run_id
-                # Wait for the run to complete.
                 self._wait_for_run(run_id)
                 row = self._store.get_run(run_id)
                 status = (row or {}).get("status", "failed")
-                item["status"] = "completed" if status == "completed" else "failed"
-                if status != "completed":
-                    item["error"] = (row or {}).get("error_message", "")[:200]
-                # Auto-cleanup chunk cache for this run.
+                if status == "completed":
+                    item["status"] = "completed"
+                    rtp = row.get("achieved_rtp_pct")
+                    ci = row.get("achieved_halfwidth_pp")
+                    rtp_str = f"{rtp:.2f}%" if rtp is not None else "—"
+                    ci_str = f"±{ci:.2f}pp" if ci is not None else "(no CI)"
+                    _log("ok", f"完成 RTP={rtp_str} {ci_str}", item["machine"])
+                else:
+                    item["status"] = "failed"
+                    err = (row or {}).get("error_message", "")[:200]
+                    item["error"] = err
+                    _log("error", f"失败: {err[:80]}", item["machine"])
+                # Auto-cleanup chunk cache.
                 if params.get("auto_cleanup_cache") and run_id:
                     cache_dir = self._cache_root / run_id
                     if cache_dir.is_dir():
@@ -877,6 +1022,7 @@ class BatchRunManager:
             except Exception as exc:  # noqa: BLE001
                 item["status"] = "failed"
                 item["error"] = str(exc)[:200]
+                _log("error", f"异常: {str(exc)[:80]}", item["machine"])
             finally:
                 semaphore.release()
 
@@ -2140,7 +2286,11 @@ def create_app(
     def start_batch_run(req: BatchRunRequest) -> dict[str, Any]:
         if not req.items:
             raise HTTPException(status_code=400, detail="items list is empty")
-        return batch_mgr.start_batch(req)
+        return batch_mgr.start_batch(req, rr)
+
+    @app.get("/api/disk-space")
+    def disk_space() -> dict[str, Any]:
+        return _get_disk_space_info(rr)
 
     @app.get("/api/batch-run/{batch_id}")
     def get_batch_run(batch_id: str) -> dict[str, Any]:
