@@ -943,8 +943,6 @@ button:disabled {
   padding: 6px;
   background: #f9fafb;
   border-radius: 6px;
-  max-height: 120px;
-  overflow-y: auto;
 }
 .catalog-feature-chips .feature-chip,
 button.feature-chip {
