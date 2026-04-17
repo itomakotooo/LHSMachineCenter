@@ -55,6 +55,12 @@ const state = {
   versionHistoryMachine: null,
   versionHistoryMode: null,
   compareSelected: new Set(),
+  // Autotune result cache. Keyed by `${machine}|${mode}` → {robot_count,
+  // batch_concurrency, success_rate, throughput, tuned_at}. When the
+  // user clicks 开始采样 and an entry matches the first selected machine
+  // + current sampleMode, those tuned values override the hardcoded
+  // preset (robot=20 / concurrency=2). Invalidated on mode change.
+  tunedSamplingParams: {},
 };
 
 const byId = (id) => document.getElementById(id);
@@ -368,7 +374,10 @@ function clearSummaryPanels() {
   byId("assessment").textContent = fmt("noReport");
   byId("interpretationText").textContent = fmt("noInterpret");
   byId("eventsText").textContent = fmt("noEvents");
-  if (!state.autoTuneRunning) byId("autotuneMeta").textContent = fmt("noAutoTune");
+  if (!state.autoTuneRunning) {
+    const autoEl = byId("autotuneMeta");
+    if (autoEl) autoEl.textContent = fmt("noAutoTune");
+  }
   setKpi("kpiRtp", "N/A");
   setKpi("kpiCi", "N/A");
   setKpi("kpiSpins", "N/A");
@@ -721,6 +730,10 @@ function _toggleCatalogMachineSelection(machine) {
 
   renderRunHistory();
   updateSampleHint();
+  // Selection change affects the ⚙ 调参 button's enabled state (needs
+  // at least one machine). Refresh action states so the button goes
+  // from disabled → enabled (and vice-versa) as the user toggles.
+  updateActionStates();
   if (state.runFilterMachines.has(machine)) {
     showVersionHistory(machine);
     showMachineDetail(machine);
@@ -1015,15 +1028,33 @@ function updateSampleHint() {
     }
   }
 
-  // Hint text based on mode.
+  // Hint text based on mode + whether there's a tuned param set for
+  // the first selected machine + current mode.
   if (hint) {
+    let lines = [];
     if (mode === 2 || mode === 5) {
-      hint.textContent = `Mode ${mode} 为幸运模式（RTP 高波动），仅支持 Fuzzy 采样，固定 20 chunks`;
+      lines.push(`Mode ${mode} 为幸运模式（RTP 高波动），仅支持 Fuzzy 采样，固定 20 chunks`);
     } else {
       const ci = parseFloat(byId("sampleCi")?.value || "0.5");
-      if (ci === 0) hint.textContent = `Fuzzy 模式，固定 chunks，约 1M spins`;
-      else hint.textContent = `目标 ±${ci}pp 精度，上限 10M spins`;
+      if (ci === 0) lines.push(`Fuzzy 模式，固定 chunks，约 1M spins`);
+      else lines.push(`目标 ±${ci}pp 精度，上限 10M spins`);
     }
+    // Show whether the upcoming 开始采样 will use tuned params (from
+    // a previous 调参 click on the first selected machine + this mode)
+    // or the hardcoded preset (robot_count=20, batch_concurrency=2).
+    if (n > 0) {
+      const firstMachine = [...state.runFilterMachines][0];
+      const tuned = state.tunedSamplingParams[`${firstMachine}|${mode}`];
+      if (tuned) {
+        lines.push(
+          `⚙ 已调参 (${firstMachine} m${mode}): robot_count=${tuned.robot_count}, ` +
+          `batch_concurrency=${tuned.batch_concurrency} · success=${fRate(tuned.success_rate, 1)}`
+        );
+      } else {
+        lines.push(`未调参，将用预设 robot_count=20, batch_concurrency=2 (可先点 ⚙ 调参)`);
+      }
+    }
+    hint.textContent = lines.join(" · ");
   }
 
   if (btn) btn.disabled = n === 0 || !!state.activeBatchId;
@@ -1046,23 +1077,31 @@ async function startSampling() {
     return { machine, mode, chunk_spin_times };
   });
 
-  // Max chunks based on mode + CI.
+  // Pick up autotune result for the first selected machine+mode if the
+  // operator ran 调参 beforehand. Otherwise fall back to the hardcoded
+  // preset (robot=20 / conc=2). Tuned values apply to the whole batch.
+  const tunedKey = `${selected[0]}|${mode}`;
+  const tuned = state.tunedSamplingParams[tunedKey];
+  const chunk_robot_count = tuned ? tuned.robot_count : 20;
+  const batch_concurrency = tuned ? tuned.batch_concurrency : 2;
+
+  // Max chunks based on mode + CI. Uses the actual robot count so
+  // tuning up to e.g. robot=24 doesn't overshoot the 10M-spins cap.
   let max_chunks;
   if (ci === 0) max_chunks = 20;  // fuzzy
   else {
-    // Cap at 10M spins total: max_chunks * 20 robots * chunk_spin_times_avg
     const avgChunk = items.reduce((s, i) => s + i.chunk_spin_times, 0) / items.length;
-    max_chunks = Math.floor(10_000_000 / (20 * avgChunk));
+    max_chunks = Math.floor(10_000_000 / (chunk_robot_count * avgChunk));
   }
 
   const payload = {
     items,
-    concurrency: 2,
+    concurrency: batch_concurrency,
     chunk_spin_times: 1000,  // overridden per-item below (not yet supported, needs backend update)
-    chunk_robot_count: 20,
+    chunk_robot_count,
     max_chunks,
     target_halfwidth_pp: ci,
-    batch_concurrency: 2,
+    batch_concurrency,
     timeout: 300,
     auto_cleanup_cache: true,
   };
@@ -2567,46 +2606,75 @@ async function refreshCache() {
 
 async function runAutoTune() {
   if (state.autoTuneRunning) return;
+  // Pick the first catalog-selected machine for tuning. Different
+  // machines have different optimal (robot_count, concurrency); we
+  // apply the tuned values to the WHOLE batch as a pragmatic
+  // simplification — tuning per-machine is N × autotune wall time.
+  const selected = [...state.runFilterMachines];
+  if (!selected.length) {
+    alert(fmt("autotuneNeedsMachine"));
+    return;
+  }
+  const machine = selected[0];
+  const mode = Number(byId("sampleMode")?.value || 1);
+  const cacheKey = `${machine}|${mode}`;
+  const prev = state.tunedSamplingParams[cacheKey];
+
   state.autoTuneRunning = true;
   updateActionStates();
-  // robotInput / concInput are filled by Auto Tune itself, so on the first
-  // click they are empty. Fall back to a compact candidate grid (3 robots
-  // x 3 concs = 9 candidates) in that case; subsequent clicks refine
-  // around the previously recommended values with the same compact grid.
-  // Combined with the backend's per-robot early-exit on low success_rate,
-  // this typically cuts autotune wall time more than half compared to
-  // the previous 5x4 = 20 candidate sweep.
-  const rcRaw = byId("robotInput").value;
-  const ccRaw = byId("concInput").value;
-  const hasPrev = rcRaw !== "" && ccRaw !== "";
-  const rc = Number(rcRaw || 16);
-  const cc = Number(ccRaw || 2);
-  const robotCandidates = hasPrev
-    ? [...new Set([rc - 6, rc, rc + 6].map((x) => Math.max(4, x)).filter((x) => x <= 200))]
+  // First click: 3 robots × 3 concs = 9 candidates (compact grid).
+  // Subsequent clicks: refine ±6 robots / ±1 concurrency around the
+  // previously tuned values. Backend does per-robot early-exit on
+  // success_rate < threshold so wall time stays bounded.
+  const robotCandidates = prev
+    ? [...new Set([prev.robot_count - 6, prev.robot_count, prev.robot_count + 6]
+        .map((x) => Math.max(4, x)).filter((x) => x <= 200))]
     : [8, 16, 24];
-  const concurrencyCandidates = hasPrev
-    ? [...new Set([Math.max(1, cc - 1), cc, cc + 1].filter((x) => x >= 1 && x <= 16))]
+  const concurrencyCandidates = prev
+    ? [...new Set([Math.max(1, prev.batch_concurrency - 1), prev.batch_concurrency, prev.batch_concurrency + 1]
+        .filter((x) => x >= 1 && x <= 16))]
     : [1, 2, 4];
   const payload = {
-    machine: byId("machineSelect").value || "M14",
-    mode: Number(byId("modeSelect").value || 1),
-    spin_times: Math.max(60, Math.min(240, Number(byId("spinInput").value || 120))),
+    machine,
+    mode,
+    spin_times: 120,
     robot_candidates: robotCandidates,
     concurrency_candidates: concurrencyCandidates,
     rounds: 1,
     timeout: 45,
     bet: 1000,
   };
-  byId("autotuneMeta").textContent = `machine=${payload.machine} mode=${payload.mode}\nrobots=[${payload.robot_candidates.join(",")}]\nconc=[${payload.concurrency_candidates.join(",")}]\n${fmt("autotuneProgressStarting")}`;
-  // Start a 1s poller against /api/autotune/progress so the user can see
-  // candidate-by-candidate progress while the POST is still in flight.
+  const autoEl = byId("autotuneMeta");
+  if (autoEl) {
+    autoEl.classList.remove("hidden");
+    autoEl.textContent = `machine=${machine} mode=${mode}\nrobots=[${robotCandidates.join(",")}]\nconc=[${concurrencyCandidates.join(",")}]\n${fmt("autotuneProgressStarting")}`;
+  }
   startAutotunePolling();
   try {
     const r = await apiPost("/api/autotune", payload);
-    if (r.recommendation?.chunk_robot_count != null) byId("robotInput").value = r.recommendation.chunk_robot_count;
-    if (r.recommendation?.batch_concurrency != null) byId("concInput").value = r.recommendation.batch_concurrency;
-    const rows = (r.results || []).slice(0, 8).map((x, i) => `${i + 1}. robot=${x.robot_count} conc=${x.batch_concurrency} success=${fRate(x.success_rate, 1)} throughput=${fNum(x.throughput_spins_per_sec, 2)} p95=${fNum(x.p95_latency_s, 3)}s`);
-    byId("autotuneMeta").textContent = `tested=${r.tested}\nrecommend robot=${r.recommendation?.chunk_robot_count} conc=${r.recommendation?.batch_concurrency}\n${rows.join("\n")}`;
+    const rec = r.recommendation || {};
+    if (rec.chunk_robot_count != null && rec.batch_concurrency != null) {
+      state.tunedSamplingParams[cacheKey] = {
+        robot_count: Number(rec.chunk_robot_count),
+        batch_concurrency: Number(rec.batch_concurrency),
+        success_rate: Number(r.best?.success_rate || 0),
+        throughput: Number(r.best?.throughput_spins_per_sec || 0),
+        tuned_at: new Date().toISOString(),
+      };
+    }
+    const rows = (r.results || []).slice(0, 8).map((x, i) =>
+      `${i + 1}. robot=${x.robot_count} conc=${x.batch_concurrency} success=${fRate(x.success_rate, 1)} throughput=${fNum(x.throughput_spins_per_sec, 2)} p95=${fNum(x.p95_latency_s, 3)}s`
+    );
+    if (autoEl) {
+      autoEl.textContent = (
+        `machine=${machine} mode=${mode} · tested=${r.tested}\n` +
+        `→ 推荐 robot_count=${rec.chunk_robot_count} batch_concurrency=${rec.batch_concurrency}` +
+        `  (success=${fRate(r.best?.success_rate, 1)}, throughput=${fNum(r.best?.throughput_spins_per_sec, 2)} spins/s)\n` +
+        `下次点「开始采样」将自动使用这组值\n\n` +
+        rows.join("\n")
+      );
+    }
+    updateSampleHint();
     if (Number(r.best?.success_rate || 0) < 0.95) {
       setGlobalWarning([...modelWarnings(), fmt("warnAutoTuneLowSuccess", { rate: fRate(r.best?.success_rate, 1) })]);
     }
