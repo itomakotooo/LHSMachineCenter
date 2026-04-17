@@ -1411,14 +1411,17 @@ class BatchRunManager:
                                 _CRITICAL = {"chunk_failed", "resume_from_cache", "disk_guard_stop", "failed"}
                                 critical = [e for e in events if e.get("event") in _CRITICAL]
                                 progress_evts = [e for e in events if e.get("event") == "chunk_progress"]
-                                # Merge chronologically (events already
-                                # appended in order). Keep every critical
-                                # + last 8 progress ticks. Cap overall
-                                # at 60 to avoid unbounded growth for
-                                # multi-hour runs.
+                                # Criticals pass through untouched. Only
+                                # chunk_progress rotates (last 8). The
+                                # earlier version used `merged[-60:]`
+                                # which, given enough failures, would
+                                # have sliced criticals too — the first
+                                # iteration of this fix quietly broke
+                                # its own "never pruned" promise. Now
+                                # the cap is progress-only.
                                 merged = critical + progress_evts[-8:]
                                 merged.sort(key=lambda e: e.get("ts") or "")
-                                entry["chunk_events"] = merged[-60:]
+                                entry["chunk_events"] = merged
                     except Exception:
                         pass
                 items_out.append(entry)

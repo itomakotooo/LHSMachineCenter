@@ -209,6 +209,73 @@ class TestChunkEventsRetention:
             }))
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    def test_backend_has_no_overall_cap_on_criticals(
+        self, client, app_factory, tmp_path: Path
+    ):
+        """50 chunk_failed + 12 chunk_progress → backend must return all
+        50 criticals + last 8 progress. Previous `merged[-60:]` would
+        have sliced 2 criticals off (50 + 8 = 58 < 60 so actually fine
+        in this case, but put more and it'd drop). This pins the
+        behavior that critical events are unbounded."""
+        from tests.backend._seed import insert_run_row
+        import json as _json
+
+        state_dir = app_factory.state_dir
+        progress_dir = state_dir / "progress"
+        progress_dir.mkdir(parents=True, exist_ok=True)
+        run_id = "nocaprun1"
+        pf = progress_dir / f"{run_id}.jsonl"
+        lines = []
+        # 80 chunk_failed events (way above the old 60 cap).
+        for i in range(1, 81):
+            lines.append(_json.dumps({
+                "event": "chunk_failed", "chunk_index": i,
+                "error": "request_failed_http_502",
+                "cumulative_failed": i,
+                "ts": f"2026-04-17T10:00:{i:02d}.000000Z",
+            }))
+        # Then 12 chunk_progress events.
+        for i in range(81, 93):
+            lines.append(_json.dumps({
+                "event": "chunk_progress", "chunk_index": i,
+                "total_spins": i * 1000, "current_rtp_pct": 92.0,
+                "current_halfwidth_pp": 1.0,
+                "ts": f"2026-04-17T10:01:{(i - 80):02d}Z",
+            }))
+        pf.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        insert_run_row(
+            app_factory.db_path, run_id=run_id, machine="M88", mode=1,
+            status="running", progress_file=str(pf),
+        )
+
+        c, app = client
+        bm = app.state.batch_manager
+        batch_id = "nocapbatch1"
+        bm._batches[batch_id] = {
+            "batch_id": batch_id, "status": "running",
+            "items": [{
+                "machine": "M88", "mode": 1,
+                "chunk_spin_times": 5000,
+                "status": "running", "run_id": run_id,
+                "cycle_info": None, "rawdata_status": {},
+                "reuse_cache": False, "resume_cache": False,
+            }],
+            "events": [], "concurrency": 1, "params": {},
+            "reports_root": app_factory.reports_dir,
+            "created_at": "x", "cancel_requested": False,
+        }
+        try:
+            body = c.get(f"/api/batch-run/{batch_id}").json()
+            chunk_events = body["items"][0]["chunk_events"]
+            failed = [e for e in chunk_events if e["event"] == "chunk_failed"]
+            progress = [e for e in chunk_events if e["event"] == "chunk_progress"]
+            # All 80 failures present — no 60 cap.
+            assert len(failed) == 80, f"expected 80 chunk_failed, got {len(failed)}"
+            # Progress still rotates at 8.
+            assert len(progress) == 8, f"expected last 8 progress, got {len(progress)}"
+        finally:
+            bm._batches.pop(batch_id, None)
+
     def test_failures_survive_many_successes(
         self, client, app_factory, tmp_path: Path
     ):

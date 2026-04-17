@@ -1263,13 +1263,21 @@ function renderSamplingProgress(data) {
       progress = " · 启动中…";
     }
     // Per-chunk mini-log, surfaced from the analyzer's progress.jsonl
-    // via the backend (issue 3: "log 不够详细"). Shows last few
-    // chunk_progress / chunk_failed / resume_from_cache events so the
-    // operator sees a live timeline of what's happening inside each
-    // run, not just the outer status line.
+    // via the backend. Critical events (chunk_failed / resume /
+    // disk_guard / failed) are always rendered; chunk_progress is
+    // the rolling window. Previous version sliced .slice(-8) blindly,
+    // which quietly dropped all chunk_failed events once ≥ 8
+    // chunk_progress events accumulated — exactly the bug the backend
+    // retention fix was supposed to prevent, re-introduced on the UI
+    // side. Now we partition.
     let chunkLog = "";
     if (it.chunk_events && it.chunk_events.length) {
-      const rows = it.chunk_events.slice(-8).map((ev) => {
+      const CRITICAL = new Set(["chunk_failed", "resume_from_cache", "disk_guard_stop", "failed"]);
+      const criticals = it.chunk_events.filter((e) => CRITICAL.has(e.event));
+      const progresses = it.chunk_events.filter((e) => e.event === "chunk_progress").slice(-8);
+      const evs = [...criticals, ...progresses]
+        .sort((a, b) => (a.ts || "").localeCompare(b.ts || ""));
+      const rows = evs.map((ev) => {
         const ts = (ev.ts || "").slice(11, 19);
         if (ev.event === "chunk_progress") {
           const rtp = ev.current_rtp_pct != null ? Number(ev.current_rtp_pct).toFixed(2) + "%" : "—";
