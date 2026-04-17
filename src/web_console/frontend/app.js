@@ -2340,7 +2340,9 @@ async function refreshCurrentRun() {
   try {
     run = await apiGet(`/api/runs/${state.currentRunId}`);
   } catch (err) {
-    if (String(err?.message || "").includes("404")) {
+    const msg = String(err?.message || "");
+    if (msg.includes("404")) {
+      // Stale currentRunId (run was deleted) — clear and keep going.
       state.currentRunId = "";
       state.currentRunStatus = "";
       byId("runMeta").textContent = fmt("noRun");
@@ -2348,7 +2350,15 @@ async function refreshCurrentRun() {
       updateActionStates();
       return;
     }
-    throw err;
+    // Transient network error (e.g. "Failed to fetch" during a page
+    // reload race, or a brief backend hiccup). Don't let it bubble up
+    // through loadBootstrap → setHealth(false): the next poll tick
+    // (4.5s) will retry, and the rest of the UI is already populated.
+    console.warn("refreshCurrentRun: transient, skipping —", msg);
+    byId("runMeta").textContent = fmt("noRun");
+    renderLiveStatusStrip();
+    updateActionStates();
+    return;
   }
   const prevStatus = state.currentRunStatus;
   state.currentRunStatus = run.status || "";

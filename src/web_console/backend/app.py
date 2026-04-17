@@ -2395,8 +2395,8 @@ class RunManager:
         run["progress"] = summarize_progress(progress_events)
         return run
 
-    def list_runs(self) -> list[dict[str, Any]]:
-        rows = self.store.list_runs()
+    def list_runs(self, limit: int = 2000) -> list[dict[str, Any]]:
+        rows = self.store.list_runs(limit=limit)
         output: list[dict[str, Any]] = []
         for row in rows:
             row["progress"] = summarize_progress(read_progress_events(Path(row["progress_file"])))
@@ -2956,8 +2956,12 @@ def create_app(
             return dict(app.state.autotune_progress)
 
     @app.get("/api/runs")
-    def runs() -> dict[str, Any]:
-        return {"runs": manager.list_runs()}
+    def runs(limit: int = 2000) -> dict[str, Any]:
+        # Old default was 50 via store.list_runs(); at 1013+ DB rows the
+        # manage-tab history would only show the newest 50. 2000 is the
+        # current population * ~2 headroom; callers can request lower
+        # via ?limit= if they want a faster roundtrip.
+        return {"runs": manager.list_runs(limit=max(1, limit))}
 
     @app.get("/api/runs/{run_id}")
     def run_detail(run_id: str) -> dict[str, Any]:

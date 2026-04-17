@@ -885,7 +885,23 @@ button:disabled {
    column gets cut off. Scrolling stays inside the panel so the
    panel's left/right edges align cleanly with the sibling panels. */
 .run-history .table-scroll {
-  overflow-x: auto;
+  overflow: auto;
+  max-width: 100%;
+  /* 2000 rows × ~35px = ~70,000px; without a height cap the whole
+     manage-tab page becomes that tall. Internal scroll matches the
+     `.catalog-grouped` pattern (500px cap on catalog side). 620px
+     here shows ~17 rows at once, scroll for the rest. */
+  max-height: 620px;
+}
+/* Override the global `table { width: 100% }` so columns don't spread
+   out to fill the panel on wide viewports — at 1920px the 933px panel
+   has only ~590px of content to show, and letting the table stretch
+   produces airy, scattered columns that feel asymmetric vs the dense
+   catalog cards on the left. `width: auto` sizes to content, and
+   `max-width: 100%` keeps it inside the wrapper on narrow viewports
+   (the overflow-x above still kicks in if needed). */
+.run-history #runListTable {
+  width: auto;
   max-width: 100%;
 }
 .run-history #runListTable th,
