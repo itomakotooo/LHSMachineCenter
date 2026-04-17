@@ -1392,3 +1392,72 @@ test("formatChunkEventText: chunk_started fallback text (rare path)", () => {
   assert.ok(t.includes("chunk 38"));
   assert.ok(t.includes("发出"));
 });
+
+// ---------- adaptive_tune + circuit_pause (phase 3) ----------
+
+test("formatChunkEventText: adaptive_tune down direction uses ↓", () => {
+  const t = PURE.formatChunkEventText({
+    event: "adaptive_tune", direction: "down",
+    from_concurrency: 4, to_concurrency: 2,
+    from_chunk_spins: 5000, to_chunk_spins: 2500,
+    reason: "fully_failed_batch",
+  });
+  assert.ok(t.includes("↓"));
+  assert.ok(t.includes("整批失败"));
+  assert.ok(t.includes("并发 4→2"));
+  assert.ok(t.includes("chunk_spins 5000→2500"));
+});
+
+test("formatChunkEventText: adaptive_tune up direction uses ↑", () => {
+  const t = PURE.formatChunkEventText({
+    event: "adaptive_tune", direction: "up",
+    from_concurrency: 2, to_concurrency: 3,
+    from_chunk_spins: 2500, to_chunk_spins: 3125,
+    reason: "success_streak",
+  });
+  assert.ok(t.includes("↑"));
+  assert.ok(t.includes("连续成功"));
+  assert.ok(t.includes("2→3"));
+});
+
+test("formatChunkEventText: circuit_pause shows seconds + reason", () => {
+  const t = PURE.formatChunkEventText({
+    event: "circuit_pause", pause_seconds: 20,
+    reason: "fully_failed_batch",
+  });
+  assert.ok(t.includes("⏸"));
+  assert.ok(t.includes("20s"));
+  assert.ok(t.includes("fully_failed_batch"));
+});
+
+test("mergeTimeline: adaptive_tune + circuit_pause are CRITICAL (never pruned)", () => {
+  const items = [{
+    machine: "M273",
+    chunk_events: [
+      // 20 progress events would normally prune, but adaptive_tune
+      // and circuit_pause pass through anyway.
+      ...Array.from({ length: 20 }, (_, i) => ({
+        event: "chunk_progress", chunk_index: i + 1,
+        total_spins: 1000, current_rtp_pct: 92,
+        ts: `2026-04-17T12:${String(i).padStart(2, "0")}:00Z`,
+      })),
+      { event: "adaptive_tune", direction: "down",
+        from_concurrency: 4, to_concurrency: 2,
+        from_chunk_spins: 5000, to_chunk_spins: 2500,
+        reason: "fully_failed_batch",
+        ts: "2026-04-17T12:30:00Z" },
+      { event: "circuit_pause", pause_seconds: 20,
+        reason: "fully_failed_batch",
+        ts: "2026-04-17T12:30:00Z" },
+    ],
+  }];
+  const out = PURE.mergeTimeline({ events: [], items }, []);
+  const kinds = out.map((r) => r.text);
+  assert.ok(kinds.some((t) => t.includes("↓")), "adaptive_tune must survive prune");
+  assert.ok(kinds.some((t) => t.includes("⏸")), "circuit_pause must survive prune");
+  // warn level on both so UI colors them distinctly from normal chunk events.
+  const tune = out.find((r) => r.text.includes("↓"));
+  const pause = out.find((r) => r.text.includes("⏸"));
+  assert.equal(tune.level, "warn");
+  assert.equal(pause.level, "warn");
+});

@@ -226,6 +226,104 @@ _RETRYABLE_HTTP_CODES = frozenset({500, 502, 503, 504})
 MAX_CONSECUTIVE_FAILED_BATCHES = 5
 MAX_CUMULATIVE_FAILED_CHUNKS = 40
 
+# AIMD (additive-increase / multiplicative-decrease) adaptive tuning
+# for batch_concurrency + chunk_spin_times. Per-request retry already
+# rides out brief (<30s) hiccups; AIMD handles sustained slowdowns by
+# shrinking load so the upstream gets breathing room, then slowly
+# re-opens once the upstream recovers. Combined with CIRCUIT_PAUSE_S
+# (hard sleep after a fully-failed batch) this lets an analyzer keep
+# running through a bad 5-minute upstream window rather than bailing
+# at MAX_CONSECUTIVE_FAILED_BATCHES.
+MIN_CHUNK_SPINS = 500
+SUCCESS_STREAK_FOR_GROW = 3
+CHUNK_SPINS_GROWTH = 1.25
+CIRCUIT_PAUSE_S = 20.0
+
+
+def collect_feature_match_warning(
+    cycle_peaks: list[int],
+    upstream_feature_tally: dict,
+) -> dict:
+    """Guard against ``newfreespin_correction`` silently computing
+    0pp on machines whose collect-bonus feature isn't literally named
+    "NewFreespin".
+
+    Current state of the world: the RTP correction hardcodes
+    ``upstream_feature_tally["NewFreespin"]`` as THE cycle bonus.
+    Some machines we haven't profiled yet may emit the bonus under a
+    different FeatureWin key (e.g. "NormalCollectionSpin" on certain
+    variants). Without this warning the analyzer would compute a
+    nonsense RTP and nobody would notice until a report comparison
+    surfaced the under-correction.
+
+    Returns a summary-ready dict. ``warning`` is None when either:
+      - no collect cycle detected (no CC resets observed)
+      - NewFreespin IS in the tally (happy path)
+    Non-None otherwise — the caller renders it as a UI alarm.
+    """
+    has_cycles = len(cycle_peaks) > 0
+    features = sorted((upstream_feature_tally or {}).keys())
+    has_nf = "NewFreespin" in (upstream_feature_tally or {})
+    warn = None
+    if has_cycles and not has_nf:
+        warn = (
+            "collect cycle detected (from BuffCollectionMap CC "
+            "resets) but no 'NewFreespin' feature in "
+            "upstream_feature_tally — the newfreespin_correction "
+            "block will report 0pp correction which likely "
+            "under-reports true RTP. Another feature may carry the "
+            "cycle bonus on this machine; verify against the machine "
+            f"spec before trusting the RTP number. Features seen: "
+            f"{features!r}"
+        )
+    return {
+        "applicable": has_cycles,
+        "known_features": features,
+        "has_newfreespin": has_nf,
+        "warning": warn,
+    }
+
+
+def aimd_tune(
+    current_concurrency: int,
+    current_chunk_spins: int,
+    max_concurrency: int,
+    max_chunk_spins: int,
+    batch_fully_failed: bool,
+    consecutive_successful: int,
+) -> tuple[int, int, int, bool]:
+    """Adjust concurrency + chunk_spins based on the latest batch
+    outcome.
+
+    Returns ``(new_concurrency, new_chunk_spins, new_consecutive_successful,
+    should_pause)``.
+
+    * Fully-failed batch → halve both (floor 1 / MIN_CHUNK_SPINS),
+      reset success streak, signal to caller that it should pause
+      CIRCUIT_PAUSE_S before the next submit (gives upstream breathing
+      room).
+    * Any success in the batch → increment success streak. After
+      ``SUCCESS_STREAK_FOR_GROW`` consecutive clean batches, grow
+      concurrency by 1 and chunk_spins by ``CHUNK_SPINS_GROWTH``
+      (capped at the user's original values).
+
+    Pure function so tests can walk through state transitions without
+    having to run the analyzer loop.
+    """
+    if batch_fully_failed:
+        new_conc = max(1, current_concurrency // 2)
+        new_spins = max(MIN_CHUNK_SPINS, current_chunk_spins // 2)
+        return (new_conc, new_spins, 0, True)
+    # Any success: bump streak.
+    new_success = consecutive_successful + 1
+    new_conc = current_concurrency
+    new_spins = current_chunk_spins
+    if new_success >= SUCCESS_STREAK_FOR_GROW:
+        new_conc = min(max_concurrency, current_concurrency + 1)
+        new_spins = min(max_chunk_spins, int(current_chunk_spins * CHUNK_SPINS_GROWTH))
+        new_success = 0
+    return (new_conc, new_spins, new_success, False)
+
 
 def post_json_with_retry(
     payload: dict[str, Any],
@@ -2754,8 +2852,43 @@ def main() -> int:
     # frozen panel between `analyzer_started` and the first chunk_progress.
     first_fetch_emitted = False
 
+    # AIMD adaptive tuning state. Starts at user's setting, halved on
+    # fully-failed batch, grown back toward the ceiling over
+    # SUCCESS_STREAK_FOR_GROW consecutive clean batches. Gives upstream
+    # breathing room during sustained slowdowns without the whole run
+    # bailing at MAX_CONSECUTIVE_FAILED_BATCHES. See aimd_tune().
+    current_concurrency = args.batch_concurrency
+    current_chunk_spins = args.chunk_spin_times
+    consecutive_successful_batches = 0
+    last_batch_pause_until = 0.0  # time.time() to resume after circuit pause
+
     # ── online sampling path (skipped in read-only --from-cache mode) ──
     while not skip_sampling_loop and next_chunk_index <= args.max_chunks:
+        # Circuit-breaker pause: after a fully-failed batch aimd_tune
+        # sets this deadline; sleep in small increments so stop flag
+        # can still interrupt us mid-pause.
+        now_s = time.time()
+        if now_s < last_batch_pause_until:
+            remaining_pause = last_batch_pause_until - now_s
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "circuit_pause",
+                    "run_id": run_id,
+                    "pause_seconds": round(remaining_pause, 2),
+                    "reason": "fully_failed_batch",
+                    "ts": utc_now(),
+                },
+            )
+            # Sleep in 1s steps so stop_requested / stop_flag_file can
+            # still bail us out inside the pause window.
+            while time.time() < last_batch_pause_until:
+                if stop_requested["value"] or (
+                    args.stop_flag_file is not None and args.stop_flag_file.exists()
+                ):
+                    break
+                time.sleep(min(1.0, last_batch_pause_until - time.time()))
+            last_batch_pause_until = 0.0
         # Graceful-stop checkpoint: if the operator clicked Stop, bail
         # out here so any completed chunks (aggregated up to the
         # previous batch end) still reach the summary-build path. The
@@ -2791,7 +2924,9 @@ def main() -> int:
             pass
 
         remaining = args.max_chunks - chunks
-        batch_size = min(args.batch_concurrency, remaining)
+        # AIMD-adapted concurrency (shrinks on upstream stress, grows
+        # back to args.batch_concurrency over consecutive clean batches).
+        batch_size = min(current_concurrency, remaining)
         if batch_size <= 0:
             break
 
@@ -2840,7 +2975,15 @@ def main() -> int:
                     args.machine,
                     args.rtp_mode,
                     args.bet,
-                    args.chunk_spin_times,
+                    # AIMD-adapted chunk size (shrinks on upstream
+                    # stress to give each HTTP request less work;
+                    # grows back to args.chunk_spin_times over
+                    # consecutive clean batches). Each chunk's envelope
+                    # records the effective chunk_spin_times so offline
+                    # aggregation + collect-cycle correction (which
+                    # walks per-chunk CC resets) stays correct across
+                    # variable chunk sizes.
+                    current_chunk_spins,
                     args.chunk_robot_count,
                     args.timeout,
                     chunk_cache_dir=chunk_cache,
@@ -3158,7 +3301,8 @@ def main() -> int:
         # this block only counts for the sustained-failure threshold.
         successful_results = [r for r in batch_results if bool(r.get("ok"))]
         failed_results = [r for r in batch_results if not bool(r.get("ok"))]
-        if failed_results and not successful_results:
+        batch_fully_failed = bool(failed_results) and not successful_results
+        if batch_fully_failed:
             # Entire batch failed → consecutive failure counter bumps.
             # N consecutive fully-failed batches = sustained upstream
             # breakage; bail out rather than burn the retry helper
@@ -3166,6 +3310,44 @@ def main() -> int:
             consecutive_failed_batches += 1
         else:
             consecutive_failed_batches = 0
+
+        # AIMD: halve concurrency + chunk_spins on fully-failed batch,
+        # grow back toward user settings on consecutive clean batches.
+        # Runs BEFORE the bail threshold check so the `adaptive_tune`
+        # event fires even on the batch that trips bail (useful for
+        # post-mortem).
+        new_conc, new_spins, new_streak, should_pause = aimd_tune(
+            current_concurrency,
+            current_chunk_spins,
+            args.batch_concurrency,
+            args.chunk_spin_times,
+            batch_fully_failed,
+            consecutive_successful_batches,
+        )
+        if (new_conc, new_spins) != (current_concurrency, current_chunk_spins):
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "adaptive_tune",
+                    "run_id": run_id,
+                    "from_concurrency": current_concurrency,
+                    "to_concurrency": new_conc,
+                    "from_chunk_spins": current_chunk_spins,
+                    "to_chunk_spins": new_spins,
+                    "direction": "down" if batch_fully_failed else "up",
+                    "reason": (
+                        "fully_failed_batch" if batch_fully_failed
+                        else "success_streak"
+                    ),
+                    "ts": utc_now(),
+                },
+            )
+        current_concurrency = new_conc
+        current_chunk_spins = new_spins
+        consecutive_successful_batches = new_streak
+        if should_pause:
+            last_batch_pause_until = time.time() + CIRCUIT_PAUSE_S
+
         if (
             consecutive_failed_batches >= MAX_CONSECUTIVE_FAILED_BATCHES
             or cumulative_failed_chunks >= MAX_CUMULATIVE_FAILED_CHUNKS
@@ -4201,6 +4383,14 @@ def main() -> int:
                     ))()
                 ),
             })(),
+            # Feature-match warning — see collect_feature_match_warning().
+            # Alarms when a collect cycle is detected but "NewFreespin"
+            # isn't in the upstream_feature_tally, i.e. the correction
+            # above is silently falling through to 0pp on a machine
+            # whose bonus feature is named something else.
+            "feature_match": collect_feature_match_warning(
+                all_cycle_peaks, upstream_feature_tally
+            ),
         },
         "guideline_assessment": {
             "guideline": "classic_slots_report_guideline_v1",

@@ -193,3 +193,21 @@ def test_feature_breakdown_and_bonus_chain(run_full_pipeline):
     if bc["applicable"]:
         assert bc["chain_count"] > 0
         assert bc["avg_chain_length"] > 1.0
+
+
+def test_collect_feature_match_block_present_no_warning(run_full_pipeline):
+    """feature_match must always be in the collect_mechanic summary so
+    the UI can check it; warning=None on machines where either no
+    cycle was observed (fixture is only 400 spins, cycle_len=1000 so
+    no full cycle) OR NewFreespin is properly in the tally. Either
+    way, no warning — the only time we warn is cycles-observed AND
+    no-NewFreespin, which shouldn't happen on M272."""
+    fm = run_full_pipeline["collect_mechanic"].get("feature_match")
+    assert fm is not None, "feature_match block must be present in summary"
+    assert "warning" in fm, "warning key must always be there (even when None)"
+    assert fm["warning"] is None, (
+        f"M272 fixture must not trigger warning; got: {fm.get('warning')!r}"
+    )
+    # Structural keys all present.
+    for k in ("applicable", "known_features", "has_newfreespin", "warning"):
+        assert k in fm, f"feature_match missing key: {k}"

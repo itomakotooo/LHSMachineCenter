@@ -1398,6 +1398,18 @@ function formatChunkEventText(ev) {
     // Fallback text only used if a caller renders one directly.
     return `⇅ chunk ${ev.chunk_index} 发出`;
   }
+  if (ev.event === "adaptive_tune") {
+    const arrow = ev.direction === "down" ? "↓" : "↑";
+    const reasonMap = {
+      fully_failed_batch: "整批失败",
+      success_streak: "连续成功",
+    };
+    const reason = reasonMap[ev.reason] || ev.reason || "";
+    return `${arrow} 自适应调参 (${reason}): 并发 ${ev.from_concurrency}→${ev.to_concurrency} · chunk_spins ${ev.from_chunk_spins}→${ev.to_chunk_spins}`;
+  }
+  if (ev.event === "circuit_pause") {
+    return `⏸ 熔断暂停 ${Number(ev.pause_seconds || 0).toFixed(0)}s (${ev.reason || "?"})`;
+  }
   return ev.event;
 }
 
@@ -1477,6 +1489,10 @@ function mergeTimeline(data, clientEvents, progressCap) {
   const CRITICAL = new Set([
     "chunk_failed", "resume_from_cache", "disk_guard_stop", "failed",
     "analyzer_started", "fetching_chunk",
+    // AIMD adaptive-tuning events: rare (once per value change), high
+    // signal — the operator needs to see when the analyzer shrank or
+    // grew load in response to upstream stress.
+    "adaptive_tune", "circuit_pause",
   ]);
   const out = [];
   const batchEvents = (data && data.events) || [];
@@ -1508,6 +1524,7 @@ function mergeTimeline(data, clientEvents, progressCap) {
       let level = "info";
       if (ev.event === "chunk_failed") level = "warn";
       else if (ev.event === "disk_guard_stop" || ev.event === "failed") level = "danger";
+      else if (ev.event === "adaptive_tune" || ev.event === "circuit_pause") level = "warn";
       out.push({
         ts: ev.ts || "",
         level,
