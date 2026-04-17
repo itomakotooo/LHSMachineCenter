@@ -240,46 +240,176 @@ CHUNK_SPINS_GROWTH = 1.25
 CIRCUIT_PAUSE_S = 20.0
 
 
+# Features that are NEVER the BCM cycle-bonus pair: paid-normal
+# channels (the "regular spin" accumulator). Mirrored in
+# scripts/infer_bcm_pairing.py — keep in sync. Add new paid-normal
+# feature names here as machines with different naming conventions
+# come online.
+PAID_NORMAL_FEATURES = frozenset({
+    "NormalCollectionSpin",
+    "BingoCollectionNormalSpin",
+    "ReelCollectionNormal",
+    "HalloweenReelCollectionNormal",
+})
+
+# Path to per-machine BCM pairing config. Loaded lazily; absent file
+# is treated as empty dict (no crash). Module-level constant so tests
+# can monkeypatch it.
+_BCM_CONFIG_PATH = (
+    Path(__file__).resolve().parent.parent / "configs" / "bcm_pairings.json"
+)
+
+
+def _load_bcm_pairings() -> dict[str, str]:
+    """Load per-machine BCM bonus-feature pairings from
+    ``configs/bcm_pairings.json``. Returns ``{machine_name:
+    bonus_feature_name}``.
+
+    Missing file or parse error → empty dict (resolver will fall back
+    to heuristic).
+    """
+    try:
+        raw = json.loads(_BCM_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    machines = raw.get("machines") or {}
+    out: dict[str, str] = {}
+    for m, entry in machines.items():
+        if not isinstance(entry, dict):
+            continue
+        feat = entry.get("bonus_feature")
+        if feat:
+            out[m] = feat
+    return out
+
+
+def _resolve_bonus_feature(
+    machine: str,
+    upstream_feature_tally: dict | None,
+    config: dict[str, str],
+) -> tuple[str | None, str]:
+    """Decide which FeatureWin key pairs with BuffCollectionMap.
+
+    Two-layer strategy (config → heuristic → none):
+      1. If ``machine`` is in config → return that feature, source="config".
+         Respect operator override even when feature's current win is
+         zero (small cache, rare feature; operator knows best).
+      2. Otherwise pick the feature in the tally with highest total win
+         that is neither in PAID_NORMAL_FEATURES nor BuffCollectionMap
+         itself. Source="heuristic".
+      3. If no such feature exists (all-zero wins, empty tally, only
+         paid-normal / BCM in tally) → (None, "none"). Caller should
+         skip RTP correction + surface a warning.
+
+    Returns ``(feature_name_or_None, source_string)``.
+    """
+    if machine in (config or {}):
+        return config[machine], "config"
+    tally = upstream_feature_tally or {}
+    best_feat = None
+    best_win = -1.0
+    for feat, payouts in tally.items():
+        if feat in PAID_NORMAL_FEATURES or feat == "BuffCollectionMap":
+            continue
+        if not isinstance(payouts, dict):
+            continue
+        total_win = 0.0
+        for entry in payouts.values():
+            if isinstance(entry, dict):
+                total_win += float(entry.get("win", 0) or 0)
+        if total_win > best_win:
+            best_win = total_win
+            best_feat = feat
+    if best_feat is None or best_win <= 0:
+        return None, "none"
+    return best_feat, "heuristic"
+
+
 def collect_feature_match_warning(
     cycle_peaks: list[int],
     upstream_feature_tally: dict,
+    resolved_feature: str | None,
+    resolved_source: str,
 ) -> dict:
-    """Guard against ``newfreespin_correction`` silently computing
-    0pp on machines whose collect-bonus feature isn't literally named
-    "NewFreespin".
+    """Summary block reporting the BCM-bonus-feature resolution.
 
-    Current state of the world: the RTP correction hardcodes
-    ``upstream_feature_tally["NewFreespin"]`` as THE cycle bonus.
-    Some machines we haven't profiled yet may emit the bonus under a
-    different FeatureWin key (e.g. "NormalCollectionSpin" on certain
-    variants). Without this warning the analyzer would compute a
-    nonsense RTP and nobody would notice until a report comparison
-    surfaced the under-correction.
+    ``warning`` is non-None only when a cycle was observed AND neither
+    the config nor the heuristic could identify a bonus feature. In
+    that case RTP correction falls through to 0pp and the operator
+    needs to either add a config entry or investigate the machine.
 
-    Returns a summary-ready dict. ``warning`` is None when either:
-      - no collect cycle detected (no CC resets observed)
-      - NewFreespin IS in the tally (happy path)
-    Non-None otherwise — the caller renders it as a UI alarm.
+    Happy paths (warning is None):
+      * cycle_peaks empty → no cycle observed in sample (separate
+        ``cycle_observation`` block surfaces the "need more data"
+        case; this block stays silent).
+      * cycle_peaks non-empty AND resolved_feature is not None →
+        pairing known, correction computable.
     """
     has_cycles = len(cycle_peaks) > 0
     features = sorted((upstream_feature_tally or {}).keys())
-    has_nf = "NewFreespin" in (upstream_feature_tally or {})
     warn = None
-    if has_cycles and not has_nf:
+    if has_cycles and resolved_feature is None:
         warn = (
-            "collect cycle detected (from BuffCollectionMap CC "
-            "resets) but no 'NewFreespin' feature in "
-            "upstream_feature_tally — the newfreespin_correction "
-            "block will report 0pp correction which likely "
-            "under-reports true RTP. Another feature may carry the "
-            "cycle bonus on this machine; verify against the machine "
-            f"spec before trusting the RTP number. Features seen: "
-            f"{features!r}"
+            "collect cycle detected (from BuffCollectionMap CC resets) "
+            "but no bonus feature could be resolved for this machine. "
+            "RTP correction will report 0pp which likely under-reports "
+            "true RTP. Fix by either: (a) adding this machine to "
+            "configs/bcm_pairings.json with the correct bonus_feature, "
+            "or (b) resampling so the heuristic has non-zero win data "
+            f"for the bonus channel. Features seen: {features!r}"
         )
     return {
         "applicable": has_cycles,
         "known_features": features,
-        "has_newfreespin": has_nf,
+        "bonus_feature": resolved_feature,
+        "bonus_feature_source": resolved_source,
+        "warning": warn,
+    }
+
+
+def build_cycle_observation(
+    collect_robots_seen: int,
+    cycle_peaks: list[int],
+    final_cc_values: list[int],
+) -> dict:
+    """Surface the "collect mechanic present but cache too short to
+    capture a cycle reset" case (M272-style: one chunk, all 10 robots
+    ended exactly at CC=1000 without resetting).
+
+    Without this block, the analyzer silently conflates "mechanic not
+    present" with "mechanic present but under-sampled" — both come out
+    as `cycle_peaks == []` and RTP correction gives 0pp. The warning
+    here distinguishes the two so the operator knows to resume-sample
+    rather than treat the current RTP as final.
+
+    Fields:
+      * mechanic_detected — ``collect_robots_seen > 0`` (robot's
+        rounds carried CollectCount)
+      * reset_observed — ``len(cycle_peaks) > 0`` (at least one CC
+        reset event observed)
+      * cycle_len_lower_bound — ``max(final_cc_values)`` when no reset;
+        the cycle length is AT LEAST this (robots can't exceed it if
+        they never reset, so the max-final-CC is a lower bound)
+      * warning — non-None iff mechanic_detected AND NOT reset_observed
+    """
+    mechanic = collect_robots_seen > 0
+    reset = len(cycle_peaks) > 0
+    lower_bound = max(final_cc_values) if final_cc_values else None
+    warn = None
+    if mechanic and not reset:
+        target = lower_bound * 2 if lower_bound else None
+        warn = (
+            f"collect mechanic detected (CollectCount field present on "
+            f"{collect_robots_seen} robots) but no cycle reset observed "
+            f"in this sample. Cycle length is at least {lower_bound} "
+            f"(max final CC). RTP correction unavailable until resample "
+            f"/ resume with ≥ {target} SpinTimes so at least one full "
+            f"cycle completes + resets."
+        )
+    return {
+        "mechanic_detected": mechanic,
+        "reset_observed": reset,
+        "cycle_len_lower_bound": lower_bound,
         "warning": warn,
     }
 
@@ -840,6 +970,59 @@ def bonus_chain_depth_bucket(fs_idx: int) -> str:
     return "21+"
 
 
+def _compute_bonus_correction(
+    bonus_feature: str | None,
+    cycle_peaks: list[int],
+    final_cc_values: list[int],
+    feature_tally: dict[str, dict[str, dict[str, Any]]],
+    completed_cycles: int,
+    total_paid_bet: float,
+) -> float | None:
+    """Estimate the RTP correction (in pp) from truncated collect-cycle
+    bonus rounds.
+
+    Each robot that ends mid-cycle (final_cc < cycle_length) has lost
+    a fraction of the expected bonus payout that would fire at cycle
+    completion. The correction is:
+        sum across robots of (progress_fraction × avg_bonus_payout)
+        / total_paid_bet × 100
+
+    ``bonus_feature`` is the resolved FeatureWin key for this machine
+    (from _resolve_bonus_feature — config override or heuristic).
+    Returns None when:
+      - bonus_feature could not be resolved (None)
+      - no cycles observed
+      - no completed cycles (resets yes, but sample too small)
+      - resolved feature has zero observed win
+
+    Previously hardcoded to "NewFreespin"; that worked for ~13 of 33
+    BCM machines and silently under-reported RTP on the other 20.
+    """
+    if bonus_feature is None:
+        return None
+    if not cycle_peaks or total_paid_bet <= 0:
+        return None
+    cycle_len = int(sorted(cycle_peaks)[len(cycle_peaks) // 2])
+    if cycle_len <= 0:
+        return None
+    bonus_total_win = sum(
+        float(e.get("win", 0.0))
+        for e in (feature_tally.get(bonus_feature) or {}).values()
+    )
+    if completed_cycles <= 0 or bonus_total_win <= 0:
+        return None
+    avg_bonus_payout = bonus_total_win / completed_cycles
+    total_lost = 0.0
+    for fcc in final_cc_values:
+        progress = min(fcc / cycle_len, 1.0)
+        if progress < 1.0:
+            total_lost += progress * avg_bonus_payout
+    return (total_lost / total_paid_bet) * 100.0
+
+
+# Backwards-compat alias for any external caller still using the old
+# name. New code should use `_compute_bonus_correction` and pass the
+# resolved feature explicitly.
 def _compute_nf_correction(
     cycle_peaks: list[int],
     final_cc_values: list[int],
@@ -847,36 +1030,10 @@ def _compute_nf_correction(
     completed_cycles: int,
     total_paid_bet: float,
 ) -> float | None:
-    """Estimate the RTP correction (in pp) from truncated NewFreespin cycles.
-
-    Each robot that ends mid-cycle (final_cc < cycle_length) has lost a
-    fraction of the expected NewFreespin payout. The correction is:
-        sum across robots of (progress_fraction × avg_nf_payout)
-        / total_paid_bet × 100
-
-    Returns None when insufficient data (no cycles detected or no
-    NewFreespin payout data).
-    """
-    if not cycle_peaks or total_paid_bet <= 0:
-        return None
-    cycle_len = int(sorted(cycle_peaks)[len(cycle_peaks) // 2])
-    if cycle_len <= 0:
-        return None
-    # NewFreespin total payout from upstream feature tally.
-    nf_total_win = sum(
-        float(e.get("win", 0.0))
-        for e in feature_tally.get("NewFreespin", {}).values()
+    return _compute_bonus_correction(
+        "NewFreespin", cycle_peaks, final_cc_values,
+        feature_tally, completed_cycles, total_paid_bet,
     )
-    if completed_cycles <= 0 or nf_total_win <= 0:
-        return None
-    avg_nf_payout = nf_total_win / completed_cycles
-    # For each robot's final CC, compute progress fraction and lost payout.
-    total_lost = 0.0
-    for fcc in final_cc_values:
-        progress = min(fcc / cycle_len, 1.0)
-        if progress < 1.0:
-            total_lost += progress * avg_nf_payout
-    return (total_lost / total_paid_bet) * 100.0
 
 
 def parse_rln_codes(rln: Any) -> list[str]:
@@ -4344,17 +4501,24 @@ def main() -> int:
                     collect_robots_seen_total > 0 and clamp_pending_robots_total > 0
                 ) else None,
             },
-            # NewFreespin truncation correction. When the BuffCollectionMap
-            # cycle doesn't complete (chunk ends mid-cycle), the forced
-            # bonus that fires at cycle completion is missing from the
-            # sample. Unlike clamp_warning (which just warns), this block
-            # estimates the lost RTP based on:
-            #   - detected cycle length (median of observed CC peaks
-            #     across all robot resets — varies per machine/mode)
-            #   - average NewFreespin payout (from upstream_feature_tally)
+            # BCM cycle-bonus RTP correction. When the
+            # BuffCollectionMap cycle doesn't complete (chunk ends
+            # mid-cycle), the bonus that fires at cycle completion is
+            # missing from the sample. This block estimates the lost
+            # RTP based on:
+            #   - detected cycle length (median of observed CC peaks)
+            #   - average payout of the machine's bonus feature (resolved
+            #     per-machine via configs/bcm_pairings.json → heuristic
+            #     fallback; see _resolve_bonus_feature)
             #   - each robot's final CC as fraction of cycle length
-            "newfreespin_correction": (lambda: {
+            #
+            # Previously hardcoded to "NewFreespin" — worked for ~13/33
+            # BCM machines, silently under-reported the rest. Now
+            # self-resolving with operator-override.
+            "bonus_cycle_correction": (lambda: (lambda bonus_feat, bonus_src: {
                 "applicable": len(all_cycle_peaks) > 0,
+                "bonus_feature": bonus_feat,
+                "bonus_feature_source": bonus_src,
                 "detected_cycle_length": (
                     int(sorted(all_cycle_peaks)[len(all_cycle_peaks)//2])
                     if all_cycle_peaks else None
@@ -4364,32 +4528,46 @@ def main() -> int:
                     1 for fcc in all_final_cc_values
                     if all_cycle_peaks and fcc < sorted(all_cycle_peaks)[len(all_cycle_peaks)//2]
                 ),
-                "avg_newfreespin_payout": (
-                    (lambda nf_total, nf_cycles: nf_total / nf_cycles if nf_cycles > 0 else None)(
+                "avg_bonus_payout": (
+                    (lambda bonus_total, cyc: bonus_total / cyc if cyc > 0 else None)(
                         sum(
                             float(e.get("win", 0.0))
-                            for e in upstream_feature_tally.get("NewFreespin", {}).values()
-                        ),
+                            for e in (upstream_feature_tally.get(bonus_feat) or {}).values()
+                        ) if bonus_feat else 0.0,
                         total_completed_cycles,
                     )
                 ),
-                "estimated_correction_pp": (
-                    (lambda: (
-                        _compute_nf_correction(
-                            all_cycle_peaks, all_final_cc_values,
-                            upstream_feature_tally, total_completed_cycles,
-                            effective_bet_for_rtp,
-                        )
-                    ))()
+                "estimated_correction_pp": _compute_bonus_correction(
+                    bonus_feat,
+                    all_cycle_peaks, all_final_cc_values,
+                    upstream_feature_tally, total_completed_cycles,
+                    effective_bet_for_rtp,
                 ),
-            })(),
-            # Feature-match warning — see collect_feature_match_warning().
-            # Alarms when a collect cycle is detected but "NewFreespin"
-            # isn't in the upstream_feature_tally, i.e. the correction
-            # above is silently falling through to 0pp on a machine
-            # whose bonus feature is named something else.
+            })(*_resolve_bonus_feature(
+                args.machine, upstream_feature_tally, _load_bcm_pairings()
+            )))(),
+            # Feature-match block — now driven by the resolved feature
+            # instead of a hardcoded check. Warning only fires when a
+            # cycle was observed AND neither config nor heuristic
+            # could identify a bonus feature (the worst case where RTP
+            # correction falls through to 0pp).
             "feature_match": collect_feature_match_warning(
-                all_cycle_peaks, upstream_feature_tally
+                all_cycle_peaks,
+                upstream_feature_tally,
+                *_resolve_bonus_feature(
+                    args.machine, upstream_feature_tally, _load_bcm_pairings()
+                ),
+            ),
+            # Cycle-observation block: distinguishes "no collect mechanic"
+            # from "collect mechanic but cache too short to capture a
+            # reset" (M272-style: all robots stopped at CC=1000
+            # boundary). Without this, both cases look identical in the
+            # summary and operator can't tell if RTP correction is
+            # missing or genuinely inapplicable.
+            "cycle_observation": build_cycle_observation(
+                collect_robots_seen_total,
+                all_cycle_peaks,
+                all_final_cc_values,
             ),
         },
         "guideline_assessment": {
@@ -4456,6 +4634,14 @@ def main() -> int:
 
     guideline_comparison = evaluate_guideline_comparison(summary, args.guideline_rules)
     summary["guideline_comparison"] = guideline_comparison
+
+    # Backward-compat alias: keep `newfreespin_correction` pointing at
+    # the same dict as `bonus_cycle_correction` so any report-reader
+    # still expecting the legacy key keeps working. New code should
+    # read `bonus_cycle_correction` directly.
+    cm = summary.get("collect_mechanic") or {}
+    if "bonus_cycle_correction" in cm and "newfreespin_correction" not in cm:
+        cm["newfreespin_correction"] = cm["bonus_cycle_correction"]
 
     out_json = args.output_dir / "player_impact_summary.json"
     out_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

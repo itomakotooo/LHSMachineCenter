@@ -197,17 +197,53 @@ def test_feature_breakdown_and_bonus_chain(run_full_pipeline):
 
 def test_collect_feature_match_block_present_no_warning(run_full_pipeline):
     """feature_match must always be in the collect_mechanic summary so
-    the UI can check it; warning=None on machines where either no
-    cycle was observed (fixture is only 400 spins, cycle_len=1000 so
-    no full cycle) OR NewFreespin is properly in the tally. Either
-    way, no warning — the only time we warn is cycles-observed AND
-    no-NewFreespin, which shouldn't happen on M272."""
+    the UI can check it; warning=None on M272 (cycle-bonus feature
+    resolvable). The block now reports the RESOLVED feature + source
+    (config/heuristic/none) instead of a hardcoded NewFreespin check.
+    """
     fm = run_full_pipeline["collect_mechanic"].get("feature_match")
     assert fm is not None, "feature_match block must be present in summary"
-    assert "warning" in fm, "warning key must always be there (even when None)"
+    for k in ("applicable", "known_features", "bonus_feature",
+              "bonus_feature_source", "warning"):
+        assert k in fm, f"feature_match missing key: {k}"
     assert fm["warning"] is None, (
         f"M272 fixture must not trigger warning; got: {fm.get('warning')!r}"
     )
-    # Structural keys all present.
-    for k in ("applicable", "known_features", "has_newfreespin", "warning"):
-        assert k in fm, f"feature_match missing key: {k}"
+
+
+def test_collect_bonus_cycle_correction_block_shape(run_full_pipeline):
+    """The RTP-correction block used to be `newfreespin_correction` with
+    a hardcoded feature name. It's now `bonus_cycle_correction` with
+    an explicit resolved feature + source (config / heuristic / none).
+    The old key is kept as an alias for backward compat."""
+    cm = run_full_pipeline["collect_mechanic"]
+    assert "bonus_cycle_correction" in cm
+    bcc = cm["bonus_cycle_correction"]
+    for k in ("applicable", "bonus_feature", "bonus_feature_source",
+              "detected_cycle_length", "completed_cycles_total",
+              "avg_bonus_payout", "estimated_correction_pp"):
+        assert k in bcc, f"bonus_cycle_correction missing key: {k}"
+    # Legacy alias still carries the same payload (JSON round-trip
+    # loses object identity, so compare by value, not by `is`).
+    assert cm.get("newfreespin_correction") == bcc, (
+        "newfreespin_correction must alias to bonus_cycle_correction for "
+        "backward compat"
+    )
+
+
+def test_cycle_observation_block_present(run_full_pipeline):
+    """New Phase 3D block: distinguishes 'no collect mechanic' from
+    'collect mechanic but cache too short to see a reset'. On M272
+    fixture (50 spin times × 8 robots = 400 rounds, cycle_len ~1000)
+    the mechanic is detected but no reset fires — so the warning
+    surfaces with a cycle_len_lower_bound hint."""
+    co = run_full_pipeline["collect_mechanic"].get("cycle_observation")
+    assert co is not None, "cycle_observation block must be in summary"
+    assert co["mechanic_detected"] is True, (
+        "M272 must report mechanic_detected=True (has CollectCount)"
+    )
+    # On the fixture, sample ends at cycle boundary without a reset.
+    # If that ever changes (larger fixture), the test can be loosened.
+    if co["reset_observed"] is False:
+        assert co["warning"] is not None
+        assert co["cycle_len_lower_bound"] is not None

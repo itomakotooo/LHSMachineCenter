@@ -1,0 +1,204 @@
+{
+  "_generated_by": "scripts/infer_bcm_pairing.py",
+  "_mode": 1,
+  "machines": {
+    "M227": {
+      "bonus_feature": "LockReSpin",
+      "confidence": "high",
+      "heuristic_pair": "LockReSpin",
+      "spintype_pair": "LockReSpin"
+    },
+    "M233": {
+      "bonus_feature": "LockReSpin",
+      "confidence": "high",
+      "heuristic_pair": "LockReSpin",
+      "spintype_pair": "LockReSpin"
+    },
+    "M237": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M239": {
+      "bonus_feature": "LockSymbolFreespin",
+      "confidence": "high",
+      "heuristic_pair": "LockSymbolFreespin",
+      "spintype_pair": "LockSymbolFreespin"
+    },
+    "M242": {
+      "bonus_feature": "UntilWinRespin",
+      "confidence": "high",
+      "heuristic_pair": "UntilWinRespin",
+      "spintype_pair": "UntilWinRespin"
+    },
+    "M246": {
+      "bonus_feature": "Wheel",
+      "confidence": "high",
+      "heuristic_pair": "Wheel",
+      "spintype_pair": "Wheel"
+    },
+    "M247": {
+      "bonus_feature": "PreWheel",
+      "confidence": "high",
+      "heuristic_pair": "PreWheel",
+      "spintype_pair": "PreWheel"
+    },
+    "M248": {
+      "bonus_feature": "LockReSpin",
+      "confidence": "high",
+      "heuristic_pair": "LockReSpin",
+      "spintype_pair": "LockReSpin"
+    },
+    "M249": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M250": {
+      "bonus_feature": "Wheel",
+      "confidence": "high",
+      "heuristic_pair": "Wheel",
+      "spintype_pair": "Wheel"
+    },
+    "M251": {
+      "bonus_feature": "MultiBuffFreespin",
+      "confidence": "high",
+      "heuristic_pair": "MultiBuffFreespin",
+      "spintype_pair": "MultiBuffFreespin"
+    },
+    "M252": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M253": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M254": {
+      "bonus_feature": "MultiBuffFreespin",
+      "confidence": "high",
+      "heuristic_pair": "MultiBuffFreespin",
+      "spintype_pair": "MultiBuffFreespin"
+    },
+    "M256": {
+      "bonus_feature": "MoveSpin",
+      "confidence": "high",
+      "heuristic_pair": "MoveSpin",
+      "spintype_pair": "MoveSpin"
+    },
+    "M257": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M260": {
+      "bonus_feature": "HalloweenReelCollectionFreespin",
+      "confidence": "high",
+      "heuristic_pair": "HalloweenReelCollectionFreespin",
+      "spintype_pair": "HalloweenReelCollectionFreespin"
+    },
+    "M261": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M263": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M264": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M265": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M266": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M267": {
+      "bonus_feature": "Wheel",
+      "confidence": "high",
+      "heuristic_pair": "Wheel",
+      "spintype_pair": "Wheel"
+    },
+    "M268": {
+      "bonus_feature": "CreditsSymbolRespin",
+      "confidence": "high",
+      "heuristic_pair": "CreditsSymbolRespin",
+      "spintype_pair": "CreditsSymbolRespin"
+    },
+    "M269": {
+      "bonus_feature": "UntilLoseRespin",
+      "confidence": "high",
+      "heuristic_pair": "UntilLoseRespin",
+      "spintype_pair": "UntilLoseRespin"
+    },
+    "M270": {
+      "bonus_feature": "Wheel",
+      "confidence": "high",
+      "heuristic_pair": "Wheel",
+      "spintype_pair": "Wheel"
+    },
+    "M271": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M272": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M273": {
+      "bonus_feature": "LockSymbolFreespin",
+      "confidence": "high",
+      "heuristic_pair": "LockSymbolFreespin",
+      "spintype_pair": "LockSymbolFreespin"
+    },
+    "M274": {
+      "bonus_feature": "ListRewardWheel",
+      "confidence": "high",
+      "heuristic_pair": "ListRewardWheel",
+      "spintype_pair": "ListRewardWheel"
+    },
+    "M275": {
+      "bonus_feature": "NewFreespin",
+      "confidence": "high",
+      "heuristic_pair": "NewFreespin",
+      "spintype_pair": "NewFreespin"
+    },
+    "M277": {
+      "bonus_feature": "LockReSpin",
+      "confidence": "high",
+      "heuristic_pair": "LockReSpin",
+      "spintype_pair": "LockReSpin"
+    },
+    "M279": {
+      "bonus_feature": "MoveSpin",
+      "confidence": "high",
+      "heuristic_pair": "MoveSpin",
+      "spintype_pair": "MoveSpin"
+    }
+  }
+}

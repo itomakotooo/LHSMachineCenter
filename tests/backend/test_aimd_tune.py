@@ -159,67 +159,8 @@ class TestAimdRoundTrip:
         assert pause is False
 
 
-# ---------- collect_feature_match_warning ----------
-
-from fresh_slotlab.player_impact_analyzer import collect_feature_match_warning
-
-
-class TestCollectFeatureMatchWarning:
-    """Guards the RTP under-reporting failure mode where the analyzer
-    detects collect-mechanic cycles (CC resets from BuffCollectionMap)
-    but the cycle bonus on that machine isn't named 'NewFreespin' in
-    upstream_feature_tally. Current newfreespin_correction hardcodes
-    that feature name; without this warning, another machine's 0pp
-    correction would silently under-report true RTP."""
-
-    def test_no_cycles_no_warning(self):
-        # M14 baseline: no collect mechanic, no cycles, warning absent.
-        out = collect_feature_match_warning(cycle_peaks=[], upstream_feature_tally={})
-        assert out["applicable"] is False
-        assert out["warning"] is None
-        assert out["has_newfreespin"] is False
-
-    def test_cycles_plus_newfreespin_no_warning(self):
-        # M272 baseline: collect cycle detected + NewFreespin in tally
-        # → correction applies, no warning needed.
-        out = collect_feature_match_warning(
-            cycle_peaks=[1000, 1000, 1000],
-            upstream_feature_tally={"NewFreespin": {"1": {"win": 500, "times": 10}}},
-        )
-        assert out["applicable"] is True
-        assert out["has_newfreespin"] is True
-        assert out["warning"] is None
-
-    def test_cycles_but_no_newfreespin_raises_warning(self):
-        # Hypothetical machine with a different bonus feature name.
-        # Warning must surface so operator can investigate.
-        out = collect_feature_match_warning(
-            cycle_peaks=[1000, 999, 1001],
-            upstream_feature_tally={
-                "NormalCollectionSpin": {"1": {"win": 800, "times": 5}},
-                "SomethingElse": {"2": {"win": 100, "times": 20}},
-            },
-        )
-        assert out["applicable"] is True
-        assert out["has_newfreespin"] is False
-        assert out["warning"] is not None, (
-            "cycles without NewFreespin must produce a warning"
-        )
-        assert "NewFreespin" in out["warning"], "warning must name the hardcoded feature"
-        assert "NormalCollectionSpin" in out["warning"], (
-            "warning must list features actually seen so operator can correlate"
-        )
-        assert "SomethingElse" in out["warning"]
-
-    def test_tolerates_none_tally(self):
-        out = collect_feature_match_warning([1000], None)
-        assert out["applicable"] is True
-        assert out["warning"] is not None  # cycles seen, no feature data at all
-        assert out["known_features"] == []
-
-    def test_known_features_alphabetically_sorted(self):
-        out = collect_feature_match_warning(
-            cycle_peaks=[],
-            upstream_feature_tally={"Zeta": {}, "Alpha": {}, "NewFreespin": {}},
-        )
-        assert out["known_features"] == ["Alpha", "NewFreespin", "Zeta"]
+# NOTE: collect_feature_match_warning coverage moved to
+# test_bcm_resolver.py when the signature was reworked to take the
+# resolved feature + source from _resolve_bonus_feature. The older
+# tests here (which tested a hardcoded NewFreespin check) are
+# superseded — the newer logic is strictly more robust.
