@@ -4,10 +4,20 @@ This file tracks executable next steps for the current phase.
 
 ## P0 (must complete first)
 
-- [ ] Multi-server implementation: user will provide test/prod server addresses.
-  Infra is ready (`configs/servers.json` CRUD, `/api/servers/compare` MD5 diff,
-  analyzer `--endpoint-url`). Pending: per-server report directory isolation,
-  actual test-server smoke run.
+- [ ] **CI 算法重写 (session-level)**: 当前基于 chunk RTP 方差，精度粗 + 单 chunk
+  无法算 CI。analyzer 已追踪 session_ret_sum/sq_sum，直接用这些算 CI。
+  收益：dev 报告也能有 CI；精度显著提高。
+
+- [ ] **Badge 4 态**: 卡片 ✓/⚠/? 三态不够。要加 🟡"MD5 match but low precision"
+  区分高精度 report 和 fuzzy dev 样本。
+
+- [ ] **性能 + 健壮性**（user 明确的下 session 主题）：
+  - Report gen subprocess pool 常驻（17min → 5min）
+  - 错误分级（告别 except Exception: pass）
+  - 数据一致性（chunk 写 atomic, import DB+file 事务）
+  - Import 先写 DB 占位再拷文件，失败回滚
+
+- [ ] Multi-server 实测: 基础设施就绪，等用户提供 test/prod 地址。
 
 - [ ] Consider CI integration when remote build is needed.
   For now the baseline is local-only (`scripts\lint.ps1` + `scripts\test.ps1 -E2E`).
