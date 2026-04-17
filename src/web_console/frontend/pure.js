@@ -1360,8 +1360,14 @@ function formatChunkEventText(ev) {
   if (!ev || !ev.event) return "";
   const fInt_ = (x) => (x == null ? "—" : Number(x).toLocaleString());
   if (ev.event === "chunk_progress") {
-    const rtp = ev.current_rtp_pct != null
-      ? Number(ev.current_rtp_pct).toFixed(2) + "%" : "—";
+    // Prefer session_rtp_pct (paid-session denominator, matches final
+    // summary's rtp.point_pct). Fall back to current_rtp_pct (spin-
+    // level, under-reports on collect-mechanic machines) for events
+    // from pre-2026-04-17 analyzer builds that didn't emit the new
+    // field. On M14 the two are identical; on M272/M273 they diverge.
+    const rtpVal = ev.session_rtp_pct != null
+      ? ev.session_rtp_pct : ev.current_rtp_pct;
+    const rtp = rtpVal != null ? Number(rtpVal).toFixed(2) + "%" : "—";
     const hwRaw = ev.current_halfwidth_pp != null
       ? ev.current_halfwidth_pp : ev.halfwidth_pp;
     const hw = hwRaw != null ? "±" + Number(hwRaw).toFixed(3) + "pp" : "";

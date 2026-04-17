@@ -3119,6 +3119,20 @@ def main() -> int:
                 achieved_halfwidth_pp = hw
 
             current_rtp_pct = (total_win / total_bet) * 100.0 if total_bet > 0 else 0.0
+            # Session-level RTP mirrors the final summary's rtp.point_pct
+            # (total_win / session_bet_sum). Paid-session denominator
+            # excludes bonus-round BetAmount which is counted in total_bet
+            # but which the player didn't actually pay. On collect-mechanic
+            # machines (M272/M273 class) the two can diverge by 30-50%;
+            # live UI previously showed the spin-level number which
+            # under-reported RTP by a lot — user hit this on M273 (log
+            # said 83%, final said 92%+). Emit both so the UI can show
+            # the semantically-correct value.
+            session_bet_sum_live = sum(session_bucket_bet.values())
+            session_rtp_pct = (
+                (total_session_win_sum / session_bet_sum_live) * 100.0
+                if session_bet_sum_live > 0 else None
+            )
             # Session-level CI: authoritative, matches the final-report
             # computation. Progress events now expose this so the UI's
             # CI gauge reflects the value the stop condition compares.
@@ -3135,6 +3149,7 @@ def main() -> int:
                     "chunk_index": chunks,
                     "total_spins": total_spins,
                     "current_rtp_pct": current_rtp_pct,
+                    "session_rtp_pct": session_rtp_pct,
                     "current_halfwidth_pp": (
                         session_ci_now if session_ci_now is not None else achieved_halfwidth_pp
                     ),

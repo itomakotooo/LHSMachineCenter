@@ -1156,6 +1156,45 @@ test("formatChunkEventText: chunk_progress includes spins + RTP + CI", () => {
   assert.ok(t.includes("±0.630pp"));
 });
 
+test("formatChunkEventText: chunk_progress prefers session_rtp_pct when present", () => {
+  // Paid-session RTP (session_rtp_pct=95.43) and spin-level RTP
+  // (current_rtp_pct=83.11) diverge on collect-mechanic machines.
+  // UI must show the session-level number to match the final summary.
+  const t = PURE.formatChunkEventText({
+    event: "chunk_progress", chunk_index: 3,
+    total_spins: 300000,
+    current_rtp_pct: 83.11, session_rtp_pct: 95.43,
+    current_halfwidth_pp: 0.5,
+  });
+  assert.ok(t.includes("95.43%"), `session_rtp_pct should win; got: ${t}`);
+  assert.ok(!t.includes("83.11%"), `current_rtp_pct must not leak; got: ${t}`);
+});
+
+test("formatChunkEventText: chunk_progress falls back to current_rtp_pct on legacy events", () => {
+  // Pre-2026-04-17 analyzer builds don't emit session_rtp_pct; the
+  // UI must still render those events (the same progress.jsonl files
+  // are re-consumed by rebuild_rawdata_index + offline analysis).
+  const t = PURE.formatChunkEventText({
+    event: "chunk_progress", chunk_index: 1,
+    total_spins: 100000, current_rtp_pct: 92.0,
+  });
+  assert.ok(t.includes("92.00%"), `should fall back to current_rtp_pct; got: ${t}`);
+});
+
+test("formatChunkEventText: chunk_progress with session_rtp_pct=null falls back", () => {
+  // session_rtp_pct is null when session_bet_sum==0 (no paid sessions
+  // have completed yet in the run — should be rare but can happen in
+  // the first chunk of a bonus-heavy machine before the first paid
+  // session closes). Fall back to current_rtp_pct rather than showing
+  // a literal "null".
+  const t = PURE.formatChunkEventText({
+    event: "chunk_progress", chunk_index: 1,
+    total_spins: 50000,
+    session_rtp_pct: null, current_rtp_pct: 80.0,
+  });
+  assert.ok(t.includes("80.00%"), `null session_rtp_pct should fall back; got: ${t}`);
+});
+
 test("formatChunkEventText: chunk_failed uses ✗ + cumulative counter", () => {
   const t = PURE.formatChunkEventText({
     event: "chunk_failed", chunk_index: 12,

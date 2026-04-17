@@ -138,3 +138,33 @@ def test_fetching_chunk_carries_indices(progress_events):
     ev = next(e for e in progress_events if e.get("event") == "fetching_chunk")
     assert isinstance(ev.get("chunk_index"), int) and ev["chunk_index"] >= 1
     assert isinstance(ev.get("batch_size"), int) and ev["batch_size"] >= 1
+
+
+def test_chunk_progress_emits_session_rtp_pct(progress_events):
+    """chunk_progress events must now carry session_rtp_pct alongside
+    current_rtp_pct. The final summary's rtp.point_pct uses
+    session_bet_sum as the denominator (paid sessions only); the live
+    current_rtp_pct used total_bet (includes bonus BetAmount) which
+    under-reports RTP on collect-mechanic machines by 30-50%. User
+    reported chunk log showed RTP=83% but final report showed 92%+
+    on M273 (a collect-mechanic machine). Adding session_rtp_pct to
+    the event keeps the live display semantically aligned with the
+    final report."""
+    progress = [e for e in progress_events if e.get("event") == "chunk_progress"]
+    assert progress, "no chunk_progress events found on fixture run"
+    for ev in progress:
+        assert "session_rtp_pct" in ev, (
+            f"chunk_progress must carry session_rtp_pct (paid-session "
+            f"denominator RTP); event keys: {sorted(ev.keys())!r}"
+        )
+    # For M14 (no bonus rounds, all paid sessions), session_rtp and
+    # current_rtp should match within rounding. If they diverge on M14
+    # something's wrong in the session-accounting.
+    ev = progress[-1]
+    if ev.get("current_rtp_pct") is not None and ev.get("session_rtp_pct") is not None:
+        delta = abs(ev["current_rtp_pct"] - ev["session_rtp_pct"])
+        assert delta < 0.5, (
+            f"on M14 (no bonus), session_rtp {ev['session_rtp_pct']} and "
+            f"current_rtp {ev['current_rtp_pct']} must agree within 0.5pp; "
+            f"delta={delta}"
+        )
