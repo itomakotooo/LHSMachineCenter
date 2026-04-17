@@ -2788,6 +2788,26 @@ def main() -> int:
     rtp_point_pct = (
         (total_win / effective_bet_for_rtp) * 100.0 if effective_bet_for_rtp > 0 else 0.0
     )
+
+    # Session-level CI on RTP: t × SE of per-session ret_x mean, in pp.
+    # Works on single-chunk runs (dev `--from-cache`) where chunk-level
+    # CI is undefined (needs N ≥ 2 chunks). N here is session count —
+    # typically 10k+, so CI is both valid and tighter than chunk-level.
+    # Keeps chunk-level value as diagnostic fallback.
+    chunk_level_halfwidth_pp = achieved_halfwidth_pp
+    session_level_halfwidth_pp: float | None = None
+    if total_session_ret_count > 1:
+        _var_ret_x = (
+            total_session_ret_sq_sum
+            - (total_session_ret_sum * total_session_ret_sum / total_session_ret_count)
+        ) / (total_session_ret_count - 1)
+        if _var_ret_x > 0:
+            _se_mean = math.sqrt(_var_ret_x / total_session_ret_count)
+            _t = t_critical_95(total_session_ret_count - 1)
+            session_level_halfwidth_pp = _t * _se_mean * 100.0
+    if session_level_halfwidth_pp is not None:
+        achieved_halfwidth_pp = session_level_halfwidth_pp
+
     ci_interval = None
     if achieved_halfwidth_pp is not None:
         ci_interval = [rtp_point_pct - achieved_halfwidth_pp, rtp_point_pct + achieved_halfwidth_pp]
@@ -3422,6 +3442,8 @@ def main() -> int:
         "sampling": {
             "target_halfwidth_pp": args.target_halfwidth_pp,
             "achieved_halfwidth_pp": achieved_halfwidth_pp,
+            "chunk_level_halfwidth_pp": chunk_level_halfwidth_pp,
+            "session_level_halfwidth_pp": session_level_halfwidth_pp,
             "chunk_spin_times": args.chunk_spin_times,
             "chunk_robot_count": args.chunk_robot_count,
             "batch_concurrency": args.batch_concurrency,
@@ -3805,6 +3827,8 @@ def main() -> int:
         f"- chunks: {chunks}",
         f"- target_halfwidth_pp: {args.target_halfwidth_pp}",
         f"- achieved_halfwidth_pp: {achieved_halfwidth_pp}",
+        f"- chunk_level_halfwidth_pp: {chunk_level_halfwidth_pp}",
+        f"- session_level_halfwidth_pp: {session_level_halfwidth_pp}",
         f"- stop_reason: {stop_reason}",
         f"- duration_seconds: {duration_seconds}",
         "",
