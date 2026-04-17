@@ -12,14 +12,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import contextlib
 import io
 import json
 import multiprocessing as mp
-import os
 import re
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -133,94 +130,6 @@ def find_machine_chunks(rawdata_dir: Path) -> list[tuple[str, int, Path]]:
     return results
 
 
-def run_report(
-    machine: str,
-    mode: int,
-    chunk_dir: Path,
-    reports_root: Path,
-    force: bool = False,
-) -> dict:
-    """Run analyzer --from-cache for one machine-mode."""
-    from datetime import datetime, timezone
-
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    # Read chunk to get a run-id-like hash
-    chunk_file = next(chunk_dir.glob("chunk_*.json"), None)
-    if not chunk_file:
-        return {"machine": machine, "mode": mode, "ok": False, "error": "no_chunk"}
-
-    raw = json.loads(chunk_file.read_text(encoding="utf-8"))
-    bet = int(raw.get("_bet", 1000) or 1000)
-
-    report_version = f"rv_{ts}_devcache"
-    output_dir = reports_root / machine / f"mode_{mode}" / "versions" / report_version
-
-    # Skip if a report already exists for this machine-mode (unless --force).
-    if not force:
-        existing_versions = reports_root / machine / f"mode_{mode}" / "versions"
-        if existing_versions.is_dir():
-            existing = [d for d in existing_versions.iterdir() if d.is_dir() and (d / "player_impact_summary.json").exists()]
-            if existing:
-                return {"machine": machine, "mode": mode, "ok": True, "skipped": True}
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    cmd = [
-        sys.executable,
-        str(ANALYZER),
-        "--machine", machine,
-        "--rtp-mode", str(mode),
-        "--bet", str(bet),
-        "--from-cache", str(chunk_dir),
-        "--output-dir", str(output_dir),
-        "--max-chunks", "999",
-    ]
-
-    t0 = time.time()
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        elapsed = time.time() - t0
-        if result.returncode != 0:
-            # Clean up empty dir on failure
-            try:
-                output_dir.rmdir()
-            except OSError:
-                pass
-            return {
-                "machine": machine,
-                "mode": mode,
-                "ok": False,
-                "error": result.stderr[:200] if result.stderr else f"exit_{result.returncode}",
-                "elapsed_s": round(elapsed, 1),
-            }
-        # Verify summary file was created
-        summary_file = output_dir / "player_impact_summary.json"
-        if not summary_file.exists():
-            return {
-                "machine": machine,
-                "mode": mode,
-                "ok": False,
-                "error": "no_summary_generated",
-                "elapsed_s": round(elapsed, 1),
-            }
-        return {
-            "machine": machine,
-            "mode": mode,
-            "ok": True,
-            "skipped": False,
-            "elapsed_s": round(elapsed, 1),
-        }
-    except subprocess.TimeoutExpired:
-        return {"machine": machine, "mode": mode, "ok": False, "error": "timeout"}
-    except Exception as exc:
-        return {"machine": machine, "mode": mode, "ok": False, "error": str(exc)}
-
-
 def _build_pool_jobs(all_chunks, reports_root: Path, force: bool) -> list[dict]:
     """Pre-compute per-job context and filter out skipped jobs."""
     from datetime import datetime, timezone
@@ -266,8 +175,6 @@ def main() -> None:
                         help="Regenerate even if reports already exist")
     parser.add_argument("--rawdata-dir", type=Path, default=DEV_RAWDATA)
     parser.add_argument("--reports-root", type=Path, default=REPORTS_ROOT)
-    parser.add_argument("--subprocess", action="store_true",
-                        help="Use legacy subprocess-per-job path (slower; for debugging)")
     args = parser.parse_args()
 
     all_chunks = find_machine_chunks(args.rawdata_dir)
@@ -283,66 +190,44 @@ def main() -> None:
         print("No machine chunks found.")
         return
 
-    mode_label = "subprocess" if args.subprocess else "pool (in-process)"
     print(f"=== Batch Report Generator ===")
     print(f"Machines: {len(all_chunks)} machine-modes")
-    print(f"Concurrency: {args.concurrency} ({mode_label})")
+    print(f"Concurrency: {args.concurrency} (pool, in-process)")
     print()
 
     results = []
     t_start = time.time()
 
-    if args.subprocess:
-        # Legacy path: ThreadPoolExecutor + subprocess.run per job.
-        # Kept for comparison / debugging.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as tpool:
-            future_map = {
-                tpool.submit(run_report, m, mode, d, args.reports_root, args.force): (m, mode)
-                for m, mode, d in all_chunks
-            }
-            for future in concurrent.futures.as_completed(future_map):
-                m, mode = future_map[future]
-                try:
-                    r = future.result()
-                except Exception as exc:
-                    r = {"machine": m, "mode": mode, "ok": False, "error": str(exc)}
+    # multiprocessing.Pool with pre-imported analyzer: each worker calls
+    # analyzer.main() directly, bypassing subprocess + interpreter +
+    # import cost per job.
+    jobs = _build_pool_jobs(all_chunks, args.reports_root, args.force)
+    # Report skips upfront (no worker cost for these)
+    runnable = []
+    for j in jobs:
+        if j.get("_skip"):
+            r = {"machine": j["machine"], "mode": j["mode"], "ok": True, "skipped": True}
+            results.append(r)
+            print(f"  [SKIP] {j['machine']} mode {j['mode']}")
+        elif j.get("_skip_reason"):
+            r = {"machine": j["machine"], "mode": j["mode"], "ok": False,
+                 "error": j["_skip_reason"]}
+            results.append(r)
+            print(f"  [FAIL] {j['machine']} mode {j['mode']} — {j['_skip_reason']}")
+        else:
+            runnable.append(j)
+
+    if runnable:
+        # imap_unordered so results stream as they finish (progress
+        # feedback) rather than waiting for the whole batch.
+        with mp.Pool(processes=args.concurrency, initializer=_pool_worker_init) as pool:
+            for r in pool.imap_unordered(_run_in_pool_worker, runnable):
                 results.append(r)
-                status = "SKIP" if r.get("skipped") else ("OK" if r["ok"] else "FAIL")
-                detail = f" ({r['elapsed_s']}s)" if "elapsed_s" in r else ""
+                status = "OK" if r["ok"] else "FAIL"
+                detail = f" ({r.get('elapsed_s', '?')}s)"
                 if not r["ok"]:
                     detail = f" — {r.get('error', '?')}"
-                print(f"  [{status}] {m} mode {mode}{detail}")
-    else:
-        # Fast path: multiprocessing.Pool with pre-imported analyzer.
-        # Each worker calls analyzer.main() directly — saves the
-        # subprocess + interpreter + import cost per job.
-        jobs = _build_pool_jobs(all_chunks, args.reports_root, args.force)
-        # Report skips upfront (no worker cost for these)
-        runnable = []
-        for j in jobs:
-            if j.get("_skip"):
-                r = {"machine": j["machine"], "mode": j["mode"], "ok": True, "skipped": True}
-                results.append(r)
-                print(f"  [SKIP] {j['machine']} mode {j['mode']}")
-            elif j.get("_skip_reason"):
-                r = {"machine": j["machine"], "mode": j["mode"], "ok": False,
-                     "error": j["_skip_reason"]}
-                results.append(r)
-                print(f"  [FAIL] {j['machine']} mode {j['mode']} — {j['_skip_reason']}")
-            else:
-                runnable.append(j)
-
-        if runnable:
-            # imap_unordered so results stream as they finish (progress
-            # feedback) rather than waiting for the whole batch.
-            with mp.Pool(processes=args.concurrency, initializer=_pool_worker_init) as pool:
-                for r in pool.imap_unordered(_run_in_pool_worker, runnable):
-                    results.append(r)
-                    status = "OK" if r["ok"] else "FAIL"
-                    detail = f" ({r.get('elapsed_s', '?')}s)"
-                    if not r["ok"]:
-                        detail = f" — {r.get('error', '?')}"
-                    print(f"  [{status}] {r['machine']} mode {r['mode']}{detail}")
+                print(f"  [{status}] {r['machine']} mode {r['mode']}{detail}")
 
     total_time = time.time() - t_start
     ok = sum(1 for r in results if r["ok"])

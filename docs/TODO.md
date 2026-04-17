@@ -4,19 +4,6 @@ This file tracks executable next steps for the current phase.
 
 ## P0 (must complete first)
 
-- [ ] **CI 算法重写 (session-level)**: 当前基于 chunk RTP 方差，精度粗 + 单 chunk
-  无法算 CI。analyzer 已追踪 session_ret_sum/sq_sum，直接用这些算 CI。
-  收益：dev 报告也能有 CI；精度显著提高。
-
-- [ ] **Badge 4 态**: 卡片 ✓/⚠/? 三态不够。要加 🟡"MD5 match but low precision"
-  区分高精度 report 和 fuzzy dev 样本。
-
-- [ ] **性能 + 健壮性**（user 明确的下 session 主题）：
-  - Report gen subprocess pool 常驻（17min → 5min）
-  - 错误分级（告别 except Exception: pass）
-  - 数据一致性（chunk 写 atomic, import DB+file 事务）
-  - Import 先写 DB 占位再拷文件，失败回滚
-
 - [ ] Multi-server 实测: 基础设施就绪，等用户提供 test/prod 地址。
 
 - [ ] Consider CI integration when remote build is needed.
@@ -47,6 +34,38 @@ This file tracks executable next steps for the current phase.
 
 ## Done Recently
 
+- [x] **Structural hardening pass** (2026-04-17, 10+ commits):
+      - Chunk cache v3: `.tmp` + `os.replace` atomic write + `_payload_sha256`
+        with `load_chunk_envelope()` validation. `ChunkIntegrityError` surfaces
+        corruption as a readable error instead of JSONDecodeError. v2 envelopes
+        still load for backwards compat.
+      - Rawdata index: `dev_rawdata/_index.json` fast path for
+        `check_rawdata_status` — 18× speedup (65ms→3.5ms/call).
+        Self-healing on drift; `scripts/rebuild_rawdata_index.py` big-hammer.
+      - Import transactionality: 4-step commit
+        (read_summary → insert_run status=importing → copytree →
+        update_run status=completed). Any step fails → full rollback.
+        Response shape `{imported, skipped, failed, failures[]}`.
+      - Versions retention: `POST /api/maintenance/prune-versions` +
+        `scripts/prune_report_versions.py` (default keep=5). Syncs DB +
+        index.json + latest.json. Skips active (running/importing) runs.
+      - Sampler retry: exp-backoff (1s→2s→4s ×3) on 5xx / URLError /
+        TimeoutError. Non-retryable errors fail-fast.
+      - Batch regen: 17min → 54s for 1006 reports (bankruptcy probe
+        skipped on `--from-cache` since it hits live HTTP; + mp.Pool
+        with pre-imported analyzer worker).
+      - Session-level CI: `t × sqrt(Var(ret_x)/N) × 100`. Works on
+        single-chunk dev reports; stored as
+        `sampling.session_level_halfwidth_pp`. Zero-variance clamp.
+      - Badge 4-state: ✓ green (MD5 match + CI≤0.5pp) / 🟡 yellow
+        (MD5 match, CI > 0.5pp or null) / ⚠ red (MD5 outdated) /
+        ? gray (untagged).
+      - Error handling tiered: system-level raises, data-level logs +
+        continues, action-level logs visibly. Bare `except Exception:
+        pass` narrowed to specific types at 4 sites.
+      - E2E test: sample → chunk → analyzer → import → UI one-shot
+        covering the full happy path + chunk corruption detection.
+      - Tests: 166 → 244 passed (+78 over the session).
 - [x] **253-machine platform** (2026-04 build):
       auto-synced `configs/machines.json` from MachineConfigMd5,
       9-category auto-classification, raw-feature filter chips (multi-select OR),
