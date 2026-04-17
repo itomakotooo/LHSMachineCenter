@@ -50,6 +50,7 @@ const state = {
   servers: [],
   defaultServer: "",
   catalogViewMode: "category",  // "category" | "name" | "volatility" | "rtp" | "mechanic"
+  catalogFeatureFilter: new Set(),  // selected feature chips for "按玩法" view
   versionHistoryMachine: null,
   versionHistoryMode: null,
   compareSelected: new Set(),
@@ -418,22 +419,10 @@ function _groupMachines(machines, viewMode) {
 
   machines.forEach((m) => {
     let key;
-    if (viewMode === "name") {
+    if (viewMode === "name" || viewMode === "category") {
+      // "按玩法" view: filter chips drive the selection. Output is a single flat list.
+      // The filter itself is applied earlier (in renderMachineCatalog).
       key = "all";
-    } else if (viewMode === "category") {
-      // "按玩法" view: group by raw features (machines appear in each feature they have).
-      const features = _machineFeatures(m.machine);
-      if (!features.length) {
-        key = "未分类";
-      } else {
-        features.forEach((fn) => {
-          const groupKey = _featureIsSingleton(fn) ? "其他 (单机台独有)" : fn;
-          if (!groups[groupKey]) groups[groupKey] = [];
-          // Avoid duplicate insertion into "其他" group if machine has multiple singleton features.
-          if (!groups[groupKey].includes(m)) groups[groupKey].push(m);
-        });
-        return; // already added to groups; skip default path
-      }
     } else if (viewMode === "volatility") {
       const d = _machineData(m.machine);
       key = d?.volatility_class || "N/A";
@@ -479,18 +468,60 @@ const MECH_GROUP_COLORS = {
 };
 
 function _groupOrder(viewMode) {
-  if (viewMode === "category") {
-    // Feature-based: sort by machine count desc, "其他"/"未分类" at end.
-    const dist = (state.machinesSummary || {}).feature_distribution || {};
-    const multi = Object.entries(dist).filter(([, n]) => n >= 2)
-      .sort((a, b) => b[1] - a[1])
-      .map(([fn]) => fn);
-    return [...multi, "其他 (单机台独有)", "未分类"];
-  }
   if (viewMode === "volatility") return ["Low", "Medium", "High", "Very High", "N/A"];
   if (viewMode === "rtp") return ["< 90%", "90–95%", "95–100%", "100–200%", "200–400%", "> 400%", "N/A"];
   if (viewMode === "mechanic") return ["lock_lines", "lock_symbols", "lock_reels", "jackpot", "free_spin", "dollar_pick", "Normal"];
-  return ["all"];
+  return ["all"]; // name, category → flat
+}
+
+// Render feature filter chips for "按玩法" view.
+function renderCatalogFeatureChips() {
+  const wrap = byId("catalogFeatureChips");
+  if (!wrap) return;
+  if (state.catalogViewMode !== "category") {
+    wrap.innerHTML = "";
+    wrap.classList.add("hidden");
+    return;
+  }
+  wrap.classList.remove("hidden");
+
+  const dist = (state.machinesSummary || {}).feature_distribution || {};
+  const multi = Object.entries(dist)
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1]);
+  const singletons = Object.entries(dist).filter(([, n]) => n < 2);
+  const selected = state.catalogFeatureFilter;
+
+  const chips = multi.map(([fn, n]) => {
+    const active = selected.has(fn) ? "active" : "";
+    return `<button class="feature-chip ${active}" data-feature="${fn}">${fn} <span class="chip-count">${n}</span></button>`;
+  }).join("");
+
+  const otherActive = selected.has("__other__") ? "active" : "";
+  const otherChip = singletons.length
+    ? `<button class="feature-chip ${otherActive}" data-feature="__other__">其他 <span class="chip-count">${singletons.length}</span></button>`
+    : "";
+
+  const clearBtn = selected.size
+    ? `<button class="feature-chip-clear">${fmt("filterClear")} (${selected.size})</button>`
+    : "";
+
+  wrap.innerHTML = chips + otherChip + clearBtn;
+
+  wrap.querySelectorAll(".feature-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const fn = btn.dataset.feature;
+      if (selected.has(fn)) selected.delete(fn);
+      else selected.add(fn);
+      renderCatalogFeatureChips();
+      renderMachineCatalog();
+    });
+  });
+  wrap.querySelector(".feature-chip-clear")?.addEventListener("click", () => {
+    state.catalogFeatureFilter = new Set();
+    renderCatalogFeatureChips();
+    renderMachineCatalog();
+  });
 }
 
 function renderMachineCatalog() {
@@ -508,6 +539,19 @@ function renderMachineCatalog() {
       m.machine.toLowerCase().includes(query) ||
       (m.category || "").toLowerCase().includes(query)
     );
+  }
+  // Filter by feature chips (只在"按玩法" view 生效).
+  if (viewMode === "category" && state.catalogFeatureFilter.size > 0) {
+    const dist = (state.machinesSummary || {}).feature_distribution || {};
+    filtered = filtered.filter((m) => {
+      const features = _machineFeatures(m.machine);
+      if (state.catalogFeatureFilter.has("__other__")) {
+        // "其他" selected: match machines with any singleton feature.
+        if (features.some((f) => (dist[f] || 0) < 2)) return true;
+      }
+      // OR-semantics: machine matches if it has any selected feature.
+      return features.some((f) => state.catalogFeatureFilter.has(f));
+    });
   }
   if (!filtered.length) {
     wrap.textContent = query ? fmt("catalogNoMatch") : fmt("noMachines");
@@ -688,6 +732,64 @@ function showMachineDetail(machineName) {
 
 // ── Fleet Overview ────────────────────────────────────────────────
 
+function _computeFleetHeadlines() {
+  const sm = (state.machinesSummary || {}).machines || {};
+  const headlines = [];
+  const highRtp = [];    // RTP > 500%
+  const highCi = [];     // CI > 5pp
+  const zeroHit = [];    // zero_win_rate = 1.0 or impossible
+  const modeDiff = [];   // machines with >30pp RTP diff between modes
+
+  for (const [machine, modes] of Object.entries(sm)) {
+    const modeKeys = Object.keys(modes);
+    for (const d of Object.values(modes)) {
+      if (d.rtp_pct != null && d.rtp_pct > 500) highRtp.push({machine, rtp: d.rtp_pct});
+      if (d.ci_halfwidth_pp != null && d.ci_halfwidth_pp > 5) highCi.push({machine, ci: d.ci_halfwidth_pp});
+      if (d.zero_win_rate >= 0.999 && d.total_spins > 1000) zeroHit.push({machine});
+    }
+    // Multi-mode RTP divergence.
+    if (modeKeys.length >= 2) {
+      const rtps = modeKeys.map((k) => modes[k].rtp_pct).filter((r) => r != null);
+      if (rtps.length >= 2) {
+        const diff = Math.max(...rtps) - Math.min(...rtps);
+        if (diff > 30) modeDiff.push({machine, diff});
+      }
+    }
+  }
+
+  if (highRtp.length) {
+    const top = highRtp.sort((a, b) => b.rtp - a.rtp).slice(0, 5);
+    headlines.push({
+      level: "warn",
+      text: `${highRtp.length} 台机台 RTP > 500%（方差大，需更多采样）`,
+      detail: top.map((x) => `${x.machine}: ${x.rtp.toFixed(0)}%`).join(", "),
+    });
+  }
+  if (highCi.length) {
+    headlines.push({
+      level: "warn",
+      text: `${highCi.length} 台机台 CI > 5pp（数据质量低，建议加大采样）`,
+      detail: highCi.slice(0, 5).map((x) => `${x.machine}: ±${x.ci.toFixed(1)}`).join(", "),
+    });
+  }
+  if (zeroHit.length) {
+    headlines.push({
+      level: "danger",
+      text: `${zeroHit.length} 台机台 0% 命中率（疑似解析失败）`,
+      detail: zeroHit.slice(0, 5).map((x) => x.machine).join(", "),
+    });
+  }
+  if (modeDiff.length) {
+    const top = modeDiff.sort((a, b) => b.diff - a.diff).slice(0, 5);
+    headlines.push({
+      level: "info",
+      text: `${modeDiff.length} 台机台多 mode RTP 差异 > 30pp`,
+      detail: top.map((x) => `${x.machine}: ${x.diff.toFixed(0)}pp`).join(", "),
+    });
+  }
+  return headlines;
+}
+
 function renderFleetOverview() {
   const el = byId("fleetStats");
   if (!el) return;
@@ -702,13 +804,10 @@ function renderFleetOverview() {
     .map(([c, n]) => `<span class="fleet-cat-badge" style="background:${CATEGORY_COLORS[c] || '#9ca3af'}">${c} ${n}</span>`)
     .join(" ");
 
-  const mechDist = (state.machinesSummary || {}).mechanics_distribution || {};
-  const MECH_LABELS = { lock_lines: "Lock Lines", lock_symbols: "Lock Sym", jackpot: "Jackpot", free_spin: "FreeSpin", dollar_pick: "Dollar Pick" };
-  const mechBadges = Object.entries(mechDist)
-    .filter(([, n]) => n > 0)
-    .sort((a, b) => b[1] - a[1])
-    .map(([k, n]) => `<span class="fleet-mech-badge">${MECH_ICONS[k] || ""} ${MECH_LABELS[k] || k} ${n}</span>`)
-    .join(" ");
+  const headlines = _computeFleetHeadlines();
+  const headlineHtml = headlines.length
+    ? headlines.map((h) => `<div class="fleet-headline fleet-headline-${h.level}"><strong>⚠ ${h.text}</strong> <span class="muted">— ${h.detail}</span></div>`).join("")
+    : `<div class="fleet-headline fleet-headline-ok">✓ ${fmt("fleetAllHealthy")}</div>`;
 
   el.innerHTML = `
     <div class="fleet-summary-row">
@@ -716,7 +815,7 @@ function renderFleetOverview() {
       <a href="/api/fleet/export-csv" class="small-btn" download="fleet_summary.csv" style="margin-left:8px">${fmt("btnExportCsv")}</a>
     </div>
     <div class="fleet-categories">${catBadges}</div>
-    ${mechBadges ? `<div class="fleet-mechanics">${mechBadges}</div>` : ""}`;
+    <div class="fleet-headlines">${headlineHtml}</div>`;
 }
 
 // ── Batch Run UI ──────────────────────────────────────────────────
@@ -2316,6 +2415,7 @@ async function loadBootstrap() {
   fillBankMultOptions();
   fillProviders();
   fillModelsForProvider(byId("providerSelect").value, state.modelMeta.default_model || "");
+  renderCatalogFeatureChips();
   renderMachineCatalog();
   renderFleetOverview();
   await refreshServers();
@@ -2405,6 +2505,7 @@ function bindEvents() {
     if (!btn) return;
     state.catalogViewMode = btn.dataset.view;
     byId("catalogViewTabs").querySelectorAll(".view-tab").forEach((b) => b.classList.toggle("active", b === btn));
+    renderCatalogFeatureChips();
     renderMachineCatalog();
   });
   // Batch tab controls.
