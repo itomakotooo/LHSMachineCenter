@@ -158,22 +158,19 @@ class TestFaultToleranceThresholds:
 
     def test_thresholds_are_reasonable(self):
         import fresh_slotlab.player_impact_analyzer as analyzer
-        import inspect
-        # Grep the main() source for the sentinel constants.
-        src = inspect.getsource(analyzer.main)
-        # Expect both guards present.
-        assert "_MAX_CONSECUTIVE_FAILED_BATCHES" in src
-        assert "_MAX_CUMULATIVE_FAILED_CHUNKS" in src
-        # The constants get inlined as literals in the source; sanity
-        # check they're not <= 1 which would kill runs on any single
-        # failure (the original bug).
-        import re
-        m1 = re.search(r"_MAX_CONSECUTIVE_FAILED_BATCHES\s*=\s*(\d+)", src)
-        m2 = re.search(r"_MAX_CUMULATIVE_FAILED_CHUNKS\s*=\s*(\d+)", src)
-        assert m1 and int(m1.group(1)) >= 2, \
+        # Thresholds now live at module scope (promoted from main()
+        # locals in the 2026-04-17 retry hardening pass). Guard that
+        # they exist AND aren't set so tight that a single blip kills
+        # the run — original bug was main() locals 3/20 which paired
+        # with 3-attempt retries exhausted the window in ~10s.
+        assert hasattr(analyzer, "MAX_CONSECUTIVE_FAILED_BATCHES")
+        assert hasattr(analyzer, "MAX_CUMULATIVE_FAILED_CHUNKS")
+        assert analyzer.MAX_CONSECUTIVE_FAILED_BATCHES >= 2, (
             "consecutive-failed-batches threshold must tolerate >= 2 bad batches"
-        assert m2 and int(m2.group(1)) >= 5, \
+        )
+        assert analyzer.MAX_CUMULATIVE_FAILED_CHUNKS >= 5, (
             "cumulative-failed-chunks threshold must tolerate >= 5 total failures"
+        )
 
 
 class TestChunkEventsRetention:

@@ -211,20 +211,56 @@ def post_json(payload: dict[str, Any], timeout: float) -> Any:
 _RETRYABLE_HTTP_CODES = frozenset({500, 502, 503, 504})
 
 
+# Fault-tolerance thresholds for the sampling loop's bailout check.
+# Promoted from locals inside main() to module-level constants so:
+#   (a) tests can lock them without invoking main()
+#   (b) future per-run overrides (CLI flag) have a natural place to land
+#
+# Tuned 2026-04-17 after a user-reported M273 run bailed at
+# cumulative_failed_chunks=12 inside a 10-second upstream hiccup. The
+# original 3/20 thresholds paired with max_attempts=3 (3s total sleep)
+# produced a retry window of ~10s which matches real-world hiccup
+# duration — so we'd bail inside the hiccup instead of riding it out.
+# Bumped to 5/40; combined with the retry-window extension in
+# post_json_with_retry, a ~30s hiccup is now required to bail.
+MAX_CONSECUTIVE_FAILED_BATCHES = 5
+MAX_CUMULATIVE_FAILED_CHUNKS = 40
+
+
 def post_json_with_retry(
     payload: dict[str, Any],
     timeout: float,
-    max_attempts: int = 3,
+    max_attempts: int = 5,
     initial_backoff_s: float = 1.0,
+    max_backoff_s: float = 30.0,
 ) -> Any:
-    """Call post_json with exp-backoff on 5xx / URLError / TimeoutError.
+    """Call post_json with exp-backoff on transient network errors.
 
-    Backoff doubles each attempt (1s → 2s → 4s by default). Non-
-    retryable errors (e.g. 404) re-raise immediately. After
-    max_attempts, the last retryable error is re-raised so the caller's
-    existing error handling can report it.
+    Retryable classes:
+      * HTTPError with code in {500, 502, 503, 504}
+      * URLError (DNS / connection refused / etc.)
+      * TimeoutError / socket.timeout
+      * http.client.IncompleteRead (truncated body mid-stream —
+        typical of flaky proxies returning EOF prematurely)
+      * http.client.RemoteDisconnected (connection closed before a
+        response — typical of upstream load-balancer draining)
+      * ConnectionError and its subclasses (ConnectionResetError,
+        ConnectionAbortedError, BrokenPipeError, etc. — TCP-level
+        resets from any intermediate hop)
+
+    Previously IncompleteRead + ConnectionReset fell through to the
+    caller's bare ``except Exception`` → zero retries → the chunk
+    failed on first try regardless of transience. Combined with a
+    3-attempt cap (1s+2s sleep only), a 15s upstream hiccup would
+    kill an entire run.
+
+    Backoff doubles each attempt (1s → 2s → 4s → 8s → 16s) but is
+    capped at ``max_backoff_s`` so unbounded ``max_attempts`` can't
+    produce multi-minute sleeps. Default 5 attempts with cap 30s =
+    retry window of ~15s sleeps + HTTP time ≈ 20-30s wall clock.
     """
     import socket
+    from http.client import IncompleteRead, RemoteDisconnected
     last_exc: BaseException | None = None
     for attempt in range(max_attempts):
         try:
@@ -233,10 +269,18 @@ def post_json_with_retry(
             last_exc = exc
             if exc.code not in _RETRYABLE_HTTP_CODES:
                 raise
-        except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            socket.timeout,
+            IncompleteRead,
+            RemoteDisconnected,
+            ConnectionError,
+        ) as exc:
             last_exc = exc
         if attempt + 1 < max_attempts:
-            time.sleep(initial_backoff_s * (2 ** attempt))
+            delay = min(max_backoff_s, initial_backoff_s * (2 ** attempt))
+            time.sleep(delay)
     assert last_exc is not None
     raise last_exc
 
@@ -2404,12 +2448,11 @@ def main() -> int:
     next_chunk_index = 1
     # Fault-tolerance counters. A single chunk failure no longer kills
     # the run (merge successful siblings, log the failure, continue).
-    # These thresholds detect sustained upstream breakage vs one-off
-    # 504 during an otherwise-OK sample.
+    # Thresholds live at module scope (MAX_CONSECUTIVE_FAILED_BATCHES /
+    # MAX_CUMULATIVE_FAILED_CHUNKS) so tests can lock them and a
+    # future per-run override has a natural seam.
     cumulative_failed_chunks = 0
     consecutive_failed_batches = 0
-    _MAX_CONSECUTIVE_FAILED_BATCHES = 3  # 3 fully-failed batches in a row
-    _MAX_CUMULATIVE_FAILED_CHUNKS = 20  # 20 total failures across the run
 
     # ── Cache read phase ─────────────────────────────────────────────
     # Two modes share the reader, differ only in what happens after:
@@ -2781,8 +2824,8 @@ def main() -> int:
         else:
             consecutive_failed_batches = 0
         if (
-            consecutive_failed_batches >= _MAX_CONSECUTIVE_FAILED_BATCHES
-            or cumulative_failed_chunks >= _MAX_CUMULATIVE_FAILED_CHUNKS
+            consecutive_failed_batches >= MAX_CONSECUTIVE_FAILED_BATCHES
+            or cumulative_failed_chunks >= MAX_CUMULATIVE_FAILED_CHUNKS
         ):
             last_err = failed_results[0] if failed_results else {}
             stop_reason = (

@@ -198,3 +198,148 @@ class TestAtomicWriteEnvelope:
             sampler._atomic_write_envelope(out, {"new": True})
         # Prior chunk intact.
         assert out.read_bytes() == original_bytes
+
+
+# ---------- transient burst regression (M273 2026-04-17 incident) ----------
+
+
+class TestTransientBurstRetries:
+    """2026-04-17 user incident: M273 mode_1 ran fine then a ~10s
+    upstream hiccup (mix of IncompleteRead + http_502) killed the
+    entire run at cumulative_failed_chunks=12. Two gaps surfaced:
+
+    1. `IncompleteRead` (truncated HTTP body, very common on flaky
+       proxies) was NOT in the retry list at all. It fell through to
+       `run_sampling_chunk`'s bare `except Exception` — zero retries,
+       instant failure. Same for ConnectionResetError (TCP RST) and
+       http.client.RemoteDisconnected (close-before-response).
+
+    2. Default ``max_attempts=3`` with 1s→2s backoff exhausts the retry
+       window in ~3s of sleeps. A realistic upstream hiccup lasts
+       10-30s. The retry budget needs to cover that window.
+
+    3. ``_MAX_CONSECUTIVE_FAILED_BATCHES = 3`` (with
+       batch_concurrency=4, that's ~12 chunks) triggers bailout after
+       ~10s of sustained failures — too aggressive given upstream
+       recovery typically takes 15-30s."""
+
+    def test_incomplete_read_is_retryable(self, monkeypatch):
+        """http.client.IncompleteRead → retry. Previously surfaced as
+        a generic Exception outside the retry wrapper; the chunk failed
+        on its first attempt with zero retries."""
+        from http.client import IncompleteRead
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: None)
+        attempts = {"n": 0}
+
+        def post(payload, timeout):
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                raise IncompleteRead(partial=b"")
+            return [{"ok": True}]
+
+        monkeypatch.setattr(analyzer, "post_json", post)
+        result = sampler._post_json_with_retry(
+            {}, timeout=1.0, max_attempts=5, initial_backoff_s=1.0
+        )
+        assert result == [{"ok": True}]
+        assert attempts["n"] == 3
+
+    def test_connection_reset_is_retryable(self, monkeypatch):
+        """ConnectionResetError (TCP RST from upstream / proxy drain).
+        Subclass of OSError, previously not matched by the retry
+        except-clause."""
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: None)
+        attempts = {"n": 0}
+
+        def post(payload, timeout):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise ConnectionResetError("upstream sent RST")
+            return [{"ok": True}]
+
+        monkeypatch.setattr(analyzer, "post_json", post)
+        assert sampler._post_json_with_retry({}, timeout=1.0)[0]["ok"]
+        assert attempts["n"] == 2
+
+    def test_remote_disconnected_is_retryable(self, monkeypatch):
+        """http.client.RemoteDisconnected (connection closed before a
+        response arrived — happens on LB drain mid-request)."""
+        from http.client import RemoteDisconnected
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: None)
+        attempts = {"n": 0}
+
+        def post(payload, timeout):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise RemoteDisconnected("close before response")
+            return [{"ok": True}]
+
+        monkeypatch.setattr(analyzer, "post_json", post)
+        assert sampler._post_json_with_retry({}, timeout=1.0)[0]["ok"]
+
+    def test_backoff_capped_at_max_backoff_s(self, monkeypatch):
+        """Unbounded 2^n doubling at max_attempts=7 gives 64s final
+        sleep — absurd. Cap via max_backoff_s. Default cap is
+        tested separately; this locks the cap parameter's shape."""
+        sleeps: list[float] = []
+        monkeypatch.setattr(analyzer.time, "sleep", lambda s: sleeps.append(s))
+        attempts = {"n": 0}
+
+        def post(payload, timeout):
+            attempts["n"] += 1
+            if attempts["n"] < 6:
+                raise _http_error(502)
+            return [{"ok": True}]
+
+        monkeypatch.setattr(analyzer, "post_json", post)
+        sampler._post_json_with_retry(
+            {}, timeout=1.0, max_attempts=6,
+            initial_backoff_s=1.0, max_backoff_s=5.0,
+        )
+        # Sleeps at attempts 0,1,2,3,4: unbounded would be 1,2,4,8,16.
+        # Cap 5 clips the last two to 5.
+        assert sleeps == [1.0, 2.0, 4.0, 5.0, 5.0]
+
+    def test_default_max_attempts_covers_20s_window(self):
+        """Default max_attempts raised so the total retry window covers
+        a ~20s upstream hiccup. With initial_backoff_s=1.0 the sleep
+        schedule is 1+2+4+8=15s across 5 attempts, plus HTTP time on
+        each attempt → ~20-30s wall time before giving up."""
+        import inspect
+        sig = inspect.signature(analyzer.post_json_with_retry)
+        assert sig.parameters["max_attempts"].default >= 5, (
+            "default max_attempts should be >=5 to ride out transient "
+            f"bursts; got {sig.parameters['max_attempts'].default}"
+        )
+
+    def test_default_max_backoff_present(self):
+        """``max_backoff_s`` is a named parameter so callers (e.g.
+        future per-run override) can tune it. Also guards against a
+        well-meaning tweak that removes the cap."""
+        import inspect
+        sig = inspect.signature(analyzer.post_json_with_retry)
+        assert "max_backoff_s" in sig.parameters, (
+            "post_json_with_retry must accept max_backoff_s so unbounded "
+            "doubling can't produce multi-minute sleeps"
+        )
+        default = sig.parameters["max_backoff_s"].default
+        assert default >= 10 and default <= 60, (
+            f"max_backoff_s default should land in [10, 60]s; got {default}"
+        )
+
+    def test_consecutive_failed_batches_threshold_bumped(self):
+        """With batch_concurrency=4, _MAX_CONSECUTIVE_FAILED_BATCHES=3
+        bails after ~10-15s of failures (one user-reported M273 case
+        hit bail at t+10s). Bump to >=5 so a ~30s hiccup is needed."""
+        assert analyzer.MAX_CONSECUTIVE_FAILED_BATCHES >= 5, (
+            f"MAX_CONSECUTIVE_FAILED_BATCHES={analyzer.MAX_CONSECUTIVE_FAILED_BATCHES}; "
+            f"raise to >=5 so transient bursts don't kill long runs"
+        )
+
+    def test_cumulative_failed_chunks_threshold_bumped(self):
+        """Same rationale: 20 cumulative fails hit quickly if
+        batch_concurrency=8 and upstream flakes for even a minute."""
+        assert analyzer.MAX_CUMULATIVE_FAILED_CHUNKS >= 40, (
+            f"MAX_CUMULATIVE_FAILED_CHUNKS={analyzer.MAX_CUMULATIVE_FAILED_CHUNKS}; "
+            f"raise to >=40 so a brief burst doesn't bail a long run"
+        )
