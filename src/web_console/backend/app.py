@@ -3134,15 +3134,17 @@ def create_app(
         db_rows_created = 0
         machines_affected: set[str] = set()
 
-        def _derive_run_id(version_name: str) -> str:
-            # "rv_20260416T073355Z_9d60553e" → "9d60553e" (real run)
-            # "rv_20260416T110557Z_devcache" → hash of full name for stability
+        def _derive_run_id(version_name: str, machine_n: str, mode_n: int) -> str:
+            # "rv_20260416T073355Z_9d60553e" → "9d60553e" (real run, globally unique)
+            # Anything else (devcache / short suffix) → hash(machine+mode+version_name)
+            #   so M1 and M2 with same version timestamp don't collide.
             parts = version_name.split("_")
             tail = parts[-1] if parts else version_name
-            if tail in ("devcache",) or len(tail) < 8:
-                import hashlib
-                return hashlib.md5(version_name.encode()).hexdigest()[:12]
-            return tail[:12]
+            if tail not in ("devcache",) and len(tail) >= 8 and all(c in "0123456789abcdef" for c in tail):
+                return tail[:12]
+            import hashlib
+            key = f"{machine_n}|{mode_n}|{version_name}"
+            return hashlib.md5(key.encode()).hexdigest()[:12]
 
         for machine_dir in src.iterdir():
             if not machine_dir.is_dir():
@@ -3177,7 +3179,7 @@ def create_app(
                     machines_affected.add(machine_name)
 
                     # Create DB row so the import shows in 运行历史 and is loadable.
-                    run_id = _derive_run_id(v.name)
+                    run_id = _derive_run_id(v.name, machine_name, mode_int)
                     # Avoid collision with existing run.
                     if store.get_run(run_id):
                         run_id = run_id + "_i"  # suffix to disambiguate
@@ -3199,11 +3201,11 @@ def create_app(
                             "created_at": sam.get("started_at") or utc_now(),
                             "started_at": sam.get("started_at") or utc_now(),
                             "finished_at": sam.get("finished_at") or utc_now(),
-                            "target_halfwidth_pp": sam.get("target_halfwidth_pp", 0.5),
-                            "chunk_spin_times": sam.get("chunk_spin_times", 0),
-                            "chunk_robot_count": sam.get("chunk_robot_count", 0),
-                            "batch_concurrency": sam.get("batch_concurrency", 1),
-                            "max_chunks": sam.get("chunks", 0),
+                            "target_halfwidth_pp": sam.get("target_halfwidth_pp") or 0.5,
+                            "chunk_spin_times": sam.get("chunk_spin_times") or 0,
+                            "chunk_robot_count": sam.get("chunk_robot_count") or 0,
+                            "batch_concurrency": sam.get("batch_concurrency") or 1,
+                            "max_chunks": sam.get("chunks") or 0,
                             "timeout": 300.0,
                             "bankruptcy_session_spins": 500,
                             "bankruptcy_bankroll_multipliers": "100,200,500",
@@ -3217,11 +3219,13 @@ def create_app(
                             "achieved_rtp_pct": rtp_pct,
                             "achieved_halfwidth_pp": ci_hw,
                             "quality_label": qa,
-                            "total_spins": sam.get("total_spins", 0),
                         })
                         db_rows_created += 1
-                    except Exception:
-                        pass  # best-effort; file import still succeeded
+                    except Exception as _exc:
+                        # Log first failure to help diagnose; subsequent silently ignored.
+                        if db_rows_created == 0 and imported <= 2:
+                            import traceback
+                            traceback.print_exc()
         return {
             "imported": imported, "skipped": skipped,
             "db_rows_created": db_rows_created,
