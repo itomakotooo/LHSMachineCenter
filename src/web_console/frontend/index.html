@@ -391,22 +391,24 @@
           <section class="panel run-history">
             <h2 data-i18n="panelRunHistory">运行历史</h2>
             <div id="runFilterBanner" class="run-filter-banner"></div>
-            <table id="runListTable">
-              <thead>
-                <tr>
-                  <th class="th-check"><input type="checkbox" id="selectAllRuns" title="全选/取消全选"></th>
-                  <th data-i18n="thRunId">Run ID</th>
-                  <th data-i18n="thStatus">状态</th>
-                  <th data-i18n="thMachine">机台</th>
-                  <th data-i18n="thMode">Mode</th>
-                  <th data-i18n="thRtp">RTP</th>
-                  <th data-i18n="thCiHalfwidth">CI±</th>
-                  <th data-i18n="thQuality">质量</th>
-                  <th data-i18n="thAction">操作</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
+            <div class="table-scroll">
+              <table id="runListTable">
+                <thead>
+                  <tr>
+                    <th class="th-check"><input type="checkbox" id="selectAllRuns" title="全选/取消全选"></th>
+                    <th data-i18n="thRunId">Run ID</th>
+                    <th data-i18n="thStatus">状态</th>
+                    <th data-i18n="thMachine">机台</th>
+                    <th data-i18n="thMode">Mode</th>
+                    <th data-i18n="thRtp">RTP</th>
+                    <th data-i18n="thCiHalfwidth">CI±</th>
+                    <th data-i18n="thQuality">质量</th>
+                    <th data-i18n="thAction">操作</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
             <div class="batch-actions" id="batchActionsBar" style="display:none">
               <span id="batchCount">0</span>
               <button id="batchDeleteBtn" class="danger-btn" data-i18n="btnBatchDelete">删除选中</button>

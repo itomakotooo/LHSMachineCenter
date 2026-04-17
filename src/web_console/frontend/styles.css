@@ -878,6 +878,21 @@ button:disabled {
 .md5-mismatch { color: #dc2626; font-weight: 700; }
 .md5-partial { font-weight: 700; cursor: help; filter: saturate(1.2); }
 
+/* Run-history table: contain horizontal overflow within the panel.
+   The table's natural width (~590px at default column content) can
+   exceed the panel width on narrow viewports. Without this wrapper
+   the table bleeds past the panel's right edge and the `载入` action
+   column gets cut off. Scrolling stays inside the panel so the
+   panel's left/right edges align cleanly with the sibling panels. */
+.run-history .table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.run-history #runListTable th,
+.run-history #runListTable td {
+  white-space: nowrap;
+}
+
 /* Machine detail panel */
 .machine-detail {
   grid-column: span 12;
