@@ -1417,13 +1417,20 @@ button.feature-chip {
   color: var(--muted);
   font-size: 12px;
 }
-.small-btn {
+button.small-btn, .small-btn {
   padding: 2px 8px;
   font-size: 11px;
   border-radius: 4px;
   cursor: pointer;
   border: 1px solid #d4ddea;
   background: #f9fafb;
+  color: #1f2937 !important;
+  font-weight: 500;
+}
+button.small-btn.active, .small-btn.active {
+  background: var(--accent);
+  color: #fff !important;
+  border-color: var(--accent);
 }
 .small-btn:hover {
   background: #f0f4f8;
