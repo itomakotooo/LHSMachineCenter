@@ -1143,12 +1143,22 @@ class BatchRunManager:
                 chunk_size = cycle_info["recommended_chunk_size"]
 
             # Check local rawdata — per-chunk MD5 verification with auto-delete
-            # of mismatched chunks. Usable chunks get reused via --from-cache.
+            # of mismatched chunks.
             raw_status = check_rawdata_status(
                 it.machine, it.mode,
                 auto_delete_mismatched=True,
             )
-            reuse_cache = raw_status["usable_chunks"] > 0
+            # Cache reuse is appropriate ONLY for fuzzy sampling (target=0):
+            # fuzzy explicitly doesn't care about CI, just wants the summary
+            # from whatever spins are available. For precise targets (0.5 /
+            # 1 / 5 pp), the dev rawdata (fixed 10k spins per machine) can
+            # rarely meet the target — e.g. M273 m1 with std≈4.5 would need
+            # ~3M spins to hit 0.5pp. Silently reusing the cache made
+            # analyzer print "completed" at 12.9pp CI instead of actually
+            # running the ~3M-spin sample the user asked for. Gate strictly.
+            target_pp = float(req.target_halfwidth_pp or 0)
+            cache_usable = raw_status["usable_chunks"] > 0
+            reuse_cache = cache_usable and target_pp == 0
 
             items.append({
                 "machine": it.machine,
@@ -1170,7 +1180,18 @@ class BatchRunManager:
                 events.append({
                     "ts": utc_now(), "level": "info",
                     "machine": it.machine,
-                    "text": f"♻ 使用本地 rawdata: {raw_status['usable_chunks']} chunks, {raw_status['total_size_mb']}MB (跳过 API 采样)",
+                    "text": f"♻ 使用本地 rawdata: {raw_status['usable_chunks']} chunks, {raw_status['total_size_mb']}MB (Fuzzy 档跳过 API 采样)",
+                })
+            elif cache_usable and target_pp > 0:
+                events.append({
+                    "ts": utc_now(), "level": "warn",
+                    "machine": it.machine,
+                    "text": (
+                        f"⚠ 本地有 {raw_status['usable_chunks']} chunks / "
+                        f"{raw_status['total_size_mb']}MB，但精度目标 "
+                        f"±{target_pp}pp 需要更多样本，将重新从 API 采样 "
+                        f"(chunk_spin_times={chunk_size})"
+                    ),
                 })
             else:
                 events.append({
