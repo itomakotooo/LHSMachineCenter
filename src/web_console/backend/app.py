@@ -1362,63 +1362,70 @@ class BatchRunManager:
                     "error": it.get("error"),
                     "reuse_cache": bool(it.get("reuse_cache", False)),
                     "resume_cache": bool(it.get("resume_cache", False)),
+                    # stop_reason + ci_target_met are set by _run_one
+                    # when a run completes. Absent on pending/running
+                    # items (hence the get() with None default — don't
+                    # invent values). Frontend uses ci_target_met to
+                    # decide between ✓ and ⚠ icons.
+                    "stop_reason": it.get("stop_reason"),
+                    "ci_target_met": it.get("ci_target_met"),
                     "progress": None,
                 }
-                # For running items, read live chunk progress.
-                if it["status"] == "running" and it.get("run_id"):
+                # Read progress.jsonl unconditionally once a run_id is
+                # assigned. Previously this was gated on
+                # status == "running", which meant that the instant the
+                # item flipped to completed/failed/cancelled the UI lost
+                # every per-chunk event — chunk_failed, resume_from_cache,
+                # the whole history. That's exactly the data the operator
+                # needs to read *after* the run (to see WHY it bailed on
+                # upstream_unstable, for instance). The live `progress`
+                # snapshot stays gated on running (it's the latest chunk
+                # frame; meaningless once the run is done), but the
+                # `chunk_events` history is always surfaced.
+                if it.get("run_id"):
                     try:
                         row = self._store.get_run(it["run_id"])
                         if row:
                             pf = Path(row.get("progress_file", ""))
                             if pf.exists():
                                 events = read_progress_events(pf)
-                                chunks = [e for e in events if e.get("event") == "chunk_progress"]
-                                if chunks:
-                                    latest = chunks[-1]
-                                    # Analyzer event key is
-                                    # `current_halfwidth_pp`, not
-                                    # `halfwidth_pp` — the old key was
-                                    # always None which is why the UI
-                                    # never showed live CI. Both keys
-                                    # accepted for backward-compat with
-                                    # any stale progress files.
-                                    entry["progress"] = {
-                                        "chunks_done": latest.get("chunk_index", 0),
-                                        "total_spins": latest.get("total_spins", 0),
-                                        "current_rtp_pct": latest.get("current_rtp_pct"),
-                                        "halfwidth_pp": (
-                                            latest.get("current_halfwidth_pp")
-                                            if latest.get("current_halfwidth_pp") is not None
-                                            else latest.get("halfwidth_pp")
-                                        ),
-                                        "session_level_halfwidth_pp": latest.get("session_level_halfwidth_pp"),
-                                        "chunk_level_halfwidth_pp": latest.get("chunk_level_halfwidth_pp"),
-                                    }
-                                # Surface per-chunk events to the UI.
-                                # Earlier version sliced the last 12 of
-                                # the last 30 events, which caused
-                                # chunk_failed events to fall out of
-                                # the window as the run progressed
-                                # (user reported the error log shrunk
-                                # during sampling and evaporated right
-                                # after the batch completed, "差点截不到图").
-                                # New rule: critical events
-                                # (chunk_failed / resume_from_cache /
-                                # disk_guard_stop / failed) are NEVER
-                                # pruned — they're the ones the operator
-                                # actually needs to read later. Only
-                                # chunk_progress rotates (last 8).
-                                _CRITICAL = {"chunk_failed", "resume_from_cache", "disk_guard_stop", "failed"}
-                                critical = [e for e in events if e.get("event") in _CRITICAL]
-                                progress_evts = [e for e in events if e.get("event") == "chunk_progress"]
-                                # Criticals pass through untouched. Only
-                                # chunk_progress rotates (last 8). The
-                                # earlier version used `merged[-60:]`
+                                if it["status"] == "running":
+                                    chunks = [e for e in events if e.get("event") == "chunk_progress"]
+                                    if chunks:
+                                        latest = chunks[-1]
+                                        # Analyzer event key is
+                                        # `current_halfwidth_pp`, not
+                                        # `halfwidth_pp` — the old key
+                                        # was always None which is why
+                                        # the UI never showed live CI.
+                                        # Both keys accepted for
+                                        # backward-compat with any stale
+                                        # progress files.
+                                        entry["progress"] = {
+                                            "chunks_done": latest.get("chunk_index", 0),
+                                            "total_spins": latest.get("total_spins", 0),
+                                            "current_rtp_pct": latest.get("current_rtp_pct"),
+                                            "halfwidth_pp": (
+                                                latest.get("current_halfwidth_pp")
+                                                if latest.get("current_halfwidth_pp") is not None
+                                                else latest.get("halfwidth_pp")
+                                            ),
+                                            "session_level_halfwidth_pp": latest.get("session_level_halfwidth_pp"),
+                                            "chunk_level_halfwidth_pp": latest.get("chunk_level_halfwidth_pp"),
+                                        }
+                                # Per-chunk event history. Critical
+                                # events (chunk_failed / resume_from_cache
+                                # / disk_guard_stop / failed) are NEVER
+                                # pruned; chunk_progress rotates (last 8).
+                                # The earlier version used `merged[-60:]`
                                 # which, given enough failures, would
                                 # have sliced criticals too — the first
                                 # iteration of this fix quietly broke
                                 # its own "never pruned" promise. Now
                                 # the cap is progress-only.
+                                _CRITICAL = {"chunk_failed", "resume_from_cache", "disk_guard_stop", "failed"}
+                                critical = [e for e in events if e.get("event") in _CRITICAL]
+                                progress_evts = [e for e in events if e.get("event") == "chunk_progress"]
                                 merged = critical + progress_evts[-8:]
                                 merged.sort(key=lambda e: e.get("ts") or "")
                                 entry["chunk_events"] = merged
@@ -1573,22 +1580,56 @@ class BatchRunManager:
                     # signal was the final CI value, which hid whether
                     # the target was met or the run bailed from errors.
                     stop_tail = ""
+                    stop_reason = ""
+                    target_hw = 0.0
                     try:
                         summary_path = Path(row.get("summary_file", ""))
                         if summary_path.exists():
                             s = json.loads(summary_path.read_text(encoding="utf-8"))
                             sam = s.get("sampling", {})
-                            sr = sam.get("stop_reason", "?")
+                            stop_reason = str(sam.get("stop_reason", "") or "")
+                            target_hw = float(sam.get("target_halfwidth_pp") or 0.0)
                             n_chunks = sam.get("chunks", 0)
                             n_spins = sam.get("total_spins", 0)
                             dur = sam.get("duration_seconds", 0)
                             stop_tail = (
-                                f" · stop={sr} · chunks={n_chunks} · "
+                                f" · stop={stop_reason or '?'} · chunks={n_chunks} · "
                                 f"spins={n_spins:,} · {dur:.0f}s"
                             )
                     except Exception:  # noqa: BLE001
                         pass
-                    _log("ok", f"完成 RTP={rtp_str} {ci_str}{stop_tail}", item["machine"])
+                    # ci_target_met distinguishes "run hit its CI goal"
+                    # from "run finished with valid data but goal NOT
+                    # met" (upstream_unstable, max_chunks_reached on a
+                    # precise target, disk_low, etc.). Fuzzy runs route
+                    # target=0 through the CLI as 999 to bypass the CI
+                    # gate entirely — their success is reaching the
+                    # max_chunks budget, so max_chunks_reached +
+                    # from_cache_complete count as met.
+                    is_fuzzy = target_hw >= 999.0
+                    ci_target_met = (
+                        stop_reason == "target_ci_reached"
+                        or (
+                            is_fuzzy
+                            and stop_reason in (
+                                "max_chunks_reached", "from_cache_complete",
+                            )
+                        )
+                    )
+                    item["stop_reason"] = stop_reason
+                    item["ci_target_met"] = ci_target_met
+                    # Log level: ok when CI was reached (or fuzzy
+                    # completed its budget), warn otherwise. Earlier
+                    # code always used "ok" which is why a run that
+                    # bailed on upstream_unstable showed up as ✓ green
+                    # next to genuine success.
+                    log_level = "ok" if ci_target_met else "warn"
+                    log_prefix = "完成" if ci_target_met else "完成但未达 CI 目标"
+                    _log(
+                        log_level,
+                        f"{log_prefix} RTP={rtp_str} {ci_str}{stop_tail}",
+                        item["machine"],
+                    )
                 else:
                     item["status"] = "failed"
                     err = (row or {}).get("error_message", "")[:200]

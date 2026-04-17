@@ -1198,11 +1198,18 @@ function pollSampling() {
           const failedChunks = (data.items || []).reduce((sum, it) =>
             sum + (it.chunk_events || []).filter(e => e.event === "chunk_failed").length, 0);
           const failedMachines = (data.items || []).filter(i => i.status === "failed").length;
-          const note = failedMachines > 0
-            ? ` · 机台失败 ${failedMachines}`
-            : "";
+          // Partial = completed but didn't hit the CI target
+          // (upstream_unstable / max_chunks_reached / disk_low). Runs
+          // with valid data but the goal not met. Banner stays ✓ only
+          // when every completed item actually reached its target.
+          const partialMachines = (data.items || []).filter(
+            i => i.status === "completed" && i.ci_target_met === false
+          ).length;
+          const note = failedMachines > 0 ? ` · 机台失败 ${failedMachines}` : "";
+          const partialNote = partialMachines > 0 ? ` · 未达 CI ${partialMachines}` : "";
           const fn = failedChunks > 0 ? ` · 总失败 chunk=${failedChunks}` : "";
-          meta.textContent = `✓ 批次已结束 · ${data.completed}/${data.total}${note}${fn} · 日志保留，点击开始采样可覆盖`;
+          const bannerIcon = (failedMachines > 0 || partialMachines > 0) ? "⚠" : "✓";
+          meta.textContent = `${bannerIcon} 批次已结束 · ${data.completed}/${data.total}${note}${partialNote}${fn} · 日志保留，点击开始采样可覆盖`;
         }
         state.batchJustCompleted = true;  // prevent further re-render
         state.activeBatchId = null;
@@ -1248,11 +1255,19 @@ function renderSamplingProgress(data) {
   const levelIcon = { info: "ℹ", warn: "⚠", ok: "✓", error: "✗", danger: "⛔" };
   const levelClass = { info: "sample-info", warn: "sample-warn", ok: "sample-completed", error: "sample-failed", danger: "sample-danger" };
   // Per-machine status rows at top.
+  // completed + ci_target_met===false renders as ⚠ (graceful stop
+  // without hitting the CI goal — upstream_unstable / max_chunks_reached
+  // on precise target / disk_low / etc.). Previously every completed
+  // run showed ✓, hiding the difference between real success and a
+  // run that just stopped with valid partial data.
   const statusIcon = { pending: "⏳", running: "▶", completed: "✓", failed: "✗", cancelled: "⏸" };
   const statusRows = data.items.map((it) => {
-    const icon = statusIcon[it.status] || "?";
+    const isPartial = it.status === "completed" && it.ci_target_met === false;
+    const icon = isPartial ? "⚠" : (statusIcon[it.status] || "?");
+    const rowCls = isPartial ? "sample-warn" : `sample-${it.status}`;
     const chunk = it.chunk_spin_times ? ` (chunk=${it.chunk_spin_times})` : "";
     const err = it.error ? ` — ${it.error.slice(0, 60)}` : "";
+    const stopTail = isPartial && it.stop_reason ? ` · ${it.stop_reason.slice(0, 120)}` : "";
     let progress = "";
     if (it.status === "running" && it.progress) {
       const p = it.progress;
@@ -1302,7 +1317,7 @@ function renderSamplingProgress(data) {
       }).join("");
       chunkLog = rows;
     }
-    return `<div class="sample-log-item sample-${it.status}">${icon} ${it.machine} m${it.mode}${chunk}${progress}${err}</div>${chunkLog}`;
+    return `<div class="sample-log-item ${rowCls}">${icon} ${it.machine} m${it.mode}${chunk}${progress}${err}${stopTail}</div>${chunkLog}`;
   }).join("");
 
   // Event log below.
@@ -1314,9 +1329,29 @@ function renderSamplingProgress(data) {
     return `<div class="sample-log-item ${cls}">${ts} ${icon} ${machine}${ev.text}</div>`;
   }).join("");
 
+  // Section title carries BOTH counts so the user isn't misled by
+  // "事件日志 (最近 3)" into thinking only 3 things happened during a
+  // run that actually had 31 chunks + 18 failures. The per-chunk
+  // events render inline under each machine row (chunkLog) — that's
+  // the full picture.
+  const totalChunkEvents = (data.items || []).reduce(
+    (sum, it) => sum + ((it.chunk_events || []).length), 0
+  );
+  const batchEventCount = (data.events || []).length;
+  const sectionTitle = totalChunkEvents > 0
+    ? `批次日志 (${batchEventCount} 条 · 分块事件 ${totalChunkEvents} 条 — 见上方机台状态)`
+    : `批次日志 (${batchEventCount} 条)`;
+
+  // Preserve scroll position if the user has scrolled up to read
+  // earlier events. The previous unconditional scrollTop = scrollHeight
+  // yanked them back to the bottom on every poll tick, which felt
+  // like the log "isn't updating" (actually it updated, just scrolled
+  // past whatever they were reading).
+  const wasNearBottom =
+    (log.scrollHeight - log.scrollTop - log.clientHeight) < 40;
   log.innerHTML = `<div class="sample-log-section-title">机台状态</div>${statusRows}
-    <div class="sample-log-section-title">事件日志 (最近 ${(data.events || []).length})</div>${eventRows}`;
-  log.scrollTop = log.scrollHeight;
+    <div class="sample-log-section-title">${sectionTitle}</div>${eventRows}`;
+  if (wasNearBottom) log.scrollTop = log.scrollHeight;
 }
 
 async function refreshDiskSpace() {
