@@ -474,6 +474,14 @@ function _groupOrder(viewMode) {
   return ["all"]; // name, category → flat
 }
 
+// Generate a distinct pastel color per feature name (deterministic hash).
+function _featureColor(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  const hue = Math.abs(h) % 360;
+  return `hsl(${hue}, 65%, 88%)`;
+}
+
 // Render feature filter chips for "按玩法" view.
 function renderCatalogFeatureChips() {
   const wrap = byId("catalogFeatureChips");
@@ -494,12 +502,13 @@ function renderCatalogFeatureChips() {
 
   const chips = multi.map(([fn, n]) => {
     const active = selected.has(fn) ? "active" : "";
-    return `<button class="feature-chip ${active}" data-feature="${fn}">${fn} <span class="chip-count">${n}</span></button>`;
+    const bg = _featureColor(fn);
+    return `<button class="feature-chip ${active}" data-feature="${fn}" style="background:${bg}">${fn} <span class="chip-count">${n}</span></button>`;
   }).join("");
 
   const otherActive = selected.has("__other__") ? "active" : "";
   const otherChip = singletons.length
-    ? `<button class="feature-chip ${otherActive}" data-feature="__other__">其他 <span class="chip-count">${singletons.length}</span></button>`
+    ? `<button class="feature-chip ${otherActive}" data-feature="__other__" style="background:#e5e7eb">其他 <span class="chip-count">${singletons.length}</span></button>`
     : "";
 
   const clearBtn = selected.size
@@ -567,7 +576,7 @@ function renderMachineCatalog() {
   const numSort = (a, b) => (parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0);
   Object.values(groups).forEach((arr) => arr.sort(numSort));
 
-  const isFlatView = viewMode === "name";
+  const isFlatView = viewMode === "name" || viewMode === "category";
 
   orderedKeys.forEach((groupKey) => {
     const machines = groups[groupKey];
@@ -732,61 +741,81 @@ function showMachineDetail(machineName) {
 
 // ── Fleet Overview ────────────────────────────────────────────────
 
+// Expected RTP ranges per mode (mode_id → [min, max] percent).
+// mode 1: ~90% (classic base), mode 7: ~80% (strict base)
+// mode 2: "幸运" mode >200%, mode 5: most extreme, should be > mode 2
+const _MODE_RTP_EXPECT = {
+  1: { min: 80, max: 100, label: "mode 1 ~90%" },
+  7: { min: 70, max: 90, label: "mode 7 ~80%" },
+  2: { min: 150, max: Infinity, label: "mode 2 应 > 150%" },
+  5: { min: 200, max: Infinity, label: "mode 5 应 > mode 2" },
+};
+
 function _computeFleetHeadlines() {
   const sm = (state.machinesSummary || {}).machines || {};
-  const headlines = [];
-  const highRtp = [];    // RTP > 500%
-  const highCi = [];     // CI > 5pp
-  const zeroHit = [];    // zero_win_rate = 1.0 or impossible
-  const modeDiff = [];   // machines with >30pp RTP diff between modes
+  const machines = state.machines || [];
+  const missingModes = [];  // machines with missing modes
+  const badRtpByMode = { 1: [], 2: [], 5: [], 7: [] };
+  const mode5NotExtreme = []; // mode 5 <= mode 2
 
-  for (const [machine, modes] of Object.entries(sm)) {
-    const modeKeys = Object.keys(modes);
-    for (const d of Object.values(modes)) {
-      if (d.rtp_pct != null && d.rtp_pct > 500) highRtp.push({machine, rtp: d.rtp_pct});
-      if (d.ci_halfwidth_pp != null && d.ci_halfwidth_pp > 5) highCi.push({machine, ci: d.ci_halfwidth_pp});
-      if (d.zero_win_rate >= 0.999 && d.total_spins > 1000) zeroHit.push({machine});
+  for (const m of machines) {
+    const machine = m.machine;
+    const modes = sm[machine] || {};
+    const expected = m.modes || [1, 2, 5, 7];
+    const actual = Object.keys(modes).map(Number);
+    const missing = expected.filter((x) => !actual.includes(x));
+    if (missing.length && m.available !== false) {
+      missingModes.push({ machine, missing });
     }
-    // Multi-mode RTP divergence.
-    if (modeKeys.length >= 2) {
-      const rtps = modeKeys.map((k) => modes[k].rtp_pct).filter((r) => r != null);
-      if (rtps.length >= 2) {
-        const diff = Math.max(...rtps) - Math.min(...rtps);
-        if (diff > 30) modeDiff.push({machine, diff});
+    // Per-mode RTP expectation checks.
+    for (const modeStr of Object.keys(modes)) {
+      const mode = Number(modeStr);
+      const d = modes[modeStr];
+      const rtp = d.rtp_pct;
+      if (rtp == null) continue;
+      const exp = _MODE_RTP_EXPECT[mode];
+      if (exp && (rtp < exp.min || rtp > exp.max)) {
+        badRtpByMode[mode].push({ machine, rtp });
       }
+    }
+    // Mode 5 should be higher than mode 2.
+    const m2 = modes["2"]?.rtp_pct;
+    const m5 = modes["5"]?.rtp_pct;
+    if (m2 != null && m5 != null && m5 <= m2) {
+      mode5NotExtreme.push({ machine, m2, m5 });
     }
   }
 
-  if (highRtp.length) {
-    const top = highRtp.sort((a, b) => b.rtp - a.rtp).slice(0, 5);
+  const headlines = [];
+
+  if (missingModes.length) {
+    const top = missingModes.slice(0, 5);
     headlines.push({
       level: "warn",
-      text: `${highRtp.length} 台机台 RTP > 500%（方差大，需更多采样）`,
+      text: `${missingModes.length} 台机台 mode 数据不全`,
+      detail: top.map((x) => `${x.machine}: 缺 mode ${x.missing.join(",")}`).join(", "),
+    });
+  }
+  for (const mode of [1, 7, 2, 5]) {
+    const bad = badRtpByMode[mode];
+    if (!bad.length) continue;
+    const top = bad.slice(0, 5);
+    const exp = _MODE_RTP_EXPECT[mode];
+    headlines.push({
+      level: "warn",
+      text: `${bad.length} 台机台 mode ${mode} RTP 异常（期望 ${exp.label}）`,
       detail: top.map((x) => `${x.machine}: ${x.rtp.toFixed(0)}%`).join(", "),
     });
   }
-  if (highCi.length) {
+  if (mode5NotExtreme.length) {
+    const top = mode5NotExtreme.slice(0, 5);
     headlines.push({
       level: "warn",
-      text: `${highCi.length} 台机台 CI > 5pp（数据质量低，建议加大采样）`,
-      detail: highCi.slice(0, 5).map((x) => `${x.machine}: ±${x.ci.toFixed(1)}`).join(", "),
+      text: `${mode5NotExtreme.length} 台机台 mode 5 ≤ mode 2（应更极端）`,
+      detail: top.map((x) => `${x.machine}: m2=${x.m2.toFixed(0)}% m5=${x.m5.toFixed(0)}%`).join(", "),
     });
   }
-  if (zeroHit.length) {
-    headlines.push({
-      level: "danger",
-      text: `${zeroHit.length} 台机台 0% 命中率（疑似解析失败）`,
-      detail: zeroHit.slice(0, 5).map((x) => x.machine).join(", "),
-    });
-  }
-  if (modeDiff.length) {
-    const top = modeDiff.sort((a, b) => b.diff - a.diff).slice(0, 5);
-    headlines.push({
-      level: "info",
-      text: `${modeDiff.length} 台机台多 mode RTP 差异 > 30pp`,
-      detail: top.map((x) => `${x.machine}: ${x.diff.toFixed(0)}pp`).join(", "),
-    });
-  }
+
   return headlines;
 }
 
