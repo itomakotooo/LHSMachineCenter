@@ -644,37 +644,69 @@ function renderMachineCatalog() {
     section.appendChild(grid);
     wrap.appendChild(section);
   });
+  // Click / keydown listeners live on #machineCatalog itself (event
+  // delegation, set up once in _initCatalogDelegation), so we don't
+  // attach per-card listeners on every re-render — 253 cards × 2 events
+  // was ~506 addEventListener calls per render.
+}
 
-  // Click handlers — multi-select toggle.
-  wrap.querySelectorAll(".catalog-item").forEach((el) => {
-    const toggle = () => {
-      const machine = el.dataset.machine;
-      if (state.runFilterMachines.has(machine)) {
-        state.runFilterMachines.delete(machine);
-      } else {
-        state.runFilterMachines.add(machine);
-      }
-      renderMachineCatalog();
-      renderRunHistory();
-      updateSampleHint();
-      // Show detail for the last toggled machine (if selected).
-      if (state.runFilterMachines.has(machine)) {
-        showVersionHistory(machine);
-        showMachineDetail(machine);
-      } else if (state.runFilterMachines.size === 1) {
-        const last = [...state.runFilterMachines][0];
-        showVersionHistory(last);
-        showMachineDetail(last);
-      } else if (state.runFilterMachines.size === 0) {
-        byId("versionHistoryPanel")?.classList.add("hidden");
-        byId("reportComparisonPanel")?.classList.add("hidden");
-        byId("machineDetailPanel")?.classList.add("hidden");
-      }
-    };
-    el.addEventListener("click", toggle);
-    el.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
-    });
+// Single delegated click + keydown handler for the whole catalog grid.
+// Attached once at init. Toggles .active on the clicked card inline
+// rather than triggering a full renderMachineCatalog() — the full
+// render (~10ms for 253 cards) was only there to re-apply the class;
+// targeted DOM mutation keeps the clicks under 1ms.
+function _toggleCatalogMachineSelection(machine) {
+  if (!machine) return;
+  const wasActive = state.runFilterMachines.has(machine);
+  if (wasActive) state.runFilterMachines.delete(machine);
+  else state.runFilterMachines.add(machine);
+
+  const el = document.querySelector(`.catalog-item[data-machine="${CSS.escape(machine)}"]`);
+  if (el) {
+    el.classList.toggle("active", !wasActive);
+    // .active CSS uses !important background, which overrides the
+    // heatmap inline bg while selected. On deselect restore; on
+    // select clear the inline style so the !important rule wins
+    // without fighting specificity.
+    if (wasActive) {
+      const bg = _cardBgColor(machine);
+      el.style.background = bg || "";
+    } else {
+      el.style.background = "";
+    }
+  }
+
+  renderRunHistory();
+  updateSampleHint();
+  if (state.runFilterMachines.has(machine)) {
+    showVersionHistory(machine);
+    showMachineDetail(machine);
+  } else if (state.runFilterMachines.size === 1) {
+    const last = [...state.runFilterMachines][0];
+    showVersionHistory(last);
+    showMachineDetail(last);
+  } else if (state.runFilterMachines.size === 0) {
+    byId("versionHistoryPanel")?.classList.add("hidden");
+    byId("reportComparisonPanel")?.classList.add("hidden");
+    byId("machineDetailPanel")?.classList.add("hidden");
+  }
+}
+
+function _initCatalogDelegation() {
+  const wrap = byId("machineCatalog");
+  if (!wrap || wrap.dataset.delegationInit === "1") return;
+  wrap.dataset.delegationInit = "1";
+  wrap.addEventListener("click", (e) => {
+    const el = e.target.closest(".catalog-item");
+    if (!el || !wrap.contains(el)) return;
+    _toggleCatalogMachineSelection(el.dataset.machine);
+  });
+  wrap.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const el = e.target.closest(".catalog-item");
+    if (!el || !wrap.contains(el)) return;
+    e.preventDefault();
+    _toggleCatalogMachineSelection(el.dataset.machine);
   });
 }
 
@@ -2655,6 +2687,7 @@ function bindEvents() {
     if (sidebar?.contains(e.target) || (sidebarToggle && sidebarToggle.contains(e.target))) return;
     dashboard.classList.remove("sidebar-open");
   });
+  _initCatalogDelegation();
   byId("catalogSearch").addEventListener("input", () => renderMachineCatalog());
   byId("catalogSortReverse").addEventListener("click", (e) => {
     state.catalogSortReverse = !state.catalogSortReverse;
