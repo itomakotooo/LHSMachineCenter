@@ -1097,3 +1097,177 @@ test("collectSystemWarnings: stale pids + busy yields two warnings", () => {
   assert.ok(out.some((w) => w.includes("2 stale worker process")));
   assert.ok(out.some((w) => w.includes("start_run")));
 });
+
+// ---------- sampling log timeline (layer 1) ----------
+
+test("buildClientEvent: click includes count + mode + ci", () => {
+  const ev = PURE.buildClientEvent(
+    "click", { count: 3, mode: 1, ci: 0.5 }, "2026-04-17T12:00:00Z"
+  );
+  assert.equal(ev.ts, "2026-04-17T12:00:00Z");
+  assert.equal(ev.level, "info");
+  assert.equal(ev.source, "ui");
+  assert.ok(ev.text.includes("开始采样"));
+  assert.ok(ev.text.includes("3 台"));
+  assert.ok(ev.text.includes("mode=1"));
+  assert.ok(ev.text.includes("0.5pp"));
+});
+
+test("buildClientEvent: fuzzy (ci=0) renders as 'fuzzy' not '0pp'", () => {
+  const ev = PURE.buildClientEvent(
+    "click", { count: 1, mode: 2, ci: 0 }, "2026-04-17T12:00:00Z"
+  );
+  assert.ok(ev.text.includes("fuzzy"));
+  assert.ok(!ev.text.includes("0pp"));
+});
+
+test("buildClientEvent: batch_created truncates id to 8 chars", () => {
+  const ev = PURE.buildClientEvent(
+    "batch_created",
+    { batchId: "abcdef0123456789-very-long" },
+    "2026-04-17T12:00:01Z"
+  );
+  assert.ok(ev.text.includes("abcdef01"));
+  assert.ok(!ev.text.includes("abcdef0123"));
+});
+
+test("buildClientEvent: submit_failed is level=error", () => {
+  const ev = PURE.buildClientEvent(
+    "submit_failed", { error: "network down" }, "2026-04-17T12:00:01Z"
+  );
+  assert.equal(ev.level, "error");
+  assert.ok(ev.text.includes("network down"));
+});
+
+test("buildClientEvent: unknown kind returns placeholder, no crash", () => {
+  const ev = PURE.buildClientEvent("zzznope", {}, "2026-04-17T12:00:00Z");
+  assert.equal(ev.level, "info");
+  assert.ok(ev.text.includes("zzznope"));
+});
+
+test("formatChunkEventText: chunk_progress includes spins + RTP + CI", () => {
+  const t = PURE.formatChunkEventText({
+    event: "chunk_progress", chunk_index: 5,
+    total_spins: 500000, current_rtp_pct: 92.07, current_halfwidth_pp: 0.63,
+  });
+  assert.ok(t.includes("chunk 5"));
+  assert.ok(t.includes("500,000"));
+  assert.ok(t.includes("92.07%"));
+  assert.ok(t.includes("±0.630pp"));
+});
+
+test("formatChunkEventText: chunk_failed uses ✗ + cumulative counter", () => {
+  const t = PURE.formatChunkEventText({
+    event: "chunk_failed", chunk_index: 12,
+    error: "request_failed_http_502", cumulative_failed: 4,
+  });
+  assert.ok(t.startsWith("✗"));
+  assert.ok(t.includes("chunk 12"));
+  assert.ok(t.includes("502"));
+  assert.ok(t.includes("累计失败 4"));
+});
+
+test("formatChunkEventText: analyzer_started + fetching_chunk render (layer 3)", () => {
+  const t1 = PURE.formatChunkEventText({ event: "analyzer_started", pid: 8877 });
+  assert.ok(t1.includes("analyzer 就绪"));
+  assert.ok(t1.includes("8877"));
+  const t2 = PURE.formatChunkEventText({ event: "fetching_chunk", chunk_index: 1 });
+  assert.ok(t2.includes("请求 chunk 1"));
+});
+
+test("computeElapsedSeconds: rounds to tenths of a second", () => {
+  assert.equal(PURE.computeElapsedSeconds(1000, 1500), 0.5);
+  assert.equal(PURE.computeElapsedSeconds(1000, 2345), 1.3);
+  assert.equal(PURE.computeElapsedSeconds(1000, 1050), 0.1);
+  assert.equal(PURE.computeElapsedSeconds(null, 2000), null);
+  assert.equal(PURE.computeElapsedSeconds(2000, 1000), 0);
+});
+
+test("mergeTimeline: merges and sorts by ts across sources", () => {
+  const data = {
+    events: [
+      { ts: "2026-04-17T12:00:05Z", level: "info", machine: "M14", text: "开始 API 采样" },
+    ],
+    items: [
+      {
+        machine: "M14",
+        chunk_events: [
+          { event: "chunk_progress", chunk_index: 1, ts: "2026-04-17T12:00:30Z",
+            total_spins: 100000, current_rtp_pct: 92.0 },
+          { event: "chunk_failed", chunk_index: 2, ts: "2026-04-17T12:00:45Z",
+            error: "504", cumulative_failed: 1 },
+        ],
+      },
+    ],
+  };
+  const clientEvents = [
+    { ts: "2026-04-17T12:00:00Z", level: "info", source: "ui", text: "▷ 开始采样" },
+    { ts: "2026-04-17T12:00:02Z", level: "info", source: "ui", text: "⋯ 提交…" },
+  ];
+  const out = PURE.mergeTimeline(data, clientEvents);
+  assert.deepEqual(out.map((r) => r.ts), [
+    "2026-04-17T12:00:00Z",
+    "2026-04-17T12:00:02Z",
+    "2026-04-17T12:00:05Z",
+    "2026-04-17T12:00:30Z",
+    "2026-04-17T12:00:45Z",
+  ]);
+  assert.equal(out[0].source, "ui");
+  assert.equal(out[3].source, "M14");
+  assert.equal(out[4].level, "warn");  // chunk_failed → warn
+});
+
+test("mergeTimeline: critical events never pruned; chunk_progress capped", () => {
+  const items = [{
+    machine: "M14",
+    chunk_events: [
+      ...Array.from({ length: 12 }, (_, i) => ({
+        event: "chunk_progress", chunk_index: i + 1,
+        total_spins: (i + 1) * 1000, current_rtp_pct: 92.0,
+        ts: `2026-04-17T12:${String(i).padStart(2, "0")}:00Z`,
+      })),
+      { event: "chunk_failed", chunk_index: 50, error: "504",
+        cumulative_failed: 1, ts: "2026-04-17T12:15:00Z" },
+      { event: "chunk_failed", chunk_index: 51, error: "504",
+        cumulative_failed: 2, ts: "2026-04-17T12:15:05Z" },
+      { event: "chunk_failed", chunk_index: 52, error: "504",
+        cumulative_failed: 3, ts: "2026-04-17T12:15:10Z" },
+      { event: "failed", reason: "upstream_unstable:...",
+        ts: "2026-04-17T12:15:15Z" },
+    ],
+  }];
+  const out = PURE.mergeTimeline({ events: [], items }, []);
+  const failedRows = out.filter((r) => r.text.includes("失败") || r.text.includes("终止"));
+  assert.equal(failedRows.length, 4, "all 4 critical events must survive");
+  const progressRows = out.filter(
+    (r) => r.kind === "chunk" && !r.text.includes("失败") && !r.text.includes("终止")
+  );
+  assert.equal(progressRows.length, 8, "chunk_progress must be capped at 8");
+});
+
+test("mergeTimeline: progressCap override is honored", () => {
+  const items = [{
+    machine: "M14",
+    chunk_events: Array.from({ length: 20 }, (_, i) => ({
+      event: "chunk_progress", chunk_index: i + 1,
+      total_spins: 1000, current_rtp_pct: 92,
+      ts: `2026-04-17T12:${String(i).padStart(2, "0")}:00Z`,
+    })),
+  }];
+  const out = PURE.mergeTimeline({ events: [], items }, [], 3);
+  assert.equal(out.length, 3);
+});
+
+test("mergeTimeline: empty inputs yield empty list", () => {
+  assert.deepEqual(PURE.mergeTimeline({}, []), []);
+  assert.deepEqual(PURE.mergeTimeline({ events: [], items: [] }, null), []);
+});
+
+test("mergeTimeline: batch event without machine tag falls back to 'batch'", () => {
+  const data = {
+    events: [{ ts: "2026-04-17T12:00:00Z", level: "info", text: "disk ok" }],
+    items: [],
+  };
+  const out = PURE.mergeTimeline(data, []);
+  assert.equal(out[0].source, "batch");
+});

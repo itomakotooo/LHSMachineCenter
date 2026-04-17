@@ -562,6 +562,7 @@ const I18N = {
     thCreated: "Created At",
     thAction: "Action",
     thVersion: "Version",
+    thSpins: "Spins",
     thRun: "Run",
     thRtp: "RTP",
     thQuality: "Quality",
@@ -1304,6 +1305,170 @@ function collectSystemWarnings(opts) {
   return out;
 }
 
+// ---------- sampling log timeline ----------
+
+/**
+ * Build a synthetic UI-origin lifecycle event for the sampling log.
+ * These are the "missing" observable moments between a user click and
+ * the first analyzer chunk_progress event: submit-in-flight, batch
+ * created, submit failed. Without them the log stays empty for the
+ * 30-60s it takes an analyzer to produce its first chunk, which reads
+ * as "the app is stuck".
+ *
+ * @param {string} kind - "click" | "submit" | "batch_created" | "submit_failed" | "polling_started"
+ * @param {object} data - kind-specific payload
+ * @param {string} [nowIso] - ISO timestamp (tests inject; production omits → uses new Date().toISOString())
+ */
+function buildClientEvent(kind, data, nowIso) {
+  const ts = nowIso || new Date().toISOString();
+  const modeStr = data && data.mode != null ? `mode=${data.mode}` : "";
+  const ciStr = data && data.ci != null
+    ? (data.ci === 0 ? "fuzzy" : data.ci + "pp")
+    : "";
+  const detail = [modeStr, ciStr ? `ci=${ciStr}` : ""].filter(Boolean).join(" · ");
+  switch (kind) {
+    case "click":
+      return {
+        ts, level: "info", source: "ui",
+        text: `▷ 开始采样 · 已选 ${(data && data.count) || 0} 台${detail ? " · " + detail : ""}`,
+      };
+    case "submit":
+      return { ts, level: "info", source: "ui", text: "⋯ 提交批次请求…" };
+    case "batch_created":
+      return {
+        ts, level: "info", source: "ui",
+        text: `⋓ 批次 ${(data && data.batchId ? data.batchId.slice(0, 8) : "?")} 已创建`,
+      };
+    case "submit_failed":
+      return {
+        ts, level: "error", source: "ui",
+        text: `✗ 提交失败: ${(data && data.error) || "unknown"}`,
+      };
+    case "polling_started":
+      return { ts, level: "info", source: "ui", text: "◷ 开始轮询进度…" };
+    default:
+      return { ts, level: "info", source: "ui", text: `? ${kind}` };
+  }
+}
+
+/**
+ * Format a chunk-level event (from analyzer progress.jsonl) as a
+ * one-line timeline row text. Keeps rendering logic off the impure
+ * side so we can snapshot-test the text shape.
+ */
+function formatChunkEventText(ev) {
+  if (!ev || !ev.event) return "";
+  const fInt_ = (x) => (x == null ? "—" : Number(x).toLocaleString());
+  if (ev.event === "chunk_progress") {
+    const rtp = ev.current_rtp_pct != null
+      ? Number(ev.current_rtp_pct).toFixed(2) + "%" : "—";
+    const hwRaw = ev.current_halfwidth_pp != null
+      ? ev.current_halfwidth_pp : ev.halfwidth_pp;
+    const hw = hwRaw != null ? "±" + Number(hwRaw).toFixed(3) + "pp" : "";
+    return `chunk ${ev.chunk_index} · ${fInt_(ev.total_spins)} spins · RTP=${rtp} ${hw}`;
+  }
+  if (ev.event === "chunk_failed") {
+    const err = (ev.error || "").slice(0, 80);
+    return `✗ chunk ${ev.chunk_index} 失败 · ${err} · 累计失败 ${ev.cumulative_failed}`;
+  }
+  if (ev.event === "resume_from_cache") {
+    return `♻ 续采: 已有 ${ev.existing_chunks || 0} chunks / ${fInt_(ev.existing_spins)} spins · 下一个 chunk_${ev.next_chunk_index}`;
+  }
+  if (ev.event === "disk_guard_stop") {
+    return `⛔ 磁盘低 ${ev.free_gb}GB < ${ev.threshold_gb}GB · 自动停止`;
+  }
+  if (ev.event === "failed") {
+    return `⛔ 终止: ${(ev.reason || "").slice(0, 120)}`;
+  }
+  if (ev.event === "analyzer_started") {
+    return `⚙ analyzer 就绪 · pid=${ev.pid || "?"}`;
+  }
+  if (ev.event === "fetching_chunk") {
+    return `⇅ 请求 chunk ${ev.chunk_index}…`;
+  }
+  return ev.event;
+}
+
+/**
+ * Elapsed seconds since a client-captured monotonic reference. Used
+ * for "t+Ns" ticker on running items so the operator sees that time
+ * is passing even when the analyzer is still in its slow initial
+ * fetch (30-60s before first chunk_progress emits).
+ */
+function computeElapsedSeconds(startedAtMs, nowMs) {
+  if (!startedAtMs) return null;
+  const n = typeof nowMs === "number" ? nowMs : Date.now();
+  return Math.max(0, Math.round((n - startedAtMs) / 100) / 10);  // tenths
+}
+
+/**
+ * Merge the three event streams (batch-level, per-item chunk events,
+ * client-side lifecycle events) into one chronological timeline
+ * suitable for rendering as a single list. Every row carries a
+ * `source` tag so the UI can show [M273] / [batch] / [ui].
+ *
+ * Pruning mirrors the "criticals never, progress last N" rule from
+ * the backend:
+ *   - critical chunk events (chunk_failed / resume_from_cache /
+ *     disk_guard_stop / failed) and all batch-level / ui events
+ *     pass through untouched
+ *   - chunk_progress is capped to the last `progressCap` per-machine
+ *     so a machine that ran 200 chunks doesn't drown out a warning
+ *     from a sibling machine
+ */
+function mergeTimeline(data, clientEvents, progressCap) {
+  const cap = progressCap != null ? progressCap : 8;
+  const CRITICAL = new Set([
+    "chunk_failed", "resume_from_cache", "disk_guard_stop", "failed",
+    "analyzer_started", "fetching_chunk",
+  ]);
+  const out = [];
+  const batchEvents = (data && data.events) || [];
+  const items = (data && data.items) || [];
+
+  for (const ev of batchEvents) {
+    out.push({
+      ts: ev.ts || "",
+      level: ev.level || "info",
+      source: ev.machine ? `${ev.machine}` : "batch",
+      text: ev.text || "",
+      kind: "batch",
+    });
+  }
+  for (const it of items) {
+    const chunkEvents = it.chunk_events || [];
+    const criticals = chunkEvents.filter((e) => CRITICAL.has(e.event));
+    const progresses = chunkEvents
+      .filter((e) => e.event === "chunk_progress")
+      .slice(-cap);
+    for (const ev of [...criticals, ...progresses]) {
+      let level = "info";
+      if (ev.event === "chunk_failed") level = "warn";
+      else if (ev.event === "disk_guard_stop" || ev.event === "failed") level = "danger";
+      out.push({
+        ts: ev.ts || "",
+        level,
+        source: it.machine || "?",
+        text: formatChunkEventText(ev),
+        kind: "chunk",
+      });
+    }
+  }
+  for (const ev of clientEvents || []) {
+    out.push({
+      ts: ev.ts || "",
+      level: ev.level || "info",
+      source: ev.source || "ui",
+      text: ev.text || "",
+      kind: "client",
+    });
+  }
+  // Chronological sort; stable on equal ts.
+  out.sort((a, b) => (a.ts || "").localeCompare(b.ts || ""));
+  return out;
+}
+
+
 const PURE = {
   I18N,
   fmt,
@@ -1334,6 +1499,10 @@ const PURE = {
   prettyBucketLabel,
   computeLibPercentile,
   formatLibRank,
+  buildClientEvent,
+  formatChunkEventText,
+  computeElapsedSeconds,
+  mergeTimeline,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;

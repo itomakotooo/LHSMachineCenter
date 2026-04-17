@@ -59,6 +59,16 @@ const state = {
   // renderSamplingProgress so the final error log stays readable.
   // Cleared when the user clicks 开始采样 for a fresh batch.
   batchJustCompleted: false,
+  // Client-side synthetic lifecycle events (click / submit / batch_created
+  // / submit_failed / polling_started). These fill the observability
+  // gap between a user click and the first analyzer chunk_progress
+  // event (typically 30-60s of silence). Reset on each fresh batch.
+  clientEvents: [],
+  // Client-captured monotonic references so the UI can show "t+5.2s"
+  // elapsed counters on running items — gives the operator visible
+  // progress during the slow startup window.
+  batchStartedAt: null,  // Date.now() when 开始采样 was clicked
+  itemStartTimes: {},     // { run_id: Date.now() when first seen running }
   // Autotune result cache. Keyed by `${machine}|${mode}` → {robot_count,
   // batch_concurrency, success_rate, throughput, tuned_at}. When the
   // user clicks 开始采样 and an entry matches the first selected machine
@@ -1119,11 +1129,27 @@ async function startSampling() {
   // log is about to be replaced wholesale, which is expected now that
   // the user has opted in by clicking 开始采样.
   state.batchJustCompleted = false;
+  // Reset client-side observability state for this new batch.
+  state.clientEvents = [];
+  state.itemStartTimes = {};
+  state.batchStartedAt = Date.now();
   const selected = [...state.runFilterMachines];
   if (!selected.length) { if (btn) btn.disabled = false; return; }
   const mode = parseInt(byId("sampleMode")?.value || "2");
   let ci = parseFloat(byId("sampleCi")?.value || "0.5");
   if (mode === 2 || mode === 5) ci = 0;
+
+  // Surface the panel + inject "click" event IMMEDIATELY — before the
+  // POST latency. Without this, the first 1-3 seconds after clicking
+  // show an unchanged UI and feel like the button did nothing.
+  const panel = byId("sampleProgressPanel");
+  if (panel) panel.classList.remove("hidden");
+  pushClientEvent("click", { count: selected.length, mode, ci });
+  // Placeholder render so the panel isn't empty during the POST wait.
+  renderSamplingProgress({
+    status: "submitting", completed: 0, total: selected.length,
+    items: [], events: [],
+  });
 
   // Build items with smart chunk size per machine (category-based initial heuristic).
   const items = selected.map((machine) => {
@@ -1164,17 +1190,46 @@ async function startSampling() {
     auto_cleanup_cache: true,
   };
 
+  pushClientEvent("submit", {});
   try {
     const result = await apiPost("/api/batch-run", payload);
     state.activeBatchId = result.batch_id;
     localStorage.setItem("slot_console_activeBatchId", result.batch_id);
+    pushClientEvent("batch_created", { batchId: result.batch_id });
     updateSampleHint();
     byId("sampleCancelBtn").classList.remove("hidden");
     byId("sampleStartBtn").classList.add("hidden");
     pollSampling();
   } catch (e) {
+    pushClientEvent("submit_failed", { error: String(e.message || e) });
+    // Keep the panel open so the client-side error event is readable.
     alert(String(e.message || e));
     if (btn) btn.disabled = false;  // POST failed, let user retry
+  }
+}
+
+/**
+ * Append a synthetic lifecycle event to state.clientEvents and
+ * trigger a re-render. These cover the observability gap between the
+ * user's click and the first backend chunk_progress event.
+ */
+function pushClientEvent(kind, data) {
+  const ev = PURE.buildClientEvent(kind, data);
+  state.clientEvents.push(ev);
+  // Hard cap so a pathological re-click loop can't grow this unbounded.
+  if (state.clientEvents.length > 100) {
+    state.clientEvents = state.clientEvents.slice(-100);
+  }
+  // Eagerly re-render so the new event is visible without waiting for
+  // the next poll tick. Uses a minimal synthetic `data` shape when no
+  // batch data is available yet.
+  if (!state.batchJustCompleted) {
+    const stub = {
+      status: "submitting", completed: 0,
+      total: state.runFilterMachines ? state.runFilterMachines.size : 0,
+      items: [], events: [],
+    };
+    renderSamplingProgress(stub);
   }
 }
 
@@ -1182,7 +1237,13 @@ function pollSampling() {
   if (!state.activeBatchId) return;
   const panel = byId("sampleProgressPanel");
   if (panel) panel.classList.remove("hidden");
+  pushClientEvent("polling_started", {});
 
+  // Fast polling for the first 3 seconds (10 ticks × 300ms) so the
+  // log feels responsive during batch creation + analyzer spawn. After
+  // that, back off to 1s for the steady-state chunk loop (chunks take
+  // 30-60s each; polling faster than 1s is wasted bandwidth).
+  let tickCount = 0;
   const poll = async () => {
     if (!state.activeBatchId) return;
     try {
@@ -1191,7 +1252,7 @@ function pollSampling() {
       refreshDiskSpace();
       if (data.status === "completed") {
         // Mark the log frozen so the user can read final state without
-        // the panel re-rendering under them. Also stamp a "批次已结束"
+        // the panel re-rendering under them. Also stamp a completion
         // banner at the top so it's obvious why nothing's moving.
         const meta = byId("sampleProgressMeta");
         if (meta) {
@@ -1209,7 +1270,10 @@ function pollSampling() {
           const partialNote = partialMachines > 0 ? ` · 未达 CI ${partialMachines}` : "";
           const fn = failedChunks > 0 ? ` · 总失败 chunk=${failedChunks}` : "";
           const bannerIcon = (failedMachines > 0 || partialMachines > 0) ? "⚠" : "✓";
-          meta.textContent = `${bannerIcon} 批次已结束 · ${data.completed}/${data.total}${note}${partialNote}${fn} · 日志保留，点击开始采样可覆盖`;
+          const totalElapsed = state.batchStartedAt
+            ? ` · 总耗时 ${PURE.computeElapsedSeconds(state.batchStartedAt).toFixed(1)}s`
+            : "";
+          meta.textContent = `${bannerIcon} 批次已结束 · ${data.completed}/${data.total}${note}${partialNote}${fn}${totalElapsed} · 日志保留，点击开始采样可覆盖`;
         }
         state.batchJustCompleted = true;  // prevent further re-render
         state.activeBatchId = null;
@@ -1234,7 +1298,9 @@ function pollSampling() {
         return;
       }
     } catch (_) { /* ignore transient errors */ }
-    setTimeout(poll, 1000);  // poll every 1s for live updates
+    tickCount += 1;
+    const interval = tickCount < 10 ? 300 : 1000;
+    setTimeout(poll, interval);
   };
   poll();
 }
@@ -1249,19 +1315,30 @@ function renderSamplingProgress(data) {
   // clicks 开始采样 to start a fresh batch.
   if (state.batchJustCompleted) return;
 
-  meta.textContent = `${data.completed} / ${data.total} 完成 · ${data.items.filter(i=>i.status==='running').length} 运行中`;
+  // Capture per-item start times for the "t+Ns" elapsed ticker. Once
+  // an item first appears as running with a run_id, anchor the clock
+  // so subsequent polls can show elapsed seconds. This matters during
+  // the analyzer's slow initial fetch (30-60s before first
+  // chunk_progress emits) — without the ticker the UI looks frozen.
+  for (const it of data.items || []) {
+    if (it.status === "running" && it.run_id && !state.itemStartTimes[it.run_id]) {
+      state.itemStartTimes[it.run_id] = Date.now();
+    }
+  }
 
-  // Build combined timeline: machine status summary + events log.
-  const levelIcon = { info: "ℹ", warn: "⚠", ok: "✓", error: "✗", danger: "⛔" };
-  const levelClass = { info: "sample-info", warn: "sample-warn", ok: "sample-completed", error: "sample-failed", danger: "sample-danger" };
-  // Per-machine status rows at top.
-  // completed + ci_target_met===false renders as ⚠ (graceful stop
-  // without hitting the CI goal — upstream_unstable / max_chunks_reached
-  // on precise target / disk_low / etc.). Previously every completed
-  // run showed ✓, hiding the difference between real success and a
-  // run that just stopped with valid partial data.
+  const running = (data.items || []).filter((i) => i.status === "running").length;
+  const batchElapsed = state.batchStartedAt
+    ? ` · t+${PURE.computeElapsedSeconds(state.batchStartedAt).toFixed(1)}s`
+    : "";
+  meta.textContent = `${data.completed || 0} / ${data.total || 0} 完成 · ${running} 运行中${batchElapsed}`;
+
+  // Per-machine compact status rows at top. Chunk events are NOT
+  // inlined here anymore — they flow into the unified timeline below
+  // (via PURE.mergeTimeline) alongside batch-level + client-synthetic
+  // events. The two-section split (機台状態 vs 批次時間線) gives the
+  // operator at-a-glance state + a narrative stream.
   const statusIcon = { pending: "⏳", running: "▶", completed: "✓", failed: "✗", cancelled: "⏸" };
-  const statusRows = data.items.map((it) => {
+  const statusRows = (data.items || []).map((it) => {
     const isPartial = it.status === "completed" && it.ci_target_met === false;
     const icon = isPartial ? "⚠" : (statusIcon[it.status] || "?");
     const rowCls = isPartial ? "sample-warn" : `sample-${it.status}`;
@@ -1277,70 +1354,39 @@ function renderSamplingProgress(data) {
     } else if (it.status === "running") {
       progress = " · 启动中…";
     }
-    // Per-chunk mini-log, surfaced from the analyzer's progress.jsonl
-    // via the backend. Critical events (chunk_failed / resume /
-    // disk_guard / failed) are always rendered; chunk_progress is
-    // the rolling window. Previous version sliced .slice(-8) blindly,
-    // which quietly dropped all chunk_failed events once ≥ 8
-    // chunk_progress events accumulated — exactly the bug the backend
-    // retention fix was supposed to prevent, re-introduced on the UI
-    // side. Now we partition.
-    let chunkLog = "";
-    if (it.chunk_events && it.chunk_events.length) {
-      const CRITICAL = new Set(["chunk_failed", "resume_from_cache", "disk_guard_stop", "failed"]);
-      const criticals = it.chunk_events.filter((e) => CRITICAL.has(e.event));
-      const progresses = it.chunk_events.filter((e) => e.event === "chunk_progress").slice(-8);
-      const evs = [...criticals, ...progresses]
-        .sort((a, b) => (a.ts || "").localeCompare(b.ts || ""));
-      const rows = evs.map((ev) => {
-        const ts = (ev.ts || "").slice(11, 19);
-        if (ev.event === "chunk_progress") {
-          const rtp = ev.current_rtp_pct != null ? Number(ev.current_rtp_pct).toFixed(2) + "%" : "—";
-          const hwRaw = ev.current_halfwidth_pp != null ? ev.current_halfwidth_pp : ev.halfwidth_pp;
-          const hw = hwRaw != null ? "±" + Number(hwRaw).toFixed(3) + "pp" : "";
-          const sp = ev.total_spins != null ? Number(ev.total_spins).toLocaleString() : "";
-          return `<div class="sample-chunk-row">  ${ts} chunk ${ev.chunk_index} · ${sp} spins · RTP=${rtp} ${hw}</div>`;
-        }
-        if (ev.event === "chunk_failed") {
-          return `<div class="sample-chunk-row sample-warn">  ${ts} ✗ chunk ${ev.chunk_index}失败 · ${(ev.error || '').slice(0,80)} · 累计失败 ${ev.cumulative_failed}</div>`;
-        }
-        if (ev.event === "resume_from_cache") {
-          return `<div class="sample-chunk-row sample-info">  ${ts} ♻ 续采: 已有 ${ev.existing_chunks} chunks / ${(ev.existing_spins || 0).toLocaleString()} spins · 下一个 chunk_${ev.next_chunk_index}</div>`;
-        }
-        if (ev.event === "disk_guard_stop") {
-          return `<div class="sample-chunk-row sample-danger">  ${ts} ⛔ 磁盘低 ${ev.free_gb}GB < ${ev.threshold_gb}GB · graceful stop</div>`;
-        }
-        if (ev.event === "failed") {
-          return `<div class="sample-chunk-row sample-failed">  ${ts} ⛔ 终止: ${(ev.reason || '').slice(0,100)}</div>`;
-        }
-        return "";
-      }).join("");
-      chunkLog = rows;
+    // Elapsed ticker (pure helper). Shows tenths of a second so the
+    // user sees the clock moving during slow startup. Only on items
+    // that already acquired a run_id and are currently running.
+    let elapsed = "";
+    if (it.status === "running" && it.run_id && state.itemStartTimes[it.run_id]) {
+      const s = PURE.computeElapsedSeconds(state.itemStartTimes[it.run_id]);
+      if (s != null) elapsed = ` · t+${s.toFixed(1)}s`;
     }
-    return `<div class="sample-log-item ${rowCls}">${icon} ${it.machine} m${it.mode}${chunk}${progress}${err}${stopTail}</div>${chunkLog}`;
+    return `<div class="sample-log-item ${rowCls}">${icon} ${it.machine} m${it.mode}${chunk}${progress}${elapsed}${err}${stopTail}</div>`;
   }).join("");
 
-  // Event log below.
-  const eventRows = (data.events || []).map((ev) => {
-    const icon = levelIcon[ev.level] || "·";
-    const cls = levelClass[ev.level] || "";
-    const machine = ev.machine ? `[${ev.machine}] ` : "";
-    const ts = (ev.ts || "").slice(11, 19);
-    return `<div class="sample-log-item ${cls}">${ts} ${icon} ${machine}${ev.text}</div>`;
+  // Unified timeline: batch events + per-item chunk events + client
+  // lifecycle events, sorted chronologically via PURE.mergeTimeline.
+  // The pure helper also enforces the "criticals never pruned, progress
+  // capped at 8 per machine" retention rule, so a 31-chunk run doesn't
+  // drown out a warning from a sibling machine.
+  const timeline = PURE.mergeTimeline(data, state.clientEvents);
+  const levelIcon = { info: "ℹ", warn: "⚠", ok: "✓", error: "✗", danger: "⛔" };
+  const levelClass = {
+    info: "sample-info", warn: "sample-warn", ok: "sample-completed",
+    error: "sample-failed", danger: "sample-danger",
+  };
+  const timelineRows = timeline.map((row) => {
+    const icon = levelIcon[row.level] || "·";
+    const cls = levelClass[row.level] || "";
+    const ts = (row.ts || "").slice(11, 19);
+    // Source tag distinguishes [M273] / [batch] / [ui] so the eye
+    // can scan for a specific stream.
+    const srcTag = row.source ? `[${row.source}] ` : "";
+    return `<div class="sample-log-item ${cls}">${ts} ${icon} ${srcTag}${row.text}</div>`;
   }).join("");
 
-  // Section title carries BOTH counts so the user isn't misled by
-  // "事件日志 (最近 3)" into thinking only 3 things happened during a
-  // run that actually had 31 chunks + 18 failures. The per-chunk
-  // events render inline under each machine row (chunkLog) — that's
-  // the full picture.
-  const totalChunkEvents = (data.items || []).reduce(
-    (sum, it) => sum + ((it.chunk_events || []).length), 0
-  );
-  const batchEventCount = (data.events || []).length;
-  const sectionTitle = totalChunkEvents > 0
-    ? `批次日志 (${batchEventCount} 条 · 分块事件 ${totalChunkEvents} 条 — 见上方机台状态)`
-    : `批次日志 (${batchEventCount} 条)`;
+  const sectionTitle = `批次时间线 (${timeline.length} 条)`;
 
   // Preserve scroll position if the user has scrolled up to read
   // earlier events. The previous unconditional scrollTop = scrollHeight
@@ -1350,7 +1396,7 @@ function renderSamplingProgress(data) {
   const wasNearBottom =
     (log.scrollHeight - log.scrollTop - log.clientHeight) < 40;
   log.innerHTML = `<div class="sample-log-section-title">机台状态</div>${statusRows}
-    <div class="sample-log-section-title">${sectionTitle}</div>${eventRows}`;
+    <div class="sample-log-section-title">${sectionTitle}</div>${timelineRows}`;
   if (wasNearBottom) log.scrollTop = log.scrollHeight;
 }
 

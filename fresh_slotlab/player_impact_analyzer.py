@@ -2306,6 +2306,25 @@ def main() -> int:
             "started_at": started_at,
         },
     )
+    # UI-facing lifecycle event. The `started` event above is consumed
+    # by PURE.summarizeRunEvent (single-run live status strip) and was
+    # never meant to surface in the batch-log timeline. Emit a separate
+    # `analyzer_started` so the batch-log renderer can show "⚙ analyzer
+    # 就绪 · pid=X" right as the subprocess finishes its bootstrap —
+    # closes the observability gap between the backend's "spawn" log
+    # and the first chunk_progress event (which otherwise is 30-60s of
+    # apparent silence while the analyzer fetches its first chunk).
+    append_jsonl(
+        progress_file,
+        {
+            "event": "analyzer_started",
+            "run_id": run_id,
+            "pid": os.getpid(),
+            "machine": args.machine,
+            "mode": args.rtp_mode,
+            "ts": utc_now(),
+        },
+    )
 
     total_spins = 0
     total_bet = 0.0
@@ -2727,6 +2746,14 @@ def main() -> int:
     _DISK_GUARD_MIN_FREE_GB = 2.0
     _disk_guard_path = args.output_dir if args.output_dir.exists() else args.output_dir.parent
 
+    # One-shot "first live fetch" signal for the UI log. The first
+    # analyzer chunk typically takes 30-60s (Python startup + first
+    # HTTP call + robot fan-out). Emitting this event right before the
+    # first batch submit gives the operator a concrete "⇅ 请求 chunk 1…"
+    # line to look at during that window, instead of an apparently-
+    # frozen panel between `analyzer_started` and the first chunk_progress.
+    first_fetch_emitted = False
+
     # ── online sampling path (skipped in read-only --from-cache mode) ──
     while not skip_sampling_loop and next_chunk_index <= args.max_chunks:
         # Graceful-stop checkpoint: if the operator clicked Stop, bail
@@ -2770,6 +2797,19 @@ def main() -> int:
 
         indices = list(range(next_chunk_index, next_chunk_index + batch_size))
         next_chunk_index += batch_size
+
+        if not first_fetch_emitted:
+            first_fetch_emitted = True
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "fetching_chunk",
+                    "run_id": run_id,
+                    "chunk_index": indices[0],
+                    "batch_size": batch_size,
+                    "ts": utc_now(),
+                },
+            )
 
         batch_results: list[dict[str, Any]] = []
         chunk_cache = getattr(args, "chunk_cache_dir", None)
