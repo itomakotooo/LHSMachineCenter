@@ -149,6 +149,19 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--resume-from-cache",
+        type=Path,
+        default=None,
+        help=(
+            "Resume mode: load any existing chunk_*.json from this dir (same "
+            "shape as --from-cache), seed the accumulators with their state, "
+            "then continue LIVE API sampling into the same dir from the next "
+            "chunk index until the CI target or max_chunks is reached. "
+            "Mutually exclusive with --from-cache. Skips chunks that fail sha256 "
+            "integrity or whose config_md5 no longer matches upstream."
+        ),
+    )
+    parser.add_argument(
         "--endpoint-url",
         type=str,
         default=None,
@@ -2322,28 +2335,51 @@ def main() -> int:
     achieved_halfwidth_pp: float | None = None
     next_chunk_index = 1
 
-    # ── from-cache mode: read chunk files from disk instead of sampling ──
-    if args.from_cache is not None:
-        cache_dir = args.from_cache
-        chunk_files = sorted(cache_dir.glob("chunk_*.json"))
-        if not chunk_files:
-            raise SystemExit(f"--from-cache: no chunk_*.json files found in {cache_dir}")
-        stop_reason = "from_cache_complete"
+    # ── Cache read phase ─────────────────────────────────────────────
+    # Two modes share the reader, differ only in what happens after:
+    # - `--from-cache <dir>`: read-only. Run the pipeline offline on
+    #   the cached chunks; skip the live sampling loop entirely.
+    # - `--resume-from-cache <dir>`: read cached chunks as a starting
+    #   state, then CONTINUE live sampling into the same dir from the
+    #   next chunk index until the CI target or max_chunks hits.
+    # Mutually exclusive.
+    if args.from_cache is not None and args.resume_from_cache is not None:
+        raise SystemExit(
+            "--from-cache and --resume-from-cache are mutually exclusive"
+        )
+    cache_read_dir = args.from_cache if args.from_cache is not None else args.resume_from_cache
+    resume_mode = args.resume_from_cache is not None
+    # Set to True after the reader finishes so the `while` live-loop
+    # knows to skip (read-only mode).
+    skip_sampling_loop = args.from_cache is not None
+
+    if cache_read_dir is not None:
+        chunk_files = sorted(cache_read_dir.glob("chunk_*.json"))
+        # Read-only mode demands a non-empty cache; resume mode is
+        # happy to start fresh (cache dir just happens to be empty
+        # on the first resume call).
+        if not chunk_files and not resume_mode:
+            raise SystemExit(f"--from-cache: no chunk_*.json files found in {cache_read_dir}")
+        if not resume_mode:
+            stop_reason = "from_cache_complete"
+        max_existing_idx = 0
+        tag = "--resume-from-cache" if resume_mode else "--from-cache"
 
         for cf in chunk_files:
             try:
                 raw = load_chunk_envelope(cf)
             except ChunkIntegrityError as exc:
-                raise SystemExit(f"--from-cache: {exc}")
+                raise SystemExit(f"{tag}: {exc}")
             resp = raw.get("response")
             if resp is None:
-                raise SystemExit(f"--from-cache: {cf.name} missing 'response' key")
+                raise SystemExit(f"{tag}: {cf.name} missing 'response' key")
             # Honour envelope metadata for bet if present.
             chunk_bet_val = int(raw.get("_bet", args.bet) or args.bet)
             idx = int(raw.get("_chunk_index", next_chunk_index))
+            max_existing_idx = max(max_existing_idx, idx)
             rec = parse_chunk_response(resp, idx, chunk_bet_val)
             if not rec.get("ok"):
-                raise SystemExit(f"--from-cache: {cf.name} parse failed: {rec.get('error')}")
+                raise SystemExit(f"{tag}: {cf.name} parse failed: {rec.get('error')}")
             # ── identical merge block as online path (below) ──
             # We must replicate the merge here because the online loop is
             # inside a while-block we skip. A helper would be cleaner but
@@ -2544,8 +2580,26 @@ def main() -> int:
                 total_dollar_pick_total_dollars += int(rec.get("dollar_pick_total_dollars", 0) or 0)
                 total_dollar_pick_win += float(rec.get("dollar_pick_win", 0) or 0)
 
-    # ── online sampling path (skipped when --from-cache) ──
-    while args.from_cache is None and next_chunk_index <= args.max_chunks:
+        if resume_mode:
+            # Prime state so the live sampling loop picks up right after
+            # the last cached chunk. New chunks go into the same dir so
+            # a subsequent resume sees all of them.
+            next_chunk_index = max_existing_idx + 1
+            args.chunk_cache_dir = cache_read_dir
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "resume_from_cache",
+                    "run_id": run_id,
+                    "existing_chunks": chunks,
+                    "existing_spins": total_spins,
+                    "next_chunk_index": next_chunk_index,
+                    "ts": utc_now(),
+                },
+            )
+
+    # ── online sampling path (skipped in read-only --from-cache mode) ──
+    while not skip_sampling_loop and next_chunk_index <= args.max_chunks:
         # Graceful-stop checkpoint: if the operator clicked Stop, bail
         # out here so any completed chunks (aggregated up to the
         # previous batch end) still reach the summary-build path. The

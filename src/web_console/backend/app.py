@@ -139,6 +139,7 @@ class RunCreateRequest(BaseModel):
     mode: int
     server_id: str = Field(default="")
     from_cache_dir: str = Field(default="")  # if set, analyzer uses --from-cache
+    resume_from_cache_dir: str = Field(default="")  # if set, analyzer uses --resume-from-cache
     # target_halfwidth_pp == 0 encodes the "fuzzy" tier (no CI stop;
     # backend resolves max_chunks to target ~1M spins). Any positive
     # value is a normal CI half-width in percentage points.
@@ -1148,17 +1149,17 @@ class BatchRunManager:
                 it.machine, it.mode,
                 auto_delete_mismatched=True,
             )
-            # Cache reuse is appropriate ONLY for fuzzy sampling (target=0):
-            # fuzzy explicitly doesn't care about CI, just wants the summary
-            # from whatever spins are available. For precise targets (0.5 /
-            # 1 / 5 pp), the dev rawdata (fixed 10k spins per machine) can
-            # rarely meet the target — e.g. M273 m1 with std≈4.5 would need
-            # ~3M spins to hit 0.5pp. Silently reusing the cache made
-            # analyzer print "completed" at 12.9pp CI instead of actually
-            # running the ~3M-spin sample the user asked for. Gate strictly.
+            # Cache routing: three paths. fuzzy+cache → reuse (read-only).
+            # precise+cache → resume (seed state from chunks, continue
+            # live sampling on top until CI target hits). precise+no cache
+            # or fuzzy+no cache → fresh sample. This replaces the older
+            # binary "reuse or not" decision which silently under-delivered
+            # on precise targets by returning 12.9pp CI from a 10k-spin
+            # cache when the user asked for 0.5pp.
             target_pp = float(req.target_halfwidth_pp or 0)
             cache_usable = raw_status["usable_chunks"] > 0
             reuse_cache = cache_usable and target_pp == 0
+            resume_cache = cache_usable and target_pp > 0
 
             items.append({
                 "machine": it.machine,
@@ -1169,6 +1170,7 @@ class BatchRunManager:
                 "cycle_info": cycle_info,
                 "rawdata_status": raw_status,
                 "reuse_cache": reuse_cache,
+                "resume_cache": resume_cache,
             })
             if raw_status["mismatch_chunks"] > 0:
                 events.append({
@@ -1182,15 +1184,14 @@ class BatchRunManager:
                     "machine": it.machine,
                     "text": f"♻ 使用本地 rawdata: {raw_status['usable_chunks']} chunks, {raw_status['total_size_mb']}MB (Fuzzy 档跳过 API 采样)",
                 })
-            elif cache_usable and target_pp > 0:
+            elif resume_cache:
                 events.append({
-                    "ts": utc_now(), "level": "warn",
+                    "ts": utc_now(), "level": "info",
                     "machine": it.machine,
                     "text": (
-                        f"⚠ 本地有 {raw_status['usable_chunks']} chunks / "
-                        f"{raw_status['total_size_mb']}MB，但精度目标 "
-                        f"±{target_pp}pp 需要更多样本，将重新从 API 采样 "
-                        f"(chunk_spin_times={chunk_size})"
+                        f"♻ 续采: 复用 {raw_status['usable_chunks']} chunks / "
+                        f"{raw_status['total_size_mb']}MB，从下一个 chunk 继续采到 "
+                        f"±{target_pp}pp 精度 (chunk_spin_times={chunk_size})"
                     ),
                 })
             else:
@@ -1261,6 +1262,8 @@ class BatchRunManager:
                     "status": it["status"],
                     "run_id": it.get("run_id"),
                     "error": it.get("error"),
+                    "reuse_cache": bool(it.get("reuse_cache", False)),
+                    "resume_cache": bool(it.get("resume_cache", False)),
                     "progress": None,
                 }
                 # For running items, read live chunk progress.
@@ -1373,11 +1376,19 @@ class BatchRunManager:
                     item["status"] = "cancelled"
                     return
                 item["status"] = "running"
-                # Reuse local rawdata if usable chunks exist.
+                # Three paths (decided in start_batch, flags stored on item):
+                #   reuse_cache  (fuzzy + cache) → --from-cache (read-only)
+                #   resume_cache (precise + cache) → --resume-from-cache
+                #   neither → fresh API sample
                 from_cache_dir = ""
+                resume_from_cache_dir = ""
+                cache_dir_str = str(RAWDATA_ROOT / item["machine"] / f"mode_{item['mode']}")
                 if item.get("reuse_cache"):
-                    from_cache_dir = str(RAWDATA_ROOT / item["machine"] / f"mode_{item['mode']}")
+                    from_cache_dir = cache_dir_str
                     _log("info", f"♻ 使用本地 rawdata 解析 ({from_cache_dir})", item["machine"])
+                elif item.get("resume_cache"):
+                    resume_from_cache_dir = cache_dir_str
+                    _log("info", f"♻ 续采 from {cache_dir_str} (chunk_spin_times={item['chunk_spin_times']})", item["machine"])
                 else:
                     _log("info", f"开始 API 采样 (chunk_spin_times={item['chunk_spin_times']})", item["machine"])
                 req = RunCreateRequest(
@@ -1390,6 +1401,7 @@ class BatchRunManager:
                     timeout=params["timeout"],
                     target_halfwidth_pp=params["target_halfwidth_pp"],
                     from_cache_dir=from_cache_dir,
+                    resume_from_cache_dir=resume_from_cache_dir,
                 )
                 result = self._run_manager.start_run(req)
                 run_id = result.get("run_id")
@@ -2219,6 +2231,11 @@ class RunManager:
         # From-cache mode: reuse existing chunks, skip API sampling.
         if req.from_cache_dir:
             cmd.extend(["--from-cache", req.from_cache_dir])
+        # Resume-from-cache mode: seed state from existing chunks, then
+        # continue live sampling into the same dir until CI target hits.
+        # Mutually exclusive with from_cache_dir (analyzer enforces it).
+        if req.resume_from_cache_dir:
+            cmd.extend(["--resume-from-cache", req.resume_from_cache_dir])
 
         process = self._popen_factory(cmd, ROOT)
         managed = ManagedRun(

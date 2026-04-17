@@ -1,16 +1,23 @@
-"""Regression test for the cache-reuse gate on /api/batch-run.
+"""Regression tests for cache routing on /api/batch-run.
 
-Bug (2026-04-17, reported by user with M273 mode 1 screenshot):
-when the user clicked 开始采样 with target_halfwidth_pp=0.5, the batch
-endpoint saw 10k spins of local rawdata, set `reuse_cache=True`, ran
-analyzer `--from-cache`, and marked the item "completed" with CI≈12.9pp
-— completely ignoring the user's 0.5pp target. The dev rawdata is a
-fixed ~10k spins per machine intended for fuzzy / functional testing;
-a precise target typically needs 100k–10M+ spins.
+Three paths, picked in `start_batch`:
+- fuzzy (target=0) + cache usable → `reuse_cache` → analyzer runs
+  `--from-cache` (read-only, no live sampling).
+- precise (target>0) + cache usable → `resume_cache` → analyzer runs
+  `--resume-from-cache` (seeds state from cached chunks, then continues
+  live sampling into the same dir until CI target hits).
+- no cache → fresh API sample regardless of target.
 
-Fix: cache reuse is now gated on `target_halfwidth_pp == 0` (fuzzy
-tier). Any positive target forces a fresh API sample even when local
-cache exists. An informative event is emitted so the operator sees why.
+History:
+1. The original bug (reported via M273 mode 1 screenshot): precise
+   target + cache silently used `--from-cache` (read-only) and returned
+   12.9pp CI instead of actually sampling the ~3M spins the user's
+   0.5pp ask needed.
+2. First fix (4867): gate reuse on target==0, force fresh sample for
+   precise targets. Correct but wasteful — discarded the 10k spins.
+3. This test file now covers the final design: fresh sample is the
+   last resort; precise+cache RESUMES sampling on top of existing
+   chunks, only sampling the delta needed to hit target.
 """
 
 from __future__ import annotations
@@ -75,11 +82,12 @@ class TestBatchCacheReuseGate:
         event_texts = " ".join(e["text"] for e in b["events"])
         assert "跳过 API 采样" in event_texts, event_texts
 
-    def test_precise_target_refuses_cache(
+    def test_precise_target_resumes_cache(
         self, client, tmp_path: Path, app_factory, monkeypatch
     ):
-        """target=0.5 → reuse_cache=False even when local chunks exist.
-        Also emits a warning event explaining why."""
+        """target=0.5 + cache → resume_cache=True, item carries the flag;
+        batch event announces the continuation (not a fresh fresh sample).
+        """
         c, app = client
         import src.web_console.backend.app as app_mod
         raw_root = tmp_path / "dev_rawdata"
@@ -91,18 +99,21 @@ class TestBatchCacheReuseGate:
         assert r.status_code == 200
         batch_id = r.json()["batch_id"]
         b = c.get(f"/api/batch-run/{batch_id}").json()
+        # The item carries the resume flag, not reuse.
+        it = b["items"][0]
+        assert it["resume_cache"] is True
+        assert it["reuse_cache"] is False
         event_texts = " ".join(e["text"] for e in b["events"])
-        # Must NOT show the reuse-cache shortcut line.
-        assert "跳过 API 采样" not in event_texts, event_texts
-        # Must show the warning that explains why cache was not reused.
-        assert "精度目标" in event_texts, event_texts
-        assert "重新从 API 采样" in event_texts, event_texts
+        # "续采" announces we're continuing on top of the cache.
+        assert "续采" in event_texts, event_texts
+        # Must NOT be the fresh-sample-no-cache branch.
+        assert "无可用本地 rawdata" not in event_texts, event_texts
 
     def test_precise_target_no_cache_samples_fresh(
         self, client, tmp_path: Path, app_factory, monkeypatch
     ):
         """Control: target>0 and no cache → plain 'sample fresh' event,
-        not the '有 cache 但 target 需要更多' warning."""
+        neither reuse nor resume flags set."""
         c, app = client
         import src.web_console.backend.app as app_mod
         raw_root = tmp_path / "dev_rawdata"
@@ -113,6 +124,9 @@ class TestBatchCacheReuseGate:
         assert r.status_code == 200
         batch_id = r.json()["batch_id"]
         b = c.get(f"/api/batch-run/{batch_id}").json()
+        it = b["items"][0]
+        assert it["resume_cache"] is False
+        assert it["reuse_cache"] is False
         event_texts = " ".join(e["text"] for e in b["events"])
         assert "无可用本地 rawdata" in event_texts, event_texts
-        assert "精度目标" not in event_texts, event_texts
+        assert "续采" not in event_texts, event_texts
