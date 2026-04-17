@@ -168,3 +168,59 @@ def test_chunk_progress_emits_session_rtp_pct(progress_events):
             f"current_rtp {ev['current_rtp_pct']} must agree within 0.5pp; "
             f"delta={delta}"
         )
+
+
+def test_chunk_started_emitted_per_submitted_chunk(progress_events):
+    """Every submitted chunk must produce a chunk_started event —
+    feeds the UI's in-flight section so the operator sees each chunk
+    as it's dispatched. Previously the user saw nothing until the
+    whole batch returned (30-90s of silence for a slow chunk)."""
+    started = [e for e in progress_events if e.get("event") == "chunk_started"]
+    submitted_indices = sorted(e.get("chunk_index") for e in started)
+    # On M14 fixture (max_chunks=1, batch_concurrency=1) we submit
+    # exactly one chunk.
+    assert started, "expected at least one chunk_started event"
+    assert submitted_indices == [1], (
+        f"expected chunk_started for index 1, got {submitted_indices!r}"
+    )
+    for ev in started:
+        assert ev.get("ts"), "chunk_started must carry a timestamp"
+        assert isinstance(ev.get("chunk_index"), int)
+
+
+def test_chunk_progress_chunk_index_matches_submit_index(progress_events):
+    """chunk_progress.chunk_index must use the actual submitted index
+    (rec['index']) rather than the running `chunks` counter. The UI's
+    in-flight section pairs chunk_started (submit-index) with
+    chunk_progress by chunk_index — if they mismatch, an in-flight
+    chunk would never be retired from the section."""
+    started = {e["chunk_index"] for e in progress_events
+               if e.get("event") == "chunk_started"}
+    completed = {e["chunk_index"] for e in progress_events
+                 if e.get("event") == "chunk_progress"}
+    # Every completed chunk (on this fixture: just chunk 1) must
+    # match a chunk_started index.
+    assert completed.issubset(started), (
+        f"chunk_progress indices {completed!r} must be a subset of "
+        f"chunk_started indices {started!r} — else the UI's in-flight "
+        f"pairing breaks"
+    )
+
+
+def test_chunk_started_ordering_precedes_progress(progress_events):
+    """chunk_started for a given chunk_index must appear before any
+    chunk_progress/chunk_failed for the same index. Otherwise the UI
+    briefly shows an in-flight row for an already-complete chunk."""
+    seen_started = set()
+    for ev in progress_events:
+        kind = ev.get("event")
+        idx = ev.get("chunk_index")
+        if idx is None:
+            continue
+        if kind == "chunk_started":
+            seen_started.add(idx)
+        elif kind in ("chunk_progress", "chunk_failed"):
+            assert idx in seen_started, (
+                f"chunk {idx} emitted {kind} before chunk_started — "
+                f"this breaks the UI's in-flight pairing"
+            )

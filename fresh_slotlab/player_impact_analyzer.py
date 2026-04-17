@@ -2813,6 +2813,25 @@ def main() -> int:
 
         batch_results: list[dict[str, Any]] = []
         chunk_cache = getattr(args, "chunk_cache_dir", None)
+
+        # Emit chunk_started per submitted index BEFORE the HTTP calls
+        # block. The frontend derives its "in-flight chunks" section by
+        # pairing chunk_started events (by chunk_index) with their
+        # eventual chunk_progress / chunk_failed counterparts — ones
+        # without a pair are still in flight and get a live elapsed
+        # ticker. Without this, a 4-way concurrent batch where one
+        # request takes 90s would show nothing to the operator for 90s.
+        for idx in indices:
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "chunk_started",
+                    "run_id": run_id,
+                    "chunk_index": idx,
+                    "ts": utc_now(),
+                },
+            )
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as executor:
             futures = [
                 executor.submit(
@@ -2828,33 +2847,317 @@ def main() -> int:
                 )
                 for idx in indices
             ]
+            # Process each future AS its chunk returns, not after the
+            # whole batch. Previously the aggregate+emit block ran once
+            # at batch-end — if chunk 38 returned in 30s but chunk 41
+            # took 90s, the user saw nothing for 90s and then 4 events
+            # landed together. Now each chunk's chunk_progress (success)
+            # or chunk_failed (failure) fires the moment its future
+            # resolves, giving the operator real-time per-chunk feedback.
+            # Aggregation order becomes network-completion order rather
+            # than sorted-by-submit-index, but every aggregation op is
+            # associative+commutative (sums, maxes, list appends used
+            # only for order-invariant stats), so totals are identical
+            # either way. The `chunk_rtps_pct` list ordering changes but
+            # is only consumed by `ci_halfwidth_pp` (stdev) which is
+            # order-invariant.
             for future in concurrent.futures.as_completed(futures):
-                batch_results.append(future.result())
+                rec = future.result()
+                batch_results.append(rec)
+                if not rec.get("ok"):
+                    cumulative_failed_chunks = cumulative_failed_chunks + 1
+                    append_jsonl(
+                        progress_file,
+                        {
+                            "event": "chunk_failed",
+                            "run_id": run_id,
+                            "chunk_index": rec.get("index"),
+                            "error": rec.get("error"),
+                            "cumulative_failed": cumulative_failed_chunks,
+                            "chunks_completed_so_far": chunks,
+                            "total_spins_so_far": total_spins,
+                            "ts": utc_now(),
+                        },
+                    )
+                    continue
+                # Success path: aggregate into globals + emit
+                # chunk_progress.
+                chunks += 1
+                spins = int(rec["spins"])
+                bet_amt = float(rec["bet"])
+                win_amt = float(rec["win"])
 
-        # Partition results: merge successful chunks, log + count failures.
-        # Previously ANY chunk failure aborted the whole run, discarding
-        # the successful siblings in the same batch. A single 504 during
-        # a multi-hour 3M-spin run would throw away the ~1M spins
-        # already collected. Now: keep the successes, log each failure,
-        # keep going unless the failure rate shows sustained upstream
-        # breakage.
+                total_spins += spins
+                total_bet += bet_amt
+                total_win += win_amt
+
+                chunk_rtp = (win_amt / bet_amt) * 100.0 if bet_amt > 0 else 0.0
+                chunk_rtps_pct.append(chunk_rtp)
+
+                ret_count += int(rec["ret_count"])
+                ret_sum += float(rec["ret_sum"])
+                ret_sq_sum += float(rec["ret_sq_sum"])
+                max_observed_return_x = max(max_observed_return_x, float(rec["max_return_x"]))
+
+                win_spins += int(rec["win_spins"])
+                loss_spins += int(rec["loss_spins"])
+                profit_spins += int(rec["profit_spins"])
+                breakeven_or_more_spins += int(rec["breakeven_or_more_spins"])
+                big_win_x10_spins += int(rec["big_win_x10_spins"])
+                win_sum += float(rec["win_sum"])
+                lack_credit_spins += int(rec["lack_credit_spins"])
+
+                for lid, c in rec["payline_hits"].items():
+                    payline_hits[str(lid)] += int(c)
+                for lid, w in rec["payline_win_approx"].items():
+                    payline_win_approx[str(lid)] += float(w)
+                # payline_winning_symbols was added in the symbol-inference
+                # commit; old chunk records (pre-feature) won't have it.
+                for lid, smap in (rec.get("payline_winning_symbols") or {}).items():
+                    if isinstance(smap, dict):
+                        for sym, c in smap.items():
+                            payline_winning_symbols[str(lid)][str(sym)] += int(c)
+                # payline_winning_symbols_rln added in the RLN-auth commit.
+                for lid, smap in (rec.get("payline_winning_symbols_rln") or {}).items():
+                    if isinstance(smap, dict):
+                        for code, c in smap.items():
+                            payline_winning_symbols_rln[str(lid)][str(code)] += int(c)
+                # bonus_chain_* added in the MapCollection dynamics commit.
+                for L in rec.get("bonus_chain_lengths") or []:
+                    bonus_chain_lengths.append(int(L))
+                for L in rec.get("bonus_chain_max_ratios") or []:
+                    bonus_chain_max_ratios.append(int(L))
+                for L in rec.get("bonus_chain_retrigger_events") or []:
+                    bonus_chain_retrigger_events.append(int(L))
+                bonus_total_rounds_global += int(rec.get("bonus_total_rounds", 0) or 0)
+                bonus_retrigger_rounds_global += int(rec.get("bonus_retrigger_rounds", 0) or 0)
+                for ratio_str, c in (rec.get("bonus_extra_ratio_counts") or {}).items():
+                    try:
+                        bonus_extra_ratio_counts[int(ratio_str)] += int(c)
+                    except (TypeError, ValueError):
+                        pass
+                for depth, s in (rec.get("bonus_depth_ratio_sum") or {}).items():
+                    bonus_depth_ratio_sum[str(depth)] += float(s)
+                for depth, c in (rec.get("bonus_depth_ratio_count") or {}).items():
+                    bonus_depth_ratio_count[str(depth)] += int(c)
+
+                for sym, c in rec["symbol_counts"].items():
+                    symbol_counts[str(sym)] += int(c)
+                for ci_text, cmap in rec["symbol_counts_by_col"].items():
+                    ci = int(ci_text)
+                    if isinstance(cmap, dict):
+                        for sym, c in cmap.items():
+                            symbol_counts_by_col[ci][str(sym)] += int(c)
+
+                total_symbol_slots += int(rec["total_symbol_slots"])
+
+                for k, c in rec["loss_streak_hist"].items():
+                    loss_streak_hist[int(k)] += int(c)
+                for k, c in rec["win_streak_hist"].items():
+                    win_streak_hist[int(k)] += int(c)
+                max_loss_streak = max(max_loss_streak, int(rec["max_loss_streak"]))
+                max_win_streak = max(max_win_streak, int(rec["max_win_streak"]))
+
+                for k, c in rec["multiplier_bucket_spins"].items():
+                    multiplier_bucket_spins[str(k)] += int(c)
+                for k, v in rec["multiplier_bucket_bet"].items():
+                    multiplier_bucket_bet[str(k)] += float(v)
+                for k, v in rec["multiplier_bucket_win"].items():
+                    multiplier_bucket_win[str(k)] += float(v)
+
+                for k, c in (rec.get("payout_group_hits") or {}).items():
+                    payout_group_hits[int(k)] += int(c)
+                for k, w in (rec.get("payout_group_win") or {}).items():
+                    payout_group_win[int(k)] += float(w)
+                # payout_id_* added in the PayoutIdToWinAmount commit; old
+                # chunk records (pre-feature) tolerate missing via .get().
+                for pid, c in (rec.get("payout_id_hits") or {}).items():
+                    payout_id_hits[str(pid)] += int(c)
+                for pid, w in (rec.get("payout_id_win") or {}).items():
+                    payout_id_win[str(pid)] += float(w)
+                # spin_type_* added in the SpinType-breakdown commit; old
+                # chunk records tolerate missing via .get().
+                for st, c in (rec.get("spin_type_spins") or {}).items():
+                    spin_type_spins[int(st)] += int(c)
+                for st, b in (rec.get("spin_type_bet") or {}).items():
+                    spin_type_bet[int(st)] += float(b)
+                for st, b in (rec.get("spin_type_paid_bet") or {}).items():
+                    spin_type_paid_bet[int(st)] += float(b)
+                for st, w in (rec.get("spin_type_win") or {}).items():
+                    spin_type_win[int(st)] += float(w)
+                for st, c in (rec.get("spin_type_wins") or {}).items():
+                    spin_type_wins[int(st)] += int(c)
+                for st, c in (rec.get("spin_type_paid_rounds") or {}).items():
+                    spin_type_paid_rounds[int(st)] += int(c)
+                # upstream feature tally merge: additive per (feature, payid).
+                # Older chunk records (pre-feature) lack the key -- safe via
+                # .get() default.
+                for feat, payouts in (rec.get("upstream_feature_tally") or {}).items():
+                    if not isinstance(payouts, dict):
+                        continue
+                    for pid, entry in payouts.items():
+                        if not isinstance(entry, dict):
+                            continue
+                        upstream_feature_tally[str(feat)][str(pid)]["win"] += float(
+                            entry.get("win", 0.0) or 0.0
+                        )
+                        upstream_feature_tally[str(feat)][str(pid)]["times"] += int(
+                            entry.get("times", 0) or 0
+                        )
+                # upstream analysis cross-check (older chunk records lack
+                # these fields; .get() default keeps the comparison neutral).
+                upstream_total_win += float(rec.get("upstream_chunk_total_win", 0.0) or 0.0)
+                upstream_robots_seen += int(rec.get("upstream_chunk_robots_seen", 0) or 0)
+                # collect-mechanic accumulators (M272+; absent on M14).
+                collect_count_total += int(rec.get("collect_count_total", 0) or 0)
+                chunk_acc_max = int(rec.get("acc_credits_max", 0) or 0)
+                if chunk_acc_max > acc_credits_max_global:
+                    acc_credits_max_global = chunk_acc_max
+                collect_robots_seen_total += int(rec.get("collect_robots_seen", 0) or 0)
+                # Trunk-clamp totals.
+                clamp_pending_paid_spins_total += int(rec.get("clamp_pending_paid_spins", 0) or 0)
+                clamp_pending_robots_total += int(rec.get("clamp_pending_robots", 0) or 0)
+                for pk in rec.get("cycle_peaks") or []:
+                    all_cycle_peaks.append(int(pk))
+                for fcc in rec.get("final_cc_values") or []:
+                    all_final_cc_values.append(int(fcc))
+                total_completed_cycles += int(rec.get("completed_cycles", 0) or 0)
+                # Raw-data analysis merge.
+                for key, entry in (rec.get("payline_symbol_joint") or {}).items():
+                    if isinstance(entry, dict):
+                        all_payline_symbol_joint[key]["hits"] += int(entry.get("hits", 0))
+                        all_payline_symbol_joint[key]["win"] += float(entry.get("win", 0.0))
+                for curve in rec.get("session_rtp_curves") or []:
+                    if isinstance(curve, list):
+                        all_session_rtp_curves.append(curve)
+                for seq in rec.get("chain_ratio_sequences") or []:
+                    if isinstance(seq, list):
+                        all_chain_ratio_sequences.append(seq)
+                for pos, cnt in (rec.get("reel_position_hits") or {}).items():
+                    all_reel_position_hits[str(pos)] += int(cnt)
+                for feat, fb in (rec.get("chains_by_feature") or {}).items():
+                    if not isinstance(fb, dict):
+                        continue
+                    afb = all_chains_by_feature[str(feat)]
+                    for L in fb.get("lengths") or []:
+                        afb["lengths"].append(int(L))
+                    for L in fb.get("max_ratios") or []:
+                        afb["max_ratios"].append(int(L))
+                    for L in fb.get("retrigger_events") or []:
+                        afb["retrigger_events"].append(int(L))
+                    afb["total_rounds"] += int(fb.get("total_rounds", 0) or 0)
+                    afb["retrigger_rounds"] += int(fb.get("retrigger_rounds", 0) or 0)
+
+                # Session-level totals (session refactor commit). Older chunk
+                # records (pre-feature) silently add 0 via .get() fallback.
+                total_paid_sessions += int(rec.get("paid_session_count", 0) or 0)
+                total_bonus_spins += int(rec.get("bonus_spin_count", 0) or 0)
+                total_session_wins += int(rec.get("session_win_count", 0) or 0)
+                total_session_loses += int(rec.get("session_lose_count", 0) or 0)
+                total_session_profits += int(rec.get("session_profit_count", 0) or 0)
+                total_session_breakevens += int(rec.get("session_breakeven_count", 0) or 0)
+                total_session_big_win_x10 += int(rec.get("session_big_win_x10_count", 0) or 0)
+                total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
+                total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
+                total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
+                chunk_sess_max_ret = float(rec.get("session_max_return_x", 0.0) or 0.0)
+                if chunk_sess_max_ret > total_session_max_return_x:
+                    total_session_max_return_x = chunk_sess_max_ret
+                total_session_win_sum += float(rec.get("session_win_sum", 0.0) or 0.0)
+                for b, c in (rec.get("session_bucket_spins") or {}).items():
+                    session_bucket_spins[str(b)] += int(c)
+                for b, v in (rec.get("session_bucket_bet") or {}).items():
+                    session_bucket_bet[str(b)] += float(v)
+                for b, v in (rec.get("session_bucket_win") or {}).items():
+                    session_bucket_win[str(b)] += float(v)
+                for k, c in (rec.get("session_loss_streak_hist") or {}).items():
+                    session_loss_streak_hist[int(k)] += int(c)
+                for k, c in (rec.get("session_win_streak_hist") or {}).items():
+                    session_win_streak_hist[int(k)] += int(c)
+                chunk_sess_max_loss = int(rec.get("session_max_loss_streak", 0) or 0)
+                if chunk_sess_max_loss > total_session_max_loss_streak:
+                    total_session_max_loss_streak = chunk_sess_max_loss
+                chunk_sess_max_win = int(rec.get("session_max_win_streak", 0) or 0)
+                if chunk_sess_max_win > total_session_max_win_streak:
+                    total_session_max_win_streak = chunk_sess_max_win
+                # Extra-field discovery merge.
+                for fld, cnt in (rec.get("extra_fields_seen") or {}).items():
+                    total_extra_fields_seen[str(fld)] += int(cnt)
+                # Per-machine mechanic merge.
+                total_lock_lines_spins += int(rec.get("lock_lines_spins", 0) or 0)
+                total_lock_lines_total_lines += int(rec.get("lock_lines_total_lines", 0) or 0)
+                total_lock_lines_win += float(rec.get("lock_lines_win", 0) or 0)
+                total_lock_symbols_spins += int(rec.get("lock_symbols_spins", 0) or 0)
+                for s in rec.get("lock_symbols_unique") or []:
+                    total_lock_symbols_unique.add(str(s))
+                total_lock_symbols_win += float(rec.get("lock_symbols_win", 0) or 0)
+                total_lock_reels_spins += int(rec.get("lock_reels_spins", 0) or 0)
+                total_lock_reels_win += float(rec.get("lock_reels_win", 0) or 0)
+                total_jackpot_spins += int(rec.get("jackpot_spins", 0) or 0)
+                for j in rec.get("jackpot_ids_seen") or []:
+                    total_jackpot_ids_seen.add(str(j))
+                total_jackpot_win += float(rec.get("jackpot_win", 0) or 0)
+                total_freespin_chain_spins += int(rec.get("freespin_chain_spins", 0) or 0)
+                total_freespin_retriggers += int(rec.get("freespin_retriggers", 0) or 0)
+                fsmc = int(rec.get("freespin_max_chain", 0) or 0)
+                if fsmc > total_freespin_max_chain:
+                    total_freespin_max_chain = fsmc
+                total_freespin_win += float(rec.get("freespin_win", 0) or 0)
+                total_dollar_pick_spins += int(rec.get("dollar_pick_spins", 0) or 0)
+                total_dollar_pick_total_dollars += int(rec.get("dollar_pick_total_dollars", 0) or 0)
+                total_dollar_pick_win += float(rec.get("dollar_pick_win", 0) or 0)
+
+                hw = ci_halfwidth_pp(chunk_rtps_pct)
+                if math.isfinite(hw):
+                    achieved_halfwidth_pp = hw
+
+                current_rtp_pct = (total_win / total_bet) * 100.0 if total_bet > 0 else 0.0
+                # Session-level RTP mirrors the final summary's rtp.point_pct
+                # (total_win / session_bet_sum). On collect-mechanic machines
+                # diverges from spin-level current_rtp_pct by 30-50%; UI
+                # prefers this value (see pure.js formatChunkEventText).
+                session_bet_sum_live = sum(session_bucket_bet.values())
+                session_rtp_pct = (
+                    (total_session_win_sum / session_bet_sum_live) * 100.0
+                    if session_bet_sum_live > 0 else None
+                )
+                # Session-level CI: authoritative, matches the final-report
+                # computation. Progress events now expose this so the UI's
+                # CI gauge reflects the value the stop condition compares.
+                session_ci_now = session_halfwidth_pp(
+                    total_session_ret_count,
+                    total_session_ret_sum,
+                    total_session_ret_sq_sum,
+                )
+                append_jsonl(
+                    progress_file,
+                    {
+                        "event": "chunk_progress",
+                        "run_id": run_id,
+                        # Actual submitted index (pairs with chunk_started
+                        # for the UI's in-flight section). Previously this
+                        # carried the running `chunks` counter which could
+                        # be lower than the true index on resume runs.
+                        "chunk_index": int(rec["index"]),
+                        "chunks_completed": chunks,
+                        "total_spins": total_spins,
+                        "current_rtp_pct": current_rtp_pct,
+                        "session_rtp_pct": session_rtp_pct,
+                        "current_halfwidth_pp": (
+                            session_ci_now if session_ci_now is not None else achieved_halfwidth_pp
+                        ),
+                        "chunk_level_halfwidth_pp": achieved_halfwidth_pp,
+                        "session_level_halfwidth_pp": session_ci_now,
+                        "target_halfwidth_pp": args.target_halfwidth_pp,
+                        "elapsed_seconds": round(time.time() - t0, 3),
+                        "ts": utc_now(),
+                    },
+                )
+
+        # Batch-end bail check. Emissions already fired inline above —
+        # this block only counts for the sustained-failure threshold.
         successful_results = [r for r in batch_results if bool(r.get("ok"))]
         failed_results = [r for r in batch_results if not bool(r.get("ok"))]
-        for fr in failed_results:
-            cumulative_failed_chunks = cumulative_failed_chunks + 1
-            append_jsonl(
-                progress_file,
-                {
-                    "event": "chunk_failed",
-                    "run_id": run_id,
-                    "chunk_index": fr.get("index"),
-                    "error": fr.get("error"),
-                    "cumulative_failed": cumulative_failed_chunks,
-                    "chunks_completed_so_far": chunks,
-                    "total_spins_so_far": total_spins,
-                    "ts": utc_now(),
-                },
-            )
         if failed_results and not successful_results:
             # Entire batch failed → consecutive failure counter bumps.
             # N consecutive fully-failed batches = sustained upstream
@@ -2887,279 +3190,6 @@ def main() -> int:
                 },
             )
             break
-
-        for rec in sorted(successful_results, key=lambda x: int(x["index"])):
-            chunks += 1
-            spins = int(rec["spins"])
-            bet_amt = float(rec["bet"])
-            win_amt = float(rec["win"])
-
-            total_spins += spins
-            total_bet += bet_amt
-            total_win += win_amt
-
-            chunk_rtp = (win_amt / bet_amt) * 100.0 if bet_amt > 0 else 0.0
-            chunk_rtps_pct.append(chunk_rtp)
-
-            ret_count += int(rec["ret_count"])
-            ret_sum += float(rec["ret_sum"])
-            ret_sq_sum += float(rec["ret_sq_sum"])
-            max_observed_return_x = max(max_observed_return_x, float(rec["max_return_x"]))
-
-            win_spins += int(rec["win_spins"])
-            loss_spins += int(rec["loss_spins"])
-            profit_spins += int(rec["profit_spins"])
-            breakeven_or_more_spins += int(rec["breakeven_or_more_spins"])
-            big_win_x10_spins += int(rec["big_win_x10_spins"])
-            win_sum += float(rec["win_sum"])
-            lack_credit_spins += int(rec["lack_credit_spins"])
-
-            for lid, c in rec["payline_hits"].items():
-                payline_hits[str(lid)] += int(c)
-            for lid, w in rec["payline_win_approx"].items():
-                payline_win_approx[str(lid)] += float(w)
-            # payline_winning_symbols was added in the symbol-inference
-            # commit; old chunk records (pre-feature) won't have it.
-            for lid, smap in (rec.get("payline_winning_symbols") or {}).items():
-                if isinstance(smap, dict):
-                    for sym, c in smap.items():
-                        payline_winning_symbols[str(lid)][str(sym)] += int(c)
-            # payline_winning_symbols_rln added in the RLN-auth commit.
-            for lid, smap in (rec.get("payline_winning_symbols_rln") or {}).items():
-                if isinstance(smap, dict):
-                    for code, c in smap.items():
-                        payline_winning_symbols_rln[str(lid)][str(code)] += int(c)
-            # bonus_chain_* added in the MapCollection dynamics commit.
-            for L in rec.get("bonus_chain_lengths") or []:
-                bonus_chain_lengths.append(int(L))
-            for L in rec.get("bonus_chain_max_ratios") or []:
-                bonus_chain_max_ratios.append(int(L))
-            for L in rec.get("bonus_chain_retrigger_events") or []:
-                bonus_chain_retrigger_events.append(int(L))
-            bonus_total_rounds_global += int(rec.get("bonus_total_rounds", 0) or 0)
-            bonus_retrigger_rounds_global += int(rec.get("bonus_retrigger_rounds", 0) or 0)
-            for ratio_str, c in (rec.get("bonus_extra_ratio_counts") or {}).items():
-                try:
-                    bonus_extra_ratio_counts[int(ratio_str)] += int(c)
-                except (TypeError, ValueError):
-                    pass
-            for depth, s in (rec.get("bonus_depth_ratio_sum") or {}).items():
-                bonus_depth_ratio_sum[str(depth)] += float(s)
-            for depth, c in (rec.get("bonus_depth_ratio_count") or {}).items():
-                bonus_depth_ratio_count[str(depth)] += int(c)
-
-            for sym, c in rec["symbol_counts"].items():
-                symbol_counts[str(sym)] += int(c)
-            for ci_text, cmap in rec["symbol_counts_by_col"].items():
-                ci = int(ci_text)
-                if isinstance(cmap, dict):
-                    for sym, c in cmap.items():
-                        symbol_counts_by_col[ci][str(sym)] += int(c)
-
-            total_symbol_slots += int(rec["total_symbol_slots"])
-
-            for k, c in rec["loss_streak_hist"].items():
-                loss_streak_hist[int(k)] += int(c)
-            for k, c in rec["win_streak_hist"].items():
-                win_streak_hist[int(k)] += int(c)
-            max_loss_streak = max(max_loss_streak, int(rec["max_loss_streak"]))
-            max_win_streak = max(max_win_streak, int(rec["max_win_streak"]))
-
-            for k, c in rec["multiplier_bucket_spins"].items():
-                multiplier_bucket_spins[str(k)] += int(c)
-            for k, v in rec["multiplier_bucket_bet"].items():
-                multiplier_bucket_bet[str(k)] += float(v)
-            for k, v in rec["multiplier_bucket_win"].items():
-                multiplier_bucket_win[str(k)] += float(v)
-
-            for k, c in (rec.get("payout_group_hits") or {}).items():
-                payout_group_hits[int(k)] += int(c)
-            for k, w in (rec.get("payout_group_win") or {}).items():
-                payout_group_win[int(k)] += float(w)
-            # payout_id_* added in the PayoutIdToWinAmount commit; old
-            # chunk records (pre-feature) tolerate missing via .get().
-            for pid, c in (rec.get("payout_id_hits") or {}).items():
-                payout_id_hits[str(pid)] += int(c)
-            for pid, w in (rec.get("payout_id_win") or {}).items():
-                payout_id_win[str(pid)] += float(w)
-            # spin_type_* added in the SpinType-breakdown commit; old
-            # chunk records tolerate missing via .get().
-            for st, c in (rec.get("spin_type_spins") or {}).items():
-                spin_type_spins[int(st)] += int(c)
-            for st, b in (rec.get("spin_type_bet") or {}).items():
-                spin_type_bet[int(st)] += float(b)
-            for st, b in (rec.get("spin_type_paid_bet") or {}).items():
-                spin_type_paid_bet[int(st)] += float(b)
-            for st, w in (rec.get("spin_type_win") or {}).items():
-                spin_type_win[int(st)] += float(w)
-            for st, c in (rec.get("spin_type_wins") or {}).items():
-                spin_type_wins[int(st)] += int(c)
-            for st, c in (rec.get("spin_type_paid_rounds") or {}).items():
-                spin_type_paid_rounds[int(st)] += int(c)
-            # upstream feature tally merge: additive per (feature, payid).
-            # Older chunk records (pre-feature) lack the key -- safe via
-            # .get() default.
-            for feat, payouts in (rec.get("upstream_feature_tally") or {}).items():
-                if not isinstance(payouts, dict):
-                    continue
-                for pid, entry in payouts.items():
-                    if not isinstance(entry, dict):
-                        continue
-                    upstream_feature_tally[str(feat)][str(pid)]["win"] += float(
-                        entry.get("win", 0.0) or 0.0
-                    )
-                    upstream_feature_tally[str(feat)][str(pid)]["times"] += int(
-                        entry.get("times", 0) or 0
-                    )
-            # upstream analysis cross-check (older chunk records lack
-            # these fields; .get() default keeps the comparison neutral).
-            upstream_total_win += float(rec.get("upstream_chunk_total_win", 0.0) or 0.0)
-            upstream_robots_seen += int(rec.get("upstream_chunk_robots_seen", 0) or 0)
-            # collect-mechanic accumulators (M272+; absent on M14).
-            collect_count_total += int(rec.get("collect_count_total", 0) or 0)
-            chunk_acc_max = int(rec.get("acc_credits_max", 0) or 0)
-            if chunk_acc_max > acc_credits_max_global:
-                acc_credits_max_global = chunk_acc_max
-            collect_robots_seen_total += int(rec.get("collect_robots_seen", 0) or 0)
-            # Trunk-clamp totals.
-            clamp_pending_paid_spins_total += int(rec.get("clamp_pending_paid_spins", 0) or 0)
-            clamp_pending_robots_total += int(rec.get("clamp_pending_robots", 0) or 0)
-            for pk in rec.get("cycle_peaks") or []:
-                all_cycle_peaks.append(int(pk))
-            for fcc in rec.get("final_cc_values") or []:
-                all_final_cc_values.append(int(fcc))
-            total_completed_cycles += int(rec.get("completed_cycles", 0) or 0)
-            # Raw-data analysis merge.
-            for key, entry in (rec.get("payline_symbol_joint") or {}).items():
-                if isinstance(entry, dict):
-                    all_payline_symbol_joint[key]["hits"] += int(entry.get("hits", 0))
-                    all_payline_symbol_joint[key]["win"] += float(entry.get("win", 0.0))
-            for curve in rec.get("session_rtp_curves") or []:
-                if isinstance(curve, list):
-                    all_session_rtp_curves.append(curve)
-            for seq in rec.get("chain_ratio_sequences") or []:
-                if isinstance(seq, list):
-                    all_chain_ratio_sequences.append(seq)
-            for pos, cnt in (rec.get("reel_position_hits") or {}).items():
-                all_reel_position_hits[str(pos)] += int(cnt)
-            for feat, fb in (rec.get("chains_by_feature") or {}).items():
-                if not isinstance(fb, dict):
-                    continue
-                afb = all_chains_by_feature[str(feat)]
-                for L in fb.get("lengths") or []:
-                    afb["lengths"].append(int(L))
-                for L in fb.get("max_ratios") or []:
-                    afb["max_ratios"].append(int(L))
-                for L in fb.get("retrigger_events") or []:
-                    afb["retrigger_events"].append(int(L))
-                afb["total_rounds"] += int(fb.get("total_rounds", 0) or 0)
-                afb["retrigger_rounds"] += int(fb.get("retrigger_rounds", 0) or 0)
-
-            # Session-level totals (session refactor commit). Older chunk
-            # records (pre-feature) silently add 0 via .get() fallback.
-            total_paid_sessions += int(rec.get("paid_session_count", 0) or 0)
-            total_bonus_spins += int(rec.get("bonus_spin_count", 0) or 0)
-            total_session_wins += int(rec.get("session_win_count", 0) or 0)
-            total_session_loses += int(rec.get("session_lose_count", 0) or 0)
-            total_session_profits += int(rec.get("session_profit_count", 0) or 0)
-            total_session_breakevens += int(rec.get("session_breakeven_count", 0) or 0)
-            total_session_big_win_x10 += int(rec.get("session_big_win_x10_count", 0) or 0)
-            total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
-            total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
-            total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
-            chunk_sess_max_ret = float(rec.get("session_max_return_x", 0.0) or 0.0)
-            if chunk_sess_max_ret > total_session_max_return_x:
-                total_session_max_return_x = chunk_sess_max_ret
-            total_session_win_sum += float(rec.get("session_win_sum", 0.0) or 0.0)
-            for b, c in (rec.get("session_bucket_spins") or {}).items():
-                session_bucket_spins[str(b)] += int(c)
-            for b, v in (rec.get("session_bucket_bet") or {}).items():
-                session_bucket_bet[str(b)] += float(v)
-            for b, v in (rec.get("session_bucket_win") or {}).items():
-                session_bucket_win[str(b)] += float(v)
-            for k, c in (rec.get("session_loss_streak_hist") or {}).items():
-                session_loss_streak_hist[int(k)] += int(c)
-            for k, c in (rec.get("session_win_streak_hist") or {}).items():
-                session_win_streak_hist[int(k)] += int(c)
-            chunk_sess_max_loss = int(rec.get("session_max_loss_streak", 0) or 0)
-            if chunk_sess_max_loss > total_session_max_loss_streak:
-                total_session_max_loss_streak = chunk_sess_max_loss
-            chunk_sess_max_win = int(rec.get("session_max_win_streak", 0) or 0)
-            if chunk_sess_max_win > total_session_max_win_streak:
-                total_session_max_win_streak = chunk_sess_max_win
-            # Extra-field discovery merge.
-            for fld, cnt in (rec.get("extra_fields_seen") or {}).items():
-                total_extra_fields_seen[str(fld)] += int(cnt)
-            # Per-machine mechanic merge.
-            total_lock_lines_spins += int(rec.get("lock_lines_spins", 0) or 0)
-            total_lock_lines_total_lines += int(rec.get("lock_lines_total_lines", 0) or 0)
-            total_lock_lines_win += float(rec.get("lock_lines_win", 0) or 0)
-            total_lock_symbols_spins += int(rec.get("lock_symbols_spins", 0) or 0)
-            for s in rec.get("lock_symbols_unique") or []:
-                total_lock_symbols_unique.add(str(s))
-            total_lock_symbols_win += float(rec.get("lock_symbols_win", 0) or 0)
-            total_lock_reels_spins += int(rec.get("lock_reels_spins", 0) or 0)
-            total_lock_reels_win += float(rec.get("lock_reels_win", 0) or 0)
-            total_jackpot_spins += int(rec.get("jackpot_spins", 0) or 0)
-            for j in rec.get("jackpot_ids_seen") or []:
-                total_jackpot_ids_seen.add(str(j))
-            total_jackpot_win += float(rec.get("jackpot_win", 0) or 0)
-            total_freespin_chain_spins += int(rec.get("freespin_chain_spins", 0) or 0)
-            total_freespin_retriggers += int(rec.get("freespin_retriggers", 0) or 0)
-            fsmc = int(rec.get("freespin_max_chain", 0) or 0)
-            if fsmc > total_freespin_max_chain:
-                total_freespin_max_chain = fsmc
-            total_freespin_win += float(rec.get("freespin_win", 0) or 0)
-            total_dollar_pick_spins += int(rec.get("dollar_pick_spins", 0) or 0)
-            total_dollar_pick_total_dollars += int(rec.get("dollar_pick_total_dollars", 0) or 0)
-            total_dollar_pick_win += float(rec.get("dollar_pick_win", 0) or 0)
-
-            hw = ci_halfwidth_pp(chunk_rtps_pct)
-            if math.isfinite(hw):
-                achieved_halfwidth_pp = hw
-
-            current_rtp_pct = (total_win / total_bet) * 100.0 if total_bet > 0 else 0.0
-            # Session-level RTP mirrors the final summary's rtp.point_pct
-            # (total_win / session_bet_sum). Paid-session denominator
-            # excludes bonus-round BetAmount which is counted in total_bet
-            # but which the player didn't actually pay. On collect-mechanic
-            # machines (M272/M273 class) the two can diverge by 30-50%;
-            # live UI previously showed the spin-level number which
-            # under-reported RTP by a lot — user hit this on M273 (log
-            # said 83%, final said 92%+). Emit both so the UI can show
-            # the semantically-correct value.
-            session_bet_sum_live = sum(session_bucket_bet.values())
-            session_rtp_pct = (
-                (total_session_win_sum / session_bet_sum_live) * 100.0
-                if session_bet_sum_live > 0 else None
-            )
-            # Session-level CI: authoritative, matches the final-report
-            # computation. Progress events now expose this so the UI's
-            # CI gauge reflects the value the stop condition compares.
-            session_ci_now = session_halfwidth_pp(
-                total_session_ret_count,
-                total_session_ret_sum,
-                total_session_ret_sq_sum,
-            )
-            append_jsonl(
-                progress_file,
-                {
-                    "event": "chunk_progress",
-                    "run_id": run_id,
-                    "chunk_index": chunks,
-                    "total_spins": total_spins,
-                    "current_rtp_pct": current_rtp_pct,
-                    "session_rtp_pct": session_rtp_pct,
-                    "current_halfwidth_pp": (
-                        session_ci_now if session_ci_now is not None else achieved_halfwidth_pp
-                    ),
-                    "chunk_level_halfwidth_pp": achieved_halfwidth_pp,
-                    "session_level_halfwidth_pp": session_ci_now,
-                    "target_halfwidth_pp": args.target_halfwidth_pp,
-                    "elapsed_seconds": round(time.time() - t0, 3),
-                    "ts": utc_now(),
-                },
-            )
 
         # Stop when session-level CI meets the target. Previously this
         # check used chunk-level CI which collapses to ~0 after 2-3

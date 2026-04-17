@@ -1310,3 +1310,85 @@ test("mergeTimeline: batch event without machine tag falls back to 'batch'", () 
   const out = PURE.mergeTimeline(data, []);
   assert.equal(out[0].source, "batch");
 });
+
+test("mergeTimeline: chunk_started events are filtered out of timeline", () => {
+  // chunk_started drives the separate in-flight section. Including it
+  // in the timeline would double-count: once as "⇅ chunk 38 发出" and
+  // again when the chunk_progress lands.
+  const items = [{
+    machine: "M14",
+    chunk_events: [
+      { event: "chunk_started", chunk_index: 38, ts: "2026-04-17T12:00:00Z" },
+      { event: "chunk_started", chunk_index: 39, ts: "2026-04-17T12:00:00Z" },
+      { event: "chunk_progress", chunk_index: 38, total_spins: 100000,
+        current_rtp_pct: 92, ts: "2026-04-17T12:00:30Z" },
+    ],
+  }];
+  const out = PURE.mergeTimeline({ events: [], items }, []);
+  assert.equal(out.length, 1, "only chunk_progress should render");
+  assert.equal(out[0].kind, "chunk");
+  assert.ok(out[0].text.includes("chunk 38"));
+});
+
+// ---------- computeInflightChunks ----------
+
+test("computeInflightChunks: returns started chunks without matching completion", () => {
+  const item = {
+    machine: "M273",
+    chunk_events: [
+      { event: "chunk_started", chunk_index: 38, ts: "2026-04-17T12:00:00Z" },
+      { event: "chunk_started", chunk_index: 39, ts: "2026-04-17T12:00:00Z" },
+      { event: "chunk_started", chunk_index: 40, ts: "2026-04-17T12:00:00Z" },
+      { event: "chunk_started", chunk_index: 41, ts: "2026-04-17T12:00:00Z" },
+      // 38 completed successfully, 41 failed — both leave the in-flight set.
+      { event: "chunk_progress", chunk_index: 38, total_spins: 100000,
+        current_rtp_pct: 92, ts: "2026-04-17T12:00:30Z" },
+      { event: "chunk_failed", chunk_index: 41, error: "504",
+        cumulative_failed: 1, ts: "2026-04-17T12:00:35Z" },
+    ],
+  };
+  const out = PURE.computeInflightChunks(item);
+  const indices = out.map((c) => c.chunk_index);
+  assert.deepEqual(indices, [39, 40], "only chunks 39+40 still in flight");
+  assert.equal(out[0].startedTs, "2026-04-17T12:00:00Z");
+  assert.ok(Number.isFinite(out[0].startedMs), "startedMs should be parseable epoch");
+});
+
+test("computeInflightChunks: empty / missing events → []", () => {
+  assert.deepEqual(PURE.computeInflightChunks({}), []);
+  assert.deepEqual(PURE.computeInflightChunks({ chunk_events: [] }), []);
+  assert.deepEqual(PURE.computeInflightChunks(null), []);
+  assert.deepEqual(PURE.computeInflightChunks(undefined), []);
+});
+
+test("computeInflightChunks: sorted by chunk_index ascending", () => {
+  const item = {
+    chunk_events: [
+      { event: "chunk_started", chunk_index: 10, ts: "2026-04-17T12:00:00Z" },
+      { event: "chunk_started", chunk_index: 7, ts: "2026-04-17T12:00:00Z" },
+      { event: "chunk_started", chunk_index: 25, ts: "2026-04-17T12:00:00Z" },
+    ],
+  };
+  const out = PURE.computeInflightChunks(item);
+  assert.deepEqual(out.map((c) => c.chunk_index), [7, 10, 25]);
+});
+
+test("computeInflightChunks: started+completed in same tick still empty", () => {
+  // Can happen if chunk returns from a cached response instantly.
+  const item = {
+    chunk_events: [
+      { event: "chunk_started", chunk_index: 1, ts: "2026-04-17T12:00:00Z" },
+      { event: "chunk_progress", chunk_index: 1, total_spins: 1000,
+        current_rtp_pct: 92, ts: "2026-04-17T12:00:00Z" },
+    ],
+  };
+  assert.deepEqual(PURE.computeInflightChunks(item), []);
+});
+
+test("formatChunkEventText: chunk_started fallback text (rare path)", () => {
+  // Normally filtered from timeline; this is the defensive path if a
+  // caller renders one directly (e.g. debug panel).
+  const t = PURE.formatChunkEventText({ event: "chunk_started", chunk_index: 38 });
+  assert.ok(t.includes("chunk 38"));
+  assert.ok(t.includes("发出"));
+});

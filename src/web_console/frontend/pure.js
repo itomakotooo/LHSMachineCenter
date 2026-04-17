@@ -1392,6 +1392,12 @@ function formatChunkEventText(ev) {
   if (ev.event === "fetching_chunk") {
     return `⇅ 请求 chunk ${ev.chunk_index}…`;
   }
+  if (ev.event === "chunk_started") {
+    // Not rendered in the unified timeline (filtered by mergeTimeline);
+    // the in-flight section shows these with live elapsed tickers.
+    // Fallback text only used if a caller renders one directly.
+    return `⇅ chunk ${ev.chunk_index} 发出`;
+  }
   return ev.event;
 }
 
@@ -1405,6 +1411,50 @@ function computeElapsedSeconds(startedAtMs, nowMs) {
   if (!startedAtMs) return null;
   const n = typeof nowMs === "number" ? nowMs : Date.now();
   return Math.max(0, Math.round((n - startedAtMs) / 100) / 10);  // tenths
+}
+
+/**
+ * Derive the set of in-flight chunks for one batch item: those that
+ * have emitted a `chunk_started` event but no matching
+ * `chunk_progress` / `chunk_failed` yet (matched by `chunk_index`).
+ * Pairs with the analyzer's per-submit emission so the UI can show
+ * "⇅ chunk 38 · 等待中 · t+24.3s" rows that tick every poll while the
+ * HTTP request is outstanding.
+ *
+ * Returns: array of { chunk_index, startedTs (ISO string),
+ * startedMs (epoch ms) }, sorted by chunk_index.
+ *
+ * @param {object} item - one entry from data.items
+ * @param {number} [nowMs] - Date.now() override for testing
+ */
+function computeInflightChunks(item /* nowMs — reserved for future use */) {
+  if (!item || !Array.isArray(item.chunk_events)) return [];
+  const started = {};  // chunk_index → startedTs
+  const completed = new Set();  // chunk_index
+  for (const ev of item.chunk_events) {
+    if (!ev) continue;
+    if (ev.event === "chunk_started" && ev.chunk_index != null) {
+      started[ev.chunk_index] = ev.ts;
+    } else if (
+      (ev.event === "chunk_progress" || ev.event === "chunk_failed")
+      && ev.chunk_index != null
+    ) {
+      completed.add(ev.chunk_index);
+    }
+  }
+  const out = [];
+  for (const [idx, ts] of Object.entries(started)) {
+    const idxN = Number(idx);
+    if (completed.has(idxN) || completed.has(idx)) continue;
+    const startedMs = Date.parse(ts);
+    out.push({
+      chunk_index: idxN,
+      startedTs: ts,
+      startedMs: Number.isFinite(startedMs) ? startedMs : null,
+    });
+  }
+  out.sort((a, b) => a.chunk_index - b.chunk_index);
+  return out;
 }
 
 /**
@@ -1443,7 +1493,14 @@ function mergeTimeline(data, clientEvents, progressCap) {
   }
   for (const it of items) {
     const chunkEvents = it.chunk_events || [];
-    const criticals = chunkEvents.filter((e) => CRITICAL.has(e.event));
+    // chunk_started events are filtered out — they drive the
+    // separate in-flight section (computeInflightChunks), not the
+    // timeline. Once a chunk completes its chunk_progress/chunk_failed
+    // counterpart carries the same chunk_index so there's no info
+    // loss in the timeline from skipping chunk_started here.
+    const criticals = chunkEvents.filter(
+      (e) => CRITICAL.has(e.event) && e.event !== "chunk_started"
+    );
     const progresses = chunkEvents
       .filter((e) => e.event === "chunk_progress")
       .slice(-cap);
@@ -1508,6 +1565,7 @@ const PURE = {
   buildClientEvent,
   formatChunkEventText,
   computeElapsedSeconds,
+  computeInflightChunks,
   mergeTimeline,
 };
 

@@ -1362,7 +1362,24 @@ function renderSamplingProgress(data) {
       const s = PURE.computeElapsedSeconds(state.itemStartTimes[it.run_id]);
       if (s != null) elapsed = ` · t+${s.toFixed(1)}s`;
     }
-    return `<div class="sample-log-item ${rowCls}">${icon} ${it.machine} m${it.mode}${chunk}${progress}${elapsed}${err}${stopTail}</div>`;
+    // In-flight per-chunk block: rows for each chunk that's been
+    // submitted but hasn't returned yet, with a live elapsed ticker.
+    // A batch of 4 concurrent chunks where one is mid-retry at 45s
+    // used to show nothing until the slowest returned; now the
+    // operator sees "chunk 38/39/40/41 · 等待中 · t+24.3s" rolling.
+    let inflightBlock = "";
+    if (it.status === "running") {
+      const inflight = PURE.computeInflightChunks(it);
+      if (inflight.length) {
+        const rows = inflight.map((c) => {
+          const e = PURE.computeElapsedSeconds(c.startedMs);
+          const et = e != null ? ` · t+${e.toFixed(1)}s` : "";
+          return `<div class="sample-chunk-row sample-info">  ⇅ chunk ${c.chunk_index} · 等待中${et}</div>`;
+        }).join("");
+        inflightBlock = rows;
+      }
+    }
+    return `<div class="sample-log-item ${rowCls}">${icon} ${it.machine} m${it.mode}${chunk}${progress}${elapsed}${err}${stopTail}</div>${inflightBlock}`;
   }).join("");
 
   // Unified timeline: batch events + per-item chunk events + client
