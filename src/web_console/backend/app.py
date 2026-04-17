@@ -3242,11 +3242,23 @@ def create_app(
 
     @app.post("/api/reports/import")
     def import_reports(req: dict[str, Any]) -> dict[str, Any]:
-        """Import reports from an external folder into reports/ + create DB rows.
+        """Transactionally import reports + DB rows from an external folder.
 
-        Each imported version becomes a completed run visible in 运行历史,
-        loadable via the 载入 button. Run IDs are derived from the version
-        suffix (last 12 chars after the final underscore).
+        Each version goes through three steps:
+          1. read source summary (validate)
+          2. insert DB row with status="importing"
+          3. copytree into reports/
+          4. flip DB status to "completed"
+
+        Any step failing rolls back the prior steps (remove partial dst,
+        delete DB row). Successful imports are `completed` runs visible
+        in 运行历史. Failed versions are reported individually in
+        `failures[]` with their stage, so the operator can see exactly
+        which leg of the transaction broke.
+
+        Fixes the historical "166/1002 silent import fails" incident by
+        making partial state impossible — either a version is fully
+        imported (DB row + files) or not at all.
         """
         source = req.get("source_path", "").strip()
         mode_arg = req.get("mode", "merge")
@@ -3255,15 +3267,12 @@ def create_app(
         src = Path(source)
         if not src.is_dir():
             raise HTTPException(status_code=400, detail=f"source_path not a directory: {source}")
+
         imported = 0
         skipped = 0
-        db_rows_created = 0
         machines_affected: set[str] = set()
-        # Data-level failures (bad file, bad row) — continue, but surface
-        # them so 1006/1002 import like the prior "166 silent fails"
-        # incident can't happen again.
-        db_failures: list[dict[str, str]] = []
-        file_failures: list[dict[str, str]] = []
+        failures: list[dict[str, str]] = []
+        MAX_FAILURES_REPORTED = 100
 
         def _derive_run_id(version_name: str, machine_n: str, mode_n: int) -> str:
             # "rv_20260416T073355Z_9d60553e" → "9d60553e" (real run, globally unique)
@@ -3276,6 +3285,119 @@ def create_app(
             import hashlib
             key = f"{machine_n}|{mode_n}|{version_name}"
             return hashlib.md5(key.encode()).hexdigest()[:12]
+
+        def _record_failure(stage: str, machine_n: str, mode_n: int,
+                            version_name: str, run_id_n: str, exc: BaseException) -> None:
+            if len(failures) < MAX_FAILURES_REPORTED:
+                failures.append({
+                    "stage": stage,
+                    "machine": machine_n, "mode": str(mode_n),
+                    "version": version_name, "run_id": run_id_n,
+                    "error": f"{type(exc).__name__}: {exc}"[:200],
+                })
+            if len(failures) <= 3:
+                import traceback
+                traceback.print_exc()
+
+        def _rollback(run_id_n: str, dst_path: Path) -> None:
+            """Undo as much as possible; swallow secondary errors so the
+            outer loop keeps processing other versions."""
+            try:
+                store.delete_run(run_id_n)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                if dst_path.exists():
+                    shutil.rmtree(dst_path)
+            except Exception:  # noqa: BLE001
+                pass
+
+        def _import_one(source_v: Path, dst: Path,
+                        machine_n: str, mode_n: int) -> bool:
+            """Transactional import of one version dir. Returns True on
+            full success (DB row + files both committed)."""
+            run_id = _derive_run_id(source_v.name, machine_n, mode_n)
+            if store.get_run(run_id):
+                run_id = run_id + "_i"
+
+            # 1. Read source summary BEFORE touching DB or dst — we want
+            #    rtp/ci/quality values in the initial insert so there's
+            #    never a moment where a row exists with placeholder data.
+            try:
+                s = json.loads(
+                    (source_v / "player_impact_summary.json").read_text(encoding="utf-8")
+                )
+            except (OSError, json.JSONDecodeError) as exc:
+                _record_failure("read_summary", machine_n, mode_n,
+                                source_v.name, run_id, exc)
+                return False
+
+            sam = s.get("sampling", {})
+            rtp_pct = (s.get("rtp", {}) or {}).get("point_pct")
+            ci_hw = sam.get("achieved_halfwidth_pp")
+            qa = (
+                s.get("guideline_assessment", {}).get("quality_label")
+                or s.get("quality_label")
+            )
+            row = {
+                "run_id": run_id,
+                "machine": machine_n,
+                "mode": mode_n,
+                "status": "importing",
+                "model_id": "",
+                "created_at": sam.get("started_at") or utc_now(),
+                "started_at": sam.get("started_at") or utc_now(),
+                "finished_at": sam.get("finished_at") or utc_now(),
+                "target_halfwidth_pp": sam.get("target_halfwidth_pp") or 0.5,
+                "chunk_spin_times": sam.get("chunk_spin_times") or 0,
+                "chunk_robot_count": sam.get("chunk_robot_count") or 0,
+                "batch_concurrency": sam.get("batch_concurrency") or 1,
+                "max_chunks": sam.get("chunks") or 0,
+                "timeout": 300.0,
+                "bankruptcy_session_spins": 500,
+                "bankruptcy_bankroll_multipliers": "100,200,500",
+                "report_version": source_v.name,
+                "output_dir": str(dst),
+                "progress_file": str(dst / "progress.jsonl"),
+                "summary_file": str(dst / "player_impact_summary.json"),
+                "report_file": str(dst / "player_impact_report.md"),
+                "error_message": None,
+                "process_pid": 0,
+                "achieved_rtp_pct": rtp_pct,
+                "achieved_halfwidth_pp": ci_hw,
+                "quality_label": qa,
+            }
+
+            # 2. Insert placeholder row.
+            try:
+                store.insert_run(row)
+            except Exception as exc:  # noqa: BLE001
+                _record_failure("insert_run", machine_n, mode_n,
+                                source_v.name, run_id, exc)
+                return False
+
+            # 3. Copy files. Rollback row + partial dst on any failure.
+            try:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(source_v, dst)
+            except Exception as exc:  # noqa: BLE001
+                _rollback(run_id, dst)
+                _record_failure("copytree", machine_n, mode_n,
+                                source_v.name, run_id, exc)
+                return False
+
+            # 4. Flip status → completed. If this tiny final update fails,
+            #    we roll back the whole thing rather than leave a row
+            #    stuck at "importing" forever (operator re-imports cleanly).
+            try:
+                store.update_run(run_id, {"status": "completed"})
+            except Exception as exc:  # noqa: BLE001
+                _rollback(run_id, dst)
+                _record_failure("update_status", machine_n, mode_n,
+                                source_v.name, run_id, exc)
+                return False
+
+            return True
 
         for machine_dir in src.iterdir():
             if not machine_dir.is_dir():
@@ -3297,96 +3419,21 @@ def create_app(
                 for v in versions_dir.iterdir():
                     if not v.is_dir():
                         continue
-                    src_sum = v / "player_impact_summary.json"
-                    if not src_sum.exists():
+                    if not (v / "player_impact_summary.json").exists():
                         continue
                     dst = rr / machine_name / mode_dir.name / "versions" / v.name
                     if dst.exists():
                         skipped += 1
                         continue
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copytree(v, dst)
-                    imported += 1
-                    machines_affected.add(machine_name)
+                    if _import_one(v, dst, machine_name, mode_int):
+                        imported += 1
+                        machines_affected.add(machine_name)
 
-                    # Create DB row so the import shows in 运行历史 and is loadable.
-                    run_id = _derive_run_id(v.name, machine_name, mode_int)
-                    # Avoid collision with existing run.
-                    if store.get_run(run_id):
-                        run_id = run_id + "_i"  # suffix to disambiguate
-                    try:
-                        s = json.loads((dst / "player_impact_summary.json").read_text(encoding="utf-8"))
-                    except (OSError, json.JSONDecodeError) as exc:
-                        s = {}
-                        # Data-level: file exists (already copied) but
-                        # parse failed. Record, keep going — row will
-                        # still insert with whatever defaults apply.
-                        if len(file_failures) < 20:
-                            file_failures.append({
-                                "machine": machine_name, "mode": str(mode_int),
-                                "version": v.name,
-                                "error": f"{type(exc).__name__}: {exc}"[:200],
-                            })
-                    sam = s.get("sampling", {})
-                    rtp_pct = (s.get("rtp", {}) or {}).get("point_pct")
-                    ci_hw = sam.get("achieved_halfwidth_pp")
-                    qa = s.get("guideline_assessment", {}).get("quality_label") or s.get("quality_label")
-                    try:
-                        store.insert_run({
-                            "run_id": run_id,
-                            "machine": machine_name,
-                            "mode": mode_int,
-                            "status": "completed",
-                            "model_id": "",
-                            "created_at": sam.get("started_at") or utc_now(),
-                            "started_at": sam.get("started_at") or utc_now(),
-                            "finished_at": sam.get("finished_at") or utc_now(),
-                            "target_halfwidth_pp": sam.get("target_halfwidth_pp") or 0.5,
-                            "chunk_spin_times": sam.get("chunk_spin_times") or 0,
-                            "chunk_robot_count": sam.get("chunk_robot_count") or 0,
-                            "batch_concurrency": sam.get("batch_concurrency") or 1,
-                            "max_chunks": sam.get("chunks") or 0,
-                            "timeout": 300.0,
-                            "bankruptcy_session_spins": 500,
-                            "bankruptcy_bankroll_multipliers": "100,200,500",
-                            "report_version": v.name,
-                            "output_dir": str(dst),
-                            "progress_file": str(dst / "progress.jsonl"),
-                            "summary_file": str(dst / "player_impact_summary.json"),
-                            "report_file": str(dst / "player_impact_report.md"),
-                            "error_message": None,
-                            "process_pid": 0,
-                            "achieved_rtp_pct": rtp_pct,
-                            "achieved_halfwidth_pp": ci_hw,
-                            "quality_label": qa,
-                        })
-                        db_rows_created += 1
-                    except Exception as exc:  # noqa: BLE001
-                        # Data-level failure: one row's insert failed.
-                        # Keep going; the file is already copied and usable
-                        # via the file path; missing DB row just means it
-                        # won't show in 运行历史 until re-imported.
-                        # Collect up to 50 details so the caller can see
-                        # WHAT failed (prior implementation printed only
-                        # the first traceback to stdout).
-                        if len(db_failures) < 50:
-                            db_failures.append({
-                                "machine": machine_name, "mode": str(mode_int),
-                                "run_id": run_id,
-                                "error": f"{type(exc).__name__}: {exc}"[:200],
-                            })
-                        # Print first few to server log for operator
-                        # visibility. Keeps original diagnostic behavior.
-                        if len(db_failures) <= 3:
-                            import traceback
-                            traceback.print_exc()
         return {
-            "imported": imported, "skipped": skipped,
-            "db_rows_created": db_rows_created,
-            "db_failed": len(db_failures),
-            "file_failed": len(file_failures),
-            "db_failures": db_failures,
-            "file_failures": file_failures,
+            "imported": imported,
+            "skipped": skipped,
+            "failed": len(failures),
+            "failures": failures,
             "machines_affected": sorted(machines_affected),
         }
 
