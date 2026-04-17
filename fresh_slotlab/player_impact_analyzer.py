@@ -764,7 +764,57 @@ def build_multiplier_bucket_rows(
 
 # Cache envelope version. Bumped when the wrapping envelope changes
 # (not when analyzer code changes -- raw API data is analyzer-agnostic).
-CHUNK_CACHE_VERSION = 2  # v2: added _config_md5 + _code_md5 to envelope
+CHUNK_CACHE_VERSION = 3  # v3: added _payload_sha256 + atomic (.tmp+os.replace) write
+
+
+class ChunkIntegrityError(ValueError):
+    """Envelope's stored _payload_sha256 didn't match the recomputed hash.
+
+    Indicates the chunk file is corrupt (partial write from an aborted
+    sampler, disk error, filesystem glitch) or was modified after write.
+    Distinct from json.JSONDecodeError, which means the envelope itself
+    is malformed — this one means the envelope parses cleanly but the
+    payload bytes have drifted from what was written.
+    """
+
+
+def _canonical_payload_bytes(resp: Any) -> bytes:
+    """Deterministic byte encoding of the cached response for hashing.
+
+    `sort_keys=True` + no whitespace + `ensure_ascii=False` makes the
+    writer and reader compute identical bytes regardless of dict key
+    order, indent, or non-ASCII handling.
+    """
+    return json.dumps(
+        resp, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    ).encode("utf-8")
+
+
+def _payload_sha256(resp: Any) -> str:
+    import hashlib
+    return hashlib.sha256(_canonical_payload_bytes(resp)).hexdigest()
+
+
+def load_chunk_envelope(path: Path) -> dict:
+    """Load a chunk cache file and validate `_payload_sha256` if present.
+
+    v3+ envelopes carry a payload sha256; mismatch raises
+    ChunkIntegrityError with a readable message so the caller can
+    surface "this chunk is corrupt" instead of a generic decode error.
+    Legacy v2 envelopes without `_payload_sha256` are accepted as-is
+    (backwards compatible — existing 4000 cached chunks keep working).
+    """
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    stored_sha = raw.get("_payload_sha256")
+    if stored_sha:
+        actual_sha = _payload_sha256(raw.get("response"))
+        if actual_sha != stored_sha:
+            raise ChunkIntegrityError(
+                f"chunk {path.name}: payload sha256 mismatch "
+                f"(envelope={stored_sha[:16]}..., actual={actual_sha[:16]}...) — "
+                f"file is corrupt or was modified after write"
+            )
+    return raw
 
 
 def _compute_upstream_schema_fingerprint(resp: Any) -> str | None:
@@ -834,14 +884,22 @@ def _save_chunk_cache(
     robot_count: int,
     cache_dir: Path | None,
 ) -> None:
-    """Best-effort write of the raw API response to a cache file.
+    """Best-effort atomic write of the raw API response to a cache file.
+
+    Writes to `chunk_NNNN.json.tmp` first, then `os.replace` to the
+    final path. This guarantees the reader never sees a half-written
+    file — either the full new chunk is present or the previous (or
+    nothing) is. Payload sha256 is stamped in the envelope so later
+    reads can detect silent corruption from e.g. disk block errors.
 
     Silent on failure so a disk-full or permissions error doesn't abort
-    the sampling run. The operator will simply see "0 chunks cached"
-    in the manage tab and know the rebuild option is unavailable.
+    the sampling run. Leftover `.tmp` files (from a failed replace) are
+    cleaned up on the way out to avoid accumulating garbage.
     """
     if cache_dir is None:
         return
+    out_path = cache_dir / f"chunk_{chunk_index:04d}.json"
+    tmp_path = cache_dir / f"chunk_{chunk_index:04d}.json.tmp"
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
         config_md5, code_md5 = _lookup_machine_md5(machine)
@@ -857,12 +915,20 @@ def _save_chunk_cache(
             "_config_md5": config_md5,
             "_code_md5": code_md5,
             "_upstream_schema_fingerprint": _compute_upstream_schema_fingerprint(resp),
+            "_payload_sha256": _payload_sha256(resp),
             "response": resp,
         }
-        out_path = cache_dir / f"chunk_{chunk_index:04d}.json"
-        out_path.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+        tmp_path.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp_path, out_path)
     except Exception:  # noqa: BLE001
-        pass
+        # Clean up a stale .tmp so we don't accumulate partials from
+        # repeated failures. The final chunk file (if any) is left
+        # untouched — a successful prior write stays valid.
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
 
 
 def run_sampling_chunk(
@@ -2254,7 +2320,10 @@ def main() -> int:
         stop_reason = "from_cache_complete"
 
         for cf in chunk_files:
-            raw = json.loads(cf.read_text(encoding="utf-8"))
+            try:
+                raw = load_chunk_envelope(cf)
+            except ChunkIntegrityError as exc:
+                raise SystemExit(f"--from-cache: {exc}")
             resp = raw.get("response")
             if resp is None:
                 raise SystemExit(f"--from-cache: {cf.name} missing 'response' key")
