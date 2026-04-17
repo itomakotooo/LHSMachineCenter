@@ -2,12 +2,23 @@
 
 This file tracks executable next steps for the current phase.
 
-## P0 (must complete first)
+## P0 (user-blocked)
+
+- [ ] **By-hall sort tab + select-all button** (agreed with user, not
+      yet implemented). Machine catalog gets a new view tab "按大厅"
+      that calls `POST /MachineTest/MapMachineOrder` for ordering;
+      plus a "全选" button. Noted; waiting for user go-ahead.
+
+- [ ] **Broken machine tag** (optional). User asked to list machines
+      where API returns obvious garbage RTP (see memory). Not
+      surfacing in UI yet; if needed, add `configs/broken_machines.json`
+      → badge these separately in catalog.
 
 - [ ] Multi-server 实测: 基础设施就绪，等用户提供 test/prod 地址。
 
-- [ ] Consider CI integration when remote build is needed.
-  For now the baseline is local-only (`scripts\lint.ps1` + `scripts\test.ps1 -E2E`).
+- [ ] Consider CI integration when remote build is needed. For now
+      the baseline is local-only (`scripts\lint.ps1` +
+      `scripts\test.ps1 -E2E`).
 
 ## P1 (high-value product improvements)
 
@@ -31,8 +42,67 @@ This file tracks executable next steps for the current phase.
   controlled machine/mode/test profile templates with versioning and approval flow.
 - [ ] Deployment packaging:
   produce repeatable deploy assets for company server environment.
+- [ ] **Batch state persistence to DB** so "continue last batch" survives
+      uvicorn restarts (today the batch object is in-memory; chunks on
+      disk survive, but the "which machines did I tell it to sample"
+      list is lost). Workaround: user全选 + 点批量, resume-from-cache
+      handles the rest.
 
 ## Done Recently
+
+- [x] **Sampling quality + UX pass** (2026-04-17, second half, 13 commits):
+      - `--resume-from-cache` analyzer mode: seed aggregators from cached
+        chunks, continue live sampling from `max_existing_idx + 1` until
+        CI target or max_chunks. Replaced read-only `--from-cache` on
+        the user's batch-run path.
+      - Stop condition uses **session-level** CI (not chunk-level).
+        Chunk-level CI can collapse with 2-3 similarly-valued chunks
+        and would false-trigger `target_ci_reached` at N=240k spins
+        with actual CI of 12pp. Shared `session_halfwidth_pp` helper.
+      - Loop continues through single-chunk failures. `run_sampling_chunk`
+        retries 5xx/URLError/Timeout; if retry exhausts, failure is
+        logged as `chunk_failed` event. Run bails only at
+        `_MAX_CONSECUTIVE_FAILED_BATCHES=3` or
+        `_MAX_CUMULATIVE_FAILED_CHUNKS=20`.
+      - Progress event key alignment: analyzer writes
+        `current_halfwidth_pp`; backend now reads both that and the
+        legacy `halfwidth_pp`. UI CI gauge live during sampling (was
+        stuck at N/A).
+      - Completion event carries stop_reason + chunks + total_spins +
+        duration so operator sees WHY sampling ended.
+      - Per-chunk event log in UI: backend exposes `chunk_events` per
+        item; critical events (`chunk_failed` / `resume_from_cache` /
+        `disk_guard_stop` / `failed`) never pruned, `chunk_progress`
+        rotates (last 8). Frontend partitions + sorts chronologically,
+        renders all criticals + last 8 progress.
+      - Log freezes on batch completion (`state.batchJustCompleted`
+        blocks `renderSamplingProgress`). Prev behavior re-rendered on
+        every poll tick, could wipe error rows.
+      - Double-click guard: `sampleStartBtn.disabled = true`
+        synchronously at handler entry. Page-refresh recovery via
+        `GET /api/sampling-status` + localStorage `activeBatchId`.
+      - Bet-mismatch warning: `_peek_cache_bets(dir)` scans envelope
+        `_bet` values; warns when cache differs from analyzer default
+        (1000). CI math stays valid; RTP=value-weighted may drift <1%.
+      - `resume_cache` is now the only non-fresh path from batch-run
+        (reuse/read-only was removed). `--from-cache` CLI still used
+        by `batch_generate_reports.py` for offline re-analysis.
+      - Analyzer mid-loop disk guard (2GB threshold) + per-(machine,
+        mode) lock in `BatchRunManager` to prevent concurrent batches
+        from racing the same chunk dir.
+      - Autotune rewired to catalog selection + `sampleMode`
+        (no sidebar). Tuned values cached in
+        `state.tunedSamplingParams`, persisted to localStorage, picked
+        up by the next `startSampling()` as robot_count / batch_concurrency.
+      - UI restructure: 调试机台 is display-only (sampling moved to 机台
+        管理 / 采样选中机台 panel); left sidebar removed; model config
+        folded into 模型解读 panel; "当前运行进度" replaced with compact
+        loaded-machine identity header.
+      - `/api/runs` default limit 50 → 2000; 运行历史 table width auto;
+        `max-height: 620px` so 2000 rows scroll internally.
+      - Tests: 244 → 278 passed (+34 new cases) including end-to-end
+        `test_batch_analyzer_cli.py` which inspects the actual
+        subprocess argv (POST /api/batch-run → analyzer CLI args).
 
 - [x] **Structural hardening pass** (2026-04-17, 10+ commits):
       - Chunk cache v3: `.tmp` + `os.replace` atomic write + `_payload_sha256`
