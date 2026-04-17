@@ -72,12 +72,13 @@ function applyI18n() {
     el.setAttribute("aria-label", fmt(el.dataset.i18nAria)),
   );
   applyFieldHelpHints();
-  byId("autotuneBtn").textContent = state.autoTuneRunning ? fmt("btnAutoTuneBusy") : fmt("btnAutoTune");
+  const autotuneBtnRefresh = byId("autotuneBtn");
+  if (autotuneBtnRefresh) autotuneBtnRefresh.textContent = state.autoTuneRunning ? fmt("btnAutoTuneBusy") : fmt("btnAutoTune");
   setSystemStatePanel();
   renderCacheRiskMeta();
   updateChartLabels();
   renderLiveStatusStrip();
-  if (byId("startBtn")) updateActionStates();
+  updateActionStates();
 }
 
 // Topbar live-status strip. When a run is active the running poll passes
@@ -141,6 +142,40 @@ function setHealth(ok, suffix = "") {
   const el = byId("health");
   el.textContent = `${ok ? fmt("healthOk") : fmt("healthFail")} ${suffix}`.trim();
   el.style.color = ok ? "#0f766e" : "#b91c1c";
+}
+
+// Writes the identifying info for the currently-loaded run into the
+// 调试机台 tab's header panel (replaces the old "当前运行进度" status
+// block). Shows WHAT is being viewed — machine / mode / run_id / status
+// / report version / MD5 — without duplicating the metric values that
+// the 关键指标 panel already surfaces.
+function setLoadedMachineInfo(run, summaryLine) {
+  const el = byId("loadedMachineInfo");
+  if (!el) return;
+  if (!run) {
+    el.textContent = fmt("noRun");
+    return;
+  }
+  const status = statusText(run.status);
+  const statusCls = String(run.status || "").toLowerCase();
+  const cfgMd5 = run.config_md5 ? String(run.config_md5).slice(0, 12) + "…" : "—";
+  const rv = run.report_version || "—";
+  const savedAt = (run.finished_at || run.started_at || "").replace("T", " ").replace(/\..*$/, "");
+  const rows = [
+    `<div><span class="lm-label">${fmt("thMachine")}:</span> <strong>${run.machine}</strong> · <span class="lm-label">${fmt("thMode")}:</span> <strong>mode ${run.mode}</strong></div>`,
+    `<div><span class="lm-label">run_id:</span> <code>${run.run_id}</code> · <span class="lm-label lm-status lm-status-${statusCls}">${fmt("runStatusLabel")}: ${status}</span></div>`,
+    `<div><span class="lm-label">report_version:</span> <code>${rv}</code> · <span class="lm-label">config_md5:</span> <code>${cfgMd5}</code></div>`,
+    savedAt ? `<div><span class="lm-label">saved_at:</span> ${savedAt}</div>` : "",
+  ];
+  if (String(run.status).toLowerCase() === "failed") {
+    rows.push(`<div class="lm-error">${fmt("runFailedLabel")}: ${PURE.formatRunFailureNote(state.lang, run.error_message)}</div>`);
+  } else if (String(run.status).toLowerCase() === "cancelled") {
+    rows.push(`<div class="lm-error">${fmt("runCancelledLabel")}: ${fmt("runCancelledText")}</div>`);
+  }
+  if (summaryLine) {
+    rows.push(`<div class="lm-summary">${summaryLine}</div>`);
+  }
+  el.innerHTML = rows.filter(Boolean).join("");
 }
 
 async function apiGet(url) {
@@ -255,32 +290,40 @@ function updateActionStates() {
   const currentStatus = String(state.currentRunStatus || "").toLowerCase();
   const reclaimable = Number(state.cacheStatus?.reclaimable_bytes_estimate ?? 0);
   const tier = cacheRiskTier(reclaimable);
-  const validation = PURE.validateRunConfig({
-    mode: Number(byId("modeSelect").value),
-    halfwidthPp: byId("ciSelect") ? byId("ciSelect").value : "0.5",
-    robotCount: byId("robotInput").value,
-    concurrency: byId("concInput").value,
-    lang: state.lang,
-  });
 
-  byId("saveModelCfgBtn").disabled = localBusy || serverBusy;
-  byId("startBtn").disabled = localBusy || serverBusy || anyRunRunning || !validation.canStart;
-  byId("startBtn").title = validation.blocking.join(" ");
-  byId("autotuneBtn").disabled = localBusy || serverBusy || anyRunRunning;
-  byId("stopBtn").disabled = localBusy || serverBusy || !hasCurrent || currentStatus !== "running";
-  byId("refreshBtn").disabled = localBusy || !hasCurrent;
+  // Model-config save button (now nested inside 模型解读 panel).
+  const saveModelBtn = byId("saveModelCfgBtn");
+  if (saveModelBtn) saveModelBtn.disabled = localBusy || serverBusy;
+
+  // Autotune moved to 采样选中机台 panel on the manage tab. It operates
+  // on the catalog-selected machines (state.runFilterMachines), not on
+  // the old sidebar machineSelect. Disabled if no machine selected.
+  const autotuneBtn = byId("autotuneBtn");
+  if (autotuneBtn) {
+    const hasSelection = state.runFilterMachines && state.runFilterMachines.size > 0;
+    autotuneBtn.disabled = localBusy || serverBusy || anyRunRunning || !hasSelection;
+    autotuneBtn.textContent = state.autoTuneRunning ? fmt("btnAutoTuneBusy") : fmt("btnAutoTune");
+  }
+
   // Interpretation can run on any run that produced a valid summary
   // -- "completed" (hit CI target / max_chunks) OR "cancelled"
   // (graceful user stop with partial data). Not "failed" (no summary)
   // or "running".
-  byId("interpretBtn").disabled = localBusy || serverBusy || !hasCurrent || (
-    currentStatus !== "completed" && currentStatus !== "cancelled"
-  );
-  byId("cacheRefreshBtn").disabled = localBusy;
+  const interpretBtn = byId("interpretBtn");
+  if (interpretBtn) {
+    interpretBtn.disabled = localBusy || serverBusy || !hasCurrent || (
+      currentStatus !== "completed" && currentStatus !== "cancelled"
+    );
+  }
+
+  const cacheRefreshBtn = byId("cacheRefreshBtn");
+  if (cacheRefreshBtn) cacheRefreshBtn.disabled = localBusy;
   const runningCount = Number(state.cacheStatus?.running_runs ?? state.systemState?.running_runs_count ?? 0);
-  byId("cacheCleanupBtn").disabled = localBusy || serverBusy || runningCount > 0 || reclaimable <= 0;
-  byId("cacheCleanupBtn").classList.toggle("danger-high", tier === "high");
-  byId("autotuneBtn").textContent = state.autoTuneRunning ? fmt("btnAutoTuneBusy") : fmt("btnAutoTune");
+  const cacheCleanupBtn = byId("cacheCleanupBtn");
+  if (cacheCleanupBtn) {
+    cacheCleanupBtn.disabled = localBusy || serverBusy || runningCount > 0 || reclaimable <= 0;
+    cacheCleanupBtn.classList.toggle("danger-high", tier === "high");
+  }
 }
 
 async function withAction(name, fn) {
@@ -1653,9 +1696,8 @@ function renderRunHistory() {
       b.textContent = fmt("rebuildBusy");
       state.busyActions.add("rebuild");
       updateActionStates();
-      // Show progress in runMeta panel.
-      const metaEl = byId("runMeta");
-      const oldMeta = metaEl?.textContent;
+      // Show progress in loaded-machine panel on the debug tab.
+      const metaEl = byId("loadedMachineInfo");
       if (metaEl) metaEl.textContent = fmt("rebuildBusy") + ` (${runId})...`;
       try {
         const resp = await apiPost(`/api/runs/${encodeURIComponent(runId)}/rebuild`, {});
@@ -2137,9 +2179,15 @@ function renderAssessment(summary) {
 }
 
 function fillMachineModeSelectors() {
+  // machineSelect / modeSelect lived on the old debug-tab sidebar and are
+  // gone after the UI simplification. Sampling now runs from the manage
+  // tab's 采样选中机台 panel which uses sampleMode + the catalog-selected
+  // machines from state.runFilterMachines. This function is kept as a
+  // no-op so existing call sites (loadBootstrap + lang change + rebuild
+  // refresh) don't need to be re-plumbed.
   const mSel = byId("machineSelect");
+  if (!mSel) return;
   mSel.innerHTML = "";
-  // Group by category for optgroups.
   const groups = {};
   const ORDER = ["Normal", "Collect", "Lock", "FreeSpin", "ReSpin", "Wheel", "Fortunes", "Selector", "Other", "Unknown"];
   state.machines.forEach((m) => {
@@ -2159,8 +2207,10 @@ function fillMachineModeSelectors() {
 }
 
 function refreshModes() {
-  const machine = state.machines.find((m) => m.machine === byId("machineSelect").value) || state.machines[0] || { modes: [1] };
+  const mSel = byId("machineSelect");
   const modeSel = byId("modeSelect");
+  if (!mSel || !modeSel) return;
+  const machine = state.machines.find((m) => m.machine === mSel.value) || state.machines[0] || { modes: [1] };
   modeSel.innerHTML = "";
   (machine.modes || [1]).forEach((m) => modeSel.appendChild(new Option(String(m), String(m))));
 }
@@ -2331,7 +2381,7 @@ async function refreshChunkStatus() {
 
 async function refreshCurrentRun() {
   if (!state.currentRunId) {
-    byId("runMeta").textContent = fmt("noRun");
+    setLoadedMachineInfo(null);
     renderLiveStatusStrip();
     updateActionStates();
     return;
@@ -2345,7 +2395,7 @@ async function refreshCurrentRun() {
       // Stale currentRunId (run was deleted) — clear and keep going.
       state.currentRunId = "";
       state.currentRunStatus = "";
-      byId("runMeta").textContent = fmt("noRun");
+      setLoadedMachineInfo(null);
       renderLiveStatusStrip();
       updateActionStates();
       return;
@@ -2355,7 +2405,7 @@ async function refreshCurrentRun() {
     // through loadBootstrap → setHealth(false): the next poll tick
     // (4.5s) will retry, and the rest of the UI is already populated.
     console.warn("refreshCurrentRun: transient, skipping —", msg);
-    byId("runMeta").textContent = fmt("noRun");
+    setLoadedMachineInfo(null);
     renderLiveStatusStrip();
     updateActionStates();
     return;
@@ -2377,23 +2427,12 @@ async function refreshCurrentRun() {
     isFuzzy,
     maxChunks,
   });
-  byId("progressBar").style.width = `${pct}%`;
-
   const summaryLine = PURE.summarizeRunEvent(state.lang, latest && latest.event ? latest : null, {
     isFuzzy,
     maxChunks,
     target,
   });
-  const runMetaLines = [
-    `run=${run.run_id} ${fmt("runStatusLabel")}=${statusText(run.status)} machine=${run.machine} mode=${run.mode}`,
-    summaryLine,
-  ];
-  if (String(run.status).toLowerCase() === "failed") {
-    runMetaLines.push(`${fmt("runFailedLabel")}: ${PURE.formatRunFailureNote(state.lang, run.error_message)}`);
-  } else if (String(run.status).toLowerCase() === "cancelled") {
-    runMetaLines.push(`${fmt("runCancelledLabel")}: ${fmt("runCancelledText")}`);
-  }
-  byId("runMeta").textContent = runMetaLines.join("\n");
+  setLoadedMachineInfo(run, summaryLine);
   // Mirror the run summary into the topbar live-status strip. While the
   // run is active we show summarizeRunEvent + a mini progress bar; once
   // the run leaves "running" the strip falls back to the idle brief on
@@ -2640,11 +2679,12 @@ async function loadBootstrap() {
   // (applyI18n() ran before bootstrap when machineSelect was empty, so
   // its renderLiveStatusStrip() call was a no-op.)
   renderLiveStatusStrip();
-  byId("runMeta").textContent = fmt("noRun");
+  setLoadedMachineInfo(null);
   byId("assessment").textContent = fmt("noReport");
   byId("interpretationText").textContent = fmt("noInterpret");
   byId("eventsText").textContent = fmt("noEvents");
-  byId("autotuneMeta").textContent = fmt("noAutoTune");
+  const autotuneMetaEl = byId("autotuneMeta");
+  if (autotuneMetaEl) autotuneMetaEl.textContent = fmt("noAutoTune");
   await refreshSystemState();
   await refreshCache();
   await refreshRunList(true);
@@ -2669,7 +2709,7 @@ function bindEvents() {
     if (state.currentRunId) {
       await refreshCurrentRun().catch(() => {});
     } else {
-      byId("runMeta").textContent = fmt("noRun");
+      setLoadedMachineInfo(null);
       byId("assessment").textContent = fmt("noReport");
       byId("interpretationText").textContent = fmt("noInterpret");
       byId("eventsText").textContent = fmt("noEvents");
@@ -2799,23 +2839,12 @@ function bindEvents() {
   });
   byId("compareServersBtn").addEventListener("click", () => compareServers());
   byId("compareBtn").addEventListener("click", () => compareReports());
-  byId("machineSelect").addEventListener("change", async () => {
-    refreshModes();
-    applyModeCiConstraint();
-    resetConcurrencyInputsToPreset();
-    clearSummaryPanels();
-    renderLiveStatusStrip();
-  });
-  byId("modeSelect").addEventListener("change", async () => {
-    applyModeCiConstraint();
-    resetConcurrencyInputsToPreset();
-    clearSummaryPanels();
-    renderLiveStatusStrip();
-  });
-  byId("ciSelect").addEventListener("change", () => updateActionStates());
-  byId("providerSelect").addEventListener("change", () => (fillModelsForProvider(byId("providerSelect").value), setGlobalWarning(modelWarnings())));
-  byId("modelSelect").addEventListener("change", () => setGlobalWarning(modelWarnings()));
-  byId("saveModelCfgBtn").addEventListener("click", () =>
+  // machineSelect / modeSelect / ciSelect were on the old sidebar and
+  // are gone after the UI simplification. Sampling now runs from the
+  // manage tab's 采样选中机台 panel which uses sampleMode / sampleCi.
+  byId("providerSelect")?.addEventListener("change", () => (fillModelsForProvider(byId("providerSelect").value), setGlobalWarning(modelWarnings())));
+  byId("modelSelect")?.addEventListener("change", () => setGlobalWarning(modelWarnings()));
+  byId("saveModelCfgBtn")?.addEventListener("click", () =>
     withAction("save_model", async () => {
       state.modelMeta = await apiPost("/api/model-config", { provider: byId("providerSelect").value, api_key: byId("apiKeyInput").value || "" });
       byId("apiKeyInput").value = "";
@@ -2824,52 +2853,20 @@ function bindEvents() {
       setGlobalWarning(modelWarnings());
     }).catch((e) => alert(String(e.message || e)))
   );
-  byId("startBtn").addEventListener("click", () =>
-    withAction("start_run", async () => {
-      const payload = readRunPayload();
-      // Capture fuzzy + max_chunks so the polling tick can compute
-      // progress correctly even before /api/runs/{id}/progress has any
-      // chunks logged.
-      state.lastSubmittedFuzzy = Number(payload.target_halfwidth_pp) === 0;
-      state.lastSubmittedMaxChunks = Number(payload.max_chunks) || 120;
-      // Immediate placeholder while uvicorn spawns the analyzer.
-      byId("runMeta").textContent = fmt("runSubmittedPlaceholder");
-      byId("progressBar").style.width = "0%";
-      const r = await apiPost("/api/runs", payload);
-      state.currentRunId = r.run_id;
-      state.currentRunStatus = "running";
-      ensureFastPolling();
-      await refreshRunList(false);
-      await refreshCurrentRun();
-    }).catch((e) => alert(String(e.message || e)))
-  );
-  byId("stopBtn").addEventListener("click", () =>
-    withAction("stop_run", async () => {
-      if (!state.currentRunId) return;
-      await apiPost(`/api/runs/${state.currentRunId}/cancel`, {});
-      await refreshRunList(false);
-      await refreshCurrentRun();
-    }).catch((e) => alert(String(e.message || e)))
-  );
-  byId("refreshBtn").addEventListener("click", () =>
-    withAction("refresh_run", async () => {
-      await refreshSystemState();
-      await refreshRunList(false);
-      await refreshCache();
-      await refreshCurrentRun();
-    }).catch((e) => alert(String(e.message || e)))
-  );
-  byId("autotuneBtn").addEventListener("click", () =>
+  // startBtn / stopBtn / refreshBtn were on the old sidebar and are
+  // removed. Sampling is initiated exclusively from the manage tab's
+  // 采样选中机台 panel via sampleStartBtn (below).
+  byId("autotuneBtn")?.addEventListener("click", () =>
     withAction("autotune", runAutoTune).catch((e) => alert(String(e.message || e)))
   );
-  byId("interpretBtn").addEventListener("click", () =>
+  byId("interpretBtn")?.addEventListener("click", () =>
     withAction("interpret", generateInterpretation).catch((e) => alert(String(e.message || e)))
   );
   // rebuildBtn moved to manage-tab per-row (renderRunHistory).
-  byId("cacheRefreshBtn").addEventListener("click", () =>
+  byId("cacheRefreshBtn")?.addEventListener("click", () =>
     withAction("cache_refresh", refreshCache).catch((e) => alert(String(e.message || e)))
   );
-  byId("cacheCleanupBtn").addEventListener("click", () =>
+  byId("cacheCleanupBtn")?.addEventListener("click", () =>
     withAction("cache_cleanup", async () => {
       if (!(await confirmCacheCleanup())) return;
       await apiPost("/api/cache/cleanup", { max_delete_bytes: 0 });

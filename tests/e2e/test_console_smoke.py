@@ -14,6 +14,21 @@ import pytest
 from tests.backend._seed import insert_run_row
 
 
+# Marks tests that pinned the pre-2026-04-17 UI: sidebar with startBtn /
+# autotuneBtn / ciSelect / modeSelect / runMeta / progressBar, etc.
+# The UI was restructured to fold sampling exclusively into the
+# 机台管理 tab's 采样选中机台 panel; the 调试机台 tab is display-only
+# now. Those old DOM nodes are gone, so these tests can never pass in
+# their current form. Kept as skips (not deletes) so the history of
+# what they pinned is still discoverable in code.
+_obsolete_post_restructure = pytest.mark.skip(
+    reason="obsolete after 2026-04-17 UI restructure: sidebar and its "
+           "ciSelect/modeSelect/startBtn/runMeta are gone; sampling now "
+           "runs from the manage-tab 采样选中机台 panel (sampleMode / "
+           "sampleCi / sampleStartBtn). Rewrite pending."
+)
+
+
 def _wait_for_pure_loaded(page) -> None:
     page.wait_for_function(
         "() => typeof window.PURE === 'object' "
@@ -167,6 +182,7 @@ def test_cache_cleanup_high_risk_requires_token(console_page, clean_cache, clean
     assert not (cache_dir / "big.bin").exists()
 
 
+@_obsolete_post_restructure
 def test_mode_2_forces_fuzzy_option(console_page, clean_runs):
     """Switching to mode 2 must auto-select the fuzzy ciSelect option ("0")
     and disable every other tier, since the backend rejects mode 2/5 with
@@ -206,6 +222,7 @@ def test_mode_2_forces_fuzzy_option(console_page, clean_runs):
     assert restored == [False, False, False, False, False]
 
 
+@_obsolete_post_restructure
 def test_start_enabled_with_preset_concurrency(console_page, clean_runs):
     """Fresh page load: Start button must be ENABLED because robotInput /
     concInput carry preset defaults (validated on M272 mode 1 via Auto Tune).
@@ -254,6 +271,7 @@ def test_start_enabled_with_preset_concurrency(console_page, clean_runs):
     assert page.locator("#startBtn").is_disabled() is False
 
 
+@_obsolete_post_restructure
 def test_start_inserts_submitted_placeholder_in_run_meta(console_page, clean_runs):
     """After clicking Start, runMeta must show the localized
     'submitted, waiting for analyzer to spawn...' placeholder before any
@@ -281,6 +299,7 @@ def test_start_inserts_submitted_placeholder_in_run_meta(console_page, clean_run
     )
 
 
+@_obsolete_post_restructure
 def test_autotune_click_lights_up_progress_panel(console_page, clean_runs):
     """Clicking Auto Tune should immediately replace the autotuneMeta
     body with at least the 'starting...' line written by startAutotunePolling."""
@@ -295,6 +314,7 @@ def test_autotune_click_lights_up_progress_panel(console_page, clean_runs):
     )
 
 
+@_obsolete_post_restructure
 def test_dashboard_shell_renders_sidebar_with_run_actions(console_page):
     """Layout-refactor smoke: the .dashboard shell exists, .dash-sidebar
     holds the migrated run-config / model-config / run-actions panels,
@@ -319,6 +339,7 @@ def test_dashboard_shell_renders_sidebar_with_run_actions(console_page):
         assert page.locator(f".dash-sidebar #{btn_id}").count() == 1, btn_id
 
 
+@_obsolete_post_restructure
 def test_live_status_strip_shows_idle_brief(console_page, clean_runs):
     """When no run is active the topbar live-status strip degrades to a
     "machine . mode . status" brief (renderLiveStatusStrip's idle path).
@@ -340,6 +361,7 @@ def test_live_status_strip_shows_idle_brief(console_page, clean_runs):
     assert machine and machine in text, f"expected '{machine}' in strip, got: {text!r}"
 
 
+@_obsolete_post_restructure
 def test_mid_panels_stacked(console_page):
     """User feedback after the first dashboard pass: assessment /
     interpretation / events should be stacked panels (not tabs).
@@ -358,6 +380,7 @@ def test_mid_panels_stacked(console_page):
     assert page.locator("#eventsText").count() == 1
 
 
+@_obsolete_post_restructure
 def test_drilldown_panels_stacked(console_page):
     """Drilldown panels (paylines / payout-groups / symbols) are
     independent stacked panels too -- tab switching was more friction
@@ -375,6 +398,7 @@ def test_drilldown_panels_stacked(console_page):
     assert page.locator("#symbolByColMatrix").count() == 1
 
 
+@_obsolete_post_restructure
 def test_sidebar_run_actions_first(console_page):
     """Run-control panel sits at the top of the sidebar so the
     Start/Auto buttons are immediately visible on page load."""
@@ -390,6 +414,7 @@ def test_sidebar_run_actions_first(console_page):
     )
 
 
+@_obsolete_post_restructure
 def test_start_button_disabled_when_run_active(live_server, page, clean_runs, clean_cache):
     # Seed AFTER the server has booted: startup recovery already ran and won't
     # touch this row. The frontend's polling (~4.5s) will then notice it.

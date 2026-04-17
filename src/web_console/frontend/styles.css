@@ -374,8 +374,53 @@ body {
 .run-config,
 .model-config,
 .run-actions,
-.status {
-  grid-column: span 6;
+.status,
+.loaded-machine {
+  grid-column: span 12;
+}
+
+/* Loaded-machine header: compact identification block (machine / mode
+   / run_id / status / config_md5 / saved_at). One line per fact so the
+   operator can eyeball what they're looking at. Color-codes status. */
+.loaded-machine-info > div {
+  padding: 3px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.loaded-machine-info code {
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.loaded-machine-info .lm-label {
+  color: var(--muted);
+  margin-right: 4px;
+}
+.loaded-machine-info .lm-status-completed { color: #0f766e; font-weight: 600; }
+.loaded-machine-info .lm-status-running { color: #2563eb; font-weight: 600; }
+.loaded-machine-info .lm-status-failed { color: #b91c1c; font-weight: 600; }
+.loaded-machine-info .lm-status-cancelled { color: #ca8a04; font-weight: 600; }
+.loaded-machine-info .lm-error { color: #b91c1c; font-size: 12px; margin-top: 4px; }
+.loaded-machine-info .lm-summary { color: #475569; font-size: 12px; margin-top: 4px; font-style: italic; }
+
+/* Model-config inline <details> block nested inside the 模型解读 panel
+   (was a standalone sidebar panel before the UI simplification). */
+.model-config-inline {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.model-config-inline > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: #475569;
+}
+.model-config-inline[open] > summary {
+  margin-bottom: 8px;
 }
 
 .kpis,
