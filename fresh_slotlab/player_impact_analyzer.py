@@ -3222,7 +3222,18 @@ def main() -> int:
         else args.chunk_robot_count
     )
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(mults))) as executor:
+    # `--from-cache` means "reproduce report from cached sampling data,
+    # no live network calls". The bankruptcy probe makes fresh HTTP calls
+    # to the upstream API, which (a) defeats cache reproducibility and
+    # (b) under batch concurrency of 16+ triggers upstream throttling
+    # that inflates per-job wall time 10× (6s → 60s). Skip it here; the
+    # quality label already degrades to EXPLORATORY when the ladder
+    # is missing, which correctly signals the report's reduced grade.
+    skip_bankruptcy = args.from_cache is not None
+    if skip_bankruptcy:
+        mults = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(mults) or 1)) as executor:
         future_map = {
             executor.submit(
                 run_bankruptcy_probe,
