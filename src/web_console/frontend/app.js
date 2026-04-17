@@ -1100,8 +1100,18 @@ function updateSampleHint() {
 }
 
 async function startSampling() {
+  // Double-click guard: `await apiPost` below has non-trivial latency
+  // (backend runs start_batch synchronously: per-item rawdata checks
+  // can take 100s of ms each for 253 machines). Without this the user
+  // impatient-clicks again during the await, the second POST creates
+  // a second batch that hits the per-key lock and immediately fails.
+  // Disable IMMEDIATELY + hide to make it unclickable; re-enable in
+  // the finally / on POST success the Cancel button replaces it.
+  const btn = byId("sampleStartBtn");
+  if (btn && btn.disabled) return;  // already clicked, ignore
+  if (btn) btn.disabled = true;
   const selected = [...state.runFilterMachines];
-  if (!selected.length) return;
+  if (!selected.length) { if (btn) btn.disabled = false; return; }
   const mode = parseInt(byId("sampleMode")?.value || "2");
   let ci = parseFloat(byId("sampleCi")?.value || "0.5");
   if (mode === 2 || mode === 5) ci = 0;
@@ -1148,12 +1158,14 @@ async function startSampling() {
   try {
     const result = await apiPost("/api/batch-run", payload);
     state.activeBatchId = result.batch_id;
+    localStorage.setItem("slot_console_activeBatchId", result.batch_id);
     updateSampleHint();
     byId("sampleCancelBtn").classList.remove("hidden");
     byId("sampleStartBtn").classList.add("hidden");
     pollSampling();
   } catch (e) {
     alert(String(e.message || e));
+    if (btn) btn.disabled = false;  // POST failed, let user retry
   }
 }
 
@@ -1170,8 +1182,13 @@ function pollSampling() {
       refreshDiskSpace();
       if (data.status === "completed") {
         state.activeBatchId = null;
+        localStorage.removeItem("slot_console_activeBatchId");
         byId("sampleCancelBtn").classList.add("hidden");
-        byId("sampleStartBtn").classList.remove("hidden");
+        const startBtnEl = byId("sampleStartBtn");
+        if (startBtnEl) {
+          startBtnEl.classList.remove("hidden");
+          startBtnEl.disabled = false;
+        }
         updateSampleHint();
         // Refresh catalog with new reports.
         const [m, mSummary] = await Promise.all([
@@ -1290,6 +1307,42 @@ async function cancelSampling() {
     alert(String(e.message || e));
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = "停止"; }
+  }
+}
+
+// Called on page load. If the server reports an active batch OR
+// localStorage remembers one that the server still knows, adopt it
+// so the UI reflects server state after a refresh. Prevents the
+// scenario where user clicks 开始采样, refreshes, then clicks again
+// and gets "another batch is sampling" because the old one is still
+// running in the background.
+async function _recoverActiveSampling() {
+  try {
+    const status = await apiGet("/api/sampling-status");
+    const active = (status.active_batches || []);
+    // Prefer localStorage's batch_id if the server confirms it's still
+    // active; otherwise adopt whichever active batch the server reports.
+    const persisted = localStorage.getItem("slot_console_activeBatchId");
+    let adopt = null;
+    if (persisted && active.some((b) => b.batch_id === persisted)) {
+      adopt = persisted;
+    } else if (active.length > 0) {
+      adopt = active[0].batch_id;
+      localStorage.setItem("slot_console_activeBatchId", adopt);
+    } else {
+      // Server says no active batch; clear stale persisted id.
+      localStorage.removeItem("slot_console_activeBatchId");
+    }
+    if (adopt) {
+      state.activeBatchId = adopt;
+      const startBtnEl = byId("sampleStartBtn");
+      const cancelBtnEl = byId("sampleCancelBtn");
+      if (startBtnEl) startBtnEl.classList.add("hidden");
+      if (cancelBtnEl) cancelBtnEl.classList.remove("hidden");
+      pollSampling();
+    }
+  } catch {
+    // Endpoint may be offline during tests or boot race; silent.
   }
 }
 
@@ -2815,6 +2868,9 @@ async function loadBootstrap() {
   _restoreSamplingPrefs();  // hydrate sampleMode/sampleCi from localStorage
   updateSampleHint();
   refreshDiskSpace();
+  // Recover activeBatchId from server if a batch is still running;
+  // resumes polling + hides 开始采样 so user doesn't click again.
+  _recoverActiveSampling();
   await refreshServers();
   // Now that machineSelect is populated, seed the topbar idle brief.
   // (applyI18n() ran before bootstrap when machineSelect was empty, so

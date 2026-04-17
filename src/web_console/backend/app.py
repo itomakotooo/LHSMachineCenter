@@ -198,6 +198,33 @@ def save_servers(data: dict[str, Any], path: Path | None = None) -> None:
 
 RAWDATA_ROOT = ROOT / "dev_rawdata"
 
+# Analyzer CLI default for --bet; mirrored here so backend can detect
+# cache/current bet mismatches and warn. Update both if the default
+# ever changes.
+_DEFAULT_ANALYZER_BET = 1000
+
+
+def _peek_cache_bets(mode_dir: Path) -> set[int]:
+    """Return the set of `_bet` values recorded across a cache dir's
+    chunks. Opens each chunk's JSON envelope (small — just metadata)
+    and plucks `_bet`. Returns empty set if dir missing or no readable
+    chunks. Used by start_batch to warn when cache bet differs from
+    the current run's bet.
+    """
+    if not mode_dir.is_dir():
+        return set()
+    bets: set[int] = set()
+    for p in mode_dir.glob("chunk_*.json"):
+        try:
+            with p.open("r", encoding="utf-8") as f:
+                env = json.loads(f.read())
+            bet = env.get("_bet")
+            if bet is not None:
+                bets.add(int(bet))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            continue
+    return bets
+
 
 def _get_machine_md5(machine: str, machines_config: Path | None = None) -> tuple[str, str]:
     """Look up (config_md5, code_md5) for a machine from machines.json."""
@@ -1150,6 +1177,36 @@ class BatchRunManager:
         with self._lock:
             self._busy_keys.discard((machine, int(mode)))
 
+    def sampling_status(self) -> dict[str, Any]:
+        """Snapshot of active batches + which (machine, mode) keys are
+        currently being sampled. Used by the frontend on page load to
+        recover state after refresh — activeBatchId lives in
+        localStorage so polling can resume without spinning up a second
+        batch that'd hit the per-key lock."""
+        with self._lock:
+            active = []
+            for batch_id, b in self._batches.items():
+                if b.get("status") != "completed":
+                    running_items = [
+                        it for it in b.get("items", [])
+                        if it.get("status") in ("pending", "running")
+                    ]
+                    if running_items or b.get("status") == "running":
+                        active.append({
+                            "batch_id": batch_id,
+                            "status": b.get("status"),
+                            "total": len(b.get("items", [])),
+                            "running": len(running_items),
+                            "created_at": b.get("created_at"),
+                        })
+            return {
+                "active_batches": active,
+                "busy_keys": [
+                    {"machine": m, "mode": mode}
+                    for (m, mode) in sorted(self._busy_keys)
+                ],
+            }
+
     def start_batch(self, req: BatchRunRequest, reports_root: Path | None = None) -> dict[str, Any]:
         batch_id = uuid.uuid4().hex[:12]
         rr = reports_root or REPORTS_ROOT
@@ -1204,6 +1261,26 @@ class BatchRunManager:
                     "machine": it.machine,
                     "text": f"删除 {raw_status['mismatch_chunks']} 个 MD5 不匹配的 chunk（config/code 已变更）",
                 })
+            # Bet-mismatch warning: if cached chunks have mixed _bet
+            # values or differ from the run's current bet, the CI is
+            # still math-valid on per-session ret_x, but the
+            # rtp_point_pct (value-weighted) ends up averaging across
+            # differently-priced sessions. Usually sub-1% effect, but
+            # worth flagging so the operator knows.
+            if resume_cache:
+                bets_seen = _peek_cache_bets(RAWDATA_ROOT / it.machine / f"mode_{it.mode}")
+                current_bet = _DEFAULT_ANALYZER_BET  # 1000 until backend exposes bet
+                if bets_seen:
+                    if len(bets_seen) > 1 or (current_bet not in bets_seen and len(bets_seen) == 1):
+                        events.append({
+                            "ts": utc_now(), "level": "warn",
+                            "machine": it.machine,
+                            "text": (
+                                f"⚠ bet 不一致: 缓存里 {sorted(bets_seen)} vs 当前 {current_bet}. "
+                                f"session-level CI 仍有效 (ret_x = win/bet 无量纲)，"
+                                f"但 RTP = total_win/total_bet 会跨不同单价加权。"
+                            ),
+                        })
             if resume_cache:
                 target_label = "Fuzzy" if target_pp == 0 else f"±{target_pp}pp"
                 events.append({
@@ -2884,6 +2961,13 @@ def create_app(
         if result is None:
             raise HTTPException(status_code=404, detail="batch not found")
         return result
+
+    @app.get("/api/sampling-status")
+    def sampling_status_endpoint() -> dict[str, Any]:
+        """Server-side truth about in-flight sampling. Frontend calls on
+        page load to recover state (activeBatchId) and on machine-select
+        to disable 开始采样 when any selected (machine, mode) is busy."""
+        return batch_mgr.sampling_status()
 
     @app.post("/api/batch-run/{batch_id}/cancel")
     def cancel_batch_run(batch_id: str) -> dict[str, Any]:
