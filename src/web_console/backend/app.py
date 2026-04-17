@@ -741,6 +741,19 @@ class StateStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def list_runs_by_report_version(self, version: str) -> list[dict[str, Any]]:
+        """Every run row pointing at a given `<rv_...>` version directory.
+
+        Used by the retention pruner: before deleting a version dir on
+        disk, find and drop any runs rows that reference it so the UI
+        doesn't later show dangling entries with missing file paths.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM runs WHERE report_version=?", (version,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def backfill_rtp_ci_from_summaries(self) -> dict[str, Any]:
         """One-shot migration: for every completed row missing
         achieved_rtp_pct OR achieved_halfwidth_pp, read the on-disk
@@ -3436,6 +3449,24 @@ def create_app(
             "failures": failures,
             "machines_affected": sorted(machines_affected),
         }
+
+    @app.post("/api/maintenance/prune-versions")
+    def prune_versions_endpoint(req: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Keep the newest N version dirs per (machine, mode); delete rest.
+
+        Body: `{"keep": 5, "dry_run": false}` — both optional; default
+        keep=5 matches the CLI. Active runs (status in {"running",
+        "importing"}) are always skipped so we don't race a writer.
+        """
+        from src.web_console.backend.reports_retention import prune_versions
+        body = req or {}
+        keep = int(body.get("keep", 5))
+        dry_run = bool(body.get("dry_run", False))
+        if keep < 1:
+            raise HTTPException(status_code=400, detail="keep must be >= 1")
+        return prune_versions(
+            reports_root=rr, store=store, keep_last=keep, dry_run=dry_run,
+        )
 
     @app.post("/api/machines/refresh-md5")
     def refresh_machines_md5(req: dict[str, Any] | None = None) -> dict[str, Any]:
