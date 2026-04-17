@@ -68,6 +68,58 @@ def _seed_chunks(cache_dir: Path, count: int) -> None:
         _save_chunk_cache(_synthetic_response(), i, "MRESUME", 1, 1000, 40, 5, cache_dir)
 
 
+class TestSessionHalfwidthHelper:
+    """The loop's stop check now calls session_halfwidth_pp(ret_count,
+    ret_sum, ret_sq_sum) instead of the chunk-level stdev collapse.
+    These tests pin the helper's edge cases — premature-exit regression
+    from M273 m1 @ 0.5pp showed analyzer declaring target reached after
+    2 chunks that happened to share similar RTPs (chunk-level CI ~0.3pp)
+    while the true session-level CI was 12.9pp.
+    """
+
+    def test_n_le_one_returns_none(self):
+        from fresh_slotlab.player_impact_analyzer import session_halfwidth_pp
+        assert session_halfwidth_pp(0, 0.0, 0.0) is None
+        assert session_halfwidth_pp(1, 0.9, 0.81) is None
+
+    def test_zero_variance_returns_zero(self):
+        from fresh_slotlab.player_impact_analyzer import session_halfwidth_pp
+        # 1000 identical samples of 0.9 → variance exactly 0 → CI = 0.
+        n = 1000
+        ret_sum = n * 0.9
+        ret_sq_sum = n * 0.9 * 0.9
+        assert session_halfwidth_pp(n, ret_sum, ret_sq_sum) == 0.0
+
+    def test_high_variance_produces_wide_ci(self):
+        # Roughly mirrors M273 m1: std ≈ 4.47 on 10k sessions → CI ≈ 8.8pp.
+        # This is wider than any precise target (0.5 / 1 / 5pp), so the
+        # loop's stop check will correctly NOT exit here.
+        from fresh_slotlab.player_impact_analyzer import session_halfwidth_pp
+        import math
+        n = 10_000
+        mean = 0.9
+        std = 4.47
+        # sum = n × mean; sq_sum = n × (mean² + std²) using E[X²] = μ² + σ².
+        ret_sum = n * mean
+        ret_sq_sum = n * (mean * mean + std * std)
+        hw = session_halfwidth_pp(n, ret_sum, ret_sq_sum)
+        assert hw is not None
+        # 1.96 × 4.47 / sqrt(10_000) × 100 ≈ 8.76pp
+        assert 8.0 < hw < 9.5, hw
+
+    def test_narrow_ci_meets_precise_target(self):
+        # 1M sessions, std 4.47 → CI ≈ 0.88pp. Target 1pp hits.
+        from fresh_slotlab.player_impact_analyzer import session_halfwidth_pp
+        n = 1_000_000
+        mean = 0.9
+        std = 4.47
+        hw = session_halfwidth_pp(
+            n, n * mean, n * (mean * mean + std * std)
+        )
+        assert hw is not None
+        assert 0.8 < hw < 1.0, hw
+
+
 class TestResumeFromCacheMutex:
     def test_both_flags_raises_system_exit(self, tmp_path: Path):
         import pytest

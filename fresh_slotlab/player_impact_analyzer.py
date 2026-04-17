@@ -248,6 +248,31 @@ def ci_halfwidth_pp(chunk_rtps_pct: list[float]) -> float:
     )
 
 
+def session_halfwidth_pp(ret_count: int, ret_sum: float, ret_sq_sum: float) -> float | None:
+    """Session-level CI half-width in pp. Uses per-session return
+    multiplier (ret_x = session_win / session_bet) variance across
+    N = ret_count sessions. Returns None when N ≤ 1 (undefined).
+
+    Single authoritative CI across the codebase: the final summary and
+    the in-loop stop check both call this. Chunk-level CI (above) is
+    kept as a secondary diagnostic because it collapses to ~0 when
+    early chunks coincidentally have similar RTPs — triggering false
+    "target reached" breaks on high-variance machines whose TRUE CI
+    is still wide.
+    """
+    if ret_count <= 1:
+        return None
+    var = max(
+        0.0,
+        (ret_sq_sum - (ret_sum * ret_sum / ret_count)) / (ret_count - 1),
+    )
+    if var == 0.0:
+        return 0.0
+    se = math.sqrt(var / ret_count)
+    t = t_critical_95(ret_count - 1)
+    return t * se * 100.0
+
+
 def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
     rr = robot.get("roundResult")
     if not rr:
@@ -2887,6 +2912,14 @@ def main() -> int:
                 achieved_halfwidth_pp = hw
 
             current_rtp_pct = (total_win / total_bet) * 100.0 if total_bet > 0 else 0.0
+            # Session-level CI: authoritative, matches the final-report
+            # computation. Progress events now expose this so the UI's
+            # CI gauge reflects the value the stop condition compares.
+            session_ci_now = session_halfwidth_pp(
+                total_session_ret_count,
+                total_session_ret_sum,
+                total_session_ret_sq_sum,
+            )
             append_jsonl(
                 progress_file,
                 {
@@ -2895,17 +2928,36 @@ def main() -> int:
                     "chunk_index": chunks,
                     "total_spins": total_spins,
                     "current_rtp_pct": current_rtp_pct,
-                    "current_halfwidth_pp": achieved_halfwidth_pp,
+                    "current_halfwidth_pp": (
+                        session_ci_now if session_ci_now is not None else achieved_halfwidth_pp
+                    ),
+                    "chunk_level_halfwidth_pp": achieved_halfwidth_pp,
+                    "session_level_halfwidth_pp": session_ci_now,
                     "target_halfwidth_pp": args.target_halfwidth_pp,
                     "elapsed_seconds": round(time.time() - t0, 3),
                     "ts": utc_now(),
                 },
             )
 
-        if len(chunk_rtps_pct) >= 2 and achieved_halfwidth_pp is not None:
-            if achieved_halfwidth_pp <= args.target_halfwidth_pp:
-                stop_reason = "target_ci_reached"
-                break
+        # Stop when session-level CI meets the target. Previously this
+        # check used chunk-level CI which collapses to ~0 after 2-3
+        # chunks that happen to share similar RTPs, causing premature
+        # "target_ci_reached" on high-variance machines (e.g. M273 m1
+        # completed at 12.9pp session-CI after reporting 0.3pp chunk-CI).
+        # We require session-level CI ≤ target AND a minimum-chunk
+        # guard so a pathological single-chunk variance doesn't exit.
+        session_ci_final = session_halfwidth_pp(
+            total_session_ret_count,
+            total_session_ret_sum,
+            total_session_ret_sq_sum,
+        )
+        if (
+            chunks >= 2
+            and session_ci_final is not None
+            and session_ci_final <= args.target_halfwidth_pp
+        ):
+            stop_reason = "target_ci_reached"
+            break
 
     duration_seconds = round(time.time() - t0, 3)
     finished_at = utc_now()
@@ -2933,22 +2985,14 @@ def main() -> int:
     # typically 10k+, so CI is both valid and tighter than chunk-level.
     # Keeps chunk-level value as diagnostic fallback.
     chunk_level_halfwidth_pp = achieved_halfwidth_pp
-    session_level_halfwidth_pp: float | None = None
-    if total_session_ret_count > 1:
-        # Clamp to 0 before sqrt: sample variance computed as
-        # `sq_sum - sum²/N` can produce a tiny negative from float
-        # cancellation when every session paid out the same amount
-        # (legitimate zero-variance case, e.g. synthetic test data).
-        _var_ret_x = max(
-            0.0,
-            (
-                total_session_ret_sq_sum
-                - (total_session_ret_sum * total_session_ret_sum / total_session_ret_count)
-            ) / (total_session_ret_count - 1),
-        )
-        _se_mean = math.sqrt(_var_ret_x / total_session_ret_count)
-        _t = t_critical_95(total_session_ret_count - 1)
-        session_level_halfwidth_pp = _t * _se_mean * 100.0
+    # Delegates to the shared session_halfwidth_pp helper so the final
+    # report and the in-loop stop check use identical math. See helper
+    # docstring for the N≤1 / zero-variance edge cases.
+    session_level_halfwidth_pp = session_halfwidth_pp(
+        total_session_ret_count,
+        total_session_ret_sum,
+        total_session_ret_sq_sum,
+    )
     if session_level_halfwidth_pp is not None:
         achieved_halfwidth_pp = session_level_halfwidth_pp
 
