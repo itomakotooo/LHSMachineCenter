@@ -50,7 +50,8 @@ const state = {
   servers: [],
   defaultServer: "",
   catalogViewMode: "category",  // "category" | "name" | "volatility" | "rtp" | "mechanic"
-  catalogFeatureFilter: new Set(),  // selected feature chips for "按玩法" view
+  catalogFeatureFilter: new Set(),
+  catalogSortReverse: false,  // reverse ordering toggle
   versionHistoryMachine: null,
   versionHistoryMode: null,
   compareSelected: new Set(),
@@ -572,9 +573,11 @@ function renderMachineCatalog() {
   const orderedKeys = order.filter((k) => groups[k]);
   Object.keys(groups).forEach((k) => { if (!orderedKeys.includes(k)) orderedKeys.push(k); });
 
-  // Sort within groups: by machine number for most views.
-  const numSort = (a, b) => (parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0);
+  // Sort within groups: by machine number for most views. Reverse if toggled.
+  const dir = state.catalogSortReverse ? -1 : 1;
+  const numSort = (a, b) => dir * ((parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0));
   Object.values(groups).forEach((arr) => arr.sort(numSort));
+  if (state.catalogSortReverse) orderedKeys.reverse();
 
   const isFlatView = viewMode === "name" || viewMode === "category";
 
@@ -607,11 +610,15 @@ function renderMachineCatalog() {
     machines.forEach((m) => {
       const d = document.createElement("div");
       d.className = "catalog-item";
-      const bg = _cardBgColor(m.machine);
-      if (bg) d.style.background = bg;
+      const isActive = state.runFilterMachines.has(m.machine);
+      // Don't apply heatmap bg on active cards (selection bg wins).
+      if (!isActive) {
+        const bg = _cardBgColor(m.machine);
+        if (bg) d.style.background = bg;
+      }
       const catColor = CATEGORY_COLORS[m.category] || "#9ca3af";
       d.style.borderLeftColor = catColor;
-      if (state.runFilterMachines.has(m.machine)) d.classList.add("active");
+      if (isActive) d.classList.add("active");
       if (m.available === false) d.classList.add("unavailable");
       d.dataset.machine = m.machine;
       d.setAttribute("role", "button");
@@ -966,7 +973,7 @@ function pollSampling() {
         return;
       }
     } catch (_) { /* ignore transient errors */ }
-    setTimeout(poll, 2000);
+    setTimeout(poll, 1000);  // poll every 1s for live updates
   };
   poll();
 }
@@ -987,7 +994,16 @@ function renderSamplingProgress(data) {
     const icon = statusIcon[it.status] || "?";
     const chunk = it.chunk_spin_times ? ` (chunk=${it.chunk_spin_times})` : "";
     const err = it.error ? ` — ${it.error.slice(0, 60)}` : "";
-    return `<div class="sample-log-item sample-${it.status}">${icon} ${it.machine} m${it.mode}${chunk}${err}</div>`;
+    let progress = "";
+    if (it.status === "running" && it.progress) {
+      const p = it.progress;
+      const rtp = p.current_rtp_pct != null ? p.current_rtp_pct.toFixed(2) + "%" : "—";
+      const hw = p.halfwidth_pp != null ? "±" + p.halfwidth_pp.toFixed(2) : "";
+      progress = ` · chunk ${p.chunks_done} · ${(p.total_spins || 0).toLocaleString()} spins · RTP=${rtp} ${hw}`;
+    } else if (it.status === "running") {
+      progress = " · 启动中…";
+    }
+    return `<div class="sample-log-item sample-${it.status}">${icon} ${it.machine} m${it.mode}${chunk}${progress}${err}</div>`;
   }).join("");
 
   // Event log below.
@@ -1021,9 +1037,15 @@ async function refreshDiskSpace() {
 
 async function cancelSampling() {
   if (!state.activeBatchId) return;
+  const btn = byId("sampleCancelBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "停止中…"; }
   try {
     await apiPost(`/api/batch-run/${state.activeBatchId}/cancel`);
-  } catch (_) { /* ignore */ }
+  } catch (e) {
+    alert(String(e.message || e));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "停止"; }
+  }
 }
 
 // ── Server Management ─────────────────────────────────────────────
@@ -2559,6 +2581,11 @@ function bindEvents() {
     dashboard.classList.remove("sidebar-open");
   });
   byId("catalogSearch").addEventListener("input", () => renderMachineCatalog());
+  byId("catalogSortReverse").addEventListener("click", (e) => {
+    state.catalogSortReverse = !state.catalogSortReverse;
+    e.currentTarget.classList.toggle("active", state.catalogSortReverse);
+    renderMachineCatalog();
+  });
   byId("catalogCollapseAll").addEventListener("click", () => {
     const groups = document.querySelectorAll(".catalog-group");
     const allCollapsed = [...groups].every((g) => g.classList.contains("collapsed"));

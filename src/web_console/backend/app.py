@@ -918,23 +918,44 @@ class BatchRunManager:
             if b is None:
                 return None
             completed = sum(1 for it in b["items"] if it["status"] in ("completed", "failed", "cancelled"))
+            items_out = []
+            for it in b["items"]:
+                entry = {
+                    "machine": it["machine"],
+                    "mode": it["mode"],
+                    "chunk_spin_times": it.get("chunk_spin_times"),
+                    "status": it["status"],
+                    "run_id": it.get("run_id"),
+                    "error": it.get("error"),
+                    "progress": None,
+                }
+                # For running items, read live chunk progress.
+                if it["status"] == "running" and it.get("run_id"):
+                    try:
+                        row = self._store.get_run(it["run_id"])
+                        if row:
+                            pf = Path(row.get("progress_file", ""))
+                            if pf.exists():
+                                events = read_progress_events(pf)
+                                chunks = [e for e in events if e.get("event") == "chunk_progress"]
+                                if chunks:
+                                    latest = chunks[-1]
+                                    entry["progress"] = {
+                                        "chunks_done": latest.get("chunk_index", 0),
+                                        "total_spins": latest.get("total_spins", 0),
+                                        "current_rtp_pct": latest.get("current_rtp_pct"),
+                                        "halfwidth_pp": latest.get("halfwidth_pp"),
+                                    }
+                    except Exception:
+                        pass
+                items_out.append(entry)
             return {
                 "batch_id": b["batch_id"],
                 "status": b["status"],
                 "total": len(b["items"]),
                 "completed": completed,
-                "items": [
-                    {
-                        "machine": it["machine"],
-                        "mode": it["mode"],
-                        "chunk_spin_times": it.get("chunk_spin_times"),
-                        "status": it["status"],
-                        "run_id": it.get("run_id"),
-                        "error": it.get("error"),
-                    }
-                    for it in b["items"]
-                ],
-                "events": list(b.get("events", []))[-100:],  # rolling last 100 events
+                "items": items_out,
+                "events": list(b.get("events", []))[-100:],
                 "created_at": b["created_at"],
             }
 
@@ -944,6 +965,28 @@ class BatchRunManager:
             if b is None:
                 return False
             b["cancel_requested"] = True
+            # Kill any running subprocesses for this batch.
+            for item in b["items"]:
+                if item["status"] == "running" and item.get("run_id"):
+                    run_id = item["run_id"]
+                    # Write stop flag so analyzer exits gracefully.
+                    row = self._store.get_run(run_id)
+                    if row:
+                        pf = Path(row.get("progress_file", ""))
+                        stop_flag = pf.parent / f"{run_id}.stop" if pf.parent.exists() else None
+                        if stop_flag:
+                            try:
+                                stop_flag.write_text("stop", encoding="utf-8")
+                            except OSError:
+                                pass
+                    # Also kill the subprocess directly via ManagedRun in RunManager.
+                    with self._run_manager._lock:
+                        mr = self._run_manager._running.get(run_id)
+                        if mr and mr.process:
+                            try:
+                                mr.process.terminate()
+                            except Exception:
+                                pass
             return True
 
     def _run_batch(self, batch_id: str) -> None:

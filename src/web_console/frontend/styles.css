@@ -1279,8 +1279,21 @@ button.feature-chip {
   outline-offset: 2px;
 }
 .catalog-item.active {
-  background: #dcfce7;
-  border-color: #0f766e;
+  background: #dcfce7 !important;
+  border: 2px solid #0f766e !important;
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.3);
+  transform: scale(1.02);
+  z-index: 1;
+  position: relative;
+}
+.catalog-item.active::before {
+  content: "✓";
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  color: #059669;
+  font-weight: 700;
+  font-size: 12px;
 }
 .catalog-item.unavailable {
   opacity: 0.45;
