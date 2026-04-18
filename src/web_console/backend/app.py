@@ -56,6 +56,10 @@ _RAWDATA_MIN_RETENTION_SPINS_DEFAULT = 100_000
 # during the data-layer deep dive. Gitignored; available only after
 # operator runs scripts/classify_payline_structure.py on the cache.
 CLASSIFY_DIR = ROOT / "dev_reports" / "_classify"
+# Per-machine paytable SHAPE inference (wild auto-inference + rich
+# shape fields). Produced by scripts/infer_paytable.py from rawdata.
+# Gitignored; empty / missing → endpoint returns "not_run" status.
+PAYTABLES_DIR = ROOT / "configs" / "paytables"
 MACHINES_CONFIG = ROOT / "configs" / "machines.json"
 SERVERS_CONFIG = ROOT / "configs" / "servers.json"
 ANALYZER = ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
@@ -1330,6 +1334,74 @@ def _load_classifier_verdict(
             }
             break
     return {"machine": machine, "modes": modes}
+
+
+def _load_paytable_shape(
+    machine: str,
+    mode: int,
+    paytables_dir: Path = PAYTABLES_DIR,
+) -> dict[str, Any]:
+    """Per-pay_id shape inference + wild auto-detection for one
+    (machine, mode). Reads the JSON produced by
+    ``scripts/infer_paytable.py`` and returns a trimmed UI-oriented
+    view (drops mult-only fields, keeps shape / wild_inference /
+    self_verify).
+
+    Missing file → ``status="not_run"`` so the endpoint stays 200 and
+    UI renders "not yet inferred — run scripts/infer_paytable.py".
+    """
+    path = paytables_dir / f"{machine}_mode{mode}.json"
+    if not path.is_file():
+        return {
+            "machine": machine,
+            "mode": mode,
+            "status": "not_run",
+            "rows": [],
+            "wild_inference": None,
+            "machine_flags": [],
+            "grid": None,
+        }
+    try:
+        pt = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "machine": machine,
+            "mode": mode,
+            "status": "error",
+            "rows": [],
+            "wild_inference": None,
+            "machine_flags": [],
+            "grid": None,
+        }
+    wi = pt.get("wild_inference") or {}
+    sv = pt.get("self_verify") or {}
+    rows_out: list[dict[str, Any]] = []
+    for r in pt.get("paytable_rows") or []:
+        sh = r.get("shape") or {}
+        rows_out.append({
+            "pay_id": r.get("pay_id"),
+            "match_count": r.get("match_count"),
+            "fires": r.get("fires"),
+            "line_ids_fired": r.get("line_ids_fired") or [],
+            "shape": sh,
+        })
+    return {
+        "machine": machine,
+        "mode": mode,
+        "status": "ok",
+        "grid": pt.get("grid"),
+        "wild_inference": {
+            "status": wi.get("status"),
+            "wilds": wi.get("wilds") or [],
+            "evidence": wi.get("evidence") or {},
+            "tier_stems": wi.get("tier_stems") or {},
+            "review_needed": wi.get("review_needed", False),
+            "stem_count": wi.get("stem_count", 0),
+        },
+        "rows": rows_out,
+        "machine_flags": sv.get("machine_flags") or [],
+        "chunks_scanned": pt.get("chunks_scanned"),
+    }
 
 
 def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
@@ -3348,6 +3420,7 @@ def create_app(
     analyzer_path: Path | None = None,
     classify_dir: Path | None = None,
     rawdata_root: Path | None = None,
+    paytables_dir: Path | None = None,
 ) -> FastAPI:
     """Build a FastAPI app with all stateful singletons scoped to this instance.
 
@@ -3369,6 +3442,7 @@ def create_app(
     sc = SERVERS_CONFIG
     az = analyzer_path if analyzer_path is not None else ANALYZER
     cd = classify_dir if classify_dir is not None else CLASSIFY_DIR
+    pd_root = paytables_dir if paytables_dir is not None else PAYTABLES_DIR
     rd_root = rawdata_root if rawdata_root is not None else RAWDATA_ROOT
     # Operator settings live next to console.db so they survive restart
     # and follow the same tmp-dir swap in tests.
@@ -3873,6 +3947,25 @@ def create_app(
         empty ``modes`` dict, UI renders a "classifier not run" notice.
         """
         return _load_classifier_verdict(machine, cd)
+
+    @app.get("/api/paytables/{machine}/mode/{mode}/shape")
+    def get_paytable_shape(machine: str, mode: int) -> dict[str, Any]:
+        """Per-pay_id shape + auto-inferred wild symbols for one
+        (machine, mode). Sourced from
+        ``configs/paytables/{machine}_mode{mode}.json`` produced by
+        ``scripts/infer_paytable.py``. Response fields:
+
+          * ``status``: "ok" / "not_run" / "error"
+          * ``grid``: {n_cols, n_rows}
+          * ``wild_inference``: {status, wilds, evidence, tier_stems,
+            review_needed, stem_count}
+          * ``rows[]``: per (pay_id, match_count) with ``shape``:
+            symbol_set, symbol_purity, wild_substitution_rate,
+            line_id_sign, position_cols_covered, position_samples,
+            confidence, notes
+          * ``machine_flags``: list of self-verify flags
+        """
+        return _load_paytable_shape(machine, mode, pd_root)
 
     @app.get("/api/batch-run/{batch_id}")
     def get_batch_run(batch_id: str) -> dict[str, Any]:
