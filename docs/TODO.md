@@ -4,6 +4,27 @@ This file tracks executable next steps for the current phase.
 
 ## P0 (user-blocked)
 
+- [ ] **Per-machine BCM config recheck** (dev only). All 33
+      BuffCollectionMap machines inferred + written to
+      `configs/bcm_pairings.json` with high confidence on mode 1.
+      Modes 2/5/7 not yet re-inferred; run
+      `python scripts/infer_bcm_pairing.py --mode 2 --write-config`
+      (and --mode 5 / 7) to cover.
+
+- [ ] **Surface new analyzable content to UI** (optional; 4
+      high-value items identified this session, handover doc lists
+      them). Each is standalone and adds value to RTP interpretation:
+      payline-structure classification, wild inventory + tiers,
+      feature-vs-pay_id channel split, feature-mode-rule-change flag.
+
+- [ ] **Paytable auto-inference** — paused WIP. See memory
+      `project_paytable_inference_paused.md`. 80% infra done; 2
+      bugs flagged in `scripts/infer_paytable.py` header. Resume
+      when business value is clearer (currently UI has no paytable
+      consumer; 策划 can supply paytable if needed).
+
+
+
 - [ ] **By-hall sort tab + select-all button** (agreed with user, not
       yet implemented). Machine catalog gets a new view tab "按大厅"
       that calls `POST /MachineTest/MapMachineOrder` for ordering;
@@ -49,6 +70,75 @@ This file tracks executable next steps for the current phase.
       handles the rest.
 
 ## Done Recently
+
+- [x] **Session 2026-04-18 — data-layer deep dive** (8 commits
+      463d8d3 → defac90 + cleanup):
+      - Sampling-log observability 3-layer refactor (panel即现 +
+        lifecycle events + unified timeline with source tags)
+      - Adaptive retry hardening (IncompleteRead / RemoteDisconnected
+        / ConnectionReset into retry set; max_attempts 3→5 with
+        30s backoff cap; bail thresholds 3/20 → 5/40)
+      - In-flight per-chunk visibility with live elapsed ticker
+        (chunk_started events + as_completed-loop emission)
+      - Session-level RTP in live progress (matches final report
+        on collect-mechanic machines where spin-level denominator
+        under-reports)
+      - ✓/⚠ completion semantics (ci_target_met distinguishes real
+        success from upstream_unstable / max_chunks-without-CI)
+      - AIMD adaptive tuning (halve concurrency + chunk_spins on
+        fully-failed batch; grow back on streak) + circuit pause
+      - Per-machine BCM bonus-feature pairing
+        (`configs/bcm_pairings.json` + heuristic fallback). 33
+        BCM machines all paired with high confidence; M273 pairs
+        with LockSymbolFreespin, M254 with MultiBuffFreespin, etc.
+        Replaces the hardcoded `"NewFreespin"` in the RTP correction
+        that silently under-reported 20 of 33 BCM machines.
+      - `bonus_cycle_correction` renamed from `newfreespin_correction`
+        (legacy key kept as alias); added `bonus_feature` +
+        `bonus_feature_source` fields
+      - New `cycle_observation` block: distinguishes "no collect
+        mechanic" from "collect mechanic but sample too short to
+        see a cycle reset" — surfaces cycle_len_lower_bound
+      - Per-(machine, SpinType) payline-structure classification
+        across 1006 machine-modes — 100% auto-verified via 5-channel
+        win-coverage check (pay_id / pay_id+FeatureWin /
+        FeatureWin-aggregated / loose-overlap / pick-em-selector).
+        Classes: classic-payline, ways-pay (M21/M33 etc.), hybrid,
+        no-wins.
+      - Schema-probe toolkit: `scripts/probe_schema_full.py`,
+        `scripts/probe_round_field.py`,
+        `scripts/classify_payline_structure.py`,
+        `scripts/verify_machine_labels.py`,
+        `scripts/infer_bcm_pairing.py`,
+        `scripts/scan_collect_feature_match.py`
+      - Data findings documented:
+        * `PayoutByPayline` format: `line_id:pay_id-pay_id(positions);`
+          where pay_id appears twice (redundant encoding); line_id=-1
+          is board-wide scatter; line_id=-2 is another scatter type
+          (8 M273 records, 策划 to clarify)
+        * Position encoding: `pos = (col+1)*100 + (row-1)`,
+          col & row 0-indexed
+        * `StopSymbolsByCol` = list[str] per column, dash-joined rows
+        * Wild symbols contain "wild" substring (case-insensitive)
+          with tier regex `(\d+)x[_-]?wild`
+        * M14 true paytable manually verified: 3× high7/3bar/2bar/
+          1bar/any-bar/cherry = 8/6/5/4/3/2 × line_bet (line_bet=110
+          not 1000/9; remaining 10 is feature/ante)
+        * `RewardType` field (策划 mentioned) does NOT exist in any
+          cached chunk across 252 machines × 4 modes. Likely
+          策划 meant a different field name (possibly `RewardLastNode`
+          prefix numerics) or it's a new upstream field not yet
+          cached. Awaiting 策划 follow-up.
+        * Negative PayId (策划 mentioned) — actually negative line_id
+          in PayoutByPayline records, marking board-wide scatter wins.
+          PayId values themselves in cached data are all positive.
+      - Memory: 3 new feedback files
+        (`feedback_no_proactive_fetch`, `feedback_prefer_complex_better`,
+        `feedback_self_verify_output`) + 1 project note
+        (`project_paytable_inference_paused`)
+      - 332 pytest + 126 node:test passing (+ 54 new cases over
+        the session)
+
 
 - [x] **Sampling quality + UX pass** (2026-04-17, second half, 13 commits):
       - `--resume-from-cache` analyzer mode: seed aggregators from cached

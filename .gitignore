@@ -61,3 +61,6 @@ reports/M14/mode_5/
 reports/M14/mode_7/
 state/probes/
 dev_reports/_classify/
+
+# Paused WIP — paytable inference outputs (2026-04-18)
+configs/paytables/
