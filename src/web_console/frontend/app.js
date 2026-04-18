@@ -44,6 +44,10 @@ const state = {
   // Per-machine-mode best-report summary (from GET /api/machines/summary).
   // { machines: { M14: { "1": {rtp_pct, ci_halfwidth_pp, ...}, ... }, ... } }
   machinesSummary: null,
+  // Snapshot of current analyzer version + per-machine server md5s
+  // (from GET /api/versions/current). Used by renderRunHistory to
+  // render fresh/stale/untagged badges without per-row fetches.
+  currentVersions: { analyzer_version: "", machines: {} },
   // Active batch run state.
   activeBatchId: null,
   batchSelectedMachines: new Set(),
@@ -1976,10 +1980,11 @@ function renderRunHistory() {
     : state.runs;
   if (!rows.length) {
     const msg = filterSet.size ? fmt("noRunsForMachine") : fmt("noRuns");
-    body.innerHTML = `<tr><td colspan="9">${msg}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="11">${msg}</td></tr>`;
     updateBatchBar();
     return;
   }
+  const current = state.currentVersions || { analyzer_version: "", machines: {} };
   rows.forEach((r) => {
     const tr = document.createElement("tr");
     if (r.run_id === state.currentRunId) tr.classList.add("active-row");
@@ -1987,6 +1992,9 @@ function renderRunHistory() {
     const ciCell = fMetricCell(r.achieved_halfwidth_pp, 3, "pp");
     const qualityCell = r.quality_label || "\u2014";
     const checked = state.selectedRuns.has(r.run_id) ? "checked" : "";
+    const badges = PURE.versionBadges(r, current);
+    const rawdataBadge = `<span class="ver-badge ver-${badges.rawdata.tier}" title="${badges.rawdata.tip.replace(/"/g, '&quot;')}">${fmt("badge" + badges.rawdata.tier.charAt(0).toUpperCase() + badges.rawdata.tier.slice(1))}</span>`;
+    const analyzerBadge = `<span class="ver-badge ver-${badges.analyzer.tier}" title="${badges.analyzer.tip.replace(/"/g, '&quot;')}">${fmt("badge" + badges.analyzer.tier.charAt(0).toUpperCase() + badges.analyzer.tier.slice(1))}</span>`;
     tr.innerHTML =
       `<td class="td-check"><input type="checkbox" class="run-check" data-id="${r.run_id}" ${checked}></td>` +
       `<td>${r.run_id}</td>` +
@@ -1996,6 +2004,8 @@ function renderRunHistory() {
       `<td>${rtpCell}</td>` +
       `<td>${ciCell}</td>` +
       `<td>${qualityCell}</td>` +
+      `<td>${rawdataBadge}</td>` +
+      `<td>${analyzerBadge}</td>` +
       `<td class="action-cell">` +
       `<button class="load-run-btn" data-id="${r.run_id}">${fmt("btnLoadRun")}</button> ` +
       `<button class="delete-run-btn danger-btn" data-id="${r.run_id}">${fmt("btnDeleteRun")}</button>` +
@@ -3167,16 +3177,22 @@ async function refreshInterpretation() {
 }
 
 async function loadBootstrap() {
-  const [h, m, models, mSummary] = await Promise.all([
+  const [h, m, models, mSummary, versions] = await Promise.all([
     apiGet("/api/health"),
     apiGet("/api/machines"),
     apiGet("/api/models"),
     apiGet("/api/machines/summary").catch(() => null),
+    // Current analyzer + per-machine md5 fingerprints drive the
+    // Run History staleness badges; fetched once per bootstrap and
+    // cached in state — these change only when code is reloaded or
+    // machines.json is refreshed, both of which already reload.
+    apiGet("/api/versions/current").catch(() => null),
   ]);
   setHealth(Boolean(h.ok), h.ts || "");
   state.machines = m.machines || [];
   state.modelMeta = models || {};
   state.machinesSummary = mSummary;
+  state.currentVersions = versions || { analyzer_version: "", machines: {} };
   fillMachineModeSelectors();
   fillCiTierOptions();
   fillBankMultOptions();

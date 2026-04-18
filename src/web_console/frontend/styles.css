@@ -1002,6 +1002,23 @@ button:disabled {
   margin-top: 2px;
 }
 
+/* Version-fingerprint badges on the Run History table. Three tiers:
+   fresh (match current upstream/analyzer), stale (drifted), untagged
+   (pre-migration row without stored fingerprint). Coloring mirrors
+   the cache risk-tier palette so the visual language stays consistent
+   across the manage tab. */
+.ver-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: help;
+}
+.ver-badge.ver-fresh { background: #dcfce7; color: #166534; }
+.ver-badge.ver-stale { background: #fee2e2; color: #991b1b; }
+.ver-badge.ver-untagged { background: #e5e7eb; color: #4b5563; }
+
 /* Run-history table: contain horizontal overflow within the panel.
    The table's natural width (~590px at default column content) can
    exceed the panel width on narrow viewports. Without this wrapper

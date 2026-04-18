@@ -163,6 +163,16 @@ const I18N = {
     btnCacheCleanup: "清理缓存",
     btnLoadRun: "载入",
     btnDeleteRun: "删除",
+    thRawdataVersion: "Rawdata",
+    thAnalyzerVersion: "Analyzer",
+    badgeFresh: "当前",
+    badgeStale: "失配",
+    badgeUntagged: "未标记",
+    tipFreshRawdata: "服务器机台版本与采样时一致",
+    tipStaleRawdata: "服务器已升级到 cfg={cur_cfg} / code={cur_code}，此 run 基于旧版 {row_cfg} / {row_code} 采样 — 重采以更新",
+    tipFreshAnalyzer: "Analyzer 代码未变，report 基于最新代码",
+    tipStaleAnalyzer: "Analyzer 当前版本 {cur} ≠ report 生成时 {row} — 建议从 rawdata 重新生成",
+    tipUntaggedVersion: "此 run 创建于版本追踪上线前；无 fingerprint 参考",
     btnBatchDelete: "删除选中",
     btnClearSelection: "清除选择",
     batchSelectedCount: "已选 {n} 项",
@@ -529,6 +539,16 @@ const I18N = {
     btnCacheCleanup: "Cleanup Cache",
     btnLoadRun: "Load",
     btnDeleteRun: "Delete",
+    thRawdataVersion: "Rawdata",
+    thAnalyzerVersion: "Analyzer",
+    badgeFresh: "fresh",
+    badgeStale: "stale",
+    badgeUntagged: "untagged",
+    tipFreshRawdata: "Server machine version matches what was sampled",
+    tipStaleRawdata: "Server upgraded to cfg={cur_cfg} / code={cur_code}; this run sampled older {row_cfg} / {row_code} — resample to refresh",
+    tipFreshAnalyzer: "Analyzer code unchanged; report built with current code",
+    tipStaleAnalyzer: "Analyzer current {cur} ≠ report-built {row} — regenerate from rawdata",
+    tipUntaggedVersion: "Run predates version tracking; no fingerprint to compare",
     btnBatchDelete: "Delete selected",
     btnClearSelection: "Clear selection",
     batchSelectedCount: "{n} selected",
@@ -1581,6 +1601,65 @@ function mergeTimeline(data, clientEvents, progressCap) {
 }
 
 
+// Compare a run row's stored version fingerprints against the
+// current server/analyzer values, producing a badge descriptor for
+// the Run History table.
+//
+// Inputs:
+//   row     — runs row fields as returned by /api/runs (may have
+//             rawdata_config_md5 / rawdata_code_md5 / analyzer_version
+//             null on pre-migration legacy rows).
+//   current — { analyzer_version, machines: {machine: {config_md5, code_md5}} }
+//             from /api/versions/current.
+//
+// Returns { rawdata: { tier, tip }, analyzer: { tier, tip } } where
+// tier ∈ "fresh" | "stale" | "untagged". The caller is responsible
+// for picking badge colors / text via i18n using the returned tier.
+function versionBadges(row, current) {
+  const out = {
+    rawdata: { tier: "untagged", tip: "" },
+    analyzer: { tier: "untagged", tip: "" },
+  };
+  if (!row) return out;
+  const machines = (current && current.machines) || {};
+  const curMachine = machines[row.machine] || {};
+  const curCfg = curMachine.config_md5 || "";
+  const curCode = curMachine.code_md5 || "";
+  const rowCfg = row.rawdata_config_md5 || "";
+  const rowCode = row.rawdata_code_md5 || "";
+  if (!rowCfg && !rowCode) {
+    out.rawdata.tier = "untagged";
+    out.rawdata.tip = "untagged";
+  } else if (!curCfg && !curCode) {
+    // Server not in machines.json (unregistered machine) — can't verify.
+    out.rawdata.tier = "untagged";
+    out.rawdata.tip = "no upstream md5 reference";
+  } else if (rowCfg === curCfg && rowCode === curCode) {
+    out.rawdata.tier = "fresh";
+    out.rawdata.tip = "server version matches sampling";
+  } else {
+    out.rawdata.tier = "stale";
+    out.rawdata.tip = `cur=${(curCfg || "?").slice(0, 8)}/${(curCode || "?").slice(0, 8)}; row=${(rowCfg || "?").slice(0, 8)}/${(rowCode || "?").slice(0, 8)}`;
+  }
+  const curAnalyzer = (current && current.analyzer_version) || "";
+  const rowAnalyzer = row.analyzer_version || "";
+  if (!rowAnalyzer) {
+    out.analyzer.tier = "untagged";
+    out.analyzer.tip = "untagged";
+  } else if (!curAnalyzer) {
+    out.analyzer.tier = "untagged";
+    out.analyzer.tip = "no current analyzer reference";
+  } else if (rowAnalyzer === curAnalyzer) {
+    out.analyzer.tier = "fresh";
+    out.analyzer.tip = "analyzer code unchanged";
+  } else {
+    out.analyzer.tier = "stale";
+    out.analyzer.tip = `cur=${curAnalyzer.slice(0, 8)}; row=${rowAnalyzer.slice(0, 8)}`;
+  }
+  return out;
+}
+
+
 const PURE = {
   I18N,
   fmt,
@@ -1616,6 +1695,7 @@ const PURE = {
   computeElapsedSeconds,
   computeInflightChunks,
   mergeTimeline,
+  versionBadges,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;
