@@ -182,6 +182,52 @@ class TestGenerateReportHappyPath:
         assert gen.json()["run_id"] in ids
 
 
+class TestGenerateReportProcessesAllChunks:
+    """Regression guard for the session-CI early-stop bug: with target
+    = 999pp, the analyzer's ``session_ci <= target`` check fires after
+    chunks >= 2 because nearly any session CI drops below 999pp
+    immediately. That caused M273 mode 1 rebuild to stop after 2 of
+    51 chunks (stop_reason=target_ci_reached) and report 3.43pp CI
+    instead of the 0.5pp the rawdata could actually support.
+
+    Fix: target=0.001 so the CI-stop branch never fires; max_chunks
+    (= cached response count) becomes the sole termination gate.
+    """
+
+    def test_three_chunks_all_processed(self, app_with_m14):
+        c, _app, rd_root, reports_root, _state = app_with_m14
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        mode_dir = rd_root / "M14" / "mode_1"
+        # Three chunks of the same fixture — before the fix, only 2
+        # would be consumed (session CI hits stop after chunk 2).
+        for idx in (1, 2, 3):
+            _write_rawdata_chunk(
+                mode_dir, idx, config_md5="test_cfg", code_md5="test_code",
+                response=response_payload,
+            )
+        resp = c.post("/api/rawdata/M14/generate-report", json={"mode": 1})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["chunks_processed"] == 3, (
+            f"expected all 3 chunks processed, got {body['chunks_processed']}"
+        )
+        # Double-check via the written summary: chunks + stop_reason
+        # must reflect full cache consumption, not early CI stop.
+        version_dir = (
+            reports_root / "M14" / "mode_1" / "versions"
+            / body["report_version"]
+        )
+        summary = json.loads(
+            (version_dir / "player_impact_summary.json").read_text(encoding="utf-8")
+        )
+        samp = summary.get("sampling", {})
+        assert samp["chunks"] == 3
+        assert samp["stop_reason"] != "target_ci_reached", (
+            f"stop_reason should reflect max_chunks reached, not CI "
+            f"target — got {samp['stop_reason']!r}"
+        )
+
+
 class TestGenerateReportErrorPaths:
     def test_no_rawdata_returns_404(self, app_with_m14):
         c, *_ = app_with_m14

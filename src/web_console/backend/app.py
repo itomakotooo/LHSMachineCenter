@@ -3835,7 +3835,15 @@ def create_app(
                 "--chunk-robot-count", str(chunk_robot_count),
                 "--batch-concurrency", "1",
                 "--max-chunks", str(len(_cached_responses)),
-                "--target-halfwidth-pp", "999",
+                # Goal: process every pre-loaded response exactly once.
+                # The analyzer's session-CI stop branch fires when
+                # ``session_halfwidth_pp <= target`` — so target=999
+                # (a previous naive "fuzzy" sentinel) actually triggers
+                # stop after chunks>=2 because nearly any CI drops
+                # below 999pp immediately. Using 0.001pp makes the
+                # threshold effectively unreachable on real data,
+                # leaving max_chunks as the only termination gate.
+                "--target-halfwidth-pp", "0.001",
                 "--timeout", "30",
                 "--output-dir", str(output_dir),
                 "--progress-file", str(progress_file),
