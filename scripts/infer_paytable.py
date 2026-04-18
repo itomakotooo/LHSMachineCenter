@@ -1,66 +1,42 @@
-"""**WORK IN PROGRESS — PAUSED 2026-04-18**.
+"""Per-machine paytable shape inference from cached rawdata.
 
-Two known bugs before resume (see memory
-``project_paytable_inference_paused.md`` for details):
+**Shape-first, no hardcoded semantics.** Every machine has potentially
+different wild naming / grid layout / feature mechanics; this script
+auto-infers wild symbols from behavioral evidence and emits a rich
+per-pay_id shape descriptor. It does NOT attempt to label pay_ids as
+"line-pay" / "scatter" / etc. — operator reads the structural features
+and interprets.
 
-  1. **Multi-fire double-count**: when a pay_id fires on multiple
-     paylines in the same round, ``PayoutIdToWinAmount[pay_id]`` is
-     the round-total (sum across all those fires). Current code adds
-     that full total PER FIRE, inflating the mult. Fix: divide by
-     ``fires_of_this_pay_id_in_round`` before attribution.
+Output per machine (``configs/paytables/<machine>_mode<N>.json``):
 
-  2. **Line_bet detection missing**: paytables are conventionally
-     "payout × line_bet". M14 has BetAmount=1000 but line_bet=110
-     (not 1000/9=111.11; remaining 10 is feature/ante bet). Detect
-     via GCD of pure-fire (no wild anywhere on grid) win values —
-     e.g. M14 GCD(880, 660, 550, 440, 330, 220) = 110 → paytable
-     rows are 8/6/5/4/3/2 × line_bet.
+  wild_inference:
+    status: "inferred" | "partial" | "undetermined"
+    wilds: [...]                 — symbols inferred to be wilds
+    evidence: per-symbol scoring details
+    tier_stems: {"canyon": ["canyon", "canyon2x", "canyon3x"]}
 
-Manually-verified M14 paytable (pure rounds, zero wild on grid):
-  pay_id=2: 3× high7  = 880 credits = 8× line_bet
-  pay_id=3: 3× 3bar   = 660 = 6× line_bet
-  pay_id=4: 3× 2bar   = 550 = 5× line_bet
-  pay_id=5: 3× 1bar   = 440 = 4× line_bet
-  pay_id=6: 3× any bar mixed = 330 = 3× line_bet
-  pay_id=7: 3× cherry = 220 = 2× line_bet
+  paytable_rows[i]:
+    pay_id, match_count, fires, line_ids_fired, ...
+    shape:
+      symbol_set: non-wild winning symbols (post-inference)
+      symbol_purity: how consistent the dominant symbol is across fires
+      wild_substitution_rate: fraction of fires with ≥1 inferred wild
+      line_id_sign: "positive" | "negative" | "mixed"
+      position_cols_covered / position_rows_covered
+      position_pattern_samples
+      confidence: high/medium/low
+      notes: [...] flags for manual review
+    (plus legacy mult fields kept for paused paytable-multiplier work)
 
-Per-machine paytable inference from rawdata — no 策划 input needed.
-
-Strategy:
-  1. Parse each winning round's ``PayoutByPayline`` records →
-     ``(line_id, pay_id, mult, positions)``.
-  2. Decode positions via the machine's position-encoding scheme.
-     Classic 3×N grids use ``pos = (col+1)*100 + (row-1)`` where col
-     is 0-indexed and row is 0-indexed (top=0). Larger grids follow
-     the same formula with col in range [0, n_cols).
-  3. Look up each position's symbol via ``StopSymbolsByCol``
-     (``list[str]`` where each string is dash-joined rows per column).
-  4. Apply wild substitution: if any cell in the winning tuple is
-     "wild", it can substitute for the dominant non-wild symbol.
-  5. Per (pay_id, match_count) aggregate:
-       - fires: how many rounds fired this pay_id at this count
-       - avg_mult_x_bet: mean(win / bet) across fires (tight
-         distribution = one deterministic paytable entry; wide
-         distribution = data issue or multi-tier payout)
-       - dominant_symbol: most common non-wild symbol tuple
-       - wild_rate: fraction of fires involving ≥1 wild substitution
-       - symbol_purity: 1.0 if all fires have same dominant symbol;
-         <1.0 if pay_id is a "mixed category" (e.g. "any 3 bars")
-  6. Emit paytable as JSON per machine to
-     ``configs/paytables/<machine>_mode<N>.json``.
-
-Self-verify:
-  * Every pay_id observed in data gets a paytable entry (no missing).
-  * Purity threshold: if dominant symbol is <70% of fires, flag as
-    "mixed-category" (e.g. bar-group paylines where 1bar/2bar/3bar
-    all count as "bar").
-  * For classic machines, verify avg_mult × bet ≈ observed win
-    (within 5%).
+**Paused multiplier bugs** (see memory ``project_paytable_inference_paused``):
+  1. multi-fire double-count (inflates ``avg_mult_x_bet``)
+  2. line_bet detection missing (affects mult normalization)
+Both only affect the *mult* dimension. Shape inference is unaffected.
 
 Usage:
     python scripts/infer_paytable.py --machine M14 --mode 1
     python scripts/infer_paytable.py --all --mode 1
-    python scripts/infer_paytable.py --machine M273 --mode 1 --detail
+    python scripts/infer_paytable.py --machine M21 --mode 1 --detail
 """
 from __future__ import annotations
 
@@ -72,24 +48,62 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-RAWDATA = ROOT / "rawdata"
+RAWDATA = Path(__import__("os").environ.get("SLOT_RAWDATA_ROOT", str(ROOT / "rawdata")))
 OUT_DIR = ROOT / "configs" / "paytables"
 
 _PAYLINE_RE = re.compile(r"(-?\d+):(-?\d+)-(-?\d+)\(([^)]*)\)")
-_WILD_RE = re.compile(r"wild", re.IGNORECASE)
+# Name-based wild hint — used as a *secondary* signal only. Auto-inference
+# from substitution behavior is the primary path.
+_WILD_NAME_HINT_RE = re.compile(r"wild", re.IGNORECASE)
 _WILD_TIER_RE = re.compile(r"(\d+)x[_-]?wild", re.IGNORECASE)
+# "canyon", "canyon2x", "canyon3x" → stem "canyon". Drops a trailing
+# ``\d+x?`` tier suffix to group multi-tier wild families.
+_TIER_SUFFIX_RE = re.compile(r"(\d+)x?$")
 
 
-def _is_wild(sym) -> bool:
-    return isinstance(sym, str) and bool(_WILD_RE.search(sym))
+def _name_hint_wild(sym) -> bool:
+    return isinstance(sym, str) and bool(_WILD_NAME_HINT_RE.search(sym))
 
 
-def _wild_tier(sym) -> int:
-    """'5x_wild' → 5, 'wild' → 1, non-wild → 0."""
-    if not _is_wild(sym):
+def _wild_tier_from_name(sym) -> int:
+    """'5x_wild' → 5, 'canyon3x' → 3, 'wild' → 1, other → 0."""
+    if not isinstance(sym, str):
         return 0
     m = _WILD_TIER_RE.search(sym)
-    return int(m.group(1)) if m else 1
+    if m:
+        return int(m.group(1))
+    m = _TIER_SUFFIX_RE.search(sym)
+    if m:
+        return int(m.group(1))
+    return 1 if _name_hint_wild(sym) else 0
+
+
+_LEADING_TIER_RE = re.compile(r"^(\d+)x[_-]?(.+)$")
+
+
+def _tier_stem(sym: str) -> str:
+    """Group multi-tier wild family members to the same stem.
+
+    Examples::
+
+        'canyon'        → 'canyon'
+        'canyon2x'      → 'canyon'
+        '5x_wild'       → 'wild'
+        'wild10x'       → 'wild'
+        'Bar1'          → 'Bar'
+        'wildrespin20x' → 'wildrespin'
+    """
+    if not isinstance(sym, str) or not sym:
+        return sym or ""
+    # Leading-tier pattern: "Nx_wild", "Nx-wild" → strip prefix.
+    m = _LEADING_TIER_RE.match(sym)
+    if m:
+        return m.group(2)
+    # Trailing-tier suffix: digits (optionally followed by 'x') at end.
+    m = _TIER_SUFFIX_RE.search(sym)
+    if m and m.start() > 0:
+        return sym[: m.start()]
+    return sym
 
 
 def _iter_chunks(machine: str, mode: int):
@@ -101,11 +115,10 @@ def _iter_chunks(machine: str, mode: int):
 
 
 def _decode_position(pos: int) -> tuple[int, int]:
-    """Decode ``pos = (col+1)*100 + (row-1)`` to ``(col, row)``, both
-    0-indexed. Derivation:
+    """Decode ``pos = (col+1)*100 + (row-1)`` → ``(col, row)`` 0-indexed.
         pos + 1 = (col+1)*100 + row
-        → col = (pos+1)//100 - 1
-        → row = (pos+1) % 100
+        col = (pos+1)//100 - 1
+        row = (pos+1) % 100
     """
     col = (pos + 1) // 100 - 1
     row = (pos + 1) % 100
@@ -136,55 +149,6 @@ def _parse_rounds(robot: dict):
     return rr if isinstance(rr, list) else []
 
 
-def _extract_payid_share(piw: dict, pay_id: int) -> float:
-    """PayoutIdToWinAmount is keyed by stringified pay_id."""
-    if not isinstance(piw, dict):
-        return 0.0
-    for k in (str(pay_id), pay_id):
-        if k in piw:
-            try:
-                return float(piw[k] or 0)
-            except (ValueError, TypeError):
-                return 0.0
-    return 0.0
-
-
-def _infer_symbol_signature(
-    symbols: list[str],
-) -> tuple[str, int, int, str]:
-    """Given a list of symbols at winning positions, determine the
-    canonical 'winning symbol' after wild substitution.
-
-    Returns ``(dominant_symbol, wild_count, wild_tier_product,
-    signature_type)``. ``wild_tier_product`` is the multiplication
-    of all wild tiers (5x_wild × 7x_wild = 35x, pure 'wild' = 1x).
-    If the machine uses multi-tier wilds, this captures the payout
-    multiplier contribution.
-
-    ``signature_type``:
-      * "pure" — all non-wild symbols identical, no wild
-      * "wild-boosted" — same non-wild symbol + wild(s) substituting
-      * "mixed" — multiple distinct non-wild symbols (bar-group etc.)
-      * "all-wild" — no non-wild anchor
-    """
-    wild_tiers = [_wild_tier(s) for s in symbols if _is_wild(s)]
-    non_wilds = [s for s in symbols if not _is_wild(s)]
-    wild_count = len(wild_tiers)
-    # Product of tiers (1x wild treated as 1; multiplicative).
-    tier_product = 1
-    for t in wild_tiers:
-        tier_product *= max(t, 1)
-    if not non_wilds:
-        return ("<all-wild>", wild_count, tier_product, "all-wild")
-    uniq = set(non_wilds)
-    if len(uniq) == 1:
-        sig_type = "wild-boosted" if wild_count > 0 else "pure"
-        return (non_wilds[0], wild_count, tier_product, sig_type)
-    # Multiple distinct non-wilds — mixed category.
-    key = "+".join(sorted(non_wilds))
-    return (key, wild_count, tier_product, "mixed")
-
-
 def _load_analysis(robot: dict) -> dict:
     ar = robot.get("analysisResult")
     if isinstance(ar, str):
@@ -196,7 +160,6 @@ def _load_analysis(robot: dict) -> dict:
 
 
 def _parse_feature_win(ar: dict) -> dict[str, dict[str, dict]]:
-    """Returns {feature: {pay_id_str: {'win': float, 'times': int}}}."""
     raw = ar.get("FeatureWin")
     if isinstance(raw, str):
         try:
@@ -218,46 +181,399 @@ def _parse_feature_win(ar: dict) -> dict[str, dict[str, dict]]:
     return out
 
 
-def _infer_one_machine(machine: str, mode: int, first_chunk_only: bool):
+def _extract_payid_share(piw: dict, pay_id: int) -> float:
+    if not isinstance(piw, dict):
+        return 0.0
+    for k in (str(pay_id), pay_id):
+        if k in piw:
+            try:
+                return float(piw[k] or 0)
+            except (ValueError, TypeError):
+                return 0.0
+    return 0.0
+
+
+# -------------------------------------------------------------------- wild inference
+
+
+def _infer_wilds(
+    per_pay_fire_count: Counter,
+    per_pay_symbol_fire_count: dict[tuple, Counter],
+    fire_bucket: dict,
+    symbol_total_appearances_in_wins: Counter,
+    grid_symbol_freq: Counter,
+) -> dict:
+    """Auto-infer wild symbols from per-row presence frequency.
+
+    Unit of analysis is ``(pay_id, match_count)`` — the SAME pay_id
+    often encodes multiple rules per match count (e.g. "3× bar" +
+    "2× cherry" under the same pay_id; ways-pay machines have many
+    match counts per pay_id).
+
+    For each row R and symbol S, compute ``frac_present[R][S]`` —
+    fraction of R's fires containing S.
+
+      * **Paying symbol** of row R: frac ≥ 0.80 (wild substitutes
+        at most ~2 cells of a 3-5 cell tuple; paying symbol is in
+        essentially every fire).
+      * **Wild substitute** in row R: 0 < frac < 0.50 (wild rate
+        per cell is bounded; wilds only appear occasionally).
+      * 0.50 ≤ frac < 0.80 is the ambiguous zone (group-pay
+        members, tiny samples) — skipped to avoid false positives.
+
+    Rows with < ``MIN_FIRES_FOR_ROW`` fires are excluded from the
+    inference pass entirely (small-sample noise would distort
+    fracs). Rows surface normally in the paytable output with a
+    ``low_fires`` note.
+
+    For each symbol S::
+
+      always_in_count    = |rows where S is paying symbol|
+      sometimes_in_count = |rows where S is wild substitute|
+      wild_score = sometimes_in_count / max(always_in_count, 1)
+
+    Confidence bands:
+      - HIGH:   sometimes ≥ 3 AND score ≥ 3
+      - MEDIUM: sometimes ≥ 2 AND score ≥ 2,
+                OR name-regex hit with sometimes ≥ 1
+      - LOW:    name-regex hit only, no substitution observed
+
+    Tier-stem grouping: canyon / canyon2x / canyon3x → promoted as
+    a family if the stem root is wild.
+    """
+    MIN_FIRES_FOR_ROW = 20
+    ALWAYS_THRESHOLD = 0.80
+    SOMETIMES_THRESHOLD = 0.50
+    MONO_THRESHOLD = 0.95
+    # Wild symbols are typically rare on the grid (<15% of cells).
+    # Paying symbols like bars/high7/cherries appear 15-30%. Use this
+    # as a filter to reject paying symbols falsely scored high via
+    # group-pay substitution noise (e.g. M34 where Bar1/Bar2/Bar3
+    # swap around complex multi-rule pays).
+    WILD_MAX_GRID_DENSITY = 0.15
+    # If more than this many symbols pass the wild filter (outside
+    # tier-stem families), the machine likely has complex group-pay
+    # rules that confound substitution-based inference. Flag rather
+    # than emit a likely-polluted wild set.
+    MAX_WILD_CANDIDATES = 5
+
+    symbol_always_rows: dict[str, set[tuple]] = defaultdict(set)
+    symbol_sometimes_rows: dict[str, set[tuple]] = defaultdict(set)
+    # Mono rows: row where ≥95% of fires are a monochromatic tuple
+    # [S,S,...,S] — strong evidence that S has a dedicated "N-of-S"
+    # pay (classic wild-only pay shape). A regular paying symbol
+    # almost always has some wild-boosted fires mixed in at scale.
+    symbol_mono_rows: dict[str, set[tuple]] = defaultdict(set)
+    for row_key, total_fires in per_pay_fire_count.items():
+        if total_fires < MIN_FIRES_FOR_ROW:
+            continue
+        sym_counter = per_pay_symbol_fire_count.get(row_key, Counter())
+        for sym, fire_count in sym_counter.items():
+            frac = fire_count / total_fires
+            if frac >= ALWAYS_THRESHOLD:
+                symbol_always_rows[sym].add(row_key)
+            elif frac < SOMETIMES_THRESHOLD and frac > 0:
+                symbol_sometimes_rows[sym].add(row_key)
+            # 0.50 ≤ frac < 0.80 — ambiguous, skip.
+
+        # Mono-row detection from the row's tuple distribution.
+        buck = fire_bucket.get(row_key)
+        if buck is None:
+            continue
+        tuples = buck["symbol_tuples"]
+        # Aggregate mono fires per symbol.
+        mono_by_sym: Counter = Counter()
+        for tup, cnt in tuples.items():
+            if len(set(tup)) == 1 and tup:
+                mono_by_sym[tup[0]] += cnt
+        for sym, mono_cnt in mono_by_sym.items():
+            if mono_cnt / total_fires >= MONO_THRESHOLD:
+                symbol_mono_rows[sym].add(row_key)
+
+    # For evidence, we still want to report pay_ids (not rows).
+    def _pids_from_rows(rows: set) -> list[int]:
+        return sorted({rk[0] for rk in rows})
+
+    symbol_sometimes_pay_ids = {
+        s: _pids_from_rows(rows) for s, rows in symbol_sometimes_rows.items()
+    }
+    symbol_always_pay_ids = {
+        s: _pids_from_rows(rows) for s, rows in symbol_always_rows.items()
+    }
+
+    all_syms = set(symbol_total_appearances_in_wins.keys()) | set(grid_symbol_freq.keys())
+    evidence: dict[str, dict] = {}
+
+    for sym in sorted(all_syms):
+        if not isinstance(sym, str) or not sym:
+            continue
+        always_rows = symbol_always_rows.get(sym, set())
+        sometimes_rows = symbol_sometimes_rows.get(sym, set())
+        mono_rows = symbol_mono_rows.get(sym, set())
+        always_pids = symbol_always_pay_ids.get(sym, [])
+        sometimes_pids = symbol_sometimes_pay_ids.get(sym, [])
+        mono_pids = sorted({rk[0] for rk in mono_rows})
+        always_count = len({p for p in always_pids if p not in mono_pids})
+        sometimes_count = len(set(sometimes_pids))
+        mono_count = len(set(mono_pids))
+        # When a row is mono for S, exclude it from S's "always
+        # paying" list — the row is a dedicated wild-only pay, not
+        # evidence that S is a regular paying symbol.
+        effective_always = max(always_count, 1)
+        score = sometimes_count / effective_always
+        name_hit = _name_hint_wild(sym)
+        total_grid_cells = sum(grid_symbol_freq.values()) or 1
+        grid_density = grid_symbol_freq.get(sym, 0) / total_grid_cells
+        # Rare-on-grid filter: symbols occupying ≥15% of grid cells
+        # are nearly always paying symbols (bars / high7 / cherries /
+        # themed symbols), not wilds. This filter defuses the
+        # false-positive from complex group-pay machines where
+        # paying symbols co-occur in mixed tuples across many
+        # pay_ids and would otherwise accrue "sometimes" counts.
+        # Name-hit bypass: a symbol literally named "wild" is
+        # trusted even if grid-dense (rare but possible).
+        too_common_on_grid = grid_density >= WILD_MAX_GRID_DENSITY and not name_hit
+
+        # Decision ladder. A TRUE wild shows BOTH mono-tuple pays
+        # (dedicated "N-of-S" wild-only pays) AND substitution
+        # behavior (appears as <50% in other pay_ids). Either alone
+        # is ambiguous:
+        #   - mono-only symbols include scatters, bonus triggers,
+        #     jackpots, feature-level values (e.g. M33's "2x").
+        #   - substitution-only symbols may not have dedicated wild
+        #     pays but still substitute.
+        if too_common_on_grid:
+            # Grid-dense paying symbol; its "sometimes" count is
+            # noise from group-pay co-occurrence, not substitution.
+            conf = None
+            reason = ""
+        elif mono_count >= 2 and sometimes_count >= 1:
+            conf = "high"
+            reason = (
+                f"mono-tuple pay in {mono_count} rows + substitutes "
+                f"in {sometimes_count} pay_ids — classic wild pattern"
+            )
+        elif sometimes_count >= 3 and score >= 3:
+            conf = "high"
+            reason = (
+                f"substitutes in {sometimes_count} pay_ids, paying in "
+                f"{always_count}; score={score:.1f}"
+            )
+        elif mono_count >= 1 and sometimes_count >= 1:
+            conf = "medium"
+            reason = (
+                f"mono-tuple pay in {mono_count} rows + substitutes "
+                f"in {sometimes_count} pay_ids"
+            )
+        elif sometimes_count >= 2 and score >= 2:
+            conf = "medium"
+            reason = (
+                f"substitutes in {sometimes_count} pay_ids, paying in "
+                f"{always_count}; score={score:.1f}"
+            )
+        elif name_hit and (sometimes_count >= 1 or mono_count >= 1):
+            conf = "medium"
+            reason = (
+                f"name matches /wild/ + {'mono' if mono_count else 'substitute'} "
+                f"signal"
+            )
+        elif name_hit:
+            conf = "low"
+            reason = "name matches /wild/ but no structural signal"
+        else:
+            conf = None
+            reason = ""
+
+        if conf:
+            evidence[sym] = {
+                "confidence": conf,
+                "substitutes_in_pay_ids": sometimes_pids,
+                "paying_symbol_in_pay_ids": [
+                    p for p in always_pids if p not in mono_pids
+                ],
+                "mono_tuple_pay_ids": mono_pids,
+                "substitutes_count": sometimes_count,
+                "paying_count": always_count,
+                "mono_count": mono_count,
+                "wild_score": round(score, 2),
+                "name_hint": name_hit,
+                "total_appearances_in_wins": int(symbol_total_appearances_in_wins.get(sym, 0)),
+                "grid_appearances": int(grid_symbol_freq.get(sym, 0)),
+                "reason": reason,
+            }
+
+    # Tier-stem family promotion: if "canyon" is wild with ≥medium
+    # confidence and "canyon2x" / "canyon3x" exist, promote the family
+    # members even if their own score doesn't hit the threshold — they
+    # are the same symbol family differing only in multiplier tier.
+    stems: dict[str, list[str]] = defaultdict(list)
+    for sym in all_syms:
+        if isinstance(sym, str) and sym:
+            stems[_tier_stem(sym)].append(sym)
+    tier_stems: dict[str, list[str]] = {}
+    for stem, members in stems.items():
+        if len(members) < 2:
+            continue
+        members_sorted = sorted(members)
+        root_wild = any(
+            evidence.get(m, {}).get("confidence") in ("high", "medium")
+            for m in members_sorted
+        )
+        if root_wild:
+            tier_stems[stem] = members_sorted
+            for m in members_sorted:
+                if m not in evidence:
+                    mono_pids_m = sorted({rk[0] for rk in symbol_mono_rows.get(m, set())})
+                    evidence[m] = {
+                        "confidence": "medium",
+                        "substitutes_in_pay_ids": symbol_sometimes_pay_ids.get(m, []),
+                        "paying_symbol_in_pay_ids": [
+                            p for p in symbol_always_pay_ids.get(m, [])
+                            if p not in mono_pids_m
+                        ],
+                        "mono_tuple_pay_ids": mono_pids_m,
+                        "substitutes_count": len(set(symbol_sometimes_pay_ids.get(m, []))),
+                        "paying_count": len({
+                            p for p in symbol_always_pay_ids.get(m, [])
+                            if p not in mono_pids_m
+                        }),
+                        "mono_count": len(mono_pids_m),
+                        "wild_score": None,
+                        "name_hint": _name_hint_wild(m),
+                        "total_appearances_in_wins": int(symbol_total_appearances_in_wins.get(m, 0)),
+                        "grid_appearances": int(grid_symbol_freq.get(m, 0)),
+                        "reason": f"tier-stem family of inferred wild (stem={stem!r})",
+                    }
+
+    wilds = sorted(s for s, ev in evidence.items() if ev["confidence"] in ("high", "medium"))
+
+    # Over-inference flag: if the inferred wild set spans 3+
+    # distinct symbol families (tier-stems), it MIGHT be polluted
+    # by group-pay co-occurrence (common in Bar-variety machines
+    # where different bars co-travel across mixed pays). We don't
+    # drop the wilds — BlackDiamond-style real wilds mixed with
+    # multi-tier paying symbols should still be visible to the
+    # operator — but we mark the machine for manual review so UI
+    # can signal "this wild list may be noisy."
+    stems_among_wilds = {_tier_stem(s) for s in wilds}
+    review_needed = len(stems_among_wilds) > 2
+
+    high_any = any(ev["confidence"] == "high" for ev in evidence.values())
+    medium_any = any(ev["confidence"] == "medium" for ev in evidence.values())
+    if high_any:
+        status = "inferred"
+    elif medium_any:
+        status = "partial"
+    else:
+        status = "undetermined"
+
+    return {
+        "status": status,
+        "wilds": wilds,
+        "evidence": evidence,
+        "review_needed": review_needed,
+        "stem_count": len(stems_among_wilds),
+        "tier_stems": tier_stems,
+    }
+
+
+# -------------------------------------------------------------------- signature classification
+
+
+def _classify_signature(
+    symbols: list[str], wild_set: set[str]
+) -> tuple[str, int, int, str]:
+    """Given a winning tuple and the inferred wild set, return
+    ``(dominant_symbol, wild_count, wild_tier_product, sig_type)``.
+
+    sig_type:
+      * "pure" — all non-wild symbols identical, no wild
+      * "wild-boosted" — same non-wild symbol + wild(s) substituting
+      * "mixed" — multiple distinct non-wild symbols
+      * "all-wild" — no non-wild anchor
+    """
+    wild_tiers = [_wild_tier_from_name(s) or 1 for s in symbols if s in wild_set]
+    non_wilds = [s for s in symbols if s not in wild_set]
+    wild_count = len(wild_tiers)
+    tier_product = 1
+    for t in wild_tiers:
+        tier_product *= max(t, 1)
+    if not non_wilds:
+        return ("<all-wild>", wild_count, tier_product, "all-wild")
+    uniq = set(non_wilds)
+    if len(uniq) == 1:
+        sig_type = "wild-boosted" if wild_count > 0 else "pure"
+        return (non_wilds[0], wild_count, tier_product, sig_type)
+    key = "+".join(sorted(non_wilds))
+    return (key, wild_count, tier_product, "mixed")
+
+
+# -------------------------------------------------------------------- raw pass 1
+
+
+def _collect_raw(machine: str, mode: int, first_chunk_only: bool):
+    """Pass 1: walk chunks, collect raw per-fire symbol data + global
+    symbol frequency counters. No wild classification yet — the wild
+    set is inferred from this output in pass 2.
+
+    Returns ``None`` if the machine has no rawdata.
+    """
     chunks = list(_iter_chunks(machine, mode))
     if not chunks:
         return None
     if first_chunk_only:
         chunks = chunks[:1]
+
     grid_shape = {"n_cols": None, "n_rows": None}
-    # Per-pay_id win totals aggregated from FeatureWin across all features.
-    # Fallback win source when PayoutIdToWinAmount is empty (ways-pay
-    # machines and similar where wins flow through FeatureWin, not per-round).
-    feature_win_by_pay_id = defaultdict(float)
-    feature_times_by_pay_id = defaultdict(int)
-    # Key: (pay_id, match_count) — the paytable row
-    pay_stats = defaultdict(lambda: {
+    grid_symbol_freq: Counter = Counter()
+    feature_win_by_pay_id: dict[int, float] = defaultdict(float)
+    feature_times_by_pay_id: dict[int, int] = defaultdict(int)
+
+    # Per (pay_id, match_count) — all fires stored compactly.
+    # We need the raw symbol tuples (to re-classify with inferred
+    # wilds) + position samples + line_ids + bet/win aggregates.
+    fire_bucket = defaultdict(lambda: {
         "fires": 0,
         "win_total": 0.0,
-        "bet_total_on_fires": 0.0,
-        "line_ids_seen": set(),
-        "symbol_sigs": Counter(),  # (dominant_symbol, sig_type) → count
-        "wild_count_hist": Counter(),
-        "wild_tier_hist": Counter(),
-        # Mults recorded only when the ENTIRE visible grid has no
-        # wild symbol — gives us the true "no-multiplier base mult".
+        "bet_total": 0.0,
+        "line_ids": Counter(),
+        # Counter of sorted-tuple symbols — bounded by # distinct combos
+        # per pay_id (typically < 50, even on 5-reel WAYS machines).
+        "symbol_tuples": Counter(),
+        "position_tuples": Counter(),
         "clean_base_mults": [],
-        # For wild-multiplier derivation: (sum of all grid wild tiers, observed mult).
         "grid_tier_mult_pairs": [],
-        "positions_samples": Counter(),
+        "cols_covered": set(),
+        "rows_covered": set(),
     })
-    # Also track pay_id-level line_id distribution (for per-line paytable).
+
+    # Per-line breakdown.
     per_line_pay_stats = defaultdict(lambda: defaultdict(lambda: {
         "fires": 0, "win_total": 0.0, "bet_total": 0.0,
     }))
 
+    # Wild inference tracking: fraction of fires (per pay_id +
+    # match_count) that contain each symbol. Granularity is
+    # ``(pay_id, match_count)`` because the SAME pay_id often has
+    # distinct rules per match count (e.g. "3× bar" + "2× cherry"
+    # under same pay_id). A *paying* symbol is in ≥80% of its row's
+    # fires (wild substitution covers at most ~2 of 3-5 cells). A
+    # *wild* appears in <50% of fires (wild rate bounded). 50-80%
+    # is an ambiguous zone (group-pay members, low-sample noise) —
+    # skipped.
+    per_pay_fire_count: Counter = Counter()  # key = (pay_id, mc)
+    per_pay_symbol_fire_count: dict[tuple, Counter] = defaultdict(Counter)
+    symbol_total_appearances: Counter = Counter()
+
     for cp in chunks:
-        env = json.loads(cp.read_text(encoding="utf-8"))
+        try:
+            env = json.loads(cp.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
         for robot in env.get("response") or []:
-            # Pull FeatureWin per-pay_id for win fallback.
             ar = _load_analysis(robot)
             fw = _parse_feature_win(ar)
-            for feat, payouts in fw.items():
+            for _feat, payouts in fw.items():
                 for pid_str, entry in payouts.items():
                     try:
                         pid = int(pid_str)
@@ -276,6 +592,10 @@ def _infer_one_machine(machine: str, mode: int, first_chunk_only: bool):
                     rows = max(rw for _, rw in grid) + 1
                     grid_shape["n_cols"] = cols
                     grid_shape["n_rows"] = rows
+                # Grid-wide symbol freq.
+                for sym in grid.values():
+                    if isinstance(sym, str) and sym:
+                        grid_symbol_freq[sym] += 1
                 bet = float(r.get("BetAmount") or 0)
                 piw = r.get("PayoutIdToWinAmount") or {}
                 for rec in pbp.split(";"):
@@ -287,167 +607,257 @@ def _infer_one_machine(machine: str, mode: int, first_chunk_only: bool):
                     positions_raw = m[4]
                     positions = [int(x) for x in positions_raw.split(",") if x.strip()]
                     match_count = len(positions)
-                    # Get symbols at each position.
                     symbols = []
+                    cells = []
                     for p in positions:
                         col, row = _decode_position(p)
+                        cells.append((col, row))
                         sym = grid.get((col, row), "?")
                         symbols.append(sym)
-                    dominant, wild_count, wild_tier_product, sig_type = _infer_symbol_signature(symbols)
-                    # Grid-wide wild audit: winning symbols alone
-                    # don't predict mult because a wild anywhere on
-                    # the grid (even off-payline) multiplies wins.
-                    # "Clean base mult" = mult when THE ENTIRE GRID
-                    # has no wild symbol at all.
-                    grid_wild_tiers = [
-                        _wild_tier(s) for s in grid.values() if _is_wild(s)
-                    ]
-                    grid_has_wild = bool(grid_wild_tiers)
-                    grid_wild_sum = sum(grid_wild_tiers)
+                    # Aggregate per (pay_id, match_count).
                     key = (pay_id, match_count)
-                    pay_stats[key]["fires"] += 1
-                    pay_stats[key]["line_ids_seen"].add(line_id)
+                    buck = fire_bucket[key]
+                    buck["fires"] += 1
+                    buck["line_ids"][line_id] += 1
+                    buck["symbol_tuples"][tuple(sorted(symbols))] += 1
+                    if sum(buck["position_tuples"].values()) < 20:
+                        buck["position_tuples"][tuple(positions)] += 1
+                    for (col, row) in cells:
+                        buck["cols_covered"].add(col)
+                        buck["rows_covered"].add(row)
                     win_share = _extract_payid_share(piw, pay_id)
-                    pay_stats[key]["win_total"] += win_share
-                    pay_stats[key]["bet_total_on_fires"] += bet
-                    pay_stats[key]["symbol_sigs"][(dominant, sig_type)] += 1
-                    pay_stats[key]["wild_count_hist"][wild_count] += 1
-                    pay_stats[key]["wild_tier_hist"][wild_tier_product] += 1
-                    # Clean base mult: only when grid has NO wilds
-                    # anywhere. These fires give us the "pure paytable
-                    # row" value.
+                    buck["win_total"] += win_share
+                    buck["bet_total"] += bet
+                    # Mult diagnostics (kept for paused paytable-mult work).
+                    grid_wild_tiers_regex = [
+                        _wild_tier_from_name(s) for s in grid.values()
+                        if _name_hint_wild(s)
+                    ]
+                    grid_has_name_wild = bool(grid_wild_tiers_regex)
+                    grid_wild_sum = sum(grid_wild_tiers_regex)
                     if bet > 0:
-                        if not grid_has_wild:
-                            pay_stats[key]["clean_base_mults"].append(win_share / bet)
-                        # Also track mult vs total grid wild sum for
-                        # empirical wild multiplier derivation.
-                        pay_stats[key]["grid_tier_mult_pairs"].append(
+                        if not grid_has_name_wild:
+                            buck["clean_base_mults"].append(win_share / bet)
+                        buck["grid_tier_mult_pairs"].append(
                             (grid_wild_sum, win_share / bet)
                         )
-                    if sum(pay_stats[key]["positions_samples"].values()) < 3:
-                        pay_stats[key]["positions_samples"][tuple(positions)] += 1
-                    # Per-line breakdown.
                     per_line_pay_stats[line_id][pay_id]["fires"] += 1
                     per_line_pay_stats[line_id][pay_id]["win_total"] += win_share
                     per_line_pay_stats[line_id][pay_id]["bet_total"] += bet
+
+                    # Frequency signal for wild inference: per
+                    # (pay_id, match_count), count fires containing
+                    # each symbol. See _infer_wilds for thresholds.
+                    uniq = set(symbols)
+                    sym_counter = Counter(symbols)
+                    row_key = (pay_id, match_count)
+                    per_pay_fire_count[row_key] += 1
+                    for s in uniq:
+                        per_pay_symbol_fire_count[row_key][s] += 1
+                        symbol_total_appearances[s] += sym_counter[s]
 
     return {
         "machine": machine,
         "mode": mode,
         "chunks_scanned": len(chunks),
-        "grid": grid_shape,
-        "pay_stats": pay_stats,
-        "per_line_pay_stats": per_line_pay_stats,
+        "grid_shape": grid_shape,
+        "grid_symbol_freq": grid_symbol_freq,
         "feature_win_by_pay_id": dict(feature_win_by_pay_id),
         "feature_times_by_pay_id": dict(feature_times_by_pay_id),
+        "fire_bucket": fire_bucket,
+        "per_line_pay_stats": per_line_pay_stats,
+        "per_pay_fire_count": per_pay_fire_count,
+        "per_pay_symbol_fire_count": per_pay_symbol_fire_count,
+        "symbol_total_appearances": symbol_total_appearances,
     }
 
 
-def _finalize_paytable(info: dict) -> dict:
-    """Collapse pay_stats into final paytable JSON."""
-    rows = []
-    feature_win_map = info.get("feature_win_by_pay_id") or {}
-    feature_times_map = info.get("feature_times_by_pay_id") or {}
-    # Aggregate fires-per-pay_id across all match_counts (used to
-    # allocate FeatureWin total back per-fire).
+# -------------------------------------------------------------------- pass 3: aggregate with inferred wilds
+
+
+def _build_shape_for_row(
+    pay_id: int,
+    match_count: int,
+    buck: dict,
+    grid_shape: dict,
+    wild_set: set[str],
+    wild_inference_status: str,
+) -> dict:
+    """Emit rich structural shape for one (pay_id, match_count) row."""
+    fires = buck["fires"]
+    # Re-classify every fire's symbol tuple using the inferred wild set.
+    sig_counter: Counter = Counter()
+    symbol_counter: Counter = Counter()
+    wild_fire_count = 0
+    for tup, count in buck["symbol_tuples"].items():
+        dominant, wild_count, _tp, sig_type = _classify_signature(
+            list(tup), wild_set
+        )
+        sig_counter[(dominant, sig_type)] += count
+        symbol_counter[dominant] += count
+        if wild_count > 0:
+            wild_fire_count += count
+    # Top dominant symbol.
+    top_sym, top_cnt = symbol_counter.most_common(1)[0] if symbol_counter else (None, 0)
+    symbol_purity = (top_cnt / fires) if fires else 0.0
+    # Symbol set (non-wild winners). For mixed, split by "+"; for
+    # pure/wild-boosted/all-wild, just the one.
+    symbol_set: list[str] = []
+    if top_sym is not None:
+        if "+" in top_sym and top_sym != "<all-wild>":
+            symbol_set = sorted(set(top_sym.split("+")))
+        else:
+            symbol_set = [top_sym]
+    wild_sub_rate = (wild_fire_count / fires) if fires else 0.0
+    # Line id sign.
+    lines = sorted(buck["line_ids"].keys())
+    pos_lines = [ln for ln in lines if ln > 0]
+    neg_lines = [ln for ln in lines if ln < 0]
+    zero_lines = [ln for ln in lines if ln == 0]
+    if pos_lines and not neg_lines:
+        line_sign = "positive"
+    elif neg_lines and not pos_lines:
+        line_sign = "negative"
+    elif pos_lines and neg_lines:
+        line_sign = "mixed"
+    else:
+        line_sign = "zero" if zero_lines else "empty"
+    # Position coverage.
+    cols = sorted(buck["cols_covered"])
+    rows = sorted(buck["rows_covered"])
+    n_cols_grid = grid_shape.get("n_cols") or 0
+    n_rows_grid = grid_shape.get("n_rows") or 0
+    spans_full_grid = (
+        n_cols_grid
+        and n_rows_grid
+        and len(cols) == n_cols_grid
+        and len(rows) == n_rows_grid
+    )
+    # Decoded position patterns (top 3 sample tuples).
+    decoded_samples: list[list[list[int]]] = []
+    for positions, _cnt in buck["position_tuples"].most_common(3):
+        decoded = [list(_decode_position(p)) for p in positions]
+        decoded_samples.append(decoded)
+    # Notes — flags that warrant manual review.
+    notes: list[str] = []
+    if fires < 10:
+        notes.append(f"low_fires ({fires})")
+    if symbol_purity < 0.70 and fires >= 10:
+        notes.append(f"low_purity ({symbol_purity:.0%}) — likely mixed / group-pay")
+    if top_sym == "<all-wild>":
+        notes.append("all_wild_tuple — special wild-count pay or inference miss")
+    if wild_inference_status == "undetermined" and wild_sub_rate == 0:
+        # No wilds inferred AND no wilds observed — fine, machine may
+        # genuinely have no wilds.
+        pass
+    if wild_inference_status == "undetermined" and wild_fire_count == 0 and "<all-wild>" in symbol_counter:
+        notes.append("wild_inference_undetermined_despite_all_wild_tuples")
+    # Confidence.
+    if fires >= 20 and symbol_purity >= 0.80 and top_sym and top_sym != "<all-wild>":
+        confidence = "high"
+    elif fires >= 10 and symbol_purity >= 0.60:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    return {
+        "match_count": match_count,
+        "symbol_set": symbol_set,
+        "symbol_purity": round(symbol_purity, 4),
+        "wild_substitution_rate": round(wild_sub_rate, 4),
+        "line_id_sign": line_sign,
+        "line_ids_positive": pos_lines,
+        "line_ids_negative": neg_lines,
+        "position_cols_covered": cols,
+        "position_rows_covered": rows,
+        "position_spans_full_grid": bool(spans_full_grid),
+        "position_pattern_samples": decoded_samples,
+        "fires": fires,
+        "confidence": confidence,
+        "notes": notes,
+        "alt_signatures": [
+            {"symbol": s, "sig_type": st, "count": c}
+            for (s, st), c in sig_counter.most_common(5)
+        ],
+    }
+
+
+def _finalize(info: dict, wild_inference: dict) -> dict:
+    wild_set = set(wild_inference["wilds"])
+    grid_shape = info["grid_shape"]
+    feature_win_map = info["feature_win_by_pay_id"]
+
     total_fires_by_pay_id = defaultdict(int)
-    total_bet_by_pay_id = defaultdict(float)
-    for (pid, _mc), st_data in info["pay_stats"].items():
-        total_fires_by_pay_id[pid] += st_data["fires"]
-        total_bet_by_pay_id[pid] += st_data["bet_total_on_fires"]
-    for (pay_id, match_count), st in info["pay_stats"].items():
-        pay_id_win_pid = st["win_total"]
+    for (pid, _mc), buck in info["fire_bucket"].items():
+        total_fires_by_pay_id[pid] += buck["fires"]
+
+    rows = []
+    for (pay_id, match_count), buck in info["fire_bucket"].items():
+        # Mult (legacy — paused bugs affect these; operator knows).
+        win_sum = buck["win_total"]
+        bet_sum = buck["bet_total"]
         win_source = "PayoutIdToWinAmount"
-        # Fallback: if per-round pay_id has zero wins but FeatureWin
-        # has win for this pay_id, attribute the FeatureWin total
-        # proportionally (this match_count's fires / total fires).
-        if pay_id_win_pid == 0 and feature_win_map.get(pay_id, 0) > 0:
+        if win_sum == 0 and feature_win_map.get(pay_id, 0) > 0:
             total_fires_this_pid = total_fires_by_pay_id.get(pay_id, 0)
             if total_fires_this_pid > 0:
-                pay_id_win_pid = (
-                    feature_win_map[pay_id]
-                    * (st["fires"] / total_fires_this_pid)
+                win_sum = feature_win_map[pay_id] * (
+                    buck["fires"] / total_fires_this_pid
                 )
                 win_source = "FeatureWin (proportional fallback)"
-        if st["bet_total_on_fires"] <= 0:
-            avg_mult = None
-        else:
-            avg_mult = pay_id_win_pid / st["bet_total_on_fires"]
-        # Determine dominant symbol — merge pure and wild-boosted
-        # variants of the same non-wild symbol (they're the same
-        # paytable entry, just one has wild substitution).
-        by_symbol = Counter()
-        for (sym, sig_type_), cnt in st["symbol_sigs"].items():
-            by_symbol[sym] += cnt
-        top_sym, top_count = by_symbol.most_common(1)[0] if by_symbol else (None, 0)
-        dominant_symbol = top_sym
-        # Determine primary sig_type for dominant symbol: prefer "pure"
-        # over "wild-boosted" label in output.
-        sig_type = "pure"
-        for (sym, st_), _cnt in st["symbol_sigs"].most_common():
-            if sym == top_sym:
-                sig_type = st_
-                break
-        purity = top_count / st["fires"] if st["fires"] else 0.0
-        # Wild involvement rate.
-        total_wilds = sum(wc * cnt for wc, cnt in st["wild_count_hist"].items())
-        avg_wilds_per_fire = (total_wilds / st["fires"]) if st["fires"] else 0.0
-        wild_rate = sum(cnt for wc, cnt in st["wild_count_hist"].items() if wc > 0) / st["fires"] if st["fires"] else 0.0
-        # Alt signatures.
-        alt_sigs = [
-            {"symbol": s[0], "sig_type": s[1], "count": c}
-            for (s, c) in st["symbol_sigs"].most_common(5)
-        ]
-        # Base mult: mean of mults when NO wild is anywhere on the
-        # grid. This is the real paytable row — wilds grid-wide
-        # multiply the win on top of this base.
-        clean_mults = st["clean_base_mults"]
+        avg_mult = (win_sum / bet_sum) if bet_sum > 0 else None
+        clean_mults = buck["clean_base_mults"]
         clean_base_mult = (sum(clean_mults) / len(clean_mults)) if clean_mults else None
-        clean_fires = len(clean_mults)
-        # Grid wild behavior: bucket by grid_wild_sum_of_tiers.
-        # If wilds simply multiply linearly by SUM, mult at sum S
-        # should = base × S (with S=0 the no-wild case).
+        # Build shape.
+        shape = _build_shape_for_row(
+            pay_id, match_count, buck, grid_shape, wild_set,
+            wild_inference["status"],
+        )
+        # Legacy top-level fields (used by paused paytable-mult work).
+        top_sym = shape["symbol_set"][0] if shape["symbol_set"] else None
+        sig_type = "pure"
+        if shape["alt_signatures"]:
+            sig_type = shape["alt_signatures"][0]["sig_type"]
+        # Wild behavior buckets (legacy).
         by_grid_sum = defaultdict(list)
-        for s, mult in st["grid_tier_mult_pairs"]:
+        for s, mult in buck["grid_tier_mult_pairs"]:
             by_grid_sum[s].append(mult)
         wild_behavior = {}
         for s, mults in sorted(by_grid_sum.items()):
-            avg = sum(mults) / len(mults) if mults else 0
+            avg = (sum(mults) / len(mults)) if mults else 0
             entry = {"fires": len(mults), "avg_mult": round(avg, 5)}
             if clean_base_mult and s > 0:
-                # Test: mult = base × (1 + s) linear additive rule?
                 expected_add = clean_base_mult * (1 + s)
                 entry["expected_if_additive_rule"] = round(expected_add, 5)
-                entry["add_rule_fit"] = round(avg / expected_add, 3) if expected_add else None
+                entry["add_rule_fit"] = (
+                    round(avg / expected_add, 3) if expected_add else None
+                )
             wild_behavior[str(s)] = entry
         rows.append({
             "pay_id": pay_id,
             "match_count": match_count,
-            "fires": st["fires"],
-            "avg_mult_x_bet": round(avg_mult, 5) if avg_mult is not None else None,
-            "win_total": round(pay_id_win_pid, 2),
-            "win_source": win_source,
-            "dominant_symbol": dominant_symbol,
+            "fires": buck["fires"],
+            "line_ids_fired": sorted(buck["line_ids"].keys()),
+            "shape": shape,
+            # Legacy fields (kept for paused mult work + backward compat).
+            "dominant_symbol": top_sym,
             "signature_type": sig_type,
-            "symbol_purity": round(purity, 4),
-            # BASE mult: what this pay_id pays when grid has no wilds.
-            # This is the "clean paytable row" — wilds grid-wide
-            # multiply this base.
-            "base_mult_no_wild_anywhere": round(clean_base_mult, 5) if clean_base_mult else None,
-            "clean_fires": clean_fires,
-            "wild_rate": round(wild_rate, 4),
-            "avg_wilds_per_fire": round(avg_wilds_per_fire, 3),
-            "line_ids_fired": sorted(st["line_ids_seen"]),
-            "alt_signatures_top5": alt_sigs,
+            "symbol_purity": shape["symbol_purity"],
+            "avg_mult_x_bet": round(avg_mult, 5) if avg_mult is not None else None,
+            "win_total": round(win_sum, 2),
+            "win_source": win_source,
+            "base_mult_no_wild_anywhere": (
+                round(clean_base_mult, 5) if clean_base_mult else None
+            ),
+            "wild_rate": shape["wild_substitution_rate"],
             "wild_behavior": wild_behavior,
-            "sample_position_tuples": [list(t) for t, _ in st["positions_samples"].most_common(3)],
         })
+
     rows.sort(key=lambda r: (
-        0 if r["pay_id"] >= 0 else 1,  # positive pay_ids first
-        -(r["fires"]),
+        0 if r["pay_id"] >= 0 else 1,
+        -r["fires"],
     ))
-    # Per-line breakdown.
-    per_line_summary = {}
+
+    per_line_summary: dict[str, list[dict]] = {}
     for line_id, pid_stats in info["per_line_pay_stats"].items():
         line_summary = []
         for pay_id, s in pid_stats.items():
@@ -459,49 +869,75 @@ def _finalize_paytable(info: dict) -> dict:
             })
         line_summary.sort(key=lambda x: -x["fires"])
         per_line_summary[str(line_id)] = line_summary
+
     return {
         "machine": info["machine"],
         "mode": info["mode"],
         "chunks_scanned": info["chunks_scanned"],
-        "grid": info["grid"],
+        "grid": info["grid_shape"],
+        "wild_inference": wild_inference,
         "paytable_rows": rows,
         "per_line_breakdown": per_line_summary,
-        "self_verify": _self_verify_paytable(rows),
+        "self_verify": _self_verify(rows, wild_inference),
     }
 
 
-def _self_verify_paytable(rows: list[dict]) -> dict:
-    """Self-check: flag low-purity, low-fires, wild-only rows."""
+def _self_verify(rows: list[dict], wild_inference: dict) -> dict:
+    """Surface any row/machine-level concerns for operator review."""
     warnings = []
     for r in rows:
-        if r["fires"] < 10:
+        sh = r["shape"]
+        for note in sh["notes"]:
             warnings.append({
-                "pay_id": r["pay_id"], "match_count": r["match_count"],
-                "issue": f"low sample (fires={r['fires']}) — mult estimate noisy",
+                "pay_id": r["pay_id"],
+                "match_count": r["match_count"],
+                "issue": note,
             })
-        if r["symbol_purity"] < 0.70 and r["fires"] >= 10:
-            warnings.append({
-                "pay_id": r["pay_id"], "match_count": r["match_count"],
-                "issue": (
-                    f"low purity ({r['symbol_purity']:.0%}) — likely "
-                    f"mixed-category win (e.g. 'any bar'). Dominant "
-                    f"{r['dominant_symbol']!r} is only one of multiple "
-                    f"firing patterns; see alt_signatures_top5"
-                ),
-            })
-        if r["dominant_symbol"] == "<all-wild>":
-            warnings.append({
-                "pay_id": r["pay_id"], "match_count": r["match_count"],
-                "issue": "all-wild winning tuple — unusual, check data",
-            })
-    high_conf_rows = [
-        r for r in rows if r["fires"] >= 10 and r["symbol_purity"] >= 0.70
-    ]
+    high_conf = sum(1 for r in rows if r["shape"]["confidence"] == "high")
+    low_conf = sum(1 for r in rows if r["shape"]["confidence"] == "low")
+    machine_flags: list[str] = []
+    if wild_inference.get("review_needed"):
+        machine_flags.append(
+            f"wild_inference_review_needed "
+            f"({len(wild_inference['wilds'])} candidates across "
+            f"{wild_inference['stem_count']} symbol families)"
+        )
+    if wild_inference["status"] == "undetermined":
+        has_all_wild = any(
+            r["shape"]["symbol_set"] == ["<all-wild>"] for r in rows
+        )
+        if has_all_wild:
+            machine_flags.append(
+                "wild_inference_undetermined_but_all_wild_rows_present"
+            )
+        else:
+            machine_flags.append("wild_inference_undetermined")
+    if wild_inference["status"] == "partial":
+        machine_flags.append("wild_inference_partial")
     return {
         "total_rows": len(rows),
-        "high_confidence_rows": len(high_conf_rows),
+        "high_confidence_rows": high_conf,
+        "low_confidence_rows": low_conf,
         "warnings": warnings,
+        "machine_flags": machine_flags,
     }
+
+
+# -------------------------------------------------------------------- orchestration
+
+
+def _infer_one_machine(machine: str, mode: int, first_chunk_only: bool):
+    raw = _collect_raw(machine, mode, first_chunk_only)
+    if raw is None:
+        return None
+    wild_inference = _infer_wilds(
+        raw["per_pay_fire_count"],
+        raw["per_pay_symbol_fire_count"],
+        raw["fire_bucket"],
+        raw["symbol_total_appearances"],
+        raw["grid_symbol_freq"],
+    )
+    return _finalize(raw, wild_inference)
 
 
 def _expand_range(token: str) -> list[str]:
@@ -511,17 +947,44 @@ def _expand_range(token: str) -> list[str]:
     return [token]
 
 
+def _write_quality_csv(output_dir: Path, summaries: list[dict]) -> Path:
+    import csv
+    out = output_dir / f"_quality_mode{summaries[0]['mode']}.csv" if summaries else output_dir / "_quality.csv"
+    with out.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([
+            "machine", "grid", "pay_ids", "rows",
+            "wild_status", "wilds", "high_conf", "low_conf",
+            "machine_flags",
+        ])
+        for s in summaries:
+            w.writerow([
+                s["machine"],
+                f"{s['grid']['n_cols']}x{s['grid']['n_rows']}",
+                s["pay_ids"],
+                s["rows"],
+                s["wild_status"],
+                ",".join(s["wilds"]),
+                s["high_conf"],
+                s["low_conf"],
+                ";".join(s["machine_flags"]),
+            ])
+    return out
+
+
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--machine", help="single machine e.g. M14")
-    p.add_argument("--all", action="store_true", help="process every machine")
+    p.add_argument("--all", action="store_true")
     p.add_argument("--mode", type=int, default=1)
     p.add_argument("--machines", nargs="*", default=None)
     p.add_argument("--first-chunk", action="store_true")
     p.add_argument("--output-dir", type=Path, default=OUT_DIR)
-    p.add_argument("--detail", action="store_true",
-                   help="print paytable rows to stdout (default: just write files)")
+    p.add_argument("--detail", action="store_true")
+    p.add_argument("--quality-csv", action="store_true",
+                   help="emit _quality_mode<N>.csv summarizing all machines")
     args = p.parse_args()
 
     if not args.machine and not args.all and not args.machines:
@@ -544,40 +1007,52 @@ def main() -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     done = 0
     empty = 0
+    summaries = []
     for d in all_dirs:
         if allowed and d.name not in allowed:
             continue
-        info = _infer_one_machine(d.name, args.mode, args.first_chunk)
-        if info is None:
+        pt = _infer_one_machine(d.name, args.mode, args.first_chunk)
+        if pt is None:
             continue
-        pt = _finalize_paytable(info)
         if not pt["paytable_rows"]:
             empty += 1
             continue
-        # Write.
         out = args.output_dir / f"{d.name}_mode{args.mode}.json"
         out.write_text(json.dumps(pt, ensure_ascii=False, indent=2), encoding="utf-8")
         done += 1
+        wi = pt["wild_inference"]
+        sv = pt["self_verify"]
+        summaries.append({
+            "machine": d.name,
+            "mode": args.mode,
+            "grid": pt["grid"],
+            "pay_ids": len(set(r["pay_id"] for r in pt["paytable_rows"])),
+            "rows": len(pt["paytable_rows"]),
+            "wild_status": wi["status"],
+            "wilds": wi["wilds"],
+            "high_conf": sv["high_confidence_rows"],
+            "low_conf": sv["low_confidence_rows"],
+            "machine_flags": sv["machine_flags"],
+        })
         if args.detail:
             print(f"=== {d.name} mode {args.mode} ===")
-            print(f"grid: {pt['grid']}")
-            print(f"paytable rows (sorted by fires):")
-            print(f"  {'pay_id':>6} {'count':>5} {'fires':>6} {'base':>10} "
-                  f"{'avg':>8} {'symbol':<22} {'purity':>7} {'clean#':>7}")
-            for r in pt["paytable_rows"][:30]:
-                base = r.get("base_mult_no_wild_anywhere")
-                base_str = f"{base:>10.3f}" if base else "       N/A"
-                sym_str = f"{r['dominant_symbol']!s:<22.22}"
-                print(f"  {r['pay_id']:>6} {r['match_count']:>5} "
-                      f"{r['fires']:>6} {base_str} "
-                      f"{r['avg_mult_x_bet']:>8.3f} "
-                      f"{sym_str} {r['symbol_purity']:>7.0%} "
-                      f"{r['clean_fires']:>7}")
-            if pt["self_verify"]["warnings"]:
-                print(f"warnings: {len(pt['self_verify']['warnings'])}")
-                for w in pt["self_verify"]["warnings"][:5]:
-                    print(f"  - pay_id={w['pay_id']} count={w['match_count']}: {w['issue']}")
+            print(f"grid: {pt['grid']['n_cols']}x{pt['grid']['n_rows']}")
+            print(f"wild_inference: status={wi['status']} wilds={wi['wilds']}")
+            if wi["tier_stems"]:
+                print(f"  tier_stems: {dict(wi['tier_stems'])}")
+            print(f"flags: {sv['machine_flags']}")
+            print(f"rows (sorted by fires):")
+            print(f"  {'pay_id':>6} {'mc':>3} {'fires':>6} {'sym_set':<26} {'line_sign':<9} {'conf':<6} notes")
+            for r in pt["paytable_rows"][:40]:
+                sh = r["shape"]
+                sym_str = "+".join(sh["symbol_set"])[:26] if sh["symbol_set"] else ""
+                notes = ";".join(sh["notes"])[:50]
+                print(f"  {r['pay_id']:>6} {r['match_count']:>3} {r['fires']:>6} "
+                      f"{sym_str:<26} {sh['line_id_sign']:<9} {sh['confidence']:<6} {notes}")
             print()
+    if args.quality_csv and summaries:
+        csv_path = _write_quality_csv(args.output_dir, summaries)
+        print(f"Wrote quality CSV: {csv_path}")
     print(f"Wrote {done} paytables to {args.output_dir}/  ({empty} empty skipped)")
     return 0
 
