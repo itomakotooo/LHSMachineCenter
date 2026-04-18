@@ -3518,6 +3518,93 @@ def create_app(
             "machines": machines_payload,
         }
 
+    @app.get("/api/reports/stale-count")
+    def stale_report_count() -> dict[str, Any]:
+        """Fleet-wide staleness summary for the run-history banner.
+
+        Scans ``runs`` rows (status=completed) and compares each row's
+        stored fingerprints against the current snapshot returned by
+        ``/api/versions/current``:
+
+        * ``stale_rawdata`` — chunks were sampled against an older
+          server version; report can only be refreshed by re-sampling
+          (backend can't fix this locally).
+        * ``stale_analyzer`` — report was generated with older analyzer
+          code; re-runnable from existing rawdata via batch-generate.
+        * ``fixable_items`` — (machine, mode) pairs where analyzer is
+          stale AND rawdata is fresh — exactly the set a one-click
+          "batch regen" should submit.
+
+        De-duplicated by (machine, mode): if 3 runs exist for M14
+        mode 1 all with stale analyzer, only one fixable item lands
+        (the operator regenerates the mode, not each individual run).
+        """
+        from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+        cur_analyzer = compute_analyzer_version()
+        cur_machines: dict[str, tuple[str, str]] = {}
+        if mc.exists():
+            try:
+                data = read_json(mc) or {}
+                for m in data.get("machines", []):
+                    name = m.get("machine")
+                    if name:
+                        cur_machines[str(name)] = (
+                            str(m.get("configSummaryMd5", "")),
+                            str(m.get("codeSummaryMd5", "")),
+                        )
+            except (OSError, json.JSONDecodeError, TypeError):
+                pass
+
+        completed = store.list_runs_by_status("completed", limit=10000) or []
+        total = len(completed)
+        stale_rawdata = 0
+        stale_analyzer = 0
+        untagged = 0
+        # Use sets keyed by (machine, mode) for fixable to dedupe
+        # across multiple runs for the same mode.
+        fixable_keys: set[tuple[str, int]] = set()
+        for row in completed:
+            machine = row.get("machine")
+            mode = row.get("mode")
+            row_cfg = row.get("rawdata_config_md5") or ""
+            row_code = row.get("rawdata_code_md5") or ""
+            row_analyzer = row.get("analyzer_version") or ""
+            if not row_cfg and not row_code and not row_analyzer:
+                untagged += 1
+                continue
+            cur_cfg, cur_code = cur_machines.get(machine or "", ("", ""))
+            # Rawdata staleness: row has fingerprint + doesn't match current
+            rawdata_is_stale = bool(
+                (row_cfg or row_code)
+                and (cur_cfg or cur_code)
+                and (row_cfg != cur_cfg or row_code != cur_code)
+            )
+            # Analyzer staleness: row has fingerprint + doesn't match current
+            analyzer_is_stale = bool(
+                row_analyzer and cur_analyzer and row_analyzer != cur_analyzer
+            )
+            if rawdata_is_stale:
+                stale_rawdata += 1
+            if analyzer_is_stale:
+                stale_analyzer += 1
+            # Fixable = analyzer stale AND rawdata fresh (or rawdata
+            # unverifiable → treat as fresh enough). Resampling-only
+            # cases are NOT fixable by the batch regen button.
+            if analyzer_is_stale and not rawdata_is_stale and machine and mode is not None:
+                fixable_keys.add((machine, int(mode)))
+        fixable_items = [
+            {"machine": m, "mode": mode} for (m, mode) in sorted(fixable_keys)
+        ]
+        return {
+            "total_completed_runs": total,
+            "stale_rawdata": stale_rawdata,
+            "stale_analyzer": stale_analyzer,
+            "untagged": untagged,
+            "fixable_items": fixable_items,
+            "fixable_count": len(fixable_items),
+            "current_analyzer_version": cur_analyzer,
+        }
+
     @app.get("/api/machines/summary")
     def machines_summary() -> dict[str, Any]:
         """Per-machine-mode best-report summary for catalog cards.

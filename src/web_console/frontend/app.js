@@ -2879,6 +2879,77 @@ async function refreshRunList(autoSelect = true) {
   updateActionStates();
 }
 
+// Refresh the stale-report banner above 机台概览. Hidden when zero
+// stale; otherwise shows analyzer-stale count (with "一键重生成"
+// button that batch-submits the fixable items) + rawdata-stale count
+// as a separate line (no auto-fix — operator must resample).
+async function refreshStaleBanner() {
+  const banner = byId("staleReportBanner");
+  if (!banner) return;
+  let body;
+  try {
+    body = await apiGet("/api/reports/stale-count");
+  } catch (_err) {
+    banner.classList.add("hidden");
+    return;
+  }
+  state.staleCount = body;
+  const staleAnalyzer = body.stale_analyzer || 0;
+  const staleRawdata = body.stale_rawdata || 0;
+  const fixable = body.fixable_count || 0;
+  if (staleAnalyzer === 0 && staleRawdata === 0) {
+    banner.classList.add("hidden");
+    banner.innerHTML = "";
+    return;
+  }
+  banner.classList.remove("hidden");
+  const lines = [];
+  if (staleAnalyzer > 0) {
+    lines.push(
+      `<div class="stale-banner-row">` +
+      `<span>${fmt("staleBannerAnalyzer", { n: staleAnalyzer })}</span>` +
+      (fixable > 0
+        ? `<button id="regenerateStaleBtn" class="primary-btn small-btn">${fmt("btnRegenerateStale", { n: fixable })}</button>`
+        : "") +
+      `</div>`
+    );
+  }
+  if (staleRawdata > 0) {
+    lines.push(
+      `<div class="stale-banner-row">${fmt("staleBannerRawdata", { n: staleRawdata })}</div>`
+    );
+  }
+  banner.innerHTML = lines.join("");
+  byId("regenerateStaleBtn")?.addEventListener("click", async () => {
+    const items = body.fixable_items || [];
+    if (!items.length) return;
+    const panel = byId("batchGenerateProgressPanel");
+    const meta = byId("batchGenerateProgressMeta");
+    const log = byId("batchGenerateProgressLog");
+    if (panel) panel.classList.remove("hidden");
+    if (log) log.innerHTML = "";
+    try {
+      const resp = await fetch("/api/rawdata/batch-generate-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      if (!resp.ok) {
+        const errBody = await resp.json().catch(() => ({}));
+        throw new Error(errBody.detail || `HTTP ${resp.status}`);
+      }
+      const out = await resp.json();
+      state.batchGenerateId = out.batch_id;
+      state.batchGenerateProgress = { total: out.total, completed: 0, failed: 0, pending: out.total };
+      if (meta) meta.textContent = fmt("batchGenerateBusy", { done: 0, total: out.total });
+      updateActionStates();
+      _startBatchGeneratePoll();
+    } catch (err) {
+      if (meta) meta.textContent = fmt("batchGenerateFailed", { error: String(err.message || err) });
+    }
+  });
+}
+
 // Poll the active batch-generate-report every 1s until it reaches a
 // terminal state, updating inline progress + refreshing runs/reports
 // once done so the new gen_* rows + report versions land in the UI
@@ -2921,6 +2992,9 @@ function _startBatchGeneratePoll() {
         state.batchGeneratePollTimer = null;
         state.batchGenerateId = null;
         await refreshRunList(false);
+        // Re-scan fleet staleness — the generated runs should flip
+        // analyzer-stale → fresh, shrinking the banner.
+        refreshStaleBanner();
         updateActionStates();
       }
     } catch (_err) {
@@ -3262,6 +3336,7 @@ async function loadBootstrap() {
   renderCatalogFeatureChips();
   renderMachineCatalog();
   renderFleetOverview();
+  refreshStaleBanner();  // don't await — non-blocking for bootstrap
   _restoreSamplingPrefs();  // hydrate sampleMode/sampleCi from localStorage
   updateSampleHint();
   refreshDiskSpace();
