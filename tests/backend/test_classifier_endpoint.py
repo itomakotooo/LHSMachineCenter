@@ -4,7 +4,7 @@ classifier output produced by scripts/classify_payline_structure.py.
 
 Data lives under dev_reports/_classify/all_verdicts_mode<N>.json
 in production. Tests stub the directory with fixtures so the
-endpoint can be exercised without the 9 GB dev_rawdata present.
+endpoint can be exercised without the 9 GB rawdata present.
 """
 from __future__ import annotations
 

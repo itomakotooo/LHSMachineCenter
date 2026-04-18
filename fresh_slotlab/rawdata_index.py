@@ -1,4 +1,4 @@
-"""Cached file-count/md5 index for dev_rawdata directory trees.
+"""Cached file-count/md5 index for rawdata directory trees.
 
 Purpose: skip opening N chunk envelopes on every UI status refresh.
 `check_rawdata_status` was reading 253 × 4 ≈ 1000+ envelope headers

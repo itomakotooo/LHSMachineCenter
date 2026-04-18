@@ -5,7 +5,7 @@ Usage:
     python -m fresh_slotlab.batch_dev_sampler M1-M10 --mode 2
     python -m fresh_slotlab.batch_dev_sampler M1-M10 --mode 2 --concurrency 5
 
-Output is saved under  dev_rawdata/{machine}/mode_{mode}/chunk_0001.json
+Output is saved under  rawdata/{machine}/mode_{mode}/chunk_0001.json
 using the same envelope format as the chunk cache (compatible with
 offline rebuild and future analyzer work).
 """
@@ -36,7 +36,7 @@ from fresh_slotlab.player_impact_analyzer import (
     _payload_sha256,
 )
 
-DEV_RAWDATA_DIR = Path(__file__).resolve().parent.parent / "dev_rawdata"
+RAWDATA_DIR = Path(__file__).resolve().parent.parent / "rawdata"
 
 # post_json_with_retry has moved to player_impact_analyzer so the live
 # sampling loop and this dev sampler share one retry policy. The local
@@ -93,7 +93,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--timeout", type=float, default=300,
                    help="API timeout in seconds (default: 300)")
     p.add_argument("--out-dir", type=str, default=None,
-                   help=f"Output root (default: {DEV_RAWDATA_DIR})")
+                   help=f"Output root (default: {RAWDATA_DIR})")
     return p.parse_args(argv)
 
 
@@ -204,7 +204,7 @@ def main(argv: list[str] | None = None) -> None:
             unique.append(m)
     machines = unique
 
-    out_dir = Path(args.out_dir) if args.out_dir else DEV_RAWDATA_DIR
+    out_dir = Path(args.out_dir) if args.out_dir else RAWDATA_DIR
 
     print(f"=== Batch Dev Sampler ===")
     print(f"Machines:    {', '.join(machines)} ({len(machines)} total)")

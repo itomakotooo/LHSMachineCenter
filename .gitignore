@@ -37,10 +37,14 @@ fresh_slotlab/__pycache__/
 # Local Claude Code tooling state (launch.json, plans, etc.)
 .claude/
 
-# Dev rawdata (large, regenerable via batch_dev_sampler)
+# Rawdata (large, regenerable via batch_dev_sampler; prod deploys can
+# point SLOT_RAWDATA_ROOT at a non-repo path, but the default lives
+# here — always gitignored regardless). ``dev_rawdata/`` kept for
+# back-compat on older checkouts that haven't re-pulled the rename yet.
+rawdata/
 dev_rawdata/
 
-# Dev-generated reports (regenerable via batch_generate_reports from dev_rawdata).
+# Dev-generated reports (regenerable via batch_generate_reports from rawdata).
 # Production reports go to reports/ only.
 dev_reports/
 

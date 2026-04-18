@@ -66,7 +66,7 @@ class TestBatchCacheReuseGate:
         spins like the UI hint promises, using the cache as prefix."""
         c, app = client
         import src.web_console.backend.app as app_mod
-        raw_root = tmp_path / "dev_rawdata"
+        raw_root = tmp_path / "rawdata"
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
         monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
         _seed_v3_chunks(raw_root, "M273", 1, n=3)
@@ -93,7 +93,7 @@ class TestBatchCacheReuseGate:
         """
         c, app = client
         import src.web_console.backend.app as app_mod
-        raw_root = tmp_path / "dev_rawdata"
+        raw_root = tmp_path / "rawdata"
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
         monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
         _seed_v3_chunks(raw_root, "M273", 1, n=3)
@@ -119,8 +119,8 @@ class TestBatchCacheReuseGate:
         neither reuse nor resume flags set."""
         c, app = client
         import src.web_console.backend.app as app_mod
-        raw_root = tmp_path / "dev_rawdata"
-        raw_root.mkdir()  # no chunks seeded
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)  # no chunks seeded
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
 
         r = c.post("/api/batch-run", json=_batch_payload("M273", 1, target=0.5))

@@ -247,7 +247,7 @@ This file tracks executable next steps for the current phase.
         with `load_chunk_envelope()` validation. `ChunkIntegrityError` surfaces
         corruption as a readable error instead of JSONDecodeError. v2 envelopes
         still load for backwards compat.
-      - Rawdata index: `dev_rawdata/_index.json` fast path for
+      - Rawdata index: `rawdata/_index.json` fast path for
         `check_rawdata_status` — 18× speedup (65ms→3.5ms/call).
         Self-healing on drift; `scripts/rebuild_rawdata_index.py` big-hammer.
       - Import transactionality: 4-step commit

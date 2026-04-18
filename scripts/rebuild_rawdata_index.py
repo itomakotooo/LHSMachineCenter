@@ -1,4 +1,4 @@
-"""Rebuild `dev_rawdata/_index.json` from scratch by rescanning every chunk.
+"""Rebuild `rawdata/_index.json` from scratch by rescanning every chunk.
 
 Use when the index got out of sync — e.g. after external deletes, manual
 file copies, or if you just don't trust what's in there. The writer path
@@ -27,7 +27,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--rawdata-dir", type=Path,
-                        default=ROOT / "dev_rawdata")
+                        default=ROOT / "rawdata")
     args = parser.parse_args()
 
     if not args.rawdata_dir.is_dir():

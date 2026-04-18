@@ -45,7 +45,7 @@ def tmp_cache(tmp_path: Path) -> Path:
 @pytest.fixture
 def tmp_rawdata(tmp_path: Path) -> Path:
     """Tmp rawdata root — isolates chunk-level tests from the real
-    dev_rawdata/ tree. Plumbed through app_factory so create_app sees
+    rawdata/ tree. Plumbed through app_factory so create_app sees
     it as RAWDATA_ROOT override."""
     d = tmp_path / "rawdata"
     d.mkdir()

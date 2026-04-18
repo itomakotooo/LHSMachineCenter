@@ -50,7 +50,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEV_RAWDATA = ROOT / "dev_rawdata"
+RAWDATA = ROOT / "rawdata"
 CONFIG_PATH = ROOT / "configs" / "bcm_pairings.json"
 
 # Features that are NEVER the BCM bonus pair: they're paid-normal
@@ -66,7 +66,7 @@ PAID_NORMAL_FEATURES = {
 
 
 def _iter_chunks(machine: str, mode: int):
-    d = DEV_RAWDATA / machine / f"mode_{mode}"
+    d = RAWDATA / machine / f"mode_{mode}"
     if not d.is_dir():
         return
     for f in sorted(d.glob("chunk_*.json")):
@@ -380,7 +380,7 @@ def main() -> int:
     args = p.parse_args()
 
     # Enumerate machines.
-    all_dirs = [d for d in DEV_RAWDATA.iterdir()
+    all_dirs = [d for d in RAWDATA.iterdir()
                 if d.is_dir() and d.name.startswith("M")]
     all_dirs.sort(key=lambda d: int(d.name[1:]) if d.name[1:].isdigit() else 9999)
 

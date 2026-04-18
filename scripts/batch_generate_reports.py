@@ -1,6 +1,6 @@
-"""Batch-generate reports from dev_rawdata using --from-cache.
+"""Batch-generate reports from rawdata using --from-cache.
 
-For each machine with a chunk file in dev_rawdata/, runs the full
+For each machine with a chunk file in rawdata/, runs the full
 analyzer pipeline offline and writes a report to reports/{machine}/mode_{mode}/.
 
 Usage:
@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ANALYZER = ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
-DEV_RAWDATA = ROOT / "dev_rawdata"
+RAWDATA = ROOT / "rawdata"
 # Dev-only tool: default output to dev_reports/ to keep production reports/ clean.
 # Use --reports-root reports/ to override (e.g. for baseline generation).
 REPORTS_ROOT = ROOT / "dev_reports"
@@ -169,11 +169,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--machines", nargs="*", default=None,
-                        help="Machine names or ranges (default: all in dev_rawdata)")
+                        help="Machine names or ranges (default: all in rawdata)")
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--force", action="store_true",
                         help="Regenerate even if reports already exist")
-    parser.add_argument("--rawdata-dir", type=Path, default=DEV_RAWDATA)
+    parser.add_argument("--rawdata-dir", type=Path, default=RAWDATA)
     parser.add_argument("--reports-root", type=Path, default=REPORTS_ROOT)
     args = parser.parse_args()
 

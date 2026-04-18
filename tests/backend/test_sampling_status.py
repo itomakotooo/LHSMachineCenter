@@ -93,7 +93,7 @@ class TestBetMismatchWarning:
         """Cache was sampled at bet=2000, current default is 1000."""
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
+        raw_root = tmp_path / "rawdata"
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
         monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
         _seed_chunk_with_bet(raw_root, "M77", 1, 1, bet=2000)
@@ -119,7 +119,7 @@ class TestBetMismatchWarning:
         """Cache at bet=1000 matches analyzer default — no warning."""
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
+        raw_root = tmp_path / "rawdata"
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
         monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
         _seed_chunk_with_bet(raw_root, "M78", 1, 1, bet=1000)
@@ -145,7 +145,7 @@ class TestBetMismatchWarning:
         of current bet (sessions at different prices confuse RTP)."""
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
+        raw_root = tmp_path / "rawdata"
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
         monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
         _seed_chunk_with_bet(raw_root, "M79", 1, 1, bet=1000)

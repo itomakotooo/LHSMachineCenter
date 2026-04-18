@@ -42,6 +42,11 @@ MODEL_CONFIG_PATH = STATE_DIR / "model_config.json"
 PROGRESS_DIR = STATE_DIR / "progress"
 REPORTS_ROOT = ROOT / "reports"
 CACHE_ROOT = ROOT / "cache" / "chunks"
+# Unified rawdata location (historical name ``dev_rawdata`` was
+# misleading — there's no dev-vs-prod split, all sampled chunks land
+# here). Prod deploys can point this at a non-repo path via the
+# ``SLOT_RAWDATA_ROOT`` env var; unset → repo-relative default.
+RAWDATA_ROOT_DEFAULT = ROOT / "rawdata"
 # Default minimum chunks retention per (machine, mode): below this
 # many spins, chunks are protected from both UI "delete" and auto-
 # cleanup. Operator-tunable via /api/settings; persisted in
@@ -205,7 +210,7 @@ def save_servers(data: dict[str, Any], path: Path | None = None) -> None:
     )
 
 
-RAWDATA_ROOT = ROOT / "dev_rawdata"
+RAWDATA_ROOT = Path(os.getenv("SLOT_RAWDATA_ROOT", str(RAWDATA_ROOT_DEFAULT)))
 
 # Analyzer CLI default for --bet; mirrored here so backend can detect
 # cache/current bet mismatches and warn. Update both if the default

@@ -30,7 +30,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEV_RAWDATA = ROOT / "dev_rawdata"
+RAWDATA = ROOT / "rawdata"
 
 _parser = None
 _warn_fn = None
@@ -116,7 +116,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", type=int, default=1)
     parser.add_argument("--concurrency", type=int, default=8)
-    parser.add_argument("--rawdata-dir", type=Path, default=DEV_RAWDATA)
+    parser.add_argument("--rawdata-dir", type=Path, default=RAWDATA)
     parser.add_argument("--machines", nargs="*", default=None)
     args = parser.parse_args()
 

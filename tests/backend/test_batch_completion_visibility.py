@@ -132,8 +132,8 @@ class TestChunkEventsVisibilityPostCompletion:
     ):
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
-        raw_root.mkdir()
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
 
         r = c.post("/api/batch-run", json=_batch_payload("M14", 1))
@@ -216,8 +216,8 @@ class TestCiTargetMetSurfaced:
     ):
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
-        raw_root.mkdir()
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
 
         r = c.post("/api/batch-run", json=_batch_payload(target=0.5))
@@ -271,8 +271,8 @@ class TestCiTargetMetSurfaced:
     ):
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
-        raw_root.mkdir()
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
 
         r = c.post("/api/batch-run", json=_batch_payload(target=0.5))
@@ -318,8 +318,8 @@ class TestCiTargetMetSurfaced:
         from_cache_complete both count as ci_target_met=True."""
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
-        raw_root.mkdir()
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
 
         r = c.post("/api/batch-run", json=_batch_payload(target=0.0))  # fuzzy

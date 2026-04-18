@@ -91,7 +91,7 @@ class TestAnalyzerReceivesResumeFlag:
         `--from-cache` is what silently returned 12.9pp CI after 1s."""
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
+        raw_root = tmp_path / "rawdata"
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
         monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
         _seed_v3_chunks(raw_root, "M273", 1, n=2)
@@ -123,7 +123,7 @@ class TestAnalyzerReceivesResumeFlag:
         served from a 10k-spin cache giving 12.9pp."""
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
+        raw_root = tmp_path / "rawdata"
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
         monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
         _seed_v3_chunks(raw_root, "M1", 1, n=3)
@@ -144,8 +144,8 @@ class TestAnalyzerReceivesResumeFlag:
         --from-cache nor --resume-from-cache."""
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
-        raw_root.mkdir()  # exists but empty
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)  # exists but empty
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
 
         r = c.post("/api/batch-run", json=_batch_payload("Mnew", 1, target=0.5))
@@ -166,8 +166,8 @@ class TestAnalyzerReceivesResumeFlag:
         a different tier would be caught here."""
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
-        raw_root.mkdir()
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
 
         r = c.post("/api/batch-run", json=_batch_payload("Mx", 1, target=0.5))
@@ -190,8 +190,8 @@ class TestAnalyzerCmdForFuzzyNoCache:
     ):
         import src.web_console.backend.app as app_mod
         c, _ = client
-        raw_root = tmp_path / "dev_rawdata"
-        raw_root.mkdir()
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
 
         r = c.post("/api/batch-run", json=_batch_payload("MfuzzyNoCache", 2, target=0.0))

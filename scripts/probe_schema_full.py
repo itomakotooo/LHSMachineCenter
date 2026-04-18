@@ -22,11 +22,11 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEV_RAWDATA = ROOT / "dev_rawdata"
+RAWDATA = ROOT / "rawdata"
 
 
 def _iter_chunks(machine: str, mode: int):
-    d = DEV_RAWDATA / machine / f"mode_{mode}"
+    d = RAWDATA / machine / f"mode_{mode}"
     if not d.is_dir():
         return
     for f in sorted(d.glob("chunk_*.json")):
@@ -251,7 +251,7 @@ def _probe_one_machine(machine: str, mode: int, max_chunks: int | None) -> list[
 
     chunks = list(_iter_chunks(machine, mode))
     if not chunks:
-        out.append(f"*no chunks found under dev_rawdata/{machine}/mode_{mode}/*")
+        out.append(f"*no chunks found under rawdata/{machine}/mode_{mode}/*")
         return out
     if max_chunks is not None:
         chunks = chunks[:max_chunks]

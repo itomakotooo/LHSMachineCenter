@@ -1,12 +1,12 @@
-"""Validate that the analyzer can process all dev_rawdata without crashing.
+"""Validate that the analyzer can process all rawdata without crashing.
 
 Runs parse_chunk_response() on every machine's chunk file and reports
 basic metrics, extra fields, and SpinType coverage. Does NOT generate
 full reports (no output-dir / no bankruptcy probe / no guideline check).
 
 Usage:
-    python scripts/validate_dev_rawdata.py
-    python scripts/validate_dev_rawdata.py --verbose
+    python scripts/validate_rawdata.py
+    python scripts/validate_rawdata.py --verbose
 """
 
 from __future__ import annotations
@@ -26,13 +26,13 @@ from fresh_slotlab.player_impact_analyzer import parse_chunk_response  # noqa: E
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--rawdata-dir", type=Path, default=ROOT / "dev_rawdata")
+    parser.add_argument("--rawdata-dir", type=Path, default=ROOT / "rawdata")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
     rawdata = args.rawdata_dir
     if not rawdata.exists():
-        raise SystemExit(f"dev_rawdata dir not found: {rawdata}")
+        raise SystemExit(f"rawdata dir not found: {rawdata}")
 
     machines = sorted(
         [d for d in rawdata.iterdir() if d.is_dir()],

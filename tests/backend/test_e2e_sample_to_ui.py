@@ -4,7 +4,7 @@ Exercises the whole pipeline without hitting a real upstream:
 
     synthetic API response
         ↓ _save_chunk_cache (v3 envelope + sha256 + atomic write)
-    dev_rawdata/<machine>/mode_<N>/chunk_0001.json
+    rawdata/<machine>/mode_<N>/chunk_0001.json
         ↓ analyzer.main() with --from-cache
     <analyzer_out>/<machine>/mode_<N>/versions/rv_*/player_impact_summary.json
         ↓ POST /api/reports/import (transactional)
@@ -109,7 +109,7 @@ class TestEndToEndPipeline:
         mode = 1
 
         # 1. Synthesize one chunk into a rawdata-layout dir.
-        rawdata_root = tmp_path / "dev_rawdata"
+        rawdata_root = tmp_path / "rawdata"
         mode_cache_dir = rawdata_root / machine / f"mode_{mode}"
         mode_cache_dir.mkdir(parents=True)
 

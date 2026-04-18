@@ -29,7 +29,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEV_RAWDATA = ROOT / "dev_rawdata"
+RAWDATA = ROOT / "rawdata"
 
 
 def _iter_rounds(chunk_path: Path):
@@ -133,7 +133,7 @@ def _emit_counts_table(counts: Counter, limit: int = 25) -> list[str]:
 def _run_one_machine(machine: str, mode: int, field: str, co: list[str],
                      samples: int, sample_filter: str | None,
                      first_chunk_only: bool) -> None:
-    chunk_dir = DEV_RAWDATA / machine / f"mode_{mode}"
+    chunk_dir = RAWDATA / machine / f"mode_{mode}"
     if not chunk_dir.is_dir():
         print(f"[{machine} mode_{mode}] no cache dir — skipped")
         return
@@ -197,7 +197,7 @@ def main() -> int:
 
     # --all: iterate
     machines = sorted(
-        (d.name for d in DEV_RAWDATA.iterdir()
+        (d.name for d in RAWDATA.iterdir()
          if d.is_dir() and d.name.startswith("M")),
         key=lambda n: int(n[1:]) if n[1:].isdigit() else 9999,
     )

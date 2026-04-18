@@ -55,13 +55,13 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEV_RAWDATA = ROOT / "dev_rawdata"
+RAWDATA = ROOT / "rawdata"
 
 _PAYLINE_RE = re.compile(r"(-?\d+):(-?\d+)-(-?\d+)\(([^)]*)\)")
 
 
 def _iter_chunks(machine: str, mode: int):
-    d = DEV_RAWDATA / machine / f"mode_{mode}"
+    d = RAWDATA / machine / f"mode_{mode}"
     if not d.is_dir():
         return
     for f in sorted(d.glob("chunk_*.json")):
@@ -359,7 +359,7 @@ def main() -> int:
             allowed.update(_expand_range(tok))
 
     all_dirs = sorted(
-        (d for d in DEV_RAWDATA.iterdir()
+        (d for d in RAWDATA.iterdir()
          if d.is_dir() and d.name.startswith("M")),
         key=lambda d: int(d.name[1:]) if d.name[1:].isdigit() else 9999,
     )
