@@ -21,11 +21,25 @@ cross-checked for confidence:
       BuffCollectionMap itself is the likely pair.
 
 When the two agree → confidence=high. When they disagree → flag for
-review. Writes configs/bcm_pairings.json for analyzer override.
+review. Writes configs/bcm_pairings.json (v2 schema, per-mode) for
+analyzer override.
+
+Per-mode matters: some machines genuinely pair with different bonus
+features in different modes (e.g. M247 = PreWheel on modes 1/2/5,
+LockReSpin on mode 7). A mode-unified config would silently under-
+correct RTP on variant modes.
 
 Usage:
-    python scripts/infer_bcm_pairing.py --mode 1
-    python scripts/infer_bcm_pairing.py --mode 1 --write-config
+    # All modes in one pass (default). Runs 1, 2, 5, 7:
+    python scripts/infer_bcm_pairing.py
+    python scripts/infer_bcm_pairing.py --write-config
+
+    # Restrict to specific modes. Write merges into existing v2 config
+    # (modes not listed are preserved):
+    python scripts/infer_bcm_pairing.py --modes 2 5 --write-config
+
+    # Restrict to specific machines:
+    python scripts/infer_bcm_pairing.py --machines M273 M247
 """
 from __future__ import annotations
 
@@ -215,13 +229,154 @@ def _infer_pair(agg: dict) -> dict:
     }
 
 
+def _infer_single_mode(mode: int, machine_dirs: list, parse_chunk_response) -> dict:
+    """Run inference for one mode. Returns ``{machine: infer_result}``
+    (only applicable machines)."""
+    results = {}
+    for d in machine_dirs:
+        agg = _aggregate_machine(d.name, mode, parse_chunk_response)
+        if agg is None:
+            continue
+        inf = _infer_pair(agg)
+        if inf["applicable"]:
+            results[d.name] = inf
+    return results
+
+
+def _print_mode_section(mode: int, results: dict) -> None:
+    print("=" * 72)
+    print(f"MODE {mode}: {len(results)} BCM machines inferred")
+    print("=" * 72)
+    if not results:
+        print("  (no BuffCollectionMap machines found for this mode)")
+        print()
+        return
+
+    by_pair = defaultdict(list)
+    for m, r in results.items():
+        by_pair[r["pair"] or "<none>"].append((m, r["confidence"]))
+    print("PAIR SUMMARY")
+    for feat, machines in sorted(by_pair.items(), key=lambda kv: -len(kv[1])):
+        machines_str = ", ".join(f"{m}({c[0]})" for m, c in sorted(machines, key=lambda x: int(x[0][1:])))
+        print(f"  pair = {feat!s:<35}  ({len(machines)} machines)")
+        print(f"    {machines_str}")
+    print()
+    print("PER-MACHINE DETAIL")
+    for m in sorted(results.keys(), key=lambda x: int(x[1:])):
+        r = results[m]
+        print(f"  {m}  pair={r['pair']}  confidence={r['confidence']}")
+        if r["heuristic_pair"] != r["spintype_pair"]:
+            print(f"    [disagreement] heuristic={r['heuristic_pair']} "
+                  f"spintype={r['spintype_pair']}")
+        feats = list(r["all_features"].items())[:5]
+        print(f"    top features: " + ", ".join(
+            f"{f}({d['win']:,}w/{d['times']}x)" for f, d in feats
+        ))
+        if r["cc_resets_by_spintype"]:
+            print(f"    CC-reset by SpinType: {r['cc_resets_by_spintype']}")
+    print()
+
+
+def _print_cross_mode_diff(all_results: dict[int, dict]) -> None:
+    """Flag machines where the bonus_feature differs across modes —
+    the whole reason per-mode schema exists. Serves as a self-
+    verification step (feedback_self_verify_output): if many machines
+    show variance, schema complexity is justified; if none, something
+    is off in the inference."""
+    # Collect all machines seen across all modes.
+    all_machines = set()
+    for r in all_results.values():
+        all_machines.update(r.keys())
+    print("=" * 72)
+    print("CROSS-MODE PAIR VARIANCE CHECK")
+    print("=" * 72)
+    variances = []
+    missing_coverage = []
+    for m in sorted(all_machines, key=lambda x: int(x[1:])):
+        pairs_by_mode = {}
+        for mode, r in all_results.items():
+            if m in r:
+                pairs_by_mode[mode] = r[m]["pair"]
+        unique = set(pairs_by_mode.values())
+        if len(unique) > 1:
+            variances.append((m, pairs_by_mode))
+        # Flag machines missing in one or more modes (cache gap).
+        if len(pairs_by_mode) < len(all_results):
+            covered = sorted(pairs_by_mode.keys())
+            missing_coverage.append((m, covered))
+    if variances:
+        print(f"PAIR VARIES across modes for {len(variances)} machine(s):")
+        for m, pbm in variances:
+            parts = ", ".join(f"m{k}={v}" for k, v in sorted(pbm.items()))
+            print(f"  {m}: {parts}")
+    else:
+        print("No per-mode pair variance — every machine has the same "
+              "bonus feature across all modes scanned.")
+    if missing_coverage:
+        print()
+        print(f"INCOMPLETE MODE COVERAGE for {len(missing_coverage)} machine(s) "
+              f"(cache-gap or truly mode-specific):")
+        for m, covered in missing_coverage:
+            print(f"  {m}: present in modes {covered}")
+    print()
+
+
+def _merge_into_existing_v2(
+    new_per_mode: dict[int, dict],
+) -> dict:
+    """Load existing v2 config if present, overlay new modes on top,
+    return the merged dict ready to write. Modes NOT in ``new_per_mode``
+    are preserved from the existing file."""
+    existing_machines: dict[str, dict] = {}
+    if CONFIG_PATH.is_file():
+        try:
+            raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            for m, entry in (raw.get("machines") or {}).items():
+                if not isinstance(entry, dict):
+                    continue
+                # Strip legacy flat entry → treat as mode-1 under the
+                # same key so it merges rather than gets lost.
+                if "modes" in entry and isinstance(entry["modes"], dict):
+                    existing_machines[m] = {"modes": dict(entry["modes"])}
+                elif "bonus_feature" in entry:
+                    legacy_mode = str(int(raw.get("_mode", 1) or 1))
+                    existing_machines[m] = {"modes": {legacy_mode: {
+                        "bonus_feature": entry["bonus_feature"],
+                        "confidence": entry.get("confidence"),
+                        "heuristic_pair": entry.get("heuristic_pair"),
+                        "spintype_pair": entry.get("spintype_pair"),
+                    }}}
+        except (OSError, json.JSONDecodeError):
+            pass
+    for mode, results in new_per_mode.items():
+        for m, r in results.items():
+            slot = existing_machines.setdefault(m, {"modes": {}})
+            slot["modes"][str(mode)] = {
+                "bonus_feature": r["pair"],
+                "confidence": r["confidence"],
+                "heuristic_pair": r["heuristic_pair"],
+                "spintype_pair": r["spintype_pair"],
+            }
+    return {
+        "_generated_by": "scripts/infer_bcm_pairing.py",
+        "_schema_version": 2,
+        "machines": {
+            m: existing_machines[m]
+            for m in sorted(existing_machines.keys(), key=lambda x: int(x[1:]))
+        },
+    }
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--mode", type=int, default=1)
+    p.add_argument("--modes", type=int, nargs="+", default=[1, 2, 5, 7],
+                   help="modes to analyze (default: 1 2 5 7)")
     p.add_argument("--machines", nargs="*", default=None)
     p.add_argument("--write-config", action="store_true",
-                   help="write configs/bcm_pairings.json")
+                   help="write configs/bcm_pairings.json (v2 schema, "
+                        "merges into existing file — modes not listed "
+                        "are preserved)")
     args = p.parse_args()
 
     # Enumerate machines.
@@ -240,78 +395,30 @@ def main() -> int:
                 allowed.add(tok)
         all_dirs = [d for d in all_dirs if d.name in allowed]
 
-    print(f"=== BCM pairing inference (mode={args.mode}) ===")
-    print(f"Scanning {len(all_dirs)} machines...")
+    print(f"=== BCM pairing inference (modes={args.modes}) ===")
+    print(f"Scanning {len(all_dirs)} machines per mode...")
     print()
 
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
     from fresh_slotlab.player_impact_analyzer import parse_chunk_response
 
-    results = {}
-    for d in all_dirs:
-        agg = _aggregate_machine(d.name, args.mode, parse_chunk_response)
-        if agg is None:
-            continue
-        inf = _infer_pair(agg)
-        if inf["applicable"]:
-            results[d.name] = inf
+    all_results: dict[int, dict] = {}
+    for mode in args.modes:
+        all_results[mode] = _infer_single_mode(mode, all_dirs, parse_chunk_response)
 
-    if not results:
-        print("no BuffCollectionMap machines found.")
-        return 0
+    for mode in args.modes:
+        _print_mode_section(mode, all_results[mode])
 
-    print(f"BuffCollectionMap machines inferred: {len(results)}")
-    print()
-
-    # Group by pair feature.
-    by_pair = defaultdict(list)
-    for m, r in results.items():
-        by_pair[r["pair"] or "<none>"].append((m, r["confidence"]))
-
-    print("=" * 72)
-    print("PAIR SUMMARY")
-    print("=" * 72)
-    for feat, machines in sorted(by_pair.items(), key=lambda kv: -len(kv[1])):
-        machines_str = ", ".join(f"{m}({c[0]})" for m, c in sorted(machines, key=lambda x: int(x[0][1:])))
-        print(f"  pair = {feat!s:<35}  ({len(machines)} machines)")
-        print(f"    {machines_str}")
-    print()
-
-    print("=" * 72)
-    print("PER-MACHINE DETAIL")
-    print("=" * 72)
-    for m in sorted(results.keys(), key=lambda x: int(x[1:])):
-        r = results[m]
-        print(f"  {m}  pair={r['pair']}  confidence={r['confidence']}")
-        if r["heuristic_pair"] != r["spintype_pair"]:
-            print(f"    [disagreement] heuristic={r['heuristic_pair']} "
-                  f"spintype={r['spintype_pair']}")
-        feats = list(r["all_features"].items())[:5]
-        print(f"    top features: " + ", ".join(
-            f"{f}({d['win']:,}w/{d['times']}x)" for f, d in feats
-        ))
-        if r["cc_resets_by_spintype"]:
-            print(f"    CC-reset by SpinType: {r['cc_resets_by_spintype']}")
-    print()
+    # Self-verify: cross-mode variance + coverage gap flagged
+    # explicitly so the operator sees where per-mode schema earns its
+    # complexity (or where cache is incomplete).
+    if len(args.modes) > 1:
+        _print_cross_mode_diff(all_results)
 
     if args.write_config:
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        out = {
-            "_generated_by": "scripts/infer_bcm_pairing.py",
-            "_mode": args.mode,
-            "machines": {
-                m: {
-                    "bonus_feature": r["pair"],
-                    "confidence": r["confidence"],
-                    # Keep the disagreement on record so manual
-                    # review can weigh both signals.
-                    "heuristic_pair": r["heuristic_pair"],
-                    "spintype_pair": r["spintype_pair"],
-                }
-                for m, r in results.items()
-            },
-        }
+        out = _merge_into_existing_v2(all_results)
         CONFIG_PATH.write_text(
             json.dumps(out, indent=2, ensure_ascii=False),
             encoding="utf-8",

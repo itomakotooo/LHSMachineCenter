@@ -260,40 +260,77 @@ _BCM_CONFIG_PATH = (
 )
 
 
-def _load_bcm_pairings() -> dict[str, str]:
+def _load_bcm_pairings() -> dict[str, dict[int, str]]:
     """Load per-machine BCM bonus-feature pairings from
-    ``configs/bcm_pairings.json``. Returns ``{machine_name:
-    bonus_feature_name}``.
+    ``configs/bcm_pairings.json``. Returns ``{machine_name: {mode_int:
+    bonus_feature_name}}``.
 
-    Missing file or parse error → empty dict (resolver will fall back
-    to heuristic).
+    Supports two on-disk schemas:
+
+    * **v2 (current)** — per-mode nested:
+      ``{"machines": {"M273": {"modes": {"1": {"bonus_feature": ...}}}}}``.
+      Some BCM machines pair with different features in different
+      modes (e.g. M247: PreWheel in modes 1/2/5, LockReSpin in mode 7).
+      Writing mode 1 data as "all modes" would silently under-correct
+      RTP on variant modes.
+    * **v1 (legacy)** — flat:
+      ``{"_mode": 1, "machines": {"M273": {"bonus_feature": ...}}}``.
+      Treated as mode-1-only (matches what the file was actually
+      generated from). Remaining modes fall through to heuristic.
+
+    Missing file or parse error → empty dict (resolver falls back to
+    heuristic).
     """
     try:
         raw = json.loads(_BCM_CONFIG_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
     machines = raw.get("machines") or {}
-    out: dict[str, str] = {}
+    out: dict[str, dict[int, str]] = {}
+    # v1 fallback: the top-level ``_mode`` field tells us which single
+    # mode the flat entries belong to. Default to 1 if absent (matches
+    # the original inference tool's behavior).
+    legacy_mode = int(raw.get("_mode", 1) or 1)
     for m, entry in machines.items():
         if not isinstance(entry, dict):
             continue
+        modes = entry.get("modes")
+        if isinstance(modes, dict):
+            per_mode: dict[int, str] = {}
+            for mode_key, mode_entry in modes.items():
+                if not isinstance(mode_entry, dict):
+                    continue
+                feat = mode_entry.get("bonus_feature")
+                try:
+                    mode_int = int(mode_key)
+                except (TypeError, ValueError):
+                    continue
+                if feat:
+                    per_mode[mode_int] = feat
+            if per_mode:
+                out[m] = per_mode
+            continue
+        # v1 flat schema: {machine: {bonus_feature, confidence, ...}}
         feat = entry.get("bonus_feature")
         if feat:
-            out[m] = feat
+            out[m] = {legacy_mode: feat}
     return out
 
 
 def _resolve_bonus_feature(
     machine: str,
+    mode: int,
     upstream_feature_tally: dict | None,
-    config: dict[str, str],
+    config: dict[str, dict[int, str]],
 ) -> tuple[str | None, str]:
-    """Decide which FeatureWin key pairs with BuffCollectionMap.
+    """Decide which FeatureWin key pairs with BuffCollectionMap for a
+    given (machine, mode).
 
     Two-layer strategy (config → heuristic → none):
-      1. If ``machine`` is in config → return that feature, source="config".
-         Respect operator override even when feature's current win is
-         zero (small cache, rare feature; operator knows best).
+      1. If ``config[machine][mode]`` exists → return that feature,
+         source="config". Respect operator override even when the
+         feature's current win is zero (small cache, rare feature;
+         operator knows best).
       2. Otherwise pick the feature in the tally with highest total win
          that is neither in PAID_NORMAL_FEATURES nor BuffCollectionMap
          itself. Source="heuristic".
@@ -301,10 +338,18 @@ def _resolve_bonus_feature(
          paid-normal / BCM in tally) → (None, "none"). Caller should
          skip RTP correction + surface a warning.
 
+    A machine entry that exists but lacks the specific ``mode`` key
+    (e.g. v1 legacy covers only mode 1 but we're running mode 2) falls
+    through to heuristic rather than silently using another mode's
+    pair — different modes can legitimately pair with different
+    features (M247: PreWheel mode 1/2/5, LockReSpin mode 7).
+
     Returns ``(feature_name_or_None, source_string)``.
     """
-    if machine in (config or {}):
-        return config[machine], "config"
+    cfg = config or {}
+    per_mode = cfg.get(machine)
+    if isinstance(per_mode, dict) and mode in per_mode:
+        return per_mode[mode], "config"
     tally = upstream_feature_tally or {}
     best_feat = None
     best_win = -1.0
@@ -4544,7 +4589,7 @@ def main() -> int:
                     effective_bet_for_rtp,
                 ),
             })(*_resolve_bonus_feature(
-                args.machine, upstream_feature_tally, _load_bcm_pairings()
+                args.machine, args.rtp_mode, upstream_feature_tally, _load_bcm_pairings()
             )))(),
             # Feature-match block — now driven by the resolved feature
             # instead of a hardcoded check. Warning only fires when a
@@ -4555,7 +4600,7 @@ def main() -> int:
                 all_cycle_peaks,
                 upstream_feature_tally,
                 *_resolve_bonus_feature(
-                    args.machine, upstream_feature_tally, _load_bcm_pairings()
+                    args.machine, args.rtp_mode, upstream_feature_tally, _load_bcm_pairings()
                 ),
             ),
             # Cycle-observation block: distinguishes "no collect mechanic"

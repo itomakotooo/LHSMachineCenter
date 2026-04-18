@@ -1,204 +1,916 @@
 {
   "_generated_by": "scripts/infer_bcm_pairing.py",
-  "_mode": 1,
+  "_schema_version": 2,
   "machines": {
     "M227": {
-      "bonus_feature": "LockReSpin",
-      "confidence": "high",
-      "heuristic_pair": "LockReSpin",
-      "spintype_pair": "LockReSpin"
+      "modes": {
+        "1": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "2": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "7": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        }
+      }
     },
     "M233": {
-      "bonus_feature": "LockReSpin",
-      "confidence": "high",
-      "heuristic_pair": "LockReSpin",
-      "spintype_pair": "LockReSpin"
+      "modes": {
+        "1": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "2": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "5": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "7": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        }
+      }
     },
     "M237": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
+    },
+    "M238": {
+      "modes": {
+        "2": {
+          "bonus_feature": null,
+          "confidence": "none",
+          "heuristic_pair": null,
+          "spintype_pair": null
+        }
+      }
     },
     "M239": {
-      "bonus_feature": "LockSymbolFreespin",
-      "confidence": "high",
-      "heuristic_pair": "LockSymbolFreespin",
-      "spintype_pair": "LockSymbolFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "LockSymbolFreespin",
+          "confidence": "high",
+          "heuristic_pair": "LockSymbolFreespin",
+          "spintype_pair": "LockSymbolFreespin"
+        },
+        "2": {
+          "bonus_feature": "LockSymbolFreespin",
+          "confidence": "high",
+          "heuristic_pair": "LockSymbolFreespin",
+          "spintype_pair": "LockSymbolFreespin"
+        },
+        "5": {
+          "bonus_feature": "LockSymbolFreespin",
+          "confidence": "high",
+          "heuristic_pair": "LockSymbolFreespin",
+          "spintype_pair": "LockSymbolFreespin"
+        },
+        "7": {
+          "bonus_feature": "LockSymbolFreespin",
+          "confidence": "high",
+          "heuristic_pair": "LockSymbolFreespin",
+          "spintype_pair": "LockSymbolFreespin"
+        }
+      }
     },
     "M242": {
-      "bonus_feature": "UntilWinRespin",
-      "confidence": "high",
-      "heuristic_pair": "UntilWinRespin",
-      "spintype_pair": "UntilWinRespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "UntilWinRespin",
+          "confidence": "high",
+          "heuristic_pair": "UntilWinRespin",
+          "spintype_pair": "UntilWinRespin"
+        },
+        "2": {
+          "bonus_feature": "UntilWinRespin",
+          "confidence": "high",
+          "heuristic_pair": "UntilWinRespin",
+          "spintype_pair": "UntilWinRespin"
+        },
+        "5": {
+          "bonus_feature": "UntilWinRespin",
+          "confidence": "high",
+          "heuristic_pair": "UntilWinRespin",
+          "spintype_pair": "UntilWinRespin"
+        },
+        "7": {
+          "bonus_feature": "UntilWinRespin",
+          "confidence": "high",
+          "heuristic_pair": "UntilWinRespin",
+          "spintype_pair": "UntilWinRespin"
+        }
+      }
     },
     "M246": {
-      "bonus_feature": "Wheel",
-      "confidence": "high",
-      "heuristic_pair": "Wheel",
-      "spintype_pair": "Wheel"
+      "modes": {
+        "1": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "2": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "5": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "7": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        }
+      }
     },
     "M247": {
-      "bonus_feature": "PreWheel",
-      "confidence": "high",
-      "heuristic_pair": "PreWheel",
-      "spintype_pair": "PreWheel"
+      "modes": {
+        "1": {
+          "bonus_feature": "PreWheel",
+          "confidence": "high",
+          "heuristic_pair": "PreWheel",
+          "spintype_pair": "PreWheel"
+        },
+        "2": {
+          "bonus_feature": "PreWheel",
+          "confidence": "high",
+          "heuristic_pair": "PreWheel",
+          "spintype_pair": "PreWheel"
+        },
+        "5": {
+          "bonus_feature": "PreWheel",
+          "confidence": "high",
+          "heuristic_pair": "PreWheel",
+          "spintype_pair": "PreWheel"
+        },
+        "7": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        }
+      }
     },
     "M248": {
-      "bonus_feature": "LockReSpin",
-      "confidence": "high",
-      "heuristic_pair": "LockReSpin",
-      "spintype_pair": "LockReSpin"
+      "modes": {
+        "1": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "2": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "5": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "7": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        }
+      }
     },
     "M249": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M250": {
-      "bonus_feature": "Wheel",
-      "confidence": "high",
-      "heuristic_pair": "Wheel",
-      "spintype_pair": "Wheel"
+      "modes": {
+        "1": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "2": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "5": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "7": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        }
+      }
     },
     "M251": {
-      "bonus_feature": "MultiBuffFreespin",
-      "confidence": "high",
-      "heuristic_pair": "MultiBuffFreespin",
-      "spintype_pair": "MultiBuffFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "MultiBuffFreespin",
+          "confidence": "high",
+          "heuristic_pair": "MultiBuffFreespin",
+          "spintype_pair": "MultiBuffFreespin"
+        },
+        "2": {
+          "bonus_feature": "MultiBuffFreespin",
+          "confidence": "high",
+          "heuristic_pair": "MultiBuffFreespin",
+          "spintype_pair": "MultiBuffFreespin"
+        },
+        "5": {
+          "bonus_feature": "MultiBuffFreespin",
+          "confidence": "high",
+          "heuristic_pair": "MultiBuffFreespin",
+          "spintype_pair": "MultiBuffFreespin"
+        },
+        "7": {
+          "bonus_feature": "MultiBuffFreespin",
+          "confidence": "high",
+          "heuristic_pair": "MultiBuffFreespin",
+          "spintype_pair": "MultiBuffFreespin"
+        }
+      }
     },
     "M252": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M253": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M254": {
-      "bonus_feature": "MultiBuffFreespin",
-      "confidence": "high",
-      "heuristic_pair": "MultiBuffFreespin",
-      "spintype_pair": "MultiBuffFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "MultiBuffFreespin",
+          "confidence": "high",
+          "heuristic_pair": "MultiBuffFreespin",
+          "spintype_pair": "MultiBuffFreespin"
+        },
+        "7": {
+          "bonus_feature": "MultiBuffFreespin",
+          "confidence": "high",
+          "heuristic_pair": "MultiBuffFreespin",
+          "spintype_pair": "MultiBuffFreespin"
+        }
+      }
     },
     "M256": {
-      "bonus_feature": "MoveSpin",
-      "confidence": "high",
-      "heuristic_pair": "MoveSpin",
-      "spintype_pair": "MoveSpin"
+      "modes": {
+        "1": {
+          "bonus_feature": "MoveSpin",
+          "confidence": "high",
+          "heuristic_pair": "MoveSpin",
+          "spintype_pair": "MoveSpin"
+        },
+        "2": {
+          "bonus_feature": "MoveSpin",
+          "confidence": "high",
+          "heuristic_pair": "MoveSpin",
+          "spintype_pair": "MoveSpin"
+        },
+        "5": {
+          "bonus_feature": "MoveSpin",
+          "confidence": "high",
+          "heuristic_pair": "MoveSpin",
+          "spintype_pair": "MoveSpin"
+        },
+        "7": {
+          "bonus_feature": "MoveSpin",
+          "confidence": "high",
+          "heuristic_pair": "MoveSpin",
+          "spintype_pair": "MoveSpin"
+        }
+      }
     },
     "M257": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M260": {
-      "bonus_feature": "HalloweenReelCollectionFreespin",
-      "confidence": "high",
-      "heuristic_pair": "HalloweenReelCollectionFreespin",
-      "spintype_pair": "HalloweenReelCollectionFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "HalloweenReelCollectionFreespin",
+          "confidence": "high",
+          "heuristic_pair": "HalloweenReelCollectionFreespin",
+          "spintype_pair": "HalloweenReelCollectionFreespin"
+        },
+        "2": {
+          "bonus_feature": "HalloweenReelCollectionFreespin",
+          "confidence": "high",
+          "heuristic_pair": "HalloweenReelCollectionFreespin",
+          "spintype_pair": "HalloweenReelCollectionFreespin"
+        },
+        "5": {
+          "bonus_feature": "HalloweenReelCollectionFreespin",
+          "confidence": "high",
+          "heuristic_pair": "HalloweenReelCollectionFreespin",
+          "spintype_pair": "HalloweenReelCollectionFreespin"
+        },
+        "7": {
+          "bonus_feature": "HalloweenReelCollectionFreespin",
+          "confidence": "high",
+          "heuristic_pair": "HalloweenReelCollectionFreespin",
+          "spintype_pair": "HalloweenReelCollectionFreespin"
+        }
+      }
     },
     "M261": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M263": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M264": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M265": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M266": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M267": {
-      "bonus_feature": "Wheel",
-      "confidence": "high",
-      "heuristic_pair": "Wheel",
-      "spintype_pair": "Wheel"
+      "modes": {
+        "1": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "2": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "5": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "7": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        }
+      }
     },
     "M268": {
-      "bonus_feature": "CreditsSymbolRespin",
-      "confidence": "high",
-      "heuristic_pair": "CreditsSymbolRespin",
-      "spintype_pair": "CreditsSymbolRespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "CreditsSymbolRespin",
+          "confidence": "high",
+          "heuristic_pair": "CreditsSymbolRespin",
+          "spintype_pair": "CreditsSymbolRespin"
+        },
+        "2": {
+          "bonus_feature": "CreditsSymbolRespin",
+          "confidence": "high",
+          "heuristic_pair": "CreditsSymbolRespin",
+          "spintype_pair": "CreditsSymbolRespin"
+        },
+        "5": {
+          "bonus_feature": "CreditsSymbolRespin",
+          "confidence": "high",
+          "heuristic_pair": "CreditsSymbolRespin",
+          "spintype_pair": "CreditsSymbolRespin"
+        },
+        "7": {
+          "bonus_feature": "CreditsSymbolRespin",
+          "confidence": "high",
+          "heuristic_pair": "CreditsSymbolRespin",
+          "spintype_pair": "CreditsSymbolRespin"
+        }
+      }
     },
     "M269": {
-      "bonus_feature": "UntilLoseRespin",
-      "confidence": "high",
-      "heuristic_pair": "UntilLoseRespin",
-      "spintype_pair": "UntilLoseRespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "UntilLoseRespin",
+          "confidence": "high",
+          "heuristic_pair": "UntilLoseRespin",
+          "spintype_pair": "UntilLoseRespin"
+        },
+        "2": {
+          "bonus_feature": "UntilLoseRespin",
+          "confidence": "high",
+          "heuristic_pair": "UntilLoseRespin",
+          "spintype_pair": "UntilLoseRespin"
+        },
+        "5": {
+          "bonus_feature": "UntilLoseRespin",
+          "confidence": "high",
+          "heuristic_pair": "UntilLoseRespin",
+          "spintype_pair": "UntilLoseRespin"
+        },
+        "7": {
+          "bonus_feature": "UntilLoseRespin",
+          "confidence": "high",
+          "heuristic_pair": "UntilLoseRespin",
+          "spintype_pair": "UntilLoseRespin"
+        }
+      }
     },
     "M270": {
-      "bonus_feature": "Wheel",
-      "confidence": "high",
-      "heuristic_pair": "Wheel",
-      "spintype_pair": "Wheel"
+      "modes": {
+        "1": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "2": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "5": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        },
+        "7": {
+          "bonus_feature": "Wheel",
+          "confidence": "high",
+          "heuristic_pair": "Wheel",
+          "spintype_pair": "Wheel"
+        }
+      }
     },
     "M271": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M272": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M273": {
-      "bonus_feature": "LockSymbolFreespin",
-      "confidence": "high",
-      "heuristic_pair": "LockSymbolFreespin",
-      "spintype_pair": "LockSymbolFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "LockSymbolFreespin",
+          "confidence": "high",
+          "heuristic_pair": "LockSymbolFreespin",
+          "spintype_pair": "LockSymbolFreespin"
+        },
+        "2": {
+          "bonus_feature": "LockSymbolFreespin",
+          "confidence": "high",
+          "heuristic_pair": "LockSymbolFreespin",
+          "spintype_pair": "LockSymbolFreespin"
+        },
+        "5": {
+          "bonus_feature": "LockSymbolFreespin",
+          "confidence": "high",
+          "heuristic_pair": "LockSymbolFreespin",
+          "spintype_pair": "LockSymbolFreespin"
+        },
+        "7": {
+          "bonus_feature": "LockSymbolFreespin",
+          "confidence": "high",
+          "heuristic_pair": "LockSymbolFreespin",
+          "spintype_pair": "LockSymbolFreespin"
+        }
+      }
     },
     "M274": {
-      "bonus_feature": "ListRewardWheel",
-      "confidence": "high",
-      "heuristic_pair": "ListRewardWheel",
-      "spintype_pair": "ListRewardWheel"
+      "modes": {
+        "1": {
+          "bonus_feature": "ListRewardWheel",
+          "confidence": "high",
+          "heuristic_pair": "ListRewardWheel",
+          "spintype_pair": "ListRewardWheel"
+        },
+        "5": {
+          "bonus_feature": "ListRewardWheel",
+          "confidence": "high",
+          "heuristic_pair": "ListRewardWheel",
+          "spintype_pair": "ListRewardWheel"
+        },
+        "7": {
+          "bonus_feature": "ListRewardWheel",
+          "confidence": "high",
+          "heuristic_pair": "ListRewardWheel",
+          "spintype_pair": "ListRewardWheel"
+        }
+      }
     },
     "M275": {
-      "bonus_feature": "NewFreespin",
-      "confidence": "high",
-      "heuristic_pair": "NewFreespin",
-      "spintype_pair": "NewFreespin"
+      "modes": {
+        "1": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "2": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "5": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        },
+        "7": {
+          "bonus_feature": "NewFreespin",
+          "confidence": "high",
+          "heuristic_pair": "NewFreespin",
+          "spintype_pair": "NewFreespin"
+        }
+      }
     },
     "M277": {
-      "bonus_feature": "LockReSpin",
-      "confidence": "high",
-      "heuristic_pair": "LockReSpin",
-      "spintype_pair": "LockReSpin"
+      "modes": {
+        "1": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "2": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "5": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        },
+        "7": {
+          "bonus_feature": "LockReSpin",
+          "confidence": "high",
+          "heuristic_pair": "LockReSpin",
+          "spintype_pair": "LockReSpin"
+        }
+      }
     },
     "M279": {
-      "bonus_feature": "MoveSpin",
-      "confidence": "high",
-      "heuristic_pair": "MoveSpin",
-      "spintype_pair": "MoveSpin"
+      "modes": {
+        "1": {
+          "bonus_feature": "MoveSpin",
+          "confidence": "high",
+          "heuristic_pair": "MoveSpin",
+          "spintype_pair": "MoveSpin"
+        },
+        "2": {
+          "bonus_feature": "MoveSpin",
+          "confidence": "high",
+          "heuristic_pair": "MoveSpin",
+          "spintype_pair": "MoveSpin"
+        },
+        "5": {
+          "bonus_feature": "MoveSpin",
+          "confidence": "high",
+          "heuristic_pair": "MoveSpin",
+          "spintype_pair": "MoveSpin"
+        },
+        "7": {
+          "bonus_feature": "MoveSpin",
+          "confidence": "high",
+          "heuristic_pair": "MoveSpin",
+          "spintype_pair": "MoveSpin"
+        }
+      }
     }
   }
 }

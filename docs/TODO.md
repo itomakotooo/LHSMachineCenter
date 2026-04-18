@@ -4,24 +4,20 @@ This file tracks executable next steps for the current phase.
 
 ## P0 (user-blocked)
 
-- [ ] **Per-machine BCM config recheck** (dev only). All 33
-      BuffCollectionMap machines inferred + written to
-      `configs/bcm_pairings.json` with high confidence on mode 1.
-      Modes 2/5/7 not yet re-inferred; run
-      `python scripts/infer_bcm_pairing.py --mode 2 --write-config`
-      (and --mode 5 / 7) to cover.
+- [ ] **Surface new analyzable content to UI** (3 items remaining; 1
+      deferred with paytable). Each is standalone and adds value to
+      RTP interpretation:
+      - payline-structure classification (machine_label per machine)
+      - feature-vs-pay_id channel split (per-SpinType)
+      - feature-mode-rule-change flag (bonus ST line_ids differ
+        from paid ST)
+      Deferred (paytable-adjacent, user paused that track): wild
+      inventory + tiers + empirical stacking rule.
 
-- [ ] **Surface new analyzable content to UI** (optional; 4
-      high-value items identified this session, handover doc lists
-      them). Each is standalone and adds value to RTP interpretation:
-      payline-structure classification, wild inventory + tiers,
-      feature-vs-pay_id channel split, feature-mode-rule-change flag.
-
-- [ ] **Paytable auto-inference** — paused WIP. See memory
-      `project_paytable_inference_paused.md`. 80% infra done; 2
-      bugs flagged in `scripts/infer_paytable.py` header. Resume
-      when business value is clearer (currently UI has no paytable
-      consumer; 策划 can supply paytable if needed).
+- [ ] **Paytable auto-inference** — PAUSED. User said 2026-04-18
+      "除非我主动提起，不做". Do NOT propose resuming; do NOT touch
+      `scripts/infer_paytable.py`. See memory
+      `project_paytable_inference_paused.md` for technical state.
 
 
 
@@ -70,6 +66,35 @@ This file tracks executable next steps for the current phase.
       handles the rest.
 
 ## Done Recently
+
+- [x] **BCM pairing schema v2 — per-mode** (post 2026-04-18):
+      - Schema evolved `configs/bcm_pairings.json` from flat
+        `{machine: {bonus_feature}}` → per-mode
+        `{machine: {modes: {mode_str: {bonus_feature, confidence,
+        heuristic_pair, spintype_pair}}}}`. v1 flat schema still
+        loads (legacy _mode field honored; unlisted modes fall
+        through to heuristic).
+      - Cross-mode variance confirmed: **M247** truly pairs with
+        PreWheel on modes 1/2/5 but LockReSpin on mode 7. Writing
+        mode-1 data as "all modes" would silently under-correct RTP
+        on mode 7. 32 other BCM machines consistent across modes.
+      - Cache-gap coverage flagged: **M227** (missing mode 5),
+        **M238** (only mode 2 in cache), **M254** (missing mode 2 & 5),
+        **M274** (missing mode 2). Heuristic fallback handles these.
+      - Analyzer `_load_bcm_pairings()` returns
+        `dict[str, dict[int, str]]`; `_resolve_bonus_feature(machine,
+        mode, tally, config)` takes explicit mode arg.
+        `config[machine][mode]` hit → source="config"; miss → falls
+        through to heuristic rather than silently using another
+        mode's pair.
+      - `scripts/infer_bcm_pairing.py` now takes `--modes 1 2 5 7`
+        (default), runs all modes in one pass, merges into existing
+        v2 config (preserves modes not listed), emits cross-mode
+        variance + incomplete-coverage report as self-verification.
+      - 4 new test cases in `test_bcm_resolver.py`: per-mode config
+        hit, mode-miss falls through to heuristic, v2 loader, v1
+        loader backward-compat with explicit _mode. 336 pytest
+        (+4 over 332 baseline) + 126 node:test green.
 
 - [x] **Session 2026-04-18 — data-layer deep dive** (8 commits
       463d8d3 → defac90 + cleanup):
