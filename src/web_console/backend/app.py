@@ -3711,180 +3711,70 @@ def create_app(
     def run_cancel(run_id: str) -> dict[str, Any]:
         return manager.cancel_run(run_id)
 
-    def _check_chunk_compatibility(chunk_dir: Path) -> dict[str, Any]:
-        """Read the first cached chunk and verify its upstream schema
-        fingerprint against the current analyzer's required fields.
+    @app.post("/api/rawdata/{machine}/generate-report")
+    def generate_report_from_rawdata(
+        machine: str, req: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run the analyzer against cached chunks for (machine, mode)
+        in RAWDATA_ROOT and produce a fresh report + run row.
 
-        Returns {compatible: bool, reason: str|None, fingerprint: str|None,
-        chunk_count: int, total_bytes: int}.
+        Always creates a NEW report version + NEW run row; old runs are
+        preserved for history. Semantics:
+
+        * Reads ``rd_root/{machine}/mode_{mode}/chunk_*.json`` envelopes
+          (via the same tier classifier used by delete / cleanup; both
+          kept AND deletable chunks contribute — only stale md5 are
+          skipped since their server-side configuration changed).
+        * Pre-loads each envelope's ``response`` field and feeds them
+          to the analyzer's ``main()`` via a patched ``post_json`` so
+          no upstream HTTP happens.
+        * Writes summary + report to a new version dir
+          ``rv_<ts>_rawdata`` under ``reports_root/{machine}/
+          mode_{mode}/versions/``; updates ``index.json`` /
+          ``latest.json``.
+        * Inserts a new run row with ``status="completed"`` and the
+          newly-computed RTP / CI / quality / analyzer_version /
+          rawdata md5 fingerprints.
+
+        Body: ``{"mode": int}``. Returns the new ``run_id``, chunks
+        processed, and achieved RTP.
         """
-        if not chunk_dir.is_dir():
-            return {"compatible": False, "reason": "no_cache_dir",
-                    "fingerprint": None, "chunk_count": 0, "total_bytes": 0}
-        files = sorted(chunk_dir.glob("chunk_*.json"))
-        if not files:
-            return {"compatible": False, "reason": "empty_cache",
-                    "fingerprint": None, "chunk_count": 0, "total_bytes": 0}
-        total_bytes = sum(f.stat().st_size for f in files)
         try:
-            first = json.loads(files[0].read_text(encoding="utf-8"))
-        except Exception:
-            return {"compatible": False, "reason": "unreadable",
-                    "fingerprint": None, "chunk_count": len(files),
-                    "total_bytes": total_bytes}
-        stored_fp = first.get("_upstream_schema_fingerprint")
-        # Re-compute fingerprint from the cached response to compare
-        # against current analyzer expectations.
-        raw_resp = first.get("response")
-        if raw_resp is None:
-            return {"compatible": False, "reason": "no_response_in_envelope",
-                    "fingerprint": stored_fp, "chunk_count": len(files),
-                    "total_bytes": total_bytes}
-        # Quick schema check: does the first round have the required fields?
-        from fresh_slotlab.player_impact_analyzer import (
-            _REQUIRED_ROUND_FIELDS,
-            _REQUIRED_BET_FIELDS_ANY,
-        )
-        try:
-            for robot in (raw_resp if isinstance(raw_resp, list) else []):
-                if not isinstance(robot, dict):
-                    continue
-                rounds = json.loads(robot["roundResult"]) if isinstance(robot.get("roundResult"), str) else []
-                if not rounds:
-                    continue
-                first_round = rounds[0] if isinstance(rounds, list) and rounds else {}
-                missing = [f for f in _REQUIRED_ROUND_FIELDS if f not in first_round]
-                if not any(f in first_round for f in _REQUIRED_BET_FIELDS_ANY):
-                    missing.append("|".join(_REQUIRED_BET_FIELDS_ANY))
-                if missing:
-                    return {
-                        "compatible": False,
-                        "reason": f"schema_drift:{','.join(missing)}",
-                        "fingerprint": stored_fp,
-                        "chunk_count": len(files),
-                        "total_bytes": total_bytes,
-                    }
-                break  # only need to check first round
-        except Exception:
-            return {"compatible": False, "reason": "parse_error",
-                    "fingerprint": stored_fp, "chunk_count": len(files),
-                    "total_bytes": total_bytes}
-        return {
-            "compatible": True,
-            "reason": None,
-            "fingerprint": stored_fp,
-            "chunk_count": len(files),
-            "total_bytes": total_bytes,
-        }
-
-    @app.get("/api/runs/{run_id}/chunks")
-    def run_chunks(run_id: str) -> dict[str, Any]:
-        """Chunk cache status for a run with compatibility check."""
-        chunk_dir = cr / run_id
-        compat = _check_chunk_compatibility(chunk_dir)
-        return {
-            "run_id": run_id,
-            "chunk_count": compat["chunk_count"],
-            "total_bytes": compat["total_bytes"],
-            "fingerprint": compat["fingerprint"],
-            "compatible": compat["compatible"],
-            "incompatible_reason": compat["reason"],
-            "available": compat["chunk_count"] > 0 and compat["compatible"],
-        }
-
-    @app.post("/api/runs/{run_id}/rebuild")
-    def run_rebuild(run_id: str) -> dict[str, Any]:
-        """Rebuild a run's report from cached raw chunk data.
-
-        Re-parses every cached chunk through the current analyzer code,
-        re-aggregates, and overwrites the summary + report files.
-        Requires cached chunks to exist under cache/chunks/{run_id}/.
-        """
-        row = store.get_run(run_id)
-        if not row:
-            raise HTTPException(status_code=404, detail="run not found")
-        if str(row.get("status", "")).lower() == "running":
-            raise HTTPException(status_code=409, detail="run is still in progress")
-
-        chunk_dir = cr / run_id
-        compat = _check_chunk_compatibility(chunk_dir)
-        if not compat["chunk_count"]:
+            mode = int(req.get("mode"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="mode must be an integer")
+        mode_dir = rd_root / machine / f"mode_{mode}"
+        if not mode_dir.is_dir():
             raise HTTPException(
                 status_code=404,
-                detail="no cached chunks for this run; resample required",
+                detail=f"no rawdata for {machine} mode {mode} — resample required",
             )
-        if not compat["compatible"]:
+        retention = _load_settings(settings_path)["min_retention_spins"]
+        classified = _classify_chunks(machine, mode, rd_root, mc, retention)
+        usable_entries = classified["kept"] + classified["deletable"]
+        if not usable_entries:
             raise HTTPException(
-                status_code=409,
-                detail=f"cached chunks incompatible with current analyzer: {compat['reason']}; resample required",
+                status_code=404,
+                detail=(
+                    f"no usable chunks for {machine} mode {mode} "
+                    f"(kept=0, deletable=0; stale={len(classified['stale'])})"
+                ),
             )
-        chunk_files = sorted(chunk_dir.glob("chunk_*.json"))
+        # Sort chunk file paths by chunk_index (filename order) so the
+        # analyzer sees responses in their original sampling sequence.
+        chunk_paths = sorted(Path(e["path"]) for e in usable_entries)
 
-        if not ops.acquire("rebuild_report"):
+        if not ops.acquire("generate_report"):
             snap = ops.snapshot()
             raise HTTPException(
                 status_code=409,
                 detail=f"system busy: {snap.get('operation') or 'unknown'}",
             )
         try:
-            from fresh_slotlab.player_impact_analyzer import (
-                CHUNK_CACHE_VERSION,
-                run_sampling_chunk,
-            )
-
-            # Load each cached raw response and re-parse through the
-            # current analyzer code.
-            chunk_records: list[dict[str, Any]] = []
-            for cf in chunk_files:
-                envelope = json.loads(cf.read_text(encoding="utf-8"))
-                raw_resp = envelope.get("response")
-                if raw_resp is None:
-                    continue
-                # Re-parse: monkey-patch is avoided by calling
-                # run_sampling_chunk with a patched post_json. Simpler:
-                # call the function with the response pre-loaded.
-                # We temporarily swap the module-level post_json.
-                import fresh_slotlab.player_impact_analyzer as pia
-                _saved_post = pia.post_json
-                pia.post_json = lambda payload, timeout, _r=raw_resp: _r
-                try:
-                    rec = run_sampling_chunk(
-                        chunk_index=int(envelope.get("_chunk_index", 0)),
-                        machine=str(row["machine"]),
-                        rtp_mode=int(row["mode"]),
-                        bet=1000,
-                        spin_times=int(row["chunk_spin_times"]),
-                        robot_count=int(row["chunk_robot_count"]),
-                        timeout=float(row["timeout"]),
-                    )
-                finally:
-                    pia.post_json = _saved_post
-                if rec.get("ok"):
-                    chunk_records.append(rec)
-
-            if not chunk_records:
-                raise HTTPException(
-                    status_code=422,
-                    detail="all cached chunks failed to re-parse",
-                )
-
-            # Feed the chunk records through main()'s aggregation by
-            # running main() with the cached data. Simpler: write a
-            # temp script... Actually simplest: re-run main() with
-            # post_json patched to return pre-loaded responses.
-            # Use the same approach as the regression test:
-            import sys as _sys
-            import tempfile
-            from io import StringIO
-            from pathlib import Path as _Path
-
-            import fresh_slotlab.player_impact_analyzer as pia2
-
-            # Prepare a response iterator: each call to post_json gets
-            # the next cached response. Parse each file once and keep
-            # only entries that actually have a 'response' field.
-            _cached_responses = []
-            for cf in chunk_files:
+            # Pre-load responses — each call to analyzer's post_json
+            # returns the next cached response in sequence.
+            _cached_responses: list[Any] = []
+            for cf in chunk_paths:
                 try:
                     parsed = json.loads(cf.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
@@ -3892,37 +3782,59 @@ def create_app(
                 resp = parsed.get("response")
                 if resp is not None:
                     _cached_responses.append(resp)
+            if not _cached_responses:
+                raise HTTPException(
+                    status_code=422,
+                    detail="all usable chunks failed to load response payload",
+                )
+
+            # New run row + new output version dir.
+            new_run_id = f"gen_{uuid.uuid4().hex[:12]}"
+            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            report_version = f"rv_{ts}_rawdata"
+            output_dir = rr / machine / f"mode_{mode}" / "versions" / report_version
+            output_dir.mkdir(parents=True, exist_ok=True)
+            progress_file = sd / "progress" / f"{new_run_id}.jsonl"
+            summary_file = output_dir / "player_impact_summary.json"
+            report_file = output_dir / "player_impact_report.md"
+
+            # Reuse the first usable chunk's robot_count / spin_times
+            # as the synthetic run config (real values, since those
+            # chunks came from actual sampling with those params).
+            sample_env = json.loads(chunk_paths[0].read_text(encoding="utf-8"))
+            chunk_spin_times = int(sample_env.get("_spin_times") or 5000)
+            chunk_robot_count = int(sample_env.get("_robot_count") or 24)
+
+            import sys as _sys
+            from io import StringIO
+
+            import fresh_slotlab.player_impact_analyzer as pia
             _resp_iter = iter(_cached_responses)
-            _saved2 = pia2.post_json
-            # StopIteration safety: if analyzer calls more times than
-            # we have responses, return an empty list (the analyzer
-            # already handles parse_failed_zero_chunk downstream).
-            pia2.post_json = lambda payload, timeout: next(_resp_iter, [])
+            _saved_post = pia.post_json
+            # Each analyzer fetch pops the next pre-loaded response;
+            # exhaustion yields [] which the analyzer already handles
+            # via parse_failed_zero_chunk downstream.
+            pia.post_json = lambda payload, timeout: next(_resp_iter, [])
             _saved_exit = os._exit
             os._exit = lambda rc: None
 
-            output_dir = _Path(row["summary_file"]).parent
-            output_dir.mkdir(parents=True, exist_ok=True)
-            progress_file = _Path(row["progress_file"])
-
             test_argv = [
                 "analyzer",
-                "--machine", str(row["machine"]),
-                "--rtp-mode", str(row["mode"]),
+                "--machine", machine,
+                "--rtp-mode", str(mode),
                 "--bet", "1000",
-                "--chunk-spin-times", str(row["chunk_spin_times"]),
-                "--chunk-robot-count", str(row["chunk_robot_count"]),
+                "--chunk-spin-times", str(chunk_spin_times),
+                "--chunk-robot-count", str(chunk_robot_count),
                 "--batch-concurrency", "1",
                 "--max-chunks", str(len(_cached_responses)),
                 "--target-halfwidth-pp", "999",
-                "--timeout", str(row["timeout"]),
+                "--timeout", "30",
                 "--output-dir", str(output_dir),
                 "--progress-file", str(progress_file),
-                "--run-id", run_id,
-                "--bankruptcy-session-spins", str(row["bankruptcy_session_spins"]),
-                "--bankruptcy-bankroll-multipliers", row["bankruptcy_bankroll_multipliers"],
+                "--run-id", new_run_id,
+                "--bankruptcy-session-spins", "500",
+                "--bankruptcy-bankroll-multipliers", "100,200,500",
             ]
-
             old_argv = _sys.argv
             _sys.argv = test_argv
             captured = StringIO()
@@ -3934,71 +3846,98 @@ def create_app(
             finally:
                 _sys.stdout = old_stdout
                 _sys.argv = old_argv
-                pia2.post_json = _saved2
+                pia.post_json = _saved_post
                 os._exit = _saved_exit
 
             if rc != 0:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"analyzer main() returned {rc} during rebuild",
+                    detail=f"analyzer main() returned {rc} during generate-report",
                 )
 
-            # Re-read the rebuilt summary and update the DB row.
-            summary_path = _Path(row["summary_file"])
-            if summary_path.exists():
-                summary = read_json(summary_path)
-                rtp = summary.get("rtp", {}).get("point_pct")
-                hw = summary.get("sampling", {}).get("achieved_halfwidth_pp")
-                ql = (
-                    summary.get("guideline_assessment", {})
-                    .get("data_quality", {})
-                    .get("quality_label")
-                )
-                patch: dict[str, Any] = {}
-                if rtp is not None:
-                    patch["achieved_rtp_pct"] = float(rtp)
-                if hw is not None:
-                    patch["achieved_halfwidth_pp"] = float(hw)
-                if ql:
-                    patch["quality_label"] = str(ql)
-                if patch:
-                    store.update_run(run_id, patch)
+            summary: dict[str, Any] = {}
+            if summary_file.exists():
+                summary = read_json(summary_file) or {}
+            rtp = (summary.get("rtp") or {}).get("point_pct")
+            hw = (summary.get("sampling") or {}).get("achieved_halfwidth_pp")
+            ql = (
+                (summary.get("guideline_assessment") or {})
+                .get("data_quality", {})
+                .get("quality_label")
+            )
+            rawdata_cfg = summary.get("config_md5") or ""
+            rawdata_code = summary.get("code_md5") or ""
+            analyzer_ver = summary.get("analyzer_version") or ""
 
-                # Update report index + latest.json
-                mode_dir = rr / str(row["machine"]) / f"mode_{row['mode']}"
-                index_path = mode_dir / "index.json"
-                latest_path = mode_dir / "latest.json"
-                report_version = row.get("report_version", "")
-                item = {
-                    "report_version": report_version,
-                    "run_id": run_id,
-                    "created_at": utc_now(),
-                    "summary_file": str(summary_path),
-                    "report_file": str(row.get("report_file", "")),
-                    "rtp_point_pct": rtp,
-                    "quality_label": ql,
-                }
-                # Replace existing entry or append.
-                index_payload = []
-                if index_path.exists():
-                    try:
-                        raw = read_json(index_path)
-                        if isinstance(raw, list):
-                            index_payload = [
-                                e for e in raw
-                                if isinstance(e, dict) and e.get("report_version") != report_version
-                            ]
-                    except Exception:
-                        pass
-                index_payload.append(item)
-                write_json(index_path, index_payload)
-                write_json(latest_path, item)
+            # Insert a completed run row so the UI can surface this
+            # like any other run. Columns match the NOT-NULL contract
+            # of the runs table.
+            row_payload: dict[str, Any] = {
+                "run_id": new_run_id,
+                "machine": machine,
+                "mode": mode,
+                "status": "completed",
+                "model_id": "generate-report",
+                "created_at": utc_now(),
+                "started_at": utc_now(),
+                "finished_at": utc_now(),
+                "target_halfwidth_pp": 999,
+                "chunk_spin_times": chunk_spin_times,
+                "chunk_robot_count": chunk_robot_count,
+                "batch_concurrency": 1,
+                "max_chunks": len(_cached_responses),
+                "timeout": 30,
+                "bankruptcy_session_spins": 500,
+                "bankruptcy_bankroll_multipliers": "100,200,500",
+                "report_version": report_version,
+                "output_dir": str(output_dir),
+                "progress_file": str(progress_file),
+                "summary_file": str(summary_file),
+                "report_file": str(report_file),
+                "achieved_rtp_pct": float(rtp) if rtp is not None else None,
+                "achieved_halfwidth_pp": float(hw) if hw is not None else None,
+                "quality_label": str(ql) if ql else None,
+                "rawdata_config_md5": str(rawdata_cfg) if rawdata_cfg else None,
+                "rawdata_code_md5": str(rawdata_code) if rawdata_code else None,
+                "analyzer_version": str(analyzer_ver) if analyzer_ver else None,
+            }
+            store.insert_run(row_payload)
+
+            # Wire the new version into index.json + latest.json so the
+            # UI catalog surfaces it immediately.
+            mode_reports_dir = rr / machine / f"mode_{mode}"
+            index_path = mode_reports_dir / "index.json"
+            latest_path = mode_reports_dir / "latest.json"
+            item = {
+                "report_version": report_version,
+                "run_id": new_run_id,
+                "created_at": utc_now(),
+                "summary_file": str(summary_file),
+                "report_file": str(report_file),
+                "rtp_point_pct": rtp,
+                "quality_label": ql,
+            }
+            index_payload = []
+            if index_path.exists():
+                try:
+                    raw = read_json(index_path)
+                    if isinstance(raw, list):
+                        index_payload = raw
+                except Exception:
+                    pass
+            index_payload.append(item)
+            write_json(index_path, index_payload)
+            write_json(latest_path, item)
 
             return {
-                "run_id": run_id,
-                "status": "rebuilt",
-                "chunks_reprocessed": len(chunk_records),
-                "rtp_point_pct": rtp if summary_path.exists() else None,
+                "run_id": new_run_id,
+                "machine": machine,
+                "mode": mode,
+                "report_version": report_version,
+                "chunks_processed": len(_cached_responses),
+                "rtp_point_pct": rtp,
+                "achieved_halfwidth_pp": hw,
+                "analyzer_version": analyzer_ver,
             }
         finally:
             ops.release()

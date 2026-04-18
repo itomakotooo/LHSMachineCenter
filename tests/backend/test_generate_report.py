@@ -1,0 +1,229 @@
+"""Tests for POST /api/rawdata/{machine}/generate-report.
+
+This endpoint reads chunks out of the rawdata tree, runs the analyzer
+against the pre-loaded responses, and produces a brand-new report
+version + run row. Crucially:
+
+* old run rows are untouched (history preserved)
+* the new row carries the current analyzer_version fingerprint so
+  staleness checks line up immediately
+* stale-md5 chunks are skipped (their server config drifted); only
+  kept + deletable chunks contribute
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+
+_M14_FIXTURE = (
+    Path(__file__).resolve().parents[2] / "tests" / "fixtures"
+    / "m14_mode1_r8_s50.json"
+)
+
+
+def _write_rawdata_chunk(
+    dir_: Path,
+    idx: int,
+    *,
+    config_md5: str,
+    code_md5: str,
+    response: list,
+    spin_times: int = 50,
+    robot_count: int = 8,
+) -> Path:
+    dir_.mkdir(parents=True, exist_ok=True)
+    p = dir_ / f"chunk_{idx:04d}.json"
+    p.write_text(json.dumps({
+        "_cache_version": 3,
+        "_machine": "M14",
+        "_mode": 1,
+        "_bet": 1000,
+        "_spin_times": spin_times,
+        "_robot_count": robot_count,
+        "_chunk_index": idx,
+        "_saved_at": "2026-04-01T00:00:00Z",
+        "_config_md5": config_md5,
+        "_code_md5": code_md5,
+        "response": response,
+    }), encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def m14_machines_config(tmp_path):
+    """machines.json with M14 md5s matching whatever we stamp on test
+    chunks — makes them kept/deletable rather than stale."""
+    p = tmp_path / "machines_m14.json"
+    p.write_text(json.dumps({"machines": [{
+        "machine": "M14", "modes": [1],
+        "configSummaryMd5": "test_cfg", "codeSummaryMd5": "test_code",
+    }]}), encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def app_with_m14(
+    tmp_state_dir, tmp_reports, tmp_cache, tmp_rawdata,
+    m14_machines_config, fake_analyzer, monkeypatch,
+):
+    monkeypatch.setattr(
+        "src.web_console.backend.app._default_popen_factory",
+        lambda *a, **kw: None,
+    )
+    monkeypatch.setattr(
+        "src.web_console.backend.app._terminate_pid_if_running",
+        lambda pid: True,
+    )
+    # Analyzer calls os._exit(rc) at end; no-op it for in-process test
+    monkeypatch.setattr("os._exit", lambda rc: None)
+    from src.web_console.backend.app import create_app
+    from fastapi.testclient import TestClient
+    app = create_app(
+        state_dir=tmp_state_dir, reports_root=tmp_reports,
+        cache_root=tmp_cache, machines_config=m14_machines_config,
+        analyzer_path=fake_analyzer, rawdata_root=tmp_rawdata,
+    )
+    with TestClient(app) as c:
+        yield c, app, tmp_rawdata, tmp_reports, tmp_state_dir
+
+
+class TestGenerateReportHappyPath:
+    def test_produces_new_report_version_and_run_row(self, app_with_m14):
+        c, _app, rd_root, reports_root, state_dir = app_with_m14
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+
+        mode_dir = rd_root / "M14" / "mode_1"
+        _write_rawdata_chunk(
+            mode_dir, 1, config_md5="test_cfg", code_md5="test_code",
+            response=response_payload,
+        )
+
+        resp = c.post(
+            "/api/rawdata/M14/generate-report",
+            json={"mode": 1},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["machine"] == "M14"
+        assert body["mode"] == 1
+        assert body["chunks_processed"] == 1
+        assert body["run_id"].startswith("gen_")
+        assert body["report_version"].startswith("rv_") and body["report_version"].endswith("_rawdata")
+        # RTP should be a number (analyzer ran successfully against fixture)
+        assert isinstance(body["rtp_point_pct"], (int, float))
+        # Analyzer version stamp was returned → matches current hash
+        assert isinstance(body["analyzer_version"], str)
+        assert len(body["analyzer_version"]) == 12
+
+        # Summary file actually written to disk under the new version
+        version_dir = (
+            reports_root / "M14" / "mode_1" / "versions"
+            / body["report_version"]
+        )
+        assert (version_dir / "player_impact_summary.json").exists()
+        assert (version_dir / "player_impact_report.md").exists()
+
+        # Run row inserted with status=completed + version fingerprints.
+        # Note: analyzer's _lookup_machine_md5 reads from the real
+        # configs/machines.json at runtime (not the test's tmp config),
+        # so rawdata_config_md5 / rawdata_code_md5 reflect whatever the
+        # committed machines.json has for M14 — assert shape not value.
+        r2 = c.get(f"/api/runs/{body['run_id']}")
+        assert r2.status_code == 200
+        row = r2.json()
+        assert row["status"] == "completed"
+        assert row["machine"] == "M14"
+        assert row["mode"] == 1
+        assert row["achieved_rtp_pct"] is not None
+        assert isinstance(row["rawdata_config_md5"], str) and row["rawdata_config_md5"]
+        assert isinstance(row["rawdata_code_md5"], str) and row["rawdata_code_md5"]
+        assert row["analyzer_version"] == body["analyzer_version"]
+
+    def test_preserves_existing_runs(self, app_with_m14):
+        """Pre-existing runs row on M14 stays untouched after a
+        generate-report call — history is never overwritten."""
+        c, _app, rd_root, _reports, _state = app_with_m14
+        # Seed a fake existing run row for M14 mode 1 via direct DB.
+        import sqlite3
+        db = _state / "console.db"
+        with sqlite3.connect(db) as conn:
+            conn.execute(
+                """
+                INSERT INTO runs (run_id, machine, mode, status, model_id,
+                    created_at, started_at, target_halfwidth_pp,
+                    chunk_spin_times, chunk_robot_count, batch_concurrency,
+                    max_chunks, timeout, bankruptcy_session_spins,
+                    bankruptcy_bankroll_multipliers, report_version,
+                    output_dir, progress_file, summary_file)
+                VALUES ('old_run_abc', 'M14', 1, 'completed', 'sdk',
+                    '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z',
+                    0.5, 5000, 24, 2, 10, 30, 500,
+                    '100,200,500', 'rv_old', '/d', '/d/p.jsonl', '/d/s.json')
+                """
+            )
+            conn.commit()
+
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        _write_rawdata_chunk(
+            rd_root / "M14" / "mode_1", 1,
+            config_md5="test_cfg", code_md5="test_code",
+            response=response_payload,
+        )
+        gen = c.post("/api/rawdata/M14/generate-report", json={"mode": 1})
+        assert gen.status_code == 200, gen.text
+
+        runs = c.get("/api/runs").json()["runs"]
+        ids = [r["run_id"] for r in runs]
+        # Both the pre-existing row and the new gen_* row must survive.
+        assert "old_run_abc" in ids
+        assert gen.json()["run_id"] in ids
+
+
+class TestGenerateReportErrorPaths:
+    def test_no_rawdata_returns_404(self, app_with_m14):
+        c, *_ = app_with_m14
+        resp = c.post("/api/rawdata/M14/generate-report", json={"mode": 1})
+        assert resp.status_code == 404
+        assert "no rawdata" in resp.json()["detail"].lower()
+
+    def test_invalid_mode_returns_400(self, app_with_m14):
+        c, *_ = app_with_m14
+        resp = c.post("/api/rawdata/M14/generate-report",
+                      json={"mode": "not an int"})
+        assert resp.status_code == 400
+
+    def test_only_stale_chunks_returns_404(self, app_with_m14):
+        """If every chunk has outdated md5 (server upgraded since
+        sampling), endpoint refuses — regenerating off stale rawdata
+        would produce a stale report too. Resample required."""
+        c, _app, rd_root, *_ = app_with_m14
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        _write_rawdata_chunk(
+            rd_root / "M14" / "mode_1", 1,
+            config_md5="OLD_CFG_STALE",  # doesn't match test_cfg
+            code_md5="OLD_CODE_STALE",
+            response=response_payload,
+        )
+        resp = c.post("/api/rawdata/M14/generate-report", json={"mode": 1})
+        assert resp.status_code == 404
+        assert "no usable chunks" in resp.json()["detail"].lower()
+
+    def test_mutex_collision_returns_409(self, app_with_m14):
+        c, app, rd_root, *_ = app_with_m14
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        _write_rawdata_chunk(
+            rd_root / "M14" / "mode_1", 1,
+            config_md5="test_cfg", code_md5="test_code",
+            response=response_payload,
+        )
+        # Hold the coordinator under a different op name to force conflict.
+        assert app.state.ops.acquire("auto_tune")
+        try:
+            resp = c.post("/api/rawdata/M14/generate-report", json={"mode": 1})
+            assert resp.status_code == 409
+            assert "system busy" in resp.json()["detail"].lower()
+        finally:
+            app.state.ops.release()

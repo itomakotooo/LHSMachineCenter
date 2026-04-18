@@ -950,6 +950,8 @@ async function _loadRawdataSection(machineName) {
         </div>`;
       }).join("");
       const delDisabled = (delChunks + staleChunks) === 0 ? "disabled" : "";
+      // 生成 Report 按钮：至少有一个非 stale chunk 可用才启用
+      const genDisabled = (keptChunks + delChunks) === 0 ? "disabled" : "";
       return `<div class="rawdata-row">
         <div class="rawdata-row-head">
           <strong>mode ${mode}</strong>
@@ -960,6 +962,7 @@ async function _loadRawdataSection(machineName) {
         </div>
         <div class="rawdata-versions">${versionRows || '<span class="muted">无 chunk</span>'}</div>
         <div class="rawdata-row-actions">
+          <button class="small-btn primary-btn rawdata-generate-btn" data-machine="${machineName}" data-mode="${mode}" ${genDisabled} title="用当前 analyzer 代码重新跑这 (${keptChunks + delChunks}) 个 chunks 生成新 report">⟳ 生成 Report</button>
           <button class="small-btn rawdata-delete-btn" data-machine="${machineName}" data-mode="${mode}" ${delDisabled} title="删除可回收 + 过期 chunks，保留 baseline">删除可回收</button>
           <button class="small-btn danger-btn rawdata-force-delete-btn" data-machine="${machineName}" data-mode="${mode}" title="完全删除 (含 baseline)">完全删除</button>
         </div>
@@ -971,6 +974,34 @@ async function _loadRawdataSection(machineName) {
         <button class="small-btn danger-btn rawdata-force-delete-all-btn" data-machine="${machineName}" title="完全删除所有 mode">完全删除所有 mode</button>
       </div>`;
 
+    section.querySelectorAll(".rawdata-generate-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const m = btn.dataset.machine, mo = btn.dataset.mode;
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "生成中…";
+        try {
+          const resp = await apiPost(
+            `/api/rawdata/${encodeURIComponent(m)}/generate-report`,
+            { mode: Number(mo) },
+          );
+          btn.textContent = `✓ ${resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(1) + "%" : "done"}`;
+          // Refresh run list so the new gen_* row shows up immediately.
+          await refreshRunList(false);
+          setTimeout(() => {
+            btn.textContent = origText;
+            btn.disabled = false;
+          }, 3000);
+        } catch (err) {
+          btn.textContent = "✗";
+          alert(`生成 Report 失败: ${String(err && err.message ? err.message : err)}`);
+          setTimeout(() => {
+            btn.textContent = origText;
+            btn.disabled = false;
+          }, 3000);
+        }
+      });
+    });
     section.querySelectorAll(".rawdata-delete-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const m = btn.dataset.machine, mo = btn.dataset.mode;
@@ -1967,7 +1998,6 @@ function renderRunHistory() {
       `<td>${qualityCell}</td>` +
       `<td class="action-cell">` +
       `<button class="load-run-btn" data-id="${r.run_id}">${fmt("btnLoadRun")}</button> ` +
-      `<button class="rebuild-run-btn" data-id="${r.run_id}">${fmt("btnRebuildRun")}</button> ` +
       `<button class="delete-run-btn danger-btn" data-id="${r.run_id}">${fmt("btnDeleteRun")}</button>` +
       `</td>`;
     body.appendChild(tr);
@@ -2025,60 +2055,9 @@ function renderRunHistory() {
     });
   });
 
-  // Rebuild (per-row): checks chunk compatibility, shows inline status.
-  body.querySelectorAll(".rebuild-run-btn").forEach((b) => {
-    b.disabled = true;
-    b.title = fmt("rebuildNoChunks");
-    apiGet(`/api/runs/${encodeURIComponent(b.dataset.id)}/chunks`).then((d) => {
-      if (d.available && d.compatible) {
-        b.disabled = state.busyActions.size > 0;
-        b.title = fmt("chunkCompatible", { count: d.chunk_count });
-      } else if (d.chunk_count > 0 && !d.compatible) {
-        b.disabled = true;
-        b.title = fmt("rebuildIncompatible", { reason: d.incompatible_reason || "unknown" });
-        b.classList.add("stale");
-      }
-    }).catch(() => {});
-    b.addEventListener("click", async () => {
-      if (state.busyActions.size > 0) return;
-      const runId = b.dataset.id;
-      const origText = b.textContent;
-      // Disable ALL action buttons in this row during rebuild.
-      const row = b.closest("tr");
-      const rowButtons = row ? row.querySelectorAll("button") : [];
-      rowButtons.forEach((btn) => (btn.disabled = true));
-      b.textContent = fmt("rebuildBusy");
-      state.busyActions.add("rebuild");
-      updateActionStates();
-      // Show progress in loaded-machine panel on the debug tab.
-      const metaEl = byId("loadedMachineInfo");
-      if (metaEl) metaEl.textContent = fmt("rebuildBusy") + ` (${runId})...`;
-      try {
-        const resp = await apiPost(`/api/runs/${encodeURIComponent(runId)}/rebuild`, {});
-        b.textContent = `✓ ${resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(1) + "%" : "done"}`;
-        b.classList.add("rebuild-done");
-        if (metaEl) metaEl.textContent = fmt("rebuildSuccess", {
-          rtp: resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(2) : "?",
-          chunks: resp.chunks_reprocessed || 0,
-        });
-        await refreshRunList(false);
-        if (state.currentRunId === runId) {
-          switchTab("debug");
-          await refreshCurrentRun();
-        }
-        setTimeout(() => { b.textContent = origText; b.classList.remove("rebuild-done"); }, 3000);
-      } catch (err) {
-        const errMsg = String(err && err.message ? err.message : err);
-        b.textContent = "✗";
-        if (metaEl) metaEl.textContent = fmt("rebuildFailed", { error: errMsg });
-        setTimeout(() => { b.textContent = origText; if (metaEl && oldMeta) metaEl.textContent = oldMeta; }, 3000);
-      } finally {
-        state.busyActions.delete("rebuild");
-        rowButtons.forEach((btn) => (btn.disabled = false));
-        updateActionStates();
-      }
-    });
-  });
+  // Rebuild button removed — report generation is now rawdata-driven
+  // (machine detail panel → rawdata section → ⟳ 生成 Report). Produces
+  // a new run row + report version rather than overwriting history.
 
   updateBatchBar();
 }
