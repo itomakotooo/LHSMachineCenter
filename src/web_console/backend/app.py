@@ -966,6 +966,12 @@ class StateStore:
                 conn.execute("ALTER TABLE runs ADD COLUMN rawdata_code_md5 TEXT")
             if "analyzer_version" not in run_columns:
                 conn.execute("ALTER TABLE runs ADD COLUMN analyzer_version TEXT")
+            # Run-history surfaces total_spins so the operator can see
+            # sample size alongside RTP / CI (0.5pp at 10k spins vs at
+            # 1M spins is very different confidence). Populated from
+            # summary.sampling.total_spins.
+            if "total_spins" not in run_columns:
+                conn.execute("ALTER TABLE runs ADD COLUMN total_spins INTEGER")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interpretations (
@@ -1058,7 +1064,8 @@ class StateStore:
                 """
                 SELECT run_id, status, summary_file, achieved_rtp_pct,
                        achieved_halfwidth_pp, quality_label,
-                       rawdata_config_md5, rawdata_code_md5, analyzer_version
+                       rawdata_config_md5, rawdata_code_md5, analyzer_version,
+                       total_spins
                 FROM runs
                 WHERE status IN ('completed', 'cancelled')
                   AND (achieved_rtp_pct IS NULL
@@ -1066,7 +1073,8 @@ class StateStore:
                        OR quality_label IS NULL
                        OR rawdata_config_md5 IS NULL
                        OR rawdata_code_md5 IS NULL
-                       OR analyzer_version IS NULL)
+                       OR analyzer_version IS NULL
+                       OR total_spins IS NULL)
                 """
             ).fetchall()
             for r in rows:
@@ -1095,6 +1103,7 @@ class StateStore:
                 rpt_cfg = summary.get("config_md5")
                 rpt_code = summary.get("code_md5")
                 analyzer_ver = summary.get("analyzer_version")
+                tot_spins = summary.get("sampling", {}).get("total_spins")
                 # Write whichever fields had a null stored + a real
                 # value available; leave others alone.
                 patch_pairs: list[tuple[str, Any]] = []
@@ -1110,6 +1119,8 @@ class StateStore:
                     patch_pairs.append(("rawdata_code_md5", str(rpt_code)))
                 if r["analyzer_version"] is None and analyzer_ver:
                     patch_pairs.append(("analyzer_version", str(analyzer_ver)))
+                if r["total_spins"] is None and tot_spins is not None:
+                    patch_pairs.append(("total_spins", int(tot_spins)))
                 if not patch_pairs:
                     continue
                 sets = ", ".join(f"{name}=?" for name, _ in patch_pairs)
@@ -2944,6 +2955,7 @@ class RunManager:
         rawdata_config_md5 = summary.get("config_md5")
         rawdata_code_md5 = summary.get("code_md5")
         analyzer_version = summary.get("analyzer_version")
+        total_spins = summary.get("sampling", {}).get("total_spins")
         item = {
             "report_version": managed.report_version,
             "run_id": managed.run_id,
@@ -2951,6 +2963,13 @@ class RunManager:
             "summary_file": str(managed.summary_file),
             "report_file": str(managed.report_file),
             "rtp_point_pct": rtp_point_pct,
+            # Keep both legacy (rtp_point_pct) and frontend-expected
+            # (achieved_*) keys so the version-history table can
+            # render RTP / CI / Spins without re-reading summary.json
+            # per row.
+            "achieved_rtp_pct": rtp_point_pct,
+            "achieved_halfwidth_pp": achieved_hw_pp,
+            "total_spins": total_spins,
             "quality_label": quality_label,
         }
         index_payload.append(item)
@@ -2972,6 +2991,8 @@ class RunManager:
             patch["rawdata_code_md5"] = str(rawdata_code_md5)
         if analyzer_version:
             patch["analyzer_version"] = str(analyzer_version)
+        if total_spins is not None:
+            patch["total_spins"] = int(total_spins)
         if patch:
             self.store.update_run(managed.run_id, patch)
 
@@ -3884,6 +3905,7 @@ def create_app(
             rawdata_cfg = summary.get("config_md5") or ""
             rawdata_code = summary.get("code_md5") or ""
             analyzer_ver = summary.get("analyzer_version") or ""
+            total_spins_val = summary.get("sampling", {}).get("total_spins")
 
             # Insert a completed run row so the UI can surface this
             # like any other run. Columns match the NOT-NULL contract
@@ -3916,6 +3938,7 @@ def create_app(
                 "rawdata_config_md5": str(rawdata_cfg) if rawdata_cfg else None,
                 "rawdata_code_md5": str(rawdata_code) if rawdata_code else None,
                 "analyzer_version": str(analyzer_ver) if analyzer_ver else None,
+                "total_spins": int(total_spins_val) if total_spins_val is not None else None,
             }
             store.insert_run(row_payload)
 
@@ -3931,6 +3954,9 @@ def create_app(
                 "summary_file": str(summary_file),
                 "report_file": str(report_file),
                 "rtp_point_pct": rtp,
+                "achieved_rtp_pct": rtp,
+                "achieved_halfwidth_pp": hw,
+                "total_spins": total_spins_val,
                 "quality_label": ql,
             }
             index_payload = []
@@ -4000,6 +4026,40 @@ def create_app(
         latest_path = mode_dir / "latest.json"
         index_payload = read_json(index_path) if index_path.exists() else []
         latest_payload = read_json(latest_path) if latest_path.exists() else {}
+        # Legacy entries only carry ``rtp_point_pct`` + ``quality_label``.
+        # Version-history UI wants ``achieved_rtp_pct`` / ``achieved_
+        # halfwidth_pp`` / ``total_spins`` too. When the stored entry
+        # lacks them, fall back to reading that version's summary.json
+        # once per request. Cheap — this endpoint only fires when the
+        # operator opens the machine-detail panel.
+        if isinstance(index_payload, list):
+            for entry in index_payload:
+                if not isinstance(entry, dict):
+                    continue
+                needs_fill = (
+                    entry.get("achieved_rtp_pct") is None
+                    or entry.get("achieved_halfwidth_pp") is None
+                    or entry.get("total_spins") is None
+                )
+                if not needs_fill:
+                    continue
+                sf = entry.get("summary_file")
+                if not sf or not Path(sf).exists():
+                    continue
+                try:
+                    s = read_json(Path(sf)) or {}
+                except Exception:  # noqa: BLE001
+                    continue
+                samp = s.get("sampling") or {}
+                if entry.get("achieved_rtp_pct") is None:
+                    entry["achieved_rtp_pct"] = (
+                        entry.get("rtp_point_pct")
+                        or (s.get("rtp") or {}).get("point_pct")
+                    )
+                if entry.get("achieved_halfwidth_pp") is None:
+                    entry["achieved_halfwidth_pp"] = samp.get("achieved_halfwidth_pp")
+                if entry.get("total_spins") is None:
+                    entry["total_spins"] = samp.get("total_spins")
         return {"machine": machine, "mode": mode, "versions": index_payload, "latest": latest_payload}
 
     @app.get("/api/reports/{machine}/{mode}/{version}")

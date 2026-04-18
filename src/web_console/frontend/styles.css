@@ -1712,8 +1712,12 @@ button.small-btn.active, .small-btn.active {
   border: 1px solid #d4ddea;
   border-radius: 6px;
   background: #f9fafb;
+  /* Explicit ink color — global ``button { color: #fff }`` would
+     otherwise leave inactive tabs as white-on-near-white (invisible). */
+  color: var(--ink);
   cursor: pointer;
   font-size: 12px;
+  font-weight: 500;
 }
 .mode-tab.active {
   background: var(--accent);

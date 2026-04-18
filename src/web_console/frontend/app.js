@@ -1977,7 +1977,7 @@ function renderRunHistory() {
     : state.runs;
   if (!rows.length) {
     const msg = filterSet.size ? fmt("noRunsForMachine") : fmt("noRuns");
-    body.innerHTML = `<tr><td colspan="11">${msg}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="12">${msg}</td></tr>`;
     updateBatchBar();
     return;
   }
@@ -1987,6 +1987,9 @@ function renderRunHistory() {
     if (r.run_id === state.currentRunId) tr.classList.add("active-row");
     const rtpCell = fMetricCell(r.achieved_rtp_pct, 2, "%");
     const ciCell = fMetricCell(r.achieved_halfwidth_pp, 3, "pp");
+    const spinsCell = r.total_spins != null
+      ? Number(r.total_spins).toLocaleString()
+      : "\u2014";
     const qualityCell = r.quality_label || "\u2014";
     const checked = state.selectedRuns.has(r.run_id) ? "checked" : "";
     const badges = PURE.versionBadges(r, current);
@@ -1998,6 +2001,7 @@ function renderRunHistory() {
       `<td>${statusText(r.status)}</td>` +
       `<td>${r.machine}</td>` +
       `<td>${r.mode}</td>` +
+      `<td>${spinsCell}</td>` +
       `<td>${rtpCell}</td>` +
       `<td>${ciCell}</td>` +
       `<td>${qualityCell}</td>` +

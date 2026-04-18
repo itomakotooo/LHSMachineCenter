@@ -541,7 +541,13 @@ def test_backfill_rtp_ci_from_summaries(app_factory, tmp_path):
     summary_path.write_text(
         json.dumps({
             "rtp": {"point_pct": 92.35},
-            "sampling": {"achieved_halfwidth_pp": 0.48},
+            "sampling": {
+                "achieved_halfwidth_pp": 0.48,
+                # total_spins also backfilled — keep the second-pass
+                # assertion tight (row drops out when every nullable
+                # column has a value).
+                "total_spins": 250000,
+            },
             "guideline_assessment": {
                 "data_quality": {"quality_label": "REPORT_GRADE"},
             },
@@ -611,12 +617,13 @@ def test_backfill_rtp_ci_from_summaries(app_factory, tmp_path):
     assert result["updated"] == 1
     assert result["skipped_no_file"] == 1
 
-    # Verify the legacy row now has all six backfilled columns filled.
+    # Verify the legacy row now has all seven backfilled columns filled.
     conn = sqlite3.connect(str(app_factory.db_path))
     try:
         row = conn.execute(
             "SELECT achieved_rtp_pct, achieved_halfwidth_pp, quality_label, "
-            "       rawdata_config_md5, rawdata_code_md5, analyzer_version "
+            "       rawdata_config_md5, rawdata_code_md5, analyzer_version, "
+            "       total_spins "
             "FROM runs WHERE run_id = ?",
             ("legacy_run_x",),
         ).fetchone()
@@ -628,6 +635,7 @@ def test_backfill_rtp_ci_from_summaries(app_factory, tmp_path):
     assert row[3] == "cfg_md5_abcd"
     assert row[4] == "code_md5_efgh"
     assert row[5] == "ver_ijkl"
+    assert row[6] == 250000
 
     # Ghost row remains null.
     conn = sqlite3.connect(str(app_factory.db_path))
