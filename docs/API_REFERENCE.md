@@ -268,6 +268,29 @@ table directly via `achieved_rtp_pct` / `achieved_halfwidth_pp` /
 `quality_label` columns. Endpoint retained for back-compat / direct
 curl usage.
 
+### `GET /api/reports/stale-count`
+
+Fleet-wide staleness summary for the run-history banner. Walks runs
+table (status=completed), compares each row's stored fingerprints
+against the current snapshot, buckets into three kinds:
+
+```json
+{
+  "total_completed_runs": 2013,
+  "stale_rawdata": 5,      // server md5 drifted → resample required
+  "stale_analyzer": 28,    // analyzer code drifted → batch-regen fixes
+  "untagged": 7,           // pre-migration, no fingerprint stored
+  "fixable_items": [{"machine": "M14", "mode": 1}, ...],
+  "fixable_count": 15,     // dedup'd by (machine, mode)
+  "current_analyzer_version": "269ca1cf0a26"
+}
+```
+
+``fixable_items`` is the set of (machine, mode) pairs where analyzer
+is stale AND rawdata is fresh — exactly the payload the UI's
+"⟳ 一键重生成" button submits to
+``POST /api/rawdata/batch-generate-report``.
+
 ### `GET /api/library/distributions`
 
 Across-library metric distributions for the KPI lib-rank suffix on
@@ -331,6 +354,81 @@ Response: `{ok, deleted, forced, deleted_chunks, kept_chunks, deleted_bytes}`.
 ### `POST /api/rawdata/{machine}/generate-report`
 
 Documented above under Run Lifecycle.
+
+### `POST /api/rawdata/batch-generate-report`
+
+Kick off a batch of generate-report runs across multiple (machine,
+mode) pairs. Sequential within the batch — analyzer's ``post_json``
+is monkey-patched at the module level so concurrent generator calls
+would race. Held under the ``ops`` mutex for the full duration.
+
+Body:
+
+```json
+{ "items": [{"machine": "M273", "mode": 1}, {"machine": "M14", "mode": 2}] }
+```
+
+Response (202-style, batch runs in background):
+
+```json
+{ "batch_id": "bgen_abc123", "total": 2, "status": "running" }
+```
+
+### `GET /api/rawdata/batch-generate-report/{batch_id}`
+
+Poll a batch's progress. Returns full per-item state:
+
+```json
+{
+  "batch_id": "bgen_abc123",
+  "started_at": "...",
+  "finished_at": "...",
+  "status": "completed | partial | failed | running | pending",
+  "total": 2, "completed": 2, "failed": 0, "pending": 0,
+  "error": null,
+  "items": [
+    {
+      "machine": "M273", "mode": 1, "status": "completed",
+      "run_id": "gen_xxx", "rtp_point_pct": 92.37,
+      "achieved_halfwidth_pp": 0.49, "chunks_processed": 51,
+      "error": null
+    },
+    ...
+  ]
+}
+```
+
+Per-item failure (e.g. no rawdata for that mode) records the error
+but the batch keeps processing remaining items; final status =
+``partial``. Whole-batch failure (ops mutex contention) marks
+every pending item failed and returns ``status: failed``.
+
+### `GET /api/machines/halls`
+
+Return cached hall grouping for the 按大厅 catalog view. Sourced
+from ``configs/machine_halls.json`` (populated by the refresh
+endpoint). Missing file → empty halls.
+
+```json
+{
+  "halls": {"G1": ["M9", "M88", "M51", ...], "G10": ["M70", ...], ...},
+  "updated_at": "2026-04-18T13:04:09Z",
+  "source": "http://buffalo-debug.citrusjoy.com/MachineTest/MapMachineOrder"
+}
+```
+
+### `POST /api/machines/halls/refresh`
+
+Operator-triggered upstream fetch. Calls
+``POST /MachineTest/MapMachineOrder`` on the configured server,
+parses ``localMapMachineCellsJson`` to extract the hall/zone ID
+from each machine's ``prefabAssetPath`` (pattern:
+``Assets/UIAssets/(SilentLoad/)?MapMachine/{HALL}/...``), writes
+the result to disk. Body ``{server_id?: "..."}`` selects a
+non-default server.
+
+Guarded by the ``ops`` mutex. Live dev server: 32 halls / 247
+machines classified from 252 in machines.json.
 
 ## Cache Management
 

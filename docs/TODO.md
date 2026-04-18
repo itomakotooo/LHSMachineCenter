@@ -4,30 +4,21 @@ This file tracks executable next steps for the current phase.
 
 ## P0 (user-blocked)
 
-- [x] **Surface new analyzable content to UI** (3 of 4 shipped; 1
-      deferred with paytable). Panel "支付线结构分类" in 调试机台 tab
-      now shows per-mode label + per-SpinType channel split +
-      feature-mode rule delta flag. Verified on M273: ST 117 (bonus)
-      adds line_id=-2 not present in ST 140 (paid). Deferred
-      (paytable-adjacent, user paused that track): wild inventory +
-      tiers + empirical stacking rule.
-
 - [ ] **Paytable auto-inference** — PAUSED. User said 2026-04-18
       "除非我主动提起，不做". Do NOT propose resuming; do NOT touch
       `scripts/infer_paytable.py`. See memory
       `project_paytable_inference_paused.md` for technical state.
 
-
-
-- [ ] **By-hall sort tab + select-all button** (agreed with user, not
-      yet implemented). Machine catalog gets a new view tab "按大厅"
-      that calls `POST /MachineTest/MapMachineOrder` for ordering;
-      plus a "全选" button. Noted; waiting for user go-ahead.
-
-- [ ] **Broken machine tag** (optional). User asked to list machines
-      where API returns obvious garbage RTP (see memory). Not
-      surfacing in UI yet; if needed, add `configs/broken_machines.json`
-      → badge these separately in catalog.
+- [ ] **Fuzzy live-sampling CI-stop latent bug**. Same root cause as
+      the generate-report bug fixed in ecc5bd4. Backend sets
+      ``target_halfwidth_pp=999`` as the fuzzy sentinel
+      (app.py ~line 2735) but analyzer's stop branch fires when
+      ``session_halfwidth_pp ≤ target`` — 999 is usually satisfied
+      after chunks=2. Not observed in the wild because live sampling
+      fuzzy paths naturally have max_chunks high enough the operator
+      doesn't notice. Fix: backend passes 0.001 to analyzer + relies
+      on max_chunks solely (same pattern as generate-report). Add a
+      regression test.
 
 - [ ] Multi-server 实测: 基础设施就绪，等用户提供 test/prod 地址。
 
@@ -64,6 +55,48 @@ This file tracks executable next steps for the current phase.
       handles the rest.
 
 ## Done Recently
+
+- [x] **A+B roadmap shipped** (2026-04-18 late, 4 commits):
+      - `feat(A1): batch generate-report endpoint + UI` (bc7804d) —
+        BatchGenerateManager (sequential worker + per-item status),
+        `POST /api/rawdata/batch-generate-report` with polling
+        endpoint, sampling-panel "⟳ 批量生成 Report" button that
+        runs against the current runFilterMachines × sampleMode.
+        Inline per-item log colored by status; 6 regression tests.
+      - `feat(A2): fleet staleness banner + one-click batch regen`
+        (ca3cb07) — `GET /api/reports/stale-count` buckets runs by
+        staleness kind + de-dups fixable items by (machine, mode).
+        机台概览 yellow banner shows analyzer-stale count with a
+        one-click "⟳ 一键重生成 (K)" button that feeds A1's batch
+        endpoint. 5 regression tests.
+      - `feat(B3): broken-machine badge on catalog cards` (c5d08c8)
+        — per-card ⚠ glyph + tooltip + subtle orange border for
+        any machine the fleet-overview anomaly rules flag. 105 of
+        253 machines flagged on current data.
+      - `feat(B4): 按大厅 catalog view + 全选 button` (00a1031) —
+        new view mode grouped by hall ID parsed from upstream
+        MapMachineOrder; lazy-fetched cache in
+        `configs/machine_halls.json` (gitignored per-server); 全选
+        button adds every visible machine to runFilterMachines.
+        Live dev server: 32 halls / 247 machines classified.
+
+- [x] **Two UI fixes before A+B** (2026-04-18 late, 2 commits):
+      - `fix(generate-report): process all cached chunks`
+        (ecc5bd4) — operator noticed M273 rebuild gave 3.4pp CI
+        from 2 chunks instead of ~0.5pp from all 51. Root cause:
+        target=999 satisfied the analyzer's session-CI stop branch
+        immediately. Fix: target=0.001 so max_chunks is the sole
+        gate. Reproduced on real M273: 51 chunks / 0.4901pp CI /
+        stop_reason=max_chunks_reached. Regression test asserts
+        chunks_processed == cached count.
+      - `fix(ui): run-history Spins col + version-history white-on-
+        white` (d6939bd) — added total_spins column to runs table
+        (DB + backfill + UI render); fixed `.mode-tab` inactive
+        state that inherited global `button { color: #fff }` →
+        `color: var(--ink)`; fixed version-history RTP/CI/Spins
+        showing "—" (index.json lacked achieved_* fields; now
+        written both sides + endpoint reads summary.json fallback
+        for legacy entries).
 
 - [x] **Rawdata lifecycle + version tracking overhaul** (2026-04-18
       evening, 6 commits on top of BCM v2):
