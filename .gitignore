@@ -68,3 +68,7 @@ dev_reports/_classify/
 
 # Paused WIP — paytable inference outputs (2026-04-18)
 configs/paytables/
+
+# Per-server hall mapping (refreshed via POST /api/machines/halls/refresh).
+# Contents differ across dev/prod environments; not versioned.
+configs/machine_halls.json

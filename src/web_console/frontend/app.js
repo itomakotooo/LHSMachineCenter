@@ -57,7 +57,10 @@ const state = {
   batchSelectedMachines: new Set(),
   servers: [],
   defaultServer: "",
-  catalogViewMode: "category",  // "category" | "name" | "volatility" | "rtp" | "mechanic"
+  catalogViewMode: "category",  // "category" | "name" | "volatility" | "rtp" | "mechanic" | "hall"
+  // 按大厅 view data: {halls: {hall_name: [machine_list]}, updated_at, source}.
+  // Populated lazily on first "按大厅" tab click via GET /api/machines/halls.
+  machineHalls: null,
   catalogFeatureFilter: new Set(),
   catalogSortReverse: false,  // reverse ordering toggle
   versionHistoryMachine: null,
@@ -581,6 +584,18 @@ function _groupMachines(machines, viewMode) {
       else if (rtp < 200) key = "100–200%";
       else if (rtp < 400) key = "200–400%";
       else key = "> 400%";
+    } else if (viewMode === "hall") {
+      // Map machine → hall_name using cached data. Machines not
+      // present in any hall go into "未分组".
+      const halls = (state.machineHalls && state.machineHalls.halls) || {};
+      let hallOfMachine = null;
+      for (const [hallName, machineList] of Object.entries(halls)) {
+        if ((machineList || []).includes(m.machine)) {
+          hallOfMachine = hallName;
+          break;
+        }
+      }
+      key = hallOfMachine || "未分组";
     } else if (viewMode === "mechanic") {
       const mdata = sm[m.machine] || {};
       const allMechs = new Set();
@@ -616,6 +631,13 @@ function _groupOrder(viewMode) {
   if (viewMode === "volatility") return ["Low", "Medium", "High", "Very High", "N/A"];
   if (viewMode === "rtp") return ["< 90%", "90–95%", "95–100%", "100–200%", "200–400%", "> 400%", "N/A"];
   if (viewMode === "mechanic") return ["lock_lines", "lock_symbols", "lock_reels", "jackpot", "free_spin", "dollar_pick", "Normal"];
+  if (viewMode === "hall") {
+    // Sorted by hall name; "未分组" bucket always last.
+    const halls = (state.machineHalls && state.machineHalls.halls) || {};
+    const names = Object.keys(halls).sort();
+    names.push("未分组");
+    return names;
+  }
   return ["all"]; // name, category → flat
 }
 
@@ -3476,15 +3498,90 @@ function bindEvents() {
     byId("reportComparisonPanel")?.classList.add("hidden");
     byId("machineDetailPanel")?.classList.add("hidden");
   });
+  // Select-all: add every machine currently visible in the catalog
+  // (honors current view-mode + feature-chip filter + search) to the
+  // multi-select set. Intentionally scoped to the filtered view so
+  // users don't accidentally select 253 machines when they meant the
+  // 10 visible after a filter.
+  byId("catalogSelectAllVisible")?.addEventListener("click", () => {
+    const visible = document.querySelectorAll("#machineCatalog .catalog-item");
+    visible.forEach((el) => {
+      const m = el.dataset.machine;
+      if (m) state.runFilterMachines.add(m);
+    });
+    renderMachineCatalog();
+    renderRunHistory();
+    updateSampleHint();
+    updateActionStates();
+  });
   // View tabs for catalog grouping mode.
-  byId("catalogViewTabs").addEventListener("click", (e) => {
+  byId("catalogViewTabs").addEventListener("click", async (e) => {
     const btn = e.target.closest(".view-tab");
     if (!btn) return;
     state.catalogViewMode = btn.dataset.view;
     byId("catalogViewTabs").querySelectorAll(".view-tab").forEach((b) => b.classList.toggle("active", b === btn));
     renderCatalogFeatureChips();
+    // First click on "按大厅" lazily fetches the cached hall map.
+    if (btn.dataset.view === "hall" && state.machineHalls === null) {
+      try {
+        state.machineHalls = await apiGet("/api/machines/halls");
+      } catch (_err) {
+        state.machineHalls = { halls: {}, updated_at: null, source: null };
+      }
+    }
+    renderHallsRefreshBar();
     renderMachineCatalog();
   });
+
+  // Inline hall-refresh banner: visible only when 按大厅 tab active.
+  function renderHallsRefreshBar() {
+    const bar = byId("hallsRefreshBar");
+    if (!bar) return;
+    if (state.catalogViewMode !== "hall") {
+      bar.classList.add("hidden");
+      return;
+    }
+    bar.classList.remove("hidden");
+    const halls = state.machineHalls?.halls || {};
+    const hallCount = Object.keys(halls).length;
+    const updated = state.machineHalls?.updated_at;
+    if (!hallCount) {
+      bar.innerHTML = `<span class="muted">${fmt("hallsEmpty")}</span>
+        <button id="hallsRefreshBtn" class="small-btn primary-btn">${fmt("hallsRefreshBtn")}</button>`;
+    } else {
+      const machineCount = Object.values(halls).reduce((s, v) => s + (v?.length || 0), 0);
+      bar.innerHTML = `<span class="muted">${fmt("hallsRefreshSuccess", { halls: hallCount, machines: machineCount, ts: updated || "?" })}</span>
+        <button id="hallsRefreshBtn" class="small-btn">${fmt("hallsRefreshBtn")}</button>`;
+    }
+    byId("hallsRefreshBtn")?.addEventListener("click", async () => {
+      const btn = byId("hallsRefreshBtn");
+      if (!btn) return;
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = fmt("hallsRefreshBusy");
+      try {
+        const resp = await fetch("/api/machines/halls/refresh", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          throw new Error(body.detail || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        state.machineHalls = {
+          halls: data.halls || {},
+          updated_at: data.updated_at,
+          source: data.source,
+        };
+        renderHallsRefreshBar();
+        renderMachineCatalog();
+      } catch (err) {
+        btn.textContent = fmt("hallsRefreshFailed", { error: String(err.message || err) });
+        setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 4000);
+      }
+    });
+  }
   // Inline sampling panel controls.
   byId("sampleStartBtn").addEventListener("click", () => startSampling());
   byId("sampleCancelBtn").addEventListener("click", () => cancelSampling());

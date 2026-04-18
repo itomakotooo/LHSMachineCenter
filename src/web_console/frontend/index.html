@@ -300,6 +300,7 @@
               <input type="text" id="catalogSearch" class="catalog-search" placeholder="搜索机台..." data-i18n-placeholder="catalogSearchPlaceholder" />
               <button id="catalogCollapseAll" class="small-btn" title="折叠/展开">&#9660;</button>
               <button id="catalogSortReverse" class="small-btn" title="倒序">↑↓</button>
+              <button id="catalogSelectAllVisible" class="small-btn" data-i18n="btnSelectAllVisible" title="选中当前视图里所有可见机台">全选</button>
               <button id="catalogClearSelection" class="small-btn" data-i18n="btnClearSelection">清除选择</button>
             </div>
             <div class="catalog-view-tabs" id="catalogViewTabs">
@@ -308,7 +309,9 @@
               <button class="view-tab" data-view="volatility" data-i18n="viewVolatility">按波动性</button>
               <button class="view-tab" data-view="rtp" data-i18n="viewRtp">按 RTP</button>
               <button class="view-tab" data-view="mechanic" data-i18n="viewMechanic">按机制</button>
+              <button class="view-tab" data-view="hall" data-i18n="viewHall">按大厅</button>
             </div>
+            <div id="hallsRefreshBar" class="halls-refresh-bar hidden"></div>
             <div id="catalogFeatureChips" class="catalog-feature-chips hidden"></div>
             <div id="machineCatalog" class="catalog-grouped"></div>
           </section>

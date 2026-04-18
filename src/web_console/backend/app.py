@@ -3518,6 +3518,132 @@ def create_app(
             "machines": machines_payload,
         }
 
+    @app.get("/api/machines/halls")
+    def get_machine_halls() -> dict[str, Any]:
+        """Return cached hall grouping for the 按大厅 catalog view.
+
+        Sourced from ``configs/machine_halls.json`` (populated by
+        ``POST /api/machines/halls/refresh`` which calls the upstream
+        ``MapMachineOrder`` endpoint). Missing file → empty halls so
+        the UI can prompt the operator to refresh.
+        """
+        halls_path = ROOT / "configs" / "machine_halls.json"
+        if not halls_path.exists():
+            return {"halls": {}, "updated_at": None, "source": None}
+        try:
+            data = json.loads(halls_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {"halls": {}, "updated_at": None, "source": None,
+                    "error": "halls file unreadable"}
+        return {
+            "halls": data.get("halls") or {},
+            "updated_at": data.get("updated_at"),
+            "source": data.get("source"),
+        }
+
+    @app.post("/api/machines/halls/refresh")
+    def refresh_machine_halls(req: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Fetch upstream ``POST /MachineTest/MapMachineOrder`` and
+        persist the hall grouping. Operator-triggered only (per the
+        no-proactive-fetch rule).
+
+        Request body may carry ``{server_id: ...}`` to pick which
+        configured server to query; defaults to the active server.
+        Response parsing is best-effort: if upstream shape changes
+        we store the raw response for later inspection rather than
+        dropping it.
+        """
+        if not ops.acquire("refresh_machine_halls"):
+            snap = ops.snapshot()
+            raise HTTPException(
+                status_code=409,
+                detail=f"system busy: {snap.get('operation') or 'unknown'}",
+            )
+        try:
+            server_id = (req or {}).get("server_id")
+            endpoint_base = SLOT_SPIN_ENDPOINT.rsplit("/MachineTest/", 1)[0]
+            if server_id:
+                try:
+                    ep = get_server_endpoint(server_id)
+                    endpoint_base = ep.rstrip("/").rsplit("/MachineTest", 1)[0]
+                except Exception:  # noqa: BLE001
+                    pass
+            url = f"{endpoint_base}/MachineTest/MapMachineOrder"
+            try:
+                req_payload = json.dumps({}).encode("utf-8")
+                http_req = urllib.request.Request(
+                    url, data=req_payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(http_req, timeout=20) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"upstream MapMachineOrder failed: {exc.__class__.__name__}: {exc}",
+                ) from exc
+            try:
+                upstream_payload = json.loads(raw)
+            except json.JSONDecodeError:
+                upstream_payload = {"_raw": raw[:10000]}
+            # Parse ``localMapMachineCellsJson`` — an array of cell
+            # dicts where each cell has ``name`` (e.g. "M272" or
+            # decorative "LinkedJackpotL") and ``prefabAssetPath``
+            # encoding the hall / zone in the path. Two observed
+            # forms:
+            #   Assets/UIAssets/MapMachine/{ZONE}/{M_ID}/...   (small)
+            #   Assets/UIAssets/SilentLoad/MapMachine/{ZONE}/... (bulk)
+            # ZONE is a G-prefixed string (G6, G10, G11, ...) for
+            # most machines or "Default". We use ZONE as the hall
+            # name — the platform's original labeling, since no
+            # other hierarchy is encoded in the upstream payload.
+            halls: dict[str, list[str]] = {}
+            import re as _re
+            machine_re = _re.compile(r"^M\d+$")
+            zone_re = _re.compile(
+                r"Assets/UIAssets/(?:SilentLoad/)?MapMachine/([^/]+)/"
+            )
+            cells_json = upstream_payload.get("localMapMachineCellsJson") \
+                if isinstance(upstream_payload, dict) else None
+            if isinstance(cells_json, str):
+                try:
+                    cells = json.loads(cells_json)
+                except json.JSONDecodeError:
+                    cells = []
+                for c in cells if isinstance(cells, list) else []:
+                    if not isinstance(c, dict):
+                        continue
+                    name = str(c.get("name", ""))
+                    if not machine_re.match(name):
+                        continue
+                    path = str(c.get("prefabAssetPath", ""))
+                    m = zone_re.search(path)
+                    zone = m.group(1) if m else "未分组"
+                    halls.setdefault(zone, []).append(name)
+            # Persist the parsed halls + the raw payload for later
+            # inspection / re-parse.
+            halls_path = ROOT / "configs" / "machine_halls.json"
+            halls_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "halls": halls,
+                "updated_at": utc_now(),
+                "source": url,
+                "raw_upstream": upstream_payload,
+            }
+            halls_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            return {
+                "halls": halls,
+                "hall_count": len(halls),
+                "machine_count": sum(len(v) for v in halls.values()),
+                "updated_at": payload["updated_at"],
+                "source": url,
+            }
+        finally:
+            ops.release()
+
     @app.get("/api/reports/stale-count")
     def stale_report_count() -> dict[str, Any]:
         """Fleet-wide staleness summary for the run-history banner.
