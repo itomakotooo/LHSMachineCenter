@@ -4,15 +4,13 @@ This file tracks executable next steps for the current phase.
 
 ## P0 (user-blocked)
 
-- [ ] **Surface new analyzable content to UI** (3 items remaining; 1
-      deferred with paytable). Each is standalone and adds value to
-      RTP interpretation:
-      - payline-structure classification (machine_label per machine)
-      - feature-vs-pay_id channel split (per-SpinType)
-      - feature-mode-rule-change flag (bonus ST line_ids differ
-        from paid ST)
-      Deferred (paytable-adjacent, user paused that track): wild
-      inventory + tiers + empirical stacking rule.
+- [x] **Surface new analyzable content to UI** (3 of 4 shipped; 1
+      deferred with paytable). Panel "支付线结构分类" in 调试机台 tab
+      now shows per-mode label + per-SpinType channel split +
+      feature-mode rule delta flag. Verified on M273: ST 117 (bonus)
+      adds line_id=-2 not present in ST 140 (paid). Deferred
+      (paytable-adjacent, user paused that track): wild inventory +
+      tiers + empirical stacking rule.
 
 - [ ] **Paytable auto-inference** — PAUSED. User said 2026-04-18
       "除非我主动提起，不做". Do NOT propose resuming; do NOT touch
@@ -66,6 +64,31 @@ This file tracks executable next steps for the current phase.
       handles the rest.
 
 ## Done Recently
+
+- [x] **Payline-structure classification surfaced to UI** (post
+      2026-04-18):
+      - New backend endpoint `GET /api/classifier/{machine}` reads
+        `dev_reports/_classify/all_verdicts_mode*.json` and returns
+        compact per-mode verdict (machine_label, paid_spin_type,
+        per_st_verdicts with channel, feature_delta_from_paid,
+        feature_tally_keys). 7 tests: happy path / per-mode shape /
+        feature-mode delta pass-through / machine-not-in-verdict /
+        missing classify dir / corrupted JSON skip / helper directly.
+      - New frontend panel "支付线结构分类" (paylineClassification
+        Panel) in 调试机台 tab renders 3 blocks:
+        (1) cross-mode label table (highlights current mode),
+        (2) per-SpinType channel split for current mode (pay_id /
+        FeatureWin aggregated / pick-em / etc),
+        (3) ⚠ feature-mode rule delta flag — red heading + added/
+        removed line_id table when bonus ST line_ids differ from
+        paid ST. M273 real-world verification: ST 117 (bonus) adds
+        line_id=-2 not in ST 140 (paid); the panel surfaces this.
+      - i18n keys added for ZH + EN (panelPaylineClassification,
+        classifyHead*, classifyCol*, classifyKind*, classifyDeltaHint).
+      - create_app gained optional classify_dir parameter so tests
+        can point at a tmp dir with fixture JSON.
+      - 343 pytest (+7) + 126 node:test green. Preview-verified on
+        M273 mode 1 run before commit.
 
 - [x] **BCM pairing schema v2 — per-mode** (post 2026-04-18):
       - Schema evolved `configs/bcm_pairings.json` from flat

@@ -145,6 +145,14 @@
             <div id="featureBreakdownInline" class="feature-inline-section"></div>
           </section>
 
+          <!-- Payline structure classification: per-mode label + channel
+               split + feature-mode rule delta. Fetched lazily from
+               /api/classifier/{machine} after the report loads. -->
+          <section class="panel payline-classification hidden" id="paylineClassificationPanel">
+            <h2 data-i18n="panelPaylineClassification">支付线结构分类</h2>
+            <div id="paylineClassificationBody"></div>
+          </section>
+
           <!-- Field Discovery: shows extra fields beyond baseline -->
           <section class="panel field-discovery hidden" id="fieldDiscoveryPanel">
             <h2 data-i18n="panelFieldDiscovery">字段发现</h2>

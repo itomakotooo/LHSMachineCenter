@@ -42,6 +42,10 @@ MODEL_CONFIG_PATH = STATE_DIR / "model_config.json"
 PROGRESS_DIR = STATE_DIR / "progress"
 REPORTS_ROOT = ROOT / "reports"
 CACHE_ROOT = ROOT / "cache" / "chunks"
+# Classifier dumps per-mode verdict JSONs under dev_reports/_classify/
+# during the data-layer deep dive. Gitignored; available only after
+# operator runs scripts/classify_payline_structure.py on the cache.
+CLASSIFY_DIR = ROOT / "dev_reports" / "_classify"
 MACHINES_CONFIG = ROOT / "configs" / "machines.json"
 SERVERS_CONFIG = ROOT / "configs" / "servers.json"
 ANALYZER = ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
@@ -1004,6 +1008,57 @@ def load_machines(
                 m["report_count"] = report_count
             return machines
     return [{"machine": "M14", "modes": [1], "category": "Normal", "report_count": 0}]
+
+
+def _load_classifier_verdict(
+    machine: str, classify_dir: Path = CLASSIFY_DIR,
+) -> dict[str, Any]:
+    """Per-mode payline-structure verdict for a machine.
+
+    Reads each ``all_verdicts_mode<N>.json`` under ``classify_dir``,
+    picks the entry for ``machine`` (if present), and returns a
+    compact per-mode summary for UI display:
+
+    * ``machine_label`` — "classic-payline [strict-ltr]" / "ways-pay" /
+      "hybrid (payline+board) [flexible]" / "no-wins"
+    * ``paid_spin_type`` — the inferred paid SpinType
+    * ``per_st_verdicts`` — per-SpinType channel ("pay_id" /
+      "FeatureWin aggregated" / etc) + classification bucket
+    * ``feature_delta_from_paid`` — per-bonus-SpinType added/removed
+      line_id sets when bonus mode's payline rules differ from paid
+      (flag for RTP interpretation)
+    * ``feature_tally_keys`` — list of upstream_feature_tally names
+      seen on this machine
+
+    Missing classifier output (dev_reports not populated, or
+    classifier never run) → empty ``modes`` dict. Endpoint stays 200
+    so UI can render "no data" gracefully instead of erroring.
+    """
+    modes: dict[str, dict[str, Any]] = {}
+    if not classify_dir.is_dir():
+        return {"machine": machine, "modes": modes}
+    for f in sorted(classify_dir.glob("all_verdicts_mode*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        mode = d.get("mode")
+        if not isinstance(mode, int):
+            continue
+        for v in d.get("verdicts") or []:
+            if v.get("machine") != machine:
+                continue
+            modes[str(mode)] = {
+                "machine_label": v.get("machine_label"),
+                "paid_spin_type": v.get("paid_spin_type"),
+                "all_resolved": v.get("all_resolved"),
+                "per_st_verdicts": v.get("per_st_verdicts") or {},
+                "feature_delta_from_paid": v.get("feature_delta_from_paid") or {},
+                "feature_tally_keys": v.get("feature_tally_keys") or [],
+                "grid": v.get("grid") or {},
+            }
+            break
+    return {"machine": machine, "modes": modes}
 
 
 def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
@@ -2842,6 +2897,7 @@ def create_app(
     cache_root: Path | None = None,
     machines_config: Path | None = None,
     analyzer_path: Path | None = None,
+    classify_dir: Path | None = None,
 ) -> FastAPI:
     """Build a FastAPI app with all stateful singletons scoped to this instance.
 
@@ -2862,6 +2918,7 @@ def create_app(
     mc = machines_config if machines_config is not None else MACHINES_CONFIG
     sc = SERVERS_CONFIG
     az = analyzer_path if analyzer_path is not None else ANALYZER
+    cd = classify_dir if classify_dir is not None else CLASSIFY_DIR
 
     store = StateStore(db_path)
     # Backfill achieved_rtp_pct / achieved_halfwidth_pp from on-disk
@@ -3012,6 +3069,16 @@ def create_app(
     def delete_machine_rawdata(machine: str, mode: int | None = None) -> dict[str, Any]:
         """Delete rawdata for a machine (all modes or specific mode)."""
         return delete_rawdata(machine, mode)
+
+    @app.get("/api/classifier/{machine}")
+    def get_classifier_verdict(machine: str) -> dict[str, Any]:
+        """Per-mode payline-structure classification + feature-vs-pay_id
+        channel split + feature-mode rule delta for a machine. Sourced
+        from ``dev_reports/_classify/all_verdicts_mode*.json`` (produced
+        by ``scripts/classify_payline_structure.py``). Missing output →
+        empty ``modes`` dict, UI renders a "classifier not run" notice.
+        """
+        return _load_classifier_verdict(machine, cd)
 
     @app.get("/api/batch-run/{batch_id}")
     def get_batch_run(batch_id: str) -> dict[str, Any]:

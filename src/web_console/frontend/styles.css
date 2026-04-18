@@ -1692,6 +1692,35 @@ button.small-btn.active, .small-btn.active {
   padding: 1px 5px;
   border-radius: 4px;
 }
+.payline-classification {
+  grid-column: span 6;
+}
+.payline-classification h3 {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  color: #334155;
+}
+.payline-classification h3.classify-warn {
+  color: #b91c1c;
+}
+.payline-classification .classify-current-row {
+  background: #f0fdf4;
+}
+.payline-classification .classify-current-tag {
+  font-size: 11px;
+  color: #059669;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.payline-classification .classify-expl {
+  color: #64748b;
+  font-size: 12px;
+}
+.payline-classification p.hint {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: #78350f;
+}
 
 .run-filter-banner {
   display: none;
@@ -1988,6 +2017,7 @@ tbody tr.active-row {
   .spin-types,
   .field-discovery,
   .machine-mechanics,
+  .payline-classification,
   .batch-progress,
   .machine-catalog,
   .run-history,

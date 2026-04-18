@@ -2290,6 +2290,151 @@ function renderMachineMechanics(summary) {
   body.innerHTML = html;
 }
 
+// Minimal HTML escape for strings that come from classifier output —
+// feature names / labels / explanations are machine-internal text and
+// generally safe, but we escape defensively to avoid surprises if the
+// classifier JSON ever carries unexpected content.
+function _escHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+// Render the payline-structure classification panel. Data comes from
+// /api/classifier/{machine}; three sub-blocks:
+//   1. cross-mode labels (this machine classified per mode)
+//   2. per-SpinType channel split for the CURRENT mode (which win
+//      channel — pay_id / FeatureWin aggregate / pick-em selector —
+//      accounts for wins in each SpinType)
+//   3. feature-mode rule delta flag: bonus SpinTypes whose line_id
+//      set differs from paid ST (e.g. line_id=-2 appearing only in
+//      bonus rounds, indicating distinct bonus-mode payline rules)
+// Missing classifier output / fetch failure → hide panel silently.
+async function renderPaylineClassification(summary) {
+  const panel = byId("paylineClassificationPanel");
+  if (!panel) return;
+  const machine = (summary || {}).machine;
+  const currentMode = Number((summary || {}).mode);
+  if (!machine) { panel.classList.add("hidden"); return; }
+
+  let data;
+  try {
+    data = await apiGet(`/api/classifier/${encodeURIComponent(machine)}`);
+  } catch (_err) {
+    panel.classList.add("hidden");
+    return;
+  }
+  const modes = (data && data.modes) || {};
+  if (!Object.keys(modes).length) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+  const body = byId("paylineClassificationBody");
+
+  // (1) cross-mode label table
+  const modeRows = Object.entries(modes)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([m, v]) => {
+      const isCurrent = Number(m) === currentMode;
+      const label = _escHtml(v.machine_label || "—");
+      const paidSt = v.paid_spin_type != null ? v.paid_spin_type : "—";
+      const tally = _escHtml((v.feature_tally_keys || []).join(", ") || "—");
+      const curTag = isCurrent
+        ? ` <span class="classify-current-tag">(${_escHtml(fmt("classifyCurrent"))})</span>`
+        : "";
+      return `<tr${isCurrent ? ' class="classify-current-row"' : ""}>`
+        + `<td>${m}${curTag}</td>`
+        + `<td>${label}</td>`
+        + `<td>${paidSt}</td>`
+        + `<td>${tally}</td>`
+        + `</tr>`;
+    })
+    .join("");
+
+  // (2) per-SpinType channel split for CURRENT mode
+  const cur = modes[String(currentMode)];
+  let channelHtml = "";
+  if (cur && cur.per_st_verdicts) {
+    const stRows = Object.entries(cur.per_st_verdicts)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([st, v]) => {
+        const kind = v.is_paid
+          ? _escHtml(fmt("classifyKindPaid"))
+          : _escHtml(fmt("classifyKindFree"));
+        const bucket = _escHtml((v.classification || {}).bucket || "—");
+        const channel = _escHtml(v.channel || "—");
+        const expl = _escHtml(v.explanation || "");
+        return `<tr>`
+          + `<td>${_escHtml(st)}</td>`
+          + `<td>${kind}</td>`
+          + `<td>${bucket}</td>`
+          + `<td>${channel}</td>`
+          + `<td class="classify-expl">${expl}</td>`
+          + `</tr>`;
+      })
+      .join("");
+    channelHtml = `
+      <h3>${_escHtml(fmt("classifyHeadChannel"))}</h3>
+      <table class="drilldown-table">
+        <thead><tr>
+          <th>${_escHtml(fmt("classifyColSpinType"))}</th>
+          <th>${_escHtml(fmt("classifyColBehavior"))}</th>
+          <th>${_escHtml(fmt("classifyColClass"))}</th>
+          <th>${_escHtml(fmt("classifyColChannel"))}</th>
+          <th>${_escHtml(fmt("classifyColExpl"))}</th>
+        </tr></thead>
+        <tbody>${stRows}</tbody>
+      </table>`;
+  }
+
+  // (3) feature-mode rule delta flag
+  let deltaHtml = "";
+  if (cur && cur.feature_delta_from_paid
+      && Object.keys(cur.feature_delta_from_paid).length) {
+    const paidSt = cur.paid_spin_type != null ? cur.paid_spin_type : "?";
+    const hint = fmt("classifyDeltaHint").replace("{paid}", String(paidSt));
+    const rows = Object.entries(cur.feature_delta_from_paid)
+      .map(([st, delta]) => {
+        const added = (delta.added || []).join(", ") || "—";
+        const removed = (delta.removed || []).join(", ") || "—";
+        return `<tr><td>${_escHtml(st)}</td>`
+          + `<td>${_escHtml(added)}</td>`
+          + `<td>${_escHtml(removed)}</td></tr>`;
+      })
+      .join("");
+    deltaHtml = `
+      <h3 class="classify-warn">⚠ ${_escHtml(fmt("classifyHeadDelta"))}</h3>
+      <p class="hint">${_escHtml(hint)}</p>
+      <table class="drilldown-table">
+        <thead><tr>
+          <th>${_escHtml(fmt("classifyColSpinType"))}</th>
+          <th>${_escHtml(fmt("classifyColAdded"))}</th>
+          <th>${_escHtml(fmt("classifyColRemoved"))}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  body.innerHTML = `
+    <h3>${_escHtml(fmt("classifyHeadCrossMode"))}</h3>
+    <table class="drilldown-table">
+      <thead><tr>
+        <th>${_escHtml(fmt("classifyColMode"))}</th>
+        <th>${_escHtml(fmt("classifyColLabel"))}</th>
+        <th>${_escHtml(fmt("classifyColPaidSt"))}</th>
+        <th>${_escHtml(fmt("classifyColTally"))}</th>
+      </tr></thead>
+      <tbody>${modeRows}</tbody>
+    </table>
+    ${channelHtml}
+    ${deltaHtml}
+  `;
+}
+
 function renderFieldDiscovery(summary) {
   const panel = byId("fieldDiscoveryPanel");
   if (!panel) return;
@@ -2840,6 +2985,11 @@ async function refreshCurrentRun() {
     renderRtpClampWarning(s);
     renderSpinTypeBreakdown(s);
     renderFeatureBreakdownPanel(s);
+    // Classifier panel needs its own API call; fire-and-forget so the
+    // rest of the debug tab isn't blocked on a second network round-
+    // trip. Hidden automatically when the classifier output doesn't
+    // cover this machine.
+    renderPaylineClassification(s);
     renderFieldDiscovery(s);
     renderMachineMechanics(s);
     renderBonusChainDynamicsPanel(s);
