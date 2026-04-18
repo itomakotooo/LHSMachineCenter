@@ -35,6 +35,7 @@ class LiveServer:
     state_dir: Path
     reports_dir: Path
     cache_dir: Path
+    rawdata_dir: Path
     db_path: Path
 
 
@@ -48,6 +49,8 @@ def live_server(tmp_path_factory: pytest.TempPathFactory):
     reports_dir.mkdir()
     cache_dir = base / "cache" / "chunks"
     cache_dir.mkdir(parents=True)
+    rawdata_dir = base / "rawdata"
+    rawdata_dir.mkdir()
     db_path = state_dir / "console.db"
 
     port = _free_port()
@@ -56,6 +59,7 @@ def live_server(tmp_path_factory: pytest.TempPathFactory):
         "SLOT_E2E_STATE_DIR": str(state_dir),
         "SLOT_E2E_REPORTS": str(reports_dir),
         "SLOT_E2E_CACHE": str(cache_dir),
+        "SLOT_E2E_RAWDATA": str(rawdata_dir),
         # Shrink risk thresholds so a 1KB file triggers low and a 10KB file
         # triggers high. Defaults (512 MB / 2 GB) are unrealistic for e2e.
         "SLOT_RISK_MEDIUM_BYTES": "2048",
@@ -106,6 +110,7 @@ def live_server(tmp_path_factory: pytest.TempPathFactory):
         state_dir=state_dir,
         reports_dir=reports_dir,
         cache_dir=cache_dir,
+        rawdata_dir=rawdata_dir,
         db_path=db_path,
     )
     try:
@@ -128,18 +133,29 @@ def console_page(live_server, page):
 
 @pytest.fixture
 def clean_cache(live_server):
-    """Delete any leftover files from a prior test in this session."""
-    for f in list(live_server.cache_dir.iterdir()):
-        try:
-            f.unlink()
-        except OSError:
-            pass
+    """Delete any leftover files from a prior test in this session.
+
+    Cleans both the legacy cache/chunks root (still exposed for back-
+    compat) and the rawdata root (the authoritative chunk location
+    that /api/cache/cleanup now operates on).
+    """
+    import shutil
+
+    def _wipe(d: Path) -> None:
+        for entry in list(d.iterdir()):
+            try:
+                if entry.is_file():
+                    entry.unlink()
+                else:
+                    shutil.rmtree(entry, ignore_errors=True)
+            except OSError:
+                pass
+
+    _wipe(live_server.cache_dir)
+    _wipe(live_server.rawdata_dir)
     yield live_server.cache_dir
-    for f in list(live_server.cache_dir.iterdir()):
-        try:
-            f.unlink()
-        except OSError:
-            pass
+    _wipe(live_server.cache_dir)
+    _wipe(live_server.rawdata_dir)
 
 
 @pytest.fixture

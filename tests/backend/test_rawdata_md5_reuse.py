@@ -189,18 +189,20 @@ class TestCheckRawdataStatus:
 
 
 class TestDeleteRawdata:
-    def test_delete_specific_mode(self, tmp_path):
+    def test_force_delete_specific_mode(self, tmp_path):
+        """force=True takes the legacy nuclear path — whole mode dir
+        removed regardless of retention."""
         (tmp_path / "M1" / "mode_1").mkdir(parents=True)
         (tmp_path / "M1" / "mode_2").mkdir(parents=True)
-        result = delete_rawdata("M1", mode=1, rawdata_root=tmp_path)
+        result = delete_rawdata("M1", mode=1, rawdata_root=tmp_path, force=True)
         assert result["ok"] and result["deleted"]
         assert not (tmp_path / "M1" / "mode_1").exists()
         assert (tmp_path / "M1" / "mode_2").exists()
 
-    def test_delete_all_modes(self, tmp_path):
+    def test_force_delete_all_modes(self, tmp_path):
         (tmp_path / "M1" / "mode_1").mkdir(parents=True)
         (tmp_path / "M1" / "mode_2").mkdir(parents=True)
-        result = delete_rawdata("M1", rawdata_root=tmp_path)
+        result = delete_rawdata("M1", rawdata_root=tmp_path, force=True)
         assert result["ok"] and result["deleted"]
         assert not (tmp_path / "M1").exists()
 
@@ -208,3 +210,15 @@ class TestDeleteRawdata:
         result = delete_rawdata("M999", rawdata_root=tmp_path)
         assert result["ok"]
         assert result["deleted"] is False
+
+    def test_default_safe_delete_empty_dir_is_noop(self, tmp_path):
+        """Without force, an empty mode dir has nothing to reclaim.
+        The dir sticks around (will get recreated by next sample
+        anyway); it's not the classifier's job to tidy empty dirs."""
+        (tmp_path / "M1" / "mode_1").mkdir(parents=True)
+        result = delete_rawdata("M1", mode=1, rawdata_root=tmp_path)
+        assert result["ok"]
+        assert result["deleted_chunks"] == 0
+        assert result["kept_chunks"] == 0
+        # Empty dir preserved (no chunks to reclaim in safe mode)
+        assert (tmp_path / "M1" / "mode_1").exists()

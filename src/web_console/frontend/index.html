@@ -418,6 +418,21 @@
               <span id="reportCleanupResult" class="muted"></span>
             </div>
           </section>
+
+          <!-- System settings: operator-tunable knobs persisted in
+               state/console/settings.json. Currently one knob
+               (chunk retention quota). More join this panel as
+               future settings come online. -->
+          <section class="panel system-settings">
+            <h2 data-i18n="panelSystemSettings">系统设置</h2>
+            <div class="system-settings-grid">
+              <label for="settingMinRetention" data-i18n="settingMinRetentionLabel">每 (机台, mode) 最低保留 spins</label>
+              <input type="number" id="settingMinRetention" min="0" step="10000" value="100000">
+              <button id="saveSettingsBtn" class="primary-btn" data-i18n="btnSaveSettings">保存</button>
+              <span class="settings-hint" data-i18n="settingMinRetentionHint">超出部分 chunk 才会被 UI「删除可回收」+ 自动清理回收，保底块永不被自动删除</span>
+            </div>
+            <div id="settingsSaveMeta" class="meta muted" style="margin-top: 6px;"></div>
+          </section>
         </div>
       </section>
 

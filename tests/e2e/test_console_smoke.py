@@ -75,7 +75,27 @@ def test_boot_and_language_switch(console_page):
     assert title_back and "目标 CI 半宽" in title_back
 
 
-def test_cache_cleanup_low_risk_flow(console_page, clean_cache, clean_runs):
+def _write_rawdata_chunk(mode_dir: Path, idx: int, pad_bytes: int) -> Path:
+    """Write an envelope-shaped chunk padded to approximately pad_bytes
+    total so e2e risk-tier checks hit the intended threshold. Retention
+    is reset to 0 by the caller so every chunk is deletable."""
+    import json
+    mode_dir.mkdir(parents=True, exist_ok=True)
+    padding = "x" * max(0, pad_bytes - 300)  # rough envelope overhead
+    p = mode_dir / f"chunk_{idx:04d}.json"
+    p.write_text(json.dumps({
+        "_cache_version": 3, "_machine": "M14", "_mode": 1, "_bet": 1000,
+        "_spin_times": 1000, "_robot_count": 1, "_chunk_index": idx,
+        "_saved_at": "2026-04-01T00:00:00Z",
+        "_config_md5": "", "_code_md5": "",
+        "_padding": padding, "response": [],
+    }), encoding="utf-8")
+    return p
+
+
+def test_cache_cleanup_low_risk_flow(console_page, clean_cache, clean_runs,
+                                      live_server):
+    import httpx
     page = console_page
     _wait_for_pure_loaded(page)
 
@@ -83,11 +103,19 @@ def test_cache_cleanup_low_risk_flow(console_page, clean_cache, clean_runs):
     page.click("#tabBtnManage")
     page.wait_for_selector("#cacheRefreshBtn", state="visible")
 
-    # Write 1 KB so it sits below the e2e medium threshold (2048).
-    cache_dir = clean_cache
-    (cache_dir / "low.bin").write_bytes(b"x" * 1024)
+    # Retention 0 → every chunk we drop becomes immediately deletable
+    # (reclaimable), so risk tier tracks actual on-disk bytes.
+    r = httpx.put(
+        f"{live_server.base_url}/api/settings",
+        json={"min_retention_spins": 0}, timeout=5,
+    )
+    assert r.status_code == 200
 
-    # Refresh cache panel and wait for the meta to mention 'low'.
+    # Single ~1KB chunk → reclaimable sits below e2e medium threshold (2048).
+    _write_rawdata_chunk(
+        live_server.rawdata_dir / "M14" / "mode_1", 1, pad_bytes=1024,
+    )
+
     page.click("#cacheRefreshBtn")
     page.wait_for_function(
         "() => /low|低/.test(document.getElementById('cacheRiskMeta').textContent)",
@@ -103,29 +131,53 @@ def test_cache_cleanup_low_risk_flow(console_page, clean_cache, clean_runs):
     page.on("dialog", _on_dialog)
     page.click("#cacheCleanupBtn")
 
-    # File deletion happens inside an async POST; poll until gone.
+    # Poll /api/rawdata for chunk-count === 0 (more reliable than
+    # cache/status.file_count which counts _index.json too; that
+    # file is rewritten by cleanup post-delete).
     page.wait_for_function(
-        "async () => { const r = await fetch('/api/cache/status').then(r => r.json()); "
-        "return r.file_count === 0; }",
+        "async () => { const r = await fetch('/api/rawdata/M14').then(r => r.json()); "
+        "const m1 = r.modes && r.modes['1']; "
+        "if (!m1) return true; "
+        "const c = m1.classified || {}; "
+        "return (c.kept_chunks + c.deletable_chunks + c.stale_chunks) === 0; }",
         timeout=5000,
     )
 
     # Low risk should produce exactly one confirm dialog (no DELETE token prompt).
     assert len(dialogs) == 1
     assert dialogs[0]["type"] == "confirm"
-    assert not (cache_dir / "low.bin").exists()
+    # Verify via the server classifier (sidesteps Windows-FS Path.exists
+    # staleness on a just-deleted file).
+    import httpx as _httpx
+    final_rd = _httpx.get(f"{live_server.base_url}/api/rawdata/M14").json()
+    final_m1 = (final_rd.get("modes") or {}).get("1") or {}
+    final_cls = final_m1.get("classified") or {}
+    assert (
+        final_cls.get("kept_chunks", 0)
+        + final_cls.get("deletable_chunks", 0)
+        + final_cls.get("stale_chunks", 0)
+    ) == 0
 
 
-def test_cache_cleanup_high_risk_requires_token(console_page, clean_cache, clean_runs):
+def test_cache_cleanup_high_risk_requires_token(console_page, clean_cache,
+                                                 clean_runs, live_server):
+    import httpx
     page = console_page
     _wait_for_pure_loaded(page)
 
     page.click("#tabBtnManage")
     page.wait_for_selector("#cacheRefreshBtn", state="visible")
 
-    cache_dir = clean_cache
-    # 10 KB > the e2e high threshold (8192).
-    (cache_dir / "big.bin").write_bytes(b"y" * 10_000)
+    r = httpx.put(
+        f"{live_server.base_url}/api/settings",
+        json={"min_retention_spins": 0}, timeout=5,
+    )
+    assert r.status_code == 200
+
+    # ~10 KB chunk > e2e high threshold (8192).
+    chunk = _write_rawdata_chunk(
+        live_server.rawdata_dir / "M14" / "mode_1", 1, pad_bytes=10_000,
+    )
 
     page.click("#cacheRefreshBtn")
     page.wait_for_function(
@@ -154,9 +206,9 @@ def test_cache_cleanup_high_risk_requires_token(console_page, clean_cache, clean
 
     assert any(d["type"] == "confirm" for d in dialogs_wrong)
     assert any(d["type"] == "prompt" for d in dialogs_wrong)
-    assert (cache_dir / "big.bin").exists(), "wrong token must NOT delete the file"
+    assert chunk.exists(), "wrong token must NOT delete the chunk"
 
-    # Second attempt: correct DELETE token -> file removed.
+    # Second attempt: correct DELETE token -> chunk removed.
     dialogs_right: list[dict] = []
 
     def _right(dialog):
@@ -170,16 +222,21 @@ def test_cache_cleanup_high_risk_requires_token(console_page, clean_cache, clean
 
     page.on("dialog", _right)
     page.click("#cacheCleanupBtn")
+    # Wait for the chunk to be cleared via the server's classifier view
+    # (sidesteps Windows Path.exists staleness and the _index.json
+    # reappearing right after delete).
     page.wait_for_function(
-        "async () => { const r = await fetch('/api/cache/status').then(r => r.json()); "
-        "return r.file_count === 0; }",
+        "async () => { const r = await fetch('/api/rawdata/M14').then(r => r.json()); "
+        "const m1 = r.modes && r.modes['1']; "
+        "if (!m1) return true; "
+        "const c = m1.classified || {}; "
+        "return (c.kept_chunks + c.deletable_chunks + c.stale_chunks) === 0; }",
         timeout=5000,
     )
     page.remove_listener("dialog", _right)
 
     assert any(d["type"] == "confirm" for d in dialogs_right)
     assert any(d["type"] == "prompt" for d in dialogs_right)
-    assert not (cache_dir / "big.bin").exists()
 
 
 @_obsolete_post_restructure

@@ -43,6 +43,16 @@ def tmp_cache(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def tmp_rawdata(tmp_path: Path) -> Path:
+    """Tmp rawdata root — isolates chunk-level tests from the real
+    dev_rawdata/ tree. Plumbed through app_factory so create_app sees
+    it as RAWDATA_ROOT override."""
+    d = tmp_path / "rawdata"
+    d.mkdir()
+    return d
+
+
+@pytest.fixture
 def fake_machines(tmp_path: Path) -> Path:
     p = tmp_path / "machines.json"
     p.write_text('{"machines":[{"machine":"M14","modes":[1]}]}', encoding="utf-8")
@@ -132,6 +142,7 @@ def app_factory(
     tmp_state_dir: Path,
     tmp_reports: Path,
     tmp_cache: Path,
+    tmp_rawdata: Path,
     fake_machines: Path,
     fake_analyzer: Path,
     stub_popen,
@@ -140,8 +151,8 @@ def app_factory(
     """Return a builder that constructs an isolated FastAPI app on demand.
 
     The builder stores convenience handles on itself (cache_dir, db_path,
-    stub_popen, state_dir) so tests can poke disk state directly without
-    re-deriving the paths.
+    stub_popen, state_dir, rawdata_dir) so tests can poke disk state
+    directly without re-deriving the paths.
     """
     monkeypatch.setattr(
         "src.web_console.backend.app._default_popen_factory",
@@ -159,9 +170,11 @@ def app_factory(
             cache_root=tmp_cache,
             machines_config=fake_machines,
             analyzer_path=fake_analyzer,
+            rawdata_root=tmp_rawdata,
         )
 
     _make.cache_dir = tmp_cache         # type: ignore[attr-defined]
+    _make.rawdata_dir = tmp_rawdata     # type: ignore[attr-defined]
     _make.db_path = tmp_state_dir / "console.db"   # type: ignore[attr-defined]
     _make.state_dir = tmp_state_dir     # type: ignore[attr-defined]
     _make.reports_dir = tmp_reports     # type: ignore[attr-defined]

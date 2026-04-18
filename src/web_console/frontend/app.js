@@ -915,32 +915,88 @@ async function _loadRawdataSection(machineName) {
       section.innerHTML = `<div class="rawdata-header">📦 本地 Rawdata</div><div class="muted">无本地 rawdata</div>`;
       return;
     }
+    // Each mode gets a card showing:
+    //   - classified summary (kept / deletable / stale counts + spins)
+    //   - per-version breakdown (current server version vs outdated)
+    //   - Safe delete button (respects retention) + Force delete (nuclear)
+    const fInt = (n) => Number(n || 0).toLocaleString();
+    const fMb = (n) => {
+      const mb = Number(n || 0);
+      return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+    };
     const rows = modes.sort((a, b) => Number(a[0]) - Number(b[0])).map(([mode, st]) => {
-      const statusIcon = st.usable_chunks > 0 ? "✓" : "✗";
-      const statusCls = st.usable_chunks > 0 ? "md5-match" : "md5-mismatch";
+      const cls = st.classified || {};
+      const versions = Array.isArray(st.versions) ? st.versions : [];
       const unverifiable = st.unverifiable ? " (无上游 MD5 参考)" : "";
+      const retention = cls.min_retention_spins ?? 100000;
+      const keptSpins = fInt(cls.kept_spins);
+      const keptChunks = cls.kept_chunks ?? 0;
+      const delChunks = cls.deletable_chunks ?? 0;
+      const delSpins = fInt(cls.deletable_spins);
+      const staleChunks = cls.stale_chunks ?? 0;
+      const staleSpins = fInt(cls.stale_spins);
+      const versionRows = versions.map((v) => {
+        const tag = v.is_current
+          ? `<span class="rawdata-version-tag current">当前版本</span>`
+          : `<span class="rawdata-version-tag old">服务器旧版 (stale)</span>`;
+        const cfgShort = (v.config_md5 || "").slice(0, 8) || "—";
+        const codeShort = (v.code_md5 || "").slice(0, 8) || "—";
+        const total = (v.kept_chunks || 0) + (v.deletable_chunks || 0) + (v.stale_chunks || 0);
+        return `<div class="rawdata-version-row">
+          ${tag}
+          <code>cfg=${cfgShort}</code> <code>code=${codeShort}</code>
+          · ${total} chunks
+          · kept ${v.kept_chunks || 0} / deletable ${v.deletable_chunks || 0}${v.stale_chunks ? ` / stale ${v.stale_chunks}` : ""}
+        </div>`;
+      }).join("");
+      const delDisabled = (delChunks + staleChunks) === 0 ? "disabled" : "";
       return `<div class="rawdata-row">
-        <span class="${statusCls}">${statusIcon}</span>
-        <strong>mode ${mode}</strong>
-        · ${st.usable_chunks} 可用 chunks${st.mismatch_chunks > 0 ? ` (${st.mismatch_chunks} 过期)` : ""}
-        · ${st.total_size_mb} MB${unverifiable}
-        <button class="small-btn rawdata-delete-btn" data-machine="${machineName}" data-mode="${mode}">删除</button>
+        <div class="rawdata-row-head">
+          <strong>mode ${mode}</strong>
+          · 保底 ${keptChunks} chunks / ${keptSpins} spins (≥${fInt(retention)})
+          ${delChunks > 0 ? `· 可回收 ${delChunks} chunks / ${delSpins} spins` : ""}
+          ${staleChunks > 0 ? `· <span class="rawdata-stale">过期 ${staleChunks} / ${staleSpins}</span>` : ""}
+          · ${fMb(st.total_size_mb)}${unverifiable}
+        </div>
+        <div class="rawdata-versions">${versionRows || '<span class="muted">无 chunk</span>'}</div>
+        <div class="rawdata-row-actions">
+          <button class="small-btn rawdata-delete-btn" data-machine="${machineName}" data-mode="${mode}" ${delDisabled} title="删除可回收 + 过期 chunks，保留 baseline">删除可回收</button>
+          <button class="small-btn danger-btn rawdata-force-delete-btn" data-machine="${machineName}" data-mode="${mode}" title="完全删除 (含 baseline)">完全删除</button>
+        </div>
       </div>`;
     }).join("");
     section.innerHTML = `<div class="rawdata-header">📦 本地 Rawdata (采样时会自动复用)</div>${rows}
-      <div style="margin-top:6px"><button class="small-btn rawdata-delete-all-btn" data-machine="${machineName}">删除全部 mode</button></div>`;
+      <div class="rawdata-all-actions">
+        <button class="small-btn rawdata-delete-all-btn" data-machine="${machineName}" title="删除所有 mode 的可回收 + 过期 chunks">删除全部 mode (保留 baseline)</button>
+        <button class="small-btn danger-btn rawdata-force-delete-all-btn" data-machine="${machineName}" title="完全删除所有 mode">完全删除所有 mode</button>
+      </div>`;
 
     section.querySelectorAll(".rawdata-delete-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const m = btn.dataset.machine, mo = btn.dataset.mode;
-        if (!confirm(`删除 ${m} mode ${mo} 的本地 rawdata？`)) return;
+        if (!confirm(`删除 ${m} mode ${mo} 的可回收 + 过期 chunks？baseline 保留。`)) return;
         await apiDelete(`/api/rawdata/${m}?mode=${mo}`);
         _loadRawdataSection(machineName);
       });
     });
+    section.querySelectorAll(".rawdata-force-delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const m = btn.dataset.machine, mo = btn.dataset.mode;
+        const tok = prompt(`完全删除 ${m} mode ${mo} 的所有 rawdata (含 baseline)？输入 DELETE 确认：`);
+        if (tok !== "DELETE") return;
+        await apiDelete(`/api/rawdata/${m}?mode=${mo}&force=true`);
+        _loadRawdataSection(machineName);
+      });
+    });
     section.querySelector(".rawdata-delete-all-btn")?.addEventListener("click", async () => {
-      if (!confirm(`删除 ${machineName} 的所有本地 rawdata？`)) return;
+      if (!confirm(`删除 ${machineName} 所有 mode 的可回收 chunks？baseline 保留。`)) return;
       await apiDelete(`/api/rawdata/${machineName}`);
+      _loadRawdataSection(machineName);
+    });
+    section.querySelector(".rawdata-force-delete-all-btn")?.addEventListener("click", async () => {
+      const tok = prompt(`完全删除 ${machineName} 所有 rawdata (含 baseline)？输入 DELETE 确认：`);
+      if (tok !== "DELETE") return;
+      await apiDelete(`/api/rawdata/${machineName}?force=true`);
       _loadRawdataSection(machineName);
     });
   } catch (e) {
@@ -3355,6 +3411,46 @@ function bindEvents() {
       await refreshCache();
     }).catch((e) => alert(String(e.message || e)))
   );
+
+  // System settings: load current value on page init, save via PUT
+  // on button click. Kept inline rather than a separate fetch/render
+  // function because it's one scalar — a function would be overkill.
+  (async () => {
+    try {
+      const current = await apiGet("/api/settings");
+      const input = byId("settingMinRetention");
+      if (input && current && typeof current.min_retention_spins === "number") {
+        input.value = String(current.min_retention_spins);
+      }
+    } catch (_err) {
+      // Non-fatal: defaults to placeholder value 100000 in the HTML.
+    }
+  })();
+  byId("saveSettingsBtn")?.addEventListener("click", async () => {
+    const meta = byId("settingsSaveMeta");
+    try {
+      const value = Number(byId("settingMinRetention").value);
+      if (!Number.isFinite(value) || value < 0) {
+        if (meta) meta.textContent = fmt("settingsSaveError", {
+          error: "value must be a non-negative integer",
+        });
+        return;
+      }
+      const resp = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ min_retention_spins: Math.trunc(value) }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${resp.status}`);
+      }
+      const saved = await resp.json();
+      if (meta) meta.textContent = fmt("settingsSaved", { value: saved.min_retention_spins });
+    } catch (err) {
+      if (meta) meta.textContent = fmt("settingsSaveError", { error: String(err.message || err) });
+    }
+  });
 
   // --- batch selection ---
   byId("selectAllRuns").addEventListener("change", (e) => {

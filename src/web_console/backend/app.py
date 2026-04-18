@@ -42,6 +42,11 @@ MODEL_CONFIG_PATH = STATE_DIR / "model_config.json"
 PROGRESS_DIR = STATE_DIR / "progress"
 REPORTS_ROOT = ROOT / "reports"
 CACHE_ROOT = ROOT / "cache" / "chunks"
+# Default minimum chunks retention per (machine, mode): below this
+# many spins, chunks are protected from both UI "delete" and auto-
+# cleanup. Operator-tunable via /api/settings; persisted in
+# state/console/settings.json.
+_RAWDATA_MIN_RETENTION_SPINS_DEFAULT = 100_000
 # Classifier dumps per-mode verdict JSONs under dev_reports/_classify/
 # during the data-layer deep dive. Gitignored; available only after
 # operator runs scripts/classify_payline_structure.py on the cache.
@@ -450,40 +455,267 @@ def check_rawdata_status(
     }
 
 
+def _load_settings(settings_path: Path) -> dict[str, Any]:
+    """Read operator-tunable settings from disk. Missing / malformed
+    file → returns defaults. Callers read through here on each access
+    so a settings update via /api/settings takes effect immediately.
+    """
+    defaults = {"min_retention_spins": _RAWDATA_MIN_RETENTION_SPINS_DEFAULT}
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return defaults
+    if not isinstance(data, dict):
+        return defaults
+    out = dict(defaults)
+    mrs = data.get("min_retention_spins")
+    if isinstance(mrs, (int, float)) and mrs >= 0:
+        out["min_retention_spins"] = int(mrs)
+    return out
+
+
+def _save_settings(settings_path: Path, data: dict[str, Any]) -> None:
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = settings_path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(tmp, settings_path)
+
+
+def _peek_envelope_scalars(path: Path) -> dict[str, Any] | None:
+    """Extract only the envelope's top-level scalar fields without
+    fully parsing the (potentially 70MB+) ``response`` array.
+
+    Chunks are written as ``{..., "response": [...]}`` with the scalar
+    fields preceding ``response``. Reading the first ~2 KB of the file
+    and regex-matching the fields we care about (_spin_times,
+    _config_md5, _code_md5) turns a 5-10 second full-parse into a
+    sub-millisecond read. Falls back to full parse only on mismatch.
+
+    Returns None on read / parse failure so caller can treat the chunk
+    as unreadable (stale) rather than crashing the whole classification.
+    """
+    try:
+        with path.open("rb") as f:
+            head = f.read(4096)
+    except OSError:
+        return None
+    try:
+        text = head.decode("utf-8", errors="replace")
+    except UnicodeDecodeError:
+        return None
+    # Simple regex extraction — envelope JSON is not adversarial and
+    # the scalars we want are simple quoted/integer values.
+    import re as _re
+    def _grab_str(key: str) -> str:
+        m = _re.search(r'"' + _re.escape(key) + r'"\s*:\s*"([^"]*)"', text)
+        return m.group(1) if m else ""
+    def _grab_int(key: str) -> int | None:
+        m = _re.search(r'"' + _re.escape(key) + r'"\s*:\s*(-?\d+)', text)
+        return int(m.group(1)) if m else None
+    spin_times = _grab_int("_spin_times")
+    cfg = _grab_str("_config_md5")
+    code = _grab_str("_code_md5")
+    if spin_times is None and not cfg and not code:
+        # Envelope may not fit in first 4KB (unusual) — caller can
+        # fall back to full parse.
+        return None
+    return {"_spin_times": spin_times or 0,
+            "_config_md5": cfg, "_code_md5": code}
+
+
+def _classify_chunks(
+    machine: str,
+    mode: int,
+    rawdata_root: Path,
+    machines_config: Path,
+    min_retention_spins: int,
+) -> dict[str, Any]:
+    """Partition chunks of (machine, mode) into kept / deletable / stale.
+
+    * **stale** — envelope ``_config_md5`` / ``_code_md5`` differ from
+      the current machines.json values (server-side machine updated
+      since sampling; analytical value is zero). Always first on the
+      chopping block; never contribute to the kept quota.
+    * **kept** — md5 valid, first chunks in ``chunk_index`` order
+      whose cumulative ``_spin_times`` reaches ``min_retention_spins``
+      (inclusive of the chunk that crosses the threshold). These are
+      protected from UI delete + auto-cleanup.
+    * **deletable** — md5 valid, above the retention quota. Removable
+      by manual delete (default) or auto-cleanup (oldest mtime first).
+
+    If total valid spins < min_retention_spins, every valid chunk is
+    kept (quota not reached). In prod this only matters before
+    enough sampling has accumulated.
+
+    Returns ``{kept, deletable, stale, kept_spins, deletable_spins,
+    stale_spins, upstream_config_md5, upstream_code_md5}`` where each
+    group is a list of dicts ``{path, spins, mtime, config_md5,
+    code_md5}``.
+    """
+    mode_dir = rawdata_root / machine / f"mode_{mode}"
+    empty = {
+        "kept": [], "deletable": [], "stale": [],
+        "kept_spins": 0, "deletable_spins": 0, "stale_spins": 0,
+        "upstream_config_md5": "", "upstream_code_md5": "",
+    }
+    if not mode_dir.is_dir():
+        return empty
+    up_config, up_code = _get_machine_md5(machine, machines_config)
+    empty["upstream_config_md5"] = up_config
+    empty["upstream_code_md5"] = up_code
+    unverifiable = not up_config and not up_code
+    # Sort by chunk_index (filename order) so "kept" walks from oldest
+    # baseline forward — deterministic regardless of mtime jitter.
+    chunks = sorted(mode_dir.glob("chunk_*.json"))
+    if not chunks:
+        return empty
+
+    kept: list[dict[str, Any]] = []
+    deletable: list[dict[str, Any]] = []
+    stale: list[dict[str, Any]] = []
+    kept_spins = 0
+    deletable_spins = 0
+    stale_spins = 0
+
+    for p in chunks:
+        data = _peek_envelope_scalars(p)
+        if data is None:
+            # Peek failed (tiny / corrupted / unusual envelope); fall
+            # back to full parse. If that fails too, treat as stale so
+            # auto-cleanup reclaims it rather than leaving corruption.
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                stale.append({
+                    "path": str(p), "spins": 0,
+                    "mtime": p.stat().st_mtime if p.exists() else 0,
+                    "config_md5": "", "code_md5": "",
+                })
+                continue
+        cfg = str(data.get("_config_md5", ""))
+        code = str(data.get("_code_md5", ""))
+        spins = int(data.get("_spin_times") or 0)
+        mtime = p.stat().st_mtime
+        md5_ok = unverifiable or (cfg == up_config and code == up_code and (cfg or code))
+        entry = {"path": str(p), "spins": spins, "mtime": mtime,
+                 "config_md5": cfg, "code_md5": code}
+        if not md5_ok:
+            stale.append(entry)
+            stale_spins += spins
+            continue
+        # md5 valid: fill kept quota first, then deletable
+        if kept_spins < min_retention_spins:
+            kept.append(entry)
+            kept_spins += spins
+        else:
+            deletable.append(entry)
+            deletable_spins += spins
+
+    return {
+        "kept": kept, "deletable": deletable, "stale": stale,
+        "kept_spins": kept_spins, "deletable_spins": deletable_spins,
+        "stale_spins": stale_spins,
+        "upstream_config_md5": up_config, "upstream_code_md5": up_code,
+    }
+
+
 def delete_rawdata(
     machine: str,
     mode: int | None = None,
     rawdata_root: Path | None = None,
+    machines_config: Path | None = None,
+    min_retention_spins: int = _RAWDATA_MIN_RETENTION_SPINS_DEFAULT,
+    force: bool = False,
 ) -> dict[str, Any]:
-    """Delete rawdata for a machine. If mode given, delete only that mode dir.
+    """Delete rawdata for a machine / mode, respecting the retention
+    quota by default.
 
-    Also removes matching entries from the rawdata index so UI status
-    reflects the deletion immediately (no need to wait for a full
-    rescan to clear the stale entry).
+    * ``force=False`` (default, operator-safe) — delete only
+      ``deletable`` + ``stale`` chunks; the ``kept`` quota survives
+      so baseline samples aren't silently wiped.
+    * ``force=True`` — nuke everything at the target path (legacy
+      behavior; matches the pre-quota ``shutil.rmtree``). UI exposes
+      this under a separate "完全删除" button with confirmation.
+
+    ``mode=None`` applies the same semantics to every mode under the
+    machine. The rawdata index is updated per affected mode so the UI
+    reflects the deletion on the next read.
     """
     root = rawdata_root if rawdata_root is not None else RAWDATA_ROOT
+    mc = machines_config if machines_config is not None else MACHINES_CONFIG
+    if not (root / machine).is_dir():
+        return {"ok": True, "deleted": False, "reason": "not_found",
+                "deleted_chunks": 0, "kept_chunks": 0}
+
+    if force:
+        # Legacy nuclear path: delete everything under the target dir.
+        target = root / machine if mode is None else root / machine / f"mode_{mode}"
+        if not target.is_dir():
+            return {"ok": True, "deleted": False, "reason": "not_found",
+                    "deleted_chunks": 0, "kept_chunks": 0}
+        shutil.rmtree(target, ignore_errors=True)
+        try:
+            from fresh_slotlab.rawdata_index import remove_entry, load_index, _save_index
+            if mode is not None:
+                remove_entry(root, machine, mode)
+            else:
+                data = load_index(root)
+                data["entries"] = {
+                    k: v for k, v in data["entries"].items()
+                    if not k.startswith(f"{machine}|")
+                }
+                _save_index(root, data)
+        except Exception:  # noqa: BLE001
+            pass
+        return {"ok": True, "deleted": True, "forced": True,
+                "path": str(target), "deleted_chunks": -1,
+                "kept_chunks": 0}
+
+    # Default path: classifier-driven tiered delete
     if mode is None:
-        target = root / machine
+        modes = []
+        for md in sorted((root / machine).iterdir()):
+            if md.is_dir() and md.name.startswith("mode_"):
+                try:
+                    modes.append(int(md.name.split("_", 1)[1]))
+                except (IndexError, ValueError):
+                    continue
     else:
-        target = root / machine / f"mode_{mode}"
-    if not target.is_dir():
-        return {"ok": True, "deleted": False, "reason": "not_found"}
-    shutil.rmtree(target, ignore_errors=True)
-    try:
-        from fresh_slotlab.rawdata_index import remove_entry, load_index, _save_index
-        if mode is not None:
-            remove_entry(root, machine, mode)
-        else:
-            # Whole-machine delete — drop every `<machine>|*` entry.
-            data = load_index(root)
-            data["entries"] = {
-                k: v for k, v in data["entries"].items()
-                if not k.startswith(f"{machine}|")
-            }
-            _save_index(root, data)
-    except Exception:  # noqa: BLE001
-        pass
-    return {"ok": True, "deleted": True, "path": str(target)}
+        modes = [mode]
+
+    deleted_chunks = 0
+    kept_chunks = 0
+    total_deletable_bytes = 0
+    for m in modes:
+        cls = _classify_chunks(machine, m, root, mc, min_retention_spins)
+        kept_chunks += len(cls["kept"])
+        for entry in cls["deletable"] + cls["stale"]:
+            try:
+                p = Path(entry["path"])
+                if p.exists():
+                    total_deletable_bytes += p.stat().st_size
+                    p.unlink()
+                    deleted_chunks += 1
+            except OSError:
+                pass
+        # Rescan index entry so the UI status reflects the deletion
+        # immediately rather than on next read's cold-path scan.
+        try:
+            from fresh_slotlab.rawdata_index import update_entry, remove_entry
+            mode_dir = root / machine / f"mode_{m}"
+            if mode_dir.is_dir() and any(mode_dir.glob("chunk_*.json")):
+                update_entry(root, machine, m, mode_dir)
+            else:
+                remove_entry(root, machine, m)
+        except Exception:  # noqa: BLE001
+            pass
+
+    return {
+        "ok": True, "deleted": deleted_chunks > 0, "forced": False,
+        "deleted_chunks": deleted_chunks,
+        "kept_chunks": kept_chunks,
+        "deleted_bytes": total_deletable_bytes,
+    }
 
 
 def _detect_machine_cycle(machine: str, reports_root: Path) -> dict[str, Any]:
@@ -2938,6 +3170,7 @@ def create_app(
     machines_config: Path | None = None,
     analyzer_path: Path | None = None,
     classify_dir: Path | None = None,
+    rawdata_root: Path | None = None,
 ) -> FastAPI:
     """Build a FastAPI app with all stateful singletons scoped to this instance.
 
@@ -2959,6 +3192,10 @@ def create_app(
     sc = SERVERS_CONFIG
     az = analyzer_path if analyzer_path is not None else ANALYZER
     cd = classify_dir if classify_dir is not None else CLASSIFY_DIR
+    rd_root = rawdata_root if rawdata_root is not None else RAWDATA_ROOT
+    # Operator settings live next to console.db so they survive restart
+    # and follow the same tmp-dir swap in tests.
+    settings_path = sd / "settings.json"
 
     store = StateStore(db_path)
     # Backfill achieved_rtp_pct / achieved_halfwidth_pp from on-disk
@@ -3126,9 +3363,18 @@ def create_app(
 
     @app.get("/api/rawdata/{machine}")
     def get_rawdata_status(machine: str) -> dict[str, Any]:
-        """Per-mode rawdata status for a machine (chunk-level MD5 verification)."""
+        """Per-mode rawdata status for a machine.
+
+        Each mode entry carries:
+          * legacy MD5 verification (``usable_chunks`` / ``mismatch_chunks``)
+          * classification groups (``kept`` / ``deletable`` / ``stale``) so the
+            UI can show kept-baseline vs deletable-excess separately
+          * per-md5-version breakdown (``versions``) so stale vs current chunks
+            group visibly in the rawdata panel
+        """
         result = {}
-        machine_dir = RAWDATA_ROOT / machine
+        machine_dir = rd_root / machine
+        retention = _load_settings(settings_path)["min_retention_spins"]
         if machine_dir.is_dir():
             for mode_dir in machine_dir.iterdir():
                 if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
@@ -3137,15 +3383,96 @@ def create_app(
                     mode = int(mode_dir.name.split("_")[1])
                 except (IndexError, ValueError):
                     continue
-                result[str(mode)] = check_rawdata_status(
-                    machine, mode, machines_config=mc, auto_delete_mismatched=False,
+                status = check_rawdata_status(
+                    machine, mode, rawdata_root=rd_root,
+                    machines_config=mc, auto_delete_mismatched=False,
                 )
+                classified = _classify_chunks(
+                    machine, mode, rd_root, mc, retention,
+                )
+                # Version-grouped view: bucket chunks by (config_md5,
+                # code_md5) so the UI can render "current server
+                # version: N chunks / old version: M chunks".
+                by_version: dict[tuple[str, str], dict[str, Any]] = {}
+                up_cfg = classified["upstream_config_md5"]
+                up_code = classified["upstream_code_md5"]
+                for group in ("kept", "deletable", "stale"):
+                    for entry in classified[group]:
+                        key = (entry["config_md5"], entry["code_md5"])
+                        v = by_version.setdefault(key, {
+                            "config_md5": entry["config_md5"],
+                            "code_md5": entry["code_md5"],
+                            "is_current": (
+                                entry["config_md5"] == up_cfg
+                                and entry["code_md5"] == up_code
+                            ),
+                            "kept_chunks": 0, "deletable_chunks": 0, "stale_chunks": 0,
+                            "kept_spins": 0, "deletable_spins": 0, "stale_spins": 0,
+                        })
+                        v[f"{group}_chunks"] += 1
+                        v[f"{group}_spins"] += entry["spins"]
+                status["classified"] = {
+                    "min_retention_spins": retention,
+                    "kept_chunks": len(classified["kept"]),
+                    "deletable_chunks": len(classified["deletable"]),
+                    "stale_chunks": len(classified["stale"]),
+                    "kept_spins": classified["kept_spins"],
+                    "deletable_spins": classified["deletable_spins"],
+                    "stale_spins": classified["stale_spins"],
+                }
+                status["versions"] = sorted(
+                    by_version.values(),
+                    key=lambda v: (not v["is_current"], v["config_md5"], v["code_md5"]),
+                )
+                result[str(mode)] = status
         return {"machine": machine, "modes": result}
 
     @app.delete("/api/rawdata/{machine}")
-    def delete_machine_rawdata(machine: str, mode: int | None = None) -> dict[str, Any]:
-        """Delete rawdata for a machine (all modes or specific mode)."""
-        return delete_rawdata(machine, mode)
+    def delete_machine_rawdata(
+        machine: str,
+        mode: int | None = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Delete rawdata for a machine (all modes or specific mode).
+
+        ``force=false`` (default) — respects the retention quota: only
+        deletable + stale chunks are removed, the kept baseline survives.
+        ``force=true`` — nuclear: delete everything at the target path.
+        UI exposes force under a separate confirmation-gated button.
+        """
+        retention = _load_settings(settings_path)["min_retention_spins"]
+        return delete_rawdata(
+            machine, mode, rawdata_root=rd_root, machines_config=mc,
+            min_retention_spins=retention, force=force,
+        )
+
+    @app.get("/api/settings")
+    def get_settings() -> dict[str, Any]:
+        """Operator-tunable knobs persisted in state/console/settings.json."""
+        return _load_settings(settings_path)
+
+    @app.put("/api/settings")
+    def put_settings(req: dict[str, Any]) -> dict[str, Any]:
+        """Upsert operator settings. Unknown fields ignored; invalid
+        values (e.g. negative retention) clamped by _load_settings
+        on next read."""
+        current = _load_settings(settings_path)
+        if "min_retention_spins" in req:
+            try:
+                v = int(req["min_retention_spins"])
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400,
+                    detail="min_retention_spins must be a non-negative integer",
+                )
+            if v < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="min_retention_spins must be non-negative",
+                )
+            current["min_retention_spins"] = v
+        _save_settings(settings_path, current)
+        return current
 
     @app.get("/api/classifier/{machine}")
     def get_classifier_verdict(machine: str) -> dict[str, Any]:
@@ -4248,21 +4575,95 @@ def create_app(
             "volatility_class_counts": dict(volatility_class_counts),
         }
 
+    def _enumerate_rawdata_deletable() -> list[dict[str, Any]]:
+        """Walk rd_root, classify each (machine, mode), return the
+        aggregate deletable list — chunks that are safe to reclaim
+        (stale MD5 + valid chunks above retention quota). Sorted by
+        mtime so oldest-first deletion is a single pass downstream.
+        """
+        retention = _load_settings(settings_path)["min_retention_spins"]
+        candidates: list[dict[str, Any]] = []
+        if not rd_root.is_dir():
+            return candidates
+        for machine_dir in rd_root.iterdir():
+            if not machine_dir.is_dir() or not machine_dir.name.startswith("M"):
+                continue
+            for mode_dir in machine_dir.iterdir():
+                if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                    continue
+                try:
+                    mode = int(mode_dir.name.split("_", 1)[1])
+                except (IndexError, ValueError):
+                    continue
+                cls = _classify_chunks(
+                    machine_dir.name, mode, rd_root, mc, retention,
+                )
+                # Stale first (no analytical value), then deletable
+                # excess. Both sorted by mtime within the combined pool
+                # so a single cleanup pass does oldest-first.
+                for entry in cls["stale"] + cls["deletable"]:
+                    candidates.append({
+                        "machine": machine_dir.name, "mode": mode,
+                        "path": entry["path"], "spins": entry["spins"],
+                        "mtime": entry["mtime"],
+                    })
+        candidates.sort(key=lambda e: e["mtime"])
+        return candidates
+
     @app.get("/api/cache/status")
     def cache_status() -> dict[str, Any]:
-        total_bytes, file_count = folder_bytes(cr)
+        """Cache + rawdata usage snapshot.
+
+        The historical ``cache/chunks`` root is kept for legacy
+        reporting but the meaningful numbers now come from RAWDATA_ROOT
+        (where actual chunks live). ``reclaimable_bytes_estimate`` is
+        computed via the tiered classifier so the UI shows the real
+        amount that /api/cache/cleanup would free.
+        """
+        cache_total, cache_files = folder_bytes(cr)
+        rawdata_total, rawdata_files = folder_bytes(rd_root)
         running = store.list_runs_by_status("running", limit=2000)
+        # Approximation only: using full rawdata size as the reclaimable
+        # estimate. The real number (stale + above-retention chunks) is
+        # computed inside /api/cache/cleanup — doing it here would force
+        # a per-chunk JSON parse over every mode dir on every status
+        # poll (~1 min for 1k chunks), which blocks the UI. The risk-tier
+        # display only needs rough magnitude, so
+        # reclaimable == total_bytes stays on the safe side (cleanup
+        # never exceeds this; baseline is always preserved).
+        reclaimable = rawdata_total if not running else 0
         return {
+            # Legacy cache/chunks root — always empty in the current
+            # sampling flow but kept in the response so older clients
+            # don't break.
             "cache_root": str(cr),
-            "total_bytes": total_bytes,
-            "file_count": file_count,
+            "cache_total_bytes": cache_total,
+            "cache_file_count": cache_files,
+            # Authoritative rawdata numbers (what operators actually
+            # care about).
+            "rawdata_root": str(rd_root),
+            "rawdata_total_bytes": rawdata_total,
+            "rawdata_file_count": rawdata_files,
+            # Back-compat keys (previously reported CACHE_ROOT totals).
+            # Frontends that still read these now see the rawdata
+            # numbers since that's the useful signal.
+            "total_bytes": rawdata_total,
+            "file_count": rawdata_files,
             "running_runs": len(running),
-            "reclaimable_bytes_estimate": total_bytes if not running else 0,
+            "reclaimable_bytes_estimate": reclaimable,
             "risk_thresholds": resolved_risk_thresholds(),
         }
 
     @app.post("/api/cache/cleanup")
     def cache_cleanup(req: CacheCleanupRequest) -> dict[str, Any]:
+        """Tier-based cleanup over RAWDATA_ROOT.
+
+        Protected by the retention quota (setting
+        ``min_retention_spins``, default 100k) so baseline chunks
+        survive even here. Deletion order is oldest mtime across all
+        (machine, mode) pairs — caller optionally caps total bytes
+        freed via ``max_delete_bytes``.
+        """
         running = store.list_runs_by_status("running", limit=2000)
         if running:
             return {
@@ -4277,18 +4678,37 @@ def create_app(
         try:
             deleted_files = 0
             deleted_bytes = 0
-            targets = sorted(
-                [p for p in cr.rglob("*") if p.is_file()],
-                key=lambda p: p.stat().st_mtime,
-            )
+            affected_modes: set[tuple[str, int]] = set()
+            targets = _enumerate_rawdata_deletable()
             max_delete = req.max_delete_bytes if req.max_delete_bytes > 0 else (10**18)
-            for file in targets:
-                size = file.stat().st_size
+            for entry in targets:
+                p = Path(entry["path"])
+                try:
+                    size = p.stat().st_size
+                except OSError:
+                    continue
                 if deleted_bytes + size > max_delete:
                     break
-                file.unlink(missing_ok=True)
+                try:
+                    p.unlink()
+                except OSError:
+                    continue
                 deleted_files += 1
                 deleted_bytes += size
+                affected_modes.add((entry["machine"], entry["mode"]))
+            # Refresh the rawdata index for each affected (machine, mode)
+            # so subsequent GET /api/rawdata sees the reduced chunk count
+            # without a cold-path rescan.
+            try:
+                from fresh_slotlab.rawdata_index import update_entry, remove_entry
+                for m, mode in affected_modes:
+                    md = rd_root / m / f"mode_{mode}"
+                    if md.is_dir() and any(md.glob("chunk_*.json")):
+                        update_entry(rd_root, m, mode, md)
+                    else:
+                        remove_entry(rd_root, m, mode)
+            except Exception:  # noqa: BLE001
+                pass
             return {"deleted_files": deleted_files, "deleted_bytes": deleted_bytes}
         finally:
             ops.release()
