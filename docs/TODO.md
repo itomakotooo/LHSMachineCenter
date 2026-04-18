@@ -65,6 +65,59 @@ This file tracks executable next steps for the current phase.
 
 ## Done Recently
 
+- [x] **Rawdata lifecycle + version tracking overhaul** (2026-04-18
+      evening, 6 commits on top of BCM v2):
+      - `feat(versions): plumbing for report staleness detection`
+        (27beacd) — analyzer `compute_analyzer_version()` (SHA256[:12]
+        of module source) stamped into summary.json; three DB columns
+        (`rawdata_config_md5`, `rawdata_code_md5`, `analyzer_version`)
+        on `runs`; backfill from summary.json on startup;
+        `GET /api/versions/current` returns current analyzer + per-
+        machine md5 map.
+      - `feat(rawdata): chunk lifecycle rewrite — retention-quota
+        tiered delete` (0d68d29) — `_classify_chunks()` partitions
+        chunks into kept / deletable / stale per (machine, mode);
+        default UI delete respects a 100k-spin retention quota (tunable
+        via `PUT /api/settings`); force=true for nuclear cleanup;
+        `/api/cache/cleanup` rewritten to operate on RAWDATA_ROOT with
+        oldest-mtime priority; rawdata section UI groups chunks by
+        md5 version (当前版本 / 服务器旧版); 系统设置 panel exposes the
+        retention knob; 26s → 135ms perf via 4 KB envelope peek instead
+        of full JSON parse.
+      - `feat(rawdata): generate-report endpoint replaces run-id
+        rebuild` (21a432f) — old `POST /api/runs/{id}/rebuild` +
+        `GET /api/runs/{id}/chunks` removed (they read from the
+        never-populated `cache/chunks/`); new
+        `POST /api/rawdata/{machine}/generate-report` body `{mode}`
+        reads from RAWDATA_ROOT, creates a NEW run row + NEW report
+        version (history never overwritten); Frontend rebuild button
+        removed from run-history, ⟳ 生成 Report button added to rawdata
+        section rows.
+      - `feat(run-history): rawdata + analyzer version badges`
+        (220044f) — two new columns (Rawdata / Analyzer) with
+        当前/失配/未标记 badges per row; `PURE.versionBadges()` isolates
+        the comparison logic for unit testing; loadBootstrap caches
+        `/api/versions/current` result in state.currentVersions.
+      - `refactor: rename dev_rawdata/ → rawdata/` (17fe9f4) — inode
+        rename (instant, 9 GB intact); 20+ file references updated;
+        `RAWDATA_ROOT` now defaults to `ROOT/rawdata` with
+        `SLOT_RAWDATA_ROOT` env var override for prod deploys;
+        `scripts/validate_dev_rawdata.py` → `validate_rawdata.py`;
+        `DEV_RAWDATA` constants renamed to `RAWDATA`.
+      - Post-ship cleanup — removed orphan `refreshChunkStatus` +
+        `state.currentChunksAvailable` (belonged to the retired
+        rebuild button); removed 9 rebuild-related i18n keys
+        (btnRebuild, rebuildSuccess, rebuildFailed, rebuildNoChunks,
+        rebuildIncompatible, chunkCompatible, chunkIncompatible,
+        rebuildBusy, btnRebuildRun); removed
+        `_check_chunk_compatibility` helper.
+      - Tests: 377 pytest (+34 new vs 343 baseline) + 132 node:test
+        (+6 via versionBadges). All 4 commits preview-verified on real
+        M273 data. E2E `test_cache_cleanup_*` updated to write envelope
+        chunks to rawdata instead of bytes to cache root. conftest
+        gains `tmp_rawdata` fixture; `e2e_launch.py` takes new
+        `SLOT_E2E_RAWDATA` env var.
+
 - [x] **Payline-structure classification surfaced to UI** (post
       2026-04-18):
       - New backend endpoint `GET /api/classifier/{machine}` reads

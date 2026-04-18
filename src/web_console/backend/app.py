@@ -2748,10 +2748,13 @@ class RunManager:
         # delete_run removes the run artefacts.
         stop_flag_file = self._progress_dir / f"{run_id}.stop"
         cmd.extend(["--stop-flag-file", str(stop_flag_file)])
-        # Chunk cache: raw API responses are persisted here for offline
-        # report rebuild. The cache root is the same cache/ tree that
-        # /api/cache/status + cleanup already operate on, so cleanup
-        # naturally covers it. Rule #13: cleanup must skip active chunks.
+        # Chunk cache CLI arg (legacy). The analyzer's resume-from-cache
+        # path overrides this to the RAWDATA_ROOT location at runtime
+        # so new chunks land in the canonical rawdata tree, not here.
+        # Kept for the fresh-sample path (no resume) which would still
+        # write here — but generate-report (Commit 3) reads directly
+        # from rawdata, so this tree's only role is transient scratch
+        # for the first-ever sample on a machine.
         chunk_cache_dir = self._cache_root / run_id
         cmd.extend(["--chunk-cache-dir", str(chunk_cache_dir)])
         # Server-specific endpoint URL.

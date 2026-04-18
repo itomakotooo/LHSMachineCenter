@@ -141,49 +141,45 @@ to `TerminateProcess` which doesn't deliver a catchable signal, so
 the file-flag is the primary channel. Signal handlers (SIGTERM /
 SIGINT) are also registered where catchable.
 
-### `GET /api/runs/{run_id}/chunks`
+### `POST /api/rawdata/{machine}/generate-report`
 
-Chunk cache status with compatibility check.
+Generate a new report from cached rawdata chunks. Reads chunks from
+`RAWDATA_ROOT/{machine}/mode_{mode}/`, pre-loads their `response`
+payloads, and runs the analyzer through them end-to-end. Produces a
+**new** report version (`rv_<ts>_rawdata`) + **new** run row
+(`gen_<uuid>`) — pre-existing runs are never overwritten.
 
-Response:
+Body:
 
 ```json
-{
-  "run_id": "...",
-  "chunk_count": 5,
-  "total_bytes": 1250000,
-  "fingerprint": "a3f8c2e1b9d04716",
-  "compatible": true,
-  "incompatible_reason": null,
-  "available": true
-}
+{ "mode": 1 }
 ```
 
-`fingerprint` is SHA256[:16] of the first cached round's sorted key
-set. `compatible` is false when required fields are missing from the
-cached data (upstream schema drift). `available` = has chunks AND
-compatible.
-
-### `POST /api/runs/{run_id}/rebuild`
-
-Re-parse cached raw chunks through the current analyzer code and
-overwrite the run's summary + report.
-
 Pre-checks:
-- 404 if no cached chunks
-- 409 if cached chunks are schema-incompatible
+- 400 if `mode` is missing or non-integer
+- 404 if no rawdata exists for (machine, mode), or if all chunks are
+  stale md5 (server upgraded since sampling → resample required)
 - 409 if system busy (operation mutex)
 
 Response:
 
 ```json
 {
-  "run_id": "...",
-  "status": "rebuilt",
-  "chunks_reprocessed": 5,
-  "rtp_point_pct": 95.10
+  "run_id": "gen_abc123",
+  "machine": "M273",
+  "mode": 1,
+  "report_version": "rv_20260418T091309Z_rawdata",
+  "chunks_processed": 51,
+  "rtp_point_pct": 52.35,
+  "achieved_halfwidth_pp": 0.18,
+  "analyzer_version": "269ca1cf0a26"
 }
 ```
+
+This endpoint replaces the retired `POST /api/runs/{run_id}/rebuild`.
+The old rebuild was keyed on the transient `cache/chunks/{run_id}/`
+directory which the current sampling flow never populates; the new
+path is keyed on (machine, mode) where actual chunks live.
 
 ### `DELETE /api/runs/{run_id}`
 
@@ -303,13 +299,71 @@ intensity reading the discrete Very High / High / Medium / Low
 label can't surface. No caching -- scales linearly with library
 size (hundreds of machines still well under a second).
 
+## Rawdata Management
+
+Rawdata (sampled chunks) lives under `RAWDATA_ROOT` (default
+`rawdata/`; prod deploys override via `SLOT_RAWDATA_ROOT` env var).
+Chunks are partitioned per (machine, mode) by a retention-quota
+classifier into **kept** (md5 matches + within quota), **deletable**
+(md5 matches + above quota), and **stale** (md5 drifted from current
+machines.json).
+
+### `GET /api/rawdata/{machine}`
+
+Per-mode status. Each mode entry includes:
+- `usable_chunks` / `mismatch_chunks` / `total_size_mb` (legacy shape)
+- `classified` — `{kept_chunks, deletable_chunks, stale_chunks,
+  kept_spins, deletable_spins, stale_spins, min_retention_spins}`
+- `versions` — array grouped by (config_md5, code_md5) with
+  `is_current` flag, used by the UI to show "current server version"
+  vs "outdated" chunk groups.
+
+### `DELETE /api/rawdata/{machine}?mode=N&force=false`
+
+Delete rawdata for a machine (all modes or specific mode).
+
+- `force=false` (default) — respects the retention quota: only
+  deletable + stale chunks are removed, kept baseline survives.
+- `force=true` — nuclear. UI gates this behind a "DELETE" token prompt.
+
+Response: `{ok, deleted, forced, deleted_chunks, kept_chunks, deleted_bytes}`.
+
+### `POST /api/rawdata/{machine}/generate-report`
+
+Documented above under Run Lifecycle.
+
 ## Cache Management
 
 ### `GET /api/cache/status`
 
-Cache size, file count, active-run count, reclaimable estimate.
+Response includes both legacy `cache/chunks/` stats and authoritative
+rawdata totals:
+
+```json
+{
+  "cache_root": "...",
+  "cache_total_bytes": 0,
+  "cache_file_count": 0,
+  "rawdata_root": "...",
+  "rawdata_total_bytes": 9636025962,
+  "rawdata_file_count": 1057,
+  "total_bytes": 9636025962,
+  "file_count": 1057,
+  "running_runs": 0,
+  "reclaimable_bytes_estimate": 9636025962,
+  "risk_thresholds": {"medium_bytes": ..., "high_bytes": ...}
+}
+```
+
+`reclaimable_bytes_estimate` is approximated as `rawdata_total_bytes`
+for perf (exact classification only runs inside cleanup).
 
 ### `POST /api/cache/cleanup`
+
+Tier-based cleanup over `RAWDATA_ROOT`. Deletes stale + deletable
+chunks oldest-mtime first, across all (machine, mode) pairs. Baseline
+kept quota is never touched (operator must use
+`DELETE /api/rawdata/{m}?force=true` per machine for that).
 
 Request:
 
@@ -320,13 +374,48 @@ Request:
 ```
 
 Notes:
-
-- cleanup is manual-only
-- cleanup is blocked while runs are active
-- if system mutex is occupied, endpoint returns `409`
-- frontend applies additional risk-tier confirmation before calling this endpoint:
+- blocked while runs are active
+- guarded by the shared operation mutex (409 if busy)
+- frontend adds risk-tier confirmation:
   - low risk: one confirm
-  - medium/high risk: confirm + token input (`DELETE`)
+  - medium/high risk: confirm + `DELETE` token prompt
+
+## Settings
+
+### `GET /api/settings`
+
+Returns operator-tunable knobs persisted in
+`state/console/settings.json`. Currently:
+
+```json
+{ "min_retention_spins": 100000 }
+```
+
+### `PUT /api/settings`
+
+Upsert settings. Invalid values rejected with 400.
+
+```json
+{ "min_retention_spins": 50000 }
+```
+
+## Versions (for Staleness Detection)
+
+### `GET /api/versions/current`
+
+Snapshot of current fingerprints for the Run History staleness badges:
+
+```json
+{
+  "analyzer_version": "<12-char hex>",
+  "machines": {
+    "M14": { "config_md5": "...", "code_md5": "..." }
+  }
+}
+```
+
+`analyzer_version` = SHA256[:12] of `player_impact_analyzer.py` source.
+Per-machine md5 comes from `configs/machines.json`.
 
 ## Interpretation
 
@@ -377,9 +466,12 @@ changes between sampling runs.
 Request: empty body.
 Response: raw `_machineConfigMd5` JToken from `cfg.json`.
 
-**Future integration**: store config MD5 alongside the schema
-fingerprint in chunk cache envelopes. On rebuild, compare both —
-schema drift = field renames; config drift = machine logic changed.
+**Current integration**: config MD5 + code MD5 are stored per-chunk
+in envelopes (`_config_md5`, `_code_md5`) and per-report in summary
+files (`config_md5`, `code_md5`). The classifier compares envelope
+md5 vs current machines.json to partition chunks into kept / stale
+tiers, and the Run History UI shows a staleness badge when the
+report's stored md5 differs from the current server snapshot.
 
 ### `POST /MachineTest/RTPTest`
 

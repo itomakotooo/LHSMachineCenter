@@ -33,9 +33,6 @@ const state = {
   runFilterMachines: new Set(),
   // Set of selected run_ids for batch operations.
   selectedRuns: new Set(),
-  // Whether the currently-loaded run has cached chunks available for
-  // rebuild. Updated by refreshChunkStatus() after each run load.
-  currentChunksAvailable: false,
   // Latest library-wide metric distributions (from
   // GET /api/library/distributions). Drives the "lib-P{N}" suffix on
   // Volatility + Archetype KPI cards so the operator sees where the
@@ -2853,20 +2850,6 @@ async function refreshRunList(autoSelect = true) {
   updateActionStates();
 }
 
-async function refreshChunkStatus() {
-  if (!state.currentRunId) {
-    state.currentChunksAvailable = false;
-    return;
-  }
-  try {
-    const d = await apiGet(`/api/runs/${encodeURIComponent(state.currentRunId)}/chunks`);
-    state.currentChunksAvailable = Boolean(d.available);
-  } catch {
-    state.currentChunksAvailable = false;
-  }
-  updateActionStates();
-}
-
 async function refreshCurrentRun() {
   if (!state.currentRunId) {
     setLoadedMachineInfo(null);
@@ -3042,7 +3025,6 @@ async function refreshCurrentRun() {
     renderPayoutGroupDrilldown(s);
     renderSymbolDrilldown(s);
     await refreshInterpretation();
-    await refreshChunkStatus();
   }
   warnings.push(...collectSystemWarnings());
   setGlobalWarning([...new Set(warnings)]);
