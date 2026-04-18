@@ -228,6 +228,143 @@ class TestGenerateReportProcessesAllChunks:
         )
 
 
+class TestBatchGenerateReport:
+    """Tests for the batch endpoint + background worker. Driver runs
+    items sequentially inside a daemon thread; tests poll the GET
+    endpoint until the batch reaches a terminal state (completed /
+    partial / failed).
+    """
+
+    @staticmethod
+    def _wait_for_terminal(client, batch_id, timeout_s=10):
+        import time
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            state = client.get(
+                f"/api/rawdata/batch-generate-report/{batch_id}"
+            ).json()
+            if state["status"] in ("completed", "partial", "failed"):
+                return state
+            time.sleep(0.1)
+        raise AssertionError(
+            f"batch {batch_id} did not reach terminal state in {timeout_s}s"
+        )
+
+    def test_all_items_succeed(self, app_with_m14):
+        """Two chunks × two modes → 2 items, both complete."""
+        c, _app, rd_root, reports_root, _state = app_with_m14
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        # Seed two mode dirs with one usable chunk each.
+        for mode in (1, 2):
+            _write_rawdata_chunk(
+                rd_root / "M14" / f"mode_{mode}", 1,
+                config_md5="test_cfg", code_md5="test_code",
+                response=response_payload,
+            )
+        resp = c.post(
+            "/api/rawdata/batch-generate-report",
+            json={"items": [
+                {"machine": "M14", "mode": 1},
+                {"machine": "M14", "mode": 2},
+            ]},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["total"] == 2
+        batch_id = body["batch_id"]
+        assert batch_id.startswith("bgen_")
+
+        final = self._wait_for_terminal(c, batch_id)
+        assert final["status"] == "completed"
+        assert final["completed"] == 2
+        assert final["failed"] == 0
+        assert final["pending"] == 0
+        for item in final["items"]:
+            assert item["status"] == "completed"
+            assert item["run_id"] and item["run_id"].startswith("gen_")
+            assert item["rtp_point_pct"] is not None
+            assert item["chunks_processed"] == 1
+
+    def test_partial_failure_continues_through_batch(self, app_with_m14):
+        """Second item points at a mode with no rawdata — batch records
+        per-item failure but keeps going and completes item 1 + item 3."""
+        c, _app, rd_root, _reports, _state = app_with_m14
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        for mode in (1, 5):
+            _write_rawdata_chunk(
+                rd_root / "M14" / f"mode_{mode}", 1,
+                config_md5="test_cfg", code_md5="test_code",
+                response=response_payload,
+            )
+        resp = c.post(
+            "/api/rawdata/batch-generate-report",
+            json={"items": [
+                {"machine": "M14", "mode": 1},
+                {"machine": "M14", "mode": 2},  # no rawdata → fails
+                {"machine": "M14", "mode": 5},
+            ]},
+        )
+        assert resp.status_code == 200, resp.text
+        final = self._wait_for_terminal(c, resp.json()["batch_id"])
+        assert final["status"] == "partial"
+        assert final["completed"] == 2
+        assert final["failed"] == 1
+        assert final["items"][0]["status"] == "completed"
+        assert final["items"][1]["status"] == "failed"
+        assert "no rawdata" in final["items"][1]["error"].lower()
+        assert final["items"][2]["status"] == "completed"
+
+    def test_rejects_empty_items(self, app_with_m14):
+        c, *_ = app_with_m14
+        resp = c.post("/api/rawdata/batch-generate-report", json={"items": []})
+        assert resp.status_code == 400
+
+    def test_rejects_non_integer_mode(self, app_with_m14):
+        c, *_ = app_with_m14
+        resp = c.post(
+            "/api/rawdata/batch-generate-report",
+            json={"items": [{"machine": "M14", "mode": "nope"}]},
+        )
+        assert resp.status_code == 400
+
+    def test_get_unknown_batch_id_returns_404(self, app_with_m14):
+        c, *_ = app_with_m14
+        resp = c.get("/api/rawdata/batch-generate-report/bgen_does_not_exist")
+        assert resp.status_code == 404
+
+    def test_runs_sequentially_under_ops_lock(self, app_with_m14):
+        """Second batch started while first in-flight must fail the
+        second's items (or the endpoint itself) — no two batches can
+        monkey-patch analyzer.post_json concurrently. Here we simulate
+        lock contention by acquiring ops manually before the batch
+        kick-off.
+        """
+        c, app, rd_root, *_ = app_with_m14
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        _write_rawdata_chunk(
+            rd_root / "M14" / "mode_1", 1,
+            config_md5="test_cfg", code_md5="test_code",
+            response=response_payload,
+        )
+        # Pre-acquire ops under a different name so the batch worker
+        # finds it locked when its thread starts.
+        assert app.state.ops.acquire("auto_tune")
+        try:
+            resp = c.post(
+                "/api/rawdata/batch-generate-report",
+                json={"items": [{"machine": "M14", "mode": 1}]},
+            )
+            assert resp.status_code == 200
+            batch_id = resp.json()["batch_id"]
+            final = self._wait_for_terminal(c, batch_id, timeout_s=5)
+            assert final["status"] == "failed"
+            assert "system busy" in (final["error"] or "").lower()
+            # Item also marked failed with a batch-abort note.
+            assert final["items"][0]["status"] == "failed"
+        finally:
+            app.state.ops.release()
+
+
 class TestGenerateReportErrorPaths:
     def test_no_rawdata_returns_404(self, app_with_m14):
         c, *_ = app_with_m14

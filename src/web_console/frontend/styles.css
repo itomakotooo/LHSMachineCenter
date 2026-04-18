@@ -1162,11 +1162,23 @@ button:disabled {
   margin-top: 8px;
   font-size: 12px;
 }
-.sample-progress {
+.sample-progress,
+.batch-gen-progress {
   margin-top: 12px;
   border-top: 1px solid #e5e7eb;
   padding-top: 10px;
 }
+.batch-gen-item {
+  padding: 2px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  border-radius: 3px;
+}
+.batch-gen-pending  { color: #94a3b8; }
+.batch-gen-running  { color: #1e40af; background: #eff6ff; }
+.batch-gen-completed { color: #166534; }
+.batch-gen-failed   { color: #991b1b; background: #fef2f2; }
 .sample-log {
   max-height: 240px;
   overflow-y: auto;

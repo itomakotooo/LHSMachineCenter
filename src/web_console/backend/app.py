@@ -1468,6 +1468,154 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
     }
 
 
+class BatchGenerateManager:
+    """Background batch driver for ``POST /api/rawdata/batch-generate-
+    report``. Each batch is a list of (machine, mode) pairs processed
+    sequentially by the in-process generator callback. Sequential
+    because analyzer's ``post_json`` is monkey-patched at the module
+    level — concurrent generator calls would race each other.
+
+    Holds the ``ops`` mutex for the whole batch duration, so sampling
+    / cleanup / delete paths stay blocked until the batch finishes
+    (consistent with the rest of the console's coarse locking).
+    """
+
+    def __init__(
+        self,
+        generator_fn: Callable[[str, int], dict[str, Any]],
+        ops: Any,
+    ) -> None:
+        self._generator_fn = generator_fn
+        self._ops = ops
+        self._batches: dict[str, dict[str, Any]] = {}
+        self._lock = threading.Lock()
+
+    def start(self, items: list[dict[str, Any]]) -> dict[str, Any]:
+        batch_id = f"bgen_{uuid.uuid4().hex[:12]}"
+        state = {
+            "batch_id": batch_id,
+            "started_at": utc_now(),
+            "finished_at": None,
+            "status": "pending",
+            "total": len(items),
+            "completed": 0,
+            "failed": 0,
+            "pending": len(items),
+            "error": None,
+            "items": [
+                {
+                    "machine": it["machine"],
+                    "mode": it["mode"],
+                    "status": "pending",
+                    "run_id": None,
+                    "rtp_point_pct": None,
+                    "achieved_halfwidth_pp": None,
+                    "chunks_processed": None,
+                    "error": None,
+                }
+                for it in items
+            ],
+        }
+        with self._lock:
+            self._batches[batch_id] = state
+        thread = threading.Thread(
+            target=self._run, args=(batch_id,), daemon=True,
+        )
+        thread.start()
+        return {"batch_id": batch_id, "total": len(items), "status": "running"}
+
+    def get(self, batch_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            state = self._batches.get(batch_id)
+            if state is None:
+                return None
+            # Shallow copy so caller can't mutate the live dict.
+            return {**state, "items": [dict(i) for i in state["items"]]}
+
+    def _set_item(self, batch_id: str, idx: int, patch: dict[str, Any]) -> None:
+        with self._lock:
+            state = self._batches.get(batch_id)
+            if state is None:
+                return
+            state["items"][idx].update(patch)
+
+    def _run(self, batch_id: str) -> None:
+        # Acquire the coarse ops mutex once for the whole batch. Any
+        # subsequent item that fails to process records a per-item
+        # error but the batch keeps going.
+        if not self._ops.acquire("batch_generate_report"):
+            snap = self._ops.snapshot()
+            with self._lock:
+                state = self._batches.get(batch_id)
+                if state is not None:
+                    state["status"] = "failed"
+                    state["error"] = f"system busy: {snap.get('operation') or 'unknown'}"
+                    state["finished_at"] = utc_now()
+                    for it in state["items"]:
+                        if it["status"] == "pending":
+                            it["status"] = "failed"
+                            it["error"] = "batch aborted"
+                    state["failed"] = sum(1 for i in state["items"] if i["status"] == "failed")
+                    state["pending"] = 0
+            return
+        try:
+            with self._lock:
+                state = self._batches.get(batch_id)
+                if state is None:
+                    return
+                state["status"] = "running"
+                items_snapshot = list(state["items"])
+
+            for idx, item in enumerate(items_snapshot):
+                self._set_item(batch_id, idx, {"status": "running"})
+                machine = item["machine"]
+                mode = item["mode"]
+                try:
+                    result = self._generator_fn(machine, mode)
+                    self._set_item(batch_id, idx, {
+                        "status": "completed",
+                        "run_id": result.get("run_id"),
+                        "rtp_point_pct": result.get("rtp_point_pct"),
+                        "achieved_halfwidth_pp": result.get("achieved_halfwidth_pp"),
+                        "chunks_processed": result.get("chunks_processed"),
+                    })
+                    with self._lock:
+                        state = self._batches.get(batch_id)
+                        if state is not None:
+                            state["completed"] += 1
+                            state["pending"] -= 1
+                except HTTPException as exc:
+                    self._set_item(batch_id, idx, {
+                        "status": "failed",
+                        "error": str(exc.detail),
+                    })
+                    with self._lock:
+                        state = self._batches.get(batch_id)
+                        if state is not None:
+                            state["failed"] += 1
+                            state["pending"] -= 1
+                except Exception as exc:  # noqa: BLE001
+                    self._set_item(batch_id, idx, {
+                        "status": "failed",
+                        "error": f"{exc.__class__.__name__}: {exc}",
+                    })
+                    with self._lock:
+                        state = self._batches.get(batch_id)
+                        if state is not None:
+                            state["failed"] += 1
+                            state["pending"] -= 1
+
+            with self._lock:
+                state = self._batches.get(batch_id)
+                if state is not None:
+                    state["status"] = (
+                        "completed" if state["failed"] == 0 else "partial"
+                    )
+                    state["finished_at"] = utc_now()
+        finally:
+            self._ops.release()
+
+
 class BatchRunManager:
     """Orchestrates parallel analyzer runs for multiple machines."""
 
@@ -3740,38 +3888,14 @@ def create_app(
     def run_cancel(run_id: str) -> dict[str, Any]:
         return manager.cancel_run(run_id)
 
-    @app.post("/api/rawdata/{machine}/generate-report")
-    def generate_report_from_rawdata(
-        machine: str, req: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Run the analyzer against cached chunks for (machine, mode)
-        in RAWDATA_ROOT and produce a fresh report + run row.
+    def _run_generate_report(machine: str, mode: int) -> dict[str, Any]:
+        """Core generate-report work, no ops-mutex handling. Caller
+        (single endpoint or batch manager) owns the lock lifecycle.
 
-        Always creates a NEW report version + NEW run row; old runs are
-        preserved for history. Semantics:
-
-        * Reads ``rd_root/{machine}/mode_{mode}/chunk_*.json`` envelopes
-          (via the same tier classifier used by delete / cleanup; both
-          kept AND deletable chunks contribute — only stale md5 are
-          skipped since their server-side configuration changed).
-        * Pre-loads each envelope's ``response`` field and feeds them
-          to the analyzer's ``main()`` via a patched ``post_json`` so
-          no upstream HTTP happens.
-        * Writes summary + report to a new version dir
-          ``rv_<ts>_rawdata`` under ``reports_root/{machine}/
-          mode_{mode}/versions/``; updates ``index.json`` /
-          ``latest.json``.
-        * Inserts a new run row with ``status="completed"`` and the
-          newly-computed RTP / CI / quality / analyzer_version /
-          rawdata md5 fingerprints.
-
-        Body: ``{"mode": int}``. Returns the new ``run_id``, chunks
-        processed, and achieved RTP.
+        Raises HTTPException on validation failure so the single-item
+        endpoint surfaces standard HTTP errors; the batch manager
+        catches them to record per-item failures.
         """
-        try:
-            mode = int(req.get("mode"))
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=400, detail="mode must be an integer")
         mode_dir = rd_root / machine / f"mode_{mode}"
         if not mode_dir.is_dir():
             raise HTTPException(
@@ -3793,12 +3917,6 @@ def create_app(
         # analyzer sees responses in their original sampling sequence.
         chunk_paths = sorted(Path(e["path"]) for e in usable_entries)
 
-        if not ops.acquire("generate_report"):
-            snap = ops.snapshot()
-            raise HTTPException(
-                status_code=409,
-                detail=f"system busy: {snap.get('operation') or 'unknown'}",
-            )
         try:
             # Pre-load responses — each call to analyzer's post_json
             # returns the next cached response in sequence.
@@ -3981,8 +4099,93 @@ def create_app(
                 "achieved_halfwidth_pp": hw,
                 "analyzer_version": analyzer_ver,
             }
+        except HTTPException:
+            raise
+        except Exception as exc:
+            # Wrap unexpected failures as 500 so the caller's error
+            # handling still gets a structured HTTPException.
+            raise HTTPException(
+                status_code=500,
+                detail=f"generate-report failed: {exc.__class__.__name__}: {exc}",
+            ) from exc
+
+    # Batch driver for the sequential multi-(machine, mode) path. Must
+    # be constructed after ``_run_generate_report`` is defined because
+    # it takes the helper as its generator callback. Shared across
+    # batch endpoints via closure.
+    batch_gen_mgr = BatchGenerateManager(_run_generate_report, ops)
+
+    @app.post("/api/rawdata/{machine}/generate-report")
+    def generate_report_from_rawdata(
+        machine: str, req: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run the analyzer against cached chunks for (machine, mode)
+        and produce a fresh report + run row. Always creates NEW
+        artefacts; old runs preserved.
+
+        Body: ``{"mode": int}``. See ``_run_generate_report`` for
+        internals.
+        """
+        try:
+            mode = int(req.get("mode"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="mode must be an integer")
+        if not ops.acquire("generate_report"):
+            snap = ops.snapshot()
+            raise HTTPException(
+                status_code=409,
+                detail=f"system busy: {snap.get('operation') or 'unknown'}",
+            )
+        try:
+            return _run_generate_report(machine, mode)
         finally:
             ops.release()
+
+    @app.post("/api/rawdata/batch-generate-report")
+    def batch_generate_report(req: dict[str, Any]) -> dict[str, Any]:
+        """Kick off batch report generation for multiple (machine, mode)
+        pairs. Sequential within the batch (each iteration monkey-
+        patches analyzer's ``post_json`` — concurrent calls would
+        race). Runs in a background thread; caller polls
+        ``GET /api/rawdata/batch-generate-report/{batch_id}`` for
+        progress.
+
+        Body::
+
+          {"items": [{"machine": "M273", "mode": 1}, ...]}
+
+        Returns ``{batch_id, total}``. Operator holds the ``ops`` mutex
+        for the whole batch duration so it can't interleave with
+        sampling / cleanup / delete paths.
+        """
+        raw_items = req.get("items") or []
+        if not isinstance(raw_items, list) or not raw_items:
+            raise HTTPException(
+                status_code=400, detail="items must be a non-empty list",
+            )
+        parsed_items: list[dict[str, Any]] = []
+        for it in raw_items:
+            if not isinstance(it, dict):
+                raise HTTPException(status_code=400, detail="each item must be an object")
+            machine = str(it.get("machine") or "").strip()
+            try:
+                mode = int(it.get("mode"))
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"mode must be an integer (item: {it})",
+                )
+            if not machine:
+                raise HTTPException(status_code=400, detail="machine required")
+            parsed_items.append({"machine": machine, "mode": mode})
+        return batch_gen_mgr.start(parsed_items)
+
+    @app.get("/api/rawdata/batch-generate-report/{batch_id}")
+    def get_batch_generate_report(batch_id: str) -> dict[str, Any]:
+        state = batch_gen_mgr.get(batch_id)
+        if state is None:
+            raise HTTPException(status_code=404, detail="batch_id not found")
+        return state
 
     @app.delete("/api/runs/{run_id}")
     def run_delete(run_id: str) -> dict[str, Any]:

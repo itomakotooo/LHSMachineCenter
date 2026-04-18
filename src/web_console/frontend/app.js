@@ -45,6 +45,13 @@ const state = {
   // (from GET /api/versions/current). Used by renderRunHistory to
   // render fresh/stale/untagged badges without per-row fetches.
   currentVersions: { analyzer_version: "", machines: {} },
+  // Active batch-generate-report tracking. null when idle; holds
+  // {batch_id, poll_timer} while a batch is in flight.
+  batchGenerateId: null,
+  batchGeneratePollTimer: null,
+  // Last-known batch state from /api/rawdata/batch-generate-report/{id}
+  // — drives the inline progress bar.
+  batchGenerateProgress: null,
   // Active batch run state.
   activeBatchId: null,
   batchSelectedMachines: new Set(),
@@ -359,10 +366,28 @@ function updateActionStates() {
   // on the catalog-selected machines (state.runFilterMachines), not on
   // the old sidebar machineSelect. Disabled if no machine selected.
   const autotuneBtn = byId("autotuneBtn");
+  const hasSelection = state.runFilterMachines && state.runFilterMachines.size > 0;
   if (autotuneBtn) {
-    const hasSelection = state.runFilterMachines && state.runFilterMachines.size > 0;
     autotuneBtn.disabled = localBusy || serverBusy || anyRunRunning || !hasSelection;
     autotuneBtn.textContent = state.autoTuneRunning ? fmt("btnAutoTuneBusy") : fmt("btnAutoTune");
+  }
+
+  // Batch Generate Report: rebuild reports from cached rawdata across
+  // every catalog-selected machine for the current sampleMode. Disabled
+  // when no selection / a run is already active / another batch is
+  // tracked in state.batchGenerateId.
+  const batchGenBtn = byId("batchGenerateBtn");
+  if (batchGenBtn) {
+    const batchActive = Boolean(state.batchGenerateId);
+    batchGenBtn.disabled = (
+      localBusy || serverBusy || anyRunRunning || !hasSelection || batchActive
+    );
+    batchGenBtn.textContent = batchActive
+      ? fmt("batchGenerateBusy", {
+          done: state.batchGenerateProgress?.completed ?? 0,
+          total: state.batchGenerateProgress?.total ?? 0,
+        })
+      : fmt("btnBatchGenerate");
   }
 
   // Interpretation can run on any run that produced a valid summary
@@ -2854,6 +2879,56 @@ async function refreshRunList(autoSelect = true) {
   updateActionStates();
 }
 
+// Poll the active batch-generate-report every 1s until it reaches a
+// terminal state, updating inline progress + refreshing runs/reports
+// once done so the new gen_* rows + report versions land in the UI
+// without a manual refresh.
+function _startBatchGeneratePoll() {
+  if (state.batchGeneratePollTimer) clearInterval(state.batchGeneratePollTimer);
+  state.batchGeneratePollTimer = setInterval(async () => {
+    if (!state.batchGenerateId) {
+      clearInterval(state.batchGeneratePollTimer);
+      state.batchGeneratePollTimer = null;
+      return;
+    }
+    try {
+      const body = await apiGet(`/api/rawdata/batch-generate-report/${encodeURIComponent(state.batchGenerateId)}`);
+      state.batchGenerateProgress = body;
+      const meta = byId("batchGenerateProgressMeta");
+      const log = byId("batchGenerateProgressLog");
+      if (meta) {
+        const statusText = (body.status === "running" || body.status === "pending")
+          ? fmt("batchGenerateBusy", { done: body.completed, total: body.total })
+          : fmt("batchGenerateDone", { done: body.completed, total: body.total, failed: body.failed });
+        meta.textContent = statusText;
+      }
+      if (log) {
+        log.innerHTML = (body.items || []).map((it) => {
+          const icon = it.status === "completed" ? "✓"
+            : it.status === "failed" ? "✗"
+            : it.status === "running" ? "…"
+            : "·";
+          const detail = it.status === "completed"
+            ? ` RTP=${it.rtp_point_pct != null ? Number(it.rtp_point_pct).toFixed(2) + "%" : "?"} · CI=±${it.achieved_halfwidth_pp != null ? Number(it.achieved_halfwidth_pp).toFixed(3) + "pp" : "?"} · ${it.chunks_processed || 0} chunks`
+            : it.status === "failed"
+            ? ` — ${(it.error || "?").substring(0, 120)}`
+            : "";
+          return `<div class="batch-gen-item batch-gen-${it.status}">${icon} ${it.machine} mode ${it.mode}${detail}</div>`;
+        }).join("");
+      }
+      if (body.status === "completed" || body.status === "partial" || body.status === "failed") {
+        clearInterval(state.batchGeneratePollTimer);
+        state.batchGeneratePollTimer = null;
+        state.batchGenerateId = null;
+        await refreshRunList(false);
+        updateActionStates();
+      }
+    } catch (_err) {
+      // transient; next tick retries
+    }
+  }, 1000);
+}
+
 async function refreshCurrentRun() {
   if (!state.currentRunId) {
     setLoadedMachineInfo(null);
@@ -3430,6 +3505,44 @@ function bindEvents() {
       if (meta) meta.textContent = fmt("settingsSaved", { value: saved.min_retention_spins });
     } catch (err) {
       if (meta) meta.textContent = fmt("settingsSaveError", { error: String(err.message || err) });
+    }
+  });
+
+  // Batch Generate Report: kick off a sequential rebuild for every
+  // selected machine at the current sampleMode. Progress polls the
+  // batch endpoint every 1s while in flight.
+  byId("batchGenerateBtn")?.addEventListener("click", async () => {
+    const selected = [...(state.runFilterMachines || [])];
+    if (!selected.length) {
+      alert(fmt("batchGenerateNoSelection"));
+      return;
+    }
+    const mode = Number(byId("sampleMode")?.value || 1);
+    const items = selected.map((m) => ({ machine: m, mode }));
+    const panel = byId("batchGenerateProgressPanel");
+    const meta = byId("batchGenerateProgressMeta");
+    const log = byId("batchGenerateProgressLog");
+    if (panel) panel.classList.remove("hidden");
+    if (log) log.innerHTML = "";
+    try {
+      const resp = await fetch("/api/rawdata/batch-generate-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${resp.status}`);
+      }
+      const body = await resp.json();
+      state.batchGenerateId = body.batch_id;
+      state.batchGenerateProgress = { total: body.total, completed: 0, failed: 0, pending: body.total };
+      if (meta) meta.textContent = fmt("batchGenerateBusy", { done: 0, total: body.total });
+      updateActionStates();
+      _startBatchGeneratePoll();
+    } catch (err) {
+      if (meta) meta.textContent = fmt("batchGenerateFailed", { error: String(err.message || err) });
+      if (panel) setTimeout(() => panel.classList.add("hidden"), 5000);
     }
   });
 
