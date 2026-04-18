@@ -717,6 +717,18 @@ class StateStore:
             # _update_report_index(); backfilled on startup for legacy rows.
             if "quality_label" not in run_columns:
                 conn.execute("ALTER TABLE runs ADD COLUMN quality_label TEXT")
+            # Version fingerprints for run-history staleness display.
+            # rawdata_config_md5 / rawdata_code_md5 = server machine
+            # version at sampling time (summary.config_md5 / code_md5);
+            # analyzer_version = local analyzer source hash at report
+            # generation (summary.analyzer_version). All three
+            # populated on run finalize + backfilled on startup.
+            if "rawdata_config_md5" not in run_columns:
+                conn.execute("ALTER TABLE runs ADD COLUMN rawdata_config_md5 TEXT")
+            if "rawdata_code_md5" not in run_columns:
+                conn.execute("ALTER TABLE runs ADD COLUMN rawdata_code_md5 TEXT")
+            if "analyzer_version" not in run_columns:
+                conn.execute("ALTER TABLE runs ADD COLUMN analyzer_version TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interpretations (
@@ -788,11 +800,11 @@ class StateStore:
 
     def backfill_rtp_ci_from_summaries(self) -> dict[str, Any]:
         """One-shot migration: for every completed row missing
-        achieved_rtp_pct OR achieved_halfwidth_pp, read the on-disk
-        summary.json and populate the column. Old rows (from before
-        _update_report_index started persisting these two fields)
-        would otherwise render as "\u2014" in the manage-tab history
-        table forever.
+        achieved_rtp_pct, achieved_halfwidth_pp, quality_label,
+        rawdata_config_md5, rawdata_code_md5, or analyzer_version,
+        read the on-disk summary.json and populate the column. Old
+        rows (from before _update_report_index started persisting
+        these fields) would otherwise render as "\u2014" forever.
 
         Safe to run on every startup: rows with values already set are
         skipped; rows whose summary_file is missing or malformed are
@@ -808,12 +820,16 @@ class StateStore:
             rows = conn.execute(
                 """
                 SELECT run_id, status, summary_file, achieved_rtp_pct,
-                       achieved_halfwidth_pp, quality_label
+                       achieved_halfwidth_pp, quality_label,
+                       rawdata_config_md5, rawdata_code_md5, analyzer_version
                 FROM runs
                 WHERE status IN ('completed', 'cancelled')
                   AND (achieved_rtp_pct IS NULL
                        OR achieved_halfwidth_pp IS NULL
-                       OR quality_label IS NULL)
+                       OR quality_label IS NULL
+                       OR rawdata_config_md5 IS NULL
+                       OR rawdata_code_md5 IS NULL
+                       OR analyzer_version IS NULL)
                 """
             ).fetchall()
             for r in rows:
@@ -830,17 +846,18 @@ class StateStore:
                     summary = json.loads(summary_path.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
                     continue
-                rtp = summary.get("rtp", {}).get("point_pct") if isinstance(summary, dict) else None
-                hw = (
-                    summary.get("sampling", {}).get("achieved_halfwidth_pp")
-                    if isinstance(summary, dict) else None
-                )
+                if not isinstance(summary, dict):
+                    continue
+                rtp = summary.get("rtp", {}).get("point_pct")
+                hw = summary.get("sampling", {}).get("achieved_halfwidth_pp")
                 ql = (
                     summary.get("guideline_assessment", {})
                     .get("data_quality", {})
                     .get("quality_label")
-                    if isinstance(summary, dict) else None
                 )
+                rpt_cfg = summary.get("config_md5")
+                rpt_code = summary.get("code_md5")
+                analyzer_ver = summary.get("analyzer_version")
                 # Write whichever fields had a null stored + a real
                 # value available; leave others alone.
                 patch_pairs: list[tuple[str, Any]] = []
@@ -850,6 +867,12 @@ class StateStore:
                     patch_pairs.append(("achieved_halfwidth_pp", float(hw)))
                 if r["quality_label"] is None and ql:
                     patch_pairs.append(("quality_label", str(ql)))
+                if r["rawdata_config_md5"] is None and rpt_cfg:
+                    patch_pairs.append(("rawdata_config_md5", str(rpt_cfg)))
+                if r["rawdata_code_md5"] is None and rpt_code:
+                    patch_pairs.append(("rawdata_code_md5", str(rpt_code)))
+                if r["analyzer_version"] is None and analyzer_ver:
+                    patch_pairs.append(("analyzer_version", str(analyzer_ver)))
                 if not patch_pairs:
                     continue
                 sets = ", ".join(f"{name}=?" for name, _ in patch_pairs)
@@ -2670,6 +2693,17 @@ class RunManager:
         rtp_point_pct = summary.get("rtp", {}).get("point_pct")
         achieved_hw_pp = summary.get("sampling", {}).get("achieved_halfwidth_pp")
         quality_label = summary.get("guideline_assessment", {}).get("data_quality", {}).get("quality_label")
+        # Version fingerprints let run-history flag stale reports without
+        # re-reading summary.json on every list. Three dimensions:
+        #   rawdata_config_md5 / rawdata_code_md5 = server-side machine
+        #     version captured at sampling time (fresh iff matches
+        #     machines.json current). Stale → resample required.
+        #   analyzer_version = local analyzer source hash at report-
+        #     generation time (fresh iff matches current Python code).
+        #     Stale → regenerate from rawdata via the new Part A path.
+        rawdata_config_md5 = summary.get("config_md5")
+        rawdata_code_md5 = summary.get("code_md5")
+        analyzer_version = summary.get("analyzer_version")
         item = {
             "report_version": managed.report_version,
             "run_id": managed.run_id,
@@ -2692,6 +2726,12 @@ class RunManager:
             patch["achieved_halfwidth_pp"] = float(achieved_hw_pp)
         if quality_label:
             patch["quality_label"] = str(quality_label)
+        if rawdata_config_md5:
+            patch["rawdata_config_md5"] = str(rawdata_config_md5)
+        if rawdata_code_md5:
+            patch["rawdata_code_md5"] = str(rawdata_code_md5)
+        if analyzer_version:
+            patch["analyzer_version"] = str(analyzer_version)
         if patch:
             self.store.update_run(managed.run_id, patch)
 
@@ -3026,6 +3066,43 @@ def create_app(
     @app.get("/api/machines")
     def machines() -> dict[str, Any]:
         return {"machines": load_machines(mc, rr)}
+
+    @app.get("/api/versions/current")
+    def versions_current() -> dict[str, Any]:
+        """Current server-side + analyzer versions.
+
+        Returned shape:
+          {
+            "analyzer_version": "<12-char hex>",
+            "machines": {"<machine>": {"config_md5": ..., "code_md5": ...}}
+          }
+
+        Used by the frontend to compute per-run staleness badges in the
+        Run History table without the backend having to join summary
+        files on every list call. Run rows store what they saw at
+        generation time; this endpoint returns what's current now.
+        """
+        from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+        machines_payload: dict[str, dict[str, str]] = {}
+        if mc.exists():
+            try:
+                data = read_json(mc) or {}
+                for m in data.get("machines", []):
+                    name = m.get("machine")
+                    if not name:
+                        continue
+                    machines_payload[str(name)] = {
+                        "config_md5": str(m.get("configSummaryMd5", "")),
+                        "code_md5": str(m.get("codeSummaryMd5", "")),
+                    }
+            except (OSError, json.JSONDecodeError, TypeError):
+                # Malformed machines.json → return empty map; frontend
+                # degrades to "untagged" badges rather than blank cells.
+                pass
+        return {
+            "analyzer_version": compute_analyzer_version(),
+            "machines": machines_payload,
+        }
 
     @app.get("/api/machines/summary")
     def machines_summary() -> dict[str, Any]:

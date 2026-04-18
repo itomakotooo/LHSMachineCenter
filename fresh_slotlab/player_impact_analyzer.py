@@ -2,6 +2,7 @@
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import math
 import os
@@ -1270,6 +1271,28 @@ def _compute_upstream_schema_fingerprint(resp: Any) -> str | None:
         # best-effort diagnostic, not correctness-critical; fall through.
         pass
     return None
+
+
+def compute_analyzer_version() -> str:
+    """Return a 12-char hex digest of this analyzer module's source.
+
+    Stamped in summary.json so run-history can flag reports as stale
+    when the analyzer code has changed after a report was built.
+    Intentionally broad: any edit to ``player_impact_analyzer.py`` —
+    including comments — changes the hash. That's fine because the
+    recovery action is a single click (⟳ generate report from
+    rawdata), and a false-stale is cheap to resolve while a false-
+    fresh would hide a real bug.
+
+    Returns "" if the source file can't be read (shouldn't happen in
+    normal execution — this module is always loaded from a file). An
+    empty string signals "untagged" downstream rather than crashing.
+    """
+    try:
+        data = Path(__file__).resolve().read_bytes()
+    except OSError:
+        return ""
+    return hashlib.sha256(data).hexdigest()[:12]
 
 
 def _lookup_machine_md5(machine: str) -> tuple[str, str]:
@@ -4266,13 +4289,21 @@ def main() -> int:
     # Capture machine MD5 at report build time for later validity checks.
     # Primary source: machines.json (the ground truth at analyzer invocation).
     _summary_config_md5, _summary_code_md5 = _lookup_machine_md5(args.machine)
+    _summary_analyzer_version = compute_analyzer_version()
     summary = {
         "report_id": f"impact_{args.machine}_mode{args.rtp_mode}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "run_id": run_id,
         "machine": args.machine,
         "mode": args.rtp_mode,
+        # Server-side machine fingerprint at sampling time (paytable /
+        # paylines / code on the server). Staleness means rawdata is
+        # from an older server version → must resample.
         "config_md5": _summary_config_md5,
         "code_md5": _summary_code_md5,
+        # Local analyzer source fingerprint at report-generation time.
+        # Staleness means the report was built with older Python code
+        # → safe to regenerate from rawdata (same chunks, new code).
+        "analyzer_version": _summary_analyzer_version,
         "output_all_robots_result": True,
         "sampling": {
             "target_halfwidth_pp": args.target_halfwidth_pp,

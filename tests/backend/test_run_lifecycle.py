@@ -545,6 +545,14 @@ def test_backfill_rtp_ci_from_summaries(app_factory, tmp_path):
             "guideline_assessment": {
                 "data_quality": {"quality_label": "REPORT_GRADE"},
             },
+            # New version-fingerprint fields (post Commit 1 plumbing):
+            # these are also backfilled from summary.json so the
+            # second backfill pass can confirm the row drops out of
+            # the WHERE clause (otherwise missing-fingerprint rows
+            # stay re-scanned forever).
+            "config_md5": "cfg_md5_abcd",
+            "code_md5": "code_md5_efgh",
+            "analyzer_version": "ver_ijkl",
         }),
         encoding="utf-8",
     )
@@ -603,11 +611,12 @@ def test_backfill_rtp_ci_from_summaries(app_factory, tmp_path):
     assert result["updated"] == 1
     assert result["skipped_no_file"] == 1
 
-    # Verify the legacy row now has all three columns filled.
+    # Verify the legacy row now has all six backfilled columns filled.
     conn = sqlite3.connect(str(app_factory.db_path))
     try:
         row = conn.execute(
-            "SELECT achieved_rtp_pct, achieved_halfwidth_pp, quality_label "
+            "SELECT achieved_rtp_pct, achieved_halfwidth_pp, quality_label, "
+            "       rawdata_config_md5, rawdata_code_md5, analyzer_version "
             "FROM runs WHERE run_id = ?",
             ("legacy_run_x",),
         ).fetchone()
@@ -616,6 +625,9 @@ def test_backfill_rtp_ci_from_summaries(app_factory, tmp_path):
     assert row[0] == 92.35
     assert row[1] == 0.48
     assert row[2] == "REPORT_GRADE"
+    assert row[3] == "cfg_md5_abcd"
+    assert row[4] == "code_md5_efgh"
+    assert row[5] == "ver_ijkl"
 
     # Ghost row remains null.
     conn = sqlite3.connect(str(app_factory.db_path))
