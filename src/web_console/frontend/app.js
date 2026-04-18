@@ -2574,6 +2574,168 @@ async function renderPaylineClassification(summary) {
   `;
 }
 
+// Render the per-pay_id SHAPE inference panel. Data comes from
+// /api/paytables/{machine}/mode/{mode}/shape produced by
+// scripts/infer_paytable.py. Shows:
+//   1. wild inference status banner (inferred / partial / undetermined +
+//      review-needed flag for machines with polluted substitution signal)
+//   2. wild evidence table (confidence + mono/substitute/paying counts
+//      per candidate symbol)
+//   3. per (pay_id, match_count) shape rows: symbol_set / match_count /
+//      wild substitution rate / line sign / position cols covered /
+//      confidence tag / notes
+// Missing inference output → hide panel silently (non-critical).
+async function renderPaytableShape(summary) {
+  const panel = byId("paytableShapePanel");
+  if (!panel) return;
+  const machine = (summary || {}).machine;
+  const mode = Number((summary || {}).mode);
+  if (!machine || !mode) { panel.classList.add("hidden"); return; }
+
+  let data;
+  try {
+    data = await apiGet(
+      `/api/paytables/${encodeURIComponent(machine)}/mode/${mode}/shape`,
+    );
+  } catch (_err) {
+    panel.classList.add("hidden");
+    return;
+  }
+  if (!data || data.status === "not_run" || !Array.isArray(data.rows) || !data.rows.length) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+  const body = byId("paytableShapeBody");
+
+  const wi = data.wild_inference || {};
+  const wildStatus = wi.status || "undetermined";
+  const wilds = Array.isArray(wi.wilds) ? wi.wilds : [];
+  const reviewNeeded = Boolean(wi.review_needed);
+  const stemCount = Number(wi.stem_count || 0);
+  const flags = Array.isArray(data.machine_flags) ? data.machine_flags : [];
+
+  // Banner styling by status.
+  let statusColor = "#6b7f90";
+  let statusEmoji = "·";
+  if (wildStatus === "inferred") { statusColor = "#2e7d32"; statusEmoji = "✓"; }
+  else if (wildStatus === "partial") { statusColor = "#c88a00"; statusEmoji = "≈"; }
+  else if (wildStatus === "undetermined") { statusColor = "#888"; statusEmoji = "?"; }
+
+  const wildsStr = wilds.length ? wilds.map(_escHtml).join(", ") : "—";
+  const reviewBanner = reviewNeeded
+    ? `<div class="shape-warn">⚠ ${_escHtml(
+        `推断出 ${wilds.length} 个 wild 候选，跨 ${stemCount} 个符号族。` +
+        `复杂 group-pay 机台可能产生假阳，请人工核对。`,
+      )}</div>`
+    : "";
+  const flagsBanner = flags.length
+    ? `<div class="shape-flag">🚩 ${flags.map(_escHtml).join(" · ")}</div>`
+    : "";
+
+  // Wild evidence table.
+  const ev = wi.evidence || {};
+  const evRows = Object.entries(ev)
+    .sort(([, a], [, b]) => {
+      const order = { high: 0, medium: 1, low: 2 };
+      return (order[a.confidence] ?? 3) - (order[b.confidence] ?? 3);
+    })
+    .slice(0, 12)
+    .map(([sym, e]) => {
+      const conf = e.confidence || "-";
+      const confBadge = conf === "high" ? "🟢" : conf === "medium" ? "🟡" : "⚪";
+      const score = e.wild_score != null ? Number(e.wild_score).toFixed(1) : "—";
+      const reason = _escHtml(e.reason || "");
+      return `<tr>
+        <td><code>${_escHtml(sym)}</code></td>
+        <td>${confBadge} ${_escHtml(conf)}</td>
+        <td>${Number(e.mono_count || 0)}</td>
+        <td>${Number(e.substitutes_count || 0)}</td>
+        <td>${Number(e.paying_count || 0)}</td>
+        <td>${score}</td>
+        <td class="shape-reason">${reason}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const evidenceHtml = evRows
+    ? `<h3 style="margin:14px 0 6px;font-size:13px;color:var(--muted)">Wild evidence</h3>
+       <table class="drilldown-table">
+         <thead><tr>
+           <th>symbol</th><th>conf</th><th>mono</th><th>sub</th><th>paying</th><th>score</th><th>reason</th>
+         </tr></thead>
+         <tbody>${evRows}</tbody>
+       </table>`
+    : "";
+
+  // Shape rows table. Sort positive pay_ids then negative, each by -fires.
+  const sorted = [...data.rows].sort((a, b) => {
+    const aPos = (a.pay_id ?? 0) >= 0 ? 0 : 1;
+    const bPos = (b.pay_id ?? 0) >= 0 ? 0 : 1;
+    if (aPos !== bPos) return aPos - bPos;
+    return (b.fires || 0) - (a.fires || 0);
+  });
+
+  const rowsHtml = sorted
+    .map((r) => {
+      const sh = r.shape || {};
+      const symSet = Array.isArray(sh.symbol_set) ? sh.symbol_set : [];
+      const mc = r.match_count;
+      const symDisplay = symSet.length
+        ? `${mc}× ${symSet.map(_escHtml).join(" / ")}`
+        : "—";
+      const purity = Number(sh.symbol_purity || 0);
+      const wildSubRate = Number(sh.wild_substitution_rate || 0);
+      const wildSubBadge = wildSubRate > 0
+        ? `<span class="shape-wild-rate" title="wild 替换率">${(wildSubRate * 100).toFixed(0)}% W</span>`
+        : "";
+      const lineSign = sh.line_id_sign || "—";
+      const cols = Array.isArray(sh.position_cols_covered) ? sh.position_cols_covered : [];
+      const colStr = cols.length ? cols.join(",") : "—";
+      const conf = sh.confidence || "low";
+      const confBadge = conf === "high" ? "🟢" : conf === "medium" ? "🟡" : "⚪";
+      const notes = Array.isArray(sh.notes) && sh.notes.length
+        ? sh.notes.map(_escHtml).join("; ")
+        : "";
+      return `<tr>
+        <td>${r.pay_id}</td>
+        <td>${r.fires}</td>
+        <td>${_escHtml(symDisplay)} ${wildSubBadge}</td>
+        <td>${(purity * 100).toFixed(0)}%</td>
+        <td>${_escHtml(lineSign)}</td>
+        <td>${_escHtml(colStr)}</td>
+        <td>${confBadge}</td>
+        <td class="shape-notes">${notes}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const grid = data.grid || {};
+  const gridStr = grid.n_cols && grid.n_rows ? `${grid.n_cols}×${grid.n_rows}` : "—";
+  const chunksStr = data.chunks_scanned != null
+    ? ` · ${data.chunks_scanned} chunks scanned`
+    : "";
+
+  body.innerHTML =
+    `<div class="shape-header">
+       <span>网格 ${_escHtml(gridStr)}${_escHtml(chunksStr)}</span>
+       <span class="shape-wild-status" style="color:${statusColor}">
+         ${statusEmoji} Wild 推断: ${_escHtml(wildStatus)} — ${wildsStr}
+       </span>
+     </div>` +
+    reviewBanner +
+    flagsBanner +
+    evidenceHtml +
+    `<h3 style="margin:14px 0 6px;font-size:13px;color:var(--muted)">每个 Pay ID 的形状</h3>
+     <table class="drilldown-table">
+       <thead><tr>
+         <th>pay_id</th><th>fires</th><th>shape (N× symbols)</th>
+         <th>purity</th><th>line</th><th>cols</th><th>conf</th><th>notes</th>
+       </tr></thead>
+       <tbody>${rowsHtml}</tbody>
+     </table>`;
+}
+
 function renderFieldDiscovery(summary) {
   const panel = byId("fieldDiscoveryPanel");
   if (!panel) return;
@@ -3239,6 +3401,7 @@ async function refreshCurrentRun() {
     // trip. Hidden automatically when the classifier output doesn't
     // cover this machine.
     renderPaylineClassification(s);
+    renderPaytableShape(s);
     renderFieldDiscovery(s);
     renderMachineMechanics(s);
     renderBonusChainDynamicsPanel(s);

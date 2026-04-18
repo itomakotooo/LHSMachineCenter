@@ -153,6 +153,16 @@
             <div id="paylineClassificationBody"></div>
           </section>
 
+          <!-- Per-pay_id shape inference + auto-inferred wild set.
+               Fetched lazily from /api/paytables/{machine}/mode/{mode}/shape
+               after the report loads. "Shape" = what symbols and how many
+               cells constitute each pay_id's winning tuple; not multiplier
+               values. Paused paytable-multiplier work is out of scope here. -->
+          <section class="panel paytable-shape hidden" id="paytableShapePanel">
+            <h2 data-i18n="panelPaytableShape">Pay ID 形状推断</h2>
+            <div id="paytableShapeBody"></div>
+          </section>
+
           <!-- Field Discovery: shows extra fields beyond baseline -->
           <section class="panel field-discovery hidden" id="fieldDiscoveryPanel">
             <h2 data-i18n="panelFieldDiscovery">字段发现</h2>
@@ -450,7 +460,7 @@
 
     </main>
 
-    <script src="/console/pure.js"></script>
-    <script src="/console/app.js"></script>
+    <script src="/console/pure.js?v=20260418-shape"></script>
+    <script src="/console/app.js?v=20260418-shape"></script>
   </body>
 </html>

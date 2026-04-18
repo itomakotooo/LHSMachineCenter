@@ -1887,6 +1887,59 @@ button.small-btn.active, .small-btn.active {
   color: #78350f;
 }
 
+/* Paytable shape panel: per-pay_id shape + wild inference */
+.paytable-shape {
+  grid-column: span 6;
+}
+.paytable-shape .shape-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0 10px;
+  font-size: 12px;
+  color: #334155;
+}
+.paytable-shape .shape-wild-status {
+  font-weight: 600;
+}
+.paytable-shape .shape-warn {
+  background: #fef3c7;
+  border-left: 3px solid #f59e0b;
+  padding: 6px 10px;
+  margin: 6px 0;
+  font-size: 12px;
+  color: #78350f;
+}
+.paytable-shape .shape-flag {
+  background: #fee2e2;
+  border-left: 3px solid #ef4444;
+  padding: 6px 10px;
+  margin: 6px 0;
+  font-size: 12px;
+  color: #7f1d1d;
+}
+.paytable-shape .shape-wild-rate {
+  background: #ddd6fe;
+  color: #4c1d95;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  margin-left: 4px;
+}
+.paytable-shape .shape-reason {
+  color: #64748b;
+  font-size: 11px;
+}
+.paytable-shape .shape-notes {
+  color: #78350f;
+  font-size: 11px;
+}
+.paytable-shape h3 {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  color: #334155;
+}
+
 .run-filter-banner {
   display: none;
   align-items: center;
