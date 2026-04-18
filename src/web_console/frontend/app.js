@@ -769,7 +769,15 @@ function renderMachineCatalog() {
       d.setAttribute("tabindex", "0");
       const metrics = _catalogModeMetrics(m.machine);
       const reportBadge = m.report_count ? `<span class="catalog-badge" style="background:${catColor}">${m.report_count}</span>` : "";
-      d.innerHTML = `<div class="catalog-title">${m.machine}${reportBadge}</div>${metrics || `<div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`}`;
+      // Broken-machine badge: ⚠ with tooltip listing each anomaly.
+      // Clicking the flag does nothing itself (the card click handler
+      // still toggles selection) — it's a read-only indicator.
+      const issues = _machineBrokenIssues(m.machine);
+      const brokenBadge = issues.length
+        ? `<span class="catalog-broken" title="${issues.join(' · ').replace(/"/g, '&quot;')}">⚠</span>`
+        : "";
+      d.innerHTML = `<div class="catalog-title">${m.machine}${brokenBadge}${reportBadge}</div>${metrics || `<div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`}`;
+      if (issues.length) d.classList.add("broken-machine");
       grid.appendChild(d);
     });
     section.appendChild(grid);
@@ -1072,6 +1080,44 @@ const _MODE_RTP_EXPECT = {
   2: { min: 150, max: Infinity, label: "mode 2 应 > 150%" },
   5: { min: 200, max: Infinity, label: "mode 5 应 > mode 2" },
 };
+
+// Per-machine broken flags (B3). Same anomaly rules as fleet headlines
+// (_computeFleetHeadlines) but returns per-machine lists so catalog
+// cards can surface a ⚠ badge with tooltip. Returns list of short
+// strings ("mode 1 RTP 51%") or empty array when healthy.
+function _machineBrokenIssues(machine) {
+  const sm = (state.machinesSummary || {}).machines || {};
+  const mConfig = (state.machines || []).find((x) => x.machine === machine);
+  if (!mConfig) return [];
+  const modes = sm[machine] || {};
+  const expected = mConfig.modes || [1, 2, 5, 7];
+  const actual = Object.keys(modes).map(Number);
+  const issues = [];
+  // Missing modes
+  const missing = expected.filter((x) => !actual.includes(x));
+  if (missing.length && mConfig.available !== false) {
+    issues.push(`缺 mode ${missing.join(",")}`);
+  }
+  // Per-mode RTP expectation
+  for (const modeStr of Object.keys(modes)) {
+    const mode = Number(modeStr);
+    const d = modes[modeStr];
+    const rtp = d.rtp_pct;
+    if (rtp == null) continue;
+    const exp = _MODE_RTP_EXPECT[mode];
+    if (exp && (rtp < exp.min || rtp > exp.max)) {
+      issues.push(`mode ${mode} RTP=${rtp.toFixed(0)}% (期望 ${exp.label})`);
+    }
+  }
+  // Mode 5 should be > mode 2
+  const m2 = modes["2"]?.rtp_pct;
+  const m5 = modes["5"]?.rtp_pct;
+  if (m2 != null && m5 != null && m5 <= m2) {
+    issues.push(`mode 5 ≤ mode 2 (m2=${m2.toFixed(0)}%, m5=${m5.toFixed(0)}%)`);
+  }
+  return issues;
+}
+
 
 function _computeFleetHeadlines() {
   const sm = (state.machinesSummary || {}).machines || {};

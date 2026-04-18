@@ -1556,6 +1556,22 @@ button.feature-chip {
   margin-left: 4px;
   vertical-align: middle;
 }
+/* Broken-machine flag: ⚠ next to the machine name for any catalog
+   card whose /api/machines/summary data reveals an anomaly — missing
+   mode, per-mode RTP out of expected range, or mode 5 ≤ mode 2.
+   Full list shown on hover via native tooltip. */
+.catalog-broken {
+  display: inline-block;
+  margin-left: 4px;
+  color: #b45309;
+  font-size: 12px;
+  cursor: help;
+}
+.catalog-item.broken-machine {
+  /* Subtle orange-tinted border to mirror the ⚠ glyph without
+     overwhelming the category color on the left edge. */
+  box-shadow: inset 0 -2px 0 #fbbf24;
+}
 
 /* Category group dot */
 .catalog-group-dot {
