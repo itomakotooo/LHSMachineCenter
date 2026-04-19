@@ -4048,6 +4048,35 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Compute the asset-hash cache-bust token for embedding into
+    # ``index.html`` (both /console/ and / serve the same template).
+    # Declared early so the console_root route below can use it.
+    def _asset_hash_for_console() -> str:
+        latest = 0
+        for name in ("pure.js", "app.js", "styles.css"):
+            p = FRONTEND_DIR / name
+            try:
+                ts = int(p.stat().st_mtime)
+                if ts > latest:
+                    latest = ts
+            except OSError:
+                continue
+        return str(latest) if latest else "dev"
+
+    # /console/ and /console must substitute the ASSET_HASH placeholder
+    # in index.html so <script>/<link> URLs carry a cache-bust token.
+    # Registered BEFORE the StaticFiles mount so FastAPI's explicit
+    # route beats the static handler for the root path. The mount
+    # continues to serve app.js / pure.js / styles.css directly.
+    @app.get("/console/")
+    @app.get("/console")
+    def console_root() -> Response:
+        text = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+        return Response(
+            content=text.replace("{{ASSET_HASH}}", _asset_hash_for_console()),
+            media_type="text/html; charset=utf-8",
+        )
+
     app.mount("/console", StaticFiles(directory=FRONTEND_DIR, html=True), name="console")
 
     # Expose live singletons on app.state so tests / e2e fixtures can poke them
@@ -4129,6 +4158,7 @@ def create_app(
             content=text.replace("{{ASSET_HASH}}", _asset_hash()),
             media_type="text/html; charset=utf-8",
         )
+
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:

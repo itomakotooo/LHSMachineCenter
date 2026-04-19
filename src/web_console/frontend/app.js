@@ -3861,9 +3861,23 @@ function renderBankruptcyAnalysis(summary) {
   }
   panel.classList.remove("hidden");
 
-  const sessionSpins = Number(sim.session_spins || 500);
-  const binCount = Number(sim.bin_count || 10);
-  const binSize = sessionSpins / binCount;
+  const sessionSpins = Number(sim.session_spins || 10000);
+  // Adaptive bin_edges (len = N+1) come from the analyzer — each pair
+  // (edges[i], edges[i+1]) defines a display bin of variable width.
+  // Fall back to a naive uniform split if the field is missing (older
+  // summaries from before the adaptive refactor).
+  const rawEdges = Array.isArray(sim.bin_edges) && sim.bin_edges.length >= 2
+    ? sim.bin_edges.map((v) => Number(v))
+    : null;
+  const binEdges = rawEdges || (() => {
+    const fallbackN = Number(sim.bin_count || 10);
+    const edges = [];
+    for (let i = 0; i <= fallbackN; i++) {
+      edges.push(Math.round((i * sessionSpins) / fallbackN));
+    }
+    return edges;
+  })();
+  const binCount = binEdges.length - 1;
 
   const intro = `<p class="bankruptcy-intro">${_escHtml(
     fmt("bankruptcyIntro", { session: sessionSpins })
@@ -3872,23 +3886,25 @@ function renderBankruptcyAnalysis(summary) {
   const cards = tiers.map((t) => {
     const mult = Number(t.bankroll_multiplier || 0);
     const sessions = Number(t.robots || 0);
-    const bankrupt = Number(t.bankrupt_robots || 0);
     const survived = Number(t.completed_robots || 0);
     const rate = Number(t.bankruptcy_rate || 0);
-    const avg = Number(t.avg_spins_completed || 0);
+    // Prefer median (new) but fall back to avg (legacy summaries).
+    const medianSpins = t.median_spins_completed != null
+      ? Number(t.median_spins_completed)
+      : Number(t.avg_spins_completed || 0);
     const bins = Array.isArray(t.bins) ? t.bins : [];
 
-    // Assemble rows: one per bankrupt bin + a final "survived" row.
-    // Shares are percentages of sessions (not of bankrupt subset), so
-    // the column sums to 100% including the survived row.
+    // Assemble rows: one per bankrupt bin (using adaptive edges) plus
+    // a final "survived" row. Shares are percentages of total sessions
+    // in the tier so the column sums to 100% including survivors.
     const rows = [];
     for (let i = 0; i < binCount; i++) {
       const c = Number(bins[i] || 0);
       const share = sessions > 0 ? c / sessions : 0;
-      const start = Math.round(i * binSize);
-      const end = i === binCount - 1
-        ? sessionSpins - 1
-        : Math.round((i + 1) * binSize) - 1;
+      const start = Math.round(binEdges[i]);
+      // Inclusive upper bound for display; the bin internally covers
+      // [edges[i], edges[i+1]) so the display end is edges[i+1] - 1.
+      const end = Math.max(start, Math.round(binEdges[i + 1]) - 1);
       const label = fmt("bankruptcyBinLabel", { start, end });
       rows.push({ label, share, isSurvived: false });
     }
@@ -3920,7 +3936,7 @@ function renderBankruptcyAnalysis(summary) {
       )}</h3>` +
       `<div class="bankruptcy-tier-stats">` +
       `<span class="bk-stat bk-stat-rate"><em>${_escHtml(fmt("bankruptcyRateLabel"))}</em><b>${(rate * 100).toFixed(1)}%</b></span>` +
-      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcyAvgLabel"))}</em><b>${Math.round(avg)}</b></span>` +
+      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcyMedianLabel"))}</em><b>${Math.round(medianSpins).toLocaleString()}</b></span>` +
       `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcySurvivedLabel"))}</em><b>${sessions > 0 ? ((survived / sessions) * 100).toFixed(1) : "0.0"}%</b></span>` +
       `</div>` +
       `<table class="drilldown-table bankruptcy-histogram">` +
@@ -3933,7 +3949,6 @@ function renderBankruptcyAnalysis(summary) {
       `</table>` +
       `</div>`
     );
-    void bankrupt; // stat currently summarized via rate + survived pair.
   }).join("");
 
   body.innerHTML = intro + `<div class="bankruptcy-tiers-grid">${cards}</div>`;
