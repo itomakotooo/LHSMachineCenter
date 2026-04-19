@@ -45,7 +45,14 @@ const state = {
   // precedence over fleet overview but NOT over focus/multi.
   showGlobalRawdata: false,
   rawdataOverview: null,  // cached GET /api/rawdata/overview response
+  // Operator-tunable retention quota (spins). Loaded on boot from
+  // /api/settings, persisted there. Rendered inline inside the
+  // rawdata banner's settings row (see renderRawdataBanner).
+  minRetentionSpins: 100000,
+  showRawdataSettings: false,
   // Set of selected run_ids for batch operations.
+  // selectedRuns retired 2026-04-19 with the run-history table.
+  // Kept as empty Set for back-compat with any stale reads.
   selectedRuns: new Set(),
   // Latest library-wide metric distributions (from
   // GET /api/library/distributions). Drives the "lib-P{N}" suffix on
@@ -1042,12 +1049,27 @@ function renderRawdataBanner() {
     ? (reclaimMb / 1024).toFixed(2) + " GB"
     : reclaimMb.toFixed(1) + " MB";
   const cleanupDisabled = d.reclaimable_bytes <= 0;
+  const minRet = Number(state.minRetentionSpins || 100000);
+  const settingsRow = state.showRawdataSettings ? `
+    <div class="rawdata-banner-settings">
+      <label>保底 spins 阈值
+        <input id="bannerMinRetention" type="number" min="0" step="10000" value="${minRet}" />
+      </label>
+      <button id="bannerSaveSettingsBtn" class="small-btn primary-btn">保存</button>
+      <span id="bannerSettingsMeta" class="muted"></span>
+      <span class="muted">超过这个保底量的 chunks 才会被自动清理 / UI「删除可回收」回收；保底永不删。</span>
+    </div>
+  ` : "";
   banner.innerHTML = `
-    <span class="rawdata-banner-main">💾 rawdata <b>${totalGb} GB</b> · baseline ${baselineGb} GB 保底 · 可回收 <b>${reclaimText}</b></span>
-    <span class="rawdata-banner-actions">
-      <button id="rawdataBannerCleanupBtn" class="small-btn danger-btn" ${cleanupDisabled ? "disabled" : ""}>一键清理 ${reclaimText}</button>
-      <button id="rawdataBannerDetailBtn" class="small-btn ${state.showGlobalRawdata ? "active" : ""}">${state.showGlobalRawdata ? "↩ 返回概览" : "明细 ▶"}</button>
-    </span>`;
+    <div class="rawdata-banner-row">
+      <span class="rawdata-banner-main">💾 rawdata <b>${totalGb} GB</b> · baseline ${baselineGb} GB 保底 · 可回收 <b>${reclaimText}</b></span>
+      <span class="rawdata-banner-actions">
+        <button id="rawdataBannerCleanupBtn" class="small-btn danger-btn" ${cleanupDisabled ? "disabled" : ""}>一键清理 ${reclaimText}</button>
+        <button id="rawdataBannerDetailBtn" class="small-btn ${state.showGlobalRawdata ? "active" : ""}">${state.showGlobalRawdata ? "↩ 返回概览" : "明细 ▶"}</button>
+        <button id="rawdataBannerSettingsBtn" class="small-btn ${state.showRawdataSettings ? "active" : ""}" title="保底 spins 阈值设置">⚙</button>
+      </span>
+    </div>
+    ${settingsRow}`;
   byId("rawdataBannerCleanupBtn")?.addEventListener("click", async () => {
     if (!confirm(`一键清理 ${reclaimText}？baseline 保底不会被删除。`)) return;
     try {
@@ -1062,6 +1084,39 @@ function renderRawdataBanner() {
     state.showGlobalRawdata = !state.showGlobalRawdata;
     renderRawdataBanner();
     renderDetailPane();
+  });
+  byId("rawdataBannerSettingsBtn")?.addEventListener("click", () => {
+    state.showRawdataSettings = !state.showRawdataSettings;
+    renderRawdataBanner();
+  });
+  byId("bannerSaveSettingsBtn")?.addEventListener("click", async () => {
+    const input = byId("bannerMinRetention");
+    const meta = byId("bannerSettingsMeta");
+    if (!input) return;
+    const value = Number(input.value);
+    if (!Number.isFinite(value) || value < 0) {
+      if (meta) meta.textContent = "✗ 无效值";
+      return;
+    }
+    try {
+      const resp = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ min_retention_spins: Math.trunc(value) }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${resp.status}`);
+      }
+      const saved = await resp.json();
+      state.minRetentionSpins = saved.min_retention_spins;
+      if (meta) meta.textContent = `✓ 已保存 (${saved.min_retention_spins.toLocaleString()})`;
+      // Retention change affects what counts as baseline vs deletable —
+      // refresh overview so the banner numbers update.
+      refreshRawdataOverview();
+    } catch (err) {
+      if (meta) meta.textContent = "✗ 保存失败: " + (err.message || err);
+    }
   });
 }
 
@@ -2516,129 +2571,14 @@ function renderRunFilterBanner() {
   });
 }
 
-function updateBatchBar() {
-  const bar = byId("batchActionsBar");
-  const n = state.selectedRuns.size;
-  if (!bar) return;
-  bar.style.display = n > 0 ? "" : "none";
-  byId("batchCount").textContent = fmt("batchSelectedCount", { n });
-}
-
-// Format a number field that may be null/undefined (legacy rows persisted
-// before the achieved_rtp_pct / achieved_halfwidth_pp migration) as an em
-// dash. `precision` digits, trailing "%" or " pp" suffix optional.
-function fMetricCell(value, precision, suffix) {
-  if (value === null || value === undefined || value === "") return "\u2014";
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "\u2014";
-  return n.toFixed(precision) + (suffix || "");
-}
-
-function renderRunHistory() {
-  renderRunFilterBanner();
-  const body = byId("runListTable").querySelector("tbody");
-  body.innerHTML = "";
-  const filterSet = state.runFilterMachines;
-  const rows = filterSet.size
-    ? state.runs.filter((r) => filterSet.has(r.machine))
-    : state.runs;
-  if (!rows.length) {
-    const msg = filterSet.size ? fmt("noRunsForMachine") : fmt("noRuns");
-    body.innerHTML = `<tr><td colspan="12">${msg}</td></tr>`;
-    updateBatchBar();
-    return;
-  }
-  const current = state.currentVersions || { analyzer_version: "", machines: {} };
-  rows.forEach((r) => {
-    const tr = document.createElement("tr");
-    if (r.run_id === state.currentRunId) tr.classList.add("active-row");
-    const rtpCell = fMetricCell(r.achieved_rtp_pct, 2, "%");
-    const ciCell = fMetricCell(r.achieved_halfwidth_pp, 3, "pp");
-    const spinsCell = r.total_spins != null
-      ? Number(r.total_spins).toLocaleString()
-      : "\u2014";
-    const qualityCell = r.quality_label || "\u2014";
-    const checked = state.selectedRuns.has(r.run_id) ? "checked" : "";
-    const badges = PURE.versionBadges(r, current);
-    const rawdataBadge = `<span class="ver-badge ver-${badges.rawdata.tier}" title="${badges.rawdata.tip.replace(/"/g, '&quot;')}">${fmt("badge" + badges.rawdata.tier.charAt(0).toUpperCase() + badges.rawdata.tier.slice(1))}</span>`;
-    const analyzerBadge = `<span class="ver-badge ver-${badges.analyzer.tier}" title="${badges.analyzer.tip.replace(/"/g, '&quot;')}">${fmt("badge" + badges.analyzer.tier.charAt(0).toUpperCase() + badges.analyzer.tier.slice(1))}</span>`;
-    tr.innerHTML =
-      `<td class="td-check"><input type="checkbox" class="run-check" data-id="${r.run_id}" ${checked}></td>` +
-      `<td>${r.run_id}</td>` +
-      `<td>${statusText(r.status)}</td>` +
-      `<td>${r.machine}</td>` +
-      `<td>${r.mode}</td>` +
-      `<td>${spinsCell}</td>` +
-      `<td>${rtpCell}</td>` +
-      `<td>${ciCell}</td>` +
-      `<td>${qualityCell}</td>` +
-      `<td>${rawdataBadge}</td>` +
-      `<td>${analyzerBadge}</td>` +
-      `<td class="action-cell">` +
-      `<button class="load-run-btn" data-id="${r.run_id}">${fmt("btnLoadRun")}</button> ` +
-      `<button class="delete-run-btn danger-btn" data-id="${r.run_id}">${fmt("btnDeleteRun")}</button>` +
-      `</td>`;
-    body.appendChild(tr);
-  });
-
-  // Checkbox handlers
-  body.querySelectorAll(".run-check").forEach((cb) =>
-    cb.addEventListener("change", () => {
-      if (cb.checked) state.selectedRuns.add(cb.dataset.id);
-      else state.selectedRuns.delete(cb.dataset.id);
-      updateBatchBar();
-      // Sync select-all checkbox
-      const all = body.querySelectorAll(".run-check");
-      const allChecked = Array.from(all).every((c) => c.checked);
-      byId("selectAllRuns").checked = allChecked;
-    })
-  );
-
-  // Load
-  body.querySelectorAll(".load-run-btn").forEach((b) => {
-    b.disabled = state.busyActions.size > 0;
-    b.addEventListener("click", async () => {
-      if (state.busyActions.size > 0) return;
-      state.currentRunId = b.dataset.id;
-      renderRunHistory();
-      switchTab("debug");
-      await refreshCurrentRun();
-    });
-  });
-
-  // Delete (single)
-  body.querySelectorAll(".delete-run-btn").forEach((b) => {
-    b.disabled = state.busyActions.size > 0;
-    b.addEventListener("click", async () => {
-      if (state.busyActions.size > 0) return;
-      const runId = b.dataset.id;
-      if (!window.confirm(fmt("confirmDeleteRun", { runId }))) return;
-      state.busyActions.add("delete_run");
-      updateActionStates();
-      try {
-        await apiDelete(`/api/runs/${encodeURIComponent(runId)}`);
-        if (state.currentRunId === runId) {
-          state.currentRunId = "";
-          state.currentRunStatus = "";
-          clearSummaryPanels();
-        }
-        state.selectedRuns.delete(runId);
-        await refreshRunList(false);
-      } catch (err) {
-        window.alert(fmt("runDeleteFailed", { error: String(err && err.message ? err.message : err) }));
-      } finally {
-        state.busyActions.delete("delete_run");
-        updateActionStates();
-      }
-    });
-  });
-
-  // Rebuild button removed — report generation is now rawdata-driven
-  // (machine detail panel → rawdata section → ⟳ 生成 Report). Produces
-  // a new run row + report version rather than overwriting history.
-
-  updateBatchBar();
-}
+// updateBatchBar / renderRunHistory removed 2026-04-19 — run-history
+// big table retired from the manage tab. The per-machine rwtree +
+// global rawdata detail now own the "what ran / load this version"
+// surface; delete-run is invoked indirectly via delete-rawdata in
+// the batch action bar. Calls sites that still invoke
+// renderRunHistory() are no-oped below.
+function renderRunHistory() { /* retired — see above */ }
+function updateBatchBar() { /* retired */ }
 
 function renderPayoutGroupDrilldown(summary) {
   // Reads payout_ids_top20 (from PayoutIdToWinAmount) -- the actual
@@ -4174,11 +4114,13 @@ async function refreshCurrentRun() {
 }
 
 async function refreshCache() {
-  state.cacheStatus = await apiGet("/api/cache/status");
-  const c = state.cacheStatus;
-  byId("cacheMeta").textContent = `root=${c.cache_root}\nfiles=${c.file_count}\ntotal_bytes=${fBytes(c.total_bytes)} (${c.total_bytes})\nrunning_runs=${c.running_runs}\nreclaimable_est=${fBytes(c.reclaimable_bytes_estimate)} (${c.reclaimable_bytes_estimate})`;
-  byId("cacheWarning").textContent = Number(c.running_runs || 0) > 0 ? fmt("cacheWarnRunning") : Number(c.reclaimable_bytes_estimate || 0) > 0 ? fmt("cacheWarnIdle") : fmt("cacheNoReclaim");
-  renderCacheRiskMeta();
+  // Cache panel DOM was retired 2026-04-19 (rawdata banner + global
+  // detail table own these signals now). Keep the function + state
+  // as a thin fetch so callers that still need state.cacheStatus
+  // (updateActionStates) get fresh data without the DOM writes.
+  try {
+    state.cacheStatus = await apiGet("/api/cache/status");
+  } catch (_) { /* non-fatal — banner refreshes independently */ }
   updateActionStates();
 }
 
@@ -4621,57 +4563,23 @@ function bindEvents() {
   byId("interpretBtn")?.addEventListener("click", () =>
     withAction("interpret", generateInterpretation).catch((e) => alert(String(e.message || e)))
   );
-  // rebuildBtn moved to manage-tab per-row (renderRunHistory).
-  byId("cacheRefreshBtn")?.addEventListener("click", () =>
-    withAction("cache_refresh", refreshCache).catch((e) => alert(String(e.message || e)))
-  );
-  byId("cacheCleanupBtn")?.addEventListener("click", () =>
-    withAction("cache_cleanup", async () => {
-      if (!(await confirmCacheCleanup())) return;
-      await apiPost("/api/cache/cleanup", { max_delete_bytes: 0 });
-      await refreshCache();
-    }).catch((e) => alert(String(e.message || e)))
-  );
+  // Cache refresh/cleanup buttons removed 2026-04-19 — the rawdata
+  // banner's 一键清理 owns cleanup; refresh is no longer needed (the
+  // banner reads /api/rawdata/overview which is mtime-invalidated).
 
-  // System settings: load current value on page init, save via PUT
-  // on button click. Kept inline rather than a separate fetch/render
-  // function because it's one scalar — a function would be overkill.
+  // System settings: load current value on page init; the save path
+  // moved into renderRawdataBanner's inline settings row (2026-04-19).
   (async () => {
     try {
       const current = await apiGet("/api/settings");
-      const input = byId("settingMinRetention");
-      if (input && current && typeof current.min_retention_spins === "number") {
-        input.value = String(current.min_retention_spins);
+      if (current && typeof current.min_retention_spins === "number") {
+        state.minRetentionSpins = current.min_retention_spins;
+        // Re-render banner if already populated so the settings input
+        // reflects the real server-side value on first paint.
+        if (state.rawdataOverview) renderRawdataBanner();
       }
-    } catch (_err) {
-      // Non-fatal: defaults to placeholder value 100000 in the HTML.
-    }
+    } catch (_err) { /* non-fatal — banner falls back to 100000 default */ }
   })();
-  byId("saveSettingsBtn")?.addEventListener("click", async () => {
-    const meta = byId("settingsSaveMeta");
-    try {
-      const value = Number(byId("settingMinRetention").value);
-      if (!Number.isFinite(value) || value < 0) {
-        if (meta) meta.textContent = fmt("settingsSaveError", {
-          error: "value must be a non-negative integer",
-        });
-        return;
-      }
-      const resp = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ min_retention_spins: Math.trunc(value) }),
-      });
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error(body.detail || `HTTP ${resp.status}`);
-      }
-      const saved = await resp.json();
-      if (meta) meta.textContent = fmt("settingsSaved", { value: saved.min_retention_spins });
-    } catch (err) {
-      if (meta) meta.textContent = fmt("settingsSaveError", { error: String(err.message || err) });
-    }
-  });
 
   // Batch Generate Report: kick off a sequential rebuild for every
   // effective-selected machine at the current sampleMode. Progress
@@ -4779,47 +4687,10 @@ function bindEvents() {
     try { await refreshCache(); } catch (_) {}
   });
 
-  // --- batch selection ---
-  byId("selectAllRuns").addEventListener("change", (e) => {
-    const checks = document.querySelectorAll("#runListTable .run-check");
-    checks.forEach((cb) => {
-      cb.checked = e.target.checked;
-      if (cb.checked) state.selectedRuns.add(cb.dataset.id);
-      else state.selectedRuns.delete(cb.dataset.id);
-    });
-    updateBatchBar();
-  });
-  byId("clearSelectionBtn").addEventListener("click", () => {
-    state.selectedRuns.clear();
-    document.querySelectorAll("#runListTable .run-check").forEach((cb) => (cb.checked = false));
-    byId("selectAllRuns").checked = false;
-    updateBatchBar();
-  });
-  byId("batchDeleteBtn").addEventListener("click", async () => {
-    const ids = Array.from(state.selectedRuns);
-    if (!ids.length) return;
-    if (!window.confirm(fmt("confirmBatchDelete", { n: ids.length }))) return;
-    state.busyActions.add("batch_delete");
-    updateActionStates();
-    let deleted = 0;
-    try {
-      for (const rid of ids) {
-        try {
-          await apiDelete(`/api/runs/${encodeURIComponent(rid)}`);
-          deleted++;
-          if (state.currentRunId === rid) {
-            state.currentRunId = "";
-            state.currentRunStatus = "";
-          }
-        } catch { /* skip failures silently for batch */ }
-      }
-      state.selectedRuns.clear();
-      await refreshRunList(false);
-    } finally {
-      state.busyActions.delete("batch_delete");
-      updateActionStates();
-    }
-  });
+  // Run-history batch selection handlers removed 2026-04-19 — the
+  // run-history table itself is gone from the manage tab. Batch
+  // operations on rawdata live on the sticky batch action bar, and
+  // the global rawdata detail table provides its own per-row delete.
 }
 
 function startPolling() {

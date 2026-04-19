@@ -412,40 +412,8 @@
 
         </div>
 
-        <!-- ── ③ System footer (collapsed by default): maintenance / system / servers / cache / settings ── -->
-        <details class="system-footer" id="systemFooter">
-          <summary data-i18n="systemFooterSummary">⚙ 系统 / 维护 / 历史</summary>
-
-          <section class="panel run-history">
-            <h2 data-i18n="panelRunHistory">运行历史</h2>
-            <div id="runFilterBanner" class="run-filter-banner"></div>
-            <div class="table-scroll">
-              <table id="runListTable">
-                <thead>
-                  <tr>
-                    <th class="th-check"><input type="checkbox" id="selectAllRuns" title="全选/取消全选"></th>
-                    <th data-i18n="thRunId">Run ID</th>
-                    <th data-i18n="thStatus">状态</th>
-                    <th data-i18n="thMachine">机台</th>
-                    <th data-i18n="thMode">Mode</th>
-                    <th data-i18n="thSpins">Spins</th>
-                    <th data-i18n="thRtp">RTP</th>
-                    <th data-i18n="thCiHalfwidth">CI±</th>
-                    <th data-i18n="thQuality">质量</th>
-                    <th data-i18n="thRawdataVersion" title="chunk 采样时的服务器机台版本 vs 当前服务器版本">Rawdata</th>
-                    <th data-i18n="thAnalyzerVersion" title="report 生成时的 analyzer 代码版本 vs 当前代码版本">Analyzer</th>
-                    <th data-i18n="thAction">操作</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-            <div class="batch-actions" id="batchActionsBar" style="display:none">
-              <span id="batchCount">0</span>
-              <button id="batchDeleteBtn" class="danger-btn" data-i18n="btnBatchDelete">删除选中</button>
-              <button id="clearSelectionBtn" data-i18n="btnClearSelection">清除选择</button>
-            </div>
-          </section>
+        <!-- ── ③ System section (always visible): system state / servers / maintenance ── -->
+        <div class="system-area" id="systemArea">
 
           <section class="panel system-status">
             <h2 data-i18n="panelSystemState">系统状态</h2>
@@ -472,6 +440,7 @@
               <input type="text" id="newServerName" placeholder="名称 (如 测试服)" />
               <input type="text" id="newServerEndpoint" placeholder="http://..." />
               <button id="addServerBtn" class="primary-btn" data-i18n="btnAddServer">添加服务器</button>
+              <button id="refreshMd5Btn" data-i18n="btnRefreshMd5">刷新机台 MD5</button>
             </div>
             <div class="server-compare-controls">
               <h3 data-i18n="serverCompareTitle">版本对比</h3>
@@ -485,36 +454,16 @@
             </div>
           </section>
 
-          <section class="panel cache">
-            <h2 data-i18n="panelCache">维护操作</h2>
-            <div id="cacheWarning" class="warnBox"></div>
-            <div id="cacheRiskMeta" class="meta dangerMeta"></div>
-            <div id="cacheMeta" class="meta"></div>
+          <section class="panel maintenance-actions">
+            <h2 data-i18n="panelMaintenance">维护操作</h2>
             <div class="actions">
-              <!-- 清理缓存 also on topbar rawdata banner (step 6) for  -->
-              <!-- quick access; kept here too for back-compat with e2e  -->
-              <!-- tests and the risk-tier detail display.               -->
-              <button id="cacheRefreshBtn" data-i18n="btnCacheRefresh">刷新缓存状态</button>
-              <button id="cacheCleanupBtn" class="danger-btn" data-i18n="btnCacheCleanup">清理缓存</button>
               <button id="reportCleanupBtn" class="danger-btn" data-i18n="btnReportCleanup">清理旧版本 Report</button>
               <button id="importReportsBtn" data-i18n="btnImportReports">导入 Reports</button>
-              <button id="refreshMd5Btn" data-i18n="btnRefreshMd5">刷新机台 MD5</button>
               <span id="reportCleanupResult" class="muted"></span>
             </div>
           </section>
 
-          <section class="panel system-settings">
-            <h2 data-i18n="panelSystemSettings">系统设置</h2>
-            <div class="system-settings-grid">
-              <label for="settingMinRetention" data-i18n="settingMinRetentionLabel">每 (机台, mode) 最低保留 spins</label>
-              <input type="number" id="settingMinRetention" min="0" step="10000" value="100000">
-              <button id="saveSettingsBtn" class="primary-btn" data-i18n="btnSaveSettings">保存</button>
-              <span class="settings-hint" data-i18n="settingMinRetentionHint">超出部分 chunk 才会被 UI「删除可回收」+ 自动清理回收，保底块永不被自动删除</span>
-            </div>
-            <div id="settingsSaveMeta" class="meta muted" style="margin-top: 6px;"></div>
-          </section>
-
-        </details>
+        </div>
       </section>
 
     </main>

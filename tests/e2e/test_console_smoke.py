@@ -93,36 +93,34 @@ def _write_rawdata_chunk(mode_dir: Path, idx: int, pad_bytes: int) -> Path:
     return p
 
 
-def test_cache_cleanup_low_risk_flow(console_page, clean_cache, clean_runs,
+def test_rawdata_banner_cleanup_flow(console_page, clean_cache, clean_runs,
                                       live_server):
+    """Replaces the old tiered cache-cleanup tests (2026-04-19 master/detail
+    refactor removed the Chunk 缓存 panel + its risk-tier + DELETE-token
+    prompts). The rawdata banner's 一键清理 is now a single-confirm flow
+    that hits POST /api/cache/cleanup end-to-end."""
     import httpx
     page = console_page
     _wait_for_pure_loaded(page)
 
-    # Cache panel lives on the "manage" tab; debug tab is default.
     page.click("#tabBtnManage")
-    # Cache controls moved into the <details id="systemFooter"> folding
-    # region as part of the 2026-04-19 master/detail refactor — open it
-    # so the buttons become visible.
-    page.evaluate("document.getElementById('systemFooter').open = true;")
-    page.wait_for_selector("#cacheRefreshBtn", state="visible")
 
-    # Retention 0 → every chunk we drop becomes immediately deletable
-    # (reclaimable), so risk tier tracks actual on-disk bytes.
+    # Retention 0 → every chunk we drop is immediately reclaimable.
     r = httpx.put(
         f"{live_server.base_url}/api/settings",
         json={"min_retention_spins": 0}, timeout=5,
     )
     assert r.status_code == 200
 
-    # Single ~1KB chunk → reclaimable sits below e2e medium threshold (2048).
-    _write_rawdata_chunk(
+    chunk = _write_rawdata_chunk(
         live_server.rawdata_dir / "M14" / "mode_1", 1, pad_bytes=1024,
     )
 
-    page.click("#cacheRefreshBtn")
+    # Force a banner refresh so it sees the new chunk + shows the cleanup btn.
+    page.evaluate("refreshRawdataOverview()")
     page.wait_for_function(
-        "() => /low|低/.test(document.getElementById('cacheRiskMeta').textContent)",
+        "() => { const b = document.getElementById('rawdataBannerCleanupBtn'); "
+        "return b && !b.disabled; }",
         timeout=5000,
     )
 
@@ -133,11 +131,8 @@ def test_cache_cleanup_low_risk_flow(console_page, clean_cache, clean_runs,
         dialog.accept()
 
     page.on("dialog", _on_dialog)
-    page.click("#cacheCleanupBtn")
+    page.click("#rawdataBannerCleanupBtn")
 
-    # Poll /api/rawdata for chunk-count === 0 (more reliable than
-    # cache/status.file_count which counts _index.json too; that
-    # file is rewritten by cleanup post-delete).
     page.wait_for_function(
         "async () => { const r = await fetch('/api/rawdata/M14').then(r => r.json()); "
         "const m1 = r.modes && r.modes['1']; "
@@ -147,104 +142,8 @@ def test_cache_cleanup_low_risk_flow(console_page, clean_cache, clean_runs,
         timeout=5000,
     )
 
-    # Low risk should produce exactly one confirm dialog (no DELETE token prompt).
-    assert len(dialogs) == 1
-    assert dialogs[0]["type"] == "confirm"
-    # Verify via the server classifier (sidesteps Windows-FS Path.exists
-    # staleness on a just-deleted file).
-    import httpx as _httpx
-    final_rd = _httpx.get(f"{live_server.base_url}/api/rawdata/M14").json()
-    final_m1 = (final_rd.get("modes") or {}).get("1") or {}
-    final_cls = final_m1.get("classified") or {}
-    assert (
-        final_cls.get("kept_chunks", 0)
-        + final_cls.get("deletable_chunks", 0)
-        + final_cls.get("stale_chunks", 0)
-    ) == 0
-
-
-def test_cache_cleanup_high_risk_requires_token(console_page, clean_cache,
-                                                 clean_runs, live_server):
-    import httpx
-    page = console_page
-    _wait_for_pure_loaded(page)
-
-    page.click("#tabBtnManage")
-    # Cache controls moved into the <details id="systemFooter"> folding
-    # region as part of the 2026-04-19 master/detail refactor — open it
-    # so the buttons become visible.
-    page.evaluate("document.getElementById('systemFooter').open = true;")
-    page.wait_for_selector("#cacheRefreshBtn", state="visible")
-
-    r = httpx.put(
-        f"{live_server.base_url}/api/settings",
-        json={"min_retention_spins": 0}, timeout=5,
-    )
-    assert r.status_code == 200
-
-    # ~10 KB chunk > e2e high threshold (8192).
-    chunk = _write_rawdata_chunk(
-        live_server.rawdata_dir / "M14" / "mode_1", 1, pad_bytes=10_000,
-    )
-
-    page.click("#cacheRefreshBtn")
-    page.wait_for_function(
-        "() => /high|高/.test(document.getElementById('cacheRiskMeta').textContent)",
-        timeout=5000,
-    )
-
-    # First attempt: enter the wrong DELETE token -> nothing should be deleted.
-    dialogs_wrong: list[dict] = []
-
-    def _wrong(dialog):
-        dialogs_wrong.append({"type": dialog.type})
-        if dialog.type == "confirm":
-            dialog.accept()
-        elif dialog.type == "prompt":
-            dialog.accept("WRONG")
-        else:
-            dialog.accept()
-
-    page.on("dialog", _wrong)
-    page.click("#cacheCleanupBtn")
-    # Give the JS a beat to finish handling dialogs + alert; we don't poll a
-    # network condition because nothing should change.
-    page.wait_for_timeout(500)
-    page.remove_listener("dialog", _wrong)
-
-    assert any(d["type"] == "confirm" for d in dialogs_wrong)
-    assert any(d["type"] == "prompt" for d in dialogs_wrong)
-    assert chunk.exists(), "wrong token must NOT delete the chunk"
-
-    # Second attempt: correct DELETE token -> chunk removed.
-    dialogs_right: list[dict] = []
-
-    def _right(dialog):
-        dialogs_right.append({"type": dialog.type})
-        if dialog.type == "confirm":
-            dialog.accept()
-        elif dialog.type == "prompt":
-            dialog.accept("DELETE")
-        else:
-            dialog.accept()
-
-    page.on("dialog", _right)
-    page.click("#cacheCleanupBtn")
-    # Wait for the chunk to be cleared via the server's classifier view
-    # (sidesteps Windows Path.exists staleness and the _index.json
-    # reappearing right after delete).
-    page.wait_for_function(
-        "async () => { const r = await fetch('/api/rawdata/M14').then(r => r.json()); "
-        "const m1 = r.modes && r.modes['1']; "
-        "if (!m1) return true; "
-        "const c = m1.classified || {}; "
-        "return (c.kept_chunks + c.deletable_chunks + c.stale_chunks) === 0; }",
-        timeout=5000,
-    )
-    page.remove_listener("dialog", _right)
-
-    assert any(d["type"] == "confirm" for d in dialogs_right)
-    assert any(d["type"] == "prompt" for d in dialogs_right)
+    # New banner flow: single confirm, no DELETE token prompt.
+    assert any(d["type"] == "confirm" for d in dialogs)
 
 
 @_obsolete_post_restructure

@@ -455,7 +455,8 @@ body {
   margin-top: 8px;
 }
 
-/* Rawdata banner (topbar row #3): compact one-liner with actions */
+/* Rawdata banner (topbar row #3): compact one-liner with actions.
+   Settings row (min_retention_spins) collapses/expands via gear btn. */
 .rawdata-banner {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -463,16 +464,45 @@ body {
   padding: 8px 14px;
   font-size: 0.92em;
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rawdata-banner-row {
+  display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
 }
+.rawdata-banner-settings {
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 0.9em;
+}
+.rawdata-banner-settings label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rawdata-banner-settings input[type="number"] {
+  padding: 4px 8px;
+  font-size: 0.95em;
+  width: 120px;
+}
 .rawdata-banner-main { color: var(--ink, #1e293b); }
 .rawdata-banner-main b { color: var(--ink); font-weight: 600; }
-.rawdata-banner-actions { display: flex; gap: 6px; }
+.rawdata-banner-actions { display: flex; gap: 6px; align-items: center; }
+/* Global button.small-btn.active (line ~2089) sets background:var(--accent)
+   + color:#fff!important, which turned the banner toggle into illegible
+   teal-on-teal. Override with explicit accent-bg + keep ink color. */
+.rawdata-banner-actions button.small-btn.active,
 .rawdata-banner-actions .small-btn.active {
-  background: var(--accent-bg, #e0f2fe);
+  background: var(--accent-bg, #e0f2fe) !important;
   border-color: var(--accent, #0284c7);
+  color: var(--ink, #1e293b) !important;
 }
 
 /* Global rawdata detail table */
@@ -489,38 +519,16 @@ body {
 .rawdata-global-table .rawdata-stale { color: #b91c1c; font-weight: 500; }
 .rawdata-global-table .rwglobal-del-btn { white-space: nowrap; }
 
-/* System footer: collapsible maintenance / settings / legacy panels */
-.system-footer {
+/* System area: always-visible flat stack of system-level panels
+   (state / servers / maintenance). Replaced the <details> collapsible
+   wrapper 2026-04-19. */
+.system-area {
   margin-top: 24px;
   border-top: 1px dashed var(--line);
   padding-top: 12px;
-}
-
-.system-footer > summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--ink-muted, #64748b);
-  padding: 8px 0;
-  list-style: none;
-  user-select: none;
-}
-
-.system-footer > summary::-webkit-details-marker { display: none; }
-.system-footer > summary::before {
-  content: "▸ ";
-  display: inline-block;
-  transition: transform 0.15s;
-}
-.system-footer[open] > summary::before {
-  transform: rotate(90deg);
-}
-
-.system-footer[open] {
-  display: block;
-}
-
-.system-footer > .panel {
-  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* Narrow screens: stack two columns vertically */
@@ -534,11 +542,13 @@ body {
 }
 
 /* ── Rawdata × Report tree (step 4) ─────────────────────────────────
-   Each column = one mode (1/2/5/7). Equal-width, 4-column grid. Mode
-   header + rawdata stats + reports list (CI-sorted, best expanded). */
+   Each column = one mode (1/2/5/7). auto-fit/minmax lets the grid
+   wrap dynamically: 4 cols if wide, 2 cols / 1 col when narrower —
+   which beats hand-tuned breakpoints on real-world viewport widths
+   including the narrower-than-expected detail-pane allocation. */
 .rwtree {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 10px;
   margin-top: 12px;
 }
@@ -715,13 +725,9 @@ body {
   .rwtree-cross .rwtree-cross-pair { grid-template-columns: 1fr; }
 }
 
-/* Tree reflow: the right column is ~60% of screen, so even at 1600px
-   viewport each of 4 cols only gets ~200px which is too narrow for
-   the rawdata + reports stack. 2-col kicks in much higher up. */
-@media (max-width: 1800px) {
-  .rwtree { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 900px) {
+/* auto-fit above handles reflow. These media queries are kept as a
+   belt-and-braces fallback for very narrow mobile viewports. */
+@media (max-width: 500px) {
   .rwtree { grid-template-columns: 1fr; }
 }
 
