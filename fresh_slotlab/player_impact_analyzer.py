@@ -1831,6 +1831,20 @@ def parse_chunk_response(
     # SpinType↔feature_name mapping when multiple features share the
     # same fire count. Rounds with empty ReMarks are skipped.
     spin_type_remarks_sample: dict[int, list[str]] = defaultdict(list)
+    # Per-SpinType × return-bucket histograms. Mirror the global
+    # ``multiplier_bucket_{spins,bet,win}`` but keyed by SpinType so
+    # the upstream feature breakdown can surface a per-feature bucket
+    # distribution (the pay_id-level share bar is too granular for
+    # operators to read — bucket histogram is the useful grain).
+    spin_type_bucket_spins: dict[int, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+    spin_type_bucket_bet: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    spin_type_bucket_win: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
 
     # Collect-mechanic accumulation. M272's mode 1/2 carries CollectCount
     # (per-robot monotonic counter of triggered collects) and AccCredits
@@ -2169,6 +2183,8 @@ def parse_chunk_response(
             multiplier_bucket_spins[bucket] += 1
             multiplier_bucket_bet[bucket] += bet_amt
             multiplier_bucket_win[bucket] += win_amt
+            # Per-SpinType bucket tally deferred until after sp_type is
+            # assigned below (see "SpinType per-spin tally" block).
 
             if win_amt > 0:
                 win_spins += 1
@@ -2222,6 +2238,12 @@ def parse_chunk_response(
             spin_type_win[sp_type] += win_amt
             if win_amt > 0:
                 spin_type_wins[sp_type] += 1
+            # Per-SpinType return bucket (mirrors the global
+            # multiplier_bucket_* but keyed by SpinType so upstream
+            # feature breakdown can render a per-feature histogram).
+            spin_type_bucket_spins[sp_type][bucket] += 1
+            spin_type_bucket_bet[sp_type][bucket] += bet_amt
+            spin_type_bucket_win[sp_type][bucket] += win_amt
             # Per-robot SpinType transition for chain-parent inference.
             # Boundary (first round of a robot) contributes no edge.
             if prev_sp_type_in_robot is not None:
@@ -2566,6 +2588,15 @@ def parse_chunk_response(
         "spin_type_remarks_sample": {
             str(k): list(v) for k, v in spin_type_remarks_sample.items()
         },
+        "spin_type_bucket_spins": {
+            str(k): dict(v) for k, v in spin_type_bucket_spins.items()
+        },
+        "spin_type_bucket_bet": {
+            str(k): dict(v) for k, v in spin_type_bucket_bet.items()
+        },
+        "spin_type_bucket_win": {
+            str(k): dict(v) for k, v in spin_type_bucket_win.items()
+        },
         "upstream_feature_tally": {
             feat: {pid: dict(v) for pid, v in payouts.items()}
             for feat, payouts in feature_chunk_tally.items()
@@ -2862,6 +2893,15 @@ def main() -> int:
     spin_type_spins: dict[int, int] = defaultdict(int)
     spin_type_next_counts: dict[int, Counter] = defaultdict(Counter)
     spin_type_remarks_sample: dict[int, list[str]] = defaultdict(list)
+    spin_type_bucket_spins: dict[int, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+    spin_type_bucket_bet: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    spin_type_bucket_win: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
     spin_type_bet: dict[int, float] = defaultdict(float)
     spin_type_paid_bet: dict[int, float] = defaultdict(float)
     spin_type_win: dict[int, float] = defaultdict(float)
@@ -3087,6 +3127,18 @@ def main() -> int:
                     for s in rms:
                         if isinstance(s, str) and s and len(bucket) < 6 and s not in bucket:
                             bucket.append(s)
+                for st, buckets in (rec.get("spin_type_bucket_spins") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, c in buckets.items():
+                            spin_type_bucket_spins[int(st)][str(bname)] += int(c or 0)
+                for st, buckets in (rec.get("spin_type_bucket_bet") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, v in buckets.items():
+                            spin_type_bucket_bet[int(st)][str(bname)] += float(v or 0.0)
+                for st, buckets in (rec.get("spin_type_bucket_win") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, v in buckets.items():
+                            spin_type_bucket_win[int(st)][str(bname)] += float(v or 0.0)
                 for feat, payouts in (rec.get("upstream_feature_tally") or {}).items():
                     if not isinstance(payouts, dict):
                         continue
@@ -3517,6 +3569,18 @@ def main() -> int:
                     for s in rms:
                         if isinstance(s, str) and s and len(bucket) < 6 and s not in bucket:
                             bucket.append(s)
+                for st, buckets in (rec.get("spin_type_bucket_spins") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, c in buckets.items():
+                            spin_type_bucket_spins[int(st)][str(bname)] += int(c or 0)
+                for st, buckets in (rec.get("spin_type_bucket_bet") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, v in buckets.items():
+                            spin_type_bucket_bet[int(st)][str(bname)] += float(v or 0.0)
+                for st, buckets in (rec.get("spin_type_bucket_win") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, v in buckets.items():
+                            spin_type_bucket_win[int(st)][str(bname)] += float(v or 0.0)
                 # upstream feature tally merge: additive per (feature, payid).
                 # Older chunk records (pre-feature) lack the key -- safe via
                 # .get() default.
@@ -4134,6 +4198,29 @@ def main() -> int:
                         else:
                             chain_parent_confidence = "low"
         fire_rate = feat_total_times / total_spins if total_spins > 0 else 0.0
+        # Per-feature multiplier bucket histogram. Same shape as the
+        # global multiplier_profile.buckets so the UI can reuse the
+        # bucket-bar renderer. Requires resolved SpinType (binds the
+        # feature to round-level win data); session-level meta
+        # features (no SpinType binding) get an empty list.
+        feat_bucket_rows: list[dict[str, Any]] = []
+        feat_bucket_total_win = 0.0
+        feat_bucket_total_spins = 0
+        if resolved_spin_type is not None:
+            st_b_spins = spin_type_bucket_spins.get(resolved_spin_type) or {}
+            st_b_bet = spin_type_bucket_bet.get(resolved_spin_type) or {}
+            st_b_win = spin_type_bucket_win.get(resolved_spin_type) or {}
+            feat_bucket_total_spins = sum(st_b_spins.values())
+            feat_bucket_total_win = sum(st_b_win.values())
+            feat_bucket_total_bet = sum(st_b_bet.values())
+            feat_bucket_rows = build_multiplier_bucket_rows(
+                st_b_spins,
+                st_b_bet,
+                st_b_win,
+                feat_bucket_total_spins,
+                feat_bucket_total_bet,
+                feat_bucket_total_win,
+            )
         upstream_feature_rows.append(
             {
                 "feature_name": str(feat_name),
@@ -4149,6 +4236,8 @@ def main() -> int:
                 "chain_parent_confidence": chain_parent_confidence,
                 "chain_parent_share": chain_parent_share,
                 "chain_parent_next_fires": chain_parent_next_fires,
+                "bucket_distribution": feat_bucket_rows,
+                "bucket_total_spins": feat_bucket_total_spins,
                 "rtp_contribution_pp": (
                     (feat_total_win / effective_bet_for_rtp) * 100.0
                     if effective_bet_for_rtp > 0 else 0.0
