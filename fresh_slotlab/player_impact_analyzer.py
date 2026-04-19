@@ -116,7 +116,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="optional jsonl file path for chunk-level progress events",
     )
-    parser.add_argument("--bankruptcy-session-spins", type=int, default=500)
+    parser.add_argument(
+        "--bankruptcy-session-spins",
+        type=int,
+        default=_DEFAULT_BANKRUPTCY_SESSION_SPINS,
+        help=(
+            "session length (in spins) for each simulated bankroll trial. "
+            "Higher values give the histogram longer horizons; requires "
+            "enough pooled chunk rounds to build at least one window "
+            "(chunk_spin_times × chunk_robot_count >= session_spins)."
+        ),
+    )
     parser.add_argument(
         "--bankruptcy-bankroll-multipliers",
         default="100,200,500",
@@ -785,19 +795,29 @@ def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
     return rr if isinstance(rr, list) else []
 
 
-# Rawdata-replay bankruptcy simulation. Each robot's full round sequence
-# is an independent legal sample at any bankroll level (upstream RNG is
-# stateless w.r.t. the player's wallet). We replay the sequence three
-# times (one per tier), paying bet on paid rounds (CostCredits > 0) and
-# crediting wins on all rounds until either the session cap is reached
-# (survived) or the balance can't afford the next paid round (bankrupt).
-# Bonus rounds naturally don't drain balance but still contribute wins,
-# modeling real-play pickup behavior accurately. The result is a
-# per-tier histogram over how far each simulated session got before
-# bankrupting, letting the UI surface "x500 bankroll survives 80% of
-# the time, vs x100 at 20%" instead of three flat rate scalars.
+# Rawdata-replay bankruptcy simulation. Each robot's round sequence is
+# an independent IID sample (the upstream uses ContinueAfterBankrupt +
+# reset_each_spin so RNG is stateless w.r.t. wallet) — so we pool
+# rounds across all robots in a chunk and chop the resulting stream
+# into non-overlapping `session_spins`-length windows. Each window is
+# one simulated "paid-round session": we start with a fresh bankroll
+# (multiplier × bet), debit paid rounds (CostCredits > 0), credit wins
+# on every round, and mark survival when the window is consumed or
+# bankruptcy when the balance can't afford the next paid round. Bonus
+# rounds (CostCredits = 0) don't drain balance but still contribute
+# wins, matching real-play pickup behavior.
+#
+# Pooling is the key property that lets us run session_spins = 10,000
+# (the default) even though each individual robot carries only
+# ~chunk_spin_times rounds (typically 5,000). Because of the IID
+# guarantee, a 10k window synthesized from two robots is statistically
+# equivalent to one robot playing 10k spins. The only case we can't
+# handle is `total_rounds_in_chunk < session_spins` — that chunk
+# contributes zero sessions, and the operator sees fewer total samples
+# (degrade gracefully; finalize logic never crashes).
 _BANKRUPTCY_BIN_COUNT = 10
 _DEFAULT_BANKROLL_MULTIPLIERS: tuple[int, ...] = (100, 200, 500)
+_DEFAULT_BANKRUPTCY_SESSION_SPINS = 10000
 
 
 def _empty_bankruptcy_tier() -> dict[str, Any]:
@@ -815,19 +835,23 @@ def simulate_bankruptcy_from_response(
     session_spins: int,
     bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
 ) -> dict[int, dict[str, Any]]:
-    """Replay each robot's round sequence from a fresh bankroll to
-    estimate survival distribution at each tier.
+    """Pool all robots' rounds in a chunk into one sequential stream,
+    then chop into non-overlapping ``session_spins`` windows. Each
+    window replays from a fresh bankroll at every tier, independently.
 
-    Returns a dict keyed by bankroll multiplier. Each entry has:
-      - bankrupt:       robots that ran out of balance before `session_spins`
-      - survived:       robots that hit `session_spins` without bankrupting
-      - spins_done_sum: sum of spins completed (for avg survival computation)
-      - bins:           length-`_BANKRUPTCY_BIN_COUNT` histogram of
-                        spins-done among bankrupt robots (survivors are
-                        tracked separately, not in bins)
+    Returns a dict keyed by bankroll multiplier:
+      - bankrupt:       windows that ran out of balance before the cap
+      - survived:       windows that consumed all ``session_spins``
+      - spins_done_sum: total spins completed across windows (for
+                        avg-survival reporting)
+      - bins:           length-``_BANKRUPTCY_BIN_COUNT`` histogram of
+                        spins-done bucketed into equal-width decile
+                        bins over ``[0, session_spins)`` for bankrupt
+                        windows (survivors are separate, not in bins)
 
-    Returns {} when inputs are degenerate (non-list resp, non-positive
-    bet or session_spins). Safe on empty robot lists (all tiers zeroed).
+    Degenerate inputs (non-list resp, non-positive bet/session_spins,
+    or fewer rounds than a single session_spins window) return empty /
+    zeroed tiers so finalize never crashes.
     """
     if not isinstance(resp, list) or bet <= 0 or session_spins <= 0:
         return {}
@@ -835,14 +859,16 @@ def simulate_bankruptcy_from_response(
     out: dict[int, dict[str, Any]] = {
         int(m): _empty_bankruptcy_tier() for m in bankroll_mults
     }
+    # Flatten (bet, win) tuples across every robot in the chunk. Pooling
+    # is statistically valid because upstream RNG is stateless per spin
+    # (see module docstring for simulate_bankruptcy_from_response).
+    reps: list[tuple[int, int]] = []
     for robot in resp:
         if not isinstance(robot, dict):
             continue
         rounds = parse_rounds(robot)
         if not rounds:
             continue
-        # Materialize (bet, win) tuples once; replay per tier cheaply.
-        reps: list[tuple[int, int]] = []
         for r in rounds:
             if not isinstance(r, dict):
                 continue
@@ -855,20 +881,29 @@ def simulate_bankruptcy_from_response(
             except (TypeError, ValueError):
                 c_win = 0
             reps.append((c_bet, c_win))
-        if not reps:
-            continue
-        for m in bankroll_mults:
-            balance = int(m) * int(bet)
+    if not reps:
+        return out
+    # Chop into windows. Any trailing spins shorter than session_spins
+    # are dropped — a partial window would bias the bankruptcy
+    # distribution toward "bankrupt" since it can't ever survive.
+    window_count = len(reps) // session_spins
+    if window_count <= 0:
+        return out
+    for m in bankroll_mults:
+        tier = out[int(m)]
+        init_bankroll = int(m) * int(bet)
+        for w in range(window_count):
+            balance = init_bankroll
             spins_done = 0
-            for c_bet, c_win in reps:
-                if spins_done >= session_spins:
-                    break
+            start = w * session_spins
+            end = start + session_spins
+            for i in range(start, end):
+                c_bet, c_win = reps[i]
                 if c_bet > 0 and balance < c_bet:
                     break  # bankrupt — can't afford the next paid round
                 balance -= c_bet
                 balance += c_win
                 spins_done += 1
-            tier = out[int(m)]
             tier["spins_done_sum"] += spins_done
             if spins_done >= session_spins:
                 tier["survived"] += 1
@@ -1635,7 +1670,7 @@ def run_sampling_chunk(
     robot_count: int,
     timeout: float,
     chunk_cache_dir: Path | None = None,
-    bankruptcy_session_spins: int = 500,
+    bankruptcy_session_spins: int = _DEFAULT_BANKRUPTCY_SESSION_SPINS,
     bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
 ) -> dict[str, Any]:
     payload = make_payload(
@@ -1689,7 +1724,7 @@ def parse_chunk_response(
     chunk_index: int,
     bet: int,
     started: float | None = None,
-    bankruptcy_session_spins: int = 500,
+    bankruptcy_session_spins: int = _DEFAULT_BANKRUPTCY_SESSION_SPINS,
     bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
 ) -> dict[str, Any]:
     """Parse a raw API response (list of robot dicts) into chunk metrics.

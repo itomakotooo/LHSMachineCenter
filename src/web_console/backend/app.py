@@ -167,7 +167,7 @@ class RunCreateRequest(BaseModel):
     batch_concurrency: int = Field(default=2, gt=0)
     max_chunks: int = Field(default=120, gt=0)
     timeout: float = Field(default=300.0, gt=0)
-    bankruptcy_session_spins: int = Field(default=500, gt=0)
+    bankruptcy_session_spins: int = Field(default=10000, gt=0)
     bankruptcy_bankroll_multipliers: str = Field(default="100,200,500")
     model_id: str = Field(default="gpt-5.4-mini")
 
@@ -5030,7 +5030,7 @@ def create_app(
                 "batch_concurrency": 1,
                 "max_chunks": len(_cached_responses),
                 "timeout": 30,
-                "bankruptcy_session_spins": 500,
+                "bankruptcy_session_spins": 10000,
                 "bankruptcy_bankroll_multipliers": "100,200,500",
                 "report_version": report_version,
                 "output_dir": str(output_dir),
@@ -5074,7 +5074,7 @@ def create_app(
                 "--output-dir", str(output_dir),
                 "--progress-file", str(progress_file),
                 "--run-id", new_run_id,
-                "--bankruptcy-session-spins", "500",
+                "--bankruptcy-session-spins", "10000",
                 "--bankruptcy-bankroll-multipliers", "100,200,500",
             ]
             old_argv = _sys.argv
@@ -5258,7 +5258,7 @@ def create_app(
             "batch_concurrency": 1,
             "max_chunks": len(usable),
             "timeout": 30,
-            "bankruptcy_session_spins": 500,
+            "bankruptcy_session_spins": 10000,
             "bankruptcy_bankroll_multipliers": "100,200,500",
             "report_version": report_version,
             "output_dir": str(output_dir),
@@ -5737,7 +5737,7 @@ def create_app(
                 "batch_concurrency": sam.get("batch_concurrency") or 1,
                 "max_chunks": sam.get("chunks") or 0,
                 "timeout": 300.0,
-                "bankruptcy_session_spins": 500,
+                "bankruptcy_session_spins": 10000,
                 "bankruptcy_bankroll_multipliers": "100,200,500",
                 "report_version": source_v.name,
                 "output_dir": str(dst),

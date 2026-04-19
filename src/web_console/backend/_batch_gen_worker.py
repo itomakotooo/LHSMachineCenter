@@ -86,7 +86,7 @@ def run_analyzer_job(job: dict) -> dict:
         "--timeout", "30",
         "--run-id", str(job["run_id"]),
         "--progress-file", str(job["progress_file"]),
-        "--bankruptcy-session-spins", "500",
+        "--bankruptcy-session-spins", "10000",
         "--bankruptcy-bankroll-multipliers", "100,200,500",
     ]
     orig_argv = sys.argv

@@ -1,10 +1,13 @@
 """Tests for the rawdata-replay bankruptcy simulation.
 
-The simulation replays each robot's round sequence from a fresh
-bankroll (multiplier × bet) and tallies the spins-until-bankrupt
-distribution per tier. Bonus rounds (CostCredits=0) don't drain the
-wallet but their wins still land, which preserves the real-play
-behavior where bonus chains extend survival even at low bankroll.
+The simulator pools every robot's rounds in a chunk into one sequential
+stream, then chops it into non-overlapping ``session_spins`` windows.
+Each window replays from a fresh bankroll (multiplier × bet) at every
+tier and contributes one "simulated paid-round session" to the
+histogram. Pooling is valid because upstream RNG is stateless per spin
+(ContinueAfterBankrupt=True + reset_each_spin=True at sampling time),
+so rounds across robots are IID. Bonus rounds (CostCredits=0) don't
+drain balance but their wins still land.
 """
 
 from __future__ import annotations
@@ -32,13 +35,29 @@ def test_bankruptcy_sim_returns_empty_on_degenerate_inputs():
     assert pia.simulate_bankruptcy_from_response([_robot([])], 100, 0) == {}
 
 
+def test_bankruptcy_sim_zero_windows_when_rounds_below_session_spins():
+    """Not enough pooled rounds to form a single window → tier stays
+    zeroed (no sessions synthesized). Operator sees it as "no samples"
+    in the UI rather than a bogus half-window result."""
+    rounds = [{"CostCredits": 1, "WinCredits": 0} for _ in range(100)]
+    out = pia.simulate_bankruptcy_from_response(
+        [_robot(rounds)], bet=1, session_spins=500,
+        bankroll_mults=(100, 200, 500),
+    )
+    for m in (100, 200, 500):
+        tier = out[m]
+        assert tier["bankrupt"] == 0
+        assert tier["survived"] == 0
+        assert tier["spins_done_sum"] == 0
+        assert sum(tier["bins"]) == 0
+
+
 def test_bankruptcy_sim_survives_when_wins_match_bets_exactly():
-    """Net-zero robot (every spin wins back exactly its bet) survives
-    at every tier regardless of starting bankroll."""
-    # 10 paid rounds, each win == bet. Bankroll never decays.
+    """Net-zero stream (every spin wins back its bet) survives every
+    window at every tier — bankroll never decays below initial."""
     rounds = [
-        {"CostCredits": 100, "WinCredits": 100, "BetAmount": 100}
-        for _ in range(10)
+        {"CostCredits": 100, "WinCredits": 100}
+        for _ in range(30)
     ]
     out = pia.simulate_bankruptcy_from_response(
         [_robot(rounds)], bet=100, session_spins=10,
@@ -46,139 +65,150 @@ def test_bankruptcy_sim_survives_when_wins_match_bets_exactly():
     )
     for m in (100, 200, 500):
         tier = out[m]
-        assert tier["survived"] == 1
+        # 30 pooled rounds / 10 per window = 3 survived windows.
+        assert tier["survived"] == 3
         assert tier["bankrupt"] == 0
-        assert tier["spins_done_sum"] == 10
-        # No entries in bankrupt bins.
+        assert tier["spins_done_sum"] == 30
         assert all(c == 0 for c in tier["bins"])
 
 
 def test_bankruptcy_sim_bankrupts_at_bankroll_depletion_point():
-    """Deterministic: bet=1, all-lose, balance drops by 1 per spin.
-    Dies exactly at spin==bankroll. Bin size = 500/10 = 50, so tier
-    100 → bin idx 2, tier 200 → bin idx 4. Tier 500 reaches the
-    session_spins cap (spins_done = 500 == session_spins), so it
-    counts as SURVIVED (balance hit 0 simultaneously with the cap,
-    and the loop's cap-check fires first)."""
+    """All-lose stream: each window's balance drops by exactly 1/spin.
+    At session_spins=500, tier 100 dies at spin 100 (bin idx 2), tier
+    200 at 200 (bin idx 4). Tier 500 reaches cap 500 (spins_done=500,
+    survived). Each window independently repeats the same outcome
+    because balance resets at every window boundary."""
+    # Exactly 2 windows worth of rounds at session_spins=500.
     rounds = [
         {"CostCredits": 1, "WinCredits": 0}
-        for _ in range(600)
+        for _ in range(1000)
     ]
     out = pia.simulate_bankruptcy_from_response(
         [_robot(rounds)], bet=1, session_spins=500,
         bankroll_mults=(100, 200, 500),
     )
-    # Tier 100: bankrupt, bin idx 100//50 = 2
-    assert out[100]["bankrupt"] == 1
+    # Tier 100: 2 bankrupt windows, both at bin idx 100//50 = 2
+    assert out[100]["bankrupt"] == 2
     assert out[100]["survived"] == 0
-    assert out[100]["bins"][2] == 1
-    assert sum(out[100]["bins"]) == 1
-    # Tier 200: bankrupt, bin idx 200//50 = 4
-    assert out[200]["bankrupt"] == 1
+    assert out[100]["bins"][2] == 2
+    assert sum(out[100]["bins"]) == 2
+    # Tier 200: 2 bankrupt at bin idx 4
+    assert out[200]["bankrupt"] == 2
     assert out[200]["survived"] == 0
-    assert out[200]["bins"][4] == 1
-    assert sum(out[200]["bins"]) == 1
-    # Tier 500: session cap reached → survived (spins_done=500 == cap).
+    assert out[200]["bins"][4] == 2
+    # Tier 500: both windows hit cap → 2 survived
     assert out[500]["bankrupt"] == 0
-    assert out[500]["survived"] == 1
+    assert out[500]["survived"] == 2
     assert sum(out[500]["bins"]) == 0
 
 
 def test_bankruptcy_sim_bonus_rounds_dont_drain_balance_but_do_add_wins():
-    """A bonus round (CostCredits=0) should not count as a paid spin
-    against bankroll, but its win still lands on the balance — mirroring
-    live play where bonus chains temporarily boost survival."""
-    # 3 paid rounds (each lose), then 2 bonus rounds (each win 500),
-    # then more paid rounds. Bankroll=100*1=100 starts.
-    # After 3 lose rounds: balance = 100 - 3 = 97.
-    # Bonus rounds add 500 each: balance = 97 + 1000 = 1097.
-    # Subsequent paid rounds drain 1 each; robot survives to the cap.
+    """Inside a window, bonus rounds (CostCredits=0) should not count
+    as paid spins against bankroll, but their wins land on the balance
+    — mirroring live play where bonus chains extend survival."""
+    # One window of exactly 10 rounds:
+    #   3 paid lose + 2 bonus win(+500) + 5 more paid lose
+    # Starting balance 100 → after all 8 paid lose rounds: 92.
+    # Bonus wins credit 1000 total → final balance 1092 (irrelevant).
+    # spins_done = 10 = session_spins → survived.
     rounds = []
     for _ in range(3):
         rounds.append({"CostCredits": 1, "WinCredits": 0})
     for _ in range(2):
         rounds.append({"CostCredits": 0, "WinCredits": 500})
-    for _ in range(500):
+    for _ in range(5):
         rounds.append({"CostCredits": 1, "WinCredits": 0})
-
-    out = pia.simulate_bankruptcy_from_response(
-        [_robot(rounds)], bet=1, session_spins=50,
-        bankroll_mults=(100,),
-    )
-    tier = out[100]
-    # Session-spins cap (50) reached cleanly — bonus win made balance
-    # comfortably positive even after the session cap.
-    assert tier["survived"] == 1
-    assert tier["bankrupt"] == 0
-
-
-def test_bankruptcy_sim_respects_session_spins_cap():
-    """Session counter includes bonus rounds (matches live probe
-    semantics: spin_times=session_spins was the upstream cap). So 10
-    rounds of any kind + cap=10 = survived."""
-    rounds = []
-    for i in range(10):
-        if i % 2 == 0:
-            rounds.append({"CostCredits": 1, "WinCredits": 0})  # paid lose
-        else:
-            rounds.append({"CostCredits": 0, "WinCredits": 0})  # bonus no-win
     out = pia.simulate_bankruptcy_from_response(
         [_robot(rounds)], bet=1, session_spins=10,
         bankroll_mults=(100,),
     )
     tier = out[100]
-    # 5 paid rounds drain 5 from bankroll → balance = 95. Cap reached.
     assert tier["survived"] == 1
     assert tier["bankrupt"] == 0
     assert tier["spins_done_sum"] == 10
 
 
-def test_bankruptcy_sim_histograms_aggregate_across_robots():
-    """Multiple robots' histograms merge elementwise. All 3 robots
-    deterministically bankrupt at the same spin → the same bin sees
-    count=3."""
-    rounds = [
-        {"CostCredits": 10, "WinCredits": 0} for _ in range(300)
-    ]
+def test_bankruptcy_sim_respects_session_spins_cap():
+    """spins_done counts every consumed round (paid + bonus). A window
+    of 10 mixed rounds with session_spins=10 hits the cap cleanly."""
+    rounds = []
+    for i in range(10):
+        if i % 2 == 0:
+            rounds.append({"CostCredits": 1, "WinCredits": 0})
+        else:
+            rounds.append({"CostCredits": 0, "WinCredits": 0})
     out = pia.simulate_bankruptcy_from_response(
-        [_robot(rounds), _robot(rounds), _robot(rounds)],
-        bet=10, session_spins=200,
+        [_robot(rounds)], bet=1, session_spins=10,
         bankroll_mults=(100,),
     )
     tier = out[100]
-    # bankroll=1000, drain 10/spin → dies at spin 100 (before cap 200).
-    assert tier["bankrupt"] == 3
+    # 5 paid losses drain balance 100 → 95. Cap reached.
+    assert tier["survived"] == 1
+    assert tier["bankrupt"] == 0
+    assert tier["spins_done_sum"] == 10
+
+
+def test_bankruptcy_sim_pools_rounds_across_robots():
+    """Key property: 3 robots × 100 rounds = 300 pooled rounds. At
+    session_spins=100 this yields 3 windows per tier, not 3 sessions
+    of 100 rounds each (which would be the case if we kept robots
+    isolated)."""
+    rounds = [
+        {"CostCredits": 10, "WinCredits": 0}
+        for _ in range(100)
+    ]
+    out = pia.simulate_bankruptcy_from_response(
+        [_robot(rounds), _robot(rounds), _robot(rounds)],
+        bet=10, session_spins=100,
+        bankroll_mults=(100,),
+    )
+    tier = out[100]
+    # bankroll = 1000, drain 10/spin → dies exactly at spin 100.
+    # spins_done=100 == session_spins → each window counts as SURVIVED
+    # (cap check fires simultaneously with balance exhaustion).
+    assert tier["survived"] == 3
+    assert tier["bankrupt"] == 0
+    assert tier["spins_done_sum"] == 300
+
+
+def test_bankruptcy_sim_bankrupt_bin_classification():
+    """With 3 pooled robots and deterministic bankruptcy at spin 40
+    in each 50-spin window, all 6 windows (300 pooled / 50 = 6) end up
+    in the same bin."""
+    rounds = [
+        {"CostCredits": 1, "WinCredits": 0}
+        for _ in range(100)
+    ]
+    out = pia.simulate_bankruptcy_from_response(
+        [_robot(rounds), _robot(rounds), _robot(rounds)],
+        bet=1, session_spins=50,
+        bankroll_mults=(40,),
+    )
+    tier = out[40]
+    # bankroll=40, die at spin 40. Bin size = 50/10 = 5 → idx 40//5=8.
+    assert tier["bankrupt"] == 6
     assert tier["survived"] == 0
-    # Bin size = 200/10 = 20. Spins_done=100 → bin idx 100 // 20 = 5.
-    assert tier["bins"][5] == 3
-    assert sum(tier["bins"]) == 3
-    assert tier["spins_done_sum"] == 300  # 3 × 100
+    assert tier["bins"][8] == 6
+    assert sum(tier["bins"]) == 6
 
 
 def test_bankruptcy_sim_tier_isolation():
-    """A robot at x200 that survives where x100 bankrupts — the two
-    tiers are simulated independently on the same sequence."""
-    # Lose 1 bet per spin for 150 rounds.
+    """Same pooled stream, different tiers produce different outcomes.
+    x500 tier survives the window where x100 bankrupts."""
     rounds = [
-        {"CostCredits": 1, "WinCredits": 0} for _ in range(150)
+        {"CostCredits": 1, "WinCredits": 0}
+        for _ in range(200)
     ]
     out = pia.simulate_bankruptcy_from_response(
         [_robot(rounds)], bet=1, session_spins=200,
-        bankroll_mults=(100, 200, 500),
+        bankroll_mults=(100, 500),
     )
-    # x100 bankroll = 100, dies at spin 100.
+    # One window of 200 rounds per tier.
+    # x100 bankroll=100, dies at spin 100 → bankrupt, bin idx 100//20=5
     assert out[100]["bankrupt"] == 1
     assert out[100]["survived"] == 0
-    # x200 bankroll = 200, but only 150 rounds available → survives
-    # through all 150 rounds (cap not reached but sequence ends). Since
-    # spins_done (150) < session_spins (200), robot counts as
-    # "bankrupt" in the strict sense BUT the balance isn't actually
-    # zero. This edge case reflects real-world data: if the sequence
-    # ends before the cap, we record the spins_done count truthfully.
-    # x500 same story.
-    assert out[200]["bankrupt"] + out[200]["survived"] == 1
-    assert out[500]["bankrupt"] + out[500]["survived"] == 1
-    # spins_done_sum for x200 should be 150 (sequence ran out, not
-    # bankruptcy in the wallet sense).
-    assert out[200]["spins_done_sum"] == 150
-    assert out[500]["spins_done_sum"] == 150
+    assert out[100]["bins"][5] == 1
+    # x500 bankroll=500, losing 200 spins keeps balance positive at
+    # spin 200 (balance=300); cap reached → survived.
+    assert out[500]["bankrupt"] == 0
+    assert out[500]["survived"] == 1
