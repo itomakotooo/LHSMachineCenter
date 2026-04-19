@@ -2772,17 +2772,64 @@ function renderFeatureBreakdownPanel(summary) {
     body.innerHTML = "";
     return;
   }
+  // Build a map of feature_name → paying row so we can compute
+  // chain-parent directed cross-links and display them on trigger
+  // blocks. Preserves the sorted order the analyzer emits.
+  const featureByName = new Map(
+    data.features.map((f) => [String(f.feature_name), f]),
+  );
   body.innerHTML =
     `<hr style="margin:14px 0;border:none;border-top:1px solid #d2dde9">` +
     `<h3 style="margin:0 0 8px;font-size:13px;color:var(--muted)">${fmt("panelFeatureBreakdown")}</h3>` +
     `<div class="feature-blocks-grid">` +
     data.features.map((feat) => {
+      const triggerOnly = Boolean(feat.trigger_only);
       const rows = Array.isArray(feat.payouts) ? feat.payouts : [];
       const maxShare = Math.max(
         ...rows.map((p) => Number(p.share_of_feature_win || 0)),
         0
       );
-      // Only show paying payids (skip the "-1" / zero-win catch-all).
+      const rtpPp = Number(feat.rtp_contribution_pp || 0).toFixed(2);
+      const sharePct = (Number(feat.share_of_total_win || 0) * 100).toFixed(1);
+      const firesSpins = Number(feat.fires_spins || feat.total_times || 0);
+      const fireRatePct = (Number(feat.fire_rate || 0) * 100).toFixed(2);
+      const parentName = feat.chain_parent_feature;
+      const parentConf = feat.chain_parent_confidence || "none";
+      const parentShare = Number(feat.chain_parent_share || 0);
+      const ambig = Boolean(feat.spin_type_binding_ambiguous);
+
+      if (triggerOnly) {
+        // Trigger-only features: direct RTP is 0 but fire count +
+        // chain parent tell the real story. Surface both prominently
+        // and skip the (always empty) paying-rows bar chart.
+        const firesText = fireRatePct + "% · " + firesSpins.toLocaleString() + "×";
+        let chainText = "";
+        if (parentName) {
+          const confBadge = parentConf === "high" ? "🟢"
+            : parentConf === "medium" ? "🟡"
+            : parentConf === "low" ? "🟠" : "⚪";
+          chainText =
+            `<div class="feature-chain">` +
+            `↳ ${confBadge} 链条归属: <strong>${_escHtml(parentName)}</strong>` +
+            ` · ${(parentShare * 100).toFixed(0)}% 过渡 · ${_escHtml(parentConf)}置信度` +
+            `</div>`;
+        } else {
+          chainText = `<div class="feature-chain feature-chain-none">` +
+            `↳ 未推断出链条归属（可能是会话级 meta feature）</div>`;
+        }
+        const ambigBadge = ambig
+          ? `<span class="feature-ambig" title="该 feature 与同次数其他 feature 的 SpinType 绑定存在二义性，链条走向仍可信但 label 可能顺序鉴别不准">⚠ 绑定歧义</span>`
+          : "";
+        return (
+          `<div class="feature-block feature-trigger-only">` +
+          `<h3>${_escHtml(String(feat.feature_name))} ${ambigBadge}` +
+          ` <span class="feature-metric feature-metric-trigger">触发类 · ${firesText}</span></h3>` +
+          chainText +
+          `</div>`
+        );
+      }
+
+      // Paying feature: classic per-PayId bar chart.
       const payingRows = rows.filter((p) => Number(p.win_credits || 0) > 0);
       const tblRows = payingRows
         .map((p) => {
@@ -2790,26 +2837,33 @@ function renderFeatureBreakdownPanel(summary) {
           const bar = maxShare > 0 ? Math.min(100, (share / maxShare) * 100) : 0;
           return (
             `<span class="feature-bar-row">` +
-            `<span class="feature-bar-label">ID ${String(p.payout_id)}</span>` +
+            `<span class="feature-bar-label">ID ${_escHtml(String(p.payout_id))}</span>` +
             `<span class="feature-bar-track"><span class="feature-bar" style="width:${bar.toFixed(1)}%"></span></span>` +
             `<span class="feature-bar-val">${(share * 100).toFixed(1)}%</span>` +
             `</span>`
           );
         })
         .join("");
-      const rtpPp = Number(feat.rtp_contribution_pp || 0).toFixed(2);
-      const sharePct = (Number(feat.share_of_total_win || 0) * 100).toFixed(1);
-      // Compact layout: feature name + headline metrics + minimal
-      // per-PayId rows (just payid + share bar — no "Win Credits"
-      // or "Times" columns, which the user flagged as noisy).
+      // Find any trigger-only features that chain INTO this paying
+      // feature — surface as "gated by X, Y, Z" on the paying block
+      // so operator sees the full inbound graph at a glance.
+      const gatedBy = data.features
+        .filter((f) => f.trigger_only && f.chain_parent_feature === feat.feature_name)
+        .map((f) => String(f.feature_name));
+      const gatedHtml = gatedBy.length
+        ? `<div class="feature-gated-by">↳ 前置触发: ${gatedBy.map(_escHtml).join(" → ")}</div>`
+        : "";
       return (
         `<div class="feature-block">` +
-        `<h3>${String(feat.feature_name)} <span class="feature-metric">${rtpPp}pp · ${sharePct}%</span></h3>` +
+        `<h3>${_escHtml(String(feat.feature_name))} <span class="feature-metric">${rtpPp}pp · ${sharePct}%</span></h3>` +
+        `<div class="feature-meta">fires ${firesSpins.toLocaleString()}× · ${fireRatePct}% of spins</div>` +
+        gatedHtml +
         `<div class="feature-payids">${tblRows}</div>` +
         `</div>`
       );
     })
     .join("") + `</div>`;
+  void featureByName;
 }
 
 // Render the bonus_chain_dynamics panel (ReMarks-derived
