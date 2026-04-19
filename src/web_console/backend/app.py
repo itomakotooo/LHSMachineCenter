@@ -5318,20 +5318,41 @@ def create_app(
 
     @app.post("/api/reports/cleanup")
     def cleanup_old_reports() -> dict[str, Any]:
-        """Keep only the newest report version per machine-mode, delete older ones.
+        """Drop stale report versions — per-mode, keep only the newest
+        version whose analyzer_version matches the current one. Every
+        other version (older duplicates OR stale-analyzer regardless of
+        recency) is deleted along with its runs row.
 
-        Also drops the corresponding runs from the DB so the stale-count
-        banner reflects the new state. Without that step the banner still
-        read ~21 analyzer-stale even after all the stale report dirs were
-        deleted — the runs table kept the rows (user review 2026-04-19).
+        User feedback 2026-04-19: the earlier "keep newest" policy
+        missed the common case where the sole (and therefore newest)
+        version for a mode was analyzer-stale — cleanup skipped it,
+        leaving the Report 管理 banner still reading "N 过期" after click.
+
+        Now: for each (machine, mode):
+          * group versions by analyzer-match vs stale
+          * keep only the newest analyzer-match version (if any exists)
+          * if no match version exists, keep the newest overall as a
+            read-only baseline (so the mode still has a report to load)
+          * everything else deleted from disk + DB
         """
-        # Build reverse index: report_version → run_id for quick lookup
-        # when sweeping disk. SELECT once rather than query per version.
+        from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+        cur_analyzer = compute_analyzer_version()
+
         rv_to_run_id: dict[str, str] = {}
         for row in store.list_runs(limit=100000):
             rv = (row.get("report_version") or "").strip()
             if rv:
                 rv_to_run_id[rv] = row.get("run_id", "")
+
+        def _version_analyzer(v_dir: Path) -> str:
+            sf = v_dir / "player_impact_summary.json"
+            if not sf.exists():
+                return ""
+            try:
+                s = json.loads(sf.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return ""
+            return str(s.get("analyzer_version", "") or "")
 
         deleted = 0
         kept = 0
@@ -5347,19 +5368,64 @@ def create_app(
                     continue
                 versions = sorted(
                     [v for v in versions_dir.iterdir() if v.is_dir()],
-                    reverse=True,
+                    reverse=True,  # newest first
                 )
-                if len(versions) <= 1:
-                    kept += len(versions)
+                if not versions:
                     continue
-                # Keep the newest, delete the rest.
-                kept += 1
-                for old in versions[1:]:
+
+                # Partition by analyzer tag:
+                #   match     — summary.analyzer_version == current
+                #   stale     — tag present but different (tracked as
+                #               "analyzer 过期" by /api/reports/stale-count)
+                #   untagged  — pre-tagging migration; NOT counted as
+                #               stale by the banner, so we must NOT delete
+                #               them as part of "清理 stale"
+                match_versions: list[Path] = []
+                stale_versions: list[Path] = []
+                untagged_versions: list[Path] = []
+                for v in versions:
+                    ana = _version_analyzer(v)
+                    if not ana:
+                        untagged_versions.append(v)
+                    elif ana == cur_analyzer:
+                        match_versions.append(v)
+                    else:
+                        stale_versions.append(v)
+
+                # Cleanup policy (user feedback 2026-04-19 round 5):
+                # drop ALL tagged-stale versions so the Report 管理
+                # banner's "N analyzer 过期" actually zeros out after
+                # click. Prune duplicates per class but preserve one
+                # untagged-baseline when no match exists (don't destroy
+                # legacy reports the operator may still need).
+                if match_versions:
+                    survivor = match_versions[0]
+                    to_delete = (
+                        match_versions[1:]  # older duplicates of match
+                        + stale_versions     # all tagged-stale
+                        + untagged_versions  # superseded by match
+                    )
+                elif untagged_versions:
+                    survivor = untagged_versions[0]
+                    to_delete = (
+                        untagged_versions[1:]
+                        + stale_versions
+                    )
+                elif stale_versions:
+                    # Edge case: only stale-tagged versions. Delete them
+                    # all — operator should regenerate from rawdata.
+                    survivor = None
+                    to_delete = stale_versions
+                else:
+                    survivor = None
+                    to_delete = []
+                if survivor is not None:
+                    kept += 1
+
+                for old in to_delete:
                     rv_name = old.name
                     shutil.rmtree(old, ignore_errors=True)
                     deleted += 1
-                    # Also drop the DB row so /api/reports/stale-count
-                    # stops counting this version.
                     run_id = rv_to_run_id.get(rv_name)
                     if run_id:
                         try:
@@ -5367,20 +5433,69 @@ def create_app(
                                 runs_deleted += 1
                         except Exception:
                             pass
-                # Update index.json if it exists.
-                index_path = mode_dir / "index.json"
-                if index_path.exists():
-                    try:
-                        idx = read_json(index_path)
-                        if isinstance(idx, list) and len(idx) > 1:
-                            idx = [idx[0]]  # keep only newest entry
-                            index_path.write_text(
-                                json.dumps(idx, indent=2, ensure_ascii=False),
-                                encoding="utf-8",
-                            )
-                    except Exception:
-                        pass
-        return {"ok": True, "deleted": deleted, "kept": kept, "runs_deleted": runs_deleted}
+
+                # Rewrite index.json to keep only the survivor's entry
+                # (or empty it when no survivor remains).
+                if to_delete:
+                    survivor_name = survivor.name if survivor else None
+                    index_path = mode_dir / "index.json"
+                    if index_path.exists():
+                        try:
+                            idx = read_json(index_path)
+                            if isinstance(idx, list):
+                                idx = [e for e in idx if isinstance(e, dict)
+                                       and e.get("report_version") == survivor_name]
+                                index_path.write_text(
+                                    json.dumps(idx, indent=2, ensure_ascii=False),
+                                    encoding="utf-8",
+                                )
+                        except Exception:
+                            pass
+                    # latest.json: remove if it now points at a deleted
+                    # version. For no-survivor modes we drop it entirely
+                    # (UI "无 report" surfaces naturally).
+                    latest_path = mode_dir / "latest.json"
+                    if latest_path.exists():
+                        try:
+                            latest = read_json(latest_path) or {}
+                            if not survivor_name or latest.get("report_version") != survivor_name:
+                                if survivor_name:
+                                    # Point latest at the survivor.
+                                    latest["report_version"] = survivor_name
+                                    latest_path.write_text(
+                                        json.dumps(latest, indent=2, ensure_ascii=False),
+                                        encoding="utf-8",
+                                    )
+                                else:
+                                    latest_path.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+
+        # Second pass: delete all analyzer-stale DB rows that somehow
+        # survived the disk sweep (runs pointing at versions deleted
+        # ages ago / imported reports that never got a matching row).
+        # /api/reports/stale-count reads the DB directly — dropping
+        # these rows is what actually zeros the Report 管理 banner.
+        extra_runs_deleted = 0
+        for row in store.list_runs(limit=100000):
+            row_analyzer = (row.get("analyzer_version") or "").strip()
+            if not row_analyzer:
+                continue
+            if row_analyzer == cur_analyzer:
+                continue
+            run_id = row.get("run_id", "")
+            if not run_id:
+                continue
+            try:
+                if store.delete_run(run_id):
+                    extra_runs_deleted += 1
+            except Exception:
+                pass
+
+        return {
+            "ok": True, "deleted": deleted, "kept": kept,
+            "runs_deleted": runs_deleted + extra_runs_deleted,
+        }
 
     @app.get("/api/fleet/export-csv")
     def export_fleet_csv() -> Any:

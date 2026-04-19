@@ -1907,6 +1907,21 @@ def parse_chunk_response(
     spin_type_bucket_win: dict[int, dict[str, float]] = defaultdict(
         lambda: defaultdict(float)
     )
+    # Per-chain-path × return-bucket histograms. Keyed by
+    # (first_st, cc_reset, sp_type) — same key as chain_chunk_summaries
+    # — so the upstream feature breakdown can render bucket
+    # distributions PER trigger path (user feedback 2026-04-19: the
+    # global per-SpinType bucket was shared across paths, masking the
+    # fact that via-wheel and via-BCM paths have different distributions).
+    chain_bucket_spins: dict[tuple, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+    chain_bucket_bet: dict[tuple, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    chain_bucket_win: dict[tuple, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
 
     # Collect-mechanic accumulation. M272's mode 1/2 carries CollectCount
     # (per-robot monotonic counter of triggered collects) and AccCredits
@@ -2362,6 +2377,13 @@ def parse_chunk_response(
                 entry["count"] += 1
                 entry["win"] += win_amt
                 entry["bet"] += bet_amt
+                # Per-chain-path bucket tracking — lets the UI show a
+                # distinct bucket histogram per trigger path for the
+                # same paying SpinType (e.g. M273 LockSymbolFreespin
+                # via PreWheel vs via BCM cycle).
+                chain_bucket_spins[key][bucket] += 1
+                chain_bucket_bet[key][bucket] += bet_amt
+                chain_bucket_win[key][bucket] += win_amt
             # Per-robot SpinType transition for chain-parent inference.
             # Boundary (first round of a robot) contributes no edge.
             if prev_sp_type_in_robot is not None:
@@ -2736,6 +2758,24 @@ def parse_chunk_response(
             }
             for k, v in chain_chunk_summaries.items()
         ],
+        # Per-chain-path bucket histograms. Serialized as list (keyed
+        # by tuple) so the reduce step in main / resume_from_cache can
+        # merge by identical (first_st, cc_reset, sp_type) + bucket.
+        "chain_bucket_spins": [
+            {"first_st": k[0], "entry_cc_reset": bool(k[1]), "sp_type": k[2],
+             "buckets": dict(v)}
+            for k, v in chain_bucket_spins.items()
+        ],
+        "chain_bucket_bet": [
+            {"first_st": k[0], "entry_cc_reset": bool(k[1]), "sp_type": k[2],
+             "buckets": dict(v)}
+            for k, v in chain_bucket_bet.items()
+        ],
+        "chain_bucket_win": [
+            {"first_st": k[0], "entry_cc_reset": bool(k[1]), "sp_type": k[2],
+             "buckets": dict(v)}
+            for k, v in chain_bucket_win.items()
+        ],
         "upstream_feature_tally": {
             feat: {pid: dict(v) for pid, v in payouts.items()}
             for feat, payouts in feature_chunk_tally.items()
@@ -3041,6 +3081,16 @@ def main() -> int:
     spin_type_bucket_win: dict[int, dict[str, float]] = defaultdict(
         lambda: defaultdict(float)
     )
+    # Per-chain-path bucket histograms (session-level reduce target).
+    chain_bucket_spins: dict[tuple, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+    chain_bucket_bet: dict[tuple, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    chain_bucket_win: dict[tuple, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
     # Session-level bonus-chain summary merged from per-chunk records.
     # Key = (first_st, entry_cc_reset, sp_type) → rolled-up counts.
     chain_chunk_summaries: dict[tuple, dict[str, float]] = defaultdict(
@@ -3304,6 +3354,28 @@ def main() -> int:
                     chain_chunk_summaries[key]["count"] += int(ent.get("count", 0) or 0)
                     chain_chunk_summaries[key]["win"] += float(ent.get("win", 0) or 0)
                     chain_chunk_summaries[key]["bet"] += float(ent.get("bet", 0) or 0)
+                # Per-chain-path bucket merges.
+                for _bkey, _src in (
+                    ("chain_bucket_spins", chain_bucket_spins),
+                    ("chain_bucket_bet", chain_bucket_bet),
+                    ("chain_bucket_win", chain_bucket_win),
+                ):
+                    for ent in (rec.get(_bkey) or []):
+                        if not isinstance(ent, dict):
+                            continue
+                        key = (
+                            int(ent.get("first_st", 0) or 0),
+                            bool(ent.get("entry_cc_reset", False)),
+                            int(ent.get("sp_type", 0) or 0),
+                        )
+                        buckets = ent.get("buckets") or {}
+                        if not isinstance(buckets, dict):
+                            continue
+                        for bname, val in buckets.items():
+                            if _bkey == "chain_bucket_spins":
+                                _src[key][str(bname)] += int(val or 0)
+                            else:
+                                _src[key][str(bname)] += float(val or 0.0)
                 for feat, payouts in (rec.get("upstream_feature_tally") or {}).items():
                     if not isinstance(payouts, dict):
                         continue
@@ -3757,6 +3829,28 @@ def main() -> int:
                     chain_chunk_summaries[key]["count"] += int(ent.get("count", 0) or 0)
                     chain_chunk_summaries[key]["win"] += float(ent.get("win", 0) or 0)
                     chain_chunk_summaries[key]["bet"] += float(ent.get("bet", 0) or 0)
+                # Per-chain-path bucket merges (resume_from_cache path).
+                for _bkey, _src in (
+                    ("chain_bucket_spins", chain_bucket_spins),
+                    ("chain_bucket_bet", chain_bucket_bet),
+                    ("chain_bucket_win", chain_bucket_win),
+                ):
+                    for ent in (rec.get(_bkey) or []):
+                        if not isinstance(ent, dict):
+                            continue
+                        key = (
+                            int(ent.get("first_st", 0) or 0),
+                            bool(ent.get("entry_cc_reset", False)),
+                            int(ent.get("sp_type", 0) or 0),
+                        )
+                        buckets = ent.get("buckets") or {}
+                        if not isinstance(buckets, dict):
+                            continue
+                        for bname, val in buckets.items():
+                            if _bkey == "chain_bucket_spins":
+                                _src[key][str(bname)] += int(val or 0)
+                            else:
+                                _src[key][str(bname)] += float(val or 0.0)
                 # upstream feature tally merge: additive per (feature, payid).
                 # Older chunk records (pre-feature) lack the key -- safe via
                 # .get() default.
@@ -4324,30 +4418,44 @@ def main() -> int:
         upstream_feature_tally, _load_bcm_pairings(),
     )
 
-    # Post-process bonus-chain summaries into per-feature sub_streams.
-    # Same paying feature entered via different trigger paths (e.g.
-    # M273 LockSymbolFreespin: wheel-ceremony vs BCM cycle) gets one
-    # sub-entry per path. Operator / LLM can see that different paths
-    # produce different stats without any machine-specific hardcoding.
-    _sub_stream_acc: dict[tuple, dict[str, float]] = defaultdict(
-        lambda: {"fires": 0, "win": 0.0, "bet": 0.0}
+    # Post-process bonus-chain summaries into per-path accumulators
+    # (keyed by (feature, label)). User feedback 2026-04-19: the
+    # previous sub_streams structure nested all paths under one feature
+    # row but kept the bucket distribution SHARED — so operators
+    # couldn't tell the via-wheel vs via-BCM paths apart at the bucket
+    # level. Now each (feature, label) path carries its own bucket
+    # histograms aggregated from chain_bucket_{spins,bet,win}, and the
+    # feature assembly emits a SEPARATE row per path when N paths ≥ 2.
+    _sub_stream_acc: dict[tuple, dict[str, Any]] = defaultdict(
+        lambda: {
+            "fires": 0, "win": 0.0, "bet": 0.0,
+            "bucket_spins": defaultdict(int),
+            "bucket_bet": defaultdict(float),
+            "bucket_win": defaultdict(float),
+        }
     )
     for (first_st, cc_reset, sp_type), stats in chain_chunk_summaries.items():
         feat_in_chain = spin_type_to_feature.get(int(sp_type))
         if not feat_in_chain:
             continue
-        # Label derivation. BCM cycle wins (explicit flag); else use
-        # the chain-entry SpinType's feature name so the label reads
-        # naturally ("via PreWheel", "via LockSymbolFreespin", etc.).
         if cc_reset:
             label = "via BCM cycle"
         else:
             entry_feat = spin_type_to_feature.get(int(first_st))
             label = f"via {entry_feat}" if entry_feat else f"via ST{first_st}"
         key = (feat_in_chain, label)
-        _sub_stream_acc[key]["fires"] += int(stats["count"] or 0)
-        _sub_stream_acc[key]["win"] += float(stats["win"] or 0)
-        _sub_stream_acc[key]["bet"] += float(stats["bet"] or 0)
+        acc = _sub_stream_acc[key]
+        acc["fires"] += int(stats["count"] or 0)
+        acc["win"] += float(stats["win"] or 0)
+        acc["bet"] += float(stats["bet"] or 0)
+        # Aggregate per-path bucket histograms keyed by the same tuple.
+        bkey = (first_st, cc_reset, sp_type)
+        for bname, c in (chain_bucket_spins.get(bkey) or {}).items():
+            acc["bucket_spins"][bname] += int(c or 0)
+        for bname, v in (chain_bucket_bet.get(bkey) or {}).items():
+            acc["bucket_bet"][bname] += float(v or 0.0)
+        for bname, v in (chain_bucket_win.get(bkey) or {}).items():
+            acc["bucket_win"][bname] += float(v or 0.0)
     sub_streams_by_feature: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for (feat_name, label), stats in _sub_stream_acc.items():
         fires = int(stats["fires"])
@@ -4358,6 +4466,9 @@ def main() -> int:
             "fires": fires,
             "win_credits": win,
             "rtp_contribution_pp": rtp_pp,
+            "bucket_spins": dict(stats["bucket_spins"]),
+            "bucket_bet": dict(stats["bucket_bet"]),
+            "bucket_win": dict(stats["bucket_win"]),
         })
     for rows in sub_streams_by_feature.values():
         rows.sort(key=lambda r: -r["win_credits"])
@@ -4477,6 +4588,76 @@ def main() -> int:
                 effective_bet_for_rtp,  # global denominator — see note above
                 feat_bucket_total_win,
             )
+        # Fix 2 (2026-04-19 round 5): if ≥2 trigger paths exist for
+        # this feature, emit one row PER PATH with a path-specific
+        # bucket distribution. Naming convention: "{feat_name} [{label}]".
+        # The frontend's feature-breakdown renders these as separate
+        # cards automatically — no UI code change needed.
+        feat_subs = sub_streams_by_feature.get(feat_name, [])
+        common = {
+            "trigger_only": trigger_only,
+            "resolved_spin_type": resolved_spin_type,
+            "spin_type_binding_ambiguous": feat_name in ambiguous_mapped,
+            "chain_parent_feature": chain_parent_feature,
+            "chain_parent_confidence": chain_parent_confidence,
+            "chain_parent_share": chain_parent_share,
+            "chain_parent_next_fires": chain_parent_next_fires,
+        }
+        # Only split PAYING features into per-path rows. Trigger-only
+        # features (WheelSelector / PreWheel / etc.) have direct_win=0
+        # on every path — splitting them produces N identical RTP=0
+        # rows that clutter the breakdown without adding signal.
+        if len(feat_subs) >= 2 and not trigger_only:
+            # Aggregate bet from chain sub_streams (per-path) — use for
+            # fire_rate calc when splitting.
+            for sub in feat_subs:
+                p_win = float(sub.get("win_credits", 0.0))
+                p_fires = int(sub.get("fires", 0))
+                p_bucket_spins = sub.get("bucket_spins") or {}
+                p_bucket_bet = sub.get("bucket_bet") or {}
+                p_bucket_win = sub.get("bucket_win") or {}
+                p_total_spins = sum(p_bucket_spins.values())
+                p_total_win = sum(p_bucket_win.values())
+                p_bucket_rows = (
+                    build_multiplier_bucket_rows(
+                        p_bucket_spins, p_bucket_bet, p_bucket_win,
+                        p_total_spins, effective_bet_for_rtp, p_total_win,
+                    )
+                    if p_total_spins > 0 else []
+                )
+                p_fire_rate = (p_fires / total_spins) if total_spins > 0 else 0.0
+                label = sub.get("label", "")
+                display_name = f"{feat_name} [{label}]"
+                upstream_feature_rows.append({
+                    "feature_name": display_name,
+                    "feature_base_name": str(feat_name),
+                    "trigger_path_label": label,
+                    "total_win": p_win,
+                    "total_times": p_fires,
+                    "fires_spins": p_fires,
+                    "fire_rate": p_fire_rate,
+                    "direct_win_credits": p_win,
+                    "bucket_distribution": p_bucket_rows,
+                    "bucket_total_spins": p_total_spins,
+                    "sub_streams": [],  # split into separate rows, no nesting
+                    "rtp_contribution_pp": (
+                        (p_win / effective_bet_for_rtp) * 100.0
+                        if effective_bet_for_rtp > 0 else 0.0
+                    ),
+                    "share_of_total_win": (
+                        p_win / upstream_total_win
+                        if upstream_total_win > 0 else 0.0
+                    ),
+                    # payout_rows is feature-aggregate (not path-specific);
+                    # attach to first path for accessibility, keep empty
+                    # for the rest.
+                    "payouts": payout_rows if sub is feat_subs[0] else [],
+                    **common,
+                })
+            # Skip the aggregate row append below — continue outer loop.
+            continue
+
+        # Single-path (or no-path) case: emit the aggregate row as before.
         upstream_feature_rows.append(
             {
                 "feature_name": str(feat_name),
@@ -4485,16 +4666,9 @@ def main() -> int:
                 "fires_spins": feat_total_times,
                 "fire_rate": fire_rate,
                 "direct_win_credits": feat_total_win,
-                "trigger_only": trigger_only,
-                "resolved_spin_type": resolved_spin_type,
-                "spin_type_binding_ambiguous": feat_name in ambiguous_mapped,
-                "chain_parent_feature": chain_parent_feature,
-                "chain_parent_confidence": chain_parent_confidence,
-                "chain_parent_share": chain_parent_share,
-                "chain_parent_next_fires": chain_parent_next_fires,
                 "bucket_distribution": feat_bucket_rows,
                 "bucket_total_spins": feat_bucket_total_spins,
-                "sub_streams": sub_streams_by_feature.get(feat_name, []),
+                "sub_streams": feat_subs,
                 "rtp_contribution_pp": (
                     (feat_total_win / effective_bet_for_rtp) * 100.0
                     if effective_bet_for_rtp > 0 else 0.0
@@ -4504,6 +4678,7 @@ def main() -> int:
                     if upstream_total_win > 0 else 0.0
                 ),
                 "payouts": payout_rows,
+                **common,
             }
         )
     # Sort: payers first (by total_win desc), then trigger-only
