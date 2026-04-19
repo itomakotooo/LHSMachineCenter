@@ -750,65 +750,88 @@ test("formatPaylineTopSymbols: respects N override", () => {
 
 const _summaryFixture = () => ({
   rtp: { point_pct: 95.123 },
-  sampling: { achieved_halfwidth_pp: 0.482, total_spins: 2400000 },
+  sampling: { achieved_halfwidth_pp: 0.482, total_spins: 2400000, paid_spins: 2200000 },
   player_impact: {
-    hit_and_payout: { zero_win_rate: 0.78, big_win_x10_rate: 0.0123 },
+    hit_and_payout: {
+      zero_win_rate: 0.78,
+      big_win_x10_rate: 0.0123,
+      big_win_x20_rate: 0.0055,
+      big_win_x50_rate: 0.0011,
+      big_win_x100_rate: 0.0003,
+    },
     volatility: { max_observed_return_x: 421.5 },
     streaks: { loss_streak_p95: 14 },
   },
   guideline_assessment: {
     classification: { volatility_class: "High", experience_archetype: "Boom-Bust" },
     derived_metrics: { tail_dependency: 0.41 },
-    bankruptcy_checks: { x500_bankruptcy_rate: 0.012 },
   },
-  guideline_comparison: { overall_status: "FAIL" },
 });
 
-test("extractMetricCards: pulls all 12 cards from a summary", () => {
-  const c = PURE.extractMetricCards(_summaryFixture());
+test("extractMetricCards: pulls core paid-round cards from a summary", () => {
+  const c = PURE.extractMetricCards(_summaryFixture(), "zh");
   for (const k of [
-    "rtp", "ci", "spins", "zeroWin", "tailDep", "guideline",
-    "volatility", "archetype", "lossStreak", "maxReturn", "bigWin", "bankruptX500",
+    "rtp", "ci", "spins", "zeroWin", "tailDep",
+    "volatility", "archetype", "lossStreak", "maxReturn", "bigWin",
   ]) {
     assert.ok(c[k] != null, `${k} missing`);
     assert.ok("value" in c[k], `${k}.value missing`);
     assert.ok("tone" in c[k], `${k}.tone missing`);
   }
+  // guideline / bankruptX500 cards were dropped in the paid-round refactor.
+  assert.equal(c.guideline, undefined);
+  assert.equal(c.bankruptX500, undefined);
+
   assert.equal(c.rtp.value, "95.12%");
   assert.equal(c.ci.value, "0.482");
-  assert.equal(c.spins.value, "2,400,000");
+  // spins prefers paid_spins over total_spins.
+  assert.equal(c.spins.value, "2,200,000");
   assert.equal(c.zeroWin.value, "78.00%");
-  // tailDep.value is now "≥10x N.N%" format (2×2 grid display).
-  assert.ok(c.tailDep.value.includes("41.0%"), `tailDep.value=${c.tailDep.value}`);
-  assert.equal(c.volatility.value, "High");
-  assert.equal(c.archetype.value, "Boom-Bust");
+  // tailDep is now a raw number (grid renders the 4 tiles in app.js).
+  assert.equal(c.tailDep.value, "0.410");
+  // Volatility main value is empty (only lib-rank is shown — populated
+  // by applyLibraryRanking at render time).
+  assert.equal(c.volatility.value, "");
+  // Archetype is translated to plain-Chinese phrase.
+  assert.equal(c.archetype.value, "爆击驱动");
+  assert.equal(c.archetype.raw, "Boom-Bust");
   assert.equal(c.lossStreak.value, "14");
   assert.equal(c.maxReturn.value, "421.5x");
+  // bigWin primary value = ≥10x rate; tiles carry all 4 thresholds.
   assert.equal(c.bigWin.value, "1.230%");
-  assert.equal(c.bankruptX500.value, "1.200%");
-  assert.equal(c.guideline.value, "FAIL");
+  assert.ok(c.bigWin.tiles, "bigWin.tiles missing");
+  assert.equal(c.bigWin.tiles.ge10, 0.0123);
+  assert.equal(c.bigWin.tiles.ge20, 0.0055);
+  assert.equal(c.bigWin.tiles.ge50, 0.0011);
+  assert.equal(c.bigWin.tiles.ge100, 0.0003);
 });
 
-test("extractMetricCards: tone classification respects guideline thresholds", () => {
-  const c = PURE.extractMetricCards(_summaryFixture());
+test("extractMetricCards: tone classification for paid-round metrics", () => {
+  const c = PURE.extractMetricCards(_summaryFixture(), "zh");
   assert.equal(c.zeroWin.tone, "warn");          // 0.78 in (0.75, 0.82]
   assert.equal(c.tailDep.tone, "neutral");       // 0.41 in [0.20, 0.45)
   assert.equal(c.lossStreak.tone, "good");       // 14 < 15
-  assert.equal(c.bankruptX500.tone, "warn");     // 0.012 in [0.01, 0.05)
-  assert.equal(c.guideline.tone, "bad");         // FAIL
   assert.equal(c.rtp.tone, "neutral");
   assert.equal(c.volatility.tone, "neutral");
+  assert.equal(c.archetype.tone, "neutral");
+  assert.equal(c.bigWin.tone, "neutral");
 });
 
 test("extractMetricCards: missing summary fields -> N/A and neutral tone", () => {
-  const c = PURE.extractMetricCards({});
-  for (const k of ["rtp", "ci", "spins", "zeroWin", "tailDep", "guideline",
-                    "volatility", "archetype", "lossStreak", "maxReturn",
-                    "bigWin", "bankruptX500"]) {
+  const c = PURE.extractMetricCards({}, "zh");
+  for (const k of ["rtp", "ci", "spins", "zeroWin", "tailDep",
+                    "archetype", "lossStreak", "maxReturn", "bigWin"]) {
     assert.equal(c[k].value, "N/A", `${k}.value should be N/A`);
   }
+  // volatility main value is always empty (see above).
+  assert.equal(c.volatility.value, "");
   assert.equal(c.zeroWin.tone, "neutral");
-  assert.equal(c.guideline.tone, "warn"); // empty status falls into warn bucket
+});
+
+test("extractMetricCards: archetype maps to plain-English in en locale", () => {
+  const c = PURE.extractMetricCards(_summaryFixture(), "en");
+  assert.equal(c.archetype.value, "Boom-Bust");
+  assert.equal(c.archetype.raw, "Boom-Bust");
 });
 
 // ---------- formatAutotuneProgress ----------

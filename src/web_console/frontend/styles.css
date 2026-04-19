@@ -1151,33 +1151,124 @@ button:disabled {
 .kpi .kpi-sub:empty {
   display: none;
 }
-/* Tail dependency: 2×2 grid showing all 4 thresholds uniformly. */
-.kpi-tail-grid {
+/* Tail dependency + Big-win rate share the 2×2 tile grid style so the
+   two cards read as a matched pair in the KPI strip. Tiles show ≥10x
+   / ≥20x / ≥50x / ≥100x thresholds with uniform weight — no single
+   threshold is emphasized over the others. */
+.kpi-tail-grid,
+.kpi-bigwin-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2px 8px;
   margin-top: 3px;
 }
-.kpi-tail-grid .tail-cell {
+.kpi-tail-grid .tail-cell,
+.kpi-bigwin-grid .tail-cell {
   display: flex;
   align-items: baseline;
   gap: 4px;
 }
-.kpi-tail-grid .tail-cell em {
+.kpi-tail-grid .tail-cell em,
+.kpi-bigwin-grid .tail-cell em {
   font-style: normal;
   font-size: 10px;
   color: var(--muted);
   text-transform: none;
   min-width: 36px;
 }
-.kpi-tail-grid .tail-cell b {
+.kpi-tail-grid .tail-cell b,
+.kpi-bigwin-grid .tail-cell b {
   font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Volatility card: lib-rank is the ONLY signal (no "Very High" label
+   anymore). Render the rank text at the same weight as other cards'
+   primary values so the information hierarchy stays flat. */
+.kpi-lib-only {
+  font-size: 15px !important;
+  font-weight: 500;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
 /* Bucket distribution panel (table-based, replaces Chart.js). */
 .bucket-distribution {
   grid-column: span 12;
+}
+
+/* Bankruptcy analysis panel: three tiers side-by-side on wide
+   viewports, stacking to single column on narrow. Each tier block
+   carries its own headline stats + a per-bin histogram rendered
+   through `.drilldown-table` + the shared `.bar-cell` / --bar
+   pattern, so the visual language matches bucket-distribution and
+   feature-bucket tables byte-for-byte. */
+.bankruptcy-analysis {
+  grid-column: span 12;
+}
+.bankruptcy-intro {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.bankruptcy-tiers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+.bankruptcy-tier {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfdff;
+  padding: 10px 12px 12px;
+}
+.bankruptcy-tier-head {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #1e293b;
+}
+.bankruptcy-tier-stats {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+.bankruptcy-tier-stats .bk-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.bankruptcy-tier-stats .bk-stat em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.bankruptcy-tier-stats .bk-stat b {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.bankruptcy-tier-stats .bk-stat-rate b {
+  color: var(--danger);
+}
+.bankruptcy-histogram tbody tr.bk-row-survived {
+  background: #ecfdf5;
+  font-weight: 500;
+}
+.bankruptcy-histogram tbody tr.bk-row-survived td:first-child {
+  color: #166534;
+}
+.bankruptcy-histogram .bar-cell::after {
+  background: var(--accent-soft);
+}
+.bankruptcy-histogram tr.bk-row-survived .bar-cell::after {
+  background: #10b981;
+  opacity: 0.7;
 }
 
 /* Bonus chain per-feature card redesign. */
@@ -2919,7 +3010,6 @@ tbody tr.active-row {
   .status,
   .kpis,
   .charts,
-  .report,
   .interpretation,
   .logs,
   .paylines,
@@ -2929,6 +3019,7 @@ tbody tr.active-row {
   .field-discovery,
   .machine-mechanics,
   .payline-classification,
+  .bankruptcy-analysis,
   .batch-progress,
   .machine-catalog,
   .run-history,

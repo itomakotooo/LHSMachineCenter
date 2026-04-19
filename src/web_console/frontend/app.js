@@ -514,7 +514,6 @@ function setKpi(id, text, tone = "neutral") {
 }
 
 function clearSummaryPanels() {
-  byId("assessment").textContent = fmt("noReport");
   byId("interpretationText").textContent = fmt("noInterpret");
   byId("eventsText").textContent = fmt("noEvents");
   if (!state.autoTuneRunning) {
@@ -525,21 +524,21 @@ function clearSummaryPanels() {
   setKpi("kpiCi", "N/A");
   setKpi("kpiSpins", "N/A");
   setKpi("kpiZero", "N/A");
-  // kpiTail replaced by kpiTailGrid (2×2 grid, not a single <strong>).
-  setKpi("kpiGuide", "N/A");
-  setKpi("kpiVolatility", "N/A");
+  // kpiTail / kpiBigWin render via grid helpers instead of setKpi.
+  setKpi("kpiVolatility", fmt("libRankNoData"));
   setKpi("kpiArchetype", "N/A");
   setKpi("kpiLossStreak", "N/A");
   setKpi("kpiMaxReturn", "N/A");
-  setKpi("kpiBigWin", "N/A");
-  setKpi("kpiBankruptX500", "N/A");
-  byId("kpiTailGrid").innerHTML = "";
+  const tg = byId("kpiTailGrid"); if (tg) tg.innerHTML = "";
+  const bg = byId("kpiBigWinGrid"); if (bg) bg.innerHTML = "";
   const bt = byId("bucketTable");
   if (bt) bt.querySelector("tbody").innerHTML = "";
   const fdp = byId("fieldDiscoveryPanel");
   if (fdp) fdp.classList.add("hidden");
   const mmp = byId("machineMechanicsPanel");
   if (mmp) mmp.classList.add("hidden");
+  const bkp = byId("bankruptcyPanel");
+  if (bkp) bkp.classList.add("hidden");
 }
 
 // Chart.js removed — bucket distribution is now a table.
@@ -3356,10 +3355,15 @@ async function renderPaytableShape(summary) {
       const notes = Array.isArray(sh.notes) && sh.notes.length
         ? sh.notes.map(_escHtml).join("; ")
         : "";
+      // symDisplay is ALREADY html-escaped piece-by-piece above (each
+      // symbol went through _escHtml before join). A second _escHtml
+      // on the joined string would double-escape the `<` in synthetic
+      // wild markers like `<all-wild>` into `&amp;lt;all-wild&amp;gt;`,
+      // which the browser renders as literal `&lt;all-wild&gt;` text.
       return `<tr>
         <td>${r.pay_id}</td>
         <td>${r.fires}</td>
-        <td>${_escHtml(symDisplay)} ${wildSubBadge}</td>
+        <td>${symDisplay} ${wildSubBadge}</td>
         <td>${(purity * 100).toFixed(0)}%</td>
         <td>${_escHtml(lineSign)}</td>
         <td>${_escHtml(colStr)}</td>
@@ -3834,34 +3838,105 @@ function renderBonusChainDynamicsPanel(summary) {
     `</div>`;
 }
 
-function renderAssessment(summary) {
-  if (!summary || !summary.guideline_assessment) {
-    byId("assessment").textContent = fmt("noReport");
+// Render the bankruptcy analysis panel. Sourced from
+// ``summary.player_impact.bankruptcy_simulation.tiers`` (rawdata-replay
+// histograms). Each tier gets a full-width block showing the
+// bankruptcy rate / avg survival / total sessions headline + a
+// drilldown-style bin histogram. Bin percentages sum to 100% per tier
+// (bankrupt bins + `survived` row). Hidden when the sim produced no
+// sessions (degenerate case — e.g. an all-empty rawdata).
+function renderBankruptcyAnalysis(summary) {
+  const panel = byId("bankruptcyPanel");
+  if (!panel) return;
+  const body = byId("bankruptcyBody");
+  const sim = ((summary || {}).player_impact || {}).bankruptcy_simulation;
+  const tiers = sim && Array.isArray(sim.tiers) ? sim.tiers : [];
+  const anyData = tiers.some(
+    (t) => Number(t?.robots || 0) > 0,
+  );
+  if (!anyData) {
+    panel.classList.add("hidden");
+    body.innerHTML = "";
     return;
   }
-  const ga = summary.guideline_assessment || {};
-  const gc = summary.guideline_comparison || {};
-  const d = ga.derived_metrics || {};
-  const lines = [];
-  lines.push(`${fmt("assessmentQuality")}: ${ga.data_quality?.quality_label || "N/A"}`);
-  lines.push(`${fmt("assessmentVolatility")}: ${ga.classification?.volatility_class || "N/A"}`);
-  lines.push(`${fmt("assessmentArchetype")}: ${ga.classification?.experience_archetype || "N/A"}`);
-  lines.push(`${fmt("assessmentRecoveryGap")}: ${fNum(d.recovery_gap)}`);
-  lines.push(`${fmt("assessmentTail")}: ${fNum(d.tail_dependency)}`);
-  lines.push(
-    `${fmt("assessmentRule")}: ${gc.overall_status || "N/A"} (pass=${gc.pass_count ?? 0}, fail=${gc.fail_count ?? 0}, missing=${gc.missing_count ?? 0})`
-  );
-  const alerts = Array.isArray(ga.alerts) ? ga.alerts : [];
-  if (alerts.length) {
-    lines.push(`${fmt("assessmentAlerts")}:`);
-    alerts.slice(0, 6).forEach((a) => lines.push(`- [${a.severity}] ${a.code}: ${a.message}`));
-  }
-  const actions = Array.isArray(ga.action_recommendations) ? ga.action_recommendations : [];
-  if (actions.length) {
-    lines.push(`${fmt("assessmentActions")}:`);
-    actions.slice(0, 6).forEach((a, i) => lines.push(`${i + 1}. ${a}`));
-  }
-  byId("assessment").textContent = lines.join("\n");
+  panel.classList.remove("hidden");
+
+  const sessionSpins = Number(sim.session_spins || 500);
+  const binCount = Number(sim.bin_count || 10);
+  const binSize = sessionSpins / binCount;
+
+  const intro = `<p class="bankruptcy-intro">${_escHtml(
+    fmt("bankruptcyIntro", { session: sessionSpins })
+  )}</p>`;
+
+  const cards = tiers.map((t) => {
+    const mult = Number(t.bankroll_multiplier || 0);
+    const sessions = Number(t.robots || 0);
+    const bankrupt = Number(t.bankrupt_robots || 0);
+    const survived = Number(t.completed_robots || 0);
+    const rate = Number(t.bankruptcy_rate || 0);
+    const avg = Number(t.avg_spins_completed || 0);
+    const bins = Array.isArray(t.bins) ? t.bins : [];
+
+    // Assemble rows: one per bankrupt bin + a final "survived" row.
+    // Shares are percentages of sessions (not of bankrupt subset), so
+    // the column sums to 100% including the survived row.
+    const rows = [];
+    for (let i = 0; i < binCount; i++) {
+      const c = Number(bins[i] || 0);
+      const share = sessions > 0 ? c / sessions : 0;
+      const start = Math.round(i * binSize);
+      const end = i === binCount - 1
+        ? sessionSpins - 1
+        : Math.round((i + 1) * binSize) - 1;
+      const label = fmt("bankruptcyBinLabel", { start, end });
+      rows.push({ label, share, isSurvived: false });
+    }
+    rows.push({
+      label: fmt("bankruptcyBinSurvived", { cap: sessionSpins }),
+      share: sessions > 0 ? survived / sessions : 0,
+      isSurvived: true,
+    });
+    // Bar scale: use max share in this tier so the tier's narrative
+    // reads clearly even when one bucket dominates.
+    const maxShare = rows.reduce((m, r) => Math.max(m, r.share), 0.001);
+    const bodyRows = rows.map((r) => {
+      const bar = Math.min(100, (r.share / maxShare) * 100);
+      const pct = (r.share * 100).toFixed(1);
+      const cls = r.isSurvived ? "bk-row-survived" : "bk-row-bankrupt";
+      return (
+        `<tr class="${cls}">` +
+        `<td>${_escHtml(r.label)}</td>` +
+        `<td>${pct}%</td>` +
+        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%"></td>` +
+        `</tr>`
+      );
+    }).join("");
+
+    return (
+      `<div class="bankruptcy-tier">` +
+      `<h3 class="bankruptcy-tier-head">${_escHtml(
+        fmt("bankruptcyTierLabel", { mult })
+      )}</h3>` +
+      `<div class="bankruptcy-tier-stats">` +
+      `<span class="bk-stat bk-stat-rate"><em>${_escHtml(fmt("bankruptcyRateLabel"))}</em><b>${(rate * 100).toFixed(1)}%</b></span>` +
+      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcyAvgLabel"))}</em><b>${Math.round(avg)}</b></span>` +
+      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcySurvivedLabel"))}</em><b>${sessions > 0 ? ((survived / sessions) * 100).toFixed(1) : "0.0"}%</b></span>` +
+      `</div>` +
+      `<table class="drilldown-table bankruptcy-histogram">` +
+      `<thead><tr>` +
+      `<th>spins</th>` +
+      `<th>%</th>` +
+      `<th></th>` +
+      `</tr></thead>` +
+      `<tbody>${bodyRows}</tbody>` +
+      `</table>` +
+      `</div>`
+    );
+    void bankrupt; // stat currently summarized via rate + survived pair.
+  }).join("");
+
+  body.innerHTML = intro + `<div class="bankruptcy-tiers-grid">${cards}</div>`;
 }
 
 function fillMachineModeSelectors() {
@@ -3984,20 +4059,38 @@ function modelWarnings() {
   });
 }
 
-// Populate the Volatility + Archetype KPI cards' sub-lines with a
-// library-relative rank. Silently no-ops when the library has fewer
-// than 2 entries (ranking against oneself isn't informative).
+// Populate the Volatility + Archetype KPI cards with a library-
+// relative rank. Volatility card shows the rank as its PRIMARY value
+// (no separate "Very High" label anymore — the lib percentile is the
+// whole signal). Archetype keeps the plain-Chinese label as primary
+// with the share count as secondary.
+//
+// `dist` is expected to be filtered to the summary's own mode (backend
+// honors ?mode=N; see refreshCurrentRun for the wired call). Same-mode
+// ranking is a hard requirement — comparing a mode 1 baseline machine
+// against mode 5 bonus-mode reports mixes incomparable ranges.
+//
+// Silently no-ops when the library has fewer than 2 entries (ranking
+// against oneself isn't informative).
 function applyLibraryRanking(summary, dist) {
+  const volEl = byId("kpiVolatilitySub");
+  if (volEl) volEl.textContent = fmt("libRankNoData");
+  const archSubEl = byId("kpiArchetypeSub");
+  if (archSubEl) archSubEl.textContent = "";
+
   if (!dist || !dist.metrics) return;
   const total = Number(dist.machines_count || 0);
-  if (total < 2) return;
+  if (total < 2) {
+    if (volEl) volEl.textContent = fmt("libRankTooFew");
+    return;
+  }
   const ga = (summary || {}).guideline_assessment || {};
   const derived = ga.derived_metrics || {};
   const cls = ga.classification || {};
   const hit = ((summary || {}).player_impact || {}).hit_and_payout || {};
   const streaks = ((summary || {}).player_impact || {}).streaks || {};
 
-  // Volatility: rank the composite score against the library.
+  // Volatility: rank composite against the (same-mode) library.
   const zeroWin = hit.zero_win_rate;
   const tailDep = derived.tail_dependency_ge10x ?? derived.tail_dependency;
   const lossP95 = streaks.loss_streak_p95;
@@ -4009,17 +4102,15 @@ function applyLibraryRanking(summary, dist) {
     );
     const values = ((dist.metrics || {}).volatility_score || {}).values || [];
     const rank = PURE.computeLibPercentile(score, values);
-    const sub = PURE.formatLibRank(rank, state.lang);
-    const el = byId("kpiVolatilitySub");
-    if (el) el.textContent = sub || "";
+    const text = PURE.formatLibRank(rank, state.lang);
+    if (volEl) volEl.textContent = text || fmt("libRankNoData");
   }
 
-  // Archetype: categorical -- show how common the label is.
+  // Archetype: categorical — "{count}/{total} same archetype".
   const currentArchetype = cls.experience_archetype;
   if (currentArchetype && dist.archetype_counts) {
     const count = Number(dist.archetype_counts[currentArchetype] || 0);
-    const el = byId("kpiArchetypeSub");
-    if (el) el.textContent = fmt("archetypeShare", { count, total });
+    if (archSubEl) archSubEl.textContent = fmt("archetypeShare", { count, total });
   }
 }
 
@@ -4352,25 +4443,21 @@ async function refreshCurrentRun() {
     const report = await apiGet(`/api/runs/${state.currentRunId}/report`);
     const s = report.summary || {};
     state.latestSummary = s;
-    renderAssessment(s);
-    // Drive all 12 KPI cards from a single pure helper so tone classification
+    // Drive the KPI cards from a single pure helper so tone classification
     // stays in one place (testable without DOM).
-    const cards = PURE.extractMetricCards(s);
+    const cards = PURE.extractMetricCards(s, state.lang);
     const kpiBindings = [
       ["kpiRtp", "rtp"], ["kpiCi", "ci"], ["kpiSpins", "spins"],
-      ["kpiZero", "zeroWin"], ["kpiGuide", "guideline"],
-      ["kpiVolatility", "volatility", "kpiVolatilitySub"],
+      ["kpiZero", "zeroWin"],
+      // Volatility main slot intentionally empty (lib-rank is the only
+      // signal; applyLibraryRanking fills #kpiVolatilitySub).
       ["kpiArchetype", "archetype", "kpiArchetypeSub"],
       ["kpiLossStreak", "lossStreak"], ["kpiMaxReturn", "maxReturn"],
-      ["kpiBigWin", "bigWin"], ["kpiBankruptX500", "bankruptX500"],
     ];
     for (const binding of kpiBindings) {
       const [domId, key, subId] = binding;
       const c = cards[key] || { value: "N/A", tone: "neutral" };
       setKpi(domId, c.value, c.tone);
-      // Optional sub-line (e.g. tail-dep breakdown ≥20/50/100). Cleared
-      // when no sub data is available so the card doesn't show stale
-      // text from a prior summary.
       if (subId) {
         const subEl = byId(subId);
         if (subEl) subEl.textContent = c.sub || "";
@@ -4394,13 +4481,30 @@ async function refreshCurrentRun() {
         if (tone === "good" || tone === "warn" || tone === "bad") card.classList.add(`kpi--${tone}`);
       }
     }
-    // Across-library ranking: Volatility + Archetype cards get a
-    // lib-rank sub-line ("全库 P87 (15/17)" or "{count}/{total} share
-    // this archetype"). Pulled lazily per summary load -- hundreds of
-    // machines is still a sub-second fetch and skipping it silently
-    // on error keeps the panel working when the library is empty.
+    // Big-win rate 4-tile grid (paid-round "≥Nx of bet" rates).
+    // Structurally identical to tail-dep so the two cards read as a
+    // set — monotonically decreasing across the 4 thresholds. Each
+    // rate is sessions-with-a-≥Nx-round / total paid rounds.
+    const bigWinGrid = byId("kpiBigWinGrid");
+    if (bigWinGrid) {
+      const tiles = (cards.bigWin && cards.bigWin.tiles) || {};
+      const pct1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(2) + "%";
+      bigWinGrid.innerHTML =
+        `<div class="tail-cell"><em>\u226510x</em><b>${pct1(tiles.ge10)}</b></div>` +
+        `<div class="tail-cell"><em>\u226520x</em><b>${pct1(tiles.ge20)}</b></div>` +
+        `<div class="tail-cell"><em>\u226550x</em><b>${pct1(tiles.ge50)}</b></div>` +
+        `<div class="tail-cell"><em>\u2265100x</em><b>${pct1(tiles.ge100)}</b></div>`;
+    }
+    // Across-library ranking, filtered to the same mode so a mode 1
+    // baseline machine isn't ranked against mode 5 bonus-mode reports
+    // (their ranges are inherently different). Falls back to cross-mode
+    // ranking if the backend doesn't support ?mode yet.
     try {
-      const dist = await apiGet("/api/library/distributions");
+      const m = Number(s.mode || 0);
+      const distUrl = m > 0
+        ? `/api/library/distributions?mode=${m}`
+        : "/api/library/distributions";
+      const dist = await apiGet(distUrl);
       state.libraryDistributions = dist;
       applyLibraryRanking(s, dist);
     } catch (_err) {
@@ -4445,6 +4549,7 @@ async function refreshCurrentRun() {
     renderPaylineDrilldown(s);
     renderPayoutGroupDrilldown(s);
     renderSymbolDrilldown(s);
+    renderBankruptcyAnalysis(s);
     await refreshInterpretation();
   }
   warnings.push(...collectSystemWarnings());

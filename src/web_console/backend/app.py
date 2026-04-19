@@ -6190,7 +6190,7 @@ def create_app(
         )
 
     @app.get("/api/library/distributions")
-    def library_distributions() -> dict[str, Any]:
+    def library_distributions(mode: int | None = None) -> dict[str, Any]:
         """Across-library metric distributions built from every
         reports/<machine>/mode_<n>/latest.json + its summary JSON.
 
@@ -6199,6 +6199,13 @@ def create_app(
         machine stands within the whole library instead of reading
         absolute numbers in isolation.
 
+        When ``mode`` is supplied (e.g. ``?mode=1``) only that mode's
+        reports contribute to the distribution — prevents comparing a
+        mode 1 baseline machine against a mode 5 bonus-mode machine
+        where the RTP / volatility ranges are inherently different.
+        Without the filter, the distribution mixes all modes (legacy
+        behavior preserved for backward-compat callers).
+
         Scales linearly with the number of (machine, mode) pairs --
         each one is a single JSON read. For hundreds of machines
         this runs in well under a second; no caching needed.
@@ -6206,6 +6213,7 @@ def create_app(
         Shape:
             {
               "machines_count": N,
+              "mode": N or null,
               "metrics": {
                 "volatility_score": {"values": [...], "count": N},
                 "zero_win_rate": {...},
@@ -6223,10 +6231,12 @@ def create_app(
         archetype_counts: dict[str, int] = _dd(int)
         volatility_class_counts: dict[str, int] = _dd(int)
         machine_count = 0
+        mode_filter: int | None = int(mode) if mode is not None else None
 
         if not rr.exists():
             return {
                 "machines_count": 0,
+                "mode": mode_filter,
                 "metrics": {},
                 "archetype_counts": {},
                 "volatility_class_counts": {},
@@ -6234,7 +6244,8 @@ def create_app(
         for machine_dir in sorted(rr.iterdir()):
             if not machine_dir.is_dir():
                 continue
-            for mode_dir in sorted(machine_dir.glob("mode_*")):
+            mode_glob = f"mode_{mode_filter}" if mode_filter is not None else "mode_*"
+            for mode_dir in sorted(machine_dir.glob(mode_glob)):
                 latest_path = mode_dir / "latest.json"
                 if not latest_path.exists():
                     continue
@@ -6304,6 +6315,7 @@ def create_app(
 
         return {
             "machines_count": machine_count,
+            "mode": mode_filter,
             "metrics": {
                 k: {"values": v, "count": len(v)} for k, v in metric_values.items()
             },

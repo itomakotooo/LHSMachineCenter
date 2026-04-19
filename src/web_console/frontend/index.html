@@ -88,23 +88,21 @@
             <div class="kpi-grid">
               <article class="kpi"><span data-i18n="kpiRtp">RTP %</span><strong id="kpiRtp">N/A</strong></article>
               <article class="kpi"><span data-i18n="kpiCi">CI 半宽</span><strong id="kpiCi">N/A</strong></article>
-              <article class="kpi"><span data-i18n="kpiSpins">总 Spins</span><strong id="kpiSpins">N/A</strong></article>
+              <article class="kpi"><span data-i18n="kpiSpins">总付费回合</span><strong id="kpiSpins">N/A</strong></article>
               <article class="kpi"><span data-i18n="kpiZero">空转率</span><strong id="kpiZero">N/A</strong></article>
               <!-- Tail dependency: 4 thresholds shown uniformly in a 2x2 grid -->
               <article class="kpi kpi--tail"><span data-i18n="kpiTail">尾部依赖度</span><div class="kpi-tail-grid" id="kpiTailGrid"></div></article>
-              <article class="kpi"><span data-i18n="kpiGuide">规则状态</span><strong id="kpiGuide">N/A</strong></article>
-              <article class="kpi"><span data-i18n="kpiVolatility">波动性</span><strong id="kpiVolatility">N/A</strong><div class="kpi-sub" id="kpiVolatilitySub"></div></article>
+              <!-- Big-win rate: 2×2 grid mirroring tail-dep. Each tile is
+                   "≥Nx of bet in a paid round" rate. Monotonic decreasing. -->
+              <article class="kpi kpi--bigwin"><span data-i18n="kpiBigWin">大奖回合率</span><div class="kpi-bigwin-grid" id="kpiBigWinGrid"></div></article>
+              <!-- Volatility: main value dropped — only lib-rank kept. -->
+              <article class="kpi"><span data-i18n="kpiVolatility">波动性全库分位</span><strong class="kpi-lib-only" id="kpiVolatilitySub" data-i18n="libRankNoData">—</strong></article>
+              <!-- Archetype: main value is human-readable Chinese phrase
+                   (mapped in pure.js), lib-rank below as count/total. -->
               <article class="kpi"><span data-i18n="kpiArchetype">体验类型</span><strong id="kpiArchetype">N/A</strong><div class="kpi-sub" id="kpiArchetypeSub"></div></article>
               <article class="kpi"><span data-i18n="kpiLossStreak">P95 败局连</span><strong id="kpiLossStreak">N/A</strong></article>
-              <article class="kpi"><span data-i18n="kpiMaxReturn">最大单转倍率</span><strong id="kpiMaxReturn">N/A</strong></article>
-              <article class="kpi"><span data-i18n="kpiBigWin">10x+ 大奖率</span><strong id="kpiBigWin">N/A</strong></article>
-              <article class="kpi"><span data-i18n="kpiBankruptX500">x500 破产率</span><strong id="kpiBankruptX500">N/A</strong></article>
+              <article class="kpi"><span data-i18n="kpiMaxReturn">最大单回合倍率</span><strong id="kpiMaxReturn">N/A</strong></article>
             </div>
-          </section>
-
-          <section class="panel report">
-            <h2 data-i18n="panelAssessment">规则评估</h2>
-            <div id="assessment" class="pre">No report yet.</div>
           </section>
 
           <!-- Bucket distribution: TABLE-based, replaces Chart.js canvas.
@@ -188,6 +186,19 @@
           <section class="panel bonus-chain-dynamics hidden" id="bonusChainDynamicsPanel">
             <h2 data-i18n="panelBonusChainDynamics">Bonus Chain 动态</h2>
             <div id="bonusChainBody"></div>
+          </section>
+
+          <!-- Bankruptcy analysis: 3 tiers (x100 / x200 / x500) each
+               rendered as a survival histogram. Source is the rawdata-
+               replay simulation in the analyzer — every paid-round
+               session that's reached the session-spins cap counts as
+               "survived"; the rest drop into the bin matching how far
+               they made it before the wallet couldn't cover the next
+               paid bet. All percentages are shares of that tier's
+               total simulated sessions. -->
+          <section class="panel bankruptcy-analysis hidden" id="bankruptcyPanel">
+            <h2 data-i18n="panelBankruptcy">破产分析</h2>
+            <div id="bankruptcyBody"></div>
           </section>
 
           <!-- Collect-cycle + RTP correction (BuffCollectionMap-style

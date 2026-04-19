@@ -120,13 +120,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--bankruptcy-bankroll-multipliers",
         default="100,200,500",
-        help="comma-separated bet multipliers for bankruptcy probe",
-    )
-    parser.add_argument(
-        "--bankruptcy-robot-count",
-        type=int,
-        default=None,
-        help="optional override for bankruptcy probe robot count; defaults to chunk-robot-count",
+        help=(
+            "comma-separated bet multipliers for the bankruptcy "
+            "simulation (rawdata-replay). Each tier yields a per-tier "
+            "survival histogram."
+        ),
     )
     parser.add_argument(
         "--guideline-rules",
@@ -785,6 +783,104 @@ def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
             return []
         return parsed if isinstance(parsed, list) else []
     return rr if isinstance(rr, list) else []
+
+
+# Rawdata-replay bankruptcy simulation. Each robot's full round sequence
+# is an independent legal sample at any bankroll level (upstream RNG is
+# stateless w.r.t. the player's wallet). We replay the sequence three
+# times (one per tier), paying bet on paid rounds (CostCredits > 0) and
+# crediting wins on all rounds until either the session cap is reached
+# (survived) or the balance can't afford the next paid round (bankrupt).
+# Bonus rounds naturally don't drain balance but still contribute wins,
+# modeling real-play pickup behavior accurately. The result is a
+# per-tier histogram over how far each simulated session got before
+# bankrupting, letting the UI surface "x500 bankroll survives 80% of
+# the time, vs x100 at 20%" instead of three flat rate scalars.
+_BANKRUPTCY_BIN_COUNT = 10
+_DEFAULT_BANKROLL_MULTIPLIERS: tuple[int, ...] = (100, 200, 500)
+
+
+def _empty_bankruptcy_tier() -> dict[str, Any]:
+    return {
+        "bankrupt": 0,
+        "survived": 0,
+        "spins_done_sum": 0,
+        "bins": [0] * _BANKRUPTCY_BIN_COUNT,
+    }
+
+
+def simulate_bankruptcy_from_response(
+    resp: Any,
+    bet: int,
+    session_spins: int,
+    bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
+) -> dict[int, dict[str, Any]]:
+    """Replay each robot's round sequence from a fresh bankroll to
+    estimate survival distribution at each tier.
+
+    Returns a dict keyed by bankroll multiplier. Each entry has:
+      - bankrupt:       robots that ran out of balance before `session_spins`
+      - survived:       robots that hit `session_spins` without bankrupting
+      - spins_done_sum: sum of spins completed (for avg survival computation)
+      - bins:           length-`_BANKRUPTCY_BIN_COUNT` histogram of
+                        spins-done among bankrupt robots (survivors are
+                        tracked separately, not in bins)
+
+    Returns {} when inputs are degenerate (non-list resp, non-positive
+    bet or session_spins). Safe on empty robot lists (all tiers zeroed).
+    """
+    if not isinstance(resp, list) or bet <= 0 or session_spins <= 0:
+        return {}
+    bin_size = session_spins / _BANKRUPTCY_BIN_COUNT
+    out: dict[int, dict[str, Any]] = {
+        int(m): _empty_bankruptcy_tier() for m in bankroll_mults
+    }
+    for robot in resp:
+        if not isinstance(robot, dict):
+            continue
+        rounds = parse_rounds(robot)
+        if not rounds:
+            continue
+        # Materialize (bet, win) tuples once; replay per tier cheaply.
+        reps: list[tuple[int, int]] = []
+        for r in rounds:
+            if not isinstance(r, dict):
+                continue
+            try:
+                c_bet = int(r.get("CostCredits", 0) or 0)
+            except (TypeError, ValueError):
+                c_bet = 0
+            try:
+                c_win = int(r.get("WinCredits", 0) or 0)
+            except (TypeError, ValueError):
+                c_win = 0
+            reps.append((c_bet, c_win))
+        if not reps:
+            continue
+        for m in bankroll_mults:
+            balance = int(m) * int(bet)
+            spins_done = 0
+            for c_bet, c_win in reps:
+                if spins_done >= session_spins:
+                    break
+                if c_bet > 0 and balance < c_bet:
+                    break  # bankrupt — can't afford the next paid round
+                balance -= c_bet
+                balance += c_win
+                spins_done += 1
+            tier = out[int(m)]
+            tier["spins_done_sum"] += spins_done
+            if spins_done >= session_spins:
+                tier["survived"] += 1
+            else:
+                tier["bankrupt"] += 1
+                idx = int(spins_done // bin_size) if bin_size > 0 else 0
+                if idx < 0:
+                    idx = 0
+                if idx >= _BANKRUPTCY_BIN_COUNT:
+                    idx = _BANKRUPTCY_BIN_COUNT - 1
+                tier["bins"][idx] += 1
+    return out
 
 
 # Baseline round fields: the set of keys the analyzer knows how to
@@ -1539,6 +1635,8 @@ def run_sampling_chunk(
     robot_count: int,
     timeout: float,
     chunk_cache_dir: Path | None = None,
+    bankruptcy_session_spins: int = 500,
+    bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
 ) -> dict[str, Any]:
     payload = make_payload(
         machine=machine,
@@ -1579,7 +1677,11 @@ def run_sampling_chunk(
         resp, chunk_index, machine, rtp_mode, bet, spin_times, robot_count, chunk_cache_dir,
     )
 
-    return parse_chunk_response(resp, chunk_index, bet, started)
+    return parse_chunk_response(
+        resp, chunk_index, bet, started,
+        bankruptcy_session_spins=bankruptcy_session_spins,
+        bankruptcy_bankroll_mults=bankruptcy_bankroll_mults,
+    )
 
 
 def parse_chunk_response(
@@ -1587,6 +1689,8 @@ def parse_chunk_response(
     chunk_index: int,
     bet: int,
     started: float | None = None,
+    bankruptcy_session_spins: int = 500,
+    bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
 ) -> dict[str, Any]:
     """Parse a raw API response (list of robot dicts) into chunk metrics.
 
@@ -1597,6 +1701,12 @@ def parse_chunk_response(
 
     ``started`` is an optional ``time.time()`` value used only for
     elapsed_seconds in the result dict.
+
+    ``bankruptcy_session_spins`` and ``bankruptcy_bankroll_mults`` drive
+    the rawdata-replay bankruptcy simulation (per-chunk histogram
+    contribution merged at finalize). Defaults produce the standard
+    (100/200/500) × 500-spin ladder even when callers forget to plumb
+    through the CLI value.
     """
     if started is None:
         started = time.time()
@@ -1809,6 +1919,11 @@ def parse_chunk_response(
     session_profit_count = 0
     session_breakeven_count = 0
     session_big_win_x10_count = 0
+    # Higher tail thresholds — share the paid-round denominator with x10
+    # so the four rates align on the same scan of the session outcome.
+    session_big_win_x20_count = 0
+    session_big_win_x50_count = 0
+    session_big_win_x100_count = 0
     session_ret_count = 0
     session_ret_sum = 0.0
     session_ret_sq_sum = 0.0
@@ -2056,6 +2171,7 @@ def parse_chunk_response(
         nonlocal paid_session_count
         nonlocal session_win_count, session_lose_count
         nonlocal session_profit_count, session_breakeven_count, session_big_win_x10_count
+        nonlocal session_big_win_x20_count, session_big_win_x50_count, session_big_win_x100_count
         nonlocal session_ret_count, session_ret_sum, session_ret_sq_sum, session_max_return_x
         nonlocal session_win_sum
         nonlocal session_max_loss_streak, session_max_win_streak
@@ -2086,6 +2202,12 @@ def parse_chunk_response(
                 session_breakeven_count += 1
             if s_bet > 0 and s_win >= 10.0 * s_bet:
                 session_big_win_x10_count += 1
+                if s_win >= 20.0 * s_bet:
+                    session_big_win_x20_count += 1
+                    if s_win >= 50.0 * s_bet:
+                        session_big_win_x50_count += 1
+                        if s_win >= 100.0 * s_bet:
+                            session_big_win_x100_count += 1
             # Flip streak: if we were on a lose streak, close it.
             if sess_state["cur_loss_streak"] > 0:
                 session_loss_streak_hist[sess_state["cur_loss_streak"]] += 1
@@ -2821,6 +2943,9 @@ def parse_chunk_response(
         "session_profit_count": session_profit_count,
         "session_breakeven_count": session_breakeven_count,
         "session_big_win_x10_count": session_big_win_x10_count,
+        "session_big_win_x20_count": session_big_win_x20_count,
+        "session_big_win_x50_count": session_big_win_x50_count,
+        "session_big_win_x100_count": session_big_win_x100_count,
         "session_ret_count": session_ret_count,
         "session_ret_sum": session_ret_sum,
         "session_ret_sq_sum": session_ret_sq_sum,
@@ -2856,57 +2981,15 @@ def parse_chunk_response(
         "dollar_pick_spins": dollar_pick_spins,
         "dollar_pick_total_dollars": dollar_pick_total_dollars,
         "dollar_pick_win": dollar_pick_win,
-    }
-
-
-def run_bankruptcy_probe(
-    machine: str,
-    rtp_mode: int,
-    bet: int,
-    session_spins: int,
-    robot_count: int,
-    bankroll_mult: int,
-    timeout: float,
-) -> dict[str, Any]:
-    init_credits = bankroll_mult * bet
-    payload = make_payload(
-        machine=machine,
-        rtp_mode=rtp_mode,
-        bet=bet,
-        spin_times=session_spins,
-        robot_count=robot_count,
-        init_credits=init_credits,
-        reset_each_spin=False,
-        continue_after_bankrupt=False,
-    )
-    resp = post_json(payload, timeout)
-    if not isinstance(resp, list):
-        raise ValueError("bankruptcy probe response is not list")
-
-    bankrupt = 0
-    completed = 0
-    spins_done_sum = 0
-    for robot in resp:
-        if not isinstance(robot, dict):
-            continue
-        rounds = parse_rounds(robot)
-        spins_done = len(rounds)
-        spins_done_sum += spins_done
-        if spins_done < session_spins:
-            bankrupt += 1
-        else:
-            completed += 1
-
-    total = len(resp)
-    return {
-        "bankroll_multiplier": bankroll_mult,
-        "init_credits": init_credits,
-        "session_spins": session_spins,
-        "robots": total,
-        "bankrupt_robots": bankrupt,
-        "completed_robots": completed,
-        "bankruptcy_rate": (bankrupt / total) if total > 0 else 0.0,
-        "avg_spins_completed": (spins_done_sum / total) if total > 0 else 0.0,
+        # Rawdata-replay bankruptcy histogram: per-tier survival breakdown
+        # derived from the robot round sequences. Merged at finalize;
+        # replaces the old live HTTP `run_bankruptcy_probe` loop so
+        # `--from-cache` / generate-report get bankruptcy data too.
+        # int keys (100/200/500) survive as-is since `rec` flows through
+        # the merge loop without JSON round-trip.
+        "bankruptcy_sim": simulate_bankruptcy_from_response(
+            resp, bet, bankruptcy_session_spins, bankruptcy_bankroll_mults,
+        ),
     }
 
 
@@ -2951,6 +3034,17 @@ def main() -> int:
         raise SystemExit("--batch-concurrency, --max-chunks, --timeout must be positive")
     if args.bankruptcy_session_spins <= 0:
         raise SystemExit("--bankruptcy-session-spins must be positive")
+
+    # Bankroll multiplier tiers for the rawdata-replay bankruptcy
+    # simulation. Parsed once here and threaded through to every
+    # chunk-parse call site so the sim computes the correct tier set
+    # (and every chunk agrees on the same tier list, making the
+    # per-tier histogram merge well-defined).
+    _bankruptcy_mults_tuple: tuple[int, ...] = tuple(
+        int(x.strip())
+        for x in args.bankruptcy_bankroll_multipliers.split(",")
+        if x.strip()
+    ) or _DEFAULT_BANKROLL_MULTIPLIERS
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -3018,6 +3112,12 @@ def main() -> int:
     total_session_profits = 0
     total_session_breakevens = 0
     total_session_big_win_x10 = 0
+    total_session_big_win_x20 = 0
+    total_session_big_win_x50 = 0
+    total_session_big_win_x100 = 0
+    # Rawdata-replay bankruptcy histogram totals. Initialized lazily on
+    # first chunk that carries data; keyed by int bankroll multiplier.
+    bankruptcy_sim_totals: dict[int, dict[str, Any]] = {}
     total_session_ret_count = 0
     total_session_ret_sum = 0.0
     total_session_ret_sq_sum = 0.0
@@ -3218,7 +3318,11 @@ def main() -> int:
             chunk_bet_val = int(raw.get("_bet", args.bet) or args.bet)
             idx = int(raw.get("_chunk_index", next_chunk_index))
             max_existing_idx = max(max_existing_idx, idx)
-            rec = parse_chunk_response(resp, idx, chunk_bet_val)
+            rec = parse_chunk_response(
+                resp, idx, chunk_bet_val,
+                bankruptcy_session_spins=args.bankruptcy_session_spins,
+                bankruptcy_bankroll_mults=_bankruptcy_mults_tuple,
+            )
             if not rec.get("ok"):
                 raise SystemExit(f"{tag}: {cf.name} parse failed: {rec.get('error')}")
             # ── identical merge block as online path (below) ──
@@ -3429,6 +3533,24 @@ def main() -> int:
                 total_session_profits += int(rec.get("session_profit_count", 0) or 0)
                 total_session_breakevens += int(rec.get("session_breakeven_count", 0) or 0)
                 total_session_big_win_x10 += int(rec.get("session_big_win_x10_count", 0) or 0)
+                total_session_big_win_x20 += int(rec.get("session_big_win_x20_count", 0) or 0)
+                total_session_big_win_x50 += int(rec.get("session_big_win_x50_count", 0) or 0)
+                total_session_big_win_x100 += int(rec.get("session_big_win_x100_count", 0) or 0)
+                # Bankruptcy sim histogram merge (elementwise sum of bins +
+                # scalar totals per tier).
+                for _mk, _entry in (rec.get("bankruptcy_sim") or {}).items():
+                    if not isinstance(_entry, dict):
+                        continue
+                    _m = int(_mk)
+                    if _m not in bankruptcy_sim_totals:
+                        bankruptcy_sim_totals[_m] = _empty_bankruptcy_tier()
+                    _dst = bankruptcy_sim_totals[_m]
+                    _dst["bankrupt"] += int(_entry.get("bankrupt", 0) or 0)
+                    _dst["survived"] += int(_entry.get("survived", 0) or 0)
+                    _dst["spins_done_sum"] += int(_entry.get("spins_done_sum", 0) or 0)
+                    for _i, _c in enumerate(_entry.get("bins") or []):
+                        if _i < len(_dst["bins"]):
+                            _dst["bins"][_i] += int(_c or 0)
                 total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
                 total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
                 total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
@@ -3649,6 +3771,8 @@ def main() -> int:
                     args.chunk_robot_count,
                     args.timeout,
                     chunk_cache_dir=chunk_cache,
+                    bankruptcy_session_spins=args.bankruptcy_session_spins,
+                    bankruptcy_bankroll_mults=_bankruptcy_mults_tuple,
                 )
                 for idx in indices
             ]
@@ -3919,6 +4043,24 @@ def main() -> int:
                 total_session_profits += int(rec.get("session_profit_count", 0) or 0)
                 total_session_breakevens += int(rec.get("session_breakeven_count", 0) or 0)
                 total_session_big_win_x10 += int(rec.get("session_big_win_x10_count", 0) or 0)
+                total_session_big_win_x20 += int(rec.get("session_big_win_x20_count", 0) or 0)
+                total_session_big_win_x50 += int(rec.get("session_big_win_x50_count", 0) or 0)
+                total_session_big_win_x100 += int(rec.get("session_big_win_x100_count", 0) or 0)
+                # Bankruptcy sim histogram merge (elementwise sum of bins +
+                # scalar totals per tier).
+                for _mk, _entry in (rec.get("bankruptcy_sim") or {}).items():
+                    if not isinstance(_entry, dict):
+                        continue
+                    _m = int(_mk)
+                    if _m not in bankruptcy_sim_totals:
+                        bankruptcy_sim_totals[_m] = _empty_bankruptcy_tier()
+                    _dst = bankruptcy_sim_totals[_m]
+                    _dst["bankrupt"] += int(_entry.get("bankrupt", 0) or 0)
+                    _dst["survived"] += int(_entry.get("survived", 0) or 0)
+                    _dst["spins_done_sum"] += int(_entry.get("spins_done_sum", 0) or 0)
+                    for _i, _c in enumerate(_entry.get("bins") or []):
+                        if _i < len(_dst["bins"]):
+                            _dst["bins"][_i] += int(_c or 0)
                 total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
                 total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
                 total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
@@ -4191,6 +4333,20 @@ def main() -> int:
     )
     big_win_x10_rate = (
         (total_session_big_win_x10 / effective_session_count) if effective_session_count > 0 else 0.0
+    )
+    # Higher-tail paid-round rates. Share the same denominator as x10
+    # (paid-round count) so all four numbers align on the same scale —
+    # the UI renders them as a 2×2 tile grid mirroring the tail-dep
+    # breakdown. Each threshold is strictly nested (x100 ⊂ x50 ⊂ x20
+    # ⊂ x10) so rates monotonically decrease across the grid.
+    big_win_x20_rate = (
+        (total_session_big_win_x20 / effective_session_count) if effective_session_count > 0 else 0.0
+    )
+    big_win_x50_rate = (
+        (total_session_big_win_x50 / effective_session_count) if effective_session_count > 0 else 0.0
+    )
+    big_win_x100_rate = (
+        (total_session_big_win_x100 / effective_session_count) if effective_session_count > 0 else 0.0
     )
     avg_win_when_hit_x = (
         (total_session_win_sum / total_session_wins) / args.bet
@@ -4814,59 +4970,53 @@ def main() -> int:
     win_streak_p90 = quantile_from_hist(win_hist_src, 0.90)
     win_streak_p95 = quantile_from_hist(win_hist_src, 0.95)
 
-    bankruptcy_rows = []
-    mults = [
-        int(x.strip())
-        for x in args.bankruptcy_bankroll_multipliers.split(",")
-        if x.strip()
-    ]
-    probe_robots = (
-        args.bankruptcy_robot_count
-        if args.bankruptcy_robot_count is not None
-        else args.chunk_robot_count
-    )
-
-    # `--from-cache` means "reproduce report from cached sampling data,
-    # no live network calls". The bankruptcy probe makes fresh HTTP calls
-    # to the upstream API, which (a) defeats cache reproducibility and
-    # (b) under batch concurrency of 16+ triggers upstream throttling
-    # that inflates per-job wall time 10× (6s → 60s). Skip it here; the
-    # quality label already degrades to EXPLORATORY when the ladder
-    # is missing, which correctly signals the report's reduced grade.
-    skip_bankruptcy = args.from_cache is not None
-    if skip_bankruptcy:
-        mults = []
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(mults) or 1)) as executor:
-        future_map = {
-            executor.submit(
-                run_bankruptcy_probe,
-                args.machine,
-                args.rtp_mode,
-                args.bet,
-                args.bankruptcy_session_spins,
-                probe_robots,
-                m,
-                args.timeout,
-            ): m
-            for m in mults
-        }
-        for future in concurrent.futures.as_completed(future_map):
-            m = future_map[future]
-            try:
-                bankruptcy_rows.append(future.result())
-            except Exception as exc:  # noqa: BLE001
-                bankruptcy_rows.append(
-                    {
-                        "bankroll_multiplier": m,
-                        "error": exc.__class__.__name__,
-                    }
-                )
+    # Bankruptcy analysis: rawdata-replay simulation. Every chunk
+    # contributes to ``bankruptcy_sim_totals`` during the merge loop
+    # above (keyed by bankroll multiplier). Here we materialize per-tier
+    # rows + the shared histogram structure for the summary. Works with
+    # both live sampling and --from-cache since we're replaying rounds,
+    # not hitting the upstream. Tier coverage equals whatever mults
+    # the CLI requested (defaults 100/200/500).
+    bankruptcy_sim_session_spins = args.bankruptcy_session_spins
+    bankruptcy_rows: list[dict[str, Any]] = []
+    for m in _bankruptcy_mults_tuple:
+        tier = bankruptcy_sim_totals.get(int(m))
+        if tier is None:
+            # No chunks carried sim data (degenerate case — e.g. zero
+            # spins). Emit an empty placeholder so the ladder still has
+            # the expected row count and downstream code doesn't break.
+            tier = _empty_bankruptcy_tier()
+        total_sessions = int(tier["bankrupt"]) + int(tier["survived"])
+        rate = (tier["bankrupt"] / total_sessions) if total_sessions > 0 else 0.0
+        avg_spins = (
+            tier["spins_done_sum"] / total_sessions if total_sessions > 0 else 0.0
+        )
+        bankruptcy_rows.append(
+            {
+                "bankroll_multiplier": int(m),
+                "init_credits": int(m) * int(args.bet),
+                "session_spins": bankruptcy_sim_session_spins,
+                "robots": total_sessions,
+                "bankrupt_robots": int(tier["bankrupt"]),
+                "completed_robots": int(tier["survived"]),
+                "bankruptcy_rate": rate,
+                "avg_spins_completed": avg_spins,
+                # Per-bin bankrupt counts (10 equal-width bins over
+                # [0, session_spins) + `survived` scalar above). UI
+                # reads these directly as histogram counts.
+                "bins": list(tier["bins"]),
+            }
+        )
     bankruptcy_rows.sort(key=lambda row: int(row.get("bankroll_multiplier", 0)))
 
     ci_met = achieved_halfwidth_pp is not None and achieved_halfwidth_pp <= args.target_halfwidth_pp
     sample_size_met = total_spins >= 2_000_000
     buckets_complete = len(multiplier_bucket_rows) == len(RETURN_BUCKET_ORDER)
+    # Rawdata-replay sim always produces rows for every requested tier
+    # (the per-chunk loop emits zero-count tiers for degenerate inputs,
+    # which still satisfy the "ladder present" signal). Keep the check
+    # so the quality_label gate stays structurally identical; it only
+    # trips when someone invokes the analyzer with an empty multi list.
     bankruptcy_ladder_met = sum(1 for row in bankruptcy_rows if "error" not in row) >= 3
     quality_label = (
         "REPORT_GRADE"
@@ -5116,6 +5266,9 @@ def main() -> int:
                 "profit_spin_rate": profit_spin_rate,
                 "breakeven_or_more_rate": breakeven_or_more_rate,
                 "big_win_x10_rate": big_win_x10_rate,
+                "big_win_x20_rate": big_win_x20_rate,
+                "big_win_x50_rate": big_win_x50_rate,
+                "big_win_x100_rate": big_win_x100_rate,
                 "avg_win_when_hit_x": avg_win_when_hit_x,
                 "lack_credit_spin_rate": (lack_credit_spins / total_spins) if total_spins > 0 else 0.0,
             },
@@ -5252,6 +5405,22 @@ def main() -> int:
             )[:20],
             "symbols_top20": symbol_rows[:20],
             "symbols_by_column_top10": {k: v[:10] for k, v in symbol_by_col_rows.items()},
+            # Rawdata-replay bankruptcy simulation. UI renders the
+            # ``tiers`` list as three side-by-side survival histograms
+            # (x100 / x200 / x500 by default). Each tier's ``bins``
+            # records bankrupt counts by spins-survived decile; the
+            # ``survived`` scalar is the count of simulated paid-round
+            # sessions that reached ``session_spins`` intact. All
+            # percentages the UI displays are ratios over
+            # ``robots`` (=bankrupt+survived).
+            "bankruptcy_simulation": {
+                "source": "rawdata_replay",
+                "session_spins": bankruptcy_sim_session_spins,
+                "bin_count": _BANKRUPTCY_BIN_COUNT,
+                "tiers": bankruptcy_rows,
+            },
+            # Back-compat alias. Legacy consumers read bankruptcy_probe;
+            # same rows but wearing the old name.
             "bankruptcy_probe": bankruptcy_rows,
         },
         "upstream_analysis": {
@@ -5505,6 +5674,9 @@ def main() -> int:
         f"- profit_spin_rate: {profit_spin_rate:.6f}",
         f"- breakeven_or_more_rate: {breakeven_or_more_rate:.6f}",
         f"- big_win_x10_rate: {big_win_x10_rate:.6f}",
+        f"- big_win_x20_rate: {big_win_x20_rate:.6f}",
+        f"- big_win_x50_rate: {big_win_x50_rate:.6f}",
+        f"- big_win_x100_rate: {big_win_x100_rate:.6f}",
         f"- avg_win_when_hit_x: {avg_win_when_hit_x:.6f}",
         f"- loss_streak p50/p90/p95/max: {loss_streak_p50}/{loss_streak_p90}/{loss_streak_p95}/{max_loss_streak}",
         f"- win_streak p50/p90/p95/max: {win_streak_p50}/{win_streak_p90}/{win_streak_p95}/{max_win_streak}",
@@ -5608,14 +5780,19 @@ def main() -> int:
         md_lines.append(f"- {row['symbol']}: rate={row['rate']:.6f}")
 
     md_lines.append("")
-    md_lines.append("## Bankruptcy Probe")
+    md_lines.append("## Bankruptcy Simulation (rawdata replay)")
+    md_lines.append(f"- session_spins: {bankruptcy_sim_session_spins}")
+    md_lines.append(f"- bin_count: {_BANKRUPTCY_BIN_COUNT}")
     for row in bankruptcy_rows:
-        if "error" in row:
-            md_lines.append(f"- bankroll x{row['bankroll_multiplier']}: error={row['error']}")
-        else:
-            md_lines.append(
-                f"- bankroll x{row['bankroll_multiplier']}: bankruptcy_rate={row['bankruptcy_rate']:.6f}, avg_spins_completed={row['avg_spins_completed']:.2f}"
-            )
+        bins_str = ",".join(str(int(x)) for x in (row.get("bins") or []))
+        md_lines.append(
+            f"- bankroll x{row['bankroll_multiplier']}: "
+            f"bankruptcy_rate={row['bankruptcy_rate']:.6f}, "
+            f"avg_spins_completed={row['avg_spins_completed']:.2f}, "
+            f"sessions={row['robots']}, "
+            f"survived={row['completed_robots']}, "
+            f"bins=[{bins_str}]"
+        )
 
     md_lines.append("")
     md_lines.append("## Storage")

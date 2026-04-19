@@ -33,7 +33,7 @@ const I18N = {
     thSpinCount: "次数",
     thSpinRate: "出现率",
     panelCharts: "图形分析",
-    panelAssessment: "规则评估",
+    panelBankruptcy: "破产分析",
     panelInterpretation: "模型解读",
     panelEvents: "运行事件",
     panelMachineCatalog: "机台目录",
@@ -79,12 +79,27 @@ const I18N = {
     autotuneProgressLast: "最近: robot={rc} conc={cc} 成功率={sr} 吞吐={tp} sps p95={p95}s",
     autotuneProgressDone: "已完成 · 共测 {total} 候选",
     autotuneProgressError: "出错 · 已测 {done}/{total} 候选",
-    kpiVolatility: "波动性",
+    kpiVolatility: "波动性全库分位",
     kpiArchetype: "体验类型",
     kpiLossStreak: "P95 败局连",
-    kpiMaxReturn: "最大单转倍率",
-    kpiBigWin: "10x+ 大奖率",
-    kpiBankruptX500: "x500 破产率",
+    kpiMaxReturn: "最大单回合倍率",
+    kpiBigWin: "大奖回合率",
+    archetypeBoomBust: "爆击驱动",
+    archetypeBalanced: "稳定平衡",
+    archetypeGrindy: "磨损消耗",
+    archetypeBoomBustHint: "空转率高，靠偶发 10×+ 大奖回本",
+    archetypeBalancedHint: "空转中等，利润率温和",
+    archetypeGrindyHint: "空转率高，少大奖，缓慢消耗",
+    libRankNoData: "—",
+    libRankTooFew: "全库样本不足",
+    bankruptcyIntro: "每档初始 bankroll = 倍数 × bet，对 rawdata 中每个机器人的 spin 序列重放到破产或跑完 {session} 回合。百分比相对该档总 session 数。",
+    bankruptcyTierLabel: "x{mult} 资金",
+    bankruptcyRateLabel: "破产率",
+    bankruptcyAvgLabel: "平均存活",
+    bankruptcySessionsLabel: "Session 数",
+    bankruptcySurvivedLabel: "生存",
+    bankruptcyBinLabel: "{start}-{end}",
+    bankruptcyBinSurvived: "生存（满 {cap}）",
     panelPaylines: "支付线深度（Top 20）",
     thPaylineId: "Payline ID",
     thHitCount: "命中次数",
@@ -211,10 +226,9 @@ const I18N = {
     helpIconLabel: "参数说明",
     kpiRtp: "RTP %",
     kpiCi: "CI 半宽",
-    kpiSpins: "总 Spins",
+    kpiSpins: "总付费回合",
     kpiZero: "空转率",
     kpiTail: "尾部依赖度",
-    kpiGuide: "规则状态",
     chartBucketTitle: "倍率分桶占比",
     chartBucketLabel: "Spin 占比 %",
     thRunId: "Run ID",
@@ -430,7 +444,7 @@ const I18N = {
     thSpinCount: "Count",
     thSpinRate: "Rate",
     panelCharts: "Visual Analytics",
-    panelAssessment: "Guideline Assessment",
+    panelBankruptcy: "Bankruptcy Analysis",
     panelInterpretation: "Model Interpretation",
     panelEvents: "Run Events",
     panelMachineCatalog: "Machine Catalog",
@@ -476,12 +490,27 @@ const I18N = {
     autotuneProgressLast: "last: robot={rc} conc={cc} success={sr} throughput={tp} sps p95={p95}s",
     autotuneProgressDone: "completed · {total} candidates tested",
     autotuneProgressError: "error · {done}/{total} candidates tested",
-    kpiVolatility: "Volatility",
-    kpiArchetype: "Archetype",
+    kpiVolatility: "Volatility (Lib Rank)",
+    kpiArchetype: "Experience",
     kpiLossStreak: "P95 Loss Streak",
-    kpiMaxReturn: "Max Return x",
-    kpiBigWin: "10x+ Big Win Rate",
-    kpiBankruptX500: "x500 Bankruptcy",
+    kpiMaxReturn: "Max Return x (paid round)",
+    kpiBigWin: "Big-Win Round Rate",
+    archetypeBoomBust: "Boom-Bust",
+    archetypeBalanced: "Balanced",
+    archetypeGrindy: "Grindy",
+    archetypeBoomBustHint: "High zero-win, big wins drive RTP",
+    archetypeBalancedHint: "Moderate zero-win, steady profit",
+    archetypeGrindyHint: "High zero-win, rare big wins",
+    libRankNoData: "—",
+    libRankTooFew: "library too small",
+    bankruptcyIntro: "Initial bankroll = multiplier × bet per tier. Replays each rawdata robot's spin sequence until bankrupt or session limit ({session}). Percentages sum to 100% per tier.",
+    bankruptcyTierLabel: "x{mult} bankroll",
+    bankruptcyRateLabel: "Bankruptcy rate",
+    bankruptcyAvgLabel: "Avg survival",
+    bankruptcySessionsLabel: "Sessions",
+    bankruptcySurvivedLabel: "Survived",
+    bankruptcyBinLabel: "{start}-{end}",
+    bankruptcyBinSurvived: "Survived ({cap})",
     panelPaylines: "Payline Drilldown (Top 20)",
     thPaylineId: "Payline ID",
     thHitCount: "Hit Count",
@@ -608,10 +637,9 @@ const I18N = {
     helpIconLabel: "Parameter help",
     kpiRtp: "RTP %",
     kpiCi: "CI Half-width",
-    kpiSpins: "Total Spins",
+    kpiSpins: "Total Paid Rounds",
     kpiZero: "Zero Win Rate",
     kpiTail: "Tail Dependency",
-    kpiGuide: "Guideline Status",
     chartBucketTitle: "Multiplier Bucket Rate",
     chartBucketLabel: "Spin Rate %",
     thRunId: "Run ID",
@@ -1199,7 +1227,7 @@ function formatPaylineTopSymbols(topSymbols, n) {
 // classify each into a tone (good / warn / bad / neutral). Returns
 // {[id]: {value, tone}}. Tone thresholds mirror guideline rules so the
 // frontend doesn't need to re-derive them from the alerts list.
-function extractMetricCards(summary) {
+function extractMetricCards(summary, lang) {
   const s = summary || {};
   const rtp = s.rtp || {};
   const sampling = s.sampling || {};
@@ -1210,63 +1238,76 @@ function extractMetricCards(summary) {
   const ga = s.guideline_assessment || {};
   const cls = ga.classification || {};
   const derived = ga.derived_metrics || {};
-  const bank = ga.bankruptcy_checks || {};
-  const cmp = s.guideline_comparison || {};
 
   const num = (v, fn) => (v == null ? "N/A" : fn(Number(v)));
   const pct = (v, d = 2) => (v == null ? "N/A" : `${(Number(v) * 100).toFixed(d)}%`);
 
-  // tone helpers
+  // tone helpers (paid-round oriented)
   const toneZeroWin = (v) =>
     v == null ? "neutral" : v > 0.82 ? "bad" : v > 0.75 ? "warn" : "good";
   const toneTailDep = (v) =>
     v == null ? "neutral" : v >= 0.5 ? "bad" : v >= 0.45 ? "warn" : v >= 0.2 ? "neutral" : "good";
   const toneLossStreak = (v) =>
     v == null ? "neutral" : v >= 18 ? "bad" : v >= 15 ? "warn" : "good";
-  const toneBankruptX500 = (v) =>
-    v == null ? "neutral" : v >= 0.05 ? "bad" : v >= 0.01 ? "warn" : "good";
-  const toneGuideline = (status) => {
-    const u = String(status || "").toUpperCase();
-    return u === "PASS" ? "good" : u === "FAIL" ? "bad" : "warn";
-  };
+
+  // Archetype → plain-Chinese label via i18n. Keeps the raw key on
+  // `raw` for tooltip / debug use. Falls back to raw when the lang
+  // bundle doesn't carry a mapping (e.g. a new archetype is added
+  // upstream before we ship the translation).
+  const archetypeKey = cls.experience_archetype || "";
+  const archetypeI18nKey = {
+    "Boom-Bust": "archetypeBoomBust",
+    "Balanced": "archetypeBalanced",
+    "Grindy": "archetypeGrindy",
+  }[archetypeKey];
+  const archetypeHintKey = {
+    "Boom-Bust": "archetypeBoomBustHint",
+    "Balanced": "archetypeBalancedHint",
+    "Grindy": "archetypeGrindyHint",
+  }[archetypeKey];
+  const archetypeValue = archetypeI18nKey
+    ? fmt(lang || "zh", archetypeI18nKey)
+    : (archetypeKey || "N/A");
+  const archetypeHint = archetypeHintKey
+    ? fmt(lang || "zh", archetypeHintKey)
+    : "";
 
   return {
     rtp: { value: num(rtp.point_pct, (x) => `${x.toFixed(2)}%`), tone: "neutral" },
     ci: { value: num(sampling.achieved_halfwidth_pp, (x) => x.toFixed(3)), tone: "neutral" },
     spins: {
-      value:
-        sampling.total_spins == null
-          ? "N/A"
-          : new Intl.NumberFormat("en-US").format(Number(sampling.total_spins)),
+      // Prefer paid_spins over total_spins when present (paid-round is
+      // the default metric unit per user spec). Falls back to total
+      // spins if the summary is pre-migration.
+      value: (() => {
+        const v = sampling.paid_spins ?? sampling.total_spins;
+        if (v == null) return "N/A";
+        return new Intl.NumberFormat("en-US").format(Number(v));
+      })(),
       tone: "neutral",
     },
     zeroWin: { value: pct(hit.zero_win_rate), tone: toneZeroWin(hit.zero_win_rate) },
     tailDep: (() => {
-      // Primary value shows ge10x (the canonical dependency that
-      // classify_volatility / classify_experience_archetype read).
-      // sub carries the compact ge20x / ge50x / ge100x breakdown so
-      // the operator sees how fast the tail decays.
+      // 2×2 grid rendered by app.js. Value is the primary (ge10x)
+      // rate; sub is now unused (decay is visible across the 4 tiles).
       const d10 = derived.tail_dependency_ge10x ?? derived.tail_dependency;
-      const d20 = derived.tail_dependency_ge20x;
-      const d50 = derived.tail_dependency_ge50x;
-      const d100 = derived.tail_dependency_ge100x;
-      const fmt1 = (v) => (v == null ? "\u2014" : (Number(v) * 100).toFixed(1) + "%");
-      // Compact bar-like format: ≥10 68.6 → ≥20 48.2 → ≥50 21.6 → ≥100 5.0
-      // Uses → arrows to show the decay direction.
-      const parts = [];
-      if (d10 != null) parts.push(`\u226510x ${fmt1(d10)}`);
-      if (d20 != null) parts.push(`\u226520x ${fmt1(d20)}`);
-      if (d50 != null) parts.push(`\u226550x ${fmt1(d50)}`);
-      if (d100 != null) parts.push(`\u2265100x ${fmt1(d100)}`);
       return {
-        value: parts.length ? parts[0] : num(d10, (x) => x.toFixed(3)),
+        value: num(d10, (x) => x.toFixed(3)),
         tone: toneTailDep(d10),
-        sub: parts.slice(1).join(" \u2192 "),
       };
     })(),
-    guideline: { value: cmp.overall_status || "N/A", tone: toneGuideline(cmp.overall_status) },
-    volatility: { value: cls.volatility_class || "N/A", tone: "neutral" },
-    archetype: { value: cls.experience_archetype || "N/A", tone: "neutral" },
+    // Volatility card keeps no primary number — only lib-rank sub line
+    // (populated by applyLibraryRanking). Tone neutral.
+    volatility: { value: "", tone: "neutral" },
+    // Archetype card shows human-readable phrase; tooltip hint via
+    // `sub` if you want to display it (app.js can render it in the
+    // secondary line when no lib-rank is present).
+    archetype: {
+      value: archetypeValue,
+      tone: "neutral",
+      raw: archetypeKey,
+      hint: archetypeHint,
+    },
     lossStreak: {
       value: streaks.loss_streak_p95 == null ? "N/A" : String(streaks.loss_streak_p95),
       tone: toneLossStreak(streaks.loss_streak_p95),
@@ -1275,11 +1316,20 @@ function extractMetricCards(summary) {
       value: num(vol.max_observed_return_x, (x) => `${x.toFixed(1)}x`),
       tone: "neutral",
     },
-    bigWin: { value: pct(hit.big_win_x10_rate, 3), tone: "neutral" },
-    bankruptX500: {
-      value: pct(bank.x500_bankruptcy_rate, 3),
-      tone: toneBankruptX500(bank.x500_bankruptcy_rate),
-    },
+    // Big-win rate: now a 4-tile grid (≥10/≥20/≥50/≥100 of bet inside
+    // a paid round). Shape mirrors tailDep so app.js can render both
+    // with the same 2×2 helper.
+    bigWin: (() => {
+      const r10 = hit.big_win_x10_rate;
+      const r20 = hit.big_win_x20_rate;
+      const r50 = hit.big_win_x50_rate;
+      const r100 = hit.big_win_x100_rate;
+      return {
+        value: pct(r10, 3),
+        tone: "neutral",
+        tiles: { ge10: r10, ge20: r20, ge50: r50, ge100: r100 },
+      };
+    })(),
   };
 }
 
