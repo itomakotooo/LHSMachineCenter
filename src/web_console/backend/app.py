@@ -1416,9 +1416,59 @@ def _load_paytable_shape(
     }
 
 
+# Module-level cache for _build_machines_summary keyed on str(reports_root)
+# so multiple app instances (tests) don't pollute each other. Invalidated
+# when the aggregated mtime fingerprint of per-mode latest.json files
+# changes — new report versions touch latest.json, so any fleet change
+# bumps the fingerprint. Without this cache, every page load re-reads
+# ~9k summary.json files on a fleet with many version iterations
+# (11s+ observed → catalog appears broken).
+_MACHINES_SUMMARY_CACHE: dict[str, dict[str, Any]] = {}
+
+
+def _machines_summary_fingerprint(reports_root: Path) -> tuple[int, int]:
+    """Lightweight cache key: (sum of version-dir mtime_ns, version-dir count)
+    across all (machine, mode) pairs. Stat-only, no file reads. Changes when
+    a new version is added (import / generate-report both create a new
+    ``versions/<rv_*>`` dir) or an existing version dir is touched. The
+    count component catches additions where the new dir's mtime_ns happens
+    to sum-cancel (theoretical, but cheap to guard).
+
+    We scan version dirs rather than ``latest.json`` mtimes because
+    ``/api/reports/import`` doesn't rewrite latest.json — it only copies
+    the version tree — and the cache would otherwise miss imported
+    reports until a subsequent run touched latest.json."""
+    if not reports_root.is_dir():
+        return (0, 0)
+    total = 0
+    count = 0
+    for machine_dir in reports_root.iterdir():
+        if not machine_dir.is_dir():
+            continue
+        for mode_dir in machine_dir.iterdir():
+            if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                continue
+            versions_dir = mode_dir / "versions"
+            if not versions_dir.is_dir():
+                continue
+            for ver_dir in versions_dir.iterdir():
+                try:
+                    total += ver_dir.stat().st_mtime_ns
+                    count += 1
+                except OSError:
+                    continue
+    return (total, count)
+
+
 def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
     """Scan reports dir, pick best-CI report per machine-mode, return summary."""
     import math
+
+    cache_key = str(reports_root)
+    fingerprint = _machines_summary_fingerprint(reports_root)
+    entry = _MACHINES_SUMMARY_CACHE.get(cache_key)
+    if entry is not None and entry.get("fingerprint") == fingerprint:
+        return entry["result"]
 
     result: dict[str, dict[str, Any]] = {}
     # Collect all volatility values for percentile ranking.
@@ -1545,11 +1595,13 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
             result[m][str(mode)]["volatility_percentile"] = pct
 
     feature_distribution = {fn: len(ms) for fn, ms in feature_machines.items()}
-    return {
+    out = {
         "machines": result,
         "mechanics_distribution": dict(mechanics_dist),
         "feature_distribution": feature_distribution,
     }
+    _MACHINES_SUMMARY_CACHE[cache_key] = {"fingerprint": fingerprint, "result": out}
+    return out
 
 
 class BatchGenerateManager:
@@ -3479,6 +3531,18 @@ def create_app(
     # summary.json for completed rows predating those columns -- quick
     # scan, safe on every startup (no-op once populated).
     store.backfill_rtp_ci_from_summaries()
+    # Warm the machines-summary cache in a daemon thread so the first
+    # page load doesn't block on a fresh 10k+ summary.json scan
+    # (observed 11-14s on a fleet with many version iterations). The
+    # cache is mtime-invalidated, so any subsequent fleet change rebuilds.
+    def _prewarm_machines_summary() -> None:
+        try:
+            _build_machines_summary(rr)
+        except Exception:  # noqa: BLE001 — non-fatal, logged via print
+            import traceback
+            traceback.print_exc()
+
+    threading.Thread(target=_prewarm_machines_summary, daemon=True).start()
     model_runtime = RuntimeModelConfig(model_config_path)
     manager = RunManager(
         store,

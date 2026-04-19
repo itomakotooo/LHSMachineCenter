@@ -3890,22 +3890,36 @@ async function refreshInterpretation() {
 }
 
 async function loadBootstrap() {
-  const [h, m, models, mSummary, versions] = await Promise.all([
+  const [h, m, models, versions] = await Promise.all([
     apiGet("/api/health"),
     apiGet("/api/machines"),
     apiGet("/api/models"),
-    apiGet("/api/machines/summary").catch(() => null),
     // Current analyzer + per-machine md5 fingerprints drive the
     // Run History staleness badges; fetched once per bootstrap and
     // cached in state — these change only when code is reloaded or
     // machines.json is refreshed, both of which already reload.
     apiGet("/api/versions/current").catch(() => null),
   ]);
+  // /api/machines/summary scans every summary.json across the fleet to
+  // pick best-CI per (machine, mode) — on a fleet with many report
+  // versions this takes 10-15s on a cold cache. Don't block the
+  // initial render on it; the catalog renders fine with summary=null
+  // (all per-card lookups fall back to empty via `|| {}`). When the
+  // summary arrives we re-render.
+  const summaryPromise = apiGet("/api/machines/summary").catch(() => null);
   setHealth(Boolean(h.ok), h.ts || "");
   state.machines = m.machines || [];
   state.modelMeta = models || {};
-  state.machinesSummary = mSummary;
+  state.machinesSummary = null;
   state.currentVersions = versions || { analyzer_version: "", machines: {} };
+  summaryPromise.then((mSummary) => {
+    if (!mSummary) return;
+    state.machinesSummary = mSummary;
+    // Re-render the catalog-dependent panels with the richer data.
+    try { renderCatalogFeatureChips(); } catch (_) {}
+    try { renderMachineCatalog(); } catch (_) {}
+    try { renderFleetOverview(); } catch (_) {}
+  });
   fillMachineModeSelectors();
   fillCiTierOptions();
   fillBankMultOptions();
