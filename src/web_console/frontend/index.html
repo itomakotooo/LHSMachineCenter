@@ -268,10 +268,8 @@
       </section>
 
       <section id="tab-manage" class="tab-page active">
-        <div class="layout">
-          <!-- Top activity strip: surfaces current running op + recent
-               event stream across all runs. Stays collapsed when idle
-               so the fleet overview is still the landing view. -->
+        <!-- ── ① Top-bar (通栏 sticky): activity + staleness + rawdata ── -->
+        <div class="manage-topbar">
           <section class="panel activity-strip" id="activityStripPanel">
             <div class="activity-strip-header">
               <h2 data-i18n="panelActivityStrip">活动日志流</h2>
@@ -279,17 +277,24 @@
             </div>
             <div id="activityStripBody" class="activity-strip-body"></div>
           </section>
+          <div id="staleReportBanner" class="stale-banner hidden"></div>
+          <div id="rawdataOverviewBanner" class="rawdata-banner hidden" data-step="1-placeholder"></div>
+        </div>
 
-          <section class="panel fleet-overview">
-            <h2 data-i18n="panelFleetOverview">机台概览</h2>
-            <div id="staleReportBanner" class="stale-banner hidden"></div>
-            <div class="fleet-stats" id="fleetStats"></div>
-            <div id="diskSpaceBar" class="disk-space-bar"></div>
-          </section>
+        <!-- ── ② Two-column layout: master (catalog) left + detail right ── -->
+        <div class="manage-layout">
 
-          <section class="panel sampling-panel">
-            <h2 data-i18n="panelSampling">采样选中机台</h2>
-            <div class="sampling-controls">
+          <!-- Left column: machine catalog master + batch action bar + progress -->
+          <aside class="manage-left">
+
+            <!-- Batch action bar (sticky sub-header) — step 3 moves full
+                 sampling controls here. For step 1 we keep the existing
+                 sampling-panel in place below. -->
+            <div id="batchActionBar" class="batch-action-bar hidden" data-step="1-placeholder"></div>
+
+            <section class="panel sampling-panel">
+              <h2 data-i18n="panelSampling">采样选中机台</h2>
+              <div class="sampling-controls">
               <span id="sampleSelectedCount" class="muted"></span>
               <label><span>Mode</span>
                 <select id="sampleMode">
@@ -336,27 +341,94 @@
             <div id="autotuneMeta" class="pre compact hidden">No auto tune run yet.</div>
           </section>
 
-          <section class="panel machine-catalog">
-            <h2 data-i18n="panelMachineCatalog">机台目录</h2>
-            <div class="catalog-toolbar">
-              <input type="text" id="catalogSearch" class="catalog-search" placeholder="搜索机台..." data-i18n-placeholder="catalogSearchPlaceholder" />
-              <button id="catalogCollapseAll" class="small-btn" title="折叠/展开">&#9660;</button>
-              <button id="catalogSortReverse" class="small-btn" title="倒序">↑↓</button>
-              <button id="catalogSelectAllVisible" class="small-btn" data-i18n="btnSelectAllVisible" title="选中当前视图里所有可见机台">全选</button>
-              <button id="catalogClearSelection" class="small-btn" data-i18n="btnClearSelection">清除选择</button>
-            </div>
-            <div class="catalog-view-tabs" id="catalogViewTabs">
-              <button class="view-tab active" data-view="category" data-i18n="viewCategory">按玩法</button>
-              <button class="view-tab" data-view="name" data-i18n="viewName">按名称</button>
-              <button class="view-tab" data-view="volatility" data-i18n="viewVolatility">按波动性</button>
-              <button class="view-tab" data-view="rtp" data-i18n="viewRtp">按 RTP</button>
-              <button class="view-tab" data-view="mechanic" data-i18n="viewMechanic">按机制</button>
-              <button class="view-tab" data-view="hall" data-i18n="viewHall">按大厅</button>
-            </div>
-            <div id="hallsRefreshBar" class="halls-refresh-bar hidden"></div>
-            <div id="catalogFeatureChips" class="catalog-feature-chips hidden"></div>
-            <div id="machineCatalog" class="catalog-grouped"></div>
-          </section>
+            <section class="panel machine-catalog">
+              <h2 data-i18n="panelMachineCatalog">机台目录</h2>
+              <div class="catalog-toolbar">
+                <input type="text" id="catalogSearch" class="catalog-search" placeholder="搜索机台..." data-i18n-placeholder="catalogSearchPlaceholder" />
+                <button id="catalogCollapseAll" class="small-btn" title="折叠/展开">&#9660;</button>
+                <button id="catalogSortReverse" class="small-btn" title="倒序">↑↓</button>
+                <button id="catalogSelectAllVisible" class="small-btn" data-i18n="btnSelectAllVisible" title="选中当前视图里所有可见机台">全选</button>
+                <button id="catalogClearSelection" class="small-btn" data-i18n="btnClearSelection">清除选择</button>
+              </div>
+              <div class="catalog-view-tabs" id="catalogViewTabs">
+                <button class="view-tab active" data-view="category" data-i18n="viewCategory">按玩法</button>
+                <button class="view-tab" data-view="name" data-i18n="viewName">按名称</button>
+                <button class="view-tab" data-view="volatility" data-i18n="viewVolatility">按波动性</button>
+                <button class="view-tab" data-view="rtp" data-i18n="viewRtp">按 RTP</button>
+                <button class="view-tab" data-view="mechanic" data-i18n="viewMechanic">按机制</button>
+                <button class="view-tab" data-view="hall" data-i18n="viewHall">按大厅</button>
+              </div>
+              <div id="hallsRefreshBar" class="halls-refresh-bar hidden"></div>
+              <div id="catalogFeatureChips" class="catalog-feature-chips hidden"></div>
+              <div id="machineCatalog" class="catalog-grouped"></div>
+            </section>
+
+          </aside>
+
+          <!-- Right column: detail pane — state-driven (focus / multi / none) -->
+          <main class="manage-right">
+
+            <!-- (a) 0 selected + no focus → fleet overview -->
+            <section class="panel fleet-overview" id="detailFleetOverview">
+              <h2 data-i18n="panelFleetOverview">机台概览</h2>
+              <div class="fleet-stats" id="fleetStats"></div>
+              <div id="diskSpaceBar" class="disk-space-bar"></div>
+            </section>
+
+            <!-- (b) 1 focused → machine-detail + version-history + compare.
+                 For step 1 we reuse the existing panels; step 4 replaces
+                 them with the rawdata × report tree. -->
+            <section class="panel machine-detail hidden" id="machineDetailPanel">
+              <h2 id="machineDetailTitle"></h2>
+              <div id="machineDetailBody"></div>
+            </section>
+
+            <section class="panel version-history hidden" id="versionHistoryPanel">
+              <h2 id="versionHistoryTitle" data-i18n="panelVersionHistory">版本历史</h2>
+              <div class="version-mode-tabs" id="versionModeTabs"></div>
+              <table id="versionTable" class="drilldown-table">
+                <thead>
+                  <tr>
+                    <th><input type="checkbox" id="compareSelectAll" title="全选"></th>
+                    <th data-i18n="thVersion">版本</th>
+                    <th data-i18n="thRtp">RTP</th>
+                    <th data-i18n="thCiHalfwidth">CI±</th>
+                    <th data-i18n="thSpins">Spins</th>
+                    <th data-i18n="thQuality">质量</th>
+                  </tr>
+                </thead>
+                <tbody id="versionTableBody"></tbody>
+              </table>
+              <div class="version-actions">
+                <button id="compareBtn" class="primary-btn" disabled data-i18n="btnCompare">对比选中 (2)</button>
+              </div>
+            </section>
+
+            <section class="panel report-comparison hidden" id="reportComparisonPanel">
+              <h2 data-i18n="panelComparison">Report 对比</h2>
+              <div id="comparisonBody"></div>
+            </section>
+
+            <!-- (c) N multi-selected → placeholder, step 3 wires it up -->
+            <section class="panel detail-multi hidden" id="detailMultiSelect">
+              <h2 data-i18n="panelMultiSelect">已选中 <span id="multiSelectCount">0</span> 台</h2>
+              <ul id="multiSelectList" class="multi-select-list"></ul>
+              <p class="muted" data-i18n="hintMultiSelectBar">↑ 请使用上方批量操作条</p>
+            </section>
+
+            <!-- (d) global rawdata detail — shown from the rawdata banner's 明细 button in step 6 -->
+            <section class="panel detail-rawdata hidden" id="detailRawdataGlobal">
+              <h2 data-i18n="panelRawdataGlobal">全局 rawdata 明细</h2>
+              <div id="rawdataGlobalTableWrap"></div>
+            </section>
+
+          </main>
+
+        </div>
+
+        <!-- ── ③ System footer (collapsed by default): maintenance / system / servers / cache / settings ── -->
+        <details class="system-footer" id="systemFooter">
+          <summary data-i18n="systemFooterSummary">⚙ 系统 / 维护 / 历史</summary>
 
           <section class="panel run-history">
             <h2 data-i18n="panelRunHistory">运行历史</h2>
@@ -387,37 +459,6 @@
               <button id="batchDeleteBtn" class="danger-btn" data-i18n="btnBatchDelete">删除选中</button>
               <button id="clearSelectionBtn" data-i18n="btnClearSelection">清除选择</button>
             </div>
-          </section>
-
-          <section class="panel machine-detail hidden" id="machineDetailPanel">
-            <h2 id="machineDetailTitle"></h2>
-            <div id="machineDetailBody"></div>
-          </section>
-
-          <section class="panel version-history hidden" id="versionHistoryPanel">
-            <h2 id="versionHistoryTitle" data-i18n="panelVersionHistory">版本历史</h2>
-            <div class="version-mode-tabs" id="versionModeTabs"></div>
-            <table id="versionTable" class="drilldown-table">
-              <thead>
-                <tr>
-                  <th><input type="checkbox" id="compareSelectAll" title="全选"></th>
-                  <th data-i18n="thVersion">版本</th>
-                  <th data-i18n="thRtp">RTP</th>
-                  <th data-i18n="thCiHalfwidth">CI±</th>
-                  <th data-i18n="thSpins">Spins</th>
-                  <th data-i18n="thQuality">质量</th>
-                </tr>
-              </thead>
-              <tbody id="versionTableBody"></tbody>
-            </table>
-            <div class="version-actions">
-              <button id="compareBtn" class="primary-btn" disabled data-i18n="btnCompare">对比选中 (2)</button>
-            </div>
-          </section>
-
-          <section class="panel report-comparison hidden" id="reportComparisonPanel">
-            <h2 data-i18n="panelComparison">Report 对比</h2>
-            <div id="comparisonBody"></div>
           </section>
 
           <section class="panel system-status">
@@ -459,7 +500,7 @@
           </section>
 
           <section class="panel cache">
-            <h2 data-i18n="panelCache">Chunk 缓存</h2>
+            <h2 data-i18n="panelCache">Chunk 缓存 / 维护操作</h2>
             <div id="cacheWarning" class="warnBox"></div>
             <div id="cacheRiskMeta" class="meta dangerMeta"></div>
             <div id="cacheMeta" class="meta"></div>
@@ -473,10 +514,6 @@
             </div>
           </section>
 
-          <!-- System settings: operator-tunable knobs persisted in
-               state/console/settings.json. Currently one knob
-               (chunk retention quota). More join this panel as
-               future settings come online. -->
           <section class="panel system-settings">
             <h2 data-i18n="panelSystemSettings">系统设置</h2>
             <div class="system-settings-grid">
@@ -487,7 +524,8 @@
             </div>
             <div id="settingsSaveMeta" class="meta muted" style="margin-top: 6px;"></div>
           </section>
-        </div>
+
+        </details>
       </section>
 
     </main>

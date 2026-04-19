@@ -31,6 +31,14 @@ const state = {
   // Manage-tab run-history filter. Empty Set = show all; non-empty =
   // union of selected machines. Multi-select from machine catalog.
   runFilterMachines: new Set(),
+  // Manage-tab focus (master/detail model introduced 2026-04-19):
+  // plain-click on a catalog card sets focusedMachine (single-machine
+  // detail view in right pane); ctrl/shift/checkbox/全选 paths set
+  // runFilterMachines (batch mode). The two are mutually exclusive —
+  // entering one clears the other. Null means "nothing focused" →
+  // right pane shows fleet overview (when runFilterMachines is also
+  // empty) or multi-select summary (when runFilterMachines has >0).
+  focusedMachine: null,
   // Set of selected run_ids for batch operations.
   selectedRuns: new Set(),
   // Latest library-wide metric distributions (from
@@ -811,50 +819,79 @@ function renderMachineCatalog() {
   // was ~506 addEventListener calls per render.
 }
 
-// Single delegated click + keydown handler for the whole catalog grid.
-// Attached once at init. Toggles .active on the clicked card inline
-// rather than triggering a full renderMachineCatalog() — the full
-// render (~10ms for 253 cards) was only there to re-apply the class;
-// targeted DOM mutation keeps the clicks under 1ms.
-function _toggleCatalogMachineSelection(machine) {
-  if (!machine) return;
-  const wasActive = state.runFilterMachines.has(machine);
-  if (wasActive) state.runFilterMachines.delete(machine);
-  else state.runFilterMachines.add(machine);
-
+// ── Click model (refactor 2026-04-19) ──────────────────────────────
+// Plain click / Enter on a catalog card = FOCUS (single-machine detail
+// in the right pane). Ctrl/Meta/Shift-click = MULTI-SELECT (batch
+// mode, drives runFilterMachines). Focus and multi-select are mutually
+// exclusive — entering one clears the other. renderDetailPane() below
+// owns the right pane's state-driven switching.
+function _cardActiveDomSync(machine, active) {
   const el = document.querySelector(`.catalog-item[data-machine="${CSS.escape(machine)}"]`);
-  if (el) {
-    el.classList.toggle("active", !wasActive);
-    // .active CSS uses !important background, which overrides the
-    // heatmap inline bg while selected. On deselect restore; on
-    // select clear the inline style so the !important rule wins
-    // without fighting specificity.
-    if (wasActive) {
-      const bg = _cardBgColor(machine);
-      el.style.background = bg || "";
-    } else {
-      el.style.background = "";
-    }
+  if (!el) return;
+  el.classList.toggle("active", active);
+  if (!active) {
+    const bg = _cardBgColor(machine);
+    el.style.background = bg || "";
+  } else {
+    el.style.background = "";
   }
+}
 
+function _syncAllCardsActiveDom() {
+  // After bulk state changes (focus flip, multi clear, etc.), reconcile
+  // every card's .active class in one pass. Cheap — getElementsByClassName
+  // + single iteration instead of per-card queries.
+  const cards = document.querySelectorAll(".catalog-item");
+  cards.forEach((el) => {
+    const m = el.dataset.machine;
+    if (!m) return;
+    const active = state.focusedMachine === m || state.runFilterMachines.has(m);
+    if (el.classList.contains("active") !== active) {
+      _cardActiveDomSync(m, active);
+    }
+  });
+}
+
+function _setFocusedMachine(machine) {
+  if (!machine) return;
+  // Entering focus mode clears any existing multi-select set.
+  if (state.runFilterMachines.size > 0) {
+    state.runFilterMachines.clear();
+  }
+  state.focusedMachine = machine;
+  _syncAllCardsActiveDom();
   renderRunHistory();
   updateSampleHint();
-  // Selection change affects the ⚙ 调参 button's enabled state (needs
-  // at least one machine). Refresh action states so the button goes
-  // from disabled → enabled (and vice-versa) as the user toggles.
   updateActionStates();
-  if (state.runFilterMachines.has(machine)) {
-    showVersionHistory(machine);
-    showMachineDetail(machine);
-  } else if (state.runFilterMachines.size === 1) {
-    const last = [...state.runFilterMachines][0];
-    showVersionHistory(last);
-    showMachineDetail(last);
-  } else if (state.runFilterMachines.size === 0) {
-    byId("versionHistoryPanel")?.classList.add("hidden");
-    byId("reportComparisonPanel")?.classList.add("hidden");
-    byId("machineDetailPanel")?.classList.add("hidden");
+  renderDetailPane();
+}
+
+function _clearFocus() {
+  state.focusedMachine = null;
+  _syncAllCardsActiveDom();
+  renderDetailPane();
+}
+
+function _toggleMultiSelect(machine) {
+  if (!machine) return;
+  // Entering multi-select mode clears any focus.
+  if (state.focusedMachine !== null) {
+    state.focusedMachine = null;
   }
+  const had = state.runFilterMachines.has(machine);
+  if (had) state.runFilterMachines.delete(machine);
+  else state.runFilterMachines.add(machine);
+  _syncAllCardsActiveDom();
+  renderRunHistory();
+  updateSampleHint();
+  updateActionStates();
+  renderDetailPane();
+}
+
+// Legacy name kept so existing call sites (全选 button, clear selection,
+// _recoverActiveSampling restore path) still work. Defaults to multi mode.
+function _toggleCatalogMachineSelection(machine) {
+  _toggleMultiSelect(machine);
 }
 
 function _initCatalogDelegation() {
@@ -864,15 +901,82 @@ function _initCatalogDelegation() {
   wrap.addEventListener("click", (e) => {
     const el = e.target.closest(".catalog-item");
     if (!el || !wrap.contains(el)) return;
-    _toggleCatalogMachineSelection(el.dataset.machine);
+    const machine = el.dataset.machine;
+    const isMulti = e.ctrlKey || e.metaKey || e.shiftKey;
+    if (isMulti) {
+      _toggleMultiSelect(machine);
+    } else {
+      // Plain click: toggle focus. Clicking focused card again unfocuses.
+      if (state.focusedMachine === machine) {
+        _clearFocus();
+      } else {
+        _setFocusedMachine(machine);
+      }
+    }
   });
   wrap.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== " ") return;
     const el = e.target.closest(".catalog-item");
     if (!el || !wrap.contains(el)) return;
     e.preventDefault();
-    _toggleCatalogMachineSelection(el.dataset.machine);
+    const machine = el.dataset.machine;
+    const isMulti = e.ctrlKey || e.metaKey || e.shiftKey;
+    if (isMulti) {
+      _toggleMultiSelect(machine);
+    } else if (state.focusedMachine === machine) {
+      _clearFocus();
+    } else {
+      _setFocusedMachine(machine);
+    }
   });
+}
+
+// Detail pane switch: picks which of the right-column sections to show
+// based on state.focusedMachine + state.runFilterMachines. Step 1 only
+// wires container visibility + delegates to existing render functions
+// for the focused case; step 4 replaces machineDetailPanel with the
+// new rawdata × report tree.
+function renderDetailPane() {
+  const fleet = byId("detailFleetOverview");
+  const detail = byId("machineDetailPanel");
+  const versions = byId("versionHistoryPanel");
+  const compare = byId("reportComparisonPanel");
+  const multi = byId("detailMultiSelect");
+  const globalRaw = byId("detailRawdataGlobal");
+  if (!fleet || !detail) return;  // DOM not yet built (tests / early boot)
+
+  const focused = state.focusedMachine;
+  const multiSize = state.runFilterMachines.size;
+
+  // Default: hide everything, then reveal the appropriate combination.
+  const hide = (el) => el && el.classList.add("hidden");
+  const show = (el) => el && el.classList.remove("hidden");
+  hide(fleet); hide(detail); hide(versions); hide(compare); hide(multi); hide(globalRaw);
+
+  if (focused) {
+    show(detail);
+    try { showMachineDetail(focused); } catch (_) {}
+    try { showVersionHistory(focused); } catch (_) {}
+    // compare panel only shown when user picks 2 versions; keep hidden.
+    return;
+  }
+  if (multiSize > 0) {
+    show(multi);
+    const countEl = byId("multiSelectCount");
+    const listEl = byId("multiSelectList");
+    if (countEl) countEl.textContent = String(multiSize);
+    if (listEl) {
+      listEl.innerHTML = "";
+      [...state.runFilterMachines].sort().forEach((m) => {
+        const li = document.createElement("li");
+        li.textContent = m;
+        listEl.appendChild(li);
+      });
+    }
+    return;
+  }
+  // Nothing selected → fleet overview.
+  show(fleet);
 }
 
 // ── Catalog Mechanic Filters ──────────────────────────────────────
@@ -3928,6 +4032,7 @@ async function loadBootstrap() {
   renderCatalogFeatureChips();
   renderMachineCatalog();
   renderFleetOverview();
+  renderDetailPane();  // initialize right-pane container visibility
   refreshStaleBanner();  // don't await — non-blocking for bootstrap
   _restoreSamplingPrefs();  // hydrate sampleMode/sampleCi from localStorage
   updateSampleHint();
@@ -4015,19 +4120,23 @@ function bindEvents() {
     });
   });
   byId("catalogClearSelection").addEventListener("click", () => {
+    // Clear BOTH focus and multi-select (master/detail refactor 2026-04-19).
     state.runFilterMachines.clear();
+    state.focusedMachine = null;
     renderMachineCatalog();
     renderRunHistory();
-    byId("versionHistoryPanel")?.classList.add("hidden");
-    byId("reportComparisonPanel")?.classList.add("hidden");
-    byId("machineDetailPanel")?.classList.add("hidden");
+    updateSampleHint();
+    updateActionStates();
+    renderDetailPane();
   });
   // Select-all: add every machine currently visible in the catalog
   // (honors current view-mode + feature-chip filter + search) to the
   // multi-select set. Intentionally scoped to the filtered view so
   // users don't accidentally select 253 machines when they meant the
-  // 10 visible after a filter.
+  // 10 visible after a filter. Always enters multi-select mode, clears
+  // any focused machine.
   byId("catalogSelectAllVisible")?.addEventListener("click", () => {
+    state.focusedMachine = null;
     const visible = document.querySelectorAll("#machineCatalog .catalog-item");
     visible.forEach((el) => {
       const m = el.dataset.machine;
@@ -4037,6 +4146,7 @@ function bindEvents() {
     renderRunHistory();
     updateSampleHint();
     updateActionStates();
+    renderDetailPane();
   });
   // View tabs for catalog grouping mode.
   byId("catalogViewTabs").addEventListener("click", async (e) => {

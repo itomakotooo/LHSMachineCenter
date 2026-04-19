@@ -101,6 +101,10 @@ def test_cache_cleanup_low_risk_flow(console_page, clean_cache, clean_runs,
 
     # Cache panel lives on the "manage" tab; debug tab is default.
     page.click("#tabBtnManage")
+    # Cache controls moved into the <details id="systemFooter"> folding
+    # region as part of the 2026-04-19 master/detail refactor — open it
+    # so the buttons become visible.
+    page.evaluate("document.getElementById('systemFooter').open = true;")
     page.wait_for_selector("#cacheRefreshBtn", state="visible")
 
     # Retention 0 → every chunk we drop becomes immediately deletable
@@ -166,6 +170,10 @@ def test_cache_cleanup_high_risk_requires_token(console_page, clean_cache,
     _wait_for_pure_loaded(page)
 
     page.click("#tabBtnManage")
+    # Cache controls moved into the <details id="systemFooter"> folding
+    # region as part of the 2026-04-19 master/detail refactor — open it
+    # so the buttons become visible.
+    page.evaluate("document.getElementById('systemFooter').open = true;")
     page.wait_for_selector("#cacheRefreshBtn", state="visible")
 
     r = httpx.put(

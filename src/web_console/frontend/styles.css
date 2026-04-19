@@ -358,6 +358,134 @@ body {
   grid-template-columns: repeat(12, minmax(0, 1fr));
 }
 
+/* ── Manage tab: master/detail layout (step 1 skeleton) ─────────────
+   Topbar (sticky) holds activity strip + staleness banner + rawdata
+   banner. Two-column body: catalog master on left, detail pane on
+   right. Footer folds system/server/maintenance inside <details>. */
+.manage-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--bg, #f5f7fb);
+  padding-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.manage-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(420px, 2fr) minmax(0, 3fr); /* ≈ 40 / 60 */
+  align-items: start;
+  margin-top: 8px;
+}
+
+.manage-left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.manage-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Batch action bar: sticky sub-header inside left column. Empty in
+   step 1; step 3 populates with the sampling controls. */
+.batch-action-bar {
+  position: sticky;
+  top: var(--manage-topbar-h, 120px);
+  z-index: 3;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  box-shadow: 0 10px 26px #0f172a0d;
+}
+
+/* Hidden overrides display:flex (same-specificity .hidden later loses) */
+.batch-action-bar.hidden { display: none; }
+
+/* Rawdata banner (topbar row #3): compact one-liner, wired up in step 6 */
+.rawdata-banner {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 0.92em;
+}
+
+/* System footer: collapsible maintenance / settings / legacy panels */
+.system-footer {
+  margin-top: 24px;
+  border-top: 1px dashed var(--line);
+  padding-top: 12px;
+}
+
+.system-footer > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink-muted, #64748b);
+  padding: 8px 0;
+  list-style: none;
+  user-select: none;
+}
+
+.system-footer > summary::-webkit-details-marker { display: none; }
+.system-footer > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 0.15s;
+}
+.system-footer[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.system-footer[open] {
+  display: block;
+}
+
+.system-footer > .panel {
+  margin-top: 12px;
+}
+
+/* Narrow screens: stack two columns vertically */
+@media (max-width: 1100px) {
+  .manage-layout {
+    grid-template-columns: 1fr;
+  }
+  .batch-action-bar {
+    position: static;
+  }
+}
+
+/* Multi-select detail placeholder (step 1) */
+.multi-select-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.multi-select-list li {
+  padding: 4px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.88em;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
