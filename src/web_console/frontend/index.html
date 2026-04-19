@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Slot Console</title>
-    <link rel="stylesheet" href="/console/styles.css" />
+    <link rel="stylesheet" href="/console/styles.css?v={{ASSET_HASH}}" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
@@ -259,6 +259,17 @@
 
       <section id="tab-manage" class="tab-page active">
         <div class="layout">
+          <!-- Top activity strip: surfaces current running op + recent
+               event stream across all runs. Stays collapsed when idle
+               so the fleet overview is still the landing view. -->
+          <section class="panel activity-strip" id="activityStripPanel">
+            <div class="activity-strip-header">
+              <h2 data-i18n="panelActivityStrip">活动日志流</h2>
+              <span id="activityStripStatus" class="muted">idle</span>
+            </div>
+            <div id="activityStripBody" class="activity-strip-body"></div>
+          </section>
+
           <section class="panel fleet-overview">
             <h2 data-i18n="panelFleetOverview">机台概览</h2>
             <div id="staleReportBanner" class="stale-banner hidden"></div>
@@ -460,7 +471,7 @@
 
     </main>
 
-    <script src="/console/pure.js?v=20260418-shape"></script>
-    <script src="/console/app.js?v=20260418-shape"></script>
+    <script src="/console/pure.js?v={{ASSET_HASH}}"></script>
+    <script src="/console/app.js?v={{ASSET_HASH}}"></script>
   </body>
 </html>

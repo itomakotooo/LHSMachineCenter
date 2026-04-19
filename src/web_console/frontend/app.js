@@ -1035,19 +1035,22 @@ async function _loadRawdataSection(machineName) {
         const m = btn.dataset.machine, mo = btn.dataset.mode;
         const origText = btn.textContent;
         btn.disabled = true;
-        btn.textContent = "生成中…";
+        btn.textContent = "生成中…（后台运行，见活动日志）";
         try {
-          const resp = await apiPost(
+          // Async path: backend returns immediately with run_id;
+          // activity strip + run list show progress.
+          await apiPost(
             `/api/rawdata/${encodeURIComponent(m)}/generate-report`,
-            { mode: Number(mo) },
+            { mode: Number(mo), async: true },
           );
-          btn.textContent = `✓ ${resp.rtp_point_pct != null ? Number(resp.rtp_point_pct).toFixed(1) + "%" : "done"}`;
-          // Refresh run list so the new gen_* row shows up immediately.
+          btn.textContent = "⏳ 已入队";
           await refreshRunList(false);
+          // Keep button disabled until serverBusy clears (will be
+          // re-enabled by the next updateActionStates cycle).
           setTimeout(() => {
             btn.textContent = origText;
             btn.disabled = false;
-          }, 3000);
+          }, 4000);
         } catch (err) {
           btn.textContent = "✗";
           alert(`生成 Report 失败: ${String(err && err.message ? err.message : err)}`);
@@ -1061,21 +1064,45 @@ async function _loadRawdataSection(machineName) {
     section.querySelectorAll(".rawdata-delete-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const m = btn.dataset.machine, mo = btn.dataset.mode;
+        // Guard against concurrent ops — backend also rejects with
+        // 409 but fail-fast in UI is friendlier.
+        if (state.systemState?.operation_busy) {
+          alert(`有操作进行中 (${state.systemState.operation || "busy"})，请等待完成再删除。`);
+          return;
+        }
         if (!confirm(`删除 ${m} mode ${mo} 的可回收 + 过期 chunks？baseline 保留。`)) return;
-        await apiDelete(`/api/rawdata/${m}?mode=${mo}`);
+        try {
+          await apiDelete(`/api/rawdata/${m}?mode=${mo}`);
+        } catch (err) {
+          alert(`删除失败: ${String(err?.message || err)}`);
+          return;
+        }
         _loadRawdataSection(machineName);
       });
     });
     section.querySelectorAll(".rawdata-force-delete-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const m = btn.dataset.machine, mo = btn.dataset.mode;
+        if (state.systemState?.operation_busy) {
+          alert(`有操作进行中 (${state.systemState.operation || "busy"})，请等待完成再删除。`);
+          return;
+        }
         const tok = prompt(`完全删除 ${m} mode ${mo} 的所有 rawdata (含 baseline)？输入 DELETE 确认：`);
         if (tok !== "DELETE") return;
-        await apiDelete(`/api/rawdata/${m}?mode=${mo}&force=true`);
+        try {
+          await apiDelete(`/api/rawdata/${m}?mode=${mo}&force=true`);
+        } catch (err) {
+          alert(`删除失败: ${String(err?.message || err)}`);
+          return;
+        }
         _loadRawdataSection(machineName);
       });
     });
     section.querySelector(".rawdata-delete-all-btn")?.addEventListener("click", async () => {
+      if (state.systemState?.operation_busy) {
+        alert(`有操作进行中 (${state.systemState.operation || "busy"})，请等待完成再删除。`);
+        return;
+      }
       if (!confirm(`删除 ${machineName} 所有 mode 的可回收 chunks？baseline 保留。`)) return;
       await apiDelete(`/api/rawdata/${machineName}`);
       _loadRawdataSection(machineName);
@@ -4033,9 +4060,86 @@ function startPolling() {
     refreshCache().catch(() => {});
     if (!state.currentRunId) updateActionStates();
   }, 4500);
+  // Activity strip (1.2s): unified log across all active + recent
+  // runs, feeds the top panel in 机台管理 tab.
+  if (state.activityTimer) clearInterval(state.activityTimer);
+  state.activityTimer = setInterval(() => {
+    refreshActivityStrip().catch(() => {});
+  }, 1200);
+  refreshActivityStrip().catch(() => {});
   // Fast tick (1s): only the active run's progress. Created/torn down by
   // ensureFastPolling() based on currentRunStatus.
   ensureFastPolling();
+}
+
+// Pull the unified event stream + render the top "活动日志流" panel.
+// ``state.activitySince`` is the cursor for incremental fetch; on the
+// first tick we omit it so the panel shows the last 5 min of context.
+async function refreshActivityStrip() {
+  const panel = byId("activityStripPanel");
+  const body = byId("activityStripBody");
+  const statusEl = byId("activityStripStatus");
+  if (!panel || !body) return;
+  let url = "/api/events?lookback_minutes=5&limit=200";
+  if (state.activitySince) {
+    url += `&since=${encodeURIComponent(state.activitySince)}`;
+  }
+  let data;
+  try {
+    data = await apiGet(url);
+  } catch (_err) {
+    return;
+  }
+  state.activityEvents = state.activityEvents || [];
+  for (const ev of (data.events || [])) {
+    state.activityEvents.push(ev);
+  }
+  // Cap to latest 200 events (ring buffer).
+  if (state.activityEvents.length > 200) {
+    state.activityEvents = state.activityEvents.slice(-200);
+  }
+  if (data.max_ts) state.activitySince = data.max_ts;
+  const active = Array.isArray(data.active_runs) ? data.active_runs : [];
+  if (active.length) {
+    panel.classList.add("activity-strip-live");
+    const opsLine = active
+      .map((r) => `<span class="op-chip">${_escHtml(r.model_id)} · ${_escHtml(r.machine)} mode${r.mode}</span>`)
+      .join("");
+    statusEl.innerHTML = `🟡 ${active.length} 运行中 ${opsLine}`;
+  } else {
+    panel.classList.remove("activity-strip-live");
+    statusEl.textContent = "idle";
+  }
+  // Render last 12 events newest-first.
+  const recent = state.activityEvents.slice(-12).reverse();
+  body.innerHTML = recent.length
+    ? recent.map((ev) => {
+        const tsShort = (ev.ts || "").substring(11, 19);
+        const mach = ev.machine ? `${ev.machine} mode${ev.mode}` : "";
+        const op = ev.model_id || "";
+        const kind = ev.event || "";
+        let tail = "";
+        if (ev.chunks_completed != null) {
+          tail += `chunks ${ev.chunks_completed}`;
+          if (ev.total_spins != null) tail += ` · ${ev.total_spins.toLocaleString()} spins`;
+          if (ev.current_halfwidth_pp != null)
+            tail += ` · CI±${Number(ev.current_halfwidth_pp).toFixed(2)}pp`;
+        } else if (ev.stop_reason) {
+          tail = `stop: ${_escHtml(ev.stop_reason)}`;
+        } else if (ev.error_message) {
+          tail = `⚠ ${_escHtml(String(ev.error_message).substring(0, 80))}`;
+        }
+        const statusClass = ev.run_status === "failed" ? "ev-fail"
+          : ev.event === "completed" ? "ev-ok" : "";
+        return `<div class="activity-line ${statusClass}">`
+          + `<span class="activity-ts">${_escHtml(tsShort)}</span>`
+          + `<span class="activity-op">${_escHtml(op)}</span>`
+          + `<span class="activity-mach">${_escHtml(mach)}</span>`
+          + `<span class="activity-kind">${_escHtml(kind)}</span>`
+          + `<span class="activity-tail">${tail}</span>`
+          + `</div>`;
+      }).join("")
+    : `<div class="muted" style="padding:8px 4px;font-size:12px">无近期事件</div>`;
 }
 
 function ensureFastPolling() {
