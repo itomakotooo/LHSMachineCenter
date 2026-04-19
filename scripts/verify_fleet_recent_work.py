@@ -49,6 +49,7 @@ FEATURE_REQUIRED_KEYS = {
     "bucket_total_spins",
     "rtp_contribution_pp",
     "share_of_total_win",
+    "sub_streams",
 }
 
 SHAPE_REQUIRED_KEYS = {
@@ -122,6 +123,20 @@ def _verify_feature_row(feat: dict, total_rtp_pp: float) -> list[str]:
                     f"bucket pp sum ({pp_sum:.2f}) doesn't match header "
                     f"pp ({header_pp:.2f}); drift {pp_sum - header_pp:+.2f}"
                 )
+        # Sub-stream consistency: if sub_streams present, their RTP pp
+        # must sum to roughly the header pp (fires + win are sliced
+        # by trigger path and should reconstitute the whole).
+        sub_streams = feat.get("sub_streams") or []
+        if sub_streams:
+            ss_pp = sum(float(s.get("rtp_contribution_pp", 0) or 0) for s in sub_streams)
+            # Allow 5pp drift here — sub_stream attribution can miss
+            # wins in chains that span chunk boundaries (open chain
+            # at chunk end is dropped). Flag >5pp only.
+            if abs(ss_pp - header_pp) > 5.0:
+                issues.append(
+                    f"sub_stream pp sum ({ss_pp:.2f}) drifts from header "
+                    f"pp ({header_pp:.2f}) by more than 5pp"
+                )
     # Trigger-only features: chain parent OR orphan-meta OR BCM fallback.
     # Skip hard-failure for known semantic edge cases.
     if trigger_only:
@@ -192,12 +207,19 @@ def verify_report(summary_path: Path) -> dict:
     co = cm.get("cycle_observation") or {}
     cycle_ui_would_show = bool(co.get("mechanic_detected") or bcc.get("applicable"))
 
+    # Sub-stream coverage: how many paying features have >1 sub-stream
+    # (the interesting case — per-trigger-path split visible).
+    paying_with_multi_substream = sum(
+        1 for f in features
+        if not f.get("trigger_only") and len(f.get("sub_streams") or []) > 1
+    )
     return {
         "applicable": True,
         "total_rtp_pp": total_rtp_pp,
         "analyzer_version": s.get("analyzer_version"),
         "feature_count": len(features),
         "paying_with_buckets": paying_with_buckets,
+        "paying_with_multi_substream": paying_with_multi_substream,
         "trigger_resolved": trigger_resolved,
         "trigger_orphan": trigger_orphan,
         "bcm_info": bcm_info,
@@ -262,6 +284,7 @@ def main() -> int:
     bcm_missing_fallback = []
     cycle_panel_shown = 0
     cycle_correction_applicable = 0
+    multi_substream_reports = 0
     analyzer_version_seen = Counter()
     reports_with_issues = []
 
@@ -295,6 +318,8 @@ def main() -> int:
                 cycle_panel_shown += 1
             if v.get("cycle_correction_applicable"):
                 cycle_correction_applicable += 1
+            if v.get("paying_with_multi_substream", 0) > 0:
+                multi_substream_reports += 1
 
     print(f"Reports checked:              {total_reports}")
     print(f"  applicable (has features):  {total_with_features}")
@@ -305,6 +330,8 @@ def main() -> int:
     print(f"BCM machines (feature present): {len(machines_with_bcm_feature)}")
     print(f"  BCM chain_parent resolved:    {bcm_resolved_via_fallback}")
     print(f"  BCM chain_parent MISSING:     {len(bcm_missing_fallback)}")
+    print()
+    print(f"Reports with multi-path sub_streams: {multi_substream_reports}")
     print()
     print(f"Collect-cycle panel would show: {cycle_panel_shown} reports")
     print(f"  correction applicable:        {cycle_correction_applicable}")

@@ -2920,6 +2920,8 @@ function _renderPayingFeatureCard(feat, chains) {
   const fireRatePct = (Number(feat.fire_rate || 0) * 100).toFixed(2);
   const buckets = Array.isArray(feat.bucket_distribution) ? feat.bucket_distribution : [];
   const bucketTableHtml = _renderFeatureBucketTable(buckets);
+  const subStreams = Array.isArray(feat.sub_streams) ? feat.sub_streams : [];
+  const subStreamsHtml = _renderFeatureSubStreams(subStreams);
 
   // Multi-chain breadcrumb: one line per inbound chain. Cycle-type
   // triggers (resolved_spin_type == null — e.g. BuffCollectionMap)
@@ -2959,7 +2961,47 @@ function _renderPayingFeatureCard(feat, chains) {
     (bucketTableHtml
       ? bucketTableHtml
       : `<div class="muted" style="font-size:12px">无倍率分桶数据</div>`) +
+    subStreamsHtml +
     `</div>`
+  );
+}
+
+// Render per-feature sub-stream summary (one row per trigger path).
+// Same paying feature entered via different trigger chains often
+// has different stats (initial ReelSkin / multiplier / etc.). This
+// compact table lets the operator see each path's fires + rtp split
+// without drilling into raw data. Suppressed if only one stream
+// (nothing to compare) or no streams (feature not in any chain —
+// typically paid-normal features like NormalCollectionSpin).
+function _renderFeatureSubStreams(subs) {
+  if (!Array.isArray(subs) || subs.length < 2) return "";
+  const body = subs.map((sub) => {
+    const fires = Number(sub.fires || 0).toLocaleString();
+    const win = Number(sub.win_credits || 0);
+    const rtpPp = Number(sub.rtp_contribution_pp || 0).toFixed(2);
+    const avgWin = sub.fires > 0
+      ? Math.round(win / sub.fires).toLocaleString()
+      : "—";
+    return (
+      `<tr>` +
+      `<td>${_escHtml(String(sub.label || "—"))}</td>` +
+      `<td>${fires}</td>` +
+      `<td>${avgWin}</td>` +
+      `<td>${rtpPp}pp</td>` +
+      `</tr>`
+    );
+  }).join("");
+  return (
+    `<div class="feature-substreams-head">按触发路径拆分</div>` +
+    `<table class="drilldown-table feature-substream-table">` +
+    `<thead><tr>` +
+    `<th>触发路径</th>` +
+    `<th>${_escHtml(fmt("thCount"))}</th>` +
+    `<th>均赢</th>` +
+    `<th>${_escHtml(fmt("thRtpContribution"))}</th>` +
+    `</tr></thead>` +
+    `<tbody>${body}</tbody>` +
+    `</table>`
   );
 }
 

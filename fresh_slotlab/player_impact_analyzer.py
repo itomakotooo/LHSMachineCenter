@@ -1882,6 +1882,17 @@ def parse_chunk_response(
     # SpinType↔feature_name mapping when multiple features share the
     # same fire count. Rounds with empty ReMarks are skipped.
     spin_type_remarks_sample: dict[int, list[str]] = defaultdict(list)
+    # Bonus-chain trigger-path summary. Keyed by
+    # (first_st, entry_cc_reset, sp_type_within_chain). Each value is
+    # {"count": int, "win": float, "bet": float}. Used in _finalize
+    # to derive per-feature sub_streams — same feature may fire in
+    # chains entered through different paths (e.g. M273
+    # LockSymbolFreespin entered via the wheel ceremony vs via a BCM
+    # CollectCount cycle reset). Operators want those stats split
+    # because initial state (ReelSkin / paytable / etc.) may differ.
+    chain_chunk_summaries: dict[tuple, dict[str, float]] = defaultdict(
+        lambda: {"count": 0, "win": 0.0, "bet": 0.0}
+    )
     # Per-SpinType × return-bucket histograms. Mirror the global
     # ``multiplier_bucket_{spins,bet,win}`` but keyed by SpinType so
     # the upstream feature breakdown can surface a per-feature bucket
@@ -2113,6 +2124,18 @@ def parse_chunk_response(
         # so transition counts don't cross robot boundaries — each
         # robot is an independent session trajectory).
         prev_sp_type_in_robot: int | None = None
+        # Bonus-chain trigger-path tracker. Each time the robot
+        # transitions from paid → non-paid, a chain opens tagged with:
+        #   * first_st: the SpinType of the entry round
+        #   * entry_cc_reset: whether the immediately-preceding paid
+        #     round observed a CollectCount reset (BCM cycle signal)
+        # Chain closes on the next paid round; stats roll up into
+        # ``chunk_chain_summaries`` keyed by (first_st, entry_cc_reset,
+        # sp_type_within_chain). Post-process in _finalize maps the
+        # (first_st, cc_reset) key to a human label and attributes
+        # per-sp_type wins to the matching paying feature.
+        _bonus_chain_active: dict[str, Any] | None = None
+        _bonus_chain_last_cc_reset = False  # cc reset seen in the last paid round
         # Reset session-level streak state at robot boundary (streaks
         # don't cross robots -- each is an independent player trajectory).
         sess_state["cur_loss_streak"] = 0
@@ -2295,6 +2318,50 @@ def parse_chunk_response(
             spin_type_bucket_spins[sp_type][bucket] += 1
             spin_type_bucket_bet[sp_type][bucket] += bet_amt
             spin_type_bucket_win[sp_type][bucket] += win_amt
+            # Bonus-chain trigger-path bookkeeping. A chain opens on
+            # the first non-paid round after a paid run; it accrues
+            # all subsequent non-paid rounds keyed to a stable
+            # (first_st, entry_cc_reset) bucket. A paid round closes
+            # the chain. entry_cc_reset reflects whether the
+            # immediately-preceding paid round observed a CollectCount
+            # reset — the M272/M273 BCM-cycle signal.
+            # Chain-detection has a stricter "is this a paid round"
+            # test than the RTP-side is_paid. RTP defensively treats
+            # CostCredits=None as paid (unknown → assume paid so
+            # denominators stay conservative). But ceremony rounds on
+            # M273-style machines (WheelSelector / PreWheel / etc.)
+            # legitimately omit CostCredits entirely — None there
+            # means "background sub-round in a chain", not "paid with
+            # unreported cost". Treat None as non-paid for chain
+            # purposes so 139→136→137→117 stays ONE chain.
+            if cost_credits_unreliable:
+                _is_paid_for_chain = True
+            else:
+                _cc_raw_chain = r.get("CostCredits")
+                _is_paid_for_chain = _cc_raw_chain is not None and to_float(
+                    _cc_raw_chain, default=0.0
+                ) > 0.0
+            if _is_paid_for_chain:
+                # Close any open chain.
+                _bonus_chain_active = None
+            else:
+                if _bonus_chain_active is None:
+                    _bonus_chain_active = {
+                        "first_st": sp_type,
+                        "entry_cc_reset": _bonus_chain_last_cc_reset,
+                    }
+                    # Consume the reset flag — it applies to this
+                    # entry only, not to the next chain.
+                    _bonus_chain_last_cc_reset = False
+                key = (
+                    _bonus_chain_active["first_st"],
+                    _bonus_chain_active["entry_cc_reset"],
+                    sp_type,
+                )
+                entry = chain_chunk_summaries[key]
+                entry["count"] += 1
+                entry["win"] += win_amt
+                entry["bet"] += bet_amt
             # Per-robot SpinType transition for chain-parent inference.
             # Boundary (first round of a robot) contributes no edge.
             if prev_sp_type_in_robot is not None:
@@ -2385,8 +2452,18 @@ def parse_chunk_response(
             if is_paid and cc_int > 0:
                 if cc_int < robot_prev_cc_for_cycle and robot_prev_cc_for_cycle > 10:
                     robot_cycle_peaks.append(robot_prev_cc_for_cycle)
+                    # Flag the NEXT chain entry (if any immediately
+                    # follows) as BCM-cycle-triggered. Cleared either
+                    # when consumed by a chain open or by the next
+                    # paid round without a chain between.
+                    _bonus_chain_last_cc_reset = True
                 robot_prev_cc_for_cycle = cc_int
                 robot_final_cc = cc_int
+            # On a paid round without a reset, clear any stale BCM
+            # flag — only consecutive (paid-with-reset → chain-entry)
+            # transitions count as BCM-triggered.
+            if is_paid and cc_int == 0 and robot_prev_cc_for_cycle == 0:
+                _bonus_chain_last_cc_reset = False
             # Trunk-clamp pointer: every time CollectCount ticks up, mark
             # the paid-spin index where it happened. Only paid spins
             # advance the cycle counter (bonus spins ride on the
@@ -2648,6 +2725,17 @@ def parse_chunk_response(
         "spin_type_bucket_win": {
             str(k): dict(v) for k, v in spin_type_bucket_win.items()
         },
+        "chain_chunk_summaries": [
+            {
+                "first_st": k[0],
+                "entry_cc_reset": bool(k[1]),
+                "sp_type": k[2],
+                "count": v["count"],
+                "win": v["win"],
+                "bet": v["bet"],
+            }
+            for k, v in chain_chunk_summaries.items()
+        ],
         "upstream_feature_tally": {
             feat: {pid: dict(v) for pid, v in payouts.items()}
             for feat, payouts in feature_chunk_tally.items()
@@ -2953,6 +3041,11 @@ def main() -> int:
     spin_type_bucket_win: dict[int, dict[str, float]] = defaultdict(
         lambda: defaultdict(float)
     )
+    # Session-level bonus-chain summary merged from per-chunk records.
+    # Key = (first_st, entry_cc_reset, sp_type) → rolled-up counts.
+    chain_chunk_summaries: dict[tuple, dict[str, float]] = defaultdict(
+        lambda: {"count": 0, "win": 0.0, "bet": 0.0}
+    )
     spin_type_bet: dict[int, float] = defaultdict(float)
     spin_type_paid_bet: dict[int, float] = defaultdict(float)
     spin_type_win: dict[int, float] = defaultdict(float)
@@ -3190,6 +3283,17 @@ def main() -> int:
                     if isinstance(buckets, dict):
                         for bname, v in buckets.items():
                             spin_type_bucket_win[int(st)][str(bname)] += float(v or 0.0)
+                for ent in (rec.get("chain_chunk_summaries") or []):
+                    if not isinstance(ent, dict):
+                        continue
+                    key = (
+                        int(ent.get("first_st", 0) or 0),
+                        bool(ent.get("entry_cc_reset", False)),
+                        int(ent.get("sp_type", 0) or 0),
+                    )
+                    chain_chunk_summaries[key]["count"] += int(ent.get("count", 0) or 0)
+                    chain_chunk_summaries[key]["win"] += float(ent.get("win", 0) or 0)
+                    chain_chunk_summaries[key]["bet"] += float(ent.get("bet", 0) or 0)
                 for feat, payouts in (rec.get("upstream_feature_tally") or {}).items():
                     if not isinstance(payouts, dict):
                         continue
@@ -3632,6 +3736,17 @@ def main() -> int:
                     if isinstance(buckets, dict):
                         for bname, v in buckets.items():
                             spin_type_bucket_win[int(st)][str(bname)] += float(v or 0.0)
+                for ent in (rec.get("chain_chunk_summaries") or []):
+                    if not isinstance(ent, dict):
+                        continue
+                    key = (
+                        int(ent.get("first_st", 0) or 0),
+                        bool(ent.get("entry_cc_reset", False)),
+                        int(ent.get("sp_type", 0) or 0),
+                    )
+                    chain_chunk_summaries[key]["count"] += int(ent.get("count", 0) or 0)
+                    chain_chunk_summaries[key]["win"] += float(ent.get("win", 0) or 0)
+                    chain_chunk_summaries[key]["bet"] += float(ent.get("bet", 0) or 0)
                 # upstream feature tally merge: additive per (feature, payid).
                 # Older chunk records (pre-feature) lack the key -- safe via
                 # .get() default.
@@ -4199,6 +4314,44 @@ def main() -> int:
         upstream_feature_tally, _load_bcm_pairings(),
     )
 
+    # Post-process bonus-chain summaries into per-feature sub_streams.
+    # Same paying feature entered via different trigger paths (e.g.
+    # M273 LockSymbolFreespin: wheel-ceremony vs BCM cycle) gets one
+    # sub-entry per path. Operator / LLM can see that different paths
+    # produce different stats without any machine-specific hardcoding.
+    _sub_stream_acc: dict[tuple, dict[str, float]] = defaultdict(
+        lambda: {"fires": 0, "win": 0.0, "bet": 0.0}
+    )
+    for (first_st, cc_reset, sp_type), stats in chain_chunk_summaries.items():
+        feat_in_chain = spin_type_to_feature.get(int(sp_type))
+        if not feat_in_chain:
+            continue
+        # Label derivation. BCM cycle wins (explicit flag); else use
+        # the chain-entry SpinType's feature name so the label reads
+        # naturally ("via PreWheel", "via LockSymbolFreespin", etc.).
+        if cc_reset:
+            label = "via BCM cycle"
+        else:
+            entry_feat = spin_type_to_feature.get(int(first_st))
+            label = f"via {entry_feat}" if entry_feat else f"via ST{first_st}"
+        key = (feat_in_chain, label)
+        _sub_stream_acc[key]["fires"] += int(stats["count"] or 0)
+        _sub_stream_acc[key]["win"] += float(stats["win"] or 0)
+        _sub_stream_acc[key]["bet"] += float(stats["bet"] or 0)
+    sub_streams_by_feature: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for (feat_name, label), stats in _sub_stream_acc.items():
+        fires = int(stats["fires"])
+        win = float(stats["win"])
+        rtp_pp = (win / effective_bet_for_rtp * 100.0) if effective_bet_for_rtp > 0 else 0.0
+        sub_streams_by_feature[feat_name].append({
+            "label": label,
+            "fires": fires,
+            "win_credits": win,
+            "rtp_contribution_pp": rtp_pp,
+        })
+    for rows in sub_streams_by_feature.values():
+        rows.sort(key=lambda r: -r["win_credits"])
+
     upstream_feature_rows: list[dict[str, Any]] = []
     for feat_name, payouts in upstream_feature_tally.items():
         feat_total_win = sum(p.get("win", 0.0) for p in payouts.values())
@@ -4331,6 +4484,7 @@ def main() -> int:
                 "chain_parent_next_fires": chain_parent_next_fires,
                 "bucket_distribution": feat_bucket_rows,
                 "bucket_total_spins": feat_bucket_total_spins,
+                "sub_streams": sub_streams_by_feature.get(feat_name, []),
                 "rtp_contribution_pp": (
                     (feat_total_win / effective_bet_for_rtp) * 100.0
                     if effective_bet_for_rtp > 0 else 0.0

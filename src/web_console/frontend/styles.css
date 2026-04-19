@@ -1996,6 +1996,20 @@ button.small-btn.active, .small-btn.active {
 .feature-block .feature-bucket-table td {
   padding: 4px 6px;
 }
+/* Sub-stream table (per-trigger-path split) under bucket histogram. */
+.feature-substreams-head {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  color: var(--muted, #64748b);
+}
+.feature-block .feature-substream-table {
+  margin-top: 0;
+}
+.feature-block .feature-substream-table th,
+.feature-block .feature-substream-table td {
+  padding: 3px 6px;
+  font-size: 12px;
+}
 
 /* Collect-cycle + RTP correction panel (BCM-style mechanics). */
 .collect-cycle {
