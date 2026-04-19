@@ -2763,12 +2763,14 @@ async function renderPaytableShape(summary) {
      </table>`;
 }
 
-// Build the per-feature bucket histogram HTML (label + bar + RTP pp).
-// Mirrors the global multiplier-bucket chart's visual language so
-// operators recognize it. Skips buckets with zero spins — they'd
-// render as empty bars and just add noise. Returns "" if no bucket
-// has any non-zero spin count (e.g. trigger-only feature).
-function _renderFeatureBucketRows(buckets) {
+// Build the per-feature bucket histogram as a standard drilldown-
+// table so typography + bar line match the global 倍率分布 panel
+// byte-for-byte. Columns: 倍率区间 / 次数 / 占比 / 本类 pp / bar.
+// The pp values slice the GLOBAL RTP denominator (see analyzer
+// note) so summing a feature's bucket pp = that feature's header
+// pp (e.g. LockSymbolFreespin buckets sum to its 41.18pp header).
+// Skips buckets with zero spins. Returns "" when nothing to show.
+function _renderFeatureBucketTable(buckets) {
   if (!Array.isArray(buckets) || !buckets.length) return "";
   const nonzero = buckets.filter((b) => Number(b.spin_count || 0) > 0);
   if (!nonzero.length) return "";
@@ -2776,22 +2778,34 @@ function _renderFeatureBucketRows(buckets) {
     ...nonzero.map((b) => Math.abs(Number(b.rtp_contribution_pp || 0))),
     0.001,
   );
-  return nonzero
-    .map((b) => {
-      const label = PURE.prettyBucketLabel(b.bucket);
-      const count = Number(b.spin_count || 0);
-      const rate = Number(b.spin_rate || 0) * 100;
-      const rtpPp = Number(b.rtp_contribution_pp || 0);
-      const bar = Math.min(100, (Math.abs(rtpPp) / maxRtp) * 100);
-      return (
-        `<span class="feature-bucket-row" title="${count.toLocaleString()}× · ${rate.toFixed(2)}% of spins · ${rtpPp.toFixed(2)}pp RTP">` +
-        `<span class="feature-bucket-label">${_escHtml(label)}×</span>` +
-        `<span class="feature-bucket-track"><span class="feature-bucket-bar" style="width:${bar.toFixed(1)}%"></span></span>` +
-        `<span class="feature-bucket-val">${rtpPp.toFixed(2)}pp</span>` +
-        `</span>`
-      );
-    })
-    .join("");
+  const body = nonzero.map((b) => {
+    const label = PURE.prettyBucketLabel(b.bucket);
+    const count = Number(b.spin_count || 0);
+    const rate = (Number(b.spin_rate || 0) * 100).toFixed(2);
+    const rtpPp = Number(b.rtp_contribution_pp || 0);
+    const bar = Math.min(100, (Math.abs(rtpPp) / maxRtp) * 100);
+    return (
+      `<tr>` +
+      `<td>${_escHtml(label)}</td>` +
+      `<td>${count.toLocaleString()}</td>` +
+      `<td>${rate}%</td>` +
+      `<td>${rtpPp.toFixed(2)}pp</td>` +
+      `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%"></td>` +
+      `</tr>`
+    );
+  }).join("");
+  return (
+    `<table class="drilldown-table feature-bucket-table">` +
+    `<thead><tr>` +
+    `<th>${_escHtml(fmt("thBucket"))}</th>` +
+    `<th>${_escHtml(fmt("thCount"))}</th>` +
+    `<th>${_escHtml(fmt("thRate"))}</th>` +
+    `<th>${_escHtml(fmt("thRtpContribution"))}</th>` +
+    `<th></th>` +
+    `</tr></thead>` +
+    `<tbody>${body}</tbody>` +
+    `</table>`
+  );
 }
 
 function renderFieldDiscovery(summary) {
@@ -2895,7 +2909,7 @@ function _renderPayingFeatureCard(feat, chain) {
   const firesSpins = Number(feat.fires_spins || feat.total_times || 0);
   const fireRatePct = (Number(feat.fire_rate || 0) * 100).toFixed(2);
   const buckets = Array.isArray(feat.bucket_distribution) ? feat.bucket_distribution : [];
-  const bucketRowsHtml = _renderFeatureBucketRows(buckets);
+  const bucketTableHtml = _renderFeatureBucketTable(buckets);
 
   // Chain breadcrumb: only shown when triggers precede this feature.
   // Reads as "A → B → C" with fires shown inline on each link (same
@@ -2922,9 +2936,9 @@ function _renderPayingFeatureCard(feat, chain) {
     `<h3>${_escHtml(String(feat.feature_name))} <span class="feature-metric">${rtpPp}pp · ${sharePct}%</span></h3>` +
     `<div class="feature-meta">fires ${firesSpins.toLocaleString()}× · ${fireRatePct}% of spins</div>` +
     chainHtml +
-    (bucketRowsHtml
-      ? `<div class="feature-buckets">${bucketRowsHtml}</div>`
-      : `<div class="muted" style="font-size:11px">无倍率分桶数据</div>`) +
+    (bucketTableHtml
+      ? bucketTableHtml
+      : `<div class="muted" style="font-size:12px">无倍率分桶数据</div>`) +
     `</div>`
   );
 }

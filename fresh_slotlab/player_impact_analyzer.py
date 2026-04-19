@@ -4203,6 +4203,16 @@ def main() -> int:
         # bucket-bar renderer. Requires resolved SpinType (binds the
         # feature to round-level win data); session-level meta
         # features (no SpinType binding) get an empty list.
+        #
+        # ``total_bet`` passed below is the GLOBAL paid-bet
+        # denominator (same as feat_total_win in the header). This
+        # makes each bucket's ``rtp_contribution_pp`` a slice of the
+        # global RTP — the per-feature bucket pp values sum to the
+        # feature header's ``rtp_contribution_pp``. Using the
+        # per-feature bet as the denominator (the other option) would
+        # inflate bucket pp for bonus features (freespin rounds run
+        # 3-4× RTP on their own bet denominator, which is confusing
+        # vs the 41pp header).
         feat_bucket_rows: list[dict[str, Any]] = []
         feat_bucket_total_win = 0.0
         feat_bucket_total_spins = 0
@@ -4212,13 +4222,12 @@ def main() -> int:
             st_b_win = spin_type_bucket_win.get(resolved_spin_type) or {}
             feat_bucket_total_spins = sum(st_b_spins.values())
             feat_bucket_total_win = sum(st_b_win.values())
-            feat_bucket_total_bet = sum(st_b_bet.values())
             feat_bucket_rows = build_multiplier_bucket_rows(
                 st_b_spins,
                 st_b_bet,
                 st_b_win,
                 feat_bucket_total_spins,
-                feat_bucket_total_bet,
+                effective_bet_for_rtp,  # global denominator — see note above
                 feat_bucket_total_win,
             )
         upstream_feature_rows.append(
