@@ -415,6 +415,43 @@ body {
 /* Hidden overrides display:flex (same-specificity .hidden later loses) */
 .batch-action-bar.hidden { display: none; }
 
+/* Count label inside batch bar: "聚焦 M273" / "已选 N 台" */
+.batch-count-label {
+  font-weight: 600;
+  color: var(--ink, #1e293b);
+  padding: 4px 10px;
+  background: var(--accent-bg, #e0f2fe);
+  border-radius: 999px;
+  font-size: 0.88em;
+  white-space: nowrap;
+}
+
+/* Batch bar controls layout: inline labels with tight spacing */
+.batch-action-bar label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.88em;
+  color: var(--ink-muted, #64748b);
+}
+.batch-action-bar select,
+.batch-action-bar input[type="number"] {
+  padding: 4px 8px;
+  font-size: 0.92em;
+}
+
+/* Non-sticky extras (hint + progress + autotune meta) */
+.batch-action-extras:empty { display: none; }
+.batch-action-extras .sample-hint { padding: 4px 2px; }
+.batch-action-extras .sample-progress,
+.batch-action-extras .batch-gen-progress {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+
 /* Rawdata banner (topbar row #3): compact one-liner, wired up in step 6 */
 .rawdata-banner {
   background: var(--panel);

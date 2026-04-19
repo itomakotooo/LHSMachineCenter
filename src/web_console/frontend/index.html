@@ -287,15 +287,11 @@
           <!-- Left column: machine catalog master + batch action bar + progress -->
           <aside class="manage-left">
 
-            <!-- Batch action bar (sticky sub-header) — step 3 moves full
-                 sampling controls here. For step 1 we keep the existing
-                 sampling-panel in place below. -->
-            <div id="batchActionBar" class="batch-action-bar hidden" data-step="1-placeholder"></div>
-
-            <section class="panel sampling-panel">
-              <h2 data-i18n="panelSampling">采样选中机台</h2>
-              <div class="sampling-controls">
-              <span id="sampleSelectedCount" class="muted"></span>
+            <!-- Batch action bar (sticky sub-header). Visible when focus
+                 OR multi-select is non-empty. Acts on the effective set
+                 (focused machine, or all multi-selected). -->
+            <div id="batchActionBar" class="batch-action-bar hidden">
+              <span id="sampleSelectedCount" class="batch-count-label"></span>
               <label><span>Mode</span>
                 <select id="sampleMode">
                   <option value="1">1</option>
@@ -327,19 +323,26 @@
               <button id="sampleStartBtn" class="primary-btn" disabled data-i18n="btnSampleStart">开始采样</button>
               <button id="autotuneBtn" class="secondary-btn" disabled data-i18n="btnAutoTune">⚙ 调参</button>
               <button id="batchGenerateBtn" class="secondary-btn" disabled title="从已缓存的 rawdata 批量重新生成 report（analyzer 代码升级后用）" data-i18n="btnBatchGenerate">⟳ 批量生成 Report</button>
+              <button id="batchDeleteRawdataBtn" class="danger-btn" disabled title="删除所选机台当前 mode 的 rawdata chunks（destructive）" data-i18n="btnBatchDeleteRawdata">🗑 删 rawdata</button>
               <button id="sampleCancelBtn" class="danger-btn hidden" data-i18n="btnBatchCancel">停止</button>
             </div>
-            <div id="sampleHint" class="muted sample-hint"></div>
-            <div id="sampleProgressPanel" class="sample-progress hidden">
-              <div id="sampleProgressMeta" class="meta"></div>
-              <div id="sampleProgressLog" class="sample-log"></div>
+
+            <!-- Non-sticky secondary area: hint + progress logs.
+                 Visible only while a sampling / batch-gen / autotune is
+                 in flight. Visibility is controlled by existing JS — no
+                 panel wrapper here, so empty state takes zero height. -->
+            <div id="batchActionExtras" class="batch-action-extras">
+              <div id="sampleHint" class="muted sample-hint"></div>
+              <div id="sampleProgressPanel" class="sample-progress hidden">
+                <div id="sampleProgressMeta" class="meta"></div>
+                <div id="sampleProgressLog" class="sample-log"></div>
+              </div>
+              <div id="batchGenerateProgressPanel" class="batch-gen-progress hidden">
+                <div id="batchGenerateProgressMeta" class="meta"></div>
+                <div id="batchGenerateProgressLog" class="sample-log"></div>
+              </div>
+              <div id="autotuneMeta" class="pre compact hidden">No auto tune run yet.</div>
             </div>
-            <div id="batchGenerateProgressPanel" class="batch-gen-progress hidden">
-              <div id="batchGenerateProgressMeta" class="meta"></div>
-              <div id="batchGenerateProgressLog" class="sample-log"></div>
-            </div>
-            <div id="autotuneMeta" class="pre compact hidden">No auto tune run yet.</div>
-          </section>
 
             <section class="panel machine-catalog">
               <h2 data-i18n="panelMachineCatalog">机台目录</h2>

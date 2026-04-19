@@ -373,20 +373,18 @@ function updateActionStates() {
   const saveModelBtn = byId("saveModelCfgBtn");
   if (saveModelBtn) saveModelBtn.disabled = localBusy || serverBusy;
 
-  // Autotune moved to 采样选中机台 panel on the manage tab. It operates
-  // on the catalog-selected machines (state.runFilterMachines), not on
-  // the old sidebar machineSelect. Disabled if no machine selected.
+  // Batch-bar buttons act on the effective selection (focus OR multi).
   const autotuneBtn = byId("autotuneBtn");
-  const hasSelection = state.runFilterMachines && state.runFilterMachines.size > 0;
+  const hasSelection = _effectiveSelectionSize() > 0;
   if (autotuneBtn) {
     autotuneBtn.disabled = localBusy || serverBusy || anyRunRunning || !hasSelection;
     autotuneBtn.textContent = state.autoTuneRunning ? fmt("btnAutoTuneBusy") : fmt("btnAutoTune");
   }
 
   // Batch Generate Report: rebuild reports from cached rawdata across
-  // every catalog-selected machine for the current sampleMode. Disabled
-  // when no selection / a run is already active / another batch is
-  // tracked in state.batchGenerateId.
+  // every effective-selected machine for the current sampleMode.
+  // Disabled when no selection / a run is already active / another
+  // batch is tracked in state.batchGenerateId.
   const batchGenBtn = byId("batchGenerateBtn");
   if (batchGenBtn) {
     const batchActive = Boolean(state.batchGenerateId);
@@ -399,6 +397,14 @@ function updateActionStates() {
           total: state.batchGenerateProgress?.total ?? 0,
         })
       : fmt("btnBatchGenerate");
+  }
+
+  // Delete rawdata (new step-3 button). Destructive — always requires
+  // selection + no concurrent ops. Does NOT depend on batchActive
+  // because the ops mutex serializes it anyway on the server side.
+  const deleteRawBtn = byId("batchDeleteRawdataBtn");
+  if (deleteRawBtn) {
+    deleteRawBtn.disabled = localBusy || serverBusy || anyRunRunning || !hasSelection;
   }
 
   // Interpretation can run on any run that produced a valid summary
@@ -931,6 +937,19 @@ function _initCatalogDelegation() {
   });
 }
 
+// Effective selection for batch-bar actions (sampling / autotune /
+// batch-generate / delete-rawdata): focused machine takes priority (1
+// item), otherwise all multi-selected machines. Returns [] when nothing
+// is selected — batch bar stays hidden, all its buttons disabled.
+function _effectiveSelectedMachines() {
+  if (state.focusedMachine) return [state.focusedMachine];
+  return [...state.runFilterMachines];
+}
+function _effectiveSelectionSize() {
+  if (state.focusedMachine) return 1;
+  return state.runFilterMachines.size;
+}
+
 // Detail pane switch: picks which of the right-column sections to show
 // based on state.focusedMachine + state.runFilterMachines. Step 1 only
 // wires container visibility + delegates to existing render functions
@@ -1376,11 +1395,26 @@ function updateSampleHint() {
   const countEl = byId("sampleSelectedCount");
   const btn = byId("sampleStartBtn");
   const hint = byId("sampleHint");
+  const bar = byId("batchActionBar");
   const mode = parseInt(byId("sampleMode")?.value || "2");
   const ciSel = byId("sampleCi");
-  const n = state.runFilterMachines.size;
+  const effective = _effectiveSelectedMachines();
+  const n = effective.length;
 
-  if (countEl) countEl.textContent = n ? `已选 ${n} 台` : "未选机台";
+  // Batch bar visibility: show whenever there IS a selection (focus OR
+  // multi). Hidden on zero selection — the fleet overview fills the
+  // right pane and no batch action applies.
+  if (bar) bar.classList.toggle("hidden", n === 0);
+
+  if (countEl) {
+    if (state.focusedMachine) {
+      countEl.textContent = `聚焦 ${state.focusedMachine}`;
+    } else if (n > 0) {
+      countEl.textContent = `已选 ${n} 台`;
+    } else {
+      countEl.textContent = "";
+    }
+  }
 
   // Mode 2/5 can't use CI-based stopping (RTP high-volatility makes
   // the halfwidth unreliable). Auto-select "指定采样次数" and lock
@@ -1421,10 +1455,10 @@ function updateSampleHint() {
       lines.push(`目标 ±${ci}pp 精度，上限 10M spins`);
     }
     // Show whether the upcoming 开始采样 will use tuned params (from
-    // a previous 调参 click on the first selected machine + this mode)
+    // a previous 调参 click on the first effective machine + this mode)
     // or the hardcoded preset (robot_count=20, batch_concurrency=2).
     if (n > 0) {
-      const firstMachine = [...state.runFilterMachines][0];
+      const firstMachine = effective[0];
       const tuned = state.tunedSamplingParams[`${firstMachine}|${mode}`];
       if (tuned) {
         lines.push(
@@ -1461,7 +1495,9 @@ async function startSampling() {
   state.clientEvents = [];
   state.itemStartTimes = {};
   state.batchStartedAt = Date.now();
-  const selected = [...state.runFilterMachines];
+  // Effective set: focused machine (single) OR multi-selected (all).
+  // Focus and multi are mutually exclusive (see click model).
+  const selected = _effectiveSelectedMachines();
   if (!selected.length) { if (btn) btn.disabled = false; return; }
   const mode = parseInt(byId("sampleMode")?.value || "2");
   const ciRaw = byId("sampleCi")?.value || "0.5";
@@ -3877,11 +3913,11 @@ async function refreshCache() {
 
 async function runAutoTune() {
   if (state.autoTuneRunning) return;
-  // Pick the first catalog-selected machine for tuning. Different
+  // Pick the first effective-selected machine for tuning. Different
   // machines have different optimal (robot_count, concurrency); we
   // apply the tuned values to the WHOLE batch as a pragmatic
   // simplification — tuning per-machine is N × autotune wall time.
-  const selected = [...state.runFilterMachines];
+  const selected = _effectiveSelectedMachines();
   if (!selected.length) {
     alert(fmt("autotuneNeedsMachine"));
     return;
@@ -4363,10 +4399,10 @@ function bindEvents() {
   });
 
   // Batch Generate Report: kick off a sequential rebuild for every
-  // selected machine at the current sampleMode. Progress polls the
-  // batch endpoint every 1s while in flight.
+  // effective-selected machine at the current sampleMode. Progress
+  // polls the batch endpoint every 1s while in flight.
   byId("batchGenerateBtn")?.addEventListener("click", async () => {
-    const selected = [...(state.runFilterMachines || [])];
+    const selected = _effectiveSelectedMachines();
     if (!selected.length) {
       alert(fmt("batchGenerateNoSelection"));
       return;
@@ -4398,6 +4434,74 @@ function bindEvents() {
       if (meta) meta.textContent = fmt("batchGenerateFailed", { error: String(err.message || err) });
       if (panel) setTimeout(() => panel.classList.add("hidden"), 5000);
     }
+  });
+
+  // Delete rawdata: destructive batch action (new step 3). For the
+  // effective-selected machines at the current sampleMode, hit
+  // DELETE /api/rawdata/{m}?mode=N per machine. Surfaces per-item
+  // success/fail in batchGenerateProgressPanel (reused — it's the
+  // natural spot for batch op logs in the left column).
+  byId("batchDeleteRawdataBtn")?.addEventListener("click", async () => {
+    const selected = _effectiveSelectedMachines();
+    if (!selected.length) return;
+    const mode = Number(byId("sampleMode")?.value || 1);
+    const confirmMsg = selected.length === 1
+      ? `删除 ${selected[0]} mode ${mode} 的 rawdata chunks？此操作不可撤销。`
+      : `删除 ${selected.length} 台机台 mode ${mode} 的 rawdata chunks？此操作不可撤销。`;
+    if (!confirm(confirmMsg)) return;
+
+    const panel = byId("batchGenerateProgressPanel");
+    const meta = byId("batchGenerateProgressMeta");
+    const log = byId("batchGenerateProgressLog");
+    if (panel) panel.classList.remove("hidden");
+    if (meta) meta.textContent = `删除 rawdata 中... (0 / ${selected.length})`;
+    if (log) log.innerHTML = "";
+
+    let done = 0;
+    let failed = 0;
+    let deletedChunks = 0;
+    for (const machine of selected) {
+      try {
+        const resp = await fetch(
+          `/api/rawdata/${encodeURIComponent(machine)}?mode=${mode}`,
+          { method: "DELETE" },
+        );
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          throw new Error(body.detail || `HTTP ${resp.status}`);
+        }
+        const body = await resp.json();
+        deletedChunks += Number(body.deleted_chunks || 0);
+        done += 1;
+        if (log) {
+          const row = document.createElement("div");
+          row.className = "sample-log-row";
+          row.textContent = `✓ ${machine} mode ${mode}: 删除 ${body.deleted_chunks || 0} chunks`;
+          log.appendChild(row);
+        }
+      } catch (err) {
+        failed += 1;
+        if (log) {
+          const row = document.createElement("div");
+          row.className = "sample-log-row danger";
+          row.textContent = `✗ ${machine} mode ${mode}: ${String(err.message || err)}`;
+          log.appendChild(row);
+        }
+      }
+      if (meta) meta.textContent = `删除 rawdata 中... (${done + failed} / ${selected.length})`;
+    }
+    if (meta) {
+      meta.textContent = `删除完成：${done} 成功 / ${failed} 失败 · 共删 ${deletedChunks} chunks`;
+    }
+    // Refresh caches/machines-summary so the catalog cards reflect
+    // the now-empty rawdata.
+    try {
+      const mSummary = await apiGet("/api/machines/summary");
+      state.machinesSummary = mSummary;
+      renderMachineCatalog();
+      renderFleetOverview();
+    } catch (_) {}
+    try { await refreshCache(); } catch (_) {}
   });
 
   // --- batch selection ---
