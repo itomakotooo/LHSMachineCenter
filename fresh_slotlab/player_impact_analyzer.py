@@ -3141,6 +3141,16 @@ def main() -> int:
         # on the first resume call).
         if not chunk_files and not resume_mode:
             raise SystemExit(f"--from-cache: no chunk_*.json files found in {cache_read_dir}")
+        # Respect --max-chunks for --from-cache just like for online
+        # sampling. Without this, a dev-time batch pass over cached
+        # machines with 50+ chunks (M273 generate-report baseline)
+        # would always process the full cache even when the caller
+        # only needs a single-chunk smoke-quality report. Default
+        # max-chunks is high (999) so prod/baseline paths are
+        # unaffected; batch_generate_reports.py now passes a small
+        # cap (default 1) for dev sweeps.
+        if not resume_mode and args.max_chunks > 0:
+            chunk_files = chunk_files[: args.max_chunks]
         if not resume_mode:
             stop_reason = "from_cache_complete"
         max_existing_idx = 0

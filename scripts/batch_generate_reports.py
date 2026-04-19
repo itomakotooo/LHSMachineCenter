@@ -60,6 +60,7 @@ def _run_in_pool_worker(job: dict) -> dict:
     chunk_dir = job["chunk_dir"]
     output_dir = Path(job["output_dir"])
     bet = job["bet"]
+    max_chunks = job["max_chunks"]
 
     output_dir.mkdir(parents=True, exist_ok=True)
     argv = [
@@ -69,7 +70,7 @@ def _run_in_pool_worker(job: dict) -> dict:
         "--bet", str(bet),
         "--from-cache", str(chunk_dir),
         "--output-dir", str(output_dir),
-        "--max-chunks", "999",
+        "--max-chunks", str(max_chunks),
     ]
     orig_argv = sys.argv
     sys.argv = argv
@@ -130,7 +131,7 @@ def find_machine_chunks(rawdata_dir: Path) -> list[tuple[str, int, Path]]:
     return results
 
 
-def _build_pool_jobs(all_chunks, reports_root: Path, force: bool) -> list[dict]:
+def _build_pool_jobs(all_chunks, reports_root: Path, force: bool, max_chunks: int) -> list[dict]:
     """Pre-compute per-job context and filter out skipped jobs."""
     from datetime import datetime, timezone
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -161,6 +162,7 @@ def _build_pool_jobs(all_chunks, reports_root: Path, force: bool) -> list[dict]:
             "chunk_dir": str(chunk_dir),
             "output_dir": str(output_dir),
             "bet": bet,
+            "max_chunks": max_chunks,
         })
     return jobs
 
@@ -175,6 +177,17 @@ def main() -> None:
                         help="Regenerate even if reports already exist")
     parser.add_argument("--rawdata-dir", type=Path, default=RAWDATA)
     parser.add_argument("--reports-root", type=Path, default=REPORTS_ROOT)
+    parser.add_argument(
+        "--max-chunks-per-mode", type=int, default=1,
+        help=(
+            "Cap on chunks consumed per (machine, mode). Default 1 — "
+            "the dev-time sweet spot: one 10k-spin chunk is enough "
+            "to verify pipeline correctness + emit all new summary "
+            "fields. Pass a large value (e.g. 999) for full-data "
+            "prod/baseline regens. Prevents M273-style machines "
+            "with 51 cached chunks from dominating fleet runtime."
+        ),
+    )
     args = parser.parse_args()
 
     all_chunks = find_machine_chunks(args.rawdata_dir)
@@ -193,6 +206,7 @@ def main() -> None:
     print(f"=== Batch Report Generator ===")
     print(f"Machines: {len(all_chunks)} machine-modes")
     print(f"Concurrency: {args.concurrency} (pool, in-process)")
+    print(f"Max chunks per (machine, mode): {args.max_chunks_per_mode}")
     print()
 
     results = []
@@ -201,7 +215,7 @@ def main() -> None:
     # multiprocessing.Pool with pre-imported analyzer: each worker calls
     # analyzer.main() directly, bypassing subprocess + interpreter +
     # import cost per job.
-    jobs = _build_pool_jobs(all_chunks, args.reports_root, args.force)
+    jobs = _build_pool_jobs(all_chunks, args.reports_root, args.force, args.max_chunks_per_mode)
     # Report skips upfront (no worker cost for these)
     runnable = []
     for j in jobs:
