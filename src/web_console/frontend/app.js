@@ -975,8 +975,9 @@ function renderDetailPane() {
   if (focused) {
     show(detail);
     try { showMachineDetail(focused); } catch (_) {}
-    try { showVersionHistory(focused); } catch (_) {}
-    // compare panel only shown when user picks 2 versions; keep hidden.
+    // Reports list is inside the rwtree inside machineDetailPanel now
+    // (step 4) — legacy versionHistoryPanel stays hidden. Compare
+    // panel only fires when user picks 2 versions via the tree.
     return;
   }
   if (multiSize > 0) {
@@ -1042,46 +1043,240 @@ function showMachineDetail(machineName) {
   panel.classList.remove("hidden");
   byId("machineDetailTitle").textContent = `${machineName} — ${m.category || "?"}`;
 
-  const logic = (m.logicClassNames || []).join(", ") || "—";
-  const configMd5 = m.configSummaryMd5 ? m.configSummaryMd5.slice(0, 12) + "…" : "—";
-  const codeMd5 = m.codeSummaryMd5 ? m.codeSummaryMd5.slice(0, 12) + "…" : "—";
-
-  // Per-mode metrics from summary
-  const sm = ((state.machinesSummary || {}).machines || {})[machineName] || {};
-  const modes = Object.keys(sm).sort((a, b) => Number(a) - Number(b));
-  let metricsHtml = "";
-  if (modes.length) {
-    metricsHtml = `<table class="drilldown-table detail-metrics-table">
-      <thead><tr><th>Mode</th><th>RTP</th><th>CI\u00b1</th><th>Spins</th><th>${fmt("thVolatility")}</th><th>${fmt("thMechanics")}</th></tr></thead>
-      <tbody>${modes.map((mode) => {
-        const d = sm[mode];
-        const vc = VOL_COLORS[d.volatility_class] || "#888";
-        return `<tr>
-          <td>m${mode}</td>
-          <td>${d.rtp_pct != null ? d.rtp_pct.toFixed(2) + "%" : "—"}</td>
-          <td>${d.ci_halfwidth_pp != null ? "\u00b1" + d.ci_halfwidth_pp.toFixed(2) : "—"}</td>
-          <td>${d.total_spins ? Number(d.total_spins).toLocaleString() : "—"}</td>
-          <td style="color:${vc}">${d.volatility_class || "—"} ${d.volatility_percentile != null ? "P" + d.volatility_percentile : ""}</td>
-          <td>${(d.mechanics || []).map((mk) => MECH_ICONS[mk] || mk).join(" ") || "—"}</td>
-        </tr>`;
-      }).join("")}</tbody>
-    </table>`;
-  } else {
-    metricsHtml = `<div class="muted">${fmt("noVersions")}</div>`;
-  }
+  const logicList = m.logicClassNames || [];
+  const logicShort = logicList.length <= 3
+    ? (logicList.join(", ") || "—")
+    : logicList.slice(0, 3).join(", ") + ` · +${logicList.length - 3}`;
+  const configMd5 = m.configSummaryMd5 ? m.configSummaryMd5.slice(0, 10) + "…" : "—";
+  const codeMd5 = m.codeSummaryMd5 ? m.codeSummaryMd5.slice(0, 10) + "…" : "—";
+  const logicTitle = logicList.join(", ");
 
   byId("machineDetailBody").innerHTML = `
     <div class="detail-meta">
-      <div><span class="detail-label">${fmt("detailLogicClasses")}</span> <code>${logic}</code></div>
+      <div title="${logicTitle}"><span class="detail-label">${fmt("detailLogicClasses")}</span> <code>${logicShort}</code></div>
       <div><span class="detail-label">${fmt("detailConfigMd5")}</span> <code>${configMd5}</code></div>
       <div><span class="detail-label">${fmt("detailCodeMd5")}</span> <code>${codeMd5}</code></div>
       <div><span class="detail-label">${fmt("detailReports")}</span> ${m.report_count || 0}</div>
     </div>
-    ${metricsHtml}
-    <div id="rawdataSection" class="rawdata-section"><div class="muted">加载本地 rawdata 状态…</div></div>`;
+    <div id="rwtree" class="rwtree"><div class="muted">加载 rawdata × report 树…</div></div>`;
 
-  // Load rawdata status async.
-  _loadRawdataSection(machineName);
+  // Load + render the rawdata × report tree async.
+  renderRawdataReportTree(machineName);
+}
+
+// ── Rawdata × Report tree (step 4) ─────────────────────────────────
+// Replaces the old stacked layout (per-mode rawdata rows + separate
+// versionHistoryPanel). Renders a 4-column grid (mode 1/2/5/7); each
+// column shows rawdata stats + the report versions derived from that
+// rawdata. Report row expanded by default = the one with smallest CI.
+async function renderRawdataReportTree(machineName) {
+  const container = byId("rwtree");
+  if (!container) return;
+
+  const mConfig = state.machines.find((x) => x.machine === machineName) || {};
+  const modes = (mConfig.modes && mConfig.modes.length) ? mConfig.modes : [1, 2, 5, 7];
+
+  // Parallel fetch rawdata (single call, returns all modes) + reports
+  // per-mode. Failures degrade to "无数据" rather than aborting.
+  let rawdataModes = {};
+  try {
+    const data = await apiGet(`/api/rawdata/${encodeURIComponent(machineName)}`);
+    rawdataModes = data.modes || {};
+  } catch (_) { /* fall-through with empty rawdata */ }
+
+  const reportsPromises = modes.map((mode) =>
+    apiGet(`/api/reports/${encodeURIComponent(machineName)}/${mode}`).catch(() => ({ versions: [] }))
+  );
+  const reportsByMode = await Promise.all(reportsPromises);
+
+  const fInt2 = (n) => Number(n || 0).toLocaleString();
+  const fMb = (n) => {
+    const mb = Number(n || 0);
+    return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+  };
+
+  // Clear compare state when switching machines (tree rebuild).
+  if (state.versionHistoryMachine !== machineName) {
+    state.compareSelected = new Set();
+    state.versionHistoryMachine = machineName;
+  }
+
+  container.innerHTML = modes.map((mode, i) => {
+    const st = rawdataModes[String(mode)] || {};
+    const cls = st.classified || {};
+    const keptChunks = cls.kept_chunks || 0;
+    const delChunks = cls.deletable_chunks || 0;
+    const staleChunks = cls.stale_chunks || 0;
+    const totalChunks = keptChunks + delChunks + staleChunks;
+    const versions = Array.isArray(st.versions) ? st.versions : [];
+    const hasCurrent = versions.some((v) => v.is_current);
+    const hasStale = versions.some((v) => !v.is_current);
+
+    let statusTag;
+    if (totalChunks === 0) {
+      statusTag = `<span class="rwtree-status none">无</span>`;
+    } else if (hasCurrent && !hasStale) {
+      statusTag = `<span class="rwtree-status ok">✅当前</span>`;
+    } else if (hasStale && !hasCurrent) {
+      statusTag = `<span class="rwtree-status warn">⚠失配</span>`;
+    } else {
+      statusTag = `<span class="rwtree-status mixed">⚠混合</span>`;
+    }
+
+    const rawdataBlock = totalChunks === 0
+      ? `<div class="rwtree-rawdata empty"><div class="muted">无本地 rawdata</div></div>`
+      : `<div class="rwtree-rawdata">
+          <div class="rwtree-rawdata-line"><b>${totalChunks}</b> chunks · ${fMb(st.total_size_mb)}</div>
+          <div class="rwtree-rawdata-line muted">
+            kept ${keptChunks} / 可回收 ${delChunks}${staleChunks ? ` / 过期 ${staleChunks}` : ""}
+          </div>
+          <div class="rwtree-rawdata-actions">
+            <button class="small-btn primary-btn rwtree-gen-btn" data-machine="${machineName}" data-mode="${mode}" ${(keptChunks + delChunks) === 0 ? "disabled" : ""} title="用当前 analyzer 从这些 chunks 生成新 report">⟳ 生成 Report</button>
+          </div>
+        </div>`;
+
+    // Sort versions by CI ascending (smallest first); fallback by
+    // report_version reverse-alphabetical (newer first).
+    const sortedReports = [...(reportsByMode[i].versions || [])].sort((a, b) => {
+      const ca = a.achieved_halfwidth_pp;
+      const cb = b.achieved_halfwidth_pp;
+      if (ca != null && cb != null) return ca - cb;
+      if (ca != null) return -1;
+      if (cb != null) return 1;
+      return (b.report_version || "").localeCompare(a.report_version || "");
+    });
+    const bestCiVersion = sortedReports[0]?.report_version;
+
+    // Sort for display: newest first (so operator sees recent at top).
+    const displayReports = [...sortedReports].sort(
+      (a, b) => (b.report_version || "").localeCompare(a.report_version || "")
+    );
+    const reportsBlock = displayReports.length === 0
+      ? `<div class="rwtree-reports empty"><div class="muted">无 report</div></div>`
+      : `<div class="rwtree-reports">
+          <div class="rwtree-reports-head">reports (${displayReports.length})</div>
+          ${displayReports.map((v) => {
+            const rv = v.report_version || "?";
+            const rid = v.run_id || "";
+            const rtp = v.achieved_rtp_pct != null ? v.achieved_rtp_pct.toFixed(2) + "%" : "—";
+            const ci = v.achieved_halfwidth_pp != null ? "±" + v.achieved_halfwidth_pp.toFixed(2) + "pp" : "—";
+            const spins = v.total_spins != null ? fInt2(v.total_spins) : "—";
+            const quality = v.quality_label || "";
+            const ts = rv.match(/rv_(\d{8})/)?.[1] || "";
+            const tsShort = ts ? `${ts.slice(4, 6)}-${ts.slice(6, 8)}` : rv.slice(3, 11);
+            const isBest = rv === bestCiVersion;
+            const expanded = isBest ? " expanded" : "";
+            const checked = (state.compareSelected || new Set()).has(rv) ? "checked" : "";
+            return `<div class="rwtree-report${expanded}" data-rv="${rv}">
+              <div class="rwtree-report-summary">
+                <input type="checkbox" class="rwtree-compare-check" data-rv="${rv}" ${checked} title="勾选以对比版本" />
+                <span class="rwtree-report-date">${tsShort}</span>
+                <span class="rwtree-report-rtp">${rtp}</span>
+                <span class="rwtree-report-ci">${ci}</span>
+                ${isBest ? '<span class="rwtree-best-tag" title="当前最佳 CI">⭐</span>' : ''}
+              </div>
+              <div class="rwtree-report-details">
+                <div class="rwtree-kv"><span>Spins</span><span>${spins}</span></div>
+                <div class="rwtree-kv"><span>Quality</span><span>${quality || "—"}</span></div>
+                <div class="rwtree-kv"><span>版本</span><code>${rv}</code></div>
+                <div class="rwtree-report-actions">
+                  <button class="small-btn rwtree-load-btn" data-run-id="${rid}" ${rid ? "" : "disabled"}>载入调试</button>
+                </div>
+              </div>
+            </div>`;
+          }).join("")}
+        </div>`;
+
+    return `<div class="rwtree-col" data-mode="${mode}">
+      <div class="rwtree-col-head">
+        <span class="rwtree-mode-label">Mode ${mode}</span>
+        ${statusTag}
+      </div>
+      ${rawdataBlock}
+      ${reportsBlock}
+    </div>`;
+  }).join("");
+
+  // Compare bar: emits when 2+ reports selected across any mode. Reuses
+  // state.compareSelected + existing compareReports() flow.
+  let compareBar = byId("rwtreeCompareBar");
+  if (!compareBar) {
+    compareBar = document.createElement("div");
+    compareBar.id = "rwtreeCompareBar";
+    compareBar.className = "rwtree-compare-bar hidden";
+    container.parentElement.appendChild(compareBar);
+  }
+  _updateRwtreeCompareBar();
+
+  // Wire buttons + checkboxes on the freshly-rendered tree.
+  container.querySelectorAll(".rwtree-report-summary").forEach((row) => {
+    row.addEventListener("click", (e) => {
+      if (e.target.matches("input[type=checkbox]")) return;
+      row.parentElement.classList.toggle("expanded");
+    });
+  });
+  container.querySelectorAll(".rwtree-compare-check").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) state.compareSelected.add(cb.dataset.rv);
+      else state.compareSelected.delete(cb.dataset.rv);
+      _updateRwtreeCompareBar();
+    });
+  });
+  container.querySelectorAll(".rwtree-gen-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const m = btn.dataset.machine, mo = btn.dataset.mode;
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "生成中… (后台)";
+      try {
+        await apiPost(
+          `/api/rawdata/${encodeURIComponent(m)}/generate-report`,
+          { mode: Number(mo), async: true },
+        );
+        btn.textContent = "⏳ 已入队";
+        await refreshRunList(false);
+        setTimeout(() => renderRawdataReportTree(m), 3000);
+      } catch (err) {
+        alert(`生成 Report 失败: ${String(err && err.message ? err.message : err)}`);
+        btn.textContent = orig;
+        btn.disabled = false;
+      }
+    });
+  });
+  container.querySelectorAll(".rwtree-load-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const rid = btn.dataset.runId;
+      if (!rid) return;
+      state.currentRunId = rid;
+      switchTab("debug");
+      await refreshCurrentRun();
+    });
+  });
+}
+
+function _updateRwtreeCompareBar() {
+  const bar = byId("rwtreeCompareBar");
+  if (!bar) return;
+  const n = (state.compareSelected || new Set()).size;
+  if (n < 2) {
+    bar.classList.add("hidden");
+    bar.innerHTML = "";
+    return;
+  }
+  bar.classList.remove("hidden");
+  bar.innerHTML = `
+    <span>已选 ${n} 个 report</span>
+    <button class="primary-btn small-btn" id="rwtreeCompareRunBtn" ${n === 2 ? "" : "disabled"}>对比 (2/2)</button>
+    <button class="small-btn" id="rwtreeCompareClearBtn">清除</button>`;
+  byId("rwtreeCompareRunBtn")?.addEventListener("click", () => {
+    compareReports();
+  });
+  byId("rwtreeCompareClearBtn")?.addEventListener("click", () => {
+    state.compareSelected = new Set();
+    // Uncheck any rendered checkboxes without re-fetching.
+    document.querySelectorAll(".rwtree-compare-check").forEach((cb) => { cb.checked = false; });
+    _updateRwtreeCompareBar();
+  });
 }
 
 async function _loadRawdataSection(machineName) {
