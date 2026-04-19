@@ -1319,18 +1319,9 @@ function updateSampleHint() {
   }
 
   if (btn) btn.disabled = n === 0 || !!state.activeBatchId;
-  // Dev-sampling button: same gating (selection + no active batch)
-  // but independent of ops_busy since dev path reuses the same
-  // batch backend which handles mutex internally.
-  const devBtn = byId("sampleDevBtn");
-  if (devBtn) devBtn.disabled = n === 0 || !!state.activeBatchId;
 }
 
-async function startSampling(opts = {}) {
-  // opts.dev = true → fixed 10k-spin smoke sample per machine
-  // (1 chunk / 1000 × 10 robots / no CI stop). For dev / pipeline
-  // verification. Skips autotune + CI logic.
-  const dev = Boolean(opts.dev);
+async function startSampling() {
   // Double-click guard: `await apiPost` below has non-trivial latency
   // (backend runs start_batch synchronously: per-item rawdata checks
   // can take 100s of ms each for 253 machines). Without this the user
@@ -1338,7 +1329,7 @@ async function startSampling(opts = {}) {
   // a second batch that hits the per-key lock and immediately fails.
   // Disable IMMEDIATELY + hide to make it unclickable; re-enable in
   // the finally / on POST success the Cancel button replaces it.
-  const btn = byId(dev ? "sampleDevBtn" : "sampleStartBtn");
+  const btn = byId("sampleStartBtn");
   if (btn && btn.disabled) return;  // already clicked, ignore
   if (btn) btn.disabled = true;
   // Clear frozen-log flag so renderSamplingProgress can render again
@@ -1368,14 +1359,8 @@ async function startSampling(opts = {}) {
     items: [], events: [],
   });
 
-  // Build items. Dev mode: fixed small chunk so total = 10k spins
-  // in one chunk regardless of machine category. Production mode:
-  // chunk size varies by category (Collect needs larger chunks to
-  // capture at least one BCM cycle; Lock/ReSpin/FreeSpin use 2k).
+  // Build items with smart chunk size per machine (category-based initial heuristic).
   const items = selected.map((machine) => {
-    if (dev) {
-      return { machine, mode, chunk_spin_times: 1000 };
-    }
     const m = state.machines.find((x) => x.machine === machine);
     const cat = m?.category || "";
     let chunk_spin_times = 1000;
@@ -1384,28 +1369,19 @@ async function startSampling(opts = {}) {
     return { machine, mode, chunk_spin_times };
   });
 
-  // Dev mode: ignore autotune, use fixed minimal config. 1 chunk ×
-  // 1000 spin_times × 10 robots = 10k spins, returns in seconds.
-  // Production mode: honor 调参 tuned values if the operator ran
-  // autotune for the first selected machine; otherwise preset.
+  // Pick up autotune result for the first selected machine+mode if the
+  // operator ran 调参 beforehand. Otherwise fall back to the hardcoded
+  // preset (robot=20 / conc=2). Tuned values apply to the whole batch.
   const tunedKey = `${selected[0]}|${mode}`;
   const tuned = state.tunedSamplingParams[tunedKey];
-  const chunk_robot_count = dev ? 10 : (tuned ? tuned.robot_count : 20);
-  const batch_concurrency = dev ? 2 : (tuned ? tuned.batch_concurrency : 2);
+  const chunk_robot_count = tuned ? tuned.robot_count : 20;
+  const batch_concurrency = tuned ? tuned.batch_concurrency : 2;
 
-  // Dev mode: max_chunks=1 (one chunk = 10k spins, enough to verify
-  // pipeline correctness). Production mode: mode-dependent budget.
+  // Max chunks based on mode + CI. Uses the actual robot count so
+  // tuning up to e.g. robot=24 doesn't overshoot the 10M-spins cap.
   let max_chunks;
-  let target_pp = ci;
-  if (dev) {
-    max_chunks = 1;
-    // target=0.001 is the "never reached" sentinel — forces
-    // max_chunks to be the sole termination gate. Avoids the
-    // known target=999 early-stop pitfall.
-    target_pp = 0.001;
-  } else if (ci === 0) {
-    max_chunks = 20;  // fuzzy
-  } else {
+  if (ci === 0) max_chunks = 20;  // fuzzy
+  else {
     const avgChunk = items.reduce((s, i) => s + i.chunk_spin_times, 0) / items.length;
     max_chunks = Math.floor(10_000_000 / (chunk_robot_count * avgChunk));
   }
@@ -1413,13 +1389,13 @@ async function startSampling(opts = {}) {
   const payload = {
     items,
     concurrency: batch_concurrency,
-    chunk_spin_times: 1000,  // overridden per-item above
+    chunk_spin_times: 1000,  // overridden per-item below (not yet supported, needs backend update)
     chunk_robot_count,
     max_chunks,
-    target_halfwidth_pp: target_pp,
+    target_halfwidth_pp: ci,
     batch_concurrency,
-    timeout: dev ? 60 : 300,
-    auto_cleanup_cache: !dev,
+    timeout: 300,
+    auto_cleanup_cache: true,
   };
 
   pushClientEvent("submit", {});
@@ -1431,7 +1407,6 @@ async function startSampling(opts = {}) {
     updateSampleHint();
     byId("sampleCancelBtn").classList.remove("hidden");
     byId("sampleStartBtn").classList.add("hidden");
-    byId("sampleDevBtn")?.classList.add("hidden");
     pollSampling();
   } catch (e) {
     pushClientEvent("submit_failed", { error: String(e.message || e) });
@@ -1516,11 +1491,6 @@ function pollSampling() {
         if (startBtnEl) {
           startBtnEl.classList.remove("hidden");
           startBtnEl.disabled = false;
-        }
-        const devBtnEl = byId("sampleDevBtn");
-        if (devBtnEl) {
-          devBtnEl.classList.remove("hidden");
-          devBtnEl.disabled = false;
         }
         updateSampleHint();
         // Refresh catalog with new reports.
@@ -4088,7 +4058,6 @@ function bindEvents() {
   }
   // Inline sampling panel controls.
   byId("sampleStartBtn").addEventListener("click", () => startSampling());
-  byId("sampleDevBtn")?.addEventListener("click", () => startSampling({ dev: true }));
   byId("sampleCancelBtn").addEventListener("click", () => cancelSampling());
   byId("sampleMode").addEventListener("change", () => { updateSampleHint(); _saveSamplingPrefs(); });
   byId("sampleCi").addEventListener("change", () => { updateSampleHint(); _saveSamplingPrefs(); });
