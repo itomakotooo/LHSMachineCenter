@@ -4,21 +4,21 @@ This file tracks executable next steps for the current phase.
 
 ## P0 (user-blocked)
 
-- [ ] **Paytable auto-inference** — PAUSED. User said 2026-04-18
-      "除非我主动提起，不做". Do NOT propose resuming; do NOT touch
-      `scripts/infer_paytable.py`. See memory
-      `project_paytable_inference_paused.md` for technical state.
+- [ ] **Paytable multiplier inference** — PAUSED (shape shipped
+      2026-04-19). Multipliers still have 2 unfixed bugs
+      (multi-fire double-count, wild stacking rule). Do NOT propose
+      resuming; user said "除非我主动提起，不做". See memory
+      `project_paytable_inference_paused.md`.
 
-- [ ] **Fuzzy live-sampling CI-stop latent bug**. Same root cause as
-      the generate-report bug fixed in ecc5bd4. Backend sets
-      ``target_halfwidth_pp=999`` as the fuzzy sentinel
-      (app.py ~line 2735) but analyzer's stop branch fires when
-      ``session_halfwidth_pp ≤ target`` — 999 is usually satisfied
-      after chunks=2. Not observed in the wild because live sampling
-      fuzzy paths naturally have max_chunks high enough the operator
-      doesn't notice. Fix: backend passes 0.001 to analyzer + relies
-      on max_chunks solely (same pattern as generate-report). Add a
-      regression test.
+- [ ] **Fuzzy live-sampling CI-stop latent bug** (still pending —
+      now less critical since fuzzy is replaced by count-mode in
+      the sampling UI as of 00f73b8, but the backend path still
+      exists). Backend sets ``target_halfwidth_pp=999`` as the
+      fuzzy sentinel (app.py ~line 2735) but analyzer's stop
+      branch fires when ``session_halfwidth_pp ≤ target`` — 999 is
+      usually satisfied after chunks=2. Fix: backend passes 0.001
+      to analyzer + relies on max_chunks solely (same pattern as
+      ecc5bd4). Add a regression test.
 
 - [ ] Multi-server 实测: 基础设施就绪，等用户提供 test/prod 地址。
 
@@ -55,6 +55,73 @@ This file tracks executable next steps for the current phase.
       handles the rest.
 
 ## Done Recently
+
+- [x] **Paytable shape + feature chain + bucket pp + dev-decouple
+      session** (2026-04-19, 22 commits 3214653 → 00f73b8):
+      - **Paytable shape auto-inference fleet-wide** (4 commits):
+        `scripts/infer_paytable.py` rewritten for pure shape;
+        wild auto-detection multi-signal (mono-tuple +
+        substitution + grid density + tier-stem); per-pay_id
+        rich shape (symbol_set / symbol_purity /
+        wild_substitution_rate / line_id_sign /
+        position_cols_covered / confidence / notes);
+        `GET /api/paytables/{m}/mode/{n}/shape` endpoint reads
+        `configs/paytables/{m}_mode{n}.json`; UI panel on debug
+        tab. 27 tests (shape endpoint + wild inference).
+      - **Feature↔SpinType mapping robustness** (4 commits):
+        `_infer_feature_spin_type_mapping()` 4-pass (unique-count /
+        ReMarks count-compat / tied ordinal / tolerance) + sanity
+        gate (drops mapping when feature.direct_win>0 and
+        ST.total_win<=0). Fixes M102 Wheel over-eager bind + M12/
+        M15 TopDollar zero-bucket. Trigger-only feature detection
+        with chain_parent inference from SpinType co-occurrence +
+        ReMarks + BCM config fallback. Chain-detect uses stricter
+        is_paid (None → non-paid) to fix M273 sub-stream
+        mis-labeling on ceremony rounds. 13 unit tests +
+        inject-bug-revert-verify coverage.
+      - **Per-feature multiplier bucket histogram** (3 commits):
+        `feature_row.bucket_distribution` + bucket_total_spins;
+        `effective_bet_for_rtp = global_paid_bet` so per-bucket pp
+        slices global RTP and sums to feature header. Drilldown-
+        table styling consistency (purple dev cards removed,
+        trigger features absorbed into paying feature breadcrumb).
+      - **Per-feature sub-stream split by trigger chain**
+        (afcad01): single feature reached via multiple paths
+        (e.g. LockSymbolFreespin via ListRewardWheel + via
+        BuffCollectionMap) gets per-path bucket histogram + RTP
+        pp. UI renders side-by-side sub_stream table.
+      - **Collect-cycle + RTP correction panel** (cdf93f8):
+        dedicated `#collectCyclePanel` on debug tab; bonus_feature
+        (config or heuristic) + cycle_len_lower_bound + correction
+        pp; applicable/N/A tone variants. Verified across 129 BCM
+        machines × 4 modes (1 legit null for M238 mode 2 — only
+        cached mode with no BCM data).
+      - **Async generate-report + unified events + delete lock**
+        (2 commits): `POST /api/rawdata/{m}/generate-report` with
+        `async: true` spawns daemon thread; `DELETE /api/rawdata/
+        {m}` acquires ops lock (409 if busy); `GET /api/events`
+        aggregated feed; `refreshActivityStrip` polls every 1.2s;
+        auto cache-bust via `{{ASSET_HASH}}` templated from
+        app.js/pure.js mtime.
+      - **Dev/prod sampling decoupling — count mode** (3 commits,
+        last 2 = revert+rework): replaced fuzzy dropdown option
+        with "指定采样次数" + spin-count input + 总量/增量 strategy
+        toggle; `BatchRunRequest` gained `sampling_strategy:
+        "total" | "incremental"`. Unifies dev/prod — no separate
+        dev-sampling path.
+      - **Batch regen performance cap** (2 commits):
+        `_peek_chunk_spins()` 20x faster chunk metadata scan;
+        `--target-spins-per-mode 10000` picks just enough chunks;
+        analyzer `--from-cache` now respects `--max-chunks`
+        (was unbounded bug causing M273 to process all 51 chunks).
+        M273 batch regen 200s → 3s. `no_chunk` → [SKIP] not [FAIL].
+        Low-sample warning path <1000 spins.
+      - **Fleet state**: 1006 reports regenerated; 0 failures;
+        `scripts/verify_fleet_recent_work.py` returns
+        "FLEET VERIFICATION: PASS"; 138 reports with multi-path
+        sub_streams; 128/129 BCM machines resolved via config;
+        252 paytable shapes clean.
+      - 420 pytest (+21) + 132 node:test green.
 
 - [x] **A+B roadmap shipped** (2026-04-18 late, 4 commits):
       - `feat(A1): batch generate-report endpoint + UI` (bc7804d) —
