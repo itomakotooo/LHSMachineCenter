@@ -832,7 +832,9 @@ function renderMachineCatalog() {
     machines.forEach((m) => {
       const d = document.createElement("div");
       d.className = "catalog-item";
-      const isActive = state.runFilterMachines.has(m.machine);
+      const isMulti = state.runFilterMachines.has(m.machine);
+      const isFocused = state.focusedMachine === m.machine;
+      const isActive = isMulti || isFocused;
       // Don't apply heatmap bg on active cards (selection bg wins).
       if (!isActive) {
         const bg = _cardBgColor(m.machine);
@@ -841,20 +843,24 @@ function renderMachineCatalog() {
       const catColor = CATEGORY_COLORS[m.category] || "#9ca3af";
       d.style.borderLeftColor = catColor;
       if (isActive) d.classList.add("active");
+      if (isFocused) d.classList.add("focused");
       if (m.available === false) d.classList.add("unavailable");
       d.dataset.machine = m.machine;
       d.setAttribute("role", "button");
       d.setAttribute("tabindex", "0");
       const metrics = _catalogModeMetrics(m.machine);
       const reportBadge = m.report_count ? `<span class="catalog-badge" style="background:${catColor}">${m.report_count}</span>` : "";
-      // Broken-machine badge: ⚠ with tooltip listing each anomaly.
-      // Clicking the flag does nothing itself (the card click handler
-      // still toggles selection) — it's a read-only indicator.
       const issues = _machineBrokenIssues(m.machine);
       const brokenBadge = issues.length
         ? `<span class="catalog-broken" title="${issues.join(' · ').replace(/"/g, '&quot;')}">⚠</span>`
         : "";
-      d.innerHTML = `<div class="catalog-title">${m.machine}${brokenBadge}${reportBadge}</div>${metrics || `<div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`}`;
+      // Multi-select checkbox: stopPropagation in click handler so
+      // card body click still focuses. Click body = focus, click
+      // checkbox = batch multi-select (two independent affordances).
+      d.innerHTML =
+        `<input type="checkbox" class="catalog-check" title="加入批量操作" ${isMulti ? "checked" : ""}>` +
+        `<div class="catalog-title">${m.machine}${brokenBadge}${reportBadge}</div>` +
+        `${metrics || `<div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`}`;
       if (issues.length) d.classList.add("broken-machine");
       grid.appendChild(d);
     });
@@ -887,16 +893,20 @@ function _cardActiveDomSync(machine, active) {
 
 function _syncAllCardsActiveDom() {
   // After bulk state changes (focus flip, multi clear, etc.), reconcile
-  // every card's .active class in one pass. Cheap — getElementsByClassName
-  // + single iteration instead of per-card queries.
+  // every card's .active / .focused class + checkbox state in one pass.
   const cards = document.querySelectorAll(".catalog-item");
   cards.forEach((el) => {
     const m = el.dataset.machine;
     if (!m) return;
-    const active = state.focusedMachine === m || state.runFilterMachines.has(m);
+    const focused = state.focusedMachine === m;
+    const multi = state.runFilterMachines.has(m);
+    const active = focused || multi;
     if (el.classList.contains("active") !== active) {
       _cardActiveDomSync(m, active);
     }
+    el.classList.toggle("focused", focused);
+    const cb = el.querySelector(".catalog-check");
+    if (cb) cb.checked = multi;
   });
 }
 
@@ -955,11 +965,17 @@ function _initCatalogDelegation() {
     const el = e.target.closest(".catalog-item");
     if (!el || !wrap.contains(el)) return;
     const machine = el.dataset.machine;
-    const isMulti = e.ctrlKey || e.metaKey || e.shiftKey;
-    if (isMulti) {
+    // Checkbox click: multi-select toggle only, no focus change.
+    if (e.target.classList.contains("catalog-check")) {
+      e.stopPropagation();
+      _toggleMultiSelect(machine);
+      return;
+    }
+    const withModifier = e.ctrlKey || e.metaKey || e.shiftKey;
+    if (withModifier) {
       _toggleMultiSelect(machine);
     } else {
-      // Plain click: toggle focus. Clicking focused card again unfocuses.
+      // Plain card body click: toggle focus. Clicking focused card again unfocuses.
       if (state.focusedMachine === machine) {
         _clearFocus();
       } else {
@@ -1637,6 +1653,7 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
                 <div class="rwtree-kv"><span>Analyzer</span><span title="report 生成时的 analyzer 代码版本">${info.analyzer_version?.slice(0,10) || "—"} <span class="muted">(${analyzerStatus === "match" ? "当前" : analyzerStatus === "outdated" ? "⚠ 过期" : "未标记"})</span></span></div>
                 <div class="rwtree-report-actions">
                   <button class="small-btn rwtree-load-btn" data-run-id="${rid}" ${rid ? "" : "disabled"}>载入调试</button>
+                  <button class="small-btn danger-btn rwtree-delete-btn" data-run-id="${rid}" data-rv="${rv}" ${rid ? "" : "disabled"} title="删除此 report 版本">🗑 删除</button>
                 </div>
               </div>
             </div>`;
@@ -1700,13 +1717,40 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
       await refreshCurrentRun();
     });
   });
+  gridEl.querySelectorAll(".rwtree-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const rid = btn.dataset.runId;
+      const rv = btn.dataset.rv;
+      if (!rid) return;
+      if (state.systemState?.operation_busy) {
+        alert("有操作进行中，请等待完成再删除。");
+        return;
+      }
+      if (!confirm(`删除 report ${rv}？此操作不可撤销。`)) return;
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "删除中…";
+      try {
+        await apiDelete(`/api/runs/${encodeURIComponent(rid)}`);
+        // Remove from compare set + re-render tree to pick up deletion.
+        state.compareSelected?.delete?.(rv);
+        await renderRawdataReportTree(machineName);
+        refreshReportMgmtBanner();  // stale count likely changed
+      } catch (err) {
+        alert("删除失败: " + (err.message || err));
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    });
+  });
 }
 
 function _updateRwtreeCompareBar() {
   const bar = byId("rwtreeCompareBar");
   if (!bar) return;
   const n = (state.compareSelected || new Map()).size;
-  if (n < 2) {
+  // Show bar on ≥1 to enable 批量删除; 对比 itself needs ≥2.
+  if (n < 1) {
     bar.classList.add("hidden");
     bar.innerHTML = "";
     return;
@@ -1714,14 +1758,46 @@ function _updateRwtreeCompareBar() {
   bar.classList.remove("hidden");
   bar.innerHTML = `
     <span>已选 ${n} 个 report</span>
-    <button class="primary-btn small-btn" id="rwtreeCompareRunBtn" ${n === 2 ? "" : "disabled"}>对比 (2/2)</button>
+    <button class="primary-btn small-btn" id="rwtreeCompareRunBtn" ${n === 2 ? "" : "disabled"} title="恰好选中 2 个 report 才能对比">对比${n === 2 ? " (2/2)" : ""}</button>
+    <button class="small-btn danger-btn" id="rwtreeBatchDeleteBtn">🗑 批量删除 (${n})</button>
     <button class="small-btn" id="rwtreeCompareClearBtn">清除</button>`;
   byId("rwtreeCompareRunBtn")?.addEventListener("click", () => {
     compareReports();
   });
+  byId("rwtreeBatchDeleteBtn")?.addEventListener("click", async () => {
+    if (state.systemState?.operation_busy) {
+      alert("有操作进行中，请等待完成再删除。");
+      return;
+    }
+    const entries = [...(state.compareSelected || new Map()).entries()];
+    if (!entries.length) return;
+    if (!confirm(`批量删除 ${entries.length} 个 report？此操作不可撤销。`)) return;
+    // Each entry: [rv, {mode}]. To delete we need the run_id; look up
+    // via the currently rendered DOM (data-run-id on the delete btn).
+    const machine = state.focusedMachine;
+    let done = 0;
+    let failed = 0;
+    for (const [rv] of entries) {
+      const btn = document.querySelector(`.rwtree-delete-btn[data-rv="${CSS.escape(rv)}"]`);
+      const rid = btn?.dataset?.runId;
+      if (!rid) { failed += 1; continue; }
+      try {
+        await apiDelete(`/api/runs/${encodeURIComponent(rid)}`);
+        done += 1;
+      } catch (_) {
+        failed += 1;
+      }
+    }
+    state.compareSelected = new Map();
+    if (machine) await renderRawdataReportTree(machine);
+    refreshReportMgmtBanner();
+    const msg = failed > 0
+      ? `批量删除: ${done} 成功 / ${failed} 失败`
+      : `批量删除完成: ${done} 个 report`;
+    alert(msg);
+  });
   byId("rwtreeCompareClearBtn")?.addEventListener("click", () => {
     state.compareSelected = new Map();
-    // Uncheck any rendered checkboxes without re-fetching.
     document.querySelectorAll(".rwtree-compare-check").forEach((cb) => { cb.checked = false; });
     _updateRwtreeCompareBar();
   });
@@ -1902,10 +1978,25 @@ function updateSampleHint() {
     if (state.focusedMachine) {
       countEl.textContent = `聚焦 ${state.focusedMachine}`;
     } else if (n > 0) {
-      countEl.textContent = `已选 ${n} 台`;
+      countEl.textContent = `批量: 已选 ${n} 台`;
     } else {
       countEl.textContent = "";
     }
+  }
+
+  // Fix 3 (2026-04-19 round 4): batch-only buttons hide in focus mode.
+  // 批量生成 Report is redundant when focused because the rwtree has
+  // per-mode 生成 Report buttons. Sampling + autotune + delete-rawdata
+  // still meaningful for single-machine (scoped to focused machine).
+  const batchGenBtn = byId("batchGenerateBtn");
+  if (batchGenBtn) {
+    if (state.focusedMachine) batchGenBtn.classList.add("hidden");
+    else batchGenBtn.classList.remove("hidden");
+  }
+  // Sampling label reflects scope: single machine vs batch.
+  const startBtn = byId("sampleStartBtn");
+  if (startBtn) {
+    startBtn.textContent = state.focusedMachine ? "▶ 开始采样 (本机)" : (n > 1 ? `▶ 批量采样 (${n})` : "▶ 开始采样");
   }
 
   // Mode 2/5 can't use CI-based stopping (RTP high-volatility makes

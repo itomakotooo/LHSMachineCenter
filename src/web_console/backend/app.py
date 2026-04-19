@@ -5318,9 +5318,24 @@ def create_app(
 
     @app.post("/api/reports/cleanup")
     def cleanup_old_reports() -> dict[str, Any]:
-        """Keep only the newest report version per machine-mode, delete older ones."""
+        """Keep only the newest report version per machine-mode, delete older ones.
+
+        Also drops the corresponding runs from the DB so the stale-count
+        banner reflects the new state. Without that step the banner still
+        read ~21 analyzer-stale even after all the stale report dirs were
+        deleted — the runs table kept the rows (user review 2026-04-19).
+        """
+        # Build reverse index: report_version → run_id for quick lookup
+        # when sweeping disk. SELECT once rather than query per version.
+        rv_to_run_id: dict[str, str] = {}
+        for row in store.list_runs(limit=100000):
+            rv = (row.get("report_version") or "").strip()
+            if rv:
+                rv_to_run_id[rv] = row.get("run_id", "")
+
         deleted = 0
         kept = 0
+        runs_deleted = 0
         for machine_dir in rr.iterdir():
             if not machine_dir.is_dir():
                 continue
@@ -5340,8 +5355,18 @@ def create_app(
                 # Keep the newest, delete the rest.
                 kept += 1
                 for old in versions[1:]:
+                    rv_name = old.name
                     shutil.rmtree(old, ignore_errors=True)
                     deleted += 1
+                    # Also drop the DB row so /api/reports/stale-count
+                    # stops counting this version.
+                    run_id = rv_to_run_id.get(rv_name)
+                    if run_id:
+                        try:
+                            if store.delete_run(run_id):
+                                runs_deleted += 1
+                        except Exception:
+                            pass
                 # Update index.json if it exists.
                 index_path = mode_dir / "index.json"
                 if index_path.exists():
@@ -5355,7 +5380,7 @@ def create_app(
                             )
                     except Exception:
                         pass
-        return {"ok": True, "deleted": deleted, "kept": kept}
+        return {"ok": True, "deleted": deleted, "kept": kept, "runs_deleted": runs_deleted}
 
     @app.get("/api/fleet/export-csv")
     def export_fleet_csv() -> Any:

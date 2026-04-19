@@ -526,6 +526,24 @@ body {
 .rwtree-analyzer-badge.stale { color: #b45309; }
 .rwtree-analyzer-badge.untagged { color: var(--ink-muted, #64748b); }
 
+/* Catalog card checkbox: multi-select affordance without losing the
+   click-body-to-focus path (fix 3 round 4, 2026-04-19). */
+.catalog-item {
+  position: relative;
+}
+.catalog-item .catalog-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  margin: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+/* Focused card: distinct accent border (vs plain multi-select green). */
+.catalog-item.focused {
+  box-shadow: 0 0 0 2px var(--accent, #0f766e) inset;
+}
+
 /* rawdata approx RTP/CI (fix 3) */
 .rwtree-rawdata-approx {
   margin-top: 6px;
