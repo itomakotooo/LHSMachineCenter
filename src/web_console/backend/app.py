@@ -1460,6 +1460,113 @@ def _machines_summary_fingerprint(reports_root: Path) -> tuple[int, int]:
     return (total, count)
 
 
+# ── Rawdata overview cache ────────────────────────────────────────
+# Fleet-wide per-machine rawdata breakdown (kept / deletable / stale
+# bytes + total). Walking every chunk envelope is O(N_chunks) and
+# takes seconds on a large fleet; mtime-fingerprint cache makes it
+# effectively free when nothing changed. Invalidated by add/delete
+# of chunk files (mode_dir mtime bumps).
+_RAWDATA_OVERVIEW_CACHE: dict[str, dict[str, Any]] = {}
+
+
+def _rawdata_overview_fingerprint(rawdata_root: Path) -> tuple[int, int]:
+    """Aggregate mtime_ns + mode_dir count across all (machine, mode).
+    Changes when chunks are added/deleted/replaced."""
+    if not rawdata_root.is_dir():
+        return (0, 0)
+    total = 0
+    count = 0
+    for machine_dir in rawdata_root.iterdir():
+        if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
+            continue
+        for mode_dir in machine_dir.iterdir():
+            if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                continue
+            try:
+                total += mode_dir.stat().st_mtime_ns
+                count += 1
+            except OSError:
+                continue
+    return (total, count)
+
+
+def _build_rawdata_overview(
+    rawdata_root: Path,
+    machines_config: Path,
+    retention_spins: int,
+) -> dict[str, Any]:
+    """Per-machine rawdata breakdown (baseline / reclaimable / stale
+    bytes + last-sample mtime) + fleet aggregates. Cached keyed on
+    str(rawdata_root) with the mtime fingerprint above."""
+    cache_key = str(rawdata_root)
+    fp = _rawdata_overview_fingerprint(rawdata_root)
+    entry = _RAWDATA_OVERVIEW_CACHE.get(cache_key)
+    if entry and entry.get("fp") == fp and entry.get("retention") == retention_spins:
+        return entry["result"]
+
+    per_machine: list[dict[str, Any]] = []
+    total_kept = 0
+    total_del = 0
+    total_stale = 0
+    if rawdata_root.is_dir():
+        for machine_dir in sorted(rawdata_root.iterdir()):
+            if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
+                continue
+            machine = machine_dir.name
+            m_kept = m_del = m_stale = 0
+            m_kept_chunks = m_del_chunks = m_stale_chunks = 0
+            latest_mtime = 0.0
+            for mode_dir in machine_dir.iterdir():
+                if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                    continue
+                try:
+                    mode = int(mode_dir.name.split("_")[1])
+                except (IndexError, ValueError):
+                    continue
+                cls = _classify_chunks(machine, mode, rawdata_root, machines_config, retention_spins)
+                for kind, sink_key in (("kept", "m_kept"), ("deletable", "m_del"), ("stale", "m_stale")):
+                    for entry_d in cls[kind]:
+                        try:
+                            sz = Path(entry_d["path"]).stat().st_size
+                        except OSError:
+                            sz = 0
+                        if sink_key == "m_kept":
+                            m_kept += sz; m_kept_chunks += 1
+                        elif sink_key == "m_del":
+                            m_del += sz; m_del_chunks += 1
+                        else:
+                            m_stale += sz; m_stale_chunks += 1
+                        if entry_d["mtime"] > latest_mtime:
+                            latest_mtime = entry_d["mtime"]
+            if (m_kept + m_del + m_stale) == 0:
+                continue
+            per_machine.append({
+                "machine": machine,
+                "kept_bytes": m_kept,
+                "deletable_bytes": m_del,
+                "stale_bytes": m_stale,
+                "kept_chunks": m_kept_chunks,
+                "deletable_chunks": m_del_chunks,
+                "stale_chunks": m_stale_chunks,
+                "last_sample_mtime": latest_mtime,
+            })
+            total_kept += m_kept
+            total_del += m_del
+            total_stale += m_stale
+    result = {
+        "total_bytes": total_kept + total_del + total_stale,
+        "baseline_bytes": total_kept,
+        "deletable_bytes": total_del,
+        "stale_bytes": total_stale,
+        "reclaimable_bytes": total_del + total_stale,
+        "per_machine": per_machine,
+    }
+    _RAWDATA_OVERVIEW_CACHE[cache_key] = {
+        "fp": fp, "retention": retention_spins, "result": result,
+    }
+    return result
+
+
 def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
     """Scan reports dir, pick best-CI report per machine-mode, return summary."""
     import math
@@ -3934,6 +4041,16 @@ def create_app(
     @app.get("/api/disk-space")
     def disk_space() -> dict[str, Any]:
         return _get_disk_space_info(rr)
+
+    @app.get("/api/rawdata/overview")
+    def rawdata_overview() -> dict[str, Any]:
+        """Fleet-wide rawdata breakdown for the master/detail dashboard
+        banner + the drill-down table. Returns kept/deletable/stale
+        bytes per machine + totals. Cached with an mtime fingerprint
+        across mode dirs so the operator-visible banner stays cheap
+        to refresh."""
+        retention = _load_settings(settings_path)["min_retention_spins"]
+        return _build_rawdata_overview(rd_root, mc, retention)
 
     @app.get("/api/rawdata/{machine}")
     def get_rawdata_status(machine: str) -> dict[str, Any]:

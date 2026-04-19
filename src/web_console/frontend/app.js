@@ -39,6 +39,12 @@ const state = {
   // right pane shows fleet overview (when runFilterMachines is also
   // empty) or multi-select summary (when runFilterMachines has >0).
   focusedMachine: null,
+  // Global rawdata detail view (step 6): when true the right pane
+  // shows the fleet-wide per-machine rawdata table instead of fleet
+  // overview. Toggled by the rawdata banner's 明细 button. Takes
+  // precedence over fleet overview but NOT over focus/multi.
+  showGlobalRawdata: false,
+  rawdataOverview: null,  // cached GET /api/rawdata/overview response
   // Set of selected run_ids for batch operations.
   selectedRuns: new Set(),
   // Latest library-wide metric distributions (from
@@ -995,8 +1001,159 @@ function renderDetailPane() {
     }
     return;
   }
-  // Nothing selected → fleet overview.
+  // Nothing selected: either global rawdata detail (from banner) or fleet overview.
+  if (state.showGlobalRawdata) {
+    show(globalRaw);
+    renderRawdataGlobalTable();
+    return;
+  }
   show(fleet);
+}
+
+// ── Global rawdata banner + detail table (step 6) ───────────────────
+async function refreshRawdataOverview() {
+  try {
+    state.rawdataOverview = await apiGet("/api/rawdata/overview");
+  } catch (_) {
+    state.rawdataOverview = null;
+  }
+  renderRawdataBanner();
+  // If the global detail view is already showing, re-render the table
+  // so size/row changes after a cleanup reflect immediately.
+  if (state.showGlobalRawdata) renderRawdataGlobalTable();
+}
+
+function renderRawdataBanner() {
+  const banner = byId("rawdataOverviewBanner");
+  if (!banner) return;
+  const d = state.rawdataOverview;
+  if (!d || !d.total_bytes) {
+    banner.classList.add("hidden");
+    return;
+  }
+  banner.classList.remove("hidden");
+  const totalGb = (d.total_bytes / 1024 / 1024 / 1024).toFixed(2);
+  const baselineGb = (d.baseline_bytes / 1024 / 1024 / 1024).toFixed(2);
+  const reclaimMb = d.reclaimable_bytes / 1024 / 1024;
+  const reclaimText = reclaimMb >= 1024
+    ? (reclaimMb / 1024).toFixed(2) + " GB"
+    : reclaimMb.toFixed(1) + " MB";
+  const cleanupDisabled = d.reclaimable_bytes <= 0;
+  banner.innerHTML = `
+    <span class="rawdata-banner-main">💾 rawdata <b>${totalGb} GB</b> · baseline ${baselineGb} GB 保底 · 可回收 <b>${reclaimText}</b></span>
+    <span class="rawdata-banner-actions">
+      <button id="rawdataBannerCleanupBtn" class="small-btn danger-btn" ${cleanupDisabled ? "disabled" : ""}>一键清理 ${reclaimText}</button>
+      <button id="rawdataBannerDetailBtn" class="small-btn ${state.showGlobalRawdata ? "active" : ""}">${state.showGlobalRawdata ? "↩ 返回概览" : "明细 ▶"}</button>
+    </span>`;
+  byId("rawdataBannerCleanupBtn")?.addEventListener("click", async () => {
+    if (!confirm(`一键清理 ${reclaimText}？baseline 保底不会被删除。`)) return;
+    try {
+      await apiPost("/api/cache/cleanup", { max_delete_bytes: 0 });
+    } catch (err) {
+      alert("清理失败：" + (err.message || err));
+      return;
+    }
+    await refreshRawdataOverview();
+  });
+  byId("rawdataBannerDetailBtn")?.addEventListener("click", () => {
+    state.showGlobalRawdata = !state.showGlobalRawdata;
+    renderRawdataBanner();
+    renderDetailPane();
+  });
+}
+
+function renderRawdataGlobalTable() {
+  const wrap = byId("rawdataGlobalTableWrap");
+  if (!wrap) return;
+  const d = state.rawdataOverview;
+  if (!d) {
+    wrap.innerHTML = `<div class="muted">加载中…</div>`;
+    refreshRawdataOverview();
+    return;
+  }
+  const fMbShort = (b) => {
+    const mb = b / 1024 / 1024;
+    if (mb >= 1024) return (mb / 1024).toFixed(2) + " GB";
+    return mb >= 1 ? mb.toFixed(1) + " MB" : (b / 1024).toFixed(0) + " KB";
+  };
+  const rows = [...d.per_machine].sort((a, b) =>
+    (b.deletable_bytes + b.stale_bytes) - (a.deletable_bytes + a.stale_bytes)
+  );
+  if (!rows.length) {
+    wrap.innerHTML = `<div class="muted">无 rawdata</div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="drilldown-table rawdata-global-table">
+      <thead>
+        <tr>
+          <th>机台</th>
+          <th>保底</th>
+          <th>可回收</th>
+          <th>过期</th>
+          <th>最近采样</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((r) => {
+          const last = r.last_sample_mtime
+            ? new Date(r.last_sample_mtime * 1000).toISOString().slice(0, 10)
+            : "—";
+          const reclaim = r.deletable_bytes + r.stale_bytes;
+          return `<tr class="rawdata-global-row" data-machine="${r.machine}">
+            <td><strong>${r.machine}</strong></td>
+            <td>${fMbShort(r.kept_bytes)} <span class="muted">(${r.kept_chunks})</span></td>
+            <td class="${r.deletable_bytes > 0 ? "rawdata-reclaim" : "muted"}">
+              ${fMbShort(r.deletable_bytes)} <span class="muted">(${r.deletable_chunks})</span>
+            </td>
+            <td class="${r.stale_bytes > 0 ? "rawdata-stale" : "muted"}">
+              ${fMbShort(r.stale_bytes)} <span class="muted">(${r.stale_chunks})</span>
+            </td>
+            <td class="muted">${last}</td>
+            <td>
+              <button class="small-btn danger-btn rwglobal-del-btn" data-machine="${r.machine}" ${reclaim <= 0 ? "disabled" : ""} title="删除此机台的可回收 + 过期 chunks（保留 baseline）">🗑 ${fMbShort(reclaim)}</button>
+            </td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+  // Row click → focus machine (global detail acts as a diagnostic
+  // drilldown → user's next natural action is "go to this machine").
+  // 🗑 button stops propagation so it doesn't trigger the row-click.
+  wrap.querySelectorAll(".rawdata-global-row").forEach((tr) => {
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest(".rwglobal-del-btn")) return;
+      const m = tr.dataset.machine;
+      state.showGlobalRawdata = false;
+      _setFocusedMachine(m);
+      renderRawdataBanner();
+    });
+  });
+  wrap.querySelectorAll(".rwglobal-del-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const m = btn.dataset.machine;
+      if (state.systemState?.operation_busy) {
+        alert(`有操作进行中，请等待完成再删除。`);
+        return;
+      }
+      if (!confirm(`删除 ${m} 的可回收 + 过期 chunks？baseline 保留。`)) return;
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = "删除中…";
+      try {
+        await apiDelete(`/api/rawdata/${encodeURIComponent(m)}`);
+      } catch (err) {
+        alert(`删除失败: ${err.message || err}`);
+        btn.textContent = orig;
+        btn.disabled = false;
+        return;
+      }
+      await refreshRawdataOverview();
+    });
+  });
 }
 
 // ── Catalog Mechanic Filters ──────────────────────────────────────
@@ -4418,6 +4575,7 @@ async function loadBootstrap() {
   renderFleetOverview();
   renderDetailPane();  // initialize right-pane container visibility
   refreshStaleBanner();  // don't await — non-blocking for bootstrap
+  refreshRawdataOverview();  // populate the rawdata banner in topbar (async)
   _restoreSamplingPrefs();  // hydrate sampleMode/sampleCi from localStorage
   updateSampleHint();
   refreshDiskSpace();

@@ -452,14 +452,39 @@ body {
   margin-top: 8px;
 }
 
-/* Rawdata banner (topbar row #3): compact one-liner, wired up in step 6 */
+/* Rawdata banner (topbar row #3): compact one-liner with actions */
 .rawdata-banner {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 10px 14px;
+  padding: 8px 14px;
   font-size: 0.92em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
+.rawdata-banner-main { color: var(--ink, #1e293b); }
+.rawdata-banner-main b { color: var(--ink); font-weight: 600; }
+.rawdata-banner-actions { display: flex; gap: 6px; }
+.rawdata-banner-actions .small-btn.active {
+  background: var(--accent-bg, #e0f2fe);
+  border-color: var(--accent, #0284c7);
+}
+
+/* Global rawdata detail table */
+.rawdata-global-table {
+  width: 100%;
+}
+.rawdata-global-table tbody tr {
+  cursor: pointer;
+}
+.rawdata-global-table tbody tr:hover {
+  background: var(--bg, #f8fafc);
+}
+.rawdata-global-table .rawdata-reclaim { color: #b45309; font-weight: 500; }
+.rawdata-global-table .rawdata-stale { color: #b91c1c; font-weight: 500; }
+.rawdata-global-table .rwglobal-del-btn { white-space: nowrap; }
 
 /* System footer: collapsible maintenance / settings / legacy panels */
 .system-footer {
