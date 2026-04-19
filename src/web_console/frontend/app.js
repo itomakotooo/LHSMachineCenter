@@ -1064,11 +1064,14 @@ function showMachineDetail(machineName) {
   renderRawdataReportTree(machineName);
 }
 
-// ── Rawdata × Report tree (step 4) ─────────────────────────────────
-// Replaces the old stacked layout (per-mode rawdata rows + separate
-// versionHistoryPanel). Renders a 4-column grid (mode 1/2/5/7); each
-// column shows rawdata stats + the report versions derived from that
-// rawdata. Report row expanded by default = the one with smallest CI.
+// ── Rawdata × Report tree (step 4–5) ────────────────────────────────
+// 4-column grid (mode 1/2/5/7); each column = rawdata stats + reports
+// derived from that rawdata. Best-CI report auto-expands. Step 5 adds
+// multi-md5 support: when a machine's rawdata carries ≥2 distinct
+// (config_md5, code_md5) pairs (server upgraded since last sample),
+// a switcher dropdown appears in the header and filters the tree by
+// selected md5. "+ 跨版本对比" button enters side-by-side mode for
+// cross-version report comparison.
 async function renderRawdataReportTree(machineName) {
   const container = byId("rwtree");
   if (!container) return;
@@ -1076,18 +1079,69 @@ async function renderRawdataReportTree(machineName) {
   const mConfig = state.machines.find((x) => x.machine === machineName) || {};
   const modes = (mConfig.modes && mConfig.modes.length) ? mConfig.modes : [1, 2, 5, 7];
 
-  // Parallel fetch rawdata (single call, returns all modes) + reports
-  // per-mode. Failures degrade to "无数据" rather than aborting.
+  // Parallel fetch rawdata + reports + validate (for per-report md5).
   let rawdataModes = {};
   try {
     const data = await apiGet(`/api/rawdata/${encodeURIComponent(machineName)}`);
     rawdataModes = data.modes || {};
   } catch (_) { /* fall-through with empty rawdata */ }
 
-  const reportsPromises = modes.map((mode) =>
-    apiGet(`/api/reports/${encodeURIComponent(machineName)}/${mode}`).catch(() => ({ versions: [] }))
-  );
-  const reportsByMode = await Promise.all(reportsPromises);
+  const [reportsByMode, validateData] = await Promise.all([
+    Promise.all(modes.map((mode) =>
+      apiGet(`/api/reports/${encodeURIComponent(machineName)}/${mode}`).catch(() => ({ versions: [] }))
+    )),
+    apiGet(`/api/report-validate/${encodeURIComponent(machineName)}`).catch(() => ({ reports: [] })),
+  ]);
+
+  // Map (report_version) → (config_md5, code_md5) + md5_status so the
+  // tree can filter reports by selected md5 when the switcher is active.
+  const reportMd5Map = new Map();
+  for (const r of (validateData.reports || [])) {
+    reportMd5Map.set(r.version, {
+      config_md5: r.report_config_md5 || "",
+      code_md5: r.report_code_md5 || "",
+      md5_status: r.md5_status,
+    });
+  }
+
+  // Distinct md5s across rawdata versions + reports. If only 1, the
+  // switcher stays hidden and the tree renders normally.
+  const md5Map = new Map();  // key="cfg|code" → {config_md5, code_md5, is_current, label}
+  for (const [, st] of Object.entries(rawdataModes)) {
+    for (const v of (st.versions || [])) {
+      const key = `${v.config_md5}|${v.code_md5}`;
+      if (!md5Map.has(key)) {
+        md5Map.set(key, {
+          config_md5: v.config_md5, code_md5: v.code_md5,
+          is_current: !!v.is_current, source: "rawdata",
+        });
+      }
+    }
+  }
+  for (const r of (validateData.reports || [])) {
+    if (!r.report_config_md5) continue;
+    const key = `${r.report_config_md5}|${r.report_code_md5}`;
+    if (!md5Map.has(key)) {
+      md5Map.set(key, {
+        config_md5: r.report_config_md5, code_md5: r.report_code_md5,
+        is_current: r.md5_status === "match", source: "report-only",
+      });
+    }
+  }
+  const md5Keys = [...md5Map.keys()];
+  const multiMd5 = md5Keys.length > 1;
+
+  // Reset md5 selection when switching machines; default to current-md5
+  // if available, else first available.
+  if (state._rwtreeMachine !== machineName) {
+    state._rwtreeMachine = machineName;
+    state._rwtreeMd5Key = null;
+    state._rwtreeCrossMode = false;
+  }
+  if (!state._rwtreeMd5Key || !md5Map.has(state._rwtreeMd5Key)) {
+    const current = md5Keys.find((k) => md5Map.get(k).is_current);
+    state._rwtreeMd5Key = current || md5Keys[0] || null;
+  }
 
   const fInt2 = (n) => Number(n || 0).toLocaleString();
   const fMb = (n) => {
@@ -1101,14 +1155,103 @@ async function renderRawdataReportTree(machineName) {
     state.versionHistoryMachine = machineName;
   }
 
-  container.innerHTML = modes.map((mode, i) => {
+  // md5 switcher header — only rendered when multiple md5s exist.
+  const switcherHtml = multiMd5 ? `
+    <div class="rwtree-md5-switcher">
+      <span class="muted">rawdata 版本:</span>
+      <select id="rwtreeMd5Select">
+        ${[...md5Map.entries()].map(([k, v]) => {
+          const short = (v.config_md5 || "").slice(0, 8) || "—";
+          const tag = v.is_current ? "当前" : "过期";
+          return `<option value="${k}" ${k === state._rwtreeMd5Key ? "selected" : ""}>${short}… (${tag})</option>`;
+        }).join("")}
+      </select>
+      <button id="rwtreeCrossBtn" class="small-btn ${state._rwtreeCrossMode ? "active" : ""}" ${md5Keys.length < 2 ? "disabled" : ""}>
+        ${state._rwtreeCrossMode ? "↩ 退出跨版本对比" : "+ 跨版本对比"}
+      </button>
+    </div>
+  ` : "";
+
+  // Cross-version mode: render two side-by-side trees. Left=current
+  // md5 (or first md5 if none flagged current), right=other md5.
+  if (state._rwtreeCrossMode && md5Keys.length >= 2) {
+    const currentKey = md5Keys.find((k) => md5Map.get(k).is_current) || md5Keys[0];
+    const otherKey = md5Keys.find((k) => k !== currentKey) || md5Keys[1];
+    container.classList.add("rwtree-cross");
+    container.innerHTML = switcherHtml + `
+      <div class="rwtree-cross-pair">
+        <div class="rwtree-side" data-side="left">
+          <div class="rwtree-side-head">当前 md5 · ${md5Map.get(currentKey).config_md5.slice(0, 10)}…</div>
+          <div class="rwtree rwtree-grid" data-md5="${currentKey}"></div>
+        </div>
+        <div class="rwtree-side" data-side="right">
+          <div class="rwtree-side-head">历史 md5 · ${md5Map.get(otherKey).config_md5.slice(0, 10)}…</div>
+          <div class="rwtree rwtree-grid" data-md5="${otherKey}"></div>
+        </div>
+      </div>`;
+    container.querySelectorAll(".rwtree-grid").forEach((gridEl) => {
+      _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMode,
+                        reportMd5Map, md5Map, gridEl.dataset.md5, fInt2, fMb);
+    });
+    _wireRwtreeSwitcher(machineName);
+    _ensureCompareBar(container.parentElement);
+    _updateRwtreeCompareBar();
+    return;
+  }
+
+  // Single-md5 view (default). If no md5s at all, render empty-state.
+  container.classList.remove("rwtree-cross");
+  container.innerHTML = switcherHtml + `<div class="rwtree rwtree-grid" id="rwtreeSingleGrid"></div>`;
+  const grid = byId("rwtreeSingleGrid");
+  _renderRwtreeGrid(grid, machineName, modes, rawdataModes, reportsByMode,
+                    reportMd5Map, md5Map, state._rwtreeMd5Key, fInt2, fMb);
+  _wireRwtreeSwitcher(machineName);
+  _ensureCompareBar(container.parentElement);
+  _updateRwtreeCompareBar();
+}
+
+function _wireRwtreeSwitcher(machineName) {
+  byId("rwtreeMd5Select")?.addEventListener("change", (e) => {
+    state._rwtreeMd5Key = e.target.value;
+    renderRawdataReportTree(machineName);
+  });
+  byId("rwtreeCrossBtn")?.addEventListener("click", () => {
+    state._rwtreeCrossMode = !state._rwtreeCrossMode;
+    renderRawdataReportTree(machineName);
+  });
+}
+
+function _ensureCompareBar(parentEl) {
+  if (!parentEl) return;
+  let compareBar = byId("rwtreeCompareBar");
+  if (!compareBar) {
+    compareBar = document.createElement("div");
+    compareBar.id = "rwtreeCompareBar";
+    compareBar.className = "rwtree-compare-bar hidden";
+    parentEl.appendChild(compareBar);
+  }
+}
+
+// Core per-grid renderer. Filters rawdata + reports by selectedMd5Key.
+// Used for both the single-md5 tree and each side of the cross-version
+// parallel pair.
+function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMode,
+                           reportMd5Map, md5Map, selectedMd5Key, fInt2, fMb) {
+  const selected = selectedMd5Key ? md5Map.get(selectedMd5Key) : null;
+  const matchMd5 = (cfg, code) => !selected
+    || (cfg === selected.config_md5 && code === selected.code_md5);
+
+  gridEl.innerHTML = modes.map((mode, i) => {
     const st = rawdataModes[String(mode)] || {};
-    const cls = st.classified || {};
-    const keptChunks = cls.kept_chunks || 0;
-    const delChunks = cls.deletable_chunks || 0;
-    const staleChunks = cls.stale_chunks || 0;
+    const versionsAll = Array.isArray(st.versions) ? st.versions : [];
+    // Filter chunk versions to the selected md5; recompute classified
+    // counts from filtered entries so per-column totals only show
+    // chunks that belong to this md5.
+    const versions = versionsAll.filter((v) => matchMd5(v.config_md5, v.code_md5));
+    const keptChunks = versions.reduce((s, v) => s + (v.kept_chunks || 0), 0);
+    const delChunks = versions.reduce((s, v) => s + (v.deletable_chunks || 0), 0);
+    const staleChunks = versions.reduce((s, v) => s + (v.stale_chunks || 0), 0);
     const totalChunks = keptChunks + delChunks + staleChunks;
-    const versions = Array.isArray(st.versions) ? st.versions : [];
     const hasCurrent = versions.some((v) => v.is_current);
     const hasStale = versions.some((v) => !v.is_current);
 
@@ -1123,10 +1266,19 @@ async function renderRawdataReportTree(machineName) {
       statusTag = `<span class="rwtree-status mixed">⚠混合</span>`;
     }
 
+    // Total size: scale by fraction of chunks that match the filter
+    // (exact size-per-version isn't in the rawdata payload; this is a
+    // good-enough estimate when only 1 md5 exists, and when 2+ md5s
+    // coexist the split is usually clean enough for a display figure).
+    const totalCountAll = versionsAll.reduce(
+      (s, v) => s + (v.kept_chunks || 0) + (v.deletable_chunks || 0) + (v.stale_chunks || 0), 0);
+    const sizeMbScale = totalCountAll > 0 ? (totalChunks / totalCountAll) : 1;
+    const sizeMbShown = Number(st.total_size_mb || 0) * sizeMbScale;
+
     const rawdataBlock = totalChunks === 0
       ? `<div class="rwtree-rawdata empty"><div class="muted">无本地 rawdata</div></div>`
       : `<div class="rwtree-rawdata">
-          <div class="rwtree-rawdata-line"><b>${totalChunks}</b> chunks · ${fMb(st.total_size_mb)}</div>
+          <div class="rwtree-rawdata-line"><b>${totalChunks}</b> chunks · ${fMb(sizeMbShown)}</div>
           <div class="rwtree-rawdata-line muted">
             kept ${keptChunks} / 可回收 ${delChunks}${staleChunks ? ` / 过期 ${staleChunks}` : ""}
           </div>
@@ -1135,9 +1287,19 @@ async function renderRawdataReportTree(machineName) {
           </div>
         </div>`;
 
+    // Filter reports to those matching the selected md5 (via
+    // reportMd5Map). Reports with no md5 info ("untagged") are
+    // included only when no md5 is selected.
+    const allReports = reportsByMode[i].versions || [];
+    const filteredReports = allReports.filter((v) => {
+      const info = reportMd5Map.get(v.report_version);
+      if (!info) return !selected;  // untagged: show only in "all" view
+      return matchMd5(info.config_md5, info.code_md5);
+    });
+
     // Sort versions by CI ascending (smallest first); fallback by
     // report_version reverse-alphabetical (newer first).
-    const sortedReports = [...(reportsByMode[i].versions || [])].sort((a, b) => {
+    const sortedReports = [...filteredReports].sort((a, b) => {
       const ca = a.achieved_halfwidth_pp;
       const cb = b.achieved_halfwidth_pp;
       if (ca != null && cb != null) return ca - cb;
@@ -1197,32 +1359,23 @@ async function renderRawdataReportTree(machineName) {
     </div>`;
   }).join("");
 
-  // Compare bar: emits when 2+ reports selected across any mode. Reuses
-  // state.compareSelected + existing compareReports() flow.
-  let compareBar = byId("rwtreeCompareBar");
-  if (!compareBar) {
-    compareBar = document.createElement("div");
-    compareBar.id = "rwtreeCompareBar";
-    compareBar.className = "rwtree-compare-bar hidden";
-    container.parentElement.appendChild(compareBar);
-  }
-  _updateRwtreeCompareBar();
-
-  // Wire buttons + checkboxes on the freshly-rendered tree.
-  container.querySelectorAll(".rwtree-report-summary").forEach((row) => {
+  // Wire buttons + checkboxes on the freshly-rendered grid. Uses
+  // gridEl (not parent container) so cross-version mode's two sides
+  // attach their listeners independently.
+  gridEl.querySelectorAll(".rwtree-report-summary").forEach((row) => {
     row.addEventListener("click", (e) => {
       if (e.target.matches("input[type=checkbox]")) return;
       row.parentElement.classList.toggle("expanded");
     });
   });
-  container.querySelectorAll(".rwtree-compare-check").forEach((cb) => {
+  gridEl.querySelectorAll(".rwtree-compare-check").forEach((cb) => {
     cb.addEventListener("change", () => {
       if (cb.checked) state.compareSelected.add(cb.dataset.rv);
       else state.compareSelected.delete(cb.dataset.rv);
       _updateRwtreeCompareBar();
     });
   });
-  container.querySelectorAll(".rwtree-gen-btn").forEach((btn) => {
+  gridEl.querySelectorAll(".rwtree-gen-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const m = btn.dataset.machine, mo = btn.dataset.mode;
       const orig = btn.textContent;
@@ -1243,7 +1396,7 @@ async function renderRawdataReportTree(machineName) {
       }
     });
   });
-  container.querySelectorAll(".rwtree-load-btn").forEach((btn) => {
+  gridEl.querySelectorAll(".rwtree-load-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const rid = btn.dataset.runId;
       if (!rid) return;

@@ -634,6 +634,59 @@ body {
   box-shadow: 0 -4px 12px #0f172a14;
 }
 
+/* ── md5 switcher + cross-version (step 5) ───────────────────────── */
+.rwtree-md5-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  font-size: 0.88em;
+}
+.rwtree-md5-switcher select {
+  padding: 3px 8px;
+  font-size: 0.9em;
+}
+.rwtree-md5-switcher .small-btn.active {
+  background: var(--accent-bg, #e0f2fe);
+  border-color: var(--accent, #0284c7);
+}
+
+/* Cross-version parallel mode: two side-by-side trees. Each side has
+   its own 4-col mini-grid; at narrower widths grids stack inside. */
+.rwtree-cross .rwtree-cross-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.rwtree-cross .rwtree-side {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--bg, #f8fafc);
+}
+.rwtree-cross .rwtree-side-head {
+  font-weight: 600;
+  padding: 4px 8px 8px;
+  font-size: 0.9em;
+  color: var(--ink, #1e293b);
+  border-bottom: 1px dashed var(--line);
+  margin-bottom: 8px;
+}
+.rwtree-cross .rwtree-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));  /* 2-col inside each side */
+  gap: 6px;
+}
+@media (max-width: 1600px) {
+  .rwtree-cross .rwtree-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 1200px) {
+  .rwtree-cross .rwtree-cross-pair { grid-template-columns: 1fr; }
+}
+
 /* Narrow screens: tree reflows to 2 cols */
 @media (max-width: 1400px) {
   .rwtree { grid-template-columns: repeat(2, minmax(0, 1fr)); }
