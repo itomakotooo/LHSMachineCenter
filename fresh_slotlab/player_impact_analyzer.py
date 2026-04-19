@@ -14,7 +14,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -316,6 +316,98 @@ def _load_bcm_pairings() -> dict[str, dict[int, str]]:
         if feat:
             out[m] = {legacy_mode: feat}
     return out
+
+
+def _infer_feature_spin_type_mapping(
+    feature_times_total: dict[str, int],
+    spin_type_spins: dict[int, int] | dict[str, int],
+    spin_type_remarks_sample: dict[int, list[str]] | dict[str, list[str]],
+) -> tuple[dict[str, int], dict[int, str], set[str]]:
+    """Map upstream FeatureWin feature_name → round-level SpinType int.
+
+    The upstream API groups feature payouts by a string ``feature_name``
+    while round records carry an integer ``SpinType``. No explicit
+    mapping is exposed, so we infer it from three signals:
+
+      1. ReMarks substring: many machines encode the feature name in
+         ``ReMarks`` (e.g. M273 SpinType=136 rounds have ReMarks
+         ``"WheelSelector"``). Strongest signal — tried first.
+      2. Exact fire-count match: a feature's total Times should equal
+         the round count at its SpinType. N:N ties across same counts
+         (e.g. 3 ceremony features all firing 106 times each) get
+         assigned by sorted-ordinal AND flagged ambiguous so the UI
+         surfaces "label may be rotated among siblings."
+      3. Fire-count within ±2% tolerance for edge-round drift.
+
+    Returns ``(feature_to_spin_type, spin_type_to_feature,
+    ambiguous_mapped)``. Features with no plausible SpinType binding
+    (e.g. session-level meta features with times = robot count) are
+    left unmapped — chain-parent inference skips them.
+    """
+    st_spins = {int(k): int(v) for k, v in spin_type_spins.items()}
+    st_remarks = {
+        int(k): list(v) if isinstance(v, list) else []
+        for k, v in (spin_type_remarks_sample or {}).items()
+    }
+    spin_type_to_feature: dict[int, str] = {}
+    feature_to_spin_type: dict[str, int] = {}
+    ambiguous_mapped: set[str] = set()
+
+    feats_lower = {str(f).lower(): str(f) for f in feature_times_total}
+    # Pass 1 — ReMarks substring match (strongest).
+    for st, remarks_list in st_remarks.items():
+        if st in spin_type_to_feature:
+            continue
+        for rm in remarks_list:
+            rm_lower = rm.lower()
+            matched = [
+                feat for fl, feat in feats_lower.items() if fl in rm_lower
+            ]
+            fresh = [f for f in matched if f not in feature_to_spin_type]
+            if len(fresh) == 1:
+                feat_name = fresh[0]
+                spin_type_to_feature[st] = feat_name
+                feature_to_spin_type[feat_name] = st
+                break
+
+    # Pass 2 — exact fire-count match, grouped by count so N:N ties
+    # are detectable and assigned deterministically by sorted ordinal.
+    times_to_features: dict[int, list[str]] = defaultdict(list)
+    for feat_name, feat_times in feature_times_total.items():
+        if feat_times > 0:
+            times_to_features[int(feat_times)].append(str(feat_name))
+    times_to_spin_types: dict[int, list[int]] = defaultdict(list)
+    for st, cnt in st_spins.items():
+        times_to_spin_types[cnt].append(st)
+    for feat_times, feats in times_to_features.items():
+        fresh_feats = sorted(
+            f for f in feats if f not in feature_to_spin_type
+        )
+        fresh_sts = sorted(
+            st for st in (times_to_spin_types.get(feat_times) or [])
+            if st not in spin_type_to_feature
+        )
+        if len(fresh_feats) == len(fresh_sts) and fresh_feats:
+            for feat_name, st in zip(fresh_feats, fresh_sts):
+                spin_type_to_feature[st] = feat_name
+                feature_to_spin_type[feat_name] = st
+                if len(fresh_feats) > 1:
+                    ambiguous_mapped.add(feat_name)
+
+    # Pass 3 — ±2% tolerance for single-candidate approximate matches.
+    for feat_name, feat_times in feature_times_total.items():
+        if feat_times <= 0 or feat_name in feature_to_spin_type:
+            continue
+        candidates = [
+            (st, cnt) for st, cnt in st_spins.items()
+            if abs(cnt - feat_times) / max(feat_times, 1) <= 0.02
+            and st not in spin_type_to_feature
+        ]
+        if len(candidates) == 1:
+            st = candidates[0][0]
+            spin_type_to_feature[st] = feat_name
+            feature_to_spin_type[feat_name] = st
+    return feature_to_spin_type, spin_type_to_feature, ambiguous_mapped
 
 
 def _resolve_bonus_feature(
@@ -1725,6 +1817,20 @@ def parse_chunk_response(
     spin_type_win: dict[int, float] = defaultdict(float)
     spin_type_wins: dict[int, int] = defaultdict(int)  # count of winning rounds per type
     spin_type_paid_rounds: dict[int, int] = defaultdict(int)  # CostCredits>0 rounds per type
+    # SpinType chain transitions: spin_type_next_counts[from][to] is
+    # the count of rounds where SpinType=from was immediately followed
+    # (same robot, next round) by SpinType=to. Used in _finalize to
+    # infer trigger-only feature → paying-feature chain parents:
+    # when feature F fires at SpinType st_F, what SpinType typically
+    # comes next? That next SpinType's feature is F's chain parent.
+    spin_type_next_counts: dict[int, Counter] = defaultdict(Counter)
+    # Sample ReMarks strings per SpinType (up to 3 per type). Many
+    # machines encode the feature name verbatim in ReMarks (e.g.
+    # M273 SpinType=136 → "WheelSelector", SpinType=137 → "PreWheel").
+    # This gives us a substring signal in _finalize to disambiguate
+    # SpinType↔feature_name mapping when multiple features share the
+    # same fire count. Rounds with empty ReMarks are skipped.
+    spin_type_remarks_sample: dict[int, list[str]] = defaultdict(list)
 
     # Collect-mechanic accumulation. M272's mode 1/2 carries CollectCount
     # (per-robot monotonic counter of triggered collects) and AccCredits
@@ -1938,6 +2044,10 @@ def parse_chunk_response(
         robot_prev_cc_for_cycle = 0  # previous CC (for reset detection)
         robot_final_cc = 0  # CC at chunk end (for pending calculation)
         prev_round_pids: dict[str, Any] = {}  # previous round's PayoutIdToWinAmount (for chain trigger classification)
+        # Previous round's SpinType within this robot (reset per-robot
+        # so transition counts don't cross robot boundaries — each
+        # robot is an independent session trajectory).
+        prev_sp_type_in_robot: int | None = None
         # Reset session-level streak state at robot boundary (streaks
         # don't cross robots -- each is an independent player trajectory).
         sess_state["cur_loss_streak"] = 0
@@ -2112,6 +2222,23 @@ def parse_chunk_response(
             spin_type_win[sp_type] += win_amt
             if win_amt > 0:
                 spin_type_wins[sp_type] += 1
+            # Per-robot SpinType transition for chain-parent inference.
+            # Boundary (first round of a robot) contributes no edge.
+            if prev_sp_type_in_robot is not None:
+                spin_type_next_counts[prev_sp_type_in_robot][sp_type] += 1
+            prev_sp_type_in_robot = sp_type
+            # Sample ReMarks for this SpinType (up to 3 strings). Used
+            # downstream to match feature_name ↔ SpinType by substring
+            # when fire-count ties are ambiguous. Truncate to 120 chars
+            # to keep chunk metrics compact.
+            if len(spin_type_remarks_sample[sp_type]) < 3:
+                _rem = r.get("ReMarks")
+                if isinstance(_rem, list):
+                    _rem = ";".join(str(x) for x in _rem)
+                if isinstance(_rem, str):
+                    _rem = _rem.strip()
+                    if _rem:
+                        spin_type_remarks_sample[sp_type].append(_rem[:120])
 
             # Bonus-chain ReMarks parsing. Freespin-annotated rounds
             # accumulate into the active chain; non-annotated rounds
@@ -2432,6 +2559,13 @@ def parse_chunk_response(
         "spin_type_win": {str(k): v for k, v in spin_type_win.items()},
         "spin_type_wins": {str(k): v for k, v in spin_type_wins.items()},
         "spin_type_paid_rounds": {str(k): v for k, v in spin_type_paid_rounds.items()},
+        "spin_type_next_counts": {
+            str(k): {str(t): c for t, c in v.items()}
+            for k, v in spin_type_next_counts.items()
+        },
+        "spin_type_remarks_sample": {
+            str(k): list(v) for k, v in spin_type_remarks_sample.items()
+        },
         "upstream_feature_tally": {
             feat: {pid: dict(v) for pid, v in payouts.items()}
             for feat, payouts in feature_chunk_tally.items()
@@ -2726,6 +2860,8 @@ def main() -> int:
     payout_id_hits: dict[str, int] = defaultdict(int)
     payout_id_win: dict[str, float] = defaultdict(float)
     spin_type_spins: dict[int, int] = defaultdict(int)
+    spin_type_next_counts: dict[int, Counter] = defaultdict(Counter)
+    spin_type_remarks_sample: dict[int, list[str]] = defaultdict(list)
     spin_type_bet: dict[int, float] = defaultdict(float)
     spin_type_paid_bet: dict[int, float] = defaultdict(float)
     spin_type_win: dict[int, float] = defaultdict(float)
@@ -2939,6 +3075,18 @@ def main() -> int:
                     spin_type_wins[int(st)] += int(c)
                 for st, c in (rec.get("spin_type_paid_rounds") or {}).items():
                     spin_type_paid_rounds[int(st)] += int(c)
+                for st_from, transitions in (rec.get("spin_type_next_counts") or {}).items():
+                    if not isinstance(transitions, dict):
+                        continue
+                    for st_to, c in transitions.items():
+                        spin_type_next_counts[int(st_from)][int(st_to)] += int(c)
+                for st, rms in (rec.get("spin_type_remarks_sample") or {}).items():
+                    if not isinstance(rms, list):
+                        continue
+                    bucket = spin_type_remarks_sample[int(st)]
+                    for s in rms:
+                        if isinstance(s, str) and s and len(bucket) < 6 and s not in bucket:
+                            bucket.append(s)
                 for feat, payouts in (rec.get("upstream_feature_tally") or {}).items():
                     if not isinstance(payouts, dict):
                         continue
@@ -3357,6 +3505,18 @@ def main() -> int:
                     spin_type_wins[int(st)] += int(c)
                 for st, c in (rec.get("spin_type_paid_rounds") or {}).items():
                     spin_type_paid_rounds[int(st)] += int(c)
+                for st_from, transitions in (rec.get("spin_type_next_counts") or {}).items():
+                    if not isinstance(transitions, dict):
+                        continue
+                    for st_to, c in transitions.items():
+                        spin_type_next_counts[int(st_from)][int(st_to)] += int(c)
+                for st, rms in (rec.get("spin_type_remarks_sample") or {}).items():
+                    if not isinstance(rms, list):
+                        continue
+                    bucket = spin_type_remarks_sample[int(st)]
+                    for s in rms:
+                        if isinstance(s, str) and s and len(bucket) < 6 and s not in bucket:
+                            bucket.append(s)
                 # upstream feature tally merge: additive per (feature, payid).
                 # Older chunk records (pre-feature) lack the key -- safe via
                 # .get() default.
@@ -3897,10 +4057,25 @@ def main() -> int:
     # feature machines (M272 mode 1/2) it's the authoritative per-bonus
     # attribution the operator needs to understand where the RTP actually
     # comes from.
+    feature_times_total: dict[str, int] = {
+        str(feat): sum(int(p.get("times", 0)) for p in payouts.values())
+        for feat, payouts in upstream_feature_tally.items()
+    }
+    feature_to_spin_type, spin_type_to_feature, ambiguous_mapped = (
+        _infer_feature_spin_type_mapping(
+            feature_times_total,
+            spin_type_spins,
+            spin_type_remarks_sample,
+        )
+    )
+
     upstream_feature_rows: list[dict[str, Any]] = []
     for feat_name, payouts in upstream_feature_tally.items():
         feat_total_win = sum(p.get("win", 0.0) for p in payouts.values())
         feat_total_times = sum(int(p.get("times", 0)) for p in payouts.values())
+        # Keep full payout breakdown — UI filters what it shows but
+        # the raw tally (including the -1 "no-pay" bucket for trigger
+        # features) is useful for LLM interpretation and drill-down.
         payout_rows = []
         for pid, entry in sorted(
             payouts.items(),
@@ -3917,11 +4092,63 @@ def main() -> int:
                     ),
                 }
             )
+        # Trigger-only detection: feature fires (times > 0) but
+        # direct win credits are zero. These are ceremony/gate/
+        # selection features that route to a paying parent. We
+        # infer the parent via SpinType transition counts.
+        trigger_only = feat_total_times > 0 and feat_total_win == 0.0
+        # Chain-parent inference. Requires a resolved SpinType
+        # mapping for this feature AND observed transitions.
+        chain_parent_feature: str | None = None
+        chain_parent_share: float = 0.0
+        chain_parent_confidence: str = "none"
+        chain_parent_next_fires: int = 0
+        resolved_spin_type = feature_to_spin_type.get(feat_name)
+        if resolved_spin_type is not None:
+            transitions = spin_type_next_counts.get(resolved_spin_type) or Counter()
+            total_edges = sum(transitions.values())
+            if total_edges > 0:
+                # Most common next SpinType — that's the likely chain
+                # target (what comes after this feature in the round
+                # sequence). Skip self-loops (bonus retriggers) since
+                # they don't reveal the parent relationship.
+                ranked = sorted(
+                    (
+                        (int(st_to), int(cnt))
+                        for st_to, cnt in transitions.items()
+                        if int(st_to) != resolved_spin_type
+                    ),
+                    key=lambda kv: -kv[1],
+                )
+                if ranked:
+                    best_st, best_cnt = ranked[0]
+                    parent_feat = spin_type_to_feature.get(best_st)
+                    if parent_feat:
+                        chain_parent_feature = parent_feat
+                        chain_parent_next_fires = best_cnt
+                        chain_parent_share = best_cnt / total_edges
+                        if chain_parent_share >= 0.80:
+                            chain_parent_confidence = "high"
+                        elif chain_parent_share >= 0.50:
+                            chain_parent_confidence = "medium"
+                        else:
+                            chain_parent_confidence = "low"
+        fire_rate = feat_total_times / total_spins if total_spins > 0 else 0.0
         upstream_feature_rows.append(
             {
                 "feature_name": str(feat_name),
                 "total_win": feat_total_win,
                 "total_times": feat_total_times,
+                "fires_spins": feat_total_times,
+                "fire_rate": fire_rate,
+                "direct_win_credits": feat_total_win,
+                "trigger_only": trigger_only,
+                "resolved_spin_type": resolved_spin_type,
+                "spin_type_binding_ambiguous": feat_name in ambiguous_mapped,
+                "chain_parent_feature": chain_parent_feature,
+                "chain_parent_confidence": chain_parent_confidence,
+                "chain_parent_share": chain_parent_share,
+                "chain_parent_next_fires": chain_parent_next_fires,
                 "rtp_contribution_pp": (
                     (feat_total_win / effective_bet_for_rtp) * 100.0
                     if effective_bet_for_rtp > 0 else 0.0
@@ -3933,7 +4160,16 @@ def main() -> int:
                 "payouts": payout_rows,
             }
         )
-    upstream_feature_rows.sort(key=lambda row: -float(row["total_win"]))
+    # Sort: payers first (by total_win desc), then trigger-only
+    # features (by fires desc). Keeps the pay hierarchy readable
+    # while still surfacing ceremony features after.
+    upstream_feature_rows.sort(
+        key=lambda row: (
+            1 if row["trigger_only"] else 0,
+            -float(row["total_win"]),
+            -int(row["fires_spins"]),
+        )
+    )
     # Machines with a single "Normal" feature carry no bonus-mechanic
     # info in this block (it's a duplicate of payout_ids_top20 through a
     # different field). Flagging applicable=False lets the UI / LLM
