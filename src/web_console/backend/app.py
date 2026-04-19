@@ -881,6 +881,18 @@ class BatchRunRequest(BaseModel):
     timeout: float = Field(default=300.0, gt=0)
     target_halfwidth_pp: float = Field(default=0.5, ge=0)
     auto_cleanup_cache: bool = Field(default=True)
+    # Sampling strategy for count-based runs:
+    #   "total"       — max_chunks is the TOTAL target; if cache
+    #                   already has ≥max_chunks, analyzer's from-cache
+    #                   resume skips new sampling (current default
+    #                   behavior — safe)
+    #   "incremental" — max_chunks is the ADDITIONAL delta beyond
+    #                   existing cache; backend reads per-item cache
+    #                   size and adjusts effective max_chunks to
+    #                   (existing + requested). Useful when operator
+    #                   wants to "add another 10k spins on top of
+    #                   whatever is there".
+    sampling_strategy: str = Field(default="total")
 
 
 class AutoTuneRequest(BaseModel):
@@ -1790,6 +1802,17 @@ class BatchRunManager:
             reuse_cache = False  # kept for wire-format stability; unused
             resume_cache = cache_usable
 
+            # Strategy-aware per-item max_chunks. "total" honors the
+            # batch-level req.max_chunks as the target total (analyzer
+            # resume-from-cache stops when reached, so if cache ≥
+            # max_chunks no new sampling happens). "incremental" adds
+            # req.max_chunks on top of the existing cache so the
+            # operator gets a guaranteed delta even when cache is
+            # already large.
+            item_max_chunks = req.max_chunks
+            if req.sampling_strategy == "incremental":
+                item_max_chunks = req.max_chunks + int(raw_status.get("usable_chunks", 0) or 0)
+
             items.append({
                 "machine": it.machine,
                 "mode": it.mode,
@@ -1800,6 +1823,7 @@ class BatchRunManager:
                 "rawdata_status": raw_status,
                 "reuse_cache": reuse_cache,
                 "resume_cache": resume_cache,
+                "max_chunks": item_max_chunks,
             })
             if raw_status["mismatch_chunks"] > 0:
                 events.append({
@@ -2101,7 +2125,9 @@ class BatchRunManager:
                     chunk_spin_times=item["chunk_spin_times"],
                     chunk_robot_count=params["chunk_robot_count"],
                     batch_concurrency=params["batch_concurrency"],
-                    max_chunks=params["max_chunks"],
+                    # Per-item max_chunks (strategy-aware) falls back
+                    # to the batch-level default for back-compat.
+                    max_chunks=item.get("max_chunks") or params["max_chunks"],
                     timeout=params["timeout"],
                     target_halfwidth_pp=params["target_halfwidth_pp"],
                     from_cache_dir=from_cache_dir,

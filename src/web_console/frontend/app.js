@@ -1278,27 +1278,43 @@ function updateSampleHint() {
 
   if (countEl) countEl.textContent = n ? `已选 ${n} 台` : "未选机台";
 
-  // Mode 2/5 force fuzzy.
+  // Mode 2/5 can't use CI-based stopping (RTP high-volatility makes
+  // the halfwidth unreliable). Auto-select "指定采样次数" and lock
+  // the dropdown; operator can still tune the spin count.
   if (ciSel) {
     const isLucky = mode === 2 || mode === 5;
     if (isLucky) {
-      ciSel.value = "0";
+      ciSel.value = "count";
       ciSel.disabled = true;
     } else {
       ciSel.disabled = false;
     }
   }
 
+  // Toggle visibility of spin-count input + strategy toggle based
+  // on whether the "指定采样次数" mode is active.
+  const ciValue = byId("sampleCi")?.value || "0.5";
+  const isCount = ciValue === "count";
+  byId("sampleCountLabel")?.classList.toggle("hidden", !isCount);
+  byId("sampleStrategyLabel")?.classList.toggle("hidden", !isCount);
+
   // Hint text based on mode + whether there's a tuned param set for
   // the first selected machine + current mode.
   if (hint) {
     let lines = [];
     if (mode === 2 || mode === 5) {
-      lines.push(`Mode ${mode} 为幸运模式（RTP 高波动），仅支持 Fuzzy 采样，固定 20 chunks`);
+      lines.push(`Mode ${mode} 为幸运模式（RTP 高波动），仅支持「指定采样次数」模式`);
+    }
+    if (isCount) {
+      const spinCount = parseInt(byId("sampleSpinCount")?.value || "10000");
+      const strategy = byId("sampleStrategy")?.value || "total";
+      const strategyLabel = strategy === "total"
+        ? "总量（已有缓存够就跳过）"
+        : "增量（在现有缓存基础上再加）";
+      lines.push(`目标 ${spinCount.toLocaleString()} spins · ${strategyLabel}`);
     } else {
-      const ci = parseFloat(byId("sampleCi")?.value || "0.5");
-      if (ci === 0) lines.push(`Fuzzy 模式，固定 chunks，约 1M spins`);
-      else lines.push(`目标 ±${ci}pp 精度，上限 10M spins`);
+      const ci = parseFloat(ciValue || "0.5");
+      lines.push(`目标 ±${ci}pp 精度，上限 10M spins`);
     }
     // Show whether the upcoming 开始采样 will use tuned params (from
     // a previous 调参 click on the first selected machine + this mode)
@@ -1344,8 +1360,19 @@ async function startSampling() {
   const selected = [...state.runFilterMachines];
   if (!selected.length) { if (btn) btn.disabled = false; return; }
   const mode = parseInt(byId("sampleMode")?.value || "2");
-  let ci = parseFloat(byId("sampleCi")?.value || "0.5");
-  if (mode === 2 || mode === 5) ci = 0;
+  const ciRaw = byId("sampleCi")?.value || "0.5";
+  // "count" → operator-specified spin-count mode (replaces old Fuzzy).
+  // Mode 2/5 forces count-mode (CI unreliable for lucky modes).
+  let ciMode;
+  let ci = 0;
+  if (ciRaw === "count" || mode === 2 || mode === 5) {
+    ciMode = "count";
+  } else {
+    ciMode = "ci";
+    ci = parseFloat(ciRaw);
+  }
+  const spinCount = parseInt(byId("sampleSpinCount")?.value || "10000");
+  const samplingStrategy = byId("sampleStrategy")?.value || "total";
 
   // Surface the panel + inject "click" event IMMEDIATELY — before the
   // POST latency. Without this, the first 1-3 seconds after clicking
@@ -1377,13 +1404,21 @@ async function startSampling() {
   const chunk_robot_count = tuned ? tuned.robot_count : 20;
   const batch_concurrency = tuned ? tuned.batch_concurrency : 2;
 
-  // Max chunks based on mode + CI. Uses the actual robot count so
-  // tuning up to e.g. robot=24 doesn't overshoot the 10M-spins cap.
+  // max_chunks derivation depends on mode:
+  //   - CI mode: budget-cap at ~10M spins using chunk averages
+  //   - count mode: ceil(spinCount / (chunk_spin_times × robot_count))
+  //     using the average chunk size across selected machines
+  const avgChunk = items.reduce((s, i) => s + i.chunk_spin_times, 0) / items.length;
   let max_chunks;
-  if (ci === 0) max_chunks = 20;  // fuzzy
-  else {
-    const avgChunk = items.reduce((s, i) => s + i.chunk_spin_times, 0) / items.length;
+  let target_halfwidth_pp;
+  if (ciMode === "count") {
+    max_chunks = Math.max(1, Math.ceil(spinCount / (chunk_robot_count * avgChunk)));
+    // 0.001 is the never-reachable sentinel — makes max_chunks the
+    // sole stop gate. Avoids the target=999 early-stop pitfall.
+    target_halfwidth_pp = 0.001;
+  } else {
     max_chunks = Math.floor(10_000_000 / (chunk_robot_count * avgChunk));
+    target_halfwidth_pp = ci;
   }
 
   const payload = {
@@ -1392,10 +1427,11 @@ async function startSampling() {
     chunk_spin_times: 1000,  // overridden per-item below (not yet supported, needs backend update)
     chunk_robot_count,
     max_chunks,
-    target_halfwidth_pp: ci,
+    target_halfwidth_pp,
     batch_concurrency,
     timeout: 300,
-    auto_cleanup_cache: true,
+    auto_cleanup_cache: ciMode !== "count",
+    sampling_strategy: ciMode === "count" ? samplingStrategy : "total",
   };
 
   pushClientEvent("submit", {});
@@ -4061,6 +4097,8 @@ function bindEvents() {
   byId("sampleCancelBtn").addEventListener("click", () => cancelSampling());
   byId("sampleMode").addEventListener("change", () => { updateSampleHint(); _saveSamplingPrefs(); });
   byId("sampleCi").addEventListener("change", () => { updateSampleHint(); _saveSamplingPrefs(); });
+  byId("sampleSpinCount")?.addEventListener("input", () => updateSampleHint());
+  byId("sampleStrategy")?.addEventListener("change", () => updateSampleHint());
   byId("addServerBtn").addEventListener("click", () => addServer());
   byId("refreshMd5Btn").addEventListener("click", async () => {
     const btn = byId("refreshMd5Btn");

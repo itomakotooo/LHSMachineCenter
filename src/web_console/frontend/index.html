@@ -300,12 +300,23 @@
                 </select>
               </label>
               <label>
-                <span class="label-with-help"><span data-i18n="labelCiTarget">CI 目标</span><span class="help-dot" data-help-key="helpCiTarget" tabindex="0" role="note">i</span></span>
+                <span class="label-with-help"><span data-i18n="labelCiTarget">采样目标</span><span class="help-dot" data-help-key="helpCiTarget" tabindex="0" role="note">i</span></span>
                 <select id="sampleCi">
                   <option value="0.5">精确 ±0.5pp</option>
                   <option value="1">标准 ±1pp</option>
                   <option value="5">粗略 ±5pp</option>
-                  <option value="0">Fuzzy (无 CI 停止)</option>
+                  <option value="count">指定采样次数</option>
+                </select>
+              </label>
+              <label id="sampleCountLabel" class="hidden">
+                <span data-i18n="labelSpinCount">Spins</span>
+                <input id="sampleSpinCount" type="number" min="1000" step="1000" value="10000" />
+              </label>
+              <label id="sampleStrategyLabel" class="hidden">
+                <span data-i18n="labelSampleStrategy">策略</span>
+                <select id="sampleStrategy">
+                  <option value="total">总量（已够就跳过）</option>
+                  <option value="incremental">增量（始终新增）</option>
                 </select>
               </label>
               <button id="sampleStartBtn" class="primary-btn" disabled data-i18n="btnSampleStart">开始采样</button>
