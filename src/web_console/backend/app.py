@@ -5239,18 +5239,27 @@ def create_app(
 
     @app.get("/api/report-validate/{machine}")
     def validate_machine_reports(machine: str) -> dict[str, Any]:
-        """Check if each report's stored MD5 still matches current upstream MD5.
+        """Check each report's stored MD5 + analyzer version against current.
 
-        Outdated reports are flagged (md5_match=False). Frontend can show
-        warning badges next to them.
+        Per-report status: md5_status (match / outdated / untagged) +
+        analyzer_status (match / outdated / untagged). Frontend surfaces
+        both as small badges next to each report row.
         """
+        from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
         up_config, up_code = _get_machine_md5(machine, mc)
+        current_analyzer = compute_analyzer_version()
         if not up_config and not up_code:
-            return {"machine": machine, "unverifiable": True, "reports": []}
+            return {
+                "machine": machine, "unverifiable": True, "reports": [],
+                "current_analyzer_version": current_analyzer,
+            }
         results = []
         machine_dir = rr / machine
         if not machine_dir.is_dir():
-            return {"machine": machine, "unverifiable": False, "reports": []}
+            return {
+                "machine": machine, "unverifiable": False, "reports": [],
+                "current_analyzer_version": current_analyzer,
+            }
         for mode_dir in machine_dir.iterdir():
             if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
                 continue
@@ -5273,20 +5282,30 @@ def create_app(
                     continue
                 rpt_config = str(s.get("config_md5", ""))
                 rpt_code = str(s.get("code_md5", ""))
+                rpt_analyzer = str(s.get("analyzer_version", ""))
                 if not rpt_config and not rpt_code:
                     md5_status = "untagged"
                 elif rpt_config == up_config and rpt_code == up_code:
                     md5_status = "match"
                 else:
                     md5_status = "outdated"
+                if not rpt_analyzer:
+                    analyzer_status = "untagged"
+                elif rpt_analyzer == current_analyzer:
+                    analyzer_status = "match"
+                else:
+                    analyzer_status = "outdated"
                 results.append({
                     "mode": mode_val, "version": v.name,
                     "md5_status": md5_status,
+                    "analyzer_status": analyzer_status,
                     "report_config_md5": rpt_config, "report_code_md5": rpt_code,
+                    "report_analyzer_version": rpt_analyzer,
                 })
         return {
             "machine": machine, "unverifiable": False,
             "upstream_config_md5": up_config, "upstream_code_md5": up_code,
+            "current_analyzer_version": current_analyzer,
             "reports": results,
         }
 

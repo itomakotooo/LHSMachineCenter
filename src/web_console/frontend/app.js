@@ -47,9 +47,8 @@ const state = {
   rawdataOverview: null,  // cached GET /api/rawdata/overview response
   // Operator-tunable retention quota (spins). Loaded on boot from
   // /api/settings, persisted there. Rendered inline inside the
-  // rawdata banner's settings row (see renderRawdataBanner).
+  // rawdata banner's always-visible settings row.
   minRetentionSpins: 100000,
-  showRawdataSettings: false,
   // Set of selected run_ids for batch operations.
   // selectedRuns retired 2026-04-19 with the run-history table.
   // Kept as empty Set for back-compat with any stale reads.
@@ -1050,7 +1049,14 @@ function renderRawdataBanner() {
     : reclaimMb.toFixed(1) + " MB";
   const cleanupDisabled = d.reclaimable_bytes <= 0;
   const minRet = Number(state.minRetentionSpins || 100000);
-  const settingsRow = state.showRawdataSettings ? `
+  banner.innerHTML = `
+    <div class="rawdata-banner-row">
+      <span class="rawdata-banner-main">💾 rawdata <b>${totalGb} GB</b> · baseline ${baselineGb} GB 保底 · 可回收 <b>${reclaimText}</b></span>
+      <span class="rawdata-banner-actions">
+        <button id="rawdataBannerCleanupBtn" class="small-btn danger-btn" ${cleanupDisabled ? "disabled" : ""}>一键清理 ${reclaimText}</button>
+        <button id="rawdataBannerDetailBtn" class="small-btn ${state.showGlobalRawdata ? "active" : ""}">${state.showGlobalRawdata ? "↩ 返回概览" : "明细 ▶"}</button>
+      </span>
+    </div>
     <div class="rawdata-banner-settings">
       <label>保底 spins 阈值
         <input id="bannerMinRetention" type="number" min="0" step="10000" value="${minRet}" />
@@ -1058,18 +1064,7 @@ function renderRawdataBanner() {
       <button id="bannerSaveSettingsBtn" class="small-btn primary-btn">保存</button>
       <span id="bannerSettingsMeta" class="muted"></span>
       <span class="muted">超过这个保底量的 chunks 才会被自动清理 / UI「删除可回收」回收；保底永不删。</span>
-    </div>
-  ` : "";
-  banner.innerHTML = `
-    <div class="rawdata-banner-row">
-      <span class="rawdata-banner-main">💾 rawdata <b>${totalGb} GB</b> · baseline ${baselineGb} GB 保底 · 可回收 <b>${reclaimText}</b></span>
-      <span class="rawdata-banner-actions">
-        <button id="rawdataBannerCleanupBtn" class="small-btn danger-btn" ${cleanupDisabled ? "disabled" : ""}>一键清理 ${reclaimText}</button>
-        <button id="rawdataBannerDetailBtn" class="small-btn ${state.showGlobalRawdata ? "active" : ""}">${state.showGlobalRawdata ? "↩ 返回概览" : "明细 ▶"}</button>
-        <button id="rawdataBannerSettingsBtn" class="small-btn ${state.showRawdataSettings ? "active" : ""}" title="保底 spins 阈值设置">⚙</button>
-      </span>
-    </div>
-    ${settingsRow}`;
+    </div>`;
   byId("rawdataBannerCleanupBtn")?.addEventListener("click", async () => {
     if (!confirm(`一键清理 ${reclaimText}？baseline 保底不会被删除。`)) return;
     try {
@@ -1084,10 +1079,6 @@ function renderRawdataBanner() {
     state.showGlobalRawdata = !state.showGlobalRawdata;
     renderRawdataBanner();
     renderDetailPane();
-  });
-  byId("rawdataBannerSettingsBtn")?.addEventListener("click", () => {
-    state.showRawdataSettings = !state.showRawdataSettings;
-    renderRawdataBanner();
   });
   byId("bannerSaveSettingsBtn")?.addEventListener("click", async () => {
     const input = byId("bannerMinRetention");
@@ -1271,7 +1262,7 @@ function showMachineDetail(machineName) {
       <div title="${logicTitle}"><span class="detail-label">${fmt("detailLogicClasses")}</span> <code>${logicShort}</code></div>
       <div><span class="detail-label">${fmt("detailConfigMd5")}</span> <code>${configMd5}</code></div>
       <div><span class="detail-label">${fmt("detailCodeMd5")}</span> <code>${codeMd5}</code></div>
-      <div><span class="detail-label">${fmt("detailReports")}</span> ${m.report_count || 0}</div>
+      <div><span class="detail-label">${fmt("detailReports")}</span> <span id="detailReportCount">—</span></div>
     </div>
     <div id="rwtree" class="rwtree"><div class="muted">加载 rawdata × report 树…</div></div>`;
 
@@ -1308,14 +1299,23 @@ async function renderRawdataReportTree(machineName) {
     apiGet(`/api/report-validate/${encodeURIComponent(machineName)}`).catch(() => ({ reports: [] })),
   ]);
 
-  // Map (report_version) → (config_md5, code_md5) + md5_status so the
-  // tree can filter reports by selected md5 when the switcher is active.
+  // Fix 2: header "Report 数量" now reads the actual versions fetched,
+  // not m.report_count (which counted every versions/* dir including
+  // devcache + legacy paths → often wildly off from what the tree shows).
+  const totalReports = reportsByMode.reduce((s, r) => s + ((r.versions || []).length), 0);
+  const headerCountEl = byId("detailReportCount");
+  if (headerCountEl) headerCountEl.textContent = String(totalReports);
+
+  // Map (report_version) → md5 + analyzer status so the tree can
+  // filter reports by md5 AND show analyzer-stale badges inline.
   const reportMd5Map = new Map();
   for (const r of (validateData.reports || [])) {
     reportMd5Map.set(r.version, {
       config_md5: r.report_config_md5 || "",
       code_md5: r.report_code_md5 || "",
       md5_status: r.md5_status,
+      analyzer_status: r.analyzer_status || "untagged",
+      analyzer_version: r.report_analyzer_version || "",
     });
   }
 
@@ -1463,6 +1463,13 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
     // counts from filtered entries so per-column totals only show
     // chunks that belong to this md5.
     const versions = versionsAll.filter((v) => matchMd5(v.config_md5, v.code_md5));
+    // Fix 3: chunk COUNTS are meaningless (each chunk has different
+    // spin_times); operator tracks the retention quota in SPINS. Use
+    // kept_spins / deletable_spins / stale_spins instead.
+    const keptSpins = versions.reduce((s, v) => s + (v.kept_spins || 0), 0);
+    const delSpins = versions.reduce((s, v) => s + (v.deletable_spins || 0), 0);
+    const staleSpins = versions.reduce((s, v) => s + (v.stale_spins || 0), 0);
+    const totalSpins = keptSpins + delSpins + staleSpins;
     const keptChunks = versions.reduce((s, v) => s + (v.kept_chunks || 0), 0);
     const delChunks = versions.reduce((s, v) => s + (v.deletable_chunks || 0), 0);
     const staleChunks = versions.reduce((s, v) => s + (v.stale_chunks || 0), 0);
@@ -1481,27 +1488,6 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
       statusTag = `<span class="rwtree-status mixed">⚠混合</span>`;
     }
 
-    // Total size: scale by fraction of chunks that match the filter
-    // (exact size-per-version isn't in the rawdata payload; this is a
-    // good-enough estimate when only 1 md5 exists, and when 2+ md5s
-    // coexist the split is usually clean enough for a display figure).
-    const totalCountAll = versionsAll.reduce(
-      (s, v) => s + (v.kept_chunks || 0) + (v.deletable_chunks || 0) + (v.stale_chunks || 0), 0);
-    const sizeMbScale = totalCountAll > 0 ? (totalChunks / totalCountAll) : 1;
-    const sizeMbShown = Number(st.total_size_mb || 0) * sizeMbScale;
-
-    const rawdataBlock = totalChunks === 0
-      ? `<div class="rwtree-rawdata empty"><div class="muted">无本地 rawdata</div></div>`
-      : `<div class="rwtree-rawdata">
-          <div class="rwtree-rawdata-line"><b>${totalChunks}</b> chunks · ${fMb(sizeMbShown)}</div>
-          <div class="rwtree-rawdata-line muted">
-            kept ${keptChunks} / 可回收 ${delChunks}${staleChunks ? ` / 过期 ${staleChunks}` : ""}
-          </div>
-          <div class="rwtree-rawdata-actions">
-            <button class="small-btn primary-btn rwtree-gen-btn" data-machine="${machineName}" data-mode="${mode}" ${(keptChunks + delChunks) === 0 ? "disabled" : ""} title="用当前 analyzer 从这些 chunks 生成新 report">⟳ 生成 Report</button>
-          </div>
-        </div>`;
-
     // Filter reports to those matching the selected md5 (via
     // reportMd5Map). Reports with no md5 info ("untagged") are
     // included only when no md5 is selected.
@@ -1511,6 +1497,54 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
       if (!info) return !selected;  // untagged: show only in "all" view
       return matchMd5(info.config_md5, info.code_md5);
     });
+
+    // Fix 3: surface RTP / CI inferred from the best-CI FRESH report
+    // (analyzer+md5 both match current) as the de-facto "current
+    // sample RTP/CI". If no fresh report exists, tell the operator to
+    // ⟳ 生成 Report. Re-running analyzer would compute exactly this —
+    // for reasonable dev / prod fleets, the O(N chunks) re-parse is a
+    // user-initiated action, not something to do on every page load.
+    const freshReports = filteredReports.filter((v) => {
+      const info = reportMd5Map.get(v.report_version);
+      return info && info.md5_status === "match" && info.analyzer_status === "match";
+    });
+    const bestFresh = freshReports.slice().sort((a, b) => {
+      const ca = a.achieved_halfwidth_pp ?? Infinity;
+      const cb = b.achieved_halfwidth_pp ?? Infinity;
+      return ca - cb;
+    })[0];
+    let rawdataApprox = "";
+    if (totalChunks > 0) {
+      if (bestFresh) {
+        const rtp = bestFresh.achieved_rtp_pct != null
+          ? bestFresh.achieved_rtp_pct.toFixed(2) + "%" : "—";
+        const ci = bestFresh.achieved_halfwidth_pp != null
+          ? "±" + bestFresh.achieved_halfwidth_pp.toFixed(2) + "pp" : "—";
+        rawdataApprox = `<div class="rwtree-rawdata-approx" title="基于最新 fresh report（analyzer+md5 都匹配当前）">
+          样本 RTP <b>${rtp}</b> · CI <b>${ci}</b>
+        </div>`;
+      } else {
+        rawdataApprox = `<div class="rwtree-rawdata-approx muted" title="需要 analyzer+md5 都匹配当前的 report 才能显示 RTP/CI">
+          <i>无 fresh report — 生成后会显示 RTP/CI</i>
+        </div>`;
+      }
+    }
+
+    const rawdataBlock = totalChunks === 0
+      ? `<div class="rwtree-rawdata empty"><div class="muted">无本地 rawdata</div></div>`
+      : `<div class="rwtree-rawdata">
+          <div class="rwtree-rawdata-line">
+            <b>${fInt2(totalSpins)}</b> spins
+            <span class="muted">(${totalChunks} chunks)</span>
+          </div>
+          <div class="rwtree-rawdata-line muted">
+            保底 ${fInt2(keptSpins)} / 可回收 ${fInt2(delSpins)}${staleSpins ? ` / 过期 ${fInt2(staleSpins)}` : ""}
+          </div>
+          ${rawdataApprox}
+          <div class="rwtree-rawdata-actions">
+            <button class="small-btn primary-btn rwtree-gen-btn" data-machine="${machineName}" data-mode="${mode}" ${(keptChunks + delChunks) === 0 ? "disabled" : ""} title="用当前 analyzer 从这些 chunks 生成新 report">⟳ 生成 Report</button>
+          </div>
+        </div>`;
 
     // Sort versions by CI ascending (smallest first); fallback by
     // report_version reverse-alphabetical (newer first).
@@ -1544,17 +1578,29 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
             const isBest = rv === bestCiVersion;
             const expanded = isBest ? " expanded" : "";
             const checked = (state.compareSelected || new Map()).has(rv) ? "checked" : "";
+            // Fix 4: restore analyzer-status badge so operators can see
+            // at a glance which reports are stale vs current analyzer.
+            const info = reportMd5Map.get(rv) || {};
+            const analyzerStatus = info.analyzer_status || "untagged";
+            let analyzerBadge = "";
+            if (analyzerStatus === "outdated") {
+              analyzerBadge = `<span class="rwtree-analyzer-badge stale" title="analyzer 版本已过期（report=${info.analyzer_version?.slice(0,10) || "?"}），建议重新生成">⚠</span>`;
+            } else if (analyzerStatus === "untagged") {
+              analyzerBadge = `<span class="rwtree-analyzer-badge untagged" title="report 未标记 analyzer 版本">·</span>`;
+            }
             return `<div class="rwtree-report${expanded}" data-rv="${rv}">
               <div class="rwtree-report-summary">
                 <input type="checkbox" class="rwtree-compare-check" data-rv="${rv}" data-mode="${mode}" ${checked} title="勾选以对比版本" />
                 <span class="rwtree-report-date">${tsShort}</span>
                 <span class="rwtree-report-rtp">${rtp}</span>
                 <span class="rwtree-report-ci">${ci}</span>
+                ${analyzerBadge}
                 ${isBest ? '<span class="rwtree-best-tag" title="当前最佳 CI">⭐</span>' : ''}
               </div>
               <div class="rwtree-report-details">
                 <div class="rwtree-kv"><span>Spins</span><span>${spins}</span></div>
                 <div class="rwtree-kv"><span>Quality</span><span>${quality || "—"}</span></div>
+                <div class="rwtree-kv"><span>Analyzer</span><span>${info.analyzer_version?.slice(0,10) || "—"} <span class="muted">(${analyzerStatus === "match" ? "当前" : analyzerStatus === "outdated" ? "⚠ 过期" : "未标记"})</span></span></div>
                 <div class="rwtree-kv"><span>版本</span><code>${rv}</code></div>
                 <div class="rwtree-report-actions">
                   <button class="small-btn rwtree-load-btn" data-run-id="${rid}" ${rid ? "" : "disabled"}>载入调试</button>
@@ -3810,8 +3856,14 @@ async function refreshRunList(autoSelect = true) {
 // stale; otherwise shows analyzer-stale count (with "一键重生成"
 // button that batch-submits the fixable items) + rawdata-stale count
 // as a separate line (no auto-fix — operator must resample).
-async function refreshStaleBanner() {
-  const banner = byId("staleReportBanner");
+// Fix 5: unified Report 管理 banner — always visible (not just when
+// stale). Merges the old staleness banner + maintenance-actions panel
+// into one row at the top so report lifecycle ops (regen stale /
+// cleanup old versions / import) share a consistent home.
+async function refreshStaleBanner() { return refreshReportMgmtBanner(); }
+
+async function refreshReportMgmtBanner() {
+  const banner = byId("reportMgmtBanner");
   if (!banner) return;
   let body;
   try {
@@ -3824,29 +3876,34 @@ async function refreshStaleBanner() {
   const staleAnalyzer = body.stale_analyzer || 0;
   const staleRawdata = body.stale_rawdata || 0;
   const fixable = body.fixable_count || 0;
-  if (staleAnalyzer === 0 && staleRawdata === 0) {
-    banner.classList.add("hidden");
-    banner.innerHTML = "";
-    return;
-  }
+  const analyzerShort = (body.current_analyzer_version || "").slice(0, 10) || "—";
+
   banner.classList.remove("hidden");
-  const lines = [];
-  if (staleAnalyzer > 0) {
-    lines.push(
-      `<div class="stale-banner-row">` +
-      `<span>${fmt("staleBannerAnalyzer", { n: staleAnalyzer })}</span>` +
-      (fixable > 0
-        ? `<button id="regenerateStaleBtn" class="primary-btn small-btn">${fmt("btnRegenerateStale", { n: fixable })}</button>`
-        : "") +
-      `</div>`
-    );
+  let staleText;
+  if (staleAnalyzer === 0 && staleRawdata === 0) {
+    staleText = `<span class="report-mgmt-ok">✓ 全 fleet analyzer 均最新</span>`;
+  } else {
+    const parts = [];
+    if (staleAnalyzer > 0) parts.push(`⚠ ${staleAnalyzer} 个 analyzer 过期`);
+    if (staleRawdata > 0) parts.push(`⚠ ${staleRawdata} 个 rawdata 过期`);
+    staleText = `<span class="report-mgmt-warn">${parts.join(" · ")}</span>`;
   }
-  if (staleRawdata > 0) {
-    lines.push(
-      `<div class="stale-banner-row">${fmt("staleBannerRawdata", { n: staleRawdata })}</div>`
-    );
-  }
-  banner.innerHTML = lines.join("");
+
+  const regenBtn = fixable > 0
+    ? `<button id="regenerateStaleBtn" class="small-btn primary-btn">⟳ 重生 ${fixable}</button>`
+    : "";
+
+  banner.innerHTML = `
+    <div class="report-mgmt-row">
+      <span class="report-mgmt-main">💼 Report 管理 · analyzer <code>${analyzerShort}</code> · ${staleText}</span>
+      <span class="report-mgmt-actions">
+        ${regenBtn}
+        <button id="reportCleanupBtn" class="small-btn danger-btn" title="每 (机台, mode) 只保留最新 N 个版本 (默认 5)">🗑 清理旧版本</button>
+        <button id="importReportsBtn" class="small-btn" title="从 dev_reports/ 导入离线生成的 report">📥 导入</button>
+        <span id="reportCleanupResult" class="muted"></span>
+      </span>
+    </div>`;
+
   byId("regenerateStaleBtn")?.addEventListener("click", async () => {
     const items = body.fixable_items || [];
     if (!items.length) return;
@@ -3873,6 +3930,48 @@ async function refreshStaleBanner() {
       _startBatchGeneratePoll();
     } catch (err) {
       if (meta) meta.textContent = fmt("batchGenerateFailed", { error: String(err.message || err) });
+    }
+  });
+
+  byId("importReportsBtn")?.addEventListener("click", async () => {
+    const source = prompt("输入 Reports 源目录绝对路径（如 D:\\\\dev_reports 或 /path/to/dev_reports）:");
+    if (!source) return;
+    const mode = confirm("合并模式？\n[确定] 合并（跳过已存在）\n[取消] 替换（删除目标后导入）") ? "merge" : "replace";
+    try {
+      const r = await apiPost("/api/reports/import", { source_path: source, mode });
+      alert(`导入完成：新增 ${r.imported} 个版本，跳过 ${r.skipped} 个。\n影响机台：${r.machines_affected.join(", ") || "无"}`);
+      const [m, mSummary] = await Promise.all([apiGet("/api/machines"), apiGet("/api/machines/summary").catch(() => null)]);
+      state.machines = m.machines || [];
+      state.machinesSummary = mSummary;
+      renderCatalogFeatureChips();
+      renderMachineCatalog();
+      renderFleetOverview();
+      refreshReportMgmtBanner();  // refresh stale counts after import
+    } catch (e) {
+      alert("导入失败：" + (e.message || e));
+    }
+  });
+
+  byId("reportCleanupBtn")?.addEventListener("click", async () => {
+    if (!confirm(fmt("reportCleanupConfirm"))) return;
+    const btn = byId("reportCleanupBtn");
+    const result = byId("reportCleanupResult");
+    btn.disabled = true;
+    if (result) result.textContent = "...";
+    try {
+      const data = await apiPost("/api/reports/cleanup");
+      if (result) result.textContent = fmt("reportCleanupDone", { deleted: data.deleted, kept: data.kept });
+      const [m, mSummary] = await Promise.all([apiGet("/api/machines"), apiGet("/api/machines/summary").catch(() => null)]);
+      state.machines = m.machines || [];
+      state.machinesSummary = mSummary;
+      renderCatalogFilters();
+      renderMachineCatalog();
+      renderFleetOverview();
+      refreshReportMgmtBanner();
+    } catch (e) {
+      if (result) result.textContent = String(e.message || e);
+    } finally {
+      btn.disabled = false;
     }
   });
 }
@@ -4495,46 +4594,10 @@ function bindEvents() {
       btn.textContent = "刷新机台 MD5";
     }
   });
-  byId("importReportsBtn").addEventListener("click", async () => {
-    const source = prompt("输入 Reports 源目录绝对路径（如 D:\\\\dev_reports 或 /path/to/dev_reports）:");
-    if (!source) return;
-    const mode = confirm("合并模式？\n[确定] 合并（跳过已存在）\n[取消] 替换（删除目标后导入）") ? "merge" : "replace";
-    try {
-      const r = await apiPost("/api/reports/import", { source_path: source, mode });
-      alert(`导入完成：新增 ${r.imported} 个版本，跳过 ${r.skipped} 个。\n影响机台：${r.machines_affected.join(", ") || "无"}`);
-      // Refresh UI
-      const [m, mSummary] = await Promise.all([apiGet("/api/machines"), apiGet("/api/machines/summary").catch(() => null)]);
-      state.machines = m.machines || [];
-      state.machinesSummary = mSummary;
-      renderCatalogFeatureChips();
-      renderMachineCatalog();
-      renderFleetOverview();
-    } catch (e) {
-      alert("导入失败：" + (e.message || e));
-    }
-  });
-  byId("reportCleanupBtn").addEventListener("click", async () => {
-    if (!confirm(fmt("reportCleanupConfirm"))) return;
-    const btn = byId("reportCleanupBtn");
-    const result = byId("reportCleanupResult");
-    btn.disabled = true;
-    result.textContent = "...";
-    try {
-      const data = await apiPost("/api/reports/cleanup");
-      result.textContent = fmt("reportCleanupDone", { deleted: data.deleted, kept: data.kept });
-      // Refresh catalog to update report counts.
-      const [m, mSummary] = await Promise.all([apiGet("/api/machines"), apiGet("/api/machines/summary").catch(() => null)]);
-      state.machines = m.machines || [];
-      state.machinesSummary = mSummary;
-      renderCatalogFilters();
-      renderMachineCatalog();
-      renderFleetOverview();
-    } catch (e) {
-      result.textContent = String(e.message || e);
-    } finally {
-      btn.disabled = false;
-    }
-  });
+  // importReportsBtn + reportCleanupBtn handlers moved into
+  // refreshReportMgmtBanner() below — the buttons are rendered
+  // dynamically inside the Report 管理 banner, so listeners attach
+  // each time the banner repaints.
   byId("compareServersBtn").addEventListener("click", () => compareServers());
   // compareBtn removed from the HTML in step 8; rwtree's built-in
   // compare bar (#rwtreeCompareBar) now owns the click → compareReports
