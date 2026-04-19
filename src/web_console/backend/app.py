@@ -1574,6 +1574,228 @@ def _build_rawdata_overview(
     return result
 
 
+# ── Machine static attrs cache (2026-04-19 round 6) ─────────────────
+# Static attributes (category / logicClassNames / features / mechanics /
+# config_md5 / code_md5) are cached to a dedicated JSON file so the
+# catalog filters (按玩法 chips + 按机制 view) don't break when reports
+# get deleted or regenerated. Refresh policy:
+#   * Seeded from machines.json on first access (bootstrap).
+#   * Updated after every successful generate-report: features +
+#     mechanics merged in as UNION across history (short rawdata
+#     doesn't evict entries that were seen in earlier reports).
+#   * Rebuilt on /api/reports/import success.
+# Performance: in-memory cache keyed by file mtime_ns; atomic writes
+# via temp + os.replace; O(machines × modes) bootstrap walk runs once.
+_STATIC_ATTRS_CACHE: dict = {"mtime": 0, "data": None}
+_STATIC_ATTRS_MECH_KEYS = (
+    "lock_lines", "lock_symbols", "lock_reels",
+    "jackpot", "free_spin", "dollar_pick",
+)
+
+
+def _static_attrs_path(machines_config: Path) -> Path:
+    """machines_static.json lives alongside machines.json in configs/."""
+    return machines_config.parent / "machines_static.json"
+
+
+def _load_static_attrs(path: Path) -> dict:
+    try:
+        cur_mtime = path.stat().st_mtime_ns if path.exists() else 0
+    except OSError:
+        cur_mtime = 0
+    if (_STATIC_ATTRS_CACHE["data"] is not None
+            and _STATIC_ATTRS_CACHE["mtime"] == cur_mtime):
+        return _STATIC_ATTRS_CACHE["data"]
+    if not path.exists():
+        data: dict = {}
+    else:
+        try:
+            data = read_json(path) or {}
+        except Exception:
+            data = {}
+    data.setdefault("machines", {})
+    data.setdefault("feature_distribution", {})
+    data.setdefault("mechanics_distribution", {})
+    _STATIC_ATTRS_CACHE["mtime"] = cur_mtime
+    _STATIC_ATTRS_CACHE["data"] = data
+    return data
+
+
+def _save_static_attrs(path: Path, data: dict) -> None:
+    tmp = path.with_suffix(".json.tmp")
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    tmp.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    import os as _os
+    _os.replace(tmp, path)
+    try:
+        _STATIC_ATTRS_CACHE["mtime"] = path.stat().st_mtime_ns
+    except OSError:
+        pass
+    _STATIC_ATTRS_CACHE["data"] = data
+
+
+def _rebuild_static_distributions(data: dict) -> None:
+    """Recompute feature_distribution + mechanics_distribution from the
+    per-machine dict. Called after any merge so the distributions stay
+    in sync with the machines map."""
+    feat_machines: dict[str, set] = {}
+    mech_count: dict[str, int] = {}
+    for machine, entry in (data.get("machines") or {}).items():
+        for fn in entry.get("features") or []:
+            feat_machines.setdefault(fn, set()).add(machine)
+        for mk in entry.get("mechanics") or []:
+            mech_count[mk] = mech_count.get(mk, 0) + 1
+    data["feature_distribution"] = {
+        fn: len(ms) for fn, ms in feat_machines.items()
+    }
+    data["mechanics_distribution"] = mech_count
+
+
+def _extract_features_from_summary(summary: dict) -> set[str]:
+    """Prefer feature_base_name (stripped of trigger-path suffix); fall
+    back to feature_name. Skip trigger-only features."""
+    out: set[str] = set()
+    feats = (
+        (summary.get("player_impact") or {})
+        .get("upstream_feature_breakdown") or {}
+    ).get("features") or []
+    for f in feats:
+        base = f.get("feature_base_name") or f.get("feature_name") or ""
+        if base:
+            out.add(str(base))
+    return out
+
+
+def _extract_mechanics_from_summary(summary: dict) -> set[str]:
+    mm = (summary.get("player_impact") or {}).get("machine_mechanics") or {}
+    return {
+        mk for mk in _STATIC_ATTRS_MECH_KEYS
+        if (mm.get(mk) or {}).get("applicable")
+    }
+
+
+def _machine_static_from_machines_json(
+    machine: str, machines_config: Path,
+) -> dict:
+    """Pull the pure-static bits (category / logicClassNames / md5s) from
+    machines.json. Called both at seed time and whenever a fresh summary
+    is merged (so stale md5 in the cache gets refreshed)."""
+    try:
+        mc_data = read_json(machines_config) or {}
+    except Exception:
+        return {}
+    for m_cfg in (mc_data.get("machines") or []):
+        if m_cfg.get("machine") == machine:
+            logic = m_cfg.get("logicClassNames") or []
+            return {
+                "category": (
+                    m_cfg.get("category") or _classify_machine(logic)
+                ),
+                "logicClassNames": logic,
+                "config_md5": str(m_cfg.get("configSummaryMd5") or ""),
+                "code_md5": str(m_cfg.get("codeSummaryMd5") or ""),
+                "modes": m_cfg.get("modes") or [1, 2, 5, 7],
+            }
+    return {}
+
+
+def _merge_machine_static(
+    machine: str, summary: dict,
+    machines_config: Path, static_path: Path,
+) -> None:
+    """Merge one machine's attrs from a fresh report summary. UNION for
+    features + mechanics (history-preserving so short rawdata doesn't
+    erase entries)."""
+    data = _load_static_attrs(static_path)
+    entry = dict(data.get("machines", {}).get(machine, {}))
+    features = set(entry.get("features") or [])
+    features |= _extract_features_from_summary(summary)
+    entry["features"] = sorted(features)
+    mechs = set(entry.get("mechanics") or [])
+    mechs |= _extract_mechanics_from_summary(summary)
+    entry["mechanics"] = sorted(mechs)
+    entry.update(_machine_static_from_machines_json(machine, machines_config))
+    entry["updated_at"] = utc_now()
+    data.setdefault("machines", {})[machine] = entry
+    _rebuild_static_distributions(data)
+    data["updated_at"] = entry["updated_at"]
+    _save_static_attrs(static_path, data)
+
+
+def _bootstrap_static_attrs(
+    reports_root: Path, machines_config: Path, static_path: Path,
+) -> dict:
+    """First-call populate — walk existing report summaries + seed from
+    machines.json. Called lazily from GET /api/machines/static when the
+    cache file is missing or empty. O(machines × modes × versions).
+    """
+    try:
+        mc_data = read_json(machines_config) or {}
+    except Exception:
+        mc_data = {}
+    machines_data: dict[str, dict] = {}
+    for m_cfg in (mc_data.get("machines") or []):
+        name = m_cfg.get("machine")
+        if not name:
+            continue
+        logic = m_cfg.get("logicClassNames") or []
+        machines_data[name] = {
+            "category": (
+                m_cfg.get("category") or _classify_machine(logic)
+            ),
+            "logicClassNames": logic,
+            "config_md5": str(m_cfg.get("configSummaryMd5") or ""),
+            "code_md5": str(m_cfg.get("codeSummaryMd5") or ""),
+            "modes": m_cfg.get("modes") or [1, 2, 5, 7],
+            "features": [],
+            "mechanics": [],
+            "updated_at": "",
+        }
+    # Overlay features + mechanics from existing report summaries.
+    if reports_root.is_dir():
+        for machine_dir in reports_root.iterdir():
+            if not machine_dir.is_dir():
+                continue
+            name = machine_dir.name
+            entry = machines_data.setdefault(name, {
+                "features": [], "mechanics": [], "updated_at": "",
+            })
+            feats: set[str] = set(entry.get("features") or [])
+            mechs: set[str] = set(entry.get("mechanics") or [])
+            for mode_dir in machine_dir.iterdir():
+                if (
+                    not mode_dir.is_dir()
+                    or not mode_dir.name.startswith("mode_")
+                ):
+                    continue
+                versions_dir = mode_dir / "versions"
+                if not versions_dir.is_dir():
+                    continue
+                for ver_dir in versions_dir.iterdir():
+                    if not ver_dir.is_dir():
+                        continue
+                    sf = ver_dir / "player_impact_summary.json"
+                    if not sf.exists():
+                        continue
+                    try:
+                        s = json.loads(sf.read_text(encoding="utf-8"))
+                    except Exception:
+                        continue
+                    feats |= _extract_features_from_summary(s)
+                    mechs |= _extract_mechanics_from_summary(s)
+            entry["features"] = sorted(feats)
+            entry["mechanics"] = sorted(mechs)
+            if feats or mechs:
+                entry["updated_at"] = utc_now()
+    data = {"machines": machines_data, "updated_at": utc_now()}
+    _rebuild_static_distributions(data)
+    _save_static_attrs(static_path, data)
+    return data
+
+
 def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
     """Scan reports dir, pick best-CI report per machine-mode, return summary."""
     import math
@@ -4049,6 +4271,52 @@ def create_app(
     def disk_space() -> dict[str, Any]:
         return _get_disk_space_info(rr)
 
+    @app.get("/api/machines/static")
+    def machines_static_attrs() -> dict[str, Any]:
+        """Per-machine static attrs (category / logicClassNames / features /
+        mechanics / md5) — decoupled from report lifecycle so the catalog
+        filters survive report deletions. See _STATIC_ATTRS_CACHE docs.
+
+        Response adds a `drift` list of machine names whose cached md5
+        differs from the current machines.json — the operator should
+        refresh MD5 + regenerate reports for those.
+        """
+        path = _static_attrs_path(mc)
+        data = _load_static_attrs(path)
+        if not data.get("machines"):
+            data = _bootstrap_static_attrs(rr, mc, path)
+        # Compute drift on-the-fly (cheap read of machines.json).
+        try:
+            mc_data = read_json(mc) or {}
+        except Exception:
+            mc_data = {}
+        cur_md5: dict[str, tuple[str, str]] = {}
+        for m_cfg in (mc_data.get("machines") or []):
+            name = m_cfg.get("machine")
+            if not name:
+                continue
+            cur_md5[str(name)] = (
+                str(m_cfg.get("configSummaryMd5") or ""),
+                str(m_cfg.get("codeSummaryMd5") or ""),
+            )
+        drift = []
+        for name, entry in (data.get("machines") or {}).items():
+            cur = cur_md5.get(name)
+            if not cur:
+                continue  # machine no longer in machines.json — ignore
+            cached_cfg = str(entry.get("config_md5") or "")
+            cached_code = str(entry.get("code_md5") or "")
+            # Only flag drift when the cached md5 is set AND differs.
+            # An empty cached md5 just means "never stamped" — not drift.
+            if cached_cfg and cached_cfg != cur[0]:
+                drift.append(name)
+            elif cached_code and cached_code != cur[1]:
+                drift.append(name)
+        # Return a shallow copy so we don't mutate the cached dict.
+        out = dict(data)
+        out["drift"] = sorted(set(drift))
+        return out
+
     @app.get("/api/rawdata/overview")
     def rawdata_overview() -> dict[str, Any]:
         """Fleet-wide rawdata breakdown for the master/detail dashboard
@@ -4739,6 +5007,16 @@ def create_app(
             write_json(index_path, index_payload)
             write_json(latest_path, item)
 
+            # Refresh machines_static.json from this fresh summary so
+            # catalog filter chips + mechanic view reflect any new
+            # features / mechanics this run surfaced (round 6 fix).
+            try:
+                _merge_machine_static(
+                    machine, summary, mc, _static_attrs_path(mc),
+                )
+            except Exception:
+                pass  # non-fatal — next generate-report retries
+
             return {
                 "run_id": new_run_id,
                 "machine": machine,
@@ -4847,26 +5125,52 @@ def create_app(
     @app.post("/api/rawdata/batch-generate-report")
     def batch_generate_report(req: dict[str, Any]) -> dict[str, Any]:
         """Kick off batch report generation for multiple (machine, mode)
-        pairs. Sequential within the batch (each iteration monkey-
-        patches analyzer's ``post_json`` — concurrent calls would
-        race). Runs in a background thread; caller polls
-        ``GET /api/rawdata/batch-generate-report/{batch_id}`` for
-        progress.
+        pairs.
 
         Body::
 
-          {"items": [{"machine": "M273", "mode": 1}, ...]}
+          {"items": [{"machine": "M273", "mode": 1}, ...]}   — explicit list
+          {"scope": "all_with_rawdata"}                      — auto-collect
 
-        Returns ``{batch_id, total}``. Operator holds the ``ops`` mutex
-        for the whole batch duration so it can't interleave with
-        sampling / cleanup / delete paths.
+        ``scope=all_with_rawdata`` walks RAWDATA_ROOT and builds items
+        for every (machine, mode) pair with at least one valid chunk
+        file. Used by the "⟳ 全 fleet 重建" button for large-scale
+        analyzer upgrades / recoveries.
         """
+        scope = str(req.get("scope") or "").strip()
+        parsed_items: list[dict[str, Any]] = []
+
+        if scope == "all_with_rawdata":
+            if not rd_root.is_dir():
+                raise HTTPException(status_code=404, detail="no rawdata root")
+            for machine_dir in sorted(rd_root.iterdir()):
+                if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
+                    continue
+                for mode_dir in machine_dir.iterdir():
+                    if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                        continue
+                    try:
+                        mode = int(mode_dir.name.split("_")[1])
+                    except (IndexError, ValueError):
+                        continue
+                    # Only include (m, mode) pairs with at least one
+                    # chunk file (mtime-based, no envelope parse —
+                    # keeps scope-build cheap even on a huge fleet).
+                    if any(mode_dir.glob("chunk_*.json")):
+                        parsed_items.append({"machine": machine_dir.name, "mode": mode})
+            if not parsed_items:
+                raise HTTPException(
+                    status_code=404,
+                    detail="no (machine, mode) pairs with rawdata",
+                )
+            return batch_gen_mgr.start(parsed_items)
+
         raw_items = req.get("items") or []
         if not isinstance(raw_items, list) or not raw_items:
             raise HTTPException(
-                status_code=400, detail="items must be a non-empty list",
+                status_code=400,
+                detail="items must be a non-empty list, OR set scope=all_with_rawdata",
             )
-        parsed_items: list[dict[str, Any]] = []
         for it in raw_items:
             if not isinstance(it, dict):
                 raise HTTPException(status_code=400, detail="each item must be an object")
@@ -5164,6 +5468,15 @@ def create_app(
                     if _import_one(v, dst, machine_name, mode_int):
                         imported += 1
                         machines_affected.add(machine_name)
+
+        # Refresh static attrs from imported reports. Re-bootstrap
+        # across the fleet (simpler than per-machine merge; import is
+        # infrequent + already holds the ops mutex).
+        if imported > 0:
+            try:
+                _bootstrap_static_attrs(rr, mc, _static_attrs_path(mc))
+            except Exception:
+                pass
 
         return {
             "imported": imported,

@@ -45,6 +45,11 @@ const state = {
   // precedence over fleet overview but NOT over focus/multi.
   showGlobalRawdata: false,
   rawdataOverview: null,  // cached GET /api/rawdata/overview response
+  // Static machine attributes (category / features / mechanics / md5)
+  // — decoupled from report lifecycle. Loaded from /api/machines/static
+  // on bootstrap so the catalog filter chips + mechanic view don't
+  // break when reports are deleted / regenerated.
+  staticAttrs: null,
   // Operator-tunable retention quota (spins). Loaded on boot from
   // /api/settings, persisted there. Rendered inline inside the
   // rawdata banner's always-visible settings row.
@@ -602,8 +607,14 @@ function _cardBgColor(machineName) {
   return "#fef2f2";
 }
 
-// Get all features a machine has across all its modes.
+// Get all features a machine has. Prefer the static-attrs cache
+// (union across report history, survives deletions); fall back to
+// machinesSummary per-mode features for back-compat.
 function _machineFeatures(machineName) {
+  const staticEntry = ((state.staticAttrs || {}).machines || {})[machineName];
+  if (staticEntry && Array.isArray(staticEntry.features) && staticEntry.features.length) {
+    return [...staticEntry.features];
+  }
   const modes = ((state.machinesSummary || {}).machines || {})[machineName] || {};
   const features = new Set();
   Object.values(modes).forEach((d) => (d.features || []).forEach((f) => features.add(f)));
@@ -612,7 +623,9 @@ function _machineFeatures(machineName) {
 
 // Features used by ≥2 machines are "primary"; singletons → "其他".
 function _featureIsSingleton(featureName) {
-  const dist = (state.machinesSummary || {}).feature_distribution || {};
+  const dist = (state.staticAttrs || {}).feature_distribution
+            || (state.machinesSummary || {}).feature_distribution
+            || {};
   return (dist[featureName] || 0) < 2;
 }
 
@@ -653,9 +666,16 @@ function _groupMachines(machines, viewMode) {
       }
       key = hallOfMachine || "未分组";
     } else if (viewMode === "mechanic") {
-      const mdata = sm[m.machine] || {};
-      const allMechs = new Set();
-      Object.values(mdata).forEach((d) => (d.mechanics || []).forEach((mk) => allMechs.add(mk)));
+      // Prefer staticAttrs (union across history); fall back to
+      // per-mode machinesSummary for back-compat.
+      const staticEntry = ((state.staticAttrs || {}).machines || {})[m.machine];
+      let allMechs = new Set();
+      if (staticEntry && Array.isArray(staticEntry.mechanics)) {
+        staticEntry.mechanics.forEach((mk) => allMechs.add(mk));
+      } else {
+        const mdata = sm[m.machine] || {};
+        Object.values(mdata).forEach((d) => (d.mechanics || []).forEach((mk) => allMechs.add(mk)));
+      }
       if (allMechs.size === 0) key = "Normal";
       else allMechs.forEach((mk) => {
         if (!groups[mk]) groups[mk] = [];
@@ -716,7 +736,9 @@ function renderCatalogFeatureChips() {
   }
   wrap.classList.remove("hidden");
 
-  const dist = (state.machinesSummary || {}).feature_distribution || {};
+  const dist = (state.staticAttrs || {}).feature_distribution
+            || (state.machinesSummary || {}).feature_distribution
+            || {};
   const multi = Object.entries(dist)
     .filter(([, n]) => n >= 2)
     .sort((a, b) => b[1] - a[1]);
@@ -774,7 +796,9 @@ function renderMachineCatalog() {
   }
   // Filter by feature chips (只在"按玩法" view 生效).
   if (viewMode === "category" && state.catalogFeatureFilter.size > 0) {
-    const dist = (state.machinesSummary || {}).feature_distribution || {};
+    const dist = (state.staticAttrs || {}).feature_distribution
+            || (state.machinesSummary || {}).feature_distribution
+            || {};
     filtered = filtered.filter((m) => {
       const features = _machineFeatures(m.machine);
       if (state.catalogFeatureFilter.has("__other__")) {
@@ -1066,6 +1090,19 @@ function renderDetailPane() {
   show(fleet);
 }
 
+// Refresh the static-attrs cache from the backend. Called after any
+// operation that may have updated the file (generate-report, batch
+// regen, import). Cheap — the backend endpoint reads an mtime cache
+// in sub-millisecond time.
+async function refreshStaticAttrs() {
+  try {
+    state.staticAttrs = await apiGet("/api/machines/static");
+    renderCatalogFeatureChips();
+    renderCatalogFilters();
+    renderMachineCatalog();
+  } catch (_) { /* non-fatal */ }
+}
+
 // ── Global rawdata banner + detail table (step 6) ───────────────────
 async function refreshRawdataOverview() {
   try {
@@ -1258,7 +1295,10 @@ function renderRawdataGlobalTable() {
 function renderCatalogFilters() {
   const el = byId("catalogFilters");
   if (!el) return;
-  const mechDist = (state.machinesSummary || {}).mechanics_distribution || {};
+  // Prefer staticAttrs (survives report deletes); fall back to summary.
+  const mechDist = (state.staticAttrs || {}).mechanics_distribution
+                || (state.machinesSummary || {}).mechanics_distribution
+                || {};
   if (!Object.keys(mechDist).length) { el.innerHTML = ""; return; }
 
   const LABELS = { lock_lines: "Lock Lines", lock_symbols: "Lock Sym", jackpot: "Jackpot", free_spin: "FreeSpin", dollar_pick: "Dollar Pick" };
@@ -1946,13 +1986,48 @@ function renderFleetOverview() {
     ? headlines.map((h) => `<div class="fleet-headline fleet-headline-${h.level}"><strong>⚠ ${h.text}</strong> <span class="muted">— ${h.detail}</span></div>`).join("")
     : `<div class="fleet-headline fleet-headline-ok">✓ ${fmt("fleetAllHealthy")}</div>`;
 
+  // Step 3 (2026-04-19 round 6): surface MD5 drift from static attrs
+  // cache. Machine's cached config_md5/code_md5 differs from current
+  // machines.json → the cached features/mechanics may be stale for
+  // that machine. Banner line + [刷新 MD5] reminder.
+  const drift = ((state.staticAttrs || {}).drift) || [];
+  const driftHtml = drift.length
+    ? `<div class="fleet-headline fleet-headline-warn">
+        <strong>⚠ ${drift.length} 台机台版本变更</strong>
+        <span class="muted">— 属性缓存可能过期: ${drift.slice(0, 8).join(", ")}${drift.length > 8 ? ` +${drift.length - 8}` : ""}</span>
+        <button id="fleetDriftRefreshBtn" class="small-btn" style="margin-left:8px">刷新 MD5 + 属性</button>
+      </div>`
+    : "";
+
   el.innerHTML = `
     <div class="fleet-summary-row">
       <strong>${total}</strong> ${fmt("fleetTotal")} · <strong>${withReports}</strong> ${fmt("fleetWithReports")}
       <a href="/api/fleet/export-csv" class="small-btn" download="fleet_summary.csv" style="margin-left:8px">${fmt("btnExportCsv")}</a>
     </div>
     <div class="fleet-categories">${catBadges}</div>
-    <div class="fleet-headlines">${headlineHtml}</div>`;
+    <div class="fleet-headlines">${driftHtml}${headlineHtml}</div>`;
+
+  byId("fleetDriftRefreshBtn")?.addEventListener("click", async () => {
+    const btn = byId("fleetDriftRefreshBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "刷新中…"; }
+    try {
+      // Refresh server-side machines.json MD5s from upstream + reload
+      // static attrs. Feature/mechanic lists auto-refresh on the next
+      // generate-report; no need to force-regen here.
+      await apiPost("/api/servers/refresh-md5", {});
+    } catch (_) { /* non-fatal */ }
+    try {
+      const [m, attrs] = await Promise.all([
+        apiGet("/api/machines"),
+        apiGet("/api/machines/static"),
+      ]);
+      state.machines = m.machines || [];
+      state.staticAttrs = attrs;
+    } catch (_) {}
+    renderMachineCatalog();
+    renderFleetOverview();
+    renderCatalogFeatureChips();
+  });
 }
 
 // ── Batch Run UI ──────────────────────────────────────────────────
@@ -4014,7 +4089,7 @@ async function refreshReportMgmtBanner() {
   }
 
   const regenBtn = fixable > 0
-    ? `<button id="regenerateStaleBtn" class="small-btn primary-btn">⟳ 重生 ${fixable}</button>`
+    ? `<button id="regenerateStaleBtn" class="small-btn primary-btn" title="只重生 analyzer 过期 + rawdata 未过期的 report (轻量修复)">⟳ 重生 ${fixable}</button>`
     : "";
 
   banner.innerHTML = `
@@ -4022,15 +4097,14 @@ async function refreshReportMgmtBanner() {
       <span class="report-mgmt-main">💼 Report 管理 · analyzer <code>${analyzerShort}</code> · ${staleText}</span>
       <span class="report-mgmt-actions">
         ${regenBtn}
-        <button id="reportCleanupBtn" class="small-btn danger-btn" title="每 (机台, mode) 只保留最新 N 个版本 (默认 5)">🗑 清理旧版本</button>
+        <button id="rebuildAllReportsBtn" class="small-btn" title="扫所有含 rawdata 的 (机台, mode)，用当前 analyzer 全部重跑 generate-report (大批量，耗时长)">⟳ 全 fleet 重建</button>
+        <button id="reportCleanupBtn" class="small-btn danger-btn" title="清理 analyzer 过期的 report 版本 (按 machine+mode 只保留最新 match)">🗑 清理过期</button>
         <button id="importReportsBtn" class="small-btn" title="从 dev_reports/ 导入离线生成的 report">📥 导入</button>
         <span id="reportCleanupResult" class="muted"></span>
       </span>
     </div>`;
 
-  byId("regenerateStaleBtn")?.addEventListener("click", async () => {
-    const items = body.fixable_items || [];
-    if (!items.length) return;
+  async function _kickBatchGenerate(payload, msgOnErr) {
     const panel = byId("batchGenerateProgressPanel");
     const meta = byId("batchGenerateProgressMeta");
     const log = byId("batchGenerateProgressLog");
@@ -4040,7 +4114,7 @@ async function refreshReportMgmtBanner() {
       const resp = await fetch("/api/rawdata/batch-generate-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify(payload),
       });
       if (!resp.ok) {
         const errBody = await resp.json().catch(() => ({}));
@@ -4053,8 +4127,23 @@ async function refreshReportMgmtBanner() {
       updateActionStates();
       _startBatchGeneratePoll();
     } catch (err) {
-      if (meta) meta.textContent = fmt("batchGenerateFailed", { error: String(err.message || err) });
+      if (meta) meta.textContent = (msgOnErr || "重建失败") + ": " + String(err.message || err);
     }
+  }
+
+  byId("regenerateStaleBtn")?.addEventListener("click", async () => {
+    const items = body.fixable_items || [];
+    if (!items.length) return;
+    await _kickBatchGenerate({ items }, "重生失败");
+  });
+
+  byId("rebuildAllReportsBtn")?.addEventListener("click", async () => {
+    if (state.systemState?.operation_busy) {
+      alert("有操作进行中，请等待完成再点。");
+      return;
+    }
+    if (!confirm("全 fleet 重建 report：将遍历所有含 rawdata 的 (机台, mode)，用当前 analyzer 全部重跑。耗时较长（每台约 20-60s × mode 数）。确认？")) return;
+    await _kickBatchGenerate({ scope: "all_with_rawdata" }, "全 fleet 重建失败");
   });
 
   byId("importReportsBtn")?.addEventListener("click", async () => {
@@ -4071,6 +4160,7 @@ async function refreshReportMgmtBanner() {
       renderMachineCatalog();
       renderFleetOverview();
       refreshReportMgmtBanner();  // refresh stale counts after import
+      refreshStaticAttrs();  // Round 6: imports touched static attrs
     } catch (e) {
       alert("导入失败：" + (e.message || e));
     }
@@ -4092,6 +4182,7 @@ async function refreshReportMgmtBanner() {
       renderMachineCatalog();
       renderFleetOverview();
       refreshReportMgmtBanner();
+      refreshStaticAttrs();
     } catch (e) {
       if (result) result.textContent = String(e.message || e);
     } finally {
@@ -4142,9 +4233,8 @@ function _startBatchGeneratePoll() {
         state.batchGeneratePollTimer = null;
         state.batchGenerateId = null;
         await refreshRunList(false);
-        // Re-scan fleet staleness — the generated runs should flip
-        // analyzer-stale → fresh, shrinking the banner.
         refreshStaleBanner();
+        refreshStaticAttrs();  // Round 6: regen populated attrs cache
         updateActionStates();
       }
     } catch (_err) {
@@ -4491,11 +4581,19 @@ async function loadBootstrap() {
   summaryPromise.then((mSummary) => {
     if (!mSummary) return;
     state.machinesSummary = mSummary;
-    // Re-render the catalog-dependent panels with the richer data.
     try { renderCatalogFeatureChips(); } catch (_) {}
     try { renderMachineCatalog(); } catch (_) {}
     try { renderFleetOverview(); } catch (_) {}
   });
+  // Round 6: load static machine attrs (category / features / mechanics
+  // / md5) in parallel with summary. Static cache is the primary source
+  // for catalog filter chips + mechanic view — survives report deletes.
+  apiGet("/api/machines/static").then((attrs) => {
+    state.staticAttrs = attrs || null;
+    try { renderCatalogFeatureChips(); } catch (_) {}
+    try { renderCatalogFilters(); } catch (_) {}
+    try { renderMachineCatalog(); } catch (_) {}
+  }).catch(() => { /* falls back to machinesSummary */ });
   fillMachineModeSelectors();
   fillCiTierOptions();
   fillBankMultOptions();
