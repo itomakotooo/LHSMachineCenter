@@ -2966,6 +2966,123 @@ function _renderPayingFeatureCard(feat, chains) {
 // Render the bonus_chain_dynamics panel (ReMarks-derived
 // MapCollection stats). Hidden when the sample contains no
 // Freespin-annotated chains.
+// Render the collect-cycle + RTP correction panel. Sourced from
+// ``summary.collect_mechanic.{cycle_observation,bonus_cycle_correction,
+// feature_match}``. Only visible when a collect mechanic was
+// observed in the sample (mechanic_detected). Surfaces:
+//   - detected cycle length (floor / lower bound)
+//   - completed cycles total + pending
+//   - resolved bonus pair (config / heuristic / none)
+//   - estimated correction pp + pre/post RTP
+//   - any warnings from feature_match or cycle_observation
+// Hidden for machines with no collect mechanic (most non-M272-style
+// machines) — the data is non-applicable there.
+function renderCollectCyclePanel(summary) {
+  const panel = byId("collectCyclePanel");
+  if (!panel) return;
+  const cm = (summary || {}).collect_mechanic || {};
+  const co = cm.cycle_observation || {};
+  const bcc = cm.bonus_cycle_correction || {};
+  const fm = cm.feature_match || {};
+  // Only applicable when a cycle mechanic was detected at all.
+  if (!co.mechanic_detected && !bcc.applicable) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+  const body = byId("collectCycleBody");
+
+  const rtpPp = Number(((summary || {}).rtp || {}).point_pct || 0);
+  // ``bcc.applicable=false`` means the analyzer couldn't compute a
+  // correction (typically: sample too short to observe a full cycle
+  // reset). Distinguish from "applicable=true, correction=0" (sample
+  // covers a complete cycle, nothing to correct).
+  const correctionApplicable = Boolean(bcc.applicable);
+  const correctionPp = correctionApplicable
+    ? Number(bcc.estimated_correction_pp || 0)
+    : null;
+  const postRtp = correctionPp != null ? rtpPp + correctionPp : null;
+
+  const cycleLen = co.cycle_len_lower_bound != null
+    ? `≥${Number(co.cycle_len_lower_bound).toLocaleString()} spins`
+    : (bcc.detected_cycle_length != null
+      ? `${Number(bcc.detected_cycle_length).toLocaleString()} spins`
+      : "—");
+  const completed = Number(bcc.completed_cycles_total || 0).toLocaleString();
+  const pending = Number(bcc.robots_with_pending_cycle || 0).toLocaleString();
+  const avgPayout = bcc.avg_bonus_payout != null
+    ? Number(bcc.avg_bonus_payout).toLocaleString(undefined, { maximumFractionDigits: 0 })
+    : "—";
+  const bonusFeat = bcc.bonus_feature || fm.bonus_feature;
+  const bonusSrc = bcc.bonus_feature_source || fm.bonus_feature_source || "—";
+  const srcBadge = bonusSrc === "config" ? "🟢 config"
+    : bonusSrc === "heuristic" ? "🟡 heuristic"
+    : bonusSrc === "none" ? "⚪ none"
+    : `⚪ ${_escHtml(bonusSrc)}`;
+  const resetBadge = co.reset_observed ? "✓ reset 已观测" : "⚠ reset 未观测（样本不足一周期）";
+  const warnings = [];
+  if (co.warning) warnings.push(`cycle: ${co.warning}`);
+  if (fm.warning) warnings.push(`feature_match: ${fm.warning}`);
+
+  // Correction block: three states. applicable + >0.5pp = warn;
+  // applicable + small = ok (sample covered the cycle); inapplicable
+  // = "n/a" with an explanation (sample too short).
+  let correctionBlock;
+  if (!correctionApplicable) {
+    correctionBlock =
+      `<div class="cc-correction cc-correction-na">` +
+        `<div class="cc-correction-headline">` +
+          `<span class="cc-label">RTP 校正</span>` +
+          `<span class="cc-correction-delta">N/A</span>` +
+        `</div>` +
+        `<div class="cc-correction-split">` +
+          `<span class="cc-pre">raw ${rtpPp.toFixed(2)}%</span>` +
+          `<span class="cc-arrow">·</span>` +
+          `<span class="cc-post">无法校正</span>` +
+        `</div>` +
+        `<div class="cc-correction-hint">` +
+          "样本未覆盖完整 cycle（无 reset 观测），无法估算校正量。增加 SpinTimes / 续采直到 CollectCount 至少完成一次 reset 才能生成校正。" +
+        `</div>` +
+      `</div>`;
+  } else {
+    const tone = correctionPp > 0.5 ? "warn" : correctionPp > 0.05 ? "note" : "ok";
+    const sign = correctionPp >= 0 ? "+" : "";
+    correctionBlock =
+      `<div class="cc-correction cc-correction-${tone}">` +
+        `<div class="cc-correction-headline">` +
+          `<span class="cc-label">RTP 校正</span>` +
+          `<span class="cc-correction-delta">${sign}${correctionPp.toFixed(2)}pp</span>` +
+        `</div>` +
+        `<div class="cc-correction-split">` +
+          `<span class="cc-pre">raw ${rtpPp.toFixed(2)}%</span>` +
+          `<span class="cc-arrow">→</span>` +
+          `<span class="cc-post">校正后 ${postRtp.toFixed(2)}%</span>` +
+        `</div>` +
+        `<div class="cc-correction-hint">` +
+          (correctionPp > 0.5
+            ? "部分 robot 在样本末尾尚未完成一个完整 cycle，校正补上这部分未触发 bonus 的贡献。"
+            : correctionPp > 0.05
+            ? "样本基本覆盖完整 cycle，校正很小，可忽略。"
+            : "样本已充分覆盖完整 cycle，无须校正。") +
+        `</div>` +
+      `</div>`;
+  }
+
+  body.innerHTML =
+    `<div class="collect-cycle-grid">` +
+      `<div class="cc-item"><div class="cc-label">机制状态</div><div class="cc-value">${_escHtml(resetBadge)}</div></div>` +
+      `<div class="cc-item"><div class="cc-label">周期长度</div><div class="cc-value">${_escHtml(cycleLen)}</div></div>` +
+      `<div class="cc-item"><div class="cc-label">已完成周期</div><div class="cc-value">${_escHtml(completed)}</div></div>` +
+      `<div class="cc-item"><div class="cc-label">待触发周期</div><div class="cc-value">${_escHtml(pending)}</div></div>` +
+      `<div class="cc-item"><div class="cc-label">配对 bonus</div><div class="cc-value">${_escHtml(bonusFeat || "—")} <span class="cc-src">${srcBadge}</span></div></div>` +
+      `<div class="cc-item"><div class="cc-label">平均 bonus 奖励</div><div class="cc-value">${_escHtml(avgPayout)} credits</div></div>` +
+    `</div>` +
+    correctionBlock +
+    (warnings.length
+      ? `<div class="cc-warnings">⚠ ${warnings.map(_escHtml).join(" · ")}</div>`
+      : "");
+}
+
 function renderBonusChainDynamicsPanel(summary) {
   const panel = byId("bonusChainDynamicsPanel");
   if (!panel) return;
@@ -3556,6 +3673,7 @@ async function refreshCurrentRun() {
     renderFieldDiscovery(s);
     renderMachineMechanics(s);
     renderBonusChainDynamicsPanel(s);
+    renderCollectCyclePanel(s);
     renderPaylineDrilldown(s);
     renderPayoutGroupDrilldown(s);
     renderSymbolDrilldown(s);

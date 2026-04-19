@@ -1997,6 +1997,89 @@ button.small-btn.active, .small-btn.active {
   padding: 4px 6px;
 }
 
+/* Collect-cycle + RTP correction panel (BCM-style mechanics). */
+.collect-cycle {
+  grid-column: span 12;
+}
+.collect-cycle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 14px;
+  margin-bottom: 10px;
+}
+.cc-item {
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+.cc-label {
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+.cc-value {
+  font-size: 13px;
+  color: #0f172a;
+}
+.cc-src {
+  font-size: 11px;
+  color: #64748b;
+  margin-left: 4px;
+}
+.cc-correction {
+  padding: 10px 12px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  border-left: 3px solid #94a3b8;
+}
+.cc-correction.cc-correction-ok { border-left-color: #0f766e; background: #f0fdf4; }
+.cc-correction.cc-correction-note { border-left-color: #ca8a04; background: #fefce8; }
+.cc-correction.cc-correction-warn { border-left-color: #dc2626; background: #fef2f2; }
+.cc-correction.cc-correction-na { border-left-color: #94a3b8; background: #f8fafc; }
+.cc-correction.cc-correction-na .cc-correction-delta { color: #64748b; }
+.cc-correction-headline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.cc-correction-delta {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.cc-correction-split {
+  font-size: 12px;
+  color: #334155;
+  margin-bottom: 4px;
+}
+.cc-correction-split .cc-pre {
+  color: #64748b;
+}
+.cc-correction-split .cc-arrow {
+  margin: 0 8px;
+  color: #94a3b8;
+}
+.cc-correction-split .cc-post {
+  color: #0f766e;
+  font-weight: 600;
+}
+.cc-correction-hint {
+  font-size: 11px;
+  color: #64748b;
+}
+.cc-warnings {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #fef3c7;
+  border-left: 3px solid #f59e0b;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #78350f;
+}
+
 /* Orphan trigger features — not attached to any paying parent.
    Compact inline footer, one row, no per-feature card bloat. */
 .feature-orphans {

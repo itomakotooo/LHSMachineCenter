@@ -190,6 +190,16 @@
             <div id="bonusChainBody"></div>
           </section>
 
+          <!-- Collect-cycle + RTP correction (BuffCollectionMap-style
+               mechanics). Only shown when mechanic_detected. Surfaces
+               cycle length, completed cycles, paired bonus feature,
+               and the pre/post RTP correction that accounts for
+               cycles cut off by sample length. -->
+          <section class="panel collect-cycle hidden" id="collectCyclePanel">
+            <h2 data-i18n="panelCollectCycle">收集周期 & RTP 校正</h2>
+            <div id="collectCycleBody"></div>
+          </section>
+
           <!-- Drilldown panels are stacked (not tabbed) per user feedback:
                switching tabs is more friction than scroll for these
                three tables. paylines / payouts / symbols each get their
