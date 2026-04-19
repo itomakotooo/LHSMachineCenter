@@ -2004,6 +2004,21 @@ class BatchGenerateManager:
             # Shallow copy so caller can't mutate the live dict.
             return {**state, "items": [dict(i) for i in state["items"]]}
 
+    def cancel(self, batch_id: str) -> bool:
+        """Request graceful cancellation. The in-progress analyzer call
+        can't be interrupted mid-item (it's an in-process monkey-patched
+        run), so cancel takes effect at the NEXT item boundary. Remaining
+        pending items flip to status=cancelled + batch status=cancelled.
+        """
+        with self._lock:
+            state = self._batches.get(batch_id)
+            if state is None:
+                return False
+            if state["status"] in ("completed", "partial", "failed", "cancelled"):
+                return False
+            state["_cancel_requested"] = True
+            return True
+
     def _set_item(self, batch_id: str, idx: int, patch: dict[str, Any]) -> None:
         with self._lock:
             state = self._batches.get(batch_id)
@@ -2039,6 +2054,22 @@ class BatchGenerateManager:
                 items_snapshot = list(state["items"])
 
             for idx, item in enumerate(items_snapshot):
+                # Cancel check at each item boundary. Items already in
+                # "completed" / "failed" stay as-is; "pending" flip to
+                # "cancelled". The in-progress call for the PREVIOUS
+                # item (if any) already finished by the time we're here,
+                # so no mid-analyzer interruption needed.
+                with self._lock:
+                    state = self._batches.get(batch_id)
+                    if state is not None and state.get("_cancel_requested"):
+                        for j in range(idx, len(state["items"])):
+                            if state["items"][j]["status"] == "pending":
+                                state["items"][j]["status"] = "cancelled"
+                                state["items"][j]["error"] = "cancelled by user"
+                        state["pending"] = 0
+                        state["status"] = "cancelled"
+                        state["finished_at"] = utc_now()
+                        return
                 self._set_item(batch_id, idx, {"status": "running"})
                 machine = item["machine"]
                 mode = item["mode"]
@@ -5186,6 +5217,19 @@ def create_app(
                 raise HTTPException(status_code=400, detail="machine required")
             parsed_items.append({"machine": machine, "mode": mode})
         return batch_gen_mgr.start(parsed_items)
+
+    @app.post("/api/rawdata/batch-generate-report/{batch_id}/cancel")
+    def cancel_batch_generate(batch_id: str) -> dict[str, Any]:
+        """Graceful cancel — takes effect at the next item boundary.
+        Pending items flip to status=cancelled; in-progress analyzer
+        call for the current item completes first (can't kill in-process
+        monkey-patched run mid-flight)."""
+        if not batch_gen_mgr.cancel(batch_id):
+            raise HTTPException(
+                status_code=404,
+                detail="batch not found or already finished",
+            )
+        return {"ok": True, "batch_id": batch_id}
 
     @app.get("/api/rawdata/batch-generate-report/{batch_id}")
     def get_batch_generate_report(batch_id: str) -> dict[str, Any]:

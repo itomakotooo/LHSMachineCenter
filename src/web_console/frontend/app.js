@@ -4195,6 +4195,28 @@ async function refreshReportMgmtBanner() {
 // terminal state, updating inline progress + refreshing runs/reports
 // once done so the new gen_* rows + report versions land in the UI
 // without a manual refresh.
+// Cancel handler — bound once per boot (button lives in static HTML).
+// Listener re-registration is idempotent because the element is
+// fixed. POSTs the cancel endpoint; backend flips batch status to
+// cancelled after current item finishes.
+function _initBatchGenerateCancelBtn() {
+  const btn = byId("batchGenerateCancelBtn");
+  if (!btn || btn.dataset.wired === "1") return;
+  btn.dataset.wired = "1";
+  btn.addEventListener("click", async () => {
+    const bid = state.batchGenerateId;
+    if (!bid) return;
+    if (!confirm("请求停止批量生成？当前正在处理的那一项会先完成，剩余 pending 项会跳过。")) return;
+    btn.disabled = true;
+    btn.textContent = "停止中…";
+    try {
+      await fetch(`/api/rawdata/batch-generate-report/${encodeURIComponent(bid)}/cancel`, {
+        method: "POST",
+      });
+    } catch (_) { /* non-fatal */ }
+  });
+}
+
 function _startBatchGeneratePoll() {
   if (state.batchGeneratePollTimer) clearInterval(state.batchGeneratePollTimer);
   state.batchGeneratePollTimer = setInterval(async () => {
@@ -4228,7 +4250,11 @@ function _startBatchGeneratePoll() {
           return `<div class="batch-gen-item batch-gen-${it.status}">${icon} ${it.machine} mode ${it.mode}${detail}</div>`;
         }).join("");
       }
-      if (body.status === "completed" || body.status === "partial" || body.status === "failed") {
+      // Expose the stop button while the batch is running.
+      const cancelBtn = byId("batchGenerateCancelBtn");
+      if (cancelBtn) cancelBtn.classList.toggle("hidden", body.status !== "running" && body.status !== "pending");
+
+      if (body.status === "completed" || body.status === "partial" || body.status === "failed" || body.status === "cancelled") {
         clearInterval(state.batchGeneratePollTimer);
         state.batchGeneratePollTimer = null;
         state.batchGenerateId = null;
@@ -4605,6 +4631,7 @@ async function loadBootstrap() {
   renderDetailPane();  // initialize right-pane container visibility
   refreshStaleBanner();  // don't await — non-blocking for bootstrap
   refreshRawdataOverview();  // populate the rawdata banner in topbar (async)
+  _initBatchGenerateCancelBtn();  // wire the stop button one-shot
   _restoreSamplingPrefs();  // hydrate sampleMode/sampleCi from localStorage
   updateSampleHint();
   refreshDiskSpace();

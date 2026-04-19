@@ -455,6 +455,15 @@ body {
   margin-top: 8px;
 }
 
+/* batch-gen stop button sits inline with the meta row */
+.batch-gen-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.batch-gen-header #batchGenerateCancelBtn { flex: 0 0 auto; }
+
 /* Rawdata banner (topbar row #3): compact one-liner with actions.
    Settings row (min_retention_spins) collapses/expands via gear btn. */
 .rawdata-banner {
