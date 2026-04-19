@@ -322,22 +322,30 @@ def _infer_feature_spin_type_mapping(
     feature_times_total: dict[str, int],
     spin_type_spins: dict[int, int] | dict[str, int],
     spin_type_remarks_sample: dict[int, list[str]] | dict[str, list[str]],
+    feature_win_total: dict[str, float] | None = None,
+    spin_type_win: dict[int, float] | dict[str, float] | None = None,
 ) -> tuple[dict[str, int], dict[int, str], set[str]]:
     """Map upstream FeatureWin feature_name → round-level SpinType int.
 
     The upstream API groups feature payouts by a string ``feature_name``
     while round records carry an integer ``SpinType``. No explicit
-    mapping is exposed, so we infer it from three signals:
+    mapping is exposed, so we infer it from three signals (ordered
+    strongest → weakest):
 
-      1. ReMarks substring: many machines encode the feature name in
-         ``ReMarks`` (e.g. M273 SpinType=136 rounds have ReMarks
-         ``"WheelSelector"``). Strongest signal — tried first.
-      2. Exact fire-count match: a feature's total Times should equal
-         the round count at its SpinType. N:N ties across same counts
-         (e.g. 3 ceremony features all firing 106 times each) get
-         assigned by sorted-ordinal AND flagged ambiguous so the UI
-         surfaces "label may be rotated among siblings."
-      3. Fire-count within ±2% tolerance for edge-round drift.
+      1. **Unique fire-count match**: feature.times and spin_type.spins
+         each uniquely match one another. Hard algebraic signal, no
+         ambiguity. The clean happy path.
+      2. **ReMarks substring** (tie-breaker): for features still
+         unbound, match by feature_name appearing literally in the
+         ReMarks of a candidate SpinType. Only binds if the
+         SpinType's spin count is within ±50% of the feature's times
+         (prevents M102-style misfires where paid-spin ReMarks mention
+         a tiny bonus feature's name and we'd otherwise bind the big
+         paid SpinType to the small feature).
+      3. **Tied-count ordinal**: N features and N SpinTypes share the
+         same count (e.g. M273's 3 ceremony features each fire 106×).
+         Assign by sorted-ordinal and flag ambiguous so UI can warn.
+      4. **±2% tolerance**: last-resort fuzzy for edge-round drift.
 
     Returns ``(feature_to_spin_type, spin_type_to_feature,
     ambiguous_mapped)``. Features with no plausible SpinType binding
@@ -353,25 +361,7 @@ def _infer_feature_spin_type_mapping(
     feature_to_spin_type: dict[str, int] = {}
     ambiguous_mapped: set[str] = set()
 
-    feats_lower = {str(f).lower(): str(f) for f in feature_times_total}
-    # Pass 1 — ReMarks substring match (strongest).
-    for st, remarks_list in st_remarks.items():
-        if st in spin_type_to_feature:
-            continue
-        for rm in remarks_list:
-            rm_lower = rm.lower()
-            matched = [
-                feat for fl, feat in feats_lower.items() if fl in rm_lower
-            ]
-            fresh = [f for f in matched if f not in feature_to_spin_type]
-            if len(fresh) == 1:
-                feat_name = fresh[0]
-                spin_type_to_feature[st] = feat_name
-                feature_to_spin_type[feat_name] = st
-                break
-
-    # Pass 2 — exact fire-count match, grouped by count so N:N ties
-    # are detectable and assigned deterministically by sorted ordinal.
+    # Group features + SpinTypes by count for the first + third passes.
     times_to_features: dict[int, list[str]] = defaultdict(list)
     for feat_name, feat_times in feature_times_total.items():
         if feat_times > 0:
@@ -379,6 +369,47 @@ def _infer_feature_spin_type_mapping(
     times_to_spin_types: dict[int, list[int]] = defaultdict(list)
     for st, cnt in st_spins.items():
         times_to_spin_types[cnt].append(st)
+
+    # Pass 1 — unique fire-count match. If exactly one feature and
+    # exactly one SpinType share a count, they bind unambiguously.
+    for feat_times, feats in times_to_features.items():
+        sts = times_to_spin_types.get(feat_times) or []
+        if len(feats) == 1 and len(sts) == 1:
+            spin_type_to_feature[sts[0]] = feats[0]
+            feature_to_spin_type[feats[0]] = sts[0]
+
+    # Pass 2 — ReMarks substring, count-compatibility gated. Only
+    # considers still-unbound (feature, SpinType) pairs.
+    feats_lower = {str(f).lower(): str(f) for f in feature_times_total}
+    for st, remarks_list in st_remarks.items():
+        if st in spin_type_to_feature:
+            continue
+        st_count = st_spins.get(st, 0)
+        for rm in remarks_list:
+            rm_lower = rm.lower()
+            matched = [
+                feat for fl, feat in feats_lower.items() if fl in rm_lower
+            ]
+            fresh = [
+                f for f in matched if f not in feature_to_spin_type
+            ]
+            if len(fresh) != 1:
+                continue
+            feat_name = fresh[0]
+            feat_times = int(feature_times_total.get(feat_name, 0) or 0)
+            # Reject count-incompatible ReMarks bindings (e.g. paid
+            # SpinType with 10000 spins wouldn't host a feature that
+            # fires 72 times even if its name appears in ReMarks).
+            if feat_times <= 0 or st_count <= 0:
+                continue
+            drift = abs(st_count - feat_times) / max(feat_times, st_count, 1)
+            if drift > 0.5:
+                continue
+            spin_type_to_feature[st] = feat_name
+            feature_to_spin_type[feat_name] = st
+            break
+
+    # Pass 3 — tied-count ordinal assignment for residual groups.
     for feat_times, feats in times_to_features.items():
         fresh_feats = sorted(
             f for f in feats if f not in feature_to_spin_type
@@ -394,7 +425,7 @@ def _infer_feature_spin_type_mapping(
                 if len(fresh_feats) > 1:
                     ambiguous_mapped.add(feat_name)
 
-    # Pass 3 — ±2% tolerance for single-candidate approximate matches.
+    # Pass 4 — ±2% tolerance for single-candidate approximate matches.
     for feat_name, feat_times in feature_times_total.items():
         if feat_times <= 0 or feat_name in feature_to_spin_type:
             continue
@@ -407,6 +438,26 @@ def _infer_feature_spin_type_mapping(
             st = candidates[0][0]
             spin_type_to_feature[st] = feat_name
             feature_to_spin_type[feat_name] = st
+
+    # Sanity gate — if a feature has direct_win_credits > 0 but its
+    # mapped SpinType has total_win == 0, the count match pointed at
+    # a "selector / resolution" SpinType that doesn't carry the wins
+    # (M12/M15/M132 TopDollar: pay attributed to the selector spin's
+    # round, pick-em round has 0 WinCredits). Drop the mapping rather
+    # than emit bucket_distribution with pp sum=0 that's semantically
+    # wrong. UI falls through to "no bucket data" honestly.
+    if feature_win_total and spin_type_win:
+        st_win = {int(k): float(v) for k, v in spin_type_win.items()}
+        dropped: list[str] = []
+        for feat_name, st in list(feature_to_spin_type.items()):
+            feat_win = float(feature_win_total.get(feat_name, 0) or 0)
+            mapped_st_win = st_win.get(st, 0.0)
+            if feat_win > 0 and mapped_st_win <= 0:
+                dropped.append(feat_name)
+        for feat_name in dropped:
+            st = feature_to_spin_type.pop(feat_name)
+            spin_type_to_feature.pop(st, None)
+            ambiguous_mapped.discard(feat_name)
     return feature_to_spin_type, spin_type_to_feature, ambiguous_mapped
 
 
@@ -4125,11 +4176,17 @@ def main() -> int:
         str(feat): sum(int(p.get("times", 0)) for p in payouts.values())
         for feat, payouts in upstream_feature_tally.items()
     }
+    feature_win_total: dict[str, float] = {
+        str(feat): sum(float(p.get("win", 0) or 0) for p in payouts.values())
+        for feat, payouts in upstream_feature_tally.items()
+    }
     feature_to_spin_type, spin_type_to_feature, ambiguous_mapped = (
         _infer_feature_spin_type_mapping(
             feature_times_total,
             spin_type_spins,
             spin_type_remarks_sample,
+            feature_win_total=feature_win_total,
+            spin_type_win=spin_type_win,
         )
     )
 

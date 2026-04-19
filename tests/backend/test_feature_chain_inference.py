@@ -66,6 +66,56 @@ class TestTiedTimesAmbiguousMapping:
         assert ambig == {"ListRewardWheel", "WheelSelector", "PreWheel"}
 
 
+class TestRemarksCountCompatibility:
+    """Regression guard: ReMarks substring match must respect count
+    compatibility. M102 bug — paid SpinType had 10000 spins and its
+    ReMarks contained the substring "Wheel" (a tiny bonus feature
+    with 72 fires). Without the count gate, ReMarks would bind the
+    big paid SpinType to the tiny Wheel feature, leaving "Normal"
+    unmapped. Fix: reject ReMarks bindings where feature.times
+    diverges from SpinType.spins by > 50%.
+    """
+
+    def test_m102_style_normal_and_wheel_resolve_correctly(self):
+        # M102 minimal reproduction. "Wheel" literal appears in
+        # SpinType 1's ReMarks even though ST 1 is the paid spin.
+        feat_times = {"Normal": 10000, "Wheel": 72}
+        st_spins = {1: 10000, 2: 72}
+        # Paid SpinType ReMarks contain "Wheel" (maybe references the
+        # wheel action) — would incorrectly bind Wheel→ST1 without
+        # the count-compatibility gate.
+        st_remarks = {
+            1: ["Normal spin with Wheel reference afterwards"],
+            2: ["Wheel trigger"],
+        }
+        f_to_st, _, _ = ana._infer_feature_spin_type_mapping(
+            feat_times, st_spins, st_remarks,
+        )
+        # Must bind by count, not by ReMarks — count-compatibility
+        # rejection kicks in (72 vs 10000 drift > 50%).
+        assert f_to_st == {"Normal": 1, "Wheel": 2}
+
+    def test_remarks_still_disambiguates_when_counts_compatible(self):
+        """ReMarks still active for count-compatible candidates.
+        M273's ceremony features have equal counts (106 each); ReMarks
+        ("WheelSelector" / "PreWheel") correctly disambiguate."""
+        feat_times = {"WheelSelector": 106, "PreWheel": 106, "ListRewardWheel": 106}
+        st_spins = {136: 106, 137: 106, 139: 106}
+        st_remarks = {
+            136: ["WheelSelector output"],
+            137: ["PreWheel setup"],
+            139: ["Minigame CellIndexes"],  # no name hit
+        }
+        f_to_st, _, ambig = ana._infer_feature_spin_type_mapping(
+            feat_times, st_spins, st_remarks,
+        )
+        # All three resolved via ReMarks + elimination, not ambiguous.
+        assert f_to_st["WheelSelector"] == 136
+        assert f_to_st["PreWheel"] == 137
+        assert f_to_st["ListRewardWheel"] == 139
+        assert ambig == set()
+
+
 class TestRemarksSubstringMatchPrecedence:
     """ReMarks beat fire-count ordinal for disambiguation. When the
     raw round payload encodes the feature name in ReMarks (a common
