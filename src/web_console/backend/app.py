@@ -522,6 +522,7 @@ def _peek_envelope_scalars(path: Path) -> dict[str, Any] | None:
         m = _re.search(r'"' + _re.escape(key) + r'"\s*:\s*(-?\d+)', text)
         return int(m.group(1)) if m else None
     spin_times = _grab_int("_spin_times")
+    robot_count = _grab_int("_robot_count")
     cfg = _grab_str("_config_md5")
     code = _grab_str("_code_md5")
     if spin_times is None and not cfg and not code:
@@ -529,6 +530,7 @@ def _peek_envelope_scalars(path: Path) -> dict[str, Any] | None:
         # fall back to full parse.
         return None
     return {"_spin_times": spin_times or 0,
+            "_robot_count": robot_count or 0,
             "_config_md5": cfg, "_code_md5": code}
 
 
@@ -603,7 +605,12 @@ def _classify_chunks(
                 continue
         cfg = str(data.get("_config_md5", ""))
         code = str(data.get("_code_md5", ""))
-        spins = int(data.get("_spin_times") or 0)
+        # _spin_times is the PER-ROBOT spin count in this chunk — actual
+        # chunk spins = _spin_times × _robot_count. Older UI used the
+        # per-robot value and under-reported 27× on M273 (robots=27).
+        per_robot_spins = int(data.get("_spin_times") or 0)
+        robots = int(data.get("_robot_count") or 0) or 1  # fallback = 1 robot
+        spins = per_robot_spins * robots
         mtime = p.stat().st_mtime
         md5_ok = unverifiable or (cfg == up_config and code == up_code and (cfg or code))
         entry = {"path": str(p), "spins": spins, "mtime": mtime,

@@ -442,7 +442,33 @@ function updateActionStates() {
     cacheCleanupBtn.disabled = localBusy || serverBusy || runningCount > 0 || reclaimable <= 0;
     cacheCleanupBtn.classList.toggle("danger-high", tier === "high");
   }
+
+  // Fix 2 (2026-04-19 round 3): dynamic destructive / cleanup buttons
+  // live outside the static HTML (rendered inside banners / tree /
+  // global table). When busy state changes, re-render the cheap
+  // containers so the new disabled= evaluations pick up _isAnyBusy().
+  // Tree re-render is EXPENSIVE (fetches) — we set disabled inline on
+  // the DOM instead. Transient over/under-disable is fine: the user
+  // never fires a button during a busy period anyway (server would
+  // 409), this just visually hints the busy state.
+  const anyBusy = localBusy || serverBusy || anyRunRunning;
+  state._anyBusy = anyBusy;  // cache for render-time checks
+  // Banner + global table: cheap, can re-render in place.
+  if (state.rawdataOverview) renderRawdataBanner();
+  if (state.showGlobalRawdata) renderRawdataGlobalTable();
+  // Tree: don't re-render (expensive fetches); toggle disabled inline.
+  // Buttons with data-intrinsic-disabled="1" stay disabled regardless;
+  // others track busy state.
+  document.querySelectorAll(".rwtree-gen-btn").forEach((btn) => {
+    if (btn.dataset.intrinsicDisabled === "1") {
+      btn.disabled = true;
+      return;
+    }
+    btn.disabled = anyBusy;
+  });
 }
+
+function _isAnyBusy() { return !!state._anyBusy; }
 
 async function withAction(name, fn) {
   if (state.busyActions.size > 0) return;
@@ -891,6 +917,11 @@ function _setFocusedMachine(machine) {
 function _clearFocus() {
   state.focusedMachine = null;
   _syncAllCardsActiveDom();
+  // Fix 1 (2026-04-19 round 3): unfocus must also refresh batch bar
+  // + action states so the sticky bar hides when nothing is selected.
+  // Without this, the bar stays stuck on "聚焦 Mx" with stale buttons.
+  updateSampleHint();
+  updateActionStates();
   renderDetailPane();
 }
 
@@ -1047,7 +1078,7 @@ function renderRawdataBanner() {
   const reclaimText = reclaimMb >= 1024
     ? (reclaimMb / 1024).toFixed(2) + " GB"
     : reclaimMb.toFixed(1) + " MB";
-  const cleanupDisabled = d.reclaimable_bytes <= 0;
+  const cleanupDisabled = d.reclaimable_bytes <= 0 || _isAnyBusy();
   const minRet = Number(state.minRetentionSpins || 100000);
   banner.innerHTML = `
     <div class="rawdata-banner-row">
@@ -1150,6 +1181,7 @@ function renderRawdataGlobalTable() {
             ? new Date(r.last_sample_mtime * 1000).toISOString().slice(0, 10)
             : "—";
           const reclaim = r.deletable_bytes + r.stale_bytes;
+          const delDisabled = reclaim <= 0 || _isAnyBusy();
           return `<tr class="rawdata-global-row" data-machine="${r.machine}">
             <td><strong>${r.machine}</strong></td>
             <td>${fMbShort(r.kept_bytes)} <span class="muted">(${r.kept_chunks})</span></td>
@@ -1161,7 +1193,7 @@ function renderRawdataGlobalTable() {
             </td>
             <td class="muted">${last}</td>
             <td>
-              <button class="small-btn danger-btn rwglobal-del-btn" data-machine="${r.machine}" ${reclaim <= 0 ? "disabled" : ""} title="删除此机台的可回收 + 过期 chunks（保留 baseline）">🗑 ${fMbShort(reclaim)}</button>
+              <button class="small-btn danger-btn rwglobal-del-btn" data-machine="${r.machine}" ${delDisabled ? "disabled" : ""} title="删除此机台的可回收 + 过期 chunks（保留 baseline）">🗑 ${fMbShort(reclaim)}</button>
             </td>
           </tr>`;
         }).join("")}
@@ -1488,13 +1520,15 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
       statusTag = `<span class="rwtree-status mixed">⚠混合</span>`;
     }
 
-    // Filter reports to those matching the selected md5 (via
-    // reportMd5Map). Reports with no md5 info ("untagged") are
-    // included only when no md5 is selected.
+    // Filter reports to those matching the selected md5. Reports with
+    // no md5 info (md5_status "untagged", pre-MD5-tagging migration)
+    // are ALWAYS shown — otherwise they'd silently disappear just
+    // because the tree happens to have a selected md5 key.
     const allReports = reportsByMode[i].versions || [];
     const filteredReports = allReports.filter((v) => {
       const info = reportMd5Map.get(v.report_version);
-      if (!info) return !selected;  // untagged: show only in "all" view
+      if (!info) return true;
+      if (info.md5_status === "untagged") return true;
       return matchMd5(info.config_md5, info.code_md5);
     });
 
@@ -1542,7 +1576,7 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
           </div>
           ${rawdataApprox}
           <div class="rwtree-rawdata-actions">
-            <button class="small-btn primary-btn rwtree-gen-btn" data-machine="${machineName}" data-mode="${mode}" ${(keptChunks + delChunks) === 0 ? "disabled" : ""} title="用当前 analyzer 从这些 chunks 生成新 report">⟳ 生成 Report</button>
+            <button class="small-btn primary-btn rwtree-gen-btn" data-machine="${machineName}" data-mode="${mode}" data-intrinsic-disabled="${(keptChunks + delChunks) === 0 ? "1" : ""}" ${((keptChunks + delChunks) === 0 || _isAnyBusy()) ? "disabled" : ""} title="用当前 analyzer 从这些 chunks 生成新 report">⟳ 生成 Report</button>
           </div>
         </div>`;
 
@@ -1600,8 +1634,7 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
               <div class="rwtree-report-details">
                 <div class="rwtree-kv"><span>Spins</span><span>${spins}</span></div>
                 <div class="rwtree-kv"><span>Quality</span><span>${quality || "—"}</span></div>
-                <div class="rwtree-kv"><span>Analyzer</span><span>${info.analyzer_version?.slice(0,10) || "—"} <span class="muted">(${analyzerStatus === "match" ? "当前" : analyzerStatus === "outdated" ? "⚠ 过期" : "未标记"})</span></span></div>
-                <div class="rwtree-kv"><span>版本</span><code>${rv}</code></div>
+                <div class="rwtree-kv"><span>Analyzer</span><span title="report 生成时的 analyzer 代码版本">${info.analyzer_version?.slice(0,10) || "—"} <span class="muted">(${analyzerStatus === "match" ? "当前" : analyzerStatus === "outdated" ? "⚠ 过期" : "未标记"})</span></span></div>
                 <div class="rwtree-report-actions">
                   <button class="small-btn rwtree-load-btn" data-run-id="${rid}" ${rid ? "" : "disabled"}>载入调试</button>
                 </div>
