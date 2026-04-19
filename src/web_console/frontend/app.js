@@ -2849,34 +2849,42 @@ function renderFeatureBreakdownPanel(summary) {
   const triggerOnly = features.filter((f) => Boolean(f.trigger_only));
   const paying = features.filter((f) => !f.trigger_only);
 
-  // Walk the trigger chain backwards from each paying feature so we
-  // can render a linear breadcrumb (furthest → nearest → bonus).
-  // Each trigger gets consumed at most once — if a trigger chains
-  // into a non-paying feature that itself chains further, we absorb
-  // the whole sub-chain under the final paying target.
+  // For each paying feature, collect EVERY inbound trigger chain.
+  // A paying feature may have multiple independent predecessors:
+  // M273 LockSymbolFreespin is fed by both the wheel-ceremony chain
+  // (ListRewardWheel → WheelSelector → PreWheel) AND the BCM cycle
+  // (BuffCollectionMap as cycle trigger from config pairing). Each
+  // inbound chain renders as its own breadcrumb line.
   const absorbed = new Set();
-  function chainInto(payingName) {
-    // Build chain nearest→farthest by following chain_parent links
-    // BACKWARDS: find triggers whose chain_parent_feature === target.
-    const rev = [];
-    let target = payingName;
-    while (true) {
-      const predecessor = triggerOnly.find(
-        (t) => t.chain_parent_feature === target && !absorbed.has(t.feature_name),
-      );
-      if (!predecessor) break;
-      rev.push(predecessor);
-      absorbed.add(predecessor.feature_name);
-      target = predecessor.feature_name;
+  function chainsInto(payingName) {
+    const chains = [];
+    // Walk each direct predecessor back to its terminus.
+    const directPreds = triggerOnly.filter(
+      (t) => t.chain_parent_feature === payingName && !absorbed.has(t.feature_name),
+    );
+    for (const pred of directPreds) {
+      const rev = [pred];
+      absorbed.add(pred.feature_name);
+      let target = pred.feature_name;
+      while (true) {
+        const upstream = triggerOnly.find(
+          (t) => t.chain_parent_feature === target && !absorbed.has(t.feature_name),
+        );
+        if (!upstream) break;
+        rev.push(upstream);
+        absorbed.add(upstream.feature_name);
+        target = upstream.feature_name;
+      }
+      // rev[0] = direct predecessor (closest), rev[last] = furthest.
+      // Reverse for display "earliest → latest → bonus".
+      chains.push(rev.reverse());
     }
-    // rev[0] = immediate predecessor, rev[last] = furthest upstream.
-    // Reverse so display reads as "earliest → latest → bonus".
-    return rev.reverse();
+    return chains;
   }
 
   const payingCards = paying.map((feat) => {
-    const chain = chainInto(feat.feature_name);
-    return _renderPayingFeatureCard(feat, chain);
+    const chains = chainsInto(feat.feature_name);
+    return _renderPayingFeatureCard(feat, chains);
   }).join("");
 
   const orphans = triggerOnly.filter((t) => !absorbed.has(t.feature_name));
@@ -2900,10 +2908,12 @@ function renderFeatureBreakdownPanel(summary) {
     orphansRow;
 }
 
-// Render one paying feature card: header + meta + precursor chain
-// breadcrumb + per-feature multiplier bucket histogram. Same teal
-// aesthetic as the global 倍率分布 table.
-function _renderPayingFeatureCard(feat, chain) {
+// Render one paying feature card: header + meta + one breadcrumb
+// per inbound trigger chain + per-feature multiplier bucket
+// histogram. Same teal aesthetic as the global 倍率分布 table.
+// ``chains`` is a list-of-lists — each inner list is a single
+// linear trigger chain feeding into this paying feature.
+function _renderPayingFeatureCard(feat, chains) {
   const rtpPp = Number(feat.rtp_contribution_pp || 0).toFixed(2);
   const sharePct = (Number(feat.share_of_total_win || 0) * 100).toFixed(1);
   const firesSpins = Number(feat.fires_spins || feat.total_times || 0);
@@ -2911,31 +2921,41 @@ function _renderPayingFeatureCard(feat, chain) {
   const buckets = Array.isArray(feat.bucket_distribution) ? feat.bucket_distribution : [];
   const bucketTableHtml = _renderFeatureBucketTable(buckets);
 
-  // Chain breadcrumb: only shown when triggers precede this feature.
-  // Reads as "A → B → C" with fires shown inline on each link (same
-  // count applies to all, so show once at end).
-  let chainHtml = "";
-  if (chain.length) {
-    const steps = chain.map((t) => {
-      const tFires = Number(t.fires_spins || t.total_times || 0).toLocaleString();
-      const conf = t.chain_parent_confidence || "";
-      const confDot = conf === "high" ? "" : conf === "medium"
-        ? `<span class="chain-conf-warn" title="medium confidence on SpinType binding">·</span>`
-        : `<span class="chain-conf-low" title="low-confidence chain edge">·</span>`;
-      return `<span class="chain-step" title="${tFires}× fires">${_escHtml(t.feature_name)}${confDot}</span>`;
-    }).join(`<span class="chain-arrow">→</span>`);
-    const endFires = Number(chain[chain.length - 1]?.fires_spins || 0).toLocaleString();
-    chainHtml = `<div class="feature-chain">` +
-      `<span class="feature-chain-label">前置链:</span> ${steps}` +
-      `<span class="chain-fires"> · ${endFires}× 触发</span>` +
-      `</div>`;
-  }
+  // Multi-chain breadcrumb: one line per inbound chain. Cycle-type
+  // triggers (resolved_spin_type == null — e.g. BuffCollectionMap)
+  // get a "(cycle)" suffix on the trigger name since they're not a
+  // sequential round chain but a per-spin counter reset.
+  const chainLines = (chains || [])
+    .filter((c) => Array.isArray(c) && c.length)
+    .map((chain) => {
+      const steps = chain.map((t) => {
+        const tFires = Number(t.fires_spins || t.total_times || 0).toLocaleString();
+        const conf = t.chain_parent_confidence || "";
+        const confDot = conf === "high" ? "" : conf === "medium"
+          ? `<span class="chain-conf-warn" title="medium confidence on chain edge">·</span>`
+          : `<span class="chain-conf-low" title="low-confidence chain edge">·</span>`;
+        const isCycle = t.resolved_spin_type == null;
+        const cycleTag = isCycle
+          ? `<span class="chain-cycle-tag" title="cycle/session-level trigger (no round-level SpinType) — typically a CollectCount-style accumulator">(cycle)</span>`
+          : "";
+        return `<span class="chain-step" title="${tFires}× fires">`
+          + `${_escHtml(t.feature_name)}${cycleTag}${confDot}`
+          + `</span>`;
+      }).join(`<span class="chain-arrow">→</span>`);
+      const tail = chain[chain.length - 1];
+      const endFires = Number(tail?.fires_spins || 0).toLocaleString();
+      return `<div class="feature-chain">` +
+        `<span class="feature-chain-label">前置:</span> ${steps}` +
+        `<span class="chain-fires"> · ${endFires}× 触发</span>` +
+        `</div>`;
+    })
+    .join("");
 
   return (
     `<div class="feature-block">` +
     `<h3>${_escHtml(String(feat.feature_name))} <span class="feature-metric">${rtpPp}pp · ${sharePct}%</span></h3>` +
     `<div class="feature-meta">fires ${firesSpins.toLocaleString()}× · ${fireRatePct}% of spins</div>` +
-    chainHtml +
+    chainLines +
     (bucketTableHtml
       ? bucketTableHtml
       : `<div class="muted" style="font-size:12px">无倍率分桶数据</div>`) +

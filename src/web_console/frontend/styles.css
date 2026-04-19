@@ -1979,6 +1979,12 @@ button.small-btn.active, .small-btn.active {
 .feature-chain .chain-fires {
   color: #94a3b8;
 }
+.feature-chain .chain-cycle-tag {
+  font-size: 10px;
+  color: #64748b;
+  margin-left: 3px;
+  cursor: help;
+}
 /* Per-feature bucket table — inherits drilldown-table styling so
    rows / bars / typography match the global 倍率分布 panel exactly.
    Only layout tweak: tighter padding because feature cards are

@@ -4133,6 +4133,15 @@ def main() -> int:
         )
     )
 
+    # Preload BCM pairing (config → heuristic) once. Falls back the
+    # "BuffCollectionMap" feature to its cycle-pair when SpinType
+    # inference can't bind it (BCM is per-spin background state, not
+    # a round-level type — never has its own SpinType count).
+    _bcm_bonus_feature, _bcm_bonus_source = _resolve_bonus_feature(
+        args.machine, args.rtp_mode,
+        upstream_feature_tally, _load_bcm_pairings(),
+    )
+
     upstream_feature_rows: list[dict[str, Any]] = []
     for feat_name, payouts in upstream_feature_tally.items():
         feat_total_win = sum(p.get("win", 0.0) for p in payouts.values())
@@ -4197,6 +4206,24 @@ def main() -> int:
                             chain_parent_confidence = "medium"
                         else:
                             chain_parent_confidence = "low"
+        # BCM fallback: "BuffCollectionMap" has no round-level
+        # SpinType (it's a per-spin CollectCount cycle, not its own
+        # round type). When SpinType inference can't bind it, use
+        # the BCM pairing resolved from configs/bcm_pairings.json
+        # (or the heuristic "biggest-win non-normal feature" fallback).
+        if (
+            str(feat_name) == "BuffCollectionMap"
+            and chain_parent_feature is None
+            and _bcm_bonus_feature
+        ):
+            chain_parent_feature = _bcm_bonus_feature
+            chain_parent_confidence = (
+                "high" if _bcm_bonus_source == "config" else "medium"
+            )
+            # BCM cycles feed the bonus feature — treat every cycle
+            # reset as 100% chaining into the paired feature.
+            chain_parent_share = 1.0
+            chain_parent_next_fires = feat_total_times
         fire_rate = feat_total_times / total_spins if total_spins > 0 else 0.0
         # Per-feature multiplier bucket histogram. Same shape as the
         # global multiplier_profile.buckets so the UI can reuse the
