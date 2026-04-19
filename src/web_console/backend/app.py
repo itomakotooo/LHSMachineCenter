@@ -1942,25 +1942,45 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
 
 class BatchGenerateManager:
     """Background batch driver for ``POST /api/rawdata/batch-generate-
-    report``. Each batch is a list of (machine, mode) pairs processed
-    sequentially by the in-process generator callback. Sequential
-    because analyzer's ``post_json`` is monkey-patched at the module
-    level — concurrent generator calls would race each other.
+    report``. Each batch is a list of (machine, mode) pairs; analyzer
+    runs for each item execute in a ProcessPoolExecutor of N worker
+    subprocesses (default 4).
 
-    Holds the ``ops`` mutex for the whole batch duration, so sampling
-    / cleanup / delete paths stay blocked until the batch finishes
-    (consistent with the rest of the console's coarse locking).
+    Why subprocess pool (refactor 2026-04-19 round 7): the old design
+    ran items sequentially because analyzer's ``post_json`` is monkey-
+    patched at the module level, and concurrent in-process calls would
+    race each other. Running analyzer in a subprocess per item gives
+    each call its own interpreter state — the in-process generator
+    callback (``prepare_fn``) just handles the DB row / output dir /
+    chunk discovery; the actual analyzer.main() lives in the worker.
+
+    Holds the ``ops`` mutex for the whole batch duration.
     """
 
     def __init__(
         self,
-        generator_fn: Callable[[str, int], dict[str, Any]],
+        prepare_fn: Callable[[str, int], dict[str, Any]],
+        finalize_fn: Callable[[dict, dict], dict[str, Any]],
         ops: Any,
+        concurrency: int = 4,
+        root_path: str = "",
     ) -> None:
-        self._generator_fn = generator_fn
+        # prepare_fn(machine, mode) → dict with:
+        #   job: pickle-safe dict for the worker (chunk_dir, output_dir,
+        #        run_id, etc.)
+        #   plus any extra keys the caller wants (machine/mode/run_id/etc)
+        #   which finalize_fn uses to update DB + index.json.
+        # Runs in the parent thread under ops mutex.
+        self._prepare_fn = prepare_fn
+        # finalize_fn(prepared_dict, worker_result_dict) → dict with
+        #   final metrics (rtp_point_pct, achieved_halfwidth_pp, etc.).
+        # Runs in the parent thread after each worker result arrives.
+        self._finalize_fn = finalize_fn
         self._ops = ops
         self._batches: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
+        self._concurrency = max(1, int(concurrency))
+        self._root_path = root_path
 
     def start(self, items: list[dict[str, Any]]) -> dict[str, Any]:
         batch_id = f"bgen_{uuid.uuid4().hex[:12]}"
@@ -2027,9 +2047,7 @@ class BatchGenerateManager:
             state["items"][idx].update(patch)
 
     def _run(self, batch_id: str) -> None:
-        # Acquire the coarse ops mutex once for the whole batch. Any
-        # subsequent item that fails to process records a per-item
-        # error but the batch keeps going.
+        # Acquire the coarse ops mutex once for the whole batch.
         if not self._ops.acquire("batch_generate_report"):
             snap = self._ops.snapshot()
             with self._lock:
@@ -2045,6 +2063,17 @@ class BatchGenerateManager:
                     state["failed"] = sum(1 for i in state["items"] if i["status"] == "failed")
                     state["pending"] = 0
             return
+
+        # Import locally — multiprocessing / concurrent.futures top-level
+        # imports would pull all of stdlib into every reload cycle.
+        import multiprocessing as _mp
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        # Discover the worker module's import path (file next to app.py).
+        from ._batch_gen_worker import (  # noqa: PLC0415
+            _pool_worker_init, run_analyzer_job,
+        )
+
         try:
             with self._lock:
                 state = self._batches.get(batch_id)
@@ -2053,67 +2082,157 @@ class BatchGenerateManager:
                 state["status"] = "running"
                 items_snapshot = list(state["items"])
 
+            # Phase A — prepare each item in the parent thread (DB row,
+            # output dir, chunk discovery). Failures here mark the item
+            # without a worker submission.
+            prepared: list[tuple[int, dict[str, Any]]] = []
             for idx, item in enumerate(items_snapshot):
-                # Cancel check at each item boundary. Items already in
-                # "completed" / "failed" stay as-is; "pending" flip to
-                # "cancelled". The in-progress call for the PREVIOUS
-                # item (if any) already finished by the time we're here,
-                # so no mid-analyzer interruption needed.
+                # Cancel check before preparing — avoids a half-created
+                # run row when operator hits Stop during prep.
                 with self._lock:
                     state = self._batches.get(batch_id)
                     if state is not None and state.get("_cancel_requested"):
-                        for j in range(idx, len(state["items"])):
-                            if state["items"][j]["status"] == "pending":
-                                state["items"][j]["status"] = "cancelled"
-                                state["items"][j]["error"] = "cancelled by user"
-                        state["pending"] = 0
-                        state["status"] = "cancelled"
-                        state["finished_at"] = utc_now()
-                        return
-                self._set_item(batch_id, idx, {"status": "running"})
-                machine = item["machine"]
-                mode = item["mode"]
+                        break
                 try:
-                    result = self._generator_fn(machine, mode)
+                    pre = self._prepare_fn(item["machine"], item["mode"])
+                    prepared.append((idx, pre))
                     self._set_item(batch_id, idx, {
-                        "status": "completed",
-                        "run_id": result.get("run_id"),
-                        "rtp_point_pct": result.get("rtp_point_pct"),
-                        "achieved_halfwidth_pp": result.get("achieved_halfwidth_pp"),
-                        "chunks_processed": result.get("chunks_processed"),
+                        "status": "running",
+                        "run_id": pre.get("run_id"),
                     })
-                    with self._lock:
-                        state = self._batches.get(batch_id)
-                        if state is not None:
-                            state["completed"] += 1
-                            state["pending"] -= 1
                 except HTTPException as exc:
                     self._set_item(batch_id, idx, {
                         "status": "failed",
                         "error": str(exc.detail),
                     })
                     with self._lock:
-                        state = self._batches.get(batch_id)
-                        if state is not None:
-                            state["failed"] += 1
-                            state["pending"] -= 1
+                        st2 = self._batches.get(batch_id)
+                        if st2 is not None:
+                            st2["failed"] += 1
+                            st2["pending"] -= 1
                 except Exception as exc:  # noqa: BLE001
                     self._set_item(batch_id, idx, {
                         "status": "failed",
                         "error": f"{exc.__class__.__name__}: {exc}",
                     })
                     with self._lock:
-                        state = self._batches.get(batch_id)
-                        if state is not None:
-                            state["failed"] += 1
-                            state["pending"] -= 1
+                        st2 = self._batches.get(batch_id)
+                        if st2 is not None:
+                            st2["failed"] += 1
+                            st2["pending"] -= 1
 
+            # Phase B — spin up the pool + submit all prepared jobs.
+            # Workers run analyzer.main() in their own process; parent
+            # reads each job's summary.json from disk after completion.
+            if prepared:
+                ctx = _mp.get_context("spawn")  # portable across POSIX/Windows
+                with ProcessPoolExecutor(
+                    max_workers=self._concurrency,
+                    mp_context=ctx,
+                    initializer=_pool_worker_init,
+                    initargs=(self._root_path,),
+                ) as pool:
+                    futures: dict = {}
+                    for idx, pre in prepared:
+                        fut = pool.submit(run_analyzer_job, pre["job"])
+                        futures[fut] = (idx, pre)
+
+                    cancelled_submitted = False
+                    for fut in as_completed(list(futures.keys())):
+                        idx, pre = futures[fut]
+
+                        # On first cancel after a result lands, cancel any
+                        # still-queued futures (in-flight ones finish).
+                        with self._lock:
+                            state = self._batches.get(batch_id)
+                            want_cancel = bool(
+                                state and state.get("_cancel_requested")
+                            )
+                        if want_cancel and not cancelled_submitted:
+                            for other in futures:
+                                if other is not fut and not other.done():
+                                    other.cancel()
+                            cancelled_submitted = True
+
+                        # Process this future's result.
+                        try:
+                            result = fut.result()
+                        except Exception as exc:  # noqa: BLE001
+                            self._set_item(batch_id, idx, {
+                                "status": "failed",
+                                "error": f"{exc.__class__.__name__}: {exc}",
+                            })
+                            with self._lock:
+                                st3 = self._batches.get(batch_id)
+                                if st3 is not None:
+                                    st3["failed"] += 1
+                                    st3["pending"] -= 1
+                            continue
+
+                        if result.get("ok"):
+                            try:
+                                final = self._finalize_fn(pre, result)
+                                self._set_item(batch_id, idx, {
+                                    "status": "completed",
+                                    "rtp_point_pct": final.get("rtp_point_pct"),
+                                    "achieved_halfwidth_pp": final.get("achieved_halfwidth_pp"),
+                                    "chunks_processed": final.get("chunks_processed"),
+                                })
+                                with self._lock:
+                                    st3 = self._batches.get(batch_id)
+                                    if st3 is not None:
+                                        st3["completed"] += 1
+                                        st3["pending"] -= 1
+                            except Exception as exc:  # noqa: BLE001
+                                self._set_item(batch_id, idx, {
+                                    "status": "failed",
+                                    "error": f"finalize: {exc}",
+                                })
+                                with self._lock:
+                                    st3 = self._batches.get(batch_id)
+                                    if st3 is not None:
+                                        st3["failed"] += 1
+                                        st3["pending"] -= 1
+                        else:
+                            # Worker reported per-item failure. Call
+                            # finalize with a failure marker so DB row
+                            # flips to status=failed.
+                            try:
+                                self._finalize_fn(pre, result)
+                            except Exception:  # noqa: BLE001
+                                pass
+                            self._set_item(batch_id, idx, {
+                                "status": "failed",
+                                "error": str(result.get("error") or "worker failed"),
+                            })
+                            with self._lock:
+                                st3 = self._batches.get(batch_id)
+                                if st3 is not None:
+                                    st3["failed"] += 1
+                                    st3["pending"] -= 1
+
+            # Phase C — flip any still-pending items to cancelled (can
+            # happen if cancel fired during Phase A).
             with self._lock:
                 state = self._batches.get(batch_id)
                 if state is not None:
-                    state["status"] = (
-                        "completed" if state["failed"] == 0 else "partial"
-                    )
+                    pending_idxs = [
+                        i for i, it in enumerate(state["items"])
+                        if it["status"] == "pending"
+                    ]
+                    if state.get("_cancel_requested") and pending_idxs:
+                        for i in pending_idxs:
+                            state["items"][i]["status"] = "cancelled"
+                            state["items"][i]["error"] = "cancelled by user"
+                        state["pending"] = 0
+                        state["status"] = "cancelled"
+                    else:
+                        if state.get("_cancel_requested"):
+                            state["status"] = "cancelled"
+                        elif state["failed"] == 0:
+                            state["status"] = "completed"
+                        else:
+                            state["status"] = "partial"
                     state["finished_at"] = utc_now()
         finally:
             self._ops.release()
@@ -5082,11 +5201,191 @@ def create_app(
                 detail=f"generate-report failed: {exc.__class__.__name__}: {exc}",
             ) from exc
 
-    # Batch driver for the sequential multi-(machine, mode) path. Must
-    # be constructed after ``_run_generate_report`` is defined because
-    # it takes the helper as its generator callback. Shared across
-    # batch endpoints via closure.
-    batch_gen_mgr = BatchGenerateManager(_run_generate_report, ops)
+    # ── Pool-based batch generate (round 7) ───────────────────────────
+    # The single-item endpoint above uses the in-process monkey-patch
+    # path; it stays single-threaded. For the batch path we split the
+    # work into Phase A (prepare — DB row + output dir in parent) and
+    # Phase B (analyzer subprocess in worker) so N items can run in
+    # parallel without racing post_json.
+
+    def _prepare_batch_gen_item(machine: str, mode: int) -> dict[str, Any]:
+        """Parent-thread prep: validate chunks, create output dir, insert
+        RUNNING run row, build job dict for the worker.
+
+        Returns a dict with ``job`` (worker input), plus ``run_id``,
+        ``output_dir``, ``chunk_count`` etc. used by _finalize.
+        Raises HTTPException on validation failure — batch manager
+        surfaces as a per-item error.
+        """
+        mode_dir = rd_root / machine / f"mode_{mode}"
+        if not mode_dir.is_dir():
+            raise HTTPException(
+                status_code=404,
+                detail=f"no rawdata for {machine} mode {mode}",
+            )
+        retention = _load_settings(settings_path)["min_retention_spins"]
+        classified = _classify_chunks(machine, mode, rd_root, mc, retention)
+        usable = classified["kept"] + classified["deletable"]
+        if not usable:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no usable chunks for {machine} mode {mode}",
+            )
+        chunk_paths = sorted(Path(e["path"]) for e in usable)
+        sample_env = json.loads(chunk_paths[0].read_text(encoding="utf-8"))
+        chunk_spin_times = int(sample_env.get("_spin_times") or 5000)
+        chunk_robot_count = int(sample_env.get("_robot_count") or 24)
+        new_run_id = f"gen_{uuid.uuid4().hex[:12]}"
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        report_version = f"rv_{ts}_rawdata"
+        output_dir = rr / machine / f"mode_{mode}" / "versions" / report_version
+        output_dir.mkdir(parents=True, exist_ok=True)
+        progress_file = sd / "progress" / f"{new_run_id}.jsonl"
+        summary_file = output_dir / "player_impact_summary.json"
+        report_file = output_dir / "player_impact_report.md"
+        started_now = utc_now()
+        store.insert_run({
+            "run_id": new_run_id,
+            "machine": machine,
+            "mode": mode,
+            "status": "running",
+            "model_id": "generate-report",
+            "created_at": started_now,
+            "started_at": started_now,
+            "target_halfwidth_pp": 0.001,
+            "chunk_spin_times": chunk_spin_times,
+            "chunk_robot_count": chunk_robot_count,
+            "batch_concurrency": 1,
+            "max_chunks": len(usable),
+            "timeout": 30,
+            "bankruptcy_session_spins": 500,
+            "bankruptcy_bankroll_multipliers": "100,200,500",
+            "report_version": report_version,
+            "output_dir": str(output_dir),
+            "progress_file": str(progress_file),
+            "summary_file": str(summary_file),
+            "report_file": str(report_file),
+        })
+        return {
+            "machine": machine,
+            "mode": mode,
+            "run_id": new_run_id,
+            "report_version": report_version,
+            "output_dir": output_dir,
+            "summary_file": summary_file,
+            "report_file": report_file,
+            "chunk_count": len(usable),
+            "job": {
+                "machine": machine,
+                "mode": mode,
+                "chunk_dir": str(mode_dir),
+                "output_dir": str(output_dir),
+                "run_id": new_run_id,
+                "progress_file": str(progress_file),
+                "max_chunks": len(usable),
+                "chunk_spin_times": chunk_spin_times,
+                "chunk_robot_count": chunk_robot_count,
+                "bet": 1000,
+            },
+        }
+
+    def _finalize_batch_gen_item(
+        prepared: dict[str, Any], worker_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Parent-thread post-process: read summary, update DB row,
+        write index.json / latest.json, merge static attrs. Returns a
+        dict with rtp_point_pct / achieved_halfwidth_pp for the batch
+        UI to display."""
+        machine = prepared["machine"]
+        mode = int(prepared["mode"])
+        run_id = prepared["run_id"]
+        output_dir = Path(prepared["output_dir"])
+        summary_file = Path(prepared["summary_file"])
+        report_file = Path(prepared["report_file"])
+        report_version = prepared["report_version"]
+        chunk_count = prepared["chunk_count"]
+
+        if not worker_result.get("ok"):
+            err = str(worker_result.get("error") or "worker failed")
+            if store.get_run(run_id):
+                store.update_run(run_id, {
+                    "status": "failed",
+                    "finished_at": utc_now(),
+                    "error_message": err[:500],
+                })
+            return {"ok": False, "error": err}
+
+        summary: dict[str, Any] = {}
+        if summary_file.exists():
+            summary = read_json(summary_file) or {}
+        rtp = (summary.get("rtp") or {}).get("point_pct")
+        hw = (summary.get("sampling") or {}).get("achieved_halfwidth_pp")
+        ql = (
+            (summary.get("guideline_assessment") or {})
+            .get("data_quality", {})
+            .get("quality_label")
+        )
+        rawdata_cfg = summary.get("config_md5") or ""
+        rawdata_code = summary.get("code_md5") or ""
+        analyzer_ver = summary.get("analyzer_version") or ""
+        total_spins_val = summary.get("sampling", {}).get("total_spins")
+        store.update_run(run_id, {
+            "status": "completed",
+            "finished_at": utc_now(),
+            "achieved_rtp_pct": float(rtp) if rtp is not None else None,
+            "achieved_halfwidth_pp": float(hw) if hw is not None else None,
+            "quality_label": str(ql) if ql else None,
+            "rawdata_config_md5": str(rawdata_cfg) if rawdata_cfg else None,
+            "rawdata_code_md5": str(rawdata_code) if rawdata_code else None,
+            "analyzer_version": str(analyzer_ver) if analyzer_ver else None,
+            "total_spins": int(total_spins_val) if total_spins_val is not None else None,
+        })
+        mode_reports_dir = rr / machine / f"mode_{mode}"
+        index_path = mode_reports_dir / "index.json"
+        latest_path = mode_reports_dir / "latest.json"
+        item = {
+            "report_version": report_version,
+            "run_id": run_id,
+            "created_at": utc_now(),
+            "summary_file": str(summary_file),
+            "report_file": str(report_file),
+            "rtp_point_pct": rtp,
+            "achieved_rtp_pct": rtp,
+            "achieved_halfwidth_pp": hw,
+            "total_spins": total_spins_val,
+            "quality_label": ql,
+        }
+        index_payload = []
+        if index_path.exists():
+            try:
+                raw = read_json(index_path)
+                if isinstance(raw, list):
+                    index_payload = raw
+            except Exception:
+                pass
+        index_payload.append(item)
+        write_json(index_path, index_payload)
+        write_json(latest_path, item)
+        try:
+            _merge_machine_static(machine, summary, mc, _static_attrs_path(mc))
+        except Exception:
+            pass
+        return {
+            "ok": True,
+            "rtp_point_pct": rtp,
+            "achieved_halfwidth_pp": hw,
+            "chunks_processed": chunk_count,
+            "analyzer_version": analyzer_ver,
+        }
+
+    _batch_gen_concurrency = int(os.environ.get("SLOT_BATCH_GEN_WORKERS", "4"))
+    batch_gen_mgr = BatchGenerateManager(
+        prepare_fn=_prepare_batch_gen_item,
+        finalize_fn=_finalize_batch_gen_item,
+        ops=ops,
+        concurrency=_batch_gen_concurrency,
+        root_path=str(ROOT),
+    )
 
     @app.post("/api/rawdata/{machine}/generate-report")
     def generate_report_from_rawdata(
