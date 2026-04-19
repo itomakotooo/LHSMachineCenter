@@ -79,7 +79,11 @@ const state = {
   catalogSortReverse: false,  // reverse ordering toggle
   versionHistoryMachine: null,
   versionHistoryMode: null,
-  compareSelected: new Set(),
+  // Map<report_version, {mode}> — rwtree checkboxes register mode so
+  // compareReports can call /api/reports/{m}/{mode}/{version} correctly.
+  // Pre-2026-04-19 this was a plain Set<version> driven by the
+  // per-mode versionHistoryPanel (which always knew its own mode).
+  compareSelected: new Map(),
   // True for a short window right after a batch completes: blocks
   // renderSamplingProgress so the final error log stays readable.
   // Cleared when the user clicks 开始采样 for a fresh batch.
@@ -964,7 +968,6 @@ function _effectiveSelectionSize() {
 function renderDetailPane() {
   const fleet = byId("detailFleetOverview");
   const detail = byId("machineDetailPanel");
-  const versions = byId("versionHistoryPanel");
   const compare = byId("reportComparisonPanel");
   const multi = byId("detailMultiSelect");
   const globalRaw = byId("detailRawdataGlobal");
@@ -976,7 +979,7 @@ function renderDetailPane() {
   // Default: hide everything, then reveal the appropriate combination.
   const hide = (el) => el && el.classList.add("hidden");
   const show = (el) => el && el.classList.remove("hidden");
-  hide(fleet); hide(detail); hide(versions); hide(compare); hide(multi); hide(globalRaw);
+  hide(fleet); hide(detail); hide(compare); hide(multi); hide(globalRaw);
 
   if (focused) {
     show(detail);
@@ -1308,7 +1311,7 @@ async function renderRawdataReportTree(machineName) {
 
   // Clear compare state when switching machines (tree rebuild).
   if (state.versionHistoryMachine !== machineName) {
-    state.compareSelected = new Set();
+    state.compareSelected = new Map();
     state.versionHistoryMachine = machineName;
   }
 
@@ -1485,10 +1488,10 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
             const tsShort = ts ? `${ts.slice(4, 6)}-${ts.slice(6, 8)}` : rv.slice(3, 11);
             const isBest = rv === bestCiVersion;
             const expanded = isBest ? " expanded" : "";
-            const checked = (state.compareSelected || new Set()).has(rv) ? "checked" : "";
+            const checked = (state.compareSelected || new Map()).has(rv) ? "checked" : "";
             return `<div class="rwtree-report${expanded}" data-rv="${rv}">
               <div class="rwtree-report-summary">
-                <input type="checkbox" class="rwtree-compare-check" data-rv="${rv}" ${checked} title="勾选以对比版本" />
+                <input type="checkbox" class="rwtree-compare-check" data-rv="${rv}" data-mode="${mode}" ${checked} title="勾选以对比版本" />
                 <span class="rwtree-report-date">${tsShort}</span>
                 <span class="rwtree-report-rtp">${rtp}</span>
                 <span class="rwtree-report-ci">${ci}</span>
@@ -1527,8 +1530,9 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
   });
   gridEl.querySelectorAll(".rwtree-compare-check").forEach((cb) => {
     cb.addEventListener("change", () => {
-      if (cb.checked) state.compareSelected.add(cb.dataset.rv);
-      else state.compareSelected.delete(cb.dataset.rv);
+      const rv = cb.dataset.rv;
+      if (cb.checked) state.compareSelected.set(rv, { mode: Number(cb.dataset.mode) });
+      else state.compareSelected.delete(rv);
       _updateRwtreeCompareBar();
     });
   });
@@ -1567,7 +1571,7 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
 function _updateRwtreeCompareBar() {
   const bar = byId("rwtreeCompareBar");
   if (!bar) return;
-  const n = (state.compareSelected || new Set()).size;
+  const n = (state.compareSelected || new Map()).size;
   if (n < 2) {
     bar.classList.add("hidden");
     bar.innerHTML = "";
@@ -1582,169 +1586,18 @@ function _updateRwtreeCompareBar() {
     compareReports();
   });
   byId("rwtreeCompareClearBtn")?.addEventListener("click", () => {
-    state.compareSelected = new Set();
+    state.compareSelected = new Map();
     // Uncheck any rendered checkboxes without re-fetching.
     document.querySelectorAll(".rwtree-compare-check").forEach((cb) => { cb.checked = false; });
     _updateRwtreeCompareBar();
   });
 }
 
-async function _loadRawdataSection(machineName) {
-  const section = byId("rawdataSection");
-  if (!section) return;
-  try {
-    const data = await apiGet(`/api/rawdata/${machineName}`);
-    const modes = Object.entries(data.modes || {});
-    if (!modes.length) {
-      section.innerHTML = `<div class="rawdata-header">📦 本地 Rawdata</div><div class="muted">无本地 rawdata</div>`;
-      return;
-    }
-    // Each mode gets a card showing:
-    //   - classified summary (kept / deletable / stale counts + spins)
-    //   - per-version breakdown (current server version vs outdated)
-    //   - Safe delete button (respects retention) + Force delete (nuclear)
-    const fInt = (n) => Number(n || 0).toLocaleString();
-    const fMb = (n) => {
-      const mb = Number(n || 0);
-      return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
-    };
-    const rows = modes.sort((a, b) => Number(a[0]) - Number(b[0])).map(([mode, st]) => {
-      const cls = st.classified || {};
-      const versions = Array.isArray(st.versions) ? st.versions : [];
-      const unverifiable = st.unverifiable ? " (无上游 MD5 参考)" : "";
-      const retention = cls.min_retention_spins ?? 100000;
-      const keptSpins = fInt(cls.kept_spins);
-      const keptChunks = cls.kept_chunks ?? 0;
-      const delChunks = cls.deletable_chunks ?? 0;
-      const delSpins = fInt(cls.deletable_spins);
-      const staleChunks = cls.stale_chunks ?? 0;
-      const staleSpins = fInt(cls.stale_spins);
-      const versionRows = versions.map((v) => {
-        const tag = v.is_current
-          ? `<span class="rawdata-version-tag current">当前版本</span>`
-          : `<span class="rawdata-version-tag old">服务器旧版 (stale)</span>`;
-        const cfgShort = (v.config_md5 || "").slice(0, 8) || "—";
-        const codeShort = (v.code_md5 || "").slice(0, 8) || "—";
-        const total = (v.kept_chunks || 0) + (v.deletable_chunks || 0) + (v.stale_chunks || 0);
-        return `<div class="rawdata-version-row">
-          ${tag}
-          <code>cfg=${cfgShort}</code> <code>code=${codeShort}</code>
-          · ${total} chunks
-          · kept ${v.kept_chunks || 0} / deletable ${v.deletable_chunks || 0}${v.stale_chunks ? ` / stale ${v.stale_chunks}` : ""}
-        </div>`;
-      }).join("");
-      const delDisabled = (delChunks + staleChunks) === 0 ? "disabled" : "";
-      // 生成 Report 按钮：至少有一个非 stale chunk 可用才启用
-      const genDisabled = (keptChunks + delChunks) === 0 ? "disabled" : "";
-      return `<div class="rawdata-row">
-        <div class="rawdata-row-head">
-          <strong>mode ${mode}</strong>
-          · 保底 ${keptChunks} chunks / ${keptSpins} spins (≥${fInt(retention)})
-          ${delChunks > 0 ? `· 可回收 ${delChunks} chunks / ${delSpins} spins` : ""}
-          ${staleChunks > 0 ? `· <span class="rawdata-stale">过期 ${staleChunks} / ${staleSpins}</span>` : ""}
-          · ${fMb(st.total_size_mb)}${unverifiable}
-        </div>
-        <div class="rawdata-versions">${versionRows || '<span class="muted">无 chunk</span>'}</div>
-        <div class="rawdata-row-actions">
-          <button class="small-btn primary-btn rawdata-generate-btn" data-machine="${machineName}" data-mode="${mode}" ${genDisabled} title="用当前 analyzer 代码重新跑这 (${keptChunks + delChunks}) 个 chunks 生成新 report">⟳ 生成 Report</button>
-          <button class="small-btn rawdata-delete-btn" data-machine="${machineName}" data-mode="${mode}" ${delDisabled} title="删除可回收 + 过期 chunks，保留 baseline">删除可回收</button>
-          <button class="small-btn danger-btn rawdata-force-delete-btn" data-machine="${machineName}" data-mode="${mode}" title="完全删除 (含 baseline)">完全删除</button>
-        </div>
-      </div>`;
-    }).join("");
-    section.innerHTML = `<div class="rawdata-header">📦 本地 Rawdata (采样时会自动复用)</div>${rows}
-      <div class="rawdata-all-actions">
-        <button class="small-btn rawdata-delete-all-btn" data-machine="${machineName}" title="删除所有 mode 的可回收 + 过期 chunks">删除全部 mode (保留 baseline)</button>
-        <button class="small-btn danger-btn rawdata-force-delete-all-btn" data-machine="${machineName}" title="完全删除所有 mode">完全删除所有 mode</button>
-      </div>`;
-
-    section.querySelectorAll(".rawdata-generate-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const m = btn.dataset.machine, mo = btn.dataset.mode;
-        const origText = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = "生成中…（后台运行，见活动日志）";
-        try {
-          // Async path: backend returns immediately with run_id;
-          // activity strip + run list show progress.
-          await apiPost(
-            `/api/rawdata/${encodeURIComponent(m)}/generate-report`,
-            { mode: Number(mo), async: true },
-          );
-          btn.textContent = "⏳ 已入队";
-          await refreshRunList(false);
-          // Keep button disabled until serverBusy clears (will be
-          // re-enabled by the next updateActionStates cycle).
-          setTimeout(() => {
-            btn.textContent = origText;
-            btn.disabled = false;
-          }, 4000);
-        } catch (err) {
-          btn.textContent = "✗";
-          alert(`生成 Report 失败: ${String(err && err.message ? err.message : err)}`);
-          setTimeout(() => {
-            btn.textContent = origText;
-            btn.disabled = false;
-          }, 3000);
-        }
-      });
-    });
-    section.querySelectorAll(".rawdata-delete-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const m = btn.dataset.machine, mo = btn.dataset.mode;
-        // Guard against concurrent ops — backend also rejects with
-        // 409 but fail-fast in UI is friendlier.
-        if (state.systemState?.operation_busy) {
-          alert(`有操作进行中 (${state.systemState.operation || "busy"})，请等待完成再删除。`);
-          return;
-        }
-        if (!confirm(`删除 ${m} mode ${mo} 的可回收 + 过期 chunks？baseline 保留。`)) return;
-        try {
-          await apiDelete(`/api/rawdata/${m}?mode=${mo}`);
-        } catch (err) {
-          alert(`删除失败: ${String(err?.message || err)}`);
-          return;
-        }
-        _loadRawdataSection(machineName);
-      });
-    });
-    section.querySelectorAll(".rawdata-force-delete-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const m = btn.dataset.machine, mo = btn.dataset.mode;
-        if (state.systemState?.operation_busy) {
-          alert(`有操作进行中 (${state.systemState.operation || "busy"})，请等待完成再删除。`);
-          return;
-        }
-        const tok = prompt(`完全删除 ${m} mode ${mo} 的所有 rawdata (含 baseline)？输入 DELETE 确认：`);
-        if (tok !== "DELETE") return;
-        try {
-          await apiDelete(`/api/rawdata/${m}?mode=${mo}&force=true`);
-        } catch (err) {
-          alert(`删除失败: ${String(err?.message || err)}`);
-          return;
-        }
-        _loadRawdataSection(machineName);
-      });
-    });
-    section.querySelector(".rawdata-delete-all-btn")?.addEventListener("click", async () => {
-      if (state.systemState?.operation_busy) {
-        alert(`有操作进行中 (${state.systemState.operation || "busy"})，请等待完成再删除。`);
-        return;
-      }
-      if (!confirm(`删除 ${machineName} 所有 mode 的可回收 chunks？baseline 保留。`)) return;
-      await apiDelete(`/api/rawdata/${machineName}`);
-      _loadRawdataSection(machineName);
-    });
-    section.querySelector(".rawdata-force-delete-all-btn")?.addEventListener("click", async () => {
-      const tok = prompt(`完全删除 ${machineName} 所有 rawdata (含 baseline)？输入 DELETE 确认：`);
-      if (tok !== "DELETE") return;
-      await apiDelete(`/api/rawdata/${machineName}?force=true`);
-      _loadRawdataSection(machineName);
-    });
-  } catch (e) {
-    section.innerHTML = `<div class="muted">加载失败: ${e.message || e}</div>`;
-  }
-}
+// _loadRawdataSection removed 2026-04-19 — the master/detail refactor
+// (step 4+6) replaced the stacked per-machine rawdata cards with the
+// rwtree 4-column grid + the global rawdata banner/detail table.
+// Delete lives on the batch action bar (focus/multi) and the global
+// detail rows; single-focus detail is READ-ONLY per design.
 
 // ── Fleet Overview ────────────────────────────────────────────────
 
@@ -2519,117 +2372,30 @@ async function addServer() {
 
 // ── Version History + Report Comparison ───────────────────────────
 
-async function showVersionHistory(machine) {
-  const panel = byId("versionHistoryPanel");
-  if (!panel) return;
-  state.versionHistoryMachine = machine;
-  state.versionHistoryMode = null;
-  state.compareSelected = new Set();
-  byId("versionHistoryTitle").textContent = `${fmt("panelVersionHistory")} — ${machine}`;
-  panel.classList.remove("hidden");
-
-  // Build mode tabs from machine config.
-  const mConfig = state.machines.find((m) => m.machine === machine);
-  const modes = (mConfig && mConfig.modes) || [1, 2, 5, 7];
-  const tabsEl = byId("versionModeTabs");
-  tabsEl.innerHTML = modes.map((m) => `<button class="mode-tab" data-mode="${m}">Mode ${m}</button>`).join("");
-  tabsEl.querySelectorAll(".mode-tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      tabsEl.querySelectorAll(".mode-tab").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      loadVersionsForMode(machine, Number(btn.dataset.mode));
-    });
-  });
-  // Auto-select first mode with reports, fallback to mode 2 or first.
-  const sm = ((state.machinesSummary || {}).machines || {})[machine] || {};
-  const bestMode = modes.find((m) => sm[String(m)]) || (modes.includes(2) ? 2 : modes[0]);
-  const bestBtn = tabsEl.querySelector(`[data-mode="${bestMode}"]`);
-  if (bestBtn) { bestBtn.classList.add("active"); loadVersionsForMode(machine, bestMode); }
-}
-
-async function loadVersionsForMode(machine, mode) {
-  state.versionHistoryMode = mode;
-  state.compareSelected = new Set();
-  updateCompareBtn();
-  const tbody = byId("versionTableBody");
-  tbody.innerHTML = `<tr><td colspan="6" class="muted">Loading...</td></tr>`;
-
-  try {
-    const [data, validation] = await Promise.all([
-      apiGet(`/api/reports/${machine}/${mode}`),
-      apiGet(`/api/report-validate/${machine}`).catch(() => null),
-    ]);
-    const versions = data.versions || [];
-    if (!versions.length) {
-      tbody.innerHTML = `<tr><td colspan="6" class="muted">${fmt("noVersions")}</td></tr>`;
-      return;
-    }
-    // Map version → md5_status.
-    const md5Map = {};
-    if (validation && validation.reports) {
-      validation.reports.filter((r) => r.mode === mode).forEach((r) => {
-        md5Map[r.version] = r.md5_status;
-      });
-    }
-    // Sort newest first.
-    versions.sort((a, b) => (b.report_version || "").localeCompare(a.report_version || ""));
-    tbody.innerHTML = versions.map((v) => {
-      const rv = v.report_version || "?";
-      const rtp = v.achieved_rtp_pct != null ? v.achieved_rtp_pct.toFixed(2) + "%" : "—";
-      const ci = v.achieved_halfwidth_pp != null ? "\u00b1" + v.achieved_halfwidth_pp.toFixed(2) : "—";
-      const spins = v.total_spins != null ? Number(v.total_spins).toLocaleString() : "—";
-      const quality = v.quality_label || "—";
-      const md5 = md5Map[rv] || "unknown";
-      const badge = md5 === "match" ? '<span class="md5-match" title="MD5 匹配">✓</span>'
-        : md5 === "outdated" ? '<span class="md5-mismatch" title="机台版本已变更">⚠ 过期</span>'
-        : md5 === "untagged" ? '<span class="muted" title="无 MD5 标签">—</span>'
-        : '';
-      return (
-        `<tr data-version="${rv}">` +
-        `<td><input type="checkbox" class="compare-check" value="${rv}"></td>` +
-        `<td class="version-id">${rv} ${badge}</td>` +
-        `<td>${rtp}</td><td>${ci}</td><td>${spins}</td><td>${quality}</td>` +
-        `</tr>`
-      );
-    }).join("");
-
-    // Wire checkboxes.
-    tbody.querySelectorAll(".compare-check").forEach((cb) => {
-      cb.addEventListener("change", () => {
-        if (cb.checked) state.compareSelected.add(cb.value);
-        else state.compareSelected.delete(cb.value);
-        updateCompareBtn();
-      });
-    });
-  } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="6" class="muted">${e.message || e}</td></tr>`;
-  }
-}
-
-function updateCompareBtn() {
-  const btn = byId("compareBtn");
-  if (!btn) return;
-  const n = (state.compareSelected || new Set()).size;
-  btn.disabled = n !== 2;
-  btn.textContent = fmt("btnCompare") + ` (${n}/2)`;
-}
+// showVersionHistory / loadVersionsForMode / updateCompareBtn removed
+// 2026-04-19 — the rwtree (step 4+5) inlines per-mode report listing
+// + CI-sorted expansion + md5 filtering + compare checkboxes. The
+// old versionHistoryPanel DOM is dropped from the HTML in step 8.
 
 async function compareReports() {
-  const selected = [...(state.compareSelected || [])];
-  if (selected.length !== 2) return;
-  const machine = state.versionHistoryMachine;
-  const mode = state.versionHistoryMode;
+  // state.compareSelected is Map<version, {mode}> — each entry knows
+  // its own mode (can span different modes or md5 versions).
+  const entries = [...(state.compareSelected || new Map()).entries()];
+  if (entries.length !== 2) return;
+  const machine = state.versionHistoryMachine || state.focusedMachine;
+  if (!machine) return;
   const panel = byId("reportComparisonPanel");
   const body = byId("comparisonBody");
   panel.classList.remove("hidden");
   body.innerHTML = `<div class="muted">Loading...</div>`;
 
   try {
+    const [[vA, metaA], [vB, metaB]] = entries;
     const [a, b] = await Promise.all([
-      apiGet(`/api/reports/${machine}/${mode}/${selected[0]}`),
-      apiGet(`/api/reports/${machine}/${mode}/${selected[1]}`),
+      apiGet(`/api/reports/${machine}/${metaA.mode}/${vA}`),
+      apiGet(`/api/reports/${machine}/${metaB.mode}/${vB}`),
     ]);
-    renderComparison(a, b, selected[0], selected[1]);
+    renderComparison(a, b, vA, vB);
   } catch (e) {
     body.innerHTML = `<div class="muted">${e.message || e}</div>`;
   }
@@ -4828,7 +4594,10 @@ function bindEvents() {
     }
   });
   byId("compareServersBtn").addEventListener("click", () => compareServers());
-  byId("compareBtn").addEventListener("click", () => compareReports());
+  // compareBtn removed from the HTML in step 8; rwtree's built-in
+  // compare bar (#rwtreeCompareBar) now owns the click → compareReports
+  // wiring directly inside _updateRwtreeCompareBar.
+  byId("compareBtn")?.addEventListener("click", () => compareReports());
   // machineSelect / modeSelect / ciSelect were on the old sidebar and
   // are gone after the UI simplification. Sampling now runs from the
   // manage tab's 采样选中机台 panel which uses sampleMode / sampleCi.

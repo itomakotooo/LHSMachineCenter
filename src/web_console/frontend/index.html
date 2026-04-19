@@ -378,35 +378,18 @@
               <div id="diskSpaceBar" class="disk-space-bar"></div>
             </section>
 
-            <!-- (b) 1 focused → machine-detail + version-history + compare.
-                 For step 1 we reuse the existing panels; step 4 replaces
-                 them with the rawdata × report tree. -->
+            <!-- (b) 1 focused → rwtree-owning machine detail. The
+                 legacy versionHistoryPanel + separate compareBtn were
+                 dropped in step 8; reports now live in the 4-col
+                 rwtree inside #machineDetailBody, and compare runs
+                 via #rwtreeCompareBar sibling. -->
             <section class="panel machine-detail hidden" id="machineDetailPanel">
               <h2 id="machineDetailTitle"></h2>
               <div id="machineDetailBody"></div>
             </section>
 
-            <section class="panel version-history hidden" id="versionHistoryPanel">
-              <h2 id="versionHistoryTitle" data-i18n="panelVersionHistory">版本历史</h2>
-              <div class="version-mode-tabs" id="versionModeTabs"></div>
-              <table id="versionTable" class="drilldown-table">
-                <thead>
-                  <tr>
-                    <th><input type="checkbox" id="compareSelectAll" title="全选"></th>
-                    <th data-i18n="thVersion">版本</th>
-                    <th data-i18n="thRtp">RTP</th>
-                    <th data-i18n="thCiHalfwidth">CI±</th>
-                    <th data-i18n="thSpins">Spins</th>
-                    <th data-i18n="thQuality">质量</th>
-                  </tr>
-                </thead>
-                <tbody id="versionTableBody"></tbody>
-              </table>
-              <div class="version-actions">
-                <button id="compareBtn" class="primary-btn" disabled data-i18n="btnCompare">对比选中 (2)</button>
-              </div>
-            </section>
-
+            <!-- Report comparison output: only revealed when compareReports()
+                 fires from the rwtree compare bar. -->
             <section class="panel report-comparison hidden" id="reportComparisonPanel">
               <h2 data-i18n="panelComparison">Report 对比</h2>
               <div id="comparisonBody"></div>
@@ -503,11 +486,14 @@
           </section>
 
           <section class="panel cache">
-            <h2 data-i18n="panelCache">Chunk 缓存 / 维护操作</h2>
+            <h2 data-i18n="panelCache">维护操作</h2>
             <div id="cacheWarning" class="warnBox"></div>
             <div id="cacheRiskMeta" class="meta dangerMeta"></div>
             <div id="cacheMeta" class="meta"></div>
             <div class="actions">
+              <!-- 清理缓存 also on topbar rawdata banner (step 6) for  -->
+              <!-- quick access; kept here too for back-compat with e2e  -->
+              <!-- tests and the risk-tier detail display.               -->
               <button id="cacheRefreshBtn" data-i18n="btnCacheRefresh">刷新缓存状态</button>
               <button id="cacheCleanupBtn" class="danger-btn" data-i18n="btnCacheCleanup">清理缓存</button>
               <button id="reportCleanupBtn" class="danger-btn" data-i18n="btnReportCleanup">清理旧版本 Report</button>
