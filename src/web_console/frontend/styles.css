@@ -1944,33 +1944,40 @@ button.small-btn.active, .small-btn.active {
   margin-left: 6px;
 }
 
-/* Trigger-only / chain feature block styling. Trigger features
-   (win=0 but fires>0) get a distinct border + muted bg so operator
-   can see at a glance which features are gates vs pays. */
-.feature-block.feature-trigger-only {
-  border-left: 3px solid #8b5cf6;
-  background: #faf5ff;
-}
-.feature-metric.feature-metric-trigger {
-  color: #6d28d9;
-  font-weight: 600;
-}
+/* Feature-card meta + precursor chain breadcrumb. Uses the same
+   muted slate typography as the rest of the debug panels; no
+   accent colors so the bucket histograms stay the focal point. */
 .feature-meta {
   font-size: 11px;
   color: #64748b;
   margin-bottom: 4px;
 }
 .feature-chain {
-  margin-top: 6px;
-  font-size: 12px;
+  font-size: 11px;
   color: #475569;
-  padding: 4px 8px;
-  background: #f1f5f9;
-  border-radius: 3px;
+  margin: 2px 0 6px;
+  line-height: 1.5;
 }
-.feature-chain-none {
+.feature-chain-label {
+  color: #64748b;
+}
+.feature-chain .chain-step {
+  color: #0f766e;
+}
+.feature-chain .chain-arrow {
   color: #94a3b8;
-  font-style: italic;
+  margin: 0 4px;
+}
+.feature-chain .chain-conf-warn {
+  color: #b45309;
+  margin-left: 2px;
+}
+.feature-chain .chain-conf-low {
+  color: #94a3b8;
+  margin-left: 2px;
+}
+.feature-chain .chain-fires {
+  color: #94a3b8;
 }
 /* Per-feature bucket histogram (replaces the old per-pay_id bar list). */
 .feature-buckets {
@@ -2009,22 +2016,31 @@ button.small-btn.active, .small-btn.active {
   text-align: right;
 }
 
-.feature-gated-by {
-  margin: 4px 0 6px;
+/* Orphan trigger features — not attached to any paying parent.
+   Compact inline footer, one row, no per-feature card bloat. */
+.feature-orphans {
+  margin-top: 10px;
+  padding: 6px 10px;
   font-size: 11px;
-  color: #6d28d9;
-  padding: 3px 8px;
-  background: #f5f3ff;
-  border-radius: 3px;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
 }
-.feature-ambig {
-  font-size: 11px;
-  color: #b45309;
-  background: #fffbeb;
+.feature-orphans-label {
+  color: #94a3b8;
+}
+.feature-orphans .orphan-chip {
+  display: inline-block;
+  margin: 0 4px 0 0;
   padding: 1px 6px;
+  background: #f1f5f9;
   border-radius: 3px;
-  margin-left: 6px;
-  cursor: help;
+  color: #334155;
+}
+.feature-orphans .orphan-fires {
+  color: #94a3b8;
+  margin-left: 4px;
 }
 
 /* Paytable shape panel: per-pay_id shape + wild inference */

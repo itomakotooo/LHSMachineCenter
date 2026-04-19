@@ -2814,15 +2814,16 @@ function renderFieldDiscovery(summary) {
 }
 
 // Render the upstream_feature_breakdown panel from
-// summary.player_impact.upstream_feature_breakdown. Hidden when the
-// upstream only reports a single "Normal" feature (redundant with
-// payout_ids_top20). Each feature renders as a small header + per-
-// payout-id table.
+// summary.player_impact.upstream_feature_breakdown. Paying features
+// render as cards with per-feature bucket histograms (same visual
+// language as the global 倍率分布 table). Trigger-only features
+// don't get their own cards — they're absorbed into their paying
+// parent as a precursor chain breadcrumb, so the operator reads a
+// single story: "this bonus is gated by X→Y→Z, it fires N×, its
+// RTP shape is this histogram." Orphan triggers (no resolved paying
+// parent — e.g. M273's BuffCollectionMap session meta) get one
+// compact footer row instead of a full-width empty card.
 function renderFeatureBreakdownPanel(summary) {
-  // Renders inside #featureBreakdownInline (merged into the SpinType
-  // panel) instead of a standalone section. Clears the div when not
-  // applicable so the SpinType table stands alone for single-feature
-  // machines.
   const body = byId("featureBreakdownInline");
   if (!body) return;
   const data = ((summary || {}).player_impact || {}).upstream_feature_breakdown;
@@ -2830,94 +2831,102 @@ function renderFeatureBreakdownPanel(summary) {
     body.innerHTML = "";
     return;
   }
-  // Build a map of feature_name → paying row so we can compute
-  // chain-parent directed cross-links and display them on trigger
-  // blocks. Preserves the sorted order the analyzer emits.
-  const featureByName = new Map(
-    data.features.map((f) => [String(f.feature_name), f]),
-  );
+  const features = data.features;
+  const triggerOnly = features.filter((f) => Boolean(f.trigger_only));
+  const paying = features.filter((f) => !f.trigger_only);
+
+  // Walk the trigger chain backwards from each paying feature so we
+  // can render a linear breadcrumb (furthest → nearest → bonus).
+  // Each trigger gets consumed at most once — if a trigger chains
+  // into a non-paying feature that itself chains further, we absorb
+  // the whole sub-chain under the final paying target.
+  const absorbed = new Set();
+  function chainInto(payingName) {
+    // Build chain nearest→farthest by following chain_parent links
+    // BACKWARDS: find triggers whose chain_parent_feature === target.
+    const rev = [];
+    let target = payingName;
+    while (true) {
+      const predecessor = triggerOnly.find(
+        (t) => t.chain_parent_feature === target && !absorbed.has(t.feature_name),
+      );
+      if (!predecessor) break;
+      rev.push(predecessor);
+      absorbed.add(predecessor.feature_name);
+      target = predecessor.feature_name;
+    }
+    // rev[0] = immediate predecessor, rev[last] = furthest upstream.
+    // Reverse so display reads as "earliest → latest → bonus".
+    return rev.reverse();
+  }
+
+  const payingCards = paying.map((feat) => {
+    const chain = chainInto(feat.feature_name);
+    return _renderPayingFeatureCard(feat, chain);
+  }).join("");
+
+  const orphans = triggerOnly.filter((t) => !absorbed.has(t.feature_name));
+  const orphansRow = orphans.length
+    ? `<div class="feature-orphans">` +
+      `<span class="feature-orphans-label">其他（未归属链条）:</span> ` +
+      orphans.map((t) => {
+        const fires = Number(t.fires_spins || t.total_times || 0).toLocaleString();
+        const rate = (Number(t.fire_rate || 0) * 100).toFixed(2);
+        return `<span class="orphan-chip" title="${rate}% of spins · ${fires}×">`
+          + `${_escHtml(t.feature_name)}<span class="orphan-fires"> ${fires}×</span>`
+          + `</span>`;
+      }).join("") +
+      `</div>`
+    : "";
+
   body.innerHTML =
     `<hr style="margin:14px 0;border:none;border-top:1px solid #d2dde9">` +
     `<h3 style="margin:0 0 8px;font-size:13px;color:var(--muted)">${fmt("panelFeatureBreakdown")}</h3>` +
-    `<div class="feature-blocks-grid">` +
-    data.features.map((feat) => {
-      const triggerOnly = Boolean(feat.trigger_only);
-      const rows = Array.isArray(feat.payouts) ? feat.payouts : [];
-      const maxShare = Math.max(
-        ...rows.map((p) => Number(p.share_of_feature_win || 0)),
-        0
-      );
-      const rtpPp = Number(feat.rtp_contribution_pp || 0).toFixed(2);
-      const sharePct = (Number(feat.share_of_total_win || 0) * 100).toFixed(1);
-      const firesSpins = Number(feat.fires_spins || feat.total_times || 0);
-      const fireRatePct = (Number(feat.fire_rate || 0) * 100).toFixed(2);
-      const parentName = feat.chain_parent_feature;
-      const parentConf = feat.chain_parent_confidence || "none";
-      const parentShare = Number(feat.chain_parent_share || 0);
-      const ambig = Boolean(feat.spin_type_binding_ambiguous);
+    `<div class="feature-blocks-grid">${payingCards}</div>` +
+    orphansRow;
+}
 
-      if (triggerOnly) {
-        // Trigger-only features: direct RTP is 0 but fire count +
-        // chain parent tell the real story. Surface both prominently
-        // and skip the (always empty) paying-rows bar chart.
-        const firesText = fireRatePct + "% · " + firesSpins.toLocaleString() + "×";
-        let chainText = "";
-        if (parentName) {
-          const confBadge = parentConf === "high" ? "🟢"
-            : parentConf === "medium" ? "🟡"
-            : parentConf === "low" ? "🟠" : "⚪";
-          chainText =
-            `<div class="feature-chain">` +
-            `↳ ${confBadge} 链条归属: <strong>${_escHtml(parentName)}</strong>` +
-            ` · ${(parentShare * 100).toFixed(0)}% 过渡 · ${_escHtml(parentConf)}置信度` +
-            `</div>`;
-        } else {
-          chainText = `<div class="feature-chain feature-chain-none">` +
-            `↳ 未推断出链条归属（可能是会话级 meta feature）</div>`;
-        }
-        const ambigBadge = ambig
-          ? `<span class="feature-ambig" title="该 feature 与同次数其他 feature 的 SpinType 绑定存在二义性，链条走向仍可信但 label 可能顺序鉴别不准">⚠ 绑定歧义</span>`
-          : "";
-        return (
-          `<div class="feature-block feature-trigger-only">` +
-          `<h3>${_escHtml(String(feat.feature_name))} ${ambigBadge}` +
-          ` <span class="feature-metric feature-metric-trigger">触发类 · ${firesText}</span></h3>` +
-          chainText +
-          `</div>`
-        );
-      }
+// Render one paying feature card: header + meta + precursor chain
+// breadcrumb + per-feature multiplier bucket histogram. Same teal
+// aesthetic as the global 倍率分布 table.
+function _renderPayingFeatureCard(feat, chain) {
+  const rtpPp = Number(feat.rtp_contribution_pp || 0).toFixed(2);
+  const sharePct = (Number(feat.share_of_total_win || 0) * 100).toFixed(1);
+  const firesSpins = Number(feat.fires_spins || feat.total_times || 0);
+  const fireRatePct = (Number(feat.fire_rate || 0) * 100).toFixed(2);
+  const buckets = Array.isArray(feat.bucket_distribution) ? feat.bucket_distribution : [];
+  const bucketRowsHtml = _renderFeatureBucketRows(buckets);
 
-      // Paying feature: per-feature multiplier bucket histogram.
-      // Each row = 一个倍率区间 (like the global bucket panel). RTP
-      // contribution bar gives operators a "where does this feature's
-      // RTP come from" read that pay_id share bars never delivered.
-      const buckets = Array.isArray(feat.bucket_distribution) ? feat.bucket_distribution : [];
-      const bucketSpins = Number(feat.bucket_total_spins || 0);
-      const bucketRowsHtml = _renderFeatureBucketRows(buckets);
-      // Find any trigger-only features that chain INTO this paying
-      // feature — surface as "gated by X, Y, Z" on the paying block
-      // so operator sees the full inbound graph at a glance.
-      const gatedBy = data.features
-        .filter((f) => f.trigger_only && f.chain_parent_feature === feat.feature_name)
-        .map((f) => String(f.feature_name));
-      const gatedHtml = gatedBy.length
-        ? `<div class="feature-gated-by">↳ 前置触发: ${gatedBy.map(_escHtml).join(" → ")}</div>`
-        : "";
-      return (
-        `<div class="feature-block">` +
-        `<h3>${_escHtml(String(feat.feature_name))} <span class="feature-metric">${rtpPp}pp · ${sharePct}%</span></h3>` +
-        `<div class="feature-meta">fires ${firesSpins.toLocaleString()}× · ${fireRatePct}% of spins${
-          bucketSpins ? ` · ${bucketSpins.toLocaleString()} 轮次` : ""
-        }</div>` +
-        gatedHtml +
-        (bucketRowsHtml
-          ? `<div class="feature-buckets">${bucketRowsHtml}</div>`
-          : `<div class="muted" style="font-size:11px">无倍率分桶数据</div>`) +
-        `</div>`
-      );
-    })
-    .join("") + `</div>`;
-  void featureByName;
+  // Chain breadcrumb: only shown when triggers precede this feature.
+  // Reads as "A → B → C" with fires shown inline on each link (same
+  // count applies to all, so show once at end).
+  let chainHtml = "";
+  if (chain.length) {
+    const steps = chain.map((t) => {
+      const tFires = Number(t.fires_spins || t.total_times || 0).toLocaleString();
+      const conf = t.chain_parent_confidence || "";
+      const confDot = conf === "high" ? "" : conf === "medium"
+        ? `<span class="chain-conf-warn" title="medium confidence on SpinType binding">·</span>`
+        : `<span class="chain-conf-low" title="low-confidence chain edge">·</span>`;
+      return `<span class="chain-step" title="${tFires}× fires">${_escHtml(t.feature_name)}${confDot}</span>`;
+    }).join(`<span class="chain-arrow">→</span>`);
+    const endFires = Number(chain[chain.length - 1]?.fires_spins || 0).toLocaleString();
+    chainHtml = `<div class="feature-chain">` +
+      `<span class="feature-chain-label">前置链:</span> ${steps}` +
+      `<span class="chain-fires"> · ${endFires}× 触发</span>` +
+      `</div>`;
+  }
+
+  return (
+    `<div class="feature-block">` +
+    `<h3>${_escHtml(String(feat.feature_name))} <span class="feature-metric">${rtpPp}pp · ${sharePct}%</span></h3>` +
+    `<div class="feature-meta">fires ${firesSpins.toLocaleString()}× · ${fireRatePct}% of spins</div>` +
+    chainHtml +
+    (bucketRowsHtml
+      ? `<div class="feature-buckets">${bucketRowsHtml}</div>`
+      : `<div class="muted" style="font-size:11px">无倍率分桶数据</div>`) +
+    `</div>`
+  );
 }
 
 // Render the bonus_chain_dynamics panel (ReMarks-derived
