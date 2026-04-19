@@ -2763,6 +2763,37 @@ async function renderPaytableShape(summary) {
      </table>`;
 }
 
+// Build the per-feature bucket histogram HTML (label + bar + RTP pp).
+// Mirrors the global multiplier-bucket chart's visual language so
+// operators recognize it. Skips buckets with zero spins — they'd
+// render as empty bars and just add noise. Returns "" if no bucket
+// has any non-zero spin count (e.g. trigger-only feature).
+function _renderFeatureBucketRows(buckets) {
+  if (!Array.isArray(buckets) || !buckets.length) return "";
+  const nonzero = buckets.filter((b) => Number(b.spin_count || 0) > 0);
+  if (!nonzero.length) return "";
+  const maxRtp = Math.max(
+    ...nonzero.map((b) => Math.abs(Number(b.rtp_contribution_pp || 0))),
+    0.001,
+  );
+  return nonzero
+    .map((b) => {
+      const label = PURE.prettyBucketLabel(b.bucket);
+      const count = Number(b.spin_count || 0);
+      const rate = Number(b.spin_rate || 0) * 100;
+      const rtpPp = Number(b.rtp_contribution_pp || 0);
+      const bar = Math.min(100, (Math.abs(rtpPp) / maxRtp) * 100);
+      return (
+        `<span class="feature-bucket-row" title="${count.toLocaleString()}× · ${rate.toFixed(2)}% of spins · ${rtpPp.toFixed(2)}pp RTP">` +
+        `<span class="feature-bucket-label">${_escHtml(label)}×</span>` +
+        `<span class="feature-bucket-track"><span class="feature-bucket-bar" style="width:${bar.toFixed(1)}%"></span></span>` +
+        `<span class="feature-bucket-val">${rtpPp.toFixed(2)}pp</span>` +
+        `</span>`
+      );
+    })
+    .join("");
+}
+
 function renderFieldDiscovery(summary) {
   const panel = byId("fieldDiscoveryPanel");
   if (!panel) return;
@@ -2856,21 +2887,13 @@ function renderFeatureBreakdownPanel(summary) {
         );
       }
 
-      // Paying feature: classic per-PayId bar chart.
-      const payingRows = rows.filter((p) => Number(p.win_credits || 0) > 0);
-      const tblRows = payingRows
-        .map((p) => {
-          const share = Number(p.share_of_feature_win || 0);
-          const bar = maxShare > 0 ? Math.min(100, (share / maxShare) * 100) : 0;
-          return (
-            `<span class="feature-bar-row">` +
-            `<span class="feature-bar-label">ID ${_escHtml(String(p.payout_id))}</span>` +
-            `<span class="feature-bar-track"><span class="feature-bar" style="width:${bar.toFixed(1)}%"></span></span>` +
-            `<span class="feature-bar-val">${(share * 100).toFixed(1)}%</span>` +
-            `</span>`
-          );
-        })
-        .join("");
+      // Paying feature: per-feature multiplier bucket histogram.
+      // Each row = 一个倍率区间 (like the global bucket panel). RTP
+      // contribution bar gives operators a "where does this feature's
+      // RTP come from" read that pay_id share bars never delivered.
+      const buckets = Array.isArray(feat.bucket_distribution) ? feat.bucket_distribution : [];
+      const bucketSpins = Number(feat.bucket_total_spins || 0);
+      const bucketRowsHtml = _renderFeatureBucketRows(buckets);
       // Find any trigger-only features that chain INTO this paying
       // feature — surface as "gated by X, Y, Z" on the paying block
       // so operator sees the full inbound graph at a glance.
@@ -2883,9 +2906,13 @@ function renderFeatureBreakdownPanel(summary) {
       return (
         `<div class="feature-block">` +
         `<h3>${_escHtml(String(feat.feature_name))} <span class="feature-metric">${rtpPp}pp · ${sharePct}%</span></h3>` +
-        `<div class="feature-meta">fires ${firesSpins.toLocaleString()}× · ${fireRatePct}% of spins</div>` +
+        `<div class="feature-meta">fires ${firesSpins.toLocaleString()}× · ${fireRatePct}% of spins${
+          bucketSpins ? ` · ${bucketSpins.toLocaleString()} 轮次` : ""
+        }</div>` +
         gatedHtml +
-        `<div class="feature-payids">${tblRows}</div>` +
+        (bucketRowsHtml
+          ? `<div class="feature-buckets">${bucketRowsHtml}</div>`
+          : `<div class="muted" style="font-size:11px">无倍率分桶数据</div>`) +
         `</div>`
       );
     })

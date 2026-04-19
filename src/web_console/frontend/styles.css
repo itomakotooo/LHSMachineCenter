@@ -1972,6 +1972,43 @@ button.small-btn.active, .small-btn.active {
   color: #94a3b8;
   font-style: italic;
 }
+/* Per-feature bucket histogram (replaces the old per-pay_id bar list). */
+.feature-buckets {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+.feature-bucket-row {
+  display: grid;
+  grid-template-columns: 44px 1fr 56px;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #475569;
+}
+.feature-bucket-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #334155;
+  text-align: right;
+}
+.feature-bucket-track {
+  background: #e2e8f0;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.feature-bucket-bar {
+  display: block;
+  background: #0f766e;
+  height: 100%;
+}
+.feature-bucket-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #334155;
+  text-align: right;
+}
+
 .feature-gated-by {
   margin: 4px 0 6px;
   font-size: 11px;
