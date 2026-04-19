@@ -131,14 +131,41 @@ def find_machine_chunks(rawdata_dir: Path) -> list[tuple[str, int, Path]]:
     return results
 
 
-def _build_pool_jobs(all_chunks, reports_root: Path, force: bool, max_chunks: int) -> list[dict]:
+def _peek_chunk_spins(chunk_path: Path) -> tuple[int, int]:
+    """Pull (spin_times, robot_count) from the chunk envelope's first
+    bytes without loading the full response payload. Chunk envelopes
+    start with the small metadata fields before the big ``response``
+    array, so a 1 KiB read is enough. Returns (0, 0) on any failure.
+
+    Used by the batch script to pick just enough chunks to hit a
+    target spin count — robust to chunks that aren't the standard
+    10k (cancelled runs, non-default sampler config, future changes).
+    """
+    import re
+    try:
+        with chunk_path.open("rb") as f:
+            head = f.read(1024).decode("utf-8", errors="ignore")
+    except OSError:
+        return 0, 0
+    st = re.search(r'"_spin_times"\s*:\s*(\d+)', head)
+    rc = re.search(r'"_robot_count"\s*:\s*(\d+)', head)
+    return (int(st.group(1)) if st else 0,
+            int(rc.group(1)) if rc else 0)
+
+
+def _build_pool_jobs(
+    all_chunks,
+    reports_root: Path,
+    force: bool,
+    target_spins: int,
+) -> list[dict]:
     """Pre-compute per-job context and filter out skipped jobs."""
     from datetime import datetime, timezone
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     jobs = []
     for machine, mode, chunk_dir in all_chunks:
-        chunk_file = next(chunk_dir.glob("chunk_*.json"), None)
-        if not chunk_file:
+        chunks_sorted = sorted(chunk_dir.glob("chunk_*.json"))
+        if not chunks_sorted:
             jobs.append({"_skip_reason": "no_chunk",
                          "machine": machine, "mode": mode})
             continue
@@ -150,11 +177,29 @@ def _build_pool_jobs(all_chunks, reports_root: Path, force: bool, max_chunks: in
                 if existing:
                     jobs.append({"_skip": True, "machine": machine, "mode": mode})
                     continue
-        try:
-            raw = json.loads(chunk_file.read_text(encoding="utf-8"))
-            bet = int(raw.get("_bet", 1000) or 1000)
-        except Exception:  # noqa: BLE001
-            bet = 1000
+        # Accumulate chunks until we reach target_spins (default 10k
+        # for dev). Falls through to "use all" when total available
+        # is less than target — correct behaviour for machines with a
+        # partial / small-chunk cache. ``target_spins <= 0`` disables
+        # the cap entirely (prod / baseline regen path).
+        bet = 1000
+        chunks_needed = 0
+        cum_spins = 0
+        for cf in chunks_sorted:
+            spin_times, robot_count = _peek_chunk_spins(cf)
+            chunk_spins = spin_times * robot_count
+            chunks_needed += 1
+            cum_spins += chunk_spins
+            if chunks_needed == 1:
+                # Read full envelope for the first chunk only — need
+                # _bet for the analyzer invocation. Cheap enough.
+                try:
+                    raw = json.loads(cf.read_text(encoding="utf-8"))
+                    bet = int(raw.get("_bet", 1000) or 1000)
+                except Exception:  # noqa: BLE001
+                    pass
+            if target_spins > 0 and cum_spins >= target_spins:
+                break
         output_dir = reports_root / machine / f"mode_{mode}" / "versions" / f"rv_{ts}_devcache"
         jobs.append({
             "machine": machine,
@@ -162,7 +207,9 @@ def _build_pool_jobs(all_chunks, reports_root: Path, force: bool, max_chunks: in
             "chunk_dir": str(chunk_dir),
             "output_dir": str(output_dir),
             "bet": bet,
-            "max_chunks": max_chunks,
+            "max_chunks": chunks_needed if target_spins > 0 else 9999,
+            "target_spins": target_spins,
+            "available_spins": cum_spins,
         })
     return jobs
 
@@ -178,14 +225,15 @@ def main() -> None:
     parser.add_argument("--rawdata-dir", type=Path, default=RAWDATA)
     parser.add_argument("--reports-root", type=Path, default=REPORTS_ROOT)
     parser.add_argument(
-        "--max-chunks-per-mode", type=int, default=1,
+        "--target-spins-per-mode", type=int, default=10_000,
         help=(
-            "Cap on chunks consumed per (machine, mode). Default 1 — "
-            "the dev-time sweet spot: one 10k-spin chunk is enough "
-            "to verify pipeline correctness + emit all new summary "
-            "fields. Pass a large value (e.g. 999) for full-data "
-            "prod/baseline regens. Prevents M273-style machines "
-            "with 51 cached chunks from dominating fleet runtime."
+            "Target sample size per (machine, mode) for dev regen. "
+            "Script reads chunk envelopes lightly to pick just enough "
+            "chunks to reach this many spins (default 10k ≈ 1 "
+            "standard chunk). Machines with less cached total are "
+            "processed with whatever's available — reports still "
+            "emit but will be noisy (flagged below as LOW_SPINS). "
+            "Pass 0 for an uncapped full-cache pass (prod baseline)."
         ),
     )
     args = parser.parse_args()
@@ -206,7 +254,8 @@ def main() -> None:
     print(f"=== Batch Report Generator ===")
     print(f"Machines: {len(all_chunks)} machine-modes")
     print(f"Concurrency: {args.concurrency} (pool, in-process)")
-    print(f"Max chunks per (machine, mode): {args.max_chunks_per_mode}")
+    ts_label = f"{args.target_spins_per_mode}" if args.target_spins_per_mode > 0 else "uncapped"
+    print(f"Target spins per (machine, mode): {ts_label}")
     print()
 
     results = []
@@ -215,45 +264,78 @@ def main() -> None:
     # multiprocessing.Pool with pre-imported analyzer: each worker calls
     # analyzer.main() directly, bypassing subprocess + interpreter +
     # import cost per job.
-    jobs = _build_pool_jobs(all_chunks, args.reports_root, args.force, args.max_chunks_per_mode)
+    jobs = _build_pool_jobs(all_chunks, args.reports_root, args.force, args.target_spins_per_mode)
     # Report skips upfront (no worker cost for these)
     runnable = []
     for j in jobs:
         if j.get("_skip"):
             r = {"machine": j["machine"], "mode": j["mode"], "ok": True, "skipped": True}
             results.append(r)
-            print(f"  [SKIP] {j['machine']} mode {j['mode']}")
+            print(f"  [SKIP] {j['machine']} mode {j['mode']} — existing report")
+        elif j.get("_skip_reason") == "no_chunk":
+            # Missing rawdata is legitimately skippable (machine never
+            # sampled). Count as skip, not fail.
+            r = {"machine": j["machine"], "mode": j["mode"], "ok": True,
+                 "skipped": True, "skip_reason": "no_rawdata"}
+            results.append(r)
+            print(f"  [SKIP] {j['machine']} mode {j['mode']} — no rawdata")
         elif j.get("_skip_reason"):
             r = {"machine": j["machine"], "mode": j["mode"], "ok": False,
                  "error": j["_skip_reason"]}
             results.append(r)
             print(f"  [FAIL] {j['machine']} mode {j['mode']} — {j['_skip_reason']}")
         else:
+            # Flag low-sample jobs upfront so operator sees the
+            # warning alongside the [OK] line.
+            avail = j.get("available_spins", 0)
+            target = j.get("target_spins", 0)
+            if target > 0 and avail < min(1000, target):
+                j["_low_spins"] = avail
             runnable.append(j)
 
     if runnable:
         # imap_unordered so results stream as they finish (progress
         # feedback) rather than waiting for the whole batch.
         with mp.Pool(processes=args.concurrency, initializer=_pool_worker_init) as pool:
+            # Carry the pre-computed low_spins flag forward into
+            # results so the output line can include a warning.
+            runnable_by_key = {(j["machine"], j["mode"]): j for j in runnable}
             for r in pool.imap_unordered(_run_in_pool_worker, runnable):
+                src = runnable_by_key.get((r["machine"], r["mode"]), {})
+                low = src.get("_low_spins")
+                if low is not None:
+                    r["low_spins"] = low
                 results.append(r)
                 status = "OK" if r["ok"] else "FAIL"
                 detail = f" ({r.get('elapsed_s', '?')}s)"
                 if not r["ok"]:
                     detail = f" — {r.get('error', '?')}"
+                elif low is not None:
+                    detail += f"  [WARN only {low} spins available — report noisy]"
                 print(f"  [{status}] {r['machine']} mode {r['mode']}{detail}")
 
     total_time = time.time() - t_start
     ok = sum(1 for r in results if r["ok"])
     skip = sum(1 for r in results if r.get("skipped"))
+    no_data = sum(1 for r in results if r.get("skip_reason") == "no_rawdata")
+    low = sum(1 for r in results if r.get("low_spins") is not None)
     fail = sum(1 for r in results if not r["ok"])
     print(f"\nDone in {total_time:.1f}s — {ok} OK ({skip} skipped), {fail} failed")
+    if no_data:
+        print(f"  skipped (no rawdata): {no_data}")
+    if low:
+        print(f"  low-sample warnings (<1000 spins): {low}")
 
     if fail:
         print("\nFailed:")
         for r in results:
             if not r["ok"]:
                 print(f"  {r['machine']} mode {r['mode']}: {r.get('error')}")
+    if low:
+        print("\nLow-sample (report noisy, resample for accuracy):")
+        for r in results:
+            if r.get("low_spins") is not None:
+                print(f"  {r['machine']} mode {r['mode']}: {r['low_spins']} spins")
 
 
 if __name__ == "__main__":
