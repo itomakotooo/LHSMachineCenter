@@ -376,7 +376,10 @@ body {
 .manage-layout {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(420px, 2fr) minmax(0, 3fr); /* ≈ 40 / 60 */
+  /* 35 / 65 — catalog sidebar is compact (cards auto-flow in a narrow
+     grid), detail pane needs more horizontal room for the rwtree's
+     4 mode columns. */
+  grid-template-columns: minmax(360px, 35fr) minmax(0, 65fr);
   align-items: start;
   margin-top: 8px;
 }
@@ -712,8 +715,10 @@ body {
   .rwtree-cross .rwtree-cross-pair { grid-template-columns: 1fr; }
 }
 
-/* Narrow screens: tree reflows to 2 cols */
-@media (max-width: 1400px) {
+/* Tree reflow: the right column is ~60% of screen, so even at 1600px
+   viewport each of 4 cols only gets ~200px which is too narrow for
+   the rawdata + reports stack. 2-col kicks in much higher up. */
+@media (max-width: 1800px) {
   .rwtree { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
