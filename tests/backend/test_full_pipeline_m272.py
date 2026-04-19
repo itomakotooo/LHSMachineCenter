@@ -195,6 +195,60 @@ def test_feature_breakdown_and_bonus_chain(run_full_pipeline):
         assert bc["avg_chain_length"] > 1.0
 
 
+def test_feature_breakdown_rows_have_chain_fields(run_full_pipeline):
+    """Every feature row must carry the enriched fields that support
+    trigger-only detection + chain-parent display on the UI, even for
+    plain paying features (where trigger_only=False and parent=None).
+    """
+    fb = run_full_pipeline["player_impact"]["upstream_feature_breakdown"]
+    required_keys = {
+        "feature_name",
+        "total_win",
+        "total_times",
+        "fires_spins",
+        "fire_rate",
+        "direct_win_credits",
+        "trigger_only",
+        "resolved_spin_type",
+        "spin_type_binding_ambiguous",
+        "chain_parent_feature",
+        "chain_parent_confidence",
+        "chain_parent_share",
+        "chain_parent_next_fires",
+        "rtp_contribution_pp",
+        "share_of_total_win",
+        "payouts",
+    }
+    for feat in fb["features"]:
+        missing = required_keys - set(feat.keys())
+        assert not missing, (
+            f"feature {feat.get('feature_name')!r} missing: {missing}"
+        )
+        # Paying features (direct_win_credits > 0) must NOT be
+        # flagged trigger_only; inverse for zero-win features.
+        if feat["direct_win_credits"] > 0:
+            assert feat["trigger_only"] is False
+        # fires_spins mirrors total_times exactly (legacy alias).
+        assert feat["fires_spins"] == feat["total_times"]
+        # fire_rate = fires / total_spins, bounded [0, 1].
+        assert 0.0 <= feat["fire_rate"] <= 1.0
+
+
+def test_feature_breakdown_m272_paying_features_resolved(run_full_pipeline):
+    """M272 fixture has 2 features, both paying (no trigger-only on
+    this machine). Both should map to their SpinType via exact count
+    match and trigger_only should be False for each."""
+    fb = run_full_pipeline["player_impact"]["upstream_feature_breakdown"]
+    by_name = {f["feature_name"]: f for f in fb["features"]}
+    assert {"NormalCollectionSpin", "NewFreespin"}.issubset(set(by_name.keys()))
+    for name in ("NormalCollectionSpin", "NewFreespin"):
+        feat = by_name[name]
+        assert feat["trigger_only"] is False
+        # Both paying features bind to a SpinType on M272.
+        assert feat["resolved_spin_type"] is not None
+        assert feat["spin_type_binding_ambiguous"] is False
+
+
 def test_collect_feature_match_block_present_no_warning(run_full_pipeline):
     """feature_match must always be in the collect_mechanic summary so
     the UI can check it; warning=None on M272 (cycle-bonus feature
