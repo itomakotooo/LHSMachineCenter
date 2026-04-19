@@ -54,6 +54,40 @@ Response:
 }
 ```
 
+### `GET /api/machines/static`
+
+Per-fleet static attributes cache (added 2026-04-19 round 2).
+Decoupled from report lifecycle — survives report deletes. File-
+backed at `configs/machines_static.json`, in-memory cached by
+file mtime_ns.
+
+```json
+{
+  "machines": {
+    "M273": {
+      "category": "Collect",
+      "logicClassNames": ["BuffCollectionDataGenerator", ...],
+      "features": ["NormalCollectionSpin", "LockSymbolFreespin", ...],
+      "mechanics": ["lock_symbols", "free_spin", ...],
+      "config_md5": "070d2f9...", "code_md5": "ecd...",
+      "modes": [1, 2, 5, 7],
+      "updated_at": "2026-04-19T..."
+    },
+    ...
+  },
+  "feature_distribution": { "Normal": 140, "Wheel": 51, ... },
+  "mechanics_distribution": { "lock_symbols": 27, ... },
+  "drift": ["M14", "M15"],
+  "updated_at": "..."
+}
+```
+
+Populated on first call via `_bootstrap_static_attrs` (walks
+machines.json + existing report summaries). Updated on every
+successful generate-report + /api/reports/import. `drift` list =
+machines whose cached md5 differs from current machines.json md5
+(operator should regenerate after refreshing MD5).
+
 ### `GET /api/models`
 
 Returns provider catalog, active provider, whether API key exists, and default model.
@@ -371,34 +405,42 @@ Documented above under Run Lifecycle.
 
 ### `POST /api/rawdata/batch-generate-report`
 
-Kick off a batch of generate-report runs across multiple (machine,
-mode) pairs. Sequential within the batch — analyzer's ``post_json``
-is monkey-patched at the module level so concurrent generator calls
-would race. Held under the ``ops`` mutex for the full duration.
+Kick off a batch of generate-report runs. Items run in a
+`ProcessPoolExecutor` of N worker subprocesses (default 4, env
+`SLOT_BATCH_GEN_WORKERS`); each worker has its own interpreter
+state so analyzer's module-level `post_json` monkey-patch no
+longer forces sequential. Held under the ops mutex.
 
-Body:
+Body (two variants):
 
 ```json
 { "items": [{"machine": "M273", "mode": 1}, {"machine": "M14", "mode": 2}] }
 ```
 
-Response (202-style, batch runs in background):
+```json
+{ "scope": "all_with_rawdata" }
+```
+
+`scope: "all_with_rawdata"` auto-collects every (machine, mode)
+pair under `RAWDATA_ROOT` with at least one chunk file. Used by
+the "⟳ 全 fleet 重建" button. On the dev fleet expands to ~1006.
+
+Response (202-style):
 
 ```json
-{ "batch_id": "bgen_abc123", "total": 2, "status": "running" }
+{ "batch_id": "bgen_abc123", "total": 1006, "status": "running" }
 ```
 
 ### `GET /api/rawdata/batch-generate-report/{batch_id}`
 
-Poll a batch's progress. Returns full per-item state:
+Poll a batch's progress:
 
 ```json
 {
   "batch_id": "bgen_abc123",
-  "started_at": "...",
-  "finished_at": "...",
-  "status": "completed | partial | failed | running | pending",
-  "total": 2, "completed": 2, "failed": 0, "pending": 0,
+  "started_at": "...", "finished_at": "...",
+  "status": "completed | partial | failed | running | pending | cancelled",
+  "total": 1006, "completed": 998, "failed": 3, "pending": 5,
   "error": null,
   "items": [
     {
@@ -412,10 +454,96 @@ Poll a batch's progress. Returns full per-item state:
 }
 ```
 
-Per-item failure (e.g. no rawdata for that mode) records the error
-but the batch keeps processing remaining items; final status =
-``partial``. Whole-batch failure (ops mutex contention) marks
-every pending item failed and returns ``status: failed``.
+Per-item failures record the error; batch status → `partial` on
+any item failure, `completed` on all success. Mutex contention at
+kickoff → `failed` immediately with every item marked failed.
+
+### `POST /api/rawdata/batch-generate-report/{batch_id}/cancel`
+
+Graceful cancel. Takes effect at the next item boundary — queued
+futures get `future.cancel()`d, in-flight workers complete their
+current item naturally (analyzer calls aren't killable mid-run).
+Remaining pending items flip to `status=cancelled`; batch status
+→ `cancelled`.
+
+Response: `{ok: true, batch_id: "..."}`. 404 if batch not found
+or already finished.
+
+### `GET /api/rawdata/overview`
+
+Fleet-wide rawdata breakdown (added 2026-04-19 round 2). Backs
+the `💾 rawdata` topbar banner + the `[明细]` drill-down table.
+
+```json
+{
+  "total_bytes": 9636025962,
+  "baseline_bytes": 5980012345,
+  "deletable_bytes": 3600000000,
+  "stale_bytes": 56013617,
+  "reclaimable_bytes": 3656013617,
+  "per_machine": [
+    {
+      "machine": "M273",
+      "kept_bytes": 180000000, "deletable_bytes": 20000000, "stale_bytes": 0,
+      "kept_chunks": 21, "deletable_chunks": 30, "stale_chunks": 0,
+      "last_sample_mtime": 1745000000.0
+    },
+    ...
+  ]
+}
+```
+
+Cached with mtime_ns fingerprint across all mode_dirs — warm
+reads <1ms, cold walk ~5s on 9k chunks across 1006 modes.
+
+### `GET /api/report-validate/{machine}`
+
+Per-version md5 + analyzer status (extended 2026-04-19 round 2 to
+include analyzer fields alongside md5).
+
+```json
+{
+  "machine": "M273",
+  "unverifiable": false,
+  "upstream_config_md5": "070d2f9...", "upstream_code_md5": "ecd...",
+  "current_analyzer_version": "badf2e2c3d4e",
+  "reports": [
+    {
+      "mode": 1, "version": "rv_20260419T002849Z_rawdata",
+      "md5_status": "match",
+      "analyzer_status": "match",
+      "report_config_md5": "070d2f9...", "report_code_md5": "ecd...",
+      "report_analyzer_version": "badf2e2c3d4e"
+    },
+    ...
+  ]
+}
+```
+
+md5_status / analyzer_status values: `"match" | "outdated" | "untagged"`.
+
+### `POST /api/reports/cleanup`
+
+Aggressive cleanup (rewritten 2026-04-19 round 2). Partitions each
+(machine, mode)'s versions into match / stale / untagged based on
+summary.analyzer_version. Keeps newest match (or newest untagged
+as baseline) per mode, deletes every tagged-stale version + their
+runs DB rows. Second pass sweeps any remaining DB runs with
+stale analyzer_version tag.
+
+Response:
+
+```json
+{
+  "ok": true,
+  "deleted": 1005,     // disk dirs removed
+  "kept": 1,           // survivors across fleet
+  "runs_deleted": 23   // DB rows dropped
+}
+```
+
+Driving behavior: the "⚠ N analyzer 过期" banner zeros after
+click (stale_count reads DB which now matches disk).
 
 ### `GET /api/events`
 

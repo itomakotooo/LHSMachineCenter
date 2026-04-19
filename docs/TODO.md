@@ -56,6 +56,70 @@ This file tracks executable next steps for the current phase.
 
 ## Done Recently
 
+- [x] **机台管理 master/detail 重构 session** (2026-04-19 round 2, 16
+      commits 028246d → 0377bd3):
+      - **Master/detail shell + focus click model**: `#tab-manage`
+        rewritten as topbar + two-column body (catalog master +
+        state-driven detail) + flat system footer. Plain click →
+        focus, Ctrl/Shift/checkbox → multi, mutually exclusive.
+        Run-history table + versionHistoryPanel DOM removed.
+        Sticky `#batchActionBar` shows context-aware label + buttons.
+      - **Rawdata × Report 4-col tree**: per-mode rawdata stats
+        (`N spins (K chunks) · 保底/可回收/过期 in spins`) + 生成
+        Report btn + reports list (CI-sorted, best-⭐ expanded).
+        Report row has analyzer version badge + 载入/🗑 actions.
+        Compare bar sticky bottom with `对比 (2/2)` / `🗑 批量删除
+        (N)` / 清除. md5 switcher when rawdata carries ≥2 md5;
+        `[+ 跨版本对比模式]` renders side-by-side trees.
+      - **Per-path feature bucket split**: analyzer gains
+        `chain_bucket_{spins,bet,win}` trackers; paying features
+        with ≥2 trigger paths emit separate rows named `{base}
+        [via {label}]` with path-specific bucket distribution.
+        Trigger-only features kept as single aggregate rows.
+        M273 `LockSymbolFreespin` splits via-ListRewardWheel
+        (38.11pp) vs via-BCM (3.07pp).
+      - **Global rawdata banner + detail table**: topbar shows
+        `💾 rawdata X GB · baseline Y GB · 可回收 Z GB` + `一键清理`
+        + `明细 ▶` + always-visible settings row (保底 spins 阈值).
+        `GET /api/rawdata/overview` backs it with per-machine
+        breakdown cached by mtime_ns.
+      - **Unified Report 管理 banner**: merges old staleness banner
+        + bottom maintenance panel into `💼 Report 管理 · analyzer
+        <hash> · ⚠/✓ state [⟳ 重生 K] [⟳ 全 fleet 重建] [🗑 清理过期]
+        [📥 导入]`. `⟳ 全 fleet 重建` always visible, scope=all_with
+        _rawdata backend variant. Cleanup is aggressive: drops
+        tagged-stale disk versions + DB rows; stale count actually
+        zeroes after click.
+      - **Static-attrs cache** (architectural fix): new
+        `configs/machines_static.json` caches category / features /
+        mechanics / md5 per machine, UNION across report history.
+        Survives report deletes. `GET /api/machines/static` returns
+        cache + `drift` list of machines whose cached md5 ≠ current
+        machines.json. Fleet overview banner surfaces drift with
+        `[刷新 MD5 + 属性]` button. Catalog filter chips + 按机制
+        view read from staticAttrs, fall back to machinesSummary.
+      - **ProcessPoolExecutor batch parallelism**: `BatchGenerate
+        Manager` rewritten to 3-phase (prepare in parent, analyzer
+        in worker pool, finalize in parent). New worker module
+        `src/web_console/backend/_batch_gen_worker.py`. Default 4
+        workers (env var `SLOT_BATCH_GEN_WORKERS`), cross-platform
+        via `mp_context=spawn`. In-flight cancel via `[停止]`
+        button → `POST /api/rawdata/batch-generate-report/{bid}
+        /cancel` → queued futures cancelled, in-flight drains.
+      - **Misc fixes**: `_classify_chunks` spins = `_spin_times ×
+        _robot_count` (was undercount 27× on M273); report row
+        analyzer badge from extended `/api/report-validate`;
+        per-report delete + checkbox batch delete via compare bar;
+        dynamic destructive btn disabled on ops-busy; catalog
+        cards get checkbox for explicit multi-select affordance.
+      - 419 pytest (−1 from 420; removed 2 obsolete cache-cleanup
+        e2e, added 1 banner cleanup test) + 132 node:test green.
+      - `configs/machines_static.json` gitignored (per-fleet cache).
+      - **Collateral**: most report versions wiped during aggressive-
+        cleanup testing. Rawdata intact; operator clicks `⟳ 全 fleet
+        重建` to restore (1006 items × ~15-20s ÷ 4 workers ≈ 30-50
+        min wall).
+
 - [x] **Paytable shape + feature chain + bucket pp + dev-decouple
       session** (2026-04-19, 22 commits 3214653 → 00f73b8):
       - **Paytable shape auto-inference fleet-wide** (4 commits):
