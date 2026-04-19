@@ -23,7 +23,7 @@ from typing import Any, Callable
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -3530,9 +3530,29 @@ def create_app(
                 p["status"] = str((payload or {}).get("status", "completed"))
                 p["finished_at"] = utc_now()
 
+    # Compute a cache-bust token from the newest mtime among the
+    # served frontend assets. Embedded into ``index.html`` as the
+    # ``{{ASSET_HASH}}`` placeholder so <script>/<link> URLs carry
+    # ``?v=<token>`` and the browser reliably picks up edits.
+    def _asset_hash() -> str:
+        latest = 0
+        for name in ("pure.js", "app.js", "styles.css"):
+            p = FRONTEND_DIR / name
+            try:
+                ts = int(p.stat().st_mtime)
+                if ts > latest:
+                    latest = ts
+            except OSError:
+                continue
+        return str(latest) if latest else "dev"
+
     @app.get("/")
-    def root() -> FileResponse:
-        return FileResponse(FRONTEND_DIR / "index.html")
+    def root() -> Response:
+        text = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+        return Response(
+            content=text.replace("{{ASSET_HASH}}", _asset_hash()),
+            media_type="text/html; charset=utf-8",
+        )
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
@@ -3891,6 +3911,95 @@ def create_app(
                 result[str(mode)] = status
         return {"machine": machine, "modes": result}
 
+    @app.get("/api/events")
+    def unified_events(
+        since: str = "",
+        lookback_minutes: int = 5,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Unified event feed across all active + recently-completed
+        runs. Merges per-run ``progress/*.jsonl`` streams so the top
+        log panel can render one stream regardless of which operation
+        (sampling / generate-report / batch-regen) produced the event.
+
+        Query params:
+          * ``since`` — ISO ts; return only events strictly after.
+            Empty = include everything from ``lookback_minutes`` back.
+          * ``lookback_minutes`` — how far back to scan for recent
+            runs (default 5).
+          * ``limit`` — cap total events returned (default 500).
+
+        Returns ``{events: [...], max_ts, active_runs}``. ``max_ts``
+        is the newest event ts seen; caller uses it as the next
+        ``since``.
+        """
+        cutoff_ts = ""
+        if since:
+            cutoff_ts = since
+        # Collect candidate runs: anything running + finished recently.
+        active = store.list_runs_by_status("running", limit=100) or []
+        # Finished runs within lookback — tail their events for context.
+        recent_cutoff = datetime.now(timezone.utc).timestamp() - (
+            max(lookback_minutes, 0) * 60
+        )
+        completed_recent: list[dict[str, Any]] = []
+        for r in (store.list_runs(limit=50) or []):
+            if r.get("status") == "running":
+                continue
+            fin = r.get("finished_at") or r.get("started_at") or ""
+            try:
+                fin_ts = datetime.fromisoformat(
+                    fin.replace("Z", "+00:00")
+                ).timestamp() if fin else 0
+            except ValueError:
+                fin_ts = 0
+            if fin_ts >= recent_cutoff:
+                completed_recent.append(r)
+
+        collected: list[dict[str, Any]] = []
+        for r in (active + completed_recent):
+            pf_str = r.get("progress_file")
+            if not pf_str:
+                continue
+            events = read_progress_events(Path(pf_str))
+            for ev in events:
+                ev_ts = str(ev.get("ts") or "")
+                if cutoff_ts and ev_ts <= cutoff_ts:
+                    continue
+                collected.append({
+                    "ts": ev_ts,
+                    "run_id": r.get("run_id"),
+                    "machine": r.get("machine"),
+                    "mode": r.get("mode"),
+                    "model_id": r.get("model_id") or "sampling",
+                    "run_status": r.get("status"),
+                    "event": ev.get("event"),
+                    "chunks_completed": ev.get("chunks_completed"),
+                    "total_spins": ev.get("total_spins"),
+                    "current_halfwidth_pp": ev.get("current_halfwidth_pp"),
+                    "stop_reason": ev.get("stop_reason"),
+                    "error_message": ev.get("error_message"),
+                    "raw": ev,
+                })
+        collected.sort(key=lambda e: e["ts"])
+        if limit > 0 and len(collected) > limit:
+            collected = collected[-limit:]
+        max_ts = collected[-1]["ts"] if collected else cutoff_ts
+        return {
+            "events": collected,
+            "max_ts": max_ts,
+            "active_runs": [
+                {
+                    "run_id": r.get("run_id"),
+                    "machine": r.get("machine"),
+                    "mode": r.get("mode"),
+                    "model_id": r.get("model_id") or "sampling",
+                    "started_at": r.get("started_at"),
+                }
+                for r in active
+            ],
+        }
+
     @app.delete("/api/rawdata/{machine}")
     def delete_machine_rawdata(
         machine: str,
@@ -3903,12 +4012,23 @@ def create_app(
         deletable + stale chunks are removed, the kept baseline survives.
         ``force=true`` — nuclear: delete everything at the target path.
         UI exposes force under a separate confirmation-gated button.
+
+        Acquires the ops mutex so a concurrent generate-report /
+        batch-regen / sampling can't read half-deleted chunk files.
         """
-        retention = _load_settings(settings_path)["min_retention_spins"]
-        return delete_rawdata(
-            machine, mode, rawdata_root=rd_root, machines_config=mc,
-            min_retention_spins=retention, force=force,
-        )
+        if not ops.acquire("delete_rawdata"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"busy: {ops.snapshot()['operation']!s}",
+            )
+        try:
+            retention = _load_settings(settings_path)["min_retention_spins"]
+            return delete_rawdata(
+                machine, mode, rawdata_root=rd_root, machines_config=mc,
+                min_retention_spins=retention, force=force,
+            )
+        finally:
+            ops.release()
 
     @app.get("/api/settings")
     def get_settings() -> dict[str, Any]:
@@ -4258,6 +4378,35 @@ def create_app(
             chunk_spin_times = int(sample_env.get("_spin_times") or 5000)
             chunk_robot_count = int(sample_env.get("_robot_count") or 24)
 
+            # Insert a RUNNING row upfront so the run surfaces in the
+            # unified /api/runs?status=running feed while the analyzer
+            # is mid-work. End-of-function updates status=completed
+            # with final metrics. On analyzer failure, the outer
+            # except-block updates status=failed.
+            started_now = utc_now()
+            store.insert_run({
+                "run_id": new_run_id,
+                "machine": machine,
+                "mode": mode,
+                "status": "running",
+                "model_id": "generate-report",
+                "created_at": started_now,
+                "started_at": started_now,
+                "target_halfwidth_pp": 0.001,
+                "chunk_spin_times": chunk_spin_times,
+                "chunk_robot_count": chunk_robot_count,
+                "batch_concurrency": 1,
+                "max_chunks": len(_cached_responses),
+                "timeout": 30,
+                "bankruptcy_session_spins": 500,
+                "bankruptcy_bankroll_multipliers": "100,200,500",
+                "report_version": report_version,
+                "output_dir": str(output_dir),
+                "progress_file": str(progress_file),
+                "summary_file": str(summary_file),
+                "report_file": str(report_file),
+            })
+
             import sys as _sys
             from io import StringIO
 
@@ -4331,31 +4480,13 @@ def create_app(
             analyzer_ver = summary.get("analyzer_version") or ""
             total_spins_val = summary.get("sampling", {}).get("total_spins")
 
-            # Insert a completed run row so the UI can surface this
-            # like any other run. Columns match the NOT-NULL contract
-            # of the runs table.
-            row_payload: dict[str, Any] = {
-                "run_id": new_run_id,
-                "machine": machine,
-                "mode": mode,
+            # Flip the RUNNING row to completed with final metrics.
+            # The row was inserted upfront (see top of this function)
+            # so the run shows up in /api/runs?status=running while
+            # the analyzer was mid-work.
+            store.update_run(new_run_id, {
                 "status": "completed",
-                "model_id": "generate-report",
-                "created_at": utc_now(),
-                "started_at": utc_now(),
                 "finished_at": utc_now(),
-                "target_halfwidth_pp": 999,
-                "chunk_spin_times": chunk_spin_times,
-                "chunk_robot_count": chunk_robot_count,
-                "batch_concurrency": 1,
-                "max_chunks": len(_cached_responses),
-                "timeout": 30,
-                "bankruptcy_session_spins": 500,
-                "bankruptcy_bankroll_multipliers": "100,200,500",
-                "report_version": report_version,
-                "output_dir": str(output_dir),
-                "progress_file": str(progress_file),
-                "summary_file": str(summary_file),
-                "report_file": str(report_file),
                 "achieved_rtp_pct": float(rtp) if rtp is not None else None,
                 "achieved_halfwidth_pp": float(hw) if hw is not None else None,
                 "quality_label": str(ql) if ql else None,
@@ -4363,8 +4494,7 @@ def create_app(
                 "rawdata_code_md5": str(rawdata_code) if rawdata_code else None,
                 "analyzer_version": str(analyzer_ver) if analyzer_ver else None,
                 "total_spins": int(total_spins_val) if total_spins_val is not None else None,
-            }
-            store.insert_run(row_payload)
+            })
 
             # Wire the new version into index.json + latest.json so the
             # UI catalog surfaces it immediately.
@@ -4405,9 +4535,23 @@ def create_app(
                 "achieved_halfwidth_pp": hw,
                 "analyzer_version": analyzer_ver,
             }
-        except HTTPException:
+        except HTTPException as exc:
+            # Mark any RUNNING row as failed so the async run_id polled
+            # by the frontend doesn't stay stuck in "running" forever.
+            if "new_run_id" in locals() and store.get_run(new_run_id):
+                store.update_run(new_run_id, {
+                    "status": "failed",
+                    "finished_at": utc_now(),
+                    "error_message": str(getattr(exc, "detail", exc))[:500],
+                })
             raise
         except Exception as exc:
+            if "new_run_id" in locals() and store.get_run(new_run_id):
+                store.update_run(new_run_id, {
+                    "status": "failed",
+                    "finished_at": utc_now(),
+                    "error_message": f"{exc.__class__.__name__}: {exc}"[:500],
+                })
             # Wrap unexpected failures as 500 so the caller's error
             # handling still gets a structured HTTPException.
             raise HTTPException(
@@ -4429,23 +4573,62 @@ def create_app(
         and produce a fresh report + run row. Always creates NEW
         artefacts; old runs preserved.
 
-        Body: ``{"mode": int}``. See ``_run_generate_report`` for
-        internals.
+        Body: ``{"mode": int, "async": bool}``. Default (``async=false``)
+        runs synchronously and returns the completed run metadata —
+        backward-compatible with existing tests and direct-API users.
+        ``async=true`` queues the work in a daemon thread and returns
+        immediately with ``{run_id, status: "accepted"}`` so the UI
+        can subscribe to the unified events feed and render progress
+        without a hanging HTTP request.
         """
         try:
             mode = int(req.get("mode"))
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="mode must be an integer")
+        use_async = bool(req.get("async") or False)
+
+        if not use_async:
+            if not ops.acquire("generate_report"):
+                snap = ops.snapshot()
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"system busy: {snap.get('operation') or 'unknown'}",
+                )
+            try:
+                return _run_generate_report(machine, mode)
+            finally:
+                ops.release()
+
+        # Async path: acquire lock here, release inside the thread
+        # once work finishes (success or failure). Returning the
+        # caller before the work starts means the caller is responsible
+        # for polling /api/runs/{run_id} for completion.
         if not ops.acquire("generate_report"):
             snap = ops.snapshot()
             raise HTTPException(
                 status_code=409,
                 detail=f"system busy: {snap.get('operation') or 'unknown'}",
             )
-        try:
-            return _run_generate_report(machine, mode)
-        finally:
-            ops.release()
+
+        def _work() -> None:
+            try:
+                _run_generate_report(machine, mode)
+            except Exception:
+                # _run_generate_report already marks the runs row as
+                # failed on its way out. Swallow here so the daemon
+                # thread exits cleanly without tracebacks in the log
+                # (the failure is surfaced via the runs table).
+                pass
+            finally:
+                ops.release()
+
+        threading.Thread(target=_work, daemon=True).start()
+        return {
+            "status": "accepted",
+            "machine": machine,
+            "mode": mode,
+            "message": "generate-report started — poll /api/runs/?status=running",
+        }
 
     @app.post("/api/rawdata/batch-generate-report")
     def batch_generate_report(req: dict[str, Any]) -> dict[str, Any]:
