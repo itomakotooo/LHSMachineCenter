@@ -5890,6 +5890,117 @@ def create_app(
             raise HTTPException(status_code=404, detail="report version not found")
         return read_json(summary_path) or {}
 
+    @app.delete("/api/reports/{machine}/{mode}/{version}")
+    def delete_report_version(machine: str, mode: int, version: str) -> dict[str, Any]:
+        """Delete one report version directory + its DB row (if any).
+
+        Works even for ORPHAN versions — disk dirs that lost their
+        runs-table row (e.g. from the aggressive cleanup that drops
+        tagged-stale rows). The in-UI per-report 删除 button routes
+        here for this reason; /api/runs/{rid} 404s on those orphans.
+
+        Steps:
+          1. Remove the version directory (shutil.rmtree).
+          2. Delete the matching DB row if one exists (via run_id
+             lookup).
+          3. Rewrite index.json without the deleted entry.
+          4. If latest.json pointed at this version, rewrite it to
+             the newest surviving version (or unlink if none).
+        """
+        if not ops.acquire("delete_report_version"):
+            snap = ops.snapshot()
+            raise HTTPException(
+                status_code=409,
+                detail=f"system busy: {snap.get('operation') or 'unknown'}",
+            )
+        try:
+            mode_dir = rr / machine / f"mode_{mode}"
+            version_dir = mode_dir / "versions" / version
+            if not version_dir.exists():
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"version not found: {machine}/mode_{mode}/{version}",
+                )
+
+            # Find + delete matching DB row (if any) BEFORE wiping
+            # disk — the store's delete_run uses the row's file paths
+            # to clean progress/summary/report artefacts that might
+            # live outside the version dir.
+            runs_deleted = 0
+            matched_run_id: str | None = None
+            for row in store.list_runs(limit=100000):
+                if (
+                    str(row.get("machine") or "") == machine
+                    and int(row.get("mode") or 0) == int(mode)
+                    and (row.get("report_version") or "").strip() == version
+                ):
+                    matched_run_id = str(row.get("run_id") or "")
+                    break
+            if matched_run_id:
+                try:
+                    if store.delete_run(matched_run_id):
+                        runs_deleted = 1
+                except Exception:
+                    pass
+
+            # Wipe the version directory.
+            try:
+                shutil.rmtree(version_dir)
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"rmtree failed: {exc}",
+                ) from exc
+
+            # Rewrite index.json (drop the deleted entry).
+            index_path = mode_dir / "index.json"
+            remaining: list[dict] = []
+            if index_path.exists():
+                try:
+                    raw = read_json(index_path)
+                    if isinstance(raw, list):
+                        remaining = [
+                            e for e in raw
+                            if isinstance(e, dict)
+                            and e.get("report_version") != version
+                        ]
+                        index_path.write_text(
+                            json.dumps(remaining, indent=2, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                except Exception:  # noqa: BLE001
+                    pass
+
+            # Rewrite latest.json if it pointed at the deleted version.
+            latest_path = mode_dir / "latest.json"
+            if latest_path.exists():
+                try:
+                    latest = read_json(latest_path) or {}
+                    if latest.get("report_version") == version:
+                        if remaining:
+                            survivor = sorted(
+                                remaining,
+                                key=lambda e: str(e.get("report_version") or ""),
+                                reverse=True,
+                            )[0]
+                            latest_path.write_text(
+                                json.dumps(survivor, indent=2, ensure_ascii=False),
+                                encoding="utf-8",
+                            )
+                        else:
+                            latest_path.unlink(missing_ok=True)
+                except Exception:  # noqa: BLE001
+                    pass
+
+            return {
+                "ok": True,
+                "deleted_version": version,
+                "runs_deleted": runs_deleted,
+                "remaining_versions": len(remaining),
+            }
+        finally:
+            ops.release()
+
     @app.post("/api/reports/import")
     def import_reports(req: dict[str, Any]) -> dict[str, Any]:
         """Transactionally import reports + DB rows from an external folder.

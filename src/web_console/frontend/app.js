@@ -1767,8 +1767,8 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
                 <div class="rwtree-kv"><span>Quality</span><span>${quality || "—"}</span></div>
                 <div class="rwtree-kv"><span>Analyzer</span><span title="report 生成时的 analyzer 代码版本">${info.analyzer_version?.slice(0,10) || "—"} <span class="muted">(${analyzerStatus === "match" ? "当前" : analyzerStatus === "outdated" ? "⚠ 过期" : "未标记"})</span></span></div>
                 <div class="rwtree-report-actions">
-                  <button class="small-btn rwtree-load-btn" data-run-id="${rid}" ${rid ? "" : "disabled"}>载入调试</button>
-                  <button class="small-btn danger-btn rwtree-delete-btn" data-run-id="${rid}" data-rv="${rv}" ${rid ? "" : "disabled"} title="删除此 report 版本">🗑 删除</button>
+                  <button class="small-btn rwtree-load-btn" data-run-id="${rid}" ${rid ? "" : "disabled"} title="${rid ? "" : "该 report 无 run_id 记录，无法加载（可以直接删除）"}">载入调试</button>
+                  <button class="small-btn danger-btn rwtree-delete-btn" data-run-id="${rid}" data-rv="${rv}" data-mode="${mode}" title="删除此 report 版本">🗑 删除</button>
                 </div>
               </div>
             </div>`;
@@ -1834,9 +1834,9 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
   });
   gridEl.querySelectorAll(".rwtree-delete-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const rid = btn.dataset.runId;
       const rv = btn.dataset.rv;
-      if (!rid) return;
+      const mode = btn.dataset.mode;
+      if (!rv || !mode) return;
       if (state.systemState?.operation_busy) {
         alert("有操作进行中，请等待完成再删除。");
         return;
@@ -1846,8 +1846,13 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
       btn.disabled = true;
       btn.textContent = "删除中…";
       try {
-        await apiDelete(`/api/runs/${encodeURIComponent(rid)}`);
-        // Remove from compare set + re-render tree to pick up deletion.
+        // Route through the report-version endpoint so orphan disk
+        // versions (no DB row — common after the aggressive cleanup)
+        // still delete cleanly. Endpoint also cascades the DB row
+        // when one exists.
+        await apiDelete(
+          `/api/reports/${encodeURIComponent(machineName)}/${encodeURIComponent(mode)}/${encodeURIComponent(rv)}`,
+        );
         state.compareSelected?.delete?.(rv);
         await renderRawdataReportTree(machineName);
         refreshReportMgmtBanner();  // stale count likely changed
@@ -1887,24 +1892,26 @@ function _updateRwtreeCompareBar() {
     const entries = [...(state.compareSelected || new Map()).entries()];
     if (!entries.length) return;
     if (!confirm(`批量删除 ${entries.length} 个 report？此操作不可撤销。`)) return;
-    // Each entry: [rv, {mode}]. To delete we need the run_id; look up
-    // via the currently rendered DOM (data-run-id on the delete btn).
+    // Each entry: [rv, {mode}]. Use the report-version endpoint so
+    // orphan disk versions (no DB row) delete cleanly too.
     const machine = state.focusedMachine;
+    if (!machine) return;
     let done = 0;
     let failed = 0;
-    for (const [rv] of entries) {
-      const btn = document.querySelector(`.rwtree-delete-btn[data-rv="${CSS.escape(rv)}"]`);
-      const rid = btn?.dataset?.runId;
-      if (!rid) { failed += 1; continue; }
+    for (const [rv, meta] of entries) {
+      const mode = meta?.mode;
+      if (!mode) { failed += 1; continue; }
       try {
-        await apiDelete(`/api/runs/${encodeURIComponent(rid)}`);
+        await apiDelete(
+          `/api/reports/${encodeURIComponent(machine)}/${encodeURIComponent(mode)}/${encodeURIComponent(rv)}`,
+        );
         done += 1;
       } catch (_) {
         failed += 1;
       }
     }
     state.compareSelected = new Map();
-    if (machine) await renderRawdataReportTree(machine);
+    await renderRawdataReportTree(machine);
     refreshReportMgmtBanner();
     const msg = failed > 0
       ? `批量删除: ${done} 成功 / ${failed} 失败`
