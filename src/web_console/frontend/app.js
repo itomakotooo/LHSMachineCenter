@@ -2126,16 +2126,22 @@ function updateSampleHint() {
   const effective = _effectiveSelectedMachines();
   const n = effective.length;
 
-  // Batch bar visibility: show whenever there IS a selection (focus OR
-  // multi). Hidden on zero selection — the fleet overview fills the
-  // right pane and no batch action applies.
-  if (bar) bar.classList.toggle("hidden", n === 0);
+  // Batch bar visibility: show whenever there IS a selection (focus
+  // OR multi) OR a sampling batch is in flight. The in-flight rule
+  // fixes a bug where operator would start batch, unfocus the
+  // machine, and the whole bar (including 停止 btn) disappeared —
+  // forcing a page refresh / kill to stop the batch (2026-04-20 r5).
+  const hasSelection = n > 0;
+  const samplingActive = !!state.activeBatchId;
+  if (bar) bar.classList.toggle("hidden", !hasSelection && !samplingActive);
 
   if (countEl) {
     if (state.focusedMachine) {
       countEl.textContent = `聚焦 ${state.focusedMachine}`;
     } else if (n > 0) {
       countEl.textContent = `批量: 已选 ${n} 台`;
+    } else if (samplingActive) {
+      countEl.textContent = "⏳ 采样中";
     } else {
       countEl.textContent = "";
     }
