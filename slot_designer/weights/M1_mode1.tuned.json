@@ -1,0 +1,465 @@
+{
+  "machine": "M1",
+  "mode": 1,
+  "weights_version": "designer_v1",
+  "source": "designer-provided reel strip table, 2026-04-20",
+  "_notes": [
+    "3 reel × 36 stops。每 row 是一个 stop，weight 决定采样概率。",
+    "Reel 1 == Reel 2；Reel 3 做第三轮收紧（升 Bar 降 Seven1/Diamond2）。",
+    "所有 reel 权重和 = 1010。"
+  ],
+  "reel_sets": {
+    "default": {
+      "reels": [
+        [
+          {
+            "symbol": "Cherry",
+            "weight": 26
+          },
+          {
+            "symbol": "Blank",
+            "weight": 25
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 55
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 36
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Seven2",
+            "weight": 73
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Diamond2",
+            "weight": 4
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 41
+          },
+          {
+            "symbol": "Blank",
+            "weight": 20
+          },
+          {
+            "symbol": "Seven1",
+            "weight": 13
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 35
+          },
+          {
+            "symbol": "Blank",
+            "weight": 20
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 36
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Cherry",
+            "weight": 17
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 27
+          },
+          {
+            "symbol": "Blank",
+            "weight": 20
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 55
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Seven1",
+            "weight": 17
+          },
+          {
+            "symbol": "Blank",
+            "weight": 39
+          },
+          {
+            "symbol": "Diamond1",
+            "weight": 101
+          },
+          {
+            "symbol": "Blank",
+            "weight": 39
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 35
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 36
+          },
+          {
+            "symbol": "Blank",
+            "weight": 20
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 40
+          },
+          {
+            "symbol": "Blank",
+            "weight": 20
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 23
+          },
+          {
+            "symbol": "Blank",
+            "weight": 20
+          }
+        ],
+        [
+          {
+            "symbol": "Cherry",
+            "weight": 44
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 40
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 51
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Seven2",
+            "weight": 1
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Diamond2",
+            "weight": 1
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 25
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Seven1",
+            "weight": 16
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 52
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 26
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Cherry",
+            "weight": 30
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 16
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 39
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Seven1",
+            "weight": 19
+          },
+          {
+            "symbol": "Blank",
+            "weight": 37
+          },
+          {
+            "symbol": "Diamond1",
+            "weight": 1
+          },
+          {
+            "symbol": "Blank",
+            "weight": 37
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 52
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 26
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 25
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 35
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          }
+        ],
+        [
+          {
+            "symbol": "Cherry",
+            "weight": 35
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 39
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 44
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Seven2",
+            "weight": 26
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Diamond2",
+            "weight": 1
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 21
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Seven1",
+            "weight": 26
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 43
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 26
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Cherry",
+            "weight": 23
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 22
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 39
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Seven1",
+            "weight": 26
+          },
+          {
+            "symbol": "Blank",
+            "weight": 38
+          },
+          {
+            "symbol": "Diamond1",
+            "weight": 39
+          },
+          {
+            "symbol": "Blank",
+            "weight": 38
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 43
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 39
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 22
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 33
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          }
+        ]
+      ]
+    }
+  },
+  "_tuned_from": "slot_designer\\weights\\M1_mode1.current.json",
+  "_tuned_target": "M14_mode1_devregen_110k",
+  "_tuned_summary": {
+    "rtp_pct": 93.50087415700997,
+    "hit_rate": 0.2341091774706897,
+    "cv": 4.938530662801068,
+    "shape_js_to_target": 0.01579942841714181,
+    "rtp_gap_pp": 0.012728702464400499,
+    "evaluations": 4500
+  }
+}
