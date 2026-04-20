@@ -807,15 +807,14 @@ def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
 # rounds (CostCredits = 0) don't drain balance but still contribute
 # wins, matching real-play pickup behavior.
 #
-# Internal resolution: every chunk stores a fine-grained histogram of
-# `_BANKRUPTCY_FINE_BIN_COUNT` equal-width bins over `[0, session_spins)`.
-# At finalize, we pool these histograms across tiers to compute a
-# SHARED adaptive bin edges set (equal-mass quantile edges) — so the
-# summary hands the UI a variable-width bin layout where each displayed
-# bin holds roughly the same number of bankrupt sessions regardless of
-# whether the machine kills fast or slow. Cross-tier comparison stays
-# intact because all 3 tiers report using the same edges (the x100
-# tier's mass skews left, x500 skews right, same x-axis).
+# Precision: each chunk records the EXACT spins-done at bankruptcy for
+# every bankrupt window (not a histogram). At finalize, per-tier
+# percentiles / median / fastest are computed from the sorted combined
+# list with spin-level precision — a tier with 3,840 simulated
+# sessions fits in <40 KB and percentile look-ups are O(1) after the
+# sort. Survivors (spins_done == session_spins) are tallied separately
+# and only materialized into the sorted view when a percentile past
+# the bankrupt share is requested.
 #
 # Pooling across robots is what lets session_spins = 10,000 (the
 # default) work even when each robot carries only ~chunk_spin_times
@@ -825,7 +824,6 @@ def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
 # `total_rounds_in_chunk < session_spins` — that chunk contributes
 # zero sessions; the operator sees fewer total samples but nothing
 # crashes.
-_BANKRUPTCY_FINE_BIN_COUNT = 100
 _DEFAULT_BANKROLL_MULTIPLIERS: tuple[int, ...] = (100, 200, 500)
 _DEFAULT_BANKRUPTCY_SESSION_SPINS = 10000
 
@@ -834,11 +832,11 @@ def _empty_bankruptcy_tier() -> dict[str, Any]:
     return {
         "bankrupt": 0,
         "survived": 0,
-        # Fine-resolution histogram of spins-done at bankruptcy. Only
-        # bankrupt sessions populate this; survivors are counted
-        # separately. Resolution = session_spins / _FINE_BIN_COUNT
-        # (100 spins per bin at session_spins=10000).
-        "fine_bins": [0] * _BANKRUPTCY_FINE_BIN_COUNT,
+        # Exact spins-done at bankruptcy, one entry per bankrupt
+        # window. Sorted on read (see percentile / median helpers).
+        # Survivors are NOT in this list — they're summed in the
+        # `survived` counter.
+        "spins_done": [],
     }
 
 
@@ -855,12 +853,10 @@ def simulate_bankruptcy_from_response(
     Returns a dict keyed by bankroll multiplier. Each entry has:
       - bankrupt:   windows that ran out of balance before the cap
       - survived:   windows that consumed all ``session_spins``
-      - fine_bins:  length-``_BANKRUPTCY_FINE_BIN_COUNT`` histogram of
-                    spins-done at bankruptcy (equal-width fine bins
-                    over ``[0, session_spins)``). Survivors are NOT
-                    in this histogram — tracked separately. This fine
-                    resolution feeds both the adaptive display bins
-                    and the median survival computation at finalize.
+      - spins_done: list of EXACT spin counts reached at bankruptcy,
+                    one entry per bankrupt window. Survivors are NOT
+                    in this list — tallied in ``survived``. Unsorted
+                    on per-chunk return; finalize sorts after merge.
 
     Degenerate inputs (non-list resp, non-positive bet/session_spins,
     or fewer rounds than a single session_spins window) return {} or
@@ -868,7 +864,6 @@ def simulate_bankruptcy_from_response(
     """
     if not isinstance(resp, list) or bet <= 0 or session_spins <= 0:
         return {}
-    fine_bin_size = session_spins / _BANKRUPTCY_FINE_BIN_COUNT
     out: dict[int, dict[str, Any]] = {
         int(m): _empty_bankruptcy_tier() for m in bankroll_mults
     }
@@ -921,92 +916,80 @@ def simulate_bankruptcy_from_response(
                 tier["survived"] += 1
             else:
                 tier["bankrupt"] += 1
-                idx = int(spins_done // fine_bin_size) if fine_bin_size > 0 else 0
-                if idx < 0:
-                    idx = 0
-                if idx >= _BANKRUPTCY_FINE_BIN_COUNT:
-                    idx = _BANKRUPTCY_FINE_BIN_COUNT - 1
-                tier["fine_bins"][idx] += 1
+                tier["spins_done"].append(int(spins_done))
     return out
 
 
-# Decile steps (P10, P20, ..., P90). Survivor-heavy tiers will have
-# higher percentiles pin to session_spins (once cum ≥ p·total exits
-# the bankrupt region), so the table naturally surfaces "when does
+# Decile steps (P10, P20, ..., P90). Survivor-heavy tiers pin the
+# higher percentiles to session_spins (once cum ≥ p·total exits the
+# bankrupt region), so the table naturally surfaces "when does
 # bankruptcy run out" — the transition percentile matches the
 # complement of the bankruptcy rate.
 _BANKRUPTCY_PERCENTILES: tuple[int, ...] = (10, 20, 30, 40, 50, 60, 70, 80, 90)
 
 
 def compute_bankruptcy_percentiles(
-    fine_bins: list[int],
+    spins_done_sorted: list[int],
     survived: int,
     session_spins: int,
     percentiles: tuple[int, ...] = _BANKRUPTCY_PERCENTILES,
 ) -> dict[int, int]:
-    """Return spin-count at each requested percentile of the tier's
-    full session population (bankrupt + survived). Percentiles are
-    evaluated over ALL sessions — a tier with 80% bankrupt and 20%
-    survived will hit session_spins from P81 upward.
+    """Return the exact spin count at each requested percentile of the
+    tier's full session population (bankrupt + survived). Percentiles
+    are evaluated over ALL sessions — a tier with 80% bankrupt and
+    20% survived will hit session_spins from P81 upward.
 
-    Bankrupt sessions contribute their fine-bin midpoint spin count;
-    survivors contribute exactly ``session_spins``. Resolution =
-    session_spins / len(fine_bins).
+    ``spins_done_sorted`` MUST be pre-sorted ascending. Bankrupt
+    sessions contribute their exact spins_done value; survivors are
+    treated as session_spins each. Sub-bin quantization (the previous
+    100-bin histogram bug where mass in the first few fine bins
+    collapsed P10/P20/P30 to the same midpoint) is gone: the resolution
+    is a single spin.
     """
-    if session_spins <= 0 or not fine_bins:
+    bankrupt = len(spins_done_sorted)
+    total = bankrupt + int(survived or 0)
+    if total == 0 or session_spins <= 0:
         return {int(p): 0 for p in percentiles}
-    total = sum(int(c) for c in fine_bins) + int(survived or 0)
-    if total == 0:
-        return {int(p): 0 for p in percentiles}
-    fine_size = session_spins / len(fine_bins)
     out: dict[int, int] = {}
     for p in percentiles:
-        target = (p / 100.0) * total
-        cum = 0
-        placed = False
-        for i, c in enumerate(fine_bins):
-            cum += int(c)
-            if cum >= target:
-                out[int(p)] = int(round((i + 0.5) * fine_size))
-                placed = True
-                break
-        if not placed:
-            # Past all bankrupt mass → percentile falls inside the
-            # survivor group, which all sit at exactly session_spins.
+        # Rank index (0-based) for percentile p. ``total - 1`` anchors
+        # P100 to the last element; ``p/100 * (total-1)`` gives the
+        # target rank in the combined bankrupt + survived array.
+        target_rank = (p / 100.0) * (total - 1)
+        idx = int(round(target_rank))
+        if idx < 0:
+            idx = 0
+        if idx >= total:
+            idx = total - 1
+        # Indices 0..bankrupt-1 live in the sorted bankrupt list;
+        # indices ≥ bankrupt are survivors at session_spins.
+        if idx < bankrupt:
+            out[int(p)] = int(spins_done_sorted[idx])
+        else:
             out[int(p)] = int(session_spins)
     return out
 
 
-def fastest_bankruptcy_spins_from_fine_hist(
-    fine_bins: list[int],
-    session_spins: int,
+def fastest_bankruptcy_spins_from_list(
+    spins_done_sorted: list[int],
 ) -> int | None:
-    """Return the midpoint spin count of the first non-empty fine bin,
-    i.e. the spin count at which the earliest bankruptcy in this tier
-    occurred. Returns None when no bankruptcies were observed (the
-    tier never lost a single session).
+    """Return the exact spin count of the earliest bankruptcy in this
+    tier. Returns None when no bankruptcies were observed (the tier
+    never lost a single session).
     """
-    if not fine_bins or session_spins <= 0:
+    if not spins_done_sorted:
         return None
-    fine_size = session_spins / len(fine_bins)
-    for i, c in enumerate(fine_bins):
-        if int(c or 0) > 0:
-            return int(round((i + 0.5) * fine_size))
-    return None
+    return int(spins_done_sorted[0])
 
 
-def median_spins_from_fine_hist(
-    fine_bins: list[int],
+def median_spins_from_list(
+    spins_done_sorted: list[int],
     survived: int,
     session_spins: int,
 ) -> int:
-    """Approximate the median spins-completed across all simulated
-    sessions (bankrupt + survived). Convenience alias for P50 of
-    ``compute_bankruptcy_percentiles`` — retained as a distinct entry
-    point so the headline "median survival" stat is trivially lookupable.
-    """
+    """Convenience alias for P50 via compute_bankruptcy_percentiles."""
     pct = compute_bankruptcy_percentiles(
-        fine_bins, survived, session_spins, percentiles=(50,)
+        spins_done_sorted, survived, session_spins, percentiles=(50,)
     )
     return int(pct.get(50, 0))
 
@@ -3675,9 +3658,11 @@ def main() -> int:
                     _dst = bankruptcy_sim_totals[_m]
                     _dst["bankrupt"] += int(_entry.get("bankrupt", 0) or 0)
                     _dst["survived"] += int(_entry.get("survived", 0) or 0)
-                    for _i, _c in enumerate(_entry.get("fine_bins") or []):
-                        if _i < len(_dst["fine_bins"]):
-                            _dst["fine_bins"][_i] += int(_c or 0)
+                    _sd = _entry.get("spins_done")
+                    if isinstance(_sd, list) and _sd:
+                        # Extend the unsorted combined list; finalize
+                        # sorts once. O(N) append across chunks.
+                        _dst["spins_done"].extend(int(v) for v in _sd)
                 total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
                 total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
                 total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
@@ -4184,9 +4169,11 @@ def main() -> int:
                     _dst = bankruptcy_sim_totals[_m]
                     _dst["bankrupt"] += int(_entry.get("bankrupt", 0) or 0)
                     _dst["survived"] += int(_entry.get("survived", 0) or 0)
-                    for _i, _c in enumerate(_entry.get("fine_bins") or []):
-                        if _i < len(_dst["fine_bins"]):
-                            _dst["fine_bins"][_i] += int(_c or 0)
+                    _sd = _entry.get("spins_done")
+                    if isinstance(_sd, list) and _sd:
+                        # Extend the unsorted combined list; finalize
+                        # sorts once. O(N) append across chunks.
+                        _dst["spins_done"].extend(int(v) for v in _sd)
                 total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
                 total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
                 total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
@@ -5123,22 +5110,24 @@ def main() -> int:
             tier = _empty_bankruptcy_tier()
         total_sessions = int(tier["bankrupt"]) + int(tier["survived"])
         rate = (tier["bankrupt"] / total_sessions) if total_sessions > 0 else 0.0
-        fine_bins_ref = tier.get("fine_bins") or []
+        # Sort the exact spins_done list once — all per-tier stats flow
+        # from this sorted view. Preserves spin-level precision (the
+        # previous histogram-based path collapsed ranges like
+        # [100, 199] to a single midpoint 150, which quantized P10/P20
+        # into visually identical rows when early deciles shared a bin).
+        sd_sorted = sorted(int(v) for v in (tier.get("spins_done") or []))
         survived_ref = int(tier.get("survived") or 0)
         percentiles = compute_bankruptcy_percentiles(
-            fine_bins_ref,
+            sd_sorted,
             survived_ref,
             bankruptcy_sim_session_spins,
         )
-        median_spins = median_spins_from_fine_hist(
-            fine_bins_ref,
+        median_spins = median_spins_from_list(
+            sd_sorted,
             survived_ref,
             bankruptcy_sim_session_spins,
         )
-        fastest = fastest_bankruptcy_spins_from_fine_hist(
-            fine_bins_ref,
-            bankruptcy_sim_session_spins,
-        )
+        fastest = fastest_bankruptcy_spins_from_list(sd_sorted)
         bankruptcy_rows.append(
             {
                 "bankroll_multiplier": int(m),
