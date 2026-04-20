@@ -699,11 +699,16 @@ function _groupMachines(machines, viewMode) {
       else if (rtp < 400) key = "200–400%";
       else key = "> 400%";
     } else if (viewMode === "hall") {
-      // Hall view is NOT grouped (server has no real hall grouping,
-      // 2026-04-20 fix). Single bucket; ordering applied pre-render
-      // in renderMachineCatalog from state.machineHalls.default_order
-      // or .current_hall_order based on state.hallOrderMode.
-      key = "map-order";
+      // Hall view splits into TWO sections (2026-04-20 round 4):
+      //   - "club"   — the multi-cabinet bank (Royal lobby),
+      //                identified upstream by selectType===2 on the
+      //                cell. 17 machines on dev fleet.
+      //   - "normal" — everything else. Ordering toggle (默认/当前)
+      //                only applies to this section; club stays in
+      //                upstream cell sequence regardless.
+      // Neither section auto-collapses.
+      const clubList = (state.machineHalls || {}).club_machines || [];
+      key = clubList.includes(m.machine) ? "club" : "normal";
     } else if (viewMode === "mechanic") {
       // Prefer staticAttrs (union across history); fall back to
       // per-mode machinesSummary for back-compat.
@@ -747,9 +752,9 @@ function _groupOrder(viewMode) {
   if (viewMode === "rtp") return ["< 90%", "90–95%", "95–100%", "100–200%", "200–400%", "> 400%", "N/A"];
   if (viewMode === "mechanic") return ["lock_lines", "lock_symbols", "lock_reels", "jackpot", "free_spin", "dollar_pick", "Normal"];
   if (viewMode === "hall") {
-    // Single bucket; ordering applied by the caller (see
-    // renderMachineCatalog) via the hallOrderMode selection.
-    return ["map-order"];
+    // Club section pinned on top; normal section below. Ordering
+    // within each section is applied in renderMachineCatalog.
+    return ["club", "normal"];
   }
   return ["all"]; // name, category → flat
 }
@@ -863,19 +868,23 @@ function renderMachineCatalog() {
   const dir = state.catalogSortReverse ? -1 : 1;
   if (viewMode === "hall") {
     const hallData = state.machineHalls || {};
-    const chosen = state.hallOrderMode === "current"
+    const clubOrder = hallData.club_machines || [];
+    // Normal section honors the default/current toggle; club section
+    // always uses its upstream cell sequence (clubs don't reorder
+    // based on activity overrides).
+    const normalOrder = state.hallOrderMode === "current"
       ? (hallData.current_hall_order || hallData.default_order || [])
       : (hallData.default_order || []);
-    const rank = new Map(chosen.map((m, i) => [m, i]));
-    const hallSort = (a, b) => {
-      // Machines in the ordering come first; absent machines fall back
-      // to alphanumeric tail.
+    const clubRank = new Map(clubOrder.map((m, i) => [m, i]));
+    const normalRank = new Map(normalOrder.map((m, i) => [m, i]));
+    const makeHallSort = (rank) => (a, b) => {
       const ra = rank.has(a.machine) ? rank.get(a.machine) : Infinity;
       const rb = rank.has(b.machine) ? rank.get(b.machine) : Infinity;
       if (ra !== rb) return dir * (ra - rb);
       return dir * ((parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0));
     };
-    Object.values(groups).forEach((arr) => arr.sort(hallSort));
+    if (groups.club) groups.club.sort(makeHallSort(clubRank));
+    if (groups.normal) groups.normal.sort(makeHallSort(normalRank));
   } else {
     const numSort = (a, b) => dir * ((parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0));
     Object.values(groups).forEach((arr) => arr.sort(numSort));
@@ -891,8 +900,15 @@ function renderMachineCatalog() {
 
     if (!isFlatView) {
       const isMechView = viewMode === "mechanic";
-      const catColor = CATEGORY_COLORS[groupKey] || VOL_COLORS[groupKey] || (isMechView ? MECH_GROUP_COLORS[groupKey] : null) || "#9ca3af";
-      const displayName = isMechView ? (MECH_GROUP_LABELS[groupKey] || groupKey) : groupKey;
+      const isHallView = viewMode === "hall";
+      const hallLabels = { club: "Club 大厅", normal: "普通大厅" };
+      const hallColors = { club: "#b45309", normal: "#475569" };
+      const catColor = isHallView
+        ? (hallColors[groupKey] || "#475569")
+        : (CATEGORY_COLORS[groupKey] || VOL_COLORS[groupKey] || (isMechView ? MECH_GROUP_COLORS[groupKey] : null) || "#9ca3af");
+      const displayName = isHallView
+        ? (hallLabels[groupKey] || groupKey)
+        : (isMechView ? (MECH_GROUP_LABELS[groupKey] || groupKey) : groupKey);
       const header = document.createElement("div");
       header.className = "catalog-group-header";
       header.innerHTML = `<span class="catalog-group-arrow">&#9660;</span> <span class="catalog-group-dot" style="background:${catColor}"></span> <span class="catalog-group-name">${displayName}</span> <span class="catalog-group-count">(${machines.length})</span>`;
@@ -901,8 +917,10 @@ function renderMachineCatalog() {
         header.querySelector(".catalog-group-arrow").innerHTML = section.classList.contains("collapsed") ? "&#9654;" : "&#9660;";
       });
       section.appendChild(header);
-      // Auto-collapse when no search.
-      if (!query) {
+      // Auto-collapse groups when the operator isn't filtering —
+      // except in hall view where we always show both sections
+      // (user feedback 2026-04-20: "两个板块都不要再收起").
+      if (!query && !isHallView) {
         section.classList.add("collapsed");
         header.querySelector(".catalog-group-arrow").innerHTML = "&#9654;";
       }

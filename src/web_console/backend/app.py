@@ -1917,6 +1917,7 @@ def _parse_upstream_map_order(upstream: dict) -> dict:
     machine_re = _re.compile(r"^M\d+$")
 
     default_order: list[str] = []
+    club_machines: list[str] = []
     cells_json = upstream.get("localMapMachineCellsJson") if isinstance(upstream, dict) else None
     if isinstance(cells_json, str):
         try:
@@ -1930,6 +1931,13 @@ def _parse_upstream_map_order(upstream: dict) -> dict:
             if not machine_re.match(name):
                 continue
             default_order.append(name)
+            # Club ("Royal" lobby) marker: the cell carries
+            # ``selectType: 2`` ONLY on the multi-cabinet bank machines
+            # bracketed by the LinkedRoyalJackpot banners (verified on
+            # live dev — 17 cells out of 247 machines; all other
+            # machines have selectType=None). Preserve upstream order.
+            if c.get("selectType") == 2:
+                club_machines.append(name)
 
     now_ts = int(_time.time())
     activities_raw: list[dict] = []
@@ -1983,6 +1991,7 @@ def _parse_upstream_map_order(upstream: dict) -> dict:
         "default_order": default_order,
         "current_hall_order": current_hall_order,
         "active_activities": active_activities,
+        "club_machines": club_machines,
     }
 
 
@@ -4454,12 +4463,16 @@ def create_app(
                 "error": "halls file unreadable",
             }
         # Back-fill from raw_upstream when the file was written under
-        # the old schema (pre-2026-04-20 — only had `halls` dict).
-        # Lets operators pick up the new default/current orderings
-        # without a manual upstream refresh.
-        if not data.get("default_order") and isinstance(
-            data.get("raw_upstream"), dict
-        ):
+        # an older schema. Triggers on:
+        #   - missing default_order (pre-round-3 format)
+        #   - missing club_machines (round-4 added the club/normal
+        #     split; earlier round-3 files lack this field)
+        needs_backfill = bool(
+            isinstance(data.get("raw_upstream"), dict)
+            and (not data.get("default_order")
+                 or "club_machines" not in data)
+        )
+        if needs_backfill:
             parsed = _parse_upstream_map_order(data["raw_upstream"])
             data.update(parsed)
             try:
@@ -4474,6 +4487,7 @@ def create_app(
             "default_order": data.get("default_order") or [],
             "current_hall_order": data.get("current_hall_order") or [],
             "active_activities": data.get("active_activities") or [],
+            "club_machines": data.get("club_machines") or [],
             "updated_at": data.get("updated_at"),
             "source": data.get("source"),
         }
@@ -4533,6 +4547,7 @@ def create_app(
                 "default_order": parsed["default_order"],
                 "current_hall_order": parsed["current_hall_order"],
                 "active_activities": parsed["active_activities"],
+                "club_machines": parsed["club_machines"],
                 "updated_at": utc_now(),
                 "source": url,
                 "raw_upstream": upstream_payload,
@@ -4545,7 +4560,9 @@ def create_app(
                 "default_order": parsed["default_order"],
                 "current_hall_order": parsed["current_hall_order"],
                 "active_activities": parsed["active_activities"],
+                "club_machines": parsed["club_machines"],
                 "machine_count": len(parsed["default_order"]),
+                "club_count": len(parsed["club_machines"]),
                 "active_count": len(parsed["active_activities"]),
                 "updated_at": payload["updated_at"],
                 "source": url,
