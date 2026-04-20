@@ -86,6 +86,12 @@ const state = {
   // 按大厅 view data: {halls: {hall_name: [machine_list]}, updated_at, source}.
   // Populated lazily on first "按大厅" tab click via GET /api/machines/halls.
   machineHalls: null,
+  // 按大厅 ordering mode: "default" (upstream localMapMachineCellsJson
+  // order) or "current" (default + currently-active activity order
+  // overrides applied). Toggled by the hallsRefreshBar UI; the tab
+  // isn't a grouping anymore (server confirmed no real halls; what
+  // the old code called "halls" came from Unity asset-bundle paths).
+  hallOrderMode: "default",
   catalogFeatureFilter: new Set(),
   catalogSortReverse: false,  // reverse ordering toggle
   versionHistoryMachine: null,
@@ -693,17 +699,11 @@ function _groupMachines(machines, viewMode) {
       else if (rtp < 400) key = "200–400%";
       else key = "> 400%";
     } else if (viewMode === "hall") {
-      // Map machine → hall_name using cached data. Machines not
-      // present in any hall go into "未分组".
-      const halls = (state.machineHalls && state.machineHalls.halls) || {};
-      let hallOfMachine = null;
-      for (const [hallName, machineList] of Object.entries(halls)) {
-        if ((machineList || []).includes(m.machine)) {
-          hallOfMachine = hallName;
-          break;
-        }
-      }
-      key = hallOfMachine || "未分组";
+      // Hall view is NOT grouped (server has no real hall grouping,
+      // 2026-04-20 fix). Single bucket; ordering applied pre-render
+      // in renderMachineCatalog from state.machineHalls.default_order
+      // or .current_hall_order based on state.hallOrderMode.
+      key = "map-order";
     } else if (viewMode === "mechanic") {
       // Prefer staticAttrs (union across history); fall back to
       // per-mode machinesSummary for back-compat.
@@ -747,11 +747,9 @@ function _groupOrder(viewMode) {
   if (viewMode === "rtp") return ["< 90%", "90–95%", "95–100%", "100–200%", "200–400%", "> 400%", "N/A"];
   if (viewMode === "mechanic") return ["lock_lines", "lock_symbols", "lock_reels", "jackpot", "free_spin", "dollar_pick", "Normal"];
   if (viewMode === "hall") {
-    // Sorted by hall name; "未分组" bucket always last.
-    const halls = (state.machineHalls && state.machineHalls.halls) || {};
-    const names = Object.keys(halls).sort();
-    names.push("未分组");
-    return names;
+    // Single bucket; ordering applied by the caller (see
+    // renderMachineCatalog) via the hallOrderMode selection.
+    return ["map-order"];
   }
   return ["all"]; // name, category → flat
 }
@@ -858,10 +856,30 @@ function renderMachineCatalog() {
   const orderedKeys = order.filter((k) => groups[k]);
   Object.keys(groups).forEach((k) => { if (!orderedKeys.includes(k)) orderedKeys.push(k); });
 
-  // Sort within groups: by machine number for most views. Reverse if toggled.
+  // Sort within groups. Hall view uses upstream-provided ordering
+  // (default_order or current_hall_order) — honor that by sorting
+  // machines by their position in the chosen list; all other views
+  // sort by machine number with the reverse toggle.
   const dir = state.catalogSortReverse ? -1 : 1;
-  const numSort = (a, b) => dir * ((parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0));
-  Object.values(groups).forEach((arr) => arr.sort(numSort));
+  if (viewMode === "hall") {
+    const hallData = state.machineHalls || {};
+    const chosen = state.hallOrderMode === "current"
+      ? (hallData.current_hall_order || hallData.default_order || [])
+      : (hallData.default_order || []);
+    const rank = new Map(chosen.map((m, i) => [m, i]));
+    const hallSort = (a, b) => {
+      // Machines in the ordering come first; absent machines fall back
+      // to alphanumeric tail.
+      const ra = rank.has(a.machine) ? rank.get(a.machine) : Infinity;
+      const rb = rank.has(b.machine) ? rank.get(b.machine) : Infinity;
+      if (ra !== rb) return dir * (ra - rb);
+      return dir * ((parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0));
+    };
+    Object.values(groups).forEach((arr) => arr.sort(hallSort));
+  } else {
+    const numSort = (a, b) => dir * ((parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0));
+    Object.values(groups).forEach((arr) => arr.sort(numSort));
+  }
   if (state.catalogSortReverse) orderedKeys.reverse();
 
   const isFlatView = viewMode === "name" || viewMode === "category";
@@ -4987,19 +5005,26 @@ function bindEvents() {
     state.catalogViewMode = btn.dataset.view;
     byId("catalogViewTabs").querySelectorAll(".view-tab").forEach((b) => b.classList.toggle("active", b === btn));
     renderCatalogFeatureChips();
-    // First click on "按大厅" lazily fetches the cached hall map.
+    // First click on "按大厅" lazily fetches the upstream ordering
+    // cache (default_order + current_hall_order + active_activities).
     if (btn.dataset.view === "hall" && state.machineHalls === null) {
       try {
         state.machineHalls = await apiGet("/api/machines/halls");
       } catch (_err) {
-        state.machineHalls = { halls: {}, updated_at: null, source: null };
+        state.machineHalls = {
+          default_order: [], current_hall_order: [],
+          active_activities: [], halls: {},
+          updated_at: null, source: null,
+        };
       }
     }
     renderHallsRefreshBar();
     renderMachineCatalog();
   });
 
-  // Inline hall-refresh banner: visible only when 按大厅 tab active.
+  // Inline hall bar: only when 按大厅 tab active. Shows the ordering
+  // mode toggle (默认 / 当前大厅) + active-activity summary + a
+  // refresh button that re-pulls from upstream MapMachineOrder.
   function renderHallsRefreshBar() {
     const bar = byId("hallsRefreshBar");
     if (!bar) return;
@@ -5008,23 +5033,55 @@ function bindEvents() {
       return;
     }
     bar.classList.remove("hidden");
-    const halls = state.machineHalls?.halls || {};
-    const hallCount = Object.keys(halls).length;
-    const updated = state.machineHalls?.updated_at;
-    if (!hallCount) {
-      bar.innerHTML = `<span class="muted">${fmt("hallsEmpty")}</span>
-        <button id="hallsRefreshBtn" class="small-btn primary-btn">${fmt("hallsRefreshBtn")}</button>`;
+    const data = state.machineHalls || {};
+    const defaultOrder = data.default_order || [];
+    const currentOrder = data.current_hall_order || [];
+    const activeActs = data.active_activities || [];
+    const updated = data.updated_at;
+    if (!defaultOrder.length) {
+      bar.innerHTML = `<span class="muted">未拉取地图顺序。</span>
+        <button id="hallsRefreshBtn" class="small-btn primary-btn">拉取地图顺序</button>`;
     } else {
-      const machineCount = Object.values(halls).reduce((s, v) => s + (v?.length || 0), 0);
-      bar.innerHTML = `<span class="muted">${fmt("hallsRefreshSuccess", { halls: hallCount, machines: machineCount, ts: updated || "?" })}</span>
-        <button id="hallsRefreshBtn" class="small-btn">${fmt("hallsRefreshBtn")}</button>`;
+      const defaultActive = state.hallOrderMode !== "current";
+      const hasCurrent = activeActs.length > 0 && currentOrder.length > 0;
+      // Build the activity summary: "活动 Id=10 置顶 10 台 · Id=13 置顶 M272"
+      const actSummary = activeActs.map((a) => {
+        const ims = a.influence_machines || [];
+        const count = ims.length;
+        const sample = ims.slice(0, 3).join(", ");
+        const more = count > 3 ? ` +${count - 3}` : "";
+        const orders = (a.orders || [])[0];
+        const target = orders != null ? `→ 位置 ${orders}` : "";
+        return `Id=${a.id} ${target} ${count}台(${sample}${more})`;
+      }).join(" · ");
+      bar.innerHTML = `
+        <div class="halls-row">
+          <div class="halls-mode-toggle">
+            <button class="small-btn ${defaultActive ? "active" : ""}" data-mode="default">默认顺序</button>
+            <button class="small-btn ${defaultActive ? "" : "active"}" data-mode="current" ${hasCurrent ? "" : "disabled"} title="${hasCurrent ? "应用当前运营活动的位置覆盖" : "无活动中的运营活动"}">当前大厅顺序</button>
+          </div>
+          <span class="muted">${defaultOrder.length} 台 · ${activeActs.length ? `${activeActs.length} 个活动: ${actSummary}` : "无活动中的运营活动"}${updated ? ` · ${updated.slice(0, 19).replace("T", " ")}` : ""}</span>
+          <button id="hallsRefreshBtn" class="small-btn">刷新上游</button>
+        </div>
+      `;
+      bar.querySelectorAll(".halls-mode-toggle button").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          if (e.target.disabled) return;
+          const mode = btn.dataset.mode;
+          if (mode && mode !== state.hallOrderMode) {
+            state.hallOrderMode = mode;
+            renderHallsRefreshBar();
+            renderMachineCatalog();
+          }
+        });
+      });
     }
     byId("hallsRefreshBtn")?.addEventListener("click", async () => {
       const btn = byId("hallsRefreshBtn");
       if (!btn) return;
       const orig = btn.textContent;
       btn.disabled = true;
-      btn.textContent = fmt("hallsRefreshBusy");
+      btn.textContent = "刷新中…";
       try {
         const resp = await fetch("/api/machines/halls/refresh", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -5034,16 +5091,11 @@ function bindEvents() {
           const body = await resp.json().catch(() => ({}));
           throw new Error(body.detail || `HTTP ${resp.status}`);
         }
-        const data = await resp.json();
-        state.machineHalls = {
-          halls: data.halls || {},
-          updated_at: data.updated_at,
-          source: data.source,
-        };
+        state.machineHalls = await apiGet("/api/machines/halls");
         renderHallsRefreshBar();
         renderMachineCatalog();
       } catch (err) {
-        btn.textContent = fmt("hallsRefreshFailed", { error: String(err.message || err) });
+        btn.textContent = `失败: ${String(err.message || err).slice(0, 60)}`;
         setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 4000);
       }
     });

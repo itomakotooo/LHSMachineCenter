@@ -1892,6 +1892,100 @@ def _bootstrap_static_attrs(
     return data
 
 
+def _parse_upstream_map_order(upstream: dict) -> dict:
+    """Parse the upstream ``POST /MachineTest/MapMachineOrder`` response
+    into the platform's ordering model (2026-04-20 round 3 fix).
+
+    Upstream fields:
+      * ``localMapMachineCellsJson`` — JSON string → array of cell
+        dicts (name / prefabAssetPath / cellType / isFront). Default
+        on-map sequence; contains decorative cells (LinkedJackpotL /
+        cellType=4 etc.) which we drop by matching ``name`` against
+        ``^M\\d+$``.
+      * ``gmMapMachineOrderJson`` — JSON string → array of activity
+        overrides {Id / Orders / InfluenceMachines / StartTime /
+        EndTime / MachineLuckyBonus / DependentSwitch / ...}.
+
+    Returns ``{default_order, current_hall_order, active_activities}``
+    where ``current_hall_order`` = default_order with currently-active
+    activities' InfluenceMachines promoted to the front (sorted by
+    Orders[0] ascending). Activities with ``now ∈ [StartTime, EndTime]``
+    are "active"; others are dropped from the output.
+    """
+    import re as _re
+    import time as _time
+    machine_re = _re.compile(r"^M\d+$")
+
+    default_order: list[str] = []
+    cells_json = upstream.get("localMapMachineCellsJson") if isinstance(upstream, dict) else None
+    if isinstance(cells_json, str):
+        try:
+            cells = json.loads(cells_json)
+        except json.JSONDecodeError:
+            cells = []
+        for c in cells if isinstance(cells, list) else []:
+            if not isinstance(c, dict):
+                continue
+            name = str(c.get("name", ""))
+            if not machine_re.match(name):
+                continue
+            default_order.append(name)
+
+    now_ts = int(_time.time())
+    activities_raw: list[dict] = []
+    gm_json = upstream.get("gmMapMachineOrderJson") if isinstance(upstream, dict) else None
+    if isinstance(gm_json, str):
+        try:
+            activities_raw = json.loads(gm_json) or []
+        except json.JSONDecodeError:
+            activities_raw = []
+    active_activities: list[dict] = []
+    for a in activities_raw if isinstance(activities_raw, list) else []:
+        if not isinstance(a, dict):
+            continue
+        try:
+            st = int(a.get("StartTime") or 0)
+            et = int(a.get("EndTime") or 0)
+        except (TypeError, ValueError):
+            continue
+        if st <= now_ts <= et:
+            active_activities.append({
+                "id": a.get("Id"),
+                "orders": a.get("Orders") or [],
+                "influence_machines": a.get("InfluenceMachines") or [],
+                "except_machines": a.get("ExceptMachines") or [],
+                "start_ts": st,
+                "end_ts": et,
+                "lucky_bonus": bool(a.get("MachineLuckyBonus")),
+                "dep_switch": int(a.get("DependentSwitch") or 0),
+                "desc": a.get("Desc"),
+            })
+
+    if active_activities and default_order:
+        promoted_sequence: list[str] = []
+        promoted_set: set[str] = set()
+        def _act_key(a: dict) -> tuple:
+            orders = a.get("orders") or []
+            primary = orders[0] if orders else 9999
+            return (primary, a.get("id") or 0)
+        for a in sorted(active_activities, key=_act_key):
+            for m in (a.get("influence_machines") or []):
+                if m in promoted_set or m not in default_order:
+                    continue
+                promoted_sequence.append(m)
+                promoted_set.add(m)
+        tail = [m for m in default_order if m not in promoted_set]
+        current_hall_order = promoted_sequence + tail
+    else:
+        current_hall_order = list(default_order)
+
+    return {
+        "default_order": default_order,
+        "current_hall_order": current_hall_order,
+        "active_activities": active_activities,
+    }
+
+
 def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
     """Scan reports dir, pick best-CI report per machine-mode, return summary."""
     import math
@@ -4316,23 +4410,70 @@ def create_app(
 
     @app.get("/api/machines/halls")
     def get_machine_halls() -> dict[str, Any]:
-        """Return cached hall grouping for the 按大厅 catalog view.
+        """Return the cached on-map machine ordering for the 按大厅 view.
 
-        Sourced from ``configs/machine_halls.json`` (populated by
-        ``POST /api/machines/halls/refresh`` which calls the upstream
-        ``MapMachineOrder`` endpoint). Missing file → empty halls so
-        the UI can prompt the operator to refresh.
+        Upstream provides two things:
+          * localMapMachineCellsJson — the default on-map cell sequence
+          * gmMapMachineOrderJson   — per-activity order overrides
+
+        Server-side confirms there's NO actual hall grouping; the
+        previous version's "G6 / G10 / Default" buckets came from
+        Unity asset-bundle names (MapMachine/{ZONE}/{M}/...) and were
+        misinterpreted as halls (2026-04-20 round 3 fix). Now we
+        expose the two orderings operators actually care about:
+
+          * ``default_order``       — ordered list of machine IDs in
+                                      their default layout
+          * ``current_hall_order``  — default_order with currently-
+                                      active activity overrides applied
+                                      (``InfluenceMachines`` of each
+                                      activity promoted to Orders[0];
+                                      stable for remaining machines)
+          * ``active_activities``   — summaries of currently-active
+                                      activities (start/end/orders/
+                                      influence_machines/lucky_bonus)
+          * ``halls``               — kept as empty dict for
+                                      back-compat with older clients
+
+        Missing file → empty orderings + prompt to refresh.
         """
         halls_path = ROOT / "configs" / "machine_halls.json"
         if not halls_path.exists():
-            return {"halls": {}, "updated_at": None, "source": None}
+            return {
+                "halls": {}, "default_order": [], "current_hall_order": [],
+                "active_activities": [],
+                "updated_at": None, "source": None,
+            }
         try:
             data = json.loads(halls_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return {"halls": {}, "updated_at": None, "source": None,
-                    "error": "halls file unreadable"}
+            return {
+                "halls": {}, "default_order": [], "current_hall_order": [],
+                "active_activities": [],
+                "updated_at": None, "source": None,
+                "error": "halls file unreadable",
+            }
+        # Back-fill from raw_upstream when the file was written under
+        # the old schema (pre-2026-04-20 — only had `halls` dict).
+        # Lets operators pick up the new default/current orderings
+        # without a manual upstream refresh.
+        if not data.get("default_order") and isinstance(
+            data.get("raw_upstream"), dict
+        ):
+            parsed = _parse_upstream_map_order(data["raw_upstream"])
+            data.update(parsed)
+            try:
+                halls_path.write_text(
+                    json.dumps(data, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
         return {
             "halls": data.get("halls") or {},
+            "default_order": data.get("default_order") or [],
+            "current_hall_order": data.get("current_hall_order") or [],
+            "active_activities": data.get("active_activities") or [],
             "updated_at": data.get("updated_at"),
             "source": data.get("source"),
         }
@@ -4382,46 +4523,16 @@ def create_app(
                 upstream_payload = json.loads(raw)
             except json.JSONDecodeError:
                 upstream_payload = {"_raw": raw[:10000]}
-            # Parse ``localMapMachineCellsJson`` — an array of cell
-            # dicts where each cell has ``name`` (e.g. "M272" or
-            # decorative "LinkedJackpotL") and ``prefabAssetPath``
-            # encoding the hall / zone in the path. Two observed
-            # forms:
-            #   Assets/UIAssets/MapMachine/{ZONE}/{M_ID}/...   (small)
-            #   Assets/UIAssets/SilentLoad/MapMachine/{ZONE}/... (bulk)
-            # ZONE is a G-prefixed string (G6, G10, G11, ...) for
-            # most machines or "Default". We use ZONE as the hall
-            # name — the platform's original labeling, since no
-            # other hierarchy is encoded in the upstream payload.
-            halls: dict[str, list[str]] = {}
-            import re as _re
-            machine_re = _re.compile(r"^M\d+$")
-            zone_re = _re.compile(
-                r"Assets/UIAssets/(?:SilentLoad/)?MapMachine/([^/]+)/"
-            )
-            cells_json = upstream_payload.get("localMapMachineCellsJson") \
-                if isinstance(upstream_payload, dict) else None
-            if isinstance(cells_json, str):
-                try:
-                    cells = json.loads(cells_json)
-                except json.JSONDecodeError:
-                    cells = []
-                for c in cells if isinstance(cells, list) else []:
-                    if not isinstance(c, dict):
-                        continue
-                    name = str(c.get("name", ""))
-                    if not machine_re.match(name):
-                        continue
-                    path = str(c.get("prefabAssetPath", ""))
-                    m = zone_re.search(path)
-                    zone = m.group(1) if m else "未分组"
-                    halls.setdefault(zone, []).append(name)
-            # Persist the parsed halls + the raw payload for later
-            # inspection / re-parse.
+            parsed = _parse_upstream_map_order(upstream_payload)
             halls_path = ROOT / "configs" / "machine_halls.json"
             halls_path.parent.mkdir(parents=True, exist_ok=True)
             payload = {
-                "halls": halls,
+                # Kept as empty dict for back-compat with pre-fix
+                # clients; new UI reads default_order / current_hall_order.
+                "halls": {},
+                "default_order": parsed["default_order"],
+                "current_hall_order": parsed["current_hall_order"],
+                "active_activities": parsed["active_activities"],
                 "updated_at": utc_now(),
                 "source": url,
                 "raw_upstream": upstream_payload,
@@ -4431,9 +4542,11 @@ def create_app(
                 encoding="utf-8",
             )
             return {
-                "halls": halls,
-                "hall_count": len(halls),
-                "machine_count": sum(len(v) for v in halls.values()),
+                "default_order": parsed["default_order"],
+                "current_hall_order": parsed["current_hall_order"],
+                "active_activities": parsed["active_activities"],
+                "machine_count": len(parsed["default_order"]),
+                "active_count": len(parsed["active_activities"]),
                 "updated_at": payload["updated_at"],
                 "source": url,
             }
