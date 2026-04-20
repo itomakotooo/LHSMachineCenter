@@ -1270,6 +1270,19 @@ button:disabled {
   background: #10b981;
   opacity: 0.7;
 }
+/* "Fastest bankruptcy" row (the tier's P0, shown once at the top of
+   each table). Red tone + bold to separate it from the decile rows. */
+.bankruptcy-histogram tbody tr.bk-row-fastest {
+  background: #fef2f2;
+  font-weight: 500;
+}
+.bankruptcy-histogram tbody tr.bk-row-fastest td:first-child {
+  color: #b91c1c;
+}
+.bankruptcy-histogram tr.bk-row-fastest .bar-cell::after {
+  background: var(--danger);
+  opacity: 0.6;
+}
 
 /* Bonus chain per-feature card redesign. */
 .bcFeatCard {

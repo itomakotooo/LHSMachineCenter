@@ -826,7 +826,6 @@ def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
 # zero sessions; the operator sees fewer total samples but nothing
 # crashes.
 _BANKRUPTCY_FINE_BIN_COUNT = 100
-_BANKRUPTCY_TARGET_DISPLAY_BINS = 8
 _DEFAULT_BANKROLL_MULTIPLIERS: tuple[int, ...] = (100, 200, 500)
 _DEFAULT_BANKRUPTCY_SESSION_SPINS = 10000
 
@@ -931,120 +930,69 @@ def simulate_bankruptcy_from_response(
     return out
 
 
-def compute_bankruptcy_adaptive_edges(
-    pooled_fine_bins: list[int],
-    session_spins: int,
-    target_bins: int = _BANKRUPTCY_TARGET_DISPLAY_BINS,
-) -> list[int]:
-    """Derive ``target_bins + 1`` integer spin-count edges from a pooled
-    fine-resolution histogram such that each resulting display bin
-    holds roughly equal bankrupt mass. Cross-tier comparability is
-    preserved by feeding in the pooled histogram across all tiers.
-
-    Fallback: when the pooled histogram has zero mass (no bankruptcies
-    anywhere — e.g. giant bankroll always survives), return uniform
-    linear edges over ``[0, session_spins]`` so the UI still has a
-    valid layout to render against.
-
-    Edges are strictly monotonically non-decreasing, start at 0, end
-    at exactly ``session_spins``.
-    """
-    if not pooled_fine_bins or session_spins <= 0 or target_bins <= 0:
-        return [0, session_spins]
-    fine_n = len(pooled_fine_bins)
-    fine_size = session_spins / fine_n
-    total = sum(pooled_fine_bins)
-    if total == 0:
-        # Linear fallback — no adaptive signal available.
-        return [
-            int(round(i * session_spins / target_bins))
-            for i in range(target_bins + 1)
-        ]
-    target_mass = total / target_bins
-    # Build adaptive inner cuts. Final `edges` will be exactly
-    # target_bins + 1 long: [0, e1, e2, ..., e_{N-1}, session_spins].
-    edges: list[int] = [0]
-    cum = 0
-    next_threshold = target_mass
-    for i, c in enumerate(pooled_fine_bins):
-        cum += int(c)
-        # While-loop handles a single heavy bin that straddles multiple
-        # target thresholds (without it, later thresholds would starve).
-        while cum >= next_threshold and len(edges) < target_bins:
-            spin_end = int(round((i + 1) * fine_size))
-            if spin_end <= edges[-1]:
-                break  # can't advance — same fine bin again
-            if spin_end >= session_spins:
-                break  # reserve the final edge for session_spins
-            edges.append(spin_end)
-            next_threshold += target_mass
-    # If adaptive cuts stopped short (concentrated pooled mass), pad
-    # the rest linearly toward session_spins so every bin has a valid,
-    # monotonically-increasing boundary. Padding inserts edges BEFORE
-    # appending the terminal session_spins, keeping contract intact.
-    while len(edges) < target_bins:
-        last = edges[-1]
-        remaining_inner = target_bins - len(edges)
-        step = max(1, (session_spins - last) // (remaining_inner + 1))
-        next_edge = last + step
-        if next_edge >= session_spins:
-            break
-        edges.append(next_edge)
-    # Ensure terminal edge sits at session_spins exactly.
-    if edges[-1] < session_spins:
-        edges.append(session_spins)
-    else:
-        edges[-1] = session_spins
-    # De-duplicate defensively; then pad toward session_spins if dedup
-    # dropped us below the required edge count.
-    deduped: list[int] = []
-    for e in edges:
-        if not deduped or e > deduped[-1]:
-            deduped.append(e)
-    while len(deduped) < target_bins + 1:
-        # Insert a midpoint between the last two edges to keep both
-        # monotonicity and the target length. Rare edge case.
-        if len(deduped) >= 2:
-            mid = (deduped[-2] + deduped[-1]) // 2
-            if mid > deduped[-2] and mid < deduped[-1]:
-                deduped.insert(-1, mid)
-                continue
-        # Fallback: extend by 1 spin past the end.
-        deduped.append(deduped[-1] + 1)
-    return deduped[: target_bins + 1]
+# Decile steps (P10, P20, ..., P90). Survivor-heavy tiers will have
+# higher percentiles pin to session_spins (once cum ≥ p·total exits
+# the bankrupt region), so the table naturally surfaces "when does
+# bankruptcy run out" — the transition percentile matches the
+# complement of the bankruptcy rate.
+_BANKRUPTCY_PERCENTILES: tuple[int, ...] = (10, 20, 30, 40, 50, 60, 70, 80, 90)
 
 
-def rebase_fine_histogram_to_edges(
+def compute_bankruptcy_percentiles(
     fine_bins: list[int],
+    survived: int,
     session_spins: int,
-    edges: list[int],
-) -> list[int]:
-    """Map a fine-resolution histogram into target adaptive bins
-    defined by ``edges`` (len=N+1). Each fine bin's mass is attributed
-    to the target bin that contains its midpoint. Returns a list of
-    length N = len(edges) - 1.
+    percentiles: tuple[int, ...] = _BANKRUPTCY_PERCENTILES,
+) -> dict[int, int]:
+    """Return spin-count at each requested percentile of the tier's
+    full session population (bankrupt + survived). Percentiles are
+    evaluated over ALL sessions — a tier with 80% bankrupt and 20%
+    survived will hit session_spins from P81 upward.
+
+    Bankrupt sessions contribute their fine-bin midpoint spin count;
+    survivors contribute exactly ``session_spins``. Resolution =
+    session_spins / len(fine_bins).
     """
-    if not fine_bins or not edges or len(edges) < 2 or session_spins <= 0:
-        return [0] * max(0, len(edges) - 1)
-    fine_n = len(fine_bins)
-    fine_size = session_spins / fine_n
-    target_n = len(edges) - 1
-    out = [0] * target_n
-    for i, c in enumerate(fine_bins):
-        if not c:
-            continue
-        spin_mid = (i + 0.5) * fine_size
+    if session_spins <= 0 or not fine_bins:
+        return {int(p): 0 for p in percentiles}
+    total = sum(int(c) for c in fine_bins) + int(survived or 0)
+    if total == 0:
+        return {int(p): 0 for p in percentiles}
+    fine_size = session_spins / len(fine_bins)
+    out: dict[int, int] = {}
+    for p in percentiles:
+        target = (p / 100.0) * total
+        cum = 0
         placed = False
-        for b in range(target_n):
-            if edges[b] <= spin_mid < edges[b + 1]:
-                out[b] += int(c)
+        for i, c in enumerate(fine_bins):
+            cum += int(c)
+            if cum >= target:
+                out[int(p)] = int(round((i + 0.5) * fine_size))
                 placed = True
                 break
         if not placed:
-            # Last fine bin's midpoint may equal session_spins for the
-            # degenerate session_spins=fine_n=1 case; spill to last bin.
-            out[target_n - 1] += int(c)
+            # Past all bankrupt mass → percentile falls inside the
+            # survivor group, which all sit at exactly session_spins.
+            out[int(p)] = int(session_spins)
     return out
+
+
+def fastest_bankruptcy_spins_from_fine_hist(
+    fine_bins: list[int],
+    session_spins: int,
+) -> int | None:
+    """Return the midpoint spin count of the first non-empty fine bin,
+    i.e. the spin count at which the earliest bankruptcy in this tier
+    occurred. Returns None when no bankruptcies were observed (the
+    tier never lost a single session).
+    """
+    if not fine_bins or session_spins <= 0:
+        return None
+    fine_size = session_spins / len(fine_bins)
+    for i, c in enumerate(fine_bins):
+        if int(c or 0) > 0:
+            return int(round((i + 0.5) * fine_size))
+    return None
 
 
 def median_spins_from_fine_hist(
@@ -1053,26 +1001,14 @@ def median_spins_from_fine_hist(
     session_spins: int,
 ) -> int:
     """Approximate the median spins-completed across all simulated
-    sessions (bankrupt + survived). Bankrupt sessions are represented
-    by fine-bin midpoints; survivors by ``session_spins`` exactly.
-
-    Resolution = session_spins / len(fine_bins); at default settings
-    that's 100 spins per bin at session_spins=10000 (0.01% of horizon).
+    sessions (bankrupt + survived). Convenience alias for P50 of
+    ``compute_bankruptcy_percentiles`` — retained as a distinct entry
+    point so the headline "median survival" stat is trivially lookupable.
     """
-    if session_spins <= 0 or not fine_bins:
-        return 0
-    total = sum(int(c) for c in fine_bins) + int(survived or 0)
-    if total == 0:
-        return 0
-    target = total / 2.0
-    fine_size = session_spins / len(fine_bins)
-    cum = 0
-    for i, c in enumerate(fine_bins):
-        cum += int(c)
-        if cum >= target:
-            return int(round((i + 0.5) * fine_size))
-    # Median falls inside the survivor group.
-    return int(session_spins)
+    pct = compute_bankruptcy_percentiles(
+        fine_bins, survived, session_spins, percentiles=(50,)
+    )
+    return int(pct.get(50, 0))
 
 
 # Baseline round fields: the set of keys the analyzer knows how to
@@ -5163,31 +5099,23 @@ def main() -> int:
     # Bankruptcy analysis: rawdata-replay simulation. Every chunk
     # contributes to ``bankruptcy_sim_totals`` during the merge loop
     # above (keyed by bankroll multiplier, fine-resolution histogram).
-    # Here we derive cross-tier shared adaptive bin edges (so every
-    # tier's display histogram sits on the same x-axis) and rebase
-    # each tier's fine histogram into those bins. Median survival is
-    # computed per-tier from the fine histogram + survivor count.
+    # Here we derive per-tier decile percentiles + the fastest
+    # bankruptcy spin count. Percentiles are evaluated over the FULL
+    # session population (bankrupt + survived, denominator = all
+    # simulated sessions in the tier); once cumulative mass passes all
+    # bankrupt sessions the remaining percentiles pin to session_spins,
+    # which matches the "survived" share — so the table transition
+    # directly shows when bankruptcy runs out.
     #
-    # Rationale for adaptive edges over uniform equal-width: at
-    # session_spins=10000 with 10 uniform bins, the first bin usually
-    # captures 70-90% of mass on low-RTP machines, making the bucket
-    # chart unreadable. Equal-mass quantile edges give each display
-    # bin ~1/N of the bankrupt sessions so the histogram is uniformly
-    # informative.
+    # Rationale for percentile table over bin histograms: at RTP ~90%
+    # with session_spins=10000, bankruptcy mass concentrates heavily
+    # in the first ~10% of the horizon and any equal-width or
+    # equal-mass histogram compresses or stretches the rest poorly.
+    # Showing "at each decile, what's the spin count?" gives each row
+    # a cleanly interpretable reading: P10 = 10% of simulated users
+    # were out by this spin, P50 = median user, P90 = 90% of users
+    # died by this spin (the rest are still in).
     bankruptcy_sim_session_spins = args.bankruptcy_session_spins
-    # Pool all tiers' fine histograms to compute shared adaptive edges.
-    # Using the pooled (not any single tier) distribution keeps the
-    # edges fair across tiers — x100 and x500 plot the same x-axis.
-    _pooled_fine = [0] * _BANKRUPTCY_FINE_BIN_COUNT
-    for _tier in bankruptcy_sim_totals.values():
-        for _i, _c in enumerate(_tier.get("fine_bins") or []):
-            if _i < _BANKRUPTCY_FINE_BIN_COUNT:
-                _pooled_fine[_i] += int(_c or 0)
-    bankruptcy_bin_edges = compute_bankruptcy_adaptive_edges(
-        _pooled_fine,
-        bankruptcy_sim_session_spins,
-        _BANKRUPTCY_TARGET_DISPLAY_BINS,
-    )
     bankruptcy_rows: list[dict[str, Any]] = []
     for m in _bankruptcy_mults_tuple:
         tier = bankruptcy_sim_totals.get(int(m))
@@ -5195,15 +5123,21 @@ def main() -> int:
             tier = _empty_bankruptcy_tier()
         total_sessions = int(tier["bankrupt"]) + int(tier["survived"])
         rate = (tier["bankrupt"] / total_sessions) if total_sessions > 0 else 0.0
-        median_spins = median_spins_from_fine_hist(
-            tier.get("fine_bins") or [],
-            int(tier.get("survived") or 0),
+        fine_bins_ref = tier.get("fine_bins") or []
+        survived_ref = int(tier.get("survived") or 0)
+        percentiles = compute_bankruptcy_percentiles(
+            fine_bins_ref,
+            survived_ref,
             bankruptcy_sim_session_spins,
         )
-        display_bins = rebase_fine_histogram_to_edges(
-            tier.get("fine_bins") or [],
+        median_spins = median_spins_from_fine_hist(
+            fine_bins_ref,
+            survived_ref,
             bankruptcy_sim_session_spins,
-            bankruptcy_bin_edges,
+        )
+        fastest = fastest_bankruptcy_spins_from_fine_hist(
+            fine_bins_ref,
+            bankruptcy_sim_session_spins,
         )
         bankruptcy_rows.append(
             {
@@ -5215,10 +5149,14 @@ def main() -> int:
                 "completed_robots": int(tier["survived"]),
                 "bankruptcy_rate": rate,
                 "median_spins_completed": median_spins,
-                # Per-bin bankrupt counts using the SHARED adaptive
-                # edges (see bankruptcy_simulation.bin_edges for the
-                # spin-count cuts). Length = len(bin_edges) - 1.
-                "bins": display_bins,
+                # Fastest observed bankruptcy (None when the tier saw
+                # zero bankruptcies — e.g. a bankroll so large every
+                # session survived). UI highlights this separately.
+                "fastest_bankruptcy_spins": fastest,
+                # Decile table keyed by percentile int → spin count at
+                # that percentile across ALL simulated sessions (not
+                # just bankrupt). JSON keys will serialize as strings.
+                "percentiles": {str(k): v for k, v in percentiles.items()},
             }
         )
     bankruptcy_rows.sort(key=lambda row: int(row.get("bankroll_multiplier", 0)))
@@ -5630,12 +5568,11 @@ def main() -> int:
             "bankruptcy_simulation": {
                 "source": "rawdata_replay",
                 "session_spins": bankruptcy_sim_session_spins,
-                # Adaptive, cross-tier shared bin edges derived from the
-                # pooled bankrupt distribution. Each (edges[i], edges[i+1])
-                # pair defines a display bin; tiers[*].bins is aligned to
-                # this layout. Tail of the list is always session_spins.
-                "bin_edges": bankruptcy_bin_edges,
-                "bin_count": max(0, len(bankruptcy_bin_edges) - 1),
+                # Percentile layout (list of ints). Each tier.percentiles
+                # maps these keys (as strings) → spin count at that
+                # percentile of the tier's full session population. UI
+                # renders a decile table instead of a bin histogram.
+                "percentile_keys": list(_BANKRUPTCY_PERCENTILES),
                 "tiers": bankruptcy_rows,
             },
             # Back-compat alias. Legacy consumers read bankruptcy_probe;
@@ -6001,16 +5938,20 @@ def main() -> int:
     md_lines.append("")
     md_lines.append("## Bankruptcy Simulation (rawdata replay)")
     md_lines.append(f"- session_spins: {bankruptcy_sim_session_spins}")
-    md_lines.append(f"- bin_edges: {bankruptcy_bin_edges}")
+    md_lines.append(f"- percentile_keys: {list(_BANKRUPTCY_PERCENTILES)}")
     for row in bankruptcy_rows:
-        bins_str = ",".join(str(int(x)) for x in (row.get("bins") or []))
+        pct = row.get("percentiles") or {}
+        pct_str = " ".join(f"P{k}={pct.get(str(k), pct.get(k, 0))}" for k in _BANKRUPTCY_PERCENTILES)
+        fastest = row.get("fastest_bankruptcy_spins")
+        fastest_s = str(fastest) if fastest is not None else "-"
         md_lines.append(
             f"- bankroll x{row['bankroll_multiplier']}: "
             f"bankruptcy_rate={row['bankruptcy_rate']:.6f}, "
-            f"median_spins_completed={row['median_spins_completed']}, "
+            f"median={row['median_spins_completed']}, "
+            f"fastest={fastest_s}, "
             f"sessions={row['robots']}, "
             f"survived={row['completed_robots']}, "
-            f"bins=[{bins_str}]"
+            f"{pct_str}"
         )
 
     md_lines.append("")

@@ -3862,22 +3862,11 @@ function renderBankruptcyAnalysis(summary) {
   panel.classList.remove("hidden");
 
   const sessionSpins = Number(sim.session_spins || 10000);
-  // Adaptive bin_edges (len = N+1) come from the analyzer — each pair
-  // (edges[i], edges[i+1]) defines a display bin of variable width.
-  // Fall back to a naive uniform split if the field is missing (older
-  // summaries from before the adaptive refactor).
-  const rawEdges = Array.isArray(sim.bin_edges) && sim.bin_edges.length >= 2
-    ? sim.bin_edges.map((v) => Number(v))
-    : null;
-  const binEdges = rawEdges || (() => {
-    const fallbackN = Number(sim.bin_count || 10);
-    const edges = [];
-    for (let i = 0; i <= fallbackN; i++) {
-      edges.push(Math.round((i * sessionSpins) / fallbackN));
-    }
-    return edges;
-  })();
-  const binCount = binEdges.length - 1;
+  // Decile percentiles (P10, P20, ..., P90) come pre-computed from the
+  // analyzer with denominator = ALL simulated sessions in the tier.
+  const percentileKeys = Array.isArray(sim.percentile_keys) && sim.percentile_keys.length
+    ? sim.percentile_keys.map((v) => Number(v))
+    : [10, 20, 30, 40, 50, 60, 70, 80, 90];
 
   const intro = `<p class="bankruptcy-intro">${_escHtml(
     fmt("bankruptcyIntro", { session: sessionSpins })
@@ -3888,42 +3877,50 @@ function renderBankruptcyAnalysis(summary) {
     const sessions = Number(t.robots || 0);
     const survived = Number(t.completed_robots || 0);
     const rate = Number(t.bankruptcy_rate || 0);
-    // Prefer median (new) but fall back to avg (legacy summaries).
-    const medianSpins = t.median_spins_completed != null
-      ? Number(t.median_spins_completed)
-      : Number(t.avg_spins_completed || 0);
-    const bins = Array.isArray(t.bins) ? t.bins : [];
+    const medianSpins = Number(t.median_spins_completed || 0);
+    const fastestRaw = t.fastest_bankruptcy_spins;
+    const fastest = fastestRaw == null ? null : Number(fastestRaw);
+    const pctMap = (t.percentiles && typeof t.percentiles === "object")
+      ? t.percentiles
+      : {};
 
-    // Assemble rows: one per bankrupt bin (using adaptive edges) plus
-    // a final "survived" row. Shares are percentages of total sessions
-    // in the tier so the column sums to 100% including survivors.
-    const rows = [];
-    for (let i = 0; i < binCount; i++) {
-      const c = Number(bins[i] || 0);
-      const share = sessions > 0 ? c / sessions : 0;
-      const start = Math.round(binEdges[i]);
-      // Inclusive upper bound for display; the bin internally covers
-      // [edges[i], edges[i+1]) so the display end is edges[i+1] - 1.
-      const end = Math.max(start, Math.round(binEdges[i + 1]) - 1);
-      const label = fmt("bankruptcyBinLabel", { start, end });
-      rows.push({ label, share, isSurvived: false });
-    }
-    rows.push({
-      label: fmt("bankruptcyBinSurvived", { cap: sessionSpins }),
-      share: sessions > 0 ? survived / sessions : 0,
-      isSurvived: true,
-    });
-    // Bar scale: use max share in this tier so the tier's narrative
-    // reads clearly even when one bucket dominates.
-    const maxShare = rows.reduce((m, r) => Math.max(m, r.share), 0.001);
-    const bodyRows = rows.map((r) => {
-      const bar = Math.min(100, (r.share / maxShare) * 100);
-      const pct = (r.share * 100).toFixed(1);
-      const cls = r.isSurvived ? "bk-row-survived" : "bk-row-bankrupt";
+    // Bar scale: use the tier's own max percentile value so the
+    // in-tier progression reads clearly (x500 stretches to 10k; x100
+    // tops out a few hundred). Including `fastest` in the max is safe
+    // since fastest ≤ P10 always.
+    const pctValues = percentileKeys.map((k) =>
+      Number(pctMap[String(k)] != null ? pctMap[String(k)] : pctMap[k] || 0),
+    );
+    const maxSpin = Math.max(sessionSpins, ...pctValues, 0.001);
+
+    // Fastest row: highlighted separately at the top. Rendered even
+    // when null (shows "—") so the row layout stays aligned across
+    // tiers.
+    const fastestRow = (() => {
+      const bar = fastest == null ? 0 : Math.min(100, (fastest / maxSpin) * 100);
+      const spinText = fastest == null ? "—" : Math.round(fastest).toLocaleString();
+      return (
+        `<tr class="bk-row-fastest">` +
+        `<td>${_escHtml(fmt("bankruptcyFastestLabel"))}</td>` +
+        `<td>${spinText}</td>` +
+        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%"></td>` +
+        `</tr>`
+      );
+    })();
+
+    // Decile rows: each shows "at this percentile of ALL users, how
+    // many spins did they get?". Once cumulative mass passes bankrupt
+    // share, percentile pins to session_spins — the transition row
+    // visually coincides with the survival rate.
+    const pctRows = percentileKeys.map((p) => {
+      const spin = Number(pctMap[String(p)] != null ? pctMap[String(p)] : pctMap[p] || 0);
+      const bar = Math.min(100, (spin / maxSpin) * 100);
+      const isSurvived = spin >= sessionSpins;
+      const cls = isSurvived ? "bk-row-survived" : "bk-row-bankrupt";
       return (
         `<tr class="${cls}">` +
-        `<td>${_escHtml(r.label)}</td>` +
-        `<td>${pct}%</td>` +
+        `<td>P${p}</td>` +
+        `<td>${spin.toLocaleString()}</td>` +
         `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%"></td>` +
         `</tr>`
       );
@@ -3936,16 +3933,16 @@ function renderBankruptcyAnalysis(summary) {
       )}</h3>` +
       `<div class="bankruptcy-tier-stats">` +
       `<span class="bk-stat bk-stat-rate"><em>${_escHtml(fmt("bankruptcyRateLabel"))}</em><b>${(rate * 100).toFixed(1)}%</b></span>` +
-      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcyMedianLabel"))}</em><b>${Math.round(medianSpins).toLocaleString()}</b></span>` +
+      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcyMedianLabel"))}</em><b>${medianSpins.toLocaleString()}</b></span>` +
       `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcySurvivedLabel"))}</em><b>${sessions > 0 ? ((survived / sessions) * 100).toFixed(1) : "0.0"}%</b></span>` +
       `</div>` +
       `<table class="drilldown-table bankruptcy-histogram">` +
       `<thead><tr>` +
-      `<th>spins</th>` +
-      `<th>%</th>` +
+      `<th>${_escHtml(fmt("bankruptcyPercentileCol"))}</th>` +
+      `<th>${_escHtml(fmt("bankruptcySpinCountCol"))}</th>` +
       `<th></th>` +
       `</tr></thead>` +
-      `<tbody>${bodyRows}</tbody>` +
+      `<tbody>${fastestRow}${pctRows}</tbody>` +
       `</table>` +
       `</div>`
     );
