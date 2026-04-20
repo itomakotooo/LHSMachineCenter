@@ -862,6 +862,22 @@ body {
 .loaded-machine-info .lm-status-cancelled { color: #ca8a04; font-weight: 600; }
 .loaded-machine-info .lm-error { color: #b91c1c; font-size: 12px; margin-top: 4px; }
 .loaded-machine-info .lm-summary { color: #475569; font-size: 12px; margin-top: 4px; font-style: italic; }
+/* Freshness badge row: at-a-glance analyzer + rawdata match/drift
+   for the currently-loaded run. Mirrors the ver-badge palette used
+   on the Run History table so the visual vocabulary stays consistent
+   between catalog-level and detail-level views. */
+.loaded-machine-info .lm-freshness { margin-top: 4px; }
+.loaded-machine-info .lm-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 2px;
+}
+.loaded-machine-info .lm-badge-fresh { background: #dcfce7; color: #166534; }
+.loaded-machine-info .lm-badge-stale { background: #fee2e2; color: #991b1b; }
+.loaded-machine-info .lm-badge-unknown { background: #e5e7eb; color: #4b5563; }
 
 /* Model-config inline <details> block nested inside the 模型解读 panel
    (was a standalone sidebar panel before the UI simplification). */
@@ -3092,6 +3108,77 @@ details.advanced-params > summary {
 details.advanced-params[open] > summary {
   margin-bottom: 10px;
 }
+
+/* Pay ID 总览 panel — merged shape + depth view. */
+.payid-overview {
+  grid-column: span 12;
+}
+.payid-overview-table {
+  font-size: 12px;
+}
+.payid-overview-table th, .payid-overview-table td {
+  padding: 5px 8px;
+}
+.payid-overview-table .shape-notes {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 260px;
+}
+.payid-wild-evidence {
+  margin-top: 14px;
+}
+.payid-wild-evidence > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 0;
+}
+/* pay_id category badges — visually distinct for paid / bonus / mixed. */
+.pid-cat {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.pid-cat-paid    { background: #dcfce7; color: #166534; }
+.pid-cat-bonus   { background: #ede9fe; color: #5b21b6; }
+.pid-cat-mixed   { background: #fef3c7; color: #92400e; }
+.pid-cat-unknown { background: #e5e7eb; color: #4b5563; }
+
+/* line_id legend — tokens for "支付线" / "board scatter (-1)" / "alt scatter (-2)". */
+.line-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #e0e7ff;
+  color: #3730a3;
+  white-space: nowrap;
+}
+.line-badge.line-positive { background: #dbeafe; color: #1e40af; }
+.line-badge.line-mixed { background: #fef3c7; color: #92400e; }
+.line-badge.line-scatter { background: #fee2e2; color: #991b1b; }
+.line-badge.line-scatter-alt { background: #fef3c7; color: #9a3412; }
+
+/* top_symbols source badge — "R" (权威) or "H" (启发式) pill in front
+   of the payline drilldown's top-symbols cell. Subtle so it doesn't
+   dominate the cell but visible enough for 策划 to spot. */
+.tsym-src {
+  display: inline-block;
+  min-width: 14px;
+  padding: 0 4px;
+  margin-right: 4px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  cursor: help;
+}
+.tsym-src-rln { background: #dcfce7; color: #166534; }
+.tsym-src-h   { background: #fef3c7; color: #92400e; }
 
 /* Drilldown tables (paylines / symbols / payout groups) -- compact data
    tables with right-aligned numerics and a soft hover for legibility. */

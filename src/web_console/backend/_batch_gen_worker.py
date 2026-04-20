@@ -111,6 +111,28 @@ def run_analyzer_job(job: dict) -> dict:
                 "error": "no summary generated",
                 "elapsed_s": elapsed,
             }
+        # Auto-run offline inference scripts so the UI's paytable-shape
+        # + classifier panels stay in sync with the just-generated
+        # report. Best-effort; a failure here doesn't fail the batch
+        # item (analyzer output is already on disk).
+        try:
+            import subprocess
+            script_root = Path(sys.path[0]) if sys.path else Path(".")
+            for argv_ext in (
+                [str(script_root / "scripts" / "infer_paytable.py"),
+                 "--machine", str(machine), "--mode", str(mode)],
+                [str(script_root / "scripts" / "verify_machine_labels.py"),
+                 "--machines", str(machine), "--mode", str(mode)],
+            ):
+                if not Path(argv_ext[0]).exists():
+                    continue
+                subprocess.run(
+                    [sys.executable, *argv_ext],
+                    capture_output=True, text=True,
+                    timeout=120, check=False,
+                )
+        except Exception:
+            pass  # best-effort post-analyzer hook
         return {
             "machine": machine, "mode": mode, "ok": True,
             "elapsed_s": elapsed,

@@ -157,22 +157,25 @@
             <div id="featureBreakdownInline" class="feature-inline-section"></div>
           </section>
 
+          <!-- Pay ID 总览 — merged view combining the live analyzer's
+               PayID depth (frequency, avg win, RTP contribution,
+               paid/bonus category) with the offline paytable shape
+               inference (symbol set, purity, wild substitution, col
+               coverage, confidence). Gives 策划 one row per pay_id to
+               answer "does this pay_id match design spec?" without
+               cross-panel JOINs. Shape data is auto-refreshed by
+               post-generate-report hook (scripts/infer_paytable.py). -->
+          <section class="panel payid-overview hidden" id="payIdOverviewPanel">
+            <h2 data-i18n="panelPayIdOverview">Pay ID 总览</h2>
+            <div id="payIdOverviewBody"></div>
+          </section>
+
           <!-- Payline structure classification: per-mode label + channel
                split + feature-mode rule delta. Fetched lazily from
                /api/classifier/{machine} after the report loads. -->
           <section class="panel payline-classification hidden" id="paylineClassificationPanel">
             <h2 data-i18n="panelPaylineClassification">支付线结构分类</h2>
             <div id="paylineClassificationBody"></div>
-          </section>
-
-          <!-- Per-pay_id shape inference + auto-inferred wild set.
-               Fetched lazily from /api/paytables/{machine}/mode/{mode}/shape
-               after the report loads. "Shape" = what symbols and how many
-               cells constitute each pay_id's winning tuple; not multiplier
-               values. Paused paytable-multiplier work is out of scope here. -->
-          <section class="panel paytable-shape hidden" id="paytableShapePanel">
-            <h2 data-i18n="panelPaytableShape">Pay ID 形状推断</h2>
-            <div id="paytableShapeBody"></div>
           </section>
 
           <!-- Field Discovery: shows extra fields beyond baseline -->
@@ -227,23 +230,6 @@
                   <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
                   <th data-i18n="thWinShare">Win 占比</th>
                   <th data-i18n="thTopSymbols">中奖符号 Top</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </section>
-
-          <section class="panel payout-groups">
-            <h2 data-i18n="panelPayoutGroups">Pay ID 深度（PayoutId Top 20）</h2>
-            <p class="drilldown-hint" data-i18n="payoutGroupZeroHint">按 PayoutIdToWinAmount 聚合，按总 Win 倒序展示。</p>
-            <table id="payoutGroupTable" class="drilldown-table">
-              <thead>
-                <tr>
-                  <th data-i18n="thGroupId">Pay ID</th>
-                  <th data-i18n="thHitCount">命中次数</th>
-                  <th data-i18n="thHitRate">命中率</th>
-                  <th data-i18n="thAvgWinX">命中均赢</th>
-                  <th data-i18n="thRtpContribution">RTP 贡献(pp)</th>
                 </tr>
               </thead>
               <tbody></tbody>

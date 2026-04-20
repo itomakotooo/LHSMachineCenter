@@ -154,7 +154,7 @@ class TestClassifierEndpointMissing:
         ])
         resp = c.get("/api/classifier/M999")
         assert resp.status_code == 200
-        assert resp.json() == {"machine": "M999", "modes": {}}
+        assert resp.json() == {"machine": "M999", "modes": {}, "updated_at": {}}
 
     def test_classify_dir_missing_returns_empty_modes(
         self, tmp_state_dir, tmp_reports, tmp_cache, fake_machines, fake_analyzer,
@@ -178,7 +178,7 @@ class TestClassifierEndpointMissing:
         with TestClient(app) as c:
             resp = c.get("/api/classifier/M273")
             assert resp.status_code == 200
-            assert resp.json() == {"machine": "M273", "modes": {}}
+            assert resp.json() == {"machine": "M273", "modes": {}, "updated_at": {}}
 
     def test_corrupted_json_is_skipped_not_crash(self, classifier_client):
         c, classify_dir = classifier_client
@@ -228,4 +228,69 @@ class TestLoadClassifierVerdictHelper:
             json.dumps({"mode": "bogus", "verdicts": []}), encoding="utf-8",
         )
         out = _load_classifier_verdict("M273", d)
-        assert out == {"machine": "M273", "modes": {}}
+        assert out == {"machine": "M273", "modes": {}, "updated_at": {}}
+
+    def test_per_machine_file_wins_over_combined_file(self, tmp_path):
+        """Auto-triggered per-machine output is the primary artifact —
+        if both forms exist, the per-machine file (newer, safe for
+        concurrent writes) must win. The combined file is used only
+        as a fallback for modes the per-machine file doesn't cover."""
+        d = tmp_path / "_classify"
+        d.mkdir()
+        # Combined file carries a stale entry
+        _write_mode(d, 1, [
+            {"machine": "M273", "machine_label": "STALE", "paid_spin_type": 1,
+             "all_resolved": False, "per_st_verdicts": {},
+             "feature_delta_from_paid": {}, "feature_tally_keys": []},
+        ])
+        # Per-machine file carries the fresh entry
+        (d / "M273_mode1.json").write_text(
+            json.dumps({
+                "mode": 1,
+                "machine": "M273",
+                "verdict": {
+                    "machine": "M273",
+                    "machine_label": "FRESH",
+                    "paid_spin_type": 140,
+                    "all_resolved": True,
+                    "per_st_verdicts": {},
+                    "feature_delta_from_paid": {},
+                    "feature_tally_keys": ["NormalCollectionSpin"],
+                },
+                "written_at": "2026-04-20T10:00:00Z",
+            }),
+            encoding="utf-8",
+        )
+        out = _load_classifier_verdict("M273", d)
+        assert out["modes"]["1"]["machine_label"] == "FRESH"
+        assert out["updated_at"]["1"] == "2026-04-20T10:00:00Z"
+
+    def test_combined_file_fills_modes_missing_from_per_machine(self, tmp_path):
+        """Per-machine file has mode 1 only; combined carries mode 1+2;
+        fallback must fill mode 2 without overwriting the fresh mode 1."""
+        d = tmp_path / "_classify"
+        d.mkdir()
+        _write_mode(d, 1, [
+            {"machine": "M273", "machine_label": "combined1", "paid_spin_type": 1,
+             "all_resolved": True, "per_st_verdicts": {},
+             "feature_delta_from_paid": {}, "feature_tally_keys": []},
+        ])
+        _write_mode(d, 2, [
+            {"machine": "M273", "machine_label": "combined2", "paid_spin_type": 2,
+             "all_resolved": True, "per_st_verdicts": {},
+             "feature_delta_from_paid": {}, "feature_tally_keys": []},
+        ])
+        (d / "M273_mode1.json").write_text(
+            json.dumps({
+                "mode": 1,
+                "machine": "M273",
+                "verdict": {"machine": "M273", "machine_label": "per_machine1",
+                            "paid_spin_type": 1, "all_resolved": True,
+                            "per_st_verdicts": {}, "feature_delta_from_paid": {},
+                            "feature_tally_keys": []},
+            }),
+            encoding="utf-8",
+        )
+        out = _load_classifier_verdict("M273", d)
+        assert out["modes"]["1"]["machine_label"] == "per_machine1"
+        assert out["modes"]["2"]["machine_label"] == "combined2"

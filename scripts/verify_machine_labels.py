@@ -13,13 +13,19 @@ Verdict per (machine, SpinType):
     combination of known channels; script couldn't explain it, so
     machine gets marked for human review with the specific gap
 
-After running, outputs two files in ``dev_reports/_classify/``:
-  * ``all_verdicts_mode<N>.json`` — structured per-machine report
-  * ``needs_review_mode<N>.md`` — human-readable punch list of
-    machines whose gaps couldn't be resolved automatically
+After running, outputs to ``dev_reports/_classify/``:
+  * ``{machine}_mode<N>.json`` — one per scanned machine (primary
+    artifact, safe for concurrent per-machine writes)
+  * ``all_verdicts_mode<N>.json`` — combined report across every
+    scanned machine, rewritten whenever the run touches ≥2 machines
+    OR is a full-fleet sweep (kept for backward compat + the fleet
+    audit workflow)
+  * ``needs_review_mode<N>.md`` — punch list of unresolved machines,
+    written alongside whichever combined/per-machine file was produced
 
 Usage:
     python scripts/verify_machine_labels.py --mode 1
+    python scripts/verify_machine_labels.py --mode 1 --machines M1
     python scripts/verify_machine_labels.py --mode 1 --first-chunk  # fast
 """
 from __future__ import annotations
@@ -493,39 +499,74 @@ def main() -> int:
                     print(f"         feature_keys: {vv['feature_tally_keys']}")
         print()
 
-    # Write json + markdown.
+    # Write outputs. Primary artifact is per-machine files (safe for
+    # concurrent writes from auto-trigger hooks). The combined
+    # ``all_verdicts_mode<N>.json`` is rewritten only on broader
+    # sweeps so single-machine auto-triggers don't clobber other
+    # machines' entries from an older full-fleet run.
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    json_path = args.output_dir / f"all_verdicts_mode{args.mode}.json"
-    with json_path.open("w", encoding="utf-8") as f:
-        json.dump({
+    for v in verdicts:
+        per_path = args.output_dir / f"{v['machine']}_mode{args.mode}.json"
+        per_payload = {
+            "mode": args.mode,
+            "machine": v["machine"],
+            "verdict": v,
+            "written_at": __import__("datetime").datetime.now(
+                tz=__import__("datetime").timezone.utc
+            ).isoformat().replace("+00:00", "Z"),
+        }
+        # Atomic write so reader (backend) never sees a half-written
+        # file during concurrent generate-report hooks.
+        tmp_path = per_path.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(per_payload, f, ensure_ascii=False, indent=2)
+        __import__("os").replace(tmp_path, per_path)
+
+    # Combined file: only rewrite when this run covered multiple
+    # machines (full-fleet sweep or explicit multi-machine filter).
+    # A single-machine auto-trigger skips this to preserve any
+    # larger baseline the combined file already carries.
+    if len(verdicts) >= 2 or allowed is None:
+        json_path = args.output_dir / f"all_verdicts_mode{args.mode}.json"
+        combined = {
             "mode": args.mode,
             "n_machines": len(verdicts),
             "n_resolved": len(resolved),
             "n_unresolved": len(unresolved),
             "verdicts": verdicts,
-        }, f, ensure_ascii=False, indent=2)
-    print(f"wrote {json_path} ({json_path.stat().st_size:,} bytes)")
+        }
+        tmp_path = json_path.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(combined, f, ensure_ascii=False, indent=2)
+        __import__("os").replace(tmp_path, json_path)
+        print(f"wrote {json_path} ({json_path.stat().st_size:,} bytes)")
+    else:
+        print(f"wrote {len(verdicts)} per-machine verdict file(s) under {args.output_dir}")
 
-    md_path = args.output_dir / f"needs_review_mode{args.mode}.md"
-    lines = [f"# Machines needing human review — mode {args.mode}",
-             f"", f"Scanned {len(verdicts)}; {len(resolved)} auto-resolved, "
-             f"{len(unresolved)} unresolved.", ""]
-    if unresolved:
-        for v in sorted(unresolved, key=lambda x: int(x["machine"][1:])):
-            lines.append(f"## {v['machine']} — `{v['machine_label']}`")
-            lines.append(f"- grid: {v['grid']}")
-            lines.append(f"- paid_spin_type: {v['paid_spin_type']}")
-            lines.append(f"- feature_tally: {v['feature_tally_keys']}")
-            for st, vv in v["per_st_verdicts"].items():
-                if vv["status"] == "UNRESOLVED":
-                    lines.append(f"- **unresolved ST={st}**: {vv['explanation']}")
-                    lines.append(f"  - rounds: {vv['rounds']:,}")
-                    lines.append(f"  - bet_total: {vv['bet_total']:,.0f}")
-                    lines.append(f"  - pay_id_share: {vv['pay_id_share']:,.0f}")
-                    lines.append(f"  - feature_share: {vv['feature_share']:,.0f}")
-            lines.append("")
-    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"wrote {md_path}")
+    # needs_review_mode<N>.md: same single-vs-multi logic as the
+    # combined JSON — only rewrite on fleet sweeps / ≥2 machines so
+    # auto-triggers don't wipe earlier findings.
+    if len(verdicts) >= 2 or allowed is None:
+        md_path = args.output_dir / f"needs_review_mode{args.mode}.md"
+        lines = [f"# Machines needing human review — mode {args.mode}",
+                 f"", f"Scanned {len(verdicts)}; {len(resolved)} auto-resolved, "
+                 f"{len(unresolved)} unresolved.", ""]
+        if unresolved:
+            for v in sorted(unresolved, key=lambda x: int(x["machine"][1:])):
+                lines.append(f"## {v['machine']} — `{v['machine_label']}`")
+                lines.append(f"- grid: {v['grid']}")
+                lines.append(f"- paid_spin_type: {v['paid_spin_type']}")
+                lines.append(f"- feature_tally: {v['feature_tally_keys']}")
+                for st, vv in v["per_st_verdicts"].items():
+                    if vv["status"] == "UNRESOLVED":
+                        lines.append(f"- **unresolved ST={st}**: {vv['explanation']}")
+                        lines.append(f"  - rounds: {vv['rounds']:,}")
+                        lines.append(f"  - bet_total: {vv['bet_total']:,.0f}")
+                        lines.append(f"  - pay_id_share: {vv['pay_id_share']:,.0f}")
+                        lines.append(f"  - feature_share: {vv['feature_share']:,.0f}")
+                lines.append("")
+        md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        print(f"wrote {md_path}")
     return 0
 
 

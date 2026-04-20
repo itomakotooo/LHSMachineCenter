@@ -66,6 +66,68 @@ ANALYZER = ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
 FRONTEND_DIR = ROOT / "src" / "web_console" / "frontend"
 SLOT_SPIN_ENDPOINT = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpin"
 
+# Offline inference scripts that are auto-triggered after every
+# successful generate-report so the UI's payline / paytable panels
+# stay in sync with the analyzer's data. Both scripts support
+# per-(machine, mode) invocation — the classifier script writes a
+# per-machine file (`{machine}_mode<N>.json`) to avoid clobbering
+# other machines' verdicts under concurrent batch regen.
+INFER_PAYTABLE_SCRIPT = ROOT / "scripts" / "infer_paytable.py"
+VERIFY_LABELS_SCRIPT = ROOT / "scripts" / "verify_machine_labels.py"
+
+
+def _run_post_analyzer_inference(
+    machine: str,
+    mode: int,
+    *,
+    timeout_sec: float = 120.0,
+) -> dict[str, Any]:
+    """Fire the two offline inference scripts for one (machine, mode).
+
+    Called right after a successful generate-report so the UI's
+    payline-classification + paytable-shape panels are always in sync
+    with the just-produced analyzer summary. Best-effort — failures
+    are captured in the returned dict but do NOT propagate. Generate-
+    report has already written its own artifacts by the time this
+    runs; losing the inference artifacts is non-fatal (operator can
+    re-run the scripts manually if the UI panel shows "not_run").
+    """
+    import subprocess
+    import sys as _sys
+
+    results: dict[str, Any] = {"machine": machine, "mode": mode}
+    for name, script, argv in (
+        (
+            "paytable_shape",
+            INFER_PAYTABLE_SCRIPT,
+            ["--machine", machine, "--mode", str(int(mode))],
+        ),
+        (
+            "classifier",
+            VERIFY_LABELS_SCRIPT,
+            ["--machines", machine, "--mode", str(int(mode))],
+        ),
+    ):
+        if not script.exists():
+            results[name] = {"ok": False, "error": "script_missing"}
+            continue
+        try:
+            proc = subprocess.run(
+                [_sys.executable, str(script), *argv],
+                capture_output=True, text=True,
+                timeout=timeout_sec, check=False,
+            )
+            results[name] = {
+                "ok": proc.returncode == 0,
+                "returncode": proc.returncode,
+                "stderr_tail": (proc.stderr or "")[-400:],
+            }
+        except subprocess.TimeoutExpired:
+            results[name] = {"ok": False, "error": "timeout"}
+        except Exception as exc:  # noqa: BLE001
+            results[name] = {"ok": False, "error": f"{exc.__class__.__name__}: {exc}"}
+    return results
+
 
 PROVIDER_MODELS: dict[str, list[str]] = {
     "gemini": ["gemini-3-flash-preview", "gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-2.5-pro"],
@@ -1329,30 +1391,64 @@ def _load_classifier_verdict(
     so UI can render "no data" gracefully instead of erroring.
     """
     modes: dict[str, dict[str, Any]] = {}
+    updated_at: dict[str, str] = {}
     if not classify_dir.is_dir():
-        return {"machine": machine, "modes": modes}
+        return {"machine": machine, "modes": modes, "updated_at": updated_at}
+
+    def _record_verdict(mode: int, v: dict, ts: str | None) -> None:
+        modes[str(mode)] = {
+            "machine_label": v.get("machine_label"),
+            "paid_spin_type": v.get("paid_spin_type"),
+            "all_resolved": v.get("all_resolved"),
+            "per_st_verdicts": v.get("per_st_verdicts") or {},
+            "feature_delta_from_paid": v.get("feature_delta_from_paid") or {},
+            "feature_tally_keys": v.get("feature_tally_keys") or [],
+            "grid": v.get("grid") or {},
+        }
+        if ts:
+            updated_at[str(mode)] = ts
+
+    # Prefer per-machine files (primary artifact from auto-triggered
+    # hooks — no race with other machines' writes). Shape:
+    # ``{machine}_mode<N>.json`` with ``{mode, machine, verdict,
+    # written_at}``.
+    for f in sorted(classify_dir.glob(f"{machine}_mode*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        mode = d.get("mode")
+        v = d.get("verdict")
+        if not isinstance(mode, int) or not isinstance(v, dict):
+            continue
+        if v.get("machine") != machine:
+            continue
+        _record_verdict(mode, v, d.get("written_at"))
+
+    # Fallback for modes still missing: read the legacy combined
+    # ``all_verdicts_mode<N>.json`` (written by full-fleet sweeps /
+    # ≥2-machine runs). Per-machine file takes precedence when both
+    # exist — it's by construction newer.
     for f in sorted(classify_dir.glob("all_verdicts_mode*.json")):
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
         mode = d.get("mode")
-        if not isinstance(mode, int):
+        if not isinstance(mode, int) or str(mode) in modes:
             continue
         for v in d.get("verdicts") or []:
             if v.get("machine") != machine:
                 continue
-            modes[str(mode)] = {
-                "machine_label": v.get("machine_label"),
-                "paid_spin_type": v.get("paid_spin_type"),
-                "all_resolved": v.get("all_resolved"),
-                "per_st_verdicts": v.get("per_st_verdicts") or {},
-                "feature_delta_from_paid": v.get("feature_delta_from_paid") or {},
-                "feature_tally_keys": v.get("feature_tally_keys") or [],
-                "grid": v.get("grid") or {},
-            }
+            try:
+                ts = datetime.fromtimestamp(
+                    f.stat().st_mtime, tz=timezone.utc,
+                ).isoformat().replace("+00:00", "Z")
+            except OSError:
+                ts = None
+            _record_verdict(mode, v, ts)
             break
-    return {"machine": machine, "modes": modes}
+    return {"machine": machine, "modes": modes, "updated_at": updated_at}
 
 
 def _load_paytable_shape(
@@ -5196,6 +5292,17 @@ def create_app(
                 )
             except Exception:
                 pass  # non-fatal — next generate-report retries
+
+            # Auto-trigger the offline inference scripts for this
+            # (machine, mode) so the paytable-shape + classifier
+            # panels in the UI stay in sync with the analyzer output.
+            # Best-effort: errors captured in returned dict, never
+            # propagate to the caller (operator can always re-run the
+            # scripts manually if they see "not_run" in the UI).
+            try:
+                _run_post_analyzer_inference(machine, mode)
+            except Exception:
+                pass
 
             return {
                 "run_id": new_run_id,

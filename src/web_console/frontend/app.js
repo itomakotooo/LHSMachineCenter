@@ -266,6 +266,46 @@ function setLoadedMachineInfo(run, summaryLine) {
     `<div><span class="lm-label">report_version:</span> <code>${rv}</code> · <span class="lm-label">config_md5:</span> <code>${cfgMd5}</code></div>`,
     savedAt ? `<div><span class="lm-label">saved_at:</span> ${savedAt}</div>` : "",
   ];
+  // Freshness row: compare this run's analyzer_version + config/code md5
+  // against the CURRENT upstream/local snapshots (state.currentVersions,
+  // populated by loadBootstrap). "✓ 当前" when match, "⚠ 过期" when
+  // drifted. Keeps the operator from staring at a months-old run
+  // thinking it reflects reality. Classifier / paytable-shape panels
+  // are auto-regenerated post generate-report, so they track analyzer
+  // freshness; no separate per-artifact badge needed here.
+  const cv = state.currentVersions || {};
+  const cvAnalyzer = cv.analyzer_version || "";
+  const cvMachines = cv.machines || {};
+  const cvCfg = ((cvMachines[run.machine] || {}).config_md5) || "";
+  const cvCode = ((cvMachines[run.machine] || {}).code_md5) || "";
+  const analyzerMatch = run.analyzer_version && cvAnalyzer
+    ? String(run.analyzer_version) === String(cvAnalyzer)
+    : null;
+  const cfgMatch = run.rawdata_config_md5 && cvCfg
+    ? String(run.rawdata_config_md5) === String(cvCfg)
+    : null;
+  const codeMatch = run.rawdata_code_md5 && cvCode
+    ? String(run.rawdata_code_md5) === String(cvCode)
+    : null;
+  const rawdataMatch = (cfgMatch != null && codeMatch != null)
+    ? (cfgMatch && codeMatch)
+    : (cfgMatch != null ? cfgMatch : codeMatch);
+  const analyzerBadge = analyzerMatch == null
+    ? `<span class="lm-badge lm-badge-unknown">${fmt("freshnessUntagged")}</span>`
+    : analyzerMatch
+      ? `<span class="lm-badge lm-badge-fresh">${fmt("freshnessFresh")}</span>`
+      : `<span class="lm-badge lm-badge-stale">${fmt("freshnessStale")}</span>`;
+  const rawdataBadge = rawdataMatch == null
+    ? `<span class="lm-badge lm-badge-unknown">${fmt("freshnessUntagged")}</span>`
+    : rawdataMatch
+      ? `<span class="lm-badge lm-badge-fresh">${fmt("freshnessFresh")}</span>`
+      : `<span class="lm-badge lm-badge-stale">${fmt("freshnessStale")}</span>`;
+  rows.push(
+    `<div class="lm-freshness">` +
+    `<span class="lm-label">${fmt("freshnessAnalyzer")}:</span> ${analyzerBadge}` +
+    ` · <span class="lm-label">${fmt("freshnessRawdata")}:</span> ${rawdataBadge}` +
+    `</div>`,
+  );
   if (String(run.status).toLowerCase() === "failed") {
     rows.push(`<div class="lm-error">${fmt("runFailedLabel")}: ${PURE.formatRunFailureNote(state.lang, run.error_message)}</div>`);
   } else if (String(run.status).toLowerCase() === "cancelled") {
@@ -2824,36 +2864,11 @@ function renderRunFilterBanner() {
 function renderRunHistory() { /* retired — see above */ }
 function updateBatchBar() { /* retired */ }
 
-function renderPayoutGroupDrilldown(summary) {
-  // Reads payout_ids_top20 (from PayoutIdToWinAmount) -- the actual
-  // payout-source breakdown. The legacy payout_groups_top20 surface
-  // (always group 0 for M14/M272 mode 1/2) is no longer rendered;
-  // PURE.formatPayoutGroupRows is kept exported for back-compat but
-  // unused here. Falls back to the empty-row hint when the report
-  // pre-dates the payout_ids_top20 commit.
-  const tbody = byId("payoutGroupTable") && byId("payoutGroupTable").querySelector("tbody");
-  if (!tbody) return;
-  const rows = PURE.formatPayoutIdRows(summary);
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="5">${fmt("payoutGroupEmpty")}</td></tr>`;
-    return;
-  }
-  const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
-  tbody.innerHTML = rows
-    .map((r) => {
-      const bar = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
-      return (
-        `<tr>` +
-        `<td>${r.payout_id}</td>` +
-        `<td>${fInt(r.hit_count)}</td>` +
-        `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
-        `<td>${r.avg_win_when_hit.toFixed(1)}</td>` +
-        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(2)}</td>` +
-        `</tr>`
-      );
-    })
-    .join("");
-}
+// renderPayoutGroupDrilldown was retired on 2026-04-20 round 2 —
+// the Pay ID depth table was merged into the unified Pay ID 总览
+// panel (see renderPayIdOverview). Helper retained as a no-op so
+// older call sites wouldn't break, but there are none left.
+function renderPayoutGroupDrilldown(_summary) { /* retired */ }
 
 function renderSymbolDrilldown(summary) {
   // Overall top-20
@@ -2926,14 +2941,28 @@ function renderPaylineDrilldown(summary) {
     .map((r) => {
       const barPct = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
       const topSyms = PURE.formatPaylineTopSymbols(r.top_symbols, 3);
+      // Prefix a source badge on the top-symbols cell so 策划 can tell
+      // at a glance whether the symbol list is authoritative (from
+      // RewardLastNode codes) or heuristic (left-3-col intersection).
+      const src = r.top_symbols_source;
+      const srcBadge = src === "rln"
+        ? `<span class="tsym-src tsym-src-rln" title="${_escHtml(fmt("topSymSourceRlnTooltip"))}">${_escHtml(fmt("topSymSourceRln"))}</span>`
+        : src === "heuristic"
+          ? `<span class="tsym-src tsym-src-h" title="${_escHtml(fmt("topSymSourceHeurTooltip"))}">${_escHtml(fmt("topSymSourceHeur"))}</span>`
+          : "";
+      // Decorate the payline_id with the -1 / -2 scatter legend.
+      const plineBadge = _lineIdSignBadge(
+        r.payline_id_num < 0 ? "negative" : "positive",
+        Number.isFinite(r.payline_id_num) ? r.payline_id_num : null,
+      );
       return (
         `<tr>` +
-        `<td>${r.payline_id}</td>` +
+        `<td><code>${_escHtml(r.payline_id)}</code> ${plineBadge}</td>` +
         `<td>${fInt(r.hit_count)}</td>` +
         `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
         `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(4)}</td>` +
         `<td>${r.win_share_pct.toFixed(2)}%</td>` +
-        `<td>${topSyms}</td>` +
+        `<td>${srcBadge}${topSyms}</td>` +
         `</tr>`
       );
     })
@@ -3216,7 +3245,15 @@ async function renderPaylineClassification(summary) {
       </table>`;
   }
 
+  // Block order reshuffled (2026-04-20 round 2) per 策划 feedback:
+  // feature-mode rule delta (when present) is the highest-value
+  // signal — "bonus modes use different payline rules from paid" is
+  // the question the operator is usually answering when they open
+  // this panel. Channel split comes next for the current mode, then
+  // the cross-mode label table as reference context at the bottom.
   body.innerHTML = `
+    ${deltaHtml}
+    ${channelHtml}
     <h3>${_escHtml(fmt("classifyHeadCrossMode"))}</h3>
     <table class="drilldown-table">
       <thead><tr>
@@ -3227,8 +3264,6 @@ async function renderPaylineClassification(summary) {
       </tr></thead>
       <tbody>${modeRows}</tbody>
     </table>
-    ${channelHtml}
-    ${deltaHtml}
   `;
 }
 
@@ -3243,56 +3278,91 @@ async function renderPaylineClassification(summary) {
 //      wild substitution rate / line sign / position cols covered /
 //      confidence tag / notes
 // Missing inference output → hide panel silently (non-critical).
-async function renderPaytableShape(summary) {
-  const panel = byId("paytableShapePanel");
+// Unified "Pay ID 总览" — merges the live analyzer's payout_ids
+// rows (frequency + RTP contribution) with the offline shape
+// inference script's per-pay_id shape signature (symbol set, wild
+// substitution rate, line sign, col coverage, confidence) so 策划
+// can eyeball one row per pay_id without JOINing across panels.
+//
+// Shape data source: /api/paytables/{m}/mode/{n}/shape (produced by
+// scripts/infer_paytable.py, auto-triggered post generate-report).
+// Frequency data source: summary.player_impact.payout_ids_top20.
+//
+// Separately: the wild-evidence sub-table (symbol-level, not
+// pay_id-level) keeps its own sub-section at the top so 策划 can
+// see wild auto-detection signals before reading the shape rows.
+async function renderPayIdOverview(summary) {
+  const panel = byId("payIdOverviewPanel");
   if (!panel) return;
-  const machine = (summary || {}).machine;
-  const mode = Number((summary || {}).mode);
-  if (!machine || !mode) { panel.classList.add("hidden"); return; }
+  const body = byId("payIdOverviewBody");
+  const s = summary || {};
+  const machine = s.machine;
+  const mode = Number(s.mode);
+  const payoutRows = (s.player_impact || {}).payout_ids_top20 || [];
+  if (!machine || !mode || !Array.isArray(payoutRows) || !payoutRows.length) {
+    panel.classList.add("hidden");
+    body.innerHTML = "";
+    return;
+  }
 
-  let data;
+  let shapeData = null;
   try {
-    data = await apiGet(
+    shapeData = await apiGet(
       `/api/paytables/${encodeURIComponent(machine)}/mode/${mode}/shape`,
     );
   } catch (_err) {
-    panel.classList.add("hidden");
-    return;
+    shapeData = null;
   }
-  if (!data || data.status === "not_run" || !Array.isArray(data.rows) || !data.rows.length) {
-    panel.classList.add("hidden");
-    return;
+  const shapeRows = (shapeData && Array.isArray(shapeData.rows))
+    ? shapeData.rows
+    : [];
+  const shapeByPayId = new Map();
+  for (const r of shapeRows) {
+    shapeByPayId.set(String(r.pay_id), r);
   }
+  const wildReviewNeeded = Boolean(
+    shapeData && shapeData.wild_inference && shapeData.wild_inference.review_needed,
+  );
+
   panel.classList.remove("hidden");
-  const body = byId("paytableShapeBody");
 
-  const wi = data.wild_inference || {};
-  const wildStatus = wi.status || "undetermined";
-  const wilds = Array.isArray(wi.wilds) ? wi.wilds : [];
-  const reviewNeeded = Boolean(wi.review_needed);
-  const stemCount = Number(wi.stem_count || 0);
-  const flags = Array.isArray(data.machine_flags) ? data.machine_flags : [];
-
-  // Banner styling by status.
-  let statusColor = "#6b7f90";
-  let statusEmoji = "·";
-  if (wildStatus === "inferred") { statusColor = "#2e7d32"; statusEmoji = "✓"; }
-  else if (wildStatus === "partial") { statusColor = "#c88a00"; statusEmoji = "≈"; }
-  else if (wildStatus === "undetermined") { statusColor = "#888"; statusEmoji = "?"; }
-
-  const wildsStr = wilds.length ? wilds.map(_escHtml).join(", ") : "—";
-  const reviewBanner = reviewNeeded
-    ? `<div class="shape-warn">⚠ ${_escHtml(
-        `推断出 ${wilds.length} 个 wild 候选，跨 ${stemCount} 个符号族。` +
-        `复杂 group-pay 机台可能产生假阳，请人工核对。`,
-      )}</div>`
+  // Wild inference sub-section (symbol-level; unrelated to pay_id
+  // rows). Kept visible at the top so 策划 sees "inferred wilds: X,
+  // Y" before reading the per-pay_id shape column.
+  const wi = (shapeData && shapeData.wild_inference) || null;
+  const wildsStr = wi && Array.isArray(wi.wilds) && wi.wilds.length
+    ? wi.wilds.map(_escHtml).join(", ")
+    : "—";
+  const wildStatus = (wi && wi.status) || "undetermined";
+  let wildStatusColor = "#6b7f90";
+  let wildStatusEmoji = "·";
+  if (wildStatus === "inferred") { wildStatusColor = "#2e7d32"; wildStatusEmoji = "✓"; }
+  else if (wildStatus === "partial") { wildStatusColor = "#c88a00"; wildStatusEmoji = "≈"; }
+  else if (wildStatus === "undetermined") { wildStatusColor = "#888"; wildStatusEmoji = "?"; }
+  const grid = (shapeData && shapeData.grid) || {};
+  const gridStr = grid.n_cols && grid.n_rows ? `${grid.n_cols}×${grid.n_rows}` : "—";
+  const chunksStr = (shapeData && shapeData.chunks_scanned != null)
+    ? ` · ${shapeData.chunks_scanned} chunks scanned`
     : "";
+  const headerHtml =
+    `<div class="shape-header">` +
+    `<span>${_escHtml(fmt("payIdGridLabel"))}: ${_escHtml(gridStr)}${_escHtml(chunksStr)}</span>` +
+    `<span class="shape-wild-status" style="color:${wildStatusColor}">` +
+    `${wildStatusEmoji} ${_escHtml(fmt("payIdWildInferLabel"))}: ${_escHtml(wildStatus)} — ${wildsStr}` +
+    `</span></div>`;
+  const reviewBanner = wildReviewNeeded
+    ? `<div class="shape-warn">⚠ ${_escHtml(fmt("payIdWildReviewNeeded"))}</div>`
+    : "";
+  const flags = (shapeData && Array.isArray(shapeData.machine_flags)) ? shapeData.machine_flags : [];
   const flagsBanner = flags.length
     ? `<div class="shape-flag">🚩 ${flags.map(_escHtml).join(" · ")}</div>`
     : "";
+  const noShapeBanner = !shapeData || shapeData.status === "not_run"
+    ? `<div class="shape-warn">⚠ ${_escHtml(fmt("payIdShapeNotRun"))}</div>`
+    : "";
 
-  // Wild evidence table.
-  const ev = wi.evidence || {};
+  // Wild evidence: symbol-level table (unchanged from prior panel).
+  const ev = (wi && wi.evidence) || {};
   const evRows = Object.entries(ev)
     .sort(([, a], [, b]) => {
       const order = { high: 0, medium: 1, low: 2 };
@@ -3315,89 +3385,137 @@ async function renderPaytableShape(summary) {
       </tr>`;
     })
     .join("");
-
   const evidenceHtml = evRows
-    ? `<h3 style="margin:14px 0 6px;font-size:13px;color:var(--muted)">Wild evidence</h3>
+    ? `<details class="payid-wild-evidence"><summary>${_escHtml(fmt("payIdWildEvidenceLabel"))}</summary>
        <table class="drilldown-table">
          <thead><tr>
            <th>symbol</th><th>conf</th><th>mono</th><th>sub</th><th>paying</th><th>score</th><th>reason</th>
          </tr></thead>
          <tbody>${evRows}</tbody>
-       </table>`
+       </table></details>`
     : "";
 
-  // Shape rows table. Sort positive pay_ids then negative, each by -fires.
-  const sorted = [...data.rows].sort((a, b) => {
-    const aPos = (a.pay_id ?? 0) >= 0 ? 0 : 1;
-    const bPos = (b.pay_id ?? 0) >= 0 ? 0 : 1;
-    if (aPos !== bPos) return aPos - bPos;
-    return (b.fires || 0) - (a.fires || 0);
-  });
+  // Unified pay_id overview rows. Sort by RTP contribution (primary
+  // 策划 sort — "what contributes most to the machine's RTP?"); pay_ids
+  // present only in shape (zero hits in this sample) land at the bottom.
+  const maxRtp = Math.max(
+    ...payoutRows.map((r) => Number(r.rtp_contribution_pp || 0)),
+    0.001,
+  );
+  const categoryBadge = (cat) => {
+    if (cat === "paid") return `<span class="pid-cat pid-cat-paid">${_escHtml(fmt("payIdCatPaid"))}</span>`;
+    if (cat === "bonus") return `<span class="pid-cat pid-cat-bonus">${_escHtml(fmt("payIdCatBonus"))}</span>`;
+    if (cat === "mixed") return `<span class="pid-cat pid-cat-mixed">${_escHtml(fmt("payIdCatMixed"))}</span>`;
+    return `<span class="pid-cat pid-cat-unknown">—</span>`;
+  };
+  const confBadge = (conf, downgrade) => {
+    let c = conf || "low";
+    // Wild review needed → downgrade "high" to "medium" visually so
+    // 策划 doesn't over-trust the shape while wild inference is
+    // uncertain. Low/medium stay as-is.
+    if (downgrade && c === "high") c = "medium";
+    if (c === "high") return "🟢";
+    if (c === "medium") return "🟡";
+    return "⚪";
+  };
 
-  const rowsHtml = sorted
-    .map((r) => {
-      const sh = r.shape || {};
-      const symSet = Array.isArray(sh.symbol_set) ? sh.symbol_set : [];
-      const mc = r.match_count;
-      const symDisplay = symSet.length
-        ? `${mc}× ${symSet.map(_escHtml).join(" / ")}`
-        : "—";
-      const purity = Number(sh.symbol_purity || 0);
-      const wildSubRate = Number(sh.wild_substitution_rate || 0);
-      const wildSubBadge = wildSubRate > 0
-        ? `<span class="shape-wild-rate" title="wild 替换率">${(wildSubRate * 100).toFixed(0)}% W</span>`
-        : "";
-      const lineSign = sh.line_id_sign || "—";
-      const cols = Array.isArray(sh.position_cols_covered) ? sh.position_cols_covered : [];
-      const colStr = cols.length ? cols.join(",") : "—";
-      const conf = sh.confidence || "low";
-      const confBadge = conf === "high" ? "🟢" : conf === "medium" ? "🟡" : "⚪";
-      const notes = Array.isArray(sh.notes) && sh.notes.length
-        ? sh.notes.map(_escHtml).join("; ")
-        : "";
-      // symDisplay is ALREADY html-escaped piece-by-piece above (each
-      // symbol went through _escHtml before join). A second _escHtml
-      // on the joined string would double-escape the `<` in synthetic
-      // wild markers like `<all-wild>` into `&amp;lt;all-wild&amp;gt;`,
-      // which the browser renders as literal `&lt;all-wild&gt;` text.
-      return `<tr>
-        <td>${r.pay_id}</td>
-        <td>${r.fires}</td>
-        <td>${symDisplay} ${wildSubBadge}</td>
-        <td>${(purity * 100).toFixed(0)}%</td>
-        <td>${_escHtml(lineSign)}</td>
-        <td>${_escHtml(colStr)}</td>
-        <td>${confBadge}</td>
-        <td class="shape-notes">${notes}</td>
-      </tr>`;
-    })
-    .join("");
-
-  const grid = data.grid || {};
-  const gridStr = grid.n_cols && grid.n_rows ? `${grid.n_cols}×${grid.n_rows}` : "—";
-  const chunksStr = data.chunks_scanned != null
-    ? ` · ${data.chunks_scanned} chunks scanned`
-    : "";
+  const rows = payoutRows.map((pr) => {
+    const pid = String(pr.payout_id);
+    const shape = shapeByPayId.get(pid) || null;
+    const sh = shape && shape.shape ? shape.shape : {};
+    const symSet = Array.isArray(sh.symbol_set) ? sh.symbol_set : [];
+    const mc = shape ? (shape.match_count ?? "—") : "—";
+    const symDisplay = symSet.length
+      ? `${mc}× ${symSet.map(_escHtml).join(" / ")}`
+      : "—";
+    const wildSubRate = Number(sh.wild_substitution_rate || 0);
+    const wildSubBadge = wildSubRate > 0
+      ? `<span class="shape-wild-rate" title="wild 替换率">${(wildSubRate * 100).toFixed(0)}%</span>`
+      : "—";
+    const purity = sh.symbol_purity != null ? `${Math.round(sh.symbol_purity * 100)}%` : "—";
+    const cols = Array.isArray(sh.position_cols_covered) ? sh.position_cols_covered : [];
+    const colStr = cols.length ? cols.join(",") : "—";
+    const lineSign = sh.line_id_sign || "—";
+    const lineBadge = _lineIdSignBadge(lineSign, Number(pid));
+    const conf = sh.confidence || (shape ? "low" : null);
+    const confStr = conf ? confBadge(conf, wildReviewNeeded) : "—";
+    const notes = Array.isArray(sh.notes) && sh.notes.length
+      ? sh.notes.map(_escHtml).join("; ")
+      : "";
+    const rtpPp = Number(pr.rtp_contribution_pp || 0);
+    const bar = Math.min(100, (rtpPp / maxRtp) * 100);
+    const cat = pr.spin_type_category;
+    const firesRaw = shape ? Number(shape.fires || 0) : null;
+    const firesAttr = firesRaw != null
+      ? ` title="rawdata fires: ${firesRaw.toLocaleString()} (script scan; includes bonus-round appearances)"`
+      : "";
+    return (
+      `<tr>` +
+      `<td>${_escHtml(pid)}</td>` +
+      `<td>${categoryBadge(cat)}</td>` +
+      `<td${firesAttr}>${fInt(pr.hit_count)}</td>` +
+      `<td>${Number(pr.avg_win_when_hit || 0).toFixed(1)}</td>` +
+      `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>` +
+      `<td>${symDisplay}</td>` +
+      `<td>${purity}</td>` +
+      `<td>${wildSubBadge}</td>` +
+      `<td>${_escHtml(colStr)}</td>` +
+      `<td>${lineBadge}</td>` +
+      `<td>${confStr}</td>` +
+      `<td class="shape-notes">${notes}</td>` +
+      `</tr>`
+    );
+  }).join("");
 
   body.innerHTML =
-    `<div class="shape-header">
-       <span>网格 ${_escHtml(gridStr)}${_escHtml(chunksStr)}</span>
-       <span class="shape-wild-status" style="color:${statusColor}">
-         ${statusEmoji} Wild 推断: ${_escHtml(wildStatus)} — ${wildsStr}
-       </span>
-     </div>` +
-    reviewBanner +
-    flagsBanner +
-    evidenceHtml +
-    `<h3 style="margin:14px 0 6px;font-size:13px;color:var(--muted)">每个 Pay ID 的形状</h3>
-     <table class="drilldown-table">
-       <thead><tr>
-         <th>pay_id</th><th>fires</th><th>shape (N× symbols)</th>
-         <th>purity</th><th>line</th><th>cols</th><th>conf</th><th>notes</th>
-       </tr></thead>
-       <tbody>${rowsHtml}</tbody>
-     </table>`;
+    headerHtml + reviewBanner + flagsBanner + noShapeBanner +
+    `<table class="drilldown-table payid-overview-table">` +
+    `<thead><tr>` +
+    `<th>${_escHtml(fmt("payIdCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdCatCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdPaidHitsCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdAvgWinCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdRtpCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdShapeCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdPurityCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdWildSubCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdColsCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdLineCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdConfCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdNotesCol"))}</th>` +
+    `</tr></thead>` +
+    `<tbody>${rows}</tbody>` +
+    `</table>` +
+    evidenceHtml;
 }
+
+// Render a friendly badge for a line_id or line_id_sign token. Slot
+// conventions: positive integers = line-pays, -1 = board-wide scatter,
+// -2 = alternative scatter mechanic (per 策划). Anything else we
+// render raw so unexpected values stay visible.
+function _lineIdSignBadge(signOrId, numericId) {
+  const raw = String(signOrId || "");
+  if (raw === "positive") {
+    return `<span class="line-badge line-positive">${_escHtml(fmt("lineSignPositive"))}</span>`;
+  }
+  if (raw === "mixed") {
+    return `<span class="line-badge line-mixed">${_escHtml(fmt("lineSignMixed"))}</span>`;
+  }
+  if (raw === "negative" || (typeof numericId === "number" && numericId < 0)) {
+    const id = Number.isFinite(numericId) ? numericId : null;
+    if (id === -1) return `<span class="line-badge line-scatter">${_escHtml(fmt("lineIdBoardScatter"))}</span>`;
+    if (id === -2) return `<span class="line-badge line-scatter-alt">${_escHtml(fmt("lineIdAltScatter"))}</span>`;
+    return `<span class="line-badge line-scatter">${_escHtml(fmt("lineSignNegative"))}</span>`;
+  }
+  return `<span class="line-badge">${_escHtml(raw || "—")}</span>`;
+}
+
+// NOTE: ``renderPaytableShape`` (dedicated shape-inference panel) and
+// ``renderPayoutGroupDrilldown`` (Pay ID depth drilldown) were merged
+// into the single ``renderPayIdOverview`` panel on 2026-04-20 round 2.
+// Both independent panels are removed from the HTML; 策划 now reads
+// one unified row per pay_id that carries frequency / RTP / shape /
+// wild substitution / line-id semantics in one place.
 
 // Build the per-feature bucket histogram as a standard drilldown-
 // table so typography + bar line match the global 倍率分布 panel
@@ -4553,13 +4671,12 @@ async function refreshCurrentRun() {
     // trip. Hidden automatically when the classifier output doesn't
     // cover this machine.
     renderPaylineClassification(s);
-    renderPaytableShape(s);
+    renderPayIdOverview(s);
     renderFieldDiscovery(s);
     renderMachineMechanics(s);
     renderBonusChainDynamicsPanel(s);
     renderCollectCyclePanel(s);
     renderPaylineDrilldown(s);
-    renderPayoutGroupDrilldown(s);
     renderSymbolDrilldown(s);
     renderBankruptcyAnalysis(s);
     await refreshInterpretation();

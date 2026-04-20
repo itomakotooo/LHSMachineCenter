@@ -2071,6 +2071,14 @@ def parse_chunk_response(
     # increments per (round, payout_id) appearance, win sums the amount.
     payout_id_hits: dict[str, int] = defaultdict(int)
     payout_id_win: dict[str, float] = defaultdict(float)
+    # Per (pay_id, spin_type) hit counts. Finalize uses this to tag
+    # each pay_id row with the dominant SpinType + a "paid/bonus/mixed"
+    # category, so the UI doesn't need to JOIN the PayID + SpinType
+    # panels manually to answer "is this pay_id's RTP coming from
+    # paid rounds or bonus?".
+    payout_id_by_spin_type: dict[str, dict[int, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
 
     # Per-SpinType tally. M14 mode 1 only emits SpinType=1 (Normal).
     # M272 mode 1 emits 140 (main) + 126 (collect/bonus re-spin); mode
@@ -2740,6 +2748,15 @@ def parse_chunk_response(
                     pid = str(pid_raw)
                     payout_id_hits[pid] += 1
                     payout_id_win[pid] += to_float(amount_raw, default=0.0)
+                    # Capture the SpinType that fired this pay_id (from
+                    # the round's sp_type, determined below but already
+                    # assigned via the per-round parse pass — the int
+                    # sits in ``sp_type`` by this point in the iteration).
+                    try:
+                        _st_key = int(sp_type) if sp_type is not None else -1
+                    except (TypeError, ValueError):
+                        _st_key = -1
+                    payout_id_by_spin_type[pid][_st_key] += 1
 
             line_ids = parse_paylines(str(r.get("PayoutByPayline") or ""))
             if line_ids:
@@ -2958,6 +2975,10 @@ def parse_chunk_response(
         "payout_group_win": {str(k): v for k, v in payout_group_win.items()},
         "payout_id_hits": dict(payout_id_hits),
         "payout_id_win": dict(payout_id_win),
+        "payout_id_by_spin_type": {
+            pid: dict(st_map)
+            for pid, st_map in payout_id_by_spin_type.items()
+        },
         "spin_type_spins": {str(k): v for k, v in spin_type_spins.items()},
         "spin_type_bet": {str(k): v for k, v in spin_type_bet.items()},
         "spin_type_paid_bet": {str(k): v for k, v in spin_type_paid_bet.items()},
@@ -3280,6 +3301,9 @@ def main() -> int:
     payout_group_win: dict[int, float] = defaultdict(float)
     payout_id_hits: dict[str, int] = defaultdict(int)
     payout_id_win: dict[str, float] = defaultdict(float)
+    payout_id_by_spin_type_total: dict[str, dict[int, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
     spin_type_spins: dict[int, int] = defaultdict(int)
     spin_type_next_counts: dict[int, Counter] = defaultdict(Counter)
     spin_type_remarks_sample: dict[int, list[str]] = defaultdict(list)
@@ -3522,6 +3546,15 @@ def main() -> int:
                     payout_id_hits[str(pid)] += int(c)
                 for pid, w in (rec.get("payout_id_win") or {}).items():
                     payout_id_win[str(pid)] += float(w)
+                for pid, st_map in (rec.get("payout_id_by_spin_type") or {}).items():
+                    if not isinstance(st_map, dict):
+                        continue
+                    for st_key, cnt in st_map.items():
+                        try:
+                            _st_int = int(st_key)
+                        except (TypeError, ValueError):
+                            _st_int = -1
+                        payout_id_by_spin_type_total[str(pid)][_st_int] += int(cnt or 0)
                 for st, c in (rec.get("spin_type_spins") or {}).items():
                     spin_type_spins[int(st)] += int(c)
                 for st, b in (rec.get("spin_type_bet") or {}).items():
@@ -4016,6 +4049,15 @@ def main() -> int:
                     payout_id_hits[str(pid)] += int(c)
                 for pid, w in (rec.get("payout_id_win") or {}).items():
                     payout_id_win[str(pid)] += float(w)
+                for pid, st_map in (rec.get("payout_id_by_spin_type") or {}).items():
+                    if not isinstance(st_map, dict):
+                        continue
+                    for st_key, cnt in st_map.items():
+                        try:
+                            _st_int = int(st_key)
+                        except (TypeError, ValueError):
+                            _st_int = -1
+                        payout_id_by_spin_type_total[str(pid)][_st_int] += int(cnt or 0)
                 # spin_type_* added in the SpinType-breakdown commit; old
                 # chunk records tolerate missing via .get().
                 for st, c in (rec.get("spin_type_spins") or {}).items():
@@ -4611,10 +4653,49 @@ def main() -> int:
     # payout_groups_top20 (which is informationally empty for M14/M272 mode
     # 1/2 because the field is always 0), this surface actually
     # discriminates between payout sources.
+    # Per-SpinType category lookup for the pay_id tag below. Uses the
+    # same "paid" / "free" / "mixed" buckets computed above in
+    # spin_type_rows so the category column on each pay_id row is
+    # directly traceable to the SpinType panel.
+    _st_behavior: dict[int, str] = {
+        int(row["spin_type"]): row["behavior_name"]
+        for row in spin_type_rows
+    }
+
     payout_id_rows: list[dict[str, Any]] = []
     for pid, wins in sorted(payout_id_win.items(), key=lambda kv: kv[1], reverse=True):
         hits = int(payout_id_hits.get(pid, 0))
         wins_f = float(wins)
+        # Tag each pay_id with the dominant SpinType that fired it +
+        # the spin_type_category ("paid" / "bonus" / "mixed") so the
+        # UI can render "this pay_id is fired 92% from paid rounds,
+        # 8% from bonus" without a second JOIN across tables.
+        st_hits = payout_id_by_spin_type_total.get(str(pid)) or {}
+        total_st_hits = sum(int(c) for c in st_hits.values()) if st_hits else 0
+        dominant_st: int | None = None
+        dominant_share = 0.0
+        if total_st_hits > 0:
+            # Pick the SpinType with the most pay_id firings for this
+            # specific pay_id; ties broken by smallest SpinType.
+            dominant_st = max(
+                st_hits.items(),
+                key=lambda kv: (int(kv[1]), -int(kv[0])),
+            )[0]
+            dominant_share = float(st_hits[dominant_st]) / total_st_hits
+        # Category resolution: if the dominant SpinType is "paid",
+        # label "paid"; if "free", label "bonus"; otherwise "mixed".
+        # When a pay_id spans multiple SpinTypes with no single
+        # category owning ≥80% of firings, force "mixed" so the
+        # operator investigates the breakdown.
+        category: str | None = None
+        if dominant_st is not None:
+            st_behavior = _st_behavior.get(int(dominant_st), "mixed")
+            if st_behavior == "paid":
+                category = "paid" if dominant_share >= 0.8 else "mixed"
+            elif st_behavior == "free":
+                category = "bonus" if dominant_share >= 0.8 else "mixed"
+            else:
+                category = "mixed"
         payout_id_rows.append(
             {
                 "payout_id": str(pid),
@@ -4625,6 +4706,17 @@ def main() -> int:
                 "rtp_contribution_pp": (
                     (wins_f / total_bet) * 100.0 if total_bet > 0 else 0.0
                 ),
+                # New (2026-04-20 round 2): attribution to SpinType.
+                # ``spin_type_category`` ∈ {"paid", "bonus", "mixed"};
+                # ``dominant_spin_type`` is the int that dominated
+                # this pay_id's firings; ``spin_type_breakdown``
+                # lists (spin_type, count) pairs for UI tooltips.
+                "spin_type_category": category,
+                "dominant_spin_type": int(dominant_st) if dominant_st is not None else None,
+                "spin_type_breakdown": [
+                    {"spin_type": int(k), "count": int(v)}
+                    for k, v in sorted(st_hits.items(), key=lambda kv: -int(kv[1]))
+                ],
             }
         )
 
