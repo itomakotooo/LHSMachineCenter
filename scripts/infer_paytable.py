@@ -540,6 +540,11 @@ def _collect_raw(machine: str, mode: int, first_chunk_only: bool):
         # Counter of sorted-tuple symbols — bounded by # distinct combos
         # per pay_id (typically < 50, even on 5-reel WAYS machines).
         "symbol_tuples": Counter(),
+        # Parallel per-tuple win-total (same key as symbol_tuples) so
+        # finalize can compute per-tuple avg_win — essential for
+        # splitting an all-wild pay_id into its wild-composition
+        # sub-rows (e.g. 3 DoubleDiamond vs 1 DD + 2 TripleDiamond).
+        "symbol_tuple_wins": defaultdict(float),
         "position_tuples": Counter(),
         "clean_base_mults": [],
         "grid_tier_mult_pairs": [],
@@ -619,7 +624,8 @@ def _collect_raw(machine: str, mode: int, first_chunk_only: bool):
                     buck = fire_bucket[key]
                     buck["fires"] += 1
                     buck["line_ids"][line_id] += 1
-                    buck["symbol_tuples"][tuple(sorted(symbols))] += 1
+                    _sym_tup = tuple(sorted(symbols))
+                    buck["symbol_tuples"][_sym_tup] += 1
                     if sum(buck["position_tuples"].values()) < 20:
                         buck["position_tuples"][tuple(positions)] += 1
                     for (col, row) in cells:
@@ -628,6 +634,9 @@ def _collect_raw(machine: str, mode: int, first_chunk_only: bool):
                     win_share = _extract_payid_share(piw, pay_id)
                     buck["win_total"] += win_share
                     buck["bet_total"] += bet
+                    # Per-tuple win aggregation for wild-composition
+                    # breakdown (see fire_bucket init comment).
+                    buck["symbol_tuple_wins"][_sym_tup] += win_share
                     # Mult diagnostics (kept for paused paytable-mult work).
                     grid_wild_tiers_regex = [
                         _wild_tier_from_name(s) for s in grid.values()
@@ -760,6 +769,51 @@ def _build_shape_for_row(
     else:
         confidence = "low"
 
+    # All-wild composition breakdown. When ``top_sym == "<all-wild>"``
+    # every firing under this (pay_id, match_count) has every winning
+    # position occupied by a wild — but the specific wild types (e.g.
+    # 2× Diamond1 + 1× Diamond2 vs 1× Diamond1 + 2× Diamond2) usually
+    # correspond to DIFFERENT designed multipliers in the paytable.
+    # Grouping all of them into a single row hides that distinction;
+    # the breakdown here emits one sub-row per wild multiset so 策划
+    # can match each to its paytable entry by avg_win.
+    all_wild_breakdown: list[dict] | None = None
+    if top_sym == "<all-wild>" and wild_set:
+        comp_agg: dict[tuple, dict] = {}
+        tup_wins = buck.get("symbol_tuple_wins") or {}
+        for tup, fires_count in buck["symbol_tuples"].items():
+            # Only fully-wild tuples contribute to this breakdown.
+            if not all(s in wild_set for s in tup):
+                continue
+            comp_key = tuple(sorted(tup))
+            entry = comp_agg.setdefault(comp_key, {"fires": 0, "win_total": 0.0})
+            entry["fires"] += fires_count
+            entry["win_total"] += float(tup_wins.get(tup, 0.0) or 0.0)
+        if comp_agg:
+            breakdown = []
+            for comp_key, agg in sorted(
+                comp_agg.items(), key=lambda kv: -kv[1]["fires"],
+            ):
+                cnt = Counter(comp_key)
+                # Label sorted by count desc then symbol name for stable
+                # display: "2× Diamond1 + 1× Diamond2".
+                label_parts = [
+                    f"{n}\u00d7 {s}"
+                    for s, n in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0]))
+                ]
+                label = " + ".join(label_parts)
+                fires_i = int(agg["fires"])
+                win_i = float(agg["win_total"])
+                avg_i = (win_i / fires_i) if fires_i > 0 else 0.0
+                breakdown.append({
+                    "composition": dict(cnt),
+                    "label": label,
+                    "fires": fires_i,
+                    "win_total": round(win_i, 2),
+                    "avg_win": round(avg_i, 2),
+                })
+            all_wild_breakdown = breakdown
+
     return {
         "match_count": match_count,
         "symbol_set": symbol_set,
@@ -779,6 +833,8 @@ def _build_shape_for_row(
             {"symbol": s, "sig_type": st, "count": c}
             for (s, st), c in sig_counter.most_common(5)
         ],
+        # None when the pay row isn't an all-wild tuple (most rows).
+        "wild_composition_breakdown": all_wild_breakdown,
     }
 
 
@@ -832,10 +888,19 @@ def _finalize(info: dict, wild_inference: dict) -> dict:
                     round(avg / expected_add, 3) if expected_add else None
                 )
             wild_behavior[str(s)] = entry
+        fires_i = int(buck["fires"])
+        avg_win_top = (
+            round(win_sum / fires_i, 2) if fires_i > 0 else 0.0
+        )
         rows.append({
             "pay_id": pay_id,
             "match_count": match_count,
-            "fires": buck["fires"],
+            "fires": fires_i,
+            # Per-firing average win in raw credits — exposed at the top
+            # level (alongside fires) so the UI can cross-reference
+            # analyzer's payout_ids_top20 hit/win numbers against the
+            # script's own rawdata scan without walking ``shape``.
+            "avg_win": avg_win_top,
             "line_ids_fired": sorted(buck["line_ids"].keys()),
             "shape": shape,
             # Legacy fields (kept for paused mult work + backward compat).

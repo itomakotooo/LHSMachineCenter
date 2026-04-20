@@ -234,5 +234,5 @@ class TestLoadPaytableShapeHelper:
         })
         out = _load_paytable_shape("M1", 1, d)
         assert out["rows"][0].keys() == {
-            "pay_id", "match_count", "fires", "line_ids_fired", "shape",
+            "pay_id", "match_count", "fires", "avg_win", "line_ids_fired", "shape",
         }

@@ -115,22 +115,39 @@ def run_analyzer_job(job: dict) -> dict:
         # + classifier panels stay in sync with the just-generated
         # report. Best-effort; a failure here doesn't fail the batch
         # item (analyzer output is already on disk).
+        #
+        # Rawdata root inheritance: both scripts respect
+        # ``SLOT_RAWDATA_ROOT`` env — we derive it from
+        # ``job['chunk_dir']`` (``<root>/<machine>/mode_<N>``) so the
+        # scripts scan the same rawdata tree analyzer just read from.
+        #
+        # ``SLOT_SKIP_AUTO_INFER=1`` short-circuits the hook entirely —
+        # tests use it to keep the batch-gen tight deadline (~10s).
+        # Production leaves it unset so PayID 总览 / classifier panels
+        # stay in sync with every fresh report.
         try:
-            import subprocess
-            script_root = Path(sys.path[0]) if sys.path else Path(".")
-            for argv_ext in (
-                [str(script_root / "scripts" / "infer_paytable.py"),
-                 "--machine", str(machine), "--mode", str(mode)],
-                [str(script_root / "scripts" / "verify_machine_labels.py"),
-                 "--machines", str(machine), "--mode", str(mode)],
-            ):
-                if not Path(argv_ext[0]).exists():
-                    continue
-                subprocess.run(
-                    [sys.executable, *argv_ext],
-                    capture_output=True, text=True,
-                    timeout=120, check=False,
-                )
+            import os as _os
+            if _os.environ.get("SLOT_SKIP_AUTO_INFER") != "1":
+                import subprocess
+                chunk_dir = Path(job["chunk_dir"])
+                if chunk_dir.is_dir():
+                    rawdata_root = chunk_dir.parent.parent
+                    env = dict(_os.environ)
+                    env.setdefault("SLOT_RAWDATA_ROOT", str(rawdata_root))
+                    script_root = Path(sys.path[0]) if sys.path else Path(".")
+                    for argv_ext in (
+                        [str(script_root / "scripts" / "infer_paytable.py"),
+                         "--machine", str(machine), "--mode", str(mode)],
+                        [str(script_root / "scripts" / "verify_machine_labels.py"),
+                         "--machines", str(machine), "--mode", str(mode)],
+                    ):
+                        if not Path(argv_ext[0]).exists():
+                            continue
+                        subprocess.run(
+                            [sys.executable, *argv_ext],
+                            capture_output=True, text=True,
+                            timeout=60, check=False, env=env,
+                        )
         except Exception:
             pass  # best-effort post-analyzer hook
         return {

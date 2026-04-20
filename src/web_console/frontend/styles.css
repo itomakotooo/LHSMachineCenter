@@ -3146,6 +3146,28 @@ details.advanced-params[open] > summary {
   font-weight: 600;
   padding: 4px 0;
 }
+/* Sub-rows under an all-wild pay_id — one per wild-multiset split
+   (e.g. 2× Diamond1 + 1× Diamond2 separated from 3× Diamond1).
+   Visually subordinate to the parent: indent, lighter background,
+   muted trailing columns that just repeat the parent's shape. */
+.payid-overview-table tr.payid-subrow > td {
+  background: #f8fafc;
+  font-size: 11.5px;
+  color: #334155;
+}
+.payid-overview-table tr.payid-subrow > td:first-child {
+  padding-left: 22px;
+}
+.payid-overview-table .payid-subrow-indent {
+  color: var(--muted);
+  margin-right: 4px;
+}
+.payid-overview-table .payid-subrow-label {
+  color: #334155;
+}
+.payid-overview-table .payid-subrow-muted {
+  color: #cbd5e1;
+}
 /* pay_id category badges — visually distinct for paid / bonus / mixed. */
 .pid-cat {
   display: inline-block;

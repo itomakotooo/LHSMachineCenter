@@ -17,6 +17,15 @@ from fastapi.testclient import TestClient
 from src.web_console.backend.app import create_app
 
 
+# Disable the post-generate-report auto-inference subprocess hook for
+# ALL backend tests — it spawns infer_paytable + verify_machine_labels
+# which adds ~5-10s per item and blows past the 10s batch-gen timeout
+# in test_generate_report. Production usage leaves this env unset.
+@pytest.fixture(autouse=True)
+def _disable_auto_inference_hook(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
+
+
 # -------------------------------------------------------------------- paths
 
 

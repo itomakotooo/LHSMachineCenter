@@ -3492,7 +3492,7 @@ async function renderPayIdOverview(summary) {
     const firesAttr = firesRaw != null
       ? ` title="rawdata fires: ${firesRaw.toLocaleString()} (script scan; includes bonus-round appearances)"`
       : "";
-    return (
+    const mainRow =
       `<tr>` +
       `<td>${_escHtml(pid)}</td>` +
       `<td>${categoryBadge(cat)}</td>` +
@@ -3506,8 +3506,36 @@ async function renderPayIdOverview(summary) {
       `<td>${lineBadge}</td>` +
       `<td>${confStr}</td>` +
       `<td class="shape-notes">${notes}</td>` +
-      `</tr>`
-    );
+      `</tr>`;
+    // Sub-rows for all-wild pays: wild_composition_breakdown splits
+    // the aggregate "3× <all-wild>" row into one sub-row per distinct
+    // wild multiset (e.g. 2× Diamond1 + 1× Diamond2). Only emitted
+    // when there are ≥2 sub-compositions (single-comp breakdown adds
+    // no info). Each sub-row shows its own fires + avg_win; other
+    // columns are blanked because the structural shape is identical.
+    const breakdown = Array.isArray(sh.wild_composition_breakdown)
+      ? sh.wild_composition_breakdown
+      : null;
+    let subRows = "";
+    if (breakdown && breakdown.length >= 2) {
+      subRows = breakdown.map((b) => (
+        `<tr class="payid-subrow">` +
+        `<td><span class="payid-subrow-indent">↳</span> <span class="payid-subrow-label">${_escHtml(b.label || "")}</span></td>` +
+        `<td>${categoryBadge(cat)}</td>` +
+        `<td>${fInt(b.fires)}</td>` +
+        `<td>${Number(b.avg_win || 0).toFixed(1)}</td>` +
+        `<td class="payid-subrow-muted">—</td>` +
+        `<td class="payid-subrow-muted">—</td>` +
+        `<td class="payid-subrow-muted">—</td>` +
+        `<td class="payid-subrow-muted">—</td>` +
+        `<td class="payid-subrow-muted">—</td>` +
+        `<td class="payid-subrow-muted">—</td>` +
+        `<td class="payid-subrow-muted">—</td>` +
+        `<td class="payid-subrow-muted">—</td>` +
+        `</tr>`
+      )).join("");
+    }
+    return mainRow + subRows;
   }).join("");
 
   body.innerHTML =

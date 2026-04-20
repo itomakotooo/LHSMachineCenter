@@ -80,7 +80,8 @@ def _run_post_analyzer_inference(
     machine: str,
     mode: int,
     *,
-    timeout_sec: float = 120.0,
+    timeout_sec: float = 60.0,
+    rawdata_root: Path | None = None,
 ) -> dict[str, Any]:
     """Fire the two offline inference scripts for one (machine, mode).
 
@@ -91,11 +92,36 @@ def _run_post_analyzer_inference(
     report has already written its own artifacts by the time this
     runs; losing the inference artifacts is non-fatal (operator can
     re-run the scripts manually if the UI panel shows "not_run").
+
+    ``rawdata_root`` (optional) is forwarded as ``SLOT_RAWDATA_ROOT``
+    env to the subprocess so tests that point the app at a tmp
+    rawdata dir don't accidentally scan the real 9 GB production
+    tree. Production callers typically pass ``None`` and rely on the
+    parent process's own env.
     """
+    import os as _os
     import subprocess
     import sys as _sys
 
     results: dict[str, Any] = {"machine": machine, "mode": mode}
+    # SLOT_SKIP_AUTO_INFER=1 short-circuits both scripts; tests use it
+    # to stay under the batch-gen 10s deadline. Production leaves it
+    # unset so inference panels refresh on every report.
+    if _os.environ.get("SLOT_SKIP_AUTO_INFER") == "1":
+        results["skipped"] = "env_SLOT_SKIP_AUTO_INFER"
+        return results
+    # Optionally shortcut when the machine's rawdata dir has no
+    # chunks — avoids paying subprocess startup cost just to have the
+    # script scan nothing and exit. Safe no-op; the UI shows "not_run"
+    # until the next real sampling/generate pass.
+    if rawdata_root is not None:
+        per_mode_dir = Path(rawdata_root) / machine / f"mode_{int(mode)}"
+        if not per_mode_dir.is_dir():
+            results["skipped"] = "no_rawdata_for_pair"
+            return results
+    env = dict(_os.environ)
+    if rawdata_root is not None:
+        env["SLOT_RAWDATA_ROOT"] = str(rawdata_root)
     for name, script, argv in (
         (
             "paytable_shape",
@@ -115,7 +141,7 @@ def _run_post_analyzer_inference(
             proc = subprocess.run(
                 [_sys.executable, str(script), *argv],
                 capture_output=True, text=True,
-                timeout=timeout_sec, check=False,
+                timeout=timeout_sec, check=False, env=env,
             )
             results[name] = {
                 "ok": proc.returncode == 0,
@@ -1497,6 +1523,11 @@ def _load_paytable_shape(
             "pay_id": r.get("pay_id"),
             "match_count": r.get("match_count"),
             "fires": r.get("fires"),
+            # avg_win added by the 2026-04-20 round 3 script upgrade —
+            # lets the UI cross-check the script's own rawdata scan
+            # against analyzer's payout_ids_top20[*].avg_win_when_hit
+            # without walking ``shape.wild_composition_breakdown``.
+            "avg_win": r.get("avg_win"),
             "line_ids_fired": r.get("line_ids_fired") or [],
             "shape": sh,
         })
@@ -5430,7 +5461,9 @@ def create_app(
             # propagate to the caller (operator can always re-run the
             # scripts manually if they see "not_run" in the UI).
             try:
-                _run_post_analyzer_inference(machine, mode)
+                _run_post_analyzer_inference(
+                    machine, mode, rawdata_root=rd_root,
+                )
             except Exception:
                 pass
 
