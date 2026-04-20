@@ -3487,18 +3487,6 @@ async function renderPayIdOverview(summary) {
       ? ` title="rawdata fires: ${firesRaw.toLocaleString()} (script scan; includes bonus-round appearances)"`
       : "";
     const mainMult = fmtMult(pr.avg_win_when_hit);
-    const mainRow =
-      `<tr>` +
-      `<td>${_escHtml(pid)}</td>` +
-      `<td>${categoryBadge(cat)}</td>` +
-      `<td${firesAttr}>${fInt(pr.hit_count)}</td>` +
-      `<td class="payid-mult">${mainMult}</td>` +
-      `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>` +
-      `<td>${symDisplay}</td>` +
-      `<td>${_escHtml(colStr)}</td>` +
-      `<td>${lineBadge}</td>` +
-      `<td class="shape-notes">${notes}</td>` +
-      `</tr>`;
     // Composition sub-rows — every pay_id with ≥2 distinct symbol
     // tuples emits one sub-row per composition. For Bar/7 pays with
     // wild substitutions this shows each (base + wild) variant's
@@ -3510,18 +3498,52 @@ async function renderPayIdOverview(summary) {
       : (Array.isArray(sh.wild_composition_breakdown)
         ? sh.wild_composition_breakdown
         : null);
+    const hasBreakdown = breakdown && breakdown.length >= 2;
+    // 策划 wants per-sub-row share of the pay_id's TOTAL win amount:
+    // "the slice of RTP contribution each composition explains". Sum
+    // is the sample-observed win total across every composition under
+    // this (pay_id, match_count). The tail "其他 N 种组合" row is
+    // included in the sum since its rows are displayed as one bucket.
+    let parentWinTotal = 0;
+    if (hasBreakdown) {
+      for (const b of breakdown) {
+        parentWinTotal += Number(b.win_total || 0);
+      }
+    }
+    const toggleIcon = hasBreakdown
+      ? `<span class="payid-toggle" data-toggle-pid="${_escHtml(pid)}" role="button" title="展开 / 收起子组合">▸</span> `
+      : `<span class="payid-toggle-spacer"></span>`;
+    const mainRowCls = hasBreakdown ? "payid-main payid-main-expandable" : "payid-main";
+    const mainRow =
+      `<tr class="${mainRowCls}" data-pid="${_escHtml(pid)}">` +
+      `<td>${toggleIcon}${_escHtml(pid)}</td>` +
+      `<td>${categoryBadge(cat)}</td>` +
+      `<td${firesAttr}>${fInt(pr.hit_count)}</td>` +
+      `<td class="payid-mult">${mainMult}</td>` +
+      `<td class="payid-winshare">—</td>` +
+      `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>` +
+      `<td>${symDisplay}</td>` +
+      `<td>${_escHtml(colStr)}</td>` +
+      `<td>${lineBadge}</td>` +
+      `<td class="shape-notes">${notes}</td>` +
+      `</tr>`;
     let subRows = "";
-    if (breakdown && breakdown.length >= 2) {
+    if (hasBreakdown) {
       subRows = breakdown.map((b) => {
         const subMult = fmtMult(b.avg_win);
         const isAggregate = Boolean(b.is_aggregate_tail);
         const clsExtra = isAggregate ? " payid-subrow-aggregate" : "";
+        const subWin = Number(b.win_total || 0);
+        const winShareText = parentWinTotal > 0
+          ? `${((subWin / parentWinTotal) * 100).toFixed(1)}%`
+          : "—";
         return (
-          `<tr class="payid-subrow${clsExtra}">` +
+          `<tr class="payid-subrow payid-subrow-collapsed${clsExtra}" data-parent-pid="${_escHtml(pid)}">` +
           `<td><span class="payid-subrow-indent">↳</span> <span class="payid-subrow-label">${_escHtml(b.label || "")}</span></td>` +
           `<td>${categoryBadge(cat)}</td>` +
           `<td>${fInt(b.fires)}</td>` +
           `<td class="payid-mult">${subMult}</td>` +
+          `<td class="payid-winshare">${winShareText}</td>` +
           `<td class="payid-subrow-muted">—</td>` +
           `<td class="payid-subrow-muted">—</td>` +
           `<td class="payid-subrow-muted">—</td>` +
@@ -3534,14 +3556,22 @@ async function renderPayIdOverview(summary) {
     return mainRow + subRows;
   }).join("");
 
+  const controlsHtml =
+    `<div class="payid-overview-controls">` +
+    `<button type="button" class="payid-ctrl-btn" data-payid-action="expand-all">▾ ${_escHtml(fmt("payIdExpandAll"))}</button>` +
+    `<button type="button" class="payid-ctrl-btn" data-payid-action="collapse-all">▸ ${_escHtml(fmt("payIdCollapseAll"))}</button>` +
+    `</div>`;
+
   body.innerHTML =
     headerHtml + reviewBanner + flagsBanner + noShapeBanner +
+    controlsHtml +
     `<table class="drilldown-table payid-overview-table">` +
     `<thead><tr>` +
     `<th>${_escHtml(fmt("payIdCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdCatCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdPaidHitsCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdMultCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdWinShareCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdRtpCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdShapeCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdColsCol"))}</th>` +
@@ -3551,6 +3581,64 @@ async function renderPayIdOverview(summary) {
     `<tbody>${rows}</tbody>` +
     `</table>` +
     evidenceHtml;
+
+  // Wire up per-row and global expand/collapse toggles. Delegates to
+  // the body container so re-rendering the table doesn't require
+  // re-binding.
+  _wirePayIdOverviewToggles(body);
+}
+
+// Wire expand/collapse interactions on the Pay ID 总览 table. Idempotent —
+// safe to call after every renderPayIdOverview rebuild.
+function _wirePayIdOverviewToggles(body) {
+  if (!body || body._payidTogglesWired) return;
+  body._payidTogglesWired = true;
+  body.addEventListener("click", (evt) => {
+    const tgt = evt.target;
+    if (!tgt || !tgt.closest) return;
+    // Per-row toggle: click on the ▸/▾ icon OR anywhere on the main
+    // expandable row (excluding links/buttons, none present today).
+    const toggle = tgt.closest(".payid-toggle");
+    const mainRow = tgt.closest("tr.payid-main-expandable");
+    if (toggle || mainRow) {
+      const pid = (toggle && toggle.getAttribute("data-toggle-pid"))
+        || (mainRow && mainRow.getAttribute("data-pid"));
+      if (pid) _togglePayIdSubrows(body, pid);
+      return;
+    }
+    // Global controls.
+    const ctrl = tgt.closest(".payid-ctrl-btn[data-payid-action]");
+    if (ctrl) {
+      const action = ctrl.getAttribute("data-payid-action");
+      if (action === "expand-all") _setAllPayIdSubrows(body, true);
+      else if (action === "collapse-all") _setAllPayIdSubrows(body, false);
+    }
+  });
+}
+
+function _togglePayIdSubrows(body, pid) {
+  const subs = body.querySelectorAll(
+    `tr.payid-subrow[data-parent-pid="${CSS.escape(pid)}"]`,
+  );
+  if (!subs.length) return;
+  // Determine target state by inspecting the first sub-row.
+  const wasCollapsed = subs[0].classList.contains("payid-subrow-collapsed");
+  subs.forEach((sr) => {
+    sr.classList.toggle("payid-subrow-collapsed", !wasCollapsed);
+  });
+  const toggle = body.querySelector(
+    `.payid-toggle[data-toggle-pid="${CSS.escape(pid)}"]`,
+  );
+  if (toggle) toggle.textContent = wasCollapsed ? "▾" : "▸";
+}
+
+function _setAllPayIdSubrows(body, expand) {
+  body.querySelectorAll("tr.payid-subrow").forEach((sr) => {
+    sr.classList.toggle("payid-subrow-collapsed", !expand);
+  });
+  body.querySelectorAll(".payid-toggle[data-toggle-pid]").forEach((t) => {
+    t.textContent = expand ? "▾" : "▸";
+  });
 }
 
 // Render a friendly badge for a line_id or line_id_sign token. Slot

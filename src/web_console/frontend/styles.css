@@ -3184,6 +3184,57 @@ details.advanced-params[open] > summary {
   font-style: italic;
   color: #64748b;
 }
+/* Expand/collapse controls and per-row toggle affordance. Rows start
+   collapsed by default (sub-row = display:none); clicking the ▸ icon
+   or anywhere on the expandable main row flips it, or use the global
+   控制 buttons above the table. */
+.payid-overview-controls {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+  justify-content: flex-end;
+}
+.payid-ctrl-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.payid-ctrl-btn:hover {
+  background: #e2e8f0;
+}
+.payid-overview-table tr.payid-main-expandable {
+  cursor: pointer;
+}
+.payid-overview-table tr.payid-main-expandable:hover > td {
+  background: #f8fafc;
+}
+.payid-overview-table .payid-toggle {
+  display: inline-block;
+  width: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  font-size: 10px;
+  margin-right: 3px;
+}
+.payid-overview-table .payid-toggle-spacer {
+  display: inline-block;
+  width: 12px;
+  margin-right: 3px;
+}
+.payid-overview-table tr.payid-subrow.payid-subrow-collapsed {
+  display: none;
+}
+.payid-overview-table .payid-winshare {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-align: right;
+}
 /* pay_id category badges — visually distinct for paid / bonus / mixed. */
 .pid-cat {
   display: inline-block;
