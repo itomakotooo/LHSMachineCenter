@@ -1714,6 +1714,108 @@ def _build_rawdata_overview(
 # Performance: in-memory cache keyed by file mtime_ns; atomic writes
 # via temp + os.replace; O(machines × modes) bootstrap walk runs once.
 _STATIC_ATTRS_CACHE: dict = {"mtime": 0, "data": None}
+
+# ── In-use protection (2026-04-20 round 6) ──────────────────────────
+# Set of (machine, mode) pairs currently being sampled or consumed by
+# a generate-report run. Auto-cleanup must skip these — deleting chunks
+# mid-write corrupts the cache + kills the analyzer. Callers wrap the
+# analyzer invocation with ``_acquire_in_use`` / ``_release_in_use``.
+# In-memory only (process-local). On crash, restart clears it — safer
+# than persisting a stale lock that nothing will release.
+_IN_USE_MODES: set[tuple[str, int]] = set()
+_IN_USE_LOCK = threading.Lock()
+
+
+def _acquire_in_use(machine: str, mode: int) -> None:
+    with _IN_USE_LOCK:
+        _IN_USE_MODES.add((str(machine), int(mode)))
+
+
+def _release_in_use(machine: str, mode: int) -> None:
+    with _IN_USE_LOCK:
+        _IN_USE_MODES.discard((str(machine), int(mode)))
+
+
+def _get_in_use_snapshot() -> set[tuple[str, int]]:
+    with _IN_USE_LOCK:
+        return set(_IN_USE_MODES)
+
+
+# ── Rawdata lock registry (2026-04-20 round 6) ──────────────────────
+# Per-(machine, mode) lock — locked entries are NEVER auto-deleted by
+# the disk-pressure auto-cleanup logic (kept baseline is already safe
+# via min_retention_spins; lock is the operator's extra carve-out for
+# chunks they want preserved beyond retention).
+# Storage: configs/rawdata_locks.json, gitignored + per-fleet.
+# Key format: "<machine>|<mode>". Value: bool (true = locked).
+_LOCK_CACHE: dict = {"mtime": 0, "data": None}
+
+
+def _rawdata_locks_path(configs_root_machines_config: Path) -> Path:
+    return configs_root_machines_config.parent / "rawdata_locks.json"
+
+
+def _load_rawdata_locks(path: Path) -> set[tuple[str, int]]:
+    """Return the set of (machine, mode) tuples currently locked.
+    Mtime-invalidated in-memory cache; file IO only on first call
+    or when file mtime changes."""
+    try:
+        cur_mtime = path.stat().st_mtime_ns if path.exists() else 0
+    except OSError:
+        cur_mtime = 0
+    cached = _LOCK_CACHE.get("data")
+    if cached is not None and _LOCK_CACHE.get("mtime") == cur_mtime:
+        return cached
+    locks: set[tuple[str, int]] = set()
+    if path.exists():
+        try:
+            raw = read_json(path) or {}
+        except Exception:
+            raw = {}
+        for key in (raw.get("locked") or []):
+            try:
+                machine, mode_str = str(key).split("|", 1)
+                locks.add((machine, int(mode_str)))
+            except (ValueError, TypeError):
+                continue
+    _LOCK_CACHE["mtime"] = cur_mtime
+    _LOCK_CACHE["data"] = locks
+    return locks
+
+
+def _save_rawdata_locks(path: Path, locks: set[tuple[str, int]]) -> None:
+    keys = sorted(f"{m}|{mode}" for (m, mode) in locks)
+    payload = {"locked": keys, "updated_at": utc_now()}
+    tmp = path.with_suffix(".json.tmp")
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    tmp.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    import os as _os
+    _os.replace(tmp, path)
+    try:
+        _LOCK_CACHE["mtime"] = path.stat().st_mtime_ns
+    except OSError:
+        pass
+    _LOCK_CACHE["data"] = set(locks)
+
+
+def _set_rawdata_lock(path: Path, machine: str, mode: int, locked: bool) -> bool:
+    """Add or remove (machine, mode) from the lock set. Returns True if
+    the state changed (lock applied or removed), False if it was already
+    in the desired state."""
+    locks = set(_load_rawdata_locks(path))
+    key = (str(machine), int(mode))
+    was = key in locks
+    if locked and not was:
+        locks.add(key)
+    elif not locked and was:
+        locks.discard(key)
+    else:
+        return False
+    _save_rawdata_locks(path, locks)
+    return True
 _STATIC_ATTRS_MECH_KEYS = (
     "lock_lines", "lock_symbols", "lock_reels",
     "jackpot", "free_spin", "dollar_pick",
@@ -1921,6 +2023,118 @@ def _bootstrap_static_attrs(
     _rebuild_static_distributions(data)
     _save_static_attrs(static_path, data)
     return data
+
+
+def _auto_cleanup_for_space(
+    rawdata_root: Path,
+    machines_config: Path,
+    retention: int,
+    target_free_gb: float,
+    low_water_gb: float | None = None,
+) -> dict[str, Any]:
+    """Evict deletable chunks oldest-first until free space ≥ target.
+
+    Respected carve-outs:
+      * ``kept`` (baseline retention) — protected automatically by
+        _classify_chunks's partitioning.
+      * ``locked`` (operator-applied via POST /api/rawdata/{m}/mode/{n}/lock)
+        — entire (machine, mode) skipped even for deletable chunks.
+      * ``in_use`` (analyzer currently sampling / generating for that
+        (m, mode)) — skipped to avoid mid-write corruption.
+
+    Returns ``{deleted_files, deleted_bytes, reached_target,
+    initial_free_gb, final_free_gb, skipped_locked, skipped_in_use,
+    candidates}``. When already above target on entry, returns
+    ``reached_target=True`` without doing any IO.
+    """
+    result: dict[str, Any] = {
+        "deleted_files": 0, "deleted_bytes": 0,
+        "reached_target": False,
+        "initial_free_gb": 0.0, "final_free_gb": 0.0,
+        "skipped_locked": [], "skipped_in_use": [],
+        "candidates": 0,
+    }
+    if not rawdata_root.is_dir():
+        return result
+    try:
+        initial_free = shutil.disk_usage(str(rawdata_root)).free
+    except OSError:
+        return result
+    result["initial_free_gb"] = round(initial_free / (1024 ** 3), 3)
+    target_bytes = int(target_free_gb * (1024 ** 3))
+    if initial_free >= target_bytes:
+        result["reached_target"] = True
+        result["final_free_gb"] = result["initial_free_gb"]
+        return result
+
+    # Respect the low-water trigger — if not below low_water, don't do
+    # anything (caller may have called defensively).
+    if low_water_gb is not None and initial_free >= int(low_water_gb * (1024 ** 3)):
+        result["reached_target"] = True
+        result["final_free_gb"] = result["initial_free_gb"]
+        return result
+
+    locks = _load_rawdata_locks(_rawdata_locks_path(machines_config))
+    in_use = _get_in_use_snapshot()
+
+    # Collect deletable chunks across all (machine, mode), skipping
+    # locked + in_use groups entirely.
+    candidates: list[dict[str, Any]] = []
+    for machine_dir in rawdata_root.iterdir():
+        if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
+            continue
+        machine = machine_dir.name
+        for mode_dir in machine_dir.iterdir():
+            if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                continue
+            try:
+                mode = int(mode_dir.name.split("_")[1])
+            except (IndexError, ValueError):
+                continue
+            key = (machine, mode)
+            if key in locks:
+                result["skipped_locked"].append(f"{machine}|{mode}")
+                continue
+            if key in in_use:
+                result["skipped_in_use"].append(f"{machine}|{mode}")
+                continue
+            cls = _classify_chunks(machine, mode, rawdata_root, machines_config, retention)
+            # Take deletable first (above retention, same md5 as current)
+            # then stale (md5 mismatch — always evictable). Oldest first.
+            pool = list(cls.get("deletable") or []) + list(cls.get("stale") or [])
+            for entry in pool:
+                candidates.append({
+                    "path": Path(entry["path"]),
+                    "mtime": entry["mtime"],
+                    "machine": machine,
+                    "mode": mode,
+                })
+    candidates.sort(key=lambda c: c["mtime"])  # oldest first
+    result["candidates"] = len(candidates)
+
+    deleted_files = 0
+    deleted_bytes = 0
+    current_free = initial_free
+    for cand in candidates:
+        if current_free >= target_bytes:
+            break
+        try:
+            sz = cand["path"].stat().st_size
+            cand["path"].unlink()
+            deleted_files += 1
+            deleted_bytes += sz
+            current_free += sz  # best-effort — real free space may move with concurrent writers
+        except OSError:
+            continue
+    try:
+        final_free = shutil.disk_usage(str(rawdata_root)).free
+    except OSError:
+        final_free = current_free
+    result["deleted_files"] = deleted_files
+    result["deleted_bytes"] = deleted_bytes
+    result["final_free_gb"] = round(final_free / (1024 ** 3), 3)
+    result["reached_target"] = final_free >= target_bytes
+    return result
 
 
 def _parse_upstream_map_order(upstream: dict) -> dict:
@@ -2476,10 +2690,27 @@ class BatchRunManager:
         store: "StateStore",
         run_manager: "RunManager",
         cache_root: Path,
+        *,
+        state_dir: Path | None = None,
+        machines_config: Path | None = None,
+        rawdata_root: Path | None = None,
     ) -> None:
         self._store = store
         self._run_manager = run_manager
         self._cache_root = cache_root
+        # Injected paths (2026-04-20): disk-pressure loop needs the
+        # app-scoped settings + locks + rawdata paths. Falls back to
+        # module globals for back-compat with callers that don't pass
+        # them, but create_app now always wires them explicitly so
+        # tests with tmp paths work.
+        self._state_dir = state_dir if state_dir is not None else STATE_DIR
+        self._settings_path = self._state_dir / "settings.json"
+        self._machines_config = (
+            machines_config if machines_config is not None else MACHINES_CONFIG
+        )
+        self._rawdata_root = (
+            rawdata_root if rawdata_root is not None else RAWDATA_ROOT
+        )
         self._lock = threading.Lock()
         self._batches: dict[str, dict[str, Any]] = {}
         # Per-(machine, mode) busy set. Two concurrent batches that
@@ -2861,18 +3092,82 @@ class BatchRunManager:
                 return
             semaphore.acquire()
             try:
-                # Disk space check before each run.
-                disk = _get_disk_space_info(reports_root)
-                if disk["free_gb"] < 2:
-                    batch["cancel_requested"] = True
-                    _log("danger", f"磁盘剩余 {disk['free_gb']}GB，自动停止批量采样")
-                    item["status"] = "cancelled"
-                    item["error"] = "disk_low"
-                    return
+                # Disk-pressure handling (2026-04-20 round 6 rewrite).
+                # Replaces the old "< 2 GB → cancel whole batch" dead-end
+                # with: trigger auto-cleanup (frees deletable chunks,
+                # respects locked + baseline + in-use carve-outs),
+                # retry a few times if still tight, then fail just
+                # THIS item (not the batch).
+                # Thresholds from env:
+                #   SLOT_DISK_LOW_WATER_GB (default 5) — trigger cleanup
+                #   SLOT_DISK_TARGET_FREE_GB (default 10) — cleanup goal
+                #   SLOT_DISK_HARD_STOP_GB  (default 2) — bail this item
+                low_water = float(os.environ.get("SLOT_DISK_LOW_WATER_GB") or 5.0)
+                target_free = float(os.environ.get("SLOT_DISK_TARGET_FREE_GB") or 10.0)
+                hard_stop = float(os.environ.get("SLOT_DISK_HARD_STOP_GB") or 2.0)
+                retention_cur = _load_settings(self._settings_path).get(
+                    "min_retention_spins", 100000,
+                )
+                _wait_attempts = 0
+                _max_wait_attempts = int(
+                    os.environ.get("SLOT_DISK_WAIT_RETRIES") or 30,
+                )  # 30 × 10s = 5 min default
+                while True:
+                    if batch.get("cancel_requested"):
+                        item["status"] = "cancelled"
+                        return
+                    disk = _get_disk_space_info(reports_root)
+                    if disk["free_gb"] >= low_water:
+                        break  # plenty of room, proceed
+                    # Below low-water → try cleanup.
+                    _log(
+                        "warn",
+                        f"磁盘余量 {disk['free_gb']}GB < {low_water}GB，自动清理…",
+                        item["machine"],
+                    )
+                    summary = _auto_cleanup_for_space(
+                        self._rawdata_root, self._machines_config,
+                        retention_cur, target_free_gb=target_free,
+                    )
+                    del_gb = summary["deleted_bytes"] / (1024 ** 3)
+                    _log(
+                        "info",
+                        (f"清理完成：删 {summary['deleted_files']} 文件 "
+                         f"({del_gb:.2f} GB)，剩 {summary['final_free_gb']} GB "
+                         f"(跳过锁定 {len(summary['skipped_locked'])}、使用中 "
+                         f"{len(summary['skipped_in_use'])})"),
+                        item["machine"],
+                    )
+                    if summary["final_free_gb"] >= hard_stop:
+                        break
+                    _wait_attempts += 1
+                    if _wait_attempts >= _max_wait_attempts:
+                        # Give up on this item — but keep the batch alive.
+                        # Other items may still have deletable chunks we
+                        # can reclaim when they finish.
+                        item["status"] = "failed"
+                        item["error"] = f"disk_exhausted (free {summary['final_free_gb']}GB < {hard_stop}GB after cleanup)"
+                        _log(
+                            "danger",
+                            f"磁盘不足且清理无效，跳过此项（已等待 {_wait_attempts} 次）",
+                            item["machine"],
+                        )
+                        return
+                    # Wait for another in-flight item to finish +
+                    # release its chunks; then retry.
+                    _log(
+                        "info",
+                        f"等待磁盘空间释放… (第 {_wait_attempts} 次)",
+                        item["machine"],
+                    )
+                    time.sleep(10)
                 if batch.get("cancel_requested"):
                     item["status"] = "cancelled"
                     return
                 item["status"] = "running"
+                # Register this (m, mode) as in-use so concurrent
+                # cleanup passes won't touch its chunks mid-write.
+                _acquire_in_use(item["machine"], item["mode"])
                 # Two paths (decided in start_batch):
                 #   resume_cache=True → --resume-from-cache (seed from
                 #     cached chunks, continue live sampling; handles
@@ -2985,6 +3280,10 @@ class BatchRunManager:
                 item["error"] = str(exc)[:200]
                 _log("error", f"异常: {str(exc)[:80]}", item["machine"])
             finally:
+                # Release in-use BEFORE semaphore/key — so any waiting
+                # batch item that's polling disk space sees deletable
+                # chunks from this (m, mode) as soon as analyzer exits.
+                _release_in_use(item["machine"], item["mode"])
                 semaphore.release()
                 self._release_key(item["machine"], item["mode"])
 
@@ -4267,7 +4566,10 @@ def create_app(
         progress_dir=progress_dir,
         cache_root=cr,
     )
-    batch_mgr = BatchRunManager(store, manager, cr)
+    batch_mgr = BatchRunManager(
+        store, manager, cr,
+        state_dir=sd, machines_config=mc, rawdata_root=rd_root,
+    )
     ops = OperationCoordinator()
 
     app = FastAPI(title="Slot Console API", version="0.1.0")
@@ -4827,8 +5129,31 @@ def create_app(
                     by_version.values(),
                     key=lambda v: (not v["is_current"], v["config_md5"], v["code_md5"]),
                 )
+                # Locked flag — locked (machine, mode) pairs won't be
+                # auto-deleted during disk-pressure cleanup. Kept
+                # baseline is already safe via retention; lock is the
+                # operator's extra carve-out for deletable chunks they
+                # want preserved.
+                locks = _load_rawdata_locks(_rawdata_locks_path(mc))
+                status["locked"] = (machine, mode) in locks
                 result[str(mode)] = status
         return {"machine": machine, "modes": result}
+
+    @app.post("/api/rawdata/{machine}/mode/{mode}/lock")
+    def lock_rawdata_mode(machine: str, mode: int) -> dict[str, Any]:
+        """Mark (machine, mode) rawdata as locked — never auto-deleted.
+        Operator-triggered; idempotent (relock is a no-op)."""
+        changed = _set_rawdata_lock(_rawdata_locks_path(mc), machine, mode, True)
+        return {"ok": True, "machine": machine, "mode": mode,
+                "locked": True, "changed": changed}
+
+    @app.delete("/api/rawdata/{machine}/mode/{mode}/lock")
+    def unlock_rawdata_mode(machine: str, mode: int) -> dict[str, Any]:
+        """Remove the auto-delete protection on (machine, mode).
+        Idempotent (unlocking an unlocked entry is a no-op)."""
+        changed = _set_rawdata_lock(_rawdata_locks_path(mc), machine, mode, False)
+        return {"ok": True, "machine": machine, "mode": mode,
+                "locked": False, "changed": changed}
 
     @app.get("/api/events")
     def unified_events(
@@ -5262,6 +5587,10 @@ def create_app(
         # analyzer sees responses in their original sampling sequence.
         chunk_paths = sorted(Path(e["path"]) for e in usable_entries)
 
+        # Register (m, mode) as in-use so disk-pressure auto-cleanup
+        # won't evict the chunks we're about to consume. Released in
+        # the finally below.
+        _acquire_in_use(machine, mode)
         try:
             # Pre-load responses — each call to analyzer's post_json
             # returns the next cached response in sequence.
@@ -5507,6 +5836,11 @@ def create_app(
                 status_code=500,
                 detail=f"generate-report failed: {exc.__class__.__name__}: {exc}",
             ) from exc
+        finally:
+            # Release in-use protection regardless of success/failure
+            # so subsequent cleanup passes can evict this (m, mode)'s
+            # over-retention chunks.
+            _release_in_use(machine, mode)
 
     # ── Pool-based batch generate (round 7) ───────────────────────────
     # The single-item endpoint above uses the in-process monkey-patch
@@ -5595,6 +5929,22 @@ def create_app(
                 "bet": 1000,
             },
         }
+
+    def _prepare_batch_gen_item_wrapper(machine: str, mode: int) -> dict[str, Any]:
+        """Acquire in-use protection before submitting the worker.
+        Released in _finalize_batch_gen_item_wrapper below."""
+        prepared = _prepare_batch_gen_item(machine, mode)
+        _acquire_in_use(machine, mode)
+        return prepared
+
+    def _finalize_batch_gen_item_wrapper(
+        prepared: dict[str, Any], worker_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Release in-use protection after each worker finishes."""
+        try:
+            return _finalize_batch_gen_item(prepared, worker_result)
+        finally:
+            _release_in_use(prepared.get("machine"), int(prepared.get("mode") or 0))
 
     def _finalize_batch_gen_item(
         prepared: dict[str, Any], worker_result: dict[str, Any],
@@ -5686,9 +6036,11 @@ def create_app(
         }
 
     _batch_gen_concurrency = int(os.environ.get("SLOT_BATCH_GEN_WORKERS", "4"))
+    # Use the in-use-protection wrappers so auto-cleanup skips any
+    # (machine, mode) currently being processed by a worker.
     batch_gen_mgr = BatchGenerateManager(
-        prepare_fn=_prepare_batch_gen_item,
-        finalize_fn=_finalize_batch_gen_item,
+        prepare_fn=_prepare_batch_gen_item_wrapper,
+        finalize_fn=_finalize_batch_gen_item_wrapper,
         ops=ops,
         concurrency=_batch_gen_concurrency,
         root_path=str(ROOT),
@@ -6741,13 +7093,26 @@ def create_app(
             "volatility_class_counts": dict(volatility_class_counts),
         }
 
-    def _enumerate_rawdata_deletable() -> list[dict[str, Any]]:
+    def _enumerate_rawdata_deletable(
+        *,
+        respect_locks: bool = True,
+        respect_in_use: bool = True,
+    ) -> list[dict[str, Any]]:
         """Walk rd_root, classify each (machine, mode), return the
         aggregate deletable list — chunks that are safe to reclaim
         (stale MD5 + valid chunks above retention quota). Sorted by
         mtime so oldest-first deletion is a single pass downstream.
+
+        ``respect_locks`` filters out (machine, mode) pairs present in
+        ``configs/rawdata_locks.json`` (operator carve-outs). Both
+        manual "一键清理" and auto-cleanup should leave locks alone.
+        ``respect_in_use`` filters out pairs currently being sampled
+        or analyzed — dropping chunks mid-run would corrupt in-flight
+        work.
         """
         retention = _load_settings(settings_path)["min_retention_spins"]
+        locks = _load_rawdata_locks(_rawdata_locks_path(mc)) if respect_locks else set()
+        in_use = _get_in_use_snapshot() if respect_in_use else set()
         candidates: list[dict[str, Any]] = []
         if not rd_root.is_dir():
             return candidates
@@ -6760,6 +7125,9 @@ def create_app(
                 try:
                     mode = int(mode_dir.name.split("_", 1)[1])
                 except (IndexError, ValueError):
+                    continue
+                key = (machine_dir.name, mode)
+                if key in locks or key in in_use:
                     continue
                 cls = _classify_chunks(
                     machine_dir.name, mode, rd_root, mc, retention,
@@ -6826,9 +7194,13 @@ def create_app(
 
         Protected by the retention quota (setting
         ``min_retention_spins``, default 100k) so baseline chunks
-        survive even here. Deletion order is oldest mtime across all
-        (machine, mode) pairs — caller optionally caps total bytes
-        freed via ``max_delete_bytes``.
+        survive even here. Additionally, (machine, mode) pairs locked
+        by the operator via ``/api/rawdata/{m}/mode/{mode}/lock`` are
+        skipped entirely, and any pair currently being sampled or
+        analyzed is skipped to avoid corrupting in-flight work.
+        Deletion order is oldest mtime across all remaining pairs —
+        caller optionally caps total bytes freed via
+        ``max_delete_bytes``.
         """
         running = store.list_runs_by_status("running", limit=2000)
         if running:
@@ -6845,7 +7217,15 @@ def create_app(
             deleted_files = 0
             deleted_bytes = 0
             affected_modes: set[tuple[str, int]] = set()
-            targets = _enumerate_rawdata_deletable()
+            # Snapshot lock / in-use carve-outs BEFORE enumeration so
+            # the response can explain what was preserved. Enumeration
+            # itself re-reads these internally (single source of truth
+            # via the ``respect_*`` kwargs).
+            locked_pairs = _load_rawdata_locks(_rawdata_locks_path(mc))
+            in_use_pairs = _get_in_use_snapshot()
+            targets = _enumerate_rawdata_deletable(
+                respect_locks=True, respect_in_use=True,
+            )
             max_delete = req.max_delete_bytes if req.max_delete_bytes > 0 else (10**18)
             for entry in targets:
                 p = Path(entry["path"])
@@ -6875,7 +7255,16 @@ def create_app(
                         remove_entry(rd_root, m, mode)
             except Exception:  # noqa: BLE001
                 pass
-            return {"deleted_files": deleted_files, "deleted_bytes": deleted_bytes}
+            return {
+                "deleted_files": deleted_files,
+                "deleted_bytes": deleted_bytes,
+                "skipped_locked": [
+                    {"machine": m, "mode": mode} for m, mode in sorted(locked_pairs)
+                ],
+                "skipped_in_use": [
+                    {"machine": m, "mode": mode} for m, mode in sorted(in_use_pairs)
+                ],
+            }
         finally:
             ops.release()
 

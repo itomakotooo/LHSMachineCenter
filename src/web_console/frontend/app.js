@@ -1695,9 +1695,14 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
       }
     }
 
+    const isLocked = !!st.locked;
+    const lockIcon = isLocked ? "🔒" : "🔓";
+    const lockTitle = isLocked
+      ? "已上锁：auto-cleanup 不会删这些 chunks（即使超过 retention）"
+      : "未上锁：超过 retention 的 chunks 可能被 auto-cleanup 自动删除";
     const rawdataBlock = totalChunks === 0
       ? `<div class="rwtree-rawdata empty"><div class="muted">无本地 rawdata</div></div>`
-      : `<div class="rwtree-rawdata">
+      : `<div class="rwtree-rawdata ${isLocked ? "rwtree-locked" : ""}">
           <div class="rwtree-rawdata-line">
             <b>${fInt2(totalSpins)}</b> spins
             <span class="muted">(${totalChunks} chunks)</span>
@@ -1708,6 +1713,7 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
           ${rawdataApprox}
           <div class="rwtree-rawdata-actions">
             <button class="small-btn primary-btn rwtree-gen-btn" data-machine="${machineName}" data-mode="${mode}" data-intrinsic-disabled="${(keptChunks + delChunks) === 0 ? "1" : ""}" ${((keptChunks + delChunks) === 0 || _isAnyBusy()) ? "disabled" : ""} title="用当前 analyzer 从这些 chunks 生成新 report">⟳ 生成 Report</button>
+            <button class="small-btn rwtree-lock-btn ${isLocked ? "active" : ""}" data-machine="${machineName}" data-mode="${mode}" data-locked="${isLocked ? "1" : "0"}" title="${lockTitle}">${lockIcon} ${isLocked ? "已锁" : "锁定"}</button>
           </div>
         </div>`;
 
@@ -1800,6 +1806,30 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
       if (cb.checked) state.compareSelected.set(rv, { mode: Number(cb.dataset.mode) });
       else state.compareSelected.delete(rv);
       _updateRwtreeCompareBar();
+    });
+  });
+  gridEl.querySelectorAll(".rwtree-lock-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const m = btn.dataset.machine;
+      const mo = btn.dataset.mode;
+      const locked = btn.dataset.locked === "1";
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = locked ? "解锁中…" : "上锁中…";
+      try {
+        const path = `/api/rawdata/${encodeURIComponent(m)}/mode/${encodeURIComponent(mo)}/lock`;
+        if (locked) {
+          await apiDelete(path);
+        } else {
+          await apiPost(path, {});
+        }
+        // Re-render the tree to pick up the new lock state.
+        await renderRawdataReportTree(m);
+      } catch (err) {
+        alert(`${locked ? "解锁" : "上锁"}失败: ${err.message || err}`);
+        btn.textContent = orig;
+        btn.disabled = false;
+      }
     });
   });
   gridEl.querySelectorAll(".rwtree-gen-btn").forEach((btn) => {

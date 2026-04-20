@@ -77,3 +77,8 @@ configs/machine_halls.json
 # md5). Bootstrapped from reports + machines.json on first access;
 # auto-refreshed on every generate-report. Not versioned.
 configs/machines_static.json
+
+# Per-fleet rawdata lock registry — operator-applied carve-outs to
+# protect specific (machine, mode) chunks from disk-pressure
+# auto-cleanup. Not versioned (operator preference, not config).
+configs/rawdata_locks.json

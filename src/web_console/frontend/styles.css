@@ -661,9 +661,18 @@ body {
   font-size: 0.85em;
 }
 .rwtree-rawdata.empty { padding: 10px; text-align: center; opacity: 0.6; }
+.rwtree-rawdata.rwtree-locked {
+  border-color: #d97706;
+  background: #fffbeb;
+}
 .rwtree-rawdata-line { padding: 2px 0; }
-.rwtree-rawdata-actions { margin-top: 6px; display: flex; gap: 4px; }
+.rwtree-rawdata-actions { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
 .rwtree-rawdata-actions .small-btn { padding: 4px 8px; font-size: 0.82em; }
+.rwtree-lock-btn.active {
+  background: #fed7aa !important;
+  border-color: #d97706;
+  color: #7c2d12 !important;
+}
 
 .rwtree-reports {
   background: var(--panel);
