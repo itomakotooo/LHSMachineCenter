@@ -124,6 +124,20 @@
             </table>
           </section>
 
+          <!-- Bankruptcy analysis: rawdata-replay simulation per tier
+               (x100 / x200 / x500 by default). Each tier shows rate /
+               median survival / survival %, then a decile percentile
+               table (P10..P90) + a separately-highlighted "fastest
+               bankruptcy" row. Percentile values are spin-exact;
+               percentiles past the bankrupt share pin to session_spins
+               so the transition visually matches the survival
+               complement. Sits right after 倍率分布 because both are
+               risk-profile panels read together. -->
+          <section class="panel bankruptcy-analysis hidden" id="bankruptcyPanel">
+            <h2 data-i18n="panelBankruptcy">破产分析</h2>
+            <div id="bankruptcyBody"></div>
+          </section>
+
           <!-- SpinType + Feature merged panel -->
           <section class="panel spin-types">
             <h2 data-i18n="panelSpinType">Spin 类型分布</h2>
@@ -186,19 +200,6 @@
           <section class="panel bonus-chain-dynamics hidden" id="bonusChainDynamicsPanel">
             <h2 data-i18n="panelBonusChainDynamics">Bonus Chain 动态</h2>
             <div id="bonusChainBody"></div>
-          </section>
-
-          <!-- Bankruptcy analysis: 3 tiers (x100 / x200 / x500) each
-               rendered as a survival histogram. Source is the rawdata-
-               replay simulation in the analyzer — every paid-round
-               session that's reached the session-spins cap counts as
-               "survived"; the rest drop into the bin matching how far
-               they made it before the wallet couldn't cover the next
-               paid bet. All percentages are shares of that tier's
-               total simulated sessions. -->
-          <section class="panel bankruptcy-analysis hidden" id="bankruptcyPanel">
-            <h2 data-i18n="panelBankruptcy">破产分析</h2>
-            <div id="bankruptcyBody"></div>
           </section>
 
           <!-- Collect-cycle + RTP correction (BuffCollectionMap-style

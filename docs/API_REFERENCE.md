@@ -263,6 +263,63 @@ Return:
 - `summary_file`
 - `report_file`
 
+Notable `summary` sub-trees consumed by the UI:
+
+`summary.player_impact.hit_and_payout` — paid-round-level rate block.
+Added 2026-04-20: `big_win_x20_rate`, `big_win_x50_rate`,
+`big_win_x100_rate` alongside the existing `big_win_x10_rate`. Each
+is the share of paid rounds with win ≥ Nx the round's bet
+(monotonically decreasing across the four thresholds).
+
+`summary.player_impact.bankruptcy_simulation` — rawdata-replay
+survival histogram (new shape 2026-04-20, replaces the old
+`bankruptcy_probe` scalar rates; the legacy key still exists as a
+backward-compat alias pointing at the same tier list):
+
+```json
+{
+  "source": "rawdata_replay",
+  "session_spins": 10000,
+  "percentile_keys": [10, 20, 30, 40, 50, 60, 70, 80, 90],
+  "tiers": [
+    {
+      "bankroll_multiplier": 100,
+      "init_credits": 100000,
+      "session_spins": 10000,
+      "robots": 767,
+      "bankrupt_robots": 757,
+      "completed_robots": 10,
+      "bankruptcy_rate": 0.987,
+      "median_spins_completed": 365,
+      "fastest_bankruptcy_spins": 117,
+      "percentiles": {
+        "10": 161, "20": 189, "30": 232, "40": 278, "50": 365,
+        "60": 489, "70": 677, "80": 1131, "90": 2308
+      }
+    },
+    ...
+  ]
+}
+```
+
+Implementation notes:
+- Each chunk simulates ``len(pooled_rounds) // session_spins`` windows
+  per tier (rounds across robots pooled into one IID stream; valid
+  because upstream RNG is stateless per spin given
+  ContinueAfterBankrupt=True + reset_each_spin=True during sampling).
+- Per-window: start balance = ``multiplier × bet``, consume rounds
+  debiting CostCredits and crediting WinCredits; bankrupt = balance
+  can't cover the next paid bet. Bonus rounds (CostCredits=0) don't
+  drain balance but still credit wins.
+- Per-tier storage is an exact ``spins_done`` list (1-spin precision);
+  at finalize the list is sorted and percentiles are resolved by
+  rank index. Percentiles past the bankrupt share pin to
+  ``session_spins`` — so a tier with 11% survival shows its P90 at
+  session_spins once cumulative rank exceeds the bankrupt count.
+- ``fastest_bankruptcy_spins`` is ``None`` when the tier had zero
+  bankruptcies (giant bankroll always survived).
+- ``median_spins_completed`` is a convenience alias for P50.
+
 ## Auto Tune
 
 ### `POST /api/autotune`
@@ -339,18 +396,25 @@ is stale AND rawdata is fresh — exactly the payload the UI's
 "⟳ 一键重生成" button submits to
 ``POST /api/rawdata/batch-generate-report``.
 
-### `GET /api/library/distributions`
+### `GET /api/library/distributions?mode=N`
 
 Across-library metric distributions for the KPI lib-rank suffix on
 Volatility + Archetype cards. Walks every
 `reports/<machine>/mode_<n>/latest.json` + its summary JSON and
 aggregates into per-metric distributions.
 
+`mode` query param (optional, added 2026-04-20) restricts the
+aggregation to a single mode — required for meaningful comparison
+since mode 1 baseline machines have a different RTP / volatility
+range than mode 5 bonus-mode machines. Without the filter,
+distributions mix all modes (legacy behavior preserved).
+
 Response:
 
 ```json
 {
   "machines_count": 17,
+  "mode": 1,
   "metrics": {
     "volatility_score":      { "values": [1.33, 1.38, ...], "count": 17 },
     "zero_win_rate":         { "values": [...], "count": 17 },
@@ -362,6 +426,8 @@ Response:
   "volatility_class_counts": { "Very High": 4, "High": 8, "Medium": 3, "Low": 2 }
 }
 ```
+
+`mode` echoes the filter used (null when omitted).
 
 `volatility_score` is composite:
 `max(zero_win/0.82, loss_p95/18, tail_ge10/0.50)`; 1.0 = Very High

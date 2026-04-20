@@ -56,6 +56,67 @@ This file tracks executable next steps for the current phase.
 
 ## Done Recently
 
+- [x] **调试机台 KPI 重构 + rawdata-replay 破产分析 session** (2026-04-20,
+      5 commits 54836d4 → 5368979):
+      - **KPI grid 重写**：删「规则状态」卡、「x500 破产率」卡；波动性
+        卡删 Very High/High/... 分类词，只保留全库分位（同 mode 过滤，
+        `/api/library/distributions?mode=N` 后端支持）；体验类型卡主
+        值改成中文人话（Boom-Bust→爆击驱动、Balanced→稳定平衡、
+        Grindy→磨损消耗），子行显示 `{count}/{total} 机台同类型`
+        （同 mode 子集）；新增「大奖回合率」4-tile（≥10x / ≥20x /
+        ≥50x / ≥100x），结构对齐尾部依赖度；analyzer 扩
+        `session_big_win_x{20,50,100}_count/rate`（paid-round 口径）。
+      - **规则评估 panel 整块删除**（#assessment / renderAssessment /
+        panelAssessment i18n 全部清理）。
+      - **破产分析（rawdata-replay）**：替换老的 live HTTP probe
+        (`run_bankruptcy_probe` + `skip_bankruptcy` + `--bankruptcy-
+        robot-count` 全删)。算法：chunk 内 pool 全部 robot 的 rounds
+        成单序列 → 切 non-overlapping session_spins 窗口 → 每窗口
+        从新 bankroll 重放（CostCredits 扣钱、WinCredits 加钱，bonus
+        round 不扣 bet 但加 win，自然建模「bonus 链短暂救命」）。
+        `from-cache` 也能算，不再依赖 live HTTP。
+      - **精度进化史**（同一 session 内迭代）：
+        * 初版：固定 10 bin 等宽直方图 → x100 首 bin 吃掉 78.5% 难读
+        * 改 1：cross-tier shared 自适应等质量 edges（8 bins 从
+          pooled bankrupt 分布推出）→ 改善但仍聚合显示
+        * 改 2：decile 百分位表（P10..P90）+ 单独「最快破产」行 +
+          中位存活（P50），分母 = 全 session，survivor-heavy tier 过了
+          bankruptcy 份额后 percentile 自动 pin 到 session_spins
+        * **终版**：抛弃 fine_bins 100-bin histogram，per-tier 存精确
+          `spins_done` list，sort 后直接取 rank → **spin 级精度**，
+          修好 M1 x100 早 decile 都挤在 150/150/150/250... 的假崩塌
+      - **session_spins 默认 500 → 10000**（analyzer CLI + backend
+        BatchRunRequest + 3 处硬编 + `_batch_gen_worker.py`）。
+      - **Pooling 正当性**：upstream RNG stateless per spin
+        (ContinueAfterBankrupt=True + reset_each_spin=True)，所以跨
+        robot 池化 round 序列 → 合成 10k 窗口与单 robot 跑 10k 统计
+        等价。自然突破单 robot chunk_spin_times=5000 的限制。
+      - **新 panel 位置**：破产分析放在倍率分布下方（都是风险侧画像，
+        连起来读）。
+      - **Fix：Pay ID 形状面板双 HTML 转义 bug**（`<all-wild>` →
+        `&lt;` → `&amp;lt;` 浏览器渲染出 `&lt;all-wild&gt;` 文本）。
+      - **Fix：`/console/` + `/console` 显式 FastAPI 路由**替换 bare
+        StaticFiles mount，使 `{{ASSET_HASH}}` 占位符真正替换，浏览器
+        不再抱死旧 app.js/pure.js。
+      - **新/改 API**：
+        * `/api/library/distributions?mode=N` 接 mode 查询参数
+        * summary `player_impact.bankruptcy_simulation` 全新 shape：
+          `{source, session_spins, percentile_keys: [10..90],
+            tiers: [{bankroll_multiplier, robots, bankrupt_robots,
+            completed_robots, bankruptcy_rate, median_spins_completed,
+            fastest_bankruptcy_spins, percentiles: {10..90 → int}}]}`
+        * 保留 `bankruptcy_probe` / `bankruptcy_checks` 旧字段别名
+      - **Memory**: `feedback_paid_round_default.md` 新增（所有指标
+        默认 paid-round 口径）。
+      - **Tests**: +15 `test_analyzer_bankruptcy.py`（break-even
+        survival / 破产分桶精度 / bonus 不扣 bet / median=P50 / 过渡
+        到 survivor / 分位单调 / 多 chunk merge 保持精度）。
+      - **最终数值**（M1 mode 1, 7.67M paid spins, RTP 89.96%）：
+        x100: rate 98.7%, fastest 117, P50 365, P90 2,308
+        x200: rate 97.3%, fastest 265, P50 920, P90 4,751
+        x500: rate 89.0%, fastest 835, P50 3,246, P90 10,000 (pin)
+      - 434 pytest + 133 node:test 全绿；全部 preview-verified。
+
 - [x] **机台管理 master/detail 重构 session** (2026-04-19 round 2, 16
       commits 028246d → 0377bd3):
       - **Master/detail shell + focus click model**: `#tab-manage`
