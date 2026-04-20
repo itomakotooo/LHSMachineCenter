@@ -1961,6 +1961,29 @@ button.feature-chip {
   border-color: var(--accent, #0284c7);
   color: var(--ink, #1e293b) !important;
 }
+.rtp-mode-bar {
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: #fdf4ff;
+  border: 1px solid #f5d0fe;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.rtp-mode-bar .rtp-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.rtp-mode-bar .rtp-mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+.rtp-mode-bar .rtp-mode-toggle .small-btn.active {
+  background: #fce7f3 !important;
+  border-color: #c026d3;
+  color: #701a75 !important;
+}
 .view-tab {
   padding: 6px 14px;
   border: none;

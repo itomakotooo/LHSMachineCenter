@@ -92,6 +92,11 @@ const state = {
   // isn't a grouping anymore (server confirmed no real halls; what
   // the old code called "halls" came from Unity asset-bundle paths).
   hallOrderMode: "default",
+  // 按 RTP 视图的 mode 选择器 (2026-04-20 round 7). "auto" = 保留历史
+  // 行为（优先 mode 2，否则最小 mode），用于兼容旧书签；具体数字 =
+  // 只按该 mode 的 rtp_pct 排序，没有该 mode 数据的机台沉底。视图本身
+  // 已去掉 < 90% / 90–95% 这种数值分段分组，改成 rtp 降序 flat 列表。
+  catalogRtpMode: "auto",
   catalogFeatureFilter: new Set(),
   catalogSortReverse: false,  // reverse ordering toggle
   versionHistoryMachine: null,
@@ -689,15 +694,10 @@ function _groupMachines(machines, viewMode) {
       const d = _machineData(m.machine);
       key = d?.volatility_class || "N/A";
     } else if (viewMode === "rtp") {
-      const d = _machineData(m.machine);
-      const rtp = d?.rtp_pct;
-      if (rtp == null) key = "N/A";
-      else if (rtp < 90) key = "< 90%";
-      else if (rtp < 95) key = "90–95%";
-      else if (rtp < 100) key = "95–100%";
-      else if (rtp < 200) key = "100–200%";
-      else if (rtp < 400) key = "200–400%";
-      else key = "> 400%";
+      // 2026-04-20 round 7: removed numeric banding (< 90%, 90–95%,
+      // ...). Now a single flat "all" group sorted by the selected
+      // mode's rtp_pct in renderMachineCatalog.
+      key = "all";
     } else if (viewMode === "hall") {
       // Hall view splits into TWO sections (2026-04-20 round 4):
       //   - "club"   — the multi-cabinet bank (Royal lobby),
@@ -749,7 +749,6 @@ const MECH_GROUP_COLORS = {
 
 function _groupOrder(viewMode) {
   if (viewMode === "volatility") return ["Low", "Medium", "High", "Very High", "N/A"];
-  if (viewMode === "rtp") return ["< 90%", "90–95%", "95–100%", "100–200%", "200–400%", "> 400%", "N/A"];
   if (viewMode === "mechanic") return ["lock_lines", "lock_symbols", "lock_reels", "jackpot", "free_spin", "dollar_pick", "Normal"];
   if (viewMode === "hall") {
     // Club section pinned on top; normal section below. Ordering
@@ -863,8 +862,10 @@ function renderMachineCatalog() {
 
   // Sort within groups. Hall view uses upstream-provided ordering
   // (default_order or current_hall_order) — honor that by sorting
-  // machines by their position in the chosen list; all other views
-  // sort by machine number with the reverse toggle.
+  // machines by their position in the chosen list; RTP view sorts
+  // the single flat group by the selected mode's rtp_pct (with
+  // null-rtp machines sunk to the bottom); all other views sort by
+  // machine number with the reverse toggle.
   const dir = state.catalogSortReverse ? -1 : 1;
   if (viewMode === "hall") {
     const hallData = state.machineHalls || {};
@@ -885,13 +886,46 @@ function renderMachineCatalog() {
     };
     if (groups.club) groups.club.sort(makeHallSort(clubRank));
     if (groups.normal) groups.normal.sort(makeHallSort(normalRank));
+  } else if (viewMode === "rtp") {
+    // Pick RTP from the selected mode (or auto-picker fallback). Null
+    // RTP → sink to bottom (stays at bottom regardless of reverse so
+    // the "no data" tail doesn't swap to the top when user toggles).
+    const rtpMode = state.catalogRtpMode || "auto";
+    const rtpOf = (machineName) => {
+      const sm = ((state.machinesSummary || {}).machines || {})[machineName] || {};
+      if (rtpMode === "auto") {
+        return (_machineData(machineName) || {}).rtp_pct;
+      }
+      const entry = sm[String(rtpMode)];
+      return entry ? entry.rtp_pct : null;
+    };
+    // Base direction is DESC (highest RTP first) since that's the
+    // usual operator question ("which machines pay highest?"). The
+    // existing ↑↓ toggle flips it.
+    const baseDir = state.catalogSortReverse ? 1 : -1;
+    const rtpSort = (a, b) => {
+      const ra = rtpOf(a.machine);
+      const rb = rtpOf(b.machine);
+      const aNull = ra == null;
+      const bNull = rb == null;
+      if (aNull && bNull) return (parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0);
+      if (aNull) return 1;   // null always last
+      if (bNull) return -1;
+      if (ra === rb) return (parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0);
+      return baseDir * (ra - rb);
+    };
+    Object.values(groups).forEach((arr) => arr.sort(rtpSort));
   } else {
     const numSort = (a, b) => dir * ((parseInt(a.machine.slice(1)) || 0) - (parseInt(b.machine.slice(1)) || 0));
     Object.values(groups).forEach((arr) => arr.sort(numSort));
   }
-  if (state.catalogSortReverse) orderedKeys.reverse();
+  // For non-RTP views, reverse the group order too when operator
+  // hits ↑↓. RTP view stays with a single "all" group so there's
+  // nothing to flip at this level (the sort above already handled
+  // direction).
+  if (state.catalogSortReverse && viewMode !== "rtp") orderedKeys.reverse();
 
-  const isFlatView = viewMode === "name" || viewMode === "category";
+  const isFlatView = viewMode === "name" || viewMode === "category" || viewMode === "rtp";
 
   orderedKeys.forEach((groupKey) => {
     const machines = groups[groupKey];
@@ -5189,8 +5223,54 @@ function bindEvents() {
       }
     }
     renderHallsRefreshBar();
+    renderRtpModeBar();
     renderMachineCatalog();
   });
+
+  // Inline RTP mode bar: only when 按 RTP tab active. Shows a row of
+  // "auto | 1 | 2 | 5 | ..." buttons (union of modes present across
+  // the fleet in machinesSummary). Clicking a mode re-sorts the flat
+  // catalog by that mode's rtp_pct. "auto" = the legacy fallback
+  // (prefer mode 2, else smallest numeric mode) kept for bookmarks.
+  function renderRtpModeBar() {
+    const bar = byId("rtpModeBar");
+    if (!bar) return;
+    if (state.catalogViewMode !== "rtp") {
+      bar.classList.add("hidden");
+      return;
+    }
+    bar.classList.remove("hidden");
+    // Enumerate unique mode keys present anywhere in machinesSummary.
+    // Sort numerically so 1 < 2 < 5 < 7, keeping the UI deterministic
+    // across page reloads.
+    const sm = ((state.machinesSummary || {}).machines || {});
+    const modeSet = new Set();
+    Object.values(sm).forEach((machineModes) => {
+      Object.keys(machineModes || {}).forEach((k) => modeSet.add(String(k)));
+    });
+    const modes = [...modeSet].sort((a, b) => Number(a) - Number(b));
+    const active = String(state.catalogRtpMode || "auto");
+    const autoBtn = `<button class="small-btn ${active === "auto" ? "active" : ""}" data-mode="auto" title="优先 mode 2，否则最小 mode">auto</button>`;
+    const modeBtns = modes.map((m) => (
+      `<button class="small-btn ${active === m ? "active" : ""}" data-mode="${m}">mode ${m}</button>`
+    )).join("");
+    bar.innerHTML = `
+      <div class="rtp-mode-row">
+        <span class="muted">RTP 排序 mode：</span>
+        <div class="rtp-mode-toggle">${autoBtn}${modeBtns}</div>
+        <span class="muted">· 没有该 mode 数据的机台沉底</span>
+      </div>
+    `;
+    bar.querySelectorAll(".rtp-mode-toggle button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const m = btn.dataset.mode;
+        if (!m || m === state.catalogRtpMode) return;
+        state.catalogRtpMode = m;
+        renderRtpModeBar();
+        renderMachineCatalog();
+      });
+    });
+  }
 
   // Inline hall bar: only when 按大厅 tab active. Shows the ordering
   // mode toggle (默认 / 当前大厅) + active-activity summary + a
