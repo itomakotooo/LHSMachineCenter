@@ -265,6 +265,24 @@ Return:
 
 Notable `summary` sub-trees consumed by the UI:
 
+`summary.rtp` — new fields 2026-04-20:
+- `numerator_source`: "our_total_win" (default) or
+  "server_total_win_override" (set when our per-round WinCredits
+  sum diverges from analysisResult.TotalWin by >1%; point_pct
+  is then computed from the server value instead)
+- `our_total_win`: sum from per-round WinCredits
+- `server_total_win`: sum from analysisResult.TotalWin (or null
+  if the server didn't populate analysisResult on this machine)
+
+The override prevents RTP inflation on machines like M112 where
+the server emits BOTH a summary round (ST 98 FinalMinigame) AND
+its detail sub-rounds (ST 97 WheelSpin × 5) carrying the same
+payout — naive round-sum counts the payout twice. Per-SpinType
+contributions (`spin_type_breakdown[*].rtp_contribution_pp`) still
+reflect the raw aggregation and may sum above 100%; consult
+`upstream_feature_breakdown` for an authoritative per-feature
+slice on those machines.
+
 `summary.sampling.bet` — per-spin bet used during sampling (int,
 default 1000). Added 2026-04-20 so the PayID 总览 UI can render the
 multiplier column (avg_win / bet) without fetching run metadata.

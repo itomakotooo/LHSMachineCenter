@@ -2470,17 +2470,29 @@ def parse_chunk_response(
             if bet_amt <= 0.0:
                 bet_amt = float(bet)
 
-            # Paid vs bonus: CostCredits>0 means the player paid for this
-            # spin; CostCredits==0 means it's a free / bonus / re-spin.
-            # When CostCredits is unreliable (always 0 despite BetAmount>0),
-            # fall back to treating every spin as paid so session metrics
-            # are meaningful.
+            # Paid vs bonus classification. Priority signals:
+            #   CostCredits>0             → paid (player paid for this spin)
+            #   CostCredits==0            → bonus / free / re-spin
+            #   CostCredits==None         → ambiguous, fall back to BetAmount
+            #     BetAmount>0             → paid (machines that use BetAmount
+            #                                as the player-cost signal)
+            #     BetAmount==None or ≤0   → bonus summary round (M112 ST97
+            #                                WheelSpin / ST98 FinalMinigame
+            #                                both emit null cost + null bet;
+            #                                previously misclassified as paid,
+            #                                inflating RTP denominator and
+            #                                double-counting bonus wins)
+            # cost_credits_unreliable short-circuits everything to "paid"
+            # for machines where the server never populates CostCredits
+            # (legacy LockReSpin machines M10/M23/M131/M133 etc).
             if cost_credits_unreliable:
                 is_paid = True
             else:
                 cost_credits_raw = r.get("CostCredits")
                 if cost_credits_raw is None:
-                    is_paid = True
+                    bet_raw = r.get("BetAmount")
+                    bet_val = to_float(bet_raw, default=0.0) if bet_raw is not None else 0.0
+                    is_paid = bet_val > 0.0
                 else:
                     is_paid = to_float(cost_credits_raw, default=0.0) > 0.0
 
@@ -4425,8 +4437,26 @@ def main() -> int:
     # if the run had no paid sessions (shouldn't happen post-refactor,
     # but stays safe for legacy chunk records).
     effective_bet_for_rtp = session_bet_sum if total_paid_sessions > 0 else total_bet
+    # RTP numerator: prefer analysisResult.TotalWin (server-side canonical
+    # per-chunk total) when it disagrees with our round-walk sum by more
+    # than 1%. Per-round WinCredits can double-count on machines that
+    # emit BOTH a summary round AND its detail sub-rounds for the same
+    # payout (M112: ST 98 FinalMinigame = summary of 5× ST 97 WheelSpin,
+    # both carrying the same 4.9M win → analyzer sums both → 2× the
+    # true FinalMinigame contribution). server_total_win has no such
+    # duplication; pick it as the authoritative numerator and log the
+    # override for operator visibility.
+    rtp_numerator_source = "our_total_win"
+    rtp_numerator = total_win
+    if upstream_robots_seen > 0 and upstream_total_win > 0:
+        _delta = abs(upstream_total_win - total_win)
+        _tol = max(1.0, total_win * 0.01)
+        if _delta > _tol:
+            rtp_numerator = upstream_total_win
+            rtp_numerator_source = "server_total_win_override"
     rtp_point_pct = (
-        (total_win / effective_bet_for_rtp) * 100.0 if effective_bet_for_rtp > 0 else 0.0
+        (rtp_numerator / effective_bet_for_rtp) * 100.0
+        if effective_bet_for_rtp > 0 else 0.0
     )
 
     # Session-level CI on RTP: t × SE of per-session ret_x mean, in pp.
@@ -5473,6 +5503,24 @@ def main() -> int:
         "rtp": {
             "point_pct": rtp_point_pct,
             "ci95_interval_pct": ci_interval,
+            # ``numerator_source`` surfaces whether the RTP point_pct
+            # was computed from our per-round WinCredits sum
+            # ("our_total_win") or was overridden with the server's
+            # analysisResult.TotalWin ("server_total_win_override")
+            # because the two diverged > 1%. The override kicks in on
+            # machines like M112 where the server emits both a
+            # FinalMinigame summary round AND its WheelSpin sub-rounds
+            # for the same payout — our naive sum would double-count.
+            #
+            # Caveat: per-SpinType and per-payline contribution fields
+            # below still reflect the RAW win aggregation (may sum to
+            # more than point_pct on double-counting machines). Use
+            # ``upstream_feature_breakdown`` for an authoritative
+            # per-feature RTP slice when numerator_source !=
+            # "our_total_win".
+            "numerator_source": rtp_numerator_source,
+            "our_total_win": total_win,
+            "server_total_win": upstream_total_win if upstream_robots_seen > 0 else None,
         },
         "storage": {
             "raw_round_data_persisted": False,
