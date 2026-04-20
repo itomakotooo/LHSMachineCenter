@@ -3168,6 +3168,22 @@ details.advanced-params[open] > summary {
 .payid-overview-table .payid-subrow-muted {
   color: #cbd5e1;
 }
+/* Multiplier column: tabular nums + bold so 策划 can eyeball the
+   倍率 against the paytable spec at a glance. Matches design-spec
+   style (× N) consistent across main + sub-rows. */
+.payid-overview-table .payid-mult {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #1e293b;
+  text-align: right;
+}
+.payid-overview-table tr.payid-subrow .payid-mult {
+  font-weight: 500;
+}
+.payid-overview-table tr.payid-subrow-aggregate > td {
+  font-style: italic;
+  color: #64748b;
+}
 /* pay_id category badges — visually distinct for paid / bonus / mixed. */
 .pid-cat {
   display: inline-block;

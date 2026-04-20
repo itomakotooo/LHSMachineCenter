@@ -80,7 +80,7 @@ def _run_post_analyzer_inference(
     machine: str,
     mode: int,
     *,
-    timeout_sec: float = 60.0,
+    timeout_sec: float = 300.0,
     rawdata_root: Path | None = None,
 ) -> dict[str, Any]:
     """Fire the two offline inference scripts for one (machine, mode).
@@ -5457,13 +5457,20 @@ def create_app(
             # Auto-trigger the offline inference scripts for this
             # (machine, mode) so the paytable-shape + classifier
             # panels in the UI stay in sync with the analyzer output.
-            # Best-effort: errors captured in returned dict, never
-            # propagate to the caller (operator can always re-run the
-            # scripts manually if they see "not_run" in the UI).
+            # Fire-and-forget in a daemon thread — M1-sized machines
+            # take ~1-2 min for infer_paytable.py and we don't want
+            # the ops mutex locked that long. Next UI refresh after
+            # the thread finishes will surface the updated shape.
             try:
-                _run_post_analyzer_inference(
-                    machine, mode, rawdata_root=rd_root,
-                )
+                import threading as _threading
+                _threading.Thread(
+                    target=lambda: _run_post_analyzer_inference(
+                        machine, mode, rawdata_root=rd_root,
+                        timeout_sec=300.0,
+                    ),
+                    daemon=True,
+                    name=f"post-infer-{machine}-{mode}",
+                ).start()
             except Exception:
                 pass
 

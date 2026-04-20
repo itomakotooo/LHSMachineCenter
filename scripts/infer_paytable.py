@@ -769,50 +769,69 @@ def _build_shape_for_row(
     else:
         confidence = "low"
 
-    # All-wild composition breakdown. When ``top_sym == "<all-wild>"``
-    # every firing under this (pay_id, match_count) has every winning
-    # position occupied by a wild — but the specific wild types (e.g.
-    # 2× Diamond1 + 1× Diamond2 vs 1× Diamond1 + 2× Diamond2) usually
-    # correspond to DIFFERENT designed multipliers in the paytable.
-    # Grouping all of them into a single row hides that distinction;
-    # the breakdown here emits one sub-row per wild multiset so 策划
-    # can match each to its paytable entry by avg_win.
-    all_wild_breakdown: list[dict] | None = None
-    if top_sym == "<all-wild>" and wild_set:
-        comp_agg: dict[tuple, dict] = {}
-        tup_wins = buck.get("symbol_tuple_wins") or {}
-        for tup, fires_count in buck["symbol_tuples"].items():
-            # Only fully-wild tuples contribute to this breakdown.
-            if not all(s in wild_set for s in tup):
-                continue
-            comp_key = tuple(sorted(tup))
-            entry = comp_agg.setdefault(comp_key, {"fires": 0, "win_total": 0.0})
-            entry["fires"] += fires_count
-            entry["win_total"] += float(tup_wins.get(tup, 0.0) or 0.0)
-        if comp_agg:
-            breakdown = []
-            for comp_key, agg in sorted(
-                comp_agg.items(), key=lambda kv: -kv[1]["fires"],
-            ):
-                cnt = Counter(comp_key)
-                # Label sorted by count desc then symbol name for stable
-                # display: "2× Diamond1 + 1× Diamond2".
-                label_parts = [
-                    f"{n}\u00d7 {s}"
-                    for s, n in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0]))
-                ]
-                label = " + ".join(label_parts)
-                fires_i = int(agg["fires"])
-                win_i = float(agg["win_total"])
-                avg_i = (win_i / fires_i) if fires_i > 0 else 0.0
-                breakdown.append({
-                    "composition": dict(cnt),
-                    "label": label,
-                    "fires": fires_i,
-                    "win_total": round(win_i, 2),
-                    "avg_win": round(avg_i, 2),
-                })
-            all_wild_breakdown = breakdown
+    # Composition breakdown — applies to EVERY pay row that saw at
+    # least two distinct sorted symbol tuples. Each sub-row carries
+    # its own fires + avg_win so 策划 can map observed multipliers
+    # back to individual paytable entries (e.g. "3× Bar1 + 0 wild"
+    # baseline vs. "2× Bar1 + 1× Diamond1" wild-scaled variant).
+    #
+    # Labels sort non-wild symbols first (by count desc, name asc),
+    # then wilds at the tail, so the baseline variant reads first
+    # and wild-scaled variants are visually grouped below it.
+    #
+    # Long-tail pays (e.g. any-bar groups) get capped at top 10 by
+    # fires + a single aggregate "其他 (N)" row for the remainder,
+    # to keep the UI table readable without hiding information.
+    composition_breakdown: list[dict] | None = None
+    tup_wins = buck.get("symbol_tuple_wins") or {}
+    comp_agg: dict[tuple, dict] = {}
+    for tup, fires_count in buck["symbol_tuples"].items():
+        comp_key = tuple(sorted(tup))
+        entry = comp_agg.setdefault(comp_key, {"fires": 0, "win_total": 0.0})
+        entry["fires"] += fires_count
+        entry["win_total"] += float(tup_wins.get(tup, 0.0) or 0.0)
+    if len(comp_agg) >= 2:
+        sorted_entries = sorted(
+            comp_agg.items(), key=lambda kv: -kv[1]["fires"],
+        )
+        MAX_DISPLAY = 10
+        head, tail = sorted_entries[:MAX_DISPLAY], sorted_entries[MAX_DISPLAY:]
+        breakdown: list[dict] = []
+        for comp_key, agg in head:
+            cnt = Counter(comp_key)
+            non_wilds = [
+                (s, n) for s, n in cnt.items() if s not in wild_set
+            ]
+            wilds = [(s, n) for s, n in cnt.items() if s in wild_set]
+            non_wilds.sort(key=lambda kv: (-kv[1], kv[0]))
+            wilds.sort(key=lambda kv: (-kv[1], kv[0]))
+            parts = [f"{n}\u00d7 {s}" for s, n in non_wilds + wilds]
+            label = " + ".join(parts) if parts else "—"
+            fires_i = int(agg["fires"])
+            win_i = float(agg["win_total"])
+            avg_i = (win_i / fires_i) if fires_i > 0 else 0.0
+            breakdown.append({
+                "composition": dict(cnt),
+                "label": label,
+                "fires": fires_i,
+                "win_total": round(win_i, 2),
+                "avg_win": round(avg_i, 2),
+                "has_wild": bool(wilds),
+            })
+        if tail:
+            tail_fires = sum(int(a["fires"]) for _, a in tail)
+            tail_win = sum(float(a["win_total"]) for _, a in tail)
+            tail_avg = (tail_win / tail_fires) if tail_fires > 0 else 0.0
+            breakdown.append({
+                "composition": None,
+                "label": f"\u5176\u4ed6 {len(tail)} \u79cd\u7ec4\u5408",
+                "fires": tail_fires,
+                "win_total": round(tail_win, 2),
+                "avg_win": round(tail_avg, 2),
+                "has_wild": False,
+                "is_aggregate_tail": True,
+            })
+        composition_breakdown = breakdown
 
     return {
         "match_count": match_count,
@@ -833,8 +852,13 @@ def _build_shape_for_row(
             {"symbol": s, "sig_type": st, "count": c}
             for (s, st), c in sig_counter.most_common(5)
         ],
-        # None when the pay row isn't an all-wild tuple (most rows).
-        "wild_composition_breakdown": all_wild_breakdown,
+        # Full composition breakdown (applies to any pay with ≥2
+        # distinct symbol tuples; None otherwise). Replaces the
+        # earlier ``wild_composition_breakdown`` which was all-wild
+        # only. Retained as the ``wild_composition_breakdown`` alias
+        # for backward compat with older UI checks.
+        "composition_breakdown": composition_breakdown,
+        "wild_composition_breakdown": composition_breakdown,
     }
 
 

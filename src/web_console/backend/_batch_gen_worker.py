@@ -146,7 +146,10 @@ def run_analyzer_job(job: dict) -> dict:
                         subprocess.run(
                             [sys.executable, *argv_ext],
                             capture_output=True, text=True,
-                            timeout=60, check=False, env=env,
+                            # 300s covers the M1-size outlier (~70s
+                            # for composition-breakdown on 384 chunks);
+                            # small machines still return in <30s.
+                            timeout=300, check=False, env=env,
                         )
         except Exception:
             pass  # best-effort post-analyzer hook

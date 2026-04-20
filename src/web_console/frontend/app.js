@@ -3451,15 +3451,16 @@ async function renderPayIdOverview(summary) {
     if (cat === "mixed") return `<span class="pid-cat pid-cat-mixed">${_escHtml(fmt("payIdCatMixed"))}</span>`;
     return `<span class="pid-cat pid-cat-unknown">—</span>`;
   };
-  const confBadge = (conf, downgrade) => {
-    let c = conf || "low";
-    // Wild review needed → downgrade "high" to "medium" visually so
-    // 策划 doesn't over-trust the shape while wild inference is
-    // uncertain. Low/medium stay as-is.
-    if (downgrade && c === "high") c = "medium";
-    if (c === "high") return "🟢";
-    if (c === "medium") return "🟡";
-    return "⚪";
+
+  // Bet denominator for multiplier column. Analyzer writes it under
+  // summary.sampling.bet; fall back to 1000 (the default CLI bet) if
+  // the field is missing from older reports.
+  const bet = Number(((summary || {}).sampling || {}).bet) || 1000;
+  const fmtMult = (avgWin) => {
+    const m = Number(avgWin || 0) / bet;
+    if (!Number.isFinite(m) || m === 0) return "—";
+    // ≥10× → 1 decimal; smaller → 2 decimals for readability.
+    return m >= 10 ? `${m.toFixed(1)}×` : `${m.toFixed(2)}×`;
   };
 
   const rows = payoutRows.map((pr) => {
@@ -3471,17 +3472,10 @@ async function renderPayIdOverview(summary) {
     const symDisplay = symSet.length
       ? `${mc}× ${symSet.map(_escHtml).join(" / ")}`
       : "—";
-    const wildSubRate = Number(sh.wild_substitution_rate || 0);
-    const wildSubBadge = wildSubRate > 0
-      ? `<span class="shape-wild-rate" title="wild 替换率">${(wildSubRate * 100).toFixed(0)}%</span>`
-      : "—";
-    const purity = sh.symbol_purity != null ? `${Math.round(sh.symbol_purity * 100)}%` : "—";
     const cols = Array.isArray(sh.position_cols_covered) ? sh.position_cols_covered : [];
     const colStr = cols.length ? cols.join(",") : "—";
     const lineSign = sh.line_id_sign || "—";
     const lineBadge = _lineIdSignBadge(lineSign, Number(pid));
-    const conf = sh.confidence || (shape ? "low" : null);
-    const confStr = conf ? confBadge(conf, wildReviewNeeded) : "—";
     const notes = Array.isArray(sh.notes) && sh.notes.length
       ? sh.notes.map(_escHtml).join("; ")
       : "";
@@ -3492,48 +3486,50 @@ async function renderPayIdOverview(summary) {
     const firesAttr = firesRaw != null
       ? ` title="rawdata fires: ${firesRaw.toLocaleString()} (script scan; includes bonus-round appearances)"`
       : "";
+    const mainMult = fmtMult(pr.avg_win_when_hit);
     const mainRow =
       `<tr>` +
       `<td>${_escHtml(pid)}</td>` +
       `<td>${categoryBadge(cat)}</td>` +
       `<td${firesAttr}>${fInt(pr.hit_count)}</td>` +
-      `<td>${Number(pr.avg_win_when_hit || 0).toFixed(1)}</td>` +
+      `<td class="payid-mult">${mainMult}</td>` +
       `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>` +
       `<td>${symDisplay}</td>` +
-      `<td>${purity}</td>` +
-      `<td>${wildSubBadge}</td>` +
       `<td>${_escHtml(colStr)}</td>` +
       `<td>${lineBadge}</td>` +
-      `<td>${confStr}</td>` +
       `<td class="shape-notes">${notes}</td>` +
       `</tr>`;
-    // Sub-rows for all-wild pays: wild_composition_breakdown splits
-    // the aggregate "3× <all-wild>" row into one sub-row per distinct
-    // wild multiset (e.g. 2× Diamond1 + 1× Diamond2). Only emitted
-    // when there are ≥2 sub-compositions (single-comp breakdown adds
-    // no info). Each sub-row shows its own fires + avg_win; other
-    // columns are blanked because the structural shape is identical.
-    const breakdown = Array.isArray(sh.wild_composition_breakdown)
-      ? sh.wild_composition_breakdown
-      : null;
+    // Composition sub-rows — every pay_id with ≥2 distinct symbol
+    // tuples emits one sub-row per composition. For Bar/7 pays with
+    // wild substitutions this shows each (base + wild) variant's
+    // own multiplier; for all-wild pays it splits e.g. 3 DD vs
+    // 2DD+1TD vs 1DD+2TD. Trailing "其他 N 种组合" row collapses the
+    // long-tail (script caps display at 10 + 1 aggregate).
+    const breakdown = Array.isArray(sh.composition_breakdown)
+      ? sh.composition_breakdown
+      : (Array.isArray(sh.wild_composition_breakdown)
+        ? sh.wild_composition_breakdown
+        : null);
     let subRows = "";
     if (breakdown && breakdown.length >= 2) {
-      subRows = breakdown.map((b) => (
-        `<tr class="payid-subrow">` +
-        `<td><span class="payid-subrow-indent">↳</span> <span class="payid-subrow-label">${_escHtml(b.label || "")}</span></td>` +
-        `<td>${categoryBadge(cat)}</td>` +
-        `<td>${fInt(b.fires)}</td>` +
-        `<td>${Number(b.avg_win || 0).toFixed(1)}</td>` +
-        `<td class="payid-subrow-muted">—</td>` +
-        `<td class="payid-subrow-muted">—</td>` +
-        `<td class="payid-subrow-muted">—</td>` +
-        `<td class="payid-subrow-muted">—</td>` +
-        `<td class="payid-subrow-muted">—</td>` +
-        `<td class="payid-subrow-muted">—</td>` +
-        `<td class="payid-subrow-muted">—</td>` +
-        `<td class="payid-subrow-muted">—</td>` +
-        `</tr>`
-      )).join("");
+      subRows = breakdown.map((b) => {
+        const subMult = fmtMult(b.avg_win);
+        const isAggregate = Boolean(b.is_aggregate_tail);
+        const clsExtra = isAggregate ? " payid-subrow-aggregate" : "";
+        return (
+          `<tr class="payid-subrow${clsExtra}">` +
+          `<td><span class="payid-subrow-indent">↳</span> <span class="payid-subrow-label">${_escHtml(b.label || "")}</span></td>` +
+          `<td>${categoryBadge(cat)}</td>` +
+          `<td>${fInt(b.fires)}</td>` +
+          `<td class="payid-mult">${subMult}</td>` +
+          `<td class="payid-subrow-muted">—</td>` +
+          `<td class="payid-subrow-muted">—</td>` +
+          `<td class="payid-subrow-muted">—</td>` +
+          `<td class="payid-subrow-muted">—</td>` +
+          `<td class="payid-subrow-muted">—</td>` +
+          `</tr>`
+        );
+      }).join("");
     }
     return mainRow + subRows;
   }).join("");
@@ -3545,14 +3541,11 @@ async function renderPayIdOverview(summary) {
     `<th>${_escHtml(fmt("payIdCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdCatCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdPaidHitsCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdAvgWinCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdMultCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdRtpCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdShapeCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdPurityCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdWildSubCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdColsCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdLineCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdConfCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdNotesCol"))}</th>` +
     `</tr></thead>` +
     `<tbody>${rows}</tbody>` +

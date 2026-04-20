@@ -5453,6 +5453,10 @@ def main() -> int:
             "chunk_spin_times": args.chunk_spin_times,
             "chunk_robot_count": args.chunk_robot_count,
             "batch_concurrency": args.batch_concurrency,
+            # Per-spin bet size used during sampling — needed by the UI
+            # to render "avg_win / bet = multiplier" in the PayID overview
+            # (adding it here saves a /api/runs poke + fallback math).
+            "bet": int(args.bet),
             "chunks": chunks,
             "total_spins": total_spins,
             # Paid vs bonus split (session refactor). total_spins is
