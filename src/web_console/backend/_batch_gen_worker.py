@@ -28,6 +28,10 @@ from pathlib import Path
 # Populated lazily in _pool_worker_init(); cached across jobs within
 # the same worker process so we only pay the analyzer-import cost once.
 _analyzer_mod = None
+# Captured here (rather than read from sys.path[0] at job-time) because
+# third-party imports or analyzer.main() can reorder sys.path — the
+# post-analyzer hook needs a stable anchor to locate scripts/.
+_project_root: str | None = None
 
 
 def _pool_worker_init(root_path: str) -> None:
@@ -38,7 +42,8 @@ def _pool_worker_init(root_path: str) -> None:
     the cached module reference — saves ~800ms per job vs. repeated
     subprocess + import.
     """
-    global _analyzer_mod
+    global _analyzer_mod, _project_root
+    _project_root = root_path
     if root_path not in sys.path:
         sys.path.insert(0, root_path)
     import fresh_slotlab.player_impact_analyzer as _mod
@@ -125,37 +130,87 @@ def run_analyzer_job(job: dict) -> dict:
         # tests use it to keep the batch-gen tight deadline (~10s).
         # Production leaves it unset so PayID 总览 / classifier panels
         # stay in sync with every fresh report.
+        hook_results: list[dict] = []
         try:
             import os as _os
-            if _os.environ.get("SLOT_SKIP_AUTO_INFER") != "1":
+            if _os.environ.get("SLOT_SKIP_AUTO_INFER") == "1":
+                hook_results.append({"skip": "env_SLOT_SKIP_AUTO_INFER"})
+            else:
                 import subprocess
                 chunk_dir = Path(job["chunk_dir"])
-                if chunk_dir.is_dir():
+                if not chunk_dir.is_dir():
+                    hook_results.append({
+                        "skip": "chunk_dir_missing",
+                        "chunk_dir": str(chunk_dir),
+                    })
+                else:
                     rawdata_root = chunk_dir.parent.parent
                     env = dict(_os.environ)
                     env.setdefault("SLOT_RAWDATA_ROOT", str(rawdata_root))
-                    script_root = Path(sys.path[0]) if sys.path else Path(".")
-                    for argv_ext in (
-                        [str(script_root / "scripts" / "infer_paytable.py"),
-                         "--machine", str(machine), "--mode", str(mode)],
-                        [str(script_root / "scripts" / "verify_machine_labels.py"),
-                         "--machines", str(machine), "--mode", str(mode)],
+                    # Use the root captured in the pool initializer —
+                    # reading sys.path[0] at job-time is fragile because
+                    # analyzer.main() / third-party imports can reorder
+                    # sys.path. Fall back to CWD only if init somehow
+                    # didn't run (shouldn't happen in the pool path).
+                    script_root = (
+                        Path(_project_root) if _project_root else Path(".")
+                    )
+                    # Record the resolution context once per item so
+                    # operators can distinguish "script_root pointed at
+                    # the wrong dir" from "subprocess hit a real error."
+                    hook_results.append({
+                        "context": {
+                            "script_root": str(script_root),
+                            "project_root": _project_root,
+                            "sys_executable": sys.executable,
+                            "sys_path_0": sys.path[0] if sys.path else None,
+                            "rawdata_root": str(rawdata_root),
+                        },
+                    })
+                    for name, argv_ext in (
+                        ("paytable_shape", [
+                            str(script_root / "scripts" / "infer_paytable.py"),
+                            "--machine", str(machine), "--mode", str(mode),
+                        ]),
+                        ("classifier", [
+                            str(script_root / "scripts" / "verify_machine_labels.py"),
+                            "--machines", str(machine), "--mode", str(mode),
+                        ]),
                     ):
                         if not Path(argv_ext[0]).exists():
+                            hook_results.append({
+                                "hook": name,
+                                "skip": "script_missing",
+                                "path": argv_ext[0],
+                            })
                             continue
-                        subprocess.run(
-                            [sys.executable, *argv_ext],
-                            capture_output=True, text=True,
-                            # 300s covers the M1-size outlier (~70s
-                            # for composition-breakdown on 384 chunks);
-                            # small machines still return in <30s.
-                            timeout=300, check=False, env=env,
-                        )
-        except Exception:
-            pass  # best-effort post-analyzer hook
+                        try:
+                            proc = subprocess.run(
+                                [sys.executable, *argv_ext],
+                                capture_output=True, text=True,
+                                # 300s covers the M1-size outlier
+                                # (~70s for composition-breakdown on
+                                # 384 chunks); small machines <30s.
+                                timeout=300, check=False, env=env,
+                            )
+                            hook_results.append({
+                                "hook": name,
+                                "rc": proc.returncode,
+                                "stderr_tail": (proc.stderr or "")[-200:],
+                            })
+                        except subprocess.TimeoutExpired:
+                            hook_results.append({"hook": name, "timeout": True})
+                        except Exception as exc:  # noqa: BLE001
+                            hook_results.append({
+                                "hook": name,
+                                "err": f"{type(exc).__name__}: {exc}",
+                            })
+        except Exception as exc:  # noqa: BLE001
+            hook_results.append({"outer_err": f"{type(exc).__name__}: {exc}"})
         return {
             "machine": machine, "mode": mode, "ok": True,
             "elapsed_s": elapsed,
+            "post_hook": hook_results,
         }
     except SystemExit as exc:
         # analyzer raises SystemExit on argparse / validation failures —

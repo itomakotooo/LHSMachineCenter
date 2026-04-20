@@ -6000,6 +6000,20 @@ def create_app(
         report_version = prepared["report_version"]
         chunk_count = prepared["chunk_count"]
 
+        # Persist the batch worker's auto-inference post_hook diagnostic
+        # (paytable_shape + classifier rc / skip reasons) so we can trace
+        # silent hook failures without spinning up a tracing framework.
+        # Mode 7 regression (2026-04-20): all 252 items ran but produced
+        # zero configs/paytables/*_mode7.json — without persisted hook
+        # results we had no way to tell whether the subprocess ran,
+        # skipped, or errored. File is tiny (<1KB), best-effort write.
+        post_hook = worker_result.get("post_hook")
+        if post_hook is not None:
+            try:
+                write_json(output_dir / "_post_hook.json", post_hook)
+            except Exception:
+                pass
+
         if not worker_result.get("ok"):
             err = str(worker_result.get("error") or "worker failed")
             if store.get_run(run_id):
