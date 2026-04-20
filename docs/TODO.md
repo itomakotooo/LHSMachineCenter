@@ -56,6 +56,102 @@ This file tracks executable next steps for the current phase.
 
 ## Done Recently
 
+- [x] **PayID 总览合并 + 破产分析稳定化 + 采样基建 session** (2026-04-20
+      round 3, 10 commits 6defb68 → ecc7c92):
+      - **Pay ID 总览**：形状推断 + Pay ID 深度 合并成一张表，策划
+        一行读懂每个 pay_id 的 frequency + 倍率 + shape + category
+        + composition 细分。把「wild 替换 / 纯度 / 信度」三列都
+        删了（composition sub-rows 信息更具体）。
+      - **倍率列**（× bet）替代「均赢」列；分母来自新加的
+        `summary.sampling.bet` 字段。
+      - **Composition breakdown 通用化**：每 pay_id 按 symbol
+        multiset 细分，每子行带 fires + avg_win + win_total。
+        all-wild pay（pay_id 2、3）拆成具体 wild 组合（e.g.
+        `2× Diamond1 + 1× Diamond2` = 240×，`1× Diamond1 + 2×
+        Diamond2` = 360×），Bar/7 pay 拆成 base + wild-scaled
+        变体（e.g. `3× Bar1` 10× base、`+1 DD` 20× 等）。
+        scripts/infer_paytable.py 加 `symbol_tuple_wins` per-tuple
+        win aggregator + `composition_breakdown` 输出（top 10 +
+        其他 N 种组合 aggregate row）。
+      - **折叠/展开**：子行默认全收起；click main 行的 `▸` 或
+        整行 toggle 单 pay_id；「展开全部 / 收起全部」两键在
+        表格顶部。Client-side state（refresh 归零）。
+      - **占比列**：每子行显示该 composition 的
+        `win_total / parent win_total %` — 策划直接看到
+        「这 pay 的 RTP 贡献里 base vs wild 各占多少」。
+      - **Paytable 交叉验证**：新增 `paytable/` 文件夹
+        （gitignored? 不，tracked — 策划导出的设计文档），
+        `Paytable-M1.md` 当 ground truth，M1 paytable 13 条
+        设计 pay 全部对上 analyzer 观察值（误差 < 5%）。
+        注意 `3 wild3x = 1000×` 是 grand jackpot，不走普通 spin，
+        分析器若观察到要视为异常。
+      - **Auto-trigger hook 稳定化**：M1 infer_paytable 实测
+        70s，旧 60s timeout 杀 subprocess。修：
+        `_run_generate_report` 把 hook 扔后台 daemon 线程（不
+        占 ops mutex）+ subprocess timeout 60→300s。测试侧
+        `SLOT_SKIP_AUTO_INFER=1` autouse fixture 保持快。
+      - **verify_machine_labels.py**：per-machine 文件
+        （`dev_reports/_classify/{m}_mode{n}.json`）取代单一
+        clobber 的 `all_verdicts_mode{n}.json`（后者仍在
+        multi-machine 扫描时写）。backend classifier 端点
+        优先读 per-machine，fallback combined。避免并发写 race。
+      - **Freshness 行**：当前载入机台面板底部显示
+        `Analyzer: ✓ 当前 · Rawdata: ✓ 当前`（或 ⚠ 过期 /
+        · 未标记），基于 `state.currentVersions` 和 run 的
+        md5 / analyzer_version 对比。
+      - **PayID 类型标签**：`payout_ids_top20[*]` 行带
+        `spin_type_category` (paid/bonus/mixed) +
+        `dominant_spin_type` + `spin_type_breakdown` 三个
+        字段（analyzer 新增 per-pay_id × spin_type tally）。
+      - **支付线深度双强化**：line_id `-1` 板面 scatter /
+        `-2` 特殊 scatter legend badge + top_symbols 源徽章
+        (R=RewardLastNode 权威 / H=启发式).
+      - **支付线结构分类重排**：feature-mode delta 首位 →
+        channel split → cross-mode label table。
+      - **`/console/` + `/console` 显式路由**替换 StaticFiles
+        mount，修 `{{ASSET_HASH}}` 占位符未替换导致旧 JS 被
+        抱死的顽疾。
+      - 436 pytest + 133 node:test 绿。
+
+- [x] **机台管理采样基建 + rawdata 锁 session** (2026-04-20 round 3
+      tail, 3 commits 82a17c7 → ecc7c92):
+      - **Per-(machine, mode) operator lock 注册表**：
+        `configs/rawdata_locks.json`（atomic write），
+        `POST/DELETE /api/rawdata/{m}/mode/{mode}/lock` 端点
+        + `GET /api/rawdata/{m}` 返回 `locked` 字段。
+      - **In-memory `_IN_USE_MODES`** 集合追踪正在采样/分析的
+        (machine, mode) pair；acquire 在 generate-report /
+        batch / sampling 各入口，release 在 finally 早于
+        semaphore 以便 waiter 立即见到空闲。
+      - **`_auto_cleanup_for_space`** 跨全 fleet 按 oldest-mtime
+        删 stale + deletable chunks 到 free ≥ target；**跳过
+        locked + in-use** pair；报告 `skipped_locked /
+        skipped_in_use`。
+      - **Disk-pressure 阻塞等待**替代旧的「`< 2 GB → cancel
+        whole batch`」死胡同。env 变量：
+        `SLOT_DISK_LOW_WATER_GB=5` / `TARGET_FREE_GB=10` /
+        `HARD_STOP_GB=2` / `WAIT_RETRIES=30`。低于 low-water
+        时跑 auto-cleanup → 重试 → wait 10s → 重试；只失败
+        当前 item 不杀整 batch。
+      - **Fix：lock 跨 auto-delete 路径一致**（M1|1 regression
+        ecc7c92）：`check_rawdata_status(auto_delete_mismatched
+        =True)` 之前没查 lock 注册表，结果 M1 上旧 md5 era 的
+        ~百万 spin 样本在 batch 触发时被清空。补上 lock 检查。
+      - **采样 UI 批量栏修复**（82a17c7）：`#sampleCancelBtn`
+        在 `#batchActionBar` 里，之前可见性只看 selection，
+        sampling active 时若清空选择会连带隐藏 cancel 键。
+        改成 `hasSelection || samplingActive`。
+      - **Orphan report 删除修复**（239b166）：`DELETE
+        /api/reports/{m}/{n}/{v}` 新端点替代 `DELETE
+        /api/runs/{rid}` 路径处理 `run_id` 在 index.json 但
+        DB row 已被 aggressive cleanup 删掉的 orphan 场景。
+      - **按大厅 view 重做**（c7363ca + 9a3d4b0）：
+        `localMapMachineCellsJson` 默认顺序（~252 cells）+
+        `gmMapMachineOrderJson` activity overrides；
+        `selectType === 2` 的 17 台 club machine 单独分组。
+        去除了假大厅（G6/G10 regex bucket 是 Unity asset
+        bundle 名，不是真大厅）。
+
 - [x] **调试机台 KPI 重构 + rawdata-replay 破产分析 session** (2026-04-20,
       5 commits 54836d4 → 5368979):
       - **KPI grid 重写**：删「规则状态」卡、「x500 破产率」卡；波动性
