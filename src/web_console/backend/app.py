@@ -516,7 +516,21 @@ def check_rawdata_status(
         else:
             mismatched.append(chunk_path)
 
-    if auto_delete_mismatched and mismatched:
+    # Operator-lock check: if (machine, mode) is locked, NEVER
+    # auto-delete its chunks — even when the upstream MD5 has drifted.
+    # The lock is a promise to the operator that this bucket is
+    # preserved until they unlock it. Stale chunks are still reported
+    # via ``mismatch_chunks`` so the UI can flag "locked + stale" and
+    # let the operator decide whether to unlock + re-sample, but no
+    # file is removed here.
+    mc_for_lock = machines_config if machines_config is not None else MACHINES_CONFIG
+    try:
+        _locked_set = _load_rawdata_locks(_rawdata_locks_path(mc_for_lock))
+    except Exception:  # noqa: BLE001
+        _locked_set = set()
+    is_locked = (str(machine), int(mode)) in _locked_set
+
+    if auto_delete_mismatched and mismatched and not is_locked:
         for p in mismatched:
             try:
                 p.unlink()
@@ -787,10 +801,33 @@ def delete_rawdata(
     else:
         modes = [mode]
 
+    # Operator-lock carve-out: in non-force mode, locked (machine, mode)
+    # pairs are preserved even against a user-initiated "清理" button.
+    # Rationale: the lock is the operator's explicit "这个别动" signal;
+    # the tiered-delete button is normally the auto-cleanup equivalent
+    # the user can trigger manually, so it should honor the same
+    # carve-outs. Force mode (the "完全删除" button) skips this
+    # entirely — that's the "I know what I'm doing" escape hatch.
+    try:
+        _locks = _load_rawdata_locks(_rawdata_locks_path(mc))
+    except Exception:  # noqa: BLE001
+        _locks = set()
+
     deleted_chunks = 0
     kept_chunks = 0
+    skipped_locked_modes: list[int] = []
     total_deletable_bytes = 0
     for m in modes:
+        if (machine, int(m)) in _locks:
+            # Surface as "kept" + record skipped mode so the UI can
+            # explain why nothing happened for these.
+            skipped_locked_modes.append(int(m))
+            # Count the locked chunks against kept_chunks so the
+            # response still reflects the on-disk reality.
+            mode_dir = root / machine / f"mode_{m}"
+            if mode_dir.is_dir():
+                kept_chunks += sum(1 for _ in mode_dir.glob("chunk_*.json"))
+            continue
         cls = _classify_chunks(machine, m, root, mc, min_retention_spins)
         kept_chunks += len(cls["kept"])
         for entry in cls["deletable"] + cls["stale"]:
@@ -819,6 +856,7 @@ def delete_rawdata(
         "deleted_chunks": deleted_chunks,
         "kept_chunks": kept_chunks,
         "deleted_bytes": total_deletable_bytes,
+        "skipped_locked_modes": skipped_locked_modes,
     }
 
 

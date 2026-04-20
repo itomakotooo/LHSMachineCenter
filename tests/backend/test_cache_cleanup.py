@@ -205,3 +205,202 @@ def test_cleanup_reclaims_stale_md5_chunks_first(
         for p in stale_paths:
             assert not p.exists()
         assert sum(1 for _ in mode_dir.glob("chunk_*.json")) == 10
+
+
+def test_lock_survives_md5_drift_in_check_rawdata_status(
+    tmp_state_dir, tmp_reports, tmp_cache, tmp_rawdata, fake_analyzer,
+    tmp_path, monkeypatch,
+):
+    """REGRESSION: User reported M1|1 losing millions of spins of
+    locked chunks across a full batch (2026-04-20). Root cause:
+    ``start_batch`` calls ``check_rawdata_status(auto_delete_mismatched
+    =True)`` for every item, and that code path
+    unlinked any chunk whose envelope md5 didn't match current upstream
+    — without consulting the lock registry. A machine whose config md5
+    had drifted historically (old chunks carrying OLD md5, newer chunks
+    carrying CUR md5) saw ALL the old ones wiped the first time a
+    full-fleet batch ran, even if the operator had locked that
+    (machine, mode).
+
+    This test locks M1|1, seeds a mix of stale + current chunks (the
+    exact pattern that bit M1 in production), and asserts that
+    ``check_rawdata_status(auto_delete_mismatched=True)`` leaves
+    every chunk on disk. The fix is the ``is_locked`` guard added
+    inside the function; without it, this test fails with the old
+    chunks gone."""
+    monkeypatch.setattr(
+        "src.web_console.backend.app._default_popen_factory",
+        lambda *a, **kw: None,
+    )
+    monkeypatch.setattr(
+        "src.web_console.backend.app._terminate_pid_if_running",
+        lambda pid: True,
+    )
+    mc = tmp_path / "machines.json"
+    mc.write_text(json.dumps({
+        "machines": [{
+            "machine": "M1", "modes": [1],
+            "configSummaryMd5": "CUR_CFG",
+            "codeSummaryMd5": "CUR_CODE",
+        }],
+    }), encoding="utf-8")
+
+    mode_dir = tmp_rawdata / "M1" / "mode_1"
+    # Historical old-md5 chunks (the "几百万 spins" the user lost)
+    stale_paths = []
+    for i in range(1, 6):
+        stale_paths.append(_write_chunk(
+            mode_dir, i, config_md5="OLD_CFG", code_md5="OLD_CODE",
+            spin_times=10_000,
+        ))
+    # Recent chunks with current md5 (these survived in prod too
+    # — it's the OLD-md5 chunks that got wiped).
+    current_paths = []
+    for i in range(6, 9):
+        current_paths.append(_write_chunk(
+            mode_dir, i, config_md5="CUR_CFG", code_md5="CUR_CODE",
+            spin_times=10_000,
+        ))
+
+    # Write the lock registry BEFORE the batch-like call. Production
+    # bug: lock file was consulted by _auto_cleanup_for_space but NOT
+    # by check_rawdata_status, so auto_delete_mismatched bulldozed the
+    # stale chunks regardless.
+    locks_path = mc.parent / "rawdata_locks.json"
+    locks_path.write_text(json.dumps({
+        "locked": ["M1|1"], "updated_at": "2026-04-20T05:19:41Z",
+    }), encoding="utf-8")
+
+    # Invalidate the module-level lock cache so our freshly-written
+    # file is picked up. The cache keys on mtime_ns; a same-second
+    # write with a cold module can return an empty set otherwise.
+    import src.web_console.backend.app as app_mod
+    app_mod._LOCK_CACHE["mtime"] = 0
+    app_mod._LOCK_CACHE["data"] = None
+
+    from src.web_console.backend.app import check_rawdata_status
+    result = check_rawdata_status(
+        "M1", 1,
+        rawdata_root=tmp_rawdata, machines_config=mc,
+        auto_delete_mismatched=True,
+    )
+
+    # All 5 OLD chunks are still on disk — lock held the line.
+    for p in stale_paths:
+        assert p.exists(), f"LOCKED OLD-md5 chunk was deleted: {p.name}"
+    for p in current_paths:
+        assert p.exists(), f"current chunk vanished somehow: {p.name}"
+    # Status still reports the stale chunks as mismatched so the UI
+    # can flag "已锁 + stale" and nudge the operator to decide.
+    assert result["mismatch_chunks"] == 5
+    assert result["usable_chunks"] == 3
+    # deleted_paths should be empty — nothing was removed.
+    assert result["deleted_paths"] == []
+
+
+def test_delete_rawdata_respects_lock_without_force(
+    tmp_rawdata, tmp_path, monkeypatch,
+):
+    """The /api/rawdata/{m} DELETE endpoint (default, non-force) goes
+    through delete_rawdata(force=False) which runs the classifier.
+    Locked (machine, mode) should be preserved; force=True overrides.
+
+    Paired with the above test — together they ensure both the
+    auto-delete path (check_rawdata_status) and the manual
+    classifier-delete path (delete_rawdata) honor the lock uniformly.
+    """
+    mc = tmp_path / "machines.json"
+    mc.write_text(json.dumps({
+        "machines": [{
+            "machine": "M1", "modes": [1],
+            "configSummaryMd5": "CUR_CFG",
+            "codeSummaryMd5": "CUR_CODE",
+        }],
+    }), encoding="utf-8")
+    mode_dir = tmp_rawdata / "M1" / "mode_1"
+    # 15 chunks × 10k spins = 150k, default retention 100k → 10 kept,
+    # 5 deletable. Without a lock, delete_rawdata(force=False) would
+    # remove the 5 deletable ones.
+    base_mtime = 1_700_000_000
+    paths = []
+    for i in range(1, 16):
+        paths.append(_write_chunk(
+            mode_dir, i, config_md5="CUR_CFG", code_md5="CUR_CODE",
+            spin_times=10_000, mtime=base_mtime + i,
+        ))
+    # Lock M1|1
+    locks_path = mc.parent / "rawdata_locks.json"
+    locks_path.write_text(json.dumps({
+        "locked": ["M1|1"], "updated_at": "2026-04-20T05:19:41Z",
+    }), encoding="utf-8")
+
+    import src.web_console.backend.app as app_mod
+    app_mod._LOCK_CACHE["mtime"] = 0
+    app_mod._LOCK_CACHE["data"] = None
+
+    from src.web_console.backend.app import delete_rawdata
+    # force=False: lock MUST hold → nothing deleted
+    result = delete_rawdata(
+        "M1", 1, rawdata_root=tmp_rawdata, machines_config=mc, force=False,
+    )
+    assert result["ok"] is True
+    assert result["deleted_chunks"] == 0
+    assert result["kept_chunks"] == 15  # all survive under the lock
+    assert 1 in result["skipped_locked_modes"]
+    for p in paths:
+        assert p.exists()
+
+    # force=True: user explicitly overrides → chunks removed. The
+    # "完全删除" button is the escape hatch; lock doesn't block it.
+    result2 = delete_rawdata(
+        "M1", 1, rawdata_root=tmp_rawdata, machines_config=mc, force=True,
+    )
+    assert result2["ok"] is True
+    assert result2["forced"] is True
+    assert not mode_dir.exists()
+
+
+def test_unlocked_md5_drift_still_deletes(
+    tmp_state_dir, tmp_reports, tmp_cache, tmp_rawdata, fake_analyzer,
+    tmp_path, monkeypatch,
+):
+    """Inverse of the above: without a lock, the original
+    auto_delete_mismatched semantics still hold — stale chunks are
+    reclaimed. This prevents the fix from accidentally turning into
+    "never auto-delete mismatched chunks anywhere"."""
+    monkeypatch.setattr(
+        "src.web_console.backend.app._default_popen_factory",
+        lambda *a, **kw: None,
+    )
+    monkeypatch.setattr(
+        "src.web_console.backend.app._terminate_pid_if_running",
+        lambda pid: True,
+    )
+    mc = tmp_path / "machines.json"
+    mc.write_text(json.dumps({
+        "machines": [{
+            "machine": "M1", "modes": [1],
+            "configSummaryMd5": "CUR_CFG",
+            "codeSummaryMd5": "CUR_CODE",
+        }],
+    }), encoding="utf-8")
+    mode_dir = tmp_rawdata / "M1" / "mode_1"
+    stale_paths = [
+        _write_chunk(mode_dir, i, config_md5="OLD", code_md5="OLD", spin_times=10_000)
+        for i in range(1, 4)
+    ]
+
+    # No lock file written — pure "drifted chunks, no operator carve-out".
+    import src.web_console.backend.app as app_mod
+    app_mod._LOCK_CACHE["mtime"] = 0
+    app_mod._LOCK_CACHE["data"] = None
+
+    from src.web_console.backend.app import check_rawdata_status
+    result = check_rawdata_status(
+        "M1", 1,
+        rawdata_root=tmp_rawdata, machines_config=mc,
+        auto_delete_mismatched=True,
+    )
+    for p in stale_paths:
+        assert not p.exists(), f"unlocked stale chunk survived: {p.name}"
+    assert len(result["deleted_paths"]) == 3
