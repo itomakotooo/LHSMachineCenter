@@ -67,13 +67,29 @@ This file tracks executable next steps for the current phase.
         `upstream_feature_breakdown` 作为 per-feature 权威来源（前者
         在 double-count 机台上 sum 可能 >100%）。
       - **Batch-worker post_hook 可观测**（7e00486）：
-        `_batch_gen_worker.py` 里 post-analyzer hook 之前失败时没留
-        trace，batch log 只看到"完成"但 `infer_paytable` 实际没跑。
-        修：hook stderr/stdout 落盘到
-        `{output_dir}/post_hook.log`，rc !=0 时上 batch event
-        ("paytable inference 失败 rc=N")。同时把 `script_root`
-        从 `Path.cwd()` 改成 relative-to-module — 批量 subprocess
-        在 pool worker 里 cwd 可能漂，以前偶发"找不到脚本"。
+        mode 7 全量 batch (252 items) 跑完后发现
+        `configs/paytables/*_mode7.json` 一个都没生成 —— analyzer
+        summary 都在，但 PayID 总览面板的 shape/covered/composition
+        子行全空。根因: `_batch_gen_worker.py` 的 post-analyzer hook
+        （跑 `infer_paytable.py` + `verify_machine_labels.py`）有两
+        个 silent-failure 缺陷。(1) `script_root` 从 `sys.path[0]`
+        读 —— analyzer.main() 导入链会 reorder sys.path，job 执行时
+        `sys.path[0]` 可能指向某个 site-packages dir，`scripts/infer_paytable.py`
+        路径 check 失败被当成 "script_missing" 跳过。(2) 旧代码
+        `except Exception: pass` 吞掉所有错，失败无 trace。修：
+        `_pool_worker_init` 把 root path 存成模块全局 `_project_root`，
+        hook 用这个稳定锚点解析 script 路径；每个 hook 结果（skip
+        原因 / subprocess rc + stderr_tail / timeout / exception）
+        append 到 `post_hook` list，并由 `_finalize_batch_gen_item`
+        落盘到 `{output_dir}/_post_hook.json`（列表首项是 context
+        block: script_root / project_root / sys.executable /
+        sys_path_0 / rawdata_root）。5 regression tests 在
+        `tests/backend/test_batch_worker_post_hook.py` 锁定契约
+        （env 短路、script_missing 记录、context 固定、chunk_dir
+        race、initializer 捕获 root）。现有 252 个 mode 7 item 要
+        跑 `python scripts/infer_paytable.py --all --mode 7` +
+        `python scripts/verify_machine_labels.py --all --mode 7`
+        补 paytable JSON，不需要重跑 analyzer。
       - **按 RTP tab flat 化 + 可选 mode**（fe6f9d2）：
         去掉 `< 90% / 90–95% / 95–100% / 100–200% / 200–400% / > 400%`
         七档数字分组，改成单列 flat RTP 降序排。tab 下面多条 mode
