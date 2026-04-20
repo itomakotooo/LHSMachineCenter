@@ -82,3 +82,6 @@ configs/machines_static.json
 # protect specific (machine, mode) chunks from disk-pressure
 # auto-cleanup. Not versioned (operator preference, not config).
 configs/rawdata_locks.json
+
+# slot_designer sim outputs (rawdata-format chunks, regenerable)
+slot_designer/out/

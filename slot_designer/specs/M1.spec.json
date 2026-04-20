@@ -1,0 +1,82 @@
+{
+  "machine": "M1",
+  "mode": 1,
+  "schema_version": 1,
+  "_notes": [
+    "规则全部从 rawdata/M1/mode_1/ 110k rounds 反推锁定（见 tests/fixtures/M1_field_analysis.md）。",
+    "paytable/Paytable-M1.md 有两条 md 笔误：3 Bar1 记为 20× 实际 10×，3 Bar3 记为 10× 实际 20×。此 spec 按 rawdata 为准。",
+    "Diamond1 = wild2x (multiplier=2)，Diamond2 = wild3x (multiplier=3)，由 pay_id 9 (3 Bar1) 的全部 wild-stacked 变体精确反推确认。",
+    "grand jackpot (3 Diamond2 = 1000×) 标 rtp_excluded=true；正常采样里期望 P≈9.7e-7，策划文档注明不通过普通 spin 产生。"
+  ],
+
+  "grid": {
+    "cols": 3,
+    "rows": 3,
+    "paylines": [
+      {
+        "line_id": 1,
+        "positions": [[0, 1], [1, 1], [2, 1]]
+      }
+    ]
+  },
+
+  "symbols": {
+    "Blank":    { "kind": "filler" },
+    "Cherry":   { "kind": "cherry_special" },
+    "Bar1":     { "kind": "regular" },
+    "Bar2":     { "kind": "regular" },
+    "Bar3":     { "kind": "regular" },
+    "Seven1":   { "kind": "regular" },
+    "Seven2":   { "kind": "regular" },
+    "Diamond1": { "kind": "wild", "multiplier": 2 },
+    "Diamond2": { "kind": "wild", "multiplier": 3 }
+  },
+
+  "pays": [
+    { "pay_id": 14, "kind": "cherry_count", "count": 1, "multiplier": 1 },
+    { "pay_id": 13, "kind": "cherry_count", "count": 2, "multiplier": 2 },
+    { "pay_id": 12, "kind": "cherry_count", "count": 3, "multiplier": 10 },
+
+    { "pay_id": 2,  "kind": "pure_wild", "multiset": { "Diamond1": 3 }, "multiplier": 500 },
+    { "pay_id": 3,  "kind": "pure_wild_group",
+      "alternatives": [
+        { "multiset": { "Diamond1": 2, "Diamond2": 1 }, "multiplier": 240 },
+        { "multiset": { "Diamond1": 1, "Diamond2": 2 }, "multiplier": 360 }
+      ]
+    },
+    { "pay_id": 4,  "kind": "pure_wild", "multiset": { "Diamond2": 3 }, "multiplier": 1000,
+      "grand_jackpot": true, "rtp_excluded": true },
+
+    { "pay_id": 5,  "kind": "line_3_same", "symbol": "Seven2", "multiplier": 50 },
+    { "pay_id": 6,  "kind": "line_3_same", "symbol": "Seven1", "multiplier": 40 },
+    { "pay_id": 7,  "kind": "line_3_same", "symbol": "Bar3",   "multiplier": 20 },
+    { "pay_id": 8,  "kind": "line_3_same", "symbol": "Bar2",   "multiplier": 15 },
+    { "pay_id": 9,  "kind": "line_3_same", "symbol": "Bar1",   "multiplier": 10 },
+
+    { "pay_id": 10, "kind": "line_3_group", "group": ["Seven1", "Seven2"], "multiplier": 25 },
+    { "pay_id": 11, "kind": "line_3_group", "group": ["Bar1", "Bar2", "Bar3"], "multiplier": 5 }
+  ],
+
+  "evaluation_order": [
+    "cherry_count",
+    "pure_wild",
+    "pure_wild_group",
+    "line_3_same",
+    "line_3_group"
+  ],
+
+  "spin_types": {
+    "1": {
+      "kind": "paid",
+      "cost_per_spin": 1000,
+      "bet_amount": 1000,
+      "reel_set": "default"
+    }
+  },
+
+  "features": [],
+
+  "emit_fields": {
+    "extra_round_fields": {}
+  }
+}
