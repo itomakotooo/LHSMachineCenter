@@ -488,11 +488,16 @@ Per-mode status. Each mode entry includes:
 
 Delete rawdata for a machine (all modes or specific mode).
 
-- `force=false` (default) — respects the retention quota: only
-  deletable + stale chunks are removed, kept baseline survives.
-- `force=true` — nuclear. UI gates this behind a "DELETE" token prompt.
+- `force=false` (default) — respects the retention quota AND the
+  operator lock registry: only deletable + stale chunks on unlocked
+  (machine, mode) pairs are removed. Locked pairs are counted as
+  kept and surface via `skipped_locked_modes`.
+- `force=true` — nuclear. UI gates this behind a "DELETE" token
+  prompt. Lock does NOT protect against force — the "完全删除" button
+  is the operator's explicit escape hatch.
 
-Response: `{ok, deleted, forced, deleted_chunks, kept_chunks, deleted_bytes}`.
+Response: `{ok, deleted, forced, deleted_chunks, kept_chunks,
+deleted_bytes, skipped_locked_modes: [int, ...]}`.
 
 ### `POST /api/rawdata/{machine}/mode/{mode}/lock`
 

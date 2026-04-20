@@ -56,6 +56,34 @@ This file tracks executable next steps for the current phase.
 
 ## Done Recently
 
+- [x] **M112 RTP 修正 + batch-worker 稳定化 + RTP tab flat 排序**
+      (2026-04-20 round 4, 3 commits 403adfc → fe6f9d2):
+      - **M112 RTP inflation fix**（403adfc）：双路径污染
+        1) `CostCredits` 为 null 时 analyzer 把 bet 当 cost 近似，低估
+        分母 → RTP 虚高。2) `FinalMinigame` round 和 trigger spin 的
+        win 在 session-centric 归因里被双重计入。修完 M112 RTP 从
+        139.69% 降到 96.99%，和 server `upstream_feature_breakdown`
+        的 96.99pp 精确对齐。summary.rtp 字段加了注释指向
+        `upstream_feature_breakdown` 作为 per-feature 权威来源（前者
+        在 double-count 机台上 sum 可能 >100%）。
+      - **Batch-worker post_hook 可观测**（7e00486）：
+        `_batch_gen_worker.py` 里 post-analyzer hook 之前失败时没留
+        trace，batch log 只看到"完成"但 `infer_paytable` 实际没跑。
+        修：hook stderr/stdout 落盘到
+        `{output_dir}/post_hook.log`，rc !=0 时上 batch event
+        ("paytable inference 失败 rc=N")。同时把 `script_root`
+        从 `Path.cwd()` 改成 relative-to-module — 批量 subprocess
+        在 pool worker 里 cwd 可能漂，以前偶发"找不到脚本"。
+      - **按 RTP tab flat 化 + 可选 mode**（fe6f9d2）：
+        去掉 `< 90% / 90–95% / 95–100% / 100–200% / 200–400% / > 400%`
+        七档数字分组，改成单列 flat RTP 降序排。tab 下面多条 mode
+        选择器 `auto | mode 1 | mode 2 | mode 5 | mode 7`（全舰队
+        summary 的 mode 并集，数字升序），点击立即按该 mode 的
+        `rtp_pct` 重排。`auto` 保留旧 picker（优先 mode 2 否则最小
+        mode），老书签不破。没有该 mode 数据的机台永远沉底（↑↓
+        反转也不上浮）。`state.catalogRtpMode` 新字段；
+        `renderRtpModeBar` 仿 `renderHallsRefreshBar` 模式。
+
 - [x] **PayID 总览合并 + 破产分析稳定化 + 采样基建 session** (2026-04-20
       round 3, 10 commits 6defb68 → ecc7c92):
       - **Pay ID 总览**：形状推断 + Pay ID 深度 合并成一张表，策划
