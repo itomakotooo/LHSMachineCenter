@@ -255,6 +255,15 @@ class RunCreateRequest(BaseModel):
     server_id: str = Field(default="")
     from_cache_dir: str = Field(default="")  # if set, analyzer uses --from-cache
     resume_from_cache_dir: str = Field(default="")  # if set, analyzer uses --resume-from-cache
+    # Upstream md5 pair for the analyzer's resume-read filter. When
+    # both set (from machines.json at batch-start time), the analyzer
+    # only merges stats from chunks whose envelope md5 matches; other
+    # chunks stay on disk but are skipped. Prevents mixed-md5 stat
+    # pollution on md5-drift while still persisting new chunks to
+    # rawdata/. Empty strings = no filter (back-compat for callers
+    # that don't pass these).
+    upstream_config_md5: str = Field(default="")
+    upstream_code_md5: str = Field(default="")
     # target_halfwidth_pp == 0 encodes the "fuzzy" tier (no CI stop;
     # backend resolves max_chunks to target ~1M spins). Any positive
     # value is a normal CI half-width in percentage points.
@@ -2851,21 +2860,23 @@ class BatchRunManager:
             target_pp = float(req.target_halfwidth_pp or 0)
             cache_usable = raw_status["usable_chunks"] > 0
             reuse_cache = False  # kept for wire-format stability; unused
-            # Resume is safe when the dir has NO historical-md5 chunks:
-            #   - empty dir:      analyzer starts at chunk_0001, writes
-            #                     to rawdata/, chunks persist (fixes the
-            #                     2026-04-21 report: "first-time sample
-            #                     never landed in rawdata" because the
-            #                     old resume_cache=cache_usable predicate
-            #                     routed fresh samples to cache/<run_id>/
-            #                     scratch, which got cleaned up post-run)
-            #   - all-current-md5: analyzer reads them + appends new
-            #                     chunks to rawdata/ (existing behavior)
-            # Md5-drift case (mismatch_chunks > 0): fall back to scratch
-            # so historical chunks don't pollute the analyzer's running
-            # stats during the new sample. Operator can still view/delete
-            # the historical chunks via the rwtree's "历史" cell.
-            resume_cache = raw_status["mismatch_chunks"] == 0
+            # 2026-04-21 v2: ALWAYS resume-from-cache into rawdata/.
+            # Analyzer gets ``--upstream-config-md5`` / ``--upstream-
+            # code-md5`` and filters the resume-read to only merge
+            # matching-md5 chunks into stats — historical-md5 chunks
+            # stay on disk but don't pollute the sample's running
+            # totals. New chunks land in rawdata/ with
+            # next_chunk_index = max_existing + 1, so they co-exist
+            # with historical chunks without collision.
+            #
+            # Supersedes the earlier v1 (commit 424e4d7) which routed
+            # md5-drift samples to cache/<run_id>/ scratch — that lost
+            # data on cancel because auto_cleanup_cache rmtree'd the
+            # scratch dir. Now cancel preserves both historical AND
+            # newly-sampled chunks (chunks live in rawdata/, scratch
+            # stays empty). Aligns with "md5 is a tag, not a
+            # destruction signal" (f5d8787).
+            resume_cache = True
 
             # Strategy-aware per-item max_chunks. "total" honors the
             # batch-level req.max_chunks as the target total (analyzer
@@ -3279,44 +3290,46 @@ class BatchRunManager:
                 # Register this (m, mode) as in-use so concurrent
                 # cleanup passes won't touch its chunks mid-write.
                 _acquire_in_use(item["machine"], item["mode"])
-                # Two paths (decided in start_batch):
-                #   resume_cache=True → --resume-from-cache (seed from
-                #     cached chunks, continue live sampling; handles
-                #     fuzzy + precise identically — loop exits either
-                #     at max_chunks or when session CI ≤ target)
-                #   resume_cache=False → fresh API sample
+                # Single routing path (2026-04-21 v2): always
+                # --resume-from-cache into rawdata/, with analyzer
+                # filtering stats by current upstream md5. New chunks
+                # land in rawdata/ alongside historical ones; analyzer
+                # only merges matching-md5 into running stats.
                 from_cache_dir = ""
-                resume_from_cache_dir = ""
                 cache_dir_str = str(RAWDATA_ROOT / item["machine"] / f"mode_{item['mode']}")
-                if item.get("resume_cache"):
-                    resume_from_cache_dir = cache_dir_str
-                    # Distinguish "resume with existing chunks" from
-                    # "first-time sample writing into rawdata/" — same
-                    # --resume-from-cache CLI flag, different semantics
-                    # the operator cares about (2026-04-21: "我以为续采
-                    # 了，原来 rawdata 是空的").
-                    usable_now = item.get("rawdata_status", {}).get("usable_chunks", 0)
-                    if usable_now > 0:
-                        _log(
-                            "info",
-                            f"♻ 续采 from {cache_dir_str} "
-                            f"({usable_now} chunks, chunk_spin_times={item['chunk_spin_times']})",
-                            item["machine"],
-                        )
-                    else:
-                        _log(
-                            "info",
-                            f"📥 首次采样，chunks 直接写入 {cache_dir_str} "
-                            f"(chunk_spin_times={item['chunk_spin_times']})",
-                            item["machine"],
-                        )
-                else:
-                    # md5-drift path: historical chunks exist but can't
-                    # be reused; fresh sample goes to cache/<run_id>/
-                    # scratch to keep stats clean.
+                resume_from_cache_dir = cache_dir_str
+                usable_now = item.get("rawdata_status", {}).get("usable_chunks", 0)
+                mismatch_now = item.get("rawdata_status", {}).get("mismatch_chunks", 0)
+                up_cfg, up_code = _get_machine_md5(
+                    item["machine"], machines_config=self._machines_config,
+                )
+                if mismatch_now > 0 and usable_now > 0:
                     _log(
-                        "warn",
-                        f"⚠ 上游 md5 变更，无法续采；本次采样走 scratch "
+                        "info",
+                        f"♻ 续采 from {cache_dir_str} "
+                        f"({usable_now} 当前 md5 chunks + {mismatch_now} 历史 md5 "
+                        f"仅保留不合并, chunk_spin_times={item['chunk_spin_times']})",
+                        item["machine"],
+                    )
+                elif mismatch_now > 0:
+                    _log(
+                        "info",
+                        f"📥 上游 md5 变更，{mismatch_now} 历史 md5 chunks 保留; "
+                        f"从 chunk_{mismatch_now + 1} 起以新 md5 采样到 "
+                        f"rawdata/ (chunk_spin_times={item['chunk_spin_times']})",
+                        item["machine"],
+                    )
+                elif usable_now > 0:
+                    _log(
+                        "info",
+                        f"♻ 续采 from {cache_dir_str} "
+                        f"({usable_now} chunks, chunk_spin_times={item['chunk_spin_times']})",
+                        item["machine"],
+                    )
+                else:
+                    _log(
+                        "info",
+                        f"📥 首次采样，chunks 直接写入 {cache_dir_str} "
                         f"(chunk_spin_times={item['chunk_spin_times']})",
                         item["machine"],
                     )
@@ -3333,6 +3346,12 @@ class BatchRunManager:
                     target_halfwidth_pp=params["target_halfwidth_pp"],
                     from_cache_dir=from_cache_dir,
                     resume_from_cache_dir=resume_from_cache_dir,
+                    # Snapshot the upstream md5 at batch-start time so
+                    # analyzer can filter historical-md5 chunks from
+                    # the stats merge (they stay on disk, just aren't
+                    # counted toward the session's running stats).
+                    upstream_config_md5=up_cfg or "",
+                    upstream_code_md5=up_code or "",
                 )
                 result = self._run_manager.start_run(req)
                 run_id = result.get("run_id")
@@ -4231,6 +4250,15 @@ class RunManager:
         # Mutually exclusive with from_cache_dir (analyzer enforces it).
         if req.resume_from_cache_dir:
             cmd.extend(["--resume-from-cache", req.resume_from_cache_dir])
+        # Upstream md5 snapshot — tells analyzer which envelope md5 to
+        # count toward session stats during the resume-read. Chunks
+        # with other md5 (historical generations) stay on disk but
+        # skip the stats merge. Empty strings (back-compat) = no
+        # filter, merge everything.
+        if req.upstream_config_md5:
+            cmd.extend(["--upstream-config-md5", req.upstream_config_md5])
+        if req.upstream_code_md5:
+            cmd.extend(["--upstream-code-md5", req.upstream_code_md5])
 
         process = self._popen_factory(cmd, ROOT)
         managed = ManagedRun(

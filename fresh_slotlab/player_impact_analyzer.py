@@ -110,6 +110,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--run-id", default=None, help="optional external run id for orchestration")
+    # When set, the resume-from-cache replay skips stats merge for
+    # any chunk whose envelope (_config_md5 / _code_md5) differs from
+    # these upstream values. Max-chunk-index tracking still happens so
+    # new chunks pick the next free index. Default: empty strings =
+    # no filter (backward-compat — merges every chunk, same as pre-
+    # 2026-04-21 behaviour). Backend passes the current machines.json
+    # md5 here so md5-drift resumes don't pollute stats with historical
+    # chunks but DO co-exist with them on disk.
+    parser.add_argument("--upstream-config-md5", default="",
+                        help="filter cache-read stats by chunk envelope config_md5")
+    parser.add_argument("--upstream-code-md5", default="",
+                        help="filter cache-read stats by chunk envelope code_md5")
     parser.add_argument(
         "--progress-file",
         type=Path,
@@ -3475,19 +3487,64 @@ def main() -> int:
                 },
             )
         read_progress_step = max(20, total_to_read // 10) if total_to_read > 0 else 0
+        # Track md5-filtered skip count so the cache_read_done event
+        # can tell the operator "N chunks read, K skipped due to md5
+        # drift" — important feedback when the (machine, mode) has a
+        # mix of current + historical md5 chunks.
+        md5_filter_active = bool(args.upstream_config_md5 or args.upstream_code_md5)
+        historical_md5_skipped = 0
 
         for read_idx, cf in enumerate(chunk_files):
             try:
                 raw = load_chunk_envelope(cf)
             except ChunkIntegrityError as exc:
                 raise SystemExit(f"{tag}: {exc}")
-            resp = raw.get("response")
-            if resp is None:
-                raise SystemExit(f"{tag}: {cf.name} missing 'response' key")
-            # Honour envelope metadata for bet if present.
+            # Honour envelope metadata for bet + chunk index even on
+            # md5-skip chunks (so next_chunk_index never collides with
+            # an existing file on disk, regardless of md5 match).
             chunk_bet_val = int(raw.get("_bet", args.bet) or args.bet)
             idx = int(raw.get("_chunk_index", next_chunk_index))
             max_existing_idx = max(max_existing_idx, idx)
+
+            # md5 filter — new 2026-04-21. Chunks whose envelope
+            # (_config_md5 / _code_md5) don't match the caller's
+            # upstream md5 get SKIPPED for stats merge (historical
+            # generation, can't mix with current-md5 sample). They
+            # stay on disk; just don't contribute to the running
+            # stats. Same principle as f5d8787 "md5 is a tag, not a
+            # destruction signal" — tag classification drives reads,
+            # not deletion.
+            if md5_filter_active:
+                cfg_env = str(raw.get("_config_md5", "") or "")
+                code_env = str(raw.get("_code_md5", "") or "")
+                if cfg_env != args.upstream_config_md5 or code_env != args.upstream_code_md5:
+                    historical_md5_skipped += 1
+                    # Still fall through the read-progress heartbeat
+                    # logic so the UI sees the loop's position, but
+                    # skip the parse + merge block.
+                    if (
+                        read_progress_step > 0
+                        and total_to_read > 0
+                        and (read_idx + 1) % read_progress_step == 0
+                        and (read_idx + 1) < total_to_read
+                    ):
+                        append_jsonl(
+                            progress_file,
+                            {
+                                "event": "cache_read_progress",
+                                "run_id": run_id,
+                                "chunks_read": read_idx + 1,
+                                "total_chunks": total_to_read,
+                                "total_spins": total_spins,
+                                "md5_skipped": historical_md5_skipped,
+                                "ts": utc_now(),
+                            },
+                        )
+                    continue
+
+            resp = raw.get("response")
+            if resp is None:
+                raise SystemExit(f"{tag}: {cf.name} missing 'response' key")
             rec = parse_chunk_response(
                 resp, idx, chunk_bet_val,
                 bankruptcy_session_spins=args.bankruptcy_session_spins,
@@ -3842,6 +3899,8 @@ def main() -> int:
                     "event": "cache_read_done",
                     "run_id": run_id,
                     "chunks_read": total_to_read,
+                    "chunks_merged": chunks,
+                    "md5_skipped": historical_md5_skipped,
                     "total_spins": total_spins,
                     "ts": utc_now(),
                 },
@@ -3860,6 +3919,7 @@ def main() -> int:
                     "run_id": run_id,
                     "existing_chunks": chunks,
                     "existing_spins": total_spins,
+                    "historical_md5_skipped": historical_md5_skipped,
                     "next_chunk_index": next_chunk_index,
                     "ts": utc_now(),
                 },
