@@ -96,11 +96,14 @@ tuner 用 math 做内循环快筛，用 sim 做外循环 ground-truth 确认。
 
 ## Phase 状态
 
-- **Phase 0** — ✅ 调研 rawdata schema + 挖 M1 pay 规则 + 建 scaffold + 写 M1 spec + 结构化权重表 + commit
-- **Phase 1** — engine (reel_strip / rules / evaluator / spin) + emitter + `scripts/verify.py`。用 M1 真实权重对账真实 report
-- **Phase 2** — 重建 M14 mode 1 有效 report + 抽 target_profile
-- **Phase 3** — devtools (analytic_rtp + weight_diff)
-- **Phase 4** — tuner loop
+- **Phase 0** — ✅ scaffold + M1 spec + 结构化权重 + 反推笔记
+- **Phase 1** — ✅ engine + rawdata-format emitter + verify
+- **Phase 2** — ✅ M14 target profile 抽取
+- **Phase 3** — ✅ devtools (analytic RTP + shape distance + weight diff)
+- **Phase 4** — ✅ count tuner ((1+1)-ES on 27-dim counts space)
+- **Phase 5** — ✅ order tuner (SA on permutation space, 保持 Phase 4 marginals)
+
+第一个机台（M1）pipeline 完整见 [`FIRST_MACHINE.md`](FIRST_MACHINE.md)。
 
 ## 硬约束（不变）
 

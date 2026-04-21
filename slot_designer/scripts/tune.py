@@ -1,22 +1,30 @@
-"""CLI: tune reel weights to match a target profile.
+"""CLI: tune reel weights (Phase 4) + order (Phase 5), emit rawdata.
 
-Pipeline:
-  1. Load spec + base weights + target profile.
-  2. Extract per-(symbol, reel) counts from base weights as starting point.
-  3. Set up analytic cost function (RTP + shape + CV, all from marginals).
-  4. Run (1+1)-ES with restarts.
-  5. Generate tuned weights by rescaling base stops to best counts.
-  6. Write tuned weights + summary report.
+Two-stage pipeline:
+
+  Phase 4 — count tuning (hard constraints):
+    base weights → ES on per-(symbol, reel) counts → marginals match
+    target RTP + bucket shape + CV
+
+  Phase 5 — order tuning (experience):
+    Phase 4 counts fixed; simulated annealing on stop ORDER within
+    each reel. Preserves marginals (= hard constraints) by construction.
+    Optimizes 2-of-3 near-miss rate, PWDF, blank clustering (Harrigan
+    2009).
+
+Final deliverable is rawdata chunks — existing analyzer reads them and
+produces a standard report for side-by-side comparison with the real
+machine.
 
 Usage:
 
-    python -m slot_designer.scripts.tune \
-        --spec slot_designer/specs/M1.spec.json \
-        --base-weights slot_designer/weights/M1_mode1.current.json \
-        --target slot_designer/tuner/targets/M14_mode1.target.json \
-        --out-weights slot_designer/weights/M1_mode1.tuned.json \
-        --out-report slot_designer/out/M1_tune_report.md \
-        --evaluations 2000 --restarts 3
+    python -m slot_designer.scripts.tune \\
+        --spec slot_designer/specs/M1.spec.json \\
+        --base-weights slot_designer/weights/M1_mode1.current.json \\
+        --target slot_designer/tuner/targets/M14_mode1.target.json \\
+        --out-weights slot_designer/weights/M1_mode1.tuned.json \\
+        --out-report slot_designer/out/M1_tune_report.md \\
+        --evaluations 1500 --restarts 3 --sa-steps 5000
 """
 from __future__ import annotations
 
@@ -35,6 +43,7 @@ from slot_designer.devtools.analytic_rtp import (
     analytic_profile_from_marginals,
     structurally_reachable_buckets,
 )
+from slot_designer.devtools.player_experience import experience_metrics
 from slot_designer.emitter.driver import emit_simulation_to_dir
 from slot_designer.engine.evaluator import PaytableEvaluator
 from slot_designer.engine.loader import load_engine
@@ -43,6 +52,12 @@ from slot_designer.engine.symbol import SymbolRegistry
 from slot_designer.tuner.cost import CostWeights, evaluate_cost
 from slot_designer.tuner.layout import apply_counts, base_counts, marginals_from_counts
 from slot_designer.tuner.loop import ESConfig, run_with_restarts
+from slot_designer.tuner.ordering import (
+    ExperienceCostWeights,
+    SAConfig,
+    evaluate_experience_cost,
+    run_simulated_annealing,
+)
 
 
 def main() -> None:
@@ -66,6 +81,18 @@ def main() -> None:
     p.add_argument("--shape-weight", type=float, default=1.0)
     p.add_argument("--cv-weight", type=float, default=0.3)
     p.add_argument("--verbose", action="store_true")
+
+    # Phase 5 (order optimization) parameters
+    p.add_argument("--sa-steps", type=int, default=5000,
+                   help="simulated annealing steps for order optimization (default 5000). "
+                        "Set 0 to skip Phase 5 (only count tuning).")
+    p.add_argument("--nm-min", type=float, default=0.01,
+                   help="Phase 5 lower band for 2-of-3 near-miss rate (default 0.01)")
+    p.add_argument("--nm-max", type=float, default=0.10,
+                   help="Phase 5 upper band for 2-of-3 near-miss rate (default 0.10)")
+    p.add_argument("--high-value", nargs="+",
+                   default=["Seven1", "Seven2", "Diamond1", "Diamond2"],
+                   help="symbols considered 'high-value' for experience metrics")
 
     # Rawdata emission parameters
     p.add_argument("--emit-chunks", type=int, default=110,
@@ -145,7 +172,7 @@ def main() -> None:
     print(f"  shape JS         : {result.best_breakdown.shape_js:.5f}")
     print(f"  cost (total)     : {result.best_cost:.4f}  (was {base_cost:.4f}; Δ={base_cost-result.best_cost:+.4f})")
 
-    # Materialize tuned weights into a valid JSON file
+    # Materialize Phase-4 tuned weights into a valid JSON file
     tuned_weights = apply_counts(base_weights, result.best_counts)
     tuned_weights["_tuned_from"] = str(args.base_weights)
     tuned_weights["_tuned_target"] = target.get("label", str(args.target))
@@ -157,6 +184,72 @@ def main() -> None:
         "rtp_gap_pp": result.best_breakdown.rtp_gap_pp,
         "evaluations": result.evaluations * args.restarts,
     }
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Phase 5: order optimization (preserves marginals, optimizes
+    # near-miss / PWDF / blank-adjacency)
+    # ─────────────────────────────────────────────────────────────────────
+    exp_before = experience_metrics(
+        tuned_weights["reel_sets"]["default"]["reels"],
+        high_value=args.high_value,
+    )
+    print(f"\n=== Phase 5: order-only optimization ({args.sa_steps} SA steps) ===")
+    print(f"  experience before: nm_total={exp_before['near_miss_rate_total']*100:.3f}%  "
+          f"avg_pwdf={sum(exp_before['avg_pwdf'].values())/len(exp_before['avg_pwdf']):.3f}  "
+          f"avg_blank_adj={exp_before['avg_blank_adj']:.3f}")
+
+    if args.sa_steps > 0:
+        exp_weights_cfg = ExperienceCostWeights(
+            nm_min=args.nm_min,
+            nm_max=args.nm_max,
+        )
+
+        def exp_cost_fn(reels_list):
+            b = evaluate_experience_cost(
+                reels_list,
+                high_value=args.high_value,
+                weights=exp_weights_cfg,
+            )
+            return b.total, b
+
+        from random import Random
+        sa_result = run_simulated_annealing(
+            tuned_weights["reel_sets"]["default"]["reels"],
+            exp_cost_fn,
+            config=SAConfig(max_steps=args.sa_steps),
+            rng=Random(args.seed + 1),
+            verbose=args.verbose,
+        )
+        # Install the best-ordered reels back into the weights dict
+        tuned_weights["reel_sets"]["default"]["reels"] = sa_result.best_reels
+
+        exp_after = experience_metrics(
+            tuned_weights["reel_sets"]["default"]["reels"],
+            high_value=args.high_value,
+        )
+        print(f"  experience after : nm_total={exp_after['near_miss_rate_total']*100:.3f}%  "
+              f"avg_pwdf={sum(exp_after['avg_pwdf'].values())/len(exp_after['avg_pwdf']):.3f}  "
+              f"avg_blank_adj={exp_after['avg_blank_adj']:.3f}")
+
+        # Verify Phase 4 invariant: marginals (and therefore RTP) untouched
+        post_order_profile = analytic_profile_from_marginals(
+            evaluator,
+            marginals_from_counts(base_counts(tuned_weights)),
+        )
+        rtp_drift = abs(post_order_profile["rtp_pct"] - best_profile["rtp_pct"])
+        assert rtp_drift < 0.01, (
+            f"Phase 5 violated Phase 4 invariant! RTP drifted "
+            f"{post_order_profile['rtp_pct']:.4f} from {best_profile['rtp_pct']:.4f}"
+        )
+
+        tuned_weights["_tuned_summary"]["phase5_near_miss_before"] = exp_before["near_miss_rate_total"]
+        tuned_weights["_tuned_summary"]["phase5_near_miss_after"] = exp_after["near_miss_rate_total"]
+        tuned_weights["_tuned_summary"]["phase5_blank_adj_before"] = exp_before["avg_blank_adj"]
+        tuned_weights["_tuned_summary"]["phase5_blank_adj_after"] = exp_after["avg_blank_adj"]
+        tuned_weights["_tuned_summary"]["phase5_sa_steps"] = args.sa_steps
+    else:
+        exp_after = exp_before
+
     args.out_weights.parent.mkdir(parents=True, exist_ok=True)
     args.out_weights.write_text(json.dumps(tuned_weights, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\nwrote tuned weights (intermediate) → {args.out_weights}")
@@ -166,6 +259,7 @@ def main() -> None:
             args.out_report, base_profile, best_profile, target,
             base_breakdown, result.best_breakdown, reachable,
             result.best_counts, x0,
+            exp_before=exp_before, exp_after=exp_after,
         )
         print(f"wrote tune report                  → {args.out_report}")
 
@@ -211,6 +305,7 @@ def _write_report(
     path, base_profile, best_profile, target,
     base_breakdown, best_breakdown, reachable,
     best_counts, base_counts_list,
+    exp_before=None, exp_after=None,
 ) -> None:
     lines = []
     lines.append(f"# Tune report\n")
@@ -257,6 +352,31 @@ def _write_report(
             arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "=")
             cells.append(f"{b}→{t} {arrow}{abs(delta)}")
         lines.append(f"| {sym} | {cells[0]} | {cells[1]} | {cells[2]} |")
+
+    if exp_before and exp_after:
+        lines.append(f"\n## Phase 5 — experience metrics (order optimization)\n")
+        lines.append(f"| metric | before | after | Δ |")
+        lines.append(f"|---|---|---|---|")
+        lines.append(f"| 2-of-3 near-miss rate (total) | "
+                     f"{exp_before['near_miss_rate_total']*100:.4f}% | "
+                     f"{exp_after['near_miss_rate_total']*100:.4f}% | "
+                     f"{(exp_after['near_miss_rate_total']-exp_before['near_miss_rate_total'])*100:+.4f}pp |")
+        lines.append(f"| avg blank-adj to high-value  | "
+                     f"{exp_before['avg_blank_adj']:.4f} | "
+                     f"{exp_after['avg_blank_adj']:.4f} | "
+                     f"{exp_after['avg_blank_adj']-exp_before['avg_blank_adj']:+.4f} |")
+        lines.append(f"\nPWDF per high-value symbol (averaged across reels):\n")
+        lines.append(f"| symbol | before | after |")
+        lines.append(f"|---|---|---|")
+        for sym in sorted(exp_before["avg_pwdf"].keys()):
+            lines.append(f"| {sym} | {exp_before['avg_pwdf'][sym]:.3f} | "
+                         f"{exp_after['avg_pwdf'][sym]:.3f} |")
+        lines.append(f"\nNear-miss rate per high-value symbol:\n")
+        lines.append(f"| symbol | before (%) | after (%) |")
+        lines.append(f"|---|---|---|")
+        for sym in sorted(exp_before["near_miss_rate_per_symbol"].keys()):
+            lines.append(f"| {sym} | {exp_before['near_miss_rate_per_symbol'][sym]*100:.4f} | "
+                         f"{exp_after['near_miss_rate_per_symbol'][sym]*100:.4f} |")
 
     lines.append(f"\n## Pay_id hit rates (analytic)\n")
     lines.append(f"| pay_id | baseline % | tuned % |")

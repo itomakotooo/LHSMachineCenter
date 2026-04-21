@@ -13,12 +13,12 @@
       "reels": [
         [
           {
-            "symbol": "Cherry",
-            "weight": 26
+            "symbol": "Blank",
+            "weight": 20
           },
           {
             "symbol": "Blank",
-            "weight": 25
+            "weight": 30
           },
           {
             "symbol": "Bar2",
@@ -27,18 +27,6 @@
           {
             "symbol": "Blank",
             "weight": 30
-          },
-          {
-            "symbol": "Bar1",
-            "weight": 36
-          },
-          {
-            "symbol": "Blank",
-            "weight": 30
-          },
-          {
-            "symbol": "Seven2",
-            "weight": 73
           },
           {
             "symbol": "Blank",
@@ -53,12 +41,36 @@
             "weight": 30
           },
           {
-            "symbol": "Bar3",
-            "weight": 41
+            "symbol": "Seven1",
+            "weight": 17
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Blank",
+            "weight": 25
+          },
+          {
+            "symbol": "Seven2",
+            "weight": 73
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 36
           },
           {
             "symbol": "Blank",
             "weight": 20
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Diamond1",
+            "weight": 101
           },
           {
             "symbol": "Seven1",
@@ -66,7 +78,59 @@
           },
           {
             "symbol": "Blank",
+            "weight": 20
+          },
+          {
+            "symbol": "Cherry",
+            "weight": 17
+          },
+          {
+            "symbol": "Blank",
             "weight": 30
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 35
+          },
+          {
+            "symbol": "Blank",
+            "weight": 39
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 23
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 40
+          },
+          {
+            "symbol": "Blank",
+            "weight": 20
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 27
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Cherry",
+            "weight": 26
+          },
+          {
+            "symbol": "Blank",
+            "weight": 20
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 41
+          },
+          {
+            "symbol": "Blank",
+            "weight": 39
           },
           {
             "symbol": "Bar1",
@@ -81,24 +145,8 @@
             "weight": 36
           },
           {
-            "symbol": "Blank",
-            "weight": 30
-          },
-          {
-            "symbol": "Cherry",
-            "weight": 17
-          },
-          {
-            "symbol": "Blank",
-            "weight": 30
-          },
-          {
-            "symbol": "Bar3",
-            "weight": 27
-          },
-          {
-            "symbol": "Blank",
-            "weight": 20
+            "symbol": "Bar1",
+            "weight": 36
           },
           {
             "symbol": "Bar2",
@@ -107,72 +155,76 @@
           {
             "symbol": "Blank",
             "weight": 30
-          },
-          {
-            "symbol": "Seven1",
-            "weight": 17
-          },
-          {
-            "symbol": "Blank",
-            "weight": 39
-          },
-          {
-            "symbol": "Diamond1",
-            "weight": 101
-          },
-          {
-            "symbol": "Blank",
-            "weight": 39
-          },
-          {
-            "symbol": "Bar1",
-            "weight": 35
-          },
-          {
-            "symbol": "Blank",
-            "weight": 30
-          },
-          {
-            "symbol": "Bar2",
-            "weight": 36
-          },
-          {
-            "symbol": "Blank",
-            "weight": 20
-          },
-          {
-            "symbol": "Bar3",
-            "weight": 40
-          },
-          {
-            "symbol": "Blank",
-            "weight": 20
-          },
-          {
-            "symbol": "Bar1",
-            "weight": 23
-          },
-          {
-            "symbol": "Blank",
-            "weight": 20
           }
         ],
         [
           {
-            "symbol": "Cherry",
-            "weight": 44
+            "symbol": "Seven2",
+            "weight": 1
           },
           {
             "symbol": "Blank",
             "weight": 28
+          },
+          {
+            "symbol": "Diamond1",
+            "weight": 1
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 52
+          },
+          {
+            "symbol": "Blank",
+            "weight": 37
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Seven1",
+            "weight": 19
+          },
+          {
+            "symbol": "Blank",
+            "weight": 37
+          },
+          {
+            "symbol": "Diamond2",
+            "weight": 1
           },
           {
             "symbol": "Bar2",
-            "weight": 40
+            "weight": 26
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 26
           },
           {
             "symbol": "Blank",
-            "weight": 28
+            "weight": 19
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 25
           },
           {
             "symbol": "Bar1",
@@ -180,30 +232,6 @@
           },
           {
             "symbol": "Blank",
-            "weight": 28
-          },
-          {
-            "symbol": "Seven2",
-            "weight": 1
-          },
-          {
-            "symbol": "Blank",
-            "weight": 28
-          },
-          {
-            "symbol": "Diamond2",
-            "weight": 1
-          },
-          {
-            "symbol": "Blank",
-            "weight": 28
-          },
-          {
-            "symbol": "Bar3",
-            "weight": 25
-          },
-          {
-            "symbol": "Blank",
             "weight": 19
           },
           {
@@ -212,27 +240,51 @@
           },
           {
             "symbol": "Blank",
-            "weight": 28
+            "weight": 19
           },
           {
-            "symbol": "Bar1",
-            "weight": 52
+            "symbol": "Blank",
+            "weight": 28
           },
           {
             "symbol": "Blank",
             "weight": 19
           },
           {
+            "symbol": "Bar1",
+            "weight": 35
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 25
+          },
+          {
+            "symbol": "Cherry",
+            "weight": 30
+          },
+          {
             "symbol": "Bar2",
-            "weight": 26
+            "weight": 40
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Cherry",
+            "weight": 44
           },
           {
             "symbol": "Blank",
             "weight": 28
           },
           {
-            "symbol": "Cherry",
-            "weight": 30
+            "symbol": "Blank",
+            "weight": 28
+          },
+          {
+            "symbol": "Blank",
+            "weight": 28
           },
           {
             "symbol": "Blank",
@@ -243,8 +295,18 @@
             "weight": 16
           },
           {
+            "symbol": "Bar2",
+            "weight": 39
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 52
+          }
+        ],
+        [
+          {
             "symbol": "Blank",
-            "weight": 19
+            "weight": 29
           },
           {
             "symbol": "Bar2",
@@ -252,31 +314,39 @@
           },
           {
             "symbol": "Blank",
-            "weight": 28
+            "weight": 19
           },
           {
             "symbol": "Seven1",
+            "weight": 26
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 43
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Blank",
             "weight": 19
           },
           {
             "symbol": "Blank",
-            "weight": 37
-          },
-          {
-            "symbol": "Diamond1",
-            "weight": 1
+            "weight": 29
           },
           {
             "symbol": "Blank",
-            "weight": 37
+            "weight": 29
           },
           {
-            "symbol": "Bar1",
-            "weight": 52
+            "symbol": "Seven2",
+            "weight": 26
           },
           {
             "symbol": "Blank",
-            "weight": 28
+            "weight": 29
           },
           {
             "symbol": "Bar2",
@@ -285,32 +355,6 @@
           {
             "symbol": "Blank",
             "weight": 19
-          },
-          {
-            "symbol": "Bar3",
-            "weight": 25
-          },
-          {
-            "symbol": "Blank",
-            "weight": 19
-          },
-          {
-            "symbol": "Bar1",
-            "weight": 35
-          },
-          {
-            "symbol": "Blank",
-            "weight": 19
-          }
-        ],
-        [
-          {
-            "symbol": "Cherry",
-            "weight": 35
-          },
-          {
-            "symbol": "Blank",
-            "weight": 30
           },
           {
             "symbol": "Bar2",
@@ -319,6 +363,30 @@
           {
             "symbol": "Blank",
             "weight": 29
+          },
+          {
+            "symbol": "Blank",
+            "weight": 30
+          },
+          {
+            "symbol": "Diamond1",
+            "weight": 39
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 22
+          },
+          {
+            "symbol": "Bar2",
+            "weight": 39
+          },
+          {
+            "symbol": "Bar1",
+            "weight": 43
           },
           {
             "symbol": "Bar1",
@@ -326,50 +394,10 @@
           },
           {
             "symbol": "Blank",
-            "weight": 29
-          },
-          {
-            "symbol": "Seven2",
-            "weight": 26
-          },
-          {
-            "symbol": "Blank",
-            "weight": 29
-          },
-          {
-            "symbol": "Diamond2",
-            "weight": 1
-          },
-          {
-            "symbol": "Blank",
-            "weight": 29
-          },
-          {
-            "symbol": "Bar3",
-            "weight": 21
-          },
-          {
-            "symbol": "Blank",
-            "weight": 19
+            "weight": 38
           },
           {
             "symbol": "Seven1",
-            "weight": 26
-          },
-          {
-            "symbol": "Blank",
-            "weight": 29
-          },
-          {
-            "symbol": "Bar1",
-            "weight": 43
-          },
-          {
-            "symbol": "Blank",
-            "weight": 19
-          },
-          {
-            "symbol": "Bar2",
             "weight": 26
           },
           {
@@ -378,67 +406,7 @@
           },
           {
             "symbol": "Cherry",
-            "weight": 23
-          },
-          {
-            "symbol": "Blank",
-            "weight": 29
-          },
-          {
-            "symbol": "Bar3",
-            "weight": 22
-          },
-          {
-            "symbol": "Blank",
-            "weight": 19
-          },
-          {
-            "symbol": "Bar2",
-            "weight": 39
-          },
-          {
-            "symbol": "Blank",
-            "weight": 29
-          },
-          {
-            "symbol": "Seven1",
-            "weight": 26
-          },
-          {
-            "symbol": "Blank",
-            "weight": 38
-          },
-          {
-            "symbol": "Diamond1",
-            "weight": 39
-          },
-          {
-            "symbol": "Blank",
-            "weight": 38
-          },
-          {
-            "symbol": "Bar1",
-            "weight": 43
-          },
-          {
-            "symbol": "Blank",
-            "weight": 29
-          },
-          {
-            "symbol": "Bar2",
-            "weight": 39
-          },
-          {
-            "symbol": "Blank",
-            "weight": 19
-          },
-          {
-            "symbol": "Bar3",
-            "weight": 22
-          },
-          {
-            "symbol": "Blank",
-            "weight": 19
+            "weight": 35
           },
           {
             "symbol": "Bar1",
@@ -446,7 +414,39 @@
           },
           {
             "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Blank",
+            "weight": 38
+          },
+          {
+            "symbol": "Blank",
+            "weight": 29
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 22
+          },
+          {
+            "symbol": "Cherry",
+            "weight": 23
+          },
+          {
+            "symbol": "Blank",
             "weight": 19
+          },
+          {
+            "symbol": "Diamond2",
+            "weight": 1
+          },
+          {
+            "symbol": "Blank",
+            "weight": 19
+          },
+          {
+            "symbol": "Bar3",
+            "weight": 21
           }
         ]
       ]
@@ -460,6 +460,11 @@
     "cv": 4.938530662801068,
     "shape_js_to_target": 0.01579942841714181,
     "rtp_gap_pp": 0.012728702464400499,
-    "evaluations": 4500
+    "evaluations": 4500,
+    "phase5_near_miss_before": 0.0008016985312305663,
+    "phase5_near_miss_after": 0.0008743836319547022,
+    "phase5_blank_adj_before": 1.0,
+    "phase5_blank_adj_after": 0.7999999999999999,
+    "phase5_sa_steps": 3000
   }
 }
