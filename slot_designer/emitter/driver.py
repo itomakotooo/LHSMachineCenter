@@ -27,6 +27,8 @@ def emit_simulation_to_dir(
     seed: int,
     initial_credits: int = 1_000_000_000,
     progress: Callable[[int, int], None] | None = None,
+    config_md5: str = "",
+    code_md5: str = "",
 ) -> dict:
     """Run simulation and write chunk JSONs. Returns a summary dict."""
     rng = Random(seed)
@@ -74,6 +76,8 @@ def emit_simulation_to_dir(
             robot_count=robots,
             chunk_index=ci,
             upstream_schema_fingerprint=schema_fp,
+            config_md5=config_md5,
+            code_md5=code_md5,
         )
         p = write_chunk(chunk, out_dir, ci)
         chunks_written.append(p)

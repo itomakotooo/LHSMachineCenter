@@ -96,18 +96,51 @@ python -m slot_designer.scripts.tune \
 - `out/<M>_tuned/mode_<N>/cache/chunk_*.json` (**primary rawdata deliverable**,
   1.1M spins 默认)
 
-### 阶段 5 — 和真机交叉对比（择优录取）
+### 阶段 5 — 打开虚拟机 console 管理（Phase 6 添加）
 
-用项目现有 analyzer 吃我的 rawdata：
-```bash
-python fresh_slotlab/player_impact_analyzer.py \
-  --machine M1 --rtp-mode 1 \
-  --from-cache slot_designer/out/M1_tuned/mode_1/cache \
-  --output-dir slot_designer/out/M1_tuned/mode_1/analyzer_report \
-  --target-halfwidth-pp 0.001 --max-chunks 9999
+`tune.py` 收尾时自动把 rawdata chunks 写到
+`slot_designer/rawdata/M1sim/mode_1/`，带 `_config_md5 / _code_md5` 版本
+标签。这个目录是**虚拟机 console** 的标准 rawdata 入口。
+
+启动虚拟 console（port 8878，和真 console 8877 **完全独立的实例**）：
+```powershell
+powershell -ExecutionPolicy Bypass -File slot_designer/scripts/start_virtual_console.ps1 -OpenBrowser
 ```
 
-然后和真机产出的 report 对比，选你觉得更符合设计目标的那份。
+浏览器会打开 http://127.0.0.1:8878/console/  —— **和真机 console 完全
+一样的 UI**，因为用的是同一份 `create_app()`，只是注入了虚拟 console
+的独立路径（slot_designer/{rawdata,reports,state,configs/machines_virtual.json}）。
+
+在虚拟 console 里**和操作真机台完全一致**：
+- 机台目录 / 机台过滤器 → 能看到 `M1sim`
+- rawdata 管理 → 看到 1.1M spin / 110 chunks / kept/deletable/stale 分组
+- "⟳ 生成 Report" → 用现有 analyzer 分析虚拟 rawdata，产出标准报告
+- "开始采样" → 自动调 **virtual_analyzer** 跑我的 simulator（而不是
+  HTTP 上游）、产新 chunks append 到 rawdata pool → 再次分析
+- mode 选择 / 目标 CI 精度 / spin 次数等采样参数 → 全部支持
+- 批量采样 / 批量生成报告 → 全部支持
+- 报告对比 / 加载 / 删除 / LLM 解读 → 全部支持
+
+**数据隔离**：真 console 的 `rawdata/` 和虚拟 console 的
+`slot_designer/rawdata/` 互不干扰。两个 console 可以同时开，两个 tab。
+
+### 阶段 6 — 和真机交叉对比（择优录取）
+
+真机 console（8877）里加载真 M1 的 report；虚拟 console（8878）里加载
+M1sim 的 report。两个 console 的指标画像并排比较，按你的设计目标择优。
+
+这一步**不改任何代码** —— 就是用两个 console 各自的标准"对比"功能。
+
+### 阶段 7 — 离线 CLI 验证（可选）
+
+如果不想开 console，也可以直接命令行跑 analyzer：
+```bash
+python fresh_slotlab/player_impact_analyzer.py \
+  --machine M1sim --rtp-mode 1 \
+  --from-cache slot_designer/rawdata/M1sim/mode_1 \
+  --output-dir slot_designer/out/M1sim_offline_report \
+  --target-halfwidth-pp 0.001 --max-chunks 9999
+```
 
 ---
 

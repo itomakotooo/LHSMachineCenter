@@ -71,7 +71,11 @@ def main() -> None:
                    help="(intermediate) tuned weights JSON — for reproducibility / inspection")
     p.add_argument("--out-rawdata-dir", type=Path, default=None,
                    help="(primary deliverable) directory to emit rawdata chunks into; "
-                        "defaults to slot_designer/out/<machine>_tuned/mode_<N>/cache")
+                        "defaults to slot_designer/rawdata/<machine>sim/mode_<N>/ "
+                        "— which the virtual console reads natively")
+    p.add_argument("--virtual-machine", default=None,
+                   help="virtual machine name (defaults to <source_machine>sim). "
+                        "Should be registered in configs/machines_virtual.json")
     p.add_argument("--out-report", type=Path, default=None)
     p.add_argument("--evaluations", type=int, default=800)
     p.add_argument("--restarts", type=int, default=3)
@@ -267,26 +271,60 @@ def main() -> None:
     # on tuned weights. Existing player_impact_analyzer --from-cache can
     # consume these directly and produce a report indistinguishable from
     # a real-sampling run.
+    #
+    # Default destination = slot_designer/rawdata/<machine>sim/mode_<N>/
+    # which the virtual console (port 8878) reads from natively. That
+    # machine name (<machine>sim) must exist in configs/machines_virtual.json
+    # or be added via virtual_app's refresh on next boot.
     if not args.skip_rawdata:
-        machine = spec["machine"]
+        source_machine = spec["machine"]
         mode = int(spec["mode"])
+        # Virtual-machine naming convention: suffix "sim" (per user, 2026-04-21)
+        virtual_machine = args.virtual_machine or f"{source_machine}sim"
         rawdata_dir = args.out_rawdata_dir or (
-            _ROOT / "slot_designer" / "out" / f"{machine}_tuned" / f"mode_{mode}" / "cache"
+            _ROOT / "slot_designer" / "rawdata" / virtual_machine / f"mode_{mode}"
         )
+
+        # MD5 tags for console's version tracking (same schema as real
+        # machines.json: configSummaryMd5 / codeSummaryMd5). When spec or
+        # engine changes, MD5 flips → old chunks auto-flagged stale by
+        # _classify_chunks in the virtual console.
+        import hashlib as _hl
+        config_md5 = _hl.md5(args.spec.read_bytes()).hexdigest()
+        engine_dir = _ROOT / "slot_designer" / "engine"
+        emitter_dir = _ROOT / "slot_designer" / "emitter"
+        engine_files = sorted(engine_dir.glob("*.py")) + sorted(emitter_dir.glob("*.py"))
+        engine_files = [f for f in engine_files if f.name != "__init__.py"]
+        _h = _hl.md5()
+        for f in sorted(engine_files):
+            _h.update(f.read_bytes())
+        code_md5 = _h.hexdigest()
+
         print(f"\n=== emitting rawdata chunks (primary deliverable) → {rawdata_dir} ===")
-        tuned_engine, _ = load_engine(args.spec, args.out_weights)
+        print(f"  virtual machine: {virtual_machine}  (source: {source_machine})")
+        print(f"  config_md5: {config_md5[:12]}...  code_md5: {code_md5[:12]}...")
+
+        # Engine reloads from the final weights (which already include
+        # Phase 5's ordering). We temporarily rebrand the spec to the
+        # virtual machine name so envelope fields + PayoutIdToWinAmount
+        # align with how the virtual console will look it up.
+        tuned_engine, tuned_spec = load_engine(args.spec, args.out_weights)
+        emit_spec = dict(tuned_spec)
+        emit_spec["machine"] = virtual_machine
 
         def _progress(ci, total):
             if ci == 1 or ci % 10 == 0 or ci == total:
                 print(f"  chunk {ci:>4}/{total} ({args.emit_robots}×{args.emit_spins_per_robot} spins)")
 
         emit_summary = emit_simulation_to_dir(
-            spec, tuned_engine, rawdata_dir,
+            emit_spec, tuned_engine, rawdata_dir,
             chunks=args.emit_chunks,
             robots=args.emit_robots,
             spins_per_robot=args.emit_spins_per_robot,
             seed=args.emit_seed,
             progress=_progress,
+            config_md5=config_md5,
+            code_md5=code_md5,
         )
         print(f"\nemitted {len(emit_summary['chunks_written'])} chunks, "
               f"{emit_summary['total_rounds']} rounds total")
@@ -294,11 +332,9 @@ def main() -> None:
               f"{emit_summary['realized_rtp_pct']:.3f}%  "
               f"(analytic prediction: {best_profile['rtp_pct']:.3f}%)")
         print(f"\nDeliverable: {rawdata_dir}")
-        print(f"Run the existing analyzer directly:")
-        print(f"  python fresh_slotlab/player_impact_analyzer.py "
-              f"--machine {machine} --rtp-mode {mode} "
-              f"--from-cache {rawdata_dir} --output-dir <your-report-dir> "
-              f"--target-halfwidth-pp 0.001 --max-chunks 9999")
+        print(f"Start the virtual console:")
+        print(f"  powershell -File slot_designer/scripts/start_virtual_console.ps1")
+        print(f"  → http://127.0.0.1:8878/console/  (machine: {virtual_machine})")
 
 
 def _write_report(

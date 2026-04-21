@@ -102,8 +102,25 @@ tuner 用 math 做内循环快筛，用 sim 做外循环 ground-truth 确认。
 - **Phase 3** — ✅ devtools (analytic RTP + shape distance + weight diff)
 - **Phase 4** — ✅ count tuner ((1+1)-ES on 27-dim counts space)
 - **Phase 5** — ✅ order tuner (SA on permutation space, 保持 Phase 4 marginals)
+- **Phase 6** — ✅ **虚拟机 console** (复用 create_app() 注入 slot_designer/ 路径，
+  跑在独立 port 8878；完整支持采样 / 报告 / 批量 / 对比 / LLM 解读；和真
+  console 零耦合零干扰)
 
 第一个机台（M1）pipeline 完整见 [`FIRST_MACHINE.md`](FIRST_MACHINE.md)。
+
+## 虚拟机 console 快速启动
+
+```powershell
+powershell -ExecutionPolicy Bypass -File slot_designer/scripts/start_virtual_console.ps1 -OpenBrowser
+# → http://127.0.0.1:8878/console/
+```
+
+操作体验**和真机 console (8877) 完全一致** —— 同一份 FastAPI app，同
+一份前端 UI，只是数据源换成 `slot_designer/{rawdata,reports,state}/`。
+
+"开始采样" 按钮会调 `backend/virtual_analyzer.py`，内部跑我的 simulator
+（不走 HTTP 上游），产 chunks append 到 rawdata pool，再 delegate 给
+真 analyzer `--from-cache` 做分析 —— **现有 analyzer 一行代码没改**。
 
 ## 硬约束（不变）
 
