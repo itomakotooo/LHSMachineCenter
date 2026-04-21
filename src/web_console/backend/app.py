@@ -82,6 +82,8 @@ def _run_post_analyzer_inference(
     *,
     timeout_sec: float = 300.0,
     rawdata_root: Path | None = None,
+    paytables_dir: Path | None = None,
+    classify_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Fire the two offline inference scripts for one (machine, mode).
 
@@ -98,6 +100,15 @@ def _run_post_analyzer_inference(
     rawdata dir don't accidentally scan the real 9 GB production
     tree. Production callers typically pass ``None`` and rely on the
     parent process's own env.
+
+    ``paytables_dir`` / ``classify_dir`` (optional) are forwarded as
+    ``--output-dir`` CLI args so alternate-universe callers (tests,
+    the virtual-machine console under slot_designer/) write their
+    inference artefacts into their own directory tree instead of
+    clobbering the real ``configs/paytables/`` + ``dev_reports/
+    _classify/``. Production callers pass ``None`` → scripts use
+    their built-in defaults (same behaviour as before this param
+    existed).
     """
     import os as _os
     import subprocess
@@ -122,17 +133,15 @@ def _run_post_analyzer_inference(
     env = dict(_os.environ)
     if rawdata_root is not None:
         env["SLOT_RAWDATA_ROOT"] = str(rawdata_root)
+    paytable_argv = ["--machine", machine, "--mode", str(int(mode))]
+    if paytables_dir is not None:
+        paytable_argv += ["--output-dir", str(paytables_dir)]
+    classify_argv = ["--machines", machine, "--mode", str(int(mode))]
+    if classify_dir is not None:
+        classify_argv += ["--output-dir", str(classify_dir)]
     for name, script, argv in (
-        (
-            "paytable_shape",
-            INFER_PAYTABLE_SCRIPT,
-            ["--machine", machine, "--mode", str(int(mode))],
-        ),
-        (
-            "classifier",
-            VERIFY_LABELS_SCRIPT,
-            ["--machines", machine, "--mode", str(int(mode))],
-        ),
+        ("paytable_shape", INFER_PAYTABLE_SCRIPT, paytable_argv),
+        ("classifier", VERIFY_LABELS_SCRIPT, classify_argv),
     ):
         if not script.exists():
             results[name] = {"ok": False, "error": "script_missing"}
@@ -5833,6 +5842,7 @@ def create_app(
                 _threading.Thread(
                     target=lambda: _run_post_analyzer_inference(
                         machine, mode, rawdata_root=rd_root,
+                        paytables_dir=pd_root, classify_dir=cd,
                         timeout_sec=300.0,
                     ),
                     daemon=True,
@@ -5965,6 +5975,13 @@ def create_app(
                 "chunk_spin_times": chunk_spin_times,
                 "chunk_robot_count": chunk_robot_count,
                 "bet": 1000,
+                # Forward the app-level output dirs to the worker's post-
+                # analyzer hook so alternate-universe callers (tests, the
+                # virtual-machine console) don't clobber real
+                # configs/paytables/ + dev_reports/_classify/ with their
+                # per-run inference artefacts.
+                "paytables_dir": str(pd_root),
+                "classify_dir": str(cd),
             },
         }
 
