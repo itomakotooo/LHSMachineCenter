@@ -24,8 +24,8 @@
       "logicClassNames": [
         "SimulatedClassicPayline3Reel"
       ],
-      "configSummaryMd5": "1b2cceca3260f63200d04ee669b1899e",
-      "codeSummaryMd5": "b3954b4fa976f50d9284d930076d5773",
+      "configSummaryMd5": "35bc39ac98109074f4b5b0a695c83690",
+      "codeSummaryMd5": "ee808f2f8bbe295dd110d80f1a186833",
       "available": true,
       "_source_machine": "M1",
       "_spec_path": "slot_designer/specs/M1.spec.json",

@@ -23,10 +23,10 @@ Or use `scripts/start_virtual_console.ps1` for the production launcher.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
+from slot_designer.backend.machine_version import compute_machine_md5
 from src.web_console.backend.app import create_app
 
 _SLOT_DESIGNER = Path(__file__).resolve().parent.parent
@@ -44,53 +44,23 @@ VIRTUAL_PAYTABLES_DIR = _SLOT_DESIGNER / "configs" / "paytables_virtual"
 VIRTUAL_ANALYZER = _SLOT_DESIGNER / "backend" / "virtual_analyzer.py"
 
 
-def _md5_of_file(path: Path) -> str:
-    return hashlib.md5(path.read_bytes()).hexdigest()
-
-
-def _md5_of_files(paths: list[Path]) -> str:
-    h = hashlib.md5()
-    for p in sorted(paths):
-        h.update(p.read_bytes())
-    return h.hexdigest()
-
-
-def _engine_source_md5() -> str:
-    """MD5 of all engine source files. Any change → chunks from old builds
-    are flagged stale by the console's classify_chunks.
-    """
-    engine_dir = _SLOT_DESIGNER / "engine"
-    emitter_dir = _SLOT_DESIGNER / "emitter"
-    files = sorted(engine_dir.glob("*.py")) + sorted(emitter_dir.glob("*.py"))
-    # Exclude __init__.py (empty) to keep the hash stable under minor
-    # refactors that don't change actual logic
-    files = [f for f in files if f.name != "__init__.py"]
-    return _md5_of_files(files)
-
-
 def refresh_machines_virtual(config_path: Path) -> dict:
-    """Read the tracked machines_virtual.json, refresh per-machine MD5s
-    from current spec + engine source, write back, return the dict.
+    """Refresh per-machine MD5s in machines_virtual.json from current
+    spec + weights + engine source via the single `compute_machine_md5`
+    helper. Registry metadata (_spec_path, _weights_path_template,
+    _source_machine, etc.) passes through untouched.
 
-    Machines are listed by the curator; this function only refreshes the
-    derived MD5 fields. Custom fields (spec_path, weights_path_template,
-    source_machine) pass through untouched.
+    Called on console boot and at the start of every sampling request
+    (so runtime edits to spec/weights take effect immediately for the
+    NEXT sampling, not just the next reboot).
     """
     raw = json.loads(config_path.read_text(encoding="utf-8"))
-    engine_md5 = _engine_source_md5()
-
     for entry in raw.get("machines", []):
-        spec_path_rel = entry.get("_spec_path")
-        if not spec_path_rel:
+        if not entry.get("_spec_path"):
             continue
-        spec_path = _REPO_ROOT / spec_path_rel
-        if not spec_path.exists():
-            # Leave existing md5s alone if file missing — avoid silent
-            # corruption; analyzer will fail visibly with useful error
-            continue
-        entry["configSummaryMd5"] = _md5_of_file(spec_path)
-        entry["codeSummaryMd5"] = engine_md5
-
+        config_md5, code_md5 = compute_machine_md5(entry)
+        entry["configSummaryMd5"] = config_md5
+        entry["codeSummaryMd5"] = code_md5
     config_path.write_text(
         json.dumps(raw, indent=2, ensure_ascii=False),
         encoding="utf-8",

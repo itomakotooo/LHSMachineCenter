@@ -285,20 +285,55 @@ def main() -> None:
             _ROOT / "slot_designer" / "rawdata" / virtual_machine / f"mode_{mode}"
         )
 
-        # MD5 tags for console's version tracking (same schema as real
-        # machines.json: configSummaryMd5 / codeSummaryMd5). When spec or
-        # engine changes, MD5 flips → old chunks auto-flagged stale by
-        # _classify_chunks in the virtual console.
-        import hashlib as _hl
-        config_md5 = _hl.md5(args.spec.read_bytes()).hexdigest()
-        engine_dir = _ROOT / "slot_designer" / "engine"
-        emitter_dir = _ROOT / "slot_designer" / "emitter"
-        engine_files = sorted(engine_dir.glob("*.py")) + sorted(emitter_dir.glob("*.py"))
-        engine_files = [f for f in engine_files if f.name != "__init__.py"]
-        _h = _hl.md5()
-        for f in sorted(engine_files):
-            _h.update(f.read_bytes())
-        code_md5 = _h.hexdigest()
+        # MD5 tags for console's version tracking — single helper
+        # shared with virtual_app refresh + virtual_analyzer emit.
+        # config_md5 covers spec + ALL mode weights files for this
+        # machine; code_md5 covers engine + emitter sources. Any change
+        # to those → new md5 → console's _classify_chunks auto-splits
+        # old (tuned-v1) chunks from new (tuned-v2) chunks.
+        #
+        # Refresh machines_virtual.json BEFORE stamping chunks, so the
+        # registry and the chunks share the same md5 (weights just
+        # changed; registry was last refreshed on virtual console boot
+        # with PREVIOUS weights → stale). Without this refresh,
+        # classify_chunks sees chunk_md5 != registry_md5 and flags
+        # these fresh chunks as "stale version" immediately.
+        from slot_designer.backend.machine_version import compute_machine_md5
+        from slot_designer.backend.virtual_app import (
+            VIRTUAL_MACHINES_CONFIG,
+            refresh_machines_virtual,
+        )
+        try:
+            if VIRTUAL_MACHINES_CONFIG.exists():
+                refresh_machines_virtual(VIRTUAL_MACHINES_CONFIG)
+        except Exception as _exc:
+            print(f"  [warn] failed to refresh virtual registry: {_exc}")
+
+        # Look up this virtual machine in the refreshed registry so the
+        # helper sees the SAME entry (including all modes' weights) that
+        # virtual_analyzer will see at sampling time.
+        _registry = json.loads(VIRTUAL_MACHINES_CONFIG.read_text(encoding="utf-8"))
+        _entry = next(
+            (m for m in _registry["machines"] if m.get("machine") == virtual_machine),
+            None,
+        )
+        if _entry is None:
+            # Fall back to a synthesized entry (machine not yet registered;
+            # operator will need to add it before the virtual console picks
+            # up the chunks).
+            _entry = {
+                "machine": virtual_machine,
+                "modes": [mode],
+                "_spec_path": str(args.spec.relative_to(_ROOT))
+                    if args.spec.is_absolute() else str(args.spec),
+                "_weights_path_template": str(
+                    args.out_weights.relative_to(_ROOT)
+                    if args.out_weights.is_absolute() else args.out_weights
+                ),
+            }
+            print(f"  [warn] {virtual_machine!r} not in machines_virtual.json — "
+                  f"chunks tagged but won't appear in virtual console until added")
+        config_md5, code_md5 = compute_machine_md5(_entry)
 
         print(f"\n=== emitting rawdata chunks (primary deliverable) → {rawdata_dir} ===")
         print(f"  virtual machine: {virtual_machine}  (source: {source_machine})")

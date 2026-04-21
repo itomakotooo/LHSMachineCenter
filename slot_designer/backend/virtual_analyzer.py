@@ -39,6 +39,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from slot_designer.backend.machine_version import compute_machine_md5
 from slot_designer.emitter.chunk import compute_schema_fingerprint, emit_chunk, write_chunk
 from slot_designer.emitter.robot import emit_robot
 from slot_designer.emitter.round import emit_round
@@ -46,6 +47,7 @@ from slot_designer.engine.loader import load_engine
 
 
 REAL_ANALYZER = _ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
+VIRTUAL_REGISTRY = _ROOT / "slot_designer" / "configs" / "machines_virtual.json"
 
 
 def _utc_now() -> str:
@@ -175,7 +177,16 @@ def _run_simulator_chunk(
 
 
 def _compute_md5s(entry: dict) -> tuple[str, str]:
-    return (entry.get("configSummaryMd5", ""), entry.get("codeSummaryMd5", ""))
+    """Compute FRESH (config_md5, code_md5) for this machine at sample
+    time, not just read the registry cache. This way a chunk stamp always
+    matches the current (spec, weights, engine) snapshot, even if the
+    registry JSON is mid-refresh or stale.
+
+    The refresh_machines_virtual() write that matches this comes from the
+    virtual_app layer (on console boot) or can be invoked explicitly via
+    the same helper — both use the same `compute_machine_md5`.
+    """
+    return compute_machine_md5(entry)
 
 
 def _delegate_to_real_analyzer(
@@ -220,7 +231,21 @@ def main() -> int:
         return _delegate_to_real_analyzer(args, args.from_cache)
 
     # 2. Resume-from-cache or fresh sample: run simulator to produce chunks,
-    #    then delegate with --from-cache
+    #    then delegate with --from-cache.
+    # First: refresh registry md5s from current spec/weights/engine so the
+    # chunks we're about to write get tagged with the RIGHT md5 even if
+    # spec or weights changed since console boot. Writes back to the
+    # tracked machines_virtual.json so console's /api/machines etc. read
+    # consistent values for the rest of this session.
+    try:
+        from slot_designer.backend.virtual_app import refresh_machines_virtual
+        refresh_machines_virtual(VIRTUAL_REGISTRY)
+    except Exception:
+        # Non-fatal — if refresh fails we fall back to the cached values.
+        # Worst case: chunks tagged with slightly stale md5 → classify_chunks
+        # may flag them; operator sees the discrepancy.
+        pass
+
     registry = _load_virtual_registry()
     entry = _find_machine_entry(registry, args.machine)
     spec_path = _spec_path(entry)
