@@ -22,6 +22,18 @@ Known-unsupported CLI args (gracefully no-op'd):
   --endpoint-url           (no upstream in virtual mode)
   --batch-concurrency      (sim is sequential; accepted but ignored)
   --timeout                (simulator doesn't hang on IO; accepted)
+
+Forwarded to delegate analysis (but not consumed in virtual sampling):
+  --upstream-config-md5    (2026-04-21, 8f74213 on real analyzer —
+  --upstream-code-md5       chunks tagged with a different md5 get
+                            filtered out of stats during replay)
+
+Unknown flags (future backend additions): accepted via
+``parse_known_args`` so virtual sampling doesn't error out, but NOT
+forwarded to the delegated real-analyzer call — the real analyzer
+uses strict ``parse_args`` and would reject unrecognized flags. When
+a new analyzer flag ships and virtual mode needs to honor it,
+declare it explicitly here and extend ``_build_delegate_cmd``.
 """
 from __future__ import annotations
 
@@ -66,10 +78,16 @@ def _check_stop_flag(stop_flag: Path | None) -> bool:
     return stop_flag is not None and stop_flag.exists()
 
 
-def _parse_args() -> argparse.Namespace:
-    """Mirror the real analyzer's argparse — only declare args we consume;
-    accept everything else via ``parse_known_args`` so unknowns pass through
-    to the delegated real-analyzer call.
+def _parse_args() -> tuple[argparse.Namespace, list[str]]:
+    """Mirror the real analyzer's argparse — declare args we consume or
+    need to forward verbatim; everything else goes through
+    ``parse_known_args`` so unknown flags pass through to the delegated
+    real-analyzer call instead of erroring out here.
+
+    History: pre-2026-04-21 this used strict ``parse_args`` despite the
+    docstring claiming otherwise, which meant commit 8f74213 (which
+    added ``--upstream-config-md5`` / ``--upstream-code-md5`` to the
+    analyzer CLI) broke every virtual-machine batch-run until this fix.
     """
     p = argparse.ArgumentParser(description="Virtual-machine analyzer (sim + delegate)")
     p.add_argument("--machine", required=True)
@@ -92,7 +110,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--from-cache", type=Path, default=None)
     p.add_argument("--resume-from-cache", type=Path, default=None)
     p.add_argument("--endpoint-url", type=str, default=None)
-    return p.parse_args()
+    # Forwarded to delegate analysis for historical-md5 filtering
+    # (8f74213). Default "" = no filter on delegate side either.
+    p.add_argument("--upstream-config-md5", default="")
+    p.add_argument("--upstream-code-md5", default="")
+    return p.parse_known_args()
 
 
 def _load_virtual_registry() -> dict:
@@ -189,12 +211,21 @@ def _compute_md5s(entry: dict) -> tuple[str, str]:
     return compute_machine_md5(entry)
 
 
-def _delegate_to_real_analyzer(
+def _build_delegate_cmd(
     original_args: argparse.Namespace,
     from_cache_dir: Path,
-) -> int:
-    """Run the real analyzer with --from-cache, reusing the original args
-    that make sense in analysis context. Returns the subprocess's exit code.
+) -> list[str]:
+    """Construct the argv for the delegated real-analyzer call.
+
+    Split out as a pure function so tests can assert flag passthrough
+    without having to spawn a real subprocess.
+
+    NOTE: we only forward flags the real analyzer explicitly knows
+    about. Unknown ``extras`` captured by virtual_analyzer's
+    ``parse_known_args`` are INTENTIONALLY dropped here — the real
+    analyzer uses strict ``parse_args`` and would rc=2 on anything
+    unrecognized. New flags that virtual sampling should honor require
+    a parallel add here + in ``_parse_args``.
     """
     cmd = [
         sys.executable, str(REAL_ANALYZER),
@@ -220,11 +251,37 @@ def _delegate_to_real_analyzer(
         cmd.extend(["--stop-flag-file", str(original_args.stop_flag_file)])
     if original_args.guideline_rules:
         cmd.extend(["--guideline-rules", str(original_args.guideline_rules)])
+    # 2026-04-21: forward upstream md5 filter so historical-md5 virtual
+    # chunks are excluded from stats during replay (matches real-analyzer
+    # behavior since 8f74213). Only forward when non-empty — empty means
+    # "no filter" on both sides.
+    if original_args.upstream_config_md5:
+        cmd.extend(["--upstream-config-md5", original_args.upstream_config_md5])
+    if original_args.upstream_code_md5:
+        cmd.extend(["--upstream-code-md5", original_args.upstream_code_md5])
+    return cmd
+
+
+def _delegate_to_real_analyzer(
+    original_args: argparse.Namespace,
+    from_cache_dir: Path,
+) -> int:
+    """Run the real analyzer with --from-cache, reusing the original args
+    that make sense in analysis context. Returns the subprocess's exit code.
+    """
+    cmd = _build_delegate_cmd(original_args, from_cache_dir)
     return subprocess.call(cmd, cwd=_ROOT)
 
 
 def main() -> int:
-    args = _parse_args()
+    args, extras = _parse_args()
+    if extras:
+        # Visible in worker logs so future "why isn't my new flag
+        # honored on virtual machines?" diagnostics point at this line.
+        print(
+            f"virtual_analyzer: ignoring unknown flags {extras!r} "
+            f"(declare them in _parse_args + _build_delegate_cmd to honor)"
+        )
 
     # 1. Pure --from-cache: no sim needed, delegate directly
     if args.from_cache and not args.resume_from_cache:
