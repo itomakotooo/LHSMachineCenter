@@ -1,0 +1,36 @@
+{
+  "_notes": [
+    "Virtual machine registry for the virtual console (port 8878).",
+    "Each entry mirrors the real configs/machines.json schema (machine, modes,",
+    "logicClassNames, configSummaryMd5, codeSummaryMd5, available) so the",
+    "existing frontend + backend treat these as normal machines.",
+    "",
+    "Extra fields (_spec_path, _weights_path_template, _source_machine) are",
+    "metadata used by slot_designer/backend/virtual_analyzer.py to locate the",
+    "spec + weights for each virtual machine. The real backend ignores",
+    "unknown fields.",
+    "",
+    "MD5s are auto-refreshed by virtual_app.build_virtual_app() on startup",
+    "from the referenced spec file (configSummaryMd5) and the engine source",
+    "snapshot (codeSummaryMd5) — any change to spec or engine code flips the",
+    "md5 so old chunks get flagged stale correctly."
+  ],
+  "machines": [
+    {
+      "machine": "M1sim",
+      "modes": [
+        1
+      ],
+      "logicClassNames": [
+        "SimulatedClassicPayline3Reel"
+      ],
+      "configSummaryMd5": "35bc39ac98109074f4b5b0a695c83690",
+      "codeSummaryMd5": "ee808f2f8bbe295dd110d80f1a186833",
+      "available": true,
+      "_source_machine": "M1",
+      "_spec_path": "slot_designer/specs/M1.spec.json",
+      "_weights_path_template": "slot_designer/weights/M1_mode{mode}.tuned.json",
+      "_weights_fallback_template": "slot_designer/weights/M1_mode{mode}.current.json"
+    }
+  ]
+}

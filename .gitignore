@@ -82,3 +82,16 @@ configs/machines_static.json
 # protect specific (machine, mode) chunks from disk-pressure
 # auto-cleanup. Not versioned (operator preference, not config).
 configs/rawdata_locks.json
+
+# slot_designer sim outputs (rawdata-format chunks, regenerable)
+slot_designer/out/
+
+# slot_designer virtual console state / data (regenerable / per-operator)
+slot_designer/rawdata/
+slot_designer/reports/
+slot_designer/state/
+slot_designer/cache_chunks/
+slot_designer/dev_reports/
+slot_designer/configs/paytables_virtual/
+# Per-fleet static attrs cache — auto-rebuilt from reports + machines_virtual.json
+slot_designer/configs/machines_static.json

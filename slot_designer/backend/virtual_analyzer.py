@@ -1,0 +1,381 @@
+"""Virtual-machine analyzer — CLI-compatible drop-in for player_impact_analyzer.py.
+
+The real console's backend spawns the analyzer as a subprocess with a
+specific CLI (--machine, --rtp-mode, --chunk-spin-times, --chunk-robot-count,
+--max-chunks, --output-dir, --progress-file, --stop-flag-file, --from-cache,
+--resume-from-cache, --chunk-cache-dir, ...).
+
+For virtual machines, we REPLACE the HTTP sampling step with our simulator,
+then DELEGATE to the real analyzer's --from-cache path for all the heavy
+analysis work (RTP / bucket / streaks / bankruptcy simulation / etc.).
+
+Flow:
+
+  --from-cache ONLY     → straight delegate to real analyzer (no sim needed)
+  --resume-from-cache   → load existing chunks, resume sim from next index
+  otherwise             → fresh sim → emit chunks → delegate --from-cache
+
+This keeps the real analyzer 100% untouched and inherits every feature /
+bugfix / metric it gains over time.
+
+Known-unsupported CLI args (gracefully no-op'd):
+  --endpoint-url           (no upstream in virtual mode)
+  --batch-concurrency      (sim is sequential; accepted but ignored)
+  --timeout                (simulator doesn't hang on IO; accepted)
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from random import Random
+
+_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from slot_designer.backend.machine_version import compute_machine_md5
+from slot_designer.emitter.chunk import compute_schema_fingerprint, emit_chunk, write_chunk
+from slot_designer.emitter.robot import emit_robot
+from slot_designer.emitter.round import emit_round
+from slot_designer.engine.loader import load_engine
+
+
+REAL_ANALYZER = _ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
+VIRTUAL_REGISTRY = _ROOT / "slot_designer" / "configs" / "machines_virtual.json"
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _append_jsonl(path: Path | None, payload: dict) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def _check_stop_flag(stop_flag: Path | None) -> bool:
+    return stop_flag is not None and stop_flag.exists()
+
+
+def _parse_args() -> argparse.Namespace:
+    """Mirror the real analyzer's argparse — only declare args we consume;
+    accept everything else via ``parse_known_args`` so unknowns pass through
+    to the delegated real-analyzer call.
+    """
+    p = argparse.ArgumentParser(description="Virtual-machine analyzer (sim + delegate)")
+    p.add_argument("--machine", required=True)
+    p.add_argument("--rtp-mode", type=int, default=1)
+    p.add_argument("--bet", type=int, default=1000)
+    p.add_argument("--stop-flag-file", type=Path, default=None)
+    p.add_argument("--target-halfwidth-pp", type=float, default=0.5)
+    p.add_argument("--chunk-spin-times", type=int, default=5000)
+    p.add_argument("--chunk-robot-count", type=int, default=20)
+    p.add_argument("--batch-concurrency", type=int, default=2)
+    p.add_argument("--max-chunks", type=int, default=120)
+    p.add_argument("--timeout", type=float, default=300.0)
+    p.add_argument("--output-dir", type=Path, required=True)
+    p.add_argument("--run-id", default=None)
+    p.add_argument("--progress-file", type=Path, default=None)
+    p.add_argument("--bankruptcy-session-spins", type=int, default=10000)
+    p.add_argument("--bankruptcy-bankroll-multipliers", default="100,200,500")
+    p.add_argument("--guideline-rules", type=Path, default=None)
+    p.add_argument("--chunk-cache-dir", type=Path, default=None)
+    p.add_argument("--from-cache", type=Path, default=None)
+    p.add_argument("--resume-from-cache", type=Path, default=None)
+    p.add_argument("--endpoint-url", type=str, default=None)
+    return p.parse_args()
+
+
+def _load_virtual_registry() -> dict:
+    path = _ROOT / "slot_designer" / "configs" / "machines_virtual.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _find_machine_entry(registry: dict, machine: str) -> dict:
+    for m in registry.get("machines", []):
+        if m.get("machine") == machine:
+            return m
+    raise RuntimeError(f"virtual machine {machine!r} not in machines_virtual.json")
+
+
+def _resolve_weights_path(entry: dict, mode: int) -> Path:
+    """Pick tuned weights if present, else fall back to current. Virtual
+    machines expected to always have at least `.current.json` available.
+    """
+    templates = [
+        entry.get("_weights_path_template"),
+        entry.get("_weights_fallback_template"),
+    ]
+    for tmpl in templates:
+        if not tmpl:
+            continue
+        p = _ROOT / tmpl.format(mode=mode)
+        if p.exists():
+            return p
+    raise RuntimeError(
+        f"no weights file found for {entry.get('machine')} mode {mode}; "
+        f"looked at {templates}"
+    )
+
+
+def _spec_path(entry: dict) -> Path:
+    rel = entry.get("_spec_path")
+    if not rel:
+        raise RuntimeError(f"{entry.get('machine')}: missing _spec_path in registry")
+    return _ROOT / rel
+
+
+def _run_simulator_chunk(
+    engine, spec: dict, chunk_index: int, robots: int, spins_per_robot: int,
+    rng: Random, schema_fp: str, md5s: tuple[str, str],
+    initial_credits: int = 1_000_000_000,
+) -> tuple[dict, int, int]:
+    """Produce ONE chunk dict (plus running win/bet totals)."""
+    config_md5, code_md5 = md5s
+    robot_list = []
+    chunk_win = 0
+    chunk_bet = 0
+    for _ in range(robots):
+        last_credits = initial_credits
+        rounds: list[dict] = []
+        for _i in range(spins_per_robot):
+            out = engine.spin(rng)
+            rd = emit_round(
+                out,
+                last_credits=last_credits,
+                spin_times=spins_per_robot,
+                rtp_id=int(spec["mode"]),
+            )
+            rounds.append(rd)
+            last_credits = last_credits - out.cost_credits + rd["WinCredits"]
+            chunk_win += rd["WinCredits"]
+            chunk_bet += out.bet_amount
+        robot_list.append(emit_robot(rounds, bet=engine.bet_amount))
+
+    chunk = emit_chunk(
+        robot_list,
+        machine=spec["machine"],
+        mode=int(spec["mode"]),
+        bet=engine.bet_amount,
+        spin_times=spins_per_robot,
+        robot_count=robots,
+        chunk_index=chunk_index,
+        upstream_schema_fingerprint=schema_fp,
+        config_md5=config_md5,
+        code_md5=code_md5,
+    )
+    return chunk, chunk_win, chunk_bet
+
+
+def _compute_md5s(entry: dict) -> tuple[str, str]:
+    """Compute FRESH (config_md5, code_md5) for this machine at sample
+    time, not just read the registry cache. This way a chunk stamp always
+    matches the current (spec, weights, engine) snapshot, even if the
+    registry JSON is mid-refresh or stale.
+
+    The refresh_machines_virtual() write that matches this comes from the
+    virtual_app layer (on console boot) or can be invoked explicitly via
+    the same helper — both use the same `compute_machine_md5`.
+    """
+    return compute_machine_md5(entry)
+
+
+def _delegate_to_real_analyzer(
+    original_args: argparse.Namespace,
+    from_cache_dir: Path,
+) -> int:
+    """Run the real analyzer with --from-cache, reusing the original args
+    that make sense in analysis context. Returns the subprocess's exit code.
+    """
+    cmd = [
+        sys.executable, str(REAL_ANALYZER),
+        "--machine", original_args.machine,
+        "--rtp-mode", str(original_args.rtp_mode),
+        "--bet", str(original_args.bet),
+        "--output-dir", str(original_args.output_dir),
+        "--target-halfwidth-pp", "0.001",   # don't CI-stop; process all chunks we produced
+        "--max-chunks", "99999",
+        "--from-cache", str(from_cache_dir),
+        "--chunk-spin-times", str(original_args.chunk_spin_times),
+        "--chunk-robot-count", str(original_args.chunk_robot_count),
+        "--batch-concurrency", str(original_args.batch_concurrency),
+        "--timeout", str(original_args.timeout),
+        "--bankruptcy-session-spins", str(original_args.bankruptcy_session_spins),
+        "--bankruptcy-bankroll-multipliers", original_args.bankruptcy_bankroll_multipliers,
+    ]
+    if original_args.run_id:
+        cmd.extend(["--run-id", original_args.run_id])
+    if original_args.progress_file:
+        cmd.extend(["--progress-file", str(original_args.progress_file)])
+    if original_args.stop_flag_file:
+        cmd.extend(["--stop-flag-file", str(original_args.stop_flag_file)])
+    if original_args.guideline_rules:
+        cmd.extend(["--guideline-rules", str(original_args.guideline_rules)])
+    return subprocess.call(cmd, cwd=_ROOT)
+
+
+def main() -> int:
+    args = _parse_args()
+
+    # 1. Pure --from-cache: no sim needed, delegate directly
+    if args.from_cache and not args.resume_from_cache:
+        return _delegate_to_real_analyzer(args, args.from_cache)
+
+    # 2. Resume-from-cache or fresh sample: run simulator to produce chunks,
+    #    then delegate with --from-cache.
+    # First: refresh registry md5s from current spec/weights/engine so the
+    # chunks we're about to write get tagged with the RIGHT md5 even if
+    # spec or weights changed since console boot. Writes back to the
+    # tracked machines_virtual.json so console's /api/machines etc. read
+    # consistent values for the rest of this session.
+    try:
+        from slot_designer.backend.virtual_app import refresh_machines_virtual
+        refresh_machines_virtual(VIRTUAL_REGISTRY)
+    except Exception:
+        # Non-fatal — if refresh fails we fall back to the cached values.
+        # Worst case: chunks tagged with slightly stale md5 → classify_chunks
+        # may flag them; operator sees the discrepancy.
+        pass
+
+    registry = _load_virtual_registry()
+    entry = _find_machine_entry(registry, args.machine)
+    spec_path = _spec_path(entry)
+    weights_path = _resolve_weights_path(entry, args.rtp_mode)
+    engine, spec = load_engine(spec_path, weights_path)
+
+    # For virtual machines, rawdata is the single source of truth — every
+    # sampling run APPENDS to the rawdata pool (not a scratch cache). This
+    # matches the real analyzer's --resume-from-cache behavior and makes
+    # the user's mental model simple: "sampling adds spins to this machine's
+    # rawdata", no separate scratch → import step.
+    #
+    # Backend's --chunk-cache-dir (scratch) is intentionally IGNORED in
+    # virtual mode. Explicit --resume-from-cache still wins (operator
+    # override).
+    rawdata_dir = _ROOT / "slot_designer" / "rawdata" / args.machine / f"mode_{args.rtp_mode}"
+    sampling_out_dir = args.resume_from_cache or rawdata_dir
+    sampling_out_dir.mkdir(parents=True, exist_ok=True)
+
+    md5s = _compute_md5s(entry)
+
+    # Always resume: pick max existing chunk index + 1 so concurrent /
+    # repeated samplings never overwrite each other.
+    existing = sorted(sampling_out_dir.glob("chunk_*.json"))
+    start_idx = 1
+    if existing:
+        try:
+            last = max(int(p.stem.split("_")[1]) for p in existing)
+            start_idx = last + 1
+        except (IndexError, ValueError):
+            start_idx = 1
+
+    run_id = args.run_id or f"virt_{os.getpid()}"
+
+    # Progress events — same format the real analyzer uses, so the
+    # existing frontend status-strip / batch-log renderers treat virtual
+    # runs identically to real ones.
+    pf = args.progress_file
+    _append_jsonl(pf, {
+        "event": "started",
+        "run_id": run_id,
+        "machine": args.machine,
+        "mode": args.rtp_mode,
+        "target_halfwidth_pp": args.target_halfwidth_pp,
+        "chunk_spin_times": args.chunk_spin_times,
+        "chunk_robot_count": args.chunk_robot_count,
+        "batch_concurrency": args.batch_concurrency,
+        "started_at": _utc_now(),
+    })
+    _append_jsonl(pf, {
+        "event": "analyzer_started",
+        "run_id": run_id,
+        "pid": os.getpid(),
+        "machine": args.machine,
+        "mode": args.rtp_mode,
+        "ts": _utc_now(),
+        "virtual": True,
+    })
+
+    # Schema fingerprint probe (deterministic seed — doesn't move main RNG)
+    probe = emit_round(
+        engine.spin(Random(0)),
+        last_credits=1_000_000_000,
+        spin_times=args.chunk_spin_times,
+        rtp_id=int(spec["mode"]),
+    )
+    schema_fp = compute_schema_fingerprint(probe)
+
+    rng = Random(int(time.time()) ^ (start_idx * 997))
+    total_win = 0
+    total_bet = 0
+    stop_reason = "max_chunks_reached"
+    last_produced_idx = start_idx - 1
+
+    for ci in range(start_idx, start_idx + args.max_chunks):
+        if _check_stop_flag(args.stop_flag_file):
+            stop_reason = "user_stop"
+            _append_jsonl(pf, {
+                "event": "stop_flag_detected",
+                "run_id": run_id,
+                "chunk_index": ci,
+                "ts": _utc_now(),
+            })
+            break
+
+        _append_jsonl(pf, {
+            "event": "chunk_started",
+            "run_id": run_id,
+            "chunk_index": ci,
+            "ts": _utc_now(),
+        })
+
+        t0 = time.time()
+        chunk, c_win, c_bet = _run_simulator_chunk(
+            engine, spec, ci,
+            robots=args.chunk_robot_count,
+            spins_per_robot=args.chunk_spin_times,
+            rng=rng,
+            schema_fp=schema_fp,
+            md5s=md5s,
+        )
+        write_chunk(chunk, sampling_out_dir, ci)
+        total_win += c_win
+        total_bet += c_bet
+        last_produced_idx = ci
+        elapsed = time.time() - t0
+
+        _append_jsonl(pf, {
+            "event": "chunk_progress",
+            "run_id": run_id,
+            "chunk_index": ci,
+            "chunks_done": ci - start_idx + 1,
+            "total_spins": (ci - start_idx + 1) * args.chunk_robot_count * args.chunk_spin_times,
+            "current_rtp_pct": (total_win / total_bet * 100) if total_bet else 0.0,
+            "duration_s": round(elapsed, 3),
+            "ts": _utc_now(),
+        })
+
+    _append_jsonl(pf, {
+        "event": "sampling_done",
+        "run_id": run_id,
+        "chunks_produced": last_produced_idx - start_idx + 1,
+        "stop_reason": stop_reason,
+        "sampling_rtp_pct": (total_win / total_bet * 100) if total_bet else 0.0,
+        "ts": _utc_now(),
+    })
+
+    # 3. Delegate to real analyzer for full analysis
+    return _delegate_to_real_analyzer(args, sampling_out_dir)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
