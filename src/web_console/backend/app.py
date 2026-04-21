@@ -4570,6 +4570,7 @@ def create_app(
     classify_dir: Path | None = None,
     rawdata_root: Path | None = None,
     paytables_dir: Path | None = None,
+    md5_refresh_override: "Callable[[str], dict[str, Any]] | None" = None,
 ) -> FastAPI:
     """Build a FastAPI app with all stateful singletons scoped to this instance.
 
@@ -6897,7 +6898,24 @@ def create_app(
 
         Returns ``{ok, server_id, machines_fetched, machines_updated,
         error?}``.
+
+        **Virtual console override**: when create_app was given
+        ``md5_refresh_override=<callable>`` (2026-04-21 isolation fix),
+        this function delegates to that callable and short-circuits
+        the upstream fetch. Virtual consoles use this to recompute
+        local md5 from spec + weights + engine source instead of
+        pulling from production API — without this, upstream fleet
+        (253 real machines) gets merged into the virtual registry
+        and breaks data isolation.
         """
+        if md5_refresh_override is not None:
+            try:
+                return md5_refresh_override(server_id)
+            except Exception as exc:
+                if raise_on_error:
+                    raise HTTPException(status_code=500, detail=str(exc))
+                return {"ok": False, "error": str(exc), "server_id": server_id,
+                        "machines_fetched": 0, "machines_updated": 0}
         cfg = load_servers(sc)
         target = next((s for s in cfg.get("servers", []) if s["id"] == server_id), None)
         if target is None:

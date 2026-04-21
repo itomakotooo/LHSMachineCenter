@@ -68,6 +68,47 @@ def refresh_machines_virtual(config_path: Path) -> dict:
     return raw
 
 
+def _local_md5_refresh(server_id: str = "virtual") -> dict:
+    """Override for ``POST /api/machines/refresh-md5`` + the pre-batch
+    auto-refresh. Called by the backend when the virtual console fires
+    a refresh. Recomputes md5s locally via ``refresh_machines_virtual``
+    (spec + weights + engine source) instead of fetching from upstream.
+
+    **Critical isolation barrier** (2026-04-21 incident): without this
+    override, the frontend bootstrap's auto-refresh-md5 POST triggers
+    the default handler which pulls upstream MachineConfigMd5 and
+    merges 253 real-fleet machines into machines_virtual.json —
+    breaking data isolation. Virtual machines have no upstream;
+    md5 is authoritatively derived from local files.
+    """
+    before_count = 0
+    after_count = 0
+    if VIRTUAL_MACHINES_CONFIG.exists():
+        before = json.loads(VIRTUAL_MACHINES_CONFIG.read_text(encoding="utf-8"))
+        before_map = {
+            m["machine"]: (m.get("configSummaryMd5"), m.get("codeSummaryMd5"))
+            for m in before.get("machines", [])
+        }
+        before_count = len(before_map)
+        after = refresh_machines_virtual(VIRTUAL_MACHINES_CONFIG)
+        after_count = len(after.get("machines", []))
+        updated = sum(
+            1 for m in after.get("machines", [])
+            if before_map.get(m["machine"]) != (m.get("configSummaryMd5"),
+                                                m.get("codeSummaryMd5"))
+        )
+    else:
+        updated = 0
+    return {
+        "ok": True,
+        "server_id": "virtual",
+        "machines_fetched": after_count,
+        "machines_updated": updated,
+        "skipped_empty_upstream": 0,
+        "_virtual_refresh": True,   # telemetry for UI / test diagnostic
+    }
+
+
 def build_virtual_app():
     """Construct the virtual-console FastAPI app with isolated paths."""
     for p in (VIRTUAL_STATE_DIR, VIRTUAL_RAWDATA_ROOT, VIRTUAL_REPORTS_ROOT,
@@ -87,6 +128,7 @@ def build_virtual_app():
         classify_dir=VIRTUAL_CLASSIFY_DIR,
         rawdata_root=VIRTUAL_RAWDATA_ROOT,
         paytables_dir=VIRTUAL_PAYTABLES_DIR,
+        md5_refresh_override=_local_md5_refresh,
     )
 
 
