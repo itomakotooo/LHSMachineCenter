@@ -4645,19 +4645,20 @@ async function refreshReportMgmtBanner() {
   }
   state.staleCount = body;
   const staleAnalyzer = body.stale_analyzer || 0;
-  const staleRawdata = body.stale_rawdata || 0;
   const fixable = body.fixable_count || 0;
   const analyzerShort = (body.current_analyzer_version || "").slice(0, 10) || "—";
 
+  // Report 管理 banner is report-scope only (2026-04-21). "Rawdata
+  // 过期" used to live here too but rawdata doesn't expire — md5 is
+  // a tag, not a destruction signal (f5d8787); the per-mode "历史
+  // md5" cell in rwtree is where operators manage different rawdata
+  // versions. Keep this banner focused on analyzer staleness.
   banner.classList.remove("hidden");
   let staleText;
-  if (staleAnalyzer === 0 && staleRawdata === 0) {
+  if (staleAnalyzer === 0) {
     staleText = `<span class="report-mgmt-ok">✓ 全 fleet analyzer 均最新</span>`;
   } else {
-    const parts = [];
-    if (staleAnalyzer > 0) parts.push(`⚠ ${staleAnalyzer} 个 analyzer 过期`);
-    if (staleRawdata > 0) parts.push(`⚠ ${staleRawdata} 个 rawdata 过期`);
-    staleText = `<span class="report-mgmt-warn">${parts.join(" · ")}</span>`;
+    staleText = `<span class="report-mgmt-warn">⚠ ${staleAnalyzer} 个 analyzer 过期</span>`;
   }
 
   const regenBtn = fixable > 0
