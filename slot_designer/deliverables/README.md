@@ -18,14 +18,25 @@ Mode 1 · 历史 32251c25…  →  slot_designer/deliverables/M1/32251c25/
 
 每台机台的活动版本由 `slot_designer/weights/<machine>_mode<N>.tuned.json` 指定（虚拟 console 实际读这个）。deliverables/ 下是**归档**（history + current 的完整文件备份）。
 
-切换 active：
+切换 active（release 路径）：
 ```bash
-# 把归档版本 promote 成 active
+# 1. 把归档版本 promote 成 active
 cp slot_designer/deliverables/M1/558dfcdd/reel_weights.json \
    slot_designer/weights/M1_mode1.tuned.json
 
-# 下一次虚拟 console 启动（或下一次采样）会自动把新 md5 刷进 machines_virtual.json
+# 2. 下一次虚拟 console 启动（或 refresh-md5）会自动把新 md5 刷进
+#    machines_virtual.json —— UI 显示机台 md5 drift
+
+# 3. Operator 在虚拟 console 里按"开始采样" → virtual_analyzer 按新 md5
+#    产 chunk 到 slot_designer/rawdata/<machine>sim/mode_<N>/
+#    （旧 md5 的 chunks 自动标 historical，不会和新 chunks 混分析）
 ```
+
+**Dev scratch vs console rawdata**：`simulate.py` / `tune.py --emit-chunks`
+跑完把 chunk 写到 `slot_designer/_dev_scratch/rawdata/...`（ephemeral，
+每次跑自动 wipe 同目录下 chunk_*.json）。console 的 rawdata 池
+（`slot_designer/rawdata/`）**只由 console 自己的 batch-run 写入**，
+dev 脚本从不碰它。这样 tune / re-sim 时不会意外覆盖 console 的数据。
 
 ## 每目录内容
 

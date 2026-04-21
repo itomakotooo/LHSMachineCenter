@@ -93,5 +93,9 @@ slot_designer/state/
 slot_designer/cache_chunks/
 slot_designer/dev_reports/
 slot_designer/configs/paytables_virtual/
+# slot_designer DEV scratch (simulate.py / tune.py ephemeral rawdata —
+# intentionally separate from slot_designer/rawdata/ above so developer
+# iteration never writes into the virtual console's data pool)
+slot_designer/_dev_scratch/
 # Per-fleet static attrs cache — auto-rebuilt from reports + machines_virtual.json
 slot_designer/configs/machines_static.json

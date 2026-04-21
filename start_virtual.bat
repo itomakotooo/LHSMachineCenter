@@ -3,12 +3,15 @@ REM One-click launcher for the Virtual Machine Console.
 REM
 REM The virtual console runs a second FastAPI instance on port 8878
 REM (real console is 8877) with fully isolated data:
-REM   - rawdata : slot_designer/rawdata/
+REM   - rawdata : slot_designer/rawdata/       (owned by console; populated
+REM                                              via POST /api/batch-run)
 REM   - reports : slot_designer/reports/
 REM   - state   : slot_designer/state/
 REM   - machines: slot_designer/configs/machines_virtual.json
-REM Both consoles can run simultaneously — open two browser tabs and
-REM do side-by-side real-vs-virtual comparisons.
+REM Dev-side simulate.py / tune.py write to slot_designer/_dev_scratch/
+REM (not the paths above) so developer iteration never touches console
+REM data. Both consoles can run simultaneously — open two browser tabs
+REM and do side-by-side real-vs-virtual comparisons.
 REM
 REM Double-click this file in Explorer, or run it from cmd:
 REM     start_virtual.bat              -> default port 8878, auto-open browser

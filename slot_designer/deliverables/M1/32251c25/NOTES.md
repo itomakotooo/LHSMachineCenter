@@ -72,18 +72,26 @@
 ## 如何回退到本版（若需要）
 
 ```bash
+# 1. promote 本版 weights 成 active
 cp slot_designer/deliverables/M1/32251c25/reel_weights.json \
    slot_designer/weights/M1_mode1.tuned.json
 
-# 清旧 rawdata（避免 md5 不一致）
-rm -rf slot_designer/rawdata/M1sim
+# 2. 虚拟 console 下次 refresh-md5（启动 / 手动）自动刷新 machines_virtual.json
+#    的 configSummaryMd5，console 就知道机台版本换了
 
-# 重采
+# 3. console 那边的 rawdata：让 operator 走 batch-run 重采即可
+#    （旧 md5 的 chunks 自动标 historical，不会和新 chunks 混分析；
+#    要彻底清可用 console UI 的 per-version DELETE 按钮）
+
+# —— 以上是 release 路径。如果只是想 dev 自己 eyeball 本版的数值： ——
+
+# dev-scratch 验证（数据不进 console，纯给我自己看）
 python -m slot_designer.scripts.simulate \
   --spec slot_designer/specs/M1.spec.json \
   --weights slot_designer/weights/M1_mode1.tuned.json \
-  --out-dir slot_designer/rawdata/M1sim/mode_1 \
   --machine-name M1sim --chunks 110
+# → 写到 slot_designer/_dev_scratch/rawdata/M1sim/mode_1/
+#   每次跑自动 wipe 同路径下的旧 chunk_*.json，无需 rm -rf
 ```
 
 ## Tuner 命令（可复现）

@@ -91,16 +91,23 @@ python -m slot_designer.scripts.tune \
   综合 near-miss 带宽 + PWDF 底线 + blank-adjacency 奖励。
 
 输出**automatically**：
-- `weights/<M>_mode<N>.tuned.json` (intermediate)
+- `weights/<M>_mode<N>.tuned.json` (**primary release artifact** — 这个
+  才是交给 console 的；虚拟 console 下次 refresh 会自动更新 md5)
 - `out/<M>_tune_report.md` (Phase 4 + Phase 5 diff 表)
-- `out/<M>_tuned/mode_<N>/cache/chunk_*.json` (**primary rawdata deliverable**,
-  1.1M spins 默认)
+- `_dev_scratch/rawdata/<M>sim/mode_<N>/chunk_*.json` (dev scratch，
+  供开发自己用 `analyzer --from-cache` 交叉验证 RTP/CV 数值；**不是**
+  console 的数据入口)
 
 ### 阶段 5 — 打开虚拟机 console 管理（Phase 6 添加）
 
-`tune.py` 收尾时自动把 rawdata chunks 写到
-`slot_designer/rawdata/M1sim/mode_1/`，带 `_config_md5 / _code_md5` 版本
-标签。这个目录是**虚拟机 console** 的标准 rawdata 入口。
+Release 流程（dev → console）：
+1. `tune.py` 产出 tuned weights 到 `weights/<M>_mode<N>.tuned.json`
+   和 dev-scratch rawdata 到 `slot_designer/_dev_scratch/rawdata/...`
+2. 虚拟 console 下次 refresh-md5（启动/手动）时自动算出新的
+   `configSummaryMd5`，写入 `machines_virtual.json`
+3. Operator 在虚拟 console 里点 **开始采样** → `virtual_analyzer.py`
+   按新 md5 产出 chunk 到 `slot_designer/rawdata/<M>sim/mode_<N>/`
+   （这是 console 的 rawdata 入口，dev 脚本不碰）
 
 启动虚拟 console（port 8878，和真 console 8877 **完全独立的实例**）：
 ```powershell
@@ -113,16 +120,24 @@ powershell -ExecutionPolicy Bypass -File slot_designer/scripts/start_virtual_con
 
 在虚拟 console 里**和操作真机台完全一致**：
 - 机台目录 / 机台过滤器 → 能看到 `M1sim`
-- rawdata 管理 → 看到 1.1M spin / 110 chunks / kept/deletable/stale 分组
-- "⟳ 生成 Report" → 用现有 analyzer 分析虚拟 rawdata，产出标准报告
 - "开始采样" → 自动调 **virtual_analyzer** 跑我的 simulator（而不是
-  HTTP 上游）、产新 chunks append 到 rawdata pool → 再次分析
+  HTTP 上游），产新 chunks 按 md5 `append` 到 `slot_designer/rawdata/
+  M1sim/mode_<N>/`（新装机或 refresh 后 rawdata 池是空的，operator
+  首次采样就把它填上；之后 md5 变了再采，新旧版 chunk 自动按 md5
+  分 kept/historical，不互相覆盖）
+- rawdata 管理 → 看到对应的 spin / chunks / kept/deletable/historical 分组
+- "⟳ 生成 Report" → 用现有 analyzer 分析虚拟 rawdata，产出标准报告
 - mode 选择 / 目标 CI 精度 / spin 次数等采样参数 → 全部支持
 - 批量采样 / 批量生成报告 → 全部支持
 - 报告对比 / 加载 / 删除 / LLM 解读 → 全部支持
 
-**数据隔离**：真 console 的 `rawdata/` 和虚拟 console 的
-`slot_designer/rawdata/` 互不干扰。两个 console 可以同时开，两个 tab。
+**数据隔离**：
+- 真 console 的 `rawdata/` 和虚拟 console 的 `slot_designer/rawdata/`
+  互不干扰 —— 两个 console 可以同时开，两个 tab。
+- Dev 侧 `simulate.py` / `tune.py` 的产出在 `slot_designer/_dev_scratch/
+  rawdata/` 下，**不进** console 的数据池。想清理直接 rm 整个
+  `_dev_scratch/` 即可；console 那边的 rawdata 由 console 自己的
+  一键清理 / per-version DELETE 管。
 
 ### 阶段 6 — 和真机交叉对比（择优录取）
 
@@ -137,7 +152,7 @@ M1sim 的 report。两个 console 的指标画像并排比较，按你的设计�
 ```bash
 python fresh_slotlab/player_impact_analyzer.py \
   --machine M1sim --rtp-mode 1 \
-  --from-cache slot_designer/rawdata/M1sim/mode_1 \
+  --from-cache slot_designer/_dev_scratch/rawdata/M1sim/mode_1 \
   --output-dir slot_designer/out/M1sim_offline_report \
   --target-halfwidth-pp 0.001 --max-chunks 9999
 ```

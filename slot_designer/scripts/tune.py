@@ -1,4 +1,4 @@
-"""CLI: tune reel weights (Phase 4) + order (Phase 5), emit rawdata.
+"""CLI: tune reel weights (Phase 4) + order (Phase 5), emit dev rawdata.
 
 Two-stage pipeline:
 
@@ -12,9 +12,24 @@ Two-stage pipeline:
     Optimizes 2-of-3 near-miss rate, PWDF, blank clustering (Harrigan
     2009).
 
-Final deliverable is rawdata chunks — existing analyzer reads them and
-produces a standard report for side-by-side comparison with the real
-machine.
+Deliverables:
+  1. **Tuned weights file** (primary release artifact) — copied to
+     ``slot_designer/weights/<machine>_mode<N>.tuned.json``; this is
+     what the virtual console sees. Updating it flips ``configSummaryMd5``
+     in ``machines_virtual.json`` on next refresh → console knows a new
+     machine version is live.
+  2. **Dev rawdata chunks** (scratch, for dev verification) — emitted
+     under ``slot_designer/_dev_scratch/rawdata/<machine>/mode_<N>/``
+     so ``player_impact_analyzer --from-cache`` can cross-check the
+     tuner's predicted metrics (RTP / CV / bucket shape) against an
+     actual simulation. Not a console artifact — the console produces
+     its own rawdata via ``POST /api/batch-run`` once the weights
+     release is live.
+
+Dev rawdata is ephemeral (no retention). Each tune run wipes the
+scratch out-dir's ``chunk_*.json`` before emitting, so re-tuning gets
+a clean slate. Pass ``--skip-rawdata`` to skip emission entirely
+(faster dev iteration when you only care about Phase 4/5 metrics).
 
 Usage:
 
@@ -68,11 +83,16 @@ def main() -> None:
     p.add_argument("--base-weights", required=True, type=Path)
     p.add_argument("--target", required=True, type=Path)
     p.add_argument("--out-weights", required=True, type=Path,
-                   help="(intermediate) tuned weights JSON — for reproducibility / inspection")
+                   help="(primary release artifact) tuned weights JSON. "
+                        "Promoting this to slot_designer/weights/<machine>_"
+                        "mode<N>.tuned.json is how the virtual console "
+                        "picks up the new version (md5 flips on next refresh).")
     p.add_argument("--out-rawdata-dir", type=Path, default=None,
-                   help="(primary deliverable) directory to emit rawdata chunks into; "
-                        "defaults to slot_designer/rawdata/<machine>sim/mode_<N>/ "
-                        "— which the virtual console reads natively")
+                   help="(dev scratch) directory for sim rawdata chunks; "
+                        "defaults to slot_designer/_dev_scratch/rawdata/"
+                        "<machine>/mode_<N>/ (ephemeral, for dev verification "
+                        "via analyzer --from-cache). The console's rawdata "
+                        "is populated separately via batch-run, not from here.")
     p.add_argument("--virtual-machine", default=None,
                    help="virtual machine name (defaults to <source_machine>sim). "
                         "Should be registered in configs/machines_virtual.json")
@@ -116,7 +136,9 @@ def main() -> None:
     p.add_argument("--emit-spins-per-robot", type=int, default=1000)
     p.add_argument("--emit-seed", type=int, default=42)
     p.add_argument("--skip-rawdata", action="store_true",
-                   help="skip rawdata emission (debug only — weights file is not the deliverable)")
+                   help="skip dev-scratch rawdata emission (faster iteration "
+                        "when only Phase 4/5 metrics matter; weights file is "
+                        "still written regardless).")
     args = p.parse_args()
 
     spec = json.loads(args.spec.read_text(encoding="utf-8"))
@@ -295,23 +317,40 @@ def main() -> None:
         )
         print(f"wrote tune report                  → {args.out_report}")
 
-    # Primary deliverable: rawdata chunks via the actual simulator running
-    # on tuned weights. Existing player_impact_analyzer --from-cache can
-    # consume these directly and produce a report indistinguishable from
-    # a real-sampling run.
+    # Dev-scratch rawdata: simulator running on tuned weights so
+    # player_impact_analyzer --from-cache can cross-check the tuner's
+    # predicted metrics (RTP / CV / bucket shape) against an actual
+    # simulation. This is NOT a console artifact — the virtual console
+    # produces its own rawdata via POST /api/batch-run once this tune
+    # run's weights are promoted to active
+    # (slot_designer/weights/<machine>_mode<N>.tuned.json). Keeping dev
+    # sampling in _dev_scratch means the console's own rawdata pool
+    # isn't touched by developer iteration.
     #
-    # Default destination = slot_designer/rawdata/<machine>sim/mode_<N>/
-    # which the virtual console (port 8878) reads from natively. That
-    # machine name (<machine>sim) must exist in configs/machines_virtual.json
-    # or be added via virtual_app's refresh on next boot.
+    # Wipe chunk_*.json before emitting so re-tuning gets a clean
+    # slate (no mixing of previous-md5 and current-md5 chunks).
     if not args.skip_rawdata:
         source_machine = spec["machine"]
         mode = int(spec["mode"])
         # Virtual-machine naming convention: suffix "sim" (per user, 2026-04-21)
         virtual_machine = args.virtual_machine or f"{source_machine}sim"
         rawdata_dir = args.out_rawdata_dir or (
-            _ROOT / "slot_designer" / "rawdata" / virtual_machine / f"mode_{mode}"
+            _ROOT / "slot_designer" / "_dev_scratch" / "rawdata"
+            / virtual_machine / f"mode_{mode}"
         )
+        # Fresh-run semantics — only chunk_*.json, so an accidental
+        # --out-rawdata-dir outside the scratch root won't nuke
+        # unrelated operator files.
+        if rawdata_dir.is_dir():
+            wiped = 0
+            for _p in rawdata_dir.glob("chunk_*.json"):
+                try:
+                    _p.unlink()
+                    wiped += 1
+                except OSError:
+                    pass
+            if wiped:
+                print(f"  [info] wiped {wiped} pre-existing chunk(s) in {rawdata_dir}")
 
         # MD5 tags for console's version tracking — single helper
         # shared with virtual_app refresh + virtual_analyzer emit.

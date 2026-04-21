@@ -61,17 +61,28 @@
 
 本版已 active（`slot_designer/weights/M1_mode1.tuned.json` = 本版内容）。
 
+**Release 路径（给 console）**：weights 文件一落地，虚拟 console 下次
+refresh-md5 就会自动把 `configSummaryMd5` 更新成 558dfcdd…。Operator
+在 UI 里点 **开始采样** → `virtual_analyzer` 产 chunk 到
+`slot_designer/rawdata/M1sim/mode_1/`（console 自管）。dev 这边什么都
+不用做。
+
 ```bash
-# 采样（会自动 tag chunks with 558dfcdd md5）
+start_virtual.bat
+# → http://127.0.0.1:8878/console/
+# 在 UI 里点"开始采样"即可
+```
+
+**Dev 自己 eyeball 本版数值（可选）**：用 dev-scratch 跑 simulate，
+不进 console 的 rawdata 池：
+
+```bash
 python -m slot_designer.scripts.simulate \
   --spec slot_designer/specs/M1.spec.json \
   --weights slot_designer/weights/M1_mode1.tuned.json \
-  --out-dir slot_designer/rawdata/M1sim/mode_1 \
   --machine-name M1sim --chunks 110
-
-# 虚拟 console 会自动在下次启动 / 采样时刷新 md5，UI 显示 558dfcdd 当前
-start_virtual.bat
-# → http://127.0.0.1:8878/console/
+# → slot_designer/_dev_scratch/rawdata/M1sim/mode_1/
+#   每次跑自动 wipe 同目录下旧 chunk_*.json（无需 rm -rf）
 ```
 
 ## 研究依据（2026-04-21 fresh WebSearch）
