@@ -7051,21 +7051,24 @@ def create_app(
             if raise_on_error:
                 raise HTTPException(status_code=404, detail=msg)
             return {"ok": False, "error": msg, "server_id": server_id,
-                    "machines_fetched": 0, "machines_updated": 0}
+                    "machines_fetched": 0, "machines_updated": 0,
+                    "updated_machines": []}
         ep = target.get("endpoint", "").strip()
         if not ep:
             msg = "server has no endpoint configured"
             if raise_on_error:
                 raise HTTPException(status_code=400, detail=msg)
             return {"ok": False, "error": msg, "server_id": server_id,
-                    "machines_fetched": 0, "machines_updated": 0}
+                    "machines_fetched": 0, "machines_updated": 0,
+                    "updated_machines": []}
         data = _fetch_machine_config_md5(ep)
         if data is None:
             msg = "failed to fetch MachineConfigMd5"
             if raise_on_error:
                 raise HTTPException(status_code=502, detail=msg)
             return {"ok": False, "error": msg, "server_id": server_id,
-                    "machines_fetched": 0, "machines_updated": 0}
+                    "machines_fetched": 0, "machines_updated": 0,
+                    "updated_machines": []}
 
         # Merge new MD5 into machines.json.
         try:
@@ -7073,6 +7076,13 @@ def create_app(
         except (OSError, json.JSONDecodeError):
             existing = {"machines": []}
         updated_count = 0
+        # 2026-04-21: also track WHICH machines changed so the activity
+        # log / callers can surface names. Before this, the operator
+        # saw "✓ md5 刷新: 3/253 台有变更" and couldn't tell if their
+        # working machine was one of the 3 — dev fleet is churny, so
+        # unrelated drift would spook them into thinking their M1 had
+        # shifted when it hadn't. Names > counts.
+        updated_machines: list[str] = []
         skipped_empty_upstream = 0
         machines_list = existing.get("machines", [])
         machines_by_name = {m["machine"]: m for m in machines_list}
@@ -7098,17 +7108,23 @@ def create_app(
                 entry["codeSummaryMd5"] = new_code
                 entry["logicClassNames"] = upstream.get("logicClassNames", entry.get("logicClassNames", []))
                 updated_count += 1
+                updated_machines.append(machine_name)
         existing["machines"] = machines_list
         Path(mc).write_text(
             json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
         _save_server_snapshot(server_id, data)
+        # Stable-sort names so the UI renders deterministically (useful
+        # for snapshot tests and for operators reading the activity log
+        # — same list shape on repeat renders).
+        updated_machines.sort()
         return {
             "ok": True,
             "server_id": server_id,
             "machines_fetched": len(data),
             "machines_updated": updated_count,
+            "updated_machines": updated_machines,
             "skipped_empty_upstream": skipped_empty_upstream,
         }
 

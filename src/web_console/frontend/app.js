@@ -5245,6 +5245,7 @@ async function loadBootstrap() {
       pushClientEvent("md5_refresh_done", {
         fetched: r.machines_fetched || 0,
         updated: r.machines_updated || 0,
+        updated_machines: Array.isArray(r.updated_machines) ? r.updated_machines : [],
       });
       // Only re-render if something changed — saves a full summary
       // scan on the common "nothing changed" case.
@@ -5548,7 +5549,17 @@ function bindEvents() {
     btn.textContent = "拉取中…";
     try {
       const r = await apiPost("/api/machines/refresh-md5", { server_id: "dev" });
-      alert(`刷新完成：拉取 ${r.machines_fetched} 台，${r.machines_updated} 台 MD5 变更`);
+      // Show which machines changed so the operator can tell whether
+      // their working machine is affected. Cap at 10 names in the
+      // alert (full list is in the activity log / response body).
+      const names = Array.isArray(r.updated_machines) ? r.updated_machines : [];
+      let detail = "";
+      if (names.length > 0) {
+        const shown = names.slice(0, 10).join(", ");
+        const extra = names.length > 10 ? ` (+${names.length - 10})` : "";
+        detail = `\n变更机台: ${shown}${extra}`;
+      }
+      alert(`刷新完成：拉取 ${r.machines_fetched} 台，${r.machines_updated} 台 MD5 变更${detail}`);
       // Re-fetch machines + summary to refresh UI with new MD5 comparison.
       const [m, mSummary] = await Promise.all([apiGet("/api/machines"), apiGet("/api/machines/summary").catch(() => null)]);
       state.machines = m.machines || [];

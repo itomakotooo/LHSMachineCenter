@@ -1185,6 +1185,56 @@ test("buildClientEvent: md5_refresh_done with updates is level=warn", () => {
   assert.ok(ev.text.includes("3/253"));  // compact N/M form
 });
 
+test("buildClientEvent: md5_refresh_done with names surfaces them", () => {
+  // REGRESSION 2026-04-21: operator saw "N/M 台有变更" after console
+  // restart and assumed their just-sampled M1 had drifted. Actually
+  // some unrelated dev fleet machine shifted. Fix: include machine
+  // names so the operator can immediately tell if THEIR machine is
+  // one of them.
+  const ev = PURE.buildClientEvent(
+    "md5_refresh_done",
+    { fetched: 253, updated: 3, updated_machines: ["M272", "M273", "M14"] },
+    "2026-04-21T00:00:00Z",
+  );
+  assert.equal(ev.level, "warn");
+  assert.ok(ev.text.includes("3/253"));
+  assert.ok(ev.text.includes("M272"));
+  assert.ok(ev.text.includes("M273"));
+  assert.ok(ev.text.includes("M14"));
+});
+
+test("buildClientEvent: md5_refresh_done truncates long name list at 5 with +K suffix", () => {
+  // Fleet-wide shifts shouldn't wall-of-text the activity log.
+  // Cap at 5 visible names; overflow gets a (+K) hint.
+  const names = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"];
+  const ev = PURE.buildClientEvent(
+    "md5_refresh_done",
+    { fetched: 253, updated: 8, updated_machines: names },
+    "2026-04-21T00:00:00Z",
+  );
+  assert.equal(ev.level, "warn");
+  assert.ok(ev.text.includes("A1"));
+  assert.ok(ev.text.includes("A5"));
+  assert.ok(!ev.text.includes("A6"), "A6 must be truncated");
+  assert.ok(!ev.text.includes("A7"), "A7 must be truncated");
+  assert.ok(ev.text.includes("+3"), "+3 overflow hint must show");
+});
+
+test("buildClientEvent: md5_refresh_done without names falls back to count-only", () => {
+  // Backwards compat: if backend omits updated_machines (older build),
+  // we still render the N/M count without crashing or appending a
+  // dangling separator.
+  const ev = PURE.buildClientEvent(
+    "md5_refresh_done",
+    { fetched: 253, updated: 2 },  // no updated_machines
+    "2026-04-21T00:00:00Z",
+  );
+  assert.equal(ev.level, "warn");
+  assert.ok(ev.text.includes("2/253"));
+  assert.ok(!ev.text.includes(" · undefined"));
+  assert.ok(!ev.text.endsWith(" · "), "no trailing separator");
+});
+
 test("buildClientEvent: md5_refresh_done with no updates is level=info", () => {
   const ev = PURE.buildClientEvent(
     "md5_refresh_done", { fetched: 253, updated: 0 },

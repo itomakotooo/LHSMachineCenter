@@ -1582,10 +1582,26 @@ function buildClientEvent(kind, data, nowIso) {
       const fetched = (data && data.fetched != null) ? data.fetched : 0;
       const updated = (data && data.updated != null) ? data.updated : 0;
       if (updated > 0) {
-        // Fleet shifted — warn so the operator notices.
+        // Fleet shifted — warn so the operator notices. Include
+        // machine names so they can immediately tell if THEIR
+        // working machine is one of them. Before names were shown
+        // (2026-04-21), operators would see "3/253 台有变更" after
+        // restart and reasonably assume their just-sampled M1 had
+        // drifted when actually some unrelated machine shifted.
+        // Truncate at 5 names to keep the line scannable; full
+        // list is still in the response body for debugging.
+        const names = (data && Array.isArray(data.updated_machines))
+          ? data.updated_machines
+          : [];
+        let namePart = "";
+        if (names.length > 0) {
+          const shown = names.slice(0, 5).join(", ");
+          const extra = names.length > 5 ? ` (+${names.length - 5})` : "";
+          namePart = ` · ${shown}${extra}`;
+        }
         return {
           ts, level: "warn", source: "ui",
-          text: "✓ md5 刷新: " + updated + "/" + fetched + " 台有变更",
+          text: "✓ md5 刷新: " + updated + "/" + fetched + " 台有变更" + namePart,
         };
       }
       return {

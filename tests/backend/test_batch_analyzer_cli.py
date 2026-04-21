@@ -383,6 +383,12 @@ class TestBatchAutoRefreshMd5:
             assert body["machines_fetched"] == 2
             assert body["machines_updated"] == 1  # only M14
             assert body["skipped_empty_upstream"] == 1  # M1 was empty
+            # REGRESSION 2026-04-21: also return the *names* so the
+            # activity log / alerts can surface them. Before this,
+            # operators saw "N/M changed" and had no way to tell if
+            # their working machine was in the N — dev fleet churn
+            # caused false "my M1 drifted" panics after restart.
+            assert body["updated_machines"] == ["M14"]
 
         # Reload file and confirm M1 still has REAL md5, M14 got NEW.
         data = json.loads(mc.read_text(encoding="utf-8"))
@@ -393,3 +399,94 @@ class TestBatchAutoRefreshMd5:
         assert by_name["M1"]["codeSummaryMd5"] == "REAL_CODE_1"
         assert by_name["M14"]["configSummaryMd5"] == "NEW_CFG_14"
         assert by_name["M14"]["codeSummaryMd5"] == "NEW_CODE_14"
+
+    def test_refresh_updated_machines_empty_when_nothing_changed(
+        self, tmp_path, monkeypatch,
+    ):
+        """2026-04-21: when upstream md5 matches what we already have,
+        updated_machines must be [] (not missing, not null). Frontend
+        reads Array.isArray(r.updated_machines) and expects a list.
+
+        This is the scenario that triggered the bug fix: operator
+        just sampled M1, restarted console, auto-refresh fires —
+        nothing should appear in the activity log as "changed"."""
+        import src.web_console.backend.app as app_mod
+
+        mc = tmp_path / "machines.json"
+        mc.write_text(json.dumps({
+            "machines": [
+                {"machine": "M1", "modes": [1], "logicClassNames": ["Foo"],
+                 "configSummaryMd5": "SAME_CFG",
+                 "codeSummaryMd5": "SAME_CODE"},
+            ]
+        }), encoding="utf-8")
+
+        # Upstream returns the exact md5 we already have → no update.
+        monkeypatch.setattr(
+            app_mod, "_fetch_machine_config_md5",
+            lambda ep, timeout=30.0: {
+                "M1": {"configSummaryMd5": "SAME_CFG", "codeSummaryMd5": "SAME_CODE"},
+            },
+        )
+        monkeypatch.setattr(app_mod, "load_servers", lambda _path: {
+            "servers": [{"id": "dev", "endpoint": "http://fake-upstream"}],
+        })
+        monkeypatch.setattr(app_mod, "_save_server_snapshot", lambda *a, **kw: None)
+
+        from src.web_console.backend.app import create_app
+        from fastapi.testclient import TestClient
+        app = create_app(
+            state_dir=tmp_path / "state",
+            reports_root=tmp_path / "reports",
+            cache_root=tmp_path / "cache",
+            machines_config=mc,
+            rawdata_root=tmp_path / "rawdata",
+        )
+        with TestClient(app) as c:
+            r = c.post("/api/machines/refresh-md5", json={"server_id": "dev"})
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["machines_updated"] == 0
+            assert body["updated_machines"] == [], (
+                "no drift → empty list, not None / missing"
+            )
+
+    def test_refresh_updated_machines_sorted(
+        self, tmp_path, monkeypatch,
+    ):
+        """2026-04-21: stable sort so activity log renders
+        deterministically. Upstream dict order is not guaranteed."""
+        import src.web_console.backend.app as app_mod
+
+        mc = tmp_path / "machines.json"
+        mc.write_text(json.dumps({"machines": []}), encoding="utf-8")
+
+        # Return machines in reverse alpha order; code must sort.
+        monkeypatch.setattr(
+            app_mod, "_fetch_machine_config_md5",
+            lambda ep, timeout=30.0: {
+                "M272": {"configSummaryMd5": "C272", "codeSummaryMd5": "K272"},
+                "M14": {"configSummaryMd5": "C14", "codeSummaryMd5": "K14"},
+                "M1": {"configSummaryMd5": "C1", "codeSummaryMd5": "K1"},
+            },
+        )
+        monkeypatch.setattr(app_mod, "load_servers", lambda _path: {
+            "servers": [{"id": "dev", "endpoint": "http://fake-upstream"}],
+        })
+        monkeypatch.setattr(app_mod, "_save_server_snapshot", lambda *a, **kw: None)
+
+        from src.web_console.backend.app import create_app
+        from fastapi.testclient import TestClient
+        app = create_app(
+            state_dir=tmp_path / "state",
+            reports_root=tmp_path / "reports",
+            cache_root=tmp_path / "cache",
+            machines_config=mc,
+            rawdata_root=tmp_path / "rawdata",
+        )
+        with TestClient(app) as c:
+            r = c.post("/api/machines/refresh-md5", json={"server_id": "dev"})
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["machines_updated"] == 3
+            assert body["updated_machines"] == ["M1", "M14", "M272"]
