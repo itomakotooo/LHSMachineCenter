@@ -1632,6 +1632,18 @@ function formatChunkEventText(ev) {
   if (ev.event === "resume_from_cache") {
     return `♻ 续采: 已有 ${ev.existing_chunks || 0} chunks / ${fInt_(ev.existing_spins)} spins · 下一个 chunk_${ev.next_chunk_index}`;
   }
+  if (ev.event === "cache_read_start") {
+    return `📖 读取已有 ${ev.total_chunks} chunks（静默 replay，约需 ${Math.round((ev.total_chunks || 0) * 0.5)}s）…`;
+  }
+  if (ev.event === "cache_read_progress") {
+    const pct = ev.total_chunks > 0
+      ? Math.round((ev.chunks_read / ev.total_chunks) * 100)
+      : 0;
+    return `📖 已读 ${ev.chunks_read}/${ev.total_chunks} chunks (${pct}%) · ${fInt_(ev.total_spins)} spins`;
+  }
+  if (ev.event === "cache_read_done") {
+    return `📖 已读完 ${ev.chunks_read} chunks · ${fInt_(ev.total_spins)} spins，进入采样阶段`;
+  }
   if (ev.event === "disk_guard_stop") {
     return `⛔ 磁盘低 ${ev.free_gb}GB < ${ev.threshold_gb}GB · 自动停止`;
   }
@@ -1745,6 +1757,10 @@ function mergeTimeline(data, clientEvents, progressCap) {
     // signal — the operator needs to see when the analyzer shrank or
     // grew load in response to upstream stress.
     "adaptive_tune", "circuit_pause",
+    // 2026-04-21: "reading N existing chunks" progress so the batch
+    // log keeps ticking during the silent resume-read phase (a 165-
+    // chunk cache takes ~80s to replay; user thought it was stuck).
+    "cache_read_start", "cache_read_progress", "cache_read_done",
   ]);
   const out = [];
   const batchEvents = (data && data.events) || [];

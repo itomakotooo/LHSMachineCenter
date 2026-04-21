@@ -1212,6 +1212,59 @@ test("buildClientEvent: md5_refresh_done with missing data doesn't crash", () =>
   assert.ok(ev.text.includes("0"));  // "0 台"
 });
 
+test("formatChunkEventText: cache_read_start shows total + rough ETA", () => {
+  // 2026-04-21 regression guard: a 165-chunk resume-from-cache replay
+  // used to appear stuck (no events for ~80s). The analyzer now emits
+  // cache_read_start so the batch log shows "📖 读取…" immediately.
+  const t = PURE.formatChunkEventText({
+    event: "cache_read_start", total_chunks: 165,
+  });
+  assert.ok(t.includes("📖"), t);
+  assert.ok(t.includes("165"), t);
+});
+
+test("formatChunkEventText: cache_read_progress shows X/Y (pct)", () => {
+  const t = PURE.formatChunkEventText({
+    event: "cache_read_progress",
+    chunks_read: 60, total_chunks: 165, total_spins: 1_190_000,
+  });
+  assert.ok(t.includes("60/165"), t);
+  assert.ok(t.includes("36%"), t);  // 60/165 ≈ 36%
+  assert.ok(t.includes("1,190,000"), t);
+});
+
+test("formatChunkEventText: cache_read_done announces transition to sampling", () => {
+  const t = PURE.formatChunkEventText({
+    event: "cache_read_done", chunks_read: 165, total_spins: 3_290_000,
+  });
+  assert.ok(t.includes("165"), t);
+  assert.ok(t.includes("采样"), t);  // "进入采样阶段"
+});
+
+test("mergeTimeline: cache_read_* events pass through as critical", () => {
+  // These ticks are the whole reason cache_read_* was added — they
+  // MUST survive the timeline prune so the operator sees the silent
+  // replay phase ticking.
+  const data = {
+    events: [],
+    items: [{
+      machine: "M14",
+      chunk_events: [
+        { event: "cache_read_start", total_chunks: 165, ts: "2026-04-21T00:00:00Z" },
+        { event: "cache_read_progress", chunks_read: 60, total_chunks: 165,
+          total_spins: 1_190_000, ts: "2026-04-21T00:00:10Z" },
+        { event: "cache_read_done", chunks_read: 165, total_spins: 3_290_000,
+          ts: "2026-04-21T00:01:20Z" },
+      ],
+    }],
+  };
+  const timeline = PURE.mergeTimeline(data, []);
+  const events = timeline.map((t) => t.text);
+  assert.ok(events.some((t) => t.includes("读取已有")), events);
+  assert.ok(events.some((t) => t.includes("60/165")), events);
+  assert.ok(events.some((t) => t.includes("已读完 165")), events);
+});
+
 test("formatChunkEventText: chunk_progress includes spins + RTP + CI", () => {
   const t = PURE.formatChunkEventText({
     event: "chunk_progress", chunk_index: 5,

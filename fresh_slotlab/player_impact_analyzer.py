@@ -3453,7 +3453,30 @@ def main() -> int:
         max_existing_idx = 0
         tag = "--resume-from-cache" if resume_mode else "--from-cache"
 
-        for cf in chunk_files:
+        # Heads-up: reading a large existing cache is synchronous and
+        # silent (no chunk_progress events fire during the replay —
+        # those are emitted only from the live sampling loop below).
+        # On M14's 165-chunk cache this read takes ~80s, during which
+        # the batch log shows nothing and operators assume it's stuck
+        # (2026-04-21 report: "启动拉取以后 log 没变化 估计卡住了").
+        # Emit a single read-start event + a periodic progress event
+        # every ~10% or 20 chunks (whichever is larger) so the strip
+        # keeps ticking.
+        total_to_read = len(chunk_files)
+        if total_to_read > 0:
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "cache_read_start",
+                    "run_id": run_id,
+                    "tag": tag,
+                    "total_chunks": total_to_read,
+                    "ts": utc_now(),
+                },
+            )
+        read_progress_step = max(20, total_to_read // 10) if total_to_read > 0 else 0
+
+        for read_idx, cf in enumerate(chunk_files):
             try:
                 raw = load_chunk_envelope(cf)
             except ChunkIntegrityError as exc:
@@ -3756,6 +3779,39 @@ def main() -> int:
                 total_dollar_pick_spins += int(rec.get("dollar_pick_spins", 0) or 0)
                 total_dollar_pick_total_dollars += int(rec.get("dollar_pick_total_dollars", 0) or 0)
                 total_dollar_pick_win += float(rec.get("dollar_pick_win", 0) or 0)
+
+            # Emit heartbeat every read_progress_step chunks so the
+            # batch log keeps ticking during the long silent replay.
+            # Guarded by read_progress_step > 0 (empty-cache case).
+            if (
+                read_progress_step > 0
+                and total_to_read > 0
+                and (read_idx + 1) % read_progress_step == 0
+                and (read_idx + 1) < total_to_read
+            ):
+                append_jsonl(
+                    progress_file,
+                    {
+                        "event": "cache_read_progress",
+                        "run_id": run_id,
+                        "chunks_read": read_idx + 1,
+                        "total_chunks": total_to_read,
+                        "total_spins": total_spins,
+                        "ts": utc_now(),
+                    },
+                )
+
+        if total_to_read > 0:
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "cache_read_done",
+                    "run_id": run_id,
+                    "chunks_read": total_to_read,
+                    "total_spins": total_spins,
+                    "ts": utc_now(),
+                },
+            )
 
         if resume_mode:
             # Prime state so the live sampling loop picks up right after

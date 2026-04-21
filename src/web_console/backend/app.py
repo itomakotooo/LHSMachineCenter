@@ -3081,7 +3081,17 @@ class BatchRunManager:
                                 # iteration of this fix quietly broke
                                 # its own "never pruned" promise. Now
                                 # the cap is progress-only.
-                                _CRITICAL = {"chunk_failed", "resume_from_cache", "disk_guard_stop", "failed"}
+                                # cache_read_* events added 2026-04-21 so the
+                                # long silent "read N existing chunks" phase
+                                # at the start of --resume-from-cache runs
+                                # (165 chunks = ~80s on M14) stays visible
+                                # in the batch log instead of looking stuck.
+                                _CRITICAL = {
+                                    "chunk_failed", "resume_from_cache",
+                                    "disk_guard_stop", "failed",
+                                    "cache_read_start", "cache_read_progress",
+                                    "cache_read_done",
+                                }
                                 critical = [e for e in events if e.get("event") in _CRITICAL]
                                 progress_evts = [e for e in events if e.get("event") == "chunk_progress"]
                                 merged = critical + progress_evts[-8:]
