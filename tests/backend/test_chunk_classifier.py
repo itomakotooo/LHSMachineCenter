@@ -95,8 +95,9 @@ class TestClassifyChunks:
         assert out["deletable_spins"] == 50_000
 
     def test_historical_md5_separated_regardless_of_quota(self, tmp_path):
-        """Stale chunks bypass the kept quota entirely — they're
-        always on the chopping block."""
+        """Historical-md5 chunks bypass the kept quota entirely — the
+        retention baseline only protects current-md5 chunks (user
+        2026-04-21: 保底 only applies to 当前版本)."""
         from src.web_console.backend.app import _classify_chunks
         mc = tmp_path / "machines.json"
         mc.write_text(json.dumps({"machines": [{
@@ -115,6 +116,62 @@ class TestClassifyChunks:
         out = _classify_chunks("M14", 1, rd_root, mc, 100_000)
         assert len(out["kept"]) == 5
         assert out["deletable"] == []
+        assert len(out["historical"]) == 3
+        assert out["historical_spins"] == 30_000
+
+    def test_code_md5_drift_alone_flips_cell_to_historical(self, tmp_path):
+        """Upstream returns TWO md5s (configSummaryMd5 + codeSummaryMd5).
+        User 2026-04-21: EITHER half flipping counts as a rawdata
+        version change. Previously the user pointed out this might
+        be mis-handled — verify chunks whose config_md5 matches
+        current but code_md5 drifted land in `historical` (not kept)."""
+        from src.web_console.backend.app import _classify_chunks
+        mc = tmp_path / "machines.json"
+        mc.write_text(json.dumps({"machines": [{
+            "machine": "M14", "modes": [1],
+            "configSummaryMd5": "CFG_CUR",
+            "codeSummaryMd5": "CODE_CUR",  # code flipped: old chunks have CODE_OLD
+        }]}), encoding="utf-8")
+        rd_root = tmp_path / "rawdata"
+        mode_dir = rd_root / "M14" / "mode_1"
+        # 3 chunks with SAME config md5 but OLD code md5
+        for i in range(1, 4):
+            _write_chunk(mode_dir, i, config_md5="CFG_CUR", code_md5="CODE_OLD",
+                         spin_times=10_000)
+        # 2 chunks fully current (both md5s match)
+        for i in range(10, 12):
+            _write_chunk(mode_dir, i, config_md5="CFG_CUR", code_md5="CODE_CUR",
+                         spin_times=10_000)
+        out = _classify_chunks("M14", 1, rd_root, mc, 100_000)
+        # The 3 code-drifted chunks → historical (NOT kept), even
+        # though their config_md5 matches. Both halves must match.
+        assert len(out["kept"]) == 2, "only 2 fully-current chunks should be kept"
+        assert len(out["historical"]) == 3, (
+            "code_md5 drift alone must push chunks into historical; "
+            "previous versions considered only config_md5"
+        )
+        assert out["historical_spins"] == 30_000
+
+    def test_config_md5_drift_alone_flips_cell_to_historical(self, tmp_path):
+        """Inverse of the above: config_md5 flipped, code_md5 stable.
+        Symmetric treatment — config drift = historical."""
+        from src.web_console.backend.app import _classify_chunks
+        mc = tmp_path / "machines.json"
+        mc.write_text(json.dumps({"machines": [{
+            "machine": "M14", "modes": [1],
+            "configSummaryMd5": "CFG_CUR",
+            "codeSummaryMd5": "CODE_CUR",
+        }]}), encoding="utf-8")
+        rd_root = tmp_path / "rawdata"
+        mode_dir = rd_root / "M14" / "mode_1"
+        for i in range(1, 4):
+            _write_chunk(mode_dir, i, config_md5="CFG_OLD", code_md5="CODE_CUR",
+                         spin_times=10_000)
+        for i in range(10, 12):
+            _write_chunk(mode_dir, i, config_md5="CFG_CUR", code_md5="CODE_CUR",
+                         spin_times=10_000)
+        out = _classify_chunks("M14", 1, rd_root, mc, 100_000)
+        assert len(out["kept"]) == 2
         assert len(out["historical"]) == 3
         assert out["historical_spins"] == 30_000
 

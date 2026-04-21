@@ -1675,22 +1675,51 @@ function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb
   const historicalChunks = versions.reduce((s, v) => s + (v.historical_chunks || 0), 0);
   const totalChunks = keptChunks + delChunks + historicalChunks;
 
-  // Cell header — "Mode N · 当前" / "Mode N · 历史 78fe6087…" /
-  // "Mode N · 未标记" (synthetic untagged).
+  // Cell header — "Mode N · 当前" / "Mode N · 历史 · cfg变更" /
+  // "Mode N · 未标记". Upstream reports two md5s (configSummaryMd5 +
+  // codeSummaryMd5) per machine — either flipping counts as a
+  // rawdata version change (user 2026-04-21). The status tag calls
+  // out WHICH half drifted so the operator doesn't have to diff
+  // hashes by hand.
+  const upCfg = String(st.upstream_config_md5 || "");
+  const upCode = String(st.upstream_code_md5 || "");
+  const cfgMatch = cell.config_md5 === upCfg;
+  const codeMatch = cell.code_md5 === upCode;
+  const cfgShort = (cell.config_md5 || "").slice(0, 8) || "—";
+  const codeShort = (cell.code_md5 || "").slice(0, 8) || "—";
+
   let headerLabel;
   let statusTag;
   if (cell.untagged) {
     headerLabel = `Mode ${mode} · 未标记`;
     statusTag = `<span class="rwtree-status none" title="此 report 未标记 md5（v1 envelope 迁移遗留）">未标记</span>`;
   } else if (cell.is_current) {
-    const short = (cell.config_md5 || "").slice(0, 8);
-    headerLabel = `Mode ${mode} · 当前 ${short}…`;
+    headerLabel = `Mode ${mode} · 当前 ${cfgShort}…`;
     statusTag = `<span class="rwtree-status ok">✅当前</span>`;
   } else {
-    const short = (cell.config_md5 || "").slice(0, 8);
-    headerLabel = `Mode ${mode} · 历史 ${short}…`;
-    statusTag = `<span class="rwtree-status historical">历史版本</span>`;
+    // Historical: label which half drifted. If only code differs,
+    // lead the header with the code md5 short (config is the same
+    // as current, so showing config-short is confusing).
+    const leadShort = !cfgMatch ? cfgShort : codeShort;
+    headerLabel = `Mode ${mode} · 历史 ${leadShort}…`;
+    let diffLabel;
+    if (!cfgMatch && !codeMatch) diffLabel = "历史 · 两者变更";
+    else if (!cfgMatch)          diffLabel = "历史 · config 变更";
+    else                         diffLabel = "历史 · code 变更";
+    const tip = `cfg: ${cfgShort}…${cfgMatch ? " ✓" : " ≠ " + upCfg.slice(0, 8) + "…"}\n`
+      + `code: ${codeShort}…${codeMatch ? " ✓" : " ≠ " + upCode.slice(0, 8) + "…"}`;
+    statusTag = `<span class="rwtree-status historical" title="${tip}">${diffLabel}</span>`;
   }
+
+  // Compact md5 detail line — both halves, ✓ if matches current
+  // upstream, ≠ otherwise. Rendered inside rawdataBlock below for
+  // cells that have chunks; untagged cells skip it (no md5 to show).
+  const md5DetailLine = cell.untagged
+    ? ""
+    : `<div class="rwtree-rawdata-line muted rwtree-md5-detail" title="两个 md5 任一变化 = rawdata 版本变更；悬停看对比">`
+      + `cfg <span class="${cfgMatch ? "md5-match" : "md5-drift"}">${_escHtml(cfgShort)}${cfgMatch ? " ✓" : " ⚠"}</span>`
+      + ` · code <span class="${codeMatch ? "md5-match" : "md5-drift"}">${_escHtml(codeShort)}${codeMatch ? " ✓" : " ⚠"}</span>`
+      + `</div>`;
 
   const filteredReports = cell.reports;
 
@@ -1772,6 +1801,7 @@ function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb
             ? `保底 ${fInt2(keptSpins)} / 可回收 ${fInt2(delSpins)}`
             : `历史 ${fInt2(historicalSpins)}（无保底）`}
         </div>
+        ${md5DetailLine}
         ${rawdataApprox}
         <div class="rwtree-rawdata-actions">
           ${genBtn}

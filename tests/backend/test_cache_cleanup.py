@@ -481,3 +481,85 @@ def test_delete_rawdata_version_respects_lock(
     # Nothing deleted.
     for p in paths:
         assert p.exists()
+
+
+def test_generate_report_version_suffix_includes_both_md5_halves(
+    tmp_state_dir, tmp_reports, tmp_cache, tmp_rawdata, fake_analyzer,
+    tmp_path, monkeypatch,
+):
+    """User 2026-04-21: EITHER md5 half flipping = distinct rawdata
+    version. Previously ``_run_generate_report`` used ONLY config_md5
+    (first 8 chars) as the report_version suffix, which meant two
+    historical cells sharing config_md5 but differing in code_md5
+    would collide on the same versions/<rv_..._rawdata_<cfg8>/ path.
+    Current fix: suffix uses BOTH shorts (<cfg6>_<code6>).
+
+    This test checks the suffix is emitted correctly. Analyzer run is
+    stubbed via conftest's fake_analyzer (no real sampling) — we just
+    want to observe what ``_run_generate_report`` names its output."""
+    monkeypatch.setattr(
+        "src.web_console.backend.app._default_popen_factory",
+        lambda *a, **kw: None,
+    )
+    monkeypatch.setattr(
+        "src.web_console.backend.app._terminate_pid_if_running",
+        lambda pid: True,
+    )
+    mc = tmp_path / "machines.json"
+    mc.write_text(json.dumps({
+        "machines": [{"machine": "M1", "modes": [1],
+                      "configSummaryMd5": "CUR_CFG_FULL",
+                      "codeSummaryMd5": "CUR_CODE_FULL"}]
+    }), encoding="utf-8")
+    mode_dir = tmp_rawdata / "M1" / "mode_1"
+    # Current md5 chunks
+    for i in range(1, 6):
+        _write_chunk(mode_dir, i,
+                     config_md5="CUR_CFG_FULL", code_md5="CUR_CODE_FULL",
+                     spin_times=10_000)
+    # Historical variant A: only code drifted
+    for i in range(10, 13):
+        _write_chunk(mode_dir, i,
+                     config_md5="CUR_CFG_FULL", code_md5="OLDCODE_A",
+                     spin_times=10_000)
+    # Historical variant B: only config drifted
+    for i in range(20, 23):
+        _write_chunk(mode_dir, i,
+                     config_md5="OLDCFG_B", code_md5="CUR_CODE_FULL",
+                     spin_times=10_000)
+
+    # Route _run_generate_report via the in-process helper. The
+    # analyzer run happens via _default_popen_factory (stubbed above)
+    # which returns None → run_analyzer_job in-process.
+    from src.web_console.backend.app import create_app
+    from fastapi.testclient import TestClient
+    app = create_app(
+        state_dir=tmp_state_dir, reports_root=tmp_reports, cache_root=tmp_cache,
+        machines_config=mc, analyzer_path=fake_analyzer, rawdata_root=tmp_rawdata,
+    )
+    with TestClient(app) as c:
+        # Trigger historical variant A (code-only drift)
+        resp_a = c.post("/api/rawdata/M1/generate-report", json={
+            "mode": 1, "async": False,
+            "config_md5": "CUR_CFG_FULL", "code_md5": "OLDCODE_A",
+        })
+        assert resp_a.status_code == 200, resp_a.text
+        rv_a = resp_a.json()["report_version"]
+
+        # Trigger historical variant B (config-only drift)
+        resp_b = c.post("/api/rawdata/M1/generate-report", json={
+            "mode": 1, "async": False,
+            "config_md5": "OLDCFG_B", "code_md5": "CUR_CODE_FULL",
+        })
+        assert resp_b.status_code == 200, resp_b.text
+        rv_b = resp_b.json()["report_version"]
+
+    # Suffix must include BOTH halves (cfg6_code6) so the two reports
+    # live in distinct version dirs instead of colliding.
+    assert "CUR_CF" in rv_a and "OLDCOD" in rv_a, (
+        f"variant A version should encode both md5s; got {rv_a}"
+    )
+    assert "OLDCFG" in rv_b and "CUR_CO" in rv_b, (
+        f"variant B version should encode both md5s; got {rv_b}"
+    )
+    assert rv_a != rv_b, "variants A and B must land in different version dirs"

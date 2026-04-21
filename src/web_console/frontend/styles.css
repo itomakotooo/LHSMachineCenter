@@ -666,6 +666,16 @@ body {
 .rwtree-status.mixed { background: #fef3c7; color: #92400e; }
 .rwtree-status.none { background: #e5e7eb; color: #6b7280; }
 
+/* Per-cell md5 detail row (cfg + code md5 with ✓/⚠ per half).
+   Mono font so short md5s align; amber for drifted halves, muted
+   green for matching. */
+.rwtree-md5-detail {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.rwtree-md5-detail .md5-match { color: #059669; }
+.rwtree-md5-detail .md5-drift { color: #b45309; font-weight: 500; }
+
 .rwtree-rawdata {
   background: var(--panel);
   border: 1px solid var(--line);

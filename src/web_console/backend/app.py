@@ -5827,14 +5827,19 @@ def create_app(
                 )
 
             # New run row + new output version dir. When md5-filtered,
-            # tag the version suffix with the cfg md5 short so the
-            # historical-md5 report doesn't visually collide with
-            # a current-md5 report in the same mode's versions/ dir.
+            # tag the version suffix with BOTH md5 shorts so cells
+            # that share config_md5 but differ in code_md5 (or vice
+            # versa) don't collide on the same versions/ path —
+            # either md5 half changing counts as a distinct rawdata
+            # generation (2026-04-21: user pointed out the previous
+            # code used ONLY config_md5, which collided if code
+            # flipped independently).
             new_run_id = f"gen_{uuid.uuid4().hex[:12]}"
             ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             if md5_filter:
-                md5_tag = config_md5[:8] if config_md5 else "md5"
-                report_version = f"rv_{ts}_rawdata_{md5_tag}"
+                cfg_short = (config_md5 or "")[:6] or "-"
+                code_short = (code_md5 or "")[:6] or "-"
+                report_version = f"rv_{ts}_rawdata_{cfg_short}_{code_short}"
             else:
                 report_version = f"rv_{ts}_rawdata"
             output_dir = rr / machine / f"mode_{mode}" / "versions" / report_version
