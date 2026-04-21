@@ -27,6 +27,15 @@ import json
 from pathlib import Path
 
 from slot_designer.backend.machine_version import compute_machine_md5
+# Registry primitives live in a dedicated module with zero side-effects
+# so subprocess callers (virtual_analyzer.py) don't have to import this
+# file and trigger build_virtual_app() at import time (2026-04-21
+# suicide bug). We re-export ``refresh_machines_virtual`` + ``VIRTUAL_
+# MACHINES_CONFIG`` from here for back-compat with existing callers.
+from slot_designer.backend.virtual_registry import (  # noqa: F401
+    VIRTUAL_MACHINES_CONFIG,
+    refresh_machines_virtual,
+)
 from src.web_console.backend.app import create_app
 
 _SLOT_DESIGNER = Path(__file__).resolve().parent.parent
@@ -38,34 +47,9 @@ VIRTUAL_STATE_DIR = _SLOT_DESIGNER / "state"
 VIRTUAL_RAWDATA_ROOT = _SLOT_DESIGNER / "rawdata"
 VIRTUAL_REPORTS_ROOT = _SLOT_DESIGNER / "reports"
 VIRTUAL_CACHE_ROOT = _SLOT_DESIGNER / "cache_chunks"
-VIRTUAL_MACHINES_CONFIG = _SLOT_DESIGNER / "configs" / "machines_virtual.json"
 VIRTUAL_CLASSIFY_DIR = _SLOT_DESIGNER / "dev_reports" / "_classify"
 VIRTUAL_PAYTABLES_DIR = _SLOT_DESIGNER / "configs" / "paytables_virtual"
 VIRTUAL_ANALYZER = _SLOT_DESIGNER / "backend" / "virtual_analyzer.py"
-
-
-def refresh_machines_virtual(config_path: Path) -> dict:
-    """Refresh per-machine MD5s in machines_virtual.json from current
-    spec + weights + engine source via the single `compute_machine_md5`
-    helper. Registry metadata (_spec_path, _weights_path_template,
-    _source_machine, etc.) passes through untouched.
-
-    Called on console boot and at the start of every sampling request
-    (so runtime edits to spec/weights take effect immediately for the
-    NEXT sampling, not just the next reboot).
-    """
-    raw = json.loads(config_path.read_text(encoding="utf-8"))
-    for entry in raw.get("machines", []):
-        if not entry.get("_spec_path"):
-            continue
-        config_md5, code_md5 = compute_machine_md5(entry)
-        entry["configSummaryMd5"] = config_md5
-        entry["codeSummaryMd5"] = code_md5
-    config_path.write_text(
-        json.dumps(raw, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    return raw
 
 
 def _local_md5_refresh(server_id: str = "virtual") -> dict:

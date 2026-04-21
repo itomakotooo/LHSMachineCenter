@@ -52,6 +52,16 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from slot_designer.backend.machine_version import compute_machine_md5
+# virtual_registry is DELIBERATELY the only registry import here.
+# Importing virtual_app instead would trigger its top-level
+# ``app = build_virtual_app()`` → RunManager.__init__ →
+# _recover_orphan_running_runs, which would terminate the pid of the
+# currently-"running" run in the DB — i.e. this very subprocess. See
+# virtual_registry.py docstring for the full incident notes.
+from slot_designer.backend.virtual_registry import (
+    VIRTUAL_MACHINES_CONFIG,
+    refresh_machines_virtual,
+)
 from slot_designer.emitter.chunk import compute_schema_fingerprint, emit_chunk, write_chunk
 from slot_designer.emitter.robot import emit_robot
 from slot_designer.emitter.round import emit_round
@@ -59,7 +69,10 @@ from slot_designer.engine.loader import load_engine
 
 
 REAL_ANALYZER = _ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
-VIRTUAL_REGISTRY = _ROOT / "slot_designer" / "configs" / "machines_virtual.json"
+# Legacy alias kept so external callers importing VIRTUAL_REGISTRY from
+# this module keep working. New code should import
+# VIRTUAL_MACHINES_CONFIG from virtual_registry directly.
+VIRTUAL_REGISTRY = VIRTUAL_MACHINES_CONFIG
 
 
 def _utc_now() -> str:
@@ -294,9 +307,15 @@ def main() -> int:
     # spec or weights changed since console boot. Writes back to the
     # tracked machines_virtual.json so console's /api/machines etc. read
     # consistent values for the rest of this session.
+    # Uses ``virtual_registry`` (no side-effects) rather than
+    # ``virtual_app`` (which would import-execute
+    # ``app = build_virtual_app()`` and trigger
+    # ``_recover_orphan_running_runs`` — that recovery path would then
+    # terminate the pid of the currently-"running" run in the DB, which
+    # is THIS subprocess. Importing virtual_app here was the 2026-04-21
+    # silent-rc=1 suicide bug.
     try:
-        from slot_designer.backend.virtual_app import refresh_machines_virtual
-        refresh_machines_virtual(VIRTUAL_REGISTRY)
+        refresh_machines_virtual(VIRTUAL_MACHINES_CONFIG)
     except Exception:
         # Non-fatal — if refresh fails we fall back to the cached values.
         # Worst case: chunks tagged with slightly stale md5 → classify_chunks

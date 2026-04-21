@@ -366,7 +366,10 @@ def main() -> None:
         # classify_chunks sees chunk_md5 != registry_md5 and flags
         # these fresh chunks as "stale version" immediately.
         from slot_designer.backend.machine_version import compute_machine_md5
-        from slot_designer.backend.virtual_app import (
+        # Import from virtual_registry (side-effect-free) not virtual_app —
+        # see virtual_registry.py docstring for the 2026-04-21 suicide
+        # bug that motivated this split.
+        from slot_designer.backend.virtual_registry import (
             VIRTUAL_MACHINES_CONFIG,
             refresh_machines_virtual,
         )
