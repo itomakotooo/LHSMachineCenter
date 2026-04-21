@@ -35,6 +35,7 @@ from slot_designer.devtools.analytic_rtp import (
     analytic_profile_from_marginals,
     structurally_reachable_buckets,
 )
+from slot_designer.emitter.driver import emit_simulation_to_dir
 from slot_designer.engine.evaluator import PaytableEvaluator
 from slot_designer.engine.loader import load_engine
 from slot_designer.engine.rules import RuleSet
@@ -45,11 +46,17 @@ from slot_designer.tuner.loop import ESConfig, run_with_restarts
 
 
 def main() -> None:
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(
+        description="Tune reel weights and emit rawdata chunks as the deliverable."
+    )
     p.add_argument("--spec", required=True, type=Path)
     p.add_argument("--base-weights", required=True, type=Path)
     p.add_argument("--target", required=True, type=Path)
-    p.add_argument("--out-weights", required=True, type=Path)
+    p.add_argument("--out-weights", required=True, type=Path,
+                   help="(intermediate) tuned weights JSON — for reproducibility / inspection")
+    p.add_argument("--out-rawdata-dir", type=Path, default=None,
+                   help="(primary deliverable) directory to emit rawdata chunks into; "
+                        "defaults to slot_designer/out/<machine>_tuned/mode_<N>/cache")
     p.add_argument("--out-report", type=Path, default=None)
     p.add_argument("--evaluations", type=int, default=800)
     p.add_argument("--restarts", type=int, default=3)
@@ -59,6 +66,15 @@ def main() -> None:
     p.add_argument("--shape-weight", type=float, default=1.0)
     p.add_argument("--cv-weight", type=float, default=0.3)
     p.add_argument("--verbose", action="store_true")
+
+    # Rawdata emission parameters
+    p.add_argument("--emit-chunks", type=int, default=110,
+                   help="number of chunks to emit (default 110 → ~1.1M spins at 10×1000)")
+    p.add_argument("--emit-robots", type=int, default=10)
+    p.add_argument("--emit-spins-per-robot", type=int, default=1000)
+    p.add_argument("--emit-seed", type=int, default=42)
+    p.add_argument("--skip-rawdata", action="store_true",
+                   help="skip rawdata emission (debug only — weights file is not the deliverable)")
     args = p.parse_args()
 
     spec = json.loads(args.spec.read_text(encoding="utf-8"))
@@ -143,7 +159,7 @@ def main() -> None:
     }
     args.out_weights.parent.mkdir(parents=True, exist_ok=True)
     args.out_weights.write_text(json.dumps(tuned_weights, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\nwrote tuned weights → {args.out_weights}")
+    print(f"\nwrote tuned weights (intermediate) → {args.out_weights}")
 
     if args.out_report:
         _write_report(
@@ -151,7 +167,44 @@ def main() -> None:
             base_breakdown, result.best_breakdown, reachable,
             result.best_counts, x0,
         )
-        print(f"wrote tune report   → {args.out_report}")
+        print(f"wrote tune report                  → {args.out_report}")
+
+    # Primary deliverable: rawdata chunks via the actual simulator running
+    # on tuned weights. Existing player_impact_analyzer --from-cache can
+    # consume these directly and produce a report indistinguishable from
+    # a real-sampling run.
+    if not args.skip_rawdata:
+        machine = spec["machine"]
+        mode = int(spec["mode"])
+        rawdata_dir = args.out_rawdata_dir or (
+            _ROOT / "slot_designer" / "out" / f"{machine}_tuned" / f"mode_{mode}" / "cache"
+        )
+        print(f"\n=== emitting rawdata chunks (primary deliverable) → {rawdata_dir} ===")
+        tuned_engine, _ = load_engine(args.spec, args.out_weights)
+
+        def _progress(ci, total):
+            if ci == 1 or ci % 10 == 0 or ci == total:
+                print(f"  chunk {ci:>4}/{total} ({args.emit_robots}×{args.emit_spins_per_robot} spins)")
+
+        emit_summary = emit_simulation_to_dir(
+            spec, tuned_engine, rawdata_dir,
+            chunks=args.emit_chunks,
+            robots=args.emit_robots,
+            spins_per_robot=args.emit_spins_per_robot,
+            seed=args.emit_seed,
+            progress=_progress,
+        )
+        print(f"\nemitted {len(emit_summary['chunks_written'])} chunks, "
+              f"{emit_summary['total_rounds']} rounds total")
+        print(f"realized sim RTP (single-seed sample): "
+              f"{emit_summary['realized_rtp_pct']:.3f}%  "
+              f"(analytic prediction: {best_profile['rtp_pct']:.3f}%)")
+        print(f"\nDeliverable: {rawdata_dir}")
+        print(f"Run the existing analyzer directly:")
+        print(f"  python fresh_slotlab/player_impact_analyzer.py "
+              f"--machine {machine} --rtp-mode {mode} "
+              f"--from-cache {rawdata_dir} --output-dir <your-report-dir> "
+              f"--target-halfwidth-pp 0.001 --max-chunks 9999")
 
 
 def _write_report(
