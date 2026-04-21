@@ -3801,6 +3801,40 @@ def main() -> int:
                     },
                 )
 
+            # Early-stop: if the cumulative CI already meets the
+            # caller's target, there's no need to read (or sample) any
+            # further. Skips the remaining replay + the live sampling
+            # loop entirely — a ~80s read on a 165-chunk cache can
+            # finish in ~20s when the first 40-60 chunks already
+            # achieve target. User 2026-04-21: "我刚刚就采样一个机台，
+            # 也会读这么多?". For target=0 (fuzzy / no CI gate) the
+            # check is disabled and we read everything to give the
+            # final report max precision.
+            if (
+                resume_mode
+                and args.target_halfwidth_pp > 0
+                and args.target_halfwidth_pp < 999.0
+                and ret_count > 1
+            ):
+                ci_now = session_halfwidth_pp(ret_count, ret_sum, ret_sq_sum)
+                if ci_now is not None and ci_now <= args.target_halfwidth_pp:
+                    append_jsonl(
+                        progress_file,
+                        {
+                            "event": "cache_read_target_met",
+                            "run_id": run_id,
+                            "chunks_read": read_idx + 1,
+                            "total_chunks": total_to_read,
+                            "total_spins": total_spins,
+                            "current_halfwidth_pp": ci_now,
+                            "target_halfwidth_pp": args.target_halfwidth_pp,
+                            "ts": utc_now(),
+                        },
+                    )
+                    stop_reason = "target_ci_reached_from_cache"
+                    skip_sampling_loop = True
+                    break
+
         if total_to_read > 0:
             append_jsonl(
                 progress_file,

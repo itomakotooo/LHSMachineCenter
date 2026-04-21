@@ -1644,6 +1644,11 @@ function formatChunkEventText(ev) {
   if (ev.event === "cache_read_done") {
     return `📖 已读完 ${ev.chunks_read} chunks · ${fInt_(ev.total_spins)} spins，进入采样阶段`;
   }
+  if (ev.event === "cache_read_target_met") {
+    const ci = ev.current_halfwidth_pp != null ? Number(ev.current_halfwidth_pp).toFixed(2) : "?";
+    const tgt = ev.target_halfwidth_pp != null ? Number(ev.target_halfwidth_pp).toFixed(2) : "?";
+    return `✓ 已有 ${ev.chunks_read} chunks 的 CI=±${ci}pp 已满足目标 ±${tgt}pp，提前结束读取 + 跳过新采样`;
+  }
   if (ev.event === "disk_guard_stop") {
     return `⛔ 磁盘低 ${ev.free_gb}GB < ${ev.threshold_gb}GB · 自动停止`;
   }
@@ -1761,6 +1766,9 @@ function mergeTimeline(data, clientEvents, progressCap) {
     // log keeps ticking during the silent resume-read phase (a 165-
     // chunk cache takes ~80s to replay; user thought it was stuck).
     "cache_read_start", "cache_read_progress", "cache_read_done",
+    // Early-stop signal when cumulative cache CI already meets target
+    // — no need to sample any further.
+    "cache_read_target_met",
   ]);
   const out = [];
   const batchEvents = (data && data.events) || [];

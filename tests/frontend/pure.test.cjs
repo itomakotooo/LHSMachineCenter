@@ -1265,6 +1265,44 @@ test("mergeTimeline: cache_read_* events pass through as critical", () => {
   assert.ok(events.some((t) => t.includes("已读完 165")), events);
 });
 
+test("formatChunkEventText: cache_read_target_met shows early-stop reason", () => {
+  // When cumulative cache CI already ≤ target, analyzer short-circuits
+  // reading the rest of the replay + skips live sampling. This event
+  // announces the outcome so the operator doesn't wonder why a 165-
+  // chunk resume finished in 20s.
+  const t = PURE.formatChunkEventText({
+    event: "cache_read_target_met",
+    chunks_read: 42, total_chunks: 165,
+    current_halfwidth_pp: 0.43, target_halfwidth_pp: 0.5,
+  });
+  assert.ok(t.includes("42"), t);
+  assert.ok(t.includes("0.43"), t);
+  assert.ok(t.includes("0.50"), t);
+});
+
+test("mergeTimeline: fetching_chunk passes through (unstick 0-chunk start)", () => {
+  // 2026-04-21: when sampling a machine with 0 existing chunks, the
+  // analyzer fires fetching_chunk → chunk_started while it waits on
+  // the first upstream HTTP call (30-60s). Backend used to filter
+  // these out, so the batch log sat on resume_from_cache for a full
+  // minute. Now fetching_chunk is critical — operator sees activity.
+  const data = {
+    events: [],
+    items: [{
+      machine: "M276",
+      chunk_events: [
+        { event: "resume_from_cache", existing_chunks: 0, existing_spins: 0,
+          next_chunk_index: 1, ts: "2026-04-21T08:00:00Z" },
+        { event: "fetching_chunk", chunk_index: 1,
+          ts: "2026-04-21T08:00:00Z" },
+      ],
+    }],
+  };
+  const timeline = PURE.mergeTimeline(data, []);
+  const events = timeline.map((t) => t.text);
+  assert.ok(events.some((t) => t.includes("请求 chunk 1")), events);
+});
+
 test("formatChunkEventText: chunk_progress includes spins + RTP + CI", () => {
   const t = PURE.formatChunkEventText({
     event: "chunk_progress", chunk_index: 5,

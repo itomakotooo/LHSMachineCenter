@@ -3086,11 +3086,23 @@ class BatchRunManager:
                                 # at the start of --resume-from-cache runs
                                 # (165 chunks = ~80s on M14) stays visible
                                 # in the batch log instead of looking stuck.
+                                # Aligned with frontend's mergeTimeline CRITICAL
+                                # (2026-04-21): backend filter used to drop
+                                # ``fetching_chunk`` and ``analyzer_started``,
+                                # so a sample against an empty-cache machine
+                                # would show last_chunk_event=resume_from_cache
+                                # for 30-60s while the analyzer's first
+                                # upstream HTTP roundtrip was pending. User
+                                # thought "卡住了". Including them here
+                                # surfaces the "⇅ 请求 chunk 1…" line
+                                # immediately so the operator sees activity.
                                 _CRITICAL = {
                                     "chunk_failed", "resume_from_cache",
                                     "disk_guard_stop", "failed",
+                                    "analyzer_started", "fetching_chunk",
+                                    "adaptive_tune", "circuit_pause",
                                     "cache_read_start", "cache_read_progress",
-                                    "cache_read_done",
+                                    "cache_read_done", "cache_read_target_met",
                                 }
                                 critical = [e for e in events if e.get("event") in _CRITICAL]
                                 progress_evts = [e for e in events if e.get("event") == "chunk_progress"]
