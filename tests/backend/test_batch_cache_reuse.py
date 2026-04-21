@@ -115,8 +115,10 @@ class TestBatchCacheReuseGate:
     def test_precise_target_no_cache_samples_fresh(
         self, client, tmp_path: Path, app_factory, monkeypatch
     ):
-        """Control: target>0 and no cache → plain 'sample fresh' event,
-        neither reuse nor resume flags set."""
+        """target>0 and no cache → first-time sample writes directly
+        to rawdata/ via --resume-from-cache (2026-04-21). resume_cache
+        flag is now True (pointing at empty rawdata dir) so chunks
+        persist for the next run. Event log says "首次 API 采样"."""
         c, app = client
         import src.web_console.backend.app as app_mod
         raw_root = tmp_path / "rawdata"
@@ -128,8 +130,13 @@ class TestBatchCacheReuseGate:
         batch_id = r.json()["batch_id"]
         b = c.get(f"/api/batch-run/{batch_id}").json()
         it = b["items"][0]
-        assert it["resume_cache"] is False
+        # resume_cache is True now (empty dir is safe to resume into —
+        # analyzer starts at chunk_0001 and writes to rawdata/).
+        assert it["resume_cache"] is True
         assert it["reuse_cache"] is False
         event_texts = " ".join(e["text"] for e in b["events"])
-        assert "无可用本地 rawdata" in event_texts, event_texts
+        # "首次 API 采样" event fires for the empty-dir case (cache_usable
+        # is False but resume_cache is True).
+        assert "首次 API 采样" in event_texts, event_texts
+        # No "续采" (resume with reuse) since there are no usable chunks.
         assert "续采" not in event_texts, event_texts

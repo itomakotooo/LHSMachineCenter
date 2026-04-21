@@ -137,11 +137,20 @@ class TestAnalyzerReceivesResumeFlag:
         assert "--resume-from-cache" in cmd, cmd
         assert "--from-cache" not in cmd, cmd
 
-    def test_no_cache_no_cache_flag_fresh_sample(
+    def test_first_time_sample_persists_to_rawdata(
         self, client, tmp_path: Path, app_factory, monkeypatch
     ):
-        """Negative case: no cache → analyzer CLI must have neither
-        --from-cache nor --resume-from-cache."""
+        """2026-04-21 REGRESSION: first-time sample used to route chunks
+        to ``cache/<run_id>/`` scratch (auto-cleaned post-run), so
+        consecutive samples of the same machine never accumulated in
+        rawdata/. The user's "5pp 采完接着 0.5 但 5pp rawdata 没了"
+        bug was exactly this — the 5pp chunks never landed in rawdata
+        to begin with.
+
+        Fix: when the rawdata dir has zero historical-md5 chunks
+        (either empty OR all current-md5), backend passes
+        ``--resume-from-cache <rawdata_dir>`` so the analyzer writes
+        directly into rawdata/ — chunks persist for the next run."""
         import src.web_console.backend.app as app_mod
         c, _ = client
         raw_root = tmp_path / "rawdata"
@@ -154,8 +163,14 @@ class TestAnalyzerReceivesResumeFlag:
         cmd = _wait_for_analyzer_cmd(app_factory.stub_popen)
         _release_stubs(app_factory.stub_popen)
         assert cmd is not None
+        # --from-cache is read-only mode; never used from batch-run
         assert "--from-cache" not in cmd, cmd
-        assert "--resume-from-cache" not in cmd, cmd
+        # --resume-from-cache points at the rawdata dir so new chunks
+        # persist even on first-time sample.
+        assert "--resume-from-cache" in cmd, cmd
+        rfc_idx = cmd.index("--resume-from-cache")
+        cache_arg = cmd[rfc_idx + 1]
+        assert "Mnew" in cache_arg and "mode_1" in cache_arg, cache_arg
 
     def test_target_halfwidth_pp_propagates_to_cli(
         self, client, tmp_path: Path, app_factory, monkeypatch
@@ -201,7 +216,11 @@ class TestAnalyzerCmdForFuzzyNoCache:
         _release_stubs(app_factory.stub_popen)
         assert cmd is not None
         assert "--from-cache" not in cmd
-        assert "--resume-from-cache" not in cmd
+        # 2026-04-21: first-time sample now passes --resume-from-cache
+        # pointed at the empty rawdata dir so new chunks persist (fix
+        # for "5pp rawdata 没了" — first-time samples used to land in
+        # cache/<run_id>/ scratch and vanish after auto_cleanup_cache).
+        assert "--resume-from-cache" in cmd
         # RunManager rewrites target=0 (fuzzy signal from the user) to
         # 999 so the analyzer's CI-stop branch never fires, and bumps
         # max_chunks to cover ~1M spins. See RunManager.start_run.

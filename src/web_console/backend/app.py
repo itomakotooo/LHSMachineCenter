@@ -2851,7 +2851,21 @@ class BatchRunManager:
             target_pp = float(req.target_halfwidth_pp or 0)
             cache_usable = raw_status["usable_chunks"] > 0
             reuse_cache = False  # kept for wire-format stability; unused
-            resume_cache = cache_usable
+            # Resume is safe when the dir has NO historical-md5 chunks:
+            #   - empty dir:      analyzer starts at chunk_0001, writes
+            #                     to rawdata/, chunks persist (fixes the
+            #                     2026-04-21 report: "first-time sample
+            #                     never landed in rawdata" because the
+            #                     old resume_cache=cache_usable predicate
+            #                     routed fresh samples to cache/<run_id>/
+            #                     scratch, which got cleaned up post-run)
+            #   - all-current-md5: analyzer reads them + appends new
+            #                     chunks to rawdata/ (existing behavior)
+            # Md5-drift case (mismatch_chunks > 0): fall back to scratch
+            # so historical chunks don't pollute the analyzer's running
+            # stats during the new sample. Operator can still view/delete
+            # the historical chunks via the rwtree's "历史" cell.
+            resume_cache = raw_status["mismatch_chunks"] == 0
 
             # Strategy-aware per-item max_chunks. "total" honors the
             # batch-level req.max_chunks as the target total (analyzer
@@ -2876,16 +2890,11 @@ class BatchRunManager:
                 "resume_cache": resume_cache,
                 "max_chunks": item_max_chunks,
             })
-            if raw_status["mismatch_chunks"] > 0:
-                events.append({
-                    "ts": utc_now(), "level": "info",
-                    "machine": it.machine,
-                    "text": (
-                        f"检测到 {raw_status['mismatch_chunks']} 个历史 md5 的 chunk "
-                        "（保留在磁盘上，但本次采样不会复用；可在机台面板"
-                        "按版本删除或切换版本查看）"
-                    ),
-                })
+            # (Historical-md5 chunks are called out inline with the
+            # "fresh start" log below so the operator sees the reason
+            # + the reassurance in one event rather than two. See the
+            # else-branch emitting "♻ 无法续采" further down.)
+
             # Bet-mismatch warning: if cached chunks have mixed _bet
             # values or differ from the run's current bet, the CI is
             # still math-valid on per-session ret_x, but the
@@ -2906,8 +2915,9 @@ class BatchRunManager:
                                 f"但 RTP = total_win/total_bet 会跨不同单价加权。"
                             ),
                         })
-            if resume_cache:
-                target_label = "Fuzzy" if target_pp == 0 else f"±{target_pp}pp"
+            target_label = "Fuzzy" if target_pp == 0 else f"±{target_pp}pp"
+            if resume_cache and cache_usable:
+                # Existing current-md5 chunks on disk → reuse + continue.
                 events.append({
                     "ts": utc_now(), "level": "info",
                     "machine": it.machine,
@@ -2917,11 +2927,34 @@ class BatchRunManager:
                         f"{target_label} (chunk_spin_times={chunk_size})"
                     ),
                 })
-            else:
+            elif resume_cache:
+                # Dir is empty (or machine brand new). Analyzer starts
+                # at chunk_0001, writes directly to rawdata/ via
+                # --resume-from-cache pointed at an empty dir — chunks
+                # will persist for the next run's resume.
                 events.append({
                     "ts": utc_now(), "level": "info",
                     "machine": it.machine,
-                    "text": f"📥 无可用本地 rawdata，从 API 采样 (chunk_spin_times={chunk_size})",
+                    "text": (
+                        f"📥 首次 API 采样，直接写入 rawdata/ 目标 "
+                        f"{target_label} (chunk_spin_times={chunk_size})"
+                    ),
+                })
+            else:
+                # mismatch_chunks > 0: historical-md5 chunks on disk.
+                # Fall back to scratch so analyzer stats don't mix old
+                # and new md5 data. Chunks stay on disk (rwtree 历史
+                # cell); this run's output goes to cache/<run_id>/.
+                events.append({
+                    "ts": utc_now(), "level": "warn",
+                    "machine": it.machine,
+                    "text": (
+                        f"⚠ 无法续采：本地 {raw_status['mismatch_chunks']} "
+                        f"个 chunks 属于历史 md5（保留在磁盘，rwtree "
+                        f"「历史」cell 可见/可删），本次走 scratch "
+                        f"路径采到 {target_label} "
+                        f"(chunk_spin_times={chunk_size})"
+                    ),
                 })
             if cycle_info and cycle_info["source"] == "collect_detected_no_cycle":
                 events.append({
@@ -3235,9 +3268,36 @@ class BatchRunManager:
                 cache_dir_str = str(RAWDATA_ROOT / item["machine"] / f"mode_{item['mode']}")
                 if item.get("resume_cache"):
                     resume_from_cache_dir = cache_dir_str
-                    _log("info", f"♻ 续采 from {cache_dir_str} (chunk_spin_times={item['chunk_spin_times']})", item["machine"])
+                    # Distinguish "resume with existing chunks" from
+                    # "first-time sample writing into rawdata/" — same
+                    # --resume-from-cache CLI flag, different semantics
+                    # the operator cares about (2026-04-21: "我以为续采
+                    # 了，原来 rawdata 是空的").
+                    usable_now = item.get("rawdata_status", {}).get("usable_chunks", 0)
+                    if usable_now > 0:
+                        _log(
+                            "info",
+                            f"♻ 续采 from {cache_dir_str} "
+                            f"({usable_now} chunks, chunk_spin_times={item['chunk_spin_times']})",
+                            item["machine"],
+                        )
+                    else:
+                        _log(
+                            "info",
+                            f"📥 首次采样，chunks 直接写入 {cache_dir_str} "
+                            f"(chunk_spin_times={item['chunk_spin_times']})",
+                            item["machine"],
+                        )
                 else:
-                    _log("info", f"开始 API 采样 (chunk_spin_times={item['chunk_spin_times']})", item["machine"])
+                    # md5-drift path: historical chunks exist but can't
+                    # be reused; fresh sample goes to cache/<run_id>/
+                    # scratch to keep stats clean.
+                    _log(
+                        "warn",
+                        f"⚠ 上游 md5 变更，无法续采；本次采样走 scratch "
+                        f"(chunk_spin_times={item['chunk_spin_times']})",
+                        item["machine"],
+                    )
                 req = RunCreateRequest(
                     machine=item["machine"],
                     mode=item["mode"],
