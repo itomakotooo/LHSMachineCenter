@@ -5166,6 +5166,45 @@ async function loadBootstrap() {
   // resumes polling + hides 开始采样 so user doesn't click again.
   _recoverActiveSampling();
   await refreshServers();
+  // Auto-refresh upstream md5 on every page load (2026-04-21). Keeps
+  // the UI's md5 comparisons honest — planner might have pushed a new
+  // config between sessions, and we want cards / classifier / rwtree
+  // to reflect that without the operator needing to hit the explicit
+  // "刷新机台 MD5" button. Fire-and-forget: don't block the initial
+  // render on upstream latency; events pushed to the activity strip
+  // so the operator sees "⟳ 刷新上游 md5 … ✓ md5 已刷新 · N 台有变更".
+  (async () => {
+    pushClientEvent("md5_refresh_start", {});
+    try {
+      const r = await apiPost("/api/machines/refresh-md5", {});
+      pushClientEvent("md5_refresh_done", {
+        fetched: r.machines_fetched || 0,
+        updated: r.machines_updated || 0,
+      });
+      // Only re-render if something changed — saves a full summary
+      // scan on the common "nothing changed" case.
+      if ((r.machines_updated || 0) > 0) {
+        try {
+          const v = await apiGet("/api/versions/current");
+          state.currentVersions = v || state.currentVersions;
+        } catch (_) {}
+        try {
+          const s = await apiGet("/api/machines/summary");
+          if (s) {
+            state.machinesSummary = s;
+            renderCatalogFeatureChips();
+            renderMachineCatalog();
+            renderFleetOverview();
+            renderRtpModeBar();
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      pushClientEvent("md5_refresh_failed", {
+        error: String((e && e.message) || e).slice(0, 80),
+      });
+    }
+  })();
   // Now that machineSelect is populated, seed the topbar idle brief.
   // (applyI18n() ran before bootstrap when machineSelect was empty, so
   // its renderLiveStatusStrip() call was a no-op.)

@@ -308,3 +308,69 @@ class TestBatchAutoRefreshMd5:
         # Batch should still have kicked off (batch_id + items present).
         assert "batch_id" in body
         _release_stubs(app_factory.stub_popen)
+
+    def test_refresh_never_clobbers_real_md5_with_empty(
+        self, tmp_path, monkeypatch,
+    ):
+        """REGRESSION 2026-04-21: auto-refresh on page load used to
+        silently overwrite existing md5 values with "" when upstream
+        returned a partial record. Dev machines.json lost all real
+        md5 values the first time the refresh fired. Fix: only merge
+        when upstream's md5 pair is non-empty."""
+        import src.web_console.backend.app as app_mod
+
+        # Seed machines.json with real md5 values
+        mc = tmp_path / "machines.json"
+        mc.write_text(json.dumps({
+            "machines": [
+                {"machine": "M1", "modes": [1], "logicClassNames": ["Foo"],
+                 "configSummaryMd5": "REAL_CFG_1",
+                 "codeSummaryMd5": "REAL_CODE_1"},
+                {"machine": "M14", "modes": [1], "logicClassNames": ["Bar"],
+                 "configSummaryMd5": "REAL_CFG_14",
+                 "codeSummaryMd5": "REAL_CODE_14"},
+            ]
+        }), encoding="utf-8")
+
+        # Fake upstream returns PARTIAL data: M1 gets empty md5, M14 gets
+        # a new md5. Existing M1 real md5 must survive; M14 should update.
+        monkeypatch.setattr(
+            app_mod, "_fetch_machine_config_md5",
+            lambda ep, timeout=30.0: {
+                "M1": {"configSummaryMd5": "", "codeSummaryMd5": ""},
+                "M14": {"configSummaryMd5": "NEW_CFG_14", "codeSummaryMd5": "NEW_CODE_14"},
+            },
+        )
+        monkeypatch.setattr(app_mod, "load_servers", lambda _path: {
+            "servers": [{"id": "dev", "endpoint": "http://fake-upstream"}],
+        })
+        monkeypatch.setattr(app_mod, "_save_server_snapshot", lambda *a, **kw: None)
+
+        # Spin up just enough of create_app's closure to call the helper.
+        # Easiest: create a full app (state_dir + reports + etc tmp).
+        from src.web_console.backend.app import create_app
+        from fastapi.testclient import TestClient
+        app = create_app(
+            state_dir=tmp_path / "state",
+            reports_root=tmp_path / "reports",
+            cache_root=tmp_path / "cache",
+            machines_config=mc,
+            rawdata_root=tmp_path / "rawdata",
+        )
+        with TestClient(app) as c:
+            r = c.post("/api/machines/refresh-md5", json={"server_id": "dev"})
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["machines_fetched"] == 2
+            assert body["machines_updated"] == 1  # only M14
+            assert body["skipped_empty_upstream"] == 1  # M1 was empty
+
+        # Reload file and confirm M1 still has REAL md5, M14 got NEW.
+        data = json.loads(mc.read_text(encoding="utf-8"))
+        by_name = {m["machine"]: m for m in data["machines"]}
+        assert by_name["M1"]["configSummaryMd5"] == "REAL_CFG_1", (
+            "empty upstream md5 should NOT have wiped the existing real md5"
+        )
+        assert by_name["M1"]["codeSummaryMd5"] == "REAL_CODE_1"
+        assert by_name["M14"]["configSummaryMd5"] == "NEW_CFG_14"
+        assert by_name["M14"]["codeSummaryMd5"] == "NEW_CODE_14"

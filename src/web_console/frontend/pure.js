@@ -1576,6 +1576,22 @@ function buildClientEvent(kind, data, nowIso) {
       };
     case "polling_started":
       return { ts, level: "info", source: "ui", text: "◷ 开始轮询进度…" };
+    case "md5_refresh_start":
+      return { ts, level: "info", source: "ui", text: "⟳ 刷新上游 md5…" };
+    case "md5_refresh_done": {
+      const fetched = (data && data.fetched != null) ? data.fetched : 0;
+      const updated = (data && data.updated != null) ? data.updated : 0;
+      const changed = updated > 0 ? " · " + updated + " 台有变更" : " · 无变更";
+      return {
+        ts, level: updated > 0 ? "warn" : "info", source: "ui",
+        text: "✓ md5 已刷新 · 上游 " + fetched + " 台" + changed,
+      };
+    }
+    case "md5_refresh_failed":
+      return {
+        ts, level: "warn", source: "ui",
+        text: "⚠ md5 刷新失败: " + ((data && data.error) || "unknown") + "（继续使用本地缓存的 md5）",
+      };
     default:
       return { ts, level: "info", source: "ui", text: `? ${kind}` };
   }

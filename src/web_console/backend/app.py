@@ -6927,16 +6927,26 @@ def create_app(
         except (OSError, json.JSONDecodeError):
             existing = {"machines": []}
         updated_count = 0
+        skipped_empty_upstream = 0
         machines_list = existing.get("machines", [])
         machines_by_name = {m["machine"]: m for m in machines_list}
         for machine_name, upstream in data.items():
+            new_cfg = str(upstream.get("configSummaryMd5", ""))
+            new_code = str(upstream.get("codeSummaryMd5", ""))
+            # Defensive guard (2026-04-21): auto-refresh on page load
+            # used to silently overwrite existing md5s with "" when
+            # upstream returned a partial / empty record. That wiped
+            # real md5 data for every machine the upstream didn't
+            # fully spec. Skip the merge when upstream md5 is empty —
+            # better to keep a stale-but-real md5 than lose it.
+            if not new_cfg and not new_code:
+                skipped_empty_upstream += 1
+                continue
             entry = machines_by_name.get(machine_name)
             if entry is None:
                 entry = {"machine": machine_name, "modes": [1, 2, 5, 7]}
                 machines_list.append(entry)
                 machines_by_name[machine_name] = entry
-            new_cfg = str(upstream.get("configSummaryMd5", ""))
-            new_code = str(upstream.get("codeSummaryMd5", ""))
             if entry.get("configSummaryMd5") != new_cfg or entry.get("codeSummaryMd5") != new_code:
                 entry["configSummaryMd5"] = new_cfg
                 entry["codeSummaryMd5"] = new_code
@@ -6953,6 +6963,7 @@ def create_app(
             "server_id": server_id,
             "machines_fetched": len(data),
             "machines_updated": updated_count,
+            "skipped_empty_upstream": skipped_empty_upstream,
         }
 
     @app.post("/api/machines/refresh-md5")
