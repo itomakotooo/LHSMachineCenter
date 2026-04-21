@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -209,6 +210,116 @@ def _run_simulator_chunk(
         code_md5=code_md5,
     )
     return chunk, chunk_win, chunk_bet
+
+
+# ── Session-level CI check (2026-04-21) ─────────────────────────────
+# Mirrors real analyzer's session_halfwidth_pp so virtual sampling can
+# stop once the user's CI target is met. Prior behavior: sim loop only
+# honored max_chunks + stop_flag, so a 5pp target would still run to
+# 120 chunks even when 3 chunks' worth of data already satisfied the
+# target. Users had to manually stop.
+
+# Two-sided 95% t-critical table for small N; above N=30 we fall back
+# to 1.96 (same cutoff the real analyzer uses). Keeps small-session
+# CIs honest without dragging scipy in.
+_T_CRITICAL_95_TABLE = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+    11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
+    16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
+    21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
+    26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
+}
+
+
+def _t_critical_95(df: int) -> float:
+    if df <= 0:
+        return 12.706  # N=1 sentinel — should never be reached (guarded by n<=1 check)
+    return _T_CRITICAL_95_TABLE.get(df, 1.96)
+
+
+def _ci_halfwidth_pp(n: int, ret_sum: float, ret_sq_sum: float) -> float | None:
+    """Session-level 95% CI half-width in percentage points. ``None``
+    when n ≤ 1 (variance undefined). Matches the formula used by the
+    real analyzer so virtual sampling's stop decision and the delegated
+    report's reported CI agree.
+    """
+    if n <= 1:
+        return None
+    var = max(0.0, (ret_sq_sum - (ret_sum * ret_sum) / n) / (n - 1))
+    if var == 0.0:
+        return 0.0
+    se = math.sqrt(var / n)
+    t = _t_critical_95(n - 1)
+    return t * se * 100.0
+
+
+def _session_returns_from_chunk_dict(chunk: dict) -> list[float]:
+    """Extract per-robot session return multiplier (``ret_x =
+    total_win / total_bet``) for each robot in a chunk dict.
+
+    Each robot is treated as one session — matches the real analyzer's
+    ``session_bucket_bet`` / ``session_bucket_win`` accumulation granularity
+    (one bucket per robot, one CI sample per robot).
+    """
+    out: list[float] = []
+    for robot in chunk.get("response") or []:
+        rr = robot.get("roundResult")
+        if isinstance(rr, str):
+            try:
+                rounds = json.loads(rr)
+            except (json.JSONDecodeError, ValueError):
+                continue
+        elif isinstance(rr, list):
+            rounds = rr
+        else:
+            continue
+        total_win = 0
+        total_bet = 0
+        for rd in rounds:
+            if not isinstance(rd, dict):
+                continue
+            total_win += int(rd.get("WinCredits", 0) or 0)
+            total_bet += int(rd.get("BetAmount", 0) or 0)
+        if total_bet > 0:
+            out.append(total_win / total_bet)
+    return out
+
+
+def _load_existing_session_stats(
+    rawdata_dir: Path,
+    md5_filter: tuple[str, str] | None,
+) -> tuple[int, float, float]:
+    """Walk existing ``chunk_*.json`` in ``rawdata_dir`` and accumulate
+    session-level ``(n, ret_sum, ret_sq_sum)`` for CI computation.
+
+    When ``md5_filter`` is set, skips chunks whose envelope md5 pair
+    differs from the caller's expected pair — keeps historical-md5
+    chunks from polluting the CI estimate (same principle as the real
+    analyzer's ``--upstream-*-md5`` filter during --from-cache replay).
+
+    Returns (0, 0.0, 0.0) on empty / missing dir.
+    """
+    if not rawdata_dir.is_dir():
+        return 0, 0.0, 0.0
+    n = 0
+    ret_sum = 0.0
+    ret_sq_sum = 0.0
+    for cf in sorted(rawdata_dir.glob("chunk_*.json")):
+        try:
+            data = json.loads(cf.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if md5_filter:
+            cfg = str(data.get("_config_md5", "") or "")
+            code = str(data.get("_code_md5", "") or "")
+            if cfg != md5_filter[0] or code != md5_filter[1]:
+                continue
+        for rx in _session_returns_from_chunk_dict(data):
+            n += 1
+            ret_sum += rx
+            ret_sq_sum += rx * rx
+    return n, ret_sum, ret_sq_sum
 
 
 def _compute_md5s(entry: dict) -> tuple[str, str]:
@@ -396,6 +507,65 @@ def main() -> int:
     stop_reason = "max_chunks_reached"
     last_produced_idx = start_idx - 1
 
+    # Session-level CI accumulator across existing + newly-simulated
+    # chunks so the sim loop can bail once target_halfwidth_pp is
+    # satisfied. Target 0 / ≥ 999 = CI gate bypassed (fuzzy / sentinel).
+    ci_target = float(args.target_halfwidth_pp)
+    ci_gate_active = 0.0 < ci_target < 999.0
+    sess_n = 0
+    sess_ret_sum = 0.0
+    sess_ret_sq_sum = 0.0
+    if ci_gate_active:
+        sess_n, sess_ret_sum, sess_ret_sq_sum = _load_existing_session_stats(
+            sampling_out_dir, md5_filter=md5s,
+        )
+        existing_ci = _ci_halfwidth_pp(sess_n, sess_ret_sum, sess_ret_sq_sum)
+        _append_jsonl(pf, {
+            "event": "cache_read_start",
+            "run_id": run_id,
+            "tag": "--resume-from-cache (virtual pre-check)",
+            "total_chunks": len(existing),
+            "ts": _utc_now(),
+        })
+        _append_jsonl(pf, {
+            "event": "cache_read_done",
+            "run_id": run_id,
+            "chunks_read": len(existing),
+            "chunks_merged": len(existing),
+            "md5_skipped": 0,
+            "total_spins": sess_n * args.chunk_spin_times,
+            "sessions": sess_n,
+            "current_halfwidth_pp": existing_ci,
+            "target_halfwidth_pp": ci_target,
+            "ts": _utc_now(),
+        })
+        if existing_ci is not None and existing_ci <= ci_target:
+            stop_reason = "target_ci_reached_from_cache"
+            # Skip the sim loop entirely — existing cache already meets
+            # target. Emit an explicit event so the UI can render a
+            # "跳过采样 · CI 已达标" line instead of spinning without
+            # any chunk events.
+            _append_jsonl(pf, {
+                "event": "cache_read_target_met",
+                "run_id": run_id,
+                "chunks_read": len(existing),
+                "total_chunks": len(existing),
+                "current_halfwidth_pp": existing_ci,
+                "target_halfwidth_pp": ci_target,
+                "ts": _utc_now(),
+            })
+            _append_jsonl(pf, {
+                "event": "sampling_done",
+                "run_id": run_id,
+                "chunks_produced": 0,
+                "stop_reason": stop_reason,
+                "sampling_rtp_pct": 0.0,
+                "sessions": sess_n,
+                "current_halfwidth_pp": existing_ci,
+                "ts": _utc_now(),
+            })
+            return _delegate_to_real_analyzer(args, sampling_out_dir)
+
     for ci in range(start_idx, start_idx + args.max_chunks):
         if _check_stop_flag(args.stop_flag_file):
             stop_reason = "user_stop"
@@ -429,6 +599,17 @@ def main() -> int:
         last_produced_idx = ci
         elapsed = time.time() - t0
 
+        # Accumulate THIS chunk's session returns into the running CI
+        # estimator. `_run_simulator_chunk` already wrote the chunk; we
+        # walk its robot list here without a second read from disk.
+        current_ci: float | None = None
+        if ci_gate_active:
+            for rx in _session_returns_from_chunk_dict(chunk):
+                sess_n += 1
+                sess_ret_sum += rx
+                sess_ret_sq_sum += rx * rx
+            current_ci = _ci_halfwidth_pp(sess_n, sess_ret_sum, sess_ret_sq_sum)
+
         _append_jsonl(pf, {
             "event": "chunk_progress",
             "run_id": run_id,
@@ -436,9 +617,25 @@ def main() -> int:
             "chunks_done": ci - start_idx + 1,
             "total_spins": (ci - start_idx + 1) * args.chunk_robot_count * args.chunk_spin_times,
             "current_rtp_pct": (total_win / total_bet * 100) if total_bet else 0.0,
+            "current_halfwidth_pp": current_ci,
+            "target_halfwidth_pp": ci_target if ci_gate_active else None,
+            "sessions": sess_n if ci_gate_active else None,
             "duration_s": round(elapsed, 3),
             "ts": _utc_now(),
         })
+
+        if ci_gate_active and current_ci is not None and current_ci <= ci_target:
+            stop_reason = "target_ci_reached"
+            _append_jsonl(pf, {
+                "event": "target_ci_reached",
+                "run_id": run_id,
+                "chunk_index": ci,
+                "sessions": sess_n,
+                "current_halfwidth_pp": current_ci,
+                "target_halfwidth_pp": ci_target,
+                "ts": _utc_now(),
+            })
+            break
 
     _append_jsonl(pf, {
         "event": "sampling_done",
@@ -446,6 +643,11 @@ def main() -> int:
         "chunks_produced": last_produced_idx - start_idx + 1,
         "stop_reason": stop_reason,
         "sampling_rtp_pct": (total_win / total_bet * 100) if total_bet else 0.0,
+        "sessions": sess_n if ci_gate_active else None,
+        "current_halfwidth_pp": (
+            _ci_halfwidth_pp(sess_n, sess_ret_sum, sess_ret_sq_sum)
+            if ci_gate_active else None
+        ),
         "ts": _utc_now(),
     })
 
