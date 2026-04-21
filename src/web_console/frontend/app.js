@@ -2487,6 +2487,7 @@ function pollSampling() {
         state.machinesSummary = mSummary;
         renderCatalogFeatureChips();
         renderMachineCatalog();
+        renderRtpModeBar();  // fleet mode set may have grown post-sampling
         renderFleetOverview();
         await refreshRunList(false);
         return;
@@ -4601,6 +4602,7 @@ async function refreshReportMgmtBanner() {
       state.machinesSummary = mSummary;
       renderCatalogFeatureChips();
       renderMachineCatalog();
+      renderRtpModeBar();  // imported reports may add new modes to fleet
       renderFleetOverview();
       refreshReportMgmtBanner();  // refresh stale counts after import
       refreshStaticAttrs();  // Round 6: imports touched static attrs
@@ -4623,6 +4625,7 @@ async function refreshReportMgmtBanner() {
       state.machinesSummary = mSummary;
       renderCatalogFilters();
       renderMachineCatalog();
+      renderRtpModeBar();  // cleanup may have removed all reports for a mode
       renderFleetOverview();
       refreshReportMgmtBanner();
       refreshStaticAttrs();
@@ -5119,6 +5122,138 @@ async function loadBootstrap() {
   setGlobalWarning(warnings);
 }
 
+// Inline RTP mode bar: only when 按 RTP tab active. Shows a row of
+// "auto | 1 | 2 | 5 | ..." buttons (union of modes present across
+// the fleet in machinesSummary). Clicking a mode re-sorts the flat
+// catalog by that mode's rtp_pct. "auto" = the legacy fallback
+// (prefer mode 2, else smallest numeric mode) kept for bookmarks.
+//
+// Top-level (not nested inside bindEvents) so loadBootstrap /
+// pollSampling / any non-event-handler call path can reach it.
+// The 2026-04-21 regression (f398d57 silent-noop + pollSampling
+// handler breakage) was caused by nesting this inside bindEvents;
+// ReferenceError from outside the closure was swallowed by the
+// outer try/catch, looking like "fix didn't apply".
+function renderRtpModeBar() {
+  const bar = byId("rtpModeBar");
+  if (!bar) return;
+  if (state.catalogViewMode !== "rtp") {
+    bar.classList.add("hidden");
+    return;
+  }
+  bar.classList.remove("hidden");
+  // Enumerate unique mode keys present anywhere in machinesSummary.
+  // Sort numerically so 1 < 2 < 5 < 7, keeping the UI deterministic
+  // across page reloads.
+  const sm = ((state.machinesSummary || {}).machines || {});
+  const modeSet = new Set();
+  Object.values(sm).forEach((machineModes) => {
+    Object.keys(machineModes || {}).forEach((k) => modeSet.add(String(k)));
+  });
+  const modes = [...modeSet].sort((a, b) => Number(a) - Number(b));
+  const active = String(state.catalogRtpMode || "auto");
+  const autoBtn = `<button class="small-btn ${active === "auto" ? "active" : ""}" data-mode="auto" title="优先 mode 2，否则最小 mode">auto</button>`;
+  const modeBtns = modes.map((m) => (
+    `<button class="small-btn ${active === m ? "active" : ""}" data-mode="${m}">mode ${m}</button>`
+  )).join("");
+  bar.innerHTML = `
+    <div class="rtp-mode-row">
+      <span class="muted">RTP 排序 mode：</span>
+      <div class="rtp-mode-toggle">${autoBtn}${modeBtns}</div>
+      <span class="muted">· 没有该 mode 数据的机台沉底</span>
+    </div>
+  `;
+  bar.querySelectorAll(".rtp-mode-toggle button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const m = btn.dataset.mode;
+      if (!m || m === state.catalogRtpMode) return;
+      state.catalogRtpMode = m;
+      renderRtpModeBar();
+      renderMachineCatalog();
+    });
+  });
+}
+
+// Inline hall bar: only when 按大厅 tab active. Shows the ordering
+// mode toggle (默认 / 当前大厅) + active-activity summary + a
+// refresh button that re-pulls from upstream MapMachineOrder.
+// Top-level alongside renderRtpModeBar for the same reason.
+function renderHallsRefreshBar() {
+  const bar = byId("hallsRefreshBar");
+  if (!bar) return;
+  if (state.catalogViewMode !== "hall") {
+    bar.classList.add("hidden");
+    return;
+  }
+  bar.classList.remove("hidden");
+  const data = state.machineHalls || {};
+  const defaultOrder = data.default_order || [];
+  const currentOrder = data.current_hall_order || [];
+  const activeActs = data.active_activities || [];
+  const updated = data.updated_at;
+  if (!defaultOrder.length) {
+    bar.innerHTML = `<span class="muted">未拉取地图顺序。</span>
+      <button id="hallsRefreshBtn" class="small-btn primary-btn">拉取地图顺序</button>`;
+  } else {
+    const defaultActive = state.hallOrderMode !== "current";
+    const hasCurrent = activeActs.length > 0 && currentOrder.length > 0;
+    // Build the activity summary: "活动 Id=10 置顶 10 台 · Id=13 置顶 M272"
+    const actSummary = activeActs.map((a) => {
+      const ims = a.influence_machines || [];
+      const count = ims.length;
+      const sample = ims.slice(0, 3).join(", ");
+      const more = count > 3 ? ` +${count - 3}` : "";
+      const orders = (a.orders || [])[0];
+      const target = orders != null ? `→ 位置 ${orders}` : "";
+      return `Id=${a.id} ${target} ${count}台(${sample}${more})`;
+    }).join(" · ");
+    bar.innerHTML = `
+      <div class="halls-row">
+        <div class="halls-mode-toggle">
+          <button class="small-btn ${defaultActive ? "active" : ""}" data-mode="default">默认顺序</button>
+          <button class="small-btn ${defaultActive ? "" : "active"}" data-mode="current" ${hasCurrent ? "" : "disabled"} title="${hasCurrent ? "应用当前运营活动的位置覆盖" : "无活动中的运营活动"}">当前大厅顺序</button>
+        </div>
+        <span class="muted">${defaultOrder.length} 台 · ${activeActs.length ? `${activeActs.length} 个活动: ${actSummary}` : "无活动中的运营活动"}${updated ? ` · ${updated.slice(0, 19).replace("T", " ")}` : ""}</span>
+        <button id="hallsRefreshBtn" class="small-btn">刷新上游</button>
+      </div>
+    `;
+    bar.querySelectorAll(".halls-mode-toggle button").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        if (e.target.disabled) return;
+        const mode = btn.dataset.mode;
+        if (mode && mode !== state.hallOrderMode) {
+          state.hallOrderMode = mode;
+          renderHallsRefreshBar();
+          renderMachineCatalog();
+        }
+      });
+    });
+  }
+  byId("hallsRefreshBtn")?.addEventListener("click", async () => {
+    const btn = byId("hallsRefreshBtn");
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "刷新中…";
+    try {
+      const resp = await fetch("/api/machines/halls/refresh", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${resp.status}`);
+      }
+      state.machineHalls = await apiGet("/api/machines/halls");
+      renderHallsRefreshBar();
+      renderMachineCatalog();
+    } catch (err) {
+      btn.textContent = `失败: ${String(err.message || err).slice(0, 60)}`;
+      setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 4000);
+    }
+  });
+}
+
 function bindEvents() {
   byId("langSelect").addEventListener("change", async (e) => {
     state.lang = e.target.value;
@@ -5231,129 +5366,6 @@ function bindEvents() {
     renderMachineCatalog();
   });
 
-  // Inline RTP mode bar: only when 按 RTP tab active. Shows a row of
-  // "auto | 1 | 2 | 5 | ..." buttons (union of modes present across
-  // the fleet in machinesSummary). Clicking a mode re-sorts the flat
-  // catalog by that mode's rtp_pct. "auto" = the legacy fallback
-  // (prefer mode 2, else smallest numeric mode) kept for bookmarks.
-  function renderRtpModeBar() {
-    const bar = byId("rtpModeBar");
-    if (!bar) return;
-    if (state.catalogViewMode !== "rtp") {
-      bar.classList.add("hidden");
-      return;
-    }
-    bar.classList.remove("hidden");
-    // Enumerate unique mode keys present anywhere in machinesSummary.
-    // Sort numerically so 1 < 2 < 5 < 7, keeping the UI deterministic
-    // across page reloads.
-    const sm = ((state.machinesSummary || {}).machines || {});
-    const modeSet = new Set();
-    Object.values(sm).forEach((machineModes) => {
-      Object.keys(machineModes || {}).forEach((k) => modeSet.add(String(k)));
-    });
-    const modes = [...modeSet].sort((a, b) => Number(a) - Number(b));
-    const active = String(state.catalogRtpMode || "auto");
-    const autoBtn = `<button class="small-btn ${active === "auto" ? "active" : ""}" data-mode="auto" title="优先 mode 2，否则最小 mode">auto</button>`;
-    const modeBtns = modes.map((m) => (
-      `<button class="small-btn ${active === m ? "active" : ""}" data-mode="${m}">mode ${m}</button>`
-    )).join("");
-    bar.innerHTML = `
-      <div class="rtp-mode-row">
-        <span class="muted">RTP 排序 mode：</span>
-        <div class="rtp-mode-toggle">${autoBtn}${modeBtns}</div>
-        <span class="muted">· 没有该 mode 数据的机台沉底</span>
-      </div>
-    `;
-    bar.querySelectorAll(".rtp-mode-toggle button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const m = btn.dataset.mode;
-        if (!m || m === state.catalogRtpMode) return;
-        state.catalogRtpMode = m;
-        renderRtpModeBar();
-        renderMachineCatalog();
-      });
-    });
-  }
-
-  // Inline hall bar: only when 按大厅 tab active. Shows the ordering
-  // mode toggle (默认 / 当前大厅) + active-activity summary + a
-  // refresh button that re-pulls from upstream MapMachineOrder.
-  function renderHallsRefreshBar() {
-    const bar = byId("hallsRefreshBar");
-    if (!bar) return;
-    if (state.catalogViewMode !== "hall") {
-      bar.classList.add("hidden");
-      return;
-    }
-    bar.classList.remove("hidden");
-    const data = state.machineHalls || {};
-    const defaultOrder = data.default_order || [];
-    const currentOrder = data.current_hall_order || [];
-    const activeActs = data.active_activities || [];
-    const updated = data.updated_at;
-    if (!defaultOrder.length) {
-      bar.innerHTML = `<span class="muted">未拉取地图顺序。</span>
-        <button id="hallsRefreshBtn" class="small-btn primary-btn">拉取地图顺序</button>`;
-    } else {
-      const defaultActive = state.hallOrderMode !== "current";
-      const hasCurrent = activeActs.length > 0 && currentOrder.length > 0;
-      // Build the activity summary: "活动 Id=10 置顶 10 台 · Id=13 置顶 M272"
-      const actSummary = activeActs.map((a) => {
-        const ims = a.influence_machines || [];
-        const count = ims.length;
-        const sample = ims.slice(0, 3).join(", ");
-        const more = count > 3 ? ` +${count - 3}` : "";
-        const orders = (a.orders || [])[0];
-        const target = orders != null ? `→ 位置 ${orders}` : "";
-        return `Id=${a.id} ${target} ${count}台(${sample}${more})`;
-      }).join(" · ");
-      bar.innerHTML = `
-        <div class="halls-row">
-          <div class="halls-mode-toggle">
-            <button class="small-btn ${defaultActive ? "active" : ""}" data-mode="default">默认顺序</button>
-            <button class="small-btn ${defaultActive ? "" : "active"}" data-mode="current" ${hasCurrent ? "" : "disabled"} title="${hasCurrent ? "应用当前运营活动的位置覆盖" : "无活动中的运营活动"}">当前大厅顺序</button>
-          </div>
-          <span class="muted">${defaultOrder.length} 台 · ${activeActs.length ? `${activeActs.length} 个活动: ${actSummary}` : "无活动中的运营活动"}${updated ? ` · ${updated.slice(0, 19).replace("T", " ")}` : ""}</span>
-          <button id="hallsRefreshBtn" class="small-btn">刷新上游</button>
-        </div>
-      `;
-      bar.querySelectorAll(".halls-mode-toggle button").forEach((btn) => {
-        btn.addEventListener("click", (e) => {
-          if (e.target.disabled) return;
-          const mode = btn.dataset.mode;
-          if (mode && mode !== state.hallOrderMode) {
-            state.hallOrderMode = mode;
-            renderHallsRefreshBar();
-            renderMachineCatalog();
-          }
-        });
-      });
-    }
-    byId("hallsRefreshBtn")?.addEventListener("click", async () => {
-      const btn = byId("hallsRefreshBtn");
-      if (!btn) return;
-      const orig = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = "刷新中…";
-      try {
-        const resp = await fetch("/api/machines/halls/refresh", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-        if (!resp.ok) {
-          const body = await resp.json().catch(() => ({}));
-          throw new Error(body.detail || `HTTP ${resp.status}`);
-        }
-        state.machineHalls = await apiGet("/api/machines/halls");
-        renderHallsRefreshBar();
-        renderMachineCatalog();
-      } catch (err) {
-        btn.textContent = `失败: ${String(err.message || err).slice(0, 60)}`;
-        setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 4000);
-      }
-    });
-  }
   // Inline sampling panel controls.
   byId("sampleStartBtn").addEventListener("click", () => startSampling());
   byId("sampleCancelBtn").addEventListener("click", () => cancelSampling());
@@ -5375,6 +5387,7 @@ function bindEvents() {
       state.machinesSummary = mSummary;
       renderCatalogFeatureChips();
       renderMachineCatalog();
+      renderRtpModeBar();  // md5 refresh may flip modes to/from match state
       renderFleetOverview();
     } catch (e) {
       alert("刷新失败：" + (e.message || e));
@@ -5534,6 +5547,7 @@ function bindEvents() {
       const mSummary = await apiGet("/api/machines/summary");
       state.machinesSummary = mSummary;
       renderMachineCatalog();
+      renderRtpModeBar();  // rawdata delete may have dropped a mode's reports
       renderFleetOverview();
     } catch (_) {}
     try { await refreshCache(); } catch (_) {}
