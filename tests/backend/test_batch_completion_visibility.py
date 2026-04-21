@@ -352,3 +352,111 @@ class TestCiTargetMetSurfaced:
         assert item.get("ci_target_met") is True, (
             f"fuzzy max_chunks_reached must count as success; item: {item!r}"
         )
+
+    def test_from_cache_complete_with_ci_met_numerically_counts_as_ci_target_met(
+        self, client, tmp_path: Path, app_factory, monkeypatch, wait_until_fixture
+    ):
+        """2026-04-21 virtual-console regression: virtual_analyzer's sim
+        loop broke with ``target_ci_reached``, but then it delegated to
+        real analyzer's ``--from-cache`` which overwrote the summary's
+        ``stop_reason`` to ``from_cache_complete``. Backend's
+        ``ci_target_met`` was string-matching only, so the UI said
+        "完成但未达 CI 目标" even though achieved CI (±4.42pp) was
+        well under target (±5.0pp).
+
+        Fix: numeric tie-breaker. If achieved_halfwidth_pp ≤
+        target_halfwidth_pp (and target < 999 = not fuzzy), the goal
+        was met regardless of the stop_reason string label.
+        """
+        import src.web_console.backend.app as app_mod
+        c, _ = client
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)
+        monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
+
+        r = c.post("/api/batch-run", json=_batch_payload(target=5.0))
+        batch_id = r.json()["batch_id"]
+        run_id = _wait_for_run_id(c, batch_id)
+        _progress, summary_file = _resolve_run_paths(app_factory.db_path, run_id)
+
+        # Post a summary with:
+        #   stop_reason: "from_cache_complete"  (would-be failure signal)
+        #   achieved_halfwidth_pp: 4.42         (< target 5.0, so met)
+        #   target_halfwidth_pp: 5.0            (user's selected target)
+        summary = _completed_summary("from_cache_complete", halfwidth_pp=4.42)
+        summary["sampling"]["target_halfwidth_pp"] = 5.0
+        summary_file.parent.mkdir(parents=True, exist_ok=True)
+        summary_file.write_text(json.dumps(summary), encoding="utf-8")
+        (summary_file.parent / "player_impact_report.md").write_text(
+            "# report\n", encoding="utf-8"
+        )
+
+        _release_stubs(app_factory.stub_popen)
+
+        wait_until_fixture(
+            lambda: c.get(f"/api/batch-run/{batch_id}").json()["items"][0]["status"]
+            == "completed",
+            timeout=5.0,
+        )
+
+        body = c.get(f"/api/batch-run/{batch_id}").json()
+        item = body["items"][0]
+        assert item.get("ci_target_met") is True, (
+            f"achieved CI ±4.42pp ≤ target ±5.0pp must count as met "
+            f"regardless of stop_reason='from_cache_complete'; item: {item!r}"
+        )
+        # Event level should be "ok", not "warn" — the run hit its goal.
+        levels = [e.get("level") for e in body.get("events", [])]
+        assert "ok" in levels, (
+            f"goal met numerically should emit ok-level event; levels: {levels!r}"
+        )
+        assert "warn" not in levels or all(
+            "CI 目标" not in (e.get("text") or "") for e in body.get("events", [])
+            if e.get("level") == "warn"
+        ), (
+            f"should NOT emit '完成但未达 CI 目标' warn event when achieved ≤ target; "
+            f"events: {body.get('events', [])!r}"
+        )
+
+    def test_from_cache_complete_with_ci_not_met_stays_unmet(
+        self, client, tmp_path: Path, app_factory, monkeypatch, wait_until_fixture
+    ):
+        """Counter-case: from_cache_complete with achieved CI > target
+        must STILL report ci_target_met=False (the numeric tie-breaker
+        only helps when CI actually met; it doesn't rescue genuine
+        under-convergence)."""
+        import src.web_console.backend.app as app_mod
+        c, _ = client
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)
+        monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
+
+        r = c.post("/api/batch-run", json=_batch_payload(target=0.5))
+        batch_id = r.json()["batch_id"]
+        run_id = _wait_for_run_id(c, batch_id)
+        _progress, summary_file = _resolve_run_paths(app_factory.db_path, run_id)
+
+        # stop_reason=from_cache_complete + achieved 1.2pp + target 0.5pp
+        # = UNDER target, not met.
+        summary = _completed_summary("from_cache_complete", halfwidth_pp=1.2)
+        summary["sampling"]["target_halfwidth_pp"] = 0.5
+        summary_file.parent.mkdir(parents=True, exist_ok=True)
+        summary_file.write_text(json.dumps(summary), encoding="utf-8")
+        (summary_file.parent / "player_impact_report.md").write_text(
+            "# report\n", encoding="utf-8"
+        )
+
+        _release_stubs(app_factory.stub_popen)
+
+        wait_until_fixture(
+            lambda: c.get(f"/api/batch-run/{batch_id}").json()["items"][0]["status"]
+            == "completed",
+            timeout=5.0,
+        )
+
+        body = c.get(f"/api/batch-run/{batch_id}").json()
+        item = body["items"][0]
+        assert item.get("ci_target_met") is False, (
+            f"achieved CI ±1.2pp > target ±0.5pp must stay ci_target_met=False; "
+            f"item: {item!r}"
+        )

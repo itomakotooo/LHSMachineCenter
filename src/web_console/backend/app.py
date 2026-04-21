@@ -3412,9 +3412,25 @@ class BatchRunManager:
                     # gate entirely — their success is reaching the
                     # max_chunks budget, so max_chunks_reached +
                     # from_cache_complete count as met.
+                    #
+                    # Numeric tie-breaker (2026-04-21): even when
+                    # stop_reason isn't "target_ci_reached" verbatim,
+                    # achieved CI ≤ target means the goal was met.
+                    # This covers virtual_analyzer's sim loop breaking
+                    # with "target_ci_reached" but then the delegated
+                    # real-analyzer --from-cache step overwriting the
+                    # summary's stop_reason to "from_cache_complete".
+                    # The numeric reality is ground truth; the string
+                    # label is just a hint.
                     is_fuzzy = target_hw >= 999.0
                     ci_target_met = (
                         stop_reason == "target_ci_reached"
+                        or (
+                            not is_fuzzy
+                            and target_hw > 0
+                            and ci is not None
+                            and float(ci) <= target_hw
+                        )
                         or (
                             is_fuzzy
                             and stop_reason in (
