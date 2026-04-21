@@ -6681,13 +6681,26 @@ def create_app(
         tagged-stale rows). The in-UI per-report 删除 button routes
         here for this reason; /api/runs/{rid} 404s on those orphans.
 
+        **Idempotent** (2026-04-21 fix): when the disk dir is already
+        gone but index.json still lists the entry ("zombie"), we no
+        longer 404 — we finish the cleanup (drop the index.json entry +
+        DB row). Before this fix, zombies could never be deleted from
+        the UI: the frontend caught the 404 and showed "删除失败",
+        leaving the entry visible forever. Root cause: a prior partial
+        cleanup (manual rm, interrupted rmtree, import rollback that
+        didn't rewind index.json, etc.) leaves the two out of sync;
+        the user's intent — "make this report gone" — is equally valid
+        whether the disk half is present or absent, so we honor it.
+
         Steps:
-          1. Remove the version directory (shutil.rmtree).
+          1. Remove the version directory (shutil.rmtree) if it exists.
           2. Delete the matching DB row if one exists (via run_id
              lookup).
           3. Rewrite index.json without the deleted entry.
           4. If latest.json pointed at this version, rewrite it to
              the newest surviving version (or unlink if none).
+          5. 404 ONLY when neither disk nor index.json knows about
+             this version — i.e. there's nothing to clean up.
         """
         if not ops.acquire("delete_report_version"):
             snap = ops.snapshot()
@@ -6698,7 +6711,25 @@ def create_app(
         try:
             mode_dir = rr / machine / f"mode_{mode}"
             version_dir = mode_dir / "versions" / version
-            if not version_dir.exists():
+            disk_existed = version_dir.exists()
+
+            # Existence probe: if neither disk nor index.json has this
+            # version, genuinely nothing to delete — 404. This keeps
+            # the "truly not found" signal intact while fixing zombies.
+            index_path = mode_dir / "index.json"
+            index_has_entry = False
+            if index_path.exists():
+                try:
+                    raw_probe = read_json(index_path)
+                    if isinstance(raw_probe, list):
+                        index_has_entry = any(
+                            isinstance(e, dict)
+                            and e.get("report_version") == version
+                            for e in raw_probe
+                        )
+                except Exception:  # noqa: BLE001
+                    pass
+            if not disk_existed and not index_has_entry:
                 raise HTTPException(
                     status_code=404,
                     detail=f"version not found: {machine}/mode_{mode}/{version}",
@@ -6725,17 +6756,21 @@ def create_app(
                 except Exception:
                     pass
 
-            # Wipe the version directory.
-            try:
-                shutil.rmtree(version_dir)
-            except OSError as exc:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"rmtree failed: {exc}",
-                ) from exc
+            # Wipe the version directory — only when it still exists.
+            # Missing dir → already partially cleaned, continue to
+            # index.json rewrite below. Re-check exists() because
+            # delete_run above can rmtree the dir as part of its own
+            # cleanup (it uses the runs-row's output_dir path).
+            if version_dir.exists():
+                try:
+                    shutil.rmtree(version_dir)
+                except OSError as exc:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"rmtree failed: {exc}",
+                    ) from exc
 
             # Rewrite index.json (drop the deleted entry).
-            index_path = mode_dir / "index.json"
             remaining: list[dict] = []
             if index_path.exists():
                 try:
@@ -6779,6 +6814,11 @@ def create_app(
                 "deleted_version": version,
                 "runs_deleted": runs_deleted,
                 "remaining_versions": len(remaining),
+                # Tell the caller whether we actually removed a disk
+                # dir or just finished a partial cleanup — useful for
+                # the UI to distinguish "normal delete" vs "zombie
+                # finalize" in the activity log.
+                "disk_removed": disk_existed,
             }
         finally:
             ops.release()
