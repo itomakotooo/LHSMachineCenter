@@ -5066,6 +5066,10 @@ async function loadBootstrap() {
     try { renderCatalogFeatureChips(); } catch (_) {}
     try { renderMachineCatalog(); } catch (_) {}
     try { renderFleetOverview(); } catch (_) {}
+    // RTP 模式按钮条的 mode 集合来自 machinesSummary.machines[*] 的 keys。
+    // 初次渲染发生在页面加载早期（summary 还没到），此时 modeSet 为空，
+    // 只出 auto 按钮。summary 到货后必须重渲，否则 "按 RTP" tab 只有 auto。
+    try { renderRtpModeBar(); } catch (_) {}
   });
   // Round 6: load static machine attrs (category / features / mechanics
   // / md5) in parallel with summary. Static cache is the primary source
