@@ -1516,45 +1516,6 @@ async function renderRawdataReportTree(machineName) {
     });
   }
 
-  // Distinct md5s across rawdata versions + reports. If only 1, the
-  // switcher stays hidden and the tree renders normally.
-  const md5Map = new Map();  // key="cfg|code" → {config_md5, code_md5, is_current, label}
-  for (const [, st] of Object.entries(rawdataModes)) {
-    for (const v of (st.versions || [])) {
-      const key = `${v.config_md5}|${v.code_md5}`;
-      if (!md5Map.has(key)) {
-        md5Map.set(key, {
-          config_md5: v.config_md5, code_md5: v.code_md5,
-          is_current: !!v.is_current, source: "rawdata",
-        });
-      }
-    }
-  }
-  for (const r of (validateData.reports || [])) {
-    if (!r.report_config_md5) continue;
-    const key = `${r.report_config_md5}|${r.report_code_md5}`;
-    if (!md5Map.has(key)) {
-      md5Map.set(key, {
-        config_md5: r.report_config_md5, code_md5: r.report_code_md5,
-        is_current: r.md5_status === "match", source: "report-only",
-      });
-    }
-  }
-  const md5Keys = [...md5Map.keys()];
-  const multiMd5 = md5Keys.length > 1;
-
-  // Reset md5 selection when switching machines; default to current-md5
-  // if available, else first available.
-  if (state._rwtreeMachine !== machineName) {
-    state._rwtreeMachine = machineName;
-    state._rwtreeMd5Key = null;
-    state._rwtreeCrossMode = false;
-  }
-  if (!state._rwtreeMd5Key || !md5Map.has(state._rwtreeMd5Key)) {
-    const current = md5Keys.find((k) => md5Map.get(k).is_current);
-    state._rwtreeMd5Key = current || md5Keys[0] || null;
-  }
-
   const fInt2 = (n) => Number(n || 0).toLocaleString();
   const fMb = (n) => {
     const mb = Number(n || 0);
@@ -1567,70 +1528,21 @@ async function renderRawdataReportTree(machineName) {
     state.versionHistoryMachine = machineName;
   }
 
-  // md5 switcher header — only rendered when multiple md5s exist.
-  const switcherHtml = multiMd5 ? `
-    <div class="rwtree-md5-switcher">
-      <span class="muted">rawdata 版本:</span>
-      <select id="rwtreeMd5Select">
-        ${[...md5Map.entries()].map(([k, v]) => {
-          const short = (v.config_md5 || "").slice(0, 8) || "—";
-          const tag = v.is_current ? "当前" : "过期";
-          return `<option value="${k}" ${k === state._rwtreeMd5Key ? "selected" : ""}>${short}… (${tag})</option>`;
-        }).join("")}
-      </select>
-      <button id="rwtreeCrossBtn" class="small-btn ${state._rwtreeCrossMode ? "active" : ""}" ${md5Keys.length < 2 ? "disabled" : ""}>
-        ${state._rwtreeCrossMode ? "↩ 退出跨版本对比" : "+ 跨版本对比"}
-      </button>
-    </div>
-  ` : "";
-
-  // Cross-version mode: render two side-by-side trees. Left=current
-  // md5 (or first md5 if none flagged current), right=other md5.
-  if (state._rwtreeCrossMode && md5Keys.length >= 2) {
-    const currentKey = md5Keys.find((k) => md5Map.get(k).is_current) || md5Keys[0];
-    const otherKey = md5Keys.find((k) => k !== currentKey) || md5Keys[1];
-    container.classList.add("rwtree-cross");
-    container.innerHTML = switcherHtml + `
-      <div class="rwtree-cross-pair">
-        <div class="rwtree-side" data-side="left">
-          <div class="rwtree-side-head">当前 md5 · ${md5Map.get(currentKey).config_md5.slice(0, 10)}…</div>
-          <div class="rwtree rwtree-grid" data-md5="${currentKey}"></div>
-        </div>
-        <div class="rwtree-side" data-side="right">
-          <div class="rwtree-side-head">历史 md5 · ${md5Map.get(otherKey).config_md5.slice(0, 10)}…</div>
-          <div class="rwtree rwtree-grid" data-md5="${otherKey}"></div>
-        </div>
-      </div>`;
-    container.querySelectorAll(".rwtree-grid").forEach((gridEl) => {
-      _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMode,
-                        reportMd5Map, md5Map, gridEl.dataset.md5, fInt2, fMb);
-    });
-    _wireRwtreeSwitcher(machineName);
-    _ensureCompareBar(container.parentElement);
-    _updateRwtreeCompareBar();
-    return;
-  }
-
-  // Single-md5 view (default). If no md5s at all, render empty-state.
+  // 2026-04-21 layout rewrite: flatten (mode × md5) pairs into the
+  // grid. Previously one cell per mode with an md5 dropdown filtering
+  // all cells at once + a "跨版本对比" button pairing two md5s; both
+  // gone now. Each (mode, md5) pair is its own cell with its own
+  // stats, lock button, generate-report button, and delete-rawdata
+  // button. Reports routed to the cell matching their declared md5;
+  // untagged reports land on the mode's current-md5 cell (or the
+  // first cell if no current-md5 exists).
   container.classList.remove("rwtree-cross");
-  container.innerHTML = switcherHtml + `<div class="rwtree rwtree-grid" id="rwtreeSingleGrid"></div>`;
+  container.innerHTML = `<div class="rwtree rwtree-grid" id="rwtreeSingleGrid"></div>`;
   const grid = byId("rwtreeSingleGrid");
   _renderRwtreeGrid(grid, machineName, modes, rawdataModes, reportsByMode,
-                    reportMd5Map, md5Map, state._rwtreeMd5Key, fInt2, fMb);
-  _wireRwtreeSwitcher(machineName);
+                    reportMd5Map, fInt2, fMb);
   _ensureCompareBar(container.parentElement);
   _updateRwtreeCompareBar();
-}
-
-function _wireRwtreeSwitcher(machineName) {
-  byId("rwtreeMd5Select")?.addEventListener("change", (e) => {
-    state._rwtreeMd5Key = e.target.value;
-    renderRawdataReportTree(machineName);
-  });
-  byId("rwtreeCrossBtn")?.addEventListener("click", () => {
-    state._rwtreeCrossMode = !state._rwtreeCrossMode;
-    renderRawdataReportTree(machineName);
-  });
 }
 
 function _ensureCompareBar(parentEl) {
@@ -1644,194 +1556,296 @@ function _ensureCompareBar(parentEl) {
   }
 }
 
-// Core per-grid renderer. Filters rawdata + reports by selectedMd5Key.
-// Used for both the single-md5 tree and each side of the cross-version
-// parallel pair.
+// Core per-grid renderer (2026-04-21 rewrite). Produces one cell per
+// (mode, md5) pair. Reports with declared md5 route to their matching
+// cell; untagged reports go to the mode's current-md5 cell (or first
+// cell if none current). Modes with no rawdata AND no reports are
+// hidden entirely (user 2026-04-21).
 function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMode,
-                           reportMd5Map, md5Map, selectedMd5Key, fInt2, fMb) {
-  const selected = selectedMd5Key ? md5Map.get(selectedMd5Key) : null;
-  const matchMd5 = (cfg, code) => !selected
-    || (cfg === selected.config_md5 && code === selected.code_md5);
-
-  gridEl.innerHTML = modes.map((mode, i) => {
+                           reportMd5Map, fInt2, fMb) {
+  // Build per-mode (md5 -> cellData) buckets.
+  const modeCells = [];  // [{mode, st, cells: [{key, config_md5, code_md5, is_current, untagged, versions, reports}]}]
+  modes.forEach((mode, i) => {
     const st = rawdataModes[String(mode)] || {};
     const versionsAll = Array.isArray(st.versions) ? st.versions : [];
-    // Filter chunk versions to the selected md5; recompute classified
-    // counts from filtered entries so per-column totals only show
-    // chunks that belong to this md5.
-    const versions = versionsAll.filter((v) => matchMd5(v.config_md5, v.code_md5));
-    // Fix 3: chunk COUNTS are meaningless (each chunk has different
-    // spin_times); operator tracks the retention quota in SPINS. Use
-    // kept_spins / deletable_spins / historical_spins instead.
-    const keptSpins = versions.reduce((s, v) => s + (v.kept_spins || 0), 0);
-    const delSpins = versions.reduce((s, v) => s + (v.deletable_spins || 0), 0);
-    const historicalSpins = versions.reduce((s, v) => s + (v.historical_spins || 0), 0);
-    const totalSpins = keptSpins + delSpins + historicalSpins;
-    const keptChunks = versions.reduce((s, v) => s + (v.kept_chunks || 0), 0);
-    const delChunks = versions.reduce((s, v) => s + (v.deletable_chunks || 0), 0);
-    const historicalChunks = versions.reduce((s, v) => s + (v.historical_chunks || 0), 0);
-    const totalChunks = keptChunks + delChunks + historicalChunks;
-    const hasCurrent = versions.some((v) => v.is_current);
-    const hasHistorical = versions.some((v) => !v.is_current);
-
-    // Status tags: md5 drift is no longer a warning state (2026-04-21).
-    // Historical-only = neutral "历史版本" tag; current+historical =
-    // "当前+历史" coexistence. Commit 2 splits these into separate
-    // cells so this combined tag disappears.
-    let statusTag;
-    if (totalChunks === 0) {
-      statusTag = `<span class="rwtree-status none">无</span>`;
-    } else if (hasCurrent && !hasHistorical) {
-      statusTag = `<span class="rwtree-status ok">✅当前</span>`;
-    } else if (hasHistorical && !hasCurrent) {
-      statusTag = `<span class="rwtree-status historical">历史版本</span>`;
-    } else {
-      statusTag = `<span class="rwtree-status mixed">当前+历史</span>`;
-    }
-
-    // Filter reports to those matching the selected md5. Reports with
-    // no md5 info (md5_status "untagged", pre-MD5-tagging migration)
-    // are ALWAYS shown — otherwise they'd silently disappear just
-    // because the tree happens to have a selected md5 key.
     const allReports = reportsByMode[i].versions || [];
-    const filteredReports = allReports.filter((v) => {
-      const info = reportMd5Map.get(v.report_version);
-      if (!info) return true;
-      if (info.md5_status === "untagged") return true;
-      return matchMd5(info.config_md5, info.code_md5);
-    });
 
-    // Fix 3: surface RTP / CI inferred from the best-CI FRESH report
-    // (analyzer+md5 both match current) as the de-facto "current
-    // sample RTP/CI". If no fresh report exists, tell the operator to
-    // ⟳ 生成 Report. Re-running analyzer would compute exactly this —
-    // for reasonable dev / prod fleets, the O(N chunks) re-parse is a
-    // user-initiated action, not something to do on every page load.
-    const freshReports = filteredReports.filter((v) => {
-      const info = reportMd5Map.get(v.report_version);
-      return info && info.md5_status === "match" && info.analyzer_status === "match";
-    });
-    const bestFresh = freshReports.slice().sort((a, b) => {
-      const ca = a.achieved_halfwidth_pp ?? Infinity;
-      const cb = b.achieved_halfwidth_pp ?? Infinity;
-      return ca - cb;
-    })[0];
-    let rawdataApprox = "";
-    if (totalChunks > 0) {
-      if (bestFresh) {
-        const rtp = bestFresh.achieved_rtp_pct != null
-          ? bestFresh.achieved_rtp_pct.toFixed(2) + "%" : "—";
-        const ci = bestFresh.achieved_halfwidth_pp != null
-          ? "±" + bestFresh.achieved_halfwidth_pp.toFixed(2) + "pp" : "—";
-        rawdataApprox = `<div class="rwtree-rawdata-approx" title="基于最新 fresh report（analyzer+md5 都匹配当前）">
-          样本 RTP <b>${rtp}</b> · CI <b>${ci}</b>
-        </div>`;
-      } else {
-        rawdataApprox = `<div class="rwtree-rawdata-approx muted" title="需要 analyzer+md5 都匹配当前的 report 才能显示 RTP/CI">
-          <i>无 fresh report — 生成后会显示 RTP/CI</i>
-        </div>`;
+    const cellsByKey = new Map();
+    const getCell = (cfgMd5, codeMd5, isCurrent, opts = {}) => {
+      const key = `${cfgMd5}|${codeMd5}|${opts.untagged ? "untag" : "md5"}`;
+      if (!cellsByKey.has(key)) {
+        cellsByKey.set(key, {
+          key,
+          config_md5: cfgMd5,
+          code_md5: codeMd5,
+          is_current: !!isCurrent,
+          untagged: !!opts.untagged,
+          versions: [],  // rawdata version stats (config/code md5 + counts)
+          reports: [],
+        });
       }
+      return cellsByKey.get(key);
+    };
+
+    // Bucket rawdata versions.
+    for (const v of versionsAll) {
+      const cell = getCell(v.config_md5 || "", v.code_md5 || "", !!v.is_current);
+      cell.versions.push(v);
     }
 
-    const isLocked = !!st.locked;
-    const lockIcon = isLocked ? "🔒" : "🔓";
-    const lockTitle = isLocked
-      ? "已上锁：auto-cleanup 不会删这些 chunks（即使超过 retention）"
-      : "未上锁：超过 retention 的 chunks 可能被 auto-cleanup 自动删除";
-    const rawdataBlock = totalChunks === 0
-      ? `<div class="rwtree-rawdata empty"><div class="muted">无本地 rawdata</div></div>`
-      : `<div class="rwtree-rawdata ${isLocked ? "rwtree-locked" : ""}">
-          <div class="rwtree-rawdata-line">
-            <b>${fInt2(totalSpins)}</b> spins
-            <span class="muted">(${totalChunks} chunks)</span>
-          </div>
-          <div class="rwtree-rawdata-line muted">
-            保底 ${fInt2(keptSpins)} / 可回收 ${fInt2(delSpins)}${historicalSpins ? ` / 历史 ${fInt2(historicalSpins)}` : ""}
-          </div>
-          ${rawdataApprox}
-          <div class="rwtree-rawdata-actions">
-            <button class="small-btn primary-btn rwtree-gen-btn" data-machine="${machineName}" data-mode="${mode}" data-intrinsic-disabled="${(keptChunks + delChunks) === 0 ? "1" : ""}" ${((keptChunks + delChunks) === 0 || _isAnyBusy()) ? "disabled" : ""} title="用当前 analyzer 从这些 chunks 生成新 report">⟳ 生成 Report</button>
-            <button class="small-btn rwtree-lock-btn ${isLocked ? "active" : ""}" data-machine="${machineName}" data-mode="${mode}" data-locked="${isLocked ? "1" : "0"}" title="${lockTitle}">${lockIcon} ${isLocked ? "已锁" : "锁定"}</button>
-          </div>
-        </div>`;
+    // Route reports.
+    const untaggedReports = [];
+    for (const rep of allReports) {
+      const info = reportMd5Map.get(rep.report_version);
+      if (!info || info.md5_status === "untagged" || !info.config_md5) {
+        untaggedReports.push(rep);
+        continue;
+      }
+      const cell = getCell(
+        info.config_md5, info.code_md5, info.md5_status === "match",
+      );
+      cell.reports.push(rep);
+    }
+    // Untagged reports home: current-md5 cell first, else first cell,
+    // else a synthetic untagged-only cell.
+    if (untaggedReports.length > 0) {
+      let home = null;
+      for (const c of cellsByKey.values()) {
+        if (c.is_current) { home = c; break; }
+      }
+      if (!home) {
+        const first = cellsByKey.values().next();
+        home = first.done ? null : first.value;
+      }
+      if (!home) {
+        home = getCell("", "", false, { untagged: true });
+      }
+      home.reports.push(...untaggedReports);
+    }
 
-    // Sort versions by CI ascending (smallest first); fallback by
-    // report_version reverse-alphabetical (newer first).
-    const sortedReports = [...filteredReports].sort((a, b) => {
-      const ca = a.achieved_halfwidth_pp;
-      const cb = b.achieved_halfwidth_pp;
-      if (ca != null && cb != null) return ca - cb;
-      if (ca != null) return -1;
-      if (cb != null) return 1;
-      return (b.report_version || "").localeCompare(a.report_version || "");
+    // Mode-hide rule: no rawdata + no reports → skip this mode.
+    if (cellsByKey.size === 0) return;
+
+    // Sort: current md5 first, then by md5 alphabetically. Synthetic
+    // untagged-only cells sort to the very end.
+    const cells = [...cellsByKey.values()].sort((a, b) => {
+      if (a.untagged !== b.untagged) return a.untagged ? 1 : -1;
+      if (a.is_current !== b.is_current) return a.is_current ? -1 : 1;
+      return (a.config_md5 || "").localeCompare(b.config_md5 || "");
     });
-    const bestCiVersion = sortedReports[0]?.report_version;
+    modeCells.push({ mode, st, cells });
+  });
 
-    // Sort for display: newest first (so operator sees recent at top).
-    const displayReports = [...sortedReports].sort(
-      (a, b) => (b.report_version || "").localeCompare(a.report_version || "")
-    );
-    const reportsBlock = displayReports.length === 0
-      ? `<div class="rwtree-reports empty"><div class="muted">无 report</div></div>`
-      : `<div class="rwtree-reports">
-          <div class="rwtree-reports-head">reports (${displayReports.length})</div>
-          ${displayReports.map((v) => {
-            const rv = v.report_version || "?";
-            const rid = v.run_id || "";
-            const rtp = v.achieved_rtp_pct != null ? v.achieved_rtp_pct.toFixed(2) + "%" : "—";
-            const ci = v.achieved_halfwidth_pp != null ? "±" + v.achieved_halfwidth_pp.toFixed(2) + "pp" : "—";
-            const spins = v.total_spins != null ? fInt2(v.total_spins) : "—";
-            const quality = v.quality_label || "";
-            const ts = rv.match(/rv_(\d{8})/)?.[1] || "";
-            const tsShort = ts ? `${ts.slice(4, 6)}-${ts.slice(6, 8)}` : rv.slice(3, 11);
-            const isBest = rv === bestCiVersion;
-            const expanded = isBest ? " expanded" : "";
-            const checked = (state.compareSelected || new Map()).has(rv) ? "checked" : "";
-            // Fix 4: restore analyzer-status badge so operators can see
-            // at a glance which reports are stale vs current analyzer.
-            const info = reportMd5Map.get(rv) || {};
-            const analyzerStatus = info.analyzer_status || "untagged";
-            let analyzerBadge = "";
-            if (analyzerStatus === "outdated") {
-              analyzerBadge = `<span class="rwtree-analyzer-badge stale" title="analyzer 版本已过期（report=${info.analyzer_version?.slice(0,10) || "?"}），建议重新生成">⚠</span>`;
-            } else if (analyzerStatus === "untagged") {
-              analyzerBadge = `<span class="rwtree-analyzer-badge untagged" title="report 未标记 analyzer 版本">·</span>`;
-            }
-            return `<div class="rwtree-report${expanded}" data-rv="${rv}">
-              <div class="rwtree-report-summary">
-                <input type="checkbox" class="rwtree-compare-check" data-rv="${rv}" data-mode="${mode}" ${checked} title="勾选以对比版本" />
-                <span class="rwtree-report-date">${tsShort}</span>
-                <span class="rwtree-report-rtp">${rtp}</span>
-                <span class="rwtree-report-ci">${ci}</span>
-                ${analyzerBadge}
-                ${isBest ? '<span class="rwtree-best-tag" title="当前最佳 CI">⭐</span>' : ''}
+  if (modeCells.length === 0) {
+    gridEl.innerHTML = `<div class="muted" style="padding:20px;text-align:center">此机台暂无 rawdata 也无 reports</div>`;
+    return;
+  }
+
+  // Flatten and render.
+  const html = modeCells.flatMap(({ mode, st, cells }) =>
+    cells.map((cell) => _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb))
+  ).join("");
+  gridEl.innerHTML = html;
+  _wireRwtreeGridActions(gridEl, machineName);
+}
+
+// Render a single (mode × md5) cell. Extracted from _renderRwtreeGrid
+// so the per-cell HTML is easier to reason about.
+function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb) {
+  // Recompute stats from this cell's rawdata versions (already
+  // filtered by md5 during bucketing).
+  const versions = cell.versions;
+  const keptSpins = versions.reduce((s, v) => s + (v.kept_spins || 0), 0);
+  const delSpins = versions.reduce((s, v) => s + (v.deletable_spins || 0), 0);
+  const historicalSpins = versions.reduce((s, v) => s + (v.historical_spins || 0), 0);
+  const totalSpins = keptSpins + delSpins + historicalSpins;
+  const keptChunks = versions.reduce((s, v) => s + (v.kept_chunks || 0), 0);
+  const delChunks = versions.reduce((s, v) => s + (v.deletable_chunks || 0), 0);
+  const historicalChunks = versions.reduce((s, v) => s + (v.historical_chunks || 0), 0);
+  const totalChunks = keptChunks + delChunks + historicalChunks;
+
+  // Cell header — "Mode N · 当前" / "Mode N · 历史 78fe6087…" /
+  // "Mode N · 未标记" (synthetic untagged).
+  let headerLabel;
+  let statusTag;
+  if (cell.untagged) {
+    headerLabel = `Mode ${mode} · 未标记`;
+    statusTag = `<span class="rwtree-status none" title="此 report 未标记 md5（v1 envelope 迁移遗留）">未标记</span>`;
+  } else if (cell.is_current) {
+    const short = (cell.config_md5 || "").slice(0, 8);
+    headerLabel = `Mode ${mode} · 当前 ${short}…`;
+    statusTag = `<span class="rwtree-status ok">✅当前</span>`;
+  } else {
+    const short = (cell.config_md5 || "").slice(0, 8);
+    headerLabel = `Mode ${mode} · 历史 ${short}…`;
+    statusTag = `<span class="rwtree-status historical">历史版本</span>`;
+  }
+
+  const filteredReports = cell.reports;
+
+  // Sample RTP/CI from best fresh report (analyzer+md5 both match the
+  // CURRENT upstream). For historical cells we only show it when a
+  // report actually matches — typically historical cells won't have
+  // a "fresh" marker since analyzer_status=match + md5_status=match
+  // implies current-md5; historical cells will show the muted
+  // placeholder. That's fine: the operator gets RTP/CI from any
+  // report they open rather than relying on this header-level hint.
+  const freshReports = filteredReports.filter((v) => {
+    const info = reportMd5Map.get(v.report_version);
+    return info && info.md5_status === "match" && info.analyzer_status === "match";
+  });
+  const bestFresh = freshReports.slice().sort((a, b) => {
+    const ca = a.achieved_halfwidth_pp ?? Infinity;
+    const cb = b.achieved_halfwidth_pp ?? Infinity;
+    return ca - cb;
+  })[0];
+  let rawdataApprox = "";
+  if (totalChunks > 0) {
+    if (bestFresh) {
+      const rtp = bestFresh.achieved_rtp_pct != null
+        ? bestFresh.achieved_rtp_pct.toFixed(2) + "%" : "—";
+      const ci = bestFresh.achieved_halfwidth_pp != null
+        ? "±" + bestFresh.achieved_halfwidth_pp.toFixed(2) + "pp" : "—";
+      rawdataApprox = `<div class="rwtree-rawdata-approx" title="基于最新 fresh report（analyzer+md5 都匹配当前）">
+        样本 RTP <b>${rtp}</b> · CI <b>${ci}</b>
+      </div>`;
+    } else if (cell.is_current) {
+      rawdataApprox = `<div class="rwtree-rawdata-approx muted" title="需要 analyzer+md5 都匹配当前的 report 才能显示 RTP/CI">
+        <i>无 fresh report — 生成后会显示 RTP/CI</i>
+      </div>`;
+    } // else: historical cell — don't show the hint, point-in-time
+      // comparisons live in the reports list below.
+  }
+
+  // Lock is (machine, mode) scoped — same lock button logic applies
+  // to every cell of the same mode. Show lock state + controls only
+  // on the FIRST cell of each mode (current md5 or the first
+  // historical) so operator can't have two competing lock toggles
+  // per mode. Cells beyond the first show a read-only lock indicator.
+  const isLocked = !!st.locked;
+  const lockIcon = isLocked ? "🔒" : "🔓";
+  const lockTitle = isLocked
+    ? "已上锁：缓存管理不会删这些 chunks"
+    : "未上锁：超过 retention 的 chunks 可能被缓存管理删除";
+
+  // Per-version delete — new 2026-04-21. Hidden when the cell is
+  // untagged (no md5 tuple to target) or has no chunks.
+  const canDeleteVersion = !cell.untagged && totalChunks > 0;
+  const deleteTitle = isLocked
+    ? "此 (机台, mode) 已上锁，先解锁才能删除该 md5 的 rawdata"
+    : `删除该 md5 版本的 rawdata chunks（${totalChunks} 个文件，${fInt2(totalSpins)} spins）。reports 不会被删。`;
+  const deleteBtn = canDeleteVersion
+    ? `<button class="small-btn danger-btn rwtree-delver-btn" data-machine="${machineName}" data-mode="${mode}" data-cfg="${cell.config_md5}" data-code="${cell.code_md5}" ${(isLocked || _isAnyBusy()) ? "disabled" : ""} title="${deleteTitle}">🗑 删除该 rawdata</button>`
+    : "";
+
+  // Generate-report button: current md5 cell uses "current md5" path
+  // (default analyzer behavior); historical cell passes config_md5 +
+  // code_md5 so the analyzer scopes to that md5 bucket.
+  const canGenerate = totalChunks > 0 && !cell.untagged;
+  const genTitle = cell.is_current
+    ? "用当前 analyzer 从这些 chunks 生成新 report"
+    : `用当前 analyzer 从历史 md5 ${(cell.config_md5 || "").slice(0, 8)}… 的 chunks 生成 report`;
+  const genBtn = canGenerate
+    ? `<button class="small-btn primary-btn rwtree-gen-btn" data-machine="${machineName}" data-mode="${mode}" data-cfg="${cell.config_md5}" data-code="${cell.code_md5}" data-iscurrent="${cell.is_current ? "1" : "0"}" ${_isAnyBusy() ? "disabled" : ""} title="${genTitle}">⟳ 生成 Report</button>`
+    : "";
+
+  const rawdataBlock = totalChunks === 0
+    ? `<div class="rwtree-rawdata empty"><div class="muted">无本地 rawdata${cell.untagged ? "（仅未标记 reports）" : ""}</div></div>`
+    : `<div class="rwtree-rawdata ${isLocked ? "rwtree-locked" : ""}">
+        <div class="rwtree-rawdata-line">
+          <b>${fInt2(totalSpins)}</b> spins
+          <span class="muted">(${totalChunks} chunks)</span>
+        </div>
+        <div class="rwtree-rawdata-line muted">
+          ${cell.is_current
+            ? `保底 ${fInt2(keptSpins)} / 可回收 ${fInt2(delSpins)}`
+            : `历史 ${fInt2(historicalSpins)}（无保底）`}
+        </div>
+        ${rawdataApprox}
+        <div class="rwtree-rawdata-actions">
+          ${genBtn}
+          <button class="small-btn rwtree-lock-btn ${isLocked ? "active" : ""}" data-machine="${machineName}" data-mode="${mode}" data-locked="${isLocked ? "1" : "0"}" title="${lockTitle}">${lockIcon} ${isLocked ? "已锁" : "锁定"}</button>
+          ${deleteBtn}
+        </div>
+      </div>`;
+
+  // Sort versions by CI ascending (smallest first); fallback by
+  // report_version reverse-alphabetical (newer first).
+  const sortedReports = [...filteredReports].sort((a, b) => {
+    const ca = a.achieved_halfwidth_pp;
+    const cb = b.achieved_halfwidth_pp;
+    if (ca != null && cb != null) return ca - cb;
+    if (ca != null) return -1;
+    if (cb != null) return 1;
+    return (b.report_version || "").localeCompare(a.report_version || "");
+  });
+  const bestCiVersion = sortedReports[0]?.report_version;
+
+  // Sort for display: newest first (so operator sees recent at top).
+  const displayReports = [...sortedReports].sort(
+    (a, b) => (b.report_version || "").localeCompare(a.report_version || "")
+  );
+  const reportsBlock = displayReports.length === 0
+    ? `<div class="rwtree-reports empty"><div class="muted">无 report</div></div>`
+    : `<div class="rwtree-reports">
+        <div class="rwtree-reports-head">reports (${displayReports.length})</div>
+        ${displayReports.map((v) => {
+          const rv = v.report_version || "?";
+          const rid = v.run_id || "";
+          const rtp = v.achieved_rtp_pct != null ? v.achieved_rtp_pct.toFixed(2) + "%" : "—";
+          const ci = v.achieved_halfwidth_pp != null ? "±" + v.achieved_halfwidth_pp.toFixed(2) + "pp" : "—";
+          const spins = v.total_spins != null ? fInt2(v.total_spins) : "—";
+          const quality = v.quality_label || "";
+          const ts = rv.match(/rv_(\d{8})/)?.[1] || "";
+          const tsShort = ts ? `${ts.slice(4, 6)}-${ts.slice(6, 8)}` : rv.slice(3, 11);
+          const isBest = rv === bestCiVersion;
+          const expanded = isBest ? " expanded" : "";
+          const checked = (state.compareSelected || new Map()).has(rv) ? "checked" : "";
+          const info = reportMd5Map.get(rv) || {};
+          const analyzerStatus = info.analyzer_status || "untagged";
+          let analyzerBadge = "";
+          if (analyzerStatus === "outdated") {
+            analyzerBadge = `<span class="rwtree-analyzer-badge stale" title="analyzer 版本已过期（report=${info.analyzer_version?.slice(0,10) || "?"}），建议重新生成">⚠</span>`;
+          } else if (analyzerStatus === "untagged") {
+            analyzerBadge = `<span class="rwtree-analyzer-badge untagged" title="report 未标记 analyzer 版本">·</span>`;
+          }
+          return `<div class="rwtree-report${expanded}" data-rv="${rv}">
+            <div class="rwtree-report-summary">
+              <input type="checkbox" class="rwtree-compare-check" data-rv="${rv}" data-mode="${mode}" ${checked} title="勾选以对比版本" />
+              <span class="rwtree-report-date">${tsShort}</span>
+              <span class="rwtree-report-rtp">${rtp}</span>
+              <span class="rwtree-report-ci">${ci}</span>
+              ${analyzerBadge}
+              ${isBest ? '<span class="rwtree-best-tag" title="当前最佳 CI">⭐</span>' : ''}
+            </div>
+            <div class="rwtree-report-details">
+              <div class="rwtree-kv"><span>Spins</span><span>${spins}</span></div>
+              <div class="rwtree-kv"><span>Quality</span><span>${quality || "—"}</span></div>
+              <div class="rwtree-kv"><span>Analyzer</span><span title="report 生成时的 analyzer 代码版本">${info.analyzer_version?.slice(0,10) || "—"} <span class="muted">(${analyzerStatus === "match" ? "当前" : analyzerStatus === "outdated" ? "⚠ 过期" : "未标记"})</span></span></div>
+              <div class="rwtree-report-actions">
+                <button class="small-btn rwtree-load-btn" data-run-id="${rid}" ${rid ? "" : "disabled"} title="${rid ? "" : "该 report 无 run_id 记录，无法加载（可以直接删除）"}">载入调试</button>
+                <button class="small-btn danger-btn rwtree-delete-btn" data-run-id="${rid}" data-rv="${rv}" data-mode="${mode}" title="删除此 report 版本">🗑 删除</button>
               </div>
-              <div class="rwtree-report-details">
-                <div class="rwtree-kv"><span>Spins</span><span>${spins}</span></div>
-                <div class="rwtree-kv"><span>Quality</span><span>${quality || "—"}</span></div>
-                <div class="rwtree-kv"><span>Analyzer</span><span title="report 生成时的 analyzer 代码版本">${info.analyzer_version?.slice(0,10) || "—"} <span class="muted">(${analyzerStatus === "match" ? "当前" : analyzerStatus === "outdated" ? "⚠ 过期" : "未标记"})</span></span></div>
-                <div class="rwtree-report-actions">
-                  <button class="small-btn rwtree-load-btn" data-run-id="${rid}" ${rid ? "" : "disabled"} title="${rid ? "" : "该 report 无 run_id 记录，无法加载（可以直接删除）"}">载入调试</button>
-                  <button class="small-btn danger-btn rwtree-delete-btn" data-run-id="${rid}" data-rv="${rv}" data-mode="${mode}" title="删除此 report 版本">🗑 删除</button>
-                </div>
-              </div>
-            </div>`;
-          }).join("")}
-        </div>`;
+            </div>
+          </div>`;
+        }).join("")}
+      </div>`;
 
-    return `<div class="rwtree-col" data-mode="${mode}">
-      <div class="rwtree-col-head">
-        <span class="rwtree-mode-label">Mode ${mode}</span>
-        ${statusTag}
-      </div>
-      ${rawdataBlock}
-      ${reportsBlock}
-    </div>`;
-  }).join("");
+  return `<div class="rwtree-col rwtree-col-${cell.is_current ? "current" : cell.untagged ? "untagged" : "historical"}" data-mode="${mode}" data-cfg="${cell.config_md5}" data-code="${cell.code_md5}">
+    <div class="rwtree-col-head">
+      <span class="rwtree-mode-label">${headerLabel}</span>
+      ${statusTag}
+    </div>
+    ${rawdataBlock}
+    ${reportsBlock}
+  </div>`;
+}
 
-  // Wire buttons + checkboxes on the freshly-rendered grid. Uses
-  // gridEl (not parent container) so cross-version mode's two sides
-  // attach their listeners independently.
+// Wire grid-level interactions. Runs after _renderRwtreeGrid has
+// populated the grid with all cells; event listeners live on the
+// individual buttons so re-renders naturally rebind.
+function _wireRwtreeGridActions(gridEl, machineName) {
+  // Wire buttons + checkboxes on the freshly-rendered grid.
   gridEl.querySelectorAll(".rwtree-report-summary").forEach((row) => {
     row.addEventListener("click", (e) => {
       if (e.target.matches("input[type=checkbox]")) return;
@@ -1873,19 +1887,65 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
   gridEl.querySelectorAll(".rwtree-gen-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const m = btn.dataset.machine, mo = btn.dataset.mode;
+      const cfg = btn.dataset.cfg || "";
+      const code = btn.dataset.code || "";
+      const isCurrent = btn.dataset.iscurrent === "1";
       const orig = btn.textContent;
       btn.disabled = true;
       btn.textContent = "生成中… (后台)";
       try {
+        const body = { mode: Number(mo), async: true };
+        // Only pass md5 for historical cells — current-md5 cells
+        // stick with the analyzer default (which is more forgiving
+        // of slight md5 inconsistencies in the kept/deletable bucket).
+        if (!isCurrent && cfg && code) {
+          body.config_md5 = cfg;
+          body.code_md5 = code;
+        }
         await apiPost(
-          `/api/rawdata/${encodeURIComponent(m)}/generate-report`,
-          { mode: Number(mo), async: true },
+          `/api/rawdata/${encodeURIComponent(m)}/generate-report`, body,
         );
         btn.textContent = "⏳ 已入队";
         await refreshRunList(false);
         setTimeout(() => renderRawdataReportTree(m), 3000);
       } catch (err) {
         alert(`生成 Report 失败: ${String(err && err.message ? err.message : err)}`);
+        btn.textContent = orig;
+        btn.disabled = false;
+      }
+    });
+  });
+  // Per-version delete (删除该 rawdata) — new 2026-04-21. Hits the
+  // DELETE /api/rawdata/{m}/mode/{mode}/version endpoint with the
+  // cell's (config_md5, code_md5). Reports are untouched.
+  gridEl.querySelectorAll(".rwtree-delver-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const m = btn.dataset.machine;
+      const mo = btn.dataset.mode;
+      const cfg = btn.dataset.cfg || "";
+      const code = btn.dataset.code || "";
+      if (!cfg || !code) return;
+      const shortCfg = cfg.slice(0, 8);
+      if (!confirm(`删除 ${m} mode ${mo} 中 md5=${shortCfg}… 的 rawdata chunks？\nreports 不会被删，可随时重新生成。`)) return;
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "删除中…";
+      try {
+        const resp = await fetch(
+          `/api/rawdata/${encodeURIComponent(m)}/mode/${encodeURIComponent(mo)}/version`,
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ config_md5: cfg, code_md5: code }),
+          },
+        );
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          throw new Error(body.detail || `HTTP ${resp.status}`);
+        }
+        await renderRawdataReportTree(machineName);
+      } catch (err) {
+        alert(`删除失败: ${err.message || err}`);
         btn.textContent = orig;
         btn.disabled = false;
       }

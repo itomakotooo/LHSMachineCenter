@@ -5716,9 +5716,19 @@ def create_app(
     def run_cancel(run_id: str) -> dict[str, Any]:
         return manager.cancel_run(run_id)
 
-    def _run_generate_report(machine: str, mode: int) -> dict[str, Any]:
+    def _run_generate_report(
+        machine: str, mode: int,
+        *, config_md5: str = "", code_md5: str = "",
+    ) -> dict[str, Any]:
         """Core generate-report work, no ops-mutex handling. Caller
         (single endpoint or batch manager) owns the lock lifecycle.
+
+        When ``config_md5`` + ``code_md5`` are both provided, scope the
+        analyzer to chunks whose envelope md5 matches those values —
+        lets the rwtree generate a report from a historical-md5 cell
+        (user-requested 2026-04-21: "report 都是独立的"). Empty
+        strings = current-md5 default (kept + deletable classifier
+        result).
 
         Raises HTTPException on validation failure so the single-item
         endpoint surfaces standard HTTP errors; the batch manager
@@ -5732,15 +5742,37 @@ def create_app(
             )
         retention = _load_settings(settings_path)["min_retention_spins"]
         classified = _classify_chunks(machine, mode, rd_root, mc, retention)
-        usable_entries = classified["kept"] + classified["deletable"]
-        if not usable_entries:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    f"no usable chunks for {machine} mode {mode} "
-                    f"(kept=0, deletable=0; historical={len(classified['historical'])})"
-                ),
+        md5_filter = bool(config_md5 and code_md5)
+        if md5_filter:
+            # Combine all three buckets then filter by envelope md5 so
+            # historical-md5 cells can feed their chunks to the
+            # analyzer. No retention concept when targeting historical —
+            # the operator explicitly asked for this bucket.
+            all_entries = (
+                classified["kept"] + classified["deletable"] + classified["historical"]
             )
+            usable_entries = [
+                e for e in all_entries
+                if e.get("config_md5") == config_md5 and e.get("code_md5") == code_md5
+            ]
+            if not usable_entries:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"no chunks for {machine} mode {mode} "
+                        f"matching md5 cfg={config_md5[:8]}… code={code_md5[:8]}…"
+                    ),
+                )
+        else:
+            usable_entries = classified["kept"] + classified["deletable"]
+            if not usable_entries:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"no usable chunks for {machine} mode {mode} "
+                        f"(kept=0, deletable=0; historical={len(classified['historical'])})"
+                    ),
+                )
         # Sort chunk file paths by chunk_index (filename order) so the
         # analyzer sees responses in their original sampling sequence.
         chunk_paths = sorted(Path(e["path"]) for e in usable_entries)
@@ -5767,10 +5799,17 @@ def create_app(
                     detail="all usable chunks failed to load response payload",
                 )
 
-            # New run row + new output version dir.
+            # New run row + new output version dir. When md5-filtered,
+            # tag the version suffix with the cfg md5 short so the
+            # historical-md5 report doesn't visually collide with
+            # a current-md5 report in the same mode's versions/ dir.
             new_run_id = f"gen_{uuid.uuid4().hex[:12]}"
             ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            report_version = f"rv_{ts}_rawdata"
+            if md5_filter:
+                md5_tag = config_md5[:8] if config_md5 else "md5"
+                report_version = f"rv_{ts}_rawdata_{md5_tag}"
+            else:
+                report_version = f"rv_{ts}_rawdata"
             output_dir = rr / machine / f"mode_{mode}" / "versions" / report_version
             output_dir.mkdir(parents=True, exist_ok=True)
             progress_file = sd / "progress" / f"{new_run_id}.jsonl"
@@ -6234,19 +6273,29 @@ def create_app(
         and produce a fresh report + run row. Always creates NEW
         artefacts; old runs preserved.
 
-        Body: ``{"mode": int, "async": bool}``. Default (``async=false``)
-        runs synchronously and returns the completed run metadata —
-        backward-compatible with existing tests and direct-API users.
-        ``async=true`` queues the work in a daemon thread and returns
-        immediately with ``{run_id, status: "accepted"}`` so the UI
-        can subscribe to the unified events feed and render progress
-        without a hanging HTTP request.
+        Body: ``{"mode": int, "async": bool,
+                 "config_md5"?: str, "code_md5"?: str}``.
+
+        ``config_md5`` + ``code_md5`` optional — when both provided,
+        the analyzer processes only chunks whose envelope md5 matches
+        those values (historical-md5 report generation, 2026-04-21).
+        Empty / absent = current-md5 default.
+
+        Default (``async=false``) runs synchronously and returns the
+        completed run metadata — backward-compatible with existing
+        tests and direct-API users. ``async=true`` queues the work in
+        a daemon thread and returns immediately with
+        ``{run_id, status: "accepted"}`` so the UI can subscribe to
+        the unified events feed and render progress without a hanging
+        HTTP request.
         """
         try:
             mode = int(req.get("mode"))
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="mode must be an integer")
         use_async = bool(req.get("async") or False)
+        config_md5 = str(req.get("config_md5") or "")
+        code_md5 = str(req.get("code_md5") or "")
 
         if not use_async:
             if not ops.acquire("generate_report"):
@@ -6256,7 +6305,10 @@ def create_app(
                     detail=f"system busy: {snap.get('operation') or 'unknown'}",
                 )
             try:
-                return _run_generate_report(machine, mode)
+                return _run_generate_report(
+                    machine, mode,
+                    config_md5=config_md5, code_md5=code_md5,
+                )
             finally:
                 ops.release()
 
@@ -6273,7 +6325,10 @@ def create_app(
 
         def _work() -> None:
             try:
-                _run_generate_report(machine, mode)
+                _run_generate_report(
+                    machine, mode,
+                    config_md5=config_md5, code_md5=code_md5,
+                )
             except Exception:
                 # _run_generate_report already marks the runs row as
                 # failed on its way out. Swallow here so the daemon

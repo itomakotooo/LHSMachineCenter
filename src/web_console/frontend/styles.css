@@ -631,6 +631,19 @@ body {
   gap: 8px;
   min-width: 0;
 }
+/* 2026-04-21 rwtree rework: each (mode, md5) pair is its own cell.
+   Historical cells get a subtle purple tint so operators can tell
+   at a glance "this column isn't the current md5." Untagged cells
+   stay neutral (they're rare migration artifacts). */
+.rwtree-col.rwtree-col-historical {
+  background: #faf5ff;
+  border-color: #e9d5ff;
+}
+.rwtree-col.rwtree-col-untagged {
+  background: #fafafa;
+  border-color: #e4e4e7;
+  border-style: dashed;
+}
 
 .rwtree-col-head {
   display: flex;
@@ -749,58 +762,12 @@ body {
   box-shadow: 0 -4px 12px #0f172a14;
 }
 
-/* ── md5 switcher + cross-version (step 5) ───────────────────────── */
-.rwtree-md5-switcher {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  margin-bottom: 10px;
-  font-size: 0.88em;
-}
-.rwtree-md5-switcher select {
-  padding: 3px 8px;
-  font-size: 0.9em;
-}
-.rwtree-md5-switcher .small-btn.active {
-  background: var(--accent-bg, #e0f2fe);
-  border-color: var(--accent, #0284c7);
-}
-
-/* Cross-version parallel mode: two side-by-side trees. Each side has
-   its own 4-col mini-grid; at narrower widths grids stack inside. */
-.rwtree-cross .rwtree-cross-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.rwtree-cross .rwtree-side {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px;
-  background: var(--bg, #f8fafc);
-}
-.rwtree-cross .rwtree-side-head {
-  font-weight: 600;
-  padding: 4px 8px 8px;
-  font-size: 0.9em;
-  color: var(--ink, #1e293b);
-  border-bottom: 1px dashed var(--line);
-  margin-bottom: 8px;
-}
-.rwtree-cross .rwtree-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));  /* 2-col inside each side */
-  gap: 6px;
-}
-@media (max-width: 1600px) {
-  .rwtree-cross .rwtree-grid { grid-template-columns: 1fr; }
-}
-@media (max-width: 1200px) {
-  .rwtree-cross .rwtree-cross-pair { grid-template-columns: 1fr; }
-}
+/* 2026-04-21 note: .rwtree-md5-switcher and .rwtree-cross-* removed.
+   The md5 dropdown + cross-version compare button are obsolete now
+   that each (mode, md5) pair is its own cell (Commit 2 rwtree
+   rework). Historical md5 cells coexist alongside current-md5 cells
+   in the main grid — operator no longer needs a mode toggle to
+   "switch" between them. */
 
 /* auto-fit above handles reflow. These media queries are kept as a
    belt-and-braces fallback for very narrow mobile viewports. */
