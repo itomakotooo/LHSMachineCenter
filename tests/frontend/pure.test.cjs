@@ -1171,7 +1171,7 @@ test("buildClientEvent: unknown kind returns placeholder, no crash", () => {
 test("buildClientEvent: md5_refresh_start renders progress marker", () => {
   const ev = PURE.buildClientEvent("md5_refresh_start", {}, "2026-04-21T00:00:00Z");
   assert.equal(ev.level, "info");
-  assert.ok(ev.text.includes("刷新上游 md5"));
+  assert.ok(ev.text.includes("md5 刷新中"));
 });
 
 test("buildClientEvent: md5_refresh_done with updates is level=warn", () => {
@@ -1182,12 +1182,10 @@ test("buildClientEvent: md5_refresh_done with updates is level=warn", () => {
     "2026-04-21T00:00:00Z",
   );
   assert.equal(ev.level, "warn");
-  assert.ok(ev.text.includes("253"));
-  assert.ok(ev.text.includes("3 台有变更"));
+  assert.ok(ev.text.includes("3/253"));  // compact N/M form
 });
 
 test("buildClientEvent: md5_refresh_done with no updates is level=info", () => {
-  // Nothing changed = boring ack, stays info level.
   const ev = PURE.buildClientEvent(
     "md5_refresh_done", { fetched: 253, updated: 0 },
     "2026-04-21T00:00:00Z",
@@ -1204,7 +1202,7 @@ test("buildClientEvent: md5_refresh_failed is level=warn with reason", () => {
   );
   assert.equal(ev.level, "warn");
   assert.ok(ev.text.includes("HTTP 502"));
-  assert.ok(ev.text.includes("本地缓存的 md5"));  // reassurance hint
+  assert.ok(ev.text.includes("沿用本地缓存"));  // reassurance hint
 });
 
 test("buildClientEvent: md5_refresh_done with missing data doesn't crash", () => {

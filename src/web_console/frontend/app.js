@@ -606,6 +606,17 @@ const VOL_COLORS = { Low: "#059669", Medium: "#2563eb", High: "#ea580c", "Very H
 
 const MECH_ICONS = { lock_lines: "\ud83d\udd12", lock_symbols: "\ud83d\udcce", lock_reels: "\ud83c\udfaa", jackpot: "\ud83c\udfc6", free_spin: "\ud83c\udfb0", dollar_pick: "\ud83d\udcb5" };
 
+// Maps a terminal-state client-event kind → the "start" kind it
+// supersedes. pushClientEvent uses this to drop the start row from
+// the activity strip once the outcome arrives, so the operator sees
+// one line per completed action instead of "⟳ started" + "✓ done".
+const ACTIVITY_TERMINAL_OF = {
+  md5_refresh_done: "md5_refresh_start",
+  md5_refresh_failed: "md5_refresh_start",
+  batch_created: "submit",
+  submit_failed: "submit",
+};
+
 function _catalogModeMetrics(machine) {
   const sm = ((state.machinesSummary || {}).machines || {})[machine] || {};
   const modes = Object.keys(sm).sort((a, b) => Number(a) - Number(b));
@@ -2473,6 +2484,9 @@ async function startSampling() {
  */
 function pushClientEvent(kind, data) {
   const ev = PURE.buildClientEvent(kind, data);
+  // Tag kind so downstream dedupe can match start/terminal pairs
+  // without parsing the rendered text.
+  ev._kind = kind;
   state.clientEvents.push(ev);
   // Hard cap so a pathological re-click loop can't grow this unbounded.
   if (state.clientEvents.length > 100) {
@@ -2480,9 +2494,19 @@ function pushClientEvent(kind, data) {
   }
   // Also land the client event on the top "活动日志流" panel. Same
   // event shape (ts/level/source/text) but rendered by the ui-branch
-  // of _formatActivityRow so the operator sees "⟳ 刷新上游 md5 …"
-  // without waiting for backend events to arrive.
+  // of _formatActivityRow so the operator sees it without waiting
+  // for backend events to arrive.
   state.activityEvents = state.activityEvents || [];
+  // Dedupe: when a terminal event arrives for a previously-started
+  // action, drop the "…start" row so the strip shows only the
+  // outcome. Keeps the log scannable without losing the "still
+  // running" signal in the gap between start and terminal arrival.
+  const supersedes = ACTIVITY_TERMINAL_OF[kind];
+  if (supersedes) {
+    state.activityEvents = state.activityEvents.filter((e) =>
+      !(e && e.source === "ui" && e._kind === supersedes)
+    );
+  }
   state.activityEvents.push(ev);
   if (state.activityEvents.length > 200) {
     state.activityEvents = state.activityEvents.slice(-200);
@@ -5760,20 +5784,19 @@ function _renderActivityStrip() {
 function _formatActivityRow(ev) {
   const tsShort = (ev.ts || "").substring(11, 19);
   // Client-sourced event (pushClientEvent → state.activityEvents).
-  // Carries only {ts, level, source=ui, text}; render as a single
-  // compact line coloured by level. Keeps the strip consistent
-  // without forcing client events to fake a backend schema.
+  // Carries only {ts, level, source=ui, text}; render as a compact
+  // two-col line (ts + text) coloured by level. The 5-col backend
+  // schema (op/mach/kind) doesn't apply and leaves sparse columns
+  // if forced — so UI rows use the dedicated ``activity-line-ui``
+  // layout class (CSS: grid-template-columns: 60px 1fr).
   if (ev.source === "ui") {
     const level = ev.level || "info";
     const cls = level === "warn" ? "ev-warn"
       : level === "error" ? "ev-fail"
       : level === "ok" ? "ev-ok"
       : "";
-    return `<div class="activity-line ${cls}">`
+    return `<div class="activity-line activity-line-ui ${cls}">`
       + `<span class="activity-ts">${_escHtml(tsShort)}</span>`
-      + `<span class="activity-op">ui</span>`
-      + `<span class="activity-mach"></span>`
-      + `<span class="activity-kind">${_escHtml(level)}</span>`
       + `<span class="activity-tail">${_escHtml(ev.text || "")}</span>`
       + `</div>`;
   }
