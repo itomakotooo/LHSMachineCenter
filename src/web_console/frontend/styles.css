@@ -2519,6 +2519,7 @@ button.small-btn.active, .small-btn.active {
 }
 .activity-line.ev-ok { color: #15803d; }
 .activity-line.ev-fail { color: #b91c1c; background: #fef2f2; }
+.activity-line.ev-warn { color: #b45309; background: #fffbeb; }
 .activity-ts { color: #64748b; }
 .activity-op { color: #6d28d9; font-weight: 600; }
 .activity-mach { color: #1e40af; }

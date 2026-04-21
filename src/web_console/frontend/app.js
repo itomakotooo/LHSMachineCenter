@@ -2478,6 +2478,16 @@ function pushClientEvent(kind, data) {
   if (state.clientEvents.length > 100) {
     state.clientEvents = state.clientEvents.slice(-100);
   }
+  // Also land the client event on the top "活动日志流" panel. Same
+  // event shape (ts/level/source/text) but rendered by the ui-branch
+  // of _formatActivityRow so the operator sees "⟳ 刷新上游 md5 …"
+  // without waiting for backend events to arrive.
+  state.activityEvents = state.activityEvents || [];
+  state.activityEvents.push(ev);
+  if (state.activityEvents.length > 200) {
+    state.activityEvents = state.activityEvents.slice(-200);
+  }
+  try { _renderActivityStrip(); } catch (_) {}
   // Eagerly re-render so the new event is visible without waiting for
   // the next poll tick. Uses a minimal synthetic `data` shape when no
   // batch data is available yet.
@@ -5686,10 +5696,12 @@ function startPolling() {
 // Pull the unified event stream + render the top "活动日志流" panel.
 // ``state.activitySince`` is the cursor for incremental fetch; on the
 // first tick we omit it so the panel shows the last 5 min of context.
+// Client-side events (pushed via ``pushClientEvent``) also land in
+// ``state.activityEvents`` and render inline — see
+// ``_renderActivityStrip`` below.
 async function refreshActivityStrip() {
   const panel = byId("activityStripPanel");
   const body = byId("activityStripBody");
-  const statusEl = byId("activityStripStatus");
   if (!panel || !body) return;
   let url = "/api/events?lookback_minutes=5&limit=200";
   if (state.activitySince) {
@@ -5710,47 +5722,85 @@ async function refreshActivityStrip() {
     state.activityEvents = state.activityEvents.slice(-200);
   }
   if (data.max_ts) state.activitySince = data.max_ts;
-  const active = Array.isArray(data.active_runs) ? data.active_runs : [];
+  state._activeRuns = Array.isArray(data.active_runs) ? data.active_runs : [];
+  _renderActivityStrip();
+}
+
+// Render the activity strip panel using current ``state.activityEvents``
+// + ``state._activeRuns``. Split out of ``refreshActivityStrip`` so
+// ``pushClientEvent`` can trigger an immediate re-render without
+// making another /api/events round trip. Handles both backend event
+// shapes (fields: model_id / machine / event / chunks_completed …)
+// and client event shapes (source=ui, level, text).
+function _renderActivityStrip() {
+  const panel = byId("activityStripPanel");
+  const body = byId("activityStripBody");
+  const statusEl = byId("activityStripStatus");
+  if (!panel || !body) return;
+  const active = state._activeRuns || [];
   if (active.length) {
     panel.classList.add("activity-strip-live");
     const opsLine = active
       .map((r) => `<span class="op-chip">${_escHtml(r.model_id)} · ${_escHtml(r.machine)} mode${r.mode}</span>`)
       .join("");
-    statusEl.innerHTML = `🟡 ${active.length} 运行中 ${opsLine}`;
+    if (statusEl) statusEl.innerHTML = `🟡 ${active.length} 运行中 ${opsLine}`;
   } else {
     panel.classList.remove("activity-strip-live");
-    statusEl.textContent = "idle";
+    if (statusEl) statusEl.textContent = "idle";
   }
-  // Render last 12 events newest-first.
-  const recent = state.activityEvents.slice(-12).reverse();
+  // Last 12, sorted chronologically then reversed so newest tops.
+  const all = state.activityEvents || [];
+  const sorted = [...all].sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
+  const recent = sorted.slice(-12).reverse();
   body.innerHTML = recent.length
-    ? recent.map((ev) => {
-        const tsShort = (ev.ts || "").substring(11, 19);
-        const mach = ev.machine ? `${ev.machine} mode${ev.mode}` : "";
-        const op = ev.model_id || "";
-        const kind = ev.event || "";
-        let tail = "";
-        if (ev.chunks_completed != null) {
-          tail += `chunks ${ev.chunks_completed}`;
-          if (ev.total_spins != null) tail += ` · ${ev.total_spins.toLocaleString()} spins`;
-          if (ev.current_halfwidth_pp != null)
-            tail += ` · CI±${Number(ev.current_halfwidth_pp).toFixed(2)}pp`;
-        } else if (ev.stop_reason) {
-          tail = `stop: ${_escHtml(ev.stop_reason)}`;
-        } else if (ev.error_message) {
-          tail = `⚠ ${_escHtml(String(ev.error_message).substring(0, 80))}`;
-        }
-        const statusClass = ev.run_status === "failed" ? "ev-fail"
-          : ev.event === "completed" ? "ev-ok" : "";
-        return `<div class="activity-line ${statusClass}">`
-          + `<span class="activity-ts">${_escHtml(tsShort)}</span>`
-          + `<span class="activity-op">${_escHtml(op)}</span>`
-          + `<span class="activity-mach">${_escHtml(mach)}</span>`
-          + `<span class="activity-kind">${_escHtml(kind)}</span>`
-          + `<span class="activity-tail">${tail}</span>`
-          + `</div>`;
-      }).join("")
+    ? recent.map((ev) => _formatActivityRow(ev)).join("")
     : `<div class="muted" style="padding:8px 4px;font-size:12px">无近期事件</div>`;
+}
+
+function _formatActivityRow(ev) {
+  const tsShort = (ev.ts || "").substring(11, 19);
+  // Client-sourced event (pushClientEvent → state.activityEvents).
+  // Carries only {ts, level, source=ui, text}; render as a single
+  // compact line coloured by level. Keeps the strip consistent
+  // without forcing client events to fake a backend schema.
+  if (ev.source === "ui") {
+    const level = ev.level || "info";
+    const cls = level === "warn" ? "ev-warn"
+      : level === "error" ? "ev-fail"
+      : level === "ok" ? "ev-ok"
+      : "";
+    return `<div class="activity-line ${cls}">`
+      + `<span class="activity-ts">${_escHtml(tsShort)}</span>`
+      + `<span class="activity-op">ui</span>`
+      + `<span class="activity-mach"></span>`
+      + `<span class="activity-kind">${_escHtml(level)}</span>`
+      + `<span class="activity-tail">${_escHtml(ev.text || "")}</span>`
+      + `</div>`;
+  }
+  // Backend event — per-run progress / completion / failure.
+  const mach = ev.machine ? `${ev.machine} mode${ev.mode}` : "";
+  const op = ev.model_id || "";
+  const kind = ev.event || "";
+  let tail = "";
+  if (ev.chunks_completed != null) {
+    tail += `chunks ${ev.chunks_completed}`;
+    if (ev.total_spins != null) tail += ` · ${ev.total_spins.toLocaleString()} spins`;
+    if (ev.current_halfwidth_pp != null)
+      tail += ` · CI±${Number(ev.current_halfwidth_pp).toFixed(2)}pp`;
+  } else if (ev.stop_reason) {
+    tail = `stop: ${_escHtml(ev.stop_reason)}`;
+  } else if (ev.error_message) {
+    tail = `⚠ ${_escHtml(String(ev.error_message).substring(0, 80))}`;
+  }
+  const statusClass = ev.run_status === "failed" ? "ev-fail"
+    : ev.event === "completed" ? "ev-ok" : "";
+  return `<div class="activity-line ${statusClass}">`
+    + `<span class="activity-ts">${_escHtml(tsShort)}</span>`
+    + `<span class="activity-op">${_escHtml(op)}</span>`
+    + `<span class="activity-mach">${_escHtml(mach)}</span>`
+    + `<span class="activity-kind">${_escHtml(kind)}</span>`
+    + `<span class="activity-tail">${tail}</span>`
+    + `</div>`;
 }
 
 function ensureFastPolling() {
