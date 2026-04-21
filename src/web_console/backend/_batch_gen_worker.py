@@ -167,15 +167,27 @@ def run_analyzer_job(job: dict) -> dict:
                             "rawdata_root": str(rawdata_root),
                         },
                     })
+                    # Forward parent-app's paytables_dir / classify_dir
+                    # to the scripts' --output-dir args so hook artefacts
+                    # land in the right tree for alternate-universe callers
+                    # (tests, virtual console). Missing keys → scripts use
+                    # their built-in defaults (configs/paytables + dev_reports/
+                    # _classify) — unchanged behaviour for real console.
+                    pt_argv = [
+                        str(script_root / "scripts" / "infer_paytable.py"),
+                        "--machine", str(machine), "--mode", str(mode),
+                    ]
+                    if job.get("paytables_dir"):
+                        pt_argv += ["--output-dir", str(job["paytables_dir"])]
+                    cls_argv = [
+                        str(script_root / "scripts" / "verify_machine_labels.py"),
+                        "--machines", str(machine), "--mode", str(mode),
+                    ]
+                    if job.get("classify_dir"):
+                        cls_argv += ["--output-dir", str(job["classify_dir"])]
                     for name, argv_ext in (
-                        ("paytable_shape", [
-                            str(script_root / "scripts" / "infer_paytable.py"),
-                            "--machine", str(machine), "--mode", str(mode),
-                        ]),
-                        ("classifier", [
-                            str(script_root / "scripts" / "verify_machine_labels.py"),
-                            "--machines", str(machine), "--mode", str(mode),
-                        ]),
+                        ("paytable_shape", pt_argv),
+                        ("classifier", cls_argv),
                     ):
                         if not Path(argv_ext[0]).exists():
                             hook_results.append({
