@@ -3114,6 +3114,9 @@ class BatchRunManager:
                                     "adaptive_tune", "circuit_pause",
                                     "cache_read_start", "cache_read_progress",
                                     "cache_read_done", "cache_read_target_met",
+                                    # 2026-04-21: bug / in-dev machine bail
+                                    # signal — tier-2 non-convergence abort.
+                                    "non_convergence_abort",
                                 }
                                 critical = [e for e in events if e.get("event") in _CRITICAL]
                                 progress_evts = [e for e in events if e.get("event") == "chunk_progress"]
@@ -3411,12 +3414,22 @@ class BatchRunManager:
                     item["stop_reason"] = stop_reason
                     item["ci_target_met"] = ci_target_met
                     # Log level: ok when CI was reached (or fuzzy
-                    # completed its budget), warn otherwise. Earlier
-                    # code always used "ok" which is why a run that
-                    # bailed on upstream_unstable showed up as ✓ green
-                    # next to genuine success.
-                    log_level = "ok" if ci_target_met else "warn"
-                    log_prefix = "完成" if ci_target_met else "完成但未达 CI 目标"
+                    # completed its budget), warn otherwise. Non-
+                    # convergence aborts get a distinct "⛔ 非收敛早退"
+                    # prefix + the parsed reason so the operator sees
+                    # WHY it bailed without having to read the
+                    # stop_reason string.
+                    if stop_reason.startswith("non_convergence_abort:"):
+                        reason_short = stop_reason.split(":", 1)[1]
+                        reason_zh = {
+                            "rtp_out_of_band": "RTP 超出合理区间",
+                            "projected_budget_exceeded": "预算不足以收敛",
+                        }.get(reason_short, reason_short)
+                        log_level = "warn"
+                        log_prefix = f"⛔ 非收敛早退 · 原因: {reason_zh}"
+                    else:
+                        log_level = "ok" if ci_target_met else "warn"
+                        log_prefix = "完成" if ci_target_met else "完成但未达 CI 目标"
                     _log(
                         log_level,
                         f"{log_prefix} RTP={rtp_str} {ci_str}{stop_tail}",

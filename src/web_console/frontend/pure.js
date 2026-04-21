@@ -1649,6 +1649,23 @@ function formatChunkEventText(ev) {
     const tgt = ev.target_halfwidth_pp != null ? Number(ev.target_halfwidth_pp).toFixed(2) : "?";
     return `✓ 已有 ${ev.chunks_read} chunks 的 CI=±${ci}pp 已满足目标 ±${tgt}pp，提前结束读取 + 跳过新采样`;
   }
+  if (ev.event === "non_convergence_abort") {
+    // Tier-2 early bail for bug / in-dev machines. Render the
+    // reason + the key numbers so operator can triage without
+    // opening the progress file.
+    if (ev.reason === "rtp_out_of_band") {
+      const rtp = ev.rtp_pct != null ? Number(ev.rtp_pct).toFixed(2) : "?";
+      const lo = ev.band_lo_pct ?? "?";
+      const hi = ev.band_hi_pct ?? "?";
+      return `⛔ 非收敛早退 · RTP=${rtp}% 连续 ${ev.consecutive} chunks 超出合理区间 [${lo}-${hi}]% · 已采 ${ev.chunks} chunks (mode ${ev.mode})`;
+    }
+    if (ev.reason === "projected_budget_exceeded") {
+      const ci = ev.current_ci_pp != null ? Number(ev.current_ci_pp).toFixed(2) : "?";
+      const tgt = ev.target_ci_pp != null ? Number(ev.target_ci_pp).toFixed(2) : "?";
+      return `⛔ 非收敛早退 · 预计需 ${ev.projected_chunks}+ chunks 才能从 ±${ci}pp 收敛到 ±${tgt}pp（远超预算 ${ev.budget_ceiling}）· 已采 ${ev.chunks}`;
+    }
+    return `⛔ 非收敛早退 · ${ev.reason || "unknown"}`;
+  }
   if (ev.event === "disk_guard_stop") {
     return `⛔ 磁盘低 ${ev.free_gb}GB < ${ev.threshold_gb}GB · 自动停止`;
   }
@@ -1769,6 +1786,9 @@ function mergeTimeline(data, clientEvents, progressCap) {
     // Early-stop signal when cumulative cache CI already meets target
     // — no need to sample any further.
     "cache_read_target_met",
+    // Tier-2 non-convergence abort (bug/in-dev machine that can't
+    // converge to target CI in a reasonable budget).
+    "non_convergence_abort",
   ]);
   const out = [];
   const batchEvents = (data && data.events) || [];
@@ -1801,6 +1821,7 @@ function mergeTimeline(data, clientEvents, progressCap) {
       if (ev.event === "chunk_failed") level = "warn";
       else if (ev.event === "disk_guard_stop" || ev.event === "failed") level = "danger";
       else if (ev.event === "adaptive_tune" || ev.event === "circuit_pause") level = "warn";
+      else if (ev.event === "non_convergence_abort") level = "danger";
       out.push({
         ts: ev.ts || "",
         level,

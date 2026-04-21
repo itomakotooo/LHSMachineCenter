@@ -122,6 +122,11 @@ def parse_args() -> argparse.Namespace:
                         help="filter cache-read stats by chunk envelope config_md5")
     parser.add_argument("--upstream-code-md5", default="",
                         help="filter cache-read stats by chunk envelope code_md5")
+    # Non-convergence early-abort. Default ON — bad machines (bug,
+    # in-dev, wild variance) bail rather than burn the full budget.
+    # Tests / dev can disable via --disable-non-convergence-abort.
+    parser.add_argument("--disable-non-convergence-abort", action="store_true",
+                        help="disable Tier-2 early-abort (RTP band + projection)")
     parser.add_argument(
         "--progress-file",
         type=Path,
@@ -246,6 +251,19 @@ _RETRYABLE_HTTP_CODES = frozenset({500, 502, 503, 504})
 # post_json_with_retry, a ~30s hiccup is now required to bail.
 MAX_CONSECUTIVE_FAILED_BATCHES = 5
 MAX_CUMULATIVE_FAILED_CHUNKS = 40
+
+# Non-convergence early-abort (2026-04-21). When a machine's data is
+# too pathological to converge on the caller's CI target (bug machines
+# / in-development machines that emit nonsense), bail rather than
+# burn the full max_chunks budget. Tier 1 (parse_failure / consecutive
+# chunk_failed) is already handled by MAX_* constants above. These
+# drive Tier 2: RTP out of sane band (paid-mode only, user decision
+# 2026-04-21 — bonus mode legitimately hits high RTP) + projected
+# budget overrun.
+NON_CONVERGENCE_ABORT_MIN_CHUNKS = 20      # need ≥ N chunks before deciding
+NON_CONVERGENCE_BUDGET_MULTIPLIER = 5.0    # predicted total > max_chunks × this → abort
+NON_CONVERGENCE_RTP_BAND_PAID = (40.0, 200.0)  # paid mode (mode 1) sane range %
+NON_CONVERGENCE_RTP_OUT_OF_BAND_CONSECUTIVE = 3  # chunks out-of-band in a row
 
 # AIMD (additive-increase / multiplicative-decrease) adaptive tuning
 # for batch_concurrency + chunk_spin_times. Per-request retry already
@@ -3424,6 +3442,10 @@ def main() -> int:
     # future per-run override has a natural seam.
     cumulative_failed_chunks = 0
     consecutive_failed_batches = 0
+    # Non-convergence Tier-2 RTP band tracker — consecutive chunks
+    # where paid-mode RTP sits outside the sane band. Initialized
+    # outside the main loop so it persists across batches.
+    rtp_out_of_band_consecutive = 0
 
     # ── Cache read phase ─────────────────────────────────────────────
     # Two modes share the reader, differ only in what happens after:
@@ -4570,6 +4592,80 @@ def main() -> int:
         ):
             stop_reason = "target_ci_reached"
             break
+
+        # ── Non-convergence early-abort (2026-04-21, user request) ──
+        # Bail bug / in-dev machines whose data can't converge to
+        # target rather than burning the full max_chunks budget. Tier
+        # 1 (parse failure rate / consecutive chunk_failed) is covered
+        # by the upstream_unstable branch above; this block is Tier 2
+        # (RTP out-of-band + projection overrun). Skipped for fuzzy
+        # (target == 0) and sentinel (target ≥ 999 — backend rewrites
+        # fuzzy to 999 to bypass the CI gate).
+        if (
+            not args.disable_non_convergence_abort
+            and 0.0 < args.target_halfwidth_pp < 999.0
+            and chunks >= NON_CONVERGENCE_ABORT_MIN_CHUNKS
+        ):
+            # Tier 2a: paid-mode RTP out of sane band (mode 1 only).
+            # Bonus modes legitimately hit 500%+ so we skip them.
+            if args.rtp_mode == 1:
+                session_bet_sum_now = sum(session_bucket_bet.values())
+                running_rtp_pct = (
+                    (total_session_win_sum / session_bet_sum_now) * 100.0
+                    if session_bet_sum_now > 0 else None
+                )
+                if running_rtp_pct is not None:
+                    lo, hi = NON_CONVERGENCE_RTP_BAND_PAID
+                    if running_rtp_pct < lo or running_rtp_pct > hi:
+                        rtp_out_of_band_consecutive += 1
+                    else:
+                        rtp_out_of_band_consecutive = 0
+                    if rtp_out_of_band_consecutive >= NON_CONVERGENCE_RTP_OUT_OF_BAND_CONSECUTIVE:
+                        append_jsonl(
+                            progress_file,
+                            {
+                                "event": "non_convergence_abort",
+                                "run_id": run_id,
+                                "reason": "rtp_out_of_band",
+                                "rtp_pct": round(running_rtp_pct, 3),
+                                "band_lo_pct": lo,
+                                "band_hi_pct": hi,
+                                "consecutive": rtp_out_of_band_consecutive,
+                                "chunks": chunks,
+                                "total_spins": total_spins,
+                                "mode": args.rtp_mode,
+                                "ts": utc_now(),
+                            },
+                        )
+                        stop_reason = "non_convergence_abort:rtp_out_of_band"
+                        break
+
+            # Tier 2b: projected budget exceeded. CI shrinks as
+            # 1/√N, so predicted_total = N × (ci_now / target_ci)²
+            # chunks. If that's more than (max_chunks × multiplier),
+            # this machine won't converge in any reasonable budget.
+            if session_ci_final is not None and session_ci_final > args.target_halfwidth_pp:
+                ratio = session_ci_final / args.target_halfwidth_pp
+                projected_chunks = chunks * (ratio * ratio)
+                budget_ceiling = args.max_chunks * NON_CONVERGENCE_BUDGET_MULTIPLIER
+                if projected_chunks > budget_ceiling:
+                    append_jsonl(
+                        progress_file,
+                        {
+                            "event": "non_convergence_abort",
+                            "run_id": run_id,
+                            "reason": "projected_budget_exceeded",
+                            "projected_chunks": int(projected_chunks),
+                            "budget_ceiling": int(budget_ceiling),
+                            "current_ci_pp": round(session_ci_final, 3),
+                            "target_ci_pp": args.target_halfwidth_pp,
+                            "chunks": chunks,
+                            "total_spins": total_spins,
+                            "ts": utc_now(),
+                        },
+                    )
+                    stop_reason = "non_convergence_abort:projected_budget_exceeded"
+                    break
 
     duration_seconds = round(time.time() - t0, 3)
     finished_at = utc_now()

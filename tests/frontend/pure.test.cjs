@@ -1280,6 +1280,55 @@ test("formatChunkEventText: cache_read_target_met shows early-stop reason", () =
   assert.ok(t.includes("0.50"), t);
 });
 
+test("formatChunkEventText: non_convergence_abort rtp_out_of_band", () => {
+  // 2026-04-21 Tier-2 early-abort: bug/in-dev machine with RTP
+  // outside the paid-mode sane band.
+  const t = PURE.formatChunkEventText({
+    event: "non_convergence_abort",
+    reason: "rtp_out_of_band",
+    rtp_pct: 872.5, band_lo_pct: 40, band_hi_pct: 200,
+    consecutive: 3, chunks: 42, mode: 1,
+  });
+  assert.ok(t.includes("非收敛早退"), t);
+  assert.ok(t.includes("872.50"), t);
+  assert.ok(t.includes("40-200"), t);
+  assert.ok(t.includes("42"), t);
+});
+
+test("formatChunkEventText: non_convergence_abort projected_budget_exceeded", () => {
+  const t = PURE.formatChunkEventText({
+    event: "non_convergence_abort",
+    reason: "projected_budget_exceeded",
+    projected_chunks: 12000, budget_ceiling: 600,
+    current_ci_pp: 8.3, target_ci_pp: 0.5,
+    chunks: 25,
+  });
+  assert.ok(t.includes("非收敛早退"), t);
+  assert.ok(t.includes("12000"), t);
+  assert.ok(t.includes("8.30"), t);
+  assert.ok(t.includes("0.50"), t);
+});
+
+test("mergeTimeline: non_convergence_abort passes through as danger level", () => {
+  const data = {
+    events: [],
+    items: [{
+      machine: "MBUG",
+      chunk_events: [
+        { event: "non_convergence_abort",
+          reason: "rtp_out_of_band",
+          rtp_pct: 500, band_lo_pct: 40, band_hi_pct: 200,
+          consecutive: 3, chunks: 25, mode: 1,
+          ts: "2026-04-21T00:00:00Z" },
+      ],
+    }],
+  };
+  const timeline = PURE.mergeTimeline(data, []);
+  const row = timeline.find((t) => t.text.includes("非收敛早退"));
+  assert.ok(row, "non_convergence_abort must render in timeline");
+  assert.equal(row.level, "danger");
+});
+
 test("mergeTimeline: fetching_chunk passes through (unstick 0-chunk start)", () => {
   // 2026-04-21: when sampling a machine with 0 existing chunks, the
   // analyzer fires fetching_chunk → chunk_started while it waits on
