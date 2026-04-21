@@ -283,6 +283,15 @@ class CacheCleanupRequest(BaseModel):
     max_delete_bytes: int = Field(default=0, ge=0)
 
 
+class RawdataVersionDeleteRequest(BaseModel):
+    """Target one (config_md5, code_md5) bucket within a (machine, mode)
+    for per-version cleanup. Empty md5 pair intentionally disallowed —
+    "delete everything with missing envelope md5" is a risky op that
+    belongs to force=True in the per-mode endpoint."""
+    config_md5: str = Field(min_length=1)
+    code_md5: str = Field(min_length=1)
+
+
 class ServerEntry(BaseModel):
     id: str
     name: str
@@ -359,7 +368,7 @@ def _get_machine_md5(machine: str, machines_config: Path | None = None) -> tuple
 def _empty_rawdata_status(**extra: Any) -> dict[str, Any]:
     base = {
         "exists": False, "usable_chunks": 0, "mismatch_chunks": 0,
-        "deleted_paths": [], "total_size_mb": 0.0,
+        "total_size_mb": 0.0,
         "upstream_config_md5": "", "upstream_code_md5": "",
         "saved_at": "", "unverifiable": False,
     }
@@ -381,8 +390,7 @@ def _status_from_index_entry(
     - either upstream is unknown (accept everything) OR all chunks' md5
       matches the current upstream md5 (no mismatches to report)
     When md5 drifted or chunks are heterogeneous, the caller can't shortcut
-    — we need to know WHICH chunks are stale (for auto-delete, for the
-    mismatch_chunks count).
+    — we need the per-chunk md5 to count mismatched chunks correctly.
     """
     if entry.get("mixed_md5"):
         return None
@@ -399,18 +407,16 @@ def _status_from_index_entry(
     else:
         if not cfg and not code:
             # Envelope has no md5 tags (legacy) — treat all as mismatch.
-            # Fall back so existing auto-delete + size accounting works.
+            # Fall back so size accounting works per-chunk.
             return None
         if cfg != up_config or code != up_code:
-            # All chunks stale (same md5 but wrong one). Fall back so
-            # the caller can mark them for auto-delete per-chunk if
-            # asked and enumerate them in deleted_paths.
+            # All chunks carry the same md5 but it's not current. Fall
+            # back so the caller gets a correct mismatch_chunks count.
             return None
     return {
         "exists": True,
         "usable_chunks": chunks_n,
         "mismatch_chunks": 0,
-        "deleted_paths": [],
         "total_size_mb": round(
             int(entry.get("total_size_bytes", 0)) / (1024 * 1024), 2
         ),
@@ -426,26 +432,34 @@ def check_rawdata_status(
     mode: int,
     rawdata_root: Path | None = None,
     machines_config: Path | None = None,
-    auto_delete_mismatched: bool = False,
 ) -> dict[str, Any]:
     """Per-chunk rawdata availability and MD5 match for a machine-mode.
+
+    Read-only — NEVER mutates disk. Returns counts the UI + analyzer
+    use to decide what to do next; actual deletions happen only via
+    cache-management paths (``_auto_cleanup_for_space`` under disk
+    pressure, ``POST /api/cache/cleanup`` manual button, per-mode
+    ``delete_rawdata``, or the per-version ``DELETE
+    /api/rawdata/{m}/mode/{mode}/version`` endpoint).
+
+    Before 2026-04-21 this function took ``auto_delete_mismatched=True``
+    and unlinked md5-mismatched chunks directly — that was the M1|1
+    regression path (``start_batch`` called it per item, wiping locked
+    chunks). The current semantics: md5 is a tag, not a destruction
+    signal. Historical md5 chunks stay on disk until operator
+    intervention.
 
     Hot path: consults `<rawdata_root>/_index.json` (one open) when the
     cached entry is consistent and all chunks match upstream md5. Cold
     path (stale index, mixed md5, or md5 drift) falls back to a full
-    per-chunk envelope scan — the same logic as before — and rebuilds
-    the entry so the next call is fast again.
-
-    Each chunk file is verified independently. Mismatched chunks can be
-    auto-deleted (when auto_delete_mismatched=True). Usable chunks remain
-    for --from-cache reuse.
+    per-chunk envelope scan and rebuilds the entry so the next call
+    is fast again.
 
     Returns:
       {
         "exists": bool,
         "usable_chunks": int,       # chunks with matching MD5 (or unverifiable when upstream unknown)
-        "mismatch_chunks": int,     # chunks with stale MD5 (deleted if auto_delete)
-        "deleted_paths": list[str],
+        "mismatch_chunks": int,     # chunks with non-current MD5 (historical)
         "total_size_mb": float,     # size of remaining usable chunks
         "upstream_config_md5": str,
         "upstream_code_md5": str,
@@ -464,25 +478,22 @@ def check_rawdata_status(
     # ── Fast path: try the cached index first ──
     # Validated by matching entry.chunks against the actual glob count;
     # any drift (external delete, failed writer, etc.) forces a rescan.
-    # Skipped when auto_delete_mismatched is requested since that path
-    # mutates chunks and must see per-chunk md5.
-    if not auto_delete_mismatched:
-        try:
-            from fresh_slotlab.rawdata_index import load_index, entry_key
-            idx = load_index(root)
-            entry = idx.get("entries", {}).get(entry_key(machine, mode))
-            if entry is not None:
-                actual_count = sum(1 for _ in mode_dir.glob("chunk_*.json"))
-                if actual_count == int(entry.get("chunks", -1)):
-                    status = _status_from_index_entry(
-                        entry, up_config, up_code, unverifiable
-                    )
-                    if status is not None:
-                        return status
-        except Exception:  # noqa: BLE001
-            # Index read failures shouldn't block the API call; fall
-            # through to the authoritative filesystem scan.
-            pass
+    try:
+        from fresh_slotlab.rawdata_index import load_index, entry_key
+        idx = load_index(root)
+        entry = idx.get("entries", {}).get(entry_key(machine, mode))
+        if entry is not None:
+            actual_count = sum(1 for _ in mode_dir.glob("chunk_*.json"))
+            if actual_count == int(entry.get("chunks", -1)):
+                status = _status_from_index_entry(
+                    entry, up_config, up_code, unverifiable
+                )
+                if status is not None:
+                    return status
+    except Exception:  # noqa: BLE001
+        # Index read failures shouldn't block the API call; fall
+        # through to the authoritative filesystem scan.
+        pass
 
     # ── Cold path: full per-chunk scan + index rebuild ──
     chunks = sorted(mode_dir.glob("chunk_*.json"))
@@ -491,7 +502,6 @@ def check_rawdata_status(
 
     usable = 0
     mismatched: list[Path] = []
-    deleted_paths: list[str] = []
     saved_ats: list[str] = []
     usable_size = 0
 
@@ -525,34 +535,6 @@ def check_rawdata_status(
         else:
             mismatched.append(chunk_path)
 
-    # Operator-lock check: if (machine, mode) is locked, NEVER
-    # auto-delete its chunks — even when the upstream MD5 has drifted.
-    # The lock is a promise to the operator that this bucket is
-    # preserved until they unlock it. Stale chunks are still reported
-    # via ``mismatch_chunks`` so the UI can flag "locked + stale" and
-    # let the operator decide whether to unlock + re-sample, but no
-    # file is removed here.
-    mc_for_lock = machines_config if machines_config is not None else MACHINES_CONFIG
-    try:
-        _locked_set = _load_rawdata_locks(_rawdata_locks_path(mc_for_lock))
-    except Exception:  # noqa: BLE001
-        _locked_set = set()
-    is_locked = (str(machine), int(mode)) in _locked_set
-
-    if auto_delete_mismatched and mismatched and not is_locked:
-        for p in mismatched:
-            try:
-                p.unlink()
-                deleted_paths.append(str(p))
-            except OSError:
-                pass
-        # Remove empty dir if nothing left.
-        try:
-            if not any(mode_dir.iterdir()):
-                mode_dir.rmdir()
-        except OSError:
-            pass
-
     # Refresh the index entry so the next read hits the fast path again.
     # Runs outside the main return so any failure here doesn't disturb
     # the canonical scan result.
@@ -566,7 +548,6 @@ def check_rawdata_status(
         "exists": True,
         "usable_chunks": usable,
         "mismatch_chunks": len(mismatched),
-        "deleted_paths": deleted_paths,
         "total_size_mb": round(usable_size / (1024 * 1024), 2),
         "upstream_config_md5": up_config,
         "upstream_code_md5": up_code,
@@ -652,32 +633,42 @@ def _classify_chunks(
     machines_config: Path,
     min_retention_spins: int,
 ) -> dict[str, Any]:
-    """Partition chunks of (machine, mode) into kept / deletable / stale.
+    """Partition chunks of (machine, mode) into kept / deletable /
+    historical. Classification is **not** a deletion decision — it's
+    a tag for display + analyzer filtering. See ``_auto_cleanup_for_space``
+    for the actual eviction policy (mtime-based across deletable +
+    historical, locked pairs skipped).
 
-    * **stale** — envelope ``_config_md5`` / ``_code_md5`` differ from
-      the current machines.json values (server-side machine updated
-      since sampling; analytical value is zero). Always first on the
-      chopping block; never contribute to the kept quota.
-    * **kept** — md5 valid, first chunks in ``chunk_index`` order
-      whose cumulative ``_spin_times`` reaches ``min_retention_spins``
-      (inclusive of the chunk that crosses the threshold). These are
-      protected from UI delete + auto-cleanup.
-    * **deletable** — md5 valid, above the retention quota. Removable
-      by manual delete (default) or auto-cleanup (oldest mtime first).
+    * **historical** — envelope ``_config_md5`` / ``_code_md5`` differ
+      from the current machines.json values (server-side machine
+      updated since sampling). Analyzer ignores these when generating
+      the "current md5" report, but the chunks themselves stay on
+      disk until a cache-management action (disk-pressure cleanup,
+      manual 一键清理, per-mode 清理, or the new per-version delete
+      button) removes them. md5 drift alone never triggers auto-delete
+      — see the 2026-04-20 M1|1 incident memory.
+    * **kept** — md5 matches current upstream AND first chunks in
+      ``chunk_index`` order whose cumulative ``_spin_times`` reaches
+      ``min_retention_spins`` (inclusive of the chunk that crosses
+      the threshold). Baseline protection; the retention quota applies
+      ONLY to current-md5 chunks (historical md5 chunks are not
+      "保底" — user 2026-04-21).
+    * **deletable** — md5 matches current upstream AND above the
+      retention quota. Eligible for cleanup.
 
-    If total valid spins < min_retention_spins, every valid chunk is
-    kept (quota not reached). In prod this only matters before
-    enough sampling has accumulated.
+    If total current-md5 spins < min_retention_spins, every current-md5
+    chunk is kept (quota not reached). Historical chunks are always
+    classified as historical regardless of quota.
 
-    Returns ``{kept, deletable, stale, kept_spins, deletable_spins,
-    stale_spins, upstream_config_md5, upstream_code_md5}`` where each
-    group is a list of dicts ``{path, spins, mtime, config_md5,
+    Returns ``{kept, deletable, historical, kept_spins, deletable_spins,
+    historical_spins, upstream_config_md5, upstream_code_md5}`` where
+    each group is a list of dicts ``{path, spins, mtime, config_md5,
     code_md5}``.
     """
     mode_dir = rawdata_root / machine / f"mode_{mode}"
     empty = {
-        "kept": [], "deletable": [], "stale": [],
-        "kept_spins": 0, "deletable_spins": 0, "stale_spins": 0,
+        "kept": [], "deletable": [], "historical": [],
+        "kept_spins": 0, "deletable_spins": 0, "historical_spins": 0,
         "upstream_config_md5": "", "upstream_code_md5": "",
     }
     if not mode_dir.is_dir():
@@ -694,21 +685,23 @@ def _classify_chunks(
 
     kept: list[dict[str, Any]] = []
     deletable: list[dict[str, Any]] = []
-    stale: list[dict[str, Any]] = []
+    historical: list[dict[str, Any]] = []
     kept_spins = 0
     deletable_spins = 0
-    stale_spins = 0
+    historical_spins = 0
 
     for p in chunks:
         data = _peek_envelope_scalars(p)
         if data is None:
             # Peek failed (tiny / corrupted / unusual envelope); fall
-            # back to full parse. If that fails too, treat as stale so
-            # auto-cleanup reclaims it rather than leaving corruption.
+            # back to full parse. If that fails too, bucket as
+            # "historical" so it can still be reached by manual /
+            # pressure cleanup — md5 can't be verified, so we can't
+            # safely count it against the retention baseline.
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
-                stale.append({
+                historical.append({
                     "path": str(p), "spins": 0,
                     "mtime": p.stat().st_mtime if p.exists() else 0,
                     "config_md5": "", "code_md5": "",
@@ -727,8 +720,11 @@ def _classify_chunks(
         entry = {"path": str(p), "spins": spins, "mtime": mtime,
                  "config_md5": cfg, "code_md5": code}
         if not md5_ok:
-            stale.append(entry)
-            stale_spins += spins
+            # Historical md5 — not a deletion signal, just a tag.
+            # Retention baseline ONLY applies to current md5, so these
+            # never contribute to `kept_spins`.
+            historical.append(entry)
+            historical_spins += spins
             continue
         # md5 valid: fill kept quota first, then deletable
         if kept_spins < min_retention_spins:
@@ -739,9 +735,9 @@ def _classify_chunks(
             deletable_spins += spins
 
     return {
-        "kept": kept, "deletable": deletable, "stale": stale,
+        "kept": kept, "deletable": deletable, "historical": historical,
         "kept_spins": kept_spins, "deletable_spins": deletable_spins,
-        "stale_spins": stale_spins,
+        "historical_spins": historical_spins,
         "upstream_config_md5": up_config, "upstream_code_md5": up_code,
     }
 
@@ -758,8 +754,10 @@ def delete_rawdata(
     quota by default.
 
     * ``force=False`` (default, operator-safe) — delete only
-      ``deletable`` + ``stale`` chunks; the ``kept`` quota survives
-      so baseline samples aren't silently wiped.
+      ``deletable`` + ``historical`` chunks; the ``kept`` quota
+      survives so baseline samples aren't silently wiped. Retention
+      protects ONLY current-md5 chunks (historical md5 has no
+      retention — same semantic rule as the classifier).
     * ``force=True`` — nuke everything at the target path (legacy
       behavior; matches the pre-quota ``shutil.rmtree``). UI exposes
       this under a separate "完全删除" button with confirmation.
@@ -839,7 +837,7 @@ def delete_rawdata(
             continue
         cls = _classify_chunks(machine, m, root, mc, min_retention_spins)
         kept_chunks += len(cls["kept"])
-        for entry in cls["deletable"] + cls["stale"]:
+        for entry in cls["deletable"] + cls["historical"]:
             try:
                 p = Path(entry["path"])
                 if p.exists():
@@ -1642,8 +1640,8 @@ def _machines_summary_fingerprint(reports_root: Path) -> tuple[int, int]:
 
 
 # ── Rawdata overview cache ────────────────────────────────────────
-# Fleet-wide per-machine rawdata breakdown (kept / deletable / stale
-# bytes + total). Walking every chunk envelope is O(N_chunks) and
+# Fleet-wide per-machine rawdata breakdown (kept / deletable /
+# historical bytes + total). Walking every chunk envelope is O(N_chunks) and
 # takes seconds on a large fleet; mtime-fingerprint cache makes it
 # effectively free when nothing changed. Invalidated by add/delete
 # of chunk files (mode_dir mtime bumps).
@@ -1676,7 +1674,7 @@ def _build_rawdata_overview(
     machines_config: Path,
     retention_spins: int,
 ) -> dict[str, Any]:
-    """Per-machine rawdata breakdown (baseline / reclaimable / stale
+    """Per-machine rawdata breakdown (baseline / reclaimable / historical
     bytes + last-sample mtime) + fleet aggregates. Cached keyed on
     str(rawdata_root) with the mtime fingerprint above."""
     cache_key = str(rawdata_root)
@@ -1688,14 +1686,14 @@ def _build_rawdata_overview(
     per_machine: list[dict[str, Any]] = []
     total_kept = 0
     total_del = 0
-    total_stale = 0
+    total_historical = 0
     if rawdata_root.is_dir():
         for machine_dir in sorted(rawdata_root.iterdir()):
             if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
                 continue
             machine = machine_dir.name
-            m_kept = m_del = m_stale = 0
-            m_kept_chunks = m_del_chunks = m_stale_chunks = 0
+            m_kept = m_del = m_historical = 0
+            m_kept_chunks = m_del_chunks = m_historical_chunks = 0
             latest_mtime = 0.0
             for mode_dir in machine_dir.iterdir():
                 if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
@@ -1705,7 +1703,7 @@ def _build_rawdata_overview(
                 except (IndexError, ValueError):
                     continue
                 cls = _classify_chunks(machine, mode, rawdata_root, machines_config, retention_spins)
-                for kind, sink_key in (("kept", "m_kept"), ("deletable", "m_del"), ("stale", "m_stale")):
+                for kind, sink_key in (("kept", "m_kept"), ("deletable", "m_del"), ("historical", "m_historical")):
                     for entry_d in cls[kind]:
                         try:
                             sz = Path(entry_d["path"]).stat().st_size
@@ -1716,30 +1714,30 @@ def _build_rawdata_overview(
                         elif sink_key == "m_del":
                             m_del += sz; m_del_chunks += 1
                         else:
-                            m_stale += sz; m_stale_chunks += 1
+                            m_historical += sz; m_historical_chunks += 1
                         if entry_d["mtime"] > latest_mtime:
                             latest_mtime = entry_d["mtime"]
-            if (m_kept + m_del + m_stale) == 0:
+            if (m_kept + m_del + m_historical) == 0:
                 continue
             per_machine.append({
                 "machine": machine,
                 "kept_bytes": m_kept,
                 "deletable_bytes": m_del,
-                "stale_bytes": m_stale,
+                "historical_bytes": m_historical,
                 "kept_chunks": m_kept_chunks,
                 "deletable_chunks": m_del_chunks,
-                "stale_chunks": m_stale_chunks,
+                "historical_chunks": m_historical_chunks,
                 "last_sample_mtime": latest_mtime,
             })
             total_kept += m_kept
             total_del += m_del
-            total_stale += m_stale
+            total_historical += m_historical
     result = {
-        "total_bytes": total_kept + total_del + total_stale,
+        "total_bytes": total_kept + total_del + total_historical,
         "baseline_bytes": total_kept,
         "deletable_bytes": total_del,
-        "stale_bytes": total_stale,
-        "reclaimable_bytes": total_del + total_stale,
+        "historical_bytes": total_historical,
+        "reclaimable_bytes": total_del + total_historical,
         "per_machine": per_machine,
     }
     _RAWDATA_OVERVIEW_CACHE[cache_key] = {
@@ -2146,9 +2144,11 @@ def _auto_cleanup_for_space(
                 result["skipped_in_use"].append(f"{machine}|{mode}")
                 continue
             cls = _classify_chunks(machine, mode, rawdata_root, machines_config, retention)
-            # Take deletable first (above retention, same md5 as current)
-            # then stale (md5 mismatch — always evictable). Oldest first.
-            pool = list(cls.get("deletable") or []) + list(cls.get("stale") or [])
+            # Cleanable pool = above-retention current chunks + all
+            # historical-md5 chunks. Merged + sorted by mtime below,
+            # so we evict strictly oldest-first regardless of md5 —
+            # md5 is a tag, not a priority signal (2026-04-21).
+            pool = list(cls.get("deletable") or []) + list(cls.get("historical") or [])
             for entry in pool:
                 candidates.append({
                     "path": Path(entry["path"]),
@@ -2824,12 +2824,11 @@ class BatchRunManager:
                 cycle_info = _detect_machine_cycle(it.machine, rr)
                 chunk_size = cycle_info["recommended_chunk_size"]
 
-            # Check local rawdata — per-chunk MD5 verification with auto-delete
-            # of mismatched chunks.
-            raw_status = check_rawdata_status(
-                it.machine, it.mode,
-                auto_delete_mismatched=True,
-            )
+            # Check local rawdata — read-only scan. Historical md5
+            # chunks are reported via ``mismatch_chunks`` but never
+            # deleted here (2026-04-21 semantics rewrite; this was
+            # the M1|1 regression path before).
+            raw_status = check_rawdata_status(it.machine, it.mode)
             # Cache routing (simplified 2026-04-17): cache always acts
             # as a resume starting point for user-initiated batch runs.
             # Fuzzy with cache used to be read-only which made the Fuzzy
@@ -5136,8 +5135,7 @@ def create_app(
                 except (IndexError, ValueError):
                     continue
                 status = check_rawdata_status(
-                    machine, mode, rawdata_root=rd_root,
-                    machines_config=mc, auto_delete_mismatched=False,
+                    machine, mode, rawdata_root=rd_root, machines_config=mc,
                 )
                 classified = _classify_chunks(
                     machine, mode, rd_root, mc, retention,
@@ -5148,7 +5146,7 @@ def create_app(
                 by_version: dict[tuple[str, str], dict[str, Any]] = {}
                 up_cfg = classified["upstream_config_md5"]
                 up_code = classified["upstream_code_md5"]
-                for group in ("kept", "deletable", "stale"):
+                for group in ("kept", "deletable", "historical"):
                     for entry in classified[group]:
                         key = (entry["config_md5"], entry["code_md5"])
                         v = by_version.setdefault(key, {
@@ -5158,8 +5156,8 @@ def create_app(
                                 entry["config_md5"] == up_cfg
                                 and entry["code_md5"] == up_code
                             ),
-                            "kept_chunks": 0, "deletable_chunks": 0, "stale_chunks": 0,
-                            "kept_spins": 0, "deletable_spins": 0, "stale_spins": 0,
+                            "kept_chunks": 0, "deletable_chunks": 0, "historical_chunks": 0,
+                            "kept_spins": 0, "deletable_spins": 0, "historical_spins": 0,
                         })
                         v[f"{group}_chunks"] += 1
                         v[f"{group}_spins"] += entry["spins"]
@@ -5167,10 +5165,10 @@ def create_app(
                     "min_retention_spins": retention,
                     "kept_chunks": len(classified["kept"]),
                     "deletable_chunks": len(classified["deletable"]),
-                    "stale_chunks": len(classified["stale"]),
+                    "historical_chunks": len(classified["historical"]),
                     "kept_spins": classified["kept_spins"],
                     "deletable_spins": classified["deletable_spins"],
-                    "stale_spins": classified["stale_spins"],
+                    "historical_spins": classified["historical_spins"],
                 }
                 status["versions"] = sorted(
                     by_version.values(),
@@ -5201,6 +5199,119 @@ def create_app(
         changed = _set_rawdata_lock(_rawdata_locks_path(mc), machine, mode, False)
         return {"ok": True, "machine": machine, "mode": mode,
                 "locked": False, "changed": changed}
+
+    @app.delete("/api/rawdata/{machine}/mode/{mode}/version")
+    def delete_rawdata_version(
+        machine: str, mode: int, req: RawdataVersionDeleteRequest,
+    ) -> dict[str, Any]:
+        """Delete every chunk under (machine, mode) whose envelope md5
+        matches the (config_md5, code_md5) pair in the body. Reports
+        are untouched — they're analyzer output, not rawdata, and
+        operator may still want them for historical comparison.
+
+        Semantics (2026-04-21):
+        * Respects the lock — locked (machine, mode) returns 409 and
+          the operator must unlock first. Per-version delete is an
+          operator-initiated "clean up this specific md5 bucket"
+          action; the lock still means "leave this pair alone".
+        * Skips running runs on (m, mode) via the in-use snapshot —
+          deleting chunks an analyzer is mid-write would corrupt its
+          output.
+        * Reports are not touched; report rows pointing at the removed
+          md5 remain readable (operators can still open old reports).
+        * Returns the (m, mode) dir removal if the last chunks got
+          wiped; empty parent machine dir is NOT removed (other modes
+          may still live there).
+        """
+        mode_dir = rd_root / machine / f"mode_{mode}"
+        if not mode_dir.is_dir():
+            raise HTTPException(status_code=404, detail="mode dir not found")
+
+        # Lock gate — per-version delete respects the lock (user
+        # choice 2026-04-21). Force=true escape hatch lives on the
+        # per-mode endpoint; per-version intentionally doesn't expose
+        # one since the granular case for overriding a lock is
+        # vanishingly rare.
+        locks = _load_rawdata_locks(_rawdata_locks_path(mc))
+        if (machine, int(mode)) in locks:
+            raise HTTPException(
+                status_code=409,
+                detail="machine+mode is locked; unlock first if you really want to delete",
+            )
+
+        # In-use gate — don't rug-pull an analyzer mid-run.
+        if (machine, int(mode)) in _get_in_use_snapshot():
+            raise HTTPException(
+                status_code=409,
+                detail="machine+mode is currently sampling or generating; retry after it finishes",
+            )
+
+        deleted_chunks = 0
+        deleted_bytes = 0
+        matched_spins = 0
+        skipped_chunks = 0
+        for p in sorted(mode_dir.glob("chunk_*.json")):
+            try:
+                data = _peek_envelope_scalars(p)
+                if data is None:
+                    # Full parse fallback — peek can miss tiny chunks.
+                    try:
+                        data = json.loads(p.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        # Unreadable envelope → not our target, leave
+                        # it alone. The per-mode force=true path is
+                        # the right tool for that case.
+                        skipped_chunks += 1
+                        continue
+                cfg = str(data.get("_config_md5", ""))
+                code = str(data.get("_code_md5", ""))
+                if cfg != req.config_md5 or code != req.code_md5:
+                    skipped_chunks += 1
+                    continue
+                per_robot = int(data.get("_spin_times") or 0)
+                robots = int(data.get("_robot_count") or 0) or 1
+                matched_spins += per_robot * robots
+                size = p.stat().st_size
+                p.unlink()
+                deleted_chunks += 1
+                deleted_bytes += size
+            except OSError:
+                skipped_chunks += 1
+
+        # Refresh the rawdata index so subsequent GET /api/rawdata is
+        # consistent without a cold-path rescan.
+        try:
+            from fresh_slotlab.rawdata_index import update_entry, remove_entry
+            if any(mode_dir.glob("chunk_*.json")):
+                update_entry(rd_root, machine, mode, mode_dir)
+            else:
+                remove_entry(rd_root, machine, mode)
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Remove the empty mode dir if nothing's left AND (Commit 2)
+        # the caller will then re-check the mode-hide rule on the UI
+        # side (mode disappears when no rawdata + no reports remain).
+        mode_dir_removed = False
+        try:
+            if mode_dir.is_dir() and not any(mode_dir.iterdir()):
+                mode_dir.rmdir()
+                mode_dir_removed = True
+        except OSError:
+            pass
+
+        return {
+            "ok": True,
+            "machine": machine,
+            "mode": mode,
+            "config_md5": req.config_md5,
+            "code_md5": req.code_md5,
+            "deleted_chunks": deleted_chunks,
+            "deleted_bytes": deleted_bytes,
+            "deleted_spins": matched_spins,
+            "skipped_chunks": skipped_chunks,
+            "mode_dir_removed": mode_dir_removed,
+        }
 
     @app.get("/api/events")
     def unified_events(
@@ -5627,7 +5738,7 @@ def create_app(
                 status_code=404,
                 detail=(
                     f"no usable chunks for {machine} mode {mode} "
-                    f"(kept=0, deletable=0; stale={len(classified['stale'])})"
+                    f"(kept=0, deletable=0; historical={len(classified['historical'])})"
                 ),
             )
         # Sort chunk file paths by chunk_index (filename order) so the
@@ -7201,10 +7312,12 @@ def create_app(
                 cls = _classify_chunks(
                     machine_dir.name, mode, rd_root, mc, retention,
                 )
-                # Stale first (no analytical value), then deletable
-                # excess. Both sorted by mtime within the combined pool
-                # so a single cleanup pass does oldest-first.
-                for entry in cls["stale"] + cls["deletable"]:
+                # Cleanable pool = deletable (current md5 above
+                # retention) + historical (other md5s, no retention
+                # protection). Sorted by mtime below so cleanup runs
+                # oldest-first regardless of md5 — md5 is a tag, not
+                # a priority signal.
+                for entry in cls["deletable"] + cls["historical"]:
                     candidates.append({
                         "machine": machine_dir.name, "mode": mode,
                         "path": entry["path"], "spins": entry["spins"],

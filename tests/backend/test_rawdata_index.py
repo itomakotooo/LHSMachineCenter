@@ -197,21 +197,24 @@ class TestCheckRawdataStatusIndexIntegration:
         # Index was healed — second call sees chunks=2 directly.
         assert load_index(tmp_path)["entries"][entry_key("M1", 1)]["chunks"] == 2
 
-    def test_auto_delete_path_skips_index(self, tmp_path: Path, monkeypatch):
-        # auto_delete_mismatched requires per-chunk md5 inspection, so
-        # the reader must NOT shortcut through the index even when the
-        # aggregated md5 would appear to match.
+    def test_status_never_mutates_disk(self, tmp_path: Path, monkeypatch):
+        # Post 2026-04-21: check_rawdata_status is read-only. Even when
+        # called on a dir with md5-mismatched chunks (the old
+        # auto_delete_mismatched=True scenario) NOTHING is unlinked.
+        # md5 is a tag, not a destruction signal — deletions only
+        # happen through cache-management paths.
         _seed_chunks(tmp_path, "M1", 1, count=2)
         import src.web_console.backend.app as app
         monkeypatch.setattr(app, "_get_machine_md5", lambda *a, **kw: ("", ""))
         status = check_rawdata_status(
             "M1", 1, rawdata_root=tmp_path, machines_config=None,
-            auto_delete_mismatched=True,
         )
-        # Unverifiable + auto_delete = nothing to delete (all pass), but
-        # the code path still ran the full scan.
+        # Unverifiable upstream → treat as usable; no disk changes.
         assert status["usable_chunks"] == 2
-        assert status["deleted_paths"] == []
+        assert "deleted_paths" not in status
+        # Chunks still on disk.
+        chunk_files = sorted((tmp_path / "M1" / "mode_1").glob("chunk_*.json"))
+        assert len(chunk_files) == 2
 
     def test_missing_dir_returns_empty_status(self, tmp_path: Path):
         # No machine dir at all — status says exists=False; index is

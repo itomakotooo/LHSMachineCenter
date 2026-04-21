@@ -1,6 +1,6 @@
 """Tests for Commit 2 backend:
 
-* ``_classify_chunks()`` tier logic (kept / deletable / stale)
+* ``_classify_chunks()`` tier logic (kept / deletable / historical)
 * ``delete_rawdata()`` safe default vs ``force=True``
 * ``/api/rawdata/{machine}`` response shape (classification + version groups)
 * ``/api/settings`` GET/PUT round-trip + clamping
@@ -51,7 +51,7 @@ class TestClassifyChunks:
         out = _classify_chunks("M14", 1, rd_root, mc, 100_000)
         assert out["kept"] == []
         assert out["deletable"] == []
-        assert out["stale"] == []
+        assert out["historical"] == []
 
     def test_all_chunks_kept_below_retention(self, tmp_path):
         """5 chunks × 10k spins = 50k < 100k retention → all kept."""
@@ -69,7 +69,7 @@ class TestClassifyChunks:
         out = _classify_chunks("M14", 1, rd_root, mc, 100_000)
         assert len(out["kept"]) == 5
         assert out["deletable"] == []
-        assert out["stale"] == []
+        assert out["historical"] == []
         assert out["kept_spins"] == 50_000
 
     def test_split_at_retention_boundary(self, tmp_path):
@@ -94,7 +94,7 @@ class TestClassifyChunks:
         assert out["kept_spins"] == 100_000
         assert out["deletable_spins"] == 50_000
 
-    def test_stale_md5_separated_regardless_of_quota(self, tmp_path):
+    def test_historical_md5_separated_regardless_of_quota(self, tmp_path):
         """Stale chunks bypass the kept quota entirely — they're
         always on the chopping block."""
         from src.web_console.backend.app import _classify_chunks
@@ -105,7 +105,7 @@ class TestClassifyChunks:
         }]}), encoding="utf-8")
         rd_root = tmp_path / "rawdata"
         mode_dir = rd_root / "M14" / "mode_1"
-        # 5 current chunks (all kept) + 3 stale chunks
+        # 5 current chunks (all kept) + 3 historical-md5 chunks
         for i in range(1, 6):
             _write_chunk(mode_dir, i, config_md5="NEW", code_md5="NEW",
                          spin_times=10_000)
@@ -115,8 +115,8 @@ class TestClassifyChunks:
         out = _classify_chunks("M14", 1, rd_root, mc, 100_000)
         assert len(out["kept"]) == 5
         assert out["deletable"] == []
-        assert len(out["stale"]) == 3
-        assert out["stale_spins"] == 30_000
+        assert len(out["historical"]) == 3
+        assert out["historical_spins"] == 30_000
 
     def test_mixed_chunk_sizes_aggregated_correctly(self, tmp_path):
         """Mix of 1000-spin baseline chunks (from batch_dev_sampler)
@@ -161,9 +161,9 @@ class TestClassifyChunks:
                          spin_times=10_000)
         out = _classify_chunks("M14", 1, rd_root, mc, 100_000)
         assert len(out["kept"]) == 5
-        assert out["stale"] == []
+        assert out["historical"] == []
 
-    def test_unreadable_envelope_counted_as_stale(self, tmp_path):
+    def test_unreadable_envelope_counted_as_historical(self, tmp_path):
         """Corrupted envelope → reclaimable so it doesn't linger."""
         from src.web_console.backend.app import _classify_chunks
         mc = tmp_path / "machines.json"
@@ -176,12 +176,12 @@ class TestClassifyChunks:
         out = _classify_chunks("M14", 1, tmp_path / "rawdata", mc, 100_000)
         assert out["kept"] == []
         assert out["deletable"] == []
-        assert len(out["stale"]) == 1
+        assert len(out["historical"]) == 1
 
 
 class TestDeleteRawdataSafeDefault:
     def test_safe_delete_preserves_kept_quota(self, client, app_factory):
-        """UI delete default (force=false) removes deletable + stale,
+        """UI delete default (force=false) removes deletable + historical,
         keeps kept baseline intact."""
         c, _app = client
         mode_dir = app_factory.rawdata_dir / "M14" / "mode_1"

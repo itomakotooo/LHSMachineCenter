@@ -584,7 +584,7 @@ body {
   background: var(--bg, #f8fafc);
 }
 .rawdata-global-table .rawdata-reclaim { color: #b45309; font-weight: 500; }
-.rawdata-global-table .rawdata-stale { color: #b91c1c; font-weight: 500; }
+.rawdata-global-table .rawdata-historical { color: #6d28d9; font-weight: 500; }
 .rawdata-global-table .rwglobal-del-btn { white-space: nowrap; }
 
 /* System area: always-visible flat stack of system-level panels
@@ -649,8 +649,8 @@ body {
   font-weight: 500;
 }
 .rwtree-status.ok { background: #d1fae5; color: #065f46; }
-.rwtree-status.warn { background: #fef3c7; color: #92400e; }
-.rwtree-status.mixed { background: #fed7aa; color: #9a3412; }
+.rwtree-status.historical { background: #ede9fe; color: #5b21b6; }
+.rwtree-status.mixed { background: #fef3c7; color: #92400e; }
 .rwtree-status.none { background: #e5e7eb; color: #6b7280; }
 
 .rwtree-rawdata {

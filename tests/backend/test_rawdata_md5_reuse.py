@@ -123,27 +123,32 @@ class TestCheckRawdataStatus:
         assert st["usable_chunks"] == 2
         assert st["mismatch_chunks"] == 0
 
-    def test_mixed_chunks_auto_delete(self, tmp_path):
+    def test_mixed_chunks_no_auto_delete(self, tmp_path):
+        """Post 2026-04-21: check_rawdata_status is READ-ONLY. Even
+        when called on a dir with md5-mismatched chunks, no disk
+        mutation happens. The mismatched chunks stay on disk until a
+        cache-management path removes them. md5 is a tag, not a
+        destruction signal — prevents the M1|1 regression."""
         cfg = _make_machines_config(tmp_path, [
             {"machine": "M1", "configSummaryMd5": "aa", "codeSummaryMd5": "bb"},
         ])
         data_root = tmp_path / "data"
         mode_dir = data_root / "M1" / "mode_1"
         good1 = _write_chunk(mode_dir, 1, "aa", "bb")
-        bad = _write_chunk(mode_dir, 2, "stale", "stale")
+        bad = _write_chunk(mode_dir, 2, "old", "old")
         good2 = _write_chunk(mode_dir, 3, "aa", "bb")
 
         st = check_rawdata_status(
             "M1", 1, rawdata_root=data_root, machines_config=cfg,
-            auto_delete_mismatched=True,
         )
         assert st["usable_chunks"] == 2
         assert st["mismatch_chunks"] == 1
-        assert len(st["deleted_paths"]) == 1
-        # Good chunks remain; bad one deleted.
+        # ALL chunks still on disk — historical md5 stays.
         assert good1.exists()
         assert good2.exists()
-        assert not bad.exists()
+        assert bad.exists()
+        # Response schema no longer includes deleted_paths.
+        assert "deleted_paths" not in st
 
     def test_old_format_no_md5_treated_as_mismatch(self, tmp_path):
         """Envelope without _config_md5/_code_md5 (v1 format) → mismatch."""

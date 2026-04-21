@@ -1319,7 +1319,7 @@ function renderRawdataGlobalTable() {
     return mb >= 1 ? mb.toFixed(1) + " MB" : (b / 1024).toFixed(0) + " KB";
   };
   const rows = [...d.per_machine].sort((a, b) =>
-    (b.deletable_bytes + b.stale_bytes) - (a.deletable_bytes + a.stale_bytes)
+    (b.deletable_bytes + b.historical_bytes) - (a.deletable_bytes + a.historical_bytes)
   );
   if (!rows.length) {
     wrap.innerHTML = `<div class="muted">无 rawdata</div>`;
@@ -1332,7 +1332,7 @@ function renderRawdataGlobalTable() {
           <th>机台</th>
           <th>保底</th>
           <th>可回收</th>
-          <th>过期</th>
+          <th title="非当前 md5 的历史版本；不再自动删除，只通过缓存管理或手动删除">历史版本</th>
           <th>最近采样</th>
           <th>操作</th>
         </tr>
@@ -1342,7 +1342,7 @@ function renderRawdataGlobalTable() {
           const last = r.last_sample_mtime
             ? new Date(r.last_sample_mtime * 1000).toISOString().slice(0, 10)
             : "—";
-          const reclaim = r.deletable_bytes + r.stale_bytes;
+          const reclaim = r.deletable_bytes + r.historical_bytes;
           const delDisabled = reclaim <= 0 || _isAnyBusy();
           return `<tr class="rawdata-global-row" data-machine="${r.machine}">
             <td><strong>${r.machine}</strong></td>
@@ -1350,12 +1350,12 @@ function renderRawdataGlobalTable() {
             <td class="${r.deletable_bytes > 0 ? "rawdata-reclaim" : "muted"}">
               ${fMbShort(r.deletable_bytes)} <span class="muted">(${r.deletable_chunks})</span>
             </td>
-            <td class="${r.stale_bytes > 0 ? "rawdata-stale" : "muted"}">
-              ${fMbShort(r.stale_bytes)} <span class="muted">(${r.stale_chunks})</span>
+            <td class="${r.historical_bytes > 0 ? "rawdata-historical" : "muted"}">
+              ${fMbShort(r.historical_bytes)} <span class="muted">(${r.historical_chunks})</span>
             </td>
             <td class="muted">${last}</td>
             <td>
-              <button class="small-btn danger-btn rwglobal-del-btn" data-machine="${r.machine}" ${delDisabled ? "disabled" : ""} title="删除此机台的可回收 + 过期 chunks（保留 baseline）">🗑 ${fMbShort(reclaim)}</button>
+              <button class="small-btn danger-btn rwglobal-del-btn" data-machine="${r.machine}" ${delDisabled ? "disabled" : ""} title="删除此机台的可回收 + 历史版本 chunks（保留当前 md5 baseline）">🗑 ${fMbShort(reclaim)}</button>
             </td>
           </tr>`;
         }).join("")}
@@ -1662,27 +1662,31 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
     const versions = versionsAll.filter((v) => matchMd5(v.config_md5, v.code_md5));
     // Fix 3: chunk COUNTS are meaningless (each chunk has different
     // spin_times); operator tracks the retention quota in SPINS. Use
-    // kept_spins / deletable_spins / stale_spins instead.
+    // kept_spins / deletable_spins / historical_spins instead.
     const keptSpins = versions.reduce((s, v) => s + (v.kept_spins || 0), 0);
     const delSpins = versions.reduce((s, v) => s + (v.deletable_spins || 0), 0);
-    const staleSpins = versions.reduce((s, v) => s + (v.stale_spins || 0), 0);
-    const totalSpins = keptSpins + delSpins + staleSpins;
+    const historicalSpins = versions.reduce((s, v) => s + (v.historical_spins || 0), 0);
+    const totalSpins = keptSpins + delSpins + historicalSpins;
     const keptChunks = versions.reduce((s, v) => s + (v.kept_chunks || 0), 0);
     const delChunks = versions.reduce((s, v) => s + (v.deletable_chunks || 0), 0);
-    const staleChunks = versions.reduce((s, v) => s + (v.stale_chunks || 0), 0);
-    const totalChunks = keptChunks + delChunks + staleChunks;
+    const historicalChunks = versions.reduce((s, v) => s + (v.historical_chunks || 0), 0);
+    const totalChunks = keptChunks + delChunks + historicalChunks;
     const hasCurrent = versions.some((v) => v.is_current);
-    const hasStale = versions.some((v) => !v.is_current);
+    const hasHistorical = versions.some((v) => !v.is_current);
 
+    // Status tags: md5 drift is no longer a warning state (2026-04-21).
+    // Historical-only = neutral "历史版本" tag; current+historical =
+    // "当前+历史" coexistence. Commit 2 splits these into separate
+    // cells so this combined tag disappears.
     let statusTag;
     if (totalChunks === 0) {
       statusTag = `<span class="rwtree-status none">无</span>`;
-    } else if (hasCurrent && !hasStale) {
+    } else if (hasCurrent && !hasHistorical) {
       statusTag = `<span class="rwtree-status ok">✅当前</span>`;
-    } else if (hasStale && !hasCurrent) {
-      statusTag = `<span class="rwtree-status warn">⚠失配</span>`;
+    } else if (hasHistorical && !hasCurrent) {
+      statusTag = `<span class="rwtree-status historical">历史版本</span>`;
     } else {
-      statusTag = `<span class="rwtree-status mixed">⚠混合</span>`;
+      statusTag = `<span class="rwtree-status mixed">当前+历史</span>`;
     }
 
     // Filter reports to those matching the selected md5. Reports with
@@ -1742,7 +1746,7 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
             <span class="muted">(${totalChunks} chunks)</span>
           </div>
           <div class="rwtree-rawdata-line muted">
-            保底 ${fInt2(keptSpins)} / 可回收 ${fInt2(delSpins)}${staleSpins ? ` / 过期 ${fInt2(staleSpins)}` : ""}
+            保底 ${fInt2(keptSpins)} / 可回收 ${fInt2(delSpins)}${historicalSpins ? ` / 历史 ${fInt2(historicalSpins)}` : ""}
           </div>
           ${rawdataApprox}
           <div class="rwtree-rawdata-actions">

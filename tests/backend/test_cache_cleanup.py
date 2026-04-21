@@ -149,12 +149,15 @@ def test_cleanup_blocked_by_mutex_returns_409(client, app_factory):
     assert len(list(mode_dir.glob("chunk_*.json"))) == 15
 
 
-def test_cleanup_reclaims_stale_md5_chunks_first(
+def test_cleanup_reclaims_historical_and_deletable_by_mtime(
     tmp_state_dir, tmp_reports, tmp_cache, tmp_rawdata, fake_analyzer,
     tmp_path, monkeypatch,
 ):
-    """Stale-md5 chunks come first in the deletable queue regardless
-    of mtime, because they carry no analytical value."""
+    """Cache-cleanup merges deletable (current-md5 above retention) +
+    historical (other md5) into one pool, sorted strictly by mtime
+    oldest-first. Post 2026-04-21 semantics: md5 is a tag, not a
+    priority signal — a historical chunk only gets deleted earlier
+    because its mtime is older, not because its md5 is old."""
     monkeypatch.setattr(
         "src.web_console.backend.app._default_popen_factory",
         lambda *a, **kw: None,
@@ -199,35 +202,38 @@ def test_cleanup_reclaims_stale_md5_chunks_first(
     with TestClient(app) as c:
         resp = c.post("/api/cache/cleanup", json={"max_delete_bytes": 0})
         assert resp.status_code == 200
-        # Exactly the 2 stale chunks should be gone. The 10 kept chunks
-        # are baseline (md5 current + within retention).
+        # Exactly the 2 historical chunks should be gone. The 10 kept
+        # chunks are baseline (md5 current + within retention). Post
+        # 2026-04-21 semantics: cache/cleanup is a cache-management
+        # path and IS allowed to remove historical md5 chunks;
+        # check_rawdata_status is not.
         assert resp.json()["deleted_files"] == 2
         for p in stale_paths:
             assert not p.exists()
         assert sum(1 for _ in mode_dir.glob("chunk_*.json")) == 10
 
 
-def test_lock_survives_md5_drift_in_check_rawdata_status(
+def test_md5_drift_never_triggers_auto_delete(
     tmp_state_dir, tmp_reports, tmp_cache, tmp_rawdata, fake_analyzer,
     tmp_path, monkeypatch,
 ):
-    """REGRESSION: User reported M1|1 losing millions of spins of
-    locked chunks across a full batch (2026-04-20). Root cause:
-    ``start_batch`` calls ``check_rawdata_status(auto_delete_mismatched
-    =True)`` for every item, and that code path
-    unlinked any chunk whose envelope md5 didn't match current upstream
-    — without consulting the lock registry. A machine whose config md5
-    had drifted historically (old chunks carrying OLD md5, newer chunks
-    carrying CUR md5) saw ALL the old ones wiped the first time a
-    full-fleet batch ran, even if the operator had locked that
-    (machine, mode).
+    """REGRESSION + SEMANTIC FIX (2026-04-21): User reported M1|1
+    losing millions of spins of locked chunks across a full batch
+    (2026-04-20 M1|1 incident). Original root cause: ``start_batch``
+    called ``check_rawdata_status(auto_delete_mismatched=True)`` per
+    item, unlinking md5-mismatched chunks without consulting the lock.
 
-    This test locks M1|1, seeds a mix of stale + current chunks (the
-    exact pattern that bit M1 in production), and asserts that
-    ``check_rawdata_status(auto_delete_mismatched=True)`` leaves
-    every chunk on disk. The fix is the ``is_locked`` guard added
-    inside the function; without it, this test fails with the old
-    chunks gone."""
+    The first fix (ecc7c92) added a lock check inside that function.
+    The current fix goes further: md5 is a tag, not a destruction
+    signal. ``check_rawdata_status`` is now read-only and
+    ``auto_delete_mismatched`` is gone. This test locks NOTHING and
+    seeds mismatched chunks, then asserts no chunks are deleted —
+    proving the regression can't recur even without the lock.
+
+    The only way to remove md5-mismatched chunks is now through
+    cache-management paths (``_auto_cleanup_for_space`` under disk
+    pressure, ``POST /api/cache/cleanup`` manual, ``DELETE
+    /api/rawdata/{m}/mode/{mode}/version`` per-version)."""
     monkeypatch.setattr(
         "src.web_console.backend.app._default_popen_factory",
         lambda *a, **kw: None,
@@ -246,56 +252,41 @@ def test_lock_survives_md5_drift_in_check_rawdata_status(
     }), encoding="utf-8")
 
     mode_dir = tmp_rawdata / "M1" / "mode_1"
-    # Historical old-md5 chunks (the "几百万 spins" the user lost)
-    stale_paths = []
-    for i in range(1, 6):
-        stale_paths.append(_write_chunk(
+    # Historical md5 chunks (the "几百万 spins" the user lost in the
+    # original incident — here, no lock at all).
+    historical_paths = [
+        _write_chunk(
             mode_dir, i, config_md5="OLD_CFG", code_md5="OLD_CODE",
             spin_times=10_000,
-        ))
-    # Recent chunks with current md5 (these survived in prod too
-    # — it's the OLD-md5 chunks that got wiped).
-    current_paths = []
-    for i in range(6, 9):
-        current_paths.append(_write_chunk(
+        ) for i in range(1, 6)
+    ]
+    current_paths = [
+        _write_chunk(
             mode_dir, i, config_md5="CUR_CFG", code_md5="CUR_CODE",
             spin_times=10_000,
-        ))
+        ) for i in range(6, 9)
+    ]
 
-    # Write the lock registry BEFORE the batch-like call. Production
-    # bug: lock file was consulted by _auto_cleanup_for_space but NOT
-    # by check_rawdata_status, so auto_delete_mismatched bulldozed the
-    # stale chunks regardless.
-    locks_path = mc.parent / "rawdata_locks.json"
-    locks_path.write_text(json.dumps({
-        "locked": ["M1|1"], "updated_at": "2026-04-20T05:19:41Z",
-    }), encoding="utf-8")
-
-    # Invalidate the module-level lock cache so our freshly-written
-    # file is picked up. The cache keys on mtime_ns; a same-second
-    # write with a cold module can return an empty set otherwise.
+    # NO lock file — the prior fix required a lock to protect data;
+    # the current semantics protect it unconditionally.
     import src.web_console.backend.app as app_mod
     app_mod._LOCK_CACHE["mtime"] = 0
     app_mod._LOCK_CACHE["data"] = None
 
     from src.web_console.backend.app import check_rawdata_status
     result = check_rawdata_status(
-        "M1", 1,
-        rawdata_root=tmp_rawdata, machines_config=mc,
-        auto_delete_mismatched=True,
+        "M1", 1, rawdata_root=tmp_rawdata, machines_config=mc,
     )
 
-    # All 5 OLD chunks are still on disk — lock held the line.
-    for p in stale_paths:
-        assert p.exists(), f"LOCKED OLD-md5 chunk was deleted: {p.name}"
+    # All chunks on disk — check_rawdata_status is now read-only.
+    for p in historical_paths:
+        assert p.exists(), f"UNLOCKED historical-md5 chunk was deleted: {p.name}"
     for p in current_paths:
         assert p.exists(), f"current chunk vanished somehow: {p.name}"
-    # Status still reports the stale chunks as mismatched so the UI
-    # can flag "已锁 + stale" and nudge the operator to decide.
     assert result["mismatch_chunks"] == 5
     assert result["usable_chunks"] == 3
-    # deleted_paths should be empty — nothing was removed.
-    assert result["deleted_paths"] == []
+    # Response schema doesn't expose deleted_paths anymore.
+    assert "deleted_paths" not in result
 
 
 def test_delete_rawdata_respects_lock_without_force(
@@ -360,14 +351,22 @@ def test_delete_rawdata_respects_lock_without_force(
     assert not mode_dir.exists()
 
 
-def test_unlocked_md5_drift_still_deletes(
+# NOTE: The old `test_unlocked_md5_drift_still_deletes` was removed
+# 2026-04-21. It asserted the inverse of the lock guard: without a
+# lock, auto_delete_mismatched DID delete. That behaviour is now gone
+# — no md5-based auto-delete exists, with or without a lock. The
+# regression test above (`test_md5_drift_never_triggers_auto_delete`)
+# covers the new guarantee directly.
+
+
+def test_delete_rawdata_version_endpoint_targets_one_md5(
     tmp_state_dir, tmp_reports, tmp_cache, tmp_rawdata, fake_analyzer,
     tmp_path, monkeypatch,
 ):
-    """Inverse of the above: without a lock, the original
-    auto_delete_mismatched semantics still hold — stale chunks are
-    reclaimed. This prevents the fix from accidentally turning into
-    "never auto-delete mismatched chunks anywhere"."""
+    """New (2026-04-21) ``DELETE /api/rawdata/{m}/mode/{mode}/version``:
+    operator-targeted per-md5 cleanup. Removes every chunk whose
+    envelope md5 matches the body, leaves everything else — including
+    reports — untouched."""
     monkeypatch.setattr(
         "src.web_console.backend.app._default_popen_factory",
         lambda *a, **kw: None,
@@ -385,22 +384,100 @@ def test_unlocked_md5_drift_still_deletes(
         }],
     }), encoding="utf-8")
     mode_dir = tmp_rawdata / "M1" / "mode_1"
-    stale_paths = [
-        _write_chunk(mode_dir, i, config_md5="OLD", code_md5="OLD", spin_times=10_000)
+    # 3 current chunks + 3 historical chunks
+    cur_paths = [
+        _write_chunk(mode_dir, i, config_md5="CUR_CFG", code_md5="CUR_CODE", spin_times=10_000)
         for i in range(1, 4)
     ]
+    old_paths = [
+        _write_chunk(mode_dir, i, config_md5="OLD_CFG", code_md5="OLD_CODE", spin_times=10_000)
+        for i in range(4, 7)
+    ]
 
-    # No lock file written — pure "drifted chunks, no operator carve-out".
     import src.web_console.backend.app as app_mod
     app_mod._LOCK_CACHE["mtime"] = 0
     app_mod._LOCK_CACHE["data"] = None
 
-    from src.web_console.backend.app import check_rawdata_status
-    result = check_rawdata_status(
-        "M1", 1,
-        rawdata_root=tmp_rawdata, machines_config=mc,
-        auto_delete_mismatched=True,
+    from src.web_console.backend.app import create_app
+    from fastapi.testclient import TestClient
+    app = create_app(
+        state_dir=tmp_state_dir, reports_root=tmp_reports, cache_root=tmp_cache,
+        machines_config=mc, analyzer_path=fake_analyzer, rawdata_root=tmp_rawdata,
     )
-    for p in stale_paths:
-        assert not p.exists(), f"unlocked stale chunk survived: {p.name}"
-    assert len(result["deleted_paths"]) == 3
+    with TestClient(app) as c:
+        # Delete only the historical md5 bucket.
+        resp = c.request(
+            "DELETE", "/api/rawdata/M1/mode/1/version",
+            json={"config_md5": "OLD_CFG", "code_md5": "OLD_CODE"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["deleted_chunks"] == 3
+        assert body["deleted_spins"] == 30_000
+        assert body["skipped_chunks"] == 3  # 3 current chunks skipped
+        assert body["mode_dir_removed"] is False
+
+    # Current chunks untouched.
+    for p in cur_paths:
+        assert p.exists()
+    # Historical chunks gone.
+    for p in old_paths:
+        assert not p.exists()
+
+
+def test_delete_rawdata_version_respects_lock(
+    tmp_state_dir, tmp_reports, tmp_cache, tmp_rawdata, fake_analyzer,
+    tmp_path, monkeypatch,
+):
+    """Per-version delete honours the (m, mode) lock — locked pair
+    returns 409, operator must unlock first. User choice 2026-04-21:
+    lock means 'leave this pair alone', per-version delete is still
+    a pair-level write."""
+    monkeypatch.setattr(
+        "src.web_console.backend.app._default_popen_factory",
+        lambda *a, **kw: None,
+    )
+    monkeypatch.setattr(
+        "src.web_console.backend.app._terminate_pid_if_running",
+        lambda pid: True,
+    )
+    mc = tmp_path / "machines.json"
+    mc.write_text(json.dumps({
+        "machines": [{
+            "machine": "M1", "modes": [1],
+            "configSummaryMd5": "CUR_CFG",
+            "codeSummaryMd5": "CUR_CODE",
+        }],
+    }), encoding="utf-8")
+    mode_dir = tmp_rawdata / "M1" / "mode_1"
+    paths = [
+        _write_chunk(mode_dir, i, config_md5="OLD_CFG", code_md5="OLD_CODE", spin_times=10_000)
+        for i in range(1, 4)
+    ]
+
+    # Lock M1|1
+    locks_path = mc.parent / "rawdata_locks.json"
+    locks_path.write_text(json.dumps({
+        "locked": ["M1|1"], "updated_at": "2026-04-21T00:00:00Z",
+    }), encoding="utf-8")
+    import src.web_console.backend.app as app_mod
+    app_mod._LOCK_CACHE["mtime"] = 0
+    app_mod._LOCK_CACHE["data"] = None
+
+    from src.web_console.backend.app import create_app
+    from fastapi.testclient import TestClient
+    app = create_app(
+        state_dir=tmp_state_dir, reports_root=tmp_reports, cache_root=tmp_cache,
+        machines_config=mc, analyzer_path=fake_analyzer, rawdata_root=tmp_rawdata,
+    )
+    with TestClient(app) as c:
+        resp = c.request(
+            "DELETE", "/api/rawdata/M1/mode/1/version",
+            json={"config_md5": "OLD_CFG", "code_md5": "OLD_CODE"},
+        )
+        assert resp.status_code == 409
+        assert "locked" in resp.json()["detail"].lower()
+
+    # Nothing deleted.
+    for p in paths:
+        assert p.exists()
