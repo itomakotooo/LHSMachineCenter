@@ -24,13 +24,5905 @@
       "logicClassNames": [
         "SimulatedClassicPayline3Reel"
       ],
-      "configSummaryMd5": "35bc39ac98109074f4b5b0a695c83690",
+      "configSummaryMd5": "558dfcdd53cd1e822624470d20e9c36c",
       "codeSummaryMd5": "aa1f9fba749f460225a3b88bcd9d33fe",
       "available": true,
       "_source_machine": "M1",
       "_spec_path": "slot_designer/specs/M1.spec.json",
       "_weights_path_template": "slot_designer/weights/M1_mode{mode}.tuned.json",
       "_weights_fallback_template": "slot_designer/weights/M1_mode{mode}.current.json"
+    },
+    {
+      "machine": "M1",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "018656394ca8de9088ba2a25e0a78f00",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M2",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1e15a92378227fe938d77ac7ac76a3c4",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M3",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "d26e9de3ac888e84e669a958849ae41f",
+      "codeSummaryMd5": "3653a4d4092a5d55e2d5e4a7fe3f9373",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WheelPostProcessor",
+        "WheelPreProcessor",
+        "WheelSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M4",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "052af82615f48406d1fbba9c7c8da0bb",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M5",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "f27534778f4a7ac94bd9b4c8085868db",
+      "codeSummaryMd5": "ee2becc0e004eb2cc94cb75147992844",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "RisingFreeSpinGenerator",
+        "RisingFreeSpinPostProcessor",
+        "RisingFreeSpinPreProcessor",
+        "RisingFreeSpinValidator",
+        "RisingNormalPostProcessor",
+        "RisingSelectorGenerator",
+        "RisingSelectorPostProcessor"
+      ]
+    },
+    {
+      "machine": "M6",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "cd2c46ca45c00b012ebccd6e74a523dd",
+      "codeSummaryMd5": "5415c860e261de4e147c3e8100524312",
+      "logicClassNames": [
+        "FortunesFreeSpinDataModel",
+        "FortunesFreeSpinGenerator",
+        "FortunesFreeSpinPostProcessor",
+        "FortunesFreeSpinPreProcessor",
+        "FortunesFreeSpinValidator",
+        "FortunesGoldBonusSpinGenerator",
+        "FortunesPreFreeSpinGenerator",
+        "FortunesPreFreeSpinPostProcessor",
+        "FortunesSelectorGenerator",
+        "FortunesSelectorPostGenerator",
+        "FortunesSpinGenerator",
+        "FortunesSpinPostProcessor",
+        "FortunesSpinValidator",
+        "FreeSpinDataGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M7",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "f77e0a5b35212eadf89c32c291391e14",
+      "codeSummaryMd5": "f68454a5833a62feed44ec193a393d6e",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinValidator",
+        "RedHotRespinGenerator",
+        "RedHotRespinPostProcessor",
+        "RedHotRespinPreProcessor",
+        "RedHotRespinSpinValidator",
+        "RedHotSpinGenerator",
+        "RedHotSpinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M8",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "b672e6b2581fcd6a3c6ad401007e68a2",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M9",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "8989014e197861ab38ab758b109a8a50",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M10",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "5ee63f660ceea64a7a1fcbf79a8e11cd",
+      "codeSummaryMd5": "a2617134286a68f2a4481a29f13a5ea1",
+      "logicClassNames": [
+        "LockReSpinDataModel",
+        "LockReSpinGenerator",
+        "LockReSpinPostProcessor",
+        "LockReSpinPreProcessor",
+        "LockSpinGenerator",
+        "LockSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M11",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "e5ca7041e5cd8cb2ad80a0af1054994b",
+      "codeSummaryMd5": "327ee9b35dfe2f0de32be8b1bf0119f3",
+      "logicClassNames": [
+        "GrandFinalReSpinGenerator",
+        "GrandFinalReSpinPreProcessor",
+        "GrandFreeSpinGenerator",
+        "GrandFreeSpinPostProcessor",
+        "GrandFreeSpinPreProcessor",
+        "GrandFreeSpinValidator",
+        "GrandNormalSpinValidator",
+        "GrandReSpinGenerator",
+        "GrandReSpinPostProcessor",
+        "GrandReSpinPreProcessor",
+        "GrandReSpinValidator",
+        "GrandSpinGenerator",
+        "GrandSpinPostProcessor",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M12",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1685686fd07e652073796ee9e08b330d",
+      "codeSummaryMd5": "67c5e51d7a2b8bdbf549a63c70c0da34",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "TopDollarGenerator",
+        "TopDollarSelectorDataGenerator",
+        "TopDollarSelectorDataModel",
+        "TopDollarSelectorGenerator",
+        "TopDollarSpinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M13",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "f33476da81d74f7cbfc21810d4e5c7a0",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M14",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "4fcf00c48b3d6979aef058fed9ed5f94",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M15",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "2d89963173c4ce21690baa84f9bfec59",
+      "codeSummaryMd5": "44297a616be42cc26ed2bae3e6301d1a",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "TopDollarGenerator",
+        "TopDollarNormalValidator",
+        "TopDollarSelectorDataGenerator",
+        "TopDollarSelectorDataModel",
+        "TopDollarSelectorGenerator",
+        "TopDollarSpinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M16",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "900e394fbcd727d95c82ecc48615f3e6",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M17",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "5361baa6dc2f7fa8eb6567a9d07fc750",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M18",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "08003ef6b45673ce43ff4c4d0342dc96",
+      "codeSummaryMd5": "41e78e992c2b77deaf2b02f29494935b",
+      "logicClassNames": [
+        "GoldenRushFreeSpinGenerator",
+        "GoldenRushFreeSpinPostProcessor",
+        "GoldenRushFreeSpinPreProcessor",
+        "GoldenRushFreeSpinValidator",
+        "GoldenRushNormalPreProcessor",
+        "GoldenRushNormalSpinValidator",
+        "GoldenRushSpinDataGenerator",
+        "GoldenRushSpinDataModel",
+        "GoldenRushSpinGenerator",
+        "GoldenRushSpinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M19",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "ccc71fccc98bfbac7e86b794f9e3bfbb",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M20",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "3454a85786cba93255566638108ac176",
+      "codeSummaryMd5": "820a40c610f988a32dd2eeb2c83b96aa",
+      "logicClassNames": [
+        "CashMachineReSpinValidator",
+        "CashMachineSingleZeroReSpinPostProcessor",
+        "CashMachineSpinGenerator",
+        "CashMachineSpinPostProcessor",
+        "CashMachineSpinPreProcessor",
+        "CashMachineSpinValidator"
+      ]
+    },
+    {
+      "machine": "M21",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "55a58e358210ae6ec0c9e193381c52e3",
+      "codeSummaryMd5": "b257ab91133f38f96c2e4ec640a41c2b",
+      "logicClassNames": [
+        "GoldenBuffaloFreeSpinGenerator",
+        "GoldenBuffaloFreeSpinPostProcessor",
+        "GoldenBuffaloFreeSpinPreProcessor",
+        "GoldenBuffaloFreeSpinValidator",
+        "GoldenBuffaloSpinDataGenerator",
+        "GoldenBuffaloSpinDataModel_7_14",
+        "GoldenBuffaloSpinGenerator",
+        "GoldenBuffaloSpinPostProcessor",
+        "GoldenBuffaloSpinValidator",
+        "GoldenBuffaloWheelPreProcessor",
+        "GoldenBuffaloWheelSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M22",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "056ee41a5149e842ea9eb9e2d9763c3b",
+      "codeSummaryMd5": "9df0ec30582f4a637a30ce75ba5f69e8",
+      "logicClassNames": [
+        "DoubleGoldFreeSpinGenerator",
+        "DoubleGoldFreeSpinPostProcessor",
+        "DoubleGoldFreeSpinPreProcessor",
+        "DoubleGoldFreeSpinValidator",
+        "DoubleGoldSpinGenerator",
+        "DoubleGoldSpinPostProcessor",
+        "DoubleGoldSpinValidator",
+        "DoubleGoldWheelPreProcessor",
+        "DoubleGoldWheelSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M23",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "d1db88771f5e4392c37b719399ca4e6e",
+      "codeSummaryMd5": "a2617134286a68f2a4481a29f13a5ea1",
+      "logicClassNames": [
+        "LockReSpinDataModel",
+        "LockReSpinGenerator",
+        "LockReSpinPostProcessor",
+        "LockReSpinPreProcessor",
+        "LockSpinGenerator",
+        "LockSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M24",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c7813e8ef2a9e5e577f932b9b45d9dcc",
+      "codeSummaryMd5": "f7e9547512e7bd7e673a66b4122259d1",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "PigBankDataGenerator",
+        "PigBankDataModel",
+        "PigBankFreeSpinGenerator",
+        "PigBankFreeSpinPostProcessor",
+        "PigBankFreeSpinPreProcessor",
+        "PigBankFreeSpinValidator",
+        "PigBankMiniGameGenerator",
+        "PigBankMiniGameSettleGenerator",
+        "PigBankNormalSpinGenerator",
+        "PigBankNormalSpinPostProcessor",
+        "PigBankNormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M25",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "515e9931d9bd2e7fa474db7c253b1e3f",
+      "codeSummaryMd5": "1707615fb3a3dbe91a4e3694fcfcf658",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalReSpinPostProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "ReSpinGenerator",
+        "ReSpinPostProcessor",
+        "ReSpinPreProcessor",
+        "RespinValidator"
+      ]
+    },
+    {
+      "machine": "M26",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c8344f0e768a93364b64010a8f443319",
+      "codeSummaryMd5": "1a97515d7752f974e8cd84758d397fce",
+      "logicClassNames": [
+        "MoveSpinGenerator",
+        "MoveSpinPostProcessor",
+        "MoveSpinPreProcessor",
+        "MoveSpinValidator",
+        "NormalMoveSpinGenerator",
+        "NormalMoveSpinPostProcessor",
+        "NormalMoveSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M27",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "d4282b9b287d460b642b6ea9031d96ac",
+      "codeSummaryMd5": "0323c39a1a54c440fcfe4a1ff2d72d5a",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "TigerFinalStarGenerator",
+        "TigerFreeSpinGenerator",
+        "TigerFreeSpinPostProcessor",
+        "TigerFreeSpinPreProcessor",
+        "TigerFreeSpinValidator",
+        "TigerNormalSpinGenerator",
+        "TigerNormalSpinPostProcessor",
+        "TigerNormalSpinValidator",
+        "TigerStarGenerator",
+        "TigerStarPreProcessor"
+      ]
+    },
+    {
+      "machine": "M28",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "46c9fb5a39ca70e427db9830594ffe99",
+      "codeSummaryMd5": "be80f545ff7978398c495f45e5520745",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "RapidhitFreeSpinGenerator",
+        "RapidhitFreeSpinPreProcessor",
+        "RapidhitFreeSpinValidator",
+        "RapidhitNormalSpinGenerator",
+        "RapidhitNormalSpinValidator",
+        "RapidhitReSpinGenerator",
+        "RapidhitReSpinPreProcessor",
+        "RapidhitReSpinValidator"
+      ]
+    },
+    {
+      "machine": "M30",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1be33bc8fee8236143359055dfa5823a",
+      "codeSummaryMd5": "5840915542d24d10463a5fe7bdc8f7ac",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "SuperNormalSpinGenerator",
+        "SuperNormalSpinPostProcessor",
+        "SuperNormalSpinValidator",
+        "SuperRepinPreProcessor",
+        "SuperRespinGenerator",
+        "SuperRespinPostProcessor",
+        "SuperRespinValidator"
+      ]
+    },
+    {
+      "machine": "M31",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "e7f4aa3f7e8792473290d33cf3fe27f3",
+      "codeSummaryMd5": "8067f1baa85812bb05d91515f61bf2d6",
+      "logicClassNames": [
+        "FreeSpinGenerator",
+        "FreeSpinPostProcessor",
+        "FreeSpinPreProcessor",
+        "FreeSpinValidator",
+        "NormalFreeSpinGenerator",
+        "NormalFreeSpinPostProcessor",
+        "NormalFreeSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M32",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "5a17296f7e97bfc147545f916946c2fe",
+      "codeSummaryMd5": "611add9943fba069c084306d51637242",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "QuickDollarGenerator",
+        "QuickDollarPokerPreProcessor",
+        "QuickDollarPokerSpinGenerator",
+        "QuickDollarSelectorDataGenerator",
+        "QuickDollarSelectorDataModel",
+        "QuickDollarSelectorGenerator",
+        "QuickDollarSpinPostProcessor",
+        "QuickDollarWheelPreProcessor",
+        "QuickDollarWheelSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M33",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "fa02265dd7d130b57009be7bc1eb316a",
+      "codeSummaryMd5": "80d6e6ac61a3b8736407ce059e9459f9",
+      "logicClassNames": [
+        "GreenBuckFreeSpinGenerator",
+        "GreenBuckFreeSpinPostProcessor",
+        "GreenBuckFreeSpinPreProcessor",
+        "GreenBuckFreeSpinValidator",
+        "GreenBuckSpinGenerator",
+        "GreenBuckSpinPostProcessor",
+        "GreenBuckSpinPreProcessor",
+        "GreenBuckSpinValidator"
+      ]
+    },
+    {
+      "machine": "M34",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "757b7dc79b5c967db03e0c08d3ba1c43",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M35",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "5baea6b4d788a748db2ca219ada97ae3",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M36",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "33559b48c28a725277e19fb848c44ebb",
+      "codeSummaryMd5": "6b76fd0e9789eee4191c7168bb62a84e",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "TwinFreeSpinGenerator",
+        "TwinFreeSpinPostProcessor",
+        "TwinFreeSpinPreProcessor",
+        "TwinFreeSpinValidator",
+        "TwinNormalSpinGenerator",
+        "TwinNormalSpinPostProcessor",
+        "TwinNormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M37",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c226b1c302ec15647fd6584ae57078c5",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M38",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "37ce8e082b20ebc0d1a4b74c2a3e1118",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M39",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "fb53ce2c59ae867207407c35c848f133",
+      "codeSummaryMd5": "8e434353f2f3336a4c47811739488060",
+      "logicClassNames": [
+        "DancingDrumDataGenerator",
+        "DancingDrumDataModel",
+        "DancingDrumFreeSpinGenerator",
+        "DancingDrumFreeSpinPostProcessor",
+        "DancingDrumFreeSpinPreProcessor",
+        "DancingDrumFreeSpinValidator",
+        "DancingDrumGoldBonusGenerator",
+        "DancingDrumNormalSpinGenerator",
+        "DancingDrumNormalSpinPostProcessor",
+        "DancingDrumNormalSpinValidator",
+        "DancingDrumPersistDataGenerator",
+        "DancingDrumPersistDataModel",
+        "DancingDrumPreFreeSpinGenerator",
+        "DancingDrumPreFreeSpinPostProcessor",
+        "DancingDrumSelectorGenerator",
+        "DancingDrumSelectorPostProcessor",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M40",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "4737e2bbc3a98c4e3d45b07f62a8882e",
+      "codeSummaryMd5": "c8f480f0b70026dea1a9134da00b3398",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "WinWildValidator"
+      ]
+    },
+    {
+      "machine": "M41",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "847161ab6f03945c31770b9951ee5227",
+      "codeSummaryMd5": "c8f480f0b70026dea1a9134da00b3398",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "WinWildValidator"
+      ]
+    },
+    {
+      "machine": "M42",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "de118c908121c27f23e878590c482443",
+      "codeSummaryMd5": "e6b783b77b17f344c7ebacfcca3ebf7a",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "WinNormalSpinPostProcessor",
+        "WinReSpinGenerator",
+        "WinReSpinPostProcessor",
+        "WinReSpinPreProcessor",
+        "WinRespinWildValidator",
+        "WinWildValidator"
+      ]
+    },
+    {
+      "machine": "M43",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "b99e0b0523794944f807154a0da22e5e",
+      "codeSummaryMd5": "6e02924b710ae1ba0845223730cf728e",
+      "logicClassNames": [
+        "M43WinMiniGameGenerator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "WinNormalSpinPostProcessor",
+        "WinReSpinGenerator",
+        "WinReSpinPostProcessor",
+        "WinReSpinPreProcessor",
+        "WinRespinWildValidator",
+        "WinWildValidator"
+      ]
+    },
+    {
+      "machine": "M44",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "b9e6ffaba5272925e2b1a6ed50485d77",
+      "codeSummaryMd5": "e449b20fd3094244b000cdaa6d602119",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "WinMiniGameGenerator",
+        "WinNormalSpinPostProcessor",
+        "WinReSpinGenerator",
+        "WinReSpinPostProcessor",
+        "WinReSpinPreProcessor",
+        "WinRespinWildValidator",
+        "WinWildValidator"
+      ]
+    },
+    {
+      "machine": "M46",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "e6fdaeec1ed432618d03cde9323d7db2",
+      "codeSummaryMd5": "032cfb2751ddce840c6a4b28a70ffe81",
+      "logicClassNames": [
+        "LockReSpinDataModel",
+        "NormalRTPPreProcessor",
+        "UntilWinNormalSpinGenerator",
+        "UntilWinNormalSpinPostProcessor",
+        "UntilWinNormalSpinValidator",
+        "UntilWinReSpinGenerator",
+        "UntilWinReSpinPostProcessor",
+        "UntilWinReSpinPreProcessor",
+        "UntilWinReSpinValidator"
+      ]
+    },
+    {
+      "machine": "M47",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "f3bad977795c0b7dfffcd448a31d5457",
+      "codeSummaryMd5": "f2786308a0b4644589241ac1a5ab228d",
+      "logicClassNames": [
+        "GoldenDiceNormalGenerator",
+        "GoldenDiceNormalValidator",
+        "GoldenDiceRespinGenerator",
+        "GoldenDiceRespinPreProcessor",
+        "GoldenDiceRespinValidator",
+        "GoldenDiceStartMinigamePostProcessor",
+        "LockGoldenDicePostProcessor",
+        "LockSymbolDataModel",
+        "MinigameSettleGenerator",
+        "NormalRTPPreProcessor",
+        "SequenceWheelPostProcessor",
+        "SequenceWheelSpinGenerator",
+        "StartMinigameDataGenerator",
+        "StartMinigameDataModel",
+        "StartMinigameGenerator",
+        "WheelPreProcessor"
+      ]
+    },
+    {
+      "machine": "M48",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "06f0cdb0021a70ebad05d4af7c936d4c",
+      "codeSummaryMd5": "9d56f13521240d203875e8e1e3f8bf79",
+      "logicClassNames": [
+        "DoubleGemsWheelGenerator",
+        "DoubleGemsWheelPostProcessor",
+        "DoubleGemsWheelPreProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WheelPostProcessor"
+      ]
+    },
+    {
+      "machine": "M50",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "669da0518d945b17fbe72be35b3e1ba7",
+      "codeSummaryMd5": "c41054c42a3592f15a1c6c505729141d",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "TripleRedHotFreeSpinGenerator",
+        "TripleRedHotFreeSpinPostProcessor",
+        "TripleRedHotFreeSpinPreProcessor",
+        "TripleRedHotFreeSpinValidator",
+        "TripleRedHotNormalSpinGenerator",
+        "TripleRedHotNormalSpinPostProcessor",
+        "TripleRedHotNormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M51",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "40e56ddefc24b7d74bbb510f46d9a92a",
+      "codeSummaryMd5": "1a97515d7752f974e8cd84758d397fce",
+      "logicClassNames": [
+        "MoveSpinGenerator",
+        "MoveSpinPostProcessor",
+        "MoveSpinPreProcessor",
+        "MoveSpinValidator",
+        "NormalMoveSpinGenerator",
+        "NormalMoveSpinPostProcessor",
+        "NormalMoveSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M53",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "5685897fa171f5d64d671b786a2ac014",
+      "codeSummaryMd5": "f68454a5833a62feed44ec193a393d6e",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinValidator",
+        "RedHotRespinGenerator",
+        "RedHotRespinPostProcessor",
+        "RedHotRespinPreProcessor",
+        "RedHotRespinSpinValidator",
+        "RedHotSpinGenerator",
+        "RedHotSpinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M54",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "45ef1448fd7ff52c217128c3aa7a9858",
+      "codeSummaryMd5": "e449b20fd3094244b000cdaa6d602119",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "WinMiniGameGenerator",
+        "WinNormalSpinPostProcessor",
+        "WinReSpinGenerator",
+        "WinReSpinPostProcessor",
+        "WinReSpinPreProcessor",
+        "WinRespinWildValidator",
+        "WinWildValidator"
+      ]
+    },
+    {
+      "machine": "M57",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "586c38c64a8558c831a6a77ba63c583d",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M58",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "31da4d31609b45ead0bd6ece5e95c111",
+      "codeSummaryMd5": "63fcc5ecbc45d462b1cc4584a7bf0f8e",
+      "logicClassNames": [
+        "LockReSpinDataModel",
+        "LuckyBellRespinPostProcessor",
+        "NormalRTPPreProcessor",
+        "UntilWinNormalSpinGenerator",
+        "UntilWinNormalSpinPostProcessor",
+        "UntilWinNormalSpinValidator",
+        "UntilWinReSpinGenerator",
+        "UntilWinReSpinPreProcessor",
+        "UntilWinReSpinValidator"
+      ]
+    },
+    {
+      "machine": "M59",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c985e139a9cbd0a442aeb24d8332c520",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M60",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "75b80c67b973dd9b27a737a0e90e9535",
+      "codeSummaryMd5": "b8176503a196abc2ddd18cad80764e5d",
+      "logicClassNames": [
+        "FreeSpinPreProcessor",
+        "M60MultiplierFreeSpinPostProcessor",
+        "M60MultiplierFreeSpinValidator",
+        "M60WheelPostProcessor",
+        "MultiplierFreeSpinGenerator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WheelPostProcessor",
+        "WheelPreProcessor",
+        "WheelSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M61",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "d35a8f54d506ab0ff2d1789bf7c58bb5",
+      "codeSummaryMd5": "1707615fb3a3dbe91a4e3694fcfcf658",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalReSpinPostProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "ReSpinGenerator",
+        "ReSpinPostProcessor",
+        "ReSpinPreProcessor",
+        "RespinValidator"
+      ]
+    },
+    {
+      "machine": "M62",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "e597b3ec0d563e493fefeca496893cd4",
+      "codeSummaryMd5": "d49ad7aaadadd0600de75927e2cbc05b",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "UntilLoseNormalSpinPostProcessor",
+        "UntilLoseRespinGenerator",
+        "UntilLoseRespinPostProcessor",
+        "UntilLoseRespinPreProcessor",
+        "UntilLoseRespinValidator"
+      ]
+    },
+    {
+      "machine": "M63",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "0935ed438117c14060be46f44cc6f5b7",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M64",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "6738b14d0f0a04a2ef3f2f387ed9c3cd",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M65",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "4f82446af316b8ed1dfe12777ff02373",
+      "codeSummaryMd5": "e8522f210cf64a37f0a7fa4ff51e2e7a",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "WhiteXmasDataGenerator",
+        "WhiteXmasDataModel",
+        "WhiteXmasRespinGenerator",
+        "WhiteXmasRespinPreProcessor",
+        "WhiteXmasSpinGenerator",
+        "WhiteXmasSpinPostProcessor",
+        "WhiteXmasSpinValidator"
+      ]
+    },
+    {
+      "machine": "M66",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "6b7cc2cea84f04ece658e478932c8916",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M67",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "9dac51170bac7112a70221cf5e468869",
+      "codeSummaryMd5": "de739a97d92d0a97c3032f8965d7b7bb",
+      "logicClassNames": [
+        "FreeSpinGenerator",
+        "FreeSpinPreProcessor",
+        "FreeSpinValidator",
+        "LadderMinigameGenerator",
+        "LadderMinigameValidator",
+        "M67FreespinPostProcessor",
+        "M67NormalPostProcessor",
+        "NormalFreeSpinGenerator",
+        "NormalFreeSpinValidator",
+        "NormalRTPPreProcessor",
+        "ShotMinigameGenerator",
+        "ShotMinigamePreProcessor",
+        "ShotMinigameValidator"
+      ]
+    },
+    {
+      "machine": "M70",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "0f42474dd1b5ebc48e0afa6cb24e2d70",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M71",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c341cde14ed3e6b35f6ebc0dfc345c82",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M72",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "a9b1c48aac5b254b03f8c8749bf835e4",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M73",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "668d5fd12b06b03bab501e9b4638cdbd",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M74",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "be97b0175f4f1d5e1100e0a9e1c06c96",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M75",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c55f1eb2f397c7995b5b6af2002a22bc",
+      "codeSummaryMd5": "e449b20fd3094244b000cdaa6d602119",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "WinMiniGameGenerator",
+        "WinNormalSpinPostProcessor",
+        "WinReSpinGenerator",
+        "WinReSpinPostProcessor",
+        "WinReSpinPreProcessor",
+        "WinRespinWildValidator",
+        "WinWildValidator"
+      ]
+    },
+    {
+      "machine": "M76",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "2c01a3b2633c61c37b377db5333e2c51",
+      "codeSummaryMd5": "c87485df0c62f8c4cfd629cad5caca45",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "TwentyOneDiamondsNormalPostProcessor",
+        "TwentyOneDiamondsRespinGenerator",
+        "TwentyOneDiamondsRespinPostProcessor",
+        "TwentyOneDiamondsRespinPreProcessor",
+        "TwentyOneDiamondsRespinValidator"
+      ]
+    },
+    {
+      "machine": "M78",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "af8e207cd25e83c6262ff0a7d8888f54",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M79",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "f162e4c25aafae82d87f15437a72b47c",
+      "codeSummaryMd5": "8067f1baa85812bb05d91515f61bf2d6",
+      "logicClassNames": [
+        "FreeSpinGenerator",
+        "FreeSpinPostProcessor",
+        "FreeSpinPreProcessor",
+        "FreeSpinValidator",
+        "NormalFreeSpinGenerator",
+        "NormalFreeSpinPostProcessor",
+        "NormalFreeSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M84",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "422cf4f660a6fca8f77c4363e1f4a323",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M86",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "fa8688db0ad1bde2e0a493a0f3a94596",
+      "codeSummaryMd5": "056e1c6c7b16aca63378769b940fb15f",
+      "logicClassNames": [
+        "HoppyHuntingDataGenerator",
+        "HoppyHuntingDataModel",
+        "HoppyHuntingFreeSpinGenerator",
+        "HoppyHuntingFreeSpinPostProcessor",
+        "HoppyHuntingFreeSpinPreProcessor",
+        "HoppyHuntingFreeSpinValidator",
+        "HoppyHuntingNormalSpinGenerator",
+        "HoppyHuntingNormalSpinPostProcessor",
+        "HoppyHuntingNormalSpinValidator",
+        "HoppyHuntingPersistDataGenerator",
+        "HoppyHuntingPersistDataModel",
+        "HoppyHuntingPreFreeSpinGenerator",
+        "HoppyHuntingPreFreeSpinPostProcessor",
+        "HoppyHuntingSelectorGenerator",
+        "HoppyHuntingSelectorPostProcessor",
+        "HoppyHuntingWheelPreProcessor",
+        "HoppyHuntingWheelSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M87",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1584da3897edc941484db536f2e042ad",
+      "codeSummaryMd5": "79b1dd8db53d923730eb4ab84385f2df",
+      "logicClassNames": [
+        "FreeSpinGenerator",
+        "FreeSpinPostProcessor",
+        "FreeSpinPreProcessor",
+        "FreeSpinValidator",
+        "NormalFreeSpinGenerator",
+        "NormalFreeSpinPostProcessor",
+        "NormalFreeSpinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M88",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c007894475be84841b8a566e2dd18f1e",
+      "codeSummaryMd5": "535bb6209d0e1e482252822c788ad739",
+      "logicClassNames": [
+        "ButterflyFreespinGenerator",
+        "ButterflyFreespinPostProcessor",
+        "ButterflyFreespinPreProcessor",
+        "ButterflyFreespinValidator",
+        "ButterflyNormalPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M90",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "aa3c469da45dad479fcc99f07cd4969e",
+      "codeSummaryMd5": "8b94894629bfb1a6300c7e765466a53c",
+      "logicClassNames": [
+        "CollectionTopDollarGenerator",
+        "CollectionTopDollarPersistDataGenerator",
+        "CollectionTopDollarPersistDataModel",
+        "CollectionTopDollarPostProcessor",
+        "CollectionTopDollarSelectorGenerator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "TopDollarNormalValidator",
+        "TopDollarSelectorDataGenerator",
+        "TopDollarSelectorDataModel",
+        "TopDollarSpinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M93",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "228d53c3f808d26787258d612c671236",
+      "codeSummaryMd5": "d6d2012a03e0d7ce714c6cb036d18722",
+      "logicClassNames": [
+        "DiamondManiaEnterFreespinPostProcessor",
+        "DiamondManiaFreespinGenerator",
+        "DiamondManiaFreespinPostProcessor",
+        "DiamondManiaFreespinPreProcessor",
+        "DiamondManiaFreespinValidator",
+        "DiamondManiaFreespinWheelGenerator",
+        "DiamondManiaFreespinWheelPostProcessor",
+        "DiamondManiaFreespinWheelPreProcessor",
+        "DiamondManiaNormalPostProcessor",
+        "DiamondManiaWheelSpinGenerator",
+        "LockReSpinDataModel",
+        "LockReSpinGenerator",
+        "LockReSpinPreProcessor",
+        "LockSpinGenerator",
+        "LockSpinValidator",
+        "NormalRTPPreProcessor",
+        "WheelPreProcessor"
+      ]
+    },
+    {
+      "machine": "M94",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "6b171a70dbc46b2944751e4bdb0ffa86",
+      "codeSummaryMd5": "fb0bb2b698dd1b1284e0611e3f81d76d",
+      "logicClassNames": [
+        "CollectionDoubleGemsNormalGenerator",
+        "CollectionDoubleGemsNormalPostProcessor",
+        "CollectionDoubleGemsPersistDataGenerator",
+        "CollectionDoubleGemsPersistDataModel",
+        "CollectionDoubleGemsWheelGenerator",
+        "CollectionDoubleGemsWheelPostProcessor",
+        "CollectionDoubleGemsWheelPreProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M95",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "53186e4478370a12cf4f056ba2ed6a6d",
+      "codeSummaryMd5": "8067f1baa85812bb05d91515f61bf2d6",
+      "logicClassNames": [
+        "FreeSpinGenerator",
+        "FreeSpinPostProcessor",
+        "FreeSpinPreProcessor",
+        "FreeSpinValidator",
+        "NormalFreeSpinGenerator",
+        "NormalFreeSpinPostProcessor",
+        "NormalFreeSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M96",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "8f5b76b3d79d9c0dc0929dccccd66ed2",
+      "codeSummaryMd5": "4c03f461a84138ba67161e5b7dbf8210",
+      "logicClassNames": [
+        "LockFreespinGenerator",
+        "LockFreespinNormalGenerator",
+        "LockFreespinNormalPostProcessor",
+        "LockFreespinNormalValidator",
+        "LockFreespinPostProcessor",
+        "LockFreespinPreProcessor",
+        "LockFreespinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M97",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1f14a21573e9323b9ab3ecb5719b9a28",
+      "codeSummaryMd5": "9f396a207487841b98389ac82329b55e",
+      "logicClassNames": [
+        "FishingFreespinGenerator",
+        "FishingFreespinPostProcessor",
+        "FishingFreespinPreProcessor",
+        "FishingFreespinValidator",
+        "FishingMapGenerator",
+        "FishingMapPersistDataGenerator",
+        "FishingMapPersistDataModel",
+        "FishingMapPostProcessor",
+        "FishingMapValidator",
+        "FishingMinigameGenerator",
+        "FishingMinigamePostProcessor",
+        "FishingMinigamePreProcessor",
+        "FishingMinigameValidator",
+        "FishingNormalGenerator",
+        "FishingNormalPostProcessor",
+        "FishingNormalValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M98",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "ed9a9a5be2f49c42a421fa65b91fb475",
+      "codeSummaryMd5": "3baf429f5302ffc0318d4679669682bc",
+      "logicClassNames": [
+        "FlippingMinigameGenerator",
+        "FlippingMinigamePostProcessor",
+        "FlippingMinigameValidator",
+        "FlippingNormalPostProcessor",
+        "FlippingSelectorDataGenerator",
+        "FlippingSelectorDataModel",
+        "FlippingSelectorGenerator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M99",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "ab4fb02d49c94a21e32ebf45bd2257ac",
+      "codeSummaryMd5": "143c06074652fab9be7aeaa12d08c578",
+      "logicClassNames": [
+        "FinalMinigameGenerator",
+        "GoldenPrizeNormalPostProcessor",
+        "GoldenPrizeWheelGenerator",
+        "GoldenPrizeWheelPostProcessor",
+        "GoldenPrizeWheelPreProcessor",
+        "GoldenPrizeWheelValidator",
+        "LockSymbolNormalGenerator",
+        "LockSymbolRespinPreProcessor",
+        "LockSymbolSpinGenerator",
+        "LockSymbolSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M100",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "f1430c3855c3283897a2c80183e9018a",
+      "codeSummaryMd5": "d0b2df3279959044e1f76d2efc88dc88",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "WolfMoonFreespinGenerator",
+        "WolfMoonFreespinPostProcessor",
+        "WolfMoonFreespinPreProcessor",
+        "WolfMoonFreespinValidator",
+        "WolfMoonLockSpinGenerator",
+        "WolfMoonLockSpinPostProcessor",
+        "WolfMoonLockSpinPreProcessor",
+        "WolfMoonLockSpinValidator",
+        "WolfMoonNormalGenerator",
+        "WolfMoonNormalValidator"
+      ]
+    },
+    {
+      "machine": "M101",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "04084ef4c868814b3e2ca224908e3cb2",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M102",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "5db83bbfa8f5e3d6cd3eeb0c46213808",
+      "codeSummaryMd5": "18828a1ea75ec684f6f2975d00713836",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "EnterWheelSelectorPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "PreWheelGenerator",
+        "PreWheelPostProcessor",
+        "PreWheelValidator",
+        "WheelSelectorDataGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator",
+        "WheelSelectorPostProcessor"
+      ]
+    },
+    {
+      "machine": "M103",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "00a1932e6fc6fd085b3bd721261a1c68",
+      "codeSummaryMd5": "ec791848be7409bc6cde56dd111682a3",
+      "logicClassNames": [
+        "DancingDrumGoldBonusGenerator",
+        "LockSymbolNormalGenerator",
+        "LockSymbolRespinPreProcessor",
+        "LockSymbolSpinGenerator",
+        "LockSymbolSpinValidator",
+        "NormalRTPPreProcessor",
+        "TwentyXSpinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M104",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c2e3d2e50c43bf32eb7d2b3a7525bc36",
+      "codeSummaryMd5": "bef7262659612700a6c7fe55a6c17071",
+      "logicClassNames": [
+        "LockSymbolNormalGenerator",
+        "LockSymbolPostProcessor",
+        "LockSymbolRespinPreProcessor",
+        "LockSymbolSpinGenerator",
+        "LockSymbolSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M105",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "212e44b4da45ac5bdda3ec7c5ec2ca47",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M106",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "867b75cc89bed5be501c7d3c5090a4f8",
+      "codeSummaryMd5": "a5611a7b253dc4173acc79157d19ef33",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "OnlyGiveThisRewardValidator"
+      ]
+    },
+    {
+      "machine": "M107",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "bb095a095d4df7678161b5c92c5a3d0e",
+      "codeSummaryMd5": "9210dfaf14e88792ec077dd6dff4c62d",
+      "logicClassNames": [
+        "DancingDrumGoldBonusGenerator",
+        "DancingDrumNormalSpinGenerator",
+        "DancingDrumPersistDataGenerator",
+        "DancingDrumPersistDataModel",
+        "DragonFreespinGenerator",
+        "DragonFreespinPostProcessor",
+        "DragonFreespinPreProcessor",
+        "DragonFreespinValidator",
+        "DragonNormalPostProcessor",
+        "DragonNormalSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M108",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "401f8e5306a857e40a3294ad2d72f87a",
+      "codeSummaryMd5": "3ff4612df637c4f747cbbf9b3818ff8a",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapPostProcessor",
+        "BuffCollectionMapValidator",
+        "BuffCollectionWheelGenerator",
+        "BuffCollectionWheelPostProcessor",
+        "BuffCollectionWheelPreProcessor",
+        "ButterflyFreespinGenerator",
+        "ButterflyFreespinPostProcessor",
+        "ButterflyFreespinPreProcessor",
+        "ButterflyFreespinValidator",
+        "CollectionButterflyNormalPostProcessor",
+        "CreditsSymbolCollectionNormalGenerator",
+        "CreditsSymbolCollectionNormalValidator",
+        "MapButterflyFreespinGenerator",
+        "MapButterflyFreespinPostProcessor",
+        "MapButterflyFreespinPreProcessor",
+        "MapButterflyFreespinValidator",
+        "NormalRTPPreProcessor",
+        "SettleMapGenerator"
+      ]
+    },
+    {
+      "machine": "M109",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "3c5bcc468ba54c24ae7118a02fa6cf8f",
+      "codeSummaryMd5": "e98a4687c3b000ada2474639a42e17b1",
+      "logicClassNames": [
+        "FreeSpinPreProcessor",
+        "MultiplierFreeSpinGenerator",
+        "MultiplierFreeSpinPostProcessor",
+        "MultiplierFreeSpinValidator",
+        "NormalFreeSpinGenerator",
+        "NormalFreeSpinPostProcessor",
+        "NormalFreeSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M110",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1a2443388c9a8dae5a19dacd650eecdf",
+      "codeSummaryMd5": "a7dfa11f3c0d4a3f32afd0e83f530c40",
+      "logicClassNames": [
+        "M110NormalPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "PowerBallGenerator",
+        "PowerBallPostProcessor",
+        "PowerBallPreProcessor",
+        "PowerBallValidator",
+        "WheelPreProcessor",
+        "WheelSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M111",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "d1fedc4eb80684bf1aeee2a4eaa764e5",
+      "codeSummaryMd5": "a298badbe477557a045ad39b6bcee3ab",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionRapidHitNormalGenerator",
+        "CollectionRapidHitNormalPostProcessor",
+        "CollectionRapidHitNormalValidator",
+        "CollectionRapidHitRespinGenerator",
+        "CollectionRapidHitRespinPostProcessor",
+        "CollectionRapidHitRespinPreProcessor",
+        "CollectionRapidHitRespinValidator",
+        "M111MapPostProcessor",
+        "NormalRTPPreProcessor",
+        "RapidhitFreeSpinGenerator",
+        "RapidhitFreeSpinPreProcessor",
+        "RapidhitFreeSpinValidator",
+        "RapidhitReSpinGenerator",
+        "RapidhitReSpinPreProcessor",
+        "RapidhitReSpinValidator"
+      ]
+    },
+    {
+      "machine": "M112",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "0e6e40f148878434446dd584541e5cd4",
+      "codeSummaryMd5": "30396d212e76f76a6ef20b16d0a19948",
+      "logicClassNames": [
+        "FinalMinigameGenerator",
+        "GoldenPrizeWheelPostProcessor",
+        "GoldenPrizeWheelPreProcessor",
+        "GoldenPrizeWheelValidator",
+        "M112GoldenPrizeWheelGenerator",
+        "M112NormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M113",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1123b1cea111595d84c93225dbeed090",
+      "codeSummaryMd5": "2c97b365d77f566a7cbfd406f1b3e253",
+      "logicClassNames": [
+        "ExpandingSymbolSpinGenerator",
+        "ExpandingSymbolSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M114",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "fe6399020ec79d9d8350c8e4c459a56c",
+      "codeSummaryMd5": "df34cb1bf12d0d3485975ca25ca247d3",
+      "logicClassNames": [
+        "EnterLockSymbolFreespinGenerator",
+        "EnterLockSymbolFreespinPostProcessor",
+        "LockSymbolFreespinGenerator",
+        "LockSymbolFreespinPostProcessor",
+        "LockSymbolFreespinPreProcessor",
+        "LockSymbolFreespinValidator",
+        "M114NormalPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M116",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "afe9dd791837207c537a942c02706765",
+      "codeSummaryMd5": "0f084932f3374bf5ec5f31525271bb30",
+      "logicClassNames": [
+        "ChristmasFreespinRandomRewardGenerator",
+        "ChristmasFreespinRandomRewardPostProcessor",
+        "ChristmasFreespinRandomRewardPreProcessor",
+        "ChristmasFreespinRandomRewardValidator",
+        "ChristmasFreespinSettlePostProcessor",
+        "ChristmasLockSymbolFreespinGenerator",
+        "ChristmasLockSymbolFreespinPostProcessor",
+        "ChristmasLockSymbolFreespinValidator",
+        "ChristmasMapPostProcessor",
+        "ChristmasNormalPostProcessor",
+        "ChristmasPreFreespinPostProcessor",
+        "ChristmasSimpleSelectorPostProcessor",
+        "DancingDrumGoldBonusGenerator",
+        "FishingMapGenerator",
+        "FishingMapPersistDataGenerator",
+        "FishingMapPersistDataModel",
+        "FishingMapValidator",
+        "FishingNormalGenerator",
+        "FishingNormalValidator",
+        "FreespinSettleGenerator",
+        "LockSymbolFreespinPreProcessor",
+        "M116WheelSpinGenerator",
+        "NormalRTPPreProcessor",
+        "SelectorPreFreespinGenerator",
+        "SimpleSelectorDataGenerator",
+        "SimpleSelectorDataModel",
+        "SimpleSelectorGenerator",
+        "WheelPreProcessor"
+      ]
+    },
+    {
+      "machine": "M117",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "ea51e84922e97731a07916bec119ce4b",
+      "codeSummaryMd5": "9532276600ebfc1f8f8009802388f5b1",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CreditsSymbolCollectionNormalGenerator",
+        "CreditsSymbolCollectionNormalValidator",
+        "CreditsSymbolRespinGenerator",
+        "CreditsSymbolRespinPostProcessor",
+        "CreditsSymbolRespinPreProcessor",
+        "CreditsSymbolRespinSettleGenerator",
+        "CreditsSymbolRespinSettlePreProcessor",
+        "CreditsSymbolRespinSettleValidator",
+        "CreditsSymbolRespinValidator",
+        "M116WheelSpinGenerator",
+        "M117FreespinGenerator",
+        "M117FreespinValidator",
+        "M117MapPostProcessor",
+        "M117NormalPostProcessor",
+        "M117WheelPostProcessor",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NormalRTPPreProcessor",
+        "WheelPreProcessor"
+      ]
+    },
+    {
+      "machine": "M119",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "38bf55afe5018868a234605d27945e46",
+      "codeSummaryMd5": "0a7a4ed85573aa18b93294a73127daf6",
+      "logicClassNames": [
+        "AddFreespinWheelGenerator",
+        "AddFreespinWheelPostProcessor",
+        "AddFreespinWheelPreProcessor",
+        "AddFreespinWheelValidator",
+        "EnterWheelPostProcessor",
+        "M119WheelPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "SuperFreespinGenerator",
+        "SuperFreespinPostProcessor",
+        "SuperFreespinPreProcessor",
+        "SuperFreespinValidator",
+        "WildFreespinGenerator",
+        "WildFreespinPostProcessor",
+        "WildFreespinPreProcessor",
+        "WildFreespinValidator"
+      ]
+    },
+    {
+      "machine": "M120",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "8c0e4ff514bd5e16eff76188548e3af7",
+      "codeSummaryMd5": "7bc92d27b3b6ee08da3946d3e8a43bb1",
+      "logicClassNames": [
+        "M120NormalPostProcessor",
+        "MultiSymbolCollectionFreespinGenerator",
+        "MultiSymbolCollectionFreespinPostProcessor",
+        "MultiSymbolCollectionFreespinPreProcessor",
+        "MultiSymbolCollectionFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M121",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "97923ca2b571d6985fbef53a5f44c089",
+      "codeSummaryMd5": "878653a9a78b606cb0a864dc382f3016",
+      "logicClassNames": [
+        "EnterTowerFreespinNormalPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "TowerFreespinGenerator",
+        "TowerFreespinPostProcessor",
+        "TowerFreespinPreProcessor",
+        "TowerFreespinValidator"
+      ]
+    },
+    {
+      "machine": "M122",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "4d098618ad89ea639c0b535044298484",
+      "codeSummaryMd5": "691fec39b6d572fd19fcfb5dd0fbc271",
+      "logicClassNames": [
+        "FrameGameDataGenerator",
+        "FrameGameDataModel",
+        "JewelBlitzNormalGenerator",
+        "JewelBlitzNormalValidator",
+        "JewelBlitzPostProcessor",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M123",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1ece493a036410374adfd49f1bacae04",
+      "codeSummaryMd5": "58418d3733f5bd87fed599f3ecd6f768",
+      "logicClassNames": [
+        "ChristmasFreespinSettlePostProcessor",
+        "FishingMapGenerator",
+        "FishingMapPersistDataGenerator",
+        "FishingMapPersistDataModel",
+        "FishingMapValidator",
+        "FishingNormalGenerator",
+        "FishingNormalValidator",
+        "FreespinSettleGenerator",
+        "M116WheelSpinGenerator",
+        "NormalRTPPreProcessor",
+        "SelectorPreFreespinGenerator",
+        "SimpleSelectorDataGenerator",
+        "SimpleSelectorDataModel",
+        "SimpleSelectorGenerator",
+        "ValentineFreespinGenerator",
+        "ValentineFreespinPostProcessor",
+        "ValentineFreespinPreProcessor",
+        "ValentineFreespinValidator",
+        "ValentineMapPostProcessor",
+        "ValentineNormalPostProcessor",
+        "ValentinePreFreespinPostProcessor",
+        "ValentineSimpleSelectorPostProcessor",
+        "WheelPreProcessor"
+      ]
+    },
+    {
+      "machine": "M124",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "de38395bc6edf0a584fbb425c49322b0",
+      "codeSummaryMd5": "c0b998cae2960fe284928596b54fda0c",
+      "logicClassNames": [
+        "EnterListRewardPostProcessor",
+        "ListRewardMinigameGenerator",
+        "ListRewardMinigamePreProcessor",
+        "ListRewardMinigameValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M125",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "db8e5e08877d2cd7a8a2440011334822",
+      "codeSummaryMd5": "1d6b97ea77223158461d9edad7203b27",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapPostProcessor",
+        "BuffCollectionMapValidator",
+        "BuffCollectionWheelGenerator",
+        "BuffCollectionWheelPreProcessor",
+        "CreditsSymbolCollectionNormalGenerator",
+        "CreditsSymbolCollectionNormalValidator",
+        "M125FreespinGenerator",
+        "M125FreespinPostProcessor",
+        "M125NormalPostProcessor",
+        "M125WheelPostProcessor",
+        "M125WheelPreProcessor",
+        "M125WheelValidator",
+        "MultiSymbolCollectionFreespinPreProcessor",
+        "MultiSymbolCollectionFreespinValidator",
+        "NewWheelGenerator",
+        "NormalRTPPreProcessor",
+        "SettleMapGenerator"
+      ]
+    },
+    {
+      "machine": "M126",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "00b2f6385a16987b6a37a0688c0472fa",
+      "codeSummaryMd5": "1df65837e97c3fac6c9cc2daf07090e2",
+      "logicClassNames": [
+        "AddFreespinWheelPreProcessor",
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M126AddFreespinWheelPostProcessor",
+        "M126AddFreespinWheelValidator",
+        "M126FreespinPostProcessor",
+        "M126FreespinValidator",
+        "M126NormalPostProcessor",
+        "M126WheelValidator",
+        "MapToFreespinPostProcessor",
+        "NewAddFreespinWheelGenerator",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NormalCollectionSpinGenerator",
+        "NormalCollectionSpinValidator",
+        "NormalRTPPreProcessor",
+        "WheelToFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M127",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "24eec48a794bfe3f67cb2bd8425a554a",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M128",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "41ecbe13e503304462f37d916bc49241",
+      "codeSummaryMd5": "8b39f2208cc74dab95fc86ed16b0eb91",
+      "logicClassNames": [
+        "M128NormalPostProcessor",
+        "M128ReSpinPostProcessor",
+        "M128UntilWinReSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "ReSpinGenerator",
+        "ReSpinPreProcessor",
+        "RespinValidator",
+        "UntilWinNormalSpinGenerator",
+        "UntilWinNormalSpinValidator",
+        "UntilWinReSpinGenerator",
+        "UntilWinReSpinPreProcessor",
+        "UntilWinReSpinValidator"
+      ]
+    },
+    {
+      "machine": "M129",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "92a48b724693b58304c7ae375e6b970c",
+      "codeSummaryMd5": "be80f545ff7978398c495f45e5520745",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "RapidhitFreeSpinGenerator",
+        "RapidhitFreeSpinPreProcessor",
+        "RapidhitFreeSpinValidator",
+        "RapidhitNormalSpinGenerator",
+        "RapidhitNormalSpinValidator",
+        "RapidhitReSpinGenerator",
+        "RapidhitReSpinPreProcessor",
+        "RapidhitReSpinValidator"
+      ]
+    },
+    {
+      "machine": "M130",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "96fbd3f8c1be6d058f1354a6a1395aa6",
+      "codeSummaryMd5": "55978ded802f70ef768d53bec498b35a",
+      "logicClassNames": [
+        "EnterGrowingFreespinGenerator",
+        "EnterGrowingFreespinPostProcessor",
+        "GrowingFreespinGenerator",
+        "GrowingFreespinPostProcessor",
+        "GrowingFreespinPreProcessor",
+        "GrowingFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToEnterGrowingFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M131",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "36d62c1b40a205e5613d9aae82a23177",
+      "codeSummaryMd5": "a2617134286a68f2a4481a29f13a5ea1",
+      "logicClassNames": [
+        "LockReSpinDataModel",
+        "LockReSpinGenerator",
+        "LockReSpinPostProcessor",
+        "LockReSpinPreProcessor",
+        "LockSpinGenerator",
+        "LockSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M132",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "ae592514cdc807706273e08f4ea14530",
+      "codeSummaryMd5": "44297a616be42cc26ed2bae3e6301d1a",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "TopDollarGenerator",
+        "TopDollarNormalValidator",
+        "TopDollarSelectorDataGenerator",
+        "TopDollarSelectorDataModel",
+        "TopDollarSelectorGenerator",
+        "TopDollarSpinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M133",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "06e9045f80e1d88999920a633e5c9c2b",
+      "codeSummaryMd5": "f205499b3c85636731fc540cd5324b29",
+      "logicClassNames": [
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinValidator",
+        "LockReSpinDataModel",
+        "LockReSpinPostProcessor",
+        "MoveLockReSpinGenerator",
+        "MoveLockSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M134",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "e70fb892d7a587bf5c8a5593995192bf",
+      "codeSummaryMd5": "39c0f03f827e99d14d84c1b284bc0548",
+      "logicClassNames": [
+        "FreeSpinGenerator",
+        "FreeSpinPostProcessor",
+        "FreeSpinValidator",
+        "M134FreeSpinPreProcessor",
+        "NormalFreeSpinGenerator",
+        "NormalFreeSpinPostProcessor",
+        "NormalFreeSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M135",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "9e237bd468923bb061d6d4b9d03961fe",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M136",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "2954ce1700b11684e16c610f0f013d00",
+      "codeSummaryMd5": "a972709cafbb8e032eeba795a8fb89a0",
+      "logicClassNames": [
+        "M136RapidHitFreespinPostProcessor",
+        "M136RapidHitNormalPostProcessor",
+        "M136RapidHitRespinPostProcessor",
+        "M136RapidhitFreeSpinValidator",
+        "M136RapidhitNormalSpinValidator",
+        "M136RapidhitReSpinValidator",
+        "NormalRTPPreProcessor",
+        "RapidhitFreeSpinGenerator",
+        "RapidhitFreeSpinPreProcessor",
+        "RapidhitNormalSpinGenerator",
+        "RapidhitReSpinGenerator",
+        "RapidhitReSpinPreProcessor"
+      ]
+    },
+    {
+      "machine": "M137",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "63c8f56f689500e7456a9522fdc589b0",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M138",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "870a1d74c10e4ca17fc50bdb5a54aaaa",
+      "codeSummaryMd5": "30bd9a5d76b3b4b926e68d5b41a92016",
+      "logicClassNames": [
+        "BingoCollectionPersistDataGenerator",
+        "BingoCollectionPersistDataModel",
+        "BingoFreespinGenerator",
+        "BingoFreespinPostProcessor",
+        "BingoFreespinValidator",
+        "BingoNormalPostProcessor",
+        "BingoNormalSpinGenerator",
+        "BingoNormalSpinValidator",
+        "CommonNormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M139",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "46230ef5ba53baec27be7388274074ae",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M140",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "2e25910a6cce857378a7ddb7d53226a1",
+      "codeSummaryMd5": "1a97515d7752f974e8cd84758d397fce",
+      "logicClassNames": [
+        "MoveSpinGenerator",
+        "MoveSpinPostProcessor",
+        "MoveSpinPreProcessor",
+        "MoveSpinValidator",
+        "NormalMoveSpinGenerator",
+        "NormalMoveSpinPostProcessor",
+        "NormalMoveSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M142",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "811e8e1f1e0df918c7a954380da43ad2",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M144",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c41d54821d14129f49237da6461d85b5",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M145",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "cde804ba84cb1646fe660f45adcffd94",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M146",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "6cee39a03f206d41e02e6e5f33b57faa",
+      "codeSummaryMd5": "8067f1baa85812bb05d91515f61bf2d6",
+      "logicClassNames": [
+        "FreeSpinGenerator",
+        "FreeSpinPostProcessor",
+        "FreeSpinPreProcessor",
+        "FreeSpinValidator",
+        "NormalFreeSpinGenerator",
+        "NormalFreeSpinPostProcessor",
+        "NormalFreeSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M147",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "e89825a751b627c00ad9e0a18d0f6968",
+      "codeSummaryMd5": "ce9952f27b013032e8967e7ff211f122",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "CommonNormalSpinValidator",
+        "M147NewWheelPostProcessor",
+        "M147NewWheelValidator",
+        "M147NormalPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NormalCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M148",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c0f90517f2e8eb847a726faf28671ad4",
+      "codeSummaryMd5": "7c4e3f5039acb165e8ce53da791b6e26",
+      "logicClassNames": [
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinValidator",
+        "M148NormalPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "RandomLockRespinUntilLoseGenerator",
+        "RandomLockRespinUntilLosePostProcessor"
+      ]
+    },
+    {
+      "machine": "M149",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "d5419c89f1cf6302e0f544ef7cd3a88a",
+      "codeSummaryMd5": "1a97515d7752f974e8cd84758d397fce",
+      "logicClassNames": [
+        "MoveSpinGenerator",
+        "MoveSpinPostProcessor",
+        "MoveSpinPreProcessor",
+        "MoveSpinValidator",
+        "NormalMoveSpinGenerator",
+        "NormalMoveSpinPostProcessor",
+        "NormalMoveSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M150",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "3c5a290714578e8cf3d311a79122ab56",
+      "codeSummaryMd5": "22049880d9b6602079dc617d4ffb8ad4",
+      "logicClassNames": [
+        "M150WinNormalSpinPostProcessor",
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M151",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "aea5b0feacb56959a15c67fa589ef09f",
+      "codeSummaryMd5": "747e923663e607a6f4da41786c6ae05d",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "M119WheelPostProcessor",
+        "M151WheelValidator",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M152",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "9afaf1f0b26793bc270c81b83739f7fb",
+      "codeSummaryMd5": "83a22cc6bb928a70180bcc9244973ddd",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "M152NormalPostProcessor",
+        "M152NormalSpinValidator",
+        "NormalCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M153",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "3b832ba3cb1e453b1e11559c62655aa0",
+      "codeSummaryMd5": "83a22cc6bb928a70180bcc9244973ddd",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "M152NormalPostProcessor",
+        "M152NormalSpinValidator",
+        "NormalCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M154",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "4d5a049fe0984c6c89f10462e06cdec3",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M155",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "2617ac0efcbf13964e814fcf959d0d30",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M156",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "31c1051b31bfc4a0ffcbb5286e55c755",
+      "codeSummaryMd5": "22049880d9b6602079dc617d4ffb8ad4",
+      "logicClassNames": [
+        "M150WinNormalSpinPostProcessor",
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M157",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "f23c7d835d6678dbaf42d9b50d607628",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M158",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "0c79cb78ed0402fc066f49a8bc64fdcc",
+      "codeSummaryMd5": "095e7f8f4a04d656ce5fd113648547a7",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "M147NewWheelPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M159",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "0c4d1b209acdfd7ce36df1c7be3bfb86",
+      "codeSummaryMd5": "97249d1f9029f562009e4f4a40cbdf5f",
+      "logicClassNames": [
+        "M150WinReSpinPreProcessor",
+        "M159WinNormalSpinPostProcessor",
+        "M159WinReSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M160",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "bd0145c069eaa87a7c6b792741cb5284",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M161",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "05873bfc162d8533cf48770beff35704",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M162",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "38e1d65d67308afd354b677a9fff4797",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M163",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "7137620f76261fc08c64b5c7a4caa713",
+      "codeSummaryMd5": "2076d966ad107d3a560feb36d05a2ea3",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "CollectWinReSpinGenerator",
+        "CollectWinReSpinPreProcessor",
+        "CollectWinRespinWildValidator",
+        "CommonNormalSpinValidator",
+        "M163NewWheelGenerator",
+        "M163NewWheelPostProcessor",
+        "M163NewWheelValidator",
+        "M163NormalPostProcessor",
+        "M163WinReSpinPostProcessor",
+        "NewWheelPreProcessor",
+        "NormalCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M164",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "d0e2034c086163170609b872a83cd328",
+      "codeSummaryMd5": "22049880d9b6602079dc617d4ffb8ad4",
+      "logicClassNames": [
+        "M150WinNormalSpinPostProcessor",
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M165",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1ab5fe3e1135468ea8e5872b2767cc61",
+      "codeSummaryMd5": "8a9ff417806bd18fa5cd1076a61755e2",
+      "logicClassNames": [
+        "M150WinReSpinPreProcessor",
+        "M165NewFreespinPostProcessor",
+        "M165NormalSpinPostProcessor",
+        "M165WinReSpinPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M166",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "bb46e453759a9c53877f3f50fcb01744",
+      "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
+      "logicClassNames": [
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M167",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "64e3a2589101bc5ba80857cd8ceb9fd8",
+      "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
+      "logicClassNames": [
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M168",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "43c28401614755c52b183a71a20e9c92",
+      "codeSummaryMd5": "2f423a6657434e443a7c872d266a12f7",
+      "logicClassNames": [
+        "AddFreespinWheelPreProcessor",
+        "EnterWheelPostProcessor",
+        "M126AddFreespinWheelPostProcessor",
+        "M126AddFreespinWheelValidator",
+        "M126FreespinPostProcessor",
+        "NewAddFreespinWheelGenerator",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WheelToFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M169",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c4c64f3c8cc2a2949c9f42c4df1a5a7e",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M170",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "49d3a9d5374f969e7c689a2645c45a51",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M171",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "8494b86111d40d674bf2815684bf4640",
+      "codeSummaryMd5": "df45e32861ec568a0fb5bb3a3370cdb4",
+      "logicClassNames": [
+        "AddFreespinWheelPreProcessor",
+        "EnterWheelPostProcessor",
+        "M126AddFreespinWheelPostProcessor",
+        "M126AddFreespinWheelValidator",
+        "M126FreespinPostProcessor",
+        "M171FreespinValidator",
+        "M171NormalSpinValidator",
+        "NewAddFreespinWheelGenerator",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "WheelToFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M172",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "2c857779756d2cdb114f1763d0e85827",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M173",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "8fee7fb75501f83aed2d18dfcbbcf811",
+      "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+      "logicClassNames": [
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M174",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "a9a87097467e7e7e6bb42c70d3155c44",
+      "codeSummaryMd5": "121eb801a61f9469a3816c890196456f",
+      "logicClassNames": [
+        "M174NormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinPostProcessor",
+        "NormalSpinValidator",
+        "ReSpinGenerator",
+        "ReSpinPreProcessor",
+        "RespinValidator"
+      ]
+    },
+    {
+      "machine": "M175",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "711da72017ec4eec0f4cc8660af53289",
+      "codeSummaryMd5": "6231f6490e497a43b5312c0b2c0292ee",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "M119WheelPostProcessor",
+        "M175WheelValidator",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M176",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "2802fc65fa25694dccaf58b189445b4f",
+      "codeSummaryMd5": "bf24b5b94180974c1c4ada158da832e7",
+      "logicClassNames": [
+        "CommonNormalSpinValidator",
+        "EnterWheelPostProcessor",
+        "M163NewWheelGenerator",
+        "M176FreespinPostProcessor",
+        "M176NewFreespinValidator",
+        "M176NewWheelPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M177",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "b006f15550ceb7b645ae8e5b5455142b",
+      "codeSummaryMd5": "2245c360e85c347103918fde53a304ed",
+      "logicClassNames": [
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M177NormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M178",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "a68df88f5bc819505559f4e48be25887",
+      "codeSummaryMd5": "8a9ff417806bd18fa5cd1076a61755e2",
+      "logicClassNames": [
+        "M150WinReSpinPreProcessor",
+        "M165NewFreespinPostProcessor",
+        "M165NormalSpinPostProcessor",
+        "M165WinReSpinPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M179",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c70d5be015d67a443d9d1c282dcabad6",
+      "codeSummaryMd5": "e98a4687c3b000ada2474639a42e17b1",
+      "logicClassNames": [
+        "FreeSpinPreProcessor",
+        "MultiplierFreeSpinGenerator",
+        "MultiplierFreeSpinPostProcessor",
+        "MultiplierFreeSpinValidator",
+        "NormalFreeSpinGenerator",
+        "NormalFreeSpinPostProcessor",
+        "NormalFreeSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M180",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "82ff65d0886470eba982fca8f95a03c9",
+      "codeSummaryMd5": "8a9ff417806bd18fa5cd1076a61755e2",
+      "logicClassNames": [
+        "M150WinReSpinPreProcessor",
+        "M165NewFreespinPostProcessor",
+        "M165NormalSpinPostProcessor",
+        "M165WinReSpinPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M181",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "e96efaf980dc63c74791de4547cde6f2",
+      "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
+      "logicClassNames": [
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M182",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "3479a0e4ed3796e591942a18e543c259",
+      "codeSummaryMd5": "8b3a71b70c219e14628119859922c4f7",
+      "logicClassNames": [
+        "M150WinReSpinPreProcessor",
+        "M165NewFreespinPostProcessor",
+        "M165WinReSpinPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToFreespinPostProcessor",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M183",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "f69ddcab7355a688c3678afe68f489b4",
+      "codeSummaryMd5": "a386391b9926b514bf658d907071bc9c",
+      "logicClassNames": [
+        "LockSymbolFreespinPostProcessor",
+        "LockSymbolFreespinPreProcessor",
+        "LockSymbolFreespinValidator",
+        "M183LockSymbolFreespinGenerator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToLockSymbolFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M184",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "eb96497b5e5dfcb91fb631ffd5c3014d",
+      "codeSummaryMd5": "a4279e29cc69963d6582c8e8f649ba33",
+      "logicClassNames": [
+        "M184NormalSpinValidator",
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalToFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M185",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "7db01ed471f72b639adbbcc36f51a70f",
+      "codeSummaryMd5": "8a9ff417806bd18fa5cd1076a61755e2",
+      "logicClassNames": [
+        "M150WinReSpinPreProcessor",
+        "M165NewFreespinPostProcessor",
+        "M165NormalSpinPostProcessor",
+        "M165WinReSpinPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M186",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "48d488ce349bdf2fe4e669466f59d2be",
+      "codeSummaryMd5": "60fa6c21f9f25bf7c892666935bc05bf",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "LockSymbolFreespinPreProcessor",
+        "M186LockSymbolFreespinGenerator",
+        "M186LockSymbolFreespinPostProcessor",
+        "M186NormalPostProcessor",
+        "MapToLockSymbolFreespinPostProcessor",
+        "NormalCollectionSpinGenerator",
+        "NormalCollectionSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M187",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "3a83bf5f4027581589aa6c9663249117",
+      "codeSummaryMd5": "fb7b2155da90a95719099c832b895a5c",
+      "logicClassNames": [
+        "EnterWheelSelectorPostProcessor",
+        "M187EnterWheelPostProcessor",
+        "M187NewWheelValidator",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "PreWheelGenerator",
+        "PreWheelPostProcessor",
+        "PreWheelValidator",
+        "WheelSelectorDataGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator",
+        "WheelSelectorPostProcessor"
+      ]
+    },
+    {
+      "machine": "M188",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "65ef254f189529da2d8108dae0375e38",
+      "codeSummaryMd5": "d8508b4383daa8511ce0c6cea8cd4c80",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "M188NewWheelValidator",
+        "M188WheelPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "PreWheelGenerator",
+        "PreWheelPostProcessor",
+        "PreWheelValidator",
+        "WheelSelectorDataGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator",
+        "WheelSelectorPostProcessor"
+      ]
+    },
+    {
+      "machine": "M189",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "0641c0f90ded2433ecdb087e278fd53c",
+      "codeSummaryMd5": "c0eadd935802755c3f4ec49e16af3721",
+      "logicClassNames": [
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M189WinNormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M190",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "af02d1752eb2d7e9a6a63618706f39b5",
+      "codeSummaryMd5": "cd5158f7c6bf3f1d0f6b26a16b7c0a8c",
+      "logicClassNames": [
+        "M150WinReSpinPreProcessor",
+        "M190NormalSpinPostProcessor",
+        "M190WinReSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "UntilLoseRespinGenerator",
+        "UntilLoseRespinPostProcessor",
+        "UntilLoseRespinPreProcessor",
+        "UntilLoseRespinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M191",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "4719574936a06c2566568569ccd05910",
+      "codeSummaryMd5": "c0eadd935802755c3f4ec49e16af3721",
+      "logicClassNames": [
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M189WinNormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M192",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "88dfe5281fb6ee3699270948b5e9a847",
+      "codeSummaryMd5": "9abd3faeb9f5c096196d781bbf5ed9a6",
+      "logicClassNames": [
+        "BuffCollectionDataModel",
+        "CommonNormalSpinValidator",
+        "ListRewardWheelGenerator",
+        "ListRewardWheelPostProcessor",
+        "ListRewardWheelPreProcessor",
+        "ListRewardWheelValidator",
+        "M192BuffCollectionDataGenerator",
+        "M192NormalCollectionSpinGenerator",
+        "M192NormalPostProcessor",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M193",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "920914b566a3fda0882979dea435c085",
+      "codeSummaryMd5": "b8541bc8ea1baf7acbfdb5f1da238b73",
+      "logicClassNames": [
+        "LockSymbolFreespinPostProcessor",
+        "LockSymbolFreespinPreProcessor",
+        "LockSymbolFreespinValidator",
+        "M193LockSymbolFreespinGenerator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToLockSymbolFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M194",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1abc9ae0adb8a64a49a28b82276eac79",
+      "codeSummaryMd5": "0ae8eec96a51a33609fb20fef253e26a",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "M186NormalPostProcessor",
+        "MapToFreespinPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NormalCollectionSpinGenerator",
+        "NormalCollectionSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M195",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "b0a6c1015d0ac36bc109aa42180bb0b6",
+      "codeSummaryMd5": "c0eadd935802755c3f4ec49e16af3721",
+      "logicClassNames": [
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M189WinNormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M196",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "f9ec7d401c53106ab0b38a78f5dcac18",
+      "codeSummaryMd5": "40702ca9a275a6f3aed54754520518f6",
+      "logicClassNames": [
+        "M150WinReSpinPreProcessor",
+        "M196NormalSpinPostProcessor",
+        "M196UntilLoseRespinPostProcessor",
+        "M196WinReSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "UntilLoseRespinGenerator",
+        "UntilLoseRespinPreProcessor",
+        "UntilLoseRespinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M197",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "b929cb3b2bae74f08e13e1a46467b7d4",
+      "codeSummaryMd5": "c0eadd935802755c3f4ec49e16af3721",
+      "logicClassNames": [
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M189WinNormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M198",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "6357f4f38dd6fb41c6ed4af19dc9afa1",
+      "codeSummaryMd5": "18828a1ea75ec684f6f2975d00713836",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "EnterWheelSelectorPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "PreWheelGenerator",
+        "PreWheelPostProcessor",
+        "PreWheelValidator",
+        "WheelSelectorDataGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator",
+        "WheelSelectorPostProcessor"
+      ]
+    },
+    {
+      "machine": "M199",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "7de0042f0857411e7beb8d59fea3dac6",
+      "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
+      "logicClassNames": [
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M200",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "73874fbfd9f203aad7b797eebdcb3e19",
+      "codeSummaryMd5": "774b277efaae39c7ab38d3b9dd020721",
+      "logicClassNames": [
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M200NormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M201",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "24b693e131a96be151324fb136dc6ebd",
+      "codeSummaryMd5": "a7f9fa4ac440edb0069f9db01c85d766",
+      "logicClassNames": [
+        "CommonNormalRTPPreProcessor",
+        "CommonSelectedGenerator",
+        "CommonSelectorDataGenerator",
+        "CommonSelectorDataModel",
+        "CommonSelectorGenerator",
+        "M201LockReSpinGenerator",
+        "M201LockReSpinPostProcessor",
+        "M201NormalSpinPostProcessor",
+        "M201ReSpinValidator",
+        "M201SelectedPostProcessor",
+        "M201SelectorPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M202",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "bace51645f20d60053bbe942391cf207",
+      "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
+      "logicClassNames": [
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M203",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "f6399ed03ef98ab74ebd9bc974389566",
+      "codeSummaryMd5": "18828a1ea75ec684f6f2975d00713836",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "EnterWheelSelectorPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "PreWheelGenerator",
+        "PreWheelPostProcessor",
+        "PreWheelValidator",
+        "WheelSelectorDataGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator",
+        "WheelSelectorPostProcessor"
+      ]
+    },
+    {
+      "machine": "M204",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "d6a23e8502d7c4a6c6cee5d68735d76b",
+      "codeSummaryMd5": "ed8ae196c5bea0d2cc9a8fe0a119fded",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "M204NewWheelPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "PreWheelGenerator",
+        "PreWheelPostProcessor",
+        "PreWheelValidator",
+        "WheelSelectorDataGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator",
+        "WheelSelectorPostProcessor"
+      ]
+    },
+    {
+      "machine": "M206",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "62256a54af768497654d6e02a1b58256",
+      "codeSummaryMd5": "3d53f09fb1d695424bb628f2990f17b1",
+      "logicClassNames": [
+        "M150WinReSpinPreProcessor",
+        "M206NormalPostProcessor",
+        "M206WinReSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "TopDollarGenerator",
+        "TopDollarNormalValidator",
+        "TopDollarSelectorDataGenerator",
+        "TopDollarSelectorDataModel",
+        "TopDollarSelectorGenerator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M207",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "48369ee10770f0dac09043960f8e9e34",
+      "codeSummaryMd5": "be500b36d125bf5c7b305027555ee958",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "LockSymbolFreespinPreProcessor",
+        "LockSymbolFreespinValidator",
+        "M186LockSymbolFreespinGenerator",
+        "M186LockSymbolFreespinPostProcessor",
+        "M207WheelToFreespinPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M208",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "ad27c9bb86cd0741b337a10b521965c3",
+      "codeSummaryMd5": "9bd1198fb2d141dd0a722e9f77728730",
+      "logicClassNames": [
+        "LockSymbolFreespinPreProcessor",
+        "LockSymbolFreespinValidator",
+        "M186LockSymbolFreespinGenerator",
+        "M186LockSymbolFreespinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToLockSymbolFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M209",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "0ee5e3871be828c5eed9d0174a78fe1f",
+      "codeSummaryMd5": "f1cc58112d9c7eeb28de2e2259577ded",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "CommonNormalSpinValidator",
+        "CommonSelectedGenerator",
+        "CommonSelectorDataGenerator",
+        "CommonSelectorDataModel",
+        "CommonSelectorGenerator",
+        "M209MoveSpinPostProcessor",
+        "M209MoveSpinValidator",
+        "M209NormalPostProcessor",
+        "M209NormalRTPPreProcessor",
+        "M209SelectedPostProcessor",
+        "M209SelectedValidator",
+        "M209SelectorPostProcessor",
+        "MoveSpinGenerator",
+        "MoveSpinPreProcessor",
+        "NormalCollectionSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M210",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "67f0673801fad77a8532f38901d05080",
+      "codeSummaryMd5": "f8acdc8b538876a2a294b6ebb2cc59b8",
+      "logicClassNames": [
+        "ChristmasSimpleSelectorPostProcessor",
+        "ListRewardMinigamePreProcessor",
+        "M210ListRewardMinigameGenerator",
+        "M210ListRewardMinigameValidator",
+        "M210NewFreespinPostProcessor",
+        "M210NewFreespinPreProcessor",
+        "M210NormalPostProcessor",
+        "M210PreFreespinPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "SelectorPreFreespinGenerator",
+        "SimpleSelectorDataGenerator",
+        "SimpleSelectorDataModel",
+        "SimpleSelectorGenerator"
+      ]
+    },
+    {
+      "machine": "M211",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "b84f1e075c56595d1165bfe2b7f63ba6",
+      "codeSummaryMd5": "a2fa2807ffb1e57d22a50bbb5f0553e3",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M212",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "76d46a5a6442339bd73d13a63d89d101",
+      "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
+      "logicClassNames": [
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "NormalToFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M213",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "3164e509adc439f9e91e2e881c11657c",
+      "codeSummaryMd5": "348af1f917b8107a53d8b1a76d414635",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "M213WheelPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M214",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "80fd23b4057a16d9ec7f5823177254e7",
+      "codeSummaryMd5": "b9c20a58839cff0fbd2058dfb5e4c444",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "M213WheelPostProcessor",
+        "M214NormalSpinValidator",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M215",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "27ddf008c43923f15bdf68627d9f3a20",
+      "codeSummaryMd5": "c0eadd935802755c3f4ec49e16af3721",
+      "logicClassNames": [
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M189WinNormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M216",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "ac9fc9f91f5b7406ffb8d0f6f12eca0f",
+      "codeSummaryMd5": "953a88e855437d5972d71bca782980e8",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "M216NewWheelPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "PreWheelGenerator",
+        "PreWheelPostProcessor",
+        "PreWheelValidator",
+        "WheelSelectorDataGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator",
+        "WheelSelectorPostProcessor"
+      ]
+    },
+    {
+      "machine": "M217",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "a180015e1285b7e2589c5700ca2427b5",
+      "codeSummaryMd5": "348af1f917b8107a53d8b1a76d414635",
+      "logicClassNames": [
+        "EnterWheelPostProcessor",
+        "M213WheelPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M218",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "e18faea3bfa403bf59dbff1651752512",
+      "codeSummaryMd5": "b75611ef392ac80d630b3e9da6d4a237",
+      "logicClassNames": [
+        "M218NormalSpinPostProcessor",
+        "M218UntilWinReSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "UntilWinReSpinGenerator",
+        "UntilWinReSpinPreProcessor",
+        "UntilWinReSpinValidator"
+      ]
+    },
+    {
+      "machine": "M219",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c34b0a64a0f025ab7af749cf460993c3",
+      "codeSummaryMd5": "ed967b86376be3d2266b7f7b63ba9b8b",
+      "logicClassNames": [
+        "M150WinReSpinPreProcessor",
+        "M219NewWheelPostProcessor",
+        "M219NormalPostProcessor",
+        "M219WinReSpinPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "PreWheelGenerator",
+        "PreWheelPostProcessor",
+        "PreWheelValidator",
+        "WheelSelectorDataGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator",
+        "WheelSelectorPostProcessor",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M220",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1c797b634a420e271ebb46f68cc3ee37",
+      "codeSummaryMd5": "372d675a610c6d93b933bbd93ae3c98b",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "M163NewWheelGenerator",
+        "M186NormalPostProcessor",
+        "M220NewWheelPostProcessor",
+        "MapCommonPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalCollectionSpinGenerator",
+        "NormalCollectionSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M221",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "e43b5ed678cb23fc478b0cb02f89cf9a",
+      "codeSummaryMd5": "0c4558fb3b5b9a4570464169bc851d74",
+      "logicClassNames": [
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M221WinNormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M222",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "98eceb1933e3d79c44c2249685c64020",
+      "codeSummaryMd5": "0eba6820d72c6d592ef2e9f64c50fa97",
+      "logicClassNames": [
+        "CommonNormalSpinValidator",
+        "LockSymbolFreespinPreProcessor",
+        "LockSymbolFreespinValidator",
+        "M222LockSymbolFreespinGenerator",
+        "M222LockSymbolFreespinPostProcessor",
+        "M222NormalPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M223",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "44f14b3eb93348c0900a18e95c3ede44",
+      "codeSummaryMd5": "76b3b8836a2e46769af1d8694235cebc",
+      "logicClassNames": [
+        "CommonNormalSpinValidator",
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M223NormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M224",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "24e852405fc533a97525dbe07163ea40",
+      "codeSummaryMd5": "0c4558fb3b5b9a4570464169bc851d74",
+      "logicClassNames": [
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M221WinNormalSpinPostProcessor",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M225",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "23607132b267538ab4008b2c4fd4a13c",
+      "codeSummaryMd5": "40b86cc2c05a68751c6674566da43eac",
+      "logicClassNames": [
+        "CommonNormalSpinValidator",
+        "M163NewWheelGenerator",
+        "M176NewFreespinValidator",
+        "M225FreespinPostProcessor",
+        "M225NewWheelPostProcessor",
+        "M225NormalPostProcessor",
+        "M225ShotMinigamePreProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "ShotMinigameGenerator",
+        "ShotMinigameValidator"
+      ]
+    },
+    {
+      "machine": "M226",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "63669fcdf5bc2965724814c3d255e403",
+      "codeSummaryMd5": "46f0a415c0eceaa68712eb5094da0240",
+      "logicClassNames": [
+        "CommonNormalSpinValidator",
+        "M150WinReSpinPreProcessor",
+        "M226NormalMoveSpinGenerator",
+        "M226NormalMoveSpinPostProcessor",
+        "M226WinRespinGenerator",
+        "M226WinRespinPostProcessor",
+        "MoveSpinGenerator",
+        "MoveSpinPostProcessor",
+        "MoveSpinPreProcessor",
+        "MoveSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M227",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "b7723622a6f31fe3bacdec8c1609408a",
+      "codeSummaryMd5": "fec53e0162a18985a74c7d105af732d6",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinValidator",
+        "LockReSpinGenerator",
+        "M227NewNormalCollectionPostProcessor",
+        "M227NormalCollectionSpinGenerator",
+        "M227RespinSpinPostProcessor",
+        "MapCommonPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalCollectionSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M228",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "ecec678279b2bec5d0dd85506b9ae65a",
+      "codeSummaryMd5": "dc8633d6ee245f2cdc96d5e8a2d1150b",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinPostProcessor",
+        "CommonNormalSpinValidator",
+        "LockReSpinGenerator",
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M228NormalCollectionPostProcessor",
+        "M228NormalCollectionSpinGenerator",
+        "MapCommonPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalCollectionSpinValidator",
+        "NormalRTPPreProcessor",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M229",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "587e14c50f94cf8a515125079a0c2101",
+      "codeSummaryMd5": "deb29a0f0f0a0d9714e4f6ace608fef9",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "MapCommonPostProcessor",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectPostProcessor",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor",
+        "WheelRatioNewFreespinGenerator",
+        "WheelRatioWinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M231",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "b97b05ef6e2690206f4c19253c131085",
+      "codeSummaryMd5": "ca2ed67e71a95964b3606dcc7000b60d",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "CommonNormalSpinValidator",
+        "LockReSpinPreProcessor",
+        "LockSpinNoDataGenerator",
+        "M150WinReSpinPreProcessor",
+        "M231FreespinPostProcessor",
+        "M231LockReSpinPostProcessor",
+        "M231NormalCollectPostProcessor",
+        "M231WinReSpinPostProcessor",
+        "MapCommonPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M232",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "4f410533f9138c590069659d30c6e79f",
+      "codeSummaryMd5": "219e59af9cea116424766c910085d80a",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M150WinReSpinPostProcessor",
+        "M150WinReSpinPreProcessor",
+        "M232SpinValidator",
+        "MapCommonPostProcessor",
+        "NewWheelCanAddPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalProbabilityCollectPostProcessor",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor",
+        "WinReSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M233",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1102fb1b7b0ed9fac3f61e6db514175c",
+      "codeSummaryMd5": "157c58e2f100ccacca7337513adbf792",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalSpinValidator",
+        "LockReSpinPreProcessor",
+        "LockSpinNoDataGenerator",
+        "M150WinReSpinPreProcessor",
+        "M231NormalCollectPostProcessor",
+        "M233LockReSpinPostProcessor",
+        "M233WinReSpinPostProcessor",
+        "MapCommonPostProcessor",
+        "NewWheelCanAddPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor",
+        "WinReSpinGenerator",
+        "WinRespinWildValidator"
+      ]
+    },
+    {
+      "machine": "M234",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "4a679c6fa6ca1d08937f6bf12bed655e",
+      "codeSummaryMd5": "5f1d96419730c4be0a0275951ae91f62",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "MapCommonPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NewNormalCollectionPostProcessor",
+        "NewNormalCollectionSpinGenerator",
+        "NewWheelGenerator",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalCollectionSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M235",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "893d06b9b3d938c3c4edcb3ebcfa375b",
+      "codeSummaryMd5": "2e0432931efb26f59be5d967e75592d5",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinValidator",
+        "CreditsSymbolFreespinGenerator",
+        "CreditsSymbolFreespinPostProcessor",
+        "CreditsSymbolFreespinValidator",
+        "M186NormalPostProcessor",
+        "MapCommonPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M236",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "254c26b68d7669241b30d58c8c2f0249",
+      "codeSummaryMd5": "cc904c8b5be2e4b0cd56b84fa9d15d40",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M236NormalCollectionPostProcessor",
+        "M236NormalCollectionSpinGenerator",
+        "M236NormalCollectionSpinValidator",
+        "MapCommonPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M237",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "ade59d64a22abdc9fea4463643cd21a4",
+      "codeSummaryMd5": "a7ba874f204ffcfc43ba843defe76577",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M225FreespinPostProcessor",
+        "M237NewFreespinValidator",
+        "M237NormalCollectionPostProcessor",
+        "M237NormalCollectionSpinGenerator",
+        "M237NormalCollectionSpinValidator",
+        "M237WheelToFreespinPostProcessor",
+        "MapCommonPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M238",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "86d7756e633ce0cfe74be62ed0c41801",
+      "codeSummaryMd5": "8dd2bccffe4bc01f4b4bb32ec5d3bcdf",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CreditsSymbolRespinPreProcessor",
+        "CreditsSymbolRespinSettlePreProcessor",
+        "CreditsSymbolRespinSettleValidator",
+        "M238CreditsSymbolRespinGenerator",
+        "M238CreditsSymbolRespinPostProcessor",
+        "M238CreditsSymbolRespinSettleGenerator",
+        "M238CreditsSymbolRespinValidator",
+        "M238MapCommonPostProcessor",
+        "M238NewNormalCollectionPostProcessor",
+        "NewNormalCollectionSpinGenerator",
+        "NormalCollectionSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M239",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "975f1387e2b954d2df77ec9427fe518b",
+      "codeSummaryMd5": "fcdb64e8398794f12d4ffbe6b3e76bef",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "LockSymbolFreespinPreProcessor",
+        "LockSymbolFreespinValidator",
+        "M222LockSymbolFreespinGenerator",
+        "M222LockSymbolFreespinPostProcessor",
+        "M239MapCommonPostProcessor",
+        "M239NewNormalCollectionPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M240",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "638471f82dbe207111f9e122df5bf144",
+      "codeSummaryMd5": "6ccdb32b8d876de4ed8896efd1be6cfb",
+      "logicClassNames": [
+        "LockSymbolFreespinPostProcessor",
+        "LockSymbolFreespinPreProcessor",
+        "M240LockSymbolFreespinGenerator",
+        "M240LockSymbolFreespinValidator",
+        "M240LockSymbolNormalGenerator",
+        "M240LockSymbolSpinValidator",
+        "NormalRTPPreProcessor",
+        "NormalToLockSymbolFreespinPostProcessor"
+      ]
+    },
+    {
+      "machine": "M241",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "edfc99f79b6b779bf80e6075d24e7ca7",
+      "codeSummaryMd5": "cb17d11be6538913ff09df2ef6269073",
+      "logicClassNames": [
+        "CommonNormalRTPPreProcessor",
+        "LockSpinNoDataGenerator",
+        "M241LockReSpinPostProcessor",
+        "M241MachineSpinValidator",
+        "M241NormalSpinPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M242",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c763f70d1b55fa3520b836047703f5c1",
+      "codeSummaryMd5": "88ea7bfff06355c780647c9cb18746c7",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M242NormalCollectionSpinValidator",
+        "M242NormalSpinPostProcessor",
+        "M242UntilWinReSpinPostProcessor",
+        "M242UntilWinReSpinValidator",
+        "MapCommonPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor",
+        "UntilWinReSpinGenerator",
+        "UntilWinReSpinPreProcessor"
+      ]
+    },
+    {
+      "machine": "M243",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "a83566fa21f6603ab10b9d1e658fc9a6",
+      "codeSummaryMd5": "c985c39fea4e5a6055cb3609c93b04d3",
+      "logicClassNames": [
+        "M243NewFreespinPostProcessor",
+        "M243NormalToFreespinPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NormalRTPPreProcessor",
+        "NormalSpinGenerator",
+        "NormalSpinValidator"
+      ]
+    },
+    {
+      "machine": "M244",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "2dcaade42258144d458645745f1124cd",
+      "codeSummaryMd5": "412d7cd8196171a79f3e71e8daa04bd3",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CreditsSymbolRespinPreProcessor",
+        "CreditsSymbolRespinSettlePreProcessor",
+        "LockReSpinPreProcessor",
+        "M238CreditsSymbolRespinSettleGenerator",
+        "M244BaseSpinValidator",
+        "M244CreditsSymbolRespinGenerator",
+        "M244CreditsSymbolRespinPostProcessor",
+        "M244CreditsSymbolRespinSettleValidator",
+        "M244CreditsSymbolRespinValidator",
+        "M244LockReSpinPostProcessor",
+        "M244LockSpinNoDataGenerator",
+        "M244MapCommonPostProcessor",
+        "M244NewNormalCollectionPostProcessor",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M245",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "da682fc8f9630ac7dd2620e7c3a35fcb",
+      "codeSummaryMd5": "a35e237067dc590e2f4b2a5471c043f1",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalSpinValidator",
+        "CreditsSymbolRespinPreProcessor",
+        "CreditsSymbolRespinSettlePreProcessor",
+        "CreditsSymbolRespinSettleValidator",
+        "M238CreditsSymbolRespinSettleGenerator",
+        "M244CreditsSymbolRespinGenerator",
+        "M245CreditsSymbolRespinPostProcessor",
+        "M245NewNormalCollectionPostProcessor",
+        "M245NewWheelPostProcessor",
+        "MapCommonPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M246",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "7cda1cc4a138f7c4cef43276cf1cfe98",
+      "codeSummaryMd5": "20707cb0278ae1228e685f345841bfce",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinValidator",
+        "LockSpinNoDataGenerator",
+        "M163NewWheelGenerator",
+        "M225NormalPostProcessor",
+        "M246MapCommonPostProcessor",
+        "M246NewWheelCanAddPostProcessor",
+        "M246NormalCollectPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M247",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "09682fbc7ebc2a00b193b129ca160238",
+      "codeSummaryMd5": "44f56d716544e2e11839d3c881d98501",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalRTPPreProcessor",
+        "ListRewardMinigamePreProcessor",
+        "M241MachineSpinValidator",
+        "M247ListRewardMinigameGenerator",
+        "M247ListRewardMinigamePostProcessor",
+        "M247MoveSpinPostProcessor",
+        "M247NewNormalCollectionPostProcessor",
+        "M247NormalGenerator",
+        "M247PreWheelPostProcessor",
+        "M247RespinGenerator",
+        "M247SpinPostProcessor",
+        "M261WheelSelectorPostProcessor",
+        "MapCommonPostProcessor",
+        "MoveSpinGenerator",
+        "MoveSpinPreProcessor",
+        "NormalRTPPreProcessor",
+        "PreWheelGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator",
+        "WheelSelectorNewDataGenerator"
+      ]
+    },
+    {
+      "machine": "M248",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "2b6fa9a9a2f9af11ddecf1325df3f912",
+      "codeSummaryMd5": "20fb2e23c0392f195d127cd837cb1233",
+      "logicClassNames": [
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinValidator",
+        "M248BuffCollectionDataGenerator",
+        "M248LockReSpinPostProcessor",
+        "M248LockSpinNoDataGenerator",
+        "M248NewFreespinGenerator",
+        "M248NewFreespinPostProcessor",
+        "M248NormalCollectPostProcessor",
+        "M248NormalGenerator",
+        "MapCommonPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewFreespinValidator",
+        "NewWheelCanAddPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M249",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1e02388c0c98d3688154b8d1b8627df8",
+      "codeSummaryMd5": "3d081f04189a6818c30b0971d9439396",
+      "logicClassNames": [
+        "BingoCollectionNormalPostProcessor",
+        "BingoCollectionNormalSpinGenerator",
+        "BingoCollectionPersistDataGenerator",
+        "BingoCollectionPersistDataModel",
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinValidator",
+        "M163NewWheelGenerator",
+        "M210NewFreespinPreProcessor",
+        "M249NewWheelCanAddPostProcessor",
+        "MapCommonPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator"
+      ]
+    },
+    {
+      "machine": "M250",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "048380c8e391af9b64e7ce02bf7c45d2",
+      "codeSummaryMd5": "771536a96bd83e815995eb0f08388342",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M246MapCommonPostProcessor",
+        "M250CollectionFreespinValidator",
+        "M250CollectionNewFreespinGenerator",
+        "M250NewFreespinPostProcessor",
+        "M250NormalCollectPostProcessor",
+        "M250NormalSpinValidator",
+        "NewFreespinPreProcessor",
+        "NewWheelCanAddPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M251",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "952f4d563902d905f41bfe2624649331",
+      "codeSummaryMd5": "4fd80f60dc84e01fa82022d83db96d8e",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinValidator",
+        "M251MapCommonPostProcessor",
+        "M251MultiBuffFreespinPostProcessor",
+        "M251MultiBuffFreespinPreProcessor",
+        "M251ReelCollectionNormalPostProcessor",
+        "MultiBuffFreespinGenerator",
+        "MultiBuffFreespinValidator",
+        "ReelCollectionNormalGenerator",
+        "ReelCollectionPersistDataGenerator",
+        "ReelCollectionPersistDataModel"
+      ]
+    },
+    {
+      "machine": "M252",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "15fefe396802cd903a7ee808160c24e0",
+      "codeSummaryMd5": "3bdf44217bfed3137dfbfb2a09340c1a",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "CommonNormalSpinValidator",
+        "CreditsSymbolRespinSettlePreProcessor",
+        "CreditsSymbolRespinSettleValidator",
+        "M238CreditsSymbolRespinSettleGenerator",
+        "M244CreditsSymbolRespinGenerator",
+        "M244MapCommonPostProcessor",
+        "M252CreditsSymbolRespinPostProcessor",
+        "M252CreditsSymbolRespinPreProcessor",
+        "M252CreditsSymbolRespinSettlePostProcessor",
+        "M252NewFreespinGenerator",
+        "M252NewFreespinPostProcessor",
+        "M252NewFreespinPreProcessor",
+        "M252NewNormalCollectionPostProcessor",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M253",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "214fdde64a018d3c9d51197b56260859",
+      "codeSummaryMd5": "a8604378dafa723938894b3db04293f6",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "CollectionNewFreespinPostProcessor",
+        "M246MapCommonPostProcessor",
+        "M256NewFreespinPreProcessor",
+        "NewFreespinGenerator",
+        "NewNormalCollectionPostProcessor",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M254",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "7c97a0feb9c19e39e43af1928f6e2898",
+      "codeSummaryMd5": "351aaf22559bd71c16214e981ca93b16",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinValidator",
+        "M254MapCommonPostProcessor",
+        "M254MultiBuffFreespinGenerator",
+        "M254MultiBuffFreespinPostProcessor",
+        "M254MultiBuffFreespinPreProcessor",
+        "M254NewFreespinGenerator",
+        "M254NewFreespinPostProcessor",
+        "M254NewWheelPostProcessor",
+        "M254NormalCollectPostProcessor",
+        "MultiBuffFreespinValidator",
+        "NewFreespinPreProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalProbabilityCollectionSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M256",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "2a7abe047c6b5eabb0b29c658ca2a2a9",
+      "codeSummaryMd5": "d8bd751a0782593436a1cf6020d51ef6",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionCommonValidator",
+        "CollectionFreespinValidator",
+        "M246MapCommonPostProcessor",
+        "M256NewFreespinPostProcessor",
+        "M256NewFreespinPreProcessor",
+        "MoveSpinGenerator",
+        "MoveSpinPostProcessor",
+        "MoveSpinPreProcessor",
+        "NewFreespinGenerator",
+        "NewNormalCollectionPostProcessor",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M257",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "5c285dfdc89c4decfff3419a9e275e74",
+      "codeSummaryMd5": "848e1b595184c90cc24b69b2f6e7aa65",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "CommonNormalRTPPreProcessor",
+        "CommonNormalSpinValidator",
+        "CommonSelectedGenerator",
+        "CommonSelectorDataGenerator",
+        "CommonSelectorDataModel",
+        "CommonSelectorGenerator",
+        "LockSpinNoDataGenerator",
+        "M257LockReSpinPostProcessor",
+        "M257NewFreespinPostProcessor",
+        "M257NewFreespinPreProcessor",
+        "M257NewNormalCollectionPostProcessor",
+        "M257NormalGenerator",
+        "M257SelectedPostProcessor",
+        "M257SelectorPostProcessor",
+        "MapCommonPostProcessor",
+        "NewFreespinGenerator",
+        "NormalCollectionSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M259",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "8a080e9a789354ef3141204a7cd82c04",
+      "codeSummaryMd5": "c7b015dd15f95f9e07d44f749a9980a6",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionCommonValidator",
+        "M163NewWheelGenerator",
+        "M246NormalCollectPostProcessor",
+        "M259CollectionFreespinValidator",
+        "M259MoveSpinPostProcessor",
+        "M259NewFreespinPostProcessor",
+        "M259NewWheelPostProcessor",
+        "MapCommonPostProcessor",
+        "MoveSpinGenerator",
+        "MoveSpinPreProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M260",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "037fe950f73645bfcefeba86f3905a08",
+      "codeSummaryMd5": "f9c245e3422703455facadbbbe4fbd31",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M260BuffCollectionMapPostProcessor",
+        "M260HalloweenReelCollectionFreespinGenerator",
+        "M260HalloweenReelCollectionFreespinPostProcessor",
+        "M260HalloweenReelCollectionFreespinPreProcessor",
+        "M260HalloweenReelCollectionFreespinValidator",
+        "M260HalloweenReelCollectionNormalGenerator",
+        "M260HalloweenReelCollectionNormalPostProcessor",
+        "M260HalloweenReelCollectionNormalValidator",
+        "M260NewWheelGenerator",
+        "M260NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalRTPPreProcessor",
+        "ReelCollectionPersistDataGenerator",
+        "ReelCollectionPersistDataModel",
+        "SettleMapGenerator"
+      ]
+    },
+    {
+      "machine": "M261",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "55adbcc59e08737ab9f6ee263c9ca502",
+      "codeSummaryMd5": "c89b2c2c9bff7e5b7da39f498c417ed5",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M261NewFreespinGenerator",
+        "M261NewFreespinValidator",
+        "M261NewNormalCollectionPostProcessor",
+        "M261NewWheelPostProcessor",
+        "M261NormalCollectionSpinValidator",
+        "M261NormalGenerator",
+        "M261PreWheelPostProcessor",
+        "M261WheelSelectorPostProcessor",
+        "M261WheelValidator",
+        "MapCommonPostProcessor",
+        "NewFreespinPostProcessor",
+        "NewFreespinPreProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NormalRTPPreProcessor",
+        "PreWheelCanSaveDataGenerator",
+        "PreWheelValidator",
+        "WheelSelectorDataGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator"
+      ]
+    },
+    {
+      "machine": "M262",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "1ed8b4a508779d8642e2cc377986e1d2",
+      "codeSummaryMd5": "07336ec1eac5a6ac18ab22b19ab79f23",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M262FreespinValidator",
+        "M262NewFreespinPostProcessor",
+        "M262NewWheelPostProcessor",
+        "M262NormalCollectPostProcessor",
+        "M262NormalSpinValidator",
+        "MapCommonPostProcessor",
+        "NewFreespinGenerator",
+        "NewFreespinPreProcessor",
+        "NewWheelExtraRatioValidator",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M263",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "9efdeda766da22aada31907979e67b99",
+      "codeSummaryMd5": "10f164c07de0b16d76825f8f9b5c659b",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M246MapCommonPostProcessor",
+        "M256NewFreespinPreProcessor",
+        "M263CommonSpinValidator",
+        "M263NewFreespinGenerator",
+        "M263NewFreespinValidator",
+        "M263NormalCollectPostProcessor",
+        "M263NormalGenerator",
+        "NewFreespinPostProcessor",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M264",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "79a1457a64719c348d1af62be246a8a7",
+      "codeSummaryMd5": "6b14f6c0b0cde17f242c596499965ec1",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M264MapCommonPostProcessor",
+        "M264NewFreespinGenerator",
+        "M264NewFreespinPostProcessor",
+        "M264NewFreespinPreProcessor",
+        "M264NewFreespinValidator",
+        "M264NormalCollectPostProcessor",
+        "M264NormalSpinValidator",
+        "NewWheelExtraRatioValidator",
+        "NewWheelGenerator",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M265",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "32fbecbe61cc6a7247bd75d633cf3a26",
+      "codeSummaryMd5": "7fa8bc782c769762eb51e3397abbbe66",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "FrameGameDataGenerator",
+        "FrameGameDataModel",
+        "M265MapCommonPostProcessor",
+        "M265NewFreespinGenerator",
+        "M265NewFreespinPostProcessor",
+        "M265NormalCollectPostProcessor",
+        "M265NormalCollectionSpinValidator",
+        "M265NormalGenerator",
+        "NewFreespinPreProcessor",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M266",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "60a65bcefac13d889a61a3bed20876d1",
+      "codeSummaryMd5": "5401d52e7c225474b3dbc25d33df7e8c",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M266MapCommonPostProcessor",
+        "M266NewFreespinGenerator",
+        "M266NewFreespinPostProcessor",
+        "M266NewFreespinValidator",
+        "M266ReelCollectionNormalGenerator",
+        "M266ReelCollectionNormalPostProcessor",
+        "M266ReelCollectionNormalValidator",
+        "NewFreespinPreProcessor",
+        "NormalRTPPreProcessor",
+        "ReelCollectionPersistDataGenerator",
+        "ReelCollectionPersistDataModel"
+      ]
+    },
+    {
+      "machine": "M267",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "0308bf327cb2e3b78b16e916edd40c06",
+      "codeSummaryMd5": "818137cdc3963c4f98db5f4b5ea1ddf1",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalSpinValidator",
+        "FrameGameDataGenerator",
+        "FrameGameDataModel",
+        "M267NormalCollectPostProcessor",
+        "M267NormalGenerator",
+        "M267NormalPreProcessor",
+        "MapCommonPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator"
+      ]
+    },
+    {
+      "machine": "M268",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "60eab00ee78c561837d6a65ebb8ad78b",
+      "codeSummaryMd5": "09b19df6cc07b9f313f277130a54688c",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "LockSymbolDataModel",
+        "LockSymbolDataModelGenerator",
+        "M244MapCommonPostProcessor",
+        "M268CreditsSymbolRespinGenerator",
+        "M268CreditsSymbolRespinPostProcessor",
+        "M268CreditsSymbolRespinPreProcessor",
+        "M268CreditsSymbolRespinValidator",
+        "M268NormalCollectPostProcessor",
+        "M268NormalGenerator",
+        "M268NormalSpinValidator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M269",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c85d8ee74caeff133fadeeb26e77d7e9",
+      "codeSummaryMd5": "de24775a75ea4b854dff94cbc9cb9bd3",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionCommonValidator",
+        "CommonNormalSpinValidator",
+        "M269MapCommonPostProcessor",
+        "M269NormalCollectPostProcessor",
+        "M269NormalPreProcessor",
+        "M269UntilLoseRespinPostProcessor",
+        "NewUntilLoseRespinGenerator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M270",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "852a751ad773ae6de2f059e19355fa06",
+      "codeSummaryMd5": "0cf9e6f04f8956e8b7a6256df0e8c141",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalRTPPreProcessor",
+        "M270NormalCollectionSpinValidator",
+        "M270WheelPostProcessor",
+        "MapCommonPostProcessor",
+        "NewNormalCollectionPostProcessor",
+        "NewWheelGenerator",
+        "NewWheelPreProcessor",
+        "NormalProbabilityCollectionSpinGenerator"
+      ]
+    },
+    {
+      "machine": "M271",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "53b6f3b3ffbc8239e1cd8598cd4be16b",
+      "codeSummaryMd5": "244e0fe75790aa82a208b73a7f0bf248",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "CommonNormalSpinValidator",
+        "M271MapCommonPostProcessor",
+        "M271NewFreespinGenerator",
+        "M271NewFreespinPostProcessor",
+        "M271NewFreespinPreProcessor",
+        "M271NormalCollectPostProcessor",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M272",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "4876fcbd9d9940f0b88bf2c8d9fff665",
+      "codeSummaryMd5": "4140b23fb6860a499dd1fe8172fbc184",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "M264NewFreespinGenerator",
+        "M272MapCommonPostProcessor",
+        "M272NewFreespinPostProcessor",
+        "M272NormalCollectPostProcessor",
+        "NewFreespinPreProcessor",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor",
+        "SpinTypeToRtpIdToJackpotByProbabilityNormalValidator"
+      ]
+    },
+    {
+      "machine": "M273",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "070d2f9ee1c256dd43143353e6c336b7",
+      "codeSummaryMd5": "9e1088663d39a8e41a85679d7b2f521c",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "ListRewardMinigamePreProcessor",
+        "LockSymbolFreespinPreProcessor",
+        "M222LockSymbolFreespinGenerator",
+        "M222LockSymbolFreespinPostProcessor",
+        "M257NormalGenerator",
+        "M273ListRewardMinigameGenerator",
+        "M273ListRewardMinigamePostProcessor",
+        "M273NormalCollectPostProcessor",
+        "M273PreWheelPostProcessor",
+        "M273WheelSelectorPostProcessor",
+        "MapCommonPostProcessor",
+        "NormalCollectionSpinValidator",
+        "NormalRTPPreProcessor",
+        "PreWheelGenerator",
+        "WheelSelectorDataModel",
+        "WheelSelectorGenerator",
+        "WheelSelectorNewDataGenerator"
+      ]
+    },
+    {
+      "machine": "M274",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "5128d3a8be6a356e7b95fc6e4df0b2e5",
+      "codeSummaryMd5": "b6efca9e7e9925059007597e9bb490a7",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "M274ListRewardMinigamePostProcessor",
+        "M274ListRewardMinigamePreProcessor",
+        "M274ListRewardMinigameValidator",
+        "M274ListRewardWheelGenerator",
+        "M274MapCommonPostProcessor",
+        "M274NormalCollectPostProcessor",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M275",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "a4fa42f33a0a7068947a91b25545c3de",
+      "codeSummaryMd5": "9b453ffc5c1d8f120a771e88e29e14ca",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionFreespinValidator",
+        "M262NewFreespinPostProcessor",
+        "M275WheelRatioNewFreespinGenerator",
+        "MapCommonPostProcessor",
+        "NewNormalCollectionPostProcessor",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor",
+        "SkinIdByTimesNewFreespinPreProcessor"
+      ]
+    },
+    {
+      "machine": "M276",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "5577bc7162a0f6a6ddc58bdcbedba44b",
+      "codeSummaryMd5": "b7e6990b2ecdef1a777ddc1a2d80be7a",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionCommonValidator",
+        "M163NewWheelGenerator",
+        "M246MapCommonPostProcessor",
+        "M276NormalCollectPostProcessor",
+        "MoveSpinGenerator",
+        "MoveSpinPostProcessor",
+        "MoveSpinPreProcessor",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M277",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "ed07416e1c6f2b0dab9b080f845f4919",
+      "codeSummaryMd5": "f8323952661a99baee251d7c9baa44dd",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CommonNormalSpinValidator",
+        "M277LockRespinGenerator",
+        "M277LockRespinPostProcessor",
+        "M277LockRespinRTPPreProcessor",
+        "M277MapCommonPostProcessor",
+        "M277NormalCollectPostProcessor",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
+    },
+    {
+      "machine": "M279",
+      "modes": [
+        1,
+        2,
+        5,
+        7
+      ],
+      "configSummaryMd5": "c81eb31608e13d1d76327f31d87521c3",
+      "codeSummaryMd5": "1c1af39a07ed1f46f412e21b7fa3bb5d",
+      "logicClassNames": [
+        "BuffCollectionDataGenerator",
+        "BuffCollectionDataModel",
+        "BuffCollectionMapGenerator",
+        "BuffCollectionMapValidator",
+        "CollectionCommonValidator",
+        "M163NewWheelGenerator",
+        "M246MapCommonPostProcessor",
+        "M279MoveSpinPostProcessor",
+        "M279NormalCollectPostProcessor",
+        "MoveSpinGenerator",
+        "MoveSpinPreProcessor",
+        "NewWheelPostProcessor",
+        "NewWheelPreProcessor",
+        "NewWheelValidator",
+        "NormalCollectionSpinValidator",
+        "NormalProbabilityCollectionSpinGenerator",
+        "NormalRTPPreProcessor"
+      ]
     }
   ]
 }

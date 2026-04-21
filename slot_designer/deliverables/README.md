@@ -1,67 +1,79 @@
 # Reel 权重调参交付
 
-这里是调参完成后给你的 reel 权重交付物。每个机台一个子目录，每次重调放一个 `vN_<tag>/` 子版本。
+每台机台一个子目录，每个 **configSummaryMd5 short（前 8 位）= 一个独立版本**。
 
-## 命名约定
+## 命名：md5 即版本号
+
+每次调参产出的 reel 配置落到 `<machine>/<md5_short>/`。目录名就是虚拟 console UI 里看到的 md5，两边对得上：
 
 ```
-deliverables/
-└── <machine>/
-    ├── reel_weights.tsv       ← 最新推荐版（也在最新子版本里有一份）
-    ├── reel_weights.json
-    ├── DELIVERY_NOTES.md
-    └── vN_<tag>/              ← 各版本历史
-        ├── reel_weights.tsv
-        ├── reel_weights.json
-        ├── DELIVERY_NOTES.md
-        └── TUNE_REPORT.md     (tune.py 自动生成)
+UI 显示                   →  文件系统路径
+Mode 1 · 当前 558dfcdd…  →  slot_designer/deliverables/M1/558dfcdd/
+Mode 1 · 历史 32251c25…  →  slot_designer/deliverables/M1/32251c25/
 ```
 
-顶层的 `reel_weights.{tsv,json}` 是**当前推荐版本**，和最新子版本内容一致。老版本保留在子目录下以便对比 / 回退。
+不用"v1 / v2"这种语义版本号 —— md5 本身就是内容指纹，重跑得到相同结果 = 相同 md5 = 同一版本，任何字节变化 = 新 md5 = 新版本。自洽。
 
-## 版本索引
+## 当前 active
 
-### M1 (classic 3×3 单线)
+每台机台的活动版本由 `slot_designer/weights/<machine>_mode<N>.tuned.json` 指定（虚拟 console 实际读这个）。deliverables/ 下是**归档**（history + current 的完整文件备份）。
 
-| 版本 | RTP | hit_rate | CV | 备注 | 推荐 |
-|---|---|---|---|---|---|
-| v1 (顶层) | 93.49% | 24.57% | 5.28 | 对齐 M14 mode 1 shape + CV。hit 偏高（"所有 slots 平均"档） | ⚠ |
-| **v2_hit15** | 93.48% | **15.29%** | 5.06 | 加 hit 软约束 15%。和 classic 单线行业 typical 对齐 | ✅ |
-
-详情见各版本的 `DELIVERY_NOTES.md`。
-
-**选哪个**：
-- 如果你目标是"看起来像 M14"（20%+ hit）→ v1
-- 如果你目标是"行业典型 classic 单线"（~15% hit）→ **v2_hit15**（推荐，fleet-wide 更一致）
-
-## 怎么切换到 v2 作为 M1sim 默认
-
+切换 active：
 ```bash
-# 替换 M1sim 虚拟机读的 weights 文件
-cp slot_designer/deliverables/M1/v2_hit15/reel_weights.json \
+# 把归档版本 promote 成 active
+cp slot_designer/deliverables/M1/558dfcdd/reel_weights.json \
    slot_designer/weights/M1_mode1.tuned.json
 
-# 清空老 rawdata pool
-rm -rf slot_designer/rawdata/M1sim
-
-# 重采（v2 权重 + 正确 md5 tag）
-python -m slot_designer.scripts.simulate \
-  --spec slot_designer/specs/M1.spec.json \
-  --weights slot_designer/weights/M1_mode1.tuned.json \
-  --out-dir slot_designer/rawdata/M1sim/mode_1 \
-  --machine-name M1sim --chunks 110
-
-# 虚拟 console 刷新 → 点 "⟳ 生成 Report" → 看新 report
+# 下一次虚拟 console 启动（或下一次采样）会自动把新 md5 刷进 machines_virtual.json
 ```
 
-## 调参 pipeline 回顾
+## 每目录内容
 
-每个版本走一次完整 `tune.py` 运行：
-1. **Phase 4** (count ES, 1500-2000 evals × 3 restarts)：调 9 symbol × 3 reel 的 count 比例
-2. **Phase 5** (order SA, 3000 steps)：在保 count 不变的前提下调 stop 顺序（near-miss / PWDF / blank adjacency）
-3. 硬约束：RTP + bucket shape；软约束：CV (+ hit_rate 如果 `--hit-target` 给了)
-4. 交付 rawdata chunks 也在 tune.py 内完成（除非 `--skip-rawdata`）
+```
+<md5_short>/
+├── reel_weights.tsv       原始 TSV schema（和你给的输入同格式）
+├── reel_weights.json      引擎 / 虚拟 console 直接读
+├── NOTES.md               本版本的数值 + 调参决策 + 和上一版对比
+└── TUNE_REPORT.md         tune.py 自动生成的 Phase 4 / 5 详细 breakdown
+                           （只有经 tune.py 产出的版本有，手工配置的版本没有）
+```
 
-## 研究引用（每次调参前 fresh search）
+## M1 版本索引
 
-按 `feedback_always_research_each_time` 规则，每次调参开 session 都重新搜英文行业源。v2_hit15 用的引用见该目录 `DELIVERY_NOTES.md`。
+| md5_short | RTP | hit_rate | CV | 简述 |
+|---|---|---|---|---|
+| `32251c25` | 93.49% | 24.57% | 5.28 | 第一版，只对齐 M14 mode 1 的 shape + CV，hit 未约束 → "所有 slots 平均 20-25%" 档（偏 video slot 风格） |
+| `558dfcdd` | 93.48% | **15.29%** | 5.06 | **当前 active**。加 hit_rate 软约束 15% → classic 单线行业 typical |
+
+## 新机台交付时
+
+复制这个模板：
+```bash
+mkdir -p slot_designer/deliverables/<MACHINE>
+# 调参产出
+python -m slot_designer.scripts.tune ... \
+  --out-weights /tmp/<machine>_tuned.json ...
+
+# 计算 md5_short
+python -c "
+import hashlib, sys
+spec = open('slot_designer/specs/<MACHINE>.spec.json','rb').read()
+h = hashlib.md5(); h.update(spec); h.update(b'\x00')
+h.update(open('/tmp/<machine>_tuned.json','rb').read())
+print(h.hexdigest()[:8])
+"
+
+# 落盘归档 + promote 成 active
+MD5=<从上面 print 出来的短 md5>
+mkdir -p slot_designer/deliverables/<MACHINE>/$MD5
+cp /tmp/<machine>_tuned.json slot_designer/deliverables/<MACHINE>/$MD5/reel_weights.json
+# 生成 TSV + NOTES
+# ...
+cp /tmp/<machine>_tuned.json slot_designer/weights/<MACHINE>_mode<N>.tuned.json
+```
+
+（未来可以让 tune.py 自动做这一整套 —— 当前还是半手工）
+
+## 研究依据（每次调参 fresh 重搜）
+
+按 `feedback_always_research_each_time` 规则，memory 里的笔记只当 keyword seed，每个调参 session 都重搜英文行业源。各版本的 NOTES.md 里记录当次 session 的 search URLs。
