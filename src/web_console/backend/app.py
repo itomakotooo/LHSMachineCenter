@@ -2913,7 +2913,7 @@ class BatchRunManager:
             # differently-priced sessions. Usually sub-1% effect, but
             # worth flagging so the operator knows.
             if resume_cache:
-                bets_seen = _peek_cache_bets(RAWDATA_ROOT / it.machine / f"mode_{it.mode}")
+                bets_seen = _peek_cache_bets(self._rawdata_root / it.machine / f"mode_{it.mode}")
                 current_bet = _DEFAULT_ANALYZER_BET  # 1000 until backend exposes bet
                 if bets_seen:
                     if len(bets_seen) > 1 or (current_bet not in bets_seen and len(bets_seen) == 1):
@@ -3299,7 +3299,18 @@ class BatchRunManager:
                 # land in rawdata/ alongside historical ones; analyzer
                 # only merges matching-md5 into running stats.
                 from_cache_dir = ""
-                cache_dir_str = str(RAWDATA_ROOT / item["machine"] / f"mode_{item['mode']}")
+                # Use the BatchRunManager's injected rawdata_root, not the
+                # module-level RAWDATA_ROOT global. Virtual console
+                # (create_app(rawdata_root=slot_designer/rawdata/)) vs
+                # real console (rawdata/ at repo root) have different
+                # roots; hardcoding the global here made every virtual
+                # batch-run target the REAL console's rawdata/ tree,
+                # which the virtual analyzer doesn't look at — delegate
+                # then found no chunks and exited rc=1 with
+                # "summary missing".
+                cache_dir_str = str(
+                    self._rawdata_root / item["machine"] / f"mode_{item['mode']}"
+                )
                 resume_from_cache_dir = cache_dir_str
                 usable_now = item.get("rawdata_status", {}).get("usable_chunks", 0)
                 mismatch_now = item.get("rawdata_status", {}).get("mismatch_chunks", 0)

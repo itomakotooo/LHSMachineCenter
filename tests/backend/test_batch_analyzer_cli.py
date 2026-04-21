@@ -228,6 +228,70 @@ class TestAnalyzerCmdForFuzzyNoCache:
         assert float(cmd[tp_idx + 1]) == 999.0, cmd
 
 
+class TestBatchRawdataRootInjection:
+    """2026-04-21: virtual console (port 8878) passes a distinct
+    ``rawdata_root`` (``slot_designer/rawdata/``) into ``create_app``,
+    separate from the real console's module-level ``RAWDATA_ROOT``
+    (``./rawdata/``). ``BatchRunManager`` stores the injected value on
+    ``self._rawdata_root`` — the batch-run cache-dir construction must
+    read from there, not the module global, or every virtual batch-run
+    targets the real console's rawdata/ tree and the delegate analyzer
+    exits rc=1 with ``summary missing``.
+
+    The existing tests in this file coincidentally co-locate the
+    injected ``rawdata_root`` and the module-global ``RAWDATA_ROOT``
+    on the same ``tmp_path / 'rawdata'`` so they pass either way —
+    these tests split the two paths on purpose, then assert only the
+    injected one flows into the analyzer cmd.
+    """
+
+    def test_analyzer_cmd_uses_injected_rawdata_root_not_global(
+        self, client, tmp_path: Path, app_factory, monkeypatch
+    ):
+        """The exact production bug: cache_dir_str = RAWDATA_ROOT / m /
+        mode_n built with the module global. Fix is
+        self._rawdata_root / m / mode_n.
+
+        Setup splits the two paths:
+          - app_factory injected ``tmp_rawdata`` = ``tmp_path/rawdata``
+          - monkeypatched global ``RAWDATA_ROOT`` = ``tmp_path/wrong_rawdata``
+
+        Only the injected path should appear in the --resume-from-cache
+        argv; the global must never leak into the cmd.
+        """
+        import src.web_console.backend.app as app_mod
+        c, _ = client
+        injected_root = app_factory.rawdata_dir  # tmp_path / "rawdata"
+        wrong_global = tmp_path / "wrong_rawdata"
+        wrong_global.mkdir()
+        monkeypatch.setattr(app_mod, "RAWDATA_ROOT", wrong_global)
+        monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
+
+        r = c.post("/api/batch-run", json=_batch_payload("Mvirtual", 1, target=0.5))
+        assert r.status_code == 200
+
+        cmd = _wait_for_analyzer_cmd(app_factory.stub_popen)
+        _release_stubs(app_factory.stub_popen)
+        assert cmd is not None
+
+        assert "--resume-from-cache" in cmd, cmd
+        cache_arg = cmd[cmd.index("--resume-from-cache") + 1]
+        # Must reference the INJECTED path, not the module global.
+        assert str(injected_root) in cache_arg, (
+            f"cache-dir arg doesn't use injected rawdata_root.\n"
+            f"  injected (correct): {injected_root}\n"
+            f"  global (wrong):     {wrong_global}\n"
+            f"  cmd arg:            {cache_arg}"
+        )
+        assert str(wrong_global) not in cache_arg, (
+            f"cache-dir arg leaks module-global RAWDATA_ROOT!\n"
+            f"  cmd arg: {cache_arg}\n"
+            f"  This is the virtual-console regression — code must use "
+            f"self._rawdata_root from BatchRunManager, never the module "
+            f"global. Check cache_dir_str construction around line 3302."
+        )
+
+
 class TestBatchAutoRefreshMd5:
     """Post-2026-04-21: POST /api/batch-run refreshes upstream md5
     before routing cache reuse. Fixes the "silently resume-from-cache
