@@ -1033,6 +1033,12 @@ class BatchRunRequest(BaseModel):
     #                   wants to "add another 10k spins on top of
     #                   whatever is there".
     sampling_strategy: str = Field(default="total")
+    # Auto-refresh upstream md5 before deciding cache reuse (2026-04-21).
+    # Default True — operator expects "开始采样" to grab the freshest
+    # upstream md5 so chunks cached against an old config don't get
+    # silently reused. Set to False when you know local md5 is already
+    # current or want to skip the round-trip.
+    skip_md5_refresh: bool = Field(default=False)
 
 
 class AutoTuneRequest(BaseModel):
@@ -2872,9 +2878,13 @@ class BatchRunManager:
             })
             if raw_status["mismatch_chunks"] > 0:
                 events.append({
-                    "ts": utc_now(), "level": "warn",
+                    "ts": utc_now(), "level": "info",
                     "machine": it.machine,
-                    "text": f"删除 {raw_status['mismatch_chunks']} 个 MD5 不匹配的 chunk（config/code 已变更）",
+                    "text": (
+                        f"检测到 {raw_status['mismatch_chunks']} 个历史 md5 的 chunk "
+                        "（保留在磁盘上，但本次采样不会复用；可在机台面板"
+                        "按版本删除或切换版本查看）"
+                    ),
                 })
             # Bet-mismatch warning: if cached chunks have mixed _bet
             # values or differ from the run's current bet, the CI is
@@ -5050,7 +5060,23 @@ def create_app(
     def start_batch_run(req: BatchRunRequest) -> dict[str, Any]:
         if not req.items:
             raise HTTPException(status_code=400, detail="items list is empty")
-        return batch_mgr.start_batch(req, rr)
+        # Auto-refresh upstream md5 before deciding cache reuse (2026-04-21).
+        # If local machines.json is stale, ``check_rawdata_status``
+        # would classify old-md5 chunks as "usable" and
+        # ``--resume-from-cache`` would silently reuse them. The
+        # refresh pulls current upstream md5 so the classifier sees
+        # the right baseline. Best-effort: upstream failures don't
+        # block the batch; we fall through to the (possibly stale)
+        # local md5. Operator can opt out via ``skip_md5_refresh=True``.
+        refresh_result = None
+        if not req.skip_md5_refresh:
+            refresh_result = _do_refresh_machines_md5(
+                server_id="dev", raise_on_error=False,
+            )
+        result = batch_mgr.start_batch(req, rr)
+        if refresh_result is not None:
+            result["md5_refresh"] = refresh_result
+        return result
 
     @app.get("/api/disk-space")
     def disk_space() -> dict[str, Any]:
@@ -6852,25 +6878,48 @@ def create_app(
             reports_root=rr, store=store, keep_last=keep, dry_run=dry_run,
         )
 
-    @app.post("/api/machines/refresh-md5")
-    def refresh_machines_md5(req: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Fetch current MachineConfigMd5 from the active server and update machines.json.
+    def _do_refresh_machines_md5(
+        server_id: str = "dev", *, raise_on_error: bool = True,
+    ) -> dict[str, Any]:
+        """Core md5-refresh work shared between the explicit endpoint
+        and the pre-batch auto-refresh. Fetches the active server's
+        MachineConfigMd5, merges into ``machines.json`` (creating
+        entries for new machines, updating cfg/code md5 on existing).
 
-        After this, report-validate will reflect the latest upstream MD5.
-        Optionally takes {"server_id": "dev"} to pick a server; defaults to 'dev'.
+        ``raise_on_error=True`` (default, for the explicit endpoint):
+        upstream failures surface as HTTPException so the UI shows
+        a clear error.
+        ``raise_on_error=False`` (for the pre-batch auto-refresh):
+        swallow network/config errors and return a dict with
+        ``ok: False`` so the batch can continue with stale local
+        md5 rather than fail the operator's sampling run on a
+        transient upstream hiccup.
+
+        Returns ``{ok, server_id, machines_fetched, machines_updated,
+        error?}``.
         """
-        payload = req or {}
-        server_id = payload.get("server_id", "dev")
         cfg = load_servers(sc)
         target = next((s for s in cfg.get("servers", []) if s["id"] == server_id), None)
         if target is None:
-            raise HTTPException(status_code=404, detail=f"server '{server_id}' not found")
+            msg = f"server '{server_id}' not found"
+            if raise_on_error:
+                raise HTTPException(status_code=404, detail=msg)
+            return {"ok": False, "error": msg, "server_id": server_id,
+                    "machines_fetched": 0, "machines_updated": 0}
         ep = target.get("endpoint", "").strip()
         if not ep:
-            raise HTTPException(status_code=400, detail="server has no endpoint configured")
+            msg = "server has no endpoint configured"
+            if raise_on_error:
+                raise HTTPException(status_code=400, detail=msg)
+            return {"ok": False, "error": msg, "server_id": server_id,
+                    "machines_fetched": 0, "machines_updated": 0}
         data = _fetch_machine_config_md5(ep)
         if data is None:
-            raise HTTPException(status_code=502, detail="failed to fetch MachineConfigMd5")
+            msg = "failed to fetch MachineConfigMd5"
+            if raise_on_error:
+                raise HTTPException(status_code=502, detail=msg)
+            return {"ok": False, "error": msg, "server_id": server_id,
+                    "machines_fetched": 0, "machines_updated": 0}
 
         # Merge new MD5 into machines.json.
         try:
@@ -6883,7 +6932,6 @@ def create_app(
         for machine_name, upstream in data.items():
             entry = machines_by_name.get(machine_name)
             if entry is None:
-                # New machine that wasn't in machines.json before.
                 entry = {"machine": machine_name, "modes": [1, 2, 5, 7]}
                 machines_list.append(entry)
                 machines_by_name[machine_name] = entry
@@ -6895,8 +6943,10 @@ def create_app(
                 entry["logicClassNames"] = upstream.get("logicClassNames", entry.get("logicClassNames", []))
                 updated_count += 1
         existing["machines"] = machines_list
-        Path(mc).write_text(json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        # Also snapshot server state.
+        Path(mc).write_text(
+            json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
         _save_server_snapshot(server_id, data)
         return {
             "ok": True,
@@ -6904,6 +6954,17 @@ def create_app(
             "machines_fetched": len(data),
             "machines_updated": updated_count,
         }
+
+    @app.post("/api/machines/refresh-md5")
+    def refresh_machines_md5(req: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Fetch current MachineConfigMd5 from the active server and update machines.json.
+
+        After this, report-validate will reflect the latest upstream MD5.
+        Optionally takes {"server_id": "dev"} to pick a server; defaults to 'dev'.
+        """
+        payload = req or {}
+        server_id = payload.get("server_id", "dev")
+        return _do_refresh_machines_md5(server_id, raise_on_error=True)
 
     @app.get("/api/report-validate/{machine}")
     def validate_machine_reports(machine: str) -> dict[str, Any]:
