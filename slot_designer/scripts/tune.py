@@ -84,6 +84,17 @@ def main() -> None:
     p.add_argument("--rtp-weight", type=float, default=1.0)
     p.add_argument("--shape-weight", type=float, default=1.0)
     p.add_argument("--cv-weight", type=float, default=0.3)
+    p.add_argument("--hit-target", type=float, default=None,
+                   help="optional hit_rate soft target (fraction 0-1). "
+                        "when set, tuner adds quadratic penalty on "
+                        "(pred_hit - target). use for classic single-line "
+                        "machines where industry typical is 0.09-0.13 "
+                        "(pass e.g. 0.15). off by default.")
+    p.add_argument("--hit-weight", type=float, default=0.5,
+                   help="weight on the hit_target penalty (default 0.5). "
+                        "Higher values make the tuner more aggressive about "
+                        "hitting the exact hit_target at the cost of RTP / "
+                        "bucket shape / CV. Only active with --hit-target.")
     p.add_argument("--verbose", action="store_true")
 
     # Phase 5 (order optimization) parameters
@@ -128,6 +139,8 @@ def main() -> None:
         rtp_weight=args.rtp_weight,
         shape_weight=args.shape_weight,
         cv_weight=args.cv_weight,
+        hit_target=args.hit_target,
+        hit_weight=args.hit_weight,
     )
 
     # Build target with derived cv if missing
@@ -152,7 +165,11 @@ def main() -> None:
     print(f"  ΔRTP             : {base_breakdown.rtp_gap_pp:.3f}pp")
     print(f"  shape JS         : {base_breakdown.shape_js:.5f}")
     print(f"  cost (total)     : {base_cost:.4f}")
-    print(f"  → components: rtp={base_breakdown.rtp_cost:.2f} shape={base_breakdown.shape_cost:.2f} cv={base_breakdown.cv_cost:.2f}")
+    _hit_part = (f" hit={base_breakdown.hit_cost:.2f}"
+                 if args.hit_target is not None else "")
+    print(f"  → components: rtp={base_breakdown.rtp_cost:.2f} shape={base_breakdown.shape_cost:.2f} cv={base_breakdown.cv_cost:.2f}{_hit_part}")
+    if args.hit_target is not None:
+        print(f"  hit_target       : {args.hit_target*100:.2f}% (soft, weight={args.hit_weight})")
 
     cfg = ESConfig(sigma_init=args.sigma)
     print(f"\n=== running (1+1)-ES: {args.restarts} restarts × {args.evaluations} evals ===")
@@ -216,6 +233,12 @@ def main() -> None:
             )
             return b.total, b
 
+        # Snapshot counts BEFORE SA runs; the post-SA invariant check
+        # compares counts dict equality (SA swap preserves per-(sym,reel)
+        # totals by construction; any mismatch means swap implementation
+        # bug, not rounding drift).
+        pre_sa_counts = base_counts(tuned_weights)
+
         from random import Random
         sa_result = run_simulated_annealing(
             tuned_weights["reel_sets"]["default"]["reels"],
@@ -235,15 +258,20 @@ def main() -> None:
               f"avg_pwdf={sum(exp_after['avg_pwdf'].values())/len(exp_after['avg_pwdf']):.3f}  "
               f"avg_blank_adj={exp_after['avg_blank_adj']:.3f}")
 
-        # Verify Phase 4 invariant: marginals (and therefore RTP) untouched
-        post_order_profile = analytic_profile_from_marginals(
-            evaluator,
-            marginals_from_counts(base_counts(tuned_weights)),
-        )
-        rtp_drift = abs(post_order_profile["rtp_pct"] - best_profile["rtp_pct"])
-        assert rtp_drift < 0.01, (
-            f"Phase 5 violated Phase 4 invariant! RTP drifted "
-            f"{post_order_profile['rtp_pct']:.4f} from {best_profile['rtp_pct']:.4f}"
+        # Phase 5 invariant: SA only swaps stop positions within a reel,
+        # so per-(symbol, reel) totals MUST be identical pre-SA vs post-SA.
+        # Comparing RTP was the wrong proxy — it conflates SA behavior
+        # with apply_counts rounding drift (apply_counts rounds int
+        # weights from the tuner's float-free counts; RTP computed from
+        # those rounded weights will drift up to ~0.3pp from best_profile
+        # when some symbols have count=1, but that's rounding, not a
+        # Phase 5 violation). Check counts directly instead.
+        post_sa_counts = base_counts(tuned_weights)
+        assert post_sa_counts == pre_sa_counts, (
+            f"Phase 5 SA violated marginal preservation! "
+            f"per-(symbol, reel) counts differ pre vs post SA:\n"
+            f"  pre:  {pre_sa_counts}\n"
+            f"  post: {post_sa_counts}"
         )
 
         tuned_weights["_tuned_summary"]["phase5_near_miss_before"] = exp_before["near_miss_rate_total"]

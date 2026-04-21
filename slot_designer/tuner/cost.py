@@ -1,10 +1,17 @@
 """Cost function for weight tuning.
 
-Tiers (per user directive 2026-04-20):
+Tiers (per user directive 2026-04-20 + 2026-04-21 hit_rate soft add):
   - HARD: RTP match + bucket shape (normalized, reachable-only)
   - SOFT: CV alignment (Lucas & Singh 2008 — lower CV → longer play;
     aligning CV to target keeps machine-to-machine "feel" similar even
     when per-bucket absolute values differ)
+  - SOFT (optional): hit_rate target band. Off by default (target
+    profile's hit_rate is informational, not a tuning goal). When the
+    operator knows a specific fleet-preferred hit rate (e.g. classic
+    single-line 9-13% industry range) they pass --hit-target to
+    steer the tuner there. The target profile's hit_rate is ignored
+    in this mode; we don't want to track M14's 20.85% just because
+    it happens to be the shape reference.
   - EXPERIENCE (logged, not optimized by default): wild_visibility,
     blank_rate, per-pay tail mass — passed through for operator
     inspection via the tuner's best-candidate report
@@ -31,6 +38,13 @@ class CostWeights:
     # CV alignment; 0.1 CV gap = cost 1
     cv_reference: float = 0.1
     cv_weight: float = 0.3
+    # hit_rate target (fraction, 0-1). None = don't optimize for hit_rate.
+    # When set (e.g. 0.15 for classic single-line typical), adds a
+    # quadratic penalty on (predicted_hit - target) scaled by
+    # hit_reference (0.01 gap = cost 1 at hit_weight=1).
+    hit_target: float | None = None
+    hit_reference: float = 0.01
+    hit_weight: float = 0.5
 
 
 @dataclass
@@ -39,9 +53,11 @@ class CostBreakdown:
     rtp_cost: float
     shape_cost: float
     cv_cost: float
+    hit_cost: float
     rtp_gap_pp: float
     shape_js: float
     cv_gap: float
+    hit_gap: float
 
 
 def evaluate_cost(
@@ -75,13 +91,28 @@ def evaluate_cost(
     cv_gap = abs(pred_cv - tgt_cv)
     cv_cost = (cv_gap / w.cv_reference) ** 2
 
-    total = w.rtp_weight * rtp_cost + w.shape_weight * shape_cost + w.cv_weight * cv_cost
+    # hit_rate soft target (optional — only active when hit_target set)
+    hit_cost = 0.0
+    hit_gap = 0.0
+    if w.hit_target is not None:
+        pred_hit = predicted.get("hit_rate", 0.0)
+        hit_gap = abs(pred_hit - w.hit_target)
+        hit_cost = (hit_gap / w.hit_reference) ** 2
+
+    total = (
+        w.rtp_weight * rtp_cost
+        + w.shape_weight * shape_cost
+        + w.cv_weight * cv_cost
+        + w.hit_weight * hit_cost
+    )
     return CostBreakdown(
         total=total,
         rtp_cost=rtp_cost,
         shape_cost=shape_cost,
         cv_cost=cv_cost,
+        hit_cost=hit_cost,
         rtp_gap_pp=rtp_gap_pp,
         shape_js=shape_js,
         cv_gap=cv_gap,
+        hit_gap=hit_gap,
     )
