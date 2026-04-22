@@ -98,13 +98,13 @@ def test_emit_simulation_defaults_to_spec_mode(tmp_path: Path):
     assert _extract_one_round(chunk)["RTPId"] == int(spec["mode"])
 
 
-def test_m1sim_registry_has_modes_1_and_2():
-    """Registry invariant: M1sim must list both mode 1 and mode 2 now
-    that the lucky-mode weights live on disk. If someone removes mode 2
-    from the entry but leaves the weights file at
-    ``slot_designer/weights/M1/mode_2/reel_weights.json``, the two
-    sides would silently drift — the machine's config_md5 would stop
-    covering mode 2 even though the file is still there."""
+def test_m1sim_registry_lists_all_shipped_modes():
+    """Registry invariant: M1sim's ``modes`` list must match the set of
+    mode directories on disk at ``slot_designer/weights/M1/mode_<N>/``.
+    Drift here silently breaks config_md5 coverage (e.g. removing mode 5
+    from the entry while leaving mode_5/weights.json behind would mean
+    the machine-level md5 stops depending on it, so a re-tune of mode 5
+    wouldn't roll the md5 and chunks wouldn't reclassify)."""
     registry = json.loads(
         (_ROOT / "slot_designer" / "configs" / "machines_virtual.json")
         .read_text(encoding="utf-8")
@@ -113,8 +113,18 @@ def test_m1sim_registry_has_modes_1_and_2():
         (m for m in registry["machines"] if m["machine"] == "M1sim"), None,
     )
     assert m1sim is not None, "M1sim must be in virtual registry"
-    assert set(m1sim["modes"]) == {1, 2}, (
-        f"M1sim modes should be [1, 2]; got {m1sim['modes']!r}"
+
+    weights_dir = _ROOT / "slot_designer" / "weights" / "M1"
+    disk_modes = {
+        int(p.name.split("_", 1)[1])
+        for p in weights_dir.glob("mode_*")
+        if p.is_dir() and (p / "weights.json").exists()
+    }
+    registry_modes = set(m1sim["modes"])
+    assert registry_modes == disk_modes, (
+        f"registry modes {sorted(registry_modes)} must match disk modes "
+        f"{sorted(disk_modes)}. Drift means the machine's config_md5 "
+        f"stops covering a mode whose weights file still lives on disk."
     )
 
 
