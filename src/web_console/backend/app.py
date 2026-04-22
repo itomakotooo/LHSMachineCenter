@@ -2250,12 +2250,21 @@ def _parse_upstream_map_order(upstream: dict) -> dict:
       * ``gmMapMachineOrderJson`` — JSON string → array of activity
         overrides {Id / Orders / InfluenceMachines / StartTime /
         EndTime / MachineLuckyBonus / DependentSwitch / ...}.
+      * ``machineTestVariantsJson`` — JSON string → dict
+        ``{machine_key: upstream_md5_key}``. Authoritative map from a
+        machine's variant-aware name (e.g. ``M273$1$1-2-3``) to the
+        key under which the upstream ``MachineConfigMd5`` endpoint
+        reports its md5 (e.g. ``M273``). Used *only* by the md5-refresh
+        path to fan md5 values out across sibling variants; every
+        other layer of the system treats each machine row as
+        independent and does not consult this map.
 
-    Returns ``{default_order, current_hall_order, active_activities}``
-    where ``current_hall_order`` = default_order with currently-active
-    activities' InfluenceMachines promoted to the front (sorted by
-    Orders[0] ascending). Activities with ``now ∈ [StartTime, EndTime]``
-    are "active"; others are dropped from the output.
+    Returns ``{default_order, current_hall_order, active_activities,
+    club_machines, variants_map}`` where ``current_hall_order`` =
+    default_order with currently-active activities' InfluenceMachines
+    promoted to the front (sorted by Orders[0] ascending). Activities
+    with ``now ∈ [StartTime, EndTime]`` are "active"; others are
+    dropped from the output.
     """
     import re as _re
     import time as _time
@@ -2332,11 +2341,27 @@ def _parse_upstream_map_order(upstream: dict) -> dict:
     else:
         current_hall_order = list(default_order)
 
+    variants_map: dict[str, str] = {}
+    variants_json = upstream.get("machineTestVariantsJson") if isinstance(upstream, dict) else None
+    if isinstance(variants_json, str):
+        try:
+            raw_variants = json.loads(variants_json)
+        except json.JSONDecodeError:
+            raw_variants = None
+        if isinstance(raw_variants, dict):
+            for vk, uk in raw_variants.items():
+                # Drop malformed rows rather than propagate them
+                # silently; upstream schema drift should not poison
+                # the map. Same guard as machine_variants._coerce_str_map.
+                if isinstance(vk, str) and isinstance(uk, str):
+                    variants_map[vk] = uk
+
     return {
         "default_order": default_order,
         "current_hall_order": current_hall_order,
         "active_activities": active_activities,
         "club_machines": club_machines,
+        "variants_map": variants_map,
     }
 
 
@@ -5060,10 +5085,14 @@ def create_app(
         #   - missing default_order (pre-round-3 format)
         #   - missing club_machines (round-4 added the club/normal
         #     split; earlier round-3 files lack this field)
+        #   - missing variants_map (variants round added the map; the
+        #     existing raw_upstream may predate the field — in that
+        #     case the reparse yields an empty map, which is fine)
         needs_backfill = bool(
             isinstance(data.get("raw_upstream"), dict)
             and (not data.get("default_order")
-                 or "club_machines" not in data)
+                 or "club_machines" not in data
+                 or "variants_map" not in data)
         )
         if needs_backfill:
             parsed = _parse_upstream_map_order(data["raw_upstream"])
@@ -5081,6 +5110,7 @@ def create_app(
             "current_hall_order": data.get("current_hall_order") or [],
             "active_activities": data.get("active_activities") or [],
             "club_machines": data.get("club_machines") or [],
+            "variants_map": data.get("variants_map") or {},
             "updated_at": data.get("updated_at"),
             "source": data.get("source"),
         }
@@ -5141,6 +5171,7 @@ def create_app(
                 "current_hall_order": parsed["current_hall_order"],
                 "active_activities": parsed["active_activities"],
                 "club_machines": parsed["club_machines"],
+                "variants_map": parsed["variants_map"],
                 "updated_at": utc_now(),
                 "source": url,
                 "raw_upstream": upstream_payload,
@@ -5154,9 +5185,11 @@ def create_app(
                 "current_hall_order": parsed["current_hall_order"],
                 "active_activities": parsed["active_activities"],
                 "club_machines": parsed["club_machines"],
+                "variants_map": parsed["variants_map"],
                 "machine_count": len(parsed["default_order"]),
                 "club_count": len(parsed["club_machines"]),
                 "active_count": len(parsed["active_activities"]),
+                "variant_count": len(parsed["variants_map"]),
                 "updated_at": payload["updated_at"],
                 "source": url,
             }
