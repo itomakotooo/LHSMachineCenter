@@ -19,6 +19,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# Dual-path import for the trigger-session helper: dir-level script
+# invocation (``python fresh_slotlab/player_impact_analyzer.py``) puts
+# fresh_slotlab/ on sys.path so the top-level name works; package-style
+# invocation from backend (cwd = repo root) needs the qualified path.
+# Keeping this at module top rather than inside the hot loop ensures a
+# single import attempt per process.
+try:
+    from fresh_slotlab.trigger_sessions import compute_trigger_sessions  # noqa: E402
+except ImportError:  # running as a standalone script, not a package member
+    from trigger_sessions import compute_trigger_sessions  # type: ignore[no-redef]
+
 DEFAULT_ENDPOINT_URL = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpinVariant"
 ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
 # We always hit the Variant endpoint. ``MachineName`` on the payload is
@@ -2419,6 +2430,33 @@ def parse_chunk_response(
         if not isinstance(robot, dict):
             continue
         rounds = parse_rounds(robot)
+
+        # Trigger session win attribution (iteration 1 — Type 1 families
+        # with ReMarks.startswith("Trigger"): TopDollar / QuickDollar /
+        # Fortunes / DancingDrum / HoppyHunting / ChristmasSimple /
+        # ValentineSimple). The round-level aggregator below credits
+        # zero win to the trigger pay_id (its PayoutIdToWinAmount value
+        # is 0 by design — it's a signal token), so the feature's real
+        # payout lives only on analysisResult.FeatureWin and can't be
+        # traced back to a pay_id. Pre-computing trigger sessions here
+        # lets us fold each session's actual win (verified equal to
+        # FeatureWin aggregate on M15 full-chunk scan) back onto its
+        # trigger pay_id's payout_id_win, so payout_ids_top20's RTP pp
+        # sum matches summary.rtp.
+        #
+        # Runs BEFORE the main per-round loop so the hits are still
+        # counted by the base aggregator (trigger round's PayoutIdToWinAmount
+        # key increments payout_id_hits) while this pass only adds the
+        # session win — no double-counting of either hits or the co-
+        # occurring regular payline wins (which have nonzero PayoutId
+        # amounts and so are excluded from trigger_pay_ids by design).
+        for _trig_session in compute_trigger_sessions(rounds):
+            _sess_win = float(_trig_session.get("session_win", 0.0) or 0.0)
+            if _sess_win == 0.0:
+                continue
+            for _tpid in _trig_session.get("trigger_pay_ids", ()):
+                payout_id_win[str(_tpid)] += _sess_win
+
         cur_loss = 0
         cur_win = 0
         # Per-robot collect tracking: max CollectCount + max AccCredits
