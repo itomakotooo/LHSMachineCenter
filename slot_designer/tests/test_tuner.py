@@ -36,13 +36,24 @@ from slot_designer.tuner.loop import ESConfig, run_with_restarts
 
 
 SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "reel_weights.json"
+STRIPS = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
+WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
 TARGET = _ROOT / "slot_designer" / "tuner" / "targets" / "M14_mode1.target.json"
 
 
 def _load():
+    """Return spec + assembled weights envelope + target.
+
+    The envelope wraps strips + weights.json into the legacy
+    ``{reel_sets: {default: {reels: [[{symbol, weight}, ...]]}}}``
+    shape that base_counts / apply_counts still expect. New-schema
+    helpers (``base_counts_from_assembled``) operate on the inner
+    reels list directly if a test wants to skip the envelope.
+    """
+    from slot_designer.engine.loader import load_reels_for_tuner
     spec = json.loads(SPEC.read_text(encoding="utf-8"))
-    weights = json.loads(WEIGHTS.read_text(encoding="utf-8"))
+    reels = load_reels_for_tuner(STRIPS, WEIGHTS)
+    weights = {"reel_sets": {"default": {"reels": reels}}}
     target = json.loads(TARGET.read_text(encoding="utf-8"))
     return spec, weights, target
 
@@ -142,7 +153,7 @@ def test_sim_converges_to_analytic_on_tuned_weights():
 
     This guards against apply_counts breaking marginals silently.
     """
-    tuned_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "reel_weights.json"
+    tuned_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
     if not tuned_path.exists():
         # Skip if tuner hasn't been run yet
         return

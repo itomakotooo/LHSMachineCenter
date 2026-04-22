@@ -38,22 +38,24 @@
 
 ## 文件清单
 
-- `reel_weights.json` —— 引擎 / 虚拟 console 读这个
-- `reel_weights.tsv` —— 同内容的人类可读格式（36 stops × 3 reels）
+- `weights.json` —— 本 mode 每 stop 的 weight 数组（引擎加载时与父目录的 `reel_strips.json` 合并）
 - `TUNE_REPORT.md` —— 最近一次 tune 的 Phase 4/5 完整报告
 - `NOTES.md` —— 本文件
+
+Symbol 布局在 [`../reel_strips.json`](../reel_strips.json)（所有 mode 共用）。
 
 ## Tune 命令（重跑本 mode）
 
 ```bash
 python -m slot_designer.scripts.tune \
   --spec slot_designer/specs/M1.spec.json \
-  --base-weights slot_designer/weights/M1/mode_1/reel_weights.json \
+  --strips slot_designer/weights/M1/reel_strips.json \
+  --base-weights slot_designer/weights/M1/mode_1/weights.json \
   --target slot_designer/tuner/targets/M14_mode1.target.json \
-  --out-weights slot_designer/weights/M1/mode_1/reel_weights.json \
+  --out-weights slot_designer/weights/M1/mode_1/weights.json \
   --out-report slot_designer/weights/M1/mode_1/TUNE_REPORT.md \
   --evaluations 2000 --restarts 3 --sa-steps 3000 \
   --hit-target 0.15 --hit-weight 1.5
 ```
 
-重跑会覆盖 `reel_weights.json` + `TUNE_REPORT.md`。想保留旧版本走 git（`git log --follow` / `git show`）。
+重跑会覆盖 `weights.json` + `TUNE_REPORT.md`，也可能更新共享的 `reel_strips.json` 和 mode 2 的 `weights.json`（Phase 5 联合 SA co-swap）。想保留旧版本走 git（`git log --follow` / `git show`）。

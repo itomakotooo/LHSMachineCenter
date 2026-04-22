@@ -50,7 +50,8 @@ def _entry_for_modes(modes: list[int]) -> dict:
         "modes": modes,
         "_source_machine": "M1",
         "_spec_path": "slot_designer/specs/M1.spec.json",
-        "_weights_path_template": "slot_designer/weights/M1/mode_{mode}/reel_weights.json",
+        "_strips_path": "slot_designer/weights/M1/reel_strips.json",
+        "_weights_path_template": "slot_designer/weights/M1/mode_{mode}/weights.json",
     }
 
 

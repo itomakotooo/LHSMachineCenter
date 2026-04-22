@@ -398,3 +398,252 @@ def run_simulated_annealing(
         evaluations=cfg.max_steps,
         trace=trace,
     )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Joint SA across multiple modes that share a reel-strip layout
+# (2026-04-22: enforces "same symbol structure across modes" invariant)
+# ──────────────────────────────────────────────────────────────────────
+
+@dataclass
+class JointSAResult:
+    best_strips: list[list[str]]
+    # mode_key (str) → best per-position weights (list[int] per reel)
+    best_weights_per_mode: dict[str, list[list[int]]]
+    best_cost: float
+    # mode_key → ExperienceCostBreakdown for the best state
+    best_breakdowns: dict[str, ExperienceCostBreakdown]
+    evaluations: int
+
+
+def joint_class_preserving_swap(
+    strips: list[list[str]],
+    weights_per_mode: dict[str, list[list[int]]],
+    rng: Random,
+    blank_symbol: str = "Blank",
+) -> tuple[list[list[str]], dict[str, list[list[int]]]]:
+    """One SA step for the joint multi-mode optimizer.
+
+    Swap two stops of the same Blank/non-Blank class at positions (i, j)
+    on one reel, and CO-SWAP the weights at those positions in every
+    mode. This keeps two invariants simultaneously:
+
+      1. Shared-strip invariant — strips remain identical across modes
+         (by construction: only one strips list exists; we swap symbols
+         and every mode's weight-at-position-i with its weight-at-j).
+      2. Per-mode marginals — sum of weights grouped by symbol is
+         unchanged for every mode (each weight stays attached to its
+         symbol; just the position pair moves together).
+
+    And of course the class-preserving property → alternation is
+    preserved when the starting state is alternating.
+    """
+    # Copy-on-write for both strips and per-mode weight arrays
+    new_strips = [list(r) for r in strips]
+    new_weights = {
+        m: [list(r) for r in ws]
+        for m, ws in weights_per_mode.items()
+    }
+    reel_idx = rng.randrange(len(new_strips))
+    strip = new_strips[reel_idx]
+    blank_idxs = [i for i, s in enumerate(strip) if s == blank_symbol]
+    nonblank_idxs = [i for i, s in enumerate(strip) if s != blank_symbol]
+    if len(blank_idxs) >= 2 and (len(nonblank_idxs) < 2 or rng.random() < 0.5):
+        candidates = blank_idxs
+    elif len(nonblank_idxs) >= 2:
+        candidates = nonblank_idxs
+    else:
+        return new_strips, new_weights
+    i, j = rng.sample(candidates, 2)
+    # Swap symbol in strip
+    strip[i], strip[j] = strip[j], strip[i]
+    # Co-swap weights across EVERY mode
+    for mode in new_weights:
+        wr = new_weights[mode][reel_idx]
+        wr[i], wr[j] = wr[j], wr[i]
+    return new_strips, new_weights
+
+
+def _assemble_reels_inline(
+    strips: list[list[str]],
+    weights: list[list[int]],
+) -> list[list[dict]]:
+    """Assemble per-position strips + weights into the
+    [[{symbol, weight}, ...], ...] shape expected by
+    ``evaluate_experience_cost``. Local copy to avoid circular import
+    with ``engine.loader``.
+    """
+    return [
+        [{"symbol": s, "weight": int(w)} for s, w in zip(strip, wts)]
+        for strip, wts in zip(strips, weights)
+    ]
+
+
+def run_joint_simulated_annealing(
+    initial_strips: list[list[str]],
+    initial_weights_per_mode: dict[str, list[list[int]]],
+    *,
+    high_value: Iterable[str] = ("Seven1", "Seven2", "Diamond1", "Diamond2"),
+    blank_symbol: str = "Blank",
+    cost_weights: ExperienceCostWeights | None = None,
+    config: SAConfig | None = None,
+    rng: Random | None = None,
+    verbose: bool = False,
+) -> JointSAResult:
+    """SA over shared strips + per-mode weights.
+
+    Cost = SUM of per-mode ``evaluate_experience_cost`` on the reels
+    assembled from the shared strip + that mode's weights. Summing
+    (not averaging) means the optimizer naturally weights modes that
+    are "harder" (e.g. mode 2 whose sparse Diamond2 clustering makes
+    PWDF sensitive to ordering) against modes where the cost is already
+    small.
+
+    Input invariants (checked):
+      * Every mode's weights shape matches strips shape per reel.
+      * Strips are strictly Blank/non-Blank alternating — failure to
+        provide this is a wiring bug; the mutation operator can't
+        recover.
+
+    Output invariants (asserted post-SA):
+      * Strips still alternating (class-preserving mutation).
+      * Every mode's per-symbol weight total unchanged (swap moves
+        weights alongside their symbols; marginals invariant).
+    """
+    cfg = config or SAConfig()
+    rng = rng or Random(0)
+    cw = cost_weights or ExperienceCostWeights()
+    hv = list(high_value)
+
+    # Copy on entry so caller's state stays untouched
+    cur_strips = [list(r) for r in initial_strips]
+    cur_weights = {
+        m: [list(r) for r in ws]
+        for m, ws in initial_weights_per_mode.items()
+    }
+
+    # Pre-check invariants
+    initial_violations = sum(
+        count_alternation_violations(
+            [{"symbol": s} for s in strip], blank_symbol,
+        )
+        for strip in cur_strips
+    )
+    if initial_violations != 0:
+        raise ValueError(
+            f"joint SA requires strictly-alternating input strips; got "
+            f"{initial_violations} violations. Call initialize_alternating "
+            f"on each reel first (and co-migrate the per-mode weights to "
+            f"match the re-indexed positions)."
+        )
+    # Shape check: each mode's weight arrays match strips shape
+    for mode_key, weights in cur_weights.items():
+        if len(weights) != len(cur_strips):
+            raise ValueError(
+                f"mode {mode_key!r}: {len(weights)} reels vs strips has "
+                f"{len(cur_strips)}"
+            )
+        for ri, (strip, w) in enumerate(zip(cur_strips, weights)):
+            if len(strip) != len(w):
+                raise ValueError(
+                    f"mode {mode_key!r} reel {ri+1}: {len(w)} weights vs "
+                    f"strips has {len(strip)} stops"
+                )
+
+    # Pre-snapshot marginals (per mode, per reel, per symbol) to verify
+    # they stay constant — the CO-SWAP mutation should preserve this
+    # by construction; assertion post-SA catches any operator bug.
+    def _marginals(strips, weights):
+        out = {}
+        for mode_key, wreels in weights.items():
+            per_mode = []
+            for strip, wts in zip(strips, wreels):
+                c: dict[str, int] = {}
+                for sym, w in zip(strip, wts):
+                    c[sym] = c.get(sym, 0) + w
+                per_mode.append(c)
+            out[mode_key] = per_mode
+        return out
+    pre_marginals = _marginals(cur_strips, cur_weights)
+
+    def cost_of(strips, weights) -> tuple[float, dict]:
+        total = 0.0
+        breakdowns: dict[str, ExperienceCostBreakdown] = {}
+        for mode_key, wreels in weights.items():
+            assembled = _assemble_reels_inline(strips, wreels)
+            b = evaluate_experience_cost(
+                assembled, high_value=hv, blank_symbol=blank_symbol,
+                weights=cw,
+            )
+            total += b.total
+            breakdowns[mode_key] = b
+        return total, breakdowns
+
+    cur_cost, cur_break = cost_of(cur_strips, cur_weights)
+    best_strips = [list(r) for r in cur_strips]
+    best_weights = {m: [list(r) for r in ws] for m, ws in cur_weights.items()}
+    best_cost = cur_cost
+    best_break = cur_break
+
+    alpha = (cfg.final_temp / cfg.initial_temp) ** (1.0 / max(1, cfg.max_steps))
+    temp = cfg.initial_temp
+    accepted = 0
+    improved = 0
+
+    for step in range(1, cfg.max_steps + 1):
+        cand_strips, cand_weights = joint_class_preserving_swap(
+            cur_strips, cur_weights, rng, blank_symbol,
+        )
+        cand_cost, cand_break = cost_of(cand_strips, cand_weights)
+        delta = cand_cost - cur_cost
+        if delta < 0 or rng.random() < math.exp(-delta / max(temp, 1e-12)):
+            cur_strips = cand_strips
+            cur_weights = cand_weights
+            cur_cost = cand_cost
+            cur_break = cand_break
+            accepted += 1
+            if cur_cost < best_cost:
+                best_strips = [list(r) for r in cur_strips]
+                best_weights = {m: [list(r) for r in ws] for m, ws in cur_weights.items()}
+                best_cost = cur_cost
+                best_break = cur_break
+                improved += 1
+                if verbose and (step <= 5 or step % 200 == 0):
+                    # Log per-mode NM / blank_adj so operator sees
+                    # multi-mode trade-offs in the trace
+                    parts = ", ".join(
+                        f"{k}:nm={v.near_miss_rate_total*100:.2f}%"
+                        for k, v in best_break.items()
+                    )
+                    print(f"  joint-SA step {step:>5} temp={temp:.4f} "
+                          f"cost={best_cost:+.4f} [{parts}] *")
+        temp *= alpha
+
+    if verbose:
+        print(f"  joint-SA done: {accepted}/{cfg.max_steps} accepted, "
+              f"{improved} improvements")
+
+    # Post-invariants
+    final_violations = sum(
+        count_alternation_violations(
+            [{"symbol": s} for s in strip], blank_symbol,
+        )
+        for strip in best_strips
+    )
+    assert final_violations == 0, (
+        f"joint SA bug: class-preserving swap should keep alternation, "
+        f"but result has {final_violations} violations."
+    )
+    post_marginals = _marginals(best_strips, best_weights)
+    assert post_marginals == pre_marginals, (
+        f"joint SA bug: co-swap should preserve per-mode marginals.\n"
+        f"pre : {pre_marginals}\npost: {post_marginals}"
+    )
+
+    return JointSAResult(
+        best_strips=best_strips,
+        best_weights_per_mode=best_weights,
+        best_cost=best_cost,
+        best_breakdowns=best_break,
+        evaluations=cfg.max_steps,
+    )

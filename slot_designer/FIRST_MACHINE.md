@@ -41,18 +41,20 @@ md 说 3 Bar1=20× 实际 10×、3 Bar3=10× 实际 20×（笔误）。
 
 ### 阶段 2 — 结构化 reel 表（自动）
 
-**工具**：把策划给的 reel 配置（常见格式：表格 reel1/weight1/reel2/weight2/reel3/weight3）
-转成 `weights/<MACHINE>/mode_<N>/reel_weights.json`。
+**工具**：把策划给的 reel 配置拆成两个文件：
+- `weights/<MACHINE>/reel_strips.json` —— symbol 布局（所有 mode 共用）
+- `weights/<MACHINE>/mode_<N>/weights.json` —— 每 mode 的 weight 数组
 
 M1 实例：36 stops × 3 reels，sum=1010 per reel。见
-[weights/M1/mode_1/reel_weights.json](weights/M1/mode_1/reel_weights.json)。
+[weights/M1/reel_strips.json](weights/M1/reel_strips.json) 和
+[weights/M1/mode_1/weights.json](weights/M1/mode_1/weights.json)。
 
 ### 阶段 3 — 验证机台实现正确（模式 A 终点）
 
 ```bash
 python -m slot_designer.scripts.verify \
   --spec slot_designer/specs/M1.spec.json \
-  --weights slot_designer/weights/M1/mode_1/reel_weights.json \
+  --weights slot_designer/weights/M1/mode_1/weights.json \
   --ref-summary dev_reports/M1/mode_1/versions/<latest>/player_impact_summary.json
 ```
 
@@ -74,9 +76,10 @@ python -m slot_designer.tuner.target_profile \
 ```bash
 python -m slot_designer.scripts.tune \
   --spec slot_designer/specs/M1.spec.json \
-  --base-weights slot_designer/weights/M1/mode_1/reel_weights.json \
+  --strips slot_designer/weights/M1/reel_strips.json \
+  --base-weights slot_designer/weights/M1/mode_1/weights.json \
   --target slot_designer/tuner/targets/M14_mode1.target.json \
-  --out-weights slot_designer/weights/M1/mode_1/reel_weights.json \
+  --out-weights slot_designer/weights/M1/mode_1/weights.json \
   --out-report slot_designer/weights/M1/mode_1/TUNE_REPORT.md \
   --evaluations 1500 --restarts 3 --sa-steps 3000 --emit-chunks 110
 ```

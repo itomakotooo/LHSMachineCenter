@@ -80,9 +80,13 @@ def test_weights_change_flips_config_only():
     cfg_before = compute_config_md5(spec_real, weights)
 
     # Simulate a weights-file byte change (e.g. Phase 4 re-tune produces
-    # different integer counts, or Phase 5 reorders stops)
+    # different integer counts, or Phase 5 reorders stops). Use append-
+    # noise rather than substring replace — the new schema uses
+    # "weights" (plural) as the array key, so an in-place substring
+    # swap picked for the old schema ("weight") found nothing and left
+    # the file byte-identical, producing a false-positive pass.
     with tempfile.NamedTemporaryFile("wb", suffix=".json", delete=False) as tmp:
-        tmp.write(weights[0].read_bytes().replace(b'"weight"', b'"Weight"', 1))
+        tmp.write(weights[0].read_bytes() + b'\n{"_trailing_noise": true}')
         tmp_path = Path(tmp.name)
     try:
         cfg_after = compute_config_md5(spec_real, [tmp_path] + list(weights[1:]))

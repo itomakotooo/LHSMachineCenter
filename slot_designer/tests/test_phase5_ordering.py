@@ -38,11 +38,19 @@ from slot_designer.tuner.ordering import (
 
 
 SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "reel_weights.json"
+STRIPS = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
+WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
 
 
 def _load_weights() -> dict:
-    return json.loads(WEIGHTS.read_text(encoding="utf-8"))
+    """Return the assembled weights envelope (legacy shape) built from
+    the new strips + weights.json pair. Tests use the old-style
+    ``reel_sets.default.reels`` path to reach the per-stop list of
+    ``{symbol, weight}`` dicts.
+    """
+    from slot_designer.engine.loader import load_reels_for_tuner
+    reels = load_reels_for_tuner(STRIPS, WEIGHTS)
+    return {"reel_sets": {"default": {"reels": reels}}}
 
 
 def test_swap_preserves_counts():
@@ -67,9 +75,13 @@ def test_random_swap_preserves_symbol_totals():
     )
 
 
-def test_sa_preserves_rtp():
+def test_sa_preserves_rtp(tmp_path):
     """After Phase 5, analytic RTP must be unchanged from the input weights
-    (ordering is marginal-preserving; RTP depends only on marginals)."""
+    (ordering is marginal-preserving; RTP depends only on marginals).
+
+    Writes a roundtrip strips.json + weights.json pair in tmp_path so
+    load_engine can re-open them via its strips+weights schema.
+    """
     engine, _ = load_engine(SPEC, WEIGHTS)
     rtp_before = analytic_profile(engine)["rtp_pct"]
 
@@ -85,14 +97,28 @@ def test_sa_preserves_rtp():
         config=SAConfig(max_steps=500),
         rng=Random(7),
     )
-    # Swap best reels back and recompute RTP
-    weights["reel_sets"]["default"]["reels"] = result.best_reels
-    tmp_path = _ROOT / "slot_designer" / "out" / "__phase5_roundtrip.json"
-    tmp_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path.write_text(json.dumps(weights, ensure_ascii=False), encoding="utf-8")
-    engine2, _ = load_engine(SPEC, tmp_path)
+    # Serialize best reels as strips + weights in tmp_path so the
+    # loader (which expects the two-file layout) can round-trip them.
+    machine_dir = tmp_path / "M1sim"
+    mode_dir = machine_dir / "mode_1"
+    mode_dir.mkdir(parents=True)
+    strips_doc = {
+        "machine": "M1",
+        "reel_set": "default",
+        "reels": [[s["symbol"] for s in reel] for reel in result.best_reels],
+    }
+    weights_doc = {
+        "machine": "M1",
+        "mode": 1,
+        "reel_set": "default",
+        "weights": [[int(s["weight"]) for s in reel] for reel in result.best_reels],
+    }
+    (machine_dir / "reel_strips.json").write_text(
+        json.dumps(strips_doc, ensure_ascii=False), encoding="utf-8")
+    (mode_dir / "weights.json").write_text(
+        json.dumps(weights_doc, ensure_ascii=False), encoding="utf-8")
+    engine2, _ = load_engine(SPEC, mode_dir / "weights.json")
     rtp_after = analytic_profile(engine2)["rtp_pct"]
-    tmp_path.unlink(missing_ok=True)
     assert abs(rtp_after - rtp_before) < 1e-9, (
         f"Phase 5 changed RTP: before={rtp_before}, after={rtp_after}"
     )

@@ -27,20 +27,21 @@
       "logicClassNames": [
         "SimulatedClassicPayline3Reel"
       ],
-      "configSummaryMd5": "79a990003af00559c0eefbd800e49721",
-      "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642",
+      "configSummaryMd5": "7eaf88ce1ab3d10e0ca1ae8e12f833f0",
+      "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c",
       "available": true,
       "_source_machine": "M1",
       "_spec_path": "slot_designer/specs/M1.spec.json",
-      "_weights_path_template": "slot_designer/weights/M1/mode_{mode}/reel_weights.json",
+      "_strips_path": "slot_designer/weights/M1/reel_strips.json",
+      "_weights_path_template": "slot_designer/weights/M1/mode_{mode}/weights.json",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "144e876597b88948281e8594588ebde5",
-          "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642"
+          "configSummaryMd5": "d9e44f73d481d622acc16b2360e0096a",
+          "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
         },
         "2": {
-          "configSummaryMd5": "72f9c78a6b4865a007bf1629b98df0c9",
-          "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642"
+          "configSummaryMd5": "ac12e88b23d4ab0c1232452c2a342144",
+          "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
         }
       }
     }

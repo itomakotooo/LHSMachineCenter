@@ -16,9 +16,17 @@ reduced to 0 are clamped to min_count (default 1) so the reel remains
 valid — user can manually remove afterwards.
 
 Two entry points:
-  - `base_counts(weights_dict)` → `{reel_idx: {symbol: count}}`
-  - `apply_counts(weights_dict, new_counts)` → new weights_dict with
+  - ``base_counts(weights_dict)`` → ``{reel_idx: {symbol: count}}``
+  - ``apply_counts(weights_dict, new_counts)`` → new weights_dict with
     stops rescaled to match new_counts
+
+Two-file schema helpers (2026-04-22):
+  - ``base_counts_from_assembled(reels)`` — same as base_counts but
+    takes the assembled [[{sym, wt}, ...], ...] shape directly (used
+    when reading strips + weights.json pair rather than an old-style
+    reel_weights.json).
+  - ``disassemble_to_weights_array(reels)`` — project assembled shape
+    back to a list-of-int-arrays for writing to mode_<N>/weights.json.
 """
 from __future__ import annotations
 
@@ -114,3 +122,48 @@ def counts_sanity(counts: list[dict[str, int]]) -> tuple[bool, str]:
             if n < 0:
                 return False, f"reel {reel_idx} symbol {sym!r}: negative count {n}"
     return True, "ok"
+
+
+def base_counts_from_assembled(
+    reels: list[list[dict]],
+) -> list[dict[str, int]]:
+    """Same as ``base_counts`` but operates on the already-assembled
+    ``[[{symbol, weight}, ...], ...]`` shape — handy when the caller
+    already combined strips + weights via ``load_reels_for_tuner``
+    and doesn't want to re-wrap into the old weights_dict envelope.
+    """
+    out: list[dict[str, int]] = []
+    for reel in reels:
+        sym_total: dict[str, int] = defaultdict(int)
+        for stop in reel:
+            sym_total[stop["symbol"]] += int(stop["weight"])
+        out.append(dict(sym_total))
+    return out
+
+
+def disassemble_to_weights_array(
+    reels: list[list[dict]],
+) -> list[list[int]]:
+    """Project the assembled ``[[{symbol, weight}, ...], ...]`` shape
+    back to the list-of-int-arrays that ``mode_<N>/weights.json``
+    stores under its ``weights`` key.
+
+    Inverse of ``engine.loader._assemble_reels``: given (strips,
+    weights_array) → assembled → this helper → weights_array.
+    """
+    return [
+        [int(stop["weight"]) for stop in reel]
+        for reel in reels
+    ]
+
+
+def extract_symbol_layout(
+    reels: list[list[dict]],
+) -> list[list[str]]:
+    """Project assembled reels to the symbol-only layout that
+    ``reel_strips.json`` stores under its ``reels`` key.
+    """
+    return [
+        [stop["symbol"] for stop in reel]
+        for reel in reels
+    ]

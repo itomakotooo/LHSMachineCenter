@@ -33,7 +33,7 @@ from slot_designer.engine.loader import load_engine
 
 
 _SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-_MODE1_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "reel_weights.json"
+_MODE1_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
 
 
 def _read_chunk(chunk_path: Path) -> dict:
@@ -119,25 +119,52 @@ def test_m1sim_registry_has_modes_1_and_2():
 
 
 def test_mode2_weights_exist_and_have_same_shape_as_mode1():
-    """Mode 2 reel_weights.json must exist and have the same schema
-    as mode 1 so the same engine + tuner code path works without
-    branching on mode."""
+    """Mode 2 weights.json must exist and have the same per-reel stop
+    count as mode 1 (since both modes share one reel_strips.json, the
+    weights arrays must also have matching lengths per reel)."""
     m1_mode1 = json.loads(_MODE1_WEIGHTS.read_text(encoding="utf-8"))
-    m2_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_2" / "reel_weights.json"
+    m2_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_2" / "weights.json"
     assert m2_path.exists(), f"missing mode 2 weights: {m2_path}"
     m1_mode2 = json.loads(m2_path.read_text(encoding="utf-8"))
 
     assert m1_mode2["machine"] == m1_mode1["machine"]
     assert m1_mode2["mode"] == 2
-    # Both must have the same reel-set shape (same # reels, same # stops)
-    r1 = m1_mode1["reel_sets"]["default"]["reels"]
-    r2 = m1_mode2["reel_sets"]["default"]["reels"]
+    r1 = m1_mode1["weights"]
+    r2 = m1_mode2["weights"]
     assert len(r1) == len(r2), "reel count must match between modes"
     for reel_idx, (reel1, reel2) in enumerate(zip(r1, r2)):
         assert len(reel1) == len(reel2), (
             f"reel {reel_idx} stop count mismatch: "
             f"mode1={len(reel1)} vs mode2={len(reel2)}"
         )
+
+
+def test_modes_share_reel_strips_file():
+    """Invariant (2026-04-22): all modes of a machine must read from
+    the SAME reel_strips.json. This is the file-layout enforcement of
+    "symbol structure shared across modes" — verifying both modes' weight
+    arrays align to the shared strip's shape."""
+    strips_path = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
+    assert strips_path.exists(), f"missing strips file: {strips_path}"
+    strips = json.loads(strips_path.read_text(encoding="utf-8"))
+    assert strips["machine"] == "M1"
+    assert strips["reel_set"] == "default"
+
+    # Every reel must have 36 stops and strictly alternate Blank/non-Blank
+    for ri, reel in enumerate(strips["reels"]):
+        assert len(reel) == 36, f"reel {ri+1}: {len(reel)} stops (expected 36)"
+        blanks = sum(1 for s in reel if s == "Blank")
+        assert blanks == 18, f"reel {ri+1}: {blanks} blanks (expected 18)"
+
+    # Both modes' weight arrays must match the strip's shape
+    for mode in (1, 2):
+        wp = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
+        w = json.loads(wp.read_text(encoding="utf-8"))
+        for ri, reel_weights in enumerate(w["weights"]):
+            assert len(reel_weights) == len(strips["reels"][ri]), (
+                f"mode {mode} reel {ri+1}: {len(reel_weights)} weights vs "
+                f"strip has {len(strips['reels'][ri])} symbols"
+            )
 
 
 def test_mode2_target_file_has_plausible_numbers():

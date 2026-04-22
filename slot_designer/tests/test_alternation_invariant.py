@@ -52,9 +52,15 @@ from slot_designer.tuner.ordering import (
 
 
 def _load_shipped_reels(machine: str, mode: int) -> list[list[dict]]:
-    p = _ROOT / "slot_designer" / "weights" / machine / f"mode_{mode}" / "reel_weights.json"
-    d = json.loads(p.read_text(encoding="utf-8"))
-    return d["reel_sets"]["default"]["reels"]
+    """Assemble the shipped strips + weights into the legacy
+    [[{symbol, weight}, ...], ...] shape this test suite compares
+    against."""
+    from slot_designer.engine.loader import load_reels_for_tuner
+    base = _ROOT / "slot_designer" / "weights" / machine
+    return load_reels_for_tuner(
+        base / "reel_strips.json",
+        base / f"mode_{mode}" / "weights.json",
+    )
 
 
 def test_shipped_m1_mode1_has_zero_alternation_violations():

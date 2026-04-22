@@ -77,28 +77,47 @@ def compute_code_md5() -> str:
 def compute_config_md5(
     spec_path: Path,
     weights_paths: Iterable[Path],
+    *,
+    strips_path: Path | None = None,
 ) -> str:
     """Per-machine math-config version hash.
 
     Inputs:
-      - spec_path: the machine's rules definition (slot_designer/specs/X.spec.json)
+      - spec_path: the machine's rules definition
+        (``slot_designer/specs/X.spec.json``).
+      - strips_path (2026-04-22): the shared ``reel_strips.json`` that
+        defines the symbol-at-position layout all modes of this machine
+        share. Omit when hashing an old-schema single-file weights
+        (rare; new virtual machines always have strips).
       - weights_paths: all mode-specific weights files for this machine,
         in stable order. Typically resolved by the caller from the
-        registry's `_weights_path_template` for each mode in `modes`.
+        registry's ``_weights_path_template`` for each mode in ``modes``.
 
     The hash is order-sensitive — passing weights in a different mode
     order would produce a different md5. Callers (refresh /
     compute_md5s / tune) MUST use the same sorted-by-mode order.
 
-    Missing weights files are allowed: they contribute a zero-byte
-    sentinel to the hash so the md5 still changes when a weights file
-    first appears or is later deleted.
+    Missing files contribute a sentinel to the hash so the md5 still
+    changes when a weights/strips file first appears or is later
+    deleted.
     """
     h = hashlib.md5()
     if spec_path.exists():
         h.update(spec_path.read_bytes())
     else:
         h.update(b"<spec_missing>")
+    # Strips come between spec and per-mode weights so the hash has a
+    # stable shape: (spec | strips | mode_1 | mode_2 | ...). Callers
+    # without strips (e.g. legacy tests hashing only per-mode files)
+    # pass strips_path=None and we elide the section — so adding
+    # strips_path later creates a new md5 (correct: the machine's
+    # identity changed).
+    if strips_path is not None:
+        h.update(b"\x00")
+        if strips_path.exists():
+            h.update(strips_path.read_bytes())
+        else:
+            h.update(b"<strips_missing>")
     for wp in weights_paths:
         if wp.exists():
             h.update(b"\x00")        # separator — prevents ambiguity across
@@ -134,13 +153,25 @@ def resolve_weights_paths(entry: dict, modes: Iterable[int]) -> list[Path]:
     ]
 
 
+def resolve_strips_path(entry: dict) -> Path | None:
+    """Resolve the machine's shared ``reel_strips.json`` path from the
+    registry entry. Returns None if the entry lacks ``_strips_path``
+    (legacy single-file machines that pre-date the strips-split).
+    """
+    tpl = entry.get("_strips_path")
+    if not tpl:
+        return None
+    return _SLOT_DESIGNER.parent / tpl
+
+
 def compute_machine_md5(entry: dict) -> tuple[str, str]:
     """Machine-level (aggregate) ``(config_md5, code_md5)``.
 
-    config_md5 covers spec + ALL mode weights — flips when ANY mode's
-    weights (or the spec) change. Used for "did anything about this
-    machine change?" questions; NOT used for per-mode chunk tag
-    comparison (that's ``compute_machine_md5_for_mode`` below).
+    config_md5 covers spec + shared strips + ALL mode weights — flips
+    when the spec, strips, or ANY mode's weights change. Used for "did
+    anything about this machine change?" questions; NOT used for
+    per-mode chunk tag comparison (that's
+    ``compute_machine_md5_for_mode`` below).
 
     All callers route through this helper or the per-mode variant so
     hash semantics stay consistent across refresh / classify / stamp
@@ -148,26 +179,34 @@ def compute_machine_md5(entry: dict) -> tuple[str, str]:
     """
     repo_root = _SLOT_DESIGNER.parent
     spec_path = repo_root / entry.get("_spec_path", "")
+    strips_path = resolve_strips_path(entry)
     weights_paths = resolve_weights_paths(entry, entry.get("modes", []))
-    return compute_config_md5(spec_path, weights_paths), compute_code_md5()
+    cfg = compute_config_md5(spec_path, weights_paths, strips_path=strips_path)
+    return cfg, compute_code_md5()
 
 
 def compute_machine_md5_for_mode(entry: dict, mode: int) -> tuple[str, str]:
-    """Per-mode ``(config_md5, code_md5)`` — hash covers spec + THIS
-    mode's weights only.
+    """Per-mode ``(config_md5, code_md5)`` — hash covers spec + strips
+    + THIS mode's weights only.
 
     Motivation (2026-04-22): on a machine where different modes have
-    different reel strips (virtual M1sim mode 1 vs mode 2), the old
-    machine-level ``compute_machine_md5`` mixed all modes' weights
-    into one hash. Result: adding mode 2 flipped the machine's
-    config_md5, and every existing mode 1 chunk (stamped with the
-    pre-mode-2 hash) was reclassified as "historical" — even though
-    mode 1's reel strip never changed.
+    different per-mode weights files, the old aggregate
+    ``compute_machine_md5`` mixed all modes' weights into one hash.
+    Result: adding mode 2 flipped the machine's config_md5, and every
+    existing mode 1 chunk (stamped with the pre-mode-2 hash) was
+    reclassified as "historical" — even though mode 1's reel weights
+    never changed.
 
-    Per-mode md5 fixes this: mode 1's hash depends only on spec +
-    mode 1 weights. Adding mode 2 doesn't change it. Each mode's
+    Per-mode md5 fixes this: mode 1's hash depends on spec + strips +
+    mode 1 weights only. Adding mode 2 doesn't change it. Each mode's
     chunks stamp with their own md5; classifier compares against the
     same per-mode md5 on replay.
+
+    NOTE on strips (2026-04-22 structural): strips are shared across
+    all modes of the machine, so they ARE part of every per-mode
+    hash — changing the strip layout flips md5 for every mode
+    simultaneously (by design: the strip change IS a machine-wide
+    event that should invalidate all old chunks).
 
     code_md5 is mode-agnostic (engine + emitter source hashes) — it
     shares the same value across modes, but we return it here for
@@ -175,6 +214,8 @@ def compute_machine_md5_for_mode(entry: dict, mode: int) -> tuple[str, str]:
     """
     repo_root = _SLOT_DESIGNER.parent
     spec_path = repo_root / entry.get("_spec_path", "")
+    strips_path = resolve_strips_path(entry)
     # Single mode → single weights path
     weights_paths = resolve_weights_paths(entry, [int(mode)])
-    return compute_config_md5(spec_path, weights_paths), compute_code_md5()
+    cfg = compute_config_md5(spec_path, weights_paths, strips_path=strips_path)
+    return cfg, compute_code_md5()
