@@ -53,6 +53,13 @@ class ExperienceCostWeights:
         feels rigged. Target is a band, not a point.
       - Blank-adjacency to high-value: pure bonus, capped at 0.8
         (above that, zero marginal gain).
+      - **Blank/non-Blank alternation** (2026-04-22 user rule): on a
+        reel strip, Blanks must never be adjacent to another Blank,
+        and non-Blanks must never be adjacent to another non-Blank.
+        Enforced as a hard invariant by ``initialize_alternating`` +
+        ``class_preserving_swap_mutation`` (not by cost penalty) —
+        that way the invariant is preserved at every SA step without
+        relying on a huge penalty weight to dominate other terms.
     """
     # Near-miss band [nm_min, nm_max]. Outside band → quadratic penalty.
     # Default band 1%-10% total across high-value symbols.
@@ -79,6 +86,69 @@ class ExperienceCostBreakdown:
     near_miss_rate_total: float
     avg_pwdf: float
     avg_blank_adj: float
+    # Number of Blank-Blank or non-Blank-non-Blank circular-adjacencies
+    # across all reels. Hard invariant = 0 post-SA (enforced by
+    # class-preserving mutation, not by cost penalty).
+    alternation_violations: int = 0
+
+
+def count_alternation_violations(
+    reel: list[dict],
+    blank_symbol: str = "Blank",
+) -> int:
+    """Count circular-adjacency violations on a single reel.
+
+    A violation is any pair of consecutive stops (wrapping from last →
+    first) where both are Blank or both are non-Blank. Returns the
+    total count.
+
+    Post-SA invariant: this MUST be 0 on every reel (see the class-
+    preserving swap mutation). If not 0 after SA, caller should treat
+    it as a bug in the mutation operator, not a cost-landscape issue.
+    """
+    n = len(reel)
+    if n < 2:
+        return 0
+    violations = 0
+    for i in range(n):
+        a = reel[i]["symbol"] == blank_symbol
+        b = reel[(i + 1) % n]["symbol"] == blank_symbol
+        if a == b:
+            violations += 1
+    return violations
+
+
+def initialize_alternating(
+    reel: list[dict],
+    blank_symbol: str = "Blank",
+) -> list[dict]:
+    """Rearrange a reel's stops so Blank and non-Blank strictly alternate.
+
+    Requires ``count(Blank) == count(non-Blank)`` (which is the case
+    for M1's 36-stop reels: 18 Blanks + 18 non-Blanks). For machines
+    where this doesn't hold, alternation is not achievable — the
+    caller must rebalance counts at Phase 4 first.
+
+    Stops' original order within each class (Blank, non-Blank) is
+    preserved — we're just interleaving the two sequences. This
+    matters because different Blank stops carry different weights;
+    SA's class-preserving swap then freely permutes them within the
+    odd/even position subset.
+    """
+    blanks = [s for s in reel if s["symbol"] == blank_symbol]
+    nonblanks = [s for s in reel if s["symbol"] != blank_symbol]
+    if len(blanks) != len(nonblanks):
+        raise ValueError(
+            f"strict alternation requires count(Blank) == count(non-Blank); "
+            f"got {len(blanks)} Blank vs {len(nonblanks)} non-Blank on this reel. "
+            f"Rebalance counts at Phase 4 (or drop the alternation rule for "
+            f"this machine) before re-running Phase 5."
+        )
+    result: list[dict] = []
+    for b, n in zip(blanks, nonblanks):
+        result.append(b)
+        result.append(n)
+    return result
 
 
 def evaluate_experience_cost(
@@ -121,6 +191,9 @@ def evaluate_experience_cost(
     blank_adj = sum(reel_blank_adjacency_score(r, hv, blank_symbol) for r in reels) / len(reels)
     blank_adj_bonus = -w.blank_adj_bonus_weight * min(blank_adj, w.blank_adj_cap)
 
+    # ── Alternation violations (invariant, not a cost component) ──
+    violations = sum(count_alternation_violations(r, blank_symbol) for r in reels)
+
     total = nm_cost + pwdf_cost + blank_adj_bonus
     return ExperienceCostBreakdown(
         total=total,
@@ -130,6 +203,7 @@ def evaluate_experience_cost(
         near_miss_rate_total=nm_total,
         avg_pwdf=avg_pwdf,
         avg_blank_adj=blank_adj,
+        alternation_violations=violations,
     )
 
 
@@ -141,7 +215,11 @@ def swap_two_stops(reel: list[dict], i: int, j: int) -> list[dict]:
 
 
 def random_swap_mutation(reels: list[list[dict]], rng: Random) -> list[list[dict]]:
-    """Pick a reel and swap two random stops within it. Preserves counts."""
+    """Pick a reel and swap two random stops within it. Preserves counts
+    but may break Blank/non-Blank alternation — use only when alternation
+    isn't a hard invariant (e.g. machines where the rule doesn't apply
+    or the counts can't strictly alternate).
+    """
     new_reels = [list(r) for r in reels]
     reel_idx = rng.randrange(len(new_reels))
     n = len(new_reels[reel_idx])
@@ -152,6 +230,46 @@ def random_swap_mutation(reels: list[list[dict]], rng: Random) -> list[list[dict
         new_reels[reel_idx][j],
         new_reels[reel_idx][i],
     )
+    return new_reels
+
+
+def class_preserving_swap_mutation(
+    reels: list[list[dict]],
+    rng: Random,
+    blank_symbol: str = "Blank",
+) -> list[list[dict]]:
+    """Swap two stops of the same Blank/non-Blank class within a random reel.
+
+    Preserves two invariants simultaneously:
+      1. Per-(symbol, reel) counts — because we don't change which
+         symbols appear, only their positions.
+      2. Blank/non-Blank alternation — because Blanks only ever
+         exchange places with Blanks, and non-Blanks with non-Blanks.
+         If the input was strictly alternating, the output is too.
+
+    Starting a reel at a strictly-alternating arrangement via
+    ``initialize_alternating`` and then running SA with this mutation
+    means alternation is preserved FOR FREE — no cost penalty needed,
+    no chance of random drift away from the invariant. The remaining
+    combinatorial freedom (18! within-class permutations per reel for
+    M1) is plenty for near-miss / PWDF optimization.
+    """
+    new_reels = [list(r) for r in reels]
+    reel_idx = rng.randrange(len(new_reels))
+    reel = new_reels[reel_idx]
+    blank_idxs = [i for i, s in enumerate(reel) if s["symbol"] == blank_symbol]
+    nonblank_idxs = [i for i, s in enumerate(reel) if s["symbol"] != blank_symbol]
+    # Pick a class with ≥2 members — if the reel is single-class
+    # (pathological: all Blank or all non-Blank), silently no-op.
+    candidates: list[int] = []
+    if len(blank_idxs) >= 2 and (len(nonblank_idxs) < 2 or rng.random() < 0.5):
+        candidates = blank_idxs
+    elif len(nonblank_idxs) >= 2:
+        candidates = nonblank_idxs
+    if len(candidates) < 2:
+        return new_reels
+    i, j = rng.sample(candidates, 2)
+    reel[i], reel[j] = reel[j], reel[i]
     return new_reels
 
 
@@ -179,12 +297,47 @@ def run_simulated_annealing(
     config: SAConfig | None = None,
     rng: Random | None = None,
     verbose: bool = False,
+    enforce_alternation: bool = True,
+    blank_symbol: str = "Blank",
 ) -> SAResult:
+    """Simulated annealing over stop order.
+
+    When ``enforce_alternation`` is True (default), the input reels MUST
+    already be strictly Blank/non-Blank alternating (call
+    ``initialize_alternating`` on each reel first). The SA uses the
+    class-preserving swap mutation, which preserves that invariant at
+    every step — no cost penalty needed.
+
+    When False, uses the unconstrained swap mutation; callers opt out
+    for machines where alternation isn't feasible (count mismatch) or
+    desired.
+    """
     cfg = config or SAConfig()
     rng = rng or Random(0)
 
     # Deep copy so caller's reels stay untouched
     current = [list(r) for r in initial_reels]
+
+    if enforce_alternation:
+        # Fail loud if the caller passed non-alternating reels — that
+        # indicates a wiring bug (missing initialize_alternating call)
+        # rather than a cost-landscape issue; silently "fixing" by
+        # rearranging would invalidate the cost comparison.
+        initial_violations = sum(
+            count_alternation_violations(r, blank_symbol) for r in current
+        )
+        if initial_violations != 0:
+            raise ValueError(
+                f"enforce_alternation=True but initial reels have "
+                f"{initial_violations} adjacency violations. Call "
+                f"initialize_alternating(reel) on each reel before SA, "
+                f"or pass enforce_alternation=False to allow unconstrained "
+                f"mutation."
+            )
+        mutate = lambda rs, r: class_preserving_swap_mutation(rs, r, blank_symbol)
+    else:
+        mutate = lambda rs, r: random_swap_mutation(rs, r)
+
     current_cost, current_break = cost_fn(current)
     best = [list(r) for r in current]
     best_cost = current_cost
@@ -199,7 +352,7 @@ def run_simulated_annealing(
     improved = 0
 
     for step in range(1, cfg.max_steps + 1):
-        candidate = random_swap_mutation(current, rng)
+        candidate = mutate(current, rng)
         cand_cost, cand_break = cost_fn(candidate)
         delta = cand_cost - current_cost
 
@@ -226,6 +379,18 @@ def run_simulated_annealing(
 
     if verbose:
         print(f"  SA done: {accepted}/{cfg.max_steps} accepted, {improved} improvements")
+
+    # Post-SA invariant: if alternation was enforced, violations == 0
+    if enforce_alternation:
+        final_violations = sum(
+            count_alternation_violations(r, blank_symbol) for r in best
+        )
+        assert final_violations == 0, (
+            f"Phase 5 SA bug: class-preserving swap should keep "
+            f"alternation, but result has {final_violations} violations. "
+            f"Check class_preserving_swap_mutation for correctness."
+        )
+
     return SAResult(
         best_reels=best,
         best_cost=best_cost,

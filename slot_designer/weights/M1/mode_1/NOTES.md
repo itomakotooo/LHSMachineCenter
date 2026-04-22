@@ -32,6 +32,10 @@
 
 **主力**：pay_id 14（Cherry = 1×）贡献 55% 的 hit。Cherry 频率压低（尤其 reel 1 = 3）以让 hit 降到 15%，RTP 靠 Bar2 + wild3x (Diamond2) 补回。
 
+## 结构不变性
+
+**Blank / 非 Blank 严格交替** —— 每 reel 36 stops = 18 Blank + 18 非 Blank；任何两个相邻 stop 必须一 Blank 一非 Blank（环形邻接，最后一个和第一个也算相邻）。Phase 5 SA 通过 `initialize_alternating` + `class_preserving_swap_mutation` 从起始状态到每一步都保持这个不变性。回归由 `test_alternation_invariant.py` 监控。
+
 ## 文件清单
 
 - `reel_weights.json` —— 引擎 / 虚拟 console 读这个

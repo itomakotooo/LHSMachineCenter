@@ -27,7 +27,7 @@
       "logicClassNames": [
         "SimulatedClassicPayline3Reel"
       ],
-      "configSummaryMd5": "722c478a05a33da23e00725073280e80",
+      "configSummaryMd5": "79a990003af00559c0eefbd800e49721",
       "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642",
       "available": true,
       "_source_machine": "M1",
@@ -35,11 +35,11 @@
       "_weights_path_template": "slot_designer/weights/M1/mode_{mode}/reel_weights.json",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "7ff77fa444c429cf9ecb4897c1b07900",
+          "configSummaryMd5": "144e876597b88948281e8594588ebde5",
           "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642"
         },
         "2": {
-          "configSummaryMd5": "37070962eada1d77f2f0e12434404475",
+          "configSummaryMd5": "72f9c78a6b4865a007bf1629b98df0c9",
           "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642"
         }
       }

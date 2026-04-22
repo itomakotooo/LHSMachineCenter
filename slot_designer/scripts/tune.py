@@ -74,7 +74,9 @@ from slot_designer.tuner.loop import ESConfig, run_with_restarts
 from slot_designer.tuner.ordering import (
     ExperienceCostWeights,
     SAConfig,
+    count_alternation_violations,
     evaluate_experience_cost,
+    initialize_alternating,
     run_simulated_annealing,
 )
 
@@ -271,13 +273,30 @@ def main() -> None:
         # bug, not rounding drift).
         pre_sa_counts = base_counts(tuned_weights)
 
+        # Enforce Blank/non-Blank alternation on every reel before SA
+        # (user rule 2026-04-22). Phase 4's apply_counts preserves the
+        # original layout's stop ordering, which can carry arbitrary
+        # clustering from the designer's seed file. Re-init to strict
+        # alternation; SA then preserves the invariant via the class-
+        # preserving swap mutation.
+        pre_alt_reels = tuned_weights["reel_sets"]["default"]["reels"]
+        pre_violations = sum(
+            count_alternation_violations(r) for r in pre_alt_reels
+        )
+        alternated_reels = [initialize_alternating(r) for r in pre_alt_reels]
+        if args.verbose:
+            print(f"  alternation init: {pre_violations} → 0 adjacency "
+                  f"violations across {len(alternated_reels)} reels "
+                  f"(strict Blank/non-Blank interleaving)")
+
         from random import Random
         sa_result = run_simulated_annealing(
-            tuned_weights["reel_sets"]["default"]["reels"],
+            alternated_reels,
             exp_cost_fn,
             config=SAConfig(max_steps=args.sa_steps),
             rng=Random(args.seed + 1),
             verbose=args.verbose,
+            enforce_alternation=True,
         )
         # Install the best-ordered reels back into the weights dict
         tuned_weights["reel_sets"]["default"]["reels"] = sa_result.best_reels
@@ -286,9 +305,14 @@ def main() -> None:
             tuned_weights["reel_sets"]["default"]["reels"],
             high_value=args.high_value,
         )
+        post_alt_violations = sum(
+            count_alternation_violations(r)
+            for r in tuned_weights["reel_sets"]["default"]["reels"]
+        )
         print(f"  experience after : nm_total={exp_after['near_miss_rate_total']*100:.3f}%  "
               f"avg_pwdf={sum(exp_after['avg_pwdf'].values())/len(exp_after['avg_pwdf']):.3f}  "
-              f"avg_blank_adj={exp_after['avg_blank_adj']:.3f}")
+              f"avg_blank_adj={exp_after['avg_blank_adj']:.3f}  "
+              f"alternation_violations={post_alt_violations}")
 
         # Phase 5 invariant: SA only swaps stop positions within a reel,
         # so per-(symbol, reel) totals MUST be identical pre-SA vs post-SA.
