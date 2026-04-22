@@ -17,7 +17,7 @@ if str(_ROOT) not in sys.path:
 from slot_designer.engine.loader import load_engine
 
 _SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1_mode1.current.json"
+_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "reel_weights.json"
 
 _engine, _ = load_engine(_SPEC, _WEIGHTS)
 EV = _engine.evaluator

@@ -33,7 +33,7 @@ from slot_designer.engine.loader import load_engine
 
 
 _SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-_MODE1_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1_mode1.current.json"
+_MODE1_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "reel_weights.json"
 
 
 def _read_chunk(chunk_path: Path) -> dict:
@@ -101,10 +101,10 @@ def test_emit_simulation_defaults_to_spec_mode(tmp_path: Path):
 def test_m1sim_registry_has_modes_1_and_2():
     """Registry invariant: M1sim must list both mode 1 and mode 2 now
     that the lucky-mode weights live on disk. If someone removes mode 2
-    from the entry without archiving the weights, the
-    ``_weights_fallback_template`` still resolves to a real file →
-    compute_machine_md5 would quietly exclude mode 2 from the config
-    hash, causing silent drift between disk and registry."""
+    from the entry but leaves the weights file at
+    ``slot_designer/weights/M1/mode_2/reel_weights.json``, the two
+    sides would silently drift — the machine's config_md5 would stop
+    covering mode 2 even though the file is still there."""
     registry = json.loads(
         (_ROOT / "slot_designer" / "configs" / "machines_virtual.json")
         .read_text(encoding="utf-8")
@@ -118,13 +118,13 @@ def test_m1sim_registry_has_modes_1_and_2():
     )
 
 
-def test_mode2_seed_weights_exist_and_have_same_shape_as_mode1():
-    """M1_mode2.current.json is the tuner's starting point. It must
-    exist and have the same schema as mode 1 so the same engine +
-    tuner code path works without branching on mode."""
+def test_mode2_weights_exist_and_have_same_shape_as_mode1():
+    """Mode 2 reel_weights.json must exist and have the same schema
+    as mode 1 so the same engine + tuner code path works without
+    branching on mode."""
     m1_mode1 = json.loads(_MODE1_WEIGHTS.read_text(encoding="utf-8"))
-    m2_path = _ROOT / "slot_designer" / "weights" / "M1_mode2.current.json"
-    assert m2_path.exists(), f"missing seed file: {m2_path}"
+    m2_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_2" / "reel_weights.json"
+    assert m2_path.exists(), f"missing mode 2 weights: {m2_path}"
     m1_mode2 = json.loads(m2_path.read_text(encoding="utf-8"))
 
     assert m1_mode2["machine"] == m1_mode1["machine"]

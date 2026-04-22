@@ -27,20 +27,19 @@
       "logicClassNames": [
         "SimulatedClassicPayline3Reel"
       ],
-      "configSummaryMd5": "5738a990b749feb0a46fcf2824329e7e",
+      "configSummaryMd5": "722c478a05a33da23e00725073280e80",
       "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642",
       "available": true,
       "_source_machine": "M1",
       "_spec_path": "slot_designer/specs/M1.spec.json",
-      "_weights_path_template": "slot_designer/weights/M1_mode{mode}.tuned.json",
-      "_weights_fallback_template": "slot_designer/weights/M1_mode{mode}.current.json",
+      "_weights_path_template": "slot_designer/weights/M1/mode_{mode}/reel_weights.json",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "558dfcdd53cd1e822624470d20e9c36c",
+          "configSummaryMd5": "7ff77fa444c429cf9ecb4897c1b07900",
           "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642"
         },
         "2": {
-          "configSummaryMd5": "e4017d6150ccc5c0f08af78e11d80a73",
+          "configSummaryMd5": "37070962eada1d77f2f0e12434404475",
           "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642"
         }
       }

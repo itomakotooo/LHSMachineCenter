@@ -2,16 +2,7 @@
   "machine": "M1",
   "mode": 2,
   "weights_version": "designer_v1_mode2_seed",
-  "source": "seed = copy of M1_mode1.current (same reel strip). Tuner will reshape toward mode 2 (lucky) target: RTP 306%, hit 27.5%, reasonable multiplier bucket spread. See slot_designer/tuner/targets/M1_mode2_lucky.target.json. 2026-04-22.",
-  "_notes": [
-    "3 reel × 36 stops，seed 和 mode 1 identical —— 给 tuner 一个 \"中性起点\"。",
-    "Mode 2 是 M1 的 幸运模式（lucky mode）：相同 paytable + 相同规则，不同 reel 权重。",
-    "Target profile: slot_designer/tuner/targets/M1_mode2_lucky.target.json",
-    "  RTP 306%（vs mode 1 的 93.5%）· hit 27.5%（vs mode 1 的 15.3%）",
-    "Tuner 会把这份种子往 hit 高 + RTP 高的方向拉 —— 重点是把 wild / high-mult 符号",
-    "（Diamond1 3-of-a-kind = 500×）的出现率推上去。",
-    "跑 tune 前 promote：cp slot_designer/weights/M1_mode2.current.json /tmp/.backup; 确认 target 数值合理再触发。"
-  ],
+  "source": "slot_designer/weights/M1/mode_2 — reel strip for mode 2 lucky mode, tuned against slot_designer/tuner/targets/M1_mode2_lucky.target.json",
   "reel_sets": {
     "default": {
       "reels": [
@@ -456,8 +447,6 @@
       ]
     }
   },
-  "_tuned_from": "slot_designer\\weights\\M1_mode2.current.json",
-  "_tuned_target": "M1sim_mode2_lucky_mid",
   "_tuned_summary": {
     "rtp_pct": 290.94176521977704,
     "hit_rate": 0.277821620014194,

@@ -36,7 +36,7 @@ from slot_designer.tuner.loop import ESConfig, run_with_restarts
 
 
 SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1_mode1.current.json"
+WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "reel_weights.json"
 TARGET = _ROOT / "slot_designer" / "tuner" / "targets" / "M14_mode1.target.json"
 
 
@@ -142,7 +142,7 @@ def test_sim_converges_to_analytic_on_tuned_weights():
 
     This guards against apply_counts breaking marginals silently.
     """
-    tuned_path = _ROOT / "slot_designer" / "weights" / "M1_mode1.tuned.json"
+    tuned_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "reel_weights.json"
     if not tuned_path.exists():
         # Skip if tuner hasn't been run yet
         return

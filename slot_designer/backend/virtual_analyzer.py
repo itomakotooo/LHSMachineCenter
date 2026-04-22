@@ -147,23 +147,23 @@ def _find_machine_entry(registry: dict, machine: str) -> dict:
 
 
 def _resolve_weights_path(entry: dict, mode: int) -> Path:
-    """Pick tuned weights if present, else fall back to current. Virtual
-    machines expected to always have at least `.current.json` available.
+    """Resolve a virtual machine's (mode → weights file) via
+    ``_weights_path_template`` from its registry entry.
+
+    One file per mode (2026-04-22 layout):
+    ``slot_designer/weights/<machine>/mode_<N>/reel_weights.json``.
     """
-    templates = [
-        entry.get("_weights_path_template"),
-        entry.get("_weights_fallback_template"),
-    ]
-    for tmpl in templates:
-        if not tmpl:
-            continue
-        p = _ROOT / tmpl.format(mode=mode)
-        if p.exists():
-            return p
-    raise RuntimeError(
-        f"no weights file found for {entry.get('machine')} mode {mode}; "
-        f"looked at {templates}"
-    )
+    tmpl = entry.get("_weights_path_template")
+    if not tmpl:
+        raise RuntimeError(
+            f"{entry.get('machine')}: missing _weights_path_template in registry"
+        )
+    p = _ROOT / tmpl.format(mode=mode)
+    if not p.exists():
+        raise RuntimeError(
+            f"weights file missing for {entry.get('machine')} mode {mode}: {p}"
+        )
+    return p
 
 
 def _spec_path(entry: dict) -> Path:

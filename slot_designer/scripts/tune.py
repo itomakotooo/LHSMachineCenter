@@ -13,11 +13,11 @@ Two-stage pipeline:
     2009).
 
 Deliverables:
-  1. **Tuned weights file** (primary release artifact) — copied to
-     ``slot_designer/weights/<machine>_mode<N>.tuned.json``; this is
-     what the virtual console sees. Updating it flips ``configSummaryMd5``
-     in ``machines_virtual.json`` on next refresh → console knows a new
-     machine version is live.
+  1. **Tuned weights file** (primary release artifact) — written to
+     ``slot_designer/weights/<machine>/mode_<N>/reel_weights.json``;
+     this is what the virtual console reads. Overwriting it flips
+     ``configSummaryMd5`` in ``machines_virtual.json`` on next refresh
+     → console knows a new machine version is live.
   2. **Dev rawdata chunks** (scratch, for dev verification) — emitted
      under ``slot_designer/_dev_scratch/rawdata/<machine>/mode_<N>/``
      so ``player_impact_analyzer --from-cache`` can cross-check the
@@ -31,14 +31,18 @@ scratch out-dir's ``chunk_*.json`` before emitting, so re-tuning gets
 a clean slate. Pass ``--skip-rawdata`` to skip emission entirely
 (faster dev iteration when you only care about Phase 4/5 metrics).
 
+One file per mode (2026-04-22 layout). Re-tuning the same mode
+overwrites ``reel_weights.json`` + ``TUNE_REPORT.md``; history lives
+in git (``git log --follow --`` the weights file).
+
 Usage:
 
     python -m slot_designer.scripts.tune \\
         --spec slot_designer/specs/M1.spec.json \\
-        --base-weights slot_designer/weights/M1_mode1.current.json \\
+        --base-weights slot_designer/weights/M1/mode_1/reel_weights.json \\
         --target slot_designer/tuner/targets/M14_mode1.target.json \\
-        --out-weights slot_designer/weights/M1_mode1.tuned.json \\
-        --out-report slot_designer/out/M1_tune_report.md \\
+        --out-weights slot_designer/weights/M1/mode_1/reel_weights.json \\
+        --out-report slot_designer/weights/M1/mode_1/TUNE_REPORT.md \\
         --evaluations 1500 --restarts 3 --sa-steps 5000
 """
 from __future__ import annotations

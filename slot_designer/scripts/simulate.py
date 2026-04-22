@@ -18,7 +18,7 @@ Run as module from repo root:
 
     python -m slot_designer.scripts.simulate \\
         --spec slot_designer/specs/M1.spec.json \\
-        --weights slot_designer/weights/M1_mode1.tuned.json \\
+        --weights slot_designer/weights/M1/mode_1/reel_weights.json \\
         --chunks 110 --robots 10 --spins-per-robot 1000 \\
         --machine-name M1sim
 
@@ -37,8 +37,8 @@ but not representative of the virtual-machine pipeline).
 
 Release flow (dev → console):
   1. simulate here to validate tuning numerics in ``_dev_scratch``
-  2. update ``weights/<machine>_mode<N>.tuned.json`` (the active
-     weights that virtual console sees)
+  2. update ``weights/<machine>/mode_<N>/reel_weights.json`` (the
+     active weights that virtual console sees)
   3. virtual console's next md5 refresh picks up the new config; the
      operator fires ``开始采样`` to populate console rawdata via
      virtual_analyzer. Dev scratch output is irrelevant to the console.

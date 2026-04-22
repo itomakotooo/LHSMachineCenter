@@ -42,7 +42,7 @@
     "ge1000_lt5000": 0.0,
     "ge5000": 0.0
   },
-  "hit_rate": 0.2607,
+  "hit_rate": 0.26065,
   "zero_win_rate": 0.7393,
   "std_return_x": 9.1,
   "max_return_x": 500.0,

@@ -26,7 +26,7 @@ from slot_designer.engine.loader import load_engine
 
 
 SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1_mode1.current.json"
+WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "reel_weights.json"
 
 
 def _simulate_rtp(engine, n: int, seed: int = 42) -> tuple[float, float]:

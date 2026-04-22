@@ -112,34 +112,26 @@ def resolve_weights_paths(entry: dict, modes: Iterable[int]) -> list[Path]:
     """Resolve a machines_virtual.json entry's mode list into the actual
     weights file paths that contribute to its config_md5.
 
-    Tries `_weights_path_template` first, then `_weights_fallback_template`
-    (for machines that don't have a tuned version yet). Returns the
-    chosen paths in `modes` order (sorted ascending by int for stability).
+    One file per mode (2026-04-22 layout):
+      ``_weights_path_template`` expands to
+      ``slot_designer/weights/<machine>/mode_<N>/reel_weights.json``.
+
+    If the file is missing (new machine still being scaffolded), the
+    deterministic placeholder path is still returned — the hash picks
+    up the "missing" sentinel inside ``compute_config_md5`` so the
+    md5 flips correctly once the file gets created.
+
+    Returns the paths in ``modes`` order (sorted ascending by int for
+    stability).
     """
     repo_root = _SLOT_DESIGNER.parent
-    out: list[Path] = []
-    for mode in sorted({int(m) for m in modes}):
-        tpl = entry.get("_weights_path_template")
-        fallback = entry.get("_weights_fallback_template")
-        chosen: Path | None = None
-        if tpl:
-            p = repo_root / tpl.format(mode=mode)
-            if p.exists():
-                chosen = p
-        if chosen is None and fallback:
-            p = repo_root / fallback.format(mode=mode)
-            if p.exists():
-                chosen = p
-        # If neither exists, still produce a deterministic placeholder
-        # path (won't be read, just recorded in the hash via the
-        # sentinel branch in compute_config_md5).
-        if chosen is None and tpl:
-            chosen = repo_root / tpl.format(mode=mode)
-        elif chosen is None and fallback:
-            chosen = repo_root / fallback.format(mode=mode)
-        if chosen is not None:
-            out.append(chosen)
-    return out
+    tpl = entry.get("_weights_path_template")
+    if not tpl:
+        return []
+    return [
+        repo_root / tpl.format(mode=mode)
+        for mode in sorted({int(m) for m in modes})
+    ]
 
 
 def compute_machine_md5(entry: dict) -> tuple[str, str]:

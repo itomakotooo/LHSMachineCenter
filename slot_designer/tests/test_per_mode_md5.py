@@ -4,9 +4,9 @@ existing modes' chunks / reports.
 2026-04-22 incident: the user tuned M1sim mode 2, which added mode 2
 weights to the registry. The old ``compute_machine_md5`` hashed
 spec + ALL mode weights into one machine-level ``configSummaryMd5``,
-so the machine-level md5 flipped (558dfcdd → 6edf1ca3) even though
-M1_mode1.tuned.json was byte-identical. Every existing mode 1 chunk
-(stamped with 558dfcdd) was reclassified as historical.
+so the machine-level md5 flipped even though mode 1's
+``reel_weights.json`` was byte-identical. Every existing mode 1 chunk
+(stamped with the old md5) was reclassified as historical.
 
 Fix (2026-04-22): switch to PER-MODE config_md5.
   * ``compute_machine_md5_for_mode(entry, mode)`` hashes spec +
@@ -44,14 +44,13 @@ from slot_designer.backend.machine_version import (
 
 def _entry_for_modes(modes: list[int]) -> dict:
     """Build a machines_virtual.json-shape entry for M1sim with
-    arbitrary mode list. Uses the real spec + tuned weights on disk."""
+    arbitrary mode list. Uses the real spec + weights on disk."""
     return {
         "machine": "M1sim",
         "modes": modes,
         "_source_machine": "M1",
         "_spec_path": "slot_designer/specs/M1.spec.json",
-        "_weights_path_template": "slot_designer/weights/M1_mode{mode}.tuned.json",
-        "_weights_fallback_template": "slot_designer/weights/M1_mode{mode}.current.json",
+        "_weights_path_template": "slot_designer/weights/M1/mode_{mode}/reel_weights.json",
     }
 
 
@@ -87,7 +86,8 @@ def test_per_mode_md5_distinct_per_mode():
     cfg2, _ = compute_machine_md5_for_mode(entry, 2)
     assert cfg1 != cfg2, (
         f"mode 1 and mode 2 per-mode cfg_md5 collided: {cfg1!r}. "
-        f"They must differ because M1_mode1.tuned.json ≠ M1_mode2.tuned.json."
+        f"They must differ because M1/mode_1/reel_weights.json != "
+        f"M1/mode_2/reel_weights.json."
     )
 
 
