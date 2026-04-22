@@ -1885,11 +1885,89 @@ function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb
   </div>`;
 }
 
+// Render the generate-report progress into the same #sampleProgressLog
+// panel that sampling-run batches use. 2026-04-22 user feedback: "生成
+// 对了，但是还是看不到 log, 应该跟拉取的 log 框整合到一起才对" — the
+// start/done pair in the top activity strip is not enough; operators
+// want the same per-chunk timeline they get for live sampling.
+//
+// We synthesize a one-item batch-shape ``data`` object from the gen
+// run's /api/runs + /api/runs/{rid}/progress payloads so PURE.merge-
+// Timeline + the existing renderSamplingProgress reuse works as-is.
+// When a real sampling batch is active (state.activeBatchId set), the
+// batch poll owns the panel and we step aside — the generate-report
+// progress still streams through the top activity strip as before.
+function _renderGenReportProgress(runRow, progressEvents, machine, mode) {
+  // Deferred: real batch takes precedence. User can still see the gen
+  // lifecycle in the top activity strip via pushClientEvent pairs.
+  if (state.activeBatchId) return;
+  const panel = byId("sampleProgressPanel");
+  const meta = byId("sampleProgressMeta");
+  const log = byId("sampleProgressLog");
+  if (!panel || !meta || !log) return;
+  panel.classList.remove("hidden");
+  // Freeze flag (set by sampling batches on completion) shouldn't
+  // affect us — we're a different operation. Clear it so the log
+  // re-renders on our poll ticks.
+  state.batchJustCompleted = false;
+
+  const status = String(runRow.status || "").toLowerCase();
+  // Synthesize batch-shape item so PURE.mergeTimeline + the existing
+  // status-row rendering below both work. progress.chunks_done /
+  // total_spins / halfwidth_pp come from the last chunk_progress
+  // event (the summary endpoint carries these too but progress
+  // events are authoritative for mid-run values).
+  const last = [...(progressEvents || [])].reverse().find(
+    (e) => e.event === "chunk_progress"
+  ) || {};
+  const runningProgress = {
+    chunks_done: last.chunks_completed || 0,
+    total_spins: last.total_spins || 0,
+    current_rtp_pct: last.current_rtp_pct,
+    halfwidth_pp: last.current_halfwidth_pp,
+  };
+  const syntheticData = {
+    total: 1,
+    completed: (status === "completed" || status === "failed" || status === "cancelled") ? 1 : 0,
+    items: [{
+      run_id: runRow.run_id,
+      machine,
+      mode,
+      status,
+      chunk_spin_times: runRow.chunk_spin_times || 0,
+      error: runRow.error_message || null,
+      stop_reason: last.stop_reason || null,
+      ci_target_met: true,
+      progress: status === "running" ? runningProgress : null,
+      chunk_events: progressEvents || [],
+    }],
+    events: [{
+      ts: runRow.started_at,
+      level: "info",
+      machine,
+      text: `⟳ 生成 Report · ${machine} mode ${mode} · chunks 将从 rawdata 缓存读取`,
+    }],
+  };
+  // Anchor start time for the t+Ns elapsed ticker.
+  state.itemStartTimes = state.itemStartTimes || {};
+  if (status === "running" && runRow.run_id && !state.itemStartTimes[runRow.run_id]) {
+    state.itemStartTimes[runRow.run_id] = Date.now();
+  }
+  // Reuse renderSamplingProgress — it knows the shape, the CSS, the
+  // scroll-preservation, everything. The dispatch inside doesn't care
+  // whether data came from /api/batch-run or from us synthesizing.
+  try { renderSamplingProgress(syntheticData); } catch (_) { /* best-effort */ }
+}
+
 // Poll a generate-report async run until it transitions out of
 // running/queued. Fires activity-log events for start → done / failed
 // and triggers a single rwtree refresh on completion so the new
 // report appears immediately (user feedback 2026-04-22: "生成完成
 // 以后也没有及时刷新, 我刷新网页才看得到").
+//
+// Also streams progress into the sample-log panel each tick so the
+// operator sees chunk-level progress, not just start/done in the
+// activity strip (2026-04-22 follow-up: "跟拉取的 log 框整合到一起").
 //
 // Caller has already pushed `generate_report_start` before the POST.
 // This function owns the terminal event + the post-completion
@@ -1901,11 +1979,26 @@ async function _pollGenerateReport(runId, machine, mode) {
   const MAX_WAIT_MS = 180_000;  // 3 minutes — 10k-chunk replays run ~30-90s
   const INTERVAL_MS = 2_000;
   let lastStatus = "";
+  // Flag the active gen run so pushClientEvent's stub-render (which
+  // fires inside our terminal pushClientEvent calls below) doesn't
+  // clobber the chunk-timeline we just painted.
+  state.activeGenRun = { runId, machine, mode };
   while (Date.now() - started < MAX_WAIT_MS) {
     try {
-      const row = await apiGet(`/api/runs/${encodeURIComponent(runId)}`);
+      // Parallel fetch of row + events; if either 404s (edge case
+      // during thread spawn) we catch below and retry on the next tick.
+      const [row, progressResp] = await Promise.all([
+        apiGet(`/api/runs/${encodeURIComponent(runId)}`),
+        apiGet(`/api/runs/${encodeURIComponent(runId)}/progress`)
+          .catch(() => ({ events: [] })),
+      ]);
       const status = String(row && row.status || "").toLowerCase();
       lastStatus = status;
+      // Render into the sample log panel every tick so the operator
+      // sees chunks tick by (not just a start/done pair).
+      _renderGenReportProgress(
+        row, progressResp.events || [], machine, mode,
+      );
       if (status === "completed") {
         pushClientEvent("generate_report_done", {
           machine, mode,
@@ -1913,6 +2006,7 @@ async function _pollGenerateReport(runId, machine, mode) {
           halfwidth_pp: row && row.achieved_halfwidth_pp,
         });
         try { await renderRawdataReportTree(machine); } catch (_) { /* best-effort */ }
+        state.activeGenRun = null;
         return;
       }
       if (status === "failed" || status === "cancelled") {
@@ -1921,6 +2015,7 @@ async function _pollGenerateReport(runId, machine, mode) {
           error: String(row && row.error_message || "unknown").slice(0, 120),
         });
         try { await renderRawdataReportTree(machine); } catch (_) { /* best-effort */ }
+        state.activeGenRun = null;
         return;
       }
     } catch (_) {
@@ -1937,6 +2032,7 @@ async function _pollGenerateReport(runId, machine, mode) {
     machine, mode, last_status: lastStatus,
   });
   try { await renderRawdataReportTree(machine); } catch (_) { /* best-effort */ }
+  state.activeGenRun = null;
 }
 
 // Wire grid-level interactions. Runs after _renderRwtreeGrid has
@@ -2651,7 +2747,12 @@ function pushClientEvent(kind, data) {
   // Eagerly re-render so the new event is visible without waiting for
   // the next poll tick. Uses a minimal synthetic `data` shape when no
   // batch data is available yet.
-  if (!state.batchJustCompleted) {
+  // 2026-04-22: skip the stub render when a generate-report poll is
+  // active — its own per-tick _renderGenReportProgress owns the panel
+  // and the empty stub would wipe out the chunk events. Also skip
+  // when batchJustCompleted so the frozen end-of-run log isn't
+  // blanked by a stray client event fired after completion.
+  if (!state.batchJustCompleted && !state.activeGenRun) {
     const stub = {
       status: "submitting", completed: 0,
       total: state.runFilterMachines ? state.runFilterMachines.size : 0,
