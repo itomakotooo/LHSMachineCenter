@@ -10,9 +10,17 @@
 UI 显示                   →  文件系统路径
 Mode 1 · 当前 558dfcdd…  →  slot_designer/deliverables/M1/558dfcdd/
 Mode 1 · 历史 32251c25…  →  slot_designer/deliverables/M1/32251c25/
+Mode 2 · 当前 e4017d61…  →  slot_designer/deliverables/M1/e4017d61/
+Mode 2 · 历史 6edf1ca3…  →  slot_designer/deliverables/M1/6edf1ca3/
 ```
 
 不用"v1 / v2"这种语义版本号 —— md5 本身就是内容指纹，重跑得到相同结果 = 相同 md5 = 同一版本，任何字节变化 = 新 md5 = 新版本。自洽。
+
+**两个 md5 口径**（2026-04-22 per-mode md5 上线后）：
+- **整机 md5**（`configSummaryMd5`）：spec + 所有 mode weights 的聚合指纹；受任何 mode 调参影响
+- **per-mode md5**（`modesMd5[<n>].configSummaryMd5`）：spec + 单个 mode 的 weights；调 mode 2 不会 invalidate mode 1 的历史
+
+归档路径以 **per-mode md5** 的前 8 位命名 —— 同 mode 历次版本之间可以稳定对应，不会因为另一 mode 调参而"错位"。整机 md5 在 NOTES.md 里记录一下供 UI 索引对齐。
 
 ## 当前 active
 
@@ -51,11 +59,12 @@ dev 脚本从不碰它。这样 tune / re-sim 时不会意外覆盖 console 的�
 
 ## M1 版本索引
 
-| md5_short | RTP | hit_rate | CV | 简述 |
-|---|---|---|---|---|
-| `32251c25` | 93.49% | 24.57% | 5.28 | 第一版（mode 1），只对齐 M14 mode 1 的 shape + CV，hit 未约束 → "所有 slots 平均 20-25%" 档（偏 video slot 风格） |
-| `558dfcdd` | 93.48% | **15.29%** | 5.06 | mode 1 active，加 hit_rate 软约束 15% → classic 单线行业 typical |
-| `6edf1ca3` | **306%** | **27.30%** | 6.04 | **当前 active**（mode 1 `558dfcdd` + mode 2 初调完成）。mode 2 是"幸运模式"，同 paytable 仅换 reel；bucket 形状稍偏双尾（小奖 +4pp / 大奖 +0.2pp）|
+| md5_short | 口径 | RTP | hit_rate | CV | 简述 |
+|---|---|---|---|---|---|
+| `32251c25` | 整机 | 93.49% | 24.57% | 5.28 | 第一版（mode 1），只对齐 M14 mode 1 的 shape + CV，hit 未约束 → "所有 slots 平均 20-25%" 档（偏 video slot 风格） |
+| `558dfcdd` | 整机 / mode 1 per-mode | 93.48% | **15.29%** | 5.06 | **mode 1 active**，加 hit_rate 软约束 15% → classic 单线行业 typical |
+| `6edf1ca3` | 整机（旧） | **306%** | 27.30% | 6.04 | mode 2 **v1**（2026-04-22 初调）。tail-heavy：63% 的 RTP 贡献在 50-500× 高倍率桶，user 反馈波动性过大 |
+| `e4017d61` | mode 2 per-mode | **290.9%** | **27.78%** | **4.08** | **mode 2 active**（2026-04-22 v2 重调，RTP 贡献中心下移）。mid 桶 (10-50×) RTP 占比 22.5% → **41.3%**，high 桶 (50-500×) 57.1% → **32.4%**；CV 6.04 → 4.08（-33%）。对应整机 md5 `5738a990` |
 
 ## 新机台交付时
 
