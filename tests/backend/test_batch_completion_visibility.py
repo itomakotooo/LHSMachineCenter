@@ -418,6 +418,62 @@ class TestCiTargetMetSurfaced:
             f"events: {body.get('events', [])!r}"
         )
 
+    def test_delegate_overwrites_summary_target_but_row_target_wins(
+        self, client, tmp_path: Path, app_factory, monkeypatch, wait_until_fixture
+    ):
+        """2026-04-21 virtual-console regression, 2nd layer: even AFTER
+        the stop_reason string fix, ci_target_met was still False because
+        summary.sampling.target_halfwidth_pp = 0.001 (virtual_analyzer's
+        ``_build_delegate_cmd`` hardcodes that so the real analyzer
+        doesn't early-stop during --from-cache replay). Achieved ±4.42pp
+        against the delegate's 0.001 target = not met.
+
+        Fix: read target from the runs-table row (stores the user's
+        original ``req.target_halfwidth_pp``, 5.0 in the bug report),
+        not the summary (reflects analyzer's CLI arg, which virtual
+        mode rewrites).
+        """
+        import src.web_console.backend.app as app_mod
+        c, _ = client
+        raw_root = tmp_path / "rawdata"
+        raw_root.mkdir(exist_ok=True)
+        monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
+
+        # User's original target: 5.0pp. Goes into the row via
+        # /api/batch-run → RunCreateRequest → StateStore.insert_run.
+        r = c.post("/api/batch-run", json=_batch_payload(target=5.0))
+        batch_id = r.json()["batch_id"]
+        run_id = _wait_for_run_id(c, batch_id)
+        _progress, summary_file = _resolve_run_paths(app_factory.db_path, run_id)
+
+        # Post a summary with the virtual-console-specific shape:
+        #   summary.sampling.target_halfwidth_pp = 0.001  (delegate override)
+        #   summary.sampling.achieved_halfwidth_pp = 4.42 (below user's 5.0)
+        #   stop_reason = "from_cache_complete" (always set by delegate)
+        summary = _completed_summary("from_cache_complete", halfwidth_pp=4.42)
+        summary["sampling"]["target_halfwidth_pp"] = 0.001  # ← divergent!
+        summary_file.parent.mkdir(parents=True, exist_ok=True)
+        summary_file.write_text(json.dumps(summary), encoding="utf-8")
+        (summary_file.parent / "player_impact_report.md").write_text(
+            "# report\n", encoding="utf-8"
+        )
+
+        _release_stubs(app_factory.stub_popen)
+
+        wait_until_fixture(
+            lambda: c.get(f"/api/batch-run/{batch_id}").json()["items"][0]["status"]
+            == "completed",
+            timeout=5.0,
+        )
+
+        body = c.get(f"/api/batch-run/{batch_id}").json()
+        item = body["items"][0]
+        assert item.get("ci_target_met") is True, (
+            f"row's user target (5.0) must win over summary's delegate-"
+            f"supplied target (0.001). achieved 4.42 ≤ row_target 5.0 "
+            f"= met. Got item={item!r}"
+        )
+
     def test_from_cache_complete_with_ci_not_met_stays_unmet(
         self, client, tmp_path: Path, app_factory, monkeypatch, wait_until_fixture
     ):

@@ -3422,14 +3422,28 @@ class BatchRunManager:
                     # summary's stop_reason to "from_cache_complete".
                     # The numeric reality is ground truth; the string
                     # label is just a hint.
-                    is_fuzzy = target_hw >= 999.0
+                    #
+                    # Source-of-truth for the TARGET (not just stop
+                    # reason): the runs-table row stores the original
+                    # user-specified target (``req.target_halfwidth_pp``
+                    # — 5.0pp in the virtual-console bug report).
+                    # Summary's ``sampling.target_halfwidth_pp`` is
+                    # whatever the analyzer saw on its CLI, which
+                    # virtual_analyzer's delegate rewrites to 0.001 to
+                    # force the real analyzer to process all chunks
+                    # instead of early-stopping. Trusting summary here
+                    # would compare achieved=4.42 vs target=0.001 →
+                    # False (the bug). Reading row keeps us on the
+                    # user's original intent.
+                    row_target_hw = float(row.get("target_halfwidth_pp") or 0.0)
+                    is_fuzzy = target_hw >= 999.0 or row_target_hw == 0.0
                     ci_target_met = (
                         stop_reason == "target_ci_reached"
                         or (
                             not is_fuzzy
-                            and target_hw > 0
+                            and row_target_hw > 0
                             and ci is not None
-                            and float(ci) <= target_hw
+                            and float(ci) <= row_target_hw
                         )
                         or (
                             is_fuzzy
