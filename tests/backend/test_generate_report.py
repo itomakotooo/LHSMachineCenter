@@ -517,6 +517,112 @@ class TestBatchGenerateReport:
             app.state.ops.release()
 
 
+class TestGenerateReportAsyncPath:
+    """Async variant (``async=true``) pre-inserts a ``status=queued``
+    placeholder row so the response can return a stable run_id for
+    UI polling. 2026-04-22 regression: the placeholder originally
+    carried ``progress_file=""`` — ``Path("")`` stringifies to ``.``
+    (current dir) which ``exists()`` is True but ``read_text()``
+    raises IsADirectoryError → ``/api/runs`` list endpoint 500s →
+    real-browser click shows "生成 Report 失败: /api/runs: 500".
+    """
+
+    def test_async_returns_run_id(self, app_with_m14):
+        """Response body must carry run_id so the frontend has a
+        stable polling target from the moment the POST returns."""
+        c, _app, rd_root, *_ = app_with_m14
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        _write_rawdata_chunk(
+            rd_root / "M14" / "mode_1", 1,
+            config_md5="test_cfg", code_md5="test_code",
+            response=response_payload,
+        )
+        resp = c.post(
+            "/api/rawdata/M14/generate-report",
+            json={"mode": 1, "async": True},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "accepted"
+        assert body["run_id"].startswith("gen_"), body
+        assert body["machine"] == "M14"
+        assert body["mode"] == 1
+
+    def test_runs_list_does_not_500_with_placeholder_row(self, app_with_m14):
+        """REGRESSION 2026-04-22: before the fix, ``/api/runs`` 500d
+        the instant an async generate-report call's placeholder row
+        existed — its ``progress_file`` was an empty string, which
+        Path() resolves to the current dir and ``read_text()`` raises
+        IsADirectoryError. The user's real-browser click showed
+        "生成 Report 失败: /api/runs: 500" because the rwtree-gen-btn
+        handler called ``refreshRunList()`` immediately after POST."""
+        c, _app, rd_root, *_ = app_with_m14
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        _write_rawdata_chunk(
+            rd_root / "M14" / "mode_1", 1,
+            config_md5="test_cfg", code_md5="test_code",
+            response=response_payload,
+        )
+        post_resp = c.post(
+            "/api/rawdata/M14/generate-report",
+            json={"mode": 1, "async": True},
+        )
+        assert post_resp.status_code == 200, post_resp.text
+        new_rid = post_resp.json()["run_id"]
+
+        # Immediately call /api/runs — placeholder row exists here,
+        # thread may still be starting. Before the fix this was 500.
+        runs_resp = c.get("/api/runs")
+        assert runs_resp.status_code == 200, (
+            "GET /api/runs must not 500 when a placeholder row is "
+            "present — Path('') on progress_file triggered "
+            "IsADirectoryError in the old code."
+        )
+        ids = [r["run_id"] for r in runs_resp.json()["runs"]]
+        assert new_rid in ids, (
+            f"placeholder row for {new_rid} must appear in /api/runs "
+            f"immediately, not only after the thread flips to running"
+        )
+
+    def test_placeholder_row_has_real_progress_file_path(self, app_with_m14):
+        """The placeholder row must carry a real (if not-yet-existing)
+        progress_file path, not an empty string. Downstream Path()
+        consumers assume non-empty paths."""
+        c, _app, rd_root, _reports, state_dir = app_with_m14
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        _write_rawdata_chunk(
+            rd_root / "M14" / "mode_1", 1,
+            config_md5="test_cfg", code_md5="test_code",
+            response=response_payload,
+        )
+        post_resp = c.post(
+            "/api/rawdata/M14/generate-report",
+            json={"mode": 1, "async": True},
+        )
+        new_rid = post_resp.json()["run_id"]
+
+        # Fetch the row directly from the DB before the thread flips
+        # it. progress_file should be non-empty and point into
+        # state_dir/progress/.
+        import sqlite3
+        with sqlite3.connect(state_dir / "console.db") as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT progress_file FROM runs WHERE run_id=?", (new_rid,)
+            ).fetchone()
+        assert row is not None, f"placeholder row {new_rid} missing from DB"
+        pf = row["progress_file"]
+        assert pf, (
+            f"progress_file must not be empty — empty string "
+            f"stringifies to '.' via Path() and breaks readers. "
+            f"Got: {pf!r}"
+        )
+        assert new_rid in pf, (
+            f"progress_file {pf!r} should include run_id {new_rid} "
+            f"so downstream writers land in the right file"
+        )
+
+
 class TestGenerateReportErrorPaths:
     def test_no_rawdata_returns_404(self, app_with_m14):
         c, *_ = app_with_m14

@@ -1395,7 +1395,13 @@ def write_json(path: Path, payload: Any) -> None:
 
 
 def read_progress_events(progress_file: Path) -> list[dict[str, Any]]:
-    if not progress_file.exists():
+    # 2026-04-22: guard against empty-string Path inputs. ``Path("")``
+    # equals ``Path(".")`` — which exists() returns True for (current
+    # dir) but is not a file → read_text() raises IsADirectoryError
+    # and the /api/runs list endpoint 500s. The placeholder-row path
+    # for async generate-report + any other caller that might hand us
+    # a missing / empty path benefits from is_file() over exists().
+    if not progress_file.is_file():
         return []
     events: list[dict[str, Any]] = []
     for line in progress_file.read_text(encoding="utf-8").splitlines():
@@ -6628,6 +6634,13 @@ def create_app(
         # detects the existing row and UPDATEs it instead of inserting.
         new_run_id = f"gen_{uuid.uuid4().hex[:12]}"
         started_now = utc_now()
+        # Pre-compute the progress_file path so the placeholder row
+        # can carry a real (if not-yet-existing) path — empty strings
+        # confuse downstream Path() consumers (``Path("")`` == current
+        # dir, read_text() on it raises IsADirectoryError and /api/runs
+        # 500s, which is how the 2026-04-22 "生成 Report 失败: /api/runs:
+        # 500" regression first surfaced in real browser use).
+        _placeholder_progress = sd / "progress" / f"{new_run_id}.jsonl"
         try:
             store.insert_run({
                 "run_id": new_run_id,
@@ -6647,7 +6660,7 @@ def create_app(
                 "bankruptcy_bankroll_multipliers": "10,100,200,500",
                 "report_version": "",
                 "output_dir": "",
-                "progress_file": "",
+                "progress_file": str(_placeholder_progress),
                 "summary_file": "",
                 "report_file": "",
             })
