@@ -21,13 +21,14 @@
     {
       "machine": "M1sim",
       "modes": [
-        1
+        1,
+        2
       ],
       "logicClassNames": [
         "SimulatedClassicPayline3Reel"
       ],
-      "configSummaryMd5": "558dfcdd53cd1e822624470d20e9c36c",
-      "codeSummaryMd5": "aa1f9fba749f460225a3b88bcd9d33fe",
+      "configSummaryMd5": "f81b71498f3d644aac0b5fbc20c87f05",
+      "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642",
       "available": true,
       "_source_machine": "M1",
       "_spec_path": "slot_designer/specs/M1.spec.json",

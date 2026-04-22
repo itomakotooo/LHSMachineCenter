@@ -29,8 +29,18 @@ def emit_simulation_to_dir(
     progress: Callable[[int, int], None] | None = None,
     config_md5: str = "",
     code_md5: str = "",
+    mode: int | None = None,
 ) -> dict:
-    """Run simulation and write chunk JSONs. Returns a summary dict."""
+    """Run simulation and write chunk JSONs. Returns a summary dict.
+
+    ``mode`` (optional) overrides ``spec["mode"]`` for chunk envelope
+    tagging + the per-round ``RTPId`` field. The spec itself stays
+    single-mode (rules + paytable are shared across modes on M1-style
+    machines); the caller picks which mode's identity to stamp on the
+    chunks. Defaults to ``spec["mode"]`` for backward compatibility
+    with single-mode callers.
+    """
+    effective_mode = int(mode) if mode is not None else int(spec["mode"])
     rng = Random(seed)
 
     # Probe for schema fingerprint — deterministic seed, doesn't affect main RNG
@@ -38,7 +48,7 @@ def emit_simulation_to_dir(
         engine.spin(Random(0)),
         last_credits=initial_credits,
         spin_times=spins_per_robot,
-        rtp_id=int(spec["mode"]),
+        rtp_id=effective_mode,
     )
     schema_fp = compute_schema_fingerprint(probe)
 
@@ -58,7 +68,7 @@ def emit_simulation_to_dir(
                     out,
                     last_credits=last_credits,
                     spin_times=spins_per_robot,
-                    rtp_id=int(spec["mode"]),
+                    rtp_id=effective_mode,
                 )
                 rounds.append(round_dict)
                 last_credits = last_credits - out.cost_credits + round_dict["WinCredits"]
@@ -70,7 +80,7 @@ def emit_simulation_to_dir(
         chunk = emit_chunk(
             robot_list,
             machine=spec["machine"],
-            mode=int(spec["mode"]),
+            mode=effective_mode,
             bet=engine.bet_amount,
             spin_times=spins_per_robot,
             robot_count=robots,

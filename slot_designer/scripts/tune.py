@@ -96,6 +96,12 @@ def main() -> None:
     p.add_argument("--virtual-machine", default=None,
                    help="virtual machine name (defaults to <source_machine>sim). "
                         "Should be registered in configs/machines_virtual.json")
+    p.add_argument("--mode", type=int, default=None,
+                   help="mode (rtp_id) to stamp on the emitted dev-scratch "
+                        "chunks. Defaults to spec[\"mode\"]. Use when tuning "
+                        "a non-primary mode that shares the same spec/rules "
+                        "but differs in reel weights (e.g. M1 mode 2 'lucky' "
+                        "mode — same paytable, different RTP target).")
     p.add_argument("--out-report", type=Path, default=None)
     p.add_argument("--evaluations", type=int, default=800)
     p.add_argument("--restarts", type=int, default=3)
@@ -331,7 +337,7 @@ def main() -> None:
     # slate (no mixing of previous-md5 and current-md5 chunks).
     if not args.skip_rawdata:
         source_machine = spec["machine"]
-        mode = int(spec["mode"])
+        mode = int(args.mode) if args.mode is not None else int(spec["mode"])
         # Virtual-machine naming convention: suffix "sim" (per user, 2026-04-21)
         virtual_machine = args.virtual_machine or f"{source_machine}sim"
         rawdata_dir = args.out_rawdata_dir or (
@@ -430,6 +436,7 @@ def main() -> None:
             progress=_progress,
             config_md5=config_md5,
             code_md5=code_md5,
+            mode=mode,
         )
         print(f"\nemitted {len(emit_summary['chunks_written'])} chunks, "
               f"{emit_summary['total_rounds']} rounds total")

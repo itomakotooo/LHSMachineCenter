@@ -126,6 +126,12 @@ def main() -> None:
                    help="overrides spec's _machine field for chunk envelope + "
                         "pulls matching md5 from machines_virtual.json "
                         "(so analyzer --from-cache sees the right version tag)")
+    p.add_argument("--mode", type=int, default=None,
+                   help="override the mode (rtp_id) stamped on chunks + "
+                        "rounds. Defaults to spec[\"mode\"]. Use when the "
+                        "same spec + paytable serves multiple modes via "
+                        "different weights files (e.g. M1sim mode 1 vs 2 "
+                        "share rules but differ in reel strip).")
     args = p.parse_args()
 
     engine, spec = load_engine(args.spec, args.weights)
@@ -135,7 +141,7 @@ def main() -> None:
     if args.machine_name:
         emit_spec["machine"] = args.machine_name
 
-    mode = int(spec["mode"])
+    mode = int(args.mode) if args.mode is not None else int(spec["mode"])
     if args.out_dir is None:
         args.out_dir = _resolve_default_out_dir(machine_name, mode)
         print(f"using dev scratch out-dir: {args.out_dir}")
@@ -164,6 +170,7 @@ def main() -> None:
         progress=_progress,
         config_md5=config_md5,
         code_md5=code_md5,
+        mode=mode,
     )
     print(f"\ntotal rounds: {result['total_rounds']}")
     print(f"sim RTP     : {result['realized_rtp_pct']:.2f}%")
