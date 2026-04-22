@@ -31,24 +31,32 @@
     "",
     "CV projected ~ 5.9 (between mode 1's 5.06 and v1's 6.31). Volatility preserved relative to mode 1 but not as extreme as v1.",
     "",
-    "Strips are SHARED with mode 1/2/5 (file layout invariant). Only weights differ."
+    "Strips are SHARED with mode 1/2/5 (file layout invariant). Only weights differ.",
+    "",
+    "NOTE (2026-04-22 v3): This target file is superseded by direct scaling.",
+    "mode 7 is now derived as `mode 1 × (Cherry × 0.5, Bar × 0.9)` — see",
+    "mode_7/NOTES.md for rationale. The tuner pareto'd Seven1 down to near-zero",
+    "on two separate tune attempts (v1 hit-target 7.68%, v2 hit-target 9.68%),",
+    "violating the 'preserve mid/high wins' brief. Direct scaling gives",
+    "Seven family RTP share 6.60% (up from mode 1's 5.21% — what the user",
+    "asked for). Target file retained for reference / future re-evaluation."
   ],
-  "rtp_pct": 82.65,
+  "rtp_pct": 83.0,
   "bucket_rate": {
     "gt0_lt1": 0.0,
     "ge1_lt5": 0.050,
     "ge5_lt10": 0.015,
-    "ge10_lt20": 0.020,
-    "ge20_lt50": 0.010,
-    "ge50_lt100": 0.0015,
-    "ge100_lt200": 0.00025,
-    "ge200_lt500": 0.00005,
+    "ge10_lt20": 0.0217,
+    "ge20_lt50": 0.0092,
+    "ge50_lt100": 0.00136,
+    "ge100_lt200": 0.00022,
+    "ge200_lt500": 0.00004,
     "ge500_lt1000": 0.0,
     "ge1000_lt5000": 0.0,
     "ge5000": 0.0
   },
-  "hit_rate": 0.09680,
-  "zero_win_rate": 0.90320,
+  "hit_rate": 0.09750,
+  "zero_win_rate": 0.90250,
   "std_return_x": 4.9,
   "max_return_x": 360.0,
   "big_win_x10_rate": 0.032,
@@ -57,5 +65,10 @@
   "tail_dep_ge50x": 0.019,
   "tail_dep_ge100x": 0.003,
   "loss_streak_p95": 20,
-  "loss_streak_max": 100
+  "loss_streak_max": 100,
+  "_bucket_rate_rationale": [
+    "ge10_lt20 / ge20_lt50 / ge50_lt100 / ge100_lt200 / ge200_lt500 all set to mode 1's analytic rates exactly.",
+    "This makes the target SELF-CONSISTENT with 'preserve mid/high wins' — the tuner starting from mode 1 weights has zero incentive to move these buckets.",
+    "ge1_lt5 and ge5_lt10 are the ONLY cut buckets (Cherry + mixed-Bar)."
+  ]
 }

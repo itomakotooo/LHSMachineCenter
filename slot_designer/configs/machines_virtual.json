@@ -29,7 +29,7 @@
       "logicClassNames": [
         "SimulatedClassicPayline3Reel"
       ],
-      "configSummaryMd5": "4a7c59e9f9f6bfd35c345e9b62d534ba",
+      "configSummaryMd5": "a429b92f0bc18dc92f3e755f3b772180",
       "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c",
       "available": true,
       "_source_machine": "M1",
@@ -50,7 +50,7 @@
           "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
         },
         "7": {
-          "configSummaryMd5": "5feb96ef8f388b432ff6b3b054492f96",
+          "configSummaryMd5": "00ba999b8b1dedb0fc1b4469309577b2",
           "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
         }
       }
