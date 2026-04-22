@@ -1,29 +1,47 @@
-"""Trigger session detection.
+"""Trigger session detection — two families covered.
 
 A "trigger session" is the span of rounds that follow a paid round
-whose ``ReMarks`` starts with "Trigger" — i.e. the paid round
-earned no payline win but activated a bonus feature (TopDollar /
-FreeSpin / GoldBonus / ...). The feature's actual payout isn't
-visible at round level (settlement rounds carry ``WinCredits=None``
-or the cash value lives on offer rounds whose ``PayoutIdToWinAmount``
-is absent). It is only surfaced via ``analysisResult.FeatureWin``
-on the upstream aggregate.
+which activates a bonus feature. The feature's actual payout
+doesn't cleanly appear on any single round — it's aggregated at
+``analysisResult.FeatureWin`` by the upstream server. This module
+recovers the session win at round level so the caller can fold it
+back onto the trigger pay_id's RTP contribution.
 
-That mismatch is the "pay_id 666 can't see its real win" bug: the
-per-round aggregator counts the trigger hit but attributes zero win
-to it; the real win lives in FeatureWin and doesn't link back to
-any pay_id. This module computes, at round level, the win each
-trigger session actually accrued — matching the upstream
-FeatureWin aggregate exactly so the caller can fold the value back
-into its trigger pay_id's RTP contribution.
+Two signal families are handled:
 
-Scope (iteration 1): selector/bonus families whose ReMarks starts
-with "Trigger" — TopDollarSelector, QuickDollarSelector,
-FortunesSelector, DancingDrumSelector, HoppyHuntingSelector,
-ChristmasSimpleSelector, ValentineSimpleSelector (8 of the 11
-known selector families). WheelSelector + CommonSelector use a
-different ReMarks scheme and will get their own detector in a
-later iteration.
+**Type 1** (iteration 1) — ``ReMarks`` starts with "Trigger".
+  Covers TopDollarSelector (M12/15/90/132/206), QuickDollarSelector
+  (M32), FortunesSelector (M6), DancingDrumSelector (M39),
+  HoppyHuntingSelector (M86), ChristmasSimpleSelector (M116/210),
+  ValentineSimpleSelector (M123).
+  Session-win rule: **last non-None WinCredits** across the span.
+  Matches the "selector offers N candidates, player accepts one"
+  semantics — the final offer round's WinCredits is the accepted
+  value; subsequent settlement rounds carry WinCredits=None.
+
+**Type 2** (iteration 2) — paid round has ``WinCredits==0``,
+non-empty ``PayoutIdToWinAmount`` with at least one win==0 key,
+and its ``ReMarks`` does NOT match Type 1. Covers WheelSelector
+(M273 + its 84 sibling 3-of-9 variants), CommonSelector (M201 /
+M209 / M257). Their paid trigger round is unmarked in ReMarks —
+the bonus structure surfaces through ``SpinType`` transition
+only. Session-win rule: **sum of non-None WinCredits** across
+the span. Matches "freespin accumulate N wins" semantics where
+each freespin round carries its own WinCredits and they're all
+kept by the player.
+
+The two rules are mutually exclusive at the session level: the
+rule to apply is determined when the session opens and does not
+change mid-session.
+
+Paid-round detection is via ``CostCredits > 0`` (upstream reliably
+sets it on paid rounds; bonus rounds carry CostCredits in (None,
+0)). Session boundary is paid→non-paid→paid: all non-paid rounds
+between a paid trigger and the next paid round form one session.
+
+Non-session paid rounds (any paid round whose win==0 pay_id does
+NOT lead into a non-paid sequence) are ignored — they're
+payline metadata, not trigger signals.
 """
 from __future__ import annotations
 
@@ -85,57 +103,84 @@ def extract_trigger_pay_ids(payout_id_to_win: Any) -> list[str]:
     return out
 
 
+def _is_paid_round(r: Any) -> bool:
+    """Paid-round classifier used by both Type 1 and Type 2 session
+    boundary logic. True iff ``CostCredits > 0``. Bonus rounds
+    carry CostCredits in (None, 0) uniformly across every machine
+    observed — TopDollar selector, M273 freespin, M201 selector
+    result, M209 move, M257 freespin, all non-paid side rounds
+    have CostCredits None or 0."""
+    if not isinstance(r, dict):
+        return False
+    cc = r.get("CostCredits")
+    if cc is None:
+        return False
+    try:
+        return float(cc) > 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def _to_float_or_zero(v: Any) -> float:
+    if v is None:
+        return 0.0
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def compute_trigger_sessions(rounds: Iterable[dict]) -> list[dict]:
     """Scan one robot's round sequence and detect all trigger sessions.
 
-    A session starts at a round with ``ReMarks`` that
-    ``is_new_trigger_remark`` accepts. The paid SpinType of that
-    round serves as the session's anchor: the session extends
-    forward until the next round returns to the same SpinType
-    (back to a regular paid spin) or the rounds list ends. All
-    observed Type-1 families (M6/M12/M15/M32/M39/M86/M116/M123)
-    have trigger rounds co-located with their paid SpinType, so
-    the "back to trigger SpinType = session ends" rule applies.
+    A session opens when a paid round is followed by at least one
+    non-paid round AND the paid round carries at least one win==0
+    ``PayoutIdToWinAmount`` key (the "trigger pay_id anchor"). The
+    session ends at the next paid round (exclusive) or the rounds
+    list end.
 
-    Session win attribution — the actual payout for the trigger
-    session is the **last non-None ``WinCredits``** observed across
-    the trigger round and every bonus round in the session. This
-    matches M15 TopDollar's full-chunk aggregate byte-for-byte:
-    sum(session_win across all 2238 sessions) = 105,665,000 =
-    FeatureWin.TopDollar.total_win.
+    The session's ``win_rule`` and ``session_win`` are determined
+    by the trigger round's ``ReMarks``:
 
-    The "last non-None" rule works because:
-      - Selector-style features (M15 TopDollar): the final SpinType
-        round before the settlement carries the accepted offer's
-        value in WinCredits. The settlement round itself has
-        WinCredits=None.
-      - FreeSpin-style features (M6 / M39 / M86): the total freespin
-        win is usually aggregated on the last freespin round (or
-        each freespin carries its own win and the final one is the
-        cumulative — the "last non-None" rule captures the correct
-        number either way because the upstream aggregator would
-        also sum them the same way we observe).
-      - This rule may need refinement when we reach WheelSelector
-        (M273) style in iteration 2, where multiple distinct
-        bonus features nest inside one session. Document the
-        assumption here; extend the algorithm there.
+      * **Type 1** — ``ReMarks`` starts with "Trigger" (but not
+        "TriggerAdd..."). ``win_rule = "last_non_none"``, meaning
+        ``session_win`` equals the last non-None WinCredits across
+        the span. Matches selector/offer semantics (M15 TopDollar:
+        last selector offer value is the one the player accepts;
+        settlement round has WinCredits=None).
 
-    Returns a list of session dicts, one per trigger round:
+      * **Type 2** — ReMarks does NOT match Type 1, but the paid
+        round still anchors a non-paid sequence with trigger pay_ids.
+        ``win_rule = "sum_all"``, meaning ``session_win`` is the
+        sum of non-None WinCredits across all bonus rounds (None
+        values treated as 0). Matches freespin-accumulate semantics
+        (M273 Wheel, M257 Freespin: each freespin round's WinCredits
+        is independently earned and all are kept).
+
+    Verified live:
+      - M15 $0$ (Type 1): sum(session_win) over 2238 sessions =
+        105,665,000 == FeatureWin.TopDollar.total_win exactly.
+      - M273 $0$ probed freespin session [202..214]: rounds
+        [0, 9000, 5000, 500, 500, 2000, 0, 0] sum = 17,000 matches
+        accumulated freespin payout expectation (settlement has
+        WinCredits=None so last_non_none would give 0 — wrong;
+        sum_all gives the correct 17k).
+
+    Returns a list of session dicts, one per session:
 
         [{
-          trigger_idx: int,           # index into `rounds`
+          trigger_idx: int,           # index of the paid trigger round
           trigger_pay_ids: [str, ...],# zero-win pay_ids on trigger round
           trigger_spin_type: int|None,# SpinType of the trigger round
           session_end_idx: int,       # exclusive end (index of first
                                       # post-session round or len(rounds))
-          session_win: float,         # last non-None WinCredits in span
+          session_win: float,         # win per win_rule
+          win_rule: "last_non_none"|"sum_all",
           bonus_spin_types: [int|None, ...],  # SpinType sequence of
-                                              # bonus rounds (for chain
-                                              # display / double-check)
+                                              # bonus rounds (double-check)
         }, ...]
 
-    No mutation of the input; the rounds list is iterated left-to-
-    right. Non-dict entries (defensive) are skipped.
+    Non-dict entries are skipped. No mutation of input.
     """
     rounds_list = list(rounds)
     sessions: list[dict] = []
@@ -146,26 +191,35 @@ def compute_trigger_sessions(rounds: Iterable[dict]) -> list[dict]:
         if not isinstance(r, dict):
             i += 1
             continue
-        if not is_new_trigger_remark(r.get("ReMarks")):
+        if not _is_paid_round(r):
             i += 1
             continue
+        # Peek ahead: is there at least one non-paid round right
+        # after this paid one? No → regular paid spin, skip.
+        if i + 1 >= n or _is_paid_round(rounds_list[i + 1]):
+            i += 1
+            continue
+        # Has win=0 pay_id anchor? No → can't attribute a session
+        # win to any pay_id, skip (still advance past the bonus block
+        # so we don't re-scan it).
         trigger_pids = extract_trigger_pay_ids(r.get("PayoutIdToWinAmount"))
         if not trigger_pids:
-            # Trigger ReMarks but no zero-win pay_id — unusual; skip
-            # rather than attribute session win to no anchor.
-            i += 1
+            # Still find session_end so we don't re-enter mid-bonus.
+            j = i + 1
+            while j < n and not _is_paid_round(rounds_list[j]):
+                j += 1
+            i = j
             continue
+        # Classify rule from ReMarks.
+        remarks = r.get("ReMarks")
+        rule = "last_non_none" if is_new_trigger_remark(remarks) else "sum_all"
         trigger_st = r.get("SpinType")
-        # Seed session_win from the trigger round itself (usually 0
-        # on classic trigger tokens, but in some schemas the trigger
-        # round carries the initial feature payout directly).
-        last_nonnone_win: float = 0.0
+        # Seed from trigger round's own WinCredits (usually 0 for
+        # trigger tokens).
         trig_w = r.get("WinCredits")
-        if trig_w is not None:
-            try:
-                last_nonnone_win = float(trig_w)
-            except (TypeError, ValueError):
-                pass
+        last_nonnone_win: float = _to_float_or_zero(trig_w) if trig_w is not None else 0.0
+        sum_win: float = _to_float_or_zero(trig_w)
+        # Walk the bonus sequence.
         j = i + 1
         bonus_sts: list = []
         while j < n:
@@ -173,25 +227,22 @@ def compute_trigger_sessions(rounds: Iterable[dict]) -> list[dict]:
             if not isinstance(nr, dict):
                 j += 1
                 continue
-            nst = nr.get("SpinType")
-            if nst == trigger_st:
-                # Back to a paid round of the same SpinType —
-                # session ends before this index.
+            if _is_paid_round(nr):
                 break
-            bonus_sts.append(nst)
+            bonus_sts.append(nr.get("SpinType"))
             w = nr.get("WinCredits")
             if w is not None:
-                try:
-                    last_nonnone_win = float(w)
-                except (TypeError, ValueError):
-                    pass
+                last_nonnone_win = _to_float_or_zero(w)
+                sum_win += _to_float_or_zero(w)
             j += 1
+        session_win = last_nonnone_win if rule == "last_non_none" else sum_win
         sessions.append({
             "trigger_idx": i,
             "trigger_pay_ids": trigger_pids,
             "trigger_spin_type": trigger_st,
             "session_end_idx": j,
-            "session_win": last_nonnone_win,
+            "session_win": session_win,
+            "win_rule": rule,
             "bonus_spin_types": bonus_sts,
         })
         i = j

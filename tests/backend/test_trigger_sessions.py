@@ -358,3 +358,199 @@ class TestDefensiveInputs:
         ]
         s = compute_trigger_sessions(rounds)
         assert s[0]["session_win"] == 0
+
+
+# ---------------------------------------------------------------------
+# Type 2 — paid round without "Trigger" ReMarks but with win=0 pay_id
+# (WheelSelector M273 / CommonSelector M201/M257). Rule: sum_all.
+# ---------------------------------------------------------------------
+
+
+class TestType2WheelSelector:
+    """M273 WheelSelector shape (probed live): paid round SpinType=140
+    with ``PayoutIdToWinAmount={'5801': 0}`` and empty ReMarks;
+    then non-paid rounds move through SpinType 139 → 136 → 137 → 117
+    (freespins). Rule: sum all freespin WinCredits."""
+
+    def test_m273_freespin_session_sum_all(self):
+        rounds = [
+            # Paid trigger round: CostCredits=1000, Win=0, pay_id 5801 anchor.
+            # NO ReMarks (empty string), so Type 1 detector rejects it.
+            {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"5801": 0}, "ReMarks": ""},
+            # Non-paid bonus sequence — various SpinTypes, WinCredits
+            # accumulates (each freespin round earns independently).
+            {"SpinType": 139, "CostCredits": 0, "WinCredits": 0,
+             "ReMarks": "Minigame CellIndexes: 2,2,2,1,"},
+            {"SpinType": 136, "CostCredits": None, "WinCredits": None,
+             "ReMarks": "WheelSelector"},
+            {"SpinType": 137, "CostCredits": None, "WinCredits": 0,
+             "ReMarks": "PreWheel ReqCommonParam 3-5-9 "},
+            {"SpinType": 117, "CostCredits": 0, "WinCredits": 0,
+             "ReMarks": " Freespin 1 of 7"},
+            {"SpinType": 117, "CostCredits": 0, "WinCredits": 9000,
+             "ReMarks": " Freespin 2 of 7"},
+            {"SpinType": 117, "CostCredits": 0, "WinCredits": 5000,
+             "ReMarks": " Freespin 3 of 7"},
+            {"SpinType": 117, "CostCredits": 0, "WinCredits": 500,
+             "ReMarks": " Freespin 4 of 7"},
+            {"SpinType": 117, "CostCredits": 0, "WinCredits": 500,
+             "ReMarks": " Freespin 5 of 7"},
+            {"SpinType": 117, "CostCredits": 0, "WinCredits": 2000,
+             "ReMarks": " Freespin 6 of 7"},
+            {"SpinType": 117, "CostCredits": 0, "WinCredits": 0,
+             "ReMarks": " Freespin 7 of 7"},
+            # Back to paid — session ends.
+            {"SpinType": 140, "CostCredits": 1000, "WinCredits": 500,
+             "PayoutIdToWinAmount": {"9": 500}, "ReMarks": ""},
+        ]
+        sessions = compute_trigger_sessions(rounds)
+        assert len(sessions) == 1
+        s = sessions[0]
+        assert s["trigger_pay_ids"] == ["5801"]
+        assert s["win_rule"] == "sum_all"
+        # sum = 0+0+0+0+9000+5000+500+500+2000+0 = 17000 (None/0 included)
+        assert s["session_win"] == 17000
+
+    def test_m273_last_non_none_would_be_wrong(self):
+        """The rule chosen matters: last non-None of M273's freespin
+        sequence ends on a 0-win freespin → last_non_none rule would
+        give 0, losing the whole session's real payout. Verifies
+        this case forces sum_all as the correct call."""
+        rounds = [
+            {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"X": 0}, "ReMarks": ""},
+            {"SpinType": 117, "CostCredits": 0, "WinCredits": 10000,
+             "ReMarks": " Freespin 1 of 2"},
+            {"SpinType": 117, "CostCredits": 0, "WinCredits": 0,
+             "ReMarks": " Freespin 2 of 2"},
+            {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        s = compute_trigger_sessions(rounds)[0]
+        assert s["win_rule"] == "sum_all"
+        assert s["session_win"] == 10000  # not 0
+
+
+class TestType2CommonSelector:
+    """M201 CommonSelector sample (probed live). Sessions have 2
+    kinds: LockReSpin (pay_id 7777 → 1-3 bonus rounds) and
+    NewFreespin (pay_id 6666 → many freespin rounds). Both use
+    sum_all rule."""
+
+    def test_m201_lockrespin_session(self):
+        rounds = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"7777": 0}, "ReMarks": ""},
+            {"SpinType": 13, "CostCredits": 0, "WinCredits": 0,
+             "PayoutIdToWinAmount": {}, "ReMarks": ""},
+            {"SpinType": 149, "CostCredits": None, "WinCredits": None,
+             "ReMarks": "Selector"},
+            {"SpinType": 13, "CostCredits": 0, "WinCredits": 11660,
+             "PayoutIdToWinAmount": {"20102": 11660}, "ReMarks": ""},
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        s = compute_trigger_sessions(rounds)[0]
+        assert s["trigger_pay_ids"] == ["7777"]
+        assert s["win_rule"] == "sum_all"
+        assert s["session_win"] == 11660  # only non-None win in span
+
+    def test_m257_freespin_sum_all(self):
+        """M257 Freespin chain (probed: 14 freespin rounds, wins
+        accumulate). Shorter fixture here — rule check only."""
+        rounds = [
+            {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"666": 0}, "ReMarks": ""},
+            {"SpinType": 149, "CostCredits": None, "WinCredits": None,
+             "ReMarks": "Selector14"},
+            {"SpinType": 126, "CostCredits": 0, "WinCredits": 22200,
+             "ReMarks": "Freespin 1; "},
+            {"SpinType": 126, "CostCredits": 0, "WinCredits": 5550,
+             "ReMarks": "Freespin 2; "},
+            {"SpinType": 126, "CostCredits": 0, "WinCredits": 0,
+             "ReMarks": "Freespin 3; "},
+            {"SpinType": 126, "CostCredits": 0, "WinCredits": 28860,
+             "ReMarks": "Freespin 4; "},
+            {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        s = compute_trigger_sessions(rounds)[0]
+        assert s["win_rule"] == "sum_all"
+        assert s["session_win"] == 22200 + 5550 + 0 + 28860
+
+
+class TestTriggerAnchorRequired:
+    """Paid round without any win==0 pay_id is NOT a trigger session
+    even if followed by non-paid rounds. Covers M209 gap case: paid
+    rounds carry ``PayoutIdToWinAmount={}`` (no anchor) but still
+    enter a bonus sequence via SpinType transition alone — these
+    sessions can't be attributed to a pay_id so the helper skips."""
+
+    def test_empty_payout_on_paid_round_skipped(self):
+        rounds = [
+            {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {}, "ReMarks": ""},
+            {"SpinType": 149, "CostCredits": None, "WinCredits": None,
+             "ReMarks": "Selector"},
+            {"SpinType": 36, "CostCredits": 0, "WinCredits": 10000,
+             "ReMarks": "move"},
+            {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        assert compute_trigger_sessions(rounds) == []
+
+    def test_paid_round_with_only_paying_pay_ids_skipped(self):
+        """Paid round with pay_ids but all have nonzero win (normal
+        payline hit) — not a trigger. Regression guard."""
+        rounds = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 500,
+             "PayoutIdToWinAmount": {"9": 500}, "ReMarks": ""},
+            # No non-paid rounds following — regular paid spin.
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        assert compute_trigger_sessions(rounds) == []
+
+    def test_non_paid_successor_required(self):
+        """Paid round with win=0 pay_id but NO following non-paid
+        rounds → ordinary paid spin (the pay_id is payline metadata,
+        not a trigger signal). Important: don't treat every win=0
+        pay_id as a trigger — M273 has pay_id 2600 and 5801 that
+        can appear on non-trigger rounds too."""
+        rounds = [
+            {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"5801": 0}, "ReMarks": ""},
+            # Back to paid — no bonus sequence.
+            {"SpinType": 140, "CostCredits": 1000, "WinCredits": 500,
+             "PayoutIdToWinAmount": {"9": 500}},
+        ]
+        assert compute_trigger_sessions(rounds) == []
+
+
+class TestPaidRoundClassifier:
+    """CostCredits>0 classifier — shared between Type 1 and Type 2
+    session boundary logic. Regression tests guard the rule."""
+
+    def test_cost_positive_is_paid(self):
+        from fresh_slotlab.trigger_sessions import _is_paid_round
+        assert _is_paid_round({"CostCredits": 1000}) is True
+
+    def test_cost_zero_is_not_paid(self):
+        from fresh_slotlab.trigger_sessions import _is_paid_round
+        assert _is_paid_round({"CostCredits": 0}) is False
+
+    def test_cost_none_is_not_paid(self):
+        """Bonus/settlement rounds consistently have CostCredits=None
+        across every probed machine (M15 selector, M273 freespin,
+        M201 selector, M209 move, M257 freespin)."""
+        from fresh_slotlab.trigger_sessions import _is_paid_round
+        assert _is_paid_round({"CostCredits": None}) is False
+
+    def test_missing_cost_field_is_not_paid(self):
+        from fresh_slotlab.trigger_sessions import _is_paid_round
+        assert _is_paid_round({}) is False
+
+    def test_non_dict_is_not_paid(self):
+        from fresh_slotlab.trigger_sessions import _is_paid_round
+        assert _is_paid_round(None) is False
+        assert _is_paid_round("not a dict") is False
+
+    def test_malformed_cost_is_not_paid(self):
+        from fresh_slotlab.trigger_sessions import _is_paid_round
+        assert _is_paid_round({"CostCredits": "bad"}) is False
