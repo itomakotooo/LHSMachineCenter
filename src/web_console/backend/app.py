@@ -84,11 +84,12 @@ def _run_post_analyzer_inference(
     rawdata_root: Path | None = None,
     paytables_dir: Path | None = None,
     classify_dir: Path | None = None,
+    log_to_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Fire the two offline inference scripts for one (machine, mode).
 
     Called right after a successful generate-report so the UI's
-    payline-classification + paytable-shape panels are always in sync
+    payline-classification + paytable-shape panels stay in sync
     with the just-produced analyzer summary. Best-effort — failures
     are captured in the returned dict but do NOT propagate. Generate-
     report has already written its own artifacts by the time this
@@ -109,10 +110,33 @@ def _run_post_analyzer_inference(
     _classify/``. Production callers pass ``None`` → scripts use
     their built-in defaults (same behaviour as before this param
     existed).
+
+    ``log_to_dir`` (optional) writes the full results dict to
+    ``<log_to_dir>/_post_hook.json`` before returning, same contract
+    as the batch-gen worker. Without this, the in-process path's
+    daemon thread drops its return value on the floor and silent
+    failures (timeouts / subprocess not found / env issues) are
+    invisible. memory/feedback_no_silent_swallow.md: any best-effort
+    post-hook must persist its outcome.
     """
     import os as _os
     import subprocess
     import sys as _sys
+
+    def _persist(r: dict[str, Any]) -> dict[str, Any]:
+        if log_to_dir is not None:
+            try:
+                Path(log_to_dir).mkdir(parents=True, exist_ok=True)
+                (Path(log_to_dir) / "_post_hook.json").write_text(
+                    json.dumps(r, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            except OSError:
+                # Don't let a log-write failure alter the hook's
+                # effective outcome. We return the result regardless;
+                # caller still sees success/failure in-memory.
+                pass
+        return r
 
     results: dict[str, Any] = {"machine": machine, "mode": mode}
     # SLOT_SKIP_AUTO_INFER=1 short-circuits both scripts; tests use it
@@ -120,7 +144,7 @@ def _run_post_analyzer_inference(
     # unset so inference panels refresh on every report.
     if _os.environ.get("SLOT_SKIP_AUTO_INFER") == "1":
         results["skipped"] = "env_SLOT_SKIP_AUTO_INFER"
-        return results
+        return _persist(results)
     # Optionally shortcut when the machine's rawdata dir has no
     # chunks — avoids paying subprocess startup cost just to have the
     # script scan nothing and exit. Safe no-op; the UI shows "not_run"
@@ -129,7 +153,7 @@ def _run_post_analyzer_inference(
         per_mode_dir = Path(rawdata_root) / machine / f"mode_{int(mode)}"
         if not per_mode_dir.is_dir():
             results["skipped"] = "no_rawdata_for_pair"
-            return results
+            return _persist(results)
     env = dict(_os.environ)
     if rawdata_root is not None:
         env["SLOT_RAWDATA_ROOT"] = str(rawdata_root)
@@ -161,7 +185,7 @@ def _run_post_analyzer_inference(
             results[name] = {"ok": False, "error": "timeout"}
         except Exception as exc:  # noqa: BLE001
             results[name] = {"ok": False, "error": f"{exc.__class__.__name__}: {exc}"}
-    return results
+    return _persist(results)
 
 
 PROVIDER_MODELS: dict[str, list[str]] = {
@@ -6367,6 +6391,14 @@ def create_app(
                         machine, mode, rawdata_root=rd_root,
                         paytables_dir=pd_root, classify_dir=cd,
                         timeout_sec=300.0,
+                        # Persist outcome next to the report so an
+                        # operator (or curious engineer investigating
+                        # why the UI shape panel is blank) can see
+                        # whether the hook ran, succeeded, or failed
+                        # with which stderr tail. memory/
+                        # feedback_no_silent_swallow.md — the daemon
+                        # thread otherwise drops its return value.
+                        log_to_dir=output_dir,
                     ),
                     daemon=True,
                     name=f"post-infer-{machine}-{mode}",
