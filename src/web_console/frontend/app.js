@@ -1996,9 +1996,32 @@ function _wireRwtreeGridActions(gridEl, machineName) {
     btn.addEventListener("click", async () => {
       const rid = btn.dataset.runId;
       if (!rid) return;
+      const prevRid = state.currentRunId;
       state.currentRunId = rid;
       switchTab("debug");
-      await refreshCurrentRun();
+      try {
+        await refreshCurrentRun();
+      } catch (err) {
+        // refreshCurrentRun normally catches 404 internally, but a
+        // downstream await (/progress, /report) can still throw 500 or
+        // network error. Without this catch, the promise rejection
+        // bubbles out, leaving currentRunId pointing at the new run
+        // with panels half-populated by the previous run — the user
+        // clicked "load mode 1" and sees mode 2's data stubbornly on
+        // screen (2026-04-22 bug report).
+        console.warn(`rwtree load-btn: refresh failed for run ${rid}:`, err);
+        // Revert to clean slate. Prefer resetting panels over restoring
+        // prevRid because the user's intent was "stop showing the old
+        // report"; keeping prevRid would just re-load what they were
+        // trying to replace.
+        state.currentRunId = "";
+        state.currentRunStatus = "";
+        setLoadedMachineInfo(null);
+        _resetDebugPanelsToEmpty();
+        renderLiveStatusStrip();
+        updateActionStates();
+        void prevRid;  // retained for debuggability via closure/stack
+      }
     });
   });
   gridEl.querySelectorAll(".rwtree-delete-btn").forEach((btn) => {
@@ -4905,9 +4928,62 @@ function _startBatchGeneratePoll() {
   }, 1000);
 }
 
+// Reset every debug-tab panel back to "no report loaded" state.
+// Called when the current run's data can't be loaded (404 from the
+// API, or no currentRunId to begin with). Without this, clearing
+// setLoadedMachineInfo alone leaves all the KPI cards / bucket table /
+// payIdOverview / classifier panels showing the PREVIOUSLY loaded run's
+// data — so the user clicks "载入 mode 1" on a report whose run row got
+// deleted, the /api/runs/{rid} 404s, currentRunId gets wiped, but the
+// page still shows mode 2's panels from the last successful load
+// (2026-04-22 bug: "载入 2 以后，点击载入 1 的那一份，显示的还是 2").
+function _resetDebugPanelsToEmpty() {
+  state.latestSummary = null;
+  // KPI main tiles
+  for (const id of [
+    "kpiRtp", "kpiCi", "kpiSpins", "kpiZero",
+    "kpiArchetype", "kpiLossStreak", "kpiMaxReturn",
+  ]) {
+    setKpi(id, "N/A", "neutral");
+  }
+  // KPI sub-lines that applyLibraryRanking / archetype populate
+  for (const id of ["kpiArchetypeSub", "kpiVolatilitySub"]) {
+    const el = byId(id);
+    if (el) el.textContent = "";
+  }
+  // Multi-tile grids (tail-dep + big-win)
+  const tailGrid = byId("kpiTailGrid");
+  if (tailGrid) tailGrid.innerHTML = "";
+  const bigWinGrid = byId("kpiBigWinGrid");
+  if (bigWinGrid) bigWinGrid.innerHTML = "";
+  // Bucket distribution table
+  const bucketBody = byId("bucketTable")?.querySelector("tbody");
+  if (bucketBody) bucketBody.innerHTML = "";
+  // Panels that gate their own visibility on data presence — hide them
+  // so the user sees a clean "nothing loaded" debug tab rather than a
+  // partial mosaic of stale panels.
+  for (const id of [
+    "payIdOverviewPanel", "paylineClassificationPanel",
+    "fieldDiscoveryPanel", "machineMechanicsPanel",
+    "bonusChainDynamicsPanel", "collectCyclePanel",
+    "bankruptcyPanel",
+  ]) {
+    const el = byId(id);
+    if (el) el.classList.add("hidden");
+  }
+  // Text blocks
+  const eventsEl = byId("eventsText");
+  if (eventsEl) eventsEl.textContent = fmt("noEvents");
+  const asEl = byId("assessment");
+  if (asEl) asEl.textContent = fmt("noReport");
+  const intEl = byId("interpretationText");
+  if (intEl) intEl.textContent = fmt("noInterpret");
+}
+
 async function refreshCurrentRun() {
   if (!state.currentRunId) {
     setLoadedMachineInfo(null);
+    _resetDebugPanelsToEmpty();
     renderLiveStatusStrip();
     updateActionStates();
     return;
@@ -4918,10 +4994,16 @@ async function refreshCurrentRun() {
   } catch (err) {
     const msg = String(err?.message || "");
     if (msg.includes("404")) {
-      // Stale currentRunId (run was deleted) — clear and keep going.
+      // Stale currentRunId (run was deleted) — clear, reset ALL panels
+      // (previously only reset loadedMachineInfo, leaving KPI cards +
+      // bucket table + sub-panels showing whichever report was loaded
+      // before this click → user sees mismatched data with
+      // loadedMachineInfo reading "no run loaded" but panels showing
+      // the previous mode's values), and keep going.
       state.currentRunId = "";
       state.currentRunStatus = "";
       setLoadedMachineInfo(null);
+      _resetDebugPanelsToEmpty();
       renderLiveStatusStrip();
       updateActionStates();
       return;
@@ -4930,6 +5012,8 @@ async function refreshCurrentRun() {
     // reload race, or a brief backend hiccup). Don't let it bubble up
     // through loadBootstrap → setHealth(false): the next poll tick
     // (4.5s) will retry, and the rest of the UI is already populated.
+    // Panels intentionally NOT reset here — polling transients
+    // shouldn't flash empty panels.
     console.warn("refreshCurrentRun: transient, skipping —", msg);
     setLoadedMachineInfo(null);
     renderLiveStatusStrip();
