@@ -3562,6 +3562,53 @@ async function renderPayIdOverview(summary) {
   for (const r of shapeRows) {
     shapeByPayId.set(String(r.pay_id), r);
   }
+
+  // Virtual-console only: fetch the machine's declared paytable so
+  // the panel can render zero-hit rows for pay_ids that exist in
+  // the spec but never fired in this sample (typical case: rtp_
+  // excluded grand jackpots at ~1e-6 frequency on small chunk
+  // counts — user saw 12/13 pay_ids and flagged it as incomplete).
+  // Real console: endpoint 404s → declaredPays stays [] → observed-
+  // only rendering (existing behavior unchanged). See
+  // slot_designer/backend/virtual_app._register_virtual_only_routes.
+  let declaredPays = [];
+  try {
+    const decl = await apiGet(
+      `/api/virtual/paytable/${encodeURIComponent(machine)}`,
+    );
+    if (decl && Array.isArray(decl.pays)) {
+      declaredPays = decl.pays;
+    }
+  } catch (_err) {
+    declaredPays = [];
+  }
+  const observedPayIds = new Set(payoutRows.map((r) => String(r.payout_id)));
+  // Append synthetic zero-hit rows for declared pay_ids NOT in the
+  // observed list. Carries ``_declared_only`` so the renderer can
+  // style them differently (muted) and skip sub-row breakdown logic.
+  const _bet = Number(((summary || {}).sampling || {}).bet) || 1000;
+  for (const dp of declaredPays) {
+    const pid = String(dp.pay_id);
+    if (observedPayIds.has(pid)) continue;
+    payoutRows.push({
+      payout_id: pid,
+      hit_count: 0,
+      hit_rate: 0,
+      total_win: 0,
+      // Keep the multiplier column populated from the declared
+      // multiplier so operator can still see "pay_id 4 = 1000×" even
+      // though nobody hit it. Wild-group pays (multi-alt) carry no
+      // top-level multiplier → fmtMult will render "—".
+      avg_win_when_hit: dp.multiplier != null ? Number(dp.multiplier) * _bet : 0,
+      rtp_contribution_pp: 0,
+      spin_type_category: "paid",
+      dominant_spin_type: 1,
+      _declared_only: true,
+      _declared_kind: dp.kind || "",
+      _declared_grand_jackpot: !!dp.grand_jackpot,
+      _declared_rtp_excluded: !!dp.rtp_excluded,
+    });
+  }
   const wildReviewNeeded = Boolean(
     shapeData && shapeData.wild_inference && shapeData.wild_inference.review_needed,
   );
@@ -3712,9 +3759,23 @@ async function renderPayIdOverview(summary) {
     const toggleIcon = hasBreakdown
       ? `<span class="payid-toggle" data-toggle-pid="${_escHtml(pid)}" role="button" title="展开 / 收起子组合">▸</span> `
       : `<span class="payid-toggle-spacer"></span>`;
-    const mainRowCls = hasBreakdown ? "payid-main payid-main-expandable" : "payid-main";
+    // Declared-only rows: pay_id exists in the paytable spec but
+    // didn't fire in this sample (typical: rtp_excluded grand
+    // jackpots). Render muted so operator can distinguish from
+    // observed-but-zero rows and reassure themselves the paytable
+    // is fully enumerated.
+    const isDeclaredOnly = Boolean(pr._declared_only);
+    const declaredNote = isDeclaredOnly
+      ? (pr._declared_grand_jackpot
+          ? "未命中 · grand jackpot"
+          : (pr._declared_rtp_excluded ? "未命中 · rtp_excluded" : "未命中"))
+      : "";
+    const mainRowClassList = [
+      hasBreakdown ? "payid-main payid-main-expandable" : "payid-main",
+      isDeclaredOnly ? "payid-declared-only" : "",
+    ].filter(Boolean).join(" ");
     const mainRow =
-      `<tr class="${mainRowCls}" data-pid="${_escHtml(pid)}">` +
+      `<tr class="${mainRowClassList}" data-pid="${_escHtml(pid)}">` +
       `<td>${toggleIcon}${_escHtml(pid)}</td>` +
       `<td>${categoryBadge(cat)}</td>` +
       `<td${firesAttr}>${fInt(pr.hit_count)}</td>` +
@@ -3724,7 +3785,7 @@ async function renderPayIdOverview(summary) {
       `<td>${symDisplay}</td>` +
       `<td>${_escHtml(colStr)}</td>` +
       `<td>${lineBadge}</td>` +
-      `<td class="shape-notes">${notes}</td>` +
+      `<td class="shape-notes">${isDeclaredOnly ? _escHtml(declaredNote) : notes}</td>` +
       `</tr>`;
     let subRows = "";
     if (hasBreakdown) {

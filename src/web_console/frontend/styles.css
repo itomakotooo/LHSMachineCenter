@@ -3230,6 +3230,14 @@ details.advanced-params[open] > summary {
 .payid-overview-table tr.payid-main-expandable:hover > td {
   background: #f8fafc;
 }
+/* Declared-only rows: pay_id is in the paytable spec but didn't
+ * fire in this sample (typical: rtp_excluded grand jackpots at
+ * ~1e-6 probability on small samples). Muted grey so operator can
+ * distinguish at a glance from observed-but-zero rows. */
+.payid-overview-table tr.payid-declared-only > td {
+  color: #94a3b8;
+  font-style: italic;
+}
 .payid-overview-table .payid-toggle {
   display: inline-block;
   width: 12px;

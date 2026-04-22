@@ -93,6 +93,85 @@ def _local_md5_refresh(server_id: str = "virtual") -> dict:
     }
 
 
+def _load_declared_pays_from_spec(machine: str) -> list[dict]:
+    """Read the virtual machine's spec file and return the full
+    declared ``pays`` list (one entry per pay_id the paytable allows,
+    including ``rtp_excluded`` grand jackpots).
+
+    Returns [] on any error (missing registry entry, missing spec
+    file, malformed JSON) — callers treat the endpoint as best-effort:
+    absence → frontend falls back to observed-only (legacy behavior).
+    """
+    try:
+        reg = json.loads(VIRTUAL_MACHINES_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    entry = next(
+        (m for m in reg.get("machines", []) if m.get("machine") == machine),
+        None,
+    )
+    if entry is None:
+        return []
+    rel_spec = entry.get("_spec_path")
+    if not rel_spec:
+        return []
+    spec_path = _REPO_ROOT / rel_spec
+    if not spec_path.exists():
+        return []
+    try:
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    pays = spec.get("pays")
+    if not isinstance(pays, list):
+        return []
+    # Project to a lean schema — just the fields the UI needs to render
+    # a zero-hit row (pay_id, kind, multiplier, grand_jackpot,
+    # rtp_excluded). Full spec fields (multiset / alternatives / group)
+    # stay in the spec file; frontend doesn't need them for the
+    # completeness-only purpose.
+    out: list[dict] = []
+    for p in pays:
+        if not isinstance(p, dict) or "pay_id" not in p:
+            continue
+        out.append({
+            "pay_id": int(p["pay_id"]),
+            "kind": str(p.get("kind", "")),
+            "multiplier": p.get("multiplier"),
+            "grand_jackpot": bool(p.get("grand_jackpot", False)),
+            "rtp_excluded": bool(p.get("rtp_excluded", False)),
+        })
+    out.sort(key=lambda r: r["pay_id"])
+    return out
+
+
+def _register_virtual_only_routes(app):
+    """Register routes that exist ONLY on the virtual console.
+
+    Architectural contract (2026-04-22): keep virtual-specific HTTP
+    endpoints OUT of ``src/web_console/backend/app.py`` so the real
+    console's surface stays unchanged. Routes added here are visible
+    on port 8878 only; real console on 8877 returns 404.
+
+    Frontend probes these endpoints and falls back gracefully when
+    they 404 — real-console UI therefore keeps its existing behavior.
+    """
+    @app.get("/api/virtual/paytable/{machine}")
+    def virtual_paytable_declared(machine: str) -> dict:
+        """Full declared paytable for a virtual machine, read from
+        its spec file. Used by the rwtree's Pay ID 总览 panel to
+        render zero-hit rows for pay_ids that didn't fire in the
+        sample (e.g. rtp_excluded grand jackpots at ~1e-6 frequency
+        on small chunk counts).
+        """
+        pays = _load_declared_pays_from_spec(machine)
+        return {
+            "machine": machine,
+            "source": "spec" if pays else "missing",
+            "pays": pays,
+        }
+
+
 def build_virtual_app():
     """Construct the virtual-console FastAPI app with isolated paths."""
     for p in (VIRTUAL_STATE_DIR, VIRTUAL_RAWDATA_ROOT, VIRTUAL_REPORTS_ROOT,
@@ -103,7 +182,7 @@ def build_virtual_app():
     if VIRTUAL_MACHINES_CONFIG.exists():
         refresh_machines_virtual(VIRTUAL_MACHINES_CONFIG)
 
-    return create_app(
+    app = create_app(
         state_dir=VIRTUAL_STATE_DIR,
         reports_root=VIRTUAL_REPORTS_ROOT,
         cache_root=VIRTUAL_CACHE_ROOT,
@@ -114,6 +193,8 @@ def build_virtual_app():
         paytables_dir=VIRTUAL_PAYTABLES_DIR,
         md5_refresh_override=_local_md5_refresh,
     )
+    _register_virtual_only_routes(app)
+    return app
 
 
 app = build_virtual_app()
