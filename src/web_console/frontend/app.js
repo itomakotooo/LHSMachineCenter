@@ -615,6 +615,9 @@ const ACTIVITY_TERMINAL_OF = {
   md5_refresh_failed: "md5_refresh_start",
   batch_created: "submit",
   submit_failed: "submit",
+  generate_report_done: "generate_report_start",
+  generate_report_failed: "generate_report_start",
+  generate_report_timeout: "generate_report_start",
 };
 
 function _catalogModeMetrics(machine) {
@@ -1882,6 +1885,60 @@ function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb
   </div>`;
 }
 
+// Poll a generate-report async run until it transitions out of
+// running/queued. Fires activity-log events for start → done / failed
+// and triggers a single rwtree refresh on completion so the new
+// report appears immediately (user feedback 2026-04-22: "生成完成
+// 以后也没有及时刷新, 我刷新网页才看得到").
+//
+// Caller has already pushed `generate_report_start` before the POST.
+// This function owns the terminal event + the post-completion
+// refresh. ~3min ceiling on polling so a hung run doesn't leak a
+// setInterval forever; if it outlasts that, one final refresh runs
+// (the report may have landed even after we stopped watching).
+async function _pollGenerateReport(runId, machine, mode) {
+  const started = Date.now();
+  const MAX_WAIT_MS = 180_000;  // 3 minutes — 10k-chunk replays run ~30-90s
+  const INTERVAL_MS = 2_000;
+  let lastStatus = "";
+  while (Date.now() - started < MAX_WAIT_MS) {
+    try {
+      const row = await apiGet(`/api/runs/${encodeURIComponent(runId)}`);
+      const status = String(row && row.status || "").toLowerCase();
+      lastStatus = status;
+      if (status === "completed") {
+        pushClientEvent("generate_report_done", {
+          machine, mode,
+          rtp_pct: row && row.achieved_rtp_pct,
+          halfwidth_pp: row && row.achieved_halfwidth_pp,
+        });
+        try { await renderRawdataReportTree(machine); } catch (_) { /* best-effort */ }
+        return;
+      }
+      if (status === "failed" || status === "cancelled") {
+        pushClientEvent("generate_report_failed", {
+          machine, mode,
+          error: String(row && row.error_message || "unknown").slice(0, 120),
+        });
+        try { await renderRawdataReportTree(machine); } catch (_) { /* best-effort */ }
+        return;
+      }
+    } catch (_) {
+      // Transient polling error (404 at the very start if the thread
+      // is still spawning, or a momentary backend hiccup). Don't
+      // abort the poll — the next tick will retry.
+    }
+    await new Promise((r) => setTimeout(r, INTERVAL_MS));
+  }
+  // Ceiling hit. Final refresh in case the run finished between our
+  // last poll and now. No terminal event because we genuinely don't
+  // know the outcome.
+  pushClientEvent("generate_report_timeout", {
+    machine, mode, last_status: lastStatus,
+  });
+  try { await renderRawdataReportTree(machine); } catch (_) { /* best-effort */ }
+}
+
 // Wire grid-level interactions. Runs after _renderRwtreeGrid has
 // populated the grid with all cells; event listeners live on the
 // individual buttons so re-renders naturally rebind.
@@ -1934,6 +1991,13 @@ function _wireRwtreeGridActions(gridEl, machineName) {
       const orig = btn.textContent;
       btn.disabled = true;
       btn.textContent = "生成中… (后台)";
+      // Activity-log start event fires BEFORE the POST so the operator
+      // sees "⋯ 生成 Report 中…" in the strip immediately — before, the
+      // click produced no log entry at all (user feedback 2026-04-22:
+      // "点击生成以后没有 log, 没法确认状态").
+      pushClientEvent("generate_report_start", {
+        machine: m, mode: Number(mo),
+      });
       try {
         const body = { mode: Number(mo), async: true };
         // Only pass md5 for historical cells — current-md5 cells
@@ -1943,13 +2007,32 @@ function _wireRwtreeGridActions(gridEl, machineName) {
           body.config_md5 = cfg;
           body.code_md5 = code;
         }
-        await apiPost(
+        const resp = await apiPost(
           `/api/rawdata/${encodeURIComponent(m)}/generate-report`, body,
         );
         btn.textContent = "⏳ 已入队";
         await refreshRunList(false);
-        setTimeout(() => renderRawdataReportTree(m), 3000);
+        // 2026-04-22: replace the fragile setTimeout(3000) auto-refresh
+        // with an actual poll on the returned run_id. Three outcomes:
+        //   completed → push done event + refresh rwtree
+        //   failed    → push failed event with error_message
+        //   timeout   → give up after ~3min, one-time rwtree refresh
+        //               (so a long-running replay still surfaces if it
+        //               eventually finishes after our poll gives up)
+        const rid = resp && resp.run_id;
+        if (!rid) {
+          // Back-compat: old backend without run_id — fall back to the
+          // old behavior. Should never happen now that both sides are
+          // updated.
+          setTimeout(() => renderRawdataReportTree(m), 3000);
+          return;
+        }
+        _pollGenerateReport(rid, m, Number(mo));
       } catch (err) {
+        pushClientEvent("generate_report_failed", {
+          machine: m, mode: Number(mo),
+          error: String(err && err.message ? err.message : err).slice(0, 120),
+        });
         alert(`生成 Report 失败: ${String(err && err.message ? err.message : err)}`);
         btn.textContent = orig;
         btn.disabled = false;

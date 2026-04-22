@@ -1621,6 +1621,50 @@ function buildClientEvent(kind, data, nowIso) {
         ts, level: "warn", source: "ui",
         text: "⚠ md5 刷新失败（沿用本地缓存）: " + ((data && data.error) || "unknown"),
       };
+    case "generate_report_start": {
+      // 2026-04-22: click on rwtree ⟳ 生成 Report must produce an
+      // immediate activity-log entry. Before the fix the click
+      // silently kicked off a 30-90s analyzer replay with no log
+      // trail — user "没法确认状态".
+      const m = (data && data.machine) || "?";
+      const mo = (data && data.mode != null) ? data.mode : "?";
+      return {
+        ts, level: "info", source: "ui",
+        text: `⋯ 生成 Report · ${m} mode ${mo} …`,
+      };
+    }
+    case "generate_report_done": {
+      const m = (data && data.machine) || "?";
+      const mo = (data && data.mode != null) ? data.mode : "?";
+      const rtp = (data && data.rtp_pct != null)
+        ? Number(data.rtp_pct).toFixed(2) + "%"
+        : "—";
+      const ci = (data && data.halfwidth_pp != null)
+        ? "±" + Number(data.halfwidth_pp).toFixed(2) + "pp"
+        : "—";
+      return {
+        ts, level: "info", source: "ui",
+        text: `✓ 生成完成 · ${m} mode ${mo} · RTP ${rtp} · CI ${ci}`,
+      };
+    }
+    case "generate_report_failed": {
+      const m = (data && data.machine) || "?";
+      const mo = (data && data.mode != null) ? data.mode : "?";
+      const err = (data && data.error) || "unknown";
+      return {
+        ts, level: "error", source: "ui",
+        text: `✗ 生成失败 · ${m} mode ${mo} · ${err}`,
+      };
+    }
+    case "generate_report_timeout": {
+      const m = (data && data.machine) || "?";
+      const mo = (data && data.mode != null) ? data.mode : "?";
+      const last = (data && data.last_status) || "unknown";
+      return {
+        ts, level: "warn", source: "ui",
+        text: `⏱ 生成轮询超时 · ${m} mode ${mo} · last=${last}（后台可能仍在跑）`,
+      };
+    }
     default:
       return { ts, level: "info", source: "ui", text: `? ${kind}` };
   }

@@ -88,6 +88,13 @@ def run_analyzer_job(job: dict) -> dict:
         # the sole termination gate (same rationale as in-process
         # _run_generate_report — see its comment for history).
         "--target-halfwidth-pp", "0.001",
+        # 2026-04-22: disable Tier-2 non-convergence abort. With
+        # target=0.001pp the abort's (ci/target)² projection always
+        # overflows the chunks-budget ceiling and bails at the 20-
+        # chunk floor. Batch generate-report is exhaustive replay,
+        # never targeting a real CI — abort is user-facing sampling
+        # logic only. Mirrors the fix in in-process _run_generate_report.
+        "--disable-non-convergence-abort",
         "--timeout", "30",
         "--run-id", str(job["run_id"]),
         "--progress-file", str(job["progress_file"]),

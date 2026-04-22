@@ -5943,6 +5943,7 @@ def create_app(
     def _run_generate_report(
         machine: str, mode: int,
         *, config_md5: str = "", code_md5: str = "",
+        run_id: str | None = None,
     ) -> dict[str, Any]:
         """Core generate-report work, no ops-mutex handling. Caller
         (single endpoint or batch manager) owns the lock lifecycle.
@@ -5953,6 +5954,13 @@ def create_app(
         (user-requested 2026-04-21: "report 都是独立的"). Empty
         strings = current-md5 default (kept + deletable classifier
         result).
+
+        ``run_id`` optional (2026-04-22): when the async endpoint
+        pre-allocates a run_id + inserts a ``status=queued`` row so
+        the response can carry the id back to the UI for activity-log
+        polling, this function UPDATEs that row instead of inserting
+        a fresh one. ``None`` keeps the original INSERT behavior for
+        the sync endpoint + batch-generate workers.
 
         Raises HTTPException on validation failure so the single-item
         endpoint surfaces standard HTTP errors; the batch manager
@@ -6031,7 +6039,10 @@ def create_app(
             # generation (2026-04-21: user pointed out the previous
             # code used ONLY config_md5, which collided if code
             # flipped independently).
-            new_run_id = f"gen_{uuid.uuid4().hex[:12]}"
+            # run_id may be pre-allocated by the async endpoint (so the
+            # UI can poll from the moment the POST returns). Otherwise
+            # generate a new one for the sync / batch paths.
+            new_run_id = run_id or f"gen_{uuid.uuid4().hex[:12]}"
             ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             if md5_filter:
                 cfg_short = (config_md5 or "")[:6] or "-"
@@ -6052,19 +6063,22 @@ def create_app(
             chunk_spin_times = int(sample_env.get("_spin_times") or 5000)
             chunk_robot_count = int(sample_env.get("_robot_count") or 24)
 
-            # Insert a RUNNING row upfront so the run surfaces in the
-            # unified /api/runs?status=running feed while the analyzer
-            # is mid-work. End-of-function updates status=completed
-            # with final metrics. On analyzer failure, the outer
-            # except-block updates status=failed.
+            # Insert or update the RUNNING row so the run surfaces in
+            # the unified /api/runs?status=running feed while the
+            # analyzer is mid-work. End-of-function updates
+            # status=completed with final metrics. On analyzer failure,
+            # the outer except-block updates status=failed.
+            # 2026-04-22: when the async endpoint pre-inserted a
+            # ``status=queued`` placeholder row (to return run_id to
+            # the UI), UPDATE that row instead of re-inserting (would
+            # error on UNIQUE constraint). The sync / batch paths hit
+            # the insert branch because they never pre-insert.
             started_now = utc_now()
-            store.insert_run({
-                "run_id": new_run_id,
+            row_fields = {
                 "machine": machine,
                 "mode": mode,
                 "status": "running",
                 "model_id": "generate-report",
-                "created_at": started_now,
                 "started_at": started_now,
                 "target_halfwidth_pp": 0.001,
                 "chunk_spin_times": chunk_spin_times,
@@ -6079,7 +6093,16 @@ def create_app(
                 "progress_file": str(progress_file),
                 "summary_file": str(summary_file),
                 "report_file": str(report_file),
-            })
+            }
+            if run_id and store.get_run(run_id):
+                # Pre-allocated placeholder row exists — fill it in.
+                store.update_run(new_run_id, row_fields)
+            else:
+                store.insert_run({
+                    "run_id": new_run_id,
+                    "created_at": started_now,
+                    **row_fields,
+                })
 
             import sys as _sys
             from io import StringIO
@@ -6112,6 +6135,19 @@ def create_app(
                 # threshold effectively unreachable on real data,
                 # leaving max_chunks as the only termination gate.
                 "--target-halfwidth-pp", "0.001",
+                # 2026-04-22: the analyzer's Tier-2 non-convergence
+                # early-abort (added by ca7e638) projects "predicted
+                # chunks to converge" as chunks × (ci_now / target)²
+                # and bails when that exceeds max_chunks × 5. Our
+                # 0.001pp sentinel makes (ci_now / 0.001)² astronomical
+                # — at 20 chunks (the floor) the projection always
+                # explodes and the abort fires with only ~400k spins
+                # processed (user-reported regression 2026-04-22:
+                # "196w chunks, 只用了 40w, 低精度 report"). The
+                # abort exists for REAL user targets on bug/in-dev
+                # machines; this in-process rawdata replay is neither —
+                # we explicitly want to burn every cached response.
+                "--disable-non-convergence-abort",
                 "--timeout", "30",
                 "--output-dir", str(output_dir),
                 "--progress-file", str(progress_file),
@@ -6582,27 +6618,80 @@ def create_app(
                 detail=f"system busy: {snap.get('operation') or 'unknown'}",
             )
 
+        # 2026-04-22: pre-allocate run_id + insert ``status=queued``
+        # placeholder row BEFORE spawning the thread, so the response
+        # carries a stable run_id the UI can poll immediately. Before
+        # this, the endpoint returned only {status: accepted} and the
+        # UI had no way to track progress — user-reported symptom:
+        # "点击生成以后没有 log, 没法确认状态. 合并入当前的 log 体系".
+        # The thread's call to _run_generate_report(run_id=new_run_id)
+        # detects the existing row and UPDATEs it instead of inserting.
+        new_run_id = f"gen_{uuid.uuid4().hex[:12]}"
+        started_now = utc_now()
+        try:
+            store.insert_run({
+                "run_id": new_run_id,
+                "machine": machine,
+                "mode": mode,
+                "status": "queued",
+                "model_id": "generate-report",
+                "created_at": started_now,
+                "started_at": started_now,
+                "target_halfwidth_pp": 0.001,
+                "chunk_spin_times": 0,
+                "chunk_robot_count": 0,
+                "batch_concurrency": 1,
+                "max_chunks": 0,
+                "timeout": 30,
+                "bankruptcy_session_spins": 10000,
+                "bankruptcy_bankroll_multipliers": "10,100,200,500",
+                "report_version": "",
+                "output_dir": "",
+                "progress_file": "",
+                "summary_file": "",
+                "report_file": "",
+            })
+        except Exception:
+            # Placeholder insert failed — release the lock and fail
+            # loudly. Leaving the thread to run would orphan the ops
+            # mutex.
+            ops.release()
+            raise
+
         def _work() -> None:
             try:
                 _run_generate_report(
                     machine, mode,
                     config_md5=config_md5, code_md5=code_md5,
+                    run_id=new_run_id,
                 )
             except Exception:
                 # _run_generate_report already marks the runs row as
                 # failed on its way out. Swallow here so the daemon
                 # thread exits cleanly without tracebacks in the log
                 # (the failure is surfaced via the runs table).
-                pass
+                # Mark the placeholder row as failed in case the
+                # raise happened before the inner status=running flip.
+                try:
+                    cur = store.get_run(new_run_id) or {}
+                    if cur.get("status") in ("queued", "running"):
+                        store.update_run(new_run_id, {
+                            "status": "failed",
+                            "finished_at": utc_now(),
+                            "error_message": "generate-report aborted early",
+                        })
+                except Exception:
+                    pass
             finally:
                 ops.release()
 
         threading.Thread(target=_work, daemon=True).start()
         return {
             "status": "accepted",
+            "run_id": new_run_id,
             "machine": machine,
             "mode": mode,
-            "message": "generate-report started — poll /api/runs/?status=running",
+            "message": f"generate-report started — poll /api/runs/{new_run_id}",
         }
 
     @app.post("/api/rawdata/batch-generate-report")

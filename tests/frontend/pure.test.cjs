@@ -1255,6 +1255,68 @@ test("buildClientEvent: md5_refresh_done with no updates is level=info", () => {
   assert.ok(ev.text.includes("无变更"));
 });
 
+test("buildClientEvent: generate_report_start renders in-progress marker", () => {
+  // 2026-04-22: click on rwtree ⟳ 生成 Report must produce an
+  // immediate activity-log entry. Before the fix the click was silent.
+  const ev = PURE.buildClientEvent(
+    "generate_report_start", { machine: "M1", mode: 1 },
+    "2026-04-22T00:00:00Z",
+  );
+  assert.equal(ev.level, "info");
+  assert.ok(ev.text.includes("M1"));
+  assert.ok(ev.text.includes("mode 1"));
+  assert.ok(ev.text.includes("生成 Report") || ev.text.includes("生成"));
+});
+
+test("buildClientEvent: generate_report_done shows RTP + CI summary", () => {
+  const ev = PURE.buildClientEvent(
+    "generate_report_done",
+    { machine: "M1", mode: 1, rtp_pct: 92.35, halfwidth_pp: 0.48 },
+    "2026-04-22T00:00:00Z",
+  );
+  assert.equal(ev.level, "info");
+  assert.ok(ev.text.includes("M1"));
+  assert.ok(ev.text.includes("92.35%"));
+  assert.ok(ev.text.includes("±0.48pp"));
+  assert.ok(ev.text.includes("✓"));
+});
+
+test("buildClientEvent: generate_report_done with missing metrics uses em-dash", () => {
+  // Defensive: runs-table row might not yet have achieved_* filled in
+  // (race between poll tick and final update).
+  const ev = PURE.buildClientEvent(
+    "generate_report_done",
+    { machine: "M1", mode: 1 },
+    "2026-04-22T00:00:00Z",
+  );
+  assert.equal(ev.level, "info");
+  assert.ok(ev.text.includes("—"));
+});
+
+test("buildClientEvent: generate_report_failed is level=error with reason", () => {
+  const ev = PURE.buildClientEvent(
+    "generate_report_failed",
+    { machine: "M1", mode: 1, error: "analyzer exit_code=1" },
+    "2026-04-22T00:00:00Z",
+  );
+  assert.equal(ev.level, "error");
+  assert.ok(ev.text.includes("✗"));
+  assert.ok(ev.text.includes("M1"));
+  assert.ok(ev.text.includes("analyzer exit_code=1"));
+});
+
+test("buildClientEvent: generate_report_timeout is level=warn + last_status", () => {
+  // ~3-min poll ceiling hit; backend may still be running.
+  const ev = PURE.buildClientEvent(
+    "generate_report_timeout",
+    { machine: "M1", mode: 1, last_status: "running" },
+    "2026-04-22T00:00:00Z",
+  );
+  assert.equal(ev.level, "warn");
+  assert.ok(ev.text.includes("⏱") || ev.text.includes("超时"));
+  assert.ok(ev.text.includes("running"));
+});
+
 test("buildClientEvent: md5_refresh_failed is level=warn with reason", () => {
   const ev = PURE.buildClientEvent(
     "md5_refresh_failed", { error: "HTTP 502 from fake-upstream" },
