@@ -64,7 +64,7 @@ MACHINES_CONFIG = ROOT / "configs" / "machines.json"
 SERVERS_CONFIG = ROOT / "configs" / "servers.json"
 ANALYZER = ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
 FRONTEND_DIR = ROOT / "src" / "web_console" / "frontend"
-SLOT_SPIN_ENDPOINT = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpin"
+SLOT_SPIN_ENDPOINT = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpinVariant"
 
 # Offline inference scripts that are auto-triggered after every
 # successful generate-report so the UI's payline / paytable panels
@@ -1042,7 +1042,7 @@ def get_server_endpoint(server_id: str, path: Path | None = None) -> str:
         if s.get("id") == server_id:
             ep = s.get("endpoint", "").rstrip("/")
             if ep:
-                return f"{ep}/MachineTest/MultiRobotTestSpin"
+                return f"{ep}/MachineTest/MultiRobotTestSpinVariant"
     return SLOT_SPIN_ENDPOINT
 
 

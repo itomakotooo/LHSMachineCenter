@@ -19,8 +19,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-DEFAULT_ENDPOINT_URL = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpin"
+DEFAULT_ENDPOINT_URL = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpinVariant"
 ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
+# We always hit the Variant endpoint. ``MachineName`` on the payload is
+# passed through verbatim from machines.json — a variant key like
+# "M273$1$1-2-3" or a plain machine name like "M14" both work: the
+# Variant endpoint looks the key up in its MachineTestVariants map and
+# either rewrites to (underlying + selector params) or falls through
+# to a plain test-spin when the key isn't a variant. See
+# docs/upstream/MachineTest-TestSpin.md.
 PAYLINE_RE = re.compile(r"(\d+):")
 # 11 win-bearing buckets. The old `eq0` bucket carried zero-win sessions
 # which already live in summary.hit_and_payout.zero_win_rate; a bucket
