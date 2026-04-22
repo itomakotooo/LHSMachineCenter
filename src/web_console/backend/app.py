@@ -359,16 +359,46 @@ def _peek_cache_bets(mode_dir: Path) -> set[int]:
     return bets
 
 
-def _get_machine_md5(machine: str, machines_config: Path | None = None) -> tuple[str, str]:
-    """Look up (config_md5, code_md5) for a machine from machines.json."""
+def _get_machine_md5(
+    machine: str,
+    machines_config: Path | None = None,
+    mode: int | None = None,
+) -> tuple[str, str]:
+    """Look up ``(config_md5, code_md5)`` for a machine from
+    ``machines.json``.
+
+    When ``mode`` is provided AND the entry has a ``modesMd5`` map
+    (virtual registry, per-mode md5 2026-04-22), returns the md5
+    specific to that mode. Otherwise falls back to the top-level
+    ``configSummaryMd5`` / ``codeSummaryMd5`` (real-console schema
+    where all modes of a machine share the same reel strip).
+
+    Mode-aware callers (classify_chunks, generate-report, pre-batch
+    refresh) should pass ``mode`` so virtual machines with per-mode
+    reel strips classify each mode's chunks against the right md5.
+    """
     target = machines_config if machines_config is not None else MACHINES_CONFIG
     if not target.exists():
         return "", ""
     try:
         data = read_json(target) or {}
         for m in data.get("machines", []):
-            if m.get("machine") == machine:
-                return (str(m.get("configSummaryMd5", "")), str(m.get("codeSummaryMd5", "")))
+            if m.get("machine") != machine:
+                continue
+            # Prefer per-mode md5 when available + caller asked for
+            # a specific mode. Falls through to top-level if mode isn't
+            # registered under modesMd5 (real-console path, or legacy
+            # virtual entry predating the 2026-04-22 rewrite).
+            if mode is not None:
+                per_mode = (m.get("modesMd5") or {}).get(str(int(mode)))
+                if isinstance(per_mode, dict) and (
+                    per_mode.get("configSummaryMd5") or per_mode.get("codeSummaryMd5")
+                ):
+                    return (
+                        str(per_mode.get("configSummaryMd5", "")),
+                        str(per_mode.get("codeSummaryMd5", "")),
+                    )
+            return (str(m.get("configSummaryMd5", "")), str(m.get("codeSummaryMd5", "")))
     except Exception:
         pass
     return "", ""
@@ -481,7 +511,9 @@ def check_rawdata_status(
     if not mode_dir.is_dir():
         return _empty_rawdata_status()
 
-    up_config, up_code = _get_machine_md5(machine, machines_config)
+    # Pass ``mode`` so virtual machines with per-mode reel strips
+    # classify this mode's chunks against the right md5 (2026-04-22).
+    up_config, up_code = _get_machine_md5(machine, machines_config, mode=mode)
     unverifiable = not up_config and not up_code
 
     # ── Fast path: try the cached index first ──
@@ -682,7 +714,7 @@ def _classify_chunks(
     }
     if not mode_dir.is_dir():
         return empty
-    up_config, up_code = _get_machine_md5(machine, machines_config)
+    up_config, up_code = _get_machine_md5(machine, machines_config, mode=mode)
     empty["upstream_config_md5"] = up_config
     empty["upstream_code_md5"] = up_code
     unverifiable = not up_config and not up_code
@@ -2404,7 +2436,7 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
 
             if best is not None:
                 # Compute MD5 status vs current machines.json (upstream).
-                up_cfg, up_code = _get_machine_md5(machine)
+                up_cfg, up_code = _get_machine_md5(machine, mode=mode)
                 r_cfg = best.get("config_md5", "")
                 r_code = best.get("code_md5", "")
                 if not r_cfg and not r_code:
@@ -3316,6 +3348,7 @@ class BatchRunManager:
                 mismatch_now = item.get("rawdata_status", {}).get("mismatch_chunks", 0)
                 up_cfg, up_code = _get_machine_md5(
                     item["machine"], machines_config=self._machines_config,
+                    mode=item["mode"],
                 )
                 if mismatch_now > 0 and usable_now > 0:
                     _log(
@@ -6118,7 +6151,7 @@ def create_app(
             # applies to its subprocess-delegated runs (f88fe2c).
             if summary_file.exists():
                 try:
-                    _cur_cfg, _cur_code = _get_machine_md5(machine, mc)
+                    _cur_cfg, _cur_code = _get_machine_md5(machine, mc, mode=mode)
                     if _cur_cfg or _cur_code:
                         _payload = read_json(summary_file) or {}
                         _dirty = False
@@ -7259,6 +7292,8 @@ def create_app(
         both as small badges next to each report row.
         """
         from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+        # Machine-level aggregate (used as response-level hint so
+        # frontend can show "current cfg md5" at the card header).
         up_config, up_code = _get_machine_md5(machine, mc)
         current_analyzer = compute_analyzer_version()
         if not up_config and not up_code:
@@ -7280,6 +7315,12 @@ def create_app(
                 mode_val = int(mode_dir.name.split("_")[1])
             except (IndexError, ValueError):
                 continue
+            # Per-mode md5 for the comparison — virtual machines with
+            # different reel strips per mode have distinct md5s, which
+            # the machine-level aggregate can't represent (2026-04-22).
+            # Real machines (no modesMd5 map) fall through to the
+            # aggregate via _get_machine_md5's fallback path.
+            mode_cfg, mode_code = _get_machine_md5(machine, mc, mode=mode_val)
             versions_dir = mode_dir / "versions"
             if not versions_dir.is_dir():
                 continue
@@ -7298,7 +7339,7 @@ def create_app(
                 rpt_analyzer = str(s.get("analyzer_version", ""))
                 if not rpt_config and not rpt_code:
                     md5_status = "untagged"
-                elif rpt_config == up_config and rpt_code == up_code:
+                elif rpt_config == mode_cfg and rpt_code == mode_code:
                     md5_status = "match"
                 else:
                     md5_status = "outdated"

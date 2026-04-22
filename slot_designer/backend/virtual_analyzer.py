@@ -52,7 +52,10 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.backend.machine_version import compute_machine_md5
+from slot_designer.backend.machine_version import (
+    compute_machine_md5,
+    compute_machine_md5_for_mode,
+)
 # virtual_registry is DELIBERATELY the only registry import here.
 # Importing virtual_app instead would trigger its top-level
 # ``app = build_virtual_app()`` → RunManager.__init__ →
@@ -322,17 +325,25 @@ def _load_existing_session_stats(
     return n, ret_sum, ret_sq_sum
 
 
-def _compute_md5s(entry: dict) -> tuple[str, str]:
-    """Compute FRESH (config_md5, code_md5) for this machine at sample
-    time, not just read the registry cache. This way a chunk stamp always
-    matches the current (spec, weights, engine) snapshot, even if the
-    registry JSON is mid-refresh or stale.
+def _compute_md5s(entry: dict, mode: int | None = None) -> tuple[str, str]:
+    """Compute FRESH ``(config_md5, code_md5)`` for chunk tagging.
 
-    The refresh_machines_virtual() write that matches this comes from the
-    virtual_app layer (on console boot) or can be invoked explicitly via
-    the same helper — both use the same `compute_machine_md5`.
+    When ``mode`` is provided (the normal case for sampling), returns
+    PER-MODE md5 = hash(spec + that one mode's weights). Adding a new
+    mode to the registry later does NOT change this md5 — keeps
+    existing chunks "current" as long as that mode's reel strip is
+    unchanged. Introduced 2026-04-22.
+
+    When ``mode`` is None (rare; legacy callers), falls back to
+    machine-level aggregate md5 = hash(spec + ALL mode weights).
+
+    The refresh_machines_virtual() write that matches this comes from
+    virtual_registry.refresh_machines_virtual; both route through
+    machine_version helpers so hash semantics never drift.
     """
-    return compute_machine_md5(entry)
+    if mode is None:
+        return compute_machine_md5(entry)
+    return compute_machine_md5_for_mode(entry, int(mode))
 
 
 def _build_delegate_cmd(
@@ -504,7 +515,9 @@ def main() -> int:
     # without the patch, summary ships with empty md5 → frontend tags
     # every virtual report as ``md5_status=untagged`` → "无 fresh
     # report" even when the report is current.
-    delegate_md5s = _compute_md5s(entry)
+    # Per-mode md5 pair — chunks stamped for mode N stay valid even if
+    # other modes' weights change later (2026-04-22 architecture fix).
+    delegate_md5s = _compute_md5s(entry, mode=args.rtp_mode)
 
     # 1. Pure --from-cache: no sim needed, delegate directly
     if args.from_cache and not args.resume_from_cache:

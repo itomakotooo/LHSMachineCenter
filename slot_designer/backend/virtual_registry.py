@@ -26,7 +26,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from slot_designer.backend.machine_version import compute_machine_md5
+from slot_designer.backend.machine_version import (
+    compute_machine_md5,
+    compute_machine_md5_for_mode,
+)
 
 
 _SLOT_DESIGNER = Path(__file__).resolve().parent.parent
@@ -52,9 +55,23 @@ def refresh_machines_virtual(config_path: Path) -> dict:
     for entry in raw.get("machines", []):
         if not entry.get("_spec_path"):
             continue
+        # Machine-level (aggregate) md5 — for "did anything change?" UI
+        # indicator at the machine card header.
         config_md5, code_md5 = compute_machine_md5(entry)
         entry["configSummaryMd5"] = config_md5
         entry["codeSummaryMd5"] = code_md5
+        # Per-mode md5 map — the source of truth for chunk stamp /
+        # classify comparison. Adding a new mode does NOT flip the
+        # per-mode md5 of pre-existing modes (2026-04-22 fix; see
+        # compute_machine_md5_for_mode docstring).
+        modes_md5: dict[str, dict[str, str]] = {}
+        for mode in sorted({int(m) for m in entry.get("modes", [])}):
+            m_cfg, m_code = compute_machine_md5_for_mode(entry, mode)
+            modes_md5[str(mode)] = {
+                "configSummaryMd5": m_cfg,
+                "codeSummaryMd5": m_code,
+            }
+        entry["modesMd5"] = modes_md5
     config_path.write_text(
         json.dumps(raw, indent=2, ensure_ascii=False),
         encoding="utf-8",

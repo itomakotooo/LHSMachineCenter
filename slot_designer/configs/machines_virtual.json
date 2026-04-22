@@ -33,7 +33,17 @@
       "_source_machine": "M1",
       "_spec_path": "slot_designer/specs/M1.spec.json",
       "_weights_path_template": "slot_designer/weights/M1_mode{mode}.tuned.json",
-      "_weights_fallback_template": "slot_designer/weights/M1_mode{mode}.current.json"
+      "_weights_fallback_template": "slot_designer/weights/M1_mode{mode}.current.json",
+      "modesMd5": {
+        "1": {
+          "configSummaryMd5": "558dfcdd53cd1e822624470d20e9c36c",
+          "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642"
+        },
+        "2": {
+          "configSummaryMd5": "90e96d71a0c9b7026f9307623972f0a0",
+          "codeSummaryMd5": "2746df2d7cda2c04f182169587dd3642"
+        }
+      }
     }
   ]
 }

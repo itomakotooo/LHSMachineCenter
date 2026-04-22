@@ -143,15 +143,46 @@ def resolve_weights_paths(entry: dict, modes: Iterable[int]) -> list[Path]:
 
 
 def compute_machine_md5(entry: dict) -> tuple[str, str]:
-    """High-level entry point — takes a machines_virtual.json entry,
-    returns (config_md5, code_md5) using the current spec + weights +
-    engine source.
+    """Machine-level (aggregate) ``(config_md5, code_md5)``.
 
-    All 3 call sites (virtual_app refresh / virtual_analyzer emit /
-    tune.py emit) route through this helper so hash semantics never
-    drift between WRITE sites and COMPARE sites.
+    config_md5 covers spec + ALL mode weights — flips when ANY mode's
+    weights (or the spec) change. Used for "did anything about this
+    machine change?" questions; NOT used for per-mode chunk tag
+    comparison (that's ``compute_machine_md5_for_mode`` below).
+
+    All callers route through this helper or the per-mode variant so
+    hash semantics stay consistent across refresh / classify / stamp
+    sites.
     """
     repo_root = _SLOT_DESIGNER.parent
     spec_path = repo_root / entry.get("_spec_path", "")
     weights_paths = resolve_weights_paths(entry, entry.get("modes", []))
+    return compute_config_md5(spec_path, weights_paths), compute_code_md5()
+
+
+def compute_machine_md5_for_mode(entry: dict, mode: int) -> tuple[str, str]:
+    """Per-mode ``(config_md5, code_md5)`` — hash covers spec + THIS
+    mode's weights only.
+
+    Motivation (2026-04-22): on a machine where different modes have
+    different reel strips (virtual M1sim mode 1 vs mode 2), the old
+    machine-level ``compute_machine_md5`` mixed all modes' weights
+    into one hash. Result: adding mode 2 flipped the machine's
+    config_md5, and every existing mode 1 chunk (stamped with the
+    pre-mode-2 hash) was reclassified as "historical" — even though
+    mode 1's reel strip never changed.
+
+    Per-mode md5 fixes this: mode 1's hash depends only on spec +
+    mode 1 weights. Adding mode 2 doesn't change it. Each mode's
+    chunks stamp with their own md5; classifier compares against the
+    same per-mode md5 on replay.
+
+    code_md5 is mode-agnostic (engine + emitter source hashes) — it
+    shares the same value across modes, but we return it here for
+    call-site convenience.
+    """
+    repo_root = _SLOT_DESIGNER.parent
+    spec_path = repo_root / entry.get("_spec_path", "")
+    # Single mode → single weights path
+    weights_paths = resolve_weights_paths(entry, [int(mode)])
     return compute_config_md5(spec_path, weights_paths), compute_code_md5()
