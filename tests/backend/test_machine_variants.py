@@ -24,6 +24,7 @@ import json
 from pathlib import Path
 
 from src.web_console.backend.machine_variants import (
+    apply_md5_refresh,
     load_variants_map,
     resolve_upstream_md5_key,
 )
@@ -188,3 +189,254 @@ class TestLoadVariantsMap:
             encoding="utf-8",
         )
         assert load_variants_map(halls) == {}
+
+
+# ---------------------------------------------------------------------
+# apply_md5_refresh — variant-aware fanout
+# ---------------------------------------------------------------------
+
+
+def _md5_entry(cfg: str, code: str, logic: list[str] | None = None) -> dict:
+    """Minimal upstream MachineConfigMd5 row. Mirrors the real shape
+    so tests don't drift from production behaviour."""
+    return {
+        "configSummaryMd5": cfg,
+        "codeSummaryMd5": code,
+        "logicClassNames": logic or [],
+        "files": [],  # upstream returns this; we don't persist it
+    }
+
+
+class TestFanoutVariantMd5:
+    def test_all_variants_inherit_underlying_md5(self):
+        """Core fanout contract: updating M273's upstream md5 makes
+        *every* M273$... row pick up the new value with a single
+        refresh call. Before stage 3, only a bare M273 row would
+        have seen the update."""
+        machines_json = {"machines": [
+            {"machine": "M273$0$", "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1, 7]},
+            {"machine": "M273$1$1-2-3", "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1, 7]},
+            {"machine": "M273$1$4-5-6", "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1, 7]},
+        ]}
+        upstream = {"M273": _md5_entry("cfg_NEW", "code_NEW", ["Wheel"])}
+        vmap = {"M273$0$": "M273", "M273$1$1-2-3": "M273", "M273$1$4-5-6": "M273"}
+
+        new, stats = apply_md5_refresh(machines_json, upstream, vmap)
+
+        for name in ("M273$0$", "M273$1$1-2-3", "M273$1$4-5-6"):
+            row = next(r for r in new["machines"] if r["machine"] == name)
+            assert row["configSummaryMd5"] == "cfg_NEW"
+            assert row["codeSummaryMd5"] == "code_NEW"
+            assert row["logicClassNames"] == ["Wheel"]
+        assert stats["updated_count"] == 3
+        assert stats["updated_machines"] == sorted(vmap.keys())
+
+    def test_non_variant_row_unaffected_by_sibling_variant_change(self):
+        """Fanout must not bleed across underlyings: updating only
+        M273 upstream leaves M14 alone even if both rows exist in
+        the local machines.json."""
+        machines_json = {"machines": [
+            {"machine": "M14", "configSummaryMd5": "m14_old",
+             "codeSummaryMd5": "m14_old", "modes": [1]},
+            {"machine": "M273$0$", "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1]},
+        ]}
+        upstream = {
+            "M14": _md5_entry("m14_old", "m14_old"),      # unchanged
+            "M273": _md5_entry("cfg_NEW", "code_NEW"),    # changed
+        }
+        vmap = {"M273$0$": "M273"}
+
+        _, stats = apply_md5_refresh(machines_json, upstream, vmap)
+        assert stats["updated_machines"] == ["M273$0$"]
+
+    def test_non_variant_row_updated_normally(self):
+        """Legacy path: non-variant rows route through identity
+        resolution and behave as they did before stage 3."""
+        machines_json = {"machines": [
+            {"machine": "M14", "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1]},
+        ]}
+        upstream = {"M14": _md5_entry("cfg_NEW", "code_NEW")}
+        _, stats = apply_md5_refresh(machines_json, upstream, {})
+        assert stats["updated_machines"] == ["M14"]
+
+    def test_empty_variants_map_is_backcompat(self):
+        """Pre-variants deployment: every row resolves to itself.
+        The upstream data drives updates exactly like before."""
+        machines_json = {"machines": [
+            {"machine": "M14", "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1]},
+            {"machine": "M272", "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1]},
+        ]}
+        upstream = {
+            "M14": _md5_entry("cfg_NEW", "code_NEW"),
+            "M272": _md5_entry("cfg_NEW2", "code_NEW2"),
+        }
+        _, stats = apply_md5_refresh(machines_json, upstream, {})
+        assert stats["updated_machines"] == ["M14", "M272"]
+        assert stats["unresolved_entries"] == []
+
+    def test_same_md5_no_op_updates_nothing(self):
+        """Re-running refresh against identical upstream must
+        produce zero updates — drift surfaces *only* when something
+        actually changed."""
+        machines_json = {"machines": [
+            {"machine": "M273$0$", "configSummaryMd5": "cur",
+             "codeSummaryMd5": "cur", "modes": [1]},
+        ]}
+        upstream = {"M273": _md5_entry("cur", "cur")}
+        vmap = {"M273$0$": "M273"}
+        _, stats = apply_md5_refresh(machines_json, upstream, vmap)
+        assert stats["updated_count"] == 0
+        assert stats["updated_machines"] == []
+
+
+class TestUnresolvedEntries:
+    def test_variant_missing_upstream_flagged_not_overwritten(self):
+        """A variant row references an upstream key that's NOT in
+        the current response (e.g. upstream decommissioned the
+        underlying). The variant row must retain its old md5 and
+        get listed in unresolved_entries so the operator notices."""
+        machines_json = {"machines": [
+            {"machine": "M999$0$", "configSummaryMd5": "keep",
+             "codeSummaryMd5": "keep", "modes": [1]},
+        ]}
+        upstream = {"M14": _md5_entry("cfg", "code")}
+        vmap = {"M999$0$": "M999"}
+        new, stats = apply_md5_refresh(machines_json, upstream, vmap)
+        row = next(r for r in new["machines"] if r["machine"] == "M999$0$")
+        assert row["configSummaryMd5"] == "keep"
+        assert stats["unresolved_entries"] == ["M999$0$"]
+
+
+class TestDiscovery:
+    def test_new_non_variant_machine_added(self):
+        """Upstream reports a machine we haven't seen locally and
+        it's not variant-bearing → create a bare row. Same as
+        legacy behaviour."""
+        machines_json = {"machines": []}
+        upstream = {"M999": _md5_entry("cfg", "code")}
+        new, stats = apply_md5_refresh(machines_json, upstream, {})
+        names = [r["machine"] for r in new["machines"]]
+        assert names == ["M999"]
+        assert stats["discovered_machines"] == ["M999"]
+
+    def test_variant_bearing_underlying_key_not_added_as_bare_row(self):
+        """Regression guard: when upstream reports M273 and
+        variants_map lists M273 as the upstream key for several
+        variants, we must NOT create a bare M273 row. If we did,
+        that row would shadow the variant rows during resolution
+        and they'd stop updating."""
+        machines_json = {"machines": [
+            {"machine": "M273$0$", "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1]},
+        ]}
+        upstream = {"M273": _md5_entry("cfg_NEW", "code_NEW")}
+        vmap = {"M273$0$": "M273", "M273$1$1-2-3": "M273"}
+        new, stats = apply_md5_refresh(machines_json, upstream, vmap)
+        names = [r["machine"] for r in new["machines"]]
+        assert "M273" not in names
+        assert "M273$0$" in names
+        assert stats["discovered_machines"] == []
+
+    def test_all_empty_md5_row_not_materialized(self):
+        """Noise filter: upstream sometimes returns a row with
+        everything blank. Don't materialize that as a local row
+        — it's not useful information and spams the catalog."""
+        machines_json = {"machines": []}
+        upstream = {"M999": _md5_entry("", "")}
+        new, stats = apply_md5_refresh(machines_json, upstream, {})
+        assert new["machines"] == []
+        assert stats["discovered_machines"] == []
+
+
+class TestDefensiveEmptyMd5:
+    def test_empty_upstream_md5_does_not_overwrite_existing(self):
+        """Legacy guard preserved: blank upstream md5 must NOT
+        replace a real local md5. This has been a bug source pre-
+        variants; the variants path keeps the same defense."""
+        machines_json = {"machines": [
+            {"machine": "M14", "configSummaryMd5": "real",
+             "codeSummaryMd5": "real", "modes": [1]},
+        ]}
+        upstream = {"M14": _md5_entry("", "")}
+        new, stats = apply_md5_refresh(machines_json, upstream, {})
+        row = next(r for r in new["machines"] if r["machine"] == "M14")
+        assert row["configSummaryMd5"] == "real"
+        assert stats["skipped_empty_upstream"] == 1
+
+
+class TestMalformedInput:
+    def test_non_dict_upstream_row_treated_as_unresolved(self):
+        """Upstream schema drift: a row came back as a string /
+        list / other non-dict. Don't crash; flag as unresolved so
+        the operator sees it."""
+        machines_json = {"machines": [
+            {"machine": "M14", "configSummaryMd5": "keep",
+             "codeSummaryMd5": "keep", "modes": [1]},
+        ]}
+        upstream = {"M14": "not a dict"}
+        new, stats = apply_md5_refresh(machines_json, upstream, {})
+        row = next(r for r in new["machines"] if r["machine"] == "M14")
+        assert row["configSummaryMd5"] == "keep"
+        assert stats["unresolved_entries"] == ["M14"]
+
+    def test_malformed_local_row_silently_skipped(self):
+        """machines.json could in principle have a row without a
+        ``machine`` field (bad hand-edit, corrupted import). Skip
+        it rather than crash — don't let one bad row block the
+        fleet-wide refresh."""
+        machines_json = {"machines": [
+            {"machine": "M14", "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1]},
+            {"no_machine_field": "oops"},  # malformed
+            {"machine": 42},               # bad type
+        ]}
+        upstream = {"M14": _md5_entry("new", "new")}
+        _, stats = apply_md5_refresh(machines_json, upstream, {})
+        assert stats["updated_machines"] == ["M14"]
+        assert stats["unresolved_entries"] == []
+
+    def test_missing_machines_field_initializes(self):
+        """Called with a machines.json missing the ``machines`` key
+        (e.g. fresh file). setdefault initializes it to [] so pass
+        1 can still discover — return structure stays consistent."""
+        machines_json = {}
+        upstream = {"M999": _md5_entry("cfg", "code")}
+        new, _ = apply_md5_refresh(machines_json, upstream, {})
+        assert new["machines"][0]["machine"] == "M999"
+
+
+class TestFanoutCountSemantics:
+    def test_updated_count_equals_updated_machines_length(self):
+        """updated_count stat must always match the length of
+        updated_machines list — surfaces if we ever accidentally
+        double-count or miss a row."""
+        machines_json = {"machines": [
+            {"machine": f"M273$1${i}", "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1]}
+            for i in range(5)
+        ]}
+        upstream = {"M273": _md5_entry("cfg_NEW", "code_NEW")}
+        vmap = {f"M273$1${i}": "M273" for i in range(5)}
+        _, stats = apply_md5_refresh(machines_json, upstream, vmap)
+        assert stats["updated_count"] == len(stats["updated_machines"]) == 5
+
+    def test_updated_machines_sorted_for_deterministic_log(self):
+        """Activity log dedups and shows first 5 + suffix (+K).
+        Stable order matters: operators eyeballing the log want the
+        same rendering across refresh clicks."""
+        machines_json = {"machines": [
+            {"machine": n, "configSummaryMd5": "old",
+             "codeSummaryMd5": "old", "modes": [1]}
+            for n in ("M273$1$zz", "M273$0$", "M273$1$aa")
+        ]}
+        upstream = {"M273": _md5_entry("cfg_NEW", "code_NEW")}
+        vmap = {"M273$0$": "M273", "M273$1$aa": "M273", "M273$1$zz": "M273"}
+        _, stats = apply_md5_refresh(machines_json, upstream, vmap)
+        assert stats["updated_machines"] == sorted(stats["updated_machines"])

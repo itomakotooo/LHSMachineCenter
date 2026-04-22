@@ -7291,8 +7291,9 @@ def create_app(
     ) -> dict[str, Any]:
         """Core md5-refresh work shared between the explicit endpoint
         and the pre-batch auto-refresh. Fetches the active server's
-        MachineConfigMd5, merges into ``machines.json`` (creating
-        entries for new machines, updating cfg/code md5 on existing).
+        MachineConfigMd5 and updates ``machines.json`` entries with
+        the latest md5, **fanning out** each underlying-machine md5
+        across all of its registered variants.
 
         ``raise_on_error=True`` (default, for the explicit endpoint):
         upstream failures surface as HTTPException so the UI shows
@@ -7303,8 +7304,33 @@ def create_app(
         md5 rather than fail the operator's sampling run on a
         transient upstream hiccup.
 
+        **Variant fanout (stage 3 of variants rollout)**: upstream
+        ``MachineConfigMd5`` reports md5 per underlying machine key
+        (``M273`` / ``M201`` / ...) — it has no notion of variants.
+        Our ``machines.json`` entries are independent-machine rows
+        (``M273$0$`` / ``M273$1$1-2-3`` / ...). The
+        ``variants_map`` from ``configs/machine_halls.json`` resolves
+        each entry to the upstream key whose md5 it inherits. Empty
+        map (fresh deployment) → every entry resolves to itself, so
+        the refresh degrades to the pre-variants behavior and 227
+        non-variant machines keep working.
+
+        **Discovery boundary**: when upstream reports a machine we
+        haven't seen locally:
+          * if the upstream key is ``variants_map.values()`` (i.e.
+            it's an underlying whose variants should own the md5),
+            we DO NOT create a bare row for it — that row would
+            shadow the variant rows during md5 resolution
+          * otherwise (genuinely new non-variant machine), we create
+            a row keyed by the upstream name, same as the legacy path
+
         Returns ``{ok, server_id, machines_fetched, machines_updated,
-        error?}``.
+        updated_machines, skipped_empty_upstream, unresolved_entries,
+        error?}``. ``unresolved_entries`` lists machine rows whose
+        resolved upstream key wasn't in the response — operators see
+        this when a variant row exists locally but its underlying
+        has been decommissioned upstream (shouldn't happen on a
+        healthy deployment; surfacing it avoids silent drift).
 
         **Virtual console override**: when create_app was given
         ``md5_refresh_override=<callable>`` (2026-04-21 isolation fix),
@@ -7349,62 +7375,38 @@ def create_app(
                     "machines_fetched": 0, "machines_updated": 0,
                     "updated_machines": []}
 
-        # Merge new MD5 into machines.json.
+        # Load variants map for fanout. The map is operator-refreshed
+        # via /api/machines/halls/refresh; a missing / empty map
+        # degrades cleanly to identity resolution (legacy behavior).
+        from src.web_console.backend.machine_variants import (
+            apply_md5_refresh, load_variants_map,
+        )
+        halls_path = ROOT / "configs" / "machine_halls.json"
+        variants_map = load_variants_map(halls_path)
+
+        # Load current machines.json (single source of truth for row
+        # ownership — upstream drives md5, not row existence).
         try:
             existing = json.loads(Path(mc).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             existing = {"machines": []}
-        updated_count = 0
-        # 2026-04-21: also track WHICH machines changed so the activity
-        # log / callers can surface names. Before this, the operator
-        # saw "✓ md5 刷新: 3/253 台有变更" and couldn't tell if their
-        # working machine was one of the 3 — dev fleet is churny, so
-        # unrelated drift would spook them into thinking their M1 had
-        # shifted when it hadn't. Names > counts.
-        updated_machines: list[str] = []
-        skipped_empty_upstream = 0
-        machines_list = existing.get("machines", [])
-        machines_by_name = {m["machine"]: m for m in machines_list}
-        for machine_name, upstream in data.items():
-            new_cfg = str(upstream.get("configSummaryMd5", ""))
-            new_code = str(upstream.get("codeSummaryMd5", ""))
-            # Defensive guard (2026-04-21): auto-refresh on page load
-            # used to silently overwrite existing md5s with "" when
-            # upstream returned a partial / empty record. That wiped
-            # real md5 data for every machine the upstream didn't
-            # fully spec. Skip the merge when upstream md5 is empty —
-            # better to keep a stale-but-real md5 than lose it.
-            if not new_cfg and not new_code:
-                skipped_empty_upstream += 1
-                continue
-            entry = machines_by_name.get(machine_name)
-            if entry is None:
-                entry = {"machine": machine_name, "modes": [1, 2, 5, 7]}
-                machines_list.append(entry)
-                machines_by_name[machine_name] = entry
-            if entry.get("configSummaryMd5") != new_cfg or entry.get("codeSummaryMd5") != new_code:
-                entry["configSummaryMd5"] = new_cfg
-                entry["codeSummaryMd5"] = new_code
-                entry["logicClassNames"] = upstream.get("logicClassNames", entry.get("logicClassNames", []))
-                updated_count += 1
-                updated_machines.append(machine_name)
-        existing["machines"] = machines_list
+
+        existing, stats = apply_md5_refresh(existing, data, variants_map)
         Path(mc).write_text(
             json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
         _save_server_snapshot(server_id, data)
-        # Stable-sort names so the UI renders deterministically (useful
-        # for snapshot tests and for operators reading the activity log
-        # — same list shape on repeat renders).
-        updated_machines.sort()
         return {
             "ok": True,
             "server_id": server_id,
             "machines_fetched": len(data),
-            "machines_updated": updated_count,
-            "updated_machines": updated_machines,
-            "skipped_empty_upstream": skipped_empty_upstream,
+            "machines_updated": stats["updated_count"],
+            "updated_machines": stats["updated_machines"],
+            "skipped_empty_upstream": stats["skipped_empty_upstream"],
+            "unresolved_entries": stats["unresolved_entries"],
+            "discovered_machines": stats["discovered_machines"],
+            "variants_map_size": len(variants_map),
         }
 
     @app.post("/api/machines/refresh-md5")
