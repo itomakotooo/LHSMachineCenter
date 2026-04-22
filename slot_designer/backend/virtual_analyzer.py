@@ -386,15 +386,82 @@ def _build_delegate_cmd(
     return cmd
 
 
+def _patch_summary_md5_tags(
+    output_dir: Path,
+    config_md5: str,
+    code_md5: str,
+) -> None:
+    """Fill ``config_md5`` / ``code_md5`` into the delegate's summary
+    when they're empty.
+
+    Context: real analyzer's ``_lookup_machine_md5`` reads
+    ``configs/machines.json`` (the real-console registry). Virtual
+    machines (M1sim etc.) live in ``machines_virtual.json`` and aren't
+    in that file, so the delegated run stamps ``config_md5: ""`` /
+    ``code_md5: ""`` into summary. Backend's ``/api/report-validate``
+    then tags these reports as ``md5_status=untagged``, and the
+    rwtree's "fresh report" filter (requires md5_status=match) shows
+    "无 fresh report" even when the report is fresh for a virtual
+    machine.
+
+    We know the correct md5 at this point (``_compute_md5s`` was
+    called against the virtual registry earlier in main). Patch it in
+    so the downstream validate / rwtree logic sees a properly tagged
+    report. Only fills EMPTY fields — never overwrites values the
+    delegate set, so if the real analyzer ever learns about virtual
+    registries this patcher becomes a harmless no-op.
+    """
+    if not (config_md5 or code_md5):
+        return
+    summary_file = output_dir / "player_impact_summary.json"
+    if not summary_file.exists():
+        return
+    try:
+        payload = json.loads(summary_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    dirty = False
+    if config_md5 and not payload.get("config_md5"):
+        payload["config_md5"] = config_md5
+        dirty = True
+    if code_md5 and not payload.get("code_md5"):
+        payload["code_md5"] = code_md5
+        dirty = True
+    if dirty:
+        try:
+            summary_file.write_text(
+                json.dumps(payload, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except OSError:
+            # Best-effort patch. Backend's _update_report_index will
+            # still see the empty values, but the chunks themselves
+            # carry the correct md5 tags on disk so drift detection
+            # still works at chunk granularity.
+            pass
+
+
 def _delegate_to_real_analyzer(
     original_args: argparse.Namespace,
     from_cache_dir: Path,
+    *,
+    patch_md5s: tuple[str, str] | None = None,
 ) -> int:
     """Run the real analyzer with --from-cache, reusing the original args
     that make sense in analysis context. Returns the subprocess's exit code.
+
+    ``patch_md5s`` (optional): when set, the caller is running in
+    virtual-machine context. After the delegate succeeds, fill any
+    empty ``config_md5`` / ``code_md5`` fields in the written summary
+    with these values so ``/api/report-validate`` classifies the
+    report as ``md5_status=match`` rather than ``untagged``.
     """
     cmd = _build_delegate_cmd(original_args, from_cache_dir)
-    return subprocess.call(cmd, cwd=_ROOT)
+    rc = subprocess.call(cmd, cwd=_ROOT)
+    if rc == 0 and patch_md5s is not None:
+        cfg, code = patch_md5s
+        _patch_summary_md5_tags(original_args.output_dir, cfg, code)
+    return rc
 
 
 def main() -> int:
@@ -407,13 +474,7 @@ def main() -> int:
             f"(declare them in _parse_args + _build_delegate_cmd to honor)"
         )
 
-    # 1. Pure --from-cache: no sim needed, delegate directly
-    if args.from_cache and not args.resume_from_cache:
-        return _delegate_to_real_analyzer(args, args.from_cache)
-
-    # 2. Resume-from-cache or fresh sample: run simulator to produce chunks,
-    #    then delegate with --from-cache.
-    # First: refresh registry md5s from current spec/weights/engine so the
+    # Refresh registry md5s from current spec/weights/engine so the
     # chunks we're about to write get tagged with the RIGHT md5 even if
     # spec or weights changed since console boot. Writes back to the
     # tracked machines_virtual.json so console's /api/machines etc. read
@@ -435,6 +496,24 @@ def main() -> int:
 
     registry = _load_virtual_registry()
     entry = _find_machine_entry(registry, args.machine)
+    # Pre-compute md5s early so ALL delegate paths (pure --from-cache,
+    # resume+sim, sim-skipped-by-CI-check) can patch the summary's
+    # empty ``config_md5`` / ``code_md5`` slots. Real analyzer's
+    # ``_lookup_machine_md5`` only reads the REAL console's
+    # ``configs/machines.json``, which doesn't know virtual machines —
+    # without the patch, summary ships with empty md5 → frontend tags
+    # every virtual report as ``md5_status=untagged`` → "无 fresh
+    # report" even when the report is current.
+    delegate_md5s = _compute_md5s(entry)
+
+    # 1. Pure --from-cache: no sim needed, delegate directly
+    if args.from_cache and not args.resume_from_cache:
+        return _delegate_to_real_analyzer(
+            args, args.from_cache, patch_md5s=delegate_md5s,
+        )
+
+    # 2. Resume-from-cache or fresh sample: run simulator to produce chunks,
+    #    then delegate with --from-cache.
     spec_path = _spec_path(entry)
     weights_path = _resolve_weights_path(entry, args.rtp_mode)
     engine, spec = load_engine(spec_path, weights_path)
@@ -452,7 +531,7 @@ def main() -> int:
     sampling_out_dir = args.resume_from_cache or rawdata_dir
     sampling_out_dir.mkdir(parents=True, exist_ok=True)
 
-    md5s = _compute_md5s(entry)
+    md5s = delegate_md5s  # reuse early-computed pair (used for chunk stamping)
 
     # Always resume: pick max existing chunk index + 1 so concurrent /
     # repeated samplings never overwrite each other.
@@ -564,7 +643,9 @@ def main() -> int:
                 "current_halfwidth_pp": existing_ci,
                 "ts": _utc_now(),
             })
-            return _delegate_to_real_analyzer(args, sampling_out_dir)
+            return _delegate_to_real_analyzer(
+                args, sampling_out_dir, patch_md5s=delegate_md5s,
+            )
 
     for ci in range(start_idx, start_idx + args.max_chunks):
         if _check_stop_flag(args.stop_flag_file):
@@ -652,7 +733,9 @@ def main() -> int:
     })
 
     # 3. Delegate to real analyzer for full analysis
-    return _delegate_to_real_analyzer(args, sampling_out_dir)
+    return _delegate_to_real_analyzer(
+        args, sampling_out_dir, patch_md5s=delegate_md5s,
+    )
 
 
 if __name__ == "__main__":

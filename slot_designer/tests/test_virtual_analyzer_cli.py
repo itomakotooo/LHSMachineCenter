@@ -20,6 +20,7 @@ Locks two invariants from the 2026-04-21 virtual-sampling regression:
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -32,6 +33,7 @@ if str(_ROOT) not in sys.path:
 from slot_designer.backend.virtual_analyzer import (
     _build_delegate_cmd,
     _parse_args,
+    _patch_summary_md5_tags,
 )
 
 
@@ -166,6 +168,141 @@ def test_subprocess_does_not_argparse_error_on_new_flags():
         f"virtual_analyzer argparse rejected a flag it should forward.\n"
         f"rc={r.returncode}\nstderr={r.stderr[:500]}"
     )
+
+
+def test_patch_summary_md5_fills_empty_tags(tmp_path: Path):
+    """Real analyzer's _lookup_machine_md5 only reads real console's
+    configs/machines.json, so virtual-machine summaries ship with
+    empty ``config_md5`` / ``code_md5``. Without a patch the frontend's
+    /api/report-validate tags them as ``md5_status=untagged`` and the
+    rwtree's "fresh report" filter reports "无 fresh report" even for
+    runs that ARE current. The patcher fills in the right md5s so
+    backend's validate endpoint classifies the report correctly.
+    """
+    output_dir = tmp_path / "rv_test"
+    output_dir.mkdir()
+    summary_file = output_dir / "player_impact_summary.json"
+    summary_file.write_text(json.dumps({
+        "machine": "M1sim",
+        "config_md5": "",
+        "code_md5": "",
+        "sampling": {"total_spins": 20000},
+    }), encoding="utf-8")
+
+    _patch_summary_md5_tags(output_dir, "CFG_MD5", "CODE_MD5")
+
+    patched = json.loads(summary_file.read_text(encoding="utf-8"))
+    assert patched["config_md5"] == "CFG_MD5"
+    assert patched["code_md5"] == "CODE_MD5"
+    assert patched["machine"] == "M1sim", "other fields preserved"
+    assert patched["sampling"]["total_spins"] == 20000
+
+
+def test_patch_summary_md5_preserves_non_empty_existing_values(tmp_path: Path):
+    """Never overwrite md5 values already set by the delegate. If real
+    analyzer ever learns about virtual registries (sets these itself),
+    the patcher becomes a harmless no-op."""
+    output_dir = tmp_path / "rv_test"
+    output_dir.mkdir()
+    summary_file = output_dir / "player_impact_summary.json"
+    summary_file.write_text(json.dumps({
+        "config_md5": "EXISTING_CFG",
+        "code_md5": "EXISTING_CODE",
+    }), encoding="utf-8")
+
+    _patch_summary_md5_tags(output_dir, "SHOULD_NOT_OVERWRITE", "ALSO_NOT")
+
+    patched = json.loads(summary_file.read_text(encoding="utf-8"))
+    assert patched["config_md5"] == "EXISTING_CFG"
+    assert patched["code_md5"] == "EXISTING_CODE"
+
+
+def test_patch_summary_md5_no_op_when_both_args_empty(tmp_path: Path):
+    """Safety: if caller doesn't pass md5s (empty tuple), skip entirely
+    — the summary file shouldn't be rewritten with identical content."""
+    output_dir = tmp_path / "rv_test"
+    output_dir.mkdir()
+    summary_file = output_dir / "player_impact_summary.json"
+    original = json.dumps({"config_md5": "", "code_md5": ""})
+    summary_file.write_text(original, encoding="utf-8")
+    original_mtime = summary_file.stat().st_mtime_ns
+
+    _patch_summary_md5_tags(output_dir, "", "")
+
+    # File untouched
+    assert summary_file.read_text(encoding="utf-8") == original
+
+
+def test_patch_summary_md5_missing_file_no_crash(tmp_path: Path):
+    """Delegate may fail to produce summary on some error paths. The
+    patcher should degrade gracefully instead of exploding."""
+    output_dir = tmp_path / "no_summary"
+    output_dir.mkdir()
+    # No summary file to patch — no exception should leak.
+    _patch_summary_md5_tags(output_dir, "cfg", "code")
+
+
+def test_delegate_to_real_analyzer_invokes_patch_when_md5s_supplied(tmp_path: Path, monkeypatch):
+    """End-to-end wiring: when _delegate_to_real_analyzer receives
+    ``patch_md5s``, it must call _patch_summary_md5_tags after a
+    successful subprocess.call. The unit tests for the patcher itself
+    only prove the helper works — this proves main() actually invokes
+    it on each delegate path.
+    """
+    from argparse import Namespace
+    import slot_designer.backend.virtual_analyzer as va
+
+    # Mock subprocess.call to return 0 without actually spawning
+    monkeypatch.setattr(va.subprocess, "call", lambda *_a, **_kw: 0)
+    # Capture patcher invocations
+    calls: list[tuple] = []
+    monkeypatch.setattr(va, "_patch_summary_md5_tags", lambda *a, **kw: calls.append((a, kw)))
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    args = Namespace(
+        machine="M1sim", rtp_mode=1, bet=1000,
+        output_dir=output_dir,
+        target_halfwidth_pp=5.0,
+        chunk_spin_times=100, chunk_robot_count=5,
+        batch_concurrency=1, timeout=300.0,
+        bankruptcy_session_spins=1000, bankruptcy_bankroll_multipliers="100",
+        run_id="test", progress_file=None, stop_flag_file=None,
+        guideline_rules=None,
+        upstream_config_md5="", upstream_code_md5="",
+    )
+    rc = va._delegate_to_real_analyzer(
+        args, tmp_path / "cache", patch_md5s=("CFG", "CODE"),
+    )
+    assert rc == 0
+    assert len(calls) == 1, "patcher should be called exactly once"
+    assert calls[0][0] == (output_dir, "CFG", "CODE")
+
+
+def test_delegate_to_real_analyzer_skips_patch_when_no_md5s(tmp_path: Path, monkeypatch):
+    """Without patch_md5s (real-console path), delegate must NOT
+    touch the summary — real analyzer wrote the correct md5 itself."""
+    from argparse import Namespace
+    import slot_designer.backend.virtual_analyzer as va
+
+    monkeypatch.setattr(va.subprocess, "call", lambda *_a, **_kw: 0)
+    calls: list[tuple] = []
+    monkeypatch.setattr(va, "_patch_summary_md5_tags", lambda *a, **kw: calls.append((a, kw)))
+
+    args = Namespace(
+        machine="M1sim", rtp_mode=1, bet=1000,
+        output_dir=tmp_path,
+        target_halfwidth_pp=5.0,
+        chunk_spin_times=100, chunk_robot_count=5,
+        batch_concurrency=1, timeout=300.0,
+        bankruptcy_session_spins=1000, bankruptcy_bankroll_multipliers="100",
+        run_id=None, progress_file=None, stop_flag_file=None,
+        guideline_rules=None,
+        upstream_config_md5="", upstream_code_md5="",
+    )
+    rc = va._delegate_to_real_analyzer(args, tmp_path / "cache")
+    assert rc == 0
+    assert calls == [], "patcher should NOT be called without patch_md5s"
 
 
 if __name__ == "__main__":
