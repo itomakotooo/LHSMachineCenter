@@ -86,28 +86,37 @@ python -m slot_designer.scripts.tune \
 
 内部分两阶段：
 
-- **Phase 4 — count tuning (hard 约束)**：(1+1)-ES 在 27 维 (symbol ×
-  reel) count space 搜索。cost = `(ΔRTP/0.5pp)² + JS(bucket_shape) ×
-  100 + (ΔCV/0.1)² × 0.3`。RTP + shape 命中。
-- **Phase 5 — order tuning (体验约束)**：simulated annealing 在 permutation
-  space 调 stop 顺序。保留 Phase 4 marginals（RTP/bucket 不变）。cost
-  综合 near-miss 带宽 + PWDF 底线 + blank-adjacency 奖励。
+- **Phase 4 — count tuning (hard 约束)**：(1+1)-ES 在 per-(symbol, reel)
+  count space 搜索。cost = `(ΔRTP/0.5pp)² + shape_JS × 100 + (ΔCV/0.1)² × 0.3
+  + (Δhit/0.01)² × hit_weight`。RTP / hit 硬对齐 target，shape/CV 软约束。
+- **Phase 5 — JOINT order tuning (所有 mode 共享 strip 一起调)**：
+  simulated annealing 在 shared symbol-layout × per-mode weights
+  state 搜索；mutation 是 class-preserving co-swap（swap 两个同类
+  position 时同步 swap 所有 mode 在那两个 position 的 weight）。
+  保留：(a) 所有 mode 的 marginals，(b) Blank/非 Blank 严格交替不变量。
+  cost = 所有 mode 的 experience_cost 之和（near-miss 带宽 + PWDF 底线
+  + blank-adjacency 奖励）—— 在多 mode 的联合 pareto 点找最优 strip。
 
 输出**automatically**：
-- `weights/<M>_mode<N>.tuned.json` (**primary release artifact** — 这个
-  才是交给 console 的；虚拟 console 下次 refresh 会自动更新 md5)
-- `out/<M>_tune_report.md` (Phase 4 + Phase 5 diff 表)
-- `_dev_scratch/rawdata/<M>sim/mode_<N>/chunk_*.json` (dev scratch，
-  供开发自己用 `analyzer --from-cache` 交叉验证 RTP/CV 数值；**不是**
-  console 的数据入口)
+- `weights/<MACHINE>/mode_<N>/weights.json`（**primary release artifact**
+  for this mode — per-stop weight 数组；虚拟 console refresh 会自动更新
+  per-mode md5）
+- `weights/<MACHINE>/reel_strips.json`（**shared across all modes** —
+  Joint Phase 5 可能更新；改动会 invalidate 所有 mode 的 chunk）
+- 其他 sibling mode 的 `weights.json`（Phase 5 co-swap 移位后写回，
+  marginals 不变但 per-stop weight 顺序变了）
+- `weights/<MACHINE>/mode_<N>/TUNE_REPORT.md`（Phase 4+5 diff 表）
+- `_dev_scratch/rawdata/<M>sim/mode_<N>/chunk_*.json`（dev scratch，
+  可选 `--skip-rawdata` 跳过；供开发自己用 `analyzer --from-cache`
+  交叉验证；**不是** console 的数据入口）
 
 ### 阶段 5 — 打开虚拟机 console 管理（Phase 6 添加）
 
 Release 流程（dev → console）：
-1. `tune.py` 产出 tuned weights 到 `weights/<M>_mode<N>.tuned.json`
-   和 dev-scratch rawdata 到 `slot_designer/_dev_scratch/rawdata/...`
+1. `tune.py` 产出 tuned weights 到 `weights/<MACHINE>/mode_<N>/weights.json`
+   + 可能更新 `weights/<MACHINE>/reel_strips.json`（joint SA）
 2. 虚拟 console 下次 refresh-md5（启动/手动）时自动算出新的
-   `configSummaryMd5`，写入 `machines_virtual.json`
+   `configSummaryMd5` + per-mode md5，写入 `machines_virtual.json`
 3. Operator 在虚拟 console 里点 **开始采样** → `virtual_analyzer.py`
    按新 md5 产出 chunk 到 `slot_designer/rawdata/<M>sim/mode_<N>/`
    （这是 console 的 rawdata 入口，dev 脚本不碰）

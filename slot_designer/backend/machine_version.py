@@ -131,9 +131,10 @@ def resolve_weights_paths(entry: dict, modes: Iterable[int]) -> list[Path]:
     """Resolve a machines_virtual.json entry's mode list into the actual
     weights file paths that contribute to its config_md5.
 
-    One file per mode (2026-04-22 layout):
+    Shared strips + per-mode weights (2026-04-22 layout):
       ``_weights_path_template`` expands to
-      ``slot_designer/weights/<machine>/mode_<N>/reel_weights.json``.
+      ``slot_designer/weights/<machine>/mode_<N>/weights.json``
+      (symbol layout lives in the machine-level ``reel_strips.json``).
 
     If the file is missing (new machine still being scaffolded), the
     deterministic placeholder path is still returned — the hash picks

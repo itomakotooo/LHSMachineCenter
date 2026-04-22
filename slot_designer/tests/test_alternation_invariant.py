@@ -1,5 +1,7 @@
-"""Regression: shipped reel_weights.json files satisfy Blank/non-Blank
-alternation on every reel.
+"""Regression: shipped per-mode ``weights.json`` files satisfy
+Blank/non-Blank alternation on every reel (strip layout shared across
+modes lives in ``<machine>/reel_strips.json``; this test exercises
+assembled reels via ``load_reels_for_tuner``).
 
 2026-04-22 user rule: "blank 和非 blank 必须是间隔开的". On a classic
 3-reel machine with 36 stops per reel and count(Blank) == count(non-Blank)

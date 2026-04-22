@@ -150,8 +150,10 @@ def _resolve_weights_path(entry: dict, mode: int) -> Path:
     """Resolve a virtual machine's (mode → weights file) via
     ``_weights_path_template`` from its registry entry.
 
-    One file per mode (2026-04-22 layout):
-    ``slot_designer/weights/<machine>/mode_<N>/reel_weights.json``.
+    Shared strips + per-mode weights (2026-04-22 layout):
+    ``slot_designer/weights/<machine>/mode_<N>/weights.json``
+    (symbol layout lives in the machine-level ``reel_strips.json``
+    and is auto-discovered by ``engine.loader.load_engine``).
     """
     tmpl = entry.get("_weights_path_template")
     if not tmpl:

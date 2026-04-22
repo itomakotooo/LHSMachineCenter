@@ -4,9 +4,9 @@ Typical use during tuning:
 
     python -m slot_designer.devtools.weight_diff \
         --spec slot_designer/specs/M1.spec.json \
-        --weights-a slot_designer/weights/M1/mode_1/reel_weights.json \
+        --weights-a slot_designer/weights/M1/mode_1/weights.json \
         --weights-b /tmp/candidate.json \
-        --target slot_designer/tuner/targets/M14_mode1.target.json
+        --target slot_designer/tuner/targets/M1_mode1_classic.target.json
 
 Reports predicted RTP + bucket distribution for each, and shape distance
 to the target (if provided). No sampling — all analytic.
