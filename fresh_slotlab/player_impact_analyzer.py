@@ -146,11 +146,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--bankruptcy-bankroll-multipliers",
-        default="100,200,500",
+        default="10,100,200,500",
         help=(
             "comma-separated bet multipliers for the bankruptcy "
             "simulation (rawdata-replay). Each tier yields a per-tier "
-            "survival histogram."
+            "survival histogram. Default includes 10x as a short-play "
+            "'tourist' baseline so the histogram grid shows how quickly "
+            "minimal bankrolls bust; 100/200/500 remain the standard "
+            "session-length tiers."
         ),
     )
     parser.add_argument(

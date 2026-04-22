@@ -926,12 +926,22 @@ test("formatRunFailureNote: populated error passes through trimmed", () => {
 // ---------- bankrollMultiplierPresets ----------
 
 test("bankrollMultiplierPresets: returns 3 presets with stable values", () => {
+  // 2026-04-22: every preset now prepends `10` as a fixed tourist /
+  // panic baseline tier (user ask: "最前面加一列 10x 的分析"). Still
+  // 3 presets; each value carries 4 comma-separated multipliers.
   const presets = PURE.bankrollMultiplierPresets("zh");
   assert.equal(presets.length, 3);
   assert.deepStrictEqual(
     presets.map((p) => p.value),
-    ["100,200,500", "50,100,200", "200,500,1000"]
+    ["10,100,200,500", "10,50,100,200", "10,200,500,1000"]
   );
+  // Every preset must START with "10," so the bankruptcy grid
+  // consistently shows the 10x column first (analyzer sorts tiers
+  // ascending → 10 always renders leftmost).
+  for (const p of presets) {
+    assert.ok(p.value.startsWith("10,"),
+      `preset ${p.value} must start with 10, to keep 10x as first column`);
+  }
 });
 
 test("bankrollMultiplierPresets: labels localized (zh 标准/短/长)", () => {

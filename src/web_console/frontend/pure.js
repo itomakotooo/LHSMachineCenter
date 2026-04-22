@@ -59,9 +59,9 @@ const I18N = {
     validateConcurrencyRequired: "请填写每 Chunk 机器人数和批并发数（或点「一键压测并调参」获得机台实测推荐值）。",
     validateMode25RequireFuzzy: "mode 2 和 5 必须使用模糊档位（CI 半宽 = 模糊）。",
     labelAdvancedParams: "高级参数",
-    bankMultStandard: "标准 (100x / 200x / 500x) — 推荐",
-    bankMultShort: "短会话 (50x / 100x / 200x)",
-    bankMultLong: "长会话 (200x / 500x / 1000x)",
+    bankMultStandard: "标准 (10x / 100x / 200x / 500x) — 推荐",
+    bankMultShort: "短会话 (10x / 50x / 100x / 200x)",
+    bankMultLong: "长会话 (10x / 200x / 500x / 1000x)",
     helpBankMultiplierWarn: "仅「标准」档位与 guideline rules 里的 x100/x200/x500 阈值对齐；切换到其他档位时破产相关的 A5 规则不会触发。",
     runStatusLabel: "状态",
     runFailedLabel: "上次失败原因",
@@ -228,7 +228,7 @@ const I18N = {
     helpMaxChunks: "最大 Chunk 数：达到后强制停止，防止无限采样。",
     helpTimeout: "单请求超时：网络或服务慢时的超时保护。",
     helpBankSession: "破产探测回合数：用于估算会话期内破产率。",
-    helpBankMultipliers: "资金倍数梯度：例如 100,200,500，对应不同起始资金强度。",
+    helpBankMultipliers: "资金倍数梯度：例如 10,100,200,500，对应不同起始资金强度；10x 为最前一档 tourist / panic 基线。",
     helpProvider: "供应商：选择解读调用的模型厂商。",
     helpModel: "模型：选择具体解读模型，必须属于当前供应商。",
     helpApiKey: "API Key：仅用于模型解读调用；留空则回退规则解读。",
@@ -510,9 +510,9 @@ const I18N = {
     validateConcurrencyRequired: "Fill in robot count and concurrency (or click 'Auto Tune Parallelism' to probe machine-specific recommendations).",
     validateMode25RequireFuzzy: "Mode 2 and 5 must use the fuzzy CI tier.",
     labelAdvancedParams: "Advanced parameters",
-    bankMultStandard: "Standard (100x / 200x / 500x) — recommended",
-    bankMultShort: "Short session (50x / 100x / 200x)",
-    bankMultLong: "Long session (200x / 500x / 1000x)",
+    bankMultStandard: "Standard (10x / 100x / 200x / 500x) — recommended",
+    bankMultShort: "Short session (10x / 50x / 100x / 200x)",
+    bankMultLong: "Long session (10x / 200x / 500x / 1000x)",
     helpBankMultiplierWarn: "Only the Standard preset aligns with the guideline rules' x100/x200/x500 thresholds; other presets skip the bankruptcy A5 rule.",
     runStatusLabel: "Status",
     runFailedLabel: "Last failure reason",
@@ -679,7 +679,7 @@ const I18N = {
     helpMaxChunks: "Max Chunks: hard stop to prevent unbounded sampling.",
     helpTimeout: "Request Timeout: per-request network timeout protection.",
     helpBankSession: "Bankruptcy Session Spins: session horizon for bankruptcy-rate probing.",
-    helpBankMultipliers: "Bankroll Multipliers: e.g. 100,200,500 for different starting bankroll levels.",
+    helpBankMultipliers: "Bankroll Multipliers: e.g. 10,100,200,500 — 10x is the leading tourist / panic baseline, the rest cover progressively longer sessions.",
     helpProvider: "Provider: selects the vendor for interpretation calls.",
     helpModel: "Model: concrete interpretation model; must belong to current provider.",
     helpApiKey: "API key: used only for interpretation calls; empty key falls back to rule-based text.",
@@ -999,10 +999,15 @@ function ciTierOptions(lang) {
 // guideline_assessment + configs/classic_slots_guideline_rules.json;
 // other presets sample different points and skip the A5 rule.
 function bankrollMultiplierPresets(lang) {
+  // 10x is prepended to every preset as a fixed short-play / panic
+  // baseline column (user ask 2026-04-22: "最前面加一列 10x 的分析").
+  // The remaining 3 tiers still differentiate session strategies,
+  // and guideline rules' A5 bankruptcy thresholds still look at
+  // x100/x200/x500 — only Standard hits all three.
   return [
-    { value: "100,200,500", label: fmt(lang, "bankMultStandard") },
-    { value: "50,100,200", label: fmt(lang, "bankMultShort") },
-    { value: "200,500,1000", label: fmt(lang, "bankMultLong") },
+    { value: "10,100,200,500", label: fmt(lang, "bankMultStandard") },
+    { value: "10,50,100,200", label: fmt(lang, "bankMultShort") },
+    { value: "10,200,500,1000", label: fmt(lang, "bankMultLong") },
   ];
 }
 

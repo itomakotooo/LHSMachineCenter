@@ -4581,7 +4581,16 @@ function fillBankMultOptions() {
     sel.appendChild(new Option(label, value));
   }
   // Default: Standard preset; preserve user's previous choice across re-renders.
-  sel.value = prev || "100,200,500";
+  // If a previously-saved pref is an old 3-tier string (pre-10x era), map it
+  // to the matching new 4-tier preset so the operator's setting survives the
+  // 2026-04-22 10x-prepend change. Fall through to Standard otherwise.
+  const _legacyPrevMap = {
+    "100,200,500": "10,100,200,500",
+    "50,100,200": "10,50,100,200",
+    "200,500,1000": "10,200,500,1000",
+  };
+  const mapped = prev && _legacyPrevMap[prev] ? _legacyPrevMap[prev] : prev;
+  sel.value = mapped || "10,100,200,500";
 }
 
 // Reset the robot/concurrency inputs to their preset defaults from the
