@@ -5,8 +5,9 @@ existing modes' chunks / reports.
 weights to the registry. The old ``compute_machine_md5`` hashed
 spec + ALL mode weights into one machine-level ``configSummaryMd5``,
 so the machine-level md5 flipped even though mode 1's
-``reel_weights.json`` was byte-identical. Every existing mode 1 chunk
-(stamped with the old md5) was reclassified as historical.
+``weights.json`` (per-mode directory layout) was byte-identical.
+Every existing mode 1 chunk (stamped with the old md5) was
+reclassified as historical.
 
 Fix (2026-04-22): switch to PER-MODE config_md5.
   * ``compute_machine_md5_for_mode(entry, mode)`` hashes spec +
@@ -87,8 +88,8 @@ def test_per_mode_md5_distinct_per_mode():
     cfg2, _ = compute_machine_md5_for_mode(entry, 2)
     assert cfg1 != cfg2, (
         f"mode 1 and mode 2 per-mode cfg_md5 collided: {cfg1!r}. "
-        f"They must differ because M1/mode_1/reel_weights.json != "
-        f"M1/mode_2/reel_weights.json."
+        f"They must differ because M1/mode_1/weights.json != "
+        f"M1/mode_2/weights.json (per-mode directory layout)."
     )
 
 

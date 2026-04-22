@@ -20,8 +20,9 @@ Fix (2026-04-22): ``tuner/ordering.py`` gained
     assertion re-verifies.
 
 Tests:
-  1. Every shipped ``reel_weights.json`` (both modes, all reels) has
-     zero alternation violations.
+  1. Every shipped per-mode ``weights.json`` (all modes, all reels)
+     has zero alternation violations when the shared strips +
+     per-mode weights are assembled via ``load_reels_for_tuner``.
   2. ``initialize_alternating`` eliminates violations (inject cluster
      → run init → verify 0). Fails loudly when count(Blank) !=
      count(non-Blank).
