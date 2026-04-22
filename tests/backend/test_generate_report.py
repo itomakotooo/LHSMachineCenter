@@ -228,6 +228,158 @@ class TestGenerateReportProcessesAllChunks:
         )
 
 
+@pytest.fixture
+def m1sim_virtual_config(tmp_path):
+    """machines_config for a virtual machine. M1sim intentionally is NOT
+    in the real repo's configs/machines.json — so real analyzer's
+    ``_lookup_machine_md5("M1sim")`` returns ("", ""), which is
+    exactly the regression scenario we need to test."""
+    p = tmp_path / "machines_m1sim.json"
+    p.write_text(json.dumps({"machines": [{
+        "machine": "M1sim", "modes": [1],
+        "configSummaryMd5": "M1SIM_CFG_MD5",
+        "codeSummaryMd5": "M1SIM_CODE_MD5",
+    }]}), encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def app_with_m1sim(
+    tmp_state_dir, tmp_reports, tmp_cache, tmp_rawdata,
+    m1sim_virtual_config, fake_analyzer, monkeypatch,
+):
+    monkeypatch.setattr(
+        "src.web_console.backend.app._default_popen_factory",
+        lambda *a, **kw: None,
+    )
+    monkeypatch.setattr(
+        "src.web_console.backend.app._terminate_pid_if_running",
+        lambda pid: True,
+    )
+    monkeypatch.setattr("os._exit", lambda rc: None)
+    from src.web_console.backend.app import create_app
+    from fastapi.testclient import TestClient
+    app = create_app(
+        state_dir=tmp_state_dir, reports_root=tmp_reports,
+        cache_root=tmp_cache, machines_config=m1sim_virtual_config,
+        analyzer_path=fake_analyzer, rawdata_root=tmp_rawdata,
+    )
+    with TestClient(app) as c:
+        yield c, app, tmp_rawdata, tmp_reports, tmp_state_dir
+
+
+def _write_m1sim_chunk(dir_: Path, idx: int, response: list) -> Path:
+    """M1sim-specific chunk writer — envelope md5 matches the
+    m1sim_virtual_config so classify_chunks tags them kept/deletable."""
+    dir_.mkdir(parents=True, exist_ok=True)
+    p = dir_ / f"chunk_{idx:04d}.json"
+    p.write_text(json.dumps({
+        "_cache_version": 3,
+        "_machine": "M1sim",
+        "_mode": 1,
+        "_bet": 1000,
+        "_spin_times": 50,
+        "_robot_count": 8,
+        "_chunk_index": idx,
+        "_saved_at": "2026-04-01T00:00:00Z",
+        "_config_md5": "M1SIM_CFG_MD5",
+        "_code_md5": "M1SIM_CODE_MD5",
+        "response": response,
+    }), encoding="utf-8")
+    return p
+
+
+class TestGenerateReportSummaryMd5Patch:
+    """2026-04-22 regression: virtual-console reports always showed
+    "无 fresh report" after clicking "⟳ 生成 Report".
+
+    Root cause: real analyzer's ``_lookup_machine_md5(machine)`` reads
+    ONLY the repo-level ``configs/machines.json`` (real-console
+    registry). The in-process generate-report path
+    (``_run_generate_report`` in ``src/web_console/backend/app.py``)
+    calls ``pia.main()`` directly, which picks up that function with
+    its hardcoded registry path — not the ``machines_config`` the
+    backend was constructed with. For virtual machines that live in
+    a separate registry (``machines_virtual.json``), the looked-up
+    md5 is ``("", "")``, so the summary gets ``config_md5=""`` /
+    ``code_md5=""``. Frontend's ``/api/report-validate`` then
+    classifies the report as ``md5_status="untagged"`` and the
+    rwtree cell's "fresh report" filter excludes it.
+
+    Fix: after ``pia.main()`` returns rc=0, read the summary back,
+    patch empty ``config_md5`` / ``code_md5`` fields with the
+    current md5 from ``_get_machine_md5(machine, backend_mc)``
+    (which DOES respect the injected machines_config), and write it
+    back. Never overwrites values the analyzer already set.
+
+    These tests use a fresh ``M1sim`` fixture with a virtual-console-
+    style machines_config so the regression is hit cleanly (real
+    repo's machines.json doesn't know M1sim → analyzer writes empty
+    md5 → patch must fill it).
+    """
+
+    def test_empty_summary_md5_patched_from_injected_machines_config(
+        self, app_with_m1sim,
+    ):
+        c, _app, rd_root, reports_root, _state = app_with_m1sim
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        mode_dir = rd_root / "M1sim" / "mode_1"
+        _write_m1sim_chunk(mode_dir, 1, response_payload)
+        resp = c.post("/api/rawdata/M1sim/generate-report", json={"mode": 1})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        version_dir = (
+            reports_root / "M1sim" / "mode_1" / "versions"
+            / body["report_version"]
+        )
+        summary = json.loads(
+            (version_dir / "player_impact_summary.json").read_text(encoding="utf-8")
+        )
+        # Post-fix: real analyzer wrote config_md5="" (M1sim not in
+        # repo's machines.json). Patch layer filled it from backend's
+        # injected machines_config → "M1SIM_CFG_MD5" / "M1SIM_CODE_MD5".
+        assert summary.get("config_md5") == "M1SIM_CFG_MD5", (
+            f"summary.config_md5 must be patched from backend's "
+            f"machines_config; got {summary.get('config_md5')!r}. "
+            f"This is the regression that made the rwtree cell say "
+            f"'无 fresh report' even for current-md5 reports."
+        )
+        assert summary.get("code_md5") == "M1SIM_CODE_MD5", (
+            f"summary.code_md5 must be patched from backend's "
+            f"machines_config; got {summary.get('code_md5')!r}"
+        )
+
+    def test_validate_endpoint_reports_md5_match_after_patch(
+        self, app_with_m1sim,
+    ):
+        """End-to-end: patch → /api/report-validate → md5_status=match.
+        This is the invariant the frontend's rwtree "fresh report"
+        filter actually checks."""
+        c, _app, rd_root, _reports, _state = app_with_m1sim
+        response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
+        mode_dir = rd_root / "M1sim" / "mode_1"
+        _write_m1sim_chunk(mode_dir, 1, response_payload)
+        resp = c.post("/api/rawdata/M1sim/generate-report", json={"mode": 1})
+        assert resp.status_code == 200
+        body = resp.json()
+
+        validate = c.get("/api/report-validate/M1sim")
+        assert validate.status_code == 200
+        v = validate.json()
+        for rep in v.get("reports", []):
+            if rep.get("version") == body["report_version"]:
+                assert rep["md5_status"] == "match", (
+                    f"new report must be tagged md5_status=match "
+                    f"for the rwtree 'fresh' filter to include it; "
+                    f"got {rep!r}"
+                )
+                return
+        raise AssertionError(
+            f"new report {body['report_version']} not found in "
+            f"validate response: {v!r}"
+        )
+
+
 class TestBatchGenerateReport:
     """Tests for the batch endpoint + background worker. Driver runs
     items sequentially inside a daemon thread; tests poll the GET

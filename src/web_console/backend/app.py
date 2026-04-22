@@ -6106,6 +6106,36 @@ def create_app(
                     detail=f"analyzer main() returned {rc} during generate-report",
                 )
 
+            # Patch empty md5 tags in the written summary. Real
+            # analyzer's ``_lookup_machine_md5`` only reads
+            # ``configs/machines.json`` (real-console registry) —
+            # virtual machines live in a different registry, so this
+            # in-process generate-report path leaves ``config_md5`` /
+            # ``code_md5`` empty in the summary. That cascades through
+            # ``/api/report-validate`` → ``md5_status=untagged`` →
+            # rwtree cell renders "无 fresh report" even though the
+            # report IS current. Mirrors the fix virtual_analyzer.py
+            # applies to its subprocess-delegated runs (f88fe2c).
+            if summary_file.exists():
+                try:
+                    _cur_cfg, _cur_code = _get_machine_md5(machine, mc)
+                    if _cur_cfg or _cur_code:
+                        _payload = read_json(summary_file) or {}
+                        _dirty = False
+                        if _cur_cfg and not _payload.get("config_md5"):
+                            _payload["config_md5"] = _cur_cfg
+                            _dirty = True
+                        if _cur_code and not _payload.get("code_md5"):
+                            _payload["code_md5"] = _cur_code
+                            _dirty = True
+                        if _dirty:
+                            write_json(summary_file, _payload)
+                except Exception:  # noqa: BLE001
+                    # Best-effort patch — never fail the whole
+                    # generate-report over a metadata hole. The
+                    # report + stats are still valid.
+                    pass
+
             summary: dict[str, Any] = {}
             if summary_file.exists():
                 summary = read_json(summary_file) or {}
