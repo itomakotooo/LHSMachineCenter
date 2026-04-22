@@ -38,12 +38,51 @@ from slot_designer.backend.virtual_analyzer import _run_inference_scripts
 _PAYTABLES_VIRTUAL = _ROOT / "slot_designer" / "configs" / "paytables_virtual"
 
 
-def test_run_inference_scripts_writes_paytable_shape_json():
-    """Happy path: M1sim has rawdata on disk (from the per-mode-md5
-    retrofit earlier); running inference should write a shape JSON
-    to paytables_virtual/ with populated ``paytable_rows``."""
+def test_run_inference_scripts_writes_paytable_shape_json(tmp_path: Path, monkeypatch):
+    """Happy path: given a populated rawdata directory, the wrapper runs
+    infer_paytable and writes a shape JSON with populated ``paytable_rows``.
+
+    The test emits a small synthetic rawdata chunk via the engine (rather
+    than relying on the console's rawdata pool being non-empty — that
+    was brittle across md5 rolls, since weight changes invalidated
+    pool chunks and made this test fail with no actual regression).
+    """
+    # Emit a tiny chunk to a temp rawdata root and point the wrapper at it
+    from random import Random
+    from slot_designer.emitter.driver import emit_simulation_to_dir
+    from slot_designer.engine.loader import load_engine
+    from slot_designer.backend.machine_version import compute_machine_md5_for_mode
+    from slot_designer.backend.virtual_registry import (
+        VIRTUAL_MACHINES_CONFIG, refresh_machines_virtual,
+    )
+
+    rawdata_root = tmp_path / "rawdata"
+    mode_dir = rawdata_root / "M1sim" / "mode_2"
+    mode_dir.mkdir(parents=True)
+
+    # Build engine using shipped strips + mode 2 weights (real config)
+    engine, spec = load_engine(
+        _ROOT / "slot_designer" / "specs" / "M1.spec.json",
+        _ROOT / "slot_designer" / "weights" / "M1" / "mode_2" / "weights.json",
+    )
+    # Tag chunk with the CURRENT md5 so classify_chunks accepts it as
+    # fresh (not historical). Otherwise the chunks would be filtered.
+    reg = refresh_machines_virtual(VIRTUAL_MACHINES_CONFIG)
+    m1sim = next(m for m in reg["machines"] if m["machine"] == "M1sim")
+    cfg_md5, code_md5 = compute_machine_md5_for_mode(m1sim, 2)
+
+    emit_spec = dict(spec)
+    emit_spec["machine"] = "M1sim"
+    emit_simulation_to_dir(
+        emit_spec, engine, mode_dir,
+        chunks=1, robots=2, spins_per_robot=500, seed=42,
+        config_md5=cfg_md5, code_md5=code_md5, mode=2,
+    )
+
+    # Point the wrapper at this tmp rawdata root
+    monkeypatch.setenv("SLOT_RAWDATA_ROOT", str(rawdata_root))
+
     target = _PAYTABLES_VIRTUAL / "M1sim_mode2.json"
-    # Remove any stale output so we can verify the write
     if target.exists():
         target.unlink()
 
@@ -51,8 +90,8 @@ def test_run_inference_scripts_writes_paytable_shape_json():
 
     assert target.exists(), (
         f"inference didn't produce expected output at {target}. "
-        f"Check: SLOT_RAWDATA_ROOT env in _run_inference_scripts points "
-        f"at slot_designer/rawdata/, and rawdata exists for M1sim mode 2."
+        f"Check: SLOT_RAWDATA_ROOT env in _run_inference_scripts propagates "
+        f"to the subprocess, and infer_paytable.py accepts the chunk schema."
     )
     data = json.loads(target.read_text(encoding="utf-8"))
     rows = data.get("paytable_rows") or []
@@ -60,7 +99,6 @@ def test_run_inference_scripts_writes_paytable_shape_json():
         f"paytable_rows should be non-empty — rawdata has chunks but "
         f"inference returned nothing. data: {json.dumps(data, default=str)[:300]!r}"
     )
-    # Every row must have the two primary keys the UI needs
     for r in rows:
         assert "pay_id" in r
         assert "match_count" in r

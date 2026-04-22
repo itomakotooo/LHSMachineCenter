@@ -484,7 +484,10 @@ def _run_inference_scripts(machine: str, mode: int) -> None:
     # Point inference scripts at the virtual rawdata tree. Without this
     # they'd scan the real console's rawdata/ and either find nothing
     # (M1sim not there) or run against real-fleet chunks (data leak).
-    env["SLOT_RAWDATA_ROOT"] = str(rawdata_root)
+    # If the caller pre-set SLOT_RAWDATA_ROOT (e.g. a test pointing at
+    # tmp_path), respect it — that override is explicit and contained.
+    if "SLOT_RAWDATA_ROOT" not in env:
+        env["SLOT_RAWDATA_ROOT"] = str(rawdata_root)
 
     paytables_dir.mkdir(parents=True, exist_ok=True)
     classify_dir.mkdir(parents=True, exist_ok=True)
