@@ -12,8 +12,14 @@ It contains:
 
 ## Current Scope
 
-- test endpoint: `http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpin`
-- machine registry from `configs/machines.json` (current default: `M14`, mode `1`)
+- test endpoint: `http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpinVariant`
+  (accepts both variant keys like `M273$1$1-2-3` and plain machine names
+  like `M14` — variants get rewritten to underlying+selector params
+  upstream, non-variants fall through to plain test-spin)
+- machine registry from `configs/machines.json` — 393 rows = 227 non-variant
+  machines + 166 variant rows (one per entry in `machineTestVariantsJson`
+  from `/MapMachineOrder`). Each row is an independent machine — its own
+  md5, modes, rawdata directory, reports. Current default: `M14`, mode `1`.
 - report output under `reports/<machine>/mode_<id>/versions/<report_version>/`
 
 ## Core Capabilities

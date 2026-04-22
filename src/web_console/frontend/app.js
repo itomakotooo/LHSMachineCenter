@@ -5665,9 +5665,18 @@ async function loadBootstrap() {
   // its renderLiveStatusStrip() call was a no-op.)
   renderLiveStatusStrip();
   setLoadedMachineInfo(null);
-  byId("assessment").textContent = fmt("noReport");
-  byId("interpretationText").textContent = fmt("noInterpret");
-  byId("eventsText").textContent = fmt("noEvents");
+  // #assessment was removed in round 4's KPI-grid rewrite but this
+  // bootstrap-tail initializer kept referencing it; the unguarded
+  // textContent write threw TypeError and aborted the remainder of
+  // loadBootstrap, leaving state.machinesSummary / catalog render
+  // hooks never invoked. Guard like the _resetDebugPanelsToEmpty
+  // helper does (null-check, no-op if the element is gone).
+  const asEl = byId("assessment");
+  if (asEl) asEl.textContent = fmt("noReport");
+  const intEl = byId("interpretationText");
+  if (intEl) intEl.textContent = fmt("noInterpret");
+  const evEl = byId("eventsText");
+  if (evEl) evEl.textContent = fmt("noEvents");
   const autotuneMetaEl = byId("autotuneMeta");
   if (autotuneMetaEl) autotuneMetaEl.textContent = fmt("noAutoTune");
   await refreshSystemState();
@@ -5827,10 +5836,17 @@ function bindEvents() {
       await refreshCurrentRun().catch(() => {});
     } else {
       setLoadedMachineInfo(null);
-      byId("assessment").textContent = fmt("noReport");
-      byId("interpretationText").textContent = fmt("noInterpret");
-      byId("eventsText").textContent = fmt("noEvents");
-      byId("autotuneMeta").textContent = fmt("noAutoTune");
+      // Same null-guard discipline as the bootstrap-tail initializer —
+      // #assessment was removed in round 4 but the unguarded writes
+      // here throw the same TypeError.
+      const asEl = byId("assessment");
+      if (asEl) asEl.textContent = fmt("noReport");
+      const intEl = byId("interpretationText");
+      if (intEl) intEl.textContent = fmt("noInterpret");
+      const evEl = byId("eventsText");
+      if (evEl) evEl.textContent = fmt("noEvents");
+      const atEl = byId("autotuneMeta");
+      if (atEl) atEl.textContent = fmt("noAutoTune");
     }
     updateActionStates();
   });

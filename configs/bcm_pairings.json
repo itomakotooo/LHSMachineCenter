@@ -174,34 +174,6 @@
         }
       }
     },
-    "M247": {
-      "modes": {
-        "1": {
-          "bonus_feature": "PreWheel",
-          "confidence": "high",
-          "heuristic_pair": "PreWheel",
-          "spintype_pair": "PreWheel"
-        },
-        "2": {
-          "bonus_feature": "PreWheel",
-          "confidence": "high",
-          "heuristic_pair": "PreWheel",
-          "spintype_pair": "PreWheel"
-        },
-        "5": {
-          "bonus_feature": "PreWheel",
-          "confidence": "high",
-          "heuristic_pair": "PreWheel",
-          "spintype_pair": "PreWheel"
-        },
-        "7": {
-          "bonus_feature": "LockReSpin",
-          "confidence": "high",
-          "heuristic_pair": "LockReSpin",
-          "spintype_pair": "LockReSpin"
-        }
-      }
-    },
     "M248": {
       "modes": {
         "1": {
@@ -414,34 +386,6 @@
         }
       }
     },
-    "M257": {
-      "modes": {
-        "1": {
-          "bonus_feature": "NewFreespin",
-          "confidence": "high",
-          "heuristic_pair": "NewFreespin",
-          "spintype_pair": "NewFreespin"
-        },
-        "2": {
-          "bonus_feature": "NewFreespin",
-          "confidence": "high",
-          "heuristic_pair": "NewFreespin",
-          "spintype_pair": "NewFreespin"
-        },
-        "5": {
-          "bonus_feature": "NewFreespin",
-          "confidence": "high",
-          "heuristic_pair": "NewFreespin",
-          "spintype_pair": "NewFreespin"
-        },
-        "7": {
-          "bonus_feature": "NewFreespin",
-          "confidence": "high",
-          "heuristic_pair": "NewFreespin",
-          "spintype_pair": "NewFreespin"
-        }
-      }
-    },
     "M260": {
       "modes": {
         "1": {
@@ -467,34 +411,6 @@
           "confidence": "high",
           "heuristic_pair": "HalloweenReelCollectionFreespin",
           "spintype_pair": "HalloweenReelCollectionFreespin"
-        }
-      }
-    },
-    "M261": {
-      "modes": {
-        "1": {
-          "bonus_feature": "NewFreespin",
-          "confidence": "high",
-          "heuristic_pair": "NewFreespin",
-          "spintype_pair": "NewFreespin"
-        },
-        "2": {
-          "bonus_feature": "NewFreespin",
-          "confidence": "high",
-          "heuristic_pair": "NewFreespin",
-          "spintype_pair": "NewFreespin"
-        },
-        "5": {
-          "bonus_feature": "NewFreespin",
-          "confidence": "high",
-          "heuristic_pair": "NewFreespin",
-          "spintype_pair": "NewFreespin"
-        },
-        "7": {
-          "bonus_feature": "NewFreespin",
-          "confidence": "high",
-          "heuristic_pair": "NewFreespin",
-          "spintype_pair": "NewFreespin"
         }
       }
     },
@@ -775,34 +691,6 @@
           "confidence": "high",
           "heuristic_pair": "NewFreespin",
           "spintype_pair": "NewFreespin"
-        }
-      }
-    },
-    "M273": {
-      "modes": {
-        "1": {
-          "bonus_feature": "LockSymbolFreespin",
-          "confidence": "high",
-          "heuristic_pair": "LockSymbolFreespin",
-          "spintype_pair": "LockSymbolFreespin"
-        },
-        "2": {
-          "bonus_feature": "LockSymbolFreespin",
-          "confidence": "high",
-          "heuristic_pair": "LockSymbolFreespin",
-          "spintype_pair": "LockSymbolFreespin"
-        },
-        "5": {
-          "bonus_feature": "LockSymbolFreespin",
-          "confidence": "high",
-          "heuristic_pair": "LockSymbolFreespin",
-          "spintype_pair": "LockSymbolFreespin"
-        },
-        "7": {
-          "bonus_feature": "LockSymbolFreespin",
-          "confidence": "high",
-          "heuristic_pair": "LockSymbolFreespin",
-          "spintype_pair": "LockSymbolFreespin"
         }
       }
     },

@@ -917,12 +917,22 @@ or `http://127.0.0.1:1111` (local GM, auth required).
 
 Full documentation: `MachineTest-TestSpin (3).md` in project root.
 
-### `POST /MachineTest/MultiRobotTestSpin`
+### `POST /MachineTest/MultiRobotTestSpinVariant`
 
 The endpoint we use for sampling. Request body = `MachineTestRequest`
 with `RobotCount` + `OutputAllRobotResult=true`. Response = array of
 robot dicts, each with `roundResult` (JSON string) and
 `analysisResult` (JSON string).
+
+The `MachineName` field accepts either a variant key (e.g.
+`M273$1$1-2-3`) or a plain machine name (e.g. `M14`). When it is a
+key in the `machineTestVariantsJson` map returned by
+`POST /MachineTest/MapMachineOrder`, upstream rewrites the request
+to `(MachineName, SelectorStrategyParam, SelectorCommonParam)` and
+reuses `MultiRobotTestSpin` logic internally. When it is not in the
+map, upstream falls through to a plain test-spin by the given
+machine name. This lets us send `configs/machines.json` entries
+verbatim as `MachineName` without any callsite-level routing.
 
 Auth: `?token=YOUR_TOKEN` query param required on production GM.
 
