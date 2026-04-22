@@ -7,7 +7,7 @@
 | 1 | classic 单线 | 94.29% | 15.52% | 5.65 | 24% / 64% / 12% | [mode_1/weights.json](mode_1/weights.json) |
 | 2 | 幸运模式 | 294.50% | 27.76% | 5.52 | 16% / 33% / 50% | [mode_2/weights.json](mode_2/weights.json) |
 | 5 | 超级幸运模式 | 500.01% | 27.51% | 5.75 | 7% / 19% / **74%** | [mode_5/weights.json](mode_5/weights.json) |
-| 7 | 低 RTP turbulent | 80.88% | 7.86% | 6.31 | 16% / 74% / 10% | [mode_7/weights.json](mode_7/weights.json) |
+| 7 | 低 RTP turbulent | 82.69% | 9.93% | 5.94 | 17% / 73% / 10% | [mode_7/weights.json](mode_7/weights.json) |
 
 4 个 mode **共享同一张 reel strip** [reel_strips.json](reel_strips.json)（position→symbol 序列，36 × 3 reels，18 Blank + 18 非 Blank 严格交替）。**只有每个 stop 的 weight 按 mode 变化**。
 
@@ -54,7 +54,7 @@ slot_designer/weights/M1/
 | M1 mode 1（本项目）| 94.29% | 5.2% | —— wild 机制把大量 RTP 留在 Bar+wild 层（39%）|
 | M1 mode 2 | 294.50% | 31.6% | lucky mode，wild-amplified Seven 主导 |
 | M1 mode 5 | 500.01% | **44.7%** | super-lucky，7 + Seven+wild 是核心 |
-| M1 mode 7 | 80.88% | 6.5% | 低 RTP classic，同 mode 1 结构缩 |
+| M1 mode 7 | 82.69% | 3.1% | 低 RTP classic，同 mode 1 结构缩（Seven 100× 被拆，Seven+wild 保）|
 
 历史版本走 git：
 
