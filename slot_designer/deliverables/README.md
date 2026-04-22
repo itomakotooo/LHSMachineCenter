@@ -53,8 +53,9 @@ dev 脚本从不碰它。这样 tune / re-sim 时不会意外覆盖 console 的�
 
 | md5_short | RTP | hit_rate | CV | 简述 |
 |---|---|---|---|---|
-| `32251c25` | 93.49% | 24.57% | 5.28 | 第一版，只对齐 M14 mode 1 的 shape + CV，hit 未约束 → "所有 slots 平均 20-25%" 档（偏 video slot 风格） |
-| `558dfcdd` | 93.48% | **15.29%** | 5.06 | **当前 active**。加 hit_rate 软约束 15% → classic 单线行业 typical |
+| `32251c25` | 93.49% | 24.57% | 5.28 | 第一版（mode 1），只对齐 M14 mode 1 的 shape + CV，hit 未约束 → "所有 slots 平均 20-25%" 档（偏 video slot 风格） |
+| `558dfcdd` | 93.48% | **15.29%** | 5.06 | mode 1 active，加 hit_rate 软约束 15% → classic 单线行业 typical |
+| `6edf1ca3` | **306%** | **27.30%** | 6.04 | **当前 active**（mode 1 `558dfcdd` + mode 2 初调完成）。mode 2 是"幸运模式"，同 paytable 仅换 reel；bucket 形状稍偏双尾（小奖 +4pp / 大奖 +0.2pp）|
 
 ## 新机台交付时
 
