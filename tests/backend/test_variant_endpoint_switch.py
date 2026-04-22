@@ -239,3 +239,120 @@ class TestBatchRunForwardsVariantToAnalyzerArgv:
             f"analyzer received --machine {cmd[m_idx + 1]!r}; "
             f"expected verbatim {variant!r}"
         )
+
+
+class TestDisplayNameAndUpstreamKeySplit:
+    """New-schema rows (stage 8) separate the display machine name
+    from the upstream key. --machine carries the display name (used
+    for rawdata paths + summary identity); --upstream-machine-name
+    carries the upstream key (fed to MachineName on the Variant
+    payload). Non-variant rows omit the latter — analyzer falls back
+    to --machine."""
+
+    def test_variant_row_forwards_display_and_upstream_key(
+        self, client, tmp_path: Path, app_factory, monkeypatch,
+        fake_machines: Path,
+    ):
+        import src.web_console.backend.app as app_mod
+        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+
+        display = "M273$WheelSelector$1$1-2-3"
+        upstream = "M273$1$1-2-3"
+
+        existing = json.loads(fake_machines.read_text(encoding="utf-8"))
+        existing.setdefault("machines", []).append({
+            "machine": display,
+            "upstream_key": upstream,
+            "modes": [1, 2, 5, 7],
+            "configSummaryMd5": "", "codeSummaryMd5": "",
+            "logicClassNames": [], "available": True,
+        })
+        fake_machines.write_text(
+            json.dumps(existing, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        raw_root = tmp_path / "rawdata"
+        monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
+        monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
+
+        # Path segment still uses display name. Windows/Linux both
+        # accept ``$`` in path segments.
+        mode_dir = raw_root / display / "mode_1"
+        mode_dir.mkdir(parents=True, exist_ok=True)
+        resp = [{"roundResult": json.dumps([{
+            "BetAmount": 1000, "WinCredits": 900,
+            "StopSymbolsByCol": "A|B|C|D|E", "SpinType": "Normal",
+        }])}]
+        _save_chunk_cache(resp, 1, display, 1, 1000, 1000, 10, mode_dir)
+
+        c, _ = client
+        r = c.post("/api/batch-run", json=_batch_payload(display))
+        assert r.status_code == 200, r.text
+
+        cmd = _wait_for_analyzer_cmd(app_factory.stub_popen)
+        _release_stubs(app_factory.stub_popen)
+        assert cmd is not None
+
+        # --machine carries the display name (used for rawdata path).
+        assert "--machine" in cmd, cmd
+        m_idx = cmd.index("--machine")
+        assert cmd[m_idx + 1] == display, cmd
+
+        # --upstream-machine-name carries the variant upstream key
+        # (used for MachineName on the Variant endpoint payload).
+        assert "--upstream-machine-name" in cmd, cmd
+        u_idx = cmd.index("--upstream-machine-name")
+        assert cmd[u_idx + 1] == upstream, cmd
+
+    def test_non_variant_row_omits_upstream_machine_name(
+        self, client, tmp_path: Path, app_factory, monkeypatch,
+        fake_machines: Path,
+    ):
+        """For non-variant rows (M14 / M1 / ...), upstream_key ==
+        machine name. The RunManager helper returns None in that
+        case and we skip the redundant flag entirely — analyzer
+        falls back to --machine for MachineName."""
+        import src.web_console.backend.app as app_mod
+        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+
+        existing = json.loads(fake_machines.read_text(encoding="utf-8"))
+        # M14 already in fake_machines (conftest seed); ensure it has
+        # the new-schema upstream_key field so the code path matches
+        # production.
+        for row in existing.get("machines", []):
+            if row.get("machine") == "M14":
+                row["upstream_key"] = "M14"
+        fake_machines.write_text(
+            json.dumps(existing, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        raw_root = tmp_path / "rawdata"
+        monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
+        monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
+
+        mode_dir = raw_root / "M14" / "mode_1"
+        mode_dir.mkdir(parents=True, exist_ok=True)
+        resp = [{"roundResult": json.dumps([{
+            "BetAmount": 1000, "WinCredits": 900,
+            "StopSymbolsByCol": "A|B|C|D|E", "SpinType": "Normal",
+        }])}]
+        _save_chunk_cache(resp, 1, "M14", 1, 1000, 1000, 10, mode_dir)
+
+        c, _ = client
+        r = c.post("/api/batch-run", json=_batch_payload("M14"))
+        assert r.status_code == 200, r.text
+
+        cmd = _wait_for_analyzer_cmd(app_factory.stub_popen)
+        _release_stubs(app_factory.stub_popen)
+        assert cmd is not None
+
+        # --upstream-machine-name must NOT appear for non-variant
+        # rows — passing it would duplicate --machine, and tests
+        # assert absence so a future regression that always sets
+        # the flag surfaces loudly.
+        assert "--upstream-machine-name" not in cmd, (
+            f"non-variant row should not carry --upstream-machine-name; "
+            f"cmd: {cmd}"
+        )

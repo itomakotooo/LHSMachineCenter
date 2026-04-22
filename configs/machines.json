@@ -15,7 +15,8 @@
       ],
       "configSummaryMd5": "b3487fcc7ac702cc054e486bc7798061",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M1"
     },
     {
       "machine": "M10",
@@ -36,7 +37,8 @@
       ],
       "configSummaryMd5": "5ee63f660ceea64a7a1fcbf79a8e11cd",
       "codeSummaryMd5": "a2617134286a68f2a4481a29f13a5ea1",
-      "available": true
+      "available": true,
+      "upstream_key": "M10"
     },
     {
       "machine": "M100",
@@ -61,7 +63,8 @@
       ],
       "configSummaryMd5": "f1430c3855c3283897a2c80183e9018a",
       "codeSummaryMd5": "d0b2df3279959044e1f76d2efc88dc88",
-      "available": true
+      "available": true,
+      "upstream_key": "M100"
     },
     {
       "machine": "M101",
@@ -78,10 +81,12 @@
       ],
       "configSummaryMd5": "04084ef4c868814b3e2ca224908e3cb2",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M101"
     },
     {
-      "machine": "M102$0$",
+      "machine": "M102$WheelSelector$0$",
+      "upstream_key": "M102$0$",
       "modes": [
         1,
         2,
@@ -110,7 +115,8 @@
       "available": true
     },
     {
-      "machine": "M102$1$40",
+      "machine": "M102$WheelSelector$1$40",
+      "upstream_key": "M102$1$40",
       "modes": [
         1,
         2,
@@ -157,7 +163,8 @@
       ],
       "configSummaryMd5": "00a1932e6fc6fd085b3bd721261a1c68",
       "codeSummaryMd5": "ec791848be7409bc6cde56dd111682a3",
-      "available": true
+      "available": true,
+      "upstream_key": "M103"
     },
     {
       "machine": "M104",
@@ -177,7 +184,8 @@
       ],
       "configSummaryMd5": "c2e3d2e50c43bf32eb7d2b3a7525bc36",
       "codeSummaryMd5": "bef7262659612700a6c7fe55a6c17071",
-      "available": true
+      "available": true,
+      "upstream_key": "M104"
     },
     {
       "machine": "M105",
@@ -194,7 +202,8 @@
       ],
       "configSummaryMd5": "212e44b4da45ac5bdda3ec7c5ec2ca47",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M105"
     },
     {
       "machine": "M106",
@@ -211,7 +220,8 @@
       ],
       "configSummaryMd5": "867b75cc89bed5be501c7d3c5090a4f8",
       "codeSummaryMd5": "a5611a7b253dc4173acc79157d19ef33",
-      "available": true
+      "available": true,
+      "upstream_key": "M106"
     },
     {
       "machine": "M107",
@@ -236,7 +246,8 @@
       ],
       "configSummaryMd5": "bb095a095d4df7678161b5c92c5a3d0e",
       "codeSummaryMd5": "9210dfaf14e88792ec077dd6dff4c62d",
-      "available": true
+      "available": true,
+      "upstream_key": "M107"
     },
     {
       "machine": "M108",
@@ -271,7 +282,8 @@
       ],
       "configSummaryMd5": "401f8e5306a857e40a3294ad2d72f87a",
       "codeSummaryMd5": "3ff4612df637c4f747cbbf9b3818ff8a",
-      "available": true
+      "available": true,
+      "upstream_key": "M108"
     },
     {
       "machine": "M109",
@@ -293,7 +305,8 @@
       ],
       "configSummaryMd5": "3c5bcc468ba54c24ae7118a02fa6cf8f",
       "codeSummaryMd5": "e98a4687c3b000ada2474639a42e17b1",
-      "available": true
+      "available": true,
+      "upstream_key": "M109"
     },
     {
       "machine": "M11",
@@ -321,7 +334,8 @@
       ],
       "configSummaryMd5": "e5ca7041e5cd8cb2ad80a0af1054994b",
       "codeSummaryMd5": "327ee9b35dfe2f0de32be8b1bf0119f3",
-      "available": true
+      "available": true,
+      "upstream_key": "M11"
     },
     {
       "machine": "M110",
@@ -345,7 +359,8 @@
       ],
       "configSummaryMd5": "1a2443388c9a8dae5a19dacd650eecdf",
       "codeSummaryMd5": "a7dfa11f3c0d4a3f32afd0e83f530c40",
-      "available": true
+      "available": true,
+      "upstream_key": "M110"
     },
     {
       "machine": "M111",
@@ -378,7 +393,8 @@
       ],
       "configSummaryMd5": "d1fedc4eb80684bf1aeee2a4eaa764e5",
       "codeSummaryMd5": "a298badbe477557a045ad39b6bcee3ab",
-      "available": true
+      "available": true,
+      "upstream_key": "M111"
     },
     {
       "machine": "M112",
@@ -401,7 +417,8 @@
       ],
       "configSummaryMd5": "0e6e40f148878434446dd584541e5cd4",
       "codeSummaryMd5": "30396d212e76f76a6ef20b16d0a19948",
-      "available": true
+      "available": true,
+      "upstream_key": "M112"
     },
     {
       "machine": "M113",
@@ -418,7 +435,8 @@
       ],
       "configSummaryMd5": "1123b1cea111595d84c93225dbeed090",
       "codeSummaryMd5": "2c97b365d77f566a7cbfd406f1b3e253",
-      "available": true
+      "available": true,
+      "upstream_key": "M113"
     },
     {
       "machine": "M114",
@@ -442,10 +460,12 @@
       ],
       "configSummaryMd5": "fe6399020ec79d9d8350c8e4c459a56c",
       "codeSummaryMd5": "df34cb1bf12d0d3485975ca25ca247d3",
-      "available": true
+      "available": true,
+      "upstream_key": "M114"
     },
     {
-      "machine": "M116$0$",
+      "machine": "M116$ChristmasSimpleSelector$0$",
+      "upstream_key": "M116$0$",
       "modes": [
         1,
         2,
@@ -487,7 +507,8 @@
       "available": true
     },
     {
-      "machine": "M116$1$",
+      "machine": "M116$ChristmasSimpleSelector$1$",
+      "upstream_key": "M116$1$",
       "modes": [
         1,
         2,
@@ -529,7 +550,8 @@
       "available": true
     },
     {
-      "machine": "M116$2$",
+      "machine": "M116$ChristmasSimpleSelector$2$",
+      "upstream_key": "M116$2$",
       "modes": [
         1,
         2,
@@ -604,7 +626,8 @@
       ],
       "configSummaryMd5": "ea51e84922e97731a07916bec119ce4b",
       "codeSummaryMd5": "2f62b0e0b0769e8921fa297586cbb8b6",
-      "available": true
+      "available": true,
+      "upstream_key": "M117"
     },
     {
       "machine": "M119",
@@ -638,10 +661,12 @@
       ],
       "configSummaryMd5": "38bf55afe5018868a234605d27945e46",
       "codeSummaryMd5": "0a7a4ed85573aa18b93294a73127daf6",
-      "available": true
+      "available": true,
+      "upstream_key": "M119"
     },
     {
-      "machine": "M12$0$",
+      "machine": "M12$TopDollarSelector$0$",
+      "upstream_key": "M12$0$",
       "modes": [
         1,
         2,
@@ -663,7 +688,8 @@
       "available": true
     },
     {
-      "machine": "M12$1$",
+      "machine": "M12$TopDollarSelector$1$",
+      "upstream_key": "M12$1$",
       "modes": [
         1,
         2,
@@ -685,7 +711,8 @@
       "available": true
     },
     {
-      "machine": "M12$2$40",
+      "machine": "M12$TopDollarSelector$2$40",
+      "upstream_key": "M12$2$40",
       "modes": [
         1,
         2,
@@ -726,7 +753,8 @@
       ],
       "configSummaryMd5": "8c0e4ff514bd5e16eff76188548e3af7",
       "codeSummaryMd5": "7bc92d27b3b6ee08da3946d3e8a43bb1",
-      "available": true
+      "available": true,
+      "upstream_key": "M120"
     },
     {
       "machine": "M121",
@@ -748,7 +776,8 @@
       ],
       "configSummaryMd5": "97923ca2b571d6985fbef53a5f44c089",
       "codeSummaryMd5": "878653a9a78b606cb0a864dc382f3016",
-      "available": true
+      "available": true,
+      "upstream_key": "M121"
     },
     {
       "machine": "M122",
@@ -768,10 +797,12 @@
       ],
       "configSummaryMd5": "4d098618ad89ea639c0b535044298484",
       "codeSummaryMd5": "691fec39b6d572fd19fcfb5dd0fbc271",
-      "available": true
+      "available": true,
+      "upstream_key": "M122"
     },
     {
-      "machine": "M123$0$",
+      "machine": "M123$ValentineSimpleSelector$0$",
+      "upstream_key": "M123$0$",
       "modes": [
         1,
         2,
@@ -808,7 +839,8 @@
       "available": true
     },
     {
-      "machine": "M123$1$",
+      "machine": "M123$ValentineSimpleSelector$1$",
+      "upstream_key": "M123$1$",
       "modes": [
         1,
         2,
@@ -845,7 +877,8 @@
       "available": true
     },
     {
-      "machine": "M123$2$",
+      "machine": "M123$ValentineSimpleSelector$2$",
+      "upstream_key": "M123$2$",
       "modes": [
         1,
         2,
@@ -882,7 +915,8 @@
       "available": true
     },
     {
-      "machine": "M123$3$",
+      "machine": "M123$ValentineSimpleSelector$3$",
+      "upstream_key": "M123$3$",
       "modes": [
         1,
         2,
@@ -919,7 +953,8 @@
       "available": true
     },
     {
-      "machine": "M123$4$",
+      "machine": "M123$ValentineSimpleSelector$4$",
+      "upstream_key": "M123$4$",
       "modes": [
         1,
         2,
@@ -956,7 +991,8 @@
       "available": true
     },
     {
-      "machine": "M123$5$",
+      "machine": "M123$ValentineSimpleSelector$5$",
+      "upstream_key": "M123$5$",
       "modes": [
         1,
         2,
@@ -993,7 +1029,8 @@
       "available": true
     },
     {
-      "machine": "M123$6$",
+      "machine": "M123$ValentineSimpleSelector$6$",
+      "upstream_key": "M123$6$",
       "modes": [
         1,
         2,
@@ -1048,7 +1085,8 @@
       ],
       "configSummaryMd5": "de38395bc6edf0a584fbb425c49322b0",
       "codeSummaryMd5": "c0b998cae2960fe284928596b54fda0c",
-      "available": true
+      "available": true,
+      "upstream_key": "M124"
     },
     {
       "machine": "M125",
@@ -1082,7 +1120,8 @@
       ],
       "configSummaryMd5": "db8e5e08877d2cd7a8a2440011334822",
       "codeSummaryMd5": "1d6b97ea77223158461d9edad7203b27",
-      "available": true
+      "available": true,
+      "upstream_key": "M125"
     },
     {
       "machine": "M126",
@@ -1117,7 +1156,8 @@
       ],
       "configSummaryMd5": "00b2f6385a16987b6a37a0688c0472fa",
       "codeSummaryMd5": "1df65837e97c3fac6c9cc2daf07090e2",
-      "available": true
+      "available": true,
+      "upstream_key": "M126"
     },
     {
       "machine": "M127",
@@ -1134,7 +1174,8 @@
       ],
       "configSummaryMd5": "24eec48a794bfe3f67cb2bd8425a554a",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M127"
     },
     {
       "machine": "M128",
@@ -1160,7 +1201,8 @@
       ],
       "configSummaryMd5": "41ecbe13e503304462f37d916bc49241",
       "codeSummaryMd5": "8b39f2208cc74dab95fc86ed16b0eb91",
-      "available": true
+      "available": true,
+      "upstream_key": "M128"
     },
     {
       "machine": "M129",
@@ -1183,7 +1225,8 @@
       ],
       "configSummaryMd5": "92a48b724693b58304c7ae375e6b970c",
       "codeSummaryMd5": "be80f545ff7978398c495f45e5520745",
-      "available": true
+      "available": true,
+      "upstream_key": "M129"
     },
     {
       "machine": "M13",
@@ -1200,7 +1243,8 @@
       ],
       "configSummaryMd5": "f33476da81d74f7cbfc21810d4e5c7a0",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M13"
     },
     {
       "machine": "M130",
@@ -1224,7 +1268,8 @@
       ],
       "configSummaryMd5": "96fbd3f8c1be6d058f1354a6a1395aa6",
       "codeSummaryMd5": "55978ded802f70ef768d53bec498b35a",
-      "available": true
+      "available": true,
+      "upstream_key": "M130"
     },
     {
       "machine": "M131",
@@ -1245,10 +1290,12 @@
       ],
       "configSummaryMd5": "36d62c1b40a205e5613d9aae82a23177",
       "codeSummaryMd5": "a2617134286a68f2a4481a29f13a5ea1",
-      "available": true
+      "available": true,
+      "upstream_key": "M131"
     },
     {
-      "machine": "M132$0$",
+      "machine": "M132$TopDollarSelector$0$",
+      "upstream_key": "M132$0$",
       "modes": [
         1,
         2,
@@ -1270,7 +1317,8 @@
       "available": true
     },
     {
-      "machine": "M132$1$",
+      "machine": "M132$TopDollarSelector$1$",
+      "upstream_key": "M132$1$",
       "modes": [
         1,
         2,
@@ -1292,7 +1340,8 @@
       "available": true
     },
     {
-      "machine": "M132$2$40",
+      "machine": "M132$TopDollarSelector$2$40",
+      "upstream_key": "M132$2$40",
       "modes": [
         1,
         2,
@@ -1332,7 +1381,8 @@
       ],
       "configSummaryMd5": "06e9045f80e1d88999920a633e5c9c2b",
       "codeSummaryMd5": "f205499b3c85636731fc540cd5324b29",
-      "available": true
+      "available": true,
+      "upstream_key": "M133"
     },
     {
       "machine": "M134",
@@ -1354,7 +1404,8 @@
       ],
       "configSummaryMd5": "e70fb892d7a587bf5c8a5593995192bf",
       "codeSummaryMd5": "39c0f03f827e99d14d84c1b284bc0548",
-      "available": true
+      "available": true,
+      "upstream_key": "M134"
     },
     {
       "machine": "M135",
@@ -1371,7 +1422,8 @@
       ],
       "configSummaryMd5": "9e237bd468923bb061d6d4b9d03961fe",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M135"
     },
     {
       "machine": "M136",
@@ -1397,7 +1449,8 @@
       ],
       "configSummaryMd5": "2954ce1700b11684e16c610f0f013d00",
       "codeSummaryMd5": "a972709cafbb8e032eeba795a8fb89a0",
-      "available": true
+      "available": true,
+      "upstream_key": "M136"
     },
     {
       "machine": "M137",
@@ -1414,7 +1467,8 @@
       ],
       "configSummaryMd5": "63c8f56f689500e7456a9522fdc589b0",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M137"
     },
     {
       "machine": "M138",
@@ -1437,7 +1491,8 @@
       ],
       "configSummaryMd5": "870a1d74c10e4ca17fc50bdb5a54aaaa",
       "codeSummaryMd5": "30bd9a5d76b3b4b926e68d5b41a92016",
-      "available": true
+      "available": true,
+      "upstream_key": "M138"
     },
     {
       "machine": "M139",
@@ -1454,7 +1509,8 @@
       ],
       "configSummaryMd5": "46230ef5ba53baec27be7388274074ae",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M139"
     },
     {
       "machine": "M14",
@@ -1471,7 +1527,8 @@
       ],
       "configSummaryMd5": "4fcf00c48b3d6979aef058fed9ed5f94",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M14"
     },
     {
       "machine": "M140",
@@ -1493,7 +1550,8 @@
       ],
       "configSummaryMd5": "2e25910a6cce857378a7ddb7d53226a1",
       "codeSummaryMd5": "1a97515d7752f974e8cd84758d397fce",
-      "available": true
+      "available": true,
+      "upstream_key": "M140"
     },
     {
       "machine": "M142",
@@ -1510,7 +1568,8 @@
       ],
       "configSummaryMd5": "811e8e1f1e0df918c7a954380da43ad2",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M142"
     },
     {
       "machine": "M144",
@@ -1527,7 +1586,8 @@
       ],
       "configSummaryMd5": "c41d54821d14129f49237da6461d85b5",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M144"
     },
     {
       "machine": "M145",
@@ -1544,7 +1604,8 @@
       ],
       "configSummaryMd5": "cde804ba84cb1646fe660f45adcffd94",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M145"
     },
     {
       "machine": "M146",
@@ -1566,7 +1627,8 @@
       ],
       "configSummaryMd5": "6cee39a03f206d41e02e6e5f33b57faa",
       "codeSummaryMd5": "8067f1baa85812bb05d91515f61bf2d6",
-      "available": true
+      "available": true,
+      "upstream_key": "M146"
     },
     {
       "machine": "M147",
@@ -1590,7 +1652,8 @@
       ],
       "configSummaryMd5": "e89825a751b627c00ad9e0a18d0f6968",
       "codeSummaryMd5": "ce9952f27b013032e8967e7ff211f122",
-      "available": true
+      "available": true,
+      "upstream_key": "M147"
     },
     {
       "machine": "M148",
@@ -1611,7 +1674,8 @@
       ],
       "configSummaryMd5": "c0f90517f2e8eb847a726faf28671ad4",
       "codeSummaryMd5": "7c4e3f5039acb165e8ce53da791b6e26",
-      "available": true
+      "available": true,
+      "upstream_key": "M148"
     },
     {
       "machine": "M149",
@@ -1633,10 +1697,12 @@
       ],
       "configSummaryMd5": "d5419c89f1cf6302e0f544ef7cd3a88a",
       "codeSummaryMd5": "1a97515d7752f974e8cd84758d397fce",
-      "available": true
+      "available": true,
+      "upstream_key": "M149"
     },
     {
-      "machine": "M15$0$",
+      "machine": "M15$TopDollarSelector$0$",
+      "upstream_key": "M15$0$",
       "modes": [
         1,
         2,
@@ -1658,7 +1724,8 @@
       "available": true
     },
     {
-      "machine": "M15$1$",
+      "machine": "M15$TopDollarSelector$1$",
+      "upstream_key": "M15$1$",
       "modes": [
         1,
         2,
@@ -1680,7 +1747,8 @@
       "available": true
     },
     {
-      "machine": "M15$2$40",
+      "machine": "M15$TopDollarSelector$2$40",
+      "upstream_key": "M15$2$40",
       "modes": [
         1,
         2,
@@ -1721,7 +1789,8 @@
       ],
       "configSummaryMd5": "3c5a290714578e8cf3d311a79122ab56",
       "codeSummaryMd5": "22049880d9b6602079dc617d4ffb8ad4",
-      "available": true
+      "available": true,
+      "upstream_key": "M150"
     },
     {
       "machine": "M151",
@@ -1743,7 +1812,8 @@
       ],
       "configSummaryMd5": "aea5b0feacb56959a15c67fa589ef09f",
       "codeSummaryMd5": "747e923663e607a6f4da41786c6ae05d",
-      "available": true
+      "available": true,
+      "upstream_key": "M151"
     },
     {
       "machine": "M152",
@@ -1763,7 +1833,8 @@
       ],
       "configSummaryMd5": "9afaf1f0b26793bc270c81b83739f7fb",
       "codeSummaryMd5": "83a22cc6bb928a70180bcc9244973ddd",
-      "available": true
+      "available": true,
+      "upstream_key": "M152"
     },
     {
       "machine": "M153",
@@ -1783,7 +1854,8 @@
       ],
       "configSummaryMd5": "3b832ba3cb1e453b1e11559c62655aa0",
       "codeSummaryMd5": "83a22cc6bb928a70180bcc9244973ddd",
-      "available": true
+      "available": true,
+      "upstream_key": "M153"
     },
     {
       "machine": "M154",
@@ -1800,7 +1872,8 @@
       ],
       "configSummaryMd5": "4d5a049fe0984c6c89f10462e06cdec3",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M154"
     },
     {
       "machine": "M155",
@@ -1817,7 +1890,8 @@
       ],
       "configSummaryMd5": "2617ac0efcbf13964e814fcf959d0d30",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M155"
     },
     {
       "machine": "M156",
@@ -1839,7 +1913,8 @@
       ],
       "configSummaryMd5": "31c1051b31bfc4a0ffcbb5286e55c755",
       "codeSummaryMd5": "22049880d9b6602079dc617d4ffb8ad4",
-      "available": true
+      "available": true,
+      "upstream_key": "M156"
     },
     {
       "machine": "M157",
@@ -1856,7 +1931,8 @@
       ],
       "configSummaryMd5": "f23c7d835d6678dbaf42d9b50d607628",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M157"
     },
     {
       "machine": "M158",
@@ -1878,7 +1954,8 @@
       ],
       "configSummaryMd5": "0c79cb78ed0402fc066f49a8bc64fdcc",
       "codeSummaryMd5": "095e7f8f4a04d656ce5fd113648547a7",
-      "available": true
+      "available": true,
+      "upstream_key": "M158"
     },
     {
       "machine": "M159",
@@ -1900,7 +1977,8 @@
       ],
       "configSummaryMd5": "0c4d1b209acdfd7ce36df1c7be3bfb86",
       "codeSummaryMd5": "97249d1f9029f562009e4f4a40cbdf5f",
-      "available": true
+      "available": true,
+      "upstream_key": "M159"
     },
     {
       "machine": "M16",
@@ -1917,7 +1995,8 @@
       ],
       "configSummaryMd5": "900e394fbcd727d95c82ecc48615f3e6",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M16"
     },
     {
       "machine": "M160",
@@ -1934,7 +2013,8 @@
       ],
       "configSummaryMd5": "bd0145c069eaa87a7c6b792741cb5284",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M160"
     },
     {
       "machine": "M161",
@@ -1951,7 +2031,8 @@
       ],
       "configSummaryMd5": "05873bfc162d8533cf48770beff35704",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M161"
     },
     {
       "machine": "M162",
@@ -1968,7 +2049,8 @@
       ],
       "configSummaryMd5": "38e1d65d67308afd354b677a9fff4797",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M162"
     },
     {
       "machine": "M163",
@@ -1996,7 +2078,8 @@
       ],
       "configSummaryMd5": "7137620f76261fc08c64b5c7a4caa713",
       "codeSummaryMd5": "2076d966ad107d3a560feb36d05a2ea3",
-      "available": true
+      "available": true,
+      "upstream_key": "M163"
     },
     {
       "machine": "M164",
@@ -2018,7 +2101,8 @@
       ],
       "configSummaryMd5": "d0e2034c086163170609b872a83cd328",
       "codeSummaryMd5": "22049880d9b6602079dc617d4ffb8ad4",
-      "available": true
+      "available": true,
+      "upstream_key": "M164"
     },
     {
       "machine": "M165",
@@ -2044,7 +2128,8 @@
       ],
       "configSummaryMd5": "1ab5fe3e1135468ea8e5872b2767cc61",
       "codeSummaryMd5": "8a9ff417806bd18fa5cd1076a61755e2",
-      "available": true
+      "available": true,
+      "upstream_key": "M165"
     },
     {
       "machine": "M166",
@@ -2066,7 +2151,8 @@
       ],
       "configSummaryMd5": "bb46e453759a9c53877f3f50fcb01744",
       "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
-      "available": true
+      "available": true,
+      "upstream_key": "M166"
     },
     {
       "machine": "M167",
@@ -2088,7 +2174,8 @@
       ],
       "configSummaryMd5": "64e3a2589101bc5ba80857cd8ceb9fd8",
       "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
-      "available": true
+      "available": true,
+      "upstream_key": "M167"
     },
     {
       "machine": "M168",
@@ -2118,7 +2205,8 @@
       ],
       "configSummaryMd5": "43c28401614755c52b183a71a20e9c92",
       "codeSummaryMd5": "2f423a6657434e443a7c872d266a12f7",
-      "available": true
+      "available": true,
+      "upstream_key": "M168"
     },
     {
       "machine": "M169",
@@ -2135,7 +2223,8 @@
       ],
       "configSummaryMd5": "c4c64f3c8cc2a2949c9f42c4df1a5a7e",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M169"
     },
     {
       "machine": "M17",
@@ -2152,7 +2241,8 @@
       ],
       "configSummaryMd5": "5361baa6dc2f7fa8eb6567a9d07fc750",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M17"
     },
     {
       "machine": "M170",
@@ -2169,7 +2259,8 @@
       ],
       "configSummaryMd5": "49d3a9d5374f969e7c689a2645c45a51",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M170"
     },
     {
       "machine": "M171",
@@ -2199,7 +2290,8 @@
       ],
       "configSummaryMd5": "8494b86111d40d674bf2815684bf4640",
       "codeSummaryMd5": "df45e32861ec568a0fb5bb3a3370cdb4",
-      "available": true
+      "available": true,
+      "upstream_key": "M171"
     },
     {
       "machine": "M172",
@@ -2216,7 +2308,8 @@
       ],
       "configSummaryMd5": "2c857779756d2cdb114f1763d0e85827",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M172"
     },
     {
       "machine": "M173",
@@ -2233,7 +2326,8 @@
       ],
       "configSummaryMd5": "8fee7fb75501f83aed2d18dfcbbcf811",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M173"
     },
     {
       "machine": "M174",
@@ -2255,7 +2349,8 @@
       ],
       "configSummaryMd5": "a9a87097467e7e7e6bb42c70d3155c44",
       "codeSummaryMd5": "121eb801a61f9469a3816c890196456f",
-      "available": true
+      "available": true,
+      "upstream_key": "M174"
     },
     {
       "machine": "M175",
@@ -2277,7 +2372,8 @@
       ],
       "configSummaryMd5": "711da72017ec4eec0f4cc8660af53289",
       "codeSummaryMd5": "6231f6490e497a43b5312c0b2c0292ee",
-      "available": true
+      "available": true,
+      "upstream_key": "M175"
     },
     {
       "machine": "M176",
@@ -2303,7 +2399,8 @@
       ],
       "configSummaryMd5": "2802fc65fa25694dccaf58b189445b4f",
       "codeSummaryMd5": "bf24b5b94180974c1c4ada158da832e7",
-      "available": true
+      "available": true,
+      "upstream_key": "M176"
     },
     {
       "machine": "M177",
@@ -2325,7 +2422,8 @@
       ],
       "configSummaryMd5": "b006f15550ceb7b645ae8e5b5455142b",
       "codeSummaryMd5": "2245c360e85c347103918fde53a304ed",
-      "available": true
+      "available": true,
+      "upstream_key": "M177"
     },
     {
       "machine": "M178",
@@ -2351,7 +2449,8 @@
       ],
       "configSummaryMd5": "a68df88f5bc819505559f4e48be25887",
       "codeSummaryMd5": "8a9ff417806bd18fa5cd1076a61755e2",
-      "available": true
+      "available": true,
+      "upstream_key": "M178"
     },
     {
       "machine": "M179",
@@ -2373,7 +2472,8 @@
       ],
       "configSummaryMd5": "c70d5be015d67a443d9d1c282dcabad6",
       "codeSummaryMd5": "e98a4687c3b000ada2474639a42e17b1",
-      "available": true
+      "available": true,
+      "upstream_key": "M179"
     },
     {
       "machine": "M18",
@@ -2397,7 +2497,8 @@
       ],
       "configSummaryMd5": "08003ef6b45673ce43ff4c4d0342dc96",
       "codeSummaryMd5": "41e78e992c2b77deaf2b02f29494935b",
-      "available": true
+      "available": true,
+      "upstream_key": "M18"
     },
     {
       "machine": "M180",
@@ -2423,7 +2524,8 @@
       ],
       "configSummaryMd5": "82ff65d0886470eba982fca8f95a03c9",
       "codeSummaryMd5": "8a9ff417806bd18fa5cd1076a61755e2",
-      "available": true
+      "available": true,
+      "upstream_key": "M180"
     },
     {
       "machine": "M181",
@@ -2445,7 +2547,8 @@
       ],
       "configSummaryMd5": "e96efaf980dc63c74791de4547cde6f2",
       "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
-      "available": true
+      "available": true,
+      "upstream_key": "M181"
     },
     {
       "machine": "M182",
@@ -2471,7 +2574,8 @@
       ],
       "configSummaryMd5": "3479a0e4ed3796e591942a18e543c259",
       "codeSummaryMd5": "8b3a71b70c219e14628119859922c4f7",
-      "available": true
+      "available": true,
+      "upstream_key": "M182"
     },
     {
       "machine": "M183",
@@ -2493,7 +2597,8 @@
       ],
       "configSummaryMd5": "f69ddcab7355a688c3678afe68f489b4",
       "codeSummaryMd5": "a386391b9926b514bf658d907071bc9c",
-      "available": true
+      "available": true,
+      "upstream_key": "M183"
     },
     {
       "machine": "M184",
@@ -2515,7 +2620,8 @@
       ],
       "configSummaryMd5": "eb96497b5e5dfcb91fb631ffd5c3014d",
       "codeSummaryMd5": "a4279e29cc69963d6582c8e8f649ba33",
-      "available": true
+      "available": true,
+      "upstream_key": "M184"
     },
     {
       "machine": "M185",
@@ -2541,7 +2647,8 @@
       ],
       "configSummaryMd5": "7db01ed471f72b639adbbcc36f51a70f",
       "codeSummaryMd5": "8a9ff417806bd18fa5cd1076a61755e2",
-      "available": true
+      "available": true,
+      "upstream_key": "M185"
     },
     {
       "machine": "M186",
@@ -2568,10 +2675,12 @@
       ],
       "configSummaryMd5": "48d488ce349bdf2fe4e669466f59d2be",
       "codeSummaryMd5": "60fa6c21f9f25bf7c892666935bc05bf",
-      "available": true
+      "available": true,
+      "upstream_key": "M186"
     },
     {
-      "machine": "M187$0$",
+      "machine": "M187$WheelSelector$0$",
+      "upstream_key": "M187$0$",
       "modes": [
         1,
         2,
@@ -2600,7 +2709,8 @@
       "available": true
     },
     {
-      "machine": "M187$1$40",
+      "machine": "M187$WheelSelector$1$40",
+      "upstream_key": "M187$1$40",
       "modes": [
         1,
         2,
@@ -2629,7 +2739,8 @@
       "available": true
     },
     {
-      "machine": "M188$0$",
+      "machine": "M188$WheelSelector$0$",
+      "upstream_key": "M188$0$",
       "modes": [
         1,
         2,
@@ -2658,7 +2769,8 @@
       "available": true
     },
     {
-      "machine": "M188$1$40",
+      "machine": "M188$WheelSelector$1$40",
+      "upstream_key": "M188$1$40",
       "modes": [
         1,
         2,
@@ -2706,7 +2818,8 @@
       ],
       "configSummaryMd5": "0641c0f90ded2433ecdb087e278fd53c",
       "codeSummaryMd5": "c0eadd935802755c3f4ec49e16af3721",
-      "available": true
+      "available": true,
+      "upstream_key": "M189"
     },
     {
       "machine": "M19",
@@ -2723,7 +2836,8 @@
       ],
       "configSummaryMd5": "ccc71fccc98bfbac7e86b794f9e3bfbb",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M19"
     },
     {
       "machine": "M190",
@@ -2749,7 +2863,8 @@
       ],
       "configSummaryMd5": "af02d1752eb2d7e9a6a63618706f39b5",
       "codeSummaryMd5": "cd5158f7c6bf3f1d0f6b26a16b7c0a8c",
-      "available": true
+      "available": true,
+      "upstream_key": "M190"
     },
     {
       "machine": "M191",
@@ -2771,7 +2886,8 @@
       ],
       "configSummaryMd5": "4719574936a06c2566568569ccd05910",
       "codeSummaryMd5": "c0eadd935802755c3f4ec49e16af3721",
-      "available": true
+      "available": true,
+      "upstream_key": "M191"
     },
     {
       "machine": "M192",
@@ -2795,7 +2911,8 @@
       ],
       "configSummaryMd5": "88dfe5281fb6ee3699270948b5e9a847",
       "codeSummaryMd5": "9abd3faeb9f5c096196d781bbf5ed9a6",
-      "available": true
+      "available": true,
+      "upstream_key": "M192"
     },
     {
       "machine": "M193",
@@ -2817,7 +2934,8 @@
       ],
       "configSummaryMd5": "920914b566a3fda0882979dea435c085",
       "codeSummaryMd5": "b8541bc8ea1baf7acbfdb5f1da238b73",
-      "available": true
+      "available": true,
+      "upstream_key": "M193"
     },
     {
       "machine": "M194",
@@ -2844,7 +2962,8 @@
       ],
       "configSummaryMd5": "1abc9ae0adb8a64a49a28b82276eac79",
       "codeSummaryMd5": "0ae8eec96a51a33609fb20fef253e26a",
-      "available": true
+      "available": true,
+      "upstream_key": "M194"
     },
     {
       "machine": "M195",
@@ -2866,7 +2985,8 @@
       ],
       "configSummaryMd5": "b0a6c1015d0ac36bc109aa42180bb0b6",
       "codeSummaryMd5": "c0eadd935802755c3f4ec49e16af3721",
-      "available": true
+      "available": true,
+      "upstream_key": "M195"
     },
     {
       "machine": "M196",
@@ -2892,7 +3012,8 @@
       ],
       "configSummaryMd5": "f9ec7d401c53106ab0b38a78f5dcac18",
       "codeSummaryMd5": "40702ca9a275a6f3aed54754520518f6",
-      "available": true
+      "available": true,
+      "upstream_key": "M196"
     },
     {
       "machine": "M197",
@@ -2914,10 +3035,12 @@
       ],
       "configSummaryMd5": "b929cb3b2bae74f08e13e1a46467b7d4",
       "codeSummaryMd5": "c0eadd935802755c3f4ec49e16af3721",
-      "available": true
+      "available": true,
+      "upstream_key": "M197"
     },
     {
-      "machine": "M198$0$",
+      "machine": "M198$WheelSelector$0$",
+      "upstream_key": "M198$0$",
       "modes": [
         1,
         2,
@@ -2946,7 +3069,8 @@
       "available": true
     },
     {
-      "machine": "M198$1$40",
+      "machine": "M198$WheelSelector$1$40",
+      "upstream_key": "M198$1$40",
       "modes": [
         1,
         2,
@@ -2994,7 +3118,8 @@
       ],
       "configSummaryMd5": "7de0042f0857411e7beb8d59fea3dac6",
       "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
-      "available": true
+      "available": true,
+      "upstream_key": "M199"
     },
     {
       "machine": "M2",
@@ -3011,7 +3136,8 @@
       ],
       "configSummaryMd5": "1e15a92378227fe938d77ac7ac76a3c4",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M2"
     },
     {
       "machine": "M20",
@@ -3031,7 +3157,8 @@
       ],
       "configSummaryMd5": "3454a85786cba93255566638108ac176",
       "codeSummaryMd5": "820a40c610f988a32dd2eeb2c83b96aa",
-      "available": true
+      "available": true,
+      "upstream_key": "M20"
     },
     {
       "machine": "M200",
@@ -3053,10 +3180,12 @@
       ],
       "configSummaryMd5": "73874fbfd9f203aad7b797eebdcb3e19",
       "codeSummaryMd5": "774b277efaae39c7ab38d3b9dd020721",
-      "available": true
+      "available": true,
+      "upstream_key": "M200"
     },
     {
-      "machine": "M201$0$",
+      "machine": "M201$CommonSelector$0$",
+      "upstream_key": "M201$0$",
       "modes": [
         1,
         2,
@@ -3088,7 +3217,8 @@
       "available": true
     },
     {
-      "machine": "M201$1$2",
+      "machine": "M201$CommonSelector$1$2",
+      "upstream_key": "M201$1$2",
       "modes": [
         1,
         2,
@@ -3120,7 +3250,8 @@
       "available": true
     },
     {
-      "machine": "M201$1$2,3",
+      "machine": "M201$CommonSelector$1$2,3",
+      "upstream_key": "M201$1$2,3",
       "modes": [
         1,
         2,
@@ -3152,7 +3283,8 @@
       "available": true
     },
     {
-      "machine": "M201$1$2,3,4",
+      "machine": "M201$CommonSelector$1$2,3,4",
+      "upstream_key": "M201$1$2,3,4",
       "modes": [
         1,
         2,
@@ -3184,7 +3316,8 @@
       "available": true
     },
     {
-      "machine": "M201$1$2,4",
+      "machine": "M201$CommonSelector$1$2,4",
+      "upstream_key": "M201$1$2,4",
       "modes": [
         1,
         2,
@@ -3216,7 +3349,8 @@
       "available": true
     },
     {
-      "machine": "M201$1$3",
+      "machine": "M201$CommonSelector$1$3",
+      "upstream_key": "M201$1$3",
       "modes": [
         1,
         2,
@@ -3248,7 +3382,8 @@
       "available": true
     },
     {
-      "machine": "M201$1$3,4",
+      "machine": "M201$CommonSelector$1$3,4",
+      "upstream_key": "M201$1$3,4",
       "modes": [
         1,
         2,
@@ -3280,7 +3415,8 @@
       "available": true
     },
     {
-      "machine": "M201$1$4",
+      "machine": "M201$CommonSelector$1$4",
+      "upstream_key": "M201$1$4",
       "modes": [
         1,
         2,
@@ -3331,10 +3467,12 @@
       ],
       "configSummaryMd5": "bace51645f20d60053bbe942391cf207",
       "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
-      "available": true
+      "available": true,
+      "upstream_key": "M202"
     },
     {
-      "machine": "M203$0$",
+      "machine": "M203$WheelSelector$0$",
+      "upstream_key": "M203$0$",
       "modes": [
         1,
         2,
@@ -3363,7 +3501,8 @@
       "available": true
     },
     {
-      "machine": "M203$1$40",
+      "machine": "M203$WheelSelector$1$40",
+      "upstream_key": "M203$1$40",
       "modes": [
         1,
         2,
@@ -3392,7 +3531,8 @@
       "available": true
     },
     {
-      "machine": "M204$0$",
+      "machine": "M204$WheelSelector$0$",
+      "upstream_key": "M204$0$",
       "modes": [
         1,
         2,
@@ -3421,7 +3561,8 @@
       "available": true
     },
     {
-      "machine": "M204$1$40",
+      "machine": "M204$WheelSelector$1$40",
+      "upstream_key": "M204$1$40",
       "modes": [
         1,
         2,
@@ -3450,7 +3591,8 @@
       "available": true
     },
     {
-      "machine": "M206$0$",
+      "machine": "M206$TopDollarSelector$0$",
+      "upstream_key": "M206$0$",
       "modes": [
         1,
         2,
@@ -3476,7 +3618,8 @@
       "available": true
     },
     {
-      "machine": "M206$1$",
+      "machine": "M206$TopDollarSelector$1$",
+      "upstream_key": "M206$1$",
       "modes": [
         1,
         2,
@@ -3502,7 +3645,8 @@
       "available": true
     },
     {
-      "machine": "M206$2$40",
+      "machine": "M206$TopDollarSelector$2$40",
+      "upstream_key": "M206$2$40",
       "modes": [
         1,
         2,
@@ -3551,7 +3695,8 @@
       ],
       "configSummaryMd5": "48369ee10770f0dac09043960f8e9e34",
       "codeSummaryMd5": "be500b36d125bf5c7b305027555ee958",
-      "available": true
+      "available": true,
+      "upstream_key": "M207"
     },
     {
       "machine": "M208",
@@ -3573,10 +3718,12 @@
       ],
       "configSummaryMd5": "ad27c9bb86cd0741b337a10b521965c3",
       "codeSummaryMd5": "9bd1198fb2d141dd0a722e9f77728730",
-      "available": true
+      "available": true,
+      "upstream_key": "M208"
     },
     {
-      "machine": "M209$0$",
+      "machine": "M209$CommonSelector$0$",
+      "upstream_key": "M209$0$",
       "modes": [
         1,
         2,
@@ -3607,7 +3754,8 @@
       "available": true
     },
     {
-      "machine": "M209$1$",
+      "machine": "M209$CommonSelector$1$",
+      "upstream_key": "M209$1$",
       "modes": [
         1,
         2,
@@ -3638,7 +3786,8 @@
       "available": true
     },
     {
-      "machine": "M209$2$",
+      "machine": "M209$CommonSelector$2$",
+      "upstream_key": "M209$2$",
       "modes": [
         1,
         2,
@@ -3669,7 +3818,8 @@
       "available": true
     },
     {
-      "machine": "M209$3$",
+      "machine": "M209$CommonSelector$3$",
+      "upstream_key": "M209$3$",
       "modes": [
         1,
         2,
@@ -3723,10 +3873,12 @@
       ],
       "configSummaryMd5": "55a58e358210ae6ec0c9e193381c52e3",
       "codeSummaryMd5": "b257ab91133f38f96c2e4ec640a41c2b",
-      "available": true
+      "available": true,
+      "upstream_key": "M21"
     },
     {
-      "machine": "M210$0$",
+      "machine": "M210$ChristmasSimpleSelector$0$",
+      "upstream_key": "M210$0$",
       "modes": [
         1,
         2,
@@ -3757,7 +3909,8 @@
       "available": true
     },
     {
-      "machine": "M210$1$",
+      "machine": "M210$ChristmasSimpleSelector$1$",
+      "upstream_key": "M210$1$",
       "modes": [
         1,
         2,
@@ -3788,7 +3941,8 @@
       "available": true
     },
     {
-      "machine": "M210$2$",
+      "machine": "M210$ChristmasSimpleSelector$2$",
+      "upstream_key": "M210$2$",
       "modes": [
         1,
         2,
@@ -3838,7 +3992,8 @@
       ],
       "configSummaryMd5": "b84f1e075c56595d1165bfe2b7f63ba6",
       "codeSummaryMd5": "a2fa2807ffb1e57d22a50bbb5f0553e3",
-      "available": true
+      "available": true,
+      "upstream_key": "M211"
     },
     {
       "machine": "M212",
@@ -3860,7 +4015,8 @@
       ],
       "configSummaryMd5": "76d46a5a6442339bd73d13a63d89d101",
       "codeSummaryMd5": "c2aff679e69aeb7e18f03f4e4330c4aa",
-      "available": true
+      "available": true,
+      "upstream_key": "M212"
     },
     {
       "machine": "M213",
@@ -3882,7 +4038,8 @@
       ],
       "configSummaryMd5": "3164e509adc439f9e91e2e881c11657c",
       "codeSummaryMd5": "348af1f917b8107a53d8b1a76d414635",
-      "available": true
+      "available": true,
+      "upstream_key": "M213"
     },
     {
       "machine": "M214",
@@ -3904,7 +4061,8 @@
       ],
       "configSummaryMd5": "80fd23b4057a16d9ec7f5823177254e7",
       "codeSummaryMd5": "b9c20a58839cff0fbd2058dfb5e4c444",
-      "available": true
+      "available": true,
+      "upstream_key": "M214"
     },
     {
       "machine": "M215",
@@ -3926,10 +4084,12 @@
       ],
       "configSummaryMd5": "27ddf008c43923f15bdf68627d9f3a20",
       "codeSummaryMd5": "c0eadd935802755c3f4ec49e16af3721",
-      "available": true
+      "available": true,
+      "upstream_key": "M215"
     },
     {
-      "machine": "M216$0$",
+      "machine": "M216$WheelSelector$0$",
+      "upstream_key": "M216$0$",
       "modes": [
         1,
         2,
@@ -3958,7 +4118,8 @@
       "available": true
     },
     {
-      "machine": "M216$1$40",
+      "machine": "M216$WheelSelector$1$40",
+      "upstream_key": "M216$1$40",
       "modes": [
         1,
         2,
@@ -4006,7 +4167,8 @@
       ],
       "configSummaryMd5": "a180015e1285b7e2589c5700ca2427b5",
       "codeSummaryMd5": "348af1f917b8107a53d8b1a76d414635",
-      "available": true
+      "available": true,
+      "upstream_key": "M217"
     },
     {
       "machine": "M218",
@@ -4028,10 +4190,12 @@
       ],
       "configSummaryMd5": "e18faea3bfa403bf59dbff1651752512",
       "codeSummaryMd5": "b75611ef392ac80d630b3e9da6d4a237",
-      "available": true
+      "available": true,
+      "upstream_key": "M218"
     },
     {
-      "machine": "M219$0$",
+      "machine": "M219$WheelSelector$0$",
+      "upstream_key": "M219$0$",
       "modes": [
         1,
         2,
@@ -4064,7 +4228,8 @@
       "available": true
     },
     {
-      "machine": "M219$1$40",
+      "machine": "M219$WheelSelector$1$40",
+      "upstream_key": "M219$1$40",
       "modes": [
         1,
         2,
@@ -4118,7 +4283,8 @@
       ],
       "configSummaryMd5": "056ee41a5149e842ea9eb9e2d9763c3b",
       "codeSummaryMd5": "9df0ec30582f4a637a30ce75ba5f69e8",
-      "available": true
+      "available": true,
+      "upstream_key": "M22"
     },
     {
       "machine": "M220",
@@ -4149,7 +4315,8 @@
       ],
       "configSummaryMd5": "1c797b634a420e271ebb46f68cc3ee37",
       "codeSummaryMd5": "372d675a610c6d93b933bbd93ae3c98b",
-      "available": true
+      "available": true,
+      "upstream_key": "M220"
     },
     {
       "machine": "M221",
@@ -4171,7 +4338,8 @@
       ],
       "configSummaryMd5": "e43b5ed678cb23fc478b0cb02f89cf9a",
       "codeSummaryMd5": "0c4558fb3b5b9a4570464169bc851d74",
-      "available": true
+      "available": true,
+      "upstream_key": "M221"
     },
     {
       "machine": "M222",
@@ -4193,7 +4361,8 @@
       ],
       "configSummaryMd5": "98eceb1933e3d79c44c2249685c64020",
       "codeSummaryMd5": "0eba6820d72c6d592ef2e9f64c50fa97",
-      "available": true
+      "available": true,
+      "upstream_key": "M222"
     },
     {
       "machine": "M223",
@@ -4215,7 +4384,8 @@
       ],
       "configSummaryMd5": "44f14b3eb93348c0900a18e95c3ede44",
       "codeSummaryMd5": "76b3b8836a2e46769af1d8694235cebc",
-      "available": true
+      "available": true,
+      "upstream_key": "M223"
     },
     {
       "machine": "M224",
@@ -4237,7 +4407,8 @@
       ],
       "configSummaryMd5": "24e852405fc533a97525dbe07163ea40",
       "codeSummaryMd5": "0c4558fb3b5b9a4570464169bc851d74",
-      "available": true
+      "available": true,
+      "upstream_key": "M224"
     },
     {
       "machine": "M225",
@@ -4266,7 +4437,8 @@
       ],
       "configSummaryMd5": "23607132b267538ab4008b2c4fd4a13c",
       "codeSummaryMd5": "40b86cc2c05a68751c6674566da43eac",
-      "available": true
+      "available": true,
+      "upstream_key": "M225"
     },
     {
       "machine": "M226",
@@ -4291,7 +4463,8 @@
       ],
       "configSummaryMd5": "63669fcdf5bc2965724814c3d255e403",
       "codeSummaryMd5": "46f0a415c0eceaa68712eb5094da0240",
-      "available": true
+      "available": true,
+      "upstream_key": "M226"
     },
     {
       "machine": "M227",
@@ -4322,7 +4495,8 @@
       ],
       "configSummaryMd5": "b7723622a6f31fe3bacdec8c1609408a",
       "codeSummaryMd5": "fec53e0162a18985a74c7d105af732d6",
-      "available": true
+      "available": true,
+      "upstream_key": "M227"
     },
     {
       "machine": "M228",
@@ -4357,7 +4531,8 @@
       ],
       "configSummaryMd5": "ecec678279b2bec5d0dd85506b9ae65a",
       "codeSummaryMd5": "dc8633d6ee245f2cdc96d5e8a2d1150b",
-      "available": true
+      "available": true,
+      "upstream_key": "M228"
     },
     {
       "machine": "M229",
@@ -4388,7 +4563,8 @@
       ],
       "configSummaryMd5": "587e14c50f94cf8a515125079a0c2101",
       "codeSummaryMd5": "deb29a0f0f0a0d9714e4f6ace608fef9",
-      "available": true
+      "available": true,
+      "upstream_key": "M229"
     },
     {
       "machine": "M23",
@@ -4409,7 +4585,8 @@
       ],
       "configSummaryMd5": "d1db88771f5e4392c37b719399ca4e6e",
       "codeSummaryMd5": "a2617134286a68f2a4481a29f13a5ea1",
-      "available": true
+      "available": true,
+      "upstream_key": "M23"
     },
     {
       "machine": "M231",
@@ -4444,7 +4621,8 @@
       ],
       "configSummaryMd5": "b97b05ef6e2690206f4c19253c131085",
       "codeSummaryMd5": "ca2ed67e71a95964b3606dcc7000b60d",
-      "available": true
+      "available": true,
+      "upstream_key": "M231"
     },
     {
       "machine": "M232",
@@ -4474,7 +4652,8 @@
       ],
       "configSummaryMd5": "4f410533f9138c590069659d30c6e79f",
       "codeSummaryMd5": "219e59af9cea116424766c910085d80a",
-      "available": true
+      "available": true,
+      "upstream_key": "M232"
     },
     {
       "machine": "M233",
@@ -4509,7 +4688,8 @@
       ],
       "configSummaryMd5": "1102fb1b7b0ed9fac3f61e6db514175c",
       "codeSummaryMd5": "157c58e2f100ccacca7337513adbf792",
-      "available": true
+      "available": true,
+      "upstream_key": "M233"
     },
     {
       "machine": "M234",
@@ -4540,7 +4720,8 @@
       ],
       "configSummaryMd5": "4a679c6fa6ca1d08937f6bf12bed655e",
       "codeSummaryMd5": "5f1d96419730c4be0a0275951ae91f62",
-      "available": true
+      "available": true,
+      "upstream_key": "M234"
     },
     {
       "machine": "M235",
@@ -4571,7 +4752,8 @@
       ],
       "configSummaryMd5": "893d06b9b3d938c3c4edcb3ebcfa375b",
       "codeSummaryMd5": "2e0432931efb26f59be5d967e75592d5",
-      "available": true
+      "available": true,
+      "upstream_key": "M235"
     },
     {
       "machine": "M236",
@@ -4598,7 +4780,8 @@
       ],
       "configSummaryMd5": "254c26b68d7669241b30d58c8c2f0249",
       "codeSummaryMd5": "cc904c8b5be2e4b0cd56b84fa9d15d40",
-      "available": true
+      "available": true,
+      "upstream_key": "M236"
     },
     {
       "machine": "M237",
@@ -4629,7 +4812,8 @@
       ],
       "configSummaryMd5": "ade59d64a22abdc9fea4463643cd21a4",
       "codeSummaryMd5": "a7ba874f204ffcfc43ba843defe76577",
-      "available": true
+      "available": true,
+      "upstream_key": "M237"
     },
     {
       "machine": "M238",
@@ -4659,7 +4843,8 @@
       ],
       "configSummaryMd5": "86d7756e633ce0cfe74be62ed0c41801",
       "codeSummaryMd5": "8dd2bccffe4bc01f4b4bb32ec5d3bcdf",
-      "available": true
+      "available": true,
+      "upstream_key": "M238"
     },
     {
       "machine": "M239",
@@ -4690,7 +4875,8 @@
       ],
       "configSummaryMd5": "975f1387e2b954d2df77ec9427fe518b",
       "codeSummaryMd5": "fcdb64e8398794f12d4ffbe6b3e76bef",
-      "available": true
+      "available": true,
+      "upstream_key": "M239"
     },
     {
       "machine": "M24",
@@ -4716,7 +4902,8 @@
       ],
       "configSummaryMd5": "c7813e8ef2a9e5e577f932b9b45d9dcc",
       "codeSummaryMd5": "f7e9547512e7bd7e673a66b4122259d1",
-      "available": true
+      "available": true,
+      "upstream_key": "M24"
     },
     {
       "machine": "M240",
@@ -4738,7 +4925,8 @@
       ],
       "configSummaryMd5": "638471f82dbe207111f9e122df5bf144",
       "codeSummaryMd5": "6ccdb32b8d876de4ed8896efd1be6cfb",
-      "available": true
+      "available": true,
+      "upstream_key": "M240"
     },
     {
       "machine": "M241",
@@ -4763,7 +4951,8 @@
       ],
       "configSummaryMd5": "edfc99f79b6b779bf80e6075d24e7ca7",
       "codeSummaryMd5": "cb17d11be6538913ff09df2ef6269073",
-      "available": true
+      "available": true,
+      "upstream_key": "M241"
     },
     {
       "machine": "M242",
@@ -4794,7 +4983,8 @@
       ],
       "configSummaryMd5": "c763f70d1b55fa3520b836047703f5c1",
       "codeSummaryMd5": "88ea7bfff06355c780647c9cb18746c7",
-      "available": true
+      "available": true,
+      "upstream_key": "M242"
     },
     {
       "machine": "M243",
@@ -4816,7 +5006,8 @@
       ],
       "configSummaryMd5": "a83566fa21f6603ab10b9d1e658fc9a6",
       "codeSummaryMd5": "c985c39fea4e5a6055cb3609c93b04d3",
-      "available": true
+      "available": true,
+      "upstream_key": "M243"
     },
     {
       "machine": "M244",
@@ -4849,7 +5040,8 @@
       ],
       "configSummaryMd5": "2dcaade42258144d458645745f1124cd",
       "codeSummaryMd5": "412d7cd8196171a79f3e71e8daa04bd3",
-      "available": true
+      "available": true,
+      "upstream_key": "M244"
     },
     {
       "machine": "M245",
@@ -4882,7 +5074,8 @@
       ],
       "configSummaryMd5": "da682fc8f9630ac7dd2620e7c3a35fcb",
       "codeSummaryMd5": "a35e237067dc590e2f4b2a5471c043f1",
-      "available": true
+      "available": true,
+      "upstream_key": "M245"
     },
     {
       "machine": "M246",
@@ -4912,10 +5105,12 @@
       ],
       "configSummaryMd5": "7cda1cc4a138f7c4cef43276cf1cfe98",
       "codeSummaryMd5": "20707cb0278ae1228e685f345841bfce",
-      "available": true
+      "available": true,
+      "upstream_key": "M246"
     },
     {
-      "machine": "M247$0$",
+      "machine": "M247$WheelSelector$0$",
+      "upstream_key": "M247$0$",
       "modes": [
         1,
         2,
@@ -4953,7 +5148,8 @@
       "available": true
     },
     {
-      "machine": "M247$1$40",
+      "machine": "M247$WheelSelector$1$40",
+      "upstream_key": "M247$1$40",
       "modes": [
         1,
         2,
@@ -5022,7 +5218,8 @@
       ],
       "configSummaryMd5": "2b6fa9a9a2f9af11ddecf1325df3f912",
       "codeSummaryMd5": "20fb2e23c0392f195d127cd837cb1233",
-      "available": true
+      "available": true,
+      "upstream_key": "M248"
     },
     {
       "machine": "M249",
@@ -5055,7 +5252,8 @@
       ],
       "configSummaryMd5": "1e02388c0c98d3688154b8d1b8627df8",
       "codeSummaryMd5": "3d081f04189a6818c30b0971d9439396",
-      "available": true
+      "available": true,
+      "upstream_key": "M249"
     },
     {
       "machine": "M25",
@@ -5077,7 +5275,8 @@
       ],
       "configSummaryMd5": "515e9931d9bd2e7fa474db7c253b1e3f",
       "codeSummaryMd5": "1707615fb3a3dbe91a4e3694fcfcf658",
-      "available": true
+      "available": true,
+      "upstream_key": "M25"
     },
     {
       "machine": "M250",
@@ -5108,7 +5307,8 @@
       ],
       "configSummaryMd5": "048380c8e391af9b64e7ce02bf7c45d2",
       "codeSummaryMd5": "771536a96bd83e815995eb0f08388342",
-      "available": true
+      "available": true,
+      "upstream_key": "M250"
     },
     {
       "machine": "M251",
@@ -5137,7 +5337,8 @@
       ],
       "configSummaryMd5": "952f4d563902d905f41bfe2624649331",
       "codeSummaryMd5": "4fd80f60dc84e01fa82022d83db96d8e",
-      "available": true
+      "available": true,
+      "upstream_key": "M251"
     },
     {
       "machine": "M252",
@@ -5171,7 +5372,8 @@
       ],
       "configSummaryMd5": "15fefe396802cd903a7ee808160c24e0",
       "codeSummaryMd5": "3bdf44217bfed3137dfbfb2a09340c1a",
-      "available": true
+      "available": true,
+      "upstream_key": "M252"
     },
     {
       "machine": "M253",
@@ -5198,7 +5400,8 @@
       ],
       "configSummaryMd5": "214fdde64a018d3c9d51197b56260859",
       "codeSummaryMd5": "a8604378dafa723938894b3db04293f6",
-      "available": true
+      "available": true,
+      "upstream_key": "M253"
     },
     {
       "machine": "M254",
@@ -5233,7 +5436,8 @@
       ],
       "configSummaryMd5": "7c97a0feb9c19e39e43af1928f6e2898",
       "codeSummaryMd5": "351aaf22559bd71c16214e981ca93b16",
-      "available": true
+      "available": true,
+      "upstream_key": "M254"
     },
     {
       "machine": "M256",
@@ -5264,10 +5468,12 @@
       ],
       "configSummaryMd5": "2a7abe047c6b5eabb0b29c658ca2a2a9",
       "codeSummaryMd5": "d8bd751a0782593436a1cf6020d51ef6",
-      "available": true
+      "available": true,
+      "upstream_key": "M256"
     },
     {
-      "machine": "M257$0$",
+      "machine": "M257$CommonSelector$0$",
+      "upstream_key": "M257$0$",
       "modes": [
         1,
         2,
@@ -5304,7 +5510,8 @@
       "available": true
     },
     {
-      "machine": "M257$1$",
+      "machine": "M257$CommonSelector$1$",
+      "upstream_key": "M257$1$",
       "modes": [
         1,
         2,
@@ -5341,7 +5548,8 @@
       "available": true
     },
     {
-      "machine": "M257$2$",
+      "machine": "M257$CommonSelector$2$",
+      "upstream_key": "M257$2$",
       "modes": [
         1,
         2,
@@ -5378,7 +5586,8 @@
       "available": true
     },
     {
-      "machine": "M257$3$",
+      "machine": "M257$CommonSelector$3$",
+      "upstream_key": "M257$3$",
       "modes": [
         1,
         2,
@@ -5447,7 +5656,8 @@
       ],
       "configSummaryMd5": "8a080e9a789354ef3141204a7cd82c04",
       "codeSummaryMd5": "c7b015dd15f95f9e07d44f749a9980a6",
-      "available": true
+      "available": true,
+      "upstream_key": "M259"
     },
     {
       "machine": "M26",
@@ -5469,7 +5679,8 @@
       ],
       "configSummaryMd5": "c8344f0e768a93364b64010a8f443319",
       "codeSummaryMd5": "1a97515d7752f974e8cd84758d397fce",
-      "available": true
+      "available": true,
+      "upstream_key": "M26"
     },
     {
       "machine": "M260",
@@ -5503,10 +5714,12 @@
       ],
       "configSummaryMd5": "037fe950f73645bfcefeba86f3905a08",
       "codeSummaryMd5": "f9c245e3422703455facadbbbe4fbd31",
-      "available": true
+      "available": true,
+      "upstream_key": "M260"
     },
     {
-      "machine": "M261$0$",
+      "machine": "M261$WheelSelector$0$",
+      "upstream_key": "M261$0$",
       "modes": [
         1,
         2,
@@ -5544,7 +5757,8 @@
       "available": true
     },
     {
-      "machine": "M261$1$40",
+      "machine": "M261$WheelSelector$1$40",
+      "upstream_key": "M261$1$40",
       "modes": [
         1,
         2,
@@ -5610,7 +5824,8 @@
       ],
       "configSummaryMd5": "1ed8b4a508779d8642e2cc377986e1d2",
       "codeSummaryMd5": "07336ec1eac5a6ac18ab22b19ab79f23",
-      "available": true
+      "available": true,
+      "upstream_key": "M262"
     },
     {
       "machine": "M263",
@@ -5637,7 +5852,8 @@
       ],
       "configSummaryMd5": "9efdeda766da22aada31907979e67b99",
       "codeSummaryMd5": "10f164c07de0b16d76825f8f9b5c659b",
-      "available": true
+      "available": true,
+      "upstream_key": "M263"
     },
     {
       "machine": "M264",
@@ -5668,7 +5884,8 @@
       ],
       "configSummaryMd5": "79a1457a64719c348d1af62be246a8a7",
       "codeSummaryMd5": "6b14f6c0b0cde17f242c596499965ec1",
-      "available": true
+      "available": true,
+      "upstream_key": "M264"
     },
     {
       "machine": "M265",
@@ -5697,7 +5914,8 @@
       ],
       "configSummaryMd5": "32fbecbe61cc6a7247bd75d633cf3a26",
       "codeSummaryMd5": "7fa8bc782c769762eb51e3397abbbe66",
-      "available": true
+      "available": true,
+      "upstream_key": "M265"
     },
     {
       "machine": "M266",
@@ -5726,7 +5944,8 @@
       ],
       "configSummaryMd5": "60a65bcefac13d889a61a3bed20876d1",
       "codeSummaryMd5": "5401d52e7c225474b3dbc25d33df7e8c",
-      "available": true
+      "available": true,
+      "upstream_key": "M266"
     },
     {
       "machine": "M267",
@@ -5755,7 +5974,8 @@
       ],
       "configSummaryMd5": "0308bf327cb2e3b78b16e916edd40c06",
       "codeSummaryMd5": "818137cdc3963c4f98db5f4b5ea1ddf1",
-      "available": true
+      "available": true,
+      "upstream_key": "M267"
     },
     {
       "machine": "M268",
@@ -5784,7 +6004,8 @@
       ],
       "configSummaryMd5": "60eab00ee78c561837d6a65ebb8ad78b",
       "codeSummaryMd5": "09b19df6cc07b9f313f277130a54688c",
-      "available": true
+      "available": true,
+      "upstream_key": "M268"
     },
     {
       "machine": "M269",
@@ -5811,7 +6032,8 @@
       ],
       "configSummaryMd5": "c85d8ee74caeff133fadeeb26e77d7e9",
       "codeSummaryMd5": "de24775a75ea4b854dff94cbc9cb9bd3",
-      "available": true
+      "available": true,
+      "upstream_key": "M269"
     },
     {
       "machine": "M27",
@@ -5836,7 +6058,8 @@
       ],
       "configSummaryMd5": "d4282b9b287d460b642b6ea9031d96ac",
       "codeSummaryMd5": "0323c39a1a54c440fcfe4a1ff2d72d5a",
-      "available": true
+      "available": true,
+      "upstream_key": "M27"
     },
     {
       "machine": "M270",
@@ -5862,7 +6085,8 @@
       ],
       "configSummaryMd5": "852a751ad773ae6de2f059e19355fa06",
       "codeSummaryMd5": "0cf9e6f04f8956e8b7a6256df0e8c141",
-      "available": true
+      "available": true,
+      "upstream_key": "M270"
     },
     {
       "machine": "M271",
@@ -5889,7 +6113,8 @@
       ],
       "configSummaryMd5": "53b6f3b3ffbc8239e1cd8598cd4be16b",
       "codeSummaryMd5": "244e0fe75790aa82a208b73a7f0bf248",
-      "available": true
+      "available": true,
+      "upstream_key": "M271"
     },
     {
       "machine": "M272",
@@ -5916,10 +6141,12 @@
       ],
       "configSummaryMd5": "4876fcbd9d9940f0b88bf2c8d9fff665",
       "codeSummaryMd5": "4140b23fb6860a499dd1fe8172fbc184",
-      "available": true
+      "available": true,
+      "upstream_key": "M272"
     },
     {
-      "machine": "M273$0$",
+      "machine": "M273$WheelSelector$0$",
+      "upstream_key": "M273$0$",
       "modes": [
         1,
         2,
@@ -5955,7 +6182,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-2-3",
+      "machine": "M273$WheelSelector$1$1-2-3",
+      "upstream_key": "M273$1$1-2-3",
       "modes": [
         1,
         2,
@@ -5991,7 +6219,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-2-4",
+      "machine": "M273$WheelSelector$1$1-2-4",
+      "upstream_key": "M273$1$1-2-4",
       "modes": [
         1,
         2,
@@ -6027,7 +6256,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-2-5",
+      "machine": "M273$WheelSelector$1$1-2-5",
+      "upstream_key": "M273$1$1-2-5",
       "modes": [
         1,
         2,
@@ -6063,7 +6293,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-2-6",
+      "machine": "M273$WheelSelector$1$1-2-6",
+      "upstream_key": "M273$1$1-2-6",
       "modes": [
         1,
         2,
@@ -6099,7 +6330,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-2-7",
+      "machine": "M273$WheelSelector$1$1-2-7",
+      "upstream_key": "M273$1$1-2-7",
       "modes": [
         1,
         2,
@@ -6135,7 +6367,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-2-8",
+      "machine": "M273$WheelSelector$1$1-2-8",
+      "upstream_key": "M273$1$1-2-8",
       "modes": [
         1,
         2,
@@ -6171,7 +6404,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-2-9",
+      "machine": "M273$WheelSelector$1$1-2-9",
+      "upstream_key": "M273$1$1-2-9",
       "modes": [
         1,
         2,
@@ -6207,7 +6441,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-3-4",
+      "machine": "M273$WheelSelector$1$1-3-4",
+      "upstream_key": "M273$1$1-3-4",
       "modes": [
         1,
         2,
@@ -6243,7 +6478,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-3-5",
+      "machine": "M273$WheelSelector$1$1-3-5",
+      "upstream_key": "M273$1$1-3-5",
       "modes": [
         1,
         2,
@@ -6279,7 +6515,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-3-6",
+      "machine": "M273$WheelSelector$1$1-3-6",
+      "upstream_key": "M273$1$1-3-6",
       "modes": [
         1,
         2,
@@ -6315,7 +6552,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-3-7",
+      "machine": "M273$WheelSelector$1$1-3-7",
+      "upstream_key": "M273$1$1-3-7",
       "modes": [
         1,
         2,
@@ -6351,7 +6589,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-3-8",
+      "machine": "M273$WheelSelector$1$1-3-8",
+      "upstream_key": "M273$1$1-3-8",
       "modes": [
         1,
         2,
@@ -6387,7 +6626,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-3-9",
+      "machine": "M273$WheelSelector$1$1-3-9",
+      "upstream_key": "M273$1$1-3-9",
       "modes": [
         1,
         2,
@@ -6423,7 +6663,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-4-5",
+      "machine": "M273$WheelSelector$1$1-4-5",
+      "upstream_key": "M273$1$1-4-5",
       "modes": [
         1,
         2,
@@ -6459,7 +6700,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-4-6",
+      "machine": "M273$WheelSelector$1$1-4-6",
+      "upstream_key": "M273$1$1-4-6",
       "modes": [
         1,
         2,
@@ -6495,7 +6737,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-4-7",
+      "machine": "M273$WheelSelector$1$1-4-7",
+      "upstream_key": "M273$1$1-4-7",
       "modes": [
         1,
         2,
@@ -6531,7 +6774,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-4-8",
+      "machine": "M273$WheelSelector$1$1-4-8",
+      "upstream_key": "M273$1$1-4-8",
       "modes": [
         1,
         2,
@@ -6567,7 +6811,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-4-9",
+      "machine": "M273$WheelSelector$1$1-4-9",
+      "upstream_key": "M273$1$1-4-9",
       "modes": [
         1,
         2,
@@ -6603,7 +6848,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-5-6",
+      "machine": "M273$WheelSelector$1$1-5-6",
+      "upstream_key": "M273$1$1-5-6",
       "modes": [
         1,
         2,
@@ -6639,7 +6885,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-5-7",
+      "machine": "M273$WheelSelector$1$1-5-7",
+      "upstream_key": "M273$1$1-5-7",
       "modes": [
         1,
         2,
@@ -6675,7 +6922,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-5-8",
+      "machine": "M273$WheelSelector$1$1-5-8",
+      "upstream_key": "M273$1$1-5-8",
       "modes": [
         1,
         2,
@@ -6711,7 +6959,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-5-9",
+      "machine": "M273$WheelSelector$1$1-5-9",
+      "upstream_key": "M273$1$1-5-9",
       "modes": [
         1,
         2,
@@ -6747,7 +6996,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-6-7",
+      "machine": "M273$WheelSelector$1$1-6-7",
+      "upstream_key": "M273$1$1-6-7",
       "modes": [
         1,
         2,
@@ -6783,7 +7033,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-6-8",
+      "machine": "M273$WheelSelector$1$1-6-8",
+      "upstream_key": "M273$1$1-6-8",
       "modes": [
         1,
         2,
@@ -6819,7 +7070,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-6-9",
+      "machine": "M273$WheelSelector$1$1-6-9",
+      "upstream_key": "M273$1$1-6-9",
       "modes": [
         1,
         2,
@@ -6855,7 +7107,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-7-8",
+      "machine": "M273$WheelSelector$1$1-7-8",
+      "upstream_key": "M273$1$1-7-8",
       "modes": [
         1,
         2,
@@ -6891,7 +7144,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-7-9",
+      "machine": "M273$WheelSelector$1$1-7-9",
+      "upstream_key": "M273$1$1-7-9",
       "modes": [
         1,
         2,
@@ -6927,7 +7181,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$1-8-9",
+      "machine": "M273$WheelSelector$1$1-8-9",
+      "upstream_key": "M273$1$1-8-9",
       "modes": [
         1,
         2,
@@ -6963,7 +7218,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-3-4",
+      "machine": "M273$WheelSelector$1$2-3-4",
+      "upstream_key": "M273$1$2-3-4",
       "modes": [
         1,
         2,
@@ -6999,7 +7255,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-3-5",
+      "machine": "M273$WheelSelector$1$2-3-5",
+      "upstream_key": "M273$1$2-3-5",
       "modes": [
         1,
         2,
@@ -7035,7 +7292,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-3-6",
+      "machine": "M273$WheelSelector$1$2-3-6",
+      "upstream_key": "M273$1$2-3-6",
       "modes": [
         1,
         2,
@@ -7071,7 +7329,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-3-7",
+      "machine": "M273$WheelSelector$1$2-3-7",
+      "upstream_key": "M273$1$2-3-7",
       "modes": [
         1,
         2,
@@ -7107,7 +7366,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-3-8",
+      "machine": "M273$WheelSelector$1$2-3-8",
+      "upstream_key": "M273$1$2-3-8",
       "modes": [
         1,
         2,
@@ -7143,7 +7403,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-3-9",
+      "machine": "M273$WheelSelector$1$2-3-9",
+      "upstream_key": "M273$1$2-3-9",
       "modes": [
         1,
         2,
@@ -7179,7 +7440,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-4-5",
+      "machine": "M273$WheelSelector$1$2-4-5",
+      "upstream_key": "M273$1$2-4-5",
       "modes": [
         1,
         2,
@@ -7215,7 +7477,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-4-6",
+      "machine": "M273$WheelSelector$1$2-4-6",
+      "upstream_key": "M273$1$2-4-6",
       "modes": [
         1,
         2,
@@ -7251,7 +7514,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-4-7",
+      "machine": "M273$WheelSelector$1$2-4-7",
+      "upstream_key": "M273$1$2-4-7",
       "modes": [
         1,
         2,
@@ -7287,7 +7551,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-4-8",
+      "machine": "M273$WheelSelector$1$2-4-8",
+      "upstream_key": "M273$1$2-4-8",
       "modes": [
         1,
         2,
@@ -7323,7 +7588,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-4-9",
+      "machine": "M273$WheelSelector$1$2-4-9",
+      "upstream_key": "M273$1$2-4-9",
       "modes": [
         1,
         2,
@@ -7359,7 +7625,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-5-6",
+      "machine": "M273$WheelSelector$1$2-5-6",
+      "upstream_key": "M273$1$2-5-6",
       "modes": [
         1,
         2,
@@ -7395,7 +7662,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-5-7",
+      "machine": "M273$WheelSelector$1$2-5-7",
+      "upstream_key": "M273$1$2-5-7",
       "modes": [
         1,
         2,
@@ -7431,7 +7699,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-5-8",
+      "machine": "M273$WheelSelector$1$2-5-8",
+      "upstream_key": "M273$1$2-5-8",
       "modes": [
         1,
         2,
@@ -7467,7 +7736,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-5-9",
+      "machine": "M273$WheelSelector$1$2-5-9",
+      "upstream_key": "M273$1$2-5-9",
       "modes": [
         1,
         2,
@@ -7503,7 +7773,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-6-7",
+      "machine": "M273$WheelSelector$1$2-6-7",
+      "upstream_key": "M273$1$2-6-7",
       "modes": [
         1,
         2,
@@ -7539,7 +7810,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-6-8",
+      "machine": "M273$WheelSelector$1$2-6-8",
+      "upstream_key": "M273$1$2-6-8",
       "modes": [
         1,
         2,
@@ -7575,7 +7847,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-6-9",
+      "machine": "M273$WheelSelector$1$2-6-9",
+      "upstream_key": "M273$1$2-6-9",
       "modes": [
         1,
         2,
@@ -7611,7 +7884,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-7-8",
+      "machine": "M273$WheelSelector$1$2-7-8",
+      "upstream_key": "M273$1$2-7-8",
       "modes": [
         1,
         2,
@@ -7647,7 +7921,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-7-9",
+      "machine": "M273$WheelSelector$1$2-7-9",
+      "upstream_key": "M273$1$2-7-9",
       "modes": [
         1,
         2,
@@ -7683,7 +7958,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$2-8-9",
+      "machine": "M273$WheelSelector$1$2-8-9",
+      "upstream_key": "M273$1$2-8-9",
       "modes": [
         1,
         2,
@@ -7719,7 +7995,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-4-5",
+      "machine": "M273$WheelSelector$1$3-4-5",
+      "upstream_key": "M273$1$3-4-5",
       "modes": [
         1,
         2,
@@ -7755,7 +8032,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-4-6",
+      "machine": "M273$WheelSelector$1$3-4-6",
+      "upstream_key": "M273$1$3-4-6",
       "modes": [
         1,
         2,
@@ -7791,7 +8069,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-4-7",
+      "machine": "M273$WheelSelector$1$3-4-7",
+      "upstream_key": "M273$1$3-4-7",
       "modes": [
         1,
         2,
@@ -7827,7 +8106,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-4-8",
+      "machine": "M273$WheelSelector$1$3-4-8",
+      "upstream_key": "M273$1$3-4-8",
       "modes": [
         1,
         2,
@@ -7863,7 +8143,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-4-9",
+      "machine": "M273$WheelSelector$1$3-4-9",
+      "upstream_key": "M273$1$3-4-9",
       "modes": [
         1,
         2,
@@ -7899,7 +8180,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-5-6",
+      "machine": "M273$WheelSelector$1$3-5-6",
+      "upstream_key": "M273$1$3-5-6",
       "modes": [
         1,
         2,
@@ -7935,7 +8217,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-5-7",
+      "machine": "M273$WheelSelector$1$3-5-7",
+      "upstream_key": "M273$1$3-5-7",
       "modes": [
         1,
         2,
@@ -7971,7 +8254,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-5-8",
+      "machine": "M273$WheelSelector$1$3-5-8",
+      "upstream_key": "M273$1$3-5-8",
       "modes": [
         1,
         2,
@@ -8007,7 +8291,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-5-9",
+      "machine": "M273$WheelSelector$1$3-5-9",
+      "upstream_key": "M273$1$3-5-9",
       "modes": [
         1,
         2,
@@ -8043,7 +8328,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-6-7",
+      "machine": "M273$WheelSelector$1$3-6-7",
+      "upstream_key": "M273$1$3-6-7",
       "modes": [
         1,
         2,
@@ -8079,7 +8365,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-6-8",
+      "machine": "M273$WheelSelector$1$3-6-8",
+      "upstream_key": "M273$1$3-6-8",
       "modes": [
         1,
         2,
@@ -8115,7 +8402,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-6-9",
+      "machine": "M273$WheelSelector$1$3-6-9",
+      "upstream_key": "M273$1$3-6-9",
       "modes": [
         1,
         2,
@@ -8151,7 +8439,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-7-8",
+      "machine": "M273$WheelSelector$1$3-7-8",
+      "upstream_key": "M273$1$3-7-8",
       "modes": [
         1,
         2,
@@ -8187,7 +8476,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-7-9",
+      "machine": "M273$WheelSelector$1$3-7-9",
+      "upstream_key": "M273$1$3-7-9",
       "modes": [
         1,
         2,
@@ -8223,7 +8513,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$3-8-9",
+      "machine": "M273$WheelSelector$1$3-8-9",
+      "upstream_key": "M273$1$3-8-9",
       "modes": [
         1,
         2,
@@ -8259,7 +8550,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$4-5-6",
+      "machine": "M273$WheelSelector$1$4-5-6",
+      "upstream_key": "M273$1$4-5-6",
       "modes": [
         1,
         2,
@@ -8295,7 +8587,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$4-5-7",
+      "machine": "M273$WheelSelector$1$4-5-7",
+      "upstream_key": "M273$1$4-5-7",
       "modes": [
         1,
         2,
@@ -8331,7 +8624,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$4-5-8",
+      "machine": "M273$WheelSelector$1$4-5-8",
+      "upstream_key": "M273$1$4-5-8",
       "modes": [
         1,
         2,
@@ -8367,7 +8661,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$4-5-9",
+      "machine": "M273$WheelSelector$1$4-5-9",
+      "upstream_key": "M273$1$4-5-9",
       "modes": [
         1,
         2,
@@ -8403,7 +8698,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$4-6-7",
+      "machine": "M273$WheelSelector$1$4-6-7",
+      "upstream_key": "M273$1$4-6-7",
       "modes": [
         1,
         2,
@@ -8439,7 +8735,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$4-6-8",
+      "machine": "M273$WheelSelector$1$4-6-8",
+      "upstream_key": "M273$1$4-6-8",
       "modes": [
         1,
         2,
@@ -8475,7 +8772,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$4-6-9",
+      "machine": "M273$WheelSelector$1$4-6-9",
+      "upstream_key": "M273$1$4-6-9",
       "modes": [
         1,
         2,
@@ -8511,7 +8809,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$4-7-8",
+      "machine": "M273$WheelSelector$1$4-7-8",
+      "upstream_key": "M273$1$4-7-8",
       "modes": [
         1,
         2,
@@ -8547,7 +8846,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$4-7-9",
+      "machine": "M273$WheelSelector$1$4-7-9",
+      "upstream_key": "M273$1$4-7-9",
       "modes": [
         1,
         2,
@@ -8583,7 +8883,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$4-8-9",
+      "machine": "M273$WheelSelector$1$4-8-9",
+      "upstream_key": "M273$1$4-8-9",
       "modes": [
         1,
         2,
@@ -8619,7 +8920,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$5-6-7",
+      "machine": "M273$WheelSelector$1$5-6-7",
+      "upstream_key": "M273$1$5-6-7",
       "modes": [
         1,
         2,
@@ -8655,7 +8957,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$5-6-8",
+      "machine": "M273$WheelSelector$1$5-6-8",
+      "upstream_key": "M273$1$5-6-8",
       "modes": [
         1,
         2,
@@ -8691,7 +8994,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$5-6-9",
+      "machine": "M273$WheelSelector$1$5-6-9",
+      "upstream_key": "M273$1$5-6-9",
       "modes": [
         1,
         2,
@@ -8727,7 +9031,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$5-7-8",
+      "machine": "M273$WheelSelector$1$5-7-8",
+      "upstream_key": "M273$1$5-7-8",
       "modes": [
         1,
         2,
@@ -8763,7 +9068,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$5-7-9",
+      "machine": "M273$WheelSelector$1$5-7-9",
+      "upstream_key": "M273$1$5-7-9",
       "modes": [
         1,
         2,
@@ -8799,7 +9105,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$5-8-9",
+      "machine": "M273$WheelSelector$1$5-8-9",
+      "upstream_key": "M273$1$5-8-9",
       "modes": [
         1,
         2,
@@ -8835,7 +9142,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$6-7-8",
+      "machine": "M273$WheelSelector$1$6-7-8",
+      "upstream_key": "M273$1$6-7-8",
       "modes": [
         1,
         2,
@@ -8871,7 +9179,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$6-7-9",
+      "machine": "M273$WheelSelector$1$6-7-9",
+      "upstream_key": "M273$1$6-7-9",
       "modes": [
         1,
         2,
@@ -8907,7 +9216,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$6-8-9",
+      "machine": "M273$WheelSelector$1$6-8-9",
+      "upstream_key": "M273$1$6-8-9",
       "modes": [
         1,
         2,
@@ -8943,7 +9253,8 @@
       "available": true
     },
     {
-      "machine": "M273$1$7-8-9",
+      "machine": "M273$WheelSelector$1$7-8-9",
+      "upstream_key": "M273$1$7-8-9",
       "modes": [
         1,
         2,
@@ -9003,7 +9314,8 @@
       ],
       "configSummaryMd5": "5128d3a8be6a356e7b95fc6e4df0b2e5",
       "codeSummaryMd5": "b6efca9e7e9925059007597e9bb490a7",
-      "available": true
+      "available": true,
+      "upstream_key": "M274"
     },
     {
       "machine": "M275",
@@ -9030,7 +9342,8 @@
       ],
       "configSummaryMd5": "a4fa42f33a0a7068947a91b25545c3de",
       "codeSummaryMd5": "9b453ffc5c1d8f120a771e88e29e14ca",
-      "available": true
+      "available": true,
+      "upstream_key": "M275"
     },
     {
       "machine": "M276",
@@ -9061,7 +9374,8 @@
       ],
       "configSummaryMd5": "5577bc7162a0f6a6ddc58bdcbedba44b",
       "codeSummaryMd5": "b7e6990b2ecdef1a777ddc1a2d80be7a",
-      "available": true
+      "available": true,
+      "upstream_key": "M276"
     },
     {
       "machine": "M277",
@@ -9087,7 +9401,8 @@
       ],
       "configSummaryMd5": "ed07416e1c6f2b0dab9b080f845f4919",
       "codeSummaryMd5": "f8323952661a99baee251d7c9baa44dd",
-      "available": true
+      "available": true,
+      "upstream_key": "M277"
     },
     {
       "machine": "M279",
@@ -9118,7 +9433,8 @@
       ],
       "configSummaryMd5": "a0385a800ad6f13fb011bd923028ea49",
       "codeSummaryMd5": "1c1af39a07ed1f46f412e21b7fa3bb5d",
-      "available": true
+      "available": true,
+      "upstream_key": "M279"
     },
     {
       "machine": "M28",
@@ -9141,7 +9457,8 @@
       ],
       "configSummaryMd5": "46c9fb5a39ca70e427db9830594ffe99",
       "codeSummaryMd5": "be80f545ff7978398c495f45e5520745",
-      "available": true
+      "available": true,
+      "upstream_key": "M28"
     },
     {
       "machine": "M3",
@@ -9161,7 +9478,8 @@
       ],
       "configSummaryMd5": "d26e9de3ac888e84e669a958849ae41f",
       "codeSummaryMd5": "3653a4d4092a5d55e2d5e4a7fe3f9373",
-      "available": true
+      "available": true,
+      "upstream_key": "M3"
     },
     {
       "machine": "M30",
@@ -9183,7 +9501,8 @@
       ],
       "configSummaryMd5": "1be33bc8fee8236143359055dfa5823a",
       "codeSummaryMd5": "5840915542d24d10463a5fe7bdc8f7ac",
-      "available": true
+      "available": true,
+      "upstream_key": "M30"
     },
     {
       "machine": "M31",
@@ -9205,10 +9524,12 @@
       ],
       "configSummaryMd5": "e7f4aa3f7e8792473290d33cf3fe27f3",
       "codeSummaryMd5": "8067f1baa85812bb05d91515f61bf2d6",
-      "available": true
+      "available": true,
+      "upstream_key": "M31"
     },
     {
-      "machine": "M32$0$",
+      "machine": "M32$QuickDollarSelector$0$",
+      "upstream_key": "M32$0$",
       "modes": [
         1,
         2,
@@ -9234,7 +9555,8 @@
       "available": true
     },
     {
-      "machine": "M32$1$",
+      "machine": "M32$QuickDollarSelector$1$",
+      "upstream_key": "M32$1$",
       "modes": [
         1,
         2,
@@ -9260,7 +9582,8 @@
       "available": true
     },
     {
-      "machine": "M32$2$40",
+      "machine": "M32$QuickDollarSelector$2$40",
+      "upstream_key": "M32$2$40",
       "modes": [
         1,
         2,
@@ -9305,7 +9628,8 @@
       ],
       "configSummaryMd5": "fa02265dd7d130b57009be7bc1eb316a",
       "codeSummaryMd5": "80d6e6ac61a3b8736407ce059e9459f9",
-      "available": true
+      "available": true,
+      "upstream_key": "M33"
     },
     {
       "machine": "M34",
@@ -9322,7 +9646,8 @@
       ],
       "configSummaryMd5": "757b7dc79b5c967db03e0c08d3ba1c43",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M34"
     },
     {
       "machine": "M35",
@@ -9339,7 +9664,8 @@
       ],
       "configSummaryMd5": "5baea6b4d788a748db2ca219ada97ae3",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M35"
     },
     {
       "machine": "M36",
@@ -9361,7 +9687,8 @@
       ],
       "configSummaryMd5": "33559b48c28a725277e19fb848c44ebb",
       "codeSummaryMd5": "6b76fd0e9789eee4191c7168bb62a84e",
-      "available": true
+      "available": true,
+      "upstream_key": "M36"
     },
     {
       "machine": "M37",
@@ -9378,7 +9705,8 @@
       ],
       "configSummaryMd5": "c226b1c302ec15647fd6584ae57078c5",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M37"
     },
     {
       "machine": "M38",
@@ -9395,10 +9723,12 @@
       ],
       "configSummaryMd5": "37ce8e082b20ebc0d1a4b74c2a3e1118",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M38"
     },
     {
-      "machine": "M39$1$",
+      "machine": "M39$DancingDrumSelector$1$",
+      "upstream_key": "M39$1$",
       "modes": [
         1,
         2,
@@ -9429,7 +9759,8 @@
       "available": true
     },
     {
-      "machine": "M39$2$",
+      "machine": "M39$DancingDrumSelector$2$",
+      "upstream_key": "M39$2$",
       "modes": [
         1,
         2,
@@ -9460,7 +9791,8 @@
       "available": true
     },
     {
-      "machine": "M39$3$",
+      "machine": "M39$DancingDrumSelector$3$",
+      "upstream_key": "M39$3$",
       "modes": [
         1,
         2,
@@ -9491,7 +9823,8 @@
       "available": true
     },
     {
-      "machine": "M39$4$",
+      "machine": "M39$DancingDrumSelector$4$",
+      "upstream_key": "M39$4$",
       "modes": [
         1,
         2,
@@ -9522,7 +9855,8 @@
       "available": true
     },
     {
-      "machine": "M39$5$",
+      "machine": "M39$DancingDrumSelector$5$",
+      "upstream_key": "M39$5$",
       "modes": [
         1,
         2,
@@ -9567,7 +9901,8 @@
       ],
       "configSummaryMd5": "052af82615f48406d1fbba9c7c8da0bb",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M4"
     },
     {
       "machine": "M40",
@@ -9584,7 +9919,8 @@
       ],
       "configSummaryMd5": "4737e2bbc3a98c4e3d45b07f62a8882e",
       "codeSummaryMd5": "c8f480f0b70026dea1a9134da00b3398",
-      "available": true
+      "available": true,
+      "upstream_key": "M40"
     },
     {
       "machine": "M41",
@@ -9601,7 +9937,8 @@
       ],
       "configSummaryMd5": "847161ab6f03945c31770b9951ee5227",
       "codeSummaryMd5": "c8f480f0b70026dea1a9134da00b3398",
-      "available": true
+      "available": true,
+      "upstream_key": "M41"
     },
     {
       "machine": "M42",
@@ -9623,7 +9960,8 @@
       ],
       "configSummaryMd5": "de118c908121c27f23e878590c482443",
       "codeSummaryMd5": "e6b783b77b17f344c7ebacfcca3ebf7a",
-      "available": true
+      "available": true,
+      "upstream_key": "M42"
     },
     {
       "machine": "M43",
@@ -9646,7 +9984,8 @@
       ],
       "configSummaryMd5": "b99e0b0523794944f807154a0da22e5e",
       "codeSummaryMd5": "6e02924b710ae1ba0845223730cf728e",
-      "available": true
+      "available": true,
+      "upstream_key": "M43"
     },
     {
       "machine": "M44",
@@ -9669,7 +10008,8 @@
       ],
       "configSummaryMd5": "b9e6ffaba5272925e2b1a6ed50485d77",
       "codeSummaryMd5": "e449b20fd3094244b000cdaa6d602119",
-      "available": true
+      "available": true,
+      "upstream_key": "M44"
     },
     {
       "machine": "M46",
@@ -9692,7 +10032,8 @@
       ],
       "configSummaryMd5": "e6fdaeec1ed432618d03cde9323d7db2",
       "codeSummaryMd5": "032cfb2751ddce840c6a4b28a70ffe81",
-      "available": true
+      "available": true,
+      "upstream_key": "M46"
     },
     {
       "machine": "M47",
@@ -9722,7 +10063,8 @@
       ],
       "configSummaryMd5": "f3bad977795c0b7dfffcd448a31d5457",
       "codeSummaryMd5": "f2786308a0b4644589241ac1a5ab228d",
-      "available": true
+      "available": true,
+      "upstream_key": "M47"
     },
     {
       "machine": "M48",
@@ -9743,7 +10085,8 @@
       ],
       "configSummaryMd5": "06f0cdb0021a70ebad05d4af7c936d4c",
       "codeSummaryMd5": "9d56f13521240d203875e8e1e3f8bf79",
-      "available": true
+      "available": true,
+      "upstream_key": "M48"
     },
     {
       "machine": "M5",
@@ -9767,7 +10110,8 @@
       ],
       "configSummaryMd5": "f27534778f4a7ac94bd9b4c8085868db",
       "codeSummaryMd5": "ee2becc0e004eb2cc94cb75147992844",
-      "available": true
+      "available": true,
+      "upstream_key": "M5"
     },
     {
       "machine": "M50",
@@ -9789,7 +10133,8 @@
       ],
       "configSummaryMd5": "669da0518d945b17fbe72be35b3e1ba7",
       "codeSummaryMd5": "c41054c42a3592f15a1c6c505729141d",
-      "available": true
+      "available": true,
+      "upstream_key": "M50"
     },
     {
       "machine": "M51",
@@ -9811,7 +10156,8 @@
       ],
       "configSummaryMd5": "40e56ddefc24b7d74bbb510f46d9a92a",
       "codeSummaryMd5": "1a97515d7752f974e8cd84758d397fce",
-      "available": true
+      "available": true,
+      "upstream_key": "M51"
     },
     {
       "machine": "M53",
@@ -9833,7 +10179,8 @@
       ],
       "configSummaryMd5": "5685897fa171f5d64d671b786a2ac014",
       "codeSummaryMd5": "f68454a5833a62feed44ec193a393d6e",
-      "available": true
+      "available": true,
+      "upstream_key": "M53"
     },
     {
       "machine": "M54",
@@ -9856,7 +10203,8 @@
       ],
       "configSummaryMd5": "45ef1448fd7ff52c217128c3aa7a9858",
       "codeSummaryMd5": "e449b20fd3094244b000cdaa6d602119",
-      "available": true
+      "available": true,
+      "upstream_key": "M54"
     },
     {
       "machine": "M57",
@@ -9873,7 +10221,8 @@
       ],
       "configSummaryMd5": "586c38c64a8558c831a6a77ba63c583d",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M57"
     },
     {
       "machine": "M58",
@@ -9896,7 +10245,8 @@
       ],
       "configSummaryMd5": "31da4d31609b45ead0bd6ece5e95c111",
       "codeSummaryMd5": "63fcc5ecbc45d462b1cc4584a7bf0f8e",
-      "available": true
+      "available": true,
+      "upstream_key": "M58"
     },
     {
       "machine": "M59",
@@ -9913,10 +10263,12 @@
       ],
       "configSummaryMd5": "c985e139a9cbd0a442aeb24d8332c520",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M59"
     },
     {
-      "machine": "M6$1$",
+      "machine": "M6$FortunesSelector$1$",
+      "upstream_key": "M6$1$",
       "modes": [
         1,
         2,
@@ -9945,7 +10297,8 @@
       "available": true
     },
     {
-      "machine": "M6$2$",
+      "machine": "M6$FortunesSelector$2$",
+      "upstream_key": "M6$2$",
       "modes": [
         1,
         2,
@@ -9974,7 +10327,8 @@
       "available": true
     },
     {
-      "machine": "M6$3$",
+      "machine": "M6$FortunesSelector$3$",
+      "upstream_key": "M6$3$",
       "modes": [
         1,
         2,
@@ -10003,7 +10357,8 @@
       "available": true
     },
     {
-      "machine": "M6$4$",
+      "machine": "M6$FortunesSelector$4$",
+      "upstream_key": "M6$4$",
       "modes": [
         1,
         2,
@@ -10054,7 +10409,8 @@
       ],
       "configSummaryMd5": "75b80c67b973dd9b27a737a0e90e9535",
       "codeSummaryMd5": "b8176503a196abc2ddd18cad80764e5d",
-      "available": true
+      "available": true,
+      "upstream_key": "M60"
     },
     {
       "machine": "M61",
@@ -10076,7 +10432,8 @@
       ],
       "configSummaryMd5": "d35a8f54d506ab0ff2d1789bf7c58bb5",
       "codeSummaryMd5": "1707615fb3a3dbe91a4e3694fcfcf658",
-      "available": true
+      "available": true,
+      "upstream_key": "M61"
     },
     {
       "machine": "M62",
@@ -10098,7 +10455,8 @@
       ],
       "configSummaryMd5": "e597b3ec0d563e493fefeca496893cd4",
       "codeSummaryMd5": "d49ad7aaadadd0600de75927e2cbc05b",
-      "available": true
+      "available": true,
+      "upstream_key": "M62"
     },
     {
       "machine": "M63",
@@ -10115,7 +10473,8 @@
       ],
       "configSummaryMd5": "0935ed438117c14060be46f44cc6f5b7",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M63"
     },
     {
       "machine": "M64",
@@ -10132,7 +10491,8 @@
       ],
       "configSummaryMd5": "6738b14d0f0a04a2ef3f2f387ed9c3cd",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M64"
     },
     {
       "machine": "M65",
@@ -10154,7 +10514,8 @@
       ],
       "configSummaryMd5": "4f82446af316b8ed1dfe12777ff02373",
       "codeSummaryMd5": "e8522f210cf64a37f0a7fa4ff51e2e7a",
-      "available": true
+      "available": true,
+      "upstream_key": "M65"
     },
     {
       "machine": "M66",
@@ -10171,7 +10532,8 @@
       ],
       "configSummaryMd5": "6b7cc2cea84f04ece658e478932c8916",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M66"
     },
     {
       "machine": "M67",
@@ -10198,7 +10560,8 @@
       ],
       "configSummaryMd5": "9dac51170bac7112a70221cf5e468869",
       "codeSummaryMd5": "de739a97d92d0a97c3032f8965d7b7bb",
-      "available": true
+      "available": true,
+      "upstream_key": "M67"
     },
     {
       "machine": "M7",
@@ -10220,7 +10583,8 @@
       ],
       "configSummaryMd5": "f77e0a5b35212eadf89c32c291391e14",
       "codeSummaryMd5": "f68454a5833a62feed44ec193a393d6e",
-      "available": true
+      "available": true,
+      "upstream_key": "M7"
     },
     {
       "machine": "M70",
@@ -10237,7 +10601,8 @@
       ],
       "configSummaryMd5": "0f42474dd1b5ebc48e0afa6cb24e2d70",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M70"
     },
     {
       "machine": "M71",
@@ -10254,7 +10619,8 @@
       ],
       "configSummaryMd5": "c341cde14ed3e6b35f6ebc0dfc345c82",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M71"
     },
     {
       "machine": "M72",
@@ -10271,7 +10637,8 @@
       ],
       "configSummaryMd5": "a9b1c48aac5b254b03f8c8749bf835e4",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M72"
     },
     {
       "machine": "M73",
@@ -10288,7 +10655,8 @@
       ],
       "configSummaryMd5": "668d5fd12b06b03bab501e9b4638cdbd",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M73"
     },
     {
       "machine": "M74",
@@ -10305,7 +10673,8 @@
       ],
       "configSummaryMd5": "be97b0175f4f1d5e1100e0a9e1c06c96",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M74"
     },
     {
       "machine": "M75",
@@ -10328,7 +10697,8 @@
       ],
       "configSummaryMd5": "c55f1eb2f397c7995b5b6af2002a22bc",
       "codeSummaryMd5": "e449b20fd3094244b000cdaa6d602119",
-      "available": true
+      "available": true,
+      "upstream_key": "M75"
     },
     {
       "machine": "M76",
@@ -10350,7 +10720,8 @@
       ],
       "configSummaryMd5": "2c01a3b2633c61c37b377db5333e2c51",
       "codeSummaryMd5": "c87485df0c62f8c4cfd629cad5caca45",
-      "available": true
+      "available": true,
+      "upstream_key": "M76"
     },
     {
       "machine": "M78",
@@ -10367,7 +10738,8 @@
       ],
       "configSummaryMd5": "af8e207cd25e83c6262ff0a7d8888f54",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M78"
     },
     {
       "machine": "M79",
@@ -10389,7 +10761,8 @@
       ],
       "configSummaryMd5": "f162e4c25aafae82d87f15437a72b47c",
       "codeSummaryMd5": "8067f1baa85812bb05d91515f61bf2d6",
-      "available": true
+      "available": true,
+      "upstream_key": "M79"
     },
     {
       "machine": "M8",
@@ -10406,7 +10779,8 @@
       ],
       "configSummaryMd5": "b672e6b2581fcd6a3c6ad401007e68a2",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M8"
     },
     {
       "machine": "M84",
@@ -10423,10 +10797,12 @@
       ],
       "configSummaryMd5": "422cf4f660a6fca8f77c4363e1f4a323",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M84"
     },
     {
-      "machine": "M86$0$",
+      "machine": "M86$HoppyHuntingSelector$0$",
+      "upstream_key": "M86$0$",
       "modes": [
         1,
         2,
@@ -10458,7 +10834,8 @@
       "available": true
     },
     {
-      "machine": "M86$1$",
+      "machine": "M86$HoppyHuntingSelector$1$",
+      "upstream_key": "M86$1$",
       "modes": [
         1,
         2,
@@ -10490,7 +10867,8 @@
       "available": true
     },
     {
-      "machine": "M86$2$",
+      "machine": "M86$HoppyHuntingSelector$2$",
+      "upstream_key": "M86$2$",
       "modes": [
         1,
         2,
@@ -10522,7 +10900,8 @@
       "available": true
     },
     {
-      "machine": "M86$3$",
+      "machine": "M86$HoppyHuntingSelector$3$",
+      "upstream_key": "M86$3$",
       "modes": [
         1,
         2,
@@ -10554,7 +10933,8 @@
       "available": true
     },
     {
-      "machine": "M86$4$",
+      "machine": "M86$HoppyHuntingSelector$4$",
+      "upstream_key": "M86$4$",
       "modes": [
         1,
         2,
@@ -10605,7 +10985,8 @@
       ],
       "configSummaryMd5": "1584da3897edc941484db536f2e042ad",
       "codeSummaryMd5": "8067f1baa85812bb05d91515f61bf2d6",
-      "available": true
+      "available": true,
+      "upstream_key": "M87"
     },
     {
       "machine": "M88",
@@ -10627,7 +11008,8 @@
       ],
       "configSummaryMd5": "c007894475be84841b8a566e2dd18f1e",
       "codeSummaryMd5": "535bb6209d0e1e482252822c788ad739",
-      "available": true
+      "available": true,
+      "upstream_key": "M88"
     },
     {
       "machine": "M9",
@@ -10644,10 +11026,12 @@
       ],
       "configSummaryMd5": "8989014e197861ab38ab758b109a8a50",
       "codeSummaryMd5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
-      "available": true
+      "available": true,
+      "upstream_key": "M9"
     },
     {
-      "machine": "M90$0$",
+      "machine": "M90$TopDollarSelector$0$",
+      "upstream_key": "M90$0$",
       "modes": [
         1,
         2,
@@ -10672,7 +11056,8 @@
       "available": true
     },
     {
-      "machine": "M90$1$",
+      "machine": "M90$TopDollarSelector$1$",
+      "upstream_key": "M90$1$",
       "modes": [
         1,
         2,
@@ -10697,7 +11082,8 @@
       "available": true
     },
     {
-      "machine": "M90$2$40",
+      "machine": "M90$TopDollarSelector$2$40",
+      "upstream_key": "M90$2$40",
       "modes": [
         1,
         2,
@@ -10750,7 +11136,8 @@
       ],
       "configSummaryMd5": "228d53c3f808d26787258d612c671236",
       "codeSummaryMd5": "d6d2012a03e0d7ce714c6cb036d18722",
-      "available": true
+      "available": true,
+      "upstream_key": "M93"
     },
     {
       "machine": "M94",
@@ -10773,7 +11160,8 @@
       ],
       "configSummaryMd5": "6b171a70dbc46b2944751e4bdb0ffa86",
       "codeSummaryMd5": "fb0bb2b698dd1b1284e0611e3f81d76d",
-      "available": true
+      "available": true,
+      "upstream_key": "M94"
     },
     {
       "machine": "M95",
@@ -10795,7 +11183,8 @@
       ],
       "configSummaryMd5": "53186e4478370a12cf4f056ba2ed6a6d",
       "codeSummaryMd5": "8067f1baa85812bb05d91515f61bf2d6",
-      "available": true
+      "available": true,
+      "upstream_key": "M95"
     },
     {
       "machine": "M96",
@@ -10817,7 +11206,8 @@
       ],
       "configSummaryMd5": "8f5b76b3d79d9c0dc0929dccccd66ed2",
       "codeSummaryMd5": "4c03f461a84138ba67161e5b7dbf8210",
-      "available": true
+      "available": true,
+      "upstream_key": "M96"
     },
     {
       "machine": "M97",
@@ -10848,7 +11238,8 @@
       ],
       "configSummaryMd5": "1f14a21573e9323b9ab3ecb5719b9a28",
       "codeSummaryMd5": "9f396a207487841b98389ac82329b55e",
-      "available": true
+      "available": true,
+      "upstream_key": "M97"
     },
     {
       "machine": "M98",
@@ -10872,7 +11263,8 @@
       ],
       "configSummaryMd5": "ed9a9a5be2f49c42a421fa65b91fb475",
       "codeSummaryMd5": "3baf429f5302ffc0318d4679669682bc",
-      "available": true
+      "available": true,
+      "upstream_key": "M98"
     },
     {
       "machine": "M99",
@@ -10897,7 +11289,8 @@
       ],
       "configSummaryMd5": "ab4fb02d49c94a21e32ebf45bd2257ac",
       "codeSummaryMd5": "143c06074652fab9be7aeaa12d08c578",
-      "available": true
+      "available": true,
+      "upstream_key": "M99"
     }
   ]
 }

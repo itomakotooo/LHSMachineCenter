@@ -204,6 +204,20 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=f"override the sampling API endpoint (default: {DEFAULT_ENDPOINT_URL})",
     )
+    parser.add_argument(
+        "--upstream-machine-name",
+        type=str,
+        default=None,
+        help=(
+            "Override the ``MachineName`` value sent on each "
+            "/MultiRobotTestSpinVariant POST. Defaults to --machine. "
+            "Variant-aware callers pass the variant's upstream key "
+            "(e.g. M273$1$1-2-3) here while --machine stays the "
+            "display name (e.g. M273$WheelSelector$1$1-2-3) used for "
+            "rawdata directory + summary identity. Non-variant "
+            "callers can leave this unset."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -1501,9 +1515,21 @@ def make_payload(
     init_credits: int,
     reset_each_spin: bool,
     continue_after_bankrupt: bool,
+    upstream_machine_name: str | None = None,
 ) -> dict[str, Any]:
+    """Build a /MultiRobotTestSpinVariant request payload.
+
+    ``machine`` identifies the row locally (display name for variant
+    rows, raw name for non-variants). ``upstream_machine_name`` —
+    when provided — becomes the ``MachineName`` field on the
+    payload; otherwise ``MachineName`` falls back to ``machine``.
+
+    Variant rows pass the variant's upstream key (e.g. ``M273$1$1-2-3``)
+    as ``upstream_machine_name`` so the upstream Variant endpoint can
+    rewrite it to (underlying + selector params) server-side. Non-
+    variant rows leave it None and both fields hold the plain name."""
     return {
-        "MachineName": machine,
+        "MachineName": upstream_machine_name if upstream_machine_name else machine,
         "InitCreditsStr": str(init_credits),
         "BetStrategy": 0,
         "BetOriginStr": str(bet),
@@ -1788,6 +1814,7 @@ def run_sampling_chunk(
     chunk_cache_dir: Path | None = None,
     bankruptcy_session_spins: int = _DEFAULT_BANKRUPTCY_SESSION_SPINS,
     bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
+    upstream_machine_name: str | None = None,
 ) -> dict[str, Any]:
     payload = make_payload(
         machine=machine,
@@ -1798,6 +1825,7 @@ def run_sampling_chunk(
         init_credits=10**14,
         reset_each_spin=True,
         continue_after_bankrupt=True,
+        upstream_machine_name=upstream_machine_name,
     )
 
     started = time.time()
@@ -4112,6 +4140,7 @@ def main() -> int:
                     chunk_cache_dir=chunk_cache,
                     bankruptcy_session_spins=args.bankruptcy_session_spins,
                     bankruptcy_bankroll_mults=_bankruptcy_mults_tuple,
+                    upstream_machine_name=args.upstream_machine_name,
                 )
                 for idx in indices
             ]

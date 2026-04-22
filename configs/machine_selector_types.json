@@ -1,0 +1,33 @@
+{
+  "_note": "Authoritative map from underlying machine key to upstream selector type name. Used only to compose human-readable variant display names (e.g. M273$WheelSelector$1$1-2-3 instead of the opaque M273$1$1-2-3). The upstream_key field on each machines.json variant row carries the raw upstream key for payload use.",
+  "_source": "docs/upstream/MachineTest-TestSpin.md selector summary table (scraped 2026-04-22). Sync manually when upstream adds a new selector or reassigns a machine to a different selector; verify against POST /MachineTest/MapMachineOrder machineTestVariantsJson (every underlying listed there should appear here).",
+  "_schema_version": 1,
+  "selector_types": {
+    "M6": "FortunesSelector",
+    "M12": "TopDollarSelector",
+    "M15": "TopDollarSelector",
+    "M32": "QuickDollarSelector",
+    "M39": "DancingDrumSelector",
+    "M86": "HoppyHuntingSelector",
+    "M90": "TopDollarSelector",
+    "M102": "WheelSelector",
+    "M116": "ChristmasSimpleSelector",
+    "M123": "ValentineSimpleSelector",
+    "M132": "TopDollarSelector",
+    "M187": "WheelSelector",
+    "M188": "WheelSelector",
+    "M198": "WheelSelector",
+    "M201": "CommonSelector",
+    "M203": "WheelSelector",
+    "M204": "WheelSelector",
+    "M206": "TopDollarSelector",
+    "M209": "CommonSelector",
+    "M210": "ChristmasSimpleSelector",
+    "M216": "WheelSelector",
+    "M219": "WheelSelector",
+    "M247": "WheelSelector",
+    "M257": "CommonSelector",
+    "M261": "WheelSelector",
+    "M273": "WheelSelector"
+  }
+}

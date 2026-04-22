@@ -102,6 +102,88 @@ def _coerce_str_map(src: Mapping) -> dict[str, str]:
     return out
 
 
+def load_selector_types(config_path: Path) -> dict[str, str]:
+    """Read ``configs/machine_selector_types.json`` →
+    ``{underlying: selector_type_name}``. Values are the upstream
+    selector class names (e.g. ``WheelSelector`` /
+    ``TopDollarSelector``); they're injected into variant display
+    names so operators can see at a glance which selector gameplay
+    applies. Missing file or unreadable JSON → empty dict; callers
+    fall through to the bare upstream key as the display name
+    (everything stays functional, just less readable)."""
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    st = data.get("selector_types")
+    if not isinstance(st, dict):
+        return {}
+    return _coerce_str_map(st)
+
+
+def compose_display_name(
+    upstream_key: str,
+    variants_map: Mapping[str, str],
+    selector_types: Mapping[str, str],
+) -> str:
+    """Turn an upstream variant key into a human-readable machine
+    name by inserting the selector type between the underlying and
+    the strategy params.
+
+    Examples (with variants_map = {"M273$1$1-2-3": "M273", ...} and
+    selector_types = {"M273": "WheelSelector", ...}):
+
+      * ``M273$1$1-2-3``  → ``M273$WheelSelector$1$1-2-3``
+      * ``M6$1$``         → ``M6$FortunesSelector$1$``
+      * ``M201$1$2,3,4``  → ``M201$CommonSelector$1$2,3,4``
+      * ``M14``           → ``M14`` (non-variant: identity)
+
+    The underlying is looked up via ``variants_map`` — never derived
+    by string-splitting on ``$``. The selector name comes from
+    ``selector_types``. If either lookup fails, return the input
+    unchanged so the row stays usable even without a complete
+    selector_types config.
+
+    Once we know the underlying, the display name is built by
+    inserting ``${selector}`` immediately after the underlying
+    prefix. The rest of the upstream key (``$<strategy>$<param>``)
+    is pulled verbatim via a prefix slice — we're not parsing the
+    separator structure, just relocating a single injection point.
+    """
+    if upstream_key not in variants_map:
+        return upstream_key
+    underlying = variants_map[upstream_key]
+    selector = selector_types.get(underlying)
+    if not selector:
+        return upstream_key
+    if not upstream_key.startswith(underlying):
+        # Defensive: variants_map should guarantee this prefix, but
+        # if upstream ever changes the key scheme the safe fallback
+        # is to leave the display name alone rather than produce a
+        # malformed composite.
+        return upstream_key
+    rest = upstream_key[len(underlying):]
+    return f"{underlying}${selector}{rest}"
+
+
+def upstream_key_for_entry(entry: Mapping) -> str | None:
+    """Return the entry's explicit ``upstream_key`` field, or None
+    if absent. Callers with legacy rows that predate the field (the
+    machine name was the upstream key itself) should fall back to
+    ``resolve_upstream_md5_key(entry['machine'], variants_map)``.
+
+    Returning None here rather than guessing from ``entry['machine']``
+    is deliberate: once display names are in play the machine name
+    no longer equals the upstream key, and a silent fallback would
+    send sampling / md5 lookups to the wrong upstream row."""
+    uk = entry.get("upstream_key") if isinstance(entry, Mapping) else None
+    if isinstance(uk, str) and uk:
+        return uk
+    return None
+
+
 def apply_md5_refresh(
     existing: dict,
     upstream_data: Mapping[str, Mapping],
@@ -112,16 +194,18 @@ def apply_md5_refresh(
     out across its registered variants.
 
     Arguments:
-      * ``existing`` — ``{"machines": [ {machine, ...}, ... ]}`` as
-        read from configs/machines.json. Mutated in place and also
-        returned so callers can chain.
+      * ``existing`` — ``{"machines": [ {machine, upstream_key, ...}
+        ... ]}`` as read from configs/machines.json. Mutated in
+        place and also returned so callers can chain.
       * ``upstream_data`` — ``{machine_key: {configSummaryMd5, ...}}``
         from ``/MachineTest/MachineConfigMd5``. Keys are underlying
         machine names (never variant keys — upstream doesn't know
         about variants).
-      * ``variants_map`` — ``{variant_key: upstream_key}``, loaded
-        from halls cache. Empty map → identity resolution
-        (pre-variants deployments keep working unchanged).
+      * ``variants_map`` — ``{variant_upstream_key: underlying_key}``,
+        loaded from halls cache. Used for discovery (which upstream
+        keys belong to variants, so we don't materialize a bare row
+        for them) and as a fallback for rows that predate the
+        ``upstream_key`` field.
 
     Returns ``(existing, stats)`` where ``stats`` carries:
         * ``updated_machines`` — sorted list of machine names whose
@@ -132,16 +216,24 @@ def apply_md5_refresh(
         * ``skipped_empty_upstream`` — rows where upstream returned
           blank md5; we decline to overwrite real values with empty
         * ``unresolved_entries`` — sorted list of machine rows whose
-          resolved upstream key wasn't present in ``upstream_data``.
-          Typical trigger: a variant row exists locally but its
-          underlying was decommissioned upstream. Surfacing the
-          list lets the operator notice silent drift rather than
-          shipping with stale md5.
+          upstream_key wasn't present in ``upstream_data``. Typical
+          trigger: a variant row exists locally but its underlying
+          was decommissioned upstream. Surfacing the list lets the
+          operator notice silent drift rather than shipping with
+          stale md5.
         * ``discovered_machines`` — newly created rows from upstream
           keys that weren't present locally. Variant-bearing
           upstream keys are skipped (their md5 belongs to the
           variant rows, not a bare row) — listing one would shadow
           the variant rows during resolution.
+
+    Resolution order for each row: ``upstream_key_for_entry(entry)``
+    returns the dedicated upstream_key field when present, else
+    falls back to ``resolve_upstream_md5_key(entry.machine, map)``.
+    This keeps legacy rows (variants_map-keyed machine names, no
+    upstream_key yet) refreshing correctly during the rollout
+    window, while new rows (display-named machine + upstream_key
+    field) pick up md5 without re-parsing anything.
 
     This function is side-effect free modulo the mutation of
     ``existing`` (the caller owns that dict and will immediately
@@ -173,14 +265,28 @@ def apply_md5_refresh(
             # An all-empty row is noise; wait for upstream to
             # actually report real md5 before materializing it.
             continue
-        entry = {"machine": machine_name, "modes": [1, 2, 5, 7]}
+        # Non-variant discovery: set upstream_key = machine so the
+        # row matches the new schema from the start (no legacy
+        # fallback needed).
+        entry = {
+            "machine": machine_name,
+            "upstream_key": machine_name,
+            "modes": [1, 2, 5, 7],
+        }
         machines_list.append(entry)
         machines_by_name[machine_name] = entry
         discovered.append(machine_name)
 
-    # Pass 2 — fan md5 out to every row by resolving its upstream
-    # key. Each row updates independently; sibling variants end up
-    # with identical md5 by construction.
+    # Pass 2 — fan md5 out to every row. Two-step resolution:
+    #   (1) find the *variant upstream key* for the row — what we'd
+    #       send as MachineName on /MultiRobotTestSpinVariant
+    #   (2) translate that to the *md5 owner key* — the underlying
+    #       machine under which /MachineConfigMd5 reports its md5
+    # New-schema rows carry the variant upstream key as an explicit
+    # ``upstream_key`` field (while ``machine`` is a display name);
+    # legacy rows have only ``machine`` and it equals the variant
+    # upstream key itself. Either way step 2 goes through
+    # variants_map → underlying, which is the key upstream_data uses.
     updated_machines: list[str] = []
     skipped_empty_upstream = 0
     unresolved_entries: list[str] = []
@@ -188,8 +294,11 @@ def apply_md5_refresh(
         name = entry.get("machine") if isinstance(entry, dict) else None
         if not isinstance(name, str):
             continue
-        ukey = resolve_upstream_md5_key(name, variants_map)
-        upstream = upstream_data.get(ukey)
+        variant_ukey = upstream_key_for_entry(entry)
+        if variant_ukey is None:
+            variant_ukey = name  # legacy row: machine field is the upstream key
+        md5_owner = resolve_upstream_md5_key(variant_ukey, variants_map)
+        upstream = upstream_data.get(md5_owner)
         if not isinstance(upstream, Mapping):
             unresolved_entries.append(name)
             continue

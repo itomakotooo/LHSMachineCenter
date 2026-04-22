@@ -4217,6 +4217,7 @@ class RunManager:
         reports_root: Path | None = None,
         progress_dir: Path | None = None,
         cache_root: Path | None = None,
+        machines_config: Path | None = None,
         popen_factory: "Callable[[list[str], Path], Any] | None" = None,
     ) -> None:
         self.store = store
@@ -4224,10 +4225,38 @@ class RunManager:
         self._reports_root = reports_root if reports_root is not None else REPORTS_ROOT
         self._cache_root = cache_root if cache_root is not None else CACHE_ROOT
         self._progress_dir = progress_dir if progress_dir is not None else PROGRESS_DIR
+        # machines_config is consulted at spawn time to resolve a
+        # row's upstream_key (the value passed as MachineName on the
+        # /MultiRobotTestSpinVariant payload). Falls back to the
+        # module default so non-test callers don't break.
+        self._machines_config = (
+            machines_config if machines_config is not None else MACHINES_CONFIG
+        )
         self._popen_factory = popen_factory if popen_factory is not None else _default_popen_factory
         self._lock = threading.Lock()
         self._running: dict[str, ManagedRun] = {}
         self._startup_recovery = self._recover_orphan_running_runs()
+
+    def _resolve_upstream_machine_name(self, machine: str) -> str | None:
+        """Look up the machine row's ``upstream_key`` field for use
+        as ``MachineName`` on the upstream payload. Returns None
+        when the row is absent, the field is missing, or it equals
+        the machine name (so we don't redundantly pass a flag that
+        duplicates --machine). Best-effort — any IO error falls
+        through to None and the sampling just uses --machine."""
+        try:
+            data = json.loads(Path(self._machines_config).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        for row in (data.get("machines") or []):
+            if not isinstance(row, dict):
+                continue
+            if row.get("machine") == machine:
+                uk = row.get("upstream_key")
+                if isinstance(uk, str) and uk and uk != machine:
+                    return uk
+                return None
+        return None
 
     def _recover_orphan_running_runs(self) -> dict[str, Any]:
         stale = self.store.list_runs_by_status("running", limit=5000)
@@ -4377,6 +4406,15 @@ class RunManager:
             cmd.extend(["--upstream-config-md5", req.upstream_config_md5])
         if req.upstream_code_md5:
             cmd.extend(["--upstream-code-md5", req.upstream_code_md5])
+        # Variant routing: for rows whose upstream_key differs from
+        # the display machine name (all 166 variant rows), forward
+        # the bare upstream key to analyzer so its payload's
+        # MachineName field routes correctly through the Variant
+        # endpoint. Non-variant rows omit the flag — analyzer
+        # defaults MachineName to --machine.
+        upstream_machine_name = self._resolve_upstream_machine_name(req.machine)
+        if upstream_machine_name:
+            cmd.extend(["--upstream-machine-name", upstream_machine_name])
 
         process = self._popen_factory(cmd, ROOT)
         managed = ManagedRun(
@@ -4850,6 +4888,7 @@ def create_app(
         reports_root=rr,
         progress_dir=progress_dir,
         cache_root=cr,
+        machines_config=mc,
     )
     batch_mgr = BatchRunManager(
         store, manager, cr,

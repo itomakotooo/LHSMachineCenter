@@ -25,8 +25,11 @@ from pathlib import Path
 
 from src.web_console.backend.machine_variants import (
     apply_md5_refresh,
+    compose_display_name,
+    load_selector_types,
     load_variants_map,
     resolve_upstream_md5_key,
+    upstream_key_for_entry,
 )
 
 
@@ -440,3 +443,212 @@ class TestFanoutCountSemantics:
         vmap = {"M273$0$": "M273", "M273$1$aa": "M273", "M273$1$zz": "M273"}
         _, stats = apply_md5_refresh(machines_json, upstream, vmap)
         assert stats["updated_machines"] == sorted(stats["updated_machines"])
+
+
+# ---------------------------------------------------------------------
+# compose_display_name — human-readable variant machine names
+# ---------------------------------------------------------------------
+
+
+class TestComposeDisplayName:
+    """Display-name composition injects the selector type between
+    the underlying and the strategy params. Invariants:
+      * Variants with a known selector get a display name with the
+        selector injected after the underlying.
+      * Non-variants (absent from variants_map) return unchanged.
+      * Missing selector type → safe fallback to the upstream key.
+    """
+
+    def test_inserts_wheelselector_for_m273_variant(self):
+        vmap = {"M273$1$1-2-3": "M273"}
+        stypes = {"M273": "WheelSelector"}
+        assert compose_display_name("M273$1$1-2-3", vmap, stypes) == (
+            "M273$WheelSelector$1$1-2-3"
+        )
+
+    def test_inserts_fortunes_for_m6_variant(self):
+        vmap = {"M6$1$": "M6"}
+        stypes = {"M6": "FortunesSelector"}
+        assert compose_display_name("M6$1$", vmap, stypes) == "M6$FortunesSelector$1$"
+
+    def test_comma_in_common_selector_preserved(self):
+        vmap = {"M201$1$2,3,4": "M201"}
+        stypes = {"M201": "CommonSelector"}
+        assert compose_display_name("M201$1$2,3,4", vmap, stypes) == (
+            "M201$CommonSelector$1$2,3,4"
+        )
+
+    def test_non_variant_machine_returns_identity(self):
+        """``M14`` has no entry in variants_map — nothing to inject.
+        Returning it verbatim keeps the catalog coherent for the
+        227 non-variant machines."""
+        assert compose_display_name("M14", {}, {}) == "M14"
+
+    def test_missing_selector_type_keeps_upstream_key(self):
+        """variants_map has the row but selector_types doesn't —
+        e.g. a newly-added underlying that nobody's documented yet.
+        Return the upstream key unchanged rather than fabricate
+        a composite with ``None`` in it."""
+        vmap = {"M999$0$": "M999"}
+        stypes: dict[str, str] = {}
+        assert compose_display_name("M999$0$", vmap, stypes) == "M999$0$"
+
+    def test_empty_maps_are_identity(self):
+        """Fresh deployment pre-halls-refresh / pre-selector-types
+        config — every key returns itself."""
+        assert compose_display_name("M273$0$", {}, {}) == "M273$0$"
+
+    def test_does_not_parse_dollar_structure(self):
+        """Regression guard: composition must go through the maps,
+        not through string splitting. A pathological variant key
+        with embedded dollar signs should still round-trip safely."""
+        weird_upstream = "XK$1$a$b$c"
+        vmap = {weird_upstream: "XK"}
+        stypes = {"XK": "WeirdSelector"}
+        # Correct behaviour: insert ``$WeirdSelector`` after ``XK``.
+        # The rest of the key (``$1$a$b$c``) is carried verbatim —
+        # no tokenization on ``$``.
+        assert compose_display_name(weird_upstream, vmap, stypes) == (
+            "XK$WeirdSelector$1$a$b$c"
+        )
+
+    def test_underlying_not_prefix_falls_back_safely(self):
+        """Defensive: if variants_map claims underlying that isn't a
+        prefix of the upstream key (malformed config), we return the
+        upstream key unchanged rather than produce a garbled
+        concatenation."""
+        vmap = {"M273$1$1-2-3": "SomethingElse"}
+        stypes = {"SomethingElse": "WheelSelector"}
+        assert compose_display_name("M273$1$1-2-3", vmap, stypes) == "M273$1$1-2-3"
+
+
+class TestLoadSelectorTypes:
+    def test_reads_selector_types_field(self, tmp_path: Path):
+        p = tmp_path / "machine_selector_types.json"
+        p.write_text(
+            json.dumps({"selector_types": {
+                "M273": "WheelSelector",
+                "M201": "CommonSelector",
+            }}),
+            encoding="utf-8",
+        )
+        assert load_selector_types(p) == {
+            "M273": "WheelSelector", "M201": "CommonSelector",
+        }
+
+    def test_missing_file_returns_empty(self, tmp_path: Path):
+        assert load_selector_types(tmp_path / "no_such.json") == {}
+
+    def test_unreadable_json_returns_empty(self, tmp_path: Path):
+        p = tmp_path / "machine_selector_types.json"
+        p.write_text("{ not json", encoding="utf-8")
+        assert load_selector_types(p) == {}
+
+    def test_non_dict_selector_types_returns_empty(self, tmp_path: Path):
+        p = tmp_path / "machine_selector_types.json"
+        p.write_text(json.dumps({"selector_types": ["nope"]}), encoding="utf-8")
+        assert load_selector_types(p) == {}
+
+    def test_non_string_values_dropped(self, tmp_path: Path):
+        p = tmp_path / "machine_selector_types.json"
+        p.write_text(
+            json.dumps({"selector_types": {
+                "M273": "WheelSelector",
+                "M200": 42,           # bad
+                "M201": ["nope"],     # bad
+            }}),
+            encoding="utf-8",
+        )
+        assert load_selector_types(p) == {"M273": "WheelSelector"}
+
+
+# ---------------------------------------------------------------------
+# upstream_key_for_entry — display-name-aware upstream routing
+# ---------------------------------------------------------------------
+
+
+class TestUpstreamKeyForEntry:
+    def test_explicit_upstream_key_field_wins(self):
+        """New schema row: display name as machine, upstream_key
+        field carries the real upstream key for API payloads."""
+        entry = {
+            "machine": "M273$WheelSelector$1$1-2-3",
+            "upstream_key": "M273$1$1-2-3",
+        }
+        assert upstream_key_for_entry(entry) == "M273$1$1-2-3"
+
+    def test_no_upstream_key_returns_none(self):
+        """Legacy rows without upstream_key return None — caller
+        must explicitly fall back to resolve_upstream_md5_key. We
+        refuse to silently guess from the machine field because once
+        display names ship, machine != upstream_key and a fallback
+        would misroute md5 lookups / sampling."""
+        entry = {"machine": "M273$0$"}
+        assert upstream_key_for_entry(entry) is None
+
+    def test_empty_upstream_key_treated_as_absent(self):
+        """Empty string is equivalent to missing — picked up by the
+        same legacy-fallback path."""
+        entry = {"machine": "M273$WheelSelector$0$", "upstream_key": ""}
+        assert upstream_key_for_entry(entry) is None
+
+    def test_non_dict_input_returns_none(self):
+        """Defensive: odd values in machines.json shouldn't crash
+        the md5 refresh loop."""
+        assert upstream_key_for_entry("not a dict") is None  # type: ignore[arg-type]
+        assert upstream_key_for_entry(None) is None  # type: ignore[arg-type]
+
+
+class TestApplyMd5RefreshWithUpstreamKeyField:
+    """New-schema rows with an explicit upstream_key field route
+    directly through it; the fanout behaviour is identical to the
+    legacy path but more robust (no variants_map needed at lookup)."""
+
+    def test_variant_row_with_upstream_key_gets_correct_md5(self):
+        existing = {"machines": [{
+            "machine": "M273$WheelSelector$1$1-2-3",
+            "upstream_key": "M273$1$1-2-3",
+            "configSummaryMd5": "old", "codeSummaryMd5": "old",
+            "modes": [1],
+        }]}
+        upstream = {"M273": _md5_entry("cfg_NEW", "code_NEW")}
+        vmap = {"M273$1$1-2-3": "M273"}
+        new, stats = apply_md5_refresh(existing, upstream, vmap)
+        row = new["machines"][0]
+        assert row["configSummaryMd5"] == "cfg_NEW"
+        assert stats["updated_machines"] == ["M273$WheelSelector$1$1-2-3"]
+
+    def test_mixed_legacy_and_new_rows_both_update(self):
+        """During rollout, machines.json may have BOTH legacy rows
+        (upstream-key-as-machine) and new-schema rows (display
+        name + upstream_key). A single refresh call updates both
+        correctly — legacy via variants_map resolution, new via
+        the explicit field."""
+        existing = {"machines": [
+            # legacy variant row
+            {"machine": "M201$0$",
+             "configSummaryMd5": "old", "codeSummaryMd5": "old", "modes": [1]},
+            # new-schema variant row
+            {"machine": "M273$WheelSelector$1$1-2-3",
+             "upstream_key": "M273$1$1-2-3",
+             "configSummaryMd5": "old", "codeSummaryMd5": "old", "modes": [1]},
+        ]}
+        upstream = {
+            "M201": _md5_entry("cfg_M201", "code_M201"),
+            "M273": _md5_entry("cfg_M273", "code_M273"),
+        }
+        vmap = {"M201$0$": "M201", "M273$1$1-2-3": "M273"}
+        new, stats = apply_md5_refresh(existing, upstream, vmap)
+        rows = {r["machine"]: r for r in new["machines"]}
+        assert rows["M201$0$"]["configSummaryMd5"] == "cfg_M201"
+        assert rows["M273$WheelSelector$1$1-2-3"]["configSummaryMd5"] == "cfg_M273"
+
+    def test_discovery_sets_upstream_key_field(self):
+        """Regression guard: new non-variant machines discovered from
+        upstream get the new-schema shape (upstream_key set = machine)
+        so they don't land as legacy rows needing future rewrite."""
+        existing = {"machines": []}
+        upstream = {"M999": _md5_entry("cfg", "code")}
+        new, _ = apply_md5_refresh(existing, upstream, {})
+        assert new["machines"][0]["machine"] == "M999"
+        assert new["machines"][0]["upstream_key"] == "M999"
