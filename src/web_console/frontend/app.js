@@ -3797,11 +3797,23 @@ async function renderPayIdOverview(summary) {
       hasBreakdown ? "payid-main payid-main-expandable" : "payid-main",
       isDeclaredOnly ? "payid-declared-only" : "",
     ].filter(Boolean).join(" ");
+    // Hit rate: declared-only rows have no observed rate → em-dash.
+    // Otherwise render as percentage with 4 decimals when very small
+    // (< 0.1%), 2 decimals otherwise. Grand-jackpots at 1e-6 would
+    // render as "0.00%" with 2 decimals, which hides the order of
+    // magnitude — 4 decimals fixes that.
+    const hitRateRaw = Number(pr.hit_rate);
+    const hitRateCell = isDeclaredOnly || !Number.isFinite(hitRateRaw)
+      ? "—"
+      : hitRateRaw < 0.001
+        ? `${(hitRateRaw * 100).toFixed(4)}%`
+        : `${(hitRateRaw * 100).toFixed(2)}%`;
     const mainRow =
       `<tr class="${mainRowClassList}" data-pid="${_escHtml(pid)}">` +
       `<td>${toggleIcon}${_escHtml(pid)}</td>` +
       `<td>${categoryBadge(cat)}</td>` +
       `<td${firesAttr}>${fInt(pr.hit_count)}</td>` +
+      `<td class="payid-hitrate">${hitRateCell}</td>` +
       `<td class="payid-mult">${mainMult}</td>` +
       `<td class="payid-winshare">—</td>` +
       `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>` +
@@ -3825,6 +3837,11 @@ async function renderPayIdOverview(summary) {
           `<td><span class="payid-subrow-indent">↳</span> <span class="payid-subrow-label">${_escHtml(b.label || "")}</span></td>` +
           `<td>${categoryBadge(cat)}</td>` +
           `<td>${fInt(b.fires)}</td>` +
+          // Hit-rate column placeholder — sub-rows don't carry per-
+          // composition hit rate yet (backend emits win_total + fires
+          // only); showing em-dash keeps the column count aligned with
+          // the main rows so CSS / colSpan don't shear.
+          `<td class="payid-subrow-muted">—</td>` +
           `<td class="payid-mult">${subMult}</td>` +
           `<td class="payid-winshare">${winShareText}</td>` +
           `<td class="payid-subrow-muted">—</td>` +
@@ -3853,6 +3870,7 @@ async function renderPayIdOverview(summary) {
     `<th>${_escHtml(fmt("payIdCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdCatCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdPaidHitsCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdHitRateCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdMultCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdWinShareCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdRtpCol"))}</th>` +
@@ -5024,6 +5042,39 @@ async function refreshCurrentRun() {
   state.currentRunStatus = run.status || "";
   // If status flipped relative to last poll, re-evaluate fast polling.
   if (prevStatus !== state.currentRunStatus) ensureFastPolling();
+
+  // Auto-refresh the right-side mode-data panel (rwtree) when the
+  // currently-focused machine's run just finished. Without this, a
+  // sampling run produces new chunks + a new report, but the panel
+  // still shows the pre-run counts — user has to click away and back
+  // to see the update. Guard on (prev running/queued → terminal) so
+  // we only refresh once per state transition, not on every poll tick
+  // while the run stays "completed".
+  //
+  // Second guard on ``state._autoRefreshedForRunId`` — fastTimer fires
+  // refreshCurrentRun every 1s while status == running, and those ticks
+  // can overlap (each call is async, the second invocation can start
+  // before the first finishes its chain of awaits). Both concurrent
+  // invocations would see the same running→completed transition in
+  // their local ``prevStatus`` snapshots and each fire the refresh
+  // (observed 3× in preview testing). The per-run one-shot flag
+  // dedupes them; it resets whenever currentRunId changes so
+  // switching between runs still triggers a fresh auto-refresh.
+  const _prevLower = String(prevStatus || "").toLowerCase();
+  const _curLower = String(state.currentRunStatus || "").toLowerCase();
+  const _justFinished = _prevLower !== _curLower
+    && (_curLower === "completed" || _curLower === "cancelled" || _curLower === "failed")
+    && _prevLower !== "";  // ignore the first load where prev was ""
+  if (_justFinished && run.machine && state.focusedMachine === run.machine
+      && state._autoRefreshedForRunId !== state.currentRunId) {
+    state._autoRefreshedForRunId = state.currentRunId;
+    // Fire-and-forget — don't block refreshCurrentRun on the tree
+    // re-render (the rwtree has its own error handling + graceful
+    // empty state if any of its fetches fail).
+    renderRawdataReportTree(run.machine).catch((err) => {
+      console.warn("rwtree auto-refresh on run finish failed:", err);
+    });
+  }
 
   const p = run.progress || {};
   const latest = p.latest_event || {};
