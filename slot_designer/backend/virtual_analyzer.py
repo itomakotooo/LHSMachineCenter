@@ -452,6 +452,94 @@ def _patch_summary_md5_tags(
             pass
 
 
+def _run_inference_scripts(machine: str, mode: int) -> None:
+    """Trigger infer_paytable + verify_machine_labels for the virtual
+    machine after a sampling run completes.
+
+    Mirrors the behavior ``_run_post_analyzer_inference`` in
+    ``src/web_console/backend/app.py`` gives to the in-process
+    generate-report path — but that hook ONLY fires from
+    ``_run_generate_report``, not from the sampling path
+    (``_watch_run``). Result: the rwtree's Pay ID 总览 panel stayed at
+    "形状推断暂未运行" after sampling-via-UI, even though the user had
+    just produced fresh rawdata.
+
+    Running the scripts here (in the virtual_analyzer subprocess,
+    after delegate returns) keeps the fix out of
+    ``src/web_console/backend/app.py`` per the 2026-04-22 structural
+    guideline: virtual-only behavior must not leak into main-project
+    code.
+
+    Best-effort: any failure (script missing, timeout, non-zero rc)
+    logs to stderr and proceeds. The analyzer's primary artefacts
+    (summary + report) are already on disk; missing shape inference
+    just leaves the panel in "not_run" state, same as before this
+    auto-trigger.
+    """
+    scripts_dir = _ROOT / "scripts"
+    paytables_dir = _ROOT / "slot_designer" / "configs" / "paytables_virtual"
+    classify_dir = _ROOT / "slot_designer" / "dev_reports" / "_classify"
+    rawdata_root = _ROOT / "slot_designer" / "rawdata"
+    env = dict(os.environ)
+    # Point inference scripts at the virtual rawdata tree. Without this
+    # they'd scan the real console's rawdata/ and either find nothing
+    # (M1sim not there) or run against real-fleet chunks (data leak).
+    env["SLOT_RAWDATA_ROOT"] = str(rawdata_root)
+
+    paytables_dir.mkdir(parents=True, exist_ok=True)
+    classify_dir.mkdir(parents=True, exist_ok=True)
+
+    jobs = [
+        (
+            "paytable_shape",
+            scripts_dir / "infer_paytable.py",
+            ["--machine", machine, "--mode", str(int(mode)),
+             "--output-dir", str(paytables_dir)],
+        ),
+        (
+            "classifier",
+            scripts_dir / "verify_machine_labels.py",
+            ["--machines", machine, "--mode", str(int(mode)),
+             "--output-dir", str(classify_dir)],
+        ),
+    ]
+    for tag, script, argv in jobs:
+        if not script.exists():
+            print(
+                f"virtual_analyzer: inference script missing {script.name!r}, "
+                f"skipping {tag}",
+                file=sys.stderr,
+            )
+            continue
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(script), *argv],
+                cwd=str(_ROOT),
+                capture_output=True, text=True,
+                timeout=300.0, check=False, env=env,
+            )
+            if proc.returncode != 0:
+                # stderr tail surfaces the reason without dumping full
+                # traceback to the parent log stream.
+                tail = (proc.stderr or proc.stdout or "").splitlines()[-5:]
+                print(
+                    f"virtual_analyzer: {tag} inference rc="
+                    f"{proc.returncode}; tail:\n" + "\n".join(tail),
+                    file=sys.stderr,
+                )
+        except subprocess.TimeoutExpired:
+            print(
+                f"virtual_analyzer: {tag} inference timed out at 300s",
+                file=sys.stderr,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"virtual_analyzer: {tag} inference failed: "
+                f"{type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+
+
 def _delegate_to_real_analyzer(
     original_args: argparse.Namespace,
     from_cache_dir: Path,
@@ -472,6 +560,21 @@ def _delegate_to_real_analyzer(
     if rc == 0 and patch_md5s is not None:
         cfg, code = patch_md5s
         _patch_summary_md5_tags(original_args.output_dir, cfg, code)
+        # Refresh the auto-inferred paytable shape + classifier labels so
+        # the UI's "Pay ID 总览" panel (shape / coverage / payline
+        # columns + expandable composition-breakdown sub-rows) has fresh
+        # data post-sample. Same intent as main project's
+        # ``_run_post_analyzer_inference`` hook but fired here so the
+        # sampling path — which doesn't route through
+        # ``_run_generate_report`` — also gets it.
+        try:
+            _run_inference_scripts(original_args.machine, original_args.rtp_mode)
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"virtual_analyzer: post-delegate inference scripts "
+                f"failed: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
     return rc
 
 
