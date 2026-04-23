@@ -129,10 +129,27 @@ def emit_feature_round(
     }
 
 
-def emit_feature_end(*, spin_times: int, rtp_id: int) -> dict:
-    """Emit a SpinType=15 feature end marker (production: 5 minimal keys)."""
+def emit_feature_end(
+    *,
+    spin_times: int,
+    rtp_id: int,
+    win_amount: int = 0,
+) -> dict:
+    """Emit a SpinType=15 feature end marker (production: 5 minimal keys).
+
+    CRITICAL: production ST=15 has ``WinAmount`` (NOT ``WinCredits``),
+    carrying the accepted session's total payout. The analyzer's
+    ``compute_trigger_sessions`` (fresh_slotlab/trigger_sessions.py) uses
+    "last_non_none WinCredits across bonus sequence" for Type-1 (M15
+    TopDollar) sessions. Emitting ``WinCredits: 0`` on ST=15 would
+    OVERRIDE the accepted ST=14's WinCredits (since ST=15 comes last),
+    making session_win=0 and blanking the TopDollar feature's
+    ``bucket_distribution`` in the report. Matching production means
+    omitting WinCredits entirely from ST=15 and carrying the accepted
+    payout in WinAmount instead.
+    """
     return {
-        "WinCredits": 0,
+        "WinAmount": int(win_amount),
         "SpinType": 15,
         "SpinTimes": spin_times,
         "RTPId": rtp_id,
@@ -190,6 +207,13 @@ def emit_session(
                 spin_times=spin_times,
                 rtp_id=rtp_id,
             ))
-        session.append(emit_feature_end(spin_times=spin_times, rtp_id=rtp_id))
+        # WinAmount on end marker = accepted session's payout (last
+        # round's WinCredits). Matches production schema.
+        accepted_win = int(feature_rounds[-1].r_value * bet)
+        session.append(emit_feature_end(
+            spin_times=spin_times,
+            rtp_id=rtp_id,
+            win_amount=accepted_win,
+        ))
 
     return session
