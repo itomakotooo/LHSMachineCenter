@@ -5368,15 +5368,36 @@ def create_app(
         # the right baseline. Best-effort: upstream failures don't
         # block the batch; we fall through to the (possibly stale)
         # local md5. Operator can opt out via ``skip_md5_refresh=True``.
-        refresh_result = None
+        #
+        # Iter 2026-04-23: MachineConfigMd5 upstream call takes
+        # ~18s server-side — doing it synchronously blocked
+        # POST /api/batch-run for 30-40s (UI would timeout and
+        # report "cannot sample"). Moved to a daemon thread: the
+        # batch starts immediately with whatever md5 is currently
+        # in machines.json; the refresh lands in the background and
+        # any md5 drift is reflected on the NEXT batch (or the next
+        # operator-triggered /api/machines/refresh-md5 click).
+        # Stale-md5 risk is bounded — it only affects chunk
+        # classification (historical vs current) at the margin, not
+        # sampling correctness, and the explicit "刷新 MD5" button
+        # remains synchronous for deterministic operator workflows.
         if not req.skip_md5_refresh:
-            refresh_result = _do_refresh_machines_md5(
-                server_id="dev", raise_on_error=False,
-            )
-        result = batch_mgr.start_batch(req, rr)
-        if refresh_result is not None:
-            result["md5_refresh"] = refresh_result
-        return result
+            import threading as _threading
+            def _refresh_md5_async() -> None:
+                try:
+                    _do_refresh_machines_md5(
+                        server_id="dev", raise_on_error=False,
+                    )
+                except Exception:  # noqa: BLE001
+                    # Best-effort — swallow; next batch / explicit
+                    # refresh will pick up a newer md5 eventually.
+                    pass
+            _threading.Thread(
+                target=_refresh_md5_async,
+                daemon=True,
+                name="pre-batch-md5-refresh",
+            ).start()
+        return batch_mgr.start_batch(req, rr)
 
     @app.get("/api/disk-space")
     def disk_space() -> dict[str, Any]:
