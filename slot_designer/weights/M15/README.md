@@ -39,6 +39,7 @@ M15 是 "feature-rich modern 3-reel" 定位——总 RTP 150% 比 classic 高，
 ```
 slot_designer/weights/M15/
 ├── README.md                 ← 本文件
+├── DESIGN.md                 ← Top Dollar 数值特性调研 + spec 固化约束 + mode dials 总览
 ├── reel_strips.json          ← 共享 symbol 布局（36 × 3, 18B + 18NB 交替）
 └── mode_<N>/
     ├── weights.json          ← mode 专属 per-stop weight 数组
@@ -46,6 +47,8 @@ slot_designer/weights/M15/
     ├── NOTES.md              ← 数值 + pay_id 分解 + tune 命令
     └── TUNE_REPORT.md        ← 最近 tune 的 Phase 4/5 报告（尚未生成）
 ```
+
+设计数学身份、paytable 1:1 映射、feature EV 上下限、行业 RTP 带等**不随 mode 变的 paytable 特性**全部在 [`DESIGN.md`](DESIGN.md)。README 里的 mode-specific 数字当前对齐到 2026-04-23 的 150% 布置，**跟新的跨机台 mode RTP 一致性规则（95/300/500/85）还没对齐，后续重做**。
 
 ## 结构不变量
 

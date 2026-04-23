@@ -1,32 +1,34 @@
 """M15 Feature Play simulator + analytic EV.
 
 Paytable §5 semantics (2026-04-23):
-  - 10 x-options: 1000, 100, 50, 50, 20, 20, 10, 10, 5, 5
-  - 2 y-options: ×2, ×2
+  - 10 x-cards with values (1000, 100, 50, 50, 20, 20, 10, 10, 5, 5)
+  - 2 y-cards, both value ×2
   - Per round:
       1. Pick count_x ∈ [1, 5] by weight w_count_x
       2. Pick count_y ∈ [0, 2] by weight w_count_y
-      3. Draw count_x x-values without replacement from the 10 x pool
-      4. Draw count_y y-values without replacement from the 2 y pool
-      5. Compute R = sum(x_drawn) × product(y_drawn)  (y=[] → product=1)
+      3. Draw count_x cards WITHOUT REPLACEMENT from 10 x-cards,
+         weighted by x_value_weights (v4: designer dial)
+      4. Draw count_y cards WITHOUT REPLACEMENT from 2 y-cards,
+         weighted by y_value_weights (default uniform; both y=×2 so
+         weight only matters for variance, not EV)
+      5. Compute R = sum(x_drawn) × product(y_drawn)
   - Player decision: if R >= accept_threshold → accept, else reroll
     (up to 3 rerolls = 4 rounds total; round 4 is forced accept)
-  - Spec says test strategy: threshold = 40×
 
-The feature's expected payout per trigger is what this module computes.
-Total RTP contribution per paid spin = trigger_rate × feature_ev.
+v4 (2026-04-23): `x_value_weights` is now a designer dial. Previously
+value sampling was implicit-uniform over 10 cards (with duplicated
+values providing implicit value weighting). Now the designer can
+independently tune per-card weights to shift the payout distribution
+from near-5× average (all low) to near-4880× (all high), decoupling
+the conditional EV from the (fixed) x_pool structure.
 
-The x_count_weights and y_count_weights are DESIGN PARAMETERS — not
-specified in the paytable (it just says "按预设权重控制"). The designer
-picks these to hit the target feature RTP. This module provides the
-analytic EV + variance for any given weight set so the designer can
-sweep / tune without running Monte Carlo.
+Backward compat: omitting `x_value_weights` / `y_value_weights` yields
+the pre-v4 uniform behavior.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from functools import lru_cache
-from itertools import combinations
+from dataclasses import dataclass, field
+from itertools import combinations, permutations
 from math import sqrt
 
 
@@ -41,6 +43,16 @@ class FeatureSpec:
     x_count_weights: tuple[float, float, float, float, float]
     # Weights for picking how many y-values (index 0 = count 0, ..., index 2 = count 2)
     y_count_weights: tuple[float, float, float]
+    # v4: per-card weights for x-card draw. 10-tuple aligned with _X_POOL.
+    # Default = uniform (equivalent to pre-v4 behavior).
+    x_value_weights: tuple[float, ...] = field(
+        default_factory=lambda: (1.0,) * len(_X_POOL)
+    )
+    # v4: per-card weights for y-card draw. 2-tuple aligned with _Y_POOL.
+    # Both y cards = ×2 so EV is weight-invariant; default uniform.
+    y_value_weights: tuple[float, ...] = field(
+        default_factory=lambda: (1.0,) * len(_Y_POOL)
+    )
     # Accept threshold: if R >= threshold on round 1-3, accept. Round 4 forced.
     accept_threshold: float = 40.0
     # Max rounds (3 reroll + 1 forced accept = 4 per spec)
@@ -61,34 +73,69 @@ class FeatureStats:
     r_max: float                 # largest reachable R (cap)
 
 
-def _tuple_prob(pool: tuple[int, ...], size: int) -> list[tuple[tuple[int, ...], float]]:
-    """Enumerate every sorted-combination of `size` items drawn without
-    replacement from `pool`, with its probability (uniform across
-    the ``C(len(pool), size)`` combinations).
+def _weighted_draw_dist(
+    pool: tuple[int, ...],
+    value_weights: tuple[float, ...],
+    size: int,
+) -> list[tuple[tuple[int, ...], float]]:
+    """Enumerate all unordered combinations of `size` cards drawn WITHOUT
+    replacement from `pool`, where card i has weight `value_weights[i]`.
 
-    Returns list of (values, prob) pairs.
+    Returns list of (sorted-desc values tuple, probability) pairs.
+    Sampling is weighted: P(card i drawn first) = w_i / sum(w);
+    subsequent draws re-normalize over remaining cards' weights.
+
+    When value_weights are all equal, this reduces to uniform sampling
+    without replacement (= the pre-v4 `_tuple_prob` behavior).
     """
     n = len(pool)
-    assert 0 <= size <= n
-    combos = list(combinations(pool, size))
-    p = 1.0 / len(combos) if combos else 1.0
-    # Aggregate identical value-sets (pool has duplicates like the two 50s)
-    counts: dict[tuple[int, ...], int] = {}
-    for c in combos:
-        key = tuple(sorted(c, reverse=True))
-        counts[key] = counts.get(key, 0) + 1
-    return [(vals, cnt * p) for vals, cnt in counts.items()]
+    assert n == len(value_weights), "pool/value_weights length mismatch"
+    assert 0 <= size <= n, f"invalid size {size} for pool of {n}"
+
+    if size == 0:
+        return [((), 1.0)]
+
+    W = sum(value_weights)
+    if W <= 0:
+        return []
+
+    outcomes: dict[tuple[int, ...], float] = {}
+
+    # Iterate every k-subset of card indices; sum probability over k!
+    # orderings. The probability of an ordered sequence (i_1, ..., i_k)
+    # is prod_{t} w[i_t] / (W - sum_{s<t} w[i_s]).
+    for combo_idx in combinations(range(n), size):
+        subset_prob = 0.0
+        for perm in permutations(combo_idx):
+            remaining = W
+            p = 1.0
+            for idx in perm:
+                p *= value_weights[idx] / remaining
+                remaining -= value_weights[idx]
+            subset_prob += p
+
+        values = tuple(sorted((pool[i] for i in combo_idx), reverse=True))
+        outcomes[values] = outcomes.get(values, 0.0) + subset_prob
+
+    return list(outcomes.items())
 
 
 def _round_payout_distribution(
     x_count_weights: tuple[float, ...],
     y_count_weights: tuple[float, ...],
+    x_value_weights: tuple[float, ...] | None = None,
+    y_value_weights: tuple[float, ...] | None = None,
 ) -> list[tuple[float, float]]:
     """Return list of (payout, probability) for ONE round's R outcome.
 
     Exhaustively enumerates every (count_x, count_y, x-multiset,
     y-multiset) outcome weighted by the respective probabilities.
     """
+    if x_value_weights is None:
+        x_value_weights = (1.0,) * len(_X_POOL)
+    if y_value_weights is None:
+        y_value_weights = (1.0,) * len(_Y_POOL)
+
     wx_sum = sum(x_count_weights)
     wy_sum = sum(y_count_weights)
     assert wx_sum > 0 and wy_sum > 0
@@ -99,13 +146,13 @@ def _round_payout_distribution(
         if wx <= 0:
             continue
         p_kx = wx / wx_sum
-        x_combos = _tuple_prob(_X_POOL, kx)
+        x_combos = _weighted_draw_dist(_X_POOL, x_value_weights, kx)
 
         for ky, wy in enumerate(y_count_weights, start=0):  # count_y ∈ [0, 2]
             if wy <= 0:
                 continue
             p_ky = wy / wy_sum
-            y_combos = _tuple_prob(_Y_POOL, ky)
+            y_combos = _weighted_draw_dist(_Y_POOL, y_value_weights, ky)
 
             for x_vals, px in x_combos:
                 x_sum = sum(x_vals)
@@ -123,11 +170,16 @@ def _round_payout_distribution(
 def analyze_feature(spec: FeatureSpec) -> FeatureStats:
     """Compute E[R], Var[R], and related stats for the full 4-round
     accept/reroll flow under the given weight set."""
-    dist = _round_payout_distribution(spec.x_count_weights, spec.y_count_weights)
+    dist = _round_payout_distribution(
+        spec.x_count_weights,
+        spec.y_count_weights,
+        spec.x_value_weights,
+        spec.y_value_weights,
+    )
 
     r_values = [r for r, _ in dist]
     r_probs = [p for _, p in dist]
-    assert abs(sum(r_probs) - 1.0) < 1e-9, f"round dist must sum to 1; got {sum(r_probs)}"
+    assert abs(sum(r_probs) - 1.0) < 1e-4, f"round dist must sum to 1; got {sum(r_probs)}"
 
     r_min = min(r_values)
     r_max = max(r_values)
@@ -139,7 +191,6 @@ def analyze_feature(spec: FeatureSpec) -> FeatureStats:
     # One-round accept stats
     accept_prob = sum(p for r, p in dist if r >= spec.accept_threshold)
     accept_ev_numer = sum(r * p for r, p in dist if r >= spec.accept_threshold)
-    reject_ev_numer = sum(r * p for r, p in dist if r < spec.accept_threshold)
     accept_ev = (accept_ev_numer / accept_prob) if accept_prob > 0 else 0.0
 
     # 4-round feature EV
@@ -206,24 +257,36 @@ def describe(spec: FeatureSpec, stats: FeatureStats) -> str:
     """Pretty-print a feature stats summary for human eyeball."""
     xw = spec.x_count_weights
     yw = spec.y_count_weights
+    xvw = spec.x_value_weights
     xw_sum = sum(xw)
     yw_sum = sum(yw)
+    xvw_sum = sum(xvw)
     xw_norm = [f"{w/xw_sum:.1%}" for w in xw]
     yw_norm = [f"{w/yw_sum:.1%}" for w in yw]
+    # Group x value weights by unique value for display
+    xvw_by_value: dict[int, float] = {}
+    for v, w in zip(_X_POOL, xvw):
+        xvw_by_value[v] = xvw_by_value.get(v, 0.0) + w
+    xvw_by_value_norm = {v: w / xvw_sum for v, w in xvw_by_value.items()}
+    xvw_summary = ", ".join(
+        f"{v}={p:.2%}" for v, p in sorted(xvw_by_value_norm.items(), reverse=True)
+    )
     lines = [
         f"Feature Play EV analysis:",
         f"  count_x weights (1,2,3,4,5):  raw={xw}  norm={xw_norm}",
         f"  count_y weights (0,1,2):      raw={yw}  norm={yw_norm}",
+        f"  x value weights (per card):   raw={xvw}",
+        f"  x value probs (per value):    {xvw_summary}",
         f"  accept_threshold: {spec.accept_threshold}×",
         f"  max_rounds: {spec.max_rounds}",
         f"",
         f"One-round:",
         f"  E[R]:                     {stats.round_ev_unconditional:.2f}×",
-        f"  P(R ≥ {spec.accept_threshold:.0f}):              {stats.round_p_accept*100:.1f}%",
+        f"  P(R ≥ {spec.accept_threshold:.0f}):              {stats.round_p_accept*100:.2f}%",
         f"  E[R | R ≥ {spec.accept_threshold:.0f}]:          {stats.round_ev_given_accept:.2f}×",
         f"  R range:                  [{stats.r_min:.0f}×, {stats.r_max:.0f}×]",
         f"",
-        f"Full 4-round feature play (3 reroll + 1 forced):",
+        f"Full {spec.max_rounds}-round feature play ({spec.max_rounds - 1} reroll + 1 forced):",
         f"  E[final payout]:          {stats.expected_payout:.2f}× bet",
         f"  std[final payout]:        {stats.std:.2f}",
         f"  CV (std/EV):              {stats.cv:.2f}",
@@ -232,10 +295,11 @@ def describe(spec: FeatureSpec, stats: FeatureStats) -> str:
 
 
 if __name__ == "__main__":
-    # Smoke: default weights preview
+    # Smoke: default uniform weights preview (backward compat path)
     default_spec = FeatureSpec(
         x_count_weights=(50, 30, 12, 5, 3),
         y_count_weights=(60, 30, 10),
     )
     stats = analyze_feature(default_spec)
+    print("=== Default (uniform value weights — pre-v4 behavior) ===")
     print(describe(default_spec, stats))

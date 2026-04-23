@@ -142,6 +142,29 @@
     "phase5_blank_adj_before": 0.0,
     "phase5_blank_adj_after": 0.0,
     "phase5_sa_steps": 2000,
-    "alternation_violations": 0
+    "alternation_violations": 0,
+    "_note": "This summary is from the pre-v5 tune targeting 67.5pp base for a 150% total layout. STALE. Base needs retune to 42.75pp for v5 mode 1 target (Total 95%, Feature 52.25pp). See MODE_DESIGN.md v5."
+  },
+
+  "feature_params": {
+    "_note": "v5 mode 1 Feature Play params (verified via analyze_feature 2026-04-23). Overrides spec-level defaults. See slot_designer/weights/M15/MODE_DESIGN.md.",
+    "x_count_weights": [5, 40, 40, 12, 3],
+    "y_count_weights": [75, 20, 5],
+    "x_value_weights": [0.0001, 0.0266, 0.1455, 0.1455, 1.3729, 1.3729, 7.4998, 7.4998, 40.9684, 40.9684],
+    "y_value_weights": [1, 1],
+    "accept_threshold": 40,
+    "max_rounds": 4,
+    "_analytic": {
+      "ev_per_trigger": 46.0,
+      "target_trigger_rate": 0.01136,
+      "target_feature_rtp_pp": 52.25,
+      "one_round_ev_uncond": 28.26,
+      "one_round_accept_rate": 0.2352,
+      "one_round_ev_given_accept": 60.36,
+      "conditional_cv": 0.74,
+      "r_range": [5, 4880],
+      "p_value_jackpot_1000_per_pick": 1e-6,
+      "p_value_100_per_pick": 0.00027
+    }
   }
 }
