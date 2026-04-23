@@ -228,6 +228,24 @@ def main() -> None:
     base_weights_doc = _load_weights(args.base_weights)
     target = json.loads(args.target.read_text(encoding="utf-8"))
 
+    # Detect the blank symbol used by this machine. M1 uses "Blank"
+    # (PascalCase); M15+ aligns to production rawdata with lowercase
+    # "blank". Pick whichever filler symbol appears on all reels.
+    _all_syms_flat = [s for strip in strips_doc["reels"] for s in strip]
+    if "Blank" in _all_syms_flat:
+        blank_symbol = "Blank"
+    elif "blank" in _all_syms_flat:
+        blank_symbol = "blank"
+    else:
+        # Fall back: most common filler-kind symbol
+        from collections import Counter
+        _filler_syms = [s for s in _all_syms_flat
+                        if spec.get("symbols", {}).get(s, {}).get("kind") == "filler"]
+        if _filler_syms:
+            blank_symbol = Counter(_filler_syms).most_common(1)[0][0]
+        else:
+            blank_symbol = "Blank"  # last resort; will likely fail alternation
+
     # Assemble base reels (shared strips + this mode's weights)
     base_reels = _assemble_from_strips_weights(strips_doc, base_weights_doc)
 
@@ -311,7 +329,7 @@ def main() -> None:
     tuned_reels = tuned_envelope["reel_sets"]["default"]["reels"]
 
     # ────────────────── Phase 5: joint order SA ──────────────────
-    exp_before = experience_metrics(tuned_reels, high_value=args.high_value)
+    exp_before = experience_metrics(tuned_reels, high_value=args.high_value, blank_symbol=blank_symbol)
     print(f"\n=== Phase 5 — joint shared-strip order SA ({args.sa_steps} steps) ===")
     print(f"  experience before: nm_total={exp_before['near_miss_rate_total']*100:.3f}%  "
           f"avg_pwdf={sum(exp_before['avg_pwdf'].values())/len(exp_before['avg_pwdf']):.3f}  "
@@ -322,6 +340,7 @@ def main() -> None:
     # Build the joint state: shared strips (from tuned_reels) + every mode's weights
     # (this mode from tuned_reels, siblings from their existing weights.json files).
     shared_strips = extract_symbol_layout(tuned_reels)
+    # blank_symbol was detected earlier from strips_doc (see Load + prepare state).
     weights_per_mode: dict[str, list[list[int]]] = {
         this_mode_key: disassemble_to_weights_array(tuned_reels),
     }
@@ -340,7 +359,7 @@ def main() -> None:
         # mode's weights onto the alternating positions.
         pre_alt_violations = sum(
             count_alternation_violations(
-                [{"symbol": s} for s in strip]
+                [{"symbol": s} for s in strip], blank_symbol
             )
             for strip in shared_strips
         )
@@ -365,7 +384,7 @@ def main() -> None:
                 # in the order they appear. We need to record the
                 # position→new_position permutation so we can apply it to
                 # the OTHER modes' weights too.
-                new_reel = initialize_alternating(stops)
+                new_reel = initialize_alternating(stops, blank_symbol)
                 # Reconstruct permutation: old position i → new position
                 # where stops[i]'s new location in new_reel is found by
                 # identity. Since symbol and weight are preserved,
@@ -373,8 +392,8 @@ def main() -> None:
                 # Simpler approach: initialize_alternating sorts blanks
                 # and non-blanks by original order then interleaves; we
                 # re-implement inline to get an explicit permutation.
-                blanks_src = [i for i, s in enumerate(strip) if s == "Blank"]
-                nonblanks_src = [i for i, s in enumerate(strip) if s != "Blank"]
+                blanks_src = [i for i, s in enumerate(strip) if s == blank_symbol]
+                nonblanks_src = [i for i, s in enumerate(strip) if s != blank_symbol]
                 perm: list[int] = []
                 for b, n in zip(blanks_src, nonblanks_src):
                     perm.append(b)
@@ -404,6 +423,7 @@ def main() -> None:
             cost_weights=exp_cfg,
             config=SAConfig(max_steps=args.sa_steps),
             rng=Random(args.seed + 1),
+            blank_symbol=blank_symbol,
             verbose=args.verbose,
         )
         shared_strips = joint.best_strips
@@ -421,8 +441,8 @@ def main() -> None:
         [{"symbol": s, "weight": int(w)} for s, w in zip(strip, wts)]
         for strip, wts in zip(shared_strips, weights_per_mode[this_mode_key])
     ]
-    exp_after = experience_metrics(final_this_mode_reels, high_value=args.high_value)
-    post_alt_violations = sum(count_alternation_violations(r) for r in final_this_mode_reels)
+    exp_after = experience_metrics(final_this_mode_reels, high_value=args.high_value, blank_symbol=blank_symbol)
+    post_alt_violations = sum(count_alternation_violations(r, blank_symbol) for r in final_this_mode_reels)
 
     # Phase 5 marginal-preservation invariant — class-preserving co-swap
     # must leave per-(symbol, reel) totals for this mode unchanged from

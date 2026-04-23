@@ -101,11 +101,19 @@ class PaytableEvaluator:
 
         candidates: list[tuple[int, int]] = []  # (pay_id, final_multiplier)
 
-        # line_3_same: all non-wilds are the same symbol → wilds substitute for it
+        # line_3_same: all non-wilds are the same symbol → wilds substitute for it.
+        # v5 M15: multiple rules per symbol possible, filtered by wild_required.
+        # M1 case: single rule per symbol, wild_required=None = matches regardless.
+        # M15 case (high7): pay_id 21 (wild_required=False) for pure 3-high7,
+        # pay_id 2 (wild_required=True) for wild-substituted 3-high7.
         if "line_3_same" in self.order and len(set(non_wilds)) == 1:
             sym = non_wilds[0]
-            rule = self.rules.line_3_same_by_symbol.get(sym)
-            if rule is not None:
+            n_wilds = len(wilds)
+            for rule in self.rules.line_3_same_by_symbol.get(sym, []):
+                if rule.wild_required is True and n_wilds == 0:
+                    continue  # requires wild presence, none on payline
+                if rule.wild_required is False and n_wilds > 0:
+                    continue  # requires no wilds, but wilds present
                 candidates.append((rule.pay_id, rule.multiplier * wild_product))
 
         # line_3_group: all non-wilds live in a common group (e.g. all Bars)
@@ -123,3 +131,40 @@ class PaytableEvaluator:
             multiplier=best_mult,
             positions=all_positions,
         )
+
+    def evaluate_scatters(
+        self,
+        grid: list[list[str]],
+        payline_positions: Sequence[tuple[int, int]],
+    ) -> list[PayResult]:
+        """Evaluate scatter-trigger rules against the grid.
+
+        Returns a list of PayResult for each ``ScatterTriggerRule`` whose
+        target symbol lands on the payline cell of its specified reel.
+        Scatter pays are ADDITIVE to the main payline pay — both coexist
+        in PayoutIdToWinAmount in production rawdata (e.g., pay_id 9 for
+        1-cherry + pay_id 666 for topdollar trigger on same spin).
+
+        M15 use case: pay_id 666 fires when ``topdollar`` lands on reel 3
+        (col 2) middle row. WinCredits contribution is 0 (marker pay).
+        """
+        results: list[PayResult] = []
+        # Build a map of col_idx → row_idx on the payline.
+        payline_row_by_col = {c: r for c, r in payline_positions}
+        for rule in self.rules.scatter_triggers:
+            col_idx = rule.reel - 1  # spec is 1-indexed
+            row_idx = payline_row_by_col.get(col_idx)
+            if row_idx is None:
+                continue  # this reel isn't part of the payline
+            if col_idx < 0 or col_idx >= len(grid):
+                continue
+            col = grid[col_idx]
+            if row_idx < 0 or row_idx >= len(col):
+                continue
+            if col[row_idx] == rule.symbol:
+                results.append(PayResult(
+                    pay_id=rule.pay_id,
+                    multiplier=rule.multiplier,
+                    positions=((col_idx, row_idx),),
+                ))
+        return results

@@ -118,7 +118,7 @@ def test_m15_mode1_total_rtp_approximately_95():
     weights_data = json.loads(_MODE1_WEIGHTS_PATH.read_text(encoding="utf-8"))
     reel_weights = weights_data["weights"]
     r3_total = sum(reel_weights[2])
-    bonus_w = sum(w for s, w in zip(strips[2], reel_weights[2]) if s == "Bonus")
+    bonus_w = sum(w for s, w in zip(strips[2], reel_weights[2]) if s == "topdollar")
     trigger = bonus_w / r3_total
 
     # Feature EV from v5 mode 1 params
@@ -154,7 +154,7 @@ def test_m15_mode1_trigger_rate_in_user_band():
     reel_weights = weights_data["weights"]
 
     r3_total = sum(reel_weights[2])
-    bonus_w = sum(w for s, w in zip(strips[2], reel_weights[2]) if s == "Bonus")
+    bonus_w = sum(w for s, w in zip(strips[2], reel_weights[2]) if s == "topdollar")
     trigger = bonus_w / r3_total
 
     # v5 mode 1 target: 1.136% (1/88). Accept range: 1.0% to 1.5% per user brief.
@@ -176,30 +176,66 @@ def test_m15_mode1_trigger_rate_in_user_band():
     )
 
 
-def test_m15_jackpot_symbol_never_on_reels():
-    """Paytable: Jackpot 不可随机转出. If any reel picks up Jackpot,
-    probability of 3 Jackpot becomes non-zero and rtp_excluded guard
-    silently drops it — invisible bug. Fail loudly at reel-layout level."""
+def test_m15_jackpot_symbol_present_on_reels_but_low_rate():
+    """v2 schema alignment (2026-04-23): jackpot appears on reels as
+    decorative filler (matching M15$TopDollarSelector$0$ production
+    rawdata, ~1% payline rate per reel). Game mechanic re-rolls on
+    3-jackpot so the 1000× prize never pays in mode 1/2/5/7.
+
+    Test: jackpot present on each reel; marginal < 5% (production ~1%).
+    """
     strips = json.loads(_STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
-    for ri, reel in enumerate(strips):
-        assert "Jackpot" not in reel, (
-            f"M15 reel {ri+1} contains Jackpot — paytable says Jackpot "
-            f"is 不可随机转出 (system-forced only). Remove it from reel_strips.json."
+    weights = json.loads(_MODE1_WEIGHTS_PATH.read_text(encoding="utf-8"))["weights"]
+    for ri in range(3):
+        assert "jackpot" in strips[ri], (
+            f"M15 reel {ri+1} has no jackpot symbol. Expected at least "
+            f"one jackpot stop per reel for v2 schema alignment."
+        )
+        total_w = sum(weights[ri])
+        jackpot_w = sum(
+            w for s, w in zip(strips[ri], weights[ri]) if s == "jackpot"
+        )
+        marginal = jackpot_w / total_w
+        assert marginal < 0.05, (
+            f"M15 reel {ri+1} jackpot marginal {marginal*100:.2f}% > 5%. "
+            f"Keep low to minimize RTP dilution (production ~1%)."
         )
 
 
-def test_m15_bonus_only_on_reel_3():
-    """Paytable: Feature triggers when Bonus shows on reel 3. Reel 1/2
-    must not carry Bonus (no trigger path there)."""
+def test_m15_topdollar_only_on_reel_3():
+    """Paytable: Feature triggers when topdollar lands on reel 3 payline.
+    Reel 1/2 must not carry topdollar (no trigger path there).
+
+    v2 rename: was `Bonus`; now lowercase `topdollar` to match production.
+    """
     strips = json.loads(_STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
     for ri in (0, 1):
-        assert "Bonus" not in strips[ri], (
-            f"M15 reel {ri+1} contains Bonus — paytable says Bonus only "
-            f"appears on reel 3. Remove Bonus from reel {ri+1}."
+        assert "topdollar" not in strips[ri], (
+            f"M15 reel {ri+1} contains topdollar — paytable says topdollar "
+            f"only appears on reel 3. Remove from reel {ri+1}."
         )
-    assert "Bonus" in strips[2], (
-        f"M15 reel 3 must contain at least one Bonus stop to enable "
+    assert "topdollar" in strips[2], (
+        f"M15 reel 3 must contain at least one topdollar stop to enable "
         f"feature trigger; got {strips[2]!r}"
+    )
+
+
+def test_m15_symbols_match_production_schema():
+    """v2 2026-04-23: all symbol names must match production M15
+    rawdata schema (lowercase, 1bar/2bar/3bar bar naming, doublediamond
+    wild, topdollar bonus, jackpot decorative)."""
+    strips = json.loads(_STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
+    expected = {
+        "blank", "cherry", "1bar", "2bar", "3bar",
+        "high7", "doublediamond", "topdollar", "jackpot",
+    }
+    actual = set()
+    for reel in strips:
+        actual.update(reel)
+    extra = actual - expected
+    assert not extra, (
+        f"M15 strips contain unexpected symbol(s) {extra}. "
+        f"Expected production-schema symbols: {sorted(expected)}"
     )
 
 

@@ -29,6 +29,14 @@ class SpinOutcome:
     cost_credits: int
     bet_amount: int
     spin_type: int
+    # v5 M15: scatter-triggered pays that coexist with the main payline
+    # pay (e.g. pay_id 666 topdollar trigger, WinCredits=0). Empty list
+    # for machines without scatter_trigger rules (M1).
+    scatter_pays: list[PayResult] = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.scatter_pays is None:
+            self.scatter_pays = []
 
 
 class SpinEngine:
@@ -61,10 +69,12 @@ class SpinEngine:
 
         payline_syms = [grid[c][r] for (c, r) in self.payline_positions]
         pay = self.evaluator.evaluate_payline(payline_syms)
+        scatter_pays = self.evaluator.evaluate_scatters(grid, self.payline_positions)
 
         return SpinOutcome(
             grid=grid,
             pay=pay,
+            scatter_pays=scatter_pays,
             cost_credits=self.cost_per_spin,
             bet_amount=self.bet_amount,
             spin_type=self.spin_type,

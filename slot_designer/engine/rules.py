@@ -3,11 +3,20 @@
 Each pay kind lives in its own dataclass; RuleSet indexes them for O(1)
 lookup during evaluation. New kinds are added here + handled in
 evaluator.py (not anywhere else).
+
+v5+ additions for M15 (2026-04-23):
+  - ``line_3_same`` gains optional ``wild_required`` field. Multiple rules
+    per symbol become supported: M15 high7 splits into pay_id 21 (pure,
+    no wild) vs pay_id 2 (wild-boosted, ≥1 wild substitute). M1 behavior
+    preserved when field is absent (= None = don't care).
+  - New ``scatter_trigger`` kind: emits a no-win pay marker when a given
+    symbol lands on a specific reel's payline cell. M15 uses this for
+    pay_id 666 (topdollar on reel 3 payline = feature trigger marker).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
@@ -29,6 +38,14 @@ class Line3SameRule:
     pay_id: int
     symbol: str
     multiplier: int
+    # v5 M15: optional constraint on wild participation.
+    #   None  = no constraint (M1-era behavior; matches regardless of wilds)
+    #   True  = requires ≥1 wild substitute among payline cells
+    #   False = requires 0 wild substitutes (all three cells are the base symbol)
+    # When two line_3_same rules target the same symbol with opposite
+    # wild_required values, the evaluator picks whichever rule matches
+    # the actual wild count on the payline.
+    wild_required: Optional[bool] = None
 
 
 @dataclass
@@ -53,6 +70,18 @@ class PureWildGroupRule:
     rtp_excluded: bool = False
 
 
+@dataclass
+class ScatterTriggerRule:
+    """Emit a no-win pay marker when ``symbol`` lands on the ``reel``-th
+    reel's payline cell. Used by M15 for pay_id 666 (topdollar on reel 3
+    payline = Feature Play trigger marker; WinCredits=0 in rawdata).
+    """
+    pay_id: int
+    symbol: str
+    reel: int              # 1-indexed reel number (M15: 3 = rightmost)
+    multiplier: int = 0    # typically 0 (scatter pay = marker only)
+
+
 class RuleSet:
     """Parse spec.pays into typed rule buckets indexed by kind."""
 
@@ -62,14 +91,20 @@ class RuleSet:
         "line_3_group",
         "pure_wild",
         "pure_wild_group",
+        "scatter_trigger",
     }
 
     def __init__(self, spec_pays: list[dict]):
         self.cherry_by_count: dict[int, CherryCountRule] = {}
-        self.line_3_same_by_symbol: dict[str, Line3SameRule] = {}
+        # v5 M15: list-per-symbol (was dict[str, Line3SameRule]) so
+        # multiple rules can coexist for the same symbol (e.g., high7
+        # pay_id 2 with wild_required=True plus pay_id 21 with
+        # wild_required=False).
+        self.line_3_same_by_symbol: dict[str, list[Line3SameRule]] = {}
         self.line_3_group: list[Line3GroupRule] = []
         self.pure_wild: list[PureWildRule] = []
         self.pure_wild_group: list[PureWildGroupRule] = []
+        self.scatter_triggers: list[ScatterTriggerRule] = []
 
         for p in spec_pays:
             kind = p["kind"]
@@ -78,7 +113,7 @@ class RuleSet:
 
             if kind not in self._SUPPORTED_KINDS:
                 raise ValueError(
-                    f"pay_id {pid}: kind={kind!r} not supported in Phase 1 engine "
+                    f"pay_id {pid}: kind={kind!r} not supported in engine "
                     f"(supported: {sorted(self._SUPPORTED_KINDS)})"
                 )
 
@@ -88,9 +123,13 @@ class RuleSet:
                     pay_id=pid, count=c, multiplier=int(p["multiplier"])
                 )
             elif kind == "line_3_same":
-                self.line_3_same_by_symbol[p["symbol"]] = Line3SameRule(
-                    pay_id=pid, symbol=p["symbol"], multiplier=int(p["multiplier"])
-                )
+                bucket = self.line_3_same_by_symbol.setdefault(p["symbol"], [])
+                bucket.append(Line3SameRule(
+                    pay_id=pid,
+                    symbol=p["symbol"],
+                    multiplier=int(p["multiplier"]),
+                    wild_required=p.get("wild_required"),
+                ))
             elif kind == "line_3_group":
                 self.line_3_group.append(Line3GroupRule(
                     pay_id=pid,
@@ -115,4 +154,11 @@ class RuleSet:
                         for alt in p["alternatives"]
                     ],
                     rtp_excluded=excluded,
+                ))
+            elif kind == "scatter_trigger":
+                self.scatter_triggers.append(ScatterTriggerRule(
+                    pay_id=pid,
+                    symbol=p["symbol"],
+                    reel=int(p["reel"]),
+                    multiplier=int(p.get("multiplier", 0)),
                 ))
