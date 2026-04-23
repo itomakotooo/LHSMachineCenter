@@ -146,6 +146,35 @@ def _bonus_round(spin_type: int, win: int | None = 0, remarks: str = "") -> dict
 
 
 class TestComputeTriggerSessionsHappyPath:
+    def test_m15_filter_preserves_selector_offer_attribution(self):
+        """Iter 3 regression: the Iter 3 double-count filter
+        ``_round_has_credited_win`` must NOT fire on M15 selector
+        offer rounds (PayoutIdToWinAmount=None) — they don't
+        actually carry any pay_id credit, so their WinCredits
+        (the offer values) IS the only path for the trigger pay_id
+        to recover its bonus win. This test locks Iter 1's
+        105,665,000 verified total survives the Iter 3 filter."""
+        rounds = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"666": 0}, "ReMarks": "Trigger"},
+            # Selector offer rounds — no Payout dict at all.
+            {"SpinType": 14, "CostCredits": None, "WinCredits": 15000,
+             "PayoutIdToWinAmount": None, "ReMarks": ""},
+            {"SpinType": 14, "CostCredits": None, "WinCredits": 20000,
+             "PayoutIdToWinAmount": None, "ReMarks": ""},
+            {"SpinType": 14, "CostCredits": None, "WinCredits": 40000,
+             "PayoutIdToWinAmount": None, "ReMarks": ""},
+            # Settlement round — Win=None, Payout=None.
+            {"SpinType": 15, "CostCredits": None, "WinCredits": None,
+             "PayoutIdToWinAmount": None, "ReMarks": ""},
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        s = compute_trigger_sessions(rounds)[0]
+        assert s["win_rule"] == "last_non_none"
+        # 40000 is the accepted offer. Filter doesn't apply — all
+        # selector rounds have PayoutIdToWinAmount=None (not dict).
+        assert s["session_win"] == 40000
+
     def test_m15_topdollar_session_win_is_last_selector_offer(self):
         """M15 TopDollar: paid (SpinType=1, ReMarks=Trigger, pay_id
         666 with win=0) → 4 selector offer rounds (SpinType=14)
@@ -372,35 +401,43 @@ class TestType2WheelSelector:
     then non-paid rounds move through SpinType 139 → 136 → 137 → 117
     (freespins). Rule: sum all freespin WinCredits."""
 
-    def test_m273_freespin_session_sum_all(self):
+    def test_m273_freespin_rounds_with_pay_id_attribution_dont_double_count(self):
+        """Iter 3 correction: the probed M273 freespin rounds
+        carry non-empty PayoutIdToWinAmount (e.g. {'6': 7000,
+        '101': 2000}). Those amounts are already credited to
+        pay_id 6 / 101 by the round-level aggregator — folding
+        the same WinCredits into the trigger pay_id's session_win
+        would double-count. The filter
+        ``_round_has_credited_win`` excludes them. Session_win
+        drops to 0 (trigger pay_id 5801 correctly captures zero
+        bonus-feature win; all bonus credit flows through the
+        freespin pay_ids at round level)."""
         rounds = [
-            # Paid trigger round: CostCredits=1000, Win=0, pay_id 5801 anchor.
-            # NO ReMarks (empty string), so Type 1 detector rejects it.
             {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0,
              "PayoutIdToWinAmount": {"5801": 0}, "ReMarks": ""},
-            # Non-paid bonus sequence — various SpinTypes, WinCredits
-            # accumulates (each freespin round earns independently).
             {"SpinType": 139, "CostCredits": 0, "WinCredits": 0,
+             "PayoutIdToWinAmount": {},
              "ReMarks": "Minigame CellIndexes: 2,2,2,1,"},
             {"SpinType": 136, "CostCredits": None, "WinCredits": None,
-             "ReMarks": "WheelSelector"},
+             "PayoutIdToWinAmount": None, "ReMarks": "WheelSelector"},
             {"SpinType": 137, "CostCredits": None, "WinCredits": 0,
+             "PayoutIdToWinAmount": None,
              "ReMarks": "PreWheel ReqCommonParam 3-5-9 "},
             {"SpinType": 117, "CostCredits": 0, "WinCredits": 0,
-             "ReMarks": " Freespin 1 of 7"},
+             "PayoutIdToWinAmount": {}, "ReMarks": " Freespin 1 of 7"},
+            # Real freespin wins: each has its own Payout attribution,
+            # so round aggregator owns them.
             {"SpinType": 117, "CostCredits": 0, "WinCredits": 9000,
+             "PayoutIdToWinAmount": {"6": 7000, "101": 2000},
              "ReMarks": " Freespin 2 of 7"},
             {"SpinType": 117, "CostCredits": 0, "WinCredits": 5000,
+             "PayoutIdToWinAmount": {"101": 5000},
              "ReMarks": " Freespin 3 of 7"},
             {"SpinType": 117, "CostCredits": 0, "WinCredits": 500,
+             "PayoutIdToWinAmount": {"9": 500, "2600": 0},
              "ReMarks": " Freespin 4 of 7"},
-            {"SpinType": 117, "CostCredits": 0, "WinCredits": 500,
-             "ReMarks": " Freespin 5 of 7"},
-            {"SpinType": 117, "CostCredits": 0, "WinCredits": 2000,
-             "ReMarks": " Freespin 6 of 7"},
             {"SpinType": 117, "CostCredits": 0, "WinCredits": 0,
-             "ReMarks": " Freespin 7 of 7"},
-            # Back to paid — session ends.
+             "PayoutIdToWinAmount": {}, "ReMarks": " Freespin 5 of 7"},
             {"SpinType": 140, "CostCredits": 1000, "WinCredits": 500,
              "PayoutIdToWinAmount": {"9": 500}, "ReMarks": ""},
         ]
@@ -409,26 +446,30 @@ class TestType2WheelSelector:
         s = sessions[0]
         assert s["trigger_pay_ids"] == ["5801"]
         assert s["win_rule"] == "sum_all"
-        # sum = 0+0+0+0+9000+5000+500+500+2000+0 = 17000 (None/0 included)
-        assert s["session_win"] == 17000
+        # Every bonus round with a nonzero-win Payout is filtered;
+        # the Payout-empty rounds contribute Win=0. Net session_win = 0.
+        assert s["session_win"] == 0
 
-    def test_m273_last_non_none_would_be_wrong(self):
-        """The rule chosen matters: last non-None of M273's freespin
-        sequence ends on a 0-win freespin → last_non_none rule would
-        give 0, losing the whole session's real payout. Verifies
-        this case forces sum_all as the correct call."""
+    def test_m273_bonus_round_without_pay_attribution_is_counted(self):
+        """Regression guard: if a M273-style session had bonus rounds
+        without any Payout attribution (e.g. a pure selector-offer-
+        style sub-flow), those WinCredits WOULD accrue to the trigger
+        pay_id — the filter only excludes rounds that already had
+        credit at pay_id level."""
         rounds = [
             {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0,
              "PayoutIdToWinAmount": {"X": 0}, "ReMarks": ""},
+            # No Payout attribution → counts toward session.
             {"SpinType": 117, "CostCredits": 0, "WinCredits": 10000,
-             "ReMarks": " Freespin 1 of 2"},
-            {"SpinType": 117, "CostCredits": 0, "WinCredits": 0,
-             "ReMarks": " Freespin 2 of 2"},
+             "PayoutIdToWinAmount": None, "ReMarks": ""},
+            # Payout attribution → filtered out of sum.
+            {"SpinType": 117, "CostCredits": 0, "WinCredits": 50000,
+             "PayoutIdToWinAmount": {"1": 50000}, "ReMarks": ""},
             {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0},
         ]
         s = compute_trigger_sessions(rounds)[0]
         assert s["win_rule"] == "sum_all"
-        assert s["session_win"] == 10000  # not 0
+        assert s["session_win"] == 10000  # first round only; second filtered
 
 
 class TestType2CommonSelector:
@@ -437,14 +478,18 @@ class TestType2CommonSelector:
     NewFreespin (pay_id 6666 → many freespin rounds). Both use
     sum_all rule."""
 
-    def test_m201_lockrespin_session(self):
+    def test_m201_lockrespin_session_filters_credited_round(self):
+        """Iter 3 correction: the M201 bonus round
+        ``{'20102': 11660}`` is credited to pay_id 20102 at round
+        level; session must not double-credit pay_id 7777 with the
+        same 11660. session_win collapses to 0."""
         rounds = [
             {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
              "PayoutIdToWinAmount": {"7777": 0}, "ReMarks": ""},
             {"SpinType": 13, "CostCredits": 0, "WinCredits": 0,
              "PayoutIdToWinAmount": {}, "ReMarks": ""},
             {"SpinType": 149, "CostCredits": None, "WinCredits": None,
-             "ReMarks": "Selector"},
+             "PayoutIdToWinAmount": None, "ReMarks": "Selector"},
             {"SpinType": 13, "CostCredits": 0, "WinCredits": 11660,
              "PayoutIdToWinAmount": {"20102": 11660}, "ReMarks": ""},
             {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
@@ -452,29 +497,34 @@ class TestType2CommonSelector:
         s = compute_trigger_sessions(rounds)[0]
         assert s["trigger_pay_ids"] == ["7777"]
         assert s["win_rule"] == "sum_all"
-        assert s["session_win"] == 11660  # only non-None win in span
+        assert s["session_win"] == 0
 
-    def test_m257_freespin_sum_all(self):
-        """M257 Freespin chain (probed: 14 freespin rounds, wins
-        accumulate). Shorter fixture here — rule check only."""
+    def test_m257_freespin_all_rounds_already_attributed(self):
+        """Iter 3 correction: every M257 freespin round carries its
+        own Payout entry (pay_id 1 / 7 etc). All are filtered.
+        session_win = 0 on trigger pay_id 666; the freespin-round
+        pay_ids absorb the feature's RTP contribution at round level."""
         rounds = [
             {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0,
              "PayoutIdToWinAmount": {"666": 0}, "ReMarks": ""},
             {"SpinType": 149, "CostCredits": None, "WinCredits": None,
-             "ReMarks": "Selector14"},
+             "PayoutIdToWinAmount": None, "ReMarks": "Selector14"},
             {"SpinType": 126, "CostCredits": 0, "WinCredits": 22200,
+             "PayoutIdToWinAmount": {"4": 22200},
              "ReMarks": "Freespin 1; "},
             {"SpinType": 126, "CostCredits": 0, "WinCredits": 5550,
+             "PayoutIdToWinAmount": {"7": 5550},
              "ReMarks": "Freespin 2; "},
             {"SpinType": 126, "CostCredits": 0, "WinCredits": 0,
-             "ReMarks": "Freespin 3; "},
+             "PayoutIdToWinAmount": {}, "ReMarks": "Freespin 3; "},
             {"SpinType": 126, "CostCredits": 0, "WinCredits": 28860,
+             "PayoutIdToWinAmount": {"7": 1110, "1": 27750},
              "ReMarks": "Freespin 4; "},
             {"SpinType": 140, "CostCredits": 1000, "WinCredits": 0},
         ]
         s = compute_trigger_sessions(rounds)[0]
         assert s["win_rule"] == "sum_all"
-        assert s["session_win"] == 22200 + 5550 + 0 + 28860
+        assert s["session_win"] == 0
 
 
 class TestTriggerAnchorRequired:

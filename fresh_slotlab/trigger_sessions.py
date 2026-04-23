@@ -130,6 +130,47 @@ def _to_float_or_zero(v: Any) -> float:
         return 0.0
 
 
+def _round_has_credited_win(r: Any) -> bool:
+    """True iff this round's WinCredits has already been credited to
+    pay_ids by the round-level aggregator — i.e. the round carries
+    a non-empty ``PayoutIdToWinAmount`` with at least one nonzero
+    value. Such rounds MUST be excluded from the trigger-session
+    win sum (else double-count).
+
+    Observed live across probed machines:
+
+      * M273 freespin round ``{'6': 7000, '101': 2000}``,
+        WinCredits=9000 → round aggregator credits pay_id 6 (+7000)
+        and pay_id 101 (+2000). Folding 9000 into trigger pay_id
+        5801's win too would double-count the same 9000.
+      * M257 freespin round ``{'1': 33300}``: pay_id 1 already at
+        pay_id level; skip for trigger session.
+      * M201 bonus round ``{'20102': 11660}``: pay_id 20102 at
+        pay_id level, skip.
+      * M15 selector offer round ``PayoutIdToWinAmount=None`` (no
+        dict at all): NOT filtered — round-level aggregator sees
+        nothing here, so the session-level win is the ONLY way to
+        attribute the offer value to pay_id 666.
+      * M273 ``{}`` empty dict (e.g. "Minigame CellIndexes"): NOT
+        filtered — no pay_id got credit.
+      * Trigger round's own ``{'666': 0}`` / ``{'5801': 0}``: NOT
+        filtered — all zeros mean no pay_id actually got paid.
+    """
+    if not isinstance(r, dict):
+        return False
+    p = r.get("PayoutIdToWinAmount")
+    if not isinstance(p, dict) or not p:
+        return False
+    for win in p.values():
+        try:
+            w = float(win) if win is not None else 0.0
+        except (TypeError, ValueError):
+            w = 0.0
+        if w > 0.0:
+            return True
+    return False
+
+
 def compute_trigger_sessions(rounds: Iterable[dict]) -> list[dict]:
     """Scan one robot's round sequence and detect all trigger sessions.
 
@@ -152,19 +193,31 @@ def compute_trigger_sessions(rounds: Iterable[dict]) -> list[dict]:
       * **Type 2** — ReMarks does NOT match Type 1, but the paid
         round still anchors a non-paid sequence with trigger pay_ids.
         ``win_rule = "sum_all"``, meaning ``session_win`` is the
-        sum of non-None WinCredits across all bonus rounds (None
-        values treated as 0). Matches freespin-accumulate semantics
-        (M273 Wheel, M257 Freespin: each freespin round's WinCredits
-        is independently earned and all are kept).
+        sum of non-None WinCredits across eligible bonus rounds.
+        Covers WheelSelector (M273) + CommonSelector (M201/M257).
+
+    Both rules apply the ``_round_has_credited_win`` filter — bonus
+    rounds whose WinCredits is already credited to pay_ids at round
+    level (non-empty PayoutIdToWinAmount with any nonzero value)
+    are EXCLUDED. This is the Iter 3 double-count correction: on
+    M273/M257/M201-style machines every freespin round carries its
+    own Payout entry, so the round-level aggregator already owns
+    those credits. Iter 2 summed them into the trigger pay_id too,
+    inflating sum(payout_ids_top20.rtp_pp) above summary.rtp. M15-
+    style (Type 1) bonus rounds carry PayoutIdToWinAmount=None /
+    empty dict, so the filter doesn't fire and Iter 1's attribution
+    to pay_id 666 survives unchanged.
 
     Verified live:
       - M15 $0$ (Type 1): sum(session_win) over 2238 sessions =
-        105,665,000 == FeatureWin.TopDollar.total_win exactly.
-      - M273 $0$ probed freespin session [202..214]: rounds
-        [0, 9000, 5000, 500, 500, 2000, 0, 0] sum = 17,000 matches
-        accumulated freespin payout expectation (settlement has
-        WinCredits=None so last_non_none would give 0 — wrong;
-        sum_all gives the correct 17k).
+        105,665,000 == FeatureWin.TopDollar.total_win exactly —
+        unchanged from Iter 1.
+      - M273 $0$ / M257 / M201 (Type 2): session_win ≈ 0 since
+        every bonus round's WinCredits is already at pay_id level.
+        The freespin-round pay_ids (6 / 101 / 1 / 7 / 20102 / ...)
+        absorb the feature RTP naturally through the round-level
+        loop. sum(payout_ids_top20.rtp_pp) reaches summary.rtp via
+        those pay_ids, not via the trigger pay_id.
 
     Returns a list of session dicts, one per session:
 
@@ -219,7 +272,13 @@ def compute_trigger_sessions(rounds: Iterable[dict]) -> list[dict]:
         trig_w = r.get("WinCredits")
         last_nonnone_win: float = _to_float_or_zero(trig_w) if trig_w is not None else 0.0
         sum_win: float = _to_float_or_zero(trig_w)
-        # Walk the bonus sequence.
+        # Walk the bonus sequence. Rounds whose WinCredits is already
+        # credited to pay_ids at round level (non-empty Payout with
+        # any nonzero value) are EXCLUDED from last_non_none tracking
+        # and sum_win — otherwise the same credit lands in two places
+        # (e.g. M273 freespin round Payout={'6':7000,'101':2000}:
+        # round aggregator credits pay_id 6/101; session would
+        # double-credit pay_id 5801 with the same 9000).
         j = i + 1
         bonus_sts: list = []
         while j < n:
@@ -230,10 +289,11 @@ def compute_trigger_sessions(rounds: Iterable[dict]) -> list[dict]:
             if _is_paid_round(nr):
                 break
             bonus_sts.append(nr.get("SpinType"))
-            w = nr.get("WinCredits")
-            if w is not None:
-                last_nonnone_win = _to_float_or_zero(w)
-                sum_win += _to_float_or_zero(w)
+            if not _round_has_credited_win(nr):
+                w = nr.get("WinCredits")
+                if w is not None:
+                    last_nonnone_win = _to_float_or_zero(w)
+                    sum_win += _to_float_or_zero(w)
             j += 1
         session_win = last_nonnone_win if rule == "last_non_none" else sum_win
         sessions.append({
