@@ -2860,12 +2860,37 @@ def parse_chunk_response(
             # PayoutIdToWinAmount aggregation: dict of {payout_id: win}
             # populated on winning rounds. Sum win and count occurrences
             # per id so the drilldown can rank by total contribution.
+            #
+            # Win-vs-Payout normalization (iter 4 M209 fix, 2026-04-23):
+            # some machines' bonus-round Payout represents potential/
+            # alternative rewards rather than earned credits, so
+            # ``sum(Payout values) > WinCredits`` can happen (M209
+            # "move" rounds commonly show Win=10000 Payout={'2':20000}
+            # or Win=10000 Payout={'2':10000,'3':5000}). Attributing
+            # the raw Payout values inflates pay_id RTP beyond the
+            # actual WinCredits earned; ``sum(payout_ids_top20.rtp_pp)``
+            # exceeded summary.rtp by ~8pp on M209 before this fix.
+            #
+            # Fix: when ``sum(Payout) > WinCredits > 0``, scale each
+            # pay_id's credit to its proportional share of Win. When
+            # they match (almost all machines / all paid rounds),
+            # behavior is identical to pre-fix. When upstream reports
+            # Win without a corresponding Payout entry (Win > Payout
+            # sum, rare), we keep Payout values as-is — the unaccounted
+            # delta stays under "no pay_id" at the session level.
             pid_to_win = r.get("PayoutIdToWinAmount") or {}
             if isinstance(pid_to_win, dict):
+                _win_this_round = to_float(r.get("WinCredits"), default=0.0)
+                _pay_sum = sum(
+                    to_float(v, default=0.0) for v in pid_to_win.values()
+                )
+                _scale = 1.0
+                if _pay_sum > 0 and 0 < _win_this_round < _pay_sum:
+                    _scale = _win_this_round / _pay_sum
                 for pid_raw, amount_raw in pid_to_win.items():
                     pid = str(pid_raw)
                     payout_id_hits[pid] += 1
-                    payout_id_win[pid] += to_float(amount_raw, default=0.0)
+                    payout_id_win[pid] += to_float(amount_raw, default=0.0) * _scale
                     # Capture the SpinType that fired this pay_id (from
                     # the round's sp_type, determined below but already
                     # assigned via the per-round parse pass — the int
