@@ -117,6 +117,59 @@ def test_delegate_cmd_does_not_forward_unknown_extras():
     assert "42" not in cmd
 
 
+def test_delegate_cmd_uses_mutated_upstream_md5_from_args():
+    """Regression (2026-04-23): the md5 value the delegate receives must
+    track what chunks were actually stamped with, NOT whatever stale
+    value the backend originally passed.
+
+    Flow this protects:
+      1. Backend reads machines_virtual.json at batch-start → gets md5 X
+      2. Backend calls virtual_analyzer CLI with --upstream-config-md5 X
+      3. virtual_analyzer calls refresh_machines_virtual() and then
+         _compute_md5s() → gets FRESH md5 Y (machines_virtual.json was
+         stale for some reason — e.g. just-completed retune)
+      4. Sampling loop stamps every chunk with Y
+      5. Delegate spawned via _build_delegate_cmd(args, ...) where
+         args.upstream_config_md5 has been MUTATED in place from X to Y
+         to match the chunk stamp
+      6. Delegate's md5 filter accepts the chunks (it's looking for Y
+         and the chunks have Y)
+
+    Before this fix: step 5's args still had the ORIGINAL X, delegate
+    filtered on X, all Y-stamped chunks rejected → "0 spins produced"
+    failure despite sampling having emitted thousands of spins.
+
+    This test only exercises _build_delegate_cmd — the actual mutation
+    happens in main() before reaching the delegate call, and we verify
+    here that _build_delegate_cmd reads the CURRENT args values (not a
+    cached copy from parse time).
+    """
+    argv = [
+        "--machine", "M1sim", "--rtp-mode", "1",
+        "--output-dir", "/tmp/out",
+        "--upstream-config-md5", "BACKEND_STALE_CFG",
+        "--upstream-code-md5", "BACKEND_STALE_CODE",
+    ]
+    args, _extras = _parse(argv)
+
+    # Simulate main()'s mid-flight overwrite of args.upstream_*_md5 with
+    # fresh delegate_md5s that chunks were actually stamped with.
+    args.upstream_config_md5 = "FRESH_CFG"
+    args.upstream_code_md5 = "FRESH_CODE"
+
+    cmd = _build_delegate_cmd(args, Path("/tmp/cache"))
+
+    # Delegate must see the FRESH values (the ones chunks were stamped with),
+    # not the stale backend-supplied values.
+    assert "BACKEND_STALE_CFG" not in cmd, (
+        "delegate must not receive backend's stale md5; got it anyway → "
+        "all freshly-stamped chunks would be rejected at md5-filter step"
+    )
+    assert "BACKEND_STALE_CODE" not in cmd
+    assert cmd[cmd.index("--upstream-config-md5") + 1] == "FRESH_CFG"
+    assert cmd[cmd.index("--upstream-code-md5") + 1] == "FRESH_CODE"
+
+
 def test_delegate_cmd_skips_md5_filter_when_empty():
     """Empty md5 = no filter (backend's default when machine has no
     registered md5 yet). Don't emit empty-string CLI args — they're

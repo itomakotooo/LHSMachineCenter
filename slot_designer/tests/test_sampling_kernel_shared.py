@@ -159,20 +159,6 @@ def test_virtual_analyzer_chunk_matches_driver_chunk():
     )
 
     spec = json.loads(_SPEC.read_text(encoding="utf-8"))
-    # _run_simulator_chunk forces machine name to spec["machine"] = "M15",
-    # so compare using the same machine override in the driver call.
-    chunk_driver_m15, _, _ = sample_one_chunk(
-        engine1,
-        machine="M15",
-        mode=1,
-        chunk_index=1,
-        robots=3,
-        spins_per_robot=200,
-        rng=Random(12345),
-        schema_fp=schema_fp,
-        config_md5="",
-        code_md5="",
-    )
 
     chunk_va, win_v, bet_v = _run_simulator_chunk(
         engine2,
@@ -183,18 +169,84 @@ def test_virtual_analyzer_chunk_matches_driver_chunk():
         rng=Random(12345),
         schema_fp=schema_fp,
         md5s=("", ""),
+        # Pass explicit machine/mode to match what the CLI does
+        # (see regression tests below for the bug this prevented).
+        machine="M15sim",
+        mode=1,
     )
 
     assert win_v == win_d, (
         f"virtual vs driver chunk win mismatch: {win_v} vs {win_d}"
     )
     assert bet_v == bet_d
-    # Envelope must match (machine name aside). Compare round structure.
-    assert chunk_va["_chunk_index"] == chunk_driver_m15["_chunk_index"]
-    assert len(chunk_va["response"]) == len(chunk_driver_m15["response"])
-    for r_v, r_d in zip(chunk_va["response"], chunk_driver_m15["response"]):
+    # Envelopes should be byte-identical once both are tagged the same way.
+    assert chunk_va["_machine"] == chunk_driver["_machine"] == "M15sim"
+    assert chunk_va["_mode"] == chunk_driver["_mode"] == 1
+    assert chunk_va["_chunk_index"] == chunk_driver["_chunk_index"]
+    assert len(chunk_va["response"]) == len(chunk_driver["response"])
+    for r_v, r_d in zip(chunk_va["response"], chunk_driver["response"]):
         assert r_v["roundResult"] == r_d["roundResult"]
         assert r_v["analysisResult"] == r_d["analysisResult"]
+
+
+def test_virtual_analyzer_chunk_tags_virtual_machine_and_runtime_mode():
+    """Regression (2026-04-23): ``_run_simulator_chunk`` must tag chunks
+    with the VIRTUAL machine name and the CALLER-requested mode, not
+    spec's source machine / default mode.
+
+    The bug: an earlier implementation hard-coded
+    ``machine=spec["machine"], mode=int(spec["mode"])``. For M15.spec.json
+    (``machine="M15", mode=1``), mode 7 sampling tagged every chunk as
+    ``_machine=M15 _mode=1``. The analyzer's second-pass replay then:
+      * skipped all 171 chunks because md5 envelope (computed from
+        M15sim/mode_7's weights) appeared to mismatch whatever it was
+        comparing against (behavior depended on the analyzer's own md5
+        filter semantics, but the end result was 0 spins counted)
+      * wrote ``total_spins: 0`` into the summary
+      * backend promoted the run to failed with "sampling produced 0
+        spins after 0 chunk(s); stop_reason=from_cache_complete"
+
+    User-visible symptom: batch log scrolled through "168 chunks ·
+    3,360,000 spins · RTP=32.57%" (the live loop was fine), then the
+    replay stage immediately reported 0 spins per batch and the run
+    failed with the confusing "0 spins after 0 chunk(s)" message.
+
+    Fixed by accepting optional ``machine`` / ``mode`` kwargs and
+    having the CLI always pass ``args.machine`` + ``args.rtp_mode``.
+    """
+    engine = _build_engine()
+    spec = json.loads(_SPEC.read_text(encoding="utf-8"))
+    schema_fp = compute_schema_fingerprint_for(engine, mode=7, spins_per_robot=50)
+
+    chunk, _, _ = _run_simulator_chunk(
+        engine, spec, chunk_index=1, robots=1, spins_per_robot=50,
+        rng=Random(1), schema_fp=schema_fp, md5s=("cfg", "code"),
+        machine="M15sim", mode=7,
+    )
+    assert chunk["_machine"] == "M15sim", (
+        f"chunk envelope must tag the virtual machine name, got {chunk['_machine']!r}"
+    )
+    assert chunk["_mode"] == 7, (
+        f"chunk envelope must tag the caller-requested mode, got {chunk['_mode']!r}"
+    )
+
+
+def test_virtual_analyzer_chunk_falls_back_to_spec_when_args_omitted():
+    """Backwards compatibility: old callers that pass only ``spec`` (no
+    explicit machine/mode kwargs) still get the spec's machine + default
+    mode. This preserves any legacy test harness; the CLI always passes
+    the explicit args so production pipelines never hit this fallback.
+    """
+    engine = _build_engine()
+    spec = json.loads(_SPEC.read_text(encoding="utf-8"))
+    schema_fp = compute_schema_fingerprint_for(engine, mode=1, spins_per_robot=50)
+
+    chunk, _, _ = _run_simulator_chunk(
+        engine, spec, chunk_index=1, robots=1, spins_per_robot=50,
+        rng=Random(1), schema_fp=schema_fp, md5s=("", ""),
+    )
+    assert chunk["_machine"] == spec["machine"]
+    assert chunk["_mode"] == int(spec["mode"])
 
 
 if __name__ == "__main__":

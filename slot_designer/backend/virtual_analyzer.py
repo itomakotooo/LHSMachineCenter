@@ -183,18 +183,31 @@ def _run_simulator_chunk(
     engine, spec: dict, chunk_index: int, robots: int, spins_per_robot: int,
     rng: Random, schema_fp: str, md5s: tuple[str, str],
     initial_credits: int = 1_000_000_000,
+    *,
+    machine: str | None = None,
+    mode: int | None = None,
 ) -> tuple[dict, int, int]:
     """Produce ONE chunk dict (plus running win/bet totals).
 
     Thin wrapper over ``sample_one_chunk`` (emitter/driver.py) — the
     shared kernel both this path and ``emit_simulation_to_dir`` route
     through so the per-chunk emit semantics can't drift between them.
+
+    ``machine`` / ``mode`` explicitly override ``spec["machine"]`` /
+    ``spec["mode"]`` so the chunk's envelope tags match the VIRTUAL
+    machine + CALLER's requested mode — not the underlying source spec.
+    Without these overrides, every virtual-console chunk inherited the
+    spec's default mode (e.g. M15.spec.json: ``mode=1``); mode 7 chunks
+    landed tagged ``_machine=M15 _mode=1``, so the analyzer's second-
+    pass replay (which matches chunks by envelope tag, not file path)
+    counted 0 spins for the target mode → ``sampling produced 0 spins``
+    error. Fixed 2026-04-23.
     """
     config_md5, code_md5 = md5s
     return sample_one_chunk(
         engine,
-        machine=spec["machine"],
-        mode=int(spec["mode"]),
+        machine=machine if machine is not None else spec["machine"],
+        mode=int(mode) if mode is not None else int(spec["mode"]),
         chunk_index=chunk_index,
         robots=robots,
         spins_per_robot=spins_per_robot,
@@ -616,6 +629,23 @@ def main() -> int:
     # other modes' weights change later (2026-04-22 architecture fix).
     delegate_md5s = _compute_md5s(entry, mode=args.rtp_mode)
 
+    # 2026-04-23: sync args.upstream_*_md5 with the freshly computed
+    # delegate_md5s. Backend reads machines_virtual.json at batch-start
+    # and forwards those values via --upstream-config-md5 /
+    # --upstream-code-md5. If the registry was stale at that moment
+    # (e.g. operator just re-tuned a mode and refresh hadn't run yet),
+    # the backend's args.upstream_*_md5 points at the OLD md5 — but
+    # chunks stamp with the FRESH delegate_md5s computed here.
+    # _delegate_to_real_analyzer would then forward the STALE md5 to
+    # the delegate via _build_delegate_cmd → delegate's --upstream-*
+    # filter would reject every chunk we just sampled → 0 spins
+    # counted → "sampling produced 0 spins" failure. Overwrite the args
+    # so the filter matches the stamp. Same values propagate to both
+    # direct --from-cache delegate (path 1) and post-sample delegate
+    # (path 3 below).
+    args.upstream_config_md5 = delegate_md5s[0]
+    args.upstream_code_md5 = delegate_md5s[1]
+
     # 1. Pure --from-cache: no sim needed, delegate directly
     if args.from_cache and not args.resume_from_cache:
         return _delegate_to_real_analyzer(
@@ -783,6 +813,12 @@ def main() -> int:
             rng=rng,
             schema_fp=schema_fp,
             md5s=md5s,
+            # Explicit virtual-machine + runtime-mode tagging (see kernel docstring):
+            # chunks MUST be stamped with the virtual machine name (e.g. "M15sim")
+            # and the currently-sampling mode, not the underlying spec defaults.
+            # Without this the re-read pass couldn't match chunks for mode != 1.
+            machine=args.machine,
+            mode=int(args.rtp_mode),
         )
         write_chunk(chunk, sampling_out_dir, ci)
         total_win += c_win
