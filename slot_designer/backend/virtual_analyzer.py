@@ -68,7 +68,7 @@ from slot_designer.backend.virtual_registry import (
 )
 from slot_designer.emitter.chunk import compute_schema_fingerprint, emit_chunk, write_chunk
 from slot_designer.emitter.robot import emit_robot
-from slot_designer.emitter.round import emit_round
+from slot_designer.emitter.round import emit_round, emit_session
 from slot_designer.engine.loader import load_engine
 
 
@@ -189,16 +189,27 @@ def _run_simulator_chunk(
         last_credits = initial_credits
         rounds: list[dict] = []
         for _i in range(spins_per_robot):
-            out = engine.spin(rng)
-            rd = emit_round(
+            # v5 M15: use spin_session + emit_session so feature-trigger
+            # spins produce ST=1 (Trigger) + ST=14 × N + ST=15 sequence.
+            # Non-feature machines (M1) get empty feature_rounds list →
+            # emit_session returns single-item list identical to
+            # emit_round output.
+            out, feature_rounds = engine.spin_session(rng)
+            session_dicts = emit_session(
                 out,
+                feature_rounds,
                 last_credits=last_credits,
                 spin_times=spins_per_robot,
                 rtp_id=int(spec["mode"]),
+                feature_trigger_pay_id=engine.feature_trigger_pay_id,
             )
-            rounds.append(rd)
-            last_credits = last_credits - out.cost_credits + rd["WinCredits"]
-            chunk_win += rd["WinCredits"]
+            rounds.extend(session_dicts)
+            # Main ST=1 is always session_dicts[0]; its WinCredits is the
+            # actual credit delta (feature ST=14 WinCredits are display
+            # values, not actual credit changes — mirrors production).
+            main_dict = session_dicts[0]
+            last_credits = last_credits - out.cost_credits + main_dict["WinCredits"]
+            chunk_win += main_dict["WinCredits"]
             chunk_bet += out.bet_amount
         robot_list.append(emit_robot(rounds, bet=engine.bet_amount))
 
