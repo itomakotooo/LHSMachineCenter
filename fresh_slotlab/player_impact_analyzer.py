@@ -26,9 +26,15 @@ from typing import Any
 # Keeping this at module top rather than inside the hot loop ensures a
 # single import attempt per process.
 try:
-    from fresh_slotlab.trigger_sessions import compute_trigger_sessions  # noqa: E402
+    from fresh_slotlab.trigger_sessions import (
+        _round_has_credited_win,
+        compute_trigger_sessions,
+    )  # noqa: E402
 except ImportError:  # running as a standalone script, not a package member
-    from trigger_sessions import compute_trigger_sessions  # type: ignore[no-redef]
+    from trigger_sessions import (  # type: ignore[no-redef]
+        _round_has_credited_win,
+        compute_trigger_sessions,
+    )
 
 DEFAULT_ENDPOINT_URL = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpinVariant"
 ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
@@ -515,10 +521,10 @@ def _infer_feature_spin_type_mapping(
     # Sanity gate — if a feature has direct_win_credits > 0 but its
     # mapped SpinType has total_win == 0, the count match pointed at
     # a "selector / resolution" SpinType that doesn't carry the wins
-    # (M12/M15/M132 TopDollar: pay attributed to the selector spin's
-    # round, pick-em round has 0 WinCredits). Drop the mapping rather
-    # than emit bucket_distribution with pp sum=0 that's semantically
-    # wrong. UI falls through to "no bucket data" honestly.
+    # (M102 Wheel: pay_id attribution lands on a different SpinType
+    # than where fires were counted). Drop the mapping; pass 5 below
+    # will re-bind if the zero-win ST is a legitimate settlement
+    # SpinType (unique match only).
     if feature_win_total and spin_type_win:
         st_win = {int(k): float(v) for k, v in spin_type_win.items()}
         dropped: list[str] = []
@@ -531,6 +537,46 @@ def _infer_feature_spin_type_mapping(
             st = feature_to_spin_type.pop(feat_name)
             spin_type_to_feature.pop(st, None)
             ambiguous_mapped.discard(feat_name)
+
+    # Pass 5 — settlement-SpinType binding (iter 5 M15 fix, 2026-04-23).
+    # Some selector-style features (M15 TopDollar, M12 TopDollar,
+    # QuickDollar family) have a "settlement SpinType" that fires
+    # once per trigger session with WinCredits=None on every round.
+    # The aggregator sees zero win on that SpinType, so pass 1's
+    # count match binds feature → settlement ST, then the sanity
+    # gate immediately drops it (feat_win > 0 but mapped_st_win = 0).
+    # Without re-binding, the feature's resolved_spin_type stays
+    # None → UI shows "无倍率分桶数据" on its card AND the chain
+    # inference can't resolve the selector feature's successor
+    # (which should point at this settlement feature).
+    #
+    # Runs AFTER the sanity gate so it picks up features the gate
+    # just dropped. Rule: for each unbound paying feature, find the
+    # unique unbound zero-win SpinType with count within 15% of
+    # feat.times. The zero-win filter is the whole point — we
+    # ONLY re-bind to zero-win STs, so this never clashes with the
+    # sanity gate's intended behaviour (dropping misfires onto
+    # zero-win STs when a nonzero-win ST is the real match).
+    if feature_win_total and spin_type_win:
+        st_win_p5 = {int(k): float(v) for k, v in spin_type_win.items()}
+        for feat_name, feat_times in feature_times_total.items():
+            if feat_times <= 0 or feat_name in feature_to_spin_type:
+                continue
+            feat_win = float(feature_win_total.get(feat_name, 0) or 0)
+            if feat_win <= 0:
+                # Zero-win feature → let pass 1/3 handle via counts;
+                # pass 5 targets paying features only.
+                continue
+            zero_win_candidates = [
+                (st, cnt) for st, cnt in st_spins.items()
+                if st not in spin_type_to_feature
+                and st_win_p5.get(st, 0.0) == 0.0
+                and abs(cnt - feat_times) / max(feat_times, 1) <= 0.15
+            ]
+            if len(zero_win_candidates) == 1:
+                st = zero_win_candidates[0][0]
+                spin_type_to_feature[st] = feat_name
+                feature_to_spin_type[feat_name] = st
     return feature_to_spin_type, spin_type_to_feature, ambiguous_mapped
 
 
@@ -2377,7 +2423,18 @@ def parse_chunk_response(
         if not sess_state["open"]:
             return
         s_bet = float(sess_state["bet"])
-        s_win = float(sess_state["win"])
+        # Iter 5 (2026-04-23): session_win = paid round win + deferred
+        # helper-computed bonus win. The naive per-round accumulator
+        # (sess_state["win"] += win_amt on bonus rounds) over-counts
+        # selector-offer rounds on M15 / Type-1 machines (sums ALL
+        # offers when only the last accepted offer is real win). The
+        # helper's ``session_win`` applies last_non_none (Type 1) or
+        # sum_all-with-Payout-filter (Type 2) to produce the correct
+        # player-received amount. bonus_win_from_helper is set on
+        # session open (paid trigger round) from the pre-computed map.
+        s_win = float(sess_state["win"]) + float(
+            sess_state.get("bonus_win_from_helper", 0.0) or 0.0
+        )
         ret_x_sess = (s_win / s_bet) if s_bet > 0 else 0.0
 
         paid_session_count += 1
@@ -2425,6 +2482,11 @@ def parse_chunk_response(
         sess_state["open"] = False
         sess_state["bet"] = 0.0
         sess_state["win"] = 0.0
+        # Iter 5: clear deferred helper-win + trigger-session flag so
+        # the next session's paid round gets a clean slate (set by
+        # the paid-round branch when opened).
+        sess_state["bonus_win_from_helper"] = 0.0
+        sess_state["is_trigger_session"] = False
 
     for robot in resp:
         if not isinstance(robot, dict):
@@ -2450,7 +2512,28 @@ def parse_chunk_response(
         # session win — no double-counting of either hits or the co-
         # occurring regular payline wins (which have nonzero PayoutId
         # amounts and so are excluded from trigger_pay_ids by design).
-        for _trig_session in compute_trigger_sessions(rounds):
+        # Map trigger_round_idx → session_win for deferred session-
+        # level bonus attribution (iter 5 session-win fix, 2026-04-23).
+        # M15-style selector sessions carry uncredited "offer value"
+        # WinCredits on bonus rounds (Payout=None); the naive per-
+        # round session accumulator sums all of them (15000+20000+
+        # 25000+40000 = 100000) while the player actually received
+        # only the accepted offer (40000). That inflated session_win
+        # cascades into session_bucket_win → tail_win_geN →
+        # tail_dependency > 100%. Fix: for TRIGGER SESSIONS specifically,
+        # replace the main loop's naive bonus-win accumulation with
+        # the helper's session_win (Type 1 last_non_none / Type 2
+        # sum_with_Payout_filter). Non-trigger sessions (bonus flow
+        # without a detectable trigger signal — M272 simple paid→bonus
+        # round sequences, etc.) keep their naive accumulation
+        # intact so pre-existing behavior is preserved.
+        _trig_sessions_for_robot = compute_trigger_sessions(rounds)
+        session_win_by_trigger_idx: dict[int, float] = {
+            int(s["trigger_idx"]): float(s.get("session_win", 0.0) or 0.0)
+            for s in _trig_sessions_for_robot
+        }
+        trigger_session_paid_indices: set[int] = set(session_win_by_trigger_idx.keys())
+        for _trig_session in _trig_sessions_for_robot:
             _sess_win = float(_trig_session.get("session_win", 0.0) or 0.0)
             if _sess_win == 0.0:
                 continue
@@ -2503,7 +2586,7 @@ def parse_chunk_response(
         sess_state["cur_loss_streak"] = 0
         sess_state["cur_win_streak"] = 0
 
-        for r in rounds:
+        for _round_idx_in_robot, r in enumerate(rounds):
             if not isinstance(r, dict):
                 continue
 
@@ -2614,9 +2697,36 @@ def parse_chunk_response(
                 sess_state["open"] = True
                 sess_state["bet"] = bet_amt
                 sess_state["win"] = win_amt
+                # Iter 5: if this paid round opens a trigger session,
+                # mark the session as helper-tracked and record the
+                # helper-computed session_win. Bonus rounds belonging
+                # to a helper-tracked session skip the naive
+                # accumulator (their WinCredits are phantom offers on
+                # Type 1 or already at pay_id level on Type 2);
+                # _close_session adds bonus_win_from_helper instead.
+                # Non-trigger sessions keep naive accumulation —
+                # matches pre-iter-5 behavior for machines whose
+                # bonus flows aren't caught by the trigger detector.
+                if _round_idx_in_robot in trigger_session_paid_indices:
+                    sess_state["is_trigger_session"] = True
+                    sess_state["bonus_win_from_helper"] = (
+                        session_win_by_trigger_idx.get(_round_idx_in_robot, 0.0)
+                    )
+                else:
+                    sess_state["is_trigger_session"] = False
+                    sess_state["bonus_win_from_helper"] = 0.0
             else:
                 if sess_state["open"]:
-                    sess_state["win"] += win_amt
+                    if not sess_state.get("is_trigger_session"):
+                        # Non-trigger session — naive accumulation
+                        # (pre-iter-5 behavior). Covers M272 paid+
+                        # bonus flows without a Trigger ReMarks / win=0
+                        # pay_id anchor that the helper would catch.
+                        sess_state["win"] += win_amt
+                    # else: trigger session — bonus round wins are
+                    # handled by bonus_win_from_helper at close. Skip
+                    # naive add to avoid double-counting or phantom-
+                    # offer inflation.
                     bonus_spin_count += 1
                 # else: orphan bonus (no prior paid spin seen) -- rare /
                 # anomalous; not counted toward any session. The spin is
