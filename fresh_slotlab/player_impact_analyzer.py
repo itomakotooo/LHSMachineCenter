@@ -5056,8 +5056,18 @@ def main() -> int:
                 "hit_rate": (hits / total_spins) if total_spins > 0 else 0.0,
                 "total_win": wins_f,
                 "avg_win_when_hit": (wins_f / hits) if hits > 0 else 0.0,
+                # 2026-04-23 (iter 3 denominator unification): use the
+                # same paid-only denominator that summary.rtp uses
+                # (effective_bet_for_rtp = session_bet_sum). Before
+                # this, payout rows used total_bet which included
+                # BetAmount on bonus rounds where the player doesn't
+                # actually pay, so sum(payout_ids_top20.rtp_pp)
+                # lagged summary.rtp by the ratio (paid / total)
+                # (e.g. M15: 200M / 208.84M = 95.77%). Now the sum
+                # converges on summary.rtp at fleet level.
                 "rtp_contribution_pp": (
-                    (wins_f / total_bet) * 100.0 if total_bet > 0 else 0.0
+                    (wins_f / effective_bet_for_rtp) * 100.0
+                    if effective_bet_for_rtp > 0 else 0.0
                 ),
                 # New (2026-04-20 round 2): attribution to SpinType.
                 # ``spin_type_category`` ∈ {"paid", "bonus", "mixed"};

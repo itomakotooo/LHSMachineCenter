@@ -127,6 +127,29 @@ def test_bucket_rtp_sum_equals_rtp(run_full_pipeline):
     )
 
 
+def test_payout_ids_top20_rtp_sum_equals_summary_rtp(run_full_pipeline):
+    """Iter 3 denominator unification (2026-04-23) on a bonus-heavy
+    machine. M272 has both paid (SpinType 140) and bonus (SpinType
+    126) rounds — denominator choice matters here. Before iter 3,
+    payout rows used total_bet = (paid + bonus) × bet; summary.rtp
+    uses paid-only. The sum(rtp_pp) lagged summary.rtp by the
+    ratio paid / total. Now both use effective_bet_for_rtp and
+    the sum converges exactly.
+
+    This is the test the M14 fixture couldn't catch (M14 has
+    bonus_spins=0, so total_bet == effective_bet_for_rtp, hiding
+    the bug). M272's bonus-heavy fixture exercises the diff."""
+    s = run_full_pipeline
+    rows = s["player_impact"]["payout_ids_top20"]
+    pay_sum_pp = sum(r.get("rtp_contribution_pp", 0.0) for r in rows)
+    rtp = s["rtp"]["point_pct"]
+    assert abs(pay_sum_pp - rtp) < 0.01, (
+        f"payout_ids_top20 rtp_pp sum {pay_sum_pp:.4f} diverges "
+        f"from summary.rtp {rtp:.4f} — denominator regression? "
+        f"delta={rtp - pay_sum_pp:.4f}pp"
+    )
+
+
 # ---------- sampling / upstream ----------
 
 def test_paid_bonus_spins_exact(run_full_pipeline):

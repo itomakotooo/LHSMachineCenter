@@ -82,6 +82,29 @@ def test_bucket_rtp_sum_equals_rtp(run_full_pipeline):
     assert abs(sum(b["rtp_contribution_pp"] for b in buckets) - run_full_pipeline["rtp"]["point_pct"]) < 0.01
 
 
+def test_payout_ids_top20_rtp_sum_equals_summary_rtp(run_full_pipeline):
+    """Iter 3 denominator unification (2026-04-23): payout row
+    ``rtp_contribution_pp`` now uses ``effective_bet_for_rtp``
+    (paid-spin bet only), same denominator as ``summary.rtp``.
+    Before this, payout rows used ``total_bet`` (paid + bonus bet)
+    and the sum lagged ``summary.rtp`` by the ratio paid/total
+    (M14 had no bonus so the diff was 0; M15/M272-style bonus-
+    heavy machines showed ~4% gap). This test locks the parity
+    on M14 — sum of all payout row rtp_pp must equal summary.rtp
+    exactly (tolerance 0.01 for rounding)."""
+    rows = run_full_pipeline["player_impact"]["payout_ids_top20"]
+    # -1 is the "no payout" bucket — represents lose spins with
+    # total_win = 0 and rtp_pp = 0. Its presence is inert but we
+    # guard against flakiness if a future change starts treating
+    # it differently. Sum includes it regardless (0 add).
+    pay_sum_pp = sum(r.get("rtp_contribution_pp", 0.0) for r in rows)
+    rtp_pct = run_full_pipeline["rtp"]["point_pct"]
+    assert abs(pay_sum_pp - rtp_pct) < 0.01, (
+        f"payout_ids_top20 rtp_pp sum {pay_sum_pp} diverges from "
+        f"summary.rtp {rtp_pct} — denominator regression?"
+    )
+
+
 def test_no_bonus_spins(run_full_pipeline):
     assert run_full_pipeline["sampling"]["bonus_spins"] == 0
     assert run_full_pipeline["sampling"]["paid_spins"] == BASELINE["paid_spins"]
