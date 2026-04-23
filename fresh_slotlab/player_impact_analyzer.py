@@ -5197,6 +5197,21 @@ def main() -> int:
     for rows in sub_streams_by_feature.values():
         rows.sort(key=lambda r: -r["win_credits"])
 
+    # Build a reverse SpinType transition table once (inbound edge
+    # counts) so the per-feature loop below can compute BOTH the
+    # successor (``chain_parent_feature``, historical name — points
+    # to "what comes after this feature in the round sequence") and
+    # the predecessor (``chain_predecessor_feature`` — points to
+    # "what fires this feature"). The historical ``chain_parent_*``
+    # name is a misnomer: it stores the chain's successor, not its
+    # parent. We keep it unchanged for backward-compat with front-
+    # end / tests but add the correctly-named predecessor fields
+    # alongside so operators see both ends of each chain edge.
+    spin_type_prev_counts: dict[int, Counter] = defaultdict(Counter)
+    for _st_from, _tos in spin_type_next_counts.items():
+        for _st_to, _cnt in _tos.items():
+            spin_type_prev_counts[int(_st_to)][int(_st_from)] += int(_cnt)
+
     upstream_feature_rows: list[dict[str, Any]] = []
     for feat_name, payouts in upstream_feature_tally.items():
         feat_total_win = sum(p.get("win", 0.0) for p in payouts.values())
@@ -5261,7 +5276,7 @@ def main() -> int:
                             chain_parent_confidence = "medium"
                         else:
                             chain_parent_confidence = "low"
-        # BCM fallback: "BuffCollectionMap" has no round-level
+# BCM fallback: "BuffCollectionMap" has no round-level
         # SpinType (it's a per-spin CollectCount cycle, not its own
         # round type). When SpinType inference can't bind it, use
         # the BCM pairing resolved from configs/bcm_pairings.json
@@ -5279,6 +5294,43 @@ def main() -> int:
             # reset as 100% chaining into the paired feature.
             chain_parent_share = 1.0
             chain_parent_next_fires = feat_total_times
+
+        # Chain-PREDECESSOR inference — the feature that fires this
+        # one (semantically "parent"). Uses the reverse transition
+        # table: which SpinTypes transition INTO this feature's
+        # resolved_spin_type? The dominant predecessor is the paying
+        # feature that triggers this one. Symmetric to the successor
+        # (chain_parent) logic — same confidence thresholds, same
+        # self-loop exclusion.
+        chain_predecessor_feature: str | None = None
+        chain_predecessor_share: float = 0.0
+        chain_predecessor_confidence: str = "none"
+        chain_predecessor_prev_fires: int = 0
+        if resolved_spin_type is not None:
+            pred_transitions = spin_type_prev_counts.get(resolved_spin_type) or Counter()
+            pred_total_edges = sum(pred_transitions.values())
+            if pred_total_edges > 0:
+                ranked_pred = sorted(
+                    (
+                        (int(st_from), int(cnt))
+                        for st_from, cnt in pred_transitions.items()
+                        if int(st_from) != resolved_spin_type
+                    ),
+                    key=lambda kv: -kv[1],
+                )
+                if ranked_pred:
+                    best_pred_st, best_pred_cnt = ranked_pred[0]
+                    pred_feat = spin_type_to_feature.get(best_pred_st)
+                    if pred_feat:
+                        chain_predecessor_feature = pred_feat
+                        chain_predecessor_prev_fires = best_pred_cnt
+                        chain_predecessor_share = best_pred_cnt / pred_total_edges
+                        if chain_predecessor_share >= 0.80:
+                            chain_predecessor_confidence = "high"
+                        elif chain_predecessor_share >= 0.50:
+                            chain_predecessor_confidence = "medium"
+                        else:
+                            chain_predecessor_confidence = "low"
         fire_rate = feat_total_times / total_spins if total_spins > 0 else 0.0
         # Per-feature multiplier bucket histogram. Same shape as the
         # global multiplier_profile.buckets so the UI can reuse the
@@ -5322,10 +5374,26 @@ def main() -> int:
             "trigger_only": trigger_only,
             "resolved_spin_type": resolved_spin_type,
             "spin_type_binding_ambiguous": feat_name in ambiguous_mapped,
+            # Historical "chain_parent_*" fields semantically store
+            # the chain SUCCESSOR (what comes after this feature).
+            # Kept under the old name for back-compat with front-end
+            # + tests that read them to build inbound-chain
+            # breadcrumbs. New predecessor fields added below.
             "chain_parent_feature": chain_parent_feature,
             "chain_parent_confidence": chain_parent_confidence,
             "chain_parent_share": chain_parent_share,
             "chain_parent_next_fires": chain_parent_next_fires,
+            # Iter 4 (2026-04-23): correctly-named chain predecessor
+            # (the feature whose SpinType most commonly transitions
+            # INTO this one — i.e. who fires this feature). For a
+            # typical trigger-only bonus feature, predecessor is
+            # the paid feature (Normal) that hosts the trigger
+            # round; for a paid feature with little inbound chain
+            # traffic, predecessor is None.
+            "chain_predecessor_feature": chain_predecessor_feature,
+            "chain_predecessor_confidence": chain_predecessor_confidence,
+            "chain_predecessor_share": chain_predecessor_share,
+            "chain_predecessor_prev_fires": chain_predecessor_prev_fires,
         }
         # Only split PAYING features into per-path rows. Trigger-only
         # features (WheelSelector / PreWheel / etc.) have direct_win=0

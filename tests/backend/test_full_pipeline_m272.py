@@ -127,6 +127,89 @@ def test_bucket_rtp_sum_equals_rtp(run_full_pipeline):
     )
 
 
+def test_chain_predecessor_populated_for_bonus_feature(run_full_pipeline):
+    """M272 mode 1 fixture has NormalCollectionSpin (paid SpinType 140)
+    and NewFreespin (bonus SpinType 126). The bonus feature is
+    triggered BY the paid feature, so its chain_predecessor MUST
+    resolve to "NormalCollectionSpin" with non-zero share. If it's
+    None the reverse-transition table isn't being populated.
+
+    Regression guard for the iter 4 predecessor computation.
+    Inject-bug proof: disabling the spin_type_prev_counts fill
+    or the per-feature predecessor loop makes this go red."""
+    feats = run_full_pipeline["player_impact"]["upstream_feature_breakdown"]["features"]
+    bonus = next(
+        (f for f in feats if f["feature_name"] == "NewFreespin"), None,
+    )
+    assert bonus is not None, "expected NewFreespin feature in fixture"
+    assert bonus["chain_predecessor_feature"] == "NormalCollectionSpin", (
+        f"expected NewFreespin.chain_predecessor_feature == "
+        f"'NormalCollectionSpin', got "
+        f"{bonus['chain_predecessor_feature']!r}"
+    )
+    assert bonus["chain_predecessor_share"] > 0, (
+        "chain_predecessor_share must be > 0 when a predecessor is "
+        "identified — zero means the reverse table is empty"
+    )
+    assert bonus["chain_predecessor_confidence"] in ("high", "medium", "low"), (
+        f"unexpected confidence label "
+        f"{bonus['chain_predecessor_confidence']!r}"
+    )
+
+
+def test_chain_predecessor_field_present_on_all_features(run_full_pipeline):
+    """Iter 4 (2026-04-23): every feature row in
+    upstream_feature_breakdown.features carries the new
+    chain_predecessor_* fields. Predecessor semantically answers
+    "who fires this feature?" — symmetric to chain_parent_* which
+    has historically been storing the successor ("what comes
+    after this feature"). The two together describe both ends of
+    every chain edge the aggregator detected."""
+    feats = run_full_pipeline["player_impact"]["upstream_feature_breakdown"]["features"]
+    assert len(feats) > 0
+    for f in feats:
+        # Both sides must exist on every feature row for front-end
+        # to safely read without defensive None checks.
+        for field in (
+            "chain_parent_feature", "chain_parent_confidence",
+            "chain_parent_share", "chain_parent_next_fires",
+            "chain_predecessor_feature", "chain_predecessor_confidence",
+            "chain_predecessor_share", "chain_predecessor_prev_fires",
+        ):
+            assert field in f, f"missing {field} on {f['feature_name']!r}"
+
+
+def test_chain_predecessor_is_self_consistent_with_successor(run_full_pipeline):
+    """Regression: if feature A reports chain_parent=B (B is A's
+    successor), then B's chain_predecessor SHOULD be A (symmetric
+    edge). Not every pair satisfies this — confidence may diverge
+    on sparse transitions — but at minimum the edge must be known
+    from both sides when both features are bound to SpinTypes.
+
+    This guards against a future refactor that computes
+    predecessor from a stale or different transition table than
+    successor uses."""
+    feats = run_full_pipeline["player_impact"]["upstream_feature_breakdown"]["features"]
+    by_name = {f["feature_name"]: f for f in feats}
+    mismatches = []
+    for feat in feats:
+        successor_name = feat.get("chain_parent_feature")
+        if not successor_name or successor_name not in by_name:
+            continue
+        # On the successor's row, its chain_predecessor should ideally
+        # be this feature. We tolerate None (bonus rounds with mixed
+        # inbound SpinTypes) but any non-None value MUST match.
+        succ = by_name[successor_name]
+        pred_name = succ.get("chain_predecessor_feature")
+        if pred_name is not None and pred_name != feat["feature_name"]:
+            mismatches.append((feat["feature_name"], successor_name, pred_name))
+    assert not mismatches, (
+        f"chain predecessor/successor edges disagree: {mismatches}. "
+        f"Means the two transition tables (forward vs reverse) are "
+        f"out of sync — reverse should be a 1:1 inversion of forward."
+    )
+
+
 def test_payout_ids_top20_rtp_sum_equals_summary_rtp(run_full_pipeline):
     """Iter 3 denominator unification (2026-04-23) on a bonus-heavy
     machine. M272 has both paid (SpinType 140) and bonus (SpinType
