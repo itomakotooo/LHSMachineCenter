@@ -140,7 +140,9 @@ x 牌 per-value 抽样概率（归一化到 6 unique values）：
 
 ### 4.2 派生
 
-**Base**: mode 1 weights × `(Cherry × 0.5, Bar × 0.9)`，直接 scale 不走 tuner。
+**Base**: mode 1 weights × `(Cherry × 0.3, Bar × 0.77)`，直接 scale 不走 tuner。
+
+> 2026-04-23 retuned from original `(Cherry × 0.5, Bar × 0.9)` brief. That M1-inherited formula dropped M15 base by only ~5pp (not 10pp): M15's pure_wild (pay_id 1, 200×) and wild-boosted high7 (pay_id 2, 30×) inflate when cherry/bar marginals drop, offsetting the cut. Empirically iterated to `(0.3, 0.77)` for landing total 84.92pp ∈ [85 ±1pp]. See `scripts/derive_m15_mode_7.py --verify`.
 
 **Feature**: **100% 同 mode 1**。
 
@@ -276,23 +278,33 @@ Base 明显冷清（Cherry 砍半），Feature 剧本跟 mode 1 **完全一样**
 
 ## 10. 实现 TODO
 
-**已完成（v5）**：
-- `slot_designer/engine/feature_m15.py` 扩展 `x_value_weights` + `y_value_weights` 支持 ✓
+**已完成（v5, 2026-04-23）**：
+- `slot_designer/engine/feature_m15.py` 扩展 `x_value_weights` + `y_value_weights` ✓
 - `_tuple_prob` 替换为 weighted sampling without replacement (`_weighted_draw_dist`) ✓
 - 向后兼容：不传 value_weights 时 fallback 到 uniform ✓
 - `slot_designer/scripts/tune_m15_feature.py` binary-search alpha 反推 weights ✓
 - `slot_designer/scripts/verify_m15_modes.py` 跑所有 mode 跟 target 对比 ✓
 - 4 mode 数字验证（all deviation ≤ 0.01%）✓
+- `slot_designer/specs/M15.spec.json` 更新 feature params 到 v5 值 ✓
+- `slot_designer/weights/M15/mode_1/weights.json` Phase 4 tune → 42.75pp base + feature_params block ✓
+- `slot_designer/tests/test_m15_feature.py` 更新 EV 断言到 46 ✓
+- `slot_designer/weights/M15/mode_7/weights.json` direct-scale from mode 1 (Cherry × 0.3, Bar × 0.77) + topdollar trigger pin ✓
+- `slot_designer/weights/M15/mode_2/weights.json` Phase 4 tune (RTP+hit+trigger targets) → 135pp base + feature_params block ✓
+- `slot_designer/weights/M15/mode_5/weights.json` copy mode 2 base + enhanced feature_params (EV 132×) ✓
+- `slot_designer/scripts/derive_m15_mode_7.py` 派生脚本 ✓
+- `slot_designer/scripts/derive_m15_mode_5.py` 派生脚本 ✓
+- `slot_designer/scripts/tune.py` 扩展 `--trigger-target/--trigger-symbol/--trigger-reel/--trigger-weight` 约束 ✓
+- `slot_designer/scripts/tune.py` `--sa-steps 0` 时跳过 sibling weight 写入（byte-exact sibling invariant）✓
+- `slot_designer/tests/test_strips_identical_across_modes.py` 回归测（含 inject-bug self-check）✓
 
-**待办**：
-- `slot_designer/specs/M15.spec.json` 更新 feature params 到 v5 值
-- `slot_designer/weights/M15/mode_1/weights.json` 加 `feature_params` block（per-mode override，优先级高于 spec）
-- `slot_designer/tests/test_m15_feature.py` 更新 EV 断言到 46（旧为 400）
-- 新增测试：4 mode EV + trigger + feature RTP
-- Phase 4 tune mode 1 base → 42.75pp
-- Direct-scale mode 7 from mode 1（Cherry × 0.5, Bar × 0.9）
-- 后续：设计 mode 2 / mode 5 base（Phase 4 tune mode 2 + copy mode 5 from mode 2 + feature enhance）
-- Joint Phase 5 SA 跨 4 mode co-swap
+**Analytic 最终总 RTP**:
+- mode 1: 42.951 + 52.256 = **95.207%** (target 95 ±1pp) ✓
+- mode 2: 135.013 + 164.721 = **299.735%** (target 300 ±20pp) ✓
+- mode 5: 135.013 + 362.427 = **497.441%** (target 500 ±20pp) ✓
+- mode 7: 32.705 + 52.256 = **84.961%** (target 85 ±1pp) ✓
+
+**未实施（推迟）**：
+- Joint Phase 5 SA 跨 4 mode co-swap — 没必要：当前所有 mode 的 experience metrics (near_miss / PWDF / blank_adj) 都是 0，alternation_violations 也是 0。Phase 5 在 mode 1 tune 时已经把 strip 拉到最优，后续 mode 都 `--sa-steps 0` 保留这个 strip。
 
 ---
 

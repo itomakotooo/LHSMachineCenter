@@ -201,6 +201,38 @@ def main() -> None:
     p.add_argument("--hit-target", type=float, default=None,
                    help="optional hit_rate soft target (fraction 0-1).")
     p.add_argument("--hit-weight", type=float, default=0.5)
+    p.add_argument(
+        "--trigger-target", type=float, default=None,
+        help="optional FEATURE trigger-rate soft target (fraction 0-1). "
+             "When set, the tuner also tracks P(trigger_symbol on trigger_reel "
+             "payline) toward this target — needed for M15-style machines where "
+             "a symbol like 'topdollar' sits on one reel and controls feature "
+             "frequency independently of base RTP. Without this flag the tuner "
+             "trims the trigger symbol's count to zero (it contributes nothing "
+             "to base RTP/hit/shape targets).",
+    )
+    p.add_argument(
+        "--trigger-symbol", default="topdollar",
+        help="Symbol that triggers the feature on --trigger-reel (default: "
+             "'topdollar' for M15). Ignored unless --trigger-target is set.",
+    )
+    p.add_argument(
+        "--trigger-reel", type=int, default=3,
+        help="1-indexed reel where trigger_symbol lives (default: 3 for M15 "
+             "Top Dollar). Ignored unless --trigger-target is set.",
+    )
+    p.add_argument(
+        "--trigger-weight", type=float, default=1.5,
+        help="Cost weight on (actual_trigger - target_trigger)². Default 1.5 "
+             "heavier than hit/cv weights since trigger drift cascades into "
+             "feature RTP miss. Ignored unless --trigger-target is set.",
+    )
+    p.add_argument(
+        "--trigger-reference", type=float, default=0.001,
+        help="Reference gap for trigger quadratic penalty (0.001 = 0.1pp "
+             "→ cost 1 at trigger_weight=1). Ignored unless --trigger-target "
+             "is set.",
+    )
     p.add_argument("--verbose", action="store_true")
 
     # Phase 5 (joint order optimization) parameters
@@ -272,13 +304,46 @@ def main() -> None:
         tgt_rtp_frac = target.get("rtp_pct", 100.0) / 100.0
         target["cv"] = tgt_std / tgt_rtp_frac if tgt_rtp_frac > 0 else 0.0
 
+    # Trigger-rate constraint setup (M15-style machines). Topdollar / bonus
+    # symbols contribute 0 to base RTP + hit + shape → left to its own, the
+    # tuner trims their count to floor. But the feature trigger rate is a
+    # first-class design dial; we add a soft quadratic penalty on
+    # |P(trigger_sym on trigger_reel) - target|.
+    trigger_cfg = None
+    if args.trigger_target is not None:
+        trigger_cfg = {
+            "symbol": args.trigger_symbol,
+            "reel_idx": int(args.trigger_reel) - 1,  # 1-indexed → 0-indexed
+            "target": float(args.trigger_target),
+            "weight": float(args.trigger_weight),
+            "reference": float(args.trigger_reference),
+        }
+
+    def _trigger_penalty(counts_list: list[dict[str, int]]) -> tuple[float, float]:
+        """Return (penalty_cost, actual_trigger_rate)."""
+        if trigger_cfg is None:
+            return 0.0, 0.0
+        ri = trigger_cfg["reel_idx"]
+        if ri < 0 or ri >= len(counts_list):
+            return 0.0, 0.0
+        reel = counts_list[ri]
+        sym = trigger_cfg["symbol"]
+        total = sum(reel.values())
+        actual = (reel.get(sym, 0) / total) if total > 0 else 0.0
+        gap = actual - trigger_cfg["target"]
+        cost = (gap / trigger_cfg["reference"]) ** 2 * trigger_cfg["weight"]
+        return cost, actual
+
     def cost_fn(counts_list):
         marginals = marginals_from_counts(counts_list)
         pred = analytic_profile_from_marginals(evaluator, marginals)
         breakdown = evaluate_cost(
             pred, target, reachable_buckets=reachable, weights=cost_weights_cfg,
         )
-        return breakdown.total, breakdown
+        trigger_cost, _actual_trigger = _trigger_penalty(counts_list)
+        # Fold into the breakdown's total (breakdown is a frozen dataclass
+        # but we just add to the returned float).
+        return breakdown.total + trigger_cost, breakdown
 
     x0 = base_counts_from_assembled(base_reels)
     base_cost, base_breakdown = cost_fn(x0)
@@ -295,6 +360,10 @@ def main() -> None:
     print(f"  → components: rtp={base_breakdown.rtp_cost:.2f} shape={base_breakdown.shape_cost:.2f} cv={base_breakdown.cv_cost:.2f}{_hit_part}")
     if args.hit_target is not None:
         print(f"  hit_target       : {args.hit_target*100:.2f}% (soft, weight={args.hit_weight})")
+    if trigger_cfg is not None:
+        _tp, _actual = _trigger_penalty(x0)
+        print(f"  trigger rate     : {_actual*100:.3f}%  "
+              f"(target {trigger_cfg['target']*100:.3f}%, weight={trigger_cfg['weight']})")
 
     # ────────────────── Phase 4: count ES ──────────────────
     cfg = ESConfig(sigma_init=args.sigma)
@@ -317,6 +386,11 @@ def main() -> None:
     print(f"  CV               : {best_profile['cv']:.3f}  (target {target['cv']:.3f})")
     print(f"  ΔRTP             : {result.best_breakdown.rtp_gap_pp:.3f}pp")
     print(f"  shape JS         : {result.best_breakdown.shape_js:.5f}")
+    if trigger_cfg is not None:
+        _tp_after, _actual_after = _trigger_penalty(result.best_counts)
+        print(f"  trigger rate     : {_actual_after*100:.3f}%  "
+              f"(target {trigger_cfg['target']*100:.3f}%, "
+              f"gap {(_actual_after - trigger_cfg['target'])*100:+.3f}pp)")
     print(f"  cost (total)     : {result.best_cost:.4f}  (was {base_cost:.4f}; Δ={base_cost-result.best_cost:+.4f})")
 
     # Materialize new counts onto the existing strip — uses apply_counts's
@@ -479,14 +553,25 @@ def main() -> None:
     )
     print(f"wrote tuned weights (mode {this_mode_key}) → {args.out_weights}")
 
-    # Write sibling modes' weight arrays (Phase 5 joint SA may have
-    # co-swapped positions; their marginals are preserved but arrays differ)
-    for mode_num, wp in sibling_paths.items():
-        sib_doc = _load_weights(wp)
-        new_weights = weights_per_mode[str(mode_num)]
-        _write_weights(wp, sib_doc, new_weights)
-        print(f"wrote sibling weights (mode {mode_num}) → {wp}  "
-              f"[positions co-swapped, marginals preserved]")
+    # Write sibling modes' weight arrays ONLY when joint Phase 5 actually
+    # ran — otherwise weights_per_mode[sibling] is byte-identical to what's
+    # already on disk, so the write is a wasteful no-op that also risks
+    # touching siblings' mtime / feature_params / _notes blocks.
+    #
+    # With ``--sa-steps 0`` (used when tuning a non-first mode under the
+    # strips-identical invariant), we explicitly SKIP sibling writes so
+    # their existing weights.json files stay byte-exact.
+    if args.sa_steps > 0:
+        for mode_num, wp in sibling_paths.items():
+            sib_doc = _load_weights(wp)
+            new_weights = weights_per_mode[str(mode_num)]
+            _write_weights(wp, sib_doc, new_weights)
+            print(f"wrote sibling weights (mode {mode_num}) → {wp}  "
+                  f"[positions co-swapped, marginals preserved]")
+    elif sibling_paths:
+        print(f"[--sa-steps 0] skipping sibling weight writes "
+              f"({len(sibling_paths)} sibling mode{'s' if len(sibling_paths) != 1 else ''}"
+              f" kept byte-exact: {sorted(sibling_paths.keys())})")
 
     if args.out_report:
         _write_report(
