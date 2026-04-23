@@ -140,11 +140,24 @@ x 牌 per-value 抽样概率（归一化到 6 unique values）：
 
 ### 4.2 派生
 
-**Base**: mode 1 weights × `(Cherry × 0.3, Bar × 0.77)`，直接 scale 不走 tuner。
+**v6 (2026-04-23 current)**: **Phase 4 tune with --sa-steps 0** (strips locked to mode 1). Target file: `tuner/targets/M15_mode7_standard_low.target.json`.
 
-> 2026-04-23 retuned from original `(Cherry × 0.5, Bar × 0.9)` brief. That M1-inherited formula dropped M15 base by only ~5pp (not 10pp): M15's pure_wild (pay_id 1, 200×) and wild-boosted high7 (pay_id 2, 30×) inflate when cherry/bar marginals drop, offsetting the cut. Empirically iterated to `(0.3, 0.77)` for landing total 84.92pp ∈ [85 ±1pp]. See `scripts/derive_m15_mode_7.py --verify`.
+> v5 attempt was direct-scale `Cherry × 0.3, Bar × 0.77` via `derive_m15_mode_7.py`. It achieved RTP 32.67pp but hit_rate 7.5% (user wanted 12-13%). Direct-scale inherently ties RTP cut to hit cut — it reduces paying-symbol marginals, which drops both RTP AND hit proportionally. Switched to Phase 4 tune in v6 which hits RTP 32.5 AT hit 12-13% by shifting bucket shape toward low-mult pays (cuts wild/high7 contribution, preserves cherry/bar hits). See `memory/project_slot_designer_hit_rate_deviation.md`.
 
-**Feature**: **100% 同 mode 1**。
+**Feature**: **100% 同 mode 1**（feature_params byte-copied post-tune）。
+
+**Invocation**:
+```bash
+python -m slot_designer.scripts.tune \
+    --spec slot_designer/specs/M15.spec.json \
+    --strips slot_designer/weights/M15/reel_strips.json \
+    --base-weights slot_designer/weights/M15/mode_7/weights.json  # seed from mode 1 \
+    --target slot_designer/tuner/targets/M15_mode7_standard_low.target.json \
+    --out-weights slot_designer/weights/M15/mode_7/weights.json \
+    --mode 7 --sa-steps 0 --skip-rawdata \
+    --hit-target 0.125 --hit-weight 1.5 \
+    --trigger-target 0.01136 --trigger-symbol topdollar --trigger-reel 3 --trigger-weight 2.0
+```
 
 ### 4.3 体验
 
@@ -243,8 +256,10 @@ Base 明显冷清（Cherry 砍半），Feature 剧本跟 mode 1 **完全一样**
 | Base RTP | 42.75pp | 135pp | 135pp | 32.5pp |
 | Feature RTP | 52.26pp | 164.98pp | 364.98pp | 52.26pp |
 | Split | 45:55 | 45:55 | 27:73（漂） | 38:62（漂） |
+| **Base hit rate** | **13.17%** | **22.56%** | 22.56% (= m2) | **12.46%** |
+| **Per-hit avg win** | **3.26×** | **5.99×** | 5.99× (= m2) | **2.62×** |
 | **Trigger** | **1.14%** | **2.75%** | **2.77%** | **1.14%** |
-| **EV** | **46×** | **60×** | **132×** | **46×** |
+| **EV (feature)** | **46×** | **60×** | **132×** | **46×** |
 | count_x | (5,40,40,12,3) | 同 m1 | 同 m1 | 同 m1 |
 | count_y | (75,20,5) | (60,30,10) | (40,35,25) | 同 m1 |
 | x value weights | 见 §2 | 见 §2 | 见 §2 | 同 m1 |
@@ -255,6 +270,11 @@ Base 明显冷清（Cherry 砍半），Feature 剧本跟 mode 1 **完全一样**
 | Accept rate/round | 23.5% | 35.4% | 64.5% | 23.5% |
 | CV (conditional) | 0.74 | 0.78 | 1.93 | 0.74 |
 | Jackpot 1000 moment | **无** | **无** | **独占** | 无 |
+
+**Hit rate 偏离幅度 design constraint (per `project_slot_designer_hit_rate_deviation.md`)**:
+- mode 7 vs mode 1: hit 基本一致 (差 ±1pp)，RTP delta 靠 **per-hit avg 砍下去** (3.26 → 2.62) 承担
+- mode 2 vs mode 1: hit ×1.7（不是 ×3.16），RTP delta 里剩下的 ×1.84 靠 **per-hit avg 提上去** (3.26 → 6.00) 承担
+- mode 5 vs mode 2: hit 完全一致（mode 5 base = mode 2 base byte-identical），RTP delta 全部在 **feature EV** (60× → 132×)
 
 ---
 

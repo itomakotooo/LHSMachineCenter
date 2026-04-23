@@ -1,4 +1,32 @@
-"""Derive M15 mode 7 weights from mode 1 by direct per-symbol scaling.
+"""**DEPRECATED 2026-04-23** — see MODE_DESIGN.md §4.2 v6.
+
+This direct-scale script was the v5 approach. It achieved RTP 32.5pp but
+only 7.5% hit rate (user wanted 12-13% to match mode 1's 13%). Root cause:
+scaling paying-symbol weights down reduces RTP via marginal-probability
+cut, which inherently also reduces hit rate. Direct-scale cannot hit
+low-RTP + same-hit-rate targets simultaneously.
+
+v6 uses Phase 4 tune instead (same strips locked, hit_target + trigger_
+target as explicit constraints):
+
+  python -m slot_designer.scripts.tune \\
+      --spec slot_designer/specs/M15.spec.json \\
+      --strips slot_designer/weights/M15/reel_strips.json \\
+      --base-weights slot_designer/weights/M15/mode_7/weights.json \\
+      --target slot_designer/tuner/targets/M15_mode7_standard_low.target.json \\
+      --out-weights slot_designer/weights/M15/mode_7/weights.json \\
+      --mode 7 --sa-steps 0 --skip-rawdata \\
+      --hit-target 0.125 --hit-weight 1.5 \\
+      --trigger-target 0.01136 --trigger-symbol topdollar \\
+      --trigger-reel 3 --trigger-weight 2.0
+
+Kept for historical reference only. Do NOT use for production tuning.
+See memory/project_slot_designer_hit_rate_deviation.md for the design
+principle behind the change.
+
+---
+
+Derive M15 mode 7 weights from mode 1 by direct per-symbol scaling.
 
 M15 mode 7 design (see slot_designer/weights/M15/MODE_DESIGN.md §4):
   * Total RTP 85% (= mode 1 - 10pp)
@@ -329,7 +357,21 @@ def main():
     p.add_argument("--bar", type=float, default=_SCALE_DEFAULT["1bar"],
                    help=f"bar scale factor — applies to 1bar/2bar/3bar "
                         f"(default {_SCALE_DEFAULT['1bar']})")
+    p.add_argument("--i-know-this-is-deprecated", action="store_true",
+                   help="Explicit opt-in to the deprecated direct-scale path. "
+                        "Required since 2026-04-23 to prevent accidental use.")
     args = p.parse_args()
+    if not args.i_know_this_is_deprecated:
+        print(
+            "\n!! DEPRECATED: this direct-scale path hits RTP but misses the\n"
+            "   hit-rate design constraint (mode 7 lands at 7.5% vs target 13%).\n"
+            "   Use scripts/tune.py with M15_mode7_standard_low.target.json\n"
+            "   instead. See MODE_DESIGN.md §4.2 v6 for the current invocation.\n"
+            "\n   To force-run anyway (historical / debugging only), pass\n"
+            "   --i-know-this-is-deprecated.\n",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     scale = {"cherry": args.cherry, "1bar": args.bar, "2bar": args.bar, "3bar": args.bar}
     sys.exit(run(write=args.write, verify=args.verify, scale=scale))
 
