@@ -68,6 +68,10 @@ from slot_designer.backend.virtual_registry import (
 )
 from slot_designer.emitter.chunk import compute_schema_fingerprint, emit_chunk, write_chunk
 from slot_designer.emitter.robot import emit_robot
+from slot_designer.emitter.driver import (
+    compute_schema_fingerprint_for,
+    sample_one_chunk,
+)
 from slot_designer.emitter.round import emit_round, emit_session
 from slot_designer.engine.loader import load_engine
 
@@ -180,52 +184,26 @@ def _run_simulator_chunk(
     rng: Random, schema_fp: str, md5s: tuple[str, str],
     initial_credits: int = 1_000_000_000,
 ) -> tuple[dict, int, int]:
-    """Produce ONE chunk dict (plus running win/bet totals)."""
-    config_md5, code_md5 = md5s
-    robot_list = []
-    chunk_win = 0
-    chunk_bet = 0
-    for _ in range(robots):
-        last_credits = initial_credits
-        rounds: list[dict] = []
-        for _i in range(spins_per_robot):
-            # v5 M15: use spin_session + emit_session so feature-trigger
-            # spins produce ST=1 (Trigger) + ST=14 × N + ST=15 sequence.
-            # Non-feature machines (M1) get empty feature_rounds list →
-            # emit_session returns single-item list identical to
-            # emit_round output.
-            out, feature_rounds = engine.spin_session(rng)
-            session_dicts = emit_session(
-                out,
-                feature_rounds,
-                last_credits=last_credits,
-                spin_times=spins_per_robot,
-                rtp_id=int(spec["mode"]),
-                feature_trigger_pay_id=engine.feature_trigger_pay_id,
-            )
-            rounds.extend(session_dicts)
-            # Main ST=1 is always session_dicts[0]; its WinCredits is the
-            # actual credit delta (feature ST=14 WinCredits are display
-            # values, not actual credit changes — mirrors production).
-            main_dict = session_dicts[0]
-            last_credits = last_credits - out.cost_credits + main_dict["WinCredits"]
-            chunk_win += main_dict["WinCredits"]
-            chunk_bet += out.bet_amount
-        robot_list.append(emit_robot(rounds, bet=engine.bet_amount))
+    """Produce ONE chunk dict (plus running win/bet totals).
 
-    chunk = emit_chunk(
-        robot_list,
+    Thin wrapper over ``sample_one_chunk`` (emitter/driver.py) — the
+    shared kernel both this path and ``emit_simulation_to_dir`` route
+    through so the per-chunk emit semantics can't drift between them.
+    """
+    config_md5, code_md5 = md5s
+    return sample_one_chunk(
+        engine,
         machine=spec["machine"],
         mode=int(spec["mode"]),
-        bet=engine.bet_amount,
-        spin_times=spins_per_robot,
-        robot_count=robots,
         chunk_index=chunk_index,
-        upstream_schema_fingerprint=schema_fp,
+        robots=robots,
+        spins_per_robot=spins_per_robot,
+        rng=rng,
+        schema_fp=schema_fp,
         config_md5=config_md5,
         code_md5=code_md5,
+        initial_credits=initial_credits,
     )
-    return chunk, chunk_win, chunk_bet
 
 
 # ── Session-level CI check (2026-04-21) ─────────────────────────────
@@ -703,14 +681,14 @@ def main() -> int:
         "virtual": True,
     })
 
-    # Schema fingerprint probe (deterministic seed — doesn't move main RNG)
-    probe = emit_round(
-        engine.spin(Random(0)),
-        last_credits=1_000_000_000,
-        spin_times=args.chunk_spin_times,
-        rtp_id=int(spec["mode"]),
+    # Schema fingerprint probe (deterministic seed — doesn't move main RNG).
+    # Shared helper keeps probe-and-hash flow identical to simulate.py
+    # so chunk envelopes line up.
+    schema_fp = compute_schema_fingerprint_for(
+        engine,
+        mode=int(spec["mode"]),
+        spins_per_robot=args.chunk_spin_times,
     )
-    schema_fp = compute_schema_fingerprint(probe)
 
     rng = Random(int(time.time()) ^ (start_idx * 997))
     total_win = 0
