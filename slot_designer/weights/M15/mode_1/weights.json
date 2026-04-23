@@ -1,0 +1,40 @@
+{
+  "machine": "M15",
+  "mode": 1,
+  "reel_set": "default",
+  "_notes": [
+    "Initial M15 mode 1 scaffold (2026-04-23). Weights tuned by intuition",
+    "for rough classic-style 1-line distribution — pre-tuner baseline.",
+    "",
+    "Per-reel target marginals (symbol / reel-weight-sum):",
+    "  Blank:  ~53%    Cherry: ~6%    Bar1:  ~14%    Bar2: ~12%",
+    "  Bar3:   ~11%    High7:  ~2.4%  Wild:  ~1%",
+    "  (reel 3 additionally has Bonus ~3% displacing 1 Bar3 + 1 Wild)",
+    "",
+    "After Phase 4 tune with --target = M15 classic target file, these",
+    "weights will be rescaled to hit the target RTP + hit + bucket shape."
+  ],
+  "weights": [
+    [
+      30, 30, 30, 35, 30, 30, 30, 28,
+      30, 12, 30,  5, 30, 35, 30, 30,
+      30, 28, 30, 35, 30, 30, 30, 28,
+      30, 30, 30, 35, 30, 30, 30, 28,
+      30, 12, 30,  5
+    ],
+    [
+      30, 30, 30, 30, 30, 35, 30, 28,
+      30,  5, 30, 12, 30, 30, 30, 35,
+      30, 28, 30, 30, 30, 35, 30, 30,
+      30, 28, 30, 35, 30, 30, 30, 28,
+      30, 12, 30,  5
+    ],
+    [
+      30, 35, 30, 30, 30, 30, 30, 15,
+      30, 28, 30, 12, 30, 35, 30,  5,
+      30, 30, 30, 28, 30, 35, 30, 30,
+      30, 30, 30, 15, 30, 35, 30, 28,
+      30, 30, 30, 12
+    ]
+  ]
+}

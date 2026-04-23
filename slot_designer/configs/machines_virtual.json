@@ -54,6 +54,28 @@
           "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
         }
       }
+    },
+    {
+      "machine": "M15sim",
+      "modes": [
+        1
+      ],
+      "logicClassNames": [
+        "SimulatedClassicPayline3ReelWithBonus"
+      ],
+      "configSummaryMd5": "d41c9952fd4fcc2eabbb3ddafaa367db",
+      "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c",
+      "available": true,
+      "_source_machine": "M15",
+      "_spec_path": "slot_designer/specs/M15.spec.json",
+      "_strips_path": "slot_designer/weights/M15/reel_strips.json",
+      "_weights_path_template": "slot_designer/weights/M15/mode_{mode}/weights.json",
+      "modesMd5": {
+        "1": {
+          "configSummaryMd5": "d41c9952fd4fcc2eabbb3ddafaa367db",
+          "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
+        }
+      }
     }
   ]
 }

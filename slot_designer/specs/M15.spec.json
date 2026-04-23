@@ -1,0 +1,101 @@
+{
+  "machine": "M15",
+  "mode": 1,
+  "schema_version": 1,
+  "_notes": [
+    "规则从 paytable/Paytable-M15.md 翻译而来（2026-04-23 onboarding）。",
+    "",
+    "核心区别 vs M1:",
+    "  - Wild 只有一种（不是 M1 的 Diamond1=wild2x + Diamond2=wild3x），multiplier=2 per wild",
+    "  - Wild product: 0/1/2 wild → 1/2/4；3 wild 触发 pure_wild 200× 而不是 8× 加成",
+    "  - Bonus 只在 reel 3 出现（reel 1/2 无 Bonus），触发 Feature Play（Phase 2 实现）",
+    "  - Jackpot 是独立 symbol，3-Jackpot = 1000× 但'不可随机转出'，在 reel 上完全不出现 → 纯 declared pay",
+    "  - 无 mixed-Seven 组合（M1 有 pay_id 10 = Seven1+Seven2 共同组），M15 只有单 high7 一个 7 symbol",
+    "",
+    "Feature Play（Phase 2 延后）:",
+    "  - Bonus 在 reel 3 payline 出现时触发",
+    "  - 10 个 x 选项 (1000/100/50/50/20/20/10/10/5/5) + 2 个 y (×2)",
+    "  - 每轮 1-5 个 x（加权抽样）+ 0-2 个 y（加权）",
+    "  - 最多 3 次 reroll + 1 次强制接受 = 4 轮",
+    "  - 测试策略：多于 40× 直接接受",
+    "  - Feature RTP 单独统计，不并入主游戏 RTP",
+    "  当前 spec 把 Bonus 标 filler（payline 短路到无 pay），留待 Phase 2 接 feature engine",
+    "",
+    "Jackpot 处理:",
+    "  - Jackpot symbol 分类为 wild 以便 pure_wild 规则匹配 {Jackpot: 3}",
+    "  - multiplier=1 占位（never on reels 所以实际不生效）",
+    "  - reel_strips.json 里 Jackpot 完全不出现 → P(3 Jackpot) = 0，永不触发 engine pure_wild 路径",
+    "  - pay_id 1 标 rtp_excluded=true + grand_jackpot=true → 即使 somehow 命中也返回 None",
+    "  - 存在于 spec 仅为 UI declared-pays 端点展示（/api/virtual/paytable/M15sim）"
+  ],
+
+  "grid": {
+    "cols": 3,
+    "rows": 3,
+    "paylines": [
+      {
+        "line_id": 1,
+        "positions": [[0, 1], [1, 1], [2, 1]]
+      }
+    ]
+  },
+
+  "symbols": {
+    "Blank":   { "kind": "filler" },
+    "Cherry":  { "kind": "cherry_special" },
+    "Bar1":    { "kind": "regular" },
+    "Bar2":    { "kind": "regular" },
+    "Bar3":    { "kind": "regular" },
+    "High7":   { "kind": "regular" },
+    "Wild":    { "kind": "wild", "multiplier": 2 },
+    "Bonus":   { "kind": "filler" },
+    "Jackpot": { "kind": "wild", "multiplier": 1 }
+  },
+
+  "pays": [
+    { "pay_id": 14, "kind": "cherry_count", "count": 1, "multiplier": 1 },
+    { "pay_id": 13, "kind": "cherry_count", "count": 2, "multiplier": 5 },
+    { "pay_id": 12, "kind": "cherry_count", "count": 3, "multiplier": 15 },
+
+    { "pay_id": 2,  "kind": "pure_wild", "multiset": { "Wild": 3 }, "multiplier": 200 },
+    { "pay_id": 1,  "kind": "pure_wild", "multiset": { "Jackpot": 3 }, "multiplier": 1000,
+      "grand_jackpot": true, "rtp_excluded": true },
+
+    { "pay_id": 10, "kind": "line_3_same", "symbol": "High7", "multiplier": 30 },
+    { "pay_id": 9,  "kind": "line_3_same", "symbol": "Bar1",  "multiplier": 20 },
+    { "pay_id": 8,  "kind": "line_3_same", "symbol": "Bar2",  "multiplier": 10 },
+    { "pay_id": 7,  "kind": "line_3_same", "symbol": "Bar3",  "multiplier": 5 },
+
+    { "pay_id": 11, "kind": "line_3_group", "group": ["Bar1", "Bar2", "Bar3"], "multiplier": 2 }
+  ],
+
+  "evaluation_order": [
+    "cherry_count",
+    "pure_wild",
+    "line_3_same",
+    "line_3_group"
+  ],
+
+  "spin_types": {
+    "1": {
+      "kind": "paid",
+      "cost_per_spin": 1000,
+      "bet_amount": 1000,
+      "reel_set": "default"
+    }
+  },
+
+  "features": [
+    {
+      "name": "FeaturePlay",
+      "trigger": "Bonus on reel 3 payline",
+      "rtp_scope": "separate",
+      "_status": "spec-only; engine implementation deferred to Phase 2",
+      "_design": "10 x-options (1000,100,50,50,20,20,10,10,5,5) + 2 y-options (×2 each); each round: weighted pick of 1-5 x + 0-2 y; sum(x) × product(y); 3 reroll + 1 forced accept = 4 rounds max; test strategy: auto-accept at ≥40×"
+    }
+  ],
+
+  "emit_fields": {
+    "extra_round_fields": {}
+  }
+}
