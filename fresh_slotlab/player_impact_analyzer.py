@@ -2266,6 +2266,25 @@ def parse_chunk_response(
     spin_type_bucket_win: dict[int, dict[str, float]] = defaultdict(
         lambda: defaultdict(float)
     )
+    # Iter 6 (2026-04-23): settlement-SpinType bucket histogram built
+    # from TRIGGER SESSION wins rather than round-level WinCredits.
+    # Settlement SpinTypes (M15 TopDollar's ST=15, QuickDollar family's
+    # ST=55, etc.) carry WinCredits=None on every round — so
+    # spin_type_bucket_win[settlement_st] sums to 0 and the
+    # per-feature bucket card renders "无倍率分桶数据". Here we key
+    # bucket accumulation on the session's settlement SpinType (last
+    # bonus SpinType in each trigger session) and its helper-
+    # computed session_win / trigger-round bet. Feature rows bound to
+    # a zero-win SpinType via Pass 5 read from this map in finalize.
+    session_bucket_spins_by_settlement_st: dict[int, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+    session_bucket_bet_by_settlement_st: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    session_bucket_win_by_settlement_st: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
     # Per-chain-path × return-bucket histograms. Keyed by
     # (first_st, cc_reset, sp_type) — same key as chain_chunk_summaries
     # — so the upstream feature breakdown can render bucket
@@ -2533,6 +2552,48 @@ def parse_chunk_response(
             for s in _trig_sessions_for_robot
         }
         trigger_session_paid_indices: set[int] = set(session_win_by_trigger_idx.keys())
+        # Iter 6: feed each trigger session into the
+        # settlement-SpinType bucket histogram so Pass-5-bound
+        # features (whose resolved_spin_type has zero round-level
+        # win) can render a bucket card. Settlement ST = last bonus
+        # round's SpinType in the session. Bet is pulled from the
+        # trigger paid round's CostCredits / BetAmount (1 paid spin
+        # per trigger session).
+        for _s in _trig_sessions_for_robot:
+            _sess_win = float(_s.get("session_win", 0.0) or 0.0)
+            _bonus_sts = _s.get("bonus_spin_types") or []
+            if not _bonus_sts:
+                continue
+            # Last non-None spin type in the bonus sequence serves
+            # as the settlement anchor. If the sequence is all None
+            # (shouldn't happen but defensive), skip — can't key.
+            _settlement_st: int | None = None
+            for _st_candidate in reversed(_bonus_sts):
+                if isinstance(_st_candidate, int):
+                    _settlement_st = _st_candidate
+                    break
+            if _settlement_st is None:
+                continue
+            _trig_idx = int(_s.get("trigger_idx", 0))
+            if 0 <= _trig_idx < len(rounds) and isinstance(rounds[_trig_idx], dict):
+                _trig_round = rounds[_trig_idx]
+                _sess_bet = to_float(
+                    _trig_round.get("CostCredits"),
+                    default=to_float(_trig_round.get("BetAmount"), default=0.0),
+                )
+            else:
+                _sess_bet = 0.0
+            if _sess_bet <= 0:
+                continue
+            _ret_x = _sess_win / _sess_bet
+            _bucket = return_bucket(_ret_x)
+            if not _bucket:
+                # zero-win session (no accepted bonus) — skip to
+                # keep bucket rows aligned with non-empty buckets.
+                continue
+            session_bucket_spins_by_settlement_st[_settlement_st][_bucket] += 1
+            session_bucket_bet_by_settlement_st[_settlement_st][_bucket] += _sess_bet
+            session_bucket_win_by_settlement_st[_settlement_st][_bucket] += _sess_win
         for _trig_session in _trig_sessions_for_robot:
             _sess_win = float(_trig_session.get("session_win", 0.0) or 0.0)
             if _sess_win == 0.0:
@@ -3254,6 +3315,19 @@ def parse_chunk_response(
         "spin_type_bucket_win": {
             str(k): dict(v) for k, v in spin_type_bucket_win.items()
         },
+        # Iter 6: session-level bucket histogram keyed by trigger
+        # session's settlement SpinType. Finalize merges these across
+        # chunks; feature rows bound to zero-win settlement STs
+        # (Pass 5) render their bucket_distribution from this map.
+        "session_bucket_spins_by_settlement_st": {
+            str(k): dict(v) for k, v in session_bucket_spins_by_settlement_st.items()
+        },
+        "session_bucket_bet_by_settlement_st": {
+            str(k): dict(v) for k, v in session_bucket_bet_by_settlement_st.items()
+        },
+        "session_bucket_win_by_settlement_st": {
+            str(k): dict(v) for k, v in session_bucket_win_by_settlement_st.items()
+        },
         "chain_chunk_summaries": [
             {
                 "first_st": k[0],
@@ -3567,6 +3641,20 @@ def main() -> int:
         lambda: defaultdict(float)
     )
     spin_type_bucket_win: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    # Iter 6 finalize-level accumulators — merged across chunks from
+    # each chunk's session_bucket_*_by_settlement_st payload. Feature
+    # rows bound via Pass 5 (paying feature → zero-win settlement ST)
+    # read from here instead of spin_type_bucket_* to populate their
+    # bucket_distribution cards with per-session win histograms.
+    session_bucket_spins_by_settlement_st: dict[int, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+    session_bucket_bet_by_settlement_st: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    session_bucket_win_by_settlement_st: dict[int, dict[str, float]] = defaultdict(
         lambda: defaultdict(float)
     )
     # Per-chain-path bucket histograms (session-level reduce target).
@@ -3916,6 +4004,19 @@ def main() -> int:
                     if isinstance(buckets, dict):
                         for bname, v in buckets.items():
                             spin_type_bucket_win[int(st)][str(bname)] += float(v or 0.0)
+                # Iter 6: merge per-chunk session-bucket-by-settlement-ST.
+                for st, buckets in (rec.get("session_bucket_spins_by_settlement_st") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, c in buckets.items():
+                            session_bucket_spins_by_settlement_st[int(st)][str(bname)] += int(c or 0)
+                for st, buckets in (rec.get("session_bucket_bet_by_settlement_st") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, v in buckets.items():
+                            session_bucket_bet_by_settlement_st[int(st)][str(bname)] += float(v or 0.0)
+                for st, buckets in (rec.get("session_bucket_win_by_settlement_st") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, v in buckets.items():
+                            session_bucket_win_by_settlement_st[int(st)][str(bname)] += float(v or 0.0)
                 for ent in (rec.get("chain_chunk_summaries") or []):
                     if not isinstance(ent, dict):
                         continue
@@ -4492,6 +4593,19 @@ def main() -> int:
                     if isinstance(buckets, dict):
                         for bname, v in buckets.items():
                             spin_type_bucket_win[int(st)][str(bname)] += float(v or 0.0)
+                # Iter 6: merge per-chunk session-bucket-by-settlement-ST.
+                for st, buckets in (rec.get("session_bucket_spins_by_settlement_st") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, c in buckets.items():
+                            session_bucket_spins_by_settlement_st[int(st)][str(bname)] += int(c or 0)
+                for st, buckets in (rec.get("session_bucket_bet_by_settlement_st") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, v in buckets.items():
+                            session_bucket_bet_by_settlement_st[int(st)][str(bname)] += float(v or 0.0)
+                for st, buckets in (rec.get("session_bucket_win_by_settlement_st") or {}).items():
+                    if isinstance(buckets, dict):
+                        for bname, v in buckets.items():
+                            session_bucket_win_by_settlement_st[int(st)][str(bname)] += float(v or 0.0)
                 for ent in (rec.get("chain_chunk_summaries") or []):
                     if not isinstance(ent, dict):
                         continue
@@ -5491,6 +5605,25 @@ def main() -> int:
             st_b_win = spin_type_bucket_win.get(resolved_spin_type) or {}
             feat_bucket_total_spins = sum(st_b_spins.values())
             feat_bucket_total_win = sum(st_b_win.values())
+            # Iter 6 (2026-04-23): if this feature is bound to a
+            # zero-win settlement SpinType (Pass 5 — M15 TopDollar
+            # → ST 15 is the canonical case), the round-level
+            # ``spin_type_bucket_*`` maps are all zero (settlement
+            # rounds carry WinCredits=None). Fall through to the
+            # session-level histogram keyed by settlement ST which
+            # is built from trigger_sessions' actual session_win.
+            # This is what makes the TopDollar card render
+            # a real bucket distribution instead of "无倍率分桶数据".
+            if feat_bucket_total_win == 0.0 and feat_total_win > 0.0:
+                ss_spins = session_bucket_spins_by_settlement_st.get(resolved_spin_type) or {}
+                ss_bet = session_bucket_bet_by_settlement_st.get(resolved_spin_type) or {}
+                ss_win = session_bucket_win_by_settlement_st.get(resolved_spin_type) or {}
+                if sum(ss_win.values()) > 0:
+                    st_b_spins = ss_spins
+                    st_b_bet = ss_bet
+                    st_b_win = ss_win
+                    feat_bucket_total_spins = sum(ss_spins.values())
+                    feat_bucket_total_win = sum(ss_win.values())
             feat_bucket_rows = build_multiplier_bucket_rows(
                 st_b_spins,
                 st_b_bet,
