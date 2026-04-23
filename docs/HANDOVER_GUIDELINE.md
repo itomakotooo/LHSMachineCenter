@@ -15,7 +15,18 @@ Guide for engineers taking over this repository.
 
 ## 2. Non-Negotiable Product Constraints
 
-- Sampling endpoint is the provided test API.
+- Sampling endpoint is `POST /MachineTest/MultiRobotTestSpinVariant`
+  (since 2026-04-22 variants rollout). All 393 machine rows route
+  through this endpoint. Non-variant `MachineName` (e.g. `M14`) is
+  accepted verbatim per upstream spec.
+- Every `machines.json` row has two name fields:
+  - `machine` — display name (e.g. `M273$WheelSelector$1$1-2-3` for
+    variants, `M14` for non-variants). Used for rawdata directory,
+    report identity, catalog display, and the analyzer's
+    `--machine` arg.
+  - `upstream_key` — raw key for the Variant endpoint's
+    `MachineName` field. For variants it's e.g. `M273$1$1-2-3`;
+    for non-variants it equals `machine`.
 - Requests must include:
   `ResetPlayerStateAfterEachSpin=true`
 - Requests must include:
@@ -23,6 +34,16 @@ Guide for engineers taking over this repository.
 - Sampling stop condition is CI-driven:
   95% CI half-width `<= 0.5pp` by default.
 - Player-impact report is the source of truth.
+- Variants are **independent machines**, not grouped: no parent/
+  child relation between `M273` and `M273$WheelSelector$0$`. The
+  only cross-machine coupling is md5 fanout (upstream's
+  `MachineConfigMd5` reports per underlying, so siblings share the
+  same md5). See `project_variants_fleet.md` memory note.
+- RTP parity invariant: `sum(payout_ids_top20.rtp_contribution_pp)
+  == summary.rtp.point_pct` must hold (< 0.01pp tolerance). Any new
+  aggregator adding its own RTP breakdown must contribute a parity
+  test. Locked by `test_payout_ids_top20_rtp_sum_equals_summary_rtp`
+  on the M272 fixture.
 - Do not introduce low-value hot/cold-window style metrics.
 - Do not persist raw per-spin full data as long-term report assets.
 

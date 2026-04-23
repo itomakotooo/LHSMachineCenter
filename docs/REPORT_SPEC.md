@@ -120,10 +120,31 @@ row carries:
 ### `payout_ids_top20`
 
 Primary Pay ID drilldown, built from `PayoutIdToWinAmount` across
-all winning rounds. Per row: `payout_id`, `hit_count`, `hit_rate`,
-`total_win`, `avg_win_when_hit`, `rtp_contribution_pp`. Replaces the
-older `payout_groups_top20` (still emitted for back-compat; M14 +
-M272 mode 1/2 always reported group_id=0).
+all winning rounds **plus** trigger-session win fold-in (see
+`fresh_slotlab/trigger_sessions.py` + `reference_trigger_session_patterns.md`
+memory note). Per row: `payout_id`, `hit_count`, `hit_rate`,
+`total_win`, `avg_win_when_hit`, `rtp_contribution_pp`,
+`spin_type_category`, `dominant_spin_type`, `spin_type_breakdown`.
+
+**Parity invariant (iter 3-6 locked)**:
+`sum(payout_ids_top20[*].rtp_contribution_pp) ==
+summary.rtp.point_pct` within 0.01pp tolerance. This is the core
+fleet-wide correctness contract — if it breaks, a new aggregator
+has introduced (a) denominator inconsistency, (b) double-counting
+with existing paths, or (c) a missing attribution. Test lock:
+`test_payout_ids_top20_rtp_sum_equals_summary_rtp` on the M272
+bonus-heavy fixture.
+
+Trigger-token pay_ids (M15 TopDollar's pay_id 666, M273 Wheel's
+5801, etc.) carry `total_win = 0` on raw round data but accrue
+their bonus feature's session win via `trigger_sessions` helper's
+per-session attribution. M209-style rounds where
+`sum(Payout) > WinCredits` (phantom alternative rewards) are
+scaled proportionally at the round aggregator so `pay_id win += value *
+(WinCredits / sum(Payout))`.
+
+Replaces the older `payout_groups_top20` (still emitted for
+back-compat; M14 + M272 mode 1/2 always reported group_id=0).
 
 ### `spin_type_breakdown`
 
@@ -147,6 +168,23 @@ grouping -- M14: single "Normal" feature so `applicable=false`; M272
 mode 1: "NormalCollectionSpin" + "NewFreespin" with per-feature
 total_win, rtp_contribution_pp, share_of_total_win and a payouts[]
 sub-list keyed by upstream payout_id.
+
+**Chain edges (iter 4 two-ended)**: each feature row carries both
+`chain_parent_feature` (= chain **successor**, historical
+misnomer — "what comes after this feature in the round
+sequence") and `chain_predecessor_feature` (= who fires this
+feature). Confidence labels on each end. Front-end's
+`chainsInto(payingName)` builds inbound breadcrumbs from
+`chain_parent_feature` edges (back-compat preserved).
+
+**Settlement-style features (iter 5-6)**: Pass 5 binds paying
+features to zero-win settlement SpinTypes (M15 TopDollar → ST
+15; the settlement rounds have `WinCredits=None` so round-level
+aggregators see no data). Such features get their
+`bucket_distribution` from a per-session win histogram keyed by
+settlement ST instead of the round-level `spin_type_bucket_win`.
+Feature header `rtp_contribution_pp` equals
+`sum(bucket_distribution[*].rtp_contribution_pp)` exactly.
 
 ### `bonus_chain_dynamics`
 

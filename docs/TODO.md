@@ -56,6 +56,61 @@ This file tracks executable next steps for the current phase.
 
 ## Done Recently
 
+- [x] **Variants rollout (stages 1-8) + Analyzer RTP parity (iter 1-6)**
+      (2026-04-22→23 round 6, branch `feat/machine-variants` 17 commits
+      HEAD `bea239b`):
+      - **Variants fleet**: 253 → 393 machines.json rows. 26 underlying
+        with variants (TopDollar 5 台×3 / Wheel 11 台 / Common 3 台 /
+        Fortunes/DancingDrum/Hoppy/Christmas/Valentine/QuickDollar 各
+        1 台) replaced by 166 variant entries. Each is an independent
+        first-class machine — own md5, modes, rawdata dir, reports.
+        Display name embeds selector type
+        (`M273$WheelSelector$1$1-2-3`) while `upstream_key` field
+        carries the raw variant key (`M273$1$1-2-3`) for API routing.
+        No parent/child relation; only coupling is md5 fanout
+        (upstream reports per underlying, siblings share md5).
+      - **Analyzer `fresh_slotlab/trigger_sessions.py`**: pure-function
+        helper that detects trigger sessions (paid round + non-paid
+        sequence + win=0 pay_id anchor). Type 1 (ReMarks starts with
+        "Trigger" — M15 TopDollar / M6 Fortunes / etc) uses
+        `last_non_none` session_win rule. Type 2 (empty ReMarks —
+        M273 Wheel / M201 Common) uses `sum_all` with
+        `_round_has_credited_win` filter to skip bonus rounds whose
+        Payout already credited pay_ids at round level.
+      - **RTP parity invariant** locked: `sum(payout_ids_top20.rtp_pp)
+        == summary.rtp.point_pct` (< 0.01pp) fleet-wide. 3 common
+        裂缝 fixed: (1) denominator unification (payout row and
+        summary.rtp now both use `effective_bet_for_rtp` = paid-only),
+        (2) double-count filter for Type 2 sessions, (3) M209 Payout-
+        Win scaling (Payout sum > WinCredits → proportional allocate).
+      - **Pass 5 settlement-ST binding**: `_infer_feature_spin_type_mapping`
+        now binds paying features (total_win > 0) to zero-win
+        settlement SpinTypes when count matches within 15%. Runs after
+        sanity gate to re-bind what the gate drops. Fixes M15 TopDollar
+        → ST 15 (previous rounds 1-4 had TopDollar.resolved_ST = None).
+      - **chain_predecessor_feature**: added on every feature row
+        (reverse of `spin_type_next_counts`). The legacy
+        `chain_parent_feature` actually stores the chain successor
+        (misnomer); kept for front-end back-compat. Feature cards now
+        know both "who fires me" and "who I fire into".
+      - **Settlement bucket reconstruction**: per-session win
+        histogram keyed by session's settlement SpinType. Features
+        bound to zero-win ST (Pass 5) read buckets from this map
+        instead of empty spin_type_bucket_win. M15 TopDollar now
+        renders 6-row bucket card (sum 52.83pp = feature header).
+      - **Fleet verification**: 5 representative machines live-probed
+        post-iter-6; sum(pay_id.rtp_pp) matches summary.rtp within
+        sample noise (M15/M273/M257/M209 exact; M273/M201 <1pp on
+        30k spin).
+      - Tests: 621 pytest (50 variants + 47 trigger_sessions + 9
+        payout_win_scaling + 8 post-hook-logging + assorted new
+        fixtures / parity locks). Inject-bug-revert patterns applied
+        to every load-bearing hunk.
+      - **UI structure unchanged** per user directive — catalog grew
+        293 → 393 cards but layout identical. Round-4 leftover
+        TypeError (`byId("assessment").textContent` on 2 unguarded
+        sites) fixed along the way.
+
 - [x] **M112 RTP 修正 + batch-worker 稳定化 + RTP tab flat 排序**
       (2026-04-20 round 4, 3 commits 403adfc → fe6f9d2):
       - **M112 RTP inflation fix**（403adfc）：双路径污染
