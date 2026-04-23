@@ -30,7 +30,7 @@
         "SimulatedClassicPayline3Reel"
       ],
       "configSummaryMd5": "a429b92f0bc18dc92f3e755f3b772180",
-      "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c",
+      "codeSummaryMd5": "3e41b7fcd855e2fc648304d661f663fa",
       "available": true,
       "_source_machine": "M1",
       "_spec_path": "slot_designer/specs/M1.spec.json",
@@ -39,19 +39,19 @@
       "modesMd5": {
         "1": {
           "configSummaryMd5": "9ec4a5bdf23eac35e9b580ff40d40a92",
-          "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
+          "codeSummaryMd5": "3e41b7fcd855e2fc648304d661f663fa"
         },
         "2": {
           "configSummaryMd5": "5d01a5a4deda201dc8b6b7ebbd8728e3",
-          "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
+          "codeSummaryMd5": "3e41b7fcd855e2fc648304d661f663fa"
         },
         "5": {
           "configSummaryMd5": "8b458e9e4f18b77bf47b69a29f6d6b2b",
-          "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
+          "codeSummaryMd5": "3e41b7fcd855e2fc648304d661f663fa"
         },
         "7": {
           "configSummaryMd5": "00ba999b8b1dedb0fc1b4469309577b2",
-          "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
+          "codeSummaryMd5": "3e41b7fcd855e2fc648304d661f663fa"
         }
       }
     },
@@ -63,8 +63,8 @@
       "logicClassNames": [
         "SimulatedClassicPayline3ReelWithBonus"
       ],
-      "configSummaryMd5": "d41c9952fd4fcc2eabbb3ddafaa367db",
-      "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c",
+      "configSummaryMd5": "1b3900327487663d93b28f1a99eea3e2",
+      "codeSummaryMd5": "3e41b7fcd855e2fc648304d661f663fa",
       "available": true,
       "_source_machine": "M15",
       "_spec_path": "slot_designer/specs/M15.spec.json",
@@ -72,8 +72,8 @@
       "_weights_path_template": "slot_designer/weights/M15/mode_{mode}/weights.json",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "d41c9952fd4fcc2eabbb3ddafaa367db",
-          "codeSummaryMd5": "adf0ace4574cd61dc331e380b7a5e82c"
+          "configSummaryMd5": "1b3900327487663d93b28f1a99eea3e2",
+          "codeSummaryMd5": "3e41b7fcd855e2fc648304d661f663fa"
         }
       }
     }

@@ -1,96 +1,126 @@
-# M15 mode 1 — 当前 reel 权重（initial scaffold）
+# M15 mode 1 — 当前 reel 权重（base + feature 联合设计）
 
-**状态**：Phase 1 onboarding scaffold，**未 tune**。引擎加载正常，analytic 产生相干数字；下一步跑 Phase 4 tune 对齐 classic target。
+**状态**：Phase 4 tune 完成，total RTP 对齐用户 brief。Feature engine 运行时集成还在 Phase 2 延后，但 EV 分析已经 locked in（见 `slot_designer/engine/feature_m15.py`）。
 
-**最近更新**：2026-04-23（M15 首次 scaffold）
+**最近更新**：2026-04-23（base game tune + feature weights 设计）
 
-## 核心数值（analytic, pre-tune）
+## 设计约束（user brief 2026-04-23）
 
-| 指标 | 本版 | target (未定义) | 备注 |
+- 各 mode 全局 RTP 跨 mode 不变（见 memory: `project_slot_designer_mode_rtp_invariants.md`）
+- **普通 spin : Feature = 45 : 55** RTP 贡献比
+- 普通 spin **低波动**（low CV）—— Cherry / Bar 为主
+- Feature **中高波动**（mid-high CV）—— 稀有大爆
+- Feature Play x / y 权重 + trigger 频率 由我设计
+
+## 核心数值（analytic, post Phase 4 tune）
+
+### Base game（engine analytic）
+
+| 指标 | 本版 | target | 偏差 |
 |---|---|---|---|
-| RTP | 41.38% | ~93% classic target | tune 需加 +50pp |
-| hit_rate | 21.88% | ~10-15% classic 单线 | 偏高，Cherry 太多 |
-| CV | 4.24 | ~5-6 classic | OK |
-| std_return_x | 1.75 | — | low |
+| RTP | 68.32% | 67.50% | +0.82pp |
+| hit_rate | 14.30% | 13.44% | +0.86pp |
+| CV | 4.45 | 4.44 | 几乎重合 ✓ |
+| std_return_x | 3.03 | 3.00 | ≈ |
+| shape JS | 0.048 | 0 | decent |
 
-初始 per-reel marginals（估算）:
+### Feature Play（conditional on trigger）
 
-| symbol | reel 1 | reel 2 | reel 3 |
+| 指标 | 本版 | 备注 |
+|---|---|---|
+| 权重 count_x (1,2,3,4,5) | 70% / 25% / 5% / 0% / 0% | 主要选 1 个 x |
+| 权重 count_y (0,1,2) | 70% / 25% / 5% | 主要无 multiplier |
+| accept_threshold | 40× | paytable §5 规定 |
+| max_rounds | 4（3 reroll + 1 forced）| paytable |
+| One-round E[R] | 240.03× | 单轮 unconditional |
+| One-round P(R ≥ 40) | 56.4% | 单轮接受概率 |
+| One-round E[R ｜ accept] | 415.04× | 接受分布 |
+| **4-round E[R]** | **400.48× bet** | per trigger 平均 |
+| 4-round std | 669.74 | |
+| 4-round CV | 1.67 | 单 trigger 内波动 |
+| R range | [5×, 4600×] | min / max |
+
+### Total (base + feature)
+
+| 指标 | 本版 | target |
+|---|---|---|
+| **Total RTP** | **147.62%** | 150% (-2.4pp) |
+| Feature trigger rate | 0.198% (1/505 spins) | 0.206% (1/485) |
+| Feature RTP 贡献 | 79.30pp | 82.50pp |
+| **Base : Feature split** | **46.3 : 53.7** | **45 : 55** ✓ |
+
+## 三重波动性
+
+1. **Base 波动性（low）**：CV 4.45. 玩家基础 spin 体验稳定——Cherry 每 7 spin 一次、Bar 组合偶尔出、High7/Wild 罕见。
+2. **Feature conditional 波动性（mid）**：CV 1.67. 一次 feature 的 payout 在 5-4600× 之间，但概率分布相对集中在 100-500× 区间。
+3. **Session-level 波动性（high）**：1/505 trigger + 400× avg payout = 高波动事件稀有但大。玩家感性上有 classic boom-bust 节奏。
+
+## RTP 贡献分解（base + feature）
+
+| 家族 | base hit% | base RTP pp | base 占 RTP share |
 |---|---|---|---|
-| Blank | 53.7% | 53.7% | 53.8% |
-| Cherry | 6.0% | 6.0% | 6.0% |
-| Bar1 | 13.9% | 13.9% | 14.0% |
-| Bar2 | 11.9% | 11.9% | 12.0% |
-| Bar3 | 11.1% | 11.1% | 8.4% ← 少一个 stop |
-| High7 | 2.4% | 2.4% | 2.4% |
-| Wild | 1.0% | 1.0% | 0.5% ← 少一个 stop |
-| Bonus | — | — | 3.0% ← 只 reel 3 |
+| Cherry（1-15×）| 10.41% | 13.22 | 19.4% |
+| mixed-Bar 2× | 5.22% | 10.43 | 15.3% |
+| 3-Bar 5-20× | 0.83% | 10.92 | 16.0% |
+| Bar + wild 10-80× | 0.22% | 8.14 | 11.9% |
+| High7 30× | 0.052% | 1.57 | 2.3% |
+| High7 + wild 60-120× | 0.053% | 5.37 | 7.9% |
+| 3-Wild pure 200× | 0.006% | 1.12 | 1.6% |
+| Jackpot (rtp_excluded) | 0% | 0 | 0% |
 
-## RTP 贡献分解（按 pay 家族）
+| Feature | trigger% | 贡献 pp | total RTP share |
+|---|---|---|---|
+| Feature Play | 0.198% × 400.48 | 79.30 | 53.7% |
 
-| 家族 | 倍率 | hit% | RTP 贡献 | 占 RTP |
-|---|---|---|---|---|
-| Cherry（1-2-3×）| 1,5,15× | 16.86% | 20.87pp | 50.4% ← 主导 |
-| mixed-Bar 2× | 2× | 4.15% | 8.29pp | 20.0% |
-| 3-Bar 5-20× | 5,10,20× | 0.55% | 7.65pp | 18.5% |
-| Bar + wild (20-80×) | 20-80× | 0.09% | 3.15pp | 7.6% |
-| High7 (30×+ wild amped) | 30-120× | 0.003% | ~0.5pp | 1.2% |
-| 3 Wild (pure) | 200× | 0.0001% | ~0.02pp | 0.05% |
-| Jackpot (rtp_excluded) | 1000× | 0% | 0 | 0% |
-
-## Bucket 分布（pre-tune，远未达 classic 7-heavy）
+## 桶分布（base only）
 
 ```
-Low (1-10×):    29.5pp   (71% of RTP)
-Mid (10-50×):   10.5pp   (25% of RTP)
-High (50-500×):  0.4pp   (<1% of RTP)
+Low (1-10×):   23.65pp (35%)
+Mid (10-50×):  19.07pp (28%)
+High (50-500×): 8.06pp (12%)
+Top (500+):     0.00pp (0%)
 ```
 
-Classic 规范（参考 RWB + Blazing Sevens）：
-- Low 16% / Mid 31% / High 50% (7 家族 dominant)
+Mid 占比低于 M1 因为 M15 的 wild 只有 ×2（M1 有 ×2 + ×3 叠加）。Wild 放大层没那么厚，RTP 更集中在纯 pay 组合（不经 wild 叠加）。
 
-要让 M15 mode 1 对齐 classic，tune 需要：
-- 降 Cherry marginal（cut 低桶）
-- 提 High7 + Wild marginal（push 高桶）
-- 保持 hit rate 在 10-15% 区间
+## 玩家体验节奏
 
-但因为 M15 wild 只有 ×2（M1 有 wild3x 和叠加），wild-amplified Bar 层比 M1 弱，high-bucket 更依赖纯 High7 或 pure-wild。
-
-## Feature Play（未实现）
-
-**Phase 1 spec** 把 Bonus 标 `filler` —— Bonus 在 reel 3 payline 出现时短路到「no pay」。实际 paytable 要求 Bonus 触发独立 Feature 玩法：
-
-- Bonus 在 reel 3 middle row 出现 → 进 feature
-- 10 x 选项 × 2 y 选项 的加权抽样 + 接受/reroll 逻辑
-- Feature RTP **单独统计** 不并入主 RTP
-- 需要新的 spin_type + RNG 流 + 报告面板
-
-**Phase 2 work items**（阻塞 M15 交付）：
-1. 加 feature engine（新 spin type = 2 可能？）
-2. 从策划处拿 x/y 权重分布（paytable 未说明）
-3. 策划定 Feature RTP 目标
-4. 报告加 Feature 分析面板
-
-当前分析跑不了 Feature Play —— 只跑主游戏。
+| 事件 | 频率 |
+|---|---|
+| Cherry 1× | 每 11 spin 左右 |
+| mixed-Bar 5 | 每 19 spin |
+| 3-Bar 5-20× | 每 120 spin |
+| Bar+wild 30-90× | 每 460 spin |
+| High7 30× | 每 1,920 spin |
+| Wild-amped 大奖 60-120× | 每 1,900 spin |
+| **Feature 触发** | **每 505 spin** |
+| Feature payout ≥ 1000× | 每 ~10,000 spin（rare big event）|
 
 ## 文件清单
 
-- `weights.json` —— mode 1 per-stop weight 数组
-- `reel_weights.tsv` —— 人类可读 36×3（symbol + weight 并列）
+- `weights.json` —— mode 1 per-stop weight 数组（post-tune）
+- `reel_weights.tsv` —— 人类可读 36×3 表
+- `TUNE_REPORT.md` —— Phase 4 + joint Phase 5 最近一次 tune 输出
 - `NOTES.md` —— 本文件
-- `TUNE_REPORT.md` —— 尚未生成（还没跑 tune）
 
 Symbol 布局在 [`../reel_strips.json`](../reel_strips.json)（所有 mode 共用）。
 
-## Tune 命令（待执行）
+## Feature 运行时（Phase 2 TODO）
 
-先写 target 文件，再跑：
+当前 Feature Play 只有 **analytic EV + test lock**；SpinEngine 侧没实现 round-level feature payout emission。Phase 2 需要：
+
+1. 扩展 `SpinEngine.spin()` 发现 Bonus 在 reel 3 payline → 触发 feature round
+2. Feature round simulator 按 spec 权重 roll x + y + 4-round accept/reroll 逻辑
+3. Round-level 输出字段：`FeatureTriggered: bool`, `FeatureRounds: int`, `FeaturePayout: int`
+4. Analyzer 侧加 feature RTP 单独 track + 报告面板
+5. Emitter 侧 chunk schema 扩展
+
+之前 commit 41f5e4d 留了 `spec.features[0]._status = "Phase 2 TODO"` 注释。现在该 status 改为 "EV analytic shipped; engine integration still Phase 2"。
+
+## Tune 命令（可复现）
 
 ```bash
-# 1. 写 target（classic 7-heavy 规范，RTP 93% / hit 12% / CV 5.5）
-# 详见 slot_designer/tuner/targets/M1_mode1_classic.target.json 做参考
-
-# 2. Phase 4 + joint Phase 5 tune
+# Phase 4 + joint Phase 5
 python -m slot_designer.scripts.tune \
   --spec slot_designer/specs/M15.spec.json \
   --strips slot_designer/weights/M15/reel_strips.json \
@@ -99,7 +129,24 @@ python -m slot_designer.scripts.tune \
   --out-weights slot_designer/weights/M15/mode_1/weights.json \
   --out-report slot_designer/weights/M15/mode_1/TUNE_REPORT.md \
   --mode 1 \
-  --evaluations 3000 --restarts 4 --sa-steps 3000 \
-  --hit-target 0.12 --hit-weight 1.5 \
-  --cv-weight 0.5 --shape-weight 2.0
+  --evaluations 3000 --restarts 4 --sa-steps 2000 \
+  --hit-target 0.13435 --hit-weight 1.5 \
+  --cv-weight 0.3 --shape-weight 2.0 \
+  --skip-rawdata
+
+# 重要：tune 完后手动把 Bonus weight clamp 回 1 per stop
+# (tuner 会把 Bonus 当 free variable 推高到 ~7；
+# 我们要 1/500 trigger 所以固定 = 1)
+python -c "
+import json
+from pathlib import Path
+d = json.loads(Path('slot_designer/weights/M15/mode_1/weights.json').read_text(encoding='utf-8'))
+strips = json.loads(Path('slot_designer/weights/M15/reel_strips.json').read_text(encoding='utf-8'))['reels']
+for i, s in enumerate(strips[2]):
+    if s == 'Bonus':
+        d['weights'][2][i] = 1
+Path('slot_designer/weights/M15/mode_1/weights.json').write_text(json.dumps(d, indent=2, ensure_ascii=False), encoding='utf-8')
+"
 ```
+
+Future: 加个 `--pin-symbol <SYM>:<weight>` flag 到 tune.py，Phase 4 ES 跳过指定 symbol 的 count 搜索；这样就不用后 clamp。

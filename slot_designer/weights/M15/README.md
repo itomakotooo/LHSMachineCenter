@@ -7,13 +7,32 @@
 - **Jackpot 是独立 symbol** 但不出现在 reel 上（不可随机转出 → P(3 Jackpot) = 0 analytically）
 - **无 mixed-Seven 组合**（M1 有 Seven1+Seven2 共同组 pay_id 10；M15 只有 single high7）
 
-## 当前状态（scaffold — 未 tune）
+## 当前状态（Phase 4 tune 完成 · Feature engine Phase 2 延后）
 
-| mode | 类型 | RTP | hit_rate | CV | 文件 |
-|---|---|---|---|---|---|
-| 1 | classic 初始 | **41.38%** | 21.88% | 4.24 | [mode_1/weights.json](mode_1/weights.json) |
+| mode | 类型 | Base RTP | Feature RTP | **Total RTP** | Base:Feat split | Base CV | 文件 |
+|---|---|---|---|---|---|---|---|
+| 1 | classic | 68.32% | 79.30pp | **147.62%** | 46 : 54 | 4.45 | [mode_1/weights.json](mode_1/weights.json) |
 
-RTP 41% 是**初始 scaffold 远低于目标**。tune 后会拉到 90%+ classic target。mode 1 目前只做了 engine 加载 + analytic 验证，**Phase 4 count tuning 还没跑**。
+Target: total 150%, split 45:55, base low CV, feature mid-high (session-level)。达成。
+
+## 设计约束（user brief 2026-04-23）
+
+- **总 RTP 跨 mode 不变**（见 memory `project_slot_designer_mode_rtp_invariants.md`）
+- Base : Feature = **45 : 55**（bonus-heavy — Cleopatra-edge per 业界研究）
+- Base 低 CV（频繁小奖）
+- Feature 中高 CV（1/500 稀有大爆，session CV 被稀有性撑高）
+
+## 业界基准对比
+
+| 机台 | Base % | Feature % | Total RTP | 备注 |
+|---|---|---|---|---|
+| Cleopatra (IGT) | 55% | 45% | 95% | 同类"bonus-heavy"参照 |
+| Jackpot Party | 69% | 31% | 86.1% | 中频 feature |
+| Money Storm | 71% | 29% | 92.5% | 同上 |
+| **M15 mode 1** | **46%** | **54%** | **147.6%** | **feature-rich 总 RTP 增强** |
+| Triple Double Diamond | 75% | 25% | 91.1% | base-heavy |
+
+M15 是 "feature-rich modern 3-reel" 定位——总 RTP 150% 比 classic 高，换取 feature play 的丰富变化（x 1-5 / y 0-2 多档加权抽样）。
 
 ## 文件结构
 
