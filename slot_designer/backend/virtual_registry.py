@@ -40,6 +40,46 @@ _SLOT_DESIGNER = Path(__file__).resolve().parent.parent
 VIRTUAL_MACHINES_CONFIG = _SLOT_DESIGNER / "configs" / "machines_virtual.json"
 
 
+def _discover_modes_on_disk(entry: dict) -> list[int]:
+    """Scan the machine's weights directory for ``mode_<N>/weights.json``
+    files and return the sorted list of mode numbers present.
+
+    The machine dir is resolved from ``_weights_path_template`` (which
+    looks like ``slot_designer/weights/<MACHINE>/mode_{mode}/weights.json``).
+    Returns an empty list if the template is missing, the parent dir
+    doesn't exist, or no mode subdirs are found — caller falls back to
+    the curated ``modes`` list in that case.
+    """
+    tpl = entry.get("_weights_path_template")
+    if not tpl:
+        return []
+    repo_root = _SLOT_DESIGNER.parent
+    # "slot_designer/weights/M15/mode_{mode}/weights.json" →
+    # parent "slot_designer/weights/M15/mode_{mode}" →
+    # grandparent "slot_designer/weights/M15"
+    try:
+        sample = repo_root / tpl.format(mode=1)
+    except (KeyError, IndexError):
+        return []
+    machine_dir = sample.parent.parent
+    if not machine_dir.is_dir():
+        return []
+    modes: list[int] = []
+    for sub in sorted(machine_dir.glob("mode_*")):
+        if not sub.is_dir():
+            continue
+        name = sub.name  # e.g. "mode_7"
+        if not name.startswith("mode_"):
+            continue
+        try:
+            mode_num = int(name.split("_", 1)[1])
+        except (ValueError, IndexError):
+            continue
+        if (sub / "weights.json").exists():
+            modes.append(mode_num)
+    return modes
+
+
 def refresh_machines_virtual(config_path: Path) -> dict:
     """Refresh per-machine MD5s in machines_virtual.json from current
     spec + weights + engine source via the single ``compute_machine_md5``
@@ -50,11 +90,31 @@ def refresh_machines_virtual(config_path: Path) -> dict:
     at the start of every sampling request (by
     ``virtual_analyzer.py``'s main flow), so runtime edits to spec /
     weights take effect immediately for the NEXT sampling.
+
+    Mode auto-discovery (2026-04-23): for virtual entries with
+    ``_weights_path_template`` (the slot_designer layout), this scans
+    the machine's weights dir for ``mode_<N>/weights.json`` files and
+    unions any newly-dropped modes into the entry's ``modes`` list.
+    Without this, adding a new mode dir on disk (e.g. via
+    ``derive_m15_mode_7.py`` or a Phase 4 tune) leaves the registry
+    claiming ``modes: [1]`` → rwtree + batch-run UI can't see the new
+    mode. Hand-maintained registries that predate this script stay
+    correct too: discovery is additive (never removes a mode even if
+    its weights.json temporarily disappears).
     """
     raw = json.loads(config_path.read_text(encoding="utf-8"))
     for entry in raw.get("machines", []):
         if not entry.get("_spec_path"):
             continue
+        # Auto-discover modes from disk BEFORE md5 computation so the
+        # machine-level aggregate md5 includes every mode's weights
+        # (not just the previously-registered subset). Union, don't
+        # replace — operator may have hand-curated the list.
+        disk_modes = _discover_modes_on_disk(entry)
+        if disk_modes:
+            existing_modes = {int(m) for m in entry.get("modes", [])}
+            union = sorted(existing_modes | set(disk_modes))
+            entry["modes"] = union
         # Machine-level (aggregate) md5 — for "did anything change?" UI
         # indicator at the machine card header.
         config_md5, code_md5 = compute_machine_md5(entry)

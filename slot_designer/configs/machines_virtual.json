@@ -58,12 +58,15 @@
     {
       "machine": "M15sim",
       "modes": [
-        1
+        1,
+        2,
+        5,
+        7
       ],
       "logicClassNames": [
         "SimulatedClassicPayline3ReelWithBonus"
       ],
-      "configSummaryMd5": "cd9ddee37ccec416e80611215bd7857b",
+      "configSummaryMd5": "88e387788c4404c6422c1d6f28dbb98a",
       "codeSummaryMd5": "75eb64c5d43e63435d0d477aa90b08e8",
       "available": true,
       "_source_machine": "M15",
@@ -73,6 +76,18 @@
       "modesMd5": {
         "1": {
           "configSummaryMd5": "cd9ddee37ccec416e80611215bd7857b",
+          "codeSummaryMd5": "75eb64c5d43e63435d0d477aa90b08e8"
+        },
+        "2": {
+          "configSummaryMd5": "2052a798d8e94774d327602cb3f81468",
+          "codeSummaryMd5": "75eb64c5d43e63435d0d477aa90b08e8"
+        },
+        "5": {
+          "configSummaryMd5": "aaf695ca8098f5bbf6813ed618a2bc94",
+          "codeSummaryMd5": "75eb64c5d43e63435d0d477aa90b08e8"
+        },
+        "7": {
+          "configSummaryMd5": "62b5768b8f3f86d899437df169bbf917",
           "codeSummaryMd5": "75eb64c5d43e63435d0d477aa90b08e8"
         }
       }
