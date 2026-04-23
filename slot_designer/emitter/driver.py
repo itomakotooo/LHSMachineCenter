@@ -13,7 +13,7 @@ from typing import Callable
 from ..engine.spin import SpinEngine
 from .chunk import compute_schema_fingerprint, emit_chunk, write_chunk
 from .robot import emit_robot
-from .round import emit_round
+from .round import emit_round, emit_session
 
 
 def emit_simulation_to_dir(
@@ -63,16 +63,24 @@ def emit_simulation_to_dir(
             last_credits = initial_credits
             rounds: list[dict] = []
             for _spin_i in range(spins_per_robot):
-                out = engine.spin(rng)
-                round_dict = emit_round(
+                out, feature_rounds = engine.spin_session(rng)
+                session_dicts = emit_session(
                     out,
+                    feature_rounds,
                     last_credits=last_credits,
                     spin_times=spins_per_robot,
                     rtp_id=effective_mode,
+                    feature_trigger_pay_id=engine.feature_trigger_pay_id,
                 )
-                rounds.append(round_dict)
-                last_credits = last_credits - out.cost_credits + round_dict["WinCredits"]
-                total_win += round_dict["WinCredits"]
+                # Main spin is always session_dicts[0] — its WinCredits updates
+                # last_credits (cost charged + regular/scatter wins). Feature
+                # ST=14 sub-rounds and ST=15 marker are emitted below it but
+                # do not mutate last_credits (mirrors production: player credit
+                # stays flat across feature rounds in rawdata).
+                main_dict = session_dicts[0]
+                rounds.extend(session_dicts)
+                last_credits = last_credits - out.cost_credits + main_dict["WinCredits"]
+                total_win += main_dict["WinCredits"]
                 total_bet += out.bet_amount
                 total_rounds += 1
             robot_list.append(emit_robot(rounds, bet=engine.bet_amount))

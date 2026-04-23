@@ -294,6 +294,115 @@ def describe(spec: FeatureSpec, stats: FeatureStats) -> str:
     return "\n".join(lines)
 
 
+def _weighted_choice_index(weights: tuple[float, ...], rng) -> int:
+    """Return index drawn from `weights` with probability proportional to weight."""
+    total = sum(weights)
+    pick = rng.random() * total
+    cum = 0.0
+    for i, w in enumerate(weights):
+        cum += w
+        if pick < cum:
+            return i
+    return len(weights) - 1
+
+
+def _weighted_sample_without_replacement(
+    values: tuple[int, ...],
+    weights: tuple[float, ...],
+    k: int,
+    rng,
+) -> tuple[int, ...]:
+    """Draw k cards without replacement, weighted by weights.
+    Returns the drawn VALUES (with duplicates possible since pool has duplicates)."""
+    n = len(values)
+    assert k <= n
+    remaining = list(range(n))
+    remaining_weights = list(weights)
+    drawn: list[int] = []
+    for _ in range(k):
+        total = sum(remaining_weights)
+        if total <= 0:
+            break
+        pick = rng.random() * total
+        cum = 0.0
+        chosen = -1
+        for j, w in enumerate(remaining_weights):
+            cum += w
+            if pick < cum:
+                chosen = j
+                break
+        if chosen < 0:
+            chosen = len(remaining_weights) - 1
+        idx = remaining[chosen]
+        drawn.append(values[idx])
+        del remaining[chosen]
+        del remaining_weights[chosen]
+    return tuple(drawn)
+
+
+@dataclass
+class FeatureRound:
+    """One round of the feature session (one ST=14 sub-spin in rawdata)."""
+    round_index: int          # 1..max_rounds
+    count_x: int              # how many x's drawn this round
+    count_y: int              # how many y's drawn this round
+    x_values: tuple[int, ...]  # the x values drawn
+    y_values: tuple[int, ...]  # the y values drawn
+    r_value: float            # sum(x) × product(y)
+    accepted: bool            # was this round accepted (final round)?
+
+
+def simulate_feature_session(spec: FeatureSpec, rng) -> list[FeatureRound]:
+    """Run one Feature Play session per paytable §5:
+      1. Roll count_x, count_y by weights
+      2. Draw count_x x's, count_y y's (weighted, without replacement)
+      3. Compute R = sum(x) × product(y); if 0 y, multiplier = 1
+      4. Accept if R >= threshold (or round == max_rounds forced)
+      5. Reject: reroll. Up to max_rounds total.
+
+    Returns a list of FeatureRound, one per round played. The last round
+    has accepted=True. Other rounds have accepted=False (rejected and
+    rerolled). Length = 1..max_rounds.
+
+    Rawdata mapping: each FeatureRound becomes one ST=14 spin with
+    WinCredits = r_value × bet_amount. An ST=15 end marker follows.
+    """
+    rounds: list[FeatureRound] = []
+    for round_idx in range(1, spec.max_rounds + 1):
+        # Roll counts
+        count_x = _weighted_choice_index(spec.x_count_weights, rng) + 1  # index 0 → count 1
+        count_y = _weighted_choice_index(spec.y_count_weights, rng)      # index 0 → count 0
+        # Draw x cards weighted w/o replacement
+        x_drawn = _weighted_sample_without_replacement(
+            _X_POOL, spec.x_value_weights, count_x, rng
+        )
+        # Draw y cards
+        y_drawn = _weighted_sample_without_replacement(
+            _Y_POOL, spec.y_value_weights, count_y, rng
+        )
+        # Compute R
+        x_sum = sum(x_drawn)
+        y_prod = 1
+        for y in y_drawn:
+            y_prod *= y
+        r = x_sum * y_prod
+        # Accept/reject
+        is_last = (round_idx == spec.max_rounds)
+        accepted = (r >= spec.accept_threshold) or is_last
+        rounds.append(FeatureRound(
+            round_index=round_idx,
+            count_x=count_x,
+            count_y=count_y,
+            x_values=x_drawn,
+            y_values=y_drawn,
+            r_value=r,
+            accepted=accepted,
+        ))
+        if accepted:
+            break
+    return rounds
+
+
 if __name__ == "__main__":
     # Smoke: default uniform weights preview (backward compat path)
     default_spec = FeatureSpec(

@@ -16,7 +16,10 @@ from typing import Sequence
 @dataclass(frozen=True)
 class Stop:
     symbol: str
-    weight: int
+    weight: float   # v5 2026-04-23: widened from int to float to support
+                    # M15's fractional topdollar weight (6.44 for exact
+                    # 1/88 trigger rate). Pre-v5 int weights still work
+                    # (stored as float internally).
 
 
 class ReelStrip:
@@ -26,8 +29,8 @@ class ReelStrip:
         if any(s.weight <= 0 for s in stops):
             raise ValueError("all stop weights must be positive")
         self.stops = list(stops)
-        self._cum_weights: list[int] = []
-        acc = 0
+        self._cum_weights: list[float] = []
+        acc = 0.0
         for s in stops:
             acc += s.weight
             self._cum_weights.append(acc)

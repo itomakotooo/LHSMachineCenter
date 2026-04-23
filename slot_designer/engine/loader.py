@@ -62,7 +62,9 @@ def _assemble_reels(
                 f"weights has {len(wts)} — they must match per-position"
             )
         assembled.append([
-            {"symbol": s, "weight": int(w)}
+            # v5: keep float precision (e.g., M15 topdollar weight 6.44
+            # for exact 1/88 trigger). Pre-v5 int cast truncated to 6.
+            {"symbol": s, "weight": float(w)}
             for s, w in zip(strip, wts)
         ])
     return assembled
@@ -145,7 +147,10 @@ def load_engine(
 
     reels: list[ReelStrip] = []
     for reel_stops in assembled:
-        stops = [Stop(symbol=s["symbol"], weight=int(s["weight"])) for s in reel_stops]
+        # v5 2026-04-23: weights widened to float. M15 topdollar ~6.44 needs
+        # fractional to hit exact 1/88 trigger target (old int() cast silently
+        # truncated to 6, giving ~1.06% vs target 1.136%).
+        stops = [Stop(symbol=s["symbol"], weight=float(s["weight"])) for s in reel_stops]
         reels.append(ReelStrip(stops))
 
     # Payline — M1 has exactly 1 (line_id=1 on middle row).
@@ -156,6 +161,33 @@ def load_engine(
         )
     positions = [tuple(p) for p in paylines[0]["positions"]]
 
+    # v5+ M15: build FeatureSpec from per-mode feature_params (weights.json)
+    # or fall back to spec-level defaults (specs/M15.spec.json features[0]).
+    feature_spec = None
+    feature_trigger_pay_id = None
+    feats = spec.get("features") or []
+    if feats:
+        feat = feats[0]
+        feature_trigger_pay_id = feat.get("trigger_pay_id")
+        # Per-mode override via weights.json `feature_params` block
+        fp = weights_doc.get("feature_params") or {}
+        x_count = fp.get("x_count_weights") or feat.get("x_count_weights")
+        y_count = fp.get("y_count_weights") or feat.get("y_count_weights")
+        x_val = fp.get("x_value_weights") or feat.get("x_value_weights")
+        y_val = fp.get("y_value_weights") or feat.get("y_value_weights")
+        thresh = fp.get("accept_threshold") or feat.get("accept_threshold", 40)
+        max_r = fp.get("max_rounds") or feat.get("max_rounds", 4)
+        if x_count and y_count:
+            from .feature_m15 import FeatureSpec, _X_POOL, _Y_POOL
+            feature_spec = FeatureSpec(
+                x_count_weights=tuple(x_count),
+                y_count_weights=tuple(y_count),
+                x_value_weights=tuple(x_val) if x_val else (1.0,) * len(_X_POOL),
+                y_value_weights=tuple(y_val) if y_val else (1.0,) * len(_Y_POOL),
+                accept_threshold=float(thresh),
+                max_rounds=int(max_r),
+            )
+
     engine = SpinEngine(
         reels=reels,
         evaluator=evaluator,
@@ -163,6 +195,8 @@ def load_engine(
         cost_per_spin=int(st["cost_per_spin"]),
         bet_amount=int(st["bet_amount"]),
         spin_type=int(st_key),
+        feature_spec=feature_spec,
+        feature_trigger_pay_id=feature_trigger_pay_id,
     )
     return engine, spec
 

@@ -7,6 +7,11 @@ Flow:
   4. Evaluate paytable → PayResult | None.
   5. Return SpinOutcome carrying everything the emitter needs.
 
+v5+ (2026-04-23): SpinEngine optionally carries a ``feature_spec``
+(FeatureSpec) that enables ``spin_session()`` — returns the main spin
+plus N feature round outputs when the main spin triggers the feature.
+M15 uses this to emit production-matching SpinType=14/15 sub-rounds.
+
 Future machines add: multi-payline (iterate all lines), bonus respin
 (different reel set + state-aware cost), cascading reels (loop until no
 wins), etc. All of those live here in new methods, not in a new engine.
@@ -18,6 +23,7 @@ from random import Random
 from typing import Sequence
 
 from .evaluator import PaytableEvaluator
+from .feature_m15 import FeatureRound, FeatureSpec, simulate_feature_session
 from .reel_strip import ReelStrip
 from .rules import PayResult
 
@@ -48,6 +54,8 @@ class SpinEngine:
         cost_per_spin: int,
         bet_amount: int,
         spin_type: int = 1,
+        feature_spec: FeatureSpec | None = None,
+        feature_trigger_pay_id: int | None = None,
     ):
         self.reels = list(reels)
         self.evaluator = evaluator
@@ -55,6 +63,11 @@ class SpinEngine:
         self.cost_per_spin = cost_per_spin
         self.bet_amount = bet_amount
         self.spin_type = spin_type
+        # v5+: optional feature engine for M15-style bonus mechanics.
+        # When present, spin_session() runs feature rounds when the main
+        # spin's scatter_pays contains ``feature_trigger_pay_id``.
+        self.feature_spec = feature_spec
+        self.feature_trigger_pay_id = feature_trigger_pay_id
 
     @property
     def n_cols(self) -> int:
@@ -79,3 +92,31 @@ class SpinEngine:
             bet_amount=self.bet_amount,
             spin_type=self.spin_type,
         )
+
+    def spin_session(self, rng: Random) -> tuple[SpinOutcome, list[FeatureRound]]:
+        """Run one paid spin + any triggered feature rounds.
+
+        If the main spin has a scatter pay matching ``feature_trigger_pay_id``,
+        simulate the feature session (up to ``max_rounds`` rounds with
+        accept/reject logic per ``FeatureSpec``). Returns:
+          - Main SpinOutcome (the paid spin, may have regular payline pay too)
+          - List of FeatureRound, one per round played (empty if no trigger
+            OR engine has no feature_spec configured).
+
+        Rawdata emission (downstream emitter handles):
+          main outcome → ST=1 (with ReMarks='Trigger' when feature_rounds
+          non-empty); each feature round → ST=14 with WinCredits=r_value×bet;
+          followed by ST=15 end marker.
+        """
+        outcome = self.spin(rng)
+        feature_rounds: list[FeatureRound] = []
+        if (
+            self.feature_spec is not None
+            and self.feature_trigger_pay_id is not None
+            and any(
+                sp.pay_id == self.feature_trigger_pay_id
+                for sp in (outcome.scatter_pays or [])
+            )
+        ):
+            feature_rounds = simulate_feature_session(self.feature_spec, rng)
+        return outcome, feature_rounds
