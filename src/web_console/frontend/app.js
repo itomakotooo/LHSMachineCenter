@@ -2573,7 +2573,7 @@ function updateSampleHint() {
     }
     // Show whether the upcoming 开始采样 will use tuned params (from
     // a previous 调参 click on the first effective machine + this mode)
-    // or the hardcoded preset (robot_count=20, batch_concurrency=2).
+    // or the direct-connect benchmark preset (robot_count=8, batch_concurrency=8).
     if (n > 0) {
       const firstMachine = effective[0];
       const tuned = state.tunedSamplingParams[`${firstMachine}|${mode}`];
@@ -2583,7 +2583,7 @@ function updateSampleHint() {
           `batch_concurrency=${tuned.batch_concurrency} · success=${fRate(tuned.success_rate, 1)}`
         );
       } else {
-        lines.push(`未调参，将用预设 robot_count=20, batch_concurrency=2 (可先点 ⚙ 调参)`);
+        lines.push(`未调参，将用预设 robot_count=8, batch_concurrency=8 (可先点 ⚙ 调参)`);
       }
     }
     hint.textContent = lines.join(" · ");
@@ -2654,12 +2654,15 @@ async function startSampling() {
   });
 
   // Pick up autotune result for the first selected machine+mode if the
-  // operator ran 调参 beforehand. Otherwise fall back to the hardcoded
-  // preset (robot=20 / conc=2). Tuned values apply to the whole batch.
+  // operator ran 调参 beforehand. Otherwise fall back to the preset.
+  // 2026-04-24 direct-connect benchmark (M14 chunk=2000): 8×8 = 4,411
+  // spin/s with smallest chunk footprint (p50 26s, max 36s), vs prior
+  // 20×2 ≈ 2,800 spin/s (+58%). Upstream ceiling: robot×conc >= 128
+  // fails outright. Tuned values (if present) apply to the whole batch.
   const tunedKey = `${selected[0]}|${mode}`;
   const tuned = state.tunedSamplingParams[tunedKey];
-  const chunk_robot_count = tuned ? tuned.robot_count : 20;
-  const batch_concurrency = tuned ? tuned.batch_concurrency : 2;
+  const chunk_robot_count = tuned ? tuned.robot_count : 8;
+  const batch_concurrency = tuned ? tuned.batch_concurrency : 8;
 
   // max_chunks derivation depends on mode:
   //   - CI mode: budget-cap at ~10M spins using chunk averages

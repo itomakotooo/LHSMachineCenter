@@ -293,8 +293,16 @@ class RunCreateRequest(BaseModel):
     # value is a normal CI half-width in percentage points.
     target_halfwidth_pp: float = Field(default=0.5, ge=0)
     chunk_spin_times: int = Field(default=5000, gt=0)
-    chunk_robot_count: int = Field(default=20, gt=0)
-    batch_concurrency: int = Field(default=2, gt=0)
+    # 2026-04-24: direct-connect concurrency benchmark (M14 chunk_spin_times=2000):
+    # 8 robot × 8 conc = 4,411 spin/s with the smallest chunk footprint
+    # (p50 26s, max 36s). Previous preset 20×2 ≈ 2,800 spin/s. Upgrading
+    # the preset gains +58% throughput while keeping chunks short so
+    # retry cost stays low. Upstream FAILS at robot × conc >= 128
+    # (e.g. 32×8 / 48×8 drop all requests), hence ceiling.
+    # Per-machine chunk_spin_times (Collect 5000 / Lock-ReSpin-FreeSpin
+    # 2000 / others 1000) is picked separately in frontend, unchanged.
+    chunk_robot_count: int = Field(default=8, gt=0)
+    batch_concurrency: int = Field(default=8, gt=0)
     max_chunks: int = Field(default=120, gt=0)
     timeout: float = Field(default=300.0, gt=0)
     bankruptcy_session_spins: int = Field(default=10000, gt=0)
@@ -1080,8 +1088,10 @@ class BatchRunRequest(BaseModel):
     items: list[BatchRunItem]
     concurrency: int = Field(default=3, ge=1, le=10)
     chunk_spin_times: int = Field(default=5000, gt=0)
-    chunk_robot_count: int = Field(default=20, gt=0)
-    batch_concurrency: int = Field(default=2, gt=0)
+    # See RunRequest defaults above for the direct-connect benchmark
+    # rationale behind robot=8 / conc=8.
+    chunk_robot_count: int = Field(default=8, gt=0)
+    batch_concurrency: int = Field(default=8, gt=0)
     max_chunks: int = Field(default=120, gt=0)
     timeout: float = Field(default=300.0, gt=0)
     target_halfwidth_pp: float = Field(default=0.5, ge=0)
