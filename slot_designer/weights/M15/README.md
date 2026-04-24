@@ -35,13 +35,18 @@
 
 ```
 slot_designer/weights/M15/
-├── README.md                 ← 本文件
-├── DESIGN.md                 ← Top Dollar 原型研究 + paytable 数学身份
-├── MODE_DESIGN.md            ← 4 mode 数值 + 玩家体验剧本（v6 最新）
-├── reel_strips.json          ← 共享 symbol 布局（36 × 3, 18 blank + 18 非 blank 交替）
+├── README.md                    ← 本文件
+├── DESIGN.md                    ← Top Dollar 原型研究 + paytable 数学身份
+├── MODE_DESIGN.md               ← 4 mode 数值 + 玩家体验剧本（v7 最新）
+├── M15_weights_reference.csv    ← ★ 策划用的全量速查表（reel + feature 4-mode 并排，CSV 可贴 Excel）
+├── reel_strips.json             ← 共享 symbol 布局（36 × 3, 18 blank + 18 非 blank 交替）
 └── mode_<N>/
-    └── weights.json          ← mode 专属 per-stop 权重 + feature_params 块
+    └── weights.json             ← mode 专属 per-stop 权重 + feature_params 块（source of truth）
 ```
+
+**策划快速查看权重** → 打开 `M15_weights_reference.csv`（4 mode 并排，分 4 个 section：机台总览 / 转轴 + per-mode 权重 / feature 权重 / 派生概率）。CSV 可直接贴 Excel。
+
+**CSV 是 reference snapshot**（不被代码读取）。Source of truth 仍然是 `mode_<N>/weights.json`。权重改过之后让 Claude 重新导出 CSV。
 
 mode 1 保留了 `NOTES.md` 和 `TUNE_REPORT.md`（Phase 4/5 初次 tune 产物）；mode 2/5/7 不需要，它们的 derivation 细节都在 `MODE_DESIGN.md` + commit message 里。
 

@@ -56,6 +56,8 @@
 
 ## 2. 每 mode 的三个 dial
 
+> 策划速查：打开 `M15_weights_reference.csv` Section C 看 4 mode 并排表（CSV 可贴 Excel）。Source of truth 仍是 `mode_<N>/weights.json`。
+
 v7 `analyze_feature()` 验证通过，deviation ≤ 0.01%：
 
 | Mode | Trigger | count_y | x_value_weights | EV | Feature RTP |
