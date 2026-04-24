@@ -4,7 +4,18 @@
 
 **适用范围**：M1（base-only classic 3-reel）和 M15（带 Feature Play）两类机台都覆盖。有其它 feature 类型（bonus chain / collect / wheel / free spin）的机台参考 §10 扩展点。
 
-## 核心原则（3 条红线）
+## 核心原则（4 条红线）
+
+**0. 绝对原则：数值是基础，玩家感性体验是灵魂**（`project_slot_designer_axiom_experience_is_soul.md`）
+
+数值 target hit（RTP / hit / bucket_js）是 **necessary precondition**，不是 "done" 标志。**done** = 数值全中 **+ experience 指标全绿**:
+- 家族 RTP share vs classic benchmark（7-dominated 机 Seven ≥ 40-60%；Wild-jackpot 机 top path ≥ 60% of Top bucket；etc.）
+- Mode 间 experience invariant（mode 7 vs mode 1 保 Seven 绝对击中率；mode 5 vs mode 2 High bucket × 1.5 +；etc.）
+- Per-family per-reel ratio drift vs 真原型 < 0.15
+- Near-miss 结构（顶奖 family 窗口/支付线 ratio > 1.5）
+- Bucket shape narrative（boom-bust / mid-heavy / grind 对应设计叙事）
+
+**反面案例**：M1 TDD-rebuild commit 00345a0 数值全中但 Seven share 10%（原 classic 20%）— classic "7-dominated" 灵魂丢失。原因：family-scale tuner cost_fn 没约束家族 share。**每次 tune 完跑 `slot_designer/scripts/verify_<M>_design.py` 全绿才算 done**。
 
 **1. 每台机台都要跑 WebSearch 英文源**（`feedback_always_research_each_time.md`）
 不能只靠 memory 笔记决定"M1 样、M15 样、...的新机台"。每台机台的玩家体验 / near-miss / bucket 目标都要独立查业界同类 + 研究论文。
@@ -23,8 +34,9 @@
 3. `slot_designer/weights/<M>/mode_<N>/weights.json` × 4 — mode 1/2/5/7 per-stop 权重（feature 机台含 feature_params 块）
 4. `slot_designer/tuner/targets/<M>_mode<N>_*.target.json` × 至少 2 — mode 1 + mode 2 的 tune target（mode 5/7 派生，不需要自己的 target）
 5. `slot_designer/configs/machines_virtual.json` 注册条目
-6. （可选）`slot_designer/weights/<M>/M<N>_weights_reference.csv` — 策划速查 CSV
-7. 虚拟 console 跑 batch-run 产 rawdata OK + report 能画 feature panel（feature 机台）
+6. **`slot_designer/scripts/verify_<M>_design.py`** — **必备** experience-gate 脚本：跑完 4 mode 所有 red/green check，所有红线必绿才算 shipped。基于红线 0 的 experience invariant + 家族 RTP share benchmark
+7. （可选）`slot_designer/weights/<M>/M<N>_weights_reference.csv` — 策划速查 CSV
+8. 虚拟 console 跑 batch-run 产 rawdata OK + report 能画 feature panel（feature 机台）
 
 **跨机台硬约束**（新机台必须套）：
 
