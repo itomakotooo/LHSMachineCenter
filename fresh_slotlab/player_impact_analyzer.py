@@ -1738,6 +1738,55 @@ def load_chunk_envelope(path: Path) -> dict:
     return raw
 
 
+# Envelope header peek — extracts ``_chunk_index`` + ``_config_md5`` +
+# ``_code_md5`` from the first ~4KB of a chunk file WITHOUT parsing the
+# potentially-megabytes-sized ``response`` array that follows. The fields
+# land at the top of the envelope (see the dict in ``_persist_chunk``
+# which writes ``_chunk_index`` / ``_config_md5`` / ``_code_md5`` well
+# before ``response``), so regex over the first 4KB is safe in practice.
+#
+# Fallback: when the regex doesn't match (very old envelopes without
+# these keys, reordered writes, etc.), caller drops back to full
+# ``load_chunk_envelope`` which preserves the pre-optimization path.
+#
+# Wins: on a 100MB historical-md5 replay (29 × ~3.5MB chunks for M15
+# mode 5), peek cuts read+parse from ~15s to <200ms total. That's the
+# observable "replay stalls even though nothing matches my new md5"
+# pain when an operator swaps ``machineconfig/<u>Cfg.txt``.
+_ENVELOPE_PEEK_BYTES = 4096
+_ENVELOPE_PEEK_RE = re.compile(
+    r'"_chunk_index"\s*:\s*(\d+).*?'
+    r'"_config_md5"\s*:\s*"([^"]*)".*?'
+    r'"_code_md5"\s*:\s*"([^"]*)"',
+    re.DOTALL,
+)
+
+
+def peek_chunk_envelope(path: Path) -> tuple[int, str, str] | None:
+    """Return ``(chunk_index, config_md5, code_md5)`` from the
+    envelope header without parsing the whole file.
+
+    Returns ``None`` if any of the three fields isn't found in the
+    first ~4KB — caller must fall back to ``load_chunk_envelope``.
+    """
+    try:
+        with path.open("rb") as f:
+            head = f.read(_ENVELOPE_PEEK_BYTES)
+    except OSError:
+        return None
+    try:
+        text = head.decode("utf-8", errors="ignore")
+    except Exception:  # noqa: BLE001
+        return None
+    m = _ENVELOPE_PEEK_RE.search(text)
+    if not m:
+        return None
+    try:
+        return int(m.group(1)), m.group(2), m.group(3)
+    except (ValueError, IndexError):
+        return None
+
+
 def _compute_upstream_schema_fingerprint(resp: Any) -> str | None:
     """Compute a deterministic fingerprint of the upstream round schema.
 
@@ -3843,6 +3892,43 @@ def main() -> int:
         historical_md5_skipped = 0
 
         for read_idx, cf in enumerate(chunk_files):
+            # Fast path: when a md5 filter is active AND the envelope
+            # header peek shows this chunk won't match, skip the full
+            # file read + JSON parse + sha256 integrity check. Cuts
+            # ~100MB / ~15s off a historical-md5 replay where the
+            # operator swapped cfg and nothing will match the new
+            # filter. Falls back to full load if peek can't find
+            # the header fields (old envelope format, reordered write).
+            if md5_filter_active:
+                peek = peek_chunk_envelope(cf)
+                if peek is not None:
+                    peek_idx, peek_cfg, peek_code = peek
+                    max_existing_idx = max(max_existing_idx, peek_idx)
+                    if (
+                        peek_cfg != args.upstream_config_md5
+                        or peek_code != args.upstream_code_md5
+                    ):
+                        historical_md5_skipped += 1
+                        if (
+                            read_progress_step > 0
+                            and total_to_read > 0
+                            and (read_idx + 1) % read_progress_step == 0
+                            and (read_idx + 1) < total_to_read
+                        ):
+                            append_jsonl(
+                                progress_file,
+                                {
+                                    "event": "cache_read_progress",
+                                    "run_id": run_id,
+                                    "chunks_read": read_idx + 1,
+                                    "total_chunks": total_to_read,
+                                    "total_spins": total_spins,
+                                    "md5_skipped": historical_md5_skipped,
+                                    "ts": utc_now(),
+                                },
+                            )
+                        continue
+
             try:
                 raw = load_chunk_envelope(cf)
             except ChunkIntegrityError as exc:
@@ -3854,22 +3940,14 @@ def main() -> int:
             idx = int(raw.get("_chunk_index", next_chunk_index))
             max_existing_idx = max(max_existing_idx, idx)
 
-            # md5 filter — new 2026-04-21. Chunks whose envelope
-            # (_config_md5 / _code_md5) don't match the caller's
-            # upstream md5 get SKIPPED for stats merge (historical
-            # generation, can't mix with current-md5 sample). They
-            # stay on disk; just don't contribute to the running
-            # stats. Same principle as f5d8787 "md5 is a tag, not a
-            # destruction signal" — tag classification drives reads,
-            # not deletion.
+            # md5 filter — fall-through case (peek failed earlier so
+            # we've already paid the full-load cost; just confirm
+            # match here using the parsed envelope).
             if md5_filter_active:
                 cfg_env = str(raw.get("_config_md5", "") or "")
                 code_env = str(raw.get("_code_md5", "") or "")
                 if cfg_env != args.upstream_config_md5 or code_env != args.upstream_code_md5:
                     historical_md5_skipped += 1
-                    # Still fall through the read-progress heartbeat
-                    # logic so the UI sees the loop's position, but
-                    # skip the parse + merge block.
                     if (
                         read_progress_step > 0
                         and total_to_read > 0
