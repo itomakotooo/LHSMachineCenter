@@ -186,6 +186,95 @@ class TestBatchRunHonorsServerResolution:
         assert "--endpoint-url" not in cmd
 
 
+class TestAutotuneHonorsServerResolution:
+    """Autotune probes (``_post_slot_spin``) must hit the same
+    endpoint batch-run does — i.e. resolve via servers.json
+    ``default_server`` / first-active rather than the hardcoded
+    SLOT_SPIN_ENDPOINT constant.
+
+    User report 2026-04-25: 调参按钮在外网（prod default_server）
+    下点了无效 — 因为 ``_post_slot_spin`` 一直 hard-pin 到内网常量。
+    Lock: a single regression test that monkey-patches the urllib
+    layer + asserts the URL matches the resolver output."""
+
+    def test_post_slot_spin_routes_to_default_server(
+        self, tmp_path, monkeypatch,
+    ):
+        import src.web_console.backend.app as app_mod
+
+        p = _write_servers(tmp_path, {
+            "servers": [
+                {"id": "dev", "active": True, "endpoint": "http://192.168.10.21:15060"},
+                {"id": "prod", "active": True, "endpoint": "http://116.232.103.19:10288"},
+            ],
+            "default_server": "prod",
+        })
+        monkeypatch.setattr(app_mod, "SERVERS_CONFIG", p)
+
+        captured_urls: list[str] = []
+
+        class _FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def read(self):
+                return b'[]'  # empty list response — _run_probe_request handles it
+
+        def fake_urlopen(req, timeout=None):
+            captured_urls.append(req.full_url)
+            return _FakeResponse()
+
+        monkeypatch.setattr(
+            "src.web_console.backend.app.urllib.request.urlopen", fake_urlopen,
+        )
+
+        # Direct probe — analyzer-internal call path that the autotune
+        # endpoint uses on every candidate.
+        app_mod._post_slot_spin({"x": 1}, timeout=1.0)
+        app_mod._post_slot_spin({"x": 2}, timeout=1.0)
+
+        assert len(captured_urls) == 2
+        # Both calls must go to prod (the default_server endpoint),
+        # NOT the SLOT_SPIN_ENDPOINT constant.
+        for url in captured_urls:
+            assert url.startswith("http://116.232.103.19:10288/"), (
+                f"autotune routed to wrong endpoint: {url}"
+            )
+            assert "192.168.10.21" not in url
+
+    def test_post_slot_spin_falls_through_when_no_routable_server(
+        self, tmp_path, monkeypatch,
+    ):
+        """Empty / inactive servers.json → resolver returns "" →
+        ``get_server_endpoint("")`` falls back to SLOT_SPIN_ENDPOINT
+        constant. Back-compat for test / dev setups."""
+        import src.web_console.backend.app as app_mod
+
+        p = _write_servers(tmp_path, {
+            "servers": [], "default_server": "",
+        })
+        monkeypatch.setattr(app_mod, "SERVERS_CONFIG", p)
+
+        captured: list[str] = []
+
+        class _FakeResponse:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return b'[]'
+
+        def fake_urlopen(req, timeout=None):
+            captured.append(req.full_url)
+            return _FakeResponse()
+
+        monkeypatch.setattr(
+            "src.web_console.backend.app.urllib.request.urlopen", fake_urlopen,
+        )
+
+        app_mod._post_slot_spin({}, timeout=1.0)
+        assert captured[0] == app_mod.SLOT_SPIN_ENDPOINT
+
+
 class TestSetDefaultServerEndpoint:
     """PUT /api/servers/{id}/set-default — UI-driven switch for the
     batch-run resolver's ``default_server`` priority. Without this,

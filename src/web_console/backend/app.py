@@ -4083,8 +4083,19 @@ def _parse_round_count(robot: Any) -> int:
 
 
 def _post_slot_spin(payload: dict[str, Any], timeout: float) -> Any:
+    # Resolve endpoint at call time via the same logic batch-run uses
+    # (servers.json default_server → first active-with-endpoint →
+    # SLOT_SPIN_ENDPOINT fallback). Keeps autotune symmetric with
+    # actual sampling — when operator flips ``default_server`` to
+    # external/internal in the 服务器管理 UI, both paths reroute.
+    # Before this, autotune was hard-pinned to the SLOT_SPIN_ENDPOINT
+    # constant: when servers.json said "prod" (external) but the
+    # constant still pointed at internal LAN, autotune got connection
+    # refused while batch-run worked fine — exactly the user-reported
+    # 2026-04-25 调参按钮 bug.
+    endpoint = get_server_endpoint(_resolve_active_server_id())
     req = urllib.request.Request(
-        SLOT_SPIN_ENDPOINT,
+        endpoint,
         method="POST",
         headers={"Content-Type": "application/json"},
         data=json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"),
