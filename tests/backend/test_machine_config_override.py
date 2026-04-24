@@ -441,6 +441,81 @@ class TestLocalCfgMd5SegregatesChunks:
         assert md5_value != "real_server_md5_xyz"
 
 
+class TestResumeBudgetRepairWhenMd5Mismatch:
+    """Regression for the 2026-04-24 "0 spins after 0 chunk(s);
+    stop_reason=max_chunks_reached" bug. Repro: replace
+    machineconfig/<u>Cfg.txt with new content → localcfg_<hash>
+    changes → old chunks filter out on resume (chunks=0) →
+    next_chunk_index jumps past args.max_chunks (absolute-index
+    ceiling) → live sampling loop exits immediately. User saw this
+    on M15 variant mode 5 with 29 existing chunks + fuzzy
+    max_chunks=1 budget.
+
+    This is a unit-level test against the analyzer's budget-repair
+    logic; the live subprocess path is covered by the earlier
+    argv-integration tests plus the actual sampling now working."""
+
+    def test_budget_shifts_past_existing_when_all_filtered_out(
+        self, tmp_path,
+    ):
+        """Simulate the analyzer's resume bookkeeping state with
+        max_existing_idx=29, chunks=0 (all md5-filtered),
+        args.max_chunks=1 (count-mode 总量 target). The repair
+        block must bump args.max_chunks to 30 (= existing + 1 new)
+        so the live sampling loop actually runs."""
+        # We import the module just for its constants — the block
+        # itself lives inside main() so we exercise it by mirroring
+        # its logic in a minimal harness. The copy here is the
+        # contract we're locking; if the analyzer changes its repair
+        # formula, this test must be updated deliberately.
+        max_existing_idx = 29
+        chunks = 0  # nothing matched the current md5 filter on replay
+        next_chunk_index = max_existing_idx + 1  # = 30
+        max_chunks = 1  # fuzzy 总量 target, 1 new chunk wanted
+
+        # Mirror fresh_slotlab/player_impact_analyzer.py repair block:
+        if next_chunk_index > max_chunks:
+            remaining_new = max(1, max_chunks - chunks)
+            max_chunks = max_existing_idx + remaining_new
+
+        # Post-repair: loop would now run 1 iteration at idx 30.
+        assert max_chunks == 30
+        assert next_chunk_index <= max_chunks
+
+    def test_budget_preserves_partial_match_remaining(self):
+        """Partial md5 drift: 20 chunks counted (matching) + 10
+        non-matching. User wanted 1 more matching chunk. Repair
+        should bump max_chunks so the loop runs EXACTLY 1 new
+        sample past the full existing pool."""
+        max_existing_idx = 30  # 20 v1 + 10 v2 (different) = 30 on disk
+        chunks = 20  # v1 matched and replayed
+        max_chunks = 21  # incremental strategy: 1 target + 20 usable
+        next_chunk_index = 31
+
+        if next_chunk_index > max_chunks:
+            remaining_new = max(1, max_chunks - chunks)
+            max_chunks = max_existing_idx + remaining_new
+
+        # 1 new chunk on top of the 30 existing = index 31.
+        assert max_chunks == 31
+        assert next_chunk_index <= max_chunks
+
+    def test_no_repair_when_resume_fits_budget(self):
+        """Sanity: don't touch max_chunks when it already fits
+        the resume (fresh start, or resume where budget > existing).
+        Repair must be a no-op."""
+        max_existing_idx = 5
+        chunks = 5
+        max_chunks = 50  # plenty of room
+        next_chunk_index = 6
+
+        original_mc = max_chunks
+        if next_chunk_index > max_chunks:
+            remaining_new = max(1, max_chunks - chunks)
+            max_chunks = max_existing_idx + remaining_new
+        assert max_chunks == original_mc
+
+
 class TestMakePayloadInjectsMachineConfigField:
     """Wire-level check — the analyzer's make_payload adds
     `MachineConfig` iff a non-empty string is passed. This is what

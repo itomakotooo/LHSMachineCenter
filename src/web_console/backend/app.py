@@ -3141,7 +3141,28 @@ class BatchRunManager:
                             ),
                         })
             target_label = "Fuzzy" if target_pp == 0 else f"±{target_pp}pp"
-            if resume_cache and cache_usable:
+            if item_machine_config:
+                # Local-cfg override creates a separate md5 bucket
+                # (see _derive_local_cfg_md5). Historical chunks
+                # stamped with global/other md5 stay on disk but
+                # won't count toward this run's stats — say so
+                # loudly so the operator doesn't expect resume reuse.
+                local_md5 = _derive_local_cfg_md5(item_machine_config)
+                existing_total = (
+                    raw_status["usable_chunks"]
+                    + raw_status["mismatch_chunks"]
+                )
+                events.append({
+                    "ts": utc_now(), "level": "info",
+                    "machine": it.machine,
+                    "text": (
+                        f"🔧 启用本地 cfg ({local_md5}) → 独立 md5 分桶；"
+                        f"磁盘上 {existing_total} 个历史 chunks 保留但不计入本轮；"
+                        f"本轮新 chunks 会接在历史编号之后写入，目标 "
+                        f"{target_label} (chunk_spin_times={chunk_size})"
+                    ),
+                })
+            elif resume_cache and cache_usable:
                 # Existing current-md5 chunks on disk → reuse + continue.
                 events.append({
                     "ts": utc_now(), "level": "info",

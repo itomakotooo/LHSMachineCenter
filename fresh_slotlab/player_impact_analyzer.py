@@ -4273,6 +4273,28 @@ def main() -> int:
             # a subsequent resume sees all of them.
             next_chunk_index = max_existing_idx + 1
             args.chunk_cache_dir = cache_read_dir
+            # Budget repair: ``args.max_chunks`` is an *absolute chunk
+            # index ceiling*, but the caller usually sets it relative
+            # to a clean ``chunk_1`` start (count-mode 总量 strategy
+            # especially). When existing-on-disk chunks push
+            # ``next_chunk_index`` past that ceiling, the live
+            # sampling loop would exit immediately with 0 spins — the
+            # user's budget silently evaporates. Triggers most often
+            # after a ``machineconfig/<u>Cfg.txt`` swap: the new
+            # ``localcfg_<hash>`` filters out every historical chunk,
+            # ``chunks == 0`` after replay, but indices 1..29 still
+            # occupy the name space so ``next_chunk_index == 30`` for
+            # a budget of 1. Symptom: "sampling produced 0 spins
+            # after 0 chunk(s); stop_reason=max_chunks_reached".
+            #
+            # Fix: interpret the shortfall as "remaining NEW chunks
+            # the user still wants" and extend ``max_chunks`` past
+            # the existing ceiling. ``remaining_new`` keeps honoring
+            # already-counted replay chunks so partial-match resumes
+            # (some v1 + some v2, still v1-sampling) behave correctly.
+            if next_chunk_index > args.max_chunks:
+                remaining_new = max(1, args.max_chunks - chunks)
+                args.max_chunks = max_existing_idx + remaining_new
             append_jsonl(
                 progress_file,
                 {
@@ -4282,6 +4304,7 @@ def main() -> int:
                     "existing_spins": total_spins,
                     "historical_md5_skipped": historical_md5_skipped,
                     "next_chunk_index": next_chunk_index,
+                    "adjusted_max_chunks": args.max_chunks,
                     "ts": utc_now(),
                 },
             )
