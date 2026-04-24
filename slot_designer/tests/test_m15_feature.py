@@ -102,18 +102,14 @@ def test_mode1_weights_json_feature_params_match_spec():
 def test_m15_mode1_total_rtp_approximately_95():
     """Base RTP + trigger × feature EV = total ≈ 95% (45:55 split).
 
-    NOTE: This test depends on the base weights hitting 42.75pp. The
-    current mode_1/weights.json base is STALE (67.4pp from old 150%
-    design). Once Phase 4 re-tunes base to 42.75pp, this test will pass.
-    Until then, mark as expected-failure.
+    Mode 1 is the reference / archetype — strict ±1pp tolerance per
+    project_slot_designer_mode_rtp_invariants.md.
     """
-    import pytest  # lazy import in case the tree isn't pytest-installed
-
     engine, _ = load_engine(_SPEC_PATH, _MODE1_WEIGHTS_PATH)
     p = analytic_profile(engine)
     base_rtp = p["rtp_pct"]
 
-    # Feature trigger rate = Bonus marginal on reel 3
+    # Feature trigger rate = topdollar marginal on reel 3
     strips = json.loads(_STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
     weights_data = json.loads(_MODE1_WEIGHTS_PATH.read_text(encoding="utf-8"))
     reel_weights = weights_data["weights"]
@@ -129,17 +125,6 @@ def test_m15_mode1_total_rtp_approximately_95():
     feature_rtp = trigger * stats.expected_payout * 100
     total_rtp = base_rtp + feature_rtp
 
-    # Target 95% ±1pp strict (mode 1 is 标准 mode — tight tolerance).
-    # NOTE: base is currently STALE (pre-v5 tune targeted 67.5pp for old 150%
-    # design). Allow wider tolerance until base is re-tuned.
-    if base_rtp > 50:  # stale pre-v5 base
-        pytest.xfail(
-            f"mode_1 base weights are STALE (pre-v5 tune, 67.5pp target). "
-            f"base_rtp={base_rtp:.2f}pp, feature={feature_rtp:.2f}pp, "
-            f"total={total_rtp:.2f}pp. Needs Phase 4 re-tune to 42.75pp "
-            f"base. See MODE_DESIGN.md §10 TODO."
-        )
-
     assert 94.0 <= total_rtp <= 96.0, (
         f"M15 mode 1 total RTP drifted outside [94, 96]pp (mode 1 strict): "
         f"base={base_rtp:.2f}pp, feature={feature_rtp:.2f}pp, "
@@ -148,7 +133,7 @@ def test_m15_mode1_total_rtp_approximately_95():
 
 
 def test_m15_mode1_trigger_rate_in_user_band():
-    """User brief: mode 1 trigger at least 1-1.5%. v5 target is 1.136%."""
+    """User brief: mode 1 trigger at least 1-1.5%. v5+ target is 1.136% (1/88)."""
     strips = json.loads(_STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
     weights_data = json.loads(_MODE1_WEIGHTS_PATH.read_text(encoding="utf-8"))
     reel_weights = weights_data["weights"]
@@ -157,22 +142,25 @@ def test_m15_mode1_trigger_rate_in_user_band():
     bonus_w = sum(w for s, w in zip(strips[2], reel_weights[2]) if s == "topdollar")
     trigger = bonus_w / r3_total
 
-    # v5 mode 1 target: 1.136% (1/88). Accept range: 1.0% to 1.5% per user brief.
-    # Current base weights give whatever trigger the existing Bonus weight produces;
-    # bound on the GENEROUS side for now until Phase 4 retune sets target.
-    import pytest
-    # Current reel 3 has Bonus weight 1 × 2 stops = 2; r3_total ≈ 1017 (post-150%-tune)
-    # so trigger ≈ 0.197% which is WAY off v5 1.136%. Mark xfail until base re-tuned.
-    if trigger < 0.008:  # pre-v5 stale trigger
-        pytest.xfail(
-            f"mode_1 Bonus marginal is STALE (pre-v5, targeting 1/485): "
-            f"got 1/{1/trigger:.0f} = {trigger*100:.3f}%. Needs re-tune to "
-            f"~1/88 for v5 mode 1. See MODE_DESIGN.md §10 TODO."
-        )
-
+    # v5+ mode 1 target: 1.136% (1/88). Accept range: 1.0% to 1.5% per user brief.
     assert 0.010 <= trigger <= 0.015, (
         f"Feature trigger rate drifted outside [1.0%, 1.5%] user target band: "
         f"got {trigger*100:.3f}% (1/{1/trigger:.0f})"
+    )
+
+
+def test_m15_mode1_hit_rate_in_reference_band():
+    """Mode 1 is the hit-rate reference for deriving mode 2/5/7 bands
+    (see project_slot_designer_hit_rate_deviation.md). Pin mode 1 at
+    ~13% so the other modes' derived bands stay anchored.
+    """
+    engine, _ = load_engine(_SPEC_PATH, _MODE1_WEIGHTS_PATH)
+    p = analytic_profile(engine)
+    hit_rate = p["hit_rate"]
+    assert 0.12 <= hit_rate <= 0.15, (
+        f"mode 1 base hit_rate drifted outside reference band [12, 15]%: "
+        f"got {hit_rate*100:.2f}%. Other modes derive their hit-rate bands "
+        f"from mode 1's anchor; re-tune to restore before shipping."
     )
 
 
@@ -265,6 +253,156 @@ def test_m15_feature_weighted_sampling_backward_compat():
     assert abs(stats.round_ev_unconditional - 127.0) < 0.1, (
         f"Uniform x_pool unconditional mean should be 127; got "
         f"{stats.round_ev_unconditional:.2f}. Sampling algorithm regression."
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# v6 2026-04-24: per-mode RTP + hit + trigger regression.
+# Before v6 shipped, only mode 1 had a locked numeric test. Modes 2/5/7
+# went through retune cycles without numeric guard rails — catching
+# design drift required running ad-hoc analytic verification scripts.
+# These tests pin the current design targets so any weight / feature_params
+# / strip edit that breaks a mode's RTP / hit / trigger contract shows up
+# in CI.
+# ─────────────────────────────────────────────────────────────
+
+
+def _mode_metrics(mode: int) -> dict:
+    """Compute (base_rtp, hit_rate, trigger_rate, feature_ev, feature_rtp, total)
+    for a given M15 mode. Pure analytic — no simulation.
+    """
+    w_path = _ROOT / "slot_designer" / "weights" / "M15" / f"mode_{mode}" / "weights.json"
+    doc = json.loads(w_path.read_text(encoding="utf-8"))
+    engine, _ = load_engine(_SPEC_PATH, w_path)
+    base = analytic_profile(engine)
+
+    # trigger rate from reel 3 topdollar marginal
+    strips = json.loads(_STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
+    td = sum(float(w) for s, w in zip(strips[2], doc["weights"][2]) if s == "topdollar")
+    tot = sum(float(w) for w in doc["weights"][2])
+    trigger = td / tot if tot else 0.0
+
+    fp = doc["feature_params"]
+    fs = _build_spec_from(fp)
+    fstats = analyze_feature(fs)
+
+    feature_rtp = 100.0 * trigger * fstats.expected_payout
+    return {
+        "base_rtp": base["rtp_pct"],
+        "hit_rate": base["hit_rate"],
+        "trigger": trigger,
+        "feature_ev": fstats.expected_payout,
+        "feature_rtp": feature_rtp,
+        "total_rtp": base["rtp_pct"] + feature_rtp,
+    }
+
+
+def test_m15_mode2_rtp_hit_trigger_match_v6_design():
+    """Mode 2 v6 shipped targets (MODE_DESIGN.md §5 + §8):
+      * Total RTP 300% ±20pp (lucky mode — loose tolerance)
+      * Base hit 22.5% ±2.5pp (per project_slot_designer_hit_rate_deviation.md
+        user-specified 20-25% band — explicitly NOT ×3.16 from mode 1)
+      * Trigger 2.75% ±0.5pp (1/36 — 2.4× mode 1)
+      * Feature EV 60× ±3× (1.30× mode 1, within ≤1.5× brief cap)
+    """
+    m = _mode_metrics(2)
+    assert 280.0 <= m["total_rtp"] <= 320.0, (
+        f"mode 2 total RTP outside [280, 320]pp: got {m['total_rtp']:.2f}"
+    )
+    assert 0.20 <= m["hit_rate"] <= 0.25, (
+        f"mode 2 base hit_rate outside [20%, 25%] user band: got "
+        f"{m['hit_rate']*100:.2f}%. Hit rate is a DESIGN CONSTRAINT, not a "
+        f"free variable — see project_slot_designer_hit_rate_deviation.md."
+    )
+    assert 0.022 <= m["trigger"] <= 0.033, (
+        f"mode 2 trigger outside [2.2%, 3.3%]: got {m['trigger']*100:.3f}%"
+    )
+    assert 57.0 <= m["feature_ev"] <= 63.0, (
+        f"mode 2 feature EV drifted from 60×: got {m['feature_ev']:.2f}"
+    )
+
+
+def test_m15_mode7_rtp_hit_trigger_match_v6_design():
+    """Mode 7 v6 shipped targets (MODE_DESIGN.md §4 + §8):
+      * Total RTP 85% ±1pp (standard-low — STRICT tolerance)
+      * Base hit 12.5% ±0.5pp (per hit-rate deviation rule, must stay
+        near mode 1's 13% anchor; RTP delta goes into per-hit avg,
+        not hit frequency. 12-13% band per user spec.)
+      * Trigger 1.136% ±0.1pp (IDENTICAL to mode 1 by design)
+      * Feature EV 46× ±2× (feature_params byte-copied from mode 1)
+
+    Catches:
+      (a) regression to v5 direct-scale (would hit 7.5% hit, fail hit band)
+      (b) feature_params drift from mode 1 (would fail EV band)
+      (c) trigger drift from reel 3 rebalance forgetting to pin topdollar
+    """
+    m = _mode_metrics(7)
+    assert 84.0 <= m["total_rtp"] <= 86.0, (
+        f"mode 7 total RTP outside STRICT [84, 86]pp: got {m['total_rtp']:.2f}"
+    )
+    assert 0.120 <= m["hit_rate"] <= 0.130, (
+        f"mode 7 base hit_rate outside user-band [12%, 13%]: got "
+        f"{m['hit_rate']*100:.2f}%. Direct-scale v5 would hit ~7.5% here; "
+        f"if failing with ~7%, you regressed to v5 path — use Phase 4 tune "
+        f"with --hit-target 0.125 instead. See MODE_DESIGN.md §4.2 v6."
+    )
+    assert 0.0108 <= m["trigger"] <= 0.0118, (
+        f"mode 7 trigger drifted from mode 1's 1.136%: got "
+        f"{m['trigger']*100:.3f}%. Feature RTP depends on this being "
+        f"IDENTICAL to mode 1 ('feature 100% same as mode 1' design brief)."
+    )
+    assert 44.0 <= m["feature_ev"] <= 48.0, (
+        f"mode 7 feature EV drifted from 46× (= mode 1 byte-identical): "
+        f"got {m['feature_ev']:.2f}. feature_params must be byte-identical "
+        f"to mode 1's."
+    )
+
+
+def test_m15_mode5_is_mode2_base_byte_identical():
+    """Mode 5 design (MODE_DESIGN.md §6): base weights IDENTICAL to mode 2.
+    Differentiation lives entirely in feature_params (EV 132× vs 60×).
+
+    Verifies:
+      (a) mode 5 weights array == mode 2 weights array byte-for-byte
+      (b) mode 5 trigger rate == mode 2 trigger rate (derived from same reel 3)
+      (c) mode 5 base hit == mode 2 base hit (derived from same marginals)
+      (d) mode 5 feature EV ≈ 132× (enhanced from mode 2's 60×)
+      (e) mode 5 total RTP 500% ±20pp
+    """
+    m2 = _mode_metrics(2)
+    m5 = _mode_metrics(5)
+
+    m2_weights = json.loads(
+        (_ROOT / "slot_designer" / "weights" / "M15" / "mode_2" / "weights.json")
+        .read_text(encoding="utf-8")
+    )["weights"]
+    m5_weights = json.loads(
+        (_ROOT / "slot_designer" / "weights" / "M15" / "mode_5" / "weights.json")
+        .read_text(encoding="utf-8")
+    )["weights"]
+
+    assert m2_weights == m5_weights, (
+        f"mode 5 base weights must be byte-identical to mode 2 — "
+        f"per MODE_DESIGN.md §6 design brief. Differ at reel(s): "
+        + ", ".join(
+            str(i+1) for i, (r2, r5) in enumerate(zip(m2_weights, m5_weights))
+            if r2 != r5
+        )
+    )
+    assert abs(m5["trigger"] - m2["trigger"]) < 1e-9, (
+        f"mode 5 trigger must equal mode 2 trigger (same base weights): "
+        f"m2={m2['trigger']:.6f} m5={m5['trigger']:.6f}"
+    )
+    assert abs(m5["hit_rate"] - m2["hit_rate"]) < 1e-9, (
+        f"mode 5 hit_rate must equal mode 2 hit_rate (same base weights): "
+        f"m2={m2['hit_rate']:.6f} m5={m5['hit_rate']:.6f}"
+    )
+    assert 125.0 <= m5["feature_ev"] <= 140.0, (
+        f"mode 5 feature EV drifted from 132×: got {m5['feature_ev']:.2f}. "
+        f"feature_params must give EV ≈2.2× mode 2's 60× per §6."
+    )
+    assert 480.0 <= m5["total_rtp"] <= 520.0, (
+        f"mode 5 total RTP outside [480, 520]pp: got {m5['total_rtp']:.2f}"
     )
 
 

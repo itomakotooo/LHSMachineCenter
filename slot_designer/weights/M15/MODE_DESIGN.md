@@ -1,9 +1,10 @@
 # M15 4-Mode 数值概览 + 玩家感性体验
 
-> **上游**：[`DESIGN.md`](DESIGN.md)（Top Dollar 原型研究）；`project_slot_designer_mode_rtp_invariants.md`（跨机台 mode RTP 规则）  
+> **上游**：[`DESIGN.md`](DESIGN.md)（Top Dollar 原型研究）；`project_slot_designer_mode_rtp_invariants.md`（跨机台 mode RTP 规则）；`project_slot_designer_hit_rate_deviation.md`（派生 mode hit rate 带宽规则）  
 > **下游**：每 mode `mode_<N>/NOTES.md` + `weights.json`（实现层）  
-> **状态**：2026-04-23 设计稿 **v5 verified**（数字已用扩展后的 `analyze_feature(x_value_weights)` 跑过，deviation ≤0.01%）  
-> **v5 核心**：count_y 改成 per-mode（不跨 mode 共享）；新增 `x_value_weights` 10-tuple 作为主要 mode 差异 dial；mode 1/7 EV floor ~45.5 的结构性发现——通过窄化 mode 1/7 的 count_y 到 (75,20,5) 腾出 alpha 空间。
+> **状态**：2026-04-24 设计稿 **v6 verified**（mode 2/5/7 hit-rate-corrected retune；mode 1 保持 v5 不变）  
+> **v5 → v6 关键变化**：mode 2 hit 36% → 22.56%（走 `--hit-target 0.225`）；mode 7 hit 7.5% → 12.46%（从 direct-scale 切 Phase 4 tune `--hit-target 0.125`）。RTP delta 不再靠 hit frequency，靠 **per-hit avg win size**（bucket shape shift）承担。见 `project_slot_designer_hit_rate_deviation.md`。  
+> **v5 核心（仍适用）**：count_y per-mode；`x_value_weights` 10-tuple 作为主要 feature dial；mode 1/7 count_y (75,20,5)。
 
 ---
 
@@ -134,9 +135,13 @@ x 牌 per-value 抽样概率（归一化到 6 unique values）：
 | 指标 | 值 | 跟 mode 1 |
 |---|---|---|
 | Total RTP | 85% | -10pp |
-| Base RTP | 32.5pp | -10pp（砍小奖）|
+| Base RTP | 32.5pp (实际 32.60pp) | -10pp |
+| **Base hit rate** | **12.46%** | **-0.7pp（几乎持平）** |
+| **Per-hit avg win** | **2.62×** | **-0.64×（小奖更小）** |
 | Feature RTP | 52.26pp | **完全同 m1** |
 | Trigger / EV / count_y / x_value_weights | 全部同 m1 | 不动 |
+
+> Mode 7 的 RTP delta **不来自 hit frequency 降低**（hit 几乎持平 mode 1），而来自 **per-hit avg win 降低**（3.26× → 2.62×）。Bucket shape 移到 low-mult 桶：cherry/小 bar 命中几率保持，wild/high7 的高倍命中降。见 `project_slot_designer_hit_rate_deviation.md`。
 
 ### 4.2 派生
 
@@ -161,7 +166,7 @@ python -m slot_designer.scripts.tune \
 
 ### 4.3 体验
 
-Base 明显冷清（Cherry 砍半），Feature 剧本跟 mode 1 **完全一样**。"base 让我流失，feature 希望不变"。
+**Base 命中频率跟 mode 1 一致**（每 ~8 spin 一次 vs mode 1 的 ~7.5 spin 一次），但每次命中 avg 2.6× 比 mode 1 的 3.3× 小 20%。玩家感：**一样在中奖，但"小一点"**（不是"冷了"）。Feature 剧本跟 mode 1 **完全一样**。"base 让我慢慢耗，feature 希望不变"。
 
 ---
 
@@ -171,19 +176,23 @@ Base 明显冷清（Cherry 砍半），Feature 剧本跟 mode 1 **完全一样**
 
 | 指标 | 值 | 跟 mode 1 |
 |---|---|---|
-| Total RTP | 300% | 3.16× |
-| Base RTP | 135pp | 3.16× |
+| Total RTP | 300% (实际 300.84pp) | 3.16× |
+| Base RTP | 135pp (实际 135.07pp) | 3.16× |
+| **Base hit rate** | **22.56%** | **×1.71（不是 ×3.16）** |
+| **Per-hit avg win** | **5.99×** | **+84%（核心差异源）** |
 | Feature RTP | 164.98pp ✓ | 3.16× |
-| **Trigger** | **2.75% (1/36)** | **2.4×** ← 核心变化 |
+| **Trigger** | **2.75% (1/36)** | **2.4×** ← feature 核心变化 |
 | **Feature EV** | **60×** | 1.30× (≤1.5× ✓) |
 | count_y | (60, 30, 10) | 比 m1 宽（更多 mult）|
 | One-round E[R] | 36.8× | - |
 | Accept rate per round | 35.4% | +50% |
-| E[R | accept] | 68.6× | - |
+| E[R \| accept] | 68.6× | - |
 
 ### 5.2 体验
 
-**每 100 spin**: Cherry 每 4 spin, **Feature 每 36 spin**（mode 1 的 2.4×）。
+**每 100 spin**：**Hit 大概 22-23 次**（mode 1 ~13 次），**Feature 每 36 spin**（mode 1 的 2.4×）。
+
+> 2026-04-24 v6 修订：v5 的 "Cherry 每 4 spin" 描述基于 hit 36%（太密），v6 把 hit 压回 22.5% 后 cherry 大约每 8 spin 一次。Base 的"幸运"感靠每次命中 avg **6.0×**（vs mode 1 的 3.3×）承担，不是靠疯狂高频的小奖。
 
 **Feature 进去**：
 - 跟 mode 1 一样的 reveal 结构（2-3 卡 + mult）
@@ -192,7 +201,7 @@ Base 明显冷清（Cherry 砍半），Feature 剧本跟 mode 1 **完全一样**
 - **100 card 出现率**是 mode 1 的 ~3×，但仍很稀有（per trigger ~0.7%）
 - **1000 card 仍然实质为 0** — mode 2 不提供 jackpot moment
 
-**核心感**："feature 变常客 + 略升级"
+**核心感**："base 中奖略多 + 每次更值 + feature 变常客"
 
 ---
 
@@ -280,11 +289,11 @@ Base 明显冷清（Cherry 砍半），Feature 剧本跟 mode 1 **完全一样**
 
 ## 9. Session 级感性
 
-**Mode 1** (classic 标准)：Cherry 小奖 grind，每 88 spin 一次 feature。Feature 70% 走"全 5 垃圾 forced"剧本，25% sweet spot accept，rare 100-card 是 mode 1 记忆点。**无 1000 dream**。
+**Mode 1** (classic 标准)：Cherry 小奖 grind（hit 13%），每 88 spin 一次 feature。Feature 70% 走"全 5 垃圾 forced"剧本，25% sweet spot accept，rare 100-card 是 mode 1 记忆点。**无 1000 dream**。
 
-**Mode 2** (幸运)：Cherry 每 4 spin，**Feature 每 36 spin**（2.4× mode 1）。Feature 结构跟 mode 1 一样但值略高，每次稍微好接。"feature 变常客"。**100-card 偶尔出现但 1000 仍无**。
+**Mode 2** (幸运)：Base hit 22.5%（mode 1 × 1.7，**不是 × 3**），每次命中 avg 6× 比 mode 1 的 3.3× 值得多。**Feature 每 36 spin**（2.4× mode 1）。Feature 结构跟 mode 1 一样但值略高，每次稍微好接。"base 命中略多 + 每次更值 + feature 变常客"。**100-card 偶尔出现但 1000 仍无**。
 
-**Mode 5** (super buff)：Base 跟 mode 2 一模一样。Feature trigger 也同频。差异**全在 feature 内部**：
+**Mode 5** (super buff)：Base 跟 mode 2 一模一样（hit 22.5%，avg 6×）。Feature trigger 也同频。差异**全在 feature 内部**：
 - P(5) 51%（vs 76%）→ 每张卡都有分量
 - P(1000) 0.19%（vs 0%）→ **独占 jackpot moment**
 - Accept rate 64.5%（vs 35%）→ 几乎不 reject
@@ -292,36 +301,60 @@ Base 明显冷清（Cherry 砍半），Feature 剧本跟 mode 1 **完全一样**
 
 玩家心态："mode 2 + feature supercharge"。Session 级 big wins 在此出现。
 
-**Mode 7** (slow grind)：Cherry 砍半 base 冷清，Feature 跟 mode 1 **完全一样**。"base 让我耗，feature 希望同 mode 1"。
+**Mode 7** (slow grind)：Base hit 12.5%（几乎同 mode 1 的 13%），**但每次命中 avg 2.6× 比 mode 1 的 3.3× 小 20%**。Feature 跟 mode 1 **完全一样**。"base 中奖频率不变但每次小一点，feature 希望同 mode 1"。v6 从 v5 direct-scale (Cherry ×0.3 → hit 7.5%) 切到 Phase 4 tune，让 hit 贴回 mode 1。
 
 ---
 
-## 10. 实现 TODO
+## 10. 实现状态
 
-**已完成（v5, 2026-04-23）**：
-- `slot_designer/engine/feature_m15.py` 扩展 `x_value_weights` + `y_value_weights` ✓
-- `_tuple_prob` 替换为 weighted sampling without replacement (`_weighted_draw_dist`) ✓
-- 向后兼容：不传 value_weights 时 fallback 到 uniform ✓
-- `slot_designer/scripts/tune_m15_feature.py` binary-search alpha 反推 weights ✓
-- `slot_designer/scripts/verify_m15_modes.py` 跑所有 mode 跟 target 对比 ✓
-- 4 mode 数字验证（all deviation ≤ 0.01%）✓
-- `slot_designer/specs/M15.spec.json` 更新 feature params 到 v5 值 ✓
-- `slot_designer/weights/M15/mode_1/weights.json` Phase 4 tune → 42.75pp base + feature_params block ✓
-- `slot_designer/tests/test_m15_feature.py` 更新 EV 断言到 46 ✓
-- `slot_designer/weights/M15/mode_7/weights.json` direct-scale from mode 1 (Cherry × 0.3, Bar × 0.77) + topdollar trigger pin ✓
-- `slot_designer/weights/M15/mode_2/weights.json` Phase 4 tune (RTP+hit+trigger targets) → 135pp base + feature_params block ✓
-- `slot_designer/weights/M15/mode_5/weights.json` copy mode 2 base + enhanced feature_params (EV 132×) ✓
-- `slot_designer/scripts/derive_m15_mode_7.py` 派生脚本 ✓
-- `slot_designer/scripts/derive_m15_mode_5.py` 派生脚本 ✓
-- `slot_designer/scripts/tune.py` 扩展 `--trigger-target/--trigger-symbol/--trigger-reel/--trigger-weight` 约束 ✓
-- `slot_designer/scripts/tune.py` `--sa-steps 0` 时跳过 sibling weight 写入（byte-exact sibling invariant）✓
-- `slot_designer/tests/test_strips_identical_across_modes.py` 回归测（含 inject-bug self-check）✓
+**v6 最终状态（2026-04-24）**：
 
-**Analytic 最终总 RTP**:
-- mode 1: 42.951 + 52.256 = **95.207%** (target 95 ±1pp) ✓
-- mode 2: 135.013 + 164.721 = **299.735%** (target 300 ±20pp) ✓
-- mode 5: 135.013 + 362.427 = **497.441%** (target 500 ±20pp) ✓
-- mode 7: 32.705 + 52.256 = **84.961%** (target 85 ±1pp) ✓
+### Engine / emitter 层（v5 完成，v6 不变）
+- `slot_designer/engine/feature_m15.py` — `x_value_weights` + `y_value_weights` 权重抽样 ✓
+- `slot_designer/engine/spin.py` — `spin_session()` 产 (SpinOutcome, feature_rounds) tuple ✓
+- `slot_designer/engine/rules.py` / `evaluator.py` — `wild_required` split + `scatter_trigger` 规则 ✓
+- `slot_designer/engine/reel_strip.py` — float 权重 ✓
+- `slot_designer/engine/loader.py` — 自动从 weights.json `feature_params` 块构建 FeatureSpec ✓
+- `slot_designer/emitter/round.py` / `robot.py` / `driver.py` — ST=14/15 emit, analysisResult JSON string, shared `sample_one_chunk` kernel ✓
+- `slot_designer/specs/M15.spec.json` — 生产 schema 对齐 (lowercase symbols, pay_ids, scatter_trigger pay_id 666) ✓
+- `slot_designer/backend/virtual_analyzer.py` — explicit machine/mode kwargs + mutated-upstream-md5 sync ✓
+- `slot_designer/backend/virtual_registry.py` — `_discover_modes_on_disk` auto-discover ✓
+
+### Weights / targets
+- `mode_1/weights.json` — Phase 4 tune v5，不变
+- `mode_2/weights.json` — **v6 Phase 4 tune**：rtp 135 + hit 0.225 + trigger 0.0275
+- `mode_5/weights.json` — v6 copy mode 2 base + 增强 feature_params
+- `mode_7/weights.json` — **v6 Phase 4 tune**（从 v5 direct-scale 切过来）：rtp 32.5 + hit 0.125 + trigger 0.01136
+- `reel_strips.json` — v5 不变（所有 mode 字节级共用）
+- `tuner/targets/M15_mode1_classic.target.json` — v5
+- `tuner/targets/M15_mode2_lucky.target.json` — v6 (hit 0.225)
+- `tuner/targets/M15_mode7_standard_low.target.json` — v6（新）
+
+### Scripts
+- `scripts/tune.py` — `--trigger-target` 家族 flag ✓；`--sa-steps 0` 时跳过 sibling 写入 ✓
+- `scripts/derive_m15_mode_5.py` — copy mode 2 base + swap feature_params ✓
+- `scripts/derive_m15_mode_7.py` — **deprecated v6**（direct-scale 不满足 hit rate deviation rule，要显式 `--i-know-this-is-deprecated` 才能运行）
+- `scripts/verify_m15_modes.py` — feature EV 验证工具
+
+### Tests
+- `tests/test_m15_feature.py` — mode 1 EV / trigger / schema 回归
+- `tests/test_strips_identical_across_modes.py` — 4 mode strips byte-identical 回归（含 inject-bug self-check）
+- `tests/test_sampling_kernel_shared.py` — sample_one_chunk 跨路径一致 + envelope tagging 回归
+- `tests/test_virtual_analyzer_cli.py` — md5 mutation flow 回归
+- `tests/test_virtual_registry_mode_discovery.py` — auto-discover mode 回归
+
+### Memory 新增
+- `memory/project_slot_designer_strips_identical_across_modes.md` — strips 跨 mode 字节级一致
+- `memory/project_slot_designer_hit_rate_deviation.md` — 派生 mode hit rate 带宽规则
+
+## Analytic 最终总 RTP（v6 shipped）
+
+| mode | base RTP | hit | per-hit | feature EV | feature RTP | total | target | status |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 42.95pp | 13.17% | 3.26× | 46× | 52.26pp | **95.21%** | 95 ±1 | ✓ |
+| 2 | 135.07pp | 22.56% | 5.99× | 60× | 165.78pp | **300.84%** | 300 ±20 | ✓ |
+| 5 | 135.07pp | 22.56% | 5.99× | 132× | 364.75pp | **499.82%** | 500 ±20 | ✓ |
+| 7 | 32.60pp | 12.46% | 2.62× | 46× | 52.17pp | **84.77%** | 85 ±1 | ✓ |
 
 **未实施（推迟）**：
 - Joint Phase 5 SA 跨 4 mode co-swap — 没必要：当前所有 mode 的 experience metrics (near_miss / PWDF / blank_adj) 都是 0，alternation_violations 也是 0。Phase 5 在 mode 1 tune 时已经把 strip 拉到最优，后续 mode 都 `--sa-steps 0` 保留这个 strip。
@@ -333,9 +366,9 @@ Base 明显冷清（Cherry 砍半），Feature 剧本跟 mode 1 **完全一样**
 | Mode | 一句话 | 核心差异维度 |
 |---|---|---|
 | 1 | "等 TD 符号 + 多卡 reveal，无 1000 dream" | baseline |
-| 7 | "慢慢耗" | base 砍小奖，feature 同 m1 |
-| 2 | "feature 变常客" | **trigger 拉 2.4×**, EV ≤ 1.5× m1 |
-| 5 | "feature supercharge + 独占 1000 jackpot" | **EV 拉 2.2×**，trigger 同 m2，count_y + x_value 都变 |
+| 7 | "中奖频率跟 m1 一样，每次小一点" | base **per-hit avg ↓ 20%**（hit 几乎持平），feature 同 m1 |
+| 2 | "base 命中略多 + 每次更值 + feature 变常客" | hit ×1.7（不是 ×3），**per-hit avg ↑ 84%**，trigger ×2.4 |
+| 5 | "feature supercharge + 独占 1000 jackpot" | base 完全 = m2；**feature EV ×2.2×**（60→132），count_y + x_value 都变 |
 
 **跨 mode 锁定**：count_x `(5, 40, 40, 12, 3)` — 2-3 offer dominant reveal structure 是 M15 签名。
 
