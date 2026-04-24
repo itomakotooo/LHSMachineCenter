@@ -161,15 +161,23 @@ def _drive_run_auto_tune(monkeypatch, *, robot_candidates, concurrency_candidate
     return out, calls, progress_events
 
 
-def test_autotune_default_grid_is_compact_3x3(client):
-    """Defaults: robot_candidates [8, 16, 24], concurrency_candidates
-    [1, 2, 4]. The grid was 5x4 = 20 in the previous round; user
-    feedback flagged it as too slow."""
+def test_autotune_default_grid_is_compact_2x3(client):
+    """Defaults derived from external-server benchmark 2026-04-25:
+    robot_candidates [8, 16], concurrency_candidates [4, 8, 12].
+    Old grid (8/16/24 × 1/2/4) explored entirely the LEFT of the
+    throughput peak (~r=8 c=8 = 9.1k outer/s) — autotune always
+    returned 24x4 because it never tested past conc=4. New grid
+    brackets the peak: r=8 brackets bottom, r=16 brackets top,
+    conc=8 lands ON the peak with 4/12 as guard rails.
+    """
     from src.web_console.backend.app import AutoTuneRequest
 
     req = AutoTuneRequest(machine="M14", mode=1)
-    assert req.robot_candidates == [8, 16, 24]
-    assert req.concurrency_candidates == [1, 2, 4]
+    assert req.robot_candidates == [8, 16]
+    assert req.concurrency_candidates == [4, 8, 12]
+    assert req.spin_times == 200
+    assert req.rounds == 2
+    assert req.timeout == 60.0
 
 
 def test_autotune_runs_all_candidates_when_healthy(monkeypatch, client):

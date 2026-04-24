@@ -5664,26 +5664,31 @@ async function runAutoTune() {
 
   state.autoTuneRunning = true;
   updateActionStates();
-  // First click: 3 robots × 3 concs = 9 candidates (compact grid).
-  // Subsequent clicks: refine ±6 robots / ±1 concurrency around the
-  // previously tuned values. Backend does per-robot early-exit on
-  // success_rate < threshold so wall time stays bounded.
+  // First click: 2 robots × 3 concs = 6 candidates × 2 rounds ≈ 1 min.
+  // Subsequent clicks: refine ±6 robots / ±2 concs around previous best.
+  // Defaults derived 2026-04-25 from external-server benchmark
+  // (M14 mode 1, 116.232.103.19:10288): throughput peaks at r=8 c=8
+  // ≈ 9,100 outer/s; r=16 adds 5%; conc<4 leaves perf unused; conc>12
+  // plateaus. Old grid (8/16/24 × 1/2/4) covered almost entirely
+  // the LEFT of peak — autotune always returned 24x4 because it
+  // never tested higher conc. Backend has matching defaults if the
+  // request omits these fields.
   const robotCandidates = prev
     ? [...new Set([prev.robot_count - 6, prev.robot_count, prev.robot_count + 6]
         .map((x) => Math.max(4, x)).filter((x) => x <= 200))]
-    : [8, 16, 24];
+    : [8, 16];
   const concurrencyCandidates = prev
-    ? [...new Set([Math.max(1, prev.batch_concurrency - 1), prev.batch_concurrency, prev.batch_concurrency + 1]
+    ? [...new Set([Math.max(2, prev.batch_concurrency - 2), prev.batch_concurrency, prev.batch_concurrency + 2]
         .filter((x) => x >= 1 && x <= 16))]
-    : [1, 2, 4];
+    : [4, 8, 12];
   const payload = {
     machine,
     mode,
-    spin_times: 120,
+    spin_times: 200,
     robot_candidates: robotCandidates,
     concurrency_candidates: concurrencyCandidates,
-    rounds: 1,
-    timeout: 45,
+    rounds: 2,
+    timeout: 60,
     bet: 1000,
   };
   const autoEl = byId("autotuneMeta");

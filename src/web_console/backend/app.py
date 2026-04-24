@@ -1365,16 +1365,32 @@ class BatchRunRequest(BaseModel):
 class AutoTuneRequest(BaseModel):
     machine: str
     mode: int
-    spin_times: int = Field(default=120, gt=0)
-    # Compact 3x3 default grid (was 5x4): the user's first dashboard
-    # round flagged autotune as too slow. Combined with the per-robot
-    # early-exit in run_auto_tune, this typically cuts wall time more
-    # than half versus the prior sweep without losing coverage of the
-    # interesting (low / mid / high) load points.
-    robot_candidates: list[int] = Field(default_factory=lambda: [8, 16, 24])
-    concurrency_candidates: list[int] = Field(default_factory=lambda: [1, 2, 4])
+    # 200 outer spins per robot per probe — big enough that the
+    # per-request signal is not RTT-dominated (single chunk ~0.5-1s
+    # against the current external endpoint at r=8) but small enough
+    # that the full grid still finishes in 1-2 min. Was 120; bumped
+    # 2026-04-25 because at the new sub-100ms RTT floor, 120 spins
+    # made probe latency variance dwarf the throughput signal.
+    spin_times: int = Field(default=200, gt=0)
+    # Default candidate grid 2026-04-25 — derived from external server
+    # benchmark (M14 mode 1, 116.232.103.19:10288). Throughput peaks
+    # at r=8 c=8 ≈ 9,100 outer/s; r=16 adds ~5% but doubles chunk wall
+    # so retry cost rises. conc<4 strictly leaves performance unused;
+    # conc>12 plateaus then falls (at conc=32 it's 7,300/s, ~80% of
+    # peak). 2x3=6 candidates × 2 rounds × ~5s/wave = ~1 min full
+    # autotune wall time, which the operator can stomach.
+    #
+    # Old grid (8/16/24 × 1/2/4) explored almost entirely the
+    # left-of-peak region — the autotune routinely returned
+    # ``best=24x4`` purely because it never tried higher conc.
+    robot_candidates: list[int] = Field(default_factory=lambda: [8, 16])
+    concurrency_candidates: list[int] = Field(default_factory=lambda: [4, 8, 12])
     rounds: int = Field(default=2, gt=0, le=8)
-    timeout: float = Field(default=30.0, gt=0, le=180.0)
+    # Ceiling 60s = c=12 sustained max wall (~22s) × 2 round-trip
+    # safety margin. c=16 hits 30s wall, c=24 hits 49s — operators
+    # who venture past the default grid get a clean Timeout signal
+    # instead of an indefinite hang.
+    timeout: float = Field(default=60.0, gt=0, le=180.0)
     bet: int = Field(default=1000, gt=0)
 
 
