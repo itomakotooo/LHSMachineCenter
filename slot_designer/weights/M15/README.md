@@ -1,143 +1,157 @@
 # M15 — reel 权重
 
-机器类型：classic 3-reel 1-payline **带 Bonus feature 分支**。M15 相对 M1 的差异：
+机器类型：classic 3-reel 1-payline **带 Feature Play 分支** — IGT Top Dollar 原型。2026-04-24 v6 shipped。
 
-- **Wild 只有一种**（M1 有 Diamond1=wild2x + Diamond2=wild3x，M15 就一个 Wild × 2）
-- **Bonus 只在 reel 3 出现**，触发 Feature Play（Phase 2 实现 —— 下方「Feature Play 延后」）
-- **Jackpot 是独立 symbol** 但不出现在 reel 上（不可随机转出 → P(3 Jackpot) = 0 analytically）
-- **无 mixed-Seven 组合**（M1 有 Seven1+Seven2 共同组 pay_id 10；M15 只有 single high7）
+## 机台差异（vs M1）
 
-## 当前状态（Phase 4 tune 完成 · Feature engine Phase 2 延后）
+- **单 wild**：`doublediamond` × 2（M1 有 Diamond1=wild2x + Diamond2=wild3x 两档）
+- **Feature 触发器**：`topdollar` 仅在 reel 3 出现（payline 上落位 → emit pay_id 666 marker + 进 Feature Play）
+- **Jackpot symbol**：reel 上有但被后端 re-roll 保护（3-jackpot 永不发 1000× 奖，仅作稀释标志）
+- **无 mixed-Seven 组合**：M1 pay_id 10 (Seven1+Seven2) 无 M15 对应。high7 拆成 pay_id 2 (wild-boosted) 和 pay_id 21 (pure)
+- **Production schema 对齐**：所有 symbol 小写 (`blank/cherry/1bar/2bar/3bar/high7/doublediamond/topdollar/jackpot`)，pay_id 跟生产 `M15$TopDollarSelector$0$` 完全一致
 
-| mode | 类型 | Base RTP | Feature RTP | **Total RTP** | Base:Feat split | Base CV | 文件 |
+## 当前 shipped 状态（v6 2026-04-24）
+
+| mode | RTP | hit | per-hit avg | trigger | feature EV | split | 文件 |
 |---|---|---|---|---|---|---|---|
-| 1 | classic | 68.32% | 79.30pp | **147.62%** | 46 : 54 | 4.45 | [mode_1/weights.json](mode_1/weights.json) |
+| 1 | **95.21%** | 13.17% | 3.26× | 1.14% (1/88) | 46× | 45:55 | [mode_1/weights.json](mode_1/weights.json) |
+| 2 | **300.84%** | 22.56% | 5.99× | 2.75% (1/36) | 60× | 45:55 | [mode_2/weights.json](mode_2/weights.json) |
+| 5 | **499.82%** | 22.56% | 5.99× | 2.76% | 132× | 27:73 | [mode_5/weights.json](mode_5/weights.json) |
+| 7 | **84.77%** | 12.46% | 2.62× | 1.14% (1/88) | 46× | 38:62 | [mode_7/weights.json](mode_7/weights.json) |
 
-Target: total 150%, split 45:55, base low CV, feature mid-high (session-level)。达成。
+全部 analytic，闭式解。Target 跨机台 mode RTP 规则：95 / 300 / 500 / 85（见 memory `project_slot_designer_mode_rtp_invariants.md`）。
 
-## 设计约束（user brief 2026-04-23）
+## 设计契约
 
-- **总 RTP 跨 mode 不变**（见 memory `project_slot_designer_mode_rtp_invariants.md`）
-- Base : Feature = **45 : 55**（bonus-heavy — Cleopatra-edge per 业界研究）
-- Base 低 CV（频繁小奖）
-- Feature 中高 CV（1/500 稀有大爆，session CV 被稀有性撑高）
-
-## 业界基准对比
-
-| 机台 | Base % | Feature % | Total RTP | 备注 |
-|---|---|---|---|---|
-| Cleopatra (IGT) | 55% | 45% | 95% | 同类"bonus-heavy"参照 |
-| Jackpot Party | 69% | 31% | 86.1% | 中频 feature |
-| Money Storm | 71% | 29% | 92.5% | 同上 |
-| **M15 mode 1** | **46%** | **54%** | **147.6%** | **feature-rich 总 RTP 增强** |
-| Triple Double Diamond | 75% | 25% | 91.1% | base-heavy |
-
-M15 是 "feature-rich modern 3-reel" 定位——总 RTP 150% 比 classic 高，换取 feature play 的丰富变化（x 1-5 / y 0-2 多档加权抽样）。
+- **Total RTP 跨机台锁定**：mode 1=95 / mode 2=300 / mode 5=500 / mode 7=85（`project_slot_designer_mode_rtp_invariants.md`）
+- **Strips 跨 mode 字节级一致**：所有 mode 读同一个 `reel_strips.json`，只有 `mode_<N>/weights.json` 的权重数组 per-mode 不同（`project_slot_designer_strips_identical_across_modes.md`）
+- **派生 mode hit rate 带宽**（`project_slot_designer_hit_rate_deviation.md`）：
+  - mode 7 vs mode 1 hit ±1pp（几乎一致，RTP delta 走 per-hit avg 不走 hit 频率）
+  - mode 2 vs mode 1 hit ×1.5-2（不是 ×3.16）
+  - mode 5 = mode 2 base 完全复刻
+- **Base : Feature split**：M15-specific 45:55（bonus-heavy），mode 1/2 严格执行，mode 5/7 因派生关系漂（27:73 / 38:62）
 
 ## 文件结构
 
 ```
 slot_designer/weights/M15/
 ├── README.md                 ← 本文件
-├── DESIGN.md                 ← Top Dollar 数值特性调研 + spec 固化约束 + mode dials 总览
-├── reel_strips.json          ← 共享 symbol 布局（36 × 3, 18B + 18NB 交替）
+├── DESIGN.md                 ← Top Dollar 原型研究 + paytable 数学身份
+├── MODE_DESIGN.md            ← 4 mode 数值 + 玩家体验剧本（v6 最新）
+├── reel_strips.json          ← 共享 symbol 布局（36 × 3, 18 blank + 18 非 blank 交替）
 └── mode_<N>/
-    ├── weights.json          ← mode 专属 per-stop weight 数组
-    ├── reel_weights.tsv      ← 人类可读 36×3 表格
-    ├── NOTES.md              ← 数值 + pay_id 分解 + tune 命令
-    └── TUNE_REPORT.md        ← 最近 tune 的 Phase 4/5 报告（尚未生成）
+    └── weights.json          ← mode 专属 per-stop 权重 + feature_params 块
 ```
 
-设计数学身份、paytable 1:1 映射、feature EV 上下限、行业 RTP 带等**不随 mode 变的 paytable 特性**全部在 [`DESIGN.md`](DESIGN.md)。README 里的 mode-specific 数字当前对齐到 2026-04-23 的 150% 布置，**跟新的跨机台 mode RTP 一致性规则（95/300/500/85）还没对齐，后续重做**。
+mode 1 保留了 `NOTES.md` 和 `TUNE_REPORT.md`（Phase 4/5 初次 tune 产物）；mode 2/5/7 不需要，它们的 derivation 细节都在 `MODE_DESIGN.md` + commit message 里。
 
 ## 结构不变量
 
-- **Blank/非 Blank 严格交替** — 每 reel 18 Blank + 18 非 Blank，位置 0/2/4/… 是 Blank，位置 1/3/5/… 是非 Blank；环形邻接也算
-- **Bonus 只在 reel 3** — reel 1 / reel 2 没有 Bonus stop
-- **Jackpot 不在 reel 上** — 纯 declared pay，P(3 Jackpot) = 0
+- **Blank / 非 Blank 严格交替**：每 reel 18 blank + 18 非 blank 交替（环形邻接也算）。0/2/4/… 是 blank，1/3/5/… 是非 blank
+- **topdollar 只在 reel 3**：reel 1 / reel 2 无 topdollar stop
+- **strips 字节级跨 mode 一致**：改 strip 等于"这是新机台"，老 rawdata 全作废
+- **jackpot 在 reel 上但永不 3-match 派奖**：后端 re-roll 保护（纯稀释作用）
 
-Phase 5 joint SA 跨所有 mode co-swap 保持这些不变量（`class_preserving_swap_mutation` + `initialize_alternating`）。
+Phase 5 joint SA 在 mode 1 初次 tune 时跑了一次保持这些不变量，之后所有 mode 都用 `--sa-steps 0` 锁住 strips。
 
-## 符号清单 + 每 reel stop 数
+## 符号 + pay_id 清单
 
-| symbol | 类别 | reel 1 stops | reel 2 stops | reel 3 stops |
+Symbol 每 reel 分布（reel_strips.json）：
+
+| symbol | 类别 | reel 1 | reel 2 | reel 3 |
 |---|---|---|---|---|
-| Blank | filler | 18 | 18 | 18 |
-| Cherry | cherry_special | 2 | 2 | 2 |
-| Bar1 | regular | 4 | 4 | 4 |
-| Bar2 | regular | 4 | 4 | 4 |
-| Bar3 | regular | 4 | 4 | **3** ← Bonus 占了 1 位 |
-| High7 | regular | 2 | 2 | 2 |
-| Wild | wild (×2) | 2 | 2 | **1** ← Bonus 占了 1 位 |
-| Bonus | filler | 0 | 0 | **2** ← 仅 reel 3 |
+| blank | filler | 18 | 18 | 18 |
+| cherry | cherry_special | 2 | 2 | 2 |
+| 1bar | regular | 3 | 3 | 3 |
+| 2bar | regular | 4 | 4 | 4 |
+| 3bar | regular | 4 | 4 | 3 |
+| high7 | regular | 2 | 2 | 2 |
+| doublediamond | wild (×2) | 2 | 2 | 1 |
+| topdollar | filler / trigger | 0 | 0 | **2** |
+| jackpot | filler | 1 | 1 | 1 |
 
-## Paytable（见 [paytable/Paytable-M15.md](../../../paytable/Paytable-M15.md)）
+Paytable（从 `specs/M15.spec.json` + 生产 `M15$TopDollarSelector$0$` 校验）：
 
-| pay_id | 组合 | 基础倍率 | 备注 |
+| pay_id | 组合 | 倍率 | 备注 |
 |---|---|---|---|
-| 14 | 1 Cherry | 1× | Cherry 独立结算，Wild 不替代 |
-| 13 | 2 Cherry | 5× | 同上 |
-| 12 | 3 Cherry | 15× | 同上 |
-| 11 | Mixed 3 Bar (bar1+bar2+bar3 任意) | 2× | Wild 可替代并 ×2 per wild |
-| 7 | 3 Bar3 | 5× | 可 Wild 替代放大 |
-| 8 | 3 Bar2 | 10× | 同上 |
-| 9 | 3 Bar1 | 20× | 同上 |
-| 10 | 3 High7 | 30× | 同上 |
-| 2 | 3 Wild | **200×** | pure wild 特殊（不走 high7 × 8 = 240×）|
-| 1 | 3 Jackpot | 1000× | **rtp_excluded, grand_jackpot**（不可随机转出）|
+| 9 | 1 cherry anywhere | 1× | cherry 独立计数，wild 不替代 |
+| 71 | 2 cherry anywhere | 5× | 同上 |
+| 4 | 3 cherry (payline) | 15× | 同上 |
+| 8 | mixed 3 bars (1bar/2bar/3bar 任意) | 2× | wild 可替代并 ×2/wild |
+| 7 | 3 1bar | 5× | 可 wild 替代放大 |
+| 5 | 3 2bar | 10× | 同上 |
+| 3 | 3 3bar | 20× | 同上 |
+| 2 | 3 high7 (wild 替代) | 30× | wild ×2/wild boost（60× / 120×） |
+| 21 | 3 high7 (pure) | 30× | 无 wild 时独立结算 |
+| 1 | 3 doublediamond (pure wild) | 200× | |
+| 666 | topdollar on reel 3 payline | 0 | Feature Play trigger marker (line_id=-1 scatter) |
 
-## Feature Play 延后（Phase 2）
+## Feature Play（shipped v5+）
 
-paytable 定义的 bonus 玩法：
+Top Dollar 经典 4-round accept/reject：
 
-- 第 3 列出现 Bonus → 进入 feature
-- 10 个 x 选项（1000, 100, 50, 50, 20, 20, 10, 10, 5, 5）+ 2 个 y 选项（各 ×2）
-- 每轮：加权抽 1-5 个 x + 0-2 个 y（权重文档未说明，需要策划补）
-- 无放回抽样
-- 计算：sum(x) × product(y)
-- 3 次 reroll + 1 次强制接受 = 4 轮上限
-- 测试策略：≥40× 直接接受
-- **RTP 单独统计**，不并入主游戏
+- topdollar 落 reel 3 payline → emit pay_id 666（WinCredits=0）+ 进 feature
+- 10 张 x 卡池：`(1000, 100, 50, 50, 20, 20, 10, 10, 5, 5)`
+- 2 张 y 卡池：`(×2, ×2)`
+- 每 round：加权抽 count_x ∈ [1,5] + count_y ∈ [0,2]，然后 weighted-draw **无放回** x_value_weights 和 y_value_weights；R = sum(x) × product(y)
+- 3 reroll + 1 forced accept = 最多 4 round
+- 测试策略：R ≥ 40 自动 accept
+- 接受那 round 的 R × bet 是 session payout，打到 ST=15 端点的 `WinAmount` 字段
 
-**当前 spec**：Bonus 标 `filler`，payline 上出现时短路到「no pay」。Feature engine 还没实现。
+Feature params 在 `mode_<N>/weights.json.feature_params` 块里（per-mode override，优先级高于 spec 默认）。4 mode 的 trigger / count_y / x_value_weights 差异见 `MODE_DESIGN.md §2`。
 
-**Phase 2 需要的东西**：
-1. Feature engine（新的 spin type，独立 RNG 流）
-2. Feature RTP 目标（策划定 —— 要几 %？40× 阈值策略改变吗？）
-3. x/y 加权权重（策划补）
-4. 报告里单独的 Feature 分析面板
+## Rawdata 输出
 
-## 下一步
+生成的 chunk 结构严格对齐生产 `M15$TopDollarSelector$0$`:
+- ST=1（paid spin）+ ST=14（feature sub-round × N）+ ST=15（feature end marker）sequence
+- ST=14 `WinCredits` = 本 round R × bet；`BetAmount=0`
+- ST=15 有 `WinAmount`（**不是** `WinCredits`，这个是关键：analyzer Type-1 rule 用 `last_non_none WinCredits` 找 session payout，ST=15 如果有 WinCredits=0 会 override 掉 ST=14）
+- ReMarks='Trigger' 打在触发 feature 的 ST=1 spin 上
+- analysisResult 是 JSON-encoded string（**不是** dict），包含 per-feature bucket distribution
 
-1. 写 `M15_mode1_classic.target.json`（target RTP 93% / hit 12% / 按 classic 7-heavy 规范设计）
-2. 跑 Phase 4 tune 对齐 mode 1 到 target
-3. joint Phase 5 优化 ordering
-4. 确认 analytic 对齐 paytable 预期后，考虑 mode 2/5/7 变体
-5. Phase 2: 写 Feature engine + 对 RTP 独立追踪
+## 如何重 tune
 
-## 当前 mode 1 analytic（pre-tune）
-
-```
-RTP:        41.38%   (目标 93% 左右，需要 tune +50pp)
-hit_rate:   21.88%   (偏高，classic 单线应该 10-15%)
-CV:         4.24
-std_return: 1.75
-
-Bucket RTP 占比:
-  ge1_lt5   (Cherry 1-5×):      60.3%   ← Cherry 主导
-  ge5_lt10  (mixed Bar 5×):     13.4%
-  ge10_lt20 (3-Bar 10-20×):      5.5%
-  ge20_lt50 (wild-amplified):   19.9%
-  ge50_lt100:                    0.7%
-  ge100_lt200:                   0.1%
-  ge200_lt500:                   0.0%
-
-Top 5 pay_id 贡献:
-  pay_id 14 (Cherry 1×):       15.84pp   (38% of RTP)
-  pay_id 11 (mixed 3 Bar 2×):   8.29pp   (20% of RTP)
-  pay_id  9 (3 Bar1 20×):       5.41pp   (13% of RTP)
-  pay_id 13 (2 Cherry 5×):      5.03pp   (12% of RTP)
-  pay_id  9 (3 Bar1 × wild):    1.93pp   (5% of RTP, amplified to 40×)
+**mode 1**（独立 archetype，首次 tune）：
+```bash
+python -m slot_designer.scripts.tune \
+    --spec slot_designer/specs/M15.spec.json \
+    --strips slot_designer/weights/M15/reel_strips.json \
+    --base-weights slot_designer/weights/M15/mode_1/weights.json \
+    --target slot_designer/tuner/targets/M15_mode1_classic.target.json \
+    --out-weights slot_designer/weights/M15/mode_1/weights.json \
+    --mode 1 --evaluations 1500 --restarts 3 --sa-steps 5000
 ```
 
-tune 之后大概率 7 家族占比会升到 30-50%（按 classic 规范）。
+**mode 2**（独立 archetype，strips 已固定）：
+```bash
+python -m slot_designer.scripts.tune ... --sa-steps 0 \
+    --target slot_designer/tuner/targets/M15_mode2_lucky.target.json \
+    --hit-target 0.225 --hit-weight 1.0 \
+    --trigger-target 0.0275 --trigger-symbol topdollar --trigger-reel 3 --trigger-weight 2.0
+```
+
+**mode 7**（派生 from mode 1, Phase 4 路径 v6+）：
+```bash
+python -m slot_designer.scripts.tune ... --sa-steps 0 \
+    --target slot_designer/tuner/targets/M15_mode7_standard_low.target.json \
+    --hit-target 0.125 --hit-weight 1.5 \
+    --trigger-target 0.01136 --trigger-symbol topdollar --trigger-reel 3 --trigger-weight 2.0
+```
+
+**mode 5**（派生 from mode 2，copy + swap feature_params）：
+```bash
+python -m slot_designer.scripts.derive_m15_mode_5 --write --verify
+```
+
+Tune 完 mode 2 / mode 7 之后需要手动重新附 `feature_params` 块（tune.py 不碰 feature）— 参考 git log / MODE_DESIGN.md §2 里的 4 mode feature params 定义。
+
+## Verification
+
+```bash
+# Feature EV 分析（4 mode 分别）
+python -m slot_designer.scripts.verify_m15_modes
+
+# Strips + RTP + hit + trigger 全量回归
+python -m pytest slot_designer/tests/test_m15_feature.py \
+                 slot_designer/tests/test_strips_identical_across_modes.py -v
+```
