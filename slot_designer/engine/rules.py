@@ -82,6 +82,73 @@ class ScatterTriggerRule:
     multiplier: int = 0    # typically 0 (scatter pay = marker only)
 
 
+# M37+ booster-tier pay rules (2026-04-24):
+#
+# M37 introduces a "booster" symbol tier (mini/minor/major/grand) on the
+# middle reel only. When a booster lands at the payline's center cell,
+# it acts as a MULTIPLIER on any 3-match pay that fits the side cells:
+#   (target, mini, target)  = pay_id[target] × 2
+#   (target, minor, target) = pay_id[target] × 5
+#   (target, major, target) = pay_id[target] × 10
+#   (target, grand, target) = pay_id[target] × 100
+#
+# Wilds on side cells substitute for target. A few distinguished cases
+# get their OWN pay_id (not just "same pay_id × booster factor"):
+#   - pure-wild sides with booster center → pay_id 102/103/104
+#     (tracking "all-wild assisted" combos separately from symbol-anchored)
+#   - booster standalone (no side match) → pay_id 8 (grand) or 9 (others)
+#   - wild standalone on col 0 or col 2, no booster center, no match
+#     → pay_id 9 × 1
+
+@dataclass
+class PureWildWithBoosterRule:
+    """(wild, booster, wild) — both side cells pure wild with specific
+    booster tier in center. Gets its own pay_id (102/103/104 on M37)
+    separate from symbol-anchored paths (pay_id 1 with booster center).
+    Multiplier is explicit (= high7_base × booster_multiplier on M37).
+    """
+    pay_id: int
+    booster_symbol: str    # e.g. "mini" / "minor" / "major"
+    multiplier: int        # explicit (not computed from base × booster)
+
+
+@dataclass
+class CenterBoosterAloneRule:
+    """pay_id 8/9 on M37 — booster in col 1 with side cells NOT forming
+    a 3-match and NOT pure-wild. Multiplier = booster's tier value:
+    mini=2, minor=5, major=10, grand=100.
+    """
+    pay_id: int
+    booster_symbol: str    # "mini" | "minor" | "major" | "grand"
+    multiplier: int
+
+
+@dataclass
+class SideWildAloneRule:
+    """pay_id 9 on M37 — wild on col 0 or col 2 (or both) with col 1
+    neither booster nor matching a 3-match pay. Multiplier is flat
+    (usually 1× per M37); 2-wild combos still emit a single pay_id
+    with the same flat multiplier (not 2× multiplier).
+    """
+    pay_id: int
+    multiplier: int
+
+
+@dataclass
+class RerollBlockRule:
+    """Machine-specific forbidden payline pattern — if the generated
+    payline matches, spin.py should re-roll. Used by M37 to block
+    (wild, grand, wild) from paying the natural 1000× top tier;
+    observed in 2.14M rounds of M37 rawdata as 0 occurrences,
+    confirming the game mechanic rerolls these spins server-side.
+
+    The payline pattern is a list of symbol names (in col order) or
+    None for wildcards. For M37: ``pattern = ["wild", "grand", "wild"]``.
+    """
+    pattern: list  # list of str or None (wildcard)
+    reason: str = ""  # docstring-style, not evaluated
+
+
 class RuleSet:
     """Parse spec.pays into typed rule buckets indexed by kind."""
 
@@ -92,9 +159,13 @@ class RuleSet:
         "pure_wild",
         "pure_wild_group",
         "scatter_trigger",
+        # M37+ booster-tier pay kinds (2026-04-24):
+        "pure_wild_with_booster",
+        "center_booster_alone",
+        "side_wild_alone",
     }
 
-    def __init__(self, spec_pays: list[dict]):
+    def __init__(self, spec_pays: list[dict], reroll_blocks: list[dict] | None = None):
         self.cherry_by_count: dict[int, CherryCountRule] = {}
         # v5 M15: list-per-symbol (was dict[str, Line3SameRule]) so
         # multiple rules can coexist for the same symbol (e.g., high7
@@ -105,6 +176,17 @@ class RuleSet:
         self.pure_wild: list[PureWildRule] = []
         self.pure_wild_group: list[PureWildGroupRule] = []
         self.scatter_triggers: list[ScatterTriggerRule] = []
+        # M37+ booster-tier storage
+        self.pure_wild_with_booster_by_symbol: dict[str, PureWildWithBoosterRule] = {}
+        self.center_booster_alone_by_symbol: dict[str, CenterBoosterAloneRule] = {}
+        self.side_wild_alone: SideWildAloneRule | None = None
+        # Machine-specific reroll rules (2026-04-24)
+        self.reroll_blocks: list[RerollBlockRule] = []
+        for rb in (reroll_blocks or []):
+            self.reroll_blocks.append(RerollBlockRule(
+                pattern=list(rb["pattern"]),
+                reason=str(rb.get("reason", "")),
+            ))
 
         for p in spec_pays:
             kind = p["kind"]
@@ -162,3 +244,26 @@ class RuleSet:
                     reel=int(p["reel"]),
                     multiplier=int(p.get("multiplier", 0)),
                 ))
+            elif kind == "pure_wild_with_booster":
+                self.pure_wild_with_booster_by_symbol[p["booster_symbol"]] = (
+                    PureWildWithBoosterRule(
+                        pay_id=pid,
+                        booster_symbol=p["booster_symbol"],
+                        multiplier=int(p["multiplier"]),
+                    )
+                )
+            elif kind == "center_booster_alone":
+                self.center_booster_alone_by_symbol[p["booster_symbol"]] = (
+                    CenterBoosterAloneRule(
+                        pay_id=pid,
+                        booster_symbol=p["booster_symbol"],
+                        multiplier=int(p["multiplier"]),
+                    )
+                )
+            elif kind == "side_wild_alone":
+                # Only one such rule per machine (M37's pay_id 9 = wild alone 1×).
+                # Additional declarations overwrite (spec bug if duplicated).
+                self.side_wild_alone = SideWildAloneRule(
+                    pay_id=pid,
+                    multiplier=int(p["multiplier"]),
+                )

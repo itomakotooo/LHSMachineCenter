@@ -25,7 +25,22 @@ from typing import Sequence
 from .evaluator import PaytableEvaluator
 from .feature_m15 import FeatureRound, FeatureSpec, simulate_feature_session
 from .reel_strip import ReelStrip
-from .rules import PayResult
+from .rules import PayResult, RerollBlockRule
+
+
+def _matches_any_reroll(
+    payline_syms: list[str],
+    rules: list[RerollBlockRule],
+) -> bool:
+    """Return True if payline_syms matches any reroll pattern (with None
+    as wildcard). Patterns must be exact length (same # of cols).
+    """
+    for rule in rules:
+        if len(rule.pattern) != len(payline_syms):
+            continue
+        if all(p is None or p == s for p, s in zip(rule.pattern, payline_syms)):
+            return True
+    return False
 
 
 @dataclass
@@ -74,23 +89,48 @@ class SpinEngine:
         return len(self.reels)
 
     def spin(self, rng: Random) -> SpinOutcome:
-        grid: list[list[str]] = []
-        for reel in self.reels:
-            idx = reel.sample_stop_index(rng.random())
-            top, mid, bot = reel.window(idx)
-            grid.append([top, mid, bot])
+        """Draw one spin; re-roll if the payline pattern hits a spec-
+        declared block rule (M37 2026-04-24: blocks (wild, grand, wild)
+        from ever paying the natural 1000× top tier; the re-roll is a
+        server-side mechanic mirrored here for rawdata correctness).
 
-        payline_syms = [grid[c][r] for (c, r) in self.payline_positions]
-        pay = self.evaluator.evaluate_payline(payline_syms)
-        scatter_pays = self.evaluator.evaluate_scatters(grid, self.payline_positions)
+        Re-roll cap = 50 attempts; beyond that, raise (indicates a spec
+        with over-constrained blocks or an impossible strip layout).
+        """
+        reroll_rules = (
+            self.evaluator.rules.reroll_blocks
+            if getattr(self.evaluator, "rules", None) is not None
+            else []
+        )
+        max_rerolls = 50
 
-        return SpinOutcome(
-            grid=grid,
-            pay=pay,
-            scatter_pays=scatter_pays,
-            cost_credits=self.cost_per_spin,
-            bet_amount=self.bet_amount,
-            spin_type=self.spin_type,
+        for _attempt in range(max_rerolls + 1):
+            grid: list[list[str]] = []
+            for reel in self.reels:
+                idx = reel.sample_stop_index(rng.random())
+                top, mid, bot = reel.window(idx)
+                grid.append([top, mid, bot])
+
+            payline_syms = [grid[c][r] for (c, r) in self.payline_positions]
+
+            if reroll_rules and _matches_any_reroll(payline_syms, reroll_rules):
+                continue  # re-draw the spin
+
+            pay = self.evaluator.evaluate_payline(payline_syms)
+            scatter_pays = self.evaluator.evaluate_scatters(grid, self.payline_positions)
+            return SpinOutcome(
+                grid=grid,
+                pay=pay,
+                scatter_pays=scatter_pays,
+                cost_credits=self.cost_per_spin,
+                bet_amount=self.bet_amount,
+                spin_type=self.spin_type,
+            )
+
+        raise RuntimeError(
+            f"spin re-rolled {max_rerolls}+ times without finding an allowed "
+            f"payline; spec reroll_blocks may be over-constraining the strip "
+            f"(last payline: {payline_syms!r})"
         )
 
     def spin_session(self, rng: Random) -> tuple[SpinOutcome, list[FeatureRound]]:

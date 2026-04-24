@@ -124,7 +124,10 @@ def load_engine(
     assembled = _assemble_reels(strip_reels, weight_reels)
 
     symbols = SymbolRegistry(spec["symbols"])
-    rules = RuleSet(spec["pays"])
+    # M37+ 2026-04-24: spec may declare ``reroll_blocks`` — forbidden payline
+    # patterns (server-side re-roll). Engine respects by re-drawing at
+    # spin time (see engine/spin.py). Empty/absent = no re-roll logic.
+    rules = RuleSet(spec["pays"], reroll_blocks=spec.get("reroll_blocks"))
     evaluator = PaytableEvaluator(symbols, rules, spec["evaluation_order"])
 
     st_key = str(spin_type)

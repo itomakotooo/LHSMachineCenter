@@ -1,4 +1,18 @@
-"""Symbol registry parsed from spec."""
+"""Symbol registry parsed from spec.
+
+Known kinds (2026-04-24):
+  - filler:        blank / decorative stops that never pay
+  - cherry_special: M1 cherry (independent count-based pay)
+  - regular:       standard paying symbol (high7, bars, etc.)
+  - wild:          substitutes for regular symbols (M1 Diamond1/2, M15
+                   doublediamond). ``multiplier`` field stacks per-wild
+                   when wilds appear on payline.
+  - booster (M37+): jackpot-tier symbol on middle reel (mini/minor/major/
+                    grand). Acts as a center-cell MULTIPLIER on 3-match
+                    payline pays AND a standalone pay by its own tier
+                    value. ``multiplier`` is the booster factor (mini=2,
+                    minor=5, major=10, grand=100).
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,8 +21,8 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Symbol:
     name: str
-    kind: str            # "regular" | "wild" | "cherry_special" | "filler"
-    multiplier: int = 1  # only meaningful for kind="wild"
+    kind: str            # "regular" | "wild" | "cherry_special" | "filler" | "booster"
+    multiplier: int = 1  # wild: per-wild stack multiplier; booster: tier multiplier
 
     @property
     def is_wild(self) -> bool:
@@ -22,9 +36,13 @@ class Symbol:
     def is_filler(self) -> bool:
         return self.kind == "filler"
 
+    @property
+    def is_booster(self) -> bool:
+        return self.kind == "booster"
+
 
 class SymbolRegistry:
-    _KNOWN_KINDS = {"filler", "cherry_special", "regular", "wild"}
+    _KNOWN_KINDS = {"filler", "cherry_special", "regular", "wild", "booster"}
 
     def __init__(self, spec_symbols: dict):
         self.by_name: dict[str, Symbol] = {}

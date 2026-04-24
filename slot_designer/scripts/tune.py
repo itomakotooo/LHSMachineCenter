@@ -283,7 +283,7 @@ def main() -> None:
 
     # Build evaluator once (paytable is fixed during tuning)
     symbols = SymbolRegistry(spec["symbols"])
-    rules = RuleSet(spec["pays"])
+    rules = RuleSet(spec["pays"], reroll_blocks=spec.get("reroll_blocks"))
     evaluator = PaytableEvaluator(symbols, rules, spec["evaluation_order"])
 
     # Reachable buckets depend on paytable only; compute once.
