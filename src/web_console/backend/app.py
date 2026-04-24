@@ -6500,6 +6500,16 @@ def create_app(
                 "--bankruptcy-session-spins", "10000",
                 "--bankruptcy-bankroll-multipliers", "10,100,200,500",
             ]
+            # Scope analyzer to the rawdata cell's md5 so the report's
+            # summary.config_md5 matches the chunks it was built from.
+            # Without this, analyzer's _lookup_machine_md5 stamps the
+            # report with machines.json global md5, routing localcfg_
+            # reports to the wrong rwtree cell (old-report-still-
+            # hanging-below bug, 2026-04-24).
+            if config_md5:
+                test_argv.extend(["--upstream-config-md5", config_md5])
+            if code_md5:
+                test_argv.extend(["--upstream-code-md5", code_md5])
             old_argv = _sys.argv
             _sys.argv = test_argv
             captured = StringIO()

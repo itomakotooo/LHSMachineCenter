@@ -6200,8 +6200,20 @@ def main() -> int:
     conclusion_design_action = action_recommendations[0]
 
     # Capture machine MD5 at report build time for later validity checks.
-    # Primary source: machines.json (the ground truth at analyzer invocation).
-    _summary_config_md5, _summary_code_md5 = _lookup_machine_md5(args.machine)
+    # Primary source: whatever the analyzer actually used to FILTER this
+    # run's chunks (args.upstream_config_md5 passed by backend). If the
+    # backend's ``--upstream-config-md5`` arg was an explicit value —
+    # including synthetic ``localcfg_<hash>`` for MachineConfig
+    # overrides — the report must be stamped with THAT so the rwtree
+    # routes it to its own md5 bucket. Otherwise a local-cfg run's
+    # report would inherit machines.json's global md5 (via
+    # _lookup_machine_md5) and silently mix with global-cfg reports
+    # under the "current" cell.
+    if args.upstream_config_md5 or args.upstream_code_md5:
+        _summary_config_md5 = args.upstream_config_md5 or ""
+        _summary_code_md5 = args.upstream_code_md5 or ""
+    else:
+        _summary_config_md5, _summary_code_md5 = _lookup_machine_md5(args.machine)
     _summary_analyzer_version = compute_analyzer_version()
     summary = {
         "report_id": f"impact_{args.machine}_mode{args.rtp_mode}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",

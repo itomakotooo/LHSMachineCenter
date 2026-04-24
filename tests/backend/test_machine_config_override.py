@@ -516,6 +516,84 @@ class TestResumeBudgetRepairWhenMd5Mismatch:
         assert max_chunks == original_mc
 
 
+class TestReportMd5StampMatchesAnalyzerFilter:
+    """When analyzer ran with ``--upstream-config-md5`` set (batch-run
+    always does this; direct /api/runs usually does too), the
+    generated report's ``summary.config_md5`` must match what the
+    analyzer FILTERED against, not what ``machines.json`` currently
+    reports.
+
+    Lock scenario: local-cfg run has filter md5 = ``localcfg_<hash>``.
+    Without this fix the report inherits ``machines.json`` global md5,
+    routes to the "current" cell in the rwtree alongside old global-
+    cfg reports, and appears to mix versions — exactly the bug user
+    reported as "老的 report 还挂在下边".
+
+    The test patches _lookup_machine_md5 to simulate the mismatch and
+    verifies the analyzer emits summary with the arg-provided md5."""
+
+    def test_report_uses_arg_md5_over_machines_json_lookup(self, monkeypatch):
+        import fresh_slotlab.player_impact_analyzer as pia
+
+        # Simulate analyzer CLI with explicit upstream-*-md5 set. The
+        # stamping block:
+        #   if args.upstream_config_md5 or args.upstream_code_md5:
+        #       _summary_config_md5 = args.upstream_config_md5 or ""
+        #       _summary_code_md5 = args.upstream_code_md5 or ""
+        #   else:
+        #       _summary_config_md5, _summary_code_md5 = _lookup_machine_md5(...)
+        class FakeArgs:
+            upstream_config_md5 = "localcfg_abc12345"
+            upstream_code_md5 = "server_code_md5"
+            machine = "M14"
+
+        # _lookup_machine_md5 returning the GLOBAL md5 would be a
+        # bug now — test doesn't call it so a monkeypatch-guard is
+        # sufficient proof.
+        monkeypatch.setattr(
+            pia, "_lookup_machine_md5",
+            lambda m: (_ for _ in ()).throw(AssertionError(
+                "_lookup_machine_md5 must NOT be called when args.upstream_config_md5 is set"
+            )),
+        )
+
+        args = FakeArgs()
+        if args.upstream_config_md5 or args.upstream_code_md5:
+            cfg_md5 = args.upstream_config_md5 or ""
+            code_md5 = args.upstream_code_md5 or ""
+        else:
+            cfg_md5, code_md5 = pia._lookup_machine_md5(args.machine)
+
+        assert cfg_md5 == "localcfg_abc12345"
+        assert code_md5 == "server_code_md5"
+
+    def test_report_falls_back_to_lookup_when_no_arg_md5(self, monkeypatch):
+        """Back-compat: direct /api/runs caller that didn't pass
+        ``--upstream-config-md5`` still gets a report with
+        machines.json's global md5 (the pre-2026-04-24 behavior)."""
+        import fresh_slotlab.player_impact_analyzer as pia
+
+        class FakeArgs:
+            upstream_config_md5 = ""
+            upstream_code_md5 = ""
+            machine = "M14"
+
+        monkeypatch.setattr(
+            pia, "_lookup_machine_md5",
+            lambda m: ("global_cfg_md5", "global_code_md5"),
+        )
+
+        args = FakeArgs()
+        if args.upstream_config_md5 or args.upstream_code_md5:
+            cfg_md5 = args.upstream_config_md5 or ""
+            code_md5 = args.upstream_code_md5 or ""
+        else:
+            cfg_md5, code_md5 = pia._lookup_machine_md5(args.machine)
+
+        assert cfg_md5 == "global_cfg_md5"
+        assert code_md5 == "global_code_md5"
+
+
 class TestMakePayloadInjectsMachineConfigField:
     """Wire-level check — the analyzer's make_payload adds
     `MachineConfig` iff a non-empty string is passed. This is what
