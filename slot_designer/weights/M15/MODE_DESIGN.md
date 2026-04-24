@@ -2,7 +2,8 @@
 
 > **上游**：[`DESIGN.md`](DESIGN.md)（Top Dollar 原型研究）；`project_slot_designer_mode_rtp_invariants.md`（跨机台 mode RTP 规则）；`project_slot_designer_hit_rate_deviation.md`（派生 mode hit rate 带宽规则）  
 > **下游**：每 mode `mode_<N>/NOTES.md` + `weights.json`（实现层）  
-> **状态**：2026-04-24 设计稿 **v6 verified**（mode 2/5/7 hit-rate-corrected retune；mode 1 保持 v5 不变）  
+> **状态**：2026-04-24 设计稿 **v7 verified**（mode 5 feature jackpot-tail 砍到 0；其它 mode 保持 v6 不变）  
+> **v6 → v7 关键变化**：mode 5 `x_value_weights[0]`（1000-card）从 0.1918 → 0.0001，per paid spin P(session R≥1000) 从 **1/3616** 降到 **1/7.6M**（趋近 0 per user brief "1000倍以上的奖需要趋近 0"）。1000-card 让出的 EV 权重补到 100-card（weight 1.6065 → 4.5），100-card per-value prob 从 1.61% 升到 4.34%。Net feature EV 从 132.00 → 132.81（小浮动），total RTP 500.29pp 贴线 500 target。Mode 5 不再是 "独占 1000 jackpot moment"，改走 "密集中-高倍命中" 路线。  
 > **v5 → v6 关键变化**：mode 2 hit 36% → 22.56%（走 `--hit-target 0.225`）；mode 7 hit 7.5% → 12.46%（从 direct-scale 切 Phase 4 tune `--hit-target 0.125`）。RTP delta 不再靠 hit frequency，靠 **per-hit avg win size**（bucket shape shift）承担。见 `project_slot_designer_hit_rate_deviation.md`。  
 > **v5 核心（仍适用）**：count_y per-mode；`x_value_weights` 10-tuple 作为主要 feature dial；mode 1/7 count_y (75,20,5)。
 
@@ -55,14 +56,14 @@
 
 ## 2. 每 mode 的三个 dial
 
-v5 `analyze_feature()` 验证通过，deviation ≤ 0.01%：
+v7 `analyze_feature()` 验证通过，deviation ≤ 0.01%：
 
 | Mode | Trigger | count_y | x_value_weights | EV | Feature RTP |
 |---|---|---|---|---|---|
 | 1 | 1.14% (1/88) | (75, 20, 5) | `[0.0001, 0.0266, 0.1455, 0.1455, 1.3729, 1.3729, 7.4998, 7.4998, 40.9684, 40.9684]` | **46** | 52.26pp ✓ |
 | 7 | 1.14% (同 m1) | (75, 20, 5) | 同 m1 | 46 | 52.26pp ✓ |
 | 2 | 2.75% (1/36) | (60, 30, 10) | `[0.0009, 0.0914, 0.3687, 0.3687, 2.3289, 2.3289, 9.3906, 9.3906, 37.8657, 37.8657]` | **60** | 164.98pp ✓ |
-| 5 | 2.77% (≈同 m2) | (40, 35, 25) | `[0.1918, 1.6065, 3.0458, 3.0458, 7.0955, 7.0955, 13.453, 13.453, 25.5065, 25.5065]` | **132** | 364.98pp ✓ |
+| 5 | 2.76% (≈同 m2) | (40, 35, 25) | `[0.0001, 4.5, 3.5, 3.5, 7.0955, 7.0955, 13.453, 13.453, 25.5065, 25.5065]` | **132.81** | 366.98pp ✓ |
 
 x 牌 per-value 抽样概率（归一化到 6 unique values）：
 
@@ -70,12 +71,13 @@ x 牌 per-value 抽样概率（归一化到 6 unique values）：
 |---|---|---|---|---|---|---|---|---|
 | 1 / 7 | **0.00%** | 0.03% | 0.29% | 2.75% | 15.00% | **81.94%** | 28.3 | 23.5% |
 | 2 | 0.00% | 0.09% | 0.74% | 4.66% | 18.78% | 75.73% | 36.8 | 35.4% |
-| 5 | **0.19%** | 1.61% | 6.09% | 14.19% | 26.91% | **51.01%** | 94.1 | 64.5% |
+| 5 (v7) | **0.00%** | **4.34%** | 6.76% | 13.70% | 25.97% | **49.24%** | ~95 | 67.7% |
 
-**结构性观察**：
-- mode 1/2 的 **P(1000) ≈ 0%** ——mode 5 是**唯一真正有 1000-card jackpot moment** 的 mode。这是 "mode 5 = 幸运升级" 在 UX 层的具体体现。
-- mode 5 的 P(5) 掉到 51% → "垃圾 offer 率" 明显下降，每张卡都更有分量。
-- Accept rate 从 mode 1 的 24% 攀到 mode 5 的 64% —— "几乎不 reject" 的 super-lucky feel。
+**结构性观察（v7 revision）**：
+- 所有 mode P(1000) ≈ 0% — mode 5 v6 曾是 "独占 1000 jackpot moment"，v7 拉平。per user brief，1000 倍以上 session 要罕见（mode 5 per paid spin 从 1/3616 降到 1/7.6M）。
+- mode 5 的 **P(100) 是 mode 1/2 的 ~3×**（4.34% vs 1.61%），这是 v7 补偿 1000-card 让出 EV 的主要渠道。玩家的 "big win" 感来自 **密集的 100-500 命中**，不是稀有 1000+ 事件。
+- mode 5 的 P(5) 掉到 49% → "垃圾 offer 率" 明显低于 mode 1/2。
+- Accept rate 从 mode 1 的 24% 攀到 mode 5 的 68% —— "几乎不 reject" 的 super-lucky feel（v7 比 v6 的 64% 略高，因为 100-card 更常见）。
 
 ---
 
@@ -205,37 +207,41 @@ python -m slot_designer.scripts.tune \
 
 ---
 
-## 6. Mode 5 — **超级幸运 (Super-Lucky, feature buff)** (500% total)
+## 6. Mode 5 — **超级幸运 (Super-Lucky, feature buff)** (500% total, **v7 no jackpot**)
 
 ### 6.1 数值
 
-| 指标 | 值 | 跟 mode 2 |
+| 指标 | v7 值 | 跟 mode 2 |
 |---|---|---|
-| Total RTP | 500% | +200pp |
-| Base RTP | 135pp | **同 m2** |
-| Feature RTP | 364.98pp ✓ | 2.21× |
-| **Trigger** | **2.77% (1/36)** | ≈ m2 (+0.7%) |
-| **Feature EV** | **132×** | 2.2× ← 核心变化 |
+| Total RTP | 502.05% (实际) | +200pp |
+| Base RTP | 135.07pp | **同 m2** |
+| Feature RTP | 366.98pp ✓ | 2.21× |
+| **Trigger** | **2.76% (1/36)** | ≈ m2 |
+| **Feature EV** | **132.81×** | 2.2× ← 核心变化 |
 | count_y | (40, 35, 25) | 比 m2 宽（大幅提升 mult） |
-| One-round E[R] | 94.1× | 2.56× |
-| Accept rate per round | 64.5% | +82% |
-| E[R | accept] | 133.8× | 1.95× |
+| One-round E[R] | ~95× | 2.56× |
+| Accept rate per round | 67.7% | +91% |
+| **P(session R≥1000) per paid spin** | **1/7,607,861** | v6 曾 1/3616 |
 
 ### 6.2 体验
 
 **每 100 spin**：跟 mode 2 完全一致。玩家切 mode 无法从 base 或 trigger 感知差异。
 
-**Feature 进去**（差异集中在此）：
-- 每张卡 value 大幅偏高：单 pick mean 从 mode 2 的 37 升到 94
-- **P(1000) = 0.19%** → 每 trigger ~1.9% 概率看到 1000 card → 每 ~36 trigger / ~1300 spin 一次看到 1000
-- Accept rate 64% → 几乎每 round 都值得接
-- P(5) 塌到 51% → "全 5 垃圾组"明显减少
-- Typical payout 100-400 credits，偶尔 1000+，罕见 3000-4000 spec cap
+**Feature 进去**（差异集中在此，v7 修订）：
+
+> v7 revision: mode 5 不再 "独占 1000 jackpot moment"。P(session R≥1000) per paid spin 从 v6 的 1/3616 降到 v7 的 1/7.6M（跟 mode 1/2 差不多）。"大奖"改走**密集的 100-500 命中**，不是稀有的 1000+ spike。P(100 card per pick) 从 v6 的 1.61% 提到 v7 的 4.34%（3× 密度）来补 1000-card 让出的 EV。
+
+- 单 pick mean ~95（vs mode 2 的 37 = 2.56×）
+- **P(1000 per pick) = 0.00%** (v7, was 0.19% in v6) → session R ≥ 1000 几乎不出现
+- **P(100 per pick) = 4.34%** (v7, 3× denser than v6) ← 新的 "mid-high win moment"
+- Accept rate 68% → 几乎每 round 都值得接
+- P(5) 塌到 49% → "全 5 垃圾组"明显减少
+- Typical payout 100-500 credits，大奖集中在这个 mid-high 区间（不是稀有 1000+ spike）
 
 **核心感**："mode 2 + feature supercharge buff"
 - Base 没变"运气"，但 feature event 每次狠 2.2×
-- mode 5 **独占 1000-card jackpot 体验** —— TD 传说时刻集中在此
-- Session 记忆点：mode 2 是"频繁小胜"，mode 5 是"那次 2000+ 大爆"
+- 每次 feature 里 **100-500 区间密集**（而不是罕见的 1000+ event 撑门面）
+- Session 记忆点：mode 2 是"频繁小胜"，mode 5 是"feature 进去一堆 100-300 大奖累"
 
 ---
 
@@ -247,38 +253,40 @@ python -m slot_designer.scripts.tune \
 
 **规则总结**：
 
-1. **单大 x + multiplier** = UX 顶配（"50×2=100 翻倍"、"1000×2×2=4000 封顶"）→ mode 5 是唯一真正执行这个路径的 mode
+1. **单大 x + multiplier** = UX 顶配（"50×2=100 翻倍"、"100×2×2=400 big payout"）
 2. **Multi-x sum（2-3 卡）** = M15 signature reveal drama，平均 UX
-3. **Multi-x sum + multiplier 反转**（"三小卡 × 4 凑 accept"）= mode 1/7/2 典型 accept path —— 替代 1000 的 drama 来源
+3. **Multi-x sum + multiplier 反转**（"三小卡 × 4 凑 accept"）= 所有 mode 典型 accept path
 4. **5-x 散件累加** = 避免，感情单薄
 5. **P(5) 保持高**（mode 1/2 80%+）= TD stingy feel 和 reject 决策感
-6. **P(1000) > 0 只在 mode 5** = 明确的 mode 差异化 —— mode 5 = "jackpot hunting mode"
+6. **P(100) 加密** = mode 5 v7 的核心 UX: 3× mode 1/2 密度，"big payout dream" 走 100-500 区间
+7. **P(1000) ≈ 0 跨所有 mode**（v7 revision）= 玩家没有"1000+ jackpot moment"期待，所有超大奖都是罕见 tail
 
 ---
 
 ## 8. 跨 Mode 速查表
 
-| 属性 | Mode 1 | Mode 2 | Mode 5 | Mode 7 |
+| 属性 | Mode 1 | Mode 2 | Mode 5 (v7) | Mode 7 |
 |---|---|---|---|---|
 | **定位** | Classic | Lucky | Super-Lucky (feature buff) | Slow grind |
-| Total RTP | 95% | 300% | 500% | 85% |
-| Base RTP | 42.75pp | 135pp | 135pp | 32.5pp |
-| Feature RTP | 52.26pp | 164.98pp | 364.98pp | 52.26pp |
+| Total RTP | 95.21% | 300.84% | 502.05% | 84.77% |
+| Base RTP | 42.95pp | 135.07pp | 135.07pp | 32.60pp |
+| Feature RTP | 52.26pp | 165.78pp | 366.98pp | 52.17pp |
 | Split | 45:55 | 45:55 | 27:73（漂） | 38:62（漂） |
 | **Base hit rate** | **13.17%** | **22.56%** | 22.56% (= m2) | **12.46%** |
 | **Per-hit avg win** | **3.26×** | **5.99×** | 5.99× (= m2) | **2.62×** |
-| **Trigger** | **1.14%** | **2.75%** | **2.77%** | **1.14%** |
-| **EV (feature)** | **46×** | **60×** | **132×** | **46×** |
+| **Trigger** | **1.14%** | **2.75%** | **2.76%** | **1.14%** |
+| **EV (feature)** | **46×** | **60×** | **132.81×** | **46×** |
 | count_x | (5,40,40,12,3) | 同 m1 | 同 m1 | 同 m1 |
 | count_y | (75,20,5) | (60,30,10) | (40,35,25) | 同 m1 |
-| x value weights | 见 §2 | 见 §2 | 见 §2 | 同 m1 |
-| P(1000) | 0.00% | 0.00% | **0.19%** | 0.00% |
-| P(100) | 0.03% | 0.09% | 1.61% | 0.03% |
-| P(5) | 81.9% | 75.7% | 51.0% | 81.9% |
-| 单 pick mean | 28.3 | 36.8 | 94.1 | 28.3 |
-| Accept rate/round | 23.5% | 35.4% | 64.5% | 23.5% |
-| CV (conditional) | 0.74 | 0.78 | 1.93 | 0.74 |
-| Jackpot 1000 moment | **无** | **无** | **独占** | 无 |
+| x value weights | 见 §2 | 见 §2 | 见 §2 (v7) | 同 m1 |
+| **P(1000)** | 0.00% | 0.00% | **0.00%** (v7, was 0.19%) | 0.00% |
+| **P(100)** | 0.03% | 0.09% | **4.34%** (v7, was 1.61%) | 0.03% |
+| P(5) | 81.9% | 75.7% | 49.2% | 81.9% |
+| 单 pick mean | 28.3 | 36.8 | ~95 | 28.3 |
+| Accept rate/round | 23.5% | 35.4% | 67.7% | 23.5% |
+| **Per-spin P(session R≥1000)** | 1/4.8M | 1/333k | **1/7.6M** (v7, was 1/3.6k) | 1/4.8M |
+| CV (conditional) | 0.74 | 0.78 | ~1.8 | 0.74 |
+| 1000 jackpot moment | **无** | **无** | **无** (v7 revision) | 无 |
 
 **Hit rate 偏离幅度 design constraint (per `project_slot_designer_hit_rate_deviation.md`)**:
 - mode 7 vs mode 1: hit 基本一致 (差 ±1pp)，RTP delta 靠 **per-hit avg 砍下去** (3.26 → 2.62) 承担
@@ -293,13 +301,14 @@ python -m slot_designer.scripts.tune \
 
 **Mode 2** (幸运)：Base hit 22.5%（mode 1 × 1.7，**不是 × 3**），每次命中 avg 6× 比 mode 1 的 3.3× 值得多。**Feature 每 36 spin**（2.4× mode 1）。Feature 结构跟 mode 1 一样但值略高，每次稍微好接。"base 命中略多 + 每次更值 + feature 变常客"。**100-card 偶尔出现但 1000 仍无**。
 
-**Mode 5** (super buff)：Base 跟 mode 2 一模一样（hit 22.5%，avg 6×）。Feature trigger 也同频。差异**全在 feature 内部**：
-- P(5) 51%（vs 76%）→ 每张卡都有分量
-- P(1000) 0.19%（vs 0%）→ **独占 jackpot moment**
-- Accept rate 64.5%（vs 35%）→ 几乎不 reject
-- 平均 payout 132× vs 60× = 2.2× buff
+**Mode 5 (v7)** (super buff, no jackpot)：Base 跟 mode 2 一模一样（hit 22.5%，avg 6×）。Feature trigger 也同频。差异**全在 feature 内部**：
+- P(5) 49%（vs mode 2 的 76%）→ 每张卡都有分量
+- **P(100) 4.34%**（vs mode 2 的 0.09%, v6 mode 5 的 1.61%）→ **mid-high win 密度高**，每次 feature 见到多张 100-card
+- **P(1000) 0.00%**（v7 revision, was 0.19% in v6）→ 1000+ session payout 几乎不出现（1/7.6M per paid spin），跟 mode 1/2 拉平
+- Accept rate 68%（vs 35%）→ 几乎不 reject
+- 平均 payout 132× vs 60× = 2.2× buff，但 payload 集中在 100-500 区间而不是罕见 1000+ spike
 
-玩家心态："mode 2 + feature supercharge"。Session 级 big wins 在此出现。
+玩家心态："mode 2 + feature supercharge, 每次 feature 里 mid-high 奖金密集"。v6 的"独占 1000 jackpot moment"概念在 v7 已经去掉 per user brief 2026-04-24 "1000 倍以上的奖需要趋近 0"。
 
 **Mode 7** (slow grind)：Base hit 12.5%（几乎同 mode 1 的 13%），**但每次命中 avg 2.6× 比 mode 1 的 3.3× 小 20%**。Feature 跟 mode 1 **完全一样**。"base 中奖频率不变但每次小一点，feature 希望同 mode 1"。v6 从 v5 direct-scale (Cherry ×0.3 → hit 7.5%) 切到 Phase 4 tune，让 hit 贴回 mode 1。
 
@@ -365,10 +374,10 @@ python -m slot_designer.scripts.tune \
 
 | Mode | 一句话 | 核心差异维度 |
 |---|---|---|
-| 1 | "等 TD 符号 + 多卡 reveal，无 1000 dream" | baseline |
+| 1 | "等 TD 符号 + 多卡 reveal" | baseline |
 | 7 | "中奖频率跟 m1 一样，每次小一点" | base **per-hit avg ↓ 20%**（hit 几乎持平），feature 同 m1 |
 | 2 | "base 命中略多 + 每次更值 + feature 变常客" | hit ×1.7（不是 ×3），**per-hit avg ↑ 84%**，trigger ×2.4 |
-| 5 | "feature supercharge + 独占 1000 jackpot" | base 完全 = m2；**feature EV ×2.2×**（60→132），count_y + x_value 都变 |
+| 5 (v7) | "feature supercharge, 密集 100-500 大奖（不追 1000+）" | base 完全 = m2；**feature EV ×2.2×**；v7 砍 1000-card → P(session R≥1000) 从 1/3616 → 1/7.6M，补到 100-card 3× 密度 |
 
 **跨 mode 锁定**：count_x `(5, 40, 40, 12, 3)` — 2-3 offer dominant reveal structure 是 M15 签名。
 

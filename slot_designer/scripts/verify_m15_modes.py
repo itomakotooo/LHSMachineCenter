@@ -58,12 +58,15 @@ MODE_CANDIDATES = {
         "ev_target": 60.0,
     },
     5: {
-        "name": "Super-lucky (mode 2 + feature buff)",
+        "name": "Super-lucky (mode 2 + feature buff, v7 no 1000-jackpot)",
         "count_y": (40, 35, 25),
-        "x_value_weights": (0.1918, 1.6065, 3.0458, 3.0458, 7.0955, 7.0955, 13.453, 13.453, 25.5065, 25.5065),
-        "trigger": 0.02765,          # 2.765% = 1/36
-        "feature_rtp_target_pp": 365.0,
-        "ev_target": 132.0,
+        # v7 2026-04-24: killed 1000-card weight (0.1918 → 0.0001) per user brief
+        # "1000 倍以上的奖需要趋近 0"; redistributed to 100-card (1.6065 → 4.5).
+        # See MODE_DESIGN.md §2 v7 table + §6 mode 5 section.
+        "x_value_weights": (0.0001, 4.5, 3.5, 3.5, 7.0955, 7.0955, 13.453, 13.453, 25.5065, 25.5065),
+        "trigger": 0.0276,           # 2.76% (actual from shipped mode 5 weights)
+        "feature_rtp_target_pp": 367.0,
+        "ev_target": 132.81,
     },
 }
 

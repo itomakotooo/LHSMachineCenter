@@ -66,7 +66,7 @@
       "logicClassNames": [
         "SimulatedClassicPayline3ReelWithBonus"
       ],
-      "configSummaryMd5": "1ecabc06b27d84b014308ee414c1dc53",
+      "configSummaryMd5": "d6a0932398cb99f0cc3b19954015a39f",
       "codeSummaryMd5": "75eb64c5d43e63435d0d477aa90b08e8",
       "available": true,
       "_source_machine": "M15",
@@ -83,7 +83,7 @@
           "codeSummaryMd5": "75eb64c5d43e63435d0d477aa90b08e8"
         },
         "5": {
-          "configSummaryMd5": "07f32d70ab21e339665d4c36701637de",
+          "configSummaryMd5": "c1d77e9d01fa350b98a4d54823c1217a",
           "codeSummaryMd5": "75eb64c5d43e63435d0d477aa90b08e8"
         },
         "7": {

@@ -3,29 +3,29 @@
   "mode": 5,
   "reel_set": "default",
   "_notes": [
-    "M15 mode 5 weights (v5 2026-04-23, derived from mode 2).",
+    "M15 mode 5 weights (v7 2026-04-24, 1000-card kill).",
     "",
-    "Derivation: `python -m slot_designer.scripts.derive_m15_mode_5 --write`",
-    "Base weights: byte-identical to mode 2 (no tune; no scale).",
-    "Feature params: enhanced (count_y (40,35,25), x_value_weights biased high).",
-    "Reel strips unchanged (shared byte-identical reel_strips.json across all modes).",
+    "v7 change from v6:",
+    "  User brief: 1000倍以上的奖需要趋近于0.",
+    "  v6 had P(session R≥1000) = 1% per triggered session (= 1/3616 per",
+    "  paid spin) — too frequent for user taste.",
+    "  v7 drops P(1000-card) per pick from 0.19% to ~0, making session",
+    "  R>=1000 occur at ~1/7.6M per paid spin. Slack (EV drop from",
+    "  1000-card removal) redistributed to 100-card for more mid-high",
+    "  density. Total feature RTP stays ~365pp, total RTP stays 500±20pp.",
     "",
-    "Design target (MODE_DESIGN.md §6): Total 500% +/-20pp loose.",
-    "  Base ~135pp (inherited from mode 2)",
-    "  Feature ~365pp via EV 132x at trigger 2.75%",
-    "  Trigger rate identical to mode 2 (same base weights).",
+    "Derivation:",
+    "  Base weights: byte-identical to mode 2 (no change from v6).",
+    "  Feature params: v7 x_value_weights override (see above).",
     "",
-    "User brief: 'mode 5 = mode 2 base + feature supercharge'. Player",
-    "cannot distinguish mode 5 from mode 2 at the base level (same",
-    "cherry/bar/wild marginals, same hit rate, same trigger rate). The",
-    "entire 'super-lucky' UX differentiation happens inside Feature Play:",
-    "  * Higher single-pick mean (94x vs mode 2's 37x)",
-    "  * P(1000-card) = 0.19% (vs mode 2's 0%) — the ONLY mode with",
-    "    real jackpot-card dream",
-    "  * Accept rate 64.5% (vs mode 2's 35%) — almost never reject",
-    "  * One-round E[R] 94x (vs mode 2's 37x) — 2.56x buff",
+    "Design target (MODE_DESIGN.md §6): Total 500% ±20pp loose.",
+    "  Base 135pp (inherited from mode 2, unchanged)",
+    "  Feature 365pp via EV 132.81x at trigger 2.75%",
+    "  P(session R≥1000) effectively 0 (was \"mode 5 jackpot moment\" in v6,",
+    "  now \"mode 5 dense high-mid wins\")",
     "",
-    "Do NOT tune this mode through Phase 4/5. Base is locked to mode 2."
+    "Do NOT tune this mode through Phase 4/5. Base is locked to mode 2.",
+    "Only feature_params may differ."
   ],
   "weights": [
     [
@@ -144,7 +144,7 @@
     ]
   ],
   "feature_params": {
-    "_note": "v5 mode 5 Feature Play params (per MODE_DESIGN.md §6). EV 132x (2.2x mode 2 buff). Trigger inherited from mode 2 base weights (~2.75%), so feature RTP = 2.75% x 132 ~ 363pp.",
+    "_note": "v7 mode 5 Feature Play params (per MODE_DESIGN.md §6). EV 132.81x at trigger 2.75% → feature RTP 365pp. 1000-card weight killed to make session R>=1000 approach 0 (per user brief 2026-04-24).",
     "x_count_weights": [
       5,
       40,
@@ -158,10 +158,10 @@
       25
     ],
     "x_value_weights": [
-      0.1918,
-      1.6065,
-      3.0458,
-      3.0458,
+      0.0001,
+      4.5,
+      3.5,
+      3.5,
       7.0955,
       7.0955,
       13.453,
@@ -176,9 +176,10 @@
     "accept_threshold": 40,
     "max_rounds": 4,
     "_analytic": {
-      "ev_per_trigger": 132.0,
+      "ev_per_trigger": 132.81,
       "target_trigger_rate": 0.0275,
-      "target_feature_rtp_pp": 365.0
+      "target_feature_rtp_pp": 365.0,
+      "_v7_changes": "Mode 5 v7 (2026-04-24): killed 1000-card weight per user brief \"1000倍以上的奖需要趋近于0\". Previously P(1000) = 0.19% per pick, giving P(session R≥1000) = 1% per triggered session = 1/3616 per paid spin. v7 drops P(1000) per pick to effectively 0 (0.00%), making session R>=1000 occur at 1/7.6M per paid spin. The 1000 cards EV contribution (~10-15pp) redistributed mostly to 100-card (weight 1.6065→4.5, per-value prob 1.61%→4.34%). Net EV drops 132.00→132.81 (rebounds due to more 100-sum combos filling the gap). Total RTP lands 500.29pp exactly on target."
     }
   }
 }

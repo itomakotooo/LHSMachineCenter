@@ -1,6 +1,6 @@
 # M15 — reel 权重
 
-机器类型：classic 3-reel 1-payline **带 Feature Play 分支** — IGT Top Dollar 原型。2026-04-24 v6 shipped。
+机器类型：classic 3-reel 1-payline **带 Feature Play 分支** — IGT Top Dollar 原型。2026-04-24 v7 shipped (mode 5 1000-jackpot 砍)。
 
 ## 机台差异（vs M1）
 
@@ -12,12 +12,12 @@
 
 ## 当前 shipped 状态（v6 2026-04-24）
 
-| mode | RTP | hit | per-hit avg | trigger | feature EV | split | 文件 |
+| mode | RTP | hit | per-hit avg | trigger | feature EV | P(R≥1000)/paid spin | 文件 |
 |---|---|---|---|---|---|---|---|
-| 1 | **95.21%** | 13.17% | 3.26× | 1.14% (1/88) | 46× | 45:55 | [mode_1/weights.json](mode_1/weights.json) |
-| 2 | **300.84%** | 22.56% | 5.99× | 2.75% (1/36) | 60× | 45:55 | [mode_2/weights.json](mode_2/weights.json) |
-| 5 | **499.82%** | 22.56% | 5.99× | 2.76% | 132× | 27:73 | [mode_5/weights.json](mode_5/weights.json) |
-| 7 | **84.77%** | 12.46% | 2.62× | 1.14% (1/88) | 46× | 38:62 | [mode_7/weights.json](mode_7/weights.json) |
+| 1 | **95.21%** | 13.17% | 3.26× | 1.14% (1/88) | 46× | 1/4.8M | [mode_1/weights.json](mode_1/weights.json) |
+| 2 | **300.84%** | 22.56% | 5.99× | 2.75% (1/36) | 60× | 1/333k | [mode_2/weights.json](mode_2/weights.json) |
+| 5 (v7) | **502.05%** | 22.56% | 5.99× | 2.76% | 132.81× | **1/7.6M** | [mode_5/weights.json](mode_5/weights.json) |
+| 7 | **84.77%** | 12.46% | 2.62× | 1.14% (1/88) | 46× | 1/4.8M | [mode_7/weights.json](mode_7/weights.json) |
 
 全部 analytic，闭式解。Target 跨机台 mode RTP 规则：95 / 300 / 500 / 85（见 memory `project_slot_designer_mode_rtp_invariants.md`）。
 
