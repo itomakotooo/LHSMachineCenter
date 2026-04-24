@@ -366,6 +366,63 @@ def load_servers(path: Path | None = None) -> dict[str, Any]:
     return {"servers": [], "default_server": ""}
 
 
+def _current_md5_pairs(
+    machine: str,
+    machines_config: Path | None = None,
+    mode: int | None = None,
+) -> list[dict[str, str]]:
+    """Return the set of (cfg_md5, code_md5) pairs that count as
+    "current" for this machine/mode.
+
+    Pre-2026-04-24 there was exactly ONE current pair (server global
+    from ``machines.json``). Adding local-cfg override breaks that
+    assumption: a chunk sampled with ``machineconfig/<u>Cfg.txt`` is
+    ALSO "current" if the file's byte content still matches what the
+    chunk was stamped with — just "current w.r.t. a different reference".
+
+    Returns a list of dicts with ``cfg_md5`` / ``code_md5`` / ``label``
+    / ``source`` so the UI can show both cells as "当前" while
+    distinguishing which is which:
+
+      [
+        {"cfg_md5": "<server>", "code_md5": "<server>",
+         "label": "服务端", "source": "server"},
+        {"cfg_md5": "localcfg_<file-hash>", "code_md5": "<server>",
+         "label": "本地 cfg", "source": "local"},  # only if file exists
+      ]
+
+    Best-effort — IO failure reading ``machineconfig/`` returns just
+    the server pair.
+    """
+    up_config, up_code = _get_machine_md5(machine, machines_config, mode=mode)
+    pairs: list[dict[str, str]] = [{
+        "cfg_md5": up_config,
+        "code_md5": up_code,
+        "label": "服务端",
+        "source": "server",
+    }]
+    try:
+        _underlying, local_cfg_path = _resolve_local_cfg_for_machine(machine)
+    except Exception:  # noqa: BLE001
+        local_cfg_path = None
+    if local_cfg_path is not None:
+        try:
+            content = local_cfg_path.read_text(encoding="utf-8")
+            local_cfg_md5 = _derive_local_cfg_md5(content)
+            # Only the config half of the pair differs when local cfg
+            # is in play — analyzer code is unchanged. So the local
+            # pair borrows ``code_md5`` from the server global.
+            pairs.append({
+                "cfg_md5": local_cfg_md5,
+                "code_md5": up_code,
+                "label": f"本地 cfg ({local_cfg_path.name})",
+                "source": "local",
+            })
+        except OSError:
+            pass
+    return pairs
+
+
 def _derive_local_cfg_md5(cfg_content: str) -> str:
     """Turn a MachineConfig override JSON string into a deterministic
     version tag that slots into the existing md5 filter / bucket
@@ -664,6 +721,15 @@ def check_rawdata_status(
     except Exception:  # noqa: BLE001
         sidecar_entries = {}
 
+    # Multi-current md5 set: server global + any local-cfg hash whose
+    # machineconfig/<underlying>Cfg.txt is on disk. Chunks matching
+    # ANY pair are "usable" (current); the rest are historical.
+    current_set = {
+        (p["cfg_md5"], p["code_md5"])
+        for p in _current_md5_pairs(machine, machines_config, mode=mode)
+        if p["cfg_md5"] or p["code_md5"]
+    }
+
     usable = 0
     mismatched: list[Path] = []
     saved_ats: list[str] = []
@@ -702,7 +768,7 @@ def check_rawdata_status(
         if not cfg_md5 and not code_md5:
             mismatched.append(chunk_path)
             continue
-        if cfg_md5 == up_config and code_md5 == up_code:
+        if (cfg_md5, code_md5) in current_set:
             usable += 1
             usable_size += size_bytes
             if saved:
@@ -852,6 +918,17 @@ def _classify_chunks(
     empty["upstream_config_md5"] = up_config
     empty["upstream_code_md5"] = up_code
     unverifiable = not up_config and not up_code
+    # Current md5 set — the server pair PLUS any local-cfg pair whose
+    # file still exists on disk with matching content. A chunk that
+    # matches ANY pair in this set is "current" (different reference,
+    # same semantics: still valid for baseline retention). See
+    # ``_current_md5_pairs`` for the shape + labels.
+    current_pairs = _current_md5_pairs(machine, machines_config, mode=mode)
+    current_set = {
+        (p["cfg_md5"], p["code_md5"])
+        for p in current_pairs
+        if p["cfg_md5"] or p["code_md5"]
+    }
     # Sort by chunk_index (filename order) so "kept" walks from oldest
     # baseline forward — deterministic regardless of mtime jitter.
     chunks = sorted(mode_dir.glob("chunk_*.json"))
@@ -911,7 +988,7 @@ def _classify_chunks(
         # per-robot value and under-reported 27× on M273 (robots=27).
         spins = per_robot_spins * robots
         mtime = p.stat().st_mtime
-        md5_ok = unverifiable or (cfg == up_config and code == up_code and (cfg or code))
+        md5_ok = unverifiable or ((cfg, code) in current_set and (cfg or code))
         entry = {"path": str(p), "spins": spins, "mtime": mtime,
                  "config_md5": cfg, "code_md5": code}
         if not md5_ok:
@@ -934,6 +1011,10 @@ def _classify_chunks(
         "kept_spins": kept_spins, "deletable_spins": deletable_spins,
         "historical_spins": historical_spins,
         "upstream_config_md5": up_config, "upstream_code_md5": up_code,
+        # Multi-current set: the server pair PLUS any local-cfg pair
+        # whose file is on disk right now. UI uses this to badge each
+        # md5 bucket as "当前(服务端)" / "当前(本地 cfg)" / "历史".
+        "current_md5_pairs": current_pairs,
     }
 
 
@@ -5796,19 +5877,27 @@ def create_app(
                 # Version-grouped view: bucket chunks by (config_md5,
                 # code_md5) so the UI can render "current server
                 # version: N chunks / old version: M chunks".
+                # Multi-current: any chunk matching ANY pair in
+                # ``current_md5_pairs`` is current; each pair also
+                # carries a label (服务端 / 本地 cfg) so the UI can
+                # distinguish the two "当前" buckets visually.
                 by_version: dict[tuple[str, str], dict[str, Any]] = {}
-                up_cfg = classified["upstream_config_md5"]
-                up_code = classified["upstream_code_md5"]
+                current_pairs = classified.get("current_md5_pairs") or []
+                current_lookup = {
+                    (p["cfg_md5"], p["code_md5"]): p
+                    for p in current_pairs
+                    if p.get("cfg_md5") or p.get("code_md5")
+                }
                 for group in ("kept", "deletable", "historical"):
                     for entry in classified[group]:
                         key = (entry["config_md5"], entry["code_md5"])
+                        pair_info = current_lookup.get(key)
                         v = by_version.setdefault(key, {
                             "config_md5": entry["config_md5"],
                             "code_md5": entry["code_md5"],
-                            "is_current": (
-                                entry["config_md5"] == up_cfg
-                                and entry["code_md5"] == up_code
-                            ),
+                            "is_current": pair_info is not None,
+                            "current_label": (pair_info or {}).get("label", ""),
+                            "current_source": (pair_info or {}).get("source", ""),
                             "kept_chunks": 0, "deletable_chunks": 0, "historical_chunks": 0,
                             "kept_spins": 0, "deletable_spins": 0, "historical_spins": 0,
                         })

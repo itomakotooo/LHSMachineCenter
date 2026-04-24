@@ -594,6 +594,116 @@ class TestReportMd5StampMatchesAnalyzerFilter:
         assert code_md5 == "global_code_md5"
 
 
+class TestMultiCurrentMd5Classification:
+    """With a local-cfg file on disk, TWO md5 pairs are "current"
+    simultaneously: the server global pair AND
+    ``(localcfg_<file-hash>, server_code_md5)``. Chunks matching
+    EITHER should be classified as usable / is_current=True, not
+    historical. Different reference, same "current" semantics.
+
+    User framing: "文件夹里的config是唯一的，当前就是对应当前，
+    历史就是不对应当前"."""
+
+    def test_current_md5_pairs_server_only_when_no_local_file(
+        self, client, fake_machineconfig_dir, monkeypatch,
+    ):
+        import src.web_console.backend.app as app_mod
+        monkeypatch.setattr(
+            app_mod, "_get_machine_md5",
+            lambda *a, **kw: ("server_cfg", "server_code"),
+        )
+        pairs = app_mod._current_md5_pairs("M14", None, mode=1)
+        assert len(pairs) == 1
+        assert pairs[0]["cfg_md5"] == "server_cfg"
+        assert pairs[0]["source"] == "server"
+
+    def test_current_md5_pairs_adds_localcfg_when_file_present(
+        self, client, fake_machineconfig_dir, monkeypatch,
+    ):
+        import src.web_console.backend.app as app_mod
+        monkeypatch.setattr(
+            app_mod, "_get_machine_md5",
+            lambda *a, **kw: ("server_cfg", "server_code"),
+        )
+        (fake_machineconfig_dir / "M14Cfg.txt").write_text(
+            '{"weights": 123}', encoding="utf-8",
+        )
+        pairs = app_mod._current_md5_pairs("M14", None, mode=1)
+        # Server + local — both "current" now.
+        assert len(pairs) == 2
+        assert pairs[0]["source"] == "server"
+        assert pairs[1]["source"] == "local"
+        # Local pair's cfg_md5 = localcfg_<sha1(content)[:8]>
+        assert pairs[1]["cfg_md5"].startswith("localcfg_")
+        # Local pair's code_md5 inherits from server — local cfg
+        # doesn't change analyzer code.
+        assert pairs[1]["code_md5"] == "server_code"
+
+    def test_classify_chunks_counts_localcfg_chunks_as_current(
+        self, client, fake_machineconfig_dir, monkeypatch, tmp_path,
+    ):
+        """Chunks stamped with ``localcfg_<hash>`` that matches the
+        file on disk should end up in kept/deletable (usable), not
+        historical."""
+        import src.web_console.backend.app as app_mod
+        from fresh_slotlab.chunk_index import update_chunk_entry
+        monkeypatch.setattr(
+            app_mod, "_get_machine_md5",
+            lambda *a, **kw: ("server_cfg", "server_code"),
+        )
+        cfg_content = '{"marker": "v1"}'
+        (fake_machineconfig_dir / "M14Cfg.txt").write_text(
+            cfg_content, encoding="utf-8",
+        )
+        expected_local_md5 = app_mod._derive_local_cfg_md5(cfg_content)
+
+        rd_root = tmp_path / "rd"
+        mode_dir = rd_root / "M14" / "mode_1"
+        mode_dir.mkdir(parents=True)
+        # 2 chunks stamped with the local-cfg pair — should be current.
+        # 1 chunk stamped with an OLD local-cfg hash — should be historical.
+        for i, (cfg, code) in enumerate(
+            [(expected_local_md5, "server_code"),
+             (expected_local_md5, "server_code"),
+             ("localcfg_oldhash", "server_code")],
+            start=1,
+        ):
+            cf = mode_dir / f"chunk_{i:04d}.json"
+            import json as _json
+            cf.write_text(_json.dumps({
+                "_chunk_index": i,
+                "_spin_times": 2000, "_robot_count": 8,
+                "_saved_at": "2026-04-24T12:00:00Z",
+                "_config_md5": cfg, "_code_md5": code,
+                "response": [],
+            }), encoding="utf-8")
+            update_chunk_entry(
+                mode_dir, cf, chunk_index=i,
+                config_md5=cfg, code_md5=code,
+                spin_times=2000, robot_count=8,
+            )
+
+        result = app_mod._classify_chunks(
+            "M14", 1,
+            rawdata_root=rd_root,
+            machines_config=tmp_path / "machines.json",
+            min_retention_spins=0,  # force every current chunk into deletable
+        )
+        # Chunks 1 + 2 are current (match local-cfg pair).
+        # Chunk 3 is historical (old localcfg_ hash, file no longer
+        # matches).
+        assert len(result["historical"]) == 1
+        assert result["historical"][0]["config_md5"] == "localcfg_oldhash"
+        # The 2 current chunks go to kept or deletable (retention=0
+        # means they all go to deletable).
+        current_count = len(result["kept"]) + len(result["deletable"])
+        assert current_count == 2
+        # current_md5_pairs exposed in result.
+        assert len(result["current_md5_pairs"]) == 2
+        labels = {p["source"] for p in result["current_md5_pairs"]}
+        assert labels == {"server", "local"}
+
+
 class TestChunkEnvelopeStampsMatchAnalyzerFilter:
     """When analyzer runs with ``--upstream-config-md5 localcfg_<hash>``
     (batch-run always does this for local-cfg runs), the chunks it

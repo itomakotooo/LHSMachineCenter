@@ -1690,17 +1690,33 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
           config_md5: cfgMd5,
           code_md5: codeMd5,
           is_current: !!isCurrent,
+          // Optional label — backend tags current md5 buckets with
+          // "服务端" (server global) or "本地 cfg (<file>)" so the
+          // UI can distinguish multiple concurrently-"current" buckets.
+          // Historical cells leave this empty.
+          current_label: opts.current_label || "",
+          current_source: opts.current_source || "",
           untagged: !!opts.untagged,
           versions: [],  // rawdata version stats (config/code md5 + counts)
           reports: [],
         });
+      } else if (isCurrent && opts.current_label && !cellsByKey.get(key).current_label) {
+        // First version of this cell was tagged without a label;
+        // a later version carried the label — upgrade in place.
+        cellsByKey.get(key).current_label = opts.current_label;
+        cellsByKey.get(key).current_source = opts.current_source || "";
       }
       return cellsByKey.get(key);
     };
 
-    // Bucket rawdata versions.
+    // Bucket rawdata versions. Backend's ``versions`` entries now
+    // carry ``is_current`` + ``current_label`` / ``current_source``
+    // so multi-current (server + local-cfg) can be distinguished.
     for (const v of versionsAll) {
-      const cell = getCell(v.config_md5 || "", v.code_md5 || "", !!v.is_current);
+      const cell = getCell(
+        v.config_md5 || "", v.code_md5 || "", !!v.is_current,
+        { current_label: v.current_label || "", current_source: v.current_source || "" },
+      );
       cell.versions.push(v);
     }
 
@@ -1794,7 +1810,14 @@ function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb
     headerLabel = `Mode ${mode} · 未标记`;
     statusTag = `<span class="rwtree-status none" title="此 report 未标记 md5（v1 envelope 迁移遗留）">未标记</span>`;
   } else if (cell.is_current) {
-    headerLabel = `Mode ${mode} · 当前 ${cfgShort}…`;
+    // Multi-current: server global + local-cfg can BOTH be "current"
+    // simultaneously. Append the backend-supplied label so operators
+    // see which of several current buckets they're looking at.
+    // Falls back to just "当前" when label is empty (legacy responses).
+    const currentSuffix = cell.current_label
+      ? ` · ${cell.current_label}`
+      : "";
+    headerLabel = `Mode ${mode} · 当前${currentSuffix} ${cfgShort}…`;
     statusTag = `<span class="rwtree-status ok">✅当前</span>`;
   } else {
     // Historical: label which half drifted. If only code differs,
