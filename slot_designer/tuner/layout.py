@@ -103,10 +103,36 @@ def apply_counts(
             # Proportional rescale
             scale = target_total / current_total
             scaled = [max(min_weight, int(round(reel[i]["weight"] * scale))) for i in idxs]
-            # Repair rounding drift: push the delta onto the first stop
+            # Repair rounding drift: distribute the delta across stops.
+            # Old impl pushed the entire diff onto scaled[0]; if diff was
+            # more negative than scaled[0] - min_weight, the clamp absorbed
+            # the excess and target_total was silently missed (observed in
+            # M37 mode 5 reel 3 blank: 120→113 drift of -7 clamped to 0).
+            # Spread across stops so every stop drops/rises by 1 until diff
+            # lands. Only floor-clamped stops are skipped.
             diff = target_total - sum(scaled)
             if diff != 0:
-                scaled[0] = max(min_weight, scaled[0] + diff)
+                step = 1 if diff > 0 else -1
+                remaining = abs(diff)
+                # Iterate stops in a stable order until diff consumed or
+                # all stops clamped.
+                guard = 0
+                while remaining > 0 and guard < 10 * len(scaled):
+                    any_adjusted = False
+                    for j in range(len(scaled)):
+                        if remaining == 0:
+                            break
+                        if step < 0 and scaled[j] <= min_weight:
+                            continue  # can't drop below floor
+                        scaled[j] += step
+                        remaining -= 1
+                        any_adjusted = True
+                    if not any_adjusted:
+                        # Every stop is at the floor and diff is still
+                        # negative — target_total < len(idxs)*min_weight,
+                        # physically unachievable without removing stops.
+                        break
+                    guard += 1
             for i, w in zip(idxs, scaled):
                 reel[i]["weight"] = w
 

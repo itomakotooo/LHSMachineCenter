@@ -418,6 +418,27 @@ def main() -> None:
     tuned_envelope = apply_counts(base_weights_envelope, result.best_counts)
     tuned_reels = tuned_envelope["reel_sets"]["default"]["reels"]
 
+    # 2026-04-24 sanity: verify apply_counts preserved tuner's best_counts
+    # per (reel, symbol) sum. If it drifts, the on-disk weights won't match
+    # the _tuned_summary. Fail loud rather than silently writing stale RTP.
+    post_apply_counts = base_counts_from_assembled(tuned_reels)
+    _drift_found = False
+    for ri, (want, got) in enumerate(zip(result.best_counts, post_apply_counts)):
+        for sym in sorted(set(list(want.keys()) + list(got.keys()))):
+            if want.get(sym, 0) != got.get(sym, 0):
+                if not _drift_found:
+                    print("[WARN] apply_counts drift detected — tuner best_counts vs on-disk counts:")
+                    _drift_found = True
+                print(f"  reel {ri+1} {sym}: tuner wants {want.get(sym, 0)}, apply_counts gave {got.get(sym, 0)}")
+    if _drift_found:
+        # Recompute best_profile from the actual post-apply counts so the
+        # _tuned_summary we write matches what's actually on disk.
+        post_marginals = marginals_from_counts(post_apply_counts)
+        best_profile = analytic_profile_from_marginals(evaluator, post_marginals)
+        print(f"  [apply_counts drift] recomputed profile from on-disk counts:")
+        print(f"    RTP {best_profile['rtp_pct']:.3f}% (was {result.best_breakdown.rtp_gap_pp:.3f}pp tuner gap)")
+        print(f"    hit {best_profile['hit_rate']*100:.3f}%")
+
     # ────────────────── Phase 5: joint order SA ──────────────────
     exp_before = experience_metrics(tuned_reels, high_value=args.high_value, blank_symbol=blank_symbol)
     print(f"\n=== Phase 5 — joint shared-strip order SA ({args.sa_steps} steps) ===")
@@ -562,6 +583,11 @@ def main() -> None:
         "phase5_sa_steps": args.sa_steps,
         "alternation_violations": post_alt_violations,
     }
+    # 2026-04-24: when --base-weights points at a DIFFERENT mode's file
+    # (common for mode 2→5 derivation), the seed doc carries the seed
+    # mode's "mode" field. _write_weights deep-copies that, so the
+    # written file would lie about which mode it represents. Pin it.
+    base_weights_doc["mode"] = int(this_mode_key)
     _write_weights(
         args.out_weights, base_weights_doc,
         weights_per_mode[this_mode_key],

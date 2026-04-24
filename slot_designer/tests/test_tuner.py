@@ -76,19 +76,56 @@ def test_apply_counts_roundtrip():
 
 
 def test_apply_counts_scales_totals():
-    """Doubling all counts must double the reel totals exactly."""
+    """Doubling all counts must double the reel totals EXACTLY.
+
+    Regression: 2026-04-24 M37 mode 5. The old diff-repair pushed the
+    entire rounding delta onto scaled[0]; when the delta exceeded
+    scaled[0] - min_weight, the max(min_weight, ...) clamp absorbed the
+    excess and target_total was silently missed (reel 3 blank: tuner
+    wanted 113, on-disk sum was 120 → +6.6pp RTP ghost gap). The fix
+    spreads the diff across multiple stops; round-trip must now be exact.
+    """
     _, weights, _ = _load()
     x = base_counts(weights)
     x_doubled = [{s: c * 2 for s, c in reel.items()} for reel in x]
     w2 = apply_counts(weights, x_doubled)
     x2 = base_counts(w2)
-    # Might have ±len(reel) rounding drift, so check totals
+    # Post-fix: exact match (no drift, not ±len(reel))
     for reel_idx, reel in enumerate(x2):
         for sym, count in x_doubled[reel_idx].items():
             actual = reel.get(sym, 0)
-            assert abs(actual - count) <= 2, (
-                f"reel {reel_idx} {sym}: expected ~{count}, got {actual}"
+            assert actual == count, (
+                f"reel {reel_idx} {sym}: expected {count}, got {actual} "
+                f"(drift = {actual - count})"
             )
+
+
+def test_apply_counts_handles_large_negative_drift():
+    """Regression: diff-repair must distribute across stops when
+    |diff| > scaled[0] - min_weight, not clamp silently.
+
+    Constructs an 18-stop symbol with seed weights [1, 7, 7, ..., 7]
+    (sum=120), target=113 (→ scale 0.9417). Naive scale then round gives
+    [1, 7, 7, ..., 7] = 120 still; diff -7 on scaled[0]=1 clamps at
+    min_weight=1. Old impl silently returned 120; new impl spreads the
+    -7 across 7 different stops to hit 113 exactly.
+    """
+    # Construct a minimal synthetic weights envelope with just this symbol
+    reel = [
+        {"symbol": "blank", "weight": 1 if i == 0 else 7}
+        for i in range(18)
+    ]
+    weights = {"reel_sets": {"default": {"reels": [reel]}}}
+    target = [{"blank": 113}]
+    w2 = apply_counts(weights, target)
+    actual = sum(stop["weight"] for stop in w2["reel_sets"]["default"]["reels"][0])
+    assert actual == 113, (
+        f"large-drift repair failed: target 113, got {actual} "
+        f"(would have been 120 pre-fix)"
+    )
+    # And floor must never be breached
+    for stop in w2["reel_sets"]["default"]["reels"][0]:
+        assert stop["weight"] >= 1, f"floor breach: {stop}"
 
 
 def test_cost_decreases_toward_target():
