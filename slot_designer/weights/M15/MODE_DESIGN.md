@@ -56,8 +56,6 @@
 
 ## 2. 每 mode 的三个 dial
 
-> **SOURCE OF TRUTH**：`slot_designer/weights/M15/feature_weights.tsv`（人读的 TSV 表）。改完跑 `python -m slot_designer.scripts.compile_m15_features_from_tsv` 写回各 mode 的 `weights.json.feature_params`。不要直接手改 JSON。
-
 v7 `analyze_feature()` 验证通过，deviation ≤ 0.01%：
 
 | Mode | Trigger | count_y | x_value_weights | EV | Feature RTP |

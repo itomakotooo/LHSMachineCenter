@@ -162,7 +162,7 @@
     }
   },
   "feature_params": {
-    "_note": "v7+ mode 1 Feature Play params. **AUTO-GENERATED** from slot_designer/weights/M15/feature_weights.tsv — do NOT hand-edit this block; edit the TSV and re-run compile_m15_features_from_tsv.",
+    "_note": "v5 mode 1 Feature Play params (verified via analyze_feature 2026-04-23). Overrides spec-level defaults. See slot_designer/weights/M15/MODE_DESIGN.md.",
     "x_count_weights": [
       5,
       40,

@@ -163,7 +163,7 @@
     "alternation_violations": 0
   },
   "feature_params": {
-    "_note": "v7+ mode 2 Feature Play params. **AUTO-GENERATED** from slot_designer/weights/M15/feature_weights.tsv — do NOT hand-edit this block; edit the TSV and re-run compile_m15_features_from_tsv.",
+    "_note": "v6 mode 2 Feature Play params (per MODE_DESIGN.md v6). Trigger 2.75% / EV 60x / feature RTP 164.98pp.",
     "x_count_weights": [
       5,
       40,

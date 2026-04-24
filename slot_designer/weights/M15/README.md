@@ -37,25 +37,13 @@
 slot_designer/weights/M15/
 ├── README.md                 ← 本文件
 ├── DESIGN.md                 ← Top Dollar 原型研究 + paytable 数学身份
-├── MODE_DESIGN.md            ← 4 mode 数值 + 玩家体验剧本（v7 最新）
-├── feature_weights.tsv       ← **Feature Play 4-mode 权重 SOURCE OF TRUTH**（人读 + 手改）
+├── MODE_DESIGN.md            ← 4 mode 数值 + 玩家体验剧本（v6 最新）
 ├── reel_strips.json          ← 共享 symbol 布局（36 × 3, 18 blank + 18 非 blank 交替）
 └── mode_<N>/
     └── weights.json          ← mode 专属 per-stop 权重 + feature_params 块
-                               ↑ feature_params 由 feature_weights.tsv 自动编译出来，不手改
 ```
 
 mode 1 保留了 `NOTES.md` 和 `TUNE_REPORT.md`（Phase 4/5 初次 tune 产物）；mode 2/5/7 不需要，它们的 derivation 细节都在 `MODE_DESIGN.md` + commit message 里。
-
-**编辑 feature 权重的正确流程**：
-
-1. 改 `feature_weights.tsv`（表格，4 列并排看 4 mode）
-2. 跑 `python -m slot_designer.scripts.compile_m15_features_from_tsv`，它会写回每个 `mode_<N>/weights.json.feature_params` 块
-3. （可选）`--check` 模式在 CI 里跑，若 TSV 跟 JSON 出现 drift 会退 1
-
-**不要**直接手改 `mode_<N>/weights.json.feature_params` 块——下次重编译会被覆盖掉。那个块头部的 `_note` 字段写了 "AUTO-GENERATED from feature_weights.tsv"。
-
-`_analytic` 子块（EV / jackpot rate / trigger target 等 designer 备忘）compile 时会保留，因为 TSV 不承载这些元数据。
 
 ## 结构不变量
 
