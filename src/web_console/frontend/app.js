@@ -2573,7 +2573,7 @@ function updateSampleHint() {
     }
     // Show whether the upcoming 开始采样 will use tuned params (from
     // a previous 调参 click on the first effective machine + this mode)
-    // or the direct-connect benchmark preset (robot_count=8, batch_concurrency=8).
+    // or the internal-server benchmark preset (robot_count=8, batch_concurrency=8).
     if (n > 0) {
       const firstMachine = effective[0];
       const tuned = state.tunedSamplingParams[`${firstMachine}|${mode}`];
@@ -2655,10 +2655,10 @@ async function startSampling() {
 
   // Pick up autotune result for the first selected machine+mode if the
   // operator ran 调参 beforehand. Otherwise fall back to the preset.
-  // 2026-04-24 direct-connect benchmark (M14 chunk=2000): 8×8 = 4,411
-  // spin/s with smallest chunk footprint (p50 26s, max 36s), vs prior
-  // 20×2 ≈ 2,800 spin/s (+58%). Upstream ceiling: robot×conc >= 128
-  // fails outright. Tuned values (if present) apply to the whole batch.
+  // 2026-04-24 internal-server stress test (M14 chunk=2000, 8-wave
+  // sustained): 8×8 = 8,593 outer/s (p50 14.5s max 16.7s, 100% ok),
+  // 8×16 = 7,629/s with 2× bigger chunks (not worth it), 8×32 starts
+  // timing out. 3M-spin single-machine = 5.7-6.5 min.
   const tunedKey = `${selected[0]}|${mode}`;
   const tuned = state.tunedSamplingParams[tunedKey];
   const chunk_robot_count = tuned ? tuned.robot_count : 8;

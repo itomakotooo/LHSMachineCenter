@@ -64,7 +64,7 @@ MACHINES_CONFIG = ROOT / "configs" / "machines.json"
 SERVERS_CONFIG = ROOT / "configs" / "servers.json"
 ANALYZER = ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
 FRONTEND_DIR = ROOT / "src" / "web_console" / "frontend"
-SLOT_SPIN_ENDPOINT = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpinVariant"
+SLOT_SPIN_ENDPOINT = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant"
 
 # Offline inference scripts that are auto-triggered after every
 # successful generate-report so the UI's payline / paytable panels
@@ -293,12 +293,12 @@ class RunCreateRequest(BaseModel):
     # value is a normal CI half-width in percentage points.
     target_halfwidth_pp: float = Field(default=0.5, ge=0)
     chunk_spin_times: int = Field(default=5000, gt=0)
-    # 2026-04-24: direct-connect concurrency benchmark (M14 chunk_spin_times=2000):
-    # 8 robot × 8 conc = 4,411 spin/s with the smallest chunk footprint
-    # (p50 26s, max 36s). Previous preset 20×2 ≈ 2,800 spin/s. Upgrading
-    # the preset gains +58% throughput while keeping chunks short so
-    # retry cost stays low. Upstream FAILS at robot × conc >= 128
-    # (e.g. 32×8 / 48×8 drop all requests), hence ceiling.
+    # 2026-04-24: internal-server stress test (M14 mode 1, chunk=2000):
+    #   r=8 × conc=8 → 8,593 outer/s sustained (8-wave p50 14.5s max 16.7s)
+    #   r=8 × conc=16 → 7,861 outer/s, chunk 34s (2× retry cost, no gain)
+    #   r=8 × conc=32 → 23% timeout rate (ceiling approaches)
+    #   r=8 × conc=48 → 85% timeout (hard ceiling)
+    # 3M-spin single-machine sample at 8×8 = 5.7 min p50 / 6.5 min max.
     # Per-machine chunk_spin_times (Collect 5000 / Lock-ReSpin-FreeSpin
     # 2000 / others 1000) is picked separately in frontend, unchanged.
     chunk_robot_count: int = Field(default=8, gt=0)

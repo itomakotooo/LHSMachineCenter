@@ -2,8 +2,8 @@
   "servers": [
     {
       "id": "dev",
-      "name": "开发服",
-      "endpoint": "http://buffalo-debug.citrusjoy.com",
+      "name": "开发服 (内网)",
+      "endpoint": "http://192.168.10.21:15060",
       "active": true
     },
     {

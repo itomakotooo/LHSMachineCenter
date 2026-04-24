@@ -36,7 +36,7 @@ except ImportError:  # running as a standalone script, not a package member
         compute_trigger_sessions,
     )
 
-DEFAULT_ENDPOINT_URL = "http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpinVariant"
+DEFAULT_ENDPOINT_URL = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant"
 ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
 # We always hit the Variant endpoint. ``MachineName`` on the payload is
 # passed through verbatim from machines.json — a variant key like
