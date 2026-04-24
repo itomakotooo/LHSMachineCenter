@@ -37,9 +37,9 @@ from slot_designer.tuner.ordering import (
 )
 
 
-SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-STRIPS = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
-WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
+SPEC = _ROOT / "slot_designer" / "specs" / "M37.spec.json"
+STRIPS = _ROOT / "slot_designer" / "weights" / "M37" / "reel_strips.json"
+WEIGHTS = _ROOT / "slot_designer" / "weights" / "M37" / "mode_1" / "weights.json"
 
 
 def _load_weights() -> dict:
@@ -88,27 +88,29 @@ def test_sa_preserves_rtp(tmp_path):
     weights = _load_weights()
     reels = weights["reel_sets"]["default"]["reels"]
 
+    # M37 uses lowercase 'blank'
     def cost_fn(r):
-        b = evaluate_experience_cost(r)
+        b = evaluate_experience_cost(r, blank_symbol="blank")
         return b.total, b
 
     result = run_simulated_annealing(
         reels, cost_fn,
         config=SAConfig(max_steps=500),
         rng=Random(7),
+        blank_symbol="blank",
     )
     # Serialize best reels as strips + weights in tmp_path so the
     # loader (which expects the two-file layout) can round-trip them.
-    machine_dir = tmp_path / "M1sim"
+    machine_dir = tmp_path / "M37sim"
     mode_dir = machine_dir / "mode_1"
     mode_dir.mkdir(parents=True)
     strips_doc = {
-        "machine": "M1",
+        "machine": "M37",
         "reel_set": "default",
         "reels": [[s["symbol"] for s in reel] for reel in result.best_reels],
     }
     weights_doc = {
-        "machine": "M1",
+        "machine": "M37",
         "mode": 1,
         "reel_set": "default",
         "weights": [[int(s["weight"]) for s in reel] for reel in result.best_reels],
@@ -153,36 +155,45 @@ def test_blank_adjacency_zero_when_clustered():
 
 
 def test_pwdf_sensible_range():
-    """For the baseline M1 reels, PWDF should be meaningful (>1) for
-    high-value symbols that cluster with blanks."""
+    """For the baseline M37 reels, PWDF should be meaningful (>1) for
+    high-value symbols that cluster with blanks. M37 uses 'high7' as
+    its top-tier family equivalent to Seven1 on M1."""
     w = _load_weights()
     reels = w["reel_sets"]["default"]["reels"]
-    # Check reel 0: Seven1 weight 40 at position 12 (between blanks)
-    ratio = pwdf_ratio(reels[0], "Seven1")
-    assert ratio > 1.5, f"Seven1 PWDF on reel 0 should reflect clustering, got {ratio}"
-    # Total symbol probability in mid = 90/1010 ≈ 0.089
-    # Total window probability is larger due to adjacency → ratio > 1
-    mid_p = symbol_mid_probability(reels[0], "Seven1")
-    win_p = symbol_window_probability(reels[0], "Seven1")
+    # Check reel 0: high7 clustered with blanks (alternation)
+    ratio = pwdf_ratio(reels[0], "high7")
+    assert ratio > 1.5, f"high7 PWDF on reel 0 should reflect clustering, got {ratio}"
+    mid_p = symbol_mid_probability(reels[0], "high7")
+    win_p = symbol_window_probability(reels[0], "high7")
     assert win_p > mid_p, f"window prob should exceed mid prob: win={win_p}, mid={mid_p}"
 
 
 def test_near_miss_rate_returns_finite():
     w = _load_weights()
     reels = w["reel_sets"]["default"]["reels"]
-    nm = near_miss_rate_2_of_3(reels, "Seven1")
+    nm = near_miss_rate_2_of_3(reels, "high7")
     assert 0 <= nm < 1, f"near-miss rate out of range: {nm}"
 
 
 def test_experience_cost_band_respects_initial():
     """Cost should NOT heavily penalize an already well-clustered initial
-    design. For M1's base reel (perfect adjacency), total cost should be
-    dominated by the blank_adj bonus (negative), not large penalties."""
+    design. For M37's base reel (perfect alternation), total cost should be
+    dominated by the blank_adj bonus (negative), not large penalties.
+    M37 uses lowercase 'blank' and has different high-value symbols
+    (high7, grand, major) than M1's Seven1/Diamond1/etc."""
     w = _load_weights()
     reels = w["reel_sets"]["default"]["reels"]
-    b = evaluate_experience_cost(reels)
+    # M37 high-value family: high7 (top-tier regular) + grand/major (boosters).
+    b = evaluate_experience_cost(
+        reels,
+        high_value=("high7", "grand", "major", "minor"),
+        blank_symbol="blank",
+    )
     # blank_adj_bonus is negative, nm/pwdf should be small or zero
-    assert b.blank_adj_bonus < 0, "expected blank_adj_bonus to be negative (reward)"
+    assert b.blank_adj_bonus < 0, (
+        f"expected blank_adj_bonus to be negative (reward); got "
+        f"{b.blank_adj_bonus}. Breakdown: {b}"
+    )
     # Total may be dominated by nm-below-min penalty if counts are sparse,
     # but the optimizer design ensures it doesn't blow up on reasonable inputs.
     assert b.total < 100, f"cost unexpectedly high for good initial: {b.total}"

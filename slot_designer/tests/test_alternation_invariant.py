@@ -66,24 +66,31 @@ def _load_shipped_reels(machine: str, mode: int) -> list[list[dict]]:
     )
 
 
-def test_shipped_m1_mode1_has_zero_alternation_violations():
-    reels = _load_shipped_reels("M1", 1)
+def test_shipped_m37_mode1_has_zero_alternation_violations():
+    """2026-04-24: switched from M1 to M37. M1 rebuilt onto IGT Triple
+    Double Diamond archetype (22 stops, non-alternating by TDD's actual
+    published layout — Hot Roll bonus slot replacement creates 3 consecutive
+    Blanks at pos 12-14). M1 is now exempt from alternation invariant; see
+    reel_strips.json._archetype and project_slot_designer_machine_archetype.
+    M37 (classic 18+18 alternation, no archetype override) remains the
+    alternation-invariant representative. Note M37 uses lowercase 'blank'."""
+    reels = _load_shipped_reels("M37", 1)
     for ri, reel in enumerate(reels):
-        v = count_alternation_violations(reel)
+        v = count_alternation_violations(reel, blank_symbol="blank")
         assert v == 0, (
-            f"M1 mode 1 reel {ri+1} has {v} Blank-Blank or non-Blank-non-Blank "
+            f"M37 mode 1 reel {ri+1} has {v} blank-blank or non-blank-non-blank "
             f"circular adjacency violations. Shipped reels must strictly "
             f"alternate. Re-run Phase 5 with initialize_alternating + "
             f"enforce_alternation=True."
         )
 
 
-def test_shipped_m1_mode2_has_zero_alternation_violations():
-    reels = _load_shipped_reels("M1", 2)
+def test_shipped_m37_mode2_has_zero_alternation_violations():
+    reels = _load_shipped_reels("M37", 2)
     for ri, reel in enumerate(reels):
-        v = count_alternation_violations(reel)
+        v = count_alternation_violations(reel, blank_symbol="blank")
         assert v == 0, (
-            f"M1 mode 2 reel {ri+1} has {v} alternation violations."
+            f"M37 mode 2 reel {ri+1} has {v} alternation violations."
         )
 
 
@@ -132,18 +139,18 @@ def test_initialize_alternating_rejects_imbalanced_reel():
 
 
 def test_class_preserving_swap_keeps_alternation_across_many_mutations():
-    reels = _load_shipped_reels("M1", 1)
-    # Confirm starting state is valid
-    assert all(count_alternation_violations(r) == 0 for r in reels)
+    reels = _load_shipped_reels("M37", 1)
+    # Confirm starting state is valid (M37 uses lowercase 'blank')
+    assert all(count_alternation_violations(r, blank_symbol="blank") == 0 for r in reels)
     rng = Random(123)
     cur = [list(r) for r in reels]
     for _ in range(500):
-        cur = class_preserving_swap_mutation(cur, rng)
+        cur = class_preserving_swap_mutation(cur, rng, blank_symbol="blank")
         # After every swap, still alternating
-        assert all(count_alternation_violations(r) == 0 for r in cur), (
+        assert all(count_alternation_violations(r, blank_symbol="blank") == 0 for r in cur), (
             "class_preserving_swap_mutation broke alternation — check "
-            "that it samples only within one class (all-Blank or "
-            "all-non-Blank index subset)."
+            "that it samples only within one class (all-blank or "
+            "all-non-blank index subset)."
         )
 
 
@@ -182,10 +189,11 @@ def test_run_sa_enforce_alternation_rejects_non_alternating_input():
 
 def test_run_sa_enforce_alternation_accepts_alternating_input():
     # Pre-alternated reel → SA runs and preserves alternation
-    reels = _load_shipped_reels("M1", 1)
+    # M37 uses lowercase 'blank'
+    reels = _load_shipped_reels("M37", 1)
 
     def cost_fn(rs):
-        b = evaluate_experience_cost(rs)
+        b = evaluate_experience_cost(rs, blank_symbol="blank")
         return b.total, b
 
     result = run_simulated_annealing(
@@ -193,11 +201,12 @@ def test_run_sa_enforce_alternation_accepts_alternating_input():
         config=SAConfig(max_steps=200),
         rng=Random(0),
         enforce_alternation=True,
+        blank_symbol="blank",
     )
     # Post-SA: still zero violations (assertion inside SA also checks this,
     # so if we got here the invariant held)
     for r in result.best_reels:
-        assert count_alternation_violations(r) == 0
+        assert count_alternation_violations(r, blank_symbol="blank") == 0
 
 
 if __name__ == "__main__":

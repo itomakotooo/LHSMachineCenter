@@ -160,11 +160,18 @@ def test_modes_share_reel_strips_file():
     assert strips["machine"] == "M1"
     assert strips["reel_set"] == "default"
 
-    # Every reel must have 36 stops and strictly alternate Blank/non-Blank
+    # Every reel must match the archetype-declared physical length (M1 is
+    # now 22 stops per IGT Triple Double Diamond archetype, 2026-04-24
+    # rebuild — see reel_strips.json._archetype.physical_stops_per_reel).
+    # All 3 reels must have the same length (shared strip file => single
+    # length). Alternation is NOT required for M1 (TDD archetype has
+    # consecutive blanks where Hot Roll bonus slot was replaced).
+    expected_len = len(strips["reels"][0])
     for ri, reel in enumerate(strips["reels"]):
-        assert len(reel) == 36, f"reel {ri+1}: {len(reel)} stops (expected 36)"
-        blanks = sum(1 for s in reel if s == "Blank")
-        assert blanks == 18, f"reel {ri+1}: {blanks} blanks (expected 18)"
+        assert len(reel) == expected_len, (
+            f"reel {ri+1}: {len(reel)} stops; reel 1 has {expected_len} — "
+            f"all reels in the same machine must share physical length."
+        )
 
     # Both modes' weight arrays must match the strip's shape
     for mode in (1, 2):

@@ -4,6 +4,7 @@
   "source_mode": 5,
   "source_spins": 0,
   "_note": [
+    "M1 mode 5 target v3 (2026-04-24) — TDD archetype rebuild. Dropped per_reel_symbol_targets (was fabricated pattern). Physical layout locked to Hot Roll 22-stop reel; this target is RTP/hit/bucket only. See reel_strips.json._archetype.",
     "Mode 5 = 高阶幸运模式. Mode 2's next tier up.",
     "",
     "Design brief (user 2026-04-22): RTP ~500% while keeping mode 2's ~27.76% hit rate. Shift bucket distribution TOWARD higher multipliers — player sees more 机台特征 events (wild-sevens, 3-Diamond combos) without dropping the base hit cadence.",
@@ -34,10 +35,10 @@
   "rtp_pct": 500.0,
   "bucket_rate": {
     "gt0_lt1": 0.0,
-    "ge1_lt5": 0.140,
+    "ge1_lt5": 0.14,
     "ge5_lt10": 0.055,
-    "ge10_lt20": 0.030,
-    "ge20_lt50": 0.020,
+    "ge10_lt20": 0.03,
+    "ge20_lt50": 0.02,
     "ge50_lt100": 0.015,
     "ge100_lt200": 0.012,
     "ge200_lt500": 0.004,
@@ -53,29 +54,7 @@
   "tail_dep_ge10x": 0.29,
   "tail_dep_ge20x": 0.15,
   "tail_dep_ge50x": 0.11,
-  "tail_dep_ge100x": 0.10,
+  "tail_dep_ge100x": 0.1,
   "loss_streak_p95": 9,
-  "loss_streak_max": 30,
-  "per_reel_symbol_targets": [
-    {
-      "name": "wild_family",
-      "symbols": ["Diamond1", "Diamond2"],
-      "pattern": "uniform",
-      "per_reel_target_pct": {"1": 0.0974, "2": 0.0969, "3": 0.1009},
-      "tolerance_pct": 0.015,
-      "cost_weight": 2.0,
-      "_source": "real M1 mode 5 rawdata 100k rounds",
-      "_rationale": "Triple Diamond-style uniform distribution — every reel ~10% wild. 'Every reel is hot' feel fits super-lucky brief. 3-wild jackpot reachable from any combo. Aristocrat Dragon Link base / IGT Triple Diamond 1993 prototype."
-    },
-    {
-      "name": "seven_family",
-      "symbols": ["Seven1", "Seven2"],
-      "pattern": "uniform",
-      "per_reel_target_pct": {"1": 0.2064, "2": 0.2007, "3": 0.2078},
-      "tolerance_pct": 0.02,
-      "cost_weight": 2.5,
-      "_source": "real M1 mode 5 rawdata 100k rounds",
-      "_rationale": "Super-lucky mode: Seven uniformly ~20% per reel — 'every reel is hot' for Sevens too. Produces real mode 5's 2.78% Seven family hit rate (5× mode 1). Without this constraint the tuner pareto'd Seven to 1.2% (vs real 2.78%)."
-    }
-  ]
+  "loss_streak_max": 30
 }
