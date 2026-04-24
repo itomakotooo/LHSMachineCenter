@@ -1,25 +1,24 @@
-"""Tune M1 per-mode weights as family-scaled TDD baseline.
+"""Tune M1 per-mode weights as family-scaled TDD baseline — with experience locks.
 
-The archetype constraint (2026-04-24): M1 is IGT Triple Double Diamond
-(Hot Roll-derived 22-stop virtual reel). Mode 1 should be the TDD
-baseline reproduced on M1's paytable; modes 2/5/7 should be 'luck
-variants' — weights can change per mode BUT per-reel RATIOS within each
-symbol family stay locked to TDD.
+2026-04-24 v2: previous v1 tuner had bounded per-family scales
+[0.25, 4.0] which lets Bar2 × 2.76 while Seven1 × 0.63 — numerically
+OK (RTP target hit) but Seven family RTP share dropped from 20% to 10%.
+Violates `project_slot_designer_axiom_experience_is_soul`.
 
-Without this lock, the (1+1)-ES tuner freely changes weights to hit
-RTP targets and produces "weird" distributions (e.g. 18% wild on one
-reel, near-zero on others) that don't resemble any real slot machine.
+v2 fix (per M1 DESIGN.md §8): Seven1/Seven2/Diamond1/Diamond2 family
+scales STRICTLY LOCKED to 1.0 for standard modes (1, 7). Lucky modes
+(2, 5) get a relaxed upper bound [1.0, 2.5] on Seven/Diamond so they
+can be boosted while preserving "顶奖家族不会被砍" invariant.
 
-Parameterization: each mode N has 9 scalars, one per symbol family:
-    s_N = (s_Blank, s_Diamond1, s_Diamond2, s_Seven1, s_Seven2,
-           s_Cherry, s_Bar1, s_Bar2, s_Bar3)
-and weight[mode N][reel r][pos p] = round(TDD_baseline[r][p] × s_N[sym_at(r,p)])
+Only Blank, Cherry, Bar1, Bar2, Bar3 have free [0.25, 4.0] bounds.
+RTP target absorbed by adjusting filler (Blank) + small-win (Cherry/Bar)
+densities, not by starving 顶奖 symbols.
 
-RTP differences across modes come from these 9 scalars only. Real-reel
-ratio (R1:R2:R3) per family is preserved by construction — the TDD
-archetype shape is 100% intact across all modes.
+Parameterization:
+    weight[mode N][reel r][pos p] =
+        round(TDD_baseline[r][p] × s_N[symbol_at(r, p)])
 
-Search: grid over reasonable scalar ranges + local refinement.
+Where s_N is a 9-dim scalar vector with per-mode bounds from LOCK_CONFIG.
 """
 from __future__ import annotations
 
@@ -54,6 +53,72 @@ TDD_BASELINE = [
     [2, 3, 2, 3, 3, 4, 1, 5, 7, 17, 12, 19, 19, 21, 20, 28, 20, 27, 27, 10, 3, 3],
     [1, 1, 1, 4, 2, 41, 8, 17, 12, 17, 10, 12, 11, 20, 14, 13, 11, 7, 42, 8, 3, 1],
 ]
+
+# Per-mode family-scale bounds. Standard modes (1, 7) strictly lock
+# Seven/Diamond (顶奖家族) at 1.0 to preserve TDD baseline family RTP share.
+# Lucky modes (2, 5) allow [1.0, 2.5] upper bound to help hit higher RTP
+# without collapsing family shares below benchmark (verified by
+# verify_m1_design.py's family-share checks).
+SYMBOLS = ("Blank", "Diamond1", "Diamond2", "Seven1", "Seven2",
+           "Cherry", "Bar1", "Bar2", "Bar3")
+
+LOCK_CONFIG: dict[int, dict[str, tuple[float, float]]] = {
+    # Standard modes (1, 7): Seven/Diamond/Bar STRICT lock at 1.0.
+    # Only Blank (fills) and Cherry (low-mult, minimal share impact)
+    # are free. This preserves Seven/Bar RATIO exactly from TDD
+    # baseline while giving tuner 2 dims to hit RTP/hit target.
+    # Cherry bound tight [0.5, 2.0] — Cherry's 3-pay is 10× (small),
+    # 1-pay is 1× (fillers), so wide Cherry scaling still preserves
+    # Seven family dominance in big-win bucket.
+    1: {
+        "Blank": (0.10, 4.0),
+        "Cherry": (0.50, 2.00),
+        "Bar1": (1.0, 1.0),
+        "Bar2": (1.0, 1.0),
+        "Bar3": (1.0, 1.0),
+        "Seven1": (1.0, 1.0),
+        "Seven2": (1.0, 1.0),
+        "Diamond1": (1.0, 1.0),
+        "Diamond2": (1.0, 1.0),
+    },
+    7: {
+        "Blank": (0.10, 4.0),
+        "Cherry": (0.50, 2.00),
+        "Bar1": (1.0, 1.0),
+        "Bar2": (1.0, 1.0),
+        "Bar3": (1.0, 1.0),
+        "Seven1": (1.0, 1.0),
+        "Seven2": (1.0, 1.0),
+        "Diamond1": (1.0, 1.0),
+        "Diamond2": (1.0, 1.0),
+    },
+    # Lucky modes (2, 5): relaxed. All non-Blank can boost above 1.0 but
+    # not below 1.0 (keeping 顶奖 family at least at TDD density). Bar
+    # can't exceed Seven/Diamond's cap so Bar can't Pareto-dominate.
+    # Blank allowed lower (more non-blank density needed for 300-500% RTP).
+    2: {
+        "Blank": (0.08, 4.0),
+        "Cherry": (1.0, 2.5),
+        "Bar1": (1.0, 2.5),
+        "Bar2": (1.0, 2.5),
+        "Bar3": (1.0, 2.5),
+        "Seven1": (1.0, 2.5),
+        "Seven2": (1.0, 2.5),
+        "Diamond1": (1.0, 2.5),
+        "Diamond2": (1.0, 2.5),
+    },
+    5: {
+        "Blank": (0.05, 4.0),
+        "Cherry": (1.0, 4.0),
+        "Bar1": (1.0, 4.0),
+        "Bar2": (1.0, 4.0),
+        "Bar3": (1.0, 4.0),
+        "Seven1": (1.0, 4.0),
+        "Seven2": (1.0, 4.0),
+        "Diamond1": (1.0, 4.0),
+        "Diamond2": (1.0, 4.0),
+    },
+}
 
 
 def build_weights_from_scales(strips, scales):
@@ -90,20 +155,19 @@ def evaluate_scales(scales, strips, evaluator, target, reachable, cost_weights):
     return br.total, pred
 
 
-def search_family_scales(
-    target, strips, evaluator, reachable,
-    symbols=("Blank", "Diamond1", "Diamond2", "Seven1", "Seven2",
-             "Cherry", "Bar1", "Bar2", "Bar3"),
-    seed=0, iterations=8000, verbose=False,
-    scale_bounds=(0.25, 4.0),  # "not weird" bounds — no family vanishes or explodes
-):
-    """Random-restart local search over 9-dim scale vector.
+def clamp(val, lo, hi):
+    return max(lo, min(hi, val))
 
-    ``scale_bounds`` enforces the user's "假但不怪" constraint: each
-    symbol family's scale stays within [0.25, 4.0] of TDD baseline.
-    Without bounds the tuner zeros out whole families (Cherry=0.011,
-    Bar1=0.012) which is the same Pareto "怪" artifact in family space
-    that we fixed in position space.
+
+def search_family_scales(
+    target, strips, evaluator, reachable, bounds_map,
+    seed=0, iterations=8000, verbose=False,
+):
+    """Random-restart local search over n-dim scale vector with per-symbol bounds.
+
+    ``bounds_map`` is {symbol: (lo, hi)}. Scales initialize at midpoint
+    of each bound range (typically 1.0 for locked, 1.0 for free since
+    [0.25, 4.0] midpoint on log scale ≈ 1.0).
     """
     rng = Random(seed)
     cost_weights = CostWeights(
@@ -111,14 +175,13 @@ def search_family_scales(
         shape_weight=2.0,
         cv_weight=0.3,
         hit_target=target.get("hit_rate"),
-        hit_weight=2.0,  # stronger hit pressure since we want both RTP + hit
+        hit_weight=2.0,
     )
     if "cv" not in target:
         target["cv"] = target.get("std_return_x", 0) / (target["rtp_pct"] / 100)
 
-    lo, hi = scale_bounds
-    # Seed candidate: Blank=1.0, others=1.0
-    best = {s: 1.0 for s in symbols}
+    # Initialize to 1.0 for all (clamped to bounds)
+    best = {s: clamp(1.0, *bounds_map[s]) for s in SYMBOLS}
     best_cost, _ = evaluate_scales(best, strips, evaluator, target, reachable, cost_weights)
     sigma = 0.5
     success = 0
@@ -127,9 +190,12 @@ def search_family_scales(
 
     for step in range(1, iterations + 1):
         cand = dict(best)
-        for s in symbols:
+        for s in SYMBOLS:
+            lo, hi = bounds_map[s]
+            if lo == hi:
+                continue  # fully locked, skip
             delta = rng.gauss(0, sigma)
-            cand[s] = max(lo, min(hi, cand[s] * (1 + delta)))
+            cand[s] = clamp(cand[s] * (1 + delta), lo, hi)
         cost, _ = evaluate_scales(cand, strips, evaluator, target, reachable, cost_weights)
         if cost < best_cost:
             best, best_cost = cand, cost
@@ -154,7 +220,6 @@ def main():
     symbols_reg = SymbolRegistry(spec["symbols"])
     rules = RuleSet(spec["pays"], reroll_blocks=spec.get("reroll_blocks"))
     evaluator = PaytableEvaluator(symbols_reg, rules, spec["evaluation_order"])
-    # Build engine once for reachable-bucket computation
     mode1_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
     engine, _ = load_engine(SPEC, mode1_path)
     reachable = structurally_reachable_buckets(engine)
@@ -167,39 +232,45 @@ def main():
     ]:
         tpath = _ROOT / "slot_designer" / "tuner" / "targets" / target_file
         target = json.loads(tpath.read_text(encoding="utf-8"))
+        bounds = LOCK_CONFIG[mode]
+        locked = [s for s in SYMBOLS if bounds[s][0] == bounds[s][1]]
+        free = [s for s in SYMBOLS if bounds[s][0] != bounds[s][1]]
 
-        print(f"\n=== Mode {mode} family-scale search (target RTP {target['rtp_pct']}%, hit {target['hit_rate']:.2%}) ===")
+        print(f"\n=== Mode {mode} family-scale search ===")
+        print(f"  RTP target {target['rtp_pct']}% / hit target {target['hit_rate']:.2%}")
+        print(f"  Locked at 1.0: {locked}")
+        print(f"  Free ({len(free)} dims): {free}")
         best_scales, best_cost = search_family_scales(
-            target, strips, evaluator, reachable,
-            seed=mode, iterations=6000, verbose=True,
+            target, strips, evaluator, reachable, bounds,
+            seed=mode, iterations=8000, verbose=True,
         )
-        # Compute final metrics
         w = build_weights_from_scales(strips, best_scales)
         counts = counts_from_weights(strips, w)
         marg = marginals_from_counts(counts)
         pred = analytic_profile_from_marginals(evaluator, marg)
-        print(f"Mode {mode} RTP: {pred['rtp_pct']:.3f}% (target {target['rtp_pct']}), hit {pred['hit_rate']:.3%} (target {target['hit_rate']:.3%}), CV {pred['cv']:.2f}")
-        print(f"  family scales: {', '.join(f'{k}={v:.3f}' for k, v in best_scales.items())}")
+        print(f"  Result RTP {pred['rtp_pct']:.3f}% / hit {pred['hit_rate']:.3%} / CV {pred['cv']:.2f}")
+        print(f"  Scales: {', '.join(f'{k}={v:.3f}' for k, v in best_scales.items())}")
 
-        # Write out weights.json
         out_path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
         existing = json.loads(out_path.read_text(encoding="utf-8"))
         existing["mode"] = mode
         existing["weights"] = w
         existing["_family_scales"] = {k: round(v, 4) for k, v in best_scales.items()}
         existing["_notes"] = [
-            f"M1 mode {mode} v3 (2026-04-24) — TDD family-scaled derivation.",
-            "Weights = TDD baseline (Hot Roll / WoO) × per-symbol-family scalar. Per-reel RATIOS preserved exactly from TDD archetype; only absolute levels vary across modes ('假' allowed, '怪' forbidden — no per-position Pareto artifacts).",
-            f"Source archetype: IGT Triple Double Diamond via Wizard of Odds Hot Roll reel mapping (https://wizardofodds.com/games/slots/hot-roll/).",
-            f"RTP: {pred['rtp_pct']:.3f}% / hit: {pred['hit_rate']:.3%} / CV: {pred['cv']:.2f}",
+            f"M1 mode {mode} v4 (2026-04-24) — TDD archetype + experience-locked family scales.",
+            f"Seven/Diamond families locked per DESIGN.md §8 (standard modes: strict 1.0; lucky modes: [1.0, upper])",
+            "Free: Blank, Cherry, Bar1/2/3. Only fillers + small-win absorb RTP target, preserving 顶奖 family 绝对密度.",
+            f"Source archetype: IGT Triple Double Diamond via Wizard of Odds Hot Roll reel mapping.",
+            f"Post-tune: RTP {pred['rtp_pct']:.3f}% / hit {pred['hit_rate']:.3%} / CV {pred['cv']:.2f}",
             f"Family scales: {best_scales}",
         ]
         existing["_tuned_summary"] = {
             "rtp_pct": pred["rtp_pct"],
             "hit_rate": pred["hit_rate"],
             "cv": pred["cv"],
-            "method": "family_scale_search",
+            "method": "family_scale_search_v2_locked",
             "family_scales": {k: round(v, 4) for k, v in best_scales.items()},
+            "locked_families": locked,
         }
         out_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"  wrote {out_path.relative_to(_ROOT)}")

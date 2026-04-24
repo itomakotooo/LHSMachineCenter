@@ -42,7 +42,7 @@
     "Seven family RTP share 6.60% (up from mode 1's 5.21% — what the user",
     "asked for). Target file retained for reference / future re-evaluation."
   ],
-  "rtp_pct": 83.0,
+  "rtp_pct": 85.0,
   "bucket_rate": {
     "gt0_lt1": 0.0,
     "ge1_lt5": 0.05,
