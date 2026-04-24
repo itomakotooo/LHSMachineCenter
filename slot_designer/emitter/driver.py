@@ -61,9 +61,22 @@ def sample_one_chunk(
     (``WinAmount``) per analyzer's ``compute_trigger_sessions`` Type-1
     rule.
 
-    ``win``/``bet`` totals track the main ST=1 only (feature rounds are
-    ``BetAmount=0`` so they contribute 0 to bet; their display
-    ``WinCredits`` is not real credit, so it contributes 0 to win).
+    ``win``/``bet`` session-centric: ST=1 ``WinCredits`` is the main
+    payout; for feature-triggering sessions the actual feature payout
+    lives on the final ST=15 ``WinAmount`` per analyzer Type-1 semantics
+    (see ``reference_trigger_session_patterns.md``). ST=14 rounds are
+    display-only reveals whose ``WinCredits`` don't count. The emitter
+    tallies both ST=1 ``WinCredits`` + ST=15 ``WinAmount`` so the
+    realized RTP printed by simulate.py / emit summaries matches what
+    the analyzer computes when reading back these chunks.
+
+    Historical bug (2026-04-24, M15 mode 5 report): old impl only summed
+    ST=1 ``WinCredits`` → sim RTP 129.37% (base only) while virtual
+    console analyzer reported 500.13% (session total). Gap = feature EV
+    × trigger rate (~370pp for mode 5). User-visible discrepancy.
+
+    Bet total stays on ST=1 ``BetAmount`` only (ST=14/15 rows have
+    BetAmount=0 — feature is an unpaid consequence of ST=1).
     """
     robot_list = []
     chunk_win = 0
@@ -84,7 +97,16 @@ def sample_one_chunk(
             rounds.extend(session_dicts)
             main_dict = session_dicts[0]
             last_credits = last_credits - out.cost_credits + main_dict["WinCredits"]
-            chunk_win += main_dict["WinCredits"]
+            # Session RTP: main ST=1 WinCredits + final ST=15 WinAmount
+            # (Type-1 analyzer semantics). ST=14 reveals are not summed.
+            session_win = main_dict["WinCredits"]
+            if len(session_dicts) > 1:
+                # Feature-triggering session → last row is ST=15; WinAmount
+                # holds the session's true feature payout.
+                last_row = session_dicts[-1]
+                if last_row.get("SpinType") == 15:
+                    session_win += int(last_row.get("WinAmount", 0) or 0)
+            chunk_win += session_win
             chunk_bet += out.bet_amount
         robot_list.append(emit_robot(rounds, bet=engine.bet_amount))
 

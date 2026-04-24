@@ -131,6 +131,75 @@ def test_sample_one_chunk_emits_feature_st14_st15():
     )
 
 
+def test_sample_one_chunk_reports_session_rtp_not_base_only():
+    """Regression 2026-04-24: sample_one_chunk's chunk_win tally must
+    include feature session payout (ST=15 WinAmount) — NOT just base
+    ST=1 WinCredits. Old impl reported base-only RTP which diverged
+    from analyzer-computed session RTP by ~feature_EV × trigger_rate
+    (M15 mode 5: sim RTP 129% vs analyzer 500%, gap 370pp).
+
+    Lock: sum(ST=1 WinCredits + final-ST=15 WinAmount) from the emitted
+    rounds must equal the kernel's returned ``win``. Anything less
+    means a future refactor silently dropped feature contribution.
+    """
+    engine = _build_engine()
+    rng = Random(42)
+    schema_fp = compute_schema_fingerprint_for(
+        engine, mode=1, spins_per_robot=2000
+    )
+    chunk, win, bet = sample_one_chunk(
+        engine,
+        machine="M15sim",
+        mode=1,
+        chunk_index=1,
+        robots=5,
+        spins_per_robot=2000,
+        rng=rng,
+        schema_fp=schema_fp,
+    )
+    assert bet == 5 * 2000 * 1000
+
+    # Independently sum what the analyzer would read from the chunk.
+    recomputed_win = 0
+    n_triggers = 0
+    for robot in chunk["response"]:
+        rr = json.loads(robot["roundResult"])
+        i = 0
+        n = len(rr)
+        while i < n:
+            r = rr[i]
+            st = r.get("SpinType")
+            if st == 1:
+                # Base win always counts.
+                recomputed_win += int(r.get("WinCredits", 0) or 0)
+                if r.get("ReMarks") == "Trigger":
+                    n_triggers += 1
+                    # Walk forward to ST=15 end marker for this session.
+                    j = i + 1
+                    while j < n and rr[j].get("SpinType") == 14:
+                        j += 1
+                    if j < n and rr[j].get("SpinType") == 15:
+                        recomputed_win += int(rr[j].get("WinAmount", 0) or 0)
+                    i = j + 1
+                    continue
+            i += 1
+
+    assert n_triggers > 0, "test requires triggers to exercise ST=15 branch"
+    assert win == recomputed_win, (
+        f"kernel chunk_win {win} != session-RTP recompute {recomputed_win} "
+        f"(diff {recomputed_win - win}). Base-only RTP regression — feature "
+        f"session payouts are being dropped. See driver.py sample_one_chunk."
+    )
+
+    # And the resulting sim RTP should match M15 mode 1 design (~95%),
+    # not the base-only ~43%.
+    realized_rtp_pct = win / bet * 100
+    assert 90 <= realized_rtp_pct <= 100, (
+        f"M15 mode 1 session RTP expected ~95% (design); got "
+        f"{realized_rtp_pct:.2f}%. Base-only regression would give ~43%."
+    )
+
+
 def test_virtual_analyzer_chunk_matches_driver_chunk():
     """``_run_simulator_chunk`` (virtual console path) must produce the
     same output as ``sample_one_chunk`` (direct simulate.py path).
