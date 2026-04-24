@@ -184,3 +184,101 @@ class TestBatchRunHonorsServerResolution:
         cmd = app_factory.stub_popen.cmds[-1]
         # No --endpoint-url means analyzer defaults apply.
         assert "--endpoint-url" not in cmd
+
+
+class TestSetDefaultServerEndpoint:
+    """PUT /api/servers/{id}/set-default — UI-driven switch for the
+    batch-run resolver's ``default_server`` priority. Without this,
+    operators flipping between LAN and VPN had to hand-edit
+    servers.json + restart."""
+
+    def test_set_default_updates_config(self, client, tmp_path, monkeypatch):
+        import src.web_console.backend.app as app_mod
+        p = _write_servers(tmp_path, {
+            "servers": [
+                {"id": "dev", "active": True, "endpoint": "http://a"},
+                {"id": "prod", "active": True, "endpoint": "http://b"},
+            ],
+            "default_server": "dev",
+        })
+        monkeypatch.setattr(app_mod, "SERVERS_CONFIG", p)
+
+        c, _app = client
+        resp = c.put("/api/servers/prod/set-default")
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"ok": True, "default_server": "prod"}
+
+        # Persisted to file + reflected in GET /api/servers.
+        cfg = json.loads(p.read_text(encoding="utf-8"))
+        assert cfg["default_server"] == "prod"
+
+    def test_set_default_404_for_unknown_id(
+        self, client, tmp_path, monkeypatch,
+    ):
+        import src.web_console.backend.app as app_mod
+        p = _write_servers(tmp_path, {
+            "servers": [{"id": "dev", "active": True, "endpoint": "http://a"}],
+            "default_server": "dev",
+        })
+        monkeypatch.setattr(app_mod, "SERVERS_CONFIG", p)
+
+        c, _app = client
+        resp = c.put("/api/servers/ghost/set-default")
+        assert resp.status_code == 404
+
+    def test_set_default_400_for_empty_endpoint(
+        self, client, tmp_path, monkeypatch,
+    ):
+        """Setting a no-endpoint entry as default would silently
+        make the resolver fall through, masking operator intent."""
+        import src.web_console.backend.app as app_mod
+        p = _write_servers(tmp_path, {
+            "servers": [
+                {"id": "dev", "active": True, "endpoint": "http://a"},
+                {"id": "test", "active": False, "endpoint": ""},
+            ],
+            "default_server": "dev",
+        })
+        monkeypatch.setattr(app_mod, "SERVERS_CONFIG", p)
+
+        c, _app = client
+        resp = c.put("/api/servers/test/set-default")
+        assert resp.status_code == 400
+        assert "endpoint" in resp.json()["detail"]
+        # Config untouched.
+        cfg = json.loads(p.read_text(encoding="utf-8"))
+        assert cfg["default_server"] == "dev"
+
+    def test_set_default_then_batch_run_routes_accordingly(
+        self, client, app_factory, tmp_path, monkeypatch,
+    ):
+        """End-to-end: flip default via PUT → next batch-run's
+        analyzer cmd uses the new endpoint without restart."""
+        import src.web_console.backend.app as app_mod
+        p = _write_servers(tmp_path, {
+            "servers": [
+                {"id": "dev", "active": True, "endpoint": "http://192.168.10.21:15060"},
+                {"id": "prod", "active": True, "endpoint": "http://116.232.103.19:10288"},
+            ],
+            "default_server": "dev",
+        })
+        monkeypatch.setattr(app_mod, "SERVERS_CONFIG", p)
+
+        c, _app = client
+        # Flip default to prod via the new endpoint.
+        flip = c.put("/api/servers/prod/set-default")
+        assert flip.status_code == 200
+
+        # Now kick off a batch-run — resolver should pick prod.
+        resp = c.post("/api/batch-run", json=_batch_payload())
+        assert resp.status_code == 200
+
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            if app_factory.stub_popen.cmds:
+                break
+            time.sleep(0.05)
+
+        cmd = app_factory.stub_popen.cmds[-1]
+        idx = cmd.index("--endpoint-url")
+        assert cmd[idx + 1].startswith("http://116.232.103.19:10288/")

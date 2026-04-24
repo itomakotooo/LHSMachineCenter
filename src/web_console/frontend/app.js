@@ -3163,23 +3163,50 @@ function renderServerTable() {
     tbody.innerHTML = `<tr><td colspan="5" class="muted">${fmt("noServers")}</td></tr>`;
     return;
   }
+  const defaultSid = state.defaultServer || "";
   tbody.innerHTML = servers.map((s) => {
+    const isDefault = s.id === defaultSid;
     const statusBadge = s.active
       ? `<span class="srv-active">${fmt("serverActive")}</span>`
       : `<span class="srv-inactive">${fmt("serverInactive")}</span>`;
+    const defaultBadge = isDefault
+      ? ` <span class="srv-default" title="batch-run 会用这台">${fmt("serverDefault")}</span>`
+      : "";
     const epDisplay = s.endpoint
       ? `<code class="srv-endpoint">${s.endpoint}</code>`
       : `<span class="muted">${fmt("serverNoEndpoint")}</span>`;
+    // Set-as-default button: only shown for entries that have an
+    // endpoint AND aren't already the default. Setting a no-endpoint
+    // entry as default would just silently fallthrough at resolve time.
+    const setDefaultBtn = (!isDefault && s.endpoint)
+      ? `<button class="srv-set-default-btn small-btn">${fmt("btnSetDefault")}</button> `
+      : "";
     return (
       `<tr data-server-id="${s.id}">` +
       `<td><strong>${s.id}</strong></td>` +
       `<td>${s.name}</td>` +
       `<td>${epDisplay}</td>` +
-      `<td>${statusBadge}</td>` +
-      `<td><button class="srv-scan-btn small-btn">${fmt("btnScan")}</button> <button class="srv-check-btn small-btn">${fmt("btnCheckChanges")}</button> <button class="srv-edit-btn small-btn">${fmt("btnEdit")}</button> <button class="srv-delete-btn small-btn danger-btn">${fmt("btnDelete")}</button></td>` +
+      `<td>${statusBadge}${defaultBadge}</td>` +
+      `<td>${setDefaultBtn}<button class="srv-scan-btn small-btn">${fmt("btnScan")}</button> <button class="srv-check-btn small-btn">${fmt("btnCheckChanges")}</button> <button class="srv-edit-btn small-btn">${fmt("btnEdit")}</button> <button class="srv-delete-btn small-btn danger-btn">${fmt("btnDelete")}</button></td>` +
       `</tr>`
     );
   }).join("");
+
+  // Wire up set-default button.
+  tbody.querySelectorAll(".srv-set-default-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = btn.closest("tr");
+      const sid = row.dataset.serverId;
+      btn.disabled = true;
+      try {
+        await apiPut(`/api/servers/${encodeURIComponent(sid)}/set-default`);
+        await refreshServers();  // re-render with new badge
+      } catch (e) {
+        alert(String(e.message || e));
+        btn.disabled = false;
+      }
+    });
+  });
 
   // Wire up scan/check/edit/delete buttons.
   tbody.querySelectorAll(".srv-check-btn").forEach((btn) => {

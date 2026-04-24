@@ -2319,6 +2319,19 @@ button.feature-chip {
   color: var(--muted);
   font-size: 12px;
 }
+/* "默认" badge: the server that batch-run picks when caller's
+   server_id is empty. Distinct from srv-active (a server can be
+   active but not default). */
+.srv-default {
+  display: inline-block;
+  background: #0284c7;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 4px;
+}
 button.small-btn, .small-btn {
   padding: 2px 8px;
   font-size: 11px;

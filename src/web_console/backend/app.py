@@ -6151,6 +6151,39 @@ def create_app(
         save_servers(cfg, sc)
         return {"ok": True, "server": target}
 
+    @app.put("/api/servers/{server_id}/set-default")
+    def set_default_server(server_id: str) -> dict[str, Any]:
+        """Mark ``server_id`` as the default for sampling. Batch-run
+        resolver (``_resolve_active_server_id``) picks this up on
+        every subsequent call, so the flip takes effect without a
+        backend restart. 400 if the target has no endpoint — a
+        default-server pointing to an unreachable entry just masks
+        the bug with a silent fallthrough.
+
+        Reads ``SERVERS_CONFIG`` module attribute directly (not the
+        ``sc`` closure captured at app-build time) so tests and
+        runtime config swaps take effect immediately."""
+        cfg_path = SERVERS_CONFIG
+        cfg = load_servers(cfg_path)
+        target = next(
+            (s for s in cfg.get("servers", []) if s.get("id") == server_id),
+            None,
+        )
+        if target is None:
+            raise HTTPException(status_code=404, detail="server not found")
+        ep = (target.get("endpoint") or "").strip()
+        if not ep:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"cannot set '{server_id}' as default — it has no "
+                    f"endpoint configured"
+                ),
+            )
+        cfg["default_server"] = server_id
+        save_servers(cfg, cfg_path)
+        return {"ok": True, "default_server": server_id}
+
     @app.post("/api/servers/{server_id}/scan")
     def scan_server(server_id: str) -> dict[str, Any]:
         """Fetch MachineConfigMd5 from a server and cache the snapshot."""
