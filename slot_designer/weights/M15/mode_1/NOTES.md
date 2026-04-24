@@ -1,8 +1,8 @@
-# M15 mode 1 — 当前 reel 权重（v5 post-retune）
+# M15 mode 1 — 当前 reel 权重（v5 post-retune，仍 shipped 2026-04-24 v7）
 
-**状态**：Phase 4 + 5 tune 完成（2026-04-23 v5），total RTP 对齐 user brief 95% ±1pp；Feature analytic EV 锁定在 46× / trigger 1.136% = 1/88。
+**状态**：Phase 4 + 5 tune 完成（2026-04-23 v5），total RTP 对齐 user brief 95% ±1pp；Feature analytic EV 锁定在 46× / trigger 1.136% = 1/88。Mode 1 本身 v5 以后没再 retune（v6/v7 都只动 mode 2/5/7），所以这里数字即当前 shipped。
 
-**最近更新**：2026-04-23（v5 mode 1 retune：base 42.75pp target + Bonus clamp to float for trigger exact）
+**最近更新**：2026-04-23（v5 mode 1 retune：base 42.75pp target + topdollar clamp to float for trigger exact）
 
 ## 设计契约（cross-machine mode RTP rule）
 
@@ -10,7 +10,7 @@
 - M15-specific: **Base : Feature = 45 : 55**（Base 42.75pp + Feature 52.25pp）
 - Base low CV（4-5）
 - Feature 中-高 CV（conditional 0.74；session CV 被 1/88 rarity 撑高）
-- Feature x / y / count weights 详见 `MODE_DESIGN.md` v5
+- Feature x / y / count weights 详见 `MODE_DESIGN.md` §2（v7 current；mode 1 row 跟 v5 一致）
 
 ## 核心数值（v5 analytic, 2026-04-23）
 

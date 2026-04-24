@@ -1,7 +1,7 @@
-"""Verify M15 4-mode feature EV targets against v4 design candidates.
+"""Verify M15 4-mode feature EV targets against v7 shipped candidates.
 
 Runs each mode's candidate weights through analyze_feature and reports:
-- Actual EV vs target (42 / 55 / 120 / 42 for modes 1 / 2 / 5 / 7)
+- Actual EV vs target (46 / 60 / 132.81 / 46 for modes 1 / 2 / 5 / 7)
 - One-round EV, accept rate, R range, CV
 - Feature RTP = trigger × EV — check against budget
 
@@ -9,7 +9,9 @@ Exit code:
   0 if all modes within ±10% EV target
   1 otherwise (EV drift — iterate x_value_weights)
 
-Target source: slot_designer/weights/M15/MODE_DESIGN.md v4 (2026-04-23).
+Target source: slot_designer/weights/M15/MODE_DESIGN.md v7 (2026-04-24).
+  v7 mode 5 change: 1000-card killed, 100-card boosted; EV 132 → 132.81
+  (see MODE_DESIGN.md §6 v7 revision).
 
 Usage:
   python -m slot_designer.scripts.verify_m15_modes

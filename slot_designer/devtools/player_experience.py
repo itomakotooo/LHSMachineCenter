@@ -163,12 +163,19 @@ def near_miss_rate_2_of_3(
     return total
 
 
-def visible_variety_score(reels: list[list[dict]]) -> float:
+def visible_variety_score(
+    reels: list[list[dict]],
+    blank_symbol: str = "blank",
+) -> float:
     """Expected number of distinct non-blank symbols visible in the 3×3 grid
     per spin. Higher = more varied view.
 
     Computed analytically by enumerating joint outcomes; for M1-size reels
     (36 stops × 3 reels = 36³ = 46656) this is feasible.
+
+    ``blank_symbol`` defaults to lowercase ``"blank"`` (M15+ / production
+    schema). Callers with M1-style PascalCase ``"Blank"`` should pass it
+    explicitly.
     """
     if len(reels) != 3:
         raise NotImplementedError("visible_variety_score is 3-reel only")
@@ -185,7 +192,7 @@ def visible_variety_score(reels: list[list[dict]]) -> float:
             for k in range(n2):
                 w2, (t2, m2, b2) = int(reels[2][k]["weight"]), _window_stop_syms(reels[2], k)
                 all_syms = {t0, m0, b0, t1, m1, b1, t2, m2, b2}
-                distinct = len({s for s in all_syms if s != "Blank"})
+                distinct = len({s for s in all_syms if s != blank_symbol})
                 prob = (w0 * w1 * w2) / (totals[0] * totals[1] * totals[2])
                 ev += prob * distinct
     return ev
@@ -230,5 +237,7 @@ def experience_metrics(
         "avg_blank_adj": sum(p["blank_adj_hv"] for p in per_reel) / len(per_reel),
     }
     if compute_variety:
-        out["expected_distinct_symbols_visible"] = visible_variety_score(reels)
+        out["expected_distinct_symbols_visible"] = visible_variety_score(
+            reels, blank_symbol=blank_symbol,
+        )
     return out

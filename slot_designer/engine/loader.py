@@ -10,11 +10,11 @@ Invariant enforced by the two-file split:
   * ``reel_strips.json`` is the single source of truth for which
     symbol sits at position i of reel j. All modes of the machine
     share it byte-for-byte — you physically can't give mode 1 a
-    Cherry stop where mode 2 has a Bar1, because they read the
+    cherry stop where mode 2 has a 1bar, because they read the
     same file.
   * ``mode_<N>/weights.json`` carries only the per-position weights
-    (arrays of ints aligned to the strip). Different modes have
-    different weights → different marginals → different RTP/hit.
+    (arrays of ints or floats aligned to the strip). Different modes
+    have different weights → different marginals → different RTP/hit.
 
 ``load_engine`` accepts a weights.json path and auto-discovers the
 sibling ``reel_strips.json`` one level up. Tests that construct

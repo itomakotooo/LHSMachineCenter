@@ -39,15 +39,19 @@
     "  Bar2 (=10×) → 2bar, Bar3 (=5×) → 1bar, High7 → high7,",
     "  Wild → doublediamond, Bonus → topdollar. Added jackpot (filler).",
     "",
-    "Feature Play (Phase 2 engine integration still deferred):",
+    "Feature Play (shipped v5+, retuned v7 2026-04-24):",
     "  - Triggered when topdollar lands reel 3 payline (pay_id 666 emits)",
     "  - Feature EV math lives in slot_designer/engine/feature_m15.py",
+    "  - Rawdata emits ST=1 (trigger) + ST=14 (each offer round) + ST=15",
+    "    (end marker w/ WinAmount); runtime in engine/spin.spin_session",
     "  - 10 x-cards (1000/100/50/50/20/20/10/10/5/5) + 2 y-cards (×2)",
     "  - Per round: roll count_x ∈ [1,5] + count_y ∈ [0,2] by weights,",
     "    then weighted-draw WITHOUT replacement x_value_weights and",
     "    y_value_weights. R = sum(x) × product(y).",
-    "  - 3 reroll + 1 forced accept = 4 rounds max; test strategy accept",
-    "    when R ≥ 40."
+    "  - 3 reroll + 1 forced accept = 4 rounds max; simulated player",
+    "    accepts when R ≥ accept_threshold (40 across all modes).",
+    "  - Per-mode feature_params override (see weights/M15/mode_<N>/",
+    "    weights.json feature_params block + weights/M15/MODE_DESIGN.md)."
   ],
 
   "grid": {
