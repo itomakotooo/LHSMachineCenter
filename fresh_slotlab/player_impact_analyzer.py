@@ -1934,6 +1934,8 @@ def _save_chunk_cache(
                 chunk_index=chunk_index,
                 config_md5=config_md5,
                 code_md5=code_md5,
+                spin_times=spin_times,
+                robot_count=robot_count,
                 saved_at=envelope["_saved_at"],
             )
         except Exception:  # noqa: BLE001

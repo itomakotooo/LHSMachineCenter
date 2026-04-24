@@ -70,6 +70,8 @@ def write_chunk(chunk: dict, out_dir: Path, chunk_index: int) -> Path:
             chunk_index=int(chunk.get("_chunk_index", chunk_index)),
             config_md5=str(chunk.get("_config_md5", "") or ""),
             code_md5=str(chunk.get("_code_md5", "") or ""),
+            spin_times=int(chunk.get("_spin_times", 0) or 0),
+            robot_count=int(chunk.get("_robot_count", 0) or 0),
             saved_at=str(chunk.get("_saved_at", "") or "") or None,
         )
     except Exception:  # noqa: BLE001

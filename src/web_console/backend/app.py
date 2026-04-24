@@ -865,30 +865,50 @@ def _classify_chunks(
     deletable_spins = 0
     historical_spins = 0
 
+    # Pre-load the per-mode chunk metadata sidecar once (auto-rebuilds
+    # on first access via peek — see ``fresh_slotlab.chunk_index``).
+    # Virtual console uses the same helper because virtual_app passes
+    # ``rawdata_root=VIRTUAL_RAWDATA_ROOT`` through to this function —
+    # one codepath, two rawdata trees. Before 2026-04-24 this loop
+    # opened every chunk file via ``_peek_envelope_scalars`` per
+    # request (4 KB × N chunks); now 0 file reads when the sidecar
+    # covers every chunk.
+    try:
+        from fresh_slotlab.chunk_index import get_chunks_index
+        sidecar_entries = get_chunks_index(mode_dir).get("chunks") or {}
+    except Exception:  # noqa: BLE001
+        sidecar_entries = {}
+
     for p in chunks:
-        data = _peek_envelope_scalars(p)
-        if data is None:
-            # Peek failed (tiny / corrupted / unusual envelope); fall
-            # back to full parse. If that fails too, bucket as
-            # "historical" so it can still be reached by manual /
-            # pressure cleanup — md5 can't be verified, so we can't
-            # safely count it against the retention baseline.
-            try:
-                data = json.loads(p.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                historical.append({
-                    "path": str(p), "spins": 0,
-                    "mtime": p.stat().st_mtime if p.exists() else 0,
-                    "config_md5": "", "code_md5": "",
-                })
-                continue
-        cfg = str(data.get("_config_md5", ""))
-        code = str(data.get("_code_md5", ""))
+        entry_data = sidecar_entries.get(p.name)
+        if isinstance(entry_data, dict):
+            cfg = str(entry_data.get("cfg_md5", "") or "")
+            code = str(entry_data.get("code_md5", "") or "")
+            per_robot_spins = int(entry_data.get("spin_times", 0) or 0)
+            robots = int(entry_data.get("robot_count", 0) or 0) or 1
+        else:
+            # Sidecar miss (chunk not yet indexed, rebuild failed).
+            # Fall back to the per-file 4 KB peek, then to full
+            # ``json.loads`` for truly legacy envelopes.
+            data = _peek_envelope_scalars(p)
+            if data is None:
+                try:
+                    data = json.loads(p.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    historical.append({
+                        "path": str(p), "spins": 0,
+                        "mtime": p.stat().st_mtime if p.exists() else 0,
+                        "config_md5": "", "code_md5": "",
+                    })
+                    continue
+            cfg = str(data.get("_config_md5", ""))
+            code = str(data.get("_code_md5", ""))
+            per_robot_spins = int(data.get("_spin_times") or 0)
+            robots = int(data.get("_robot_count") or 0) or 1
+
         # _spin_times is the PER-ROBOT spin count in this chunk — actual
         # chunk spins = _spin_times × _robot_count. Older UI used the
         # per-robot value and under-reported 27× on M273 (robots=27).
-        per_robot_spins = int(data.get("_spin_times") or 0)
-        robots = int(data.get("_robot_count") or 0) or 1  # fallback = 1 robot
         spins = per_robot_spins * robots
         mtime = p.stat().st_mtime
         md5_ok = unverifiable or (cfg == up_config and code == up_code and (cfg or code))

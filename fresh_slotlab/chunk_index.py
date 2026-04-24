@@ -53,12 +53,17 @@ SIDECAR_VERSION = 1
 # ordering invariant ever breaks, the None return funnels callers
 # into the full-load fallback — correctness preserved.
 _PEEK_BYTES = 4096
-_PEEK_RE = re.compile(
+_PEEK_RE_CORE = re.compile(
     r'"_chunk_index"\s*:\s*(\d+).*?'
     r'"_config_md5"\s*:\s*"([^"]*)".*?'
     r'"_code_md5"\s*:\s*"([^"]*)"',
     re.DOTALL,
 )
+# Optional scalars — peeked in the same 4KB pass. When absent (old
+# envelope / partial write) the sidecar entry records 0 and the
+# caller's fallback logic handles it.
+_PEEK_RE_SPIN_TIMES = re.compile(r'"_spin_times"\s*:\s*(\d+)')
+_PEEK_RE_ROBOT_COUNT = re.compile(r'"_robot_count"\s*:\s*(\d+)')
 
 
 class ChunkIndexError(Exception):
@@ -70,14 +75,19 @@ class ChunkIndexError(Exception):
 # ── Peek helpers ────────────────────────────────────────────────────
 
 
-def peek_chunk_envelope(path: Path) -> tuple[int, str, str] | None:
-    """Return ``(chunk_index, config_md5, code_md5)`` from the first
-    ~4 KB of a chunk file without parsing the whole JSON.
+def peek_chunk_envelope(path: Path) -> dict[str, Any] | None:
+    """Read just the envelope header and return a dict with
+    ``{idx, cfg_md5, code_md5, spin_times, robot_count}``.
 
-    Returns ``None`` when the regex doesn't match — the caller must
-    fall back to full ``load_chunk_envelope``. Never raises for IO
-    or decode errors; returns ``None`` so the caller handles the
-    missing-file / bad-file path uniformly."""
+    The three required fields (idx + both md5s) come from one combined
+    regex that enforces encounter order — any reordered envelope fails
+    the match, and the caller falls back to full ``load_chunk_envelope``.
+    The two optional fields (spin_times, robot_count) are grabbed
+    independently and default to 0 when absent so callers can still
+    use the sidecar for md5 classification on legacy envelopes.
+
+    Returns ``None`` when the required fields don't appear in the
+    first ~4 KB of the file. Never raises for IO / decode errors."""
     try:
         with path.open("rb") as f:
             head = f.read(_PEEK_BYTES)
@@ -87,13 +97,22 @@ def peek_chunk_envelope(path: Path) -> tuple[int, str, str] | None:
         text = head.decode("utf-8", errors="ignore")
     except Exception:  # noqa: BLE001
         return None
-    m = _PEEK_RE.search(text)
+    m = _PEEK_RE_CORE.search(text)
     if not m:
         return None
     try:
-        return int(m.group(1)), m.group(2), m.group(3)
+        idx = int(m.group(1))
     except (ValueError, IndexError):
         return None
+    spin_m = _PEEK_RE_SPIN_TIMES.search(text)
+    robot_m = _PEEK_RE_ROBOT_COUNT.search(text)
+    return {
+        "idx": idx,
+        "cfg_md5": m.group(2),
+        "code_md5": m.group(3),
+        "spin_times": int(spin_m.group(1)) if spin_m else 0,
+        "robot_count": int(robot_m.group(1)) if robot_m else 0,
+    }
 
 
 # ── Sidecar I/O ─────────────────────────────────────────────────────
@@ -170,7 +189,6 @@ def build_chunks_index(mode_dir: Path) -> dict[str, Any]:
             # full ``load_chunk_envelope`` caller handles it; we
             # just don't index it in the sidecar.
             continue
-        idx, cfg_md5, code_md5 = peek
         try:
             st = cf.stat()
             size_bytes = int(st.st_size)
@@ -184,9 +202,11 @@ def build_chunks_index(mode_dir: Path) -> dict[str, Any]:
             size_bytes = 0
             saved_at = ""
         entries[cf.name] = {
-            "idx": idx,
-            "cfg_md5": cfg_md5,
-            "code_md5": code_md5,
+            "idx": peek["idx"],
+            "cfg_md5": peek["cfg_md5"],
+            "code_md5": peek["code_md5"],
+            "spin_times": peek["spin_times"],
+            "robot_count": peek["robot_count"],
             "saved_at": saved_at,
             "size_bytes": size_bytes,
         }
@@ -239,6 +259,8 @@ def update_chunk_entry(
     chunk_index: int,
     config_md5: str,
     code_md5: str,
+    spin_times: int = 0,
+    robot_count: int = 0,
     saved_at: str | None = None,
     size_bytes: int | None = None,
 ) -> None:
@@ -284,6 +306,8 @@ def update_chunk_entry(
             "idx": int(chunk_index),
             "cfg_md5": str(config_md5 or ""),
             "code_md5": str(code_md5 or ""),
+            "spin_times": int(spin_times or 0),
+            "robot_count": int(robot_count or 0),
             "saved_at": saved_at,
             "size_bytes": int(size_bytes),
         }

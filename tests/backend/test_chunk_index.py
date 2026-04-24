@@ -25,12 +25,15 @@ from pathlib import Path
 
 class TestPeekChunkEnvelope:
     def _write_chunk(self, path: Path, *, idx: int, cfg: str, code: str,
-                     response_bytes: int = 3_000_000):
+                     response_bytes: int = 3_000_000,
+                     spin_times: int = 2000, robot_count: int = 8):
         envelope = {
             "_cache_version": 3,
             "_machine": "M14",
             "_mode": 1,
             "_bet": 1000,
+            "_spin_times": spin_times,
+            "_robot_count": robot_count,
             "_chunk_index": idx,
             "_saved_at": "2026-04-24T12:00:00Z",
             "_config_md5": cfg,
@@ -41,12 +44,36 @@ class TestPeekChunkEnvelope:
             json.dumps(envelope, ensure_ascii=False), encoding="utf-8",
         )
 
-    def test_extracts_fields_from_fat_chunk(self, tmp_path):
+    def test_extracts_all_fields_from_fat_chunk(self, tmp_path):
         from fresh_slotlab.chunk_index import peek_chunk_envelope
         p = tmp_path / "chunk_0007.json"
-        self._write_chunk(p, idx=7, cfg="localcfg_abc12345", code="real_code")
+        self._write_chunk(p, idx=7, cfg="localcfg_abc12345", code="real_code",
+                          spin_times=2000, robot_count=8)
         assert p.stat().st_size > 2_500_000
-        assert peek_chunk_envelope(p) == (7, "localcfg_abc12345", "real_code")
+        result = peek_chunk_envelope(p)
+        assert result == {
+            "idx": 7,
+            "cfg_md5": "localcfg_abc12345",
+            "code_md5": "real_code",
+            "spin_times": 2000,
+            "robot_count": 8,
+        }
+
+    def test_optional_scalars_default_to_zero(self, tmp_path):
+        """Legacy envelope without _spin_times / _robot_count → peek
+        still succeeds on md5 fields, optional fields default to 0."""
+        from fresh_slotlab.chunk_index import peek_chunk_envelope
+        p = tmp_path / "chunk_0001.json"
+        # Hand-write without _spin_times + _robot_count.
+        body = (
+            '{"_chunk_index": 1, "_config_md5": "x",'
+            ' "_code_md5": "y", "response": []}'
+        )
+        p.write_text(body, encoding="utf-8")
+        assert peek_chunk_envelope(p) == {
+            "idx": 1, "cfg_md5": "x", "code_md5": "y",
+            "spin_times": 0, "robot_count": 0,
+        }
 
     def test_returns_none_for_malformed(self, tmp_path):
         from fresh_slotlab.chunk_index import peek_chunk_envelope
@@ -285,9 +312,86 @@ class TestQueryHelpers:
 
 
 class TestReaderShortCircuit:
-    """check_rawdata_status on a directory with pre-populated sidecar
-    must NOT open any chunk file. This is the click-a-machine-is-slow
-    bug fix in one assertion."""
+    """check_rawdata_status + _classify_chunks on a dir with populated
+    sidecar must NOT open any chunk file. This is the click-a-machine-
+    is-slow bug fix in one assertion — applies to BOTH real and virtual
+    because both paths go through ``GET /api/rawdata/{machine}`` which
+    calls ``_classify_chunks`` internally."""
+
+    def test_classify_chunks_doesnt_open_chunks_when_sidecar_present(
+        self, tmp_path, monkeypatch,
+    ):
+        """``_classify_chunks`` drives the 机台管理 click response for
+        both real + virtual consoles. Sidecar-backed path must read
+        zero bytes from chunk files. Regression here reproduces the
+        2026-04-24 user-reported "虚拟机台点击机台卡片以后还是卡一会"
+        symptom."""
+        from fresh_slotlab.chunk_index import update_chunk_entry
+        from src.web_console.backend.app import _classify_chunks
+
+        root = tmp_path / "rd"
+        mode_dir = root / "M1sim" / "mode_1"
+        mode_dir.mkdir(parents=True)
+        # 10 chunks of ~500 KB each — fat enough that a regression
+        # back to full-read shows up obviously.
+        for i in range(1, 11):
+            cf = mode_dir / f"chunk_{i:04d}.json"
+            cf.write_text(json.dumps({
+                "_chunk_index": i,
+                "_spin_times": 2000,
+                "_robot_count": 8,
+                "_saved_at": "2026-04-24T12:00:00Z",
+                "_config_md5": "cfg_virtual",
+                "_code_md5": "code_virtual",
+                "response": "X" * 500_000,
+            }), encoding="utf-8")
+            update_chunk_entry(
+                mode_dir, cf, chunk_index=i,
+                config_md5="cfg_virtual", code_md5="code_virtual",
+                spin_times=2000, robot_count=8,
+            )
+
+        read_counter = {"bytes": 0}
+        original_read = Path.read_text
+
+        def counting_read(self, *args, **kwargs):
+            data = original_read(self, *args, **kwargs)
+            if self.name.startswith("chunk_"):
+                read_counter["bytes"] += len(data.encode("utf-8"))
+            return data
+
+        monkeypatch.setattr(Path, "read_text", counting_read)
+
+        # Need a machines_config path (unused by _classify_chunks beyond
+        # being passed to _get_machine_md5 which we mock).
+        import src.web_console.backend.app as app_mod
+        monkeypatch.setattr(
+            app_mod, "_get_machine_md5",
+            lambda *a, **kw: ("cfg_virtual", "code_virtual"),
+        )
+
+        result = _classify_chunks(
+            "M1sim", 1,
+            rawdata_root=root,
+            machines_config=tmp_path / "machines.json",
+            min_retention_spins=0,
+        )
+        # All 10 chunks classified; per-chunk spins = 2000 × 8 = 16000.
+        # At min_retention_spins=0 all land in "deletable" (nothing
+        # kept beyond baseline) — that's an orthogonal classification
+        # detail; the point is they ALL got classified.
+        total_classified = (
+            len(result["kept"])
+            + len(result["deletable"])
+            + len(result["historical"])
+        )
+        assert total_classified == 10
+        # Real assertion: zero chunk-file bytes read when sidecar
+        # serves all entries.
+        assert read_counter["bytes"] == 0, (
+            f"sidecar populated → _classify_chunks must not read chunk "
+            f"files; got {read_counter['bytes']:,}B"
+        )
 
     def test_check_rawdata_status_doesnt_open_chunks_when_sidecar_present(
         self, tmp_path, monkeypatch,
