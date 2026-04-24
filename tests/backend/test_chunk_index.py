@@ -393,6 +393,82 @@ class TestReaderShortCircuit:
             f"files; got {read_counter['bytes']:,}B"
         )
 
+    def test_rawdata_index_scan_doesnt_open_chunks_when_sidecar_present(
+        self, tmp_path, monkeypatch,
+    ):
+        """rawdata_index._scan_mode_dir was the last unpatched slow
+        path — check_rawdata_status called it via update_entry() at
+        the END of the cold path, opening every chunk a SECOND time
+        just to refresh the machine-level index. Measured 3.1s on a
+        195-chunk virtual mode_1 before this fix. Lock: sidecar-backed
+        ``_scan_mode_dir`` must read zero bytes from chunk files."""
+        from fresh_slotlab.chunk_index import update_chunk_entry
+        from fresh_slotlab.rawdata_index import _scan_mode_dir
+
+        mode_dir = tmp_path / "M1sim" / "mode_1"
+        mode_dir.mkdir(parents=True)
+        for i in range(1, 11):
+            cf = mode_dir / f"chunk_{i:04d}.json"
+            cf.write_text(json.dumps({
+                "_chunk_index": i,
+                "_spin_times": 2000, "_robot_count": 8,
+                "_saved_at": "2026-04-24T12:00:00Z",
+                "_config_md5": "v1", "_code_md5": "c1",
+                "response": "X" * 500_000,
+            }), encoding="utf-8")
+            update_chunk_entry(
+                mode_dir, cf, chunk_index=i,
+                config_md5="v1", code_md5="c1",
+                spin_times=2000, robot_count=8,
+            )
+
+        read_counter = {"bytes": 0}
+        original_read = Path.read_text
+
+        def counting_read(self, *args, **kwargs):
+            data = original_read(self, *args, **kwargs)
+            if self.name.startswith("chunk_"):
+                read_counter["bytes"] += len(data.encode("utf-8"))
+            return data
+        # _scan_mode_dir also reads via path.open().read() in the
+        # fallback; wrap that too for a tighter assertion.
+        original_open = Path.open
+
+        def counting_open(self, mode="r", *args, **kwargs):
+            if self.name.startswith("chunk_"):
+                real = original_open(self, mode, *args, **kwargs)
+
+                class _Counter:
+                    def __init__(self, inner):
+                        self._inner = inner
+                    def read(self, size=-1):
+                        data = self._inner.read(size)
+                        read_counter["bytes"] += len(
+                            data.encode("utf-8") if isinstance(data, str) else data
+                        )
+                        return data
+                    def __enter__(self):
+                        self._inner.__enter__()
+                        return self
+                    def __exit__(self, *a):
+                        return self._inner.__exit__(*a)
+                    def __getattr__(self, name):
+                        return getattr(self._inner, name)
+                return _Counter(real)
+            return original_open(self, mode, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", counting_read)
+        monkeypatch.setattr(Path, "open", counting_open)
+
+        entry = _scan_mode_dir(mode_dir)
+        assert entry is not None
+        assert entry["chunks"] == 10
+        assert entry["config_md5"] == "v1"
+        # Sidecar serves everything — zero chunk-file content reads.
+        assert read_counter["bytes"] == 0, (
+            f"_scan_mode_dir must use sidecar; got {read_counter['bytes']:,}B"
+        )
+
     def test_check_rawdata_status_doesnt_open_chunks_when_sidecar_present(
         self, tmp_path, monkeypatch,
     ):

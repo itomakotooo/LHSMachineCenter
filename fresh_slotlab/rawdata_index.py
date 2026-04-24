@@ -106,10 +106,27 @@ def _scan_mode_dir(chunk_dir: Path) -> dict[str, Any] | None:
 
     Returns None when the dir has no chunks (caller should remove any
     stale entry rather than store {"chunks": 0}).
+
+    Reads the per-chunk sidecar (``fresh_slotlab.chunk_index``) to
+    avoid opening every chunk file — this is called once per
+    ``check_rawdata_status`` call, and on a 195-chunk dir the old
+    ``json.loads`` loop was a silent 3s cost behind click-a-machine.
+    Sidecar miss for a given file falls through to the old per-file
+    open so correctness stays intact on legacy envelopes.
     """
     chunks = sorted(chunk_dir.glob("chunk_*.json"))
     if not chunks:
         return None
+
+    # Pre-load the per-chunk sidecar once. ``get_chunks_index`` auto-
+    # rebuilds via 4KB peek per chunk when missing — cheap even on
+    # cold starts.
+    try:
+        from fresh_slotlab.chunk_index import get_chunks_index
+        sidecar_entries = get_chunks_index(chunk_dir).get("chunks") or {}
+    except Exception:  # noqa: BLE001
+        sidecar_entries = {}
+
     total_size = 0
     saved_ats: list[str] = []
     config_md5 = ""
@@ -117,25 +134,33 @@ def _scan_mode_dir(chunk_dir: Path) -> dict[str, Any] | None:
     mixed_md5 = False
     names: list[str] = []
     for p in chunks:
-        try:
-            st = p.stat()
-            total_size += st.st_size
-        except OSError:
-            continue
         names.append(p.name)
-        try:
-            with p.open("r", encoding="utf-8") as f:
-                # Read enough to extract envelope scalars. Full parse
-                # is acceptable here — this runs on rescan, not the hot
-                # read path, and keeps extraction robust.
-                data = json.loads(f.read())
-        except (OSError, json.JSONDecodeError):
-            continue
-        sv = str(data.get("_saved_at", ""))
+        entry = sidecar_entries.get(p.name)
+        if isinstance(entry, dict):
+            total_size += int(entry.get("size_bytes", 0) or 0)
+            sv = str(entry.get("saved_at", "") or "")
+            cfg = str(entry.get("cfg_md5", "") or "")
+            code = str(entry.get("code_md5", "") or "")
+        else:
+            # Sidecar miss — legacy chunk or mid-migration. Fall
+            # through to the full file open for this one chunk only;
+            # next sidecar rebuild will cover it.
+            try:
+                st = p.stat()
+                total_size += st.st_size
+            except OSError:
+                continue
+            try:
+                with p.open("r", encoding="utf-8") as f:
+                    data = json.loads(f.read())
+            except (OSError, json.JSONDecodeError):
+                continue
+            sv = str(data.get("_saved_at", ""))
+            cfg = str(data.get("_config_md5", ""))
+            code = str(data.get("_code_md5", ""))
+
         if sv:
             saved_ats.append(sv)
-        cfg = str(data.get("_config_md5", ""))
-        code = str(data.get("_code_md5", ""))
         if not config_md5 and cfg:
             config_md5 = cfg
             code_md5 = code
