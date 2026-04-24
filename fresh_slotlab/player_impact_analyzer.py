@@ -1875,6 +1875,8 @@ def _save_chunk_cache(
     spin_times: int,
     robot_count: int,
     cache_dir: Path | None,
+    override_config_md5: str = "",
+    override_code_md5: str = "",
 ) -> None:
     """Best-effort atomic write of the raw API response to a cache file.
 
@@ -1887,6 +1889,16 @@ def _save_chunk_cache(
     Silent on failure so a disk-full or permissions error doesn't abort
     the sampling run. Leftover `.tmp` files (from a failed replace) are
     cleaned up on the way out to avoid accumulating garbage.
+
+    ``override_config_md5`` / ``override_code_md5`` — when non-empty,
+    stamp the envelope with these values INSTEAD of
+    ``_lookup_machine_md5(machine)``'s machines.json global lookup.
+    This is what segregates chunks produced with a per-request
+    MachineConfig override into their own ``localcfg_<hash>`` md5
+    bucket (otherwise all chunks inherit the server's global md5 and
+    mix with non-override samples on resume). Mirrors the fix applied
+    to the report summary stamp (commit 334d6a9) — same root cause,
+    adjacent writer.
     """
     if cache_dir is None:
         return
@@ -1894,7 +1906,11 @@ def _save_chunk_cache(
     tmp_path = cache_dir / f"chunk_{chunk_index:04d}.json.tmp"
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
-        config_md5, code_md5 = _lookup_machine_md5(machine)
+        if override_config_md5 or override_code_md5:
+            config_md5 = override_config_md5 or ""
+            code_md5 = override_code_md5 or ""
+        else:
+            config_md5, code_md5 = _lookup_machine_md5(machine)
         envelope = {
             "_cache_version": CHUNK_CACHE_VERSION,
             "_machine": machine,
@@ -1964,6 +1980,8 @@ def run_sampling_chunk(
     bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
     upstream_machine_name: str | None = None,
     machine_config: str | None = None,
+    envelope_config_md5: str = "",
+    envelope_code_md5: str = "",
 ) -> dict[str, Any]:
     payload = make_payload(
         machine=machine,
@@ -2004,6 +2022,8 @@ def run_sampling_chunk(
     # silent (the run proceeds; the operator just can't rebuild later).
     _save_chunk_cache(
         resp, chunk_index, machine, rtp_mode, bet, spin_times, robot_count, chunk_cache_dir,
+        override_config_md5=envelope_config_md5,
+        override_code_md5=envelope_code_md5,
     )
 
     return parse_chunk_response(
@@ -4601,6 +4621,15 @@ def main() -> int:
                     bankruptcy_bankroll_mults=_bankruptcy_mults_tuple,
                     upstream_machine_name=args.upstream_machine_name,
                     machine_config=_machine_config_str,
+                    # Stamp new chunks with whatever md5 the analyzer
+                    # is filtering against — not ``machines.json``'s
+                    # global md5. Without this, chunks produced with
+                    # a ``localcfg_<hash>`` filter still land in the
+                    # global md5 bucket and silently merge on next
+                    # resume (user-reported 2026-04-24: "通过本地
+                    # 配置拉取下来的 rawdata md5 管理还是有问题").
+                    envelope_config_md5=args.upstream_config_md5 or "",
+                    envelope_code_md5=args.upstream_code_md5 or "",
                 )
                 for idx in indices
             ]

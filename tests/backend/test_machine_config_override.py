@@ -594,6 +594,78 @@ class TestReportMd5StampMatchesAnalyzerFilter:
         assert code_md5 == "global_code_md5"
 
 
+class TestChunkEnvelopeStampsMatchAnalyzerFilter:
+    """When analyzer runs with ``--upstream-config-md5 localcfg_<hash>``
+    (batch-run always does this for local-cfg runs), the chunks it
+    WRITES must be stamped with that same md5 — not ``machines.json``'s
+    global md5. Otherwise the envelope says "global" while the resume
+    filter looks for "localcfg_", the chunks get classified as
+    historical, and the user sees them under the wrong md5 bucket in
+    rwtree — exactly what the user reported as "通过本地配置拉取下来
+    的 rawdata md5 管理还是有问题"."""
+
+    def test_save_chunk_cache_uses_override_md5_when_set(self, tmp_path):
+        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+        import json as _json
+        cache_dir = tmp_path / "M14" / "mode_1"
+        _save_chunk_cache(
+            resp=[], chunk_index=1, machine="M14",
+            rtp_mode=1, bet=1000, spin_times=2000, robot_count=8,
+            cache_dir=cache_dir,
+            override_config_md5="localcfg_abc12345",
+            override_code_md5="real_code_md5",
+        )
+        cf = cache_dir / "chunk_0001.json"
+        env = _json.loads(cf.read_text(encoding="utf-8"))
+        assert env["_config_md5"] == "localcfg_abc12345"
+        assert env["_code_md5"] == "real_code_md5"
+
+    def test_save_chunk_cache_falls_back_to_machines_json_when_unset(
+        self, tmp_path, monkeypatch,
+    ):
+        """Back-compat: when no override is passed, the stamp still
+        comes from ``_lookup_machine_md5`` (pre-2026-04-24 behavior)."""
+        import fresh_slotlab.player_impact_analyzer as pia
+        import json as _json
+
+        monkeypatch.setattr(
+            pia, "_lookup_machine_md5",
+            lambda m: ("global_cfg", "global_code"),
+        )
+        cache_dir = tmp_path / "M14" / "mode_1"
+        pia._save_chunk_cache(
+            resp=[], chunk_index=1, machine="M14",
+            rtp_mode=1, bet=1000, spin_times=2000, robot_count=8,
+            cache_dir=cache_dir,
+        )
+        cf = cache_dir / "chunk_0001.json"
+        env = _json.loads(cf.read_text(encoding="utf-8"))
+        assert env["_config_md5"] == "global_cfg"
+        assert env["_code_md5"] == "global_code"
+
+    def test_sidecar_entry_matches_envelope_md5(self, tmp_path):
+        """The per-chunk sidecar (``_chunks.json``) entry must record
+        the SAME md5 the envelope got stamped with — otherwise the
+        sidecar-backed fast paths (``_classify_chunks``,
+        ``check_rawdata_status`` cold, ``_scan_mode_dir``) would
+        disagree with the chunk file itself."""
+        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+        from fresh_slotlab.chunk_index import load_chunks_index
+        cache_dir = tmp_path / "M14" / "mode_1"
+        _save_chunk_cache(
+            resp=[], chunk_index=5, machine="M14",
+            rtp_mode=1, bet=1000, spin_times=2000, robot_count=8,
+            cache_dir=cache_dir,
+            override_config_md5="localcfg_xyz987",
+            override_code_md5="real_code",
+        )
+        sidecar = load_chunks_index(cache_dir)
+        assert sidecar is not None
+        entry = sidecar["chunks"]["chunk_0005.json"]
+        assert entry["cfg_md5"] == "localcfg_xyz987"
+        assert entry["code_md5"] == "real_code"
+
+
 class TestMakePayloadInjectsMachineConfigField:
     """Wire-level check — the analyzer's make_payload adds
     `MachineConfig` iff a non-empty string is passed. This is what
