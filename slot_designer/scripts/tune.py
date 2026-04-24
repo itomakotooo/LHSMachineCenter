@@ -366,8 +366,24 @@ def main() -> None:
               f"(target {trigger_cfg['target']*100:.3f}%, weight={trigger_cfg['weight']})")
 
     # ────────────────── Phase 4: count ES ──────────────────
-    cfg = ESConfig(sigma_init=args.sigma)
+    # 2026-04-24 (M37): compute per-(reel_idx, symbol) count floor =
+    # number of stops that symbol occupies on that reel. Prevents tuner
+    # from exploring counts < n_stops which apply_counts would then
+    # silently inflate to n_stops via min_weight=1 clamp. Without this,
+    # tuner's internal RTP estimate diverges from written-weights RTP.
+    per_key_min: dict = {}
+    for reel_idx, strip_reel in enumerate(strips_doc["reels"]):
+        sym_stops: dict[str, int] = {}
+        for sym in strip_reel:
+            sym_stops[sym] = sym_stops.get(sym, 0) + 1
+        for sym, n_stops in sym_stops.items():
+            per_key_min[(reel_idx, sym)] = n_stops
+    cfg = ESConfig(sigma_init=args.sigma, count_min_per_key=per_key_min)
     print(f"\n=== Phase 4 — (1+1)-ES count tuning: {args.restarts} restarts × {args.evaluations} evals ===")
+    if args.verbose:
+        print(f"  per-(reel, symbol) count floor (stops per symbol per reel):")
+        for (reel_idx, sym), floor in sorted(per_key_min.items()):
+            print(f"    reel {reel_idx+1} {sym}: floor {floor}")
     result = run_with_restarts(
         x0, cost_fn,
         restarts=args.restarts,

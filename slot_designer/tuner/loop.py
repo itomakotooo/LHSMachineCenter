@@ -29,10 +29,18 @@ class ESConfig:
     sigma_init: float = 8.0          # initial mutation std (in count units)
     sigma_min: float = 0.5
     sigma_max: float = 50.0
-    count_min: int = 1               # minimum count per (symbol, reel)
+    count_min: int = 1               # scalar fallback min count per (symbol, reel)
     count_max: int = 2000            # maximum — prevents runaway
     window: int = 30                 # evaluations between sigma adaptations
     c_adapt: float = 0.82            # 1/5 rule decay factor
+    # M37 2026-04-24: per-(symbol, reel) count floor. Prevents tuner's
+    # internal-state / apply_counts drift when a symbol has >1 stop per
+    # reel and tuner explores counts below n_stops — apply_counts clamps
+    # per-stop weight to min=1 → materialized count = n_stops × 1 ≠
+    # tuner's reported count. When this dict is provided, key is
+    # (reel_idx, symbol) and floor overrides ``count_min``. Missing keys
+    # use the scalar ``count_min``.
+    count_min_per_key: dict | None = None
 
 
 @dataclass
@@ -87,11 +95,16 @@ def run_one_plus_one_es(
     # Expected-1/5 adaptation schedule (Rechenberg): n-dimensional c_adapt.
     c_per_axis = cfg.c_adapt ** (1.0 / max(1, len(flat_best)))
 
+    # Per-key count floor: use per_key dict if supplied, else scalar count_min.
+    per_key_min = cfg.count_min_per_key or {}
+    def _floor_for(i: int) -> int:
+        return per_key_min.get(keys[i], cfg.count_min)
+
     for step in range(1, max_evaluations + 1):
         # Gaussian mutation in count units, round to integers, clamp
         mutation = [rng.gauss(0.0, sigma) for _ in flat_best]
         flat_cand = [
-            max(cfg.count_min, min(cfg.count_max, int(round(flat_best[i] + mutation[i]))))
+            max(_floor_for(i), min(cfg.count_max, int(round(flat_best[i] + mutation[i]))))
             for i in range(len(flat_best))
         ]
         x_cand = unflatten(flat_cand, keys, n_reels)
@@ -149,6 +162,8 @@ def run_with_restarts(
     """Run (1+1)-ES multiple times with different RNG seeds + mild x0 jitter,
     return globally best result. Guards against sigma-collapse local minima.
     """
+    cfg_eff = config or ESConfig()
+    per_key_min = cfg_eff.count_min_per_key or {}
     best: ESResult | None = None
     for r in range(restarts):
         rng = Random(master_seed + r * 1000)
@@ -157,10 +172,13 @@ def run_with_restarts(
             start = x0
         else:
             flat, keys = flatten(x0)
-            jitter_sigma = (config or ESConfig()).sigma_init * 1.5
+            jitter_sigma = cfg_eff.sigma_init * 1.5
             flat_j = [
-                max(1, int(round(f + rng.gauss(0.0, jitter_sigma))))
-                for f in flat
+                max(
+                    per_key_min.get(keys[i], cfg_eff.count_min),
+                    int(round(flat[i] + rng.gauss(0.0, jitter_sigma))),
+                )
+                for i in range(len(flat))
             ]
             start = unflatten(flat_j, keys, len(x0))
         if verbose:
