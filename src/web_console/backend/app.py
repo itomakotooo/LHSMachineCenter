@@ -5549,14 +5549,14 @@ def create_app(
                 detail=f"system busy: {snap.get('operation') or 'unknown'}",
             )
         try:
-            server_id = (req or {}).get("server_id")
-            endpoint_base = SLOT_SPIN_ENDPOINT.rsplit("/MachineTest/", 1)[0]
-            if server_id:
-                try:
-                    ep = get_server_endpoint(server_id)
-                    endpoint_base = ep.rstrip("/").rsplit("/MachineTest", 1)[0]
-                except Exception:  # noqa: BLE001
-                    pass
+            # Resolve server precedence: caller-specified server_id
+            # wins, else fall back to servers.json default_server /
+            # first-active. Avoids the SLOT_SPIN_ENDPOINT hardcode
+            # silently routing halls-refresh to the wrong server
+            # when default_server is non-"dev".
+            server_id = (req or {}).get("server_id") or _resolve_active_server_id()
+            ep = get_server_endpoint(server_id) if server_id else SLOT_SPIN_ENDPOINT
+            endpoint_base = ep.rstrip("/").rsplit("/MachineTest", 1)[0]
             url = f"{endpoint_base}/MachineTest/MapMachineOrder"
             try:
                 req_payload = json.dumps({}).encode("utf-8")
@@ -5736,10 +5736,16 @@ def create_app(
         refresh_triggered = False
         if not req.skip_md5_refresh:
             import threading as _threading
+            # Resolve which server to refresh from at submit time —
+            # whatever ``default_server`` (or first active) is in
+            # servers.json now. Hardcoding "dev" here meant flipping
+            # default_server to "prod" via the UI didn't actually
+            # reroute the pre-batch md5 refresh.
+            _refresh_sid = _resolve_active_server_id() or "dev"
             def _refresh_md5_async() -> None:
                 try:
                     _do_refresh_machines_md5(
-                        server_id="dev", raise_on_error=False,
+                        server_id=_refresh_sid, raise_on_error=False,
                     )
                 except Exception:  # noqa: BLE001
                     # Best-effort — swallow; next batch / explicit
@@ -7955,10 +7961,12 @@ def create_app(
         """Fetch current MachineConfigMd5 from the active server and update machines.json.
 
         After this, report-validate will reflect the latest upstream MD5.
-        Optionally takes {"server_id": "dev"} to pick a server; defaults to 'dev'.
+        Optionally takes {"server_id": "..."} to pick a specific server;
+        defaults to the resolver's pick (default_server → first active),
+        keeping symmetric with batch-run / autotune / halls-refresh.
         """
         payload = req or {}
-        server_id = payload.get("server_id", "dev")
+        server_id = payload.get("server_id") or _resolve_active_server_id() or "dev"
         return _do_refresh_machines_md5(server_id, raise_on_error=True)
 
     @app.get("/api/report-validate/{machine}")

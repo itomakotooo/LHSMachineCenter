@@ -2598,7 +2598,9 @@ function renderFleetOverview() {
       // Refresh server-side machines.json MD5s from upstream + reload
       // static attrs. Feature/mechanic lists auto-refresh on the next
       // generate-report; no need to force-regen here.
-      await apiPost("/api/servers/refresh-md5", {});
+      // (Endpoint name was wrong — should be /api/machines/refresh-md5,
+      // not /api/servers/. Old call silently 404'd. Fixed 2026-04-25.)
+      await apiPost("/api/machines/refresh-md5", {});
     } catch (_) { /* non-fatal */ }
     try {
       const [m, attrs] = await Promise.all([
@@ -6168,7 +6170,11 @@ function bindEvents() {
     btn.disabled = true;
     btn.textContent = "拉取中…";
     try {
-      const r = await apiPost("/api/machines/refresh-md5", { server_id: "dev" });
+      // Empty body = let backend pick via resolver (default_server →
+      // first active). Hardcoding "dev" used to override whatever
+      // the operator had set as default in 服务器管理 — defeating
+      // the whole UI. 2026-04-25 fix.
+      const r = await apiPost("/api/machines/refresh-md5", {});
       // Show which machines changed so the operator can tell whether
       // their working machine is affected. Cap at 10 names in the
       // alert (full list is in the activity log / response body).
