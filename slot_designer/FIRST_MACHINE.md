@@ -2,7 +2,18 @@
 
 **目标**：把一台新机台（例如 M3 / M27 / M42）从零带到 **4 mode (1/2/5/7) shipped + 虚拟 console 可采样 + rawdata 管道对上**。
 
-**适用范围**：M1（base-only classic 3-reel）和 M15（带 Feature Play）两类机台都覆盖。有其它 feature 类型（bonus chain / collect / wheel / free spin）的机台参考 §9 扩展点。
+**适用范围**：M1（base-only classic 3-reel）和 M15（带 Feature Play）两类机台都覆盖。有其它 feature 类型（bonus chain / collect / wheel / free spin）的机台参考 §10 扩展点。
+
+## 核心原则（3 条红线）
+
+**1. 每台机台都要跑 WebSearch 英文源**（`feedback_always_research_each_time.md`）
+不能只靠 memory 笔记决定"M1 样、M15 样、...的新机台"。每台机台的玩家体验 / near-miss / bucket 目标都要独立查业界同类 + 研究论文。
+
+**2. 数值 target 从设计原则推，不从上游 rawdata 继承**
+上游 rawdata 反推**只用于理解机制**（pay_id / symbol / wild 规则 / re-roll protection）。**数值层面**（bucket 分布 / hit rate / per-mode RTP structure）**是我们独立设计**的，不抄原机台的现状分布。原机台的 RTP 是它的，新 4-mode 系统的 RTP 是我们的。
+
+**3. Bucket 分布要合理**
+每 mode 的 `bucket_rate` target 必须按 **Low/Mid/High/Top** 4 档给出**设计意图**（每档的 RTP 贡献 + hit rate band + 情感作用），不能是"随便塞个数字让 tuner 对上去"。合理 = 跟机台类型匹配（classic 1-line 是 Low/Mid 为主；video slot 可能 Mid-heavy），跟 mode 差异化叙事（mode 5 top-bucket 加厚等）一致。
 
 ## 0. 契约 + 上下文
 
@@ -31,32 +42,70 @@
 
 ---
 
-## 1. 阶段 1 — 机台理解 + spec 写死（~20 分钟）
+## 1. 阶段 1 — 机台研究 + 玩家感性体验设计（~20 分钟，**每台机台都要做**）
+
+> 这一阶段是**新机台 onboarding 的第一步，不能跳**（见 `feedback_always_research_each_time.md`）。每个新机台都跑一次 WebSearch，不靠 memory 笔记做决策。
 
 **输入**：
-- 策划的 paytable md 文档
-- 上游采来的 rawdata（`rawdata/<M>/mode_<N>/chunk_*.json`）— 用来反推
-- 机台特殊机制说明（wild 规则、feature 玩法、scatter、re-roll 等）
+- 策划的 paytable md + 机制说明
+- 上游采来的 rawdata（用来反推机制 — **仅用于理解机制/机台身份，不用于决定数值 target**）
+
+**做什么（产出 `weights/<M>/DESIGN.md`）**：
+
+1. **识别机台原型（Prototype）**
+   - M1 类（classic 7-dominant 1-line）？M15 类（Top Dollar + 4-round accept/reject）？M37 类（grand-tier booster 1-line）？
+   - WebSearch 英文源：game name + paytable + RTP + "near miss" + "player psychology"
+   - 对标业界同类机台（IGT / Aristocrat / Konami 产品线）
+
+2. **玩家感性体验剖析** — 回答这些问题：
+   - 机台叙事主题是什么（"vault/treasure"、"animal kingdom"、"mythology"）？
+   - 每档 win 的**情感定位**是什么？
+     - 小奖（1-10×）：chase excitement / grind 感
+     - 中奖（10-50×）：accept 时的满足感 / 记忆点
+     - 大奖（50-500×）：session 记忆点 / dream event
+     - 顶奖（500+）：lifetime story / advertising hook
+   - **Near-miss 机制**：2-of-3 high symbols 上 payline 的频率？高价值符号在 window 里的聚集度（PWDF）？
+   - **Win 的感性构成**：win 是一次大爆（boom-bust 7-dominant）还是多次 mid 累（classic 46% RTP from Cherry）还是中高频中档（TD-style reveal drama）？
+   - **Reject/reroll drama**（feature 机台）：玩家是否要做决策，决策难度分布？
+
+3. **跨 mode 差异化叙事** — 每 mode 的"玩家故事"：
+   - mode 1 baseline: 机台的"原生"感觉
+   - mode 7 vs mode 1: 什么是"冷"（hit 频率同但 avg 小 / hit 少 / top bucket 少）
+   - mode 2 vs mode 1: 什么是"运气来了"（hit 略多 + 每次更值 / feature 变常客 / ...）
+   - mode 5 vs mode 2: 什么是"super 幸运"（feature EV × 2.2 / top jackpot moment / ...）
+
+4. **参考文档**：
+   - `reference_classic_slot_rtp_distribution.md` — IGT classic (RWB 87% 50%7-fam, Blazing 89% 69%7-fam) 基准
+   - `reference_slot_design_research_keywords.md` — WebSearch keyword seed（别只靠这个）
+   - Muir (2013) "Elements of Slot Design" / Harrigan (2009) near-miss / Lucas-Singh (2008) CV 研究
+
+---
+
+## 2. 阶段 2 — 机制反推 + spec 写死（~20 分钟）
+
+**输入**：上面的机台研究结论 + paytable md + rawdata
 
 **做什么**：
 
 1. **读 paytable md**：列 symbol 集 / pay_id / 倍率 / 特殊规则
-2. **扫 rawdata 反推**：
+2. **扫 rawdata 反推**（**只用于机制**，不用于数值 target）：
    ```bash
    python -c "
    import json
    d = json.load(open('rawdata/<M>/mode_1/chunk_0001.json'))
    # 看 pay_id → payline symbols → multiplier 对不对得上 md
+   # 看 SpinType 分布，ReMarks 有什么标记，有没有 feature ST
+   # 看有没有特殊组合被屏蔽（re-roll protection）
    "
    ```
-   md 经常有笔误 — rawdata 是 ground truth。
+   md 经常有笔误 — rawdata 是 ground truth 反推**机制**。但**数值层面**（bucket 分布 / hit rate / RTP 分布）**不抄上游现状**，数值靠阶段 1 + 阶段 3 的设计决定。
 3. **写 `slot_designer/specs/<M>.spec.json`**（手写；参考 `specs/M15.spec.json` 或 `specs/M1.spec.json`）：
-   - `symbols`：所有 symbol + kind（`filler / cherry_special / regular / wild`）
-   - `pays`：所有 pay_id + kind（`line_3_same / cherry_count / pure_wild / line_3_group / scatter_trigger`）+ 倍率
+   - `symbols`：所有 symbol + kind（`filler / cherry_special / regular / wild` + 新机台可能需要新 kind）
+   - `pays`：所有 pay_id + kind（`line_3_same / cherry_count / pure_wild / line_3_group / scatter_trigger` + 可能新 kind）+ 倍率
    - `evaluation_order`：pay kind 的优先级
    - `spin_types`：至少 spin_type 1（paid），bet_amount, cost_per_spin
    - `features`（feature 机台）：feature_params 默认值 + trigger_pay_id
-4. **写反推笔记 `tests/fixtures/<M>_field_analysis.md`**：记 md 跟 rawdata 不一致的地方 + 你的判断
+4. **写反推笔记 `tests/fixtures/<M>_field_analysis.md`**：记 md 跟 rawdata 不一致的地方 + 你的判断 + 机制发现（re-roll、booster 机制等）
 5. **Symbol 命名一律小写**（生产 schema 对齐；PascalCase 是 M1 遗留）
 
 > **production-schema 对齐是硬约束**：分析器跟生产 rawdata 强耦合。`_machine / _mode / response / roundResult JSON string / analysisResult JSON string` 这些字段不能动。M15 验收时跟 `M15$TopDollarSelector$0$` 字节级对齐。
@@ -64,11 +113,11 @@
 **feature 机台特有**：
 - Spec features[0] 需声明 `trigger_pay_id`（feature 触发标记 pay_id）
 - 写 `engine/feature_<M>.py` 或复用现有（M15 是 `feature_m15.py`），实现 `analyze_feature()` + `simulate_feature_session()`
-- Spec `spin_types` 里 feature 轮走 ST=14，end marker ST=15，见 §4.5
+- Spec `spin_types` 里 feature 轮走 ST=14，end marker ST=15，见 §9
 
 ---
 
-## 2. 阶段 2 — 初始 reel 表 + 目录骨架
+## 3. 阶段 3 — 初始 reel 表 + 目录骨架
 
 ```bash
 mkdir -p slot_designer/weights/<M>/mode_{1,2,5,7}
@@ -108,17 +157,28 @@ mkdir -p slot_designer/weights/<M>/mode_{1,2,5,7}
 
 ---
 
-## 3. 阶段 3 — Mode 1 first tune (Phase 4 + Phase 5 full)
+## 4. 阶段 4 — Mode 1 first tune (Phase 4 + Phase 5 full)
 
 Mode 1 是所有 mode 的起点：
 - 独立 archetype（不是从别人派生）
 - **必须跑 Phase 5** — 这会设定整个机台的 strip 排列（之后 mode 2/5/7 都跟这个走）
 
 **写 target file** `slot_designer/tuner/targets/<M>_mode1_classic.target.json`（参考 `M15_mode1_classic.target.json`）：
+
+**⚠ bucket_rate 从设计原则推，不抄上游 rawdata**：
+- 从阶段 1 研究结论推每档 RTP 贡献的 **意图**：
+  - Low bucket (1-10×)：~30-50% RTP（小奖 grind 感 / chase excitement）
+  - Mid bucket (10-50×)：~30-50% RTP（accept 时的记忆点 / 定期 reveal drama）
+  - High bucket (50-500×)：~10-25% RTP（session 记忆点 / dream event）
+  - Top bucket (500+)：0-5% RTP（legendary / advertising hook）
+- 从 RTP target + bucket 贡献反推 per-bucket hit rate（RTP ÷ avg mult per bucket）
+- 每档的"情感作用"必须写在 target 的 `_note` 里，tuner 只是把数字对上去，**设计意图在 target 文档里**
+
+字段：
 - `rtp_pct`: 42.75（或按 base:feature split 调，feature 机台 ~45pp，base-only 机台 95pp）
-- `bucket_rate`: 参考 M1/M15 类似机台 + 业界 classic 1-line 基准（`reference_classic_slot_rtp_distribution.md`）
-- `hit_rate`: 13-15% 带宽（mode 1 reference）
-- `_design_constraints`: 记总 RTP target / split / trigger 等
+- `bucket_rate`: 按上面 4 档设计，Low/Mid 为主，High 少，Top 极少。数字参考 M1/M15 类似机台 + 业界 classic 1-line 基准（`reference_classic_slot_rtp_distribution.md`）— 但**不抄上游采的 rawdata 分布**
+- `hit_rate`: 13-15% 带宽（mode 1 reference；阶段 1 研究支撑这个选择）
+- `_design_constraints`: 记总 RTP target / split / trigger / 情感设计意图 等
 
 **Tune 命令**：
 ```bash
@@ -148,14 +208,14 @@ python -m slot_designer.scripts.tune \
 
 ---
 
-## 4. 阶段 4 — Mode 2 独立 tune (`--sa-steps 0`, strips 已锁)
+## 5. 阶段 5 — Mode 2 独立 tune (`--sa-steps 0`, strips 已锁)
 
 Mode 2 是独立 archetype（不从 mode 1 派生），但 strips 跟 mode 1 一致。
 
 **写 target file** `<M>_mode2_lucky.target.json`（参考 `M15_mode2_lucky.target.json`）：
 - `rtp_pct`: 135（feature 机台基本都是）
 - `hit_rate`: 0.20-0.25（**×1.5-2 mode 1，不是 ×3**！见 `project_slot_designer_hit_rate_deviation.md`）
-- `bucket_rate`: 跟 mode 1 形状相近，总和对应 hit_rate
+- `bucket_rate`: 跟 mode 1 形状**相近**（同一 Low/Mid/High/Top 比例结构），总和对应新 hit_rate。RTP delta 走 **per-hit avg win size**（bucket shape shift toward mid/high），不走 hit frequency inflation
 
 **Seed mode 2 weights** — 先用 mode 1 做起点：
 ```bash
@@ -189,7 +249,7 @@ python -m slot_designer.scripts.tune \
 
 ---
 
-## 5. 阶段 5 — Mode 7 派生 from mode 1
+## 6. 阶段 6 — Mode 7 派生 from mode 1
 
 **两条路径**（按 hit rate 带宽决定）：
 
@@ -230,7 +290,7 @@ m7['feature_params'] = copy.deepcopy(m1['feature_params'])
 
 ---
 
-## 6. 阶段 6 — Mode 5 派生 from mode 2
+## 7. 阶段 7 — Mode 5 派生 from mode 2
 
 Mode 5 = **mode 2 base 字节级复刻** + **feature_params 加强**。这是硬约束（见 `project_slot_designer_hit_rate_deviation.md`）。
 
@@ -251,7 +311,7 @@ python -m slot_designer.scripts.derive_m15_mode_5 --write --verify   # M15 做�
 
 ---
 
-## 7. 阶段 7 — 注册虚拟机台 + 生成 reference CSV
+## 8. 阶段 8 — 注册虚拟机台 + 生成 reference CSV
 
 **注册到 `slot_designer/configs/machines_virtual.json`**（如果不存在的话）：
 ```json
@@ -282,7 +342,7 @@ python -c "from slot_designer.backend.virtual_registry import refresh_machines_v
 
 ---
 
-## 8. 阶段 8 — 虚拟 console 采样 + 验证
+## 9. 阶段 9 — 虚拟 console 采样 + 验证
 
 **启动虚拟 console**：
 ```powershell
@@ -304,7 +364,7 @@ powershell -File slot_designer/scripts/start_virtual_console.ps1 -OpenBrowser
 
 ---
 
-## 9. 特殊 feature 机台扩展点
+## 10. 特殊 feature 机台扩展点
 
 M15 定义了一个 `Feature Play`（4-round accept/reject）类型的 feature。其它类型需要新扩展：
 
@@ -329,56 +389,68 @@ M15 定义了一个 `Feature Play`（4-round accept/reject）类型的 feature�
 
 ---
 
-## 10. 检查清单（每个新机台过一遍）
+## 11. 检查清单（每个新机台过一遍）
 
-**Phase 0 准备**：
-- [ ] Paytable md 读完 + symbol/pay_id 理解
-- [ ] Rawdata 反推跟 md 对上 + 笔记写好
+**Phase 1 研究**（**不跳**，每台机台都要）：
+- [ ] WebSearch 英文源重跑（不靠 memory）
+- [ ] 识别机台原型（M1/M15/新类别）+ 业界对标
+- [ ] 玩家感性体验剖析（主题、每档 win 情感、near-miss、win 构成）
+- [ ] 跨 mode 差异化叙事（每 mode 故事）
+- [ ] 产出 `weights/<M>/DESIGN.md`
+
+**Phase 2 机制 + spec**：
+- [ ] Paytable md 读完 + rawdata 反推（**只做机制**）
 - [ ] Spec 文件写完（symbols / pays / evaluation_order / spin_types / features）
 - [ ] Field analysis 笔记
 
-**Phase 1 mode 1 tune**：
+**Phase 3 reel 表初稿**：
 - [ ] reel_strips.json 写完（Blank/非Blank 交替、trigger 符号只在 reel 3）
-- [ ] mode_1/weights.json 初稿（策划原始数字）
+- [ ] mode_1/weights.json 初稿
+
+**Phase 4 mode 1 tune**：
+- [ ] **bucket_rate 从设计意图推**（不抄上游 rawdata），每档 RTP 贡献 + hit rate 在 `_note` 写清楚
 - [ ] `<M>_mode1_classic.target.json` 写完
-- [ ] Phase 4 + 5 tune 跑通，RTP + hit 贴 target ±1pp
+- [ ] Phase 4 + 5 tune 跑通，RTP + hit + bucket shape 贴 target ±1pp
 - [ ] Feature 机台：feature_params 手附
 
-**Phase 2 mode 2 tune**：
-- [ ] `<M>_mode2_lucky.target.json` 写完（hit 20-25%，不是 ×3！）
-- [ ] Tune `--sa-steps 0 --hit-target 0.225 --trigger-target ...`
-- [ ] RTP 135 / hit 22.5% / trigger 2.75% 都贴
+**Phase 5 mode 2 tune**：
+- [ ] `<M>_mode2_lucky.target.json` 写完（hit 20-25%，**不是 ×3**；bucket shape 跟 mode 1 结构相近）
+- [ ] Tune `--sa-steps 0 --hit-target 0.225`（feature 机台加 `--trigger-target`）
+- [ ] RTP 135 / hit 22.5% 都贴
 - [ ] Feature 机台：feature_params 手附
 
-**Phase 3 mode 7 派生**：
+**Phase 6 mode 7 派生**：
 - [ ] 选 direct-scale OR Phase 4 tune（看 hit rate 带宽要求）
 - [ ] Total 85% ±1pp
 - [ ] Feature 机台：feature_params 字节级 = mode 1
 
-**Phase 4 mode 5 派生**：
+**Phase 7 mode 5 派生**：
 - [ ] Base weights 字节级 = mode 2
 - [ ] Feature params 加强（feature 机台）或 top-bucket 加权（非 feature）
 - [ ] Total 500% ±20pp
 
-**Phase 5 注册 + 验证**：
+**Phase 8 注册 + CSV**：
 - [ ] `machines_virtual.json` 加 `<M>sim` 条目
 - [ ] Refresh md5 成功，per-mode modesMd5 都有值
+- [ ] `weights/<M>/<M>_weights_reference.csv` 生成（策划速查）
+
+**Phase 9 验证**：
 - [ ] 虚拟 console 能看到 `<M>sim` 4 个 mode
 - [ ] 4 个 mode 各自采样成功，report 有数据
 - [ ] RTP / hit / trigger 全部贴 analytic target
 - [ ] Feature 机台：report 的 feature panel 非空
+- [ ] Bucket 分布图 visually 对上 DESIGN.md 里的意图
 
-**Phase 6 文档 + 交付**：
+**Phase 10 文档 + 交付**：
 - [ ] `weights/<M>/MODE_DESIGN.md` 写完（参考 M15 structure）
 - [ ] `weights/<M>/README.md` 写完
-- [ ] `weights/<M>/<M>_weights_reference.csv` 生成（策划速查）
 - [ ] Regression test 加到 `tests/test_<M>_*.py`（mode 1/2/5/7 numeric 回归，参考 `test_m15_feature.py`）
 - [ ] Pytest 全绿
 - [ ] Commit
 
 ---
 
-## 11. See also
+## 12. See also
 
 **Memory notes（每条都读一遍）**：
 - `project_slot_designer_mode_rtp_invariants.md` — 95/300/500/85 目标 + 派生关系
