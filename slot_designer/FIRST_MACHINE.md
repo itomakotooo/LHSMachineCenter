@@ -251,42 +251,62 @@ python -m slot_designer.scripts.tune \
 
 ## 6. 阶段 6 — Mode 7 派生 from mode 1
 
-**两条路径**（按 hit rate 带宽决定）：
+**Mode 7 设计 guideline**（`project_slot_designer_hit_rate_deviation.md` 核心）：
 
-### 5A. Direct-scale 路径（M1 方式；hit rate 允许下降 ~5pp）
+> **基于 mode 1，降小奖击中率，中/大/顶奖击中率不变**。总 hit 因 Low 绝对数降而略降（mode 1 13% → mode 7 10-11%）；Mid/High/Top 的 **RTP 相对占比略升**（分子不动、Low 分母少了）。玩家感：小奖变稀少，但大奖跟 mode 1 一样 — "每次命中的小奖少，但大奖还是那么多"。
 
-```
-mode_7_weights = mode_1_weights × (Cherry × 0.5, Bar × 0.9)
-```
+**M1 shipped 实证**（2026-04-23 数据）：
 
-- 简单，不走 tuner
-- M1 实测：hit 从 15.5% 降到 10.4%，合 target
-- **陷阱**（见 `feedback_tuner_pareto_trap.md`）：tuner 会 pareto 把 Seven 家族砍到 0，破坏 bucket 结构。direct scale 保 Seven marginal
+| 指标 | mode 1 | mode 7 |
+|---|---|---|
+| Total hit | 15.52% | 10.37% |
+| Low RTP 占比 | 24.4% | 19.3%（绝对降）|
+| Mid RTP 占比 | 63.9% | 66.4%（相对略升）|
+| High RTP 占比 | 11.7% | 14.3%（相对略升）|
+| 7-family 占比 | 5.2% | 6.6%（略升）|
 
-### 5B. Phase 4 tune 路径（M15 方式；hit rate 严格贴 mode 1）
+### Target file 设计（重要）
 
-- M15 试过 direct-scale (Cherry × 0.3, Bar × 0.77) 落 RTP 32.67 OK 但 hit 7.5% ✗（要 12-13%）
-- **原因**：direct scale 砍 paying symbol 权重，同时砍 hit；两个 target 冲突
-- **改走 tune.py**：新 target file `<M>_mode7_standard_low.target.json`，rtp=32.5 + hit=0.125 + trigger 跟 mode 1
+`<M>_mode7_standard_low.target.json` 的 `bucket_rate` 字段是**绝对值 per-bucket**，不是 shape 模板：
 
-```bash
-python -m slot_designer.scripts.tune \
-    ... --mode 7 --sa-steps 0 \
-    --target slot_designer/tuner/targets/<M>_mode7_standard_low.target.json \
-    --hit-target 0.125 --hit-weight 1.5 \
-    --trigger-target 0.01136 --trigger-symbol topdollar \
-    --trigger-reel 3 --trigger-weight 2.0
-```
+- **Low bucket rate**: **mode 1 值 × 0.6-0.7**（绝对 hit 降 ~3-5pp）
+- **Mid bucket rate**: **== mode 1 绝对值**（不动）
+- **High bucket rate**: **== mode 1 绝对值**（不动）
+- **Top bucket rate**: **== mode 1 绝对值**（不动）
+- `hit_rate` target = sum = mode 1 total - 3-5pp（M1 是 -5pp，M15/M37 按 paytable 结构定）
+
+> 跟 mode 2/5 的 bucket_rate 写法不一样：mode 2 bucket_rate 跟 mode 1 的相对分布类似（只是 scale up）；mode 7 bucket_rate **固定保 Mid/High/Top 绝对数**，只砍 Low。
+
+### 两条实现路径（按 paytable 结构决定）
+
+**A. Direct-scale 路径**（M1 方式）
+- 适用：paytable 里有符号**几乎只进 Low bucket**（例如 M1 的 Cherry 1× 和混合 bar 2×）
+- 方法：`mode_7_weights = mode_1_weights × (LowOnlySymbols × K, 其它 × 1)`
+- M1 实测：`Cherry × 0.5, Bar × 0.9` → Low 降、Mid/High 基本保
+- 不走 tuner，简单可靠
+
+**B. Phase 4 tune 路径**（M15/M37 方式）
+- 适用：paytable 里符号**跨多档**（例如 high7 进 Mid 但 high7+booster 进 High；bars 进 Low-Mid；这时 direct-scale 会误伤 Mid）
+- 方法：按上面"Target file 设计"写 bucket_rate 绝对值，`--hit-target` 设总 hit 目标，tuner 自动找能保 Mid/High 的权重配置
+- 代码：
+  ```bash
+  python -m slot_designer.scripts.tune \
+      ... --mode 7 --sa-steps 0 \
+      --target slot_designer/tuner/targets/<M>_mode7_standard_low.target.json \
+      --hit-target 0.10 --hit-weight 1.5 \
+      --trigger-target 0.01136 --trigger-symbol topdollar \
+      --trigger-reel 3 --trigger-weight 2.0   # feature 机台才加 --trigger
+  ```
 
 **Feature 机台 mode 7**：feature_params **字节级复制 mode 1**（"feature 完全同 mode 1" 设计契约）。Post-tune 手动 cp：
 ```python
 m7['feature_params'] = copy.deepcopy(m1['feature_params'])
 ```
 
-**路径选择规则**：
-- Hit rate 可漂 3-5pp → direct-scale（M1 方式）
-- Hit rate 严格 ±1pp → Phase 4 tune（M15 方式）
-- 不确定？跑 direct-scale 先看 hit 掉多少；如果超 band 再转 tune
+**路径选择决策**：
+- 小奖符号跟大奖符号**在 paytable 里分得开**（M1 的 Cherry vs Seven）→ **direct-scale 够**
+- 小奖/大奖符号**耦合**（M15 的 cherry+bar 也进 Mid，高 pay_id 也能被 cherry 替代）→ **走 Phase 4 tune**
+- 不确定？先看 paytable 结构，再决定；或直接用 Phase 4 tune（更稳）
 
 ---
 
