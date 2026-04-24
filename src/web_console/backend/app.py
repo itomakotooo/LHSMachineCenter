@@ -1145,6 +1145,31 @@ def _compare_snapshots(a: dict[str, Any], b: dict[str, Any]) -> list[dict[str, A
     return diffs
 
 
+def _resolve_active_server_id(path: Path | None = None) -> str:
+    """Pick which server sampling should hit when the caller didn't
+    specify one. Priority:
+      1. ``default_server`` if its entry has a non-empty endpoint
+      2. First entry with ``active=true`` AND non-empty endpoint
+      3. "" — sampler falls back to SLOT_SPIN_ENDPOINT hardcoded
+
+    Keeps the UI in control: flipping ``active`` / ``default_server``
+    via ``configs/servers.json`` (or the PUT /api/servers/{id}
+    endpoint) is enough to reroute batch-run without a backend
+    restart or a code edit."""
+    cfg = load_servers(path)
+    entries = cfg.get("servers") or []
+    by_id = {s.get("id"): s for s in entries if isinstance(s, dict)}
+    preferred = cfg.get("default_server")
+    if preferred and isinstance(by_id.get(preferred), dict):
+        ep = (by_id[preferred].get("endpoint") or "").strip()
+        if ep:
+            return preferred
+    for s in entries:
+        if s.get("active") and (s.get("endpoint") or "").strip():
+            return s.get("id") or ""
+    return ""
+
+
 def get_server_endpoint(server_id: str, path: Path | None = None) -> str:
     """Resolve the sampling API endpoint URL for a server."""
     cfg = load_servers(path)
@@ -1178,6 +1203,11 @@ class BatchRunItem(BaseModel):
 class BatchRunRequest(BaseModel):
     items: list[BatchRunItem]
     concurrency: int = Field(default=3, ge=1, le=10)
+    # Optional server selection. Empty string → backend picks from
+    # configs/servers.json (default_server → first active with a
+    # non-empty endpoint). Lets operators flip endpoints via the
+    # 服务器管理 UI without touching the SLOT_SPIN_ENDPOINT constant.
+    server_id: str = Field(default="")
     chunk_spin_times: int = Field(default=5000, gt=0)
     # See RunRequest defaults above for the direct-connect benchmark
     # rationale behind robot=8 / conc=8.
@@ -3237,6 +3267,12 @@ class BatchRunManager:
                 "timeout": req.timeout,
                 "target_halfwidth_pp": req.target_halfwidth_pp,
                 "auto_cleanup_cache": req.auto_cleanup_cache,
+                # Resolve server selection once at batch submit time so
+                # every item spawns against the same endpoint, even if
+                # configs/servers.json flips mid-batch. Caller's
+                # server_id wins; otherwise use servers.json's
+                # default_server / first-active-with-endpoint.
+                "server_id": req.server_id or _resolve_active_server_id(),
             },
             "reports_root": rr,
             "created_at": utc_now(),
@@ -3594,6 +3630,10 @@ class BatchRunManager:
                     max_chunks=item.get("max_chunks") or params["max_chunks"],
                     timeout=params["timeout"],
                     target_halfwidth_pp=params["target_halfwidth_pp"],
+                    # Server selection: request's server_id wins, else
+                    # resolve from servers.json. Empty string still
+                    # lets RunManager fall through to SLOT_SPIN_ENDPOINT.
+                    server_id=params.get("server_id") or "",
                     from_cache_dir=from_cache_dir,
                     resume_from_cache_dir=resume_from_cache_dir,
                     # Snapshot the upstream md5 at batch-start time so

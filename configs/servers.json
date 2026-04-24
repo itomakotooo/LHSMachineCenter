@@ -15,9 +15,9 @@
     {
       "id": "prod",
       "name": "发布服",
-      "endpoint": "",
-      "active": false
+      "endpoint": "http://116.232.103.19:10288",
+      "active": true
     }
   ],
-  "default_server": "dev"
+  "default_server": "prod"
 }
