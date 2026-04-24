@@ -2216,10 +2216,21 @@ function _wireRwtreeGridActions(gridEl, machineName) {
       });
       try {
         const body = { mode: Number(mo), async: true };
-        // Only pass md5 for historical cells — current-md5 cells
-        // stick with the analyzer default (which is more forgiving
-        // of slight md5 inconsistencies in the kept/deletable bucket).
-        if (!isCurrent && cfg && code) {
+        // Scope the generated report to THIS cell's md5 pair. Applies
+        // to every cell — current or historical — because the multi-
+        // current world (server-global AND local-cfg pairs can BOTH
+        // be "current" simultaneously) means omitting md5 would pool
+        // chunks across buckets. User 2026-04-24: "从本地 config 的
+        // rawdata 生成 report 时会把网络拉取的 rawdata 一起算进去".
+        //
+        // Historical: old behavior omitted md5 on current cells on
+        // the theory that "the analyzer default is more forgiving";
+        // that theory predated multi-current + sidecar-based md5
+        // filtering and now silently merges buckets. Always pass
+        // the cell's md5 — analyzer's empty-filter fallback is for
+        // callers who genuinely want "all chunks", which no rwtree
+        // cell click means.
+        if (cfg && code) {
           body.config_md5 = cfg;
           body.code_md5 = code;
         }
