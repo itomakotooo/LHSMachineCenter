@@ -26,13 +26,26 @@ Pure TDD baseline (family scales 全 1.0): Seven 20.1%, Bar 64.8%, Cherry 15.0%,
 | **Seven** | **18% - 30%** | 25% - 55% | 35% - 70% |
 | **Bar** | 55% - 75% | 35% - 65% | 25% - 55% |
 | **Cherry** | 8% - 20% | 3% - 15% | 1% - 10% |
-| **Wild** | ≤ 1% | ≤ 2% | ≤ 3% |
+| **Wild (pure)** | ≤ 1% | ≤ 2% | ≤ 3% |
+
+**⚠ "Wild (pure)" 只是 `pay_id 2/3/4`（纯 3-wild 路径）的 RTP 占比 —— 这数字本身几乎**没有**反映 wild 在 "Double Diamond" 这台机里的真实角色**。Wild 的 99% 价值来自 **substitution + multiplier boost**（例如 Diamond1 + Bar2 + Bar2 = 3-Bar2 × 2 倍率，被归到 Bar family），不是 pure-wild pays。
+
+**Wild 的真实 experience 衡量指标**（Double Diamond 机台必验）:
+
+| 指标 | Mode 1 / 7 | Mode 2 | Mode 5 | 含义 |
+|---|---|---|---|---|
+| **P(wild 出现在 payline)** | **≥ 5%** | ≥ 8% | ≥ 12% | Player 多久看到 wild 在 payline 帮忙 |
+| **P(2+ wild on payline)** | ≥ 0.1% | ≥ 0.3% | ≥ 0.7% | 双 wild（pure_wild pay 触发的场景） |
+| **P(3-Diamond2 top jackpot)** | > 0 | > 0 | > 0 | 顶奖路径 1000× 可达（极稀但必须 ≥ 1 in 10M spin） |
+
+TDD 原型 baseline P(≥1 wild on payline) = 5.37% → 我们 Mode 1 要 ≥ 这个。
 
 **Rationale**：
-- Standard 模式（1, 7）贴 TDD baseline 20% Seven — "classic 节奏"
-- Lucky（2）Seven 涨到 40-50% — "今天 7 出得频"（正确的 hot feel）
-- Super-lucky（5）Seven 60% — 顶奖成主角，Bar 成配角
-- Cherry 随 luck 级提升反降（lucky 模式 Bar/Seven 主导，不需要 Cherry 小奖填时间）
+- Standard 模式（1, 7）Seven 20% 贴 TDD baseline —— "classic 节奏"
+- Lucky（2）Seven 涨到 40-50% —— "今天 7 出得频"
+- Super-lucky（5）Seven 60% —— 顶奖成主角，Bar 成配角
+- Cherry 随 luck 级提升反降（lucky 模式 Bar/Seven 主导）
+- **Wild 不要被 "pure pay share ≤ 1%" 误导** —— 这台机的灵魂是"Double Diamond + Triple Diamond 在 window/payline 频繁出现 substitute"，那是 experience 核心
 
 **Rationale**：
 - M1 paytable 是 TDD 原型的约 ~50% 倍率（Seven2 50× vs TDD Red 7 100×），因此 Seven share 为 20%（TDD 原型 50% 的 classic RWB share 不直接适用 M1，因为倍率被砍半了 —— 这个 20% 是 TDD 原型 structurally 在 M1 paytable 下的真实值，不是编的）

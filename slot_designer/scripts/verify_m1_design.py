@@ -87,6 +87,21 @@ RATIO_DRIFT_THRESHOLD = {
 # R2=6, R3=5). Use per-family min to reflect archetype reality.
 ASYMMETRY_MIN_RATIO = {"Seven2": 2.5, "Diamond": 1.8}
 
+# DESIGN.md §2 — Wild participation (NOT pure-wild pay share; that
+# number is ~0.1% because 99% of wild's value comes from substitution
+# + multiplier boost embedded in Bar/Seven pays, not pay_id 2/3/4).
+# Machine is named "Double Diamond" — wild must be experientially
+# present at TDD-natural frequency or higher.
+WILD_PARTICIPATION_MIN = {  # P(>=1 wild on payline) per mode
+    1: 0.045, 7: 0.045,  # TDD natural = 5.37%, set floor 4.5%
+    2: 0.080, 5: 0.120,  # lucky modes scale up
+}
+WILD_TWO_PLUS_MIN = {  # P(>=2 wild on payline)
+    1: 0.001, 7: 0.001,  # 0.1% for visible "pure-wild drama"
+    2: 0.003, 5: 0.007,
+}
+# Top jackpot path (3-Diamond2 = 1000x) must be reachable (> 0)
+
 
 class Check:
     def __init__(self, tag, mode, ok, detail):
@@ -232,8 +247,6 @@ def run():
                 f"{sym} R1:R2:R3 drift {drift:.3f} vs tol {tol:.2f}"))
 
         # ASYMMETRY (Seven2 + Diamond family per-reel max/min ratio).
-        # Real TDD near-miss mechanism: top-pay symbols asymmetric across
-        # reels → 2-of-3 visible near-miss triggers often.
         for fam_name, fam_syms in [("Seven2", ["Seven2"]), ("Diamond", ["Diamond1", "Diamond2"])]:
             ratio, per_reel = per_reel_asymmetry(d["engine"], fam_syms)
             min_ratio = ASYMMETRY_MIN_RATIO[fam_name]
@@ -241,6 +254,42 @@ def run():
             pcts = "/".join(f"{p*100:.1f}%" for p in per_reel)
             checks.append(Check("ASYMMETRY", mode, ok,
                 f"{fam_name} R1/R2/R3={pcts} max/min={ratio:.2f} vs min {min_ratio}"))
+
+        # WILD PARTICIPATION (DESIGN.md §2) — Double Diamond signature.
+        # Compute P(>=1 wild on payline in a spin) and P(>=2). These are
+        # the TRUE "wild presence" metrics; "Wild family RTP share" is
+        # misleading because wild's role is primarily via substitution
+        # (attributed to Bar/Seven pays, not pay_id 2/3/4).
+        diamond_syms = ["Diamond1", "Diamond2"]
+        per_reel_wild = [
+            sum(compute_reel_marginal(reel).get(s, 0) for s in diamond_syms)
+            for reel in d["engine"].reels
+        ]
+        p_ge1 = 1 - ((1 - per_reel_wild[0]) * (1 - per_reel_wild[1]) * (1 - per_reel_wild[2]))
+        # P(exactly 1 wild) = sum(p_i * (1-p_j)(1-p_k))
+        p_exactly_1 = (
+            per_reel_wild[0] * (1 - per_reel_wild[1]) * (1 - per_reel_wild[2])
+            + (1 - per_reel_wild[0]) * per_reel_wild[1] * (1 - per_reel_wild[2])
+            + (1 - per_reel_wild[0]) * (1 - per_reel_wild[1]) * per_reel_wild[2]
+        )
+        p_ge2 = p_ge1 - p_exactly_1
+        # P(3-wild, any combo) via per-reel wild probabilities
+        p_3wild = per_reel_wild[0] * per_reel_wild[1] * per_reel_wild[2]
+        # P(3-Diamond2 specifically — top jackpot 1000x)
+        d2_per_reel = [compute_reel_marginal(reel).get("Diamond2", 0) for reel in d["engine"].reels]
+        p_top_jackpot = d2_per_reel[0] * d2_per_reel[1] * d2_per_reel[2]
+
+        ok_ge1 = p_ge1 >= WILD_PARTICIPATION_MIN[mode]
+        checks.append(Check("WILD-PAYLINE", mode, ok_ge1,
+            f"P(>=1 wild on line) = {p_ge1*100:.2f}% vs min {WILD_PARTICIPATION_MIN[mode]*100:.1f}%"))
+        ok_ge2 = p_ge2 >= WILD_TWO_PLUS_MIN[mode]
+        checks.append(Check("WILD-MULTI", mode, ok_ge2,
+            f"P(>=2 wild on line) = {p_ge2*100:.3f}% vs min {WILD_TWO_PLUS_MIN[mode]*100:.2f}%"))
+        ok_top = p_top_jackpot > 0
+        # Top jackpot 3-D2 expected frequency (1 in X spins)
+        one_in = int(1 / p_top_jackpot) if p_top_jackpot > 0 else float("inf")
+        checks.append(Check("TOP-JACKPOT", mode, ok_top,
+            f"3-Diamond2 (1000x top) reachable, 1 in {one_in:,} spins"))
 
     # Mode 7 vs Mode 1 experience invariants (§4)
     m1 = mode_data[1]
