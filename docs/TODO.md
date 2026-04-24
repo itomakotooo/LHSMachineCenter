@@ -22,6 +22,29 @@ This file tracks executable next steps for the current phase.
 
 - [ ] Multi-server 实测: 基础设施就绪，等用户提供 test/prod 地址。
 
+- [ ] **Upstream sampling throughput crisis — switch to internal server**
+      (2026-04-24 investigation). Direct-connect to
+      `buffalo-debug.citrusjoy.com` shows two distinct regimes:
+      fresh-probe peak 3,765-4,411 outer spin/s at 8×8, dropping to
+      ~710-1,085 outer/s after a few hundred requests (per-source
+      rate limit). Historical proxy-era single-stream was 4,113
+      outer/s with no concurrency benefit needed. Implications:
+      - Production 3M-spin sample = 46-75 min per machine/mode
+        (well above the 10 min user target)
+      - 393 machines × 4-8 modes × 50 min = weeks of wall time
+      - No amount of client-side parameter tuning closes the gap
+      Action plan:
+      1. User is switching to internal game-engine server (pending).
+         Retest all concurrency scaling once new endpoint available
+         — likely invalidates the 8×8 preset.
+      2. If internal server behaves like historical proxy (~4k/s
+         single-stream), drop to conc=1-2 for stability and longer
+         poll windows.
+      3. Add `sampling_source` field to run summaries so we can
+         tell retrospectively which endpoint fed which report.
+      See memory: reference_sampling_api.md (throughput regimes section)
+      + feedback_upstream_throttle_ceiling.md.
+
 - [ ] Consider CI integration when remote build is needed. For now
       the baseline is local-only (`scripts\lint.ps1` +
       `scripts\test.ps1 -E2E`).
@@ -806,10 +829,10 @@ This file tracks executable next steps for the current phase.
       5 are constrained to fuzzy (frontend forces, backend 400-rejects).
 - [x] ~~chunk_robot_count + batch_concurrency are now readonly inputs
       populated only by Auto Tune~~ -- superseded. Those inputs are
-      now editable with preset defaults (robot=24, conc=2) validated
-      against M272 mode 1 autotune; Auto Tune remains optional for
-      machine-specific refinement. See "Preset run-config defaults"
-      entry below.
+      now editable with preset defaults (robot=8, conc=8, retuned
+      2026-04-24 against direct-connect upstream). Auto Tune remains
+      optional for machine-specific refinement. See "Preset run-config
+      defaults" entry below.
 - [x] chunk_spin_times / max_chunks / timeout moved into a collapsed
       "Advanced parameters" section so the primary panel is shorter.
 - [x] Bankruptcy multipliers freeform input replaced with a 3-preset
@@ -969,11 +992,16 @@ This file tracks executable next steps for the current phase.
       `hit_and_payout.zero_win_rate`. `prettyBucketLabel` keeps the
       legacy-key fallback so old reports still render.
 - [x] Preset run-config defaults + unlock robot/conc inputs
-      (commit 390e1c0). robot=24 / conc=2 / max_chunks=60 /
-      timeout=120 all validated on M272 mode 1 autotune (conc=4
-      top-ranked but p95=10s tail → preset conc=2 for safety
-      margin). Reset-to-preset on machine/mode change via
+      (commit 390e1c0, retuned 4a76e9e on 2026-04-24). Current preset
+      robot=8 / conc=8 / max_chunks=60 / timeout=120. Direct-connect
+      benchmark on M14 mode 1 showed 8×8 = 4,411 outer spin/s at
+      first probe (fresh upstream), well below robot×conc >= 128
+      upstream ceiling. Reset-to-preset on machine/mode change via
       `resetConcurrencyInputsToPreset()` reading input.defaultValue.
+      CAVEAT: steady-state throughput drops to ~1,100 outer/s under
+      per-source rate limiting (confirmed 2026-04-24); production
+      sampling plans must budget 50-60 min per 3M-spin run in the
+      limited state, not the 12 min that the peak 4,411/s predicts.
 - [x] Manage-tab run history: RTP + CI cols, delete button, machine
       filter via catalog click (commit 56903bc). `DELETE
       /api/runs/{id}` cascades row + interpretations + per-run
