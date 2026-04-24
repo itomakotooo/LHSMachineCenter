@@ -3520,24 +3520,50 @@ function renderSymbolDrilldown(summary) {
   matrixHost.innerHTML = matrix.columnIds
     .map((col) => {
       const rows = matrix.rowsByCol[col] || [];
-      const headerLabel = fmt("symbolColLabel", { idx: col });
+      // 2026-04-24: dual-column view (窗口 + 支付线). For single-payline
+      // classic slots (M1/M37), payline shows mid-row density — same
+      // data as window on reels whose paylines cover all rows, but
+      // dramatically different on sparse-payline machines (reveals
+      // near-miss clustering: wild with 4× window/payline ratio is
+      // a visual tease symbol, not a payout engine).
+      const paylineMap = (matrix.paylineByCol && matrix.paylineByCol[col]) || {};
+      const paylineRows = (matrix.paylineRowsByCol && matrix.paylineRowsByCol[col]) || [];
+      const headerLabel = paylineRows.length
+        ? fmt("symbolColLabelWithPaylineRows", {
+            idx: col,
+            rows: paylineRows.join(","),
+          })
+        : fmt("symbolColLabel", { idx: col });
       const max = rows.length ? Math.max(...rows.map((r) => r.count)) : 0;
+      const paylineUnavailable = fmt("paylineRateUnavailable");
       const body = rows
         .map((r) => {
           const bar = max > 0 ? Math.min(100, (r.count / max) * 100) : 0;
+          const plEntry = paylineMap[r.symbol];
+          const plRatePct = plEntry
+            ? `${plEntry.rate_pct.toFixed(2)}%`
+            : paylineUnavailable;
           return (
             `<tr>` +
             `<td>${r.symbol}</td>` +
             `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${fInt(r.count)}</td>` +
             `<td>${r.rate_pct.toFixed(2)}%</td>` +
+            `<td>${plRatePct}</td>` +
             `</tr>`
           );
         })
         .join("");
+      const head =
+        `<thead><tr>` +
+        `<th>${fmt("thSymbol")}</th>` +
+        `<th>${fmt("thCount")}</th>` +
+        `<th>${fmt("thRate")}</th>` +
+        `<th>${fmt("thRatePayline")}</th>` +
+        `</tr></thead>`;
       return (
         `<div class="col-table">` +
         `<h4>${headerLabel}</h4>` +
-        `<table class="drilldown-table"><tbody>${body}</tbody></table>` +
+        `<table class="drilldown-table">${head}<tbody>${body}</tbody></table>` +
         `</div>`
       );
     })

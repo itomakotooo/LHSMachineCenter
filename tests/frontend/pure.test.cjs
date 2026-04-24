@@ -612,10 +612,12 @@ test("formatSymbolRows: maps symbol/count/rate_pct correctly", () => {
   assert.equal(rows[1].rate_pct, 12.34);
 });
 
-test("symbolByColMatrix: empty -> {columnIds:[], rowsByCol:{}}", () => {
+test("symbolByColMatrix: empty -> {columnIds:[], rowsByCol:{}, paylineByCol:{}, paylineRowsByCol:{}}", () => {
   const m = PURE.symbolByColMatrix({});
   assert.deepStrictEqual(m.columnIds, []);
   assert.deepStrictEqual(m.rowsByCol, {});
+  assert.deepStrictEqual(m.paylineByCol, {});
+  assert.deepStrictEqual(m.paylineRowsByCol, {});
 });
 
 test("symbolByColMatrix: numeric column ids sorted", () => {
@@ -633,6 +635,42 @@ test("symbolByColMatrix: numeric column ids sorted", () => {
   assert.equal(m.rowsByCol["0"][0].symbol, "blank");
   assert.equal(m.rowsByCol["0"][0].rate_pct, 50);
   assert.equal(m.rowsByCol["2"][0].symbol, "high7");
+  // No payline data → paylineByCol maps to empty per-col dict
+  assert.deepStrictEqual(m.paylineByCol["0"], {});
+  assert.deepStrictEqual(m.paylineRowsByCol["0"], []);
+});
+
+test("symbolByColMatrix: payline density + rows exposed alongside window", () => {
+  // Regression 2026-04-24: payline column + inferred row mask.
+  // Classic single-payline slot (mid row only) — payline density is
+  // distinct from window density (near-miss clustering makes wild
+  // appear more often in the 3-row window than on the single payline).
+  const s = {
+    player_impact: {
+      symbols_by_column_top10: {
+        "0": [
+          { symbol: "Blank", count: 7288, rate: 0.6074 },
+          { symbol: "Diamond1", count: 165, rate: 0.0138 },
+        ],
+        "1": [{ symbol: "Blank", count: 7475, rate: 0.6230 }],
+      },
+      symbols_by_column_top10_payline: {
+        "0": [
+          { symbol: "Blank", count: 3218, rate: 0.4089 },
+          { symbol: "Diamond1", count: 55, rate: 0.0069 },
+        ],
+        "1": [{ symbol: "Blank", count: 3142, rate: 0.3993 }],
+      },
+      payline_rows_per_col: { "0": [1], "1": [1], "2": [1] },
+    },
+  };
+  const m = PURE.symbolByColMatrix(s);
+  assert.deepStrictEqual(m.paylineRowsByCol["0"], [1]);
+  assert.equal(m.paylineByCol["0"]["Blank"].rate_pct.toFixed(2), "40.89");
+  assert.equal(m.paylineByCol["0"]["Diamond1"].rate_pct.toFixed(2), "0.69");
+  // Window % stays unchanged (backwards compat)
+  assert.equal(m.rowsByCol["0"][0].rate_pct.toFixed(2), "60.74");
+  assert.equal(m.rowsByCol["0"][1].rate_pct.toFixed(2), "1.38");
 });
 
 // ---------- formatPaylineRows ----------

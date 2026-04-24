@@ -147,9 +147,12 @@ const I18N = {
     symbolsByColHeader: "按列分布 Top 10（每列）",
     thSymbol: "符号",
     thCount: "次数",
-    thRate: "占比",
+    thRate: "窗口占比",
+    thRatePayline: "支付线占比",
     symbolsEmpty: "暂无符号数据。",
     symbolColLabel: "列 {idx}",
+    symbolColLabelWithPaylineRows: "列 {idx}（支付线行={rows}）",
+    paylineRateUnavailable: "—",
     rtpClampWarning: "RTP 可能被低估：本次采样有 {robots} 个机器人的最后 {pending} 个付费 spin 累积到下次 collect 触发前就被 chunk_spin_times 截断。\n本机型平均每 {avg} 个付费 spin 触发一次 collect bonus；建议增大 chunk_spin_times 重测以拿到更紧的 RTP。",
     panelSpinType: "SpinType 分布",
     thSpinType: "SpinType",
@@ -601,9 +604,12 @@ const I18N = {
     symbolsByColHeader: "By Column Top 10 (each column)",
     thSymbol: "Symbol",
     thCount: "Count",
-    thRate: "Rate",
+    thRate: "Window %",
+    thRatePayline: "Payline %",
     symbolsEmpty: "No symbol data yet.",
     symbolColLabel: "Col {idx}",
+    symbolColLabelWithPaylineRows: "Col {idx} (payline rows={rows})",
+    paylineRateUnavailable: "—",
     rtpClampWarning: "RTP may be under-reported: this sample left {robots} robot(s) with {pending} paid spin(s) accumulating toward the next collect trigger when chunk_spin_times ran out.\nThis machine averages 1 collect bonus per {avg} paid spins; widen chunk_spin_times and rerun for a tighter RTP estimate.",
     panelSpinType: "SpinType Breakdown",
     thSpinType: "SpinType",
@@ -1251,9 +1257,21 @@ function formatSymbolRows(summary) {
 // Each row is {symbol, count, rate_pct}. Useful for rendering as a side-by
 // -side per-column table in the UI.
 function symbolByColMatrix(summary) {
-  const byCol = ((summary || {}).player_impact || {}).symbols_by_column_top10 || {};
+  const pi = (summary || {}).player_impact || {};
+  const byCol = pi.symbols_by_column_top10 || {};
+  // 2026-04-24: payline-density sibling of by-col distribution.
+  // Analyzer derives per-column payline row mask from observed
+  // PayoutByPayline positions (multi-payline aware, no spec dependency).
+  // Classic single-payline slots (M1 / M37): row=[1] (mid) per column.
+  // Multi-payline machines: row=[0, 1, 2] or V-shape subsets per column.
+  // "symbols_by_column_top10_payline" is the same shape as
+  // "symbols_by_column_top10" but counted only on payline rows.
+  const byColPayline = pi.symbols_by_column_top10_payline || {};
+  const paylineRowsPerCol = pi.payline_rows_per_col || {};
   const columnIds = Object.keys(byCol).sort((a, b) => Number(a) - Number(b));
   const rowsByCol = {};
+  const paylineByCol = {};   // col -> {symbol: {count, rate_pct}} (quick lookup)
+  const paylineRowsByCol = {}; // col -> [row_indices] (for header label)
   for (const col of columnIds) {
     const list = Array.isArray(byCol[col]) ? byCol[col] : [];
     rowsByCol[col] = list.map((r) => ({
@@ -1261,8 +1279,20 @@ function symbolByColMatrix(summary) {
       count: Number(r.count || 0),
       rate_pct: Number(r.rate || 0) * 100,
     }));
+    const plList = Array.isArray(byColPayline[col]) ? byColPayline[col] : [];
+    const plMap = {};
+    for (const r of plList) {
+      plMap[String(r.symbol != null ? r.symbol : "?")] = {
+        count: Number(r.count || 0),
+        rate_pct: Number(r.rate || 0) * 100,
+      };
+    }
+    paylineByCol[col] = plMap;
+    paylineRowsByCol[col] = Array.isArray(paylineRowsPerCol[col])
+      ? paylineRowsPerCol[col].map((n) => Number(n))
+      : [];
   }
-  return { columnIds, rowsByCol };
+  return { columnIds, rowsByCol, paylineByCol, paylineRowsByCol };
 }
 
 // Build display rows for the paylines drilldown table. Sorted by the

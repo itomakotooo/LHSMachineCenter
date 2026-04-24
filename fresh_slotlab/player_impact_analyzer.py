@@ -2293,6 +2293,21 @@ def parse_chunk_response(
     payline_win_approx: dict[str, float] = defaultdict(float)
     symbol_counts: dict[str, int] = defaultdict(int)
     symbol_counts_by_col: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    # 2026-04-24: per-(col, row) symbol counts for payline-density
+    # drilldown. "symbol_counts_by_col" counts ALL visible rows (window
+    # density — what player's eyeball sees). For "payline density" (what
+    # matters for payouts) we need per-row granularity so a
+    # machine-specific mask over rows can be applied.
+    symbol_counts_by_col_by_row: dict[int, dict[int, dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(int))
+    )
+    # Union of row indices observed in PayoutByPayline win positions,
+    # grouped by column. Inferred from rawdata (no spec needed):
+    # classic single-payline machines will only ever record row=1 (mid),
+    # multi-payline machines accumulate {0, 1, 2} or whatever rows their
+    # paylines actually visit. Per-col set is preserved so V-shape
+    # paylines (row-per-reel varies) are handled without flattening.
+    payline_rows_per_col: dict[int, set[int]] = defaultdict(set)
     total_symbol_slots = 0
 
     # Per-PayoutGroupId tally. Both M14 and M272 mode 1/2 always return
@@ -3198,9 +3213,10 @@ def parse_chunk_response(
                 for ci, col_text in enumerate(stop_cols):
                     col_syms = split_symbols(str(col_text))
                     col_symbol_sets.append({s for s in col_syms if s})
-                    for sym in col_syms:
+                    for row_idx, sym in enumerate(col_syms):
                         symbol_counts[sym] += 1
                         symbol_counts_by_col[ci][sym] += 1
+                        symbol_counts_by_col_by_row[ci][row_idx][sym] += 1
                         total_symbol_slots += 1
 
             # Infer the winning symbol(s) for each line that paid this
@@ -3253,13 +3269,36 @@ def parse_chunk_response(
 
             # Reel position distribution: extract position groups from
             # PayoutByPayline's "(pos1,pos2,...)" notation.
+            # Position encoding (slot_designer/emitter/round.py):
+            #   pos = (col+1) * 100 + (row-1)
+            # where col/row are 0-indexed and row=1 is middle row.
+            # Decoding:
+            #   col = (pos // 100) - 1
+            #   row = (pos % 100) + 1  (but note: pos 99 → row=100 which is
+            #   wrong; pos 99 is actually col=0 row=0 (top)). So we decode:
+            #     col = (pos + 1) // 100 - 1   (handles top-row pos=99 etc.)
+            #     row = (pos + 1) % 100        (0=top, 1=mid, 2=bot)
+            # Use the decoded (col, row) to populate payline_rows_per_col
+            # — the inferred set of row indices that paylines visit for
+            # each reel. No spec dependency; works for any machine as
+            # long as we see at least one win touching each payline row.
             if line_ids and win_amt > 0:
                 pl_text = str(r.get("PayoutByPayline", ""))
                 for match in _POSITION_RE.finditer(pl_text):
-                    for pos in match.group(1).split(","):
-                        pos = pos.strip()
-                        if pos:
-                            reel_position_hits[pos] += 1
+                    for pos_text in match.group(1).split(","):
+                        pos_text = pos_text.strip()
+                        if not pos_text:
+                            continue
+                        reel_position_hits[pos_text] += 1
+                        try:
+                            pos_int = int(pos_text)
+                        except ValueError:
+                            continue
+                        # Decode col/row from position encoding
+                        col_decoded = (pos_int + 1) // 100 - 1
+                        row_decoded = (pos_int + 1) % 100
+                        if col_decoded >= 0 and 0 <= row_decoded <= 2:
+                            payline_rows_per_col[col_decoded].add(row_decoded)
 
             # Track previous round's PayIds for chain trigger
             # classification. MUST be the last thing inside the round
@@ -3390,6 +3429,16 @@ def parse_chunk_response(
         "bonus_depth_ratio_count": dict(chunk_bonus_depth_ratio_count),
         "symbol_counts": dict(symbol_counts),
         "symbol_counts_by_col": {str(k): dict(v) for k, v in symbol_counts_by_col.items()},
+        # 2026-04-24: per-(col, row) granular counts for payline-density
+        # drilldown. Keys nested as str(col) → str(row) → symbol → count
+        # so JSON round-trips through chunk cache cleanly.
+        "symbol_counts_by_col_by_row": {
+            str(ci): {str(ri): dict(sm) for ri, sm in row_map.items()}
+            for ci, row_map in symbol_counts_by_col_by_row.items()
+        },
+        "payline_rows_per_col": {
+            str(ci): sorted(rows) for ci, rows in payline_rows_per_col.items()
+        },
         "total_symbol_slots": total_symbol_slots,
         "loss_streak_hist": dict(loss_streak_hist),
         "win_streak_hist": dict(win_streak_hist),
@@ -3726,6 +3775,10 @@ def main() -> int:
 
     symbol_counts: dict[str, int] = defaultdict(int)
     symbol_counts_by_col: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    symbol_counts_by_col_by_row: dict[int, dict[int, dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(int))
+    )
+    payline_rows_per_col: dict[int, set[int]] = defaultdict(set)
     total_symbol_slots = 0
 
     loss_streak_hist: dict[int, int] = defaultdict(int)
@@ -4097,6 +4150,28 @@ def main() -> int:
                     if isinstance(cmap, dict):
                         for sym, c in cmap.items():
                             symbol_counts_by_col[ci][str(sym)] += int(c)
+                # 2026-04-24: merge per-row counts + payline row set.
+                # Tolerate missing keys so analyzing pre-2026-04-24 cached
+                # chunks doesn't crash (old chunks just skip this merge;
+                # payline density then defaults to mid-row fallback).
+                for ci_text, row_map in (rec.get("symbol_counts_by_col_by_row") or {}).items():
+                    ci = int(ci_text)
+                    if isinstance(row_map, dict):
+                        for ri_text, sym_map in row_map.items():
+                            try:
+                                ri = int(ri_text)
+                            except (TypeError, ValueError):
+                                continue
+                            if isinstance(sym_map, dict):
+                                for sym, c in sym_map.items():
+                                    symbol_counts_by_col_by_row[ci][ri][str(sym)] += int(c)
+                for ci_text, rows_list in (rec.get("payline_rows_per_col") or {}).items():
+                    try:
+                        ci = int(ci_text)
+                    except (TypeError, ValueError):
+                        continue
+                    if isinstance(rows_list, list):
+                        payline_rows_per_col[ci].update(int(r) for r in rows_list)
                 total_symbol_slots += int(rec["total_symbol_slots"])
                 for k, c in rec["loss_streak_hist"].items():
                     loss_streak_hist[int(k)] += int(c)
@@ -4734,6 +4809,26 @@ def main() -> int:
                     if isinstance(cmap, dict):
                         for sym, c in cmap.items():
                             symbol_counts_by_col[ci][str(sym)] += int(c)
+                # 2026-04-24: merge per-row counts + payline row set
+                # (tolerates pre-2026-04-24 chunks that lack these fields).
+                for ci_text, row_map in (rec.get("symbol_counts_by_col_by_row") or {}).items():
+                    ci = int(ci_text)
+                    if isinstance(row_map, dict):
+                        for ri_text, sym_map in row_map.items():
+                            try:
+                                ri = int(ri_text)
+                            except (TypeError, ValueError):
+                                continue
+                            if isinstance(sym_map, dict):
+                                for sym, c in sym_map.items():
+                                    symbol_counts_by_col_by_row[ci][ri][str(sym)] += int(c)
+                for ci_text, rows_list in (rec.get("payline_rows_per_col") or {}).items():
+                    try:
+                        ci = int(ci_text)
+                    except (TypeError, ValueError):
+                        continue
+                    if isinstance(rows_list, list):
+                        payline_rows_per_col[ci].update(int(r) for r in rows_list)
 
                 total_symbol_slots += int(rec["total_symbol_slots"])
 
@@ -5570,6 +5665,39 @@ def main() -> int:
                 }
             )
         symbol_by_col_rows[str(ci)] = rows
+
+    # Payline-row density (2026-04-24). For each reel, restrict the
+    # symbol count to ONLY the rows that paylines actually visit
+    # (inferred from observed PayoutByPayline positions — no spec
+    # dependency). Single-payline classic slots (M1, M37) will yield
+    # row=1 only → payline density reflects what hits the payout line.
+    # Multi-payline machines whose paylines cover all 3 rows will
+    # yield identical numbers to window density (that's correct: every
+    # row is paylineable). V-shape paylines surface per-reel specific
+    # row subsets. Fallback: if no wins ever seen (no positions to
+    # decode), default to row=1 (mid-row) to keep output populated.
+    payline_row_mask_per_col = {
+        str(ci): sorted(rows) for ci, rows in payline_rows_per_col.items()
+    }
+    symbol_by_col_rows_payline = {}
+    for ci, _row_map in symbol_counts_by_col_by_row.items():
+        _payline_mask = payline_rows_per_col.get(ci) or {1}  # default mid row
+        _merged_payline: dict[str, int] = defaultdict(int)
+        for _row_idx, _sym_counts in _row_map.items():
+            if _row_idx in _payline_mask:
+                for _sym, _c in _sym_counts.items():
+                    _merged_payline[_sym] += _c
+        _total_col_payline = sum(_merged_payline.values())
+        _rows_payline = []
+        for _sym, _cnt in sorted(_merged_payline.items(), key=lambda kv: kv[1], reverse=True):
+            _rows_payline.append(
+                {
+                    "symbol": _sym,
+                    "count": _cnt,
+                    "rate": _cnt / _total_col_payline if _total_col_payline > 0 else 0.0,
+                }
+            )
+        symbol_by_col_rows_payline[str(ci)] = _rows_payline
 
     # Upstream FeatureWin breakdown. The upstream API groups payouts by
     # a semantic feature name (string: e.g. "Normal", "NormalCollectionSpin",
@@ -6586,6 +6714,16 @@ def main() -> int:
             )[:20],
             "symbols_top20": symbol_rows[:20],
             "symbols_by_column_top10": {k: v[:10] for k, v in symbol_by_col_rows.items()},
+            # 2026-04-24: payline-density variant of symbols_by_column_top10.
+            # "symbols_by_column_top10" counts all visible window rows (top+mid+bot
+            # — what player sees). "_payline" restricts to rows that paylines
+            # actually visit per reel (inferred from PayoutByPayline positions,
+            # falls back to mid-row if no wins sampled). Multi-payline aware.
+            # Frontend shows both columns for comparison: symbols with
+            # window% >> payline% are "near-miss amplifiers" (clustered with
+            # blanks to tease).
+            "symbols_by_column_top10_payline": {k: v[:10] for k, v in symbol_by_col_rows_payline.items()},
+            "payline_rows_per_col": payline_row_mask_per_col,
             # Rawdata-replay bankruptcy simulation. UI renders the
             # ``tiers`` list as three side-by-side survival histograms
             # (x100 / x200 / x500 by default). Each tier's ``bins``
