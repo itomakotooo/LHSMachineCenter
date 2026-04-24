@@ -179,6 +179,20 @@ Mode 1 是所有 mode 的起点：
 - `bucket_rate`: 按上面 4 档设计，Low/Mid 为主，High 少，Top 极少。数字参考 M1/M15 类似机台 + 业界 classic 1-line 基准（`reference_classic_slot_rtp_distribution.md`）— 但**不抄上游采的 rawdata 分布**
 - `hit_rate`: 13-15% 带宽（mode 1 reference；阶段 1 研究支撑这个选择）
 - `_design_constraints`: 记总 RTP target / split / trigger / 情感设计意图 等
+- **`per_reel_symbol_targets`**（2026-04-24 加入）：**必填** — 每个关键 symbol group（wild family / high-value family 如 Seven / jackpot）的 per-reel 密度 target。不加的话 tuner 会把 wild 全堆在一条 reel 上（Pareto 凑数值 artifact）。每 entry：
+  ```json
+  {
+    "name": "wild_family",
+    "symbols": ["Diamond1", "Diamond2"],
+    "pattern": "descending|ascending|uniform|center_heavy|reel_1_anchor",
+    "per_reel_target_pct": {"1": 0.05, "2": 0.04, "3": 0.013},
+    "tolerance_pct": 0.01,
+    "cost_weight": 2.0,
+    "_source": "real <M> mode 1 rawdata <N>M rounds | IGT Red White Blue 1975 prototype",
+    "_rationale": "<why this pattern, what player experience it creates>"
+  }
+  ```
+  **来源 hierarchy**（从硬到软）：①真机 rawdata → ②Industry prototype → ③研究 literature。详见 `project_slot_designer_per_reel_symbol_targets.md`。每 mode 不同 pattern 是正常设计（mode 1 descending = 期待型，mode 2 ascending = reveal 型，mode 5 uniform = "全 reel 热"，mode 7 reel-1-anchor = grind 冷）。
 
 **Tune 命令**：
 ```bash

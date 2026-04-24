@@ -70,5 +70,27 @@
     "ge10_lt20 / ge20_lt50 / ge50_lt100 / ge100_lt200 / ge200_lt500 all set to mode 1's analytic rates exactly.",
     "This makes the target SELF-CONSISTENT with 'preserve mid/high wins' — the tuner starting from mode 1 weights has zero incentive to move these buckets.",
     "ge1_lt5 and ge5_lt10 are the ONLY cut buckets (Cherry + mixed-Bar)."
+  ],
+  "per_reel_symbol_targets": [
+    {
+      "name": "wild_family",
+      "symbols": ["Diamond1", "Diamond2"],
+      "pattern": "reel_1_anchor",
+      "per_reel_target_pct": {"1": 0.0696, "2": 0.0231, "3": 0.0235},
+      "tolerance_pct": 0.01,
+      "cost_weight": 2.0,
+      "_source": "real M1 mode 7 rawdata 264k rounds",
+      "_rationale": "Reel-1-anchored near-miss — wild visible ~7% on reel 1 (anticipation) but reels 2/3 at ~2.3% each (rarely complete). Creates 'wild appears but nothing happens' cold-feel that matches mode 7 grind narrative. Not the same as mode 1 descending — reel 2 drops more sharply."
+    },
+    {
+      "name": "seven_family",
+      "symbols": ["Seven1", "Seven2"],
+      "pattern": "uniform",
+      "per_reel_target_pct": {"1": 0.1588, "2": 0.1610, "3": 0.1601},
+      "tolerance_pct": 0.015,
+      "cost_weight": 3.0,
+      "_source": "real M1 mode 7 rawdata 264k rounds",
+      "_rationale": "Real mode 7 has Seven uniformly at ~16% per reel — this prevents the tuner Pareto of Seven → 0 (documented in NOTES.md). Without this constraint, Bar × 2 wilds fills ge100_lt200 bucket cheaper than 3-Seven and tuner kills Seven family. Real data refutes that as the intent — mode 7 has Seven hit 0.688% (higher than mode 1's 0.566%), enforcing this requires explicit per-reel constraint."
+    }
   ]
 }

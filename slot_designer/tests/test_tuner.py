@@ -184,6 +184,50 @@ def test_es_run_improves_cost():
     )
 
 
+def test_m1_wild_distribution_matches_real_rawdata():
+    """Regression 2026-04-24: per_reel_symbol_targets constraint.
+
+    User concern: "diamond weight on reel 1 is unusually high" — prior
+    tune had wild weight piled 18% on reel 1 with reels 2+3 at 0.22%
+    (tuner Pareto artifact, not any industry pattern). Fix: target file
+    declares per-reel wild density from real M1 rawdata (e.g. mode 1
+    real = 5.28%/4.27%/1.31% descending), and tune.py adds a quadratic
+    penalty against that target.
+
+    This test locks each of the 4 M1 modes' per-reel Diamond1+Diamond2
+    density to within 2pp of real-rawdata targets.
+    """
+    real_targets = {
+        1: (0.0528, 0.0427, 0.0131),  # descending
+        2: (0.0234, 0.0944, 0.1301),  # ascending
+        5: (0.0974, 0.0969, 0.1009),  # uniform ~10%
+        7: (0.0696, 0.0231, 0.0235),  # reel-1-anchor
+    }
+    from slot_designer.devtools.analytic_rtp import compute_reel_marginal
+
+    for mode, (t1, t2, t3) in real_targets.items():
+        path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
+        if not path.exists():
+            continue
+        engine, _ = load_engine(SPEC, path)
+        per_reel = []
+        for reel in engine.reels:
+            m = compute_reel_marginal(reel)
+            per_reel.append(m.get("Diamond1", 0) + m.get("Diamond2", 0))
+        # Allow up to 2pp gap from real (tuner sometimes trades off
+        # between symbol families to hit RTP + shape + multiple
+        # per-reel constraints simultaneously — see target file tolerances).
+        for i, (got, want) in enumerate(zip(per_reel, (t1, t2, t3))):
+            diff_pp = abs(got - want) * 100
+            assert diff_pp < 2.0, (
+                f"mode {mode} reel {i+1} wild density {got*100:.2f}% "
+                f"diverges from real target {want*100:.2f}% by {diff_pp:.2f}pp "
+                f"(> 2pp tolerance). Either the tune regressed or real "
+                f"rawdata changed — check tuner/targets/M1_mode{mode}_*.target.json "
+                f"per_reel_symbol_targets.wild_family and re-tune if needed."
+            )
+
+
 def test_sim_converges_to_analytic_on_tuned_weights():
     """Verify that saved tuned weights, when run through the engine,
     converge to the analytic prediction at large N × multi-seed.

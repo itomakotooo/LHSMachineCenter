@@ -55,5 +55,27 @@
   "tail_dep_ge50x": 0.11,
   "tail_dep_ge100x": 0.10,
   "loss_streak_p95": 9,
-  "loss_streak_max": 30
+  "loss_streak_max": 30,
+  "per_reel_symbol_targets": [
+    {
+      "name": "wild_family",
+      "symbols": ["Diamond1", "Diamond2"],
+      "pattern": "uniform",
+      "per_reel_target_pct": {"1": 0.0974, "2": 0.0969, "3": 0.1009},
+      "tolerance_pct": 0.015,
+      "cost_weight": 2.0,
+      "_source": "real M1 mode 5 rawdata 100k rounds",
+      "_rationale": "Triple Diamond-style uniform distribution — every reel ~10% wild. 'Every reel is hot' feel fits super-lucky brief. 3-wild jackpot reachable from any combo. Aristocrat Dragon Link base / IGT Triple Diamond 1993 prototype."
+    },
+    {
+      "name": "seven_family",
+      "symbols": ["Seven1", "Seven2"],
+      "pattern": "uniform",
+      "per_reel_target_pct": {"1": 0.2064, "2": 0.2007, "3": 0.2078},
+      "tolerance_pct": 0.02,
+      "cost_weight": 2.5,
+      "_source": "real M1 mode 5 rawdata 100k rounds",
+      "_rationale": "Super-lucky mode: Seven uniformly ~20% per reel — 'every reel is hot' for Sevens too. Produces real mode 5's 2.78% Seven family hit rate (5× mode 1). Without this constraint the tuner pareto'd Seven to 1.2% (vs real 2.78%)."
+    }
+  ]
 }

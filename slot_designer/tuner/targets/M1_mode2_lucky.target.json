@@ -54,5 +54,27 @@
   "tail_dep_ge50x": 0.14,
   "tail_dep_ge100x": 0.14,
   "loss_streak_p95": 9,
-  "loss_streak_max": 30
+  "loss_streak_max": 30,
+  "per_reel_symbol_targets": [
+    {
+      "name": "wild_family",
+      "symbols": ["Diamond1", "Diamond2"],
+      "pattern": "ascending",
+      "per_reel_target_pct": {"1": 0.0234, "2": 0.0944, "3": 0.1301},
+      "tolerance_pct": 0.015,
+      "cost_weight": 2.0,
+      "_source": "real M1 mode 2 rawdata 100k rounds",
+      "_rationale": "Modern lucky-mode reveal pattern — reel 3 is wild-heavy 'climax'. Different dramatic pacing than mode 1 descending. Tuner already hit this pattern serendipitously but explicit target prevents drift."
+    },
+    {
+      "name": "seven_family",
+      "symbols": ["Seven1", "Seven2"],
+      "pattern": "dip_at_reel_2",
+      "per_reel_target_pct": {"1": 0.0712, "2": 0.0412, "3": 0.1206},
+      "tolerance_pct": 0.02,
+      "cost_weight": 2.0,
+      "_source": "real M1 mode 2 rawdata 100k rounds",
+      "_rationale": "Mode 2 Seven has unique dip-at-reel-2 shape (real: 7.1/4.1/12.1) while Wild is ascending. Different symbol families can have different per-reel patterns on the same mode — no requirement they share the gradient. Real M1 design uses this to create 'wild builds + Seven reveals' interaction."
+    }
+  ]
 }

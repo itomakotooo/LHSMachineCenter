@@ -52,5 +52,27 @@
   "tail_dep_ge50x": 0.02,
   "tail_dep_ge100x": 0.019,
   "loss_streak_p95": 15,
-  "loss_streak_max": 60
+  "loss_streak_max": 60,
+  "per_reel_symbol_targets": [
+    {
+      "name": "wild_family",
+      "symbols": ["Diamond1", "Diamond2"],
+      "pattern": "descending",
+      "per_reel_target_pct": {"1": 0.0528, "2": 0.0427, "3": 0.0131},
+      "tolerance_pct": 0.01,
+      "cost_weight": 2.0,
+      "_source": "real M1 mode 1 rawdata 7.72M rounds",
+      "_rationale": "Classic IGT 1989-style descending — wild visible on reels 1+2 for anticipation, reel 3 is the gate. Matches Red White Blue 7-family descending pattern (reel 1 20% → reel 3 14%). Kills tuner Pareto artifact where wild piles on one reel."
+    },
+    {
+      "name": "seven_family",
+      "symbols": ["Seven1", "Seven2"],
+      "pattern": "descending",
+      "per_reel_target_pct": {"1": 0.2091, "2": 0.1375, "3": 0.1089},
+      "tolerance_pct": 0.02,
+      "cost_weight": 2.5,
+      "_source": "real M1 mode 1 rawdata 7.72M rounds",
+      "_rationale": "Classic Red White Blue 7-family descending (20% → 14% → 11%). Without this, tuner pareto'd Seven → 0.03% (vs real 0.57%) because Bar × 2 wilds fills top bucket cheaper than 3-Seven."
+    }
+  ]
 }

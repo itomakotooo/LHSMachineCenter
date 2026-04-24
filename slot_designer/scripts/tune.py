@@ -334,6 +334,49 @@ def main() -> None:
         cost = (gap / trigger_cfg["reference"]) ** 2 * trigger_cfg["weight"]
         return cost, actual
 
+    # Per-reel symbol-group density constraints (2026-04-24). Target file
+    # can declare one or more groups (e.g. wild family, jackpot) with a
+    # required per-reel % density matching an established design pattern
+    # (descending / ascending / uniform / center-heavy / reel-1-anchor,
+    # each backed by real-machine rawdata or industry prototype).
+    #
+    # Without this, the tuner Pareto-optimizes RTP by piling the wild
+    # family onto ONE reel (the cheapest-in-RTP-budget path) and letting
+    # the other reels carry ~0 wild weight — kills classic near-miss
+    # visibility. See reference_slot_wild_distribution_patterns memory.
+    per_reel_cfgs = target.get("per_reel_symbol_targets") or []
+
+    def _per_reel_symbol_penalty(counts_list: list[dict[str, int]]) -> tuple[float, dict]:
+        """Return (total_penalty, {<group>_r<N>: actual_pct}).
+
+        Each target entry declares ``symbols`` (group members),
+        ``per_reel_target_pct`` (dict "1"/"2"/... → target share),
+        ``tolerance_pct`` (quadratic penalty reference), and optional
+        ``cost_weight`` (multiplier). Missing reel keys = no constraint
+        on that reel.
+        """
+        if not per_reel_cfgs:
+            return 0.0, {}
+        total_cost = 0.0
+        actuals: dict[str, float] = {}
+        for tgt in per_reel_cfgs:
+            syms = tgt.get("symbols") or []
+            per_reel = tgt.get("per_reel_target_pct") or {}
+            tol = float(tgt.get("tolerance_pct", 0.01))
+            weight = float(tgt.get("cost_weight", 1.0))
+            name = tgt.get("name", "/".join(syms) or "group")
+            for reel_idx, reel_counts in enumerate(counts_list):
+                key = str(reel_idx + 1)
+                if key not in per_reel:
+                    continue
+                total = sum(reel_counts.values())
+                matched = sum(reel_counts.get(s, 0) for s in syms)
+                actual = (matched / total) if total > 0 else 0.0
+                gap = actual - float(per_reel[key])
+                total_cost += (gap / tol) ** 2 * weight
+                actuals[f"{name}_r{reel_idx+1}"] = actual
+        return total_cost, actuals
+
     def cost_fn(counts_list):
         marginals = marginals_from_counts(counts_list)
         pred = analytic_profile_from_marginals(evaluator, marginals)
@@ -341,9 +384,10 @@ def main() -> None:
             pred, target, reachable_buckets=reachable, weights=cost_weights_cfg,
         )
         trigger_cost, _actual_trigger = _trigger_penalty(counts_list)
+        sym_cost, _actuals = _per_reel_symbol_penalty(counts_list)
         # Fold into the breakdown's total (breakdown is a frozen dataclass
         # but we just add to the returned float).
-        return breakdown.total + trigger_cost, breakdown
+        return breakdown.total + trigger_cost + sym_cost, breakdown
 
     x0 = base_counts_from_assembled(base_reels)
     base_cost, base_breakdown = cost_fn(x0)
@@ -364,6 +408,22 @@ def main() -> None:
         _tp, _actual = _trigger_penalty(x0)
         print(f"  trigger rate     : {_actual*100:.3f}%  "
               f"(target {trigger_cfg['target']*100:.3f}%, weight={trigger_cfg['weight']})")
+
+    if per_reel_cfgs:
+        _sp, _actuals = _per_reel_symbol_penalty(x0)
+        print(f"  per-reel symbol targets ({len(per_reel_cfgs)} group"
+              f"{'s' if len(per_reel_cfgs) != 1 else ''}, baseline penalty={_sp:.3f}):")
+        for tgt in per_reel_cfgs:
+            name = tgt.get("name", "/".join(tgt.get("symbols", [])))
+            per_reel = tgt.get("per_reel_target_pct", {})
+            pat = tgt.get("pattern", "—")
+            tol = float(tgt.get("tolerance_pct", 0.01))
+            parts = []
+            for reel_key in sorted(per_reel.keys()):
+                actual = _actuals.get(f"{name}_r{reel_key}", 0.0)
+                tgt_pct = per_reel[reel_key]
+                parts.append(f"r{reel_key}={actual*100:.2f}%/{tgt_pct*100:.2f}%")
+            print(f"    {name} [{pat}]: {'  '.join(parts)}  (tol {tol*100:.2f}pp)")
 
     # ────────────────── Phase 4: count ES ──────────────────
     # 2026-04-24 (M37): compute per-(reel_idx, symbol) count floor =
@@ -407,6 +467,20 @@ def main() -> None:
         print(f"  trigger rate     : {_actual_after*100:.3f}%  "
               f"(target {trigger_cfg['target']*100:.3f}%, "
               f"gap {(_actual_after - trigger_cfg['target'])*100:+.3f}pp)")
+    if per_reel_cfgs:
+        _sp_after, _actuals_after = _per_reel_symbol_penalty(result.best_counts)
+        print(f"  per-reel symbol targets (final penalty={_sp_after:.3f}):")
+        for tgt in per_reel_cfgs:
+            name = tgt.get("name", "/".join(tgt.get("symbols", [])))
+            per_reel = tgt.get("per_reel_target_pct", {})
+            parts = []
+            for reel_key in sorted(per_reel.keys()):
+                actual = _actuals_after.get(f"{name}_r{reel_key}", 0.0)
+                tgt_pct = per_reel[reel_key]
+                gap_pp = (actual - tgt_pct) * 100
+                flag = '' if abs(gap_pp) <= float(tgt.get('tolerance_pct', 0.01)) * 100 else ' !'
+                parts.append(f"r{reel_key}={actual*100:.2f}%/{tgt_pct*100:.2f}%({gap_pp:+.2f}pp{flag})")
+            print(f"    {name}: {'  '.join(parts)}")
     print(f"  cost (total)     : {result.best_cost:.4f}  (was {base_cost:.4f}; Δ={base_cost-result.best_cost:+.4f})")
 
     # Materialize new counts onto the existing strip — uses apply_counts's
