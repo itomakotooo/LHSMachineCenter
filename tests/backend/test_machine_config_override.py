@@ -334,6 +334,113 @@ class TestUnderlyingResolution:
             assert path.name == "M273Cfg.txt"
 
 
+class TestLocalCfgMd5SegregatesChunks:
+    """Without a per-cfg synthetic md5, chunks produced with a
+    MachineConfig override get stamped with upstream's global cfg md5
+    (the /MachineConfigMd5 endpoint has no idea the request carried
+    an override), silently contaminating the global-cfg bucket on
+    subsequent resume-reads. These tests lock the fix: RunManager
+    swaps in a ``localcfg_<sha1[:8]>`` when machine_config is set."""
+
+    def test_derive_local_cfg_md5_format(self):
+        from src.web_console.backend.app import _derive_local_cfg_md5
+        tag = _derive_local_cfg_md5('{"x":1}')
+        assert tag.startswith("localcfg_")
+        assert len(tag) == len("localcfg_") + 8
+        # Deterministic — same input → same tag → resume-compatible
+        # across operators with byte-identical cfgs.
+        assert tag == _derive_local_cfg_md5('{"x":1}')
+
+    def test_different_cfg_different_md5(self):
+        from src.web_console.backend.app import _derive_local_cfg_md5
+        assert _derive_local_cfg_md5('{"a":1}') != _derive_local_cfg_md5('{"b":1}')
+
+    def test_run_manager_stamps_localcfg_md5_when_machine_config_set(
+        self, client, fake_machineconfig_dir, app_factory,
+    ):
+        """use_local_machine_config=True → analyzer cmd carries
+        --upstream-config-md5 localcfg_<hash>, NOT the upstream
+        global md5. This is what keeps override-produced chunks
+        from mixing with global-cfg chunks on resume."""
+        cfg = '{"marker":"override_chunks_go_here"}'
+        (fake_machineconfig_dir / "M14Cfg.txt").write_text(cfg, encoding="utf-8")
+        c, _app = client
+        resp = c.post(
+            "/api/batch-run",
+            json={
+                "items": [
+                    {
+                        "machine": "M14", "mode": 1,
+                        "chunk_spin_times": 1000,
+                        "use_local_machine_config": True,
+                    }
+                ],
+                "chunk_robot_count": 8, "batch_concurrency": 8,
+                "concurrency": 1, "max_chunks": 5, "timeout": 60.0,
+                "target_halfwidth_pp": 0.5,
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        import time
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            if app_factory.stub_popen.cmds:
+                break
+            time.sleep(0.05)
+        cmd = app_factory.stub_popen.cmds[-1]
+        assert "--upstream-config-md5" in cmd
+        idx = cmd.index("--upstream-config-md5")
+        md5_value = cmd[idx + 1]
+        assert md5_value.startswith("localcfg_"), (
+            f"override chunks must get synthetic md5, got {md5_value!r}"
+        )
+        # Must match the deterministic hash of the cfg file content
+        # so two operators with the same cfg file share chunks.
+        from src.web_console.backend.app import _derive_local_cfg_md5
+        assert md5_value == _derive_local_cfg_md5(cfg)
+
+    def test_no_machine_config_keeps_upstream_md5(
+        self, client, app_factory, monkeypatch,
+    ):
+        """Without machine_config, the caller-supplied (or upstream-
+        fetched) upstream_config_md5 passes through unchanged."""
+        c, _app = client
+        resp = c.post(
+            "/api/runs",
+            json=_run_payload(
+                upstream_config_md5="real_server_md5_abc123",
+            ),
+        )
+        assert resp.status_code == 200, resp.text
+        cmd = app_factory.stub_popen.cmds[-1]
+        idx = cmd.index("--upstream-config-md5")
+        assert cmd[idx + 1] == "real_server_md5_abc123"
+        assert not cmd[idx + 1].startswith("localcfg_")
+
+    def test_explicit_machine_config_triggers_synthetic_md5_on_direct_run(
+        self, client, app_factory,
+    ):
+        """/api/runs direct caller with machine_config set (no batch
+        layer involved) → RunManager still swaps in synthetic md5.
+        This is the defensive override at the chokepoint."""
+        c, _app = client
+        resp = c.post(
+            "/api/runs",
+            json=_run_payload(
+                machine_config='{"direct_call_cfg":true}',
+                upstream_config_md5="real_server_md5_xyz",
+            ),
+        )
+        assert resp.status_code == 200, resp.text
+        cmd = app_factory.stub_popen.cmds[-1]
+        idx = cmd.index("--upstream-config-md5")
+        md5_value = cmd[idx + 1]
+        assert md5_value.startswith("localcfg_")
+        # Caller's "real_server_md5_xyz" must NOT be used — that was
+        # the exact pollution vector.
+        assert md5_value != "real_server_md5_xyz"
+
+
 class TestMakePayloadInjectsMachineConfigField:
     """Wire-level check — the analyzer's make_payload adds
     `MachineConfig` iff a non-empty string is passed. This is what

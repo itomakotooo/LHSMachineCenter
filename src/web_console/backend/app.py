@@ -366,6 +366,29 @@ def load_servers(path: Path | None = None) -> dict[str, Any]:
     return {"servers": [], "default_server": ""}
 
 
+def _derive_local_cfg_md5(cfg_content: str) -> str:
+    """Turn a MachineConfig override JSON string into a deterministic
+    version tag that slots into the existing md5 filter / bucket
+    system. Chunks produced with a local cfg override get stamped
+    with this tag instead of upstream's global cfg md5 so they stay
+    segregated from global-cfg chunks of the same machine / mode.
+
+    Without this, override chunks get the GLOBAL md5 from upstream's
+    /MachineConfigMd5 endpoint (which has no idea the request carried
+    a per-call override) and silently mix with non-override chunks
+    on subsequent resume-reads — a data pollution bug.
+
+    Format: ``localcfg_<8-hex>`` — the prefix makes the UI's rawdata
+    panel visibly distinguish local-cfg versions from server md5s
+    (real server md5s are full hex strings; prefix is clear).
+    Two operators with byte-identical cfg files hash to the same
+    tag → chunks resume-compatibly across their machines, which is
+    the desired "share designer draft results" semantics."""
+    import hashlib
+    digest = hashlib.sha1(cfg_content.encode("utf-8")).hexdigest()[:8]
+    return f"localcfg_{digest}"
+
+
 def _resolve_local_cfg_for_machine(
     machine_display: str,
     machines_config_path: Path | None = None,
@@ -3556,6 +3579,9 @@ class BatchRunManager:
                     # analyzer can filter historical-md5 chunks from
                     # the stats merge (they stay on disk, just aren't
                     # counted toward the session's running stats).
+                    # RunManager.start_run swaps in a
+                    # ``localcfg_<hash>`` synthetic when machine_config
+                    # is set, so we don't pre-empt it here.
                     upstream_config_md5=up_cfg or "",
                     upstream_code_md5=up_code or "",
                     # Per-item MachineConfig override (focused-machine
@@ -4534,8 +4560,19 @@ class RunManager:
         # with other md5 (historical generations) stay on disk but
         # skip the stats merge. Empty strings (back-compat) = no
         # filter, merge everything.
-        if req.upstream_config_md5:
-            cmd.extend(["--upstream-config-md5", req.upstream_config_md5])
+        #
+        # Defensive override: if this run carries a MachineConfig
+        # per-request override, the upstream /MachineConfigMd5
+        # endpoint's global md5 is WRONG for filtering (upstream has
+        # no idea the request is overriding cfg). Swap in a content-
+        # derived synthetic so chunks land in their own version
+        # bucket. BatchRunManager already does this, but do it again
+        # here so /api/runs direct callers can't accidentally bypass.
+        effective_cfg_md5 = req.upstream_config_md5
+        if getattr(req, "machine_config", ""):
+            effective_cfg_md5 = _derive_local_cfg_md5(req.machine_config)
+        if effective_cfg_md5:
+            cmd.extend(["--upstream-config-md5", effective_cfg_md5])
         if req.upstream_code_md5:
             cmd.extend(["--upstream-code-md5", req.upstream_code_md5])
         # Variant routing: for rows whose upstream_key differs from
