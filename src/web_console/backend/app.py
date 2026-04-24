@@ -5423,6 +5423,7 @@ def create_app(
         # classification (historical vs current) at the margin, not
         # sampling correctness, and the explicit "刷新 MD5" button
         # remains synchronous for deterministic operator workflows.
+        refresh_triggered = False
         if not req.skip_md5_refresh:
             import threading as _threading
             def _refresh_md5_async() -> None:
@@ -5439,7 +5440,18 @@ def create_app(
                 daemon=True,
                 name="pre-batch-md5-refresh",
             ).start()
-        return batch_mgr.start_batch(req, rr)
+            refresh_triggered = True
+        result = batch_mgr.start_batch(req, rr)
+        if refresh_triggered:
+            # Observability placeholder (async since be953cb — the
+            # refresh's ok/error outcome can't land in the sync
+            # response because we return before the thread finishes).
+            # Operators polling POST /api/batch-run still see that a
+            # refresh WAS triggered; the completed outcome is only
+            # observable via the next batch's classifier or the
+            # explicit /api/machines/refresh-md5 endpoint.
+            result["md5_refresh"] = {"ok": None, "pending": True}
+        return result
 
     @app.get("/api/disk-space")
     def disk_space() -> dict[str, Any]:

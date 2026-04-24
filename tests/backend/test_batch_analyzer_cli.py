@@ -301,9 +301,17 @@ class TestBatchAutoRefreshMd5:
     def test_default_triggers_md5_refresh(
         self, client, tmp_path, app_factory, monkeypatch,
     ):
-        """Absent ``skip_md5_refresh``, the endpoint calls
-        ``_do_refresh_machines_md5`` once per batch. Response echoes
-        the refresh outcome under ``md5_refresh``."""
+        """Absent ``skip_md5_refresh``, the endpoint spawns a daemon
+        thread that calls ``_do_refresh_machines_md5`` once per batch.
+
+        Since be953cb moved the refresh to a fire-and-forget daemon
+        thread (POST dropped 38s → 4s), the completed ok/error
+        outcome isn't available in the sync response — only a
+        ``{"ok": None, "pending": True}`` placeholder that tells the
+        operator "yes, a refresh was triggered in the background".
+        This test asserts both (a) the placeholder, and (b) that the
+        thread actually fires the upstream fetch (polled via the
+        stubbed ``_fetch_machine_config_md5``)."""
         import src.web_console.backend.app as app_mod
         c, _ = client
         raw_root = tmp_path / "rawdata"
@@ -311,7 +319,6 @@ class TestBatchAutoRefreshMd5:
         monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
 
         calls: list[tuple[str, bool]] = []
-        real_refresh = app_mod._fetch_machine_config_md5
         monkeypatch.setattr(
             app_mod, "_fetch_machine_config_md5",
             lambda ep, timeout=30.0: (
@@ -331,9 +338,16 @@ class TestBatchAutoRefreshMd5:
         r = c.post("/api/batch-run", json=_batch_payload("M273", 1, target=0.0))
         assert r.status_code == 200
         body = r.json()
-        assert "md5_refresh" in body, "response should echo md5_refresh outcome"
-        assert body["md5_refresh"]["ok"] is True
-        assert body["md5_refresh"]["machines_fetched"] == 1
+        assert body.get("md5_refresh") == {"ok": None, "pending": True}, (
+            "response should include an async placeholder when refresh is triggered"
+        )
+
+        # Wait for the daemon thread to actually fire the upstream
+        # fetch. Proves the refresh was triggered in practice, not
+        # just claimed in the response placeholder.
+        deadline = time.time() + 5.0
+        while time.time() < deadline and not calls:
+            time.sleep(0.05)
         assert len(calls) == 1, "refresh fetch should fire exactly once per batch"
         # Let any stubbed analyzer subprocesses exit cleanly.
         _release_stubs(app_factory.stub_popen)
@@ -368,17 +382,28 @@ class TestBatchAutoRefreshMd5:
     def test_upstream_failure_does_not_block_batch(
         self, client, tmp_path, app_factory, monkeypatch,
     ):
-        """Upstream unreachable → md5_refresh returns ok=False but
-        the batch still starts. Operator gets the failure in the
-        response metadata; they can decide whether to cancel and
-        retry or accept the stale-md5 run."""
+        """Upstream unreachable → the batch still starts.
+
+        Post-be953cb the refresh lives on a daemon thread, so the
+        failure is swallowed inside the thread (by
+        ``raise_on_error=False`` in ``_do_refresh_machines_md5``) and
+        isn't observable in the sync response. What IS observable:
+        (a) 200 OK and a batch_id (batch dispatched), (b) the
+        pending placeholder (refresh was triggered), and (c) the
+        upstream fetch was actually attempted by the background
+        thread. Operators see stale-md5 risk surface on the next
+        batch's classifier rather than via this response."""
         import src.web_console.backend.app as app_mod
         c, _ = client
         raw_root = tmp_path / "rawdata"
         monkeypatch.setattr(app_mod, "RAWDATA_ROOT", raw_root)
         monkeypatch.setattr(app_mod, "_get_machine_md5", lambda *a, **kw: ("", ""))
 
-        monkeypatch.setattr(app_mod, "_fetch_machine_config_md5", lambda ep, timeout=30.0: None)
+        calls: list[str] = []
+        monkeypatch.setattr(
+            app_mod, "_fetch_machine_config_md5",
+            lambda ep, timeout=30.0: (calls.append(ep) or None),
+        )
         monkeypatch.setattr(app_mod, "load_servers", lambda _path: {
             "servers": [{"id": "dev", "endpoint": "http://fake-upstream"}],
         })
@@ -386,10 +411,20 @@ class TestBatchAutoRefreshMd5:
         r = c.post("/api/batch-run", json=_batch_payload("M273", 1, target=0.0))
         assert r.status_code == 200, "upstream failure should NOT fail the batch"
         body = r.json()
-        assert body["md5_refresh"]["ok"] is False
-        assert "fetch" in body["md5_refresh"]["error"].lower()
         # Batch should still have kicked off (batch_id + items present).
         assert "batch_id" in body
+        # Placeholder still set — operator knows refresh was fired
+        # even though the outcome (failure) isn't surfaced in the
+        # sync response.
+        assert body.get("md5_refresh") == {"ok": None, "pending": True}
+
+        # Wait for the background thread to actually attempt the
+        # (failing) upstream fetch — proves the failure path WAS
+        # exercised and swallowed, not that refresh was skipped.
+        deadline = time.time() + 5.0
+        while time.time() < deadline and not calls:
+            time.sleep(0.05)
+        assert len(calls) == 1, "background refresh should attempt the upstream fetch"
         _release_stubs(app_factory.stub_popen)
 
     def test_refresh_never_clobbers_real_md5_with_empty(
