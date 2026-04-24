@@ -1,0 +1,19 @@
+{
+  "machine": "M37",
+  "mode": 1,
+  "reel_set": "default",
+  "_notes": [
+    "M37 mode 1 seed weights (v1 2026-04-24 pre-tune).",
+    "Flat weight = 1 on every stop; Phase 4 tuner will adjust per (symbol, reel) to match target (95% RTP, 13-15% hit, bucket shape per DESIGN.md §7-8).",
+    "",
+    "Strip layout — see reel_strips.json. Invariants:",
+    "  - 36 stops × 3 reels; blank/non-blank alternation",
+    "  - Wild on reels 1/3 only; boosters on reel 2 only",
+    "  - (wild, grand, wild) re-rolled server-side (spec.reroll_blocks)"
+  ],
+  "weights": [
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  ]
+}

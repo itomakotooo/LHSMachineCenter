@@ -1,0 +1,90 @@
+{
+  "machine": "M37",
+  "reel_set": "default",
+  "_invariants": [
+    "Blank/non-blank strict alternation per reel (18 blank + 18 non-blank, interleaved). Position 0/2/4/... = blank; 1/3/5/... = non-blank.",
+    "Wild ONLY on reels 1+3 (outside); NEVER on reel 2. Enforces pay_id 102-104 semantics (pure-wild requires both outside reels to be wild, not center).",
+    "Boosters (mini/minor/major/grand) ONLY on reel 2 (middle); NEVER on reels 1+3.",
+    "(wild, grand, wild) on middle row is FORBIDDEN — enforced by spec.reroll_blocks + spin.py re-roll loop. Engine re-draws on this pattern.",
+    "Max payout path: (high7|wild, grand, high7|wild) = pay_id 1 × grand = 1000×. TOP tier."
+  ],
+  "_near_miss_design": [
+    "Reel 2 positions 17, 19, 21 = high7, grand, high7 (with blanks at 18, 20 between them).",
+    "When reel 2 stops with grand NOT in middle row (top or bot instead), window shows high7 on the other end → 'grand was SO close to middle' emotional pull.",
+    "When reel 2 stops with grand in middle, high7 is visible in both top and bot rows via the flanking positions → payline-grand + visible-high7 creates a rich near-miss-to-1000×-via-other-reels context.",
+    "Reels 1+3 have wild directly adjacent to high7 (e.g. pos 1=wild, pos 3=high7 on reel 1) → window commonly shows both wild and high7 → supports 3-match-with-wild-sub pays (pay_id 1 with wild flank).",
+    "Reel 3 offset from reel 1 (wild/high7 positions swapped) to avoid mirror symmetry — visible across reels in different arrangements."
+  ],
+  "_notes": [
+    "2026-04-24 v1: initial strip layout for Phase 3 (pre-tune).",
+    "Stop counts per symbol:",
+    "  Reel 1 (18 non-blank): 3 wild + 3 high7 + 3 7bar + 3 3bar + 3 2bar + 3 1bar",
+    "  Reel 2 (18 non-blank): 3 high7 + 2 7bar + 2 3bar + 2 2bar + 2 1bar + 2 mini + 2 minor + 2 major + 1 grand",
+    "  Reel 3 (18 non-blank): 3 wild + 3 high7 + 3 7bar + 3 3bar + 3 2bar + 3 1bar",
+    "",
+    "Phase 4 tuner will adjust per-stop weights to hit RTP/hit/bucket targets.",
+    "Phase 5 joint SA will re-order positions across all modes (keeping marginals) to optimize experience metrics (near-miss rate / PWDF / blank adjacency)."
+  ],
+  "reels": [
+    [
+      "blank", "wild",
+      "blank", "high7",
+      "blank", "7bar",
+      "blank", "3bar",
+      "blank", "2bar",
+      "blank", "1bar",
+      "blank", "wild",
+      "blank", "high7",
+      "blank", "7bar",
+      "blank", "3bar",
+      "blank", "2bar",
+      "blank", "1bar",
+      "blank", "wild",
+      "blank", "high7",
+      "blank", "7bar",
+      "blank", "3bar",
+      "blank", "2bar",
+      "blank", "1bar"
+    ],
+    [
+      "blank", "high7",
+      "blank", "mini",
+      "blank", "7bar",
+      "blank", "minor",
+      "blank", "2bar",
+      "blank", "major",
+      "blank", "3bar",
+      "blank", "1bar",
+      "blank", "high7",
+      "blank", "grand",
+      "blank", "high7",
+      "blank", "major",
+      "blank", "minor",
+      "blank", "3bar",
+      "blank", "1bar",
+      "blank", "7bar",
+      "blank", "2bar",
+      "blank", "mini"
+    ],
+    [
+      "blank", "high7",
+      "blank", "wild",
+      "blank", "7bar",
+      "blank", "3bar",
+      "blank", "2bar",
+      "blank", "1bar",
+      "blank", "high7",
+      "blank", "wild",
+      "blank", "7bar",
+      "blank", "3bar",
+      "blank", "2bar",
+      "blank", "1bar",
+      "blank", "high7",
+      "blank", "wild",
+      "blank", "7bar",
+      "blank", "3bar",
+      "blank", "2bar",
+      "blank", "1bar"
+    ]
+  ]
+}
