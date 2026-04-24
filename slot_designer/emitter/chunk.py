@@ -58,4 +58,20 @@ def write_chunk(chunk: dict, out_dir: Path, chunk_index: int) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"chunk_{chunk_index:04d}.json"
     path.write_text(json.dumps(chunk, ensure_ascii=False), encoding="utf-8")
+    # Per-mode chunk metadata sidecar (shared module — same format
+    # as real analyzer's ``_persist_chunk``). Lets virtual-side
+    # readers (pre-sample scan, virtual rawdata status) skip full
+    # chunk-file parse when only envelope md5s are needed. Best-
+    # effort: sidecar failure never blocks a successful chunk write.
+    try:
+        from fresh_slotlab.chunk_index import update_chunk_entry
+        update_chunk_entry(
+            out_dir, path,
+            chunk_index=int(chunk.get("_chunk_index", chunk_index)),
+            config_md5=str(chunk.get("_config_md5", "") or ""),
+            code_md5=str(chunk.get("_code_md5", "") or ""),
+            saved_at=str(chunk.get("_saved_at", "") or "") or None,
+        )
+    except Exception:  # noqa: BLE001
+        pass
     return path

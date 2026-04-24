@@ -1923,6 +1923,21 @@ def _save_chunk_cache(
             update_entry(rawdata_root, machine, rtp_mode, cache_dir)
         except Exception:  # noqa: BLE001
             pass
+        # Per-mode chunk metadata sidecar — lets resume-replay +
+        # rawdata-status skip full ``json.loads`` on historical
+        # chunks. Writes ``mode_<N>/_chunks.json`` atomically.
+        # Swallows failures itself; chunk file is already durable.
+        try:
+            from fresh_slotlab.chunk_index import update_chunk_entry
+            update_chunk_entry(
+                cache_dir, out_path,
+                chunk_index=chunk_index,
+                config_md5=config_md5,
+                code_md5=code_md5,
+                saved_at=envelope["_saved_at"],
+            )
+        except Exception:  # noqa: BLE001
+            pass
     except Exception:  # noqa: BLE001
         # Clean up a stale .tmp so we don't accumulate partials from
         # repeated failures. The final chunk file (if any) is left
@@ -3842,6 +3857,17 @@ def main() -> int:
 
     if cache_read_dir is not None:
         chunk_files = sorted(cache_read_dir.glob("chunk_*.json"))
+        # Pre-load the per-mode chunk metadata sidecar once so the
+        # replay loop can check md5 match WITHOUT opening any chunk
+        # file. Auto-rebuilds on first use via 4KB peek per chunk —
+        # O(N peek) instead of O(N full-load). See
+        # ``fresh_slotlab.chunk_index`` for the design.
+        try:
+            from fresh_slotlab.chunk_index import get_chunks_index
+            _chunks_idx_payload = get_chunks_index(cache_read_dir)
+            _sidecar_entries = _chunks_idx_payload.get("chunks") or {}
+        except Exception:  # noqa: BLE001
+            _sidecar_entries = {}
         # Read-only mode demands a non-empty cache; resume mode is
         # happy to start fresh (cache dir just happens to be empty
         # on the first resume call).
@@ -3892,17 +3918,23 @@ def main() -> int:
         historical_md5_skipped = 0
 
         for read_idx, cf in enumerate(chunk_files):
-            # Fast path: when a md5 filter is active AND the envelope
-            # header peek shows this chunk won't match, skip the full
-            # file read + JSON parse + sha256 integrity check. Cuts
+            # Fast path: when a md5 filter is active, consult the
+            # per-mode sidecar (``_chunks.json``) first. Sidecar
+            # entry hit + non-match → skip the full chunk-file read
+            # + JSON parse + sha256 integrity check entirely. Cuts
             # ~100MB / ~15s off a historical-md5 replay where the
             # operator swapped cfg and nothing will match the new
-            # filter. Falls back to full load if peek can't find
-            # the header fields (old envelope format, reordered write).
+            # filter.
+            #
+            # Sidecar miss (new chunk not yet indexed, legacy
+            # envelope, mid-migration) → fall through to the full
+            # load path below, which still works correctly.
             if md5_filter_active:
-                peek = peek_chunk_envelope(cf)
-                if peek is not None:
-                    peek_idx, peek_cfg, peek_code = peek
+                sidecar_entry = _sidecar_entries.get(cf.name)
+                if isinstance(sidecar_entry, dict):
+                    peek_idx = int(sidecar_entry.get("idx", 0) or 0)
+                    peek_cfg = str(sidecar_entry.get("cfg_md5", "") or "")
+                    peek_code = str(sidecar_entry.get("code_md5", "") or "")
                     max_existing_idx = max(max_existing_idx, peek_idx)
                     if (
                         peek_cfg != args.upstream_config_md5

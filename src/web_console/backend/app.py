@@ -646,10 +646,23 @@ def check_rawdata_status(
         # through to the authoritative filesystem scan.
         pass
 
-    # ── Cold path: full per-chunk scan + index rebuild ──
+    # ── Cold path: per-chunk metadata scan + index rebuild ──
+    # Use the per-mode chunk sidecar (``_chunks.json``) so we don't
+    # ``json.loads`` every chunk file just to read the envelope
+    # header. Sidecar auto-rebuilds via 4KB peek per chunk when
+    # missing — turns a multi-GB rawdata scan into a few-MB peek
+    # sweep. The click-a-machine-with-huge-rawdata slowness reported
+    # 2026-04-24 was this loop on every UI refresh.
     chunks = sorted(mode_dir.glob("chunk_*.json"))
     if not chunks:
         return _empty_rawdata_status()
+
+    from fresh_slotlab.chunk_index import get_chunks_index
+    try:
+        sidecar = get_chunks_index(mode_dir)
+        sidecar_entries = sidecar.get("chunks") or {}
+    except Exception:  # noqa: BLE001
+        sidecar_entries = {}
 
     usable = 0
     mismatched: list[Path] = []
@@ -657,19 +670,30 @@ def check_rawdata_status(
     usable_size = 0
 
     for chunk_path in chunks:
-        try:
-            data = json.loads(chunk_path.read_text(encoding="utf-8"))
-            cfg_md5 = str(data.get("_config_md5", ""))
-            code_md5 = str(data.get("_code_md5", ""))
-            saved = str(data.get("_saved_at", ""))
-        except Exception:
-            mismatched.append(chunk_path)
-            continue
+        entry = sidecar_entries.get(chunk_path.name)
+        if isinstance(entry, dict):
+            cfg_md5 = str(entry.get("cfg_md5", "") or "")
+            code_md5 = str(entry.get("code_md5", "") or "")
+            saved = str(entry.get("saved_at", "") or "")
+            size_bytes = int(entry.get("size_bytes", 0) or 0)
+        else:
+            # Sidecar miss (not yet indexed / peek failed). Fall
+            # back to full read for this chunk only — self-heals
+            # on next call via sidecar rebuild.
+            try:
+                data = json.loads(chunk_path.read_text(encoding="utf-8"))
+                cfg_md5 = str(data.get("_config_md5", ""))
+                code_md5 = str(data.get("_code_md5", ""))
+                saved = str(data.get("_saved_at", ""))
+                size_bytes = int(chunk_path.stat().st_size)
+            except Exception:
+                mismatched.append(chunk_path)
+                continue
 
         if unverifiable:
             # No upstream reference → accept as-is.
             usable += 1
-            usable_size += chunk_path.stat().st_size
+            usable_size += size_bytes
             if saved:
                 saved_ats.append(saved)
             continue
@@ -680,7 +704,7 @@ def check_rawdata_status(
             continue
         if cfg_md5 == up_config and code_md5 == up_code:
             usable += 1
-            usable_size += chunk_path.stat().st_size
+            usable_size += size_bytes
             if saved:
                 saved_ats.append(saved)
         else:

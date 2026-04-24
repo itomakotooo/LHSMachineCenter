@@ -312,7 +312,28 @@ def _load_existing_session_stats(
     n = 0
     ret_sum = 0.0
     ret_sq_sum = 0.0
+    # Pre-load the per-mode chunk sidecar once so md5-filtered runs
+    # can skip non-matching chunks without a full ``json.loads``.
+    # Auto-rebuilt via 4KB peek on first miss. Same pattern as the
+    # real analyzer's replay loop — shared module guarantees format
+    # parity across real + virtual writers.
+    sidecar_entries: dict = {}
+    if md5_filter:
+        try:
+            from fresh_slotlab.chunk_index import get_chunks_index
+            sidecar_entries = get_chunks_index(rawdata_dir).get("chunks") or {}
+        except Exception:  # noqa: BLE001
+            sidecar_entries = {}
     for cf in sorted(rawdata_dir.glob("chunk_*.json")):
+        if md5_filter:
+            entry = sidecar_entries.get(cf.name)
+            if isinstance(entry, dict):
+                cfg = str(entry.get("cfg_md5", "") or "")
+                code = str(entry.get("code_md5", "") or "")
+                if cfg != md5_filter[0] or code != md5_filter[1]:
+                    continue
+            # Sidecar miss → fall through to full load; the md5 re-check
+            # below still applies.
         try:
             data = json.loads(cf.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
