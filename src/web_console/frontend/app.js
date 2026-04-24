@@ -39,14 +39,17 @@ const state = {
   // right pane shows fleet overview (when runFilterMachines is also
   // empty) or multi-select summary (when runFilterMachines has >0).
   focusedMachine: null,
-  // Staged per-focused-machine MachineConfig override. {filename,
-  // content, ok} — `content` is the raw JSON string (sent verbatim
-  // as `MachineConfig` on every upstream request). `ok=false` when
-  // parse fails; startSampling still sends it so the operator can
-  // see upstream's own rejection, but we show a red status hint.
-  // Cleared on focus change / focus clear so there's no risk of
-  // silently applying a config to the wrong machine.
-  stagedMachineConfig: null,
+  // Per-focused-machine MachineConfig override, resolved against
+  // ``machineconfig/<underlying>Cfg.txt`` on the backend. Populated
+  // by the availability-probe API on focus change:
+  //   null              — no probe yet / no match → card hidden
+  //   { available:false, underlying, filename } — probe done, no file
+  //   { available:true, underlying, filename, bytes, mtime_iso,
+  //     useLocal: bool } — probe done, file exists; useLocal tracks
+  //     the checkbox state (sent to backend as use_local_machine_config)
+  // Cleared on focus change / clear so a checkbox ticked for M14
+  // never rides along with a sample on M15.
+  machineConfigState: null,
   // Global rawdata detail view (step 6): when true the right pane
   // shows the fleet-wide per-machine rawdata table instead of fleet
   // overview. Toggled by the rawdata banner's 明细 button. Takes
@@ -1071,10 +1074,10 @@ function _setFocusedMachine(machine) {
   if (state.runFilterMachines.size > 0) {
     state.runFilterMachines.clear();
   }
-  // Switching focus to a different machine invalidates any staged
-  // MachineConfig override (uploaded file was for the previous
-  // machine; sending it to a different machine would silently
-  // apply wrong cfg).
+  // Switching focus to a different machine invalidates any prior
+  // MachineConfig probe (the checkbox and file metadata were for
+  // the previous machine; sending them with a sample on a
+  // different machine would silently apply wrong cfg).
   if (state.focusedMachine !== machine) {
     _clearStagedMachineConfig();
   }
@@ -1085,11 +1088,14 @@ function _setFocusedMachine(machine) {
   updateActionStates();
   renderDetailPane();
   renderMachineConfigOverride();
+  // Async — no await; the card starts hidden, reveals itself on
+  // response if a matching cfg file exists.
+  _refreshMachineConfigAvailability(machine);
 }
 
 function _clearFocus() {
   state.focusedMachine = null;
-  // Leaving focus mode drops any staged cfg override (only applies
+  // Leaving focus mode drops the cfg-override probe (only applies
   // to focused single-machine sampling).
   _clearStagedMachineConfig();
   _syncAllCardsActiveDom();
@@ -1103,64 +1109,67 @@ function _clearFocus() {
 }
 
 function _clearStagedMachineConfig() {
-  state.stagedMachineConfig = null;
+  state.machineConfigState = null;
 }
 
-function _stageMachineConfigFromFile(file) {
-  // Browser FileReader is async; we want to land a valid-or-error
-  // state into state.stagedMachineConfig before the operator clicks
-  // 开始采样. Parse JSON client-side so we can flag broken files
-  // immediately instead of discovering at upstream reject time.
-  const reader = new FileReader();
-  reader.onload = () => {
-    const raw = String(reader.result || "");
-    let ok = true;
-    let errMsg = "";
-    try { JSON.parse(raw); } catch (e) { ok = false; errMsg = String(e.message || e); }
-    state.stagedMachineConfig = {
-      filename: file.name,
-      content: raw,
-      bytes: raw.length,
-      ok,
-      error: errMsg,
+async function _refreshMachineConfigAvailability(machine) {
+  // Probe backend for machineconfig/<underlying>Cfg.txt existence.
+  // Backend resolves variants → underlying via variants_map so a
+  // M273 variant finds M273Cfg.txt. Best-effort: any fetch error
+  // leaves state null → card stays hidden (no false advertising).
+  if (!machine) { state.machineConfigState = null; renderMachineConfigOverride(); return; }
+  try {
+    const r = await fetch(`/api/machines/${encodeURIComponent(machine)}/cfg-availability`);
+    if (!r.ok) throw new Error(`probe ${r.status}`);
+    const body = await r.json();
+    // Preserve current useLocal toggle IF we re-probe the same
+    // machine (e.g. post-sampling refresh). On focus change the
+    // whole state was nulled via _clearStagedMachineConfig, so
+    // the fallback false is correct there.
+    const prev = state.machineConfigState;
+    const useLocal = (prev && prev.machine === machine) ? !!prev.useLocal : false;
+    state.machineConfigState = {
+      machine,
+      available: !!body.available,
+      underlying: body.underlying,
+      filename: body.filename,
+      bytes: body.bytes || 0,
+      mtime_iso: body.mtime_iso || null,
+      useLocal,
     };
-    renderMachineConfigOverride();
-  };
-  reader.onerror = () => {
-    state.stagedMachineConfig = {
-      filename: file.name,
-      content: "",
-      bytes: 0,
-      ok: false,
-      error: "读取文件失败",
-    };
-    renderMachineConfigOverride();
-  };
-  reader.readAsText(file, "utf-8");
+  } catch (_e) {
+    state.machineConfigState = null;
+  }
+  renderMachineConfigOverride();
 }
 
 function renderMachineConfigOverride() {
   const panel = byId("machineConfigOverride");
   if (!panel) return;
-  const nameEl = byId("machineConfigFileName");
-  const statusEl = byId("machineConfigStatus");
-  const clearBtn = byId("machineConfigClearBtn");
-  const staged = state.stagedMachineConfig;
-  if (!staged) {
-    if (nameEl) nameEl.textContent = "未选择";
-    if (statusEl) { statusEl.textContent = ""; statusEl.className = "config-override-status muted small"; }
-    if (clearBtn) clearBtn.classList.add("hidden");
+  const checkbox = byId("useLocalMachineConfig");
+  const info = byId("machineConfigFileInfo");
+  const status = byId("machineConfigStatus");
+  const s = state.machineConfigState;
+  if (!s || !s.available) {
+    // Hide entirely when no file exists (or state not probed yet).
+    panel.classList.add("hidden");
+    if (checkbox) checkbox.checked = false;
     return;
   }
-  if (nameEl) nameEl.textContent = staged.filename;
-  if (clearBtn) clearBtn.classList.remove("hidden");
-  if (statusEl) {
-    if (staged.ok) {
-      statusEl.textContent = `✓ ${(staged.bytes / 1024).toFixed(1)} KB · JSON 合法 · 下次开始采样将随请求发送`;
-      statusEl.className = "config-override-status ok small";
+  panel.classList.remove("hidden");
+  if (checkbox) checkbox.checked = !!s.useLocal;
+  if (info) {
+    const kb = (s.bytes / 1024).toFixed(1);
+    const mtime = s.mtime_iso ? s.mtime_iso.substring(0, 16).replace("T", " ") : "?";
+    info.textContent = `${s.filename} · ${kb} KB · ${mtime}`;
+  }
+  if (status) {
+    if (s.useLocal) {
+      status.textContent = "✓ 下次开始采样将用这份 cfg 覆盖服务端全局配置";
+      status.className = "config-override-status ok small";
     } else {
-      statusEl.textContent = `⚠ JSON 解析失败 — ${staged.error}。仍可点击开始采样（上游会再校验一次）。`;
-      statusEl.className = "config-override-status err small";
+      status.textContent = "";
+      status.className = "config-override-status muted small";
     }
   }
 }
@@ -2739,17 +2748,21 @@ async function startSampling() {
     if (cat === "Collect") chunk_spin_times = 5000;
     else if (cat === "Lock" || cat === "ReSpin" || cat === "FreeSpin") chunk_spin_times = 2000;
     const item = { machine, mode, chunk_spin_times };
-    // Attach staged MachineConfig override only on the focused-machine
-    // flow (selected.length === 1 AND matches the focused machine).
-    // Multi-select batches deliberately never carry this — cross-
-    // machine config reuse is almost always wrong. Also guards against
-    // the edge case where focus was cleared between staging and click:
-    // the state.focusedMachine === machine check ensures the staged
-    // config actually targets this item.
+    // Attach use_local_machine_config flag only on the focused-machine
+    // flow (selected.length === 1 AND matches the focused machine
+    // AND availability probe confirmed the file exists AND user
+    // checked the box). Backend reads machineconfig/<underlying>Cfg.txt
+    // at submit time — frontend just ships the flag, not the content.
+    // Multi-select batches deliberately never carry this; cross-
+    // machine cfg reuse is almost always wrong.
+    const mcfg = state.machineConfigState;
     if (selected.length === 1
-        && state.stagedMachineConfig
-        && state.focusedMachine === machine) {
-      item.machine_config = state.stagedMachineConfig.content;
+        && mcfg
+        && mcfg.available
+        && mcfg.useLocal
+        && state.focusedMachine === machine
+        && mcfg.machine === machine) {
+      item.use_local_machine_config = true;
     }
     return item;
   });
@@ -6051,18 +6064,16 @@ function bindEvents() {
   byId("sampleCi").addEventListener("change", () => { updateSampleHint(); _saveSamplingPrefs(); });
   byId("sampleSpinCount")?.addEventListener("input", () => updateSampleHint());
   byId("sampleStrategy")?.addEventListener("change", () => updateSampleHint());
-  // Per-focused-machine MachineConfig override: file picker + clear.
-  byId("machineConfigFile")?.addEventListener("change", (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    _stageMachineConfigFromFile(file);
-    // Reset the input so the SAME file can be re-picked after a clear
-    // (browsers short-circuit change events for identical file paths).
-    e.target.value = "";
-  });
-  byId("machineConfigClearBtn")?.addEventListener("click", () => {
-    _clearStagedMachineConfig();
-    renderMachineConfigOverride();
+  // Per-focused-machine MachineConfig override: checkbox tracks
+  // state.machineConfigState.useLocal so startSampling can pick
+  // it up. Card only renders when backend availability probe
+  // returned `available: true`, so the checkbox can't be toggled
+  // for a missing file.
+  byId("useLocalMachineConfig")?.addEventListener("change", (e) => {
+    if (state.machineConfigState) {
+      state.machineConfigState.useLocal = !!e.target.checked;
+      renderMachineConfigOverride();
+    }
   });
   byId("addServerBtn").addEventListener("click", () => addServer());
   byId("refreshMd5Btn").addEventListener("click", async () => {

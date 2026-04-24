@@ -99,3 +99,10 @@ slot_designer/configs/paytables_virtual/
 slot_designer/_dev_scratch/
 # Per-fleet static attrs cache — auto-rebuilt from reports + machines_virtual.json
 slot_designer/configs/machines_static.json
+
+# Per-operator MachineConfig overrides for focused-machine A/B testing.
+# Operator drops ``<underlying>Cfg.txt`` files here (e.g. M15Cfg.txt);
+# the focused-machine detail panel auto-reveals a "use local cfg"
+# checkbox when a file matches. Content is machine-specific drafts /
+# experimental weights → per-operator, not shared.
+machineconfig/

@@ -62,6 +62,12 @@ CLASSIFY_DIR = ROOT / "dev_reports" / "_classify"
 PAYTABLES_DIR = ROOT / "configs" / "paytables"
 MACHINES_CONFIG = ROOT / "configs" / "machines.json"
 SERVERS_CONFIG = ROOT / "configs" / "servers.json"
+# Per-underlying MachineConfig override files that designers maintain
+# locally (gitignored). Naming is hardcoded as ``<underlying>Cfg.txt``
+# by convention — an M273 variant picks up machineconfig/M273Cfg.txt
+# via variants_map resolution. Missing file → "no override available"
+# → the Use-Local-Cfg checkbox in the UI stays hidden.
+MACHINECONFIG_DIR = ROOT / "machineconfig"
 ANALYZER = ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
 FRONTEND_DIR = ROOT / "src" / "web_console" / "frontend"
 SLOT_SPIN_ENDPOINT = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant"
@@ -358,6 +364,48 @@ def load_servers(path: Path | None = None) -> dict[str, Any]:
     if target.exists():
         return read_json(target) or {"servers": [], "default_server": ""}
     return {"servers": [], "default_server": ""}
+
+
+def _resolve_local_cfg_for_machine(
+    machine_display: str,
+    machines_config_path: Path | None = None,
+    halls_path: Path | None = None,
+    cfg_dir: Path | None = None,
+) -> tuple[str, Path | None]:
+    """Find the ``machineconfig/<underlying>Cfg.txt`` file that
+    covers ``machine_display``. Returns ``(underlying, path)`` where
+    ``path`` is ``None`` if no such file exists.
+
+    All variants of the same underlying physical machine share a
+    single local cfg file (variants_map flattens display name → raw
+    machine name); operators maintain one ``M273Cfg.txt`` rather
+    than 11 per-variant files.
+
+    Best-effort: any IO / parse error falls through to
+    ``(machine_display, None)`` — the UI simply hides the checkbox
+    rather than surfacing an error."""
+    mc = machines_config_path or MACHINES_CONFIG
+    hp = halls_path or (ROOT / "configs" / "machine_halls.json")
+    dir_ = cfg_dir or MACHINECONFIG_DIR
+    # Lazy import — machine_variants is imported elsewhere on the
+    # cold path, avoid paying it on every call if this module is
+    # imported for non-sampling use (e.g. unit tests of other areas).
+    from src.web_console.backend.machine_variants import (
+        load_variants_map, resolve_underlying_for_display,
+    )
+    try:
+        data = json.loads(Path(mc).read_text(encoding="utf-8"))
+        machines_rows = data.get("machines") or []
+    except (OSError, json.JSONDecodeError):
+        machines_rows = []
+    variants_map = load_variants_map(hp)
+    underlying = resolve_underlying_for_display(
+        machine_display, machines_rows, variants_map,
+    )
+    candidate = dir_ / f"{underlying}Cfg.txt"
+    if candidate.is_file():
+        return underlying, candidate
+    return underlying, None
 
 
 def save_servers(data: dict[str, Any], path: Path | None = None) -> None:
@@ -1095,6 +1143,13 @@ class BatchRunItem(BaseModel):
     # does, the analyzer subprocess for that item still applies only
     # to that item's sampling, so batch_concurrency doesn't cross-pollute.
     machine_config: str | None = None
+    # Server-side shortcut: when True, backend reads
+    # ``machineconfig/<underlying>Cfg.txt`` (resolved via variants_map)
+    # at batch-submit time and uses its content as machine_config.
+    # Lets the UI show a simple "use local cfg" checkbox without
+    # uploading the file on every submit. Ignored when machine_config
+    # is already explicitly set (explicit beats inferred).
+    use_local_machine_config: bool = False
 
 
 class BatchRunRequest(BaseModel):
@@ -2999,6 +3054,27 @@ class BatchRunManager:
             if req.sampling_strategy == "incremental":
                 item_max_chunks = req.max_chunks + int(raw_status.get("usable_chunks", 0) or 0)
 
+            # Per-item MachineConfig override: explicit string wins;
+            # otherwise ``use_local_machine_config=True`` reads the
+            # on-disk ``machineconfig/<underlying>Cfg.txt`` file at
+            # submit time. If the flag is set but the file is missing
+            # we 400 the whole batch — failing fast beats silently
+            # sampling against global cfg while the UI claims the
+            # override is active.
+            item_machine_config = it.machine_config or ""
+            if not item_machine_config and it.use_local_machine_config:
+                _underlying, cfg_path = _resolve_local_cfg_for_machine(it.machine)
+                if cfg_path is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"use_local_machine_config=True for "
+                            f"{it.machine} but no "
+                            f"machineconfig/{_underlying}Cfg.txt file exists"
+                        ),
+                    )
+                item_machine_config = cfg_path.read_text(encoding="utf-8")
+
             items.append({
                 "machine": it.machine,
                 "mode": it.mode,
@@ -3011,10 +3087,10 @@ class BatchRunManager:
                 "resume_cache": resume_cache,
                 "max_chunks": item_max_chunks,
                 # Per-item MachineConfig override (empty str = none).
-                # Populated only by focused-machine flow; multi-select
-                # batches leave this unset since frontend UI is
-                # only shown when items.length === 1.
-                "machine_config": (it.machine_config or ""),
+                # Populated either by explicit machine_config string
+                # (legacy path, unused by current UI) or by the
+                # use_local_machine_config flag resolving to disk.
+                "machine_config": item_machine_config,
             })
             # (Historical-md5 chunks are called out inline with the
             # "fresh start" log below so the operator sees the reason
@@ -5512,6 +5588,40 @@ def create_app(
         to refresh."""
         retention = _load_settings(settings_path)["min_retention_spins"]
         return _build_rawdata_overview(rd_root, mc, retention)
+
+    @app.get("/api/machines/{machine}/cfg-availability")
+    def get_machine_cfg_availability(machine: str) -> dict[str, Any]:
+        """Tell the frontend whether ``machineconfig/<underlying>Cfg.txt``
+        exists for the focused machine — if so, UI reveals a
+        "use local cfg" checkbox that opts the next sampling run
+        into passing the file's content as the upstream
+        ``MachineConfig`` field.
+
+        ``underlying`` is resolved via variants_map so all variants
+        of the same physical machine share one cfg (operators
+        maintain ``M273Cfg.txt`` once, not 11 times for every
+        M273 variant)."""
+        underlying, path = _resolve_local_cfg_for_machine(machine)
+        if path is None:
+            return {
+                "available": False,
+                "machine": machine,
+                "underlying": underlying,
+                "filename": f"{underlying}Cfg.txt",
+                "bytes": 0,
+                "mtime_iso": None,
+            }
+        st = path.stat()
+        return {
+            "available": True,
+            "machine": machine,
+            "underlying": underlying,
+            "filename": path.name,
+            "bytes": st.st_size,
+            "mtime_iso": datetime.fromtimestamp(
+                st.st_mtime, tz=timezone.utc,
+            ).isoformat(),
+        }
 
     @app.get("/api/rawdata/{machine}")
     def get_rawdata_status(machine: str) -> dict[str, Any]:

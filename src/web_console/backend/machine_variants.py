@@ -90,6 +90,42 @@ def resolve_upstream_md5_key(
     return variants_map.get(machine, machine)
 
 
+def resolve_underlying_for_display(
+    machine_display: str,
+    machines_rows: list,
+    variants_map: Mapping[str, str],
+) -> str:
+    """For a display name (the `machine` field used throughout the
+    console — ``M15`` / ``M273$WheelSelector$1$1-2-3``), return the
+    underlying raw machine name (``M15`` / ``M273``).
+
+    Used for per-underlying resource lookup where all variants of
+    the same physical machine share one artifact — e.g. the
+    MachineConfig override file under ``machineconfig/<u>Cfg.txt``.
+
+    Two-step lookup (no ``$``-splitting shortcut — operators
+    rename selectors and variant tokens, and string splitting
+    would re-bind lookups in ways variants_map shouldn't):
+      1. machines.json row → ``upstream_key`` (strips the selector
+         type injected into the display name by compose_display_name)
+      2. variants_map[upstream_key] → underlying (strips the
+         variant selector params, leaving just the physical M<n>)
+
+    Fallback chain when either step returns nothing keeps the
+    result useful:
+      - row missing / field missing → fall through with the
+        display name (non-variant path: display == underlying)
+      - upstream_key not in variants_map → treat as non-variant,
+        return upstream_key unchanged"""
+    for row in machines_rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("machine") == machine_display:
+            upstream_key = row.get("upstream_key") or machine_display
+            return variants_map.get(upstream_key, upstream_key)
+    return machine_display
+
+
 def _coerce_str_map(src: Mapping) -> dict[str, str]:
     """Defensive: filter to string-key/string-value pairs. JSON
     always loads keys as strings, but values could in principle be
