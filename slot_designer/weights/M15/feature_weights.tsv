@@ -1,0 +1,48 @@
+# M15 Feature Play per-mode weight table (SOURCE OF TRUTH)
+#
+# This TSV is hand-edited by the designer. After changes, run:
+#   python -m slot_designer.scripts.compile_m15_features_from_tsv
+# which writes the compiled feature_params block into each
+# slot_designer/weights/M15/mode_<N>/weights.json.
+#
+# Cross-mode pool (aligned with slot_designer/engine/feature_m15.py):
+#   x_pool = (1000, 100, 50, 50, 20, 20, 10, 10, 5, 5)  # 10 cards, 6 unique values
+#   y_pool = (2, 2)                                      # 2 cards, both ×2
+#
+# x_val[V] is the per-CARD weight for value V. When a value appears twice
+# in x_pool (50/20/10/5) the same weight is applied to both slots at
+# compile time, keeping the two symmetric. If you need asymmetric per-slot
+# weights, edit weights.json directly — this TSV doesn't support it
+# (by design: asymmetric per-slot is never a designer intent).
+#
+# Numbers below are the 2026-04-24 v7 shipped values. Don't mix units:
+# all weights are raw (non-normalized); ratios between rows in the same
+# column are what drive probabilities.
+#
+# Source refs: MODE_DESIGN.md §2 (per-mode dial table).
+
+knob	description	mode_1	mode_2	mode_5	mode_7
+# === count_x: P(draw k x-cards this round), k ∈ [1,5] ===
+count_x[1]	抽 1 张 x 的权重	5	5	5	5
+count_x[2]	抽 2 张 x	40	40	40	40
+count_x[3]	抽 3 张 x	40	40	40	40
+count_x[4]	抽 4 张 x	12	12	12	12
+count_x[5]	抽 5 张 x	3	3	3	3
+# === count_y: P(draw k y-multipliers), k ∈ [0,2] ===
+count_y[0]	不抽 y	75	60	40	75
+count_y[1]	抽 1 张 y (×2)	20	30	35	20
+count_y[2]	抽 2 张 y (×2×2=×4)	5	10	25	5
+# === x_val[V]: per-card weight for x-card of value V ===
+# NOTE: when V has 2 slots in pool (50/20/10/5), this weight applies to BOTH.
+x_val[1000]	1000-card weight	0.0001	0.0009	0.0001	0.0001
+x_val[100]	100-card weight	0.0266	0.0914	4.5	0.0266
+x_val[50]	50-card weight (per slot, 2 slots)	0.1455	0.3687	3.5	0.1455
+x_val[20]	20-card weight (per slot, 2 slots)	1.3729	2.3289	7.0955	1.3729
+x_val[10]	10-card weight (per slot, 2 slots)	7.4998	9.3906	13.453	7.4998
+x_val[5]	5-card weight (per slot, 2 slots)	40.9684	37.8657	25.5065	40.9684
+# === y_val: per-card weight for y-multiplier (both cards are ×2) ===
+y_val[slot_a]	first y card weight	1	1	1	1
+y_val[slot_b]	second y card weight	1	1	1	1
+# === session meta ===
+accept_threshold	auto-accept if R ≥ X	40	40	40	40
+max_rounds	reroll + forced round cap	4	4	4	4

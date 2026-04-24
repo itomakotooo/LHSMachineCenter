@@ -144,7 +144,7 @@
     ]
   ],
   "feature_params": {
-    "_note": "v7 mode 5 Feature Play params (per MODE_DESIGN.md §6). EV 132.81x at trigger 2.75% → feature RTP 365pp. 1000-card weight killed to make session R>=1000 approach 0 (per user brief 2026-04-24).",
+    "_note": "v7+ mode 5 Feature Play params. **AUTO-GENERATED** from slot_designer/weights/M15/feature_weights.tsv — do NOT hand-edit this block; edit the TSV and re-run compile_m15_features_from_tsv.",
     "x_count_weights": [
       5,
       40,
