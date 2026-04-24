@@ -308,6 +308,13 @@ class RunCreateRequest(BaseModel):
     bankruptcy_session_spins: int = Field(default=10000, gt=0)
     bankruptcy_bankroll_multipliers: str = Field(default="10,100,200,500")
     model_id: str = Field(default="gpt-5.4-mini")
+    # Optional per-run MachineConfig override (see upstream
+    # MachineTestRequest.MachineConfig field). JSON string; non-empty
+    # → analyzer writes it to a file under output_dir and passes
+    # --machine-config-file so every upstream request carries the
+    # override. Intended for focused single-machine A/B testing of
+    # draft weights / paytables without a server deploy.
+    machine_config: str = Field(default="")
 
 
 class InterpretationRequest(BaseModel):
@@ -1082,6 +1089,12 @@ class BatchRunItem(BaseModel):
     machine: str
     mode: int
     chunk_spin_times: int | None = None  # per-item override
+    # Per-item MachineConfig JSON string. Only meaningful when the
+    # batch has a single item (focused-machine flow). Frontend will
+    # never populate this for multi-select batches — but if it ever
+    # does, the analyzer subprocess for that item still applies only
+    # to that item's sampling, so batch_concurrency doesn't cross-pollute.
+    machine_config: str | None = None
 
 
 class BatchRunRequest(BaseModel):
@@ -2997,6 +3010,11 @@ class BatchRunManager:
                 "reuse_cache": reuse_cache,
                 "resume_cache": resume_cache,
                 "max_chunks": item_max_chunks,
+                # Per-item MachineConfig override (empty str = none).
+                # Populated only by focused-machine flow; multi-select
+                # batches leave this unset since frontend UI is
+                # only shown when items.length === 1.
+                "machine_config": (it.machine_config or ""),
             })
             # (Historical-md5 chunks are called out inline with the
             # "fresh start" log below so the operator sees the reason
@@ -3464,6 +3482,10 @@ class BatchRunManager:
                     # counted toward the session's running stats).
                     upstream_config_md5=up_cfg or "",
                     upstream_code_md5=up_code or "",
+                    # Per-item MachineConfig override (focused-machine
+                    # flow uploads a JSON file). Empty string = use
+                    # server's global cfg, which is the default.
+                    machine_config=item.get("machine_config") or "",
                 )
                 result = self._run_manager.start_run(req)
                 run_id = result.get("run_id")
@@ -4449,6 +4471,16 @@ class RunManager:
         upstream_machine_name = self._resolve_upstream_machine_name(req.machine)
         if upstream_machine_name:
             cmd.extend(["--upstream-machine-name", upstream_machine_name])
+
+        # Per-run MachineConfig override: persist to a sibling file in
+        # output_dir so the analyzer subprocess can read it at startup
+        # without inheriting it over the command line (configs can be
+        # 10s of KB). File survives alongside the run so later forensic
+        # work can see exactly which cfg was tested.
+        if getattr(req, "machine_config", ""):
+            cfg_path = output_dir / "machine_config.json"
+            cfg_path.write_text(req.machine_config, encoding="utf-8")
+            cmd.extend(["--machine-config-file", str(cfg_path)])
 
         process = self._popen_factory(cmd, ROOT)
         managed = ManagedRun(

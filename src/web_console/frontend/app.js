@@ -39,6 +39,14 @@ const state = {
   // right pane shows fleet overview (when runFilterMachines is also
   // empty) or multi-select summary (when runFilterMachines has >0).
   focusedMachine: null,
+  // Staged per-focused-machine MachineConfig override. {filename,
+  // content, ok} — `content` is the raw JSON string (sent verbatim
+  // as `MachineConfig` on every upstream request). `ok=false` when
+  // parse fails; startSampling still sends it so the operator can
+  // see upstream's own rejection, but we show a red status hint.
+  // Cleared on focus change / focus clear so there's no risk of
+  // silently applying a config to the wrong machine.
+  stagedMachineConfig: null,
   // Global rawdata detail view (step 6): when true the right pane
   // shows the fleet-wide per-machine rawdata table instead of fleet
   // overview. Toggled by the rawdata banner's 明细 button. Takes
@@ -1063,16 +1071,27 @@ function _setFocusedMachine(machine) {
   if (state.runFilterMachines.size > 0) {
     state.runFilterMachines.clear();
   }
+  // Switching focus to a different machine invalidates any staged
+  // MachineConfig override (uploaded file was for the previous
+  // machine; sending it to a different machine would silently
+  // apply wrong cfg).
+  if (state.focusedMachine !== machine) {
+    _clearStagedMachineConfig();
+  }
   state.focusedMachine = machine;
   _syncAllCardsActiveDom();
   renderRunHistory();
   updateSampleHint();
   updateActionStates();
   renderDetailPane();
+  renderMachineConfigOverride();
 }
 
 function _clearFocus() {
   state.focusedMachine = null;
+  // Leaving focus mode drops any staged cfg override (only applies
+  // to focused single-machine sampling).
+  _clearStagedMachineConfig();
   _syncAllCardsActiveDom();
   // Fix 1 (2026-04-19 round 3): unfocus must also refresh batch bar
   // + action states so the sticky bar hides when nothing is selected.
@@ -1080,6 +1099,70 @@ function _clearFocus() {
   updateSampleHint();
   updateActionStates();
   renderDetailPane();
+  renderMachineConfigOverride();
+}
+
+function _clearStagedMachineConfig() {
+  state.stagedMachineConfig = null;
+}
+
+function _stageMachineConfigFromFile(file) {
+  // Browser FileReader is async; we want to land a valid-or-error
+  // state into state.stagedMachineConfig before the operator clicks
+  // 开始采样. Parse JSON client-side so we can flag broken files
+  // immediately instead of discovering at upstream reject time.
+  const reader = new FileReader();
+  reader.onload = () => {
+    const raw = String(reader.result || "");
+    let ok = true;
+    let errMsg = "";
+    try { JSON.parse(raw); } catch (e) { ok = false; errMsg = String(e.message || e); }
+    state.stagedMachineConfig = {
+      filename: file.name,
+      content: raw,
+      bytes: raw.length,
+      ok,
+      error: errMsg,
+    };
+    renderMachineConfigOverride();
+  };
+  reader.onerror = () => {
+    state.stagedMachineConfig = {
+      filename: file.name,
+      content: "",
+      bytes: 0,
+      ok: false,
+      error: "读取文件失败",
+    };
+    renderMachineConfigOverride();
+  };
+  reader.readAsText(file, "utf-8");
+}
+
+function renderMachineConfigOverride() {
+  const panel = byId("machineConfigOverride");
+  if (!panel) return;
+  const nameEl = byId("machineConfigFileName");
+  const statusEl = byId("machineConfigStatus");
+  const clearBtn = byId("machineConfigClearBtn");
+  const staged = state.stagedMachineConfig;
+  if (!staged) {
+    if (nameEl) nameEl.textContent = "未选择";
+    if (statusEl) { statusEl.textContent = ""; statusEl.className = "config-override-status muted small"; }
+    if (clearBtn) clearBtn.classList.add("hidden");
+    return;
+  }
+  if (nameEl) nameEl.textContent = staged.filename;
+  if (clearBtn) clearBtn.classList.remove("hidden");
+  if (statusEl) {
+    if (staged.ok) {
+      statusEl.textContent = `✓ ${(staged.bytes / 1024).toFixed(1)} KB · JSON 合法 · 下次开始采样将随请求发送`;
+      statusEl.className = "config-override-status ok small";
+    } else {
+      statusEl.textContent = `⚠ JSON 解析失败 — ${staged.error}。仍可点击开始采样（上游会再校验一次）。`;
+      statusEl.className = "config-override-status err small";
+    }
+  }
 }
 
 function _toggleMultiSelect(machine) {
@@ -1087,6 +1170,7 @@ function _toggleMultiSelect(machine) {
   // Entering multi-select mode clears any focus.
   if (state.focusedMachine !== null) {
     state.focusedMachine = null;
+    _clearStagedMachineConfig();
   }
   const had = state.runFilterMachines.has(machine);
   if (had) state.runFilterMachines.delete(machine);
@@ -1184,6 +1268,10 @@ function renderDetailPane() {
   if (focused) {
     show(detail);
     try { showMachineDetail(focused); } catch (_) {}
+    // Keep the MachineConfig override card in sync with staged state
+    // (filename, status line, clear button visibility) each time the
+    // detail pane re-renders.
+    try { renderMachineConfigOverride(); } catch (_) {}
     // Reports list is inside the rwtree inside machineDetailPanel now
     // (step 4) — legacy versionHistoryPanel stays hidden. Compare
     // panel only fires when user picks 2 versions via the tree.
@@ -2650,7 +2738,20 @@ async function startSampling() {
     let chunk_spin_times = 1000;
     if (cat === "Collect") chunk_spin_times = 5000;
     else if (cat === "Lock" || cat === "ReSpin" || cat === "FreeSpin") chunk_spin_times = 2000;
-    return { machine, mode, chunk_spin_times };
+    const item = { machine, mode, chunk_spin_times };
+    // Attach staged MachineConfig override only on the focused-machine
+    // flow (selected.length === 1 AND matches the focused machine).
+    // Multi-select batches deliberately never carry this — cross-
+    // machine config reuse is almost always wrong. Also guards against
+    // the edge case where focus was cleared between staging and click:
+    // the state.focusedMachine === machine check ensures the staged
+    // config actually targets this item.
+    if (selected.length === 1
+        && state.stagedMachineConfig
+        && state.focusedMachine === machine) {
+      item.machine_config = state.stagedMachineConfig.content;
+    }
+    return item;
   });
 
   // Pick up autotune result for the first selected machine+mode if the
@@ -5950,6 +6051,19 @@ function bindEvents() {
   byId("sampleCi").addEventListener("change", () => { updateSampleHint(); _saveSamplingPrefs(); });
   byId("sampleSpinCount")?.addEventListener("input", () => updateSampleHint());
   byId("sampleStrategy")?.addEventListener("change", () => updateSampleHint());
+  // Per-focused-machine MachineConfig override: file picker + clear.
+  byId("machineConfigFile")?.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    _stageMachineConfigFromFile(file);
+    // Reset the input so the SAME file can be re-picked after a clear
+    // (browsers short-circuit change events for identical file paths).
+    e.target.value = "";
+  });
+  byId("machineConfigClearBtn")?.addEventListener("click", () => {
+    _clearStagedMachineConfig();
+    renderMachineConfigOverride();
+  });
   byId("addServerBtn").addEventListener("click", () => addServer());
   byId("refreshMd5Btn").addEventListener("click", async () => {
     const btn = byId("refreshMd5Btn");

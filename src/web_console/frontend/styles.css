@@ -1643,6 +1643,47 @@ button:disabled {
 .machine-detail {
   grid-column: span 12;
 }
+/* Per-focused-machine MachineConfig override card. Sits between the
+   title and the rwtree body. Compact, so it doesn't push rwtree
+   below the fold when not in use. */
+.machine-config-override {
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 0 0 10px 0;
+  background: #f8fafc;
+}
+.config-override-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.config-override-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.config-override-status {
+  margin-top: 4px;
+  min-height: 1em;
+}
+.config-override-status.ok { color: #059669; }
+.config-override-status.err { color: #dc2626; }
+.file-picker-btn {
+  display: inline-block;
+  padding: 4px 10px;
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+}
+.file-picker-btn:hover { background: #f1f5f9; }
 .detail-meta {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

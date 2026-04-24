@@ -235,6 +235,19 @@ def parse_args() -> argparse.Namespace:
             "callers can leave this unset."
         ),
     )
+    parser.add_argument(
+        "--machine-config-file",
+        type=str,
+        default=None,
+        help=(
+            "Path to a JSON file whose content is passed verbatim as "
+            "the ``MachineConfig`` field on every upstream sampling "
+            "request. Used to A/B test a designer's draft weights / "
+            "paytable without shipping to the game server's cfg.json. "
+            "Only makes sense for focused single-machine sampling; "
+            "batch runs generally should NOT share an override."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -1573,6 +1586,7 @@ def make_payload(
     reset_each_spin: bool,
     continue_after_bankrupt: bool,
     upstream_machine_name: str | None = None,
+    machine_config: str | None = None,
 ) -> dict[str, Any]:
     """Build a /MultiRobotTestSpinVariant request payload.
 
@@ -1584,8 +1598,16 @@ def make_payload(
     Variant rows pass the variant's upstream key (e.g. ``M273$1$1-2-3``)
     as ``upstream_machine_name`` so the upstream Variant endpoint can
     rewrite it to (underlying + selector params) server-side. Non-
-    variant rows leave it None and both fields hold the plain name."""
-    return {
+    variant rows leave it None and both fields hold the plain name.
+
+    ``machine_config`` — optional JSON string (see upstream docs:
+    MachineConfig on MachineTestRequest). When non-empty it's sent
+    on every request so upstream uses it in place of cfg.json for
+    this machine, letting us A/B test designer weights without a
+    server deploy. Only attach the field when actually provided —
+    blank string is the server's "use global cfg" signal and the
+    field's presence alone should not change behavior."""
+    payload: dict[str, Any] = {
         "MachineName": upstream_machine_name if upstream_machine_name else machine,
         "InitCreditsStr": str(init_credits),
         "BetStrategy": 0,
@@ -1598,6 +1620,9 @@ def make_payload(
         "RobotCount": int(robot_count),
         "OutputAllRobotResult": True,
     }
+    if machine_config:
+        payload["MachineConfig"] = machine_config
+    return payload
 
 
 def return_bucket(ret_x: float) -> str:
@@ -1872,6 +1897,7 @@ def run_sampling_chunk(
     bankruptcy_session_spins: int = _DEFAULT_BANKRUPTCY_SESSION_SPINS,
     bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
     upstream_machine_name: str | None = None,
+    machine_config: str | None = None,
 ) -> dict[str, Any]:
     payload = make_payload(
         machine=machine,
@@ -1883,6 +1909,7 @@ def run_sampling_chunk(
         reset_each_spin=True,
         continue_after_bankrupt=True,
         upstream_machine_name=upstream_machine_name,
+        machine_config=machine_config,
     )
 
     started = time.time()
@@ -4269,6 +4296,29 @@ def main() -> int:
     _DISK_GUARD_MIN_FREE_GB = 2.0
     _disk_guard_path = args.output_dir if args.output_dir.exists() else args.output_dir.parent
 
+    # Per-request MachineConfig override — read once at startup so we
+    # don't re-read the file per chunk. An empty / missing file path
+    # means "use global cfg.json on the server", same as not passing
+    # the flag at all. File read errors hard-fail so operators don't
+    # accidentally sample against server cfg thinking they sampled
+    # against their draft.
+    _machine_config_str: str | None = None
+    if args.machine_config_file:
+        cfg_path = Path(args.machine_config_file)
+        if not cfg_path.is_file():
+            raise SystemExit(
+                f"--machine-config-file not found or not a file: {cfg_path}"
+            )
+        _machine_config_str = cfg_path.read_text(encoding="utf-8")
+        # Sanity-check JSON parseability so we don't discover upstream
+        # rejected our payload after 100 chunks.
+        try:
+            json.loads(_machine_config_str)
+        except json.JSONDecodeError as exc:
+            raise SystemExit(
+                f"--machine-config-file is not valid JSON: {exc}"
+            )
+
     # One-shot "first live fetch" signal for the UI log. The first
     # analyzer chunk typically takes 30-60s (Python startup + first
     # HTTP call + robot fan-out). Emitting this event right before the
@@ -4415,6 +4465,7 @@ def main() -> int:
                     bankruptcy_session_spins=args.bankruptcy_session_spins,
                     bankruptcy_bankroll_mults=_bankruptcy_mults_tuple,
                     upstream_machine_name=args.upstream_machine_name,
+                    machine_config=_machine_config_str,
                 )
                 for idx in indices
             ]

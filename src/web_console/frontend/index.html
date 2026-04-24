@@ -387,6 +387,29 @@
                  via #rwtreeCompareBar sibling. -->
             <section class="panel machine-detail hidden" id="machineDetailPanel">
               <h2 id="machineDetailTitle"></h2>
+              <!-- Per-focused-machine MachineConfig override. Uploads a
+                   local JSON file and injects it as the MachineConfig
+                   field on every upstream sampling request for this
+                   machine. Only appears when a single machine is
+                   focused; cleared automatically on focus change. -->
+              <div id="machineConfigOverride" class="machine-config-override">
+                <div class="config-override-head">
+                  <span data-i18n="labelMachineConfigOverride">临时配置覆盖 (MachineConfig)</span>
+                  <span class="muted small" data-i18n="hintMachineConfigOverride">
+                    上传 JSON 会在下次「开始采样」时随每个 upstream 请求发出，仅作用于当前聚焦机台、不持久化
+                  </span>
+                </div>
+                <div class="config-override-row">
+                  <label class="file-picker-btn" for="machineConfigFile">
+                    <span data-i18n="btnPickMachineConfig">选择 JSON 文件</span>
+                  </label>
+                  <input type="file" id="machineConfigFile" accept=".json,application/json" hidden />
+                  <span id="machineConfigFileName" class="muted small">未选择</span>
+                  <button type="button" id="machineConfigClearBtn" class="secondary-btn hidden"
+                          data-i18n="btnClearMachineConfig">清除</button>
+                </div>
+                <div id="machineConfigStatus" class="config-override-status muted small"></div>
+              </div>
               <div id="machineDetailBody"></div>
             </section>
 
