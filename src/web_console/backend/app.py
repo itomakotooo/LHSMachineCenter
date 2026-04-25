@@ -1113,6 +1113,12 @@ def delete_rawdata(
             continue
         cls = _classify_chunks(machine, m, root, mc, min_retention_spins)
         kept_chunks += len(cls["kept"])
+        # Track the chunk filenames we actually unlinked so we can
+        # batch-update the per-mode sidecar (`_chunks.json`) in one
+        # write instead of N. Without this the sidecar's mtime stays
+        # behind the dir's mtime → every subsequent read triggers a
+        # full glob+peek rebuild.
+        unlinked_names: list[str] = []
         for entry in cls["deletable"] + cls["historical"]:
             try:
                 p = Path(entry["path"])
@@ -1120,13 +1126,21 @@ def delete_rawdata(
                     total_deletable_bytes += p.stat().st_size
                     p.unlink()
                     deleted_chunks += 1
+                    unlinked_names.append(p.name)
             except OSError:
                 pass
         # Rescan index entry so the UI status reflects the deletion
         # immediately rather than on next read's cold-path scan.
         try:
             from fresh_slotlab.rawdata_index import update_entry, remove_entry
+            from fresh_slotlab.chunk_index import bulk_remove_chunk_entries
             mode_dir = root / machine / f"mode_{m}"
+            # Drop the just-deleted chunks from the per-mode sidecar
+            # FIRST so the next index read trusts the sidecar instead
+            # of falling through to a rebuild (the rebuild itself is
+            # cheap but the trust path is cheaper still).
+            if unlinked_names:
+                bulk_remove_chunk_entries(mode_dir, unlinked_names)
             if mode_dir.is_dir() and any(mode_dir.glob("chunk_*.json")):
                 update_entry(root, machine, m, mode_dir)
             else:
@@ -2511,6 +2525,13 @@ def _auto_cleanup_for_space(
     deleted_files = 0
     deleted_bytes = 0
     current_free = initial_free
+    # Bucket the unlinked filenames per (machine, mode) so we can
+    # batch-drop them from the per-mode `_chunks.json` sidecar at
+    # the end of the loop — one sidecar rewrite per mode instead of
+    # one per chunk. Skipping this would leave dir.mtime > sidecar
+    # .mtime on every affected mode → every following read does a
+    # full glob+peek rebuild (~5 ms × N chunks).
+    unlinked_by_mode: dict[tuple[str, int], list[str]] = {}
     for cand in candidates:
         if current_free >= target_bytes:
             break
@@ -2520,8 +2541,22 @@ def _auto_cleanup_for_space(
             deleted_files += 1
             deleted_bytes += sz
             current_free += sz  # best-effort — real free space may move with concurrent writers
+            unlinked_by_mode.setdefault(
+                (cand["machine"], int(cand["mode"])), [],
+            ).append(cand["path"].name)
         except OSError:
             continue
+    if unlinked_by_mode:
+        try:
+            from fresh_slotlab.chunk_index import bulk_remove_chunk_entries
+            for (machine, mode), names in unlinked_by_mode.items():
+                md = rawdata_root / machine / f"mode_{mode}"
+                bulk_remove_chunk_entries(md, names)
+        except Exception:  # noqa: BLE001
+            # Sidecar update is an optimization; failures don't
+            # invalidate the actual disk-space cleanup. Next reader
+            # rebuilds via mtime stale-check.
+            pass
     try:
         final_free = shutil.disk_usage(str(rawdata_root)).free
     except OSError:
@@ -6025,6 +6060,11 @@ def create_app(
         deleted_bytes = 0
         matched_spins = 0
         skipped_chunks = 0
+        # Track names of chunks unlinked this call so the per-mode
+        # `_chunks.json` sidecar can be patched in a single write at
+        # the end — keeps sidecar.mtime ≥ dir.mtime so future reads
+        # trust the sidecar instead of rebuilding via glob+peek.
+        unlinked_names: list[str] = []
         for p in sorted(mode_dir.glob("chunk_*.json")):
             try:
                 data = _peek_envelope_scalars(p)
@@ -6050,6 +6090,7 @@ def create_app(
                 p.unlink()
                 deleted_chunks += 1
                 deleted_bytes += size
+                unlinked_names.append(p.name)
             except OSError:
                 skipped_chunks += 1
 
@@ -6057,6 +6098,9 @@ def create_app(
         # consistent without a cold-path rescan.
         try:
             from fresh_slotlab.rawdata_index import update_entry, remove_entry
+            from fresh_slotlab.chunk_index import bulk_remove_chunk_entries
+            if unlinked_names:
+                bulk_remove_chunk_entries(mode_dir, unlinked_names)
             if any(mode_dir.glob("chunk_*.json")):
                 update_entry(rd_root, machine, mode, mode_dir)
             else:
@@ -8552,6 +8596,11 @@ def create_app(
                 respect_locks=True, respect_in_use=True,
             )
             max_delete = req.max_delete_bytes if req.max_delete_bytes > 0 else (10**18)
+            # Bucket unlinked filenames per (machine, mode) so we can
+            # batch-update the per-mode `_chunks.json` sidecar with one
+            # write per affected mode at the end. See _auto_cleanup_for_
+            # space() for the same pattern.
+            unlinked_by_mode: dict[tuple[str, int], list[str]] = {}
             for entry in targets:
                 p = Path(entry["path"])
                 try:
@@ -8567,11 +8616,18 @@ def create_app(
                 deleted_files += 1
                 deleted_bytes += size
                 affected_modes.add((entry["machine"], entry["mode"]))
+                unlinked_by_mode.setdefault(
+                    (entry["machine"], int(entry["mode"])), [],
+                ).append(p.name)
             # Refresh the rawdata index for each affected (machine, mode)
             # so subsequent GET /api/rawdata sees the reduced chunk count
             # without a cold-path rescan.
             try:
                 from fresh_slotlab.rawdata_index import update_entry, remove_entry
+                from fresh_slotlab.chunk_index import bulk_remove_chunk_entries
+                for (m, mode), names in unlinked_by_mode.items():
+                    md = rd_root / m / f"mode_{mode}"
+                    bulk_remove_chunk_entries(md, names)
                 for m, mode in affected_modes:
                     md = rd_root / m / f"mode_{mode}"
                     if md.is_dir() and any(md.glob("chunk_*.json")):

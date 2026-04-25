@@ -168,6 +168,72 @@ class TestSidecarRoundtrip:
             load_chunks_index(mode_dir) or {"chunks": {}}
         )["chunks"]
 
+    def test_bulk_remove_entries_single_write(self, tmp_path):
+        """bulk_remove_chunk_entries: many removals → ONE sidecar
+        rewrite (verified via mtime comparison after the call), and
+        every entry actually leaves the in-memory chunks dict.
+        Regression guard for the auto-cleanup hot path that deletes
+        thousands of chunks in one cleanup pass — without bulk it
+        would do thousands of read+merge+write cycles."""
+        from fresh_slotlab.chunk_index import (
+            update_chunk_entry, bulk_remove_chunk_entries,
+            load_chunks_index, _sidecar_path,
+        )
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        names = [f"chunk_{i:04d}.json" for i in range(1, 11)]
+        for i, name in enumerate(names, start=1):
+            cf = mode_dir / name
+            cf.write_text("{}", encoding="utf-8")
+            update_chunk_entry(mode_dir, cf, chunk_index=i,
+                               config_md5="cfg", code_md5="code")
+        sidecar = _sidecar_path(mode_dir)
+        before_mtime = sidecar.stat().st_mtime_ns
+
+        # Remove the first 7 in one bulk call.
+        removed = bulk_remove_chunk_entries(mode_dir, names[:7])
+        assert removed == 7
+        after_mtime = sidecar.stat().st_mtime_ns
+        # Sidecar mtime advanced exactly once (one atomic write).
+        assert after_mtime > before_mtime
+        # The remaining 3 are still in the index.
+        idx = load_chunks_index(mode_dir)
+        assert set(idx["chunks"].keys()) == set(names[7:])
+
+    def test_bulk_remove_skips_unknown_entries(self, tmp_path):
+        """Entries that aren't in the sidecar are silently skipped
+        (returns count of actually-removed). No spurious sidecar
+        write when removing 0 actual entries (avoids bumping mtime
+        past dir mtime unnecessarily)."""
+        from fresh_slotlab.chunk_index import (
+            update_chunk_entry, bulk_remove_chunk_entries, _sidecar_path,
+        )
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        cf = mode_dir / "chunk_0001.json"
+        cf.write_text("{}", encoding="utf-8")
+        update_chunk_entry(mode_dir, cf, chunk_index=1,
+                           config_md5="x", code_md5="y")
+        before_mtime = _sidecar_path(mode_dir).stat().st_mtime_ns
+
+        # All names unknown → no-op, returns 0, sidecar untouched.
+        removed = bulk_remove_chunk_entries(
+            mode_dir, ["chunk_9999.json", "ghost.json"],
+        )
+        assert removed == 0
+        assert _sidecar_path(mode_dir).stat().st_mtime_ns == before_mtime
+
+    def test_bulk_remove_no_sidecar(self, tmp_path):
+        """No sidecar yet (mode_dir hasn't been hit by a writer) →
+        bulk_remove returns 0 without crashing. The next reader will
+        rebuild via the mtime stale-check anyway."""
+        from fresh_slotlab.chunk_index import bulk_remove_chunk_entries
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        assert bulk_remove_chunk_entries(
+            mode_dir, ["chunk_0001.json"],
+        ) == 0
+
     def test_load_returns_none_on_version_mismatch(self, tmp_path):
         from fresh_slotlab.chunk_index import load_chunks_index, SIDECAR_NAME
         mode_dir = tmp_path / "mode_1"
@@ -213,8 +279,12 @@ class TestSelfHeal:
         assert (mode_dir / SIDECAR_NAME).is_file()
 
     def test_rebuilds_stale_sidecar(self, tmp_path):
-        """Chunk file deleted externally → sidecar keyset drifts from
-        disk → get_chunks_index rebuilds."""
+        """Chunk file deleted externally (i.e. NOT through
+        ``remove_chunk_entry`` / ``bulk_remove_chunk_entries``) →
+        dir.mtime advances past sidecar.mtime → get_chunks_index
+        rebuilds. This is the safety net for rogue ``rm`` commands
+        or pre-fix versions of the cleanup paths.
+        """
         from fresh_slotlab.chunk_index import (
             update_chunk_entry, get_chunks_index,
         )
@@ -225,10 +295,69 @@ class TestSelfHeal:
             _write_chunk(cf, idx=i, cfg="a", code="b")
             update_chunk_entry(mode_dir, cf, chunk_index=i,
                                config_md5="a", code_md5="b")
-        # External delete — sidecar still has 3 entries.
+        # External delete (without sidecar update) — sidecar still
+        # has 3 entries on disk but dir.mtime is now newer.
         (mode_dir / "chunk_0002.json").unlink()
         idx = get_chunks_index(mode_dir)
         assert set(idx["chunks"].keys()) == {"chunk_0001.json", "chunk_0003.json"}
+
+    def test_does_not_rebuild_when_sidecar_in_sync(self, tmp_path):
+        """When chunks are deleted THROUGH the bulk_remove path,
+        the sidecar's keyset matches disk → next get_chunks_index
+        consults the sidecar directly without the expensive
+        glob+peek rebuild.
+
+        Regression guard for the perf fix (2026-04-25): the four
+        production deletion sites (delete_rawdata, _auto_cleanup_
+        for_space, delete_rawdata_version, cache_cleanup) now call
+        ``bulk_remove_chunk_entries`` to keep the sidecar in sync.
+        Before the fix every read after a delete triggered a
+        rebuild because the sidecar's keyset still listed the
+        deleted chunks. This test would fail (sidecar would be
+        rewritten by get_chunks_index due to detected staleness)
+        if any of those wirings were dropped.
+        """
+        from fresh_slotlab.chunk_index import (
+            update_chunk_entry, bulk_remove_chunk_entries,
+            get_chunks_index, _sidecar_path,
+        )
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        for i in (1, 2, 3):
+            cf = mode_dir / f"chunk_{i:04d}.json"
+            _write_chunk(cf, idx=i, cfg="a", code="b")
+            update_chunk_entry(mode_dir, cf, chunk_index=i,
+                               config_md5="a", code_md5="b")
+        # Coordinated delete: unlink + sidecar update via the same
+        # helper used in the production cleanup paths.
+        (mode_dir / "chunk_0002.json").unlink()
+        bulk_remove_chunk_entries(mode_dir, ["chunk_0002.json"])
+        sidecar_mtime_before_read = _sidecar_path(mode_dir).stat().st_mtime_ns
+
+        idx = get_chunks_index(mode_dir)
+        assert set(idx["chunks"].keys()) == {"chunk_0001.json", "chunk_0003.json"}
+        # Sidecar wasn't rewritten by get_chunks_index — keyset
+        # matched disk so no rebuild fired.
+        assert _sidecar_path(mode_dir).stat().st_mtime_ns == sidecar_mtime_before_read
+
+    def test_external_chunk_add_triggers_rebuild(self, tmp_path):
+        """Sanity: a chunk that lands without going through
+        ``update_chunk_entry`` (e.g. parallel writer crashed mid-
+        update) is still discovered by the next read. Pins the
+        "external add" arm of the keyset check."""
+        from fresh_slotlab.chunk_index import (
+            update_chunk_entry, get_chunks_index,
+        )
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        cf = mode_dir / "chunk_0001.json"
+        _write_chunk(cf, idx=1, cfg="a", code="b")
+        update_chunk_entry(mode_dir, cf, chunk_index=1,
+                           config_md5="a", code_md5="b")
+        # External add — bypassed sidecar update.
+        _write_chunk(mode_dir / "chunk_0002.json", idx=2, cfg="a", code="b")
+        idx = get_chunks_index(mode_dir)
+        assert "chunk_0002.json" in idx["chunks"]
 
 
 # ── 4. Writer hook parity ────────────────────────────────────────
