@@ -3596,39 +3596,94 @@ function updateBatchBar() { /* retired */ }
 function renderPayoutGroupDrilldown(_summary) { /* retired */ }
 
 function renderSymbolDrilldown(summary) {
-  // Overall top-20
+  // Compare-mode B summary. Pulled once at the top so both the
+  // overall-top-20 and per-column matrix use the same source.
+  // ``cmpB`` falsy → single-mode rendering, byte-identical to
+  // pre-compare behavior.
+  const cmpB = state.compareMode && state.compareMode.b ? state.compareMode.b : null;
+
+  // ─── Overall top-20 ────────────────────────────────────────────
   const overallTbody = byId("symbolOverallTable") && byId("symbolOverallTable").querySelector("tbody");
   if (overallTbody) {
     const rows = PURE.formatSymbolRows(summary);
-    if (!rows.length) {
+    const rowsB = cmpB ? PURE.formatSymbolRows(cmpB) : [];
+    // Build B map for alignment.
+    const bMap = new Map();
+    for (const r of rowsB) bMap.set(String(r.symbol), r);
+    const aSet = new Set(rows.map((r) => String(r.symbol)));
+    // Union: A's order first (already sorted by count desc), B-only
+    // appended at the end.
+    const merged = [...rows];
+    if (cmpB) {
+      for (const r of rowsB) {
+        if (!aSet.has(String(r.symbol))) merged.push(r);
+      }
+    }
+    if (!merged.length) {
       overallTbody.innerHTML = `<tr><td colspan="3">${fmt("symbolsEmpty")}</td></tr>`;
     } else {
-      const maxCount = Math.max(...rows.map((r) => r.count), 0);
-      overallTbody.innerHTML = rows
+      // Bar scale: union max across A and B counts.
+      const maxCount = Math.max(
+        ...merged.map((r) => r.count),
+        ...(cmpB ? rowsB.map((r) => r.count) : []),
+        0,
+      );
+      overallTbody.innerHTML = merged
         .map((r) => {
-          const bar = maxCount > 0 ? Math.min(100, (r.count / maxCount) * 100) : 0;
+          const aIn = aSet.has(String(r.symbol));
+          const bRow = cmpB ? bMap.get(String(r.symbol)) : null;
+          const aCountRaw = aIn ? Number(r.count || 0) : NaN;
+          const bCountRaw = bRow ? Number(bRow.count || 0) : NaN;
+          const aRateRaw = aIn ? Number(r.rate_pct || 0) : NaN;
+          const bRateRaw = bRow ? Number(bRow.rate_pct || 0) : NaN;
+          const aCountFmt = aIn ? fInt(r.count) : "—";
+          const bCountFmt = bRow ? fInt(bRow.count) : "—";
+          const aRateFmt = aIn ? r.rate_pct.toFixed(3) + "%" : "—";
+          const bRateFmt = bRow ? bRow.rate_pct.toFixed(3) + "%" : "—";
+          const aBar = maxCount > 0 ? Math.min(100, ((aIn ? r.count : 0) / maxCount) * 100) : 0;
+          const bBar = cmpB && maxCount > 0 ? Math.min(100, ((bRow ? bRow.count : 0) / maxCount) * 100) : 0;
+          const barCell = cmpB
+            ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%">${_cmpCell(true, aCountFmt, bCountFmt, aCountRaw, bCountRaw, "rel")}</td>`
+            : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${aCountFmt}</td>`;
+          // Symbol name column shows a presence tag in compare mode
+          // when the symbol only fired on one side.
+          let symCell = `<code>${_escHtml(r.symbol)}</code>`;
+          if (cmpB) {
+            if (aIn && !bRow) symCell += ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
+            else if (!aIn && bRow) symCell += ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
+          }
           return (
             `<tr>` +
-            `<td>${r.symbol}</td>` +
-            `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${fInt(r.count)}</td>` +
-            `<td>${r.rate_pct.toFixed(3)}%</td>` +
+            `<td>${symCell}</td>` +
+            barCell +
+            `<td>${_cmpCell(!!cmpB, aRateFmt, bRateFmt, aRateRaw, bRateRaw, "pp", 2)}</td>` +
             `</tr>`
           );
         })
         .join("");
     }
   }
-  // By-column matrix
+  // ─── By-column matrix ──────────────────────────────────────────
   const matrixHost = byId("symbolByColMatrix");
   if (!matrixHost) return;
   const matrix = PURE.symbolByColMatrix(summary);
-  if (!matrix.columnIds.length) {
+  const matrixB = cmpB ? PURE.symbolByColMatrix(cmpB) : null;
+  if (!matrix.columnIds.length && !(matrixB && matrixB.columnIds.length)) {
     matrixHost.textContent = fmt("symbolsEmpty");
     return;
   }
-  matrixHost.innerHTML = matrix.columnIds
+  // Union of column IDs: A's order first, then B-only.
+  const aCols = new Set(matrix.columnIds.map((c) => String(c)));
+  const allCols = [...matrix.columnIds];
+  if (matrixB) {
+    for (const c of matrixB.columnIds) {
+      if (!aCols.has(String(c))) allCols.push(c);
+    }
+  }
+  matrixHost.innerHTML = allCols
     .map((col) => {
       const rows = matrix.rowsByCol[col] || [];
+      const rowsB = matrixB ? (matrixB.rowsByCol[col] || []) : [];
       // 2026-04-24: dual-column view (窗口 + 支付线). For single-payline
       // classic slots (M1/M37), payline shows mid-row density — same
       // data as window on reels whose paylines cover all rows, but
@@ -3636,28 +3691,65 @@ function renderSymbolDrilldown(summary) {
       // near-miss clustering: wild with 4× window/payline ratio is
       // a visual tease symbol, not a payout engine).
       const paylineMap = (matrix.paylineByCol && matrix.paylineByCol[col]) || {};
+      const paylineMapB = (matrixB && matrixB.paylineByCol && matrixB.paylineByCol[col]) || {};
       const paylineRows = (matrix.paylineRowsByCol && matrix.paylineRowsByCol[col]) || [];
-      const headerLabel = paylineRows.length
+      const paylineRowsB = (matrixB && matrixB.paylineRowsByCol && matrixB.paylineRowsByCol[col]) || [];
+      const useRows = paylineRows.length ? paylineRows : paylineRowsB;
+      const headerLabel = useRows.length
         ? fmt("symbolColLabelWithPaylineRows", {
             idx: col,
-            rows: paylineRows.join(","),
+            rows: useRows.join(","),
           })
         : fmt("symbolColLabel", { idx: col });
-      const max = rows.length ? Math.max(...rows.map((r) => r.count)) : 0;
+      // Per-symbol alignment within this column.
+      const aSymSet = new Set(rows.map((r) => String(r.symbol)));
+      const bMap = new Map();
+      for (const r of rowsB) bMap.set(String(r.symbol), r);
+      const merged = [...rows];
+      if (cmpB) {
+        for (const r of rowsB) if (!aSymSet.has(String(r.symbol))) merged.push(r);
+      }
+      const max = Math.max(
+        ...merged.map((r) => r.count),
+        ...(cmpB ? rowsB.map((r) => r.count) : []),
+        0,
+      );
       const paylineUnavailable = fmt("paylineRateUnavailable");
-      const body = rows
+      const body = merged
         .map((r) => {
-          const bar = max > 0 ? Math.min(100, (r.count / max) * 100) : 0;
-          const plEntry = paylineMap[r.symbol];
-          const plRatePct = plEntry
-            ? `${plEntry.rate_pct.toFixed(2)}%`
-            : paylineUnavailable;
+          const aIn = aSymSet.has(String(r.symbol));
+          const bRow = cmpB ? bMap.get(String(r.symbol)) : null;
+          const aCountRaw = aIn ? Number(r.count || 0) : NaN;
+          const bCountRaw = bRow ? Number(bRow.count || 0) : NaN;
+          const aRateRaw = aIn ? Number(r.rate_pct || 0) : NaN;
+          const bRateRaw = bRow ? Number(bRow.rate_pct || 0) : NaN;
+          const aCountFmt = aIn ? fInt(r.count) : "—";
+          const bCountFmt = bRow ? fInt(bRow.count) : "—";
+          const aRateFmt = aIn ? r.rate_pct.toFixed(2) + "%" : "—";
+          const bRateFmt = bRow ? bRow.rate_pct.toFixed(2) + "%" : "—";
+          // Payline rate may be missing on either side; keep "—".
+          const plEntryA = paylineMap[r.symbol];
+          const plEntryB = cmpB ? paylineMapB[r.symbol] : null;
+          const aPlFmt = plEntryA ? plEntryA.rate_pct.toFixed(2) + "%" : paylineUnavailable;
+          const bPlFmt = plEntryB ? plEntryB.rate_pct.toFixed(2) + "%" : paylineUnavailable;
+          const aPlRaw = plEntryA ? Number(plEntryA.rate_pct) : NaN;
+          const bPlRaw = plEntryB ? Number(plEntryB.rate_pct) : NaN;
+          const aBar = max > 0 ? Math.min(100, ((aIn ? r.count : 0) / max) * 100) : 0;
+          const bBar = cmpB && max > 0 ? Math.min(100, ((bRow ? bRow.count : 0) / max) * 100) : 0;
+          const barCell = cmpB
+            ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%">${_cmpCell(true, aCountFmt, bCountFmt, aCountRaw, bCountRaw, "rel")}</td>`
+            : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${aCountFmt}</td>`;
+          let symCell = `<code>${_escHtml(r.symbol)}</code>`;
+          if (cmpB) {
+            if (aIn && !bRow) symCell += ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
+            else if (!aIn && bRow) symCell += ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
+          }
           return (
             `<tr>` +
-            `<td>${r.symbol}</td>` +
-            `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${fInt(r.count)}</td>` +
-            `<td>${r.rate_pct.toFixed(2)}%</td>` +
-            `<td>${plRatePct}</td>` +
+            `<td>${symCell}</td>` +
+            barCell +
+            `<td>${_cmpCell(!!cmpB, aRateFmt, bRateFmt, aRateRaw, bRateRaw, "pp", 2)}</td>` +
+            `<td>${_cmpCell(!!cmpB, aPlFmt, bPlFmt, aPlRaw, bPlRaw, "pp", 2)}</td>` +
             `</tr>`
           );
         })
@@ -3683,19 +3775,63 @@ function renderPaylineDrilldown(summary) {
   const tbody = byId("paylineTable") && byId("paylineTable").querySelector("tbody");
   if (!tbody) return;
   const rows = PURE.formatPaylineRows(summary);
-  if (!rows.length) {
+
+  // Compare-aware: align by payline_id, A's order first, then
+  // B-only appended. Top-symbols column stays A-side (it's
+  // structural / per-machine; same machine same mode shouldn't
+  // see drift). Source badge also A-side.
+  const cmpB = state.compareMode && state.compareMode.b ? state.compareMode.b : null;
+  const rowsB = cmpB ? PURE.formatPaylineRows(cmpB) : [];
+  const bMap = new Map();
+  for (const r of rowsB) bMap.set(String(r.payline_id), r);
+  const aSet = new Set(rows.map((r) => String(r.payline_id)));
+  const merged = [...rows];
+  if (cmpB) {
+    for (const r of rowsB) {
+      if (!aSet.has(String(r.payline_id))) merged.push(r);
+    }
+  }
+  if (!merged.length) {
     tbody.innerHTML = `<tr><td colspan="6">${fmt("paylineEmpty")}</td></tr>`;
     return;
   }
-  const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
-  tbody.innerHTML = rows
+  // Bar scale: union max RTP across both sides.
+  const maxRtp = Math.max(
+    ...merged.map((r) => r.rtp_contribution_pp),
+    ...(cmpB ? rowsB.map((r) => r.rtp_contribution_pp) : []),
+    0,
+  );
+  tbody.innerHTML = merged
     .map((r) => {
-      const barPct = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
-      const topSyms = PURE.formatPaylineTopSymbols(r.top_symbols, 3);
+      const aIn = aSet.has(String(r.payline_id));
+      const bRow = cmpB ? bMap.get(String(r.payline_id)) : null;
+      const aHitRaw = aIn ? Number(r.hit_count || 0) : NaN;
+      const bHitRaw = bRow ? Number(bRow.hit_count || 0) : NaN;
+      const aHitRateRaw = aIn ? Number(r.hit_rate_pct || 0) : NaN;
+      const bHitRateRaw = bRow ? Number(bRow.hit_rate_pct || 0) : NaN;
+      const aRtpRaw = aIn ? Number(r.rtp_contribution_pp || 0) : NaN;
+      const bRtpRaw = bRow ? Number(bRow.rtp_contribution_pp || 0) : NaN;
+      const aWinRaw = aIn ? Number(r.win_share_pct || 0) : NaN;
+      const bWinRaw = bRow ? Number(bRow.win_share_pct || 0) : NaN;
+
+      const aBar = maxRtp > 0 ? Math.min(100, ((aIn ? r.rtp_contribution_pp : 0) / maxRtp) * 100) : 0;
+      const bBar = cmpB && maxRtp > 0 ? Math.min(100, ((bRow ? bRow.rtp_contribution_pp : 0) / maxRtp) * 100) : 0;
+      const aHitFmt = aIn ? fInt(r.hit_count) : "—";
+      const bHitFmt = bRow ? fInt(bRow.hit_count) : "—";
+      const aHitRateFmt = aIn ? r.hit_rate_pct.toFixed(3) + "%" : "—";
+      const bHitRateFmt = bRow ? bRow.hit_rate_pct.toFixed(3) + "%" : "—";
+      const aRtpFmt = aIn ? r.rtp_contribution_pp.toFixed(4) : "—";
+      const bRtpFmt = bRow ? bRow.rtp_contribution_pp.toFixed(4) : "—";
+      const aWinFmt = aIn ? r.win_share_pct.toFixed(2) + "%" : "—";
+      const bWinFmt = bRow ? bRow.win_share_pct.toFixed(2) + "%" : "—";
+
+      const topSyms = aIn
+        ? PURE.formatPaylineTopSymbols(r.top_symbols, 3)
+        : (bRow ? PURE.formatPaylineTopSymbols(bRow.top_symbols, 3) : "");
       // Prefix a source badge on the top-symbols cell so 策划 can tell
       // at a glance whether the symbol list is authoritative (from
       // RewardLastNode codes) or heuristic (left-3-col intersection).
-      const src = r.top_symbols_source;
+      const src = aIn ? r.top_symbols_source : (bRow ? bRow.top_symbols_source : null);
       const srcBadge = src === "rln"
         ? `<span class="tsym-src tsym-src-rln" title="${_escHtml(fmt("topSymSourceRlnTooltip"))}">${_escHtml(fmt("topSymSourceRln"))}</span>`
         : src === "heuristic"
@@ -3706,13 +3842,22 @@ function renderPaylineDrilldown(summary) {
         r.payline_id_num < 0 ? "negative" : "positive",
         Number.isFinite(r.payline_id_num) ? r.payline_id_num : null,
       );
+      // Presence tag in compare mode.
+      let presence = "";
+      if (cmpB) {
+        if (aIn && !bRow) presence = ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
+        else if (!aIn && bRow) presence = ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
+      }
+      const barCell = cmpB
+        ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%">${_cmpCell(true, aRtpFmt, bRtpFmt, aRtpRaw, bRtpRaw, "pp", 4)}</td>`
+        : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${aRtpFmt}</td>`;
       return (
         `<tr>` +
-        `<td><code>${_escHtml(r.payline_id)}</code> ${plineBadge}</td>` +
-        `<td>${fInt(r.hit_count)}</td>` +
-        `<td>${r.hit_rate_pct.toFixed(3)}%</td>` +
-        `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(4)}</td>` +
-        `<td>${r.win_share_pct.toFixed(2)}%</td>` +
+        `<td><code>${_escHtml(r.payline_id)}</code> ${plineBadge}${presence}</td>` +
+        `<td>${_cmpCell(!!cmpB, aHitFmt, bHitFmt, aHitRaw, bHitRaw, "rel")}</td>` +
+        `<td>${_cmpCell(!!cmpB, aHitRateFmt, bHitRateFmt, aHitRateRaw, bHitRateRaw, "pp", 3)}</td>` +
+        barCell +
+        `<td>${_cmpCell(!!cmpB, aWinFmt, bWinFmt, aWinRaw, bWinRaw, "pp", 2)}</td>` +
         `<td>${srcBadge}${topSyms}</td>` +
         `</tr>`
       );
@@ -3878,6 +4023,90 @@ function _escHtml(s) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+// ── Compare-mode Δ chip helpers ───────────────────────────────────
+//
+// Every numeric cell in a compare-aware panel now grows a small
+// Δ chip next to B's value: ▲+12.5% (blue), ▼−56.9% (orange), or
+// ≈ (gray for noise). The chip color encodes DIRECTION ONLY — we
+// deliberately don't paint "B is better than A" green vs "B is
+// worse" red, because the same metric can mean the opposite to
+// different audiences (策划 wants more bankruptcy rate to mean
+// 更刺激 = better volatility; player advocate wants it to mean
+// 更危险 = worse). Operator interprets meaning; we just show the
+// arrow.
+//
+// kind:
+//   - 'pp' : both inputs are in the same "rate / pp / percent"
+//            unit; Δ rendered as absolute (b - a)pp. Use this for
+//            already-percent values (RTP pp, win share %, hit
+//            rate as fraction, etc.).
+//   - 'rel': inputs are counts / multipliers / unit-less numbers;
+//            Δ rendered as (b - a)/a × 100% relative. Use for
+//            spin counts, fires, durations.
+//
+// Noise threshold: |Δ| < 0.05pp (for 'pp') or |Δ| < 0.5%
+// (for 'rel') → flat chip. Avoids visual noise on
+// rounding-error-scale differences.
+//
+// digits: decimal places on the magnitude (default 1). Set to 2
+// for finer-grained metrics like RTP pp where 0.10pp matters.
+//
+// Returns innerHTML; safe to concatenate into a TD.
+function _cmpDelta(aRaw, bRaw, kind, digits) {
+  if (!Number.isFinite(aRaw) || !Number.isFinite(bRaw)) {
+    return `<span class="cmp-delta cmp-delta-flat" title="Δ unavailable">—</span>`;
+  }
+  digits = digits == null ? 1 : digits;
+  if (kind === "pp") {
+    const d = bRaw - aRaw;
+    if (Math.abs(d) < 0.05) {
+      return `<span class="cmp-delta cmp-delta-flat" title="Δ ≈ 0pp (within noise)">≈</span>`;
+    }
+    const arrow = d > 0 ? "▲" : "▼";
+    const tone = d > 0 ? "up" : "down";
+    return `<span class="cmp-delta cmp-delta-${tone}" title="B − A = ${d.toFixed(digits)}pp">${arrow}${Math.abs(d).toFixed(digits)}pp</span>`;
+  }
+  // 'rel' — relative percent change (B / A − 1) × 100.
+  if (aRaw === 0 && bRaw === 0) {
+    return `<span class="cmp-delta cmp-delta-flat" title="A = B = 0">≈</span>`;
+  }
+  if (aRaw === 0) {
+    // Birth: B has data, A doesn't. Show as "new" so operator sees
+    // it's not a Δ but a presence change.
+    return `<span class="cmp-delta cmp-delta-up" title="A = 0; B = ${bRaw.toFixed(digits)} (new)">▲ new</span>`;
+  }
+  if (bRaw === 0) {
+    return `<span class="cmp-delta cmp-delta-down" title="A = ${aRaw.toFixed(digits)}; B = 0 (gone)">▼ gone</span>`;
+  }
+  const dRel = ((bRaw - aRaw) / aRaw) * 100;
+  if (Math.abs(dRel) < 0.5) {
+    return `<span class="cmp-delta cmp-delta-flat" title="Δ ≈ 0% (within noise)">≈</span>`;
+  }
+  const arrow = dRel > 0 ? "▲" : "▼";
+  const tone = dRel > 0 ? "up" : "down";
+  return `<span class="cmp-delta cmp-delta-${tone}" title="B / A = ${(bRaw / aRaw).toFixed(2)} (${dRel >= 0 ? "+" : ""}${dRel.toFixed(digits)}%)">${arrow}${Math.abs(dRel).toFixed(digits)}%</span>`;
+}
+
+// Build an A/B stacked cell. When `cmpActive` is false, returns
+// the plain A value (single-mode). When true, emits two divs +
+// optional Δ chip if raw numeric values are provided.
+//
+// Args:
+//   aFmt, bFmt: pre-formatted display strings ("4,300", "58.88pp", etc.)
+//   aRaw, bRaw: raw numeric values for the Δ chip; pass undefined to
+//               skip the chip (e.g. for non-numeric / multi-component cells)
+//   kind:       'pp' | 'rel' for _cmpDelta; ignored if raws missing
+//   digits:     Δ chip decimal places
+function _cmpCell(cmpActive, aFmt, bFmt, aRaw, bRaw, kind, digits) {
+  if (!cmpActive) return aFmt;
+  let chip = "";
+  if (aRaw !== undefined && bRaw !== undefined) {
+    chip = " " + _cmpDelta(aRaw, bRaw, kind, digits);
+  }
+  return `<div class="cmp-cell-a">${aFmt}</div>` +
+    `<div class="cmp-cell-b">${bFmt}${chip}</div>`;
 }
 
 // Render the payline-structure classification panel. Data comes from
@@ -4268,11 +4497,13 @@ async function renderPayIdOverview(summary) {
     // ≥10× → 1 decimal; smaller → 2 decimals for readability.
     return m >= 10 ? `${m.toFixed(1)}×` : `${m.toFixed(2)}×`;
   };
-  // Helper: stack A on top + B underneath in compare mode; plain in
-  // single mode. Used per metric cell.
-  const _stackPid = (aVal, bVal) => cmpB
-    ? `<div class="cmp-cell-a">A ${aVal}</div><div class="cmp-cell-b">B ${bVal}</div>`
-    : aVal;
+  // Helper: A/B stacked cell + Δ chip in compare mode; plain
+  // value in single mode. ``aRaw`` / ``bRaw`` drive the Δ chip
+  // when both numeric. ``kind`` is 'pp' (absolute pp delta, for
+  // hit_rate, rtp_pp, share %) or 'rel' (relative %, for counts
+  // and multipliers).
+  const _stackPid = (aVal, bVal, aRaw, bRaw, kind, digits) =>
+    _cmpCell(!!cmpB, aVal, bVal, aRaw, bRaw, kind, digits);
   // Hit-rate cell formatter shared between A and B sides.
   const _fmtHitRate = (raw) => {
     if (!Number.isFinite(raw)) return "—";
@@ -4370,24 +4601,34 @@ async function renderPayIdOverview(summary) {
     // at 1e-6 would render as "0.00%" with 2 decimals, which hides
     // the order of magnitude — 4 decimals fixes that.
     const hitRateRaw = Number(pr.hit_rate);
+    const hitRateRawB = prB ? Number(prB.hit_rate) : NaN;
     const hitRateA = (isDeclaredOnly || isBOnly || !Number.isFinite(hitRateRaw))
       ? "—"
       : _fmtHitRate(hitRateRaw);
-    const hitRateB = prB ? _fmtHitRate(Number(prB.hit_rate)) : "—";
+    const hitRateB = prB ? _fmtHitRate(hitRateRawB) : "—";
+    const hitCountRawA = isBOnly ? NaN : Number(pr.hit_count);
+    const hitCountRawB = prB ? Number(prB.hit_count) : NaN;
     const hitCountA = isBOnly ? "—" : fInt(pr.hit_count);
     const hitCountB = prB ? fInt(prB.hit_count) : "—";
     const rtpCellA = isBOnly ? "—" : `${rtpPp.toFixed(2)}pp`;
     const rtpCellB = prB ? `${rtpPpB.toFixed(2)}pp` : "—";
+    const rtpRawA = isBOnly ? NaN : rtpPp;
+    const rtpRawB = prB ? rtpPpB : NaN;
+    // Multiplier (avg_win/bet): float; relative Δ.
+    const multRawA = isBOnly ? NaN : Number(pr.avg_win_when_hit || 0) / bet;
+    const multRawB = prB ? Number(prB.avg_win_when_hit || 0) / betB : NaN;
+    // Pass hit_rate raw values × 100 so the Δ chip reads in pp
+    // (0.0030 → 0.30pp instead of 0.0030pp which is unreadable).
     const barCell = cmpB
-      ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%">${_stackPid(rtpCellA, rtpCellB)}</td>`
+      ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%">${_stackPid(rtpCellA, rtpCellB, rtpRawA, rtpRawB, "pp", 2)}</td>`
       : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>`;
     const mainRow =
       `<tr class="${mainRowClassList}" data-pid="${_escHtml(pid)}">` +
       `<td>${toggleIcon}${_escHtml(pid)}</td>` +
       `<td>${categoryBadge(cat)}</td>` +
-      `<td${firesAttr}>${_stackPid(hitCountA, hitCountB)}</td>` +
-      `<td class="payid-hitrate">${_stackPid(hitRateA, hitRateB)}</td>` +
-      `<td class="payid-mult">${_stackPid(mainMultA, mainMultB)}</td>` +
+      `<td${firesAttr}>${_stackPid(hitCountA, hitCountB, hitCountRawA, hitCountRawB, "rel")}</td>` +
+      `<td class="payid-hitrate">${_stackPid(hitRateA, hitRateB, hitRateRaw * 100, hitRateRawB * 100, "pp", 2)}</td>` +
+      `<td class="payid-mult">${_stackPid(mainMultA, mainMultB, multRawA, multRawB, "rel")}</td>` +
       `<td class="payid-winshare">—</td>` +
       barCell +
       `<td>${symDisplay}</td>` +
@@ -4591,19 +4832,20 @@ function _renderFeatureBucketTable(buckets, bucketsB) {
     0.001,
   );
 
-  const _stack = (aVal, bVal) => compareMode
-    ? `<div class="cmp-cell-a">A ${aVal}</div><div class="cmp-cell-b">B ${bVal}</div>`
-    : aVal;
+  const _stack = (aVal, bVal, aRaw, bRaw, kind, digits) =>
+    _cmpCell(compareMode, aVal, bVal, aRaw, bRaw, kind, digits);
 
   const body = merged.map((b) => {
     const label = PURE.prettyBucketLabel(b.bucket);
     const aCount = Number(b.spin_count || 0);
-    const aRate = (Number(b.spin_rate || 0) * 100).toFixed(2);
+    const aRateRaw = Number(b.spin_rate || 0) * 100;
+    const aRate = aRateRaw.toFixed(2);
     const aRtpPp = Number(b.rtp_contribution_pp || 0);
     const aBar = Math.min(100, (Math.abs(aRtpPp) / maxRtp) * 100);
     const bRow = compareMode ? (bMap.get(String(b.bucket || "")) || {}) : null;
     const bCount = bRow ? Number(bRow.spin_count || 0) : 0;
-    const bRate = bRow ? (Number(bRow.spin_rate || 0) * 100).toFixed(2) : "0.00";
+    const bRateRaw = bRow ? Number(bRow.spin_rate || 0) * 100 : 0;
+    const bRate = bRateRaw.toFixed(2);
     const bRtpPp = bRow ? Number(bRow.rtp_contribution_pp || 0) : 0;
     const bBar = compareMode ? Math.min(100, (Math.abs(bRtpPp) / maxRtp) * 100) : 0;
     const barCell = compareMode
@@ -4612,9 +4854,9 @@ function _renderFeatureBucketTable(buckets, bucketsB) {
     return (
       `<tr>` +
       `<td>${_escHtml(label)}</td>` +
-      `<td>${_stack(aCount.toLocaleString(), bCount.toLocaleString())}</td>` +
-      `<td>${_stack(aRate + "%", bRate + "%")}</td>` +
-      `<td>${_stack(aRtpPp.toFixed(2) + "pp", bRtpPp.toFixed(2) + "pp")}</td>` +
+      `<td>${_stack(aCount.toLocaleString(), bCount.toLocaleString(), aCount, bCount, "rel")}</td>` +
+      `<td>${_stack(aRate + "%", bRate + "%", aRateRaw, bRateRaw, "pp")}</td>` +
+      `<td>${_stack(aRtpPp.toFixed(2) + "pp", bRtpPp.toFixed(2) + "pp", aRtpPp, bRtpPp, "pp", 2)}</td>` +
       barCell +
       `</tr>`
     );
@@ -4831,6 +5073,14 @@ function _renderPayingFeatureCard(feat, chains, bFeat) {
   const firesB = _intLocale(bFeat, "total_times");
   const rateA = _pctOf(feat, "fire_rate", 2);
   const rateB = _pctOf(bFeat, "fire_rate", 2);
+  // Raw values for Δ chips. The header carries one chip on
+  // rtp_pp (the dominant metric — share_of_total_win is just a
+  // ratio of the same number). The meta line carries one chip
+  // on fires_spins (count → relative %).
+  const rtpRawA = haveA ? Number(feat.rtp_contribution_pp || 0) : NaN;
+  const rtpRawB = haveB ? Number(bFeat.rtp_contribution_pp || 0) : NaN;
+  const firesRawA = haveA ? Number(feat.fires_spins || feat.total_times || 0) : NaN;
+  const firesRawB = haveB ? Number(bFeat.fires_spins || bFeat.total_times || 0) : NaN;
 
   const bucketsA = haveA && Array.isArray(feat.bucket_distribution) ? feat.bucket_distribution : [];
   const bucketsB = haveB && Array.isArray(bFeat.bucket_distribution) ? bFeat.bucket_distribution : [];
@@ -4879,15 +5129,23 @@ function _renderPayingFeatureCard(feat, chains, bFeat) {
     else if (!haveA && haveB) presenceTag = ` <span class="feature-presence-tag feature-presence-b">B only</span>`;
   }
 
-  // Header + meta: A/B stacked in compare mode, plain in single mode.
-  const headerMetric = compareMode
-    ? `<div class="cmp-cell-a">A ${rtpA} · ${shareA}</div>`
-      + `<div class="cmp-cell-b">B ${rtpB} · ${shareB}</div>`
-    : `${rtpA} · ${shareA}`;
-  const metaLine = compareMode
-    ? `<div class="cmp-cell-a">A fires ${firesA}× · ${rateA} of spins</div>`
-      + `<div class="cmp-cell-b">B fires ${firesB}× · ${rateB} of spins</div>`
-    : `fires ${firesA}× · ${rateA} of spins`;
+  // Header + meta: A/B stacked in compare mode, plain in single
+  // mode. Δ chip rides on rtp_pp (header) and fires_spins (meta)
+  // — the two dominant metrics. Share % and fire rate are derived
+  // from the same numerator so a second chip there would just
+  // duplicate the same direction signal.
+  const headerMetric = _cmpCell(
+    compareMode,
+    `${rtpA} · ${shareA}`,
+    `${rtpB} · ${shareB}`,
+    rtpRawA, rtpRawB, "pp", 2,
+  );
+  const metaLine = _cmpCell(
+    compareMode,
+    `fires ${firesA}× · ${rateA} of spins`,
+    `fires ${firesB}× · ${rateB} of spins`,
+    firesRawA, firesRawB, "rel",
+  );
 
   return (
     `<div class="feature-block">` +
@@ -5194,11 +5452,12 @@ function renderBankruptcyAnalysis(summary) {
     fmt("bankruptcyIntro", { session: sessionSpins })
   )}</p>`;
 
-  // Helper: stack A on top + B underneath in compare mode; plain text
-  // in single mode. Used for every metric cell on the tier card.
-  const _stack = (aVal, bVal) => cmpB
-    ? `<div class="cmp-cell-a">A ${aVal}</div><div class="cmp-cell-b">B ${bVal}</div>`
-    : aVal;
+  // Helper: A/B stacked cell + Δ chip in compare mode; plain text
+  // in single mode. ``aRaw`` / ``bRaw`` drive the Δ chip when both
+  // numeric. ``kind`` selects 'pp' (rate / percent values) or
+  // 'rel' (counts / spins).
+  const _stack = (aVal, bVal, aRaw, bRaw, kind, digits) =>
+    _cmpCell(!!cmpB, aVal, bVal, aRaw, bRaw, kind, digits);
 
   const cards = mergedTiers.map((t) => {
     const mult = Number(t.bankroll_multiplier || 0);
@@ -5248,10 +5507,13 @@ function renderBankruptcyAnalysis(summary) {
       const barCell = cmpB
         ? `<td class="bar-cell bar-cell-cmp" style="--bar:${barA.toFixed(1)}%;--bar-b:${barB.toFixed(1)}%"></td>`
         : `<td class="bar-cell" style="--bar:${barA.toFixed(1)}%"></td>`;
+      // Fastest row: spin counts → relative %.
+      const fastA = fastestA == null ? NaN : fastestA;
+      const fastB = fastestB == null ? NaN : fastestB;
       return (
         `<tr class="bk-row-fastest">` +
         `<td>${_escHtml(fmt("bankruptcyFastestLabel"))}</td>` +
-        `<td>${_stack(spinTextA, spinTextB)}</td>` +
+        `<td>${_stack(spinTextA, spinTextB, fastA, fastB, "rel")}</td>` +
         barCell +
         `</tr>`
       );
@@ -5281,7 +5543,7 @@ function renderBankruptcyAnalysis(summary) {
       return (
         `<tr class="${cls}">` +
         `<td>P${p}</td>` +
-        `<td>${_stack(spinA.toLocaleString(), spinB.toLocaleString())}</td>` +
+        `<td>${_stack(spinA.toLocaleString(), spinB.toLocaleString(), spinA, spinB, "rel")}</td>` +
         barCell +
         `</tr>`
       );
@@ -5310,9 +5572,11 @@ function renderBankruptcyAnalysis(summary) {
         fmt("bankruptcyTierLabel", { mult })
       )}${presenceTag}</h3>` +
       `<div class="bankruptcy-tier-stats">` +
-      `<span class="bk-stat bk-stat-rate"><em>${_escHtml(fmt("bankruptcyRateLabel"))}</em><b>${_stack(rateAStr, rateBStr)}</b></span>` +
-      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcyMedianLabel"))}</em><b>${_stack(medianAStr, medianBStr)}</b></span>` +
-      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcySurvivedLabel"))}</em><b>${_stack(survAStr, survBStr)}</b></span>` +
+      // bankruptcy_rate / survived %: already in 0–1 → render in pp scale.
+      // median spins: count → relative %.
+      `<span class="bk-stat bk-stat-rate"><em>${_escHtml(fmt("bankruptcyRateLabel"))}</em><b>${_stack(rateAStr, rateBStr, rateA * 100, rateB * 100, "pp")}</b></span>` +
+      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcyMedianLabel"))}</em><b>${_stack(medianAStr, medianBStr, medianA, medianB, "rel")}</b></span>` +
+      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcySurvivedLabel"))}</em><b>${_stack(survAStr, survBStr, sessionsA > 0 ? (survivedA / sessionsA) * 100 : NaN, sessionsB > 0 ? (survivedB / sessionsB) * 100 : NaN, "pp")}</b></span>` +
       `</div>` +
       `<table class="drilldown-table bankruptcy-histogram">` +
       `<thead><tr>` +
@@ -5893,12 +6157,16 @@ async function _paintAnalysisFromSummary(s) {
     const fmt1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(1) + "%";
     const tone = td.tone || "neutral";
     const _tcell = (label, key) => {
-      const aV = fmt1(dm[key]);
+      const aRaw = dm[key];
+      const aV = fmt1(aRaw);
       if (!dmB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
-      const bV = fmt1(dmB[key]);
+      const bRaw = dmB[key];
+      const bV = fmt1(bRaw);
+      // Tail-dep raws are 0\u20131 fractions \u2192 render \u0394 in pp scale.
+      const aN = aRaw == null ? NaN : Number(aRaw) * 100;
+      const bN = bRaw == null ? NaN : Number(bRaw) * 100;
       return `<div class="tail-cell"><em>${label}</em><b>` +
-        `<div class="cmp-cell-a">A ${aV}</div>` +
-        `<div class="cmp-cell-b">B ${bV}</div></b></div>`;
+        _cmpCell(true, aV, bV, aN, bN, "pp", 2) + `</b></div>`;
     };
     tailGrid.innerHTML =
       _tcell("\u226510x", "tail_dependency_ge10x") +
@@ -5921,12 +6189,16 @@ async function _paintAnalysisFromSummary(s) {
     const tilesB = cardsBLocal && cardsBLocal.bigWin ? cardsBLocal.bigWin.tiles : null;
     const pct1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(2) + "%";
     const _bcell = (label, key) => {
-      const aV = pct1(tiles[key]);
+      const aRaw = tiles[key];
+      const aV = pct1(aRaw);
       if (!tilesB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
-      const bV = pct1(tilesB[key]);
+      const bRaw = tilesB[key];
+      const bV = pct1(bRaw);
+      // Big-win tile raws are 0\u20131 fractions \u2192 render \u0394 in pp.
+      const aN = aRaw == null ? NaN : Number(aRaw) * 100;
+      const bN = bRaw == null ? NaN : Number(bRaw) * 100;
       return `<div class="tail-cell"><em>${label}</em><b>` +
-        `<div class="cmp-cell-a">A ${aV}</div>` +
-        `<div class="cmp-cell-b">B ${bV}</div></b></div>`;
+        _cmpCell(true, aV, bV, aN, bN, "pp", 2) + `</b></div>`;
     };
     bigWinGrid.innerHTML =
       _bcell("\u226510x", "ge10") +
@@ -5975,29 +6247,33 @@ async function _paintAnalysisFromSummary(s) {
       Number(b.rtp_contribution_pp || 0),
       cmpB ? Number((bMap.get(String(b.bucket)) || {}).rtp_contribution_pp || 0) : 0,
     )), 0.001);
-    const _stack = (aVal, bVal) => cmpB
-      ? `<div class="cmp-cell-a">A ${aVal}</div><div class="cmp-cell-b">B ${bVal}</div>`
-      : aVal;
     bucketBody.innerHTML = merged
       .map((b) => {
+        const aCountRaw = Number(b.spin_count || 0);
+        const aSpinPctRaw = Number(b.spin_rate || 0) * 100;
+        const aRtpPpRaw = Number(b.rtp_contribution_pp || 0);
         const aCount = fInt(b.spin_count);
-        const aSpinPct = (Number(b.spin_rate || 0) * 100).toFixed(2);
-        const aRtpPp = Number(b.rtp_contribution_pp || 0).toFixed(2);
-        const aBar = Math.min(100, (Number(b.rtp_contribution_pp || 0) / maxRtp) * 100);
+        const aSpinPct = aSpinPctRaw.toFixed(2);
+        const aRtpPp = aRtpPpRaw.toFixed(2);
+        const aBar = Math.min(100, (aRtpPpRaw / maxRtp) * 100);
         let bCount = "—", bSpinPct = "—", bRtpPp = "—", bBar = 0;
+        let bCountRaw = NaN, bSpinPctRaw = NaN, bRtpPpRaw = NaN;
         if (cmpB) {
           const bRow = bMap.get(String(b.bucket)) || {};
+          bCountRaw = Number(bRow.spin_count || 0);
+          bSpinPctRaw = Number(bRow.spin_rate || 0) * 100;
+          bRtpPpRaw = Number(bRow.rtp_contribution_pp || 0);
           bCount = fInt(bRow.spin_count);
-          bSpinPct = (Number(bRow.spin_rate || 0) * 100).toFixed(2);
-          bRtpPp = Number(bRow.rtp_contribution_pp || 0).toFixed(2);
-          bBar = Math.min(100, (Number(bRow.rtp_contribution_pp || 0) / maxRtp) * 100);
+          bSpinPct = bSpinPctRaw.toFixed(2);
+          bRtpPp = bRtpPpRaw.toFixed(2);
+          bBar = Math.min(100, (bRtpPpRaw / maxRtp) * 100);
         }
         return (
           `<tr>` +
           `<td>${PURE.prettyBucketLabel(b.bucket)}</td>` +
-          `<td>${_stack(aCount, bCount)}</td>` +
-          `<td>${_stack(aSpinPct + "%", bSpinPct + "%")}</td>` +
-          `<td>${_stack(aRtpPp + "pp", bRtpPp + "pp")}</td>` +
+          `<td>${_cmpCell(!!cmpB, aCount, bCount, aCountRaw, bCountRaw, "rel")}</td>` +
+          `<td>${_cmpCell(!!cmpB, aSpinPct + "%", bSpinPct + "%", aSpinPctRaw, bSpinPctRaw, "pp")}</td>` +
+          `<td>${_cmpCell(!!cmpB, aRtpPp + "pp", bRtpPp + "pp", aRtpPpRaw, bRtpPpRaw, "pp", 2)}</td>` +
           (cmpB
             ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%"></td>`
             : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%"></td>`) +

@@ -3586,44 +3586,118 @@ select:focus-visible,
 .kpi-cmp-unknown { color: #64748b; }
 
 /* Bucket / payID / table cell A-B stack. Same column count as
-   single mode — each TD gets two stacked rows in compare. */
+   single mode — each TD gets two stacked rows in compare.
+   A is rendered MUTED (it's the baseline, the eye should slide
+   past it); B carries the visual weight (it's what you're
+   evaluating). The Δ chip next to B's value is what carries the
+   most information and gets the strongest visual treatment. */
 .cmp-cell-a, .cmp-cell-b {
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.5;
   font-variant-numeric: tabular-nums;
   display: block;
+  white-space: nowrap;
 }
 .cmp-cell-a {
-  color: #334155;
+  color: #94a3b8;       /* light slate — recedes */
+  font-weight: 400;
 }
 .cmp-cell-b {
-  color: #4338ca;
-  font-weight: 500;
+  color: #1e293b;       /* deep slate, anchor for the Δ chip */
+  font-weight: 600;     /* bolder than A so the eye lands here first */
+}
+/* The "A" / "B" prefix tag — small uppercase pill, monochrome.
+   Keeps the cell scannable: once trained, the operator's eye
+   ignores the tag and reads value + chip. */
+.cmp-cell-a::before {
+  content: "A";
+  display: inline-block;
+  width: 11px;
+  margin-right: 4px;
+  padding: 0 2px;
+  border-radius: 2px;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  vertical-align: 1px;
+}
+.cmp-cell-b::before {
+  content: "B";
+  display: inline-block;
+  width: 11px;
+  margin-right: 4px;
+  padding: 0 2px;
+  border-radius: 2px;
+  background: #c7d2fe;
+  color: #3730a3;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  vertical-align: 1px;
 }
 
-/* Bar cell with two distinct bars stacked vertically (A on top,
-   B below) — clearer than the previous stripe overlay. */
+/* Δ chip: shown next to B's value. Direction-only color (no
+   good/bad semantic). Up = blue, down = orange, flat = gray.
+   Magnitude + arrow. Hover tooltip carries the precise value
+   (B − A in pp, or B/A ratio for relative).  */
+.cmp-delta {
+  display: inline-block;
+  padding: 1px 5px;
+  margin-left: 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  vertical-align: 1px;
+  cursor: help;
+}
+.cmp-delta-up {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.cmp-delta-down {
+  background: #ffedd5;
+  color: #c2410c;
+}
+.cmp-delta-flat {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+/* Bar cell with TWO bars stacked: A is a thin neutral baseline,
+   B is a thicker indigo fill. Heights deliberately asymmetric so
+   "B's bar grew past A's" reads at a glance. Both share the same
+   --bar / --bar-b scale so position is comparable. */
 .bar-cell-cmp {
   position: relative;
   background: transparent !important;
-  padding: 4px !important;
+  padding: 5px 4px !important;
   vertical-align: middle;
+  min-width: 80px;
 }
 .bar-cell-cmp::before,
 .bar-cell-cmp::after {
   content: "";
   display: block;
-  height: 6px;
   border-radius: 2px;
   margin: 1px 0;
 }
 .bar-cell-cmp::before {
   width: var(--bar, 0%);
-  background: #94a3b8;
+  height: 4px;
+  background: #cbd5e1;
 }
 .bar-cell-cmp::after {
   width: var(--bar-b, 0%);
-  background: #6366f1;
+  height: 7px;
+  background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%);
+  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.15);
 }
 
 /* When compare mode active, slightly tighten KPI tile padding so
