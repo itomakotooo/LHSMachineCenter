@@ -149,8 +149,8 @@ M1 应该是 **boom-bust** 不是 mid-heavy：
 
 ## 相关文件
 
-- `slot_designer/weights/M1/reel_strips.json` — 22-stop TDD 布局（`_archetype` block 锁来源）
-- `slot_designer/weights/M1/mode_*/weights.json` — 各 mode 权重（`_family_scales` 字段记录）
-- `slot_designer/scripts/tune_m1_family_scales.py` — family-scale search 实现
+- `slot_designer/weights/M1/reel_strips.json` — 22-stop 布局（`_archetype` block 记录设计灵感来源，TDD WoO Hot Roll 反向工程）
+- `slot_designer/weights/M1/mode_*/weights.json` — 各 mode 权重（`_family_uniform_weights` 字段记录每家族每 reel uniform weight）
+- `slot_designer/scripts/tune_m1.py` — player-experience direct tune（27-dim 每家族每 reel uniform weight + experience cost penalty）
 - `slot_designer/scripts/verify_m1_design.py` — experience gate
 - `slot_designer/tuner/targets/M1_mode*.target.json` — 数值 target（RTP / hit / bucket）

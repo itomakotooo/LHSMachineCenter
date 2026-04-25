@@ -107,6 +107,7 @@ def analytic_profile(engine: SpinEngine) -> dict:
     hit_prob = 0.0
     bucket_prob: dict[str, float] = defaultdict(float)
     pay_prob: dict[str, float] = defaultdict(float)
+    pay_rtp: dict[str, float] = defaultdict(float)
     total_prob = 0.0
 
     for prob, pay_id, mult in enumerate_payline(engine):
@@ -116,6 +117,7 @@ def analytic_profile(engine: SpinEngine) -> dict:
         if pay_id is not None:
             hit_prob += prob
             pay_prob[str(pay_id)] += prob
+            pay_rtp[str(pay_id)] += prob * mult  # actual contribution incl. wild boost
             bucket = multiplier_to_bucket(mult)
             if bucket is not None:
                 bucket_prob[bucket] += prob
@@ -136,6 +138,7 @@ def analytic_profile(engine: SpinEngine) -> dict:
         "cv": cv,
         "bucket_rate": dict(bucket_prob),
         "pay_hits": dict(pay_prob),
+        "pay_rtp": dict(pay_rtp),  # per-pay_id RTP contribution (probability-weighted multiplier sum, includes wild-substitution boost)
         "total_prob": total_prob,  # sanity: should equal 1.0
     }
 
@@ -157,6 +160,7 @@ def analytic_profile_from_marginals(
     hit_prob = 0.0
     bucket_prob: dict[str, float] = defaultdict(float)
     pay_prob: dict[str, float] = defaultdict(float)
+    pay_rtp: dict[str, float] = defaultdict(float)
     total_prob = 0.0
 
     symbols_per_reel = [list(m.keys()) for m in reel_marginals]
@@ -175,6 +179,7 @@ def analytic_profile_from_marginals(
         rtp_sq += prob * mult * mult
         hit_prob += prob
         pay_prob[str(result.pay_id)] += prob
+        pay_rtp[str(result.pay_id)] += prob * mult
         bucket = multiplier_to_bucket(mult)
         if bucket is not None:
             bucket_prob[bucket] += prob
@@ -191,6 +196,7 @@ def analytic_profile_from_marginals(
         "cv": cv,
         "bucket_rate": dict(bucket_prob),
         "pay_hits": dict(pay_prob),
+        "pay_rtp": dict(pay_rtp),
         "total_prob": total_prob,
     }
 

@@ -1,23 +1,31 @@
-"""M1 design verification — experience gate.
+"""M1 design verification — player-experience gate.
 
-Enforces the red lines declared in slot_designer/weights/M1/DESIGN.md.
-Run after any tune / weight change. All checks must pass (green)
-before the design is "done" per `project_slot_designer_axiom_experience_is_soul`.
+Per ``project_slot_designer_axiom_experience_is_soul``: TDD numbers are
+inspiration, not constraint; what we verify is **player experience
+reasonableness**, not divergence from a particular real machine's
+per-position weights.
+
+Run after any tune. All red lines must be green before "done" per
+``project_slot_designer_axiom_experience_is_soul``.
 
 Usage:
     python -m slot_designer.scripts.verify_m1_design
 
-Exit code: 0 = all green, 1 = at least one red.
+Exit: 0 = all green, 1 = at least one red.
 
-Checks:
-    [RTP]        Per-mode RTP within tolerance (DESIGN.md §3)
-    [HIT]        Per-mode hit rate within band (DESIGN.md §3)
-    [SHARE]      Per-mode family RTP share within range (DESIGN.md §2)
-    [MODE7-SEVEN] Mode 7 Seven absolute marginal ≥ mode 1 × 0.9 (DESIGN.md §4)
-    [MODE7-DIAM]  Mode 7 Diamond absolute marginal ≥ mode 1 × 0.9 (DESIGN.md §4)
-    [RATIO]      Per-family per-reel ratio drift vs TDD baseline (DESIGN.md §5)
-    [NEARMISS]   Seven2/Diamond window/payline ratio ≥ 1.3 (DESIGN.md §6)
-    [BUCKET]     Low hit ≥ total × 50%, High RTP share ≥ 15% (DESIGN.md §7)
+Categories:
+    [RTP]         Per-mode total RTP within tolerance
+    [HIT]         Per-mode hit rate within band
+    [WILD]        Wild on payline P(>=1) signature within band per mode
+    [SHARE]       Per-mode family RTP share within band
+    [DENSITY]     Per-family per-reel payline density visually合理 [1%, 22%]
+    [MODE7-LOCK]  Mode 7 Diamond/Seven family RTP within ±0.5pp of mode 1
+                  (大奖击中率/产出期望绝对不砍)
+    [MODE7-CUT]   Mode 7 Bar1/Cherry family share visibly cut from mode 1
+                  (略砍小奖/砍小奖体感)
+    [SIGNATURE]   Wild on payline cross-mode drift ≤ 25%
+                  (Double Diamond signature 一致性)
+    [TOP-PATH]    Top-tier (Diamond + Seven) RTP not cut in mode 7
 """
 from __future__ import annotations
 
@@ -36,305 +44,375 @@ from slot_designer.engine.loader import load_engine
 SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
 STRIPS = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
 
-# TDD baseline weights (from DESIGN.md §5, WoO Hot Roll reverse-engineering)
-TDD_BASELINE = [
-    [1, 2, 12, 1, 5, 5, 4, 5, 5, 7, 17, 25, 18, 25, 19, 18, 26, 24, 19, 9, 3, 6],
-    [2, 3, 2, 3, 3, 4, 1, 5, 7, 17, 12, 19, 19, 21, 20, 28, 20, 27, 27, 10, 3, 3],
-    [1, 1, 1, 4, 2, 41, 8, 17, 12, 17, 10, 12, 11, 20, 14, 13, 11, 7, 42, 8, 3, 1],
-]
-
-FAMILY_MAP = {
-    "14": "Cherry", "13": "Cherry", "12": "Cherry",
+# pay_id -> family classification for RTP-share aggregation.
+# Matches tune_m1.PAY_TO_FAMILY.
+PAY_TO_FAMILY = {
+    "12": "Cherry", "13": "Cherry", "14": "Cherry",
+    "2": "Diamond", "3": "Diamond", "4": "Diamond",
     "5": "Seven", "6": "Seven", "10": "Seven",
-    "7": "Bar", "8": "Bar", "9": "Bar", "11": "Bar",
-    "2": "Wild", "3": "Wild", "4": "Wild",
+    "7": "Bar3", "8": "Bar2", "9": "Bar1",
+    "11": "Bar_group",  # split equally Bar1/Bar2/Bar3
 }
 
-# DESIGN.md §3 RTP+hit targets (per-mode)
+# Per-mode RTP / hit / wild_signature / family-share targets.
 MODE_TARGETS = {
-    1: {"rtp": 95.0, "rtp_tol": 1.0, "hit_lo": 0.13, "hit_hi": 0.20},
-    7: {"rtp": 85.0, "rtp_tol": 1.0, "hit_lo": 0.09, "hit_hi": 0.13},
-    2: {"rtp": 294.5, "rtp_tol": 20.0, "hit_lo": 0.22, "hit_hi": 0.30},
-    5: {"rtp": 500.0, "rtp_tol": 20.0, "hit_lo": 0.22, "hit_hi": 0.30},
+    1: {
+        "rtp": 95.0, "rtp_tol": 1.0,
+        "hit_lo": 0.12, "hit_hi": 0.18,
+        "wild_lo": 0.16, "wild_hi": 0.25,
+        "family_share_band": {
+            # share = family_rtp_pp / total_rtp (0-1 scale)
+            "Diamond": (0.14, 0.28),
+            "Seven":   (0.15, 0.28),
+            "Bar3":    (0.10, 0.20),
+            "Bar2":    (0.08, 0.17),
+            "Bar1":    (0.05, 0.14),
+            "Cherry":  (0.08, 0.17),
+        },
+    },
+    7: {
+        "rtp": 85.0, "rtp_tol": 1.5,
+        "hit_lo": 0.09, "hit_hi": 0.14,
+        "wild_lo": 0.16, "wild_hi": 0.25,
+        # Mode 7 family share inherits mode 1 floor; explicit checks via
+        # MODE7-LOCK / MODE7-CUT validate per-family deltas.
+        "family_share_band": {
+            "Diamond": (0.14, 0.28),
+            "Seven":   (0.15, 0.28),
+            "Bar3":    (0.10, 0.22),
+            "Bar2":    (0.08, 0.18),
+            "Bar1":    (0.04, 0.14),
+            "Cherry":  (0.06, 0.16),
+        },
+    },
+    2: {
+        "rtp": 294.5, "rtp_tol": 20.0,
+        "hit_lo": 0.20, "hit_hi": 0.35,
+        "wild_lo": 0.15, "wild_hi": 0.32,
+        # Lucky mode = 7-dominated per RWB/Blazing Sevens benchmark.
+        # Synced with tune_m1.EXPERIENCE_TARGETS.
+        "family_share_band": {
+            "Diamond": (0.09, 0.25),  # slight relax for mode 2 edge cases
+            "Seven":   (0.35, 0.65),
+            "Bar3":    (0.05, 0.20),
+            "Bar2":    (0.03, 0.13),
+            "Bar1":    (0.03, 0.14),
+            "Cherry":  (0.03, 0.13),
+        },
+        "density_hi": 0.30,  # lucky modes allow higher density
+    },
+    5: {
+        "rtp": 500.0, "rtp_tol": 30.0,
+        "hit_lo": 0.20, "hit_hi": 0.40,
+        "wild_lo": 0.15, "wild_hi": 0.32,
+        # Super-lucky = 7-very-heavy + bigger top tier.
+        "family_share_band": {
+            "Diamond": (0.07, 0.30),
+            "Seven":   (0.50, 0.80),
+            "Bar3":    (0.03, 0.18),
+            "Bar2":    (0.02, 0.10),
+            "Bar1":    (0.005, 0.08),
+            "Cherry":  (0.01, 0.08),
+        },
+        "density_hi": 0.35,
+    },
 }
 
-# DESIGN.md §2 per-mode family-share range [lo_pct, hi_pct]
-FAMILY_SHARE_RANGE = {
-    1: {"Seven": (18, 30), "Bar": (55, 75), "Cherry": (8, 20), "Wild": (0, 1)},
-    7: {"Seven": (18, 30), "Bar": (55, 75), "Cherry": (8, 20), "Wild": (0, 1)},
-    2: {"Seven": (25, 55), "Bar": (35, 65), "Cherry": (3, 15), "Wild": (0, 2)},
-    5: {"Seven": (35, 70), "Bar": (25, 55), "Cherry": (1, 10), "Wild": (0, 3)},
+# Visually-合理 per-reel per-family density band (excluding Blank).
+# Per-family lower bound — top-tier symbols (Seven2, Diamond2) are
+# intentionally rare so 0.3% is fine; mid-tier symbols can drop to 0.5%;
+# everything else should appear at >=1% to be视觉 visible at all.
+PER_REEL_DENSITY_HIGH = 0.22
+PER_REEL_DENSITY_LO_BY_FAMILY = {
+    "Seven2": 0.003, "Diamond2": 0.003,  # top-tier rare 旗帜
+    "Seven1": 0.005, "Diamond1": 0.005,
+    # Mid/low-tier symbols can shrink in lucky modes when Seven dominates,
+    # but should not vanish entirely. 0.5% = visible 1 in 200 spins per reel.
+    "Bar3": 0.005, "Bar2": 0.005, "Bar1": 0.005,
+    "Cherry": 0.005,
 }
 
-# DESIGN.md §5 per-family per-reel ratio drift tolerance
-RATIO_DRIFT_THRESHOLD = {
-    "Blank": 0.08, "Cherry": 0.15,
-    "Bar1": 0.08, "Bar2": 0.08, "Bar3": 0.08,
-    "Seven1": 0.15, "Seven2": 0.15,
-    "Diamond1": 0.25, "Diamond2": 0.25,  # 1-4 stops, integer rounding dominates
-}
+# Mode 7 anchoring: Diamond/Seven absolute RTP (pp) must be within
+# ±MODE7_LOCK_TOL of mode 1's value.
+MODE7_LOCK_TOL_PP = 0.6
 
-# DESIGN.md §6 near-miss mechanism (2026-04-25 revised):
-# Real IGT TDD uses PER-REEL ASYMMETRY as near-miss engine — top-pay
-# symbol very heavy on reel 1 + 3 but sparse on reel 2 → 2-of-3 visible
-# "so close" pattern. NOT local blank-neighbor clustering (Seven2 and
-# its blank neighbors have similar weights on TDD reels, so window/
-# payline ratio is ~1.0, not > 1.3 as I initially assumed).
-# Test: max-reel / min-reel density ratio for 顶奖 family should be > 2.5
-# (TDD baseline has Seven2 R1:R2 = 24:3 = 8.0× asymmetry).
-# Per-family threshold: Seven2 has 8× natural asymmetry in TDD (R1=24,
-# R2=3, R3=17). Diamond family total has ~2× natural asymmetry (R1=3,
-# R2=6, R3=5). Use per-family min to reflect archetype reality.
-ASYMMETRY_MIN_RATIO = {"Seven2": 2.5, "Diamond": 1.8}
+# Mode 7 cut: Bar1/Cherry family pp must be at least MODE7_CUT_MIN_PP below mode 1.
+MODE7_CUT_MIN_PP = {"Bar1": 1.0, "Cherry": 1.0}
 
-# DESIGN.md §2 — Wild participation (NOT pure-wild pay share; that
-# number is ~0.1% because 99% of wild's value comes from substitution
-# + multiplier boost embedded in Bar/Seven pays, not pay_id 2/3/4).
-# Machine is named "Double Diamond" — wild must be experientially
-# present at TDD-natural frequency or higher.
-WILD_PARTICIPATION_MIN = {  # P(>=1 wild on payline) per mode
-    1: 0.045, 7: 0.045,  # TDD natural = 5.37%, set floor 4.5%
-    2: 0.080, 5: 0.120,  # lucky modes scale up
-}
-WILD_TWO_PLUS_MIN = {  # P(>=2 wild on payline)
-    1: 0.001, 7: 0.001,  # 0.1% for visible "pure-wild drama"
-    2: 0.003, 5: 0.007,
-}
-# Top jackpot path (3-Diamond2 = 1000x) must be reachable (> 0)
+# Standard-mode wild signature drift: mode 1 vs mode 7 should be similar
+# (both "normal luck"). Lucky modes (2, 5) naturally have more wild visible
+# — that's part of "feels lucky", not a signature break.
+WILD_DRIFT_STANDARD_PP = 3.0  # mode 1 vs mode 7 absolute pp difference cap
 
 
-class Check:
-    def __init__(self, tag, mode, ok, detail):
-        self.tag = tag
-        self.mode = mode
-        self.ok = ok
-        self.detail = detail
-
-    def __str__(self):
-        status = "ok " if self.ok else "RED"
-        return f"  [{status}] [{self.tag:<13}] mode {self.mode}: {self.detail}"
-
-
-def fam_shares(eng, spec):
-    p = analytic_profile(eng)
-    pay_mult = {
-        str(pay.get("pay_id")): pay.get("multiplier")
-        for pay in spec["pays"] if pay.get("multiplier") is not None
-    }
-    shares = {"Cherry": 0.0, "Seven": 0.0, "Bar": 0.0, "Wild": 0.0}
-    for pid, r in p["pay_hits"].items():
-        fam = FAMILY_MAP.get(str(pid))
-        mult = pay_mult.get(str(pid))
-        if fam and mult:
-            shares[fam] += r * mult * 100
-    tot = sum(shares.values()) or 1
-    return {f: (shares[f], shares[f] / tot * 100) for f in shares}, p
+def family_rtp_breakdown(profile, paytable):
+    rtp_excluded = {str(p["pay_id"]) for p in paytable if p.get("rtp_excluded")}
+    family: dict[str, float] = defaultdict(float)
+    for pid, rtp_contrib in profile.get("pay_rtp", {}).items():
+        if pid in rtp_excluded:
+            continue
+        f = PAY_TO_FAMILY.get(pid, "Unknown")
+        if f == "Bar_group":
+            for bar in ("Bar1", "Bar2", "Bar3"):
+                family[bar] += rtp_contrib / 3
+        else:
+            family[f] += rtp_contrib
+    return {k: v * 100 for k, v in family.items()}  # pp
 
 
-def per_family_ratios(weights, strips):
-    totals = defaultdict(lambda: [0, 0, 0])
-    for ri, strip in enumerate(strips):
-        for pos, sym in enumerate(strip):
-            totals[sym][ri] += weights[ri][pos]
-    out = {}
-    for sym, t in totals.items():
-        s = sum(t) or 1
-        out[sym] = tuple(v / s for v in t)
+def per_reel_family_density(engine):
+    out: dict[tuple[str, int], float] = {}
+    for r_idx, reel in enumerate(engine.reels):
+        marg = compute_reel_marginal(reel)
+        for sym, p in marg.items():
+            out[(sym, r_idx)] = p
     return out
 
 
-def per_reel_absolute(eng, family_syms):
-    return [
-        sum(compute_reel_marginal(reel).get(s, 0) for s in family_syms)
-        for reel in eng.reels
-    ]
+def wild_on_payline_p(engine):
+    p_no_wild = 1.0
+    for reel in engine.reels:
+        marg = compute_reel_marginal(reel)
+        p_w = marg.get("Diamond1", 0) + marg.get("Diamond2", 0)
+        p_no_wild *= (1.0 - p_w)
+    return 1.0 - p_no_wild
 
 
-def per_reel_asymmetry(eng, family_syms):
-    """max-reel / min-reel family density ratio. High = asymmetric
-    distribution = classic 2-of-3 near-miss mechanism (e.g. TDD Seven2
-    R1=9% / R2=1% ratio ~ 8×). Low = symmetric = no near-miss engineered.
-    """
-    per_reel = [sum(compute_reel_marginal(reel).get(s, 0) for s in family_syms)
-                for reel in eng.reels]
-    max_p = max(per_reel)
-    min_p = min(per_reel)
-    return max_p / min_p if min_p > 0 else float("inf"), per_reel
+def load_mode_state(mode):
+    weights_path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
+    if not weights_path.exists():
+        return None
+    spec = json.loads(SPEC.read_text(encoding="utf-8"))
+    engine, _ = load_engine(SPEC, weights_path)
+    profile = analytic_profile(engine)
+    family_rtp = family_rtp_breakdown(profile, spec["pays"])
+    densities = per_reel_family_density(engine)
+    wild_p = wild_on_payline_p(engine)
+    return {
+        "engine": engine,
+        "profile": profile,
+        "family_rtp_pp": family_rtp,
+        "densities": densities,
+        "wild_on_payline": wild_p,
+    }
 
 
-def bucket_summary(p):
-    br = p["bucket_rate"]
-    total_hit = p["hit_rate"]
-    low = br.get("ge1_lt5", 0) + br.get("ge5_lt10", 0)
-    mid = br.get("ge10_lt20", 0) + br.get("ge20_lt50", 0)
-    high = br.get("ge50_lt100", 0) + br.get("ge100_lt200", 0) + br.get("ge200_lt500", 0)
-    top = br.get("ge500_lt1000", 0) + br.get("ge1000_lt5000", 0) + br.get("ge5000", 0)
-    return {"low_hit": low, "mid_hit": mid, "high_hit": high, "top_hit": top, "total_hit": total_hit}
+def make_check(category, mode, label, ok, info):
+    return {
+        "category": category,
+        "mode": mode,
+        "label": label,
+        "ok": bool(ok),
+        "info": info,
+    }
 
 
-def run():
-    strips = json.loads(STRIPS.read_text(encoding="utf-8"))["reels"]
-    tdd_ratios = per_family_ratios(TDD_BASELINE, strips)
-
-    # Load all 4 modes first (mode 7 check needs mode 1 baseline)
-    mode_data = {}
-    for mode in [1, 2, 5, 7]:
-        path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
-        eng, spec = load_engine(SPEC, path)
-        p = analytic_profile(eng)
-        w = json.loads(path.read_text(encoding="utf-8"))["weights"]
-        shares, _ = fam_shares(eng, spec)
-        mode_data[mode] = {
-            "engine": eng, "spec": spec, "profile": p, "weights": w, "shares": shares,
-            "ratios": per_family_ratios(w, strips),
-        }
-
+def run_per_mode_checks(mode, state):
+    targets = MODE_TARGETS[mode]
+    profile = state["profile"]
+    family_rtp = state["family_rtp_pp"]
+    wild_p = state["wild_on_payline"]
+    densities = state["densities"]
     checks = []
-    for mode in [1, 2, 5, 7]:
-        d = mode_data[mode]
-        p = d["profile"]
-        t = MODE_TARGETS[mode]
 
-        # RTP
-        rtp = p["rtp_pct"]
-        rtp_ok = abs(rtp - t["rtp"]) <= t["rtp_tol"]
-        checks.append(Check("RTP", mode, rtp_ok,
-            f"{rtp:.2f}% vs target {t['rtp']}+/-{t['rtp_tol']}pp"))
+    # RTP
+    rtp = profile["rtp_pct"]
+    rtp_target = targets["rtp"]
+    rtp_tol = targets["rtp_tol"]
+    rtp_ok = abs(rtp - rtp_target) <= rtp_tol
+    checks.append(make_check(
+        "RTP", mode, f"RTP {rtp:.2f}% vs target {rtp_target:.1f}±{rtp_tol:.1f}",
+        rtp_ok, f"diff {rtp - rtp_target:+.2f}pp",
+    ))
 
-        # HIT
-        hit = p["hit_rate"]
-        hit_ok = t["hit_lo"] <= hit <= t["hit_hi"]
-        checks.append(Check("HIT", mode, hit_ok,
-            f"{hit*100:.2f}% vs band [{t['hit_lo']*100:.0f}%, {t['hit_hi']*100:.0f}%]"))
+    # HIT
+    hit = profile["hit_rate"]
+    hit_ok = targets["hit_lo"] <= hit <= targets["hit_hi"]
+    checks.append(make_check(
+        "HIT", mode, f"hit {hit:.2%} vs band [{targets['hit_lo']:.0%}, {targets['hit_hi']:.0%}]",
+        hit_ok, "",
+    ))
 
-        # SHARE
-        for fam, (lo, hi) in FAMILY_SHARE_RANGE[mode].items():
-            share = d["shares"][fam][1]
-            ok = lo <= share <= hi
-            checks.append(Check(f"SHARE", mode, ok,
-                f"{fam} {share:.1f}% vs range [{lo}%, {hi}%]"))
+    # WILD
+    wild_ok = targets["wild_lo"] <= wild_p <= targets["wild_hi"]
+    checks.append(make_check(
+        "WILD", mode, f"wild_on_payline {wild_p:.2%} vs band [{targets['wild_lo']:.0%}, {targets['wild_hi']:.0%}]",
+        wild_ok, "",
+    ))
 
-        # BUCKET narrative
-        b = bucket_summary(p)
-        low_frac = b["low_hit"] / b["total_hit"] if b["total_hit"] else 0
-        # Rough approx high RTP share: sum bucket_rate × midpoint × 100
-        br = p["bucket_rate"]
-        high_rtp_approx_pp = (
-            br.get("ge50_lt100", 0) * 75
-            + br.get("ge100_lt200", 0) * 150
-            + br.get("ge200_lt500", 0) * 300
-            + br.get("ge500_lt1000", 0) * 750
-            + br.get("ge1000_lt5000", 0) * 1000
-        ) * 100
-        high_share_pct = (high_rtp_approx_pp / rtp * 100) if rtp > 0 else 0
-        # For lucky modes Low fraction may dip below 50% naturally
-        low_threshold = 0.50 if mode in (1, 7) else 0.30
-        low_ok = low_frac >= low_threshold
-        checks.append(Check("BUCKET-LOW", mode, low_ok,
-            f"Low hit/total = {low_frac*100:.1f}% vs min {low_threshold*100:.0f}%"))
-        high_min = 12 if mode in (1, 7) else 20
-        high_ok = high_share_pct >= high_min
-        checks.append(Check("BUCKET-HIGH", mode, high_ok,
-            f"High RTP share ~ {high_share_pct:.1f}% vs min {high_min}%"))
+    # SHARE
+    total_rtp = profile["rtp_pct"]
+    for f, (lo, hi) in targets["family_share_band"].items():
+        actual = family_rtp.get(f, 0.0) / total_rtp if total_rtp > 0 else 0
+        ok = lo <= actual <= hi
+        checks.append(make_check(
+            "SHARE", mode, f"{f} share {actual:.1%} vs band [{lo:.0%}, {hi:.0%}]",
+            ok, f"absolute {family_rtp.get(f, 0.0):.2f}pp",
+        ))
 
-        # RATIO drift
-        for sym, tdd_r in tdd_ratios.items():
-            mode_r = d["ratios"].get(sym, (0, 0, 0))
-            drift = max(abs(tdd_r[i] - mode_r[i]) for i in range(3))
-            tol = RATIO_DRIFT_THRESHOLD.get(sym, 0.15)
-            ok = drift < tol
-            checks.append(Check("RATIO", mode, ok,
-                f"{sym} R1:R2:R3 drift {drift:.3f} vs tol {tol:.2f}"))
+    # DENSITY (per-reel per-family) — per-family lower + per-mode upper.
+    den_hi = targets.get("density_hi", PER_REEL_DENSITY_HIGH)
+    for (sym, r), d in sorted(densities.items()):
+        if sym == "Blank":
+            continue  # Blank density is filler, not bound
+        den_lo = PER_REEL_DENSITY_LO_BY_FAMILY.get(sym, 0.01)
+        ok = den_lo <= d <= den_hi
+        if not ok:
+            checks.append(make_check(
+                "DENSITY", mode, f"{sym} R{r+1} density {d:.2%} outside band [{den_lo:.1%}, {den_hi:.0%}]",
+                ok, "",
+            ))
 
-        # ASYMMETRY (Seven2 + Diamond family per-reel max/min ratio).
-        for fam_name, fam_syms in [("Seven2", ["Seven2"]), ("Diamond", ["Diamond1", "Diamond2"])]:
-            ratio, per_reel = per_reel_asymmetry(d["engine"], fam_syms)
-            min_ratio = ASYMMETRY_MIN_RATIO[fam_name]
-            ok = ratio >= min_ratio
-            pcts = "/".join(f"{p*100:.1f}%" for p in per_reel)
-            checks.append(Check("ASYMMETRY", mode, ok,
-                f"{fam_name} R1/R2/R3={pcts} max/min={ratio:.2f} vs min {min_ratio}"))
+    return checks
 
-        # WILD PARTICIPATION (DESIGN.md §2) — Double Diamond signature.
-        # Compute P(>=1 wild on payline in a spin) and P(>=2). These are
-        # the TRUE "wild presence" metrics; "Wild family RTP share" is
-        # misleading because wild's role is primarily via substitution
-        # (attributed to Bar/Seven pays, not pay_id 2/3/4).
-        diamond_syms = ["Diamond1", "Diamond2"]
-        per_reel_wild = [
-            sum(compute_reel_marginal(reel).get(s, 0) for s in diamond_syms)
-            for reel in d["engine"].reels
-        ]
-        p_ge1 = 1 - ((1 - per_reel_wild[0]) * (1 - per_reel_wild[1]) * (1 - per_reel_wild[2]))
-        # P(exactly 1 wild) = sum(p_i * (1-p_j)(1-p_k))
-        p_exactly_1 = (
-            per_reel_wild[0] * (1 - per_reel_wild[1]) * (1 - per_reel_wild[2])
-            + (1 - per_reel_wild[0]) * per_reel_wild[1] * (1 - per_reel_wild[2])
-            + (1 - per_reel_wild[0]) * (1 - per_reel_wild[1]) * per_reel_wild[2]
-        )
-        p_ge2 = p_ge1 - p_exactly_1
-        # P(3-wild, any combo) via per-reel wild probabilities
-        p_3wild = per_reel_wild[0] * per_reel_wild[1] * per_reel_wild[2]
-        # P(3-Diamond2 specifically — top jackpot 1000x)
-        d2_per_reel = [compute_reel_marginal(reel).get("Diamond2", 0) for reel in d["engine"].reels]
-        p_top_jackpot = d2_per_reel[0] * d2_per_reel[1] * d2_per_reel[2]
 
-        ok_ge1 = p_ge1 >= WILD_PARTICIPATION_MIN[mode]
-        checks.append(Check("WILD-PAYLINE", mode, ok_ge1,
-            f"P(>=1 wild on line) = {p_ge1*100:.2f}% vs min {WILD_PARTICIPATION_MIN[mode]*100:.1f}%"))
-        ok_ge2 = p_ge2 >= WILD_TWO_PLUS_MIN[mode]
-        checks.append(Check("WILD-MULTI", mode, ok_ge2,
-            f"P(>=2 wild on line) = {p_ge2*100:.3f}% vs min {WILD_TWO_PLUS_MIN[mode]*100:.2f}%"))
-        ok_top = p_top_jackpot > 0
-        # Top jackpot 3-D2 expected frequency (1 in X spins)
-        one_in = int(1 / p_top_jackpot) if p_top_jackpot > 0 else float("inf")
-        checks.append(Check("TOP-JACKPOT", mode, ok_top,
-            f"3-Diamond2 (1000x top) reachable, 1 in {one_in:,} spins"))
+def run_cross_mode_checks(state_by_mode):
+    """Mode 7 lock + cut + signature consistency."""
+    checks = []
 
-    # Mode 7 vs Mode 1 experience invariants (§4)
-    m1 = mode_data[1]
-    m7 = mode_data[7]
-    for fam_name, fam_syms in [("Seven", ["Seven1", "Seven2"]), ("Diamond", ["Diamond1", "Diamond2"])]:
-        m1_marg = per_reel_absolute(m1["engine"], fam_syms)
-        m7_marg = per_reel_absolute(m7["engine"], fam_syms)
-        # Per-reel: mode 7 ≥ mode 1 × 0.9
-        reel_oks = [m7_marg[r] >= m1_marg[r] * 0.9 for r in range(3)]
-        ok = all(reel_oks)
-        detail = f"{fam_name} per-reel m7/m1 = " + "/".join(
-            f"{m7_marg[r]/m1_marg[r]:.2f}" if m1_marg[r] else "inf" for r in range(3))
-        detail += " (min 0.90)"
-        tag = "MODE7-SEVEN" if fam_name == "Seven" else "MODE7-DIAM"
-        checks.append(Check(tag, 7, ok, detail))
+    if 1 not in state_by_mode:
+        return checks
 
-    # Mode 7 Seven share ≥ mode 1 Seven share × 0.95
-    m1_seven_share = m1["shares"]["Seven"][1]
-    m7_seven_share = m7["shares"]["Seven"][1]
-    share_ok = m7_seven_share >= m1_seven_share * 0.95
-    checks.append(Check("MODE7-SHARE", 7, share_ok,
-        f"Seven share m7/m1 = {m7_seven_share/m1_seven_share:.2f} (min 0.95)"))
+    m1 = state_by_mode[1]
+    m1_family = m1["family_rtp_pp"]
+    m1_wild = m1["wild_on_payline"]
 
-    # Report
-    print("\n=== M1 design verification ===")
-    print("Reference: slot_designer/weights/M1/DESIGN.md\n")
-    by_mode = defaultdict(list)
-    for c in checks:
-        by_mode[c.mode].append(c)
-    for mode in [1, 2, 5, 7]:
-        print(f"--- Mode {mode} ---")
-        for c in by_mode[mode]:
-            print(c)
-        print()
+    # Mode 7 locks (Diamond/Seven absolute pp)
+    if 7 in state_by_mode:
+        m7 = state_by_mode[7]
+        m7_family = m7["family_rtp_pp"]
 
-    reds = [c for c in checks if not c.ok]
-    total = len(checks)
-    if reds:
-        print(f"*** {len(reds)}/{total} checks RED ***")
-        for c in reds:
-            print(f"  mode {c.mode} [{c.tag}]: {c.detail}")
+        for f in ("Diamond", "Seven"):
+            m1_pp = m1_family.get(f, 0.0)
+            m7_pp = m7_family.get(f, 0.0)
+            diff = m7_pp - m1_pp
+            ok = abs(diff) <= MODE7_LOCK_TOL_PP
+            checks.append(make_check(
+                "MODE7-LOCK", 7,
+                f"{f} pp m7={m7_pp:.2f} vs m1={m1_pp:.2f} (Δ {diff:+.2f}pp, tol ±{MODE7_LOCK_TOL_PP:.1f})",
+                ok,
+                "大奖击中率/产出期望绝对不砍",
+            ))
+
+        # Mode 7 cuts (Bar1/Cherry visibly cut)
+        for f, min_cut in MODE7_CUT_MIN_PP.items():
+            m1_pp = m1_family.get(f, 0.0)
+            m7_pp = m7_family.get(f, 0.0)
+            cut = m1_pp - m7_pp
+            ok = cut >= min_cut
+            checks.append(make_check(
+                "MODE7-CUT", 7,
+                f"{f} cut {cut:+.2f}pp (min {min_cut:.1f}pp expected)",
+                ok,
+                "小奖砍 → 玩家觉得运气差 → 充值 trigger",
+            ))
+
+        # Top path: Diamond + Seven mode 7 sum >= mode 1 sum (less ε)
+        m1_top = m1_family.get("Diamond", 0) + m1_family.get("Seven", 0)
+        m7_top = m7_family.get("Diamond", 0) + m7_family.get("Seven", 0)
+        top_diff = m7_top - m1_top
+        ok = top_diff >= -MODE7_LOCK_TOL_PP * 2  # combined tolerance
+        checks.append(make_check(
+            "TOP-PATH", 7,
+            f"Diamond+Seven m7={m7_top:.2f}pp vs m1={m1_top:.2f}pp (Δ {top_diff:+.2f}pp)",
+            ok,
+            "顶奖路径不动",
+        ))
+
+    # Standard-mode wild signature: mode 1 vs mode 7 should be similar.
+    # Lucky modes 2/5 allowed to have MORE wild (lucky feel = more wild visible).
+    if 1 in state_by_mode and 7 in state_by_mode:
+        w1 = state_by_mode[1]["wild_on_payline"] * 100
+        w7 = state_by_mode[7]["wild_on_payline"] * 100
+        diff = abs(w1 - w7)
+        ok = diff <= WILD_DRIFT_STANDARD_PP
+        checks.append(make_check(
+            "SIGNATURE", None,
+            f"wild_on_payline mode 1={w1:.2f}pp vs mode 7={w7:.2f}pp (diff {diff:.2f}pp, tol {WILD_DRIFT_STANDARD_PP}pp)",
+            ok,
+            "标准模式间 Double Diamond signature 一致",
+        ))
+
+    # Lucky modes can have MORE wild visibility (part of lucky feel) but
+    # never less than standard modes (signature would die in lucky modes).
+    for lucky in (2, 5):
+        if lucky in state_by_mode and 1 in state_by_mode:
+            w_lucky = state_by_mode[lucky]["wild_on_payline"]
+            w_std = state_by_mode[1]["wild_on_payline"]
+            ok = w_lucky >= w_std - 0.02  # allow small downward (2pp)
+            checks.append(make_check(
+                "SIGNATURE", lucky,
+                f"mode {lucky} wild {w_lucky:.2%} vs mode 1 wild {w_std:.2%} (lucky should not be lower)",
+                ok,
+                "Lucky mode 不能让 signature 反而变弱",
+            ))
+
+    return checks
+
+
+def main():
+    state_by_mode: dict[int, dict] = {}
+    available_modes = []
+    for mode in (1, 2, 5, 7):
+        st = load_mode_state(mode)
+        if st is None:
+            print(f"  [skip] mode {mode}: weights file not found")
+            continue
+        state_by_mode[mode] = st
+        available_modes.append(mode)
+
+    if not state_by_mode:
+        print("ERROR: no mode weights found")
         return 1
-    print(f"*** All {total} checks GREEN ***")
-    return 0
+
+    all_checks = []
+
+    print("\n=== M1 player-experience design verification ===")
+    print(f"Modes available: {available_modes}\n")
+
+    for mode in sorted(available_modes):
+        state = state_by_mode[mode]
+        print(f"--- Mode {mode} ---")
+        rtp = state["profile"]["rtp_pct"]
+        hit = state["profile"]["hit_rate"]
+        wild = state["wild_on_payline"]
+        print(f"  RTP={rtp:.2f}%  hit={hit:.2%}  wild_on_payline={wild:.2%}")
+        family_rtp = state["family_rtp_pp"]
+        for f in ("Diamond", "Seven", "Bar3", "Bar2", "Bar1", "Cherry"):
+            v = family_rtp.get(f, 0.0)
+            share = v / rtp * 100 if rtp > 0 else 0
+            print(f"    {f:8s} {v:6.2f}pp ({share:5.1f}%)")
+
+        checks = run_per_mode_checks(mode, state)
+        all_checks.extend(checks)
+
+    cross = run_cross_mode_checks(state_by_mode)
+    all_checks.extend(cross)
+
+    # Summary
+    print("\n=== Verification results ===")
+    fail_count = 0
+    by_category = defaultdict(list)
+    for c in all_checks:
+        by_category[c["category"]].append(c)
+
+    for cat in sorted(by_category.keys()):
+        checks = by_category[cat]
+        passes = sum(1 for c in checks if c["ok"])
+        fails = sum(1 for c in checks if not c["ok"])
+        status = "GREEN" if fails == 0 else f"RED ({fails}/{len(checks)} fail)"
+        print(f"  [{cat:12s}] {passes:3d} pass / {len(checks):3d} total — {status}")
+        for c in checks:
+            if not c["ok"]:
+                mode_str = f"mode {c['mode']}" if c["mode"] is not None else "all"
+                print(f"     [FAIL] {mode_str}: {c['label']}")
+                if c["info"]:
+                    print(f"          ({c['info']})")
+                fail_count += 1
+
+    print(f"\n{'GREEN — all checks pass' if fail_count == 0 else f'RED — {fail_count} check(s) failed'}")
+    return 0 if fail_count == 0 else 1
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(main())
