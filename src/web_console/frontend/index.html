@@ -39,13 +39,12 @@
 
     <main class="tab-pages">
       <section id="tab-debug" class="tab-page">
-        <!-- Compare-mode mount point. Lives at the top of the debug
-             tab and stays hidden until COMPARE.enterCompareMode is
-             called from the rwtree compare bar (single + multi
-             machine). When active, the compare module hides every
-             sibling panel under #tab-debug so this body owns the
-             entire analysis view. See frontend/compare.js. -->
-        <section id="cmpMount" class="cmp-mount hidden"></section>
+        <!-- Compare-mode banner. Sticky header that appears when
+             two reports are being compared. The existing analysis
+             panels below render A/B/Δ INLINE rather than being
+             replaced — see _enterCompareMode in app.js for the
+             state-flag approach. -->
+        <section id="cmpBanner" class="cmp-banner hidden"></section>
 
         <div class="layout">
           <!-- Loaded-machine header: identifies which run/machine is
@@ -483,12 +482,9 @@
     </main>
 
     <script src="/console/pure.js?v={{ASSET_HASH}}"></script>
-    <!-- compare_diff.js MUST load before compare.js (the latter calls
-         window.COMPARE_DIFF helpers from the former). Both load before
-         app.js so its bootstrap can call window.COMPARE.* on URL
-         restore. -->
+    <!-- compare_diff.js: pure diff/significance helpers, used by
+         compare-aware renderers in app.js. Must load before app.js. -->
     <script src="/console/compare_diff.js?v={{ASSET_HASH}}"></script>
-    <script src="/console/compare.js?v={{ASSET_HASH}}"></script>
     <script src="/console/app.js?v={{ASSET_HASH}}"></script>
   </body>
 </html>

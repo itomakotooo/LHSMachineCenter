@@ -3470,245 +3470,146 @@ select:focus-visible,
   margin-bottom: 8px;
 }
 
-/* ── Report compare mode ─────────────────────────────────────────
-   Mounted at #cmpMount inside #tab-debug. Header shows "对比 A vs B"
-   + view-mode toggle + exit button. Rest of the body is per-section
-   diff blocks (headline tiles, KPI table, bucket overlay, aligned
-   tables for paylines / symbols / features / bonus chains /
-   bankruptcy). See frontend/compare.js for the render contract. */
 
-.cmp-mount {
-  display: block;
-  margin: 0 0 16px 0;
-}
-.cmp-mount.hidden { display: none; }
+/* ── Report compare mode (inline-diff approach) ───────────────────
+   Compare mode does NOT replace the analysis panels — it adds B
+   value + Δ chip INTO the existing tiles / table cells / chart bars.
+   The single-mode UI stays byte-identical when state.compareMode is
+   null. See _enterCompareMode in app.js. */
 
-.cmp-header {
+/* Sticky banner pinned at top of #tab-debug while comparing. */
+.cmp-banner {
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 10;
   background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%);
   border: 2px solid #d97706;
   border-radius: 6px;
-  padding: 10px 14px;
-  margin-bottom: 12px;
+  padding: 8px 14px;
+  margin: 0 0 12px 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
+  font-size: 13px;
 }
-.cmp-header-tag {
-  display: inline-block;
+.cmp-banner.hidden { display: none; }
+.cmp-banner-tag {
   background: #d97706;
   color: #fff;
   padding: 2px 8px;
   border-radius: 3px;
   font-size: 11px;
   font-weight: 700;
-  margin-right: 8px;
 }
-.cmp-header-title {
-  font-size: 14px;
+.cmp-banner-label {
+  font-family: ui-monospace, monospace;
+  color: #78350f;
 }
-.cmp-header-title strong { color: #78350f; }
-.cmp-vs {
-  margin: 0 8px;
+.cmp-banner-a { font-weight: 600; }
+.cmp-banner-b { font-weight: 600; }
+.cmp-banner-vs {
   color: #92400e;
   font-weight: 600;
+  margin: 0 4px;
 }
-.cmp-header-controls {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-.cmp-mode-btn {
-  padding: 4px 10px;
-  border: 1px solid #92400e;
-  background: #fff;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-}
-.cmp-mode-btn-active {
-  background: #92400e;
-  color: #fff;
-}
-.cmp-exit-btn {
+.cmp-banner-exit {
+  margin-left: auto;
   padding: 4px 10px;
   border: 1px solid #b91c1c;
   background: #fef2f2;
   color: #b91c1c;
   border-radius: 4px;
   cursor: pointer;
-  font-weight: 700;
-  margin-left: 8px;
-}
-.cmp-exit-btn:hover { background: #fee2e2; }
-
-.cmp-body {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-/* Compatibility banner */
-.cmp-compat-banner {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.cmp-compat { font-size: 13px; }
-.cmp-compat-ok { color: #059669; }
-.cmp-compat-warn { color: #d97706; }
-.cmp-compat-info { color: #475569; }
-
-/* Headline tiles (5 across) */
-.cmp-headline {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-}
-.cmp-tile {
-  background: #fff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 10px 12px;
-}
-.cmp-tile-label {
   font-size: 12px;
-  color: #64748b;
-  margin-bottom: 6px;
   font-weight: 600;
 }
-.cmp-tile-row {
+.cmp-banner-exit:hover { background: #fee2e2; }
+
+/* KPI tile compare layout — A on top, B underneath, Δ chip below.
+   Only kicks in when setKpi was given a compare arg. */
+.kpi-cmp-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-size: 13px;
-  margin-bottom: 2px;
+  line-height: 1.3;
 }
-.cmp-tile-tag {
+.kpi-cmp-tag {
   display: inline-block;
   background: #e0e7ff;
   color: #3730a3;
   padding: 0 5px;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  margin-right: 4px;
   min-width: 14px;
   text-align: center;
+  flex-shrink: 0;
 }
-.cmp-tile-row:nth-child(3) .cmp-tile-tag {
+.kpi-cmp-tag-b {
   background: #fce7f3;
   color: #9d174d;
 }
-.cmp-tile-delta {
-  margin-top: 6px;
-  padding-top: 6px;
+.kpi-cmp-delta {
+  margin-top: 4px;
+  padding-top: 4px;
   border-top: 1px solid #e2e8f0;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
+.kpi-cmp-strong { color: #1e40af; }
+.kpi-cmp-noise  { color: #94a3b8; }
+.kpi-cmp-unknown { color: #475569; }
 
-/* Significance badges */
-.cmp-sig {
-  display: inline-block;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 10px;
-  margin-left: 4px;
-  font-weight: 600;
+/* Bucket / payID / table cell A-B stack. Same column count as
+   single mode — each TD gets two stacked rows when comparing. */
+.cmp-cell-a, .cmp-cell-b {
+  font-size: 11px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
 }
-.cmp-sig-strong { background: #dbeafe; color: #1e3a8a; }
-.cmp-sig-noise  { background: #f3f4f6; color: #6b7280; }
-.cmp-sig-unknown { background: #fef3c7; color: #92400e; }
-
-/* Delta colors */
-.cmp-delta { font-variant-numeric: tabular-nums; }
-.cmp-delta-strong { color: #1e40af; font-weight: 700; }
-.cmp-delta-noise  { color: #94a3b8; }
-
-/* Sections */
-.cmp-section {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 12px 14px;
-}
-.cmp-section-title {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  font-weight: 600;
+.cmp-cell-a {
   color: #1e293b;
 }
-
-/* Bucket overlay */
-.cmp-bucket-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.cmp-bucket-row {
-  display: grid;
-  grid-template-columns: 110px 1fr 80px;
-  gap: 8px;
-  align-items: center;
-}
-.cmp-bucket-label {
-  font-size: 12px;
-  color: #475569;
-  font-family: ui-monospace, monospace;
-}
-.cmp-bucket-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.cmp-bar {
-  height: 14px;
-  padding: 0 4px;
-  font-size: 10px;
-  color: #fff;
-  white-space: nowrap;
-  border-radius: 2px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.cmp-bar-a { background: #94a3b8; }
-.cmp-bar-b { background: #2563eb; }
-.cmp-bucket-delta {
-  text-align: right;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: #475569;
+.cmp-cell-b {
+  color: #be185d;
+  border-top: 1px dotted #e2e8f0;
+  margin-top: 1px;
+  padding-top: 1px;
 }
 
-/* Aligned table layout */
-.cmp-aligned-table th { background: #f1f5f9; }
-.cmp-aligned-table td, .cmp-aligned-table th {
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
+/* Bar cell with two stacked bars (A solid, B striped) for compare. */
+.bar-cell-cmp {
+  background: linear-gradient(
+    to right,
+    rgba(99, 102, 241, 0.55) 0%,
+    rgba(99, 102, 241, 0.55) var(--bar, 0%),
+    transparent var(--bar, 0%)
+  );
+  position: relative;
 }
-.cmp-only-a {
-  background: #dbeafe;
-  color: #1e3a8a;
-  padding: 0 4px;
-  border-radius: 2px;
-  font-size: 10px;
-  font-weight: 600;
-}
-.cmp-only-b {
-  background: #fce7f3;
-  color: #9d174d;
-  padding: 0 4px;
-  border-radius: 2px;
-  font-size: 10px;
-  font-weight: 600;
+.bar-cell-cmp::after {
+  content: ;
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 4px;
+  width: var(--bar-b, 0%);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(190, 24, 93, 0.7),
+    rgba(190, 24, 93, 0.7) 3px,
+    transparent 3px,
+    transparent 6px
+  );
 }
 
-/* Mode-specific tweaks */
-.cmp-mode-delta .cmp-headline { display: none; }  /* Δ-only mode hides headline tiles */
-.cmp-mode-overlay .cmp-aligned-table { display: none; }  /* Overlay mode hides text tables */
+/* When compare mode active, the body gets .cmp-active. Use this to
+   slightly tighten KPI tile internal padding so the stacked content
+   fits without growing the card height too much. */
+body.cmp-active .kpi {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}

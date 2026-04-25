@@ -560,10 +560,27 @@ function setGlobalWarning(lines) {
   el.classList.remove("hidden");
 }
 
-function setKpi(id, text, tone = "neutral") {
+function setKpi(id, text, tone = "neutral", compare = null) {
   const el = byId(id);
   if (!el) return; // element may have been replaced (e.g. kpiTail → kpiTailGrid)
-  el.textContent = text;
+  if (compare && (compare.textB !== undefined || compare.deltaText !== undefined)) {
+    // Compare-aware tile: stack A on top, B underneath, optional Δ
+    // chip below. Reuses the SAME card container as single-mode so
+    // the tile's visual language stays put — only its inner content
+    // gets denser. CSS rules in styles.css handle compact layout.
+    const _esc = (s) => String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const sigCls = compare.deltaSig === "significant" ? "kpi-cmp-strong"
+      : compare.deltaSig === "noise" ? "kpi-cmp-noise" : "kpi-cmp-unknown";
+    el.innerHTML =
+      `<div class="kpi-cmp-row"><span class="kpi-cmp-tag">A</span>${_esc(text)}</div>` +
+      `<div class="kpi-cmp-row"><span class="kpi-cmp-tag kpi-cmp-tag-b">B</span>${_esc(compare.textB || "—")}</div>` +
+      (compare.deltaText
+        ? `<div class="kpi-cmp-delta ${sigCls}">${_esc(compare.deltaText)}</div>`
+        : "");
+  } else {
+    el.textContent = text;
+  }
   el.dataset.tone = tone;
   // Mirror the tone onto the parent .kpi card via a BEM modifier so the
   // whole-card background can react to status. We keep the old strong[
@@ -3379,29 +3396,17 @@ async function compareReports() {
   }
 }
 
-/** Switch to debug tab, hide all standard analysis panels, mount
- *  the compare module body. Persists ``?compare=`` in URL so a
- *  reload restores the same view. */
+/** Enter compare mode. Switch to debug tab, paint a sticky banner,
+ *  set state.compareMode so the existing analysis renderers can
+ *  branch into A/B/Δ inline rendering. We do NOT hide any panels —
+ *  the existing visual structure stays; renderers grow new columns
+ *  in compare mode. */
 function _enterCompareMode(a, b, vA, vB) {
-  if (!window.COMPARE) {
-    console.error("compare.js not loaded");
-    return;
-  }
   state.compareMode = { a, b, vA, vB };
   if (typeof switchTab === "function") {
     switchTab("debug");
   }
-  // Hide everything under #tab-debug except #cmpMount. The debug tab
-  // wraps all analysis panels in a single `<div class="layout">`
-  // sibling of cmpMount, so this is just two direct children.
-  // Stash a flag so exit can restore.
-  document.querySelectorAll("#tab-debug > *").forEach((el) => {
-    if (el.id === "cmpMount") return;
-    if (!el.classList.contains("hidden")) {
-      el.dataset.cmpHiddenByCompare = "1";
-      el.classList.add("hidden");
-    }
-  });
+  _renderCompareBanner();
   // URL persistence: <machine>|<mode>|<version> per side.
   try {
     const u = new URL(window.location.href);
@@ -3410,21 +3415,65 @@ function _enterCompareMode(a, b, vA, vB) {
     u.searchParams.set("compare", `${sa},${sb}`);
     window.history.replaceState({}, "", u.toString());
   } catch (_) { /* IE / non-URL env */ }
-  window.COMPARE.enterCompareMode(a, b);
-  // Listen once for the compare module's exit event so we restore
-  // the panels we hid.
-  document.addEventListener("compare:exit", _onCompareExit, { once: true });
+  // Re-paint the analysis tab using A as the primary summary; each
+  // compare-aware renderer reads state.compareMode.b to add its
+  // B/Δ columns. Reuses the standard refresh path so we don't have
+  // a parallel "compare-only" code path.
+  state.latestSummary = a;
+  document.body.classList.add("cmp-active");
+  if (typeof _renderRunFromSummary === "function") {
+    try { _renderRunFromSummary(a); } catch (_) {}
+  } else {
+    // Fallback: trigger normal poll cycle to repaint.
+    try { refreshCurrentRun(); } catch (_) {}
+  }
+}
+
+function _renderCompareBanner() {
+  const banner = byId("cmpBanner");
+  if (!banner) return;
+  const cm = state.compareMode;
+  if (!cm) {
+    banner.classList.add("hidden");
+    banner.innerHTML = "";
+    return;
+  }
+  const labelA = `${cm.a.machine || "?"} m${cm.a.mode || "?"} · ${(cm.vA || "").slice(3, 18)}`;
+  const labelB = `${cm.b.machine || "?"} m${cm.b.mode || "?"} · ${(cm.vB || "").slice(3, 18)}`;
+  banner.classList.remove("hidden");
+  banner.innerHTML = `
+    <span class="cmp-banner-tag">对比</span>
+    <span class="cmp-banner-label cmp-banner-a">A · ${labelA}</span>
+    <span class="cmp-banner-vs">vs</span>
+    <span class="cmp-banner-label cmp-banner-b">B · ${labelB}</span>
+    <button class="cmp-banner-exit" id="cmpBannerExit" title="退出对比">✕ 退出对比</button>`;
+  byId("cmpBannerExit")?.addEventListener("click", _onCompareExit);
 }
 
 function _onCompareExit() {
   state.compareMode = null;
-  document.querySelectorAll("[data-cmp-hidden-by-compare]").forEach((el) => {
-    delete el.dataset.cmpHiddenByCompare;
-    el.classList.remove("hidden");
-  });
+  document.body.classList.remove("cmp-active");
+  _renderCompareBanner();
   state.compareSelected = new Map();
   try { _updateRwtreeCompareBar(); } catch (_) {}
   try { renderDetailPane(); } catch (_) {}
+  try {
+    const u = new URL(window.location.href);
+    if (u.searchParams.has("compare")) {
+      u.searchParams.delete("compare");
+      window.history.replaceState({}, "", u.toString());
+    }
+  } catch (_) {}
+  // Repaint analysis tab as single-mode using A's summary.
+  if (state.latestSummary) {
+    try {
+      if (typeof _renderRunFromSummary === "function") {
+        _renderRunFromSummary(state.latestSummary);
+      } else {
+        refreshCurrentRun();
+      }
+    } catch (_) {}
+  }
 }
 
 /** Restore compare mode from URL on page load — operator's link
@@ -5572,6 +5621,16 @@ async function refreshCurrentRun() {
     // Drive the KPI cards from a single pure helper so tone classification
     // stays in one place (testable without DOM).
     const cards = PURE.extractMetricCards(s, state.lang);
+    // Compare mode: extract a parallel "cardsB" so each KPI tile can
+    // also show B's value + Δ inline. The single-mode UI is unchanged
+    // when compareMode is null.
+    const cardsB = state.compareMode && state.compareMode.b
+      ? PURE.extractMetricCards(state.compareMode.b, state.lang)
+      : null;
+    const _ciA = Number((s.sampling || {}).achieved_halfwidth_pp);
+    const _ciB = cardsB
+      ? Number((state.compareMode.b.sampling || {}).achieved_halfwidth_pp)
+      : null;
     const kpiBindings = [
       ["kpiRtp", "rtp"], ["kpiCi", "ci"], ["kpiSpins", "spins"],
       ["kpiZero", "zeroWin"],
@@ -5583,43 +5642,86 @@ async function refreshCurrentRun() {
     for (const binding of kpiBindings) {
       const [domId, key, subId] = binding;
       const c = cards[key] || { value: "N/A", tone: "neutral" };
-      setKpi(domId, c.value, c.tone);
+      let compareArg = null;
+      if (cardsB) {
+        const cB = cardsB[key] || { value: "N/A" };
+        // For RTP we have CI half-widths so we can flag significance;
+        // for other metrics we lean on the unknown-CI fallback.
+        let deltaText = "";
+        let deltaSig = "unknown";
+        if (key === "rtp") {
+          const aN = parseFloat((c.value || "").replace(/[^0-9.\-]/g, ""));
+          const bN = parseFloat((cB.value || "").replace(/[^0-9.\-]/g, ""));
+          if (Number.isFinite(aN) && Number.isFinite(bN)) {
+            const d = bN - aN;
+            deltaText = (d >= 0 ? "+" : "") + d.toFixed(2) + "pp";
+            deltaSig = window.COMPARE_DIFF
+              ? window.COMPARE_DIFF.isSignificant(d, _ciA, _ciB)
+              : "unknown";
+          }
+        }
+        compareArg = { textB: cB.value, deltaText, deltaSig };
+      }
+      setKpi(domId, c.value, c.tone, compareArg);
       if (subId) {
         const subEl = byId(subId);
         if (subEl) subEl.textContent = c.sub || "";
       }
     }
-    // Tail dependency 2×2 grid (uniform, no emphasis on ≥10x).
+    // Tail dependency 2×2 grid. Compare-aware: each .tail-cell
+    // shows A on top + B underneath with cmp-cell-a / cmp-cell-b
+    // styling when state.compareMode is active. Single-mode renders
+    // the same <b>{val}</b> shape as before.
     const tailGrid = byId("kpiTailGrid");
     if (tailGrid) {
       const td = cards.tailDep || {};
       const dm = s.guideline_assessment?.derived_metrics || {};
+      const dmB = state.compareMode && state.compareMode.b
+        ? (state.compareMode.b.guideline_assessment?.derived_metrics || {})
+        : null;
       const fmt1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(1) + "%";
       const tone = td.tone || "neutral";
+      const _tcell = (label, key) => {
+        const aV = fmt1(dm[key]);
+        if (!dmB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
+        const bV = fmt1(dmB[key]);
+        return `<div class="tail-cell"><em>${label}</em><b>` +
+          `<div class="cmp-cell-a">A ${aV}</div>` +
+          `<div class="cmp-cell-b">B ${bV}</div></b></div>`;
+      };
       tailGrid.innerHTML =
-        `<div class="tail-cell"><em>\u226510x</em><b>${fmt1(dm.tail_dependency_ge10x)}</b></div>` +
-        `<div class="tail-cell"><em>\u226520x</em><b>${fmt1(dm.tail_dependency_ge20x)}</b></div>` +
-        `<div class="tail-cell"><em>\u226550x</em><b>${fmt1(dm.tail_dependency_ge50x)}</b></div>` +
-        `<div class="tail-cell"><em>\u2265100x</em><b>${fmt1(dm.tail_dependency_ge100x)}</b></div>`;
+        _tcell("\u226510x", "tail_dependency_ge10x") +
+        _tcell("\u226520x", "tail_dependency_ge20x") +
+        _tcell("\u226550x", "tail_dependency_ge50x") +
+        _tcell("\u2265100x", "tail_dependency_ge100x");
       const card = tailGrid.closest(".kpi");
       if (card) {
         card.classList.remove("kpi--good", "kpi--warn", "kpi--bad");
         if (tone === "good" || tone === "warn" || tone === "bad") card.classList.add(`kpi--${tone}`);
       }
     }
-    // Big-win rate 4-tile grid (paid-round "≥Nx of bet" rates).
-    // Structurally identical to tail-dep so the two cards read as a
-    // set — monotonically decreasing across the 4 thresholds. Each
-    // rate is sessions-with-a-≥Nx-round / total paid rounds.
+    // Big-win rate 4-tile grid — same compare-aware shape as tail-dep.
     const bigWinGrid = byId("kpiBigWinGrid");
     if (bigWinGrid) {
       const tiles = (cards.bigWin && cards.bigWin.tiles) || {};
+      const cardsBLocal = state.compareMode && state.compareMode.b
+        ? PURE.extractMetricCards(state.compareMode.b, state.lang)
+        : null;
+      const tilesB = cardsBLocal && cardsBLocal.bigWin ? cardsBLocal.bigWin.tiles : null;
       const pct1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(2) + "%";
+      const _bcell = (label, key) => {
+        const aV = pct1(tiles[key]);
+        if (!tilesB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
+        const bV = pct1(tilesB[key]);
+        return `<div class="tail-cell"><em>${label}</em><b>` +
+          `<div class="cmp-cell-a">A ${aV}</div>` +
+          `<div class="cmp-cell-b">B ${bV}</div></b></div>`;
+      };
       bigWinGrid.innerHTML =
-        `<div class="tail-cell"><em>\u226510x</em><b>${pct1(tiles.ge10)}</b></div>` +
-        `<div class="tail-cell"><em>\u226520x</em><b>${pct1(tiles.ge20)}</b></div>` +
-        `<div class="tail-cell"><em>\u226550x</em><b>${pct1(tiles.ge50)}</b></div>` +
-        `<div class="tail-cell"><em>\u2265100x</em><b>${pct1(tiles.ge100)}</b></div>`;
+        _bcell("\u226510x", "ge10") +
+        _bcell("\u226520x", "ge20") +
+        _bcell("\u226550x", "ge50") +
+        _bcell("\u2265100x", "ge100");
     }
     // Across-library ranking, filtered to the same mode so a mode 1
     // baseline machine isn't ranked against mode 5 bonus-mode reports
@@ -5640,20 +5742,54 @@ async function refreshCurrentRun() {
     const buckets = s.player_impact?.multiplier_profile?.buckets || [];
     const bucketBody = byId("bucketTable")?.querySelector("tbody");
     if (bucketBody) {
-      const maxRtp = Math.max(...buckets.map((b) => Number(b.rtp_contribution_pp || 0)), 0.001);
-      bucketBody.innerHTML = buckets
+      // Compare-aware: when compareMode active, each TD stacks A
+      // value on top + B value (or Δ) underneath. The same
+      // <thead> / column count is preserved — only cell content
+      // gets denser. CSS .cmp-active styles handle compaction.
+      const cmpB = state.compareMode && state.compareMode.b
+        ? (state.compareMode.b.player_impact?.multiplier_profile?.buckets || [])
+        : null;
+      // Build a key→bucket map for B so we can align by bucket name.
+      const bMap = new Map();
+      if (cmpB) for (const r of cmpB) bMap.set(String(r.bucket || ""), r);
+      // Merge bucket key set (canonical order from A, B-only appended).
+      const aSet = new Set(buckets.map((r) => String(r.bucket)));
+      const merged = [...buckets];
+      if (cmpB) {
+        for (const r of cmpB) {
+          if (!aSet.has(String(r.bucket))) merged.push(r);
+        }
+      }
+      const maxRtp = Math.max(...merged.map((b) => Math.max(
+        Number(b.rtp_contribution_pp || 0),
+        cmpB ? Number((bMap.get(String(b.bucket)) || {}).rtp_contribution_pp || 0) : 0,
+      )), 0.001);
+      const _stack = (aVal, bVal) => cmpB
+        ? `<div class="cmp-cell-a">A ${aVal}</div><div class="cmp-cell-b">B ${bVal}</div>`
+        : aVal;
+      bucketBody.innerHTML = merged
         .map((b) => {
-          const count = fInt(b.spin_count);
-          const spinPct = (Number(b.spin_rate || 0) * 100).toFixed(2);
-          const rtpPp = Number(b.rtp_contribution_pp || 0).toFixed(2);
-          const bar = Math.min(100, (Number(b.rtp_contribution_pp || 0) / maxRtp) * 100);
+          const aCount = fInt(b.spin_count);
+          const aSpinPct = (Number(b.spin_rate || 0) * 100).toFixed(2);
+          const aRtpPp = Number(b.rtp_contribution_pp || 0).toFixed(2);
+          const aBar = Math.min(100, (Number(b.rtp_contribution_pp || 0) / maxRtp) * 100);
+          let bCount = "—", bSpinPct = "—", bRtpPp = "—", bBar = 0;
+          if (cmpB) {
+            const bRow = bMap.get(String(b.bucket)) || {};
+            bCount = fInt(bRow.spin_count);
+            bSpinPct = (Number(bRow.spin_rate || 0) * 100).toFixed(2);
+            bRtpPp = Number(bRow.rtp_contribution_pp || 0).toFixed(2);
+            bBar = Math.min(100, (Number(bRow.rtp_contribution_pp || 0) / maxRtp) * 100);
+          }
           return (
             `<tr>` +
             `<td>${PURE.prettyBucketLabel(b.bucket)}</td>` +
-            `<td>${count}</td>` +
-            `<td>${spinPct}%</td>` +
-            `<td>${rtpPp}pp</td>` +
-            `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%"></td>` +
+            `<td>${_stack(aCount, bCount)}</td>` +
+            `<td>${_stack(aSpinPct + "%", bSpinPct + "%")}</td>` +
+            `<td>${_stack(aRtpPp + "pp", bRtpPp + "pp")}</td>` +
+            (cmpB
+              ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%"></td>`
+              : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%"></td>`) +
             `</tr>`
           );
         })
