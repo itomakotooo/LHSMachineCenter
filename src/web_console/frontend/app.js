@@ -1868,16 +1868,28 @@ function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb
 
   const filteredReports = cell.reports;
 
-  // Sample RTP/CI from best fresh report (analyzer+md5 both match the
-  // CURRENT upstream). For historical cells we only show it when a
-  // report actually matches — typically historical cells won't have
-  // a "fresh" marker since analyzer_status=match + md5_status=match
-  // implies current-md5; historical cells will show the muted
-  // placeholder. That's fine: the operator gets RTP/CI from any
-  // report they open rather than relying on this header-level hint.
+  // Sample RTP/CI from best fresh report. "Fresh" here = the report's
+  // RAWDATA md5 matches the current rawdata (not the report's analyzer
+  // version — see below).
+  //
+  // 2026-04-26 (regression fix): the previous predicate also required
+  // ``analyzer_status === "match"``. ``compute_analyzer_version()``
+  // hashes the ENTIRE ``player_impact_analyzer.py`` source (comments
+  // included), so any commit to that file — even a docstring tweak —
+  // invalidates every prior report's analyzer stamp. The user's
+  // typical flow is: pull rawdata → generate report → developer
+  // commits an unrelated analyzer touch-up → the just-generated
+  // report's "fresh" status flips to false → "无 fresh report"
+  // misleadingly appears on a cell where a perfectly valid report
+  // sits one row below.
+  //
+  // The per-report ⚠ "Analyzer 过期" badge still fires (operators
+  // who care can regenerate); but the CELL-LEVEL "fresh" indicator
+  // is now tied to md5 alone, which is what the operator's mental
+  // model expects ("this report goes with this rawdata").
   const freshReports = filteredReports.filter((v) => {
     const info = reportMd5Map.get(v.report_version);
-    return info && info.md5_status === "match" && info.analyzer_status === "match";
+    return PURE.isFreshReport(info);
   });
   const bestFresh = freshReports.slice().sort((a, b) => {
     const ca = a.achieved_halfwidth_pp ?? Infinity;
@@ -1965,7 +1977,13 @@ function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb
     if (cb != null) return 1;
     return (b.report_version || "").localeCompare(a.report_version || "");
   });
-  const bestCiVersion = sortedReports[0]?.report_version;
+  // Best-CI ⭐ is only meaningful in the CURRENT cell — historical
+  // cells (whose reports are inherently outdated) shouldn't wear a
+  // "best" star (2026-04-26 regression report). See
+  // PURE.cellShowsBestCiStar for the predicate + tests.
+  const bestCiVersion = PURE.cellShowsBestCiStar(cell)
+    ? sortedReports[0]?.report_version
+    : null;
 
   // Sort for display: newest first (so operator sees recent at top).
   const displayReports = [...sortedReports].sort(

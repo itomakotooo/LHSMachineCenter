@@ -2008,6 +2008,54 @@ function versionBadges(row, current) {
 }
 
 
+// ── rwtree cell predicates ────────────────────────────────────────
+//
+// Extracted from the inline rwtree cell renderer so the routing /
+// "fresh" / "best-CI" rules are headlessly testable. Pure: no DOM
+// access, no global state.
+
+/** Is this report "fresh" relative to the rwtree cell it's in?
+ *
+ * "Fresh" means the operator can confidently read RTP/CI from this
+ * report as a header-level "样本 RTP" hint for the cell's rawdata.
+ *
+ * Definition: report's rawdata md5 matches the cell's md5 (i.e. the
+ * report was generated from this rawdata). Analyzer code drift is
+ * INTENTIONALLY not part of this predicate — every commit to
+ * ``player_impact_analyzer.py`` (even a comment) changes its
+ * sha256, and yesterday's just-generated reports must not silently
+ * become "stale" because of an unrelated touch-up.
+ *
+ * The per-report ⚠ "Analyzer 过期" badge in the row still surfaces
+ * analyzer drift as an actionable warning; this predicate is just
+ * about cell-level "is there a report I can read RTP/CI off?".
+ *
+ * @param {object} info — entry from reportMd5Map: { md5_status,
+ *   analyzer_status, config_md5, code_md5 }. May be null/undefined.
+ * @returns {boolean}
+ */
+function isFreshReport(info) {
+  if (!info || typeof info !== "object") return false;
+  return info.md5_status === "match";
+}
+
+/** Should the ⭐ "best CI" marker render in this cell?
+ *
+ * Only current cells (rawdata md5 == upstream md5) are eligible.
+ * Historical cells host reports that are inherently outdated —
+ * their best-CI is a within-history comparison, not a comparable
+ * "best report". Untagged cells likewise can't be compared.
+ *
+ * @param {object} cell — { is_current, untagged }
+ * @returns {boolean}
+ */
+function cellShowsBestCiStar(cell) {
+  if (!cell || typeof cell !== "object") return false;
+  if (cell.untagged) return false;
+  return Boolean(cell.is_current);
+}
+
+
 const PURE = {
   I18N,
   fmt,
@@ -2044,6 +2092,8 @@ const PURE = {
   computeInflightChunks,
   mergeTimeline,
   versionBadges,
+  isFreshReport,
+  cellShowsBestCiStar,
 };
 
 if (typeof window !== "undefined") window.PURE = PURE;

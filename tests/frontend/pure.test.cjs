@@ -1913,3 +1913,78 @@ test("versionBadges: null row / empty current → safe defaults", () => {
   assert.equal(b2.rawdata.tier, "untagged");
   assert.equal(b2.analyzer.tier, "untagged");
 });
+
+
+// ─── isFreshReport / cellShowsBestCiStar — rwtree cell rules ──────
+//
+// Regression report 2026-04-26: user pulled fresh rawdata, generated
+// a report, then opened the rwtree panel. The current cell showed
+// "无 fresh report — 生成后会显示 RTP/CI" despite a clearly-listed
+// 04-25 report sitting one row below. Root cause: the "fresh" filter
+// also required ``analyzer_status === "match"``. Any commit to
+// player_impact_analyzer.py changes its sha256, so a developer-side
+// touch-up was retroactively making every just-generated report
+// "stale". The fix: drop the analyzer requirement; the per-row ⚠
+// badge still warns operators when analyzer drifted.
+//
+// Same regression also surfaced ⭐ best-CI markers on every
+// historical cell (each cell's per-cell sort puts SOMETHING at idx 0),
+// making the marker meaningless. Star is now current-only.
+
+test("isFreshReport: md5 match → fresh, regardless of analyzer state", () => {
+  assert.equal(
+    PURE.isFreshReport({ md5_status: "match", analyzer_status: "outdated" }),
+    true,
+  );
+  assert.equal(
+    PURE.isFreshReport({ md5_status: "match", analyzer_status: "match" }),
+    true,
+  );
+  assert.equal(
+    PURE.isFreshReport({ md5_status: "match", analyzer_status: "untagged" }),
+    true,
+  );
+});
+
+test("isFreshReport: md5 NOT match → not fresh, regardless of analyzer", () => {
+  assert.equal(
+    PURE.isFreshReport({ md5_status: "outdated", analyzer_status: "match" }),
+    false,
+  );
+  assert.equal(
+    PURE.isFreshReport({ md5_status: "outdated", analyzer_status: "outdated" }),
+    false,
+  );
+  assert.equal(
+    PURE.isFreshReport({ md5_status: "untagged", analyzer_status: "match" }),
+    false,
+  );
+});
+
+test("isFreshReport: missing/null info → not fresh", () => {
+  assert.equal(PURE.isFreshReport(null), false);
+  assert.equal(PURE.isFreshReport(undefined), false);
+  assert.equal(PURE.isFreshReport({}), false);
+});
+
+test("cellShowsBestCiStar: only current cells get ⭐", () => {
+  assert.equal(PURE.cellShowsBestCiStar({ is_current: true }), true);
+  assert.equal(PURE.cellShowsBestCiStar({ is_current: false }), false);
+});
+
+test("cellShowsBestCiStar: untagged cells never get ⭐", () => {
+  assert.equal(
+    PURE.cellShowsBestCiStar({ is_current: true, untagged: true }),
+    false,
+  );
+  assert.equal(
+    PURE.cellShowsBestCiStar({ is_current: false, untagged: true }),
+    false,
+  );
+});
+
+test("cellShowsBestCiStar: missing/null cell → false", () => {
+  assert.equal(PURE.cellShowsBestCiStar(null), false);
+  assert.equal(PURE.cellShowsBestCiStar(undefined), false);
+  assert.equal(PURE.cellShowsBestCiStar({}), false);
+});
