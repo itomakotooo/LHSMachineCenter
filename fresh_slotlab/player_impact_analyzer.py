@@ -964,6 +964,35 @@ def _empty_bankruptcy_tier() -> dict[str, Any]:
     }
 
 
+def _extract_bankruptcy_reps(resp: Any) -> list[tuple[int, int]]:
+    """Flatten (cost_bet, cost_win) tuples across every robot+round in a
+    chunk response. Shared by per-chunk simulation and the global
+    streaming accumulator (see _BankruptcyStreamAccumulator).
+    """
+    reps: list[tuple[int, int]] = []
+    if not isinstance(resp, list):
+        return reps
+    for robot in resp:
+        if not isinstance(robot, dict):
+            continue
+        rounds = parse_rounds(robot)
+        if not rounds:
+            continue
+        for r in rounds:
+            if not isinstance(r, dict):
+                continue
+            try:
+                c_bet = int(r.get("CostCredits", 0) or 0)
+            except (TypeError, ValueError):
+                c_bet = 0
+            try:
+                c_win = int(r.get("WinCredits", 0) or 0)
+            except (TypeError, ValueError):
+                c_win = 0
+            reps.append((c_bet, c_win))
+    return reps
+
+
 def simulate_bankruptcy_from_response(
     resp: Any,
     bet: int,
@@ -985,34 +1014,21 @@ def simulate_bankruptcy_from_response(
     Degenerate inputs (non-list resp, non-positive bet/session_spins,
     or fewer rounds than a single session_spins window) return {} or
     zeroed tiers so finalize never crashes.
+
+    NOTE 2026-04-25: per-chunk simulation alone produces empty results
+    when chunk_total_paid_spins < session_spins (e.g. virtual machines
+    sampled with chunk_spin_times=1000 × chunk_robot_count=8 = 8000 vs
+    session_spins=10000). Cross-chunk pooling is now handled by
+    ``_BankruptcyStreamAccumulator`` at merge time; this per-chunk
+    function stays for backward compat with cached chunk records that
+    pre-date the streaming-accumulator fix.
     """
     if not isinstance(resp, list) or bet <= 0 or session_spins <= 0:
         return {}
     out: dict[int, dict[str, Any]] = {
         int(m): _empty_bankruptcy_tier() for m in bankroll_mults
     }
-    # Flatten (bet, win) tuples across every robot in the chunk. Pooling
-    # is statistically valid because upstream RNG is stateless per spin
-    # (see module docstring for simulate_bankruptcy_from_response).
-    reps: list[tuple[int, int]] = []
-    for robot in resp:
-        if not isinstance(robot, dict):
-            continue
-        rounds = parse_rounds(robot)
-        if not rounds:
-            continue
-        for r in rounds:
-            if not isinstance(r, dict):
-                continue
-            try:
-                c_bet = int(r.get("CostCredits", 0) or 0)
-            except (TypeError, ValueError):
-                c_bet = 0
-            try:
-                c_win = int(r.get("WinCredits", 0) or 0)
-            except (TypeError, ValueError):
-                c_win = 0
-            reps.append((c_bet, c_win))
+    reps = _extract_bankruptcy_reps(resp)
     if not reps:
         return out
     # Chop into windows. Any trailing spins shorter than session_spins
@@ -1042,6 +1058,105 @@ def simulate_bankruptcy_from_response(
                 tier["bankrupt"] += 1
                 tier["spins_done"].append(int(spins_done))
     return out
+
+
+class _BankruptcyStreamAccumulator:
+    """Streams (cost_bet, cost_win) tuples through per-tier bankruptcy
+    simulation, pooling rounds across CHUNKS (not just within a chunk).
+
+    Why this exists: the per-chunk simulator (``simulate_bankruptcy_
+    from_response``) drops chunks where total_paid_spins < session_spins
+    because they can't form even one complete window. With virtual
+    sampling defaults (chunk_spin_times=1000 × chunk_robot_count=8 =
+    8000 paid spins vs session_spins=10000), every chunk falls below
+    the threshold and the bankruptcy panel renders empty. Pooling
+    across chunks is statistically valid (RNG stateless per spin per
+    the upstream contract) and gives proper coverage.
+
+    Memory: O(num_tiers × spins_done_count). The spins_done list
+    grows only with bankrupt windows; survival doesn't allocate.
+    For the default 4-tier ladder × 561 windows × 4 bytes = ~9KB peak
+    on a 5M-spin run.
+    """
+    def __init__(
+        self,
+        bet: int,
+        session_spins: int,
+        bankroll_mults: tuple[int, ...],
+    ) -> None:
+        self.bet = int(bet)
+        self.session_spins = int(session_spins)
+        self.applicable = bet > 0 and session_spins > 0
+        self.tiers: dict[int, dict[str, Any]] = {}
+        for m in bankroll_mults:
+            init = int(m) * int(bet)
+            self.tiers[int(m)] = {
+                "init_bankroll": init,
+                "balance": init,
+                "spins_done": 0,
+                "bankrupt": 0,
+                "survived": 0,
+                "spins_done_list": [],
+            }
+        self.fed_count = 0  # for "did we receive any reps?" detection at finalize
+
+    def feed_reps(self, reps: list[tuple[int, int]]) -> None:
+        """Feed a list of (cost_bet, cost_win) tuples through every tier's
+        running window state. Called once per chunk during merge."""
+        if not self.applicable or not reps:
+            return
+        for cost_bet, cost_win in reps:
+            self.fed_count += 1
+            for state in self.tiers.values():
+                # Bankrupt branch: cost > balance and we're being asked
+                # to consume a paid round we can't afford.
+                if cost_bet > 0 and state["balance"] < cost_bet:
+                    state["bankrupt"] += 1
+                    state["spins_done_list"].append(int(state["spins_done"]))
+                    # Reset for next window. Apply this round to the
+                    # fresh window — same semantics as the per-chunk
+                    # simulator (which "starts" each window at index w*
+                    # session_spins and consumes round-by-round).
+                    state["balance"] = state["init_bankroll"]
+                    state["spins_done"] = 0
+                    if cost_bet > 0 and state["balance"] < cost_bet:
+                        # Pathological: bet > full bankroll. Mark instant
+                        # bankruptcy at spin 0 and stay reset.
+                        state["bankrupt"] += 1
+                        state["spins_done_list"].append(0)
+                        continue
+                    state["balance"] -= cost_bet
+                    state["balance"] += cost_win
+                    state["spins_done"] = 1
+                else:
+                    state["balance"] -= cost_bet
+                    state["balance"] += cost_win
+                    state["spins_done"] += 1
+                # Window complete?
+                if state["spins_done"] >= self.session_spins:
+                    state["survived"] += 1
+                    state["balance"] = state["init_bankroll"]
+                    state["spins_done"] = 0
+
+    def finalize(self) -> dict[int, dict[str, Any]]:
+        """Return per-tier {bankrupt, survived, spins_done} dict shaped
+        identically to the per-chunk simulator's output, so finalize
+        code can drop in the streaming result without further changes.
+        Partial / in-progress windows are NOT counted (matches per-chunk
+        simulator's drop-the-tail behavior — partial windows can't
+        survive, so counting them would bias toward bankrupt)."""
+        return {
+            int(m): {
+                "bankrupt": int(s["bankrupt"]),
+                "survived": int(s["survived"]),
+                "spins_done": list(s["spins_done_list"]),
+            }
+            for m, s in self.tiers.items()
+        }
+
+    @property
+    def has_data(self) -> bool:
+        return self.fed_count > 0
 
 
 # Decile steps (P10, P20, ..., P90). Survivor-heavy tiers pin the
@@ -3611,6 +3726,17 @@ def parse_chunk_response(
         "bankruptcy_sim": simulate_bankruptcy_from_response(
             resp, bet, bankruptcy_session_spins, bankruptcy_bankroll_mults,
         ),
+        # 2026-04-25: raw (cost_bet, cost_win) reps for cross-chunk
+        # pooling at merge time. Without this, chunks that fall below
+        # session_spins individually (virtual sampling at 1000×8=8000
+        # vs session=10000) produce empty per-chunk windows and the
+        # bankruptcy panel reports robots=0 across all tiers despite
+        # having millions of paid spins. ``_BankruptcyStreamAccumulator``
+        # in the merge loop consumes these reps to produce proper
+        # cross-chunk pooled results. Old cached chunks (no reps field)
+        # fall back to per-chunk merge — produces zeros but doesn't
+        # crash, and operators can rebuild reports to refresh.
+        "bankruptcy_reps": _extract_bankruptcy_reps(resp),
     }
 
 
@@ -3738,7 +3864,16 @@ def main() -> int:
     total_session_big_win_x100 = 0
     # Rawdata-replay bankruptcy histogram totals. Initialized lazily on
     # first chunk that carries data; keyed by int bankroll multiplier.
+    # Two paths: (a) cross-chunk streaming accumulator (preferred —
+    # consumes raw reps from each chunk record); (b) per-chunk merge
+    # (fallback for cached chunks pre-dating the 2026-04-25 fix).
+    # Finalize prefers the streaming result when ``has_data``.
     bankruptcy_sim_totals: dict[int, dict[str, Any]] = {}
+    bankruptcy_stream_acc = _BankruptcyStreamAccumulator(
+        bet=args.bet,
+        session_spins=args.bankruptcy_session_spins,
+        bankroll_mults=_bankruptcy_mults_tuple,
+    )
     total_session_ret_count = 0
     total_session_ret_sum = 0.0
     total_session_ret_sq_sum = 0.0
@@ -4341,7 +4476,9 @@ def main() -> int:
                 total_session_big_win_x50 += int(rec.get("session_big_win_x50_count", 0) or 0)
                 total_session_big_win_x100 += int(rec.get("session_big_win_x100_count", 0) or 0)
                 # Bankruptcy sim histogram merge (elementwise sum of bins +
-                # scalar totals per tier).
+                # scalar totals per tier). Kept for backward compat with
+                # cached chunks pre-dating the cross-chunk fix; finalize
+                # prefers the streaming accumulator below when it has data.
                 for _mk, _entry in (rec.get("bankruptcy_sim") or {}).items():
                     if not isinstance(_entry, dict):
                         continue
@@ -4356,6 +4493,15 @@ def main() -> int:
                         # Extend the unsorted combined list; finalize
                         # sorts once. O(N) append across chunks.
                         _dst["spins_done"].extend(int(v) for v in _sd)
+                # Cross-chunk streaming accumulator: feed raw reps so
+                # chunks below session_spins (virtual sampling 8k vs
+                # session=10k) still contribute. Old chunk records lack
+                # the field — feed_reps no-ops on missing data.
+                _bk_reps = rec.get("bankruptcy_reps")
+                if isinstance(_bk_reps, list) and _bk_reps:
+                    bankruptcy_stream_acc.feed_reps(
+                        [(int(t[0]), int(t[1])) for t in _bk_reps if isinstance(t, (list, tuple)) and len(t) >= 2]
+                    )
                 total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
                 total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
                 total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
@@ -5021,7 +5167,9 @@ def main() -> int:
                 total_session_big_win_x50 += int(rec.get("session_big_win_x50_count", 0) or 0)
                 total_session_big_win_x100 += int(rec.get("session_big_win_x100_count", 0) or 0)
                 # Bankruptcy sim histogram merge (elementwise sum of bins +
-                # scalar totals per tier).
+                # scalar totals per tier). Kept for backward compat with
+                # cached chunks pre-dating the cross-chunk fix; finalize
+                # prefers the streaming accumulator below when it has data.
                 for _mk, _entry in (rec.get("bankruptcy_sim") or {}).items():
                     if not isinstance(_entry, dict):
                         continue
@@ -5036,6 +5184,15 @@ def main() -> int:
                         # Extend the unsorted combined list; finalize
                         # sorts once. O(N) append across chunks.
                         _dst["spins_done"].extend(int(v) for v in _sd)
+                # Cross-chunk streaming accumulator: feed raw reps so
+                # chunks below session_spins (virtual sampling 8k vs
+                # session=10k) still contribute. Old chunk records lack
+                # the field — feed_reps no-ops on missing data.
+                _bk_reps = rec.get("bankruptcy_reps")
+                if isinstance(_bk_reps, list) and _bk_reps:
+                    bankruptcy_stream_acc.feed_reps(
+                        [(int(t[0]), int(t[1])) for t in _bk_reps if isinstance(t, (list, tuple)) and len(t) >= 2]
+                    )
                 total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
                 total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
                 total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
@@ -6237,6 +6394,15 @@ def main() -> int:
     # were out by this spin, P50 = median user, P90 = 90% of users
     # died by this spin (the rest are still in).
     bankruptcy_sim_session_spins = args.bankruptcy_session_spins
+    # 2026-04-25: prefer the cross-chunk streaming accumulator's result
+    # when it received any reps. The per-chunk-merged dict is kept only
+    # so cached chunks pre-dating the streaming fix still produce
+    # something rather than crashing — but their results are wrong (zero
+    # windows for any chunk smaller than session_spins). New chunk
+    # records always carry ``bankruptcy_reps`` so this branch will be
+    # taken on every fresh sampling / report rebuild.
+    if bankruptcy_stream_acc.has_data:
+        bankruptcy_sim_totals = bankruptcy_stream_acc.finalize()
     bankruptcy_rows: list[dict[str, Any]] = []
     for m in _bankruptcy_mults_tuple:
         tier = bankruptcy_sim_totals.get(int(m))
