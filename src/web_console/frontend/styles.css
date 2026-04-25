@@ -3471,145 +3471,172 @@ select:focus-visible,
 }
 
 
-/* ── Report compare mode (inline-diff approach) ───────────────────
-   Compare mode does NOT replace the analysis panels — it adds B
-   value + Δ chip INTO the existing tiles / table cells / chart bars.
-   The single-mode UI stays byte-identical when state.compareMode is
-   null. See _enterCompareMode in app.js. */
 
-/* Sticky banner pinned at top of #tab-debug while comparing. */
+/* ── Report compare mode (inline-diff aesthetic) ──────────────────
+   Compare mode adds B value + Δ INTO existing tiles / cells. The
+   single-mode UI is unchanged when state.compareMode is null. The
+   visual story:
+   - A = neutral slate (the baseline/anchor)
+   - B = indigo (the challenger/comparison)
+   - Δ chip color tracks direction + significance
+   - Banner is informational indigo (NOT a warning yellow) */
+
 .cmp-banner {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%);
-  border: 2px solid #d97706;
-  border-radius: 6px;
-  padding: 8px 14px;
+  background: linear-gradient(90deg, #eef2ff 0%, #e0e7ff 100%);
+  border-left: 4px solid #4f46e5;
+  border-radius: 4px;
+  padding: 10px 14px;
   margin: 0 0 12px 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
   font-size: 13px;
+  color: #312e81;
 }
 .cmp-banner.hidden { display: none; }
 .cmp-banner-tag {
-  background: #d97706;
+  background: #4f46e5;
   color: #fff;
-  padding: 2px 8px;
-  border-radius: 3px;
+  padding: 3px 9px;
+  border-radius: 12px;
   font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.04em;
 }
 .cmp-banner-label {
-  font-family: ui-monospace, monospace;
-  color: #78350f;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 500;
 }
-.cmp-banner-a { font-weight: 600; }
-.cmp-banner-b { font-weight: 600; }
+.cmp-banner-a { color: #475569; }
+.cmp-banner-b { color: #4338ca; font-weight: 600; }
 .cmp-banner-vs {
-  color: #92400e;
+  color: #6366f1;
   font-weight: 600;
-  margin: 0 4px;
+  opacity: 0.6;
 }
 .cmp-banner-exit {
   margin-left: auto;
-  padding: 4px 10px;
-  border: 1px solid #b91c1c;
-  background: #fef2f2;
-  color: #b91c1c;
+  padding: 5px 12px;
+  border: 1px solid #c7d2fe;
+  background: #fff;
+  color: #4338ca;
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
+  transition: background 0.15s;
 }
-.cmp-banner-exit:hover { background: #fee2e2; }
+.cmp-banner-exit:hover {
+  background: #eef2ff;
+  border-color: #818cf8;
+}
 
-/* KPI tile compare layout — A on top, B underneath, Δ chip below.
-   Only kicks in when setKpi was given a compare arg. */
+/* KPI tile compare layout — A and B as side-by-side flex pair when
+   the tile is wide enough, falling back to stacked on narrow tiles.
+   Δ chip sits on its own row underneath. */
 .kpi-cmp-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   font-size: 13px;
-  line-height: 1.3;
+  line-height: 1.4;
+  padding: 1px 0;
 }
 .kpi-cmp-tag {
   display: inline-block;
-  background: #e0e7ff;
-  color: #3730a3;
-  padding: 0 5px;
+  padding: 1px 6px;
   border-radius: 3px;
   font-size: 9px;
   font-weight: 700;
+  letter-spacing: 0.05em;
   min-width: 14px;
   text-align: center;
   flex-shrink: 0;
 }
+.kpi-cmp-row:nth-child(1) .kpi-cmp-tag {
+  background: #f1f5f9;
+  color: #475569;
+}
 .kpi-cmp-tag-b {
-  background: #fce7f3;
-  color: #9d174d;
+  background: #e0e7ff !important;
+  color: #4338ca !important;
 }
 .kpi-cmp-delta {
-  margin-top: 4px;
+  margin-top: 6px;
   padding-top: 4px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px dashed #cbd5e1;
   font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
-.kpi-cmp-strong { color: #1e40af; }
-.kpi-cmp-noise  { color: #94a3b8; }
-.kpi-cmp-unknown { color: #475569; }
+.kpi-cmp-strong { color: #4338ca; }
+.kpi-cmp-noise  {
+  color: #94a3b8;
+  font-weight: 400;
+}
+.kpi-cmp-unknown { color: #64748b; }
 
 /* Bucket / payID / table cell A-B stack. Same column count as
-   single mode — each TD gets two stacked rows when comparing. */
+   single mode — each TD gets two stacked rows in compare. */
 .cmp-cell-a, .cmp-cell-b {
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1.45;
   font-variant-numeric: tabular-nums;
+  display: block;
 }
 .cmp-cell-a {
-  color: #1e293b;
+  color: #334155;
 }
 .cmp-cell-b {
-  color: #be185d;
-  border-top: 1px dotted #e2e8f0;
-  margin-top: 1px;
-  padding-top: 1px;
+  color: #4338ca;
+  font-weight: 500;
 }
 
-/* Bar cell with two stacked bars (A solid, B striped) for compare. */
+/* Bar cell with two distinct bars stacked vertically (A on top,
+   B below) — clearer than the previous stripe overlay. */
 .bar-cell-cmp {
-  background: linear-gradient(
-    to right,
-    rgba(99, 102, 241, 0.55) 0%,
-    rgba(99, 102, 241, 0.55) var(--bar, 0%),
-    transparent var(--bar, 0%)
-  );
   position: relative;
+  background: transparent !important;
+  padding: 4px !important;
+  vertical-align: middle;
+}
+.bar-cell-cmp::before,
+.bar-cell-cmp::after {
+  content: "";
+  display: block;
+  height: 6px;
+  border-radius: 2px;
+  margin: 1px 0;
+}
+.bar-cell-cmp::before {
+  width: var(--bar, 0%);
+  background: #94a3b8;
 }
 .bar-cell-cmp::after {
-  content: ;
-  position: absolute;
-  top: 50%;
-  left: 0;
-  height: 4px;
   width: var(--bar-b, 0%);
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(190, 24, 93, 0.7),
-    rgba(190, 24, 93, 0.7) 3px,
-    transparent 3px,
-    transparent 6px
-  );
+  background: #6366f1;
 }
 
-/* When compare mode active, the body gets .cmp-active. Use this to
-   slightly tighten KPI tile internal padding so the stacked content
-   fits without growing the card height too much. */
+/* When compare mode active, slightly tighten KPI tile padding so
+   stacked content doesn't grow the card too tall. */
 body.cmp-active .kpi {
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* Tail-dep / big-win cells: in compare mode the `<b>` becomes a
+   stacked container instead of a single value. Reset font weight
+   to inherit so the inner cmp-cell-* spans don't all bold. */
+body.cmp-active .tail-cell b {
+  font-weight: normal;
+  display: block;
 }

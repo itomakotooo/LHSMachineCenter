@@ -3401,7 +3401,7 @@ async function compareReports() {
  *  branch into A/B/Δ inline rendering. We do NOT hide any panels —
  *  the existing visual structure stays; renderers grow new columns
  *  in compare mode. */
-function _enterCompareMode(a, b, vA, vB) {
+async function _enterCompareMode(a, b, vA, vB) {
   state.compareMode = { a, b, vA, vB };
   if (typeof switchTab === "function") {
     switchTab("debug");
@@ -3415,17 +3415,18 @@ function _enterCompareMode(a, b, vA, vB) {
     u.searchParams.set("compare", `${sa},${sb}`);
     window.history.replaceState({}, "", u.toString());
   } catch (_) { /* IE / non-URL env */ }
-  // Re-paint the analysis tab using A as the primary summary; each
-  // compare-aware renderer reads state.compareMode.b to add its
-  // B/Δ columns. Reuses the standard refresh path so we don't have
-  // a parallel "compare-only" code path.
+  // Re-paint the analysis tab using A as the primary summary. Each
+  // compare-aware renderer reads state.compareMode.b inside itself
+  // to add B/Δ. Calls the extracted helper directly — critically,
+  // this does NOT go through refreshCurrentRun (which fetches based
+  // on state.currentRunId, not necessarily A's run — produced the
+  // "both sides identical" bug 2026-04-25).
   state.latestSummary = a;
   document.body.classList.add("cmp-active");
-  if (typeof _renderRunFromSummary === "function") {
-    try { _renderRunFromSummary(a); } catch (_) {}
-  } else {
-    // Fallback: trigger normal poll cycle to repaint.
-    try { refreshCurrentRun(); } catch (_) {}
+  try {
+    await _paintAnalysisFromSummary(a);
+  } catch (e) {
+    console.error("compare paint failed:", e);
   }
 }
 
@@ -3464,14 +3465,13 @@ function _onCompareExit() {
       window.history.replaceState({}, "", u.toString());
     }
   } catch (_) {}
-  // Repaint analysis tab as single-mode using A's summary.
+  // Repaint analysis tab as single-mode using A's summary (or
+  // whatever the last loaded summary was). compareMode is now null
+  // so renderers' compare branches won't fire — they'll go down
+  // their normal single-render paths.
   if (state.latestSummary) {
     try {
-      if (typeof _renderRunFromSummary === "function") {
-        _renderRunFromSummary(state.latestSummary);
-      } else {
-        refreshCurrentRun();
-      }
+      _paintAnalysisFromSummary(state.latestSummary);
     } catch (_) {}
   }
 }
@@ -5493,6 +5493,216 @@ function _resetDebugPanelsToEmpty() {
   if (intEl) intEl.textContent = fmt("noInterpret");
 }
 
+
+/** Render the analysis panels (KPI tiles, tail/big-win grids,
+ *  bucket table, paylines, symbols, payouts, features, mechanics,
+ *  bankruptcy, library ranking) from a given summary dict. Used by
+ *  both refreshCurrentRun (after fetching from /api/runs/.../report)
+ *  and _enterCompareMode (which has both summaries in memory and
+ *  doesn't need an API round-trip). Compare-aware renderers branch
+ *  on state.compareMode.b INSIDE this function — the caller just
+ *  passes the primary summary as `s`.
+ *
+ *  Returns nothing. Async because applyLibraryRanking does its own
+ *  /api/library/distributions fetch + several panel renderers are
+ *  async on their own.
+ */
+async function _paintAnalysisFromSummary(s) {
+  // Drive the KPI cards from a single pure helper so tone classification
+  // stays in one place (testable without DOM).
+  const cards = PURE.extractMetricCards(s, state.lang);
+  // Compare mode: extract a parallel "cardsB" so each KPI tile can
+  // also show B's value + Δ inline. The single-mode UI is unchanged
+  // when compareMode is null.
+  const cardsB = state.compareMode && state.compareMode.b
+    ? PURE.extractMetricCards(state.compareMode.b, state.lang)
+    : null;
+  const _ciA = Number((s.sampling || {}).achieved_halfwidth_pp);
+  const _ciB = cardsB
+    ? Number((state.compareMode.b.sampling || {}).achieved_halfwidth_pp)
+    : null;
+  const kpiBindings = [
+    ["kpiRtp", "rtp"], ["kpiCi", "ci"], ["kpiSpins", "spins"],
+    ["kpiZero", "zeroWin"],
+    // Volatility main slot intentionally empty (lib-rank is the only
+    // signal; applyLibraryRanking fills #kpiVolatilitySub).
+    ["kpiArchetype", "archetype", "kpiArchetypeSub"],
+    ["kpiLossStreak", "lossStreak"], ["kpiMaxReturn", "maxReturn"],
+  ];
+  for (const binding of kpiBindings) {
+    const [domId, key, subId] = binding;
+    const c = cards[key] || { value: "N/A", tone: "neutral" };
+    let compareArg = null;
+    if (cardsB) {
+      const cB = cardsB[key] || { value: "N/A" };
+      // For RTP we have CI half-widths so we can flag significance;
+      // for other metrics we lean on the unknown-CI fallback.
+      let deltaText = "";
+      let deltaSig = "unknown";
+      if (key === "rtp") {
+        const aN = parseFloat((c.value || "").replace(/[^0-9.\-]/g, ""));
+        const bN = parseFloat((cB.value || "").replace(/[^0-9.\-]/g, ""));
+        if (Number.isFinite(aN) && Number.isFinite(bN)) {
+          const d = bN - aN;
+          deltaText = (d >= 0 ? "+" : "") + d.toFixed(2) + "pp";
+          deltaSig = window.COMPARE_DIFF
+            ? window.COMPARE_DIFF.isSignificant(d, _ciA, _ciB)
+            : "unknown";
+        }
+      }
+      compareArg = { textB: cB.value, deltaText, deltaSig };
+    }
+    setKpi(domId, c.value, c.tone, compareArg);
+    if (subId) {
+      const subEl = byId(subId);
+      if (subEl) subEl.textContent = c.sub || "";
+    }
+  }
+  // Tail dependency 2×2 grid. Compare-aware: each .tail-cell
+  // shows A on top + B underneath with cmp-cell-a / cmp-cell-b
+  // styling when state.compareMode is active. Single-mode renders
+  // the same <b>{val}</b> shape as before.
+  const tailGrid = byId("kpiTailGrid");
+  if (tailGrid) {
+    const td = cards.tailDep || {};
+    const dm = s.guideline_assessment?.derived_metrics || {};
+    const dmB = state.compareMode && state.compareMode.b
+      ? (state.compareMode.b.guideline_assessment?.derived_metrics || {})
+      : null;
+    const fmt1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(1) + "%";
+    const tone = td.tone || "neutral";
+    const _tcell = (label, key) => {
+      const aV = fmt1(dm[key]);
+      if (!dmB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
+      const bV = fmt1(dmB[key]);
+      return `<div class="tail-cell"><em>${label}</em><b>` +
+        `<div class="cmp-cell-a">A ${aV}</div>` +
+        `<div class="cmp-cell-b">B ${bV}</div></b></div>`;
+    };
+    tailGrid.innerHTML =
+      _tcell("\u226510x", "tail_dependency_ge10x") +
+      _tcell("\u226520x", "tail_dependency_ge20x") +
+      _tcell("\u226550x", "tail_dependency_ge50x") +
+      _tcell("\u2265100x", "tail_dependency_ge100x");
+    const card = tailGrid.closest(".kpi");
+    if (card) {
+      card.classList.remove("kpi--good", "kpi--warn", "kpi--bad");
+      if (tone === "good" || tone === "warn" || tone === "bad") card.classList.add(`kpi--${tone}`);
+    }
+  }
+  // Big-win rate 4-tile grid — same compare-aware shape as tail-dep.
+  const bigWinGrid = byId("kpiBigWinGrid");
+  if (bigWinGrid) {
+    const tiles = (cards.bigWin && cards.bigWin.tiles) || {};
+    const cardsBLocal = state.compareMode && state.compareMode.b
+      ? PURE.extractMetricCards(state.compareMode.b, state.lang)
+      : null;
+    const tilesB = cardsBLocal && cardsBLocal.bigWin ? cardsBLocal.bigWin.tiles : null;
+    const pct1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(2) + "%";
+    const _bcell = (label, key) => {
+      const aV = pct1(tiles[key]);
+      if (!tilesB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
+      const bV = pct1(tilesB[key]);
+      return `<div class="tail-cell"><em>${label}</em><b>` +
+        `<div class="cmp-cell-a">A ${aV}</div>` +
+        `<div class="cmp-cell-b">B ${bV}</div></b></div>`;
+    };
+    bigWinGrid.innerHTML =
+      _bcell("\u226510x", "ge10") +
+      _bcell("\u226520x", "ge20") +
+      _bcell("\u226550x", "ge50") +
+      _bcell("\u2265100x", "ge100");
+  }
+  // Across-library ranking, filtered to the same mode so a mode 1
+  // baseline machine isn't ranked against mode 5 bonus-mode reports
+  // (their ranges are inherently different). Falls back to cross-mode
+  // ranking if the backend doesn't support ?mode yet.
+  try {
+    const m = Number(s.mode || 0);
+    const distUrl = m > 0
+      ? `/api/library/distributions?mode=${m}`
+      : "/api/library/distributions";
+    const dist = await apiGet(distUrl);
+    state.libraryDistributions = dist;
+    applyLibraryRanking(s, dist);
+  } catch (_err) {
+    // Non-fatal: leave sub-lines cleared.
+  }
+  // Bucket distribution: table-based (replaces Chart.js canvas).
+  const buckets = s.player_impact?.multiplier_profile?.buckets || [];
+  const bucketBody = byId("bucketTable")?.querySelector("tbody");
+  if (bucketBody) {
+    // Compare-aware: when compareMode active, each TD stacks A
+    // value on top + B value (or Δ) underneath. The same
+    // <thead> / column count is preserved — only cell content
+    // gets denser. CSS .cmp-active styles handle compaction.
+    const cmpB = state.compareMode && state.compareMode.b
+      ? (state.compareMode.b.player_impact?.multiplier_profile?.buckets || [])
+      : null;
+    // Build a key→bucket map for B so we can align by bucket name.
+    const bMap = new Map();
+    if (cmpB) for (const r of cmpB) bMap.set(String(r.bucket || ""), r);
+    // Merge bucket key set (canonical order from A, B-only appended).
+    const aSet = new Set(buckets.map((r) => String(r.bucket)));
+    const merged = [...buckets];
+    if (cmpB) {
+      for (const r of cmpB) {
+        if (!aSet.has(String(r.bucket))) merged.push(r);
+      }
+    }
+    const maxRtp = Math.max(...merged.map((b) => Math.max(
+      Number(b.rtp_contribution_pp || 0),
+      cmpB ? Number((bMap.get(String(b.bucket)) || {}).rtp_contribution_pp || 0) : 0,
+    )), 0.001);
+    const _stack = (aVal, bVal) => cmpB
+      ? `<div class="cmp-cell-a">A ${aVal}</div><div class="cmp-cell-b">B ${bVal}</div>`
+      : aVal;
+    bucketBody.innerHTML = merged
+      .map((b) => {
+        const aCount = fInt(b.spin_count);
+        const aSpinPct = (Number(b.spin_rate || 0) * 100).toFixed(2);
+        const aRtpPp = Number(b.rtp_contribution_pp || 0).toFixed(2);
+        const aBar = Math.min(100, (Number(b.rtp_contribution_pp || 0) / maxRtp) * 100);
+        let bCount = "—", bSpinPct = "—", bRtpPp = "—", bBar = 0;
+        if (cmpB) {
+          const bRow = bMap.get(String(b.bucket)) || {};
+          bCount = fInt(bRow.spin_count);
+          bSpinPct = (Number(bRow.spin_rate || 0) * 100).toFixed(2);
+          bRtpPp = Number(bRow.rtp_contribution_pp || 0).toFixed(2);
+          bBar = Math.min(100, (Number(bRow.rtp_contribution_pp || 0) / maxRtp) * 100);
+        }
+        return (
+          `<tr>` +
+          `<td>${PURE.prettyBucketLabel(b.bucket)}</td>` +
+          `<td>${_stack(aCount, bCount)}</td>` +
+          `<td>${_stack(aSpinPct + "%", bSpinPct + "%")}</td>` +
+          `<td>${_stack(aRtpPp + "pp", bRtpPp + "pp")}</td>` +
+          (cmpB
+            ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%"></td>`
+            : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%"></td>`) +
+          `</tr>`
+        );
+      })
+      .join("");
+  }
+  renderRtpClampWarning(s);
+  renderSpinTypeBreakdown(s);
+  renderFeatureBreakdownPanel(s);
+  // Classifier panel needs its own API call; fire-and-forget so the
+  // rest of the debug tab isn't blocked on a second network round-
+  // trip. Hidden automatically when the classifier output doesn't
+  // cover this machine.
+  renderPaylineClassification(s);
+  renderPayIdOverview(s);
+  renderFieldDiscovery(s);
+  renderMachineMechanics(s);
+  renderBonusChainDynamicsPanel(s);
+  renderCollectCyclePanel(s);
+  renderPaylineDrilldown(s);
+  renderSymbolDrilldown(s);
+  renderBankruptcyAnalysis(s);
+}
+
 async function refreshCurrentRun() {
   if (!state.currentRunId) {
     setLoadedMachineInfo(null);
@@ -5618,199 +5828,7 @@ async function refreshCurrentRun() {
     const report = await apiGet(`/api/runs/${state.currentRunId}/report`);
     const s = report.summary || {};
     state.latestSummary = s;
-    // Drive the KPI cards from a single pure helper so tone classification
-    // stays in one place (testable without DOM).
-    const cards = PURE.extractMetricCards(s, state.lang);
-    // Compare mode: extract a parallel "cardsB" so each KPI tile can
-    // also show B's value + Δ inline. The single-mode UI is unchanged
-    // when compareMode is null.
-    const cardsB = state.compareMode && state.compareMode.b
-      ? PURE.extractMetricCards(state.compareMode.b, state.lang)
-      : null;
-    const _ciA = Number((s.sampling || {}).achieved_halfwidth_pp);
-    const _ciB = cardsB
-      ? Number((state.compareMode.b.sampling || {}).achieved_halfwidth_pp)
-      : null;
-    const kpiBindings = [
-      ["kpiRtp", "rtp"], ["kpiCi", "ci"], ["kpiSpins", "spins"],
-      ["kpiZero", "zeroWin"],
-      // Volatility main slot intentionally empty (lib-rank is the only
-      // signal; applyLibraryRanking fills #kpiVolatilitySub).
-      ["kpiArchetype", "archetype", "kpiArchetypeSub"],
-      ["kpiLossStreak", "lossStreak"], ["kpiMaxReturn", "maxReturn"],
-    ];
-    for (const binding of kpiBindings) {
-      const [domId, key, subId] = binding;
-      const c = cards[key] || { value: "N/A", tone: "neutral" };
-      let compareArg = null;
-      if (cardsB) {
-        const cB = cardsB[key] || { value: "N/A" };
-        // For RTP we have CI half-widths so we can flag significance;
-        // for other metrics we lean on the unknown-CI fallback.
-        let deltaText = "";
-        let deltaSig = "unknown";
-        if (key === "rtp") {
-          const aN = parseFloat((c.value || "").replace(/[^0-9.\-]/g, ""));
-          const bN = parseFloat((cB.value || "").replace(/[^0-9.\-]/g, ""));
-          if (Number.isFinite(aN) && Number.isFinite(bN)) {
-            const d = bN - aN;
-            deltaText = (d >= 0 ? "+" : "") + d.toFixed(2) + "pp";
-            deltaSig = window.COMPARE_DIFF
-              ? window.COMPARE_DIFF.isSignificant(d, _ciA, _ciB)
-              : "unknown";
-          }
-        }
-        compareArg = { textB: cB.value, deltaText, deltaSig };
-      }
-      setKpi(domId, c.value, c.tone, compareArg);
-      if (subId) {
-        const subEl = byId(subId);
-        if (subEl) subEl.textContent = c.sub || "";
-      }
-    }
-    // Tail dependency 2×2 grid. Compare-aware: each .tail-cell
-    // shows A on top + B underneath with cmp-cell-a / cmp-cell-b
-    // styling when state.compareMode is active. Single-mode renders
-    // the same <b>{val}</b> shape as before.
-    const tailGrid = byId("kpiTailGrid");
-    if (tailGrid) {
-      const td = cards.tailDep || {};
-      const dm = s.guideline_assessment?.derived_metrics || {};
-      const dmB = state.compareMode && state.compareMode.b
-        ? (state.compareMode.b.guideline_assessment?.derived_metrics || {})
-        : null;
-      const fmt1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(1) + "%";
-      const tone = td.tone || "neutral";
-      const _tcell = (label, key) => {
-        const aV = fmt1(dm[key]);
-        if (!dmB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
-        const bV = fmt1(dmB[key]);
-        return `<div class="tail-cell"><em>${label}</em><b>` +
-          `<div class="cmp-cell-a">A ${aV}</div>` +
-          `<div class="cmp-cell-b">B ${bV}</div></b></div>`;
-      };
-      tailGrid.innerHTML =
-        _tcell("\u226510x", "tail_dependency_ge10x") +
-        _tcell("\u226520x", "tail_dependency_ge20x") +
-        _tcell("\u226550x", "tail_dependency_ge50x") +
-        _tcell("\u2265100x", "tail_dependency_ge100x");
-      const card = tailGrid.closest(".kpi");
-      if (card) {
-        card.classList.remove("kpi--good", "kpi--warn", "kpi--bad");
-        if (tone === "good" || tone === "warn" || tone === "bad") card.classList.add(`kpi--${tone}`);
-      }
-    }
-    // Big-win rate 4-tile grid — same compare-aware shape as tail-dep.
-    const bigWinGrid = byId("kpiBigWinGrid");
-    if (bigWinGrid) {
-      const tiles = (cards.bigWin && cards.bigWin.tiles) || {};
-      const cardsBLocal = state.compareMode && state.compareMode.b
-        ? PURE.extractMetricCards(state.compareMode.b, state.lang)
-        : null;
-      const tilesB = cardsBLocal && cardsBLocal.bigWin ? cardsBLocal.bigWin.tiles : null;
-      const pct1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(2) + "%";
-      const _bcell = (label, key) => {
-        const aV = pct1(tiles[key]);
-        if (!tilesB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
-        const bV = pct1(tilesB[key]);
-        return `<div class="tail-cell"><em>${label}</em><b>` +
-          `<div class="cmp-cell-a">A ${aV}</div>` +
-          `<div class="cmp-cell-b">B ${bV}</div></b></div>`;
-      };
-      bigWinGrid.innerHTML =
-        _bcell("\u226510x", "ge10") +
-        _bcell("\u226520x", "ge20") +
-        _bcell("\u226550x", "ge50") +
-        _bcell("\u2265100x", "ge100");
-    }
-    // Across-library ranking, filtered to the same mode so a mode 1
-    // baseline machine isn't ranked against mode 5 bonus-mode reports
-    // (their ranges are inherently different). Falls back to cross-mode
-    // ranking if the backend doesn't support ?mode yet.
-    try {
-      const m = Number(s.mode || 0);
-      const distUrl = m > 0
-        ? `/api/library/distributions?mode=${m}`
-        : "/api/library/distributions";
-      const dist = await apiGet(distUrl);
-      state.libraryDistributions = dist;
-      applyLibraryRanking(s, dist);
-    } catch (_err) {
-      // Non-fatal: leave sub-lines cleared.
-    }
-    // Bucket distribution: table-based (replaces Chart.js canvas).
-    const buckets = s.player_impact?.multiplier_profile?.buckets || [];
-    const bucketBody = byId("bucketTable")?.querySelector("tbody");
-    if (bucketBody) {
-      // Compare-aware: when compareMode active, each TD stacks A
-      // value on top + B value (or Δ) underneath. The same
-      // <thead> / column count is preserved — only cell content
-      // gets denser. CSS .cmp-active styles handle compaction.
-      const cmpB = state.compareMode && state.compareMode.b
-        ? (state.compareMode.b.player_impact?.multiplier_profile?.buckets || [])
-        : null;
-      // Build a key→bucket map for B so we can align by bucket name.
-      const bMap = new Map();
-      if (cmpB) for (const r of cmpB) bMap.set(String(r.bucket || ""), r);
-      // Merge bucket key set (canonical order from A, B-only appended).
-      const aSet = new Set(buckets.map((r) => String(r.bucket)));
-      const merged = [...buckets];
-      if (cmpB) {
-        for (const r of cmpB) {
-          if (!aSet.has(String(r.bucket))) merged.push(r);
-        }
-      }
-      const maxRtp = Math.max(...merged.map((b) => Math.max(
-        Number(b.rtp_contribution_pp || 0),
-        cmpB ? Number((bMap.get(String(b.bucket)) || {}).rtp_contribution_pp || 0) : 0,
-      )), 0.001);
-      const _stack = (aVal, bVal) => cmpB
-        ? `<div class="cmp-cell-a">A ${aVal}</div><div class="cmp-cell-b">B ${bVal}</div>`
-        : aVal;
-      bucketBody.innerHTML = merged
-        .map((b) => {
-          const aCount = fInt(b.spin_count);
-          const aSpinPct = (Number(b.spin_rate || 0) * 100).toFixed(2);
-          const aRtpPp = Number(b.rtp_contribution_pp || 0).toFixed(2);
-          const aBar = Math.min(100, (Number(b.rtp_contribution_pp || 0) / maxRtp) * 100);
-          let bCount = "—", bSpinPct = "—", bRtpPp = "—", bBar = 0;
-          if (cmpB) {
-            const bRow = bMap.get(String(b.bucket)) || {};
-            bCount = fInt(bRow.spin_count);
-            bSpinPct = (Number(bRow.spin_rate || 0) * 100).toFixed(2);
-            bRtpPp = Number(bRow.rtp_contribution_pp || 0).toFixed(2);
-            bBar = Math.min(100, (Number(bRow.rtp_contribution_pp || 0) / maxRtp) * 100);
-          }
-          return (
-            `<tr>` +
-            `<td>${PURE.prettyBucketLabel(b.bucket)}</td>` +
-            `<td>${_stack(aCount, bCount)}</td>` +
-            `<td>${_stack(aSpinPct + "%", bSpinPct + "%")}</td>` +
-            `<td>${_stack(aRtpPp + "pp", bRtpPp + "pp")}</td>` +
-            (cmpB
-              ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%"></td>`
-              : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%"></td>`) +
-            `</tr>`
-          );
-        })
-        .join("");
-    }
-    renderRtpClampWarning(s);
-    renderSpinTypeBreakdown(s);
-    renderFeatureBreakdownPanel(s);
-    // Classifier panel needs its own API call; fire-and-forget so the
-    // rest of the debug tab isn't blocked on a second network round-
-    // trip. Hidden automatically when the classifier output doesn't
-    // cover this machine.
-    renderPaylineClassification(s);
-    renderPayIdOverview(s);
-    renderFieldDiscovery(s);
-    renderMachineMechanics(s);
-    renderBonusChainDynamicsPanel(s);
-    renderCollectCyclePanel(s);
-    renderPaylineDrilldown(s);
-    renderSymbolDrilldown(s);
-    renderBankruptcyAnalysis(s);
+    await _paintAnalysisFromSummary(s);
     await refreshInterpretation();
   }
   warnings.push(...collectSystemWarnings());
