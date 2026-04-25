@@ -4066,7 +4066,6 @@ def main() -> int:
     skip_sampling_loop = args.from_cache is not None
 
     if cache_read_dir is not None:
-        chunk_files = sorted(cache_read_dir.glob("chunk_*.json"))
         # Pre-load the per-mode chunk metadata sidecar once so the
         # replay loop can check md5 match WITHOUT opening any chunk
         # file. Auto-rebuilds on first use via 4KB peek per chunk —
@@ -4078,10 +4077,55 @@ def main() -> int:
             _sidecar_entries = _chunks_idx_payload.get("chunks") or {}
         except Exception:  # noqa: BLE001
             _sidecar_entries = {}
+
+        # 2026-04-26: when an md5 filter IS active and the sidecar IS
+        # populated, pre-filter chunk_files to ONLY the matching md5.
+        # The previous loop iterated every chunk on disk (e.g. 1429
+        # for M1sim mode 1 with three accumulated md5 versions) and
+        # quickly skipped mismatches via the sidecar fast-path — but
+        # "quickly" was still ~10ms/chunk for the dispatch + JSONL
+        # progress event amortisation, so iterating 1060 mismatched
+        # chunks burned ~15 seconds of "0 spins" wall time per
+        # generate-report. Pre-filtering drops that to a single dict
+        # walk + sort. The fall-back glob path is preserved for old
+        # cache that pre-dates the sidecar (no `_sidecar_entries`)
+        # and for the no-md5-filter case.
+        md5_filter_active_pre = bool(args.upstream_config_md5 or args.upstream_code_md5)
+        if md5_filter_active_pre and _sidecar_entries:
+            # Filter directly on the already-loaded sidecar dict —
+            # avoids the redundant scandir that
+            # iter_chunks_matching_md5() would do via its own
+            # get_chunks_index() call.
+            _matching = [
+                (fname, entry)
+                for fname, entry in _sidecar_entries.items()
+                if isinstance(entry, dict)
+                and entry.get("cfg_md5") == args.upstream_config_md5
+                and entry.get("code_md5") == args.upstream_code_md5
+            ]
+            _matching.sort(key=lambda t: int(t[1].get("idx", 0)))
+            chunk_files = [cache_read_dir / fname for fname, _ in _matching]
+            # max_existing_idx still needs to reflect the WHOLE on-disk
+            # set (so resume path picks an idx that doesn't collide
+            # with a historical-md5 chunk). Read it from the sidecar's
+            # full chunk list, not just the matching subset.
+            max_existing_idx = max(
+                (int(e.get("idx", 0) or 0)
+                 for e in _sidecar_entries.values()
+                 if isinstance(e, dict)),
+                default=0,
+            )
+        else:
+            chunk_files = sorted(cache_read_dir.glob("chunk_*.json"))
+            max_existing_idx = 0
+
         # Read-only mode demands a non-empty cache; resume mode is
         # happy to start fresh (cache dir just happens to be empty
-        # on the first resume call).
-        if not chunk_files and not resume_mode:
+        # on the first resume call). With md5 pre-filter active,
+        # "empty" can also mean "no chunks match the current md5",
+        # which is a legitimate fresh-pull state — fall through to
+        # the "no chunks" report-only path instead of crashing.
+        if not chunk_files and not resume_mode and not md5_filter_active_pre:
             raise SystemExit(f"--from-cache: no chunk_*.json files found in {cache_read_dir}")
         # Respect --max-chunks for --from-cache just like for online
         # sampling. Without this, a dev-time batch pass over cached
@@ -4095,7 +4139,6 @@ def main() -> int:
             chunk_files = chunk_files[: args.max_chunks]
         if not resume_mode:
             stop_reason = "from_cache_complete"
-        max_existing_idx = 0
         tag = "--resume-from-cache" if resume_mode else "--from-cache"
 
         # Heads-up: reading a large existing cache is synchronous and

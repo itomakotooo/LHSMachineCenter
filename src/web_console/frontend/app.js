@@ -1740,7 +1740,14 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
       cell.versions.push(v);
     }
 
-    // Route reports.
+    // Route reports. Each report lands in the cell whose (config_md5,
+    // code_md5) matches the report's stored rawdata md5. Untagged
+    // reports (legacy, pre-md5-stamping) go to a SEPARATE synthetic
+    // cell — NEVER commingled with the current cell, since we can't
+    // prove they belong to the current rawdata. Bug 2026-04-26:
+    // operator pulled fresh rawdata, but the "current" cell still
+    // showed 4-5 historical reports because untagged were defaulted
+    // into the current cell.
     const untaggedReports = [];
     for (const rep of allReports) {
       const info = reportMd5Map.get(rep.report_version);
@@ -1753,21 +1760,16 @@ function _renderRwtreeGrid(gridEl, machineName, modes, rawdataModes, reportsByMo
       );
       cell.reports.push(rep);
     }
-    // Untagged reports home: current-md5 cell first, else first cell,
-    // else a synthetic untagged-only cell.
     if (untaggedReports.length > 0) {
-      let home = null;
-      for (const c of cellsByKey.values()) {
-        if (c.is_current) { home = c; break; }
-      }
-      if (!home) {
-        const first = cellsByKey.values().next();
-        home = first.done ? null : first.value;
-      }
-      if (!home) {
-        home = getCell("", "", false, { untagged: true });
-      }
-      home.reports.push(...untaggedReports);
+      // Always materialise a dedicated untagged cell (sorts to the
+      // very end via the cells.sort() below). The cell's header
+      // label reads "Mode N · 未标记" so the operator immediately
+      // sees these reports aren't tied to any visible md5. Older
+      // reports without rawdata md5 stamping live here regardless
+      // of whether the current rawdata exists or not — this is the
+      // honest answer "we can't tell which rawdata generated these".
+      const untaggedCell = getCell("", "", false, { untagged: true });
+      untaggedCell.reports.push(...untaggedReports);
     }
 
     // Mode-hide rule: no rawdata + no reports → skip this mode.

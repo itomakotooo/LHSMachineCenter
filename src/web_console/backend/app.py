@@ -5033,6 +5033,16 @@ class RunManager:
             "achieved_halfwidth_pp": achieved_hw_pp,
             "total_spins": total_spins,
             "quality_label": quality_label,
+            # 2026-04-26: stamp rawdata md5 onto the index row so the
+            # /api/reports/{m}/{n} endpoint can filter by rawdata
+            # version WITHOUT re-opening every summary file. Reports
+            # generated before this commit have no md5 here; the
+            # endpoint treats "missing" as "untagged" so old reports
+            # neither leak into a current-md5 view nor disappear from
+            # an "include_historical=true" view.
+            "rawdata_config_md5": rawdata_config_md5 or "",
+            "rawdata_code_md5": rawdata_code_md5 or "",
+            "analyzer_version": analyzer_version or "",
         }
         index_payload.append(item)
         write_json(index_path, index_payload)
@@ -7468,7 +7478,30 @@ def create_app(
         }
 
     @app.get("/api/reports/{machine}/{mode}")
-    def report_versions(machine: str, mode: int) -> dict[str, Any]:
+    def report_versions(
+        machine: str,
+        mode: int,
+        config_md5: str = "",
+        code_md5: str = "",
+        include_historical: bool = False,
+    ) -> dict[str, Any]:
+        """List report versions for a (machine, mode).
+
+        Query params (added 2026-04-26):
+          - ``config_md5`` / ``code_md5``: when EITHER is non-empty, the
+            response includes only reports whose stored rawdata md5
+            matches AND reports tagged "untagged" (i.e. legacy reports
+            that pre-date md5 stamping). The rawdata-detail panel
+            passes the current rawdata md5 here so historical-md5
+            reports don't leak into a fresh-pull view.
+          - ``include_historical=true``: bypass md5 filtering and
+            return everything, regardless of md5. Used by run-history
+            views that need the full ledger.
+
+        Behavior when no md5 query is passed: return everything (back-
+        compat for callers that still expect the unfiltered list — UI
+        surfaces still reading the full version table without bucketing).
+        """
         mode_dir = rr / machine / f"mode_{mode}"
         index_path = mode_dir / "index.json"
         latest_path = mode_dir / "latest.json"
@@ -7484,19 +7517,36 @@ def create_app(
             for entry in index_payload:
                 if not isinstance(entry, dict):
                     continue
-                needs_fill = (
+                # Backfill md5 + analyzer fields the same way other
+                # achieved_* fields are backfilled — old index rows
+                # don't have them; one summary.json read fills it in
+                # so the filter below sees a stable shape for both
+                # pre- and post-2026-04-26 entries.
+                needs_md5_fill = (
+                    "rawdata_config_md5" not in entry
+                    or "rawdata_code_md5" not in entry
+                )
+                needs_perf_fill = (
                     entry.get("achieved_rtp_pct") is None
                     or entry.get("achieved_halfwidth_pp") is None
                     or entry.get("total_spins") is None
                 )
-                if not needs_fill:
+                if not needs_md5_fill and not needs_perf_fill:
                     continue
                 sf = entry.get("summary_file")
                 if not sf or not Path(sf).exists():
+                    # No summary on disk → keep entry as-is. Filtering
+                    # below treats missing md5 as "untagged".
+                    if needs_md5_fill:
+                        entry.setdefault("rawdata_config_md5", "")
+                        entry.setdefault("rawdata_code_md5", "")
                     continue
                 try:
                     s = read_json(Path(sf)) or {}
                 except Exception:  # noqa: BLE001
+                    if needs_md5_fill:
+                        entry.setdefault("rawdata_config_md5", "")
+                        entry.setdefault("rawdata_code_md5", "")
                     continue
                 samp = s.get("sampling") or {}
                 if entry.get("achieved_rtp_pct") is None:
@@ -7508,7 +7558,52 @@ def create_app(
                     entry["achieved_halfwidth_pp"] = samp.get("achieved_halfwidth_pp")
                 if entry.get("total_spins") is None:
                     entry["total_spins"] = samp.get("total_spins")
-        return {"machine": machine, "mode": mode, "versions": index_payload, "latest": latest_payload}
+                if needs_md5_fill:
+                    entry["rawdata_config_md5"] = str(s.get("config_md5") or "")
+                    entry["rawdata_code_md5"] = str(s.get("code_md5") or "")
+                    entry.setdefault("analyzer_version", str(s.get("analyzer_version") or ""))
+
+        # md5 filtering. When EITHER query md5 is set we treat it as
+        # "filter to this rawdata version". Reports with empty stored
+        # md5 ("untagged" = legacy) are kept by default — they
+        # logically belong to their generating rawdata even if we
+        # can't prove a match, and silently dropping them would hide
+        # data the operator may want to see. include_historical=true
+        # disables the filter entirely.
+        filtered = index_payload
+        md5_filter_active = bool(config_md5 or code_md5)
+        if md5_filter_active and not include_historical and isinstance(index_payload, list):
+            def _matches(entry: dict) -> bool:
+                cfg = str(entry.get("rawdata_config_md5") or "")
+                code = str(entry.get("rawdata_code_md5") or "")
+                if not cfg and not code:
+                    return True  # untagged — keep
+                # Both md5 dimensions must match when both are passed;
+                # when only one is passed (operator targeting either
+                # cfg drift or code drift in isolation), the other is
+                # treated as wildcard.
+                if config_md5 and cfg != config_md5:
+                    return False
+                if code_md5 and code != code_md5:
+                    return False
+                return True
+            filtered = [
+                e for e in index_payload
+                if isinstance(e, dict) and _matches(e)
+            ]
+        return {
+            "machine": machine,
+            "mode": mode,
+            "versions": filtered,
+            "latest": latest_payload,
+            "filter": {
+                "config_md5": config_md5,
+                "code_md5": code_md5,
+                "include_historical": include_historical,
+                "total_unfiltered": len(index_payload) if isinstance(index_payload, list) else 0,
+                "total_filtered": len(filtered) if isinstance(filtered, list) else 0,
+            },
+        }
 
     @app.get("/api/reports/{machine}/{mode}/{version}")
     def report_version_detail(machine: str, mode: int, version: str) -> dict[str, Any]:
