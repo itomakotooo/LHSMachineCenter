@@ -4050,7 +4050,20 @@ async function renderPayIdOverview(summary) {
   const machine = s.machine;
   const mode = Number(s.mode);
   const payoutRows = (s.player_impact || {}).payout_ids_top20 || [];
-  if (!machine || !mode || !Array.isArray(payoutRows) || !payoutRows.length) {
+
+  // Compare mode: pull B's payout rows so we can align by
+  // payout_id and emit per-cell A/B stacks. Compare mode also
+  // suppresses (a) declared-only paytable padding, (b) composition
+  // sub-rows, (c) the wild-evidence sub-section — those are A-side
+  // structural details that would clutter the diff. Single mode
+  // path is byte-identical when state.compareMode is null.
+  const cmpB = state.compareMode && state.compareMode.b ? state.compareMode.b : null;
+  const cmpBPayoutRows = cmpB
+    ? (cmpB.player_impact || {}).payout_ids_top20 || []
+    : [];
+
+  if ((!machine || !mode || !Array.isArray(payoutRows) || !payoutRows.length)
+      && (!cmpB || !Array.isArray(cmpBPayoutRows) || !cmpBPayoutRows.length)) {
     panel.classList.add("hidden");
     body.innerHTML = "";
     return;
@@ -4078,18 +4091,23 @@ async function renderPayIdOverview(summary) {
   // excluded grand jackpots at ~1e-6 frequency on small chunk
   // counts — user saw 12/13 pay_ids and flagged it as incomplete).
   // Real console: endpoint 404s → declaredPays stays [] → observed-
-  // only rendering (existing behavior unchanged). See
-  // slot_designer/backend/virtual_app._register_virtual_only_routes.
+  // only rendering (existing behavior unchanged). Compare mode
+  // skips the declared-paytable fetch — diffing observed-vs-observed
+  // is the focus there; injecting "未命中" placeholder rows would
+  // look like B-only data that's actually just paytable padding.
+  // See slot_designer/backend/virtual_app._register_virtual_only_routes.
   let declaredPays = [];
-  try {
-    const decl = await apiGet(
-      `/api/virtual/paytable/${encodeURIComponent(machine)}`,
-    );
-    if (decl && Array.isArray(decl.pays)) {
-      declaredPays = decl.pays;
+  if (!cmpB) {
+    try {
+      const decl = await apiGet(
+        `/api/virtual/paytable/${encodeURIComponent(machine)}`,
+      );
+      if (decl && Array.isArray(decl.pays)) {
+        declaredPays = decl.pays;
+      }
+    } catch (_err) {
+      declaredPays = [];
     }
-  } catch (_err) {
-    declaredPays = [];
   }
   const observedPayIds = new Set(payoutRows.map((r) => String(r.payout_id)));
   // Append synthetic zero-hit rows for declared pay_ids NOT in the
@@ -4117,6 +4135,29 @@ async function renderPayIdOverview(summary) {
       _declared_grand_jackpot: !!dp.grand_jackpot,
       _declared_rtp_excluded: !!dp.rtp_excluded,
     });
+  }
+  // In compare mode build B-side lookup + extend the row list with
+  // B-only payout_ids appended at the end.
+  const cmpBMap = new Map();
+  if (cmpB) {
+    for (const r of cmpBPayoutRows) cmpBMap.set(String(r.payout_id), r);
+    const aPidSet = new Set(payoutRows.map((r) => String(r.payout_id)));
+    for (const r of cmpBPayoutRows) {
+      if (!aPidSet.has(String(r.payout_id))) {
+        // Synthetic A-side placeholder so the row renders with "—"
+        // for A's metrics; carries _b_only so the renderer can tag.
+        payoutRows.push({
+          payout_id: r.payout_id,
+          hit_count: 0,
+          hit_rate: 0,
+          avg_win_when_hit: 0,
+          rtp_contribution_pp: 0,
+          spin_type_category: r.spin_type_category || "paid",
+          dominant_spin_type: r.dominant_spin_type || 1,
+          _b_only: true,
+        });
+      }
+    }
   }
   const wildReviewNeeded = Boolean(
     shapeData && shapeData.wild_inference && shapeData.wild_inference.review_needed,
@@ -4183,7 +4224,11 @@ async function renderPayIdOverview(summary) {
       </tr>`;
     })
     .join("");
-  const evidenceHtml = evRows
+  // Compare mode: hide wild-evidence sub-section. It's A-side
+  // structural (per-machine wild inference output) — diffing the
+  // evidence table across two reports doesn't tell the operator
+  // anything they can't get from the main row diff above.
+  const evidenceHtml = (!cmpB && evRows)
     ? `<details class="payid-wild-evidence"><summary>${_escHtml(fmt("payIdWildEvidenceLabel"))}</summary>
        <table class="drilldown-table">
          <thead><tr>
@@ -4196,8 +4241,11 @@ async function renderPayIdOverview(summary) {
   // Unified pay_id overview rows. Sort by RTP contribution (primary
   // 策划 sort — "what contributes most to the machine's RTP?"); pay_ids
   // present only in shape (zero hits in this sample) land at the bottom.
+  // Compare mode: bar scale uses union max across A and B so a row's
+  // bar reflects its rank against BOTH sides.
   const maxRtp = Math.max(
     ...payoutRows.map((r) => Number(r.rtp_contribution_pp || 0)),
+    ...(cmpB ? cmpBPayoutRows.map((r) => Number(r.rtp_contribution_pp || 0)) : []),
     0.001,
   );
   const categoryBadge = (cat) => {
@@ -4209,17 +4257,33 @@ async function renderPayIdOverview(summary) {
 
   // Bet denominator for multiplier column. Analyzer writes it under
   // summary.sampling.bet; fall back to 1000 (the default CLI bet) if
-  // the field is missing from older reports.
+  // the field is missing from older reports. Compare mode: A and B
+  // can have different bets (cross-machine compare) — fmtMult takes
+  // the row's own bet so the multiplier reads correctly for each.
   const bet = Number(((summary || {}).sampling || {}).bet) || 1000;
-  const fmtMult = (avgWin) => {
-    const m = Number(avgWin || 0) / bet;
+  const betB = cmpB ? Number((cmpB.sampling || {}).bet) || 1000 : bet;
+  const fmtMult = (avgWin, betDenom) => {
+    const m = Number(avgWin || 0) / (betDenom || bet);
     if (!Number.isFinite(m) || m === 0) return "—";
     // ≥10× → 1 decimal; smaller → 2 decimals for readability.
     return m >= 10 ? `${m.toFixed(1)}×` : `${m.toFixed(2)}×`;
   };
+  // Helper: stack A on top + B underneath in compare mode; plain in
+  // single mode. Used per metric cell.
+  const _stackPid = (aVal, bVal) => cmpB
+    ? `<div class="cmp-cell-a">A ${aVal}</div><div class="cmp-cell-b">B ${bVal}</div>`
+    : aVal;
+  // Hit-rate cell formatter shared between A and B sides.
+  const _fmtHitRate = (raw) => {
+    if (!Number.isFinite(raw)) return "—";
+    return raw < 0.001
+      ? `${(raw * 100).toFixed(4)}%`
+      : `${(raw * 100).toFixed(2)}%`;
+  };
 
   const rows = payoutRows.map((pr) => {
     const pid = String(pr.payout_id);
+    const prB = cmpB ? cmpBMap.get(pid) || null : null;
     const shape = shapeByPayId.get(pid) || null;
     const sh = shape && shape.shape ? shape.shape : {};
     const symSet = Array.isArray(sh.symbol_set) ? sh.symbol_set : [];
@@ -4235,22 +4299,30 @@ async function renderPayIdOverview(summary) {
       ? sh.notes.map(_escHtml).join("; ")
       : "";
     const rtpPp = Number(pr.rtp_contribution_pp || 0);
-    const bar = Math.min(100, (rtpPp / maxRtp) * 100);
+    const rtpPpB = prB ? Number(prB.rtp_contribution_pp || 0) : 0;
+    const aBar = Math.min(100, (rtpPp / maxRtp) * 100);
+    const bBar = cmpB ? Math.min(100, (rtpPpB / maxRtp) * 100) : 0;
     const cat = pr.spin_type_category;
     const firesRaw = shape ? Number(shape.fires || 0) : null;
     const firesAttr = firesRaw != null
       ? ` title="rawdata fires: ${firesRaw.toLocaleString()} (script scan; includes bonus-round appearances)"`
       : "";
-    const mainMult = fmtMult(pr.avg_win_when_hit);
+    const isBOnly = Boolean(pr._b_only);
+    const mainMultA = isBOnly ? "—" : fmtMult(pr.avg_win_when_hit, bet);
+    const mainMultB = prB ? fmtMult(prB.avg_win_when_hit, betB) : "—";
     // Composition sub-rows — every pay_id with ≥2 distinct symbol
     // tuples emits one sub-row per composition. For Bar/7 pays with
     // wild substitutions this shows each (base + wild) variant's
     // own multiplier; for all-wild pays it splits e.g. 3 DD vs
     // 2DD+1TD vs 1DD+2TD. Trailing "其他 N 种组合" row collapses the
     // long-tail (script caps display at 10 + 1 aggregate).
-    const breakdown = Array.isArray(sh.composition_breakdown)
+    //
+    // Compare mode: suppress sub-rows. They're A-side composition
+    // detail (per-tuple breakdown of one machine's pay_id); diffing
+    // those across two reports doesn't carry a useful signal.
+    const breakdown = !cmpB && Array.isArray(sh.composition_breakdown)
       ? sh.composition_breakdown
-      : (Array.isArray(sh.wild_composition_breakdown)
+      : (!cmpB && Array.isArray(sh.wild_composition_breakdown)
         ? sh.wild_composition_breakdown
         : null);
     const hasBreakdown = breakdown && breakdown.length >= 2;
@@ -4279,39 +4351,54 @@ async function renderPayIdOverview(summary) {
           ? "未命中 · grand jackpot"
           : (pr._declared_rtp_excluded ? "未命中 · rtp_excluded" : "未命中"))
       : "";
+    // Compare-mode notes column: presence tag for B-only / A-only
+    // rows, replacing the "未命中" declared note (which doesn't apply
+    // in compare mode since we skipped declared-paytable padding).
+    let cmpNote = "";
+    if (cmpB) {
+      if (isBOnly) cmpNote = `<span class="pid-presence-tag pid-presence-b">B only</span>`;
+      else if (!prB) cmpNote = `<span class="pid-presence-tag pid-presence-a">A only</span>`;
+    }
     const mainRowClassList = [
       hasBreakdown ? "payid-main payid-main-expandable" : "payid-main",
       isDeclaredOnly ? "payid-declared-only" : "",
+      isBOnly ? "payid-b-only" : "",
     ].filter(Boolean).join(" ");
-    // Hit rate: declared-only rows have no observed rate → em-dash.
-    // Otherwise render as percentage with 4 decimals when very small
-    // (< 0.1%), 2 decimals otherwise. Grand-jackpots at 1e-6 would
-    // render as "0.00%" with 2 decimals, which hides the order of
-    // magnitude — 4 decimals fixes that.
+    // Hit rate: declared-only and B-only A-side rows have no observed
+    // rate → em-dash. Otherwise render as percentage with 4 decimals
+    // when very small (< 0.1%), 2 decimals otherwise. Grand-jackpots
+    // at 1e-6 would render as "0.00%" with 2 decimals, which hides
+    // the order of magnitude — 4 decimals fixes that.
     const hitRateRaw = Number(pr.hit_rate);
-    const hitRateCell = isDeclaredOnly || !Number.isFinite(hitRateRaw)
+    const hitRateA = (isDeclaredOnly || isBOnly || !Number.isFinite(hitRateRaw))
       ? "—"
-      : hitRateRaw < 0.001
-        ? `${(hitRateRaw * 100).toFixed(4)}%`
-        : `${(hitRateRaw * 100).toFixed(2)}%`;
+      : _fmtHitRate(hitRateRaw);
+    const hitRateB = prB ? _fmtHitRate(Number(prB.hit_rate)) : "—";
+    const hitCountA = isBOnly ? "—" : fInt(pr.hit_count);
+    const hitCountB = prB ? fInt(prB.hit_count) : "—";
+    const rtpCellA = isBOnly ? "—" : `${rtpPp.toFixed(2)}pp`;
+    const rtpCellB = prB ? `${rtpPpB.toFixed(2)}pp` : "—";
+    const barCell = cmpB
+      ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%">${_stackPid(rtpCellA, rtpCellB)}</td>`
+      : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>`;
     const mainRow =
       `<tr class="${mainRowClassList}" data-pid="${_escHtml(pid)}">` +
       `<td>${toggleIcon}${_escHtml(pid)}</td>` +
       `<td>${categoryBadge(cat)}</td>` +
-      `<td${firesAttr}>${fInt(pr.hit_count)}</td>` +
-      `<td class="payid-hitrate">${hitRateCell}</td>` +
-      `<td class="payid-mult">${mainMult}</td>` +
+      `<td${firesAttr}>${_stackPid(hitCountA, hitCountB)}</td>` +
+      `<td class="payid-hitrate">${_stackPid(hitRateA, hitRateB)}</td>` +
+      `<td class="payid-mult">${_stackPid(mainMultA, mainMultB)}</td>` +
       `<td class="payid-winshare">—</td>` +
-      `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>` +
+      barCell +
       `<td>${symDisplay}</td>` +
       `<td>${_escHtml(colStr)}</td>` +
       `<td>${lineBadge}</td>` +
-      `<td class="shape-notes">${isDeclaredOnly ? _escHtml(declaredNote) : notes}</td>` +
+      `<td class="shape-notes">${cmpB ? cmpNote : (isDeclaredOnly ? _escHtml(declaredNote) : notes)}</td>` +
       `</tr>`;
     let subRows = "";
     if (hasBreakdown) {
       subRows = breakdown.map((b) => {
-        const subMult = fmtMult(b.avg_win);
+        const subMult = fmtMult(b.avg_win, bet);
         const isAggregate = Boolean(b.is_aggregate_tail);
         const clsExtra = isAggregate ? " payid-subrow-aggregate" : "";
         const subWin = Number(b.win_total || 0);
@@ -4462,28 +4549,73 @@ function _lineIdSignBadge(signOrId, numericId) {
 // The pp values slice the GLOBAL RTP denominator (see analyzer
 // note) so summing a feature's bucket pp = that feature's header
 // pp (e.g. LockSymbolFreespin buckets sum to its 41.18pp header).
-// Skips buckets with zero spins. Returns "" when nothing to show.
-function _renderFeatureBucketTable(buckets) {
-  if (!Array.isArray(buckets) || !buckets.length) return "";
-  const nonzero = buckets.filter((b) => Number(b.spin_count || 0) > 0);
-  if (!nonzero.length) return "";
+// Skips buckets with zero spins on BOTH sides. Returns "" when
+// nothing to show.
+//
+// Compare mode (``bucketsB`` non-null): align bucket rows by name,
+// canonical order from A first then B-only appended. Each metric
+// cell stacks A on top + B underneath; the bar cell uses
+// ``bar-cell-cmp`` with --bar (A) and --bar-b (B) custom props
+// scaled to the union max RTP across both sides.
+function _renderFeatureBucketTable(buckets, bucketsB) {
+  const aArr = Array.isArray(buckets) ? buckets : [];
+  const bArr = Array.isArray(bucketsB) ? bucketsB : [];
+  const compareMode = bucketsB != null;
+  if (!aArr.length && !bArr.length) return "";
+
+  // Map B by bucket name for alignment.
+  const bMap = new Map();
+  for (const r of bArr) bMap.set(String(r.bucket || ""), r);
+  const aSet = new Set(aArr.map((r) => String(r.bucket || "")));
+  // Filter zero rows: keep a row if EITHER side has non-zero spins.
+  const aRows = aArr.filter((b) => {
+    if (Number(b.spin_count || 0) > 0) return true;
+    if (compareMode) {
+      const bRow = bMap.get(String(b.bucket || ""));
+      if (bRow && Number(bRow.spin_count || 0) > 0) return true;
+    }
+    return false;
+  });
+  // B-only rows (not present in A).
+  const bOnlyRows = compareMode
+    ? bArr.filter((r) => !aSet.has(String(r.bucket || "")) && Number(r.spin_count || 0) > 0)
+    : [];
+  const merged = [...aRows, ...bOnlyRows];
+  if (!merged.length) return "";
+
   const maxRtp = Math.max(
-    ...nonzero.map((b) => Math.abs(Number(b.rtp_contribution_pp || 0))),
+    ...merged.map((b) => Math.abs(Number(b.rtp_contribution_pp || 0))),
+    ...(compareMode
+      ? merged.map((b) => Math.abs(Number((bMap.get(String(b.bucket || "")) || {}).rtp_contribution_pp || 0)))
+      : []),
     0.001,
   );
-  const body = nonzero.map((b) => {
+
+  const _stack = (aVal, bVal) => compareMode
+    ? `<div class="cmp-cell-a">A ${aVal}</div><div class="cmp-cell-b">B ${bVal}</div>`
+    : aVal;
+
+  const body = merged.map((b) => {
     const label = PURE.prettyBucketLabel(b.bucket);
-    const count = Number(b.spin_count || 0);
-    const rate = (Number(b.spin_rate || 0) * 100).toFixed(2);
-    const rtpPp = Number(b.rtp_contribution_pp || 0);
-    const bar = Math.min(100, (Math.abs(rtpPp) / maxRtp) * 100);
+    const aCount = Number(b.spin_count || 0);
+    const aRate = (Number(b.spin_rate || 0) * 100).toFixed(2);
+    const aRtpPp = Number(b.rtp_contribution_pp || 0);
+    const aBar = Math.min(100, (Math.abs(aRtpPp) / maxRtp) * 100);
+    const bRow = compareMode ? (bMap.get(String(b.bucket || "")) || {}) : null;
+    const bCount = bRow ? Number(bRow.spin_count || 0) : 0;
+    const bRate = bRow ? (Number(bRow.spin_rate || 0) * 100).toFixed(2) : "0.00";
+    const bRtpPp = bRow ? Number(bRow.rtp_contribution_pp || 0) : 0;
+    const bBar = compareMode ? Math.min(100, (Math.abs(bRtpPp) / maxRtp) * 100) : 0;
+    const barCell = compareMode
+      ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%"></td>`
+      : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%"></td>`;
     return (
       `<tr>` +
       `<td>${_escHtml(label)}</td>` +
-      `<td>${count.toLocaleString()}</td>` +
-      `<td>${rate}%</td>` +
-      `<td>${rtpPp.toFixed(2)}pp</td>` +
-      `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%"></td>` +
+      `<td>${_stack(aCount.toLocaleString(), bCount.toLocaleString())}</td>` +
+      `<td>${_stack(aRate + "%", bRate + "%")}</td>` +
+      `<td>${_stack(aRtpPp.toFixed(2) + "pp", bRtpPp.toFixed(2) + "pp")}</td>` +
+      barCell +
       `</tr>`
     );
   }).join("");
@@ -4534,53 +4666,98 @@ function renderFeatureBreakdownPanel(summary) {
   const body = byId("featureBreakdownInline");
   if (!body) return;
   const data = ((summary || {}).player_impact || {}).upstream_feature_breakdown;
-  if (!data || !data.applicable || !Array.isArray(data.features) || !data.features.length) {
+
+  // Compare mode: pull B's feature breakdown so each paying card can
+  // stack A/B headlines + dual-axis bucket histograms. The orphan
+  // trigger chip row uses A's orphans only — those are upstream-
+  // structural and shouldn't differ between mode 1/7 of the same
+  // machine; if they DO differ that's a schema drift signal we
+  // surface separately via the field-discovery panel.
+  const cmpB = state.compareMode && state.compareMode.b ? state.compareMode.b : null;
+  const dataB = cmpB ? (cmpB.player_impact || {}).upstream_feature_breakdown : null;
+
+  const aHasFeatures = data && data.applicable && Array.isArray(data.features) && data.features.length;
+  const bHasFeatures = dataB && dataB.applicable && Array.isArray(dataB.features) && dataB.features.length;
+  if (!aHasFeatures && !bHasFeatures) {
     body.innerHTML = "";
     return;
   }
-  const features = data.features;
-  const triggerOnly = features.filter((f) => Boolean(f.trigger_only));
-  const paying = features.filter((f) => !f.trigger_only);
 
-  // For each paying feature, collect EVERY inbound trigger chain.
-  // A paying feature may have multiple independent predecessors:
-  // M273 LockSymbolFreespin is fed by both the wheel-ceremony chain
-  // (ListRewardWheel → WheelSelector → PreWheel) AND the BCM cycle
-  // (BuffCollectionMap as cycle trigger from config pairing). Each
-  // inbound chain renders as its own breadcrumb line.
-  const absorbed = new Set();
-  function chainsInto(payingName) {
-    const chains = [];
-    // Walk each direct predecessor back to its terminus.
-    const directPreds = triggerOnly.filter(
-      (t) => t.chain_parent_feature === payingName && !absorbed.has(t.feature_name),
-    );
-    for (const pred of directPreds) {
-      const rev = [pred];
-      absorbed.add(pred.feature_name);
-      let target = pred.feature_name;
-      while (true) {
-        const upstream = triggerOnly.find(
-          (t) => t.chain_parent_feature === target && !absorbed.has(t.feature_name),
-        );
-        if (!upstream) break;
-        rev.push(upstream);
-        absorbed.add(upstream.feature_name);
-        target = upstream.feature_name;
+  // Helper: split a feature breakdown into paying + trigger-only and
+  // build the multi-chain breadcrumb resolver. Same logic as before
+  // but factored so we can call it independently for A and B and
+  // pair the resulting paying-feature lists by feature_name. The
+  // chain resolution is intentionally A-side only — chain structure
+  // is upstream config, not RTP-side luck, so showing A's chain on
+  // every paired card keeps the panel readable and avoids two-chain
+  // diff fatigue (mode 1 vs mode 7 of same machine should have the
+  // same upstream chain anyway).
+  function _splitAndChain(featuresList) {
+    const triggerOnly = featuresList.filter((f) => Boolean(f.trigger_only));
+    const paying = featuresList.filter((f) => !f.trigger_only);
+    const absorbed = new Set();
+    function chainsInto(payingName) {
+      const chains = [];
+      const directPreds = triggerOnly.filter(
+        (t) => t.chain_parent_feature === payingName && !absorbed.has(t.feature_name),
+      );
+      for (const pred of directPreds) {
+        const rev = [pred];
+        absorbed.add(pred.feature_name);
+        let target = pred.feature_name;
+        while (true) {
+          const upstream = triggerOnly.find(
+            (t) => t.chain_parent_feature === target && !absorbed.has(t.feature_name),
+          );
+          if (!upstream) break;
+          rev.push(upstream);
+          absorbed.add(upstream.feature_name);
+          target = upstream.feature_name;
+        }
+        chains.push(rev.reverse());
       }
-      // rev[0] = direct predecessor (closest), rev[last] = furthest.
-      // Reverse for display "earliest → latest → bonus".
-      chains.push(rev.reverse());
+      return chains;
     }
-    return chains;
+    return { paying, triggerOnly, chainsInto, absorbed };
   }
 
-  const payingCards = paying.map((feat) => {
-    const chains = chainsInto(feat.feature_name);
-    return _renderPayingFeatureCard(feat, chains);
+  const aSplit = aHasFeatures ? _splitAndChain(data.features) : { paying: [], triggerOnly: [], chainsInto: () => [], absorbed: new Set() };
+  const bSplit = bHasFeatures ? _splitAndChain(dataB.features) : { paying: [], triggerOnly: [], chainsInto: () => [], absorbed: new Set() };
+
+  // Pair paying features by name. Ordering: A's order first (so the
+  // single-mode visual rank is preserved), then B-only at the end.
+  const bPayingByName = new Map();
+  for (const f of bSplit.paying) bPayingByName.set(f.feature_name, f);
+  const aNames = new Set(aSplit.paying.map((f) => f.feature_name));
+  const merged = aSplit.paying.map((aFeat) => ({
+    name: aFeat.feature_name,
+    a: aFeat,
+    b: cmpB ? (bPayingByName.get(aFeat.feature_name) || null) : null,
+    chains: aSplit.chainsInto(aFeat.feature_name),
+  }));
+  if (cmpB) {
+    for (const bFeat of bSplit.paying) {
+      if (aNames.has(bFeat.feature_name)) continue;
+      merged.push({
+        name: bFeat.feature_name,
+        a: null,
+        b: bFeat,
+        // Use B's chain resolver since A doesn't even know about
+        // this feature. Avoids "—" chain on a B-only card.
+        chains: bSplit.chainsInto(bFeat.feature_name),
+      });
+    }
+  }
+
+  const payingCards = merged.map((row) => {
+    return _renderPayingFeatureCard(row.a, row.chains, row.b);
   }).join("");
 
-  const orphans = triggerOnly.filter((t) => !absorbed.has(t.feature_name));
+  // Orphan trigger row: keep A's view (chain structure is upstream
+  // config, doesn't drift). In B-only mode (no A breakdown at all)
+  // fall through to B's orphans.
+  const orphanSrc = aHasFeatures ? aSplit : bSplit;
+  const orphans = orphanSrc.triggerOnly.filter((t) => !orphanSrc.absorbed.has(t.feature_name));
   const orphansRow = orphans.length
     ? `<div class="feature-orphans">` +
       `<span class="feature-orphans-label">其他（未归属链条）:</span> ` +
@@ -4606,15 +4783,62 @@ function renderFeatureBreakdownPanel(summary) {
 // histogram. Same teal aesthetic as the global 倍率分布 table.
 // ``chains`` is a list-of-lists — each inner list is a single
 // linear trigger chain feeding into this paying feature.
-function _renderPayingFeatureCard(feat, chains) {
-  const rtpPp = Number(feat.rtp_contribution_pp || 0).toFixed(2);
-  const sharePct = (Number(feat.share_of_total_win || 0) * 100).toFixed(1);
-  const firesSpins = Number(feat.fires_spins || feat.total_times || 0);
-  const fireRatePct = (Number(feat.fire_rate || 0) * 100).toFixed(2);
-  const buckets = Array.isArray(feat.bucket_distribution) ? feat.bucket_distribution : [];
-  const bucketTableHtml = _renderFeatureBucketTable(buckets);
-  const subStreams = Array.isArray(feat.sub_streams) ? feat.sub_streams : [];
-  const subStreamsHtml = _renderFeatureSubStreams(subStreams);
+//
+// Compare mode (``bFeat`` non-null): the rtp/share metric in the
+// header + fires/rate in the meta line stack A on top + B
+// underneath. The bucket histogram becomes A/B-aware via
+// _renderFeatureBucketTable. Sub-streams render only A's path —
+// in compare we hide them since per-stream A/B at the trigger-
+// path level is too noisy to read inside a card.
+//
+// When A is missing (B-only feature), feat is null — pull header
+// + meta from bFeat and tag the card "[B only]".
+function _renderPayingFeatureCard(feat, chains, bFeat) {
+  const haveA = feat != null;
+  const haveB = bFeat != null;
+  // compareMode is keyed off state.compareMode so A-only cards (where
+  // haveB === false but the panel itself is in compare mode) still
+  // emit the "A only" presence tag and stacked-cell layout. Earlier
+  // version inferred compareMode from haveB which silently dropped
+  // the tag on A-only cards.
+  const compareMode = !!(state && state.compareMode);
+  // Resolve a "primary" record we read non-metric fields (name,
+  // chain) from. When A is missing fall back to B so we still have
+  // a name + chain to display.
+  const primary = haveA ? feat : bFeat;
+
+  const _toFixed = (rec, key, digits, suffix) => {
+    if (!rec) return "—";
+    const n = Number(rec[key] || 0);
+    return n.toFixed(digits) + (suffix || "");
+  };
+  const _pctOf = (rec, key, digits) => {
+    if (!rec) return "—";
+    const n = Number(rec[key] || 0) * 100;
+    return n.toFixed(digits) + "%";
+  };
+  const _intLocale = (rec, fallbackKey) => {
+    if (!rec) return "—";
+    const n = Number(rec.fires_spins || rec[fallbackKey] || 0);
+    return n.toLocaleString();
+  };
+
+  const rtpA = _toFixed(feat, "rtp_contribution_pp", 2, "pp");
+  const rtpB = _toFixed(bFeat, "rtp_contribution_pp", 2, "pp");
+  const shareA = _pctOf(feat, "share_of_total_win", 1);
+  const shareB = _pctOf(bFeat, "share_of_total_win", 1);
+  const firesA = _intLocale(feat, "total_times");
+  const firesB = _intLocale(bFeat, "total_times");
+  const rateA = _pctOf(feat, "fire_rate", 2);
+  const rateB = _pctOf(bFeat, "fire_rate", 2);
+
+  const bucketsA = haveA && Array.isArray(feat.bucket_distribution) ? feat.bucket_distribution : [];
+  const bucketsB = haveB && Array.isArray(bFeat.bucket_distribution) ? bFeat.bucket_distribution : [];
+  const bucketTableHtml = _renderFeatureBucketTable(bucketsA, compareMode ? bucketsB : null);
+  const subStreams = haveA && Array.isArray(feat.sub_streams) ? feat.sub_streams : [];
+  // In compare mode, hide sub-streams (per-trigger-path A/B becomes
+  // unreadable inside an already-dense card). Single mode unchanged.
+  const subStreamsHtml = compareMode ? "" : _renderFeatureSubStreams(subStreams);
 
   // Multi-chain breadcrumb: one line per inbound chain. Cycle-type
   // triggers (resolved_spin_type == null — e.g. BuffCollectionMap)
@@ -4646,10 +4870,29 @@ function _renderPayingFeatureCard(feat, chains) {
     })
     .join("");
 
+  // Presence tag: only meaningful in compare mode. "Both sides
+  // present" = no tag; "A only" = card came from A and B has no
+  // matching feature; "B only" = card synthesized from B-only.
+  let presenceTag = "";
+  if (compareMode) {
+    if (haveA && !haveB) presenceTag = ` <span class="feature-presence-tag feature-presence-a">A only</span>`;
+    else if (!haveA && haveB) presenceTag = ` <span class="feature-presence-tag feature-presence-b">B only</span>`;
+  }
+
+  // Header + meta: A/B stacked in compare mode, plain in single mode.
+  const headerMetric = compareMode
+    ? `<div class="cmp-cell-a">A ${rtpA} · ${shareA}</div>`
+      + `<div class="cmp-cell-b">B ${rtpB} · ${shareB}</div>`
+    : `${rtpA} · ${shareA}`;
+  const metaLine = compareMode
+    ? `<div class="cmp-cell-a">A fires ${firesA}× · ${rateA} of spins</div>`
+      + `<div class="cmp-cell-b">B fires ${firesB}× · ${rateB} of spins</div>`
+    : `fires ${firesA}× · ${rateA} of spins`;
+
   return (
     `<div class="feature-block">` +
-    `<h3>${_escHtml(String(feat.feature_name))} <span class="feature-metric">${rtpPp}pp · ${sharePct}%</span></h3>` +
-    `<div class="feature-meta">fires ${firesSpins.toLocaleString()}× · ${fireRatePct}% of spins</div>` +
+    `<h3>${_escHtml(String(primary.feature_name))}${presenceTag} <span class="feature-metric">${headerMetric}</span></h3>` +
+    `<div class="feature-meta">${metaLine}</div>` +
     chainLines +
     (bucketTableHtml
       ? bucketTableHtml
@@ -4908,9 +5151,29 @@ function renderBankruptcyAnalysis(summary) {
   const body = byId("bankruptcyBody");
   const sim = ((summary || {}).player_impact || {}).bankruptcy_simulation;
   const tiers = sim && Array.isArray(sim.tiers) ? sim.tiers : [];
-  const anyData = tiers.some(
+  // Compare-aware: if a B summary is available, pull its tiers + sim
+  // metadata so each tier card can stack A/B headlines + histogram
+  // rows. When compareMode is null all the cmpB* values stay null and
+  // every render branch falls through to the original single-render
+  // path — the panel is byte-identical in single mode.
+  const cmpB = state.compareMode && state.compareMode.b ? state.compareMode.b : null;
+  const cmpBSim = cmpB ? (cmpB.player_impact || {}).bankruptcy_simulation : null;
+  const cmpBTiers = cmpBSim && Array.isArray(cmpBSim.tiers) ? cmpBSim.tiers : [];
+  const cmpBMap = new Map();
+  for (const t of cmpBTiers) cmpBMap.set(Number(t.bankroll_multiplier), t);
+  // Union of tiers: A's order first, then B-only (different bankroll
+  // tiers configured between the two reports — shouldn't happen for
+  // same-machine same-mode but we tolerate it for cross-mode compare).
+  const aMults = new Set(tiers.map((t) => Number(t.bankroll_multiplier)));
+  const mergedTiers = [...tiers];
+  if (cmpB) {
+    for (const t of cmpBTiers) {
+      if (!aMults.has(Number(t.bankroll_multiplier))) mergedTiers.push(t);
+    }
+  }
+  const anyData = mergedTiers.some(
     (t) => Number(t?.robots || 0) > 0,
-  );
+  ) || (cmpBTiers.some((t) => Number(t?.robots || 0) > 0));
   if (!anyData) {
     panel.classList.add("hidden");
     body.innerHTML = "";
@@ -4918,49 +5181,78 @@ function renderBankruptcyAnalysis(summary) {
   }
   panel.classList.remove("hidden");
 
-  const sessionSpins = Number(sim.session_spins || 10000);
+  const sessionSpins = Number((sim && sim.session_spins) || (cmpBSim && cmpBSim.session_spins) || 10000);
   // Decile percentiles (P10, P20, ..., P90) come pre-computed from the
   // analyzer with denominator = ALL simulated sessions in the tier.
-  const percentileKeys = Array.isArray(sim.percentile_keys) && sim.percentile_keys.length
+  const percentileKeys = Array.isArray(sim && sim.percentile_keys) && sim.percentile_keys.length
     ? sim.percentile_keys.map((v) => Number(v))
-    : [10, 20, 30, 40, 50, 60, 70, 80, 90];
+    : (Array.isArray(cmpBSim && cmpBSim.percentile_keys) && cmpBSim.percentile_keys.length
+      ? cmpBSim.percentile_keys.map((v) => Number(v))
+      : [10, 20, 30, 40, 50, 60, 70, 80, 90]);
 
   const intro = `<p class="bankruptcy-intro">${_escHtml(
     fmt("bankruptcyIntro", { session: sessionSpins })
   )}</p>`;
 
-  const cards = tiers.map((t) => {
-    const mult = Number(t.bankroll_multiplier || 0);
-    const sessions = Number(t.robots || 0);
-    const survived = Number(t.completed_robots || 0);
-    const rate = Number(t.bankruptcy_rate || 0);
-    const medianSpins = Number(t.median_spins_completed || 0);
-    const fastestRaw = t.fastest_bankruptcy_spins;
-    const fastest = fastestRaw == null ? null : Number(fastestRaw);
-    const pctMap = (t.percentiles && typeof t.percentiles === "object")
-      ? t.percentiles
-      : {};
+  // Helper: stack A on top + B underneath in compare mode; plain text
+  // in single mode. Used for every metric cell on the tier card.
+  const _stack = (aVal, bVal) => cmpB
+    ? `<div class="cmp-cell-a">A ${aVal}</div><div class="cmp-cell-b">B ${bVal}</div>`
+    : aVal;
 
-    // Bar scale: use the tier's own max percentile value so the
-    // in-tier progression reads clearly (x500 stretches to 10k; x100
-    // tops out a few hundred). Including `fastest` in the max is safe
-    // since fastest ≤ P10 always.
-    const pctValues = percentileKeys.map((k) =>
-      Number(pctMap[String(k)] != null ? pctMap[String(k)] : pctMap[k] || 0),
+  const cards = mergedTiers.map((t) => {
+    const mult = Number(t.bankroll_multiplier || 0);
+    // Map A's tier to its B counterpart by bankroll multiplier. If
+    // either side is missing for this tier, fall back to an empty
+    // record so .robots / .bankruptcy_rate read 0 and the cell
+    // renders "—".
+    const tA = aMults.has(mult) ? t : null;
+    const tB = cmpB ? cmpBMap.get(mult) || null : null;
+
+    const _v = (rec, k) => rec ? Number(rec[k] || 0) : 0;
+    const _has = (rec) => rec && Number(rec.robots || 0) > 0;
+
+    const sessionsA = _v(tA, "robots");
+    const sessionsB = _v(tB, "robots");
+    const survivedA = _v(tA, "completed_robots");
+    const survivedB = _v(tB, "completed_robots");
+    const rateA = _v(tA, "bankruptcy_rate");
+    const rateB = _v(tB, "bankruptcy_rate");
+    const medianA = _v(tA, "median_spins_completed");
+    const medianB = _v(tB, "median_spins_completed");
+    const fastestA = tA && tA.fastest_bankruptcy_spins != null ? Number(tA.fastest_bankruptcy_spins) : null;
+    const fastestB = tB && tB.fastest_bankruptcy_spins != null ? Number(tB.fastest_bankruptcy_spins) : null;
+    const pctMapA = (tA && tA.percentiles && typeof tA.percentiles === "object") ? tA.percentiles : {};
+    const pctMapB = (tB && tB.percentiles && typeof tB.percentiles === "object") ? tB.percentiles : {};
+
+    // Bar scale: take the max across both sides + sessionSpins so A
+    // and B bars share a common scale within the tier. Single mode:
+    // same as before since pctValuesB === [].
+    const pctValuesA = percentileKeys.map((k) =>
+      Number(pctMapA[String(k)] != null ? pctMapA[String(k)] : pctMapA[k] || 0),
     );
-    const maxSpin = Math.max(sessionSpins, ...pctValues, 0.001);
+    const pctValuesB = cmpB
+      ? percentileKeys.map((k) =>
+          Number(pctMapB[String(k)] != null ? pctMapB[String(k)] : pctMapB[k] || 0))
+      : [];
+    const maxSpin = Math.max(sessionSpins, ...pctValuesA, ...pctValuesB, 0.001);
 
     // Fastest row: highlighted separately at the top. Rendered even
     // when null (shows "—") so the row layout stays aligned across
     // tiers.
     const fastestRow = (() => {
-      const bar = fastest == null ? 0 : Math.min(100, (fastest / maxSpin) * 100);
-      const spinText = fastest == null ? "—" : Math.round(fastest).toLocaleString();
+      const barA = fastestA == null ? 0 : Math.min(100, (fastestA / maxSpin) * 100);
+      const barB = fastestB == null ? 0 : Math.min(100, (fastestB / maxSpin) * 100);
+      const spinTextA = fastestA == null ? "—" : Math.round(fastestA).toLocaleString();
+      const spinTextB = fastestB == null ? "—" : Math.round(fastestB).toLocaleString();
+      const barCell = cmpB
+        ? `<td class="bar-cell bar-cell-cmp" style="--bar:${barA.toFixed(1)}%;--bar-b:${barB.toFixed(1)}%"></td>`
+        : `<td class="bar-cell" style="--bar:${barA.toFixed(1)}%"></td>`;
       return (
         `<tr class="bk-row-fastest">` +
         `<td>${_escHtml(fmt("bankruptcyFastestLabel"))}</td>` +
-        `<td>${spinText}</td>` +
-        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%"></td>` +
+        `<td>${_stack(spinTextA, spinTextB)}</td>` +
+        barCell +
         `</tr>`
       );
     })();
@@ -4970,28 +5262,57 @@ function renderBankruptcyAnalysis(summary) {
     // share, percentile pins to session_spins — the transition row
     // visually coincides with the survival rate.
     const pctRows = percentileKeys.map((p) => {
-      const spin = Number(pctMap[String(p)] != null ? pctMap[String(p)] : pctMap[p] || 0);
-      const bar = Math.min(100, (spin / maxSpin) * 100);
-      const isSurvived = spin >= sessionSpins;
+      const spinA = Number(pctMapA[String(p)] != null ? pctMapA[String(p)] : pctMapA[p] || 0);
+      const spinB = cmpB
+        ? Number(pctMapB[String(p)] != null ? pctMapB[String(p)] : pctMapB[p] || 0)
+        : 0;
+      const barA = Math.min(100, (spinA / maxSpin) * 100);
+      const barB = cmpB ? Math.min(100, (spinB / maxSpin) * 100) : 0;
+      // Row tone: in single mode use A's survival; in compare mode
+      // class survives if EITHER side reached sessionSpins (the row
+      // is "above the bankruptcy mass" for that side at least).
+      const isSurvived = cmpB
+        ? (spinA >= sessionSpins && spinB >= sessionSpins)
+        : (spinA >= sessionSpins);
       const cls = isSurvived ? "bk-row-survived" : "bk-row-bankrupt";
+      const barCell = cmpB
+        ? `<td class="bar-cell bar-cell-cmp" style="--bar:${barA.toFixed(1)}%;--bar-b:${barB.toFixed(1)}%"></td>`
+        : `<td class="bar-cell" style="--bar:${barA.toFixed(1)}%"></td>`;
       return (
         `<tr class="${cls}">` +
         `<td>P${p}</td>` +
-        `<td>${spin.toLocaleString()}</td>` +
-        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%"></td>` +
+        `<td>${_stack(spinA.toLocaleString(), spinB.toLocaleString())}</td>` +
+        barCell +
         `</tr>`
       );
     }).join("");
+
+    // Headline KPIs: A on top + B underneath when comparing.
+    const rateAStr = (rateA * 100).toFixed(1) + "%";
+    const rateBStr = (rateB * 100).toFixed(1) + "%";
+    const medianAStr = medianA.toLocaleString();
+    const medianBStr = medianB.toLocaleString();
+    const survAStr = sessionsA > 0 ? ((survivedA / sessionsA) * 100).toFixed(1) + "%" : "0.0%";
+    const survBStr = sessionsB > 0 ? ((survivedB / sessionsB) * 100).toFixed(1) + "%" : "0.0%";
+
+    // Tier header: in compare mode, mark "[A only]" / "[B only]" if
+    // one side has no sessions at this multiplier — the histogram
+    // and KPIs will show "—" but the operator immediately sees why.
+    let presenceTag = "";
+    if (cmpB) {
+      if (_has(tA) && !_has(tB)) presenceTag = ` <span class="bk-presence-tag bk-presence-a">A only</span>`;
+      else if (!_has(tA) && _has(tB)) presenceTag = ` <span class="bk-presence-tag bk-presence-b">B only</span>`;
+    }
 
     return (
       `<div class="bankruptcy-tier">` +
       `<h3 class="bankruptcy-tier-head">${_escHtml(
         fmt("bankruptcyTierLabel", { mult })
-      )}</h3>` +
+      )}${presenceTag}</h3>` +
       `<div class="bankruptcy-tier-stats">` +
-      `<span class="bk-stat bk-stat-rate"><em>${_escHtml(fmt("bankruptcyRateLabel"))}</em><b>${(rate * 100).toFixed(1)}%</b></span>` +
-      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcyMedianLabel"))}</em><b>${medianSpins.toLocaleString()}</b></span>` +
-      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcySurvivedLabel"))}</em><b>${sessions > 0 ? ((survived / sessions) * 100).toFixed(1) : "0.0"}%</b></span>` +
+      `<span class="bk-stat bk-stat-rate"><em>${_escHtml(fmt("bankruptcyRateLabel"))}</em><b>${_stack(rateAStr, rateBStr)}</b></span>` +
+      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcyMedianLabel"))}</em><b>${_stack(medianAStr, medianBStr)}</b></span>` +
+      `<span class="bk-stat"><em>${_escHtml(fmt("bankruptcySurvivedLabel"))}</em><b>${_stack(survAStr, survBStr)}</b></span>` +
       `</div>` +
       `<table class="drilldown-table bankruptcy-histogram">` +
       `<thead><tr>` +

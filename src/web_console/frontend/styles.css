@@ -3640,3 +3640,51 @@ body.cmp-active .tail-cell b {
   font-weight: normal;
   display: block;
 }
+
+/* Same fix for bankruptcy tier KPI <b> wrappers and feature card
+   headline metric / meta. They become A/B stacks in compare mode;
+   resetting weight stops the whole stack from going bold. */
+body.cmp-active .bk-stat b,
+body.cmp-active .feature-block .feature-metric,
+body.cmp-active .feature-block .feature-meta {
+  font-weight: normal;
+}
+
+/* Presence tags: shared across bankruptcy tiers, feature cards,
+   and Pay ID rows. Marks rows present on only A or only B side
+   so the operator can see at a glance "this tier / feature /
+   pay_id was added or removed between the two reports". */
+.bk-presence-tag,
+.feature-presence-tag,
+.pid-presence-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 9px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.bk-presence-a,
+.feature-presence-a,
+.pid-presence-a {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+.bk-presence-b,
+.feature-presence-b,
+.pid-presence-b {
+  background: #e0e7ff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+}
+
+/* Pay ID row that's only in B (synthetic A-side placeholder).
+   Mute the row slightly so observers see "this row's A-side data
+   is filler" — same affordance as .payid-declared-only but with
+   a different visual hue (compare-mode indigo, not gray). */
+body.cmp-active tr.payid-b-only td {
+  background: rgba(238, 242, 255, 0.35);
+}
