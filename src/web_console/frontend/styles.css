@@ -3469,3 +3469,246 @@ select:focus-visible,
 .dash-sidebar .panel h2 {
   margin-bottom: 8px;
 }
+
+/* ── Report compare mode ─────────────────────────────────────────
+   Mounted at #cmpMount inside #tab-debug. Header shows "对比 A vs B"
+   + view-mode toggle + exit button. Rest of the body is per-section
+   diff blocks (headline tiles, KPI table, bucket overlay, aligned
+   tables for paylines / symbols / features / bonus chains /
+   bankruptcy). See frontend/compare.js for the render contract. */
+
+.cmp-mount {
+  display: block;
+  margin: 0 0 16px 0;
+}
+.cmp-mount.hidden { display: none; }
+
+.cmp-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #d97706;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cmp-header-tag {
+  display: inline-block;
+  background: #d97706;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-right: 8px;
+}
+.cmp-header-title {
+  font-size: 14px;
+}
+.cmp-header-title strong { color: #78350f; }
+.cmp-vs {
+  margin: 0 8px;
+  color: #92400e;
+  font-weight: 600;
+}
+.cmp-header-controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.cmp-mode-btn {
+  padding: 4px 10px;
+  border: 1px solid #92400e;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.cmp-mode-btn-active {
+  background: #92400e;
+  color: #fff;
+}
+.cmp-exit-btn {
+  padding: 4px 10px;
+  border: 1px solid #b91c1c;
+  background: #fef2f2;
+  color: #b91c1c;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 700;
+  margin-left: 8px;
+}
+.cmp-exit-btn:hover { background: #fee2e2; }
+
+.cmp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Compatibility banner */
+.cmp-compat-banner {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cmp-compat { font-size: 13px; }
+.cmp-compat-ok { color: #059669; }
+.cmp-compat-warn { color: #d97706; }
+.cmp-compat-info { color: #475569; }
+
+/* Headline tiles (5 across) */
+.cmp-headline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.cmp-tile {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.cmp-tile-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.cmp-tile-row {
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.cmp-tile-tag {
+  display: inline-block;
+  background: #e0e7ff;
+  color: #3730a3;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-right: 4px;
+  min-width: 14px;
+  text-align: center;
+}
+.cmp-tile-row:nth-child(3) .cmp-tile-tag {
+  background: #fce7f3;
+  color: #9d174d;
+}
+.cmp-tile-delta {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Significance badges */
+.cmp-sig {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  margin-left: 4px;
+  font-weight: 600;
+}
+.cmp-sig-strong { background: #dbeafe; color: #1e3a8a; }
+.cmp-sig-noise  { background: #f3f4f6; color: #6b7280; }
+.cmp-sig-unknown { background: #fef3c7; color: #92400e; }
+
+/* Delta colors */
+.cmp-delta { font-variant-numeric: tabular-nums; }
+.cmp-delta-strong { color: #1e40af; font-weight: 700; }
+.cmp-delta-noise  { color: #94a3b8; }
+
+/* Sections */
+.cmp-section {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.cmp-section-title {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* Bucket overlay */
+.cmp-bucket-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cmp-bucket-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 80px;
+  gap: 8px;
+  align-items: center;
+}
+.cmp-bucket-label {
+  font-size: 12px;
+  color: #475569;
+  font-family: ui-monospace, monospace;
+}
+.cmp-bucket-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cmp-bar {
+  height: 14px;
+  padding: 0 4px;
+  font-size: 10px;
+  color: #fff;
+  white-space: nowrap;
+  border-radius: 2px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.cmp-bar-a { background: #94a3b8; }
+.cmp-bar-b { background: #2563eb; }
+.cmp-bucket-delta {
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #475569;
+}
+
+/* Aligned table layout */
+.cmp-aligned-table th { background: #f1f5f9; }
+.cmp-aligned-table td, .cmp-aligned-table th {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.cmp-only-a {
+  background: #dbeafe;
+  color: #1e3a8a;
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.cmp-only-b {
+  background: #fce7f3;
+  color: #9d174d;
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Mode-specific tweaks */
+.cmp-mode-delta .cmp-headline { display: none; }  /* Δ-only mode hides headline tiles */
+.cmp-mode-overlay .cmp-aligned-table { display: none; }  /* Overlay mode hides text tables */

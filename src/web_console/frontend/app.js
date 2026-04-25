@@ -117,6 +117,9 @@ const state = {
   // Pre-2026-04-19 this was a plain Set<version> driven by the
   // per-mode versionHistoryPanel (which always knew its own mode).
   compareSelected: new Map(),
+  // null when not in compare mode; { a, b, vA, vB } when active.
+  // Set by _enterCompareMode, cleared by _onCompareExit.
+  compareMode: null,
   // True for a short window right after a batch completes: blocks
   // renderSamplingProgress so the final error log stays readable.
   // Cleared when the user clicks 开始采样 for a fresh batch.
@@ -2169,8 +2172,16 @@ function _wireRwtreeGridActions(gridEl, machineName) {
   gridEl.querySelectorAll(".rwtree-compare-check").forEach((cb) => {
     cb.addEventListener("change", () => {
       const rv = cb.dataset.rv;
-      if (cb.checked) state.compareSelected.set(rv, { mode: Number(cb.dataset.mode) });
-      else state.compareSelected.delete(rv);
+      if (cb.checked) {
+        // Stash the focused machine alongside mode so cross-machine
+        // compare works when the operator pivots focus between picks.
+        state.compareSelected.set(rv, {
+          mode: Number(cb.dataset.mode),
+          machine: state.focusedMachine || null,
+        });
+      } else {
+        state.compareSelected.delete(rv);
+      }
       _updateRwtreeCompareBar();
     });
   });
@@ -3346,74 +3357,110 @@ async function addServer() {
 // old versionHistoryPanel DOM is dropped from the HTML in step 8.
 
 async function compareReports() {
-  // state.compareSelected is Map<version, {mode}> — each entry knows
-  // its own mode (can span different modes or md5 versions).
+  // state.compareSelected is Map<version, {mode, machine?}>. Each
+  // entry can carry its own machine + mode (cross-machine /
+  // cross-mode compare allowed per user direction 2026-04-25).
   const entries = [...(state.compareSelected || new Map()).entries()];
   if (entries.length !== 2) return;
-  const machine = state.versionHistoryMachine || state.focusedMachine;
-  if (!machine) return;
-  const panel = byId("reportComparisonPanel");
-  const body = byId("comparisonBody");
-  panel.classList.remove("hidden");
-  body.innerHTML = `<div class="muted">Loading...</div>`;
+  const focusedMachine = state.versionHistoryMachine || state.focusedMachine;
 
   try {
     const [[vA, metaA], [vB, metaB]] = entries;
+    const machineA = metaA?.machine || focusedMachine;
+    const machineB = metaB?.machine || focusedMachine;
+    if (!machineA || !machineB) return;
     const [a, b] = await Promise.all([
-      apiGet(`/api/reports/${machine}/${metaA.mode}/${vA}`),
-      apiGet(`/api/reports/${machine}/${metaB.mode}/${vB}`),
+      apiGet(`/api/reports/${encodeURIComponent(machineA)}/${metaA.mode}/${vA}`),
+      apiGet(`/api/reports/${encodeURIComponent(machineB)}/${metaB.mode}/${vB}`),
     ]);
-    renderComparison(a, b, vA, vB);
+    _enterCompareMode(a, b, vA, vB);
   } catch (e) {
-    body.innerHTML = `<div class="muted">${e.message || e}</div>`;
+    alert("加载对比 report 失败: " + (e.message || e));
   }
 }
 
-function renderComparison(a, b, vA, vB) {
-  const body = byId("comparisonBody");
-  const sa = a.sampling || {};
-  const sb = b.sampling || {};
-  const ra = a.rtp || {};
-  const rb = b.rtp || {};
-  const pia = a.player_impact || {};
-  const pib = b.player_impact || {};
-  const hapa = pia.hit_and_payout || {};
-  const hapb = pib.hit_and_payout || {};
-  const ga_a = (a.guideline_assessment || {}).classification || {};
-  const ga_b = (b.guideline_assessment || {}).classification || {};
-
-  const rows = [
-    ["RTP %", fmtNum(ra.point_pct, 4), fmtNum(rb.point_pct, 4), diffPp(ra.point_pct, rb.point_pct)],
-    ["CI \u00b1pp", fmtNum(sa.achieved_halfwidth_pp, 2), fmtNum(sb.achieved_halfwidth_pp, 2), ""],
-    ["Total Spins", fmtInt(sa.total_spins), fmtInt(sb.total_spins), ""],
-    ["Paid / Bonus", `${fmtInt(sa.paid_spins)} / ${fmtInt(sa.bonus_spins)}`, `${fmtInt(sb.paid_spins)} / ${fmtInt(sb.bonus_spins)}`, ""],
-    ["Hit Rate", fmtPct(hapa.hit_rate), fmtPct(hapb.hit_rate), ""],
-    ["Zero Win Rate", fmtPct(hapa.zero_win_rate), fmtPct(hapb.zero_win_rate), ""],
-    ["Big Win x10 Rate", fmtPct(hapa.big_win_x10_rate), fmtPct(hapb.big_win_x10_rate), ""],
-    ["Volatility", ga_a.volatility_class || "—", ga_b.volatility_class || "—", ""],
-    ["Archetype", ga_a.experience_archetype || "—", ga_b.experience_archetype || "—", ""],
-  ];
-
-  body.innerHTML = `
-    <table class="drilldown-table comparison-table">
-      <thead><tr><th>${fmt("thMetric")}</th><th>${vA.slice(3, 18)}</th><th>${vB.slice(3, 18)}</th><th>\u0394</th></tr></thead>
-      <tbody>${rows.map((r) => {
-        const delta = r[3];
-        const cls = delta && delta.startsWith("+") ? "delta-pos" : delta && delta.startsWith("-") ? "delta-neg" : "";
-        return `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="${cls}">${delta}</td></tr>`;
-      }).join("")}</tbody>
-    </table>`;
+/** Switch to debug tab, hide all standard analysis panels, mount
+ *  the compare module body. Persists ``?compare=`` in URL so a
+ *  reload restores the same view. */
+function _enterCompareMode(a, b, vA, vB) {
+  if (!window.COMPARE) {
+    console.error("compare.js not loaded");
+    return;
+  }
+  state.compareMode = { a, b, vA, vB };
+  if (typeof switchTab === "function") {
+    switchTab("debug");
+  }
+  // Hide everything under #tab-debug except #cmpMount. The debug tab
+  // wraps all analysis panels in a single `<div class="layout">`
+  // sibling of cmpMount, so this is just two direct children.
+  // Stash a flag so exit can restore.
+  document.querySelectorAll("#tab-debug > *").forEach((el) => {
+    if (el.id === "cmpMount") return;
+    if (!el.classList.contains("hidden")) {
+      el.dataset.cmpHiddenByCompare = "1";
+      el.classList.add("hidden");
+    }
+  });
+  // URL persistence: <machine>|<mode>|<version> per side.
+  try {
+    const u = new URL(window.location.href);
+    const sa = `${a.machine}|${a.mode}|${vA}`;
+    const sb = `${b.machine}|${b.mode}|${vB}`;
+    u.searchParams.set("compare", `${sa},${sb}`);
+    window.history.replaceState({}, "", u.toString());
+  } catch (_) { /* IE / non-URL env */ }
+  window.COMPARE.enterCompareMode(a, b);
+  // Listen once for the compare module's exit event so we restore
+  // the panels we hid.
+  document.addEventListener("compare:exit", _onCompareExit, { once: true });
 }
 
-function fmtNum(v, d) { return v != null ? Number(v).toFixed(d) : "—"; }
-function fmtInt(v) { return v != null ? Number(v).toLocaleString() : "—"; }
-function fmtPct(v) { return v != null ? (Number(v) * 100).toFixed(2) + "%" : "—"; }
-function diffPp(a, b) {
-  if (a == null || b == null) return "";
-  const d = Number(a) - Number(b);
-  const sign = d >= 0 ? "+" : "";
-  return `${sign}${d.toFixed(2)}pp`;
+function _onCompareExit() {
+  state.compareMode = null;
+  document.querySelectorAll("[data-cmp-hidden-by-compare]").forEach((el) => {
+    delete el.dataset.cmpHiddenByCompare;
+    el.classList.remove("hidden");
+  });
+  state.compareSelected = new Map();
+  try { _updateRwtreeCompareBar(); } catch (_) {}
+  try { renderDetailPane(); } catch (_) {}
 }
+
+/** Restore compare mode from URL on page load — operator's link
+ *  shares are persistent. */
+async function _restoreCompareFromUrl() {
+  try {
+    const u = new URL(window.location.href);
+    const raw = u.searchParams.get("compare");
+    if (!raw) return;
+    const parts = raw.split(",");
+    if (parts.length !== 2) return;
+    const parsed = parts.map((p) => {
+      const [machine, mode, version] = p.split("|");
+      return { machine, mode: Number(mode), version };
+    });
+    if (!parsed[0].machine || !parsed[1].machine) return;
+    const [a, b] = await Promise.all([
+      apiGet(`/api/reports/${encodeURIComponent(parsed[0].machine)}/${parsed[0].mode}/${parsed[0].version}`),
+      apiGet(`/api/reports/${encodeURIComponent(parsed[1].machine)}/${parsed[1].mode}/${parsed[1].version}`),
+    ]);
+    _enterCompareMode(a, b, parsed[0].version, parsed[1].version);
+  } catch (_e) {
+    // Bad / stale ?compare= — strip it and continue normal boot.
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("compare");
+      window.history.replaceState({}, "", u.toString());
+    } catch (_) {}
+  }
+}
+
+// renderComparison + fmtNum / fmtInt / fmtPct / diffPp helpers
+// DELETED 2026-04-25: replaced by the multi-section compare module
+// in frontend/compare.js + compare_diff.js. The new flow takes
+// over the entire 调试机台 tab body when 2 reports are selected.
+// See COMPARE.enterCompareMode for the entry point.
 
 function fillCompareSelectors() {
   const selA = byId("compareServerA");
@@ -6519,6 +6566,11 @@ async function boot() {
   try {
     await loadBootstrap();
     startPolling();
+    // Restore compare mode from URL after bootstrap so the user
+    // can share / bookmark a ?compare=A,B link. Failure is silent
+    // (bad URL just clears the param + falls through to single-
+    // report mode).
+    try { await _restoreCompareFromUrl(); } catch (_) {}
   } catch (e) {
     setHealth(false, String(e.message || e));
   }
