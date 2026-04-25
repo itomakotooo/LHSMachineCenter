@@ -3585,17 +3585,34 @@ select:focus-visible,
 }
 .kpi-cmp-unknown { color: #64748b; }
 
-/* Bucket / payID / table cell A-B stack. Same column count as
-   single mode — each TD gets two stacked rows in compare.
-   A is rendered MUTED (it's the baseline, the eye should slide
-   past it); B carries the visual weight (it's what you're
-   evaluating). The Δ chip next to B's value is what carries the
-   most information and gets the strongest visual treatment. */
+/* ── Compare-mode cell internal layout (3-lane flex) ──────────────
+   Each TD in compare mode contains two rows: an A row and a B row.
+   Each row has three lanes locked to fixed positions:
+
+       │ [A] │ <chip-slot> │ ........... value │
+       │ [B] │ <chip-slot> │ ........... value │
+
+   - Tag (A/B pill): fixed 14px on the left
+   - Chip slot: fixed 60px in the middle (always present, even
+     if empty, so A and B align vertically; A's slot is empty
+     since the chip is on B only)
+   - Value: flex:1, right-aligned, tabular-nums
+
+   Result: numbers line up tabular-style across rows, chips line
+   up to a single column, A/B tags form a lane. Even when chip
+   text varies (▼56.9% vs ▲new vs ≈), the value column stays
+   pinned to the right edge.
+
+   A is muted (eye slides past it = baseline); B carries weight
+   (where the eye lands first). Δ chip is the loudest element
+   because it carries the most signal. */
 .cmp-cell-a, .cmp-cell-b {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.55;
   font-variant-numeric: tabular-nums;
-  display: block;
   white-space: nowrap;
 }
 .cmp-cell-a {
@@ -3603,58 +3620,66 @@ select:focus-visible,
   font-weight: 400;
 }
 .cmp-cell-b {
-  color: #1e293b;       /* deep slate, anchor for the Δ chip */
-  font-weight: 600;     /* bolder than A so the eye lands here first */
-}
-/* The "A" / "B" prefix tag — small uppercase pill, monochrome.
-   Keeps the cell scannable: once trained, the operator's eye
-   ignores the tag and reads value + chip. */
-.cmp-cell-a::before {
-  content: "A";
-  display: inline-block;
-  width: 11px;
-  margin-right: 4px;
-  padding: 0 2px;
-  border-radius: 2px;
-  background: #e2e8f0;
-  color: #64748b;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-align: center;
-  vertical-align: 1px;
-}
-.cmp-cell-b::before {
-  content: "B";
-  display: inline-block;
-  width: 11px;
-  margin-right: 4px;
-  padding: 0 2px;
-  border-radius: 2px;
-  background: #c7d2fe;
-  color: #3730a3;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-align: center;
-  vertical-align: 1px;
+  color: #1e293b;       /* deep slate — visual anchor */
+  font-weight: 600;
 }
 
-/* Δ chip: shown next to B's value. Direction-only color (no
-   good/bad semantic). Up = blue, down = orange, flat = gray.
-   Magnitude + arrow. Hover tooltip carries the precise value
-   (B − A in pp, or B/A ratio for relative).  */
+/* A/B tag: fixed-width pill that sits in the leftmost lane.
+   Real <span> (not ::before) so flex layout knows about it. */
+.cmp-tag {
+  display: inline-block;
+  width: 14px;
+  flex-shrink: 0;
+  padding: 0 2px;
+  border-radius: 2px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  line-height: 13px;
+}
+.cmp-cell-a .cmp-tag {
+  background: #e2e8f0;
+  color: #64748b;
+}
+.cmp-cell-b .cmp-tag {
+  background: #c7d2fe;
+  color: #3730a3;
+}
+
+/* Δ chip slot: fixed min-width middle lane. Always rendered
+   (even empty on A's row) so A/B vertical alignment holds.
+   Justify-flex-end so chip hugs the right side of its lane,
+   leaving a tight gap to the value. */
+.cmp-chip-slot {
+  flex-shrink: 0;
+  min-width: 62px;
+  display: inline-flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* The value lane — takes remaining width, right-aligned so
+   digits across rows stack into a tabular column. */
+.cmp-val {
+  flex: 1;
+  text-align: right;
+  min-width: 0;
+}
+
+/* Δ chip: direction-only color (no good/bad semantic). The chip
+   is the loudest element in the cell because it carries the most
+   info per pixel. Hover tooltip → precise value (B − A in pp, or
+   B/A ratio + relative %). */
 .cmp-delta {
   display: inline-block;
   padding: 1px 5px;
-  margin-left: 5px;
   border-radius: 3px;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  vertical-align: 1px;
   cursor: help;
 }
 .cmp-delta-up {
@@ -3672,14 +3697,16 @@ select:focus-visible,
 
 /* Bar cell with TWO bars stacked: A is a thin neutral baseline,
    B is a thicker indigo fill. Heights deliberately asymmetric so
-   "B's bar grew past A's" reads at a glance. Both share the same
-   --bar / --bar-b scale so position is comparable. */
+   "B grew past A" reads at a glance. When the cell ALSO contains
+   stacked text content (Pay ID, Symbol, Payline drilldowns),
+   bars sit on top, A/B value rows below — both share the cell's
+   tabular-nums right-alignment. */
 .bar-cell-cmp {
   position: relative;
   background: transparent !important;
-  padding: 5px 4px !important;
+  padding: 4px 6px !important;
   vertical-align: middle;
-  min-width: 80px;
+  min-width: 100px;
 }
 .bar-cell-cmp::before,
 .bar-cell-cmp::after {
@@ -3690,14 +3717,48 @@ select:focus-visible,
 }
 .bar-cell-cmp::before {
   width: var(--bar, 0%);
-  height: 4px;
+  height: 3px;
   background: #cbd5e1;
 }
 .bar-cell-cmp::after {
   width: var(--bar-b, 0%);
-  height: 7px;
+  height: 6px;
   background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%);
   box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.15);
+  margin-bottom: 3px;
+}
+
+/* Tail-dep / big-win tile: <b> wraps the cmp-cell-a/b stack.
+   Make it block + reset bold so flex layout inside takes over. */
+body.cmp-active .tail-cell b {
+  display: block;
+  font-weight: normal;
+  width: 100%;
+}
+
+/* Bankruptcy stat <b>: same as tail-cell — block container so
+   the inner cmp-cell-a/b flex rows fill the width naturally. */
+body.cmp-active .bk-stat b {
+  display: block;
+  font-weight: normal;
+  width: 100%;
+}
+
+/* Compare cells inside .feature-block headline / meta should
+   wrap full width too. */
+body.cmp-active .feature-block .feature-metric,
+body.cmp-active .feature-block .feature-meta {
+  display: block;
+  font-weight: normal;
+  width: 100%;
+}
+
+/* TD containing compare cells: tighten padding + align top so
+   2-row content doesn't stretch the row unnecessarily. */
+body.cmp-active .drilldown-table td {
+  vertical-align: top;
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
 /* When compare mode active, slightly tighten KPI tile padding so
@@ -3707,22 +3768,10 @@ body.cmp-active .kpi {
   padding-bottom: 8px;
 }
 
-/* Tail-dep / big-win cells: in compare mode the `<b>` becomes a
-   stacked container instead of a single value. Reset font weight
-   to inherit so the inner cmp-cell-* spans don't all bold. */
-body.cmp-active .tail-cell b {
-  font-weight: normal;
-  display: block;
-}
-
-/* Same fix for bankruptcy tier KPI <b> wrappers and feature card
-   headline metric / meta. They become A/B stacks in compare mode;
-   resetting weight stops the whole stack from going bold. */
-body.cmp-active .bk-stat b,
-body.cmp-active .feature-block .feature-metric,
-body.cmp-active .feature-block .feature-meta {
-  font-weight: normal;
-}
+/* (note: tail-cell <b> and bk-stat <b> reset rules now live with
+   the main flex-layout block above — kept here as a remember-to-
+   delete comment. The duplicate rules used to cause specificity
+   churn during the layout v1 → v2 migration.) */
 
 /* Presence tags: shared across bankruptcy tiers, feature cards,
    and Pay ID rows. Marks rows present on only A or only B side

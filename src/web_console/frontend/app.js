@@ -4090,8 +4090,13 @@ function _cmpDelta(aRaw, bRaw, kind, digits) {
 }
 
 // Build an A/B stacked cell. When `cmpActive` is false, returns
-// the plain A value (single-mode). When true, emits two divs +
-// optional Δ chip if raw numeric values are provided.
+// the plain A value (single-mode). When true, emits two flex
+// rows where A/B tags lock to the left lane, the Δ chip locks
+// to a fixed-width middle lane, and the formatted value locks
+// to the right lane. This 3-lane layout makes numbers across
+// rows form a tabular column even when chips have varying
+// widths (▲new vs ▼56.9% vs ≈ would otherwise push values to
+// different x positions across rows).
 //
 // Args:
 //   aFmt, bFmt: pre-formatted display strings ("4,300", "58.88pp", etc.)
@@ -4101,12 +4106,26 @@ function _cmpDelta(aRaw, bRaw, kind, digits) {
 //   digits:     Δ chip decimal places
 function _cmpCell(cmpActive, aFmt, bFmt, aRaw, bRaw, kind, digits) {
   if (!cmpActive) return aFmt;
-  let chip = "";
+  let chipHtml = "";
   if (aRaw !== undefined && bRaw !== undefined) {
-    chip = " " + _cmpDelta(aRaw, bRaw, kind, digits);
+    chipHtml = _cmpDelta(aRaw, bRaw, kind, digits);
   }
-  return `<div class="cmp-cell-a">${aFmt}</div>` +
-    `<div class="cmp-cell-b">${bFmt}${chip}</div>`;
+  // Note: the .cmp-chip-slot is always rendered (even if empty)
+  // so A's and B's vertical alignment matches; without it B would
+  // shift left when there's no chip and A/B values would not
+  // line up across cells of the same column.
+  return (
+    `<div class="cmp-cell-a">` +
+      `<span class="cmp-tag">A</span>` +
+      `<span class="cmp-chip-slot"></span>` +
+      `<span class="cmp-val">${aFmt}</span>` +
+    `</div>` +
+    `<div class="cmp-cell-b">` +
+      `<span class="cmp-tag">B</span>` +
+      `<span class="cmp-chip-slot">${chipHtml}</span>` +
+      `<span class="cmp-val">${bFmt}</span>` +
+    `</div>`
+  );
 }
 
 // Render the payline-structure classification panel. Data comes from
