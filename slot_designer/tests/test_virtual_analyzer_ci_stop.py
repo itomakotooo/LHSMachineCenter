@@ -150,9 +150,14 @@ def test_load_existing_session_stats_accumulates_across_chunks(tmp_path: Path):
         (tmp_path / f"chunk_{idx:04d}.json").write_text(
             json.dumps(chunk), encoding="utf-8",
         )
-    n, ret_sum, ret_sq = _load_existing_session_stats(tmp_path, md5_filter=None)
+    n, ret_sum, ret_sq, chunks_read, total = _load_existing_session_stats(
+        tmp_path, md5_filter=None,
+    )
     assert n == 4
     assert abs(ret_sum - (1.10 + 0.90 + 0.95 + 1.05)) < 1e-9
+    # No filter → chunks_read == total_on_disk == 2.
+    assert chunks_read == 2
+    assert total == 2
 
 
 def test_load_existing_session_stats_respects_md5_filter(tmp_path: Path):
@@ -169,19 +174,52 @@ def test_load_existing_session_stats_respects_md5_filter(tmp_path: Path):
     (tmp_path / "chunk_0003.json").write_text(json.dumps(
         _make_chunk([(9999, 1000), (0, 1000)], config_md5="B", code_md5="B")
     ), encoding="utf-8")
-    n_filtered, _, _ = _load_existing_session_stats(tmp_path, md5_filter=("A", "A"))
-    n_unfiltered, _, _ = _load_existing_session_stats(tmp_path, md5_filter=None)
+    n_filtered, _, _, chunks_read_f, total_f = _load_existing_session_stats(
+        tmp_path, md5_filter=("A", "A"),
+    )
+    n_unfiltered, _, _, chunks_read_u, total_u = _load_existing_session_stats(
+        tmp_path, md5_filter=None,
+    )
     assert n_filtered == 4, "only md5=A chunks counted (4 robots total)"
     assert n_unfiltered == 6, "no filter = all 6 robots counted"
+    # NEW (2026-04-26): chunks_read reflects the matching subset
+    # (2 of 3) when filter is active; total_on_disk reports full
+    # disk count so events can show "skipped 1 of 3 historical-md5".
+    assert chunks_read_f == 2, "filter active: only 2 matching md5=A chunks opened"
+    assert total_f == 3, "total_on_disk always reports full glob count"
+    assert chunks_read_u == 3, "no filter: all 3 chunks opened"
+    assert total_u == 3
 
 
 def test_load_existing_session_stats_empty_dir(tmp_path: Path):
-    """Non-existent / empty dir returns (0, 0.0, 0.0) — the sim loop
-    uses this as the 'no priors' starting state before adding freshly
-    simulated chunks."""
+    """Non-existent / empty dir returns (0, 0.0, 0.0, 0, 0) — the sim
+    loop uses this as the 'no priors' starting state before adding
+    freshly simulated chunks."""
     empty = tmp_path / "does_not_exist"
-    n, s, sq = _load_existing_session_stats(empty, md5_filter=None)
-    assert (n, s, sq) == (0, 0.0, 0.0)
+    n, s, sq, chunks_read, total = _load_existing_session_stats(
+        empty, md5_filter=None,
+    )
+    assert (n, s, sq, chunks_read, total) == (0, 0.0, 0.0, 0, 0)
+
+
+def test_load_existing_session_stats_pre_filter_no_match(tmp_path: Path):
+    """REGRESSION 2026-04-26: user pulled fresh md5 → 0 cached chunks
+    matching it → CI pre-check loop should iterate zero, not 422.
+    Pre-fix the loop iterated all 422 disk chunks via inline skip,
+    and the cache_read_done event reported chunks_read=422 +
+    md5_skipped=0 (lying). New shape: chunks_read=0,
+    total_on_disk=422 — caller can compute md5_skipped=422-0."""
+    for idx in (1, 2, 3):
+        (tmp_path / f"chunk_{idx:04d}.json").write_text(json.dumps(
+            _make_chunk([(1100, 1000)], config_md5="OLD", code_md5="OLD")
+        ), encoding="utf-8")
+    n, _, _, chunks_read, total = _load_existing_session_stats(
+        tmp_path, md5_filter=("FRESH_MD5", "FRESH_CODE"),
+    )
+    assert n == 0
+    # The whole point: zero chunks opened, even though disk has 3.
+    assert chunks_read == 0
+    assert total == 3
 
 
 if __name__ == "__main__":

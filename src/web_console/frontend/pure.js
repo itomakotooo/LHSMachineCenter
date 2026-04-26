@@ -1736,7 +1736,15 @@ function formatChunkEventText(ev) {
     return `♻ 续采: 已有 ${ev.existing_chunks || 0} chunks / ${fInt_(ev.existing_spins)} spins · 下一个 chunk_${ev.next_chunk_index}`;
   }
   if (ev.event === "cache_read_start") {
-    return `📖 读取已有 ${ev.total_chunks} chunks（静默 replay，约需 ${Math.round((ev.total_chunks || 0) * 0.5)}s）…`;
+    // 2026-04-26: surface "K 旧 md5 跳过" when md5 pre-filter cut down
+    // the iteration list. Pre-fix UX showed only the matching count
+    // with no hint that there were historical chunks on disk being
+    // ignored — operator wondered why total_chunks was lower than
+    // they expected, especially right after a fresh-md5 pull.
+    const skipSuffix1 = (ev.md5_skipped && ev.md5_skipped > 0)
+      ? ` · 跳过 ${ev.md5_skipped} 个旧 md5`
+      : "";
+    return `📖 读取已有 ${ev.total_chunks} chunks${skipSuffix1}（静默 replay，约需 ${Math.round((ev.total_chunks || 0) * 0.5)}s）…`;
   }
   if (ev.event === "cache_read_progress") {
     const pct = ev.total_chunks > 0
@@ -1745,7 +1753,10 @@ function formatChunkEventText(ev) {
     return `📖 已读 ${ev.chunks_read}/${ev.total_chunks} chunks (${pct}%) · ${fInt_(ev.total_spins)} spins`;
   }
   if (ev.event === "cache_read_done") {
-    return `📖 已读完 ${ev.chunks_read} chunks · ${fInt_(ev.total_spins)} spins，进入采样阶段`;
+    const skipSuffix2 = (ev.md5_skipped && ev.md5_skipped > 0)
+      ? ` · 跳过 ${ev.md5_skipped} 个旧 md5`
+      : "";
+    return `📖 已读完 ${ev.chunks_read} chunks · ${fInt_(ev.total_spins)} spins${skipSuffix2}，进入采样阶段`;
   }
   if (ev.event === "cache_read_target_met") {
     const ci = ev.current_halfwidth_pp != null ? Number(ev.current_halfwidth_pp).toFixed(2) : "?";

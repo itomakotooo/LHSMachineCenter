@@ -293,61 +293,103 @@ def _session_returns_from_chunk_dict(chunk: dict) -> list[float]:
     return out
 
 
+def _select_session_stat_chunks(
+    rawdata_dir: Path,
+    md5_filter: tuple[str, str] | None,
+) -> tuple[list[Path], int]:
+    """Pure helper: pick the chunk file list this CI pre-check should
+    actually iterate, given the md5 filter.
+
+    Returns ``(chunk_files, total_on_disk)``:
+      - ``chunk_files``: ONLY chunks whose sidecar md5 matches the
+        filter pair. When ``md5_filter`` is None, all chunks on disk.
+      - ``total_on_disk``: full disk count, so the caller can report
+        "skipped K of N old-md5 chunks" without a second glob.
+
+    Sidecar miss (chunk just landed, sidecar not yet rebuilt) → that
+    chunk is still included; ``_load_existing_session_stats`` does
+    the full-load md5 re-check downstream as a defensive fallback.
+    """
+    if not rawdata_dir.is_dir():
+        return [], 0
+    on_disk = sorted(rawdata_dir.glob("chunk_*.json"))
+    if not md5_filter:
+        return on_disk, len(on_disk)
+    sidecar_entries: dict = {}
+    try:
+        from fresh_slotlab.chunk_index import get_chunks_index
+        sidecar_entries = get_chunks_index(rawdata_dir).get("chunks") or {}
+    except Exception:  # noqa: BLE001
+        return on_disk, len(on_disk)  # no sidecar → can't pre-filter
+    matching: list[Path] = []
+    for cf in on_disk:
+        entry = sidecar_entries.get(cf.name)
+        if not isinstance(entry, dict):
+            # Sidecar miss → keep, let downstream full-load decide.
+            matching.append(cf)
+            continue
+        if entry.get("cfg_md5") != md5_filter[0]:
+            continue
+        if entry.get("code_md5") != md5_filter[1]:
+            continue
+        matching.append(cf)
+    return matching, len(on_disk)
+
+
 def _load_existing_session_stats(
     rawdata_dir: Path,
     md5_filter: tuple[str, str] | None,
-) -> tuple[int, float, float]:
+) -> tuple[int, float, float, int, int]:
     """Walk existing ``chunk_*.json`` in ``rawdata_dir`` and accumulate
     session-level ``(n, ret_sum, ret_sq_sum)`` for CI computation.
 
-    When ``md5_filter`` is set, skips chunks whose envelope md5 pair
-    differs from the caller's expected pair — keeps historical-md5
-    chunks from polluting the CI estimate (same principle as the real
-    analyzer's ``--upstream-*-md5`` filter during --from-cache replay).
+    When ``md5_filter`` is set, the chunk list is **pre-filtered via
+    the per-mode sidecar before iteration** — historical-md5 chunks
+    are not opened at all (regression 2026-04-26: the previous loop
+    iterated every chunk on disk and reported a misleading "已读完
+    1443 chunks" even when only 17 actually contributed).
 
-    Returns (0, 0.0, 0.0) on empty / missing dir.
+    Returns ``(n, ret_sum, ret_sq_sum, chunks_read, total_on_disk)``:
+      - ``n``: session count contributing to CI.
+      - ``ret_sum``, ``ret_sq_sum``: session-return moments.
+      - ``chunks_read``: how many chunks the loop actually opened
+        (= matching subset when md5_filter is set).
+      - ``total_on_disk``: full glob count so the caller can emit
+        an accurate "skipped K of N" event payload.
+
+    Returns (0, 0.0, 0.0, 0, 0) on empty / missing dir.
     """
-    if not rawdata_dir.is_dir():
-        return 0, 0.0, 0.0
+    chunk_files, total_on_disk = _select_session_stat_chunks(
+        rawdata_dir, md5_filter,
+    )
+    if not chunk_files:
+        return 0, 0.0, 0.0, 0, total_on_disk
     n = 0
     ret_sum = 0.0
     ret_sq_sum = 0.0
-    # Pre-load the per-mode chunk sidecar once so md5-filtered runs
-    # can skip non-matching chunks without a full ``json.loads``.
-    # Auto-rebuilt via 4KB peek on first miss. Same pattern as the
-    # real analyzer's replay loop — shared module guarantees format
-    # parity across real + virtual writers.
-    sidecar_entries: dict = {}
-    if md5_filter:
-        try:
-            from fresh_slotlab.chunk_index import get_chunks_index
-            sidecar_entries = get_chunks_index(rawdata_dir).get("chunks") or {}
-        except Exception:  # noqa: BLE001
-            sidecar_entries = {}
-    for cf in sorted(rawdata_dir.glob("chunk_*.json")):
-        if md5_filter:
-            entry = sidecar_entries.get(cf.name)
-            if isinstance(entry, dict):
-                cfg = str(entry.get("cfg_md5", "") or "")
-                code = str(entry.get("code_md5", "") or "")
-                if cfg != md5_filter[0] or code != md5_filter[1]:
-                    continue
-            # Sidecar miss → fall through to full load; the md5 re-check
-            # below still applies.
+    chunks_read = 0
+    for cf in chunk_files:
         try:
             data = json.loads(cf.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
+        # Defensive md5 re-check: pre-filter relies on the sidecar
+        # being current. If a sidecar entry was stale (chunk
+        # rewritten externally), the in-envelope md5 is the
+        # authoritative truth — drop the chunk if it doesn't match
+        # after all. Catches the rare "sidecar said match but file
+        # had old md5" race.
         if md5_filter:
             cfg = str(data.get("_config_md5", "") or "")
             code = str(data.get("_code_md5", "") or "")
             if cfg != md5_filter[0] or code != md5_filter[1]:
                 continue
+        chunks_read += 1
         for rx in _session_returns_from_chunk_dict(data):
             n += 1
             ret_sum += rx
             ret_sq_sum += rx * rx
-    return n, ret_sum, ret_sq_sum
+    return n, ret_sum, ret_sq_sum, chunks_read, total_on_disk
 
 
 def _compute_md5s(entry: dict, mode: int | None = None) -> tuple[str, str]:
@@ -756,23 +798,43 @@ def main() -> int:
     sess_ret_sum = 0.0
     sess_ret_sq_sum = 0.0
     if ci_gate_active:
-        sess_n, sess_ret_sum, sess_ret_sq_sum = _load_existing_session_stats(
+        # Pre-filter by md5 so the pre-check loop ONLY opens chunks
+        # that match the current md5 (2026-04-26 user feedback:
+        # "为什么我拉取了新md5的rawdata，采样时候还要去读老的？").
+        # The new return tuple breaks out chunks_read (matching
+        # subset) and total_on_disk (full count) so the events
+        # below report honest numbers — pre-fix they hardcoded
+        # ``len(existing)`` for both, leaving the operator with a
+        # misleading "已读完 1443 chunks · 136,000 spins" status.
+        (
+            sess_n, sess_ret_sum, sess_ret_sq_sum,
+            chunks_read_match, chunks_total_disk,
+        ) = _load_existing_session_stats(
             sampling_out_dir, md5_filter=md5s,
         )
+        chunks_md5_skipped = max(chunks_total_disk - chunks_read_match, 0)
         existing_ci = _ci_halfwidth_pp(sess_n, sess_ret_sum, sess_ret_sq_sum)
         _append_jsonl(pf, {
             "event": "cache_read_start",
             "run_id": run_id,
             "tag": "--resume-from-cache (virtual pre-check)",
-            "total_chunks": len(existing),
+            # Only the matching count — that's what the loop actually
+            # iterates after the sidecar pre-filter. The frontend's
+            # ETA estimate ("约需 X s") is computed off this.
+            "total_chunks": chunks_read_match,
+            # Carry the disk total + skipped count alongside so the
+            # UI / log can show "X 个 chunk 已读 · Y 个旧 md5 跳过"
+            # for a complete picture.
+            "total_chunks_on_disk": chunks_total_disk,
+            "md5_skipped": chunks_md5_skipped,
             "ts": _utc_now(),
         })
         _append_jsonl(pf, {
             "event": "cache_read_done",
             "run_id": run_id,
-            "chunks_read": len(existing),
-            "chunks_merged": len(existing),
-            "md5_skipped": 0,
+            "chunks_read": chunks_read_match,
+            "chunks_merged": chunks_read_match,
+            "md5_skipped": chunks_md5_skipped,
             "total_spins": sess_n * args.chunk_spin_times,
             "sessions": sess_n,
             "current_halfwidth_pp": existing_ci,
@@ -788,8 +850,9 @@ def main() -> int:
             _append_jsonl(pf, {
                 "event": "cache_read_target_met",
                 "run_id": run_id,
-                "chunks_read": len(existing),
-                "total_chunks": len(existing),
+                "chunks_read": chunks_read_match,
+                "total_chunks": chunks_read_match,
+                "md5_skipped": chunks_md5_skipped,
                 "current_halfwidth_pp": existing_ci,
                 "target_halfwidth_pp": ci_target,
                 "ts": _utc_now(),
