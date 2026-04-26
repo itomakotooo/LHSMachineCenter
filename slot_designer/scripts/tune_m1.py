@@ -96,56 +96,133 @@ WEIGHT_BOUNDS_BY_MODE = {
 # data) + Double Diamond brand expectation + IGT TDD WoO data.
 EXPERIENCE_TARGETS = {
     1: {
-        "wild_on_payline_band": (0.15, 0.22),
+        # User: wild can drop further to release CV. Band 10-16% trades
+        # signature for CV ~9 + RTP-strict 95%.
+        "wild_on_payline_band": (0.10, 0.16),
+        # Lower wild density naturally compresses Diamond family RTP
+        # share. 5% floor keeps Diamond family present-but-not-dominant.
         "family_share_bands": {
-            "Diamond": (0.18, 0.28),
-            "Seven":   (0.15, 0.25),
-            "Bar3":    (0.10, 0.18),
-            "Bar2":    (0.08, 0.15),
-            "Bar1":    (0.05, 0.12),
-            "Cherry":  (0.08, 0.15),
+            "Diamond": (0.05, 0.20),
+            "Seven":   (0.12, 0.22),
+            "Bar3":    (0.10, 0.20),
+            "Bar2":    (0.10, 0.22),
+            "Bar1":    (0.08, 0.18),
+            "Cherry":  (0.08, 0.17),
         },
-        "per_reel_density_band": (0.01, 0.22),
-        "top_jackpot_max_spins": 300_000,  # Diamond2×3 期望 spin
+        # Per-family per-reel density caps — "假但不怪" boundary.
+        # Visual mid-pay (Bar3/Bar2) ≤ 17% on any reel: > that and
+        # player feels Bar3 dominates a reel which is不怪 territory.
+        # Top-pay (Seven, Diamond) capped lower (rare-by-brand).
+        # Filler-acceptable (Bar1, Cherry, Blank-implicit) higher.
+        "per_reel_density_lo_by_family": {
+            "Diamond1": 0.01, "Diamond2": 0.005,
+            "Seven1": 0.01,  "Seven2": 0.005,  # raised to push more uniform
+            "Bar3": 0.01, "Bar2": 0.01, "Bar1": 0.01,
+            "Cherry": 0.01,
+        },
+        "per_reel_density_hi_by_family": {
+            "Diamond1": 0.10, "Diamond2": 0.10,
+            "Seven1": 0.12,  "Seven2": 0.12,
+            "Bar3": 0.17, "Bar2": 0.17,
+            "Bar1": 0.22, "Cherry": 0.20,
+        },
+        # Top-tier symbols (Seven/Diamond) should appear roughly
+        # uniformly across reels (player perceives consistent brand).
+        # Mid-pay (Bar) NOT in this dict — asymmetric Bar3 is the
+        # intentional near-miss mechanism for 3-reel slots.
+        "uniformity_ratio_cap": {
+            "Seven1": 2.0, "Seven2": 2.0,
+            "Diamond1": 2.0, "Diamond2": 2.0,
+        },
+        # Note: per_reel_blank_floor only on lucky modes (2/5).
+        # Standard modes (1/7) RTP target doesn't push optimizer toward
+        # R-stuffing, so don't need the floor.
+        "top_jackpot_max_spins": 300_000,
+        "bucket_hit_floors": {
+            "ge5_lt10":  0.008,
+            "ge10_lt20": 0.010,
+        },
+        "cv_target": 9.0,
     },
     7: {
-        # Mode 7 inherits mode 1 experience targets EXCEPT:
-        # - Diamond/Seven RTP CONTRIBUTION (in absolute pp) MUST EQUAL mode 1's
-        # - Bar3/Bar2 contribution -1 to -2 pp from mode 1
-        # - Bar1/Cherry contribution -2 to -3 pp from mode 1
-        # These are computed dynamically in mode 7 cost using mode 1 anchor.
-        "wild_on_payline_band": (0.15, 0.22),  # signature unchanged
-        "per_reel_density_band": (0.01, 0.22),
+        "wild_on_payline_band": (0.10, 0.18),
+        "per_reel_density_lo_by_family": {
+            "Diamond1": 0.01, "Diamond2": 0.005,
+            "Seven1": 0.01,  "Seven2": 0.005,
+            "Bar3": 0.01, "Bar2": 0.01, "Bar1": 0.01,
+            "Cherry": 0.01,
+        },
+        "per_reel_density_hi_by_family": {
+            "Diamond1": 0.10, "Diamond2": 0.10,
+            "Seven1": 0.12,  "Seven2": 0.12,
+            "Bar3": 0.17, "Bar2": 0.17,
+            "Bar1": 0.22, "Cherry": 0.20,
+        },
+        "uniformity_ratio_cap": {
+            "Seven1": 2.0, "Seven2": 2.0,
+            "Diamond1": 2.0, "Diamond2": 2.0,
+        },
         "top_jackpot_max_spins": 300_000,
     },
     2: {
-        # Lucky mode — 7-dominated per industry research (RWB 50% / Blazing 68%).
-        # All families boost relative to mode 1, Seven family BACKBONE.
-        # Wild signature must stay close to mode 1 (signature 一致).
-        "wild_on_payline_band": (0.15, 0.30),
+        "wild_on_payline_band": (0.12, 0.25),
         "family_share_bands": {
-            "Diamond": (0.10, 0.25),
-            "Seven":   (0.35, 0.65),  # 7-dominated lucky
-            "Bar3":    (0.05, 0.18),
-            "Bar2":    (0.03, 0.13),
-            "Bar1":    (0.03, 0.13),
-            "Cherry":  (0.03, 0.13),
+            "Diamond": (0.04, 0.22),
+            "Seven":   (0.35, 0.65),
+            "Bar3":    (0.05, 0.20),
+            "Bar2":    (0.05, 0.18),
+            "Bar1":    (0.03, 0.15),
+            "Cherry":  (0.03, 0.15),
         },
-        "per_reel_density_band": (0.01, 0.30),  # higher density allowed in lucky modes
+        "per_reel_density_lo_by_family": {
+            "Diamond1": 0.01, "Diamond2": 0.005,
+            "Seven1": 0.02,  "Seven2": 0.01,   # lucky has more presence
+            "Bar3": 0.01, "Bar2": 0.01, "Bar1": 0.01,
+            "Cherry": 0.01,
+        },
+        "per_reel_density_hi_by_family": {
+            "Diamond1": 0.12, "Diamond2": 0.12,
+            "Seven1": 0.18,  "Seven2": 0.18,
+            "Bar3": 0.20, "Bar2": 0.20,
+            "Bar1": 0.25, "Cherry": 0.22,
+        },
+        "uniformity_ratio_cap": {
+            "Seven1": 2.5, "Seven2": 2.5,
+            "Diamond1": 2.5, "Diamond2": 2.5,
+        },
+        # Lucky mode 可以 Blank 少 (more pay symbols), 但不能某 reel
+        # 极端 (e.g. R3 Blank 10% while R1=46%). Floor 25%.
+        "per_reel_blank_floor": 0.25,
         "top_jackpot_max_spins": 300_000,
     },
     5: {
-        # Super-lucky — even more 7-heavy + bigger top tier.
-        "wild_on_payline_band": (0.15, 0.30),
+        "wild_on_payline_band": (0.12, 0.28),
         "family_share_bands": {
-            "Diamond": (0.08, 0.30),
-            "Seven":   (0.50, 0.80),  # super-lucky 7-very-heavy
-            "Bar3":    (0.03, 0.15),
-            "Bar2":    (0.02, 0.10),
-            "Bar1":    (0.01, 0.08),
-            "Cherry":  (0.01, 0.08),
+            "Diamond": (0.03, 0.25),
+            "Seven":   (0.50, 0.80),
+            "Bar3":    (0.03, 0.18),
+            "Bar2":    (0.02, 0.12),
+            "Bar1":    (0.01, 0.10),
+            "Cherry":  (0.01, 0.10),
         },
-        "per_reel_density_band": (0.01, 0.35),
+        "per_reel_density_lo_by_family": {
+            "Diamond1": 0.01, "Diamond2": 0.005,
+            "Seven1": 0.03,  "Seven2": 0.02,
+            "Bar3": 0.005, "Bar2": 0.005, "Bar1": 0.005,
+            "Cherry": 0.005,
+        },
+        "per_reel_density_hi_by_family": {
+            "Diamond1": 0.15, "Diamond2": 0.15,
+            "Seven1": 0.22,  "Seven2": 0.22,
+            "Bar3": 0.20, "Bar2": 0.20,
+            "Bar1": 0.25, "Cherry": 0.22,
+        },
+        "uniformity_ratio_cap": {
+            "Seven1": 2.5, "Seven2": 2.5,
+            "Diamond1": 2.5, "Diamond2": 2.5,
+        },
+        # Super-lucky 允许更少 Blank (max pay symbols), 但仍要 ≥ 20%.
+        "per_reel_blank_floor": 0.20,
         "top_jackpot_max_spins": 300_000,
     },
 }
@@ -275,9 +352,14 @@ def evaluate_candidate(
     """Return (cost, predicted_profile, family_rtp, wild_p, weights_array).
 
     family_rtp_anchor: for mode 7, dict of {family: target_rtp_pp} from mode 1.
-        Penalty pulls these families toward anchor.
     family_rtp_anchor_tol: {family: (lo_offset, hi_offset)} relative to anchor.
-        e.g. for Bar3 略砍: (-2, -1) means mode 7 Bar3 should be 1-2pp below mode 1.
+
+    Note: mode 7's per-symbol weight LOCK for big-win symbols (Seven1/Seven2/
+    Diamond1/Diamond2) is handled in search_weights via ``frozen_weights``,
+    not as a cost penalty. Frozen weights guarantee 顶奖路径 doesn't change at
+    the per-position level — densities may rise (Bar/Cherry weights drop →
+    smaller total → big-win density rises naturally), which is fine because
+    that means MORE top-tier hits in mode 7, not fewer.
     """
     weights = build_weights_from_uniform(strip, fr_weights)
     counts = counts_from_weights(strip, weights)
@@ -318,30 +400,82 @@ def evaluate_candidate(
             elif actual > hi:
                 cost += 80.0 * ((actual - hi) * 100) ** 2
 
-    # Wild on payline signature penalty
+    # Wild on payline signature penalty — strong (300×) so optimizer
+    # respects the band tightly even when other penalties pull opposite.
     wild_p = wild_on_payline_p(marg)
     wild_lo, wild_hi = experience_targets["wild_on_payline_band"]
     if wild_p < wild_lo:
-        cost += 100.0 * ((wild_lo - wild_p) * 100) ** 2
+        cost += 300.0 * ((wild_lo - wild_p) * 100) ** 2
     elif wild_p > wild_hi:
-        cost += 100.0 * ((wild_p - wild_hi) * 100) ** 2
+        cost += 300.0 * ((wild_p - wild_hi) * 100) ** 2
 
-    # Per-reel per-family density visual penalty
+    # Per-reel per-family density visual penalty — per-family caps.
     densities = per_reel_family_density(weights, strip)
-    den_lo, den_hi = experience_targets["per_reel_density_band"]
+    lo_by_fam = experience_targets.get("per_reel_density_lo_by_family", {})
+    hi_by_fam = experience_targets.get("per_reel_density_hi_by_family", {})
+    if not hi_by_fam and "per_reel_density_band" in experience_targets:
+        single_lo, single_hi = experience_targets["per_reel_density_band"]
+        for f in ("Diamond1", "Diamond2", "Seven1", "Seven2", "Bar3", "Bar2", "Bar1", "Cherry"):
+            lo_by_fam.setdefault(f, single_lo)
+            hi_by_fam.setdefault(f, single_hi)
     for (f, r), d in densities.items():
         if f == "Blank":
-            continue  # Blank density not visual-bound (it's the filler)
+            continue
+        den_lo = lo_by_fam.get(f, 0.005)
+        den_hi = hi_by_fam.get(f, 0.22)
         if d < den_lo:
-            cost += 30.0 * ((den_lo - d) * 100) ** 2
+            cost += 50.0 * ((den_lo - d) * 100) ** 2
         elif d > den_hi:
-            cost += 30.0 * ((d - den_hi) * 100) ** 2
+            cost += 80.0 * ((d - den_hi) * 100) ** 2
+
+    # Per-reel Blank density floor — prevents optimizer from stuffing
+    # one reel with all pay symbols (cubic-product trick) leaving others
+    # blank-heavy. Each reel must keep some Blank breathing room so
+    # reels look similar to player.
+    blank_floor = experience_targets.get("per_reel_blank_floor")
+    if blank_floor is not None:
+        for r in range(3):
+            blank_d = densities.get(("Blank", r), 0.0)
+            if blank_d < blank_floor:
+                cost += 200.0 * ((blank_floor - blank_d) * 100) ** 2
+
+    # Per-family REEL-UNIFORMITY penalty for top-tier symbols.
+    # Seven/Diamond are top-pay/brand symbols — player should see them
+    # consistently across all 3 reels (not "Seven always on middle reel").
+    # Mid-pay (Bar3) intentionally asymmetric for 3-reel near-miss feel.
+    # Constraint: max(R1,R2,R3) / min(R1,R2,R3) ≤ ratio_cap.
+    uniformity_ratio_cap = experience_targets.get("uniformity_ratio_cap", {})
+    for fam, ratio_cap in uniformity_ratio_cap.items():
+        per_reel = [densities.get((fam, r), 0.0) for r in range(3)]
+        mn = min(per_reel)
+        mx = max(per_reel)
+        if mn > 1e-6:
+            ratio = mx / mn
+            if ratio > ratio_cap:
+                cost += 40.0 * (ratio - ratio_cap) ** 2
 
     # Top jackpot reachability
     tj_max = experience_targets.get("top_jackpot_max_spins", 300_000)
     tj_spins = top_jackpot_expected_spins(marg)
     if tj_spins > tj_max:
         cost += 5.0 * ((tj_spins - tj_max) / tj_max) ** 2
+
+    # Bucket hit-rate floor — push mid-bucket frequency to player-visible
+    # cadence (e.g. ge10_lt20 >= 1.0% so player sees 10× wins ~1 in 100 spins).
+    bucket_floors = experience_targets.get("bucket_hit_floors", {})
+    if bucket_floors:
+        bucket_rate = pred.get("bucket_rate", {})
+        for bucket, floor in bucket_floors.items():
+            actual = bucket_rate.get(bucket, 0.0)
+            if actual < floor:
+                cost += 1500.0 * ((floor - actual) * 100) ** 2
+
+    # Explicit CV target — overrides target file's CV when present.
+    cv_target = experience_targets.get("cv_target")
+    if cv_target is not None:
+        actual_cv = pred.get("cv", 0.0)
+        if actual_cv > cv_target:
+            cost += 120.0 * (actual_cv - cv_target) ** 2
 
     return cost, pred, family_rtp, wild_p, weights
 
@@ -357,19 +491,37 @@ def search_weights(
     weight_bounds,
     family_rtp_anchor=None,
     family_rtp_anchor_tol=None,
+    frozen_weights=None,
+    weight_floors=None,
     seed=0,
     iterations=12000,
     verbose=False,
 ):
-    rng = Random(seed)
+    """frozen_weights: {(symbol, reel): weight}. LOCKED at the given
+    weight value, NOT mutated. Used in mode 7 to lock big-win symbol
+    weights to mode 1's values (顶奖路径绝对不动 per-position).
 
-    # Initialize: midpoint of bounds
+    weight_floors: {(symbol, reel): min_weight}. Search may set this
+    weight HIGHER but never LOWER than the floor. Used in mode 2/5
+    (lucky modes) to enforce big-win weights ≥ mode 1's value (lucky
+    should NOT make top-tier rarer than standard mode)."""
+    rng = Random(seed)
+    frozen = frozen_weights or {}
+    floors = weight_floors or {}
+
+    # Initialize: midpoint of bounds, then overwrite with frozen values,
+    # then bump up to floor where applicable.
     fr_weights: dict[tuple[str, int], int] = {}
     for sym in SYMBOLS:
         lo, hi = weight_bounds[sym]
         mid = (lo + hi) // 2
         for r in range(3):
             fr_weights[(sym, r)] = mid
+    for key, val in frozen.items():
+        fr_weights[key] = int(val)
+    for key, floor_val in floors.items():
+        if fr_weights.get(key, 0) < floor_val:
+            fr_weights[key] = int(floor_val)
 
     best = dict(fr_weights)
     best_cost, _, _, _, _ = evaluate_candidate(
@@ -382,17 +534,22 @@ def search_weights(
     window = 80
     win_evals = 0
 
+    # Mutable keys exclude frozen positions
+    mutable_keys = [k for k in fr_weights.keys() if k not in frozen]
+
     for step in range(1, iterations + 1):
         cand = dict(best)
         n_mutate = rng.randint(2, 5)
-        keys_to_mutate = rng.sample(list(cand.keys()), n_mutate)
+        keys_to_mutate = rng.sample(mutable_keys, min(n_mutate, len(mutable_keys)))
         for key in keys_to_mutate:
             sym, r = key
             lo, hi = weight_bounds[sym]
+            # Apply per-position floor (lucky modes for big-win symbols)
+            effective_lo = max(lo, floors.get(key, 0))
             cur = cand[key]
             delta = rng.gauss(0, sigma_pct * (hi - lo))
             new = int(round(cur + delta))
-            new = max(lo, min(hi, new))
+            new = max(effective_lo, min(hi, new))
             cand[key] = new
 
         cost, _, _, _, _ = evaluate_candidate(
@@ -483,8 +640,11 @@ def main(modes_to_run=(1, 7)):
     reachable = structurally_reachable_buckets(engine)
 
     mode1_anchor: dict[str, float] | None = None
+    mode1_bigwin_weights: dict[tuple[str, int], int] | None = None
 
-    # If mode 7 is being tuned without mode 1 in same run, load anchor from disk
+    BIGWIN_SYMBOLS = ("Seven1", "Seven2", "Diamond1", "Diamond2")
+
+    # If mode 7 is being tuned without mode 1 in same run, load anchors from disk
     if 7 in modes_to_run and 1 not in modes_to_run:
         mode1_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
         try:
@@ -492,9 +652,25 @@ def main(modes_to_run=(1, 7)):
             saved = mode1_data.get("_tuned_summary", {}).get("family_rtp_pp", {})
             if saved:
                 mode1_anchor = {k: float(v) for k, v in saved.items()}
-                print(f"[anchor] loaded mode 1 family RTP from disk: {mode1_anchor}")
+                print(f"[anchor] loaded mode 1 family RTP from disk")
+            # Load mode 1's actual per-position weights to extract big-win symbol weights
+            m1_weights_array = mode1_data.get("weights")
+            m1_strip_data = json.loads(STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
+            if m1_weights_array:
+                mode1_bigwin_weights = {}
+                # For each big-win symbol, find its first position on each reel
+                # and capture the weight. Per-family uniform weight = same value
+                # at all positions of that family on that reel.
+                for sym in BIGWIN_SYMBOLS:
+                    for r_idx, strip_reel in enumerate(m1_strip_data):
+                        for pos, s in enumerate(strip_reel):
+                            if s == sym:
+                                mode1_bigwin_weights[(sym, r_idx)] = int(m1_weights_array[r_idx][pos])
+                                break
+                print(f"[anchor] loaded mode 1 big-win weights (FROZEN in mode 7): "
+                      f"{ {f'{s}_R{r}': w for (s, r), w in mode1_bigwin_weights.items()} }")
         except (FileNotFoundError, json.JSONDecodeError):
-            print("[anchor] could not load mode 1 anchor from disk; mode 7 will tune independently")
+            print("[anchor] could not load mode 1 anchor from disk")
 
     for mode in modes_to_run:
         target_path = _ROOT / "slot_designer" / "tuner" / "targets" / f"M1_mode{mode}_{ {1: 'classic', 2: 'lucky', 5: 'super_lucky', 7: 'low_rtp'}[mode] }.target.json"
@@ -502,10 +678,11 @@ def main(modes_to_run=(1, 7)):
         if "cv" not in target:
             target["cv"] = target.get("std_return_x", 0) / (target["rtp_pct"] / 100)
 
-        # Mode 7 needs stronger RTP pull because family cut bands give
-        # the optimizer wiggle room; without strong RTP weight it lands
-        # at family-band corner with RTP overshoot.
-        rtp_weight = 6.0 if mode == 7 else 2.0
+        # Mode 1: strict RTP target (must not exceed 95%+1pp); other
+        # cost components are strong enough that without high rtp_weight
+        # optimizer happily overshoots into 96%+ territory.
+        # Mode 7: family anchor bands also need strong RTP pull.
+        rtp_weight = 6.0 if mode in (1, 7) else 2.0
         cost_weights = CostWeights(
             rtp_weight=rtp_weight,
             shape_weight=1.0,
@@ -518,6 +695,18 @@ def main(modes_to_run=(1, 7)):
 
         family_anchor = None
         family_anchor_tol = None
+        frozen_weights = None
+        weight_floors = None
+        if mode == 7 and mode1_bigwin_weights is not None:
+            frozen_weights = dict(mode1_bigwin_weights)
+        elif mode in (2, 5) and mode1_bigwin_weights is not None:
+            # Lucky modes: big-win weights ≥ mode 1's value (lucky should
+            # NOT make top-tier rarer than standard). Optimizer can boost
+            # higher (lucky often does), just not cut.
+            weight_floors = dict(mode1_bigwin_weights)
+            print(f"  big-win weight floors (mode 1 baseline, lucky may exceed):")
+            for (sym, r), w in sorted(weight_floors.items()):
+                print(f"     {sym}_R{r}: ≥ {w}")
         if mode == 7 and mode1_anchor is not None:
             # Mode 7 inherits Diamond/Seven absolute pp from mode 1
             family_anchor = {
@@ -562,6 +751,7 @@ def main(modes_to_run=(1, 7)):
         best, best_cost = search_weights(
             target, strip, evaluator, paytable, reachable, exp_targets,
             cost_weights, weight_bounds, family_anchor, family_anchor_tol,
+            frozen_weights=frozen_weights, weight_floors=weight_floors,
             seed=mode * 7 + 13, iterations=15000, verbose=True,
         )
 
@@ -573,6 +763,14 @@ def main(modes_to_run=(1, 7)):
 
         if mode == 1:
             mode1_anchor = dict(family_rtp)
+            # Capture mode 1's big-win symbol weights (will be FROZEN
+            # in mode 7 search to guarantee "顶奖路径绝对不动" at the
+            # per-position level — not just family RTP total).
+            mode1_bigwin_weights = {
+                (sym, r): best[(sym, r)]
+                for sym in BIGWIN_SYMBOLS
+                for r in range(3)
+            }
 
         # Persist
         out_path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"

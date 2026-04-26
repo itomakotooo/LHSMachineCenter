@@ -58,76 +58,101 @@ PAY_TO_FAMILY = {
 MODE_TARGETS = {
     1: {
         "rtp": 95.0, "rtp_tol": 1.0,
-        "hit_lo": 0.12, "hit_hi": 0.18,
-        "wild_lo": 0.16, "wild_hi": 0.25,
+        "hit_lo": 0.14, "hit_hi": 0.22,
+        "wild_lo": 0.10, "wild_hi": 0.18,
         "family_share_band": {
-            # share = family_rtp_pp / total_rtp (0-1 scale)
-            "Diamond": (0.14, 0.28),
-            "Seven":   (0.15, 0.28),
-            "Bar3":    (0.10, 0.20),
-            "Bar2":    (0.08, 0.17),
-            "Bar1":    (0.05, 0.14),
-            "Cherry":  (0.08, 0.17),
+            # share = family_rtp_pp / total_rtp (0-1 scale).
+            # Synced with tune_m1.EXPERIENCE_TARGETS[1].family_share_bands.
+            # Wild lowered to 10-16% allows Diamond family share to compress
+            # to ~5% (pure-Diamond combos cubic-rare; substitution wins go
+            # to non-Diamond families).
+            "Diamond": (0.04, 0.20),
+            "Seven":   (0.12, 0.24),
+            "Bar3":    (0.10, 0.22),
+            "Bar2":    (0.10, 0.24),
+            "Bar1":    (0.08, 0.20),
+            "Cherry":  (0.08, 0.18),
+        },
+        # Mid-bucket hit-rate floors — player should see 5-20× wins
+        # at ≤15-min cadence (10 spins/min).
+        "bucket_hit_floors": {
+            "ge5_lt10": 0.005,    # ≥1 in 200 spins (~20 min)
+            "ge10_lt20": 0.008,   # ≥1 in 125 spins (~12 min)
         },
     },
     7: {
         "rtp": 85.0, "rtp_tol": 1.5,
-        "hit_lo": 0.09, "hit_hi": 0.14,
-        "wild_lo": 0.16, "wild_hi": 0.25,
+        "hit_lo": 0.10, "hit_hi": 0.16,
+        "wild_lo": 0.10, "wild_hi": 0.18,
         # Mode 7 family share inherits mode 1 floor; explicit checks via
         # MODE7-LOCK / MODE7-CUT validate per-family deltas.
         "family_share_band": {
-            "Diamond": (0.14, 0.28),
-            "Seven":   (0.15, 0.28),
-            "Bar3":    (0.10, 0.22),
-            "Bar2":    (0.08, 0.18),
-            "Bar1":    (0.04, 0.14),
-            "Cherry":  (0.06, 0.16),
+            "Diamond": (0.04, 0.20),
+            "Seven":   (0.12, 0.26),
+            "Bar3":    (0.10, 0.24),
+            "Bar2":    (0.08, 0.26),
+            "Bar1":    (0.06, 0.22),
+            "Cherry":  (0.06, 0.18),
         },
     },
     2: {
         "rtp": 294.5, "rtp_tol": 20.0,
         "hit_lo": 0.20, "hit_hi": 0.35,
-        "wild_lo": 0.15, "wild_hi": 0.32,
+        "wild_lo": 0.10, "wild_hi": 0.28,
         # Lucky mode = 7-dominated per RWB/Blazing Sevens benchmark.
         # Synced with tune_m1.EXPERIENCE_TARGETS.
         "family_share_band": {
-            "Diamond": (0.09, 0.25),  # slight relax for mode 2 edge cases
+            "Diamond": (0.03, 0.25),
             "Seven":   (0.35, 0.65),
-            "Bar3":    (0.05, 0.20),
-            "Bar2":    (0.03, 0.13),
-            "Bar1":    (0.03, 0.14),
-            "Cherry":  (0.03, 0.13),
+            "Bar3":    (0.05, 0.22),
+            "Bar2":    (0.05, 0.20),
+            "Bar1":    (0.03, 0.16),
+            "Cherry":  (0.03, 0.16),
         },
-        "density_hi": 0.30,  # lucky modes allow higher density
+        "density_hi": 0.30,
     },
     5: {
         "rtp": 500.0, "rtp_tol": 30.0,
         "hit_lo": 0.20, "hit_hi": 0.40,
-        "wild_lo": 0.15, "wild_hi": 0.32,
-        # Super-lucky = 7-very-heavy + bigger top tier.
+        "wild_lo": 0.10, "wild_hi": 0.30,
         "family_share_band": {
-            "Diamond": (0.07, 0.30),
+            "Diamond": (0.02, 0.30),
             "Seven":   (0.50, 0.80),
-            "Bar3":    (0.03, 0.18),
-            "Bar2":    (0.02, 0.10),
-            "Bar1":    (0.005, 0.08),
-            "Cherry":  (0.01, 0.08),
+            "Bar3":    (0.03, 0.20),
+            "Bar2":    (0.02, 0.13),
+            "Bar1":    (0.005, 0.10),
+            "Cherry":  (0.01, 0.10),
         },
         "density_hi": 0.35,
     },
 }
 
-# Visually-合理 per-reel per-family density band (excluding Blank).
-# Per-family lower bound — top-tier symbols (Seven2, Diamond2) are
-# intentionally rare so 0.3% is fine; mid-tier symbols can drop to 0.5%;
-# everything else should appear at >=1% to be视觉 visible at all.
-PER_REEL_DENSITY_HIGH = 0.22
+# Per-reel per-family density caps — synced with tune_m1.py.
+# Bar3/Bar2 (mid-pay 显眼) > 17% on any reel = "怪" (one symbol dominates).
+# Top-pay (Seven, Diamond) capped tighter (rare-by-brand). Bar1/Cherry
+# (filler-acceptable) higher cap. Lucky modes get ~3-5pp upper relax.
+PER_REEL_DENSITY_HI_BY_FAMILY_STANDARD = {
+    "Diamond1": 0.10, "Diamond2": 0.10,
+    "Seven1": 0.12,  "Seven2": 0.12,
+    "Bar3": 0.17, "Bar2": 0.17,
+    "Bar1": 0.22, "Cherry": 0.20,
+}
+PER_REEL_DENSITY_HI_BY_FAMILY_LUCKY = {
+    "Diamond1": 0.13, "Diamond2": 0.13,
+    "Seven1": 0.20,  "Seven2": 0.22,
+    "Bar3": 0.20, "Bar2": 0.20,
+    "Bar1": 0.26, "Cherry": 0.22,
+}
+PER_REEL_DENSITY_HI_BY_MODE = {
+    1: PER_REEL_DENSITY_HI_BY_FAMILY_STANDARD,
+    7: PER_REEL_DENSITY_HI_BY_FAMILY_STANDARD,
+    2: PER_REEL_DENSITY_HI_BY_FAMILY_LUCKY,
+    5: PER_REEL_DENSITY_HI_BY_FAMILY_LUCKY,
+}
+
 PER_REEL_DENSITY_LO_BY_FAMILY = {
-    "Seven2": 0.003, "Diamond2": 0.003,  # top-tier rare 旗帜
+    "Seven2": 0.0025, "Diamond2": 0.0025,  # top-rare; 1 in 400 still visible
     "Seven1": 0.005, "Diamond1": 0.005,
-    # Mid/low-tier symbols can shrink in lucky modes when Seven dominates,
-    # but should not vanish entirely. 0.5% = visible 1 in 200 spins per reel.
     "Bar3": 0.005, "Bar2": 0.005, "Bar1": 0.005,
     "Cherry": 0.005,
 }
@@ -250,18 +275,36 @@ def run_per_mode_checks(mode, state):
             ok, f"absolute {family_rtp.get(f, 0.0):.2f}pp",
         ))
 
-    # DENSITY (per-reel per-family) — per-family lower + per-mode upper.
-    den_hi = targets.get("density_hi", PER_REEL_DENSITY_HIGH)
+    # DENSITY (per-reel per-family) — per-family per-mode caps.
+    # Mid-pay symbols capped at 17% standard / 20% lucky to avoid "怪".
+    hi_by_fam = PER_REEL_DENSITY_HI_BY_MODE.get(mode, PER_REEL_DENSITY_HI_BY_FAMILY_STANDARD)
     for (sym, r), d in sorted(densities.items()):
         if sym == "Blank":
-            continue  # Blank density is filler, not bound
-        den_lo = PER_REEL_DENSITY_LO_BY_FAMILY.get(sym, 0.01)
+            continue
+        den_lo = PER_REEL_DENSITY_LO_BY_FAMILY.get(sym, 0.005)
+        den_hi = hi_by_fam.get(sym, 0.22)
         ok = den_lo <= d <= den_hi
         if not ok:
             checks.append(make_check(
-                "DENSITY", mode, f"{sym} R{r+1} density {d:.2%} outside band [{den_lo:.1%}, {den_hi:.0%}]",
+                "DENSITY", mode, f"{sym} R{r+1} density {d:.2%} outside [{den_lo:.1%}, {den_hi:.0%}]",
                 ok, "",
             ))
+
+    # BUCKET-FLOOR — mid-bucket hit-rate floors so player sees mid wins
+    # at human cadence. Mode 1 specifies; lucky/derived modes inherit
+    # naturally via family RTP boost.
+    bucket_floors = targets.get("bucket_hit_floors", {})
+    for bucket, floor in bucket_floors.items():
+        actual = profile.get("bucket_rate", {}).get(bucket, 0.0)
+        ok = actual >= floor
+        # Convert to "1 in N spins" for readability
+        n_spins_actual = (1 / actual) if actual > 0 else float("inf")
+        n_spins_floor = 1 / floor
+        checks.append(make_check(
+            "BUCKET-FLOOR", mode,
+            f"{bucket} hit {actual:.2%} (1 in {n_spins_actual:.0f}) vs floor {floor:.1%} (1 in {n_spins_floor:.0f})",
+            ok, "",
+        ))
 
     return checks
 

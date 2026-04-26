@@ -154,3 +154,56 @@ M1 应该是 **boom-bust** 不是 mid-heavy：
 - `slot_designer/scripts/tune_m1.py` — player-experience direct tune（27-dim 每家族每 reel uniform weight + experience cost penalty）
 - `slot_designer/scripts/verify_m1_design.py` — experience gate
 - `slot_designer/tuner/targets/M1_mode*.target.json` — 数值 target（RTP / hit / bucket）
+
+## 设计 Review Checklist (每次 tune 完必跑)
+
+**目的**: 自动化"假但不怪"判定。tune 出来的数字看起来对 ≠ 设计完成。
+每次跑完 tune 必须人眼 + 脚本过下面这些维度，检测 player perception 层的 怪。
+
+### 数值层 (verify_m1_design.py 自动检查)
+- [ ] **RTP target** 命中容差内 (mode 1=95±1, 7=85±1.5, 2=294.5±20, 5=500±30)
+- [ ] **Hit rate** 在 band (mode 1: 14-22%, 7: 10-16%, 2: 20-35%, 5: 20-40%)
+- [ ] **Wild on payline** 在 band (mode 1: 10-16%, 7: 10-18%, 2: 12-25%, 5: 12-28%)
+- [ ] **Family RTP share** 各 family 在 band
+
+### 体验层 (人眼 + 脚本一起过)
+
+**A. Per-symbol per-reel density review** — 直接看 per-reel 表
+- [ ] 每个 family × 每 reel density 在 per-family cap 内
+- [ ] 顶奖家族 (Seven, Diamond) 跨 reel max/min ratio ≤ 2.0 (standard) / 2.5 (lucky)
+- [ ] **没有单 symbol 在某 reel > 22% (普通) / > 25% (lucky)**
+
+**B. Per-reel Blank density review** — 关键的"reels 看起来一致"check
+- [ ] 每 reel Blank weighted density ≥ floor (m1/7=40%, m2=25%, m5=20%)
+- [ ] Blank max/min ratio 跨 reel ≤ 2-2.5x (一个 reel 不能特别 dense 或 empty)
+- [ ] 玩家盲玩看 3 个 reel 应该感觉**密度差不多**，不是某个 reel "永远满"
+
+**C. Per-pay-id frequency review (cross-mode)** — 每个 pay 频率有没有合理变化
+- [ ] **Mode 7**: 每个 big-win pay (id 2/3/5/6/10) 频率 = mode 1 (frozen weights，差应 < 1%)
+- [ ] **Mode 2/5**: 每个 pay 频率 ≥ mode 1 (lucky 不该让任何 pay 更稀)
+- [ ] **Mode 7**: 小奖 pay (Cherry id 12/13/14, Bar1 id 9) 频率明显 < mode 1
+
+**D. Bucket distribution review** — 玩家见到 win 的 cadence
+- [ ] **Mode 1**: ge5_lt10 hit ≥ 0.8% (~12 min/次), ge10_lt20 hit ≥ 1% (~10 min/次)
+- [ ] **桶分布**: 不能 200-500 bucket > 30% RTP (太 tail-heavy 玩家见不到中等赢)
+- [ ] 每个 reachable bucket hit rate ≥ 0.01% (没"消失"的 bucket)
+
+**E. 跨 mode 叙事 review** — mode 是 luck dial，mode 1 → mode 7 → mode 2 → mode 5 应该有一致演进
+- [ ] CV 层级: mode 5 < mode 2 < mode 1 ≤ mode 7 (lucky 平滑, 一般 boom-bust)
+- [ ] Hit rate 层级: mode 7 < mode 1 < mode 2 ≈ mode 5
+- [ ] Wild on payline 层级: mode 7 ≈ mode 1 ≤ mode 2 ≤ mode 5
+- [ ] 每个 big-win pay 频率层级: mode 7 ≈ mode 1 ≤ mode 2 ≤ mode 5
+
+**F. Per-reel asymmetry semantic check** — 不对称是不是有设计理由
+- [ ] Top-tier (Seven, Diamond) 不该单 reel 偏倚（除非有近似命中设计意图）
+- [ ] Mid-tier (Bar3) R1 偏多 = 经典 near-miss，OK
+- [ ] Filler (Bar1, Cherry) 不对称 OK，但极端 (e.g. R3=25% vs R1=2%) 要警惕
+
+### 怎么用
+
+每次 `python tune_m1.py` 跑完：
+1. 跑 `python -m slot_designer.scripts.verify_m1_design` (数值层 + A 自动)
+2. **人眼过** B / C / D / E / F (脚本难自动化的 player perception 部分)
+3. 任一 fail 必须 root-cause + 重 tune (修 bound / 加 penalty / 改 anchor)
+
+**绝对原则**: 数值全过 ≠ 设计完成。Player perception 体验合理才是 done。任何"怪"现象不能 ship。
