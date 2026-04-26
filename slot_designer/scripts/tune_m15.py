@@ -452,6 +452,7 @@ def search_weights(
     feature_ev: float,
     frozen_weights=None,
     weight_floors=None,
+    weight_ceilings=None,
     seed=0,
     iterations=15000,
     verbose=False,
@@ -459,6 +460,7 @@ def search_weights(
     rng = Random(seed)
     frozen = frozen_weights or {}
     floors = weight_floors or {}
+    ceilings = weight_ceilings or {}
 
     # Initialize
     fr_weights: dict[tuple[str, int], int] = {}
@@ -472,6 +474,9 @@ def search_weights(
     for key, fv in floors.items():
         if fr_weights.get(key, 0) < fv:
             fr_weights[key] = int(fv)
+    for key, cv in ceilings.items():
+        if fr_weights.get(key, 0) > cv:
+            fr_weights[key] = int(cv)
 
     best = dict(fr_weights)
     best_cost, _, _, _, _, _, _ = evaluate_candidate(
@@ -493,10 +498,11 @@ def search_weights(
             sym, r = key
             lo, hi = weight_bounds[sym]
             effective_lo = max(lo, floors.get(key, 0))
+            effective_hi = min(hi, ceilings.get(key, hi))
             cur = cand[key]
             delta = rng.gauss(0, sigma_pct * (hi - lo))
             new = int(round(cur + delta))
-            new = max(effective_lo, min(hi, new))
+            new = max(effective_lo, min(effective_hi, new))
             cand[key] = new
 
         cost, _, _, _, _, _, _ = evaluate_candidate(
@@ -575,21 +581,35 @@ def main(modes_to_run=(1, 7)):
         cost_weights = CostWeights(rtp_weight=0, shape_weight=0, cv_weight=0, hit_weight=0)
         # cost_weights is dummy here; tune_m15 has its own cost components
 
-        # Mode 7: freeze high7 + doublediamond weights to mode 1.
-        # Mode 5: ALL weights byte-copy from mode 2 (per design — mode 5 differs from mode 2 only in feature_params).
-        # Mode 2: weight floors for ALL non-blank symbols ≥ mode 1's value
-        # → lucky enforces "every pay frequency ≥ standard" at the per-position level.
+        # Mode 7: frozen big-win + Bar/Cherry weight RANGE around mode 1.
+        # Mode 5: ALL weights byte-copy from mode 2.
+        # Mode 2: weight floors for ALL non-blank ≥ mode 1's (lucky monotonic).
         frozen_weights = None
         weight_floors = None
-        if mode == 7 and mode1_bigwin_weights is not None:
-            frozen_weights = dict(mode1_bigwin_weights)
-            print(f"  frozen big-win weights (high7 + doublediamond) = mode 1's")
+        weight_ceilings = None
+        if mode == 7 and mode1_all_weights is not None:
+            # Frozen: high7 + doublediamond (大奖路径绝对不动)
+            frozen_weights = {
+                (sym, r): mode1_all_weights[(sym, r)]
+                for sym in BIGWIN_SYMBOLS for r in range(3)
+            }
+            # Bar/Cherry: TIGHT range [mode 1 × 0.65, mode 1 × 0.95] — uniform
+            # 略砍 (~10-30%), within-Bar shape closely preserved (no Bar2 → Bar3 trade).
+            shape_anchor_symbols = ("1bar", "2bar", "3bar", "cherry")
+            weight_floors = {
+                (sym, r): max(1, int(mode1_all_weights[(sym, r)] * 0.80))
+                for sym in shape_anchor_symbols for r in range(3)
+            }
+            weight_ceilings = {
+                (sym, r): max(1, int(mode1_all_weights[(sym, r)] * 0.95))
+                for sym in shape_anchor_symbols for r in range(3)
+            }
+            print(f"  frozen high7+doublediamond = mode 1 (大奖路径 exact)")
+            print(f"  bar/cherry weights ∈ [mode 1 × 0.80, mode 1 × 0.95] (uniform 略砍 within-Bar shape preserved)")
         elif mode == 5 and mode2_all_weights is not None:
             frozen_weights = dict(mode2_all_weights)
             print(f"  ALL weights frozen = mode 2 (mode 5 differs only in feature_params)")
         elif mode == 2 and mode1_all_weights is not None:
-            # Lucky mode: every non-blank symbol weight ≥ mode 1's per position.
-            # blank can drop (more pays in lucky), topdollar special (controls trigger).
             weight_floors = {
                 (sym, r): w for (sym, r), w in mode1_all_weights.items()
                 if sym not in ("blank", "topdollar")
@@ -601,6 +621,7 @@ def main(modes_to_run=(1, 7)):
             strip, evaluator, paytable, exp_targets, cost_weights, weight_bounds,
             feature_ev=feature_ev, frozen_weights=frozen_weights,
             weight_floors=weight_floors,
+            weight_ceilings=weight_ceilings,
             seed=mode * 11 + 23, iterations=15000, verbose=True,
         )
 
