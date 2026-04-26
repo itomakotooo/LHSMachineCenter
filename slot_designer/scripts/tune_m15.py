@@ -143,7 +143,7 @@ EXPERIENCE_TARGETS = {
         "uniformity_ratio_cap": {
             "doublediamond": 2.5, "high7": 2.5,
         },
-        "per_reel_blank_variance_strength": 5.0,
+        "per_reel_blank_variance_strength": 15.0,
         # Base CV target — KEY low-volatility constraint
         "base_cv_target": 4.0,
     },
@@ -179,7 +179,7 @@ EXPERIENCE_TARGETS = {
         "uniformity_ratio_cap": {
             "doublediamond": 3.0, "high7": 3.0,
         },
-        "per_reel_blank_variance_strength": 5.0,  # prevent R3 emptying
+        "per_reel_blank_variance_strength": 15.0,  # prevent R3 emptying
     },
     2: {
         "total_rtp_pct": 294.5,
@@ -213,7 +213,7 @@ EXPERIENCE_TARGETS = {
         "uniformity_ratio_cap": {
             "doublediamond": 3.0, "high7": 3.0,
         },
-        "per_reel_blank_variance_strength": 5.0,
+        "per_reel_blank_variance_strength": 15.0,
     },
     5: {
         "total_rtp_pct": 500.0,
@@ -234,7 +234,7 @@ EXPERIENCE_TARGETS = {
         "uniformity_ratio_cap": {
             "doublediamond": 3.0, "high7": 3.0,
         },
-        "per_reel_blank_variance_strength": 5.0,
+        "per_reel_blank_variance_strength": 15.0,
     },
 }
 
@@ -556,6 +556,7 @@ def main(modes_to_run=(1, 7)):
     paytable = spec["pays"]
 
     mode1_bigwin_weights: dict[tuple[str, int], int] | None = None
+    mode1_all_weights: dict[tuple[str, int], int] | None = None
     mode2_all_weights: dict[tuple[str, int], int] | None = None
 
     for mode in modes_to_run:
@@ -576,18 +577,30 @@ def main(modes_to_run=(1, 7)):
 
         # Mode 7: freeze high7 + doublediamond weights to mode 1.
         # Mode 5: ALL weights byte-copy from mode 2 (per design — mode 5 differs from mode 2 only in feature_params).
+        # Mode 2: weight floors for ALL non-blank symbols ≥ mode 1's value
+        # → lucky enforces "every pay frequency ≥ standard" at the per-position level.
         frozen_weights = None
+        weight_floors = None
         if mode == 7 and mode1_bigwin_weights is not None:
             frozen_weights = dict(mode1_bigwin_weights)
             print(f"  frozen big-win weights (high7 + doublediamond) = mode 1's")
         elif mode == 5 and mode2_all_weights is not None:
             frozen_weights = dict(mode2_all_weights)
             print(f"  ALL weights frozen = mode 2 (mode 5 differs only in feature_params)")
+        elif mode == 2 and mode1_all_weights is not None:
+            # Lucky mode: every non-blank symbol weight ≥ mode 1's per position.
+            # blank can drop (more pays in lucky), topdollar special (controls trigger).
+            weight_floors = {
+                (sym, r): w for (sym, r), w in mode1_all_weights.items()
+                if sym not in ("blank", "topdollar")
+            }
+            print(f"  lucky weight floors = mode 1's weights (non-blank/non-topdollar)")
 
         weight_bounds = WEIGHT_BOUNDS_BY_MODE[mode]
         best, best_cost = search_weights(
             strip, evaluator, paytable, exp_targets, cost_weights, weight_bounds,
             feature_ev=feature_ev, frozen_weights=frozen_weights,
+            weight_floors=weight_floors,
             seed=mode * 11 + 23, iterations=15000, verbose=True,
         )
 
@@ -602,8 +615,9 @@ def main(modes_to_run=(1, 7)):
                 for sym in BIGWIN_SYMBOLS
                 for r in range(3)
             }
+            # Capture ALL mode 1 weights for mode 2 lucky floor
+            mode1_all_weights = dict(best)
         if mode == 2:
-            # Capture ALL of mode 2's weights for mode 5 byte-copy
             mode2_all_weights = dict(best)
 
         # Persist (preserve feature_params block from existing file)
