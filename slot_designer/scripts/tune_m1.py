@@ -190,9 +190,12 @@ EXPERIENCE_TARGETS = {
             "Seven1": 2.5, "Seven2": 2.5,
             "Diamond1": 2.5, "Diamond2": 2.5,
         },
-        # Lucky mode 可以 Blank 少 (more pay symbols), 但不能某 reel
-        # 极端 (e.g. R3 Blank 10% while R1=46%). Floor 25%.
-        "per_reel_blank_floor": 0.25,
+        # Per-reel Blank balance — variance penalty (goal-oriented soft).
+        # Replaces hard "blank ≥ X%" floor (anti-pattern: arbitrary picked
+        # number). Variance pulls toward 3 reels having similar Blank
+        # density without specifying any number — gradient-friendly,
+        # encodes goal "reels look alike to player" directly.
+        "per_reel_blank_variance_strength": 6.0,
         "top_jackpot_max_spins": 300_000,
     },
     5: {
@@ -221,8 +224,8 @@ EXPERIENCE_TARGETS = {
             "Seven1": 2.5, "Seven2": 2.5,
             "Diamond1": 2.5, "Diamond2": 2.5,
         },
-        # Super-lucky 允许更少 Blank (max pay symbols), 但仍要 ≥ 20%.
-        "per_reel_blank_floor": 0.20,
+        # Per-reel Blank balance variance penalty (same goal as mode 2).
+        "per_reel_blank_variance_strength": 6.0,
         "top_jackpot_max_spins": 300_000,
     },
 }
@@ -348,6 +351,7 @@ def evaluate_candidate(
     experience_targets: dict,
     family_rtp_anchor: dict[str, float] | None = None,
     family_rtp_anchor_tol: dict[str, tuple[float, float]] | None = None,
+    bigwin_density_floor: dict[tuple[str, int], float] | None = None,
 ):
     """Return (cost, predicted_profile, family_rtp, wild_p, weights_array).
 
@@ -428,16 +432,24 @@ def evaluate_candidate(
         elif d > den_hi:
             cost += 80.0 * ((d - den_hi) * 100) ** 2
 
-    # Per-reel Blank density floor — prevents optimizer from stuffing
-    # one reel with all pay symbols (cubic-product trick) leaving others
-    # blank-heavy. Each reel must keep some Blank breathing room so
-    # reels look similar to player.
-    blank_floor = experience_targets.get("per_reel_blank_floor")
-    if blank_floor is not None:
-        for r in range(3):
-            blank_d = densities.get(("Blank", r), 0.0)
-            if blank_d < blank_floor:
-                cost += 200.0 * ((blank_floor - blank_d) * 100) ** 2
+    # Per-reel Blank balance — variance penalty (goal-oriented soft).
+    blank_var_k = experience_targets.get("per_reel_blank_variance_strength", 0.0)
+    if blank_var_k > 0:
+        blanks_pp = [densities.get(("Blank", r), 0.0) * 100 for r in range(3)]
+        mean_b = sum(blanks_pp) / 3
+        variance_pp2 = sum((b - mean_b) ** 2 for b in blanks_pp) / 3
+        cost += blank_var_k * variance_pp2
+
+    # Big-win pay frequency floor (mode 5 vs mode 2 monotonic): each
+    # specific pay_id frequency must be ≥ reference. Direct goal — what
+    # player actually experiences (how often they see a big win), not
+    # symbol density (which is an intermediate quantity).
+    if bigwin_density_floor:  # (param name kept; carries pay_id → ref_freq)
+        for pid, ref_freq in bigwin_density_floor.items():
+            actual_freq = pred.get("pay_hits", {}).get(pid, 0.0)
+            if actual_freq < ref_freq and ref_freq > 0:
+                rel_gap = (ref_freq - actual_freq) / ref_freq
+                cost += 200.0 * (rel_gap * 100) ** 2
 
     # Per-family REEL-UNIFORMITY penalty for top-tier symbols.
     # Seven/Diamond are top-pay/brand symbols — player should see them
@@ -493,6 +505,7 @@ def search_weights(
     family_rtp_anchor_tol=None,
     frozen_weights=None,
     weight_floors=None,
+    bigwin_density_floor=None,
     seed=0,
     iterations=12000,
     verbose=False,
@@ -527,6 +540,7 @@ def search_weights(
     best_cost, _, _, _, _ = evaluate_candidate(
         best, strip, evaluator, target, paytable, reachable,
         cost_weights, experience_targets, family_rtp_anchor, family_rtp_anchor_tol,
+        bigwin_density_floor=bigwin_density_floor,
     )
 
     sigma_pct = 0.4
@@ -555,6 +569,7 @@ def search_weights(
         cost, _, _, _, _ = evaluate_candidate(
             cand, strip, evaluator, target, paytable, reachable,
             cost_weights, experience_targets, family_rtp_anchor, family_rtp_anchor_tol,
+            bigwin_density_floor=bigwin_density_floor,
         )
         if cost < best_cost:
             best, best_cost = cand, cost
@@ -641,11 +656,39 @@ def main(modes_to_run=(1, 7)):
 
     mode1_anchor: dict[str, float] | None = None
     mode1_bigwin_weights: dict[tuple[str, int], int] | None = None
+    mode2_bigwin_weights: dict[tuple[str, int], int] | None = None
+    mode2_bigwin_pay_freqs: dict[str, float] | None = None  # pay_id -> P(fires)
 
     BIGWIN_SYMBOLS = ("Seven1", "Seven2", "Diamond1", "Diamond2")
+    # pay_ids classified as "big-win" = mode 5 must have ≥ mode 2 freq.
+    # Diamond pure pays (2, 3) + Seven family (5, 6, 10).
+    # pay_id 4 (Diamond2x3 = 1000x) is rtp_excluded so doesn't fire from
+    # regular spins — skip it (always 0 hit rate via evaluator).
+    BIGWIN_PAY_IDS = ("2", "3", "5", "6", "10")
 
-    # If mode 7 is being tuned without mode 1 in same run, load anchors from disk
-    if 7 in modes_to_run and 1 not in modes_to_run:
+    def _extract_bigwin_weights_from_disk(mode_n: int) -> dict[tuple[str, int], int] | None:
+        """Read mode N's saved weights.json + extract big-win symbol weights
+        per (symbol, reel)."""
+        path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode_n}" / "weights.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            w_array = data.get("weights")
+            strip_data = json.loads(STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
+            if not w_array:
+                return None
+            out: dict[tuple[str, int], int] = {}
+            for sym in BIGWIN_SYMBOLS:
+                for r_idx, strip_reel in enumerate(strip_data):
+                    for pos, s in enumerate(strip_reel):
+                        if s == sym:
+                            out[(sym, r_idx)] = int(w_array[r_idx][pos])
+                            break
+            return out
+        except (FileNotFoundError, json.JSONDecodeError):
+            return None
+
+    # Load mode 1 anchor for mode 7 (frozen) or mode 2/5 (floor) when not in same run
+    if (7 in modes_to_run or 2 in modes_to_run or 5 in modes_to_run) and 1 not in modes_to_run:
         mode1_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
         try:
             mode1_data = json.loads(mode1_path.read_text(encoding="utf-8"))
@@ -672,6 +715,12 @@ def main(modes_to_run=(1, 7)):
         except (FileNotFoundError, json.JSONDecodeError):
             print("[anchor] could not load mode 1 anchor from disk")
 
+    # Load mode 2 big-win weights from disk if mode 5 is being tuned alone
+    if 5 in modes_to_run and 2 not in modes_to_run:
+        mode2_bigwin_weights = _extract_bigwin_weights_from_disk(2)
+        if mode2_bigwin_weights:
+            print(f"[anchor] loaded mode 2 big-win weights (mode 5 floor)")
+
     for mode in modes_to_run:
         target_path = _ROOT / "slot_designer" / "tuner" / "targets" / f"M1_mode{mode}_{ {1: 'classic', 2: 'lucky', 5: 'super_lucky', 7: 'low_rtp'}[mode] }.target.json"
         target = json.loads(target_path.read_text(encoding="utf-8"))
@@ -697,16 +746,26 @@ def main(modes_to_run=(1, 7)):
         family_anchor_tol = None
         frozen_weights = None
         weight_floors = None
+        bigwin_density_floor = None
         if mode == 7 and mode1_bigwin_weights is not None:
             frozen_weights = dict(mode1_bigwin_weights)
-        elif mode in (2, 5) and mode1_bigwin_weights is not None:
-            # Lucky modes: big-win weights ≥ mode 1's value (lucky should
-            # NOT make top-tier rarer than standard). Optimizer can boost
-            # higher (lucky often does), just not cut.
+        elif mode == 2 and mode1_bigwin_weights is not None:
+            # Mode 2 (lucky) ≥ mode 1 (standard) for big-win weights.
+            # Weight floor is fine here because mode 1 is standard (no
+            # extreme reel-weight inflation), so weight ≥ → density ≥.
             weight_floors = dict(mode1_bigwin_weights)
-            print(f"  big-win weight floors (mode 1 baseline, lucky may exceed):")
-            for (sym, r), w in sorted(weight_floors.items()):
-                print(f"     {sym}_R{r}: ≥ {w}")
+        elif mode == 5 and mode2_bigwin_pay_freqs is not None:
+            # Mode 5 (super-lucky) ≥ mode 2 (lucky) for big-win pay_id
+            # frequencies. Direct goal — what player actually feels.
+            # Penalize when any P(big-win pay fires) < mode 2's value.
+            bigwin_density_floor = dict(mode2_bigwin_pay_freqs)
+            print(f"  big-win pay frequency floor (mode 2 baseline):")
+            for pid, freq in sorted(bigwin_density_floor.items(), key=lambda x: int(x[0])):
+                n = 1/freq if freq > 0 else 0
+                print(f"     pay_id {pid}: P(fire) ≥ {freq:.6f} (1 in {n:,.0f})")
+        elif mode == 5 and mode1_bigwin_weights is not None:
+            weight_floors = dict(mode1_bigwin_weights)
+            print(f"  big-win weight floors (mode 1 baseline; mode 2 not in run)")
         if mode == 7 and mode1_anchor is not None:
             # Mode 7 inherits Diamond/Seven absolute pp from mode 1
             family_anchor = {
@@ -752,6 +811,7 @@ def main(modes_to_run=(1, 7)):
             target, strip, evaluator, paytable, reachable, exp_targets,
             cost_weights, weight_bounds, family_anchor, family_anchor_tol,
             frozen_weights=frozen_weights, weight_floors=weight_floors,
+            bigwin_density_floor=bigwin_density_floor,
             seed=mode * 7 + 13, iterations=15000, verbose=True,
         )
 
@@ -770,6 +830,18 @@ def main(modes_to_run=(1, 7)):
                 (sym, r): best[(sym, r)]
                 for sym in BIGWIN_SYMBOLS
                 for r in range(3)
+            }
+        if mode == 2:
+            mode2_bigwin_weights = {
+                (sym, r): best[(sym, r)]
+                for sym in BIGWIN_SYMBOLS
+                for r in range(3)
+            }
+            # Capture mode 2's big-win pay_id frequencies as floor for
+            # mode 5 (super-lucky must improve over lucky for these pays).
+            mode2_bigwin_pay_freqs = {
+                pid: pred.get("pay_hits", {}).get(pid, 0.0)
+                for pid in BIGWIN_PAY_IDS
             }
 
         # Persist
