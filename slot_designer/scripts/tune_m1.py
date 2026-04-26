@@ -134,9 +134,9 @@ EXPERIENCE_TARGETS = {
             "Seven1": 2.0, "Seven2": 2.0,
             "Diamond1": 2.0, "Diamond2": 2.0,
         },
-        # Note: per_reel_blank_floor only on lucky modes (2/5).
+        # Note: per_reel_blank_variance_strength only on lucky modes (2/5).
         # Standard modes (1/7) RTP target doesn't push optimizer toward
-        # R-stuffing, so don't need the floor.
+        # R-stuffing, so don't need it.
         "top_jackpot_max_spins": 300_000,
         "bucket_hit_floors": {
             "ge5_lt10":  0.008,
@@ -351,7 +351,7 @@ def evaluate_candidate(
     experience_targets: dict,
     family_rtp_anchor: dict[str, float] | None = None,
     family_rtp_anchor_tol: dict[str, tuple[float, float]] | None = None,
-    bigwin_density_floor: dict[tuple[str, int], float] | None = None,
+    bigwin_pay_freq_floor: dict[tuple[str, int], float] | None = None,
 ):
     """Return (cost, predicted_profile, family_rtp, wild_p, weights_array).
 
@@ -444,8 +444,8 @@ def evaluate_candidate(
     # specific pay_id frequency must be ≥ reference. Direct goal — what
     # player actually experiences (how often they see a big win), not
     # symbol density (which is an intermediate quantity).
-    if bigwin_density_floor:  # (param name kept; carries pay_id → ref_freq)
-        for pid, ref_freq in bigwin_density_floor.items():
+    if bigwin_pay_freq_floor:
+        for pid, ref_freq in bigwin_pay_freq_floor.items():
             actual_freq = pred.get("pay_hits", {}).get(pid, 0.0)
             if actual_freq < ref_freq and ref_freq > 0:
                 rel_gap = (ref_freq - actual_freq) / ref_freq
@@ -505,7 +505,7 @@ def search_weights(
     family_rtp_anchor_tol=None,
     frozen_weights=None,
     weight_floors=None,
-    bigwin_density_floor=None,
+    bigwin_pay_freq_floor=None,
     seed=0,
     iterations=12000,
     verbose=False,
@@ -540,7 +540,7 @@ def search_weights(
     best_cost, _, _, _, _ = evaluate_candidate(
         best, strip, evaluator, target, paytable, reachable,
         cost_weights, experience_targets, family_rtp_anchor, family_rtp_anchor_tol,
-        bigwin_density_floor=bigwin_density_floor,
+        bigwin_pay_freq_floor=bigwin_pay_freq_floor,
     )
 
     sigma_pct = 0.4
@@ -569,7 +569,7 @@ def search_weights(
         cost, _, _, _, _ = evaluate_candidate(
             cand, strip, evaluator, target, paytable, reachable,
             cost_weights, experience_targets, family_rtp_anchor, family_rtp_anchor_tol,
-            bigwin_density_floor=bigwin_density_floor,
+            bigwin_pay_freq_floor=bigwin_pay_freq_floor,
         )
         if cost < best_cost:
             best, best_cost = cand, cost
@@ -746,7 +746,7 @@ def main(modes_to_run=(1, 7)):
         family_anchor_tol = None
         frozen_weights = None
         weight_floors = None
-        bigwin_density_floor = None
+        bigwin_pay_freq_floor = None
         if mode == 7 and mode1_bigwin_weights is not None:
             frozen_weights = dict(mode1_bigwin_weights)
         elif mode == 2 and mode1_bigwin_weights is not None:
@@ -758,9 +758,9 @@ def main(modes_to_run=(1, 7)):
             # Mode 5 (super-lucky) ≥ mode 2 (lucky) for big-win pay_id
             # frequencies. Direct goal — what player actually feels.
             # Penalize when any P(big-win pay fires) < mode 2's value.
-            bigwin_density_floor = dict(mode2_bigwin_pay_freqs)
+            bigwin_pay_freq_floor = dict(mode2_bigwin_pay_freqs)
             print(f"  big-win pay frequency floor (mode 2 baseline):")
-            for pid, freq in sorted(bigwin_density_floor.items(), key=lambda x: int(x[0])):
+            for pid, freq in sorted(bigwin_pay_freq_floor.items(), key=lambda x: int(x[0])):
                 n = 1/freq if freq > 0 else 0
                 print(f"     pay_id {pid}: P(fire) ≥ {freq:.6f} (1 in {n:,.0f})")
         elif mode == 5 and mode1_bigwin_weights is not None:
@@ -811,7 +811,7 @@ def main(modes_to_run=(1, 7)):
             target, strip, evaluator, paytable, reachable, exp_targets,
             cost_weights, weight_bounds, family_anchor, family_anchor_tol,
             frozen_weights=frozen_weights, weight_floors=weight_floors,
-            bigwin_density_floor=bigwin_density_floor,
+            bigwin_pay_freq_floor=bigwin_pay_freq_floor,
             seed=mode * 7 + 13, iterations=15000, verbose=True,
         )
 

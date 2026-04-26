@@ -1,209 +1,202 @@
-# M1 — IGT Triple Double Diamond archetype: 数值 + 感性体验设计
+# M1 — IGT Triple Double Diamond: Player-Experience Design Contract
 
-> 这是 M1 的**设计契约文档**。数值 target + experience invariants 在此。
-> Memory 里只存通用原则，具体 M1 benchmark 数字全在这里。
+> 这是 M1 的设计契约。所有 M1-specific 数值在此。
+> Memory 只存 universal 原则，不存机台数值。
 
-## 1. 真实原型
+---
 
-**IGT Triple Double Diamond**（3-reel 1-line classic slot，2000s 发行）
+## 1. 真实原型（设计灵感，非约束）
 
-- 原型数据来源：[Wizard of Obds — Hot Roll analysis](https://wizardofodds.com/games/slots/hot-roll/)（Triple Double Diamond 衍生版的反向工程 reel mapping）
-- 物理 reel: 22 stops × 3 reels（independent 序列）
-- 虚拟转盘: 256 stops / reel
-- Confidence: medium-high（WoO 专家反推，不是 IGT 官方 PAR sheet）
-- Modifications from archetype: position 13 (原 Hot Roll bonus trigger) 替换为 Blank（M1 无 bonus）
+**IGT Triple Double Diamond**（3-reel 1-line classic slot）
 
-## 2. 家族 RTP share benchmark
+- 来源: [Wizard of Odds Hot Roll reverse-engineered reel mapping](https://wizardofodds.com/games/slots/hot-roll/)
+- Confidence: medium-high (WoO 反推，非 IGT 官方 PAR sheet)
+- 原型 = 灵感，不是约束 — per [`project_slot_designer_axiom_experience_is_soul`](../../memory/project_slot_designer_axiom_experience_is_soul.md)，"假可以但不能怪"，weights 跟原型偏离 OK，前提是玩家体验合理
+- Strip 修改: position 13（原 Hot Roll bonus trigger）→ Blank（M1 无 bonus）
 
-**TDD 原型在 M1 paytable 下的自然家族分布**（`verify_m1_design.py` 的红线锚）:
+## 2. 硬约束
 
-Pure TDD baseline (family scales 全 1.0): Seven 20.1%, Bar 64.8%, Cherry 15.0%, Wild 0.1%。
+- **Paytable 锁** — `slot_designer/specs/M1.spec.json` 不动
+- **Strip 物理 50% Blank 交替** — `slot_designer/weights/M1/reel_strips.json` 22-stop 物理位置 1:1 alternation
+- **Mode RTP**:
+  - Mode 1 = 95% ± 1pp（standard baseline）
+  - Mode 7 = 85% ± 1.5pp（"运气差"充值 trigger）
+  - Mode 2 = 294.5% ± 20pp（lucky 福利）
+  - Mode 5 = 500% ± 30pp（super-lucky）
 
-**Per-mode family share target range**（跟 luck 水平分层）:
+## 3. 玩家体验目标（Tune cost function 实现的 goals）
 
-| 家族 | Mode 1 / 7 (standard) | Mode 2 (lucky) | Mode 5 (super lucky) |
-|---|---|---|---|
-| **Seven** | **18% - 30%** | 25% - 55% | 35% - 70% |
-| **Bar** | 55% - 75% | 35% - 65% | 25% - 55% |
-| **Cherry** | 8% - 20% | 3% - 15% | 1% - 10% |
-| **Wild (pure)** | ≤ 1% | ≤ 2% | ≤ 3% |
+### 3.1 全 mode 共享 (Double Diamond signature)
 
-**⚠ "Wild (pure)" 只是 `pay_id 2/3/4`（纯 3-wild 路径）的 RTP 占比 —— 这数字本身几乎**没有**反映 wild 在 "Double Diamond" 这台机里的真实角色**。Wild 的 99% 价值来自 **substitution + multiplier boost**（例如 Diamond1 + Bar2 + Bar2 = 3-Bar2 × 2 倍率，被归到 Bar family），不是 pure-wild pays。
+| | 实现机制 |
+|---|---|
+| Wild 在 payline 频繁可见 (brand) | per-mode `wild_on_payline_band` (10-16% standard, 12-25% lucky, 12-28% super-lucky) |
+| 顶奖路径可达（Diamond×3 = 1000× rtp_excluded but reachable） | strip 设计 + per-reel 密度 |
+| 顶奖家族跨 reel 一致（Seven/Diamond 不偏单 reel） | `uniformity_ratio_cap` 2.0 standard / 2.5 lucky |
+| 视觉无怪 reel（3 个 reel 看起来密度一致） | mode 2/5 加 `per_reel_blank_variance_strength` (variance penalty 软偏好) |
 
-**Wild 的真实 experience 衡量指标**（Double Diamond 机台必验）:
+### 3.2 Mode 1 (standard 95%)
 
-| 指标 | Mode 1 / 7 | Mode 2 | Mode 5 | 含义 |
+| | 实现 |
+|---|---|
+| 玩家见 5-10× wins ~每 12 min/次 | `bucket_hit_floors["ge5_lt10"] >= 0.008` (1 in 125 spins) |
+| 玩家见 10-20× wins ~每 10 min/次 | `bucket_hit_floors["ge10_lt20"] >= 0.010` (1 in 100 spins) |
+| 不极端 boom-bust (CV 适中) | `cv_target = 9.0`, k=120 强 penalty |
+| 各家族 RTP share 在 band | `family_share_bands` (Diamond 5-20%, Seven 12-22%, Bar3 10-20%, Bar2 10-22%, Bar1 8-18%, Cherry 8-17%) |
+
+### 3.3 Mode 7 (low-RTP 85%) — "略砍小奖保大奖"
+
+> 设计原则（user 强调多次）: 通过略微砍中奖率（总 hit rate）来砍掉一些小奖，让 RTP 达到 85%。**大奖击中率 + 期望产出绝对不动**（Diamond/Seven family 路径完全锁死）。
+
+数值结果:
+- 总 hit rate 略降（19.5% → 14.8%）
+- 大奖占比略升（小奖砍后 big-win 相对 share 升）
+- 波动性略升（CV 9.2 → 10.0）
+
+实现机制 — **frozen weights**:
+- Mode 7 search 时 Diamond1/Diamond2/Seven1/Seven2 的 weight 在每个 reel 上**字面锁死** = mode 1 对应值
+- 只让 Bar/Cherry/Blank 自由调
+- 结果: 5 个 big-win pay (id 2/3/5/6/10) 频率在 mode 7 = mode 1 精确 1.00x（差异 < 0.1%）
+- 配合 family_rtp_anchor 软约束（中奖/小奖 family pp 对应砍幅度）
+
+### 3.4 Mode 2 (lucky 300%) — "全 family 都热"
+
+| | 实现 |
+|---|---|
+| Hit rate ~1.5x mode 1 | RTP target + bucket shape 自然达成 |
+| 所有 pay 频率 ≥ mode 1 | `weight_floors` (mode 2 weights ≥ mode 1 weights for big-win symbols) |
+| Wild 更显眼 | wild_on_payline_band 上限 25% (vs standard 16%) |
+| 7-dominated (Seven 35-65%) | `family_share_bands` Seven 上限 65% |
+| Reels 看起来一致（无 R-stuffing） | `per_reel_blank_variance_strength = 6.0` 软拉均匀 |
+
+### 3.5 Mode 5 (super-lucky 500%) — "顶奖路径超频，shift mass to top"
+
+| | 实现 |
+|---|---|
+| 所有 big-win pay 频率 ≥ mode 2 | `bigwin_pay_freq_floor` (mode 5 P(big-win pay) ≥ mode 2 reference) |
+| 7-very-heavy (Seven 50-80%) | family_share_bands Seven 上限 80% |
+| Mid/low pay 砍 (shift mass to top) | 自然 — Seven RTP 主导挤压其他 family |
+| Reels 视觉一致 | `per_reel_blank_variance_strength = 6.0` |
+
+设计意图：mode 5 的"super-lucky"不是"所有 pay 都更频"，而是"顶奖路径明显更易触达"（Seven1×3 / Seven2×3 / Diamond combos 频率显著上升），代价是 Cherry/Bar1 base pays 自然减少。
+
+## 4. 当前 tune 数值结果
+
+| Mode | RTP | hit | wild_on_payline | CV |
 |---|---|---|---|---|
-| **P(wild 出现在 payline)** | **≥ 5%** | ≥ 8% | ≥ 12% | Player 多久看到 wild 在 payline 帮忙 |
-| **P(2+ wild on payline)** | ≥ 0.1% | ≥ 0.3% | ≥ 0.7% | 双 wild（pure_wild pay 触发的场景） |
-| **P(3-Diamond2 top jackpot)** | > 0 | > 0 | > 0 | 顶奖路径 1000× 可达（极稀但必须 ≥ 1 in 10M spin） |
+| 1 | 95.11% | 19.44% | 14.83% | 9.22 |
+| 7 | 85.28% | 14.86% | 14.73% | 10.19 |
+| 2 | 294.46% | 26.94% | 21.14% | 6.51 |
+| 5 | 499.96% | 28.38% | 25.59% | 5.05 |
 
-TDD 原型 baseline P(≥1 wild on payline) = 5.37% → 我们 Mode 1 要 ≥ 这个。
+**Big-win pay frequency (1 in N spins)**:
 
-**Rationale**：
-- Standard 模式（1, 7）Seven 20% 贴 TDD baseline —— "classic 节奏"
-- Lucky（2）Seven 涨到 40-50% —— "今天 7 出得频"
-- Super-lucky（5）Seven 60% —— 顶奖成主角，Bar 成配角
-- Cherry 随 luck 级提升反降（lucky 模式 Bar/Seven 主导）
-- **Wild 不要被 "pure pay share ≤ 1%" 误导** —— 这台机的灵魂是"Double Diamond + Triple Diamond 在 window/payline 频繁出现 substitute"，那是 experience 核心
+| Pay | Mode 1 | Mode 7 | Mode 2 | Mode 5 |
+|---|---|---|---|---|
+| Diamond1×3 (500×) | 27,587 | 27,609 | 9,113 | 7,592 |
+| Diamond mixed (240/360×) | 10,375 | 10,383 | 4,050 | 2,204 |
+| Seven2×3 (50×) | 6,069 | 6,074 | 318 | 107 |
+| Seven1×3 (40×) | 1,163 | 1,164 | 256 | 142 |
+| Seven mixed (25×) | 2,642 | 2,644 | 146 | 60 |
 
-**Rationale**：
-- M1 paytable 是 TDD 原型的约 ~50% 倍率（Seven2 50× vs TDD Red 7 100×），因此 Seven share 为 20%（TDD 原型 50% 的 classic RWB share 不直接适用 M1，因为倍率被砍半了 —— 这个 20% 是 TDD 原型 structurally 在 M1 paytable 下的真实值，不是编的）
-- Bar 在 TDD 每个 reel 的 stop 数多（reel 2/3 各 ~50 stops），自然占主导，但不能超过 75%（> 75% = Seven 灵魂被淹没）
-- Cherry 作为小奖 staple 10-20% 合理
-- Wild 跨家族 share 应该**极低**（wild 在 M1 主要作 substitute 而不是 pure-wild 顶奖 —— top 顶奖走 `pay_id 4` = 3-Diamond2 × 3x wild = 1000× 极稀）
+Mode 7 = mode 1 (frozen, 1.00x). Mode 2/5 monotonic ≥ mode 1.
 
-## 3. 跨 mode RTP target
+**Per-reel Blank balance**:
 
-| Mode | RTP | Hit rate | Mode 叙事 |
-|---|---|---|---|
-| 1 | **95% ± 1pp** | ~15% | Classic TDD baseline，标准运气 |
-| 2 | **300% ± 20pp** | 22-28% | Lucky — 同一台机今天手气好 |
-| 5 | **500% ± 20pp** | 22-28% | Super-lucky — session 级大奖更频繁 |
-| 7 | **85% ± 1pp** | ~10% | Grind — 小奖少，大奖 / Seven 不变 |
+| Mode | R1 | R2 | R3 | max/min |
+|---|---|---|---|---|
+| 1 | 52.46% | 47.56% | 61.54% | 1.29x |
+| 7 | 66.99% | 53.78% | 48.43% | 1.38x |
+| 2 | 34.36% | 34.62% | 34.45% | 1.01x ← variance penalty 拉到完美 |
+| 5 | 28.10% | 22.64% | 30.06% | 1.33x |
 
-## 4. 跨 mode experience invariants
+## 5. 实现层
 
-### Mode 7 vs Mode 1: "砍小奖保大奖"
+### 5.1 Tune (`slot_designer/scripts/tune_m1.py`)
 
-- **Seven 家族 RTP share mode 7 ≥ mode 1**（mode 7 Seven share 必须 ≥ mode 1 Seven share 的 95%）
-- **Seven 家族 per-reel absolute marginal mode 7 ≥ mode 1 × 0.9**（核心"大奖频率不降"保证）
-- Diamond 家族同上（顶奖路径不被砍）
-- Cherry / Bar 可以降（这是"小奖少"的来源）
+- **参数化**: 27-dim per-family per-reel uniform weight (9 family × 3 reel)
+- **Search**: random-restart local search w/ adaptive sigma
+- **Cost components**:
+  - 数值 target: RTP + hit + bucket shape + CV (硬, 通过 quadratic penalty)
+  - 软偏好: family share bands, wild signature band, per-reel density caps, uniformity ratios
+  - **Goal-oriented soft penalties (无 picked threshold)**:
+    - `per_reel_blank_variance_strength` (mode 2/5): 跨 reel Blank 方差 → 0
+    - `bigwin_pay_freq_floor` (mode 5): mode 5 big-win pay 频率 ≥ mode 2 频率（直接 goal expression）
+  - 跨 mode 锚定:
+    - **frozen_weights** (mode 7): big-win symbol weights LOCKED to mode 1's
+    - **weight_floors** (mode 2): big-win weights ≥ mode 1's
+    - **family_rtp_anchor** (mode 7): non-big-win families 跟 mode 1 anchor + cut tolerance
 
-### Mode 2 vs Mode 1: "全 family 都热"
+### 5.2 Verify (`slot_designer/scripts/verify_m1_design.py`)
 
-- 各家族 RTP share ratio 保持（allow ± 3pp drift）
-- Hit rate ≈ mode 1 × 1.5-1.9
-- Bucket shape 朝 Mid/High 稍偏（per-hit 平均倍率略升）
+9 类 check, 全绿才算 done:
+- RTP / HIT / WILD / SHARE / DENSITY / MODE7-LOCK / MODE7-CUT / TOP-PATH / SIGNATURE / BUCKET-FLOOR
 
-### Mode 5 vs Mode 2: "top bucket 加厚"
+### 5.3 文件
 
-- 各家族 share 基本保持
-- High bucket (50-500×) RTP share ≥ mode 2 High × 1.3
-- Hit rate ≈ mode 2
+- `slot_designer/specs/M1.spec.json` — paytable + 规则
+- `slot_designer/weights/M1/reel_strips.json` — 22-stop 布局 + `_archetype` 来源
+- `slot_designer/weights/M1/mode_*/weights.json` — 各 mode 权重
+- `slot_designer/scripts/tune_m1.py` — tune 入口
+- `slot_designer/scripts/verify_m1_design.py` — verify 入口
+- `slot_designer/tuner/targets/M1_mode*.target.json` — 数值 target
 
-## 5. Per-family per-reel ratio 锁
+## 6. 设计 Review Checklist (每次 tune 完必跑)
 
-TDD 原型的 per-reel stop 分布（22-stop physical）必须 preserve。每 mode tune 完 per-family 的 R1:R2:R3 ratio vs TDD baseline **drift < 0.15**（Diamond 家族因 stop 数少 1-4 int rounding 放宽到 < 0.25）。
+数值全绿 ≠ 设计完成。每次跑完 tune 必须人眼过下面 6 类，检测 player perception 层的"怪"。
 
-TDD baseline per-family per-reel stop count：
+### A. 数值层 (verify_m1_design.py 自动)
+- RTP / Hit / Wild signature 在 band
+- 各 family RTP share 在 band
+- Mode 7 大奖路径 = mode 1（frozen 验证）
+- Mode 7 小奖砍 ≥ 1pp
+- Mid bucket (mode 1 ge5_lt10/ge10_lt20) 命中频率达标
 
-| 家族 | R1 | R2 | R3 |
-|---|---|---|---|
-| Blank | 129 | 116 | 115 |
-| Diamond1 | 2 | 3 | 1 |
-| Diamond2 | 1 | 3 | 4 |
-| Seven1 (Purple 7) | 5 | 19 | 13 |
-| Seven2 (Red 7) | 24 | 3 | 17 |
-| Cherry | 5 | 5 | 1 |
-| Bar1 (1-Bar) | 6 | 54 | 56 |
-| Bar2 (2-Bar) | 18 | 4 | 17 |
-| Bar3 (3-Bar) | 41 | 21 | 12 |
+### B. Per-reel symbol density review (人眼过 per-reel 表)
+- 每个 family × 每 reel density 在 per-family cap 内
+- 顶奖家族 (Seven, Diamond) 跨 reel max/min ratio ≤ 2.0 standard / 2.5 lucky
+- 没有单 symbol 在某 reel 极端高 (> 22% standard / > 25% lucky)
+- 每个 family 在每 reel ≥ floor (Seven2/Diamond2 ≥ 0.3%, others ≥ 1%)
 
-## 6. Near-miss 结构
+### C. Per-reel Blank balance review
+- Blank 跨 reel max/min ratio ≤ 2x (lucky modes 也别超 2.5x)
+- 玩家盲玩看 3 个 reel 应该感觉密度差不多
+- 没有"R3 永远满"或"R1 永远空"这种怪
 
-TDD 设计的 Seven 近 miss clustering：Seven (Red 7 尤其) 旁边 stop 是 Blank，window 可见但 payline 不中。衡量指标：
+### D. Per-pay-id frequency review (cross-mode)
+- **Mode 7**: 5 个 big-win pay (id 2/3/5/6/10) 频率 = mode 1 (1.00x ± 1%)
+- **Mode 2**: 所有 pay 频率 ≥ mode 1
+- **Mode 5**: 5 个 big-win pay 频率 ≥ mode 2 (单调 m1 ≤ m2 ≤ m5)
+- Mode 5 small/mid Bar/Cherry pay frequency 可以 < mode 2 (shift mass to top intentional)
 
-- Seven2 **窗口/支付线 ratio** ≥ 1.3（正常 classic clustering 强度）
-- Diamond 家族窗口/支付线 ratio ≥ 1.3
+### E. Bucket distribution review
+- Mode 1: ge5_lt10 hit ≥ 0.8% (~12 min cadence), ge10_lt20 ≥ 1% (~10 min)
+- 没有"消失"的 bucket (≥ 0.01% hit)
+- 不超 tail-heavy (200-500 bucket RTP share 不该 > 35%)
 
-这些是 rawdata 跑完后从 `symbols_by_column_top10` vs `symbols_by_column_top10_payline` 计算出来（analyzer 已经 emit 两个字段）。
-
-## 7. Bucket shape narrative
-
-M1 应该是 **boom-bust** 不是 mid-heavy：
-
-- Low (1-10×) hit rate ≥ total hit × 50%（小奖基础流量）
-- High (50-500×) RTP share ≥ 15%（big-win memory points）
-- Mid (10-50×) 是自然 filler，无 hard rule
-- Top (500+) 仅通过 pay_id 4 (3-Diamond2 = 1000×)，极稀有
-
-## 8. Family-scale tune 策略
-
-**锁死的 family（所有 mode strict scale = 1.0）**：
-- Diamond1, Diamond2（wild / 顶奖路径）
-- Seven1, Seven2（核心 win-carrying family）
-
-**自由 scale 的 family（[0.25, 4.0] bounds）**：
-- Blank, Cherry, Bar1, Bar2, Bar3
-
-**Mode 2/5（lucky）的 relaxation**：
-- RTP 300% / 500% 无法仅靠 Blank/Cherry/Bar 达到 → 允许 Seven/Diamond scale ∈ [1.0, 2.5]
-- 约束：family RTP share 必须仍在 §2 的 target range 内（verify 红线）
-
-**Mode 1/7（标准）strict lock**：
-- Seven/Diamond 严格 1.0
-- 只让 Blank/Cherry/Bar 吸收 RTP 调节
-
-## 9. 回归测试
-
-- `tests/test_tuner.py::test_m1_per_reel_ratios_match_tdd_archetype` — per-family per-reel ratio drift 锁 §5
-- `scripts/verify_m1_design.py` — 跑所有 red/green check
-  - §2 家族 RTP share 合规
-  - §3 RTP 命中 target
-  - §4 mode 间 invariant 满足
-  - §5 per-reel ratio drift < threshold
-  - §6 near-miss clustering ratio 达标
-  - §7 bucket shape narrative 合规
-
-## 相关文件
-
-- `slot_designer/weights/M1/reel_strips.json` — 22-stop 布局（`_archetype` block 记录设计灵感来源，TDD WoO Hot Roll 反向工程）
-- `slot_designer/weights/M1/mode_*/weights.json` — 各 mode 权重（`_family_uniform_weights` 字段记录每家族每 reel uniform weight）
-- `slot_designer/scripts/tune_m1.py` — player-experience direct tune（27-dim 每家族每 reel uniform weight + experience cost penalty）
-- `slot_designer/scripts/verify_m1_design.py` — experience gate
-- `slot_designer/tuner/targets/M1_mode*.target.json` — 数值 target（RTP / hit / bucket）
-
-## 设计 Review Checklist (每次 tune 完必跑)
-
-**目的**: 自动化"假但不怪"判定。tune 出来的数字看起来对 ≠ 设计完成。
-每次跑完 tune 必须人眼 + 脚本过下面这些维度，检测 player perception 层的 怪。
-
-### 数值层 (verify_m1_design.py 自动检查)
-- [ ] **RTP target** 命中容差内 (mode 1=95±1, 7=85±1.5, 2=294.5±20, 5=500±30)
-- [ ] **Hit rate** 在 band (mode 1: 14-22%, 7: 10-16%, 2: 20-35%, 5: 20-40%)
-- [ ] **Wild on payline** 在 band (mode 1: 10-16%, 7: 10-18%, 2: 12-25%, 5: 12-28%)
-- [ ] **Family RTP share** 各 family 在 band
-
-### 体验层 (人眼 + 脚本一起过)
-
-**A. Per-symbol per-reel density review** — 直接看 per-reel 表
-- [ ] 每个 family × 每 reel density 在 per-family cap 内
-- [ ] 顶奖家族 (Seven, Diamond) 跨 reel max/min ratio ≤ 2.0 (standard) / 2.5 (lucky)
-- [ ] **没有单 symbol 在某 reel > 22% (普通) / > 25% (lucky)**
-
-**B. Per-reel Blank density review** — 关键的"reels 看起来一致"check
-- [ ] 每 reel Blank weighted density ≥ floor (m1/7=40%, m2=25%, m5=20%)
-- [ ] Blank max/min ratio 跨 reel ≤ 2-2.5x (一个 reel 不能特别 dense 或 empty)
-- [ ] 玩家盲玩看 3 个 reel 应该感觉**密度差不多**，不是某个 reel "永远满"
-
-**C. Per-pay-id frequency review (cross-mode)** — 每个 pay 频率有没有合理变化
-- [ ] **Mode 7**: 每个 big-win pay (id 2/3/5/6/10) 频率 = mode 1 (frozen weights，差应 < 1%)
-- [ ] **Mode 2/5**: 每个 pay 频率 ≥ mode 1 (lucky 不该让任何 pay 更稀)
-- [ ] **Mode 7**: 小奖 pay (Cherry id 12/13/14, Bar1 id 9) 频率明显 < mode 1
-
-**D. Bucket distribution review** — 玩家见到 win 的 cadence
-- [ ] **Mode 1**: ge5_lt10 hit ≥ 0.8% (~12 min/次), ge10_lt20 hit ≥ 1% (~10 min/次)
-- [ ] **桶分布**: 不能 200-500 bucket > 30% RTP (太 tail-heavy 玩家见不到中等赢)
-- [ ] 每个 reachable bucket hit rate ≥ 0.01% (没"消失"的 bucket)
-
-**E. 跨 mode 叙事 review** — mode 是 luck dial，mode 1 → mode 7 → mode 2 → mode 5 应该有一致演进
-- [ ] CV 层级: mode 5 < mode 2 < mode 1 ≤ mode 7 (lucky 平滑, 一般 boom-bust)
-- [ ] Hit rate 层级: mode 7 < mode 1 < mode 2 ≈ mode 5
-- [ ] Wild on payline 层级: mode 7 ≈ mode 1 ≤ mode 2 ≤ mode 5
-- [ ] 每个 big-win pay 频率层级: mode 7 ≈ mode 1 ≤ mode 2 ≤ mode 5
-
-**F. Per-reel asymmetry semantic check** — 不对称是不是有设计理由
-- [ ] Top-tier (Seven, Diamond) 不该单 reel 偏倚（除非有近似命中设计意图）
-- [ ] Mid-tier (Bar3) R1 偏多 = 经典 near-miss，OK
-- [ ] Filler (Bar1, Cherry) 不对称 OK，但极端 (e.g. R3=25% vs R1=2%) 要警惕
+### F. Cross-mode narrative review
+- CV 阶梯: mode 5 ≤ mode 2 < mode 1 ≤ mode 7
+- Hit rate 阶梯: mode 7 < mode 1 < mode 2 ≈ mode 5
+- Wild on payline 阶梯: mode 7 ≈ mode 1 ≤ mode 2 ≤ mode 5
+- Big-win pay 频率阶梯: mode 7 = mode 1 ≤ mode 2 ≤ mode 5
 
 ### 怎么用
 
-每次 `python tune_m1.py` 跑完：
-1. 跑 `python -m slot_designer.scripts.verify_m1_design` (数值层 + A 自动)
-2. **人眼过** B / C / D / E / F (脚本难自动化的 player perception 部分)
-3. 任一 fail 必须 root-cause + 重 tune (修 bound / 加 penalty / 改 anchor)
+每次 tune 完:
+1. 跑 verify_m1_design.py (A 自动)
+2. **人眼过 B/C/D/E/F** (脚本自动只能粗筛，player perception 部分需要人判)
+3. 任一 fail 必须 root-cause:
+   - 是 bound 太松 → 调强度 (k)
+   - 是 anchor 漏了 → 加跨 mode 约束
+   - 是 cost 表达走偏 → 重新设计 penalty
+4. **绝不 patch** 用任意硬 threshold 数字。每条新约束都要从设计 goal 推出来 (e.g. "reels 看起来一致" → variance penalty 而非 "blank ≥ 30%")
 
-**绝对原则**: 数值全过 ≠ 设计完成。Player perception 体验合理才是 done。任何"怪"现象不能 ship。
+## 7. 设计 Anti-patterns (避免)
+
+每次 review 见到要警觉:
+
+1. **picked numerical thresholds without justification**: "blank ≥ 40%", "Bar3 R1 ≤ 17%" 这种 magic number。应该: 表达 goal (variance / monotonic) 而非 cap
+2. **family RTP share 锁住但 per-pay 频率漂**: e.g. mode 7 Seven family pp 守住但 Seven1×3 频率被砍 8x 因 optimizer 把 Seven1 weight 转 Seven2。Fix: per-symbol-per-reel weight 锁 (frozen) 或 per-pay-frequency 锁
+3. **weight floor 漂走的 density**: weight ≥ ref 但 total reel weight 涨 → density 反降。Fix: density floor 或 pay-frequency floor (更直接)
+4. **R-stuffing**: optimizer 把所有 pay symbol 堆某个 reel cubic-product 拉频率，副作用: 该 reel 视觉怪。Fix: per-reel Blank variance penalty
+5. **silent re-tune approved modes**: 改 universal 约束时也动了已 ok 的 mode → user 失去 commit hash 回滚能力。Fix: 改前明确告知 + 改完立即 commit
