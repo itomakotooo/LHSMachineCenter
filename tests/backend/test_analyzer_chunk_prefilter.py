@@ -50,10 +50,15 @@ def _entry(idx: int, cfg: str, code: str) -> dict:
     }
 
 
-def _build_mixed_sidecar() -> dict[str, dict]:
-    """A sidecar dict mirroring the M1sim mode 1 state at the time of
-    the regression report: 4 md5 buckets, total 1443 chunks."""
-    sidecar: dict[str, dict] = {}
+def _build_mixed_sidecar_payload() -> dict:
+    """Full sidecar payload (matching what get_chunks_index returns)
+    mirroring the M1sim mode 1 state at the time of the regression
+    report: 4 md5 buckets, total 1443 chunks. Includes both the
+    per-chunk dict AND the inverted ``by_md5`` index — the helper
+    under test relies on the latter for its O(1) lookup.
+    """
+    chunks: dict[str, dict] = {}
+    by_md5: dict[str, list[str]] = {}
     md5_groups = [
         ("b560025f6854c54f8f46272b635c298b", "769d599e4a7730e179961616b88dfca5", 702),
         ("edc071628ad1b8f04a7ef77bf7d3fbc6", "769d599e4a7730e179961616b88dfca5", 358),
@@ -62,11 +67,46 @@ def _build_mixed_sidecar() -> dict[str, dict]:
     ]
     next_idx = 1
     for cfg, code, n in md5_groups:
+        key = f"{cfg}|{code}"
+        bucket = by_md5.setdefault(key, [])
         for _ in range(n):
             fname = f"chunk_{next_idx:04d}.json"
-            sidecar[fname] = _entry(next_idx, cfg, code)
+            chunks[fname] = _entry(next_idx, cfg, code)
+            bucket.append(fname)
             next_idx += 1
-    return sidecar
+    return {
+        "_version": 1,
+        "_updated_at": "2026-04-26T00:00:00Z",
+        "chunks": chunks,
+        "by_md5": by_md5,
+    }
+
+
+def _wrap_sidecar(chunks_dict: dict) -> dict:
+    """Wrap a flat ``{filename: entry}`` dict into a full sidecar
+    payload with the inverted by_md5 index. Used by tests that build
+    a small custom sidecar inline.
+
+    Bucket lists are sorted by chunk_index ascending (parsed from
+    the filename) — matches what production ``_rebuild_by_md5``
+    does, so test fixtures behave like real sidecars.
+    """
+    by_md5: dict[str, list[str]] = {}
+    for fname, entry in chunks_dict.items():
+        if not isinstance(entry, dict):
+            continue
+        cfg = str(entry.get("cfg_md5", "") or "")
+        code = str(entry.get("code_md5", "") or "")
+        by_md5.setdefault(f"{cfg}|{code}", []).append(fname)
+    for names in by_md5.values():
+        names.sort(key=lambda n: int(n.split("_", 1)[1].split(".", 1)[0])
+                   if "_" in n and "." in n else 0)
+    return {
+        "_version": 1,
+        "_updated_at": "2026-04-26T00:00:00Z",
+        "chunks": dict(chunks_dict),
+        "by_md5": by_md5,
+    }
 
 
 # ── Core behavior ─────────────────────────────────────────────────────
@@ -78,7 +118,7 @@ def test_pre_filter_returns_only_matching_md5_chunks():
     user's screenshot showed 1443 chunks being iterated when only
     14 should have been.
     """
-    sidecar = _build_mixed_sidecar()
+    sidecar = _build_mixed_sidecar_payload()
     cache_dir = Path("/tmp/fake/M1sim/mode_1")  # we don't read disk
 
     chunk_files, max_idx = pia.select_replay_chunks_by_md5(
@@ -103,11 +143,11 @@ def test_pre_filter_returns_sorted_by_chunk_index():
     """Sidecar dicts iterate in insertion order, but the analyzer's
     replay loop expects chunk-index ascending so chunk metadata
     (next idx, max idx) flows correctly. Pre-filter must sort."""
-    sidecar = {
+    sidecar = _wrap_sidecar({
         "chunk_0050.json": _entry(50, "X", "Y"),
         "chunk_0010.json": _entry(10, "X", "Y"),
         "chunk_0030.json": _entry(30, "X", "Y"),
-    }
+    })
     chunk_files, _ = pia.select_replay_chunks_by_md5(
         Path("/tmp"), sidecar, "X", "Y",
     )
@@ -129,12 +169,12 @@ def test_pre_filter_handles_non_dict_entries_defensively():
     """The sidecar JSON is loaded from disk; a corrupt entry (string
     instead of dict, None, etc.) shouldn't crash the filter — just
     skip that entry and keep going."""
-    sidecar = {
+    sidecar = _wrap_sidecar({
         "chunk_0001.json": _entry(1, "MATCH", "CODE"),
         "chunk_0002.json": "corrupt",  # not a dict
         "chunk_0003.json": None,        # not a dict
         "chunk_0004.json": _entry(4, "MATCH", "CODE"),
-    }
+    })
     chunk_files, max_idx = pia.select_replay_chunks_by_md5(
         Path("/tmp"), sidecar, "MATCH", "CODE",
     )
@@ -148,7 +188,7 @@ def test_pre_filter_no_match_returns_empty_not_crash():
     """All chunks are old md5; current md5 has no chunks in cache yet.
     Pre-filter returns empty list — caller exempts this from the
     "no chunks found, crash" check via md5_filter_active_pre flag."""
-    sidecar = _build_mixed_sidecar()
+    sidecar = _build_mixed_sidecar_payload()
     chunk_files, max_idx = pia.select_replay_chunks_by_md5(
         Path("/tmp"), sidecar,
         "FRESH_MD5_NEVER_SAMPLED_BEFORE", "CODE",
@@ -162,11 +202,11 @@ def test_pre_filter_no_match_returns_empty_not_crash():
 def test_pre_filter_both_md5_dimensions_must_match():
     """Filter is conjunctive: cfg_md5 AND code_md5 both match.
     A chunk with right cfg but wrong code is mismatched."""
-    sidecar = {
+    sidecar = _wrap_sidecar({
         "chunk_0001.json": _entry(1, "GOOD_CFG", "GOOD_CODE"),
         "chunk_0002.json": _entry(2, "GOOD_CFG", "WRONG_CODE"),
         "chunk_0003.json": _entry(3, "WRONG_CFG", "GOOD_CODE"),
-    }
+    })
     chunk_files, _ = pia.select_replay_chunks_by_md5(
         Path("/tmp"), sidecar, "GOOD_CFG", "GOOD_CODE",
     )
@@ -177,6 +217,32 @@ def test_pre_filter_both_md5_dimensions_must_match():
 # ── Wall-time invariant (the user-visible signal) ────────────────────
 
 
+def test_pre_filter_backward_compat_legacy_sidecar_without_by_md5():
+    """Pre-2026-04-26 sidecars on disk only have ``chunks`` (no
+    ``by_md5`` inverted index). The helper must still return the
+    correct subset by deriving the bucket in-memory on the fly.
+    Next sidecar write will persist the by_md5 field, so this
+    fallback path only fires once per sidecar."""
+    legacy_payload = {
+        "_version": 1,
+        "_updated_at": "2026-04-25T00:00:00Z",
+        "chunks": {
+            "chunk_0001.json": _entry(1, "X", "Y"),
+            "chunk_0002.json": _entry(2, "Z", "Y"),
+            "chunk_0003.json": _entry(3, "X", "Y"),
+        },
+        # NO by_md5 field — matches v1 layout.
+    }
+    chunk_files, _ = pia.select_replay_chunks_by_md5(
+        Path("/tmp"), legacy_payload, "X", "Y",
+    )
+    # X|Y bucket has 2 chunks (1, 3); helper derives this from
+    # `chunks` since by_md5 is absent.
+    assert sorted(p.name for p in chunk_files) == [
+        "chunk_0001.json", "chunk_0003.json",
+    ]
+
+
 def test_total_chunks_matches_pre_filter_output():
     """The cache_read_start event's ``total_chunks`` and the ETA
     estimate ("约需 X s") both come from ``len(chunk_files)``. With
@@ -184,7 +250,7 @@ def test_total_chunks_matches_pre_filter_output():
     instead of 14 (matching). This test pins the relationship —
     the cache_read_start event's total_chunks IS len(chunk_files)
     from the pre-filter."""
-    sidecar = _build_mixed_sidecar()
+    sidecar = _build_mixed_sidecar_payload()
     chunk_files, _ = pia.select_replay_chunks_by_md5(
         Path("/tmp"), sidecar,
         "f01cec9965d097e2e33a5aafdbd650b6",

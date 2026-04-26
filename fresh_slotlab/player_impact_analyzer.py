@@ -1062,54 +1062,56 @@ def simulate_bankruptcy_from_response(
 
 def select_replay_chunks_by_md5(
     cache_read_dir: Path,
-    sidecar_entries: dict[str, Any],
+    sidecar_payload: dict[str, Any],
     upstream_config_md5: str,
     upstream_code_md5: str,
 ) -> tuple[list[Path], int]:
-    """Pre-filter chunk_files for the cache-replay loop based on md5 sidecar.
+    """Pre-filter chunk_files for the cache-replay loop based on md5
+    sidecar's INVERTED INDEX.
+
+    2026-04-26 architectural fix (user feedback: "你应该有个管理 rawdata
+    的机制，比如索引啥的，而不是要去读每个 rawdata 才知道 md5"):
+    instead of walking every sidecar entry to filter, we look up the
+    inverted index ``sidecar.by_md5[(cfg|code)]`` directly. The
+    sidecar maintains both indexes (per-chunk dict + by_md5 inverted
+    map) on every write, so the read path never iterates.
 
     Pure function so the regression test in
     ``tests/backend/test_analyzer_chunk_prefilter.py`` can pin the
     behavior without spawning a subprocess.
 
+    ``sidecar_payload`` is the full ``get_chunks_index(mode_dir)``
+    return value — i.e. ``{"_version", "chunks", "by_md5"}``. The
+    helper looks up the matching bucket via ``by_md5``; falls back
+    to deriving it in-memory if an older sidecar is loaded without
+    the inverted index field.
+
     Returns ``(chunk_files, max_existing_idx)``:
-      - ``chunk_files``: only chunks whose sidecar entry matches the
-        passed md5 pair, sorted by chunk_index. Empty list when no
-        chunks match (legitimate "fresh-pull just landed; nothing
-        in cache to replay" state).
-      - ``max_existing_idx``: max chunk_index across the FULL sidecar
-        (not just the matching subset), so resume-mode picks an
-        idx that doesn't collide with historical-md5 chunks.
-
-    When sidecar_entries is empty OR no md5 is being filtered (both
-    args empty), returns ``([], 0)`` and the caller should fall
-    back to ``glob("chunk_*.json")`` for the unfiltered list. The
-    caller also checks ``md5_filter_active`` on its own — this
-    helper only handles the pre-filter case.
-
-    History (2026-04-26): the previous code iterated EVERY chunk
-    (e.g. 1443 for an M1sim mode 1 dir with three accumulated md5
-    versions) and skipped mismatches inside the loop body via the
-    sidecar fast-path. Each skip cost ~10ms (dispatch + JSONL
-    progress emit amortisation), so iterating 1429 mismatched
-    chunks burned ~14 seconds of "0 spins" wall time per generate-
-    report. Pre-filtering moves that O(N) check out of the hot
-    loop entirely.
+      - ``chunk_files``: paths of chunks stamped with the given md5
+        pair, sorted by chunk_index. Empty when no chunks match
+        (legitimate "fresh-pull just landed; nothing cached" state).
+      - ``max_existing_idx``: max chunk_index across the FULL
+        sidecar so resume-mode picks an idx that doesn't collide
+        with historical-md5 chunks.
     """
-    if not sidecar_entries or not isinstance(sidecar_entries, dict):
+    if not sidecar_payload or not isinstance(sidecar_payload, dict):
         return [], 0
-    matching: list[tuple[str, dict[str, Any]]] = [
-        (fname, entry)
-        for fname, entry in sidecar_entries.items()
-        if isinstance(entry, dict)
-        and entry.get("cfg_md5") == upstream_config_md5
-        and entry.get("code_md5") == upstream_code_md5
-    ]
-    matching.sort(key=lambda t: int(t[1].get("idx", 0) or 0))
-    chunk_files = [cache_read_dir / fname for fname, _ in matching]
+    chunks_dict = sidecar_payload.get("chunks") or {}
+    if not isinstance(chunks_dict, dict) or not chunks_dict:
+        return [], 0
+    # Direct O(1) lookup via the inverted index. Falls back to
+    # deriving the bucket from chunks_dict in-memory only when an
+    # older sidecar is loaded without the by_md5 field.
+    by_md5 = sidecar_payload.get("by_md5")
+    if not isinstance(by_md5, dict):
+        from fresh_slotlab.chunk_index import _rebuild_by_md5
+        by_md5 = _rebuild_by_md5(chunks_dict)
+    key = f"{upstream_config_md5 or ''}|{upstream_code_md5 or ''}"
+    matching_names = by_md5.get(key, [])
+    chunk_files = [cache_read_dir / name for name in matching_names]
     max_existing_idx = max(
         (int(e.get("idx", 0) or 0)
-         for e in sidecar_entries.values()
+         for e in chunks_dict.values()
          if isinstance(e, dict)),
         default=0,
     )
@@ -4150,7 +4152,7 @@ def main() -> int:
         if md5_filter_active_pre and _sidecar_entries:
             chunk_files, max_existing_idx = select_replay_chunks_by_md5(
                 cache_read_dir,
-                _sidecar_entries,
+                _chunks_idx_payload,
                 args.upstream_config_md5,
                 args.upstream_code_md5,
             )

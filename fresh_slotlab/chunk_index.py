@@ -174,13 +174,54 @@ def load_chunks_index(mode_dir: Path) -> dict[str, Any] | None:
     return data
 
 
+def _md5_key(cfg_md5: str, code_md5: str) -> str:
+    """Stable string key for the by_md5 inverted index. Pipe is fine
+    as a separator since md5 hex digests never contain pipes."""
+    return f"{cfg_md5 or ''}|{code_md5 or ''}"
+
+
+def _rebuild_by_md5(chunks_dict: dict[str, Any]) -> dict[str, list[str]]:
+    """Derive the (cfg_md5|code_md5) → [filenames] inverted index from
+    the per-chunk dict. Used at build time AND as a fallback when an
+    older sidecar (no ``by_md5`` field) is loaded — that case auto-
+    upgrades on the next write."""
+    by_md5: dict[str, list[str]] = {}
+    for fname, entry in chunks_dict.items():
+        if not isinstance(entry, dict):
+            continue
+        key = _md5_key(
+            str(entry.get("cfg_md5", "") or ""),
+            str(entry.get("code_md5", "") or ""),
+        )
+        by_md5.setdefault(key, []).append(str(fname))
+    # Sort each bucket by chunk_index (extracted from filename) for
+    # deterministic iteration. Filename "chunk_0001.json" → 1.
+    for names in by_md5.values():
+        names.sort(key=lambda n: int(n.split("_", 1)[1].split(".", 1)[0])
+                   if "_" in n and "." in n else 0)
+    return by_md5
+
+
 def build_chunks_index(mode_dir: Path) -> dict[str, Any]:
     """Scan ``mode_dir/chunk_*.json`` via peek, produce a fresh
     sidecar payload, and persist it.
 
     Slow only on the very first call after a directory gains chunks
     (peek × N = 4 KB × N IO, ~5 ms/chunk). Subsequent reads hit the
-    sidecar directly."""
+    sidecar directly.
+
+    Output payload carries TWO indexes:
+
+      * ``chunks``: per-chunk dict (filename → metadata) — used for
+        per-chunk lookups (e.g. "what was chunk_0042's saved_at?").
+
+      * ``by_md5``: inverted index (cfg|code → [filenames]) — used
+        for the "give me the chunks for THIS md5" hot path that
+        the real + virtual analyzers' replay loops hit. O(1) dict
+        lookup instead of O(N) walk over ``chunks``. Added
+        2026-04-26 after the user observed: "你应该有个管理 rawdata
+        的机制，比如索引啥的，而不是要去读每个 rawdata 才知道 md5".
+    """
     entries: dict[str, dict[str, Any]] = {}
     for cf in sorted(mode_dir.glob("chunk_*.json")):
         peek = peek_chunk_envelope(cf)
@@ -214,6 +255,7 @@ def build_chunks_index(mode_dir: Path) -> dict[str, Any]:
         "_version": SIDECAR_VERSION,
         "_updated_at": _now_iso(),
         "chunks": entries,
+        "by_md5": _rebuild_by_md5(entries),
     }
     if mode_dir.is_dir():
         try:
@@ -317,6 +359,7 @@ def update_chunk_entry(
             "_version": SIDECAR_VERSION,
             "_updated_at": _now_iso(),
             "chunks": {},
+            "by_md5": {},
         }
         if idx.get("_version") != SIDECAR_VERSION:
             # Can't merge into foreign schema; rebuild from scratch.
@@ -324,6 +367,7 @@ def update_chunk_entry(
                 "_version": SIDECAR_VERSION,
                 "_updated_at": _now_iso(),
                 "chunks": {},
+                "by_md5": {},
             }
         if saved_at is None:
             try:
@@ -337,10 +381,40 @@ def update_chunk_entry(
                 size_bytes = int(chunk_file.stat().st_size)
             except OSError:
                 size_bytes = 0
+        # Maintain the by_md5 inverted index alongside the per-chunk
+        # dict. If this filename is being re-indexed (chunk rewritten
+        # with a different md5 — rare but possible during dev), drop
+        # it from its OLD bucket first.
+        new_cfg = str(config_md5 or "")
+        new_code = str(code_md5 or "")
+        new_key = _md5_key(new_cfg, new_code)
+        existing_entry = idx["chunks"].get(chunk_file.name)
+        by_md5 = idx.setdefault("by_md5", _rebuild_by_md5(idx["chunks"]))
+        if isinstance(existing_entry, dict):
+            old_key = _md5_key(
+                str(existing_entry.get("cfg_md5", "") or ""),
+                str(existing_entry.get("code_md5", "") or ""),
+            )
+            if old_key != new_key and old_key in by_md5:
+                try:
+                    by_md5[old_key].remove(chunk_file.name)
+                    if not by_md5[old_key]:
+                        del by_md5[old_key]
+                except ValueError:
+                    pass
+        # Add to new bucket (idempotent — set semantics via "in" check
+        # so re-indexing the same chunk twice doesn't duplicate).
+        bucket = by_md5.setdefault(new_key, [])
+        if chunk_file.name not in bucket:
+            bucket.append(chunk_file.name)
+            # Keep bucket order deterministic by chunk_index for
+            # downstream consumers that expect sorted iteration.
+            bucket.sort(key=lambda n: int(n.split("_", 1)[1].split(".", 1)[0])
+                        if "_" in n and "." in n else 0)
         idx["chunks"][chunk_file.name] = {
             "idx": int(chunk_index),
-            "cfg_md5": str(config_md5 or ""),
-            "code_md5": str(code_md5 or ""),
+            "cfg_md5": new_cfg,
+            "code_md5": new_code,
             "spin_times": int(spin_times or 0),
             "robot_count": int(robot_count or 0),
             "saved_at": saved_at,
@@ -401,15 +475,35 @@ def bulk_remove_chunk_entries(
         # detect stale and rebuild from scratch.
         return 0
     chunks = idx.get("chunks") or {}
+    by_md5 = idx.setdefault("by_md5", _rebuild_by_md5(chunks))
     removed = 0
     for name in name_set:
-        if chunks.pop(name, None) is not None:
-            removed += 1
+        entry = chunks.pop(name, None)
+        if entry is None:
+            continue
+        removed += 1
+        # Drop from the inverted index too — keep both views in sync
+        # so chunks_by_md5() lookups don't return phantom filenames
+        # pointing at deleted files.
+        if isinstance(entry, dict):
+            key = _md5_key(
+                str(entry.get("cfg_md5", "") or ""),
+                str(entry.get("code_md5", "") or ""),
+            )
+            bucket = by_md5.get(key)
+            if isinstance(bucket, list):
+                try:
+                    bucket.remove(name)
+                except ValueError:
+                    pass
+                if not bucket:
+                    del by_md5[key]
     if removed == 0:
         # No entries actually removed; skip the sidecar write so
         # we don't bump its mtime past dir.mtime unnecessarily.
         return 0
     idx["chunks"] = chunks
+    idx["by_md5"] = by_md5
     idx["_updated_at"] = _now_iso()
     try:
         _write_sidecar_atomic(_sidecar_path(mode_dir), idx)
@@ -436,6 +530,37 @@ def remove_sidecar(mode_dir: Path) -> None:
 
 
 # ── Query helpers (reader convenience) ──────────────────────────────
+
+
+def chunks_by_md5(
+    mode_dir: Path, cfg_md5: str, code_md5: str,
+) -> list[str]:
+    """Direct O(1) lookup: filenames of chunks stamped with the given
+    md5 pair. Hits the sidecar's ``by_md5`` inverted index so callers
+    don't iterate the per-chunk dict.
+
+    Returns ``[]`` for unknown md5 (sidecar bucket missing). Sidecar
+    auto-rebuilds via ``get_chunks_index`` if the keyset has drifted
+    from disk; the returned list is sorted by chunk index ascending.
+
+    Use this from analyzer pre-filters / replay loops where you know
+    you only want one md5 bucket — avoids the O(N) walk over every
+    sidecar entry that the older ``iter_chunks_matching_md5`` (kept
+    for back-compat) does.
+
+    Backward compat: when an older sidecar (no ``by_md5`` field) is
+    loaded, the field is derived in-memory on the fly. The next
+    write (update_chunk_entry / bulk_remove_chunk_entries / build_
+    chunks_index) persists it, so the next call hits the fast path.
+    """
+    idx = get_chunks_index(mode_dir)
+    by_md5 = idx.get("by_md5")
+    if not isinstance(by_md5, dict):
+        # Older sidecar without the inverted index — derive once
+        # in-memory. Costs O(N) for THIS call only; next write
+        # persists the field and subsequent calls are O(1).
+        by_md5 = _rebuild_by_md5(idx.get("chunks") or {})
+    return list(by_md5.get(_md5_key(cfg_md5, code_md5), []))
 
 
 def iter_chunks_matching_md5(

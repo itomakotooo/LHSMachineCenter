@@ -300,40 +300,49 @@ def _select_session_stat_chunks(
     """Pure helper: pick the chunk file list this CI pre-check should
     actually iterate, given the md5 filter.
 
-    Returns ``(chunk_files, total_on_disk)``:
-      - ``chunk_files``: ONLY chunks whose sidecar md5 matches the
-        filter pair. When ``md5_filter`` is None, all chunks on disk.
-      - ``total_on_disk``: full disk count, so the caller can report
-        "skipped K of N old-md5 chunks" without a second glob.
+    2026-04-26 (architectural fix following user feedback "你应该有个
+    管理 rawdata 的机制，比如索引啥的"): consults the sidecar's
+    inverted ``by_md5`` index for an O(1) bucket lookup instead of
+    iterating every disk chunk and filtering. The sidecar maintains
+    the inverted index on every write so reads never have to walk.
 
-    Sidecar miss (chunk just landed, sidecar not yet rebuilt) → that
-    chunk is still included; ``_load_existing_session_stats`` does
-    the full-load md5 re-check downstream as a defensive fallback.
+    Returns ``(chunk_files, total_on_disk)``:
+      - ``chunk_files``: chunks matching the md5 filter. When
+        ``md5_filter`` is None, all chunks on disk.
+      - ``total_on_disk``: full disk count so the caller can report
+        an honest "skipped K of N old-md5" event payload.
     """
     if not rawdata_dir.is_dir():
         return [], 0
-    on_disk = sorted(rawdata_dir.glob("chunk_*.json"))
     if not md5_filter:
+        on_disk = sorted(rawdata_dir.glob("chunk_*.json"))
         return on_disk, len(on_disk)
-    sidecar_entries: dict = {}
+    # Pull the full sidecar payload — we need both ``by_md5`` (the
+    # match list) and ``chunks`` (the total count).
     try:
-        from fresh_slotlab.chunk_index import get_chunks_index
-        sidecar_entries = get_chunks_index(rawdata_dir).get("chunks") or {}
+        from fresh_slotlab.chunk_index import get_chunks_index, chunks_by_md5
+        idx_payload = get_chunks_index(rawdata_dir)
+        chunks_dict = idx_payload.get("chunks") or {}
+        total_on_disk = len(chunks_dict)
+        if total_on_disk == 0:
+            # Sidecar empty → couldn't index anything. Defensive
+            # fallback to glob so we don't silently report "0
+            # chunks" when there are files on disk that the
+            # sidecar failed to index.
+            on_disk = sorted(rawdata_dir.glob("chunk_*.json"))
+            return on_disk, len(on_disk)
+        matching_names = chunks_by_md5(
+            rawdata_dir, md5_filter[0], md5_filter[1],
+        )
+        matching = [rawdata_dir / name for name in matching_names]
+        return matching, total_on_disk
     except Exception:  # noqa: BLE001
-        return on_disk, len(on_disk)  # no sidecar → can't pre-filter
-    matching: list[Path] = []
-    for cf in on_disk:
-        entry = sidecar_entries.get(cf.name)
-        if not isinstance(entry, dict):
-            # Sidecar miss → keep, let downstream full-load decide.
-            matching.append(cf)
-            continue
-        if entry.get("cfg_md5") != md5_filter[0]:
-            continue
-        if entry.get("code_md5") != md5_filter[1]:
-            continue
-        matching.append(cf)
-    return matching, len(on_disk)
+        # Defensive: any sidecar IO failure → fall back to glob so
+        # the CI pre-check doesn't crash. The downstream md5
+        # re-check inside _load_existing_session_stats still
+        # filters correctly.
+        on_disk = sorted(rawdata_dir.glob("chunk_*.json"))
+        return on_disk, len(on_disk)
 
 
 def _load_existing_session_stats(

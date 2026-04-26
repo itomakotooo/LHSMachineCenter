@@ -437,6 +437,170 @@ class TestQueryHelpers:
         assert groups[("v1", "k")]["max_idx"] == 2
 
 
+# ── chunks_by_md5 inverted-index lookup (2026-04-26) ─────────────
+
+
+class TestChunksByMd5InvertedIndex:
+    """The architectural answer to the 2026-04-26 user feedback
+    ("你应该有个管理 rawdata 的机制，比如索引啥的, 而不是要去读每个
+    rawdata 才知道 md5"): the sidecar maintains a ``by_md5``
+    inverted index alongside the per-chunk dict, so md5-bucket
+    lookups are O(1) (single dict access) instead of O(N) (walk
+    over every entry). Maintained on every write — these tests pin
+    that contract."""
+
+    def test_chunks_by_md5_direct_lookup(self, tmp_path):
+        """Basic happy path: 3 chunks across 2 md5 buckets, lookup
+        each bucket returns the right filenames."""
+        from fresh_slotlab.chunk_index import (
+            update_chunk_entry, chunks_by_md5,
+        )
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        for i, (c, d) in enumerate(
+            [("v1", "k"), ("v1", "k"), ("v2", "k")], start=1,
+        ):
+            cf = mode_dir / f"chunk_{i:04d}.json"
+            _write_chunk(cf, idx=i, cfg=c, code=d)
+            update_chunk_entry(mode_dir, cf, chunk_index=i,
+                               config_md5=c, code_md5=d)
+        assert chunks_by_md5(mode_dir, "v1", "k") == [
+            "chunk_0001.json", "chunk_0002.json",
+        ]
+        assert chunks_by_md5(mode_dir, "v2", "k") == ["chunk_0003.json"]
+        # Unknown md5 → empty list (caller's "no matching chunks"
+        # signal).
+        assert chunks_by_md5(mode_dir, "ghost", "ghost") == []
+
+    def test_by_md5_persisted_in_sidecar_on_write(self, tmp_path):
+        """update_chunk_entry maintains ``by_md5`` alongside ``chunks``
+        on every write; the field round-trips through atomic save/load.
+        Regression guard: previously by_md5 didn't exist; if anyone
+        reverts the maintenance code, the loaded sidecar would be
+        missing the field and chunks_by_md5 would fall back to the
+        in-memory rebuild path on every read."""
+        from fresh_slotlab.chunk_index import (
+            update_chunk_entry, load_chunks_index,
+        )
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        cf = mode_dir / "chunk_0001.json"
+        _write_chunk(cf, idx=1, cfg="A", code="B")
+        update_chunk_entry(mode_dir, cf, chunk_index=1,
+                           config_md5="A", code_md5="B")
+        idx = load_chunks_index(mode_dir)
+        assert idx is not None
+        # by_md5 field is persisted, with the chunk in the right
+        # bucket.
+        assert "by_md5" in idx
+        assert idx["by_md5"] == {"A|B": ["chunk_0001.json"]}
+
+    def test_by_md5_drops_chunk_on_bulk_remove(self, tmp_path):
+        """When chunks are removed via bulk_remove_chunk_entries,
+        the by_md5 index drops them too — no phantom filenames
+        pointing at deleted files. Empty buckets are removed
+        entirely so the dict stays clean."""
+        from fresh_slotlab.chunk_index import (
+            update_chunk_entry, bulk_remove_chunk_entries,
+            load_chunks_index,
+        )
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        names = []
+        for i in (1, 2, 3):
+            cf = mode_dir / f"chunk_{i:04d}.json"
+            _write_chunk(cf, idx=i, cfg="A", code="B")
+            update_chunk_entry(mode_dir, cf, chunk_index=i,
+                               config_md5="A", code_md5="B")
+            names.append(cf.name)
+        # Remove first two — bucket should still have chunk_0003 only.
+        bulk_remove_chunk_entries(mode_dir, names[:2])
+        idx = load_chunks_index(mode_dir)
+        assert idx["by_md5"] == {"A|B": ["chunk_0003.json"]}
+        # Remove the last one — bucket dies entirely.
+        bulk_remove_chunk_entries(mode_dir, [names[2]])
+        idx = load_chunks_index(mode_dir)
+        assert idx["by_md5"] == {}
+
+    def test_by_md5_isolates_buckets_per_md5(self, tmp_path):
+        """Removing a chunk from md5=A doesn't affect md5=B's bucket.
+        Pin guard against off-by-one bugs in the cross-bucket
+        update logic."""
+        from fresh_slotlab.chunk_index import (
+            update_chunk_entry, bulk_remove_chunk_entries,
+            load_chunks_index,
+        )
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        for i, (c, d) in enumerate(
+            [("A", "X"), ("A", "X"), ("B", "X")], start=1,
+        ):
+            cf = mode_dir / f"chunk_{i:04d}.json"
+            _write_chunk(cf, idx=i, cfg=c, code=d)
+            update_chunk_entry(mode_dir, cf, chunk_index=i,
+                               config_md5=c, code_md5=d)
+        # Remove one A chunk only.
+        bulk_remove_chunk_entries(mode_dir, ["chunk_0001.json"])
+        idx = load_chunks_index(mode_dir)
+        # A bucket has chunk_0002 left; B bucket untouched.
+        assert idx["by_md5"]["A|X"] == ["chunk_0002.json"]
+        assert idx["by_md5"]["B|X"] == ["chunk_0003.json"]
+
+    def test_by_md5_handles_chunk_remstamped_with_new_md5(self, tmp_path):
+        """Re-indexing a chunk with a different md5 (rare but possible
+        during dev — overwrite chunk_0001 with new weights) should
+        move it from the old bucket to the new bucket. Not double-
+        listed."""
+        from fresh_slotlab.chunk_index import (
+            update_chunk_entry, load_chunks_index,
+        )
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        cf = mode_dir / "chunk_0001.json"
+        _write_chunk(cf, idx=1, cfg="OLD", code="K")
+        update_chunk_entry(mode_dir, cf, chunk_index=1,
+                           config_md5="OLD", code_md5="K")
+        # Same chunk file, new md5 stamp.
+        update_chunk_entry(mode_dir, cf, chunk_index=1,
+                           config_md5="NEW", code_md5="K")
+        idx = load_chunks_index(mode_dir)
+        # Old bucket gone (was emptied), new bucket has the chunk.
+        assert idx["by_md5"] == {"NEW|K": ["chunk_0001.json"]}
+        # Per-chunk dict shows the new md5.
+        assert idx["chunks"]["chunk_0001.json"]["cfg_md5"] == "NEW"
+
+    def test_chunks_by_md5_backward_compat_legacy_v1_sidecar(self, tmp_path):
+        """A pre-2026-04-26 sidecar on disk has ``chunks`` but no
+        ``by_md5``. ``chunks_by_md5`` should still return correct
+        buckets (deriving in-memory) without crashing or returning
+        empty. Next write persists the field — no manual migration."""
+        from fresh_slotlab.chunk_index import (
+            chunks_by_md5, _sidecar_path, _write_sidecar_atomic,
+        )
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        # Write a chunk file so stale-check passes.
+        _write_chunk(mode_dir / "chunk_0001.json", idx=1, cfg="X", code="Y")
+        _write_chunk(mode_dir / "chunk_0002.json", idx=2, cfg="X", code="Y")
+        # Hand-write a v1-style sidecar (no by_md5 field).
+        _write_sidecar_atomic(_sidecar_path(mode_dir), {
+            "_version": 1,
+            "_updated_at": "2026-04-25T00:00:00Z",
+            "chunks": {
+                "chunk_0001.json": {"idx": 1, "cfg_md5": "X", "code_md5": "Y",
+                                    "spin_times": 0, "robot_count": 0,
+                                    "saved_at": "", "size_bytes": 0},
+                "chunk_0002.json": {"idx": 2, "cfg_md5": "X", "code_md5": "Y",
+                                    "spin_times": 0, "robot_count": 0,
+                                    "saved_at": "", "size_bytes": 0},
+            },
+        })
+        # Lookup works despite no by_md5 in the sidecar.
+        assert sorted(chunks_by_md5(mode_dir, "X", "Y")) == [
+            "chunk_0001.json", "chunk_0002.json",
+        ]
+
+
 # ── 6. Byte-budget reader proof ──────────────────────────────────
 
 
