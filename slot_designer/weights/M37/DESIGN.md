@@ -2,44 +2,57 @@
 
 > **Phase 1 产出**（FIRST_MACHINE.md v3）：跑 WebSearch 查业界对标 + 识别原型 + 剖析玩家感性 + 写每 mode 叙事。数值 target 的**依据**在这里；具体数字在 `MODE_DESIGN.md`。
 >
-> **研究日期**：2026-04-24（新机台 onboarding 时每次重搜）
+> **研究日期**：2026-04-24 / 重审 2026-04-27
 
-## 1. 机台原型识别
+## 1. 机台原型识别（原创机台 — 无 1:1 对标）
 
-**M37 = "Classic 3-reel 1-payline + jackpot-tier booster (Lightning Link DNA)"**
+**M37 = "Classic 3-reel 1-payline + 倍率 wild" 原创机台**
 
-机制合成：
-- **Classic 3-reel 1-payline chassis**（类似 IGT Red White & Blue / Blazing Sevens）—— 中间行 1 支付线，payline 只算 3 个 middle-row 格
-- **Aristocrat Lightning Link / Dragon Link 的 jackpot-tier 符号集**（mini/minor/major/grand 4 档）—— 但嵌入到 base game（不是 hold-and-spin bonus），middle reel 上的 booster 符号直接在 payline 上作用
+⚠ **明确：M37 是 LHS 原创机台，不是 1:1 抄某个商业机台**。设计时参考了两类成熟机制做 chassis 和符号集，但具体 paytable / RTP / 倍率档位 / 强制 (wild,grand,wild) re-roll 是自创的：
 
-**跟 Lightning Link 的关键差异**：
-- Lightning Link：hold-and-spin bonus 玩法，jackpot 符号收集到 15 格才发 grand；RTP 95.2%
-- M37：**没 bonus 玩法**，base game 单 spin 就能吃到 booster；grand 通过 `high7 + grand + high7` 组合触发，不走 hold-and-spin
+**Chassis 参考**（提供"骨架"）：
+- **Classic 3-reel 1-payline**（IGT Red White & Blue / Bally Blazing Sevens 同代机型）—— 单 payline 中间行；3×3 grid 上下行做 near-miss 视觉效果
+- 不抄 video slot 的多 payline / cluster pay / megaways 复杂结构 — 保 **classic 简洁性**
 
-**跟 IGT Red White & Blue（classic 7-dominant）差异**：
-- RWB / Blazing Sevens：7 家族占 RTP ~50-70%，boom-bust 体验
-- M37：7 家族占比相对低（mid-tier 10×），真正的"顶奖"走 `pay_id 1 × grand = 1000×` 路径，是 **multiplier-driven 不是 7-dominant**
+**符号机制参考**（提供"setting 美术 + 倍率层"）：
+- **倍率 wild (mini/minor/major/grand)** —— 同样名字在 Aristocrat Lightning Link 等机里是 progressive jackpot 触发符号，但 **M37 把它降级成 base-game 倍率符号**：mini = ×2, minor = ×5, major = ×10, grand = ×100
+- M37 的 grand 不是 progressive jackpot pool，是固定 ×100 倍率符号
+- M37 没有 hold-and-spin bonus，没有 free spins，base game 一切搞定
 
-**产品差异化定位**：M37 是**现代 classic**（传统 3-reel 的 chassis + 2020s jackpot-tier 符号 UX）—— 年轻玩家看到 mini/minor/major/grand 符号有即视感（知道这是 jackpot 游戏），老玩家看到 3×3 grid 和单支付线有怀旧感。
+**M37 自创设计点**：
+- 倍率 wild **集中在 reel 2**（middle reel），普通 wild **集中在 reel 1+3**（outer reels）— 这种"倍率隔离 + wild 隔离"的 reel-positional asymmetry 是 LHS 自创结构，没在公开机台见过
+- `(wild, grand, wild)` middle-row pattern 强制 **后端 re-roll**——禁止 pure-wild + grand 直达 1000× 顶奖，强迫 1000× 必须走 `high7-grand-high7` 路径，让顶奖路径"有故事 / 有 narrative"
+- 顶奖 = `pay_id 1 × grand multiplier = 10 × 100 = 1000×` — 单 payline 机的 1000× 是 classic 范畴内合理顶奖（不是 video slot 那种 100,000× megajackpot）
 
-## 2. 业界基准（WebSearch 2026-04-24）
+**辅助数值设计的核心机台特征**：
+1. **wild on outer reels** — 提供 substitution 让"差一个 high7"也能成 pay_id 1（high7-wild-high7）
+2. **倍率 wild on middle reel** — 提供 multiplier 把 base pay 放大 2/5/10/100 倍
+3. **pure-wild + 倍率 wild 组合** = pay_id 102/103/104（双外 wild + 中间倍率 wild），但 grand 这一档被 re-roll 屏蔽
+4. **hit rate 由 booster_alone (pay_id 8/9) + side wild alone 共同支撑** — classic 机里没有 cherry 当 frequent reward，M37 用倍率 wild 自身当"frequent presence"
 
-| 机台 | RTP | 机制核心 | 参考数据 |
+## 2. 业界基准 — 用作设计参考（不是抄）
+
+> M37 是原创，不抄任何机台。下表只用作 chassis / hit-rate 参考。
+
+| 机台 | RTP | chassis | 给 M37 的参考 |
 |---|---|---|---|
-| Dragon Link | 95.2% | Hold-and-spin bonus jackpot tiers | [casinos.com guide](https://www.casinos.com/guides/dragon-link-guide) |
-| Lightning Link | ~94-95% | 同上 | [knowyourslots](https://www.knowyourslots.com/five-things-to-know-about-lightning-link-dragon-link-and-dollar-storm/) |
-| Red White & Blue (IGT) | 87% | Classic 1-line 7-dominant | `reference_classic_slot_rtp_distribution.md` |
-| Blazing Sevens | 89% | Classic 1-line wild-boosted 7 | 同上 |
-| Money Storm | 92.5% | Feature-light base-heavy | 同上 |
+| Red White & Blue (IGT) | 87% | Classic 3-reel 1-payline | **chassis 参考**: 单 payline 1000-combo scale |
+| Blazing Sevens | 89% | Classic 1-line wild-boosted 7 | **wild 机制参考**: outer-reel wild 做 substitution |
+| Money Storm | 92.5% | Feature-light base-heavy | **base-heavy 参考**: M37 也是 base-only no feature |
 
-**Jackpot-tier 游戏的 hit rate 观察**：
-- Dragon Link base game hit ≈ 10-15%（跟 classic 1-line 同档）
-- Grand jackpot 是 chance-per-spin 极低，走**稀有事件**，不属于 "hit rate" 统计里
+**Liberty Bell PAR sheet 启示**（[slotgamedesign.com](https://slotgamedesign.com/category/par-sheets/)）:
+- Classic 3-reel 1-payline 数学基础: 10 symbols × 3 reels = 1000 combos / payline
+- 顶奖 ≈ 0.1% rate × payline factor → 10⁻⁴ per spin 量级
+- M37 的 1000× 顶奖目标 ≈ 1 in 60-100k spins（mode 1）— 在 classic 顶奖 rate 合理范围
 
-**Liberty Bell PAR sheet 启示**（[slotgamedesign.com](https://slotgamedesign.com/category/par-sheets/)）：
-- 10 symbols × 3 reels = 1000 total combos
-- Jackpot 对应 1 combo（0.1% rate，10× payline factor）
-- 这个 scale 告诉我们：M37 的 top-tier pay 应该 ≤ 10^-4 per spin 量级
+**RWB family RTP 分布作为参考**（不是 M37 必须 match）:
+- RWB Bar 31%, Cherry 16%, Seven 50% — 7-dominant
+- M37 没 cherry，"frequent small reward" 由 booster_alone (pay_id 9) 接管
+- M37 "Seven 家族角色" 由 high7 + 倍率 wild 共同扮演（high7 base 10× + booster 20-100× × 旁边 pay）
+
+**Hit rate 参考**（classic 3-reel 1-payline 范围）:
+- Classic 1-line 一般 hit 25-35%（cherry-heavy 机型）
+- M37 hit 15-22% — 比传统 classic 略低，因为 M37 用倍率 wild 替代了 cherry 的 frequent role，单次 payout 平均比 cherry 高
 
 ## 3. 玩家感性分档 — 每个 win 档位的情感定位
 

@@ -1,6 +1,21 @@
 {
   "machine": "M37",
   "reel_set": "default",
+  "_archetype": {
+    "origin": "LHS original — no 1:1 commercial archetype",
+    "chassis_reference": "Classic 3-reel 1-payline (IGT Red White & Blue family / Bally Blazing Sevens family)",
+    "chassis_reference_url": "https://slotgamedesign.com/2019/01/19/slot-math-tutorial-creating-par-sheets/",
+    "chassis_reference_rtp_benchmark": "87% (RWB) / 89% (Blazing Sevens)",
+    "mechanic_reference": "倍率 wild (mini=x2, minor=x5, major=x10, grand=x100) on middle reel only — name borrowed from Aristocrat jackpot-tier symbols but mechanically REASSIGNED to base-game multiplier wilds (no progressive jackpot, no hold-and-spin)",
+    "asymmetric_design": "wild 仅在 reel 1+3; 倍率 wild 仅在 reel 2 — LHS 自创结构, 强制 outer-substitution + middle-multiplier 隔离",
+    "pay_modifications_vs_archetype": [
+      "Top jackpot 1000x = pay_id 1 (high7-3) x grand multiplier — 走 high7 路径不走 pure-wild (后端 reroll)",
+      "Pure-wild + grand 的 (wild,grand,wild) 中间行被屏蔽 — 强迫 1000x 顶奖 narrative 走 high7 channel",
+      "Pure-wild + (mini/minor/major) 不被屏蔽 — pay_id 102/103/104 = 100/50/20x"
+    ],
+    "confidence": "high (原创设计 + 公开 chassis 参考 + 完整 paytable spec test 覆盖 100% rawdata 匹配)",
+    "modifications_explanation": "M37 不是已发布商业机台的复刻; 是 LHS 内部为'classic + 倍率 wild'设计 niche 自创的机台. Chassis 借鉴 70-80年代 classic 1-line 数学结构, 符号集借鉴 2010s+ jackpot-tier UX, 但倍率 wild 的 base-game 嵌入 + 顶奖 reroll 是 M37 specific."
+  },
   "_invariants": [
     "Blank/non-blank strict alternation per reel (18 blank + 18 non-blank, interleaved). Position 0/2/4/... = blank; 1/3/5/... = non-blank.",
     "Wild ONLY on reels 1+3 (outside); NEVER on reel 2. Enforces pay_id 102-104 semantics (pure-wild requires both outside reels to be wild, not center).",

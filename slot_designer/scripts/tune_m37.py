@@ -16,16 +16,19 @@ Hard rules:
   - Strip layout LOCKED (36 stops, blank/non-blank alternation, wild only
     on R1+R3, boosters only on R2)
   - Mode RTP: 1=95%, 7=85% (standard); 2=300%, 5=500% (lucky)
-  - Mode 7 = mode 1 - 砍小奖派生:
-    - high7 + booster + wild weights frozen to mode 1 (大奖 + brand 不动)
-    - blank weight FLOORED ≥ mode 1 (else big-win density inflates → RTP UP not DOWN)
-    - bar1/2/3/7bar weight ranges [mode 1 × 0.40, mode 1 × 0.85] (wide cut)
+  - Mode 7 = mode 1 - 砍小奖派生 (per-tier hit preservation):
+    - SMALL bars (1bar/2bar/3bar) [m1×0.30, m1×0.80] (砍 small wins)
+    - MID bar (7bar) frozen = m1 (中奖击中率不变)
+    - high7 + wild + boosters frozen to mode 1 (大/顶奖击中率不变)
+    - blank weight FLOORED ≥ mode 1 (anti-density-inflation)
   - Mode 2: weight floors ≥ mode 1 for non-blank big-win/booster only
     + blank weight CEILED ≤ mode 1 (lucky must be denser hits)
     + bar weights CEILED ≤ mode 1 × 1.6 (prevent bar over-loading)
-  - Mode 5: bar frozen = mode 2 (preserve hit rate via Bar density);
-    big-win/booster floored ≥ mode 2 + grand floor (super-lucky monotonic);
-    blank CEILED ≤ mode 2.
+  - Mode 5 = mode 2 + 倍率 wild boost (preserve hit + bucket shape):
+    - bars + 7bar + high7 + wild + mini + minor frozen = m2
+    - major weight ≥ m2 × 1.5 (mid-tier multiplier push)
+    - grand weight ≥ max(3, m2 × 3) (顶奖密集化)
+    - blank floored ≥ m2 (preserve hit pattern)
 
 Parameterization (per mode):
   - R1 + R3: 7 families each (blank, wild, high7, 7bar, 3bar, 2bar, 1bar)
@@ -72,18 +75,26 @@ BIGWIN_SYMBOLS_R1 = ("wild", "high7")
 BIGWIN_SYMBOLS_R2 = ("high7", "mini", "minor", "major", "grand")
 BIGWIN_SYMBOLS_R3 = ("wild", "high7")
 
-# Bar tier (略砍 in mode 7 with weight range)
-BAR_SYMBOLS = ("1bar", "2bar", "3bar", "7bar")
+# Tier split for mode-7 design (per project_slot_designer_hit_rate_deviation.md):
+# Mode 7 = mode 1 砍小奖派生. 小奖击中率降, 中/大/顶奖击中率不变.
+# - SMALL_WIN_BARS = 1bar (3x), 2bar (4x), 3bar (5x) → mode 7 砍这些
+# - MID_WIN_BARS = 7bar (6x) → mode 7 frozen (中奖不动)
+SMALL_WIN_BARS = ("1bar", "2bar", "3bar")
+MID_WIN_BARS = ("7bar",)
+BAR_SYMBOLS = SMALL_WIN_BARS + MID_WIN_BARS    # for floors/ceilings in m2
 
 # Per-family per-reel weight bounds. Each is integer >= 1.
+# Blank cap raised to 100 (was 50): mode 7 needs room to grow blank on R2 to dilute
+# frozen big-win density when small bars are cut. m1 R2 blank already 49 — without
+# higher cap, mode 7 had no dilution room → grand alone over-fired (1.50x m1 freq).
 WEIGHT_BOUNDS_STANDARD = {
-    "blank":  (1, 50), "wild":  (1, 15),
+    "blank":  (1, 100), "wild":  (1, 15),
     "high7":  (1, 30), "7bar":  (1, 30), "3bar":  (1, 30),
     "2bar":   (1, 30), "1bar":  (1, 50),
     "mini":   (1, 15), "minor": (1, 15), "major": (1, 15), "grand": (1, 5),
 }
 WEIGHT_BOUNDS_LUCKY = {
-    "blank":  (1, 40), "wild":  (1, 25),
+    "blank":  (1, 80), "wild":  (1, 25),
     "high7":  (1, 50), "7bar":  (1, 50), "3bar":  (1, 50),
     "2bar":   (1, 50), "1bar":  (1, 80),
     "mini":   (1, 25), "minor": (1, 25), "major": (1, 25), "grand": (1, 10),
@@ -95,8 +106,9 @@ WEIGHT_BOUNDS_BY_MODE = {1: WEIGHT_BOUNDS_STANDARD, 7: WEIGHT_BOUNDS_STANDARD,
 EXPERIENCE_TARGETS = {
     1: {
         "total_rtp_pct": 95.0, "total_rtp_tol_pp": 1.0,
-        "rtp_weight": 25.0,
-        "hit_rate_target": 0.16, "hit_rate_weight": 150.0,
+        "rtp_weight": 80.0,    # very strict, dominant
+        # mode 1 hit ~17-20% (M37 has frequent pay_id 9 = booster/wild alone at 1 in 8)
+        "hit_rate_target": 0.18, "hit_rate_weight": 200.0,
         "wild_on_payline_band": (0.05, 0.16),
         "wild_signature_weight": 500.0,
         # Booster on R2 brand: visible but NOT dominant. 5-10% means
@@ -132,30 +144,34 @@ EXPERIENCE_TARGETS = {
     7: {
         "total_rtp_pct": 85.0, "total_rtp_tol_pp": 2.0,
         "rtp_weight": 30.0,    # very strict for mode 7
-        "hit_rate_target": 0.13, "hit_rate_weight": 80.0,
-        "top_jackpot_min_spins": 70000,    # slightly relaxed vs m1 (60k); not overly frequent
-        "pay_freq_caps": {"8": 0.0005},    # grand alone cap similar to m1
-        "wild_on_payline_band": (0.03, 0.16),
-        "booster_r2_band": (0.04, 0.10),
+        # Mode 7 hit naturally lower (small bars cut + 7bar/big-win density rises slightly)
+        "hit_rate_target": 0.14, "hit_rate_weight": 60.0,
+        # Top jackpot relaxed since frozen big-win + small bar cut → big-win density rises
+        "top_jackpot_min_spins": 40000,
+        "pay_freq_caps": {"8": 0.0006},    # grand alone — similar to m1 with small slack
+        "wild_on_payline_band": (0.03, 0.20),
+        "booster_r2_band": (0.04, 0.12),
         "family_share_bands": {
-            "high7":   (0.03, 0.25),
-            "7bar":    (0.03, 0.25),
-            "bar_tier": (0.10, 0.40),    # tighter cap (bars cut)
-            "booster_alone": (0.10, 0.40),    # naturally rises when bars cut
-            "wild_amplified": (0.0, 0.20),
+            "high7":   (0.05, 0.30),
+            "7bar":    (0.05, 0.30),    # 7bar frozen → share rises as bars drop
+            "bar_tier": (0.05, 0.35),    # tighter cap (bars cut)
+            "booster_alone": (0.10, 0.45),    # naturally rises when bars cut
+            "wild_amplified": (0.0, 0.10),
         },
-        "per_reel_blank_variance_strength": 5.0,    # M37 R2 = booster reel (more blank natural)
+        "per_reel_blank_variance_strength": 5.0,
         "per_reel_density_lo_by_family": {
             "wild": 0.005, "high7": 0.005,
-            "7bar": 0.005, "3bar": 0.005, "2bar": 0.005, "1bar": 0.005,
+            "7bar": 0.005, "3bar": 0.003, "2bar": 0.003, "1bar": 0.003,
             "mini": 0.003, "minor": 0.003, "major": 0.003, "grand": 0.001,
         },
+        # Density caps relaxed: frozen weights + bar/blank changes inflate frozen densities,
+        # optimizer can't fight that, so caps must accommodate
         "per_reel_density_hi_by_family": {
-            "wild": 0.07, "high7": 0.06,    # match mode 1 (frozen weight, blank floored)
-            "7bar": 0.12, "3bar": 0.12, "2bar": 0.12, "1bar": 0.16,    # tighter bar caps for cut
-            "mini": 0.06, "minor": 0.05, "major": 0.03, "grand": 0.004,
+            "wild": 0.12, "high7": 0.15,
+            "7bar": 0.30, "3bar": 0.18, "2bar": 0.18, "1bar": 0.22,
+            "mini": 0.10, "minor": 0.10, "major": 0.10, "grand": 0.005,
         },
-        "uniformity_ratio_cap": {"wild": 2.0, "high7": 3.0},
+        "uniformity_ratio_cap": {"wild": 2.5, "high7": 3.0},
     },
     2: {
         "total_rtp_pct": 300.0, "total_rtp_tol_pp": 20.0,
@@ -188,22 +204,26 @@ EXPERIENCE_TARGETS = {
         "uniformity_ratio_cap": {"wild": 2.5, "high7": 3.0},
     },
     5: {
-        "total_rtp_pct": 500.0, "total_rtp_tol_pp": 40.0,    # super-lucky wide tol
+        "total_rtp_pct": 500.0, "total_rtp_tol_pp": 50.0,    # super-lucky wide tol
         "rtp_weight": 6.0,
-        # Mode 5 super-lucky: hit can rise to ~35% (everything denser → more pays)
-        "hit_rate_target": 0.32, "hit_rate_weight": 150.0,
-        "top_jackpot_min_spins": 10000,    # super-lucky 1 in 10k
-        "pay_freq_caps": {"8": 0.0015},    # grand alone 1 in 666
-        "wild_on_payline_band": (0.08, 0.22),
-        "wild_signature_weight": 200.0,
-        "booster_r2_band": (0.12, 0.28),    # super-lucky boosters visible (brand)
-        "booster_signature_weight": 200.0,
+        # Mode 5 = mode 2 + grand boost. Hit ≈ m2 (everything frozen except grand).
+        "hit_rate_target": 0.30, "hit_rate_weight": 150.0,
+        # Top jackpot 1 in 3-5k (super-lucky 顶奖 session 级 narrative)
+        "top_jackpot_min_spins": 3500,
+        # Grand alone freq cap: m2 was 0.0007, m5 grand × 5+ → ~0.005. Cap 0.006 (1 in 167).
+        "pay_freq_caps": {"8": 0.006},
+        # Wild and booster_R2 frozen from m2 → bands match m2 actual ± wide
+        "wild_on_payline_band": (0.05, 0.18),
+        "wild_signature_weight": 100.0,
+        "booster_r2_band": (0.10, 0.28),    # boosters frozen (mini/minor/major) but grand 拉 → R2 marginal slight up
+        "booster_signature_weight": 100.0,
         "family_share_bands": {
-            "high7":   (0.05, 0.30),
-            "7bar":    (0.03, 0.25),
-            "bar_tier": (0.20, 0.50),    # bars naturally still big in super-lucky
-            "booster_alone": (0.10, 0.40),
-            "wild_amplified": (0.0, 0.10),
+            "high7":   (0.10, 0.25),
+            "7bar":    (0.08, 0.20),
+            "bar_tier": (0.20, 0.45),
+            # booster_alone (pay_id 8/9) is the SUPER-LUCKY signature — grand × 3 pushes pay_id 8 way up
+            "booster_alone": (0.20, 0.50),
+            "wild_amplified": (0.0, 0.05),
         },
         "per_reel_blank_variance_strength": 5.0,
         "per_reel_density_lo_by_family": {
@@ -535,10 +555,9 @@ def main(modes_to_run=(1, 7)):
         [("wild", r) for r in (0, 2)] +
         [(b, 1) for b in ("mini", "minor", "major", "grand")]
     )
-    SHAPE_ANCHOR_KEYS_M7 = (
-        # Bar weights with range constraint
-        [(s, r) for s in BAR_SYMBOLS for r in range(3) if s in SYMBOLS_BY_REEL[r]]
-    )
+    # Mode 7 砍小奖派生: 只切 SMALL_WIN_BARS (1bar/2bar/3bar), 中奖 7bar 不动
+    SMALL_WIN_KEYS_M7 = [(s, r) for s in SMALL_WIN_BARS for r in range(3) if s in SYMBOLS_BY_REEL[r]]
+    MID_WIN_KEYS_M7 = [(s, r) for s in MID_WIN_BARS for r in range(3) if s in SYMBOLS_BY_REEL[r]]
     BLANK_KEYS = [("blank", r) for r in range(3)]
     BAR_KEYS = [(s, r) for s in BAR_SYMBOLS for r in range(3) if s in SYMBOLS_BY_REEL[r]]
     BIG_WIN_KEYS = (
@@ -556,60 +575,67 @@ def main(modes_to_run=(1, 7)):
         weight_floors = None
         weight_ceilings = None
         if mode == 7 and mode1_all_weights is not None:
-            # Mode 7 = mode 1 砍小奖派生:
-            # bars cut hard [m1×0.40, m1×0.85] (small wins ↓ frequency)
-            # big-win in TIGHT band [m1×0.85, m1×1.05] (≈ density preserved when total drops
-            #   from bar cut — without this, frozen big-win density INFLATES, RTP rises)
-            # blank ≥ m1 (prevents big-win from inflating further)
-            weight_floors = {
-                k: max(1, int(mode1_all_weights[k] * 0.40))
-                for k in SHAPE_ANCHOR_KEYS_M7 if k in mode1_all_weights
-            }
-            weight_ceilings = {
-                k: max(1, int(mode1_all_weights[k] * 0.85))
-                for k in SHAPE_ANCHOR_KEYS_M7 if k in mode1_all_weights
-            }
-            # Big-win wide-tolerance preservation (density approximately preserved)
+            # Mode 7 = mode 1 砍小奖派生 (per-tier hit preservation):
+            # - SMALL bars (1bar/2bar/3bar) [m1×0.30, m1×0.80] — 砍 small wins
+            # - MID bar (7bar) frozen = m1 — 中奖击中率不变
+            # - Big-win (high7/wild/boosters) frozen = m1 — 大/顶奖击中率不变
+            # - Blank weight ≥ m1 (CRITICAL: prevents R2 total shrink → frozen big-win
+            #   density inflation → grand alone over-fires)
+            weight_floors = {}
+            weight_ceilings = {}
+            # SMALL bars: cut [m1×0.30, m1×0.80]
+            for k in SMALL_WIN_KEYS_M7:
+                if k in mode1_all_weights:
+                    weight_floors[k] = max(1, int(mode1_all_weights[k] * 0.30))
+                    weight_ceilings[k] = max(1, int(mode1_all_weights[k] * 0.80))
+            # MID bar (7bar) frozen
+            frozen_weights = {}
+            for k in MID_WIN_KEYS_M7:
+                if k in mode1_all_weights:
+                    frozen_weights[k] = mode1_all_weights[k]
+            # Big-win (high7/wild/boosters) frozen
             for k in BIGWIN_KEYS_M7:
                 if k in mode1_all_weights:
-                    weight_floors[k] = max(1, int(mode1_all_weights[k] * 0.80))
-                    weight_ceilings[k] = max(1, int(mode1_all_weights[k] * 1.10))
-            # Blank floor = mode 1 blank
+                    frozen_weights[k] = mode1_all_weights[k]
+            # Blank floor = m1 blank weight (critical anti-density-inflation)
             for k in BLANK_KEYS:
                 if k in mode1_all_weights:
                     weight_floors[k] = mode1_all_weights[k]
-            print(f"\n=== Mode {mode}: bar [m1×0.40, m1×0.85]; big-win [m1×0.80, m1×1.10]; blank ≥ mode 1 ===")
+            print(f"\n=== Mode {mode}: SMALL bar [m1×0.30, m1×0.80]; 7bar+big-win frozen=m1; blank≥m1 ===")
         elif mode == 5 and mode2_all_weights is not None:
-            # Mode 5 super-lucky design: m2 weights × per-family scale-up.
-            # Bars ≥ m2 (slight grow allowed), big-win + booster ≥ m2 × 1.5 (real lift),
-            # grand ≥ m2 (top_jackpot constraint will let optimizer push).
-            # Blank ≥ m2 × 0.6 (allow blank to shrink ~40% to lift density baseline).
+            # Mode 5 super-lucky design: m2 base + 倍率 wild boost (grand + major).
+            # Per memory project_slot_designer_mode_rtp_invariants.md:
+            #   "mode 5 = mode 2 加大奖派生 ... hit rate / bucket shape 保持"
+            #
+            # Hit rate ≈ m2 (small/mid pay symbols frozen).
+            # Big wins more frequent: grand ×3 → 1000× 顶奖密集化; major ×1.5 → 中-高 tier × multiplier 频次升.
+            # mini/minor frozen (low-value boosters not the super-lucky signature).
+            #
+            # Implementation:
+            # - Bars + 7bar + high7 + wild + mini + minor frozen = m2 (preserve hit + low-tier brand)
+            # - major floored ≥ m2 × 1.5 (push mid-tier multiplier visibility + RTP)
+            # - grand floored ≥ max(3, m2 × 3) (push顶奖) — top_jackpot constraint will cap
+            # - Blank floored = m2 (preserve hit by holding blank density)
+            # Blank ALSO frozen to m2 — preserves wild/high7 density (they're frozen at m2 weight,
+            # so density only stable if total reel weight stable → blank must not grow)
+            FROZEN_FOR_M5 = (
+                BAR_KEYS    # all bars (1bar/2bar/3bar/7bar)
+                + [("wild", r) for r in (0, 2)]    # wild
+                + [("high7", r) for r in range(3)]    # high7
+                + [(b, 1) for b in ("mini", "minor")]    # low-tier boosters
+                + BLANK_KEYS    # blank (lock for density preservation)
+            )
+            frozen_weights = {k: mode2_all_weights[k] for k in FROZEN_FOR_M5 if k in mode2_all_weights}
             weight_floors = {}
-            # Bars: floor at m2 (no shrink, but allow growth)
-            for k in BAR_KEYS:
-                if k in mode2_all_weights:
-                    weight_floors[k] = mode2_all_weights[k]
-            # Big-win (wild + high7): floor m2 × 1.3
-            for sym in ("wild", "high7"):
-                for r in range(3):
-                    k = (sym, r)
-                    if k in mode2_all_weights:
-                        weight_floors[k] = max(1, int(mode2_all_weights[k] * 1.3))
-            # Booster (mini/minor/major): floor m2 × 1.5
-            for booster_sym in ("mini", "minor", "major"):
-                k = (booster_sym, 1)
-                if k in mode2_all_weights:
-                    weight_floors[k] = max(1, int(mode2_all_weights[k] * 1.5))
-            # Grand: floor = m2 (top_jackpot constraint will let it push)
+            # Major floor: m2 × 1.5 — mid-tier multiplier push (10× pays grow)
+            major_key = ("major", 1)
+            if major_key in mode2_all_weights:
+                weight_floors[major_key] = max(1, int(mode2_all_weights[major_key] * 1.5))
+            # Grand floor: max(6, m2 × 6) — push顶奖密集化 (1000× session 级)
             grand_key = ("grand", 1)
             if grand_key in mode2_all_weights:
-                weight_floors[grand_key] = mode2_all_weights[grand_key]
-            # Blank: floor = m2 × 0.6 (allow shrinkage but with floor)
-            weight_ceilings = {}
-            for k in BLANK_KEYS:
-                if k in mode2_all_weights:
-                    weight_floors[k] = max(1, int(mode2_all_weights[k] * 0.6))
-            print(f"\n=== Mode {mode}: bar ≥ m2; big-win ≥ m2×1.3; booster ≥ m2×1.5; grand ≥ m2; blank ≥ m2×0.6 ===")
+                weight_floors[grand_key] = max(6, int(mode2_all_weights[grand_key] * 6))
+            print(f"\n=== Mode {mode}: bars+wild+high7+mini+minor+BLANK frozen=m2; major≥m2×1.5; grand≥max(6,m2×6) ===")
         elif mode == 2 and mode1_all_weights is not None:
             # Mode 2 lucky: big-win/booster ≥ mode 1 (lucky every pay frequency ↑),
             # bar capped ≤ m1 × 1.6 (prevent over-loading), blank ≤ mode 1.
@@ -646,9 +672,9 @@ def main(modes_to_run=(1, 7)):
         existing["_notes"] = [
             f"M37 mode {mode} v3 (2026-04-27) — player-experience direct tune.",
             "Per-family per-reel uniform weights; goal-oriented soft penalties.",
-            "Mode 7: bar [m1×0.40, m1×0.85]; big-win [m1×0.80, m1×1.10]; blank ≥ m1.",
+            "Mode 7: SMALL bar [m1×0.30, m1×0.80]; 7bar+big-win frozen=m1; blank≥m1 (per-tier hit preservation).",
             "Mode 2: big-win/booster ≥ m1; bar ≤ m1×1.6; blank ≤ m1 (lucky denser hits).",
-            "Mode 5: bar ≥ m2; big-win ≥ m2×1.3; booster ≥ m2×1.5; grand ≥ m2; blank ≥ m2×0.6.",
+            "Mode 5: bars+wild+high7+mini+minor+blank frozen=m2; major≥m2×1.5; grand≥max(6,m2×6).",
             f"RTP {pred['rtp_pct']:.3f}%, hit {pred['hit_rate']:.3%}, CV {pred['cv']:.2f}, wild {wild_p*100:.2f}%, booster_R2 {booster_p*100:.2f}%",
         ]
         existing["_tuned_summary"] = {

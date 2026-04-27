@@ -1,6 +1,7 @@
 # M37 4-Mode 数值概览 + 玩家感性体验
 
-> **上游**：[`DESIGN.md`](DESIGN.md)（Lightning-Link / Red-White-Blue 混血原型研究）；`project_slot_designer_mode_rtp_invariants.md`（跨机台 mode RTP 规则）；`project_slot_designer_hit_rate_deviation.md`（派生 mode hit rate 带宽规则）
+> **机台 origin**：M37 是 **LHS 原创机台**（不抄商业机台），chassis 参考 classic 3-reel 1-payline (RWB / Blazing Sevens 同代)，符号机制特征 = wild on outer + 倍率 wild on middle (mini/minor/major/grand)。完整 archetype 见 `reel_strips.json _archetype` block + [`DESIGN.md`](DESIGN.md) §1。
+> **上游**：[`DESIGN.md`](DESIGN.md)（原创设计 + 业界 chassis 参考 + per-tier 玩家感性叙事）；`project_slot_designer_mode_rtp_invariants.md`（跨机台 mode RTP 规则）；`project_slot_designer_hit_rate_deviation.md`（派生 mode hit rate 带宽规则）
 > **下游**：每 mode `mode_<N>/weights.json`（实现层）；`M37_weights_reference.csv`（策划速查表）
 > **状态**：2026-04-27 设计稿 **v3 shipped**（4 mode re-tuned + verified all-green）
 > **v3 关键改进** vs v1：
