@@ -1,18 +1,49 @@
 """Per-mode chunk metadata sidecar — ``_chunks.json``.
 
-Solves two hot-path performance issues caused by ``json.loads(whole_file)``
-over every historical chunk just to read ~300 bytes of envelope header:
+The rawdata management layer for chunk-md5 segregation. Replaces the
+"open every file to know its md5" anti-pattern that user feedback
+2026-04-26 finally pinned down ("你应该有个管理 rawdata 的机制，比如
+索引啥的，而不是要去读每个 rawdata 才知道 md5"). Three hot paths
+benefit:
 
-1. Resume-replay with md5 filter (e.g. after operator swaps local cfg):
-   ~100 MB / ~15 s wasted reading chunks that will all be filtered out
-   anyway.
-2. 机台管理 click on a machine with large rawdata: ``check_rawdata_status``
-   cold-path rescans every chunk to rebuild md5 / version buckets.
+1. Resume-replay with md5 filter (operator swaps local cfg → most
+   chunks belong to a historical md5): pre-fix iterated every chunk,
+   post-fix consults the inverted ``by_md5`` index for an O(1) bucket
+   lookup. ~14 s → ~10 ms wall time on M1sim's 1443-chunk dir.
 
-This module maintains a small sidecar (``_chunks.json``, ~100 bytes per
-chunk) under each ``<rawdata_root>/<machine>/mode_<N>/`` directory.
-Readers consult it first; the chunk files themselves only need full
-read when the chunk is actually being merged into stats.
+2. CI pre-check (virtual_analyzer's _load_existing_session_stats):
+   same anti-pattern, same fix.
+
+3. 机台管理 click on a machine with large rawdata
+   (check_rawdata_status cold-path): same.
+
+Sidecar shape (one file per ``<rawdata_root>/<machine>/mode_<N>/``):
+
+  {
+    "_version": 1,
+    "_updated_at": "ISO ts",
+    "chunks": {                            # per-chunk lookup (existing)
+      "chunk_0001.json": {
+        "idx": 1, "cfg_md5": "...", "code_md5": "...",
+        "spin_times": 1000, "robot_count": 8,
+        "saved_at": "...", "size_bytes": N
+      },
+      ...
+    },
+    "by_md5": {                            # md5 → [filenames] (2026-04-26)
+      "cfg_a|code_x": ["chunk_0001.json", ...],
+      "cfg_b|code_x": ["chunk_0010.json", ...]
+    }
+  }
+
+Reads pick the right index for the question:
+  - "what does THIS chunk look like?"   → chunks[name]
+  - "give me the chunks for THIS md5"   → by_md5[cfg|code]
+  - "how many md5 versions exist?"      → keys of by_md5
+
+Writes maintain BOTH indexes atomically. ``update_chunk_entry`` and
+``bulk_remove_chunk_entries`` are the only mutators — every chunk
+add/remove path in the codebase routes through one of them.
 
 Design notes:
 - Pure functions, Path-parameterized — shared verbatim between real
@@ -27,8 +58,10 @@ Design notes:
   + persists when the sidecar is absent or visibly stale (file set
   drifts from index entries). Readers don't need to know which path
   they're on.
-- Schema versioning (``_version``) leaves room for future envelope
-  fields without breaking old readers.
+- Backward compat: pre-2026-04-26 sidecars on disk lack the
+  ``by_md5`` field. Helpers derive it in-memory on first read; the
+  next write through update/bulk_remove persists the v2 layout.
+  No version bump, no migration script.
 """
 from __future__ import annotations
 

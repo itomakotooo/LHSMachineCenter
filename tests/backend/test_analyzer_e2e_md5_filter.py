@@ -72,57 +72,89 @@ def _read_progress_events(progress_file: Path) -> list[dict]:
 M1SIM_RAWDATA = ROOT / "slot_designer" / "rawdata" / "M1sim" / "mode_1"
 
 
+def _build_mixed_md5_fixture(
+    src_chunk: Path, dst_dir: Path, mix: list[tuple[str, str, int]],
+) -> tuple[str, str, int]:
+    """Build a tmp cache dir with chunks at varying md5s by COPYING
+    a real on-disk chunk envelope and re-stamping its md5 fields.
+
+    Why copy a real chunk: synthetic envelopes need to satisfy the
+    analyzer's full schema validation (StopSymbolsByCol per round +
+    sha256 over the response array, etc.) — recreating that from
+    scratch is brittle. A real chunk already passes validation;
+    we just rewrite the md5 stamps and DROP the sha256 field
+    (load_chunk_envelope falls through to legacy-v2 path when
+    _payload_sha256 is absent, which still validates structure but
+    skips the hash check).
+
+    ``mix`` is a list of (cfg_md5, code_md5, count) tuples. Returns
+    the (cfg, code, count) of the SECOND-LARGEST bucket — that's
+    a reliable narrowing target (smaller than total but non-zero).
+    """
+    base = json.loads(src_chunk.read_text(encoding="utf-8"))
+    base.pop("_payload_sha256", None)
+    base["_envelope_version"] = 2  # accept-as-legacy path
+    next_idx = 1
+    for cfg, code, count in mix:
+        for _ in range(count):
+            chunk = {**base, "_config_md5": cfg, "_code_md5": code,
+                     "_chunk_index": next_idx}
+            (dst_dir / f"chunk_{next_idx:04d}.json").write_text(
+                json.dumps(chunk, ensure_ascii=False), encoding="utf-8",
+            )
+            next_idx += 1
+    # Pick the smallest non-empty bucket as the narrowing target.
+    smallest = min(mix, key=lambda t: t[2])
+    return smallest
+
+
 @pytest.mark.skipif(
     not M1SIM_RAWDATA.exists() or not any(M1SIM_RAWDATA.glob("chunk_*.json")),
-    reason="M1sim mixed-md5 rawdata not present in this checkout",
+    reason="M1sim rawdata not present in this checkout — need a real "
+           "envelope to clone for the mixed-md5 fixture",
 )
 def test_e2e_pre_filter_narrows_to_matching_md5_real_subprocess(tmp_path):
-    """REGRESSION 2026-04-26 (the user's exact "你做完就不会自己测一下"
-    case): spawn the REAL analyzer subprocess on M1sim's actual mixed-
-    md5 rawdata and prove the cache_read_start event reports ONLY the
+    """REGRESSION 2026-04-26 (the user's "你做完就不会自己测一下" case):
+    spawn the REAL analyzer subprocess on a constructed mixed-md5
+    cache and prove the cache_read_start event reports ONLY the
     matching chunk count.
 
-    Uses the existing M1sim/mode_1 rawdata (1443 chunks, 4 md5
-    versions) as the fixture — building synthetic envelopes that
-    pass schema validation is a rabbit hole, and using the live
-    fixture means the test reflects the user's actual scenario.
+    Builds a mixed-md5 fixture by cloning a real M1sim chunk (so
+    schema validation passes) and re-stamping md5s. Independent of
+    M1sim's current on-disk state — works whether M1sim has 1 or
+    14 md5 buckets at test time.
 
-    Without the pre-filter fix (cb2355d), this test observes
-    ``cache_read_start.total_chunks = 1443`` (full disk). With it,
-    we expect a small matching count (1-369 depending on which md5
-    bucket we filter for). The exact md5 fields are read from the
-    sidecar at test time so this stays robust against future M1sim
-    re-tunes that change md5s.
+    Pre-fix would observe ``cache_read_start.total_chunks = 30``
+    (full disk). Post-fix observes the matching bucket size.
     """
-    from fresh_slotlab.chunk_index import get_chunks_index
+    # Find a real chunk to use as the schema-valid template.
+    real_chunks = sorted(M1SIM_RAWDATA.glob("chunk_*.json"))
+    if not real_chunks:
+        pytest.skip("M1sim rawdata is empty")
+    template_chunk = real_chunks[0]
 
-    sidecar = get_chunks_index(M1SIM_RAWDATA)
-    chunks = sidecar.get("chunks") or {}
-    if not chunks:
-        pytest.skip("M1sim sidecar has no chunks indexed")
-
-    # Pick the md5 bucket with the smallest count — best demonstrates
-    # narrowing. Bucket-size doesn't matter for the assertion, just
-    # needs to be MUCH less than total.
-    by_md5 = sidecar.get("by_md5") or {}
-    if not by_md5:
-        pytest.skip("M1sim sidecar missing by_md5 — fix not deployed?")
-    smallest_key = min(by_md5.keys(), key=lambda k: len(by_md5[k]))
-    cfg_part, _, code_part = smallest_key.partition("|")
-    expected_match = len(by_md5[smallest_key])
-    total_disk = len(chunks)
-    assert total_disk > expected_match, (
-        f"need a narrowing scenario; bucket {smallest_key[:16]}... has "
-        f"{expected_match} chunks but disk total is {total_disk} — pick a "
-        f"different fixture if M1sim ever drops to a single md5"
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    # 5 chunks at md5 NEW_CFG, 25 chunks at md5 OLD_CFG.
+    OLD_CFG = "old_cfg_aaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+    NEW_CFG = "new_cfg_bbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+    CODE = "code_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx3"
+    target_cfg, target_code, expected_match = _build_mixed_md5_fixture(
+        template_chunk, cache_dir,
+        mix=[(OLD_CFG, CODE, 25), (NEW_CFG, CODE, 5)],
     )
+    total_disk = sum(1 for _ in cache_dir.glob("chunk_*.json"))
+    assert total_disk == 30
+    assert expected_match == 5, "fixture should narrow 30→5"
 
     output_dir = tmp_path / "out"
     progress_file = tmp_path / "progress.jsonl"
-    rc = _run_analyzer(M1SIM_RAWDATA, cfg_part, code_part, progress_file, output_dir)
+    rc = _run_analyzer(
+        cache_dir, target_cfg, target_code, progress_file, output_dir,
+    )
     assert rc.returncode == 0, (
         f"analyzer subprocess failed (rc={rc.returncode})\n"
-        f"STDERR: {rc.stderr[-1500:]}"
+        f"STDERR: {rc.stderr[-2000:]}"
     )
 
     events = _read_progress_events(progress_file)
@@ -133,19 +165,20 @@ def test_e2e_pre_filter_narrows_to_matching_md5_real_subprocess(tmp_path):
 
     actual_total = cache_starts[0]["total_chunks"]
     # SMOKING GUN: total_chunks reflects matching subset, NOT full disk.
-    # Pre-fix would emit total_disk (e.g. 1443). Post-fix emits
-    # expected_match (the bucket count from sidecar).
+    # Pre-fix would emit 30 (full disk). Post-fix emits 5 (matching).
     assert actual_total == expected_match, (
         f"PRE-FILTER REGRESSION: cache_read_start reported total_chunks="
-        f"{actual_total}, expected {expected_match} (size of md5 bucket "
-        f"{cfg_part[:8]}...). {total_disk} would mean pre-filter not "
-        f"firing (= the user's '已读 X/436 · 0 spins' symptom)."
+        f"{actual_total}, expected {expected_match} (matching bucket). "
+        f"{total_disk} = pre-filter not firing → user's '已读 X/Y · 0 "
+        f"spins' symptom."
     )
 
     completed = [e for e in events if e.get("event") == "completed"]
-    if completed:
-        # If completed event fired, it should report the same count.
-        assert completed[0].get("chunks") == expected_match
+    assert len(completed) == 1, "expected analyzer to complete cleanly"
+    assert completed[0].get("chunks") == expected_match, (
+        f"completed event reports chunks={completed[0].get('chunks')}, "
+        f"expected {expected_match}"
+    )
 
 
 @pytest.mark.skipif(
