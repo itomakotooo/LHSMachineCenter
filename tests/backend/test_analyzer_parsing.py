@@ -512,14 +512,20 @@ def test_run_sampling_chunk_payout_id_string_amounts_coerced(patch_post_json):
 
 def test_run_sampling_chunk_payout_id_missing_dict_is_safe(patch_post_json):
     """Old reports / unfamiliar machines may omit PayoutIdToWinAmount
-    entirely; the chunk still completes with an empty payout_id tally."""
-    rd = _full_round(WinCredits=100)
+    entirely; the chunk still completes safely (no crash). The
+    universal fallback synthesizer (2026-04-27) now attributes the
+    otherwise-uncategorized win to ``_unattributed_st<SpinType>``
+    so the per-pay_id drilldown sums to chunk_win even when upstream
+    omits payid info."""
+    rd = _full_round(WinCredits=100, SpinType=1)
     rd.pop("PayoutIdToWinAmount", None)
     patch_post_json(_stub_chunk_resp([rd]))
     rec = _run(spin_times=1)
     assert rec["ok"] is True
-    assert rec["payout_id_hits"] == {}
-    assert rec["payout_id_win"] == {}
+    # Pre-2026-04-27 behavior was {} (win silently lost from drilldown).
+    # Post-fallback: the 100 win attributes to '_unattributed_st1'.
+    assert rec["payout_id_hits"] == {"_unattributed_st1": 1}
+    assert rec["payout_id_win"] == {"_unattributed_st1": 100.0}
 
 
 # ---------- SpinType per-type aggregation ----------

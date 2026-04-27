@@ -745,3 +745,82 @@ class TestRoundWinRulesIntegration:
             rounds, round_win_rules=[self._topdollar_rule()],
         )[0]
         assert s["session_win"] == 0
+
+    def test_m132_multi_settlement_uses_sum_not_last(self):
+        """M132 variant 2 sometimes has TWO ST=15 settlement rounds
+        per trigger session (player gets paid twice). Legacy
+        last_non_none rule picks only the last settlement WinAmount,
+        dropping earlier ones -- measured 7% gap on payid attribution.
+
+        With rules active, helper now uses sum_win regardless of
+        Type 1/Type 2 classification, because the rule's
+        extract_round_win is the authoritative source per round
+        (phantom -> 0, settlement -> WinAmount). Summing is correct
+        for any number of settlements within a session."""
+        rounds = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"666": 0}, "ReMarks": "Trigger"},
+            # 8 selector offers (phantom)
+            {"SpinType": 14, "CostCredits": None, "WinCredits": 10000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 14, "CostCredits": None, "WinCredits": 20000,
+             "PayoutIdToWinAmount": None},
+            # First settlement: WinAmount 15000, no WinCredits
+            {"SpinType": 15, "CostCredits": None, "WinAmount": 15000,
+             "PayoutIdToWinAmount": None},
+            # More phantom offers in the same bonus block
+            {"SpinType": 14, "CostCredits": None, "WinCredits": 5000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 14, "CostCredits": None, "WinCredits": 30000,
+             "PayoutIdToWinAmount": None},
+            # Second settlement: WinAmount 25000
+            {"SpinType": 15, "CostCredits": None, "WinAmount": 25000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        rules = [self._topdollar_rule()]
+        s = compute_trigger_sessions(rounds, round_win_rules=rules)[0]
+        # Both settlements counted: 15000 + 25000 = 40000.
+        # Legacy last_non_none would have given only 25000 (-> 7% gap
+        # on M132 v2 fleet measurement).
+        assert s["session_win"] == 40000.0
+
+    def test_legacy_path_still_uses_classification(self):
+        """Without rules, the helper preserves Type 1/Type 2 rule
+        classification: 'Trigger' ReMarks -> last_non_none, others
+        -> sum_all. Locks no-regression on legacy machines."""
+        # Type 1 fixture (M15-style): 3 selector offers, last is 40000.
+        rounds_t1 = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"666": 0}, "ReMarks": "Trigger"},
+            {"SpinType": 14, "CostCredits": None, "WinCredits": 15000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 14, "CostCredits": None, "WinCredits": 20000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 14, "CostCredits": None, "WinCredits": 40000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        s = compute_trigger_sessions(rounds_t1)[0]
+        assert s["win_rule"] == "last_non_none"
+        assert s["session_win"] == 40000  # last selector offer, NOT the sum
+
+        # Type 2 fixture (M273-style): freespin sum_all rule applies.
+        # Round-credited filter would exclude these -- so build a
+        # synthetic Type 2 with non-credited bonus rounds.
+        rounds_t2 = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"5801": 0}, "ReMarks": ""},
+            # Bonus rounds with WinCredits but EMPTY PayoutIdToWinAmount
+            # (so _round_has_credited_win is False)
+            {"SpinType": 137, "CostCredits": None, "WinCredits": 100,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 137, "CostCredits": None, "WinCredits": 200,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 137, "CostCredits": None, "WinCredits": 300,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        s = compute_trigger_sessions(rounds_t2)[0]
+        assert s["win_rule"] == "sum_all"
+        assert s["session_win"] == 600  # sum, not last

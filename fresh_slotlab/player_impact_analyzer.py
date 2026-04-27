@@ -32,6 +32,7 @@ try:
     )  # noqa: E402
     from fresh_slotlab.round_win import (
         RoundWinRule,
+        extract_round_payouts,
         extract_round_win,
         load_rules_for_machine,
     )
@@ -55,6 +56,7 @@ except ImportError:  # running as a standalone script, not a package member
     )
     from round_win import (  # type: ignore[no-redef]
         RoundWinRule,
+        extract_round_payouts,
         extract_round_win,
         load_rules_for_machine,
     )
@@ -2981,6 +2983,19 @@ def parse_chunk_response(
             for s in _trig_sessions_for_robot
         }
         trigger_session_paid_indices: set[int] = set(session_win_by_trigger_idx.keys())
+        # 2026-04-27: bonus-round indices that are part of a trigger
+        # session (i.e. their win is attributed via session_win on the
+        # trigger pay_id). Used by the unattributed-fallback synthesizer
+        # below to avoid double-counting when a rule deliberately
+        # returned {} on these rounds (see SettlementWinAmountRule).
+        session_handled_bonus_indices: set[int] = set()
+        for _s in _trig_sessions_for_robot:
+            _trig_i = int(_s.get("trigger_idx", -1))
+            _end_i = int(_s.get("session_end_idx", _trig_i + 1))
+            if _trig_i < 0:
+                continue
+            for _bi in range(_trig_i + 1, _end_i):
+                session_handled_bonus_indices.add(_bi)
         # Iter 6: feed each trigger session into the
         # settlement-SpinType bucket histogram so Pass-5-bound
         # features (whose resolved_spin_type has zero round-level
@@ -3023,12 +3038,35 @@ def parse_chunk_response(
             session_bucket_spins_by_settlement_st[_settlement_st][_bucket] += 1
             session_bucket_bet_by_settlement_st[_settlement_st][_bucket] += _sess_bet
             session_bucket_win_by_settlement_st[_settlement_st][_bucket] += _sess_win
+        # Trigger-session win attribution: each session's session_win
+        # belongs to a SINGLE trigger pay_id (the bonus signal token).
+        # extract_trigger_pay_ids returns ALL pay_ids whose value is 0
+        # on the trigger round, which can include multiple anchors
+        # (e.g. M214 mode 5: pid={'1': 0, '666': 0} -- pay_id 1 is the
+        # base-game line that happened to pay 0 on this spin, pay_id
+        # 666 is the actual TriggerWheel signal). Crediting session_win
+        # to BOTH inflates the drilldown by 2x for those sessions.
+        # Heuristic: pick the largest integer pid (convention is large
+        # ids like 666 / 5801 are pure trigger tokens; small ids 1-100
+        # are payline pay_ids that occasionally have 0 win). Falls
+        # back to lex-max when none parse as int. Single-anchor
+        # sessions (M12/M15/M132 TopDollar with only ['666']) are
+        # unaffected -- max of a single-element list is that element.
+        def _pid_anchor_sort_key(s: Any) -> tuple:
+            try:
+                return (1, int(s))
+            except (TypeError, ValueError):
+                return (0, str(s))
+
         for _trig_session in _trig_sessions_for_robot:
             _sess_win = float(_trig_session.get("session_win", 0.0) or 0.0)
             if _sess_win == 0.0:
                 continue
-            for _tpid in _trig_session.get("trigger_pay_ids", ()):
-                payout_id_win[str(_tpid)] += _sess_win
+            _anchor_pids = _trig_session.get("trigger_pay_ids") or ()
+            if not _anchor_pids:
+                continue
+            _chosen = max(_anchor_pids, key=_pid_anchor_sort_key)
+            payout_id_win[str(_chosen)] += _sess_win
 
         cur_loss = 0
         cur_win = 0
@@ -3478,9 +3516,22 @@ def parse_chunk_response(
             # Win without a corresponding Payout entry (Win > Payout
             # sum, rare), we keep Payout values as-is — the unaccounted
             # delta stays under "no pay_id" at the session level.
-            pid_to_win = r.get("PayoutIdToWinAmount") or {}
-            if isinstance(pid_to_win, dict):
-                _win_this_round = extract_round_win(r, rules=round_win_rules)
+            #
+            # 2026-04-27: per-machine rules can override / synthesize
+            # the pid mapping. extract_round_payouts returns either a
+            # rule-supplied dict (e.g. SynthesizePayIdRule emits
+            # {'20': 20000} for a wheel ST=2 round; SettlementWinAmountRule
+            # emits {} to suppress round-level credit and delegate to
+            # trigger_sessions) or the legacy r.PayoutIdToWinAmount
+            # bytes-equivalent dict when no rule applies.
+            pid_to_win = extract_round_payouts(
+                r, rules=round_win_rules, ctx={"bet": bet},
+            )
+            _win_this_round = extract_round_win(r, rules=round_win_rules)
+            _credited_sum = 0.0  # tracks how much of _win_this_round
+                                 # ended up attributed to some pay_id
+            if pid_to_win:  # non-empty dict only -- empty dict is
+                            # explicit "do nothing" from rule or legacy
                 _pay_sum = sum(
                     to_float(v, default=0.0) for v in pid_to_win.values()
                 )
@@ -3490,7 +3541,9 @@ def parse_chunk_response(
                 for pid_raw, amount_raw in pid_to_win.items():
                     pid = str(pid_raw)
                     payout_id_hits[pid] += 1
-                    payout_id_win[pid] += to_float(amount_raw, default=0.0) * _scale
+                    _credited = to_float(amount_raw, default=0.0) * _scale
+                    payout_id_win[pid] += _credited
+                    _credited_sum += _credited
                     # Capture the SpinType that fired this pay_id (from
                     # the round's sp_type, determined below but already
                     # assigned via the per-round parse pass — the int
@@ -3500,6 +3553,33 @@ def parse_chunk_response(
                     except (TypeError, ValueError):
                         _st_key = -1
                     payout_id_by_spin_type[pid][_st_key] += 1
+
+            # 2026-04-27: fallback synthesizer for the unattributed
+            # delta. Closes the ``sum(payid_win) ~= chunk_win``
+            # invariant fleet-wide. Skipped when:
+            #   * delta <= 0.5 credit (round-level attribution covers it)
+            #   * round is part of a trigger session whose session_win
+            #     is attributed to the trigger pay_id by the existing
+            #     session-attribution loop -- adding here would double-
+            #     count (M12/M15/M132 TopDollar settlement rounds).
+            #
+            # When fired, synthesizes ``_unattributed_st<SpinType>``
+            # so the drilldown surfaces "this much win came from
+            # SpinType N rounds the upstream didn't itemize per pay_id."
+            # The leading underscore signals "synthetic / catch-all"
+            # to operators reading the drilldown.
+            if (
+                _win_this_round - _credited_sum > 0.5
+                and _round_idx_in_robot not in session_handled_bonus_indices
+            ):
+                try:
+                    _fallback_st_key = int(sp_type) if sp_type is not None else -1
+                except (TypeError, ValueError):
+                    _fallback_st_key = -1
+                _fallback_pid = f"_unattributed_st{_fallback_st_key}"
+                payout_id_hits[_fallback_pid] += 1
+                payout_id_win[_fallback_pid] += (_win_this_round - _credited_sum)
+                payout_id_by_spin_type[_fallback_pid][_fallback_st_key] += 1
 
             line_ids = parse_paylines(str(r.get("PayoutByPayline") or ""))
             if line_ids:
@@ -3693,6 +3773,34 @@ def parse_chunk_response(
 
     if chunk_spins <= 0 or chunk_bet <= 0:
         return {"ok": False, "index": chunk_index, "error": "parse_failed_zero_chunk"}
+
+    # 2026-04-27 chunk-level residual closer: ensure
+    # ``sum(payout_id_win.values()) == chunk_win`` within tolerance.
+    # The per-round fallback above catches non-session-handled rounds
+    # whose pid attribution is short. This residual catches the
+    # remaining causes:
+    #   * Trigger sessions where session_win attribution under-counts
+    #     (e.g. M24 'TriggerFreespin' rule incorrectly classified as
+    #     last_non_none -- only the last bonus round's win goes to
+    #     trigger pay_id 666; earlier freespin wins are dropped).
+    #   * Per-round M209 scaling boundary cases (WinCredits=0 paired
+    #     with non-zero PayoutIdToWinAmount values, where the scale-
+    #     down condition `0 < win < pay_sum` doesn't fire).
+    #   * Any future leak path we haven't yet identified.
+    #
+    # Synthesizes a single ``_unattributed_residual`` bucket so the
+    # invariant always holds, regardless of upstream emission shape
+    # or per-mechanic classification quirks. The label is intentionally
+    # distinct from ``_unattributed_st<N>`` so operators can tell
+    # "this delta couldn't be tied to any single SpinType" from
+    # "this SpinType's rounds didn't have per-pid info".
+    _pid_sum = sum(payout_id_win.values())
+    _residual = chunk_win - _pid_sum
+    if _residual > 0.5:
+        payout_id_hits["_unattributed_residual"] += 1
+        payout_id_win["_unattributed_residual"] += _residual
+        # Don't add to payout_id_by_spin_type -- this delta isn't
+        # tied to any single SpinType by definition.
 
     return {
         "ok": True,

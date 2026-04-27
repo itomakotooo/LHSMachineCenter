@@ -62,7 +62,7 @@ from typing import Any, Iterable
 # (regression introduced 2026-04-26 by 21357b3 + 6043b6f when
 # round_win was first wired into trigger_sessions).
 try:
-    from fresh_slotlab.round_win import RoundWinRule, extract_round_win
+    from fresh_slotlab.round_win import RoundWinRule, extract_round_payouts, extract_round_win
 except ImportError:  # running as a standalone script, not a package member
     from round_win import RoundWinRule, extract_round_win  # type: ignore[no-redef]
 
@@ -302,11 +302,20 @@ def compute_trigger_sessions(
         remarks = r.get("ReMarks")
         rule = "last_non_none" if is_new_trigger_remark(remarks) else "sum_all"
         trigger_st = r.get("SpinType")
-        # Seed from trigger round's own WinCredits (usually 0 for
-        # trigger tokens).
-        trig_w = r.get("WinCredits")
-        last_nonnone_win: float = _to_float_or_zero(trig_w) if trig_w is not None else 0.0
-        sum_win: float = _to_float_or_zero(trig_w)
+        # Session-win seed: 0. The trigger round's own WinCredits (when
+        # nonzero) reflects a co-occurring regular payline win (e.g.
+        # M15 cherry pay_id 9 paying 1000 on the same round that pay_id
+        # 666 triggers TopDollar; M53 freespin trigger paying 4000 on
+        # pay_id 81 alongside pay_id 300 trigger token). That regular
+        # win is ALREADY credited to its specific pay_id by the
+        # analyzer's round-level aggregation loop. Seeding session_win
+        # with the trigger round's WinCredits would attribute the same
+        # win to BOTH pay_id 9/81 AND the trigger pay_id 666/300 ->
+        # ~24% pid over-attribution observed on M53/M27/M174/M196 etc
+        # in the fleet payid invariant scan (2026-04-27). Fix: seed=0;
+        # session_win counts only the bonus block's contribution.
+        last_nonnone_win: float = 0.0
+        sum_win: float = 0.0
         # Walk the bonus sequence. Rounds whose WinCredits is already
         # credited to pay_ids at round level (non-empty Payout with
         # any nonzero value) are EXCLUDED from last_non_none tracking
@@ -324,7 +333,29 @@ def compute_trigger_sessions(
             if _is_paid_round(nr):
                 break
             bonus_sts.append(nr.get("SpinType"))
-            if not _round_has_credited_win(nr):
+            # Skip rounds whose win is ALREADY credited at round
+            # level. Two distinct credit paths to check:
+            #   (a) ``_round_has_credited_win``: raw round.PayoutIdToWinAmount
+            #       has nonzero values (M273/M257/M201 freespin attribution).
+            #   (b) Rule-driven (2026-04-27): when a SynthesizePayIdRule
+            #       maps the round to a non-empty synthetic pid dict
+            #       (M279 wheel ST=2 -> {'st2': WinCredits}; M272 freespin
+            #       ST=126 -> {'st126': WinCredits}), the analyzer's
+            #       round-level pid aggregator already credits 'st<N>'.
+            #       Adding the same win to session_win and attributing
+            #       it to the trigger pay_id would double-count.
+            #
+            # Empty-dict rule output (SettlementWinAmountRule on
+            # ST=14/15) is intentionally NOT a "credited" signal -- it
+            # explicitly DELEGATES attribution to session_win on the
+            # trigger pay_id (e.g., '666' for TopDollar). So empty
+            # dict from the rule still falls through to accumulation.
+            rule_payouts = (
+                extract_round_payouts(nr, rules=round_win_rules)
+                if round_win_rules else None
+            )
+            already_credited = _round_has_credited_win(nr) or bool(rule_payouts)
+            if not already_credited:
                 if not round_win_rules:
                     # Legacy path -- byte-identical to pre-2026-04-27.
                     # ``WinCredits is None`` skip semantics: a missing
@@ -338,19 +369,33 @@ def compute_trigger_sessions(
                 else:
                     # Rules-driven path: extract_round_win returns the
                     # round's real win contribution per the configured
-                    # rule. Phantom rounds give 0 (don't displace a
-                    # prior real value because last_non_none updates
-                    # to 0 on phantom -- matches behaviour where the
-                    # subsequent settlement round overwrites it with
-                    # the WinAmount). Settlement rounds give WinAmount
-                    # which becomes the session_win for last_non_none
-                    # rule. For sum_all rule on rules-equipped machines,
-                    # phantom contributes 0 so the sum is unaffected.
+                    # rule. Phantom rounds give 0; settlement rounds
+                    # give WinAmount; ordinary rounds fall through to
+                    # legacy WinCredits.
                     w = extract_round_win(nr, rules=round_win_rules)
                     last_nonnone_win = w
                     sum_win += w
             j += 1
-        session_win = last_nonnone_win if rule == "last_non_none" else sum_win
+        # Session-win selection.
+        #
+        # Legacy path (no rules): respect the ReMarks-derived rule
+        # classification -- "Trigger" -> last_non_none (selector
+        # accepts last offer), other -> sum_all (freespin aggregate).
+        #
+        # Rules-driven path (2026-04-27 fix for M132 multi-settlement):
+        # ALWAYS use sum_win. The rule is the authoritative source for
+        # each round's contribution -- phantom rounds give 0, settlement
+        # rounds give WinAmount, freespin rounds give WinCredits etc.
+        # Summing is correct for both 1-settlement (M12 v1 single pick)
+        # and N-settlement (M132 v2 has 2 ST=15 rounds per session) cases,
+        # because phantoms add 0 either way. last_non_none is wrong on
+        # multi-settlement: it picks only the last settlement WinAmount
+        # and silently drops earlier ones -- M132 v2 measured this as
+        # a 7% gap on payid attribution.
+        if round_win_rules:
+            session_win = sum_win
+        else:
+            session_win = last_nonnone_win if rule == "last_non_none" else sum_win
         sessions.append({
             "trigger_idx": i,
             "trigger_pay_ids": trigger_pids,

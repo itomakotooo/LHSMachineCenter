@@ -178,16 +178,25 @@ class TestMalformedInputs:
     def test_non_dict_payout_treated_as_none(self):
         """If upstream returns PayoutIdToWinAmount as a string / list
         / other non-dict, the aggregator should skip it rather than
-        crash. Scaling rule doesn't need to cope with that —
-        earlier ``isinstance`` check handles it."""
+        crash. Scaling rule doesn't need to cope with that --
+        earlier ``isinstance`` check handles it.
+
+        2026-04-27: the universal fallback synthesizer now attributes
+        the otherwise-uncategorized 1000-credit win to the synthetic
+        ``_unattributed_st1`` bucket instead of dropping it silently.
+        This closes the ``sum(payid_win) ~= chunk_win`` invariant that
+        the user looks at when comparing payid drilldown to headline RTP.
+        """
         resp = [_robot([
             {"WinCredits": 1000, "BetAmount": 1000, "CostCredits": 1000,
              "StopSymbolsByCol": ["a-b-c", "a-b-c", "a-b-c"],
              "SpinType": 1, "PayoutIdToWinAmount": "not a dict"},
         ])]
-        # Should parse without error; no pay_id credited.
+        # Parses without error; the win lands in the synthetic
+        # ``_unattributed_st<SpinType>`` bucket courtesy of the
+        # per-round fallback synthesizer (player_impact_analyzer.py).
         chunk = parse_chunk_response(resp, 0, 1000)
-        assert chunk["payout_id_win"] == {}
+        assert chunk["payout_id_win"] == {"_unattributed_st1": 1000.0}
 
     def test_non_numeric_payout_value_treated_as_zero(self):
         """Defensive: to_float coerces non-numeric to 0. Scaling

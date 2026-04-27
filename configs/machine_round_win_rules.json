@@ -1,13 +1,17 @@
 {
   "_doc": "Per-machine round-win extraction rules. Default behaviour (machine not in any applies_to list) is byte-identical to legacy `r.get('WinCredits', 0)` lookup. See fresh_slotlab/round_win.py for rule type docs.",
-  "_added": "2026-04-27 -- initial population from scripts/scan_round_win_drift.py results",
+  "_added": "2026-04-27 -- v1 TopDollar settlement rule. Universal fallback synthesizer in parse_chunk_response handles all other unattributed-payid cases (no per-machine config needed).",
   "rules": {
     "topdollar_selector_settlement": {
       "_doc": "TopDollar selector family (M12/M15/M90/M132): bonus flow is paid_trigger(ST=1, ReMarks='Trigger') -> N selector offer rounds (ST=14) showing OfferValue*bet as phantom WinCredits -> 1 settlement round (ST=15) carrying the actual payout in WinAmount (no WinCredits field). Without this rule the analyzer over-counts ST=14 phantom offers (variant 0/2 multi-pick) or under-counts ST=15 WinAmount (variant 1 single-pick where OfferValue==WinAmount happens to make the sum coincidentally match). Verified across all 13 fleet drift cases (B_overcount + C_undercount classes from drift scan). Variant 1 machines included even though our_total_win currently matches server_total_win -- phantom-offer attribution is still semantically wrong (per-SpinType / per-bucket round-level breakdown), so they get the same fix.",
       "type": "settlement_winamount",
       "params": {
-        "phantom_spin_types": [14],
-        "settlement_spin_types": [15]
+        "phantom_spin_types": [
+          14
+        ],
+        "settlement_spin_types": [
+          15
+        ]
       },
       "applies_to": [
         "M12$TopDollarSelector$0$",
