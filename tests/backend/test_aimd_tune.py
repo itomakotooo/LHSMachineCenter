@@ -70,18 +70,32 @@ class TestAimdHalveOnFailure:
 
 class TestAimdGrowOnSuccess:
     def test_no_grow_until_streak_threshold(self):
-        # 1 consecutive success — not enough to grow yet.
+        # Generic shape: with N consecutive successes already, the
+        # next success makes (N+1). If (N+1) < SUCCESS_STREAK_FOR_GROW,
+        # the function bumps the streak counter but doesn't grow.
+        # Parametric on SUCCESS_STREAK_FOR_GROW so the test stays
+        # valid through tuning changes (was 3 before 2026-04-26;
+        # dropped to 1 to recover faster on internal-network default
+        # — at threshold=1 every clean batch grows, so this scenario
+        # is degenerate. Skip explicitly when threshold=1).
+        if SUCCESS_STREAK_FOR_GROW <= 1:
+            import pytest
+            pytest.skip(
+                f"SUCCESS_STREAK_FOR_GROW={SUCCESS_STREAK_FOR_GROW}; "
+                f"every clean batch grows at threshold=1"
+            )
+        prior = SUCCESS_STREAK_FOR_GROW - 2  # need one more before grow
         conc, spins, streak, pause = aimd_tune(
             current_concurrency=2,
             current_chunk_spins=2500,
             max_concurrency=4,
             max_chunk_spins=5000,
             batch_fully_failed=False,
-            consecutive_successful=0,
+            consecutive_successful=prior,
         )
         assert conc == 2, "no change before streak"
         assert spins == 2500
-        assert streak == 1
+        assert streak == prior + 1
         assert pause is False
 
     def test_grows_after_streak_threshold(self):
@@ -153,6 +167,16 @@ class TestAimdRoundTrip:
         # treats as success; caller is responsible for passing
         # consecutive_successful=0 on any failure. This test just locks
         # the function's contract.
+        #
+        # 2026-04-26: parametric on SUCCESS_STREAK_FOR_GROW. At
+        # threshold=1 every clean batch grows, so the "doesn't grow
+        # yet" assertion is degenerate; skip explicitly.
+        if SUCCESS_STREAK_FOR_GROW <= 1:
+            import pytest
+            pytest.skip(
+                f"SUCCESS_STREAK_FOR_GROW={SUCCESS_STREAK_FOR_GROW}; "
+                f"every clean batch grows at threshold=1"
+            )
         conc, spins, streak, pause = aimd_tune(2, 2500, 4, 5000, False, 0)
         # Increments streak by 1, doesn't grow yet.
         assert (conc, spins, streak) == (2, 2500, 1)

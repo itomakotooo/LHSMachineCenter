@@ -225,9 +225,14 @@ class TestCiTargetMetSurfaced:
         run_id = _wait_for_run_id(c, batch_id)
         _progress, summary_file = _resolve_run_paths(app_factory.db_path, run_id)
 
+        # Format updated 2026-04-26: stop_reason now distinguishes
+        # network-class breakage (upstream_unstable:network_*) from
+        # machine-class bugs (machine_bug:*). Test fixture mirrors
+        # the analyzer's network-class breakage payload.
         stop_reason = (
-            "upstream_unstable:consecutive_failed_batches=3,"
-            "cumulative_failed_chunks=18,last_error=request_failed_http_504"
+            "upstream_unstable:network_consecutive_batches=3,"
+            "network_cumulative_chunks=18,"
+            "last_error=request_failed_http_504"
         )
         summary_file.parent.mkdir(parents=True, exist_ok=True)
         summary_file.write_text(

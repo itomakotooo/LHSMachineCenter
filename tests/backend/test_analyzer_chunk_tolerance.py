@@ -158,18 +158,31 @@ class TestFaultToleranceThresholds:
 
     def test_thresholds_are_reasonable(self):
         import fresh_slotlab.player_impact_analyzer as analyzer
-        # Thresholds now live at module scope (promoted from main()
-        # locals in the 2026-04-17 retry hardening pass). Guard that
-        # they exist AND aren't set so tight that a single blip kills
-        # the run — original bug was main() locals 3/20 which paired
-        # with 3-attempt retries exhausted the window in ~10s.
-        assert hasattr(analyzer, "MAX_CONSECUTIVE_FAILED_BATCHES")
-        assert hasattr(analyzer, "MAX_CUMULATIVE_FAILED_CHUNKS")
-        assert analyzer.MAX_CONSECUTIVE_FAILED_BATCHES >= 2, (
-            "consecutive-failed-batches threshold must tolerate >= 2 bad batches"
+        # Thresholds split into network-class + machine-class buckets
+        # in the 2026-04-26 internal-network move. Network-class is
+        # tolerant (transient hiccups should ride through); machine-
+        # class is fail-fast (retry won't help schema_drift / 4xx).
+        # Guard the floor for each so a future tweak can't accidentally
+        # set them so tight that a single blip kills the run, OR so
+        # loose that machine bugs run all the way to max_chunks.
+        assert hasattr(analyzer, "MAX_CONSECUTIVE_FAILED_BATCHES_NET")
+        assert hasattr(analyzer, "MAX_CUMULATIVE_FAILED_CHUNKS_NET")
+        assert hasattr(analyzer, "MAX_CUMULATIVE_FAILED_CHUNKS_MACHINE")
+        # Network: tolerate >=2 bad batches and >=5 cumulative network
+        # failures. Lower than these would bail inside a real hiccup.
+        assert analyzer.MAX_CONSECUTIVE_FAILED_BATCHES_NET >= 2, (
+            "network-class consecutive-batches threshold must tolerate >=2"
         )
-        assert analyzer.MAX_CUMULATIVE_FAILED_CHUNKS >= 5, (
-            "cumulative-failed-chunks threshold must tolerate >= 5 total failures"
+        assert analyzer.MAX_CUMULATIVE_FAILED_CHUNKS_NET >= 5, (
+            "network-class cumulative threshold must tolerate >=5"
+        )
+        # Machine: must be small enough that bug machines bail before
+        # eating into max_chunks. >=3 is the floor (1 might be a
+        # transient parsing weirdness; 3+ in a row = real bug).
+        assert 3 <= analyzer.MAX_CUMULATIVE_FAILED_CHUNKS_MACHINE <= 20, (
+            "machine-class threshold should be small (fail-fast on bugs) "
+            f"but not 1 (false-positive on transient parser hiccup); "
+            f"got {analyzer.MAX_CUMULATIVE_FAILED_CHUNKS_MACHINE}"
         )
 
 

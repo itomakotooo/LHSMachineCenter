@@ -296,15 +296,32 @@ _RETRYABLE_HTTP_CODES = frozenset({500, 502, 503, 504})
 #   (a) tests can lock them without invoking main()
 #   (b) future per-run overrides (CLI flag) have a natural place to land
 #
-# Tuned 2026-04-17 after a user-reported M273 run bailed at
-# cumulative_failed_chunks=12 inside a 10-second upstream hiccup. The
-# original 3/20 thresholds paired with max_attempts=3 (3s total sleep)
-# produced a retry window of ~10s which matches real-world hiccup
-# duration — so we'd bail inside the hiccup instead of riding it out.
-# Bumped to 5/40; combined with the retry-window extension in
-# post_json_with_retry, a ~30s hiccup is now required to bail.
-MAX_CONSECUTIVE_FAILED_BATCHES = 5
-MAX_CUMULATIVE_FAILED_CHUNKS = 40
+# 2026-04-17 (M273 incident): originally tuned for the EXTERNAL
+# upstream `buffalo-debug.citrusjoy.com` which had per-IP throttling
+# (see `feedback_upstream_throttle_ceiling.md`). 30s hiccup tolerance
+# was needed there.
+#
+# 2026-04-26 (internal-network move, user directive): default endpoint
+# moved to `192.168.10.21:15060` internal server (commit 527618d).
+# Internal upstream has no per-IP rate limit — hiccups are sub-second
+# TCP blips, not 30s rate-limit cooldowns. Plus user wanted the
+# circuit-breaker to DISCRIMINATE between two failure classes:
+#
+#   - Network class (5xx, TimeoutError, ConnectionReset, etc.): retry
+#     might help. Tolerate up to N failures across M batches before
+#     bailing as `upstream_unstable`.
+#
+#   - Machine class (4xx, schema_drift, parse_failed_*, response_shape_
+#     unexpected): retry won't help — the machine is emitting
+#     garbage / wrong shape. Bail fast as `machine_bug` so operator
+#     sees the signal early and can fix the machine code.
+#
+# See ``_classify_failure`` for the routing. Old monolithic
+# ``MAX_CONSECUTIVE_FAILED_BATCHES`` and ``MAX_CUMULATIVE_FAILED_CHUNKS``
+# constants are split into _NET / _MACHINE pairs below.
+MAX_CONSECUTIVE_FAILED_BATCHES_NET = 3      # network-only fully-failed batches in a row → bail
+MAX_CUMULATIVE_FAILED_CHUNKS_NET = 20       # network failures total → bail (~20s of bad-network)
+MAX_CUMULATIVE_FAILED_CHUNKS_MACHINE = 5    # machine-class failures → fail-fast (5 ≈ batch size)
 
 # Non-convergence early-abort (2026-04-21). When a machine's data is
 # too pathological to converge on the caller's CI target (bug machines
@@ -320,17 +337,73 @@ NON_CONVERGENCE_RTP_BAND_PAID = (40.0, 200.0)  # paid mode (mode 1) sane range %
 NON_CONVERGENCE_RTP_OUT_OF_BAND_CONSECUTIVE = 3  # chunks out-of-band in a row
 
 # AIMD (additive-increase / multiplicative-decrease) adaptive tuning
-# for batch_concurrency + chunk_spin_times. Per-request retry already
-# rides out brief (<30s) hiccups; AIMD handles sustained slowdowns by
-# shrinking load so the upstream gets breathing room, then slowly
-# re-opens once the upstream recovers. Combined with CIRCUIT_PAUSE_S
-# (hard sleep after a fully-failed batch) this lets an analyzer keep
-# running through a bad 5-minute upstream window rather than bailing
-# at MAX_CONSECUTIVE_FAILED_BATCHES.
+# for batch_concurrency + chunk_spin_times. Halves on a network-class
+# fully-failed batch (gives upstream breathing room). Does NOT halve
+# on machine-class failures — retrying a smaller batch won't help if
+# the machine is emitting garbage; bail-fast via the _MACHINE counter
+# is the right response there.
+#
+# Tuned 2026-04-26 for internal-network default:
+#   - SUCCESS_STREAK_FOR_GROW dropped from 3 → 1: a single fluke
+#     shouldn't cost 3 batches of staying at half-conc. Internal
+#     network's hiccups are short, recovery should be fast.
+#   - CIRCUIT_PAUSE_S dropped from 20.0s → 3.0s: 20s was for external
+#     per-IP throttle cooldown; internal upstream needs nothing
+#     beyond a brief TCP-stack-clear pause.
 MIN_CHUNK_SPINS = 500
-SUCCESS_STREAK_FOR_GROW = 3
+SUCCESS_STREAK_FOR_GROW = 1
 CHUNK_SPINS_GROWTH = 1.25
-CIRCUIT_PAUSE_S = 20.0
+CIRCUIT_PAUSE_S = 3.0
+
+
+def _classify_failure(error_str: str) -> str:
+    """Classify a chunk-failure error string into 'network' or 'machine'.
+
+    The ``rec.error`` strings produced by ``run_sampling_chunk`` and
+    ``parse_chunk_response`` already encode the failure type — this
+    helper is the single place that interprets them so the bail logic
+    can apply different thresholds.
+
+    Returns:
+      - 'network' for transient errors that retry might help with:
+        5xx HTTP, TimeoutError, URLError, IncompleteRead, TCP resets,
+        and the generic "request_failed_<TypeName>" fallback.
+      - 'machine' for permanent errors that retry won't help:
+        4xx HTTP (bad request / config mismatch), parse_failed_*,
+        response_shape_unexpected_*, schema_drift_*. Empty / unknown
+        error strings default to 'machine' (fail-fast on uncertainty
+        is safer than burning the budget on something we don't
+        understand).
+
+    Pure function so tests can pin every error-string→class mapping
+    without spawning a subprocess.
+    """
+    if not error_str:
+        return "machine"  # safer default: bail fast on unknown
+    e = str(error_str)
+    # HTTP errors carry the code in the suffix.
+    if e.startswith("request_failed_http_"):
+        try:
+            code = int(e.rsplit("_", 1)[-1])
+        except ValueError:
+            return "machine"
+        return "network" if code in _RETRYABLE_HTTP_CODES else "machine"
+    # Explicit network-class prefixes from run_sampling_chunk.
+    if e.startswith("request_failed_network_"):
+        return "network"
+    # Generic Exception fallback — these are typically network-layer
+    # weirdness (ConnectionResetError etc.) that the more-specific
+    # except-clauses didn't catch. Retry is reasonable.
+    if e.startswith("request_failed_"):
+        return "network"
+    # Everything else: machine-side issue.
+    if e.startswith("parse_failed_"):
+        return "machine"
+    if e.startswith("response_shape_unexpected"):
+        return "machine"
+    if e.startswith("schema_drift_"):
+        return "machine"
+    return "machine"
 
 
 # Features that are NEVER the BCM cycle-bonus pair: paid-normal
@@ -779,9 +852,9 @@ def aimd_tune(
 def post_json_with_retry(
     payload: dict[str, Any],
     timeout: float,
-    max_attempts: int = 5,
+    max_attempts: int = 3,
     initial_backoff_s: float = 1.0,
-    max_backoff_s: float = 30.0,
+    max_backoff_s: float = 5.0,
 ) -> Any:
     """Call post_json with exp-backoff on transient network errors.
 
@@ -799,14 +872,20 @@ def post_json_with_retry(
 
     Previously IncompleteRead + ConnectionReset fell through to the
     caller's bare ``except Exception`` → zero retries → the chunk
-    failed on first try regardless of transience. Combined with a
-    3-attempt cap (1s+2s sleep only), a 15s upstream hiccup would
-    kill an entire run.
+    failed on first try regardless of transience.
 
-    Backoff doubles each attempt (1s → 2s → 4s → 8s → 16s) but is
-    capped at ``max_backoff_s`` so unbounded ``max_attempts`` can't
-    produce multi-minute sleeps. Default 5 attempts with cap 30s =
-    retry window of ~15s sleeps + HTTP time ≈ 20-30s wall clock.
+    Backoff doubles each attempt (1s → 2s → 4s) but is capped at
+    ``max_backoff_s`` so unbounded ``max_attempts`` can't produce
+    multi-minute sleeps.
+
+    Defaults tuned 2026-04-26 for internal-network upstream
+    (192.168.10.21:15060 since commit 527618d). External upstream's
+    per-IP throttling cooldowns made 5 attempts × 30s cap ≈ ~30s
+    retry window necessary; internal hiccups are sub-second so 3
+    attempts × 5s cap ≈ ~6s window is plenty without burning time
+    on errors that won't transiently clear. Bail-fast goes via the
+    machine-class counter at the loop level (see ``_classify_failure``
+    + ``MAX_CUMULATIVE_FAILED_CHUNKS_MACHINE``).
     """
     import socket
     from http.client import IncompleteRead, RemoteDisconnected
@@ -4098,8 +4177,10 @@ def main() -> int:
     # Thresholds live at module scope (MAX_CONSECUTIVE_FAILED_BATCHES /
     # MAX_CUMULATIVE_FAILED_CHUNKS) so tests can lock them and a
     # future per-run override has a natural seam.
-    cumulative_failed_chunks = 0
-    consecutive_failed_batches = 0
+    cumulative_failed_chunks = 0           # legacy total; kept for event payload back-compat
+    cumulative_failed_chunks_net = 0       # network-class (5xx, timeout, conn-reset, etc.)
+    cumulative_failed_chunks_machine = 0   # machine-class (schema_drift, parse_failed, 4xx)
+    consecutive_failed_batches_net = 0     # only counts batches whose failures are mostly network
     # Non-convergence Tier-2 RTP band tracker — consecutive chunks
     # where paid-mode RTP sits outside the sane band. Initialized
     # outside the main loop so it persists across batches.
@@ -4956,7 +5037,14 @@ def main() -> int:
                 rec = future.result()
                 batch_results.append(rec)
                 if not rec.get("ok"):
-                    cumulative_failed_chunks = cumulative_failed_chunks + 1
+                    err_class = _classify_failure(rec.get("error", ""))
+                    if err_class == "network":
+                        cumulative_failed_chunks_net += 1
+                    else:
+                        cumulative_failed_chunks_machine += 1
+                    cumulative_failed_chunks = (
+                        cumulative_failed_chunks_net + cumulative_failed_chunks_machine
+                    )
                     append_jsonl(
                         progress_file,
                         {
@@ -4964,7 +5052,10 @@ def main() -> int:
                             "run_id": run_id,
                             "chunk_index": rec.get("index"),
                             "error": rec.get("error"),
+                            "error_class": err_class,
                             "cumulative_failed": cumulative_failed_chunks,
+                            "cumulative_failed_net": cumulative_failed_chunks_net,
+                            "cumulative_failed_machine": cumulative_failed_chunks_machine,
                             "chunks_completed_so_far": chunks,
                             "total_spins_so_far": total_spins,
                             "ts": utc_now(),
@@ -5379,26 +5470,37 @@ def main() -> int:
         successful_results = [r for r in batch_results if bool(r.get("ok"))]
         failed_results = [r for r in batch_results if not bool(r.get("ok"))]
         batch_fully_failed = bool(failed_results) and not successful_results
-        if batch_fully_failed:
-            # Entire batch failed → consecutive failure counter bumps.
-            # N consecutive fully-failed batches = sustained upstream
-            # breakage; bail out rather than burn the retry helper
-            # indefinitely.
-            consecutive_failed_batches += 1
+        # Classify the batch's failure profile so AIMD only kicks in for
+        # network-class trouble. Machine-class failures (schema_drift,
+        # parse_failed_*, 4xx) won't be helped by halving conc + sleeping
+        # — bail-fast via the _MACHINE counter is the right response.
+        batch_failure_classes = [
+            _classify_failure(r.get("error", "")) for r in failed_results
+        ]
+        batch_has_network_failure = any(c == "network" for c in batch_failure_classes)
+        batch_fully_network_failed = (
+            batch_fully_failed and batch_has_network_failure
+        )
+        if batch_fully_network_failed:
+            # Entire batch failed AND at least one was network-class →
+            # treat as a network-stress event. N consecutive ones in a
+            # row signals sustained upstream breakage and we bail.
+            consecutive_failed_batches_net += 1
         else:
-            consecutive_failed_batches = 0
+            consecutive_failed_batches_net = 0
 
-        # AIMD: halve concurrency + chunk_spins on fully-failed batch,
-        # grow back toward user settings on consecutive clean batches.
-        # Runs BEFORE the bail threshold check so the `adaptive_tune`
-        # event fires even on the batch that trips bail (useful for
-        # post-mortem).
+        # AIMD: halve concurrency + chunk_spins on a NETWORK-fully-failed
+        # batch, grow back on success. Doesn't fire on machine-class-only
+        # fully-failed batches (halving wouldn't help). Runs BEFORE the
+        # bail threshold check so `adaptive_tune` always emits even on
+        # the batch that trips bail (useful for post-mortem).
+        aimd_should_halve = batch_fully_network_failed
         new_conc, new_spins, new_streak, should_pause = aimd_tune(
             current_concurrency,
             current_chunk_spins,
             args.batch_concurrency,
             args.chunk_spin_times,
-            batch_fully_failed,
+            aimd_should_halve,
             consecutive_successful_batches,
         )
         if (new_conc, new_spins) != (current_concurrency, current_chunk_spins):
@@ -5411,9 +5513,9 @@ def main() -> int:
                     "to_concurrency": new_conc,
                     "from_chunk_spins": current_chunk_spins,
                     "to_chunk_spins": new_spins,
-                    "direction": "down" if batch_fully_failed else "up",
+                    "direction": "down" if aimd_should_halve else "up",
                     "reason": (
-                        "fully_failed_batch" if batch_fully_failed
+                        "fully_failed_batch" if aimd_should_halve
                         else "success_streak"
                     ),
                     "ts": utc_now(),
@@ -5425,15 +5527,46 @@ def main() -> int:
         if should_pause:
             last_batch_pause_until = time.time() + CIRCUIT_PAUSE_S
 
+        # Bail check — three independent triggers, each with its own
+        # stop_reason prefix so the operator + post-mortem tools can
+        # see WHICH side of the network/machine split caused the
+        # bailout:
+        #   - upstream_unstable:network_consecutive_batches
+        #   - upstream_unstable:network_cumulative_chunks
+        #   - machine_bug:cumulative_machine_failures
+        if cumulative_failed_chunks_machine >= MAX_CUMULATIVE_FAILED_CHUNKS_MACHINE:
+            machine_errors = [
+                r.get("error", "") for r in batch_results
+                if not r.get("ok")
+                and _classify_failure(r.get("error", "")) == "machine"
+            ]
+            stop_reason = (
+                f"machine_bug:"
+                f"cumulative_machine_failures={cumulative_failed_chunks_machine},"
+                f"last_error={machine_errors[0] if machine_errors else '?'}"
+            )
+            append_jsonl(
+                progress_file,
+                {
+                    "event": "failed",
+                    "run_id": run_id,
+                    "reason": stop_reason,
+                    "chunks": chunks,
+                    "total_spins": total_spins,
+                    "elapsed_seconds": round(time.time() - t0, 3),
+                    "ts": utc_now(),
+                },
+            )
+            break
         if (
-            consecutive_failed_batches >= MAX_CONSECUTIVE_FAILED_BATCHES
-            or cumulative_failed_chunks >= MAX_CUMULATIVE_FAILED_CHUNKS
+            consecutive_failed_batches_net >= MAX_CONSECUTIVE_FAILED_BATCHES_NET
+            or cumulative_failed_chunks_net >= MAX_CUMULATIVE_FAILED_CHUNKS_NET
         ):
             last_err = failed_results[0] if failed_results else {}
             stop_reason = (
                 f"upstream_unstable:"
-                f"consecutive_failed_batches={consecutive_failed_batches},"
-                f"cumulative_failed_chunks={cumulative_failed_chunks},"
+                f"network_consecutive_batches={consecutive_failed_batches_net},"
+                f"network_cumulative_chunks={cumulative_failed_chunks_net},"
                 f"last_error={last_err.get('error', '?')}"
             )
             append_jsonl(

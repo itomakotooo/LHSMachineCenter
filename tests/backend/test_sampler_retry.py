@@ -300,22 +300,36 @@ class TestTransientBurstRetries:
         # Cap 5 clips the last two to 5.
         assert sleeps == [1.0, 2.0, 4.0, 5.0, 5.0]
 
-    def test_default_max_attempts_covers_20s_window(self):
-        """Default max_attempts raised so the total retry window covers
-        a ~20s upstream hiccup. With initial_backoff_s=1.0 the sleep
-        schedule is 1+2+4+8=15s across 5 attempts, plus HTTP time on
-        each attempt → ~20-30s wall time before giving up."""
+    def test_default_max_attempts_covers_internal_hiccup_window(self):
+        """Default max_attempts is sized for the current upstream
+        environment (internal-network since 2026-04-26). Internal
+        hiccups are sub-second TCP blips — 3 attempts × cap-5s ≈ ~6s
+        retry window is plenty without burning time on errors that
+        won't transiently clear (those bail-fast via the machine-class
+        counter at the loop level instead).
+
+        Earlier 5-attempt × 30s default targeted external upstream's
+        per-IP throttling cooldowns; that's no longer the default
+        environment per ``feedback_upstream_throttle_ceiling.md``.
+        """
         import inspect
         sig = inspect.signature(analyzer.post_json_with_retry)
-        assert sig.parameters["max_attempts"].default >= 5, (
-            "default max_attempts should be >=5 to ride out transient "
-            f"bursts; got {sig.parameters['max_attempts'].default}"
+        attempts = sig.parameters["max_attempts"].default
+        assert attempts >= 3, (
+            f"default max_attempts={attempts}; need >=3 so a single "
+            f"transient blip doesn't kill the chunk on first try"
+        )
+        assert attempts <= 5, (
+            f"default max_attempts={attempts}; >5 burns time on errors "
+            f"that won't transiently clear. Bail-fast via the machine-"
+            f"class counter is the right path for those."
         )
 
     def test_default_max_backoff_present(self):
         """``max_backoff_s`` is a named parameter so callers (e.g.
         future per-run override) can tune it. Also guards against a
-        well-meaning tweak that removes the cap."""
+        well-meaning tweak that removes the cap. Default sized for the
+        current internal-network environment."""
         import inspect
         sig = inspect.signature(analyzer.post_json_with_retry)
         assert "max_backoff_s" in sig.parameters, (
@@ -323,23 +337,41 @@ class TestTransientBurstRetries:
             "doubling can't produce multi-minute sleeps"
         )
         default = sig.parameters["max_backoff_s"].default
-        assert default >= 10 and default <= 60, (
-            f"max_backoff_s default should land in [10, 60]s; got {default}"
+        assert 3 <= default <= 30, (
+            f"max_backoff_s default should land in [3, 30]s for the "
+            f"internal-network default; got {default}"
         )
 
-    def test_consecutive_failed_batches_threshold_bumped(self):
-        """With batch_concurrency=4, _MAX_CONSECUTIVE_FAILED_BATCHES=3
-        bails after ~10-15s of failures (one user-reported M273 case
-        hit bail at t+10s). Bump to >=5 so a ~30s hiccup is needed."""
-        assert analyzer.MAX_CONSECUTIVE_FAILED_BATCHES >= 5, (
-            f"MAX_CONSECUTIVE_FAILED_BATCHES={analyzer.MAX_CONSECUTIVE_FAILED_BATCHES}; "
-            f"raise to >=5 so transient bursts don't kill long runs"
+    def test_network_class_consecutive_batch_threshold(self):
+        """Network-class consecutive-batch tolerance. Lower than 2
+        would bail inside any real hiccup; higher than ~5 keeps
+        the operator waiting too long before getting an
+        upstream_unstable signal."""
+        assert 2 <= analyzer.MAX_CONSECUTIVE_FAILED_BATCHES_NET <= 5, (
+            f"MAX_CONSECUTIVE_FAILED_BATCHES_NET="
+            f"{analyzer.MAX_CONSECUTIVE_FAILED_BATCHES_NET}; "
+            f"keep in [2, 5] for sane internal-network tolerance"
         )
 
-    def test_cumulative_failed_chunks_threshold_bumped(self):
-        """Same rationale: 20 cumulative fails hit quickly if
-        batch_concurrency=8 and upstream flakes for even a minute."""
-        assert analyzer.MAX_CUMULATIVE_FAILED_CHUNKS >= 40, (
-            f"MAX_CUMULATIVE_FAILED_CHUNKS={analyzer.MAX_CUMULATIVE_FAILED_CHUNKS}; "
-            f"raise to >=40 so a brief burst doesn't bail a long run"
+    def test_network_class_cumulative_chunk_threshold(self):
+        """Network-class cumulative tolerance. Sized for ~20s of
+        bad-network at typical batch sizes — internal blips never
+        last that long, so this only fires on real upstream
+        breakage."""
+        assert analyzer.MAX_CUMULATIVE_FAILED_CHUNKS_NET >= 10, (
+            f"MAX_CUMULATIVE_FAILED_CHUNKS_NET="
+            f"{analyzer.MAX_CUMULATIVE_FAILED_CHUNKS_NET}; "
+            f">=10 keeps brief network bursts from bailing a long run"
+        )
+
+    def test_machine_class_threshold_is_fail_fast(self):
+        """Machine-class threshold must be SMALL — schema_drift /
+        parse_failed / 4xx are bugs that retry won't fix, so we
+        bail early to surface the signal. >5 burns operator time
+        watching the same error N times before bail."""
+        assert analyzer.MAX_CUMULATIVE_FAILED_CHUNKS_MACHINE <= 10, (
+            f"MAX_CUMULATIVE_FAILED_CHUNKS_MACHINE="
+            f"{analyzer.MAX_CUMULATIVE_FAILED_CHUNKS_MACHINE}; "
+            f"machine-class failures don't get better with retries — "
+            f"keep <=10 so bugs surface fast"
         )
