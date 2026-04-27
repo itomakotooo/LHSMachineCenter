@@ -4,6 +4,12 @@
 
 **适用范围**：M1（base-only classic 3-reel）和 M15（带 Feature Play）两类机台都覆盖。有其它 feature 类型（bonus chain / collect / wheel / free spin）的机台参考 §10 扩展点。
 
+**前置必读**（commit 前必走）：
+- [`WORKFLOW.md`](WORKFLOW.md) — adversarial self-review 工作流（每次 commit 前的反问 5 步）
+- [`DESIGN_PHILOSOPHY.md`](DESIGN_PHILOSOPHY.md) — 跨机台 first principles（hierarchy / brand / CV-RTP / pareto trap / etc.）
+
+新机台 `verify_<M>_design.py` 必须包含 `DESIGN_PHILOSOPHY.md` 列的 11 类硬约束对应实现。
+
 ## 核心原则（4 条红线）
 
 **0. 绝对原则：数值是基础，玩家感性体验是灵魂**（`project_slot_designer_axiom_experience_is_soul.md`）
