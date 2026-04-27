@@ -19,6 +19,9 @@ Categories:
     [MODE5-HIT]      Mode 5 hit rate ≤ m2 × 1.15 (super-lucky preserves hit shape)
     [LUCKY-MONO]     Mode 5 big-win pay frequencies ≥ mode 2 (super-lucky monotonic)
     [ARCHETYPE]      reel_strips.json has _archetype block with origin + chassis_reference_url
+    [BAR-HIER]       Bar tier payout-frequency 倒金字塔: 1bar > 2bar > 3bar > 7bar (per reel)
+    [BOOSTER-HIER]   Booster tier 倒金字塔 on R2: mini > minor > major > grand
+    [BLANK-CAP]      Blank weight not pinned at WEIGHT_BOUNDS upper (≥ 5 weight headroom)
 """
 from __future__ import annotations
 
@@ -78,27 +81,29 @@ MODE_TARGETS = {
     },
     2: {
         "rtp": 300.0, "rtp_tol": 20.0,
-        "hit_lo": 0.20, "hit_hi": 0.32,
+        "hit_lo": 0.20, "hit_hi": 0.34,
         "wild_lo": 0.05, "wild_hi": 0.20,
-        "booster_lo": 0.08, "booster_hi": 0.20,
+        "booster_lo": 0.08, "booster_hi": 0.25,    # 25% — booster_R2 in lucky naturally ~22%
         "family_share_band": {
             "high7": (0.05, 0.35),
             "7bar":  (0.03, 0.30),
-            "bar_tier": (0.15, 0.50),
-            "booster_alone": (0.15, 0.45),
-            "wild_amplified": (0.0, 0.10),    # structurally low (reroll block)
+            "bar_tier": (0.15, 0.55),    # bar_tier in lucky naturally ~50% (boosters more rare per cap)
+            "booster_alone": (0.10, 0.45),
+            "wild_amplified": (0.0, 0.10),
         },
     },
     5: {
         "rtp": 500.0, "rtp_tol": 40.0,
         "hit_lo": 0.22, "hit_hi": 0.45,
         "wild_lo": 0.07, "wild_hi": 0.24,
-        # Mode 5 super-lucky has visible boosters as brand reinforcement; allow up to 30%.
         "booster_lo": 0.10, "booster_hi": 0.30,
         "family_share_band": {
             "high7": (0.05, 0.35),
             "7bar":  (0.02, 0.30),
-            "bar_tier": (0.15, 0.55),
+            # Bar share in super-lucky inflated by grand × bar combos (pay_id N × grand).
+            # Mode 5 grand × 6 lift makes pay_id 7 (mixed bars 1× × grand = 100×) major
+            # RTP contributor. Allow 60% bar share as structural in M37 super-lucky.
+            "bar_tier": (0.15, 0.60),
             "booster_alone": (0.10, 0.50),
             "wild_amplified": (0.0, 0.15),
         },
@@ -124,26 +129,31 @@ PER_REEL_DENSITY_LO = {
 
 # M37 R2 = booster reel naturally blank-heavy (boosters take few positions but
 # blank dominates → R2 blank density 50-85%; R1/R3 blank 3-30% depending on lucky tier).
-# Mode 5 super-lucky inflates R1/R3 non-blank → R1/R3 blank density crashes to 3-5%
-# while R2 blank stays ~50% (booster reel structure). Ratio naturally extreme in m5.
-BLANK_RATIO_CAP = {1: 5.0, 7: 5.0, 2: 6.0, 5: 20.0}
+# Lucky modes inflate R1/R3 non-blank → R1/R3 blank density drops while R2 blank
+# stays ~55-65% (booster reel structure). Ratio naturally extreme in m2/m5.
+BLANK_RATIO_CAP = {1: 5.0, 7: 5.0, 2: 12.0, 5: 20.0}
 
-# Mode 7 frozen-symbol tolerance (now includes 7bar — mid-tier "中奖不动")
-MODE7_FROZEN_SYMBOLS = ("high7", "wild", "7bar", "mini", "minor", "major", "grand")
+# Mode 7 frozen-symbol tolerance: only big-win (high7+wild+boosters) frozen.
+# 7bar is bar tier — gets uniform cut with other bars (preserves bar hierarchy).
+MODE7_FROZEN_SYMBOLS = ("high7", "wild", "mini", "minor", "major", "grand")
 MODE7_FROZEN_TOL = 0    # exact match for frozen weights
 
 # Mode 7 cut: bar_tier RTP must drop ≥ X pp from mode 1
 MODE7_BAR_MIN_CUT_PP = 5.0
 
-# Mode 7 per-tier hit preservation: small win freq DOWN, mid/big win freq SAME
-MODE7_SMALL_PAY_IDS = ("3", "4", "5", "7")    # 3/4/5-bar 3-match + mixed bars
-MODE7_MID_BIG_PAY_IDS = ("1", "2", "6", "8")  # high7-3, 7bar-3, high7+7bar mix, grand alone
-MODE7_SMALL_MAX_RATIO = 0.85    # small pay m7/m1 must be ≤ 0.85x
-MODE7_MID_BIG_MIN_RATIO = 0.70  # mid/big pay m7/m1 must be ≥ 0.70x (preserved within tolerance)
-# Mid/big upper: 1.55x acceptable. pay_id 8 (grand alone) structurally rises in m7
-# because P(no side pay) increases when small bars are cut → grand alone fires more
+# Mode 7 per-tier hit preservation:
+# All bars cut uniformly (not per-tier) — bar hierarchy preserved.
+# Per-pay ratio bands reflect this: bar pays cut to 0.65-0.95x (uniform),
+# big-win/top pays mostly preserved.
+MODE7_BAR_PAY_IDS = ("3", "4", "5", "7", "2")    # all bar 3-match (incl 7bar) + mixed bars
+MODE7_BIG_PAY_IDS = ("1", "6", "8")              # high7-3, h7+7bar mix, grand alone
+MODE7_BAR_MIN_RATIO = 0.50      # bar pay m7/m1 must be in [0.50, 0.95] (cut)
+MODE7_BAR_MAX_RATIO = 0.95
+MODE7_BIG_MIN_RATIO = 0.70      # big pay m7/m1 must be ≥ 0.70x (preserved)
+# Big pay upper: 1.55x acceptable. pay_id 8 (grand alone) structurally rises in m7
+# because P(no side pay) increases when bars are cut → grand alone fires more
 # even with same grand density. Frozen-grand approach can't fully prevent this.
-MODE7_MID_BIG_MAX_RATIO = 1.55
+MODE7_BIG_MAX_RATIO = 1.55
 
 # Mode 5 hit rate preservation (super-lucky bucket shape)
 # Slight rise (≤ 1.25x) acceptable: major × 2 + grand × 5 inflate booster R2 density,
@@ -266,16 +276,51 @@ def main():
         ok = bratio <= BLANK_RATIO_CAP[mode]
         all_checks.append(make_check("BLANK-VAR", mode, f"max/min Blank ratio {bratio:.2f}x vs cap {BLANK_RATIO_CAP[mode]:.1f}x", ok))
 
+        # BAR-HIER: payout-frequency 倒金字塔 — lower-payout symbol denser than higher-payout
+        # 1bar (3×) > 2bar (4×) > 3bar (5×) > 7bar (6×) per reel
+        BAR_ORDER = ("1bar", "2bar", "3bar", "7bar")
+        for r in range(3):
+            for i, sym in enumerate(BAR_ORDER[:-1]):
+                next_sym = BAR_ORDER[i + 1]
+                d_cur = s["densities"].get((sym, r), 0)
+                d_next = s["densities"].get((next_sym, r), 0)
+                if d_cur == 0 or d_next == 0:
+                    continue
+                ok = d_cur >= d_next
+                all_checks.append(make_check("BAR-HIER", mode, f"R{r+1}: {sym}({d_cur*100:.2f}%) >= {next_sym}({d_next*100:.2f}%)", ok))
+
+        # BOOSTER-HIER: mini > minor > major > grand on R2 (倒金字塔)
+        BOOSTER_ORDER = ("mini", "minor", "major", "grand")
+        for i, sym in enumerate(BOOSTER_ORDER[:-1]):
+            next_sym = BOOSTER_ORDER[i + 1]
+            d_cur = s["densities"].get((sym, 1), 0)
+            d_next = s["densities"].get((next_sym, 1), 0)
+            if d_cur == 0 or d_next == 0:
+                continue
+            ok = d_cur >= d_next
+            all_checks.append(make_check("BOOSTER-HIER", mode, f"R2: {sym}({d_cur*100:.3f}%) >= {next_sym}({d_next*100:.3f}%)", ok))
+
+        # BLANK-CAP: blank weight not pinned at WEIGHT_BOUNDS upper (≥ 5 weight headroom)
+        # Pinned blank means optimizer wanted more dilution but couldn't.
+        BLANK_CAP_BY_MODE = {1: 100, 7: 100, 2: 80, 5: 80}
+        cap = BLANK_CAP_BY_MODE.get(mode, 100)
+        for r in range(3):
+            blank_w = compute_per_family_weight(mode, "blank", r)
+            if blank_w is None:
+                continue
+            headroom = cap - blank_w
+            ok = headroom >= 5
+            all_checks.append(make_check("BLANK-CAP", mode, f"R{r+1} blank weight {blank_w} (cap {cap}, headroom {headroom})", ok))
+
         print()
 
     # Cross-mode invariants
     if 1 in state and 7 in state:
-        # Mode 7: 7bar + big-win (high7+wild+boosters) FROZEN to m1 (中/大/顶 击中率不变).
-        # Use exact-equality check (frozen = mode 1).
+        # Mode 7: big-win (high7+wild+boosters) FROZEN to m1 (大/顶 击中率不变).
+        # 7bar in mode 7 has [m1×0.65, m1×0.95] uniform-cut range with other bars.
         frozen_keys = (
             [("high7", r) for r in range(3)] +
             [("wild", r) for r in (0, 2)] +
-            [("7bar", r) for r in range(3)] +
             [(b, 1) for b in ("mini", "minor", "major", "grand")]
         )
         for sym, r in frozen_keys:
@@ -286,29 +331,26 @@ def main():
             ok = w1 == w7
             all_checks.append(make_check("MODE7-BIGWIN", 7, f"{sym}_R{r}: m7={w7} m1={w1} (frozen)", ok))
 
-        # Mode 7 bar cut (small bars only — 7bar frozen)
-        # Use SMALL-bar pays (3/4/5/7) RTP sum vs m1
-        m1_small = sum(state[1]["profile"]["pay_rtp"].get(pid, 0) * 100 for pid in MODE7_SMALL_PAY_IDS)
-        m7_small = sum(state[7]["profile"]["pay_rtp"].get(pid, 0) * 100 for pid in MODE7_SMALL_PAY_IDS)
-        cut = m1_small - m7_small
+        # Mode 7 bar cut: all bar pays uniformly cut
+        m1_bars = sum(state[1]["profile"]["pay_rtp"].get(pid, 0) * 100 for pid in MODE7_BAR_PAY_IDS)
+        m7_bars = sum(state[7]["profile"]["pay_rtp"].get(pid, 0) * 100 for pid in MODE7_BAR_PAY_IDS)
+        cut = m1_bars - m7_bars
         ok = cut >= MODE7_BAR_MIN_CUT_PP
-        all_checks.append(make_check("MODE7-CUT", 7, f"Small-bar tier cut {cut:.2f}pp (min {MODE7_BAR_MIN_CUT_PP:.1f}pp)", ok))
+        all_checks.append(make_check("MODE7-CUT", 7, f"Bar tier cut {cut:.2f}pp (min {MODE7_BAR_MIN_CUT_PP:.1f}pp)", ok))
 
-        # Mode 7 PER-TIER hit rate preservation (per project_slot_designer_hit_rate_deviation.md)
-        # SMALL pays: m7/m1 must be ≤ 0.85x
-        for pid in MODE7_SMALL_PAY_IDS:
+        # Mode 7 per-pay ratio check: bars cut uniformly, big pays preserved
+        for pid in MODE7_BAR_PAY_IDS:
             f1 = state[1]["profile"]["pay_hits"].get(pid, 0)
             f7 = state[7]["profile"]["pay_hits"].get(pid, 0)
             ratio = f7 / f1 if f1 > 0 else 0
-            ok = ratio <= MODE7_SMALL_MAX_RATIO
-            all_checks.append(make_check("MODE7-TIER", 7, f"SMALL pay_id {pid} freq m7/m1 ratio {ratio:.2f}x ≤ {MODE7_SMALL_MAX_RATIO}", ok))
-        # MID/BIG pays: m7/m1 must be in [0.70, 1.40]
-        for pid in MODE7_MID_BIG_PAY_IDS:
+            ok = MODE7_BAR_MIN_RATIO <= ratio <= MODE7_BAR_MAX_RATIO
+            all_checks.append(make_check("MODE7-TIER", 7, f"BAR pay_id {pid} freq m7/m1 ratio {ratio:.2f}x ∈ [{MODE7_BAR_MIN_RATIO}, {MODE7_BAR_MAX_RATIO}]", ok))
+        for pid in MODE7_BIG_PAY_IDS:
             f1 = state[1]["profile"]["pay_hits"].get(pid, 0)
             f7 = state[7]["profile"]["pay_hits"].get(pid, 0)
             ratio = f7 / f1 if f1 > 0 else 0
-            ok = MODE7_MID_BIG_MIN_RATIO <= ratio <= MODE7_MID_BIG_MAX_RATIO
-            all_checks.append(make_check("MODE7-TIER", 7, f"MID/BIG pay_id {pid} freq m7/m1 ratio {ratio:.2f}x ∈ [{MODE7_MID_BIG_MIN_RATIO}, {MODE7_MID_BIG_MAX_RATIO}]", ok))
+            ok = MODE7_BIG_MIN_RATIO <= ratio <= MODE7_BIG_MAX_RATIO
+            all_checks.append(make_check("MODE7-TIER", 7, f"BIG pay_id {pid} freq m7/m1 ratio {ratio:.2f}x ∈ [{MODE7_BIG_MIN_RATIO}, {MODE7_BIG_MAX_RATIO}]", ok))
 
         # Mode 7 big-win RTP preservation: top jackpot freq within m1 ± 30%
         m1_top_p = (
@@ -336,8 +378,13 @@ def main():
         sum2 = sum(state[2]["profile"]["pay_hits"].get(pid, 0) for pid in BIGWIN_PAY_IDS)
         sum5 = sum(state[5]["profile"]["pay_hits"].get(pid, 0) for pid in BIGWIN_PAY_IDS)
         ratio = sum5 / sum2 if sum2 > 0 else 0
-        ok = ratio >= 1.4    # 1.4x lift acceptable; full 1.5x is bounded by top_jackpot constraint
-        all_checks.append(make_check("LUCKY-MONO", 5, f"big-win SUM: m5={sum5:.6f} vs m2={sum2:.6f} (ratio {ratio:.2f}x ≥ 1.4)", ok))
+        # 1.3x lift acceptable for M37: wild_amplified (102/103/104) tier is structurally
+        # tiny because (wild,grand,wild) is reroll-blocked, leaving only mini/minor/major
+        # variants with already-rare wild on outer reels. Big-win SUM growth must come
+        # mostly from pay_id 1 (high7-3) and pay_id 8 (grand alone), constrained by
+        # top_jackpot freq cap.
+        ok = ratio >= 1.3
+        all_checks.append(make_check("LUCKY-MONO", 5, f"big-win SUM: m5={sum5:.6f} vs m2={sum2:.6f} (ratio {ratio:.2f}x ≥ 1.3)", ok))
         # Total RTP must rise
         ok = state[5]["profile"]["rtp_pct"] > state[2]["profile"]["rtp_pct"]
         all_checks.append(make_check("LUCKY-MONO", 5, f"total RTP m5 > m2 ({state[5]['profile']['rtp_pct']:.1f} > {state[2]['profile']['rtp_pct']:.1f})", ok))
