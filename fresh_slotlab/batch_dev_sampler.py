@@ -24,17 +24,36 @@ import urllib.error
 from pathlib import Path
 from typing import Any
 
-# Reuse the core helpers from the existing analyzer
-from fresh_slotlab.player_impact_analyzer import (
-    CHUNK_CACHE_VERSION,
-    make_payload,
-    post_json,
-    post_json_with_retry,
-    utc_now,
-    _compute_upstream_schema_fingerprint,
-    _lookup_machine_md5,
-    _payload_sha256,
-)
+# Reuse the core helpers from the existing analyzer.
+# Dual-import fallback: this file ships under the ``fresh_slotlab``
+# package but may be launched in script mode
+# (``python fresh_slotlab/batch_dev_sampler.py ...``). In script mode
+# Python puts this directory on sys.path[0] and the package prefix
+# fails — fall back to the bare import. Same pattern as
+# player_impact_analyzer.py and trigger_sessions.py; see
+# ``tests/backend/test_script_mode_imports.py`` for the contract.
+try:
+    from fresh_slotlab.player_impact_analyzer import (
+        CHUNK_CACHE_VERSION,
+        make_payload,
+        post_json,
+        post_json_with_retry,
+        utc_now,
+        _compute_upstream_schema_fingerprint,
+        _lookup_machine_md5,
+        _payload_sha256,
+    )
+except ImportError:
+    from player_impact_analyzer import (  # type: ignore[no-redef]
+        CHUNK_CACHE_VERSION,
+        make_payload,
+        post_json,
+        post_json_with_retry,
+        utc_now,
+        _compute_upstream_schema_fingerprint,
+        _lookup_machine_md5,
+        _payload_sha256,
+    )
 
 RAWDATA_DIR = Path(__file__).resolve().parent.parent / "rawdata"
 

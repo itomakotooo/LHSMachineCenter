@@ -35,6 +35,19 @@ try:
         extract_round_win,
         load_rules_for_machine,
     )
+    # chunk_index / rawdata_index are also script-mode-fragile: they
+    # used to be lazy-imported inside best-effort try/except blocks,
+    # which silently swallowed the ImportError in script mode and
+    # defeated the inverted-md5 / chunk-sidecar optimizations. Hoist
+    # to the top so the same dual-path fallback covers them — the
+    # call-site try/except guards still catch real I/O / JSON errors
+    # at runtime, but module-not-found is no longer one of them.
+    from fresh_slotlab.chunk_index import (
+        _rebuild_by_md5,
+        get_chunks_index,
+        update_chunk_entry,
+    )
+    from fresh_slotlab.rawdata_index import update_entry as _rawdata_index_update_entry
 except ImportError:  # running as a standalone script, not a package member
     from trigger_sessions import (  # type: ignore[no-redef]
         _round_has_credited_win,
@@ -45,6 +58,12 @@ except ImportError:  # running as a standalone script, not a package member
         extract_round_win,
         load_rules_for_machine,
     )
+    from chunk_index import (  # type: ignore[no-redef]
+        _rebuild_by_md5,
+        get_chunks_index,
+        update_chunk_entry,
+    )
+    from rawdata_index import update_entry as _rawdata_index_update_entry  # type: ignore[no-redef]
 
 DEFAULT_ENDPOINT_URL = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant"
 ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
@@ -1211,7 +1230,6 @@ def select_replay_chunks_by_md5(
     # older sidecar is loaded without the by_md5 field.
     by_md5 = sidecar_payload.get("by_md5")
     if not isinstance(by_md5, dict):
-        from fresh_slotlab.chunk_index import _rebuild_by_md5
         by_md5 = _rebuild_by_md5(chunks_dict)
     key = f"{upstream_config_md5 or ''}|{upstream_code_md5 or ''}"
     matching_names = by_md5.get(key, [])
@@ -2212,11 +2230,10 @@ def _save_chunk_cache(
         # failure here only means the next UI status refresh falls back
         # to a filesystem scan (which self-heals the index).
         try:
-            from fresh_slotlab.rawdata_index import update_entry
             # cache_dir is `<rawdata_root>/<machine>/mode_<N>`; the index
             # lives at `<rawdata_root>/_index.json`.
             rawdata_root = cache_dir.parent.parent
-            update_entry(rawdata_root, machine, rtp_mode, cache_dir)
+            _rawdata_index_update_entry(rawdata_root, machine, rtp_mode, cache_dir)
         except Exception:  # noqa: BLE001
             pass
         # Per-mode chunk metadata sidecar — lets resume-replay +
@@ -2224,7 +2241,6 @@ def _save_chunk_cache(
         # chunks. Writes ``mode_<N>/_chunks.json`` atomically.
         # Swallows failures itself; chunk file is already durable.
         try:
-            from fresh_slotlab.chunk_index import update_chunk_entry
             update_chunk_entry(
                 cache_dir, out_path,
                 chunk_index=chunk_index,
@@ -4283,7 +4299,6 @@ def main() -> int:
         # O(N peek) instead of O(N full-load). See
         # ``fresh_slotlab.chunk_index`` for the design.
         try:
-            from fresh_slotlab.chunk_index import get_chunks_index
             _chunks_idx_payload = get_chunks_index(cache_read_dir)
             _sidecar_entries = _chunks_idx_payload.get("chunks") or {}
         except Exception:  # noqa: BLE001
