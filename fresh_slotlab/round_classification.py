@@ -286,21 +286,70 @@ def attribute_lines_to_pay_ids(r: Any) -> list[dict]:
 # ---------------------------------------------------------------------
 
 
-def detect_cycle_peak(rounds: Iterable[Any]) -> int | None:
-    """Cycle length = max ``CollectCount`` observed across all rounds.
+def detect_cycle_peak(
+    rounds: Iterable[Any],
+    min_resets: int = 1,
+) -> int | None:
+    """Cycle length = the ``CollectCount`` value at which CC RESETS,
+    observed empirically.
 
-    Returns ``None`` for machines with no CC mechanic (no round emits
-    a numeric CollectCount). Otherwise returns the peak value -- this
-    is the cycle length (how many paid spins between BCM bonus
-    triggers, e.g. 1000 on M279).
+    Walks rounds tracking previous-vs-current CC. When ``cc < prev_cc - 1``
+    AND ``prev_cc >= 5`` (signaling a real cycle reset, not just CC=0
+    initialization), records ``prev_cc`` as a reset-target candidate.
+    The most common reset target across the input is the cycle peak.
+
+    **Crucial 2026-04-27 semantic refinement**: an earlier version of
+    this function returned ``max(CollectCount)``, which mis-fires on
+    machines like M250 / M256 whose sampled chunk doesn't span a full
+    cycle. M250 cc walks 1->1000 monotonically without ever resetting
+    in the 5000-paid-spin chunk; ``max(cc)=1000`` lied as "cycle peak"
+    when really no cycle was observed. ``infer_bcm_target_spin_type``
+    then sampled "what fires after cc=1000" -- ~12 NewFreespin events
+    out of 909 cc=1000 paid rounds (1.3% trigger rate, clearly noise,
+    not a deterministic BCM cycle).
+
+    With the refined semantic, machines whose chunk is too short to
+    see a full cycle return ``None`` -- callers fall through to the
+    legacy max-feature heuristic instead of trusting noise.
+
+    Args:
+      rounds: iterable of round dicts (one robot or one chunk).
+      min_resets: minimum reset events required to commit a peak.
+        Default 1 accepts any single observed reset (suitable for
+        per-robot calls). Per-chunk callers may want a higher
+        threshold (e.g. 3) to filter out one-off cc-drops that
+        aren't real cycle resets.
+
+    Returns:
+      The cycle peak value, or ``None`` when no qualifying reset
+      was observed.
     """
-    peak: int | None = None
+    reset_targets: dict[int, int] = {}
+    prev_cc: int | None = None
     for r in rounds:
         cc = get_collect_count(r)
+        # Bonus rounds (ST=2 wheel, ST=36 nudge) carry CollectCount=None.
+        # Skip them so prev_cc stays as the last paid round's cc -- the
+        # next paid round's cc compared against it correctly identifies
+        # a cycle reset across the bonus block. Pre-fix this loop set
+        # prev_cc=None on bonus rounds, which masked the cc=peak ->
+        # cc=1 transition that defines the cycle (M279: paid cc=1000 ->
+        # wheel ST=2 cc=None -> paid cc=1; with prev_cc reset to None
+        # the cc=1 round saw no prior reference, missing the reset).
         if cc is None:
             continue
-        if peak is None or cc > peak:
-            peak = cc
+        if (
+            prev_cc is not None
+            and cc < prev_cc - 1
+            and prev_cc >= 5
+        ):
+            reset_targets[prev_cc] = reset_targets.get(prev_cc, 0) + 1
+        prev_cc = cc
+    if not reset_targets:
+        return None
+    peak, count = max(reset_targets.items(), key=lambda kv: kv[1])
+    if count < min_resets:
+        return None
     return peak
 
 

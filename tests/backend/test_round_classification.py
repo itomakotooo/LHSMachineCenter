@@ -323,29 +323,76 @@ class TestAttributeLinesToPayIds:
 
 
 class TestDetectCyclePeak:
-    def test_normal(self):
+    def test_full_cycle_reset_observed(self):
+        """Cycle 1->1000 then reset to 1 -> peak detected as 1000."""
         rounds = [
             {"CollectCount": 1}, {"CollectCount": 500},
             {"CollectCount": 1000}, {"CollectCount": 1},
         ]
         assert detect_cycle_peak(rounds) == 1000
 
+    def test_no_reset_returns_none(self):
+        """2026-04-27 fix: cc walks 1->1000 monotonically without
+        resetting (chunk too short to see a full cycle) -> peak is
+        unknown, return None. Pre-fix max(cc)=1000 lied as peak,
+        misfiring BCM target inference on M250/M256."""
+        rounds = [
+            {"CollectCount": 1}, {"CollectCount": 500},
+            {"CollectCount": 1000},  # ends here, no reset back to small
+        ]
+        assert detect_cycle_peak(rounds) is None
+
     def test_no_cc_mechanic(self):
         rounds = [{"WinCredits": 100}, {"WinCredits": 0}]
         assert detect_cycle_peak(rounds) is None
 
-    def test_partial_data(self):
-        # Some rounds have CC, others don't. Peak = max observed.
+    def test_partial_data_with_reset(self):
+        # CC field appears intermittently; reset still detected.
+        rounds = [
+            {"CollectCount": 100},
+            {"WinCredits": 50},
+            {"CollectCount": 250},
+            {"CollectCount": 1},  # reset 250 -> 1
+        ]
+        assert detect_cycle_peak(rounds) == 250
+
+    def test_partial_data_no_reset_returns_none(self):
         rounds = [
             {"CollectCount": 100},
             {"WinCredits": 50},
             {"CollectCount": 250},
         ]
-        assert detect_cycle_peak(rounds) == 250
+        assert detect_cycle_peak(rounds) is None
 
-    def test_zero_only(self):
+    def test_min_resets_threshold(self):
+        """Caller can require >=N resets for stricter inference."""
+        rounds = [
+            {"CollectCount": 100}, {"CollectCount": 1},  # 1 reset
+        ]
+        assert detect_cycle_peak(rounds, min_resets=1) == 100
+        assert detect_cycle_peak(rounds, min_resets=2) is None
+
+    def test_multiple_resets_at_same_peak(self):
+        """Real M279 pattern: cc cycles 1->1000->1->1000->1, peak=1000."""
+        rounds = [
+            {"CollectCount": 999}, {"CollectCount": 1000},
+            {"CollectCount": 1},   # reset
+            {"CollectCount": 999}, {"CollectCount": 1000},
+            {"CollectCount": 1},   # reset
+        ]
+        assert detect_cycle_peak(rounds, min_resets=2) == 1000
+
+    def test_noisy_drops_filtered(self):
+        """A 1-step drop (cc=10 -> cc=9) shouldn't count as a reset."""
+        rounds = [
+            {"CollectCount": 9}, {"CollectCount": 10}, {"CollectCount": 9},
+        ]
+        assert detect_cycle_peak(rounds) is None
+
+    def test_zero_only_returns_none(self):
+        """All-zero CC means no real cycle activity."""
         rounds = [{"CollectCount": 0}, {"CollectCount": 0}]
-        assert detect_cycle_peak(rounds) == 0
+        assert detect_cycle_peak(rounds) is None
 
 
 class TestAtCyclePeakIndices:
@@ -370,6 +417,26 @@ class TestAtCyclePeakIndices:
 
 
 class TestInferBcmTargetSpinType:
+    def test_m250_no_cycle_returns_none(self):
+        """M250/M256 pattern: cc walks 1 -> 1000 monotonically without
+        ever resetting in the sampled chunk window. Pre-2026-04-27 logic
+        used max(cc) and observed "what fires after cc=1000" -- the
+        few NewFreespin events at cc=1000 (1.3% trigger rate) were
+        noise, not a deterministic cycle target. Now: detect_cycle_peak
+        returns None when no reset is observed -> infer_bcm_target_spin_type
+        returns (None, 0) and BCM inference falls through to legacy
+        max-feature heuristic with low confidence."""
+        rounds = []
+        for cc_val in range(1, 1001):
+            rounds.append({
+                "CostCredits": 1000, "WinCredits": 100,
+                "CollectCount": cc_val, "SpinType": 140,
+            })
+        # No reset back to small cc -> no cycle inferable.
+        st, count = infer_bcm_target_spin_type(rounds)
+        assert st is None
+        assert count == 0
+
     def test_m279_wheel(self):
         """M279: paid round at cc=1000 followed by ST=2 wheel
         (deterministic: 100% of cycle completions trigger Wheel)."""
