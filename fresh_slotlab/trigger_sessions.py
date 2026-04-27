@@ -47,6 +47,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from fresh_slotlab.round_win import RoundWinRule, extract_round_win
+
 
 _NEW_TRIGGER_PREFIX = "Trigger"
 # ``TriggerAdd*`` is re-trigger (extends an already-active feature,
@@ -171,8 +173,24 @@ def _round_has_credited_win(r: Any) -> bool:
     return False
 
 
-def compute_trigger_sessions(rounds: Iterable[dict]) -> list[dict]:
+def compute_trigger_sessions(
+    rounds: Iterable[dict],
+    round_win_rules: list[RoundWinRule] | None = None,
+) -> list[dict]:
     """Scan one robot's round sequence and detect all trigger sessions.
+
+    ``round_win_rules`` (optional, 2026-04-27): when provided, bonus
+    rounds' contribution to ``last_non_none`` / ``sum_all`` is read
+    via ``fresh_slotlab.round_win.extract_round_win`` instead of the
+    raw ``WinCredits`` lookup. With ``rules=None`` (default) behaviour
+    is byte-identical to legacy -- machines without an entry in
+    ``configs/machine_round_win_rules.json`` see zero change.
+
+    With rules: phantom bonus rounds (e.g. M12 ST=14 selector offer
+    preview) contribute 0; settlement rounds (M12 ST=15 carrying real
+    payout in WinAmount) contribute their WinAmount. ``last_non_none``
+    therefore tracks the rule's view of "this round's actual win",
+    which is what the trigger pay_id must be credited with.
 
     A session opens when a paid round is followed by at least one
     non-paid round AND the paid round carries at least one win==0
@@ -290,10 +308,30 @@ def compute_trigger_sessions(rounds: Iterable[dict]) -> list[dict]:
                 break
             bonus_sts.append(nr.get("SpinType"))
             if not _round_has_credited_win(nr):
-                w = nr.get("WinCredits")
-                if w is not None:
-                    last_nonnone_win = _to_float_or_zero(w)
-                    sum_win += _to_float_or_zero(w)
+                if not round_win_rules:
+                    # Legacy path -- byte-identical to pre-2026-04-27.
+                    # ``WinCredits is None`` skip semantics: a missing
+                    # WinCredits field means "this round contributes
+                    # nothing observable" so neither last_non_none nor
+                    # sum_win moves.
+                    w = nr.get("WinCredits")
+                    if w is not None:
+                        last_nonnone_win = _to_float_or_zero(w)
+                        sum_win += _to_float_or_zero(w)
+                else:
+                    # Rules-driven path: extract_round_win returns the
+                    # round's real win contribution per the configured
+                    # rule. Phantom rounds give 0 (don't displace a
+                    # prior real value because last_non_none updates
+                    # to 0 on phantom -- matches behaviour where the
+                    # subsequent settlement round overwrites it with
+                    # the WinAmount). Settlement rounds give WinAmount
+                    # which becomes the session_win for last_non_none
+                    # rule. For sum_all rule on rules-equipped machines,
+                    # phantom contributes 0 so the sum is unaffected.
+                    w = extract_round_win(nr, rules=round_win_rules)
+                    last_nonnone_win = w
+                    sum_win += w
             j += 1
         session_win = last_nonnone_win if rule == "last_non_none" else sum_win
         sessions.append({

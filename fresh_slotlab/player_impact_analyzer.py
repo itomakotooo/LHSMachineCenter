@@ -30,10 +30,20 @@ try:
         _round_has_credited_win,
         compute_trigger_sessions,
     )  # noqa: E402
+    from fresh_slotlab.round_win import (
+        RoundWinRule,
+        extract_round_win,
+        load_rules_for_machine,
+    )
 except ImportError:  # running as a standalone script, not a package member
     from trigger_sessions import (  # type: ignore[no-redef]
         _round_has_credited_win,
         compute_trigger_sessions,
+    )
+    from round_win import (  # type: ignore[no-redef]
+        RoundWinRule,
+        extract_round_win,
+        load_rules_for_machine,
     )
 
 DEFAULT_ENDPOINT_URL = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant"
@@ -1043,10 +1053,20 @@ def _empty_bankruptcy_tier() -> dict[str, Any]:
     }
 
 
-def _extract_bankruptcy_reps(resp: Any) -> list[tuple[int, int]]:
+def _extract_bankruptcy_reps(
+    resp: Any,
+    round_win_rules: list[RoundWinRule] | None = None,
+) -> list[tuple[int, int]]:
     """Flatten (cost_bet, cost_win) tuples across every robot+round in a
     chunk response. Shared by per-chunk simulation and the global
     streaming accumulator (see _BankruptcyStreamAccumulator).
+
+    ``round_win_rules`` (optional, 2026-04-27): when provided, win is
+    sourced via ``extract_round_win`` so phantom-offer rounds (M12 ST=14)
+    don't credit the simulated bankroll with un-paid offer values, and
+    settlement rounds (M12 ST=15 carrying WinAmount but no WinCredits)
+    correctly credit the actual payout. Default ``None`` is byte-
+    identical to legacy ``r.get("WinCredits", 0)`` lookup.
     """
     reps: list[tuple[int, int]] = []
     if not isinstance(resp, list):
@@ -1064,10 +1084,17 @@ def _extract_bankruptcy_reps(resp: Any) -> list[tuple[int, int]]:
                 c_bet = int(r.get("CostCredits", 0) or 0)
             except (TypeError, ValueError):
                 c_bet = 0
-            try:
-                c_win = int(r.get("WinCredits", 0) or 0)
-            except (TypeError, ValueError):
-                c_win = 0
+            if round_win_rules:
+                try:
+                    c_win = int(extract_round_win(r, rules=round_win_rules))
+                except (TypeError, ValueError):
+                    c_win = 0
+            else:
+                # Legacy path -- byte-identical to pre-2026-04-27.
+                try:
+                    c_win = int(r.get("WinCredits", 0) or 0)
+                except (TypeError, ValueError):
+                    c_win = 0
             reps.append((c_bet, c_win))
     return reps
 
@@ -1077,6 +1104,7 @@ def simulate_bankruptcy_from_response(
     bet: int,
     session_spins: int,
     bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
+    round_win_rules: list[RoundWinRule] | None = None,
 ) -> dict[int, dict[str, Any]]:
     """Pool all robots' rounds in a chunk into one sequential stream,
     then chop into non-overlapping ``session_spins`` windows. Each
@@ -1107,7 +1135,7 @@ def simulate_bankruptcy_from_response(
     out: dict[int, dict[str, Any]] = {
         int(m): _empty_bankruptcy_tier() for m in bankroll_mults
     }
-    reps = _extract_bankruptcy_reps(resp)
+    reps = _extract_bankruptcy_reps(resp, round_win_rules=round_win_rules)
     if not reps:
         return out
     # Chop into windows. Any trailing spins shorter than session_spins
@@ -2234,6 +2262,7 @@ def run_sampling_chunk(
     machine_config: str | None = None,
     envelope_config_md5: str = "",
     envelope_code_md5: str = "",
+    round_win_rules: list[RoundWinRule] | None = None,
 ) -> dict[str, Any]:
     payload = make_payload(
         machine=machine,
@@ -2282,6 +2311,7 @@ def run_sampling_chunk(
         resp, chunk_index, bet, started,
         bankruptcy_session_spins=bankruptcy_session_spins,
         bankruptcy_bankroll_mults=bankruptcy_bankroll_mults,
+        round_win_rules=round_win_rules,
     )
 
 
@@ -2292,6 +2322,7 @@ def parse_chunk_response(
     started: float | None = None,
     bankruptcy_session_spins: int = _DEFAULT_BANKRUPTCY_SESSION_SPINS,
     bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
+    round_win_rules: list[RoundWinRule] | None = None,
 ) -> dict[str, Any]:
     """Parse a raw API response (list of robot dicts) into chunk metrics.
 
@@ -2926,7 +2957,9 @@ def parse_chunk_response(
         # without a detectable trigger signal — M272 simple paid→bonus
         # round sequences, etc.) keep their naive accumulation
         # intact so pre-existing behavior is preserved.
-        _trig_sessions_for_robot = compute_trigger_sessions(rounds)
+        _trig_sessions_for_robot = compute_trigger_sessions(
+            rounds, round_win_rules=round_win_rules,
+        )
         session_win_by_trigger_idx: dict[int, float] = {
             int(s["trigger_idx"]): float(s.get("session_win", 0.0) or 0.0)
             for s in _trig_sessions_for_robot
@@ -3041,12 +3074,12 @@ def parse_chunk_response(
             if _lock_lines and isinstance(_lock_lines, str) and _lock_lines.strip("-").strip():
                 lock_lines_spins += 1
                 lock_lines_total_lines += len([x for x in _lock_lines.split("-") if x.strip()])
-                lock_lines_win += to_float(r.get("WinCredits"), default=0.0)
+                lock_lines_win += extract_round_win(r, rules=round_win_rules)
 
             _lock_syms = r.get("LockSymbols")
             if _lock_syms and isinstance(_lock_syms, str) and _lock_syms.strip("| "):
                 lock_symbols_spins += 1
-                lock_symbols_win += to_float(r.get("WinCredits"), default=0.0)
+                lock_symbols_win += extract_round_win(r, rules=round_win_rules)
                 for part in _lock_syms.split("|"):
                     part = part.strip()
                     if ":" in part:
@@ -3055,14 +3088,14 @@ def parse_chunk_response(
             _lock_reels = r.get("LockReels")
             if _lock_reels and isinstance(_lock_reels, str) and _lock_reels.strip():
                 lock_reels_spins += 1
-                lock_reels_win += to_float(r.get("WinCredits"), default=0.0)
+                lock_reels_win += extract_round_win(r, rules=round_win_rules)
 
             _jackpot_ids = r.get("JackpotIds") or r.get("JackpotID")
             if _jackpot_ids is not None:
                 _jid_str = str(_jackpot_ids).strip("-").strip()
                 if _jid_str:
                     jackpot_spins += 1
-                    jackpot_win += to_float(r.get("WinCredits"), default=0.0)
+                    jackpot_win += extract_round_win(r, rules=round_win_rules)
                     for jid in str(_jackpot_ids).split("-"):
                         jid = jid.strip()
                         if jid:
@@ -3076,7 +3109,7 @@ def parse_chunk_response(
                     cur_idx = 0
                 if cur_idx > 0:
                     freespin_chain_spins += 1
-                    freespin_win += to_float(r.get("WinCredits"), default=0.0)
+                    freespin_win += extract_round_win(r, rules=round_win_rules)
                     if cur_idx > freespin_max_chain:
                         freespin_max_chain = cur_idx
                     add_fs = r.get("AddFreeSpin")
@@ -3092,7 +3125,7 @@ def parse_chunk_response(
             if _chosen_dollar and isinstance(_chosen_dollar, str) and _chosen_dollar.strip("-").strip():
                 dollar_pick_spins += 1
                 dollar_pick_total_dollars += len([x for x in _chosen_dollar.split("-") if x.strip()])
-                dollar_pick_win += to_float(r.get("WinCredits"), default=0.0)
+                dollar_pick_win += extract_round_win(r, rules=round_win_rules)
 
             bet_amt = to_float(r.get("BetAmount"), default=0.0)
             if bet_amt <= 0.0:
@@ -3126,7 +3159,7 @@ def parse_chunk_response(
                 else:
                     is_paid = to_float(cost_credits_raw, default=0.0) > 0.0
 
-            win_amt = to_float(r.get("WinCredits"), default=0.0)
+            win_amt = extract_round_win(r, rules=round_win_rules)
             chunk_spins += 1
             chunk_bet += bet_amt
             chunk_win += win_amt
@@ -3431,7 +3464,7 @@ def parse_chunk_response(
             # delta stays under "no pay_id" at the session level.
             pid_to_win = r.get("PayoutIdToWinAmount") or {}
             if isinstance(pid_to_win, dict):
-                _win_this_round = to_float(r.get("WinCredits"), default=0.0)
+                _win_this_round = extract_round_win(r, rules=round_win_rules)
                 _pay_sum = sum(
                     to_float(v, default=0.0) for v in pid_to_win.values()
                 )
@@ -3584,7 +3617,7 @@ def parse_chunk_response(
             if cost_r > 0:
                 paid_i += 1
                 cum_bet_r += to_float(rr.get("BetAmount"), default=cost_r)
-                cum_win_r += to_float(rr.get("WinCredits"), default=0.0)
+                cum_win_r += extract_round_win(rr, rules=round_win_rules)
                 if paid_i % sample_interval == 0 or paid_i == robot_paid_spin_idx:
                     curve_points.append({
                         "spin": paid_i,
@@ -3593,7 +3626,7 @@ def parse_chunk_response(
             else:
                 # Bonus spin wins attribute to session but we track
                 # cumulative win for the curve.
-                cum_win_r += to_float(rr.get("WinCredits"), default=0.0)
+                cum_win_r += extract_round_win(rr, rules=round_win_rules)
         if curve_points:
             session_rtp_curves.append(curve_points)
 
@@ -3862,6 +3895,7 @@ def parse_chunk_response(
         # the merge loop without JSON round-trip.
         "bankruptcy_sim": simulate_bankruptcy_from_response(
             resp, bet, bankruptcy_session_spins, bankruptcy_bankroll_mults,
+            round_win_rules=round_win_rules,
         ),
         # 2026-04-25: raw (cost_bet, cost_win) reps for cross-chunk
         # pooling at merge time. Without this, chunks that fall below
@@ -3873,7 +3907,7 @@ def parse_chunk_response(
         # cross-chunk pooled results. Old cached chunks (no reps field)
         # fall back to per-chunk merge — produces zeros but doesn't
         # crash, and operators can rebuild reports to refresh.
-        "bankruptcy_reps": _extract_bankruptcy_reps(resp),
+        "bankruptcy_reps": _extract_bankruptcy_reps(resp, round_win_rules=round_win_rules),
     }
 
 
@@ -3930,6 +3964,27 @@ def main() -> int:
         if x.strip()
     ) or _DEFAULT_BANKROLL_MULTIPLIERS
 
+    # Per-machine round-win extraction rules (2026-04-27).
+    # Default: empty rule list -> chunk parsing falls back to legacy
+    # ``r.get("WinCredits", 0)`` lookup, byte-identical to pre-2026-04-27.
+    # When the machine appears in configs/machine_round_win_rules.json,
+    # the extracted rules are threaded through every WinCredits site
+    # in parse_chunk_response + the trigger-session helper + the
+    # bankruptcy simulator so phantom-offer rounds (M12 ST=14) and
+    # WinAmount-only settlement rounds (M12 ST=15) are accounted
+    # correctly. Config absence / parse failure / unknown rule type
+    # all fall through to default (no rules); the operator sees
+    # legacy behaviour unchanged.
+    _round_win_rules: list[RoundWinRule] = []
+    try:
+        _rules_config_path = Path(__file__).resolve().parent.parent / "configs" / "machine_round_win_rules.json"
+        if _rules_config_path.exists():
+            with open(_rules_config_path, encoding="utf-8") as _rcf:
+                _rules_config = json.load(_rcf)
+            _round_win_rules = load_rules_for_machine(args.machine, _rules_config)
+    except (OSError, json.JSONDecodeError):
+        _round_win_rules = []
+
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     run_id = args.run_id or f"run_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
@@ -3970,6 +4025,23 @@ def main() -> int:
             "ts": utc_now(),
         },
     )
+
+    # Operator-visible signal that this run is using per-machine round-win
+    # overrides (vs the default legacy WinCredits lookup). Only emitted
+    # when at least one rule is active so vanilla machines keep the
+    # JSONL stream short.
+    if _round_win_rules:
+        append_jsonl(
+            progress_file,
+            {
+                "event": "round_win_rules_active",
+                "run_id": run_id,
+                "machine": args.machine,
+                "rule_count": len(_round_win_rules),
+                "rule_types": [type(r).__name__ for r in _round_win_rules],
+                "ts": utc_now(),
+            },
+        )
 
     total_spins = 0
     total_bet = 0.0
@@ -4382,6 +4454,7 @@ def main() -> int:
                 resp, idx, chunk_bet_val,
                 bankruptcy_session_spins=args.bankruptcy_session_spins,
                 bankruptcy_bankroll_mults=_bankruptcy_mults_tuple,
+                round_win_rules=_round_win_rules,
             )
             if not rec.get("ok"):
                 raise SystemExit(f"{tag}: {cf.name} parse failed: {rec.get('error')}")
@@ -5016,6 +5089,7 @@ def main() -> int:
                     # 配置拉取下来的 rawdata md5 管理还是有问题").
                     envelope_config_md5=args.upstream_config_md5 or "",
                     envelope_code_md5=args.upstream_code_md5 or "",
+                    round_win_rules=_round_win_rules,
                 )
                 for idx in indices
             ]

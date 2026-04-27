@@ -1,0 +1,259 @@
+"""End-to-end integration: parse_chunk_response with round_win_rules.
+
+Two regression contracts locked here:
+
+  1. **M12 fix**: with the TopDollarSelector rule active, the chunk's
+     ``win`` (= our_total_win) matches the upstream's
+     ``analysisResult.TotalWin`` (= server_total_win) within 0.1%.
+     Without the rule, the legacy path over-counts ST=14 phantom
+     offers by tens of millions of credits.
+
+  2. **A_clean byte-identical lockdown**: for machines NOT in the
+     config (M14 / M272 / M273 / M201 / M257 ...), every numeric and
+     dict field returned by parse_chunk_response is byte-identical
+     between ``round_win_rules=None`` and ``round_win_rules=[]``.
+     This is the non-regression invariant: 380+ A_clean machines
+     see zero behavioural change after the wiring is in place.
+
+Tests skip when the required cached chunk isn't present (CI may run
+on a clean checkout without 100+ machine rawdata caches).
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from fresh_slotlab.player_impact_analyzer import parse_chunk_response
+from fresh_slotlab.round_win import (
+    SettlementWinAmountRule,
+    load_rules_for_machine,
+)
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+RAWDATA = REPO_ROOT / "rawdata"
+CONFIG_PATH = REPO_ROOT / "configs" / "machine_round_win_rules.json"
+
+
+def _load_chunk(machine: str, mode_dir: str, chunk_name: str = "chunk_0001.json"):
+    cf = RAWDATA / machine / mode_dir / chunk_name
+    if not cf.exists():
+        pytest.skip(f"cached chunk not present: {cf}")
+    with open(cf, "r", encoding="utf-8") as f:
+        envelope = json.load(f)
+    resp = envelope.get("response")
+    if not isinstance(resp, list):
+        pytest.skip(f"chunk {cf} has no response list")
+    bet = int(envelope.get("_bet", 1000))
+    return resp, bet
+
+
+def _server_total_win(resp) -> float:
+    """Sum analysisResult.TotalWin[*].WinCredits across all robots --
+    the upstream's authoritative total."""
+    total = 0.0
+    for robot in resp:
+        if not isinstance(robot, dict):
+            continue
+        ar = robot.get("analysisResult")
+        if isinstance(ar, str):
+            try:
+                analysis = json.loads(ar)
+            except (json.JSONDecodeError, ValueError):
+                continue
+        elif isinstance(ar, dict):
+            analysis = ar
+        else:
+            continue
+        tw = analysis.get("TotalWin")
+        if isinstance(tw, str):
+            try:
+                tw = json.loads(tw)
+            except (json.JSONDecodeError, ValueError):
+                tw = None
+        if isinstance(tw, dict):
+            for v in tw.values():
+                if isinstance(v, dict):
+                    val = v.get("WinCredits")
+                    try:
+                        total += float(val) if val is not None else 0.0
+                    except (TypeError, ValueError):
+                        pass
+    return total
+
+
+@pytest.fixture(scope="module")
+def round_win_config():
+    if not CONFIG_PATH.exists():
+        pytest.skip(f"config not present: {CONFIG_PATH}")
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+# ---------------------------------------------------------------------
+# M12 fix: rule-driven path matches server_total_win within 0.1%
+# ---------------------------------------------------------------------
+
+
+class TestM12RuleFix:
+    def test_m12_variant0_mode7_our_matches_server_with_rule(self, round_win_config):
+        machine = "M12$TopDollarSelector$0$"
+        resp, bet = _load_chunk(machine, "mode_7")
+        server = _server_total_win(resp)
+        assert server > 0, "server_total_win must be positive on real chunk"
+
+        # Default (legacy) path: known bug -- our_total_win much higher
+        # than server (phantom offers counted).
+        rec_legacy = parse_chunk_response(resp, 1, bet)
+        assert rec_legacy["ok"] is True
+        legacy_drift_pct = abs(rec_legacy["win"] - server) / server * 100.0
+        assert legacy_drift_pct > 5.0, (
+            f"legacy path expected >5% drift on M12 variant 0 "
+            f"(our={rec_legacy['win']} vs server={server}, "
+            f"drift={legacy_drift_pct:.2f}%) -- if this triggers, the "
+            f"phantom-offer bug has been fixed elsewhere or the cached "
+            f"chunk changed shape."
+        )
+
+        # Rule-driven path: drift drops to ~0 (within 0.1%).
+        rules = load_rules_for_machine(machine, round_win_config)
+        assert len(rules) == 1
+        assert isinstance(rules[0], SettlementWinAmountRule)
+        rec_rules = parse_chunk_response(resp, 1, bet, round_win_rules=rules)
+        assert rec_rules["ok"] is True
+        fixed_drift_pct = abs(rec_rules["win"] - server) / server * 100.0
+        assert fixed_drift_pct < 0.1, (
+            f"rule-driven path should match server within 0.1pp drift "
+            f"(our={rec_rules['win']} vs server={server}, "
+            f"drift={fixed_drift_pct:.4f}%)"
+        )
+
+    def test_m15_variant0_mode1_our_matches_server_with_rule(self, round_win_config):
+        machine = "M15$TopDollarSelector$0$"
+        resp, bet = _load_chunk(machine, "mode_1")
+        server = _server_total_win(resp)
+        assert server > 0
+
+        rec_legacy = parse_chunk_response(resp, 1, bet)
+        legacy_drift = abs(rec_legacy["win"] - server) / server * 100.0
+        assert legacy_drift > 5.0, "M15 mode_1 legacy path expected >5% drift"
+
+        rules = load_rules_for_machine(machine, round_win_config)
+        rec_rules = parse_chunk_response(resp, 1, bet, round_win_rules=rules)
+        fixed_drift = abs(rec_rules["win"] - server) / server * 100.0
+        assert fixed_drift < 0.1, (
+            f"M15 mode_1 fixed drift should be <0.1% (got {fixed_drift:.4f}%)"
+        )
+
+    def test_m12_variant1_mode7_byte_identical_chunk_win_with_rule(self, round_win_config):
+        """Variant 1 single-pick is the A_clean coincidence -- legacy
+        chunk_win happens to match server (ST=14 WinCredits == ST=15
+        WinAmount per round). Rule-driven path also matches; both
+        should land at server within 0.1%."""
+        machine = "M12$TopDollarSelector$1$"
+        resp, bet = _load_chunk(machine, "mode_7")
+        server = _server_total_win(resp)
+        rules = load_rules_for_machine(machine, round_win_config)
+        rec_rules = parse_chunk_response(resp, 1, bet, round_win_rules=rules)
+        fixed_drift = abs(rec_rules["win"] - server) / server * 100.0
+        assert fixed_drift < 0.1
+
+
+# ---------------------------------------------------------------------
+# A_clean byte-identical lockdown
+# ---------------------------------------------------------------------
+
+
+# Numeric scalars that must agree exactly.
+_BYTE_IDENTICAL_SCALAR_FIELDS = (
+    "spins", "bet", "win", "ret_count", "ret_sum", "ret_sq_sum", "max_return_x",
+    "win_spins", "loss_spins", "profit_spins", "breakeven_or_more_spins",
+    "big_win_x10_spins", "win_sum", "lack_credit_spins",
+    "bonus_total_rounds", "bonus_retrigger_rounds", "max_loss_streak",
+    "max_win_streak", "total_symbol_slots",
+)
+
+# Dict / list fields that must compare equal.
+_BYTE_IDENTICAL_CONTAINER_FIELDS = (
+    "payline_hits", "payline_win_approx",
+    "loss_streak_hist", "win_streak_hist",
+    "multiplier_bucket_spins", "multiplier_bucket_bet", "multiplier_bucket_win",
+    "payout_id_hits", "payout_id_win",
+    "spin_type_spins", "spin_type_bet", "spin_type_paid_bet",
+    "spin_type_win", "spin_type_wins", "spin_type_paid_rounds",
+    "symbol_counts",
+)
+
+
+def _assert_record_byte_identical(rec_a, rec_b, tag: str):
+    for k in _BYTE_IDENTICAL_SCALAR_FIELDS:
+        assert rec_a[k] == rec_b[k], (
+            f"[{tag}] scalar field {k} diverged: legacy={rec_a[k]!r} "
+            f"empty_rules={rec_b[k]!r}"
+        )
+    for k in _BYTE_IDENTICAL_CONTAINER_FIELDS:
+        assert rec_a[k] == rec_b[k], (
+            f"[{tag}] container field {k} diverged"
+        )
+
+
+# Sampled non-TopDollar machines -- if the cached chunk exists, lock
+# byte-identity. The list intentionally spans different bonus mechanics
+# so a regression in any path (paid-only, freespin, collect, summary
+# round) is caught.
+@pytest.mark.parametrize("machine,mode_dir", [
+    ("M14", "mode_1"),               # base paid-only
+    ("M272", "mode_1"),              # MapCollection / NewFreespin
+    ("M273", "mode_1"),              # WheelSelector freespin (Type 2)
+    ("M201", "mode_1"),              # CommonSelector lockrespin
+    ("M257", "mode_1"),              # CommonSelector freespin
+    ("M99", "mode_1"),               # M112-family (D_other; not fixed by topdollar rule)
+    ("M112", "mode_1"),              # FinalMinigame summary+sub
+])
+class TestACleanByteIdentical:
+    def test_no_rules_vs_empty_rules_identical(self, machine, mode_dir, round_win_config):
+        """Calling parse_chunk_response with rules=None vs rules=[]
+        must produce byte-identical numeric output. This locks the
+        invariant that the rule-dispatch code path is a no-op when no
+        rules apply -- no rounding drift from extra float arithmetic,
+        no field re-ordering quirks, nothing."""
+        resp, bet = _load_chunk(machine, mode_dir)
+        rec_none = parse_chunk_response(resp, 1, bet, round_win_rules=None)
+        rec_empty = parse_chunk_response(resp, 1, bet, round_win_rules=[])
+        _assert_record_byte_identical(rec_none, rec_empty, f"{machine}/{mode_dir}")
+
+    def test_unconfigured_machine_loads_no_rules(self, machine, mode_dir, round_win_config):
+        """The actual config (TopDollar selectors only) must produce
+        an empty rule list for these machines -- ie the dispatch goes
+        through the rules=[] path which is locked byte-identical above."""
+        rules = load_rules_for_machine(machine, round_win_config)
+        assert rules == [], f"{machine} unexpectedly resolves to {rules}"
+
+
+# ---------------------------------------------------------------------
+# Inverse: configured machines DO get rules
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("machine", [
+    "M12$TopDollarSelector$0$",
+    "M12$TopDollarSelector$1$",
+    "M12$TopDollarSelector$2$40",
+    "M15$TopDollarSelector$0$",
+    "M15$TopDollarSelector$1$",
+    "M15$TopDollarSelector$2$40",
+    "M90$TopDollarSelector$0$",
+    "M90$TopDollarSelector$1$",
+    "M90$TopDollarSelector$2$40",
+    "M132$TopDollarSelector$0$",
+    "M132$TopDollarSelector$1$",
+    "M132$TopDollarSelector$2$40",
+])
+def test_topdollar_selectors_load_one_rule(machine, round_win_config):
+    rules = load_rules_for_machine(machine, round_win_config)
+    assert len(rules) == 1
+    assert isinstance(rules[0], SettlementWinAmountRule)
+    assert rules[0].phantom_st == frozenset([14])
+    assert rules[0].settlement_st == frozenset([15])

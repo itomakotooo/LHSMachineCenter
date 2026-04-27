@@ -27,6 +27,7 @@ from fresh_slotlab.trigger_sessions import (
     extract_trigger_pay_ids,
     is_new_trigger_remark,
 )
+from fresh_slotlab.round_win import SettlementWinAmountRule
 
 
 class TestIsNewTriggerRemark:
@@ -604,3 +605,143 @@ class TestPaidRoundClassifier:
     def test_malformed_cost_is_not_paid(self):
         from fresh_slotlab.trigger_sessions import _is_paid_round
         assert _is_paid_round({"CostCredits": "bad"}) is False
+
+
+# ---------------------------------------------------------------------
+# Rule-driven path (2026-04-27): when round_win_rules is provided,
+# bonus rounds' WinCredits is read via extract_round_win so phantom-
+# offer rounds (M12 ST=14) contribute 0 and settlement rounds (M12
+# ST=15 carrying WinAmount) contribute their WinAmount.
+# ---------------------------------------------------------------------
+
+
+class TestRoundWinRulesIntegration:
+    """Default-mode (no rules) byte-identity is locked by the existing
+    M15 / M6 / M116 / M123 / M273 / M201 / M257 tests above. These new
+    tests lock the rule-driven path against realistic M12 rawdata
+    where ST=15 settlement carries WinAmount but no WinCredits field.
+    """
+
+    def _topdollar_rule(self) -> SettlementWinAmountRule:
+        return SettlementWinAmountRule(
+            phantom_spin_types=[14],
+            settlement_spin_types=[15],
+        )
+
+    def test_m12_settlement_winamount_is_authoritative_session_win(self):
+        """Realistic M12 fixture: ST=14 carries OfferValue*bet as
+        phantom WinCredits, ST=15 carries the actual payout in a
+        WinAmount field with no WinCredits at all. Default path picks
+        the last ST=14 offer (30000) -- wrong; rule-driven path picks
+        ST=15 WinAmount (60000) -- correct."""
+        rounds = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"666": 0}, "ReMarks": "Trigger"},
+            # 4 selector offer rounds. WinCredits = OfferValue*bet.
+            {"SpinType": 14, "CostCredits": 0, "WinCredits": 17000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 14, "CostCredits": 0, "WinCredits": 25000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 14, "CostCredits": 0, "WinCredits": 15000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 14, "CostCredits": 0, "WinCredits": 30000,
+             "PayoutIdToWinAmount": None},
+            # Settlement: NO WinCredits field at all, only WinAmount
+            # (twice the last offer in this real-rawdata example).
+            {"SpinType": 15, "CostCredits": 0, "WinAmount": 60000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        # Default (legacy): last_non_none picks last ST=14 = 30000.
+        s_default = compute_trigger_sessions(rounds)[0]
+        assert s_default["session_win"] == 30000
+
+        # Rule-driven: phantom -> 0, settlement -> WinAmount = 60000.
+        s_rules = compute_trigger_sessions(
+            rounds, round_win_rules=[self._topdollar_rule()],
+        )[0]
+        assert s_rules["session_win"] == 60000
+
+    def test_m12_variant1_single_pick_settlement(self):
+        """Variant 1 single-pick: 1 ST=14 + 1 ST=15. The legacy path
+        uses last ST=14 WinCredits which happens to equal the WinAmount
+        when no multiplier fires (drift scan A_clean coincidence).
+        Rule-driven path is semantically correct: read ST=15 WinAmount."""
+        rounds = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"666": 0}, "ReMarks": "Trigger"},
+            {"SpinType": 14, "CostCredits": 0, "WinCredits": 20000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 15, "CostCredits": 0, "WinAmount": 20000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        s_default = compute_trigger_sessions(rounds)[0]
+        assert s_default["session_win"] == 20000  # last ST=14 = 20000
+
+        s_rules = compute_trigger_sessions(
+            rounds, round_win_rules=[self._topdollar_rule()],
+        )[0]
+        assert s_rules["session_win"] == 20000  # ST=15 WinAmount = 20000
+
+    def test_m12_variant1_with_multiplier_settlement_doubles(self):
+        """Real-rawdata variant 1 occasionally has a 2x multiplier
+        applied at settlement (132/612 pairs in fleet scan): ST=14
+        WinCredits=30000, ST=15 WinAmount=60000. Default reads 30000
+        (wrong); rule path reads WinAmount (correct)."""
+        rounds = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"666": 0}, "ReMarks": "Trigger"},
+            {"SpinType": 14, "CostCredits": 0, "WinCredits": 30000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 15, "CostCredits": 0, "WinAmount": 60000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        s_default = compute_trigger_sessions(rounds)[0]
+        assert s_default["session_win"] == 30000  # legacy = wrong here
+
+        s_rules = compute_trigger_sessions(
+            rounds, round_win_rules=[self._topdollar_rule()],
+        )[0]
+        assert s_rules["session_win"] == 60000  # corrected
+
+    def test_unconfigured_machine_default_byte_identical(self):
+        """Sanity: if rules list is empty the legacy session_win must
+        match exactly. Locks the no-config path for the 380+ A_clean
+        machines."""
+        rounds = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"666": 0}, "ReMarks": "Trigger"},
+            {"SpinType": 14, "CostCredits": 0, "WinCredits": 15000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 14, "CostCredits": 0, "WinCredits": 40000,
+             "PayoutIdToWinAmount": None},
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        s_none = compute_trigger_sessions(rounds, round_win_rules=None)
+        s_empty = compute_trigger_sessions(rounds, round_win_rules=[])
+        s_omitted = compute_trigger_sessions(rounds)
+        assert s_none[0]["session_win"] == 40000
+        assert s_empty[0]["session_win"] == 40000
+        assert s_omitted[0]["session_win"] == 40000
+
+    def test_m273_freespin_rule_not_active_no_change(self):
+        """Type 2 freespin (M273) WITHOUT a topdollar rule applied to
+        it must produce the same session_win as legacy -- 0, because
+        round-level pay_id credits the freespin pay_ids directly."""
+        rounds = [
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"5801": 0}, "ReMarks": ""},
+            {"SpinType": 137, "CostCredits": 0, "WinCredits": 9000,
+             "PayoutIdToWinAmount": {"6": 7000, "101": 2000}},
+            {"SpinType": 1, "CostCredits": 1000, "WinCredits": 0},
+        ]
+        # Even with a TopDollar rule active, M273 ST=137 isn't in the
+        # phantom_spin_types list -> rule returns None -> legacy path.
+        # _round_has_credited_win filter still excludes the freespin
+        # round so session_win = 0 regardless of rules.
+        s = compute_trigger_sessions(
+            rounds, round_win_rules=[self._topdollar_rule()],
+        )[0]
+        assert s["session_win"] == 0
