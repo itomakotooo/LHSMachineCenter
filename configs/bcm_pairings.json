@@ -99,8 +99,8 @@
     "M239": {
       "modes": {
         "1": {
-          "bonus_feature": "Wheel",
-          "confidence": "medium",
+          "bonus_feature": "LockSymbolFreespin",
+          "confidence": "high",
           "heuristic_pair": "LockSymbolFreespin",
           "spintype_pair": "LockSymbolFreespin"
         },
@@ -239,8 +239,8 @@
     "M250": {
       "modes": {
         "1": {
-          "bonus_feature": "NewFreespin",
-          "confidence": "medium",
+          "bonus_feature": "Wheel",
+          "confidence": "high",
           "heuristic_pair": "Wheel",
           "spintype_pair": "Wheel"
         },
@@ -367,8 +367,8 @@
     "M256": {
       "modes": {
         "1": {
-          "bonus_feature": "NewFreespin",
-          "confidence": "medium",
+          "bonus_feature": "MoveSpin",
+          "confidence": "high",
           "heuristic_pair": "MoveSpin",
           "spintype_pair": "MoveSpin"
         },
