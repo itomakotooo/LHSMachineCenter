@@ -1915,56 +1915,114 @@ test("versionBadges: null row / empty current → safe defaults", () => {
 });
 
 
-// ─── isFreshReport / cellShowsBestCiStar — rwtree cell rules ──────
+// ─── freshReportsForCell / cellShowsBestCiStar — rwtree cell rules ─
 //
-// Regression report 2026-04-26: user pulled fresh rawdata, generated
-// a report, then opened the rwtree panel. The current cell showed
-// "无 fresh report — 生成后会显示 RTP/CI" despite a clearly-listed
-// 04-25 report sitting one row below. Root cause: the "fresh" filter
-// also required ``analyzer_status === "match"``. Any commit to
-// player_impact_analyzer.py changes its sha256, so a developer-side
-// touch-up was retroactively making every just-generated report
-// "stale". The fix: drop the analyzer requirement; the per-row ⚠
-// badge still warns operators when analyzer drifted.
+// Regression history of "无 fresh report" — this predicate has been
+// rewritten 5+ times. Each rewrite plugged one angle of the same
+// underlying confusion: the cell-level question "is this report
+// fresh?" was being answered by per-report fields whose semantics
+// disagreed with the cell's own state.
 //
-// Same regression also surfaced ⭐ best-CI markers on every
-// historical cell (each cell's per-cell sort puts SOMETHING at idx 0),
-// making the marker meaningless. Star is now current-only.
+//   - 2026-04-26 (fbf7ff8): predicate also required
+//     ``analyzer_status === "match"``. Any commit to
+//     player_impact_analyzer.py changed its sha256 → every
+//     just-generated report flipped to stale. Dropped analyzer.
+//   - 2026-04-25 (8bb531c, f88fe2c): in-process and virtual-analyzer
+//     paths wrote summary.json without stamping config_md5/code_md5
+//     → md5_status=untagged → not fresh. Patched both writers.
+//   - 2026-04-27 (THIS REWRITE): /api/report-validate compares
+//     report.config_md5 against UPSTREAM md5 only. Localcfg sampling
+//     stamps reports with ``localcfg_<hash>``; comparison says
+//     outdated; predicate says not fresh. But the cell IS current
+//     (backend marks both server-global and localcfg cells as
+//     is_current). Architectural fix: stop asking the per-report
+//     md5_status field — at the cell level, freshness IS cell.is_current.
+//
+// Reports are routed to cells by exact md5 match (in
+// ``_renderRwtreeGrid``), so any report living in a cell already has
+// matching md5 by construction. The only remaining question is
+// "is this cell currently in use?" — which is exactly cell.is_current.
+//
+// Companion ⭐ best-CI marker is also current-only (historical cells'
+// per-cell sort puts something at idx 0, making the marker
+// meaningless; star is now current-only).
 
-test("isFreshReport: md5 match → fresh, regardless of analyzer state", () => {
-  assert.equal(
-    PURE.isFreshReport({ md5_status: "match", analyzer_status: "outdated" }),
-    true,
-  );
-  assert.equal(
-    PURE.isFreshReport({ md5_status: "match", analyzer_status: "match" }),
-    true,
-  );
-  assert.equal(
-    PURE.isFreshReport({ md5_status: "match", analyzer_status: "untagged" }),
-    true,
+test("freshReportsForCell: current cell returns its reports", () => {
+  const reports = [
+    { report_version: "rv_a", achieved_halfwidth_pp: 1.0 },
+    { report_version: "rv_b", achieved_halfwidth_pp: 0.5 },
+  ];
+  const cell = { is_current: true, reports };
+  const out = PURE.freshReportsForCell(cell);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].report_version, "rv_a");
+  assert.equal(out[1].report_version, "rv_b");
+});
+
+test(
+  "freshReportsForCell: localcfg cell (is_current=true even when " +
+    "report.md5_status='outdated' from upstream comparison) → fresh",
+  () => {
+    // This is the 2026-04-27 regression scenario. The report's
+    // info.md5_status would be "outdated" because /api/report-validate
+    // compares against upstream/server md5 (not localcfg). But the
+    // cell IS current — backend marks the localcfg-overridden cell as
+    // is_current=true with current_label="本地 cfg (M279Cfg.txt)".
+    // freshReportsForCell must NOT consult per-report md5_status; it
+    // must trust cell.is_current.
+    const cell = {
+      is_current: true,
+      current_label: "本地 cfg (M279Cfg.txt)",
+      config_md5: "localcfg_abc12345",
+      code_md5: "1c1mf39a",
+      reports: [{ report_version: "rv_localcfg" }],
+    };
+    const out = PURE.freshReportsForCell(cell);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].report_version, "rv_localcfg");
+  },
+);
+
+test("freshReportsForCell: historical cell (is_current=false) → empty", () => {
+  const cell = {
+    is_current: false,
+    config_md5: "old_md5",
+    code_md5: "old_code",
+    reports: [{ report_version: "rv_old" }],
+  };
+  assert.deepStrictEqual(PURE.freshReportsForCell(cell), []);
+});
+
+test("freshReportsForCell: untagged cell (is_current=false) → empty", () => {
+  const cell = {
+    is_current: false,
+    untagged: true,
+    reports: [{ report_version: "rv_untagged" }],
+  };
+  assert.deepStrictEqual(PURE.freshReportsForCell(cell), []);
+});
+
+test("freshReportsForCell: current cell with no reports → empty", () => {
+  assert.deepStrictEqual(
+    PURE.freshReportsForCell({ is_current: true, reports: [] }),
+    [],
   );
 });
 
-test("isFreshReport: md5 NOT match → not fresh, regardless of analyzer", () => {
-  assert.equal(
-    PURE.isFreshReport({ md5_status: "outdated", analyzer_status: "match" }),
-    false,
-  );
-  assert.equal(
-    PURE.isFreshReport({ md5_status: "outdated", analyzer_status: "outdated" }),
-    false,
-  );
-  assert.equal(
-    PURE.isFreshReport({ md5_status: "untagged", analyzer_status: "match" }),
-    false,
-  );
+test("freshReportsForCell: missing/null cell → empty", () => {
+  assert.deepStrictEqual(PURE.freshReportsForCell(null), []);
+  assert.deepStrictEqual(PURE.freshReportsForCell(undefined), []);
+  assert.deepStrictEqual(PURE.freshReportsForCell({}), []);
 });
 
-test("isFreshReport: missing/null info → not fresh", () => {
-  assert.equal(PURE.isFreshReport(null), false);
-  assert.equal(PURE.isFreshReport(undefined), false);
-  assert.equal(PURE.isFreshReport({}), false);
+test("freshReportsForCell: returns a copy, not the live array", () => {
+  // Caller may sort or mutate the returned list; mutations must not
+  // leak back into cell.reports.
+  const reports = [{ report_version: "rv_a" }];
+  const cell = { is_current: true, reports };
+  const out = PURE.freshReportsForCell(cell);
+  out.push({ report_version: "injected" });
+  assert.equal(cell.reports.length, 1, "live array must not be mutated");
 });
 
 test("cellShowsBestCiStar: only current cells get ⭐", () => {

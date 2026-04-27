@@ -1868,29 +1868,18 @@ function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb
 
   const filteredReports = cell.reports;
 
-  // Sample RTP/CI from best fresh report. "Fresh" here = the report's
-  // RAWDATA md5 matches the current rawdata (not the report's analyzer
-  // version — see below).
-  //
-  // 2026-04-26 (regression fix): the previous predicate also required
-  // ``analyzer_status === "match"``. ``compute_analyzer_version()``
-  // hashes the ENTIRE ``player_impact_analyzer.py`` source (comments
-  // included), so any commit to that file — even a docstring tweak —
-  // invalidates every prior report's analyzer stamp. The user's
-  // typical flow is: pull rawdata → generate report → developer
-  // commits an unrelated analyzer touch-up → the just-generated
-  // report's "fresh" status flips to false → "无 fresh report"
-  // misleadingly appears on a cell where a perfectly valid report
-  // sits one row below.
-  //
-  // The per-report ⚠ "Analyzer 过期" badge still fires (operators
-  // who care can regenerate); but the CELL-LEVEL "fresh" indicator
-  // is now tied to md5 alone, which is what the operator's mental
-  // model expects ("this report goes with this rawdata").
-  const freshReports = filteredReports.filter((v) => {
-    const info = reportMd5Map.get(v.report_version);
-    return PURE.isFreshReport(info);
-  });
+  // Sample RTP/CI from best fresh report. See
+  // ``PURE.freshReportsForCell`` for the full history and rationale —
+  // 5+ regressions of "无 fresh report" before the cell-level
+  // simplification. Short version: reports are routed to cells by
+  // exact md5 match (see ``_renderRwtreeGrid``), so at the cell level
+  // the freshness question reduces to ``cell.is_current``. The
+  // backend marks both server-global AND localcfg-override current
+  // md5 as ``is_current=true``, so localcfg-sampled reports correctly
+  // count as fresh — fixing the 2026-04-27 regression where
+  // /api/report-validate's upstream-only comparison falsely tagged
+  // localcfg reports as "outdated".
+  const freshReports = PURE.freshReportsForCell(cell);
   const bestFresh = freshReports.slice().sort((a, b) => {
     const ca = a.achieved_halfwidth_pp ?? Infinity;
     const cb = b.achieved_halfwidth_pp ?? Infinity;

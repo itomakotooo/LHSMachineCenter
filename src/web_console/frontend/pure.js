@@ -2025,29 +2025,54 @@ function versionBadges(row, current) {
 // "fresh" / "best-CI" rules are headlessly testable. Pure: no DOM
 // access, no global state.
 
-/** Is this report "fresh" relative to the rwtree cell it's in?
+/** Reports that are "fresh" for this rwtree cell.
  *
  * "Fresh" means the operator can confidently read RTP/CI from this
  * report as a header-level "样本 RTP" hint for the cell's rawdata.
  *
- * Definition: report's rawdata md5 matches the cell's md5 (i.e. the
- * report was generated from this rawdata). Analyzer code drift is
- * INTENTIONALLY not part of this predicate — every commit to
- * ``player_impact_analyzer.py`` (even a comment) changes its
- * sha256, and yesterday's just-generated reports must not silently
- * become "stale" because of an unrelated touch-up.
+ * Routing already places each report in the cell whose
+ * (config_md5, code_md5) matches the report's stored rawdata md5
+ * (see ``_renderRwtreeGrid``). So at the cell level the question
+ * "is this report fresh?" reduces to "does this cell describe the
+ * rawdata the user is currently sampling against?" — i.e.
+ * ``cell.is_current``. The backend marks BOTH server-global current
+ * md5 AND localcfg-override current md5 as ``is_current=true``, so
+ * localcfg-sampled reports correctly count as fresh in their cell.
+ *
+ * History (5+ regressions of "无 fresh report" before this one):
+ *   - 2026-04-26 (fbf7ff8): the predicate also required
+ *     ``analyzer_status === "match"``. Any commit to
+ *     ``player_impact_analyzer.py`` (even a docstring) bumped the
+ *     analyzer sha256 → every just-generated report turned "stale"
+ *     overnight. Dropped the analyzer requirement; per-report ⚠
+ *     "Analyzer 过期" badge still surfaces drift.
+ *   - 2026-04-25 (8bb531c, f88fe2c): in-process and virtual-analyzer
+ *     paths wrote summary.json without stamping config_md5/code_md5
+ *     → ``md5_status=untagged`` → not-fresh. Patched both writers.
+ *   - 2026-04-27 (THIS FIX): ``/api/report-validate`` compares
+ *     report.config_md5 against UPSTREAM md5 only. Localcfg sampling
+ *     stamps reports with ``localcfg_<hash>``; upstream is the
+ *     server-global md5; the comparison always says "outdated"
+ *     even though the report IS the rawdata's report. Fix is
+ *     architectural: stop using ``info.md5_status`` at the cell
+ *     level (it asks the wrong question for localcfg cells) and
+ *     trust ``cell.is_current``, which the backend already computes
+ *     correctly for both server-global and localcfg cases.
  *
  * The per-report ⚠ "Analyzer 过期" badge in the row still surfaces
- * analyzer drift as an actionable warning; this predicate is just
- * about cell-level "is there a report I can read RTP/CI off?".
+ * analyzer drift as an actionable warning; this helper is just about
+ * cell-level "is there a report I can read RTP/CI off?".
  *
- * @param {object} info — entry from reportMd5Map: { md5_status,
- *   analyzer_status, config_md5, code_md5 }. May be null/undefined.
- * @returns {boolean}
+ * @param {object} cell — rwtree cell: { is_current, reports }.
+ * @returns {Array} subset of cell.reports that are fresh; empty when
+ *   cell isn't current (historical cells aren't expected to host a
+ *   header-level RTP/CI hint — point-in-time comparisons live in the
+ *   reports list itself).
  */
-function isFreshReport(info) {
-  if (!info || typeof info !== "object") return false;
-  return info.md5_status === "match";
+function freshReportsForCell(cell) {
+  if (!cell || typeof cell !== "object") return [];
+  if (!cell.is_current) return [];
+  return Array.isArray(cell.reports) ? cell.reports.slice() : [];
 }
 
 /** Should the ⭐ "best CI" marker render in this cell?
@@ -2103,7 +2128,7 @@ const PURE = {
   computeInflightChunks,
   mergeTimeline,
   versionBadges,
-  isFreshReport,
+  freshReportsForCell,
   cellShowsBestCiStar,
 };
 
