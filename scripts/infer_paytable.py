@@ -48,8 +48,22 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))  # make fresh_slotlab importable as a script
 RAWDATA = Path(__import__("os").environ.get("SLOT_RAWDATA_ROOT", str(ROOT / "rawdata")))
 OUT_DIR = ROOT / "configs" / "paytables"
+
+# 2026-04-27: pay_id <-> symbol_id namespace fix. Previous regex-based
+# extraction (`pay_id = int(m[2])`) treated the symbol_id between
+# `:` and `(` in PayoutByPayline as the pay_id. That coincides on
+# M14-style machines (symbol "8" == pay_id "8") but broke on:
+#   - M120: symbol "109" -> pay_id "9" (suffix encoding)
+#   - M139: symbol "55"  -> pay_id "5"
+#   - M279: symbol "27905" -> pay_id "104" (jackpot tier alias)
+# Fleet impact: 533 / 852 (machine, mode) pairs had any line-pay
+# mismatch; 442 had >1% line mismatch (most at 100%). Fix: read the
+# authoritative pay_id from PayoutIdToWinAmount via the
+# round_classification helpers.
+from fresh_slotlab.round_classification import attribute_lines_to_pay_ids
 
 _PAYLINE_RE = re.compile(r"(-?\d+):(-?\d+)-(-?\d+)\(([^)]*)\)")
 # Name-based wild hint — used as a *secondary* signal only. Auto-inference
@@ -603,15 +617,25 @@ def _collect_raw(machine: str, mode: int, first_chunk_only: bool):
                         grid_symbol_freq[sym] += 1
                 bet = float(r.get("BetAmount") or 0)
                 piw = r.get("PayoutIdToWinAmount") or {}
-                for rec in pbp.split(";"):
-                    m = _PAYLINE_RE.match(rec.strip())
-                    if not m:
+                # Use the round-classification helper to resolve each
+                # line's pay_id from PayoutIdToWinAmount (authoritative)
+                # rather than the legacy `m[2]` symbol_id reading. Lines
+                # that can't be attributed (rare; only when multiple
+                # unaccounted pay_ids + multiple unmatched lines)
+                # surface as ``pay_id is None`` and are skipped from
+                # the bucket -- counted at the operator-quality level
+                # instead.
+                attributed_lines = attribute_lines_to_pay_ids(r)
+                for line_attr in attributed_lines:
+                    if line_attr.get("pay_id") is None:
                         continue
-                    line_id = int(m[1])
-                    pay_id = int(m[2])
-                    positions_raw = m[4]
-                    positions = [int(x) for x in positions_raw.split(",") if x.strip()]
-                    match_count = len(positions)
+                    line_id = line_attr["line_id"]
+                    try:
+                        pay_id = int(line_attr["pay_id"])
+                    except (TypeError, ValueError):
+                        continue
+                    positions = line_attr["positions"]
+                    match_count = line_attr["match_count"]
                     symbols = []
                     cells = []
                     for p in positions:

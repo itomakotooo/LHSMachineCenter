@@ -47,6 +47,25 @@ import argparse
 import json
 import sys
 from collections import Counter, defaultdict
+from pathlib import Path as _PathlibPath
+
+# Ensure fresh_slotlab is importable when invoked as a script
+# (no package install). The same trick is used in infer_paytable.py.
+_ROOT_FOR_IMPORT = _PathlibPath(__file__).resolve().parent.parent
+if str(_ROOT_FOR_IMPORT) not in sys.path:
+    sys.path.insert(0, str(_ROOT_FOR_IMPORT))
+
+# 2026-04-27: BCM target inference now uses an observed-at-peak signal
+# (cc=cycle_peak paid round -> immediate-next non-paid SpinType) as
+# the highest-priority signal. Prior heuristics (max(feature_win),
+# closest SpinType-win match) misfired on M260 / M279 / M266 etc where
+# a high-frequency mid-cycle feature (MoveSpin nudge, freespin)
+# dominates feature_win even though the actual BCM-cycle trigger is
+# a low-frequency Wheel ST=2.
+from fresh_slotlab.round_classification import (
+    detect_cycle_peak,
+    infer_bcm_target_spin_type,
+)
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -97,6 +116,9 @@ def _aggregate_machine(machine: str, mode: int, parse_chunk_response) -> dict | 
     spintype_rounds = Counter()
     spintype_paid = Counter()
     cc_resets_by_spintype = Counter()
+    # Signal C (2026-04-27): observed-at-cycle-peak SpinType counts.
+    # Walked per-robot via round_classification helper.
+    obs_at_peak_st: Counter = Counter()
     for cp in chunks:
         env = json.loads(cp.read_text(encoding="utf-8"))
         resp = env.get("response") or []
@@ -112,6 +134,16 @@ def _aggregate_machine(machine: str, mode: int, parse_chunk_response) -> dict | 
         # SpinType + CC tracking: raw round walk per robot.
         for robot in resp:
             rounds = _load_rounds(robot)
+            # Signal C: per-robot cycle peak observed-target inference.
+            # Uses the round-classification helper -- finds paid rounds
+            # at cc=cycle_peak and observes the immediate-next non-paid
+            # SpinType. cycle_peak threshold of 50 filters out machines
+            # whose CC is incidental (not a real BCM cycle).
+            _peak_value = detect_cycle_peak(rounds)
+            if _peak_value is not None and _peak_value >= 50:
+                _st, _cnt = infer_bcm_target_spin_type(rounds, _peak_value)
+                if _st is not None and _cnt > 0:
+                    obs_at_peak_st[_st] += _cnt
             prev_cc = None
             for r in rounds:
                 st = r.get("SpinType")
@@ -140,6 +172,7 @@ def _aggregate_machine(machine: str, mode: int, parse_chunk_response) -> dict | 
         "spintype_rounds": dict(spintype_rounds),
         "spintype_paid": dict(spintype_paid),
         "cc_resets_by_spintype": dict(cc_resets_by_spintype),
+        "obs_at_peak_st": dict(obs_at_peak_st),
     }
 
 
@@ -169,10 +202,35 @@ def _match_spintypes_to_features(agg: dict) -> list[dict]:
 
 
 def _infer_pair(agg: dict) -> dict:
-    """Two heuristics, cross-checked."""
+    """Three signals, cross-checked. Priority C > B > A.
+
+      * Signal C (observed-at-peak): paid round at cc=cycle_peak
+        followed by SpinType X -> X's feature is the BCM target.
+        Pure structural truth -- not affected by feature win
+        magnitude. Verified across M260/M279/M266 in 2026-04-27
+        investigation; matches operator's mechanical understanding.
+      * Signal B (max-feature-win heuristic): highest-win non-paid-
+        normal feature. Misfires when a high-frequency mid-cycle
+        feature dominates (M279 MoveSpin 170M >> Wheel 11M).
+      * Signal A (SpinType<->Feature win-delta match): closest-win
+        match. Same misfire pattern as B but worse on machines
+        with overlapping ST wins.
+    """
     feat_win = agg["feature_win"]
     if "BuffCollectionMap" not in feat_win:
         return {"applicable": False}
+
+    # Signal A: SpinType <-> Feature matching (computed first so we
+    # can use its st->feature mapping to label Signal C output).
+    matches = _match_spintypes_to_features(agg)
+    bonus_matches = [
+        m for m in matches
+        if m["feature"] not in PAID_NORMAL_FEATURES
+        and m["feature"] != "BuffCollectionMap"
+        and m["feature_win"] > 0
+    ]
+    bonus_matches.sort(key=lambda m: -m["feature_win"])
+    spintype_pair = bonus_matches[0]["feature"] if bonus_matches else None
 
     # Signal B: highest-non-normal-feature heuristic.
     sorted_feats = sorted(
@@ -185,23 +243,41 @@ def _infer_pair(agg: dict) -> dict:
     heuristic_pair = sorted_feats[0][0] if sorted_feats and sorted_feats[0][1] > 0 else None
     heuristic_win = sorted_feats[0][1] if sorted_feats else 0
 
-    # Signal A: SpinType ↔ Feature matching.
-    matches = _match_spintypes_to_features(agg)
-    # Exclude paid-normal features from the SpinType analysis
-    # candidates.
-    bonus_matches = [
-        m for m in matches
-        if m["feature"] not in PAID_NORMAL_FEATURES
-        and m["feature"] != "BuffCollectionMap"
-        and m["feature_win"] > 0
-    ]
-    bonus_matches.sort(key=lambda m: -m["feature_win"])
-    spintype_pair = bonus_matches[0]["feature"] if bonus_matches else None
+    # Signal C: observed-at-cycle-peak SpinType -> feature mapping.
+    # Use Signal A's match list to translate ST -> feature_name (the
+    # mapping is "feature whose total win is closest to this ST's
+    # observed win"). Threshold: 3 events to avoid noise on chunks
+    # with few cycle completions.
+    obs_at_peak_st = agg.get("obs_at_peak_st") or {}
+    obs_pair = None
+    obs_pair_evidence = 0
+    obs_top_st = None
+    if obs_at_peak_st:
+        obs_top_st, obs_top_count = max(obs_at_peak_st.items(), key=lambda kv: kv[1])
+        if obs_top_count >= 3:
+            for m in matches:
+                if (
+                    m["matched_spintype"] == obs_top_st
+                    and m["feature"] not in PAID_NORMAL_FEATURES
+                    and m["feature"] != "BuffCollectionMap"
+                ):
+                    obs_pair = m["feature"]
+                    obs_pair_evidence = obs_top_count
+                    break
 
-    # Confidence: both signals agree → high; only one candidate → high
-    # (nothing to disagree with); signals disagree → medium; no
-    # candidate → none.
-    if heuristic_pair is None and spintype_pair is None:
+    # Resolution: prefer Signal C (observed truth) when it has
+    # evidence. Fall back to B/A consensus.
+    if obs_pair:
+        pair = obs_pair
+        # High confidence if all three signals agree; medium if
+        # only Signal C fires; low if C disagrees with B/A.
+        if obs_pair == heuristic_pair == spintype_pair:
+            confidence = "high"
+        elif obs_pair == heuristic_pair or obs_pair == spintype_pair:
+            confidence = "high"  # 2 of 3 agree; obs_pair is structural
+        else:
+            confidence = "medium"  # only obs_pair, B/A disagree
+    elif heuristic_pair is None and spintype_pair is None:
         confidence = "none"
         pair = None
     elif heuristic_pair == spintype_pair:
@@ -218,6 +294,10 @@ def _infer_pair(agg: dict) -> dict:
         "applicable": True,
         "pair": pair,
         "confidence": confidence,
+        "obs_pair": obs_pair,
+        "obs_pair_evidence": obs_pair_evidence,
+        "obs_top_st": obs_top_st,
+        "obs_at_peak_st": dict(obs_at_peak_st),
         "heuristic_pair": heuristic_pair,
         "heuristic_win": heuristic_win,
         "spintype_pair": spintype_pair,
