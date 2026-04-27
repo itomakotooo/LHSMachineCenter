@@ -16,11 +16,16 @@ Hard rules:
   - Strip layout LOCKED (36 stops, blank/non-blank alternation, wild only
     on R1+R3, boosters only on R2)
   - Mode RTP: 1=95%, 7=85% (standard); 2=300%, 5=500% (lucky)
-  - Mode 7 = mode 1 - 略砍小奖派生:
+  - Mode 7 = mode 1 - 砍小奖派生:
     - high7 + booster + wild weights frozen to mode 1 (大奖 + brand 不动)
-    - bar1/2/3/7bar weight ranges [mode 1 × 0.80, mode 1 × 0.95] (略砍 uniform)
-  - Mode 2: weight floors ≥ mode 1 for all non-blank (lucky every pay frequency ↑)
-  - Mode 5: weight floors ≥ mode 2 + booster TIER shift (more grand/major)
+    - blank weight FLOORED ≥ mode 1 (else big-win density inflates → RTP UP not DOWN)
+    - bar1/2/3/7bar weight ranges [mode 1 × 0.40, mode 1 × 0.85] (wide cut)
+  - Mode 2: weight floors ≥ mode 1 for non-blank big-win/booster only
+    + blank weight CEILED ≤ mode 1 (lucky must be denser hits)
+    + bar weights CEILED ≤ mode 1 × 1.6 (prevent bar over-loading)
+  - Mode 5: bar frozen = mode 2 (preserve hit rate via Bar density);
+    big-win/booster floored ≥ mode 2 + grand floor (super-lucky monotonic);
+    blank CEILED ≤ mode 2.
 
 Parameterization (per mode):
   - R1 + R3: 7 families each (blank, wild, high7, 7bar, 3bar, 2bar, 1bar)
@@ -90,109 +95,126 @@ WEIGHT_BOUNDS_BY_MODE = {1: WEIGHT_BOUNDS_STANDARD, 7: WEIGHT_BOUNDS_STANDARD,
 EXPERIENCE_TARGETS = {
     1: {
         "total_rtp_pct": 95.0, "total_rtp_tol_pp": 1.0,
-        "rtp_weight": 12.0,
-        "hit_rate_target": 0.16, "hit_rate_weight": 100.0,    # accept ~16%
-        "wild_on_payline_band": (0.05, 0.18),
+        "rtp_weight": 25.0,
+        "hit_rate_target": 0.16, "hit_rate_weight": 150.0,
+        "wild_on_payline_band": (0.05, 0.16),
         "wild_signature_weight": 500.0,
-        "booster_r2_band": (0.07, 0.18),
-        "booster_signature_weight": 600.0,    # KEY brand for "100x Diamond"
+        # Booster on R2 brand: visible but NOT dominant. 5-10% means
+        # 1 booster every 10-20 spins on R2 payline.
+        "booster_r2_band": (0.05, 0.10),
+        "booster_signature_weight": 300.0,
+        # grand alone (pay_id 8) was 1 in 633 → 16% RTP dominant. Cap to 1 in 2500.
+        "pay_freq_caps": {"8": 0.0004},
+        # 1000x top jackpot was 1 in 13k → too frequent. Cap to 1 in 60k.
+        "top_jackpot_min_spins": 60000,
         "family_share_bands": {
-            # of total RTP. Bar tier dominates base, high7 + booster_amplified provide wow.
+            # of total RTP. Bar tier ~30-45%, high7 + booster_alone share rest.
             "high7":   (0.05, 0.25),
             "7bar":    (0.05, 0.25),
-            "bar_tier": (0.20, 0.55),  # 1bar+2bar+3bar combined
-            "booster_alone": (0.05, 0.25),  # pay_id 8/9 (booster center alone)
-            "wild_amplified": (0.0, 0.20),  # pay_id 102/103/104 (pure-wild + booster)
+            "bar_tier": (0.20, 0.45),    # 1bar+2bar+3bar combined — tighter cap
+            "booster_alone": (0.10, 0.30),  # pay_id 8/9 — push higher
+            "wild_amplified": (0.0, 0.20),  # pay_id 102/103/104
         },
-        "per_reel_blank_variance_strength": 25.0,
+        "per_reel_blank_variance_strength": 15.0,
         "per_reel_density_lo_by_family": {
             "wild": 0.005, "high7": 0.005,
-            "7bar": 0.01, "3bar": 0.01, "2bar": 0.01, "1bar": 0.01,
-            "mini": 0.005, "minor": 0.005, "major": 0.005, "grand": 0.001,
+            "7bar": 0.015, "3bar": 0.015, "2bar": 0.015, "1bar": 0.02,    # bars ≥1.5-2% on each reel
+            "mini": 0.005, "minor": 0.005, "major": 0.005, "grand": 0.0015,
         },
         "per_reel_density_hi_by_family": {
-            "wild": 0.10, "high7": 0.20,
-            "7bar": 0.20, "3bar": 0.20, "2bar": 0.20, "1bar": 0.30,
-            "mini": 0.10, "minor": 0.08, "major": 0.08, "grand": 0.02,
+            "wild": 0.07, "high7": 0.06,
+            "7bar": 0.13, "3bar": 0.13, "2bar": 0.13, "1bar": 0.18,    # tighter bar caps
+            "mini": 0.06, "minor": 0.05, "major": 0.03, "grand": 0.004,
         },
-        "uniformity_ratio_cap": {  # symbols on multiple reels
-            "wild": 2.0, "high7": 3.0,  # cross-reel uniformity for top-tier
-        },
-        "base_cv_target": 11.0,    # M37 has 100×/1000× booster path; CV 6-9 unreachable structurally
+        "uniformity_ratio_cap": {"wild": 2.0, "high7": 2.0},
+        "base_cv_target": 9.0,
     },
     7: {
-        "total_rtp_pct": 85.0, "total_rtp_tol_pp": 1.5,
-        "rtp_weight": 12.0,
-        "hit_rate_target": 0.10, "hit_rate_weight": 100.0,
-        "wild_on_payline_band": (0.03, 0.18),
-        "booster_r2_band": (0.05, 0.18),
+        "total_rtp_pct": 85.0, "total_rtp_tol_pp": 2.0,
+        "rtp_weight": 30.0,    # very strict for mode 7
+        "hit_rate_target": 0.13, "hit_rate_weight": 80.0,
+        "top_jackpot_min_spins": 70000,    # slightly relaxed vs m1 (60k); not overly frequent
+        "pay_freq_caps": {"8": 0.0005},    # grand alone cap similar to m1
+        "wild_on_payline_band": (0.03, 0.16),
+        "booster_r2_band": (0.04, 0.10),
         "family_share_bands": {
             "high7":   (0.03, 0.25),
             "7bar":    (0.03, 0.25),
-            "bar_tier": (0.15, 0.55),
-            "booster_alone": (0.05, 0.30),
+            "bar_tier": (0.10, 0.40),    # tighter cap (bars cut)
+            "booster_alone": (0.10, 0.40),    # naturally rises when bars cut
             "wild_amplified": (0.0, 0.20),
         },
-        "per_reel_blank_variance_strength": 25.0,
+        "per_reel_blank_variance_strength": 5.0,    # M37 R2 = booster reel (more blank natural)
         "per_reel_density_lo_by_family": {
             "wild": 0.005, "high7": 0.005,
             "7bar": 0.005, "3bar": 0.005, "2bar": 0.005, "1bar": 0.005,
             "mini": 0.003, "minor": 0.003, "major": 0.003, "grand": 0.001,
         },
         "per_reel_density_hi_by_family": {
-            "wild": 0.10, "high7": 0.20,
-            "7bar": 0.20, "3bar": 0.20, "2bar": 0.20, "1bar": 0.30,
-            "mini": 0.10, "minor": 0.10, "major": 0.10, "grand": 0.02,
+            "wild": 0.07, "high7": 0.06,    # match mode 1 (frozen weight, blank floored)
+            "7bar": 0.12, "3bar": 0.12, "2bar": 0.12, "1bar": 0.16,    # tighter bar caps for cut
+            "mini": 0.06, "minor": 0.05, "major": 0.03, "grand": 0.004,
         },
         "uniformity_ratio_cap": {"wild": 2.0, "high7": 3.0},
     },
     2: {
         "total_rtp_pct": 300.0, "total_rtp_tol_pp": 20.0,
-        "hit_rate_target": 0.23, "hit_rate_weight": 60.0,
-        "wild_on_payline_band": (0.05, 0.30),
-        "booster_r2_band": (0.10, 0.30),
+        "rtp_weight": 8.0,
+        "hit_rate_target": 0.23, "hit_rate_weight": 250.0,    # very strict
+        "top_jackpot_min_spins": 25000,
+        "pay_freq_caps": {"8": 0.0010},    # grand alone 1 in 1000 (3x m1)
+        "wild_on_payline_band": (0.06, 0.18),
+        "wild_signature_weight": 200.0,
+        "booster_r2_band": (0.08, 0.16),
+        "booster_signature_weight": 200.0,
         "family_share_bands": {
-            "high7":   (0.03, 0.25),
+            "high7":   (0.05, 0.30),
             "7bar":    (0.03, 0.25),
-            "bar_tier": (0.15, 0.55),
-            "booster_alone": (0.10, 0.40),
-            "wild_amplified": (0.0, 0.30),
+            "bar_tier": (0.15, 0.45),    # bars naturally still dominant at 3x lucky
+            "booster_alone": (0.15, 0.45),    # push high
+            "wild_amplified": (0.0, 0.10),    # structurally low (reroll block on grand+wild)
         },
-        "per_reel_blank_variance_strength": 25.0,
+        "per_reel_blank_variance_strength": 5.0,
         "per_reel_density_lo_by_family": {
             "wild": 0.01, "high7": 0.01,
             "7bar": 0.01, "3bar": 0.01, "2bar": 0.01, "1bar": 0.01,
-            "mini": 0.005, "minor": 0.005, "major": 0.005, "grand": 0.005,
+            "mini": 0.008, "minor": 0.008, "major": 0.008, "grand": 0.003,
         },
         "per_reel_density_hi_by_family": {
-            "wild": 0.15, "high7": 0.22,
-            "7bar": 0.22, "3bar": 0.22, "2bar": 0.22, "1bar": 0.32,
-            "mini": 0.12, "minor": 0.12, "major": 0.12, "grand": 0.04,
+            "wild": 0.10, "high7": 0.16,    # high7 can grow more in lucky
+            "7bar": 0.16, "3bar": 0.16, "2bar": 0.16, "1bar": 0.22,    # tighter (was up to 0.32)
+            "mini": 0.10, "minor": 0.10, "major": 0.10, "grand": 0.012,
         },
         "uniformity_ratio_cap": {"wild": 2.5, "high7": 3.0},
     },
     5: {
-        "total_rtp_pct": 500.0, "total_rtp_tol_pp": 30.0,
-        "hit_rate_target": 0.23, "hit_rate_weight": 150.0,
-        "wild_on_payline_band": (0.05, 0.32),
-        "booster_r2_band": (0.10, 0.35),
+        "total_rtp_pct": 500.0, "total_rtp_tol_pp": 40.0,    # super-lucky wide tol
+        "rtp_weight": 6.0,
+        # Mode 5 super-lucky: hit can rise to ~35% (everything denser → more pays)
+        "hit_rate_target": 0.32, "hit_rate_weight": 150.0,
+        "top_jackpot_min_spins": 10000,    # super-lucky 1 in 10k
+        "pay_freq_caps": {"8": 0.0015},    # grand alone 1 in 666
+        "wild_on_payline_band": (0.08, 0.22),
+        "wild_signature_weight": 200.0,
+        "booster_r2_band": (0.12, 0.28),    # super-lucky boosters visible (brand)
+        "booster_signature_weight": 200.0,
         "family_share_bands": {
-            "high7":   (0.03, 0.25),
+            "high7":   (0.05, 0.30),
             "7bar":    (0.03, 0.25),
-            "bar_tier": (0.10, 0.55),
-            "booster_alone": (0.10, 0.45),
-            "wild_amplified": (0.0, 0.35),
+            "bar_tier": (0.20, 0.50),    # bars naturally still big in super-lucky
+            "booster_alone": (0.10, 0.40),
+            "wild_amplified": (0.0, 0.10),
         },
-        "per_reel_blank_variance_strength": 25.0,
+        "per_reel_blank_variance_strength": 5.0,
         "per_reel_density_lo_by_family": {
-            "wild": 0.01, "high7": 0.01,
+            "wild": 0.015, "high7": 0.015,
             "7bar": 0.01, "3bar": 0.01, "2bar": 0.01, "1bar": 0.01,
-            "mini": 0.003, "minor": 0.005, "major": 0.005, "grand": 0.01,  # super-lucky pushes grand
+            "mini": 0.008, "minor": 0.008, "major": 0.008, "grand": 0.005,
         },
         "per_reel_density_hi_by_family": {
-            "wild": 0.18, "high7": 0.22,
-            "7bar": 0.22, "3bar": 0.22, "2bar": 0.22, "1bar": 0.32,
-            "mini": 0.10, "minor": 0.12, "major": 0.15, "grand": 0.06,  # grand higher in m5
+            "wild": 0.13, "high7": 0.18,    # high7 can grow more in super-lucky
+            "7bar": 0.16, "3bar": 0.16, "2bar": 0.16, "1bar": 0.22,
+            "mini": 0.12, "minor": 0.12, "major": 0.12, "grand": 0.020,
         },
         "uniformity_ratio_cap": {"wild": 3.0, "high7": 3.0},
     },
@@ -363,6 +385,28 @@ def evaluate_candidate(fr_weights, strip, evaluator, paytable, exp_targets):
         if actual_cv > cv_target:
             cost += 80.0 * (actual_cv - cv_target) ** 2
 
+    # Per-pay frequency caps (e.g., grand alone 100× max 1 in 5000)
+    pay_freq_caps = exp_targets.get("pay_freq_caps", {})
+    for pid, max_freq in pay_freq_caps.items():
+        actual_freq = pred.get("pay_hits", {}).get(pid, 0.0)
+        if actual_freq > max_freq:
+            rel_over = (actual_freq - max_freq) / max_freq
+            cost += 1000.0 * (rel_over * 100) ** 2
+
+    # Top jackpot 1000× minimum spin gap
+    top_jackpot_min_spins = exp_targets.get("top_jackpot_min_spins")
+    if top_jackpot_min_spins is not None:
+        # P(top jackpot) = (high7+wild)_R1 × grand_R2 × (high7+wild)_R3
+        p_top = (
+            (marg[0].get("high7", 0) + marg[0].get("wild", 0))
+            * marg[1].get("grand", 0)
+            * (marg[2].get("high7", 0) + marg[2].get("wild", 0))
+        )
+        max_p = 1.0 / top_jackpot_min_spins
+        if p_top > max_p:
+            rel_over = (p_top - max_p) / max_p
+            cost += 1500.0 * (rel_over * 100) ** 2
+
     return cost, pred, family_rtp, wild_p, booster_p, weights
 
 
@@ -446,8 +490,26 @@ def print_diagnostics(label, fr_weights, strip, evaluator, paytable, exp_targets
         v = family_rtp.get(f, 0.0)
         share = v / total * 100 if total > 0 else 0
         print(f"       {f:18s}: {v:6.2f}pp ({share:5.1f}%)")
-    print(f"    Per-reel density:")
+    # Per-pay frequency table — "1 in N spins" + RTP contrib
+    print(f"    Per-pay frequency:")
+    print(f"       {'pay_id':>6s} {'freq':>10s} {'1 in':>9s} {'rtp_pp':>7s}")
+    pay_hits = pred.get("pay_hits", {})
+    pay_rtp = pred.get("pay_rtp", {})
+    for pid in sorted(pay_hits.keys(), key=lambda p: int(p)):
+        f = pay_hits[pid]
+        rtp_pp = pay_rtp.get(pid, 0) * 100
+        one_in = (1 / f) if f > 0 else float("inf")
+        print(f"       {pid:>6s} {f:10.6f} {one_in:9.0f} {rtp_pp:7.3f}")
+    # Top jackpot freq (high7|wild on R1+R3 + grand on R2)
     densities = per_reel_family_density(weights, strip)
+    p_top = (
+        (densities.get(("high7", 0), 0) + densities.get(("wild", 0), 0))
+        * densities.get(("grand", 1), 0)
+        * (densities.get(("high7", 2), 0) + densities.get(("wild", 2), 0))
+    )
+    top_one_in = (1 / p_top) if p_top > 0 else float("inf")
+    print(f"    Top jackpot 1000× (high7|wild × grand × high7|wild): 1 in {top_one_in:,.0f} spins")
+    print(f"    Per-reel density:")
     fams = ("blank", "wild", "high7", "7bar", "3bar", "2bar", "1bar", "mini", "minor", "major", "grand")
     print(f"       {'family':12s} R1     R2     R3")
     for f in fams:
@@ -477,6 +539,13 @@ def main(modes_to_run=(1, 7)):
         # Bar weights with range constraint
         [(s, r) for s in BAR_SYMBOLS for r in range(3) if s in SYMBOLS_BY_REEL[r]]
     )
+    BLANK_KEYS = [("blank", r) for r in range(3)]
+    BAR_KEYS = [(s, r) for s in BAR_SYMBOLS for r in range(3) if s in SYMBOLS_BY_REEL[r]]
+    BIG_WIN_KEYS = (
+        [("high7", r) for r in range(3)] +
+        [("wild", r) for r in (0, 2)] +
+        [(b, 1) for b in ("mini", "minor", "major", "grand")]
+    )
 
     for mode in modes_to_run:
         weights_path = _ROOT / "slot_designer" / "weights" / "M37" / f"mode_{mode}" / "weights.json"
@@ -487,37 +556,72 @@ def main(modes_to_run=(1, 7)):
         weight_floors = None
         weight_ceilings = None
         if mode == 7 and mode1_all_weights is not None:
-            frozen_weights = {k: mode1_all_weights[k] for k in BIGWIN_KEYS_M7 if k in mode1_all_weights}
+            # Mode 7 = mode 1 砍小奖派生:
+            # bars cut hard [m1×0.40, m1×0.85] (small wins ↓ frequency)
+            # big-win in TIGHT band [m1×0.85, m1×1.05] (≈ density preserved when total drops
+            #   from bar cut — without this, frozen big-win density INFLATES, RTP rises)
+            # blank ≥ m1 (prevents big-win from inflating further)
             weight_floors = {
-                k: max(1, int(mode1_all_weights[k] * 0.80))
+                k: max(1, int(mode1_all_weights[k] * 0.40))
                 for k in SHAPE_ANCHOR_KEYS_M7 if k in mode1_all_weights
             }
             weight_ceilings = {
-                k: max(1, int(mode1_all_weights[k] * 0.95))
+                k: max(1, int(mode1_all_weights[k] * 0.85))
                 for k in SHAPE_ANCHOR_KEYS_M7 if k in mode1_all_weights
             }
-            print(f"\n=== Mode {mode}: frozen big-win (high7+wild+boosters) = mode 1; bar [m1×0.80, ×0.95] ===")
+            # Big-win wide-tolerance preservation (density approximately preserved)
+            for k in BIGWIN_KEYS_M7:
+                if k in mode1_all_weights:
+                    weight_floors[k] = max(1, int(mode1_all_weights[k] * 0.80))
+                    weight_ceilings[k] = max(1, int(mode1_all_weights[k] * 1.10))
+            # Blank floor = mode 1 blank
+            for k in BLANK_KEYS:
+                if k in mode1_all_weights:
+                    weight_floors[k] = mode1_all_weights[k]
+            print(f"\n=== Mode {mode}: bar [m1×0.40, m1×0.85]; big-win [m1×0.80, m1×1.10]; blank ≥ mode 1 ===")
         elif mode == 5 and mode2_all_weights is not None:
-            # M37 mode 5 design: hit ≈ mode 2 (Bar frozen) + per-hit bigger
-            # (big-win/boosters grow). NOT all-weights-floor because that
-            # would inflate hit too.
-            BIG_WIN_KEYS_M5 = (
-                [("high7", r) for r in range(3)] +
-                [("wild", r) for r in (0, 2)] +
-                [(b, 1) for b in ("mini", "minor", "major", "grand")]
-            )
-            BAR_KEYS_M5 = [(s, r) for s in BAR_SYMBOLS for r in range(3) if s in SYMBOLS_BY_REEL[r]]
-            # Frozen: Bar weights = mode 2 (preserve hit rate via Bar density)
-            frozen_weights = {k: mode2_all_weights[k] for k in BAR_KEYS_M5 if k in mode2_all_weights}
-            # Floor: big-win + booster ≥ mode 2 (super-lucky bigger wins)
-            weight_floors = {k: mode2_all_weights[k] for k in BIG_WIN_KEYS_M5 if k in mode2_all_weights}
-            print(f"\n=== Mode {mode}: bar frozen = mode 2 (hit preserved); big-win/booster floors = mode 2 (super-lucky bigger wins) ===")
+            # Mode 5 super-lucky design: m2 weights × per-family scale-up.
+            # Bars ≥ m2 (slight grow allowed), big-win + booster ≥ m2 × 1.5 (real lift),
+            # grand ≥ m2 (top_jackpot constraint will let optimizer push).
+            # Blank ≥ m2 × 0.6 (allow blank to shrink ~40% to lift density baseline).
+            weight_floors = {}
+            # Bars: floor at m2 (no shrink, but allow growth)
+            for k in BAR_KEYS:
+                if k in mode2_all_weights:
+                    weight_floors[k] = mode2_all_weights[k]
+            # Big-win (wild + high7): floor m2 × 1.3
+            for sym in ("wild", "high7"):
+                for r in range(3):
+                    k = (sym, r)
+                    if k in mode2_all_weights:
+                        weight_floors[k] = max(1, int(mode2_all_weights[k] * 1.3))
+            # Booster (mini/minor/major): floor m2 × 1.5
+            for booster_sym in ("mini", "minor", "major"):
+                k = (booster_sym, 1)
+                if k in mode2_all_weights:
+                    weight_floors[k] = max(1, int(mode2_all_weights[k] * 1.5))
+            # Grand: floor = m2 (top_jackpot constraint will let it push)
+            grand_key = ("grand", 1)
+            if grand_key in mode2_all_weights:
+                weight_floors[grand_key] = mode2_all_weights[grand_key]
+            # Blank: floor = m2 × 0.6 (allow shrinkage but with floor)
+            weight_ceilings = {}
+            for k in BLANK_KEYS:
+                if k in mode2_all_weights:
+                    weight_floors[k] = max(1, int(mode2_all_weights[k] * 0.6))
+            print(f"\n=== Mode {mode}: bar ≥ m2; big-win ≥ m2×1.3; booster ≥ m2×1.5; grand ≥ m2; blank ≥ m2×0.6 ===")
         elif mode == 2 and mode1_all_weights is not None:
-            weight_floors = {
-                (sym, r): w for (sym, r), w in mode1_all_weights.items()
-                if sym not in ("blank",)
+            # Mode 2 lucky: big-win/booster ≥ mode 1 (lucky every pay frequency ↑),
+            # bar capped ≤ m1 × 1.6 (prevent over-loading), blank ≤ mode 1.
+            weight_floors = {k: mode1_all_weights[k] for k in BIG_WIN_KEYS if k in mode1_all_weights}
+            weight_ceilings = {
+                k: max(1, int(mode1_all_weights[k] * 1.6))
+                for k in BAR_KEYS if k in mode1_all_weights
             }
-            print(f"\n=== Mode {mode}: lucky weight floors = mode 1's (non-blank, lucky monotonic) ===")
+            for k in BLANK_KEYS:
+                if k in mode1_all_weights:
+                    weight_ceilings[k] = mode1_all_weights[k]
+            print(f"\n=== Mode {mode}: big-win/booster ≥ mode 1; bar ≤ m1×1.6; blank ≤ mode 1 ===")
         else:
             print(f"\n=== Mode {mode} M37 player-experience tune ===")
 
@@ -540,10 +644,11 @@ def main(modes_to_run=(1, 7)):
         existing["mode"] = mode
         existing["weights"] = weights
         existing["_notes"] = [
-            f"M37 mode {mode} v2 (2026-04-26) — player-experience direct tune.",
+            f"M37 mode {mode} v3 (2026-04-27) — player-experience direct tune.",
             "Per-family per-reel uniform weights; goal-oriented soft penalties.",
-            "Mode 7 frozen: high7 + wild + boosters; bar weights ∈ [m1×0.80, ×0.95].",
-            "Mode 2 weight_floors = mode 1; Mode 5 weight_floors = mode 2 (lucky monotonic).",
+            "Mode 7: bar [m1×0.40, m1×0.85]; big-win [m1×0.80, m1×1.10]; blank ≥ m1.",
+            "Mode 2: big-win/booster ≥ m1; bar ≤ m1×1.6; blank ≤ m1 (lucky denser hits).",
+            "Mode 5: bar ≥ m2; big-win ≥ m2×1.3; booster ≥ m2×1.5; grand ≥ m2; blank ≥ m2×0.6.",
             f"RTP {pred['rtp_pct']:.3f}%, hit {pred['hit_rate']:.3%}, CV {pred['cv']:.2f}, wild {wild_p*100:.2f}%, booster_R2 {booster_p*100:.2f}%",
         ]
         existing["_tuned_summary"] = {
@@ -553,7 +658,7 @@ def main(modes_to_run=(1, 7)):
             "wild_on_payline": wild_p,
             "booster_on_r2": booster_p,
             "family_rtp_pp": {f: round(v, 3) for f, v in family_rtp.items()},
-            "method": "player_experience_per_family_per_reel_uniform_v2",
+            "method": "player_experience_per_family_per_reel_uniform_v3",
         }
         weights_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"  wrote {weights_path.relative_to(_ROOT)}")

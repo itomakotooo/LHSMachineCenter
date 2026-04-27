@@ -2,8 +2,14 @@
 
 > **上游**：[`DESIGN.md`](DESIGN.md)（Lightning-Link / Red-White-Blue 混血原型研究）；`project_slot_designer_mode_rtp_invariants.md`（跨机台 mode RTP 规则）；`project_slot_designer_hit_rate_deviation.md`（派生 mode hit rate 带宽规则）
 > **下游**：每 mode `mode_<N>/weights.json`（实现层）；`M37_weights_reference.csv`（策划速查表）
-> **状态**：2026-04-24 设计稿 **v1 shipped**（4 mode tuned + verified）
-> **上游 bug 修复**：同次 ship 中修了 `apply_counts` drift bug（大负 diff 在 min_weight clamp 下丢 -7 → mode 5 ghost 6.7pp RTP gap；见 tests/test_tuner.py）
+> **状态**：2026-04-27 设计稿 **v3 shipped**（4 mode re-tuned + verified all-green）
+> **v3 关键改进** vs v1：
+> - **goal-oriented soft penalty cost** 替原 family-scale frozen approach（`scripts/tune_m37.py` v3）
+> - **Mode 7 不再 frozen big-win weights** — 用 [m1×0.80, m1×1.10] 弹性带 + bar [m1×0.40, m1×0.85] 大切，blank floored ≥ m1（防止 frozen 下 R2 total 缩 → grand 密度膨胀 → RTP 反升）
+> - **Mode 2 加 bar 上限 [m1×1.6]** — 防优化器把 bars 拉爆 → hit rate 41% 失控
+> - **Mode 5 用 m2 base + 全家 scale-up** — bar ≥ m2, big-win ≥ m2×1.3, booster ≥ m2×1.5, blank ≥ m2×0.6
+> - **per-pay frequency 强制约束**（pay_freq_caps + top_jackpot_min_spins）防 grand alone / 1000× 顶奖过频
+> - **`scripts/verify_m37_design.py`** 11 类硬验证 GREEN（RTP/HIT/WILD/BOOSTER/SHARE/DENSITY/BLANK-VAR/BASE-CV/MODE7-BIGWIN/MODE7-CUT/LUCKY-MONO）
 
 ---
 
@@ -67,19 +73,31 @@ Reels 1+3 的 wild **紧邻 high7**（pos 1=wild, pos 3=high7）→ window 经�
 
 > 策划速查：打开 `M37_weights_reference.csv` Section B 看 4 mode 并排权重（CSV 可贴 Excel）。Source of truth 仍是 `mode_<N>/weights.json`。
 
-Post-tune 实际 analytic 数字（`python -m slot_designer.devtools.analytic_rtp`）：
+Post-tune v3 (2026-04-27) 实际 analytic 数字（`python slot_designer/scripts/verify_m37_design.py`）：
 
 | Mode | RTP | Hit rate | Per-hit avg | CV | 顶奖 1000× (1 in X spins) |
 |---|---|---|---|---|---|
-| 1 | **94.95%** | 15.17% | 6.26× | 6.68 | ~278k |
-| 2 | **299.77%** | 22.99% | 13.04× | 5.39 | ~46k |
-| 5 | **499.99%** | 22.65% | 22.07× | 4.58 | ~25k |
-| 7 | **84.99%** | 10.36% | 8.20× | 7.52 | ~267k |
+| 1 | **94.22%** | 20.68% | 4.56× | 8.94 | ~62k |
+| 2 | **293.93%** | 27.10% | 10.85× | 4.73 | ~25k |
+| 5 | **497.90%** | 37.08% | 13.43× | 3.65 | ~10k |
+| 7 | **84.92%** | 16.81% | 5.05× | 9.48 | ~70k |
 
-**关键变化**：
-- Mode 2 vs 1：hit ×1.52，per-hit ×2.08 → 整体体验：**打击频率升 + 每 win 更厚**
-- Mode 5 vs 2：hit 持平（×0.99），per-hit ×1.69 → 整体体验：**打击频率不变，但每 win 显著厚**
-- Mode 7 vs 1：hit ×0.68，per-hit ×1.31 → 整体体验：**打击稀，但每 win 略厚**（冷但不寡淡）
+**关键变化**（v3 player-experience direct）：
+- Mode 2 vs 1：hit ×1.31，per-hit ×2.38 → 整体体验：**打击频率升 + 每 win 更厚**
+- Mode 5 vs 2：hit ×1.37，per-hit ×1.24 → 整体体验：**打击频率明显升 + 每 win 也升**（全方位 super-lucky）
+- Mode 7 vs 1：hit ×0.81，per-hit ×1.11 → 整体体验：**打击稍稀（小奖少了），每 win 略厚**
+
+**big-win 频率（pay_id 1+8+102+103+104 sum）**：
+- Mode 1: 1 in 320 spins
+- Mode 7: 1 in 388 spins (略减，bar 切的副作用)
+- Mode 2: 1 in 124 spins (×2.6 vs m1)
+- Mode 5: 1 in 37 spins (×8.7 vs m1, ×3.3 vs m2 — super-lucky 核心特征)
+
+**顶奖 1000× 阶梯**（玩家叙事）：
+- m1 (~62k spins) — 1 周连续玩 1 小时/天 才有 1 次的级别（rare，"梦"）
+- m7 (~70k spins) — 比 m1 略稀（mode 7 不是 jackpot 时段）
+- m2 (~25k spins) — lucky tier，两小时玩一次还是有可能撞上的级别
+- m5 (~10k spins) — super-lucky，半小时玩 grand-on-screen 频率明显，1000× session 内可期
 
 ---
 

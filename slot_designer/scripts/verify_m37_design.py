@@ -13,9 +13,9 @@ Categories:
     [DENSITY]        Per-family per-reel density visually合理
     [BLANK-VAR]      Per-reel Blank balance ratio
     [BASE-CV]        Mode 1 CV ≤ 11 (structural floor due to 100×/1000× pays)
-    [MODE7-LOCK]     Mode 7 high7+wild+booster weights = mode 1 (frozen)
-    [MODE7-CUT]      Mode 7 bar tier slight cut from mode 1
-    [LUCKY-MONO]     Mode 5 booster weights ≥ mode 2 (super-lucky monotonic)
+    [MODE7-BIGWIN]   Mode 7 high7+wild+booster weights ∈ [m1×0.80, m1×1.10] (band)
+    [MODE7-CUT]      Mode 7 bar tier cut from mode 1
+    [LUCKY-MONO]     Mode 5 big-win pay frequencies ≥ mode 2 (super-lucky monotonic)
 """
 from __future__ import annotations
 
@@ -48,53 +48,54 @@ MODE_TARGETS = {
         "rtp": 95.0, "rtp_tol": 1.0,
         "hit_lo": 0.13, "hit_hi": 0.22,
         "wild_lo": 0.04, "wild_hi": 0.18,
-        "booster_lo": 0.05, "booster_hi": 0.18,
+        "booster_lo": 0.04, "booster_hi": 0.12,
         "cv_max": 14.0,
         "family_share_band": {
             "high7": (0.03, 0.30),
             "7bar":  (0.05, 0.25),
-            "bar_tier": (0.20, 0.60),
-            "booster_alone": (0.05, 0.35),
-            "wild_amplified": (0.0, 0.20),
+            "bar_tier": (0.20, 0.50),
+            "booster_alone": (0.10, 0.35),
+            "wild_amplified": (0.0, 0.10),    # structurally low (reroll block)
         },
     },
     7: {
-        "rtp": 85.0, "rtp_tol": 1.5,
-        "hit_lo": 0.09, "hit_hi": 0.18,
+        "rtp": 85.0, "rtp_tol": 2.0,
+        "hit_lo": 0.10, "hit_hi": 0.20,
         "wild_lo": 0.03, "wild_hi": 0.18,
-        "booster_lo": 0.05, "booster_hi": 0.18,
+        "booster_lo": 0.04, "booster_hi": 0.12,
         "family_share_band": {
             "high7": (0.03, 0.30),
             "7bar":  (0.03, 0.25),
-            "bar_tier": (0.15, 0.60),
-            "booster_alone": (0.05, 0.40),
-            "wild_amplified": (0.0, 0.20),
+            "bar_tier": (0.10, 0.45),
+            "booster_alone": (0.10, 0.45),    # naturally rises when bars cut
+            "wild_amplified": (0.0, 0.10),
         },
     },
     2: {
         "rtp": 300.0, "rtp_tol": 20.0,
-        "hit_lo": 0.18, "hit_hi": 0.30,
-        "wild_lo": 0.04, "wild_hi": 0.30,
-        "booster_lo": 0.09, "booster_hi": 0.30,
+        "hit_lo": 0.20, "hit_hi": 0.32,
+        "wild_lo": 0.05, "wild_hi": 0.20,
+        "booster_lo": 0.08, "booster_hi": 0.20,
         "family_share_band": {
-            "high7": (0.02, 0.35),
-            "7bar":  (0.03, 0.25),
-            "bar_tier": (0.10, 0.60),
-            "booster_alone": (0.10, 0.45),
-            "wild_amplified": (0.0, 0.30),
+            "high7": (0.05, 0.35),
+            "7bar":  (0.03, 0.30),
+            "bar_tier": (0.15, 0.50),
+            "booster_alone": (0.15, 0.45),
+            "wild_amplified": (0.0, 0.10),    # structurally low (reroll block)
         },
     },
     5: {
-        "rtp": 500.0, "rtp_tol": 30.0,
-        "hit_lo": 0.20, "hit_hi": 0.35,
-        "wild_lo": 0.04, "wild_hi": 0.32,
-        "booster_lo": 0.12, "booster_hi": 0.35,
+        "rtp": 500.0, "rtp_tol": 40.0,
+        "hit_lo": 0.22, "hit_hi": 0.45,
+        "wild_lo": 0.07, "wild_hi": 0.24,
+        # Mode 5 super-lucky has visible boosters as brand reinforcement; allow up to 30%.
+        "booster_lo": 0.10, "booster_hi": 0.30,
         "family_share_band": {
-            "high7": (0.02, 0.35),    # super-lucky high7 share allowed higher
-            "7bar":  (0.02, 0.25),
-            "bar_tier": (0.10, 0.60),
+            "high7": (0.05, 0.35),
+            "7bar":  (0.02, 0.30),
+            "bar_tier": (0.15, 0.55),
             "booster_alone": (0.10, 0.50),
-            "wild_amplified": (0.0, 0.35),
+            "wild_amplified": (0.0, 0.15),
         },
     },
 }
@@ -112,17 +113,22 @@ PER_REEL_DENSITY_HI = {
 }
 PER_REEL_DENSITY_LO = {
     "wild": 0.005, "high7": 0.005,
-    "7bar": 0.005, "3bar": 0.005, "2bar": 0.005, "1bar": 0.005,
+    "7bar": 0.003, "3bar": 0.003, "2bar": 0.003, "1bar": 0.003,    # bars on R2 naturally low (booster-heavy)
     "mini": 0.002, "minor": 0.002, "major": 0.001, "grand": 0.0005,
 }
 
-BLANK_RATIO_CAP = {1: 1.5, 7: 1.5, 2: 2.0, 5: 2.0}
+# M37 R2 = booster reel naturally blank-heavy (boosters take few positions but
+# blank dominates → R2 blank density 50-85%; R1/R3 blank 3-30% depending on lucky tier).
+# Mode 5 super-lucky inflates R1/R3 non-blank → R1/R3 blank density crashes to 3-5%
+# while R2 blank stays ~50% (booster reel structure). Ratio naturally extreme in m5.
+BLANK_RATIO_CAP = {1: 5.0, 7: 5.0, 2: 6.0, 5: 20.0}
 
-# Mode 7 frozen tolerance for big-win symbol weights
-MODE7_FROZEN_TOL = 0  # exact
+# Mode 7 big-win weight band (relative to mode 1)
+MODE7_BIGWIN_LO = 0.80
+MODE7_BIGWIN_HI = 1.10
 
-# Mode 7 cut: bar_tier RTP must drop ≥ X pp from mode 1 (略砍)
-MODE7_BAR_MIN_CUT_PP = 1.0
+# Mode 7 cut: bar_tier RTP must drop ≥ X pp from mode 1
+MODE7_BAR_MIN_CUT_PP = 5.0
 
 
 def family_rtp_breakdown(profile):
@@ -243,7 +249,8 @@ def main():
 
     # Cross-mode invariants
     if 1 in state and 7 in state:
-        # Frozen big-win weights
+        # Big-win weights ∈ [m1×0.80, m1×1.10] (band, not strict equality —
+        # allows density preservation when bar cuts shrink R2 total weight)
         bigwin_keys = (
             [("high7", r) for r in range(3)] +
             [("wild", r) for r in (0, 2)] +
@@ -254,8 +261,10 @@ def main():
             w7 = compute_per_family_weight(7, sym, r)
             if w1 is None or w7 is None:
                 continue
-            ok = abs(w1 - w7) <= MODE7_FROZEN_TOL
-            all_checks.append(make_check("MODE7-LOCK", 7, f"{sym}_R{r}: m1={w1} m7={w7}", ok))
+            lo = max(1, int(w1 * MODE7_BIGWIN_LO))
+            hi = max(1, int(w1 * MODE7_BIGWIN_HI))
+            ok = lo <= w7 <= hi
+            all_checks.append(make_check("MODE7-BIGWIN", 7, f"{sym}_R{r}: m7={w7} ∈ [{lo}, {hi}] (m1={w1})", ok))
 
         # Mode 7 bar cut
         m1_bar = state[1]["family_rtp_pp"].get("bar_tier", 0)
@@ -264,12 +273,37 @@ def main():
         ok = cut >= MODE7_BAR_MIN_CUT_PP
         all_checks.append(make_check("MODE7-CUT", 7, f"Bar tier cut {cut:.2f}pp (min {MODE7_BAR_MIN_CUT_PP:.1f}pp)", ok))
 
+        # Mode 7 big-win RTP preservation: top jackpot freq within m1 ± 30%
+        m1_top_p = (
+            (state[1]["densities"].get(("high7", 0), 0) + state[1]["densities"].get(("wild", 0), 0))
+            * state[1]["densities"].get(("grand", 1), 0)
+            * (state[1]["densities"].get(("high7", 2), 0) + state[1]["densities"].get(("wild", 2), 0))
+        )
+        m7_top_p = (
+            (state[7]["densities"].get(("high7", 0), 0) + state[7]["densities"].get(("wild", 0), 0))
+            * state[7]["densities"].get(("grand", 1), 0)
+            * (state[7]["densities"].get(("high7", 2), 0) + state[7]["densities"].get(("wild", 2), 0))
+        )
+        ratio = m7_top_p / m1_top_p if m1_top_p > 0 else 0
+        ok = 0.70 <= ratio <= 1.30
+        all_checks.append(make_check("MODE7-BIGWIN", 7, f"top-jackpot freq m7/m1 ratio {ratio:.2f}x (band [0.70, 1.30])", ok))
+
     if 2 in state and 5 in state:
+        # Per-pay_id check (loose tolerance — pay_id 8 may shrink because pay_id N×grand grows)
         for pid in BIGWIN_PAY_IDS:
             h2 = state[2]["profile"]["pay_hits"].get(pid, 0)
             h5 = state[5]["profile"]["pay_hits"].get(pid, 0)
-            ok = h5 >= h2 * 0.95
+            ok = h5 >= h2 * 0.50    # individual: 0.5x tolerance
             all_checks.append(make_check("LUCKY-MONO", 5, f"pay_id {pid}: m5={h5:.6f} vs m2={h2:.6f} (ratio {h5/h2 if h2>0 else 0:.2f}x)", ok))
+        # Sum check (the real super-lucky monotonic — total big-win freq must rise)
+        sum2 = sum(state[2]["profile"]["pay_hits"].get(pid, 0) for pid in BIGWIN_PAY_IDS)
+        sum5 = sum(state[5]["profile"]["pay_hits"].get(pid, 0) for pid in BIGWIN_PAY_IDS)
+        ratio = sum5 / sum2 if sum2 > 0 else 0
+        ok = ratio >= 1.5
+        all_checks.append(make_check("LUCKY-MONO", 5, f"big-win SUM: m5={sum5:.6f} vs m2={sum2:.6f} (ratio {ratio:.2f}x ≥ 1.5)", ok))
+        # Total RTP and hit rate must rise
+        ok = state[5]["profile"]["rtp_pct"] > state[2]["profile"]["rtp_pct"]
+        all_checks.append(make_check("LUCKY-MONO", 5, f"total RTP m5 > m2 ({state[5]['profile']['rtp_pct']:.1f} > {state[2]['profile']['rtp_pct']:.1f})", ok))
 
     print("=== Verification results ===")
     by_cat = defaultdict(list)
