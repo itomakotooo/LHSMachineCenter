@@ -47,7 +47,24 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from fresh_slotlab.round_win import RoundWinRule, extract_round_win
+# Dual-import for sibling ``round_win``: backend launches analyzer
+# as a script (``sys.executable <path>/player_impact_analyzer.py``,
+# see app.py self._analyzer wiring), which puts ``fresh_slotlab/``
+# on sys.path[0] but provides NO ``fresh_slotlab`` package — so the
+# package-prefix import below raises ModuleNotFoundError. Fall
+# through to the bare-import path the analyzer.py module-top
+# already uses for the same reason (sibling import works because
+# the directory is on path).
+#
+# Without this fallback any M sampling that pulls trigger_sessions
+# crashes the subprocess at import time with the misleading-looking
+# "ModuleNotFoundError: No module named 'fresh_slotlab'" trace
+# (regression introduced 2026-04-26 by 21357b3 + 6043b6f when
+# round_win was first wired into trigger_sessions).
+try:
+    from fresh_slotlab.round_win import RoundWinRule, extract_round_win
+except ImportError:  # running as a standalone script, not a package member
+    from round_win import RoundWinRule, extract_round_win  # type: ignore[no-redef]
 
 
 _NEW_TRIGGER_PREFIX = "Trigger"
