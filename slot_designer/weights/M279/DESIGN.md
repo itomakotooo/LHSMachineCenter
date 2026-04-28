@@ -1,256 +1,363 @@
-# M279 Design — Triple Blazing Sevens (Nudging Stacks + Collect-to-Wheel)
+# M279 Design v2 — Numerical Design Anchored to Hard Constraints
 
-## 1. 机台原型（archetype）
+> **Framing**: 这份 DESIGN 的所有数值 target 是从 (a) M279 游戏规则（cfg paytable + rawdata behavior）+ (b) slot_designer 跨机台规范（[FIRST_MACHINE.md](../../FIRST_MACHINE.md) + [DESIGN_PHILOSOPHY.md](../../DESIGN_PHILOSOPHY.md) 11 类硬约束）推出来的。Web 调研的 archetype 数据（Blazing 777 Triple Double Jackpot Wild、Wizard of Odds RWB PAR sheet、Lucas-Singh CV、Harrigan near-miss）只是设计**心理锚**，不是约束 — 数字按 LHS 红线 + cfg 走。
 
-**主原型**：Light & Wonder（前 Bally / SG）**"Blazing 777 — Triple Double Jackpot Wild — Nudging Stacks"** 3-reel 9-line stepper。
-- Reference: <https://gaming.lnw.com/Games/LIGHT-AND-WONDER/class2/stepper/blazing-777%E2%84%A2-triple-double-jackpot-wild%E2%84%A2--nudge-20009>
-- Confidence: **high**（精确对应：3 reel、9 line、5 jackpot tier、wild/2x/3x 家族、nudge "up to two times"、~750× 顶奖）
+---
 
-**次原型 / 修改**：Asian-market **collect-to-wheel feature**（每付费轮收 1 颗，满 1000 触发 12-cell wheel）。该机制借鉴 Aristocrat 的 collect 类 feature（如 *Buffalo Stampede* 的 mini-meter trigger），但实际数学接近 Konami 的"周期奖池"设计 —— 1000 spin 一次 wheel 是固定周期，wheel 派彩 5/10/20/50/100x bet。
+## 0. 硬约束（不可商量）
 
-**LHS 修改 vs 真原型**：
-- 加入 Wheel feature（原型没有）—— 把基础 ~85% 推到 ~95% 总 RTP，wheel 贡献 ~10pp
-- BuffCollectionMap = wheel 触发的 UI overlay（trigger-only，无 win）
-- Triple Wild 顶奖 750× → 设计为 pay_id 101 = 250× JP（受 wheel 顶奖 100× + Triple Wild line 250× 的复合）
-- 去掉 progressive jackpot；5 jackpot tier 改为固定派彩
+### 0.1 LHS 跨机台 RTP 红线
 
-## 2. 机制总览
-
-### 2.1 网格 + paylines
-- 3 reel × 3 row = 9 cell grid
-- 9 paylines（标准 3-reel 9-line layout，line 1-9 各自经过 3 个 cell，每列贡献 1 cell）
-- bet=1000，全 9 line 同 cost（line bet = bet / 9 ≈ 111 credits/line，但派彩按 reward Ratio 直接算）
-
-### 2.2 4 种 SpinType
-
-| SpinType | rawdata 标记 | 名字 | 触发 | 占比（mode 1 实测） | RTP 贡献 |
-|---|---|---|---|---|---|
-| 1 (= 140 in rawdata) | `NormalCollectionSpin` | 付费基础轮 | 用户每次付 1000 | 87.7% | 39.95pp |
-| 36 | `MoveSpin` | 三联栈推动 | 上一轮可见部分 wild stack | 12.2% | **53.99pp**（最大头） |
-| 2 | `Wheel` | 12-cell 转盘 | collect meter 满 1000 | 0.09% | 4.05pp |
-| 102 | `BuffCollectionMap` | wheel UI overlay | 跟 wheel 同时触发 | 0.09% | 0pp（trigger only） |
-
-### 2.3 Wild 全集（12 symbol）
-
-| 符号 | kind | 角色 | grid 出现率（实测） |
-|---|---|---|---|
-| `blank` | filler | 不付彩 | 45.5% |
-| `bar` | regular | 低 tier 1 | 12.3% |
-| `5bar` | regular | 低 tier 2 | 8.5% |
-| `low7` | regular | 中 tier 1 | 12.2% |
-| `mid7` | regular | 中 tier 2 | 5.3% |
-| `high7` | regular | 高 tier | 7.3% |
-| `wild` | wild (×1) | 普通替代 | 2.16% |
-| `wild2x` | wild (×2) | 单格 2× | 0.37% |
-| `wild3x` | wild (×3) | 单格 3× | 0.37% |
-| `wild_up` | wild (×1) + nudge anchor (up) | 三联栈底端 | 1.89% |
-| `wild2x_mid` | wild (×2) | 三联栈中位 | 2.12% |
-| `wild_down` | wild (×1) + nudge anchor (down) | 三联栈顶端 | 1.90% |
-
-`wild_up` / `wild2x_mid` / `wild_down` 三个符号在 reel strip 上**字节级相邻**作为一组，永远整体出现 / 滑动。
-
-### 2.4 Wild Nudge 双向机制
-
-**触发条件**：上一付费轮的 grid 上，三联栈某 reel 只显示 1-2 个 wild（不是全 3 个）：
-- `wild_up` 单独可见在底行（row 2）→ 下一帧栈往**上**推 1 格
-- `wild_down` 单独可见在顶行（row 0）→ 下一帧栈往**下**沉 1 格
-- 中间状态（2 wild 可见）→ 继续向 anchor 方向推 1 格
-
-**MoveSpin 链**：每次推动是 1 个 cost=0 的 ST=36 free spin，重新评估 9 paylines（栈到位置后产生新 line wins）。链式触发直到三联全显（3 wild 全部在该 reel 可见），最多 2 次 MoveSpin（原型 "nudge up to two times"）。
-
-**RTP 影响**：单 paid spin 的栈 partial-visible 概率 ≈ 12.2%（fire rate of MoveSpin），MoveSpin 命中率 53.9%（更高，因为 2-3 wild 在 reel 几乎保证 ≥1 line win），avg multiplier × 2x（wild2x_mid 在中行）。
-
-### 2.5 Collect-to-Wheel 机制
-
-**Collect meter**:
-- 每付费轮（ST=140）`AccCredits += 100`、`CollectCount += 1`
-- 满 `CollectMax=1000` 时（= 1000 paid spin 后）触发 wheel
-- Reset 到 100/1
-- 实测周期：1000 / 0.877 paid_rate ≈ 1140 total spin / wheel
-
-**Wheel feature**（12 cell 固定，每 cell 30°）:
-
-| cellIndex | 派彩 (credits @ bet=1000) | 倍率 vs bet | weight |
-|---|---|---|---|
-| 1 | 50,000 | 50× | 50 |
-| 2 | 10,000 | 10× | 30 |
-| 3 | 20,000 | 20× | 30 |
-| 4 | 50,000 | 50× | 20 |
-| 5 | 30,000 | 30× | 30 |
-| 6 | 5,000 | 5× | 10 |
-| 7 | 20,000 | 20× | 30 |
-| 8 | 100,000 | 100× | 20 |
-| 9 | 5,000 | 5× | 10 |
-| 10 | 100,000 | 100× | 50 |
-| 11 | 20,000 | 20× | 15 |
-| 12 | 10,000 | 10× | 50 |
-| **Σ weight** | | | **345** |
-
-**Wheel EV 解析**：
-- Σ(weight × win) = 50·50000 + 30·10000 + 30·20000 + 20·50000 + 30·30000 + 10·5000 + 30·20000 + 20·100000 + 10·5000 + 50·100000 + 15·20000 + 50·10000
-- = 2,500,000 + 300,000 + 600,000 + 1,000,000 + 900,000 + 50,000 + 600,000 + 2,000,000 + 50,000 + 5,000,000 + 300,000 + 500,000
-- = 13,800,000
-- E[wheel] = 13,800,000 / 345 = **40,000 credits = 40× bet**
-- Wheel 触发率 ≈ 1 / 1140 spin
-- Wheel RTP 贡献 = 40 / 1140 = **3.51%** ≈ 实测 4.05pp（有 ±15% 误差，和 wheel 周期波动 + bonus spin 计入分母方式相关）
-
-### 2.6 Paytable
-
-**基础线**（3-OAK，wild 可代）：
-
-| pay_id | 符号 | reward Ratio | 基础派彩（line bet 不算 multiplier） | 实测 fires | 实测 avg_win |
-|---|---|---|---|---|---|
-| 1 | 3× high7 | 6000 | ~6000 base × wild boost | 59,447 | 29,247 |
-| 2 | 3× mid7 | 4000 | ~4000 base × wild boost | 39,790 | 12,483 |
-| 3 | 3× low7 | 2000 | 2000 base × wild boost | 93,350 | 8,520 |
-| 4 | 3× 5bar | 1500 | 1500 base × wild boost | 76,460 | 4,542 |
-| 5 | 3× bar | 1000 | 1000 × wild boost | 139,531 | 3,090 |
-| 6 | 3× any 7 mixed (low7/mid7/high7) | 1000 | 1000 × wild boost | 273,608 | 2,370 |
-| 7 | 3× any bar mixed (bar/5bar) | 300 | 300 × wild boost | 138,944 | 557 |
-
-**Wild 跳奖**（all-wild combos）：
-
-| pay_id | 触发 | 派彩 | 实测 fires |
-|---|---|---|---|
-| 101 | 3× wild3x | 250,000 (250× bet) | 1（极稀有） |
-| 102 | 3× wild2x / wild2x_mid 混 | 150,000 (150× bet) | 356 |
-| 103 | 3× wild | 50,000 (50× bet) | 42 |
-| 104 | 3 个任意 wild 混合 | 15,000 (15× bet) | 1,918 |
-
-## 3. 玩家感性体验
-
-### 3.1 主题
-"Blazing Triple Sevens" classic Vegas style — 红/橙火焰背景 + 经典 3-7-bar 符号。**LHS Asian-market 改版**加 fortune wheel 元素（金色转盘 / 灯笼装饰 / "幸运转盘" 中文 UI），把美式 7-bar classic 嫁接到中式 lottery wheel 文化。
-
-### 3.2 每档 win 的情感定位（mode 1 baseline）
-
-| 档 | 范围 | 情感 | hit_rate | RTP 占比 |
+| Mode | RTP target | 严格度 | Hit target | Nudge target |
 |---|---|---|---|---|
-| Low | gt0 - 5× | "刚回点本" grind 感 | ~10% | ~20pp |
-| Mid | 5× - 50× | "今天命中了" reveal drama | ~3% | ~43pp |
-| High | 50× - 200× | session 记忆点 | ~0.4% | ~30pp |
-| Top | 200× - 1000× | 朋友圈截图 / lifetime story | ~0.014% | ~5pp |
-| **Σ** | | | **~14.2%** | **~98pp** |
+| 1（标准）| **95.0%** | ±1pp 严格（Lucas-Singh：玩家无法察觉<2pp，但红线就是 95）| 14.2% | 12.2% |
+| 7（标准低）| **85.0%** | ±1pp 严格 | 10.5% | 12.2% |
+| 2（幸运）| **300.0%** | ±10-20pp 可漂 | 22.5% (×1.5-2 m1) | 18-25% |
+| 5（超幸运）| **500.0%** | ±10-30pp 可漂 | 22.5% (≈ m2) | 18-25% |
 
-注：mode 1 实测 98%，但 LHS 红线规定 mode 1 = 95%。下面 §4 mode 1 target 走 95%。
+跨 mode 不变量：
+- m5 RTP > m2 RTP > m1 RTP > m7 RTP（[DESIGN_PHILOSOPHY §9](../../DESIGN_PHILOSOPHY.md)）
+- m5 hit ≥ m2 hit > m1 hit > m7 hit
+- m5 top-jp freq > m2 > m1 ≈ m7
+- Strips 跨 mode 字节级一致（[strips_identical_across_modes](../../../memory/project_slot_designer_strips_identical_across_modes.md)）
+- m5 base = m2 base 字节级一致（feature 层 override 才有差异）
+- m7 derive from m1 via direct-scale OR Phase 4 tune
 
-### 3.3 Near-miss 设计（PWDF）
+### 0.2 M279 游戏规则（[machineconfig/M279Cfg.txt](../../../machineconfig/M279Cfg.txt) + 你的 Excel）
 
-**Wild 三联栈**是核心 near-miss 引擎：
-- 三联栈在 reel 上每 ~30 stop 出现 1 次 anchor → 单 reel marginal 见 1+ wild ≈ 8%
-- 上栈"差一点全显"（部分可见）的视觉冲击 → MoveSpin 立即兑现（不像 traditional near-miss 是空欢喜，M279 的 near-miss 一定 cash 出来）
-- 设计意图：把 traditional near-miss 的"惋惜情绪"转化为"惊喜情绪" —— 玩家看到 wild_up 在底行时知道下一帧会 nudge 出更多 wild
+**Paytable（cfg payout block 直译）**：
 
-**Wheel 周期叙事**：
-- 1000 paid spin 大约 = 1 hour 玩（普通频率），collect 进度条做成"水位上涨" UI → 玩家有清晰预期
-- Wheel 派彩 5-100× 之间 randomize → 中位 20× 带"小幸运"反馈，顶 100× 带"今天爆了"感
-- 100× wheel 命中率 = 70/345 = **20.3%**，每 ~5,700 paid spin 见一次 → 长 session（5-6 hour）能见 1 次
+| pay_id | 触发 | reward Ratio | per-line × bet 多少 | 说明 |
+|---|---|---|---|---|
+| 1 | 3 high7（wild 替）| 6000 | **6×** | classic high tier |
+| 2 | 3 mid7 | 4000 | **4×** | mid tier |
+| 3 | 3 low7 | 2000 | **2×** | low-7 tier |
+| 4 | 3 5bar | 1500 | **1.5×** | mid-bar |
+| 5 | 3 bar | 1000 | **1×** | low-bar |
+| 6 | 3 mixed-7 (低/中/高 7 任意) | 1000 | **1×** | mixed-7 group |
+| 7 | 3 mixed-bar (5bar/bar 任意) | 300 | **0.3×** | mixed-bar group |
+| 101 | 3 wild3x | 250000 | **250×** | Grand JP |
+| 102 | 3 wild2x / wild2x_mid 混 | 150000 | **150×** | Major JP |
+| 103 | 3 wild | 50000 | **50×** | Minor JP |
+| 104 | 3 任意 wild 混合 | 15000 | **15×** | Mini JP |
 
-### 3.4 跨 mode 差异化叙事
+**Wild multiplier**：wild ×1 / wild2x ×2 / wild2x_mid ×2 / wild_up ×1 / wild_down ×1 / wild3x ×3。Multiplicative on line wins。
 
-| Mode | RTP 红线 | 玩家故事 | 跟 mode 1 关系 |
-|---|---|---|---|
-| 1 | 95% | "原生体验"，标准玩 | baseline |
-| 2 | 300% | "幸运 mode"，wild stack 出现率 ×1.5 → MoveSpin 频率 ↑、line hit ↑ | hit ×1.5-2，bucket shape 跟 mode 1 形状相近 |
-| 5 | 500% | "super-lucky"，Wheel 出现率 ↑（CollectMax 减半 = 500） + wild3x 占比 ↑ | base 字节级 = mode 2，feature 加强 |
-| 7 | 85% | "冷 mode"，bar 家族砍权 → Low bucket 砍，Mid/High/Top 不动 | direct-scale from mode 1（5bar/bar ×0.7）|
+**4 SpinTypes**：
+- ST=140 paid（NormalCollectionSpin，每轮收 1 单位 collect）
+- ST=36 MoveSpin（wild stack 单/双向 nudge，cost=0）
+- ST=2 Wheel（NewWheel，cost=0，12 cell 固定权重）
+- ST=102 BuffMap（trigger-only marker）
 
-**Mode 2 vs mode 1 不变量**：所有 tier hit 略升（不是只升 Top），bucket 形状不漂。
-**Mode 7 vs mode 1 不变量**：Mid/High/Top **绝对 hit 不动**，只 Low 降。
-**Mode 5 vs mode 2 不变量**：base 字节级一致（hit shape 不动），feature 加强（CollectMax 1000→500、wheel cell 重权 100× 加权）。
+**Wild stack**：`wild_up / wild2x_mid / wild_down` 三联体，strip 上**adjacent** 位置（跨 reel 1+2+3 同一 layout）。Bidirectional nudge per rawdata（wild_up 单独可见 → 上推；wild_down 单独可见 → 下沉；最多链 2 步到全显）。
 
-### 3.5 Family RTP share（mode 1 设计 target）
+**Collect meter**：每付费轮 +1 / 100 credits，满 1000 / 100000 触发 wheel + buffmap，重置到 100/1。
 
-| Family | RTP share target | 设计意图 |
-|---|---|---|
-| 7-family (low7/mid7/high7) | ~50% | classic 7-dominant 灵魂（参考 Blazing Sevens 89% 中 7 家族 68.8%；M279 因 wheel 占 4-10pp 拉低 7 share） |
-| Bar-family (bar/5bar) | ~25% | 低 tier "grind" 收益 |
-| Wild jackpot (pay_id 101-104) | ~5% | rare moment |
-| MoveSpin contribution | ~25% | nudge mechanic 是核心 RTP 引擎 |
-| Wheel | ~5-10% | 周期奖池 |
+**Wheel**：12 cell 固定不能变，weights `[50,30,30,20,30,10,30,20,10,50,15,50]`（Σ=345），winReward `[50000,10000,20000,50000,30000,5000,20000,100000,5000,100000,20000,10000]`。E[wheel] = 40000 credits = 40× bet (mode 1 default; mode 5 通过 win_scale + collect_max override 强化)。
 
-注意：MoveSpin contribution 不是独立 family，是上面 7/bar/wild family 在 ST=36 free spin 的额外贡献（line wins 在 nudge 后栈到位置仍按 7/bar pay 派彩）。
+### 0.3 [DESIGN_PHILOSOPHY.md](../../DESIGN_PHILOSOPHY.md) 11 类硬约束 → M279 实现
 
-## 4. 4 mode RTP / hit / bucket target
-
-### Mode 1（baseline，95% RTP）
-
-```
-total_rtp_pct = 95   ±1pp 严格
-hit_rate      = 0.142 ±1pp
-cv            = 7.7  (volatility = "Very High" classic 7-dominant)
-bucket_rate (paid round 口径，ret_x = win/bet):
-  gt0_lt1     = 0.023  (low chase)
-  ge1_lt5     = 0.085  (low grind 主力)
-  ge5_lt10    = 0.016
-  ge10_lt20   = 0.009
-  ge20_lt50   = 0.0057
-  ge50_lt100  = 0.0028
-  ge100_lt200 = 0.0009
-  ge200_lt500 = 0.0001
-  ge500       = 0.00004 (top 极稀)
-trigger_target (collect → wheel) = 1/1140 = 0.000877
-trigger_target (move spin / nudge) = 0.122 (12.2% of total spins)
-```
-
-### Mode 2（lucky, 300% RTP）
-
-```
-total_rtp_pct = 300   ±20pp 可漂
-hit_rate      = 0.225 (≈ ×1.6 mode 1, NOT ×3)
-bucket shape ≈ mode 1 (low bucket 略压、mid/high 略升)
-nudge frequency ≈ ×1.5 mode 1 (wild stack reel 上权重 ×1.5)
-wheel trigger 同 mode 1（CollectMax 不变）
-```
-
-### Mode 5（super-lucky, 500% RTP, base = mode 2）
-
-```
-total_rtp_pct = 500   ±30pp 可漂
-base weights 字节级 = mode 2
-feature 加强：CollectMax 1000 → 500（wheel 频率 ×2）
-wheel cell 重权：100× cellIndex 8/10 weight ×1.5
-wild3x 出现率 ×2（mode 2 的 0.005 → mode 5 的 0.010）
-```
-
-### Mode 7（standard low, 85% RTP）
-
-```
-total_rtp_pct = 85    ±1pp 严格
-hit_rate      = 0.105 (mode 1 - 3.7pp; bar/5bar 砍单)
-Mid/High/Top bucket_rate 绝对 = mode 1
-Low bucket_rate × 0.7
-Direct-scale path: 5bar weight ×0.7, bar weight ×0.7（其他 family 不动）
-nudge frequency 跟 mode 1
-wheel trigger 跟 mode 1
-```
-
-## 5. 跨机台硬约束 ↔ M279 实现
-
-| 约束（DESIGN_PHILOSOPHY） | M279 实现 |
+| 类别 | M279 实现 |
 |---|---|
-| §1 倒金字塔 | 7 家族倒金字塔：high7 > mid7 > low7（按 reward Ratio 6000 > 4000 > 2000 GAP ratio = 1.5x、2.0x） |
-| §2 Brand visibility | wild 三联栈 reel 出现率 ~6% → 每 17 spin 一次（visible），但全显需 nudge 链（rare） |
-| §3 Blank cap headroom | blank weight ≤ cap × 0.95 |
-| §4 Per-tier hit preservation | mode 7 砍 bar/5bar Low、保 Mid/High/Top；mode 2 全 tier 略升 |
-| §5 CV-RTP consistency | mode 1 CV ≈ 7-8（Very High vol 7-dominant）, mode 2 CV ≈ 4（lucky 平稳）|
-| §6 Family share archetype | 7 家族 ~50% RTP（archetype Blazing Sevens 68.8% 因 wheel 拉到 50%） |
-| §7 Top jackpot escalation | mode 1: pay_id 101 ~1/2.9M，mode 5: ~1/100k（×30 升） |
-| §8 Hit decomposition | pay_id 6 (mixed-7) 273k fires 占 hit ~28%（不超 70%） |
-| §9 Mode-pair monotonicity | RTP m5 > m2 > m1 > m7；hit m5 ≥ m2 > m1 > m7；wheel freq m5 > m1 ≈ m7 |
-| §10 Pareto trap | family-share lower bound + nudge_anchor 锁权（三联栈不能砍权到 0） |
-| §11 假但不怪 | verify 11 类硬约束（含 wheel EV / nudge mechanic / family share） |
+| §1 Per-family 倒金字塔 | 7-family: high7 (6×) > mid7 (4×) > low7 (2×) GAP ratio 2× / 1.5×（cfg 数字硬定）。Bar: 5bar (1.5×) > bar (1×) GAP 1.5× |
+| §2 Brand visibility | wild stack reel 出现率 8-15%（visible 但不 dominate）。wild family 总 grid 出现率 ~6%（archetype 心理锚） |
+| §3 Blank cap headroom | 每 reel blank weight ≤ cap × 0.95 |
+| §4 Per-tier hit preservation | m7 砍 Low（bar/5bar），保 Mid/High/Top；m2 全 tier 升 |
+| §5 CV-RTP consistency | m1 CV 6-8 / m7 CV ≥ m1 + 20% / m2 CV ≤ m1 - 20% / m5 CV ≈ m2 |
+| §6 Family share archetype | 7-family 45-55% / bar 20-30% / wild jp 3-8% / wheel 4-10% |
+| §7 Top JP escalation | pay 101 m1: 1/100k-200k / m7: ≈ m1 / m2: 1/30k / m5: 1/10k（ratio m5/m1 ≥ 5×）|
+| §8 Hit decomposition | 任一 pay_id ≤ 70% of hits |
+| §9 Mode-pair monotonicity | RTP/hit/top-jp 单调（见 0.1） |
+| §10 Pareto trap 防御 | tuner cost 加 family-share lower-bound penalty + per-symbol（不是 family）granular |
+| §11 假但不怪 | bucket shape narrative + family share + experience invariants 全进 verify |
 
-## 6. 实现路径（v1 plan）
+---
 
-1. spec：12 symbol、9 payline、11 pay（7 line + 4 wild jp）+ 4 spin_type + nudge_anchors block + collect_meter block + wheel block
-2. engine extensions：loader 多 payline、evaluator.evaluate_all_paylines()
-3. M279 modules：engine/m279/{engine, nudge, collect, wheel}.py
-4. emitter/m279_round.py（多 line PayoutByPayline + AccCredits/CollectCount/CreditsSymbols）
-5. backend/virtual_analyzer.py 加 M279sim routing
-6. weights/M279/reel_strips.json：~50 stop strip / reel，2 个 wild stack anchor
-7. mode 1/2/5/7 weights + tune（sim-based，9-line analytic 太复杂走仿真）
-8. verify_m279_design.py：11 类硬约束 + experience invariant
-9. 注册 + console 端到端验
+## 1. 玩家感性体验设计（设计意图）
 
-详细每 phase 见 todo list。
+### 1.1 主题
+"Triple Blazing Sevens" classic Vegas — 红/橙火焰 + 经典 7-bar 符号 + LHS 加的金色幸运转盘（Asian-market 改版）。
+
+### 1.2 Mode 1 baseline player feel
+
+**叙事层次**：
+- **小奖 grind (gt0_lt5)**: ~10% 命中率，每次 bar OAK / 混合 bar / 单一 7 的 0.3-2× 回血。情感：chase, 不算"中"但持续打鼓。
+- **中奖 reveal (ge5_lt50)**: ~3% 命中率，high7 / mid7 OAK 加 wild 倍率。情感：accept 时的"今天命中了"reveal drama。
+- **大奖记忆点 (ge50_lt200)**: ~0.4% 命中率，wild stack 全显 + 多 line 同时中。情感：朋友圈截图。
+- **顶奖 lifetime (ge200+)**: ~0.014% 命中率，pay 101/102 jackpot OR wild stack + wheel 同 session。情感：advertising hook。
+- **Wheel 周期叙事**: 1000 paid spin（~1 hour 玩）一次 wheel，进度条 UI = 玩家"水位上涨"预期。
+
+**Wild Nudge near-miss (Harrigan PWDF 心理锚)**：
+- 三联栈在 reel 上 anchor 位置 → 单 reel 出现 stack 边界（wild_up 在底行 / wild_down 在顶行）= near-miss state
+- 游戏立即给 cost=0 MoveSpin 兑现这个 near-miss → traditional near-miss 的"惋惜情绪"转化为"惊喜情绪"
+- 区别于 RWB Reel 1 stop 45 的 "Red 7 旁 5 blank" 干 near-miss（永远没兑现，只制造心理拉力）
+
+### 1.3 跨 mode 玩家故事
+
+| Mode | 玩家故事 | 跟 m1 关系 |
+|---|---|---|
+| 1（95%）| "原生体验"，标准 stepper 节奏 | baseline |
+| 7（85%）| "今天冷"，bar 系列稀少，但中大奖时还是 m1 那个量 | direct-scale: bar/5bar weight ×0.55-0.65, low7 weight ×0.75-0.85, mid7/high7 weight 不动 |
+| 2（300%）| "运气来了"，wild stack 多见，每 line hit 更值 | independent tune: 整体 paying ×1.5, stack ×1.3, blank ×0.6 |
+| 5（500%）| "super-lucky"，wheel 出现频率 ×5+, wheel 派彩 ×7 | base = m2 字节级；feature override: collect_max 1000→150, wheel win_scale ×7 |
+
+**Mode-pair invariants**（runtime hard check）：
+- m7 vs m1: Mid/High/Top hit absolute ≈ m1（≤2pp 偏离）；只 Low 砍
+- m2 vs m1: 所有 tier hit 略升（不只升 Top）；bucket shape 比例不漂
+- m5 vs m2: base 字节级一致；wheel triggers 5×+，wheel avg payout 7×
+
+---
+
+## 2. Mode 1 数值 target（详细推导）
+
+### 2.1 RTP 分布到家族（cfg-anchored，对齐真 M279 rawdata）
+
+总 RTP target = **95.0pp**
+
+**M279 paytable 结构上 7-family 主导**（不是 LHS 标准 50/25 模板）。原因：
+- pay 1 (high7 specific 6×) + pay 2 (mid7 4×) + pay 3 (low7 2×) — 各 specific 7 OAK
+- pay 6 (mixed-7 group 1×) — 接受 ANY combo of {wild, low7, mid7, high7}，是最宽 matching condition
+- 真 M279 mode 1 rawdata: pay 1 = 28.78pp + pay 2 = 11.90pp + pay 3 = 14.20pp + pay 6 = 14.93pp = **69.81pp** = 71.2% of total RTP
+- 这是 cfg 结构性 dominant，不是设计选择
+
+| RTP 来源 | 设计 share band | RTP pp (target) | 真 M279 实证 |
+|---|---|---|---|
+| 7-family (pay 1+2+3+6) | **62-75%** | 65.5 | 71.2% |
+| Bar-family (pay 4+5+7) | **16-26%** | 21.0 | 21.3% |
+| Wild jackpot (pay 101+102+103+104) | **1-6%** | 2.5 | 2.3% |
+| Wheel feature (ST=2) | **2.5-6%** | 3.8 | 4.1% |
+| Buffer / nudge multi-line | **0-3%** | 2.2 | 1.1% |
+| **Σ** | **~100%** | **95.0** | **100%** |
+
+注：Wheel 4pp = E[wheel] / collect_max = 40000/1000 = 40 credits per paid spin = 4% RTP。
+注：Buffer / nudge multi-line 是 wild stack reveal 时多 line 同时中的额外 RTP（家族贡献的延伸，跨 family 不单算；真 rawdata 上该 buffer 较小因 multi-line wins 早已归入对应 pay_id）。
+
+### 2.2 Hit rate 分布到 tier
+
+总 session hit target = **14.2%**
+
+| Tier | session hit rate | 占总 hit |
+|---|---|---|
+| Low (gt0_lt5) | 10.7% | 75% |
+| Mid (ge5_lt50) | 3.0% | 21% |
+| High (ge50_lt200) | 0.45% | 3% |
+| Top (ge200+) | 0.014% | 0.1% |
+
+### 2.3 Bucket rate target（细 9 桶）
+
+Bucket = ret_x = session_win / session_bet。Bet=1000 in mode 1。
+
+| bucket | rate target | RTP pp | 玩家情感 |
+|---|---|---|---|
+| gt0_lt1 | **2.3%** | 1.3 | 0.3-0.9× 小回血（pay 7 主导）|
+| ge1_lt5 | **8.5%** | 18.9 | grind 主力 |
+| ge5_lt10 | **1.6%** | 11.5 | 小满意 |
+| ge10_lt20 | **0.90%** | 13.8 | 中奖记忆点 |
+| ge20_lt50 | **0.57%** | 17.3 | session 故事 |
+| ge50_lt100 | **0.28%** | 19.0 | dream event |
+| ge100_lt200 | **0.090%** | 10.8 | "今天爆了" |
+| ge200_lt500 | **0.010%** | 3.5 | lifetime story |
+| ge500 | **0.0036%** | 2.0 | advertising hook |
+| **Σ** | **14.20%** | **98.1** | (≈ 95 + measurement error band) |
+
+### 2.4 Top jackpot freq target（mode 1）
+
+| pay | rate per spin | per ___ spins |
+|---|---|---|
+| pay 101 (250×, Grand JP) | **0.000005** | 1 / 200,000 |
+| pay 102 (150×, Major JP) | **0.0001** | 1 / 10,000 |
+| pay 103 (50×, Minor JP) | **0.0003** | 1 / 3,300 |
+| pay 104 (15×, Mini JP) | **0.0007** | 1 / 1,400 |
+
+### 2.5 CV target
+
+mode 1 std_return / avg_return = std / 0.95
+- target std_return = **6.5-8.0** → CV = std / 0.95 = 6.8-8.4
+- 类别：Very High volatility（rawdata 实测 7.7 → 在 band 内）
+
+---
+
+## 3. Mode 7 数值 target（cut from mode 1）
+
+总 RTP target = **85.0pp**（差 m1 -10pp）
+
+### 3.1 RTP 拆分
+
+| 来源 | m1 | m7 | Δ |
+|---|---|---|---|
+| 7-family | 47.5 | 47.5（**绝对不动**）| 0 |
+| Bar-family | 23.75 | **15.0**（-8.75，Low cut 主体）| -8.75 |
+| Wild jackpot | 4.75 | 4.75（不动）| 0 |
+| Wheel | 3.8 | 3.8（collect_max 不变）| 0 |
+| Buffer | 15.2 | 14.0（轻微下滑）| -1.2 |
+| **Σ** | **95.0** | **85.0** | **-10.0** |
+
+### 3.2 Hit / bucket
+
+总 hit target = **10.5%**（m1 14.2 - 3.7pp）
+
+| Tier | m1 | m7 | Δ |
+|---|---|---|---|
+| Low | 10.7% | **6.5%**（-4.2pp，Low 砍）| -4.2 |
+| Mid | 3.0% | 3.0%（**绝对不动**）| 0 |
+| High | 0.45% | 0.45%（绝对不动）| 0 |
+| Top | 0.014% | 0.014%（绝对不动）| 0 |
+
+### 3.3 实现
+
+Direct-scale m1 weights:
+- bar weight × **0.55**
+- 5bar weight × **0.55**
+- low7 weight × **0.85**（少量缩，因为也参与 mid-7 mixed）
+- 其它 family（mid7/high7/wild/stack/wheel-related）weight **不动**
+- blank weight × **1.05-1.10**（轻微填回 bar/5bar 让出的位置）
+
+---
+
+## 4. Mode 2 数值 target（lucky）
+
+总 RTP target = **300.0pp**
+
+### 4.1 RTP 拆分
+
+每个家族都 ×3 缩放（lucky mode 不偏向特定家族，全家族升）
+
+| 来源 | m1 | m2 | × |
+|---|---|---|---|
+| 7-family | 47.5 | **150** | 3.16× |
+| Bar-family | 23.75 | **75** | 3.16× |
+| Wild jackpot | 4.75 | **15** | 3.16× |
+| Wheel | 3.8 | 3.8（CollectMax 不变）| 1× |
+| Buffer / nudge | 15.2 | **56.2**（nudge ×1.5 频率，每次 reveal 价值 ×2.5 因 paying 多）| 3.7× |
+| **Σ** | **95** | **300** | 3.16× |
+
+### 4.2 Hit / bucket
+
+总 hit target = **22.5%**（m1 ×1.58）
+
+bucket shape 跟 m1 形状**相近**（不是只升 Top），但 Mid+ 的 bucket rate 略升 30-50%（每个 line hit 更值；纯 hit frequency 升 50%，per-hit avg win 升 ~30%）。
+
+### 4.3 实现
+
+Independent tune from mode 1 base：
+- blank × **0.55**
+- paying（low7/mid7/high7/5bar/bar）× **1.7**
+- single wild（wild/wild2x/wild3x）× **1.8**
+- stack（wild_up/wild2x_mid/wild_down）× **1.3**（不太多否则 nudge>30%）
+
+---
+
+## 5. Mode 5 数值 target（super-lucky）
+
+总 RTP target = **500.0pp**
+
+### 5.1 RTP 拆分（base = m2 byte-identical）
+
+| 来源 | m2 | m5 | Δ |
+|---|---|---|---|
+| 7-family | 150 | 150（base 不动）| 0 |
+| Bar-family | 75 | 75 | 0 |
+| Wild jackpot | 15 | 15 | 0 |
+| Wheel feature | 3.8 | **180**（×47.4，feature override） | +176 |
+| Buffer / nudge | 56.2 | 80（multi-line × wheel 同 session 增）| +23.8 |
+| **Σ** | **300** | **500** | **+200** |
+
+### 5.2 Wheel 强化（_m279_overrides）
+
+- collect_max: 1000 → **150**（wheel ×6.67 频率）
+- wheel win_scale: 1 → **7**
+- 单 wheel 触发期望: 40000 × 7 = 280000 credits per trigger
+- Per paid spin RTP from wheel: 280000 / 150 = 1867 credits / 1000 bet = **186.7%**...
+
+等等，1867 / 1000 = 186.7% RTP from wheel alone — 太多了，会过 500% 太多。
+
+重算: wheel triggers 1/150 spins, each pays 280000 credits = E[wheel pp] = 280000/150 = 1867 credits per spin, /1000 bet × 100 = **186.7%** RTP from wheel alone.
+
+这样 base 300 + wheel 186 = 486% — 接近 500% target 了。再用 nudge multi-line 自然增的 ~10-20pp 就能到 500。
+
+实测 v1 mode 5 (collect_max=150, win_scale=7) = 486% RTP — 数学对得上。**保留**。
+
+### 5.3 Hit / bucket
+
+base = m2 → hit / bucket 跟 m2 一样。Top tier 通过 wheel 频率提升获得（不通过 base reel 调整）。
+
+---
+
+## 6. Asymmetric Reel 设计（v2 关键升级）
+
+### 6.1 v1 vs v2 区别
+
+**v1**：3 reel 完全相同的 symbol 分布 + 不同的 reel 权重（reel 1 lead / reel 2 kill / reel 3 mid）。
+**v2**：3 reel 不同的 symbol counts + reel 内权重 tuner 调（每个 reel 独立 symbol 集 / 数量）。
+
+### 6.2 v2 reel symbol 分布（60 stops 每 reel）
+
+| Symbol | Reel 1 (lead) | Reel 2 (kill) | Reel 3 (lead-mirror) |
+|---|---|---|---|
+| blank | 36 | 42 | 38 |
+| low7 | 4 | 3 | 4 |
+| mid7 | 3 | 2 | 3 |
+| high7 | 3 | 1 | 3 |
+| 5bar | 3 | 3 | 3 |
+| bar | 4 | 4 | 3 |
+| wild | 1 | 1 | 1 |
+| wild2x | 1 | 0 | 0 |
+| wild3x | 1 | 0 | 0 |
+| wild_up | 1 | 1 | 1 |
+| wild2x_mid | 1 | 1 | 1 |
+| wild_down | 1 | 1 | 1 |
+| **Σ** | **59** | **59** | **59**(+1 blank for 60) |
+
+要点：
+- **Reel 2 kill**: 高 7 仅 1 个（vs reel 1+3 各 3 个）→ 顶奖路径必经 reel 2 → reel 2 是 "constraint reel"
+- **Reel 2 单 wild 缺位**: wild2x / wild3x 不上 reel 2 → 强迫 wild jackpot pay 101/102 必走 reel 1+3（kill reel 不参与 jackpot）
+- **Stack 在所有 reel**: 三联栈（wild_up/wild2x_mid/wild_down）每 reel 都有 1 set，跨 reel 字节级一致 layout（跨 mode invariant）
+- 37 blank ≠ 38（reel 1+3 vs reel 2）→ asymmetric 但每 reel 都 ≤ 70% blank（[DESIGN_PHILOSOPHY §3](../../DESIGN_PHILOSOPHY.md) blank cap headroom）
+
+### 6.3 Reel 长度选择
+
+60 stops 每 reel（v1 选定）。理由：
+- 跟 RWB 64 接近但不照搬
+- Wild stack 占 3 stops，单 anchor 设计（v1 是 1 个 anchor，v2 保持）
+- 3-blank cluster pattern + asymmetric symbol counts 在 60 stops 内正好 fit
+
+---
+
+## 7. v2 verify 加 5 类 check
+
+[scripts/verify_m279_design.py](../../scripts/verify_m279_design.py) v2 加：
+
+1. **`BUCKET-SHAPE-MATCH`**: 每 mode 9 桶 distribution KS divergence vs target ≤ **0.10**
+2. **`FAMILY-SHARE-BAND`**: 7-family 45-55% / bar 20-30% / wild-jp 3-8% / wheel 3-10% (mode 1)，各 mode 按 §1.3 narrative band 调整
+3. **`TOP-JP-ESCALATION`**: pay 101 freq m5 / m1 ≥ **5×**（§7 红线）
+4. **`CV-RTP-MONOTONE`**: m7 std > m1 std > m2 std（§5 红线）
+5. **`ASYMMETRIC-REEL`**: reel 2 high7 marginal / reel 1 high7 marginal ≤ **0.5**（kill reel 比 lead reel 至少少一半 high7）
+
+加上 v1 已有的 RTP / hit / nudge / wheel / hit-decomposition 共 **10 类** verify。
+
+---
+
+## 8. v2 工作流程（按 [WORKFLOW.md](../../WORKFLOW.md) 走）
+
+1. 重写 spec / strips / weights 到 v2 数值
+2. 升级 tuner cost function（per-symbol granular + bucket-shape KS + family-share band penalty）
+3. tune mode 1 → 7 derive → 2 tune → 5 derive
+4. verify v2（10 类 check 全 GREEN）
+5. dump 实际数字眼过（每 mode × 每 reel × 每 family × 每 pay_id）
+6. **adversarial 反问 ≥3 个**，每个答完才 commit
+7. commit message 必含 ## Self-critique 段
+
+---
+
+## 9. 参考材料（不是约束，仅心理锚）
+
+- [Light & Wonder Blazing 777 Triple Double Jackpot Wild — Nudge official](https://gaming.lnw.com/Games/LIGHT-AND-WONDER/class2/stepper/blazing-777%E2%84%A2-triple-double-jackpot-wild%E2%84%A2--nudge-20009): 3-reel 9-line stepper archetype, RTP variants 87/90/94/96, max 807×, "low to medium" volatility, "WILD + DOUBLE JACKPOT WILD nudge up to 2 times"
+- [Wizard of Odds Red White & Blue PAR sheet](https://wizardofodds.com/games/slots/appendix/6/): 64 stops × 50% blank, asymmetric reels (Reel 1 has 1 Red7 / Reel 2 has 3 Red7 / Reel 3 has 1 Red7 — kill / anchor / kill pattern), RTP 87.47% (3-coin), std 9-10
+- [Wizard of Odds Blazing Sevens 5-reel](https://wizardofodds.com/games/slots/blazing-sevens/): 7-family RTP share 68.9%, bar share 31.1%, high volatility class
+- [Lucas-Singh 2008 — CV inversely related to time on device](https://journals.sagepub.com/doi/10.1177/1938965508315368): CV 是 player engagement 主要驱动；玩家无法察觉 1-2pp RTP 差异；variance shape > RTP point value for session experience
+- [Harrigan 2007 — Slot machine structural characteristics](https://www.greo.ca/Modules/EvidenceCentre/files/Harrigan%20(2007)Electronic_gaming_machine_structural_characteristics.pdf): "award symbol ratio" 设计原则 — 顶奖符号 reel 上邻接 blank 制造 PWDF
+- [Harrigan & Dixon — Near-miss effect review (PMC 7214505)](https://pmc.ncbi.nlm.nih.gov/articles/PMC7214505/)
+- [Wizard of Vegas — Multiline hit rate](https://wizardofvegas.com/forum/gambling/slots/30588-more-lines-same-probability/): 9 line independent → session_hit = 1 - (1 - per_line_hit)^9
+- [Slot Math Tutorial PAR sheet creation](https://slotgamedesign.com/2019/01/19/slot-math-tutorial-creating-par-sheets/)
+
+这些都是**心理锚**：archetype 数据让设计意图有真实参考，但所有具体数字（mode RTP / hit / bucket rate / family share）走 LHS 红线 + cfg paytable + slot_designer 规范。

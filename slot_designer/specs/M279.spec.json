@@ -102,11 +102,11 @@
     { "pay_id": 5, "kind": "line_3_same",  "symbol": "bar",   "multiplier": 1 },
 
     { "pay_id": 6, "kind": "line_3_group", "group": ["high7", "mid7", "low7"], "multiplier": 1 },
-    { "pay_id": 7, "kind": "line_3_group", "group": ["bar", "5bar"],            "multiplier": 1,
-      "_note": "M279 cfg reward Ratio 300 = 0.3× bet; round to 1× for integer multiplier (slight RTP overshoot vs real, acceptable for v1)" },
+    { "pay_id": 7, "kind": "line_3_group", "group": ["bar", "5bar"],            "multiplier": 0.3,
+      "_note": "M279 cfg reward Ratio 300 = 0.3× bet (fractional). Engine v2 supports float multipliers (rules.py 2026-04-28). This puts pay 7 single-line wins in gt0_lt1 bucket per design." },
 
     { "pay_id": 101, "kind": "pure_wild", "multiset": { "wild3x": 3 }, "multiplier": 250,
-      "_note": "3 wild3x → Grand JP 250× bet" },
+      "_note": "M279 cfg pay 101 SymbolIds=[3] (wild3x) Count=3 MatchType=3. Real M279 rawdata observed 1 / 2.9M spin = essentially 'exactly 3 wild3x' (no wild substitution per machine semantics). v2 strip has 0 wild3x on Reel 2 → pay 101 structurally cannot fire in v2 (= 0 RTP from pay 101). v2.1 fix: add 1 wild3x stop to Reel 2 strip (reel layout change, needs re-tune all modes)." },
     { "pay_id": 102, "kind": "pure_wild_group",
       "alternatives": [
         { "multiset": { "wild2x": 3 },     "multiplier": 150 },

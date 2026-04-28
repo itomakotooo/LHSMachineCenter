@@ -37,7 +37,7 @@ class CherryCountRule:
 class Line3SameRule:
     pay_id: int
     symbol: str
-    multiplier: int
+    multiplier: float       # widened to float 2026-04-28 for M279 pay 7 (0.3× bet)
     # v5 M15: optional constraint on wild participation.
     #   None  = no constraint (M1-era behavior; matches regardless of wilds)
     #   True  = requires ≥1 wild substitute among payline cells
@@ -52,7 +52,7 @@ class Line3SameRule:
 class Line3GroupRule:
     pay_id: int
     group: frozenset[str]
-    multiplier: int
+    multiplier: float       # widened to float 2026-04-28 for M279 pay 7 (0.3× bet)
 
 
 @dataclass
@@ -209,14 +209,14 @@ class RuleSet:
                 bucket.append(Line3SameRule(
                     pay_id=pid,
                     symbol=p["symbol"],
-                    multiplier=int(p["multiplier"]),
+                    multiplier=float(p["multiplier"]),
                     wild_required=p.get("wild_required"),
                 ))
             elif kind == "line_3_group":
                 self.line_3_group.append(Line3GroupRule(
                     pay_id=pid,
                     group=frozenset(p["group"]),
-                    multiplier=int(p["multiplier"]),
+                    multiplier=float(p["multiplier"]),
                 ))
             elif kind == "pure_wild":
                 self.pure_wild.append(PureWildRule(

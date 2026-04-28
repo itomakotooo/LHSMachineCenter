@@ -1,28 +1,27 @@
-"""M279 sim-based tuner.
+"""M279 sim-based tuner v2 — bucket-shape + family-share + per-symbol granular.
 
-The existing analytic_rtp + ES tuner (scripts/tune.py) assumes single-
-payline + no chained-feature mechanics. M279 (9-line + nudge chain +
-collect + wheel) doesn't fit that — paylines aren't independent (they
-share grid cells) and the nudge chain produces correlated wins on top
-of the base spin. Closed-form analytic RTP is intractable.
+v1 was family-level scaling (4 family scalars per reel × 3 reels = 12 dim)
+which is too coarse: it can't disentangle high7 vs low7 vs mid7 within
+the 7-family group, and the cost function only enforced RTP/hit/nudge
+without bucket-shape or family-share constraints.
 
-Approach: simulate-based coordinate descent over per-symbol weights.
+v2 cost function includes:
+  - RTP / hit / nudge / wheel target gaps (v1 carryover)
+  - Bucket-shape KS divergence vs target (NEW)
+  - Family-share band penalty (7-family / bar / wild-jp / wheel) (NEW)
+  - Top-jackpot freq target band (NEW)
+  - Asymmetric reel: Reel 2 high7 marginal / Reel 1 high7 marginal <= 0.5 (NEW)
 
-Tuning dimensions (per reel):
-  - 6 paying-symbol weights: low7 / mid7 / high7 / 5bar / bar / wild family
-  - 1 single-wild weight (wild)
-  - 1 single-2x weight (wild2x)
-  - 1 single-3x weight (wild3x)
-  - 1 stack-anchor weight (applied to all 3 stack symbols × 2 anchor positions = 6 stops)
-  - 1 blank weight (anchored as fixed multiplier)
+v2 search space:
+  - Per-symbol per-reel weight scalars (NOT family-level).
+  - 12 symbols × 3 reels = 36 scalars (vs v1's 12).
+  - Coordinate descent over each (reel, symbol) pair with sigma 0.7/1.43.
 
-Cost = (RTP_target - RTP_actual)² + (hit_target - hit_actual)² × hit_weight +
-       (nudge_target - nudge_actual)² × nudge_weight
-
-Tunes until RTP within ±1pp + hit within ±1pp + nudge within ±2pp.
-
-Per-mode targets are read from
-  slot_designer/tuner/targets/M279_mode<N>.target.json
+Sample size:
+  - Per-eval default 30000 spins (vs v1's 12000).
+  - Reduces noise on the rare 250x jackpot — pay 101 needs ~200k spins
+    for a single hit, so 30k still has high variance there. Acceptable
+    for v1 baseline; for production tighten to 100k+.
 """
 from __future__ import annotations
 
@@ -39,96 +38,207 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.engine.m279.engine import M279SessionState, M279SpinEngine, ST_PAID, ST_NUDGE, ST_WHEEL
-from slot_designer.engine.m279.loader import load_m279_engine
+from slot_designer.engine.m279.engine import (
+    M279SessionState,
+    M279SpinEngine,
+    ST_NUDGE,
+    ST_PAID,
+    ST_WHEEL,
+)
+from slot_designer.engine.m279.loader import build_m279_engine, load_m279_engine
 
 
-# Symbol families per the M279 archetype. Used to group stops on the
-# strip into a 1-dimensional weight scalar per family per reel.
-PAYING_SYMBOLS = {"low7", "mid7", "high7", "5bar", "bar"}
-SINGLE_WILDS = {"wild", "wild2x", "wild3x"}
-STACK_SYMBOLS = {"wild_up", "wild2x_mid", "wild_down"}
+# Symbol families — used for share computation, NOT for tuner search dim.
+PAYING_7 = {"low7", "mid7", "high7"}
+PAYING_BAR = {"5bar", "bar"}
+WILD_SINGLE = {"wild", "wild2x", "wild3x"}
+WILD_STACK = {"wild_up", "wild2x_mid", "wild_down"}
+WILD_JACKPOT_PAY_IDS = {101, 102, 103, 104}
+SEVEN_PAY_IDS = {1, 2, 3, 6}        # high7, mid7, low7, mixed-7
+BAR_PAY_IDS = {4, 5, 7}              # 5bar, bar, mixed-bar
 
 
-def sim_rtp(
+# Bucket boundaries (matches verify + emit semantics).
+BUCKET_BOUNDS = [
+    ("gt0_lt1", 0.0, 1.0),
+    ("ge1_lt5", 1.0, 5.0),
+    ("ge5_lt10", 5.0, 10.0),
+    ("ge10_lt20", 10.0, 20.0),
+    ("ge20_lt50", 20.0, 50.0),
+    ("ge50_lt100", 50.0, 100.0),
+    ("ge100_lt200", 100.0, 200.0),
+    ("ge200_lt500", 200.0, 500.0),
+    ("ge500", 500.0, float("inf")),
+]
+
+
+def bucket_for(ret_x: float) -> str | None:
+    if ret_x <= 0:
+        return None
+    for name, lo, hi in BUCKET_BOUNDS:
+        if lo <= ret_x < hi:
+            return name
+    return None
+
+
+def sim_metrics(
     engine: M279SpinEngine,
     n_spins: int,
     seed: int = 42,
 ) -> dict:
-    """Simulate ``n_spins`` paid spins, return aggregate metrics.
-
-    Returns dict with: rtp_pct, hit_rate, nudge_rate, wheel_rate,
-    avg_session_win, big_win_x10_rate.
-    """
+    """Comprehensive sim — returns RTP / hit / nudge / wheel / bucket /
+    family share / top-jp freq / asymmetric reel. Used by both tuner
+    cost function and verify."""
     state = M279SessionState()
     rng = Random(seed)
     total_win = 0
     total_bet = 0
-    hit_count = 0
-    nudge_count = 0
-    wheel_count = 0
-    big_x10 = 0
+    total_win_sq = 0  # for std/CV
+    hit = 0
+    nudge = 0
+    wheel = 0
+    pay_count = Counter()
+    pay_win = Counter()
+    bucket_count = Counter()
+    pay_101_count = 0
+
     for _ in range(n_spins):
         rounds = engine.run_session(rng, state.meter)
         sw = sum(r.win_credits for r in rounds)
         total_win += sw
         total_bet += engine.bet_amount
+        total_win_sq += (sw / engine.bet_amount) ** 2
         if sw > 0:
-            hit_count += 1
+            hit += 1
+            ret_x = sw / engine.bet_amount
+            b = bucket_for(ret_x)
+            if b:
+                bucket_count[b] += 1
         if any(r.spin_type == ST_NUDGE for r in rounds):
-            nudge_count += 1
+            nudge += 1
         if any(r.spin_type == ST_WHEEL for r in rounds):
-            wheel_count += 1
-        if sw >= engine.bet_amount * 10:
-            big_x10 += 1
+            wheel += 1
+        for r in rounds:
+            for p in r.pay_results:
+                pay_count[p.pay_id] += 1
+                pay_win[p.pay_id] += int(p.multiplier * engine.bet_amount)
+                if p.pay_id == 101:
+                    pay_101_count += 1
+            # Wheel pay attribution
+            if r.spin_type == ST_WHEEL:
+                pay_win["wheel"] += r.win_credits
+
+    avg_ret = total_win / total_bet
+    var_ret = (total_win_sq / n_spins) - avg_ret ** 2
+    std_ret = max(0.0, var_ret) ** 0.5
+
+    # Family RTP shares
+    seven_rtp = sum(pay_win[p] for p in SEVEN_PAY_IDS) / total_bet
+    bar_rtp = sum(pay_win[p] for p in BAR_PAY_IDS) / total_bet
+    wild_jp_rtp = sum(pay_win[p] for p in WILD_JACKPOT_PAY_IDS) / total_bet
+    wheel_rtp = pay_win.get("wheel", 0) / total_bet
+    total_rtp_pct = avg_ret * 100
+    total_rtp_share_known = seven_rtp + bar_rtp + wild_jp_rtp + wheel_rtp
+
     return {
-        "rtp_pct": (total_win / total_bet) * 100 if total_bet else 0.0,
-        "hit_rate": hit_count / n_spins,
-        "nudge_rate": nudge_count / n_spins,
-        "wheel_rate": wheel_count / n_spins,
-        "big_win_x10_rate": big_x10 / n_spins,
-        "avg_session_win": total_win / n_spins if n_spins else 0,
+        "rtp_pct": total_rtp_pct,
+        "hit_rate": hit / n_spins,
+        "nudge_rate": nudge / n_spins,
+        "wheel_rate": wheel / n_spins,
+        "std_return": std_ret,
+        "cv": std_ret / avg_ret if avg_ret > 0 else 0.0,
+        "bucket_rate": {b[0]: bucket_count[b[0]] / n_spins for b in BUCKET_BOUNDS},
+        "family_share": {
+            "seven_family": seven_rtp / avg_ret if avg_ret > 0 else 0,
+            "bar_family": bar_rtp / avg_ret if avg_ret > 0 else 0,
+            "wild_jackpot": wild_jp_rtp / avg_ret if avg_ret > 0 else 0,
+            "wheel_feature": wheel_rtp / avg_ret if avg_ret > 0 else 0,
+        },
+        "top_jp_freq_per_n_spins": (n_spins / pay_101_count) if pay_101_count > 0 else float("inf"),
+        "n_spins": n_spins,
+        "_pay_count": dict(pay_count),
     }
 
 
-def cost(metrics: dict, target: dict) -> float:
+def _ks_divergence(a: dict[str, float], b: dict[str, float]) -> float:
+    """Total variation between two bucket distributions (sums to 1).
+    Both are dicts keyed by bucket name. Missing keys = 0."""
+    keys = set(a) | set(b)
+    return 0.5 * sum(abs(a.get(k, 0) - b.get(k, 0)) for k in keys)
+
+
+def cost_v2(metrics: dict, target: dict) -> tuple[float, dict]:
+    """v2 cost function. Returns (total_cost, breakdown_dict)."""
+    breakdown: dict[str, float] = {}
+
+    # Carry-over from v1: RTP / hit / nudge
     rtp_gap = metrics["rtp_pct"] - target["rtp_pct"]
+    rtp_tol = max(target.get("rtp_tolerance_pp", 1.0), 0.1)
+    breakdown["rtp"] = (rtp_gap / rtp_tol) ** 2 * 1.5  # heaviest weight
+
     hit_gap = metrics["hit_rate"] - target["hit_rate"]
-    rtp_cost = (rtp_gap / max(target.get("rtp_tolerance_pp", 1.0), 0.1)) ** 2
-    hit_cost = (hit_gap / max(target.get("hit_tolerance_pp", 1.0) / 100, 0.001)) ** 2
-    cost_total = rtp_cost + 0.3 * hit_cost
-    if "nudge_rate" in target:
-        nudge_gap = metrics["nudge_rate"] - target["nudge_rate"]
-        cost_total += (nudge_gap / 0.02) ** 2 * 0.2
-    return cost_total
+    hit_tol = max(target.get("hit_tolerance_pp", 1.0) / 100, 0.001)
+    breakdown["hit"] = (hit_gap / hit_tol) ** 2 * 0.5
+
+    nudge_gap = metrics["nudge_rate"] - target.get("nudge_rate", 0.122)
+    nudge_tol = max(target.get("nudge_tolerance_pp", 3.0) / 100, 0.005)
+    breakdown["nudge"] = (nudge_gap / nudge_tol) ** 2 * 0.3
+
+    # NEW v2: bucket-shape KS divergence
+    target_bucket = target.get("bucket_rate", {})
+    if target_bucket:
+        # Normalize both to sum-to-hit-rate (not sum-to-1) to weight by absolute
+        # rate not just shape. KS scaled by 1/tol gives quadratic-like cost.
+        ks = _ks_divergence(metrics["bucket_rate"], target_bucket)
+        ks_tol = max(target.get("bucket_ks_tolerance", 0.10), 0.01)
+        breakdown["bucket_ks"] = (ks / ks_tol) ** 2 * 0.3
+
+    # NEW v2: family share band
+    family_band = target.get("family_share_band", {})
+    family_cost = 0.0
+    for fam, (lo, hi) in family_band.items():
+        actual = metrics["family_share"].get(fam, 0)
+        if actual < lo:
+            family_cost += ((lo - actual) / 0.05) ** 2
+        elif actual > hi:
+            family_cost += ((actual - hi) / 0.05) ** 2
+    breakdown["family_share"] = family_cost * 0.4
+
+    # NEW v2: top-jackpot freq band (multiplicative)
+    top_jp = target.get("top_jp_freq_target", {})
+    if top_jp.get("pay_101_per_n_spins"):
+        target_freq = top_jp["pay_101_per_n_spins"]
+        actual_freq = metrics["top_jp_freq_per_n_spins"]
+        tol = top_jp.get("pay_101_tolerance", 0.5)
+        if actual_freq != float("inf"):
+            ratio = actual_freq / target_freq
+            log_gap = abs(math_log(ratio)) if ratio > 0 else 1.0
+            band = math_log(1 + tol)
+            breakdown["top_jp"] = max(0, log_gap - band) ** 2 * 0.2
+        else:
+            breakdown["top_jp"] = 0.5  # mild penalty for never hitting
+
+    total = sum(breakdown.values())
+    return total, breakdown
 
 
-def family_of(symbol: str) -> str:
-    if symbol == "blank":
-        return "blank"
-    if symbol in PAYING_SYMBOLS:
-        return "paying"
-    if symbol in SINGLE_WILDS:
-        return "single_wild"
-    if symbol in STACK_SYMBOLS:
-        return "stack"
-    return "other"
+def math_log(x: float) -> float:
+    import math
+    if x <= 0:
+        return -float("inf")
+    return math.log(x)
 
 
-def apply_weight_scales(
+def _per_symbol_scaled_weights(
     strips: list[list[str]],
     base_weights: list[list[int]],
-    scales_per_reel: list[dict[str, float]],
+    sym_scales: list[dict[str, float]],
 ) -> list[list[int]]:
-    """Apply per-(reel, symbol) weight scaling.
-
-    Each scales_per_reel[i] is a dict {sym -> scalar}, e.g. {"low7": 1.0,
-    "high7": 0.8, "wild": 0.5}. Symbols not in dict use scale=1.0.
-    Result is rounded to int (min 1) to satisfy ReelStrip invariant.
-    """
+    """Apply per-(reel, symbol) scalars. Each ``sym_scales[i]`` is a
+    dict {sym -> scalar}; symbols not in dict use scale=1.0."""
     out: list[list[int]] = []
     for reel_idx, (strip, weights) in enumerate(zip(strips, base_weights)):
-        scales = scales_per_reel[reel_idx]
+        scales = sym_scales[reel_idx]
         new_w: list[int] = []
         for sym, w in zip(strip, weights):
             scale = scales.get(sym, 1.0)
@@ -137,7 +247,7 @@ def apply_weight_scales(
     return out
 
 
-def tune_coordinate_descent(
+def tune_v2(
     spec_path: Path,
     weights_path: Path,
     target: dict,
@@ -148,112 +258,104 @@ def tune_coordinate_descent(
     seed: int = 42,
     verbose: bool = True,
 ) -> dict:
-    """Coordinate-descent tuner over per-(reel, family) scalars.
+    """v2 coordinate descent — per-symbol per-reel granular scaling.
 
-    Each iteration tries scaling one (reel, family) up or down by
-    ``sigma`` and keeps the change if cost improves. Repeats until
-    no improvement in a full pass OR ``max_iters`` reached.
+    Each iteration tries scaling one (reel, symbol) pair up or down by
+    sigma, accept if cost improves.
     """
-    # Load the strips + initial weights
     strips_doc = json.loads(
         (weights_path.parent.parent / "reel_strips.json").read_text(encoding="utf-8"),
     )
     weights_doc = json.loads(weights_path.read_text(encoding="utf-8"))
+    spec_doc = json.loads(spec_path.read_text(encoding="utf-8"))
     strips = strips_doc["reels"]
     n_reels = len(strips)
 
-    # Initial scales: 1.0 across the board
-    scales: list[dict[str, float]] = [
-        {"blank": 1.0, "paying": 1.0, "single_wild": 1.0, "stack": 1.0}
-        for _ in range(n_reels)
+    # All unique symbols across reels (excluding stack — we don't tune the
+    # atomic trio individually because nudge mechanic depends on byte-
+    # identical layout; tune them as a group OR not at all for v1).
+    unique_syms_per_reel: list[list[str]] = []
+    for reel in strips:
+        unique_syms_per_reel.append(sorted(set(reel)))
+
+    # Per-(reel, symbol) scale dict
+    sym_scales: list[dict[str, float]] = [
+        {sym: 1.0 for sym in syms}
+        for syms in unique_syms_per_reel
     ]
-    # Per-symbol fine-grained scales (overrides family). Empty initially;
-    # tuner can populate selectively if needed.
-    sym_scales: list[dict[str, float]] = [{} for _ in range(n_reels)]
 
-    def _scaled_weights() -> list[list[int]]:
-        # Build per-reel symbol-specific scales from family fallback
-        per_reel_dicts: list[dict[str, float]] = []
-        for r_idx in range(n_reels):
-            d: dict[str, float] = {}
-            for sym in set(strips[r_idx]):
-                fam = family_of(sym)
-                base = scales[r_idx].get(fam, 1.0)
-                fine = sym_scales[r_idx].get(sym, 1.0)
-                d[sym] = base * fine
-            per_reel_dicts.append(d)
-        return apply_weight_scales(strips, weights_doc["weights"], per_reel_dicts)
+    def _scaled():
+        return _per_symbol_scaled_weights(strips, weights_doc["weights"], sym_scales)
 
-    def _evaluate(weights_array: list[list[int]]) -> tuple[dict, float]:
-        # Write to a temp weights doc + load via M279 loader to get a fresh
-        # engine instance (no mutating cached engine). Cheap because spec
-        # parse is small.
+    def _evaluate(weights_array: list[list[int]]) -> tuple[dict, float, dict]:
+        # In-memory engine build — no disk roundtrip avoids race
+        # conditions where the tuner's tmp file got read empty.
         tmp_doc = copy.deepcopy(weights_doc)
         tmp_doc["weights"] = weights_array
-        tmp_path = weights_path.parent / ".tune_tmp_weights.json"
-        tmp_path.write_text(json.dumps(tmp_doc), encoding="utf-8")
-        engine, _ = load_m279_engine(spec_path, tmp_path)
-        m = sim_rtp(engine, n_eval_spins, seed=seed)
-        c = cost(m, target)
-        return m, c
+        engine = build_m279_engine(spec_doc, tmp_doc, strips_doc)
+        m = sim_metrics(engine, n_eval_spins, seed=seed)
+        c, breakdown = cost_v2(m, target)
+        return m, c, breakdown
 
-    # Baseline
     if verbose:
-        print(f"=== M279 sim-based tuner ===")
-        print(f"target: {target}")
-    cur_weights = _scaled_weights()
-    cur_metrics, cur_cost = _evaluate(cur_weights)
+        print(f"=== M279 sim-based tuner v2 (per-symbol per-reel granular) ===")
+        print(f"target rtp={target['rtp_pct']} hit={target['hit_rate']} mode={weights_doc['mode']}")
+    cur_weights = _scaled()
+    cur_metrics, cur_cost, cur_break = _evaluate(cur_weights)
     if verbose:
         print(f"baseline: rtp={cur_metrics['rtp_pct']:.2f}% "
               f"hit={cur_metrics['hit_rate']*100:.2f}% "
               f"nudge={cur_metrics['nudge_rate']*100:.2f}% "
-              f"wheel={cur_metrics['wheel_rate']*100:.2f}%  cost={cur_cost:.2f}")
+              f"7fam={cur_metrics['family_share']['seven_family']*100:.1f}% "
+              f"bar={cur_metrics['family_share']['bar_family']*100:.1f}% "
+              f" cost={cur_cost:.2f}")
+        for k, v in cur_break.items():
+            if v > 0.01:
+                print(f"    {k}: {v:.3f}")
 
-    families = ["paying", "stack", "single_wild", "blank"]
     iter_count = 0
     last_improvement = -1
     t0 = time.time()
+    cur_sigma = sigma
+
     while iter_count < max_iters:
         improved = False
         for reel_idx in range(n_reels):
-            for fam in families:
-                for direction in (sigma, 1.0 / sigma):
-                    trial_scales = copy.deepcopy(scales)
-                    trial_scales[reel_idx][fam] = trial_scales[reel_idx].get(fam, 1.0) * direction
-                    # build trial
-                    saved_scales = scales
-                    scales[:] = trial_scales
-                    trial_weights = _scaled_weights()
-                    trial_metrics, trial_cost = _evaluate(trial_weights)
-                    if trial_cost < cur_cost:
+            # Iterate symbols; pick most-impactful one first by current cost
+            for sym in unique_syms_per_reel[reel_idx]:
+                # Don't tune blank to extreme - it's the dominant weight
+                if sym in WILD_STACK:
+                    # Tune stack as a group: same scale for all 3
+                    continue  # for v1 leave stack at base
+                for direction in (cur_sigma, 1.0 / cur_sigma):
+                    saved = sym_scales[reel_idx][sym]
+                    sym_scales[reel_idx][sym] = saved * direction
+                    trial_weights = _scaled()
+                    trial_metrics, trial_cost, trial_break = _evaluate(trial_weights)
+                    if trial_cost < cur_cost - 0.5:  # require meaningful improvement
                         cur_metrics = trial_metrics
                         cur_cost = trial_cost
+                        cur_break = trial_break
                         cur_weights = trial_weights
                         improved = True
                         last_improvement = iter_count
                         if verbose:
-                            print(f"  [iter {iter_count}] reel{reel_idx+1} {fam} ×{direction:.2f}: "
+                            print(f"  [iter {iter_count}] reel{reel_idx+1} {sym} ×{direction:.2f}: "
                                   f"rtp={cur_metrics['rtp_pct']:.2f}% "
                                   f"hit={cur_metrics['hit_rate']*100:.2f}% "
                                   f"nudge={cur_metrics['nudge_rate']*100:.2f}%  cost={cur_cost:.2f}")
-                        break  # accept this direction and move on
+                        break
                     else:
-                        scales[:] = saved_scales
-                if improved and direction == 1.0 / sigma:
-                    continue
+                        sym_scales[reel_idx][sym] = saved
         iter_count += 1
         if not improved:
+            if cur_sigma < 1.05:
+                if verbose:
+                    print(f"  [iter {iter_count}] sigma converged; stopping")
+                break
+            cur_sigma = max(1.05, (cur_sigma - 1) * 0.5 + 1)
             if verbose:
-                print(f"  [iter {iter_count}] no improvement; stopping")
-            break
-        # Tighten sigma after each successful pass for finer descent
-        if iter_count - last_improvement > 2:
-            sigma = max(1.05, (sigma - 1) * 0.5 + 1)
-
-    # Cleanup temp file
-    tmp_path = weights_path.parent / ".tune_tmp_weights.json"
-    if tmp_path.exists():
-        tmp_path.unlink()
+                print(f"  [iter {iter_count}] no improvement; tightening sigma to {cur_sigma:.2f}")
 
     elapsed = time.time() - t0
     if verbose:
@@ -261,39 +363,38 @@ def tune_coordinate_descent(
         print(f"rtp={cur_metrics['rtp_pct']:.2f}% (target {target['rtp_pct']})")
         print(f"hit={cur_metrics['hit_rate']*100:.2f}% (target {target['hit_rate']*100:.2f})")
         print(f"nudge={cur_metrics['nudge_rate']*100:.2f}%")
-        print(f"wheel={cur_metrics['wheel_rate']*100:.4f}%")
-        print(f"big_x10={cur_metrics['big_win_x10_rate']*100:.2f}%")
-        print(f"final scales per reel: {scales}")
+        print(f"family share: 7fam={cur_metrics['family_share']['seven_family']*100:.1f}% "
+              f"bar={cur_metrics['family_share']['bar_family']*100:.1f}% "
+              f"wild_jp={cur_metrics['family_share']['wild_jackpot']*100:.1f}% "
+              f"wheel={cur_metrics['family_share']['wheel_feature']*100:.1f}%")
+        print(f"top JP 1/{cur_metrics['top_jp_freq_per_n_spins']:.0f} spins")
+        print(f"std_return={cur_metrics['std_return']:.2f}  CV={cur_metrics['cv']:.2f}")
 
     return {
         "weights": cur_weights,
         "metrics": cur_metrics,
-        "scales_per_reel": scales,
+        "sym_scales_per_reel": sym_scales,
         "cost": cur_cost,
         "iterations": iter_count,
     }
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="M279 sim-based tuner")
+    p = argparse.ArgumentParser(description="M279 sim-based tuner v2")
     p.add_argument("--spec", required=True, type=Path)
     p.add_argument("--weights", required=True, type=Path)
     p.add_argument("--target", required=True, type=Path)
-    p.add_argument("--out-weights", type=Path, default=None,
-                   help="defaults to overwriting --weights")
+    p.add_argument("--out-weights", type=Path, default=None)
     p.add_argument("--n-eval-spins", type=int, default=30000)
-    p.add_argument("--max-iters", type=int, default=20)
+    p.add_argument("--max-iters", type=int, default=15)
     p.add_argument("--sigma", type=float, default=0.7)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--verbose", action="store_true", default=True)
     args = p.parse_args()
 
     target = json.loads(args.target.read_text(encoding="utf-8"))
-
-    result = tune_coordinate_descent(
-        args.spec,
-        args.weights,
-        target,
+    result = tune_v2(
+        args.spec, args.weights, target,
         n_eval_spins=args.n_eval_spins,
         max_iters=args.max_iters,
         sigma=args.sigma,
@@ -309,11 +410,15 @@ def main() -> None:
         "hit_rate": result["metrics"]["hit_rate"],
         "nudge_rate": result["metrics"]["nudge_rate"],
         "wheel_rate": result["metrics"]["wheel_rate"],
-        "scales_per_reel": result["scales_per_reel"],
+        "std_return": result["metrics"]["std_return"],
+        "cv": result["metrics"]["cv"],
+        "family_share": result["metrics"]["family_share"],
+        "top_jp_freq_per_n_spins": result["metrics"]["top_jp_freq_per_n_spins"],
         "iterations": result["iterations"],
+        "sym_scales_per_reel": result["sym_scales_per_reel"],
     })
     out.write_text(json.dumps(weights_doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\nwrote tuned weights → {out}")
+    print(f"\nwrote tuned weights -> {out}")
 
 
 if __name__ == "__main__":

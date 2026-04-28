@@ -1,0 +1,49 @@
+{
+  "_machine": "M279",
+  "_mode": 5,
+  "_label": "M279_mode5_super_lucky_v2",
+  "_design_intent": [
+    "M279 mode 5 super-lucky — LHS 跨机台 mode 5 红线 500% RTP. Base = mode 2 byte-identical; feature override via _m279_overrides.",
+    "RTP source: mode 2 base 300pp + wheel feature override (collect_max 150 + win_scale 7) bumps wheel from 4pp to ~187pp = 487pp + nudge multi-line buffer ~13pp = 500pp.",
+    "Top jackpot freq: pay 101 1/10k spins (session-level 稀有，super-lucky 阶梯顶)."
+  ],
+  "rtp_pct": 500.0,
+  "rtp_tolerance_pp": 50.0,
+  "hit_rate": 0.225,
+  "hit_tolerance_pp": 3.0,
+  "nudge_rate": 0.20,
+  "nudge_tolerance_pp": 5.0,
+  "wheel_rate": 0.0067,
+  "cv_target": 7.0,
+  "cv_tolerance": 2.5,
+  "bucket_rate": {
+    "gt0_lt1": 0.030,
+    "ge1_lt5": 0.140,
+    "ge5_lt10": 0.025,
+    "ge10_lt20": 0.015,
+    "ge20_lt50": 0.0095,
+    "ge50_lt100": 0.0070,
+    "ge100_lt200": 0.0038,
+    "ge200_lt500": 0.0010,
+    "ge500": 0.00040
+  },
+  "bucket_ks_tolerance": 0.20,
+  "family_share_band": {
+    "seven_family": [0.25, 0.50],
+    "bar_family": [0.07, 0.20],
+    "wild_jackpot": [0.005, 0.15],
+    "wheel_feature": [0.30, 0.55]
+  },
+  "_family_share_basis": "Mode 5 inherits mode 2 base shares but wheel feature is dramatically boosted (collect_max 1000→150 gives ×6.7 trigger frequency, win_scale ×7 gives ×7 payout per trigger = ~47× wheel pp boost). So wheel takes the largest single share, suppressing other shares proportionally.",
+  "top_jp_freq_target": {
+    "pay_101_per_n_spins": 10000,
+    "pay_101_tolerance": 1.0
+  },
+  "asymmetric_reel": {
+    "high7_kill_ratio": 1.20
+  },
+  "_m279_overrides_design": {
+    "collect_meter_max": 150,
+    "wheel_win_scale": 7.0
+  }
+}

@@ -27,51 +27,29 @@ def _resolve_strips_path(weights_path: Path) -> Path:
     return weights_path.parent.parent / "reel_strips.json"
 
 
-def load_m279_engine(
-    spec_path: Path | str,
-    weights_path: Path | str,
+def build_m279_engine(
+    spec: dict,
+    weights_doc: dict,
+    strips_doc: dict,
     *,
     spin_type: int = 1,
-    strips_path: Path | str | None = None,
-) -> tuple[M279SpinEngine, dict]:
-    """Build an M279SpinEngine from spec + strips + this mode's weights.
+) -> M279SpinEngine:
+    """Build an M279SpinEngine from already-parsed spec/weights/strips dicts.
 
-    Args:
-      spec_path: ``slot_designer/specs/M279.spec.json``.
-      weights_path: ``slot_designer/weights/M279/mode_<N>/weights.json``.
-      spin_type: which paid spin_type entry from spec.spin_types to
-        activate (default 1, the paid one).
-      strips_path: optional explicit override; defaults to grandparent
-        of weights_path.
-
-    Returns: (M279SpinEngine, spec_dict). The dict is the parsed spec,
-    same as core load_engine returns.
+    Used by tuner inner loop to avoid disk roundtrip — load_m279_engine
+    is the file-path entry point that wraps this.
     """
-    spec_path = Path(spec_path)
-    weights_path = Path(weights_path)
-    spec = json.loads(spec_path.read_text(encoding="utf-8"))
-    weights_doc = json.loads(weights_path.read_text(encoding="utf-8"))
-
     if spec["machine"] != weights_doc.get("machine"):
         raise ValueError(
             f"spec/weights machine mismatch: spec={spec['machine']!r} "
             f"weights={weights_doc.get('machine')!r}"
         )
-
-    strips_path = (
-        Path(strips_path) if strips_path is not None
-        else _resolve_strips_path(weights_path)
-    )
-    if not strips_path.exists():
-        raise FileNotFoundError(f"reel_strips.json not found at {strips_path}")
-    strips_doc = json.loads(strips_path.read_text(encoding="utf-8"))
     if strips_doc.get("machine") != spec["machine"]:
         raise ValueError(
             f"spec/strips machine mismatch: spec={spec['machine']!r} "
             f"strips={strips_doc.get('machine')!r}"
         )
 
-    # Assemble reels (strips + weights → ReelStrip per column)
     strip_reels = strips_doc["reels"]
     weight_reels = weights_doc["weights"]
     if len(strip_reels) != len(weight_reels):
@@ -88,12 +66,10 @@ def load_m279_engine(
         stops = [Stop(symbol=s, weight=float(w)) for s, w in zip(strip, wts)]
         reels.append(ReelStrip(stops))
 
-    # Symbols + rules + evaluator
     symbols = SymbolRegistry(spec["symbols"])
     rules = RuleSet(spec["pays"], reroll_blocks=spec.get("reroll_blocks"))
     evaluator = PaytableEvaluator(symbols, rules, spec["evaluation_order"])
 
-    # Paylines (multi-line)
     paylines_spec = spec["grid"]["paylines"]
     if not paylines_spec:
         raise ValueError("M279 spec: grid.paylines is empty")
@@ -102,15 +78,11 @@ def load_m279_engine(
         for line in paylines_spec
     ]
 
-    # Spin type config
     st_key = str(spin_type)
     if st_key not in spec["spin_types"]:
         raise ValueError(f"spin_type {spin_type!r} not declared in spec")
     st = spec["spin_types"][st_key]
 
-    # Feature configs — spec defaults, optionally overridden per-mode via
-    # weights.json's ``_m279_overrides`` block. Used by mode 5 to halve
-    # CollectMax (wheel triggers 2× as often) without forking the spec.
     nudge_cfg = load_nudge_config(spec)
     collect_cfg = load_collect_config(spec)
     wheel_cfg = load_wheel_config(spec)
@@ -136,7 +108,7 @@ def load_m279_engine(
             ),
         )
 
-    engine = M279SpinEngine(
+    return M279SpinEngine(
         reels=reels,
         evaluator=evaluator,
         paylines=paylines,
@@ -146,4 +118,26 @@ def load_m279_engine(
         collect_cfg=collect_cfg,
         wheel_cfg=wheel_cfg,
     )
+
+
+def load_m279_engine(
+    spec_path: Path | str,
+    weights_path: Path | str,
+    *,
+    spin_type: int = 1,
+    strips_path: Path | str | None = None,
+) -> tuple[M279SpinEngine, dict]:
+    """File-path entry point. Wraps build_m279_engine after disk loads."""
+    spec_path = Path(spec_path)
+    weights_path = Path(weights_path)
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    weights_doc = json.loads(weights_path.read_text(encoding="utf-8"))
+    strips_path = (
+        Path(strips_path) if strips_path is not None
+        else _resolve_strips_path(weights_path)
+    )
+    if not strips_path.exists():
+        raise FileNotFoundError(f"reel_strips.json not found at {strips_path}")
+    strips_doc = json.loads(strips_path.read_text(encoding="utf-8"))
+    engine = build_m279_engine(spec, weights_doc, strips_doc, spin_type=spin_type)
     return engine, spec

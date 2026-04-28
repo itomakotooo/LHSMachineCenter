@@ -19,14 +19,18 @@ from pathlib import Path
 
 
 # Symbol scale multipliers — multiplicative on mode 1's per-stop weights.
-# 0.7 = M1-tested cut for Cherry/Bar that drops Low bucket without
-# dragging Mid/High/Top.
+# v2 (per DESIGN.md §3.3): 7-family 47.5pp absolute preserved; bar 23.75 → 15.0pp (-8.75pp).
+# Stronger bar/5bar cut than v1 to actually drop RTP -10pp, while preserving Mid/High/Top hit
+# at mode 1 absolute values (per_tier preservation hard rule).
 SCALE_BY_SYMBOL = {
-    "bar": 0.7,
-    "5bar": 0.7,
-    "low7": 0.85,    # low7 contributes to both Low (3-low7 OAK) and Mid (mixed-7 line)
-    # Other symbols unchanged (mid7, high7, wild, wild2x, wild3x, stack)
+    "bar": 0.40,    # bar OAK pay 1× → main Low contributor; cut hard (-60%)
+    "5bar": 0.40,   # 5bar OAK pay 2×; also Low; cut hard
+    "low7": 0.70,   # low7 OAK pay 2×; tail of Low + part of mixed-7 Mid; moderate cut
+    # mid7 / high7 / wild family / stack: unchanged (preserve Mid/High/Top hit absolute)
 }
+
+# Blank weight bump compensates for paying weight reductions.
+BLANK_BUMP = 1.20
 
 
 def derive(mode_1_path: Path, mode_7_path: Path, strips_path: Path) -> dict:
@@ -52,8 +56,11 @@ def derive(mode_1_path: Path, mode_7_path: Path, strips_path: Path) -> dict:
     for reel_idx, (strip, weights) in enumerate(zip(strips, m1_doc["weights"])):
         scaled = []
         for sym, w in zip(strip, weights):
-            scale = SCALE_BY_SYMBOL.get(sym, 1.0)
-            scaled.append(max(1, int(round(w * scale))))
+            if sym == "blank":
+                scaled.append(max(1, int(round(w * BLANK_BUMP))))
+            else:
+                scale = SCALE_BY_SYMBOL.get(sym, 1.0)
+                scaled.append(max(1, int(round(w * scale))))
         new_weights.append(scaled)
     m7_doc["weights"] = new_weights
 
