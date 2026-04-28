@@ -1,0 +1,17 @@
+{
+  "_machine": "M279",
+  "_mode": 2,
+  "_label": "M279_mode2_lucky",
+  "_design_intent": [
+    "M279 mode 2 (lucky) at 300% RTP. Independent tune (not derived from mode 1).",
+    "Hit rate ×1.5-2 mode 1 → 22-25% (NOT ×3 per project_slot_designer_hit_rate_deviation).",
+    "Bucket shape similar to mode 1 (Low/Mid/High/Top ratio preserved); RTP delta comes from per-hit avg win size + nudge frequency.",
+    "Nudge rate ~1.5-2× mode 1 → ~18-22% (more frequent stack landings)."
+  ],
+  "rtp_pct": 300.0,
+  "rtp_tolerance_pp": 25.0,
+  "hit_rate": 0.225,
+  "hit_tolerance_pp": 3.0,
+  "nudge_rate": 0.20,
+  "wheel_rate": 0.000877
+}

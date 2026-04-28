@@ -23,6 +23,10 @@ class Symbol:
     name: str
     kind: str            # "regular" | "wild" | "cherry_special" | "filler" | "booster"
     multiplier: int = 1  # wild: per-wild stack multiplier; booster: tier multiplier
+    # M279+ 2026-04-28: nudge anchor metadata for stacked-wild trio.
+    # Symbols that are part of a stack carry this; non-stack wilds carry None.
+    nudge_anchor: str | None = None  # "up" | "down" | None (mid stack member or
+                                     # non-stack wild)
 
     @property
     def is_wild(self) -> bool:
@@ -40,6 +44,10 @@ class Symbol:
     def is_booster(self) -> bool:
         return self.kind == "booster"
 
+    @property
+    def is_nudge_anchor(self) -> bool:
+        return self.nudge_anchor in ("up", "down")
+
 
 class SymbolRegistry:
     _KNOWN_KINDS = {"filler", "cherry_special", "regular", "wild", "booster"}
@@ -54,7 +62,15 @@ class SymbolRegistry:
                     f"(known: {sorted(self._KNOWN_KINDS)})"
                 )
             mult = int(attrs.get("multiplier", 1))
-            self.by_name[name] = Symbol(name=name, kind=kind, multiplier=mult)
+            anchor = attrs.get("_nudge_anchor")
+            if anchor is not None and anchor not in ("up", "down"):
+                raise ValueError(
+                    f"symbol {name!r}: _nudge_anchor must be 'up' or 'down', "
+                    f"got {anchor!r}"
+                )
+            self.by_name[name] = Symbol(
+                name=name, kind=kind, multiplier=mult, nudge_anchor=anchor,
+            )
 
     def get(self, name: str) -> Symbol:
         sym = self.by_name.get(name)

@@ -156,12 +156,15 @@ def load_engine(
         stops = [Stop(symbol=s["symbol"], weight=float(s["weight"])) for s in reel_stops]
         reels.append(ReelStrip(stops))
 
-    # Payline — M1 has exactly 1 (line_id=1 on middle row).
+    # Payline — M1 / M15 / M37 have exactly 1 (line_id=1 on middle row).
+    # Multi-line specs (M279: 9 lines) load the full payline list; the
+    # single-line ``SpinEngine`` returned here uses paylines[0] for
+    # backward compatibility, but ``spec["grid"]["paylines"]`` carries
+    # the full list which downstream multi-line engines (M279SpinEngine)
+    # read directly from the spec dict returned alongside the engine.
     paylines = spec["grid"]["paylines"]
-    if len(paylines) != 1:
-        raise NotImplementedError(
-            f"Phase 1 engine supports 1 payline; spec declares {len(paylines)}"
-        )
+    if not paylines:
+        raise ValueError(f"spec {spec.get('machine')!r}: grid.paylines is empty")
     positions = [tuple(p) for p in paylines[0]["positions"]]
 
     # v5+ M15: build FeatureSpec from per-mode feature_params (weights.json)

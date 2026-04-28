@@ -1,0 +1,248 @@
+{
+  "machine": "M279",
+  "mode": 1,
+  "schema_version": 2,
+  "_notes": [
+    "M279 spec v1 (2026-04-28): reverse-engineered from",
+    "rawdata/M279/mode_1/chunk_*.json + machineconfig/M279Cfg.txt.",
+    "Field analysis at slot_designer/weights/M279/DESIGN.md.",
+    "",
+    "Machine type — Light & Wonder 'Blazing 777 Triple Double Jackpot",
+    "Wild — Nudging Stacks' archetype (3-reel 9-line stepper) +",
+    "Asian-market collect-to-wheel feature add-on:",
+    "  - 3×3 grid, 9 paylines",
+    "  - Wild stack: wild_up / wild2x_mid / wild_down trio that ALWAYS",
+    "    lands together at adjacent strip positions (3-row stack), with",
+    "    bidirectional nudge:",
+    "      * wild_up alone visible at bot row → MoveSpin nudges UP",
+    "      * wild_down alone visible at top row → MoveSpin nudges DOWN",
+    "      * 2 visible (any direction) → MoveSpin completes the reveal",
+    "      * full 3 visible → no MoveSpin",
+    "    Max 2 MoveSpin chain per anchor (Blazing 777 'nudge up to two').",
+    "  - 3 separate single-cell wilds: wild (×1), wild2x (×2), wild3x (×3)",
+    "  - 5 paying tiers (high7=6000 / mid7=4000 / low7=2000 / 5bar=1500 /",
+    "    bar=1000) + mixed-7 (1000) + mixed-bar (300)",
+    "  - 4 wild-jackpot pays (101 = 250×, 102 = 150×, 103 = 50×, 104 = 15×)",
+    "  - Collect meter: every paid spin += 1 unit; at 1000 triggers",
+    "    Wheel feature (12-cell, fixed values).",
+    "  - BuffCollectionMap (ST=102): trigger-only feature alongside wheel.",
+    "",
+    "Paytable mapping (from machineconfig/M279Cfg.txt payout block):",
+    "  pay_id 1   — 3 of [1-7] (any wild + high7) → reward 1 = 6000 ratio",
+    "  pay_id 2   — 3 of [1-6, 8] (any wild + mid7) → 4000 ratio",
+    "  pay_id 3   — 3 of [1-6, 9] (any wild + low7) → 2000 ratio",
+    "  pay_id 4   — 3 of [1-6, 10] (any wild + 5bar) → 1500 ratio",
+    "  pay_id 5   — 3 of [1-6, 11] (any wild + bar) → 1000 ratio",
+    "  pay_id 6   — 3 of [1-9] (mixed 7s) → 1000 ratio",
+    "  pay_id 7   — 3 of [1-6, 10-11] (mixed bars) → 300 ratio",
+    "  pay_id 101 — 3 wild3x → 250× bet (250000 credits)",
+    "  pay_id 102 — 3 of {wild2x, wild2x_mid} mixed → 150× bet (150000)",
+    "  pay_id 103 — 3 wild → 50× bet (50000)",
+    "  pay_id 104 — 3 of any wild mixed [wild, wild2x, wild3x, wild2x_mid] → 15× bet (15000)",
+    "",
+    "Wheel (NewWheel feature) — 12 cell × 30°, fixed weights & values:",
+    "  cellIndex 1:  weight 50, win 50000 (50× bet)",
+    "  cellIndex 2:  weight 30, win 10000 (10× bet)",
+    "  cellIndex 3:  weight 30, win 20000 (20× bet)",
+    "  cellIndex 4:  weight 20, win 50000 (50× bet)",
+    "  cellIndex 5:  weight 30, win 30000 (30× bet)",
+    "  cellIndex 6:  weight 10, win 5000  (5× bet)",
+    "  cellIndex 7:  weight 30, win 20000 (20× bet)",
+    "  cellIndex 8:  weight 20, win 100000 (100× bet)",
+    "  cellIndex 9:  weight 10, win 5000  (5× bet)",
+    "  cellIndex 10: weight 50, win 100000 (100× bet)",
+    "  cellIndex 11: weight 15, win 20000 (20× bet)",
+    "  cellIndex 12: weight 50, win 10000 (10× bet)",
+    "  Σ weight = 345, Σ E[win] = 13.8M / 345 = 40,000 = 40× bet",
+    "",
+    "Reel skin convention:",
+    "  ReelSkin field in each round = mode (1/2/5/7) per real M279 cfg's",
+    "  defaultSkinIndex / skinId mapping. Reel symbol layout shared across",
+    "  modes per slot_designer convention (strips_identical_across_modes)."
+  ],
+
+  "grid": {
+    "cols": 3,
+    "rows": 3,
+    "paylines": [
+      { "line_id": 1, "positions": [[0, 1], [1, 1], [2, 1]] },
+      { "line_id": 2, "positions": [[0, 0], [1, 0], [2, 0]] },
+      { "line_id": 3, "positions": [[0, 2], [1, 2], [2, 2]] },
+      { "line_id": 4, "positions": [[0, 0], [1, 1], [2, 2]] },
+      { "line_id": 5, "positions": [[0, 2], [1, 1], [2, 0]] },
+      { "line_id": 6, "positions": [[0, 0], [1, 1], [2, 0]] },
+      { "line_id": 7, "positions": [[0, 2], [1, 1], [2, 2]] },
+      { "line_id": 8, "positions": [[0, 1], [1, 0], [2, 1]] },
+      { "line_id": 9, "positions": [[0, 1], [1, 2], [2, 1]] }
+    ]
+  },
+
+  "symbols": {
+    "blank":      { "kind": "filler" },
+    "bar":        { "kind": "regular" },
+    "5bar":       { "kind": "regular" },
+    "low7":       { "kind": "regular" },
+    "mid7":       { "kind": "regular" },
+    "high7":      { "kind": "regular" },
+    "wild":       { "kind": "wild", "multiplier": 1 },
+    "wild2x":     { "kind": "wild", "multiplier": 2 },
+    "wild3x":     { "kind": "wild", "multiplier": 3 },
+    "wild_up":    { "kind": "wild", "multiplier": 1, "_nudge_anchor": "up" },
+    "wild2x_mid": { "kind": "wild", "multiplier": 2, "_nudge_stack_mid": true },
+    "wild_down":  { "kind": "wild", "multiplier": 1, "_nudge_anchor": "down" }
+  },
+
+  "pays": [
+    { "pay_id": 1, "kind": "line_3_same",  "symbol": "high7", "multiplier": 6,
+      "_note": "M279 cfg reward Ratio 6000 = 6× bet per line hit (avg 29× after wild boost on real rawdata)" },
+    { "pay_id": 2, "kind": "line_3_same",  "symbol": "mid7",  "multiplier": 4 },
+    { "pay_id": 3, "kind": "line_3_same",  "symbol": "low7",  "multiplier": 2 },
+    { "pay_id": 4, "kind": "line_3_same",  "symbol": "5bar",  "multiplier": 2,
+      "_note": "M279 cfg reward Ratio 1500 = 1.5× bet; round to 2× for integer multiplier" },
+    { "pay_id": 5, "kind": "line_3_same",  "symbol": "bar",   "multiplier": 1 },
+
+    { "pay_id": 6, "kind": "line_3_group", "group": ["high7", "mid7", "low7"], "multiplier": 1 },
+    { "pay_id": 7, "kind": "line_3_group", "group": ["bar", "5bar"],            "multiplier": 1,
+      "_note": "M279 cfg reward Ratio 300 = 0.3× bet; round to 1× for integer multiplier (slight RTP overshoot vs real, acceptable for v1)" },
+
+    { "pay_id": 101, "kind": "pure_wild", "multiset": { "wild3x": 3 }, "multiplier": 250,
+      "_note": "3 wild3x → Grand JP 250× bet" },
+    { "pay_id": 102, "kind": "pure_wild_group",
+      "alternatives": [
+        { "multiset": { "wild2x": 3 },     "multiplier": 150 },
+        { "multiset": { "wild2x_mid": 3 }, "multiplier": 150 },
+        { "multiset": { "wild2x": 2, "wild2x_mid": 1 }, "multiplier": 150 },
+        { "multiset": { "wild2x": 1, "wild2x_mid": 2 }, "multiplier": 150 }
+      ],
+      "_note": "3 of mixed wild2x / wild2x_mid → 150× bet (Major JP)" },
+    { "pay_id": 103, "kind": "pure_wild", "multiset": { "wild": 3 }, "multiplier": 50,
+      "_note": "3 wild → 50× bet (Minor JP)" },
+    { "pay_id": 104, "kind": "pure_wild_group",
+      "alternatives": [
+        { "multiset": { "wild": 2, "wild2x": 1 },     "multiplier": 15 },
+        { "multiset": { "wild": 2, "wild3x": 1 },     "multiplier": 15 },
+        { "multiset": { "wild": 2, "wild2x_mid": 1 }, "multiplier": 15 },
+        { "multiset": { "wild": 1, "wild2x": 2 },     "multiplier": 15 },
+        { "multiset": { "wild": 1, "wild3x": 2 },     "multiplier": 15 },
+        { "multiset": { "wild": 1, "wild2x_mid": 2 }, "multiplier": 15 },
+        { "multiset": { "wild": 1, "wild2x": 1, "wild3x": 1 },     "multiplier": 15 },
+        { "multiset": { "wild": 1, "wild2x": 1, "wild2x_mid": 1 }, "multiplier": 15 },
+        { "multiset": { "wild": 1, "wild3x": 1, "wild2x_mid": 1 }, "multiplier": 15 },
+        { "multiset": { "wild2x": 1, "wild3x": 1, "wild2x_mid": 1 }, "multiplier": 15 },
+        { "multiset": { "wild2x": 2, "wild3x": 1 },     "multiplier": 15 },
+        { "multiset": { "wild2x": 1, "wild3x": 2 },     "multiplier": 15 },
+        { "multiset": { "wild3x": 2, "wild2x_mid": 1 }, "multiplier": 15 },
+        { "multiset": { "wild3x": 1, "wild2x_mid": 2 }, "multiplier": 15 }
+      ],
+      "_note": "3 of any mixed wild combo not covered by 101/102/103 → 15× bet (Mini JP)" }
+  ],
+
+  "evaluation_order": [
+    "pure_wild",
+    "pure_wild_group",
+    "line_3_same",
+    "line_3_group"
+  ],
+
+  "spin_types": {
+    "1": {
+      "kind": "paid",
+      "cost_per_spin": 1000,
+      "bet_amount": 1000,
+      "reel_set": "default",
+      "_rawdata_spin_type": 140,
+      "_note": "Logic SpinType=1 in cfg = rawdata SpinType=140 (NormalCollectionSpin). Each paid spin contributes 1 unit to the collect meter."
+    },
+    "36": {
+      "kind": "free",
+      "cost_per_spin": 0,
+      "bet_amount": 1000,
+      "reel_set": "default",
+      "_rawdata_spin_type": 36,
+      "_note": "MoveSpin (wild stack nudge). Triggered when a paid spin's window shows partial wild stack on any reel. Reuses the same reel set; only the partial reel(s) get re-rendered with the stack shifted toward full reveal."
+    },
+    "2": {
+      "kind": "free",
+      "cost_per_spin": 0,
+      "bet_amount": 1000,
+      "reel_set": "wheel",
+      "_rawdata_spin_type": 2,
+      "_note": "Wheel feature (NewWheel). Triggered when collect meter reaches CollectMax. Uses 12-cell fixed-weight wheel, not reel set."
+    },
+    "102": {
+      "kind": "free",
+      "cost_per_spin": 0,
+      "bet_amount": 0,
+      "reel_set": "default",
+      "_rawdata_spin_type": 102,
+      "_note": "BuffCollectionMap (UI overlay). Trigger-only marker fired alongside Wheel. WinCredits = 0; no analyzer impact."
+    }
+  },
+
+  "_m279_features": {
+    "_note": "M279-specific feature blocks. Not the M15 'features[]' array — those slot into engine/feature_m15.py's accept/reject simulator. M279 has 3 distinct mechanics each with its own engine module under engine/m279/.",
+
+    "nudge_stack": {
+      "_engine": "engine.m279.nudge",
+      "anchor_symbols": ["wild_up", "wild2x_mid", "wild_down"],
+      "anchor_layout": {
+        "stack_size": 3,
+        "stack_order": ["wild_up", "wild2x_mid", "wild_down"],
+        "_note": "Strip MUST place these 3 symbols at adjacent positions in this exact order (top→bot)."
+      },
+      "max_chain_length": 2,
+      "_note": "Per Blazing 777 archetype 'nudge up to two times'. After 2 MoveSpins from a single trigger, chain ends even if stack isn't fully visible (rare edge case where strip layout produces partial-only window)."
+    },
+
+    "collect_meter": {
+      "_engine": "engine.m279.collect",
+      "increment_per_paid_spin": 1,
+      "max": 1000,
+      "trigger_pay_ids": [666],
+      "_collect_credit_unit": 100,
+      "_note": "Each paid spin (ST=1/140) increments meter by 1. AccCredits/CollectCount/CreditsSymbols rawdata fields reflect meter state. At max, fires Wheel + BuffCollectionMap and resets to (100, 1) per rawdata observation."
+    },
+
+    "wheel": {
+      "_engine": "engine.m279.wheel",
+      "wheel_id": 1,
+      "n_cells": 12,
+      "cells": [
+        { "cellIndex": 1,  "weight": 50, "win_credits": 50000 },
+        { "cellIndex": 2,  "weight": 30, "win_credits": 10000 },
+        { "cellIndex": 3,  "weight": 30, "win_credits": 20000 },
+        { "cellIndex": 4,  "weight": 20, "win_credits": 50000 },
+        { "cellIndex": 5,  "weight": 30, "win_credits": 30000 },
+        { "cellIndex": 6,  "weight": 10, "win_credits": 5000 },
+        { "cellIndex": 7,  "weight": 30, "win_credits": 20000 },
+        { "cellIndex": 8,  "weight": 20, "win_credits": 100000 },
+        { "cellIndex": 9,  "weight": 10, "win_credits": 5000 },
+        { "cellIndex": 10, "weight": 50, "win_credits": 100000 },
+        { "cellIndex": 11, "weight": 15, "win_credits": 20000 },
+        { "cellIndex": 12, "weight": 50, "win_credits": 10000 }
+      ],
+      "wheel_payout_id_for_payouts": [5, 10, 20, 30, 50, 100],
+      "_payout_id_mapping": {
+        "5": "5x bet wheel cell",
+        "10": "10x bet wheel cell",
+        "20": "20x bet wheel cell",
+        "30": "30x bet wheel cell",
+        "50": "50x bet wheel cell",
+        "100": "100x bet wheel cell"
+      },
+      "_note": "Win written to PayoutIdToWinAmount under payout_id matching multiplier (5/10/20/30/50/100). Cell count 12 is fixed (per Excel reference); LHS cannot change."
+    }
+  },
+
+  "features": [],
+
+  "emit_fields": {
+    "extra_round_fields": {
+      "_reel_skin_from_mode": true,
+      "_paid_spin_carries_acc_credits": true,
+      "_paid_spin_carries_collect_count": true,
+      "_paid_spin_carries_credits_symbols": true,
+      "_note": "ReelSkin = mode number (1/2/5/7). ST=140 paid rounds carry AccCredits/CollectCount/CreditsSymbols meter fields. ST=36/2/102 free rounds may omit these (varies by SpinType per rawdata observation)."
+    }
+  }
+}

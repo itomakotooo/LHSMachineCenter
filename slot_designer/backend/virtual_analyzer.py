@@ -72,8 +72,13 @@ from slot_designer.emitter.driver import (
     compute_schema_fingerprint_for,
     sample_one_chunk,
 )
+from slot_designer.emitter.m279_driver import (
+    compute_m279_schema_fingerprint,
+    sample_one_m279_chunk,
+)
 from slot_designer.emitter.round import emit_round, emit_session
 from slot_designer.engine.loader import load_engine
+from slot_designer.engine.m279.loader import load_m279_engine
 
 
 REAL_ANALYZER = _ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
@@ -728,7 +733,16 @@ def main() -> int:
     #    then delegate with --from-cache.
     spec_path = _spec_path(entry)
     weights_path = _resolve_weights_path(entry, args.rtp_mode)
-    engine, spec = load_engine(spec_path, weights_path)
+    # M279 has its own engine class (multi-payline + nudge + collect +
+    # wheel) that doesn't fit the M1/M15 SpinEngine.spin_session shape.
+    # Route by the spec's _m279_features marker — registry-level branch
+    # (entry.get("_engine") == "m279") would also work but spec marker
+    # is more authoritative since it's right next to the actual logic.
+    is_m279 = bool(entry.get("_engine") == "m279")
+    if is_m279:
+        engine, spec = load_m279_engine(spec_path, weights_path)
+    else:
+        engine, spec = load_engine(spec_path, weights_path)
 
     # For virtual machines, rawdata is the single source of truth — every
     # sampling run APPENDS to the rawdata pool (not a scratch cache). This
@@ -786,11 +800,18 @@ def main() -> int:
     # Schema fingerprint probe (deterministic seed — doesn't move main RNG).
     # Shared helper keeps probe-and-hash flow identical to simulate.py
     # so chunk envelopes line up.
-    schema_fp = compute_schema_fingerprint_for(
-        engine,
-        mode=int(spec["mode"]),
-        spins_per_robot=args.chunk_spin_times,
-    )
+    if is_m279:
+        schema_fp = compute_m279_schema_fingerprint(
+            engine,
+            mode=int(spec["mode"]),
+            spins_per_robot=args.chunk_spin_times,
+        )
+    else:
+        schema_fp = compute_schema_fingerprint_for(
+            engine,
+            mode=int(spec["mode"]),
+            spins_per_robot=args.chunk_spin_times,
+        )
 
     rng = Random(int(time.time()) ^ (start_idx * 997))
     total_win = 0
@@ -899,20 +920,34 @@ def main() -> int:
         })
 
         t0 = time.time()
-        chunk, c_win, c_bet = _run_simulator_chunk(
-            engine, spec, ci,
-            robots=args.chunk_robot_count,
-            spins_per_robot=args.chunk_spin_times,
-            rng=rng,
-            schema_fp=schema_fp,
-            md5s=md5s,
-            # Explicit virtual-machine + runtime-mode tagging (see kernel docstring):
-            # chunks MUST be stamped with the virtual machine name (e.g. "M15sim")
-            # and the currently-sampling mode, not the underlying spec defaults.
-            # Without this the re-read pass couldn't match chunks for mode != 1.
-            machine=args.machine,
-            mode=int(args.rtp_mode),
-        )
+        if is_m279:
+            chunk, c_win, c_bet = sample_one_m279_chunk(
+                engine,
+                machine=args.machine,
+                mode=int(args.rtp_mode),
+                chunk_index=ci,
+                robots=args.chunk_robot_count,
+                spins_per_robot=args.chunk_spin_times,
+                rng=rng,
+                schema_fp=schema_fp,
+                config_md5=md5s[0],
+                code_md5=md5s[1],
+            )
+        else:
+            chunk, c_win, c_bet = _run_simulator_chunk(
+                engine, spec, ci,
+                robots=args.chunk_robot_count,
+                spins_per_robot=args.chunk_spin_times,
+                rng=rng,
+                schema_fp=schema_fp,
+                md5s=md5s,
+                # Explicit virtual-machine + runtime-mode tagging (see kernel docstring):
+                # chunks MUST be stamped with the virtual machine name (e.g. "M15sim")
+                # and the currently-sampling mode, not the underlying spec defaults.
+                # Without this the re-read pass couldn't match chunks for mode != 1.
+                machine=args.machine,
+                mode=int(args.rtp_mode),
+            )
         write_chunk(chunk, sampling_out_dir, ci)
         total_win += c_win
         total_bet += c_bet

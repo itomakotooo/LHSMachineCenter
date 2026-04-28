@@ -284,6 +284,42 @@ class PaytableEvaluator:
             positions=((1, 1),),  # center cell only
         )
 
+    def evaluate_all_paylines(
+        self,
+        grid: list[list[str]],
+        paylines: Sequence[Sequence[tuple[int, int]]],
+    ) -> list[PayResult]:
+        """Evaluate all paylines on a multi-line machine.
+
+        Calls ``evaluate_payline`` once per line and returns the list of
+        non-None pays. Each PayResult's positions are remapped to the
+        actual (col, row) cells of that line (not the (col, 1) middle-
+        row default that ``evaluate_payline`` produces).
+
+        Used by M279 (3-reel × 9-line) and any future multi-line machine.
+        Single-line machines (M1/M15/M37) keep using ``evaluate_payline``
+        directly; this method is purely additive.
+
+        Returns: list of PayResult, one per winning line. Empty list when
+        no line wins.
+        """
+        results: list[PayResult] = []
+        for line_positions in paylines:
+            line_syms = [grid[c][r] for (c, r) in line_positions]
+            pay = self.evaluate_payline(line_syms)
+            if pay is None:
+                continue
+            # Remap positions from (col, 1) default to actual line cells.
+            # evaluate_payline returns positions tied to row=1; we replace
+            # them with the line's own positions (preserving col order).
+            actual_positions = tuple(tuple(p) for p in line_positions)
+            results.append(PayResult(
+                pay_id=pay.pay_id,
+                multiplier=pay.multiplier,
+                positions=actual_positions,
+            ))
+        return results
+
     def evaluate_scatters(
         self,
         grid: list[list[str]],
