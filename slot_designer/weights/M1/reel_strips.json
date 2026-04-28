@@ -7,7 +7,7 @@
     "confidence": "medium-high — expert reverse-engineering, not IGT official PAR sheet",
     "physical_stops_per_reel": 22,
     "virtual_stops_per_reel": 256,
-    "modifications_from_archetype": "Hot Roll bonus trigger positions (R1[13], R2[15], R3[13]) replaced with Cherry — M1 has no bonus, and replacing with Blank would create 3-consecutive-blank chains (pos 12/13/14 on R1/R3, pos 14/15/16 on R2). Per project_slot_designer_strips_weights_layout.md alternation is universal rule (Harrigan near-miss band), so we substitute Cherry (lowest-pay symbol = least pay-table disruption) at the would-break positions to keep strict B/N alternation. Result: 22 stops with 11 Blank + 11 non-Blank alternating B-N-B-N... pattern on all 3 reels."
+    "modifications_from_archetype": "Hot Roll bonus trigger positions (R1[13], R2[15], R3[13]) replaced with Cherry — M1 has no bonus, and replacing with Blank would create 3-consecutive-blank chains (pos 12/13/14 on R1/R3, pos 14/15/16 on R2). Per project_slot_designer_strips_weights_layout.md alternation is universal rule (Harrigan near-miss band), so we substitute Cherry (lowest-pay symbol = least pay-table disruption) at the would-break positions to keep strict B/N alternation. Result: 22 stops with 11 Blank + 11 non-Blank alternating B-N-B-N... pattern on all 3 reels. 2026-04-29 strip non-Blank positions rearranged (minimum-change repair) to satisfy §13 BLANK-FLANK-DIVERSITY — no X-Blank-X in 3-row window. Per-reel symbol counts preserved; weights permuted alongside symbols → marginals UNCHANGED (RTP/hit/share invariant). Strip md5 changes → all-mode rawdata cache invalidated."
   },
   "_invariants": [
     "22 physical stops per reel; shared symbol layout (position -> symbol) is byte-identical across all modes — only per-mode weights vary.",
@@ -29,7 +29,7 @@
   "reels": [
     [
       "Blank",
-      "Diamond1",
+      "Bar3",
       "Blank",
       "Diamond2",
       "Blank",
@@ -39,7 +39,7 @@
       "Blank",
       "Bar3",
       "Blank",
-      "Bar3",
+      "Diamond1",
       "Blank",
       "Cherry",
       "Blank",
@@ -53,7 +53,7 @@
     ],
     [
       "Blank",
-      "Diamond1",
+      "Bar1",
       "Blank",
       "Diamond2",
       "Blank",
@@ -71,13 +71,13 @@
       "Blank",
       "Bar1",
       "Blank",
-      "Bar1",
+      "Diamond1",
       "Blank",
       "Seven2"
     ],
     [
       "Blank",
-      "Diamond1",
+      "Bar1",
       "Blank",
       "Diamond2",
       "Blank",
@@ -95,7 +95,7 @@
       "Blank",
       "Bar1",
       "Blank",
-      "Bar1",
+      "Diamond1",
       "Blank",
       "Cherry"
     ]

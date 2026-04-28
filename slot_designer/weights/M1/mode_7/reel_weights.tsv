@@ -1,6 +1,6 @@
 reel1	weight1	reel2	weight2	reel3	weight3
 Blank	10	Blank	19	Blank	15
-Diamond1	10	Diamond1	11	Diamond1	10
+Bar3	16	Bar1	1	Bar1	22
 Blank	10	Blank	19	Blank	15
 Diamond2	7	Diamond2	4	Diamond2	3
 Blank	10	Blank	19	Blank	15
@@ -10,7 +10,7 @@ Cherry	13	Cherry	2	Seven2	3
 Blank	10	Blank	19	Blank	15
 Bar3	16	Bar1	1	Bar2	29
 Blank	10	Blank	19	Blank	15
-Bar3	16	Seven1	19	Bar3	8
+Diamond1	10	Seven1	19	Bar3	8
 Blank	10	Blank	19	Blank	15
 Cherry	13	Bar3	17	Cherry	2
 Blank	10	Blank	19	Blank	15
@@ -18,6 +18,6 @@ Bar2	30	Cherry	2	Seven1	12
 Blank	10	Blank	19	Blank	15
 Seven2	2	Bar1	1	Bar1	22
 Blank	10	Blank	19	Blank	15
-Bar3	16	Bar1	1	Bar1	22
+Bar3	16	Diamond1	11	Diamond1	10
 Blank	10	Blank	19	Blank	15
 Bar1	30	Seven2	4	Cherry	2

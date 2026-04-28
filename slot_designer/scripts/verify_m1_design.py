@@ -204,6 +204,12 @@ BRAND_UNIFORMITY_RATIO_CAP_LUCKY = 2.5      # mode 2, mode 5 — relaxed for luc
 # classic). Per DESIGN.md §2: R1 ∈ [30%, 40%] all modes. NOT universal —
 # multi-line / video slot machines should re-derive based on their paylines.
 R1_BLANK_BAND = (0.30, 0.40)
+
+# §14 M1 SAME-SYMBOL-SPACING: same-symbol cyclic distance ≥ this many stops.
+# M1 22-stop strip; for repeating symbols (Bar3 R1=3, Bar1 R2/R3=3, Cherry=2),
+# distance ≥ 4 stops = ≥ 1 non-Blank gap between repetition. M1-specific (per
+# DESIGN.md §2; not universal — see project_slot_designer_visual_rhythm.md).
+SAME_SYMBOL_MIN_STOP_GAP = 4
 # Sparse-symbol escape valve: ratio metric is over-sensitive when absolute
 # marginals are tiny (e.g., Diamond2 ≈ 1-2% — 1pp spread inflates ratio
 # 2x). Player visibility threshold: ≤ 2pp spread is below perception.
@@ -573,6 +579,68 @@ def run_cross_mode_checks(state_by_mode):
             f"(diff {r1_top-r_last_top:+.2%}, tol -{top_tol:.0%})",
             top_ok,
             "near-miss psychology (Harrigan): R(last) 顶奖应 ≤ R1 (R(last) = 差一点 reel)",
+        ))
+
+    # BLANK-FLANK-DIVERSITY: per project_slot_designer_blank_flank_diversity.md
+    # universal hard rule for line-based slots. Each Blank position p must satisfy
+    # strip[(p-1)%n] != strip[(p+1)%n] (no X-Blank-X — would create cheap
+    # near-miss in 3-row window, dilute真 near-miss value).
+    for r_idx, reel in enumerate(strips_reels):
+        n = len(reel)
+        violations_pairs = []
+        for p in range(n):
+            if reel[p] == "Blank":
+                prev = reel[(p - 1) % n]
+                nxt = reel[(p + 1) % n]
+                if prev == nxt and prev != "Blank":
+                    violations_pairs.append((p, prev))
+        ok = len(violations_pairs) == 0
+        if ok:
+            label = f"R{r_idx+1}: 0 X-Blank-X violations"
+        else:
+            sample = violations_pairs[0]
+            label = (f"R{r_idx+1}: {len(violations_pairs)} X-Blank-X violations: "
+                     f"pos {sample[0]} ({sample[1]}-Blank-{sample[1]})")
+        checks.append(make_check(
+            "BLANK-FLANK-DIVERSITY", None, label, ok,
+            "防廉价 near-miss (X-Blank-X 视窗 dilute 真 near-miss 价值)",
+        ))
+
+    # VISUAL-RHYTHM (M1 specific sub-rule SAME-SYMBOL-SPACING):
+    # 同 symbol 重复实例 cyclic 距离 ≥ SAME_SYMBOL_MIN_STOP_GAP stops.
+    # M1 = 4 stops (machine specific cap; other machines self-define).
+    for r_idx, reel in enumerate(strips_reels):
+        n = len(reel)
+        sym_positions: dict[str, list[int]] = {}
+        for p, s in enumerate(reel):
+            if s == "Blank":
+                continue
+            sym_positions.setdefault(s, []).append(p)
+        violations_v = []
+        for sym, positions in sym_positions.items():
+            if len(positions) < 2:
+                continue
+            sorted_p = sorted(positions)
+            for i in range(len(sorted_p)):
+                next_p = sorted_p[(i + 1) % len(sorted_p)]
+                if next_p > sorted_p[i]:
+                    d = next_p - sorted_p[i]
+                else:
+                    d = (n - sorted_p[i]) + next_p  # cyclic wrap
+                if d < SAME_SYMBOL_MIN_STOP_GAP:
+                    violations_v.append((sym, sorted_p[i], next_p, d))
+        ok = len(violations_v) == 0
+        if ok:
+            label = (f"R{r_idx+1}: SAME-SYMBOL-SPACING ≥ {SAME_SYMBOL_MIN_STOP_GAP} "
+                     f"stops cyclic ✓")
+        else:
+            sample = violations_v[0]
+            label = (f"R{r_idx+1}: {len(violations_v)} SAME-SYMBOL-SPACING violations: "
+                     f"{sample[0]} at pos {sample[1]} and {sample[2]} (cyclic dist {sample[3]} < "
+                     f"{SAME_SYMBOL_MIN_STOP_GAP})")
+        checks.append(make_check(
+            "VISUAL-RHYTHM", None, label, ok,
+            "M1 子规则 SAME-SYMBOL-SPACING — 重复 symbol 不密集 (机台 specific)",
         ))
 
     # ALTERNATION: Blank / non-Blank must strictly alternate on every reel.
