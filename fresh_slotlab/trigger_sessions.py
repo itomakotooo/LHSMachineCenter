@@ -64,7 +64,7 @@ from typing import Any, Iterable
 try:
     from fresh_slotlab.round_win import RoundWinRule, extract_round_payouts, extract_round_win
 except ImportError:  # running as a standalone script, not a package member
-    from round_win import RoundWinRule, extract_round_win  # type: ignore[no-redef]
+    from round_win import RoundWinRule, extract_round_payouts, extract_round_win  # type: ignore[no-redef]
 
 
 _NEW_TRIGGER_PREFIX = "Trigger"

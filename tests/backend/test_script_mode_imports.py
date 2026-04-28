@@ -183,3 +183,108 @@ def test_no_unguarded_package_prefix_imports_in_script_modules():
         "batch_dev_sampler.py for the canonical pattern. Offenders:\n"
         + "\n".join(offenders)
     )
+
+
+def _discover_dual_import_modules() -> list[Path]:
+    """Find every ``.py`` in ``fresh_slotlab/`` that uses the
+    dual-import pattern (substring screen for ``fresh_slotlab.`` AND
+    ``ImportError`` — cheap and safe). Includes non-``__main__``
+    siblings like ``trigger_sessions.py`` because they're imported
+    BY script-shaped modules and a broken fallback there crashes the
+    parent's subprocess."""
+    if not PKG_DIR.is_dir():
+        return []
+    out: list[Path] = []
+    for path in sorted(PKG_DIR.glob("*.py")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if "fresh_slotlab." in text and "ImportError" in text:
+            out.append(path)
+    return out
+
+
+def test_dual_import_branches_have_matching_symbol_lists():
+    """Both branches of the dual-import pattern must import the SAME
+    set of symbols. If the package-mode branch lists ``A, B, C`` but
+    the script-mode fallback only lists ``A, B``, package-mode tests
+    pass while script-mode subprocess execution hits a NameError when
+    ``C`` is referenced.
+
+    User-reported regression 2026-04-28: trigger_sessions.py:65 had
+    ``from fresh_slotlab.round_win import RoundWinRule, extract_round_payouts, extract_round_win``
+    but the fallback line 67 only listed ``RoundWinRule, extract_round_win``
+    — missing ``extract_round_payouts``. M15 sampling crashed at
+    runtime with ``NameError: name 'extract_round_payouts' is not
+    defined`` when ``compute_trigger_sessions`` reached its rules-driven
+    branch (only fires when ``round_win_rules`` is non-empty + a
+    non-paid round is being scanned, which --help-time imports don't
+    exercise).
+
+    Coverage: ALL ``.py`` files in ``fresh_slotlab/`` that use the
+    dual-import pattern, NOT just script-shaped (``__main__``) modules.
+    A sibling like ``trigger_sessions.py`` doesn't have a main block
+    but is IMPORTED by the script-shaped analyzer — its broken
+    fallback still crashes the analyzer subprocess.
+
+    AST-level: walk every dual-import module, find each
+    ``try: ... ImportError: ...`` block whose try-body has
+    ``from fresh_slotlab.X import a, b, c`` and whose except-body has
+    ``from X import ...``. Assert the two ``import`` lines have the
+    SAME ``names`` list."""
+    import ast
+
+    mismatches: list[str] = []
+    for script_path in _discover_dual_import_modules():
+        tree = ast.parse(
+            script_path.read_text(encoding="utf-8-sig"),
+            filename=str(script_path),
+        )
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            pkg_imports: dict[str, set[str]] = {}
+            for stmt in node.body:
+                if (
+                    isinstance(stmt, ast.ImportFrom)
+                    and stmt.module
+                    and stmt.module.startswith("fresh_slotlab.")
+                ):
+                    sibling = stmt.module.split(".", 1)[1]
+                    pkg_imports.setdefault(sibling, set()).update(
+                        a.name for a in stmt.names
+                    )
+            bare_imports: dict[str, set[str]] = {}
+            for handler in node.handlers:
+                for stmt in handler.body:
+                    if (
+                        isinstance(stmt, ast.ImportFrom)
+                        and stmt.module
+                        and "." not in stmt.module
+                    ):
+                        bare_imports.setdefault(stmt.module, set()).update(
+                            a.name for a in stmt.names
+                        )
+            for sibling, pkg_syms in pkg_imports.items():
+                bare_syms = bare_imports.get(sibling)
+                if bare_syms is None:
+                    continue  # no matching fallback at all (different bug class)
+                if pkg_syms != bare_syms:
+                    only_in_pkg = sorted(pkg_syms - bare_syms)
+                    only_in_bare = sorted(bare_syms - pkg_syms)
+                    mismatches.append(
+                        f"{script_path.name}:{node.lineno}: "
+                        f"sibling '{sibling}' — package branch imports "
+                        f"{sorted(pkg_syms)}, script branch imports "
+                        f"{sorted(bare_syms)}; "
+                        f"only-in-pkg={only_in_pkg}, "
+                        f"only-in-script={only_in_bare}"
+                    )
+
+    assert not mismatches, (
+        "Dual-import pattern symbol drift — script-mode fallback "
+        "doesn't re-import every symbol the package-mode branch "
+        "imports. Will crash with NameError at runtime in subprocess "
+        "execution. Mismatches:\n" + "\n".join(mismatches)
+    )
