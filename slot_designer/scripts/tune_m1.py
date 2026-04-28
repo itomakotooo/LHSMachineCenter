@@ -152,6 +152,13 @@ EXPERIENCE_TARGETS = {
             "blank_strength": 200.0,
             "top_strength": 200.0,
         },
+        # R1 Blank 绝对 band — M1-specific design target (1-line classic):
+        # 玩家从左到右扫，R1 Blank ≤ 40% 才有"winning visibility"; ≥ 30% 才不
+        # 让中奖密度过头（R1 cherry/seven 视觉上需要"有空"才有 reveal drama）。
+        # User-pinned 2026-04-28. NOT universal — multi-line / video slot 应
+        # 重新校准（线越多 R1 blank 可越低）。
+        "r1_blank_band": (0.30, 0.40),
+        "r1_blank_strength": 300.0,
     },
     7: {
         "wild_on_payline_band": (0.10, 0.18),
@@ -179,6 +186,11 @@ EXPERIENCE_TARGETS = {
             "blank_strength": 200.0,
             "top_strength": 200.0,
         },
+        # R1 Blank band — mode 7 RTP=85% 物理约束 blank 整体偏高，但 R1 仍要
+        # 防早期拒绝。R1 30-40% 跟 mode 1 一致（"运气差但不早期拒绝"）。
+        # If 物理无法满足（mode 7 RTP 拉不下来），tune cost 会平衡。
+        "r1_blank_band": (0.30, 0.40),
+        "r1_blank_strength": 300.0,
     },
     2: {
         "wild_on_payline_band": (0.12, 0.25),
@@ -221,6 +233,9 @@ EXPERIENCE_TARGETS = {
             "blank_strength": 100.0,
             "top_strength": 100.0,
         },
+        # R1 Blank band — mode 2 lucky 整体 blank 已低（~32%），保持在 30-40%。
+        "r1_blank_band": (0.30, 0.40),
+        "r1_blank_strength": 300.0,
     },
     5: {
         "wild_on_payline_band": (0.12, 0.28),
@@ -463,6 +478,21 @@ def evaluate_candidate(
         mean_b = sum(blanks_pp) / 3
         variance_pp2 = sum((b - mean_b) ** 2 for b in blanks_pp) / 3
         cost += blank_var_k * variance_pp2
+
+    # R1 Blank absolute band — M1-specific user-pinned target (1-line classic).
+    # User: "R1 blank 30-40% 才有 winning visibility 但不至于过密" (2026-04-28).
+    # Strict band cost: penalize quadratically when R1 blank outside [lo, hi].
+    r1_blank_band = experience_targets.get("r1_blank_band", None)
+    if r1_blank_band is not None:
+        r1_blank = densities.get(("Blank", 0), 0.0)
+        lo, hi = r1_blank_band
+        k_r1 = experience_targets.get("r1_blank_strength", 300.0)
+        if r1_blank < lo:
+            gap_pp = (lo - r1_blank) * 100
+            cost += k_r1 * gap_pp * gap_pp
+        elif r1_blank > hi:
+            gap_pp = (r1_blank - hi) * 100
+            cost += k_r1 * gap_pp * gap_pp
 
     # REEL-ASYMMETRY: per project_slot_designer_reel_asymmetry.md universal
     # rule (Strickland/Reid/Harrigan). R1 should have lower Blank rate +

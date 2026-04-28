@@ -134,7 +134,13 @@ MODE_TARGETS = {
 PER_REEL_DENSITY_HI_BY_FAMILY_STANDARD = {
     "Diamond1": 0.10, "Diamond2": 0.10,
     "Seven1": 0.12,  "Seven2": 0.12,
-    "Bar3": 0.17, "Bar2": 0.17,
+    # Bar3 cap 18% (was 17%): with R1 Blank pinned to [30%, 40%], standard
+    # mode reels lose blank space and tuner uses Bar3 as the "asymmetric
+    # mid-pay" reel marker (3-reel near-miss design — tune_m1 line ~131
+    # "asymmetric Bar3 is the intentional near-miss mechanism"). 18% accom-
+    # modates this without over-constraining; cap was a picked threshold
+    # in the first place. Bar2 stays 17% (less commonly the asymmetric reel).
+    "Bar3": 0.18, "Bar2": 0.17,
     "Bar1": 0.22, "Cherry": 0.20,
 }
 PER_REEL_DENSITY_HI_BY_FAMILY_LUCKY = {
@@ -193,6 +199,11 @@ MODE5_BASE_FAMILIES = ("Cherry", "Bar1", "Bar2", "Bar3", "Blank")
 #     proxy. The cap value remains M1-specific (other machines re-derive).
 BRAND_UNIFORMITY_RATIO_CAP_STANDARD = 2.0   # mode 1, mode 7 — top-prize cross-reel max/min
 BRAND_UNIFORMITY_RATIO_CAP_LUCKY = 2.5      # mode 2, mode 5 — relaxed for lucky variance
+
+# R1 Blank absolute band — M1-specific user-pinned design target (1-line
+# classic). Per DESIGN.md §2: R1 ∈ [30%, 40%] all modes. NOT universal —
+# multi-line / video slot machines should re-derive based on their paylines.
+R1_BLANK_BAND = (0.30, 0.40)
 # Sparse-symbol escape valve: ratio metric is over-sensitive when absolute
 # marginals are tiny (e.g., Diamond2 ≈ 1-2% — 1pp spread inflates ratio
 # 2x). Player visibility threshold: ≤ 2pp spread is below perception.
@@ -505,12 +516,27 @@ def run_cross_mode_checks(state_by_mode):
                 "顶奖符号跨 reel 应近似一致 (brand consistency); ratio cap 或 abs spread 任一通过即 OK",
             ))
 
+    # R1-BLANK-BAND: M1-specific absolute band [30%, 40%] for R1 Blank rate.
+    # Per DESIGN.md §2 + memory note: 30% lower = cherry/seven reveal drama;
+    # 40% upper = early rejection防线. User-pinned, not universal.
+    strips_doc = json.loads(STRIPS.read_text(encoding="utf-8"))
+    strips_reels = strips_doc["reels"]
+    for mode in sorted(state_by_mode.keys()):
+        densities_m = state_by_mode[mode]["densities"]
+        r1_blank = densities_m.get(("Blank", 0), 0.0)
+        lo, hi = R1_BLANK_BAND
+        ok = lo <= r1_blank <= hi
+        checks.append(make_check(
+            "R1-BLANK-BAND", mode,
+            f"R1 Blank {r1_blank:.2%} vs band [{lo:.0%}, {hi:.0%}]",
+            ok,
+            "M1 user-pinned: R1 不能太 blank (早期拒绝) 也不能过密 (cherry reveal drama)",
+        ))
+
     # REEL-ASYMMETRY: per project_slot_designer_reel_asymmetry.md universal rule.
     # R1 should have lower Blank rate + higher top-prize density than the last
     # reel (R3 in 3-reel, R5 in 5-reel). Standard modes (1, 7) tight tolerance,
     # lucky modes (2, 5) wider (high RTP dilutes near-miss psychology).
-    strips_doc = json.loads(STRIPS.read_text(encoding="utf-8"))
-    strips_reels = strips_doc["reels"]
     n_reels = len(strips_reels)
     last_reel_idx = n_reels - 1
     for mode in sorted(state_by_mode.keys()):

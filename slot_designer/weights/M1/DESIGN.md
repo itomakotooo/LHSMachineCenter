@@ -23,6 +23,10 @@
   - Mode 7 = 85% ± 1.5pp（"运气差"充值 trigger）
   - Mode 2 = 294.5% ± 20pp（lucky 福利）
   - Mode 5 = 500% ± 30pp（super-lucky）
+- **R1 Blank 率 ∈ [30%, 40%]**（all modes，user-pinned 2026-04-28）— M1-specific design target，不是 universal:
+  - **Why**: M1 是 1-line classic IGT；R1 是玩家"第一印象"reel。30% 下限：cherry/seven 视觉上需要"有空"才有 reveal drama；40% 上限：超过会"早期拒绝"玩家（per Strickland/Reid 1967/1986, [`project_slot_designer_reel_asymmetry.md`](../../memory/project_slot_designer_reel_asymmetry.md)）
+  - **Where**: tune_m1.py EXPERIENCE_TARGETS 各 mode `r1_blank_band: (0.30, 0.40)` + cost penalty strength 300；verify_m1_design.py R1-BLANK-BAND check
+  - **Not universal**: 多线 / video slot / cluster / megaways 应**重新校准**（线越多 R1 blank 可越低，因为多 line 缓冲早期拒绝）。Stop count / paytable 结构不同的机台抄这个数字 → "picked threshold" 反例
 
 ## 3. 玩家体验目标（Tune cost function 实现的 goals）
 
@@ -96,12 +100,18 @@ freq 显著增）。这是"super-lucky 是 mode 2 的 luck variation，不是另
 
 ## 4. 当前 tune 数值结果
 
-| Mode | RTP | hit | wild_on_payline | CV |
-|---|---|---|---|---|
-| 1 | 94.79% | 19.57% | 14.61% | ~9.2 |
-| 7 | 85.30% | 14.89% | 14.41% | 10.07 |
-| 2 | 294.50% | 27.03% | 20.64% | ~6.1 |
-| 5 | 503.76% | 26.59% | 26.51% | ~5.2 |
+| Mode | RTP | hit | wild_on_payline | CV | R1 Blank |
+|---|---|---|---|---|---|
+| 1 | 94.89% | 19.63% | ~14.6% | ~9.2 | 38.67% |
+| 7 | 85.38% | 15.47% | 14.65% | 9.82 | 39.29% |
+| 2 | 294.50% | 27.44% | ~20.7% | ~6.1 | 38.19% |
+| 5 | 489.42% | 26.91% | ~26% | ~5.2 | 34.59% |
+
+> 数值经过 4 轮迭代（2026-04-28）：
+> 1. Mode 5 derive from mode 2 byte-identical (R-collapse 修)
+> 2. Strip alternation 修复 (3 连 blank → Cherry, 11+11)
+> 3. REEL-ASYMMETRY rule (R1 vs R3 方向锁) + universal-vs-machine 数字分层
+> 4. **R1 Blank ∈ [30%, 40%] user-pinned target** — 重新 tune mode 1/2/7 + re-derive mode 5。Mode 1 R1 Blank 45.67% → 38.67%, Mode 7 R1 Blank 51.68% → 39.29%（最显著修复）
 
 > 数值自 2026-04-28 经历两轮修正：
 > 1. **Strip alternation 修复**: strips 改成 11+11 严格交替（R0/R1/R2 各一个 3 连 blank → Cherry）。
@@ -158,7 +168,7 @@ Mode 7 = mode 1 (frozen, 1.00x). Mode 2/5 monotonic ≥ mode 1.
 
 ### 5.2 Verify (`slot_designer/scripts/verify_m1_design.py`)
 
-13 类 check, 全绿才算 done:
+14 类 check, 全绿才算 done:
 - 数值 + family band: **RTP / HIT / WILD / SHARE / DENSITY / BUCKET-FLOOR**
 - Mode 7 派生 lock: **MODE7-LOCK / MODE7-CUT / TOP-PATH**
 - 跨 mode signature: **SIGNATURE**
@@ -166,6 +176,7 @@ Mode 7 = mode 1 (frozen, 1.00x). Mode 2/5 monotonic ≥ mode 1.
 - 物理 strip 不变量 (2026-04-28): **ALTERNATION** — 每 reel Blank/非 Blank 严格交替（universal rule per memory）
 - Reel 心理不对称 (2026-04-28): **REEL-ASYMMETRY** — R1 Blank ≤ R3 Blank + R1 top-prize ≥ R3 top-prize (Strickland/Reid/Harrigan 文献支持，lucky modes 容差宽)
 - Brand 一致性 (2026-04-28, 替代 R-COLLAPSE): **BRAND-UNIFORMITY** — 顶奖家族 (Diamond/Seven) 跨 reel marginal ratio ≤ 2.0× (standard) / 2.5× (lucky)，或 abs spread ≤ 2pp（稀有 symbol escape valve）。直接锁玩家可见量（per-reel marginal），不像 R-COLLAPSE 用 reel-total-weight 间接 metric
+- R1 早期拒绝防线 (2026-04-28, user-pinned): **R1-BLANK-BAND** — R1 Blank ∈ [30%, 40%] all modes。M1-specific (1-line classic)，多线机台需重新校准
 
 **HIT band 注**：M1 是 1-line classic，mode 1 hit_hi=22% 是该 paylines 数的 reference。多线机台需重新校准 — paylines 越多 hit band 越右移 (5-9 line ≈ 25-35%, 25-50 line ≈ 30-45%, megaways ≈ 40-60%)。详见 [`memory/project_slot_designer_hit_rate_deviation.md`](../../memory/project_slot_designer_hit_rate_deviation.md)。
 
