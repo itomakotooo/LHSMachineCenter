@@ -314,6 +314,9 @@ def main():
         for f in [XLSX_TOPDOLLAR, XLSX_TIMES, JS_FILE]:
             if f == JS_FILE and args.skip_js:
                 continue
+            # CRITICAL: backup must NOT end in .xlsx (build pipeline globs *.xlsx).
+            # f.suffix + ".backup_..." produces e.g. "M15TopDollar.xlsx.backup_..."
+            # which doesn't end in .xlsx — safe.
             bak = f.with_suffix(f.suffix + f".backup_slot_designer_{ts}")
             shutil.copy2(f, bak)
             print(f"Backup: {bak}")

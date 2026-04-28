@@ -219,7 +219,11 @@ def main():
 
     if not args.no_backup:
         ts = datetime.now().strftime("%Y%m%dT%H%M%S")
-        backup = xlsx_path.with_suffix(f".backup_slot_designer_{ts}.xlsx")
+        # CRITICAL: backup must NOT end in .xlsx — MachineBuilder build pipeline
+        # picks up ALL *.xlsx files in directory and includes them in M*Cfg.txt.
+        # If backup is .xlsx, it gets compiled alongside the original and runtime
+        # engine may pick up the wrong one (verified with M1 case 2026-04-28).
+        backup = xlsx_path.with_suffix(f".xlsx.backup_slot_designer_{ts}")
         shutil.copy2(xlsx_path, backup)
         print(f"\nBackup: {backup}")
 

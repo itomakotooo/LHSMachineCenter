@@ -89,6 +89,12 @@ def compute_weights_for_skin(reel_positions: dict, designed_marg: dict,
     return out
 
 
+# NOTE 2026-04-28: M37 export to M37Reel.xlsx is OBSOLETE — real machine reads
+# ExcelNew/Machine2026/M37.xlsx PayoutWeights model, NOT M37Reel.xlsx. This
+# script is kept only as reference. For M1/M15 use export_to_real_machine.py.
+# Backup files MUST NOT end in .xlsx (build pipeline globs *.xlsx in dir).
+
+
 def write_xlsx(xlsx_path: Path, all_weights: dict, output_path: Path):
     """Write weights to xlsx. all_weights: {skinId: {(row, reel): weight}}."""
     wb = load_workbook(xlsx_path)
