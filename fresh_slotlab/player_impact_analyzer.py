@@ -36,7 +36,10 @@ try:
         extract_round_win,
         load_rules_for_machine,
     )
-    from fresh_slotlab.round_classification import is_wild_nudge_round
+    from fresh_slotlab.round_classification import (
+        detect_cycle_peak,
+        is_wild_nudge_round,
+    )
     # chunk_index / rawdata_index are also script-mode-fragile: they
     # used to be lazy-imported inside best-effort try/except blocks,
     # which silently swallowed the ImportError in script mode and
@@ -61,7 +64,10 @@ except ImportError:  # running as a standalone script, not a package member
         extract_round_win,
         load_rules_for_machine,
     )
-    from round_classification import is_wild_nudge_round  # type: ignore[no-redef]
+    from round_classification import (  # type: ignore[no-redef]
+        detect_cycle_peak,
+        is_wild_nudge_round,
+    )
     from chunk_index import (  # type: ignore[no-redef]
         _rebuild_by_md5,
         get_chunks_index,
@@ -3113,6 +3119,21 @@ def parse_chunk_response(
         # value (reset). The peak CC before each reset = cycle length.
         robot_cycle_peaks: list[int] = []  # CC value just before each reset
         robot_prev_cc_for_cycle = 0  # previous CC (for reset detection)
+        # 2026-04-28 chain-timing fix (Bug 4): pre-compute cycle peak
+        # from this robot's full round list using observed-reset
+        # detection. The OLD logic set _bonus_chain_last_cc_reset on
+        # cc-DROP (the round AFTER cycle complete -- e.g. M279 cc=1000
+        # paid -> wheel ST=2 -> cc=1 paid; flag fires at the cc=1 round
+        # which is too LATE -- the wheel chain already closed). Result:
+        # Wheel chain got "entry_cc_reset=False" (no BCM tag), and the
+        # next unrelated MoveSpin nudge a few rounds later got the
+        # stale flag and was labeled "via BCM cycle". User saw
+        # "MoveSpin [via BCM cycle]" + "Wheel [via Wheel]" instead of
+        # the correct "Wheel [via BCM cycle]" + "MoveSpin" plain.
+        # New: detect peak ONCE per robot, then in the per-round walk
+        # set the flag when cc == peak (the round AT cycle complete,
+        # BEFORE the wheel/bonus chain opens).
+        robot_cycle_peak: int | None = detect_cycle_peak(rounds)
         robot_final_cc = 0  # CC at chunk end (for pending calculation)
         prev_round_pids: dict[str, Any] = {}  # previous round's PayoutIdToWinAmount (for chain trigger classification)
         # Previous round's SpinType within this robot (reset per-robot
@@ -3381,9 +3402,25 @@ def parse_chunk_response(
                 _is_paid_for_chain = _cc_raw_chain is not None and to_float(
                     _cc_raw_chain, default=0.0
                 ) > 0.0
+            # 2026-04-28 (Bug 5): wild-nudge rounds are continuations of
+            # the preceding paid spin (no extra cost; ReMarks "move"/
+            # "nudge"). They must NOT open / accumulate into / close a
+            # bonus chain. Otherwise a nudge that fires AT cycle-peak
+            # opens the chain with first_st=36 instead of the actual
+            # BCM target (Wheel ST=2 firing right after the nudge).
+            # User saw "MoveSpin [via BCM cycle]" + "Wheel [via MoveSpin]"
+            # because nudge took the chain-opener slot. Treat nudge
+            # rounds as transparent to chain bookkeeping -- chunk_win
+            # and per-SpinType totals still include their wins, but the
+            # chain inference looks past them to find the real bonus.
+            _is_wild_nudge_for_chain = is_wild_nudge_round(r)
             if _is_paid_for_chain:
                 # Close any open chain.
                 _bonus_chain_active = None
+            elif _is_wild_nudge_for_chain:
+                # Skip chain bookkeeping for nudge rounds entirely.
+                # Don't open, don't close, don't accrue.
+                pass
             else:
                 if _bonus_chain_active is None:
                     _bonus_chain_active = {
@@ -3497,13 +3534,26 @@ def parse_chunk_response(
             # = one complete BuffCollectionMap cycle. Record the peak.
             # Only track on paid spins (bonus spins have CC=None/0).
             if is_paid and cc_int > 0:
+                # 2026-04-28: flag BCM-cycle-trigger AT the cycle peak
+                # paid round (not on cc-drop). Pre-computed
+                # robot_cycle_peak comes from detect_cycle_peak which
+                # walks the full round list and only commits a peak
+                # when a real cc-reset is observed -- no false-positive
+                # on machines whose chunk doesn't span a full cycle.
+                # When this paid round's cc == peak, the immediately
+                # following non-paid round (Wheel on M279, NewFreespin
+                # on others) is the BCM-cycle bonus. Setting the flag
+                # here means the chain opener picks it up cleanly.
+                if (
+                    robot_cycle_peak is not None
+                    and cc_int == robot_cycle_peak
+                ):
+                    _bonus_chain_last_cc_reset = True
+                # Cycle-peak count tracking (used by clamp_warning +
+                # completed_cycles_total). Detected at cc-drop -- the
+                # round AFTER cycle completion sees prev_cc at peak.
                 if cc_int < robot_prev_cc_for_cycle and robot_prev_cc_for_cycle > 10:
                     robot_cycle_peaks.append(robot_prev_cc_for_cycle)
-                    # Flag the NEXT chain entry (if any immediately
-                    # follows) as BCM-cycle-triggered. Cleared either
-                    # when consumed by a chain open or by the next
-                    # paid round without a chain between.
-                    _bonus_chain_last_cc_reset = True
                 robot_prev_cc_for_cycle = cc_int
                 robot_final_cc = cc_int
             # On a paid round without a reset, clear any stale BCM
