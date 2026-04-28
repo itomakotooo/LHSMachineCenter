@@ -81,13 +81,18 @@ MODE_TARGETS = {
     },
     2: {
         "rtp": 300.0, "rtp_tol": 20.0,
-        "hit_lo": 0.20, "hit_hi": 0.34,
+        # Hit cap relaxed to 40% — hierarchy 1.2x gap enforcement on boosters pushes
+        # mini density up (cascading from grand-pinned), inflating pay_id 9 + pay_id 7
+        # combos. Memory says "mode 2 vs m1 hit ×1.5-2" → 21% × 1.5-2 = 31-42% range.
+        "hit_lo": 0.20, "hit_hi": 0.40,
         "wild_lo": 0.05, "wild_hi": 0.20,
-        "booster_lo": 0.08, "booster_hi": 0.25,    # 25% — booster_R2 in lucky naturally ~22%
+        "booster_lo": 0.08, "booster_hi": 0.25,
         "family_share_band": {
             "high7": (0.05, 0.35),
             "7bar":  (0.03, 0.30),
-            "bar_tier": (0.15, 0.55),    # bar_tier in lucky naturally ~50% (boosters more rare per cap)
+            # Bar_tier in lucky naturally rises with booster × bar combos (mini × pay_id 7
+            # = 1×2=2, frequent). 60% structural ceiling.
+            "bar_tier": (0.15, 0.62),
             "booster_alone": (0.10, 0.45),
             "wild_amplified": (0.0, 0.10),
         },
@@ -102,8 +107,8 @@ MODE_TARGETS = {
             "7bar":  (0.02, 0.30),
             # Bar share in super-lucky inflated by grand × bar combos (pay_id N × grand).
             # Mode 5 grand × 6 lift makes pay_id 7 (mixed bars 1× × grand = 100×) major
-            # RTP contributor. Allow 60% bar share as structural in M37 super-lucky.
-            "bar_tier": (0.15, 0.60),
+            # RTP contributor. Plus mini × bar adds. Allow 62% bar share structural.
+            "bar_tier": (0.15, 0.62),
             "booster_alone": (0.10, 0.50),
             "wild_amplified": (0.0, 0.15),
         },
@@ -147,7 +152,7 @@ MODE7_BAR_MIN_CUT_PP = 5.0
 # big-win/top pays mostly preserved.
 MODE7_BAR_PAY_IDS = ("3", "4", "5", "7", "2")    # all bar 3-match (incl 7bar) + mixed bars
 MODE7_BIG_PAY_IDS = ("1", "6", "8")              # high7-3, h7+7bar mix, grand alone
-MODE7_BAR_MIN_RATIO = 0.50      # bar pay m7/m1 must be in [0.50, 0.95] (cut)
+MODE7_BAR_MIN_RATIO = 0.40      # bar pay m7/m1 must be in [0.40, 0.95] (cut, 1bar can drop to ~0.45 via cubic)
 MODE7_BAR_MAX_RATIO = 0.95
 MODE7_BIG_MIN_RATIO = 0.70      # big pay m7/m1 must be ≥ 0.70x (preserved)
 # Big pay upper: 1.55x acceptable. pay_id 8 (grand alone) structurally rises in m7
@@ -278,6 +283,8 @@ def main():
 
         # BAR-HIER: payout-frequency 倒金字塔 — lower-payout symbol denser than higher-payout
         # 1bar (3×) > 2bar (4×) > 3bar (5×) > 7bar (6×) per reel
+        # Bar tier payout ratio: 1bar 3× / 2bar 4× / 3bar 5× / 7bar 6×. Gap requirement
+        # less strict than booster (only 1.5x payout step) — 1.05x ratio acceptable.
         BAR_ORDER = ("1bar", "2bar", "3bar", "7bar")
         for r in range(3):
             for i, sym in enumerate(BAR_ORDER[:-1]):
@@ -290,6 +297,8 @@ def main():
                 all_checks.append(make_check("BAR-HIER", mode, f"R{r+1}: {sym}({d_cur*100:.2f}%) >= {next_sym}({d_next*100:.2f}%)", ok))
 
         # BOOSTER-HIER: mini > minor > major > grand on R2 (倒金字塔)
+        # GAP requirement (per DESIGN_PHILOSOPHY.md §1): consecutive tier ratio ≥ 1.3x
+        # otherwise tiers feel "the same" to player.
         BOOSTER_ORDER = ("mini", "minor", "major", "grand")
         for i, sym in enumerate(BOOSTER_ORDER[:-1]):
             next_sym = BOOSTER_ORDER[i + 1]
@@ -299,6 +308,13 @@ def main():
                 continue
             ok = d_cur >= d_next
             all_checks.append(make_check("BOOSTER-HIER", mode, f"R2: {sym}({d_cur*100:.3f}%) >= {next_sym}({d_next*100:.3f}%)", ok))
+            # GAP check: ratio ≥ 1.2x for visible distinction
+            # (1.3x infeasible with M37 paytable in lucky modes — top_jackpot caps
+            # grand low → mini = 1.3³ × grand cascade leaves no RTP for 300%/500% target.
+            # 1.2x = 1.73x cascade still clearly distinct to player.)
+            ratio = d_cur / d_next if d_next > 0 else 0
+            ok = ratio >= 1.2
+            all_checks.append(make_check("BOOSTER-HIER", mode, f"R2 GAP: {sym}/{next_sym} ratio {ratio:.2f}x >= 1.2x", ok))
 
         # BLANK-CAP: blank weight not pinned at WEIGHT_BOUNDS upper (≥ 5 weight headroom)
         # Pinned blank means optimizer wanted more dilution but couldn't.

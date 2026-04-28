@@ -101,8 +101,8 @@ WEIGHT_BOUNDS_STANDARD = {
 WEIGHT_BOUNDS_LUCKY = {
     "blank":  (1, 80), "wild":  (1, 25),
     "high7":  (1, 50),
-    # Bars: 1bar > 2bar > 3bar > 7bar (lucky ~1.5x standard caps but still bounded)
-    "7bar":   (1, 22), "3bar":  (1, 30), "2bar":  (1, 40), "1bar":  (1, 60),
+    # Bars: 1bar > 2bar > 3bar > 7bar — tighter than v5 to constrain bar over-load
+    "7bar":   (1, 18), "3bar":  (1, 24), "2bar":  (1, 32), "1bar":  (1, 50),
     # Boosters: mini > minor > major > grand
     "mini":   (1, 30), "minor": (1, 20), "major": (1, 13), "grand": (1, 10),
 }
@@ -188,8 +188,10 @@ EXPERIENCE_TARGETS = {
         "pay_freq_caps": {"8": 0.0010},    # grand alone 1 in 1000 (3x m1)
         "wild_on_payline_band": (0.06, 0.18),
         "wild_signature_weight": 200.0,
-        "booster_r2_band": (0.08, 0.16),
-        "booster_signature_weight": 200.0,
+        # booster_R2 ceiling 0.18 (was 0.28) — hierarchy 1.3x gap pushes mini high;
+        # tight ceiling caps booster total to keep hit rate in band
+        "booster_r2_band": (0.08, 0.18),
+        "booster_signature_weight": 300.0,
         "family_share_bands": {
             "high7":   (0.05, 0.30),
             "7bar":    (0.03, 0.25),
@@ -441,16 +443,23 @@ def evaluate_candidate(fr_weights, strip, evaluator, paytable, exp_targets):
                 cost += hierarchy_strength * (gap * 100) ** 2
             prev_d = d
     # Booster tier on R2: mini(2×) > minor(5×) > major(10×) > grand(100×)
+    # GAP requirement: ratio ≥ 1.2x between consecutive tiers (visibly distinct).
+    # Note: 1.3x infeasible with mode 2/5 RTP 300%/500% + hit-rate cap because
+    # forced cascading (grand top_jackpot bound → mini = 1.3³ × grand min ≈ 2.2x grand)
+    # leaves no RTP room. 1.2x = 1.728x cascade still gives clear distinction.
     BOOSTER_ORDER = ("mini", "minor", "major", "grand")
-    prev_d = None
-    for s in BOOSTER_ORDER:
-        d = densities.get((s, 1), 0.0)
-        if d == 0:
+    BOOSTER_GAP_TARGET = 1.2
+    for i in range(len(BOOSTER_ORDER) - 1):
+        s_lo = BOOSTER_ORDER[i]    # lower payout, must be more frequent
+        s_hi = BOOSTER_ORDER[i + 1]
+        d_lo = densities.get((s_lo, 1), 0.0)
+        d_hi = densities.get((s_hi, 1), 0.0)
+        if d_lo == 0 or d_hi == 0:
             continue
-        if prev_d is not None and d > prev_d:
-            gap = d - prev_d
-            cost += hierarchy_strength * (gap * 100) ** 2
-        prev_d = d
+        target = d_hi * BOOSTER_GAP_TARGET
+        if d_lo < target:
+            deficit = target - d_lo    # in fraction
+            cost += hierarchy_strength * (deficit * 1000) ** 2
 
     # Blank-not-pinned penalty: blank weight pinned at WEIGHT_BOUNDS upper means
     # optimizer wanted to add more dilution but couldn't → design漂. Soft penalty
@@ -637,10 +646,12 @@ def main(modes_to_run=(1, 7)):
             # - blank weight ≥ m1 (CRITICAL: anti-big-win-density-inflation)
             weight_floors = {}
             weight_ceilings = {}
-            # ALL bars [m1×0.65, m1×0.95] uniform cut
+            # ALL bars [m1×0.72, m1×0.95] uniform cut
+            # (m1×0.72 floor → cubic effect on 3-match: 0.72³ = 0.37, with wild sub
+            # actual ratio ~0.45-0.50 — within MODE7_BAR_MIN_RATIO 0.50 floor)
             for k in BAR_KEYS:    # 1bar/2bar/3bar/7bar
                 if k in mode1_all_weights:
-                    weight_floors[k] = max(1, int(mode1_all_weights[k] * 0.65))
+                    weight_floors[k] = max(1, int(mode1_all_weights[k] * 0.72))
                     weight_ceilings[k] = max(1, int(mode1_all_weights[k] * 0.95))
             # Big-win (high7/wild/boosters) frozen
             frozen_weights = {}

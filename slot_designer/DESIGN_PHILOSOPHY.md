@@ -16,10 +16,10 @@
 
 实现要点：
 - **per-symbol weight cap 结构性强制**：低 payout cap > 高 payout cap
-- **soft cost 强制 ordering**：hierarchy_strength 大到能压过 RTP/share 的 gravity（典型 ≥ 5000，平方 gap penalty）
-- 单 cap 不够，单 soft 也不够，**必须两者结合**
+- **soft cost 强制 ordering + GAP**：单一 penalty `d_lower_payout < d_higher_payout × ratio_target` 触发，统一 reversal 和 gap-不足两种 deficit。strength 大到能压过 RTP/share 的 gravity（典型 ≥ 5000）
+- **gap ratio ≥ 1.2-1.3x**：视玩家直觉。低 ratio → 玩家感觉两 tier "差不多"。1.3x 严格但可能跟某些机台 RTP target 冲突（cascade 4 tier = 1.3³=2.2x 占用 booster 总额度）；1.2x 折中（cascade=1.73x 仍清晰）
 
-verify 类别建议：`<FAMILY>-HIER`（如 `BAR-HIER`、`BOOSTER-HIER`）。
+verify 类别建议：`<FAMILY>-HIER`（如 `BAR-HIER`、`BOOSTER-HIER`）含 ordering + GAP 两条 check。
 
 ---
 
