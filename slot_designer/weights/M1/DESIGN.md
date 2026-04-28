@@ -35,9 +35,10 @@
   - 详见 [`project_slot_designer_blank_flank_diversity.md`](../../memory/project_slot_designer_blank_flank_diversity.md)
 
 - **Visual rhythm — Bar3 / Bar1 重复位置间距 ≥ 4 stops**（M1 specific 子规则, 2026-04-29 user requirement）:
-  - **Why**: M1 R1 上 Bar3 出现 3 次，R2/R3 上 Bar1 出现 3 次。原型 IGT TDD 排列 Bar3 在 R1 pos 9/11/19 — pos 9 和 11 间距 = 1 stop（仅隔 1 Blank），过近视觉上"R1 全是 Bar3"。M1 specific cap：同 symbol 重复实例间距 ≥ 4 stops（≥ 1 个非邻接非 Blank 间隔）
+  - **Why**: M1 R1 上 Bar3 出现 3 次（pos 9/11/19），R2/R3 上 Bar1 出现 3 次。当前 R1 pos 9 和 11 间距 = 1 stop（仅隔 1 个 Blank），过近视觉上"R1 全是 Bar3"。
+  - **Rationale for "≥ 4 stops"**: M1 是 22-stop strip + 11 非 Blank 位 + 同 symbol 最多重复 3 次。conservative pick：≥ 4 stops 间距 ⇔ 重复实例之间至少**隔 1 个非邻接非 Blank** symbol。这数字是 M1-specific 调出来的（不是 archetype 实证，因 Hot Roll 原型 pos 9/11 也是 1 间距），代表"修廉价 near-miss + 保 archetype 大方向"的妥协
   - **Where**: reel_strips.json 重排时遵守；verify_m1_design.py VISUAL-RHYTHM 子类 (M1 specific cap)
-  - **Not universal**: M37/M15 有不同的 paytable 结构和重复 symbol 数，应自定阈值
+  - **Not universal**: M37/M15 有不同的 paytable 结构和重复 symbol 数，应自定阈值——不要抄 4
 
 - **Window visibility — Diamond1 / Diamond2 / Seven2 any-reel ≥ 50%**（M1 specific PWDF floor，2026-04-29 user requirement）:
   - **Why**: M1 是 IGT TDD 风格 brand machine, 顶奖 family (Diamond 系 wild + Seven2 top jackpot) 应频繁可见但 payline hit rare（Harrigan PWDF 实证 IGT Double 7 any-reel ~50%）。Cherry brand visibility 当前 57% 已达标

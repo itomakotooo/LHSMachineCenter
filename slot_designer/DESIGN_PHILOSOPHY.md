@@ -254,7 +254,7 @@ verify 类别建议：`REEL-ASYMMETRY`（per-mode R1 vs 末 reel blank + 顶奖�
 - **同 family 不连续段**：例 3 个 Bar（Bar1+Bar2+Bar3）连续会让 reel 视觉上"全 Bar 一段、全 Diamond 一段"，缺失节奏
 - **顶奖 symbol 散开**：Diamond / Seven 类不应邻接（即使被 Blank 隔开但太近也算密集）
 - **Brand symbol 错落**：Cherry / 机台 logo 类应跨 reel 长度均匀分布，不集中前半段或后半段
-- **同 symbol 重复（如 R1 上 3 个 Bar3）位置间隔合理**：典型 ≥ 4 stops（保 reel 滚动时玩家不连续看到同 symbol）
+- **同 symbol 重复（如 R1 上 3 个 Bar3）位置间隔合理**：具体 stop 数机台 specific（视 reel 总长 + 重复实例数 + 玩家阈值）。**不在 universal 层定数字**——M1 (22-stop, 重复 3 次) 用 ≥ 4 stops 是该机台的 conservative pick，写在 M1 DESIGN.md，不是 cross-machine default
 
 ### 14.2 Universal 不锁绝对数字
 
