@@ -165,12 +165,60 @@ verify 类别建议：`LUCKY-MONO` + cross-mode invariant checks。
 
 ---
 
+## 12. Reel 间不对称 — R1 winners-friendly, 末 reel 特殊角色（Strickland/Reid/Harrigan）
+
+**同一机台不同 reel 的 Blank / 顶奖密度天生应该不同。Universal rule，3-reel 和 5-reel 都适用：**
+
+### 12.1 通用原则（任意 reel 数）
+
+- **R1（leftmost reel）永远是 "winners-friendly" reel**：Blank 率最低，winning symbols 密度最高。这是 universal — 任何 reel 数 (3 / 5 / 7-reel) 都适用
+  - 心理机制：R1 是玩家"第一印象"，从左到右扫，R1 blank → 一秒 disengage（"早期拒绝"）
+  - 文献：Strickland & Grote 1967, Reid 1986
+
+- **末 reel（rightmost: R3 in 3-reel / R5 in 5-reel）有特殊角色**，二选一：
+  - **(a) Near-miss reel**：顶奖密度低，frequent "差一点" 触发 near-miss psychology (Harrigan 2007 award-symbol-ratio + clustering)
+  - **(b) Trigger reel**：feature trigger 符号 (free spin / bonus / wheel) 锁在末 reel；其它顶奖密度低 (e.g., M15 TopDollar 只在 R3, M279 wheel trigger 只在 R5)
+
+- **中间 reels（R2 in 3-reel / R2/R3/R4 in 5-reel）gradient**：从 R1 winning visibility 到末 reel 角色之间渐变。不强制具体方向，但应连续过渡（不能 R1 高 → R2 突低 → R3 高）
+
+### 12.2 具体约束（per-mode hard rule）
+
+3-reel:
+- **R1 Blank 率 ≤ R3 Blank 率**（standard mode ≥ 3pp tolerance, lucky mode 8pp）
+- **R1 顶奖家族密度 ≥ R3 顶奖家族密度**（≥ 1pp tolerance）
+- 例外：trigger 锁 R3 时，trigger 符号不算"顶奖"——按非 trigger 的 top-prize 算
+
+5-reel:
+- **R1 Blank 率 ≤ R5 Blank 率**（同方向，容差按机台调）
+- **R1 顶奖家族密度 ≥ R5 顶奖家族密度**（除 trigger 符号）
+- **R2/R3/R4 中间 gradient 连续**：max-of-middle Blank − min-of-middle Blank ≤ 中间过渡幅度（避免突跳）
+- **5-reel 特有：R5 是 trigger reel 的概率高**——onboarding 时按 archetype 决定 R5 是 (a) 还是 (b) role
+
+### 12.3 例外 / nuance
+
+- **Lucky modes (RTP > 200%)**: 容差宽 (5-10pp Blank, 2-3pp top-prize)。原因：高 RTP → 玩家持续中奖 → near-miss 心理弱化，反方向略漂可接受
+- **Cluster slot / pay-anywhere slot**: 此规则不直接适用 (没有 reel-by-reel 顺序揭示概念)。该用本规则的扩展：cluster 中心 vs 边缘的对称性
+- **Cascading slot (tumble/avalanche)**: 第一波下落用此规则；后续 cascades 不适用 (玩家已 committed)
+
+### 12.4 Tuner pareto 警惕
+
+**Tuner 不知道这条**：cost function 没约束 → tuner 把顶奖 stuff 到任何 RTP 最便宜的 reel（实测往往是末 reel）。必须三层防护：
+1. **verify check**（per-machine `REEL-ASYMMETRY` 类别）— 红线 catch 违反方向
+2. **tune cost penalty** — `(R1_blank − R_last_blank − tol)²` 当 R1 比末 reel 还 blank 时
+3. **archetype 文档** — 在 reel_strips.json `_archetype` block 写清"末 reel role 是 (a) 还是 (b)"
+
+verify 类别建议：`REEL-ASYMMETRY`（per-mode R1 vs 末 reel blank + 顶奖密度方向）+ 5-reel 加 `MIDDLE-GRADIENT`。
+
+参考：memory `project_slot_designer_reel_asymmetry.md`。文献：[Strickland & Grote 1967](https://psycnet.apa.org/record/1967-08400-001), [Reid 1986 (Berkeley)](https://www.stat.berkeley.edu/~aldous/157/Papers/near_miss.pdf), [Harrigan 2007](https://link.springer.com/article/10.1007/s11469-007-9139-8), industry award-symbol-ratio (≥1988)。
+
+---
+
 ## 应用：每个新机台 onboarding 必做
 
 1. **读这份哲学**——每条对应 verify 类别要 implement
 2. **读 WORKFLOW.md**——adversarial review 流程
 3. **写机台 DESIGN.md**——archetype block + 业界 chassis 参考 + 玩家叙事
-4. **写 verify_<M>_design.py**——把上面 11 条都加到 verify
-5. **tune 时 cost function 包含**：hierarchy_strength、family share band、per-pay freq cap、top_jackpot_min_spins
+4. **写 verify_<M>_design.py**——把上面 12 条都加到 verify
+5. **tune 时 cost function 包含**：hierarchy_strength、family share band、per-pay freq cap、top_jackpot_min_spins、reel asymmetry（R1 ≤ R3 Blank + R1 ≥ R3 top-prize）
 
-参考实现：`weights/M37/` 完整流程（v5 后）。
+参考实现：`weights/M37/` 完整流程（v5 后）+ `weights/M1/` 含 REEL-ASYMMETRY check（2026-04-28+）。

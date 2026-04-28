@@ -143,6 +143,15 @@ EXPERIENCE_TARGETS = {
             "ge10_lt20": 0.010,
         },
         "cv_target": 9.0,
+        # REEL-ASYMMETRY (Strickland/Reid/Harrigan universal rule).
+        # R1 less blank than R3 (defends early rejection) + R1 top-prize
+        # density ≥ R3 (creates near-miss on R3 when fails).
+        "reel_asymmetry": {
+            "blank_tol_pp": 0.03,    # R1 may exceed R3 Blank by ≤ 3pp
+            "top_tol_pp": 0.01,      # R1 may fall below R3 top-prize by ≤ 1pp
+            "blank_strength": 200.0,
+            "top_strength": 200.0,
+        },
     },
     7: {
         "wild_on_payline_band": (0.10, 0.18),
@@ -163,6 +172,13 @@ EXPERIENCE_TARGETS = {
             "Diamond1": 2.0, "Diamond2": 2.0,
         },
         "top_jackpot_max_spins": 300_000,
+        # REEL-ASYMMETRY (mode 7 strict — "运气差 mode" 不能再 R1 早期拒绝).
+        "reel_asymmetry": {
+            "blank_tol_pp": 0.03,
+            "top_tol_pp": 0.01,
+            "blank_strength": 200.0,
+            "top_strength": 200.0,
+        },
     },
     2: {
         "wild_on_payline_band": (0.12, 0.25),
@@ -197,6 +213,14 @@ EXPERIENCE_TARGETS = {
         # encodes goal "reels look alike to player" directly.
         "per_reel_blank_variance_strength": 6.0,
         "top_jackpot_max_spins": 300_000,
+        # REEL-ASYMMETRY (lucky modes wider tolerance — high RTP dilutes
+        # near-miss psychology, but direction must still hold).
+        "reel_asymmetry": {
+            "blank_tol_pp": 0.08,    # 8pp tolerance for lucky
+            "top_tol_pp": 0.02,
+            "blank_strength": 100.0,
+            "top_strength": 100.0,
+        },
     },
     5: {
         "wild_on_payline_band": (0.12, 0.28),
@@ -439,6 +463,30 @@ def evaluate_candidate(
         mean_b = sum(blanks_pp) / 3
         variance_pp2 = sum((b - mean_b) ** 2 for b in blanks_pp) / 3
         cost += blank_var_k * variance_pp2
+
+    # REEL-ASYMMETRY: per project_slot_designer_reel_asymmetry.md universal
+    # rule (Strickland/Reid/Harrigan). R1 should have lower Blank rate +
+    # higher top-prize density than R3 (the "near-miss reel"). Tuner without
+    # this penalty pareto-stuffs top-prize on whichever reel is RTP-cheapest
+    # (often R3) — counter to player psychology.
+    asym = experience_targets.get("reel_asymmetry", None)
+    if asym is not None:
+        # blank: R1 ≤ R3 + tolerance; penalize if R1 too blanky
+        r1_blank = densities.get(("Blank", 0), 0.0)
+        r3_blank = densities.get(("Blank", 2), 0.0)
+        blank_tol = asym.get("blank_tol_pp", 0.03)
+        blank_k = asym.get("blank_strength", 200.0)
+        if r1_blank > r3_blank + blank_tol:
+            gap_pp = (r1_blank - r3_blank - blank_tol) * 100
+            cost += blank_k * gap_pp * gap_pp
+        # top-prize: R1 ≥ R3 - tolerance; penalize if R3 stuffed
+        r1_top = sum(densities.get((s, 0), 0.0) for s in ("Diamond1", "Diamond2", "Seven1", "Seven2"))
+        r3_top = sum(densities.get((s, 2), 0.0) for s in ("Diamond1", "Diamond2", "Seven1", "Seven2"))
+        top_tol = asym.get("top_tol_pp", 0.01)
+        top_k = asym.get("top_strength", 200.0)
+        if r1_top < r3_top - top_tol:
+            gap_pp = (r3_top - r1_top - top_tol) * 100
+            cost += top_k * gap_pp * gap_pp
 
     # Big-win pay frequency floor (mode 5 vs mode 2 monotonic): each
     # specific pay_id frequency must be ≥ reference. Direct goal — what

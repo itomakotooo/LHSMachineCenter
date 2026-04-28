@@ -189,6 +189,20 @@ PER_REEL_TOTAL_WEIGHT_RATIO_CAP = 3.0
 # non-Blank chains. Stop count is machine-specific (M1 = 22, M37/M15 = 36),
 # but alternation invariant is universal.
 
+# Reel asymmetry: per project_slot_designer_reel_asymmetry.md (Strickland/
+# Reid/Harrigan), R1 should have lower Blank rate + higher top-prize density
+# than R3. Direction must hold for all modes; lucky modes (RTP > 200%) get
+# wider tolerance (high RTP dilutes near-miss psychology). Tuner doesn't
+# know this rule — needs both verify check AND cost penalty.
+# Tolerances: standard mode (1, 7) requires R1 ≤ R3 + 3pp Blank, R1 ≥ R3
+# - 1pp top-prize. Lucky modes (2, 5) get 8pp Blank tolerance (lucky modes
+# tend to balance reels via tuner's variance-penalty for visual consistency).
+REEL_ASYMMETRY_BLANK_TOL_PP_STANDARD = 0.03   # R1 Blank may exceed R3 by ≤ 3pp
+REEL_ASYMMETRY_BLANK_TOL_PP_LUCKY = 0.08      # lucky modes wider tolerance
+REEL_ASYMMETRY_TOP_TOL_PP_STANDARD = 0.01     # R1 top-prize may fall below R3 by ≤ 1pp
+REEL_ASYMMETRY_TOP_TOL_PP_LUCKY = 0.03        # lucky modes tend to have more top variance
+TOP_PRIZE_FAMILIES = ("Diamond1", "Diamond2", "Seven1", "Seven2")
+
 
 def family_rtp_breakdown(profile, paytable):
     rtp_excluded = {str(p["pay_id"]) for p in paytable if p.get("rtp_excluded")}
@@ -456,11 +470,53 @@ def run_cross_mode_checks(state_by_mode):
             "防 R-stuffing pareto trap (一条 reel 总 weight 暴落 = 该 reel 上某 family 灭绝)",
         ))
 
+    # REEL-ASYMMETRY: per project_slot_designer_reel_asymmetry.md universal rule.
+    # R1 should have lower Blank rate + higher top-prize density than the last
+    # reel (R3 in 3-reel, R5 in 5-reel). Standard modes (1, 7) tight tolerance,
+    # lucky modes (2, 5) wider (high RTP dilutes near-miss psychology).
+    strips_doc = json.loads(STRIPS.read_text(encoding="utf-8"))
+    strips_reels = strips_doc["reels"]
+    n_reels = len(strips_reels)
+    last_reel_idx = n_reels - 1
+    for mode in sorted(state_by_mode.keys()):
+        m_w = state_by_mode[mode]["weights_doc"]["weights"]
+        # Compute per-reel Blank + top-prize marginal
+        def reel_marg(r_idx, syms):
+            total = sum(m_w[r_idx])
+            if total <= 0:
+                return 0.0
+            return sum(w for w, s in zip(m_w[r_idx], strips_reels[r_idx]) if s in syms) / total
+        r1_blank = reel_marg(0, ("Blank",))
+        r_last_blank = reel_marg(last_reel_idx, ("Blank",))
+        r1_top = reel_marg(0, TOP_PRIZE_FAMILIES)
+        r_last_top = reel_marg(last_reel_idx, TOP_PRIZE_FAMILIES)
+        is_lucky = mode in (2, 5)
+        blank_tol = (REEL_ASYMMETRY_BLANK_TOL_PP_LUCKY if is_lucky
+                     else REEL_ASYMMETRY_BLANK_TOL_PP_STANDARD)
+        top_tol = (REEL_ASYMMETRY_TOP_TOL_PP_LUCKY if is_lucky
+                   else REEL_ASYMMETRY_TOP_TOL_PP_STANDARD)
+        # R1 Blank ≤ R(last) Blank + tolerance (defending early-rejection)
+        blank_ok = r1_blank <= r_last_blank + blank_tol
+        checks.append(make_check(
+            "REEL-ASYMMETRY", mode,
+            f"R1 Blank {r1_blank:.2%} vs R{n_reels} Blank {r_last_blank:.2%} "
+            f"(diff {r1_blank-r_last_blank:+.2%}, tol +{blank_tol:.0%})",
+            blank_ok,
+            "防早期拒绝 (Strickland/Reid): R1 应 ≤ R(last) Blank",
+        ))
+        # R1 top-prize density ≥ R(last) top-prize density (Harrigan near-miss)
+        top_ok = r1_top >= r_last_top - top_tol
+        checks.append(make_check(
+            "REEL-ASYMMETRY", mode,
+            f"R1 top-prize {r1_top:.2%} vs R{n_reels} top-prize {r_last_top:.2%} "
+            f"(diff {r1_top-r_last_top:+.2%}, tol -{top_tol:.0%})",
+            top_ok,
+            "near-miss psychology (Harrigan): R(last) 顶奖应 ≤ R1 (R(last) = 差一点 reel)",
+        ))
+
     # ALTERNATION: Blank / non-Blank must strictly alternate on every reel.
     # No 3-consecutive Blank or 3-consecutive non-Blank chains. Universal
     # invariant (independent of mode — strips are shared across modes).
-    strips_doc = json.loads(STRIPS.read_text(encoding="utf-8"))
-    strips_reels = strips_doc["reels"]
     for r_idx, reel in enumerate(strips_reels):
         violations = []
         for p in range(len(reel) - 1):

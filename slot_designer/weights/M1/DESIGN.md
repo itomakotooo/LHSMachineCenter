@@ -99,11 +99,24 @@ freq 显著增）。这是"super-lucky 是 mode 2 的 luck variation，不是另
 | Mode | RTP | hit | wild_on_payline | CV |
 |---|---|---|---|---|
 | 1 | 94.79% | 19.57% | 14.61% | ~9.2 |
-| 7 | 85.44% | 14.90% | 14.31% | 10.08 |
-| 2 | 294.48% | 27.56% | 20.68% | 6.06 |
-| 5 | 495.05% | 26.97% | 26.29% | 5.16 |
+| 7 | 85.30% | 14.89% | 14.41% | 10.07 |
+| 2 | 294.50% | 27.03% | 20.64% | ~6.1 |
+| 5 | 503.76% | 26.59% | 26.51% | ~5.2 |
 
-> 数值自 2026-04-28 strip 修正后 re-tune (modes 1/2/7) + re-derive (mode 5)：strips 改成 11+11 严格交替（去掉 R0/R1/R2 各一个 3 连 blank, 替换为 Cherry）。所有 4 mode RTP/hit/share 都在 band 内。Mode 5 仍走 `derive_m1_mode_5.py` 派生（base = m2 byte-identical + top-bucket × k=1.4722）。
+> 数值自 2026-04-28 经历两轮修正：
+> 1. **Strip alternation 修复**: strips 改成 11+11 严格交替（R0/R1/R2 各一个 3 连 blank → Cherry）。
+> 2. **REEL-ASYMMETRY 规则加入**: tune cost penalty + verify check 强制 R1 Blank ≤ R3 + R1 顶奖密度 ≥ R3。重新 tune mode 1/2/7 + re-derive mode 5。
+
+### Per-reel asymmetry (R1 winners-friendly, R3 near-miss reel)
+
+| Mode | R1 Blank | R3 Blank | R3-R1 | R1 top-prize | R3 top-prize | R1-R3 | 状态 |
+|---|---|---|---|---|---|---|---|
+| 1 | 45.67% | 63.22% | +17.54pp | 13.49% | 10.63% | +2.86pp | ✓ |
+| 2 | 36.24% | 36.41% | +0.17pp | 24.42% | 25.53% | -1.11pp | ✓ (lucky tol) |
+| 5 | 32.75% | 33.05% | +0.30pp | 31.70% | 32.40% | -0.70pp | ✓ (lucky tol) |
+| 7 | 51.68% | 58.09% | +6.41pp | 13.09% | 12.21% | +0.88pp | ✓ |
+
+R3 - R1 Blank ≥ 0 → 防早期拒绝 (Strickland/Reid 1967/1986)。R1 - R3 top-prize ≥ 0 (or 容差内) → R3 是"差一点"reel (Harrigan award-symbol-ratio)。Lucky modes (2/5) 容差 8pp/3pp 允许略漂方向。
 
 **Big-win pay frequency (1 in N spins)**:
 
@@ -145,13 +158,14 @@ Mode 7 = mode 1 (frozen, 1.00x). Mode 2/5 monotonic ≥ mode 1.
 
 ### 5.2 Verify (`slot_designer/scripts/verify_m1_design.py`)
 
-12 类 check, 全绿才算 done:
+13 类 check, 全绿才算 done:
 - 数值 + family band: **RTP / HIT / WILD / SHARE / DENSITY / BUCKET-FLOOR**
 - Mode 7 派生 lock: **MODE7-LOCK / MODE7-CUT / TOP-PATH**
 - 跨 mode signature: **SIGNATURE**
 - Mode 5 派生 lock (2026-04-28): **MODE5-BASE-LOCK** — base 权重 byte-identical to mode 2
 - 反 pareto trap (2026-04-28): **R-COLLAPSE** — 每 mode max/min reel 总 weight ≤ 3.0×
 - 物理 strip 不变量 (2026-04-28): **ALTERNATION** — 每 reel Blank/非 Blank 严格交替（universal rule per memory）
+- Reel 心理不对称 (2026-04-28): **REEL-ASYMMETRY** — R1 Blank ≤ R3 Blank + R1 top-prize ≥ R3 top-prize (Strickland/Reid/Harrigan 文献支持，lucky modes 容差宽)
 
 ### 5.3 文件
 
