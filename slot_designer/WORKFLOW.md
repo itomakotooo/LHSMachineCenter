@@ -20,7 +20,15 @@ Verify 是我设计的，只检查我想到的东西。绿了只意味着"我没
 
 不只是 summary。把每条 reel 每家族 density、每 pay_id 频率 + RTP、每 mode 跨 mode 对比都打印出来，逐项扫。
 
-不"看了 verify 绿就过"，而是 **看实际数字** 是不是符合直觉。
+**必 dump 项目**：
+- 每 mode × 每 reel × 每 family 的 density
+- 每 mode 每 pay_id 频率（1 in N spins）+ RTP 贡献
+- 跨 mode 对比表（m1 vs m7 vs m2 vs m5）
+- Hit decomposition（每 pay 占 hit rate 的 %）
+- 顶奖 freq 跨 mode escalation
+- **每条 reel 的 blank weight + total weight + non-blank density** —— 看 R1/R2/R3 间是否有跨数量级差距，差距是否有结构性解释
+
+不"看了 verify 绿就过"，而是 **看实际数字** 是不是符合直觉，每个跨 reel / 跨 mode 大差异都问清"为什么"。
 
 ### Step 3：adversarial 反问自己（关键）
 
