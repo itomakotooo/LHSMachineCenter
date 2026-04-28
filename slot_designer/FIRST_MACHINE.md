@@ -155,7 +155,8 @@ mkdir -p slot_designer/weights/<M>/mode_{1,2,5,7}
 ```
 
 **结构不变量**：
-- 每 reel 18 blank + 18 非 blank 严格交替（Harrigan near-miss band）
+- 每 reel **Blank / 非 Blank 严格交替**（Harrigan near-miss band 玩家心理）— **universal rule，任何 stop count 都适用**，不允许 3 连 Blank 或 3 连非 Blank
+- Stop count 跟机台原型走（IGT classic 3-reel = 22 stops，video slot / M37 / M15 类 = 36 stops，可按机台原型决定）。Blank 数 ≈ 非 Blank 数 ±1（22-stop → 11+11，36-stop → 18+18）
 - 跨 mode 字节级一致（后面每次 tune mode 2/5/7 都要 `--sa-steps 0`）
 - Trigger 符号（如 topdollar）只在特定 reel（通常 reel 3）
 

@@ -12,12 +12,12 @@
 - 来源: [Wizard of Odds Hot Roll reverse-engineered reel mapping](https://wizardofodds.com/games/slots/hot-roll/)
 - Confidence: medium-high (WoO 反推，非 IGT 官方 PAR sheet)
 - 原型 = 灵感，不是约束 — per [`project_slot_designer_axiom_experience_is_soul`](../../memory/project_slot_designer_axiom_experience_is_soul.md)，"假可以但不能怪"，weights 跟原型偏离 OK，前提是玩家体验合理
-- Strip 修改: position 13（原 Hot Roll bonus trigger）→ Blank（M1 无 bonus）
+- Strip 修改 (2026-04-28): Hot Roll bonus trigger 位置 (R1[13], R2[15], R3[13]) → **Cherry**（M1 无 bonus；不能用 Blank 否则破坏 alternation 不变量）。所有 reel 22 stops 严格 B/N alternation: 11 Blank + 11 非 Blank
 
 ## 2. 硬约束
 
 - **Paytable 锁** — `slot_designer/specs/M1.spec.json` 不动
-- **Strip 物理 50% Blank 交替** — `slot_designer/weights/M1/reel_strips.json` 22-stop 物理位置 1:1 alternation
+- **Strip 物理 Blank/非 Blank 严格交替** — `slot_designer/weights/M1/reel_strips.json` 22-stop，所有 3 条 reel 都是 B-N-B-N-...-B-N 严格交替（11+11）。Universal rule (Harrigan near-miss band) per [`project_slot_designer_strips_weights_layout.md`](../../memory/project_slot_designer_strips_weights_layout.md). **不允许任何 3 连 Blank 或 3 连非 Blank**
 - **Mode RTP**:
   - Mode 1 = 95% ± 1pp（standard baseline）
   - Mode 7 = 85% ± 1.5pp（"运气差"充值 trigger）
@@ -98,12 +98,12 @@ freq 显著增）。这是"super-lucky 是 mode 2 的 luck variation，不是另
 
 | Mode | RTP | hit | wild_on_payline | CV |
 |---|---|---|---|---|
-| 1 | 95.11% | 19.44% | 14.83% | 9.22 |
-| 7 | 85.28% | 14.86% | 14.73% | 10.19 |
-| 2 | 294.47% | 27.87% | 22.00% | 6.23 |
-| 5 | 495.32% | 27.22% | 27.83% | 5.31 |
+| 1 | 94.79% | 19.57% | 14.61% | ~9.2 |
+| 7 | 85.44% | 14.90% | 14.31% | 10.08 |
+| 2 | 294.48% | 27.56% | 20.68% | 6.06 |
+| 5 | 495.05% | 26.97% | 26.29% | 5.16 |
 
-> Mode 5 数据自 2026-04-28 走 `derive_m1_mode_5.py` 派生（base = mode 2 byte-identical + top-bucket × k）替代之前 free-tune 实现。CV 降 (5.05 → 5.31 ≈ 持平)；Seven share 60.8% → 60.9%（基本同）；R2 总 weight 106 → 575 修正 R-collapse；Bar1 R2 marginal 2.8% → 23.1% 恢复 Bar1 在 R2 的可见度。
+> 数值自 2026-04-28 strip 修正后 re-tune (modes 1/2/7) + re-derive (mode 5)：strips 改成 11+11 严格交替（去掉 R0/R1/R2 各一个 3 连 blank, 替换为 Cherry）。所有 4 mode RTP/hit/share 都在 band 内。Mode 5 仍走 `derive_m1_mode_5.py` 派生（base = m2 byte-identical + top-bucket × k=1.4722）。
 
 **Big-win pay frequency (1 in N spins)**:
 
@@ -145,12 +145,13 @@ Mode 7 = mode 1 (frozen, 1.00x). Mode 2/5 monotonic ≥ mode 1.
 
 ### 5.2 Verify (`slot_designer/scripts/verify_m1_design.py`)
 
-11 类 check, 全绿才算 done:
+12 类 check, 全绿才算 done:
 - 数值 + family band: **RTP / HIT / WILD / SHARE / DENSITY / BUCKET-FLOOR**
 - Mode 7 派生 lock: **MODE7-LOCK / MODE7-CUT / TOP-PATH**
 - 跨 mode signature: **SIGNATURE**
-- Mode 5 派生 lock (新, 2026-04-28): **MODE5-BASE-LOCK** — base 权重 byte-identical to mode 2
-- 反 pareto trap (新, 2026-04-28): **R-COLLAPSE** — 每 mode max/min reel 总 weight ≤ 3.0×
+- Mode 5 派生 lock (2026-04-28): **MODE5-BASE-LOCK** — base 权重 byte-identical to mode 2
+- 反 pareto trap (2026-04-28): **R-COLLAPSE** — 每 mode max/min reel 总 weight ≤ 3.0×
+- 物理 strip 不变量 (2026-04-28): **ALTERNATION** — 每 reel Blank/非 Blank 严格交替（universal rule per memory）
 
 ### 5.3 文件
 

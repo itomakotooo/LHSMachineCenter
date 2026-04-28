@@ -139,7 +139,7 @@ PER_REEL_DENSITY_HI_BY_FAMILY_STANDARD = {
 }
 PER_REEL_DENSITY_HI_BY_FAMILY_LUCKY = {
     "Diamond1": 0.13, "Diamond2": 0.13,
-    "Seven1": 0.20,  "Seven2": 0.22,
+    "Seven1": 0.23,  "Seven2": 0.23,
     "Bar3": 0.20, "Bar2": 0.20,
     "Bar1": 0.26, "Cherry": 0.22,
 }
@@ -182,6 +182,12 @@ MODE5_BASE_FAMILIES = ("Cherry", "Bar1", "Bar2", "Bar3", "Blank")
 # worsen substantially. Cap at 3.0x — past that, one reel is acting as a
 # different "physical" reel from the others (visual/UX inconsistency).
 PER_REEL_TOTAL_WEIGHT_RATIO_CAP = 3.0
+
+# Strip alternation: per project_slot_designer_strips_weights_layout.md
+# (universal rule, Harrigan near-miss band玩家心理), Blank / non-Blank must
+# strictly alternate on every reel — no 3-consecutive Blank or 3-consecutive
+# non-Blank chains. Stop count is machine-specific (M1 = 22, M37/M15 = 36),
+# but alternation invariant is universal.
 
 
 def family_rtp_breakdown(profile, paytable):
@@ -448,6 +454,34 @@ def run_cross_mode_checks(state_by_mode):
             f"R3={per_reel_total[2]} (max/min={ratio:.2f}× vs cap {PER_REEL_TOTAL_WEIGHT_RATIO_CAP:.1f}×)",
             ok,
             "防 R-stuffing pareto trap (一条 reel 总 weight 暴落 = 该 reel 上某 family 灭绝)",
+        ))
+
+    # ALTERNATION: Blank / non-Blank must strictly alternate on every reel.
+    # No 3-consecutive Blank or 3-consecutive non-Blank chains. Universal
+    # invariant (independent of mode — strips are shared across modes).
+    strips_doc = json.loads(STRIPS.read_text(encoding="utf-8"))
+    strips_reels = strips_doc["reels"]
+    for r_idx, reel in enumerate(strips_reels):
+        violations = []
+        for p in range(len(reel) - 1):
+            cur_blank = reel[p] == "Blank"
+            nxt_blank = reel[p + 1] == "Blank"
+            if cur_blank == nxt_blank:
+                kind = "BB" if cur_blank else "NN"
+                violations.append((p, p + 1, kind, reel[p], reel[p + 1]))
+        ok = len(violations) == 0
+        if ok:
+            blanks = sum(1 for s in reel if s == "Blank")
+            label = (f"R{r_idx+1} alternation OK ({blanks} Blank / "
+                     f"{len(reel)-blanks} non-Blank, strict B-N-B-N)")
+        else:
+            sample = violations[0]
+            label = (f"R{r_idx+1} alternation broken at {len(violations)} adjacency: "
+                     f"pos {sample[0]}-{sample[1]} both '{sample[2]}' "
+                     f"({sample[3]}/{sample[4]})")
+        checks.append(make_check(
+            "ALTERNATION", None, label, ok,
+            "Blank/非 Blank 严格交替 (Harrigan near-miss band 玩家心理 universal rule)",
         ))
 
     return checks
