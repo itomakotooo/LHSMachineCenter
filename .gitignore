@@ -16,6 +16,12 @@ venv/
 *.log
 *.tmp
 
+# Diagnostic / verification scratch outputs from scripts/. Convention:
+# scripts whose name starts with `_` are scratch (TSV scan output,
+# generated-config drafts, raw drift logs). Real / committed scripts
+# don't have an underscore prefix.
+scripts/_*
+
 # Local runtime state (not versioned)
 state/catalog.db
 state/*.db

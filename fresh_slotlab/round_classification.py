@@ -2,43 +2,65 @@
 
 Single source of truth for "what does this round mean" decisions used
 by the analyzer (parse_chunk_response), the paytable inference script
-(scripts/infer_paytable.py), the BCM-pairing generator, and the
-trigger-session helper.
+(scripts/infer_paytable.py), and the BCM-pairing generator
+(scripts/infer_bcm_pairing.py). Every primitive is pure-functional:
+takes a round dict (or list of rounds), returns a classification /
+extraction result. No I/O, no state, no machine-name special cases.
 
-Every primitive here is pure-functional: takes a round dict (or list
-of rounds), returns a classification / extraction result. No I/O, no
-state. Each function uses ONLY structural signals available on the
-round itself; no machine-name special cases.
+Five bug families (M279 / M260 / M250 / M120 / etc, 2026-04-27/28):
 
-Three bug families this module addresses (2026-04-27):
+  Bug 1 — **PayoutId namespace** (``attribute_lines_to_pay_ids``).
+    PayoutByPayline encodes ``<line>:<symbol>-<symbol>(positions)``;
+    the actual pay_id lives only in PayoutIdToWinAmount. Inference
+    scripts that read m[2] as pay_id work on simple machines (M14:
+    symbol "8" == pay_id 8) but break on M120 (symbol "109" -> "9"),
+    M139 ("55" -> "5"), M279 jackpot tiers ("27905" -> "104"). Fix:
+    read PayoutIdToWinAmount as truth, assign each line via direct
+    -> suffix -> single-remaining match.
 
-  1. **PayoutId namespace** -- inference scripts that parse
-     ``PayoutByPayline`` use ``<symbol_id>`` as ``pay_id``, which
-     coincides on simple machines (M14: symbol "8" == pay_id "8")
-     but breaks on machines with jackpot tiers / aliased symbols
-     (M279: symbol "27905" -> pay_id "104"; M120: symbol "109" ->
-     pay_id "9"). ``attribute_lines_to_pay_ids`` reads
-     ``PayoutIdToWinAmount`` as truth and assigns each line to a
-     pay_id via direct/suffix/single-remaining match.
+  Bug 2 — **BCM target inference** (``infer_bcm_target_spin_type``).
+    Analyzer/script picked max(feature_win) heuristic. Wrong on M279
+    (MoveSpin 170M >> Wheel 11M; Wheel is actual BCM target).
+    Wrong on M250/M256 etc where heuristic also misfires. Fix:
+    walk rounds, find paid rounds at cc==cycle_peak, observe the
+    immediate-next non-paid SpinType. Pure structural truth -- not
+    affected by win magnitude. Used as Signal C (highest priority)
+    in scripts/infer_bcm_pairing.py.
 
-  2. **BCM downstream feature** -- analyzer's
-     ``_resolve_bonus_feature`` heuristic picks ``max(feature_win)``
-     as the BCM-triggered feature. Wrong on M279 (MoveSpin total
-     win 170M >> Wheel 11M, but Wheel is the actual BCM target;
-     MoveSpin is the wild-nudge mechanic firing on every paid
-     spin). ``infer_bcm_target_spin_type`` walks the rounds,
-     finds paid rounds at cc=peak, observes the immediate-next
-     non-paid SpinType -- structural signal beats win heuristic.
+  Bug 3 — **Wild auto-nudge classification** (``is_wild_nudge_round``).
+    M279/M226/M149 etc emit ST=36 + ReMarks="move" + cost=0 as the
+    wild auto-nudge continuation of the preceding paid spin (no
+    extra cost). Pre-fix the analyzer treated MoveSpin as a top-
+    level feature, inflating its win and confusing BCM heuristics.
+    Fix: classify by ReMarks word-boundary + cost==0; tag features
+    with is_wild_nudge=True; exclude from BCM heuristic candidates.
 
-  3. **Wild auto-nudge** -- ``ST=36 + ReMarks="move" + cost=0`` is
-     a wild auto-nudge continuation of the preceding paid spin,
-     not an independent feature. ``is_wild_nudge_round`` detects
-     it; downstream callers fold its win back into the paid
-     feature instead of treating MoveSpin as a top-level feature.
+  Bug 4 — **Cycle-peak detection semantics** (``detect_cycle_peak``).
+    Initial implementation used max(CollectCount). For machines
+    whose 1-chunk sample doesn't span a full cycle (M250/M256/M266/
+    M268/M269/M277/M239/M246), cc walks 1->1000 monotonically with
+    no reset -- max(cc)=1000 lied as "cycle peak", and the few
+    cc=1000 paid rounds had ~1.3% bonus trigger rate (noise). Plus
+    a second issue: bonus rounds carry CollectCount=None; the loop
+    set prev_cc=None on them, breaking the cc=peak -> wheel(None)
+    -> cc=1 reset detection on M279 (whole-robot detection failed).
+    Fix: require an OBSERVED reset to commit a peak (returns None
+    when no reset seen), and skip cc=None rounds so prev_cc spans
+    the bonus block.
+
+  Bug 5 — **Chain-timing for BCM trigger** (handled in analyzer's
+    parse_chunk_response, but uses ``detect_cycle_peak`` here). The
+    BCM-cycle flag was set on cc-DROP (the paid round AFTER cycle
+    complete -- e.g. M279 cc=1000 -> wheel -> cc=1; flag fires at
+    the cc=1 round which is too late, the wheel chain already
+    closed). Plus wild-nudge rounds wrongly opened bonus chains.
+    Fix in analyzer: set the BCM flag at cc==peak (BEFORE the next
+    non-paid round opens the chain), and treat wild-nudge rounds
+    as transparent to chain bookkeeping (don't open/accrue/close).
 
 The module duplicates a small ``_is_paid_round`` predicate that
 trigger_sessions / round_win also use privately. Keeping the
-duplicate (~5 lines) avoids a circular-import risk and lets each
+duplicate (~5 lines) avoids circular-import risk and lets each
 module evolve independently. Tests lock byte-identity of the
 predicate across all three modules.
 """
