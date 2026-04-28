@@ -111,11 +111,22 @@ def compute_weights(reel_positions: dict, designed_marg: dict, scale: int = SCAL
     return out
 
 
-def write_xlsx(xlsx_path: Path, all_weights: dict, output_path: Path):
-    """Write weights. all_weights: {skinId: {(row, reel): weight}}."""
+def write_xlsx(xlsx_path: Path, all_weights: dict, output_path: Path,
+               all_symbols: dict | None = None):
+    """Write weights + (optionally) symbols.
+
+    all_weights: {skinId: {(row, reel): weight}}
+    all_symbols: {skinId: {(row, reel): symbol}} — when provided, also rewrite
+                 symbol-at-position columns. Required when slot_designer strip
+                 layout differs from xlsx layout (e.g., M1 alternation fix
+                 changed pos 13 from Blank to Cherry — without this, xlsx
+                 keeps stale 3-consecutive-blank layout).
+    """
     wb = load_workbook(xlsx_path)
     s = wb["Sheet1"]
     weight_cols = {0: 3, 1: 5, 2: 7}
+    symbol_cols = {0: 2, 1: 4, 2: 6}
+    all_symbols = all_symbols or {}
     for r in range(2, s.max_row + 1):
         sid = s.cell(row=r, column=1).value
         if sid not in all_weights:
@@ -124,6 +135,12 @@ def write_xlsx(xlsx_path: Path, all_weights: dict, output_path: Path):
             w = all_weights[sid].get((r, reel))
             if w is not None:
                 s.cell(row=r, column=col).value = int(w)
+        # Optionally rewrite symbols for slot_designer-mapped skins
+        if sid in all_symbols:
+            for reel, col in symbol_cols.items():
+                sym = all_symbols[sid].get((r, reel))
+                if sym is not None:
+                    s.cell(row=r, column=col).value = sym
     wb.save(output_path)
 
 
@@ -198,7 +215,15 @@ def main():
     if missing:
         print(f"WARNING: target skins {missing} not found in xlsx")
 
+    # Load slot_designer's canonical strip layout for symbol-column sync
+    strips_path = _ROOT / "slot_designer" / "weights" / machine / "reel_strips.json"
+    sd_strips = None
+    if strips_path.exists():
+        sd_strips = json.loads(strips_path.read_text(encoding="utf-8"))["reels"]
+        print(f"Strip layout source: {strips_path.relative_to(_ROOT)} ({len(sd_strips[0])} stops)")
+
     all_weights = {}
+    all_symbols = {}
     for mode, skin in mode_to_skin.items():
         if skin not in layout:
             print(f"  mode {mode} → skin {skin}: SKIP (not in xlsx)")
@@ -208,7 +233,42 @@ def main():
         except FileNotFoundError as e:
             print(f"  mode {mode}: SKIP ({e})")
             continue
-        weights = compute_weights(layout[skin], marg)
+
+        # Symbol-column sync (only when slot_designer strip layout differs from xlsx).
+        # Required for layouts that changed structurally (e.g. M1 alternation fix
+        # 2026-04-28: pos 13 R0/R3 + pos 15 R2 changed Blank → Cherry).
+        skin_layout = layout[skin]
+        skin_n = len(skin_layout[0])
+        if sd_strips is not None and skin_n == len(sd_strips[0]):
+            sym_map = {}
+            xlsx_layout_differs = False
+            for reel_idx in range(3):
+                for pos_idx, (row_idx, xlsx_sym) in enumerate(skin_layout[reel_idx]):
+                    sd_sym = sd_strips[reel_idx][pos_idx]
+                    sym_map[(row_idx, reel_idx)] = sd_sym
+                    if sd_sym != xlsx_sym:
+                        xlsx_layout_differs = True
+            all_symbols[skin] = sym_map
+            if xlsx_layout_differs:
+                # Recompute weights using slot_designer strip layout (xlsx layout is
+                # about to be overwritten with sd_strips, so weight assignment must
+                # also use sd_strips so per-position weights end up on the right symbol)
+                synced_layout = {
+                    r_idx: [(skin_layout[r_idx][p_idx][0], sd_strips[r_idx][p_idx])
+                            for p_idx in range(skin_n)]
+                    for r_idx in range(3)
+                }
+                weights = compute_weights(synced_layout, marg)
+                print(f"  mode {mode} → skin {skin}: layout differs from xlsx — "
+                      f"will sync symbols + weights to slot_designer strips")
+            else:
+                weights = compute_weights(skin_layout, marg)
+        else:
+            weights = compute_weights(skin_layout, marg)
+            if sd_strips is not None:
+                print(f"  mode {mode} → skin {skin}: skin stop count {skin_n} ≠ "
+                      f"slot_designer {len(sd_strips[0])} — keeping xlsx layout")
+
         all_weights[skin] = weights
         wmin, wmax = min(weights.values()), max(weights.values())
         print(f"  mode {mode} → skin {skin}: {len(weights)} weights, range [{wmin}, {wmax}]")
@@ -228,7 +288,7 @@ def main():
         print(f"\nBackup: {backup}")
 
     print(f"Writing: {xlsx_path}")
-    write_xlsx(xlsx_path, all_weights, xlsx_path)
+    write_xlsx(xlsx_path, all_weights, xlsx_path, all_symbols=all_symbols)
 
     print(f"\n=== Verification: marginal density on {machine} target skins ===")
     verify_conversion(xlsx_path, target_skins)
