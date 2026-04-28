@@ -216,12 +216,131 @@ verify 类别建议：`REEL-ASYMMETRY`（per-mode R1 vs 末 reel blank + 顶奖�
 
 ---
 
+## 13. Blank-flank diversity — 同一 Blank 前后不能同 symbol
+
+**Universal direction（line-based slot 适用）**：strip 上每个 Blank 位置 p，**strip[p−1] ≠ strip[p+1]**（cyclic）。
+
+### 13.1 心理机制
+
+3-row 视窗在 reel 停 Blank 中间时，会同时显示 X-Blank-X（top: X, middle: Blank, bottom: X）。看到"两边 X"会被玩家解读为"差一个就 3 of a kind"，**dilute 真 near-miss 价值**（Harrigan award-symbol-ratio 反向应用：让 near-miss 廉价化 → 玩家麻木）。
+
+文献：[US20120083327A1](https://patents.google.com/patent/US20120083327A1/en) 描述 column-level "no-same-consecutive" 技术 + [Harrigan 2007](https://link.springer.com/article/10.1007/s11469-007-9139-8) clustering 的相反约束（避免廉价 near-miss）。
+
+### 13.2 适用 / 例外
+
+| 机台类型 | 是否适用 |
+|---|---|
+| Line-based slot (3-reel / 5-reel classic / video 1-line / video multi-line) | **适用** — 严格 enforce |
+| Cluster slot (pay-anywhere) | **不适用** — 没有"vertical column"概念 |
+| Megaways with stacks | **不适用** — stacked symbols 是设计 feature |
+| Cascading slot (tumble) | 第一波适用；后续 cascades 不要求（玩家已 committed） |
+
+### 13.3 Implementation
+
+**Strip 层硬约束** — 设计时通过 strip 重排满足。Strict B-N alternation 后，11 个非 Blank symbol 形成 cyclic 序列，约束 ⇔ "序列任意相邻位 symbol 不同"（graph coloring）：可解 iff `max(symbol_count) ≤ ⌈n_non_blank / 2⌉`。
+
+**Verify 类别**：`BLANK-FLANK-DIVERSITY`（每 reel 检查所有 Blank 位置）。Universal hard rule，不需机台 specific 容差（要么 0 violations 要么红）。
+
+**Strip 重排算法**：保 per-(reel, symbol) marginal 不变 → weights 跟随 position 移动 → marginals 不变 → RTP/hit/share 不动。但 strip md5 改 → rawdata 失效 → 重采。
+
+---
+
+## 14. Symbol 排布 visual rhythm — 玩家转轴视觉体验
+
+**Universal goal**：strip 上 symbol 类型混合分布，避免连续段。具体规则跟机台原型 + 设计师审美相关。
+
+### 14.1 通用方向
+
+- **同 family 不连续段**：例 3 个 Bar（Bar1+Bar2+Bar3）连续会让 reel 视觉上"全 Bar 一段、全 Diamond 一段"，缺失节奏
+- **顶奖 symbol 散开**：Diamond / Seven 类不应邻接（即使被 Blank 隔开但太近也算密集）
+- **Brand symbol 错落**：Cherry / 机台 logo 类应跨 reel 长度均匀分布，不集中前半段或后半段
+- **同 symbol 重复（如 R1 上 3 个 Bar3）位置间隔合理**：典型 ≥ 4 stops（保 reel 滚动时玩家不连续看到同 symbol）
+
+### 14.2 Universal 不锁绝对数字
+
+具体规则（`max consecutive Bar = X`、`top symbol 间距 ≥ Y stops`、`Cherry 跨 reel 等距 ±Z`）**机台 specific**，依据：
+- 机台原型 PAR sheet 实际排列（首选 — 真原型经过 IGT/Aristocrat 设计师调过，是金标准）
+- 机台 paytable 结构（top symbol 数 vs 总 stops）
+- 玩家审美阈值（视觉混合感 vs 极端整齐感平衡）
+
+**Archetype-first 原则**：原型 reel 排列已经过设计审美调优，slot_designer 应**保留原型 ordering** 作为基线，仅在硬约束（如 §13 blank-flank 修复）需要时局部调整。
+
+### 14.3 适用 / 例外
+
+| 机台类型 | 是否适用 |
+|---|---|
+| Classic 3-reel (M1 类) | 适用 — 视觉节奏关键 |
+| Video 5-reel | 适用 — 但宽视窗（5×3=15 cells）天然分散 visual perception |
+| Cluster / pay-anywhere | 部分适用 — symbol 分布要均匀但"rhythm"概念变成"无明显 cluster zone" |
+| Cascading | 第一波适用；后续 cascades 不要求 |
+| Stacked symbol slots | 例外 — stacks 本身就是设计 feature |
+
+### 14.4 Implementation
+
+**Verify 类别建议（机台自定具体规则）**：`VISUAL-RHYTHM`，子类如 `BAR-CLUSTERING`（mid-pay 连续 cap）、`TOP-SPACING`（顶奖 stop 间距 floor）、`BRAND-DISTRIBUTION`（brand symbol 跨 reel 均匀）。
+
+每机台 verify 文件需要明确该机台用哪些子规则 + 具体阈值，**不能 cross-machine 抄数字**。
+
+文献：行业 IGT PAR sheet 实证 + [acaciainvestmentresearch (Near Misses)](https://www.acaciainvestmentresearch.com/post/reconfiguring-loss-the-power-of-near-misses-in-slot-machines)（"Symbol distribution adjusted purely for aesthetics"）。
+
+---
+
+## 15. Window visibility (PWDF) — 重要 symbol 视窗 visibility
+
+**Universal direction**：top-prize 和 brand symbol 的 **any-reel window visibility**（reel 停时该 symbol 出现在 3-row 视窗的概率）应**显著高于** payline hit rate（≥ N×，N 机台 specific）。
+
+### 15.1 心理机制
+
+PWDF (Per-Win Display Frequency) — [Harrigan 2007](https://link.springer.com/article/10.1007/s11469-007-9139-8) 实证 IGT Double 7：上 above-payline 12.5% (8/64 virtual stops)，是 random 的 4×。技术名："**clustering**" / "**award symbol ratio**" — top symbol 在 virtual reel 上**邻接 weighted Blanks**，让 reel 频繁停在"邻 top-symbol 区"，视窗常含 top symbol 但 payline hit 仍稀。
+
+效果：玩家视觉常看到顶奖 → "差一点就中"心理 → engagement up；payline hit rate 不变 → RTP 不漂。
+
+文献：[Harrigan 2007 (Springer)](https://link.springer.com/article/10.1007/s11469-007-9139-8), [Know Your Slots — Virtual Reel Mapping](https://www.knowyourslots.com/understanding-virtual-reel-mapping/), [Acacia Research — Near Misses](https://www.acaciainvestmentresearch.com/post/reconfiguring-loss-the-power-of-near-misses-in-slot-machines)。
+
+### 15.2 通用方向（不锁绝对数字）
+
+- **Top-prize symbol any-reel visibility ≥ K×payline-hit-rate**（K 机台 specific，IGT 实证 4-10×）
+- **Brand symbol（机台 logo / signature）visibility 跨 reel 均匀**（已由 §2 brand visibility + §12 REEL-ASYMMETRY 部分覆盖）
+- **不要求所有 family**：低 pay symbol 不需 PWDF treatment（玩家不在乎是否常见）
+
+### 15.3 适用 / 例外
+
+| 机台类型 | 适用度 + visibility floor 参考 |
+|---|---|
+| 3-reel classic 1-line (M1 类) | 适用，IGT 实证 top symbol any-reel ≥ 50% |
+| 5-reel video 1-line | 适用，但 5×3=15 cell 视窗天然 visibility 高，floor 可降至 30% |
+| 5-reel multi-line / 25-line | 适用，每条 line 上 visibility 计算独立 |
+| 243-line / Megaways | 部分适用 — symbol 计 count（不是 visibility）|
+| Cluster slot | 不直接适用 — symbol "visibility" = 屏上 count |
+
+### 15.4 Implementation
+
+**核心权衡 — Per-position weight 升级**：
+
+PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top symbol 的 Blank** 权重。这跟 "per-(family, reel) uniform weight" 假设矛盾（同 reel 上所有 Blank 同 weight）。
+
+**实施路径**：
+1. **Per-position weight tune**（推荐）：search 维度从 9 family × N reel → 每 stop 独立 weight（22 stop × 3 reel = 66 dim for M1）
+2. **Or hybrid**: 大部分 family 仍 uniform，只对"top-symbol 邻接 Blank"独立加权（小幅升维）
+
+**Verify 类别建议**：`WINDOW-VISIBILITY`（per machine：top symbol any-reel visibility ≥ floor）。机台 specific：
+- floor 数字（50% / 30% / etc.）
+- 哪些 symbol 算"top"（M1: Diamond+Seven2，M15: TopDollar，M37: booster）
+- 跟 payline hit rate 的倍数关系（K=4-10×）
+
+### 15.5 Tuner pareto 警惕
+
+PWDF 升维后 tune cost 多一项 `top symbol visibility ≥ floor`。如果 cost 没加，per-position search 会自由乱搜 → 可能违反其它约束（如 BRAND-UNIFORMITY 跨 reel 一致）。三层防护同 §12.4：cost penalty + verify red line + archetype 文档（哪些 symbol 是"top"写明）。
+
+---
+
 ## 应用：每个新机台 onboarding 必做
 
 1. **读这份哲学**——每条对应 verify 类别要 implement
 2. **读 WORKFLOW.md**——adversarial review 流程
 3. **写机台 DESIGN.md**——archetype block + 业界 chassis 参考 + 玩家叙事
-4. **写 verify_<M>_design.py**——把上面 12 条都加到 verify
-5. **tune 时 cost function 包含**：hierarchy_strength、family share band、per-pay freq cap、top_jackpot_min_spins、reel asymmetry（R1 ≤ R3 Blank + R1 ≥ R3 top-prize）
+4. **写 verify_<M>_design.py**——把上面 15 条都加到 verify（含 §13 BLANK-FLANK-DIVERSITY、§14 VISUAL-RHYTHM 子类、§15 WINDOW-VISIBILITY）
+5. **tune 时 cost function 包含**：hierarchy_strength、family share band、per-pay freq cap、top_jackpot_min_spins、reel asymmetry（R1 ≤ R3 Blank + R1 ≥ R3 top-prize）、§15 PWDF（如启用，需要 per-position weight tune）
+6. **strip 设计阶段**确认满足 §13 BLANK-FLANK-DIVERSITY（无 X-Blank-X）+ §14 VISUAL-RHYTHM（机台 specific 子规则）。修复 strip 不会改 marginal 但改 strip md5 → 全 mode rawdata 失效
 
 参考实现：`weights/M37/` 完整流程（v5 后）+ `weights/M1/` 含 REEL-ASYMMETRY check（2026-04-28+）。
