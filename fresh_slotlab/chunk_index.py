@@ -69,12 +69,46 @@ import json
 import os
 import re
 import tempfile
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 SIDECAR_NAME = "_chunks.json"
 SIDECAR_VERSION = 1
+
+# ── Per-mode-dir write serialization ────────────────────────────────
+# The analyzer runs N parallel ThreadPoolExecutor workers (typically
+# batch_concurrency=8) per mode_dir; each worker calls
+# ``update_chunk_entry`` after its chunk lands. Without a lock, two
+# workers reading the same baseline sidecar and racing the write
+# silently lose one entry — observed 2026-04-28 on M15$TopDollarSelector$1$
+# mode_1 where chunks 3 + 7 ended up on disk but missing from
+# ``_chunks.json``. A per-(canonical-path) ``threading.Lock`` is
+# enough since all writers live in one process; cross-process writers
+# would need a file lock, but this codebase doesn't have any.
+_SIDECAR_LOCKS: dict[str, threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def _sidecar_lock_for(mode_dir: Path) -> threading.Lock:
+    """Return the singleton ``threading.Lock`` for a given mode_dir.
+    Keyed by ``str(resolve())`` so two ``Path`` objects pointing at
+    the same directory share one lock. Falls back to ``str(mode_dir)``
+    when ``resolve()`` raises (missing dir during teardown / tests)
+    — string equality on un-resolved paths is good enough for the
+    cases that matter."""
+    try:
+        key = str(mode_dir.resolve())
+    except (OSError, RuntimeError):
+        key = str(mode_dir)
+    with _LOCKS_GUARD:
+        lock = _SIDECAR_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _SIDECAR_LOCKS[key] = lock
+        return lock
 
 # Envelope header peek — reads only the first few KB of a chunk file
 # to regex-extract the header fields without parsing the potentially-
@@ -162,7 +196,16 @@ def _now_iso() -> str:
 def _write_sidecar_atomic(sidecar: Path, payload: dict[str, Any]) -> None:
     """Atomic write: tmp-in-same-dir + ``os.replace``. Readers never
     see a torn sidecar. Swallows the parent-exists check since
-    ``mode_dir`` existing is the precondition of this module."""
+    ``mode_dir`` existing is the precondition of this module.
+
+    On Windows, ``os.replace`` raises ``PermissionError`` when the
+    target file (or the source .tmp) is briefly held open by another
+    process — typically antivirus scanning the file we just wrote, or
+    an unrelated reader (UI status poll) holding the sidecar handle.
+    Retry with brief backoff so a transient AV scan doesn't drop a
+    chunk index entry. Same pattern as widely-used Python file-write
+    helpers (e.g. ``filelock``); 5 attempts × 50 ms ≈ 250 ms ceiling
+    is well under the user-visible threshold."""
     sidecar.parent.mkdir(parents=True, exist_ok=True)
     # NamedTemporaryFile in the same directory so os.replace is
     # guaranteed same-filesystem (required for atomicity on NTFS + ext4).
@@ -172,7 +215,20 @@ def _write_sidecar_atomic(sidecar: Path, payload: dict[str, Any]) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
-        os.replace(tmp_name, sidecar)
+        # Retry os.replace on PermissionError (Windows AV interference).
+        # OSError covers PermissionError + the rarer FileExistsError on
+        # some Windows cases. Other exception types propagate immediately.
+        last_exc: Exception | None = None
+        for attempt in range(5):
+            try:
+                os.replace(tmp_name, sidecar)
+                last_exc = None
+                break
+            except PermissionError as exc:
+                last_exc = exc
+                time.sleep(0.05 * (attempt + 1))
+        if last_exc is not None:
+            raise last_exc
     except Exception:
         try:
             os.unlink(tmp_name)
@@ -292,7 +348,8 @@ def build_chunks_index(mode_dir: Path) -> dict[str, Any]:
     }
     if mode_dir.is_dir():
         try:
-            _write_sidecar_atomic(_sidecar_path(mode_dir), payload)
+            with _sidecar_lock_for(mode_dir):
+                _write_sidecar_atomic(_sidecar_path(mode_dir), payload)
         except OSError:
             # Persist failure is best-effort — in-memory payload is
             # still returned so caller gets the value.
@@ -386,75 +443,84 @@ def update_chunk_entry(
 
     Best-effort: any IO failure is logged via ``print`` to stderr and
     swallowed — chunk writes are authoritative, sidecar is a cache.
-    Next reader call will rebuild via ``get_chunks_index``."""
+    Next reader call will rebuild via ``get_chunks_index``.
+
+    Concurrency: holds ``_sidecar_lock_for(mode_dir)`` across the
+    read-modify-write cycle. Without this, two parallel
+    ThreadPoolExecutor workers (analyzer's batch_concurrency=8 path)
+    can race their reads, drop one another's entries, and silently
+    leave a chunk file on disk with no sidecar row — observed
+    2026-04-28 on M15 sampling. The lock is per-mode-dir so unrelated
+    machines / modes don't serialize."""
     try:
-        idx = load_chunks_index(mode_dir) or {
-            "_version": SIDECAR_VERSION,
-            "_updated_at": _now_iso(),
-            "chunks": {},
-            "by_md5": {},
-        }
-        if idx.get("_version") != SIDECAR_VERSION:
-            # Can't merge into foreign schema; rebuild from scratch.
-            idx = {
+        with _sidecar_lock_for(mode_dir):
+            idx = load_chunks_index(mode_dir) or {
                 "_version": SIDECAR_VERSION,
                 "_updated_at": _now_iso(),
                 "chunks": {},
                 "by_md5": {},
             }
-        if saved_at is None:
-            try:
-                saved_at = datetime.fromtimestamp(
-                    chunk_file.stat().st_mtime, tz=timezone.utc,
-                ).strftime("%Y-%m-%dT%H:%M:%SZ")
-            except OSError:
-                saved_at = _now_iso()
-        if size_bytes is None:
-            try:
-                size_bytes = int(chunk_file.stat().st_size)
-            except OSError:
-                size_bytes = 0
-        # Maintain the by_md5 inverted index alongside the per-chunk
-        # dict. If this filename is being re-indexed (chunk rewritten
-        # with a different md5 — rare but possible during dev), drop
-        # it from its OLD bucket first.
-        new_cfg = str(config_md5 or "")
-        new_code = str(code_md5 or "")
-        new_key = _md5_key(new_cfg, new_code)
-        existing_entry = idx["chunks"].get(chunk_file.name)
-        by_md5 = idx.setdefault("by_md5", _rebuild_by_md5(idx["chunks"]))
-        if isinstance(existing_entry, dict):
-            old_key = _md5_key(
-                str(existing_entry.get("cfg_md5", "") or ""),
-                str(existing_entry.get("code_md5", "") or ""),
-            )
-            if old_key != new_key and old_key in by_md5:
+            if idx.get("_version") != SIDECAR_VERSION:
+                # Can't merge into foreign schema; rebuild from scratch.
+                idx = {
+                    "_version": SIDECAR_VERSION,
+                    "_updated_at": _now_iso(),
+                    "chunks": {},
+                    "by_md5": {},
+                }
+            if saved_at is None:
                 try:
-                    by_md5[old_key].remove(chunk_file.name)
-                    if not by_md5[old_key]:
-                        del by_md5[old_key]
-                except ValueError:
-                    pass
-        # Add to new bucket (idempotent — set semantics via "in" check
-        # so re-indexing the same chunk twice doesn't duplicate).
-        bucket = by_md5.setdefault(new_key, [])
-        if chunk_file.name not in bucket:
-            bucket.append(chunk_file.name)
-            # Keep bucket order deterministic by chunk_index for
-            # downstream consumers that expect sorted iteration.
-            bucket.sort(key=lambda n: int(n.split("_", 1)[1].split(".", 1)[0])
-                        if "_" in n and "." in n else 0)
-        idx["chunks"][chunk_file.name] = {
-            "idx": int(chunk_index),
-            "cfg_md5": new_cfg,
-            "code_md5": new_code,
-            "spin_times": int(spin_times or 0),
-            "robot_count": int(robot_count or 0),
-            "saved_at": saved_at,
-            "size_bytes": int(size_bytes),
-        }
-        idx["_updated_at"] = _now_iso()
-        _write_sidecar_atomic(_sidecar_path(mode_dir), idx)
+                    saved_at = datetime.fromtimestamp(
+                        chunk_file.stat().st_mtime, tz=timezone.utc,
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except OSError:
+                    saved_at = _now_iso()
+            if size_bytes is None:
+                try:
+                    size_bytes = int(chunk_file.stat().st_size)
+                except OSError:
+                    size_bytes = 0
+            # Maintain the by_md5 inverted index alongside the per-chunk
+            # dict. If this filename is being re-indexed (chunk rewritten
+            # with a different md5 — rare but possible during dev), drop
+            # it from its OLD bucket first.
+            new_cfg = str(config_md5 or "")
+            new_code = str(code_md5 or "")
+            new_key = _md5_key(new_cfg, new_code)
+            existing_entry = idx["chunks"].get(chunk_file.name)
+            by_md5 = idx.setdefault("by_md5", _rebuild_by_md5(idx["chunks"]))
+            if isinstance(existing_entry, dict):
+                old_key = _md5_key(
+                    str(existing_entry.get("cfg_md5", "") or ""),
+                    str(existing_entry.get("code_md5", "") or ""),
+                )
+                if old_key != new_key and old_key in by_md5:
+                    try:
+                        by_md5[old_key].remove(chunk_file.name)
+                        if not by_md5[old_key]:
+                            del by_md5[old_key]
+                    except ValueError:
+                        pass
+            # Add to new bucket (idempotent — set semantics via "in" check
+            # so re-indexing the same chunk twice doesn't duplicate).
+            bucket = by_md5.setdefault(new_key, [])
+            if chunk_file.name not in bucket:
+                bucket.append(chunk_file.name)
+                # Keep bucket order deterministic by chunk_index for
+                # downstream consumers that expect sorted iteration.
+                bucket.sort(key=lambda n: int(n.split("_", 1)[1].split(".", 1)[0])
+                            if "_" in n and "." in n else 0)
+            idx["chunks"][chunk_file.name] = {
+                "idx": int(chunk_index),
+                "cfg_md5": new_cfg,
+                "code_md5": new_code,
+                "spin_times": int(spin_times or 0),
+                "robot_count": int(robot_count or 0),
+                "saved_at": saved_at,
+                "size_bytes": int(size_bytes),
+            }
+            idx["_updated_at"] = _now_iso()
+            _write_sidecar_atomic(_sidecar_path(mode_dir), idx)
     except Exception as exc:  # noqa: BLE001
         # Sidecar is optimization-only; never let its failure block
         # a successful chunk write. Next reader rebuilds.
@@ -500,54 +566,55 @@ def bulk_remove_chunk_entries(
     if not chunk_file_names:
         return 0
     name_set = set(chunk_file_names)
-    idx = load_chunks_index(mode_dir)
-    if idx is None:
-        # Nothing to update — sidecar will be rebuilt on next read.
-        # The dir's mtime already moved past sidecar.mtime when the
-        # files were unlinked, so the next get_chunks_index will
-        # detect stale and rebuild from scratch.
-        return 0
-    chunks = idx.get("chunks") or {}
-    by_md5 = idx.setdefault("by_md5", _rebuild_by_md5(chunks))
-    removed = 0
-    for name in name_set:
-        entry = chunks.pop(name, None)
-        if entry is None:
-            continue
-        removed += 1
-        # Drop from the inverted index too — keep both views in sync
-        # so chunks_by_md5() lookups don't return phantom filenames
-        # pointing at deleted files.
-        if isinstance(entry, dict):
-            key = _md5_key(
-                str(entry.get("cfg_md5", "") or ""),
-                str(entry.get("code_md5", "") or ""),
+    with _sidecar_lock_for(mode_dir):
+        idx = load_chunks_index(mode_dir)
+        if idx is None:
+            # Nothing to update — sidecar will be rebuilt on next read.
+            # The dir's mtime already moved past sidecar.mtime when the
+            # files were unlinked, so the next get_chunks_index will
+            # detect stale and rebuild from scratch.
+            return 0
+        chunks = idx.get("chunks") or {}
+        by_md5 = idx.setdefault("by_md5", _rebuild_by_md5(chunks))
+        removed = 0
+        for name in name_set:
+            entry = chunks.pop(name, None)
+            if entry is None:
+                continue
+            removed += 1
+            # Drop from the inverted index too — keep both views in sync
+            # so chunks_by_md5() lookups don't return phantom filenames
+            # pointing at deleted files.
+            if isinstance(entry, dict):
+                key = _md5_key(
+                    str(entry.get("cfg_md5", "") or ""),
+                    str(entry.get("code_md5", "") or ""),
+                )
+                bucket = by_md5.get(key)
+                if isinstance(bucket, list):
+                    try:
+                        bucket.remove(name)
+                    except ValueError:
+                        pass
+                    if not bucket:
+                        del by_md5[key]
+        if removed == 0:
+            # No entries actually removed; skip the sidecar write so
+            # we don't bump its mtime past dir.mtime unnecessarily.
+            return 0
+        idx["chunks"] = chunks
+        idx["by_md5"] = by_md5
+        idx["_updated_at"] = _now_iso()
+        try:
+            _write_sidecar_atomic(_sidecar_path(mode_dir), idx)
+        except OSError as exc:
+            import sys
+            print(
+                f"[chunk_index] bulk_remove_chunk_entries failed for "
+                f"{mode_dir}: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
             )
-            bucket = by_md5.get(key)
-            if isinstance(bucket, list):
-                try:
-                    bucket.remove(name)
-                except ValueError:
-                    pass
-                if not bucket:
-                    del by_md5[key]
-    if removed == 0:
-        # No entries actually removed; skip the sidecar write so
-        # we don't bump its mtime past dir.mtime unnecessarily.
-        return 0
-    idx["chunks"] = chunks
-    idx["by_md5"] = by_md5
-    idx["_updated_at"] = _now_iso()
-    try:
-        _write_sidecar_atomic(_sidecar_path(mode_dir), idx)
-    except OSError as exc:
-        import sys
-        print(
-            f"[chunk_index] bulk_remove_chunk_entries failed for "
-            f"{mode_dir}: {type(exc).__name__}: {exc}",
-            file=sys.stderr,
-        )
-    return removed
+        return removed
 
 
 def remove_sidecar(mode_dir: Path) -> None:

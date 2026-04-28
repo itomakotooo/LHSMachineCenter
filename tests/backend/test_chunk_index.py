@@ -816,3 +816,167 @@ class TestReaderShortCircuit:
             f"sidecar present → must not read chunk files; "
             f"got {read_counter['bytes']:,}B"
         )
+
+
+class TestUpdateChunkEntryConcurrency:
+    """The analyzer's ThreadPoolExecutor (batch_concurrency=8) calls
+    update_chunk_entry from N parallel workers per mode_dir. Without
+    write serialization, the read-modify-write cycle drops entries:
+    two workers read the same baseline {1,2}, worker A writes
+    {1,2,3}, worker B writes {1,2,4} — entry 3 vanishes.
+
+    Observed 2026-04-28 on M15$TopDollarSelector$1$ mode_1: chunks
+    0003 and 0007 landed on disk but never appeared in
+    ``_chunks.json`` (sidecar held only 6 of 8 new chunks). Locks
+    the per-mode-dir threading.Lock fix that closes the race."""
+
+    def _write_chunk(self, mode_dir, idx):
+        cf = mode_dir / f"chunk_{idx:04d}.json"
+        cf.write_text(json.dumps({
+            "_chunk_index": idx,
+            "_spin_times": 1000, "_robot_count": 8,
+            "_saved_at": "2026-04-28T12:00:00Z",
+            "_config_md5": "cfg_x", "_code_md5": "code_y",
+            "response": "Y" * 1024,
+        }), encoding="utf-8")
+        return cf
+
+    def test_parallel_workers_lose_no_entries(self, tmp_path, monkeypatch):
+        """Two-thread read-modify-write race demonstration. Without
+        the lock, thread A reads the baseline, thread B reads the
+        same baseline, A writes its update, B writes its update on
+        top — A's entry is lost. With the lock both serialize, both
+        entries land.
+
+        We force the race deterministically by injecting a small
+        sleep inside ``_write_sidecar_atomic`` so the read-then-write
+        window is large enough for the second thread's read to
+        observe the pre-A baseline. Without the sleep this race is
+        racy-by-machine-speed; with it, the test reliably fails
+        without the lock fix."""
+        import threading
+        import time as _time
+        from fresh_slotlab import chunk_index as ci
+        mode_dir = tmp_path / "M15" / "mode_1"
+        mode_dir.mkdir(parents=True)
+        cf_a = self._write_chunk(mode_dir, idx=1)
+        cf_b = self._write_chunk(mode_dir, idx=2)
+
+        # Slow down the write side so two parallel calls overlap.
+        # Each thread now spends ~50ms in the write phase, easily
+        # large enough for thread 2 to enter and read pre-thread-1
+        # state before thread 1's write lands. The lock collapses
+        # this overlap; without it the sleep guarantees the race.
+        original = ci._write_sidecar_atomic
+
+        def slow_write(sidecar, payload):
+            _time.sleep(0.05)
+            return original(sidecar, payload)
+
+        monkeypatch.setattr(ci, "_write_sidecar_atomic", slow_write)
+
+        barrier = threading.Barrier(2)
+        errors: list[BaseException] = []
+
+        def worker(idx, cf):
+            try:
+                barrier.wait()
+                ci.update_chunk_entry(
+                    mode_dir, cf, chunk_index=idx,
+                    config_md5="cfg_x", code_md5="code_y",
+                    spin_times=1000, robot_count=8,
+                )
+            except BaseException as e:  # noqa: BLE001
+                errors.append(e)
+
+        t1 = threading.Thread(target=worker, args=(1, cf_a))
+        t2 = threading.Thread(target=worker, args=(2, cf_b))
+        t1.start(); t2.start()
+        t1.join(timeout=10.0); t2.join(timeout=10.0)
+        assert not errors, f"worker raised: {errors}"
+
+        # Read raw (don't trigger the rebuild path that masks the
+        # race — we want to see EXACTLY what the writers persisted).
+        idx = ci.load_chunks_index(mode_dir) or {}
+        chunks = idx.get("chunks") or {}
+        missing = [
+            n for n in ("chunk_0001.json", "chunk_0002.json")
+            if n not in chunks
+        ]
+        assert not missing, (
+            f"sidecar lost {len(missing)} entries to the read-modify-write "
+            f"race: {missing}. With the per-mode-dir lock both entries "
+            f"should land; without it one is lost."
+        )
+        # by_md5 inverted index must agree.
+        by_md5 = idx.get("by_md5") or {}
+        bucket = by_md5.get("cfg_x|code_y") or []
+        assert sorted(bucket) == ["chunk_0001.json", "chunk_0002.json"]
+
+    def test_permission_error_retry_recovers(self, tmp_path, monkeypatch):
+        """Windows AV transiently locks the sidecar during os.replace,
+        raising PermissionError. The retry loop in _write_sidecar_atomic
+        must absorb up to 5 attempts so a single AV scan doesn't drop
+        the entry. Simulate by injecting a counter that fails the
+        first 2 calls then succeeds."""
+        import os
+        from fresh_slotlab import chunk_index as ci
+        mode_dir = tmp_path / "M15" / "mode_1"
+        mode_dir.mkdir(parents=True)
+        cf = self._write_chunk(mode_dir, idx=1)
+        attempts = {"n": 0}
+        original_replace = os.replace
+
+        def flaky_replace(src, dst):
+            attempts["n"] += 1
+            if attempts["n"] <= 2:
+                raise PermissionError("[WinError 5] Access is denied (simulated)")
+            return original_replace(src, dst)
+
+        monkeypatch.setattr(ci.os, "replace", flaky_replace)
+        ci.update_chunk_entry(
+            mode_dir, cf, chunk_index=1,
+            config_md5="cfg_x", code_md5="code_y",
+            spin_times=1000, robot_count=8,
+        )
+        # Despite the first two attempts failing, the 3rd succeeded.
+        idx = ci.get_chunks_index(mode_dir)
+        assert "chunk_0001.json" in (idx.get("chunks") or {})
+        assert attempts["n"] == 3, (
+            f"expected 3 replace attempts (2 fail + 1 succeed), got {attempts['n']}"
+        )
+
+    def test_permission_error_retry_gives_up_after_5(self, tmp_path, monkeypatch):
+        """Persistent failure (AV won't release the file) → after 5
+        retries the helper raises and update_chunk_entry's outer
+        try/except logs to stderr without crashing the analyzer."""
+        import os
+        import sys
+        from io import StringIO
+        from fresh_slotlab import chunk_index as ci
+        mode_dir = tmp_path / "M15" / "mode_1"
+        mode_dir.mkdir(parents=True)
+        cf = self._write_chunk(mode_dir, idx=1)
+        attempts = {"n": 0}
+
+        def always_fail(src, dst):
+            attempts["n"] += 1
+            raise PermissionError("[WinError 5] persistent (simulated)")
+
+        monkeypatch.setattr(ci.os, "replace", always_fail)
+        captured = StringIO()
+        monkeypatch.setattr(sys, "stderr", captured)
+        # Should NOT raise — outer except in update_chunk_entry swallows.
+        ci.update_chunk_entry(
+            mode_dir, cf, chunk_index=1,
+            config_md5="cfg_x", code_md5="code_y",
+            spin_times=1000, robot_count=8,
+        )
+        assert attempts["n"] == 5, (
+            f"expected 5 retry attempts before giving up, got {attempts['n']}"
+        )
+        # Diagnostic must still reach stderr so operators can see the
+        # transient AV pattern in their logs.
+        log = captured.getvalue()
+        assert "[chunk_index] update_chunk_entry failed" in log
+        assert "PermissionError" in log
