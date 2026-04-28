@@ -719,6 +719,22 @@ def print_diagnostics(label, fr_weights, strip, evaluator, paytable,
     return pred, family_rtp, wild_p, weights
 
 
+def _write_reel_table_tsv(mode: int, strip: list[list[str]], weights: list[list[int]]) -> None:
+    """Regenerate human-readable reel_weights.tsv (策划速查) after tune.
+    Format: header `reel1\tweight1\treel2\tweight2\treel3\tweight3` + 22 rows
+    of (symbol, weight) per reel. Idempotent — overwrites prior tsv."""
+    out_path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "reel_weights.tsv"
+    n = len(strip[0])
+    lines = ["reel1\tweight1\treel2\tweight2\treel3\tweight3"]
+    for p in range(n):
+        cells = []
+        for r in range(3):
+            cells.append(strip[r][p])
+            cells.append(str(int(weights[r][p])))
+        lines.append("\t".join(cells))
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main(modes_to_run=(1, 7)):
     # Mode 5 must NOT be free-tuned via this script. Per FIRST_MACHINE.md §7
     # + DESIGN.md §3.5, non-feature M1 mode 5 is DERIVED from mode 2 by
@@ -957,6 +973,7 @@ def main(modes_to_run=(1, 7)):
             "method": "player_experience_per_family_per_reel_uniform",
         }
         out_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+        _write_reel_table_tsv(mode, strip, weights)
         print(f"  wrote {out_path.relative_to(_ROOT)}")
 
 

@@ -212,6 +212,18 @@ def run(write: bool, verify: bool) -> int:
             encoding="utf-8",
         )
         print(f"\n[write] wrote {_MODE_5_WEIGHTS.relative_to(_ROOT)}")
+        # Regenerate human-readable reel_weights.tsv for mode 5 (策划速查)
+        tsv_path = _MODE_5_DIR / "reel_weights.tsv"
+        n = len(strips_reels[0])
+        tsv_lines = ["reel1\tweight1\treel2\tweight2\treel3\tweight3"]
+        for p in range(n):
+            cells = []
+            for r in range(3):
+                cells.append(strips_reels[r][p])
+                cells.append(str(int(mode_5_doc["weights"][r][p])))
+            tsv_lines.append("\t".join(cells))
+        tsv_path.write_text("\n".join(tsv_lines) + "\n", encoding="utf-8")
+        print(f"[write] wrote {tsv_path.relative_to(_ROOT)}")
     else:
         print("\n[dry-run] use --write to persist mode_5/weights.json")
 
