@@ -140,7 +140,7 @@
       "logicClassNames": [
         "SimulatedM279NudgeStackCollectWheel"
       ],
-      "configSummaryMd5": "beb06f00e879084e7385ebb09b42dac3",
+      "configSummaryMd5": "da6f46499431239bdbda523c52b702bd",
       "codeSummaryMd5": "4c14044940aa810d284343d53bd92339",
       "available": true,
       "_engine": "m279",
@@ -151,19 +151,19 @@
       "_note": "M279 = Light & Wonder 'Blazing 777 Triple Double Jackpot Wild — Nudging Stacks' archetype + Asian-market collect-to-wheel feature. The _engine='m279' marker routes virtual_analyzer through engine/m279/ and emitter/m279_{round,driver}.py instead of the M1/M15 SpinEngine path. md5s populate on next refresh_machines_virtual.",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "d92c65905efe812c2b68b84655d8bce3",
+          "configSummaryMd5": "7a368f3163858627fbf3e463e441ca12",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "2": {
-          "configSummaryMd5": "414ff8edd183671af3a179c0d70a00f5",
+          "configSummaryMd5": "ec1c0b95c15b5ae373f635757cbee882",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "5": {
-          "configSummaryMd5": "a275b78b76515aab239fcc1a8ffbb3db",
+          "configSummaryMd5": "796ce08f077830103fef4648ade5f4b4",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "7": {
-          "configSummaryMd5": "5835a08e767bf818523e3b299a931fec",
+          "configSummaryMd5": "f402179a928a2e23e1f9849832b0c223",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         }
       }

@@ -194,15 +194,19 @@ def cost_v2(metrics: dict, target: dict) -> tuple[float, dict]:
         breakdown["bucket_ks"] = (ks / ks_tol) ** 2 * 0.3
 
     # NEW v2: family share band
+    # v2.1: weight bumped from 0.4 to 5.0 — tuner was hitting RTP target by
+    # cutting wild3x (collaterally killing wild_jp share). With family weight
+    # 5.0 and wild_jp band [0.15, 0.22], a 5pp gap costs (0.05/0.05)^2 × 5 = 5,
+    # competitive with RTP-gap costs.
     family_band = target.get("family_share_band", {})
     family_cost = 0.0
     for fam, (lo, hi) in family_band.items():
         actual = metrics["family_share"].get(fam, 0)
         if actual < lo:
-            family_cost += ((lo - actual) / 0.05) ** 2
+            family_cost += ((lo - actual) / 0.03) ** 2  # tightened tol from 0.05 to 0.03
         elif actual > hi:
-            family_cost += ((actual - hi) / 0.05) ** 2
-    breakdown["family_share"] = family_cost * 0.4
+            family_cost += ((actual - hi) / 0.03) ** 2
+    breakdown["family_share"] = family_cost * 5.0
 
     # NEW v2: top-jackpot freq band (multiplicative)
     top_jp = target.get("top_jp_freq_target", {})

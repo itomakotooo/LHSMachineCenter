@@ -23,14 +23,15 @@ from pathlib import Path
 # Stronger bar/5bar cut than v1 to actually drop RTP -10pp, while preserving Mid/High/Top hit
 # at mode 1 absolute values (per_tier preservation hard rule).
 SCALE_BY_SYMBOL = {
-    "bar": 0.40,    # bar OAK pay 1× → main Low contributor; cut hard (-60%)
-    "5bar": 0.40,   # 5bar OAK pay 2×; also Low; cut hard
-    "low7": 0.70,   # low7 OAK pay 2×; tail of Low + part of mixed-7 Mid; moderate cut
-    # mid7 / high7 / wild family / stack: unchanged (preserve Mid/High/Top hit absolute)
+    "bar": 0.30,    # bar OAK pay 1× → cut harder (-70%) for v2.1 RTP 85% target
+    "5bar": 0.30,   # 5bar OAK pay 2×; also Low; cut harder
+    "low7": 0.55,   # low7 cut more aggressively to drop -10pp RTP
+    "mid7": 0.85,   # mid7 mild cut (was unchanged in v2)
+    # high7 / wild family / stack: unchanged (preserve Top hit absolute)
 }
 
 # Blank weight bump compensates for paying weight reductions.
-BLANK_BUMP = 1.20
+BLANK_BUMP = 1.30
 
 
 def derive(mode_1_path: Path, mode_7_path: Path, strips_path: Path) -> dict:

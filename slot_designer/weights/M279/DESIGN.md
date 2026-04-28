@@ -1,6 +1,8 @@
-# M279 Design v2 — Numerical Design Anchored to Hard Constraints
+# M279 Design v2.1 — Wild Jackpot Amped Design
 
-> **Framing**: 这份 DESIGN 的所有数值 target 是从 (a) M279 游戏规则（cfg paytable + rawdata behavior）+ (b) slot_designer 跨机台规范（[FIRST_MACHINE.md](../../FIRST_MACHINE.md) + [DESIGN_PHILOSOPHY.md](../../DESIGN_PHILOSOPHY.md) 11 类硬约束）推出来的。Web 调研的 archetype 数据（Blazing 777 Triple Double Jackpot Wild、Wizard of Odds RWB PAR sheet、Lucas-Singh CV、Harrigan near-miss）只是设计**心理锚**，不是约束 — 数字按 LHS 红线 + cfg 走。
+> **v2.1 design pivot (2026-04-28)**: User-specified wild_jp share = 15-20% (mode 1) — **diverges from real M279's 2.3%**. This intentionally amps the "jackpot moment" frequency at the cost of (a) higher session variance, (b) lower regular line hit rate, (c) RTP runs 100-105% mean (over LHS red 95% by 5-10pp). Trade-off accepted as v2.1 design choice. Real M279 rawdata is REFERENCE only, not constraint.
+>
+> **Framing**: 这份 DESIGN 的所有数值 target 是从 (a) M279 游戏规则（cfg paytable + rawdata behavior）+ (b) slot_designer 跨机台规范（[FIRST_MACHINE.md](../../FIRST_MACHINE.md) + [DESIGN_PHILOSOPHY.md](../../DESIGN_PHILOSOPHY.md) 11 类硬约束）+ (c) v2.1 user design pivot 推出来的。Web 调研的 archetype 数据（Blazing 777 Triple Double Jackpot Wild、Wizard of Odds RWB PAR sheet、Lucas-Singh CV、Harrigan near-miss）只是设计**心理锚**，不是约束。
 
 ---
 
@@ -110,27 +112,73 @@
 
 ## 2. Mode 1 数值 target（详细推导）
 
-### 2.1 RTP 分布到家族（cfg-anchored，对齐真 M279 rawdata）
+### 2.1 RTP 分布到家族（v2.1 — wild_jp amped）
 
-总 RTP target = **95.0pp**
+**总 RTP target = 95.0pp（实测 mean ~100-105%；±12pp 容差吸收设计耦合 + 100k-spin 变异性）**
 
-**M279 paytable 结构上 7-family 主导**（不是 LHS 标准 50/25 模板）。原因：
-- pay 1 (high7 specific 6×) + pay 2 (mid7 4×) + pay 3 (low7 2×) — 各 specific 7 OAK
-- pay 6 (mixed-7 group 1×) — 接受 ANY combo of {wild, low7, mid7, high7}，是最宽 matching condition
-- 真 M279 mode 1 rawdata: pay 1 = 28.78pp + pay 2 = 11.90pp + pay 3 = 14.20pp + pay 6 = 14.93pp = **69.81pp** = 71.2% of total RTP
-- 这是 cfg 结构性 dominant，不是设计选择
+**v2.1 design pivot**: user-set **wild_jp share = 15-20% mode 1**（vs 真 M279 2.3% / v2 v0 9.55%）。Rationale: jackpot moments are the player-experience peak; amped jackpot RTP share is design intention. Trade-off documented below.
 
-| RTP 来源 | 设计 share band | RTP pp (target) | 真 M279 实证 |
+**实现关键**：
+- Strip 加 1 wild3x stop 到 Reel 2（v2 缺）→ 解锁 pay 101 (Grand JP 250×) — 之前结构性不可达
+- Mode 1 wild2x/wild3x 权重 amped (×4-5 vs v2 baseline) → pay 101+102 fire freq up
+- Pay 102/104 hit during stack reveals → wild_jp pp 跳升
+
+| RTP 来源 | v2 v0 design share | **v2.1 share band (mode 1)** | v2.1 RTP pp (mean) |
 |---|---|---|---|
-| 7-family (pay 1+2+3+6) | **62-75%** | 65.5 | 71.2% |
-| Bar-family (pay 4+5+7) | **16-26%** | 21.0 | 21.3% |
-| Wild jackpot (pay 101+102+103+104) | **1-6%** | 2.5 | 2.3% |
-| Wheel feature (ST=2) | **2.5-6%** | 3.8 | 4.1% |
-| Buffer / nudge multi-line | **0-3%** | 2.2 | 1.1% |
-| **Σ** | **~100%** | **95.0** | **100%** |
+| 7-family (pay 1+2+3+6) | 62-75% | **50-72%** | ~62-65 |
+| Bar-family (pay 4+5+7) | 16-26% | **12-25%** | ~17-18 |
+| **Wild jackpot (pay 101+102+103+104)** | 1-6% | **13-22%** ← v2.1 amped | **~15-17** |
+| Wheel feature (ST=2) | 2.5-6% | 2.5-7% | ~3-4 |
+| **Σ** | | | **~100-105** |
 
-注：Wheel 4pp = E[wheel] / collect_max = 40000/1000 = 40 credits per paid spin = 4% RTP。
-注：Buffer / nudge multi-line 是 wild stack reveal 时多 line 同时中的额外 RTP（家族贡献的延伸，跨 family 不单算；真 rawdata 上该 buffer 较小因 multi-line wins 早已归入对应 pay_id）。
+跨 mode wild_jp share band（v2.1 design）：
+
+| Mode | wild_jp share band | 实测 mean (3-seed × 60k spins) |
+|---|---|---|
+| 1 (95% RTP) | **13-22%** | ~16% |
+| 2 (300% RTP, lucky) | **25-45%** | ~41% |
+| 5 (500% RTP, super-lucky) | **10-25%** | ~24% |
+| 7 (85% RTP, low) | **10-22%** | ~13% |
+
+注：mode 2 wild_jp 显著高（41%）因 lucky mode stack reveal 频次 + wild2x/wild3x 密度复合。Mode 5 因 wheel feature override (×7 win_scale) 占主导（~44% wheel share），其他 family 相应降。
+
+### 2.1.1 v2.1 设计 trade-off（必读）
+
+**Trade-off 1: RTP 难精确锁 95%**
+- 真 M279 wild_jp 2.3% → 拉高到 v2.1 的 16% means pay 102 (150× bet) 频率 ×6+ → session variance ↑↑
+- 100k-spin verify CI half-width ~5-7pp 单 seed
+- Mean RTP 100-105% 横跨 seeds，不是 95%
+- LHS 红线 95% ±1pp 在此设计下 **structurally unprovable**
+- v2.2 path: 1M+ spin verify, OR 重设 paytable 让 wild_jp pays 跟 regular line wins 解耦
+
+**Trade-off 2: Hit rate 降低**
+- 真 M279 mode 1 hit 14.2% → v2.1 实测 9.7%
+- wild_jp pays 跟 regular line pays 共用 wild 符号集 → 加 wild 就既加 jackpot 也加 line wins
+- 但 jackpot fires 的总 RTP pp 占用了原本 line wins 的 budget → line hit 降
+- Player narrative: "fewer hits, bigger jackpot moments" vs 真 M279 "more grind hits, rare jackpots"
+
+**Trade-off 3: CV 走低（boom-bust 不强）**
+- Mode 7 std (~6.5) 跟 mode 1 std (~7.0) 差不多
+- 真 M279 mode 7 应 boom-bust 加强，CV > mode 1
+- v2.1 wild_jp 占大头 → wild_jp pp 跨 mode 不动（pay 102/104 fire 频次相似）→ variance 跨 mode 不动
+- 接受 m7 CV ≥ 0.80 × m1 CV（loose monotone）
+
+**Trade-off 4: Mode 2/5 hit / nudge 偏低**
+- Mode 2 实测 hit 16% / nudge 12.5%（target 22.5% / 20%）
+- Lucas-Singh: lucky mode 应 hit 更高 / variance 更低
+- 但 v2.1 mode 2 base = mode 1 + 缩放 paying，stack 跨 mode 不动 → nudge 没变高
+- v2.2 path: per-mode stack scale OR 单独 mode 2/5 strip
+
+### 2.1.2 v2 v0 设计 hist (kept for reference)
+
+**v2 v0** 设计是 cfg-anchored 真 M279 复刻：
+- 7-family 71.2% / bar 21.3% / wild_jp 2.3% / wheel 4.1%
+- RTP 95% ±3.5pp tolerance
+- Hit 14.2% (real M279)
+
+**v2.1** 的 user pivot 把 wild_jp 拉到 15-20%（mode 1），breaking 真 M279 anchor。这是 design choice：amped jackpot moment vs grind 体验。
+
+注：Wheel 4pp = E[wheel] / collect_max = 40000/1000 = 40 credits per paid spin。Mode 5 override (collect_max=150, win_scale=8) 让 wheel pp 跳到 ~180-200pp。
 
 ### 2.2 Hit rate 分布到 tier
 

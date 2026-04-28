@@ -9,10 +9,11 @@
   ],
   "rtp_pct": 500.0,
   "rtp_tolerance_pp": 50.0,
-  "hit_rate": 0.225,
-  "hit_tolerance_pp": 3.0,
-  "nudge_rate": 0.20,
+  "hit_rate": 0.17,
+  "hit_tolerance_pp": 4.0,
+  "nudge_rate": 0.13,
   "nudge_tolerance_pp": 5.0,
+  "_v2.1_basis": "Mode 5 inherits mode 2 v2.1 hit/nudge bands.",
   "wheel_rate": 0.0067,
   "cv_target": 7.0,
   "cv_tolerance": 2.5,
@@ -29,10 +30,10 @@
   },
   "bucket_ks_tolerance": 0.20,
   "family_share_band": {
-    "seven_family": [0.25, 0.50],
-    "bar_family": [0.07, 0.20],
-    "wild_jackpot": [0.005, 0.15],
-    "wheel_feature": [0.30, 0.55]
+    "seven_family": [0.20, 0.45],
+    "bar_family": [0.05, 0.18],
+    "wild_jackpot": [0.10, 0.25],
+    "wheel_feature": [0.25, 0.55]
   },
   "_family_share_basis": "Mode 5 inherits mode 2 base shares but wheel feature is dramatically boosted (collect_max 1000→150 gives ×6.7 trigger frequency, win_scale ×7 gives ×7 payout per trigger = ~47× wheel pp boost). So wheel takes the largest single share, suppressing other shares proportionally.",
   "top_jp_freq_target": {
