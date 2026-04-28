@@ -69,16 +69,30 @@
 | 7-dominated (Seven 35-65%) | `family_share_bands` Seven 上限 65% |
 | Reels 看起来一致（无 R-stuffing） | `per_reel_blank_variance_strength = 6.0` 软拉均匀 |
 
-### 3.5 Mode 5 (super-lucky 500%) — "顶奖路径超频，shift mass to top"
+### 3.5 Mode 5 (super-lucky 500%) — "派生 from mode 2，仅顶奖路径加强"
+
+> **派生规则（hard rule, 2026-04-28）**: 非 feature 机台 mode 5 走 `derive_m1_mode_5.py`：
+> base 权重（Cherry/Bar1/Bar2/Bar3/Blank）byte-identical = mode 2，仅顶奖
+> family（Diamond1/Diamond2/Seven1/Seven2）×k 缩放推 RTP 到 500%。
+> **绝不**用 tune_m1.py 自由调 mode 5 — 历史教训：tuner 找 cheap RTP 路
+> 会 R-collapse（R2 总 weight 暴落 4.9×）+ Bar1 R2 灭绝 + Seven1 R2 反单调
+> mode 2 → mode 5（典型 pareto trap, see `feedback_tuner_pareto_trap.md`）。
 
 | | 实现 |
 |---|---|
-| 所有 big-win pay 频率 ≥ mode 2 | `bigwin_pay_freq_floor` (mode 5 P(big-win pay) ≥ mode 2 reference) |
-| 7-very-heavy (Seven 50-80%) | family_share_bands Seven 上限 80% |
-| Mid/low pay 砍 (shift mass to top) | 自然 — Seven RTP 主导挤压其他 family |
-| Reels 视觉一致 | `per_reel_blank_variance_strength = 6.0` |
+| Base byte-identical to mode 2 | `derive_m1_mode_5.py` 复制 mode 2 weights，仅 top-bucket 缩放 |
+| 顶奖 family Diamond/Seven 单调 ≥ mode 2 | bisected uniform scalar k ≈ 1.47 (×1.47 across 4 top-bucket families) |
+| 7-very-heavy (Seven 50-80%) | 派生自然达成 (m5 Seven share ≈ 61% vs m2's 46%) |
+| Mid/low pay 自然 shift down | base weights frozen → 顶奖 weight 增 → 总 weight 增 → base marginal 自动降 |
+| Reels 视觉一致 | mode 2 base 已经 variance-balanced (per_reel_blank_variance_strength=6.0) — 派生继承 |
 
-设计意图：mode 5 的"super-lucky"不是"所有 pay 都更频"，而是"顶奖路径明显更易触达"（Seven1×3 / Seven2×3 / Diamond combos 频率显著上升），代价是 Cherry/Bar1 base pays 自然减少。
+**实现细节**: `derive_m1_mode_5.py --write --verify` bisects single uniform scalar
+k ∈ [1.0, 5.0] over Diamond1/Diamond2/Seven1/Seven2 weights to hit RTP=500±30pp.
+Floor=3 (visibility), cap=80 (lucky upper bound). Per-reel weight ratio cap 3.0×.
+
+设计意图：mode 5 = mode 2 base 不变 + 顶奖路径强化。玩家在 base 层 (cherry/bar
+hit、payline 频率) 感受跟 mode 2 一样，差异完全来自顶奖密度上升 (Seven×3/Diamond×3
+freq 显著增）。这是"super-lucky 是 mode 2 的 luck variation，不是另一台机"的实现。
 
 ## 4. 当前 tune 数值结果
 
@@ -86,8 +100,10 @@
 |---|---|---|---|---|
 | 1 | 95.11% | 19.44% | 14.83% | 9.22 |
 | 7 | 85.28% | 14.86% | 14.73% | 10.19 |
-| 2 | 294.46% | 26.94% | 21.14% | 6.51 |
-| 5 | 499.96% | 28.38% | 25.59% | 5.05 |
+| 2 | 294.47% | 27.87% | 22.00% | 6.23 |
+| 5 | 495.32% | 27.22% | 27.83% | 5.31 |
+
+> Mode 5 数据自 2026-04-28 走 `derive_m1_mode_5.py` 派生（base = mode 2 byte-identical + top-bucket × k）替代之前 free-tune 实现。CV 降 (5.05 → 5.31 ≈ 持平)；Seven share 60.8% → 60.9%（基本同）；R2 总 weight 106 → 575 修正 R-collapse；Bar1 R2 marginal 2.8% → 23.1% 恢复 Bar1 在 R2 的可见度。
 
 **Big-win pay frequency (1 in N spins)**:
 
@@ -129,15 +145,20 @@ Mode 7 = mode 1 (frozen, 1.00x). Mode 2/5 monotonic ≥ mode 1.
 
 ### 5.2 Verify (`slot_designer/scripts/verify_m1_design.py`)
 
-9 类 check, 全绿才算 done:
-- RTP / HIT / WILD / SHARE / DENSITY / MODE7-LOCK / MODE7-CUT / TOP-PATH / SIGNATURE / BUCKET-FLOOR
+11 类 check, 全绿才算 done:
+- 数值 + family band: **RTP / HIT / WILD / SHARE / DENSITY / BUCKET-FLOOR**
+- Mode 7 派生 lock: **MODE7-LOCK / MODE7-CUT / TOP-PATH**
+- 跨 mode signature: **SIGNATURE**
+- Mode 5 派生 lock (新, 2026-04-28): **MODE5-BASE-LOCK** — base 权重 byte-identical to mode 2
+- 反 pareto trap (新, 2026-04-28): **R-COLLAPSE** — 每 mode max/min reel 总 weight ≤ 3.0×
 
 ### 5.3 文件
 
 - `slot_designer/specs/M1.spec.json` — paytable + 规则
 - `slot_designer/weights/M1/reel_strips.json` — 22-stop 布局 + `_archetype` 来源
 - `slot_designer/weights/M1/mode_*/weights.json` — 各 mode 权重
-- `slot_designer/scripts/tune_m1.py` — tune 入口
+- `slot_designer/scripts/tune_m1.py` — mode 1/2/7 tune 入口（mode 5 不走此路径）
+- `slot_designer/scripts/derive_m1_mode_5.py` — mode 5 派生入口（自 mode 2）
 - `slot_designer/scripts/verify_m1_design.py` — verify 入口
 - `slot_designer/tuner/targets/M1_mode*.target.json` — 数值 target
 

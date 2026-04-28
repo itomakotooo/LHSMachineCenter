@@ -642,6 +642,18 @@ def print_diagnostics(label, fr_weights, strip, evaluator, paytable,
 
 
 def main(modes_to_run=(1, 7)):
+    # Mode 5 must NOT be free-tuned via this script. Per FIRST_MACHINE.md §7
+    # + DESIGN.md §3.5, non-feature M1 mode 5 is DERIVED from mode 2 by
+    # `derive_m1_mode_5.py` (base byte-identical, top-bucket × k). Free-tuning
+    # mode 5 reproduces the pareto trap that this fix removed: R-collapse,
+    # Bar1 R2 extinction, Seven1 R2 reverse-monotonic m2 → m5.
+    if 5 in modes_to_run:
+        raise SystemExit(
+            "tune_m1.py does NOT tune mode 5. Mode 5 is derived from mode 2 "
+            "by `python -m slot_designer.scripts.derive_m1_mode_5 --write --verify`. "
+            "See DESIGN.md §3.5 + verify_m1_design.py [MODE5-BASE-LOCK]."
+        )
+
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
     strip = json.loads(STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
     symbols_reg = SymbolRegistry(spec["symbols"])

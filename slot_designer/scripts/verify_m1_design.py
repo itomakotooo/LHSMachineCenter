@@ -169,6 +169,20 @@ MODE7_CUT_MIN_PP = {"Bar1": 1.0, "Cherry": 1.0}
 # — that's part of "feels lucky", not a signature break.
 WILD_DRIFT_STANDARD_PP = 3.0  # mode 1 vs mode 7 absolute pp difference cap
 
+# Mode 5 base lock: per FIRST_MACHINE.md §7 + project_slot_designer_strips_
+# identical_across_modes.md, non-feature mode 5 base weights (Cherry / Bar1
+# / Bar2 / Bar3 / Blank) must be byte-identical to mode 2's. Only top-bucket
+# (Diamond / Seven) weights vary to push RTP from ~294% to 500%. This blocks
+# the pareto trap where free-tuning mode 5 collapses one reel's total weight
+# (R-stuffing) and exterminates a base family on that reel.
+MODE5_BASE_FAMILIES = ("Cherry", "Bar1", "Bar2", "Bar3", "Blank")
+
+# R-collapse guard: max/min reel total weight ratio across reels per mode.
+# Mode 2's natural ratio is ~2.5x (R3 lighter); mode 5 derivation must not
+# worsen substantially. Cap at 3.0x — past that, one reel is acting as a
+# different "physical" reel from the others (visual/UX inconsistency).
+PER_REEL_TOTAL_WEIGHT_RATIO_CAP = 3.0
+
 
 def family_rtp_breakdown(profile, paytable):
     rtp_excluded = {str(p["pay_id"]) for p in paytable if p.get("rtp_excluded")}
@@ -213,12 +227,14 @@ def load_mode_state(mode):
     family_rtp = family_rtp_breakdown(profile, spec["pays"])
     densities = per_reel_family_density(engine)
     wild_p = wild_on_payline_p(engine)
+    weights_doc = json.loads(weights_path.read_text(encoding="utf-8"))
     return {
         "engine": engine,
         "profile": profile,
         "family_rtp_pp": family_rtp,
         "densities": densities,
         "wild_on_payline": wild_p,
+        "weights_doc": weights_doc,
     }
 
 
@@ -389,6 +405,50 @@ def run_cross_mode_checks(state_by_mode):
                 ok,
                 "Lucky mode 不能让 signature 反而变弱",
             ))
+
+    # MODE5-BASE-LOCK: per FIRST_MACHINE.md §7, non-feature mode 5 base
+    # weights (Cherry/Bar1/Bar2/Bar3/Blank) must be byte-identical to mode 2.
+    # Top-bucket (Diamond/Seven) weights vary; all others lock.
+    if 2 in state_by_mode and 5 in state_by_mode:
+        m2_w = state_by_mode[2]["weights_doc"]["weights"]
+        m5_w = state_by_mode[5]["weights_doc"]["weights"]
+        strips_doc = json.loads(STRIPS.read_text(encoding="utf-8"))
+        strips_reels = strips_doc["reels"]
+        diff_positions = []
+        for r_idx in range(len(strips_reels)):
+            for p_idx in range(len(strips_reels[r_idx])):
+                sym = strips_reels[r_idx][p_idx]
+                if sym in MODE5_BASE_FAMILIES:
+                    if m2_w[r_idx][p_idx] != m5_w[r_idx][p_idx]:
+                        diff_positions.append((r_idx + 1, p_idx, sym,
+                                               m2_w[r_idx][p_idx], m5_w[r_idx][p_idx]))
+        ok = len(diff_positions) == 0
+        if ok:
+            label = (f"mode 5 base (Cherry/Bar/Blank) byte-identical to mode 2 "
+                     f"(0/54 base positions differ)")
+        else:
+            sample = diff_positions[:3]
+            label = (f"mode 5 base differs from mode 2 at {len(diff_positions)}/54 "
+                     f"positions: {sample[0]} ...")
+        checks.append(make_check(
+            "MODE5-BASE-LOCK", 5, label, ok,
+            "非 feature 机台 mode 5 base 权重必须 = mode 2; 仅 top-bucket 调",
+        ))
+
+    # R-COLLAPSE: per-reel total weight ratio cap. One reel collapsing far
+    # below the others (max/min > cap) signals tuner pareto trap.
+    for mode in sorted(state_by_mode.keys()):
+        m_w = state_by_mode[mode]["weights_doc"]["weights"]
+        per_reel_total = [sum(reel) for reel in m_w]
+        ratio = max(per_reel_total) / min(per_reel_total) if min(per_reel_total) > 0 else float("inf")
+        ok = ratio <= PER_REEL_TOTAL_WEIGHT_RATIO_CAP
+        checks.append(make_check(
+            "R-COLLAPSE", mode,
+            f"per-reel total weight R1={per_reel_total[0]} R2={per_reel_total[1]} "
+            f"R3={per_reel_total[2]} (max/min={ratio:.2f}× vs cap {PER_REEL_TOTAL_WEIGHT_RATIO_CAP:.1f}×)",
+            ok,
+            "防 R-stuffing pareto trap (一条 reel 总 weight 暴落 = 该 reel 上某 family 灭绝)",
+        ))
 
     return checks
 
