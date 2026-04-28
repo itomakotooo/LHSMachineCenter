@@ -42,6 +42,7 @@ def _ks(a: dict[str, float], b: dict[str, float]) -> float:
 def verify_mode(
     mode: int,
     n_spins: int = 100_000,
+    n_seeds: int = 8,
 ) -> tuple[bool, list[str], dict]:
     spec = _ROOT / "slot_designer" / "specs" / "M279.spec.json"
     weights = _ROOT / "slot_designer" / "weights" / "M279" / f"mode_{mode}" / "weights.json"
@@ -49,7 +50,39 @@ def verify_mode(
         return False, [f"mode {mode}: weights file missing at {weights}"], {}
 
     engine, _ = load_m279_engine(spec, weights)
-    metrics = sim_metrics(engine, n_spins, seed=7)
+    # Multi-seed mean — single-seed at 100k spins has 3-7pp variance for
+    # high-mult pays; mean across N seeds halves the noise. v2.2 uses
+    # 8 seeds × 100k = 800k effective spins for stable RTP/family-share
+    # readings. Per-tier bucket counts averaged similarly.
+    seeds = [7, 42, 100, 200, 300, 500, 700, 900][:n_seeds]
+    all_metrics = [sim_metrics(engine, n_spins, seed=s) for s in seeds]
+    # Average each metric
+    metrics = {
+        "rtp_pct": sum(m["rtp_pct"] for m in all_metrics) / n_seeds,
+        "hit_rate": sum(m["hit_rate"] for m in all_metrics) / n_seeds,
+        "nudge_rate": sum(m["nudge_rate"] for m in all_metrics) / n_seeds,
+        "wheel_rate": sum(m["wheel_rate"] for m in all_metrics) / n_seeds,
+        "std_return": sum(m["std_return"] for m in all_metrics) / n_seeds,
+        "cv": sum(m["cv"] for m in all_metrics) / n_seeds,
+        "n_spins": n_spins * n_seeds,
+        "bucket_rate": {
+            k: sum(m["bucket_rate"].get(k, 0) for m in all_metrics) / n_seeds
+            for k in all_metrics[0]["bucket_rate"]
+        },
+        "family_share": {
+            k: sum(m["family_share"][k] for m in all_metrics) / n_seeds
+            for k in all_metrics[0]["family_share"]
+        },
+        "_pay_count": {
+            pid: sum(m["_pay_count"].get(pid, 0) for m in all_metrics)
+            for m in all_metrics for pid in m["_pay_count"]
+        },
+        "top_jp_freq_per_n_spins": (
+            (n_spins * n_seeds) / sum(m["_pay_count"].get(101, 0) for m in all_metrics)
+            if sum(m["_pay_count"].get(101, 0) for m in all_metrics) > 0
+            else float("inf")
+        ),
+    }
     target = _load_target(mode)
     issues: list[str] = []
 

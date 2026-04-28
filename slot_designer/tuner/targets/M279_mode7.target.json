@@ -10,10 +10,10 @@
     "Top jackpot freq: pay 101 1/200k spins (跟 mode 1 一致，cut 不动顶奖)."
   ],
   "rtp_pct": 85.0,
-  "rtp_tolerance_pp": 14.0,
-  "hit_rate": 0.10,
-  "hit_tolerance_pp": 2.5,
-  "_v2.1_basis": "Mode 7 = mode 1 with bar/5bar/low7 cut. Mode 1 v2.1 mean RTP 100% (5pp over LHS red 95%) → mode 7 derive lands ~95% (10pp over red 85%). Loosened tolerance to ±14pp; can't push lower without breaking per-tier preservation. v2.2: tighten mode 1 first, then mode 7 derive lands cleanly.",
+  "rtp_tolerance_pp": 1.5,
+  "hit_rate": 0.094,
+  "hit_tolerance_pp": 1.5,
+  "_rtp_tolerance_basis": "Strict LHS red line ±1pp; allowed ±1.5pp for sample variance only.",
   "nudge_rate": 0.122,
   "nudge_tolerance_pp": 3.0,
   "wheel_rate": 0.000877,
@@ -24,19 +24,31 @@
     "gt0_lt1": 0.014,
     "ge1_lt5": 0.051,
     "ge5_lt10": 0.016,
-    "ge10_lt20": 0.0090,
+    "ge10_lt20": 0.009,
     "ge20_lt50": 0.0057,
     "ge50_lt100": 0.0028,
-    "ge100_lt200": 0.00090,
-    "ge200_lt500": 0.00010,
-    "ge500": 0.000036
+    "ge100_lt200": 0.0009,
+    "ge200_lt500": 0.0001,
+    "ge500": 3.6e-05
   },
-  "bucket_ks_tolerance": 0.10,
+  "bucket_ks_tolerance": 0.1,
   "family_share_band": {
-    "seven_family": [0.55, 0.72],
-    "bar_family": [0.08, 0.20],
-    "wild_jackpot": [0.10, 0.22],
-    "wheel_feature": [0.03, 0.10]
+    "seven_family": [
+      0.55,
+      0.72
+    ],
+    "bar_family": [
+      0.08,
+      0.2
+    ],
+    "wild_jackpot": [
+      0.1,
+      0.15
+    ],
+    "wheel_feature": [
+      0.03,
+      0.1
+    ]
   },
   "_family_share_basis": "Mode 7 inherits v2.1 wild_jp 15-20% target from mode 1 (bar cut → wild_jp share UP relatively). Bar floor lower than mode 1 because bar is the cut symbol.",
   "top_jp_freq_target": {
@@ -44,15 +56,15 @@
     "pay_101_tolerance": 0.5
   },
   "asymmetric_reel": {
-    "high7_kill_ratio": 1.10
+    "high7_kill_ratio": 1.1
   },
   "_per_tier_hit_preservation_target": {
     "_note": "Mid/High/Top 绝对 hit 保 mode 1 数值 (per_tier preservation 硬约束). Tolerances loosened in v2 for sample-size variance.",
-    "mid_hit_target": 0.030,
+    "mid_hit_target": 0.03,
     "mid_hit_tolerance_pp": 1.5,
     "high_hit_target": 0.0045,
-    "high_hit_tolerance_pp": 0.30,
+    "high_hit_tolerance_pp": 0.3,
     "top_hit_target": 0.00014,
-    "top_hit_tolerance_pp": 0.10
+    "top_hit_tolerance_pp": 0.1
   }
 }

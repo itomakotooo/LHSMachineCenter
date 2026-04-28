@@ -261,6 +261,7 @@ def tune_v2(
     sigma: float = 0.7,
     seed: int = 42,
     verbose: bool = True,
+    locked_symbols: set[str] | None = None,
 ) -> dict:
     """v2 coordinate descent — per-symbol per-reel granular scaling.
 
@@ -322,6 +323,7 @@ def tune_v2(
     t0 = time.time()
     cur_sigma = sigma
 
+    locked = locked_symbols or set()
     while iter_count < max_iters:
         improved = False
         for reel_idx in range(n_reels):
@@ -331,6 +333,12 @@ def tune_v2(
                 if sym in WILD_STACK:
                     # Tune stack as a group: same scale for all 3
                     continue  # for v1 leave stack at base
+                # NEW v2.1: locked symbols (caller-specified) skip tuning.
+                # Used for two-phase approach: Phase A locks paying+blank,
+                # tunes wild family for wild_jp share; Phase B locks wild
+                # family, tunes paying+blank for RTP.
+                if sym in locked:
+                    continue
                 for direction in (cur_sigma, 1.0 / cur_sigma):
                     saved = sym_scales[reel_idx][sym]
                     sym_scales[reel_idx][sym] = saved * direction
@@ -394,9 +402,16 @@ def main() -> None:
     p.add_argument("--sigma", type=float, default=0.7)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--verbose", action="store_true", default=True)
+    p.add_argument(
+        "--locked-symbols", default="",
+        help="Comma-separated symbol names to LOCK (skip tuning). Used for "
+             "two-phase tuning. Phase A locks paying+blank, tunes wild family. "
+             "Phase B locks wild family, tunes paying+blank.",
+    )
     args = p.parse_args()
 
     target = json.loads(args.target.read_text(encoding="utf-8"))
+    locked_set = set(s.strip() for s in args.locked_symbols.split(",") if s.strip())
     result = tune_v2(
         args.spec, args.weights, target,
         n_eval_spins=args.n_eval_spins,
@@ -404,6 +419,7 @@ def main() -> None:
         sigma=args.sigma,
         seed=args.seed,
         verbose=args.verbose,
+        locked_symbols=locked_set if locked_set else None,
     )
 
     out = args.out_weights or args.weights
