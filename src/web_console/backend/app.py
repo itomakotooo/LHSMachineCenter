@@ -461,6 +461,18 @@ def _resolve_local_cfg_for_machine(
     machine name); operators maintain one ``M273Cfg.txt`` rather
     than 11 per-variant files.
 
+    Two-step lookup:
+      1. variants_map-resolved underlying → ``<u>Cfg.txt``
+      2. filesystem fallback: regex-extract ``M<n>`` prefix from the
+         display name → ``<base>Cfg.txt``. Triggers when halls.json
+         hasn't been refreshed under the variants schema yet (empty
+         ``variants_map``) so variant display names resolve to their
+         own upstream_key (e.g. ``M15$0$``) instead of the physical
+         ``M15``. The filename convention ``<M\\d+>Cfg.txt`` is a
+         stable filesystem convention — see
+         ``machine_variants.extract_base_machine_name`` for why this
+         exception to the no-``$``-parsing rule is sound.
+
     Best-effort: any IO / parse error falls through to
     ``(machine_display, None)`` — the UI simply hides the checkbox
     rather than surfacing an error."""
@@ -471,7 +483,9 @@ def _resolve_local_cfg_for_machine(
     # cold path, avoid paying it on every call if this module is
     # imported for non-sampling use (e.g. unit tests of other areas).
     from src.web_console.backend.machine_variants import (
-        load_variants_map, resolve_underlying_for_display,
+        extract_base_machine_name,
+        load_variants_map,
+        resolve_underlying_for_display,
     )
     try:
         data = json.loads(Path(mc).read_text(encoding="utf-8"))
@@ -485,6 +499,11 @@ def _resolve_local_cfg_for_machine(
     candidate = dir_ / f"{underlying}Cfg.txt"
     if candidate.is_file():
         return underlying, candidate
+    base = extract_base_machine_name(machine_display)
+    if base != underlying:
+        base_candidate = dir_ / f"{base}Cfg.txt"
+        if base_candidate.is_file():
+            return base, base_candidate
     return underlying, None
 
 

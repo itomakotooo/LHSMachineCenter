@@ -333,6 +333,121 @@ class TestUnderlyingResolution:
             assert path is not None
             assert path.name == "M273Cfg.txt"
 
+    def test_variant_falls_back_to_base_when_variants_map_empty(
+        self, client, fake_machineconfig_dir, tmp_path, monkeypatch,
+    ):
+        """Production state on a fresh checkout: ``variants_map`` is
+        empty (halls.json hasn't been refreshed under the variants
+        schema yet). Without a fallback, every M15 variant resolves
+        to its upstream_key (``M15$0$``) and ``M15Cfg.txt`` is
+        invisible to the variant — operators have to manually copy
+        the file 3+ times. Fix: filesystem-fallback regex extracts
+        ``M15`` from the display name when the variants_map path
+        misses."""
+        import src.web_console.backend.app as app_mod
+        fake_machines = tmp_path / "machines.json"
+        fake_machines.write_text(json.dumps({
+            "machines": [
+                {
+                    "machine": "M15$TopDollarSelector$0$",
+                    "upstream_key": "M15$0$",
+                },
+                {
+                    "machine": "M15$TopDollarSelector$1$",
+                    "upstream_key": "M15$1$",
+                },
+                {
+                    "machine": "M15$TopDollarSelector$2$40",
+                    "upstream_key": "M15$2$40",
+                },
+            ],
+        }), encoding="utf-8")
+        # Empty variants_map — the bug condition.
+        fake_halls = tmp_path / "machine_halls.json"
+        fake_halls.write_text(json.dumps({"variants_map": {}}), encoding="utf-8")
+        monkeypatch.setattr(app_mod, "MACHINES_CONFIG", fake_machines)
+        (fake_machineconfig_dir / "M15Cfg.txt").write_text(
+            '{"marker":"m15"}', encoding="utf-8",
+        )
+        for display in (
+            "M15$TopDollarSelector$0$",
+            "M15$TopDollarSelector$1$",
+            "M15$TopDollarSelector$2$40",
+        ):
+            underlying, path = app_mod._resolve_local_cfg_for_machine(
+                display,
+                machines_config_path=fake_machines,
+                halls_path=fake_halls,
+            )
+            assert underlying == "M15", (
+                f"display {display!r} should fall back to base 'M15', "
+                f"got {underlying!r}"
+            )
+            assert path is not None
+            assert path.name == "M15Cfg.txt"
+
+    def test_base_fallback_does_not_match_when_no_file(
+        self, client, fake_machineconfig_dir, tmp_path, monkeypatch,
+    ):
+        """The fallback only fires when a base-name file actually
+        exists. Without ``M15Cfg.txt`` on disk, M15 variants stay
+        unresolved (returns the variants_map result with no path) —
+        we don't fabricate a path the UI would then try to read."""
+        import src.web_console.backend.app as app_mod
+        fake_machines = tmp_path / "machines.json"
+        fake_machines.write_text(json.dumps({
+            "machines": [
+                {
+                    "machine": "M15$TopDollarSelector$0$",
+                    "upstream_key": "M15$0$",
+                },
+            ],
+        }), encoding="utf-8")
+        fake_halls = tmp_path / "machine_halls.json"
+        fake_halls.write_text(json.dumps({"variants_map": {}}), encoding="utf-8")
+        monkeypatch.setattr(app_mod, "MACHINES_CONFIG", fake_machines)
+        # No M15Cfg.txt staged.
+        underlying, path = app_mod._resolve_local_cfg_for_machine(
+            "M15$TopDollarSelector$0$",
+            machines_config_path=fake_machines,
+            halls_path=fake_halls,
+        )
+        assert path is None
+        # First-pass underlying preserved (variants_map lookup result).
+        assert underlying == "M15$0$"
+
+
+class TestExtractBaseMachineName:
+    """Unit tests for the filesystem-fallback regex helper. This is
+    the ONE place ``$``-separator parsing is allowed in the codebase
+    — see machine_variants.extract_base_machine_name docstring."""
+
+    def test_strips_variant_suffix(self):
+        from src.web_console.backend.machine_variants import (
+            extract_base_machine_name,
+        )
+        assert extract_base_machine_name("M15$TopDollarSelector$0$") == "M15"
+        assert extract_base_machine_name("M273$WheelSelector$1$1-2-3") == "M273"
+        assert extract_base_machine_name("M15$0$") == "M15"
+
+    def test_non_variant_returns_self(self):
+        from src.web_console.backend.machine_variants import (
+            extract_base_machine_name,
+        )
+        assert extract_base_machine_name("M14") == "M14"
+        assert extract_base_machine_name("M279") == "M279"
+
+    def test_no_machine_prefix_returns_input(self):
+        """Defensive: callers handle a non-``M\\d+`` input gracefully
+        rather than a None or exception. The result is treated as
+        'no fallback found'."""
+        from src.web_console.backend.machine_variants import (
+            extract_base_machine_name,
+        )
+        assert extract_base_machine_name("") == ""
+        assert extract_base_machine_name("garbage") == "garbage"
+        assert extract_base_machine_name("$M15") == "$M15"
+
 
 class TestLocalCfgMd5SegregatesChunks:
     """Without a per-cfg synthetic md5, chunks produced with a

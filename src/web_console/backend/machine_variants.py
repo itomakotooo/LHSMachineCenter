@@ -20,12 +20,49 @@ key's internal structure (no ``split('$')``, no regex on the ``$``
 separator, no hard-coded list of variant machines). If the upstream
 ever switches key format or expands the variant set, this file does
 not change — only the cached map refreshes.
+
+The single exception is ``extract_base_machine_name`` below — see
+its docstring for why filesystem-only conventions are allowed to
+parse the prefix.
 """
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Mapping
+
+
+_BASE_MACHINE_RE = re.compile(r"^(M\d+)")
+
+
+def extract_base_machine_name(name: str) -> str:
+    """Extract the physical-machine prefix from a display / upstream
+    name (e.g. ``"M15"`` from ``"M15$TopDollarSelector$0$"`` or
+    ``"M15$0$"``).
+
+    **Filesystem-fallback ONLY.** Never use this for variants_map /
+    md5 fanout / sampling endpoint resolution — those must always go
+    through the variants_map (see module docstring). This helper
+    exists for one purpose: looking up a per-physical-machine
+    resource on disk that follows the stable filename convention
+    ``<M\\d+><suffix>``, when the variants_map-resolved underlying
+    name didn't yield a hit.
+
+    Trigger case: ``configs/machine_halls.json`` hasn't been refreshed
+    under the variants schema (``variants_map`` empty), so a variant
+    display like ``M15$TopDollarSelector$0$`` resolves to its own
+    upstream_key ``M15$0$`` instead of the physical ``M15``. The
+    operator-dropped ``machineconfig/M15Cfg.txt`` file is then
+    invisible to all M15 variants until they refresh halls. Falling
+    back to a regex on the prefix lets the override work immediately.
+
+    Returns the matched ``M<digits>`` prefix, or the input unchanged
+    if no match (callers treat the result as "no fallback found"
+    and continue with whatever the variants_map produced).
+    """
+    m = _BASE_MACHINE_RE.match(name)
+    return m.group(1) if m else name
 
 
 def load_variants_map(halls_path: Path) -> dict[str, str]:
