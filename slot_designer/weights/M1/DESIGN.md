@@ -163,9 +163,11 @@ Mode 7 = mode 1 (frozen, 1.00x). Mode 2/5 monotonic ≥ mode 1.
 - Mode 7 派生 lock: **MODE7-LOCK / MODE7-CUT / TOP-PATH**
 - 跨 mode signature: **SIGNATURE**
 - Mode 5 派生 lock (2026-04-28): **MODE5-BASE-LOCK** — base 权重 byte-identical to mode 2
-- 反 pareto trap (2026-04-28): **R-COLLAPSE** — 每 mode max/min reel 总 weight ≤ 3.0×
 - 物理 strip 不变量 (2026-04-28): **ALTERNATION** — 每 reel Blank/非 Blank 严格交替（universal rule per memory）
 - Reel 心理不对称 (2026-04-28): **REEL-ASYMMETRY** — R1 Blank ≤ R3 Blank + R1 top-prize ≥ R3 top-prize (Strickland/Reid/Harrigan 文献支持，lucky modes 容差宽)
+- Brand 一致性 (2026-04-28, 替代 R-COLLAPSE): **BRAND-UNIFORMITY** — 顶奖家族 (Diamond/Seven) 跨 reel marginal ratio ≤ 2.0× (standard) / 2.5× (lucky)，或 abs spread ≤ 2pp（稀有 symbol escape valve）。直接锁玩家可见量（per-reel marginal），不像 R-COLLAPSE 用 reel-total-weight 间接 metric
+
+**HIT band 注**：M1 是 1-line classic，mode 1 hit_hi=22% 是该 paylines 数的 reference。多线机台需重新校准 — paylines 越多 hit band 越右移 (5-9 line ≈ 25-35%, 25-50 line ≈ 30-45%, megaways ≈ 40-60%)。详见 [`memory/project_slot_designer_hit_rate_deviation.md`](../../memory/project_slot_designer_hit_rate_deviation.md)。
 
 ### 5.3 文件
 

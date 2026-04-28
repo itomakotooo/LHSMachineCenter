@@ -181,22 +181,25 @@ verify 类别建议：`LUCKY-MONO` + cross-mode invariant checks。
 
 - **中间 reels（R2 in 3-reel / R2/R3/R4 in 5-reel）gradient**：从 R1 winning visibility 到末 reel 角色之间渐变。不强制具体方向，但应连续过渡（不能 R1 高 → R2 突低 → R3 高）
 
-### 12.2 具体约束（per-mode hard rule）
+### 12.2 约束方向（universal，绝对数字写在每机台 verify_<M>_design.py）
 
 3-reel:
-- **R1 Blank 率 ≤ R3 Blank 率**（standard mode ≥ 3pp tolerance, lucky mode 8pp）
-- **R1 顶奖家族密度 ≥ R3 顶奖家族密度**（≥ 1pp tolerance）
+- **R1 Blank 率 ≤ R3 Blank 率** — 方向锁，容差由该机台原型 + 玩家可见阈值推
+- **R1 顶奖家族密度 ≥ R3 顶奖家族密度** — 方向锁
 - 例外：trigger 锁 R3 时，trigger 符号不算"顶奖"——按非 trigger 的 top-prize 算
 
 5-reel:
-- **R1 Blank 率 ≤ R5 Blank 率**（同方向，容差按机台调）
+- **R1 Blank 率 ≤ R5 Blank 率**（同方向）
 - **R1 顶奖家族密度 ≥ R5 顶奖家族密度**（除 trigger 符号）
-- **R2/R3/R4 中间 gradient 连续**：max-of-middle Blank − min-of-middle Blank ≤ 中间过渡幅度（避免突跳）
+- **R2/R3/R4 中间 gradient 连续**：max-of-middle Blank − min-of-middle Blank 应小（具体值机台特定）
 - **5-reel 特有：R5 是 trigger reel 的概率高**——onboarding 时按 archetype 决定 R5 是 (a) 还是 (b) role
+
+> **重要 — universal 哲学只锁方向，不锁绝对数字**（per `project_slot_designer_axiom_experience_is_soul`）：
+> 上面"R1 ≤ R3 Blank"是 universal。具体容差 ("3pp"/"8pp"/"X×")**不写在这里**——每台机在自己的 `verify_<M>_design.py` 里配置，依据：(a) 该机台 mode 1 baseline 实测自然 ratio + buffer；(b) 玩家可见阈值（≥ 5pp 才显著）；(c) 机台原型 PAR sheet。**不要 cross-machine hardcode 数字** — 这是 [`feedback_adversarial_self_review.md`](../../memory/feedback_adversarial_self_review.md) 警惕的 "picked threshold / moving goalposts" 反例。M1 实测举例见 [`weights/M1/DESIGN.md`](weights/M1/DESIGN.md) §6。
 
 ### 12.3 例外 / nuance
 
-- **Lucky modes (RTP > 200%)**: 容差宽 (5-10pp Blank, 2-3pp top-prize)。原因：高 RTP → 玩家持续中奖 → near-miss 心理弱化，反方向略漂可接受
+- **Lucky modes (RTP > 200%)**: 容差应宽（高 RTP 削弱 near-miss 心理；具体宽多少跟机台 paytable 结构相关，不写绝对值）
 - **Cluster slot / pay-anywhere slot**: 此规则不直接适用 (没有 reel-by-reel 顺序揭示概念)。该用本规则的扩展：cluster 中心 vs 边缘的对称性
 - **Cascading slot (tumble/avalanche)**: 第一波下落用此规则；后续 cascades 不适用 (玩家已 committed)
 

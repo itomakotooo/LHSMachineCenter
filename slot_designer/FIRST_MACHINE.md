@@ -196,7 +196,7 @@ Mode 1 是所有 mode 的起点：
 字段：
 - `rtp_pct`: 42.75（或按 base:feature split 调，feature 机台 ~45pp，base-only 机台 95pp）
 - `bucket_rate`: 按上面 4 档设计，Low/Mid 为主，High 少，Top 极少。数字参考 M1/M15 类似机台 + 业界 classic 1-line 基准（`reference_classic_slot_rtp_distribution.md`）— 但**不抄上游采的 rawdata 分布**
-- `hit_rate`: 13-15% 带宽（mode 1 reference；阶段 1 研究支撑这个选择）
+- `hit_rate`: **跟机台 paylines 数强相关**（数学上 hit ≈ 1 − ∏(1 − P(line wins))）。1-line classic ≈ 12-20%，5-9 line video ≈ 20-30%，25-50 line ≈ 30-45%，243-line/Megaways ≈ 40-60%。M1 (1-line) 是 13-15% — **不要 cross-machine 抄这个数字**，新机台从业界同类 PAR sheet 推 baseline。详见 [`project_slot_designer_hit_rate_deviation.md`](../memory/project_slot_designer_hit_rate_deviation.md)
 - `_design_constraints`: 记总 RTP target / split / trigger / 情感设计意图 等
 - **`_archetype` + player-experience direct tune**（2026-04-25 升级 — 作废前两版"per-position pattern"和"family-scale ratio lock"，见 `project_slot_designer_axiom_experience_is_soul`）：
   - Reel_strips.json 带 `_archetype` block 记录设计**灵感**来源（如 `"source": "https://wizardofodds.com/games/slots/hot-roll/ — IGT Triple Double Diamond reverse-engineered"`, `"confidence": "medium-high"`, `"modifications_from_archetype": "..."`)

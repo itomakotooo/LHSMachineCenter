@@ -177,11 +177,27 @@ WILD_DRIFT_STANDARD_PP = 3.0  # mode 1 vs mode 7 absolute pp difference cap
 # (R-stuffing) and exterminates a base family on that reel.
 MODE5_BASE_FAMILIES = ("Cherry", "Bar1", "Bar2", "Bar3", "Blank")
 
-# R-collapse guard: max/min reel total weight ratio across reels per mode.
-# Mode 2's natural ratio is ~2.5x (R3 lighter); mode 5 derivation must not
-# worsen substantially. Cap at 3.0x — past that, one reel is acting as a
-# different "physical" reel from the others (visual/UX inconsistency).
-PER_REEL_TOTAL_WEIGHT_RATIO_CAP = 3.0
+# Brand uniformity: top-prize family (Diamond/Seven for M1) cross-reel
+# marginal ratio cap. Player perceives consistent brand only if top
+# symbols appear roughly equally on all 3 reels. This mirrors tune_m1.py's
+# uniformity_ratio_cap (= 2.0 standard / 2.5 lucky) — verify is the dual
+# of tune cost.
+#
+# Why this replaces "R-COLLAPSE absolute reel-total-weight cap":
+#   - Player doesn't see total weight (it's a virtual-reel granularity, not
+#     a visual property). Player sees per-(symbol, reel) marginals.
+#   - Direct check on top-prize cross-reel marginal ratio is 1 step closer
+#     to perception than reel-total-weight ratio.
+#   - 2.0/2.5 is still picked but expresses a direct "brand consistency"
+#     goal (top symbols not concentrated on one reel) — not an indirect
+#     proxy. The cap value remains M1-specific (other machines re-derive).
+BRAND_UNIFORMITY_RATIO_CAP_STANDARD = 2.0   # mode 1, mode 7 — top-prize cross-reel max/min
+BRAND_UNIFORMITY_RATIO_CAP_LUCKY = 2.5      # mode 2, mode 5 — relaxed for lucky variance
+# Sparse-symbol escape valve: ratio metric is over-sensitive when absolute
+# marginals are tiny (e.g., Diamond2 ≈ 1-2% — 1pp spread inflates ratio
+# 2x). Player visibility threshold: ≤ 2pp spread is below perception.
+# Pass if EITHER ratio ≤ cap OR abs spread ≤ this floor.
+BRAND_UNIFORMITY_ABS_SPREAD_FLOOR_PP = 0.02
 
 # Strip alternation: per project_slot_designer_strips_weights_layout.md
 # (universal rule, Harrigan near-miss band玩家心理), Blank / non-Blank must
@@ -455,20 +471,39 @@ def run_cross_mode_checks(state_by_mode):
             "非 feature 机台 mode 5 base 权重必须 = mode 2; 仅 top-bucket 调",
         ))
 
-    # R-COLLAPSE: per-reel total weight ratio cap. One reel collapsing far
-    # below the others (max/min > cap) signals tuner pareto trap.
+    # BRAND-UNIFORMITY: top-prize family cross-reel marginal ratio cap.
+    # Direct check on player-visible quantity (per-(symbol, reel) marginal),
+    # mirrors tune_m1.py uniformity_ratio_cap. Catches tuner pareto-stuffing
+    # top symbols onto one reel (typical R-stuffing failure mode).
     for mode in sorted(state_by_mode.keys()):
-        m_w = state_by_mode[mode]["weights_doc"]["weights"]
-        per_reel_total = [sum(reel) for reel in m_w]
-        ratio = max(per_reel_total) / min(per_reel_total) if min(per_reel_total) > 0 else float("inf")
-        ok = ratio <= PER_REEL_TOTAL_WEIGHT_RATIO_CAP
-        checks.append(make_check(
-            "R-COLLAPSE", mode,
-            f"per-reel total weight R1={per_reel_total[0]} R2={per_reel_total[1]} "
-            f"R3={per_reel_total[2]} (max/min={ratio:.2f}× vs cap {PER_REEL_TOTAL_WEIGHT_RATIO_CAP:.1f}×)",
-            ok,
-            "防 R-stuffing pareto trap (一条 reel 总 weight 暴落 = 该 reel 上某 family 灭绝)",
-        ))
+        densities = state_by_mode[mode]["densities"]
+        is_lucky = mode in (2, 5)
+        cap = (BRAND_UNIFORMITY_RATIO_CAP_LUCKY if is_lucky
+               else BRAND_UNIFORMITY_RATIO_CAP_STANDARD)
+        for fam in TOP_PRIZE_FAMILIES:
+            per_reel = [densities.get((fam, r), 0.0) for r in range(len(strips_reels))]
+            mn, mx = min(per_reel), max(per_reel)
+            abs_spread = mx - mn
+            if mn <= 1e-6:
+                # Family extinct on at least one reel — flag as RED
+                ok = False
+                ratio_str = "∞ (extinct on ≥1 reel)"
+            else:
+                ratio = mx / mn
+                # Dual criterion: pass if EITHER ratio within cap OR absolute
+                # spread below player-visibility threshold (≤ 2pp). Ratio
+                # alone is over-sensitive for sparse symbols (Diamond2 ≈ 1-2%
+                # → 1pp spread looks like ratio 2x but is invisible to player).
+                ok = (ratio <= cap) or (abs_spread <= BRAND_UNIFORMITY_ABS_SPREAD_FLOOR_PP)
+                ratio_str = f"{ratio:.2f}×"
+            per_reel_str = " ".join(f"R{i+1}={d:.2%}" for i, d in enumerate(per_reel))
+            checks.append(make_check(
+                "BRAND-UNIFORMITY", mode,
+                f"{fam} cross-reel ({per_reel_str}) ratio {ratio_str} vs cap {cap:.1f}× "
+                f"(abs spread {abs_spread:.2%} vs floor {BRAND_UNIFORMITY_ABS_SPREAD_FLOOR_PP:.0%})",
+                ok,
+                "顶奖符号跨 reel 应近似一致 (brand consistency); ratio cap 或 abs spread 任一通过即 OK",
+            ))
 
     # REEL-ASYMMETRY: per project_slot_designer_reel_asymmetry.md universal rule.
     # R1 should have lower Blank rate + higher top-prize density than the last
