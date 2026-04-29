@@ -122,35 +122,35 @@ Post-tune v4.5 (2026-04-29) 实际 analytic 数字（`python slot_designer/scrip
 - m5 (~4.2k spins) — super-lucky，半小时玩可期 — 1000× **session-level 体验**
 
 **REEL-ASYMMETRY direction**（universal §12，v4 新验证 / v4.5 mode 7 数值微调）:
-- Mode 1: R1 blank 24.59% < R3 29.37% ✓ / R1 top 11.82% > R3 11.19% ✓
+- Mode 1: R1 blank 21.82% < R3 29.37% ✓ / R1 top 11.82% > R3 11.19% ✓
 - Mode 2: R1 blank 9.09% < R3 9.68% ✓ / R1 top 15.15% > R3 12.90% ✓
 - Mode 5: R1 blank 9.09% < R3 9.68% ✓ / R1 top 15.15% > R3 12.90% ✓ (inherited from m2)
 - Mode 7: R1 blank 37.17% < R3 38.03% ✓ / R1 top 11.50% > R3 11.27% ✓ (v4.5 with 顶奖 freq match)
 
 ---
 
-## 3. Bucket 分布对比（per-mode per-bucket hit rate %）
+## 3. Bucket 分布对比（per-mode per-bucket hit rate %, v4.5 live data 2026-04-29）
 
 | Bucket | Mode 1 | Mode 2 | Mode 5 | Mode 7 | 业务含义 |
 |---|---|---|---|---|---|
-| ge1_lt5 | 8.03% | 11.02% | 8.21% | 3.95% | 小 bar 3-match / mixed bars / wild alone |
-| ge5_lt10 | 3.13% | 4.73% | 4.05% | 2.26% | 3-1bar-with-boost / minor alone / mixed-with-boost |
-| ge10_lt20 | 3.66% | 5.18% | 6.51% | 3.80% | 3-bar / mini-boosted / major alone |
-| ge20_lt50 | 0.07% | 0.15% | 0.27% | 0.07% | 3-bar-with-minor / major-boosted bars |
-| ge50_lt100 | 0.016% | 0.019% | 0.024% | 0.022% | 3-high7 / minor-boosted high7 |
-| ge100_lt200 | 0.26% | 1.86% | 3.45% | 0.26% | grand-alone (pay 8) / pure-wild+major (pay 102) |
-| ge200_lt500 | 0.003% | 0.035% | 0.123% | 0.003% | minor-boosted 3-high7 / 3-bar × grand |
-| ge500_lt1000 | 0.0007% | 0.004% | 0.010% | 0.001% | 3-high7 × minor / 3-bar × grand |
-| ge1000_lt5000 | 0.0004% | 0.002% | 0.004% | 0.0004% | **TOP: pay_id 1 × grand = 1000×** |
+| ge1_lt5 | 15.53% | 18.38% | 18.19% | 13.29% | 小 bar 3-match / mixed bars / wild alone |
+| ge5_lt10 | 3.00% | 7.50% | 7.42% | 3.03% | 3-1bar-with-boost / minor alone / mixed-with-boost |
+| ge10_lt20 | 2.05% | 6.09% | 6.03% | 2.04% | 3-bar / mini-boosted / major alone |
+| ge20_lt50 | 0.53% | 2.43% | 2.41% | 0.40% | 3-bar-with-minor / major-boosted bars |
+| ge50_lt100 | 0.15% | 0.67% | 0.67% | 0.12% | 3-high7 / minor-boosted high7 |
+| ge100_lt200 | 0.09% | 0.25% | 0.98% | 0.09% | grand-alone (pay 8) / pure-wild+major (pay 102) |
+| ge200_lt500 | 0.0081% | 0.04% | 0.21% | 0.0061% | minor-boosted 3-high7 / 3-bar × grand |
+| ge500_lt1000 | 0.0047% | 0.02% | 0.12% | 0.0032% | 3-high7 × minor / 3-bar × grand |
+| ge1000_lt5000 | 0.0009% | 0.0033% | 0.02% | 0.0009% | **TOP: pay_id 1 × grand = 1000×** |
 
-**Aggregate Low/Mid/High/Top**：
+**Aggregate Low/Mid/High/Top**（v4.5 live data）：
 
 | Tier | Mode 1 | Mode 2 | Mode 5 | Mode 7 | 叙事 |
 |---|---|---|---|---|---|
-| **Low** (1-10×) | 11.16% | 15.75% | 12.26% | **6.21%** | m7: -45% 绝对 vs m1 |
-| **Mid** (10-50×) | 3.72% | 5.32% | 6.78% | **3.87%** | m7 ≈ m1 (不动) |
-| **High** (50-500×) | 0.28% | 1.91% | **3.60%** | **0.28%** | m5 核心 buff ×1.88; m7 ≈ m1 |
-| **Top** (500-1000×) | 0.0011% | 0.0065% | **0.0138%** | 0.0016% | m5 顶奖从 lifetime 降到 session 级 |
+| **Low** (1-10×) | 18.53% | 25.88% | 25.61% | **16.32%** | m7 < m1 by 2.21pp（Low 砍 cubic 体现）|
+| **Mid** (10-50×) | 2.58% | 8.53% | 8.44% | **2.44%** | m7 ≈ m1（design intent）|
+| **High** (50-500×) | 0.25% | 0.96% | **1.85%** | **0.21%** | m5 核心 buff ×7.4; m7 ≈ m1 |
+| **Top** (500-1000×) | 0.0056% | 0.0230% | **0.1369%** | **0.0041%** | m5 顶奖 ×24 vs m1（super-lucky session 体验）|
 
 ---
 
