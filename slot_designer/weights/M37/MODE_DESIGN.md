@@ -3,12 +3,18 @@
 > **机台 origin**：M37 是 **LHS 原创机台**（不抄商业机台），chassis 参考 classic 3-reel 1-payline (RWB / Blazing Sevens 同代)，符号机制特征 = wild on outer + 倍率 wild on middle (mini/minor/major/grand)。完整 archetype 见 `reel_strips.json _archetype` block + [`DESIGN.md`](DESIGN.md) §1。
 > **上游**：[`DESIGN.md`](DESIGN.md)（原创设计 + 业界 chassis 参考 + per-tier 玩家感性叙事）；`project_slot_designer.md (§C mode RTP)`（跨机台 mode RTP 规则）；`project_slot_designer.md (§D hit rate)`（派生 mode hit rate 带宽规则）
 > **下游**：每 mode `mode_<N>/weights.json`（实现层）；`M37_weights_reference.csv`（策划速查表）
-> **状态**：2026-04-29 **v4 shipped**（mode 7 REEL-ASYMMETRY direction 修正 + 22 类 verify 全 GREEN）
+> **状态**：2026-04-29 **v4.5 shipped**（mode 7 顶奖 freq match + REEL-ASYMMETRY direction 修正 + 22 类 verify 全 GREEN）
+> **v4.5 关键改进** vs v4:
+> - **Mode 7 顶奖 freq match**: pre-fix pay_id 1 (高7-3) ratio m7/m1 = 0.845x（在 verify [0.70, 1.55] cap 内但 design "中/大/顶奖击中率不变" intent 偏离 15%）→ post-fix ratio 1.000 ✓ exact match
+> - **1000× top jackpot freq**: 1 in 99,439 (mode 7) vs 1 in 99,447 (mode 1) → ratio 1.0001 ✓ design 实现
+> - **Tune 加 `top_jackpot_freq_target_ref` cost**: 跟 frozen big-win weights 协作 — frozen 解决 numerator，新 cost 拉 R1/R3 total 解决 denominator → P(top) 整体锁定
+> - **根因**: frozen big-win weights 不保证 frozen FREQUENCY（freq = density product，需要 R1/R3 total 也匹配）
+
 > **v4 关键改进** vs v3:
 > - **新增 6 类 universal verify categories**（per `slot_designer/DESIGN_PHILOSOPHY.md` §12-§15）：ALTERNATION / BLANK-FLANK-DIVERSITY / VISUAL-RHYTHM / REEL-ASYMMETRY / WINDOW-VISIBILITY / BRAND-UNIFORMITY
 > - **Mode 7 REEL-ASYMMETRY 方向修正**: pre-fix R1 blank > R3 blank by 0.9pp + R1 top < R3 top by 0.71pp（在 verify 3pp/1pp tol 内但 design 反方向）→ post-fix R1 blank < R3 blank by 5.74pp + R1 top > R3 top by 0.95pp ✓
-> - **Tune 加 reel_asymmetry penalty**（mode 7 only — 其他 mode direction 自然正确）：tol 0pp + strength 800，强制 mode 7 inheritance 后仍维持 universal §12 方向
-> - **`scripts/verify_m37_design.py`** 22 类硬验证 GREEN（同 v3 11 类 + 6 universal + 5 archetype/hierarchy/blank-cap）
+> - **Tune 加 reel_asymmetry penalty**（mode 7 only — 其他 mode direction 自然正确）：tol 0pp + strength 800
+> - **`scripts/verify_m37_design.py`** 22 类硬验证 GREEN
 
 > **v3 关键改进** vs v1（保留作 history）：
 > - **goal-oriented soft penalty cost** 替原 family-scale frozen approach（`scripts/tune_m37.py` v3）
@@ -79,37 +85,47 @@ Reels 1+3 的 wild **紧邻 high7**（pos 1=wild, pos 3=high7）→ window 经�
 
 > 策划速查：打开 `M37_weights_reference.csv` Section B 看 4 mode 并排权重（CSV 可贴 Excel）。Source of truth 仍是 `mode_<N>/weights.json`。
 
-Post-tune v4 (2026-04-29) 实际 analytic 数字（`python slot_designer/scripts/verify_m37_design.py`）：
+Post-tune v4.5 (2026-04-29) 实际 analytic 数字（`python slot_designer/scripts/verify_m37_design.py`）：
 
 | Mode | RTP | Hit rate | Per-hit avg | CV | 顶奖 1000× (1 in X spins) |
 |---|---|---|---|---|---|
 | 1 | **94.49%** | 21.37% | 4.42× | 7.55 | ~99k |
 | 2 | **285.44%** | 35.38% | 8.07× | 4.88 | ~25k |
 | 5 | **481.02%** | 36.04% | 13.35× | 6.21 | ~4.2k |
-| 7 | **84.84%** | 18.17% | 4.67× | 7.67 | ~118k |
+| 7 | **85.21%** | 18.98% | 4.49× | 7.69 | **~99k (= mode 1)** |
 
-**关键变化**（v4 — 同 v3 mode 1/2/5；mode 7 REEL-ASYMMETRY direction 修正）：
-- Mode 2 vs 1：hit ×1.66，per-hit ×1.83 → 整体体验：**打击频率升 + 每 win 更厚**
-- Mode 5 vs 2：hit ×1.02，per-hit ×1.65 → 整体体验：**打击频率近似 + 每 win 大涨**（顶奖 frequent 的 super-lucky）
-- Mode 7 vs 1：hit ×0.85，per-hit ×1.06 → 整体体验：**打击稍稀（bar 砍）+ per-hit 微升**
+**关键变化**（v4.5 — 同 v3 mode 1/2/5；mode 7 顶奖 freq match + REEL-ASYMMETRY direction 修正）：
+- Mode 2 vs 1：hit ×1.66，per-hit ×1.83 → **打击频率升 + 每 win 更厚**
+- Mode 5 vs 2：hit ×1.02，per-hit ×1.65 → **打击频率近似 + 每 win 大涨**（顶奖 frequent 的 super-lucky）
+- Mode 7 vs 1：hit ×0.89，per-hit ×1.02 → **打击稍稀（bar 砍）+ per-hit 几乎同 mode 1**
+
+**Per-pay m7/m1 ratio table** (design intent "中/大/顶奖击中率不变" verification):
+
+| pay_id | tier | m1 (1 in N) | m7 (1 in N) | ratio | 设计意图 |
+|---|---|---|---|---|---|
+| 1 (高7-3) | BIG | 1 in 508 | 1 in 508 | **1.000** | 顶奖路径不动 ✓ |
+| 6 (high7+7bar) | BIG | 1 in 160 | 1 in 216 | 0.742 | 含 cut 的 7bar，部分 drift acceptable |
+| 8 (grand alone) | BIG | 1 in 2497 | 1 in 1911 | 1.307 | 升 — bar 砍 → grand alone 更显眼 |
+| 102/103/104 (wild_amp) | OTH | 1 in 19-43k | 1 in 19-43k | **1.000** | 全 frozen → 不动 ✓ |
+| 2-5, 7 (Bar) | BAR | 1 in 12-306 | 1 in 19-468 | 0.61-0.76 | "砍小奖" cut as design ✓ |
 
 **big-win 频率（pay_id 1+8+102+103+104 sum）**：
 - Mode 1: 1 in 403 spins
-- Mode 7: 1 in 436 spins (~8% rarer, bar 砍 → big-win sum 略低)
+- Mode 7: 1 in 376 spins (~7% MORE frequent — 顶奖 freq match + grand alone rises)
 - Mode 2: 1 in 112 spins (×3.6 vs m1)
-- Mode 5: 1 in 84 spins (×4.8 vs m1, ×1.33 vs m2 — super-lucky 核心特征 = 顶奖 frequent，per-pay big-win 不一定更频繁)
+- Mode 5: 1 in 84 spins (×4.8 vs m1, ×1.33 vs m2)
 
 **顶奖 1000× 阶梯**（玩家叙事）：
 - m1 (~99k spins) — 1 周连续玩 1 小时/天 才有 1 次的级别（rare，"梦"）
-- m7 (~118k spins) — 比 m1 略稀 (mode 7 = "运气差" 时段，不是 jackpot mode)
+- m7 (~99k spins) — **跟 mode 1 一样**（design intent: 顶奖击中率不变）
 - m2 (~25k spins) — lucky tier，两小时玩可期，仍稀有
 - m5 (~4.2k spins) — super-lucky，半小时玩可期 — 1000× **session-level 体验**
 
-**REEL-ASYMMETRY direction**（universal §12，v4 新验证）:
+**REEL-ASYMMETRY direction**（universal §12，v4 新验证 / v4.5 mode 7 数值微调）:
 - Mode 1: R1 blank 24.59% < R3 29.37% ✓ / R1 top 11.82% > R3 11.19% ✓
 - Mode 2: R1 blank 9.09% < R3 9.68% ✓ / R1 top 15.15% > R3 12.90% ✓
 - Mode 5: R1 blank 9.09% < R3 9.68% ✓ / R1 top 15.15% > R3 12.90% ✓ (inherited from m2)
-- Mode 7: R1 blank 35.00% < R3 40.74% ✓ / R1 top 10.83% > R3 9.88% ✓ (v4 fixed via tune asymmetry penalty)
+- Mode 7: R1 blank 37.17% < R3 38.03% ✓ / R1 top 11.50% > R3 11.27% ✓ (v4.5 with 顶奖 freq match)
 
 ---
 
