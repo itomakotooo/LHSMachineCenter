@@ -3,14 +3,19 @@
 > **机台 origin**：M37 是 **LHS 原创机台**（不抄商业机台），chassis 参考 classic 3-reel 1-payline (RWB / Blazing Sevens 同代)，符号机制特征 = wild on outer + 倍率 wild on middle (mini/minor/major/grand)。完整 archetype 见 `reel_strips.json _archetype` block + [`DESIGN.md`](DESIGN.md) §1。
 > **上游**：[`DESIGN.md`](DESIGN.md)（原创设计 + 业界 chassis 参考 + per-tier 玩家感性叙事）；`project_slot_designer_mode_rtp_invariants.md`（跨机台 mode RTP 规则）；`project_slot_designer_hit_rate_deviation.md`（派生 mode hit rate 带宽规则）
 > **下游**：每 mode `mode_<N>/weights.json`（实现层）；`M37_weights_reference.csv`（策划速查表）
-> **状态**：2026-04-27 设计稿 **v3 shipped**（4 mode re-tuned + verified all-green）
-> **v3 关键改进** vs v1：
+> **状态**：2026-04-29 **v4 shipped**（mode 7 REEL-ASYMMETRY direction 修正 + 22 类 verify 全 GREEN）
+> **v4 关键改进** vs v3:
+> - **新增 6 类 universal verify categories**（per `slot_designer/DESIGN_PHILOSOPHY.md` §12-§15）：ALTERNATION / BLANK-FLANK-DIVERSITY / VISUAL-RHYTHM / REEL-ASYMMETRY / WINDOW-VISIBILITY / BRAND-UNIFORMITY
+> - **Mode 7 REEL-ASYMMETRY 方向修正**: pre-fix R1 blank > R3 blank by 0.9pp + R1 top < R3 top by 0.71pp（在 verify 3pp/1pp tol 内但 design 反方向）→ post-fix R1 blank < R3 blank by 5.74pp + R1 top > R3 top by 0.95pp ✓
+> - **Tune 加 reel_asymmetry penalty**（mode 7 only — 其他 mode direction 自然正确）：tol 0pp + strength 800，强制 mode 7 inheritance 后仍维持 universal §12 方向
+> - **`scripts/verify_m37_design.py`** 22 类硬验证 GREEN（同 v3 11 类 + 6 universal + 5 archetype/hierarchy/blank-cap）
+
+> **v3 关键改进** vs v1（保留作 history）：
 > - **goal-oriented soft penalty cost** 替原 family-scale frozen approach（`scripts/tune_m37.py` v3）
-> - **Mode 7 不再 frozen big-win weights** — 用 [m1×0.80, m1×1.10] 弹性带 + bar [m1×0.40, m1×0.85] 大切，blank floored ≥ m1（防止 frozen 下 R2 total 缩 → grand 密度膨胀 → RTP 反升）
+> - **Mode 7 frozen big-win weights** — high7 + wild + boosters frozen = mode 1，bar [m1×0.72, m1×0.95] uniform cut，blank floored ≥ m1
 > - **Mode 2 加 bar 上限 [m1×1.6]** — 防优化器把 bars 拉爆 → hit rate 41% 失控
-> - **Mode 5 用 m2 base + 全家 scale-up** — bar ≥ m2, big-win ≥ m2×1.3, booster ≥ m2×1.5, blank ≥ m2×0.6
+> - **Mode 5 = m2 base + grand boost** — 全家 frozen except grand（≥ max(6, m2×6)），preserve hit shape + 顶奖密集
 > - **per-pay frequency 强制约束**（pay_freq_caps + top_jackpot_min_spins）防 grand alone / 1000× 顶奖过频
-> - **`scripts/verify_m37_design.py`** 11 类硬验证 GREEN（RTP/HIT/WILD/BOOSTER/SHARE/DENSITY/BLANK-VAR/BASE-CV/MODE7-BIGWIN/MODE7-CUT/LUCKY-MONO）
 
 ---
 
@@ -74,31 +79,37 @@ Reels 1+3 的 wild **紧邻 high7**（pos 1=wild, pos 3=high7）→ window 经�
 
 > 策划速查：打开 `M37_weights_reference.csv` Section B 看 4 mode 并排权重（CSV 可贴 Excel）。Source of truth 仍是 `mode_<N>/weights.json`。
 
-Post-tune v3 (2026-04-27) 实际 analytic 数字（`python slot_designer/scripts/verify_m37_design.py`）：
+Post-tune v4 (2026-04-29) 实际 analytic 数字（`python slot_designer/scripts/verify_m37_design.py`）：
 
 | Mode | RTP | Hit rate | Per-hit avg | CV | 顶奖 1000× (1 in X spins) |
 |---|---|---|---|---|---|
-| 1 | **94.22%** | 20.68% | 4.56× | 8.94 | ~62k |
-| 2 | **293.93%** | 27.10% | 10.85× | 4.73 | ~25k |
-| 5 | **497.90%** | 37.08% | 13.43× | 3.65 | ~10k |
-| 7 | **84.92%** | 16.81% | 5.05× | 9.48 | ~70k |
+| 1 | **94.49%** | 21.37% | 4.42× | 7.55 | ~99k |
+| 2 | **285.44%** | 35.38% | 8.07× | 4.88 | ~25k |
+| 5 | **481.02%** | 36.04% | 13.35× | 6.21 | ~4.2k |
+| 7 | **84.84%** | 18.17% | 4.67× | 7.67 | ~118k |
 
-**关键变化**（v3 player-experience direct）：
-- Mode 2 vs 1：hit ×1.31，per-hit ×2.38 → 整体体验：**打击频率升 + 每 win 更厚**
-- Mode 5 vs 2：hit ×1.37，per-hit ×1.24 → 整体体验：**打击频率明显升 + 每 win 也升**（全方位 super-lucky）
-- Mode 7 vs 1：hit ×0.81，per-hit ×1.11 → 整体体验：**打击稍稀（小奖少了），每 win 略厚**
+**关键变化**（v4 — 同 v3 mode 1/2/5；mode 7 REEL-ASYMMETRY direction 修正）：
+- Mode 2 vs 1：hit ×1.66，per-hit ×1.83 → 整体体验：**打击频率升 + 每 win 更厚**
+- Mode 5 vs 2：hit ×1.02，per-hit ×1.65 → 整体体验：**打击频率近似 + 每 win 大涨**（顶奖 frequent 的 super-lucky）
+- Mode 7 vs 1：hit ×0.85，per-hit ×1.06 → 整体体验：**打击稍稀（bar 砍）+ per-hit 微升**
 
 **big-win 频率（pay_id 1+8+102+103+104 sum）**：
-- Mode 1: 1 in 320 spins
-- Mode 7: 1 in 388 spins (略减，bar 切的副作用)
-- Mode 2: 1 in 124 spins (×2.6 vs m1)
-- Mode 5: 1 in 37 spins (×8.7 vs m1, ×3.3 vs m2 — super-lucky 核心特征)
+- Mode 1: 1 in 403 spins
+- Mode 7: 1 in 436 spins (~8% rarer, bar 砍 → big-win sum 略低)
+- Mode 2: 1 in 112 spins (×3.6 vs m1)
+- Mode 5: 1 in 84 spins (×4.8 vs m1, ×1.33 vs m2 — super-lucky 核心特征 = 顶奖 frequent，per-pay big-win 不一定更频繁)
 
 **顶奖 1000× 阶梯**（玩家叙事）：
-- m1 (~62k spins) — 1 周连续玩 1 小时/天 才有 1 次的级别（rare，"梦"）
-- m7 (~70k spins) — 比 m1 略稀（mode 7 不是 jackpot 时段）
-- m2 (~25k spins) — lucky tier，两小时玩一次还是有可能撞上的级别
-- m5 (~10k spins) — super-lucky，半小时玩 grand-on-screen 频率明显，1000× session 内可期
+- m1 (~99k spins) — 1 周连续玩 1 小时/天 才有 1 次的级别（rare，"梦"）
+- m7 (~118k spins) — 比 m1 略稀 (mode 7 = "运气差" 时段，不是 jackpot mode)
+- m2 (~25k spins) — lucky tier，两小时玩可期，仍稀有
+- m5 (~4.2k spins) — super-lucky，半小时玩可期 — 1000× **session-level 体验**
+
+**REEL-ASYMMETRY direction**（universal §12，v4 新验证）:
+- Mode 1: R1 blank 24.59% < R3 29.37% ✓ / R1 top 11.82% > R3 11.19% ✓
+- Mode 2: R1 blank 9.09% < R3 9.68% ✓ / R1 top 15.15% > R3 12.90% ✓
+- Mode 5: R1 blank 9.09% < R3 9.68% ✓ / R1 top 15.15% > R3 12.90% ✓ (inherited from m2)
+- Mode 7: R1 blank 35.00% < R3 40.74% ✓ / R1 top 10.83% > R3 9.88% ✓ (v4 fixed via tune asymmetry penalty)
 
 ---
 

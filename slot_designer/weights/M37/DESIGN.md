@@ -190,7 +190,120 @@
 - 不需要 feature engine（M37 无 feature）
 - 不需要改 emitter（只 emit ST=1）
 
-## 10. 研究参考
+## 10. Verify framework — 22 categories (universal + M37-specific)
+
+M37 verify (`slot_designer/scripts/verify_m37_design.py`) enforces 22
+categories. Per `WORKFLOW.md`, GREEN is necessary but not sufficient — must
+dump per-mode numbers + adversarial review before commit.
+
+### Universal categories (apply to all line-based slots)
+
+Per `slot_designer/DESIGN_PHILOSOPHY.md` §12-§15 + memory references:
+
+| Category | Universal rule | M37-specific value |
+|---|---|---|
+| ALTERNATION | blank/non-blank strict alternation per reel | 18 + 18 on 36-stop strip |
+| BLANK-FLANK-DIVERSITY | no X-blank-X (universal §13) | hard zero violations |
+| VISUAL-RHYTHM | same-symbol cyclic spacing ≥ N stops | N=4 (matches archetype `_near_miss_design` R2 high7 17, 21) |
+| REEL-ASYMMETRY | R1 ≤ R3 blank, R1 ≥ R3 top-prize (universal §12) | R2 excluded (booster reel structurally distinct) |
+| WINDOW-VISIBILITY | top-prize PWDF visibility ≥ floor | high7 ≥ 48% (3-instance natural baseline 50-55%) |
+| BRAND-UNIFORMITY | top-prize cross-reel ratio ≤ cap | high7 + wild on R1 vs R3 only (R2 booster reel excluded) |
+
+### M37-specific categories (machine archetype-driven)
+
+M37 has the booster mechanism (mini/minor/major/grand on R2 only) +
+asymmetric wild placement (R1+R3 only). These categories enforce M37's
+unique design constraints that universal categories don't cover:
+
+| Category | Rule |
+|---|---|
+| RTP / HIT | Total RTP + hit rate per mode |
+| WILD | Wild on payline P(≥1) within band |
+| BOOSTER | Booster on R2 marginal (brand) within band |
+| SHARE | Per-family RTP share within band |
+| DENSITY | Per-family per-reel density visible |
+| BLANK-VAR | Per-reel blank balance ratio (R2 booster reel structurally blank-heavy) |
+| BASE-CV | Mode 1 CV ≤ ceiling (M37 has 100×/1000× pays inflating CV) |
+| BAR-HIER | Bar tier 倒金字塔 (1bar > 2bar > 3bar > 7bar payout-frequency) |
+| BOOSTER-HIER | Booster tier 倒金字塔 R2: mini > minor > major > grand |
+| BLANK-CAP | Blank weight not pinned at WEIGHT_BOUNDS upper (≥ 5 weight headroom) |
+| MODE7-BIGWIN | Mode 7 high7 + wild + boosters frozen weights = mode 1 |
+| MODE7-CUT | Mode 7 bar tier RTP cut from mode 1 ≥ MIN_CUT_PP |
+| MODE7-TIER | Mode 7 per-pay ratio (small bars cut, big pays preserved) |
+| MODE5-HIT | Mode 5 hit rate ≤ m2 × 1.25 (super-lucky preserves hit shape) |
+| LUCKY-MONO | Mode 5 big-win pay frequencies ≥ mode 2 |
+| ARCHETYPE | `_archetype` block has origin + chassis_reference_url + modifications_explanation |
+
+### Why M37 has booster-related categories M1 doesn't
+
+M37 has the booster mechanism (mini/minor/major/grand on R2 only) — a
+structural feature of this machine. Universal categories like ALTERNATION
+and REEL-ASYMMETRY apply across all line-based slots; M37-specific
+categories like BOOSTER-HIER apply to machines with multi-tier
+multiplier symbols. M1 (no booster) doesn't need these.
+
+Conversely, M1 has dual-tier diamonds (Diamond1/Diamond2) requiring
+per-family locks (MODE7-LOCK / TOP-PATH); M37 with single high7 tier
+does not.
+
+### Memory references (universal philosophy)
+
+- `slot_designer/DESIGN_PHILOSOPHY.md` §12-§15 — universal rules + cost philosophy
+- `~/.claude/projects/.../memory/project_slot_designer_axiom_experience_is_soul.md` — verify gate (red lines全绿才 done)
+- `~/.claude/projects/.../memory/project_slot_designer_reel_asymmetry.md` — universal §12 (R1 ≤ R3 blank, R1 ≥ R3 top)
+- `~/.claude/projects/.../memory/project_slot_designer_blank_flank_diversity.md` — universal §13 (no X-blank-X)
+- `~/.claude/projects/.../memory/project_slot_designer_visual_rhythm.md` — universal §14 (same-symbol spacing)
+- `~/.claude/projects/.../memory/project_slot_designer_window_visibility_pwdf.md` — universal §15 (PWDF)
+- `~/.claude/projects/.../memory/feedback_dont_lower_floor_when_blocked.md` — moving-goalposts anti-pattern
+- `~/.claude/projects/.../memory/feedback_tuner_pareto_trap.md` — direct-scale vs tuner
+
+## 11. 设计 Review Checklist (每次 tune 完必跑)
+
+数值全绿 ≠ 设计完成。每次跑完 tune 必须人眼过下面 6 类，检测 player perception 层的"怪"。
+
+### A. 数值层 (verify_m37_design.py 自动)
+- 22 类 categories 全 GREEN
+- 6 universal + 16 M37-specific 都 PASS
+- 任一 RED → root-cause 修复，不绕过
+
+### B. Per-reel symbol density review (人眼过 per-reel 表)
+- 每 family × 每 reel density 在 per-family cap 内
+- 顶奖家族 (high7, wild) 跨 R1+R3 max/min ratio ≤ 2.0 standard / 2.5 lucky
+- R2 booster reel (mini/minor/major/grand) hierarchy 倒金字塔
+- 没有单 symbol 在某 reel 极端高 (> 25%)
+
+### C. REEL-ASYMMETRY direction review (universal §12)
+- R1 blank ≤ R3 blank（防早期拒绝）
+- R1 top-prize (high7+wild) ≥ R3 top-prize（near-miss psychology）
+- 每 mode 都要满足，借助 tune asymmetry penalty 主动 push
+
+### D. PWDF window visibility review (universal §15)
+- high7 any-reel visibility ≥ 48% (M37 floor; 3-instance natural 50-55%)
+- 验证 strip layout 与 weights 共同贡献 visibility（重排 strip 时复查）
+
+### E. Per-pay-id frequency review (cross-mode)
+- **Mode 7**: bar pays 频率 m7/m1 ratio ∈ [0.40, 0.95]; big pays ratio ∈ [0.70, 1.55]
+- **Mode 2**: 所有 pay 频率 ≥ mode 1（per-pay monotonic）
+- **Mode 5**: pay_id 1/8/102/103/104 频率 ≥ mode 2（big-win monotonic + sum ratio ≥ 1.3）
+
+### F. Cross-mode narrative review
+- CV 阶梯: mode 5 ≤ mode 2 < mode 1 ≈ mode 7
+- Hit rate 阶梯: mode 7 < mode 1 < mode 2 ≤ mode 5
+- Wild on payline 阶梯: mode 7 ≈ mode 1 ≤ mode 2 ≈ mode 5
+- Booster on R2 阶梯: mode 1 ≈ mode 7 < mode 2 ≤ mode 5
+
+### 怎么用
+
+每次 tune 完:
+1. 跑 verify_m37_design.py (A 自动)
+2. **人眼过 B/C/D/E/F** (脚本自动只能粗筛，player perception 部分需要人判)
+3. 任一 fail 必须 root-cause:
+   - 是 bound 太松 → 调强度 (k)
+   - 是 anchor 漏了 → 加跨 mode 约束
+   - 是 cost 表达走偏 → 重新设计 penalty
+4. **绝不 patch** 用任意硬 threshold 数字。每条新约束都要从设计 goal 推出来 (e.g. "reels 看起来一致" → variance penalty 而非 "blank ≥ 30%")
+
+## 12. 研究参考
 
 **Slot 机台设计**：
 - [slotgamedesign.com PAR sheet tutorial](https://slotgamedesign.com/2019/01/19/slot-math-tutorial-creating-par-sheets/) — Liberty Bell 10-symbol × 3-reel 1000-combo 基础
