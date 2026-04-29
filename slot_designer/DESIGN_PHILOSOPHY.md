@@ -303,29 +303,29 @@ PWDF (Per-Win Display Frequency) — [Harrigan 2007](https://link.springer.com/a
 - **Brand symbol（机台 logo / signature）visibility 跨 reel 均匀**（已由 §2 brand visibility + §12 REEL-ASYMMETRY 部分覆盖）
 - **不要求所有 family**：低 pay symbol 不需 PWDF treatment（玩家不在乎是否常见）
 
-### 15.3 适用 / 例外
+### 15.3 适用 / 例外（floor 取决于架构 + paytable，**绝对值不抄**）
 
-| 机台类型 | 适用度 + visibility floor 参考 |
+| 机台架构 | 适用度 + visibility 上限说明 |
 |---|---|
-| 3-reel classic 1-line (M1 类) | 适用，IGT 实证 top symbol any-reel ≥ 50% |
-| 5-reel video 1-line | 适用，但 5×3=15 cell 视窗天然 visibility 高，floor 可降至 30% |
-| 5-reel multi-line / 25-line | 适用，每条 line 上 visibility 计算独立 |
+| 3-reel physical (M1 类) | 适用。**物理 reel 上限 ~40-45%** (机制 B 后)；**Harrigan 50%+ 不可达** without 虚拟 reel 映射 |
+| 3-reel + virtual reel mapping (IGT TDD 经典 等) | 适用。Harrigan 50%+ 可达 |
+| 5-reel video 1-line | 适用，5×3=15 cell 视窗天然 visibility 高（每 reel 多机会）。Floor 30-40% |
+| 5-reel multi-line / 25-line | 适用，每条 line 独立计 |
 | 243-line / Megaways | 部分适用 — symbol 计 count（不是 visibility）|
 | Cluster slot | 不直接适用 — symbol "visibility" = 屏上 count |
 
-### 15.4 Implementation
+### 15.4 Implementation — RTP-neutral redistribution（推荐）
 
-**核心权衡 — Per-position weight 升级**：
-
-PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top symbol 的 Blank** 权重。这跟 "per-(family, reel) uniform weight" 假设矛盾（同 reel 上所有 Blank 同 weight）。
+PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top symbol 的 Blank** 权重。Per-(family, reel) uniform weight 假设跟这冲突（同 reel 所有 Blank 同 weight）。
 
 **实施路径**：
-1. **Per-position weight tune**（推荐）：search 维度从 9 family × N reel → 每 stop 独立 weight（22 stop × 3 reel = 66 dim for M1）
-2. **Or hybrid**: 大部分 family 仍 uniform，只对"top-symbol 邻接 Blank"独立加权（小幅升维）
+- **机制 B (RTP-neutral redistribution，推荐)**：post-tune deterministic transform。每 reel 内 redistribute Blank weight — non-top-adj Blanks 减到 floor=1，top-adj Blanks 吸收剩余。total Blank weight per reel 守恒 → marginals 全保 → **RTP/hit/share 0 变化**。Top-adj Blank 上 weight 升 → 视窗 frequent contains top symbol → visibility 升 ~10pp on physical reels。**详见 §15.5 机制 B + memory `project_slot_designer_window_visibility_pwdf.md`**
+- **机制 A (per-position weight tune)** 整合到主 cost — 实测在物理 reel 跟 RTP cost 冲突会 collapse RTP（M1 实测）。**避免**
+- **机制 C (virtual reel mapping)** — 架构升级，Harrigan 50%+ 可达。投入大
 
 **Verify 类别建议**：`WINDOW-VISIBILITY`（per machine：top symbol any-reel visibility ≥ floor）。机台 specific：
-- floor 数字（50% / 30% / etc.）
-- 哪些 symbol 算"top"（M1: Diamond+Seven2，M15: TopDollar，M37: booster）
+- Floor 数字（M1 物理 reel post-机制B: 38% standard / 35% lucky；virtual reel: 50%+ Harrigan 风格）
+- 哪些 symbol 算 "top"（M1: Diamond1/Diamond2/Seven2；M15: TopDollar；M37: booster；新机台 archetype 决定）
 - 跟 payline hit rate 的倍数关系（K=4-10×）
 
 ### 15.5 物理 reel 上的两种 PWDF 机制（2026-04-29 M1 实测）
@@ -356,11 +356,11 @@ PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top
 
 ### 15.6 Tuner pareto 警惕
 
-PWDF 升维后 tune cost 多一项 `top symbol visibility ≥ floor`。但**物理-only 机台**直接 cost penalty 会 hurt RTP（boost Blank 稀释 family marginal）。建议：
-- **物理 reel 机台**：PWDF 不做 cost component, 改 **post-tune sweep**（试 mult ∈ [1, K], 选满足 RTP tol 内的最高 visibility）
-- **虚拟 reel 机台**：PWDF 直接 cost penalty 可行（virtual mapping 提供更大 visibility/RTP trade-off 空间）
+**物理 reel 机台**：PWDF **不要进 tune cost**（机制 A 跟 RTP 冲突崩）。改 **post-tune RTP-neutral redistribution**（机制 B）— 主 tune 满足 14+ 类约束 → 单独 deterministic transform redistribute Blank weights → 视窗 visibility 升而 marginals 全保。
 
-三层防护：post-tune sweep（物理）/ cost penalty（虚拟）+ verify red line + archetype 文档（哪些 symbol 是"top"写明，物理 vs 虚拟 reel 写明）。
+**虚拟 reel 机台**：PWDF 可作为 cost component 进 tune（virtual mapping 提供更大 visibility/RTP trade-off 空间）。
+
+三层防护：post-tune redistribution（物理）/ cost penalty（虚拟）+ verify red line + archetype 文档（哪些 symbol 是"top"写明，物理 vs 虚拟 reel 写明）。
 
 ---
 
@@ -370,7 +370,8 @@ PWDF 升维后 tune cost 多一项 `top symbol visibility ≥ floor`。但**物�
 2. **读 WORKFLOW.md**——adversarial review 流程
 3. **写机台 DESIGN.md**——archetype block + 业界 chassis 参考 + 玩家叙事
 4. **写 verify_<M>_design.py**——把上面 15 条都加到 verify（含 §13 BLANK-FLANK-DIVERSITY、§14 VISUAL-RHYTHM 子类、§15 WINDOW-VISIBILITY）
-5. **tune 时 cost function 包含**：hierarchy_strength、family share band、per-pay freq cap、top_jackpot_min_spins、reel asymmetry（R1 ≤ R3 Blank + R1 ≥ R3 top-prize）、§15 PWDF（如启用，需要 per-position weight tune）
+5. **tune 时 cost function 包含**：hierarchy_strength、family share band、per-pay freq cap、top_jackpot_min_spins、reel asymmetry（R1 ≤ R3 Blank + R1 ≥ R3 top-prize）。**§15 PWDF 不进 tune cost**（物理 reel），post-tune redistribute
 6. **strip 设计阶段**确认满足 §13 BLANK-FLANK-DIVERSITY（无 X-Blank-X）+ §14 VISUAL-RHYTHM（机台 specific 子规则）。修复 strip 不会改 marginal 但改 strip md5 → 全 mode rawdata 失效
+7. **post-tune PWDF redistribute（物理 reel 机台）**：跑 redistribute_<M>_blanks.py 类脚本，per reel redistribute Blank weight 到 top-adj 位置。RTP-neutral，仅升 visibility
 
 参考实现：`weights/M37/` 完整流程（v5 后）+ `weights/M1/` 含 REEL-ASYMMETRY check（2026-04-28+）。

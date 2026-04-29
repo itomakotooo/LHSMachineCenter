@@ -130,12 +130,13 @@ freq 显著增）。这是"super-lucky 是 mode 2 的 luck variation，不是另
 | 2 | 294.50% | 27.44% | ~20.7% | ~6.1 | 38.19% |
 | 5 | 489.42% | 26.91% | ~26% | ~5.2 | 34.59% |
 
-> 数值经过 5 轮迭代:
+> 数值经过 6 轮迭代:
 > 1. (2026-04-28) Mode 5 derive from mode 2 byte-identical (R-collapse 修)
 > 2. (2026-04-28) Strip alternation 修复 (3 连 blank → Cherry, 11+11)
 > 3. (2026-04-28) REEL-ASYMMETRY rule (R1 vs R3 方向锁) + universal-vs-machine 数字分层
 > 4. (2026-04-28) **R1 Blank ∈ [30%, 40%] user-pinned target** — 重新 tune mode 1/2/7 + re-derive mode 5。Mode 1 R1 Blank 45.67% → 38.67%, Mode 7 R1 Blank 51.68% → 39.29%（最显著修复）
 > 5. (2026-04-29) Strip non-Blank position 重排 satisfy §13 BLANK-FLANK-DIVERSITY (无 X-Blank-X) + §14 SAME-SYMBOL-SPACING ≥ 4 stops。每条 reel 仅 2/11 position 改动 (minimum-change repair, archetype direction 保留)。**Marginals 完全不变** → RTP/hit 跟第 4 轮相同。Strip md5 改变 → rawdata 重采。
+> 6. (2026-04-29) **PWDF RTP-neutral Blank redistribution** (`redistribute_m1_blanks.py`) — per reel 把 non-top-adj Blank weight 减到 floor=1，top-adj 吸收剩余。Total Blank weight per reel 守恒 → marginals 全保 → RTP/hit/share **完全不变**。Top-prize symbol any-reel visibility +9-11pp (mode 1 Diamond1 35→44%, Diamond2 30→41%, Seven2 29→39%)。Cherry brand visibility 副作用 -19pp (仍 ≥ floor)。机制 B per `feedback_dont_lower_floor_when_blocked.md` lesson
 
 > 数值自 2026-04-28 经历两轮修正：
 > 1. **Strip alternation 修复**: strips 改成 11+11 严格交替（R0/R1/R2 各一个 3 连 blank → Cherry）。
