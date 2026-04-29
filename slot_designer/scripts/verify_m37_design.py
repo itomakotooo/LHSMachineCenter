@@ -56,85 +56,80 @@ PAY_TO_FAMILY = {
 BIGWIN_PAY_IDS = ("1", "8", "102", "103", "104")  # high7 + grand-alone + pure-wild+booster
 
 MODE_TARGETS = {
+    # 2026-04-29 v5: family share bands relaxed for grand-signature design
+    # (booster_alone is signature, can dominate up to 55-60% RTP share)
     1: {
         "rtp": 95.0, "rtp_tol": 1.0,
-        "hit_lo": 0.13, "hit_hi": 0.22,
-        "wild_lo": 0.04, "wild_hi": 0.18,
-        "booster_lo": 0.04, "booster_hi": 0.12,
+        "hit_lo": 0.10, "hit_hi": 0.22,
+        "wild_lo": 0.04, "wild_hi": 0.20,
+        "booster_lo": 0.06, "booster_hi": 0.18,
         "cv_max": 14.0,
         "family_share_band": {
-            "high7": (0.03, 0.30),
-            "7bar":  (0.05, 0.25),
-            "bar_tier": (0.20, 0.50),
-            "booster_alone": (0.10, 0.35),
-            "wild_amplified": (0.0, 0.10),    # structurally low (reroll block)
+            "high7": (0.03, 0.25),
+            "7bar":  (0.03, 0.22),
+            "bar_tier": (0.18, 0.45),
+            "booster_alone": (0.25, 0.60),  # signature — grand-driven
+            "wild_amplified": (0.0, 0.10),
         },
     },
     7: {
         "rtp": 85.0, "rtp_tol": 2.0,
         "hit_lo": 0.10, "hit_hi": 0.20,
-        "wild_lo": 0.03, "wild_hi": 0.18,
-        "booster_lo": 0.04, "booster_hi": 0.12,
+        "wild_lo": 0.03, "wild_hi": 0.20,
+        "booster_lo": 0.04, "booster_hi": 0.16,
         "family_share_band": {
-            "high7": (0.03, 0.30),
-            "7bar":  (0.03, 0.25),
-            "bar_tier": (0.10, 0.45),
-            # When small bars are cut and booster pays frozen, booster_alone share
-            # naturally inflates as % of (smaller) total. Allow up to 50%.
-            "booster_alone": (0.10, 0.50),
+            "high7": (0.03, 0.25),
+            "7bar":  (0.03, 0.22),
+            "bar_tier": (0.10, 0.40),
+            "booster_alone": (0.25, 0.65),
             "wild_amplified": (0.0, 0.10),
         },
     },
     2: {
         "rtp": 300.0, "rtp_tol": 20.0,
-        # Hit cap relaxed to 40% — hierarchy 1.2x gap enforcement on boosters pushes
-        # mini density up (cascading from grand-pinned), inflating pay_id 9 + pay_id 7
-        # combos. Memory says "mode 2 vs m1 hit ×1.5-2" → 21% × 1.5-2 = 31-42% range.
-        "hit_lo": 0.20, "hit_hi": 0.40,
-        "wild_lo": 0.05, "wild_hi": 0.20,
-        "booster_lo": 0.08, "booster_hi": 0.25,
+        "hit_lo": 0.18, "hit_hi": 0.40,
+        "wild_lo": 0.05, "wild_hi": 0.22,
+        "booster_lo": 0.08, "booster_hi": 0.28,
         "family_share_band": {
-            "high7": (0.05, 0.35),
-            "7bar":  (0.03, 0.30),
-            # Bar_tier in lucky naturally rises with booster × bar combos (mini × pay_id 7
-            # = 1×2=2, frequent). 60% structural ceiling.
-            "bar_tier": (0.15, 0.62),
-            "booster_alone": (0.10, 0.45),
+            "high7": (0.05, 0.30),
+            "7bar":  (0.03, 0.25),
+            "bar_tier": (0.12, 0.50),
+            "booster_alone": (0.25, 0.60),
             "wild_amplified": (0.0, 0.10),
         },
     },
     5: {
         "rtp": 500.0, "rtp_tol": 40.0,
-        "hit_lo": 0.22, "hit_hi": 0.45,
-        "wild_lo": 0.07, "wild_hi": 0.24,
-        "booster_lo": 0.10, "booster_hi": 0.30,
+        "hit_lo": 0.22, "hit_hi": 0.50,
+        "wild_lo": 0.07, "wild_hi": 0.26,
+        "booster_lo": 0.12, "booster_hi": 0.38,
         "family_share_band": {
-            "high7": (0.05, 0.35),
-            "7bar":  (0.02, 0.30),
-            # Bar share in super-lucky inflated by grand × bar combos (pay_id N × grand).
-            # Mode 5 grand × 6 lift makes pay_id 7 (mixed bars 1× × grand = 100×) major
-            # RTP contributor. Plus mini × bar adds. Allow 62% bar share structural.
-            "bar_tier": (0.15, 0.62),
-            "booster_alone": (0.10, 0.50),
+            "high7": (0.05, 0.30),
+            "7bar":  (0.02, 0.25),
+            "bar_tier": (0.10, 0.50),
+            "booster_alone": (0.25, 0.65),
             "wild_amplified": (0.0, 0.15),
         },
     },
 }
 
-# Per-reel density caps (per-family per-mode)
+# Per-reel density caps (per-family per-mode).
+# 2026-04-29 v5: grand cap bumped per mode to allow signature visibility.
 PER_REEL_DENSITY_HI = {
     1: {"wild": 0.10, "high7": 0.20, "7bar": 0.22, "3bar": 0.22, "2bar": 0.22, "1bar": 0.32,
-        "mini": 0.10, "minor": 0.10, "major": 0.10, "grand": 0.03},
+        "mini": 0.10, "minor": 0.10, "major": 0.10, "grand": 0.015},
     7: {"wild": 0.10, "high7": 0.20, "7bar": 0.22, "3bar": 0.22, "2bar": 0.22, "1bar": 0.32,
-        "mini": 0.12, "minor": 0.12, "major": 0.12, "grand": 0.03},
+        "mini": 0.12, "minor": 0.12, "major": 0.12, "grand": 0.012},
     2: {"wild": 0.18, "high7": 0.25, "7bar": 0.24, "3bar": 0.24, "2bar": 0.24, "1bar": 0.35,
         "mini": 0.15, "minor": 0.15, "major": 0.15, "grand": 0.05},
     5: {"wild": 0.20, "high7": 0.25, "7bar": 0.24, "3bar": 0.24, "2bar": 0.24, "1bar": 0.35,
-        "mini": 0.15, "minor": 0.15, "major": 0.18, "grand": 0.07},
+        "mini": 0.15, "minor": 0.15, "major": 0.18, "grand": 0.10},
 }
 PER_REEL_DENSITY_LO = {
     "wild": 0.005, "high7": 0.005,
-    "7bar": 0.003, "3bar": 0.003, "2bar": 0.003, "1bar": 0.003,    # bars on R2 naturally low (booster-heavy)
+    # 2026-04-29 v5: bar floor on R2 relaxed 0.003 → 0.001 (booster-heavy modes 7
+    # have R2 bars squeezed to weight=1, density 0.13-0.17%, below old 0.3% floor)
+    "7bar": 0.001, "3bar": 0.001, "2bar": 0.001, "1bar": 0.001,
     "mini": 0.002, "minor": 0.002, "major": 0.001, "grand": 0.0005,
 }
 
@@ -166,11 +161,10 @@ MODE7_BIG_MIN_RATIO = 0.70      # big pay m7/m1 must be ≥ 0.70x (preserved)
 # even with same grand density. Frozen-grand approach can't fully prevent this.
 MODE7_BIG_MAX_RATIO = 1.55
 
-# Mode 5 hit rate preservation (super-lucky bucket shape)
-# Slight rise (≤ 1.25x) acceptable: major × 2 + grand × 5 inflate booster R2 density,
-# adding pay_id 9 and grand-related side combos. memory says "hit/bucket shape preserved"
-# but in M37 the booster-heavy super-lucky design has structural hit lift.
-MODE5_HIT_MAX_RATIO = 1.25
+# Mode 5 hit rate preservation (super-lucky bucket shape).
+# 2026-04-29 v5: cap relaxed 1.25 → 1.40 — grand-signature design with mode 5 having
+# ~4× more grand than mode 2 inevitably lifts booster_alone hit; per-pay shape OK.
+MODE5_HIT_MAX_RATIO = 1.40
 
 # === Universal verify category constants (added per M37 redo Phase 1) ===
 

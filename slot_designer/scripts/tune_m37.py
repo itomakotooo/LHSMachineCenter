@@ -96,7 +96,8 @@ WEIGHT_BOUNDS_STANDARD = {
     # Bars: 1bar > 2bar > 3bar > 7bar (lower payout, higher cap)
     "7bar":   (1, 18), "3bar":  (1, 25), "2bar":  (1, 35), "1bar":  (1, 50),
     # Boosters: mini > minor > major > grand
-    "mini":   (1, 30), "minor": (1, 20), "major": (1, 12), "grand": (1, 5),
+    # 2026-04-29 v5: grand bound bumped 5 → 10 to allow normal-hittable signature visibility
+    "mini":   (1, 30), "minor": (1, 20), "major": (1, 12), "grand": (1, 10),
 }
 WEIGHT_BOUNDS_LUCKY = {
     "blank":  (1, 80), "wild":  (1, 25),
@@ -104,7 +105,8 @@ WEIGHT_BOUNDS_LUCKY = {
     # Bars: 1bar > 2bar > 3bar > 7bar — tighter than v5 to constrain bar over-load
     "7bar":   (1, 18), "3bar":  (1, 24), "2bar":  (1, 32), "1bar":  (1, 50),
     # Boosters: mini > minor > major > grand
-    "mini":   (1, 30), "minor": (1, 20), "major": (1, 13), "grand": (1, 10),
+    # 2026-04-29 v5: grand bound bumped 10 → 30 (lucky modes need much more grand for "session-level moment" design)
+    "mini":   (1, 30), "minor": (1, 20), "major": (1, 13), "grand": (1, 30),
 }
 WEIGHT_BOUNDS_BY_MODE = {1: WEIGHT_BOUNDS_STANDARD, 7: WEIGHT_BOUNDS_STANDARD,
                          2: WEIGHT_BOUNDS_LUCKY, 5: WEIGHT_BOUNDS_LUCKY}
@@ -114,69 +116,72 @@ EXPERIENCE_TARGETS = {
     1: {
         "total_rtp_pct": 95.0, "total_rtp_tol_pp": 1.0,
         "rtp_weight": 80.0,    # very strict, dominant
-        # mode 1 hit ~17-20% (M37 has frequent pay_id 9 = booster/wild alone at 1 in 8)
-        "hit_rate_target": 0.18, "hit_rate_weight": 200.0,
-        "wild_on_payline_band": (0.05, 0.16),
-        "wild_signature_weight": 500.0,
-        # Booster on R2 brand: visible but NOT dominant. 5-10% means
-        # 1 booster every 10-20 spins on R2 payline.
-        "booster_r2_band": (0.05, 0.10),
+        # mode 1 hit relaxed band — booster-heavy design produces hit naturally
+        "hit_rate_target": 0.16, "hit_rate_weight": 100.0,
+        "wild_on_payline_band": (0.05, 0.18),
+        "wild_signature_weight": 300.0,
+        # Booster on R2 brand: M37 signature — boosters frequently visible
+        # 2026-04-29 v5: bumped 5-10% → 8-15% (signature gameplay needs more visibility)
+        "booster_r2_band": (0.08, 0.15),
         "booster_signature_weight": 300.0,
-        # grand alone (pay_id 8) was 1 in 633 → 16% RTP dominant. Cap to 1 in 2500.
-        "pay_freq_caps": {"8": 0.0004},
-        # 1000x top jackpot was 1 in 13k → too frequent. Cap to 1 in 60k.
-        "top_jackpot_min_spins": 60000,
+        # 2026-04-29 v5: REMOVED pay_freq_caps for grand (was {"8": 0.0004} — picked
+        # cap blocking grand visibility). REPLACED with bidirectional target:
+        # grand alone freq ~1 in 700 (~10 min cadence — "normally hittable signature").
+        "pay_freq_targets": {"8": 0.0014},  # 1/714 = grand normally hittable
+        # 1000x top jackpot via high7-grand-high7 substitution. Cap loosened (was 60000).
+        "top_jackpot_min_spins": 30000,
         "family_share_bands": {
-            # of total RTP. Bar tier ~30-45%, high7 + booster_alone share rest.
-            "high7":   (0.05, 0.25),
-            "7bar":    (0.05, 0.25),
-            "bar_tier": (0.20, 0.45),    # 1bar+2bar+3bar combined — tighter cap
-            "booster_alone": (0.10, 0.30),  # pay_id 8/9 — push higher
-            "wild_amplified": (0.0, 0.20),  # pay_id 102/103/104
+            # 2026-04-29 v5: rebalanced to make booster_alone (grand-driven) the
+            # signature RTP family (~30-45% share), bar_tier secondary (~20-35%).
+            "high7":   (0.05, 0.20),
+            "7bar":    (0.05, 0.20),
+            "bar_tier": (0.20, 0.40),    # bar tier secondary
+            "booster_alone": (0.30, 0.50),  # grand alone + booster alone — main signature
+            "wild_amplified": (0.0, 0.10),  # 3-wild jackpots (architectural-limited)
         },
-        "per_reel_blank_variance_strength": 15.0,
+        "per_reel_blank_variance_strength": 8.0,
         "per_reel_density_lo_by_family": {
             "wild": 0.005, "high7": 0.005,
-            "7bar": 0.015, "3bar": 0.015, "2bar": 0.015, "1bar": 0.02,    # bars ≥1.5-2% on each reel
+            "7bar": 0.005, "3bar": 0.005, "2bar": 0.005, "1bar": 0.01,
             "mini": 0.005, "minor": 0.005, "major": 0.005, "grand": 0.0015,
         },
         "per_reel_density_hi_by_family": {
-            "wild": 0.07, "high7": 0.06,
-            "7bar": 0.13, "3bar": 0.13, "2bar": 0.13, "1bar": 0.18,    # tighter bar caps
-            "mini": 0.06, "minor": 0.05, "major": 0.03, "grand": 0.004,
+            "wild": 0.08, "high7": 0.10,
+            "7bar": 0.12, "3bar": 0.12, "2bar": 0.12, "1bar": 0.16,    # tighter bar caps
+            # 2026-04-29 v5: grand cap bumped 0.4% → 1.0% (allow signature visibility)
+            "mini": 0.07, "minor": 0.06, "major": 0.04, "grand": 0.010,
         },
         "uniformity_ratio_cap": {"wild": 2.0, "high7": 2.0},
-        "base_cv_target": 9.0,
+        "base_cv_target": 10.0,
     },
     7: {
         "total_rtp_pct": 85.0, "total_rtp_tol_pp": 2.0,
         "rtp_weight": 30.0,    # very strict for mode 7
-        # Mode 7 hit naturally lower (small bars cut + 7bar/big-win density rises slightly)
+        # Mode 7 hit slightly lower than mode 1 (砍 small bars)
         "hit_rate_target": 0.14, "hit_rate_weight": 60.0,
-        # Top jackpot relaxed since frozen big-win + small bar cut → big-win density rises
-        "top_jackpot_min_spins": 40000,
-        "pay_freq_caps": {"8": 0.0006},    # grand alone — similar to m1 with small slack
+        "top_jackpot_min_spins": 30000,
+        # 2026-04-29 v5: per design "中/大/顶奖击中率不变" (mode 7 = mode 1 砍小奖派生),
+        # mode 7 grand alone freq = mode 1's = 1/700. Bigwin frozen handles this.
+        "pay_freq_targets": {"8": 0.0014},  # = mode 1 target (大奖击中率不变)
         "wild_on_payline_band": (0.03, 0.20),
-        "booster_r2_band": (0.04, 0.12),
+        "booster_r2_band": (0.06, 0.16),
         "family_share_bands": {
-            "high7":   (0.05, 0.30),
-            "7bar":    (0.05, 0.30),    # 7bar frozen → share rises as bars drop
-            "bar_tier": (0.05, 0.35),    # tighter cap (bars cut)
-            "booster_alone": (0.10, 0.45),    # naturally rises when bars cut
+            "high7":   (0.05, 0.22),
+            "7bar":    (0.05, 0.22),
+            "bar_tier": (0.10, 0.32),    # mode 7 砍 bars
+            "booster_alone": (0.30, 0.58),    # signature dominant in cold mode
             "wild_amplified": (0.0, 0.10),
         },
         "per_reel_blank_variance_strength": 5.0,
         "per_reel_density_lo_by_family": {
             "wild": 0.005, "high7": 0.005,
             "7bar": 0.005, "3bar": 0.003, "2bar": 0.003, "1bar": 0.003,
-            "mini": 0.003, "minor": 0.003, "major": 0.003, "grand": 0.001,
+            "mini": 0.003, "minor": 0.003, "major": 0.003, "grand": 0.0008,
         },
-        # Density caps relaxed: frozen weights + bar/blank changes inflate frozen densities,
-        # optimizer can't fight that, so caps must accommodate
         "per_reel_density_hi_by_family": {
-            "wild": 0.12, "high7": 0.15,
-            "7bar": 0.30, "3bar": 0.18, "2bar": 0.18, "1bar": 0.22,
-            "mini": 0.10, "minor": 0.10, "major": 0.10, "grand": 0.005,
+            "wild": 0.10, "high7": 0.12,
+            "7bar": 0.20, "3bar": 0.16, "2bar": 0.16, "1bar": 0.18,
+            "mini": 0.08, "minor": 0.06, "major": 0.04, "grand": 0.008,
         },
         "uniformity_ratio_cap": {"wild": 2.5, "high7": 3.0},
         # REEL-ASYMMETRY (universal §12). Mode 7 ONLY (mode 1/2/5 already
@@ -200,20 +205,19 @@ EXPERIENCE_TARGETS = {
         "total_rtp_pct": 300.0, "total_rtp_tol_pp": 20.0,
         "rtp_weight": 8.0,
         "hit_rate_target": 0.23, "hit_rate_weight": 250.0,    # very strict
-        "top_jackpot_min_spins": 25000,
-        "pay_freq_caps": {"8": 0.0010},    # grand alone 1 in 1000 (3x m1)
-        "wild_on_payline_band": (0.06, 0.18),
+        "top_jackpot_min_spins": 8000,
+        # 2026-04-29 v5: lucky mode grand 6x more frequent than m1 (m1 1/700 → m2 1/120)
+        "pay_freq_targets": {"8": 0.008},  # 1/125 grand alone — lucky frequent
+        "wild_on_payline_band": (0.06, 0.20),
         "wild_signature_weight": 200.0,
-        # booster_R2 ceiling 0.18 (was 0.28) — hierarchy 1.3x gap pushes mini high;
-        # tight ceiling caps booster total to keep hit rate in band
-        "booster_r2_band": (0.08, 0.18),
+        "booster_r2_band": (0.10, 0.22),
         "booster_signature_weight": 300.0,
         "family_share_bands": {
-            "high7":   (0.05, 0.30),
-            "7bar":    (0.03, 0.25),
-            "bar_tier": (0.15, 0.45),    # bars naturally still dominant at 3x lucky
-            "booster_alone": (0.15, 0.45),    # push high
-            "wild_amplified": (0.0, 0.10),    # structurally low (reroll block on grand+wild)
+            "high7":   (0.05, 0.25),
+            "7bar":    (0.03, 0.20),
+            "bar_tier": (0.15, 0.40),
+            "booster_alone": (0.30, 0.55),    # signature dominant in lucky
+            "wild_amplified": (0.0, 0.08),
         },
         "per_reel_blank_variance_strength": 5.0,
         "per_reel_density_lo_by_family": {
@@ -222,33 +226,34 @@ EXPERIENCE_TARGETS = {
             "mini": 0.008, "minor": 0.008, "major": 0.008, "grand": 0.003,
         },
         "per_reel_density_hi_by_family": {
-            "wild": 0.10, "high7": 0.16,    # high7 can grow more in lucky
-            "7bar": 0.16, "3bar": 0.16, "2bar": 0.16, "1bar": 0.22,    # tighter (was up to 0.32)
-            "mini": 0.10, "minor": 0.10, "major": 0.10, "grand": 0.012,
+            "wild": 0.12, "high7": 0.18,
+            "7bar": 0.14, "3bar": 0.14, "2bar": 0.14, "1bar": 0.20,
+            # 2026-04-29 v5: grand cap bumped 1.2% → 3% (lucky needs significant grand)
+            "mini": 0.10, "minor": 0.10, "major": 0.10, "grand": 0.030,
         },
         "uniformity_ratio_cap": {"wild": 2.5, "high7": 3.0},
     },
     5: {
-        "total_rtp_pct": 500.0, "total_rtp_tol_pp": 50.0,    # super-lucky wide tol
-        "rtp_weight": 6.0,
-        # Mode 5 = mode 2 + grand boost. Hit ≈ m2 (everything frozen except grand).
-        "hit_rate_target": 0.30, "hit_rate_weight": 150.0,
-        # Top jackpot 1 in 3-5k (super-lucky 顶奖 session 级 narrative)
-        "top_jackpot_min_spins": 3500,
-        # Grand alone freq cap: m2 was 0.0007, m5 grand × 5+ → ~0.005. Cap 0.006 (1 in 167).
-        "pay_freq_caps": {"8": 0.006},
-        # Wild and booster_R2 frozen from m2 → bands match m2 actual ± wide
-        "wild_on_payline_band": (0.05, 0.18),
+        "total_rtp_pct": 500.0, "total_rtp_tol_pp": 40.0,
+        # 2026-04-29 v5: rtp_weight bumped 6 → 20 so RTP target keeps mode 5 in band
+        # (was overshooting 551% > 540 with grand boost + m2 base RTP)
+        "rtp_weight": 20.0,
+        # Mode 5 = mode 2 + grand boost. Hit ≈ m2.
+        "hit_rate_target": 0.30, "hit_rate_weight": 100.0,
+        # Top jackpot 1 in 2-3k (super-lucky session-level narrative)
+        "top_jackpot_min_spins": 2000,
+        # 2026-04-29 v5: target 1/50 (slightly rarer than initial 1/40 to keep RTP in band)
+        "pay_freq_targets": {"8": 0.020},  # 1/50 grand alone — super-lucky session moments
+        "wild_on_payline_band": (0.06, 0.22),
         "wild_signature_weight": 100.0,
-        "booster_r2_band": (0.10, 0.28),    # boosters frozen (mini/minor/major) but grand 拉 → R2 marginal slight up
+        "booster_r2_band": (0.15, 0.32),
         "booster_signature_weight": 100.0,
         "family_share_bands": {
-            "high7":   (0.10, 0.25),
-            "7bar":    (0.08, 0.20),
-            "bar_tier": (0.20, 0.45),
-            # booster_alone (pay_id 8/9) is the SUPER-LUCKY signature — grand × 3 pushes pay_id 8 way up
-            "booster_alone": (0.20, 0.50),
-            "wild_amplified": (0.0, 0.05),
+            "high7":   (0.05, 0.25),
+            "7bar":    (0.05, 0.20),
+            "bar_tier": (0.15, 0.40),
+            "booster_alone": (0.30, 0.60),    # super-lucky — booster dominant
+            "wild_amplified": (0.0, 0.08),
         },
         "per_reel_blank_variance_strength": 5.0,
         "per_reel_density_lo_by_family": {
@@ -257,9 +262,10 @@ EXPERIENCE_TARGETS = {
             "mini": 0.008, "minor": 0.008, "major": 0.008, "grand": 0.005,
         },
         "per_reel_density_hi_by_family": {
-            "wild": 0.13, "high7": 0.18,    # high7 can grow more in super-lucky
+            "wild": 0.13, "high7": 0.20,
             "7bar": 0.16, "3bar": 0.16, "2bar": 0.16, "1bar": 0.22,
-            "mini": 0.12, "minor": 0.12, "major": 0.12, "grand": 0.020,
+            # 2026-04-29 v5: grand cap bumped 2% → 8% (super-lucky session-level grand)
+            "mini": 0.12, "minor": 0.12, "major": 0.12, "grand": 0.080,
         },
         "uniformity_ratio_cap": {"wild": 3.0, "high7": 3.0},
     },
@@ -456,13 +462,25 @@ def evaluate_candidate(fr_weights, strip, evaluator, paytable, exp_targets):
         if actual_cv > cv_target:
             cost += 80.0 * (actual_cv - cv_target) ** 2
 
-    # Per-pay frequency caps (e.g., grand alone 100× max 1 in 5000)
+    # Per-pay frequency caps (e.g., max freq for over-frequent pays)
     pay_freq_caps = exp_targets.get("pay_freq_caps", {})
     for pid, max_freq in pay_freq_caps.items():
         actual_freq = pred.get("pay_hits", {}).get(pid, 0.0)
         if actual_freq > max_freq:
             rel_over = (actual_freq - max_freq) / max_freq
             cost += 1000.0 * (rel_over * 100) ** 2
+
+    # Per-pay frequency TARGETS (goal-oriented bidirectional pull).
+    # Use for pays that should be at SPECIFIC freq (not bounded by cap).
+    # E.g., "grand should be normally hittable" → target ~1/720 mode 1.
+    # Penalty quadratic on relative deviation from target. Pulls equally
+    # from above and below — different from cap (one-sided ceiling).
+    pay_freq_targets = exp_targets.get("pay_freq_targets", {})
+    for pid, target in pay_freq_targets.items():
+        actual_freq = pred.get("pay_hits", {}).get(pid, 0.0)
+        if target > 0:
+            rel_dev = (actual_freq - target) / target
+            cost += 500.0 * (rel_dev * 100) ** 2
 
     # Hierarchy enforcement (slot design first principle: payout-frequency 倒金字塔).
     # Per-family within each reel: lower-payout symbols MUST be more frequent than
@@ -802,30 +820,35 @@ def main(modes_to_run=(1, 7)):
             # compensates: optimizer can lower R2 blank weight 15 → 13-14 to
             # bring R2 total back to / below mode 2 487 → booster densities
             # rise → wild_amp ratios ≥ 1.0. Verify hit/RTP within band.
+            # 2026-04-29 v5: redesign mode 5 derivation for grand-signature design.
+            # Old: grand weight ≥ max(6, m2_grand × 6) — works when m2_grand=1, but
+            # with v5 m2_grand 5+, × 6 = 30+ overshoots (RTP 1200%+).
+            # New: grand weight FREE (let optimizer find via pay_freq_target 0.025);
+            # all other R2 weights frozen = m2; blank narrow band as before.
+            # bars + wild + high7 still frozen (mode 5 = m2 base + grand-only buff).
             FROZEN_FOR_M5 = (
                 BAR_KEYS    # all bars (1bar/2bar/3bar/7bar)
                 + [("wild", r) for r in (0, 2)]    # wild
                 + [("high7", r) for r in range(3)]    # high7
                 + [(b, 1) for b in ("mini", "minor", "major")]    # all boosters except grand
-                # NOTE: blank NOT in frozen list — see comment above
+                # NOTE: blank + grand NOT in frozen list — see comment above
             )
             frozen_weights = {k: mode2_all_weights[k] for k in FROZEN_FOR_M5 if k in mode2_all_weights}
             weight_floors = {}
             weight_ceilings = {}
-            # Grand is mutable (push toward顶奖密集化 1000× session 级)
+            # Grand: FREE within weight bounds, pulled by pay_freq_targets (1/40 m5)
+            # Floor = m2 grand (must be ≥ m2's, super-lucky monotonic LUCKY-MONO rule)
             grand_key = ("grand", 1)
             if grand_key in mode2_all_weights:
-                weight_floors[grand_key] = max(6, int(mode2_all_weights[grand_key] * 6))
-            # Blank in narrow band [m2 blank - 2, m2 blank]. Lower bound -2 lets
-            # optimizer compensate ~5 weight unit grand expansion (1→6 weight).
-            # Upper bound = m2 blank prevents drift higher (would dilute booster
-            # densities and break wild_amp ratios in opposite direction).
+                weight_floors[grand_key] = mode2_all_weights[grand_key]
+            # Blank in narrow band [m2 blank - 3, m2 blank + 1] — wider than before
+            # to absorb grand expansion (grand boosts R2 total by ~5-10 weight).
             for k in BLANK_KEYS:
                 if k in mode2_all_weights:
                     m2_b = mode2_all_weights[k]
-                    weight_floors[k] = max(1, m2_b - 2)
-                    weight_ceilings[k] = m2_b
-            print(f"\n=== Mode {mode}: ALL frozen=m2 except grand≥max(6,m2×6) + blank ∈ [m2-2, m2] ===")
+                    weight_floors[k] = max(1, m2_b - 3)
+                    weight_ceilings[k] = m2_b + 1
+            print(f"\n=== Mode {mode}: frozen=m2 except grand (floor=m2_grand, freq target 1/40) + blank ∈ [m2-3, m2+1] ===")
         elif mode == 2 and mode1_all_weights is not None:
             # Mode 2 lucky: big-win/booster ≥ mode 1 (lucky every pay frequency ↑),
             # bar capped ≤ m1 × 1.6 (prevent over-loading), blank ≤ mode 1.
