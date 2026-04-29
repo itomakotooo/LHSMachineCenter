@@ -216,6 +216,16 @@ WINDOW_VISIBILITY_TARGETS = {
     "high7": 0.48,
 }
 
+# M37-SPECIFIC R2 booster window visibility (signature promise check):
+# - "Any booster on R2 window" (mini/minor/major/grand visible in 3-row window)
+#   — design intent "M37 是 Diamond 机台" 的 visual signature
+# - "Grand window visibility" — Harrigan PWDF rare-on-payline / frequent-in-window
+#   creates near-miss psychology (8% window vs 0.08% payline = K 98×)
+# Floors set ~2pp below current baseline as regression guard.
+# Live (v4.6): any-booster window 59-65%, grand window 7-8% across modes.
+R2_BOOSTER_WINDOW_FLOOR = 0.55    # any booster on R2 window — signature visibility
+R2_GRAND_WINDOW_FLOOR = 0.05      # grand specifically on R2 window — near-miss material
+
 # §13 BLANK-FLANK-DIVERSITY (universal): no X-Blank-X. Each blank position
 # p must have strip[(p-1)%n] != strip[(p+1)%n]. Hard zero-violation.
 
@@ -643,6 +653,45 @@ def main():
                 f"({per_reel_str})",
                 ok,
                 "Harrigan PWDF: top symbol 视窗 frequent + payline rare = 'almost' 心理",
+            ))
+
+        # M37 R2 booster window visibility (signature + near-miss check).
+        # "Any booster on R2 window" — design intent "Diamond machine" 标识 visible
+        # "Grand window visibility" — Harrigan PWDF rare-on-payline (~0.08%) +
+        # frequent-in-window (~8%) = K 100× near-miss psychology trigger
+        weights_r2 = weights[1]
+        total_r2 = sum(weights_r2)
+        if total_r2 > 0:
+            # Any booster window
+            p_any_booster = 0
+            for k in range(n_stops):
+                strip = strips_reels[1]
+                if any(strip[(k + offset) % n_stops] in ("mini", "minor", "major", "grand")
+                       for offset in (-1, 0, 1)):
+                    p_any_booster += weights_r2[k]
+            p_any_booster /= total_r2
+            ok = p_any_booster >= R2_BOOSTER_WINDOW_FLOOR
+            all_checks.append(make_check(
+                "WINDOW-VISIBILITY", mode,
+                f"R2 任意 booster window visibility {p_any_booster*100:.2f}% vs floor {R2_BOOSTER_WINDOW_FLOOR*100:.0f}%",
+                ok,
+                "M37 signature: Diamond 机台 = booster 频繁 visible 在 R2 视窗",
+            ))
+            # Grand window (rare-on-payline + frequent-in-window near-miss)
+            p_grand = 0
+            for k in range(n_stops):
+                strip = strips_reels[1]
+                if any(strip[(k + offset) % n_stops] == "grand"
+                       for offset in (-1, 0, 1)):
+                    p_grand += weights_r2[k]
+            p_grand /= total_r2
+            ok = p_grand >= R2_GRAND_WINDOW_FLOOR
+            all_checks.append(make_check(
+                "WINDOW-VISIBILITY", mode,
+                f"R2 grand window visibility {p_grand*100:.2f}% vs floor {R2_GRAND_WINDOW_FLOOR*100:.0f}% "
+                f"(payline ~0.08%, K 视窗/payline ratio ~ {p_grand/0.0008:.0f}×)",
+                ok,
+                "Harrigan PWDF near-miss: grand 视窗常见 + payline 极稀 = '差一行' 心理触发",
             ))
 
     # BRAND-UNIFORMITY: top-prize family cross-(R1, R3) marginal ratio cap.

@@ -88,19 +88,25 @@
 
 **核心 trigger**：Reel 2 有 mini/minor/major/grand 4 档 booster 符号。它们在 **reel 2 的 top/bot row（非 payline）** 出现时，玩家能清楚看到："差一行就是 grand 中间"。
 
-**分析**：
-- Reel 2 共 36 stops（假设），每档 booster ~3-5 stops
-- **grand 在 window 里可见的概率**：≈ (grand stops × 3 row) / 36 = ~25-40% per spin
-- **grand 真正在 payline 的概率**：~3% per spin
-- 差距：~22-37pp 的 near-miss 频率 — **玩家每 2-4 spin 就"看到 grand 但没吃到"**
+**实测 visibility**（v4.6 live data, 2026-04-29 — 由 verify_m37 跑 analytic 得出）:
 
-**这个是 M37 的感情 pull**，比任何数字都关键。Strip 设计时刻意保证：
-- Grand 在 reel 2 的 top/bot row 分布不差于 middle row（Phase 5 joint SA 会自然保）
-- High7 和 grand **垂直邻近**（grand 在 top 时下面是 high7 的概率提升）→ "差一行就中 legendary" 强感
+| Symbol | mode 1 payline | mode 1 任意 booster window | grand window | grand 1 in N spins |
+|---|---|---|---|---|
+| 任意 booster on R2 (payline) | 8.90% | n/a | n/a | 1 in 11 |
+| 任意 booster window (R2 top/mid/bot) | n/a | 59.32% | n/a | 1 in 1.7 |
+| grand on R2 payline | ~0.08% | n/a | n/a | ~1 in 1300 |
+| **grand window (top/mid/bot)** | n/a | n/a | **7.83%** | **1 in 13** |
+
+**Harrigan PWDF (window/payline ratio K)**:
+- 任意 booster K ≈ 59% / 9% = 6.7× ✓ (>= Harrigan IGT baseline 4×)
+- **grand K ≈ 7.83% / 0.08% = 98×** ✓✓ (rare-on-payline + frequent-in-window 工程到位 — IGT Double 7 实证 4×, M37 grand 24× 业界标杆)
 
 **2-of-3 near-miss**（classic 机制）：
 - 2 个 high7 在 payline + grand 在 reel 2 另一行 → "grand 都冒出来了还差一个 high7"
-- 这类 event rate 目测应 ≈ 5-10% per spin
+- Strip pos 17/18/19/20/21 = high7 / blank / grand / blank / high7 — 设计 explicit 创造此场景
+- 跨 mode visibility 一致（R2 strip layout byte-locked）
+
+**这是 M37 的感情 pull**：玩家每 13 spin 看到 grand 一次 → 1 小时玩 (~600 spins) 看到 grand ~46 次，但顶奖 1 in 99k → 一辈子可能见到 1-3 次。差距 = 1300x → **Harrigan-grade 强烈 near-miss 心理触发**。
 
 **参考**：[Near-miss psychology](https://pmc.ncbi.nlm.nih.gov/articles/PMC2790935/) — 研究证明 over-inflated near-miss 会增加玩家 commitment，但过度设计有 responsible-gaming 风险。M37 的 near-miss 来自 **booster 符号 window 可见度**，是"自然 near-miss"不是操控式的。
 
