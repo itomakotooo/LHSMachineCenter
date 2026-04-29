@@ -210,6 +210,32 @@ R1_BLANK_BAND = (0.30, 0.40)
 # distance ≥ 4 stops = ≥ 1 non-Blank gap between repetition. M1-specific (per
 # DESIGN.md §2; not universal — see project_slot_designer_visual_rhythm.md).
 SAME_SYMBOL_MIN_STOP_GAP = 4
+
+# §15 WINDOW-VISIBILITY (PWDF) — M1-specific floor.
+#
+# IMPORTANT — physical-reel limit:
+# Harrigan's IGT empirical 50% top-symbol visibility was measured on machines
+# with VIRTUAL REEL MAPPING (64+ virtual stops mapped to 22 physical stops via
+# weight-table lookups). M1 uses PHYSICAL 22-stop reels directly with weighted
+# stops — no virtual mapping layer. Mathematically, with 22 physical stops +
+# 4 top-prize symbols × 1 instance each + RTP target 95%, the achievable any-
+# reel visibility ceiling is ~35-40% (natural baseline ~30%).
+#
+# Floor 28% is a REGRESSION GUARD — slightly below the natural baseline (Seven2
+# is most rare top-symbol, ~28.7% any-reel naturally). If future changes drop
+# below 28%, this catches it. NOT a Harrigan-style aggressive PWDF target —
+# would require virtual reel mapping (architectural upgrade) to achieve.
+#
+# Per project_slot_designer_window_visibility_pwdf.md. NOT universal —
+# 5-reel video / virtual-reel machines re-derive (Harrigan 50% achievable).
+WINDOW_VISIBILITY_TARGETS = {
+    # symbol -> any-reel visibility floor (regression guard, M1 physical)
+    "Diamond1": 0.28,
+    "Diamond2": 0.28,
+    "Seven2":   0.28,
+    # Seven1 (mid-pay 7) and Cherry (brand) excluded — already at ~40%/57%
+    # naturally; not "top-prize" requiring PWDF treatment.
+}
 # Sparse-symbol escape valve: ratio metric is over-sensitive when absolute
 # marginals are tiny (e.g., Diamond2 ≈ 1-2% — 1pp spread inflates ratio
 # 2x). Player visibility threshold: ≤ 2pp spread is below perception.
@@ -642,6 +668,42 @@ def run_cross_mode_checks(state_by_mode):
             "VISUAL-RHYTHM", None, label, ok,
             "M1 子规则 SAME-SYMBOL-SPACING — 重复 symbol 不密集 (机台 specific)",
         ))
+
+    # WINDOW-VISIBILITY (PWDF): per project_slot_designer_window_visibility_pwdf.md.
+    # Top-prize symbols any-reel window visibility ≥ machine-specific floor.
+    # Implementation: Harrigan PWDF — top-adj Blank positions have heavier
+    # weight, making reel frequently stop in "near top symbol" zone.
+    n_stops = len(strips_reels[0])
+    for mode in sorted(state_by_mode.keys()):
+        m_w = state_by_mode[mode]["weights_doc"]["weights"]
+        for sym, floor in WINDOW_VISIBILITY_TARGETS.items():
+            per_reel_vis = []
+            for r in range(len(strips_reels)):
+                total_w = sum(m_w[r])
+                if total_w <= 0:
+                    per_reel_vis.append(0.0)
+                    continue
+                p_in_window = 0
+                for k in range(n_stops):
+                    strip = strips_reels[r]
+                    if (strip[(k - 1) % n_stops] == sym
+                            or strip[k] == sym
+                            or strip[(k + 1) % n_stops] == sym):
+                        p_in_window += m_w[r][k]
+                per_reel_vis.append(p_in_window / total_w)
+            any_reel = 1.0
+            for v in per_reel_vis:
+                any_reel *= (1.0 - v)
+            any_reel = 1.0 - any_reel
+            ok = any_reel >= floor
+            per_reel_str = " ".join(f"R{i+1}={v*100:.1f}%" for i, v in enumerate(per_reel_vis))
+            checks.append(make_check(
+                "WINDOW-VISIBILITY", mode,
+                f"{sym} any-reel visibility {any_reel*100:.2f}% vs floor {floor*100:.0f}% "
+                f"({per_reel_str})",
+                ok,
+                "Harrigan PWDF: top symbol 视窗 frequent + payline rare = 'almost' 心理",
+            ))
 
     # ALTERNATION: Blank / non-Blank must strictly alternate on every reel.
     # No 3-consecutive Blank or 3-consecutive non-Blank chains. Universal

@@ -328,9 +328,21 @@ PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top
 - 哪些 symbol 算"top"（M1: Diamond+Seven2，M15: TopDollar，M37: booster）
 - 跟 payline hit rate 的倍数关系（K=4-10×）
 
-### 15.5 Tuner pareto 警惕
+### 15.5 物理 reel vs 虚拟 reel 的根本约束（2026-04-29 M1 实测发现）
 
-PWDF 升维后 tune cost 多一项 `top symbol visibility ≥ floor`。如果 cost 没加，per-position search 会自由乱搜 → 可能违反其它约束（如 BRAND-UNIFORMITY 跨 reel 一致）。三层防护同 §12.4：cost penalty + verify red line + archetype 文档（哪些 symbol 是"top"写明）。
+**Harrigan 50% 是 virtual-reel 实证**，不是物理 reel 可达的 universal target：
+
+- **物理 reel + weighted stops（M1 类）**：strip 22 个 physical stops 直接被 RNG 选中（按 weight）。视窗 visibility 上限受 strip 长度 + top symbol 实例数 + RTP 目标三重约束。M1 22-stop + 4 top × 1 instance + RTP 95% → **自然 visibility 30-40%**。强行 boost (Blank weight × N) 会 collapse RTP（M1 实测 mult=5 → RTP 95%→13%）
+- **虚拟 reel 映射（IGT 经典 Double 7 等）**：64+ virtual stops 通过 weight-table 映射到 22 physical stops。Virtual mapping 把"top-symbol 邻接 zone"在虚拟 reel 上占多数 → physical reel 经常停那 → window frequent contains top symbol。**Harrigan 50% 在这架构下可达**
+- **新机台 onboarding 必看**：先确认 architecture（物理 weighted stops vs virtual mapping）。物理-only 机台 floor 设 **regression guard (natural baseline - 5pp buffer)**，不要抄 IGT 50%；虚拟 reel 机台可设 Harrigan-style aggressive (50%+)
+
+### 15.6 Tuner pareto 警惕
+
+PWDF 升维后 tune cost 多一项 `top symbol visibility ≥ floor`。但**物理-only 机台**直接 cost penalty 会 hurt RTP（boost Blank 稀释 family marginal）。建议：
+- **物理 reel 机台**：PWDF 不做 cost component, 改 **post-tune sweep**（试 mult ∈ [1, K], 选满足 RTP tol 内的最高 visibility）
+- **虚拟 reel 机台**：PWDF 直接 cost penalty 可行（virtual mapping 提供更大 visibility/RTP trade-off 空间）
+
+三层防护：post-tune sweep（物理）/ cost penalty（虚拟）+ verify red line + archetype 文档（哪些 symbol 是"top"写明，物理 vs 虚拟 reel 写明）。
 
 ---
 

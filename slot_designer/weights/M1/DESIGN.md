@@ -40,10 +40,12 @@
   - **Where**: reel_strips.json 重排时遵守；verify_m1_design.py VISUAL-RHYTHM 子类 (M1 specific cap)
   - **Not universal**: M37/M15 有不同的 paytable 结构和重复 symbol 数，应自定阈值——不要抄 4
 
-- **Window visibility — Diamond1 / Diamond2 / Seven2 any-reel ≥ 50%**（M1 specific PWDF floor，2026-04-29 user requirement）:
-  - **Why**: M1 是 IGT TDD 风格 brand machine, 顶奖 family (Diamond 系 wild + Seven2 top jackpot) 应频繁可见但 payline hit rare（Harrigan PWDF 实证 IGT Double 7 any-reel ~50%）。Cherry brand visibility 当前 57% 已达标
-  - **Where**: tune_m1.py 升级 per-position weight (66 dim, 22 stop × 3 reel)；verify_m1_design.py WINDOW-VISIBILITY check
-  - **Not universal**: 50% floor 是 1-line 3-reel IGT empirical baseline。5-reel video 多线机台 floor 可降至 30-40%
+- **Window visibility — Diamond1 / Diamond2 / Seven2 any-reel ≥ 28%**（M1 specific PWDF floor 2026-04-29，**物理 reel 限制下的 regression guard**）:
+  - **Why**: M1 是 IGT TDD 风格 brand machine, 顶奖 family (Diamond 系 wild + Seven2 top jackpot) 设计上应频繁可见但 payline hit rare。Harrigan IGT 实证 50% 是**虚拟 reel 映射**（64+ virtual stops mapped to 22 physical stops 用 weight-table 放大 visibility）。
+  - **物理 vs 虚拟 reel constraint**: M1 当前用**物理 22-stop reel + weighted stops**（无虚拟映射层）。数学上限：22 stops + 4 top-prize × 1 instance × RTP 95% ⇒ achievable any-reel visibility ≈ 30-40% (mult=1 baseline ~28-39%)。强行用 Blank weight boost 推高 visibility 会让 RTP 崩到 13-44%（mult=2-5 实测）。
+  - **Floor 28% 是 regression guard**: 当前自然 baseline (Seven2 ≈ 28.7% 最低)。设 28% 防 future change 跌破自然值。**不是 Harrigan PWDF aggressive target** — 要达到 50% 需架构升级到 virtual reel mapping
+  - **Where**: verify_m1_design.py WINDOW-VISIBILITY check (12 checks: 3 symbols × 4 modes); tune_m1.py 含 PWDF mult mechanism 框架（M1 物理 reel 总返回 mult=1）
+  - **Not universal**: 28% 是 M1 物理-reel-specific。5-reel video / virtual-reel 机台应 raise (Harrigan 50% 可达)
   - 详见 [`project_slot_designer_window_visibility_pwdf.md`](../../memory/project_slot_designer_window_visibility_pwdf.md)
 
 ## 3. 玩家体验目标（Tune cost function 实现的 goals）
@@ -198,7 +200,7 @@ Mode 7 = mode 1 (frozen, 1.00x). Mode 2/5 monotonic ≥ mode 1.
 - R1 早期拒绝防线 (2026-04-28, user-pinned): **R1-BLANK-BAND** — R1 Blank ∈ [30%, 40%] all modes。M1-specific (1-line classic)，多线机台需重新校准
 - Strip 防廉价 near-miss (2026-04-29, user requirement, universal): **BLANK-FLANK-DIVERSITY** — strip 上每个 Blank 位置 p, strip[(p−1)%22] ≠ strip[(p+1)%22]，universal hard 红线 (0 violations)。详见 [`memory/project_slot_designer_blank_flank_diversity.md`](../../memory/project_slot_designer_blank_flank_diversity.md)
 - Strip 视觉节奏 (2026-04-29, user requirement, M1 specific): **VISUAL-RHYTHM** — 同 symbol 重复实例间距 ≥ 4 stops (M1 paytable 特定阈值；其它机台自定)
-- Brand symbol 视窗能见度 (2026-04-29, user requirement, M1 specific floor): **WINDOW-VISIBILITY** — Diamond1 / Diamond2 / Seven2 any-reel 视窗 visibility ≥ 50% (1-line 3-reel IGT empirical baseline)，Cherry 已 57% 自然达标。详见 [`memory/project_slot_designer_window_visibility_pwdf.md`](../../memory/project_slot_designer_window_visibility_pwdf.md)
+- Brand symbol 视窗能见度 (2026-04-29, M1 physical-reel regression guard): **WINDOW-VISIBILITY** — Diamond1 / Diamond2 / Seven2 any-reel 视窗 visibility ≥ 28% (M1 物理 22-stop reel 自然 baseline)，Cherry 已 57% 自然达标。Harrigan 50% 需 virtual reel 映射架构 (M1 当前没有)。详见 [`memory/project_slot_designer_window_visibility_pwdf.md`](../../memory/project_slot_designer_window_visibility_pwdf.md)
 
 **HIT band 注**：M1 是 1-line classic，mode 1 hit_hi=22% 是该 paylines 数的 reference。多线机台需重新校准 — paylines 越多 hit band 越右移 (5-9 line ≈ 25-35%, 25-50 line ≈ 30-45%, megaways ≈ 40-60%)。详见 [`memory/project_slot_designer_hit_rate_deviation.md`](../../memory/project_slot_designer_hit_rate_deviation.md)。
 

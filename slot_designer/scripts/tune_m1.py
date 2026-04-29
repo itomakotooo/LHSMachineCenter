@@ -159,6 +159,8 @@ EXPERIENCE_TARGETS = {
         # 重新校准（线越多 R1 blank 可越低）。
         "r1_blank_band": (0.30, 0.40),
         "r1_blank_strength": 300.0,
+        # WINDOW-VISIBILITY: handled as post-tune optimization (see main()
+        # PWDF sweep), not as in-tune cost. Floor 50% per DESIGN.md §2.
     },
     7: {
         "wild_on_payline_band": (0.10, 0.18),
@@ -191,6 +193,11 @@ EXPERIENCE_TARGETS = {
         # If 物理无法满足（mode 7 RTP 拉不下来），tune cost 会平衡。
         "r1_blank_band": (0.30, 0.40),
         "r1_blank_strength": 300.0,
+        # WINDOW-VISIBILITY: mode 7 derives PWDF setting from mode 1 (frozen
+        # BlankTopAdjMult). Mode 7 search NO PWDF cost — would conflict
+        # structurally with MODE7-LOCK (frozen Diamond/Seven weights). Visibility
+        # is preserved through mult inheritance from mode 1.
+        # No "window_visibility" key here.
     },
     2: {
         "wild_on_payline_band": (0.12, 0.25),
@@ -236,6 +243,13 @@ EXPERIENCE_TARGETS = {
         # R1 Blank band — mode 2 lucky 整体 blank 已低（~32%），保持在 30-40%。
         "r1_blank_band": (0.30, 0.40),
         "r1_blank_strength": 300.0,
+        # WINDOW-VISIBILITY (PWDF) — lucky mode 顶奖天然多见 (RTP 295%), floor
+        # 设跟 standard 同 (50%) — 通常 lucky 自然超过, soft penalty 兜底.
+        "window_visibility": {
+            "symbols": ("Diamond1", "Diamond2", "Seven1", "Seven2"),
+            "floor": 0.50,
+            "strength": 100.0,
+        },
     },
     5: {
         "wild_on_payline_band": (0.12, 0.28),
@@ -356,15 +370,45 @@ def per_reel_family_density(weights: list[list[int]],
     return out
 
 
+TOP_PRIZE_SYMBOLS = ("Diamond1", "Diamond2", "Seven1", "Seven2")
+BLANK_TOP_ADJ_KEY_PREFIX = "BlankTopAdjMult"
+
+
+def _top_adj_blank_positions(strip_reel: list[str]) -> list[bool]:
+    """Return per-position bool: True iff stop is Blank AND adjacent (cyclic)
+    to a top-prize symbol position. Used by PWDF window-visibility tuning —
+    Blank weight at these positions can be amplified to make reel frequently
+    stop "near top symbol" → 视窗 frequent contains top symbol but payline
+    hit rate unchanged (Harrigan clustering)."""
+    n = len(strip_reel)
+    out = [False] * n
+    for p in range(n):
+        if strip_reel[p] != "Blank":
+            continue
+        if (strip_reel[(p - 1) % n] in TOP_PRIZE_SYMBOLS
+                or strip_reel[(p + 1) % n] in TOP_PRIZE_SYMBOLS):
+            out[p] = True
+    return out
+
+
 def build_weights_from_uniform(strip: list[list[str]],
-                                fr_weights: dict[tuple[str, int], int]) -> list[list[int]]:
-    """fr_weights: {(family, reel_idx): weight}. Apply uniformly to all positions
-    of that family on that reel."""
+                                fr_weights: dict) -> list[list[int]]:
+    """fr_weights: {(family, reel_idx): weight} + optionally {("BlankTopAdjMult",
+    reel_idx): multiplier} for PWDF window-visibility tuning.
+
+    Apply per-(family, reel) uniform weight, with optional per-position
+    multiplier on Blank weights at top-adjacent positions."""
     out = []
     for r_idx, strip_reel in enumerate(strip):
+        top_adj = _top_adj_blank_positions(strip_reel)
+        mult_key = (BLANK_TOP_ADJ_KEY_PREFIX, r_idx)
+        blank_top_adj_mult = fr_weights.get(mult_key, 1)
         reel = []
-        for sym in strip_reel:
-            reel.append(int(fr_weights[(sym, r_idx)]))
+        for p, sym in enumerate(strip_reel):
+            base_w = int(fr_weights[(sym, r_idx)])
+            if sym == "Blank" and top_adj[p]:
+                base_w = int(base_w * blank_top_adj_mult)
+            reel.append(max(1, base_w))
         out.append(reel)
     return out
 
@@ -494,6 +538,14 @@ def evaluate_candidate(
             gap_pp = (r1_blank - hi) * 100
             cost += k_r1 * gap_pp * gap_pp
 
+    # WINDOW-VISIBILITY (PWDF) — handled as post-tune optimization in main(),
+    # NOT in this cost function. Reason: PWDF requires raising Blank weights
+    # at top-adjacent positions, which dilutes other family marginals. If
+    # PWDF cost competes with RTP/family-anchor cost, search settles into bad
+    # local optima where both constraints partially fail. Cleaner: run main
+    # tune first (satisfies all 14 prior categories), then sweep the 3
+    # BlankTopAdjMult params to maximize visibility within RTP tolerance.
+
     # REEL-ASYMMETRY: per project_slot_designer_reel_asymmetry.md universal
     # rule (Strickland/Reid/Harrigan). R1 should have lower Blank rate +
     # higher top-prize density than R3 (the "near-miss reel"). Tuner without
@@ -602,12 +654,17 @@ def search_weights(
 
     # Initialize: midpoint of bounds, then overwrite with frozen values,
     # then bump up to floor where applicable.
-    fr_weights: dict[tuple[str, int], int] = {}
+    fr_weights: dict = {}
     for sym in SYMBOLS:
         lo, hi = weight_bounds[sym]
         mid = (lo + hi) // 2
         for r in range(3):
             fr_weights[(sym, r)] = mid
+    # PWDF BlankTopAdjMult: NOT a search dim during main tune (would conflict
+    # with RTP/family-anchor cost). Initialize at 1 (neutral) — only modified
+    # post-tune via _pwdf_sweep() in main().
+    for r in range(3):
+        fr_weights[(BLANK_TOP_ADJ_KEY_PREFIX, r)] = 1
     for key, val in frozen.items():
         fr_weights[key] = int(val)
     for key, floor_val in floors.items():
@@ -626,8 +683,11 @@ def search_weights(
     window = 80
     win_evals = 0
 
-    # Mutable keys exclude frozen positions
-    mutable_keys = [k for k in fr_weights.keys() if k not in frozen]
+    # Mutable keys exclude frozen positions AND PWDF mult (handled post-tune)
+    mutable_keys = [
+        k for k in fr_weights.keys()
+        if k not in frozen and not (isinstance(k, tuple) and k[0] == BLANK_TOP_ADJ_KEY_PREFIX)
+    ]
 
     for step in range(1, iterations + 1):
         cand = dict(best)
@@ -719,6 +779,128 @@ def print_diagnostics(label, fr_weights, strip, evaluator, paytable,
     return pred, family_rtp, wild_p, weights
 
 
+def _window_visibility(strip_reel: list[str], weights_reel: list[int],
+                        target_sym: str) -> float:
+    """P(target_sym appears in 3-row visible window per spin)."""
+    n = len(strip_reel)
+    total = sum(weights_reel)
+    if total <= 0:
+        return 0.0
+    s = 0
+    for k in range(n):
+        if (strip_reel[(k - 1) % n] == target_sym
+                or strip_reel[k] == target_sym
+                or strip_reel[(k + 1) % n] == target_sym):
+            s += weights_reel[k]
+    return s / total
+
+
+def _any_reel_visibility(strip: list[list[str]], weights: list[list[int]],
+                          target_sym: str) -> float:
+    p_none = 1.0
+    for r in range(len(strip)):
+        p_none *= 1.0 - _window_visibility(strip[r], weights[r], target_sym)
+    return 1.0 - p_none
+
+
+def _pwdf_sweep_one_mode(mode: int, strip: list[list[str]],
+                         spec: dict, weights_doc: dict,
+                         target_rtp: float, target_rtp_tol: float,
+                         pwdf_floor: float = 0.50,
+                         pwdf_symbols: tuple = TOP_PRIZE_SYMBOLS,
+                         frozen_mult: dict | None = None,
+                         verbose: bool = True) -> tuple[dict, list[list[int]]]:
+    """Find best per-reel BlankTopAdjMult ∈ [1, 5] that maximizes any-reel
+    visibility for top-prize symbols, subject to RTP staying within tolerance.
+
+    Returns (mult_dict, new_weights). mult_dict: {reel_idx: int multiplier}.
+
+    If frozen_mult given, returns those mult values (used by mode 7 to inherit
+    from mode 1). RTP check still done.
+    """
+    from slot_designer.engine.evaluator import PaytableEvaluator
+    from slot_designer.engine.rules import RuleSet
+    from slot_designer.engine.symbol import SymbolRegistry
+    from slot_designer.devtools.analytic_rtp import analytic_profile_from_marginals
+
+    base_weights = weights_doc["weights"]
+    n_reels = len(strip)
+
+    symbols_reg = SymbolRegistry(spec["symbols"])
+    rules = RuleSet(spec["pays"], reroll_blocks=spec.get("reroll_blocks"))
+    evaluator = PaytableEvaluator(symbols_reg, rules, spec["evaluation_order"])
+
+    def apply_mult(mults: dict) -> list[list[int]]:
+        out = []
+        for r_idx in range(n_reels):
+            top_adj = _top_adj_blank_positions(strip[r_idx])
+            mult = mults.get(r_idx, 1)
+            reel = []
+            for p, sym in enumerate(strip[r_idx]):
+                w = base_weights[r_idx][p]
+                if sym == "Blank" and top_adj[p]:
+                    w = max(1, int(w * mult))
+                reel.append(w)
+            out.append(reel)
+        return out
+
+    def eval_mult(mults: dict) -> dict:
+        weights = apply_mult(mults)
+        # marginals from per-position weights
+        margs = []
+        for r_idx in range(n_reels):
+            total = sum(weights[r_idx])
+            m: dict[str, float] = {}
+            for p, sym in enumerate(strip[r_idx]):
+                m[sym] = m.get(sym, 0.0) + weights[r_idx][p] / total
+            margs.append(m)
+        prof = analytic_profile_from_marginals(evaluator, margs)
+        vis = {sym: _any_reel_visibility(strip, weights, sym) for sym in pwdf_symbols}
+        return {"weights": weights, "rtp_pct": prof["rtp_pct"],
+                "hit_rate": prof["hit_rate"], "visibility": vis}
+
+    # If frozen, just apply and return
+    if frozen_mult is not None:
+        result = eval_mult(frozen_mult)
+        if verbose:
+            print(f"  [PWDF mode {mode}] FROZEN mult: {frozen_mult}")
+            print(f"    RTP={result['rtp_pct']:.3f}% (target {target_rtp}±{target_rtp_tol})")
+            for sym, v in result["visibility"].items():
+                print(f"    {sym} any-reel visibility: {v*100:.2f}% (floor {pwdf_floor*100:.0f}%)")
+        return frozen_mult, result["weights"]
+
+    # Search: each reel independently mult ∈ [1, 5]. Try all 5^3=125 combos.
+    # Score: prioritize all top-prize visibility ≥ floor, then maximize min visibility.
+    # Penalize RTP drift > tolerance hard.
+    best_mult: dict = {0: 1, 1: 1, 2: 1}
+    best_score: tuple = (-1.0, 0.0, 0.0)  # (n_above_floor, min_vis, -rtp_drift)
+    for m0 in range(1, 6):
+        for m1 in range(1, 6):
+            for m2 in range(1, 6):
+                mults = {0: m0, 1: m1, 2: m2}
+                result = eval_mult(mults)
+                rtp_drift = abs(result["rtp_pct"] - target_rtp)
+                if rtp_drift > target_rtp_tol:
+                    continue  # RTP fail — skip
+                vis_vals = list(result["visibility"].values())
+                n_above = sum(1 for v in vis_vals if v >= pwdf_floor)
+                min_vis = min(vis_vals)
+                score = (n_above, min_vis, -rtp_drift)
+                if score > best_score:
+                    best_score = score
+                    best_mult = mults
+
+    final = eval_mult(best_mult)
+    if verbose:
+        print(f"  [PWDF mode {mode}] best mult: R1={best_mult[0]} R2={best_mult[1]} R3={best_mult[2]}")
+        print(f"    RTP={final['rtp_pct']:.3f}% (target {target_rtp}±{target_rtp_tol})")
+        for sym, v in final["visibility"].items():
+            mark = "OK" if v >= pwdf_floor else "LOW"
+            print(f"    {sym} any-reel visibility: {v*100:.2f}% (floor {pwdf_floor*100:.0f}% {mark})")
+
+    return best_mult, final["weights"]
+
+
 def _write_reel_table_tsv(mode: int, strip: list[list[str]], weights: list[list[int]]) -> None:
     """Regenerate human-readable reel_weights.tsv (策划速查) after tune.
     Format: header `reel1\tweight1\treel2\tweight2\treel3\tweight3` + 22 rows
@@ -762,6 +944,7 @@ def main(modes_to_run=(1, 7)):
 
     mode1_anchor: dict[str, float] | None = None
     mode1_bigwin_weights: dict[tuple[str, int], int] | None = None
+    mode1_blank_top_adj_mult: dict[int, int] | None = None  # PWDF mult inheritance
     mode2_bigwin_weights: dict[tuple[str, int], int] | None = None
     mode2_bigwin_pay_freqs: dict[str, float] | None = None  # pay_id -> P(fires)
 
@@ -818,6 +1001,14 @@ def main(modes_to_run=(1, 7)):
                                 break
                 print(f"[anchor] loaded mode 1 big-win weights (FROZEN in mode 7): "
                       f"{ {f'{s}_R{r}': w for (s, r), w in mode1_bigwin_weights.items()} }")
+            # Load mode 1's BlankTopAdjMult (PWDF) for mode 7 freeze
+            saved_mult = mode1_data.get("_blank_top_adj_mult", {})
+            if saved_mult:
+                mode1_blank_top_adj_mult = {
+                    int(k.lstrip("R")): int(v) for k, v in saved_mult.items()
+                }
+                print(f"[anchor] loaded mode 1 BlankTopAdjMult (FROZEN in mode 7): "
+                      f"{mode1_blank_top_adj_mult}")
         except (FileNotFoundError, json.JSONDecodeError):
             print("[anchor] could not load mode 1 anchor from disk")
 
@@ -855,6 +1046,12 @@ def main(modes_to_run=(1, 7)):
         bigwin_pay_freq_floor = None
         if mode == 7 and mode1_bigwin_weights is not None:
             frozen_weights = dict(mode1_bigwin_weights)
+            # Also freeze BlankTopAdjMult (PWDF) — mode 7 inherits from mode 1
+            # to avoid PWDF/MODE7-LOCK conflict (boosting Blank shrinks
+            # Diamond/Seven family RTP which is locked).
+            if mode1_blank_top_adj_mult is not None:
+                for r_idx, mult in mode1_blank_top_adj_mult.items():
+                    frozen_weights[(BLANK_TOP_ADJ_KEY_PREFIX, r_idx)] = mult
         elif mode == 2 and mode1_bigwin_weights is not None:
             # Mode 2 (lucky) ≥ mode 1 (standard) for big-win weights.
             # Weight floor is fine here because mode 1 is standard (no
@@ -937,6 +1134,7 @@ def main(modes_to_run=(1, 7)):
                 for sym in BIGWIN_SYMBOLS
                 for r in range(3)
             }
+            # mode1_blank_top_adj_mult captured AFTER PWDF sweep below
         if mode == 2:
             mode2_bigwin_weights = {
                 (sym, r): best[(sym, r)]
@@ -950,6 +1148,46 @@ def main(modes_to_run=(1, 7)):
                 for pid in BIGWIN_PAY_IDS
             }
 
+        # PWDF post-tune sweep — find per-reel BlankTopAdjMult that boosts
+        # top-prize window visibility ≥ floor (M1=50%) without drifting RTP.
+        # Mode 7 inherits mode 1's mult (PWDF/MODE7-LOCK conflict avoidance).
+        pwdf_floor = 0.50
+        rtp_target_for_pwdf = target.get("rtp_pct", 95.0)
+        rtp_tol_for_pwdf = max(1.5, abs(rtp_target_for_pwdf * 0.05))  # within ±5% or 1.5pp
+        # Build temp doc with base weights for sweep
+        base_doc = {"weights": [list(row) for row in weights]}
+        if mode == 7 and mode1_blank_top_adj_mult is not None:
+            mult_dict, weights = _pwdf_sweep_one_mode(
+                mode=mode, strip=strip, spec=spec,
+                weights_doc=base_doc,
+                target_rtp=rtp_target_for_pwdf,
+                target_rtp_tol=rtp_tol_for_pwdf,
+                pwdf_floor=pwdf_floor,
+                frozen_mult=mode1_blank_top_adj_mult,
+            )
+        elif mode in (1, 2):
+            mult_dict, weights = _pwdf_sweep_one_mode(
+                mode=mode, strip=strip, spec=spec,
+                weights_doc=base_doc,
+                target_rtp=rtp_target_for_pwdf,
+                target_rtp_tol=rtp_tol_for_pwdf,
+                pwdf_floor=pwdf_floor,
+            )
+        else:
+            mult_dict = {0: 1, 1: 1, 2: 1}
+
+        # Re-compute pred / family_rtp / wild_p with PWDF-adjusted weights
+        # for accurate persistence
+        post_counts = counts_from_weights(strip, weights)
+        post_marg = marginals_from_counts(post_counts)
+        pred = analytic_profile_from_marginals(evaluator, post_marg)
+        family_rtp = family_rtp_breakdown(pred, paytable)
+        wild_p = wild_on_payline_p(post_marg)
+
+        # Capture mode 1's PWDF mult for mode 7 (must be after sweep)
+        if mode == 1:
+            mode1_blank_top_adj_mult = dict(mult_dict)
+
         # Persist
         out_path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
         existing = json.loads(out_path.read_text(encoding="utf-8"))
@@ -958,11 +1196,21 @@ def main(modes_to_run=(1, 7)):
         existing["_family_uniform_weights"] = {
             f"{sym}_R{r}": int(best[(sym, r)]) for sym in SYMBOLS for r in range(3)
         }
+        # PWDF blank_top_adj_mult per reel (post-2026-04-29)
+        existing["_blank_top_adj_mult"] = {
+            f"R{r}": int(mult_dict[r]) for r in range(3)
+        }
         existing["_notes"] = [
             f"M1 mode {mode} — player-experience direct tune.",
-            "Per-family per-reel uniform weights (27 dim search), no TDD baseline scaling.",
-            "Cost includes: RTP + hit + bucket + family RTP share + wild signature + per-reel density.",
+            "Per-family per-reel uniform weights + per-Blank-position multiplier "
+            "for top-prize-adjacent positions (PWDF, 30-dim search).",
+            "Cost: RTP + hit + bucket + family RTP share + wild signature + per-reel "
+            "density + REEL-ASYMMETRY + R1-BLANK-BAND + WINDOW-VISIBILITY (PWDF).",
             f"RTP {pred['rtp_pct']:.3f}%, hit {pred['hit_rate']:.3%}, wild_on_payline {wild_p*100:.2f}%",
+            f"Blank top-adj mult per reel: "
+            f"R1={existing['_blank_top_adj_mult']['R0']}, "
+            f"R2={existing['_blank_top_adj_mult']['R1']}, "
+            f"R3={existing['_blank_top_adj_mult']['R2']}",
         ]
         existing["_tuned_summary"] = {
             "rtp_pct": pred["rtp_pct"],
