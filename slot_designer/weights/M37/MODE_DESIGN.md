@@ -110,8 +110,8 @@ Post-tune v4.5 (2026-04-29) 实际 analytic 数字（`python slot_designer/scrip
 | 2-5, 7 (Bar) | BAR | 1 in 12-306 | 1 in 19-468 | 0.61-0.76 | "砍小奖" cut as design ✓ |
 
 **big-win 频率（pay_id 1+8+102+103+104 sum）**：
-- Mode 1: 1 in 403 spins
-- Mode 7: 1 in 376 spins (~7% MORE frequent — 顶奖 freq match + grand alone rises)
+- Mode 1: 1 in 403 spins (live 0.002481)
+- Mode 7: 1 in 384 spins (live 0.002604, ~5% MORE frequent than m1 — 顶奖 freq match + pay_id 8 grand alone rises 30.7% with bar cut → 副作用 acceptable，within verify caps)
 - Mode 2: 1 in 112 spins (×3.6 vs m1)
 - Mode 5: 1 in 84 spins (×4.8 vs m1, ×1.33 vs m2)
 
