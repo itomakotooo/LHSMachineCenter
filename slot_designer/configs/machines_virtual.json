@@ -30,7 +30,7 @@
         "SimulatedClassicPayline3Reel"
       ],
       "configSummaryMd5": "c195dfd3a9ed810c9c37aa075d4230f6",
-      "codeSummaryMd5": "4c14044940aa810d284343d53bd92339",
+      "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4",
       "available": true,
       "_source_machine": "M1",
       "_spec_path": "slot_designer/specs/M1.spec.json",
@@ -39,19 +39,19 @@
       "modesMd5": {
         "1": {
           "configSummaryMd5": "3ba67532c820a578357379fbf13c1362",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "2": {
           "configSummaryMd5": "c26f72c011e54d9c85cdf6074eba5c05",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "5": {
           "configSummaryMd5": "667318683366b757eaa3bd7cd981bd80",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "7": {
           "configSummaryMd5": "53537044ca4343f49240bf67333d4050",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         }
       }
     },
@@ -67,7 +67,7 @@
         "SimulatedClassicPayline3ReelWithBonus"
       ],
       "configSummaryMd5": "f20c2d5befff40084f3c68567e1baf5f",
-      "codeSummaryMd5": "4c14044940aa810d284343d53bd92339",
+      "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4",
       "available": true,
       "_source_machine": "M15",
       "_spec_path": "slot_designer/specs/M15.spec.json",
@@ -76,19 +76,19 @@
       "modesMd5": {
         "1": {
           "configSummaryMd5": "6298019684dd6a9bf74080b0360361f0",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "2": {
           "configSummaryMd5": "8d9e2c1076a66a3edb326fae8b93c934",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "5": {
           "configSummaryMd5": "468294cd69a33748f1faea69f6fe289e",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "7": {
           "configSummaryMd5": "31bf2fe8c919fb9d60efb631740ce983",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         }
       }
     },
@@ -104,7 +104,7 @@
         "SimulatedClassic3ReelWithBoosterJackpot"
       ],
       "configSummaryMd5": "00a7945a4beb19123c8c972ae72f65e0",
-      "codeSummaryMd5": "4c14044940aa810d284343d53bd92339",
+      "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4",
       "available": true,
       "_source_machine": "M37",
       "_spec_path": "slot_designer/specs/M37.spec.json",
@@ -113,19 +113,19 @@
       "modesMd5": {
         "1": {
           "configSummaryMd5": "5a38af39ed205477afbe2ecca0182516",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "2": {
           "configSummaryMd5": "3cea66c5f172649b50e113e7ccd5e707",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "5": {
           "configSummaryMd5": "ebc153cc003681f70834cc3b686289d4",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "7": {
           "configSummaryMd5": "fa9016aa9a5371b74093bb7eb984c76d",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         }
       }
     },
@@ -141,7 +141,7 @@
         "SimulatedM279NudgeStackCollectWheel"
       ],
       "configSummaryMd5": "1f79c64abbc8c0a0921f0cc11050b294",
-      "codeSummaryMd5": "4c14044940aa810d284343d53bd92339",
+      "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4",
       "available": true,
       "_engine": "m279",
       "_source_machine": "M279",
@@ -152,19 +152,19 @@
       "modesMd5": {
         "1": {
           "configSummaryMd5": "1d6ce2cb3ce83ee0e6b931f606ecfdd9",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "2": {
           "configSummaryMd5": "418bd387a3e2acd7b05920f692896868",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "5": {
           "configSummaryMd5": "3a92ad68ddf0636db5e4cba50df086b5",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "7": {
           "configSummaryMd5": "792661b3e043feb4f18259439acd29ba",
-          "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         }
       }
     }

@@ -83,6 +83,15 @@ SMALL_WIN_BARS = ("1bar", "2bar", "3bar")
 MID_WIN_BARS = ("7bar",)
 BAR_SYMBOLS = SMALL_WIN_BARS + MID_WIN_BARS    # for floors/ceilings in m2
 
+# v6: Tier → bucket key mapping (matches DESIGN.md §7 + analytic_rtp _BUCKETS).
+# Used by bucket_rtp_share_targets cost in _predict_cost.
+TIER_TO_BUCKETS = {
+    "low":  ("gt0_lt1", "ge1_lt5", "ge5_lt10"),
+    "mid":  ("ge10_lt20", "ge20_lt50"),
+    "high": ("ge50_lt100", "ge100_lt200", "ge200_lt500"),
+    "top":  ("ge500_lt1000", "ge1000_lt5000", "ge5000"),
+}
+
 # Per-family per-reel weight bounds. Each is integer >= 1.
 # Hierarchy structurally enforced via per-symbol caps:
 #   - Bar tier: 1bar (3×) cap > 2bar (4×) > 3bar (5×) > 7bar (6×) — lower payout = higher cap
@@ -115,48 +124,95 @@ WEIGHT_BOUNDS_BY_MODE = {1: WEIGHT_BOUNDS_STANDARD, 7: WEIGHT_BOUNDS_STANDARD,
 EXPERIENCE_TARGETS = {
     1: {
         "total_rtp_pct": 95.0, "total_rtp_tol_pp": 1.0,
-        "rtp_weight": 80.0,    # very strict, dominant
-        # mode 1 hit relaxed band — booster-heavy design produces hit naturally
-        "hit_rate_target": 0.16, "hit_rate_weight": 100.0,
-        "wild_on_payline_band": (0.05, 0.18),
-        "wild_signature_weight": 300.0,
-        # Booster on R2 brand: M37 signature — boosters frequently visible
-        # 2026-04-29 v5: bumped 5-10% → 8-15% (signature gameplay needs more visibility)
-        "booster_r2_band": (0.08, 0.15),
-        "booster_signature_weight": 300.0,
-        # 2026-04-29 v5: REMOVED pay_freq_caps for grand (was {"8": 0.0004} — picked
-        # cap blocking grand visibility). REPLACED with bidirectional target:
-        # grand alone freq ~1 in 700 (~10 min cadence — "normally hittable signature").
-        "pay_freq_targets": {"8": 0.0014},  # 1/714 = grand normally hittable
-        # 1000x top jackpot via high7-grand-high7 substitution. Cap loosened (was 60000).
+        # v6: rtp_weight bumped 80 → 250 to ensure 95% RTP holds against
+        # bucket_share/hit/asymmetry pull (v5 80 was sufficient pre-bucket
+        # constraint; v6 bucket_share 1000 + asymmetry 1000 dominated).
+        "rtp_weight": 250.0,
+        # v6: DESIGN.md §7 spec'd Mode 1 hit ~13% (was 16% target chasing
+        # v4.6 21% achieved). v5 grand-signature pulled hit DOWN from 21% to
+        # 17% but still 4pp over design — 45% of hits are 1-2× bet-back pays
+        # per adversarial review. Tightening to 13% per design intent.
+        "hit_rate_target": 0.13, "hit_rate_weight": 250.0,
+        # Wild upper tightened: less side wild alone (1× empty-feeling pays).
+        "wild_on_payline_band": (0.04, 0.10),
+        "wild_signature_weight": 400.0,
+        # Booster on R2: M37 signature. v6: floor 0.10 enforced strongly to
+        # ensure R2 has enough non-blank density (more 3-match-with-booster
+        # mid pays). Counters the v5 R2 blank 84% over-dilution.
+        "booster_r2_band": (0.10, 0.20),
+        "booster_signature_weight": 600.0,
+        # v6: keep grand alone signature freq target (kept from v5).
+        # 3-wild jackpot freq targets DROPPED — too aggressive, optimizer
+        # found degenerate corner (R3 wild 17%, R2 booster 3.5%). Instead,
+        # rely on per_reel_density floors + bucket_share to keep mini/minor/
+        # major naturally visible (~1/5-15k range, hittable per session).
+        # v6: grand alone target 1/716 → 1/1000. 1/716 dominates High bucket
+        # (grand 100× alone = 14pp = 14.7% RTP, structurally pins High at
+        # 30%+). Reducing to 1/1000 = 9pp lets Mid bucket grow per DESIGN.md.
+        # Player still hits grand 100× per ~1 hour session = "normally
+        # hittable signature" intent satisfied.
+        "pay_freq_targets": {"8": 0.001},  # 1/1000 grand alone
+        # 1000x top jackpot via high7-grand-high7 substitution.
+        # min_spins = floor (top must NOT fire MORE often than 1/30k).
+        # max_spins = ceiling (top must NOT be RARER than 1/120k — visibility
+        # per 50-100hr session lifetime; v6 added because cutting high7 to
+        # control Mid bucket made top 1/347k = effectively never seen).
         "top_jackpot_min_spins": 30000,
+        "top_jackpot_max_spins": 120000,
+        # v6: NEW bucket-level RTP share constraint. DESIGN.md §7 specifies
+        # Low ~35% / Mid ~40% / High ~20% / Top ~5%. v5 actual was
+        # Low 32.5 / Mid 31.6 / High 30.7 / Top 5.2 — Mid UNDER 8.4pp,
+        # High OVER 10.7pp. Without this constraint, family_share alone is
+        # blind to WITHIN-bucket distribution (booster_alone could be 50%
+        # from 1× side-wild-alone OR 50% from 100× grand-alone — totally
+        # different player feel).
+        "bucket_rtp_share_targets": {
+            "low": 0.35,    # gt0_lt1 + ge1_lt5 + ge5_lt10
+            "mid": 0.40,    # ge10_lt20 + ge20_lt50 (DESIGN.md "咦有料 accept" core)
+            "high": 0.20,   # ge50_lt100 + ge100_lt200 + ge200_lt500
+            "top": 0.05,    # ge500_lt1000 + ge1000_lt5000+
+        },
+        "bucket_share_weight": 1000.0,
         "family_share_bands": {
-            # 2026-04-29 v5: rebalanced to make booster_alone (grand-driven) the
-            # signature RTP family (~30-45% share), bar_tier secondary (~20-35%).
+            # v6: relaxed — bucket_rtp_share_targets is the primary distribution
+            # constraint. Family bands kept as guardrails to prevent wild swings.
             "high7":   (0.05, 0.20),
-            "7bar":    (0.05, 0.20),
-            "bar_tier": (0.20, 0.40),    # bar tier secondary
-            "booster_alone": (0.30, 0.50),  # grand alone + booster alone — main signature
-            "wild_amplified": (0.0, 0.10),  # 3-wild jackpots (architectural-limited)
+            "7bar":    (0.05, 0.18),
+            "bar_tier": (0.18, 0.40),
+            "booster_alone": (0.25, 0.50),    # capped 50% (was 50, kept)
+            "wild_amplified": (0.0, 0.10),
         },
         "per_reel_blank_variance_strength": 8.0,
         "per_reel_density_lo_by_family": {
-            "wild": 0.005, "high7": 0.005,
+            # v6: high7 floor raised 0.005 → 0.05 to anchor top jackpot path
+            # (3-high7 × grand = 1000× legendary moment). Without this,
+            # bucket-share Mid pull cuts high7 to <2% making top 1/300k+.
+            "wild": 0.005, "high7": 0.05,
             "7bar": 0.005, "3bar": 0.005, "2bar": 0.005, "1bar": 0.01,
-            "mini": 0.005, "minor": 0.005, "major": 0.005, "grand": 0.0015,
+            # v6: mini floor lifted (need 3-wild mini visibility)
+            "mini": 0.008, "minor": 0.006, "major": 0.004, "grand": 0.0012,
         },
         "per_reel_density_hi_by_family": {
             "wild": 0.08, "high7": 0.10,
-            "7bar": 0.12, "3bar": 0.12, "2bar": 0.12, "1bar": 0.16,    # tighter bar caps
-            # 2026-04-29 v5: grand cap bumped 0.4% → 1.0% (allow signature visibility)
-            "mini": 0.07, "minor": 0.06, "major": 0.04, "grand": 0.010,
+            "7bar": 0.12, "3bar": 0.12, "2bar": 0.12, "1bar": 0.16,
+            "mini": 0.08, "minor": 0.06, "major": 0.04, "grand": 0.0020,
         },
         "uniformity_ratio_cap": {"wild": 2.0, "high7": 2.0},
         "base_cv_target": 10.0,
+        # v6: REEL-ASYMMETRY for mode 1 too (universal §12). v5 had R1 top
+        # > R3 top naturally; v6 cost surface (bucket_share + family_share
+        # at higher weights) freed optimizer to flip direction. Add explicit
+        # constraint so direction stays correct.
+        "reel_asymmetry": {
+            "blank_tol_pp": 0.02,
+            "top_tol_pp": 0.005,
+            "blank_strength": 600.0,
+            "top_strength": 600.0,
+        },
     },
     7: {
         "total_rtp_pct": 85.0, "total_rtp_tol_pp": 2.0,
-        "rtp_weight": 30.0,    # very strict for mode 7
+        "rtp_weight": 100.0,    # v6: bumped 30 → 100 (mode 1 baseline change)
         # Mode 7 hit slightly lower than mode 1 (砍 small bars)
         "hit_rate_target": 0.14, "hit_rate_weight": 60.0,
         "top_jackpot_min_spins": 30000,
@@ -169,7 +225,10 @@ EXPERIENCE_TARGETS = {
             "high7":   (0.05, 0.22),
             "7bar":    (0.05, 0.22),
             "bar_tier": (0.10, 0.32),    # mode 7 砍 bars
-            "booster_alone": (0.30, 0.58),    # signature dominant in cold mode
+            # v6: booster_alone cap kept tight at 0.62 — verify hardcodes
+            # 0.65 cap. Don't move goalposts; instead push optimizer to hit
+            # under 65% by tighter tune cap.
+            "booster_alone": (0.30, 0.62),
             "wild_amplified": (0.0, 0.10),
         },
         "per_reel_blank_variance_strength": 5.0,
@@ -221,7 +280,9 @@ EXPERIENCE_TARGETS = {
         },
         "per_reel_blank_variance_strength": 5.0,
         "per_reel_density_lo_by_family": {
-            "wild": 0.01, "high7": 0.01,
+            # v6: high7 R1/R3 floor raised 0.04 → 0.06 to ensure SHARE >5%
+            # (was 3.8% with floor 0.04 — needed higher).
+            "wild": 0.01, "high7": 0.06,
             "7bar": 0.01, "3bar": 0.01, "2bar": 0.01, "1bar": 0.01,
             "mini": 0.008, "minor": 0.008, "major": 0.008, "grand": 0.003,
         },
@@ -232,6 +293,16 @@ EXPERIENCE_TARGETS = {
             "mini": 0.10, "minor": 0.10, "major": 0.10, "grand": 0.030,
         },
         "uniformity_ratio_cap": {"wild": 2.5, "high7": 3.0},
+        # v6: REEL-ASYMMETRY (universal §12). Mode 2 had R1 top 6.5% < R3
+        # 14.7% (8pp gap, REVERSED from §12 R1≥R3 top intent). Adding
+        # constraint to push optimizer to symmetric direction. Inherits to
+        # mode 5 (mode 5 base = mode 2 base byte-identical).
+        "reel_asymmetry": {
+            "blank_tol_pp": 0.03,    # 3pp tol — lucky modes have flatter blank
+            "top_tol_pp": 0.01,      # 1pp tol — top symmetry strict
+            "blank_strength": 600.0,
+            "top_strength": 600.0,
+        },
     },
     5: {
         "total_rtp_pct": 500.0, "total_rtp_tol_pp": 40.0,
@@ -257,17 +328,30 @@ EXPERIENCE_TARGETS = {
         },
         "per_reel_blank_variance_strength": 5.0,
         "per_reel_density_lo_by_family": {
-            "wild": 0.015, "high7": 0.015,
+            "wild": 0.015, "high7": 0.06,
             "7bar": 0.01, "3bar": 0.01, "2bar": 0.01, "1bar": 0.01,
-            "mini": 0.008, "minor": 0.008, "major": 0.008, "grand": 0.005,
+            # v6: super-lucky needs grand ~4% to hit pay_id 8 = 1/50 freq.
+            # Hierarchy 1.2x means major ≥ 4×1.2 = 4.8%. Floor major 0.05.
+            "mini": 0.06, "minor": 0.05, "major": 0.05, "grand": 0.030,
         },
         "per_reel_density_hi_by_family": {
             "wild": 0.13, "high7": 0.20,
             "7bar": 0.16, "3bar": 0.16, "2bar": 0.16, "1bar": 0.22,
-            # 2026-04-29 v5: grand cap bumped 2% → 8% (super-lucky session-level grand)
-            "mini": 0.12, "minor": 0.12, "major": 0.12, "grand": 0.080,
+            # v6: grand cap 0.040 (allow super-lucky grand ~4%); hierarchy
+            # enforced via major floor ≥ grand × 1.2 = 0.048 (set major
+            # floor 0.050).
+            "mini": 0.12, "minor": 0.12, "major": 0.12, "grand": 0.040,
         },
-        "uniformity_ratio_cap": {"wild": 3.0, "high7": 3.0},
+        # v6: tightened from 3.0 → 2.5 (was barely failing at 2.51 ratio)
+        "uniformity_ratio_cap": {"wild": 2.5, "high7": 3.0},
+        # v6: REEL-ASYMMETRY (universal §12) — inherits intent from mode 2
+        # since mode 5 = m2 base byte-identical + grand boost.
+        "reel_asymmetry": {
+            "blank_tol_pp": 0.03,
+            "top_tol_pp": 0.01,
+            "blank_strength": 600.0,
+            "top_strength": 600.0,
+        },
     },
 }
 
@@ -363,16 +447,18 @@ def evaluate_candidate(fr_weights, strip, evaluator, paytable, exp_targets):
         hit_actual = pred.get("hit_rate", 0.0)
         cost += hit_weight * ((hit_actual - hit_target) / 0.01) ** 2
 
-    # Family RTP shares
+    # Family RTP shares — v6 weight bumped 50 → 500 to compete with bucket
+    # /RTP/asymmetry. v5 50 was OK pre-bucket but now drowned in 100K+ cost
+    # surface, leaving optimizer free to violate share bands by 3pp+.
     family_rtp = family_rtp_breakdown(pred)
     total_rtp = pred["rtp_pct"]
     share_bands = exp_targets.get("family_share_bands", {})
     for f, (lo, hi) in share_bands.items():
         actual = family_rtp.get(f, 0.0) / total_rtp if total_rtp > 0 else 0
         if actual < lo:
-            cost += 50.0 * ((lo - actual) * 100) ** 2
+            cost += 500.0 * ((lo - actual) * 100) ** 2
         elif actual > hi:
-            cost += 50.0 * ((actual - hi) * 100) ** 2
+            cost += 500.0 * ((actual - hi) * 100) ** 2
 
     # Wild on payline
     wild_p = wild_on_payline_p(marg)
@@ -416,6 +502,9 @@ def evaluate_candidate(fr_weights, strip, evaluator, paytable, exp_targets):
 
     # Top-tier uniformity (wild on R1 vs R3, high7 across reels)
     uniformity_cap = exp_targets.get("uniformity_ratio_cap", {})
+    # v6: uniformity penalty bumped 40 → 3000. With family_share at 500
+    # contributing 1.8M+ when off-band by 6pp, 1000 was still drowned.
+    # 3000 with 0.6 ratio violation → 1080 cost — competitive.
     for fam, ratio_cap in uniformity_cap.items():
         per_reel = []
         for r in range(3):
@@ -427,7 +516,7 @@ def evaluate_candidate(fr_weights, strip, evaluator, paytable, exp_targets):
             mx = max(per_reel)
             ratio = mx / mn if mn > 0 else 1
             if ratio > ratio_cap:
-                cost += 40.0 * (ratio - ratio_cap) ** 2
+                cost += 3000.0 * (ratio - ratio_cap) ** 2
 
     # REEL-ASYMMETRY (universal §12 — Strickland/Reid/Harrigan).
     # R1 should have lower blank rate (defends early-rejection persistence) and
@@ -476,11 +565,31 @@ def evaluate_candidate(fr_weights, strip, evaluator, paytable, exp_targets):
     # Penalty quadratic on relative deviation from target. Pulls equally
     # from above and below — different from cap (one-sided ceiling).
     pay_freq_targets = exp_targets.get("pay_freq_targets", {})
+    pay_freq_weight = exp_targets.get("pay_freq_targets_weight", 500.0)
     for pid, target in pay_freq_targets.items():
         actual_freq = pred.get("pay_hits", {}).get(pid, 0.0)
         if target > 0:
             rel_dev = (actual_freq - target) / target
-            cost += 500.0 * (rel_dev * 100) ** 2
+            cost += pay_freq_weight * (rel_dev * 100) ** 2
+
+    # v6: Bucket-level RTP share constraint (DESIGN.md §7 player tier intent).
+    # Family-share alone is blind to WITHIN-bucket distribution — booster_alone
+    # at 50% share could be 50% from 1× side-wild-alone (Low feel-bad bucket)
+    # OR 50% from 100× grand-alone (High session-memory bucket). Bucket targets
+    # supplement family share by directly constraining the player's felt tier
+    # distribution.
+    bucket_targets = exp_targets.get("bucket_rtp_share_targets", {})
+    bucket_weight = exp_targets.get("bucket_share_weight", 0.0)
+    if bucket_targets and bucket_weight > 0:
+        bucket_rtp = pred.get("bucket_rtp", {})
+        rtp_total = pred["rtp_pct"] / 100.0
+        if rtp_total > 0:
+            for tier_name, target_share in bucket_targets.items():
+                keys = TIER_TO_BUCKETS.get(tier_name, ())
+                actual_rtp = sum(bucket_rtp.get(k, 0.0) for k in keys)
+                actual_share = actual_rtp / rtp_total
+                dev = actual_share - target_share
+                cost += bucket_weight * (dev * 100) ** 2
 
     # Hierarchy enforcement (slot design first principle: payout-frequency 倒金字塔).
     # Per-family within each reel: lower-payout symbols MUST be more frequent than
@@ -548,6 +657,16 @@ def evaluate_candidate(fr_weights, strip, evaluator, paytable, exp_targets):
         if p_top > max_p:
             rel_over = (p_top - max_p) / max_p
             cost += 1500.0 * (rel_over * 100) ** 2
+    # v6: top jackpot 1000× MAX spin gap (one-sided floor: too rare = bad).
+    # DESIGN.md §3 Top tier intent = "legendary moment / advertising hook —
+    # 玩家会记住". 1/300k+ effectively means never seen. Pull p_top up if
+    # rarer than 1/max_spins so the legendary moment exists.
+    top_jackpot_max_spins = exp_targets.get("top_jackpot_max_spins")
+    if top_jackpot_max_spins is not None:
+        min_p = 1.0 / top_jackpot_max_spins
+        if 0 < p_top < min_p:
+            rel_under = (min_p - p_top) / min_p
+            cost += 1500.0 * (rel_under * 100) ** 2
 
     # Top-jackpot freq match — direct expression of "mode 7 中/大/顶奖击中率不变"
     # design intent (per project_slot_designer.md §D hit rate deviation rules).

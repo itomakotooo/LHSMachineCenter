@@ -15,6 +15,9 @@ API:
           "rtp_pct":       float,         # Σ P(combo) × multiplier × 100
           "hit_rate":      float,         # Σ P(combo where pay fires)
           "bucket_rate":   {key: prob},   # P(multiplier ∈ bucket k), excluding zero-win
+          "bucket_rtp":    {key: rtp},    # Σ P(combo) × multiplier within each bucket
+                                          #   (sum equals rtp_pct/100; players FEEL the bucket
+                                          #    that has the most RTP weight)
           "pay_hits":      {pid_str: prob}, # P(pay_id fires)
           "total_prob":    float,         # sanity: should equal 1.0
         }
@@ -106,6 +109,7 @@ def analytic_profile(engine: SpinEngine) -> dict:
     rtp_sq = 0.0
     hit_prob = 0.0
     bucket_prob: dict[str, float] = defaultdict(float)
+    bucket_rtp: dict[str, float] = defaultdict(float)
     pay_prob: dict[str, float] = defaultdict(float)
     pay_rtp: dict[str, float] = defaultdict(float)
     total_prob = 0.0
@@ -121,6 +125,7 @@ def analytic_profile(engine: SpinEngine) -> dict:
             bucket = multiplier_to_bucket(mult)
             if bucket is not None:
                 bucket_prob[bucket] += prob
+                bucket_rtp[bucket] += prob * mult
 
     # Var(multiplier) = E[M²] - E[M]²; std_return_x matches analyzer's
     # player_impact.volatility.std_return_x (= σ of per-spin multiplier)
@@ -137,6 +142,7 @@ def analytic_profile(engine: SpinEngine) -> dict:
         "std_return_x": std_return_x,
         "cv": cv,
         "bucket_rate": dict(bucket_prob),
+        "bucket_rtp": dict(bucket_rtp),  # per-bucket RTP contribution (sums to rtp_pct/100)
         "pay_hits": dict(pay_prob),
         "pay_rtp": dict(pay_rtp),  # per-pay_id RTP contribution (probability-weighted multiplier sum, includes wild-substitution boost)
         "total_prob": total_prob,  # sanity: should equal 1.0
@@ -159,6 +165,7 @@ def analytic_profile_from_marginals(
     rtp_sq = 0.0
     hit_prob = 0.0
     bucket_prob: dict[str, float] = defaultdict(float)
+    bucket_rtp: dict[str, float] = defaultdict(float)
     pay_prob: dict[str, float] = defaultdict(float)
     pay_rtp: dict[str, float] = defaultdict(float)
     total_prob = 0.0
@@ -183,6 +190,7 @@ def analytic_profile_from_marginals(
         bucket = multiplier_to_bucket(mult)
         if bucket is not None:
             bucket_prob[bucket] += prob
+            bucket_rtp[bucket] += prob * mult
 
     var = max(0.0, rtp_sq - rtp * rtp)
     import math
@@ -195,6 +203,7 @@ def analytic_profile_from_marginals(
         "std_return_x": std_return_x,
         "cv": cv,
         "bucket_rate": dict(bucket_prob),
+        "bucket_rtp": dict(bucket_rtp),
         "pay_hits": dict(pay_prob),
         "pay_rtp": dict(pay_rtp),
         "total_prob": total_prob,
