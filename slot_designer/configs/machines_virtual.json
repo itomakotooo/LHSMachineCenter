@@ -29,7 +29,7 @@
       "logicClassNames": [
         "SimulatedClassicPayline3Reel"
       ],
-      "configSummaryMd5": "6d65954db8ae5dc49e8f0cf013ba7408",
+      "configSummaryMd5": "c195dfd3a9ed810c9c37aa075d4230f6",
       "codeSummaryMd5": "4c14044940aa810d284343d53bd92339",
       "available": true,
       "_source_machine": "M1",
@@ -38,19 +38,19 @@
       "_weights_path_template": "slot_designer/weights/M1/mode_{mode}/weights.json",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "358c1c4526ffb77adeba3cb9c5e8ed4f",
+          "configSummaryMd5": "3ba67532c820a578357379fbf13c1362",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "2": {
-          "configSummaryMd5": "2122ceddf03380ec22b40784213a8fc7",
+          "configSummaryMd5": "c26f72c011e54d9c85cdf6074eba5c05",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "5": {
-          "configSummaryMd5": "2cdb401e9aea79a7f565cdbbc433d916",
+          "configSummaryMd5": "667318683366b757eaa3bd7cd981bd80",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "7": {
-          "configSummaryMd5": "6294048d3ccbb1a19a8f9e69b9b18dac",
+          "configSummaryMd5": "53537044ca4343f49240bf67333d4050",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         }
       }
@@ -103,7 +103,7 @@
       "logicClassNames": [
         "SimulatedClassic3ReelWithBoosterJackpot"
       ],
-      "configSummaryMd5": "ec76a790760892268b7c83d707b04557",
+      "configSummaryMd5": "00a7945a4beb19123c8c972ae72f65e0",
       "codeSummaryMd5": "4c14044940aa810d284343d53bd92339",
       "available": true,
       "_source_machine": "M37",
@@ -112,19 +112,19 @@
       "_weights_path_template": "slot_designer/weights/M37/mode_{mode}/weights.json",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "343aa03787f8e6eb4adbf56f5e5b0e78",
+          "configSummaryMd5": "5a38af39ed205477afbe2ecca0182516",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "2": {
-          "configSummaryMd5": "20b3a23711569728dd7fbe8b27dd08dd",
+          "configSummaryMd5": "3cea66c5f172649b50e113e7ccd5e707",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "5": {
-          "configSummaryMd5": "154d129b6151c7b336a6c46e5da1f663",
+          "configSummaryMd5": "ebc153cc003681f70834cc3b686289d4",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "7": {
-          "configSummaryMd5": "d4505b02d671b171bf01ecb84b2de92f",
+          "configSummaryMd5": "fa9016aa9a5371b74093bb7eb984c76d",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         }
       }
@@ -140,7 +140,7 @@
       "logicClassNames": [
         "SimulatedM279NudgeStackCollectWheel"
       ],
-      "configSummaryMd5": "bbe64bd92efe7f798bfc9c4ad9595e3f",
+      "configSummaryMd5": "1f79c64abbc8c0a0921f0cc11050b294",
       "codeSummaryMd5": "4c14044940aa810d284343d53bd92339",
       "available": true,
       "_engine": "m279",
@@ -151,19 +151,19 @@
       "_note": "M279 = Light & Wonder 'Blazing 777 Triple Double Jackpot Wild — Nudging Stacks' archetype + Asian-market collect-to-wheel feature. The _engine='m279' marker routes virtual_analyzer through engine/m279/ and emitter/m279_{round,driver}.py instead of the M1/M15 SpinEngine path. md5s populate on next refresh_machines_virtual.",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "7bc092ad260909f728f8cc6e07bd7f88",
+          "configSummaryMd5": "1d6ce2cb3ce83ee0e6b931f606ecfdd9",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "2": {
-          "configSummaryMd5": "28398b250eb265726c17d44b8702c28b",
+          "configSummaryMd5": "418bd387a3e2acd7b05920f692896868",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "5": {
-          "configSummaryMd5": "cae069f3d83b0d550ab92215981cf146",
+          "configSummaryMd5": "3a92ad68ddf0636db5e4cba50df086b5",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         },
         "7": {
-          "configSummaryMd5": "4f161054ea17f2a3cf1c5786dd4d13a0",
+          "configSummaryMd5": "792661b3e043feb4f18259439acd29ba",
           "codeSummaryMd5": "4c14044940aa810d284343d53bd92339"
         }
       }
