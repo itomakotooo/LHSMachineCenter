@@ -4,24 +4,30 @@ M37 = "100× Diamond" — Lightning-Link/Dragon-Link inspired classic 3-reel.
 Brand signature = booster diamonds (mini/minor/major/grand) on R2.
 No Feature engine. Top jackpot = (high7|wild, grand, high7|wild) = 1000×.
 
-Categories:
-    [RTP]            Total RTP within tolerance per mode
-    [HIT]            Hit rate within band per mode
-    [WILD]           Wild on payline (R1+R3 wild) signature
-    [BOOSTER]        Booster on R2 (brand) signature
-    [SHARE]          Per-family RTP share within band
-    [DENSITY]        Per-family per-reel density visually合理
-    [BLANK-VAR]      Per-reel Blank balance ratio
-    [BASE-CV]        Mode 1 CV ≤ 11 (structural floor due to 100×/1000× pays)
-    [MODE7-BIGWIN]   Mode 7 high7+wild+7bar+booster weights = mode 1 (frozen, 中/大/顶奖不动)
-    [MODE7-TIER]     Mode 7 per-tier hit rate preservation (SMALL cut, MID/BIG frozen)
-    [MODE7-CUT]      Mode 7 bar_tier (small bars) RTP cut from mode 1
-    [MODE5-HIT]      Mode 5 hit rate ≤ m2 × 1.15 (super-lucky preserves hit shape)
-    [LUCKY-MONO]     Mode 5 big-win pay frequencies ≥ mode 2 (super-lucky monotonic)
-    [ARCHETYPE]      reel_strips.json has _archetype block with origin + chassis_reference_url
-    [BAR-HIER]       Bar tier payout-frequency 倒金字塔: 1bar > 2bar > 3bar > 7bar (per reel)
-    [BOOSTER-HIER]   Booster tier 倒金字塔 on R2: mini > minor > major > grand
-    [BLANK-CAP]      Blank weight not pinned at WEIGHT_BOUNDS upper (≥ 5 weight headroom)
+Categories (M37-specific + universal):
+    [RTP]                    Total RTP within tolerance per mode
+    [HIT]                    Hit rate within band per mode
+    [WILD]                   Wild on payline (R1+R3 wild) signature
+    [BOOSTER]                Booster on R2 (brand) signature
+    [SHARE]                  Per-family RTP share within band
+    [DENSITY]                Per-family per-reel density visually合理
+    [BLANK-VAR]              Per-reel Blank balance ratio
+    [BASE-CV]                Mode 1 CV ≤ 11 (structural floor due to 100×/1000× pays)
+    [MODE7-BIGWIN]           Mode 7 high7+wild+7bar+booster weights = mode 1 (frozen, 中/大/顶奖不动)
+    [MODE7-TIER]             Mode 7 per-tier hit rate preservation (SMALL cut, MID/BIG frozen)
+    [MODE7-CUT]              Mode 7 bar_tier (small bars) RTP cut from mode 1
+    [MODE5-HIT]              Mode 5 hit rate ≤ m2 × 1.15 (super-lucky preserves hit shape)
+    [LUCKY-MONO]             Mode 5 big-win pay frequencies ≥ mode 2 (super-lucky monotonic)
+    [ARCHETYPE]              reel_strips.json has _archetype block with origin + chassis_reference_url
+    [BAR-HIER]               Bar tier payout-frequency 倒金字塔: 1bar > 2bar > 3bar > 7bar (per reel)
+    [BOOSTER-HIER]           Booster tier 倒金字塔 on R2: mini > minor > major > grand
+    [BLANK-CAP]              Blank weight not pinned at WEIGHT_BOUNDS upper (≥ 5 weight headroom)
+    [ALTERNATION]            Blank/non-blank strict alternation per reel (universal)
+    [BLANK-FLANK-DIVERSITY]  No X-Blank-X (universal §13)
+    [VISUAL-RHYTHM]          Same-symbol cyclic spacing ≥ 4 stops (M37 sub-rule)
+    [REEL-ASYMMETRY]         R1 ≤ R3 Blank, R1 ≥ R3 top-prize (universal §12)
+    [WINDOW-VISIBILITY]      high7 any-reel visibility floor (M37: multi-instance natural)
+    [BRAND-UNIFORMITY]       high7 + wild cross-(R1,R3) marginal ratio (R2 booster reel structurally excluded)
 """
 from __future__ import annotations
 
@@ -165,6 +171,67 @@ MODE7_BIG_MAX_RATIO = 1.55
 # adding pay_id 9 and grand-related side combos. memory says "hit/bucket shape preserved"
 # but in M37 the booster-heavy super-lucky design has structural hit lift.
 MODE5_HIT_MAX_RATIO = 1.25
+
+# === Universal verify category constants (added per M37 redo Phase 1) ===
+
+# §14 VISUAL-RHYTHM (M37 sub-rule SAME-SYMBOL-SPACING):
+# 同 symbol 重复实例 cyclic 距离 ≥ 4 stops. M37 36-stop strip; multi-instance
+# symbols are 3 wild + 3 high7 + 4×3 bars per outer reel, 3 high7 + 2×4 bars +
+# 2 boosters + 1 grand per booster reel. R2 has high7 at pos 1, 17, 21 — pair
+# (17, 21) cyclic dist = 4 (intentional grand near-miss design per
+# reel_strips.json `_near_miss_design`). 4 stops = 1 non-blank gap, just at
+# floor. Tighter floor (≥ 5) would break the archetype `_near_miss_design`
+# narrative; looser floor (< 4) admits visual clustering. M37-specific.
+SAME_SYMBOL_MIN_STOP_GAP = 4
+
+# §12 REEL-ASYMMETRY (universal — Strickland/Reid/Harrigan):
+# R1 should have lower Blank rate (defends early-rejection persistence) and
+# higher top-prize density (R3 = "差一点" near-miss reel) than R3.
+# Standard modes (1, 7) tight tolerance; lucky modes (2, 5) wider since
+# high RTP dilutes near-miss psychology. R2 is the M37 booster reel with
+# fundamentally different structure (booster-heavy, no wild) — excluded
+# from the comparison; only R1 vs R3 is compared.
+REEL_ASYMMETRY_BLANK_TOL_PP_STANDARD = 0.03   # R1 Blank may exceed R3 by ≤ 3pp
+REEL_ASYMMETRY_BLANK_TOL_PP_LUCKY = 0.08      # lucky modes wider tolerance
+REEL_ASYMMETRY_TOP_TOL_PP_STANDARD = 0.01     # R1 top may fall below R3 by ≤ 1pp
+REEL_ASYMMETRY_TOP_TOL_PP_LUCKY = 0.03        # lucky modes wider tolerance
+TOP_PRIZE_FAMILIES_M37 = ("high7", "wild")    # cross-reel top symbols
+LAST_REEL_IDX = 2                              # R3 (3-reel layout)
+
+# §15 WINDOW-VISIBILITY (PWDF) — M37-specific floor.
+#
+# M37 high7 is multi-instance (3 per reel) — natural any-reel-window visibility
+# is high baseline:
+#   pre-redistribution (current state, 2026-04-29):
+#     mode 1: 51.24%, mode 7: 55.77%, mode 2: 50.04%, mode 5: 49.75%
+#
+# Per `feedback_dont_lower_floor_when_blocked`: floor must be reachable by
+# current architecture. M37 36-stop strip + 3-instance design naturally hits
+# 50%+ on high7 — floor 48% provides small buffer below baseline as
+# regression guard. Wild excluded from any-reel check (R2 has no wild
+# structurally, see _invariants).
+WINDOW_VISIBILITY_TARGETS = {
+    # symbol -> any-reel visibility floor (regression guard).
+    # 48% chosen ~3pp below current min baseline (mode 5 49.75%).
+    "high7": 0.48,
+}
+
+# §13 BLANK-FLANK-DIVERSITY (universal): no X-Blank-X. Each blank position
+# p must have strip[(p-1)%n] != strip[(p+1)%n]. Hard zero-violation.
+
+# ALTERNATION: blank/non-blank strict alternation, no 3-consecutive of either
+# kind. Universal across line-based slots; encoded in M37 _invariants.
+
+# BRAND-UNIFORMITY: top-prize family cross-reel marginal ratio cap. M37-specific
+# adaptation: wild is R1+R3 only by `_invariants` (R2 has no wild). high7 is
+# on all 3 reels but R2 high7 in lucky modes (~18%) is intentionally amplified
+# vs R1/R3 (~7-9%) to support grand near-miss narrative. Both top families
+# compared on R1 vs R3 only (R2 excluded as structural booster reel —
+# different design role from outer reels). Sparse-symbol abs-spread floor
+# allows tiny absolute differences to pass even at high ratios.
+BRAND_UNIFORMITY_RATIO_CAP_STANDARD = 2.0   # mode 1, mode 7
+BRAND_UNIFORMITY_RATIO_CAP_LUCKY = 2.5      # mode 2, mode 5
+BRAND_UNIFORMITY_ABS_SPREAD_FLOOR_PP = 0.02  # ≤ 2pp invisible to player
 
 
 def family_rtp_breakdown(profile):
@@ -424,6 +491,190 @@ def main():
         all_checks.append(make_check("ARCHETYPE", None, f"chassis_reference_url present: {bool(arch.get('chassis_reference_url'))}", ok))
         ok = bool(arch.get("modifications_explanation"))
         all_checks.append(make_check("ARCHETYPE", None, f"modifications_explanation present: {bool(arch.get('modifications_explanation'))}", ok))
+
+    # === Universal verify category checks (M37 redo Phase 1) ===
+    strips_reels = strips_data["reels"]
+    n_stops = len(strips_reels[0])
+
+    # ALTERNATION: blank/non-blank strict alternation, no 3-consecutive of either.
+    # Universal invariant — strips shared across modes, so check once.
+    for r_idx, reel in enumerate(strips_reels):
+        violations = []
+        for p in range(len(reel) - 1):
+            cur_blank = reel[p] == "blank"
+            nxt_blank = reel[p + 1] == "blank"
+            if cur_blank == nxt_blank:
+                kind = "BB" if cur_blank else "NN"
+                violations.append((p, p + 1, kind, reel[p], reel[p + 1]))
+        ok = len(violations) == 0
+        if ok:
+            blanks = sum(1 for s in reel if s == "blank")
+            label = (f"R{r_idx+1} alternation OK ({blanks} blank / "
+                     f"{len(reel)-blanks} non-blank, strict B-N-B-N)")
+        else:
+            sample = violations[0]
+            label = (f"R{r_idx+1} alternation broken at {len(violations)} adjacency: "
+                     f"pos {sample[0]}-{sample[1]} both '{sample[2]}' "
+                     f"({sample[3]}/{sample[4]})")
+        all_checks.append(make_check("ALTERNATION", None, label, ok))
+
+    # BLANK-FLANK-DIVERSITY (universal §13): no X-Blank-X.
+    # Each blank position p must have strip[(p-1)%n] != strip[(p+1)%n], else
+    # the 3-row window shows X-blank-X creating a cheap visual near-miss.
+    for r_idx, reel in enumerate(strips_reels):
+        n = len(reel)
+        violations_pairs = []
+        for p in range(n):
+            if reel[p] == "blank":
+                prev = reel[(p - 1) % n]
+                nxt = reel[(p + 1) % n]
+                if prev == nxt and prev != "blank":
+                    violations_pairs.append((p, prev))
+        ok = len(violations_pairs) == 0
+        if ok:
+            label = f"R{r_idx+1}: 0 X-blank-X violations"
+        else:
+            sample = violations_pairs[0]
+            label = (f"R{r_idx+1}: {len(violations_pairs)} X-blank-X violations: "
+                     f"pos {sample[0]} ({sample[1]}-blank-{sample[1]})")
+        all_checks.append(make_check("BLANK-FLANK-DIVERSITY", None, label, ok))
+
+    # VISUAL-RHYTHM (M37 sub-rule SAME-SYMBOL-SPACING ≥ 4 stops cyclic).
+    # Repeating non-blank symbols on the same reel must keep cyclic distance
+    # ≥ 4 stops, i.e. ≥ 1 non-blank gap between repetitions. Floor = 4 matches
+    # the intentional grand-near-miss design (R2 high7 at pos 17, 21 with
+    # blanks at 18, 20 — exactly 4 stops apart).
+    for r_idx, reel in enumerate(strips_reels):
+        n = len(reel)
+        sym_positions: dict[str, list[int]] = {}
+        for p, s in enumerate(reel):
+            if s == "blank":
+                continue
+            sym_positions.setdefault(s, []).append(p)
+        violations_v = []
+        for sym, positions in sym_positions.items():
+            if len(positions) < 2:
+                continue
+            sorted_p = sorted(positions)
+            for i in range(len(sorted_p)):
+                next_p = sorted_p[(i + 1) % len(sorted_p)]
+                if next_p > sorted_p[i]:
+                    d = next_p - sorted_p[i]
+                else:
+                    d = (n - sorted_p[i]) + next_p  # cyclic wrap
+                if d < SAME_SYMBOL_MIN_STOP_GAP:
+                    violations_v.append((sym, sorted_p[i], next_p, d))
+        ok = len(violations_v) == 0
+        if ok:
+            label = (f"R{r_idx+1}: SAME-SYMBOL-SPACING ≥ {SAME_SYMBOL_MIN_STOP_GAP} "
+                     f"stops cyclic ✓")
+        else:
+            sample = violations_v[0]
+            label = (f"R{r_idx+1}: {len(violations_v)} SAME-SYMBOL-SPACING violations: "
+                     f"{sample[0]} at pos {sample[1]} and {sample[2]} (cyclic dist {sample[3]} < "
+                     f"{SAME_SYMBOL_MIN_STOP_GAP})")
+        all_checks.append(make_check("VISUAL-RHYTHM", None, label, ok))
+
+    # REEL-ASYMMETRY (universal §12): R1 ≤ R3 Blank, R1 ≥ R3 top-prize.
+    # M37 R2 is the booster reel (structurally different) — excluded; only
+    # R1 vs R3 (the symmetric-shape outer reels) are compared.
+    for mode in sorted(state.keys()):
+        densities_m = state[mode]["densities"]
+        r1_blank = densities_m.get(("blank", 0), 0.0)
+        r3_blank = densities_m.get(("blank", LAST_REEL_IDX), 0.0)
+        r1_top = sum(densities_m.get((sym, 0), 0.0) for sym in TOP_PRIZE_FAMILIES_M37)
+        r3_top = sum(densities_m.get((sym, LAST_REEL_IDX), 0.0) for sym in TOP_PRIZE_FAMILIES_M37)
+        is_lucky = mode in (2, 5)
+        blank_tol = (REEL_ASYMMETRY_BLANK_TOL_PP_LUCKY if is_lucky
+                     else REEL_ASYMMETRY_BLANK_TOL_PP_STANDARD)
+        top_tol = (REEL_ASYMMETRY_TOP_TOL_PP_LUCKY if is_lucky
+                   else REEL_ASYMMETRY_TOP_TOL_PP_STANDARD)
+        # R1 Blank ≤ R3 Blank + tol (defending early-rejection persistence)
+        blank_ok = r1_blank <= r3_blank + blank_tol
+        all_checks.append(make_check(
+            "REEL-ASYMMETRY", mode,
+            f"R1 blank {r1_blank:.2%} vs R3 blank {r3_blank:.2%} "
+            f"(diff {r1_blank-r3_blank:+.2%}, tol +{blank_tol:.0%})",
+            blank_ok,
+            "防早期拒绝 (Strickland/Reid): R1 应 ≤ R3 blank",
+        ))
+        # R1 top-prize density ≥ R3 top-prize density - tol (Harrigan near-miss)
+        top_ok = r1_top >= r3_top - top_tol
+        all_checks.append(make_check(
+            "REEL-ASYMMETRY", mode,
+            f"R1 top-prize {r1_top:.2%} vs R3 top-prize {r3_top:.2%} "
+            f"(diff {r1_top-r3_top:+.2%}, tol -{top_tol:.0%})",
+            top_ok,
+            "near-miss psychology (Harrigan): R3 顶奖应 ≤ R1 (R3 = 差一点 reel)",
+        ))
+
+    # WINDOW-VISIBILITY (PWDF, M37-specific): high7 any-reel window visibility
+    # ≥ floor. Floor 48% set ~3pp below current natural baseline (50-55%) as
+    # regression guard. Wild excluded — R2 has no wild structurally.
+    for mode in sorted(state.keys()):
+        weights = json.loads(
+            (_ROOT / "slot_designer" / "weights" / "M37" / f"mode_{mode}" / "weights.json")
+            .read_text(encoding="utf-8")
+        )["weights"]
+        for sym, floor in WINDOW_VISIBILITY_TARGETS.items():
+            per_reel_vis = []
+            for r in range(len(strips_reels)):
+                total_w = sum(weights[r])
+                if total_w <= 0:
+                    per_reel_vis.append(0.0)
+                    continue
+                p_in_window = 0
+                for k in range(n_stops):
+                    strip = strips_reels[r]
+                    if (strip[(k - 1) % n_stops] == sym
+                            or strip[k] == sym
+                            or strip[(k + 1) % n_stops] == sym):
+                        p_in_window += weights[r][k]
+                per_reel_vis.append(p_in_window / total_w)
+            any_reel = 1.0
+            for v in per_reel_vis:
+                any_reel *= (1.0 - v)
+            any_reel = 1.0 - any_reel
+            ok = any_reel >= floor
+            per_reel_str = " ".join(f"R{i+1}={v*100:.1f}%" for i, v in enumerate(per_reel_vis))
+            all_checks.append(make_check(
+                "WINDOW-VISIBILITY", mode,
+                f"{sym} any-reel visibility {any_reel*100:.2f}% vs floor {floor*100:.0f}% "
+                f"({per_reel_str})",
+                ok,
+                "Harrigan PWDF: top symbol 视窗 frequent + payline rare = 'almost' 心理",
+            ))
+
+    # BRAND-UNIFORMITY: top-prize family cross-(R1, R3) marginal ratio cap.
+    # M37: R2 is structurally different (booster reel, no wild + amplified
+    # high7 for grand near-miss). Brand consistency is between the symmetric
+    # outer reels R1 and R3.
+    for mode in sorted(state.keys()):
+        densities_m = state[mode]["densities"]
+        is_lucky = mode in (2, 5)
+        cap = (BRAND_UNIFORMITY_RATIO_CAP_LUCKY if is_lucky
+               else BRAND_UNIFORMITY_RATIO_CAP_STANDARD)
+        for fam in TOP_PRIZE_FAMILIES_M37:
+            r1_d = densities_m.get((fam, 0), 0.0)
+            r3_d = densities_m.get((fam, LAST_REEL_IDX), 0.0)
+            mn, mx = min(r1_d, r3_d), max(r1_d, r3_d)
+            abs_spread = mx - mn
+            if mn <= 1e-6:
+                ok = False
+                ratio_str = "∞ (extinct on R1 or R3)"
+            else:
+                ratio = mx / mn
+                # Dual criterion: pass if EITHER ratio within cap OR absolute
+                # spread below player-visibility threshold (≤ 2pp).
+                ok = (ratio <= cap) or (abs_spread <= BRAND_UNIFORMITY_ABS_SPREAD_FLOOR_PP)
+                ratio_str = f"{ratio:.2f}×"
+            all_checks.append(make_check(
+                "BRAND-UNIFORMITY", mode,
+                f"{fam} R1={r1_d:.2%} R3={r3_d:.2%} ratio {ratio_str} vs cap {cap:.1f}× "
+                f"(abs spread {abs_spread:.2%} vs floor {BRAND_UNIFORMITY_ABS_SPREAD_FLOOR_PP:.0%})",
+                ok,
+                "outer reels brand consistency; R2 booster reel structurally excluded",
+            ))
 
     print("=== Verification results ===")
     by_cat = defaultdict(list)
