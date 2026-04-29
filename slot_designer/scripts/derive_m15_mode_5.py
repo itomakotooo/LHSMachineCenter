@@ -15,7 +15,7 @@ Play session (x_value_weights give higher cards, count_y biases to more
 multipliers → R distribution shifts up 2.2×).
 
 The reel strip layout is NOT modified — per
-``project_slot_designer_strips_identical_across_modes.md``, all modes
+``project_slot_designer.md (§E strip layout)``, all modes
 of a machine share byte-identical ``reel_strips.json``. Only the per-
 position weight arrays in ``mode_<N>/weights.json`` differ (and mode 5's
 are the SAME as mode 2's).

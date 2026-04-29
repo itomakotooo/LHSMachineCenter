@@ -3,7 +3,7 @@
 M37 = "100x Diamond" — Lightning-Link/Dragon-Link inspired classic 3-reel
 with multiplier-tier wilds (mini/minor/major/grand) on R2.
 
-Per ``project_slot_designer_axiom_experience_is_soul``: cost function
+Per ``project_slot_designer §A axiom``: cost function
 targets player experience red lines directly.
 
 Brand signature = **Booster diamonds on R2** (mini/minor/major/grand).
@@ -75,7 +75,7 @@ BIGWIN_SYMBOLS_R1 = ("wild", "high7")
 BIGWIN_SYMBOLS_R2 = ("high7", "mini", "minor", "major", "grand")
 BIGWIN_SYMBOLS_R3 = ("wild", "high7")
 
-# Tier split for mode-7 design (per project_slot_designer_hit_rate_deviation.md):
+# Tier split for mode-7 design (per project_slot_designer.md (§D hit rate)):
 # Mode 7 = mode 1 砍小奖派生. 小奖击中率降, 中/大/顶奖击中率不变.
 # - SMALL_WIN_BARS = 1bar (3x), 2bar (4x), 3bar (5x) → mode 7 砍这些
 # - MID_WIN_BARS = 7bar (6x) → mode 7 frozen (中奖不动)
@@ -737,7 +737,7 @@ def main(modes_to_run=(1, 7)):
             print(f"\n=== Mode {mode}: bars [m1*0.65, m1*0.95] uniform; big-win frozen=m1; blank>=m1 ===")
         elif mode == 5 and mode2_all_weights is not None:
             # Mode 5 super-lucky design: m2 base + 倍率 wild boost (grand + major).
-            # Per memory project_slot_designer_mode_rtp_invariants.md:
+            # Per memory project_slot_designer.md (§C mode RTP):
             #   "mode 5 = mode 2 加大奖派生 ... hit rate / bucket shape 保持"
             #
             # Hit rate ≈ m2 (small/mid pay symbols frozen).

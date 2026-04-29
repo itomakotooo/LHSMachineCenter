@@ -17,7 +17,7 @@
     "  Root cause: scaling paying-symbol weights DOWN reduces RTP by reducing",
     "  marginal P(pay fires), which also reduces hit_rate proportionally.",
     "  Direct-scale can't simultaneously hit low-RTP + same-hit-rate targets.",
-    "  See memory/project_slot_designer_hit_rate_deviation.md.",
+    "  See memory/project_slot_designer.md (§D hit rate).",
     "",
     "v6 approach: Phase 4 tune with same rtp_pct target (32.5) but explicit",
     "hit_target (0.13, matching mode 1). Tuner shifts bucket shape toward",

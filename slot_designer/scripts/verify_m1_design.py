@@ -1,12 +1,12 @@
 """M1 design verification — player-experience gate.
 
-Per ``project_slot_designer_axiom_experience_is_soul``: TDD numbers are
+Per ``project_slot_designer §A axiom``: TDD numbers are
 inspiration, not constraint; what we verify is **player experience
 reasonableness**, not divergence from a particular real machine's
 per-position weights.
 
 Run after any tune. All red lines must be green before "done" per
-``project_slot_designer_axiom_experience_is_soul``.
+``project_slot_designer §A axiom``.
 
 Usage:
     python -m slot_designer.scripts.verify_m1_design
@@ -175,8 +175,8 @@ MODE7_CUT_MIN_PP = {"Bar1": 1.0, "Cherry": 1.0}
 # — that's part of "feels lucky", not a signature break.
 WILD_DRIFT_STANDARD_PP = 3.0  # mode 1 vs mode 7 absolute pp difference cap
 
-# Mode 5 base lock: per FIRST_MACHINE.md §7 + project_slot_designer_strips_
-# identical_across_modes.md, non-feature mode 5 base weights (Cherry / Bar1
+# Mode 5 base lock: per FIRST_MACHINE.md §7 + project_slot_designer.md
+# (§E strip layout), non-feature mode 5 base weights (Cherry / Bar1
 # / Bar2 / Bar3 / Blank) must be byte-identical to mode 2's. Only top-bucket
 # (Diamond / Seven) weights vary to push RTP from ~294% to 500%. This blocks
 # the pareto trap where free-tuning mode 5 collapses one reel's total weight
@@ -208,7 +208,7 @@ R1_BLANK_BAND = (0.30, 0.40)
 # §14 M1 SAME-SYMBOL-SPACING: same-symbol cyclic distance ≥ this many stops.
 # M1 22-stop strip; for repeating symbols (Bar3 R1=3, Bar1 R2/R3=3, Cherry=2),
 # distance ≥ 4 stops = ≥ 1 non-Blank gap between repetition. M1-specific (per
-# DESIGN.md §2; not universal — see project_slot_designer_visual_rhythm.md).
+# DESIGN.md §2; not universal — see project_slot_designer.md (§14 visual rhythm)).
 SAME_SYMBOL_MIN_STOP_GAP = 4
 
 # §15 WINDOW-VISIBILITY (PWDF) — M1-specific floor.
@@ -228,7 +228,7 @@ SAME_SYMBOL_MIN_STOP_GAP = 4
 # Cherry visibility drops 57% → 38% (its non-top-adj Blank neighbors lose
 # weight). Still well above natural baseline; brand visibility preserved.
 #
-# Per project_slot_designer_window_visibility_pwdf.md. NOT universal —
+# Per project_slot_designer.md (§15 window visibility). NOT universal —
 # 5-reel video / virtual-reel machines re-derive.
 WINDOW_VISIBILITY_TARGETS_STANDARD = {
     # symbol -> any-reel visibility floor — for mode 1, mode 7 (standard RTP).
@@ -256,13 +256,13 @@ WINDOW_VISIBILITY_TARGETS_LUCKY = {
 # Pass if EITHER ratio ≤ cap OR abs spread ≤ this floor.
 BRAND_UNIFORMITY_ABS_SPREAD_FLOOR_PP = 0.02
 
-# Strip alternation: per project_slot_designer_strips_weights_layout.md
+# Strip alternation: per project_slot_designer.md (§E strip layout)
 # (universal rule, Harrigan near-miss band玩家心理), Blank / non-Blank must
 # strictly alternate on every reel — no 3-consecutive Blank or 3-consecutive
 # non-Blank chains. Stop count is machine-specific (M1 = 22, M37/M15 = 36),
 # but alternation invariant is universal.
 
-# Reel asymmetry: per project_slot_designer_reel_asymmetry.md (Strickland/
+# Reel asymmetry: per project_slot_designer.md (§12 reel asymmetry) (Strickland/
 # Reid/Harrigan), R1 should have lower Blank rate + higher top-prize density
 # than R3. Direction must hold for all modes; lucky modes (RTP > 200%) get
 # wider tolerance (high RTP dilutes near-miss psychology). Tuner doesn't
@@ -579,7 +579,7 @@ def run_cross_mode_checks(state_by_mode):
             "M1 user-pinned: R1 不能太 blank (早期拒绝) 也不能过密 (cherry reveal drama)",
         ))
 
-    # REEL-ASYMMETRY: per project_slot_designer_reel_asymmetry.md universal rule.
+    # REEL-ASYMMETRY: per project_slot_designer.md (§12 reel asymmetry) universal rule.
     # R1 should have lower Blank rate + higher top-prize density than the last
     # reel (R3 in 3-reel, R5 in 5-reel). Standard modes (1, 7) tight tolerance,
     # lucky modes (2, 5) wider (high RTP dilutes near-miss psychology).
@@ -621,7 +621,7 @@ def run_cross_mode_checks(state_by_mode):
             "near-miss psychology (Harrigan): R(last) 顶奖应 ≤ R1 (R(last) = 差一点 reel)",
         ))
 
-    # BLANK-FLANK-DIVERSITY: per project_slot_designer_blank_flank_diversity.md
+    # BLANK-FLANK-DIVERSITY: per project_slot_designer.md (§13 blank flank diversity)
     # universal hard rule for line-based slots. Each Blank position p must satisfy
     # strip[(p-1)%n] != strip[(p+1)%n] (no X-Blank-X — would create cheap
     # near-miss in 3-row window, dilute真 near-miss value).
@@ -683,7 +683,7 @@ def run_cross_mode_checks(state_by_mode):
             "M1 子规则 SAME-SYMBOL-SPACING — 重复 symbol 不密集 (机台 specific)",
         ))
 
-    # WINDOW-VISIBILITY (PWDF): per project_slot_designer_window_visibility_pwdf.md.
+    # WINDOW-VISIBILITY (PWDF): per project_slot_designer.md (§15 window visibility).
     # Top-prize symbols any-reel window visibility ≥ machine-specific floor.
     # Implementation: RTP-neutral Blank weight redistribution — see
     # redistribute_m1_blanks.py. Mode-specific floor (standard tighter, lucky

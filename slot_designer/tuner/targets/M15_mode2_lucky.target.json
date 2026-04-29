@@ -11,7 +11,7 @@
     "override in mode_2/weights.json (trigger 2.75% × EV 60 = 165pp).",
     "Total machine RTP = base 135pp + feature 165pp = 300%.",
     "",
-    "v6 change vs v5 (per project_slot_designer_hit_rate_deviation.md):",
+    "v6 change vs v5 (per project_slot_designer.md (§D hit rate)):",
     "  v5 set hit_rate=0.3596 (mode 1 × 3.16 proportional to RTP scaling).",
     "  Player-experience review: 36% hit = 'sugar overload', not 'lucky +50%'.",
     "  v6 locks hit_rate to 0.225 (mode 1 × 1.7, within user-specified 20-25%",

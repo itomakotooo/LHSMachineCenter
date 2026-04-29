@@ -21,7 +21,7 @@ target as explicit constraints):
       --trigger-reel 3 --trigger-weight 2.0
 
 Kept for historical reference only. Do NOT use for production tuning.
-See memory/project_slot_designer_hit_rate_deviation.md for the design
+See memory/project_slot_designer.md (§D hit rate) for the design
 principle behind the change.
 
 ---
@@ -45,7 +45,7 @@ Rule (same formula as M1 mode 7, validated by prior research):
   * All other symbols (blank/high7/doublediamond/topdollar/jackpot) unchanged
 
 The reel strip layout is NOT modified — per
-``project_slot_designer_strips_identical_across_modes.md``, all modes
+``project_slot_designer.md (§E strip layout)``, all modes
 of a machine share byte-identical ``reel_strips.json``. Only the per-
 position weight arrays in ``mode_<N>/weights.json`` differ.
 

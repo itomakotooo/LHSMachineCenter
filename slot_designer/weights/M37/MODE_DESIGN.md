@@ -1,7 +1,7 @@
 # M37 4-Mode 数值概览 + 玩家感性体验
 
 > **机台 origin**：M37 是 **LHS 原创机台**（不抄商业机台），chassis 参考 classic 3-reel 1-payline (RWB / Blazing Sevens 同代)，符号机制特征 = wild on outer + 倍率 wild on middle (mini/minor/major/grand)。完整 archetype 见 `reel_strips.json _archetype` block + [`DESIGN.md`](DESIGN.md) §1。
-> **上游**：[`DESIGN.md`](DESIGN.md)（原创设计 + 业界 chassis 参考 + per-tier 玩家感性叙事）；`project_slot_designer_mode_rtp_invariants.md`（跨机台 mode RTP 规则）；`project_slot_designer_hit_rate_deviation.md`（派生 mode hit rate 带宽规则）
+> **上游**：[`DESIGN.md`](DESIGN.md)（原创设计 + 业界 chassis 参考 + per-tier 玩家感性叙事）；`project_slot_designer.md (§C mode RTP)`（跨机台 mode RTP 规则）；`project_slot_designer.md (§D hit rate)`（派生 mode hit rate 带宽规则）
 > **下游**：每 mode `mode_<N>/weights.json`（实现层）；`M37_weights_reference.csv`（策划速查表）
 > **状态**：2026-04-29 **v4 shipped**（mode 7 REEL-ASYMMETRY direction 修正 + 22 类 verify 全 GREEN）
 > **v4 关键改进** vs v3:
@@ -193,9 +193,9 @@ Post-tune v4 (2026-04-29) 实际 analytic 数字（`python slot_designer/scripts
 
 ### 内部参考
 - `reference_classic_slot_rtp_distribution.md` — classic 1-line RTP/bucket 基准
-- `project_slot_designer_strips_identical_across_modes.md` — 跨 mode strip 字节级一致的硬规则
-- `project_slot_designer_mode_rtp_invariants.md` — 跨机台 mode RTP 约束（95/300/500/85）
-- `project_slot_designer_hit_rate_deviation.md` — 派生 mode hit rate 带宽（Low 降 / Mid/High/Top 不动）
+- `project_slot_designer.md (§E strip layout)` — 跨 mode strip 字节级一致的硬规则
+- `project_slot_designer.md (§C mode RTP)` — 跨机台 mode RTP 约束（95/300/500/85）
+- `project_slot_designer.md (§D hit rate)` — 派生 mode hit rate 带宽（Low 降 / Mid/High/Top 不动）
 
 ---
 

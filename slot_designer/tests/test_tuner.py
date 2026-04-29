@@ -186,7 +186,7 @@ def test_es_run_improves_cost():
 
 # Removed: test_m1_per_reel_ratios_match_tdd_archetype
 #
-# Per ``project_slot_designer_axiom_experience_is_soul`` (user clarification
+# Per ``project_slot_designer §A axiom`` (user clarification
 # 2026-04-25): TDD numbers are inspiration, not constraint. "假但不怪" allows
 # per-family per-reel ratios to drift from TDD baseline as long as player
 # experience stays reasonable. Player-experience red lines (family RTP share,

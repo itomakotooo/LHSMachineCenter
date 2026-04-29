@@ -10,7 +10,7 @@
   ],
   "rtp_pct": 95.0,
   "rtp_tolerance_pp": 1.5,
-  "_rtp_tolerance_basis": "Strict LHS red line ±1pp per project_slot_designer_mode_rtp_invariants. Loosened to ±1.5pp to absorb 100k-spin Poisson variance only — NOT design drift. If design produces mean RTP outside ±1.5pp, design must be FIXED (not tolerance loosened — moving goalposts forbidden per WORKFLOW.md §2.5).",
+  "_rtp_tolerance_basis": "Strict LHS red line ±1pp per project_slot_designer §C mode RTP. Loosened to ±1.5pp to absorb 100k-spin Poisson variance only — NOT design drift. If design produces mean RTP outside ±1.5pp, design must be FIXED (not tolerance loosened — moving goalposts forbidden per WORKFLOW.md §2.5).",
   "hit_rate": 0.107,
   "hit_tolerance_pp": 1.5,
   "_hit_target_v2.1_basis": "Lowered from real-M279 14.2% to 10.5% because v2.1 amped wild_jp share (15-20%) means more high-mult pays (pay 102=150x, pay 104=15x) and fewer regular line hits. Player narrative: 'fewer hits but bigger jackpot moments' vs real M279 'more grind hits, rare jackpots'.",

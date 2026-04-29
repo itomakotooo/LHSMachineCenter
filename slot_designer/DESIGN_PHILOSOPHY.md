@@ -161,7 +161,7 @@ verify 类别建议：`LUCKY-MONO` + cross-mode invariant checks。
 
 红线全绿才 done，不绕过。Tune cost function 不含 experience 约束 = unbounded → Pareto 必然砍顶奖家族。
 
-参考：memory `project_slot_designer_axiom_experience_is_soul.md`。
+参考：memory `project_slot_designer.md (§A axiom)`。
 
 ---
 
@@ -194,7 +194,7 @@ verify 类别建议：`LUCKY-MONO` + cross-mode invariant checks。
 - **R2/R3/R4 中间 gradient 连续**：max-of-middle Blank − min-of-middle Blank 应小（具体值机台特定）
 - **5-reel 特有：R5 是 trigger reel 的概率高**——onboarding 时按 archetype 决定 R5 是 (a) 还是 (b) role
 
-> **重要 — universal 哲学只锁方向，不锁绝对数字**（per `project_slot_designer_axiom_experience_is_soul`）：
+> **重要 — universal 哲学只锁方向，不锁绝对数字**（per `project_slot_designer §A axiom`）：
 > 上面"R1 ≤ R3 Blank"是 universal。具体容差 ("3pp"/"8pp"/"X×")**不写在这里**——每台机在自己的 `verify_<M>_design.py` 里配置，依据：(a) 该机台 mode 1 baseline 实测自然 ratio + buffer；(b) 玩家可见阈值（≥ 5pp 才显著）；(c) 机台原型 PAR sheet。**不要 cross-machine hardcode 数字** — 这是 [`feedback_adversarial_self_review.md`](../../memory/feedback_adversarial_self_review.md) 警惕的 "picked threshold / moving goalposts" 反例。M1 实测举例见 [`weights/M1/DESIGN.md`](weights/M1/DESIGN.md) §6。
 
 ### 12.3 例外 / nuance
@@ -212,7 +212,7 @@ verify 类别建议：`LUCKY-MONO` + cross-mode invariant checks。
 
 verify 类别建议：`REEL-ASYMMETRY`（per-mode R1 vs 末 reel blank + 顶奖密度方向）+ 5-reel 加 `MIDDLE-GRADIENT`。
 
-参考：memory `project_slot_designer_reel_asymmetry.md`。文献：[Strickland & Grote 1967](https://psycnet.apa.org/record/1967-08400-001), [Reid 1986 (Berkeley)](https://www.stat.berkeley.edu/~aldous/157/Papers/near_miss.pdf), [Harrigan 2007](https://link.springer.com/article/10.1007/s11469-007-9139-8), industry award-symbol-ratio (≥1988)。
+参考：memory `project_slot_designer.md (§12 reel asymmetry)`。文献：[Strickland & Grote 1967](https://psycnet.apa.org/record/1967-08400-001), [Reid 1986 (Berkeley)](https://www.stat.berkeley.edu/~aldous/157/Papers/near_miss.pdf), [Harrigan 2007](https://link.springer.com/article/10.1007/s11469-007-9139-8), industry award-symbol-ratio (≥1988)。
 
 ---
 
@@ -319,7 +319,7 @@ PWDF (Per-Win Display Frequency) — [Harrigan 2007](https://link.springer.com/a
 PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top symbol 的 Blank** 权重。Per-(family, reel) uniform weight 假设跟这冲突（同 reel 所有 Blank 同 weight）。
 
 **实施路径**：
-- **机制 B (RTP-neutral redistribution，推荐)**：post-tune deterministic transform。每 reel 内 redistribute Blank weight — non-top-adj Blanks 减到 floor=1，top-adj Blanks 吸收剩余。total Blank weight per reel 守恒 → marginals 全保 → **RTP/hit/share 0 变化**。Top-adj Blank 上 weight 升 → 视窗 frequent contains top symbol → visibility 升 ~10pp on physical reels。**详见 §15.5 机制 B + memory `project_slot_designer_window_visibility_pwdf.md`**
+- **机制 B (RTP-neutral redistribution，推荐)**：post-tune deterministic transform。每 reel 内 redistribute Blank weight — non-top-adj Blanks 减到 floor=1，top-adj Blanks 吸收剩余。total Blank weight per reel 守恒 → marginals 全保 → **RTP/hit/share 0 变化**。Top-adj Blank 上 weight 升 → 视窗 frequent contains top symbol → visibility 升 ~10pp on physical reels。**详见 §15.5 机制 B + memory `project_slot_designer.md (§15 window visibility)`**
 - **机制 A (per-position weight tune)** 整合到主 cost — 实测在物理 reel 跟 RTP cost 冲突会 collapse RTP（M1 实测）。**避免**
 - **机制 C (virtual reel mapping)** — 架构升级，Harrigan 50%+ 可达。投入大
 

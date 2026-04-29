@@ -19,13 +19,13 @@
 | 5 (v7) | **502.05%** | 22.56% | 5.99× | 2.76% | 132.81× | **1/7.6M** | [mode_5/weights.json](mode_5/weights.json) |
 | 7 | **84.77%** | 12.46% | 2.62× | 1.14% (1/88) | 46× | 1/4.8M | [mode_7/weights.json](mode_7/weights.json) |
 
-全部 analytic，闭式解。Target 跨机台 mode RTP 规则：95 / 300 / 500 / 85（见 memory `project_slot_designer_mode_rtp_invariants.md`）。
+全部 analytic，闭式解。Target 跨机台 mode RTP 规则：95 / 300 / 500 / 85（见 memory `project_slot_designer.md (§C mode RTP)`）。
 
 ## 设计契约
 
-- **Total RTP 跨机台锁定**：mode 1=95 / mode 2=300 / mode 5=500 / mode 7=85（`project_slot_designer_mode_rtp_invariants.md`）
-- **Strips 跨 mode 字节级一致**：所有 mode 读同一个 `reel_strips.json`，只有 `mode_<N>/weights.json` 的权重数组 per-mode 不同（`project_slot_designer_strips_identical_across_modes.md`）
-- **派生 mode hit rate 带宽**（`project_slot_designer_hit_rate_deviation.md`）：
+- **Total RTP 跨机台锁定**：mode 1=95 / mode 2=300 / mode 5=500 / mode 7=85（`project_slot_designer.md (§C mode RTP)`）
+- **Strips 跨 mode 字节级一致**：所有 mode 读同一个 `reel_strips.json`，只有 `mode_<N>/weights.json` 的权重数组 per-mode 不同（`project_slot_designer.md (§E strip layout)`）
+- **派生 mode hit rate 带宽**（`project_slot_designer.md (§D hit rate)`）：
   - mode 7 vs mode 1 hit ±1pp（几乎一致，RTP delta 走 per-hit avg 不走 hit 频率）
   - mode 2 vs mode 1 hit ×1.5-2（不是 ×3.16）
   - mode 5 = mode 2 base 完全复刻

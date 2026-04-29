@@ -5,7 +5,7 @@ Per FIRST_MACHINE.md §7 (non-feature machine mode 5 derivation rule):
   * Top-bucket (Diamond1/Diamond2/Seven1/Seven2) weights scaled by uniform
     factor k to push total RTP from ~294% to 500% ±30pp
 
-Per project_slot_designer_strips_identical_across_modes.md (canonical hard rule):
+Per project_slot_designer.md (§E strip layout) (canonical hard rule):
   * Reel strip layout byte-identical across all modes (shared file)
   * mode 5 ← mode 2 derivation (analogous to feature machines' "feature_params
     swap"): non-feature machines scale top-bucket only.
@@ -184,7 +184,7 @@ def run(write: bool, verify: bool) -> int:
         "bar pace UNCHANGED but顶奖密度 (Seven×3 / Diamond×3 frequencies) jumps.",
         "",
         "Do NOT tune this mode through Phase 4/5. Base is locked to mode 2 by",
-        "design rule (project_slot_designer_strips_identical_across_modes.md).",
+        "design rule (project_slot_designer.md (§E strip layout)).",
     ]
     mode_5_doc["_derivation"] = {
         "source_mode": 2,

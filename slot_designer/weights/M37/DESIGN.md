@@ -163,7 +163,7 @@
 | Top | ~0.01% | ~0.01% | **~0.05%** | **~0.01% (同 m1)** |
 | **Total** | **13%** | **22.5%** | **22.5%** | **~10%** |
 
-**Mode 7 per-tier hit rate 约束**（per `project_slot_designer_hit_rate_deviation.md` 修订版）：
+**Mode 7 per-tier hit rate 约束**（per `project_slot_designer.md (§D hit rate)` 修订版）：
 - Low: ~6%（绝对降 4pp from mode 1 的 10%）— 靠砍 1bar/2bar/wild-alone 的 marginal
 - Mid/High/Top: 跟 mode 1 绝对一样（不动）— 保 7bar/high7/booster 的 marginal
 
@@ -249,11 +249,11 @@ does not.
 ### Memory references (universal philosophy)
 
 - `slot_designer/DESIGN_PHILOSOPHY.md` §12-§15 — universal rules + cost philosophy
-- `~/.claude/projects/.../memory/project_slot_designer_axiom_experience_is_soul.md` — verify gate (red lines全绿才 done)
-- `~/.claude/projects/.../memory/project_slot_designer_reel_asymmetry.md` — universal §12 (R1 ≤ R3 blank, R1 ≥ R3 top)
-- `~/.claude/projects/.../memory/project_slot_designer_blank_flank_diversity.md` — universal §13 (no X-blank-X)
-- `~/.claude/projects/.../memory/project_slot_designer_visual_rhythm.md` — universal §14 (same-symbol spacing)
-- `~/.claude/projects/.../memory/project_slot_designer_window_visibility_pwdf.md` — universal §15 (PWDF)
+- `~/.claude/projects/.../memory/project_slot_designer.md (§A axiom)` — verify gate (red lines全绿才 done)
+- `~/.claude/projects/.../memory/project_slot_designer.md (§12 reel asymmetry)` — universal §12 (R1 ≤ R3 blank, R1 ≥ R3 top)
+- `~/.claude/projects/.../memory/project_slot_designer.md (§13 blank flank diversity)` — universal §13 (no X-blank-X)
+- `~/.claude/projects/.../memory/project_slot_designer.md (§14 visual rhythm)` — universal §14 (same-symbol spacing)
+- `~/.claude/projects/.../memory/project_slot_designer.md (§15 window visibility)` — universal §15 (PWDF)
 - `~/.claude/projects/.../memory/feedback_dont_lower_floor_when_blocked.md` — moving-goalposts anti-pattern
 - `~/.claude/projects/.../memory/feedback_tuner_pareto_trap.md` — direct-scale vs tuner
 

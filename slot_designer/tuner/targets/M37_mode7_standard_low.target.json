@@ -7,7 +7,7 @@
     "M37 mode 7 target (v1, 2026-04-24) — standard (low-hit) variant.",
     "No feature engine → target covers full 85% total RTP.",
     "",
-    "Design brief (MODE_DESIGN.md §5-8 + project_slot_designer_hit_rate_deviation.md):",
+    "Design brief (MODE_DESIGN.md §5-8 + project_slot_designer.md (§D hit rate)):",
     "  - RTP 85% ±1pp (strict — standard mode)",
     "  - Hit ~9.9% (mode 1 was 15.2%; Low bucket absolute hit cut, Mid/High/Top absolute unchanged)",
     "  - Bucket shape:",

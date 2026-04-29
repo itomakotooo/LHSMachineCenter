@@ -7,7 +7,7 @@
     "M37 mode 2 target (v1, 2026-04-24) — lucky variant of M37 classic.",
     "No feature engine → target covers full 300% total RTP.",
     "",
-    "Design brief (MODE_DESIGN.md §5 + project_slot_designer_hit_rate_deviation.md):",
+    "Design brief (MODE_DESIGN.md §5 + project_slot_designer.md (§D hit rate)):",
     "  - RTP 300% ±10-20pp (loose — lucky modes漂 OK)",
     "  - Hit 20-25% (×1.5-2 mode 1's 13%, NOT ×3 — lucky ≠ sugar-overload)",
     "  - Bucket shape: all tiers scaled up similarly from mode 1",

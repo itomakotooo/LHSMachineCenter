@@ -20,7 +20,7 @@ P(session R>=1000) per paid spin (1 in X),4770249,333144,7607861,4777754
 # ==================================================
 # Section B: reel strips (shared) + per-mode weights
 # ==================================================
-# Strips are BYTE-IDENTICAL across all modes (project_slot_designer_strips_identical_across_modes.md).
+# Strips are BYTE-IDENTICAL across all modes (project_slot_designer.md (§E strip layout)).
 # Only weights differ per mode.
 
 Reel,Position,Symbol,mode_1 weight,mode_2 weight,mode_5 weight,mode_7 weight

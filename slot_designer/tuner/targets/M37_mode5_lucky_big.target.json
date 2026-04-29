@@ -7,7 +7,7 @@
     "M37 mode 5 target (v1, 2026-04-24) — lucky_big variant (top-bucket buff).",
     "No feature engine → target covers full 500% total RTP.",
     "",
-    "Design brief (DESIGN.md §5 + §8 + project_slot_designer_mode_rtp_invariants):",
+    "Design brief (DESIGN.md §5 + §8 + project_slot_designer §C mode RTP):",
     "  - RTP 500% ±10-20pp (loose — lucky_big can drift)",
     "  - Hit ~22.5% (same as mode 2; mode 5 is NOT more frequent, it's BIGGER)",
     "  - Bucket shape:",

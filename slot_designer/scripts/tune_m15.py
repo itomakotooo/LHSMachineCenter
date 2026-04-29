@@ -1,6 +1,6 @@
 """Tune M15 mode weights — player-experience direct objective.
 
-Per ``project_slot_designer_axiom_experience_is_soul``: TDD numbers are
+Per ``project_slot_designer §A axiom``: TDD numbers are
 inspiration, not constraint. Cost function targets player experience red
 lines directly.
 

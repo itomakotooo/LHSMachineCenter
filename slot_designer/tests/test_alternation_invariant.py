@@ -71,7 +71,7 @@ def test_shipped_m37_mode1_has_zero_alternation_violations():
     Double Diamond archetype (22 stops, non-alternating by TDD's actual
     published layout — Hot Roll bonus slot replacement creates 3 consecutive
     Blanks at pos 12-14). M1 is now exempt from alternation invariant; see
-    reel_strips.json._archetype and project_slot_designer_machine_archetype.
+    reel_strips.json._archetype and project_slot_designer §F machine archetype.
     M37 (classic 18+18 alternation, no archetype override) remains the
     alternation-invariant representative. Note M37 uses lowercase 'blank'."""
     reels = _load_shipped_reels("M37", 1)

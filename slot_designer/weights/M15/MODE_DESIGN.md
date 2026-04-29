@@ -1,10 +1,10 @@
 # M15 4-Mode 数值概览 + 玩家感性体验
 
-> **上游**：[`DESIGN.md`](DESIGN.md)（Top Dollar 原型研究）；`project_slot_designer_mode_rtp_invariants.md`（跨机台 mode RTP 规则）；`project_slot_designer_hit_rate_deviation.md`（派生 mode hit rate 带宽规则）  
+> **上游**：[`DESIGN.md`](DESIGN.md)（Top Dollar 原型研究）；`project_slot_designer.md (§C mode RTP)`（跨机台 mode RTP 规则）；`project_slot_designer.md (§D hit rate)`（派生 mode hit rate 带宽规则）  
 > **下游**：每 mode `mode_<N>/NOTES.md` + `weights.json`（实现层）  
 > **状态**：2026-04-24 设计稿 **v7 verified**（mode 5 feature jackpot-tail 砍到 0；其它 mode 保持 v6 不变）  
 > **v6 → v7 关键变化**：mode 5 `x_value_weights[0]`（1000-card）从 0.1918 → 0.0001，per paid spin P(session R≥1000) 从 **1/3616** 降到 **1/7.6M**（趋近 0 per user brief "1000倍以上的奖需要趋近 0"）。1000-card 让出的 EV 权重补到 100-card（weight 1.6065 → 4.5），100-card per-value prob 从 1.61% 升到 4.34%。Net feature EV 从 132.00 → 132.81（小浮动），total RTP 500.29pp 贴线 500 target。Mode 5 不再是 "独占 1000 jackpot moment"，改走 "密集中-高倍命中" 路线。  
-> **v5 → v6 关键变化**：mode 2 hit 36% → 22.56%（走 `--hit-target 0.225`）；mode 7 hit 7.5% → 12.46%（从 direct-scale 切 Phase 4 tune `--hit-target 0.125`）。RTP delta 不再靠 hit frequency，靠 **per-hit avg win size**（bucket shape shift）承担。见 `project_slot_designer_hit_rate_deviation.md`。  
+> **v5 → v6 关键变化**：mode 2 hit 36% → 22.56%（走 `--hit-target 0.225`）；mode 7 hit 7.5% → 12.46%（从 direct-scale 切 Phase 4 tune `--hit-target 0.125`）。RTP delta 不再靠 hit frequency，靠 **per-hit avg win size**（bucket shape shift）承担。见 `project_slot_designer.md (§D hit rate)`。  
 > **v5 核心（仍适用）**：count_y per-mode；`x_value_weights` 10-tuple 作为主要 feature dial；mode 1/7 count_y (75,20,5)。
 
 ---
@@ -145,13 +145,13 @@ x 牌 per-value 抽样概率（归一化到 6 unique values）：
 | Feature RTP | 52.26pp | **完全同 m1** |
 | Trigger / EV / count_y / x_value_weights | 全部同 m1 | 不动 |
 
-> Mode 7 的 RTP delta **不来自 hit frequency 降低**（hit 几乎持平 mode 1），而来自 **per-hit avg win 降低**（3.26× → 2.62×）。Bucket shape 移到 low-mult 桶：cherry/小 bar 命中几率保持，wild/high7 的高倍命中降。见 `project_slot_designer_hit_rate_deviation.md`。
+> Mode 7 的 RTP delta **不来自 hit frequency 降低**（hit 几乎持平 mode 1），而来自 **per-hit avg win 降低**（3.26× → 2.62×）。Bucket shape 移到 low-mult 桶：cherry/小 bar 命中几率保持，wild/high7 的高倍命中降。见 `project_slot_designer.md (§D hit rate)`。
 
 ### 4.2 派生
 
 **v6 (2026-04-23 current)**: **Phase 4 tune with --sa-steps 0** (strips locked to mode 1). Target file: `tuner/targets/M15_mode7_standard_low.target.json`.
 
-> v5 attempt was direct-scale `Cherry × 0.3, Bar × 0.77` via `derive_m15_mode_7.py`. It achieved RTP 32.67pp but hit_rate 7.5% (user wanted 12-13%). Direct-scale inherently ties RTP cut to hit cut — it reduces paying-symbol marginals, which drops both RTP AND hit proportionally. Switched to Phase 4 tune in v6 which hits RTP 32.5 AT hit 12-13% by shifting bucket shape toward low-mult pays (cuts wild/high7 contribution, preserves cherry/bar hits). See `memory/project_slot_designer_hit_rate_deviation.md`.
+> v5 attempt was direct-scale `Cherry × 0.3, Bar × 0.77` via `derive_m15_mode_7.py`. It achieved RTP 32.67pp but hit_rate 7.5% (user wanted 12-13%). Direct-scale inherently ties RTP cut to hit cut — it reduces paying-symbol marginals, which drops both RTP AND hit proportionally. Switched to Phase 4 tune in v6 which hits RTP 32.5 AT hit 12-13% by shifting bucket shape toward low-mult pays (cuts wild/high7 contribution, preserves cherry/bar hits). See `memory/project_slot_designer.md (§D hit rate)`.
 
 **Feature**: **100% 同 mode 1**（feature_params byte-copied post-tune）。
 
@@ -290,7 +290,7 @@ python -m slot_designer.scripts.tune \
 | CV (conditional) | 0.74 | 0.78 | ~1.8 | 0.74 |
 | 1000 jackpot moment | **无** | **无** | **无** (v7 revision) | 无 |
 
-**Hit rate 偏离幅度 design constraint (per `project_slot_designer_hit_rate_deviation.md`)**:
+**Hit rate 偏离幅度 design constraint (per `project_slot_designer.md (§D hit rate)`)**:
 - mode 7 vs mode 1: hit 基本一致 (差 ±1pp)，RTP delta 靠 **per-hit avg 砍下去** (3.26 → 2.62) 承担
 - mode 2 vs mode 1: hit ×1.7（不是 ×3.16），RTP delta 里剩下的 ×1.84 靠 **per-hit avg 提上去** (3.26 → 6.00) 承担
 - mode 5 vs mode 2: hit 完全一致（mode 5 base = mode 2 base byte-identical），RTP delta 全部在 **feature EV** (60× → 132×)
@@ -355,8 +355,8 @@ python -m slot_designer.scripts.tune \
 - `tests/test_virtual_registry_mode_discovery.py` — auto-discover mode 回归
 
 ### Memory 新增
-- `memory/project_slot_designer_strips_identical_across_modes.md` — strips 跨 mode 字节级一致
-- `memory/project_slot_designer_hit_rate_deviation.md` — 派生 mode hit rate 带宽规则
+- `memory/project_slot_designer.md (§E strip layout)` — strips 跨 mode 字节级一致
+- `memory/project_slot_designer.md (§D hit rate)` — 派生 mode hit rate 带宽规则
 
 ## Analytic 最终总 RTP（v6 shipped）
 

@@ -21,7 +21,7 @@
 - m5 RTP > m2 RTP > m1 RTP > m7 RTP（[DESIGN_PHILOSOPHY §9](../../DESIGN_PHILOSOPHY.md)）
 - m5 hit ≥ m2 hit > m1 hit > m7 hit
 - m5 top-jp freq > m2 > m1 ≈ m7
-- Strips 跨 mode 字节级一致（[strips_identical_across_modes](../../../memory/project_slot_designer_strips_identical_across_modes.md)）
+- Strips 跨 mode 字节级一致（[strips_identical_across_modes](../../../memory/project_slot_designer.md (§E strip layout))）
 - m5 base = m2 base 字节级一致（feature 层 override 才有差异）
 - m7 derive from m1 via direct-scale OR Phase 4 tune
 

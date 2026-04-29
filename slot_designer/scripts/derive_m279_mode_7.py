@@ -1,6 +1,6 @@
 """Derive M279 mode 7 weights from mode 1 — direct-scale Low-bucket symbols.
 
-Per `project_slot_designer_hit_rate_deviation.md`: mode 7 = mode 1 with
+Per `project_slot_designer.md (§D hit rate)`: mode 7 = mode 1 with
 small-pay symbols (bar / 5bar / low7) weights scaled DOWN, while
 high-pay symbols (mid7 / high7 / wilds) and stack symbols are
 PRESERVED. Result: Low bucket hit drops, Mid/High/Top buckets keep

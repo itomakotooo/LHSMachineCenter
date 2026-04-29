@@ -20,7 +20,7 @@
     "bar pace UNCHANGED but顶奖密度 (Seven×3 / Diamond×3 frequencies) jumps.",
     "",
     "Do NOT tune this mode through Phase 4/5. Base is locked to mode 2 by",
-    "design rule (project_slot_designer_strips_identical_across_modes.md)."
+    "design rule (project_slot_designer.md (§E strip layout))."
   ],
   "weights": [
     [

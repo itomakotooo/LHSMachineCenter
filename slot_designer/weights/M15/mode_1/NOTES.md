@@ -6,7 +6,7 @@
 
 ## 设计契约（cross-machine mode RTP rule）
 
-- mode 1 Total RTP **95% ±1pp 严格**（见 `project_slot_designer_mode_rtp_invariants.md`）
+- mode 1 Total RTP **95% ±1pp 严格**（见 `project_slot_designer.md (§C mode RTP)`）
 - M15-specific: **Base : Feature = 45 : 55**（Base 42.75pp + Feature 52.25pp）
 - Base low CV（4-5）
 - Feature 中-高 CV（conditional 0.74；session CV 被 1/88 rarity 撑高）

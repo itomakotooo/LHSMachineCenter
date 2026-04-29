@@ -103,7 +103,7 @@ def test_m15_mode1_total_rtp_approximately_95():
     """Base RTP + trigger × feature EV = total ≈ 95% (45:55 split).
 
     Mode 1 is the reference / archetype — strict ±1pp tolerance per
-    project_slot_designer_mode_rtp_invariants.md.
+    project_slot_designer.md (§C mode RTP).
     """
     engine, _ = load_engine(_SPEC_PATH, _MODE1_WEIGHTS_PATH)
     p = analytic_profile(engine)
@@ -151,7 +151,7 @@ def test_m15_mode1_trigger_rate_in_user_band():
 
 def test_m15_mode1_hit_rate_in_reference_band():
     """Mode 1 is the hit-rate reference for deriving mode 2/5/7 bands
-    (see project_slot_designer_hit_rate_deviation.md). Pin mode 1 at
+    (see project_slot_designer.md (§D hit rate)). Pin mode 1 at
     ~13% so the other modes' derived bands stay anchored.
     """
     engine, _ = load_engine(_SPEC_PATH, _MODE1_WEIGHTS_PATH)
@@ -300,7 +300,7 @@ def _mode_metrics(mode: int) -> dict:
 def test_m15_mode2_rtp_hit_trigger_match_v6_design():
     """Mode 2 v6 shipped targets (MODE_DESIGN.md §5 + §8):
       * Total RTP 300% ±20pp (lucky mode — loose tolerance)
-      * Base hit 22.5% ±2.5pp (per project_slot_designer_hit_rate_deviation.md
+      * Base hit 22.5% ±2.5pp (per project_slot_designer.md (§D hit rate)
         user-specified 20-25% band — explicitly NOT ×3.16 from mode 1)
       * Trigger 2.75% ±0.5pp (1/36 — 2.4× mode 1)
       * Feature EV 60× ±3× (1.30× mode 1, within ≤1.5× brief cap)
@@ -312,7 +312,7 @@ def test_m15_mode2_rtp_hit_trigger_match_v6_design():
     assert 0.20 <= m["hit_rate"] <= 0.25, (
         f"mode 2 base hit_rate outside [20%, 25%] user band: got "
         f"{m['hit_rate']*100:.2f}%. Hit rate is a DESIGN CONSTRAINT, not a "
-        f"free variable — see project_slot_designer_hit_rate_deviation.md."
+        f"free variable — see project_slot_designer.md (§D hit rate)."
     )
     assert 0.022 <= m["trigger"] <= 0.033, (
         f"mode 2 trigger outside [2.2%, 3.3%]: got {m['trigger']*100:.3f}%"

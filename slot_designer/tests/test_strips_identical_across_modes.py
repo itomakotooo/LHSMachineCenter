@@ -18,8 +18,8 @@ Why this is a hard invariant (2026-04-23):
   This test locks in the invariant at file-layout level: one
   ``reel_strips.json`` per machine, all modes read from the same bytes.
 
-See also: ``memory/project_slot_designer_strips_identical_across_modes.md``
-(the authoring rule) and ``project_slot_designer_strips_weights_layout.md``
+See also: ``memory/project_slot_designer.md (§E strip layout)``
+(the authoring rule) and ``project_slot_designer.md (§E strip layout)``
 (the file-layout refactor that made it enforceable).
 """
 from __future__ import annotations

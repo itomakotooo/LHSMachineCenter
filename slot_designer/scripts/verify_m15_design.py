@@ -1,6 +1,6 @@
 """M15 design verification — player-experience gate.
 
-Per ``project_slot_designer_axiom_experience_is_soul``: TDD numbers are
+Per ``project_slot_designer §A axiom``: TDD numbers are
 inspiration; what we verify is **player experience reasonableness**.
 
 M15 = Top Dollar 1-line + Feature Play. Brand signature = Feature reveal,

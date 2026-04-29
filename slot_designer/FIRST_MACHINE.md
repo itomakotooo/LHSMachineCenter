@@ -12,7 +12,7 @@
 
 ## 核心原则（4 条红线）
 
-**0. 绝对原则：数值是基础，玩家感性体验是灵魂**（`project_slot_designer_axiom_experience_is_soul.md`）
+**0. 绝对原则：数值是基础，玩家感性体验是灵魂**（`project_slot_designer.md (§A axiom)`）
 
 数值 target hit（RTP / hit / bucket_js）是 **necessary precondition**，不是 "done" 标志。**done** = 数值全中 **+ experience 指标全绿**:
 - 家族 RTP share vs classic benchmark（7-dominated 机 Seven ≥ 40-60%；Wild-jackpot 机 top path ≥ 60% of Top bucket；etc.）
@@ -48,12 +48,12 @@
 
 | 约束 | 值 | 严格度 | 来源 memory |
 |---|---|---|---|
-| mode 1 Total RTP | **95%** | ±1pp 严格 | `project_slot_designer_mode_rtp_invariants.md` |
+| mode 1 Total RTP | **95%** | ±1pp 严格 | `project_slot_designer.md (§C mode RTP)` |
 | mode 2 Total RTP | **300%** | ±10-20pp 可漂 | 同上 |
 | mode 5 Total RTP | **500%** | ±10-20pp 可漂 | 同上 |
 | mode 7 Total RTP | **85%** | ±1pp 严格 | 同上 |
-| Strips 跨 mode | 字节级一致 | 硬 | `project_slot_designer_strips_identical_across_modes.md` |
-| mode 7 hit vs mode 1 | ±1pp | 跟机台定 | `project_slot_designer_hit_rate_deviation.md` |
+| Strips 跨 mode | 字节级一致 | 硬 | `project_slot_designer.md (§E strip layout)` |
+| mode 7 hit vs mode 1 | ±1pp | 跟机台定 | `project_slot_designer.md (§D hit rate)` |
 | mode 2 hit vs mode 1 | ×1.5-2（非 ×3） | 跟机台定 | 同上 |
 | mode 5 base vs mode 2 base | 字节级一致 | 硬 | 同上 |
 | Base:Feature split | 机台自选 | 软 | M15 用 45:55；M1 用 100:0（无 feature） |
@@ -196,9 +196,9 @@ Mode 1 是所有 mode 的起点：
 字段：
 - `rtp_pct`: 42.75（或按 base:feature split 调，feature 机台 ~45pp，base-only 机台 95pp）
 - `bucket_rate`: 按上面 4 档设计，Low/Mid 为主，High 少，Top 极少。数字参考 M1/M15 类似机台 + 业界 classic 1-line 基准（`reference_classic_slot_rtp_distribution.md`）— 但**不抄上游采的 rawdata 分布**
-- `hit_rate`: **跟机台 paylines 数强相关**（数学上 hit ≈ 1 − ∏(1 − P(line wins))）。1-line classic ≈ 12-20%，5-9 line video ≈ 20-30%，25-50 line ≈ 30-45%，243-line/Megaways ≈ 40-60%。M1 (1-line) 是 13-15% — **不要 cross-machine 抄这个数字**，新机台从业界同类 PAR sheet 推 baseline。详见 [`project_slot_designer_hit_rate_deviation.md`](../memory/project_slot_designer_hit_rate_deviation.md)
+- `hit_rate`: **跟机台 paylines 数强相关**（数学上 hit ≈ 1 − ∏(1 − P(line wins))）。1-line classic ≈ 12-20%，5-9 line video ≈ 20-30%，25-50 line ≈ 30-45%，243-line/Megaways ≈ 40-60%。M1 (1-line) 是 13-15% — **不要 cross-machine 抄这个数字**，新机台从业界同类 PAR sheet 推 baseline。详见 [`project_slot_designer.md (§D hit rate)`](../memory/project_slot_designer.md (§D hit rate))
 - `_design_constraints`: 记总 RTP target / split / trigger / 情感设计意图 等
-- **`_archetype` + player-experience direct tune**（2026-04-25 升级 — 作废前两版"per-position pattern"和"family-scale ratio lock"，见 `project_slot_designer_axiom_experience_is_soul`）：
+- **`_archetype` + player-experience direct tune**（2026-04-25 升级 — 作废前两版"per-position pattern"和"family-scale ratio lock"，见 `project_slot_designer §A axiom`）：
   - Reel_strips.json 带 `_archetype` block 记录设计**灵感**来源（如 `"source": "https://wizardofodds.com/games/slots/hot-roll/ — IGT Triple Double Diamond reverse-engineered"`, `"confidence": "medium-high"`, `"modifications_from_archetype": "..."`)
   - **Archetype 是设计灵感，不是数值约束**。"假但不怪" — weights / strip 可以偏离原型，前提是玩家体验合理（家族 RTP share / wild signature / per-reel density 等红线由 `verify_<M>_design.py` 把关）
   - Tune 走 **per-family per-reel uniform weight search** (`tune_m1.py` 模板)：
@@ -242,7 +242,7 @@ Mode 2 是独立 archetype（不从 mode 1 派生），但 strips 跟 mode 1 一
 
 **写 target file** `<M>_mode2_lucky.target.json`（参考 `M15_mode2_lucky.target.json`）：
 - `rtp_pct`: 135（feature 机台基本都是）
-- `hit_rate`: 0.20-0.25（**×1.5-2 mode 1，不是 ×3**！见 `project_slot_designer_hit_rate_deviation.md`）
+- `hit_rate`: 0.20-0.25（**×1.5-2 mode 1，不是 ×3**！见 `project_slot_designer.md (§D hit rate)`）
 - `bucket_rate`: 跟 mode 1 形状**相近**（同一 Low/Mid/High/Top 比例结构），总和对应新 hit_rate。RTP delta 走 **per-hit avg win size**（bucket shape shift toward mid/high），不走 hit frequency inflation
 
 **Seed mode 2 weights** — 先用 mode 1 做起点：
@@ -279,7 +279,7 @@ python -m slot_designer.scripts.tune \
 
 ## 6. 阶段 6 — Mode 7 派生 from mode 1
 
-**Mode 7 设计 guideline**（`project_slot_designer_hit_rate_deviation.md` 核心）：
+**Mode 7 设计 guideline**（`project_slot_designer.md (§D hit rate)` 核心）：
 
 > **基于 mode 1，降小奖击中率，中/大/顶奖击中率不变**。总 hit 因 Low 绝对数降而略降（mode 1 13% → mode 7 10-11%）；Mid/High/Top 的 **RTP 相对占比略升**（分子不动、Low 分母少了）。玩家感：小奖变稀少，但大奖跟 mode 1 一样 — "每次命中的小奖少，但大奖还是那么多"。
 
@@ -340,7 +340,7 @@ m7['feature_params'] = copy.deepcopy(m1['feature_params'])
 
 ## 7. 阶段 7 — Mode 5 派生 from mode 2
 
-Mode 5 = **mode 2 base 字节级复刻** + **feature_params 加强**。这是硬约束（见 `project_slot_designer_hit_rate_deviation.md`）。
+Mode 5 = **mode 2 base 字节级复刻** + **feature_params 加强**。这是硬约束（见 `project_slot_designer.md (§D hit rate)`）。
 
 **feature 机台**：
 ```bash
@@ -501,11 +501,11 @@ M15 定义了一个 `Feature Play`（4-round accept/reject）类型的 feature�
 ## 12. See also
 
 **Memory notes（每条都读一遍）**：
-- `project_slot_designer_mode_rtp_invariants.md` — 95/300/500/85 目标 + 派生关系
-- `project_slot_designer_strips_identical_across_modes.md` — strips 锁死 + `--sa-steps 0` pitfall
-- `project_slot_designer_hit_rate_deviation.md` — mode 2/5/7 hit rate 带宽
-- `project_slot_designer_strips_weights_layout.md` — 文件布局
-- `project_slot_designer_charter.md` — 双角色契约
+- `project_slot_designer.md (§C mode RTP)` — 95/300/500/85 目标 + 派生关系
+- `project_slot_designer.md (§E strip layout)` — strips 锁死 + `--sa-steps 0` pitfall
+- `project_slot_designer.md (§D hit rate)` — mode 2/5/7 hit rate 带宽
+- `project_slot_designer.md (§E strip layout)` — 文件布局
+- `project_slot_designer.md (§B charter)` — 双角色契约
 - `feedback_tuner_pareto_trap.md` — 为什么 mode 7 不能乱 tuner
 - `reference_classic_slot_rtp_distribution.md` — 业界基准数字
 - `feedback_always_research_each_time.md` — 每次重搜英文源

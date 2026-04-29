@@ -479,7 +479,7 @@ def main():
         ok = ratio <= MODE5_HIT_MAX_RATIO
         all_checks.append(make_check("MODE5-HIT", 5, f"hit rate m5/m2 ratio {ratio:.2f}x (cap {MODE5_HIT_MAX_RATIO}x — super-lucky preserves hit shape)", ok))
 
-    # ARCHETYPE block check (per project_slot_designer_machine_archetype.md)
+    # ARCHETYPE block check (per project_slot_designer.md (§F machine archetype))
     strips_data = json.loads(STRIPS.read_text(encoding="utf-8"))
     arch = strips_data.get("_archetype")
     if arch is None:

@@ -2,7 +2,7 @@
 
 > **目的**：把 M15 的数学身份、paytable 结构性、行业对标数据、spec 固化的约束全部铺开，作为 mode 设计的参考手册。  
 > **原型**：IGT Top Dollar (1999) / Double Top Dollar (9-line variant)  
-> **Scope**：不涵盖 mode 分配和 RTP 目标（见 `project_slot_designer_mode_rtp_invariants.md`），只挖 paytable 自身的数学特性。  
+> **Scope**：不涵盖 mode 分配和 RTP 目标（见 `project_slot_designer.md (§C mode RTP)`），只挖 paytable 自身的数学特性。  
 > **更新时间**：2026-04-23
 
 ---
@@ -225,7 +225,7 @@ Top Dollar 的玩家体验核心是**第 3 层**——稀有但戏剧性的 bonu
 | `y_count_weights` (per mode) | 3-tuple (w0, w1, w2) | Feature conditional EV（越宽越大） |
 | Accept threshold | 固定 40，改要动 spec | 只在"动 spec" 路径可调 |
 
-**派生关系** (按 `project_slot_designer_mode_rtp_invariants.md`)：
+**派生关系** (按 `project_slot_designer.md (§C mode RTP)`)：
 - mode 7 from mode 1: base weights Cherry × 0.5, Bar × 0.9 (砍小奖)
 - mode 5 from mode 2: **调 feature x_count/y_count weights** 加 EV（feature 机台的"加大奖"专用路径）；base 不动
 

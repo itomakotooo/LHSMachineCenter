@@ -5,7 +5,7 @@
     "origin": "Light & Wonder (formerly Bally / Scientific Games) — 'Blazing 777 Triple Double Jackpot Wild — Nudging Stacks' family",
     "chassis_reference": "Classic 3-reel 9-line stepper + bidirectional stacked-wild nudge mechanic + Asian-market collect-to-wheel feature add-on",
     "chassis_reference_url": "https://gaming.lnw.com/Games/LIGHT-AND-WONDER/class2/stepper/blazing-777%E2%84%A2-triple-double-jackpot-wild%E2%84%A2--nudge-20009",
-    "chassis_reference_rtp_benchmark": "94% (default variant of Blazing 777); LHS uses 95% red line per project_slot_designer_mode_rtp_invariants",
+    "chassis_reference_rtp_benchmark": "94% (default variant of Blazing 777); LHS uses 95% red line per project_slot_designer §C mode RTP",
     "rwb_par_sheet_reference": "https://wizardofodds.com/games/slots/appendix/6/ — Red White & Blue PAR sheet (Wizard of Odds, Michael Shackleford). Use for asymmetric reel pattern inspiration: Reel 1 has 1 Red7 / Reel 2 has 3 Red7 / Reel 3 has 1 Red7 (kill / anchor / kill). M279 v2 reverses: Reel 2 is the kill reel (low high7 count), Reel 1+3 are lead reels (more high7).",
     "asymmetric_design": "Reel 2 = 'kill' reel (heavy blank, 1 high7 vs 3 on lead reels, no single wild2x/wild3x). Reel 1+3 = 'lead' reels (mirror pattern). Forces top jackpot path through Reel 2 = single reel constraint = top JP rate controllable via Reel 2 high7/wild density independent of lead reels.",
     "modifications_vs_archetype": [
@@ -17,7 +17,7 @@
   },
   "_invariants": [
     "Wild stack atomic trio (wild_up / wild2x_mid / wild_down) at adjacent strip positions in this exact order (top → bot). Trio appears once per reel at position 28-30. Phase 5 SA tuner must treat as atomic super-stop.",
-    "Strips byte-identical across modes 1/2/5/7 (project_slot_designer_strips_identical_across_modes hard rule). Different modes have different weights but SAME symbol-at-position layout.",
+    "Strips byte-identical across modes 1/2/5/7 (project_slot_designer §E strip layout hard rule). Different modes have different weights but SAME symbol-at-position layout.",
     "Mode 5 base weights byte-identical to mode 2 weights (cross-mode invariant); mode 5 differs only via _m279_overrides feature parameters.",
     "Reel 2 high7 count <= 0.5 × min(Reel 1, Reel 3) high7 count (asymmetric kill-reel red line).",
     "Reel 2 carries NO single wild2x or wild3x (these only on lead reels) — forces wild jackpot pay 101/102 to require lead-reel anchors.",

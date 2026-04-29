@@ -11,20 +11,20 @@
 
 - 来源: [Wizard of Odds Hot Roll reverse-engineered reel mapping](https://wizardofodds.com/games/slots/hot-roll/)
 - Confidence: medium-high (WoO 反推，非 IGT 官方 PAR sheet)
-- 原型 = 灵感，不是约束 — per [`project_slot_designer_axiom_experience_is_soul`](../../memory/project_slot_designer_axiom_experience_is_soul.md)，"假可以但不能怪"，weights 跟原型偏离 OK，前提是玩家体验合理
+- 原型 = 灵感，不是约束 — per [`project_slot_designer §A axiom`](../../memory/project_slot_designer.md (§A axiom))，"假可以但不能怪"，weights 跟原型偏离 OK，前提是玩家体验合理
 - Strip 修改 (2026-04-28): Hot Roll bonus trigger 位置 (R1[13], R2[15], R3[13]) → **Cherry**（M1 无 bonus；不能用 Blank 否则破坏 alternation 不变量）。所有 reel 22 stops 严格 B/N alternation: 11 Blank + 11 非 Blank
 
 ## 2. 硬约束
 
 - **Paytable 锁** — `slot_designer/specs/M1.spec.json` 不动
-- **Strip 物理 Blank/非 Blank 严格交替** — `slot_designer/weights/M1/reel_strips.json` 22-stop，所有 3 条 reel 都是 B-N-B-N-...-B-N 严格交替（11+11）。Universal rule (Harrigan near-miss band) per [`project_slot_designer_strips_weights_layout.md`](../../memory/project_slot_designer_strips_weights_layout.md). **不允许任何 3 连 Blank 或 3 连非 Blank**
+- **Strip 物理 Blank/非 Blank 严格交替** — `slot_designer/weights/M1/reel_strips.json` 22-stop，所有 3 条 reel 都是 B-N-B-N-...-B-N 严格交替（11+11）。Universal rule (Harrigan near-miss band) per [`project_slot_designer.md (§E strip layout)`](../../memory/project_slot_designer.md (§E strip layout)). **不允许任何 3 连 Blank 或 3 连非 Blank**
 - **Mode RTP**:
   - Mode 1 = 95% ± 1pp（standard baseline）
   - Mode 7 = 85% ± 1.5pp（"运气差"充值 trigger）
   - Mode 2 = 294.5% ± 20pp（lucky 福利）
   - Mode 5 = 500% ± 30pp（super-lucky）
 - **R1 Blank 率 ∈ [30%, 40%]**（all modes，user-pinned 2026-04-28）— M1-specific design target，不是 universal:
-  - **Why**: M1 是 1-line classic IGT；R1 是玩家"第一印象"reel。30% 下限：cherry/seven 视觉上需要"有空"才有 reveal drama；40% 上限：超过会"早期拒绝"玩家（per Strickland/Reid 1967/1986, [`project_slot_designer_reel_asymmetry.md`](../../memory/project_slot_designer_reel_asymmetry.md)）
+  - **Why**: M1 是 1-line classic IGT；R1 是玩家"第一印象"reel。30% 下限：cherry/seven 视觉上需要"有空"才有 reveal drama；40% 上限：超过会"早期拒绝"玩家（per Strickland/Reid 1967/1986, [`project_slot_designer.md (§12 reel asymmetry)`](../../memory/project_slot_designer.md (§12 reel asymmetry))）
   - **Where**: tune_m1.py EXPERIENCE_TARGETS 各 mode `r1_blank_band: (0.30, 0.40)` + cost penalty strength 300；verify_m1_design.py R1-BLANK-BAND check
   - **Not universal**: 多线 / video slot / cluster / megaways 应**重新校准**（线越多 R1 blank 可越低，因为多 line 缓冲早期拒绝）。Stop count / paytable 结构不同的机台抄这个数字 → "picked threshold" 反例
 
@@ -32,7 +32,7 @@
   - **Why**: M1 是 line-based 3-reel slot, 视窗 3 行；X-Blank-X 显示成"两边 X 中间空"会让玩家解读廉价 near-miss → dilute 真 near-miss 价值
   - **Where**: reel_strips.json strip 排列硬约束（设计时 enforce）；verify_m1_design.py BLANK-FLANK-DIVERSITY check (universal hard 红线)
   - **Universal**: 适用 (line-based slot)；rule 跟原型 PAR sheet 不冲突就 enforce
-  - 详见 [`project_slot_designer_blank_flank_diversity.md`](../../memory/project_slot_designer_blank_flank_diversity.md)
+  - 详见 [`project_slot_designer.md (§13 blank flank diversity)`](../../memory/project_slot_designer.md (§13 blank flank diversity))
 
 - **Visual rhythm — Bar3 / Bar1 重复位置间距 ≥ 4 stops**（M1 specific 子规则, 2026-04-29 user requirement）:
   - **Why**: M1 R1 上 Bar3 出现 3 次（pos 9/11/19），R2/R3 上 Bar1 出现 3 次。当前 R1 pos 9 和 11 间距 = 1 stop（仅隔 1 个 Blank），过近视觉上"R1 全是 Bar3"。
@@ -49,7 +49,7 @@
   - **NOT Harrigan 50%**: Harrigan IGT 50%+ 需 **virtual reel mapping**（64+ virtual stops 映射 22 physical via weight-table）M1 没实现这个架构。物理 reel 上 redistribution 是可行折中
   - **Where**: `redistribute_m1_blanks.py` (post-tune deterministic transform); verify_m1_design.py WINDOW-VISIBILITY check
   - **Not universal**: 38%/35% 是 M1 物理 reel-specific 可达数字。Virtual-mapping 机台 raise 到 50%+ (Harrigan-style)
-  - 详见 [`project_slot_designer_window_visibility_pwdf.md`](../../memory/project_slot_designer_window_visibility_pwdf.md)
+  - 详见 [`project_slot_designer.md (§15 window visibility)`](../../memory/project_slot_designer.md (§15 window visibility))
 
 ## 3. 玩家体验目标（Tune cost function 实现的 goals）
 
@@ -202,11 +202,11 @@ Mode 7 = mode 1 (frozen, 1.00x). Mode 2/5 monotonic ≥ mode 1.
 - Reel 心理不对称 (2026-04-28): **REEL-ASYMMETRY** — R1 Blank ≤ R3 Blank + R1 top-prize ≥ R3 top-prize (Strickland/Reid/Harrigan 文献支持，lucky modes 容差宽)
 - Brand 一致性 (2026-04-28, 替代 R-COLLAPSE): **BRAND-UNIFORMITY** — 顶奖家族 (Diamond/Seven) 跨 reel marginal ratio ≤ 2.0× (standard) / 2.5× (lucky)，或 abs spread ≤ 2pp（稀有 symbol escape valve）
 - R1 早期拒绝防线 (2026-04-28, user-pinned): **R1-BLANK-BAND** — R1 Blank ∈ [30%, 40%] all modes。M1-specific (1-line classic)，多线机台需重新校准
-- Strip 防廉价 near-miss (2026-04-29, user requirement, universal): **BLANK-FLANK-DIVERSITY** — strip 上每个 Blank 位置 p, strip[(p−1)%22] ≠ strip[(p+1)%22]，universal hard 红线 (0 violations)。详见 [`memory/project_slot_designer_blank_flank_diversity.md`](../../memory/project_slot_designer_blank_flank_diversity.md)
+- Strip 防廉价 near-miss (2026-04-29, user requirement, universal): **BLANK-FLANK-DIVERSITY** — strip 上每个 Blank 位置 p, strip[(p−1)%22] ≠ strip[(p+1)%22]，universal hard 红线 (0 violations)。详见 [`memory/project_slot_designer.md (§13 blank flank diversity)`](../../memory/project_slot_designer.md (§13 blank flank diversity))
 - Strip 视觉节奏 (2026-04-29, user requirement, M1 specific): **VISUAL-RHYTHM** — 同 symbol 重复实例间距 ≥ 4 stops (M1 paytable 特定阈值；其它机台自定)
-- Brand symbol 视窗能见度 (2026-04-29, M1 physical-reel regression guard): **WINDOW-VISIBILITY** — Diamond1 / Diamond2 / Seven2 any-reel 视窗 visibility ≥ 28% (M1 物理 22-stop reel 自然 baseline)，Cherry 已 57% 自然达标。Harrigan 50% 需 virtual reel 映射架构 (M1 当前没有)。详见 [`memory/project_slot_designer_window_visibility_pwdf.md`](../../memory/project_slot_designer_window_visibility_pwdf.md)
+- Brand symbol 视窗能见度 (2026-04-29, M1 physical-reel regression guard): **WINDOW-VISIBILITY** — Diamond1 / Diamond2 / Seven2 any-reel 视窗 visibility ≥ 28% (M1 物理 22-stop reel 自然 baseline)，Cherry 已 57% 自然达标。Harrigan 50% 需 virtual reel 映射架构 (M1 当前没有)。详见 [`memory/project_slot_designer.md (§15 window visibility)`](../../memory/project_slot_designer.md (§15 window visibility))
 
-**HIT band 注**：M1 是 1-line classic，mode 1 hit_hi=22% 是该 paylines 数的 reference。多线机台需重新校准 — paylines 越多 hit band 越右移 (5-9 line ≈ 25-35%, 25-50 line ≈ 30-45%, megaways ≈ 40-60%)。详见 [`memory/project_slot_designer_hit_rate_deviation.md`](../../memory/project_slot_designer_hit_rate_deviation.md)。
+**HIT band 注**：M1 是 1-line classic，mode 1 hit_hi=22% 是该 paylines 数的 reference。多线机台需重新校准 — paylines 越多 hit band 越右移 (5-9 line ≈ 25-35%, 25-50 line ≈ 30-45%, megaways ≈ 40-60%)。详见 [`memory/project_slot_designer.md (§D hit rate)`](../../memory/project_slot_designer.md (§D hit rate))。
 
 ### 5.3 文件
 

@@ -22,7 +22,7 @@ Top 1000x jackpot (1 in X spins),277760,46001,25168,267339
 # ==================================================
 # Section B: reel strips (shared) + per-mode weights
 # ==================================================
-# Strips are BYTE-IDENTICAL across all modes (project_slot_designer_strips_identical_across_modes.md).
+# Strips are BYTE-IDENTICAL across all modes (project_slot_designer.md (§E strip layout)).
 # Only weights differ per mode. Blank/non-blank strict alternation enforced by engine.
 #
 # M37 reel-placement rules:
