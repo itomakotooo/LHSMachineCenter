@@ -200,8 +200,10 @@ class PaytableEvaluator:
                         positions=all_positions,
                     )
             # fall through to center-alone if no rule (booster tier
-            # without a dedicated pure-wild rule, e.g. M37's grand)
-            return self._center_booster_alone(booster_name)
+            # without a dedicated pure-wild rule, e.g. M37's grand
+            # which is reroll-blocked at server level). Both sides wild
+            # → include both side positions in emission.
+            return self._center_booster_alone(booster_name, ((0, 1), (2, 1)))
 
         # (b) side-match with booster center
         # Both side cells must be WILD or the target symbol — if any side
@@ -267,21 +269,35 @@ class PaytableEvaluator:
                         positions=all_positions,
                     )
 
-        # (c) center-alone
-        return self._center_booster_alone(booster_name)
+        # (c) center-alone — include side wild positions in PayoutByPayline
+        # emission (production rawdata: pay_id 9 with side wild emits BOTH
+        # positions, not just middle. Match production rawdata format so
+        # downstream paytable inference can correctly classify match_count.)
+        side_wild_positions = tuple(
+            (c, 1) for c, s in enumerate(payline_symbols)
+            if c != 1 and self.symbols.get(s).is_wild
+        )
+        return self._center_booster_alone(booster_name, side_wild_positions)
 
-    def _center_booster_alone(self, booster_name: str) -> PayResult | None:
+    def _center_booster_alone(
+        self, booster_name: str,
+        side_wild_positions: tuple = (),
+    ) -> PayResult | None:
         """Lookup center_booster_alone pay (pay_id 8 grand, pay_id 9
-        mini/minor/major on M37)."""
+        mini/minor/major on M37). Position list includes center (1,1)
+        plus any side wild positions present on payline (production
+        rawdata format)."""
         if "center_booster_alone" not in self.order:
             return None
         rule = self.rules.center_booster_alone_by_symbol.get(booster_name)
         if rule is None:
             return None
+        # Sort positions by column for consistent emission order
+        positions = tuple(sorted(side_wild_positions + ((1, 1),)))
         return PayResult(
             pay_id=rule.pay_id,
             multiplier=rule.multiplier,
-            positions=((1, 1),),  # center cell only
+            positions=positions,
         )
 
     def evaluate_all_paylines(
