@@ -792,20 +792,40 @@ def main(modes_to_run=(1, 7)):
             # All other symbols (bars/wild/high7/mini/minor/major/blank) frozen = m2.
             # This preserves hierarchy (mini > minor > major > grand from m2 inherited),
             # preserves hit pattern (everything else fixed), and adds RTP via grand × side.
+            #
+            # 2026-04-29 (post-WORKFLOW.md adversarial review): blank UNFROZEN
+            # in narrow band [m2 blank - 2, m2 blank]. Reason: grand × 6 expands
+            # R2 total weight by ~5 units → R2 booster densities (mini/minor/
+            # major) drop ~1% vs mode 2 → wild_amp pays (102/103/104) m5/m2
+            # ratio 0.99 < 1.0, violating LUCKY-MONO design intent
+            # ("super-lucky m5 ≥ m2 monotonic"). Letting blank drop slightly
+            # compensates: optimizer can lower R2 blank weight 15 → 13-14 to
+            # bring R2 total back to / below mode 2 487 → booster densities
+            # rise → wild_amp ratios ≥ 1.0. Verify hit/RTP within band.
             FROZEN_FOR_M5 = (
                 BAR_KEYS    # all bars (1bar/2bar/3bar/7bar)
                 + [("wild", r) for r in (0, 2)]    # wild
                 + [("high7", r) for r in range(3)]    # high7
                 + [(b, 1) for b in ("mini", "minor", "major")]    # all boosters except grand
-                + BLANK_KEYS    # blank (lock for density preservation)
+                # NOTE: blank NOT in frozen list — see comment above
             )
             frozen_weights = {k: mode2_all_weights[k] for k in FROZEN_FOR_M5 if k in mode2_all_weights}
             weight_floors = {}
-            # Grand is the ONLY mutable symbol — push toward顶奖密集化 (1000× session 级)
+            weight_ceilings = {}
+            # Grand is mutable (push toward顶奖密集化 1000× session 级)
             grand_key = ("grand", 1)
             if grand_key in mode2_all_weights:
                 weight_floors[grand_key] = max(6, int(mode2_all_weights[grand_key] * 6))
-            print(f"\n=== Mode {mode}: ALL frozen=m2 except grand≥max(6,m2×6) ===")
+            # Blank in narrow band [m2 blank - 2, m2 blank]. Lower bound -2 lets
+            # optimizer compensate ~5 weight unit grand expansion (1→6 weight).
+            # Upper bound = m2 blank prevents drift higher (would dilute booster
+            # densities and break wild_amp ratios in opposite direction).
+            for k in BLANK_KEYS:
+                if k in mode2_all_weights:
+                    m2_b = mode2_all_weights[k]
+                    weight_floors[k] = max(1, m2_b - 2)
+                    weight_ceilings[k] = m2_b
+            print(f"\n=== Mode {mode}: ALL frozen=m2 except grand≥max(6,m2×6) + blank ∈ [m2-2, m2] ===")
         elif mode == 2 and mode1_all_weights is not None:
             # Mode 2 lucky: big-win/booster ≥ mode 1 (lucky every pay frequency ↑),
             # bar capped ≤ m1 × 1.6 (prevent over-loading), blank ≤ mode 1.

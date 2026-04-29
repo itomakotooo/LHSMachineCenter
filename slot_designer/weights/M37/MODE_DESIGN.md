@@ -3,7 +3,13 @@
 > **机台 origin**：M37 是 **LHS 原创机台**（不抄商业机台），chassis 参考 classic 3-reel 1-payline (RWB / Blazing Sevens 同代)，符号机制特征 = wild on outer + 倍率 wild on middle (mini/minor/major/grand)。完整 archetype 见 `reel_strips.json _archetype` block + [`DESIGN.md`](DESIGN.md) §1。
 > **上游**：[`DESIGN.md`](DESIGN.md)（原创设计 + 业界 chassis 参考 + per-tier 玩家感性叙事）；`project_slot_designer.md (§C mode RTP)`（跨机台 mode RTP 规则）；`project_slot_designer.md (§D hit rate)`（派生 mode hit rate 带宽规则）
 > **下游**：每 mode `mode_<N>/weights.json`（实现层）；`M37_weights_reference.csv`（策划速查表）
-> **状态**：2026-04-29 **v4.5 shipped**（mode 7 顶奖 freq match + REEL-ASYMMETRY direction 修正 + 22 类 verify 全 GREEN）
+> **状态**：2026-04-29 **v4.6 shipped**（mode 5 LUCKY-MONO ratio 修正 + mode 7 顶奖 freq match + REEL-ASYMMETRY direction + 22 类 verify 全 GREEN）
+> **v4.6 关键改进** vs v4.5:
+> - **Mode 5 LUCKY-MONO 严格 monotonic**: pre-fix pay_id 102/103/104 (wild_amplified) m5/m2 ratio = 0.990x（verify SUM check pass via 0.5x tolerance 但严格 design intent "all big-win pays m5 ≥ m2" 违反 1%）→ post-fix all 5 BIGWIN_PAY_IDS m5/m2 ratios ≥ 1.0 ✓
+> - **解开 mode 5 blank frozen**: blank weight ∈ [m2 - 2, m2]（之前固定 = m2）。让 optimizer compensate grand × 6 boost 带来的 R2 total 扩张 5 单位 → R2 booster 密度回升 → wild_amp pays 频次 ≥ mode 2 ✓
+> - **根因**: mode 5 R2 grand × 6 (1→6 weight) 让 R2 total +5 unit → 其它 R2 booster 密度被稀释 1% → wild_amp 路径 (R1 wild × R2 booster × R3 wild) 频次 -1% → 违反 lucky_mono
+> - **Per-pay m5/m2 ratios** post-fix: pay_id 1 ratio 1.05, pay_id 8 ratio 6.16, pay_id 102/103/104 ratio 1.027 (all ≥ 1.0 ✓)
+
 > **v4.5 关键改进** vs v4:
 > - **Mode 7 顶奖 freq match**: pre-fix pay_id 1 (高7-3) ratio m7/m1 = 0.845x（在 verify [0.70, 1.55] cap 内但 design "中/大/顶奖击中率不变" intent 偏离 15%）→ post-fix ratio 1.000 ✓ exact match
 > - **1000× top jackpot freq**: 1 in 99,439 (mode 7) vs 1 in 99,447 (mode 1) → ratio 1.0001 ✓ design 实现
@@ -85,18 +91,18 @@ Reels 1+3 的 wild **紧邻 high7**（pos 1=wild, pos 3=high7）→ window 经�
 
 > 策划速查：打开 `M37_weights_reference.csv` Section B 看 4 mode 并排权重（CSV 可贴 Excel）。Source of truth 仍是 `mode_<N>/weights.json`。
 
-Post-tune v4.5 (2026-04-29) 实际 analytic 数字（`python slot_designer/scripts/verify_m37_design.py`）：
+Post-tune v4.6 (2026-04-29) 实际 analytic 数字（`python slot_designer/scripts/verify_m37_design.py`）：
 
 | Mode | RTP | Hit rate | Per-hit avg | CV | 顶奖 1000× (1 in X spins) |
 |---|---|---|---|---|---|
 | 1 | **94.49%** | 21.37% | 4.42× | 7.55 | ~99k |
 | 2 | **285.44%** | 35.38% | 8.07× | 4.88 | ~25k |
-| 5 | **481.02%** | 36.04% | 13.35× | 6.21 | ~4.2k |
+| 5 | **498.83%** | 36.95% | 13.50× | 6.09 | ~4.0k |
 | 7 | **85.21%** | 18.98% | 4.49× | 7.69 | **~99k (= mode 1)** |
 
-**关键变化**（v4.5 — 同 v3 mode 1/2/5；mode 7 顶奖 freq match + REEL-ASYMMETRY direction 修正）：
+**关键变化**（v4.6 — mode 1/2/7 不变；mode 5 LUCKY-MONO 修正后 R2 blank 14 → booster densities 略升）：
 - Mode 2 vs 1：hit ×1.66，per-hit ×1.83 → **打击频率升 + 每 win 更厚**
-- Mode 5 vs 2：hit ×1.02，per-hit ×1.65 → **打击频率近似 + 每 win 大涨**（顶奖 frequent 的 super-lucky）
+- Mode 5 vs 2：hit ×1.044，per-hit ×1.67 → **打击频率近似 + 每 win 大涨**（顶奖 frequent 的 super-lucky）
 - Mode 7 vs 1：hit ×0.89，per-hit ×1.02 → **打击稍稀（bar 砍）+ per-hit 几乎同 mode 1**
 
 **Per-pay m7/m1 ratio table** (design intent "中/大/顶奖击中率不变" verification):
@@ -109,17 +115,17 @@ Post-tune v4.5 (2026-04-29) 实际 analytic 数字（`python slot_designer/scrip
 | 102/103/104 (wild_amp) | OTH | 1 in 19-43k | 1 in 19-43k | **1.000** | 全 frozen → 不动 ✓ |
 | 2-5, 7 (Bar) | BAR | 1 in 12-306 | 1 in 19-468 | 0.61-0.76 | "砍小奖" cut as design ✓ |
 
-**big-win 频率（pay_id 1+8+102+103+104 sum）**：
+**big-win 频率（pay_id 1+8+102+103+104 sum, v4.6）**：
 - Mode 1: 1 in 403 spins (live 0.002481)
-- Mode 7: 1 in 384 spins (live 0.002604, ~5% MORE frequent than m1 — 顶奖 freq match + pay_id 8 grand alone rises 30.7% with bar cut → 副作用 acceptable，within verify caps)
+- Mode 7: 1 in 384 spins (live 0.002604, ~5% MORE frequent than m1 — 顶奖 freq match + pay_id 8 grand alone rises 30.7% with bar cut)
 - Mode 2: 1 in 112 spins (×3.6 vs m1)
-- Mode 5: 1 in 84 spins (×4.8 vs m1, ×1.33 vs m2)
+- Mode 5: 1 in 81 spins (×5.0 vs m1, **×1.376 vs m2** — LUCKY-MONO SUM ratio improved from 1.32 with mode 5 retune)
 
 **顶奖 1000× 阶梯**（玩家叙事）：
 - m1 (~99k spins) — 1 周连续玩 1 小时/天 才有 1 次的级别（rare，"梦"）
 - m7 (~99k spins) — **跟 mode 1 一样**（design intent: 顶奖击中率不变）
 - m2 (~25k spins) — lucky tier，两小时玩可期，仍稀有
-- m5 (~4.2k spins) — super-lucky，半小时玩可期 — 1000× **session-level 体验**
+- m5 (~4.0k spins) — super-lucky，半小时玩可期 — 1000× **session-level 体验**
 
 **REEL-ASYMMETRY direction**（universal §12，v4 新验证 / v4.5 mode 7 数值微调）:
 - Mode 1: R1 blank 21.82% < R3 29.37% ✓ / R1 top 11.82% > R3 11.19% ✓
@@ -129,28 +135,28 @@ Post-tune v4.5 (2026-04-29) 实际 analytic 数字（`python slot_designer/scrip
 
 ---
 
-## 3. Bucket 分布对比（per-mode per-bucket hit rate %, v4.5 live data 2026-04-29）
+## 3. Bucket 分布对比（per-mode per-bucket hit rate %, v4.6 live data 2026-04-29）
 
 | Bucket | Mode 1 | Mode 2 | Mode 5 | Mode 7 | 业务含义 |
 |---|---|---|---|---|---|
-| ge1_lt5 | 15.53% | 18.38% | 18.19% | 13.29% | 小 bar 3-match / mixed bars / wild alone |
-| ge5_lt10 | 3.00% | 7.50% | 7.42% | 3.03% | 3-1bar-with-boost / minor alone / mixed-with-boost |
-| ge10_lt20 | 2.05% | 6.09% | 6.03% | 2.04% | 3-bar / mini-boosted / major alone |
-| ge20_lt50 | 0.53% | 2.43% | 2.41% | 0.40% | 3-bar-with-minor / major-boosted bars |
-| ge50_lt100 | 0.15% | 0.67% | 0.67% | 0.12% | 3-high7 / minor-boosted high7 |
-| ge100_lt200 | 0.09% | 0.25% | 0.98% | 0.09% | grand-alone (pay 8) / pure-wild+major (pay 102) |
-| ge200_lt500 | 0.0081% | 0.04% | 0.21% | 0.0061% | minor-boosted 3-high7 / 3-bar × grand |
+| ge1_lt5 | 15.53% | 18.38% | 18.43% | 13.29% | 小 bar 3-match / mixed bars / wild alone |
+| ge5_lt10 | 3.00% | 7.50% | 7.70% | 3.03% | 3-1bar-with-boost / minor alone / mixed-with-boost |
+| ge10_lt20 | 2.05% | 6.09% | 6.26% | 2.04% | 3-bar / mini-boosted / major alone |
+| ge20_lt50 | 0.53% | 2.43% | 2.50% | 0.40% | 3-bar-with-minor / major-boosted bars |
+| ge50_lt100 | 0.15% | 0.67% | 0.69% | 0.12% | 3-high7 / minor-boosted high7 |
+| ge100_lt200 | 0.09% | 0.25% | 1.01% | 0.09% | grand-alone (pay 8) / pure-wild+major (pay 102) |
+| ge200_lt500 | 0.0081% | 0.04% | 0.22% | 0.0061% | minor-boosted 3-high7 / 3-bar × grand |
 | ge500_lt1000 | 0.0047% | 0.02% | 0.12% | 0.0032% | 3-high7 × minor / 3-bar × grand |
 | ge1000_lt5000 | 0.0009% | 0.0033% | 0.02% | 0.0009% | **TOP: pay_id 1 × grand = 1000×** |
 
-**Aggregate Low/Mid/High/Top**（v4.5 live data）：
+**Aggregate Low/Mid/High/Top**（v4.6 live data）：
 
 | Tier | Mode 1 | Mode 2 | Mode 5 | Mode 7 | 叙事 |
 |---|---|---|---|---|---|
-| **Low** (1-10×) | 18.53% | 25.88% | 25.61% | **16.32%** | m7 < m1 by 2.21pp（Low 砍 cubic 体现）|
-| **Mid** (10-50×) | 2.58% | 8.53% | 8.44% | **2.44%** | m7 ≈ m1（design intent）|
-| **High** (50-500×) | 0.25% | 0.96% | **1.85%** | **0.21%** | m5 核心 buff ×7.4; m7 ≈ m1 |
-| **Top** (500-1000×) | 0.0056% | 0.0230% | **0.1369%** | **0.0041%** | m5 顶奖 ×24 vs m1（super-lucky session 体验）|
+| **Low** (1-10×) | 18.53% | 25.88% | 26.13% | **16.32%** | m7 < m1 by 2.21pp（Low 砍 cubic 体现）|
+| **Mid** (10-50×) | 2.58% | 8.53% | 8.76% | **2.44%** | m7 ≈ m1（design intent）|
+| **High** (50-500×) | 0.25% | 0.96% | **1.92%** | **0.21%** | m5 核心 buff ×7.7; m7 ≈ m1 |
+| **Top** (500-1000×) | 0.0056% | 0.0230% | **0.1421%** | **0.0041%** | m5 顶奖 ×25 vs m1（super-lucky session 体验）|
 
 ---
 
