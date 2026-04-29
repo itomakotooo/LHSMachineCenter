@@ -88,7 +88,8 @@ def parse_xlsx_layout(xlsx_path: Path) -> dict:
 
 
 def compute_weights(reel_positions: dict, designed_marg: dict, scale: int = SCALE) -> dict:
-    """Per-family per-reel uniform weights matching designed marginal density.
+    """DEPRECATED — uniform per-(symbol, reel) weights. Use compute_weights_per_position
+    instead to preserve PWDF redistribution.
 
     reel_positions: {reel: [(row, symbol), ...]}
     designed_marg: {(reel, symbol): density}
@@ -100,14 +101,49 @@ def compute_weights(reel_positions: dict, designed_marg: dict, scale: int = SCAL
         for row, sym in positions:
             d = designed_marg.get((r, sym), 0.0)
             if d == 0:
-                # Symbol exists on real-machine reel but not in slot_designer design.
-                # Set to 1 (minimum). This means slot_designer didn't model this symbol —
-                # might happen if real machine has extra symbols (e.g., M15 'topdollar' on R3).
                 w = 1
             else:
                 n = cnt[sym]
                 w = max(1, round(d * scale / n))
             out[(row, r)] = w
+    return out
+
+
+def compute_weights_per_position(reel_positions: dict,
+                                  sd_weights: list[list[int]],
+                                  sd_strips: list[list[str]],
+                                  scale: int = SCALE) -> dict:
+    """Preserve slot_designer per-position weights (not just per-(symbol, reel)
+    marginals). Critical for PWDF redistribution where same-symbol positions
+    have DIFFERENT weights (top-adj Blanks heavy, non-top-adj light).
+
+    Scale per reel: each reel's xlsx total ≈ `scale`. Per-position xlsx weight
+    = sd_weight[r][p] × scale / sum(sd_weights[r]). Min weight 1.
+
+    reel_positions: {reel: [(row, symbol), ...]}  (xlsx layout, must match
+                    sd_strips byte-for-byte after symbol-sync upstream)
+    sd_weights: slot_designer's per-position weights array [reel][position]
+    sd_strips: slot_designer's strips [reel][position]
+    """
+    out = {}
+    for r, positions in reel_positions.items():
+        sd_total = sum(sd_weights[r])
+        if sd_total <= 0:
+            for row, _ in positions:
+                out[(row, r)] = 1
+            continue
+        # Scale slot_designer weights to xlsx total ~scale, preserving
+        # per-position ratios.
+        for p, (row, xlsx_sym) in enumerate(positions):
+            sd_sym = sd_strips[r][p]
+            if sd_sym != xlsx_sym:
+                # symbol mismatch — caller must have not done symbol-sync first
+                # Fallback: weight 1
+                out[(row, r)] = 1
+                continue
+            sd_w = sd_weights[r][p]
+            xlsx_w = max(1, round(sd_w * scale / sd_total))
+            out[(row, r)] = xlsx_w
     return out
 
 
@@ -239,6 +275,13 @@ def main():
         # 2026-04-28: pos 13 R0/R3 + pos 15 R2 changed Blank → Cherry).
         skin_layout = layout[skin]
         skin_n = len(skin_layout[0])
+
+        # Load slot_designer per-position weights (for PWDF redistribution preservation)
+        sd_weights_path = _ROOT / "slot_designer" / "weights" / machine / f"mode_{mode}" / "weights.json"
+        sd_weights = None
+        if sd_weights_path.exists():
+            sd_weights = json.loads(sd_weights_path.read_text(encoding="utf-8")).get("weights")
+
         if sd_strips is not None and skin_n == len(sd_strips[0]):
             sym_map = {}
             xlsx_layout_differs = False
@@ -249,20 +292,29 @@ def main():
                     if sd_sym != xlsx_sym:
                         xlsx_layout_differs = True
             all_symbols[skin] = sym_map
-            if xlsx_layout_differs:
-                # Recompute weights using slot_designer strip layout (xlsx layout is
-                # about to be overwritten with sd_strips, so weight assignment must
-                # also use sd_strips so per-position weights end up on the right symbol)
-                synced_layout = {
-                    r_idx: [(skin_layout[r_idx][p_idx][0], sd_strips[r_idx][p_idx])
-                            for p_idx in range(skin_n)]
-                    for r_idx in range(3)
-                }
-                weights = compute_weights(synced_layout, marg)
-                print(f"  mode {mode} → skin {skin}: layout differs from xlsx — "
-                      f"will sync symbols + weights to slot_designer strips")
+            # Build sd-symbol layout (post-symbol-sync representation)
+            synced_layout = {
+                r_idx: [(skin_layout[r_idx][p_idx][0], sd_strips[r_idx][p_idx])
+                        for p_idx in range(skin_n)]
+                for r_idx in range(3)
+            }
+            if sd_weights is not None:
+                # PER-POSITION WEIGHT EXPORT — preserves PWDF redistribution
+                # (top-adj Blanks heavy, non-top-adj at floor)
+                weights = compute_weights_per_position(
+                    synced_layout, sd_weights, sd_strips
+                )
+                if xlsx_layout_differs:
+                    print(f"  mode {mode} → skin {skin}: layout differs from xlsx — "
+                          f"sync symbols + per-position weights to slot_designer")
+                else:
+                    print(f"  mode {mode} → skin {skin}: per-position weight export "
+                          f"(PWDF redistribution preserved)")
             else:
-                weights = compute_weights(skin_layout, marg)
+                # Fallback: per-(symbol, reel) uniform (loses per-position info)
+                weights = compute_weights(synced_layout if xlsx_layout_differs else skin_layout, marg)
+                print(f"  mode {mode} → skin {skin}: per-symbol uniform fallback "
+                      f"(no slot_designer weights file)")
         else:
             weights = compute_weights(skin_layout, marg)
             if sd_strips is not None:
