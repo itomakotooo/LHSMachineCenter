@@ -179,6 +179,22 @@ EXPERIENCE_TARGETS = {
             "mini": 0.10, "minor": 0.10, "major": 0.10, "grand": 0.005,
         },
         "uniformity_ratio_cap": {"wild": 2.5, "high7": 3.0},
+        # REEL-ASYMMETRY (universal §12). Mode 7 ONLY (mode 1/2/5 already
+        # correctly directed naturally — adding penalty there would perturb
+        # cost surface and cause SA noise to break other categories).
+        # Mode 7 inherits frozen high7+wild from mode 1 (R3 high7/wild floor
+        # > R1 floor structurally) → R1 vs R3 total weight ratio determines
+        # density direction. Pre-fix: R1 blank > R3 blank by 0.9pp + R1 top
+        # < R3 top by 0.71pp (REVERSE both — within 3pp/1pp verify tolerance
+        # but design-wrong direction per universal §12).
+        # Tol = 0 (strict equality required), strength 800 high enough to
+        # compete with RTP/hit/booster/family-share penalties combined.
+        "reel_asymmetry": {
+            "blank_tol_pp": 0.0,    # strict: R1 blank ≤ R3 blank
+            "top_tol_pp": 0.0,      # strict: R1 top ≥ R3 top
+            "blank_strength": 800.0,
+            "top_strength": 800.0,
+        },
     },
     2: {
         "total_rtp_pct": 300.0, "total_rtp_tol_pp": 20.0,
@@ -406,6 +422,32 @@ def evaluate_candidate(fr_weights, strip, evaluator, paytable, exp_targets):
             ratio = mx / mn if mn > 0 else 1
             if ratio > ratio_cap:
                 cost += 40.0 * (ratio - ratio_cap) ** 2
+
+    # REEL-ASYMMETRY (universal §12 — Strickland/Reid/Harrigan).
+    # R1 should have lower blank rate (defends early-rejection persistence) and
+    # higher top-prize density than R3 ("差一点" near-miss reel). M37: R2 is
+    # the booster reel — exclude; only R1 vs R3 (the symmetric outer reels).
+    # Goal-oriented soft penalty: zero when direction correct, quadratic when
+    # reversed beyond tolerance. Configured per-mode via reel_asymmetry dict;
+    # modes that don't include this key skip the check (zero impact on
+    # well-directed modes).
+    asym = exp_targets.get("reel_asymmetry", None)
+    if asym is not None:
+        r1_blank = densities.get(("blank", 0), 0.0)
+        r3_blank = densities.get(("blank", 2), 0.0)
+        blank_tol = asym.get("blank_tol_pp", 0.03)
+        blank_k = asym.get("blank_strength", 200.0)
+        if r1_blank > r3_blank + blank_tol:
+            gap_pp = (r1_blank - r3_blank - blank_tol) * 100
+            cost += blank_k * gap_pp * gap_pp
+        # Top-prize: R1 ≥ R3 - tolerance; penalize if R3 has more top than R1
+        r1_top = sum(densities.get((s, 0), 0.0) for s in ("high7", "wild"))
+        r3_top = sum(densities.get((s, 2), 0.0) for s in ("high7", "wild"))
+        top_tol = asym.get("top_tol_pp", 0.01)
+        top_k = asym.get("top_strength", 200.0)
+        if r1_top < r3_top - top_tol:
+            gap_pp = (r3_top - r1_top - top_tol) * 100
+            cost += top_k * gap_pp * gap_pp
 
     # CV target
     cv_target = exp_targets.get("base_cv_target")
@@ -637,6 +679,36 @@ def main(modes_to_run=(1, 7)):
         frozen_weights = None
         weight_floors = None
         weight_ceilings = None
+        # Allow mode 7 / mode 5 to load their dependency (mode 1 / mode 2) from
+        # disk if not in memory — supports incremental retune of one mode
+        # without full chain re-tune. Per WORKFLOW.md "minimal surgery" — adding
+        # mode 7 asymmetry penalty should not perturb modes 1/2/5.
+        if mode == 7 and mode1_all_weights is None:
+            m1_path = _ROOT / "slot_designer" / "weights" / "M37" / "mode_1" / "weights.json"
+            if m1_path.exists():
+                m1_doc = json.loads(m1_path.read_text(encoding="utf-8"))
+                m1_strip = json.loads(STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
+                mode1_all_weights = {}
+                for r_idx, reel in enumerate(m1_strip):
+                    seen = set()
+                    for pos, sym in enumerate(reel):
+                        if sym not in seen:
+                            mode1_all_weights[(sym, r_idx)] = m1_doc["weights"][r_idx][pos]
+                            seen.add(sym)
+                print(f"  loaded mode 1 weights from disk for mode 7 derivation")
+        if mode == 5 and mode2_all_weights is None:
+            m2_path = _ROOT / "slot_designer" / "weights" / "M37" / "mode_2" / "weights.json"
+            if m2_path.exists():
+                m2_doc = json.loads(m2_path.read_text(encoding="utf-8"))
+                m2_strip = json.loads(STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
+                mode2_all_weights = {}
+                for r_idx, reel in enumerate(m2_strip):
+                    seen = set()
+                    for pos, sym in enumerate(reel):
+                        if sym not in seen:
+                            mode2_all_weights[(sym, r_idx)] = m2_doc["weights"][r_idx][pos]
+                            seen.add(sym)
+                print(f"  loaded mode 2 weights from disk for mode 5 derivation")
         if mode == 7 and mode1_all_weights is not None:
             # Mode 7 = mode 1 砍小奖派生 (slot_designer charter: bar tier × ~0.85 uniform):
             # - All bars [m1×0.65, m1×0.95] — uniform cut preserves bar hierarchy
