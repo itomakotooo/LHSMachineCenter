@@ -518,19 +518,32 @@ def evaluate_candidate(fr_weights, strip, evaluator, paytable, exp_targets):
                         cost += blank_pin_strength * (blank_w - 95) ** 2
                     break    # only check first blank per reel (per-family uniform)
 
-    # Top jackpot 1000× minimum spin gap
+    # Top jackpot 1000× minimum spin gap (one-sided cap: too frequent = bad)
     top_jackpot_min_spins = exp_targets.get("top_jackpot_min_spins")
+    p_top = (
+        (marg[0].get("high7", 0) + marg[0].get("wild", 0))
+        * marg[1].get("grand", 0)
+        * (marg[2].get("high7", 0) + marg[2].get("wild", 0))
+    )
     if top_jackpot_min_spins is not None:
-        # P(top jackpot) = (high7+wild)_R1 × grand_R2 × (high7+wild)_R3
-        p_top = (
-            (marg[0].get("high7", 0) + marg[0].get("wild", 0))
-            * marg[1].get("grand", 0)
-            * (marg[2].get("high7", 0) + marg[2].get("wild", 0))
-        )
         max_p = 1.0 / top_jackpot_min_spins
         if p_top > max_p:
             rel_over = (p_top - max_p) / max_p
             cost += 1500.0 * (rel_over * 100) ** 2
+
+    # Top-jackpot freq match — direct expression of "mode 7 中/大/顶奖击中率不变"
+    # design intent (per project_slot_designer.md §D hit rate deviation rules).
+    # Without this, frozen big-win weights don't guarantee frozen P(top) because
+    # mode 7's R1/R3 total weight differs from mode 1 (bar cuts + asymmetric
+    # blank floor) → density-based 顶奖 path freq drifts.
+    # Goal-oriented soft penalty: 0 cost when ratio ≈ 1.0; quadratic on
+    # log-ratio so over/under symmetric.
+    top_jackpot_freq_target_ref = exp_targets.get("top_jackpot_freq_target_ref")
+    if top_jackpot_freq_target_ref is not None and p_top > 1e-12:
+        log_ratio = abs((p_top / top_jackpot_freq_target_ref) - 1.0)
+        # tolerance: 5pp deviation = 0.05 → cost 1000 × 5 = 5000 (significant)
+        # tighter would dominate other goals; this lets RTP/hit also influence
+        cost += 1000.0 * (log_ratio * 100) ** 2
 
     return cost, pred, family_rtp, wild_p, booster_p, weights
 
@@ -734,7 +747,33 @@ def main(modes_to_run=(1, 7)):
             for k in BLANK_KEYS:
                 if k in mode1_all_weights:
                     weight_floors[k] = mode1_all_weights[k]
-            print(f"\n=== Mode {mode}: bars [m1*0.65, m1*0.95] uniform; big-win frozen=m1; blank>=m1 ===")
+            # Compute mode 1's actual P(top jackpot) from its weights — pass as
+            # tune target to keep mode 7 顶奖击中率 ≈ mode 1's (per design intent
+            # "中/大/顶奖击中率不变"). Without this, frozen big-win weights guarantee
+            # nothing for P(top) which is multi-reel density product → R1/R3 total
+            # weight drift drags it down (or up).
+            def _compute_p_top_m1(m1_weights):
+                # build per-reel density for high7+wild on R1+R3, grand on R2
+                m1_strip = json.loads(STRIPS_PATH.read_text(encoding="utf-8"))["reels"]
+                p_per = []
+                for r_idx, reel in enumerate(m1_strip):
+                    counts = defaultdict(int)
+                    for pos, sym in enumerate(reel):
+                        w = m1_weights.get((sym, r_idx))
+                        if w is None:
+                            continue
+                        counts[sym] += w
+                    total = sum(counts.values())
+                    if r_idx in (0, 2):
+                        p_per.append((counts.get("high7", 0) + counts.get("wild", 0)) / total)
+                    else:
+                        p_per.append(counts.get("grand", 0) / total)
+                return p_per[0] * p_per[1] * p_per[2]
+            p_top_m1 = _compute_p_top_m1(mode1_all_weights)
+            # Inject as exp_targets for this run (don't mutate global dict)
+            exp_targets = dict(exp_targets)
+            exp_targets["top_jackpot_freq_target_ref"] = p_top_m1
+            print(f"\n=== Mode {mode}: bars [m1*0.65, m1*0.95] uniform; big-win frozen=m1; blank>=m1; top-jackpot freq target = m1's P_top {p_top_m1:.6e} (1 in {1/p_top_m1:.0f}) ===")
         elif mode == 5 and mode2_all_weights is not None:
             # Mode 5 super-lucky design: m2 base + 倍率 wild boost (grand + major).
             # Per memory project_slot_designer.md (§C mode RTP):
