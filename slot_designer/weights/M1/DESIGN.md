@@ -40,12 +40,15 @@
   - **Where**: reel_strips.json 重排时遵守；verify_m1_design.py VISUAL-RHYTHM 子类 (M1 specific cap)
   - **Not universal**: M37/M15 有不同的 paytable 结构和重复 symbol 数，应自定阈值——不要抄 4
 
-- **Window visibility — Diamond1 / Diamond2 / Seven2 any-reel ≥ 28%**（M1 specific PWDF floor 2026-04-29，**物理 reel 限制下的 regression guard**）:
-  - **Why**: M1 是 IGT TDD 风格 brand machine, 顶奖 family (Diamond 系 wild + Seven2 top jackpot) 设计上应频繁可见但 payline hit rare。Harrigan IGT 实证 50% 是**虚拟 reel 映射**（64+ virtual stops mapped to 22 physical stops 用 weight-table 放大 visibility）。
-  - **物理 vs 虚拟 reel constraint**: M1 当前用**物理 22-stop reel + weighted stops**（无虚拟映射层）。数学上限：22 stops + 4 top-prize × 1 instance × RTP 95% ⇒ achievable any-reel visibility ≈ 30-40% (mult=1 baseline ~28-39%)。强行用 Blank weight boost 推高 visibility 会让 RTP 崩到 13-44%（mult=2-5 实测）。
-  - **Floor 28% 是 regression guard**: 当前自然 baseline (Seven2 ≈ 28.7% 最低)。设 28% 防 future change 跌破自然值。**不是 Harrigan PWDF aggressive target** — 要达到 50% 需架构升级到 virtual reel mapping
-  - **Where**: verify_m1_design.py WINDOW-VISIBILITY check (12 checks: 3 symbols × 4 modes); tune_m1.py 含 PWDF mult mechanism 框架（M1 物理 reel 总返回 mult=1）
-  - **Not universal**: 28% 是 M1 物理-reel-specific。5-reel video / virtual-reel 机台应 raise (Harrigan 50% 可达)
+- **Window visibility — Diamond1 / Diamond2 / Seven2 any-reel** (M1 specific PWDF floor，2026-04-29):
+  - **Standard mode (1, 7) floor**: 38% (post-redistribution baseline ~39-44%)
+  - **Lucky mode (2, 5) floor**: 35% (lucky modes 自然 visibility 已高，redistribution 收益小)
+  - **Why**: M1 是 IGT TDD 风格 brand machine，顶奖 family (Diamond wild + Seven2 top jackpot) 应频繁可见但 payline hit rare
+  - **Mechanism — RTP-neutral Blank redistribution** (`redistribute_m1_blanks.py`)：per reel 把 non-top-adj Blank weight 减到 floor=1，top-adj Blanks 吸收剩余 budget。Total Blank weight per reel 守恒 → Blank marginal 不变 → 所有 family marginal 不变 → RTP/hit/share **完全不变**。但 reel 经常停在 top-adj 区 → window frequent contains top symbol → visibility +9-11pp
+  - **Pre/post comparison（mode 1）**: Diamond1 35→44%, Diamond2 30→41%, Seven2 29→39%。Cherry brand visibility 跌 57→38% (副作用，仍 well above floor)
+  - **NOT Harrigan 50%**: Harrigan IGT 50%+ 需 **virtual reel mapping**（64+ virtual stops 映射 22 physical via weight-table）M1 没实现这个架构。物理 reel 上 redistribution 是可行折中
+  - **Where**: `redistribute_m1_blanks.py` (post-tune deterministic transform); verify_m1_design.py WINDOW-VISIBILITY check
+  - **Not universal**: 38%/35% 是 M1 物理 reel-specific 可达数字。Virtual-mapping 机台 raise 到 50%+ (Harrigan-style)
   - 详见 [`project_slot_designer_window_visibility_pwdf.md`](../../memory/project_slot_designer_window_visibility_pwdf.md)
 
 ## 3. 玩家体验目标（Tune cost function 实现的 goals）

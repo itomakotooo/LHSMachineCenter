@@ -328,13 +328,31 @@ PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top
 - 哪些 symbol 算"top"（M1: Diamond+Seven2，M15: TopDollar，M37: booster）
 - 跟 payline hit rate 的倍数关系（K=4-10×）
 
-### 15.5 物理 reel vs 虚拟 reel 的根本约束（2026-04-29 M1 实测发现）
+### 15.5 物理 reel 上的两种 PWDF 机制（2026-04-29 M1 实测）
 
-**Harrigan 50% 是 virtual-reel 实证**，不是物理 reel 可达的 universal target：
+**误区**：以为物理 reel 上 visibility 跟 RTP zero-sum (boost visibility → RTP 崩)。这只对**直接 boost Blank weight × mult** 机制成立。**还有 RTP-neutral 机制存在**。
 
-- **物理 reel + weighted stops（M1 类）**：strip 22 个 physical stops 直接被 RNG 选中（按 weight）。视窗 visibility 上限受 strip 长度 + top symbol 实例数 + RTP 目标三重约束。M1 22-stop + 4 top × 1 instance + RTP 95% → **自然 visibility 30-40%**。强行 boost (Blank weight × N) 会 collapse RTP（M1 实测 mult=5 → RTP 95%→13%）
-- **虚拟 reel 映射（IGT 经典 Double 7 等）**：64+ virtual stops 通过 weight-table 映射到 22 physical stops。Virtual mapping 把"top-symbol 邻接 zone"在虚拟 reel 上占多数 → physical reel 经常停那 → window frequent contains top symbol。**Harrigan 50% 在这架构下可达**
-- **新机台 onboarding 必看**：先确认 architecture（物理 weighted stops vs virtual mapping）。物理-only 机台 floor 设 **regression guard (natural baseline - 5pp buffer)**，不要抄 IGT 50%；虚拟 reel 机台可设 Harrigan-style aggressive (50%+)
+**机制 A — Multiply boost（RTP-collapsing，M1 实测崩）**：
+- top-adj Blank weight × N (N>1)
+- Total reel weight 增 → 所有 family marginal 减 → RTP 崩
+- M1 实测: mult=5 → RTP 95%→13% 不可行
+
+**机制 B — Redistribute（RTP-neutral，M1 实测可行）**：
+- Per reel 总 Blank weight **守恒**: non-top-adj Blanks 减到 floor=1, top-adj Blanks 吸收剩余
+- Total Blank weight 不变 → Blank marginal 不变 → 所有 family marginal 不变 → RTP/hit/share **完全不变**
+- Top-adj Blanks 个体 weight 上升 → reel 经常停 top-adj 区 → window frequent contains top symbol → visibility 上升
+- M1 实测: visibility +9-11pp (Diamond1 35→44%, Diamond2 30→41%, Seven2 29→39%)
+- 副作用: Cherry visibility 跌 ~19pp (非 top-adj Blanks weight 跌 → Cherry 邻接 Blanks 失重)，但通常仍 ≥ floor
+
+**机制 C — Virtual reel mapping (Harrigan IGT 经典)**：
+- 64+ virtual stops 映射 22 physical stops via weight table
+- Visibility 50%+ 可达，但需架构层升级
+
+**新机台 onboarding 决策树**:
+1. 先确认架构。Virtual mapping 已实现？→ 用机制 C，target Harrigan 50%+
+2. 否则物理 reel：先用**机制 B (RTP-neutral redistribution)** push visibility 到自然 baseline + 8-12pp
+3. **不要**直接用机制 A（崩 RTP）
+4. 若 redistribution 还不够，考虑加 top symbol 实例（paytable 结构改变，需 user 拍板）或升架构
 
 ### 15.6 Tuner pareto 警惕
 

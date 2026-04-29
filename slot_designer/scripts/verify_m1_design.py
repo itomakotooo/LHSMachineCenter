@@ -213,29 +213,43 @@ SAME_SYMBOL_MIN_STOP_GAP = 4
 
 # §15 WINDOW-VISIBILITY (PWDF) — M1-specific floor.
 #
-# IMPORTANT — physical-reel limit:
-# Harrigan's IGT empirical 50% top-symbol visibility was measured on machines
-# with VIRTUAL REEL MAPPING (64+ virtual stops mapped to 22 physical stops via
-# weight-table lookups). M1 uses PHYSICAL 22-stop reels directly with weighted
-# stops — no virtual mapping layer. Mathematically, with 22 physical stops +
-# 4 top-prize symbols × 1 instance each + RTP target 95%, the achievable any-
-# reel visibility ceiling is ~35-40% (natural baseline ~30%).
+# Mechanism: RTP-neutral Blank weight redistribution (post-tune).
+# Per redistribute_m1_blanks.py: shift weight from non-top-adj Blanks (down to
+# floor=1) to top-adj Blank positions, preserving total Blank weight per reel.
+# Marginals invariant → RTP/hit/share unchanged. Top-symbol visibility ↑ ~10pp.
 #
-# Floor 28% is a REGRESSION GUARD — slightly below the natural baseline (Seven2
-# is most rare top-symbol, ~28.7% any-reel naturally). If future changes drop
-# below 28%, this catches it. NOT a Harrigan-style aggressive PWDF target —
-# would require virtual reel mapping (architectural upgrade) to achieve.
+# Achievable on M1 physical 22-stop reels (verified 2026-04-29):
+#   pre-redistribution: Diamond1 35%, Diamond2 30%, Seven2 29%
+#   post-redistribution: Diamond1 44%, Diamond2 41%, Seven2 39%
+# Floor 38% provides small buffer below post-redistribution baseline as
+# regression guard. NOT Harrigan 50% (which requires virtual reel mapping —
+# architectural upgrade not implemented).
+#
+# Cherry visibility drops 57% → 38% (its non-top-adj Blank neighbors lose
+# weight). Still well above natural baseline; brand visibility preserved.
 #
 # Per project_slot_designer_window_visibility_pwdf.md. NOT universal —
-# 5-reel video / virtual-reel machines re-derive (Harrigan 50% achievable).
-WINDOW_VISIBILITY_TARGETS = {
-    # symbol -> any-reel visibility floor (regression guard, M1 physical)
-    "Diamond1": 0.28,
-    "Diamond2": 0.28,
-    "Seven2":   0.28,
-    # Seven1 (mid-pay 7) and Cherry (brand) excluded — already at ~40%/57%
-    # naturally; not "top-prize" requiring PWDF treatment.
+# 5-reel video / virtual-reel machines re-derive.
+WINDOW_VISIBILITY_TARGETS_STANDARD = {
+    # symbol -> any-reel visibility floor — for mode 1, mode 7 (standard RTP).
+    # Post-redistribution baseline: Diamond1 44%, Diamond2 41%, Seven2 39%.
+    # Floor 38% gives small buffer.
+    "Diamond1": 0.38,
+    "Diamond2": 0.38,
+    "Seven2":   0.38,
 }
+WINDOW_VISIBILITY_TARGETS_LUCKY = {
+    # Lucky modes (2, 5): higher RTP → top symbols naturally more weighted →
+    # redistribution gives less relative gain. Post-redistribution baseline:
+    # Diamond1 ~36%, Diamond2 ~37%. Floor 35% gives buffer.
+    # Lower floor for lucky is design-correct: lucky players see top symbols
+    # often enough already, less need for PWDF "almost won" psychology.
+    "Diamond1": 0.35,
+    "Diamond2": 0.35,
+    "Seven2":   0.38,  # Seven2 lucky still post-redistribution ~52% — keep std floor
+}
+# Seven1 (mid-pay 7) excluded — naturally ~48% post-redistribution.
+# Cherry (brand) excluded — it's the "donor" of weight, not "boost target".
 # Sparse-symbol escape valve: ratio metric is over-sensitive when absolute
 # marginals are tiny (e.g., Diamond2 ≈ 1-2% — 1pp spread inflates ratio
 # 2x). Player visibility threshold: ≤ 2pp spread is below perception.
@@ -671,12 +685,16 @@ def run_cross_mode_checks(state_by_mode):
 
     # WINDOW-VISIBILITY (PWDF): per project_slot_designer_window_visibility_pwdf.md.
     # Top-prize symbols any-reel window visibility ≥ machine-specific floor.
-    # Implementation: Harrigan PWDF — top-adj Blank positions have heavier
-    # weight, making reel frequently stop in "near top symbol" zone.
+    # Implementation: RTP-neutral Blank weight redistribution — see
+    # redistribute_m1_blanks.py. Mode-specific floor (standard tighter, lucky
+    # looser since lucky modes naturally have more top-symbol visibility).
     n_stops = len(strips_reels[0])
     for mode in sorted(state_by_mode.keys()):
         m_w = state_by_mode[mode]["weights_doc"]["weights"]
-        for sym, floor in WINDOW_VISIBILITY_TARGETS.items():
+        is_lucky = mode in (2, 5)
+        targets = (WINDOW_VISIBILITY_TARGETS_LUCKY if is_lucky
+                   else WINDOW_VISIBILITY_TARGETS_STANDARD)
+        for sym, floor in targets.items():
             per_reel_vis = []
             for r in range(len(strips_reels)):
                 total_w = sum(m_w[r])
