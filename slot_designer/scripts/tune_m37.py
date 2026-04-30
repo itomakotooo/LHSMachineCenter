@@ -137,7 +137,7 @@ HIGH7_OUTER_UPPER_CAP = 0.18
 # Mode 5: 12% (super-lucky — pay_id 1 with grand wild-substitution = 1000×
 #   lifetime tier needs high outer high7 to be reachable. Mode 5 RTP 500%
 #   target requires this 1000× path active; without floor, RTP stuck ~440%).
-HIGH7_OUTER_FLOOR_BY_MODE = {1: 0.04, 7: 0.04, 2: 0.06, 5: 0.08}
+HIGH7_OUTER_FLOOR_BY_MODE = {1: 0.04, 7: 0.04, 2: 0.06, 5: 0.06}
 
 # High7 R2 (middle reel) UPPER cap — narrative §5 "R2 是 booster brand reel,
 # boosters 应该是 R2 主角". Without cap, optimizer pushes R2 high7 to 28%+
@@ -158,7 +158,7 @@ BAR_R2_COMBINED_CAP = 0.06
 # adds side_wild_alone (1× pay_id 9) hits that push hit rate over target.
 # Cap mode 5 wild at 3% per outer so cascade-forced booster combined doesn't
 # combine with side_wild_alone to blow past hit cap. Other modes 5% (light).
-WILD_OUTER_CAP_BY_MODE = {1: 0.06, 7: 0.05, 2: 0.05, 5: 0.03}
+WILD_OUTER_CAP_BY_MODE = {1: 0.06, 7: 0.05, 2: 0.05, 5: 0.035}
 
 # Booster combined R2 density floor — narrative §2 "中轴是品牌 booster reel,
 # 应该频繁见到". Per-mode tuning:
@@ -222,8 +222,10 @@ W_ASYMMETRY = 15000.0     # was 5000; mode 7 had narrow asymmetry violations
 W_HIGH7_FLOOR = 30000.0
 W_HIGH7_CAP = 40000.0
 W_BOOSTER_VIS = 25000.0
-W_GRAND_VIS = 30000.0     # bump — was barely active
+W_GRAND_VIS = 30000.0
 W_PAY9_CAP = 25000.0
+W_WILD_CAP = 80000.0      # mode 5 wild outer cap (3%) — needs to dominate
+                          # over RTP (wild substitution paths) trade-off
 W_WILD_JP = 8000.0
 W_TOP_JP = 6000.0
 
@@ -285,27 +287,34 @@ def predict_cost(weights, strips, evaluator, mode):
     hit_dev = pred["hit_rate"] - HIT_TARGETS[mode]
     cost += W_HIT * (hit_dev * 100) ** 2
 
-    # 3. Grand on payline (user direction 0.3-0.5%) — range, not midpoint
+    # 3. Grand on payline (user direction 0.3-0.5% mode 1) — with 5% interior
+    # buffer (relative to floor) so optimizer doesn't park exactly at edge
+    # where SA mutation noise can flip below.
     grand_payline = pred.get("pay_hits", {}).get("8", 0.0)
     g_lo, g_hi = GRAND_PAYLINE_TARGETS[mode]
-    if grand_payline < g_lo:
-        cost += W_GRAND_PAYLINE * ((g_lo - grand_payline) / g_lo * 100) ** 2
-    elif grand_payline > g_hi:
-        cost += W_GRAND_PAYLINE * ((grand_payline - g_hi) / g_hi * 100) ** 2
+    g_buffer_lo = g_lo * 1.05
+    g_buffer_hi = g_hi * 0.95
+    if grand_payline < g_buffer_lo:
+        cost += W_GRAND_PAYLINE * ((g_buffer_lo - grand_payline) / g_lo * 100) ** 2
+    elif grand_payline > g_buffer_hi:
+        cost += W_GRAND_PAYLINE * ((grand_payline - g_buffer_hi) / g_hi * 100) ** 2
 
     # 4. Bar combined payline freq cap (user direction "lower")
     bar_payline_combined = sum(pred.get("pay_hits", {}).get(p, 0.0) for p in BAR_PAY_IDS)
     if bar_payline_combined > BAR_PAYLINE_FREQ_CAP:
         cost += W_BAR_CAP * ((bar_payline_combined - BAR_PAYLINE_FREQ_CAP) * 100) ** 2
 
-    # 5. Per-reel role blank (user-confirmed 10-section, per-mode)
+    # 5. Per-reel role blank with 0.3pp interior buffer — pushes optimizer
+    # to land 0.3pp inside the strict bounds, leaving margin for discrete-
+    # weight precision (40-stop integer grid ~ 0.1pp resolution).
+    BLANK_BUFFER = 0.003
     role_ranges = ROLE_BLANK_RANGES_BY_MODE[mode]
     for r_idx, (lo, hi) in role_ranges.items():
         actual = densities.get(("blank", r_idx), 0.0)
-        if actual < lo:
-            cost += W_ROLE_BLANK * ((lo - actual) * 100) ** 2
-        elif actual > hi:
-            cost += W_ROLE_BLANK * ((actual - hi) * 100) ** 2
+        if actual < lo + BLANK_BUFFER:
+            cost += W_ROLE_BLANK * ((lo + BLANK_BUFFER - actual) * 100) ** 2
+        elif actual > hi - BLANK_BUFFER:
+            cost += W_ROLE_BLANK * ((actual - (hi - BLANK_BUFFER)) * 100) ** 2
 
     # 6. Bucket count distribution (user-confirmed 10-section, per-mode)
     bucket_rate = pred.get("bucket_rate", {})
@@ -361,15 +370,21 @@ def predict_cost(weights, strips, evaluator, mode):
         booster_lo, booster_hi = 1.3, 4.0
     _check_cascade(BOOSTER_ORDER, 1, ratio_lo=booster_lo, ratio_hi=booster_hi)
 
-    # 8. Universal §12 reel asymmetry direction (no tolerance)
+    # 8. Universal §12 reel asymmetry direction with 0.5pp interior buffer
+    # — encourages optimizer to land at R1-R3 ≥ 0.5pp instead of teetering
+    # at the edge where SA mutation noise can flip sign. Verify still uses
+    # strict (no slack): this is interior margin, not goalpost relaxation.
+    ASYM_BUFFER = 0.005
     r1_blank = densities.get(("blank", 0), 0.0)
     r3_blank = densities.get(("blank", 2), 0.0)
-    if r1_blank > r3_blank:
-        cost += W_ASYMMETRY * ((r1_blank - r3_blank) * 100) ** 2
+    blank_diff = r1_blank - r3_blank  # want ≤ -BUFFER (R1 strictly less)
+    if blank_diff > -ASYM_BUFFER:
+        cost += W_ASYMMETRY * ((blank_diff + ASYM_BUFFER) * 100) ** 2
     r1_top = densities.get(("high7", 0), 0.0) + densities.get(("wild", 0), 0.0)
     r3_top = densities.get(("high7", 2), 0.0) + densities.get(("wild", 2), 0.0)
-    if r1_top < r3_top:
-        cost += W_ASYMMETRY * ((r3_top - r1_top) * 100) ** 2
+    top_diff = r1_top - r3_top  # want ≥ BUFFER
+    if top_diff < ASYM_BUFFER:
+        cost += W_ASYMMETRY * ((ASYM_BUFFER - top_diff) * 100) ** 2
 
     # 9. High7 R1 + R3 density FLOOR (Mid bucket + §15 PWDF; per-mode)
     h7_floor = HIGH7_OUTER_FLOOR_BY_MODE[mode]
@@ -400,12 +415,13 @@ def predict_cost(weights, strips, evaluator, mode):
 
     # 10d. Wild R1+R3 cap (per-mode). High wild density adds side_wild_alone
     # 1× hits (pay_id 9 path). Mode 5 cap is tighter to keep hit rate under
-    # 22% target despite booster cascade pressure.
+    # 22% target despite booster cascade pressure. Uses W_WILD_CAP > W_RTP
+    # so cap dominates over wild-substitution-RTP trade-off.
     wild_cap = WILD_OUTER_CAP_BY_MODE[mode]
     for r in (0, 2):
         d = densities.get(("wild", r), 0.0)
         if d > wild_cap:
-            cost += W_HIGH7_CAP * ((d - wild_cap) * 100) ** 2
+            cost += W_WILD_CAP * ((d - wild_cap) * 100) ** 2
 
     # 11. Booster combined R2 density floor — narrative §2; per-mode floor.
     booster_combined_r2 = sum(densities.get((s, 1), 0.0)
