@@ -101,7 +101,11 @@ ROLE_BLANK_RANGES_BY_MODE = {
     1: {0: (0.29, 0.41), 1: (0.59, 0.78), 2: (0.39, 0.52)},
     7: {0: (0.35, 0.50), 1: (0.65, 0.83), 2: (0.45, 0.60)},
     2: {0: (0.20, 0.36), 1: (0.55, 0.70), 2: (0.30, 0.46)},
-    5: {0: (0.15, 0.34), 1: (0.50, 0.68), 2: (0.25, 0.45)},
+    # Mode 5 R2 cap raised to 0.75 for structural feasibility: with booster
+    # cap 14% + high7 cap 10% + R2 bar cap 6% = 30% non-blank max → blank
+    # must be ≥ 70%. Cap < 70% is infeasible. 0.50 floor preserves "more
+    # action" intent.
+    5: {0: (0.15, 0.34), 1: (0.55, 0.75), 2: (0.25, 0.45)},
 }
 # Default for backward-compat:
 ROLE_BLANK_RANGES = ROLE_BLANK_RANGES_BY_MODE[1]
@@ -171,6 +175,12 @@ WILD_OUTER_CAP_BY_MODE = {1: 0.06, 7: 0.05, 2: 0.05, 5: 0.035}
 #   Mode 5 (super-lucky 500% / 22% hit): 12% — most booster prominence.
 BOOSTER_R2_DENSITY_FLOOR_BY_MODE = {1: 0.07, 7: 0.04, 2: 0.09, 5: 0.11}
 
+# Booster combined R2 UPPER cap — per mode. In mode 5, cascade ratio [1.3,
+# 1.7] tends to push booster combined above what hit target 22% can
+# accommodate (pay_id 9 from boosters cascades above hit cap). Cap mode 5
+# combined at 14% to bound this. Other modes have floor only.
+BOOSTER_R2_DENSITY_CAP_BY_MODE = {1: None, 7: None, 2: None, 5: 0.14}
+
 # Grand R2 density floor — narrative §2 "near-miss psychology requires grand
 # visibility". Grand R2 density tied to pay_id 8 target ~ 0.5% (since pay_id
 # 8 ≈ grand_R2 × P(no 3-match) ≈ grand_R2 × 0.95). Window visibility = 1 -
@@ -216,7 +226,7 @@ W_HIT = 30000.0
 W_GRAND_PAYLINE = 30000.0  # bump — range-based formula was barely active
 W_BAR_CAP = 5000.0
 W_ROLE_BLANK = 50000.0    # 2x bump — R1/R2/R3 blanks were 1-2pp over caps
-W_BUCKET_COUNT = 8000.0   # bump — low/mid edges were drifting
+W_BUCKET_COUNT = 25000.0  # bump — buffer additions diluted bucket gradient
 W_HIERARCHY = 50000.0
 W_ASYMMETRY = 15000.0     # was 5000; mode 7 had narrow asymmetry violations
 W_HIGH7_FLOOR = 30000.0
@@ -337,6 +347,12 @@ def predict_cost(weights, strips, evaluator, mode):
     # common, grand rare). Capping booster ratio at 1.5x makes "几乎每次见
     # 钻石" structurally infeasible without breaking grand-on-payline target.
     def _check_cascade(order, reel, ratio_lo, ratio_hi):
+        """Cascade hierarchy cost — direction (prev > current) + ratio bounds.
+        Tied/near-tied values are NOT treated as zero cost: optimizer would
+        otherwise park at d ≈ prev_d * 1.000001 (verify reversal by epsilon)
+        because this had tiny "severity" cost vs huge "ratio_lo violation"
+        cost. Always evaluate ratio_lo as min cascade — if ratio < ratio_lo,
+        penalize regardless of which side."""
         nonlocal cost
         prev_d = None
         for s in order:
@@ -344,16 +360,15 @@ def predict_cost(weights, strips, evaluator, mode):
             if d == 0:
                 continue
             if prev_d is not None and prev_d > 0:
-                if d > prev_d:
-                    # Reversal: severity = how much d overshoots prev
-                    severity = (d / prev_d - 1.0)  # > 0 when reversed
-                    cost += W_HIERARCHY * (severity * 100) ** 2
-                else:
-                    ratio = prev_d / d
-                    if ratio < ratio_lo:
-                        cost += W_HIERARCHY * ((ratio_lo - ratio) * 100) ** 2
-                    elif ratio > ratio_hi:
-                        cost += W_HIERARCHY * ((ratio - ratio_hi) * 100) ** 2
+                ratio = prev_d / d if d > 0 else float("inf")
+                # Always penalize when ratio < ratio_lo (handles direction
+                # violation + cascade-too-tight uniformly). Direction violation
+                # gives ratio < 1 < ratio_lo, so it's always penalized at
+                # least as much as a tight cascade.
+                if ratio < ratio_lo:
+                    cost += W_HIERARCHY * ((ratio_lo - ratio) * 100) ** 2
+                elif ratio > ratio_hi:
+                    cost += W_HIERARCHY * ((ratio - ratio_hi) * 100) ** 2
             prev_d = d
 
     BAR_ORDER = ("1bar", "2bar", "3bar", "7bar")
@@ -423,12 +438,15 @@ def predict_cost(weights, strips, evaluator, mode):
         if d > wild_cap:
             cost += W_WILD_CAP * ((d - wild_cap) * 100) ** 2
 
-    # 11. Booster combined R2 density floor — narrative §2; per-mode floor.
+    # 11. Booster combined R2 density floor — narrative §2; per-mode floor + cap.
     booster_combined_r2 = sum(densities.get((s, 1), 0.0)
                               for s in ("mini", "minor", "major", "grand"))
     booster_floor = BOOSTER_R2_DENSITY_FLOOR_BY_MODE[mode]
     if booster_combined_r2 < booster_floor:
         cost += W_BOOSTER_VIS * ((booster_floor - booster_combined_r2) * 100) ** 2
+    booster_cap = BOOSTER_R2_DENSITY_CAP_BY_MODE.get(mode)
+    if booster_cap is not None and booster_combined_r2 > booster_cap:
+        cost += W_BOOSTER_VIS * ((booster_combined_r2 - booster_cap) * 100) ** 2
 
     # 12. Grand R2 density floor — narrative §2 + near-miss psychology.
     grand_r2 = densities.get(("grand", 1), 0.0)
