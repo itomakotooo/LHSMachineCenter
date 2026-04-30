@@ -108,17 +108,16 @@ RTP_TOLERANCE_PP = {1: 1.0, 7: 2.0, 2: 20.0, 5: 40.0}
 
 
 # ═══════════════════════════════════════════════════════════════════
-# DESIGN.md §3: Hit rate targets (research-derived)
+# DESIGN.md §3 (v8 revised): Hit rate targets — modern multi-wild lower edge
+# + sparse-design (心得 6: broad tolerance let optimizer drift to upper edge)
 # ═══════════════════════════════════════════════════════════════════
-# Modern multi-tier wild slot range 15-22% (Lightning Link / Dragon Link).
-# M37 = LHS modern classic-with-multi-wild → middle of modern range.
 HIT_RATE_TARGETS = {
-    1: 0.18,   # mid of modern multi-wild range
-    7: 0.14,   # m1 - 砍小奖 (Low ↓ ~30%, Mid+ unchanged)
-    2: 0.25,   # m1 × 1.4 lucky
-    5: 0.30,   # m2 + 顶奖加密
+    1: 0.17,   # modern multi-wild mid + M37 brand-rich booster fires (v8 iter 4 revised)
+    7: 0.13,   # m1 - 砍小奖 (Low ↓ ~30%, Mid+ unchanged)
+    2: 0.24,   # m1 × 1.4 lucky
+    5: 0.25,   # m2 + 顶奖加密 (super-lucky preserves m2 hit shape)
 }
-HIT_RATE_TOLERANCE = {1: 0.05, 7: 0.03, 2: 0.05, 5: 0.08}
+HIT_RATE_TOLERANCE = {1: 0.02, 7: 0.02, 2: 0.03, 5: 0.03}  # tight ±2-3pp
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -174,16 +173,37 @@ TOP_JACKPOT_FREQ_TARGETS = {
 # Component target: each ~10000 cost when "fully off" so they balance.
 
 W_RTP = 2000.0          # RTP is hardest business constraint (§2 user-spec) — dominant
-W_HIT = 5000.0          # hit deviation in pp scale; 5pp-out-of-tol → 5000×25=125K
+W_HIT = 25000.0         # hit deviation in pp scale; v8 iter 4 bumped 5×
 W_GRAND_FREQ = 500.0    # signature critical (§4 user brief)
 W_3WILD_FREQ = 200.0    # signature (§5 user brief — 中轴jackpot 特色玩法)
 W_TOP_FREQ = 300.0      # top escalation (universal §7)
 W_BUCKET_DIRECTION = 100.0    # direction-only, modest weight
 W_HIERARCHY_DIRECTION = 5000.0 # universal §1 hierarchy (strong — slot UX hard rule)
 W_ASYMMETRY_DIRECTION = 300.0 # universal §12 (direction-only, moderate)
-W_PAY_DOMINANCE = 3000.0      # universal §8: no single pay > 70% of hit count
-W_BLANK_DENSITY = 5000.0      # archetype-derived blank ceilings (see _PER_REEL_BLANK_CAP)
-W_OUTER_DOMINANCE = 2000.0    # outer-reel single-symbol-dominance (R1/R3 archetype derived)
+# DESIGN.md §1 + 心得 8: pay_id 9 brand cap. Universal §8 = 70%; M37
+# specific tightening to 60% (booster_alone signature shouldn't dominate).
+W_PAY_DOMINANCE = 3000.0      # M37 cap 60% (DESIGN.md §18 — derivation chain documented)
+W_BAR_DIVERSITY = 2000.0      # DESIGN.md §12 universal §1 cascade ratio
+W_ROLE_BLANK = 3000.0         # DESIGN.md §10 role-based blank ranges (research-cited)
+W_PWDF = 800.0                # DESIGN.md §11 universal §15 — floor-only (per §15.6 caution)
+
+
+# DESIGN.md §11: PWDF visibility floors (universal §15 K=4-10×, M37 lower edge
+# v8 iter 2 — high K conflicts with §3 hit target; pick K at universal lower
+# edge for sparse-design consistency).
+PWDF_VIS_TARGETS = {
+    "grand_r2": 0.006,       # K=4.3× × 0.14% payline
+    "high7_outer": 0.15,     # K=5× × 3% payline (Harrigan baseline lower)
+    "wild_outer": 0.12,      # K=4× × 3% payline
+    "booster_r2": 0.22,      # K=2.2× × 10% combined
+}
+
+
+def _window_visibility(density):
+    """3-row window visibility approximation: P(symbol in window) = 1 - (1-d)^3."""
+    if density <= 0:
+        return 0.0
+    return 1.0 - (1.0 - density) ** 3
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -341,47 +361,97 @@ def predict_cost(weights, strips, evaluator, mode):
         gap_pp = (r3_top - r1_top) * 100
         cost += W_ASYMMETRY_DIRECTION * gap_pp ** 2
 
-    # ── Per-reel blank density ceiling (archetype-derived):
-    #   R1/R3 (outer reels) ≤ 0.55: classic 1-line RWB/Blazing Sevens baseline
-    #     has outer 40-55% blank; M37 archetype = classic → ≤ 55%.
-    #   R2 (booster reel) ≤ 0.70: structurally blank-heavier (10 symbols vs 7
-    #     outer), but above 70% feels "mostly blank" not "booster reel".
-    #   These caps are M37-archetype-specific (DESIGN.md §1 + universal §3
-    #   blank-cap headroom). Derivation: classic 1-line natural ratio + buffer.
-    PER_REEL_BLANK_CAP = {0: 0.55, 1: 0.70, 2: 0.55}
-    for r_idx, cap in PER_REEL_BLANK_CAP.items():
+    # ── DESIGN.md §10 role-based blank density ranges (v8):
+    # R1 = winners-friendly reel: blank 30-40% (classic 1-line research baseline)
+    # R2 = brand reel: blank 50-65% (booster reel structural)
+    # R3 = near-miss reel: blank 40-50% (mid range per Strickland/Reid/Harrigan)
+    # These are research-cited from RWB/Blazing Sevens PAR sheet baselines, NOT picked.
+    ROLE_BLANK_RANGES = {
+        0: (0.30, 0.40),  # R1 winners-friendly
+        1: (0.50, 0.65),  # R2 brand reel
+        2: (0.40, 0.50),  # R3 near-miss
+    }
+    for r_idx, (lo, hi) in ROLE_BLANK_RANGES.items():
         actual = densities.get(("blank", r_idx), 0.0)
-        if actual > cap:
-            excess_pp = (actual - cap) * 100
-            cost += W_BLANK_DENSITY * excess_pp ** 2
+        if actual < lo:
+            gap_pp = (lo - actual) * 100
+            cost += W_ROLE_BLANK * gap_pp ** 2
+        elif actual > hi:
+            gap_pp = (actual - hi) * 100
+            cost += W_ROLE_BLANK * gap_pp ** 2
 
-    # ── Outer reel single-symbol dominance (archetype-derived):
-    #   No single non-blank symbol on R1 or R3 should exceed 30% density.
-    #   Justification: classic 1-line outer reel has 6-7 distinct non-blank
-    #   symbols. Uniform density = 8-12%. 30% = 2.5× uniform = "noticeably
-    #   dominant but not absurd". Above 30% → reel reads "the X reel" rather
-    #   than balanced symbol set (contradicts archetype balance intent).
-    OUTER_SINGLE_SYM_CAP = 0.30
-    for r_idx in (0, 2):
-        for sym in SYMBOLS_BY_REEL[r_idx]:
-            if sym == "blank":
-                continue
-            d = densities.get((sym, r_idx), 0.0)
-            if d > OUTER_SINGLE_SYM_CAP:
-                excess_pp = (d - OUTER_SINGLE_SYM_CAP) * 100
-                cost += W_OUTER_DOMINANCE * excess_pp ** 2
+    # ── DESIGN.md §12 bar diversity cascade (per universal §1, v8 NEW):
+    # 4-tier bar cascade 1.2-1.5x per consecutive tier (universal §1 ratio
+    # 1.2-1.3x range; M37 picks 1.2-1.5x slightly looser for visual variation).
+    # Compounded over 3 gaps: 1bar/7bar ratio in [1.2³, 1.5³] = [1.73, 3.38].
+    # Penalty: 1bar/7bar ratio outside [1.7, 3.4] band → cost.
+    # Source: universal §1 cascade math + universal §14 visual rhythm.
+    BAR_ORDER = ("1bar", "2bar", "3bar", "7bar")  # decreasing density order
+    BAR_CASCADE_LO = 1.7  # 1.2³ floor
+    BAR_CASCADE_HI = 3.4  # 1.5³ ceiling
+    for r in (0, 2):  # R1 + R3 only (bars on outer reels)
+        d_1bar = densities.get(("1bar", r), 0.0)
+        d_7bar = densities.get(("7bar", r), 0.0)
+        if d_1bar > 0 and d_7bar > 0:
+            ratio = d_1bar / d_7bar
+            if ratio < BAR_CASCADE_LO:
+                # Cascade too flat (1bar/7bar < 1.7) → diversity insufficient gap
+                gap = (BAR_CASCADE_LO - ratio) * 100
+                cost += W_BAR_DIVERSITY * gap ** 2
+            elif ratio > BAR_CASCADE_HI:
+                # Cascade too steep (1bar dominates over 7bar > 3.4×) → visual rhythm broken
+                gap = (ratio - BAR_CASCADE_HI) * 100
+                cost += W_BAR_DIVERSITY * gap ** 2
 
-    # ── Universal §8: hit decomposition — no single pay dominates 70% of hits.
-    # Without this, optimizer exploits "freq target met" by stuffing pay_id 9
-    # (booster_alone family that fires on near-empty payline) to 1/4 freq —
-    # dominating hits to 90%+ and producing empty-calorie player feel.
-    # Threshold 70% from universal §8 (not picked — DESIGN_PHILOSOPHY direct).
+    # ── DESIGN.md §11: PWDF visibility floors (per universal §15, floor-only).
+    # Per §15.6 caution: PWDF in main cost CAN conflict with RTP; use floor-only
+    # (not bidirectional pull) so optimizer can exceed without penalty.
+    grand_vis = _window_visibility(densities.get(("grand", 1), 0.0))
+    if grand_vis < PWDF_VIS_TARGETS["grand_r2"]:
+        deficit_pp = (PWDF_VIS_TARGETS["grand_r2"] - grand_vis) * 100
+        cost += W_PWDF * deficit_pp ** 2
+
+    high7_vis_r1 = _window_visibility(densities.get(("high7", 0), 0.0))
+    high7_vis_r3 = _window_visibility(densities.get(("high7", 2), 0.0))
+    high7_combined = 1 - (1 - high7_vis_r1) * (1 - high7_vis_r3)
+    if high7_combined < PWDF_VIS_TARGETS["high7_outer"]:
+        deficit_pp = (PWDF_VIS_TARGETS["high7_outer"] - high7_combined) * 100
+        cost += W_PWDF * deficit_pp ** 2
+
+    wild_vis_r1 = _window_visibility(densities.get(("wild", 0), 0.0))
+    wild_vis_r3 = _window_visibility(densities.get(("wild", 2), 0.0))
+    wild_combined = 1 - (1 - wild_vis_r1) * (1 - wild_vis_r3)
+    if wild_combined < PWDF_VIS_TARGETS["wild_outer"]:
+        deficit_pp = (PWDF_VIS_TARGETS["wild_outer"] - wild_combined) * 100
+        cost += W_PWDF * deficit_pp ** 2
+
+    booster_combined_density = sum(densities.get((s, 1), 0.0)
+                                    for s in ("mini", "minor", "major", "grand"))
+    booster_vis = _window_visibility(booster_combined_density)
+    if booster_vis < PWDF_VIS_TARGETS["booster_r2"]:
+        deficit_pp = (PWDF_VIS_TARGETS["booster_r2"] - booster_vis) * 100
+        cost += W_PWDF * deficit_pp ** 2
+
+    # ── DESIGN.md §1 + 心得 8: pay_id 9 brand dominance.
+    # Universal §8 = 70% cap. M37 specific tightening to 60% — booster_alone
+    # signature (pay_id 9) IS brand identity but dominating > 60% of hits
+    # makes player feel "everything is mini/wild alone" empty calorie.
+    # 60% derivation: universal §8 70% baseline minus 10pp M37-specific
+    # tightening (心得 8 narrative: 50-60% sweet spot, 70% upper limit).
     hit_total = pred.get("hit_rate", 0.0)
     if hit_total > 0:
+        pay9_freq = pred.get("pay_hits", {}).get("9", 0.0)
+        share_pay9 = pay9_freq / hit_total
+        if share_pay9 > 0.60:
+            excess = share_pay9 - 0.60
+            cost += W_PAY_DOMINANCE * (excess * 100) ** 2
+        # Other pay_ids: keep universal §8 70% cap
         for pid, freq in pred.get("pay_hits", {}).items():
-            share_of_hits = freq / hit_total
-            if share_of_hits > 0.70:
-                excess = share_of_hits - 0.70
+            if pid == "9":
+                continue
+            share = freq / hit_total
+            if share > 0.70:
+                excess = share - 0.70
                 cost += W_PAY_DOMINANCE * (excess * 100) ** 2
 
     return cost, pred
@@ -412,21 +482,38 @@ def _seed_archetype_weights(strips, frozen=None, floors=None):
     frozen = frozen or {}
     floors = floors or {}
 
-    # R1/R3 archetype seed (relative weight ratios from classic slot density patterns)
-    OUTER_SEED = {
-        "blank": 18,  # ≈ 50% (18 blank stops × 18 weight ÷ ~660 total)
-        "wild":  3,   # rarest non-blank (top-prize tier)
-        "high7": 4,   # paired top-prize
-        "7bar":  4,   # mid-payout bar
-        "3bar":  6,
-        "2bar":  8,
-        "1bar":  12,  # most common bar (lowest payout per universal §1)
+    # v8 archetype seed updated per DESIGN.md §10 role-based blank ranges.
+    # R1 blank target ~35% (winners-friendly); R3 blank target ~45% (near-miss);
+    # R2 blank target ~55% (brand reel structural).
+    # Bar cascade follows universal §1 ratio 1.3x compounded → 1bar/7bar ~ 2.2x.
+
+    # R1 (winners-friendly): blank 35%, bars cascade 1bar=12 > 2bar=9 > 3bar=7 > 7bar=5
+    # → 12/5 = 2.4x cascade ratio (in [1.7, 3.4] DESIGN.md §12 band)
+    R1_SEED = {
+        "blank": 11,  # 11 weight × 18 stops = 198; 198/(198+blockof367) ≈ 35%
+        "wild":  3,
+        "high7": 4,
+        "7bar":  5,
+        "3bar":  7,
+        "2bar":  9,
+        "1bar":  12,  # most common (lowest payout)
     }
 
-    # R2 archetype seed (booster reel — boosters define R2 identity)
+    # R3 (near-miss): slightly more blank, slightly less wild/high7 vs R1 per §10
+    R3_SEED = {
+        "blank": 14,  # 14 × 18 = 252; ~45% blank target
+        "wild":  3,   # ≤ R1 wild density per universal §12
+        "high7": 3,   # ≤ R1 high7 density per universal §12
+        "7bar":  5,
+        "3bar":  6,
+        "2bar":  8,
+        "1bar":  11,
+    }
+
+    # R2 (brand reel): boosters cascade mini > minor > major > grand
     R2_SEED = {
-        "blank": 30,  # 60%+ blank (booster reel structurally blank-heavy)
-        "high7": 4,
+        "blank": 22,  # 22 × 18 = 396; ~55% blank target (booster reel structural)
+        "high7": 5,
         "7bar":  3,
         "3bar":  3,
         "2bar":  3,
@@ -434,13 +521,13 @@ def _seed_archetype_weights(strips, frozen=None, floors=None):
         "mini":  6,   # most common booster
         "minor": 4,
         "major": 3,
-        "grand": 1,   # rarest signature (universal §1)
+        "grand": 1,   # rarest signature (universal §1 cascade)
     }
 
     weights = []
     for r_idx, reel in enumerate(strips):
         sym_to_weight = {}
-        seed_dict = R2_SEED if r_idx == 1 else OUTER_SEED
+        seed_dict = {0: R1_SEED, 1: R2_SEED, 2: R3_SEED}[r_idx]
         for sym in set(reel):
             key = (sym, r_idx)
             if key in frozen:

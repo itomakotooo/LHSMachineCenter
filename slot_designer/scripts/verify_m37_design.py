@@ -46,9 +46,32 @@ from slot_designer.scripts.tune_m37 import (
 # DESIGN.md §4/§5/§6: freq target tolerance "factor of 2" (per derivation chain)
 FREQ_TARGET_TOLERANCE_FACTOR = 2.0
 
-# DESIGN.md §1 + universal §8: M37 pay_id 9 is brand booster_alone family;
-# universal §8 70% cap accepted as-is for M37.
-PAY_ID_9_HIT_SHARE_CAP = 0.70
+# DESIGN.md §1 + 心得 8: M37 pay_id 9 brand cap. Universal §8 = 70%; M37
+# specific tightening to 60%.
+PAY_ID_9_HIT_SHARE_CAP = 0.60
+
+# DESIGN.md §10 role-based blank ranges (research-cited from classic 1-line baselines)
+ROLE_BLANK_RANGES = {
+    0: (0.30, 0.40),  # R1 winners-friendly
+    1: (0.50, 0.65),  # R2 brand reel
+    2: (0.40, 0.50),  # R3 near-miss
+}
+
+# DESIGN.md §12 bar diversity cascade (universal §1: 1.2-1.5x per consecutive
+# tier; compounded over 3 gaps: [1.7, 3.4] for 1bar/7bar ratio)
+BAR_CASCADE_BAND = (1.7, 3.4)
+
+# DESIGN.md §11 PWDF visibility targets (universal §15 K=4-10x; M37 specific):
+# - Grand R2 visibility ≥ 1% (K=7×, brand signature)
+# - High7 R1+R3 visibility ≥ 25% (K=8×, Harrigan baseline)
+# - Wild R1+R3 visibility ≥ 15% (K=5×)
+# - Boosters combined R2 visibility ≥ 30% (K=3×, brand reel structural)
+PWDF_TARGETS = {
+    "grand_r2": 0.006,       # K=4.3× × 0.14% payline
+    "high7_outer": 0.15,     # K=5× Harrigan baseline lower
+    "wild_outer": 0.12,      # K=4×
+    "booster_r2": 0.22,      # K=2.2× brand reel
+}
 
 
 def _all_densities(weights, strips):
@@ -241,6 +264,86 @@ def check_blank_flank_diversity(mode, strips):
     return out
 
 
+def _window_visibility(density):
+    """3-row window visibility for symbol with given per-stop density.
+
+    Approximation: assumes adjacent stops independent. P(symbol anywhere in
+    3-row window) = 1 - (1-density)^3.
+    """
+    if density <= 0:
+        return 0.0
+    return 1.0 - (1.0 - density) ** 3
+
+
+def check_role_blank(mode, densities):
+    """DESIGN.md §10 — R1/R2/R3 blank within role-based research-cited ranges."""
+    out = []
+    for r_idx, (lo, hi) in ROLE_BLANK_RANGES.items():
+        actual = densities.get(("blank", r_idx), 0.0)
+        ok = lo <= actual <= hi
+        out.append(("ROLE-BLANK", mode,
+                    f"R{r_idx+1} blank {actual:.1%} vs [{lo:.0%}, {hi:.0%}]", ok))
+    return out
+
+
+def check_bar_diversity(mode, densities):
+    """DESIGN.md §12 — 1bar/7bar cascade ratio in [1.7, 3.4] on R1+R3."""
+    out = []
+    for r in (0, 2):
+        d_1bar = densities.get(("1bar", r), 0.0)
+        d_7bar = densities.get(("7bar", r), 0.0)
+        if d_1bar <= 0 or d_7bar <= 0:
+            out.append(("BAR-DIVERSITY", mode, f"R{r+1}: zero bar density", False))
+            continue
+        ratio = d_1bar / d_7bar
+        ok = BAR_CASCADE_BAND[0] <= ratio <= BAR_CASCADE_BAND[1]
+        out.append(("BAR-DIVERSITY", mode,
+                    f"R{r+1} 1bar/7bar ratio {ratio:.2f}x vs band [{BAR_CASCADE_BAND[0]}, {BAR_CASCADE_BAND[1]}]",
+                    ok))
+    return out
+
+
+def check_pwdf_visibility(mode, densities):
+    """DESIGN.md §11 — top-prize symbol any-reel any-row visibility ≥ K × payline."""
+    out = []
+    # Grand R2 any-row visibility (grand only on R2)
+    grand_d = densities.get(("grand", 1), 0.0)
+    grand_vis = _window_visibility(grand_d)
+    target = PWDF_TARGETS["grand_r2"]
+    out.append(("WINDOW-VISIBILITY-GRAND", mode,
+                f"grand R2 any-row {grand_vis:.2%} vs floor {target:.0%}",
+                grand_vis >= target))
+
+    # High7 R1+R3 visibility (high7 on all reels but PWDF target is outer only)
+    high7_outer_vis_r1 = _window_visibility(densities.get(("high7", 0), 0.0))
+    high7_outer_vis_r3 = _window_visibility(densities.get(("high7", 2), 0.0))
+    # Combined: 1 - (1-vis_r1)(1-vis_r3) — visible on ANY outer reel
+    high7_outer_combined = 1 - (1 - high7_outer_vis_r1) * (1 - high7_outer_vis_r3)
+    target = PWDF_TARGETS["high7_outer"]
+    out.append(("WINDOW-VISIBILITY-HIGH7", mode,
+                f"high7 R1+R3 combined any-row {high7_outer_combined:.2%} vs floor {target:.0%}",
+                high7_outer_combined >= target))
+
+    # Wild R1+R3 visibility
+    wild_vis_r1 = _window_visibility(densities.get(("wild", 0), 0.0))
+    wild_vis_r3 = _window_visibility(densities.get(("wild", 2), 0.0))
+    wild_combined = 1 - (1 - wild_vis_r1) * (1 - wild_vis_r3)
+    target = PWDF_TARGETS["wild_outer"]
+    out.append(("WINDOW-VISIBILITY-WILD", mode,
+                f"wild R1+R3 combined any-row {wild_combined:.2%} vs floor {target:.0%}",
+                wild_combined >= target))
+
+    # Booster R2 combined density (mini+minor+major+grand)
+    booster_combined = sum(densities.get((s, 1), 0.0)
+                           for s in ("mini", "minor", "major", "grand"))
+    booster_vis = _window_visibility(booster_combined)
+    target = PWDF_TARGETS["booster_r2"]
+    out.append(("WINDOW-VISIBILITY-BOOSTER", mode,
+                f"booster R2 any-row {booster_vis:.2%} vs floor {target:.0%}",
+                booster_vis >= target))
+    return out
+
+
 def check_pay_id_9_dominance(mode, pred):
     hit = pred.get("hit_rate", 0.0)
     pay9 = pred.get("pay_hits", {}).get("9", 0.0)
@@ -304,6 +407,9 @@ def main():
         all_checks.extend(check_reel_asymmetry(mode, densities))
         all_checks.extend(check_alternation(mode, strips))
         all_checks.extend(check_blank_flank_diversity(mode, strips))
+        all_checks.extend(check_role_blank(mode, densities))
+        all_checks.extend(check_bar_diversity(mode, densities))
+        all_checks.extend(check_pwdf_visibility(mode, densities))
         all_checks.extend(check_pay_id_9_dominance(mode, pred))
 
     all_checks.extend(check_mode_pair_monotonicity(modes_preds))
