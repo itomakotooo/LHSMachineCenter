@@ -21,7 +21,7 @@
   "_symbol_counts": {
     "R1": {"blank": 20, "1bar": 6, "2bar": 4, "3bar": 4, "7bar": 2, "high7": 2, "wild": 2},
     "R2": {"blank": 20, "mini": 5, "minor": 3, "major": 2, "grand": 1, "high7": 3, "7bar": 2, "3bar": 1, "2bar": 1, "1bar": 2},
-    "R3": {"blank": 20, "1bar": 6, "2bar": 4, "3bar": 5, "7bar": 2, "high7": 1, "wild": 2}
+    "R3": {"blank": 20, "1bar": 6, "2bar": 5, "3bar": 4, "7bar": 2, "high7": 1, "wild": 2}
   },
   "reels": [
     [
@@ -41,8 +41,8 @@
     [
       "blank", "1bar", "blank", "2bar", "blank", "3bar", "blank", "1bar",
       "blank", "7bar", "blank", "1bar", "blank", "2bar", "blank", "3bar",
-      "blank", "wild", "blank", "high7", "blank", "1bar", "blank", "3bar",
-      "blank", "2bar", "blank", "1bar", "blank", "7bar", "blank", "3bar",
+      "blank", "wild", "blank", "high7", "blank", "1bar", "blank", "2bar",
+      "blank", "3bar", "blank", "1bar", "blank", "7bar", "blank", "2bar",
       "blank", "wild", "blank", "1bar", "blank", "2bar", "blank", "3bar"
     ]
   ]

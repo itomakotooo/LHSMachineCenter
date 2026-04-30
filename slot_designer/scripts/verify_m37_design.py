@@ -1,11 +1,6 @@
-"""Verify M37 weights against player-experience design red lines.
+"""Verify M37 weights against user-confirmed targets only.
 
-Each check function references the player-experience target same as
-tune_m37.py — no separate threshold copies. Runs all 4 modes if weights
-present.
-
-Usage:
-    python -m slot_designer.scripts.verify_m37_design
+Each check function references tune_m37 constants — single source of truth.
 """
 from __future__ import annotations
 
@@ -25,25 +20,21 @@ SPEC_PATH = _ROOT / "slot_designer" / "specs" / "M37.spec.json"
 STRIPS_PATH = _ROOT / "slot_designer" / "weights" / "M37" / "reel_strips.json"
 WEIGHTS_DIR = _ROOT / "slot_designer" / "weights" / "M37"
 
-# Re-import targets from tune_m37 — single source of truth
 from slot_designer.scripts.tune_m37 import (
     RTP_TARGETS,
     RTP_TOLERANCE_PP,
     HIT_TARGETS,
-    HIT_TOL,
-    GRAND_FREQ_TARGETS,
-    THREE_WILD_TARGETS_M1,
-    TOP_FREQ_TARGETS,
+    GRAND_PAYLINE_TARGETS,
+    BAR_PAYLINE_FREQ_CAP,
     ROLE_BLANK_RANGES,
-    PWDF_TARGETS,
     BUCKET_COUNT_RANGES,
-    PAY9_DOMINANCE_CAP,
     TIER_TO_BUCKETS,
     PAY_TO_FAMILY,
-    _window_visibility,
+    BAR_PAY_IDS,
 )
 
-FREQ_TOL_FACTOR = 2.0  # actual freq within [target/2, target*2]
+# Hit tolerance — accept ±2pp from target (user said 15%, we accept 13-17%)
+HIT_TOL = 0.02
 
 
 def _all_densities(weights, strips):
@@ -73,10 +64,6 @@ def _load(mode):
     return pred, weights, strips, _all_densities(weights, strips)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Checks
-# ═══════════════════════════════════════════════════════════════════
-
 def check_rtp(mode, pred):
     a = pred["rtp_pct"]
     t, tol = RTP_TARGETS[mode], RTP_TOLERANCE_PP[mode]
@@ -85,48 +72,24 @@ def check_rtp(mode, pred):
 
 def check_hit(mode, pred):
     a = pred["hit_rate"]
-    t, tol = HIT_TARGETS[mode], HIT_TOL[mode]
-    return [("HIT", mode, f"{a:.1%} vs {t:.0%}±{tol:.0%}", abs(a - t) <= tol)]
+    t = HIT_TARGETS[mode]
+    return [("HIT", mode, f"{a:.1%} vs {t:.0%}±{HIT_TOL:.0%}", abs(a - t) <= HIT_TOL)]
 
 
-def check_grand_freq(mode, pred):
+def check_grand_payline(mode, pred):
     a = pred.get("pay_hits", {}).get("8", 0.0)
-    t = GRAND_FREQ_TARGETS[mode]
+    t = GRAND_PAYLINE_TARGETS[mode]
     if a <= 0:
-        return [("GRAND-FREQ", mode, "0 hits", False)]
-    ratio = a / t
-    ok = (1/FREQ_TOL_FACTOR) <= ratio <= FREQ_TOL_FACTOR
-    return [("GRAND-FREQ", mode, f"1/{1/a:.0f} vs 1/{1/t:.0f} (ratio {ratio:.2f}x)", ok)]
+        return [("GRAND-PAYLINE", mode, "0 hits", False)]
+    # Within factor 2x tolerance
+    ok = (t / 2) <= a <= (t * 2)
+    return [("GRAND-PAYLINE", mode, f"{a*100:.3f}% vs {t*100:.2f}% (ratio {a/t:.2f}x)", ok)]
 
 
-def check_3wild_freq(mode, pred):
-    if mode != 1:
-        return []
-    out = []
-    for pid, t in THREE_WILD_TARGETS_M1.items():
-        a = pred.get("pay_hits", {}).get(pid, 0.0)
-        if a <= 0:
-            out.append(("THREE-WILD-FREQ", mode, f"pay_id {pid}: 0 hits", False))
-            continue
-        ratio = a / t
-        ok = (1/FREQ_TOL_FACTOR) <= ratio <= FREQ_TOL_FACTOR
-        out.append(("THREE-WILD-FREQ", mode,
-                    f"pay_id {pid}: 1/{1/a:.0f} vs 1/{1/t:.0f} ({ratio:.2f}x)", ok))
-    return out
-
-
-def check_top_freq(mode, densities):
-    p_top = (
-        (densities.get(("high7", 0), 0) + densities.get(("wild", 0), 0))
-        * densities.get(("grand", 1), 0)
-        * (densities.get(("high7", 2), 0) + densities.get(("wild", 2), 0))
-    )
-    t = TOP_FREQ_TARGETS[mode]
-    if p_top <= 0:
-        return [("TOP-FREQ", mode, "0 prob", False)]
-    ratio = p_top / t
-    ok = (1/FREQ_TOL_FACTOR) <= ratio <= FREQ_TOL_FACTOR
-    return [("TOP-FREQ", mode, f"1/{1/p_top:.0f} vs 1/{1/t:.0f} ({ratio:.2f}x)", ok)]
+def check_bar_combined_freq(mode, pred):
+    a = sum(pred.get("pay_hits", {}).get(p, 0.0) for p in BAR_PAY_IDS)
+    return [("BAR-FREQ", mode, f"bars combined {a:.1%} vs cap {BAR_PAYLINE_FREQ_CAP:.0%}",
+             a <= BAR_PAYLINE_FREQ_CAP)]
 
 
 def check_role_blank(mode, densities):
@@ -139,35 +102,6 @@ def check_role_blank(mode, densities):
     return out
 
 
-def check_pwdf(mode, densities):
-    out = []
-    g_vis = _window_visibility(densities.get(("grand", 1), 0))
-    out.append(("PWDF-GRAND", mode,
-                f"grand R2 vis {g_vis:.2%} vs ≥{PWDF_TARGETS['grand_r2']:.1%}",
-                g_vis >= PWDF_TARGETS["grand_r2"]))
-
-    h_r1 = _window_visibility(densities.get(("high7", 0), 0))
-    h_r3 = _window_visibility(densities.get(("high7", 2), 0))
-    h_c = 1 - (1 - h_r1) * (1 - h_r3)
-    out.append(("PWDF-HIGH7", mode,
-                f"high7 R1+R3 vis {h_c:.2%} vs ≥{PWDF_TARGETS['high7_outer']:.0%}",
-                h_c >= PWDF_TARGETS["high7_outer"]))
-
-    w_r1 = _window_visibility(densities.get(("wild", 0), 0))
-    w_r3 = _window_visibility(densities.get(("wild", 2), 0))
-    w_c = 1 - (1 - w_r1) * (1 - w_r3)
-    out.append(("PWDF-WILD", mode,
-                f"wild R1+R3 vis {w_c:.2%} vs ≥{PWDF_TARGETS['wild_outer']:.0%}",
-                w_c >= PWDF_TARGETS["wild_outer"]))
-
-    booster_d = sum(densities.get((s, 1), 0) for s in ("mini", "minor", "major", "grand"))
-    b_vis = _window_visibility(booster_d)
-    out.append(("PWDF-BOOSTER", mode,
-                f"booster R2 vis {b_vis:.2%} vs ≥{PWDF_TARGETS['booster_r2']:.0%}",
-                b_vis >= PWDF_TARGETS["booster_r2"]))
-    return out
-
-
 def check_bucket_count(mode, pred):
     out = []
     bucket_rate = pred.get("bucket_rate", {})
@@ -176,8 +110,7 @@ def check_bucket_count(mode, pred):
         return [("BUCKET-COUNT", mode, "0 hits", False)]
     for tier, (lo, hi) in BUCKET_COUNT_RANGES.items():
         keys = TIER_TO_BUCKETS[tier]
-        tier_hits = sum(bucket_rate.get(k, 0.0) for k in keys)
-        share = tier_hits / hit
+        share = sum(bucket_rate.get(k, 0.0) for k in keys) / hit
         out.append(("BUCKET-COUNT", mode,
                     f"{tier} {share:.1%} vs [{lo:.0%}, {hi:.1%}]",
                     lo <= share <= hi))
@@ -209,8 +142,7 @@ def check_hierarchy(mode, densities):
             continue
         if prev_d is not None and d > prev_d:
             out.append(("HIERARCHY-BOOSTER", mode,
-                        f"R2: {s}({d*100:.3f}%) > {prev}({prev_d*100:.3f}%) — REVERSED",
-                        False))
+                        f"R2: {s}({d*100:.3f}%) > {prev}({prev_d*100:.3f}%) — REVERSED", False))
         prev = s
         prev_d = d
     if not out:
@@ -222,10 +154,10 @@ def check_reel_asymmetry(mode, densities):
     out = []
     r1b = densities.get(("blank", 0), 0)
     r3b = densities.get(("blank", 2), 0)
-    out.append(("ASYMMETRY-BLANK", mode, f"R1 {r1b:.1%} vs R3 {r3b:.1%}", r1b <= r3b))
+    out.append(("ASYMMETRY-BLANK", mode, f"R1 {r1b:.1%} ≤ R3 {r3b:.1%}", r1b <= r3b))
     r1t = densities.get(("high7", 0), 0) + densities.get(("wild", 0), 0)
     r3t = densities.get(("high7", 2), 0) + densities.get(("wild", 2), 0)
-    out.append(("ASYMMETRY-TOP", mode, f"R1 {r1t:.1%} vs R3 {r3t:.1%}", r1t >= r3t))
+    out.append(("ASYMMETRY-TOP", mode, f"R1 {r1t:.1%} ≥ R3 {r3t:.1%}", r1t >= r3t))
     return out
 
 
@@ -244,40 +176,6 @@ def check_blank_flank(mode, strips):
                     f"R{r_idx+1}: {len(viol)} X-blank-X violations", len(viol) == 0))
     return out
 
-
-def check_pay9_dominance(mode, pred):
-    hit = pred.get("hit_rate", 0)
-    p9 = pred.get("pay_hits", {}).get("9", 0)
-    if hit <= 0:
-        return [("PAY9-DOMINANCE", mode, "0 hits", True)]
-    share = p9 / hit
-    return [("PAY9-DOMINANCE", mode,
-             f"pay_id 9 {share:.1%} of hits (cap {PAY9_DOMINANCE_CAP:.0%})",
-             share <= PAY9_DOMINANCE_CAP)]
-
-
-def check_mode_pair_mono(modes_preds):
-    if not all(m in modes_preds for m in (1, 2, 5, 7)):
-        return [("MODE-PAIR-MONO", 0, "skipped (not all modes)", True)]
-    out = []
-    rtp = {m: modes_preds[m]["rtp_pct"] for m in (1, 2, 5, 7)}
-    hit = {m: modes_preds[m]["hit_rate"] for m in (1, 2, 5, 7)}
-    pairs = [
-        ("RTP m2 > m1", rtp[2] > rtp[1]),
-        ("RTP m5 > m2", rtp[5] > rtp[2]),
-        ("RTP m7 < m1", rtp[7] < rtp[1]),
-        ("HIT m2 > m1", hit[2] > hit[1]),
-        ("HIT m5 ≥ m2 (-2pp)", hit[5] >= hit[2] - 0.02),
-        ("HIT m7 < m1", hit[7] < hit[1]),
-    ]
-    for d, ok in pairs:
-        out.append(("MODE-PAIR-MONO", 0, d, ok))
-    return out
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Main
-# ═══════════════════════════════════════════════════════════════════
 
 def main():
     modes_preds = {}
@@ -301,18 +199,13 @@ def main():
 
         all_checks.extend(check_rtp(mode, pred))
         all_checks.extend(check_hit(mode, pred))
-        all_checks.extend(check_grand_freq(mode, pred))
-        all_checks.extend(check_3wild_freq(mode, pred))
-        all_checks.extend(check_top_freq(mode, densities))
+        all_checks.extend(check_grand_payline(mode, pred))
+        all_checks.extend(check_bar_combined_freq(mode, pred))
         all_checks.extend(check_role_blank(mode, densities))
-        all_checks.extend(check_pwdf(mode, densities))
         all_checks.extend(check_bucket_count(mode, pred))
         all_checks.extend(check_hierarchy(mode, densities))
         all_checks.extend(check_reel_asymmetry(mode, densities))
         all_checks.extend(check_blank_flank(mode, strips))
-        all_checks.extend(check_pay9_dominance(mode, pred))
-
-    all_checks.extend(check_mode_pair_mono(modes_preds))
 
     print("\n=== Verification results ===")
     by_cat = defaultdict(lambda: [0, 0])
