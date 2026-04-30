@@ -26,15 +26,15 @@ from slot_designer.scripts.tune_m37 import (
     HIT_TARGETS,
     GRAND_PAYLINE_TARGETS,
     BAR_PAYLINE_FREQ_CAP,
-    ROLE_BLANK_RANGES,
-    BUCKET_COUNT_RANGES,
+    ROLE_BLANK_RANGES_BY_MODE,
+    BUCKET_COUNT_RANGES_BY_MODE,
     TIER_TO_BUCKETS,
     PAY_TO_FAMILY,
     BAR_PAY_IDS,
 )
 
-# Hit tolerance — accept ±2pp from target (user said 15%, we accept 13-17%)
-HIT_TOL = 0.02
+# Hit tolerance — accept ±2pp from target (user said 15%, we accept 13-17%).
+HIT_TOL_BY_MODE = {1: 0.02, 7: 0.02, 2: 0.02, 5: 0.02}
 
 
 def _all_densities(weights, strips):
@@ -73,17 +73,19 @@ def check_rtp(mode, pred):
 def check_hit(mode, pred):
     a = pred["hit_rate"]
     t = HIT_TARGETS[mode]
-    return [("HIT", mode, f"{a:.1%} vs {t:.0%}±{HIT_TOL:.0%}", abs(a - t) <= HIT_TOL)]
+    tol = HIT_TOL_BY_MODE[mode]
+    return [("HIT", mode, f"{a:.1%} vs {t:.0%}±{tol:.0%}", abs(a - t) <= tol)]
 
 
 def check_grand_payline(mode, pred):
     a = pred.get("pay_hits", {}).get("8", 0.0)
-    t = GRAND_PAYLINE_TARGETS[mode]
+    lo, hi = GRAND_PAYLINE_TARGETS[mode]
     if a <= 0:
         return [("GRAND-PAYLINE", mode, "0 hits", False)]
-    # Within factor 2x tolerance
-    ok = (t / 2) <= a <= (t * 2)
-    return [("GRAND-PAYLINE", mode, f"{a*100:.3f}% vs {t*100:.2f}% (ratio {a/t:.2f}x)", ok)]
+    ok = lo <= a <= hi
+    return [("GRAND-PAYLINE", mode,
+             f"{a*100:.3f}% vs [{lo*100:.2f}%, {hi*100:.2f}%]",
+             ok)]
 
 
 def check_bar_combined_freq(mode, pred):
@@ -94,7 +96,8 @@ def check_bar_combined_freq(mode, pred):
 
 def check_role_blank(mode, densities):
     out = []
-    for r, (lo, hi) in ROLE_BLANK_RANGES.items():
+    role_ranges = ROLE_BLANK_RANGES_BY_MODE[mode]
+    for r, (lo, hi) in role_ranges.items():
         a = densities.get(("blank", r), 0.0)
         out.append(("ROLE-BLANK", mode,
                     f"R{r+1} blank {a:.1%} vs [{lo:.0%}, {hi:.0%}]",
@@ -108,7 +111,8 @@ def check_bucket_count(mode, pred):
     hit = pred["hit_rate"]
     if hit <= 0:
         return [("BUCKET-COUNT", mode, "0 hits", False)]
-    for tier, (lo, hi) in BUCKET_COUNT_RANGES.items():
+    bucket_ranges = BUCKET_COUNT_RANGES_BY_MODE[mode]
+    for tier, (lo, hi) in bucket_ranges.items():
         keys = TIER_TO_BUCKETS[tier]
         share = sum(bucket_rate.get(k, 0.0) for k in keys) / hit
         out.append(("BUCKET-COUNT", mode,

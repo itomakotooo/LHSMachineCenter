@@ -103,7 +103,7 @@
       "logicClassNames": [
         "SimulatedClassic3ReelWithBoosterJackpot"
       ],
-      "configSummaryMd5": "d1bba76a519b614cff1e47fa907c04f9",
+      "configSummaryMd5": "9d827946eff80702fc0869726b58fa00",
       "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4",
       "available": true,
       "_source_machine": "M37",
@@ -112,19 +112,19 @@
       "_weights_path_template": "slot_designer/weights/M37/mode_{mode}/weights.json",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "a04783bcefc32ab7c7c7e9f6b66fb6cc",
+          "configSummaryMd5": "862a7d81328101329198698161446f0a",
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "2": {
-          "configSummaryMd5": "cd77cb8fda669e598e4e296e16d4a3e2",
+          "configSummaryMd5": "e3c12018dab5128ccba6568d86dd9b6f",
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "5": {
-          "configSummaryMd5": "8ce70e76181308bd502fa525f6537f3e",
+          "configSummaryMd5": "663cc64974a9d396f4ad679d87c38cb3",
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "7": {
-          "configSummaryMd5": "0f49151a780ec75f036099ef9c3135f2",
+          "configSummaryMd5": "0d3020f3436cb22cd318f3741dfee046",
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         }
       }
