@@ -84,9 +84,11 @@ TIER_TO_BUCKETS = {
 RTP_TARGETS = {1: 95.0, 7: 85.0, 2: 300.0, 5: 500.0}
 RTP_TOLERANCE_PP = {1: 1.0, 7: 2.0, 2: 20.0, 5: 40.0}
 
-# Hit rate — from "modern multi-tier wild slot 12-15% sparse-ish" range
-# Mode 1 mid → 13%; mode 7 m1 - 3pp → 10%; mode 2 m1 × 1.5 → 19.5%; mode 5 ≈ m2
-HIT_TARGETS = {1: 0.13, 7: 0.10, 2: 0.20, 5: 0.21}
+# Hit target per user 2026-04-30 direction "冲着总体中奖率 15% 去做".
+# 15% achievable by: reducing bar payline freq (less pay_id 7 + 3-bar fires) +
+# raising grand to 0.3-0.5% on payline (more pay_id 8 = 100× contribution
+# but rare). Player still feels sparse-ish modern multi-wild.
+HIT_TARGETS = {1: 0.15, 7: 0.11, 2: 0.21, 5: 0.22}
 HIT_TOL = {1: 0.02, 7: 0.02, 2: 0.03, 5: 0.03}
 
 # Grand alone (pay_id 8 100×) freq — from "session-visible" narrative
@@ -94,18 +96,22 @@ HIT_TOL = {1: 0.02, 7: 0.02, 2: 0.03, 5: 0.03}
 # Mode 7: same as mode 1 (universal §4 cut-mode preserves big-win)
 # Mode 2: ~3× m1 (lucky) → 1/200
 # Mode 5: ~5× m2 (super-lucky session-level) → 1/40
-# §4 trade-off resolution: 1/700 forces grand density 0.14% which
-# (with integer-weight cascade + 1 grand stop) caps booster visibility ≤ 6%
-# per universal §15. Relax to 1/500 (player still hits grand per ~25-min session,
-# fits "玩家正常来说可以中到这个100倍" narrative) to allow §11 booster vis ≥ 18%.
-GRAND_FREQ_TARGETS = {1: 1.0/500, 7: 1.0/500, 2: 1.0/150, 5: 1.0/30}
+# §4 per user direction "grand 提升到 0.3-0.5% 左右": grand on payline 0.4%
+# (mid of range) → freq 1/250. Player session-visible per ~10-15 min casual play.
+GRAND_FREQ_TARGETS = {1: 1.0/250, 7: 1.0/250, 2: 1.0/100, 5: 1.0/25}
 
 # 3-wild jackpot freq targets (mode 1 only; lucky modes derive naturally)
 # Per "long-play visibility" narrative + universal §1 hierarchy (mini > minor > major rare)
+# Math derivation: P(3-wild mini) = wild_R1 × mini × wild_R3.
+# With universal §15 wild visibility floor → wild_R1 ~ wild_R3 ~ 6%.
+# For mini 3-wild 1/N: mini_density = N⁻¹ / 0.0036.
+#   N=4000: mini = 7% R2 (forces booster combined > 10% → hit > 18%)
+#   N=8000: mini = 3.5% R2 (compatible with hit 13% via §11 PWDF lower edge)
+# Choose 1/8000 to satisfy player experience hit 13% target.
 THREE_WILD_TARGETS_M1 = {
-    "104": 1.0/4000,   # mini 3-wild 20× — long-play (~5-8 hr session)
-    "103": 1.0/10000,  # minor 3-wild 50× — multi-session
-    "102": 1.0/20000,  # major 3-wild 100× — long-term play
+    "104": 1.0/8000,   # mini 3-wild 20× — long-play visibility, hit-budget compatible
+    "103": 1.0/15000,  # minor 3-wild 50×
+    "102": 1.0/30000,  # major 3-wild 100×
 }
 
 # Top jackpot 1000× freq — from "lifetime moment" narrative
@@ -121,16 +127,12 @@ ROLE_BLANK_RANGES = {
 # PWDF window visibility — Harrigan K factors per user narrative
 # (P payline ≈ symbol density on payline; visibility = 1 - (1-d)^3)
 PWDF_TARGETS = {
-    "grand_r2": 0.005,       # universal §15 K=2.5× × 0.2% payline
-    "high7_outer": 0.25,     # universal §15 K=8× × ~3% (Harrigan baseline)
-    "wild_outer": 0.15,      # universal §15 K=5× × ~3%
-    # §11 booster_r2: universal §15.2 separates "brand" from "top-prize" — K factor
-    # 4-10x is for top-prize. For brand visibility, use universal §2 derivation
-    # "every N spin" — booster combined density 3.5% gives visibility 10%
-    # ("every 10 spin"). This co-exists with §3 hit 13% strict + §4 grand 1/500.
-    # Higher booster density forces more pay_id 9 fires → hit > 15% (心得 7
-    # bucket distribution constraint).
-    "booster_r2": 0.10,      # narrative: booster every ~10 spins visible
+    "grand_r2": 0.012,       # K=3× × 0.4% payline (per §4 0.3-0.5% grand)
+    "high7_outer": 0.25,     # universal §15 K=5× × ~5% payline (player table)
+    "wild_outer": 0.15,      # universal §15 K=4× × ~3.75%
+    # §11 booster_r2: universal §15.2 brand visibility narrative — booster
+    # every ~6 spins visible (combined density ~6%, vis ~17%)
+    "booster_r2": 0.17,
 }
 
 # Bucket count distribution (% of hits) — player tier psychology
@@ -155,17 +157,17 @@ WEIGHT_HI = 1000  # physical sentinel only (SA mutation range)
 # (1pp deviation × 100 scale → 10² = 100 base, × 10000 = 1M peak)
 # ═══════════════════════════════════════════════════════════════════
 
-W_RTP = 5000.0           # business hard constraint
-W_HIT = 8000.0           # strict, narrative-derived
-W_BUCKET_COUNT = 4000.0  # per tier (4 tiers → up to 4× cost)
+W_RTP = 50000.0          # business hard — most strict
+W_HIT = 30000.0          # narrative-derived strict
+W_BUCKET_COUNT = 2000.0
 W_GRAND_FREQ = 1500.0
 W_3WILD_FREQ = 800.0
-W_TOP_FREQ = 800.0
-W_ROLE_BLANK = 5000.0    # per reel
-W_PWDF = 2000.0          # per dimension
-W_HIERARCHY = 8000.0     # universal §1 hard direction
-W_ASYMMETRY = 1500.0     # universal §12 direction
-W_PAY9_DOMINANCE = 5000.0
+W_TOP_FREQ = 1500.0      # bumped — universal §7 escalation matters
+W_ROLE_BLANK = 5000.0
+W_PWDF = 4000.0          # important but not dominant (universal §15.6 caution)
+W_HIERARCHY = 8000.0
+W_ASYMMETRY = 1500.0
+W_PAY9_DOMINANCE = 8000.0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -280,8 +282,18 @@ def predict_cost(weights, strips, evaluator, mode):
     if grand_vis < PWDF_TARGETS["grand_r2"]:
         cost += W_PWDF * ((PWDF_TARGETS["grand_r2"] - grand_vis) * 100) ** 2
 
-    h7_r1 = _window_visibility(densities.get(("high7", 0), 0.0))
-    h7_r3 = _window_visibility(densities.get(("high7", 2), 0.0))
+    # high7 PWDF: combined target requires PER-REEL floor for both R1 and R3.
+    # Math: combined vis 25% with symmetric reels → each vis ≥ 13.4% → density
+    # ≥ 4.7%. Per-reel floor prevents SA from picking all-wild on one reel.
+    h7_d_r1 = densities.get(("high7", 0), 0.0)
+    h7_d_r3 = densities.get(("high7", 2), 0.0)
+    H7_PER_REEL_FLOOR = 0.04  # ~ 11% per-reel visibility, sums to 21% combined
+    if h7_d_r1 < H7_PER_REEL_FLOOR:
+        cost += W_PWDF * ((H7_PER_REEL_FLOOR - h7_d_r1) * 100) ** 2
+    if h7_d_r3 < H7_PER_REEL_FLOOR:
+        cost += W_PWDF * ((H7_PER_REEL_FLOOR - h7_d_r3) * 100) ** 2
+    h7_r1 = _window_visibility(h7_d_r1)
+    h7_r3 = _window_visibility(h7_d_r3)
     h7_combined = 1 - (1 - h7_r1) * (1 - h7_r3)
     if h7_combined < PWDF_TARGETS["high7_outer"]:
         cost += W_PWDF * ((PWDF_TARGETS["high7_outer"] - h7_combined) * 100) ** 2
@@ -332,6 +344,18 @@ def predict_cost(weights, strips, evaluator, mode):
         if prev_d is not None and d > prev_d:
             cost += W_HIERARCHY * ((d - prev_d) * 100) ** 2
         prev_d = d
+    # Booster per-consecutive-tier ratio bound 1.2-1.5x (universal §1):
+    # prevents flat cascade (e.g. mini=minor) AND extreme tier gaps.
+    BOOSTER_PAIRS = [("mini", "minor"), ("minor", "major"), ("major", "grand")]
+    for hi_sym, lo_sym in BOOSTER_PAIRS:
+        d_hi = densities.get((hi_sym, 1), 0.0)
+        d_lo = densities.get((lo_sym, 1), 0.0)
+        if d_hi > 0 and d_lo > 0:
+            ratio = d_hi / d_lo
+            if ratio < 1.2:
+                cost += W_HIERARCHY * ((1.2 - ratio) * 100) ** 2
+            elif ratio > 1.5:
+                cost += W_HIERARCHY * ((ratio - 1.5) * 100) ** 2
 
     # 10. Reel asymmetry direction (universal §12)
     r1_blank = densities.get(("blank", 0), 0.0)
