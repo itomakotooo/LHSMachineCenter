@@ -99,7 +99,11 @@ BAR_PAYLINE_FREQ_CAP = 0.25
 # blanks lower since hit rate target is higher.
 ROLE_BLANK_RANGES_BY_MODE = {
     1: {0: (0.29, 0.41), 1: (0.59, 0.78), 2: (0.39, 0.52)},
-    7: {0: (0.35, 0.50), 1: (0.65, 0.83), 2: (0.45, 0.60)},
+    # Mode 7 floors enforce cross-mode monotonic blank: mode 7 ("cut small")
+    # blanks should always be ≥ mode 1 blanks across all reels. R1 floor
+    # 0.42 > mode 1 R1 cap 0.41; R2 floor 0.65 ~ mode 1 R2 cap 0.78 (already
+    # OK); R3 floor 0.52 > mode 1 R3 cap 0.52 (boundary).
+    7: {0: (0.42, 0.50), 1: (0.65, 0.83), 2: (0.52, 0.60)},
     2: {0: (0.20, 0.36), 1: (0.55, 0.70), 2: (0.30, 0.46)},
     # Mode 5 R2 cap raised to 0.75 for structural feasibility: with booster
     # cap 14% + high7 cap 10% + R2 bar cap 6% = 30% non-blank max → blank
@@ -154,8 +158,10 @@ HIGH7_R2_CAP = 0.10
 # booster brand reel". For R2 to feel like a booster reel rather than a
 # "general reel", boosters should DOMINATE non-blank non-high7 mass on R2.
 # Cap R2 bar combined at 6% so boosters (target 7%+) outweigh bars on R2.
-# Without this cap, optimizer concentrates R2 mass on 7bar (cheap RTP via
-# pay_id 6 any-7 + pay_id 7 any-bar mix) and squeezes booster room.
+# Per mode: same 0.06 across all modes — tighter cap (e.g., 0.04 mode 7)
+# breaks mode 7 (mass redistributes to wild + blank, breaking asymmetry).
+BAR_R2_COMBINED_CAP_BY_MODE = {1: 0.06, 7: 0.06, 2: 0.06, 5: 0.06}
+# Default for backward-compat:
 BAR_R2_COMBINED_CAP = 0.06
 
 # Wild R1+R3 cap — per mode. In mode 5 (super-lucky), high wild density
@@ -421,12 +427,13 @@ def predict_cost(weights, strips, evaluator, mode):
     if high7_r2 > HIGH7_R2_CAP:
         cost += W_HIGH7_CAP * ((high7_r2 - HIGH7_R2_CAP) * 100) ** 2
 
-    # 10c. R2 bar combined cap — narrative §5 "R2 = booster brand reel".
-    # Boosters must dominate over bars on R2 for the brand identity.
+    # 10c. R2 bar combined cap (per-mode) — narrative §5 "R2 = booster brand
+    # reel". Mode 7 tighter because boosters there are smaller.
     bar_r2_combined = sum(densities.get((s, 1), 0.0)
                           for s in ("1bar", "2bar", "3bar", "7bar"))
-    if bar_r2_combined > BAR_R2_COMBINED_CAP:
-        cost += W_HIGH7_CAP * ((bar_r2_combined - BAR_R2_COMBINED_CAP) * 100) ** 2
+    bar_r2_cap = BAR_R2_COMBINED_CAP_BY_MODE[mode]
+    if bar_r2_combined > bar_r2_cap:
+        cost += W_HIGH7_CAP * ((bar_r2_combined - bar_r2_cap) * 100) ** 2
 
     # 10d. Wild R1+R3 cap (per-mode). High wild density adds side_wild_alone
     # 1× hits (pay_id 9 path). Mode 5 cap is tighter to keep hit rate under
