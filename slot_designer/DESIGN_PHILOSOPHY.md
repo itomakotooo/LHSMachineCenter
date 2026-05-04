@@ -110,7 +110,7 @@ verify 类别建议：`TOP-JACKPOT-ESCALATION` 或 `MODE7-BIGWIN` 包含 ratio c
 
 **任一 pay_id hit / total hit ≤ 70%。**
 
-如果某 pay 占 hit rate 60%+，要么是设计上的特点（如 M37 pay_id 9 占 60%+ 是 brand 设计），要么是 bug（某 pay 过频）。需要 commit message 写明哪种。
+如果某 pay 占 hit rate 60%+，要么是设计上的特点（multi-tier wild 类机台 brand-pay 单一占 60%+ 可能是 brand 设计），要么是 bug（某 pay 过频）。需要 commit message 写明哪种。
 
 verify 类别建议：`HIT-DISTRIBUTION`（暂未跨机台 impl）。
 
@@ -127,7 +127,11 @@ verify 类别建议：`HIT-DISTRIBUTION`（暂未跨机台 impl）。
 - mode 5 hit ≥ mode 2 hit
 - mode 7 hit < mode 1 hit
 - mode 5 top jackpot freq > mode 2 top jackpot freq
-- mode 5 booster_R2 ≥ mode 2 booster_R2
+
+**机台-specific 扩展** (per-machine `verify_<M>_design.py`)：
+- Multi-tier wild slots：mode 5 booster combined density ≥ mode 2 (中轴 booster reel 在 lucky 模式更显眼)
+- Feature 机台 (Feature Play 类)：mode 2/5 feature trigger rate ≥ mode 1
+- Trigger-reel 机台：mode 5 trigger symbol density ≥ mode 2
 
 verify 类别建议：`LUCKY-MONO` + cross-mode invariant checks。
 
@@ -325,7 +329,7 @@ PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top
 
 **Verify 类别建议**：`WINDOW-VISIBILITY`（per machine：top symbol any-reel visibility ≥ floor）。机台 specific：
 - Floor 数字（M1 物理 reel post-机制B: 38% standard / 35% lucky；virtual reel: 50%+ Harrigan 风格）
-- 哪些 symbol 算 "top"（M1: Diamond1/Diamond2/Seven2；M15: TopDollar；M37: booster；新机台 archetype 决定）
+- 哪些 symbol 算 "top"（M1: Diamond1/Diamond2/Seven2；M15: TopDollar；multi-tier wild 类: booster；新机台 archetype 决定）
 - 跟 payline hit rate 的倍数关系（K=4-10×）
 
 ### 15.5 物理 reel 上的两种 PWDF 机制（2026-04-29 M1 实测）
@@ -374,4 +378,4 @@ PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top
 6. **strip 设计阶段**确认满足 §13 BLANK-FLANK-DIVERSITY（无 X-Blank-X）+ §14 VISUAL-RHYTHM（机台 specific 子规则）。修复 strip 不会改 marginal 但改 strip md5 → 全 mode rawdata 失效
 7. **post-tune PWDF redistribute（物理 reel 机台）**：跑 redistribute_<M>_blanks.py 类脚本，per reel redistribute Blank weight 到 top-adj 位置。RTP-neutral，仅升 visibility
 
-参考实现：`weights/M37/` 完整流程（v5 后）+ `weights/M1/` 含 REEL-ASYMMETRY check（2026-04-28+）。
+参考实现：`weights/M1/` 含 REEL-ASYMMETRY check + post-tune redistribute (2026-04-28+)；`weights/M15/` Feature Play 类机台 4-mode pipeline。
