@@ -103,10 +103,32 @@
       "logicClassNames": [
         "SimulatedClassic3ReelWithBoosterJackpot"
       ],
-      "available": false,
+      "available": true,
       "_source_machine": "M37",
       "_spec_path": "slot_designer/specs/M37.spec.json",
-      "_status": "registration only — design content deleted 2026-05-01, awaiting redesign in new session"
+      "_strips_path": "slot_designer/weights/M37/reel_strips.json",
+      "_weights_path_template": "slot_designer/weights/M37/mode_{mode}/weights.json",
+      "_status": "all 4 modes designed 2026-05-05; verify 52/52 GREEN",
+      "configSummaryMd5": "1a268742dd3951db5657a118f9847a01",
+      "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4",
+      "modesMd5": {
+        "1": {
+          "configSummaryMd5": "e31e1fbbf0d54241e6cce4b7611bd760",
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
+        },
+        "2": {
+          "configSummaryMd5": "6091ea6690632897b9c92964ab3bbda6",
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
+        },
+        "5": {
+          "configSummaryMd5": "897ffc7bf55fe065c48b10a2a037cb21",
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
+        },
+        "7": {
+          "configSummaryMd5": "9c2342650318726d7f81c36221b504cf",
+          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
+        }
+      }
     },
     {
       "machine": "M279sim",

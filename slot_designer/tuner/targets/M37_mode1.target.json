@@ -1,0 +1,120 @@
+{
+  "label": "M37_mode1_low_hit_high_tier_redistribution",
+  "source_machine": "M37",
+  "source_mode": 1,
+  "source_spins": 0,
+  "_note": [
+    "M37 mode 1 target — Triple Diamond chassis + 5-tier wild fusion, 95% RTP standard mode.",
+    "",
+    "Design direction (user-pinned 2026-05-05): 削减低倍率 wild-alone + anybar 共 ~10pp RTP, 重新分配到 grand-related (~5pp) + 3-of-kind base (~3pp) + major-alone (~0.7pp). 保倒金字塔 mini > minor > major > grand。降总 hit 从 21% → 16-17%, 把 RTP 重心更明显推到 Mid+High。",
+    "",
+    "Per-reel marginal anchors (M37Cfg baseline -> new targets):",
+    "  R1+R3 wild: 3.6%/3.5% -> 1.8%/1.7% (cut 50%, side-wild 1× freq cut)",
+    "  R2 mini   : 3.95% -> 3.55% (cut 10%)",
+    "  R2 minor  : 3.04% -> 2.55% (cut 16%)",
+    "  R2 major  : 1.83% -> 1.95% (boost 7%, max headroom under 1.3× minor floor)",
+    "  R2 grand  : 0.08% -> 0.11% (boost 38% — still 'lifetime tier' but slightly less rare)",
+    "  R1+R3 bar : ~62%/59% -> ~50%/47% (anybar cut 20%)",
+    "",
+    "Hierarchy ratio guards: mini 3.55/minor 2.55 = 1.39 / minor 2.55/major 1.95 = 1.31 / major 1.95/grand 0.11 = 17.7 — all ≥ 1.3 floor.",
+    "",
+    "Predicted bucket shape: ge1_lt5 from 15.5% to ~9% (low-mult cut), ge10_lt20 (peak) from 21pp to ~28pp (booster combos boosted), ge50-200 tail thicker (~+5pp), grand 1000× tier from 1 in 105k to ~1 in 75k (still lifetime). >1000× = 0 (paytable cap).",
+    "",
+    "REJECT >1000× wins: ge5000 = 0 strict (paytable cap is 1000× via high7 × grand path)."
+  ],
+  "rtp_pct": 95.0,
+  "bucket_rate": {
+    "gt0_lt1": 0.0,
+    "ge1_lt5": 0.090,
+    "ge5_lt10": 0.030,
+    "ge10_lt20": 0.025,
+    "ge20_lt50": 0.0080,
+    "ge50_lt100": 0.0020,
+    "ge100_lt200": 0.0010,
+    "ge200_lt500": 0.0001,
+    "ge500_lt1000": 0.00002,
+    "ge1000_lt5000": 0.000015,
+    "ge5000": 0.0
+  },
+  "hit_rate": 0.160,
+  "zero_win_rate": 0.840,
+  "std_return_x": 8.5,
+  "max_return_x": 1000.0,
+  "_design_constraints": {
+    "total_machine_rtp_target": 95.0,
+    "strict_tolerance_pp": 1.0,
+    "hit_band": [0.14, 0.18],
+    "archetype": "IGT Triple Diamond chassis + Lightning Link mini/minor/major/grand jackpot tier naming + M37Cfg published baseline reference",
+    "bucket_shape_intent": "Mid+High tilted bell, peak around ge10_lt20, ge100_lt200 secondary peak from booster combos, Grand 1000× still lifetime tier (1 in ~75k spins).",
+    "max_payout_cap_x": 1000,
+    "ge5000_must_be_zero": true,
+    "physical_layout_locked": true,
+    "per_mode_variation_mechanism": "per-mode reel weight remapping on shared physical layout (26 stops, alternating B/N)"
+  },
+  "per_reel_symbol_targets": [
+    {
+      "name": "R1_wild_visibility",
+      "symbols": ["wild"],
+      "per_reel_target_pct": {"1": 0.018},
+      "tolerance_pct": 0.003,
+      "cost_weight": 12.0,
+      "pattern": "R1 wild marginal target 1.8% (cut 50% from M37Cfg 3.6% baseline) — reduces side-wild 1× alone freq dramatically. Anchor strong: tuner pareto-trap will collapse to 0 otherwise."
+    },
+    {
+      "name": "R3_wild_visibility",
+      "symbols": ["wild"],
+      "per_reel_target_pct": {"3": 0.017},
+      "tolerance_pct": 0.003,
+      "cost_weight": 12.0,
+      "pattern": "R3 wild marginal target 1.7% (cut 50% from M37Cfg 3.5%)."
+    },
+    {
+      "name": "R2_mini",
+      "symbols": ["mini"],
+      "per_reel_target_pct": {"2": 0.0355},
+      "tolerance_pct": 0.003,
+      "cost_weight": 15.0,
+      "pattern": "R2 mini marginal 3.55% (cut 10% from M37Cfg 3.95%). Maintains mini > minor 1.39× hierarchy with minor=2.55%."
+    },
+    {
+      "name": "R2_minor",
+      "symbols": ["minor"],
+      "per_reel_target_pct": {"2": 0.0255},
+      "tolerance_pct": 0.003,
+      "cost_weight": 15.0,
+      "pattern": "R2 minor marginal 2.55% (cut 16% from M37Cfg 3.04%)."
+    },
+    {
+      "name": "R2_major",
+      "symbols": ["major"],
+      "per_reel_target_pct": {"2": 0.0195},
+      "tolerance_pct": 0.003,
+      "cost_weight": 15.0,
+      "pattern": "R2 major marginal 1.95% (boost 7% from M37Cfg 1.83%, max headroom under 1.3× minor floor)."
+    },
+    {
+      "name": "R2_grand",
+      "symbols": ["grand"],
+      "per_reel_target_pct": {"2": 0.0011},
+      "tolerance_pct": 0.0003,
+      "cost_weight": 20.0,
+      "pattern": "R2 grand marginal 0.11% (boost 38% from M37Cfg 0.08%). Brand-defining lifetime tier, very tight tolerance + max cost weight. Drives both grand-alone (100×) and high7-grand-high7 = 1000× top jackpot frequency."
+    },
+    {
+      "name": "R1_bar_total",
+      "symbols": ["1bar", "2bar", "3bar", "7bar"],
+      "per_reel_target_pct": {"1": 0.50},
+      "tolerance_pct": 0.02,
+      "cost_weight": 6.0,
+      "pattern": "R1 bar total marginal ~50% (cut 20% from M37Cfg 62%). Reduces anybar (pay_id 7) freq via reduced bar-on-payline product."
+    },
+    {
+      "name": "R3_bar_total",
+      "symbols": ["1bar", "2bar", "3bar", "7bar"],
+      "per_reel_target_pct": {"3": 0.47},
+      "tolerance_pct": 0.02,
+      "cost_weight": 6.0,
+      "pattern": "R3 bar total marginal ~47% (cut 20% from M37Cfg 59%)."
+    }
+  ]
+}
