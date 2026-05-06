@@ -3652,7 +3652,7 @@ function renderSymbolDrilldown(summary) {
           const aBar = maxCount > 0 ? Math.min(100, ((aIn ? r.count : 0) / maxCount) * 100) : 0;
           const bBar = cmpB && maxCount > 0 ? Math.min(100, ((bRow ? bRow.count : 0) / maxCount) * 100) : 0;
           const barCell = cmpB
-            ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%">${_cmpCell(true, aCountFmt, bCountFmt, aCountRaw, bCountRaw, "rel")}</td>`
+            ? `<td class="cmp-text-bar-cell">${_cmpCell(true, aCountFmt, bCountFmt, aCountRaw, bCountRaw, "rel", 0, { aBarPct: aBar, bBarPct: bBar })}</td>`
             : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${aCountFmt}</td>`;
           // Symbol name column shows a presence tag in compare mode
           // when the symbol only fired on one side.
@@ -3746,7 +3746,7 @@ function renderSymbolDrilldown(summary) {
           const aBar = max > 0 ? Math.min(100, ((aIn ? r.count : 0) / max) * 100) : 0;
           const bBar = cmpB && max > 0 ? Math.min(100, ((bRow ? bRow.count : 0) / max) * 100) : 0;
           const barCell = cmpB
-            ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%">${_cmpCell(true, aCountFmt, bCountFmt, aCountRaw, bCountRaw, "rel")}</td>`
+            ? `<td class="cmp-text-bar-cell">${_cmpCell(true, aCountFmt, bCountFmt, aCountRaw, bCountRaw, "rel", 0, { aBarPct: aBar, bBarPct: bBar })}</td>`
             : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${aCountFmt}</td>`;
           let symCell = `<code>${_escHtml(r.symbol)}</code>`;
           if (cmpB) {
@@ -3857,8 +3857,12 @@ function renderPaylineDrilldown(summary) {
         if (aIn && !bRow) presence = ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
         else if (!aIn && bRow) presence = ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
       }
+      // Compare mode: pass aBar/bBar to _cmpCell so each side's value
+      // gets an inline magnitude bar paired on the same line as its
+      // tag and number. Single mode: keep the legacy bar-behind-text
+      // cell where the absolute-positioned ::after sits under "23.24pp".
       const barCell = cmpB
-        ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%">${_cmpCell(true, aRtpFmt, bRtpFmt, aRtpRaw, bRtpRaw, "pp", 4)}</td>`
+        ? `<td class="cmp-text-bar-cell">${_cmpCell(true, aRtpFmt, bRtpFmt, aRtpRaw, bRtpRaw, "pp", 4, { aBarPct: aBar, bBarPct: bBar })}</td>`
         : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${aRtpFmt}</td>`;
       return (
         `<tr>` +
@@ -4102,10 +4106,12 @@ function _cmpDelta(aRaw, bRaw, kind, digits) {
 // the plain A value (single-mode). When true, emits two flex
 // rows where A/B tags lock to the left lane, the Δ chip locks
 // to a fixed-width middle lane, and the formatted value locks
-// to the right lane. This 3-lane layout makes numbers across
+// to the right lane. This 4-lane layout makes numbers across
 // rows form a tabular column even when chips have varying
 // widths (▲new vs ▼56.9% vs ≈ would otherwise push values to
 // different x positions across rows).
+//
+// Lanes: [tag] [bar slot opt] [chip] [value right-aligned]
 //
 // Args:
 //   aFmt, bFmt: pre-formatted display strings ("4,300", "58.88pp", etc.)
@@ -4113,12 +4119,29 @@ function _cmpDelta(aRaw, bRaw, kind, digits) {
 //               skip the chip (e.g. for non-numeric / multi-component cells)
 //   kind:       'pp' | 'rel' for _cmpDelta; ignored if raws missing
 //   digits:     Δ chip decimal places
-function _cmpCell(cmpActive, aFmt, bFmt, aRaw, bRaw, kind, digits) {
+//   opts:       optional { aBarPct, bBarPct } — when provided, an inline
+//               magnitude bar renders next to each side's value, paired
+//               with its tag's color. This replaces the cell-level
+//               ::before / ::after stacked bars for cells that contain
+//               text, so each value sits on the same horizontal line as
+//               its bar (tight visual association). Omit opts for cells
+//               that don't carry per-row bars (counts, hit rates, etc.)
+function _cmpCell(cmpActive, aFmt, bFmt, aRaw, bRaw, kind, digits, opts) {
   if (!cmpActive) return aFmt;
   let chipHtml = "";
   if (aRaw !== undefined && bRaw !== undefined) {
     chipHtml = _cmpDelta(aRaw, bRaw, kind, digits);
   }
+  // Inline bar slot: only emitted when opts.aBarPct / bBarPct provided.
+  // Always renders BOTH slots together (or neither) so A and B rows
+  // stay vertically aligned. A 0% bar shows the empty track but no fill.
+  const _bar = (pct) =>
+    `<span class="cmp-bar-track"><span class="cmp-bar-fill" style="width:${
+      Math.max(0, Math.min(100, Number(pct) || 0)).toFixed(1)
+    }%"></span></span>`;
+  const wantBar = opts && (Number.isFinite(opts.aBarPct) || Number.isFinite(opts.bBarPct));
+  const aBarHtml = wantBar ? _bar(opts.aBarPct) : "";
+  const bBarHtml = wantBar ? _bar(opts.bBarPct) : "";
   // Note: the .cmp-chip-slot is always rendered (even if empty)
   // so A's and B's vertical alignment matches; without it B would
   // shift left when there's no chip and A/B values would not
@@ -4126,11 +4149,13 @@ function _cmpCell(cmpActive, aFmt, bFmt, aRaw, bRaw, kind, digits) {
   return (
     `<div class="cmp-cell-a">` +
       `<span class="cmp-tag">A</span>` +
+      aBarHtml +
       `<span class="cmp-chip-slot"></span>` +
       `<span class="cmp-val">${aFmt}</span>` +
     `</div>` +
     `<div class="cmp-cell-b">` +
       `<span class="cmp-tag">B</span>` +
+      bBarHtml +
       `<span class="cmp-chip-slot">${chipHtml}</span>` +
       `<span class="cmp-val">${bFmt}</span>` +
     `</div>`
@@ -4648,7 +4673,7 @@ async function renderPayIdOverview(summary) {
     // Pass hit_rate raw values × 100 so the Δ chip reads in pp
     // (0.0030 → 0.30pp instead of 0.0030pp which is unreadable).
     const barCell = cmpB
-      ? `<td class="bar-cell bar-cell-cmp" style="--bar:${aBar.toFixed(1)}%;--bar-b:${bBar.toFixed(1)}%">${_stackPid(rtpCellA, rtpCellB, rtpRawA, rtpRawB, "pp", 2)}</td>`
+      ? `<td class="cmp-text-bar-cell">${_cmpCell(true, rtpCellA, rtpCellB, rtpRawA, rtpRawB, "pp", 2, { aBarPct: aBar, bBarPct: bBar })}</td>`
       : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>`;
     const mainRow =
       `<tr class="${mainRowClassList}" data-pid="${_escHtml(pid)}">` +

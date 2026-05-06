@@ -3657,6 +3657,46 @@ select:focus-visible,
   color: #3730a3;
 }
 
+/* Inline magnitude bar (between [tag] and [chip] inside cmp-cell-a/b).
+   A fixed-width "track" with a colored "fill" — pairs each value with
+   its own bar on the same horizontal line, so eye flow per row is:
+   tag → bar (visual magnitude) → chip (Δ) → value (exact number).
+   Color matches the side: slate for A, indigo for B (same hues as
+   the tag pills + value text + the bar-cell-cmp ::before/::after used
+   in bars-only cells, so all panels carry one unified palette). */
+.cmp-bar-track {
+  display: inline-block;
+  width: 64px;
+  height: 5px;
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.cmp-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  min-width: 0;
+}
+.cmp-cell-a .cmp-bar-fill {
+  background: #94a3b8;       /* slate-400 — same as bar-cell-cmp::before */
+}
+.cmp-cell-b .cmp-bar-fill {
+  background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%);
+  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.18);
+}
+
+/* Cell wrapper for compare-mode text+bar columns (payline, payid,
+   symbol). Matches the bar-cell-cmp container metrics so column widths
+   stay consistent with the legacy bar-cell layout. No ::before /
+   ::after: bars are inline within cmp-cell-a/b instead. */
+.cmp-text-bar-cell {
+  padding: 5px 6px !important;
+  vertical-align: middle;
+  min-width: 220px;
+}
+
 /* Δ chip slot: fixed min-width middle lane. Always rendered
    (even empty on A's row) so A/B vertical alignment holds.
    Justify-flex-end so chip hugs the right side of its lane,
