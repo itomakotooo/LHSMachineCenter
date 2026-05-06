@@ -3378,7 +3378,13 @@ table.drilldown-table .bar-cell {
   position: relative;
   min-width: 96px;
 }
-table.drilldown-table .bar-cell::after {
+/* Single-mode bar: ::after is absolutely positioned with --bar width.
+   Excludes .bar-cell-cmp because compare mode uses TWO stacked bars
+   (::before for A, ::after for B) — letting this rule apply would
+   force compare-mode B bars to read --bar and inherit teal/2px/absolute,
+   collapsing the B bar onto A. Specificity (0,2,2) here would
+   otherwise shadow the (0,1,1) compare-mode rule. */
+table.drilldown-table .bar-cell:not(.bar-cell-cmp)::after {
   content: "";
   position: absolute;
   left: 6px;
