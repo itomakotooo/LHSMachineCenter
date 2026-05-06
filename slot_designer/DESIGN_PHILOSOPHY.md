@@ -366,6 +366,30 @@ PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top
 
 三层防护：post-tune redistribution（物理）/ cost penalty（虚拟）+ verify red line + archetype 文档（哪些 symbol 是"top"写明，物理 vs 虚拟 reel 写明）。
 
+### 15.7 Cross-mode 视窗 visibility 设计原则（universal direction）
+
+派生 mode 与原型 mode 的视窗 visibility 关系：
+
+| 派生关系 | 视窗 visibility 处理 | 根因 |
+|---|---|---|
+| **Cut mode 派生**（cut ← standard） | visibility pattern 跟 standard mode 一致 | cut mode "冷"narrative 应只在数值层（hit/RTP）体现；视觉差异破坏"同一台机不同档"的叙事连续性 |
+| **Lucky mode（独立 archetype）** | visibility 略高于 standard mode | lucky narrative 要求视觉上"运气来了"自然反映 |
+| **Super-lucky 派生 ← lucky**（base byte-identical 锁） | visibility 跟 lucky mode 一致 | super-lucky narrative 通过 top-symbol marginal 自然抬升体现（per §15.4 mechanism B 不重复施加） |
+
+→ **具体 redistribution ratio 跨 mode 差几倍由每机台 `weights/<M>/DESIGN.md` 配置**。Universal 层只锁方向：standard ≤ lucky；cut = standard；super-lucky = lucky。
+
+### 15.8 防"假"约束方向
+
+Mechanism B redistribution 必须满足以下约束方向（universal direction，**具体阈值不在此处定，每机台 `verify_<M>_design.py` 写**）：
+
+- **Top-adj vs non-top-adj blank weight 比值有上限**（防极端不均匀 → 玩家觉得刻意）
+- **任一 top symbol any-reel window visibility 有上限**（physical reel；virtual-reel mapping 机台另议）
+- **Mid-pay symbol any-reel window visibility 有 floor**（防 mid-pay 视觉消失，玩家觉得"reel 跟我玩的不是一台机"）
+
+每机台用 `verify_<M>_design.py` 的 **`WINDOW-VISIBILITY-CAP`** / **`BLANK-RATIO-CAP`** / **`MID-PAY-VISIBLE-FLOOR`** 三类红线强制。
+
+数字依据：(a) 该机台 archetype；(b) 玩家可见阈值；(c) 物理 reel 自然上限。**不要 cross-machine 抄数字** — 这是 [`memory/feedback_adversarial_self_review.md`](../../memory/feedback_adversarial_self_review.md) 警惕的 "picked threshold" 反例。
+
 ---
 
 ## 应用：每个新机台 onboarding 必做
