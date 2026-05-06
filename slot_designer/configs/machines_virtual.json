@@ -13,7 +13,7 @@
     "MD5s are auto-refreshed by virtual_app.build_virtual_app() on startup",
     "AND by the virtual console's POST /api/machines/refresh-md5 (which is",
     "overridden to compute md5 locally from spec + weights + engine source).",
-    "NEVER fetches from upstream — this registry stays isolated from real",
+    "NEVER fetches from upstream \u2014 this registry stays isolated from real",
     "fleet (historical bug 2026-04-21: upstream refresh pulled 253 real",
     "machines into here; fix is the create_app md5_refresh_override hook)."
   ],
@@ -109,11 +109,11 @@
       "_strips_path": "slot_designer/weights/M37/reel_strips.json",
       "_weights_path_template": "slot_designer/weights/M37/mode_{mode}/weights.json",
       "_status": "all 4 modes designed 2026-05-05; verify 52/52 GREEN",
-      "configSummaryMd5": "1a268742dd3951db5657a118f9847a01",
+      "configSummaryMd5": "36384461c31a3411a9aafa46152c1c06",
       "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "e31e1fbbf0d54241e6cce4b7611bd760",
+          "configSummaryMd5": "68fbdafc400e66eb25d349f1653151a8",
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "2": {
@@ -149,7 +149,7 @@
       "_spec_path": "slot_designer/specs/M279.spec.json",
       "_strips_path": "slot_designer/weights/M279/reel_strips.json",
       "_weights_path_template": "slot_designer/weights/M279/mode_{mode}/weights.json",
-      "_note": "M279 = Light & Wonder 'Blazing 777 Triple Double Jackpot Wild — Nudging Stacks' archetype + Asian-market collect-to-wheel feature. The _engine='m279' marker routes virtual_analyzer through engine/m279/ and emitter/m279_{round,driver}.py instead of the M1/M15 SpinEngine path. md5s populate on next refresh_machines_virtual.",
+      "_note": "M279 = Light & Wonder 'Blazing 777 Triple Double Jackpot Wild \u2014 Nudging Stacks' archetype + Asian-market collect-to-wheel feature. The _engine='m279' marker routes virtual_analyzer through engine/m279/ and emitter/m279_{round,driver}.py instead of the M1/M15 SpinEngine path. md5s populate on next refresh_machines_virtual.",
       "modesMd5": {
         "1": {
           "configSummaryMd5": "1d6ce2cb3ce83ee0e6b931f606ecfdd9",

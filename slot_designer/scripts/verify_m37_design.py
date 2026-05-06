@@ -59,8 +59,8 @@ TARGETS = {
 # Per-mode tolerances + bands.
 MODE_TARGETS = {
     1: {
-        "rtp": 95.0, "rtp_tol_pp": 1.5,  # v5 (option b) lands ~93.5% (rounding drift). Band [93.5, 96.5].
-        "hit_lo": 0.14, "hit_hi": 0.21,  # v5 hit 19.73% (R2 super-aggressive bar boost). Band relaxed.
+        "rtp": 95.0, "rtp_tol_pp": 1.0,  # v6: R2 blank x 0.960 -> theoretical 95.42%. Band [94.0, 96.0] (user 2026-05-06: empirical 92.87+/-1 was below target).
+        "hit_lo": 0.14, "hit_hi": 0.21,  # v6 hit 20.06% (R2 super-aggressive bar boost + blank shift).
         "booster_visible_lo": 0.06, "booster_visible_hi": 0.10,
         "grand_lo": 0.0007, "grand_hi": 0.0016,
         "hier_ratio_min": 1.3,
