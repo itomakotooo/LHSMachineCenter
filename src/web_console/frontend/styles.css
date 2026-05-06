@@ -1265,10 +1265,14 @@ button:disabled {
 .bankruptcy-histogram tbody tr.bk-row-survived td:first-child {
   color: #166534;
 }
-.bankruptcy-histogram .bar-cell::after {
+/* Bankruptcy color overrides only apply to single-mode bars. Compare
+   mode keeps the unified slate/indigo palette so all panels read the
+   same — bankruptcy row-type (survived/fastest/normal) is already
+   communicated by the row background tint, not the bar color. */
+.bankruptcy-histogram .bar-cell:not(.bar-cell-cmp)::after {
   background: var(--accent-soft);
 }
-.bankruptcy-histogram tr.bk-row-survived .bar-cell::after {
+.bankruptcy-histogram tr.bk-row-survived .bar-cell:not(.bar-cell-cmp)::after {
   background: #10b981;
   opacity: 0.7;
 }
@@ -1281,7 +1285,7 @@ button:disabled {
 .bankruptcy-histogram tbody tr.bk-row-fastest td:first-child {
   color: #b91c1c;
 }
-.bankruptcy-histogram tr.bk-row-fastest .bar-cell::after {
+.bankruptcy-histogram tr.bk-row-fastest .bar-cell:not(.bar-cell-cmp)::after {
   background: var(--danger);
   opacity: 0.6;
 }
@@ -3701,16 +3705,18 @@ select:focus-visible,
   color: #94a3b8;
 }
 
-/* Bar cell with TWO bars stacked: A is a thin neutral baseline,
-   B is a thicker indigo fill. Heights deliberately asymmetric so
-   "B grew past A" reads at a glance. When the cell ALSO contains
-   stacked text content (Pay ID, Symbol, Payline drilldowns),
-   bars sit on top, A/B value rows below — both share the cell's
-   tabular-nums right-alignment. */
+/* Bar cell with TWO bars stacked. Both bars are EQUAL HEIGHT (5px) and
+   carry the same visual weight — A and B are peers in a comparison, not
+   "primary vs secondary". A reads as muted slate, B as indigo, so the
+   eye can quickly compare endpoint positions. Tight 2px gap keeps the
+   pair visually grouped. The matching A/B tag pills next to the values
+   (cmp-cell-a/cmp-cell-b) carry the same color hue, so eye flow goes:
+   "slate tag → slate bar → slate value" / "indigo tag → indigo bar →
+   indigo value". */
 .bar-cell-cmp {
   position: relative;
   background: transparent !important;
-  padding: 4px 6px !important;
+  padding: 5px 6px !important;
   vertical-align: middle;
   min-width: 100px;
 }
@@ -3718,19 +3724,18 @@ select:focus-visible,
 .bar-cell-cmp::after {
   content: "";
   display: block;
-  border-radius: 2px;
-  margin: 1px 0;
+  height: 5px;
+  border-radius: 3px;
 }
 .bar-cell-cmp::before {
   width: var(--bar, 0%);
-  height: 3px;
-  background: #cbd5e1;
+  background: #94a3b8;       /* slate-400 — visible peer to indigo */
+  margin-bottom: 2px;
 }
 .bar-cell-cmp::after {
   width: var(--bar-b, 0%);
-  height: 6px;
   background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%);
-  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.18);
   margin-bottom: 3px;
 }
 
