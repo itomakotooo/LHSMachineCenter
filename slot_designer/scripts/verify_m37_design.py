@@ -66,8 +66,8 @@ MODE_TARGETS = {
         "hier_ratio_min": 1.3,
         "shape_js_max": 0.05,
     },
-    2: {  # lucky archetype — wild-heavy 2026-05-06 redesign (pure-wild jackpot 102/103/104 boosted)
-        "rtp": 300.0, "rtp_tol_pp": 20.0,
+    2: {  # lucky archetype — wild-heavy redesign + RTP target lock 2026-05-06 (post-reroll-aware analytic)
+        "rtp": 300.0, "rtp_tol_pp": 5.0,  # v3: R2 blank x 1.095 -> post-reroll 299.82%. Band [295.0, 305.0].
         # Hit band relaxed [22, 50]: wild boost (R1+R3 14%) lifts side-wild + pure-wild substitution combos
         # → hit 45-47% acceptable for "lucky archetype" narrative (everything is heat).
         "hit_lo": 0.22, "hit_hi": 0.50,
@@ -78,8 +78,8 @@ MODE_TARGETS = {
         "hier_ratio_min": 1.3,
         "shape_js_max": 0.10,
     },
-    5: {  # super-lucky archetype, derived from mode 2 (base byte-eq except R2 grand)
-        "rtp": 500.0, "rtp_tol_pp": 30.0,
+    5: {  # super-lucky archetype — derived from mode 2 + RTP target lock 2026-05-06 (post-reroll-aware analytic)
+        "rtp": 500.0, "rtp_tol_pp": 10.0,  # bisected R2 grand=125 -> post-reroll 500.68%. Band [490.0, 510.0]. Wider than mode 2 due to jackpot CV.
         "hit_lo": 0.22, "hit_hi": 0.50,
         "booster_visible_lo": 0.16, "booster_visible_hi": 0.26,
         # Mode 5 grand band: dependent on mode 2 grand × bisect-to-RTP-500 factor.
@@ -88,8 +88,8 @@ MODE_TARGETS = {
         "hier_ratio_min": 1.3,
         "shape_js_max": 0.10,
     },
-    7: {  # cut mode, derived from mode 1
-        "rtp": 85.0, "rtp_tol_pp": 1.5,
+    7: {  # cut mode, derived from mode 1 + RTP target lock 2026-05-06 (post-reroll-aware analytic)
+        "rtp": 85.0, "rtp_tol_pp": 1.0,  # v6: R2 blank x 0.984 -> post-reroll 85.00%. Band [84.0, 86.0].
         # Hit band relaxed to [11, 15.5] — cut mode hit naturally tracks mode 1 - ~2-4pp;
         # with mode 1 at 17.7%, mode 7 lands ~14-15% (+ R2 byte-eq mode 1 boost). Acceptable.
         "hit_lo": 0.11, "hit_hi": 0.155,

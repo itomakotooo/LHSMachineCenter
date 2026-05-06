@@ -32,31 +32,31 @@
       421
     ],
     [
-      641,
+      631,
       500,
-      641,
+      631,
       255,
-      428,
+      421,
       150,
-      428,
+      421,
       355,
-      428,
+      421,
       100,
-      215,
+      211,
       150,
-      428,
+      421,
       195,
-      641,
+      631,
       500,
-      641,
+      631,
       150,
-      855,
+      842,
       11,
-      854,
+      842,
       100,
-      215,
+      211,
       150,
-      215,
+      211,
       500
     ],
     [
@@ -89,10 +89,11 @@
     ]
   ],
   "_notes": [
-    "M37 mode 7 v5 — derived from restored mode 1 v5; R1+R3 paying scale × 0.9375.",
-    "R2 own design (pre-v5-bar-boost): booster marginals match mode 1 within ±0.5pp (MODE7-LOCK relaxed).",
-    "M37 mode 7 — RTP-neutral Blank redistribution applied (mechanism B per §15).",
-    "  ratio T1:T2:T3:T4 = 4:3:2:1",
-    "  marginals byte-identical pre/post; only Blank position weights changed."
+    "M37 mode 7 v6 (RTP target 85% lock \u2014 user-feedback 2026-05-06).",
+    "R1+R3 paying scale x 0.9375 cut from mode 1.",
+    "R2 own design + R2 blank x 0.984 (68.03% -> 67.58%) to lift RTP from 84.12% to 85.00%.",
+    "MODE7-LOCK: booster marginals match mode 1 within 0.04pp (well within 0.5pp tolerance).",
+    "M37 mode 7 - RTP-neutral Blank redistribution applied (mechanism B per Section 15).",
+    "  ratio T1:T2:T3:T4 = 4:3:2:1 (standard)"
   ]
 }

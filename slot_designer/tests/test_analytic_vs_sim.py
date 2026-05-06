@@ -96,6 +96,77 @@ def test_m1_cannot_reach_sub_one_bucket():
     )
 
 
+# =============================================================================
+# M37 reroll-block regression — analytic must model `(wild,grand,wild)` reroll
+# =============================================================================
+# Without reroll modeling, mode 5 analytic over-reports by ~2.4pp (combo
+# probability 0.024% × payout 100× = 2.4pp lost when the engine rerolls these
+# spins). Bug 2026-05-06: caught when mode 5 sim consistently landed -3pp
+# below analytic across 5 seeds. Fix: analytic_profile detects reroll_blocks
+# from evaluator.rules and renormalizes (drop blocked combos + scale by
+# 1/(1-P_blocked)). This test pins the post-reroll alignment.
+
+_M37_SPEC = _ROOT / "slot_designer" / "specs" / "M37.spec.json"
+_M37_STRIPS = _ROOT / "slot_designer" / "weights" / "M37" / "reel_strips.json"
+_M37_M5_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M37" / "mode_5" / "weights.json"
+
+
+def test_m37_mode5_analytic_includes_reroll_correction():
+    """Mode 5 has the largest reroll impact in the fleet (P=0.024%, payout
+    100× → 2.4pp). Analytic post-reroll should match engine sim within
+    sampling noise across 5 seeds at 1M each (CV~6.7, stderr√5 ≈ 1.3pp).
+
+    Three guards layered (each catches a different regression mode):
+      1. p_reroll_blocked > 0 — reroll detection working
+      2. total_prob == 1.0 — renormalization applied (without it,
+         total_prob = 1 - P_blocked < 1.0, catching the 'detect but don't
+         renormalize' bug that slips through pure RTP comparison since
+         blocked contribution drop happens to cancel ~half the renorm gap)
+      3. analytic ≈ sim within 2pp — end-to-end empirical alignment
+    """
+    engine, _ = load_engine(_M37_SPEC, _M37_M5_WEIGHTS, strips_path=_M37_STRIPS)
+    prof = analytic_profile(engine)
+
+    # Guard 1: reroll detection must trigger
+    p_blocked = prof.get("p_reroll_blocked", 0)
+    assert p_blocked > 0.0001, (
+        f"M37 mode 5 should have non-trivial reroll P (expected ≥ 0.01%, got {p_blocked*100:.4f}%); "
+        "if this drops to 0, analytic is no longer applying reroll correction"
+    )
+
+    # Guard 2: post-renormalization total_prob must sum to 1.0 (without
+    # renormalization, total_prob = 1 - P_blocked ≈ 0.99976)
+    assert abs(prof["total_prob"] - 1.0) < 1e-9, (
+        f"M37 mode 5 total_prob = {prof['total_prob']:.6f}, expected 1.0 "
+        f"(if this is ~0.99976, reroll renormalization is missing — analytic "
+        f"detected blocked combos but didn't renormalize the surviving ones)"
+    )
+
+    # Guard 3: end-to-end analytic ≈ sim
+    analytic_rtp = prof["rtp_pct"] / 100
+    rtps = [_simulate_rtp(engine, n=1_000_000, seed=s)[0] for s in range(5)]
+    mean_sim = sum(rtps) / len(rtps)
+    diff_pp = abs(mean_sim - analytic_rtp) * 100
+    assert diff_pp < 2.0, (
+        f"5-seed mean sim RTP {mean_sim*100:.3f}% vs reroll-aware analytic "
+        f"{analytic_rtp*100:.3f}%, Δ={diff_pp:.3f}pp > 2.0pp "
+        f"(seeds: {[f'{r*100:.2f}' for r in rtps]})"
+    )
+
+
+def test_m37_mode1_no_reroll_impact():
+    """Mode 1 has the same reroll_blocks rule but the (wild,grand,wild)
+    probability is tiny (P~3.5e-7) → reroll correction must be near-zero
+    so it doesn't artificially inflate mode 1 metrics."""
+    M1_W = _ROOT / "slot_designer" / "weights" / "M37" / "mode_1" / "weights.json"
+    engine, _ = load_engine(_M37_SPEC, M1_W, strips_path=_M37_STRIPS)
+    prof = analytic_profile(engine)
+    p_blocked = prof.get("p_reroll_blocked", 0)
+    assert p_blocked < 1e-5, (
+        f"M37 mode 1 P_blocked should be tiny (<0.001%), got {p_blocked*100:.6f}%"
+    )
+
+
 if __name__ == "__main__":
     import inspect
 

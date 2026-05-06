@@ -32,31 +32,31 @@
       420
     ],
     [
-      618,
+      677,
       700,
-      618,
+      677,
       763,
-      310,
+      339,
       80,
-      310,
+      339,
       1025,
-      310,
+      339,
       60,
-      155,
+      169,
       80,
-      309,
+      339,
       563,
-      618,
+      677,
       700,
-      618,
+      677,
       80,
-      772,
+      846,
       15,
-      772,
+      846,
       60,
-      155,
+      169,
       80,
-      155,
+      169,
       360
     ],
     [
@@ -89,9 +89,11 @@
     ]
   ],
   "_notes": [
-    "M37 mode 2 final: wild 14% R1+R3 / booster +25% / grand 0.15% / high7 cut to 12% / R1+R3 — pure-wild 102/103/104 boosted, tail reduced.",
-    "M37 mode 2 — RTP-neutral Blank redistribution applied (mechanism B per §15).",
-    "  ratio T1:T2:T3:T4 = 5:4:2:1",
-    "  marginals byte-identical pre/post; only Blank position weights changed."
+    "M37 mode 2 v3 (RTP target 300% lock \u2014 user-feedback 2026-05-06).",
+    "Wild-heavy lucky archetype: R1+R3 wild ~14.6%, R2 grand 0.138%, pure-wild jackpot share ~7.6%.",
+    "R2 blank scaled x 1.095 (55.61% -> 57.94%) to bring RTP from 314.52% to 300.11%.",
+    "Targets: theoretical RTP 300.11%, hit 44.99%, ge200+ tail 17.84% (5.94% share).",
+    "M37 mode 2 - RTP-neutral Blank redistribution applied (mechanism B per Section 15).",
+    "  ratio T1:T2:T3:T4 = 5:4:2:1 (lucky tilt)"
   ]
 }

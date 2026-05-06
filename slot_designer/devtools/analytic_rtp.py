@@ -73,6 +73,17 @@ def compute_reel_marginal(reel) -> dict[str, float]:
     return {s: w / total for s, w in weights.items()}
 
 
+def _is_blocked_combo(combo: tuple[str, ...], reroll_blocks: list) -> bool:
+    """Match combo against reroll_blocks pattern list. None in pattern = wildcard."""
+    if not reroll_blocks:
+        return False
+    for rule in reroll_blocks:
+        pattern = rule.pattern
+        if all(p is None or p == s for p, s in zip(pattern, combo)):
+            return True
+    return False
+
+
 def enumerate_payline(engine: SpinEngine) -> Iterable[tuple[float, int | None, float]]:
     """Yield (probability, pay_id_or_None, multiplier) for every payline combo.
 
@@ -105,6 +116,22 @@ def enumerate_payline(engine: SpinEngine) -> Iterable[tuple[float, int | None, f
 
 
 def analytic_profile(engine: SpinEngine) -> dict:
+    """Closed-form RTP/bucket/pay_id profile, with reroll-block correction.
+
+    If the engine declares ``reroll_blocks`` (M37 (wild,grand,wild)), the
+    engine re-draws those spins until a non-blocked combo lands. In steady
+    state this means the post-reroll P'(C) = P(C)/(1−P_blocked) for C not
+    blocked, 0 otherwise. All return values reflect post-reroll metrics so
+    they match what the simulator + production both produce. Without this
+    correction, mode 5 analytic over-reported by ~2.4pp (combo P=0.024%,
+    payout 100×, contribution 2.4pp lost when rerolled).
+    """
+    reroll_blocks = (
+        engine.evaluator.rules.reroll_blocks
+        if getattr(engine.evaluator, "rules", None) is not None
+        else []
+    )
+
     rtp = 0.0
     rtp_sq = 0.0
     hit_prob = 0.0
@@ -113,19 +140,51 @@ def analytic_profile(engine: SpinEngine) -> dict:
     pay_prob: dict[str, float] = defaultdict(float)
     pay_rtp: dict[str, float] = defaultdict(float)
     total_prob = 0.0
+    p_blocked = 0.0  # for reroll renormalization
 
-    for prob, pay_id, mult in enumerate_payline(engine):
+    # Re-enumerate so we can check combos against reroll_blocks (the
+    # enumerate_payline generator already lost the combo info).
+    if len(engine.payline_positions) != engine.n_cols:
+        raise NotImplementedError(
+            "analytic_profile assumes 1 payline per column (M1-style)."
+        )
+    reel_marginals = [compute_reel_marginal(r) for r in engine.reels]
+    symbols_per_reel = [list(m.keys()) for m in reel_marginals]
+    import itertools
+    for combo in itertools.product(*symbols_per_reel):
+        prob = 1.0
+        for marg, sym in zip(reel_marginals, combo):
+            prob *= marg[sym]
+        if prob == 0:
+            continue
+        if _is_blocked_combo(combo, reroll_blocks):
+            p_blocked += prob
+            continue  # blocked: contributes nothing to post-reroll metrics
         total_prob += prob
+        result = engine.evaluator.evaluate_payline(list(combo))
+        if result is None:
+            continue
+        mult = float(result.multiplier)
         rtp += prob * mult
         rtp_sq += prob * mult * mult
-        if pay_id is not None:
-            hit_prob += prob
-            pay_prob[str(pay_id)] += prob
-            pay_rtp[str(pay_id)] += prob * mult  # actual contribution incl. wild boost
-            bucket = multiplier_to_bucket(mult)
-            if bucket is not None:
-                bucket_prob[bucket] += prob
-                bucket_rtp[bucket] += prob * mult
+        hit_prob += prob
+        pay_prob[str(result.pay_id)] += prob
+        pay_rtp[str(result.pay_id)] += prob * mult
+        bucket = multiplier_to_bucket(mult)
+        if bucket is not None:
+            bucket_prob[bucket] += prob
+            bucket_rtp[bucket] += prob * mult
+
+    # Renormalize post-reroll (safe no-op when p_blocked == 0)
+    if p_blocked > 0:
+        renorm = 1.0 / (1.0 - p_blocked)
+        rtp *= renorm
+        rtp_sq *= renorm
+        hit_prob *= renorm
+        total_prob *= renorm  # should now sum to 1.0
+        for d in (bucket_prob, bucket_rtp, pay_prob, pay_rtp):
+            for k in d:
+                d[k] *= renorm
 
     # Var(multiplier) = E[M²] - E[M]²; std_return_x matches analyzer's
     # player_impact.volatility.std_return_x (= σ of per-spin multiplier)
@@ -146,6 +205,7 @@ def analytic_profile(engine: SpinEngine) -> dict:
         "pay_hits": dict(pay_prob),
         "pay_rtp": dict(pay_rtp),  # per-pay_id RTP contribution (probability-weighted multiplier sum, includes wild-substitution boost)
         "total_prob": total_prob,  # sanity: should equal 1.0
+        "p_reroll_blocked": p_blocked,
     }
 
 

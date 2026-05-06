@@ -109,7 +109,7 @@
       "_strips_path": "slot_designer/weights/M37/reel_strips.json",
       "_weights_path_template": "slot_designer/weights/M37/mode_{mode}/weights.json",
       "_status": "all 4 modes designed 2026-05-05; verify 52/52 GREEN",
-      "configSummaryMd5": "36384461c31a3411a9aafa46152c1c06",
+      "configSummaryMd5": "3d3e6063f2e485f891914d01d6b85851",
       "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4",
       "modesMd5": {
         "1": {
@@ -117,15 +117,15 @@
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "2": {
-          "configSummaryMd5": "6091ea6690632897b9c92964ab3bbda6",
+          "configSummaryMd5": "94dbc43324267d40165f540191bc7c48",
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "5": {
-          "configSummaryMd5": "897ffc7bf55fe065c48b10a2a037cb21",
+          "configSummaryMd5": "82c1738abb45b5a6f038c931b20a2307",
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "7": {
-          "configSummaryMd5": "9c2342650318726d7f81c36221b504cf",
+          "configSummaryMd5": "649e82243baa72c92d730cf588c24956",
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         }
       }
