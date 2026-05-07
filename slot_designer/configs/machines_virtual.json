@@ -109,7 +109,7 @@
       "_strips_path": "slot_designer/weights/M37/reel_strips.json",
       "_weights_path_template": "slot_designer/weights/M37/mode_{mode}/weights.json",
       "_status": "all 4 modes designed 2026-05-05; verify 52/52 GREEN",
-      "configSummaryMd5": "3d3e6063f2e485f891914d01d6b85851",
+      "configSummaryMd5": "6c7921ac5da6266b4d66f461518d5d99",
       "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4",
       "modesMd5": {
         "1": {
@@ -117,11 +117,11 @@
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "2": {
-          "configSummaryMd5": "94dbc43324267d40165f540191bc7c48",
+          "configSummaryMd5": "dc2902e4e27dde805e3f42ded2bb7673",
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "5": {
-          "configSummaryMd5": "82c1738abb45b5a6f038c931b20a2307",
+          "configSummaryMd5": "92e7f8771f3e58f153d30a1d1915b451",
           "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
         },
         "7": {

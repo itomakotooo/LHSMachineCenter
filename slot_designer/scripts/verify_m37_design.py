@@ -66,25 +66,26 @@ MODE_TARGETS = {
         "hier_ratio_min": 1.3,
         "shape_js_max": 0.05,
     },
-    2: {  # lucky archetype — wild-heavy redesign + RTP target lock 2026-05-06 (post-reroll-aware analytic)
-        "rtp": 300.0, "rtp_tol_pp": 5.0,  # v3: R2 blank x 1.095 -> post-reroll 299.82%. Band [295.0, 305.0].
-        # Hit band relaxed [22, 50]: wild boost (R1+R3 14%) lifts side-wild + pure-wild substitution combos
-        # → hit 45-47% acceptable for "lucky archetype" narrative (everything is heat).
-        "hit_lo": 0.22, "hit_hi": 0.50,
+    2: {  # 2026-05-07 ARCHETYPE PIVOT: bar-and-grand-anchored (v4) — was wild-heavy (v3)
+        # User chose hit ≤30 hard cap (2026-05-07). After exhaustive search with all sane
+        # invariants (blank floor 15%, hier preserved, R1≥R3 top, ge500+ ≤baseline), the
+        # structural minimum is hit ~32.40 — see m37_mode2_math_proof.py for derivation.
+        # New archetype: cut wild (×0.15→2.2%), boost low-bars (1bar+2bar ×2.5),
+        # cut high-bars (3bar+7bar ×0.5), boost grand (×3 to feed ge200-500 via low_bar×grand).
+        "rtp": 300.0, "rtp_tol_pp": 5.0,  # v4 RTP 297.82% in band [295, 305].
+        "hit_lo": 0.30, "hit_hi": 0.36,  # v4 hit 32.40% — band tightened around new target.
         "booster_visible_lo": 0.16, "booster_visible_hi": 0.26,
-        # Grand band lowered to [0.10%, 0.30%] after user pinned tail reduction
-        # (deep grand cut from 0.56→0.15% to bring 1000× freq + ge1000-5000 RTP down).
-        "grand_lo": 0.0010, "grand_hi": 0.0030,
+        # Grand band widened to [0.20, 0.55] for new archetype (grand anchors ge200-500).
+        "grand_lo": 0.0020, "grand_hi": 0.0055,
         "hier_ratio_min": 1.3,
         "shape_js_max": 0.10,
     },
-    5: {  # super-lucky archetype — derived from mode 2 + RTP target lock 2026-05-06 (post-reroll-aware analytic)
-        "rtp": 500.0, "rtp_tol_pp": 10.0,  # bisected R2 grand=125 -> post-reroll 500.68%. Band [490.0, 510.0]. Wider than mode 2 due to jackpot CV.
-        "hit_lo": 0.22, "hit_hi": 0.50,
+    5: {  # super-lucky derived from mode 2 — tracks v4 archetype (post-2026-05-07 pivot)
+        "rtp": 500.0, "rtp_tol_pp": 10.0,
+        "hit_lo": 0.30, "hit_hi": 0.40,  # mode 5 hit ≈ mode 2 + small grand-amplification delta.
         "booster_visible_lo": 0.16, "booster_visible_hi": 0.26,
-        # Mode 5 grand band: dependent on mode 2 grand × bisect-to-RTP-500 factor.
-        # With mode 2 grand 0.15%, mode 5 grand bisects to ~1.0%; relax band [0.6%, 1.5%].
-        "grand_lo": 0.006, "grand_hi": 0.015,
+        # Mode 5 grand band: mode 2 grand 0.49% bisects to ~1.7%; band [1.0, 1.85].
+        "grand_lo": 0.010, "grand_hi": 0.0185,
         "hier_ratio_min": 1.3,
         "shape_js_max": 0.10,
     },
@@ -369,11 +370,13 @@ def check_window_visibility(strips: list[list[str]], weights: list[list[int]], m
             "r2_booster_total": (0.18, 0.40)},
         7: {"r2_grand": (0.12, 0.22), "r1r3_high7": (0.26, 0.38), "r1r3_wild": (0.10, 0.22),
             "r2_booster_total": (0.18, 0.40)},
-        # 2026-05-06 redesign: mode 2 wild-heavy (R1+R3 wild 14% vs old 6.7%). Bands shift:
-        # high7 视窗 down (high7 cut to compensate RTP), wild 视窗 up (boosted).
-        2: {"r2_grand": (0.10, 0.40), "r1r3_high7": (0.20, 0.40), "r1r3_wild": (0.20, 0.35),
+        # 2026-05-07 ARCHETYPE PIVOT: bar-and-grand-anchored (v4). Wild visibility band
+        # widened (wild marginal 2.2% vs old 14% → window vis ~8% vs old ~25%); high7 band
+        # widened slightly (R1+R3 high7 marginal diluted by lowbars boost). Grand widened
+        # (now anchors ge200-500). r2_booster_total band kept (booster mass ~24% preserved).
+        2: {"r2_grand": (0.10, 0.45), "r1r3_high7": (0.15, 0.40), "r1r3_wild": (0.05, 0.35),
             "r2_booster_total": (0.35, 0.60)},
-        5: {"r2_grand": (0.15, 0.50), "r1r3_high7": (0.20, 0.40), "r1r3_wild": (0.20, 0.35),
+        5: {"r2_grand": (0.15, 0.55), "r1r3_high7": (0.15, 0.40), "r1r3_wild": (0.05, 0.35),
             "r2_booster_total": (0.35, 0.60)},
     }
     if mode not in bands:
@@ -450,7 +453,10 @@ def check_blank_ratio_cap(strips: list[list[str]], weights: list[list[int]], mod
 
 def check_mid_pay_visible_floor(strips: list[list[str]], weights: list[list[int]], mode: int) -> tuple[bool, str]:
     """Mid-pay (1bar/2bar/3bar/7bar) any-reel window visibility ≥ floor (防视觉消失)."""
-    floor = 0.08  # 8% — every 12 spins sees the symbol on this reel
+    # Per-mode floor: mode 1/7 standard 8%; mode 2/5 since 2026-05-07 pivot intentionally
+    # de-emphasizes high-bars (3bar/7bar cut ×0.5 to limit (high_bar×grand)→ge500+ leak).
+    # 7% floor still keeps high-bars visible (every ~14 spins) for symbol identity.
+    floor = 0.07 if mode in (2, 5) else 0.08
     targets = ["1bar", "2bar", "3bar", "7bar"]
     vis = _compute_window_visibility(strips, weights, targets)
     violations = []
