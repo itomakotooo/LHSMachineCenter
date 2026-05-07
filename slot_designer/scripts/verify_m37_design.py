@@ -66,26 +66,25 @@ MODE_TARGETS = {
         "hier_ratio_min": 1.3,
         "shape_js_max": 0.05,
     },
-    2: {  # 2026-05-07 ARCHETYPE PIVOT: bar-and-grand-anchored (v4) — was wild-heavy (v3)
-        # User chose hit ≤30 hard cap (2026-05-07). After exhaustive search with all sane
-        # invariants (blank floor 15%, hier preserved, R1≥R3 top, ge500+ ≤baseline), the
-        # structural minimum is hit ~32.40 — see m37_mode2_math_proof.py for derivation.
-        # New archetype: cut wild (×0.15→2.2%), boost low-bars (1bar+2bar ×2.5),
-        # cut high-bars (3bar+7bar ×0.5), boost grand (×3 to feed ge200-500 via low_bar×grand).
-        "rtp": 300.0, "rtp_tol_pp": 5.0,  # v4 RTP 297.82% in band [295, 305].
-        "hit_lo": 0.30, "hit_hi": 0.36,  # v4 hit 32.40% — band tightened around new target.
-        "booster_visible_lo": 0.16, "booster_visible_hi": 0.26,
-        # Grand band widened to [0.20, 0.55] for new archetype (grand anchors ge200-500).
-        "grand_lo": 0.0020, "grand_hi": 0.0055,
+    2: {  # 2026-05-07 v5: BALANCED-BARS archetype (user-accepted re-balance from v4 imbalance)
+        # v4 had bars 30/28/5.7/4.4 — ratio 6.6× (1bar/2bar dominated). User flagged
+        # "明显失衡". v5 rebalances to 19/18/16/12 — ratio 1.32× (close to v3 baseline 1.16×).
+        # Trade: ge500+ grew from 4.25% → 8.53% (peak shifts ge20-50 → ge100-200).
+        # Booster mass slightly higher (27% vs old 23%) due to R2 blank shrink offsetting sBoost cut.
+        "rtp": 300.0, "rtp_tol_pp": 5.0,  # v5 RTP 299.88% — center of band.
+        "hit_lo": 0.30, "hit_hi": 0.36,  # v5 hit 32.31%.
+        "booster_visible_lo": 0.16, "booster_visible_hi": 0.28,  # widened upper for v5 (26%→28%).
+        # Grand band [0.20, 0.65] — v5 grand 0.59% (was 0.49% in v4, 0.146% in v3).
+        "grand_lo": 0.0020, "grand_hi": 0.0065,
         "hier_ratio_min": 1.3,
         "shape_js_max": 0.10,
     },
-    5: {  # super-lucky derived from mode 2 — tracks v4 archetype (post-2026-05-07 pivot)
+    5: {  # super-lucky derived from mode 2 v5 — tracks balanced-bars archetype.
         "rtp": 500.0, "rtp_tol_pp": 10.0,
-        "hit_lo": 0.30, "hit_hi": 0.40,  # mode 5 hit ≈ mode 2 + small grand-amplification delta.
-        "booster_visible_lo": 0.16, "booster_visible_hi": 0.26,
-        # Mode 5 grand band: mode 2 grand 0.49% bisects to ~1.7%; band [1.0, 1.85].
-        "grand_lo": 0.010, "grand_hi": 0.0185,
+        "hit_lo": 0.30, "hit_hi": 0.40,
+        "booster_visible_lo": 0.16, "booster_visible_hi": 0.28,
+        # Mode 5 grand: mode 2 grand 0.59% × bisect ~3.21 → 1.87%; band [1.0, 2.0].
+        "grand_lo": 0.010, "grand_hi": 0.020,
         "hier_ratio_min": 1.3,
         "shape_js_max": 0.10,
     },
