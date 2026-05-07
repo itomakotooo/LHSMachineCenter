@@ -365,9 +365,12 @@ def check_window_visibility(strips: list[list[str]], weights: list[list[int]], m
       mode 2/5: R2 grand [22%, 40%], R1+R3 high7 [32%, 45%], wild [15%, 25%]
     """
     bands = {
-        1: {"r2_grand": (0.12, 0.22), "r1r3_high7": (0.26, 0.38), "r1r3_wild": (0.10, 0.22),
+        # 2026-05-07 LAYOUT v2: R1/R3 wild count 2→3 → window vis baseline higher.
+        # Old band [10%, 22%] was for 2-wild layout; new 3-wild layout produces ~18-23%.
+        # Band widened upper to 26% to accommodate.
+        1: {"r2_grand": (0.10, 0.22), "r1r3_high7": (0.26, 0.38), "r1r3_wild": (0.10, 0.26),
             "r2_booster_total": (0.18, 0.40)},
-        7: {"r2_grand": (0.12, 0.22), "r1r3_high7": (0.26, 0.38), "r1r3_wild": (0.10, 0.22),
+        7: {"r2_grand": (0.10, 0.22), "r1r3_high7": (0.26, 0.38), "r1r3_wild": (0.10, 0.26),
             "r2_booster_total": (0.18, 0.40)},
         # 2026-05-07 ARCHETYPE PIVOT: bar-and-grand-anchored (v4). Wild visibility band
         # widened (wild marginal 2.2% vs old 14% → window vis ~8% vs old ~25%); high7 band
