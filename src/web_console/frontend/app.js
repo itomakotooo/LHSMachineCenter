@@ -1594,8 +1594,100 @@ function showMachineDetail(machineName) {
     </div>
     <div id="rwtree" class="rwtree"><div class="muted">加载 rawdata × report 树…</div></div>`;
 
+  // Reveal the danger zone footer for this focused machine.
+  _renderMachineDangerZone(machineName);
+
   // Load + render the rawdata × report tree async.
   renderRawdataReportTree(machineName);
+}
+
+// Render / re-arm the machine-detail "danger zone" wipe-all button.
+// The HTML lives in index.html; we just toggle visibility, freshen
+// the inline status copy (resets per-focus), and bind a single click
+// handler. The handler is removed before re-binding so re-rendering
+// the detail panel for a new machine doesn't stack listeners.
+function _renderMachineDangerZone(machineName) {
+  const zone = byId("machineDangerZone");
+  const btn = byId("machineWipeAllBtn");
+  const status = byId("machineDangerZoneStatus");
+  if (!zone || !btn) return;
+  zone.classList.remove("hidden");
+  if (status) status.textContent = "";
+  // Replace handler each time focus changes (cheapest way to drop the
+  // previous closure over the previous machine name).
+  const fresh = btn.cloneNode(true);
+  btn.parentNode.replaceChild(fresh, btn);
+  fresh.disabled = _isAnyBusy();
+  fresh.addEventListener("click", () => _onClickWipeAllMachineData(machineName));
+}
+
+// Two-stage confirmation flow: confirm() the destructive intent, then
+// prompt() for the machine name to make accidental mass-wipe nearly
+// impossible. After success, refresh every surface that derives from
+// rawdata / reports / runs so the UI doesn't lie about what's gone.
+async function _onClickWipeAllMachineData(machineName) {
+  const status = byId("machineDangerZoneStatus");
+  const btn = byId("machineWipeAllBtn");
+  // Stage 1 — quick confirm.
+  const stage1 = confirm(
+    `即将清空 ${machineName} 的所有数据：\n\n`
+    + `  · 所有 mode 的 rawdata（所有 chunks）\n`
+    + `  · 所有 reports（每个 mode 的所有版本）\n`
+    + `  · 该机台所有运行历史记录\n\n`
+    + `此操作不可撤销。继续？`
+  );
+  if (!stage1) return;
+  // Stage 2 — type the machine name to confirm.
+  const typed = prompt(
+    `请输入机台名 "${machineName}" 以确认清空（区分大小写）：`,
+  );
+  if (typed == null) return;
+  if (typed.trim() !== machineName) {
+    if (status) status.textContent = `已取消：输入 "${typed}" 与 "${machineName}" 不匹配。`;
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = `正在清空 ${machineName}…`;
+  try {
+    const resp = await fetch(
+      `/api/machines/${encodeURIComponent(machineName)}/all-data`,
+      { method: "DELETE" },
+    );
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${resp.status}`);
+    }
+    const body = await resp.json();
+    const summary = `✓ ${machineName} 已清空：删除 ${body.deleted_chunks || 0} chunks · `
+      + `${body.deleted_report_versions || 0} report 版本 · `
+      + `${body.runs_deleted || 0} 运行记录。`;
+    if (status) status.textContent = summary;
+    try {
+      pushClientEvent({ level: "ok", text: summary });
+    } catch (_) {}
+
+    // Drop focus + currentRun so the detail pane resets cleanly
+    // (otherwise the now-empty rwtree shows a stale "无 fresh report"
+    //  hint while panels keep rendering KPIs from an orphan summary).
+    state.focusedMachine = null;
+    state.currentRunId = null;
+
+    // Refresh every surface that derives from rawdata / reports / runs.
+    try {
+      const mSummary = await apiGet("/api/machines/summary");
+      state.machinesSummary = mSummary;
+    } catch (_) {}
+    try { await refreshCache(); } catch (_) {}
+    try { await refreshRunList(false); } catch (_) {}
+    try { renderMachineCatalog(); } catch (_) {}
+    try { renderRtpModeBar(); } catch (_) {}
+    try { renderFleetOverview(); } catch (_) {}
+    try { renderDetailPane(); } catch (_) {}
+  } catch (err) {
+    if (status) status.textContent = `✗ 清空失败：${String(err.message || err)}`;
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ── Rawdata × Report tree (step 4–5) ────────────────────────────────

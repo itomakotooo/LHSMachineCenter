@@ -1696,6 +1696,58 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Per-machine danger zone — wipes ALL rawdata + reports + run rows
+   for the focused machine. Pinned to the bottom of the detail panel
+   with a clear red border so it's visually distinct from the rwtree
+   above (which has its own per-cell delete buttons with smaller
+   blast radius). Pattern mirrors GitHub's repo-settings danger zone. */
+.machine-danger-zone {
+  margin-top: 16px;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #dc2626;
+  border-radius: 6px;
+  background: #fef2f2;
+  padding: 0;
+  overflow: hidden;
+}
+.danger-zone-head {
+  background: #fee2e2;
+  color: #7f1d1d;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid #fecaca;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.danger-zone-icon {
+  font-size: 14px;
+}
+.danger-zone-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+}
+.danger-zone-text {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.danger-zone-line {
+  font-size: 13px;
+  color: #7f1d1d;
+  line-height: 1.45;
+}
+.machine-danger-zone .danger-btn {
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  font-size: 13px;
+}
+
 /* Fleet mechanics */
 .fleet-mechanics {
   margin-top: 6px;

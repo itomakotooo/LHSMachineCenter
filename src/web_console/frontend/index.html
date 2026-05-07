@@ -410,6 +410,24 @@
                 <div id="machineConfigStatus" class="config-override-status muted small"></div>
               </div>
               <div id="machineDetailBody"></div>
+              <!-- Danger zone — wipes ALL rawdata (every mode) + ALL
+                   reports + every runs DB row for the focused machine.
+                   Visually segregated so a stray click can't fire it;
+                   the handler also requires typing the machine name to
+                   confirm. Hidden until a machine is focused. -->
+              <div id="machineDangerZone" class="machine-danger-zone hidden">
+                <div class="danger-zone-head">
+                  <span class="danger-zone-icon" aria-hidden="true">⚠</span>
+                  <span data-i18n="dangerZoneTitle">高危操作</span>
+                </div>
+                <div class="danger-zone-body">
+                  <div class="danger-zone-text">
+                    <div class="danger-zone-line" data-i18n="dangerZoneWipeDesc">清空该机台的所有 rawdata（所有 mode）、所有 reports，以及对应的运行历史记录。此操作不可撤销。</div>
+                    <div id="machineDangerZoneStatus" class="muted small"></div>
+                  </div>
+                  <button id="machineWipeAllBtn" class="danger-btn" type="button" data-i18n="btnWipeMachineData">🗑 清空机台所有数据</button>
+                </div>
+              </div>
             </section>
 
             <!-- Report comparison output:

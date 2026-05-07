@@ -6280,6 +6280,106 @@ def create_app(
         finally:
             ops.release()
 
+    @app.delete("/api/machines/{machine}/all-data")
+    def delete_machine_all_data(machine: str) -> dict[str, Any]:
+        """Wipe ALL rawdata + reports + runs rows for a single machine.
+
+        Catastrophic per-machine reset for the focused-detail panel's
+        danger-zone button. Steps:
+          1. ``delete_rawdata(machine, mode=None, force=True)`` — nuke
+             every mode's chunks + index entries.
+          2. ``shutil.rmtree(reports/<machine>)`` — drop every mode's
+             versions + index.json + latest.json.
+          3. Drop every ``runs`` row whose machine column matches.
+
+        Acquires the ops mutex under a dedicated tag so concurrent
+        sample / generate-report / batch-regen can't race the rmtree.
+        Idempotent: returns ``ok=true`` even when nothing exists for
+        the machine.
+        """
+        if not ops.acquire("delete_machine_all_data"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"busy: {ops.snapshot()['operation']!s}",
+            )
+        try:
+            # Refuse if any run for this machine is still running —
+            # we'd otherwise yank rawdata/reports out from under a
+            # live sample / generate-report. The ops mutex above
+            # blocks NEW ops but the DB may still hold a row from a
+            # run that started before this endpoint acquired the lock.
+            machine_runs = [
+                r for r in store.list_runs(limit=100000)
+                if str(r.get("machine") or "") == machine
+            ]
+            running = [
+                r for r in machine_runs
+                if str(r.get("status", "")).lower() == "running"
+            ]
+            if running:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"机台 {machine} 有 {len(running)} 个运行中的 run，"
+                        "请先取消后再清空。"
+                    ),
+                )
+
+            # Step 1: count chunks BEFORE delete (force=True returns
+            # the legacy -1 sentinel — useless for the UI's "deleted N
+            # chunks" copy), then nuke. Count is best-effort: if the
+            # rawdata dir is missing we fall through with 0.
+            machine_rawdata_dir = rd_root / machine
+            deleted_chunks = 0
+            if machine_rawdata_dir.is_dir():
+                deleted_chunks = sum(
+                    1 for _ in machine_rawdata_dir.rglob("chunk_*.json")
+                )
+            delete_rawdata(
+                machine, mode=None, rawdata_root=rd_root,
+                machines_config=mc, force=True,
+            )
+
+            # Step 2: reports tree.
+            machine_reports_dir = rr / machine
+            deleted_versions = 0
+            if machine_reports_dir.is_dir():
+                for mode_dir in machine_reports_dir.iterdir():
+                    if not mode_dir.is_dir():
+                        continue
+                    versions_dir = mode_dir / "versions"
+                    if versions_dir.is_dir():
+                        deleted_versions += sum(
+                            1 for v in versions_dir.iterdir() if v.is_dir()
+                        )
+                shutil.rmtree(machine_reports_dir, ignore_errors=True)
+
+            # Step 3: drop every runs row for this machine. Use the
+            # store's own delete_run so cascade children
+            # (interpretations) follow consistently — disk artifacts
+            # are already gone above, so missing-file errors there
+            # are best-effort and don't matter.
+            runs_deleted = 0
+            for r in machine_runs:
+                rid = str(r.get("run_id") or "")
+                if not rid:
+                    continue
+                try:
+                    if store.delete_run(rid):
+                        runs_deleted += 1
+                except Exception:  # noqa: BLE001
+                    pass
+
+            return {
+                "ok": True,
+                "machine": machine,
+                "deleted_chunks": deleted_chunks,
+                "deleted_report_versions": deleted_versions,
+                "runs_deleted": runs_deleted,
+            }
+        finally:
+            ops.release()
+
     @app.get("/api/settings")
     def get_settings() -> dict[str, Any]:
         """Operator-tunable knobs persisted in state/console/settings.json."""
