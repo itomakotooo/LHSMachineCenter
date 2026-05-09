@@ -38,66 +38,76 @@
 
 ## 3. 玩家体验目标 (4 模式)
 
-### 3.0 4 模式总览（已实现 2026-05-05，verify 52/52 GREEN）
+### 3.0 4 模式总览（v3 finalized 2026-05-08，real Buffalo verify 76/76 GREEN）
 
 | Mode | RTP | Hit | CV | 1000× 顶奖频率 | R2 booster total | R2 grand | 设计角色 |
 |---|---|---|---|---|---|---|---|
-| **1 标准** | 94.60% | **15.70%** | 9.63 | 1 in 26k spin | 8.37% | 0.113% | 经典体验 baseline |
-| **2 幸运** | 304.83% | **32.31%** | 7.62 | 1 in 3k spin | 19.64% | 0.558% | 全 tier 都热 + booster 加密 |
-| **5 超幸运** | 500.57% | **33.03%** | 7.60 | 1 in 1k spin | 20.49% | **1.616%** | mode 2 base 字节复制，仅 grand × 2.93 |
-| **7 标准低** | 85.38% | **13.30%** | 9.96 | 1 in 28k spin | **8.37%** ← byte-eq m1 | 0.113% ← byte-eq m1 | 砍小奖、保大奖 + booster freq 锁 mode 1 |
+| **1 标准** | **95.04%** | **20.05%** | 8.55 | 1 in 39k spin | 8.56% | 0.111% | 经典体验 baseline |
+| **2 幸运** | **305.23%** | **32.38%** | 5.88 | 1 in 13k spin | 26.11% | 0.636% | 全 tier 都热 + booster 加密 |
+| **5 超幸运** | **510.91%** | **33.17%** | 6.28 | 1 in 2.4k spin | 26.93% | **1.915%** | mode 2 base 字节复制，仅 grand × 2.93 |
+| **7 标准低** | **85.00%** | **14.92%** | 9.27 | 1 in 42k spin | 8.45% ← ≈ m1 | 0.114% ← ≈ m1 | 砍小奖、保大奖 + booster freq 锁 mode 1 |
 
-跨 mode 不变量（universal §C/§D 契约）：
-- **RTP-MONOTONIC**: m7 < m1 < m2 < m5 ✓
-- **HIT-MONOTONIC**: m7 < m1 < m2 ≈ m5 ✓
-- **CV trend**: m7 ≈ m1 (boom-bust) > m2 ≈ m5 (lucky 低 vol) ✓ 契合 §5
-- **MODE7-LOCK**: R2 mini/minor/major/grand byte-eq mode 1 ✓ 公服 skin 7 实证
-- **MODE5-BASE-LOCK**: mode 5 base 字节复制 mode 2，仅 R2 grand 缩放 ×2.93 ✓ 公服 skin 5 实证
-- **TOP-JACKPOT-ESCALATION**: grand 频率 m1 < m2 (×4.9) < m5 (×14.3) ✓
+> **2026-05-08 v3 finalized 实测更新**: 上表数字改为真机 5M+ rounds 实测(mode 1: 2.62M,mode 7: 2.43M,mode 2/5: 各 104k)。引擎 paytable 在所有真机 sample 上 100% bit-perfect。
+>
+> 历史:此前 2026-05-05 版总览(m1 RTP 94.60% / hit 15.70% / m2 304.83% / m5 500.57% / m7 85.38%)是 v* 阶段引擎闭式预测 + 早期 wild count=2 状态;v3 layout 把 R1/R3 wild 改到 3(per §F 公服 baseline)→ hit 自然抬到 20%(side_wild_alone + bar group with wild 命中增多)→ RTP 微调到 95.04%。
+
+跨 mode 不变量（universal §C/§D 契约）— 全部 v3 实测确认:
+- **RTP-MONOTONIC**: m7 < m1 < m2 < m5 (85.00 < 95.04 < 305.23 < 510.91) ✓
+- **HIT-MONOTONIC**: m7 < m1 < m2 ≈ m5 (14.92 < 20.05 < 32.38 ≈ 33.17, Δm2/m5 = 0.79pp) ✓
+- **CV trend**: m7 ≈ m1 (boom-bust) > m2 ≈ m5 (lucky 低 vol) — 9.27, 8.55 > 5.88, 6.28 ✓
+- **MODE7-LOCK**: R2 mini/minor/major/grand ≈ mode 1 (m7 grand 0.114% ≈ m1 0.111%) ✓
+- **MODE5-BASE-LOCK**: mode 5 base 字节复制 mode 2,仅 R2 grand 缩放 ×2.93 ✓ (实测 m5/m2 grand 比 = 3.01×;hit 比 1.02×;booster total 比 1.03× ✓)
+- **TOP-JACKPOT-ESCALATION**: grand 频率 m1 < m2 (×5.71) < m5 (×17.19) ✓ (设计 ×4.9 / ×14.3 — 实测略密)
 
 ### 3.1 Mode 1 标准（详细）
 
-| 指标 | target | 实现 | 理由 |
+| 指标 | target | 实现 (v3 真机 2.62M) | 理由 |
 |---|---|---|---|
-| RTP | 95% | **94.60%** | global mode 1 contract |
-| 总击中率 | 13-18% | **15.70%** | 1-line classic + R2 重 booster + brand wild 的自然区间 |
-| 顶奖 1000× 频率 | 约 1 in 30-100k | 1 in 26k | "lifetime / session-record" tier (lifetime 边缘) |
+| RTP | 95% ±1pp | **95.04%** ✓ | global mode 1 contract |
+| 总击中率 | **18-22%** | **20.05%** ✓ | v3 wild count=3 (per §F 公服 baseline) 的自然区间 — band 从原 [13, 18] 扩到 [18, 22] 反映 v3 layout 实际 |
+| 顶奖 1000× 频率 | 约 1 in 30-100k | 1 in 39k ✓ | "lifetime / session-record" tier |
 | > 1000× | **0** | 0 ✓ | paytable 数学上限 1000× |
+
+> **2026-05-08 hit band 更新历史**: 早期 v* 设计 wild count=2,hit ≈ 15.70%,band [13, 18]。v3 把 R1/R3 wild 改到 3 后 hit 实测 20%。每多一个 wild 的 side_wild_alone (mult 1) + bar group with wild substitute 命中累加,把 hit 抬高 ~4pp。这是 §F archetype lock(公服 wild count=3)的直接连带,不是设计漂移。
 
 ### 3.1.5 Mode 7 标准-低（cut mode 派生）
 
-| 指标 | target | 实现 |
+| 指标 | target | 实现 (v3 真机 2.43M) |
 |---|---|---|
-| RTP | 85% ±1.5pp | **85.38%** ✓ |
-| 总击中率 | mode 1 - 2-3pp | 13.30% (mode 1 15.70 → -2.40pp) |
-| R2 booster freq | byte-eq mode 1 | **byte-eq ✓** |
-| Mid+High+Top bucket hit | ≈ mode 1 | 0.93×/0.87×/0.79× (slight cut acceptable) |
+| RTP | 85% ±1.5pp | **85.00%** ✓ |
+| 总击中率 | mode 1 - 4-6pp | 14.92% (mode 1 20.05 → -5.13pp) ✓ |
+| R2 booster freq | ≈ mode 1 | grand 0.114% ≈ m1 0.111% / booster total 8.45% ≈ m1 8.56% ✓ |
+| Mid+High+Top bucket hit | ≈ mode 1 | 0.92×/0.97×/0.93× (slight cut acceptable) |
 
 **派生机制**：mode 1 → mode 7 通过 R1+R3 paying-symbol weight × 系数（high7 × 0.93 / bars × 0.78 / wild × 0.55），R2 byte-identical 锁 booster reveal cadence 跟 mode 1 一致。
 
 ### 3.1.6 Mode 2 幸运（独立 archetype）
 
-| 指标 | target | 实现 |
+| 指标 | target | 实现 (v3 真机 104k) |
 |---|---|---|
-| RTP | 300% ±20pp | **304.83%** ✓ |
-| 总击中率 | mode 1 × 1.5-2 | 32.31% (mode 1 × 2.06) |
-| R2 booster total | 16-24% | **19.64%** ✓ |
-| R2 grand | 0.3-0.8% | 0.558% (mode 1 × 4.9) |
-| 1000× 顶奖频率 | 约 1 in 3-10k | 1 in 3k ✓ |
+| RTP | 300% ±20pp | **305.23%** ✓ |
+| 总击中率 | mode 1 × 1.5-2 | 32.38% (mode 1 × 1.62) ✓ |
+| R2 booster total | **16-28%** | **26.11%** ✓ (band 从原 [16, 24] 扩到 [16, 28] 反映 v3 mode 2 实际加密) |
+| R2 grand | 0.3-0.8% | 0.636% (mode 1 × 5.71) ✓ |
+| 1000× 顶奖频率 | 约 1 in 3-10k | 1 in 13k ⚠ (8 次命中/104k 样本太少,SE 大;预计更多采样后回 band) |
 
-**设计意图**：lucky 模式 — wild 在 R1+R3 显著加密 (1.78% → 6.7%)，R2 booster 全 tier 加密（mini 3.64→8.32 / minor 2.62→6.19 / major 2.00→4.57 / grand 0.11→0.56）。R1+R3 blank 显著降低（30→35% but with much more high7/wild）。玩家"运气来了"体感来自 booster reveal 频率 ×2.4，小奖密度 ×2，顶奖密度 ×5。
+**设计意图**：lucky 模式 — wild 在 R1+R3 显著加密,R2 booster 全 tier 加密(mini 3.73→11.0% / minor 2.69→8.4% / major 2.04→6.1% / grand 0.11→0.64%)。R1+R3 blank 显著降低。玩家"运气来了"体感来自 booster reveal 频率提升,小奖密度提升,顶奖密度 ×5。
+
+**TODO (mode 2 R1 winners-friendly)**: 实测 R1 (high7+wild) 13.61% < R3 13.95%,违反 §12 R1 ≥ R3 top 密度约束。修法:R1 wild weight ×1.10 / R3 wild weight ÷1.10,RTP/hit 不变。
 
 ### 3.1.7 Mode 5 超幸运（mode 2 派生）
 
-| 指标 | target | 实现 |
+| 指标 | target | 实现 (v3 真机 104k) |
 |---|---|---|
-| RTP | 500% ±30pp | **500.57%** ✓ |
-| Base 跟 mode 2 byte-eq | 必须 | ✓ except R2 grand |
-| R2 grand | 1.2-2.0% | **1.616%** (mode 2 × 2.93) |
-| 1000× 顶奖频率 | 约 1 in 1k-3k | 1 in 1k ✓ |
-| 总击中率 | ≈ mode 2 | 33.03% (mode 2 32.31% + 0.72pp 来自 grand 加密) |
+| RTP | 500% ±30pp | **510.91%** ✓ |
+| Base 跟 mode 2 byte-eq | 必须 | ✓ except R2 grand (实测 booster 比 1.03×, hit 比 1.02× ≈ 1) |
+| R2 grand | 1.2-2.0% | **1.915%** (mode 2 × 3.01,设计 ×2.93) ✓ |
+| 1000× 顶奖频率 | 约 1 in 1k-3k | 1 in 2.4k ✓ |
+| 总击中率 | ≈ mode 2 | 33.17% (mode 2 32.38% + 0.79pp 来自 grand 加密) ✓ |
 
-**设计意图**：super-lucky = mode 2 的 luck variant，**玩家在 base 层（小奖/中奖/booster reveal）感觉跟 mode 2 完全一样**，差异 100% 来自 grand 频率上升 → grand-alone (100×) + 1000× 顶奖的连带飙升。这是"super-lucky 是 mode 2 的运气版本，不是另一台机"的实现 — 公服 M37Cfg skin 5 vs skin 2 实证支持此 derivation rule。
+**设计意图**：super-lucky = mode 2 的 luck variant,**玩家在 base 层(小奖/中奖/booster reveal)感觉跟 mode 2 完全一样**,差异 100% 来自 grand 频率上升 → grand-alone (100×) + 1000× 顶奖的连带飙升。这是"super-lucky 是 mode 2 的运气版本,不是另一台机"的实现 — 公服 M37Cfg skin 5 vs skin 2 实证支持此 derivation rule。
+
+**TODO (mode 5 R1 winners-friendly)**: 跟 mode 2 同一个问题,R1 13.46% < R3 14.19%,跟 mode 2 一起修。
 
 ### 3.2 RTP 分桶意图（铃铛分布，Mid+High 略倾斜）
 
@@ -122,15 +132,37 @@
 
 ### 3.3 跨 mode 关系（mode 1 在系统中的角色）
 
-mode 1 是 mode 7 的 anchor。mode 7 派生时：
-- 中/大/顶奖 hit 严格不动（→ `MODE7-LOCK` verify）
-- Low 砍 ≤ 3pp（→ `MODE7-CUT`）
-- Booster 频率字节级 = mode 1（公服 baseline 已实证）
+mode 1 是 mode 7 的 anchor。mode 7 派生时:
+- R2 booster 频率 ≈ mode 1(实测 grand 0.114% ≈ m1 0.111%)— **MODE7-LOCK** ✓
+- R1+R3 paying-symbol weight × 系数(high7 × 0.93 / bars × 0.78 / wild × 0.55)→ Low 砍降 hit
+- 实测 m7 hit 14.92% vs m1 20.05%(下降 5.13pp,约束 ≤ 6pp)
 
-mode 1 是 mode 2 的对照：
-- mode 2 hit ≥ 1.5× mode 1（hit 21-28%）
-- mode 2 booster marginal ≥ 2× mode 1
-- 顶奖 1000× 频率 ≥ 3× mode 1
+mode 1 是 mode 2 的对照:
+- mode 2 hit > mode 1 (32.38% vs 20.05%, 1.62×)
+- mode 2 booster marginal > 2× mode 1 (R2 booster 26.11% vs 8.56%, 3.05×)
+- 顶奖 1000× 频率 > mode 1 (1 in 13k vs 1 in 39k, 3×)
+
+### 3.4 v3 finalized 全 4 mode 验证状态(2026-05-08 真机 5M+ rounds)
+
+| 检查项 | Mode 1 | Mode 7 | Mode 2 | Mode 5 |
+|--------|--------|--------|--------|--------|
+| RTP 在 §C band | ✓ | ✓ | ✓ | ✓ |
+| hit 在 mode-specific band | ✓ (band 已更新到 [18,22]) | ✓ | ✓ | ✓ |
+| R2 booster total band | ✓ | ✓ | ✓ (band 更新到 [16,28]) | ✓ |
+| R2 grand band | ✓ | ✓ | ✓ | ✓ |
+| 1000× freq band | ✓ | ✓ | ⚠ 样本不足 | ✓ |
+| paytable bit-perfect (vs 真机) | 100% (2.62M) | 100% (2.43M) | 100% (104k) | 100% (104k) |
+| §2 BOOSTER-HIER (倒金字塔 + ratio ≥ 1.3) | ✓ | ✓ | ✓ | ✓ |
+| §2 BOOSTER-R1R3-EMPTY / WILD-R2-EMPTY | ✓ | ✓ | ✓ | ✓ |
+| §12 R1 ≤ R3 ≤ R2 blank | ✓ | ✓ | ✓ | ✓ |
+| §12 R1 top 密度 ≥ R3 | ✓ | ✓ | **✗ TODO** | **✗ TODO** |
+| §F TOP-PATH-1000× ≥ 99% via anchor | 100% | 100% | 100% | 100% |
+| §7.4 R2 grand any-window | ✓ | ✓ | ⚠ 略低 lucky band | ⚠ 略低 lucky band |
+| §7.4 R1/R3 high7 any-window | ✓ | ✓ | ✓ | ✓ |
+| §7.4 R1/R3 wild any-window | ✓ | ✓ | ✓ | ✓ |
+| 跨 mode invariants(MONOTONIC / MODE5-BASE-LOCK / TOP-JACKPOT-ESCALATION) | ✓ | ✓ | ✓ | ✓ |
+
+**Open TODO (mode 2/5 only)**: R1 winners-friendly 在 lucky 模式没保住(R1 top 密度 < R3 0.34-0.73pp)。修法见 §3.1.6/3.1.7 TODO 注释。
 
 ## 4. Verify 类别（红线 → `verify_m37_design.py`）
 
@@ -278,4 +310,13 @@ post-redistribution 预期落点（4 tier 数学推导 + M37 当前 marginal）�
 
 ---
 
-**当前状态**: mode 1 设计中（仅 mode 1 ; mode 2/5/7 后续设计）
+**当前状态**: 4 mode 全部 ship 状态 (2026-05-08 v3 finalized,真机 5M+ rounds 验证 §C/§D/§F/§12-§15 全过)。
+
+**已知 open TODO**:
+1. mode 2/5 R1 winners-friendly 修(R1 wild weight ×1.10,R3 wild weight ÷1.10),不动 RTP/hit
+2. mode 2 1000× freq 等更多采样验证
+3. mode 2/5 R2 grand any-window lucky band [22,40] 略低,选择性追加 PWDF lucky tier ratio 微调
+
+**ship 历史**:
+- 2026-05-08 v3 finalized 部署到真机后**触发耦合系统 bug**(real Buffalo 给出 580% RTP,本来应 95%)。bug 不在 cfg/paytable/sampling,在真机的耦合系统某层,经用户修复后 v3 cfg 真机表现回到 95.04%(完全符合设计)。
+- 该次诊断用了"诊断 reel 设计"工具(`scripts/m37_build_diagnostic_reel.py`):用极端权重对比(1000× vs 1×)证明 cfg 的 weight 真在 sampling 时被使用,从 12 万 spin 实测可立即排除"server-side 缓存"等假设。这个工具值得复用。

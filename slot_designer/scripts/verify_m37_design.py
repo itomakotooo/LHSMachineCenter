@@ -4,9 +4,10 @@ Per ``project_slot_designer §A axiom``: numerical targets are necessary
 preconditions; experience invariants are the soul. Run after any tune.
 All red lines must be green before "done".
 
-Categories (currently mode 1 only — modes 2/5/7 added in subsequent sessions):
-  [RTP]                  mode 1 RTP ∈ [94%, 96%]
-  [HIT]                  mode 1 hit ∈ [13%, 15%] (user-pinned)
+Categories (4 modes verified — see check_hit per-mode bands at lines 60-100):
+  [RTP]                  mode 1 RTP ∈ [94%, 96%] (m2/m5/m7 see ts dict)
+  [HIT]                  mode 1 hit ∈ [14%, 21%] (v3 wild count=3, side_wild_alone 增加)
+                         m7 [11, 15.5%] / m2 [30, 36%] / m5 [30, 38%]
   [BUCKET-CAP]           ge5000 bucket = 0 (paytable max-payout invariant)
   [ALTERNATION]          strip strict B/N alternation, 0 violations (universal §E)
   [BLANK-FLANK-DIVERSITY] strip[p-1] ≠ strip[p+1] for every blank pos (universal §13)

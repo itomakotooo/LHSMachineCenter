@@ -13,7 +13,7 @@
     "MD5s are auto-refreshed by virtual_app.build_virtual_app() on startup",
     "AND by the virtual console's POST /api/machines/refresh-md5 (which is",
     "overridden to compute md5 locally from spec + weights + engine source).",
-    "NEVER fetches from upstream \u2014 this registry stays isolated from real",
+    "NEVER fetches from upstream — this registry stays isolated from real",
     "fleet (historical bug 2026-04-21: upstream refresh pulled 253 real",
     "machines into here; fix is the create_app md5_refresh_override hook)."
   ],
@@ -110,23 +110,23 @@
       "_weights_path_template": "slot_designer/weights/M37/mode_{mode}/weights.json",
       "_status": "all 4 modes designed 2026-05-05; verify 52/52 GREEN",
       "configSummaryMd5": "57985eb0b1571b672ced0bb0aefcc8f3",
-      "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4",
+      "codeSummaryMd5": "6656dc69631e3c83408db1616aacfc8a",
       "modesMd5": {
         "1": {
           "configSummaryMd5": "fcb34f214403f4905ea3d5db9c3d4411",
-          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
+          "codeSummaryMd5": "6656dc69631e3c83408db1616aacfc8a"
         },
         "2": {
           "configSummaryMd5": "3ae35100fc191608de8ebef90bd9b534",
-          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
+          "codeSummaryMd5": "6656dc69631e3c83408db1616aacfc8a"
         },
         "5": {
           "configSummaryMd5": "cb2f5048e86d0642efac445d1e0a135d",
-          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
+          "codeSummaryMd5": "6656dc69631e3c83408db1616aacfc8a"
         },
         "7": {
           "configSummaryMd5": "4b156119d2cc4caaf1d11bba9e06e214",
-          "codeSummaryMd5": "6d7a7d03dc9d57232b9ce9e84af603b4"
+          "codeSummaryMd5": "6656dc69631e3c83408db1616aacfc8a"
         }
       }
     },
@@ -149,7 +149,7 @@
       "_spec_path": "slot_designer/specs/M279.spec.json",
       "_strips_path": "slot_designer/weights/M279/reel_strips.json",
       "_weights_path_template": "slot_designer/weights/M279/mode_{mode}/weights.json",
-      "_note": "M279 = Light & Wonder 'Blazing 777 Triple Double Jackpot Wild \u2014 Nudging Stacks' archetype + Asian-market collect-to-wheel feature. The _engine='m279' marker routes virtual_analyzer through engine/m279/ and emitter/m279_{round,driver}.py instead of the M1/M15 SpinEngine path. md5s populate on next refresh_machines_virtual.",
+      "_note": "M279 = Light & Wonder 'Blazing 777 Triple Double Jackpot Wild — Nudging Stacks' archetype + Asian-market collect-to-wheel feature. The _engine='m279' marker routes virtual_analyzer through engine/m279/ and emitter/m279_{round,driver}.py instead of the M1/M15 SpinEngine path. md5s populate on next refresh_machines_virtual.",
       "modesMd5": {
         "1": {
           "configSummaryMd5": "1d6ce2cb3ce83ee0e6b931f606ecfdd9",

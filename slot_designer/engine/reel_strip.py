@@ -26,8 +26,8 @@ class ReelStrip:
     def __init__(self, stops: Sequence[Stop]):
         if not stops:
             raise ValueError("reel has no stops")
-        if any(s.weight <= 0 for s in stops):
-            raise ValueError("all stop weights must be positive")
+        if any(s.weight < 0 for s in stops):
+            raise ValueError("stop weights must be non-negative")
         self.stops = list(stops)
         self._cum_weights: list[float] = []
         acc = 0.0
@@ -35,6 +35,13 @@ class ReelStrip:
             acc += s.weight
             self._cum_weights.append(acc)
         self.total_weight = acc
+        if self.total_weight <= 0:
+            raise ValueError("at least one stop must have positive weight")
+        # 2026-05-08: PROD M37 mode 5 uses weight=0 to "remove" symbols
+        # from sampling while keeping them on the visual strip (so they
+        # show in top/bot windows but never at mid). Engine now allows
+        # this — bisect_right naturally skips zero-weight stops as a
+        # landing position. Engine analytic + simulate both honor this.
 
     def __len__(self) -> int:
         return len(self.stops)
