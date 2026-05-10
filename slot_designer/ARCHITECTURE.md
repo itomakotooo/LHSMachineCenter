@@ -368,16 +368,29 @@ tests/
 
 ---
 
-## §10 重构进度（本文件维护）
+## §10 重构进度
 
-每 phase 完成后在此 commit 一行：
+| Phase | 状态 | commit | tests added |
+|---|---|---|---|
+| 0a — M15 design records 删除 | ✓ | `c4d7d82` | N/A (deletion) |
+| 0b — ARCHITECTURE.md 写入 | ✓ | `615591a` | N/A (docs) |
+| A — `core/` + `machines/<M>/` 目录拆分 | ✓ | `aacde85` | 33 layout |
+| B — per-machine `compute_code_md5` | ✓ | `ac414a7` | 13 md5 isolation |
+| C — FeaturePlugin Protocol + 解 M15 耦合 | ✓ | `…` | 3 leakage + 14 protocol |
+| D — Custom-engine adapter (M279) | ✓ | `39c86a0` | 9 adapter |
+| E — end-to-end fleet verification | ✓ | `…` | 12 e2e |
 
-| Phase | 状态 | commit |
-|---|---|---|
-| 0a — M15 design records 删除 | ✓ | (此 commit 上一条) |
-| 0b — ARCHITECTURE.md 写入 | ✓ | (本 commit) |
-| A — `core/` + `machines/<M>/` 目录拆分 | pending | |
-| B — per-machine `compute_code_md5` | pending | |
-| C — FeaturePlugin Protocol + 解 M15 耦合 | pending | |
-| D — M279 plugin 化 | pending | |
-| E — end-to-end + machines_virtual.json 路径迁移 | pending | |
+**总计**：84 new tests across 5 implementation phases. 全部 TDD 顺序 (write test → red → implement → green → commit). Final pytest baseline:
+**239 passed, 1 pre-existing M37 reroll fail** (unchanged from pre-refactor baseline).
+
+### 重构兑现的承诺
+
+1. **`core/` 不认识机台名**：`tests/core/test_no_machine_leakage.py` 自动验证 grep `from slot_designer\.machines\.` / `\bM\d+\b` / `\bTopDollar.*\b` / hardcoded ST=14/15 全部 0 命中。
+
+2. **per-machine `code_md5` 隔离**：`tests/core/test_per_machine_code_md5.py` mutate machines/M15/plugins/* → 只 M15 hash 翻；mutate machines/M279/plugins/* → 只 M279 翻；mutate core/engine/* → 全机台翻；mutate tests/docs/__pycache__/configs → 全机台不翻。
+
+3. **`FeaturePlugin` Protocol 把 feature 机台 hook 起来**：`load_engine` 通过 importlib 找 `machines/<M>/plugins/__init__.py` 的 `build_plugin`，不静态 import 任何 `slot_designer.machines.*`。
+
+4. **Custom-engine 路径**：M279 走 `_load_custom_engine_module`，registry 用 `_engine` marker 标记，plugin module 暴露 `load_engine` / `sample_one_chunk` / `compute_schema_fingerprint`。
+
+5. **End-to-end 验证**：4 台 fleet (M1 / M15 / M37 / M279) 每台都跑 `load_engine` + 1 chunk sampling + chunk envelope 校验，不抛异常，不串扰。
