@@ -114,7 +114,7 @@ def _sidecar_lock_for(mode_dir: Path) -> threading.Lock:
 # to regex-extract the header fields without parsing the potentially-
 # megabytes-sized ``response`` array. See ``_persist_chunk`` in
 # fresh_slotlab.player_impact_analyzer + ``write_chunk`` in
-# slot_designer.emitter.chunk: both writers place ``_chunk_index`` /
+# slot_designer.core.emitter.chunk: both writers place ``_chunk_index`` /
 # ``_config_md5`` / ``_code_md5`` in the envelope dict BEFORE
 # ``response``, so the peek regex is a safe fast-path. When the
 # ordering invariant ever breaks, the None return funnels callers

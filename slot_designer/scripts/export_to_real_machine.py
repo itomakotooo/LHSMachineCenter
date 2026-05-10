@@ -37,8 +37,8 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.devtools.analytic_rtp import compute_reel_marginal
-from slot_designer.engine.loader import load_engine
+from slot_designer.core.devtools.analytic_rtp import compute_reel_marginal
+from slot_designer.core.engine.loader import load_engine
 
 DEFAULT_MAPS = {
     "M37": {1: 1, 2: 2, 5: 5, 7: 7},
@@ -57,8 +57,8 @@ SCALE = 10000
 
 def get_designed_marginals(machine: str, mode: int) -> dict:
     """Return {(reel, symbol): density}."""
-    spec = _ROOT / "slot_designer" / "specs" / f"{machine}.spec.json"
-    weights = _ROOT / "slot_designer" / "weights" / machine / f"mode_{mode}" / "weights.json"
+    spec = _ROOT / "slot_designer" / "machines" / f"{machine}" / "spec.json"
+    weights = _ROOT / "slot_designer" / "machines" / machine / "weights" / f"mode_{mode}" / "weights.json"
     if not spec.exists() or not weights.exists():
         raise FileNotFoundError(f"Missing spec or weights for {machine} mode {mode}")
     engine, _ = load_engine(spec, weights)
@@ -252,7 +252,7 @@ def main():
         print(f"WARNING: target skins {missing} not found in xlsx")
 
     # Load slot_designer's canonical strip layout for symbol-column sync
-    strips_path = _ROOT / "slot_designer" / "weights" / machine / "reel_strips.json"
+    strips_path = _ROOT / "slot_designer" / "machines" / machine / "reel_strips.json"
     sd_strips = None
     if strips_path.exists():
         sd_strips = json.loads(strips_path.read_text(encoding="utf-8"))["reels"]
@@ -277,7 +277,7 @@ def main():
         skin_n = len(skin_layout[0])
 
         # Load slot_designer per-position weights (for PWDF redistribution preservation)
-        sd_weights_path = _ROOT / "slot_designer" / "weights" / machine / f"mode_{mode}" / "weights.json"
+        sd_weights_path = _ROOT / "slot_designer" / "machines" / machine / "weights" / f"mode_{mode}" / "weights.json"
         sd_weights = None
         if sd_weights_path.exists():
             sd_weights = json.loads(sd_weights_path.read_text(encoding="utf-8")).get("weights")

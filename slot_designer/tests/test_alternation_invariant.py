@@ -43,7 +43,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.tuner.ordering import (
+from slot_designer.core.tuner.ordering import (
     ExperienceCostWeights,
     SAConfig,
     class_preserving_swap_mutation,
@@ -58,11 +58,11 @@ def _load_shipped_reels(machine: str, mode: int) -> list[list[dict]]:
     """Assemble the shipped strips + weights into the legacy
     [[{symbol, weight}, ...], ...] shape this test suite compares
     against."""
-    from slot_designer.engine.loader import load_reels_for_tuner
-    base = _ROOT / "slot_designer" / "weights" / machine
+    from slot_designer.core.engine.loader import load_reels_for_tuner
+    base = _ROOT / "slot_designer" / "machines" / machine
     return load_reels_for_tuner(
         base / "reel_strips.json",
-        base / f"mode_{mode}" / "weights.json",
+        base / "weights" / f"mode_{mode}" / "weights.json",
     )
 
 

@@ -37,7 +37,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.backend.machine_version import (
+from slot_designer.core.backend.machine_version import (
     compute_machine_md5,
     compute_machine_md5_for_mode,
 )
@@ -50,9 +50,9 @@ def _entry_for_modes(modes: list[int]) -> dict:
         "machine": "M1sim",
         "modes": modes,
         "_source_machine": "M1",
-        "_spec_path": "slot_designer/specs/M1.spec.json",
-        "_strips_path": "slot_designer/weights/M1/reel_strips.json",
-        "_weights_path_template": "slot_designer/weights/M1/mode_{mode}/weights.json",
+        "_spec_path": "slot_designer/machines/M1/spec.json",
+        "_strips_path": "slot_designer/machines/M1/reel_strips.json",
+        "_weights_path_template": "slot_designer/machines/M1/weights/mode_{mode}/weights.json",
     }
 
 
@@ -112,7 +112,7 @@ def test_registry_stores_modes_md5_map_per_mode():
     """After ``refresh_machines_virtual``, the M1sim entry must have
     a ``modesMd5`` map with one entry per mode, each carrying its
     own cfg / code pair."""
-    from slot_designer.backend.virtual_registry import (
+    from slot_designer.core.backend.virtual_registry import (
         VIRTUAL_MACHINES_CONFIG,
         refresh_machines_virtual,
     )
@@ -141,7 +141,7 @@ def test_backend_lookup_prefers_per_mode_md5():
     per-mode md5 when the registry has a modesMd5 map — not the
     top-level aggregate."""
     from src.web_console.backend.app import _get_machine_md5
-    from slot_designer.backend.virtual_registry import (
+    from slot_designer.core.backend.virtual_registry import (
         VIRTUAL_MACHINES_CONFIG,
         refresh_machines_virtual,
     )
@@ -174,7 +174,7 @@ def test_backend_lookup_falls_back_when_mode_unknown():
     modesMd5) must fall back to the top-level cfg/code — this is
     the real-console path where all modes share one reel strip."""
     from src.web_console.backend.app import _get_machine_md5
-    from slot_designer.backend.virtual_registry import (
+    from slot_designer.core.backend.virtual_registry import (
         VIRTUAL_MACHINES_CONFIG,
         refresh_machines_virtual,
     )

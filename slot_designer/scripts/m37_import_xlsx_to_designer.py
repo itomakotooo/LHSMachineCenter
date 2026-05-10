@@ -1,5 +1,5 @@
 """Reverse import: read MachineBuilder/.../M37/M37Reel.xlsx and write
-slot_designer/weights/M37/{reel_strips.json, mode_N/weights.json}
+slot_designer/machines/M37/{reel_strips.json, weights/mode_N/weights.json}
 so the virtual_console engine samples with EXACTLY the same reel data
 that goes into the real Buffalo cfg.
 
@@ -13,7 +13,8 @@ import openpyxl
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 XLSX_PATH = Path(r'C:\Users\pangg\Documents\Projects\LHS\MachineBuilder\Buffalo\Assets\Config\Excel\Machine\M37\M37Reel.xlsx')
-WEIGHTS_DIR = _ROOT / 'slot_designer' / 'weights' / 'M37'
+MACHINE_DIR = _ROOT / 'slot_designer' / 'machines' / 'M37'
+WEIGHTS_DIR = MACHINE_DIR / 'weights'
 
 # skinId → mode mapping
 SKIN_TO_MODE = {1: 1, 2: 2, 5: 5, 7: 7}
@@ -70,7 +71,7 @@ def main():
         '_source': 'imported from MachineBuilder M37Reel.xlsx skin 1 layout',
         'reels': base_strips,
     }
-    strips_path = WEIGHTS_DIR / 'reel_strips.json'
+    strips_path = MACHINE_DIR / 'reel_strips.json'
     strips_path.write_text(json.dumps(strips_doc, indent=2, ensure_ascii=False), encoding='utf-8')
     print(f'  wrote: {strips_path}')
 

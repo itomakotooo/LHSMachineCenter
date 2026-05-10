@@ -21,12 +21,12 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.devtools.analytic_rtp import analytic_profile
-from slot_designer.engine.loader import load_engine
+from slot_designer.core.devtools.analytic_rtp import analytic_profile
+from slot_designer.core.engine.loader import load_engine
 
 
-SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
+SPEC = _ROOT / "slot_designer" / "machines" / "M1" / "spec.json"
+WEIGHTS = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_1" / "weights.json"
 
 
 def _simulate_rtp(engine, n: int, seed: int = 42) -> tuple[float, float]:
@@ -106,9 +106,9 @@ def test_m1_cannot_reach_sub_one_bucket():
 # from evaluator.rules and renormalizes (drop blocked combos + scale by
 # 1/(1-P_blocked)). This test pins the post-reroll alignment.
 
-_M37_SPEC = _ROOT / "slot_designer" / "specs" / "M37.spec.json"
-_M37_STRIPS = _ROOT / "slot_designer" / "weights" / "M37" / "reel_strips.json"
-_M37_M5_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M37" / "mode_5" / "weights.json"
+_M37_SPEC = _ROOT / "slot_designer" / "machines" / "M37" / "spec.json"
+_M37_STRIPS = _ROOT / "slot_designer" / "machines" / "M37" / "reel_strips.json"
+_M37_M5_WEIGHTS = _ROOT / "slot_designer" / "machines" / "M37" / "weights" / "mode_5" / "weights.json"
 
 
 def test_m37_mode5_analytic_includes_reroll_correction():
@@ -158,7 +158,7 @@ def test_m37_mode1_no_reroll_impact():
     """Mode 1 has the same reroll_blocks rule but the (wild,grand,wild)
     probability is tiny (P~3.5e-7) → reroll correction must be near-zero
     so it doesn't artificially inflate mode 1 metrics."""
-    M1_W = _ROOT / "slot_designer" / "weights" / "M37" / "mode_1" / "weights.json"
+    M1_W = _ROOT / "slot_designer" / "machines" / "M37" / "weights" / "mode_1" / "weights.json"
     engine, _ = load_engine(_M37_SPEC, M1_W, strips_path=_M37_STRIPS)
     prof = analytic_profile(engine)
     p_blocked = prof.get("p_reroll_blocked", 0)

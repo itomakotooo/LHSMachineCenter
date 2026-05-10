@@ -370,7 +370,7 @@ class TestWriterParity:
     def test_virtual_write_chunk_populates_sidecar(self, tmp_path):
         """slot_designer's ``write_chunk`` must call ``update_chunk_entry``
         — the integration proof for virtual rawdata."""
-        from slot_designer.emitter.chunk import emit_chunk, write_chunk
+        from slot_designer.core.emitter.chunk import emit_chunk, write_chunk
         from fresh_slotlab.chunk_index import load_chunks_index
 
         out = tmp_path / "M1sim" / "mode_1"

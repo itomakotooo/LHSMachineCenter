@@ -38,14 +38,14 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.engine.m279.engine import (
+from slot_designer.machines.M279.plugins.m279.engine import (
     M279SessionState,
     M279SpinEngine,
     ST_NUDGE,
     ST_PAID,
     ST_WHEEL,
 )
-from slot_designer.engine.m279.loader import build_m279_engine, load_m279_engine
+from slot_designer.machines.M279.plugins.m279.loader import build_m279_engine, load_m279_engine
 
 
 # Symbol families — used for share computation, NOT for tuner search dim.

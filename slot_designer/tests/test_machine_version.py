@@ -25,7 +25,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.backend.machine_version import (
+from slot_designer.core.backend.machine_version import (
     compute_code_md5,
     compute_config_md5,
     compute_machine_md5,
@@ -99,9 +99,14 @@ def test_engine_source_change_flips_code_only():
     """Changing engine source must flip code_md5 but not config_md5.
     We don't actually mutate engine source in the test (would affect
     other tests). Instead we verify that the code_md5 helper's output
-    is distinct from config_md5 and hashes all engine + emitter .py
-    files (excluding __init__.py)."""
-    code_md5 = compute_code_md5()
+    is shaped right.
+
+    Phase B per-machine signature — pass a machine name; M1 (base only,
+    no plugins/) is fine here since we only check the return shape.
+    Cross-machine isolation is exercised in
+    tests/core/test_per_machine_code_md5.py.
+    """
+    code_md5 = compute_code_md5("M1")
     # 32-char hex string
     assert len(code_md5) == 32 and all(c in "0123456789abcdef" for c in code_md5)
 
@@ -111,7 +116,7 @@ def test_refresh_matches_compute_machine_md5():
     compare each machine's cached md5s against compute_machine_md5(entry).
     No call site should produce different md5s for the same snapshot.
     """
-    from slot_designer.backend.virtual_app import refresh_machines_virtual
+    from slot_designer.core.backend.virtual_app import refresh_machines_virtual
     # Snapshot current file so test doesn't persist noise
     original = _REGISTRY.read_text(encoding="utf-8")
     try:

@@ -27,8 +27,8 @@ from itertools import product
 _ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from slot_designer.engine.loader import load_engine
-from slot_designer.devtools.analytic_rtp import analytic_profile
+from slot_designer.core.engine.loader import load_engine
+from slot_designer.core.devtools.analytic_rtp import analytic_profile
 
 
 def jload(p):
@@ -36,15 +36,15 @@ def jload(p):
         return json.load(f)
 
 
-SPEC = _ROOT / 'slot_designer/specs/M37.spec.json'
-STRIPS_PATH = _ROOT / 'slot_designer/weights/M37/reel_strips.json'
+SPEC = _ROOT / 'slot_designer/machines/M37/spec.json'
+STRIPS_PATH = _ROOT / 'slot_designer/machines/M37/reel_strips.json'
 strips = jload(STRIPS_PATH)['reels']
 modes_data = {}
 for mode in [1, 2, 5, 7]:
-    eng, _ = load_engine(SPEC, _ROOT / f'slot_designer/weights/M37/mode_{mode}/weights.json',
+    eng, _ = load_engine(SPEC, _ROOT / f'slot_designer/machines/M37/weights/mode_{mode}/weights.json',
                           strips_path=STRIPS_PATH)
     prof = analytic_profile(eng)
-    weights = jload(_ROOT / f'slot_designer/weights/M37/mode_{mode}/weights.json')['weights']
+    weights = jload(_ROOT / f'slot_designer/machines/M37/weights/mode_{mode}/weights.json')['weights']
     modes_data[mode] = {'eng': eng, 'prof': prof, 'weights': weights}
 
 

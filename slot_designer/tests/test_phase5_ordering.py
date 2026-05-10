@@ -16,8 +16,8 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.devtools.analytic_rtp import analytic_profile
-from slot_designer.devtools.player_experience import (
+from slot_designer.core.devtools.analytic_rtp import analytic_profile
+from slot_designer.core.devtools.player_experience import (
     experience_metrics,
     near_miss_rate_2_of_3,
     pwdf_ratio,
@@ -25,9 +25,9 @@ from slot_designer.devtools.player_experience import (
     symbol_mid_probability,
     symbol_window_probability,
 )
-from slot_designer.engine.loader import load_engine
-from slot_designer.tuner.layout import base_counts
-from slot_designer.tuner.ordering import (
+from slot_designer.core.engine.loader import load_engine
+from slot_designer.core.tuner.layout import base_counts
+from slot_designer.core.tuner.ordering import (
     ExperienceCostWeights,
     SAConfig,
     evaluate_experience_cost,
@@ -37,9 +37,9 @@ from slot_designer.tuner.ordering import (
 )
 
 
-SPEC = _ROOT / "slot_designer" / "specs" / "M37.spec.json"
-STRIPS = _ROOT / "slot_designer" / "weights" / "M37" / "reel_strips.json"
-WEIGHTS = _ROOT / "slot_designer" / "weights" / "M37" / "mode_1" / "weights.json"
+SPEC = _ROOT / "slot_designer" / "machines" / "M37" / "spec.json"
+STRIPS = _ROOT / "slot_designer" / "machines" / "M37" / "reel_strips.json"
+WEIGHTS = _ROOT / "slot_designer" / "machines" / "M37" / "weights" / "mode_1" / "weights.json"
 
 
 def _load_weights() -> dict:
@@ -48,7 +48,7 @@ def _load_weights() -> dict:
     ``reel_sets.default.reels`` path to reach the per-stop list of
     ``{symbol, weight}`` dicts.
     """
-    from slot_designer.engine.loader import load_reels_for_tuner
+    from slot_designer.core.engine.loader import load_reels_for_tuner
     reels = load_reels_for_tuner(STRIPS, WEIGHTS)
     return {"reel_sets": {"default": {"reels": reels}}}
 
@@ -101,8 +101,9 @@ def test_sa_preserves_rtp(tmp_path):
     )
     # Serialize best reels as strips + weights in tmp_path so the
     # loader (which expects the two-file layout) can round-trip them.
+    # Phase A layout: machines/<M>/{reel_strips.json, weights/mode_<N>/weights.json}.
     machine_dir = tmp_path / "M37sim"
-    mode_dir = machine_dir / "mode_1"
+    mode_dir = machine_dir / "weights" / "mode_1"
     mode_dir.mkdir(parents=True)
     strips_doc = {
         "machine": "M37",

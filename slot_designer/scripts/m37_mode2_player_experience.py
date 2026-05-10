@@ -23,8 +23,8 @@ from collections import Counter, defaultdict
 _ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from slot_designer.engine.loader import load_engine
-from slot_designer.devtools.analytic_rtp import analytic_profile
+from slot_designer.core.engine.loader import load_engine
+from slot_designer.core.devtools.analytic_rtp import analytic_profile
 
 
 def jload(p):
@@ -50,8 +50,8 @@ PAY_KIND = {
 
 def dump_mode(mode_n):
     eng, _ = load_engine(
-        spec_path=_ROOT / 'slot_designer/specs/M37.spec.json',
-        strips_path=_ROOT / 'slot_designer/weights/M37/reel_strips.json',
+        spec_path=_ROOT / 'slot_designer/machines/M37/spec.json',
+        strips_path=_ROOT / 'slot_designer/machines/M37/reel_strips.json',
         weights_path=_ROOT / f'slot_designer/weights/M37/mode_{mode_n}/weights.json',
     )
     prof = analytic_profile(eng)
@@ -167,7 +167,7 @@ def dump_mode(mode_n):
     print(f'REEL 分析 (universal §12 asymmetry + §13 flank diversity + §15 PWDF):')
     print()
 
-    strips = jload(_ROOT / 'slot_designer/weights/M37/reel_strips.json')['reels']
+    strips = jload(_ROOT / 'slot_designer/machines/M37/reel_strips.json')['reels']
     weights = jload(_ROOT / f'slot_designer/weights/M37/mode_{mode_n}/weights.json')['weights']
 
     # ---- 1. Per-reel symbol marginal ----

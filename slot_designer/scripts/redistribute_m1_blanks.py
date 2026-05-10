@@ -48,7 +48,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-_STRIPS = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
+_STRIPS = _ROOT / "slot_designer" / "machines" / "M1" / "reel_strips.json"
 _MODES = (1, 2, 5, 7)
 
 TOP_PRIZE_SYMBOLS = ("Diamond1", "Diamond2", "Seven1", "Seven2")
@@ -112,7 +112,7 @@ def run(write: bool, verify: bool, floor: int) -> int:
     strips = strips_doc["reels"]
 
     for mode in _MODES:
-        wpath = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
+        wpath = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / f"mode_{mode}" / "weights.json"
         wdoc = json.loads(wpath.read_text(encoding="utf-8"))
         old_weights = wdoc["weights"]
         new_weights = redistribute_blanks(old_weights, strips, non_top_adj_floor=floor)
@@ -167,11 +167,11 @@ def run(write: bool, verify: bool, floor: int) -> int:
         print(f"{'-'*70}")
         print(f"Post-redistribution verification")
         print(f"{'-'*70}")
-        from slot_designer.engine.loader import load_engine
-        from slot_designer.devtools.analytic_rtp import analytic_profile
-        spec = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
+        from slot_designer.core.engine.loader import load_engine
+        from slot_designer.core.devtools.analytic_rtp import analytic_profile
+        spec = _ROOT / "slot_designer" / "machines" / "M1" / "spec.json"
         for mode in _MODES:
-            wpath = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
+            wpath = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / f"mode_{mode}" / "weights.json"
             eng, _ = load_engine(spec, wpath)
             prof = analytic_profile(eng)
             print(f"  mode {mode}: RTP {prof['rtp_pct']:.3f}%, hit {prof['hit_rate']:.3%}")

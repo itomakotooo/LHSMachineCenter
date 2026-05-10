@@ -31,7 +31,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.backend.virtual_registry import (
+from slot_designer.core.backend.virtual_registry import (
     _discover_modes_on_disk,
     refresh_machines_virtual,
 )
@@ -96,11 +96,11 @@ def test_discover_modes_returns_all_mode_dirs_with_weights(tmp_path, monkeypatch
     missing weights.json.
     """
     # Patch _SLOT_DESIGNER to the tmp path so relative paths resolve.
-    import slot_designer.backend.virtual_registry as vr
+    import slot_designer.core.backend.virtual_registry as vr
     monkeypatch.setattr(vr, "_SLOT_DESIGNER", tmp_path / "slot_designer")
     # Also patch machine_version's _SLOT_DESIGNER since resolve_weights_paths
     # uses it for the parent.
-    import slot_designer.backend.machine_version as mv
+    import slot_designer.core.backend.machine_version as mv
     monkeypatch.setattr(mv, "_SLOT_DESIGNER", tmp_path / "slot_designer")
 
     # Relocate fixture under tmp_path/slot_designer/ so _SLOT_DESIGNER.parent
@@ -139,8 +139,8 @@ def test_refresh_unions_discovered_modes_into_registry(tmp_path, monkeypatch):
     ``modes: [1]`` alone and ``modesMd5`` would only carry mode 1's
     hashes. Asserting the full set post-call pins the new behavior.
     """
-    import slot_designer.backend.virtual_registry as vr
-    import slot_designer.backend.machine_version as mv
+    import slot_designer.core.backend.virtual_registry as vr
+    import slot_designer.core.backend.machine_version as mv
     sd = tmp_path / "slot_designer"
     sd.mkdir()
     monkeypatch.setattr(vr, "_SLOT_DESIGNER", sd)
@@ -170,8 +170,8 @@ def test_refresh_never_removes_existing_modes(tmp_path, monkeypatch):
     additive-only from disk — removal requires an explicit operator
     edit.
     """
-    import slot_designer.backend.virtual_registry as vr
-    import slot_designer.backend.machine_version as mv
+    import slot_designer.core.backend.virtual_registry as vr
+    import slot_designer.core.backend.machine_version as mv
     sd = tmp_path / "slot_designer"
     sd.mkdir()
     monkeypatch.setattr(vr, "_SLOT_DESIGNER", sd)

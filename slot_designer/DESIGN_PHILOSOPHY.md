@@ -2,7 +2,7 @@
 
 > **范围**：跨机台通用的设计原则。每个新机台 onboarding 先读这份；每个机台的 verify 必须包含对应硬约束。
 >
-> **不在这里**：单机台 specific 的数字、paytable、weight bound——那些在每机台的 `DESIGN.md` / `MODE_DESIGN.md` / `verify_<M>_design.py`。
+> **不在这里**：单机台 specific 的数字、paytable、weight bound——那些在每机台的 `DESIGN.md` / `MODE_DESIGN.md` / `machines/<M>/verify.py`。
 >
 > **跟 WORKFLOW.md 区别**：WORKFLOW 写"怎么做 review"，这份写"设计该满足什么"。
 
@@ -128,7 +128,7 @@ verify 类别建议：`HIT-DISTRIBUTION`（暂未跨机台 impl）。
 - mode 7 hit < mode 1 hit
 - mode 5 top jackpot freq > mode 2 top jackpot freq
 
-**机台-specific 扩展** (per-machine `verify_<M>_design.py`)：
+**机台-specific 扩展** (per-machine `machines/<M>/verify.py`)：
 - Multi-tier wild slots：mode 5 booster combined density ≥ mode 2 (中轴 booster reel 在 lucky 模式更显眼)
 - Feature 机台 (Feature Play 类)：mode 2/5 feature trigger rate ≥ mode 1
 - Trigger-reel 机台：mode 5 trigger symbol density ≥ mode 2
@@ -185,7 +185,7 @@ verify 类别建议：`LUCKY-MONO` + cross-mode invariant checks。
 
 - **中间 reels（R2 in 3-reel / R2/R3/R4 in 5-reel）gradient**：从 R1 winning visibility 到末 reel 角色之间渐变。不强制具体方向，但应连续过渡（不能 R1 高 → R2 突低 → R3 高）
 
-### 12.2 约束方向（universal，绝对数字写在每机台 verify_<M>_design.py）
+### 12.2 约束方向（universal，绝对数字写在每机台 machines/<M>/verify.py）
 
 3-reel:
 - **R1 Blank 率 ≤ R3 Blank 率** — 方向锁，容差由该机台原型 + 玩家可见阈值推
@@ -199,7 +199,7 @@ verify 类别建议：`LUCKY-MONO` + cross-mode invariant checks。
 - **5-reel 特有：R5 是 trigger reel 的概率高**——onboarding 时按 archetype 决定 R5 是 (a) 还是 (b) role
 
 > **重要 — universal 哲学只锁方向，不锁绝对数字**（per `project_slot_designer §A axiom`）：
-> 上面"R1 ≤ R3 Blank"是 universal。具体容差 ("3pp"/"8pp"/"X×")**不写在这里**——每台机在自己的 `verify_<M>_design.py` 里配置，依据：(a) 该机台 mode 1 baseline 实测自然 ratio + buffer；(b) 玩家可见阈值（≥ 5pp 才显著）；(c) 机台原型 PAR sheet。**不要 cross-machine hardcode 数字** — 这是 [`feedback_adversarial_self_review.md`](../../memory/feedback_adversarial_self_review.md) 警惕的 "picked threshold / moving goalposts" 反例。M1 实测举例见 [`weights/M1/DESIGN.md`](weights/M1/DESIGN.md) §6。
+> 上面"R1 ≤ R3 Blank"是 universal。具体容差 ("3pp"/"8pp"/"X×")**不写在这里**——每台机在自己的 `machines/<M>/verify.py` 里配置，依据：(a) 该机台 mode 1 baseline 实测自然 ratio + buffer；(b) 玩家可见阈值（≥ 5pp 才显著）；(c) 机台原型 PAR sheet。**不要 cross-machine hardcode 数字** — 这是 [`feedback_adversarial_self_review.md`](../../memory/feedback_adversarial_self_review.md) 警惕的 "picked threshold / moving goalposts" 反例。机台层例子见 [`machines/<M>/DESIGN.md`](machines/) §6。
 
 ### 12.3 例外 / nuance
 
@@ -380,13 +380,13 @@ PWDF 实现需要 strip 上**邻接 top symbol 的 Blank** 权重 > **远离 top
 
 ### 15.8 防"假"约束方向
 
-Mechanism B redistribution 必须满足以下约束方向（universal direction，**具体阈值不在此处定，每机台 `verify_<M>_design.py` 写**）：
+Mechanism B redistribution 必须满足以下约束方向（universal direction，**具体阈值不在此处定，每机台 `machines/<M>/verify.py` 写**）：
 
 - **Top-adj vs non-top-adj blank weight 比值有上限**（防极端不均匀 → 玩家觉得刻意）
 - **任一 top symbol any-reel window visibility 有上限**（physical reel；virtual-reel mapping 机台另议）
 - **Mid-pay symbol any-reel window visibility 有 floor**（防 mid-pay 视觉消失，玩家觉得"reel 跟我玩的不是一台机"）
 
-每机台用 `verify_<M>_design.py` 的 **`WINDOW-VISIBILITY-CAP`** / **`BLANK-RATIO-CAP`** / **`MID-PAY-VISIBLE-FLOOR`** 三类红线强制。
+每机台用 `machines/<M>/verify.py` 的 **`WINDOW-VISIBILITY-CAP`** / **`BLANK-RATIO-CAP`** / **`MID-PAY-VISIBLE-FLOOR`** 三类红线强制。
 
 数字依据：(a) 该机台 archetype；(b) 玩家可见阈值；(c) 物理 reel 自然上限。**不要 cross-machine 抄数字** — 这是 [`memory/feedback_adversarial_self_review.md`](../../memory/feedback_adversarial_self_review.md) 警惕的 "picked threshold" 反例。
 
@@ -397,9 +397,9 @@ Mechanism B redistribution 必须满足以下约束方向（universal direction�
 1. **读这份哲学**——每条对应 verify 类别要 implement
 2. **读 WORKFLOW.md**——adversarial review 流程
 3. **写机台 DESIGN.md**——archetype block + 业界 chassis 参考 + 玩家叙事
-4. **写 verify_<M>_design.py**——把上面 15 条都加到 verify（含 §13 BLANK-FLANK-DIVERSITY、§14 VISUAL-RHYTHM 子类、§15 WINDOW-VISIBILITY）
+4. **写 machines/<M>/verify.py**——把上面 15 条都加到 verify（含 §13 BLANK-FLANK-DIVERSITY、§14 VISUAL-RHYTHM 子类、§15 WINDOW-VISIBILITY）
 5. **tune 时 cost function 包含**：hierarchy_strength、family share band、per-pay freq cap、top_jackpot_min_spins、reel asymmetry（R1 ≤ R3 Blank + R1 ≥ R3 top-prize）。**§15 PWDF 不进 tune cost**（物理 reel），post-tune redistribute
 6. **strip 设计阶段**确认满足 §13 BLANK-FLANK-DIVERSITY（无 X-Blank-X）+ §14 VISUAL-RHYTHM（机台 specific 子规则）。修复 strip 不会改 marginal 但改 strip md5 → 全 mode rawdata 失效
 7. **post-tune PWDF redistribute（物理 reel 机台）**：跑 redistribute_<M>_blanks.py 类脚本，per reel redistribute Blank weight 到 top-adj 位置。RTP-neutral，仅升 visibility
 
-参考实现：`weights/M1/` 含 REEL-ASYMMETRY check + post-tune redistribute (2026-04-28+)；`weights/M15/` Feature Play 类机台 4-mode pipeline。
+参考实现：`machines/M1/` 含 REEL-ASYMMETRY check + post-tune redistribute (2026-04-28+)；`machines/M15/plugins/` Feature Play 类机台 4-mode pipeline 模板。

@@ -32,7 +32,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.backend.virtual_analyzer import _run_inference_scripts
+from slot_designer.core.backend.virtual_analyzer import _run_inference_scripts
 
 
 _PAYTABLES_VIRTUAL = _ROOT / "slot_designer" / "configs" / "paytables_virtual"
@@ -49,10 +49,10 @@ def test_run_inference_scripts_writes_paytable_shape_json(tmp_path: Path, monkey
     """
     # Emit a tiny chunk to a temp rawdata root and point the wrapper at it
     from random import Random
-    from slot_designer.emitter.driver import emit_simulation_to_dir
-    from slot_designer.engine.loader import load_engine
-    from slot_designer.backend.machine_version import compute_machine_md5_for_mode
-    from slot_designer.backend.virtual_registry import (
+    from slot_designer.core.emitter.driver import emit_simulation_to_dir
+    from slot_designer.core.engine.loader import load_engine
+    from slot_designer.core.backend.machine_version import compute_machine_md5_for_mode
+    from slot_designer.core.backend.virtual_registry import (
         VIRTUAL_MACHINES_CONFIG, refresh_machines_virtual,
     )
 
@@ -62,8 +62,8 @@ def test_run_inference_scripts_writes_paytable_shape_json(tmp_path: Path, monkey
 
     # Build engine using shipped strips + mode 2 weights (real config)
     engine, spec = load_engine(
-        _ROOT / "slot_designer" / "specs" / "M1.spec.json",
-        _ROOT / "slot_designer" / "weights" / "M1" / "mode_2" / "weights.json",
+        _ROOT / "slot_designer" / "machines" / "M1" / "spec.json",
+        _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_2" / "weights.json",
     )
     # Tag chunk with the CURRENT md5 so classify_chunks accepts it as
     # fresh (not historical). Otherwise the chunks would be filtered.
