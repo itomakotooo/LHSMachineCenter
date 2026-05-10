@@ -3,36 +3,43 @@
 Mirrors the real-machine schema from `configs/machines.json`:
   - `configSummaryMd5` — per-machine. Flips when the machine's spec
     (rules) or weights (reel strip / per-mode) change.
-  - `codeSummaryMd5`   — fleet-wide. Flips when engine/emitter source
-    changes (= a new "game engine version" applies to every machine).
+  - `codeSummaryMd5`   — **per-machine** (Phase B refactor 2026-05-08).
+    Hash covers (a) ``core/engine/**`` + ``core/emitter/**`` shared
+    framework + (b) ``machines/<machine_name>/plugins/**`` private
+    plugin tree. Flips only for the affected machine when its plugin
+    code or the framework code changes.
 
 This module is the ONE place these hashes are computed, so we can't
 accidentally hash different byte sequences in different call sites and
 have chunks silently mismatch the registry.
 
 Call sites (3):
-  1. `backend/virtual_app.refresh_machines_virtual()` — on console boot
-     AND on every sampling request (see `POST /api/virtual/refresh-md5`-
-     equivalent trigger). Writes current MD5s into machines_virtual.json
-     so the frontend's per-machine badge + classify_chunks both see
-     consistent values.
-  2. `backend/virtual_analyzer._compute_md5s()` — when emitting sampled
-     chunks, stamps them with CURRENT MD5 (not the registry cache),
-     so a chunk is always tagged with the md5 of the exact (spec,
-     weights, engine) snapshot that produced it.
+  1. `core/backend/virtual_app.refresh_machines_virtual()` — on console
+     boot AND on every sampling request. Writes current MD5s into
+     machines_virtual.json.
+  2. `core/backend/virtual_analyzer._compute_md5s()` — stamps emitted
+     chunks with CURRENT MD5 of the exact (spec, weights, engine,
+     plugin) snapshot that produced them.
   3. `scripts/tune.py` — same contract: stamp tuned-weights emitted
      chunks with current MD5.
 
 Why weights are in config_md5 (not in code_md5):
   - Real machines.json schema: configSummaryMd5 covers the machine-specific
     math config (paytable + reel strip). codeSummaryMd5 covers the
-    engine/platform code shared across machines.
+    engine/platform code.
   - For virtual machines the analog is: spec (rules) + weights (reel
     strip) = machine-specific; engine = shared. So weights MUST be in
     config_md5 to get the "machine version" semantics. Without this,
     re-tuning creates chunks that look identical to old-tuning chunks
     → classify_chunks marks them all "kept" → analyzer mixes them →
     blended / wrong RTP.
+
+Phase B per-machine hash boundary (slot_designer/ARCHITECTURE.md §4):
+  - Touch core/engine/* or core/emitter/* → every machine's md5 flips
+    (correct: framework change is a fleet-wide event).
+  - Touch machines/M15/plugins/* → only M15's md5 flips.
+  - Touch machines/M279/plugins/* → only M279's md5 flips.
+  - Touch tests, docs, scripts, configs → no machine's md5 flips.
 """
 from __future__ import annotations
 
@@ -51,28 +58,85 @@ def _md5_file(path: Path) -> bytes:
     return hashlib.md5(path.read_bytes()).digest()
 
 
-def _engine_source_files() -> list[Path]:
-    """All engine + emitter .py files (excluding __init__.py) that
-    contribute to the game logic. Sorted for determinism.
+def _core_source_files() -> list[Path]:
+    """All ``core/engine/**`` + ``core/emitter/**`` .py files
+    (excluding ``__init__.py`` and ``__pycache__``). Sorted by relative
+    path for determinism.
+
+    Note (Phase B): we recurse with ``rglob`` because future framework
+    additions may live in subpackages (e.g. ``core/engine/features/``).
+    Pre-Phase-B used non-recursive ``glob`` which silently missed
+    ``engine/m279/`` subpackage files — that subpackage is now relocated
+    under ``machines/M279/plugins/`` so the recursion is safe.
     """
-    engine_dir = _SLOT_DESIGNER / "engine"
-    emitter_dir = _SLOT_DESIGNER / "emitter"
+    core_engine = _SLOT_DESIGNER / "core" / "engine"
+    core_emitter = _SLOT_DESIGNER / "core" / "emitter"
     files: list[Path] = []
-    for d in (engine_dir, emitter_dir):
-        files.extend(p for p in sorted(d.glob("*.py")) if p.name != "__init__.py")
+    for d in (core_engine, core_emitter):
+        if not d.is_dir():
+            continue
+        for p in d.rglob("*.py"):
+            if p.name == "__init__.py":
+                continue
+            if "__pycache__" in p.parts:
+                continue
+            files.append(p)
+    files.sort()
     return files
 
 
-def compute_code_md5() -> str:
-    """Fleet-wide game-engine version hash.
+def _plugin_source_files(machine_name: str) -> list[Path]:
+    """All ``machines/<machine_name>/plugins/**`` .py files (excluding
+    ``__init__.py`` + ``__pycache__``). Sorted for determinism.
 
-    Any change to engine/*.py or emitter/*.py (excluding __init__.py)
-    flips this → every virtual machine's chunks become "stale" next
-    time classify_chunks compares.
+    Returns empty list when the machine has no plugins/ dir (base-only
+    machines like M1 / M37).
+    """
+    plugin_dir = _SLOT_DESIGNER / "machines" / machine_name / "plugins"
+    if not plugin_dir.is_dir():
+        return []
+    files: list[Path] = []
+    for p in plugin_dir.rglob("*.py"):
+        if p.name == "__init__.py":
+            continue
+        if "__pycache__" in p.parts:
+            continue
+        files.append(p)
+    files.sort()
+    return files
+
+
+def compute_code_md5(machine_name: str) -> str:
+    """Per-machine game-engine + plugin version hash.
+
+    Hash inputs (in order):
+      1. ``core/engine/**/*.py``  — shared framework engine
+      2. ``core/emitter/**/*.py`` — shared framework emitter
+      3. ``machines/<machine_name>/plugins/**/*.py`` — per-machine plugins
+         (empty for base-only machines)
+
+    Behavior:
+      - Touching core/* flips every machine's md5 (framework change).
+      - Touching machines/M15/plugins/* flips only M15's md5.
+      - Touching machines/M279/plugins/* flips only M279's md5.
+      - Touching tests / docs / scripts / configs → no md5 flips.
+
+    Args:
+      machine_name: short machine identifier (e.g. "M1", "M15"); the
+        directory under ``slot_designer/machines/`` whose plugin tree
+        contributes to the hash.
+
+    Backward-incompat (Phase B 2026-05-08): pre-Phase-B signature was
+    ``compute_code_md5() -> str`` returning a fleet-wide hash. Callers
+    must pass machine_name now. The bare-call signature is gone so the
+    interpreter raises TypeError loudly — silent fleet-wide hashing is
+    the architectural rot we're fixing.
     """
     h = hashlib.md5()
-    for f in _engine_source_files():
-        h.update(f.read_bytes())
+    for p in _core_source_files():
+        h.update(p.read_bytes())
+    for p in _plugin_source_files(machine_name):
+        h.update(p.read_bytes())
     return h.hexdigest()
 
 
@@ -167,6 +231,23 @@ def resolve_strips_path(entry: dict) -> Path | None:
     return _SLOT_DESIGNER.parent / tpl
 
 
+def _machine_name_from_entry(entry: dict) -> str:
+    """Extract the machines/<M>/ directory name from a registry entry.
+
+    Prefers ``_source_machine`` (explicit, set by registry authors so
+    "M15sim" → "M15"). Falls back to stripping a trailing "sim" from
+    the registry's ``machine`` field for back-compat with entries that
+    omit ``_source_machine``.
+    """
+    name = entry.get("_source_machine")
+    if name:
+        return str(name)
+    raw = entry.get("machine", "")
+    if raw.endswith("sim"):
+        return raw[:-3]
+    return raw
+
+
 def compute_machine_md5(entry: dict) -> tuple[str, str]:
     """Machine-level (aggregate) ``(config_md5, code_md5)``.
 
@@ -175,6 +256,10 @@ def compute_machine_md5(entry: dict) -> tuple[str, str]:
     anything about this machine change?" questions; NOT used for
     per-mode chunk tag comparison (that's
     ``compute_machine_md5_for_mode`` below).
+
+    code_md5 (Phase B per-machine) covers core engine + core emitter +
+    that machine's own plugins/. Touching another machine's plugins
+    won't flip this machine's code_md5.
 
     All callers route through this helper or the per-mode variant so
     hash semantics stay consistent across refresh / classify / stamp
@@ -185,7 +270,7 @@ def compute_machine_md5(entry: dict) -> tuple[str, str]:
     strips_path = resolve_strips_path(entry)
     weights_paths = resolve_weights_paths(entry, entry.get("modes", []))
     cfg = compute_config_md5(spec_path, weights_paths, strips_path=strips_path)
-    return cfg, compute_code_md5()
+    return cfg, compute_code_md5(_machine_name_from_entry(entry))
 
 
 def compute_machine_md5_for_mode(entry: dict, mode: int) -> tuple[str, str]:
@@ -211,9 +296,9 @@ def compute_machine_md5_for_mode(entry: dict, mode: int) -> tuple[str, str]:
     simultaneously (by design: the strip change IS a machine-wide
     event that should invalidate all old chunks).
 
-    code_md5 is mode-agnostic (engine + emitter source hashes) — it
-    shares the same value across modes, but we return it here for
-    call-site convenience.
+    code_md5 is mode-agnostic (Phase B: shared core + this machine's
+    plugins) — it shares the same value across modes of the same
+    machine, but we return it here for call-site convenience.
     """
     repo_root = _SLOT_DESIGNER.parent
     spec_path = repo_root / entry.get("_spec_path", "")
@@ -221,4 +306,4 @@ def compute_machine_md5_for_mode(entry: dict, mode: int) -> tuple[str, str]:
     # Single mode → single weights path
     weights_paths = resolve_weights_paths(entry, [int(mode)])
     cfg = compute_config_md5(spec_path, weights_paths, strips_path=strips_path)
-    return cfg, compute_code_md5()
+    return cfg, compute_code_md5(_machine_name_from_entry(entry))
