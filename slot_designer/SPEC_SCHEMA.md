@@ -197,10 +197,14 @@ engine 按路径从 `MachineState` 读值填入 round dict。
 
 ## 新机台 onboarding 流程
 
-1. `rawdata/<M>/mode_<N>/` 已经存在的 → 写 `tests/fixtures/M{N}_field_analysis.md`：扫几千 round，挖出 pay_id → 规则映射、wild 行为、特殊 feature
-2. 手写 `specs/M{N}.spec.json`
-3. 手写 `weights/M{N}_mode{N}.json`（策划给或反推）
-4. `scripts/verify.py --machine M{N} --mode N` 跑 simulator → analyzer → 对比真实 report，diff 接受则 spec 正确
-5. 如果 diff 大，说明 spec 漏了什么或 engine 缺 feature → 修 + 重跑
+完整工程步骤见 [`ARCHITECTURE.md §5`](ARCHITECTURE.md#5-新机台-onboarding-步骤)。spec 层概要：
 
-目标：大部分机台 **只改 spec 不改 engine**。只有真出现新机制（如没人见过的 feature）才加 plugin。
+1. 上游有 rawdata 的 → 写 `tests/fixtures/<M>_field_analysis.md`：扫几千 round，挖出 pay_id → 规则映射、wild 行为、特殊 feature
+2. 手写 `machines/<M>/spec.json`（按本文档 schema）
+3. 手写 `machines/<M>/reel_strips.json` + `machines/<M>/weights/mode_<N>/weights.json`
+4. 跑 simulator → analyzer → 对比真实 report，diff 接受则 spec 正确
+5. 如果 diff 大，说明 spec 漏了什么或 engine 缺 feature
+   - 缺 feature → 在 `machines/<M>/plugins/` 实现 [`FeaturePlugin`](core/engine/feature_protocol.py) Protocol（见 `machines/M15/plugins/` 模板）
+   - 缺自定义 engine → 在 `machines/<M>/plugins/__init__.py` 暴露 `load_engine` / `sample_one_chunk` / `compute_schema_fingerprint`（见 `machines/M279/plugins/` 模板）
+
+目标：大部分机台 **只写 spec + weights**，不改 core/。新 feature 类型才加 plugin（且 plugin 完全在 `machines/<M>/` 内部，不 leak 到 core/）。

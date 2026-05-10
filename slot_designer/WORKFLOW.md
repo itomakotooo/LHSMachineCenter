@@ -181,6 +181,6 @@ PR 自描述要回答：
 - **WORKFLOW.md**（这份）：跨机台通用的 **过程/方法/态度**。"怎么做 review"。
 - **DESIGN_PHILOSOPHY.md**：跨机台通用的 **slot 设计 first principles**。"设计的硬规则"。
 - **每机台 DESIGN.md / MODE_DESIGN.md**：单机台 **specific 数字 / paytable / 跨 mode 关系**。
-- **每机台 verify_<M>_design.py**：单机台 **硬约束代码**。
+- **每机台 machines/<M>/verify.py**：单机台 **硬约束代码**。
 
 这份只写过程，不写 slot 知识细节。

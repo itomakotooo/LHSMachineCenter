@@ -1,129 +1,122 @@
 # slot_designer
 
-独立的 slot-machine 数值调参模块。**不与现有代码耦合**：
-- 不 import 任何 `fresh_slotlab/` 或 `src/web_console/` 下的符号
-- 不修改现有模块行为
-- 唯一交互面是**输出 rawdata 格式的 JSON chunk** —— 现有 `player_impact_analyzer.py --from-cache` 直接吃
+虚拟老虎机框架 — **设计 / 调音 / 模拟新机台 + 跑虚拟 console** 的代码库，跟生产 analyzer (`fresh_slotlab/`) + web console (`src/web_console/`) 隔离。
 
-## 为什么这样设计
+虚拟 console 跑在 8878 端口（生产 console 8877），数据自带 `slot_designer/{rawdata,reports,state,configs}/`，可以跟生产 console 同时启动做并排对比。
 
-目标：策划给权重表和 paytable 规则 → 我正向模拟 → 生成 rawdata → 现有 analyzer 分析 → 和参考机台画像对比 → 自动/半自动调参。
+---
 
-把 simulator output 对齐到现有 rawdata schema 有两大好处：
-1. **白嫖所有分析能力**：现有 analyzer 已经实现 pay_id tally / bucket / tail curve / streak / bankruptcy replay / session-level RTP 等全部指标，不重写
-2. **自然的正确性验证**：用已知权重（你给的真实 reel 表）跑 simulator → 跑 analyzer → 对比真实 `reports/M1/mode_1/latest.json` 的 RTP / bucket / per-pay_id fires，差距 < 0.5pp 说明引擎对了
+## 必读文档
 
-## 模块结构
+| 文件 | 写啥 | 什么时候读 |
+|---|---|---|
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | 代码层布局、Plugin 协议、per-machine md5、新机台 onboarding 工程步骤、命名禁区、不变量 | 第一次接触本目录 / 新机台 / 改 core/ / 改 md5 |
+| [`DESIGN_PHILOSOPHY.md`](DESIGN_PHILOSOPHY.md) | slot 设计 first principles（家族倒金字塔 / brand visibility / CV-RTP / pareto trap / reel asymmetry / PWDF / blank flank / visual rhythm）| 设计任何机台前 |
+| [`WORKFLOW.md`](WORKFLOW.md) | 每次 commit 前 adversarial self-review 5 步流程 | 每次提交前 |
+| [`SPEC_SCHEMA.md`](SPEC_SCHEMA.md) | spec DSL 字段定义 | 写 / 改 spec.json 时 |
+
+新机台 onboarding 走 [ARCHITECTURE.md §5](ARCHITECTURE.md#5-新机台-onboarding-步骤)。
+
+---
+
+## 目录布局
 
 ```
 slot_designer/
-├── specs/                          spec = 机台规则的声明式 JSON + schema 文档
-│   ├── schema.md                   ← spec DSL 规范
-│   └── M{NN}.spec.json             ← 逐机台规则
-├── weights/                        reel strip 权重表（策划给或调参产出）
-│   └── M{NN}_mode{N}.json
-├── engine/                         (Phase 1) 正向游戏引擎
-│   ├── reel_strip.py               ReelStrip: 带权 stop 采样 + window(3 行)
-│   ├── symbol.py                   Symbol / SymbolKind
-│   ├── rules.py                    PayRule 抽象 + 内置 kinds (line_3_same / cherry_count / pure_wild_group / …)
-│   ├── evaluator.py                payline 评估（wild 替换 + multiplier 叠加 + cherry 优先级 + grand jackpot 守门）
-│   ├── features/                   pluggable 机制（M1 只需 cherry + wild_mult，未来 collect / bonus_chain / lock_respin）
-│   ├── state.py                    MachineState: per-robot 状态（CollectCount, free spins remaining, …）
-│   ├── spin.py                     SpinEngine: 编排一次 spin（按 SpinType 路由）
-│   └── loader.py                   读 spec + weights → 实例化引擎
-├── emitter/                        (Phase 1) 输出 rawdata 格式
-│   ├── round.py                    emit 单 round dict（对齐 rawdata schema 所有字段）
-│   ├── robot.py                    N round → robot.roundResult JSON string
-│   └── chunk.py                    N robot → chunk JSON with envelope（_cache_version / _bet / _config_md5 / …）
-├── devtools/                       (Phase 3) 开发者快速反馈
-│   ├── analytic_rtp.py             闭式 RTP 计算（给权重 + 规则，亚秒级返回）
-│   ├── analytic_bucket.py          闭式 bucket 边际分布
-│   └── weight_diff.py              两套权重 predicted-metrics diff
-├── tuner/                          (Phase 4) 调参 loop
-│   ├── target_profile.py           从参考机台 report 抽画像（bucket_dist / tail / hit / σ / …）
-│   ├── cost.py                     硬/软/体验三层 cost function
-│   └── loop.py                     hybrid: math 快筛候选 → sim+analyzer 验证 → 迭代
-├── scripts/                        CLI entry points
-│   ├── simulate.py                 spec + weights + N spins → rawdata chunks 落盘
-│   ├── verify.py                   sim → analyzer → diff 真实 report
-│   └── tune.py                     调参入口
+├── core/                    ← 通用框架，不认识具体机台
+│   ├── engine/              SpinEngine + FeaturePlugin Protocol + evaluator + rules + symbol + reel_strip + loader
+│   ├── emitter/             chunk + round + robot + driver (机台无关)
+│   ├── tuner/               通用调音框架 + targets/
+│   ├── devtools/            analytic_rtp + player_experience + shape_distance + weight_diff
+│   └── backend/             虚拟 console FastAPI app + per-machine md5 计算 + registry refresh
+│
+├── machines/                ← 每台机一个独立目录，互不 import
+│   ├── M1/                  spec.json + reel_strips.json + weights/mode_<N>/ + DESIGN.md  (base only)
+│   ├── M15/                 + plugins/ — Top Dollar Feature Play (FeaturePlugin)
+│   ├── M37/                 (base only)
+│   └── M279/                + plugins/ — 自定义引擎（多 payline + 收集 + nudge stack + wheel）
+│
+├── configs/
+│   ├── machines_virtual.json   ← 虚拟机台 registry，含 _spec_path / _strips_path / _weights_path_template / 可选 _engine
+│   └── paytables_virtual/
+│
 ├── tests/
-│   ├── fixtures/                   rawdata 反推笔记（新机台 onboarding 参考）
-│   │   └── M1_field_analysis.md
-│   ├── test_m1_rules.py            单测每个 pay 规则（合成 3-symbol 输入 → 预期 pay_id + win）
-│   └── test_m1_engine_regression.py sim(known M1 weights) vs 真实 M1 summary 对账
-├── out/                            sim 产出（gitignored）
-└── README.md                       本文件
+│   ├── core/                ← 跨机台框架测试 (TDD baseline)
+│   │   ├── test_layout.py
+│   │   ├── test_per_machine_code_md5.py
+│   │   ├── test_no_machine_leakage.py
+│   │   ├── test_feature_plugin_protocol.py
+│   │   ├── test_custom_engine_adapter.py
+│   │   └── test_end_to_end_refactor.py
+│   └── test_*.py            ← 其他通用 + 机台 fixture 测试
+│
+├── scripts/                 通用工具 (tune.py / verify.py / simulate.py 等) + machine-private wrapper 脚本
+└── ARCHITECTURE.md / DESIGN_PHILOSOPHY.md / WORKFLOW.md / SPEC_SCHEMA.md
 ```
 
-## 架构原则（为"千变万化"的未来机台做准备）
+---
 
-### 1. 规则声明 vs 执行分离
-- `specs/M{NN}.spec.json` 声明**机台是什么** —— grid 尺寸 / symbol 集合 / pay 规则 / SpinType / feature / 转换
-- `engine/` 是**通用执行器** —— 不 hardcode 任何机台
-- 添加新机台 = 写新 spec + (可选) 写新 feature plugin。引擎主干代码不动
+## 启动虚拟 console
 
-### 2. 三层扩展点
-- **Symbol kind**：`regular / wild / cherry_special / scatter / locked`  
-  新 kind → 加一个 symbol.py 中的 strategy 类
-- **Pay kind**：`cherry_count / line_3_same / line_3_group / pure_wild / pure_wild_group / scatter_count / ways_pay / cluster_pay / …`  
-  新 kind → 加一个 rules.py 中的 PayRule 子类
-- **Feature**：`cherry_precedence / wild_multiplier / collect_mechanic / bonus_chain / wheel / pick_em / lock_symbol_freespin / …`  
-  新 feature → `engine/features/<name>.py` 实现接口 + 在 spec 声明
+项目根目录：
 
-### 3. SpinType 路由
-每个 spin 按 SpinType 查 `spec.spin_types[type]`：
-- 选用哪套 reel_set（paid / bonus / wheel 各有各的 strip）
-- cost / bet 规则
-- 评估哪些 pay 规则（某些 pay 只在 bonus spin 触发）
-- 后置效果（bonus spin 消耗 free_spin_counter / 触发新链）
+```bat
+start_virtual.bat              REM 8878 端口，自动开浏览器
+start_virtual.bat /install     REM 先 pip install 依赖
+start_virtual.bat /port 8879   REM 自定义端口
+```
 
-M1 简化：只有 `"1"` 一种 SpinType。
-
-### 4. 状态机显式化
-`MachineState` 载：`free_spins_remaining / collect_count / acc_credits / chain_depth / locked_symbols`。  
-每个 feature 声明它要读/写哪些 state 字段。避免隐式耦合。
-
-### 5. Emitter schema-aware per machine
-现有 rawdata 的 round schema 各机台差异（M272 有 `CollectCount` / `AccCredits`；M1 没有）。  
-emitter 按 `spec.emit_fields` 决定哪些字段写入 —— spec 为王，不在 emitter 里 if-else 机台名。
-
-### 6. 两条调参路径
-- **math 路径**（`devtools/analytic_*.py`）：闭式算 RTP + bucket 边际。对 M1 3×3 classic 可行；复杂机台退化为小规模 Monte Carlo（不落盘，内存中）
-- **sim 路径**（`scripts/simulate.py` → analyzer）：真跑 100k+ spin，产 rawdata，analyzer 出完整 summary。给出 streak / tail / near-miss 等 math 路径拿不到的指标
-
-tuner 用 math 做内循环快筛，用 sim 做外循环 ground-truth 确认。
-
-## Phase 状态
-
-- **Phase 0** — ✅ scaffold + M1 spec + 结构化权重 + 反推笔记
-- **Phase 1** — ✅ engine + rawdata-format emitter + verify
-- **Phase 2** — ✅ M14 target profile 抽取
-- **Phase 3** — ✅ devtools (analytic RTP + shape distance + weight diff)
-- **Phase 4** — ✅ count tuner ((1+1)-ES on 27-dim counts space)
-- **Phase 5** — ✅ order tuner (SA on permutation space, 保持 Phase 4 marginals)
-- **Phase 6** — ✅ **虚拟机 console** (复用 create_app() 注入 slot_designer/ 路径，
-  跑在独立 port 8878；完整支持采样 / 报告 / 批量 / 对比 / LLM 解读；和真
-  console 零耦合零干扰)
-
-第一个机台（M1）pipeline 完整见 [`FIRST_MACHINE.md`](FIRST_MACHINE.md)。
-
-## 虚拟机 console 快速启动
+直接命令：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File slot_designer/scripts/start_virtual_console.ps1 -OpenBrowser
-# → http://127.0.0.1:8878/console/
+powershell -File slot_designer/scripts/start_virtual_console.ps1 -OpenBrowser
 ```
 
-操作体验**和真机 console (8877) 完全一致** —— 同一份 FastAPI app，同
-一份前端 UI，只是数据源换成 `slot_designer/{rawdata,reports,state}/`。
+实际跑的是 `python -m uvicorn slot_designer.core.backend.virtual_app:app`。
 
-"开始采样" 按钮会调 `backend/virtual_analyzer.py`，内部跑我的 simulator
-（不走 HTTP 上游），产 chunks append 到 rawdata pool，再 delegate 给
-真 analyzer `--from-cache` 做分析 —— **现有 analyzer 一行代码没改**。
+---
 
-## 硬约束（不变）
+## 最小可工作流（已注册机台）
 
-1. 不 import 现有代码
-2. 不修改现有代码
-3. 输出必须严格对齐现有 rawdata chunk schema —— 任何字段名或格式变化 = 破坏约定
+1. 启动虚拟 console (`start_virtual.bat`) → 浏览器打开 `http://127.0.0.1:8878/console/`
+2. 选机台 (M1sim / M15sim / M37sim / M279sim) + 选 mode (1/2/5/7)
+3. **开始采样** → 调 `core/backend/virtual_analyzer.py` (subprocess) → 走 `core/emitter/driver.sample_one_chunk` 或自定义引擎 adapter → 写 chunk 到 `slot_designer/rawdata/<M>sim/mode_<N>/`
+4. **生成 Report** → 委托给 `fresh_slotlab/player_impact_analyzer.py --from-cache` → 输出 `slot_designer/reports/<M>sim/mode_<N>/`
+5. 浏览器看分析结果（RTP / bucket / hit / 跨 mode 对比 / etc.）
+
+---
+
+## RTP / 数值约束 (跨机台契约)
+
+| Mode | Total RTP | 严格度 |
+|---|---|---|
+| 1 | 95% | ±1pp |
+| 2 | 300% | ±10-20pp |
+| 5 | 500% | ±10-20pp |
+| 7 | 85% | ±1pp |
+
+详见 [DESIGN_PHILOSOPHY.md §4-§9](DESIGN_PHILOSOPHY.md) (per-tier hit / CV / archetype / mode-pair monotonicity).
+
+---
+
+## 跟生产 analyzer 的对接
+
+虚拟机台 chunk 输出严格对齐生产 rawdata schema:
+- `roundResult` = JSON-encoded 字符串列表 (per round 17-key dict)
+- `analysisResult` = JSON-encoded 字符串，inner = `{TotalWin, FeatureWin, SummaryWin}` 各自也是 JSON 字符串 (双层 encode)
+- chunk envelope = `{_machine, _mode, _config_md5, _code_md5, _schema_fingerprint, response}`
+
+→ `player_impact_analyzer.py --from-cache <chunks>` 直接吃，不用改 analyzer 一行。
+
+---
+
+## 不变量（架构红线，由 [`tests/core/`](tests/core/) 自动守住）
+
+1. `core/` 不 import 任何 `slot_designer.machines.*` (静态)
+2. `core/` 源码不含机台名 token (`M\d+` / `TopDollar` / hardcoded `ST=14/15`)
+3. `compute_code_md5(machine_name)` 是 per-machine —— 改 `machines/M15/plugins/` 只 M15 hash 翻
+4. `machines/<M>/` 不 import 其他 `machines.<other>/`
+5. 每台 feature 机台的 plugin 满足 [`FeaturePlugin` Protocol](core/engine/feature_protocol.py)
+6. 每台机台 `DESIGN.md` 不 override 全局 `DESIGN_PHILOSOPHY.md`，只 specialize
+
+违反任何一条 → `pytest slot_designer/tests/core/` 红，commit 卡住。
