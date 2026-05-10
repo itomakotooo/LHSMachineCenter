@@ -66,7 +66,7 @@
       "logicClassNames": [
         "SimulatedClassicPayline3ReelWithBonus"
       ],
-      "configSummaryMd5": "48e6229d540ad3fadae5a8d41bce3835",
+      "configSummaryMd5": "6938a5d73a27f4b2f83bdad117aae78d",
       "codeSummaryMd5": "b763f30747a1dd07f7ef0427a4496658",
       "available": true,
       "_source_machine": "M15",
@@ -75,19 +75,19 @@
       "_weights_path_template": "slot_designer/machines/M15/weights/mode_{mode}/weights.json",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "52b29f8df6a1092da92a0547d38a0922",
+          "configSummaryMd5": "0a3a1627f0a0235166b93fbde2d188e0",
           "codeSummaryMd5": "b763f30747a1dd07f7ef0427a4496658"
         },
         "2": {
-          "configSummaryMd5": "343553e2b54c2ed0ddb4f902c45cd1d9",
+          "configSummaryMd5": "195972e9ee554f29e48597269a2c7b87",
           "codeSummaryMd5": "b763f30747a1dd07f7ef0427a4496658"
         },
         "5": {
-          "configSummaryMd5": "413ec1757cf5a6e10c9b43f0c44a77d5",
+          "configSummaryMd5": "8a595e96909eec4e08fedeea44cae128",
           "codeSummaryMd5": "b763f30747a1dd07f7ef0427a4496658"
         },
         "7": {
-          "configSummaryMd5": "81754ed949306b08d696d76a9490232e",
+          "configSummaryMd5": "7d6100492dfa9e4b025cd822cda0d9fd",
           "codeSummaryMd5": "b763f30747a1dd07f7ef0427a4496658"
         }
       }
@@ -141,7 +141,7 @@
       "logicClassNames": [
         "SimulatedM279NudgeStackCollectWheel"
       ],
-      "configSummaryMd5": "991120da8175770ceeb0a38b72465ff3",
+      "configSummaryMd5": "190dbb9477d258041b84864b48bba5c8",
       "codeSummaryMd5": "6c78603d26665e749bff5033775970d5",
       "available": true,
       "_engine": "m279",
@@ -152,19 +152,19 @@
       "_note": "M279 = Light & Wonder 'Blazing 777 Triple Double Jackpot Wild — Nudging Stacks' archetype + Asian-market collect-to-wheel feature. The _engine='m279' marker routes virtual_analyzer through engine/m279/ and emitter/m279_{round,driver}.py instead of the M1/M15 SpinEngine path. md5s populate on next refresh_machines_virtual.",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "9e414adb0c015deebe7336ca02601ea8",
+          "configSummaryMd5": "8fb62a77aeba929532697f210e01ef3f",
           "codeSummaryMd5": "6c78603d26665e749bff5033775970d5"
         },
         "2": {
-          "configSummaryMd5": "a087acdcab2be60e997dea6804c93437",
+          "configSummaryMd5": "e59a8c65abaf56733abb1d013900b331",
           "codeSummaryMd5": "6c78603d26665e749bff5033775970d5"
         },
         "5": {
-          "configSummaryMd5": "7b587306afcaab1a35bd899dc821c625",
+          "configSummaryMd5": "40d22c7fb53add8dfcef5432a6dbfc95",
           "codeSummaryMd5": "6c78603d26665e749bff5033775970d5"
         },
         "7": {
-          "configSummaryMd5": "ae7c1b85c3e3ed0123f28b8cdbcfc2ae",
+          "configSummaryMd5": "a3472b6764445b2b391fdc290b027e49",
           "codeSummaryMd5": "6c78603d26665e749bff5033775970d5"
         }
       }

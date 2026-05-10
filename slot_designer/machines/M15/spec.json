@@ -41,7 +41,7 @@
     "",
     "Feature Play (shipped v5+, retuned v7 2026-04-24):",
     "  - Triggered when topdollar lands reel 3 payline (pay_id 666 emits)",
-    "  - Feature EV math lives in slot_designer/engine/feature_m15.py",
+    "  - Feature EV math lives in slot_designer/machines/M15/plugins/feature.py",
     "  - Rawdata emits ST=1 (trigger) + ST=14 (each offer round) + ST=15",
     "    (end marker w/ WinAmount); runtime in engine/spin.spin_session",
     "  - 10 x-cards (1000/100/50/50/20/20/10/10/5/5) + 2 y-cards (×2)",
@@ -126,7 +126,7 @@
       "y_pool": [2, 2],
       "accept_threshold": 40,
       "max_rounds": 4,
-      "_default_weights_note": "The four weight tuples below are the v5 design for MODE 1 specifically. Other modes override via per-mode `feature_params` in their weights.json (see slot_designer/weights/M15/mode_<N>/weights.json). See also slot_designer/weights/M15/MODE_DESIGN.md for the 4-mode design table.",
+      "_default_weights_note": "The four weight tuples below are the v5 design for MODE 1 specifically. Other modes override via per-mode `feature_params` in their weights.json (see slot_designer/machines/M15/weights/mode_<N>/weights.json). See also slot_designer/machines/M15/weights/MODE_DESIGN.md for the 4-mode design table.",
       "x_count_weights": [5, 40, 40, 12, 3],
       "y_count_weights": [75, 20, 5],
       "x_value_weights": [0.0001, 0.0266, 0.1455, 0.1455, 1.3729, 1.3729, 7.4998, 7.4998, 40.9684, 40.9684],
@@ -143,7 +143,7 @@
         "  Feature EV (per trigger):    46× bet",
         "  Required trigger:            52.25 / 46 = 1.136% (= 1/88)",
         "",
-        "Other modes' weights live in slot_designer/weights/M15/mode_<N>/weights.json",
+        "Other modes' weights live in slot_designer/machines/M15/weights/mode_<N>/weights.json",
         "feature_params block."
       ]
     }

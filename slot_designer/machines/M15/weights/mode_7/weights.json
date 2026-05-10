@@ -127,7 +127,7 @@
     ]
   ],
   "feature_params": {
-    "_note": "v5 mode 1 Feature Play params (verified via analyze_feature 2026-04-23). Overrides spec-level defaults. See slot_designer/weights/M15/MODE_DESIGN.md.",
+    "_note": "v5 mode 1 Feature Play params (verified via analyze_feature 2026-04-23). Overrides spec-level defaults. See slot_designer/machines/M15/weights/MODE_DESIGN.md.",
     "x_count_weights": [
       5,
       40,

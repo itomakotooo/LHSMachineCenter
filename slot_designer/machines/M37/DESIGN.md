@@ -200,7 +200,7 @@ mode 1 是 mode 2 的对照:
 - `slot_designer/machines/M37/reel_strips.json`（26-stop + `_archetype` block）
 - `slot_designer/machines/M37/weights/mode_1/weights.json`（per-stop 权重，初值参考公服 marginal）
 - `slot_designer/scripts/verify_m37_design.py`
-- `slot_designer/tuner/targets/M37_mode1.target.json`
+- `slot_designer/core/tuner/targets/M37_mode1.target.json`
 
 ## §7 Window visibility (PWDF) — M37-specific 配置（per universal §15）
 

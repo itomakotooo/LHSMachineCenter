@@ -88,9 +88,9 @@ python -m slot_designer.scripts.tune \
   --spec slot_designer/machines/M1/spec.json \
   --strips slot_designer/machines/M1/reel_strips.json \
   --base-weights slot_designer/machines/M1/weights/mode_2/weights.json \
-  --target slot_designer/tuner/targets/M1_mode2_lucky.target.json \
+  --target slot_designer/core/tuner/targets/M1_mode2_lucky.target.json \
   --out-weights slot_designer/machines/M1/weights/mode_2/weights.json \
-  --out-report slot_designer/weights/M1/mode_2/TUNE_REPORT.md \
+  --out-report slot_designer/machines/M1/weights/mode_2/TUNE_REPORT.md \
   --mode 2 \
   --evaluations 3000 --restarts 4 --sa-steps 5000 \
   --hit-target 0.2767 --hit-weight 1.5 \
