@@ -14,10 +14,10 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.engine.loader import load_engine
+from slot_designer.core.engine.loader import load_engine
 
-_SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
+_SPEC = _ROOT / "slot_designer" / "machines" / "M1" / "spec.json"
+_WEIGHTS = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_1" / "weights.json"
 
 _engine, _ = load_engine(_SPEC, _WEIGHTS)
 EV = _engine.evaluator

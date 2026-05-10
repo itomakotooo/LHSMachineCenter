@@ -38,11 +38,11 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.devtools.analytic_rtp import analytic_profile, compute_reel_marginal
-from slot_designer.engine.loader import load_engine
+from slot_designer.core.devtools.analytic_rtp import analytic_profile, compute_reel_marginal
+from slot_designer.core.engine.loader import load_engine
 
-SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-STRIPS = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
+SPEC = _ROOT / "slot_designer" / "machines" / "M1" / "spec.json"
+STRIPS = _ROOT / "slot_designer" / "machines" / "M1" / "reel_strips.json"
 
 # pay_id -> family classification for RTP-share aggregation.
 # Matches tune_m1.PAY_TO_FAMILY.
@@ -311,7 +311,7 @@ def wild_on_payline_p(engine):
 
 
 def load_mode_state(mode):
-    weights_path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
+    weights_path = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / f"mode_{mode}" / "weights.json"
     if not weights_path.exists():
         return None
     spec = json.loads(SPEC.read_text(encoding="utf-8"))

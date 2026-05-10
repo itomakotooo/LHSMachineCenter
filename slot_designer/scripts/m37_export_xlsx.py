@@ -142,7 +142,7 @@ def main():
 
     # 2026-05-07 layout v3: slot_designer is single source of truth.
     # xlsx symbol layout fully overwritten from slot_designer's reel_strips.
-    sd_strips = jload(_ROOT / 'slot_designer/weights/M37/reel_strips.json')['reels']
+    sd_strips = jload(_ROOT / 'slot_designer/machines/M37/reel_strips.json')['reels']
     xlsx_strips = sd_strips  # use slot_designer layout directly
 
     print('Layout v3 (slot_designer = xlsx, single source of truth):')
@@ -156,7 +156,7 @@ def main():
     # 2026-05-07 v3: also write skin 5 (slot_designer is authoritative)
     skin_to_row = {1: 2, 2: 28, 5: 106, 7: 158}
     for mode in [1, 2, 5, 7]:
-        sd_w = jload(_ROOT / f'slot_designer/weights/M37/mode_{mode}/weights.json')['weights']
+        sd_w = jload(_ROOT / f'slot_designer/machines/M37/weights/mode_{mode}/weights.json')['weights']
         print(f'\n=== Mode {mode} export to skinId {mode} (rows {skin_to_row[mode]}-{skin_to_row[mode]+25}) ===')
 
         for reel_idx in range(3):

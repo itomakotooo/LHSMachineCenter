@@ -18,27 +18,27 @@ from random import Random
 
 import pytest
 
-from slot_designer.engine.m279.collect import CollectConfig, CollectMeter, load_collect_config
-from slot_designer.engine.m279.engine import (
+from slot_designer.machines.M279.plugins.m279.collect import CollectConfig, CollectMeter, load_collect_config
+from slot_designer.machines.M279.plugins.m279.engine import (
     M279SessionState,
     ST_BUFFMAP,
     ST_NUDGE,
     ST_PAID,
     ST_WHEEL,
 )
-from slot_designer.engine.m279.loader import load_m279_engine
-from slot_designer.engine.m279.nudge import (
+from slot_designer.machines.M279.plugins.m279.loader import load_m279_engine
+from slot_designer.machines.M279.plugins.m279.nudge import (
     NudgeConfig,
     detect_partial_stack_reels,
     nudge_chain,
     stack_visible_count,
 )
-from slot_designer.engine.m279.wheel import WheelCell, WheelConfig, sample_cell
-from slot_designer.emitter.m279_round import emit_m279_session
+from slot_designer.machines.M279.plugins.m279.wheel import WheelCell, WheelConfig, sample_cell
+from slot_designer.machines.M279.plugins.m279_round import emit_m279_session
 
 
-_SPEC = Path(__file__).resolve().parent.parent / "specs" / "M279.spec.json"
-_WEIGHTS = Path(__file__).resolve().parent.parent / "weights" / "M279" / "mode_1" / "weights.json"
+_SPEC = Path(__file__).resolve().parent.parent / "machines" / "M279" / "spec.json"
+_WEIGHTS = Path(__file__).resolve().parent.parent / "machines" / "M279" / "weights" / "mode_1" / "weights.json"
 
 
 # ── Spin type constants ──────────────────────────────────────────────

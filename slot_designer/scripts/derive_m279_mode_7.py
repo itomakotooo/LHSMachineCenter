@@ -81,15 +81,15 @@ def main() -> None:
     )
     p.add_argument(
         "--mode-1-path", type=Path,
-        default=Path(__file__).resolve().parent.parent / "weights" / "M279" / "mode_1" / "weights.json",
+        default=Path(__file__).resolve().parent.parent / "machines" / "M279" / "weights" / "mode_1" / "weights.json",
     )
     p.add_argument(
         "--mode-7-path", type=Path,
-        default=Path(__file__).resolve().parent.parent / "weights" / "M279" / "mode_7" / "weights.json",
+        default=Path(__file__).resolve().parent.parent / "machines" / "M279" / "weights" / "mode_7" / "weights.json",
     )
     p.add_argument(
         "--strips-path", type=Path,
-        default=Path(__file__).resolve().parent.parent / "weights" / "M279" / "reel_strips.json",
+        default=Path(__file__).resolve().parent.parent / "machines" / "M279" / "reel_strips.json",
     )
     args = p.parse_args()
 

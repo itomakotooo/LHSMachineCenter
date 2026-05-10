@@ -39,8 +39,8 @@ from slot_designer.scripts.simulate import (
 )
 
 
-_SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
+_SPEC = _ROOT / "slot_designer" / "machines" / "M1" / "spec.json"
+_WEIGHTS = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_1" / "weights.json"
 _CONSOLE_RAWDATA = _ROOT / "slot_designer" / "rawdata"
 
 

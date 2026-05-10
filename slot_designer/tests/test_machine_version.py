@@ -25,7 +25,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.backend.machine_version import (
+from slot_designer.core.backend.machine_version import (
     compute_code_md5,
     compute_config_md5,
     compute_machine_md5,
@@ -111,7 +111,7 @@ def test_refresh_matches_compute_machine_md5():
     compare each machine's cached md5s against compute_machine_md5(entry).
     No call site should produce different md5s for the same snapshot.
     """
-    from slot_designer.backend.virtual_app import refresh_machines_virtual
+    from slot_designer.core.backend.virtual_app import refresh_machines_virtual
     # Snapshot current file so test doesn't persist noise
     original = _REGISTRY.read_text(encoding="utf-8")
     try:

@@ -29,13 +29,13 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.engine.evaluator import PaytableEvaluator
-from slot_designer.engine.rules import RuleSet
-from slot_designer.engine.symbol import SymbolRegistry
-from slot_designer.engine.spin import _matches_any_reroll
+from slot_designer.core.engine.evaluator import PaytableEvaluator
+from slot_designer.core.engine.rules import RuleSet
+from slot_designer.core.engine.symbol import SymbolRegistry
+from slot_designer.core.engine.spin import _matches_any_reroll
 
 
-_SPEC_PATH = _ROOT / "slot_designer" / "specs" / "M37.spec.json"
+_SPEC_PATH = _ROOT / "slot_designer" / "machines" / "M37" / "spec.json"
 
 
 def _build_evaluator() -> PaytableEvaluator:

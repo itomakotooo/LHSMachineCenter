@@ -32,7 +32,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.engine.loader import _resolve_strips_path
+from slot_designer.core.engine.loader import _resolve_strips_path
 
 
 def _sha256(path: Path) -> str:
@@ -55,10 +55,11 @@ def _discover_modes(machine_dir: Path) -> list[int]:
 
 
 def _weights_paths_for_machine(machine: str) -> list[Path]:
-    machine_dir = _ROOT / "slot_designer" / "weights" / machine
+    # Phase A layout: machines/<M>/weights/mode_<N>/weights.json
+    machine_weights_dir = _ROOT / "slot_designer" / "machines" / machine / "weights"
     return [
-        machine_dir / f"mode_{n}" / "weights.json"
-        for n in _discover_modes(machine_dir)
+        machine_weights_dir / f"mode_{n}" / "weights.json"
+        for n in _discover_modes(machine_weights_dir)
     ]
 
 
@@ -117,9 +118,9 @@ def test_m15_loaded_reel_symbols_identical_across_modes():
     bug where the loader accidentally gets its symbols from weights.json
     instead of reel_strips.json.
     """
-    from slot_designer.engine.loader import load_engine
+    from slot_designer.core.engine.loader import load_engine
 
-    spec = _ROOT / "slot_designer" / "specs" / "M15.spec.json"
+    spec = _ROOT / "slot_designer" / "machines" / "M15" / "spec.json"
     modes = _weights_paths_for_machine("M15")
     assert len(modes) >= 2, f"need at least 2 M15 modes for this test; found {modes}"
 

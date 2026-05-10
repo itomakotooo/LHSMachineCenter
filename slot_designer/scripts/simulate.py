@@ -17,8 +17,8 @@ semantics on the next simulate call targeting it).
 Run as module from repo root:
 
     python -m slot_designer.scripts.simulate \\
-        --spec slot_designer/specs/M1.spec.json \\
-        --weights slot_designer/weights/M1/mode_1/weights.json \\
+        --spec slot_designer/machines/M1/spec.json \\
+        --weights slot_designer/machines/M1/weights/mode_1/weights.json \\
         --chunks 110 --robots 10 --spins-per-robot 1000 \\
         --machine-name M1sim
 
@@ -56,9 +56,9 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.backend.machine_version import compute_machine_md5
-from slot_designer.emitter.driver import emit_simulation_to_dir
-from slot_designer.engine.loader import load_engine
+from slot_designer.core.backend.machine_version import compute_machine_md5
+from slot_designer.core.emitter.driver import emit_simulation_to_dir
+from slot_designer.core.engine.loader import load_engine
 
 _SLOT_DESIGNER = _ROOT / "slot_designer"
 _DEV_SCRATCH_ROOT = _SLOT_DESIGNER / "_dev_scratch" / "rawdata"

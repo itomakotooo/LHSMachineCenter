@@ -20,13 +20,13 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from slot_designer.engine.loader import load_engine
-from slot_designer.devtools.analytic_rtp import analytic_profile
+from slot_designer.core.engine.loader import load_engine
+from slot_designer.core.devtools.analytic_rtp import analytic_profile
 
-SPEC = _ROOT / "slot_designer" / "specs" / "M37.spec.json"
-STRIPS = _ROOT / "slot_designer" / "weights" / "M37" / "reel_strips.json"
-M2_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M37" / "mode_2" / "weights.json"
-M5_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M37" / "mode_5" / "weights.json"
+SPEC = _ROOT / "slot_designer" / "machines" / "M37" / "spec.json"
+STRIPS = _ROOT / "slot_designer" / "machines" / "M37" / "reel_strips.json"
+M2_WEIGHTS = _ROOT / "slot_designer" / "machines" / "M37" / "weights" / "mode_2" / "weights.json"
+M5_WEIGHTS = _ROOT / "slot_designer" / "machines" / "M37" / "weights" / "mode_5" / "weights.json"
 
 TARGET_RTP = 500.0
 TOL_PP = 20.0

@@ -17,28 +17,28 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.devtools.analytic_rtp import (
+from slot_designer.core.devtools.analytic_rtp import (
     analytic_profile,
     analytic_profile_from_marginals,
     structurally_reachable_buckets,
 )
-from slot_designer.engine.evaluator import PaytableEvaluator
-from slot_designer.engine.loader import load_engine
-from slot_designer.engine.rules import RuleSet
-from slot_designer.engine.symbol import SymbolRegistry
-from slot_designer.tuner.cost import CostWeights, evaluate_cost
-from slot_designer.tuner.layout import (
+from slot_designer.core.engine.evaluator import PaytableEvaluator
+from slot_designer.core.engine.loader import load_engine
+from slot_designer.core.engine.rules import RuleSet
+from slot_designer.core.engine.symbol import SymbolRegistry
+from slot_designer.core.tuner.cost import CostWeights, evaluate_cost
+from slot_designer.core.tuner.layout import (
     apply_counts,
     base_counts,
     marginals_from_counts,
 )
-from slot_designer.tuner.loop import ESConfig, run_with_restarts
+from slot_designer.core.tuner.loop import ESConfig, run_with_restarts
 
 
-SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-STRIPS = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
-WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
-TARGET = _ROOT / "slot_designer" / "tuner" / "targets" / "M14_mode1.target.json"
+SPEC = _ROOT / "slot_designer" / "machines" / "M1" / "spec.json"
+STRIPS = _ROOT / "slot_designer" / "machines" / "M1" / "reel_strips.json"
+WEIGHTS = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_1" / "weights.json"
+TARGET = _ROOT / "slot_designer"  / "core" / "tuner" / "targets" / "M14_mode1.target.json"
 
 
 def _load():
@@ -50,7 +50,7 @@ def _load():
     helpers (``base_counts_from_assembled``) operate on the inner
     reels list directly if a test wants to skip the envelope.
     """
-    from slot_designer.engine.loader import load_reels_for_tuner
+    from slot_designer.core.engine.loader import load_reels_for_tuner
     spec = json.loads(SPEC.read_text(encoding="utf-8"))
     reels = load_reels_for_tuner(STRIPS, WEIGHTS)
     weights = {"reel_sets": {"default": {"reels": reels}}}
@@ -200,7 +200,7 @@ def test_sim_converges_to_analytic_on_tuned_weights():
 
     This guards against apply_counts breaking marginals silently.
     """
-    tuned_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
+    tuned_path = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_1" / "weights.json"
     if not tuned_path.exists():
         # Skip if tuner hasn't been run yet
         return

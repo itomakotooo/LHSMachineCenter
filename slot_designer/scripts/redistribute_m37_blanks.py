@@ -35,7 +35,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-_STRIPS = _ROOT / "slot_designer" / "weights" / "M37" / "reel_strips.json"
+_STRIPS = _ROOT / "slot_designer" / "machines" / "M37" / "reel_strips.json"
 _MODES = (1, 2, 5, 7)
 
 # Per-reel priority list (highest priority first → tier 1, 2, 3 by group; tier 4 = none)
@@ -209,7 +209,7 @@ def main() -> int:
     }
 
     for mode in args.modes:
-        wpath = _ROOT / "slot_designer" / "weights" / "M37" / f"mode_{mode}" / "weights.json"
+        wpath = _ROOT / "slot_designer" / "machines" / "M37" / "weights" / f"mode_{mode}" / "weights.json"
         wdoc = json.loads(wpath.read_bytes().decode("utf-8"))
         old_weights = wdoc["weights"]
 

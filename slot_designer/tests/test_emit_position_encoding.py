@@ -20,9 +20,9 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.emitter.round import emit_round
-from slot_designer.engine.spin import SpinOutcome
-from slot_designer.engine.rules import PayResult
+from slot_designer.core.emitter.round import emit_round
+from slot_designer.core.engine.spin import SpinOutcome
+from slot_designer.core.engine.rules import PayResult
 
 
 def _make_outcome(payline_syms, pay_result):

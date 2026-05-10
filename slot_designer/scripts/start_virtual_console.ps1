@@ -6,7 +6,7 @@ param(
 )
 
 # Virtual-machine console launcher. Mirrors scripts/start_console.ps1
-# but loads slot_designer.backend.virtual_app which injects slot_designer/
+# but loads slot_designer.core.backend.virtual_app which injects slot_designer/
 # paths into create_app() so this instance operates on virtual rawdata /
 # reports / state in full isolation from the real console (port 8877).
 
@@ -63,4 +63,4 @@ if ($OpenBrowser) {
 
 Write-Host ""
 Write-Host "Starting virtual uvicorn (Ctrl+C to stop)..."
-python -m uvicorn slot_designer.backend.virtual_app:app --host 127.0.0.1 --port $Port --log-level info
+python -m uvicorn slot_designer.core.backend.virtual_app:app --host 127.0.0.1 --port $Port --log-level info

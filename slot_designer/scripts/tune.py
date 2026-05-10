@@ -31,11 +31,11 @@ Deliverables:
 Usage:
 
     python -m slot_designer.scripts.tune \\
-        --spec slot_designer/specs/M1.spec.json \\
-        --strips slot_designer/weights/M1/reel_strips.json \\
-        --base-weights slot_designer/weights/M1/mode_1/weights.json \\
+        --spec slot_designer/machines/M1/spec.json \\
+        --strips slot_designer/machines/M1/reel_strips.json \\
+        --base-weights slot_designer/machines/M1/weights/mode_1/weights.json \\
         --target slot_designer/tuner/targets/M14_mode1.target.json \\
-        --out-weights slot_designer/weights/M1/mode_1/weights.json \\
+        --out-weights slot_designer/machines/M1/weights/mode_1/weights.json \\
         --out-report slot_designer/weights/M1/mode_1/TUNE_REPORT.md \\
         --evaluations 1500 --restarts 3 --sa-steps 5000
 """
@@ -51,20 +51,20 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.devtools.analytic_rtp import (
+from slot_designer.core.devtools.analytic_rtp import (
     ALL_BUCKET_KEYS,
     analytic_profile,
     analytic_profile_from_marginals,
     structurally_reachable_buckets,
 )
-from slot_designer.devtools.player_experience import experience_metrics
-from slot_designer.emitter.driver import emit_simulation_to_dir
-from slot_designer.engine.evaluator import PaytableEvaluator
-from slot_designer.engine.loader import load_engine
-from slot_designer.engine.rules import RuleSet
-from slot_designer.engine.symbol import SymbolRegistry
-from slot_designer.tuner.cost import CostWeights, evaluate_cost
-from slot_designer.tuner.layout import (
+from slot_designer.core.devtools.player_experience import experience_metrics
+from slot_designer.core.emitter.driver import emit_simulation_to_dir
+from slot_designer.core.engine.evaluator import PaytableEvaluator
+from slot_designer.core.engine.loader import load_engine
+from slot_designer.core.engine.rules import RuleSet
+from slot_designer.core.engine.symbol import SymbolRegistry
+from slot_designer.core.tuner.cost import CostWeights, evaluate_cost
+from slot_designer.core.tuner.layout import (
     apply_counts,
     base_counts,
     base_counts_from_assembled,
@@ -72,8 +72,8 @@ from slot_designer.tuner.layout import (
     extract_symbol_layout,
     marginals_from_counts,
 )
-from slot_designer.tuner.loop import ESConfig, run_with_restarts
-from slot_designer.tuner.ordering import (
+from slot_designer.core.tuner.loop import ESConfig, run_with_restarts
+from slot_designer.core.tuner.ordering import (
     ExperienceCostWeights,
     SAConfig,
     count_alternation_violations,
@@ -553,7 +553,7 @@ def main() -> None:
             # modes, and Blank for every position that's currently Blank.
             # initialize_alternating re-permutes stops; we need to apply
             # the same permutation to every mode's weight array.
-            from slot_designer.tuner.ordering import initialize_alternating
+            from slot_designer.core.tuner.ordering import initialize_alternating
             new_shared_strips: list[list[str]] = []
             new_weights_per_mode: dict[str, list[list[int]]] = {
                 m: [] for m in weights_per_mode
@@ -720,8 +720,8 @@ def main() -> None:
         if wiped:
             print(f"  [info] wiped {wiped} pre-existing chunk(s) in {rawdata_dir}")
 
-    from slot_designer.backend.machine_version import compute_machine_md5
-    from slot_designer.backend.virtual_registry import (
+    from slot_designer.core.backend.machine_version import compute_machine_md5
+    from slot_designer.core.backend.virtual_registry import (
         VIRTUAL_MACHINES_CONFIG,
         refresh_machines_virtual,
     )

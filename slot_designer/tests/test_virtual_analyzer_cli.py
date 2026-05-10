@@ -30,7 +30,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.backend.virtual_analyzer import (
+from slot_designer.core.backend.virtual_analyzer import (
     _build_delegate_cmd,
     _parse_args,
     _patch_summary_md5_tags,
@@ -198,7 +198,7 @@ def test_subprocess_does_not_argparse_error_on_new_flags():
     argparse".
     """
     cmd = [
-        sys.executable, "slot_designer/backend/virtual_analyzer.py",
+        sys.executable, "slot_designer/core/backend/virtual_analyzer.py",
         "--machine", "M1sim",
         "--rtp-mode", "1",
         "--chunk-spin-times", "10",
@@ -303,7 +303,7 @@ def test_delegate_to_real_analyzer_invokes_patch_when_md5s_supplied(tmp_path: Pa
     it on each delegate path.
     """
     from argparse import Namespace
-    import slot_designer.backend.virtual_analyzer as va
+    import slot_designer.core.backend.virtual_analyzer as va
 
     # Mock subprocess.call to return 0 without actually spawning
     monkeypatch.setattr(va.subprocess, "call", lambda *_a, **_kw: 0)
@@ -336,7 +336,7 @@ def test_delegate_to_real_analyzer_skips_patch_when_no_md5s(tmp_path: Path, monk
     """Without patch_md5s (real-console path), delegate must NOT
     touch the summary — real analyzer wrote the correct md5 itself."""
     from argparse import Namespace
-    import slot_designer.backend.virtual_analyzer as va
+    import slot_designer.core.backend.virtual_analyzer as va
 
     monkeypatch.setattr(va.subprocess, "call", lambda *_a, **_kw: 0)
     calls: list[tuple] = []

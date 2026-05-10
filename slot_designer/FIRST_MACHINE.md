@@ -376,7 +376,7 @@ python -m slot_designer.scripts.derive_m15_mode_5 --write --verify   # M15 做�
 
 **Refresh md5**：
 ```bash
-python -c "from slot_designer.backend.virtual_registry import refresh_machines_virtual, VIRTUAL_MACHINES_CONFIG; refresh_machines_virtual(VIRTUAL_MACHINES_CONFIG)"
+python -c "from slot_designer.core.backend.virtual_registry import refresh_machines_virtual, VIRTUAL_MACHINES_CONFIG; refresh_machines_virtual(VIRTUAL_MACHINES_CONFIG)"
 ```
 
 这会自动：

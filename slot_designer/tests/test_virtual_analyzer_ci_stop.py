@@ -37,7 +37,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.backend.virtual_analyzer import (
+from slot_designer.core.backend.virtual_analyzer import (
     _ci_halfwidth_pp,
     _load_existing_session_stats,
     _session_returns_from_chunk_dict,

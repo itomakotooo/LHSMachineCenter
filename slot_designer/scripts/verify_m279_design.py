@@ -22,13 +22,13 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.engine.m279.engine import M279SessionState  # noqa: F401
-from slot_designer.engine.m279.loader import load_m279_engine
+from slot_designer.machines.M279.plugins.m279.engine import M279SessionState  # noqa: F401
+from slot_designer.machines.M279.plugins.m279.loader import load_m279_engine
 from slot_designer.scripts.tune_m279 import sim_metrics
 
 
 def _load_target(mode: int) -> dict:
-    p = _ROOT / "slot_designer" / "tuner" / "targets" / f"M279_mode{mode}.target.json"
+    p = _ROOT / "slot_designer"  / "core" / "tuner" / "targets" / f"M279_mode{mode}.target.json"
     if not p.exists():
         return {}
     return json.loads(p.read_text(encoding="utf-8"))
@@ -44,8 +44,8 @@ def verify_mode(
     n_spins: int = 100_000,
     n_seeds: int = 8,
 ) -> tuple[bool, list[str], dict]:
-    spec = _ROOT / "slot_designer" / "specs" / "M279.spec.json"
-    weights = _ROOT / "slot_designer" / "weights" / "M279" / f"mode_{mode}" / "weights.json"
+    spec = _ROOT / "slot_designer" / "machines" / "M279" / "spec.json"
+    weights = _ROOT / "slot_designer" / "machines" / "M279" / "weights" / f"mode_{mode}" / "weights.json"
     if not weights.exists():
         return False, [f"mode {mode}: weights file missing at {weights}"], {}
 

@@ -34,14 +34,14 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.devtools.analytic_rtp import analytic_profile
-from slot_designer.engine.loader import load_engine
+from slot_designer.core.devtools.analytic_rtp import analytic_profile
+from slot_designer.core.engine.loader import load_engine
 
 
-_SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-_STRIPS = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
-_MODE_2_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_2" / "weights.json"
-_MODE_5_DIR = _ROOT / "slot_designer" / "weights" / "M1" / "mode_5"
+_SPEC = _ROOT / "slot_designer" / "machines" / "M1" / "spec.json"
+_STRIPS = _ROOT / "slot_designer" / "machines" / "M1" / "reel_strips.json"
+_MODE_2_WEIGHTS = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_2" / "weights.json"
+_MODE_5_DIR = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_5"
 _MODE_5_WEIGHTS = _MODE_5_DIR / "weights.json"
 
 TOP_BUCKET_SYMBOLS = ("Diamond1", "Diamond2", "Seven1", "Seven2")

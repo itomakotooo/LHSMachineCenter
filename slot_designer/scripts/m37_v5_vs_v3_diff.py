@@ -16,8 +16,8 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from slot_designer.engine.loader import load_engine
-from slot_designer.devtools.analytic_rtp import analytic_profile
+from slot_designer.core.engine.loader import load_engine
+from slot_designer.core.devtools.analytic_rtp import analytic_profile
 
 
 def jload_str(s):
@@ -35,7 +35,7 @@ def git_show(commit, path):
 
 
 def measure_at(strips_path, weights_path):
-    eng, _ = load_engine(_ROOT / 'slot_designer/specs/M37.spec.json', weights_path, strips_path=strips_path)
+    eng, _ = load_engine(_ROOT / 'slot_designer/machines/M37/spec.json', weights_path, strips_path=strips_path)
     return analytic_profile(eng), eng
 
 
@@ -71,17 +71,17 @@ V3_COMMIT = 'HEAD'  # current
 # Write v5 strips/weights to temp dir
 v5_dir = Path(tempfile.mkdtemp(prefix='m37_v5_'))
 v5_strips_path = v5_dir / 'reel_strips.json'
-v5_strips_path.write_text(git_show(V5_COMMIT, 'slot_designer/weights/M37/reel_strips.json'), encoding='utf-8')
+v5_strips_path.write_text(git_show(V5_COMMIT, 'slot_designer/machines/M37/reel_strips.json'), encoding='utf-8')
 
 v5_weights = {}
 for mode in [1, 2, 5, 7]:
     v5_w_path = v5_dir / f'mode_{mode}.json'
-    v5_w_path.write_text(git_show(V5_COMMIT, f'slot_designer/weights/M37/mode_{mode}/weights.json'), encoding='utf-8')
+    v5_w_path.write_text(git_show(V5_COMMIT, f'slot_designer/machines/M37/weights/mode_{mode}/weights.json'), encoding='utf-8')
     v5_weights[mode] = v5_w_path
 
 # Current state (v3 / HEAD)
-v3_strips_path = _ROOT / 'slot_designer/weights/M37/reel_strips.json'
-v3_weights = {mode: _ROOT / f'slot_designer/weights/M37/mode_{mode}/weights.json' for mode in [1, 2, 5, 7]}
+v3_strips_path = _ROOT / 'slot_designer/machines/M37/reel_strips.json'
+v3_weights = {mode: _ROOT / f'slot_designer/machines/M37/weights/mode_{mode}/weights.json' for mode in [1, 2, 5, 7]}
 
 
 # === Section 1: RTP / hit / CV ===
@@ -158,12 +158,12 @@ print()
 print('=' * 80)
 print('4. PER-SYMBOL MARGINALS  v5 → v3 (核心: 应该保留)')
 print('=' * 80)
-v5_strips = jload_str(git_show(V5_COMMIT, 'slot_designer/weights/M37/reel_strips.json'))['reels']
+v5_strips = jload_str(git_show(V5_COMMIT, 'slot_designer/machines/M37/reel_strips.json'))['reels']
 v3_strips = jload(v3_strips_path)['reels']
 all_syms = ['blank', 'wild', 'high7', '1bar', '2bar', '3bar', '7bar', 'mini', 'minor', 'major', 'grand']
 for mode in [1, 2, 5, 7]:
     print(f'  mode {mode}:')
-    v5_w = jload_str(git_show(V5_COMMIT, f'slot_designer/weights/M37/mode_{mode}/weights.json'))['weights']
+    v5_w = jload_str(git_show(V5_COMMIT, f'slot_designer/machines/M37/weights/mode_{mode}/weights.json'))['weights']
     v3_w = jload(v3_weights[mode])['weights']
     v5_marg = compute_strip_marginals(v5_strips, v5_w)
     v3_marg = compute_strip_marginals(v3_strips, v3_w)
@@ -187,7 +187,7 @@ print('5. WINDOW VISIBILITY  v5 → v3 (期望: 这是 layout 改动主要影响
 print('=' * 80)
 for mode in [1, 2, 5, 7]:
     print(f'  mode {mode}:')
-    v5_w = jload_str(git_show(V5_COMMIT, f'slot_designer/weights/M37/mode_{mode}/weights.json'))['weights']
+    v5_w = jload_str(git_show(V5_COMMIT, f'slot_designer/machines/M37/weights/mode_{mode}/weights.json'))['weights']
     v3_w = jload(v3_weights[mode])['weights']
     v5_vis = compute_window_vis(v5_strips, v5_w)
     v3_vis = compute_window_vis(v3_strips, v3_w)
@@ -245,7 +245,7 @@ def booster_cooccur(strips, weights):
 
 print(f'{"mode":>4} | {"v5 P(>=2 boosters)":>20} {"v3 P(>=2 boosters)":>20}')
 for mode in [1, 2, 5, 7]:
-    v5_w = jload_str(git_show(V5_COMMIT, f'slot_designer/weights/M37/mode_{mode}/weights.json'))['weights']
+    v5_w = jload_str(git_show(V5_COMMIT, f'slot_designer/machines/M37/weights/mode_{mode}/weights.json'))['weights']
     v3_w = jload(v3_weights[mode])['weights']
     v5_p2, _ = booster_cooccur(v5_strips, v5_w)
     v3_p2, _ = booster_cooccur(v3_strips, v3_w)

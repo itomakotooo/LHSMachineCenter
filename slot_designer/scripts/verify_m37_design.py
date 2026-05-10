@@ -36,24 +36,24 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.devtools.analytic_rtp import (
+from slot_designer.core.devtools.analytic_rtp import (
     analytic_profile,
     compute_reel_marginal,
     structurally_reachable_buckets,
 )
-from slot_designer.devtools.shape_distance import shape_distance
-from slot_designer.engine.loader import load_engine
+from slot_designer.core.devtools.shape_distance import shape_distance
+from slot_designer.core.engine.loader import load_engine
 
-SPEC = _ROOT / "slot_designer" / "specs" / "M37.spec.json"
-STRIPS = _ROOT / "slot_designer" / "weights" / "M37" / "reel_strips.json"
+SPEC = _ROOT / "slot_designer" / "machines" / "M37" / "spec.json"
+STRIPS = _ROOT / "slot_designer" / "machines" / "M37" / "reel_strips.json"
 WEIGHTS = {
-    1: _ROOT / "slot_designer" / "weights" / "M37" / "mode_1" / "weights.json",
-    2: _ROOT / "slot_designer" / "weights" / "M37" / "mode_2" / "weights.json",
-    5: _ROOT / "slot_designer" / "weights" / "M37" / "mode_5" / "weights.json",
-    7: _ROOT / "slot_designer" / "weights" / "M37" / "mode_7" / "weights.json",
+    1: _ROOT / "slot_designer" / "machines" / "M37" / "weights" / "mode_1" / "weights.json",
+    2: _ROOT / "slot_designer" / "machines" / "M37" / "weights" / "mode_2" / "weights.json",
+    5: _ROOT / "slot_designer" / "machines" / "M37" / "weights" / "mode_5" / "weights.json",
+    7: _ROOT / "slot_designer" / "machines" / "M37" / "weights" / "mode_7" / "weights.json",
 }
 TARGETS = {
-    1: _ROOT / "slot_designer" / "tuner" / "targets" / "M37_mode1.target.json",
+    1: _ROOT / "slot_designer"  / "core" / "tuner" / "targets" / "M37_mode1.target.json",
 }
 
 # Per-mode tolerances + bands.
@@ -267,7 +267,7 @@ def check_top_path_1000x(profile: dict, engine, evaluator) -> tuple[bool, str]:
     Engine-level: enumerate payline combos at 1000× exactly, all should be pay_id 1
     with grand on R2 + (high7|wild) on sides.
     """
-    from slot_designer.devtools.analytic_rtp import enumerate_payline
+    from slot_designer.core.devtools.analytic_rtp import enumerate_payline
     paths_1000 = []
     for prob, pay_id, mult in enumerate_payline(engine):
         if mult == 1000.0:

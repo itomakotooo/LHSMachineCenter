@@ -1,7 +1,7 @@
 """Regression: virtual_analyzer subprocess must not self-terminate.
 
 The 2026-04-21 incident in one sentence: ``virtual_analyzer.py``'s
-``main()`` imported ``slot_designer.backend.virtual_app`` to get
+``main()`` imported ``slot_designer.core.backend.virtual_app`` to get
 ``refresh_machines_virtual``. That import executed virtual_app's
 top-level statement ``app = build_virtual_app()``, which calls
 ``create_app`` → ``RunManager.__init__`` → ``_recover_orphan_running_
@@ -15,7 +15,7 @@ User-visible symptom:
   ✗ [M1sim] 失败: analyzer exit_code=1 | summary missing:
   player_impact_summary.json | report miss
 
-Fix: extracted registry helpers into ``slot_designer.backend.virtual_
+Fix: extracted registry helpers into ``slot_designer.core.backend.virtual_
 registry`` (zero side-effects) and switched virtual_analyzer to import
 from there instead of from virtual_app.
 
@@ -35,7 +35,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 
 def test_virtual_analyzer_source_never_imports_virtual_app():
     """Static check: grep virtual_analyzer.py source. The string
-    ``from slot_designer.backend.virtual_app`` must NOT appear —
+    ``from slot_designer.core.backend.virtual_app`` must NOT appear —
     that's the suicide import. If someone re-adds it, this test
     fails before the bug ships.
 
@@ -43,12 +43,12 @@ def test_virtual_analyzer_source_never_imports_virtual_app():
     fine; what matters is virtual_analyzer itself never reaches
     into virtual_app.
     """
-    src = (_ROOT / "slot_designer" / "backend" / "virtual_analyzer.py").read_text(
+    src = (_ROOT  / "slot_designer" / "core" / "backend" / "virtual_analyzer.py").read_text(
         encoding="utf-8"
     )
     bad_imports = [
-        "from slot_designer.backend.virtual_app",
-        "import slot_designer.backend.virtual_app",
+        "from slot_designer.core.backend.virtual_app",
+        "import slot_designer.core.backend.virtual_app",
     ]
     for pattern in bad_imports:
         assert pattern not in src, (
@@ -71,7 +71,7 @@ def test_virtual_registry_does_not_pull_in_web_console_app():
         import sys
         from pathlib import Path
         sys.path.insert(0, str(Path.cwd()))
-        from slot_designer.backend.virtual_registry import (  # noqa: F401
+        from slot_designer.core.backend.virtual_registry import (  # noqa: F401
             VIRTUAL_MACHINES_CONFIG,
             refresh_machines_virtual,
         )
@@ -110,7 +110,7 @@ def test_virtual_analyzer_subprocess_does_not_pull_in_web_console_app():
     # Synthesize the backend-style argv
     argv = [
         sys.executable,
-        str(_ROOT / "slot_designer" / "backend" / "virtual_analyzer.py"),
+        str(_ROOT  / "slot_designer" / "core" / "backend" / "virtual_analyzer.py"),
         "--machine", "__NonExistentMachine__",
         "--rtp-mode", "1",
         "--chunk-spin-times", "100",

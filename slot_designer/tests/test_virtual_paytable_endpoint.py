@@ -36,7 +36,7 @@ if str(_ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient
 
-from slot_designer.backend.virtual_app import build_virtual_app
+from slot_designer.core.backend.virtual_app import build_virtual_app
 
 
 def test_virtual_paytable_returns_all_declared_pay_ids():

@@ -24,7 +24,7 @@ if str(_ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient
 
-from slot_designer.backend.virtual_app import (
+from slot_designer.core.backend.virtual_app import (
     VIRTUAL_MACHINES_CONFIG,
     _local_md5_refresh,
     build_virtual_app,

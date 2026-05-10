@@ -28,12 +28,12 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.emitter.driver import emit_simulation_to_dir
-from slot_designer.engine.loader import load_engine
+from slot_designer.core.emitter.driver import emit_simulation_to_dir
+from slot_designer.core.engine.loader import load_engine
 
 
-_SPEC = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-_MODE1_WEIGHTS = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
+_SPEC = _ROOT / "slot_designer" / "machines" / "M1" / "spec.json"
+_MODE1_WEIGHTS = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_1" / "weights.json"
 
 
 def _read_chunk(chunk_path: Path) -> dict:
@@ -114,7 +114,7 @@ def test_m1sim_registry_lists_all_shipped_modes():
     )
     assert m1sim is not None, "M1sim must be in virtual registry"
 
-    weights_dir = _ROOT / "slot_designer" / "weights" / "M1"
+    weights_dir = _ROOT / "slot_designer" / "machines" / "M1" / "weights"
     disk_modes = {
         int(p.name.split("_", 1)[1])
         for p in weights_dir.glob("mode_*")
@@ -133,7 +133,7 @@ def test_mode2_weights_exist_and_have_same_shape_as_mode1():
     count as mode 1 (since both modes share one reel_strips.json, the
     weights arrays must also have matching lengths per reel)."""
     m1_mode1 = json.loads(_MODE1_WEIGHTS.read_text(encoding="utf-8"))
-    m2_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_2" / "weights.json"
+    m2_path = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_2" / "weights.json"
     assert m2_path.exists(), f"missing mode 2 weights: {m2_path}"
     m1_mode2 = json.loads(m2_path.read_text(encoding="utf-8"))
 
@@ -154,7 +154,7 @@ def test_modes_share_reel_strips_file():
     the SAME reel_strips.json. This is the file-layout enforcement of
     "symbol structure shared across modes" — verifying both modes' weight
     arrays align to the shared strip's shape."""
-    strips_path = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
+    strips_path = _ROOT / "slot_designer" / "machines" / "M1" / "reel_strips.json"
     assert strips_path.exists(), f"missing strips file: {strips_path}"
     strips = json.loads(strips_path.read_text(encoding="utf-8"))
     assert strips["machine"] == "M1"
@@ -175,7 +175,7 @@ def test_modes_share_reel_strips_file():
 
     # Both modes' weight arrays must match the strip's shape
     for mode in (1, 2):
-        wp = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
+        wp = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / f"mode_{mode}" / "weights.json"
         w = json.loads(wp.read_text(encoding="utf-8"))
         for ri, reel_weights in enumerate(w["weights"]):
             assert len(reel_weights) == len(strips["reels"][ri]), (
@@ -190,7 +190,7 @@ def test_mode2_target_file_has_plausible_numbers():
     hit_rate, all internally consistent so evaluate_cost doesn't
     hit a zero-divide / NaN edge."""
     target_path = (
-        _ROOT / "slot_designer" / "tuner" / "targets"
+        _ROOT / "slot_designer"  / "core" / "tuner" / "targets"
         / "M1_mode2_lucky.target.json"
     )
     assert target_path.exists(), f"missing target: {target_path}"

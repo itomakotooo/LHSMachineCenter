@@ -22,11 +22,11 @@ def jload(p):
         return json.load(f)
 
 
-strips = jload(_ROOT / 'slot_designer/weights/M37/reel_strips.json')['reels']
+strips = jload(_ROOT / 'slot_designer/machines/M37/reel_strips.json')['reels']
 
 # Scale from v3 baseline (39f0bd3 — bars naturally balanced ~1.16×)
 git_base = subprocess.run(
-    ['git', 'show', '39f0bd3:slot_designer/weights/M37/mode_2/weights.json'],
+    ['git', 'show', '39f0bd3:slot_designer/machines/M37/weights/mode_2/weights.json'],
     capture_output=True, text=True, encoding='utf-8',
 )
 m2_base = json.loads(git_base.stdout)
@@ -118,17 +118,17 @@ m2_base['_notes'] = [
     "  ratio T1:T2:T3:T4 = 5:4:2:1 (lucky tilt)",
 ]
 
-with open(_ROOT / 'slot_designer/weights/M37/mode_2/weights.json', 'w', encoding='utf-8') as f:
+with open(_ROOT / 'slot_designer/machines/M37/weights/mode_2/weights.json', 'w', encoding='utf-8') as f:
     json.dump(m2_base, f, indent=2)
 print('Mode 2 v5 written.')
 
 # Quick validation
-from slot_designer.engine.loader import load_engine
-from slot_designer.devtools.analytic_rtp import analytic_profile
+from slot_designer.core.engine.loader import load_engine
+from slot_designer.core.devtools.analytic_rtp import analytic_profile
 eng, _ = load_engine(
-    spec_path=_ROOT / 'slot_designer/specs/M37.spec.json',
-    strips_path=_ROOT / 'slot_designer/weights/M37/reel_strips.json',
-    weights_path=_ROOT / 'slot_designer/weights/M37/mode_2/weights.json',
+    spec_path=_ROOT / 'slot_designer/machines/M37/spec.json',
+    strips_path=_ROOT / 'slot_designer/machines/M37/reel_strips.json',
+    weights_path=_ROOT / 'slot_designer/machines/M37/weights/mode_2/weights.json',
 )
 prof = analytic_profile(eng)
 print(f'\nValidate:')

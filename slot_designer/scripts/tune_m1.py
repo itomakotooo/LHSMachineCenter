@@ -36,21 +36,21 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from slot_designer.devtools.analytic_rtp import (
+from slot_designer.core.devtools.analytic_rtp import (
     analytic_profile_from_marginals,
     structurally_reachable_buckets,
     multiplier_to_bucket,
 )
-from slot_designer.engine.loader import load_engine
-from slot_designer.engine.evaluator import PaytableEvaluator
-from slot_designer.engine.rules import RuleSet
-from slot_designer.engine.symbol import SymbolRegistry
-from slot_designer.tuner.cost import CostWeights, evaluate_cost
-from slot_designer.tuner.layout import marginals_from_counts
+from slot_designer.core.engine.loader import load_engine
+from slot_designer.core.engine.evaluator import PaytableEvaluator
+from slot_designer.core.engine.rules import RuleSet
+from slot_designer.core.engine.symbol import SymbolRegistry
+from slot_designer.core.tuner.cost import CostWeights, evaluate_cost
+from slot_designer.core.tuner.layout import marginals_from_counts
 
 
-SPEC_PATH = _ROOT / "slot_designer" / "specs" / "M1.spec.json"
-STRIPS_PATH = _ROOT / "slot_designer" / "weights" / "M1" / "reel_strips.json"
+SPEC_PATH = _ROOT / "slot_designer" / "machines" / "M1" / "spec.json"
+STRIPS_PATH = _ROOT / "slot_designer" / "machines" / "M1" / "reel_strips.json"
 
 SYMBOLS = ("Blank", "Diamond1", "Diamond2", "Seven1", "Seven2",
            "Cherry", "Bar1", "Bar2", "Bar3")
@@ -771,7 +771,7 @@ def main(modes_to_run=(1, 7)):
     paytable = spec["pays"]
 
     # reachable buckets — use mode 1 weights file as engine seed
-    mode1_weights = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
+    mode1_weights = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_1" / "weights.json"
     engine, _ = load_engine(SPEC_PATH, mode1_weights)
     reachable = structurally_reachable_buckets(engine)
 
@@ -790,7 +790,7 @@ def main(modes_to_run=(1, 7)):
     def _extract_bigwin_weights_from_disk(mode_n: int) -> dict[tuple[str, int], int] | None:
         """Read mode N's saved weights.json + extract big-win symbol weights
         per (symbol, reel)."""
-        path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode_n}" / "weights.json"
+        path = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / f"mode_{mode_n}" / "weights.json"
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             w_array = data.get("weights")
@@ -810,7 +810,7 @@ def main(modes_to_run=(1, 7)):
 
     # Load mode 1 anchor for mode 7 (frozen) or mode 2/5 (floor) when not in same run
     if (7 in modes_to_run or 2 in modes_to_run or 5 in modes_to_run) and 1 not in modes_to_run:
-        mode1_path = _ROOT / "slot_designer" / "weights" / "M1" / "mode_1" / "weights.json"
+        mode1_path = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / "mode_1" / "weights.json"
         try:
             mode1_data = json.loads(mode1_path.read_text(encoding="utf-8"))
             saved = mode1_data.get("_tuned_summary", {}).get("family_rtp_pp", {})
@@ -843,7 +843,7 @@ def main(modes_to_run=(1, 7)):
             print(f"[anchor] loaded mode 2 big-win weights (mode 5 floor)")
 
     for mode in modes_to_run:
-        target_path = _ROOT / "slot_designer" / "tuner" / "targets" / f"M1_mode{mode}_{ {1: 'classic', 2: 'lucky', 5: 'super_lucky', 7: 'low_rtp'}[mode] }.target.json"
+        target_path = _ROOT / "slot_designer"  / "core" / "tuner" / "targets" / f"M1_mode{mode}_{ {1: 'classic', 2: 'lucky', 5: 'super_lucky', 7: 'low_rtp'}[mode] }.target.json"
         target = json.loads(target_path.read_text(encoding="utf-8"))
         if "cv" not in target:
             target["cv"] = target.get("std_return_x", 0) / (target["rtp_pct"] / 100)
@@ -975,7 +975,7 @@ def main(modes_to_run=(1, 7)):
         # caused.
 
         # Persist
-        out_path = _ROOT / "slot_designer" / "weights" / "M1" / f"mode_{mode}" / "weights.json"
+        out_path = _ROOT / "slot_designer" / "machines" / "M1" / "weights" / f"mode_{mode}" / "weights.json"
         existing = json.loads(out_path.read_text(encoding="utf-8"))
         existing["mode"] = mode
         existing["weights"] = weights
