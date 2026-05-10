@@ -1,6 +1,10 @@
 # M15 数值重新设计 — Session Brief
 
-> **本 session 任务**：从零重新设计 M15 (Top Dollar Feature Play) 4-mode 数值，按 [`slot_designer/ONBOARDING_PROCESS.md`](../../slot_designer/ONBOARDING_PROCESS.md) 6-agent 11-stage 流程跑通 ship-ready。
+> **本 session 任务**：M15 (Top Dollar Feature Play) 4-mode 数值**优化迭代**，按 [`slot_designer/ONBOARDING_PROCESS.md`](../../slot_designer/ONBOARDING_PROCESS.md) 6-agent 11-stage 流程跑通 ship-ready。
+>
+> **方向**：顺着 [`v7_baseline_quickref.md`](v7_baseline_quickref.md) 数据做 optimization，**不是 greenfield 重建**。v7 结构 + paytable + plugin 实现是健康基础（archetype-faithful），优化点是 user brief 的 6 项（hit / CV / split / count_x=1 / 千倍避免 / jackpot 偏低）。
+>
+> **本 session 同时是 ONBOARDING_PROCESS.md 的首个 use case**——任何 process 不顺手 / 文档不清楚的地方都是 ONBOARDING_PROCESS 改进的 input。新 session 的失败模式都要回写进 ONBOARDING_PROCESS（不是只改 M15）。
 >
 > **已删的旧设计文档不可作为 input**（DESIGN.md / MODE_DESIGN.md / NOTES.md / target.json / 数值断言 test 已在 Phase 0a 删除；从 git history 翻出来也算 contamination）。
 >
@@ -44,46 +48,64 @@
 
 ---
 
-## §3 user_brief.md 占位（user 写，Designer 必读）
+## §3 user_brief — 已确认 6 条核心诉求
 
-落到 `session_artifacts/M15/user_brief.md`，建议覆盖：
+落到 `session_artifacts/M15/user_brief.md`：
 
 ```
-# M15 user brief
+# M15 user brief (v1, 2026-XX-XX 确认)
 
-## 玩家叙事 / 机台 character
-- M15 是 ____ 路线（boom-bust / cherry-grindy / dream-jackpot / mid-heavy / etc.）
-- 期望玩家坐 30 分钟感受到 ____
+## mode 1 核心诉求（其他 mode 衍生）
 
-## RTP / mode 数值约束
-- mode 1 total RTP = 95% ±1pp 严格（universal §C）
-- mode 1 base hit rate 期望 ≈ ____ % (留空给 Designer 派生 from archetype)
-- mode 1 base : feature 比例期望 ____
-- 跨 mode hit/avg/trigger 关系倾向 ____
+1. 命中率 (hit_rate) ∈ [15%, 18%]
+   当前 v7：19.31% (超 1.31pp，需向下优化)
 
-## bucket / 玩家手感
-- low (1-10×) bucket 占 ____ % RTP
-- mid (10-50×) bucket 占 ____
-- high (50-500×) bucket 占 ____
-- top (500+) bucket 占 ____
-- 任一 mode 顶奖 cadence 期望 ____
+2. 波动性
+   - normal spin 部分：低波动 (CV ∈ [3, 5])
+     当前 v7 base CV：5.77 (中-高，需向下优化)
+   - feature 部分：中波动 (conditional CV ∈ [1, 2])
+     当前 v7 feature CV：0.74 (低，需向上优化)
 
-## 不变量严格度
-- mode 7 vs mode 1：____ (universal §4 cut-mode 砍小奖 freq 不动大奖；这条严格 / 让步)
-- mode 5 vs mode 2：____ (universal §9 / §7 顶奖阶梯；这条严格 / 让步)
+3. base : feature RTP 比例 = 50 : 50
+   当前 v7：45.4 : 54.6 (feature 超 4.6pp)
 
-## 用户主动选边
-- 1000+ peak 是不是趋近 0？(prev v7 选 "趋近 0"，user 是否还坚持)
-- cherry-1 1× pay 主导 base 是 archetype 必然，接受 / 改 paytable 去掉
+4. feature 体验：count_x = 1 (单牌 reveal) 概率 ≤ 2%
+   当前 v7：5%
 
-## archetype 选择
-- 倾向 Top Dollar 1-line ($1 denom 87-92% RTP) / Double Top Dollar 9-line
-  (96.24% RTP, 4000× max) / 还是混合
-- 哪些 archetype 元素优先保留：bonus reveal drama / cherry-grindy base /
-  ×2 multiplier feature / etc.
+5. 避免 1000× bet 以上奖（跨所有 mode）
+   当前 v7：mode 1 P(R≥1000/spin) = 1/8.3M ≈ 0 ✓ 已达成
+   (mode 5 也维持避免：1/3.6M ✓)
+
+6. jackpot symbol 击中率正常偏低（universal across mode 1/2/5/7）
+   当前 v7：mode 1 jackpot R1 0.08% / R2 0.53% / R3 0.14% ✓ 已偏低
+   保持任一 reel marginal ≤ 0.6%
+
+## 衍生关系（universal §C/D 强制）
+
+- mode 7 = mode 1 砍小奖 freq (per philosophy §4)，feature_params 字节
+  级 = mode 1
+- mode 2 = mode 1 lucky 派生，hit ×1.5-2 (不是 ×3)
+- mode 5 base = mode 2 base 字节级一致；feature 加强 (EV 升、count_y
+  / x_value_weights 调；不可破"避免 1000+"红线)
+
+## 默认决策（Designer 不需问 user）
+
+- archetype: Top Dollar 1-line ($1 denom ~92% RTP) + Double Top Dollar
+  ×2 multiplier 元素混合 (跟 v7 保持)
+- cherry-1 1× anywhere 是 archetype 必然，**接受**（不动 paytable）
+- accept threshold: 当前 v7 flat 40 保持（不恢复 graduated）
+- §7 顶奖阶梯例外：M15 走"密集 mid-high 替代稀有 top"路线，DESIGN.md
+  写明 deviation；不动 universal philosophy
+- 3-wild 200× cadence: 保持 v7 (~1/60k)，不主动拉到 1/15-30k
+
+## 留空给 Designer 派生 (cite archetype URL or §条款)
+
+- bucket distribution per mode (low/mid/high/top RTP %)
+- per-pay_id frequency band
+- family RTP share band
+- trigger rate (受 brief #3 RTP 50:50 + Designer 选 feature EV 影响)
+- per-hit avg win
 ```
-
-**user 没填的字段** Designer 必从 (R archetype + philosophy + 数学下限) 派生，并在 DESIGN.md 注明"derived from archetype because user_brief 未指定"。
 
 ---
 
@@ -107,47 +129,112 @@ per Phase 0a commit message + memory：
 
 ## §5 第一步指令（主 session 启动 prompt）
 
-把下面这段塞进新 session 第一句：
+把下面这段**完整** copy-paste 进新 session 第一句：
 
 ```
-本 session 任务：M15 数值重新设计验证迭代。
+本 session 任务：M15 (Top Dollar Feature Play) 4-mode 数值优化迭代。
+方向：顺 v7 baseline 数据按 user brief 6 项做 optimization，不是
+greenfield 重建。本 session 同时是 ONBOARDING_PROCESS.md 的首个 use
+case — process 不顺手 / 文档不清楚都要回写改 process。
 
-必读：
-  slot_designer/ONBOARDING_PROCESS.md   (团队 + 流程总规范)
-  slot_designer/ARCHITECTURE.md         (代码工程规范)
-  slot_designer/DESIGN_PHILOSOPHY.md    (设计 first principles)
-  slot_designer/WORKFLOW.md             (commit 前 review 流程)
-  session_artifacts/M15/00_SESSION_BRIEF.md  (本机台 session-specific 裁剪)
-  session_artifacts/M15/user_brief.md   (user 倾向性输入)
+------------------------------------------------------------
+# 必读（按顺序）
 
-按 ONBOARDING_PROCESS.md §5 11-stage 流程走，6 个 agent 编制
-(R/A/I/D/V/X)，但本 session 按 00_SESSION_BRIEF §2 裁剪
-(Stage 1c / 2 跳；Stage 0 / 1a / 1b / 1d / 3 简化；其余满做)。
+1. slot_designer/ONBOARDING_PROCESS.md    (6-agent + 11-stage 总规范)
+2. slot_designer/ARCHITECTURE.md          (代码工程规范)
+3. slot_designer/DESIGN_PHILOSOPHY.md     (设计 first principles 15 条)
+4. slot_designer/WORKFLOW.md              (commit 前 review 流程)
+5. session_artifacts/M15/00_SESSION_BRIEF.md   (本机台 stage 裁剪)
+6. session_artifacts/M15/user_brief.md    (user 6 项核心诉求 + 衍生关系)
+7. session_artifacts/M15/v7_baseline_quickref.md   (起点参考, 6-item 简表)
 
-第一动作：
-1. 读上面 5 份必读文档
-2. 主 session 跑 analytic dump 看当前 v7 weights baseline 数字
-   (作参考，不当设计真理)
-3. 检查 cache/chunks/M15$TopDollarSelector$0$/ 是否有上游 rawdata
-4. 起 Agent A 跑 Stage 1a (data acquisition) + Stage 1b (production
-   baseline)；同时起 Agent R 跑 Stage 1d (archetype WebSearch)
-5. 跟 user 确认 user_brief.md 内容（00_SESSION_BRIEF §3 占位填）
-6. 起 Agent D 进 Stage 4 写 DESIGN.md / MODE_DESIGN.md / target files
-7. 后续按 ONBOARDING_PROCESS.md 流程跑
+------------------------------------------------------------
+# Stage 裁剪 (per 00_SESSION_BRIEF.md §2)
 
-每个 agent 起的时候 prompt 里贴 ONBOARDING_PROCESS.md §4 对应行作为
-role contract；artifact 路径用文件传不在对话里贴大段内容。
+Stage 0  Setup           满做 (读 1-7)
+Stage 1a Data Acq.       满做 (A 确认 cache/chunks/M15$TopDollarSelector$0$/)
+Stage 1b Prod Baseline   **满做 12 sections** (per ONBOARDING §5.1b
+                          表) — 不是 v7 quickref 那种 6-item，必跑
+                          完整 RTP+bucket+pay_id+family+per-reel+
+                          asymmetry+PWDF+blank-flank+feature-session+
+                          top-prize+cross-mode+schema-fingerprint
+Stage 1c Mech. Inf.      跳 (M15 paytable 已知)
+Stage 1d Archetype       满做 (R 跑 fresh WebSearch Top Dollar 业界数据)
+Stage 2  Engine Impl     跳 (FeaturePlugin 已实现，schema 已对齐)
+Stage 3  Bootstrap       简化 (v7 weights 当 optimization 起点)
+Stage 4  Design Narr.    满做 (D 写 DESIGN.md / MODE_DESIGN.md / target;
+                          每数字 cite archetype URL or § 条款;
+                          target 朝 user brief 6 项 optimize)
+Stage 5  TDD Verify      满做 (V 写 machines/M15/verify.py + 注入 bug 测)
+Stage 6  Per-Mode Tune   满做 (mode 1 → 7 → 2 → 5 顺序; 每 mode
+                          5-iter cap; 4-lock; pareto-trap 警惕)
+Stage 7  Cross-Mode      满做
+Stage 8  Empirical Val.  满做 (虚拟 console 4 mode × 50k spin;
+                          analytic vs sim ±2σ)
+Stage 9  Adv. Gate       满做
+Stage 10 Commit & Merge  满做 (新分支 feat/m15-redesign-v8 fork from
+                          collab/dev; merge 回 collab/dev; 更新
+                          ONBOARDING_PROCESS.md §11 进度表)
 
-红线（再次强调）：
-- 不读已删的旧 MODE_DESIGN.md / NOTES.md (从 git history 翻出来也算
-  contamination)
-- 不抄 sister machine target 数字
+------------------------------------------------------------
+# 第一动作（主 session）
+
+1. 完整读完上面 7 份文档（不要跳读、不要总结性扫一眼）
+2. 主 session 跑当前 v7 analytic dump 验证 quickref 数字仍准确
+3. 起 Agent A 在 Stage 1b 先写 baseline_dump 脚本（仿照 ONBOARDING
+   §5.1b 12 sections），跑出 session_artifacts/M15/01b_baseline_report.md
+4. 同时起 Agent R 跑 Stage 1d 拿 Top Dollar archetype WebSearch
+   → 01d_research.md
+5. A 跟 R 各自 done 后，起 Agent D 进 Stage 4 起草 design 文档 +
+   target file
+6. Agent X 进 pre-tune adversarial review（Stage 4 末）
+7. Agent V 进 Stage 5 写 verify.py 红线 + 注入 bug 测
+8. Stage 6 内循环（per mode 5-iter cap）
+9. ...
+
+每个 agent 通过 Agent tool 起 general-purpose subagent。每次起 agent 时
+prompt 里贴 ONBOARDING_PROCESS.md §4 该 agent 那一行作 role contract +
+说明本次 deliverable 文件路径。**主 session 不在对话贴大段内容**，给
+agent 文件路径让它自己 Read。
+
+------------------------------------------------------------
+# 红线（防 Claude-self-loop）
+
+- 不读已删的旧 MODE_DESIGN.md / NOTES.md（从 git history 翻出也算
+  contamination；它们漂过 archetype + philosophy）
+- 不抄 sister machine target 数字（M1 / M37 / M279 paytable 结构不同）
 - D 的每个数字必 cite (R archetype URL / A 数据 / brief 项 / § 条款)
-- V 红线必逐条 cite PHILOSOPHY §
-- 每 mode 4-lock (V analytic + A empirical + A consistency + X review)
-  齐开才算锁定
-- 5-iter cap on inner loop；超出 escalate user
+  否则不进 design 文档
+- V 红线必逐条 cite PHILOSOPHY §; 不能 Claude 自定 cap
+- 每 mode 4-lock 齐开 (V analytic + A empirical per mode + A
+  analytic-vs-empirical 一致 + X adversarial sub-review)
+- inner loop 5-iter cap; 超出 escalate user
+- pareto trap: 连续 3 iter 同 RED → 回 Stage 4 改 design intent，
+  不死 tune
+
+------------------------------------------------------------
+# 兼任 process 改进
+
+本 session 任何环节遇到 ONBOARDING_PROCESS.md 写不清 / 漏 / 流程
+不顺手 → 当场修 ONBOARDING_PROCESS.md（同 commit 落地），不是只
+解决 M15 那一个 case。预期发现 5-15 处可改进点（首个 use case 必
+然有）。
+
+------------------------------------------------------------
+# 完成标志
+
+✓ 4 mode 全 verify GREEN (含 cross-mode invariants)
+✓ 4 mode analytic vs Monte Carlo 在 ±2σ
+✓ user brief 6 项全部兑现（hit ∈ [15,18] / base CV ∈ [3,5] /
+  feature CV ∈ [1,2] / 50:50 split ±5pp / count_x=1 ≤ 2% /
+  P(R≥1000) 全 mode ≤ 1e-5 / jackpot ≤ 0.6%/reel）
+✓ ONBOARDING_PROCESS.md §11 进度表 M15 标完成 + commit SHA
+✓ commit 通过 .claude/hooks/verify-commit-msg.py 4 段格式
+✓ push origin/collab/dev 成功
 ```
+
+**注**：以上 prompt 设计为 fresh context 自完整，不需要旧 session 的对话
+历史。新 session 从 0 启动直接走流程。
 
 ---
 

@@ -5,7 +5,7 @@
   "_notes": [
     "M279 spec v1 (2026-04-28): reverse-engineered from",
     "rawdata/M279/mode_1/chunk_*.json + machineconfig/M279Cfg.txt.",
-    "Field analysis at slot_designer/weights/M279/DESIGN.md.",
+    "Field analysis at slot_designer/machines/M279/weights/DESIGN.md.",
     "",
     "Machine type — Light & Wonder 'Blazing 777 Triple Double Jackpot",
     "Wild — Nudging Stacks' archetype (3-reel 9-line stepper) +",
@@ -180,7 +180,7 @@
   },
 
   "_m279_features": {
-    "_note": "M279-specific feature blocks. Not the M15 'features[]' array — those slot into engine/feature_m15.py's accept/reject simulator. M279 has 3 distinct mechanics each with its own engine module under engine/m279/.",
+    "_note": "M279-specific feature blocks. Not the M15 'features[]' array — those slot into machines/M15/plugins/plugin.py's accept/reject simulator. M279 has 3 distinct mechanics each with its own engine module under machines/M279/plugins/m279/.",
 
     "nudge_stack": {
       "_engine": "engine.m279.nudge",

@@ -153,9 +153,8 @@ Stage  Owner     Action
                   count baseline → 01a_data_inventory.md
 
 1b     A         Production Baseline：跑 fresh_slotlab analyzer
-                  --from-cache → baseline_report (RTP / hit / bucket /
-                  per-pay_id / family share / SpinType 分布)
-                  → 01b_baseline_report.md
+                  --from-cache + 自写 analytic profile dump，**完整
+                  12 sections** (见 §5.1b detail) → 01b_baseline_report.md
 
 1c     A         Mechanism Inference (若 user 没给 rules/paytable)：
                   rawdata 反推 (pay_id ↔ symbol 映射 / wild 行为 /
@@ -216,6 +215,43 @@ Stage  Owner     Action
                   refresh machines_virtual.json md5; 更新 ARCHITECTURE.md
                   §10 进度表
 ```
+
+### §5.1b Stage 1b — comprehensive baseline 12 必含 sections
+
+跑 `fresh_slotlab/player_impact_analyzer.py --from-cache` 拿基本 RTP/bucket/hit
+不够，A 必须写 / 复用 analytic profile dump 脚本一次产 12 sections（per
+mode × 全 mode）：
+
+| § | 必含 | 数据源 | 用途 |
+|---|---|---|---|
+| 1 | per-mode 总数 | analytic_profile() | RTP / hit_rate / std_return_x / CV / total_prob (sanity) |
+| 2 | bucket distribution | analytic_profile()['bucket_rate'] + ['bucket_rtp'] | per bucket rate% + RTP%，11 桶（gt0_lt1 → ge5000）|
+| 3 | per pay_id breakdown | analytic_profile()['pay_hits'] + ['pay_rtp'] | "1 in N spins" cadence + per-pay_id RTP 贡献 |
+| 4 | family RTP share | pay_id → family 聚合 | wild_pure / high7 / bar / cherry / 等 RTP pp + share% |
+| 5 | per-reel marginals | compute_reel_marginal() per reel | 每 symbol 在每 reel 中线 marginal 概率 |
+| 6 | reel asymmetry §12 | (5) 派生 | R1 vs R3 (or R5) blank density + top-prize family density 方向 check |
+| 7 | window visibility §15 PWDF | per-reel-window enumeration | top symbol any-row visibility + PWDF ratio (mid vs window)|
+| 8 | blank-flank §13 | strip layout 字符串扫 | 任 strip 上是否有 X-Blank-X 模式 |
+| 9 | feature session bucket | feature plugin's session_dist | per trigger R 落各桶概率 + cadence per paid spin |
+| 10 | top-prize escalation §7 | per mode (9) 跨 mode 对比 | mode 1 → 5 顶奖 cadence 阶梯 |
+| 11 | cross-mode invariants | 跨 mode 对比 (1)(3)(4) | mode-pair monotonicity / mode 7 cut direction / mode 5 base = mode 2 base bytes |
+| 12 | schema fingerprint vs production | compute_schema_fingerprint() vs production chunk | virtual chunk 字段集跟生产 rawdata 字节级对齐 ✓/✗ |
+
+输出格式：单一 markdown 文件 `session_artifacts/<M>/01b_baseline_report.md`，每
+section 独立块 + 关键数字 + 哪条 §条款 / archetype baseline 触发。
+
+**为什么必须 12 sections**：缺哪一节都让 Designer 在 Stage 4 决策时盲。比如：
+- 缺 §6 reel asymmetry → Designer 不知道 R1/R3 是否需要 enforce
+- 缺 §7 PWDF → 不知道 top symbol 视窗 visibility 是 4× (Harrigan-class) 还
+  是 73× (extreme clustering)
+- 缺 §11 cross-mode invariants → 后续 mode 派生时把 universal §C/D 不变量
+  踩了不知道
+- 缺 §12 schema fingerprint → 看不出引擎是否真跟生产一致，可能等到
+  Stage 8 才暴露 bug
+
+参考 / 模板：早期 commit 含的 `dump_m15_player_experience.py`（已删，git
+log 可查）—— 12 section 结构成熟，新 session 第一件事是仿照它写
+`session_artifacts/<M>/scripts/baseline_dump.py`，落 `01b_baseline_report.md`。
 
 ### §5.6 Per-Mode Inner Loop (Stage 6 细节)
 

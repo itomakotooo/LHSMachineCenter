@@ -212,11 +212,11 @@ Mode 7 = mode 1 (frozen, 1.00x). Mode 2/5 monotonic ≥ mode 1.
 
 - `slot_designer/machines/M1/spec.json` — paytable + 规则
 - `slot_designer/machines/M1/reel_strips.json` — 22-stop 布局 + `_archetype` 来源
-- `slot_designer/weights/M1/mode_*/weights.json` — 各 mode 权重
+- `slot_designer/machines/M1/weights/mode_*/weights.json` — 各 mode 权重
 - `slot_designer/scripts/tune_m1.py` — mode 1/2/7 tune 入口（mode 5 不走此路径）
 - `slot_designer/scripts/derive_m1_mode_5.py` — mode 5 派生入口（自 mode 2）
 - `slot_designer/scripts/verify_m1_design.py` — verify 入口
-- `slot_designer/tuner/targets/M1_mode*.target.json` — 数值 target
+- `slot_designer/core/tuner/targets/M1_mode*.target.json` — 数值 target
 
 ## 6. 设计 Review Checklist (每次 tune 完必跑)
 
