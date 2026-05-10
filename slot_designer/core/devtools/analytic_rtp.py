@@ -1,8 +1,8 @@
 """Closed-form RTP + bucket distribution calculator.
 
-For single-payline 3-col machines like M1 the payline is a product of
+For single-payline 3-col machines like machine the payline is a product of
 independent reel marginals, so enumerating all payline combos is exact
-and fast (9 symbols/reel × 3 reels = 729 combos on M1). Analyzer's
+and fast (9 symbols/reel × 3 reels = 729 combos on single-line slots). Analyzer's
 simulator is still ground-truth for everything that depends on round
 sequence (streaks, session RTP, bankruptcy), but predicted RTP / bucket
 shape / per-pay_id hit rate are obtainable analytically — which gives the
@@ -87,19 +87,19 @@ def _is_blocked_combo(combo: tuple[str, ...], reroll_blocks: list) -> bool:
 def enumerate_payline(engine: SpinEngine) -> Iterable[tuple[float, int | None, float]]:
     """Yield (probability, pay_id_or_None, multiplier) for every payline combo.
 
-    Payline-independent-reels assumption: M1-style classic 3-col slot
+    Payline-independent-reels assumption: single-line-style classic 3-col slot
     where each reel's middle-row symbol is independent of the others.
     """
     if len(engine.payline_positions) != engine.n_cols:
         raise NotImplementedError(
-            "analytic_profile assumes 1 payline per column (M1-style). "
+            "analytic_profile assumes 1 payline per column (single-line-style). "
             "Multi-payline / ways-pay machines need a dedicated analytic path."
         )
 
     reel_marginals = [compute_reel_marginal(r) for r in engine.reels]
     symbols_per_reel = [list(m.keys()) for m in reel_marginals]
 
-    # 3 nested loops is fine for M1 (9×9×9); generalize to itertools.product
+    # 3 nested loops is fine for single-line slots (9×9×9); generalize to itertools.product
     # so it works for any n_cols.
     import itertools
     for combo in itertools.product(*symbols_per_reel):
@@ -118,7 +118,7 @@ def enumerate_payline(engine: SpinEngine) -> Iterable[tuple[float, int | None, f
 def analytic_profile(engine: SpinEngine) -> dict:
     """Closed-form RTP/bucket/pay_id profile, with reroll-block correction.
 
-    If the engine declares ``reroll_blocks`` (M37 (wild,grand,wild)), the
+    If the engine declares ``reroll_blocks`` (machine-specific reroll-block patterns), the
     engine re-draws those spins until a non-blocked combo lands. In steady
     state this means the post-reroll P'(C) = P(C)/(1−P_blocked) for C not
     blocked, 0 otherwise. All return values reflect post-reroll metrics so
@@ -146,7 +146,7 @@ def analytic_profile(engine: SpinEngine) -> dict:
     # enumerate_payline generator already lost the combo info).
     if len(engine.payline_positions) != engine.n_cols:
         raise NotImplementedError(
-            "analytic_profile assumes 1 payline per column (M1-style)."
+            "analytic_profile assumes 1 payline per column (single-line-style)."
         )
     reel_marginals = [compute_reel_marginal(r) for r in engine.reels]
     symbols_per_reel = [list(m.keys()) for m in reel_marginals]

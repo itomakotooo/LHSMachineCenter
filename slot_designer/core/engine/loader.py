@@ -68,7 +68,7 @@ def _assemble_reels(
                 f"weights has {len(wts)} — they must match per-position"
             )
         assembled.append([
-            # v5: keep float precision (e.g., M15 topdollar weight 6.44
+            # v5: keep float precision (e.g., machine topdollar weight 6.44
             # for exact 1/88 trigger). Pre-v5 int cast truncated to 6.
             {"symbol": s, "weight": float(w)}
             for s, w in zip(strip, wts)
@@ -130,7 +130,7 @@ def load_engine(
     assembled = _assemble_reels(strip_reels, weight_reels)
 
     symbols = SymbolRegistry(spec["symbols"])
-    # M37+ 2026-04-24: spec may declare ``reroll_blocks`` — forbidden payline
+    # machine+ 2026-04-24: spec may declare ``reroll_blocks`` — forbidden payline
     # patterns (server-side re-roll). Engine respects by re-drawing at
     # spin time (see engine/spin.py). Empty/absent = no re-roll logic.
     rules = RuleSet(spec["pays"], reroll_blocks=spec.get("reroll_blocks"))
@@ -143,7 +143,7 @@ def load_engine(
 
     # reel_set name is carried by both strips and weights for cross-check;
     # ``spec.spin_types[st].reel_set`` picks which set to use when a
-    # machine has multiple (bonus chain etc.). Current M1 has one set
+    # machine has multiple (bonus chain etc.). Current machine has one set
     # named "default" and both strips + weights declare it.
     reel_set_name = st["reel_set"]
     if strips_doc.get("reel_set") != reel_set_name:
@@ -156,49 +156,30 @@ def load_engine(
 
     reels: list[ReelStrip] = []
     for reel_stops in assembled:
-        # v5 2026-04-23: weights widened to float. M15 topdollar ~6.44 needs
-        # fractional to hit exact 1/88 trigger target (old int() cast silently
-        # truncated to 6, giving ~1.06% vs target 1.136%).
+        # Float weights to support fractional values when a tuner needs
+        # sub-integer precision to hit a trigger-rate target exactly
+        # (e.g. ~6.44 stop weight for a 1/88 trigger).
         stops = [Stop(symbol=s["symbol"], weight=float(s["weight"])) for s in reel_stops]
         reels.append(ReelStrip(stops))
 
-    # Payline — M1 / M15 / M37 have exactly 1 (line_id=1 on middle row).
-    # Multi-line specs (M279: 9 lines) load the full payline list; the
+    # Payline — single-line specs (1 line on middle row) use paylines[0].
+    # Multi-line specs (e.g. 9 lines) load the full payline list; the
     # single-line ``SpinEngine`` returned here uses paylines[0] for
     # backward compatibility, but ``spec["grid"]["paylines"]`` carries
-    # the full list which downstream multi-line engines (M279SpinEngine)
-    # read directly from the spec dict returned alongside the engine.
+    # the full list which downstream multi-line engines read directly
+    # from the spec dict returned alongside the engine.
     paylines = spec["grid"]["paylines"]
     if not paylines:
         raise ValueError(f"spec {spec.get('machine')!r}: grid.paylines is empty")
     positions = [tuple(p) for p in paylines[0]["positions"]]
 
-    # v5+ M15: build FeatureSpec from per-mode feature_params (weights.json)
-    # or fall back to spec-level defaults (specs/M15.spec.json features[0]).
-    feature_spec = None
-    feature_trigger_pay_id = None
-    feats = spec.get("features") or []
-    if feats:
-        feat = feats[0]
-        feature_trigger_pay_id = feat.get("trigger_pay_id")
-        # Per-mode override via weights.json `feature_params` block
-        fp = weights_doc.get("feature_params") or {}
-        x_count = fp.get("x_count_weights") or feat.get("x_count_weights")
-        y_count = fp.get("y_count_weights") or feat.get("y_count_weights")
-        x_val = fp.get("x_value_weights") or feat.get("x_value_weights")
-        y_val = fp.get("y_value_weights") or feat.get("y_value_weights")
-        thresh = fp.get("accept_threshold") or feat.get("accept_threshold", 40)
-        max_r = fp.get("max_rounds") or feat.get("max_rounds", 4)
-        if x_count and y_count:
-            from slot_designer.machines.M15.plugins.feature import FeatureSpec, _X_POOL, _Y_POOL
-            feature_spec = FeatureSpec(
-                x_count_weights=tuple(x_count),
-                y_count_weights=tuple(y_count),
-                x_value_weights=tuple(x_val) if x_val else (1.0,) * len(_X_POOL),
-                y_value_weights=tuple(y_val) if y_val else (1.0,) * len(_Y_POOL),
-                accept_threshold=float(thresh),
-                max_rounds=int(max_r),
-            )
+    # Plugin loading (ARCHITECTURE.md §3) — try to import
+    # ``slot_designer.machines.<machine>.plugins`` and call its
+    # ``build_plugin(spec, weights_doc)`` factory. Returns None for
+    # machines without a plugins/ subpackage OR whose build_plugin
+    # returns None for this spec.
+    machine_name = spec.get("machine") or ""
+    plugin = _load_plugin_for_machine(machine_name, spec, weights_doc)
 
     engine = SpinEngine(
         reels=reels,
@@ -207,10 +188,42 @@ def load_engine(
         cost_per_spin=int(st["cost_per_spin"]),
         bet_amount=int(st["bet_amount"]),
         spin_type=int(st_key),
-        feature_spec=feature_spec,
-        feature_trigger_pay_id=feature_trigger_pay_id,
+        plugin=plugin,
     )
     return engine, spec
+
+
+def _load_plugin_for_machine(
+    machine_name: str,
+    spec: dict,
+    weights_doc: dict,
+):
+    """Resolve a machine's FeaturePlugin via importlib.
+
+    Convention: ``machines/<machine_name>/plugins/__init__.py`` exposes
+    ``build_plugin(spec, weights_doc) -> FeaturePlugin | None``.
+
+    Returns None when:
+      - machines/<M>/plugins/ doesn't exist (base-only machine)
+      - the plugin module has no build_plugin attribute
+      - build_plugin returned None (spec doesn't declare a feature)
+
+    All three cases yield an engine with ``plugin=None`` and
+    ``spin_session()`` always returning empty feature_rounds.
+    """
+    if not machine_name:
+        return None
+    import importlib
+
+    module_path = f"slot_designer.machines.{machine_name}.plugins"
+    try:
+        module = importlib.import_module(module_path)
+    except ModuleNotFoundError:
+        return None
+    builder = getattr(module, "build_plugin", None)
+    if builder is None:
+        return None
+    return builder(spec, weights_doc)
 
 
 def load_reels_for_tuner(

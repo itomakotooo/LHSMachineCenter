@@ -149,7 +149,7 @@ def near_miss_rate_2_of_3(
     """
     n_reels = len(reels)
     if n_reels != 3:
-        raise NotImplementedError("near_miss_rate_2_of_3 is M1-style 3-reel only")
+        raise NotImplementedError("near_miss_rate_2_of_3 is single-line-style 3-reel only")
 
     p_mid = [symbol_mid_probability(r, symbol) for r in reels]
     p_adj_only = [symbol_window_only_probability(r, symbol) for r in reels]
@@ -170,11 +170,11 @@ def visible_variety_score(
     """Expected number of distinct non-blank symbols visible in the 3×3 grid
     per spin. Higher = more varied view.
 
-    Computed analytically by enumerating joint outcomes; for M1-size reels
+    Computed analytically by enumerating joint outcomes; for comparable-size reels
     (36 stops × 3 reels = 36³ = 46656) this is feasible.
 
-    ``blank_symbol`` defaults to lowercase ``"blank"`` (M15+ / production
-    schema). Callers with M1-style PascalCase ``"Blank"`` should pass it
+    ``blank_symbol`` defaults to lowercase ``"blank"`` (machine+ / production
+    schema). Callers with single-line-style PascalCase ``"Blank"`` should pass it
     explicitly.
     """
     if len(reels) != 3:

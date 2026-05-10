@@ -72,13 +72,38 @@ from slot_designer.core.emitter.driver import (
     compute_schema_fingerprint_for,
     sample_one_chunk,
 )
-from slot_designer.machines.M279.plugins.m279_driver import (
-    compute_m279_schema_fingerprint,
-    sample_one_m279_chunk,
-)
 from slot_designer.core.emitter.round import emit_round, emit_session
 from slot_designer.core.engine.loader import load_engine
-from slot_designer.machines.M279.plugins.m279.loader import load_m279_engine
+
+
+def _load_custom_engine_module(entry: dict):
+    """importlib-loaded custom-engine adapter from the machine's plugin
+    package.
+
+    Convention: when a registry entry sets a non-empty ``_engine``
+    marker, the machine's ``machines/<M>/plugins/__init__.py`` exposes
+    these three callables matching the signatures of the generic ones
+    in ``core.emitter.driver``:
+
+      - ``load_engine(spec_path, weights_path) -> (engine, spec)``
+      - ``sample_one_chunk(engine, *, ...) -> (chunk, win, bet)``
+      - ``compute_schema_fingerprint(engine, *, mode,
+            spins_per_robot) -> str``
+
+    Generic core never types the machine name literally; the resolver
+    derives the package path from the registry entry.
+    """
+    import importlib
+
+    machine_name = entry.get("_source_machine") or entry.get("machine", "")
+    if not machine_name:
+        raise RuntimeError(
+            f"registry entry has _engine marker but no _source_machine "
+            f"or machine field; cannot resolve plugin: {entry!r}"
+        )
+    return importlib.import_module(
+        f"slot_designer.machines.{machine_name}.plugins"
+    )
 
 
 REAL_ANALYZER = _ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
@@ -202,8 +227,8 @@ def _run_simulator_chunk(
     ``spec["mode"]`` so the chunk's envelope tags match the VIRTUAL
     machine + CALLER's requested mode — not the underlying source spec.
     Without these overrides, every virtual-console chunk inherited the
-    spec's default mode (e.g. M15.spec.json: ``mode=1``); mode 7 chunks
-    landed tagged ``_machine=M15 _mode=1``, so the analyzer's second-
+    spec's default mode (e.g. <M>.spec.json: ``mode=1``); mode 7 chunks
+    landed tagged ``_machine=machine _mode=1``, so the analyzer's second-
     pass replay (which matches chunks by envelope tag, not file path)
     counted 0 spins for the target mode → ``sampling produced 0 spins``
     error. Fixed 2026-04-23.
@@ -733,14 +758,17 @@ def main() -> int:
     #    then delegate with --from-cache.
     spec_path = _spec_path(entry)
     weights_path = _resolve_weights_path(entry, args.rtp_mode)
-    # M279 has its own engine class (multi-payline + nudge + collect +
-    # wheel) that doesn't fit the M1/M15 SpinEngine.spin_session shape.
-    # Route by the spec's _m279_features marker — registry-level branch
-    # (entry.get("_engine") == "m279") would also work but spec marker
-    # is more authoritative since it's right next to the actual logic.
-    is_m279 = bool(entry.get("_engine") == "m279")
-    if is_m279:
-        engine, spec = load_m279_engine(spec_path, weights_path)
+    # When the registry entry declares a non-default ``_engine`` marker,
+    # route through the named engine adapter (loaded via importlib). The
+    # adapter exposes the same load/sample/schema signatures as the
+    # generic core driver so the call sites below stay uniform.
+    engine_marker = entry.get("_engine") or ""
+    custom_engine = bool(engine_marker)
+    custom_engine_module = (
+        _load_custom_engine_module(entry) if custom_engine else None
+    )
+    if custom_engine:
+        engine, spec = custom_engine_module.load_engine(spec_path, weights_path)
     else:
         engine, spec = load_engine(spec_path, weights_path)
 
@@ -800,8 +828,8 @@ def main() -> int:
     # Schema fingerprint probe (deterministic seed — doesn't move main RNG).
     # Shared helper keeps probe-and-hash flow identical to simulate.py
     # so chunk envelopes line up.
-    if is_m279:
-        schema_fp = compute_m279_schema_fingerprint(
+    if custom_engine:
+        schema_fp = custom_engine_module.compute_schema_fingerprint(
             engine,
             mode=int(spec["mode"]),
             spins_per_robot=args.chunk_spin_times,
@@ -920,8 +948,8 @@ def main() -> int:
         })
 
         t0 = time.time()
-        if is_m279:
-            chunk, c_win, c_bet = sample_one_m279_chunk(
+        if custom_engine:
+            chunk, c_win, c_bet = custom_engine_module.sample_one_chunk(
                 engine,
                 machine=args.machine,
                 mode=int(args.rtp_mode),

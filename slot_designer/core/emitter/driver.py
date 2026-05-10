@@ -3,17 +3,12 @@
 Shared kernel ``sample_one_chunk`` used by:
 - ``scripts/simulate.py`` / ``scripts/tune.py`` via
   ``emit_simulation_to_dir`` (fixed-chunk-count dev-scratch emission).
-- ``backend/virtual_analyzer.py`` via ``_run_simulator_chunk``
+- ``core/backend/virtual_analyzer.py`` via ``_run_simulator_chunk``
   (CI-driven dynamic-stop virtual-console sampling).
 
-Historical note (2026-04-23): these two pipelines had duplicated per-
-chunk loops (robots × spins × emit). When ST=14/ST=15 feature emission
-landed in ``emit_session`` + ``SpinEngine.spin_session`` only
-``emit_simulation_to_dir`` was updated; ``virtual_analyzer`` still called
-the old ``engine.spin()`` + ``emit_round()`` path → virtual console saw
-M15sim RTP=43.25% (base only) while direct simulate.py showed 94%.
-User-visible bug. Fixed by pulling the kernel into ``sample_one_chunk``
-and routing both callers through it.
+Both pipelines route through the same kernel so feature-bearing
+machines (with a ``FeaturePlugin``) and base-only machines produce
+identical chunk schemas at both call sites.
 """
 from __future__ import annotations
 
@@ -23,7 +18,7 @@ from typing import Callable
 
 from ..engine.spin import SpinEngine
 from .chunk import compute_schema_fingerprint, emit_chunk, write_chunk
-from .robot import emit_robot
+from .robot import _classify_rounds, emit_robot
 from .round import emit_round, emit_session
 
 
@@ -47,40 +42,26 @@ def sample_one_chunk(
     detail that both simulate.py and virtual_analyzer must agree on
     lives here once.
 
-    Feature handling: ``engine.spin_session`` produces the main ST=1
-    outcome plus optional ST=14 feature rounds; ``emit_session`` turns
-    those into the production-shaped [ST=1 Trigger, ST=14 × N, ST=15]
-    sequence with matching ReMarks / WinAmount conventions. Machines
-    without a feature engine (M1) get ``feature_rounds=[]`` so
-    ``emit_session`` returns a single-item list identical to the
-    pre-feature ``emit_round`` output.
+    Feature handling: ``engine.spin_session`` produces the main paid
+    outcome plus optional plugin-private feature_rounds; ``emit_session``
+    turns those into the per-machine rawdata sub-rounds via the plugin.
+    Base-only machines (no plugin) get ``feature_rounds=[]`` and
+    ``emit_session`` returns a single-item list identical to the bare
+    ``emit_round`` output.
 
-    ``last_credits`` mirrors production: only the main ST=1 win updates
-    the running credit balance. Feature ST=14 WinCredits values are
-    display-only reveals — the actual session payout lives on ST=15
-    (``WinAmount``) per analyzer's ``compute_trigger_sessions`` Type-1
-    rule.
-
-    ``win``/``bet`` session-centric: ST=1 ``WinCredits`` is the main
-    payout; for feature-triggering sessions the actual feature payout
-    lives on the final ST=15 ``WinAmount`` per analyzer Type-1 semantics
-    (see ``reference_trigger_session_patterns.md``). ST=14 rounds are
-    display-only reveals whose ``WinCredits`` don't count. The emitter
-    tallies both ST=1 ``WinCredits`` + ST=15 ``WinAmount`` so the
-    realized RTP printed by simulate.py / emit summaries matches what
-    the analyzer computes when reading back these chunks.
-
-    Historical bug (2026-04-24, M15 mode 5 report): old impl only summed
-    ST=1 ``WinCredits`` → sim RTP 129.37% (base only) while virtual
-    console analyzer reported 500.13% (session total). Gap = feature EV
-    × trigger rate (~370pp for mode 5). User-visible discrepancy.
-
-    Bet total stays on ST=1 ``BetAmount`` only (ST=14/15 rows have
-    BetAmount=0 — feature is an unpaid consequence of ST=1).
+    Session-win aggregation: per-row ``effective_win`` from
+    ``plugin.classify_round`` (or default WinCredits when no plugin)
+    sums to the session's RTP contribution — same numerator the analyzer
+    computes when reading back the chunk's TotalWin bucket histogram.
+    Without delegating to plugin.classify_round, generic core would
+    have to know which rows count (e.g., for single-line slots: ST=14 reveals are
+    display-only, ST=15 carries the accepted payout via WinAmount) —
+    that knowledge stays inside the plugin.
     """
     robot_list = []
     chunk_win = 0
     chunk_bet = 0
+    plugin = engine.plugin
     for _ in range(robots):
         last_credits = initial_credits
         rounds: list[dict] = []
@@ -92,23 +73,19 @@ def sample_one_chunk(
                 last_credits=last_credits,
                 spin_times=spins_per_robot,
                 rtp_id=mode,
-                feature_trigger_pay_id=engine.feature_trigger_pay_id,
+                plugin=plugin,
             )
             rounds.extend(session_dicts)
             main_dict = session_dicts[0]
             last_credits = last_credits - out.cost_credits + main_dict["WinCredits"]
-            # Session RTP: main ST=1 WinCredits + final ST=15 WinAmount
-            # (Type-1 analyzer semantics). ST=14 reveals are not summed.
-            session_win = main_dict["WinCredits"]
-            if len(session_dicts) > 1:
-                # Feature-triggering session → last row is ST=15; WinAmount
-                # holds the session's true feature payout.
-                last_row = session_dicts[-1]
-                if last_row.get("SpinType") == 15:
-                    session_win += int(last_row.get("WinAmount", 0) or 0)
+            # Session RTP: sum of per-row effective_win from
+            # plugin.classify_round (or WinCredits when no plugin).
+            # Matches what the analyzer computes from the same rows.
+            session_classification = _classify_rounds(session_dicts, plugin)
+            session_win = sum(eff for (_feat, eff) in session_classification)
             chunk_win += session_win
             chunk_bet += out.bet_amount
-        robot_list.append(emit_robot(rounds, bet=engine.bet_amount))
+        robot_list.append(emit_robot(rounds, bet=engine.bet_amount, plugin=plugin))
 
     chunk = emit_chunk(
         robot_list,
@@ -166,7 +143,7 @@ def emit_simulation_to_dir(
 
     ``mode`` (optional) overrides ``spec["mode"]`` for chunk envelope
     tagging + the per-round ``RTPId`` field. The spec itself stays
-    single-mode (rules + paytable are shared across modes on M1-style
+    single-mode (rules + paytable are shared across modes on single-line-style
     machines); the caller picks which mode's identity to stamp on the
     chunks. Defaults to ``spec["mode"]`` for backward compatibility
     with single-mode callers.

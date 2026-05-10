@@ -10,7 +10,7 @@ Tiers (per user directive 2026-04-20 + 2026-04-21 hit_rate soft add):
     operator knows a specific fleet-preferred hit rate (e.g. classic
     single-line 9-13% industry range) they pass --hit-target to
     steer the tuner there. The target profile's hit_rate is ignored
-    in this mode; we don't want to track M14's 20.85% just because
+    in this mode; we don't want to track machine's 20.85% just because
     it happens to be the shape reference.
   - EXPERIENCE (logged, not optimized by default): wild_visibility,
     blank_rate, per-pay tail mass — passed through for operator

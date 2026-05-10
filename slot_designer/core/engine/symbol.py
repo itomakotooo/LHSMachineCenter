@@ -2,12 +2,12 @@
 
 Known kinds (2026-04-24):
   - filler:        blank / decorative stops that never pay
-  - cherry_special: M1 cherry (independent count-based pay)
+  - cherry_special: machine cherry (independent count-based pay)
   - regular:       standard paying symbol (high7, bars, etc.)
-  - wild:          substitutes for regular symbols (M1 Diamond1/2, M15
+  - wild:          substitutes for regular symbols (machine Diamond1/2, machine
                    doublediamond). ``multiplier`` field stacks per-wild
                    when wilds appear on payline.
-  - booster (M37+): jackpot-tier symbol on middle reel (mini/minor/major/
+  - booster (machine+): jackpot-tier symbol on middle reel (mini/minor/major/
                     grand). Acts as a center-cell MULTIPLIER on 3-match
                     payline pays AND a standalone pay by its own tier
                     value. ``multiplier`` is the booster factor (mini=2,
@@ -23,7 +23,7 @@ class Symbol:
     name: str
     kind: str            # "regular" | "wild" | "cherry_special" | "filler" | "booster"
     multiplier: int = 1  # wild: per-wild stack multiplier; booster: tier multiplier
-    # M279+ 2026-04-28: nudge anchor metadata for stacked-wild trio.
+    # machine+ 2026-04-28: nudge anchor metadata for stacked-wild trio.
     # Symbols that are part of a stack carry this; non-stack wilds carry None.
     nudge_anchor: str | None = None  # "up" | "down" | None (mid stack member or
                                      # non-stack wild)

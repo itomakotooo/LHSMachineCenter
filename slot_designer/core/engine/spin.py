@@ -1,29 +1,27 @@
 """SpinEngine — orchestrate a single spin.
 
 Flow:
-  1. For each reel (3 for M1), sample a stop via weighted random.
-  2. Build 3×3 grid from (top, mid, bot) window of each reel.
-  3. Extract payline symbols (middle row for M1's line_id=1).
+  1. For each reel, sample a stop via weighted random.
+  2. Build 3-row × n-cols grid from each reel's (top, mid, bot) window.
+  3. Extract payline symbols.
   4. Evaluate paytable → PayResult | None.
   5. Return SpinOutcome carrying everything the emitter needs.
 
-v5+ (2026-04-23): SpinEngine optionally carries a ``feature_spec``
-(FeatureSpec) that enables ``spin_session()`` — returns the main spin
-plus N feature round outputs when the main spin triggers the feature.
-M15 uses this to emit production-matching SpinType=14/15 sub-rounds.
-
-Future machines add: multi-payline (iterate all lines), bonus respin
-(different reel set + state-aware cost), cascading reels (loop until no
-wins), etc. All of those live here in new methods, not in a new engine.
+Plugin extension (ARCHITECTURE.md §3): SpinEngine optionally carries a
+``plugin: FeaturePlugin`` instance loaded from ``machines/<M>/plugins/``.
+When present, ``spin_session()`` returns the main spin plus N feature
+rounds (plugin-private dataclass) when the main spin's scatter_pays
+includes ``plugin.trigger_pay_id``. Generic core never imports the
+concrete plugin class — only the FeaturePlugin Protocol.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from random import Random
-from typing import Sequence
+from typing import Any, Sequence
 
 from .evaluator import PaytableEvaluator
-from slot_designer.machines.M15.plugins.feature import FeatureRound, FeatureSpec, simulate_feature_session
+from .feature_protocol import FeaturePlugin
 from .reel_strip import ReelStrip
 from .rules import PayResult, RerollBlockRule
 
@@ -45,14 +43,13 @@ def _matches_any_reroll(
 
 @dataclass
 class SpinOutcome:
-    grid: list[list[str]]              # grid[col][row] = symbol (3×3 for M1)
+    grid: list[list[str]]              # grid[col][row] = symbol
     pay: PayResult | None
     cost_credits: int
     bet_amount: int
     spin_type: int
-    # v5 M15: scatter-triggered pays that coexist with the main payline
-    # pay (e.g. pay_id 666 topdollar trigger, WinCredits=0). Empty list
-    # for machines without scatter_trigger rules (M1).
+    # Scatter-triggered pays that coexist with the main payline pay.
+    # Empty list for machines without scatter_trigger rules.
     scatter_pays: list[PayResult] = None  # type: ignore[assignment]
 
     def __post_init__(self):
@@ -69,8 +66,7 @@ class SpinEngine:
         cost_per_spin: int,
         bet_amount: int,
         spin_type: int = 1,
-        feature_spec: FeatureSpec | None = None,
-        feature_trigger_pay_id: int | None = None,
+        plugin: FeaturePlugin | None = None,
     ):
         self.reels = list(reels)
         self.evaluator = evaluator
@@ -78,11 +74,9 @@ class SpinEngine:
         self.cost_per_spin = cost_per_spin
         self.bet_amount = bet_amount
         self.spin_type = spin_type
-        # v5+: optional feature engine for M15-style bonus mechanics.
-        # When present, spin_session() runs feature rounds when the main
-        # spin's scatter_pays contains ``feature_trigger_pay_id``.
-        self.feature_spec = feature_spec
-        self.feature_trigger_pay_id = feature_trigger_pay_id
+        # Optional FeaturePlugin (machines/<M>/plugins/) for feature-bearing
+        # machines. None for base-only machines.
+        self.plugin: FeaturePlugin | None = plugin
 
     @property
     def n_cols(self) -> int:
@@ -90,9 +84,7 @@ class SpinEngine:
 
     def spin(self, rng: Random) -> SpinOutcome:
         """Draw one spin; re-roll if the payline pattern hits a spec-
-        declared block rule (M37 2026-04-24: blocks (wild, grand, wild)
-        from ever paying the natural 1000× top tier; the re-roll is a
-        server-side mechanic mirrored here for rawdata correctness).
+        declared block rule.
 
         Re-roll cap = 50 attempts; beyond that, raise (indicates a spec
         with over-constrained blocks or an impossible strip layout).
@@ -133,30 +125,26 @@ class SpinEngine:
             f"(last payline: {payline_syms!r})"
         )
 
-    def spin_session(self, rng: Random) -> tuple[SpinOutcome, list[FeatureRound]]:
+    def spin_session(self, rng: Random) -> tuple[SpinOutcome, list[Any]]:
         """Run one paid spin + any triggered feature rounds.
 
-        If the main spin has a scatter pay matching ``feature_trigger_pay_id``,
-        simulate the feature session (up to ``max_rounds`` rounds with
-        accept/reject logic per ``FeatureSpec``). Returns:
-          - Main SpinOutcome (the paid spin, may have regular payline pay too)
-          - List of FeatureRound, one per round played (empty if no trigger
-            OR engine has no feature_spec configured).
+        If the engine has a plugin AND the main spin's scatter_pays
+        contains ``plugin.trigger_pay_id``, the plugin runs a feature
+        session and returns its private per-round objects in the
+        second tuple element.
 
-        Rawdata emission (downstream emitter handles):
-          main outcome → ST=1 (with ReMarks='Trigger' when feature_rounds
-          non-empty); each feature round → ST=14 with WinCredits=r_value×bet;
-          followed by ST=15 end marker.
+        Returns:
+          (outcome, feature_rounds)
+            outcome — the paid spin (may also have regular payline pay).
+            feature_rounds — plugin-private list (e.g. M15FeatureRound
+              objects). Empty list when no plugin OR no trigger.
         """
         outcome = self.spin(rng)
-        feature_rounds: list[FeatureRound] = []
-        if (
-            self.feature_spec is not None
-            and self.feature_trigger_pay_id is not None
-            and any(
-                sp.pay_id == self.feature_trigger_pay_id
+        feature_rounds: list[Any] = []
+        if self.plugin is not None and self.plugin.trigger_pay_id is not None:
+            if any(
+                sp.pay_id == self.plugin.trigger_pay_id
                 for sp in (outcome.scatter_pays or [])
-            )
-        ):
-            feature_rounds = simulate_feature_session(self.feature_spec, rng)
+            ):
+                feature_rounds = self.plugin.simulate_session(rng)
         return outcome, feature_rounds

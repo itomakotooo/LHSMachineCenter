@@ -1,6 +1,6 @@
 """Lightweight (1+1)-ES with 1/5 success rule + multi-restart.
 
-Zero third-party deps. Works on 27-variable count space for M1. For
+Zero third-party deps. Works on 27-variable count space for single-line slots. For
 bigger machines (more symbols / reels), bump restart count or sigma.
 
 Why (1+1)-ES:
@@ -33,7 +33,7 @@ class ESConfig:
     count_max: int = 2000            # maximum — prevents runaway
     window: int = 30                 # evaluations between sigma adaptations
     c_adapt: float = 0.82            # 1/5 rule decay factor
-    # M37 2026-04-24: per-(symbol, reel) count floor. Prevents tuner's
+    # machine 2026-04-24: per-(symbol, reel) count floor. Prevents tuner's
     # internal-state / apply_counts drift when a symbol has >1 stop per
     # reel and tuner explores counts below n_stops — apply_counts clamps
     # per-stop weight to min=1 → materialized count = n_stops × 1 ≠

@@ -1,7 +1,7 @@
 """Bucket-shape distance metric for tuning.
 
 User constraint: "数值分桶的分布形状" is a hard constraint. Not逐桶值
-matching (M1 physically can't make sub-1× pays; M14 has 9.9% there).
+matching (machine physically can't make sub-1× pays; machine has 9.9% there).
 Rather: the **shape** of the win-bearing distribution — decay rate,
 shoulder position, tail falloff — should align.
 
@@ -16,7 +16,7 @@ Also provides helper metrics:
   - `log_decay_slope`: least-squares slope of log(bucket_rate) vs log(bucket_mid_x)
   - `tail_mass_above(x)`: Σ prob over buckets whose lower-bound ≥ x
 
-These let the tuner reason about "does M1's shape echo M14's general
+These let the tuner reason about "does machine's shape echo machine's general
 decay pattern" beyond just distributional distance.
 """
 from __future__ import annotations

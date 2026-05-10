@@ -55,9 +55,9 @@ def _discover_modes_on_disk(entry: dict) -> list[int]:
     if not tpl:
         return []
     repo_root = _SLOT_DESIGNER.parent
-    # "slot_designer/machines/M15/weights/mode_{mode}/weights.json" →
-    # parent "slot_designer/weights/M15/mode_{mode}" →
-    # grandparent "slot_designer/weights/M15"
+    # "slot_designer/machines/<M>/weights/mode_{mode}/weights.json" →
+    # parent "slot_designer/machines/<M>5/mode_{mode}" →
+    # grandparent "slot_designer/machines/<M>5"
     try:
         sample = repo_root / tpl.format(mode=1)
     except (KeyError, IndexError):

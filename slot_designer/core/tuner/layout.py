@@ -1,7 +1,7 @@
 """Convert between per-(symbol, reel) counts and full weights dicts.
 
 The tuner's search variable is per-(symbol, reel) counts — 9 × 3 = 27
-integers for M1. Analytic RTP/bucket only depends on these aggregate
+integers for single-line slots. Analytic RTP/bucket only depends on these aggregate
 counts (marginals), so this is the natural search dimension.
 
 But our simulator and existing rawdata emitter need full reel strips
@@ -107,7 +107,7 @@ def apply_counts(
             # Old impl pushed the entire diff onto scaled[0]; if diff was
             # more negative than scaled[0] - min_weight, the clamp absorbed
             # the excess and target_total was silently missed (observed in
-            # M37 mode 5 reel 3 blank: 120→113 drift of -7 clamped to 0).
+            # machine mode 5 reel 3 blank: 120→113 drift of -7 clamped to 0).
             # Spread across stops so every stop drops/rises by 1 until diff
             # lands. Only floor-clamped stops are skipped.
             diff = target_total - sum(scaled)

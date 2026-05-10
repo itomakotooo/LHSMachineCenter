@@ -125,7 +125,7 @@ def initialize_alternating(
     """Rearrange a reel's stops so Blank and non-Blank strictly alternate.
 
     Requires ``count(Blank) == count(non-Blank)`` (which is the case
-    for M1's 36-stop reels: 18 Blanks + 18 non-Blanks). For machines
+    for single-line slots's 36-stop reels: 18 Blanks + 18 non-Blanks). For machines
     where this doesn't hold, alternation is not achievable — the
     caller must rebalance counts at Phase 4 first.
 
@@ -252,7 +252,7 @@ def class_preserving_swap_mutation(
     means alternation is preserved FOR FREE — no cost penalty needed,
     no chance of random drift away from the invariant. The remaining
     combinatorial freedom (18! within-class permutations per reel for
-    M1) is plenty for near-miss / PWDF optimization.
+    machine) is plenty for near-miss / PWDF optimization.
     """
     new_reels = [list(r) for r in reels]
     reel_idx = rng.randrange(len(new_reels))

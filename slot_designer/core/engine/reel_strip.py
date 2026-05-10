@@ -17,7 +17,7 @@ from typing import Sequence
 class Stop:
     symbol: str
     weight: float   # v5 2026-04-23: widened from int to float to support
-                    # M15's fractional topdollar weight (6.44 for exact
+                    # machine's fractional topdollar weight (6.44 for exact
                     # 1/88 trigger rate). Pre-v5 int weights still work
                     # (stored as float internally).
 
@@ -54,7 +54,7 @@ class ReelStrip:
         )
 
     def symbol_marginal_prob(self, symbol: str) -> float:
-        """P(picked stop's payline symbol == `symbol`). For M1 this is reel 1's
+        """P(picked stop's payline symbol == `symbol`). For machine this is reel 1's
         middle-row marginal (probability that the payline cell shows `symbol`).
         """
         w = sum(s.weight for s in self.stops if s.symbol == symbol)

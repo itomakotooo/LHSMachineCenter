@@ -1,24 +1,25 @@
 """Emit one round dict matching existing rawdata schema exactly.
 
-Schema reverse-engineered from rawdata/M1/mode_1/chunk_*.json. Field set
-is 17 keys — see tests/fixtures/M1_field_analysis.md. Analyzer's only
-hard dependencies on PayoutByPayline / PayoutIdToWinAmount format are:
+Schema reverse-engineered from single-line-style production rawdata. Field set
+is 17 keys. Analyzer's only hard dependencies on PayoutByPayline /
+PayoutIdToWinAmount format are:
 - ``PAYLINE_RE = r"(\\d+):"`` extracts line_ids from strings like ``"1:14-13(...)"``
 - ``_POSITION_RE = r"\\(([0-9,]+)\\)"`` extracts position tuples.
 
 So ``"1:<pid>-<pid>(<positions,>);  "`` is valid. Analyzer reads pay_id
 from the PayoutIdToWinAmount dict, not the string.
 
-v5+ M15 (2026-04-23): added SpinType=14 (feature sub-round) and
-SpinType=15 (feature end marker) emission. When ``emit_session()`` is
-called with a non-empty feature_rounds list, the output is a list of
-multiple round dicts: [main trigger spin ST=1 (ReMarks='Trigger'),
-ST=14 × N rounds, ST=15 end marker]. Production M15 rawdata uses this
-exact structure (verified against rawdata/M15$TopDollarSelector$0$).
+Plugin extension (ARCHITECTURE.md §3): when ``emit_session`` is called
+with a non-empty ``feature_rounds`` list, the plugin's
+``emit_extra_rounds`` produces the per-machine sub-round + end-marker
+dicts (machine-specific SpinTypes + field schema). Generic emitter
+never hardcodes machine-specific spin type numbers.
 """
 from __future__ import annotations
 
-from slot_designer.machines.M15.plugins.feature import FeatureRound
+from typing import Any
+
+from ..engine.feature_protocol import FeaturePlugin
 from ..engine.spin import SpinOutcome
 
 
@@ -38,9 +39,9 @@ def emit_round(
     reward_last_node: list[str] = []
 
     # Main payline pay (at most 1 per spin for single-payline machines).
-    # Upstream position formula (see scripts/infer_paytable._decode_position):
+    # Upstream position formula:
     #   pos = (col+1) * 100 + (row-1),  col & row 0-indexed with
-    #   row=1 = middle row (payline for M1-style single-line slots).
+    #   row=1 = middle row (payline for single-line slots).
     if pay is not None:
         win = int(pay.multiplier * outcome.bet_amount)
         total_win += win
@@ -53,10 +54,9 @@ def emit_round(
         payout_id_to_win[str(pay.pay_id)] = win
         reward_last_node.append(f"{pay.pay_id}-")
 
-    # v5 M15: scatter-triggered pays coexist in PayoutIdToWinAmount. M15's
-    # pay_id 666 fires with win=0 on topdollar landing reel 3 payline.
-    # line_id=-1 in production rawdata for scatter pays — encoded in the
-    # PayoutByPayline string as the negative line prefix.
+    # Scatter-triggered pays coexist in PayoutIdToWinAmount alongside the
+    # main payline pay. Scatter pays use line_id=-1 in upstream encoding
+    # (negative line prefix in PayoutByPayline string).
     for sp in scatter_pays:
         sp_win = int(sp.multiplier * outcome.bet_amount)
         total_win += sp_win
@@ -98,89 +98,33 @@ def emit_round(
     }
 
 
-def emit_feature_round(
-    fr: FeatureRound,
-    *,
-    bet_amount: int,
-    last_credits: int,
-    spin_times: int,
-    rtp_id: int,
-) -> dict:
-    """Emit a SpinType=14 feature sub-round matching production format.
-
-    Fields align with observed production rawdata for M15 feature rounds:
-    12 keys (subset of the ST=1 schema, StopSymbolsByCol is null).
-    WinCredits = fr.r_value × bet_amount (the offer value revealed this
-    round; analyzer downstream decides sum vs accepted-only semantics).
-    """
-    return {
-        "ReMarks": "",
-        "LastCredits": last_credits,
-        "CostCredits": 0,
-        "WinCredits": int(fr.r_value * bet_amount),
-        "BetAmount": 0,
-        "StopSymbolsByCol": None,
-        "RewardLastNode": [],
-        "PayoutByPayline": "",
-        "PayoutIdToWinAmount": {},
-        "SpinType": 14,
-        "SpinTimes": spin_times,
-        "RTPId": rtp_id,
-    }
-
-
-def emit_feature_end(
-    *,
-    spin_times: int,
-    rtp_id: int,
-    win_amount: int = 0,
-) -> dict:
-    """Emit a SpinType=15 feature end marker (production: 5 minimal keys).
-
-    CRITICAL: production ST=15 has ``WinAmount`` (NOT ``WinCredits``),
-    carrying the accepted session's total payout. The analyzer's
-    ``compute_trigger_sessions`` (fresh_slotlab/trigger_sessions.py) uses
-    "last_non_none WinCredits across bonus sequence" for Type-1 (M15
-    TopDollar) sessions. Emitting ``WinCredits: 0`` on ST=15 would
-    OVERRIDE the accepted ST=14's WinCredits (since ST=15 comes last),
-    making session_win=0 and blanking the TopDollar feature's
-    ``bucket_distribution`` in the report. Matching production means
-    omitting WinCredits entirely from ST=15 and carrying the accepted
-    payout in WinAmount instead.
-    """
-    return {
-        "WinAmount": int(win_amount),
-        "SpinType": 15,
-        "SpinTimes": spin_times,
-        "RTPId": rtp_id,
-        "IsLackCreditsSpin": False,
-    }
-
-
 def emit_session(
     outcome: SpinOutcome,
-    feature_rounds: list[FeatureRound],
+    feature_rounds: list[Any],
     *,
     last_credits: int,
     spin_times: int,
     rtp_id: int,
-    feature_trigger_pay_id: int | None = None,
+    plugin: FeaturePlugin | None = None,
 ) -> list[dict]:
     """Emit a full spin session as a list of round dicts.
 
-    When feature_rounds is empty → returns a single [ST=1] dict.
-    When feature_rounds is non-empty → returns:
-      [ST=1 trigger (ReMarks='Trigger'), ST=14 × N rounds, ST=15 end marker]
+    When ``feature_rounds`` is empty → returns ``[main_paid_round]``.
+    When ``feature_rounds`` is non-empty → returns
+    ``[main_paid_round (ReMarks='Trigger'), <plugin extras>]``
+    where ``<plugin extras>`` is whatever the machine plugin's
+    ``emit_extra_rounds`` produces (ST=14 reveals + ST=15 end marker
+    in the machine case; some other machine could emit different schemas).
 
-    Matches production M15$TopDollarSelector$0$ rawdata structure exactly.
-    The trigger spin's ReMarks is set to 'Trigger' automatically when its
-    scatter_pays contains ``feature_trigger_pay_id`` AND feature_rounds is
-    non-empty (i.e., the feature actually fired).
+    The trigger spin's ReMarks is set to 'Trigger' when feature_rounds
+    is non-empty AND its scatter_pays contains the plugin's
+    trigger_pay_id (i.e., the feature actually fired).
     """
     is_trigger = bool(feature_rounds) and (
-        feature_trigger_pay_id is not None
+        plugin is not None
+        and plugin.trigger_pay_id is not None
         and any(
-            sp.pay_id == feature_trigger_pay_id
+            sp.pay_id == plugin.trigger_pay_id
             for sp in (outcome.scatter_pays or [])
         )
     )
@@ -195,25 +139,15 @@ def emit_session(
     )
     session = [main]
 
-    if feature_rounds:
-        lc = last_credits  # feature rounds don't actually change LC in production;
-                           # we keep it flat to mirror observed behavior.
-        bet = outcome.bet_amount
-        for fr in feature_rounds:
-            session.append(emit_feature_round(
-                fr,
-                bet_amount=bet,
-                last_credits=lc,
-                spin_times=spin_times,
-                rtp_id=rtp_id,
-            ))
-        # WinAmount on end marker = accepted session's payout (last
-        # round's WinCredits). Matches production schema.
-        accepted_win = int(feature_rounds[-1].r_value * bet)
-        session.append(emit_feature_end(
+    if feature_rounds and plugin is not None:
+        extras = plugin.emit_extra_rounds(
+            main,
+            feature_rounds,
+            last_credits=last_credits,
             spin_times=spin_times,
             rtp_id=rtp_id,
-            win_amount=accepted_win,
-        ))
+            bet_amount=outcome.bet_amount,
+        )
+        session.extend(extras)
 
     return session

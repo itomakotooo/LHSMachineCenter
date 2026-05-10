@@ -3,8 +3,8 @@
 Typical use during tuning:
 
     python -m slot_designer.core.devtools.weight_diff \
-        --spec slot_designer/machines/M1/spec.json \
-        --weights-a slot_designer/machines/M1/weights/mode_1/weights.json \
+        --spec slot_designer/machines/<M>/spec.json \
+        --weights-a slot_designer/machines/<M>/weights/mode_1/weights.json \
         --weights-b /tmp/candidate.json \
         --target slot_designer/tuner/targets/M1_mode1_classic.target.json
 

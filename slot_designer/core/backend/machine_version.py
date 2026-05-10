@@ -37,8 +37,8 @@ Why weights are in config_md5 (not in code_md5):
 Phase B per-machine hash boundary (slot_designer/ARCHITECTURE.md §4):
   - Touch core/engine/* or core/emitter/* → every machine's md5 flips
     (correct: framework change is a fleet-wide event).
-  - Touch machines/M15/plugins/* → only M15's md5 flips.
-  - Touch machines/M279/plugins/* → only M279's md5 flips.
+  - Touch machines/<M>/plugins/* → only machine's md5 flips.
+  - Touch machines/<M>/plugins/* → only machine's md5 flips.
   - Touch tests, docs, scripts, configs → no machine's md5 flips.
 """
 from __future__ import annotations
@@ -67,7 +67,7 @@ def _core_source_files() -> list[Path]:
     additions may live in subpackages (e.g. ``core/engine/features/``).
     Pre-Phase-B used non-recursive ``glob`` which silently missed
     ``engine/m279/`` subpackage files — that subpackage is now relocated
-    under ``machines/M279/plugins/`` so the recursion is safe.
+    under ``machines/<M>/plugins/`` so the recursion is safe.
     """
     core_engine = _SLOT_DESIGNER / "core" / "engine"
     core_emitter = _SLOT_DESIGNER / "core" / "emitter"
@@ -90,7 +90,7 @@ def _plugin_source_files(machine_name: str) -> list[Path]:
     ``__init__.py`` + ``__pycache__``). Sorted for determinism.
 
     Returns empty list when the machine has no plugins/ dir (base-only
-    machines like M1 / M37).
+    machines like machine / machine).
     """
     plugin_dir = _SLOT_DESIGNER / "machines" / machine_name / "plugins"
     if not plugin_dir.is_dir():
@@ -117,12 +117,12 @@ def compute_code_md5(machine_name: str) -> str:
 
     Behavior:
       - Touching core/* flips every machine's md5 (framework change).
-      - Touching machines/M15/plugins/* flips only M15's md5.
-      - Touching machines/M279/plugins/* flips only M279's md5.
+      - Touching machines/<M>/plugins/* flips only machine's md5.
+      - Touching machines/<M>/plugins/* flips only machine's md5.
       - Touching tests / docs / scripts / configs → no md5 flips.
 
     Args:
-      machine_name: short machine identifier (e.g. "M1", "M15"); the
+      machine_name: short machine identifier (e.g. "machine", "machine"); the
         directory under ``slot_designer/machines/`` whose plugin tree
         contributes to the hash.
 
@@ -235,7 +235,7 @@ def _machine_name_from_entry(entry: dict) -> str:
     """Extract the machines/<M>/ directory name from a registry entry.
 
     Prefers ``_source_machine`` (explicit, set by registry authors so
-    "M15sim" → "M15"). Falls back to stripping a trailing "sim" from
+    "M15sim" → "machine"). Falls back to stripping a trailing "sim" from
     the registry's ``machine`` field for back-compat with entries that
     omit ``_source_machine``.
     """

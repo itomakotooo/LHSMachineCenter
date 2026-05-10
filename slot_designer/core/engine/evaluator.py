@@ -1,15 +1,15 @@
 """Payline evaluator: N symbols on the payline → PayResult | None.
 
-Implements the M1 / M15 / M37 precedence/substitution logic
+Implements the single-line slot machines precedence/substitution logic
 reverse-engineered from production rawdata. See:
-  - tests/fixtures/M1_field_analysis.md (M1)
-  - specs/M15.spec.json _notes (M15)
-  - tests/fixtures/M37_field_analysis.md (M37)
+  - tests/fixtures/M1_field_analysis.md (machine)
+  - specs/<M>.spec.json _notes (machine)
+  - tests/fixtures/M37_field_analysis.md (machine)
 
 Stages (each conditional on presence in ``evaluation_order``):
 
-  1. Cherry precedence (M1) — any cherry → cherry_count pay; wilds inert.
-  2. Booster-center (M37) — col 1 is booster → short-circuit: check
+  1. Cherry precedence (machine) — any cherry → cherry_count pay; wilds inert.
+  2. Booster-center (machine) — col 1 is booster → short-circuit: check
      side cells for a 3-match anchor (wild-subbed), apply booster mult;
      fallback to pure-wild-with-booster or booster-alone pay.
   3. Blank short-circuit — any blank/filler on non-cherry, non-booster
@@ -18,8 +18,8 @@ Stages (each conditional on presence in ``evaluation_order``):
      or pure_wild_group rules. rtp_excluded → None.
   5. Wild-substituted 3-match (line_3_same + line_3_group) — max final
      multiplier across matching rules.
-  6. Side-wild-alone (M37) — col 0 or col 2 is wild, col 1 is blank,
-     no 3-match → flat 1× pay (M37 pay_id 9).
+  6. Side-wild-alone (machine) — col 0 or col 2 is wild, col 1 is blank,
+     no 3-match → flat 1× pay (machine pay_id 9).
 """
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ class PaytableEvaluator:
         """
         all_positions = tuple((c, 1) for c in range(len(payline_symbols)))
 
-        # --- Stage 1: cherry precedence (M1) ---
+        # --- Stage 1: cherry precedence (machine) ---
         if "cherry_count" in self.order:
             cherry_positions = tuple(
                 (c, 1) for c, s in enumerate(payline_symbols)
@@ -65,7 +65,7 @@ class PaytableEvaluator:
                     positions=cherry_positions,
                 )
 
-        # --- Stage 2: booster-center short-circuit (M37) ---
+        # --- Stage 2: booster-center short-circuit (machine) ---
         # When col 1 holds a booster (mini/minor/major/grand), standard
         # 3-match logic doesn't apply (booster isn't in any group, not
         # same as any regular symbol). Instead:
@@ -77,7 +77,7 @@ class PaytableEvaluator:
             return self._evaluate_booster_center(payline_symbols, all_positions)
 
         # --- Stage 3: blank kills non-cherry / non-booster path ---
-        # On M37, "wild on side + blank center" is handled by Stage 6
+        # On machine, "wild on side + blank center" is handled by Stage 6
         # (side_wild_alone); blank-kill skipped when that rule exists.
         if any(self.symbols.get(s).is_filler for s in payline_symbols):
             if "side_wild_alone" in self.order and self.rules.side_wild_alone is not None:
@@ -151,9 +151,9 @@ class PaytableEvaluator:
                     positions=all_positions,
                 )
 
-        # --- Stage 6: side-wild-alone (M37) ---
+        # --- Stage 6: side-wild-alone (machine) ---
         # Wild on col 0 or col 2 (or both), col 1 non-booster, no 3-match
-        # fired above → flat pay (pay_id 9 × 1 on M37).
+        # fired above → flat pay (pay_id 9 × 1 on single-line slots).
         if "side_wild_alone" in self.order and self.rules.side_wild_alone is not None:
             wild_positions = tuple(
                 (c, 1) for c, s in enumerate(payline_symbols)
@@ -200,7 +200,7 @@ class PaytableEvaluator:
                         positions=all_positions,
                     )
             # fall through to center-alone if no rule (booster tier
-            # without a dedicated pure-wild rule, e.g. M37's grand
+            # without a dedicated pure-wild rule, e.g. machine's grand
             # which is reroll-blocked at server level). Both sides wild
             # → include both side positions in emission.
             return self._center_booster_alone(booster_name, ((0, 1), (2, 1)))
@@ -227,8 +227,8 @@ class PaytableEvaluator:
                           if self.symbols.get(s).is_wild)
             for rule in self.rules.line_3_same_by_symbol.get(target, []):
                 # wild_required semantics: booster center doesn't count
-                # as a wild (it's a booster, distinct kind). M37 doesn't
-                # use wild_required, so both M37 rules match regardless.
+                # as a wild (it's a booster, distinct kind). machine doesn't
+                # use wild_required, so both machine rules match regardless.
                 if rule.wild_required is True and n_wilds == 0:
                     continue
                 if rule.wild_required is False and n_wilds > 0:
@@ -284,7 +284,7 @@ class PaytableEvaluator:
         side_wild_positions: tuple = (),
     ) -> PayResult | None:
         """Lookup center_booster_alone pay (pay_id 8 grand, pay_id 9
-        mini/minor/major on M37). Position list includes center (1,1)
+        mini/minor/major on single-line slots). Position list includes center (1,1)
         plus any side wild positions present on payline (production
         rawdata format)."""
         if "center_booster_alone" not in self.order:
@@ -312,8 +312,8 @@ class PaytableEvaluator:
         actual (col, row) cells of that line (not the (col, 1) middle-
         row default that ``evaluate_payline`` produces).
 
-        Used by M279 (3-reel × 9-line) and any future multi-line machine.
-        Single-line machines (M1/M15/M37) keep using ``evaluate_payline``
+        Used by machine-specific reroll-block patterns and any future multi-line machine.
+        Single-line machines (single-line slot machines) keep using ``evaluate_payline``
         directly; this method is purely additive.
 
         Returns: list of PayResult, one per winning line. Empty list when
@@ -349,7 +349,7 @@ class PaytableEvaluator:
         in PayoutIdToWinAmount in production rawdata (e.g., pay_id 9 for
         1-cherry + pay_id 666 for topdollar trigger on same spin).
 
-        M15 use case: pay_id 666 fires when ``topdollar`` lands on reel 3
+        machine use case: pay_id 666 fires when ``topdollar`` lands on reel 3
         (col 2) middle row. WinCredits contribution is 0 (marker pay).
         """
         results: list[PayResult] = []
