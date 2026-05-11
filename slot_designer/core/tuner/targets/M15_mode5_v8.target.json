@@ -1,0 +1,213 @@
+{
+  "label": "M15_mode5_v2_designer_authored",
+  "source_machine": "M15",
+  "source_mode": 5,
+  "source_spins": null,
+  "source_rtp_ci_pp": null,
+  "_provenance": {
+    "authored_by": "Agent D (Designer)",
+    "stage": "ONBOARDING Stage 4 revision wave 3",
+    "iteration": "v2",
+    "date": "2026-05-11",
+    "design_doc": "session_artifacts/M15/design_v2.md",
+    "feasibility_dump": "session_artifacts/M15/feasibility_v2.txt",
+    "_note": "Mode 5 v2 — Fix #2 (X v1 §5.1) applied: bumped R3 topdollar 16→17 + cherry R3 +1 per stop to bring hit AND trigger strictly above m2. v1 had hit/trigger marginally below m2 (FAIL invariant). v2 fixes per Option A. Side-effect: m5 RTP overshoots upper cap (520 → 540), now NEAR-MISS — tuner-closable."
+  },
+
+  "rtp_pct": 500.0,
+  "bucket_rate": {
+    "_note": "Derived from base (m2-similar with modest lift per §d) + feature_params buffed (EV 133×).",
+    "_derive_from": "tuner output + analyzer report"
+  },
+
+  "hit_rate": 0.336,
+  "zero_win_rate": null,
+  "std_return_x": null,
+  "max_return_x": null,
+  "big_win_x10_rate": null,
+  "tail_dep_ge10x": null,
+  "tail_dep_ge20x": null,
+  "tail_dep_ge50x": null,
+  "tail_dep_ge100x": null,
+  "loss_streak_p95": null,
+  "loss_streak_max": null,
+
+  "_design_targets_v2_M15_only": {
+    "_schema_note": "Mode 5 v2 fixes v1's hit/trigger PASS-vs-FAIL contradiction per X v1 §5.1 / decision item #2 Option A.",
+
+    "_v1_to_v2_changes": [
+      "Fix #2 (X v1 §5.1 + decision item 2 Option A): m5 R3 topdollar 16→17 (raises trigger > m2 strictly); m5 R3 cherry 42→43 (raises hit > m2 strictly). v1 hit_rate.v1_status and trigger_rate.v1_status erroneously said PASS while feasibility_v1.txt cross-mode block flagged both as FAIL. v2 RESOLVED — both now strictly greater than m2.",
+      "Side-effect: m5 total RTP rose from 515.9 (v1) to 539.7 (v2) — OVER upper cap [480, 520]. Topdollar marginal × EV 133 produces the overshoot. Marked v2_status NEAR-MISS, tuner-closable in Stage 6.",
+      "Added cherry2/cherry3 frequency floors and bar3 share-of-base lucky band [5, 22]%."
+    ],
+
+    "rtp": {
+      "target_pct": 500.0,
+      "band_pct": [480.0, 520.0],
+      "v2_feasibility": 539.661,
+      "v2_status": "NEAR-MISS (+19.7pp over upper cap) — tuner-closable",
+      "_v1_was": 515.92,
+      "_v2_near_miss_reason": "Fix #2 lifts (R3 topdollar 16→17 + R3 cherry +1) push trigger from 3.068% to 3.247% (+0.18pp). Since feature EV=133×, each 0.1pp trigger lift adds 13pp feature RTP. Net: feature RTP rose from 408pp to 432pp (+24pp), pushing total RTP from 515.9 to 539.7. To return within [480, 520] AND keep hit/trigger > m2, Stage 6 tuner needs finer per-stop granularity (fractional weight redistribution across R3 36 stops — script-level integer weights can't express the fractional adjustment). Acceptable starting position; user gets MORE RTP than design target, direction safe.",
+      "_alternative_path_considered": "Option B: revert topdollar to 16 (m2 level); mark hit_rate/trigger_rate as FAIL_WITHIN_TOLERANCE 0.05pp. Rejected per X v1 critique recommendation (prefer A unless A structurally impossible).",
+      "_source": "DESIGN_PHILOSOPHY §C mode 5 invariant"
+    },
+
+    "base_rtp_pp": {
+      "v2_feasibility": 108.523,
+      "_v1_was": 108.45,
+      "_note": "Slightly lifted by cherry R3 +1 (small bar3 share-of-base reflects same lift). Per §d, base lift over m2 allowed.",
+      "_source": "feasibility_v2.txt + user_brief.md v1.1 §d (base lift allowed)"
+    },
+
+    "feature_rtp_pp": {
+      "v2_feasibility": 431.138,
+      "_v1_was": 407.47,
+      "_note": "Lifted from v1 due to topdollar R3 16→17 (Fix #2). EV 132.81× unchanged.",
+      "_source": "feasibility_v2.txt"
+    },
+
+    "base_feature_split_target_pp": {
+      "base": 20.0,
+      "feature": 80.0,
+      "tolerance_pp": 10.0,
+      "_note": "mode 5 super-lucky narrative: feature carries the lift; base ~108pp (modest lift over m2 per §d). v2: 20.1 : 79.9.",
+      "_source": "design_v2.md §5.4"
+    },
+
+    "hit_rate": {
+      "target": 0.336,
+      "band": [0.30, 0.35],
+      "v2_feasibility": 0.3361,
+      "v2_status": "PASS (strictly > m2 hit 0.3356 per Fix #2)",
+      "_v1_was": 0.3352,
+      "_v1_status_was": "claimed PASS but contradicted feasibility FAIL — fixed in v2",
+      "_v2_note_vs_m2": "v2 m5 hit 0.3361 > m2 hit 0.3356 STRICTLY (+0.05pp) ✓. Closes X v1 §5.1 self-contradiction.",
+      "_source": "design_v2.md §5.4 + DESIGN_PHILOSOPHY §9"
+    },
+
+    "base_cv": {
+      "v2_feasibility": 4.553,
+      "_v1_was": 4.58,
+      "_note": "Slightly higher than m2 base CV (4.38) due to lifted big-pay marginals introducing more tail variance. Well under m1's 6.086.",
+      "_source": "feasibility_v2.txt"
+    },
+
+    "feature_cv_conditional": {
+      "v2_feasibility": 0.858,
+      "_note": "Preserves v7 m5 feature_params. EV 133× via x_value_weights upper shift. Same near-miss vs [1,2] aspirational band.",
+      "_source": "preserve v7 m5 feature_params"
+    },
+
+    "trigger_rate": {
+      "target": 0.032,
+      "band": [0.028, 0.034],
+      "v2_feasibility": 0.03247,
+      "v2_status": "PASS (strictly > m2 trigger 0.03089 per Fix #2)",
+      "_v1_was": 0.03068,
+      "_v1_status_was": "claimed PASS but contradicted feasibility FAIL — fixed in v2",
+      "_v2_note_vs_m2": "v2 m5 trigger 3.247% > m2 trigger 3.089% STRICTLY (+0.16pp) ✓. R3 topdollar 16→17 lift is the lever. Closes X v1 §5.1 self-contradiction.",
+      "_source": "DESIGN_PHILOSOPHY §9 + FEATURE_mode5_trigger_ge_mode2"
+    },
+
+    "feature_ev_x": {
+      "target": 133.0,
+      "band": [125.0, 145.0],
+      "v2_feasibility": 132.809,
+      "v2_status": "PASS",
+      "_source": "v7 m5 feature_params preserved unchanged (EV calibrated for super-lucky narrative)"
+    },
+
+    "p_count_x_eq_1_max": {
+      "max": 0.06,
+      "v2_feasibility": 0.05,
+      "v2_status": "PASS",
+      "_source": "user_brief.md v1.1 §b (uses v7 m5 feature_params = 5%)"
+    },
+
+    "p_r_ge_1000_per_spin_max": {
+      "max": 0.00001,
+      "v2_feasibility": 1.06e-07,
+      "v2_status": "PASS (94× under cap)",
+      "_v1_was": 9.98e-08,
+      "_note": "Slight rise from v1 due to trigger lift (Fix #2). Still well under cap.",
+      "_source": "user_brief #5"
+    },
+
+    "p_value_1000_per_pick_max": {
+      "_note": "Per X §6.5 — explicit cap on per-pick weight of value=1000 in x_value_weights.",
+      "max": 0.001,
+      "v7_value": 0.0001,
+      "_source": "X §6.5 Pareto-trap defense for tuner avoidance of easy-EV-via-value=1000 path"
+    },
+
+    "top_jackpot_escalation_X_200": {
+      "_concrete_X_picked": 200,
+      "_note": "Per X §3.3 + critique item 10 — pick concrete X for P(feature R ≥ X per paid spin) escalation m5 > m2 > m1.",
+      "v2_p_r_ge_200_per_spin": {
+        "mode_1": "~9.0e-5 (trigger 1.28% × P(R ≥ 200 per trigger) ~0.7%)",
+        "mode_2": "~6.2e-4 (trigger 3.09% × P(R ≥ 200 per trigger) ~2.0%)",
+        "mode_5": "~6.5e-3 (trigger 3.25% × P(R ≥ 200 per trigger) ~20%)"
+      },
+      "ratio_m5_over_m2": "~10.5",
+      "ratio_m5_over_m1": "~72",
+      "_status": "PASS — m5 > m2 > m1 monotone with healthy gap",
+      "_source": "X §3.3 + DESIGN_PHILOSOPHY §7 + design_v2.md §8.3"
+    },
+
+    "pay_id_1_freq_vs_mode_2_min": {
+      "_pay_id": 1,
+      "_pay_name": "wild_pure 200×",
+      "min_ratio": 1.1,
+      "v2_feasibility_ratio": 1.912,
+      "v2_status": "PASS (m5 wild_pure freq nearly 2× m2's per §d)",
+      "_v1_was": 1.919,
+      "_source": "user_brief.md v1.1 §d (mode 1 = mode 2 < mode 5 for 200×+ freq)"
+    },
+
+    "jackpot_filler_marginal_max_per_reel": {
+      "max": 0.006,
+      "v2_feasibility": {"R1": 0.00333, "R2": 0.00407, "R3": 0.00378},
+      "v2_status": "PASS",
+      "_source": "user_brief #6"
+    },
+
+    "feature_lift_vs_mode_2": {
+      "feature_rtp_lift_pp_v2": "+246pp (m2 185 → m5 431)",
+      "feature_ev_lift_x_v2": "+73× (m2 60 → m5 133)",
+      "feature_ev_ratio": 2.21,
+      "_source": "design_v2.md §5.4",
+      "lever_x_value_weights": "v7 m5 has weight upper-shifted: value=100 weight 4.5 vs m2 0.09; per-value probs heavier on 100/50",
+      "lever_x_count_weights": "v7 m5 keeps (5,40,40,12,3) same as m1/m2 — relaxed per v1.1 §b",
+      "lever_y_count_weights": "v7 m5 = (40, 35, 25) — much heavier on count_y=2 (×4 multiplier) than m2 (60, 30, 10)"
+    },
+
+    "per_pay_frequency_floors_pct": {
+      "_note": "Per X v1 §5.4 — explicit per-pay frequency P bands. Lucky modes naturally elevate cherry P.",
+      "_semantics": "These are HIT FREQUENCY (P) bands in percent.",
+      "cherry2_pay_id_71": { "floor_pct": 1.0, "cap_pct": 3.5, "v2_measured": 1.6841, "v2_status": "PASS (mid-band)", "_source": "X v1 §5.4 + lucky mode scaling" },
+      "cherry3_pay_id_4":  { "floor_pct": 0.005, "cap_pct": 0.20, "v2_measured": 0.04717, "v2_status": "PASS", "_source": "X v1 §5.4 + lucky mode scaling" }
+    },
+
+    "family_share_of_base_floors_pct": {
+      "_note": "Per DESIGN_PHILOSOPHY §10 + lucky/super-lucky scaling.",
+      "bar3_20x":            { "floor": 5.0, "cap": 22.0, "v2_measured": 16.803, "_source": "X v1 §5.4 + lucky mode bar3 share inflation" },
+      "_other_families_inherit_from_m2_target_with_some_lift": "Per §d small lifts allowed; tuner respects share floors"
+    },
+
+    "cross_mode_locks_reference": {
+      "_v0_to_v1_change": "v0 had MODE5_BASE_LOCK (m5 base byte-equal m2). v1.1 §d DROPS this lock.",
+      "mode_5_base_NOT_byte_equal_m2_per_v1.1_d": "m5 base lifted over m2 modestly; '不要矫枉过正' (don't go beyond modest lift)",
+      "mode_5_hit_strictly_gt_mode_2_hit": "v2 33.61% > m2 33.56% ✓ (Fix #2 closed v1 invariant FAIL)",
+      "mode_5_trigger_strictly_gt_mode_2_trigger": "v2 3.247% > m2 3.089% ✓ (Fix #2 closed v1 invariant FAIL)",
+      "mode_5_feature_ev_gt_mode_2_feature_ev": "DESIGN_PHILOSOPHY §7 + §9: m5 > m2 in feature EV ✓ (133 > 60)",
+      "mode_5_top_jackpot_in_feature_tail_X_200": "per design_v2.md §8.3 — concrete X = 200 picked"
+    },
+
+    "deliberate_archetype_deviations_accepted": {
+      "feature_carries_top_jackpot_escalation": "design_v2.md §8.3 — concrete X = 200 picked",
+      "base_feature_20_80_split_super_lucky": "design_v2.md §5.4 — m5 deliberately feature-tilted",
+      "m5_base_lift_over_m2_allowed_per_v1.1_d": "explicit user permission",
+      "rtp_near_miss_19.7pp_above_cap_from_fix_2": "Fix #2 (X v1 §5.1 Option A) required topdollar lift to satisfy strict invariants; side-effect: RTP overshoots [480,520] band by 19.7pp. Tuner-closable via finer per-stop granularity (Stage 6). User gets MORE RTP than band — direction safe; documented in rtp.v2_status."
+    }
+  }
+}

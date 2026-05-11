@@ -1,0 +1,2508 @@
+{
+  "_meta": {
+    "machine": "M15",
+    "modes": [
+      1,
+      2,
+      5,
+      7
+    ],
+    "generated_at": "2026-05-11T00:26:28Z",
+    "generator": "session_artifacts\\M15\\scripts\\baseline_dump.py",
+    "spec_path": "slot_designer\\machines\\M15\\spec.json",
+    "strips_path": "slot_designer\\machines\\M15\\reel_strips.json",
+    "weights_template": "slot_designer\\machines\\M15\\weights\\mode_{mode}\\weights.json",
+    "prod_rawdata_dir": "rawdata\\M15$TopDollarSelector$0$"
+  },
+  "per_mode": {
+    "1": {
+      "section_1": {
+        "total_rtp_pct": 94.98277640953931,
+        "base_rtp_pct": 43.15182644830328,
+        "feature_rtp_pp": 51.83094996123603,
+        "base_hit_rate": 0.1931220325452252,
+        "base_cv": 5.765229799330152,
+        "base_std_return_x": 2.487801957352811,
+        "feature_ev": 45.99996809059697,
+        "feature_cv": 0.7354031410883701,
+        "feature_std": 33.82852102378981,
+        "feature_r_min": 5,
+        "feature_r_max": 4880,
+        "feature_p_accept_round1": 0.2351653807399166,
+        "feature_round_ev_uncond": 28.26094756939615,
+        "feature_round_ev_given_accept": 60.3623588398575,
+        "trigger_rate": 0.011267605633802818,
+        "trigger_one_in_n": 88.75,
+        "base_feature_split": [
+          0.45431211930723747,
+          0.5456878806927625
+        ],
+        "total_prob_sanity": 0.9999999999999997
+      },
+      "section_2": {
+        "rows": [
+          {
+            "bucket": "ge5000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge1000_lt5000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge500_lt1000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge200_lt500",
+            "rate": 1.6627701481875136e-05,
+            "rtp_pp": 0.3325540296375027
+          },
+          {
+            "bucket": "ge100_lt200",
+            "rate": 6.159750767007429e-05,
+            "rtp_pp": 0.7391700920408913
+          },
+          {
+            "bucket": "ge50_lt100",
+            "rate": 0.0002460462248225892,
+            "rtp_pp": 1.818320420245777
+          },
+          {
+            "bucket": "ge20_lt50",
+            "rate": 0.0034912359667434714,
+            "rtp_pp": 8.670896249675067
+          },
+          {
+            "bucket": "ge10_lt20",
+            "rate": 0.004627145516548142,
+            "rtp_pp": 4.684079766584578
+          },
+          {
+            "bucket": "ge5_lt10",
+            "rate": 0.008344699502897361,
+            "rtp_pp": 4.172349751448681
+          },
+          {
+            "bucket": "ge1_lt5",
+            "rate": 0.17633468012506173,
+            "rtp_pp": 22.734456138670794
+          },
+          {
+            "bucket": "gt0_lt1",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          }
+        ]
+      },
+      "section_3": {
+        "rows": [
+          {
+            "pay_id": "9",
+            "pay_id_int": 9,
+            "family": "cherry1",
+            "probability": 0.13770539782385283,
+            "one_in_n": 7.26187946008594,
+            "rtp_pp": 13.770539782385283
+          },
+          {
+            "pay_id": "8",
+            "pay_id_int": 8,
+            "family": "bar_mixed",
+            "probability": 0.03862928230120888,
+            "one_in_n": 25.88709757024675,
+            "rtp_pp": 8.963916356285509
+          },
+          {
+            "pay_id": "5",
+            "pay_id_int": 5,
+            "family": "bar2",
+            "probability": 0.005805118150289479,
+            "one_in_n": 172.26178246693115,
+            "rtp_pp": 8.779776439303372
+          },
+          {
+            "pay_id": "3",
+            "pay_id_int": 3,
+            "family": "bar3",
+            "probability": 0.0010873329076183348,
+            "one_in_n": 919.681537267527,
+            "rtp_pp": 4.1845798634596925
+          },
+          {
+            "pay_id": "71",
+            "pay_id_int": 71,
+            "family": "cherry2",
+            "probability": 0.007090008154762395,
+            "one_in_n": 141.0435613290931,
+            "rtp_pp": 3.5450040773811966
+          },
+          {
+            "pay_id": "7",
+            "pay_id_int": 7,
+            "family": "bar1",
+            "probability": 0.00250784494643364,
+            "one_in_n": 398.7487350133354,
+            "rtp_pp": 2.1255453346935957
+          },
+          {
+            "pay_id": "2",
+            "pay_id_int": 2,
+            "family": "high7_wild",
+            "probability": 0.00013662219683754245,
+            "one_in_n": 7319.4548407759885,
+            "rtp_pp": 1.1893182270457003
+          },
+          {
+            "pay_id": "1",
+            "pay_id_int": 1,
+            "family": "wild_pure",
+            "probability": 1.6627701481875136e-05,
+            "one_in_n": 60140.60338345864,
+            "rtp_pp": 0.3325540296375027
+          },
+          {
+            "pay_id": "4",
+            "pay_id_int": 4,
+            "family": "cherry3",
+            "probability": 0.00011386850007287122,
+            "one_in_n": 8782.06000219587,
+            "rtp_pp": 0.17080275010930682
+          },
+          {
+            "pay_id": "21",
+            "pay_id_int": 21,
+            "family": "high7_pure",
+            "probability": 2.9929862667375242e-05,
+            "one_in_n": 33411.44632414369,
+            "rtp_pp": 0.08978958800212572
+          }
+        ]
+      },
+      "section_4": {
+        "rows": [
+          {
+            "family": "cherry1",
+            "rtp_pp": 13.770539782385283,
+            "probability": 0.13770539782385283,
+            "share_of_base_pct": 31.911835293652413,
+            "share_of_total_pct": 14.497933523242725
+          },
+          {
+            "family": "bar_mixed",
+            "rtp_pp": 8.963916356285509,
+            "probability": 0.03862928230120888,
+            "share_of_base_pct": 20.772970912423496,
+            "share_of_total_pct": 9.437412439530716
+          },
+          {
+            "family": "bar2",
+            "rtp_pp": 8.779776439303372,
+            "probability": 0.005805118150289479,
+            "share_of_base_pct": 20.346245250642433,
+            "share_of_total_pct": 9.24354579976418
+          },
+          {
+            "family": "bar3",
+            "rtp_pp": 4.1845798634596925,
+            "probability": 0.0010873329076183348,
+            "share_of_base_pct": 9.697341243418514,
+            "share_of_total_pct": 4.405619651942946
+          },
+          {
+            "family": "cherry2",
+            "rtp_pp": 3.5450040773811966,
+            "probability": 0.007090008154762395,
+            "share_of_base_pct": 8.21518894832454,
+            "share_of_total_pct": 3.7322599016227165
+          },
+          {
+            "family": "bar1",
+            "rtp_pp": 2.1255453346935957,
+            "probability": 0.00250784494643364,
+            "share_of_base_pct": 4.925736659698611,
+            "share_of_total_pct": 2.2378218610170286
+          },
+          {
+            "family": "high7_wild",
+            "rtp_pp": 1.1893182270457003,
+            "probability": 0.00013662219683754245,
+            "share_of_base_pct": 2.7561248849351174,
+            "share_of_total_pct": 1.252140937550289
+          },
+          {
+            "family": "wild_pure",
+            "rtp_pp": 0.3325540296375027,
+            "probability": 1.6627701481875136e-05,
+            "share_of_base_pct": 0.7706603798935575,
+            "share_of_total_pct": 0.35012035045556283
+          },
+          {
+            "family": "cherry3",
+            "rtp_pp": 0.17080275010930682,
+            "probability": 0.00011386850007287122,
+            "share_of_base_pct": 0.395818124440067,
+            "share_of_total_pct": 0.17982497097458267
+          },
+          {
+            "family": "high7_pure",
+            "rtp_pp": 0.08978958800212572,
+            "probability": 2.9929862667375242e-05,
+            "share_of_base_pct": 0.20807830257126048,
+            "share_of_total_pct": 0.09453249462300195
+          }
+        ]
+      },
+      "section_5": {
+        "rows": [
+          {
+            "symbol": "1bar",
+            "per_reel": [
+              0.10597140454163162,
+              0.09498680738786279,
+              0.12464788732394366
+            ]
+          },
+          {
+            "symbol": "2bar",
+            "per_reel": [
+              0.14802354920100924,
+              0.1424802110817942,
+              0.16619718309859155
+            ]
+          },
+          {
+            "symbol": "3bar",
+            "per_reel": [
+              0.07737594617325484,
+              0.0633245382585752,
+              0.08661971830985915
+            ]
+          },
+          {
+            "symbol": "blank",
+            "per_reel": [
+              0.5449957947855341,
+              0.5461741424802111,
+              0.5450704225352113
+            ]
+          },
+          {
+            "symbol": "cherry",
+            "per_reel": [
+              0.060555088309503784,
+              0.06068601583113457,
+              0.030985915492957747
+            ]
+          },
+          {
+            "symbol": "doublediamond",
+            "per_reel": [
+              0.031959629941127,
+              0.036939313984168866,
+              0.014084507042253521
+            ]
+          },
+          {
+            "symbol": "high7",
+            "per_reel": [
+              0.030277544154751892,
+              0.05013192612137203,
+              0.01971830985915493
+            ]
+          },
+          {
+            "symbol": "jackpot",
+            "per_reel": [
+              0.0008410428931875525,
+              0.005277044854881266,
+              0.0014084507042253522
+            ]
+          },
+          {
+            "symbol": "topdollar",
+            "per_reel": [
+              0.0,
+              0.0,
+              0.011267605633802818
+            ]
+          }
+        ],
+        "n_reels": 3
+      },
+      "section_6": {
+        "r1_blank": 0.5449957947855341,
+        "r2_blank": 0.5461741424802111,
+        "r3_blank": 0.5450704225352113,
+        "blank_r1_vs_r3_direction_ok": true,
+        "blank_r1_vs_r3_diff_pp": 0.007462774967725849,
+        "r1_top_prize_density": 0.062237174095878894,
+        "r3_top_prize_density": 0.033802816901408454,
+        "top_prize_r1_vs_r3_direction_ok": true,
+        "top_prize_r1_vs_r3_diff_pp": 2.843435719447044,
+        "per_symbol_r1_r3": [
+          {
+            "symbol": "doublediamond",
+            "r1": 0.031959629941127,
+            "r2": 0.036939313984168866,
+            "r3": 0.014084507042253521
+          },
+          {
+            "symbol": "high7",
+            "r1": 0.030277544154751892,
+            "r2": 0.05013192612137203,
+            "r3": 0.01971830985915493
+          }
+        ],
+        "_note": "R3 = trigger reel (topdollar lives only on R3) \u2192 \u00a712.1 role (b). Top-prize density excludes topdollar."
+      },
+      "section_7": {
+        "rows": [
+          {
+            "symbol": "doublediamond",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.031959629941127,
+                "p_window": 0.15306980656013458,
+                "pwdf_ratio": 4.7894736842105265
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.036939313984168866,
+                "p_window": 0.158311345646438,
+                "pwdf_ratio": 4.285714285714286
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.014084507042253521,
+                "p_window": 0.07464788732394366,
+                "pwdf_ratio": 5.3
+              }
+            ],
+            "max_window_visibility": 0.158311345646438
+          },
+          {
+            "symbol": "high7",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.030277544154751892,
+                "p_window": 0.15138772077375945,
+                "pwdf_ratio": 5.0
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.05013192612137203,
+                "p_window": 0.17150395778364116,
+                "pwdf_ratio": 3.4210526315789473
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.01971830985915493,
+                "p_window": 0.14084507042253522,
+                "pwdf_ratio": 7.142857142857142
+              }
+            ],
+            "max_window_visibility": 0.17150395778364116
+          },
+          {
+            "symbol": "3bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.07737594617325484,
+                "p_window": 0.31959629941127,
+                "pwdf_ratio": 4.130434782608695
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.0633245382585752,
+                "p_window": 0.30606860158311344,
+                "pwdf_ratio": 4.833333333333333
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.08661971830985915,
+                "p_window": 0.26830985915492955,
+                "pwdf_ratio": 3.097560975609756
+              }
+            ],
+            "max_window_visibility": 0.31959629941127
+          },
+          {
+            "symbol": "2bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.14802354920100924,
+                "p_window": 0.3902439024390244,
+                "pwdf_ratio": 2.6363636363636367
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.1424802110817942,
+                "p_window": 0.38522427440633245,
+                "pwdf_ratio": 2.7037037037037033
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.16619718309859155,
+                "p_window": 0.4084507042253521,
+                "pwdf_ratio": 2.457627118644068
+              }
+            ],
+            "max_window_visibility": 0.4084507042253521
+          },
+          {
+            "symbol": "1bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.10597140454163162,
+                "p_window": 0.287636669470143,
+                "pwdf_ratio": 2.7142857142857144
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.09498680738786279,
+                "p_window": 0.2770448548812665,
+                "pwdf_ratio": 2.916666666666667
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.12464788732394366,
+                "p_window": 0.30633802816901406,
+                "pwdf_ratio": 2.4576271186440675
+              }
+            ],
+            "max_window_visibility": 0.30633802816901406
+          },
+          {
+            "symbol": "cherry",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.060555088309503784,
+                "p_window": 0.18166526492851134,
+                "pwdf_ratio": 3.0
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.06068601583113457,
+                "p_window": 0.1820580474934037,
+                "pwdf_ratio": 3.0
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.030985915492957747,
+                "p_window": 0.15211267605633802,
+                "pwdf_ratio": 4.909090909090909
+              }
+            ],
+            "max_window_visibility": 0.1820580474934037
+          },
+          {
+            "symbol": "topdollar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.0,
+                "p_window": 0.0,
+                "pwdf_ratio": 0.0
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.0,
+                "p_window": 0.0,
+                "pwdf_ratio": 0.0
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.011267605633802818,
+                "p_window": 0.1323943661971831,
+                "pwdf_ratio": 11.749999999999998
+              }
+            ],
+            "max_window_visibility": 0.1323943661971831
+          }
+        ],
+        "_note": "PWDF = window / mid. >1 means symbol visually appears more than it pays."
+      },
+      "section_8": {
+        "n_violations": 0,
+        "violations": [],
+        "passes": true,
+        "_note": "DESIGN_PHILOSOPHY \u00a713: Universal hard rule. 0 = pass."
+      },
+      "section_9": {
+        "trigger_rate": 0.011267605633802818,
+        "trigger_one_in_n": 88.75,
+        "p_count_x_equals_1": 0.05,
+        "one_round_p_accept": 0.2351653807399166,
+        "rows": [
+          {
+            "bucket": "ge20_lt50",
+            "p_given_trigger": 0.4949851004425504,
+            "ev_contrib": 16.527176320469504
+          },
+          {
+            "bucket": "ge50_lt100",
+            "p_given_trigger": 0.2919999860346313,
+            "ev_contrib": 18.420776530854976
+          },
+          {
+            "bucket": "ge10_lt20",
+            "p_given_trigger": 0.12828615792724507,
+            "ev_contrib": 1.5117533453917873
+          },
+          {
+            "bucket": "ge100_lt200",
+            "p_given_trigger": 0.06309070319464986,
+            "ev_contrib": 7.576650720291111
+          },
+          {
+            "bucket": "ge5_lt10",
+            "p_given_trigger": 0.01374717031798054,
+            "ev_contrib": 0.0687358515899027
+          },
+          {
+            "bucket": "ge200_lt500",
+            "p_given_trigger": 0.00781360166067385,
+            "ev_contrib": 1.8382716610983256
+          },
+          {
+            "bucket": "ge500_lt1000",
+            "p_given_trigger": 5.8826841784378485e-05,
+            "ev_contrib": 0.03125527086562141
+          },
+          {
+            "bucket": "ge1000_lt5000",
+            "p_given_trigger": 1.8453580484527272e-05,
+            "ev_contrib": 0.02534839003574267
+          }
+        ],
+        "p_r_ge_1000_given_trigger": 1.8453580484527265e-05,
+        "p_r_ge_1000_per_spin": 2.0792766743129313e-07,
+        "one_in_n_r_ge_1000_per_spin": 4809364.777443273
+      },
+      "section_10": {
+        "rows": [
+          {
+            "pay_id": 1,
+            "family": "wild_pure",
+            "per_mode": {
+              "1": {
+                "probability": 1.6627701481875136e-05,
+                "one_in_n": 60140.60338345864,
+                "rtp_pp": 0.3325540296375027
+              },
+              "2": {
+                "probability": 0.00013511676791082855,
+                "one_in_n": 7401.005925925925,
+                "rtp_pp": 2.7023353582165712
+              },
+              "5": {
+                "probability": 0.00013511676791082855,
+                "one_in_n": 7401.005925925925,
+                "rtp_pp": 2.7023353582165712
+              },
+              "7": {
+                "probability": 1.783477611308245e-05,
+                "one_in_n": 56070.23007518799,
+                "rtp_pp": 0.356695522261649
+              }
+            }
+          },
+          {
+            "pay_id": 21,
+            "family": "high7_pure",
+            "per_mode": {
+              "1": {
+                "probability": 2.9929862667375242e-05,
+                "one_in_n": 33411.44632414369,
+                "rtp_pp": 0.08978958800212572
+              },
+              "2": {
+                "probability": 0.0012510811843595235,
+                "one_in_n": 799.30864,
+                "rtp_pp": 3.753243553078571
+              },
+              "5": {
+                "probability": 0.0012510811843595235,
+                "one_in_n": 799.30864,
+                "rtp_pp": 3.753243553078571
+              },
+              "7": {
+                "probability": 3.210259700354842e-05,
+                "one_in_n": 31150.127819548874,
+                "rtp_pp": 0.09630779101064527
+              }
+            }
+          },
+          {
+            "pay_id": 2,
+            "family": "high7_wild",
+            "per_mode": {
+              "1": {
+                "probability": 0.00013662219683754245,
+                "one_in_n": 7319.4548407759885,
+                "rtp_pp": 1.1893182270457003
+              },
+              "2": {
+                "probability": 0.0027774002292781422,
+                "one_in_n": 360.0489369369369,
+                "rtp_pp": 22.069072092101994
+              },
+              "5": {
+                "probability": 0.0027774002292781422,
+                "one_in_n": 360.0489369369369,
+                "rtp_pp": 22.069072092101994
+              },
+              "7": {
+                "probability": 0.00014654017546147748,
+                "one_in_n": 6824.06716691069,
+                "rtp_pp": 1.2756558282988977
+              }
+            }
+          }
+        ],
+        "_note": "Cadence (1 in N spins) for top-prize pay_ids across modes. \u00a77 expects monotone: m5 > m2 > m1 \u2248 m7."
+      }
+    },
+    "2": {
+      "section_1": {
+        "total_rtp_pct": 294.28227099906223,
+        "base_rtp_pct": 132.7619658909229,
+        "feature_rtp_pp": 161.52030510813933,
+        "base_hit_rate": 0.29353362175592157,
+        "base_cv": 5.138846243503352,
+        "base_std_return_x": 6.822433296986893,
+        "feature_ev": 59.99325618302318,
+        "feature_cv": 0.7782032666429265,
+        "feature_std": 46.68694793817458,
+        "feature_r_min": 5,
+        "feature_r_max": 4880,
+        "feature_p_accept_round1": 0.35407147834644004,
+        "feature_round_ev_uncond": 36.81216811921484,
+        "feature_round_ev_given_accept": 68.54520307488478,
+        "trigger_rate": 0.026923076923076925,
+        "trigger_one_in_n": 37.14285714285714,
+        "base_feature_split": [
+          0.45113817234116005,
+          0.54886182765884
+        ],
+        "total_prob_sanity": 0.9999999999999997
+      },
+      "section_2": {
+        "rows": [
+          {
+            "bucket": "ge5000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge1000_lt5000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge500_lt1000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge200_lt500",
+            "rate": 0.00013511676791082855,
+            "rtp_pp": 2.7023353582165712
+          },
+          {
+            "bucket": "ge100_lt200",
+            "rate": 0.000900778452738857,
+            "rtp_pp": 10.809341432866283
+          },
+          {
+            "bucket": "ge50_lt100",
+            "rate": 0.003155727179428462,
+            "rtp_pp": 21.492573882349124
+          },
+          {
+            "bucket": "ge20_lt50",
+            "rate": 0.015631228507676335,
+            "rtp_pp": 42.54100393560115
+          },
+          {
+            "bucket": "ge10_lt20",
+            "rate": 0.009531046730584572,
+            "rtp_pp": 9.622205510001743
+          },
+          {
+            "bucket": "ge5_lt10",
+            "rate": 0.011330431759126234,
+            "rtp_pp": 5.665215879563119
+          },
+          {
+            "bucket": "ge1_lt5",
+            "rate": 0.2528492923584564,
+            "rtp_pp": 39.92928989232498
+          },
+          {
+            "bucket": "gt0_lt1",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          }
+        ]
+      },
+      "section_3": {
+        "rows": [
+          {
+            "pay_id": "3",
+            "pay_id_int": 3,
+            "family": "bar3",
+            "probability": 0.006392644523397119,
+            "one_in_n": 156.42978368967547,
+            "rtp_pp": 26.97435123433672
+          },
+          {
+            "pay_id": "5",
+            "pay_id_int": 5,
+            "family": "bar2",
+            "probability": 0.014401045383420354,
+            "one_in_n": 69.43940341659368,
+            "rtp_pp": 25.937615287131145
+          },
+          {
+            "pay_id": "8",
+            "pay_id_int": 8,
+            "family": "bar_mixed",
+            "probability": 0.09833362992297945,
+            "one_in_n": 10.169460852642757,
+            "rtp_pp": 24.477723648777282
+          },
+          {
+            "pay_id": "2",
+            "pay_id_int": 2,
+            "family": "high7_wild",
+            "probability": 0.0027774002292781422,
+            "one_in_n": 360.0489369369369,
+            "rtp_pp": 22.069072092101994
+          },
+          {
+            "pay_id": "9",
+            "pay_id_int": 9,
+            "family": "cherry1",
+            "probability": 0.1545156624354767,
+            "one_in_n": 6.471835827112893,
+            "rtp_pp": 15.45156624354767
+          },
+          {
+            "pay_id": "7",
+            "pay_id_int": 7,
+            "family": "bar1",
+            "probability": 0.006223208096436941,
+            "one_in_n": 160.68882552273058,
+            "rtp_pp": 6.461824308567462
+          },
+          {
+            "pay_id": "71",
+            "pay_id_int": 71,
+            "family": "cherry2",
+            "probability": 0.009321515653828036,
+            "one_in_n": 107.27869127048382,
+            "rtp_pp": 4.660757826914019
+          },
+          {
+            "pay_id": "21",
+            "pay_id_int": 21,
+            "family": "high7_pure",
+            "probability": 0.0012510811843595235,
+            "one_in_n": 799.30864,
+            "rtp_pp": 3.753243553078571
+          },
+          {
+            "pay_id": "1",
+            "pay_id_int": 1,
+            "family": "wild_pure",
+            "probability": 0.00013511676791082855,
+            "one_in_n": 7401.005925925925,
+            "rtp_pp": 2.7023353582165712
+          },
+          {
+            "pay_id": "4",
+            "pay_id_int": 4,
+            "family": "cherry3",
+            "probability": 0.0001823175588343446,
+            "one_in_n": 5484.935221783048,
+            "rtp_pp": 0.2734763382515169
+          }
+        ]
+      },
+      "section_4": {
+        "rows": [
+          {
+            "family": "bar3",
+            "rtp_pp": 26.97435123433672,
+            "probability": 0.006392644523397119,
+            "share_of_base_pct": 20.31783052723008,
+            "share_of_total_pct": 9.166148929992007
+          },
+          {
+            "family": "bar2",
+            "rtp_pp": 25.937615287131145,
+            "probability": 0.014401045383420354,
+            "share_of_base_pct": 19.536932217802093,
+            "share_of_total_pct": 8.813855893892363
+          },
+          {
+            "family": "bar_mixed",
+            "rtp_pp": 24.477723648777282,
+            "probability": 0.09833362992297945,
+            "share_of_base_pct": 18.437301289202175,
+            "share_of_total_pct": 8.317770406513985
+          },
+          {
+            "family": "high7_wild",
+            "rtp_pp": 22.069072092101994,
+            "probability": 0.0027774002292781422,
+            "share_of_base_pct": 16.62303803954961,
+            "share_of_total_pct": 7.499286999919992
+          },
+          {
+            "family": "cherry1",
+            "rtp_pp": 15.45156624354767,
+            "probability": 0.1545156624354767,
+            "share_of_base_pct": 11.638548841799059,
+            "share_of_total_pct": 5.250593653192553
+          },
+          {
+            "family": "bar1",
+            "rtp_pp": 6.461824308567462,
+            "probability": 0.006223208096436941,
+            "share_of_base_pct": 4.867225537980125,
+            "share_of_total_pct": 2.195791233576573
+          },
+          {
+            "family": "cherry2",
+            "rtp_pp": 4.660757826914019,
+            "probability": 0.009321515653828036,
+            "share_of_base_pct": 3.510612241719359,
+            "share_of_total_pct": 1.5837711905277743
+          },
+          {
+            "family": "high7_pure",
+            "rtp_pp": 3.753243553078571,
+            "probability": 0.0012510811843595235,
+            "share_of_base_pct": 2.827047285637689,
+            "share_of_total_pct": 1.2753889455646246
+          },
+          {
+            "family": "wild_pure",
+            "rtp_pp": 2.7023353582165712,
+            "probability": 0.00013511676791082855,
+            "share_of_base_pct": 2.0354740456591367,
+            "share_of_total_pct": 0.9182800408065298
+          },
+          {
+            "family": "cherry3",
+            "rtp_pp": 0.2734763382515169,
+            "probability": 0.0001823175588343446,
+            "share_of_base_pct": 0.20598997342070455,
+            "share_of_total_pct": 0.09292994012962077
+          }
+        ]
+      },
+      "section_5": {
+        "rows": [
+          {
+            "symbol": "1bar",
+            "per_reel": [
+              0.11033274956217162,
+              0.10698365527488855,
+              0.1701923076923077
+            ]
+          },
+          {
+            "symbol": "2bar",
+            "per_reel": [
+              0.17513134851138354,
+              0.16047548291233285,
+              0.22692307692307692
+            ]
+          },
+          {
+            "symbol": "3bar",
+            "per_reel": [
+              0.16112084063047286,
+              0.0713224368499257,
+              0.16153846153846155
+            ]
+          },
+          {
+            "symbol": "blank",
+            "per_reel": [
+              0.3467600700525394,
+              0.3476968796433878,
+              0.2423076923076923
+            ]
+          },
+          {
+            "symbol": "cherry",
+            "per_reel": [
+              0.06304728546409807,
+              0.06835066864784546,
+              0.04230769230769231
+            ]
+          },
+          {
+            "symbol": "doublediamond",
+            "per_reel": [
+              0.05253940455341506,
+              0.08915304606240713,
+              0.028846153846153848
+            ]
+          },
+          {
+            "symbol": "high7",
+            "per_reel": [
+              0.08756567425569177,
+              0.1485884101040119,
+              0.09615384615384616
+            ]
+          },
+          {
+            "symbol": "jackpot",
+            "per_reel": [
+              0.0035026269702276708,
+              0.007429420505200594,
+              0.004807692307692308
+            ]
+          },
+          {
+            "symbol": "topdollar",
+            "per_reel": [
+              0.0,
+              0.0,
+              0.026923076923076925
+            ]
+          }
+        ],
+        "n_reels": 3
+      },
+      "section_6": {
+        "r1_blank": 0.3467600700525394,
+        "r2_blank": 0.3476968796433878,
+        "r3_blank": 0.2423076923076923,
+        "blank_r1_vs_r3_direction_ok": false,
+        "blank_r1_vs_r3_diff_pp": -10.445237774484708,
+        "r1_top_prize_density": 0.14010507880910683,
+        "r3_top_prize_density": 0.125,
+        "top_prize_r1_vs_r3_direction_ok": true,
+        "top_prize_r1_vs_r3_diff_pp": 1.510507880910683,
+        "per_symbol_r1_r3": [
+          {
+            "symbol": "doublediamond",
+            "r1": 0.05253940455341506,
+            "r2": 0.08915304606240713,
+            "r3": 0.028846153846153848
+          },
+          {
+            "symbol": "high7",
+            "r1": 0.08756567425569177,
+            "r2": 0.1485884101040119,
+            "r3": 0.09615384615384616
+          }
+        ],
+        "_note": "R3 = trigger reel (topdollar lives only on R3) \u2192 \u00a712.1 role (b). Top-prize density excludes topdollar."
+      },
+      "section_7": {
+        "rows": [
+          {
+            "symbol": "doublediamond",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.05253940455341506,
+                "p_window": 0.1295971978984238,
+                "pwdf_ratio": 2.4666666666666663
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.08915304606240713,
+                "p_window": 0.1664190193164933,
+                "pwdf_ratio": 1.8666666666666665
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.028846153846153848,
+                "p_window": 0.05576923076923077,
+                "pwdf_ratio": 1.9333333333333333
+              }
+            ],
+            "max_window_visibility": 0.1664190193164933
+          },
+          {
+            "symbol": "high7",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.08756567425569177,
+                "p_window": 0.1646234676007005,
+                "pwdf_ratio": 1.88
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.1485884101040119,
+                "p_window": 0.22585438335809807,
+                "pwdf_ratio": 1.52
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.09615384615384616,
+                "p_window": 0.15,
+                "pwdf_ratio": 1.5599999999999998
+              }
+            ],
+            "max_window_visibility": 0.22585438335809807
+          },
+          {
+            "symbol": "3bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.16112084063047286,
+                "p_window": 0.31523642732049034,
+                "pwdf_ratio": 1.9565217391304346
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.0713224368499257,
+                "p_window": 0.22585438335809807,
+                "pwdf_ratio": 3.166666666666667
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.16153846153846155,
+                "p_window": 0.2423076923076923,
+                "pwdf_ratio": 1.5
+              }
+            ],
+            "max_window_visibility": 0.31523642732049034
+          },
+          {
+            "symbol": "2bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.17513134851138354,
+                "p_window": 0.329246935201401,
+                "pwdf_ratio": 1.88
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.16047548291233285,
+                "p_window": 0.3150074294205052,
+                "pwdf_ratio": 1.9629629629629628
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.22692307692307692,
+                "p_window": 0.3346153846153846,
+                "pwdf_ratio": 1.4745762711864405
+              }
+            ],
+            "max_window_visibility": 0.3346153846153846
+          },
+          {
+            "symbol": "1bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.11033274956217162,
+                "p_window": 0.22591943957968477,
+                "pwdf_ratio": 2.047619047619048
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.10698365527488855,
+                "p_window": 0.22288261515601784,
+                "pwdf_ratio": 2.0833333333333335
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.1701923076923077,
+                "p_window": 0.25096153846153846,
+                "pwdf_ratio": 1.4745762711864405
+              }
+            ],
+            "max_window_visibility": 0.25096153846153846
+          },
+          {
+            "symbol": "cherry",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.06304728546409807,
+                "p_window": 0.14010507880910683,
+                "pwdf_ratio": 2.2222222222222223
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.06835066864784546,
+                "p_window": 0.14561664190193166,
+                "pwdf_ratio": 2.1304347826086962
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.04230769230769231,
+                "p_window": 0.09615384615384616,
+                "pwdf_ratio": 2.272727272727273
+              }
+            ],
+            "max_window_visibility": 0.14561664190193166
+          },
+          {
+            "symbol": "topdollar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.0,
+                "p_window": 0.0,
+                "pwdf_ratio": 0.0
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.0,
+                "p_window": 0.0,
+                "pwdf_ratio": 0.0
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.026923076923076925,
+                "p_window": 0.08076923076923077,
+                "pwdf_ratio": 3.0
+              }
+            ],
+            "max_window_visibility": 0.08076923076923077
+          }
+        ],
+        "_note": "PWDF = window / mid. >1 means symbol visually appears more than it pays."
+      },
+      "section_8": {
+        "n_violations": 0,
+        "violations": [],
+        "passes": true,
+        "_note": "DESIGN_PHILOSOPHY \u00a713: Universal hard rule. 0 = pass."
+      },
+      "section_9": {
+        "trigger_rate": 0.026923076923076925,
+        "trigger_one_in_n": 37.14285714285714,
+        "p_count_x_equals_1": 0.05,
+        "one_round_p_accept": 0.35407147834644004,
+        "rows": [
+          {
+            "bucket": "ge20_lt50",
+            "p_given_trigger": 0.41236374992174735,
+            "ev_contrib": 14.818122336246667
+          },
+          {
+            "bucket": "ge50_lt100",
+            "p_given_trigger": 0.38440842796061264,
+            "ev_contrib": 24.7930207980887
+          },
+          {
+            "bucket": "ge100_lt200",
+            "p_given_trigger": 0.11778114679545888,
+            "ev_contrib": 14.44746026566101
+          },
+          {
+            "bucket": "ge10_lt20",
+            "p_given_trigger": 0.059389185074964254,
+            "ev_contrib": 0.7186852320484116
+          },
+          {
+            "bucket": "ge200_lt500",
+            "p_given_trigger": 0.019555189218149367,
+            "ev_contrib": 4.863002311927678
+          },
+          {
+            "bucket": "ge5_lt10",
+            "p_given_trigger": 0.006122801655443403,
+            "ev_contrib": 0.03061400827721702
+          },
+          {
+            "bucket": "ge500_lt1000",
+            "p_given_trigger": 0.00027087013460383365,
+            "ev_contrib": 0.14543889110340066
+          },
+          {
+            "bucket": "ge1000_lt5000",
+            "p_given_trigger": 0.0001086292390202733,
+            "ev_contrib": 0.17691233967010153
+          }
+        ],
+        "p_r_ge_1000_given_trigger": 0.0001086292390202733,
+        "p_r_ge_1000_per_spin": 2.9246333582381277e-06,
+        "one_in_n_r_ge_1000_per_spin": 341923.2011367145
+      }
+    },
+    "5": {
+      "section_1": {
+        "total_rtp_pct": 490.32381752775444,
+        "base_rtp_pct": 132.7619658909229,
+        "feature_rtp_pp": 357.56185163683153,
+        "base_hit_rate": 0.29353362175592157,
+        "base_cv": 5.138846243503352,
+        "base_std_return_x": 6.822433296986893,
+        "feature_ev": 132.80868775082314,
+        "feature_cv": 0.8579843008879617,
+        "feature_std": 113.9477691117376,
+        "feature_r_min": 5,
+        "feature_r_max": 4880,
+        "feature_p_accept_round1": 0.6766029604637497,
+        "feature_round_ev_uncond": 97.78147409379152,
+        "feature_round_ev_given_accept": 134.0348752273712,
+        "trigger_rate": 0.026923076923076925,
+        "trigger_one_in_n": 37.14285714285714,
+        "base_feature_split": [
+          0.27076385267254127,
+          0.7292361473274588
+        ],
+        "total_prob_sanity": 0.9999999999999997
+      },
+      "section_2": {
+        "rows": [
+          {
+            "bucket": "ge5000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge1000_lt5000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge500_lt1000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge200_lt500",
+            "rate": 0.00013511676791082855,
+            "rtp_pp": 2.7023353582165712
+          },
+          {
+            "bucket": "ge100_lt200",
+            "rate": 0.000900778452738857,
+            "rtp_pp": 10.809341432866283
+          },
+          {
+            "bucket": "ge50_lt100",
+            "rate": 0.003155727179428462,
+            "rtp_pp": 21.492573882349124
+          },
+          {
+            "bucket": "ge20_lt50",
+            "rate": 0.015631228507676335,
+            "rtp_pp": 42.54100393560115
+          },
+          {
+            "bucket": "ge10_lt20",
+            "rate": 0.009531046730584572,
+            "rtp_pp": 9.622205510001743
+          },
+          {
+            "bucket": "ge5_lt10",
+            "rate": 0.011330431759126234,
+            "rtp_pp": 5.665215879563119
+          },
+          {
+            "bucket": "ge1_lt5",
+            "rate": 0.2528492923584564,
+            "rtp_pp": 39.92928989232498
+          },
+          {
+            "bucket": "gt0_lt1",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          }
+        ]
+      },
+      "section_3": {
+        "rows": [
+          {
+            "pay_id": "3",
+            "pay_id_int": 3,
+            "family": "bar3",
+            "probability": 0.006392644523397119,
+            "one_in_n": 156.42978368967547,
+            "rtp_pp": 26.97435123433672
+          },
+          {
+            "pay_id": "5",
+            "pay_id_int": 5,
+            "family": "bar2",
+            "probability": 0.014401045383420354,
+            "one_in_n": 69.43940341659368,
+            "rtp_pp": 25.937615287131145
+          },
+          {
+            "pay_id": "8",
+            "pay_id_int": 8,
+            "family": "bar_mixed",
+            "probability": 0.09833362992297945,
+            "one_in_n": 10.169460852642757,
+            "rtp_pp": 24.477723648777282
+          },
+          {
+            "pay_id": "2",
+            "pay_id_int": 2,
+            "family": "high7_wild",
+            "probability": 0.0027774002292781422,
+            "one_in_n": 360.0489369369369,
+            "rtp_pp": 22.069072092101994
+          },
+          {
+            "pay_id": "9",
+            "pay_id_int": 9,
+            "family": "cherry1",
+            "probability": 0.1545156624354767,
+            "one_in_n": 6.471835827112893,
+            "rtp_pp": 15.45156624354767
+          },
+          {
+            "pay_id": "7",
+            "pay_id_int": 7,
+            "family": "bar1",
+            "probability": 0.006223208096436941,
+            "one_in_n": 160.68882552273058,
+            "rtp_pp": 6.461824308567462
+          },
+          {
+            "pay_id": "71",
+            "pay_id_int": 71,
+            "family": "cherry2",
+            "probability": 0.009321515653828036,
+            "one_in_n": 107.27869127048382,
+            "rtp_pp": 4.660757826914019
+          },
+          {
+            "pay_id": "21",
+            "pay_id_int": 21,
+            "family": "high7_pure",
+            "probability": 0.0012510811843595235,
+            "one_in_n": 799.30864,
+            "rtp_pp": 3.753243553078571
+          },
+          {
+            "pay_id": "1",
+            "pay_id_int": 1,
+            "family": "wild_pure",
+            "probability": 0.00013511676791082855,
+            "one_in_n": 7401.005925925925,
+            "rtp_pp": 2.7023353582165712
+          },
+          {
+            "pay_id": "4",
+            "pay_id_int": 4,
+            "family": "cherry3",
+            "probability": 0.0001823175588343446,
+            "one_in_n": 5484.935221783048,
+            "rtp_pp": 0.2734763382515169
+          }
+        ]
+      },
+      "section_4": {
+        "rows": [
+          {
+            "family": "bar3",
+            "rtp_pp": 26.97435123433672,
+            "probability": 0.006392644523397119,
+            "share_of_base_pct": 20.31783052723008,
+            "share_of_total_pct": 5.501334071500586
+          },
+          {
+            "family": "bar2",
+            "rtp_pp": 25.937615287131145,
+            "probability": 0.014401045383420354,
+            "share_of_base_pct": 19.536932217802093,
+            "share_of_total_pct": 5.289895036694391
+          },
+          {
+            "family": "bar_mixed",
+            "rtp_pp": 24.477723648777282,
+            "probability": 0.09833362992297945,
+            "share_of_base_pct": 18.437301289202175,
+            "share_of_total_pct": 4.992154729948793
+          },
+          {
+            "family": "high7_wild",
+            "rtp_pp": 22.069072092101994,
+            "probability": 0.0027774002292781422,
+            "share_of_base_pct": 16.62303803954961,
+            "share_of_total_pct": 4.50091782271066
+          },
+          {
+            "family": "cherry1",
+            "rtp_pp": 15.45156624354767,
+            "probability": 0.1545156624354767,
+            "share_of_base_pct": 11.638548841799059,
+            "share_of_total_pct": 3.151298323923056
+          },
+          {
+            "family": "bar1",
+            "rtp_pp": 6.461824308567462,
+            "probability": 0.006223208096436941,
+            "share_of_base_pct": 4.867225537980125,
+            "share_of_total_pct": 1.3178687384896808
+          },
+          {
+            "family": "cherry2",
+            "rtp_pp": 4.660757826914019,
+            "probability": 0.009321515653828036,
+            "share_of_base_pct": 3.510612241719359,
+            "share_of_total_pct": 0.9505468958073203
+          },
+          {
+            "family": "high7_pure",
+            "rtp_pp": 3.753243553078571,
+            "probability": 0.0012510811843595235,
+            "share_of_base_pct": 2.827047285637689,
+            "share_of_total_pct": 0.765462214746711
+          },
+          {
+            "family": "wild_pure",
+            "rtp_pp": 2.7023353582165712,
+            "probability": 0.00013511676791082855,
+            "share_of_base_pct": 2.0354740456591367,
+            "share_of_total_pct": 0.551132794617632
+          },
+          {
+            "family": "cherry3",
+            "rtp_pp": 0.2734763382515169,
+            "probability": 0.0001823175588343446,
+            "share_of_base_pct": 0.20598997342070455,
+            "share_of_total_pct": 0.055774638815304325
+          }
+        ]
+      },
+      "section_5": {
+        "rows": [
+          {
+            "symbol": "1bar",
+            "per_reel": [
+              0.11033274956217162,
+              0.10698365527488855,
+              0.1701923076923077
+            ]
+          },
+          {
+            "symbol": "2bar",
+            "per_reel": [
+              0.17513134851138354,
+              0.16047548291233285,
+              0.22692307692307692
+            ]
+          },
+          {
+            "symbol": "3bar",
+            "per_reel": [
+              0.16112084063047286,
+              0.0713224368499257,
+              0.16153846153846155
+            ]
+          },
+          {
+            "symbol": "blank",
+            "per_reel": [
+              0.3467600700525394,
+              0.3476968796433878,
+              0.2423076923076923
+            ]
+          },
+          {
+            "symbol": "cherry",
+            "per_reel": [
+              0.06304728546409807,
+              0.06835066864784546,
+              0.04230769230769231
+            ]
+          },
+          {
+            "symbol": "doublediamond",
+            "per_reel": [
+              0.05253940455341506,
+              0.08915304606240713,
+              0.028846153846153848
+            ]
+          },
+          {
+            "symbol": "high7",
+            "per_reel": [
+              0.08756567425569177,
+              0.1485884101040119,
+              0.09615384615384616
+            ]
+          },
+          {
+            "symbol": "jackpot",
+            "per_reel": [
+              0.0035026269702276708,
+              0.007429420505200594,
+              0.004807692307692308
+            ]
+          },
+          {
+            "symbol": "topdollar",
+            "per_reel": [
+              0.0,
+              0.0,
+              0.026923076923076925
+            ]
+          }
+        ],
+        "n_reels": 3
+      },
+      "section_6": {
+        "r1_blank": 0.3467600700525394,
+        "r2_blank": 0.3476968796433878,
+        "r3_blank": 0.2423076923076923,
+        "blank_r1_vs_r3_direction_ok": false,
+        "blank_r1_vs_r3_diff_pp": -10.445237774484708,
+        "r1_top_prize_density": 0.14010507880910683,
+        "r3_top_prize_density": 0.125,
+        "top_prize_r1_vs_r3_direction_ok": true,
+        "top_prize_r1_vs_r3_diff_pp": 1.510507880910683,
+        "per_symbol_r1_r3": [
+          {
+            "symbol": "doublediamond",
+            "r1": 0.05253940455341506,
+            "r2": 0.08915304606240713,
+            "r3": 0.028846153846153848
+          },
+          {
+            "symbol": "high7",
+            "r1": 0.08756567425569177,
+            "r2": 0.1485884101040119,
+            "r3": 0.09615384615384616
+          }
+        ],
+        "_note": "R3 = trigger reel (topdollar lives only on R3) \u2192 \u00a712.1 role (b). Top-prize density excludes topdollar."
+      },
+      "section_7": {
+        "rows": [
+          {
+            "symbol": "doublediamond",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.05253940455341506,
+                "p_window": 0.1295971978984238,
+                "pwdf_ratio": 2.4666666666666663
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.08915304606240713,
+                "p_window": 0.1664190193164933,
+                "pwdf_ratio": 1.8666666666666665
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.028846153846153848,
+                "p_window": 0.05576923076923077,
+                "pwdf_ratio": 1.9333333333333333
+              }
+            ],
+            "max_window_visibility": 0.1664190193164933
+          },
+          {
+            "symbol": "high7",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.08756567425569177,
+                "p_window": 0.1646234676007005,
+                "pwdf_ratio": 1.88
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.1485884101040119,
+                "p_window": 0.22585438335809807,
+                "pwdf_ratio": 1.52
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.09615384615384616,
+                "p_window": 0.15,
+                "pwdf_ratio": 1.5599999999999998
+              }
+            ],
+            "max_window_visibility": 0.22585438335809807
+          },
+          {
+            "symbol": "3bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.16112084063047286,
+                "p_window": 0.31523642732049034,
+                "pwdf_ratio": 1.9565217391304346
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.0713224368499257,
+                "p_window": 0.22585438335809807,
+                "pwdf_ratio": 3.166666666666667
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.16153846153846155,
+                "p_window": 0.2423076923076923,
+                "pwdf_ratio": 1.5
+              }
+            ],
+            "max_window_visibility": 0.31523642732049034
+          },
+          {
+            "symbol": "2bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.17513134851138354,
+                "p_window": 0.329246935201401,
+                "pwdf_ratio": 1.88
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.16047548291233285,
+                "p_window": 0.3150074294205052,
+                "pwdf_ratio": 1.9629629629629628
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.22692307692307692,
+                "p_window": 0.3346153846153846,
+                "pwdf_ratio": 1.4745762711864405
+              }
+            ],
+            "max_window_visibility": 0.3346153846153846
+          },
+          {
+            "symbol": "1bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.11033274956217162,
+                "p_window": 0.22591943957968477,
+                "pwdf_ratio": 2.047619047619048
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.10698365527488855,
+                "p_window": 0.22288261515601784,
+                "pwdf_ratio": 2.0833333333333335
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.1701923076923077,
+                "p_window": 0.25096153846153846,
+                "pwdf_ratio": 1.4745762711864405
+              }
+            ],
+            "max_window_visibility": 0.25096153846153846
+          },
+          {
+            "symbol": "cherry",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.06304728546409807,
+                "p_window": 0.14010507880910683,
+                "pwdf_ratio": 2.2222222222222223
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.06835066864784546,
+                "p_window": 0.14561664190193166,
+                "pwdf_ratio": 2.1304347826086962
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.04230769230769231,
+                "p_window": 0.09615384615384616,
+                "pwdf_ratio": 2.272727272727273
+              }
+            ],
+            "max_window_visibility": 0.14561664190193166
+          },
+          {
+            "symbol": "topdollar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.0,
+                "p_window": 0.0,
+                "pwdf_ratio": 0.0
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.0,
+                "p_window": 0.0,
+                "pwdf_ratio": 0.0
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.026923076923076925,
+                "p_window": 0.08076923076923077,
+                "pwdf_ratio": 3.0
+              }
+            ],
+            "max_window_visibility": 0.08076923076923077
+          }
+        ],
+        "_note": "PWDF = window / mid. >1 means symbol visually appears more than it pays."
+      },
+      "section_8": {
+        "n_violations": 0,
+        "violations": [],
+        "passes": true,
+        "_note": "DESIGN_PHILOSOPHY \u00a713: Universal hard rule. 0 = pass."
+      },
+      "section_9": {
+        "trigger_rate": 0.026923076923076925,
+        "trigger_one_in_n": 37.14285714285714,
+        "p_count_x_equals_1": 0.05,
+        "one_round_p_accept": 0.6766029604637497,
+        "rows": [
+          {
+            "bucket": "ge50_lt100",
+            "p_given_trigger": 0.3643565273959747,
+            "ev_contrib": 23.837582949946064
+          },
+          {
+            "bucket": "ge100_lt200",
+            "p_given_trigger": 0.30523784184196345,
+            "ev_contrib": 38.872290894606934
+          },
+          {
+            "bucket": "ge200_lt500",
+            "p_given_trigger": 0.1831185270314376,
+            "ev_contrib": 53.00758416215252
+          },
+          {
+            "bucket": "ge20_lt50",
+            "p_given_trigger": 0.1225927329695591,
+            "ev_contrib": 4.855076777863159
+          },
+          {
+            "bucket": "ge500_lt1000",
+            "p_given_trigger": 0.021306293568972085,
+            "ev_contrib": 12.185100376800314
+          },
+          {
+            "bucket": "ge10_lt20",
+            "p_given_trigger": 0.003050264664532299,
+            "ev_contrib": 0.03906785085594835
+          },
+          {
+            "bucket": "ge5_lt10",
+            "p_given_trigger": 0.0003330557126085191,
+            "ev_contrib": 0.0016652785630425955
+          },
+          {
+            "bucket": "ge1000_lt5000",
+            "p_given_trigger": 4.7568149522363975e-06,
+            "ev_contrib": 0.010319460035203806
+          }
+        ],
+        "p_r_ge_1000_given_trigger": 4.756814952236398e-06,
+        "p_r_ge_1000_per_spin": 1.2806809486790305e-07,
+        "one_in_n_r_ge_1000_per_spin": 7808346.028973561
+      }
+    },
+    "7": {
+      "section_1": {
+        "total_rtp_pct": 85.08994453316508,
+        "base_rtp_pct": 33.2381286500445,
+        "feature_rtp_pp": 51.85181588312058,
+        "base_hit_rate": 0.14919968420109445,
+        "base_cv": 7.067390067388753,
+        "base_std_return_x": 2.3490682027991405,
+        "feature_ev": 45.99996809059697,
+        "feature_cv": 0.7354031410883701,
+        "feature_std": 33.82852102378981,
+        "feature_r_min": 5,
+        "feature_r_max": 4880,
+        "feature_p_accept_round1": 0.2351653807399166,
+        "feature_round_ev_uncond": 28.26094756939615,
+        "feature_round_ev_given_accept": 60.3623588398575,
+        "trigger_rate": 0.011272141706924315,
+        "trigger_one_in_n": 88.71428571428572,
+        "base_feature_split": [
+          0.3906234612374138,
+          0.6093765387625862
+        ],
+        "total_prob_sanity": 1.0
+      },
+      "section_2": {
+        "rows": [
+          {
+            "bucket": "ge5000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge1000_lt5000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge500_lt1000",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          },
+          {
+            "bucket": "ge200_lt500",
+            "rate": 1.783477611308245e-05,
+            "rtp_pp": 0.356695522261649
+          },
+          {
+            "bucket": "ge100_lt200",
+            "rate": 6.606912925500546e-05,
+            "rtp_pp": 0.7928295510600654
+          },
+          {
+            "bucket": "ge50_lt100",
+            "rate": 0.00023352829023257966,
+            "rtp_pp": 1.7072842294476933
+          },
+          {
+            "bucket": "ge20_lt50",
+            "rate": 0.002768366245736449,
+            "rtp_pp": 6.9466989344700165
+          },
+          {
+            "bucket": "ge10_lt20",
+            "rate": 0.0032476993205862153,
+            "rtp_pp": 3.2764226968525483
+          },
+          {
+            "bucket": "ge5_lt10",
+            "rate": 0.005346961422145585,
+            "rtp_pp": 2.6734807110727914
+          },
+          {
+            "bucket": "ge1_lt5",
+            "rate": 0.13751922501702551,
+            "rtp_pp": 17.484717004879727
+          },
+          {
+            "bucket": "gt0_lt1",
+            "rate": 0.0,
+            "rtp_pp": 0.0
+          }
+        ]
+      },
+      "section_3": {
+        "rows": [
+          {
+            "pay_id": "9",
+            "pay_id_int": 9,
+            "family": "cherry1",
+            "probability": 0.10995999029466352,
+            "one_in_n": 9.09421688125168,
+            "rtp_pp": 10.995999029466352
+          },
+          {
+            "pay_id": "5",
+            "pay_id_int": 5,
+            "family": "bar2",
+            "probability": 0.004207800298138454,
+            "one_in_n": 237.65386404920488,
+            "rtp_pp": 6.644728014702722
+          },
+          {
+            "pay_id": "8",
+            "pay_id_int": 8,
+            "family": "bar_mixed",
+            "probability": 0.027559234722362023,
+            "one_in_n": 36.28547781076749,
+            "rtp_pp": 6.488717975413379
+          },
+          {
+            "pay_id": "3",
+            "pay_id_int": 3,
+            "family": "bar3",
+            "probability": 0.0008361425787632657,
+            "one_in_n": 1195.9682778971678,
+            "rtp_pp": 3.362056441407544
+          },
+          {
+            "pay_id": "71",
+            "pay_id_int": 71,
+            "family": "cherry2",
+            "probability": 0.004434436050835603,
+            "one_in_n": 225.50781847706767,
+            "rtp_pp": 2.2172180254178007
+          },
+          {
+            "pay_id": "7",
+            "pay_id_int": 7,
+            "family": "bar1",
+            "probability": 0.0019481559552208194,
+            "one_in_n": 513.305927751894,
+            "rtp_pp": 1.7145798932665082
+          },
+          {
+            "pay_id": "2",
+            "pay_id_int": 2,
+            "family": "high7_wild",
+            "probability": 0.00014654017546147748,
+            "one_in_n": 6824.06716691069,
+            "rtp_pp": 1.2756558282988977
+          },
+          {
+            "pay_id": "1",
+            "pay_id_int": 1,
+            "family": "wild_pure",
+            "probability": 1.783477611308245e-05,
+            "one_in_n": 56070.23007518799,
+            "rtp_pp": 0.356695522261649
+          },
+          {
+            "pay_id": "21",
+            "pay_id_int": 21,
+            "family": "high7_pure",
+            "probability": 3.210259700354842e-05,
+            "one_in_n": 31150.127819548874,
+            "rtp_pp": 0.09630779101064527
+          },
+          {
+            "pay_id": "4",
+            "pay_id_int": 4,
+            "family": "cherry3",
+            "probability": 5.74467525326656e-05,
+            "one_in_n": 17407.4243697479,
+            "rtp_pp": 0.08617012879899841
+          }
+        ]
+      },
+      "section_4": {
+        "rows": [
+          {
+            "family": "cherry1",
+            "rtp_pp": 10.995999029466352,
+            "probability": 0.10995999029466352,
+            "share_of_base_pct": 33.0824853145023,
+            "share_of_total_pct": 12.9227949198868
+          },
+          {
+            "family": "bar2",
+            "rtp_pp": 6.644728014702722,
+            "probability": 0.004207800298138454,
+            "share_of_base_pct": 19.99128195411755,
+            "share_of_total_pct": 7.809063751490449
+          },
+          {
+            "family": "bar_mixed",
+            "rtp_pp": 6.488717975413379,
+            "probability": 0.027559234722362023,
+            "share_of_base_pct": 19.52191124756565,
+            "share_of_total_pct": 7.625716541493693
+          },
+          {
+            "family": "bar3",
+            "rtp_pp": 3.362056441407544,
+            "probability": 0.0008361425787632657,
+            "share_of_base_pct": 10.11505935489254,
+            "share_of_total_pct": 3.951179495830006
+          },
+          {
+            "family": "cherry2",
+            "rtp_pp": 2.2172180254178007,
+            "probability": 0.004434436050835603,
+            "share_of_base_pct": 6.670706551389535,
+            "share_of_total_pct": 2.6057344820028727
+          },
+          {
+            "family": "bar1",
+            "rtp_pp": 1.7145798932665082,
+            "probability": 0.0019481559552208194,
+            "share_of_base_pct": 5.158473003455965,
+            "share_of_total_pct": 2.0150205793097267
+          },
+          {
+            "family": "high7_wild",
+            "rtp_pp": 1.2756558282988977,
+            "probability": 0.00014654017546147748,
+            "share_of_base_pct": 3.837929149772364,
+            "share_of_total_pct": 1.499185168468046
+          },
+          {
+            "family": "wild_pure",
+            "rtp_pp": 0.356695522261649,
+            "probability": 1.783477611308245e-05,
+            "share_of_base_pct": 1.0731516386412792,
+            "share_of_total_pct": 0.4191982075186588
+          },
+          {
+            "family": "high7_pure",
+            "rtp_pp": 0.09630779101064527,
+            "probability": 3.210259700354842e-05,
+            "share_of_base_pct": 0.2897509424331454,
+            "share_of_total_pct": 0.11318351603003791
+          },
+          {
+            "family": "cherry3",
+            "rtp_pp": 0.08617012879899841,
+            "probability": 5.74467525326656e-05,
+            "share_of_base_pct": 0.25925084322965647,
+            "share_of_total_pct": 0.10126946171108656
+          }
+        ]
+      },
+      "section_5": {
+        "rows": [
+          {
+            "symbol": "1bar",
+            "per_reel": [
+              0.09450726978998385,
+              0.08505154639175258,
+              0.11352657004830918
+            ]
+          },
+          {
+            "symbol": "2bar",
+            "per_reel": [
+              0.13247172859450726,
+              0.11855670103092783,
+              0.15136876006441224
+            ]
+          },
+          {
+            "symbol": "3bar",
+            "per_reel": [
+              0.06785137318255251,
+              0.05670103092783505,
+              0.07729468599033816
+            ]
+          },
+          {
+            "symbol": "blank",
+            "per_reel": [
+              0.5961227786752827,
+              0.6030927835051546,
+              0.5797101449275363
+            ]
+          },
+          {
+            "symbol": "cherry",
+            "per_reel": [
+              0.045234248788368334,
+              0.04639175257731959,
+              0.027375201288244767
+            ]
+          },
+          {
+            "symbol": "doublediamond",
+            "per_reel": [
+              0.030694668820678513,
+              0.03608247422680412,
+              0.01610305958132045
+            ]
+          },
+          {
+            "symbol": "high7",
+            "per_reel": [
+              0.029079159935379646,
+              0.04896907216494845,
+              0.02254428341384863
+            ]
+          },
+          {
+            "symbol": "jackpot",
+            "per_reel": [
+              0.004038772213247173,
+              0.005154639175257732,
+              0.0008051529790660225
+            ]
+          },
+          {
+            "symbol": "topdollar",
+            "per_reel": [
+              0.0,
+              0.0,
+              0.011272141706924315
+            ]
+          }
+        ],
+        "n_reels": 3
+      },
+      "section_6": {
+        "r1_blank": 0.5961227786752827,
+        "r2_blank": 0.6030927835051546,
+        "r3_blank": 0.5797101449275363,
+        "blank_r1_vs_r3_direction_ok": false,
+        "blank_r1_vs_r3_diff_pp": -1.6412633747746486,
+        "r1_top_prize_density": 0.05977382875605816,
+        "r3_top_prize_density": 0.03864734299516908,
+        "top_prize_r1_vs_r3_direction_ok": true,
+        "top_prize_r1_vs_r3_diff_pp": 2.112648576088908,
+        "per_symbol_r1_r3": [
+          {
+            "symbol": "doublediamond",
+            "r1": 0.030694668820678513,
+            "r2": 0.03608247422680412,
+            "r3": 0.01610305958132045
+          },
+          {
+            "symbol": "high7",
+            "r1": 0.029079159935379646,
+            "r2": 0.04896907216494845,
+            "r3": 0.02254428341384863
+          }
+        ],
+        "_note": "R3 = trigger reel (topdollar lives only on R3) \u2192 \u00a712.1 role (b). Top-prize density excludes topdollar."
+      },
+      "section_7": {
+        "rows": [
+          {
+            "symbol": "doublediamond",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.030694668820678513,
+                "p_window": 0.1631663974151858,
+                "pwdf_ratio": 5.315789473684211
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.03608247422680412,
+                "p_window": 0.17010309278350516,
+                "pwdf_ratio": 4.714285714285715
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.01610305958132045,
+                "p_window": 0.08051529790660225,
+                "pwdf_ratio": 5.0
+              }
+            ],
+            "max_window_visibility": 0.17010309278350516
+          },
+          {
+            "symbol": "high7",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.029079159935379646,
+                "p_window": 0.16155088852988692,
+                "pwdf_ratio": 5.555555555555555
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.04896907216494845,
+                "p_window": 0.18298969072164947,
+                "pwdf_ratio": 3.7368421052631575
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.02254428341384863,
+                "p_window": 0.15136876006441224,
+                "pwdf_ratio": 6.714285714285714
+              }
+            ],
+            "max_window_visibility": 0.18298969072164947
+          },
+          {
+            "symbol": "3bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.06785137318255251,
+                "p_window": 0.33279483037156704,
+                "pwdf_ratio": 4.904761904761904
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.05670103092783505,
+                "p_window": 0.3247422680412371,
+                "pwdf_ratio": 5.7272727272727275
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.07729468599033816,
+                "p_window": 0.27053140096618356,
+                "pwdf_ratio": 3.5
+              }
+            ],
+            "max_window_visibility": 0.33279483037156704
+          },
+          {
+            "symbol": "2bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.13247172859450726,
+                "p_window": 0.3974151857835218,
+                "pwdf_ratio": 3.0
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.11855670103092783,
+                "p_window": 0.3865979381443299,
+                "pwdf_ratio": 3.2608695652173916
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.15136876006441224,
+                "p_window": 0.40901771336553944,
+                "pwdf_ratio": 2.702127659574468
+              }
+            ],
+            "max_window_visibility": 0.40901771336553944
+          },
+          {
+            "symbol": "1bar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.09450726978998385,
+                "p_window": 0.29321486268174474,
+                "pwdf_ratio": 3.102564102564102
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.08505154639175258,
+                "p_window": 0.2860824742268041,
+                "pwdf_ratio": 3.3636363636363633
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.11352657004830918,
+                "p_window": 0.30676328502415456,
+                "pwdf_ratio": 2.702127659574468
+              }
+            ],
+            "max_window_visibility": 0.30676328502415456
+          },
+          {
+            "symbol": "cherry",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.045234248788368334,
+                "p_window": 0.1777059773828756,
+                "pwdf_ratio": 3.928571428571429
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.04639175257731959,
+                "p_window": 0.18041237113402062,
+                "pwdf_ratio": 3.888888888888889
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.027375201288244767,
+                "p_window": 0.15619967793880837,
+                "pwdf_ratio": 5.705882352941177
+              }
+            ],
+            "max_window_visibility": 0.18041237113402062
+          },
+          {
+            "symbol": "topdollar",
+            "per_reel": [
+              {
+                "reel": 1,
+                "p_mid": 0.0,
+                "p_window": 0.0,
+                "pwdf_ratio": 0.0
+              },
+              {
+                "reel": 2,
+                "p_mid": 0.0,
+                "p_window": 0.0,
+                "pwdf_ratio": 0.0
+              },
+              {
+                "reel": 3,
+                "p_mid": 0.011272141706924315,
+                "p_window": 0.14009661835748793,
+                "pwdf_ratio": 12.42857142857143
+              }
+            ],
+            "max_window_visibility": 0.14009661835748793
+          }
+        ],
+        "_note": "PWDF = window / mid. >1 means symbol visually appears more than it pays."
+      },
+      "section_8": {
+        "n_violations": 0,
+        "violations": [],
+        "passes": true,
+        "_note": "DESIGN_PHILOSOPHY \u00a713: Universal hard rule. 0 = pass."
+      },
+      "section_9": {
+        "trigger_rate": 0.011272141706924315,
+        "trigger_one_in_n": 88.71428571428572,
+        "p_count_x_equals_1": 0.05,
+        "one_round_p_accept": 0.2351653807399166,
+        "rows": [
+          {
+            "bucket": "ge20_lt50",
+            "p_given_trigger": 0.4949851004425504,
+            "ev_contrib": 16.527176320469504
+          },
+          {
+            "bucket": "ge50_lt100",
+            "p_given_trigger": 0.2919999860346313,
+            "ev_contrib": 18.420776530854976
+          },
+          {
+            "bucket": "ge10_lt20",
+            "p_given_trigger": 0.12828615792724507,
+            "ev_contrib": 1.5117533453917873
+          },
+          {
+            "bucket": "ge100_lt200",
+            "p_given_trigger": 0.06309070319464986,
+            "ev_contrib": 7.576650720291111
+          },
+          {
+            "bucket": "ge5_lt10",
+            "p_given_trigger": 0.01374717031798054,
+            "ev_contrib": 0.0687358515899027
+          },
+          {
+            "bucket": "ge200_lt500",
+            "p_given_trigger": 0.00781360166067385,
+            "ev_contrib": 1.8382716610983256
+          },
+          {
+            "bucket": "ge500_lt1000",
+            "p_given_trigger": 5.8826841784378485e-05,
+            "ev_contrib": 0.03125527086562141
+          },
+          {
+            "bucket": "ge1000_lt5000",
+            "p_given_trigger": 1.8453580484527272e-05,
+            "ev_contrib": 0.02534839003574267
+          }
+        ],
+        "p_r_ge_1000_given_trigger": 1.8453580484527265e-05,
+        "p_r_ge_1000_per_spin": 2.080113742217244e-07,
+        "one_in_n_r_ge_1000_per_spin": 4807429.41938394
+      }
+    }
+  },
+  "cross_mode": {
+    "section_11": {
+      "rows": [
+        {
+          "id": "mode2_rtp_gt_mode1_rtp",
+          "ok": true,
+          "detail": "m2 RTP = 294.28%, m1 RTP = 94.98%"
+        },
+        {
+          "id": "mode5_rtp_gt_mode2_rtp",
+          "ok": true,
+          "detail": "m5 RTP = 490.32%, m2 RTP = 294.28%"
+        },
+        {
+          "id": "mode7_rtp_lt_mode1_rtp",
+          "ok": true,
+          "detail": "m7 RTP = 85.09%, m1 RTP = 94.98%"
+        },
+        {
+          "id": "LUCKY_MONO_mode2_hit_gt_mode1",
+          "ok": true,
+          "detail": "m2 hit = 29.35%, m1 hit = 19.31%"
+        },
+        {
+          "id": "mode5_hit_ge_mode2_hit",
+          "ok": true,
+          "detail": "m5 hit = 29.35%, m2 hit = 29.35%"
+        },
+        {
+          "id": "MODE7_LOCK_mode7_hit_lt_mode1",
+          "ok": true,
+          "detail": "m7 hit = 14.92%, m1 hit = 19.31%"
+        },
+        {
+          "id": "MODE5_BASE_LOCK_base_rtp_equal_to_mode2",
+          "ok": true,
+          "detail": "|m5_base - m2_base| = 0.0000pp"
+        },
+        {
+          "id": "CV_TREND_mode7_cv_ge_mode1",
+          "ok": true,
+          "detail": "m7 CV = 7.067, m1 CV = 5.765"
+        },
+        {
+          "id": "CV_TREND_mode2_cv_le_mode1",
+          "ok": true,
+          "detail": "m2 CV = 5.139, m1 CV = 5.765"
+        },
+        {
+          "id": "FEATURE_mode2_trigger_ge_mode1",
+          "ok": true,
+          "detail": "m2 trig = 2.692%, m1 trig = 1.127%"
+        },
+        {
+          "id": "FEATURE_mode5_trigger_ge_mode2",
+          "ok": true,
+          "detail": "m5 trig = 2.692%, m2 trig = 2.692%"
+        },
+        {
+          "id": "MODE7_LOCK_trigger_equal_to_mode1",
+          "ok": false,
+          "detail": "|m7_trig - m1_trig| = 0.000454pp"
+        }
+      ]
+    },
+    "section_12": {
+      "rows": [
+        {
+          "mode": 1,
+          "virtual_fp": "5d02773c069fc396",
+          "prod_fp_from_envelope": "5d02773c069fc396",
+          "prod_fp_recomputed": "5d02773c069fc396",
+          "match": true,
+          "match_recomputed": true,
+          "prod_chunk_path": "rawdata\\M15$TopDollarSelector$0$\\mode_1\\chunk_0001.json"
+        },
+        {
+          "mode": 2,
+          "virtual_fp": "5d02773c069fc396",
+          "prod_fp_from_envelope": "5d02773c069fc396",
+          "prod_fp_recomputed": "5d02773c069fc396",
+          "match": true,
+          "match_recomputed": true,
+          "prod_chunk_path": "rawdata\\M15$TopDollarSelector$0$\\mode_2\\chunk_0001.json"
+        },
+        {
+          "mode": 5,
+          "virtual_fp": "5d02773c069fc396",
+          "prod_fp_from_envelope": "5d02773c069fc396",
+          "prod_fp_recomputed": "5d02773c069fc396",
+          "match": true,
+          "match_recomputed": true,
+          "prod_chunk_path": "rawdata\\M15$TopDollarSelector$0$\\mode_5\\chunk_0001.json"
+        },
+        {
+          "mode": 7,
+          "virtual_fp": "5d02773c069fc396",
+          "prod_fp_from_envelope": "5d02773c069fc396",
+          "prod_fp_recomputed": "5d02773c069fc396",
+          "match": true,
+          "match_recomputed": true,
+          "prod_chunk_path": "rawdata\\M15$TopDollarSelector$0$\\mode_7\\chunk_0001.json"
+        }
+      ]
+    }
+  }
+}

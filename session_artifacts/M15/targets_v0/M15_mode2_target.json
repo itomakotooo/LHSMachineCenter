@@ -1,0 +1,148 @@
+{
+  "label": "M15_mode2_v0_designer_authored",
+  "source_machine": "M15",
+  "source_mode": 2,
+  "source_spins": null,
+  "source_rtp_ci_pp": null,
+  "_provenance": {
+    "authored_by": "Agent D (Designer)",
+    "stage": "ONBOARDING Stage 4",
+    "iteration": "v0",
+    "date": "2026-05-11",
+    "design_doc": "session_artifacts/M15/design_v0.md",
+    "_note": "Designer-authored TUNE TARGET. See process_improvements.md #13 for schema split recommendation."
+  },
+
+  "rtp_pct": 300.0,
+  "bucket_rate": {
+    "_note": "v0 Designer does not pin per-bucket rates; tuner derives from family + paytable.",
+    "_derive_from": "tuner output + analyzer report"
+  },
+
+  "hit_rate": 0.264,
+  "zero_win_rate": null,
+  "std_return_x": null,
+  "max_return_x": null,
+  "big_win_x10_rate": null,
+  "tail_dep_ge10x": null,
+  "tail_dep_ge20x": null,
+  "tail_dep_ge50x": null,
+  "tail_dep_ge100x": null,
+  "loss_streak_p95": null,
+  "loss_streak_max": null,
+
+  "_design_targets_v0_M15_only": {
+    "_schema_note": "Designer-authored bands for mode 2 (lucky derivation). See design_v0.md §5.3 + §6.",
+
+    "rtp": {
+      "target_pct": 300.0,
+      "band_pct": [295.0, 305.0],
+      "_source": "DESIGN_PHILOSOPHY.md §C mode 2 invariant"
+    },
+
+    "base_rtp_pp": {
+      "target": 150.0,
+      "band": [140.0, 160.0],
+      "_source": "user_brief #3 (50:50) at mode 2 RTP 300% → 150pp base"
+    },
+
+    "feature_rtp_pp": {
+      "target": 150.0,
+      "band": [140.0, 160.0],
+      "_source": "user_brief #3 (50:50) at mode 2 RTP 300% → 150pp feature"
+    },
+
+    "base_feature_split_target_pp": {
+      "base": 50.0,
+      "feature": 50.0,
+      "tolerance_pp": 5.0,
+      "_source": "user_brief #3"
+    },
+
+    "hit_rate": {
+      "target": 0.264,
+      "band": [0.25, 0.28],
+      "_source": "user_brief default decision: mode 2 hit = mode 1 hit × 1.5-2 (not ×3). 16.5 × 1.6 = 26.4 mid-range"
+    },
+
+    "base_cv": {
+      "target": 4.5,
+      "band": [4.0, 5.5],
+      "_source": "DESIGN_PHILOSOPHY §5 m2 base CV < m1 base CV (4.0); m2 base RTP 150pp vs m1 43-47pp means CV math differs — band derived from monotone trend"
+    },
+
+    "feature_cv_conditional": {
+      "target": 1.5,
+      "band": [1.0, 2.0],
+      "_source": "user_brief #2b — same band target across modes per design intent"
+    },
+
+    "trigger_rate": {
+      "target": 0.0245,
+      "band": [0.022, 0.027],
+      "_source": "derivation: feature_rtp_pp 150 / feature_ev_x 61.2 = 2.45% (user_brief #3 50:50 + design_v0.md §5.3 EV lift)"
+    },
+
+    "feature_ev_x": {
+      "target": 61.2,
+      "band": [56.0, 66.0],
+      "_source": "preserve v7 EV ~60x with slight lift; design_v0.md §5.3 derivation: enables 50:50 with trigger 2.45%"
+    },
+
+    "p_count_x_eq_1_max": {
+      "max": 0.02,
+      "_source": "user_brief #4 (≤ 2%)"
+    },
+
+    "p_r_ge_1000_per_spin_max": {
+      "max": 0.00001,
+      "_safety_band_target_max": 0.000005,
+      "_source": "user_brief #5 (≤ 1e-5). Designer recommends tighter safety band (5e-6) for m2 since v7 baseline 2.92e-6 is closer to cap. design_v0.md §8.2 risk note."
+    },
+
+    "top_jackpot_pay_id_1_cadence_floor": {
+      "_pay_id": 1,
+      "_pay_name": "wild_pure 200x",
+      "min_one_in_n": 5000,
+      "max_one_in_n": 30000,
+      "_note": "m2 wild_pure cadence will = m5 wild_pure cadence (base byte-equal lock § C). v7 m2/m5 = 1/7,401 → within band.",
+      "_source": "DESIGN_PHILOSOPHY §7 mode 2 1/15-30k band; v7 1/7,401 below band (faster cadence) — accepted because user_brief default 'dense mid-high'; cross-mode m5/m1 ratio still ≥ 5x ✓"
+    },
+
+    "jackpot_filler_marginal_max_per_reel": {
+      "max": 0.006,
+      "_per_reel": "R1, R2, R3",
+      "_v7_violation": "v7 m2 R2 jackpot = 0.743% — VIOLATES U#6. v0 MUST fix.",
+      "_source": "user_brief #6 (≤ 0.6%/reel)"
+    },
+
+    "lucky_lift_directional_invariants": {
+      "_note": "Per DESIGN_PHILOSOPHY §4 lucky mode: '所有 tier hit 都略升'. Verifier red lines.",
+      "all_pay_ids_p_hit_mode2_ge_mode1": "each pay_id's P(hit) in mode 2 ≥ mode 1 (slight lift across all tiers, no tier preserved-byte-equal)",
+      "_v7_verified": "01b §3 m2 vs m1: cherry1 15.45 > 13.77 ✓, bar_mixed 9.83 > 3.86 ✓, bar2 1.44 > 0.58 ✓, bar3 0.64 > 0.11 ✓, etc."
+    },
+
+    "family_share_of_base_floors_pct": {
+      "_note": "Per DESIGN_PHILOSOPHY §10 Pareto-trap defense. m2/m5 base RTP target 150pp — floors expressed as % of base.",
+      "cherry1": { "floor": 8.0, "cap": 20.0, "_v7": "11.64%", "_source": "user_brief cherry-anywhere preservation; lucky lift means share % shifts as base grows" },
+      "cherry_family_total": { "floor": 12.0, "cap": 25.0, "_v7": "15.36%", "_source": "01d §3.3 cherry-bearing classic 14-20% scaled" },
+      "bar_3_of_kind_total": { "floor": 35.0, "cap": 60.0, "_v7": "44.73%", "_source": "01d §3.3 + 01b §4 m2 bar 3-of-kind dominant in lucky mode" },
+      "high7_total": { "floor": 15.0, "cap": 30.0, "_v7": "19.45%", "_source": "lucky mode lifts high7 disproportionately — design intent" },
+      "wild_pure_200x": { "floor": 1.5, "cap": 5.0, "_v7": "2.04%", "_source": "top-jackpot brand pay" }
+    },
+
+    "cross_mode_locks_reference": {
+      "mode_5_base_byte_equal_to_mode_2": "base game weights byte-identical mode 2 → mode 5 (§C MODE5_BASE_LOCK). Includes jackpot R2 fix — m5 must inherit byte-equal.",
+      "mode_2_trigger_ge_mode_1_trigger": "FEATURE_mode2_trigger_ge_mode1 ✓ (philosophy §9 feature-machine extension)",
+      "mode_2_hit_gt_mode_1_hit": "LUCKY_MONO (philosophy §9): mode 2 base hit > mode 1 base hit",
+      "mode_2_rtp_gt_mode_1_rtp": "mode 2 RTP 300% > mode 1 RTP 95% ✓ (philosophy §9)"
+    },
+
+    "deliberate_archetype_deviations_accepted": {
+      "_note": "Per design_v0.md §4 — mode 2 inherits same deviations as mode 1 plus lucky-mode-specific:",
+      "no_lucky_top_dollar_cabinet_precedent": "design_v0.md §4.3 — multi-mode is platform construct; use Aristocrat Lucky 88 cross-game precedent",
+      "r1_le_r3_blank_relaxed": "design_v0.md §4.6 — m2 R3 blank < R1 blank (lucky mode trigger-displacement). Verifier MUST NOT enforce R1 ≤ R3 for m2.",
+      "top_jackpot_cadence_in_m2_below_section_7_band": "DESIGN_PHILOSOPHY §7 m2 band 1/15-30k; v7 m2 = 1/7,401 (faster); accepted per user_brief default 'dense mid-high'"
+    }
+  }
+}

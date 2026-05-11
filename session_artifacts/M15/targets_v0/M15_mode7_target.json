@@ -1,0 +1,158 @@
+{
+  "label": "M15_mode7_v0_designer_authored",
+  "source_machine": "M15",
+  "source_mode": 7,
+  "source_spins": null,
+  "source_rtp_ci_pp": null,
+  "_provenance": {
+    "authored_by": "Agent D (Designer)",
+    "stage": "ONBOARDING Stage 4",
+    "iteration": "v0",
+    "date": "2026-05-11",
+    "design_doc": "session_artifacts/M15/design_v0.md",
+    "_note": "Mode 7 (cut mode) target derives from Mode 1 target + small-pay-cut rules. feature_params block + R3 topdollar weights = mode 1 BYTE-EQUAL. Designer-authored TUNE TARGET."
+  },
+
+  "rtp_pct": 85.0,
+  "bucket_rate": {
+    "_note": "Derived from base (small-pay cut from m1) + feature byte-equal m1.",
+    "_derive_from": "tuner output + analyzer report"
+  },
+
+  "hit_rate": 0.13,
+  "zero_win_rate": null,
+  "std_return_x": null,
+  "max_return_x": null,
+  "big_win_x10_rate": null,
+  "tail_dep_ge10x": null,
+  "tail_dep_ge20x": null,
+  "tail_dep_ge50x": null,
+  "tail_dep_ge100x": null,
+  "loss_streak_p95": null,
+  "loss_streak_max": null,
+
+  "_design_targets_v0_M15_only": {
+    "_schema_note": "Mode 7 derives from Mode 1 — see design_v0.md §5.2. Feature params byte-equal m1; base = m1 with small-pay cut per philosophy §4.",
+
+    "rtp": {
+      "target_pct": 85.0,
+      "band_pct": [84.0, 86.0],
+      "_source": "DESIGN_PHILOSOPHY §C mode 7 invariant + 01d §6.2 land 85% is industry-standard cut"
+    },
+
+    "base_rtp_pp": {
+      "target": 37.5,
+      "band": [34.0, 41.0],
+      "_source": "derivation: 85 (RTP) - 47.5 (feature, byte-equal m1) = 37.5pp"
+    },
+
+    "feature_rtp_pp": {
+      "target": 47.5,
+      "band": [44.0, 51.0],
+      "_lock": "BYTE_EQUAL_TO_MODE_1_FEATURE",
+      "_source": "user_brief weights-derivation rule: 'mode 7 = mode 1 砍小奖 freq, feature_params 字节级 = mode 1'"
+    },
+
+    "base_feature_split_target_pp": {
+      "base": 44.0,
+      "feature": 56.0,
+      "tolerance_pp": 5.0,
+      "_note": "mode 7 split natural (cut mode: feature stays, base cuts → feature share grows). NOT 50:50 target.",
+      "_source": "derivation from feature byte-equal m1 + base cut"
+    },
+
+    "hit_rate": {
+      "target": 0.13,
+      "band": [0.11, 0.14],
+      "_source": "derivation: m1 hit 0.165 × (base_rtp ratio 37.5/47.5) = 0.130; philosophy §4 cut mode hit < m1"
+    },
+
+    "base_cv": {
+      "target": 5.0,
+      "band": [4.5, 6.0],
+      "_source": "DESIGN_PHILOSOPHY §5 m7 base CV ≥ m1 base CV (= 4.0); cut mode boom-bust"
+    },
+
+    "feature_cv_conditional": {
+      "target": 1.5,
+      "band": [1.0, 2.0],
+      "_lock": "EQUAL_TO_MODE_1_FEATURE_CV (via feature_params byte-equal)",
+      "_source": "user_brief weights-derivation rule"
+    },
+
+    "trigger_rate": {
+      "target": 0.0103,
+      "band": [0.0095, 0.0115],
+      "_lock": "EQUAL_TO_MODE_1_TRIGGER (via R3 topdollar weights byte-equal m1)",
+      "_source": "design_v0.md §8.5 resolution: 'byte-equal' includes R3 topdollar weights — FIX v7 0.000454pp drift per process_improvements #8"
+    },
+
+    "feature_ev_x": {
+      "target": 46.0,
+      "band": [42.0, 50.0],
+      "_lock": "EQUAL_TO_MODE_1_EV (via feature_params byte-equal)",
+      "_source": "user_brief weights-derivation rule"
+    },
+
+    "p_count_x_eq_1_max": {
+      "max": 0.02,
+      "_lock": "EQUAL_TO_MODE_1 (via feature_params byte-equal)",
+      "_source": "user_brief #4"
+    },
+
+    "p_r_ge_1000_per_spin_max": {
+      "max": 0.00001,
+      "_lock": "EQUAL_TO_MODE_1 (via feature_params byte-equal + R3 topdollar byte-equal)",
+      "_source": "user_brief #5"
+    },
+
+    "top_jackpot_pay_id_1_cadence_floor": {
+      "_pay_id": 1,
+      "_pay_name": "wild_pure 200x",
+      "min_one_in_n": 50000,
+      "max_one_in_n": 100000,
+      "_v7": "1/56,070",
+      "_source": "DESIGN_PHILOSOPHY §7 mode 7 ≈ mode 1 (small-pay cut doesn't touch top) — same band as mode 1"
+    },
+
+    "jackpot_filler_marginal_max_per_reel": {
+      "max": 0.006,
+      "_per_reel": "R1, R2, R3",
+      "_v7_status": "v7 all ≤ 0.6% ✓ (R1 0.40 / R2 0.52 / R3 0.08)",
+      "_source": "user_brief #6"
+    },
+
+    "per_tier_preservation_invariants": {
+      "_note": "Per DESIGN_PHILOSOPHY §4 cut mode: 小奖 hit ↓, 中/大/顶奖 hit 不动. Verifier red lines.",
+      "small_pay_cut_allowed": {
+        "cherry1": "P(hit) m7 < m1 (cut allowed; v7 -2.78pp ✓)",
+        "bar_mixed": "P(hit) m7 < m1 (cut allowed; v7 -1.10pp ✓)"
+      },
+      "mid_pay_preserved_byte_equal_m1": {
+        "bar1_p_hit": "must equal m1 P(hit) (byte-equal weight)",
+        "bar2_p_hit": "must equal m1 P(hit) (byte-equal weight)",
+        "bar3_p_hit": "must equal m1 P(hit) (byte-equal weight)",
+        "_v7_currently_violated": "01b §3 m7 bar1 0.1948 < m1 0.2508; bar2 0.4208 < m1 0.5805 — v7 cuts mid-pay frequencies too; v0 must restore byte-equal"
+      },
+      "top_pay_preserved_byte_equal_m1": {
+        "high7_wild_p_hit": "must equal m1 P(hit)",
+        "high7_pure_p_hit": "must equal m1 P(hit)",
+        "wild_pure_p_hit": "must equal m1 P(hit)",
+        "_v7_drift": "01b §3 m7 high7_wild 0.0147 ≈ m1 0.0137; wild_pure 0.0018 ≈ m1 0.00166 — close but not exact byte-equal; v0 must enforce byte exact"
+      }
+    },
+
+    "cross_mode_locks_reference": {
+      "mode_7_feature_params_byte_equal_m1": "feature_params block in weights/mode_7/weights.json identical bytes to weights/mode_1/weights.json feature_params block (x_count_weights / y_count_weights / x_value_weights / y_value_weights / accept_threshold / max_rounds)",
+      "mode_7_r3_topdollar_byte_equal_m1": "R3 topdollar stop weights identical bytes — FIX v7 drift per process_improvements #8 + design_v0.md §8.5",
+      "mode_7_rtp_lt_mode_1_rtp": "philosophy §9: m7 RTP < m1 RTP ✓",
+      "mode_7_hit_lt_mode_1_hit": "philosophy §9 MODE7_LOCK: m7 hit < m1 hit ✓",
+      "mode_7_cv_ge_mode_1_cv": "philosophy §5 CV trend"
+    },
+
+    "deliberate_archetype_deviations_accepted": {
+      "_note": "Mode 7 inherits same deviations as mode 1.",
+      "land_85pct_cut_industry_standard": "01d §6.2: 'land-based slots usually set to 70-90%; 85% is bottom of typical land range and real operator dial' — archetype-faithful"
+    }
+  }
+}

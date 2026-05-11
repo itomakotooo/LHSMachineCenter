@@ -1,0 +1,248 @@
+======================================================================
+M15 design v1 FEASIBILITY DUMP ¡ª proposed weight candidates
+======================================================================
+
+Source: session_artifacts/M15/scripts/design_v1_feasibility.py
+Inputs read:
+  - slot_designer/machines/M15/spec.json
+  - slot_designer/machines/M15/weights/mode_*/weights.json (v7 baseline)
+Candidate transforms applied: per build_candidate_modeN() functions in this script.
+
+Comparison bands from session_artifacts/M15/user_brief.md v1.1 amendments ¡ìa-e:
+  m1: total RTP [94,96], hit [15,18], base CV [3,5], P(R¡Ý1000/spin) ¡Ü1e-5,
+      P(count_x=1) ¡Ü 6% (per ¡ìb: v7 5% acceptable), jackpot/reel ¡Ü0.6%
+  m2: total RTP [290,310], hit [30,35] (per ¡ìc), 200¡Á+ freq = mode 1,
+      P(R¡Ý1000/spin) ¡Ü1e-5, jackpot/reel ¡Ü0.6%
+  m5: total RTP [480,520] (per ¡ìd: base lift allowed; 200¡Á+ freq > mode 2),
+      P(R¡Ý1000/spin) ¡Ü1e-5, jackpot/reel ¡Ü0.6%
+  m7: total RTP [83,87], hit [10,16], P(R¡Ý1000/spin) ¡Ü1e-5, jackpot/reel ¡Ü0.6%
+      (option B per ¡ìe ¡ª trigger rate marginal-equal m1 within tolerance,
+       big-pay frequency = m1)
+
+======================================================================
+V7 BASELINE (for diff reference)
+======================================================================
+  m1: RTP=94.98%, base=43.15pp, feature=51.83pp, hit=19.31%, base_CV=5.77, trig=1.127%, feat_EV=46.0, P(R¡Ý1000/spin)=7.43e-08
+  m2: RTP=294.28%, base=132.76pp, feature=161.52pp, hit=29.35%, base_CV=5.14, trig=2.692%, feat_EV=60.0, P(R¡Ý1000/spin)=1.25e-06
+  m5: RTP=490.32%, base=132.76pp, feature=357.56pp, hit=29.35%, base_CV=5.14, trig=2.692%, feat_EV=132.8, P(R¡Ý1000/spin)=8.76e-08
+  m7: RTP=85.09%, base=33.24pp, feature=51.85pp, hit=14.92%, base_CV=7.07, trig=1.127%, feat_EV=46.0, P(R¡Ý1000/spin)=7.44e-08
+
+======================================================================
+MODE 1 (v1_mode_1) ¡ª feasibility v1
+======================================================================
+
+  Total RTP (%):         94.391
+  Base RTP (pp):         38.079
+  Feature RTP (pp):      56.312
+  Base:Feature split:    40.3 : 59.7
+  Base hit rate:         17.779%
+  Base CV:               6.118
+  Trigger rate:          1.2242%  (1 in 82)
+  Feature EV (¡Ábet):     46.000
+  Feature CV (cond):     0.735
+  P(count_x=1):          5.000%
+  P(R¡Ý1000/spin):        8.08e-08
+  Jackpot R1/R2/R3:      0.086% / 0.519% / 0.153%
+  Blank R1/R2/R3:        55.81% / 53.70% / 59.22%
+
+  --- vs user_brief v1.1 target bands ---
+  [OK  ] Total RTP %                              got=94.391  band=[94.000, 96.000]
+  [OK  ] Base hit rate                            got=0.1778  band=[0.1500, 0.1800]
+  [FAIL] Base CV                                  got=6.118  band=[3.000, 5.000]
+  [OK  ] Feature CV (conditional)                 got=0.735  band=[0.500, 2.000]
+  [OK  ] P(count_x=1)                             got=0.0500  max=0.0600
+  [OK  ] P(R¡Ý1000/spin)                           got=0.000000  max=0.000010
+  [OK  ] Jackpot R1 marginal                      got=0.0009  max=0.0060
+  [OK  ] Jackpot R2 marginal                      got=0.0052  max=0.0060
+  [OK  ] Jackpot R3 marginal                      got=0.0015  max=0.0060
+
+  --- per-pay_id table ---
+    pay_id    9: P= 12.6883%  1 in          8  RTP  12.688pp
+    pay_id    8: P=  3.6971%  1 in         27  RTP   8.554pp
+    pay_id    3: P=  0.1352%  1 in        740  RTP   5.103pp
+    pay_id    5: P=  0.3066%  1 in        326  RTP   4.830pp
+    pay_id   71: P=  0.6167%  1 in        162  RTP   3.083pp
+    pay_id    7: P=  0.3112%  1 in        321  RTP   2.439pp
+    pay_id    2: P=  0.0106%  1 in      9,437  RTP   0.922pp
+    pay_id    1: P=  0.0012%  1 in     82,716  RTP   0.242pp
+    pay_id    4: P=  0.0100%  1 in     10,044  RTP   0.149pp
+    pay_id   21: P=  0.0023%  1 in     43,943  RTP   0.068pp
+
+  --- bucket distribution ---
+    ge200_lt500        rate   0.0012%  RTP   0.242pp
+    ge100_lt200        rate   0.0048%  RTP   0.572pp
+    ge50_lt100         rate   0.0251%  RTP   1.895pp
+    ge20_lt50          rate   0.2730%  RTP   7.155pp
+    ge10_lt20          rate   0.2952%  RTP   3.002pp
+    ge5_lt10           rate   0.7944%  RTP   3.972pp
+    ge1_lt5            rate  16.3854%  RTP  21.242pp
+
+======================================================================
+MODE 2 (v1_mode_2) ¡ª feasibility v1
+======================================================================
+
+  Total RTP (%):         284.436
+  Base RTP (pp):         99.129
+  Feature RTP (pp):      185.307
+  Base:Feature split:    34.9 : 65.1
+  Base hit rate:         33.564%
+  Base CV:               4.381
+  Trigger rate:          3.0888%  (1 in 32)
+  Feature EV (¡Ábet):     59.993
+  Feature CV (cond):     0.778
+  P(count_x=1):          5.000%
+  P(R¡Ý1000/spin):        1.44e-06
+  Jackpot R1/R2/R3:      0.338% / 0.414% / 0.386%
+  Blank R1/R2/R3:        33.45% / 32.28% / 24.32%
+
+  --- vs user_brief v1.1 target bands ---
+  [FAIL] Total RTP %                              got=284.436  band=[290.000, 310.000]
+  [OK  ] Base hit rate                            got=0.3356  band=[0.3000, 0.3500]
+  [OK  ] P(R¡Ý1000/spin)                           got=0.000001  max=0.000010
+  [OK  ] Jackpot R1 marginal                      got=0.0034  max=0.0060
+  [OK  ] Jackpot R2 marginal                      got=0.0041  max=0.0060
+  [OK  ] Jackpot R3 marginal                      got=0.0039  max=0.0060
+  [OK  ] pay_id 1 (wild_pure 200¡Á) freq vs m1     got=1.075  cond=<=1.500
+
+  --- per-pay_id table ---
+    pay_id    8: P=  9.9431%  1 in         10  RTP  22.410pp
+    pay_id    9: P= 19.7207%  1 in          5  RTP  19.721pp
+    pay_id    3: P=  0.4894%  1 in        204  RTP  15.687pp
+    pay_id    5: P=  1.0644%  1 in         94  RTP  15.169pp
+    pay_id    2: P=  0.1348%  1 in        742  RTP   9.534pp
+    pay_id   71: P=  1.6420%  1 in         61  RTP   8.210pp
+    pay_id   21: P=  0.1506%  1 in        664  RTP   4.518pp
+    pay_id    7: P=  0.3722%  1 in        269  RTP   2.941pp
+    pay_id    4: P=  0.0453%  1 in      2,206  RTP   0.680pp
+    pay_id    1: P=  0.0013%  1 in     76,929  RTP   0.260pp
+
+  --- bucket distribution ---
+    ge200_lt500        rate   0.0013%  RTP   0.260pp
+    ge100_lt200        rate   0.0241%  RTP   2.889pp
+    ge50_lt100         rate   0.1438%  RTP   9.287pp
+    ge20_lt50          rate   1.0013%  RTP  26.295pp
+    ge10_lt20          rate   0.8787%  RTP   9.014pp
+    ge5_lt10           rate   1.8510%  RTP   9.255pp
+    ge1_lt5            rate  29.6638%  RTP  42.130pp
+
+======================================================================
+MODE 5 (v1_mode_5) ¡ª feasibility v1
+======================================================================
+
+  Total RTP (%):         515.920
+  Base RTP (pp):         108.454
+  Feature RTP (pp):      407.467
+  Base:Feature split:    21.0 : 79.0
+  Base hit rate:         33.518%
+  Base CV:               4.577
+  Trigger rate:          3.0681%  (1 in 33)
+  Feature EV (¡Ábet):     132.809
+  Feature CV (cond):     0.858
+  P(count_x=1):          5.000%
+  P(R¡Ý1000/spin):        9.98e-08
+  Jackpot R1/R2/R3:      0.334% / 0.407% / 0.384%
+  Blank R1/R2/R3:        33.11% / 31.75% / 24.16%
+
+  --- vs user_brief v1.1 target bands ---
+  [OK  ] Total RTP %                              got=515.920  band=[480.000, 520.000]
+  [OK  ] P(R¡Ý1000/spin)                           got=0.000000  max=0.000010
+  [OK  ] Jackpot R1 marginal                      got=0.0033  max=0.0060
+  [OK  ] Jackpot R2 marginal                      got=0.0041  max=0.0060
+  [OK  ] Jackpot R3 marginal                      got=0.0038  max=0.0060
+
+  --- per-pay_id table ---
+    pay_id    8: P=  9.9130%  1 in         10  RTP  22.857pp
+    pay_id    9: P= 19.5375%  1 in          5  RTP  19.537pp
+    pay_id    3: P=  0.5365%  1 in        186  RTP  18.404pp
+    pay_id    5: P=  1.1282%  1 in         89  RTP  17.095pp
+    pay_id    2: P=  0.1802%  1 in        555  RTP  13.053pp
+    pay_id   71: P=  1.6074%  1 in         62  RTP   8.037pp
+    pay_id   21: P=  0.1622%  1 in        617  RTP   4.865pp
+    pay_id    7: P=  0.4063%  1 in        246  RTP   3.448pp
+    pay_id    4: P=  0.0439%  1 in      2,280  RTP   0.658pp
+    pay_id    1: P=  0.0025%  1 in     40,090  RTP   0.499pp
+
+  --- bucket distribution ---
+    ge200_lt500        rate   0.0025%  RTP   0.499pp
+    ge100_lt200        rate   0.0374%  RTP   4.487pp
+    ge50_lt100         rate   0.1923%  RTP  12.530pp
+    ge20_lt50          rate   1.1433%  RTP  30.456pp
+    ge10_lt20          rate   0.8821%  RTP   9.041pp
+    ge5_lt10           rate   1.8095%  RTP   9.047pp
+    ge1_lt5            rate  29.4505%  RTP  42.394pp
+
+======================================================================
+MODE 7 (v1_mode_7) ¡ª feasibility v1
+======================================================================
+
+  Total RTP (%):         81.703
+  Base RTP (pp):         24.048
+  Feature RTP (pp):      57.654
+  Base:Feature split:    29.4 : 70.6
+  Base hit rate:         11.528%
+  Base CV:               8.603
+  Trigger rate:          1.2534%  (1 in 80)
+  Feature EV (¡Ábet):     46.000
+  Feature CV (cond):     0.735
+  P(count_x=1):          5.000%
+  P(R¡Ý1000/spin):        8.27e-08
+  Jackpot R1/R2/R3:      0.091% / 0.413% / 0.179%
+  Blank R1/R2/R3:        62.24% / 70.66% / 61.24%
+
+  --- vs user_brief v1.1 target bands ---
+  [FAIL] Total RTP %                              got=81.703  band=[83.000, 87.000]
+  [OK  ] Base hit rate                            got=0.1153  band=[0.1000, 0.1600]
+  [OK  ] P(R¡Ý1000/spin)                           got=0.000000  max=0.000010
+  [OK  ] Jackpot R1 marginal                      got=0.0009  max=0.0060
+  [OK  ] Jackpot R2 marginal                      got=0.0041  max=0.0060
+  [OK  ] Jackpot R3 marginal                      got=0.0018  max=0.0060
+
+  --- per-pay_id table ---
+    pay_id    9: P=  8.9513%  1 in         11  RTP   8.951pp
+    pay_id    8: P=  1.8565%  1 in         54  RTP   4.430pp
+    pay_id    3: P=  0.0955%  1 in      1,048  RTP   3.792pp
+    pay_id    5: P=  0.1673%  1 in        598  RTP   2.874pp
+    pay_id   71: P=  0.2924%  1 in        342  RTP   1.462pp
+    pay_id    7: P=  0.1481%  1 in        675  RTP   1.279pp
+    pay_id    2: P=  0.0104%  1 in      9,586  RTP   0.907pp
+    pay_id    1: P=  0.0012%  1 in     84,014  RTP   0.238pp
+    pay_id   21: P=  0.0022%  1 in     44,633  RTP   0.067pp
+    pay_id    4: P=  0.0032%  1 in     31,651  RTP   0.047pp
+
+  --- bucket distribution ---
+    ge200_lt500        rate   0.0012%  RTP   0.238pp
+    ge100_lt200        rate   0.0047%  RTP   0.563pp
+    ge50_lt100         rate   0.0220%  RTP   1.643pp
+    ge20_lt50          rate   0.1830%  RTP   4.934pp
+    ge10_lt20          rate   0.1452%  RTP   1.468pp
+    ge5_lt10           rate   0.3642%  RTP   1.821pp
+    ge1_lt5            rate  10.8079%  RTP  13.381pp
+
+======================================================================
+CROSS-MODE INVARIANT CHECKS
+======================================================================
+
+  [OK  ] mode2_rtp_gt_mode1_rtp                   got=284.44  cond=>94.39
+  [OK  ] mode5_rtp_gt_mode2_rtp                   got=515.92  cond=>284.44
+  [OK  ] mode7_rtp_lt_mode1_rtp                   got=81.70  cond=<94.39
+  [OK  ] LUCKY_MONO_mode2_hit_gt_mode1            got=0.3356  cond=>0.1778
+  [FAIL] mode5_hit_ge_mode2_hit                   got=0.3352  cond=>=0.3356
+  [OK  ] MODE7_LOCK_mode7_hit_lt_mode1            got=0.1153  cond=<0.1778
+  [OK  ] CV_TREND_mode7_cv_ge_mode1               got=8.603  cond=>=6.118
+  [OK  ] CV_TREND_mode2_cv_le_mode1               got=4.381  cond=<=6.618
+  [OK  ] FEATURE_mode2_trigger_ge_mode1           got=0.03089  cond=>=0.01223
+  [FAIL] FEATURE_mode5_trigger_ge_mode2           got=0.03068  cond=>=0.03088
+  [OK  ] MODE7_LOCK trig marg=m1 (¡À5e-4)          diff=0.00029  cond=<=0.00050
+  [INFO] pay_id 1 (wild_pure 200¡Á) freq across modes: m1=0.0012%, m2=0.0013%, m5=0.0025%, m7=0.0012%
+  [OK  ] v1.1 ¡ìc: m2 200¡Á+ freq = m1 (m2/m1 ¡Ü 1.5¡Á) got=1.075  cond=<=1.500
+  [OK  ] v1.1 ¡ìd: m5 200¡Á+ freq > m2 (m5/m2 ¡Ý 1.1¡Á) got=1.919  cond=>=1.100
+  [OK  ] v1.1 ¡ìe: m7 pay_id 1 freq = m1 (within ¡À15%) got=0.985  cond=<=1.150
+  [OK  ]    - lower bound (m7/m1 ¡Ý 0.85)          got=0.985  cond=>=0.850
+  [OK  ] v1.1 ¡ìe: m7 pay_id 2 freq = m1 (within ¡À15%) got=0.985  cond=<=1.150
+  [OK  ]    - lower bound (m7/m1 ¡Ý 0.85)          got=0.985  cond=>=0.850
+  [OK  ] v1.1 ¡ìe: m7 pay_id 21 freq = m1 (within ¡À15%) got=0.985  cond=<=1.150
+  [OK  ]    - lower bound (m7/m1 ¡Ý 0.85)          got=0.985  cond=>=0.850
+
+======================================================================
+END FEASIBILITY DUMP
+======================================================================

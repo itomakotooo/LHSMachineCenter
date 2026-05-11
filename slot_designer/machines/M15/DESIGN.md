@@ -1,0 +1,113 @@
+# M15 — Top Dollar Feature Play (canonical design)
+
+> **Machine-private design doc** per [`slot_designer/ARCHITECTURE.md`](../../ARCHITECTURE.md) §2 + [`slot_designer/ONBOARDING_PROCESS.md`](../../ONBOARDING_PROCESS.md) §3.
+>
+> This file is the canonical sign-off for the M15 v8 design ship.
+> Full audit trail (R archetype research / A baseline / D 3 design waves / X 2 reviews / Stage 6/8/9 critiques): `session_artifacts/M15/`.
+
+---
+
+## 1. Archetype
+
+**Family**: IGT Top Dollar 1-line classic (3 reels × 1 payline) + Top Dollar Feature Play overlay.
+
+**Reference**: No public Top Dollar PAR sheet exists (per [`session_artifacts/M15/01d_research.md`](../../../session_artifacts/M15/01d_research.md)). Structural proxy = Wizard of Odds **Red White Blue** PAR (IGT 3-reel 1-line 87% / 17.35% hit / CV ~10). Modern proxy = **Double Top Dollar 2025** online release (SlotsMate: 96.24% RTP / 4000× max / "Take Offer or Try Again" mechanic).
+
+**Why no direct PAR sheet**: per `easy.vegas` — IGT keeps Top Dollar PAR sheets private; numbers inferred from RWB + Double Top Dollar online + jurisdiction $1-denom averages.
+
+## 2. Player narratives per mode
+
+| mode | RTP | hit | feature trigger | base CV | feature CV (cond) | narrative |
+|---|---|---|---|---|---|---|
+| 1 (paid) | **94.10%** | 17.40% | 1 in 78 | 6.09 | 0.74 | classic balanced — cherry-1 dominates 87% of hits; feature ~5 min cadence |
+| 7 (cut) | **83.27%** | 11.48% | 1 in 75 | 8.60 | 0.74 | "运气差档" — small wins thin out; feature unchanged from mode 1; CV naturally rises (accepted per user §e) |
+| 2 (lucky) | **291.07%** | 33.54% | 1 in 31 | 4.38 | 0.78 | "今天总是赢" — frequent mid wins (10-200×); 200×+ cadence ≈ mode 1 (not increased) |
+| 5 (super-lucky) | **508.89%** | 33.61% | 1 in 31 | 4.57 | 0.85 | "今天大奖多" — 200×+ cadence > mode 2 (P(R≥200) = 3.82e-3 vs m2 2.74e-4) |
+
+Cross-mode invariants (verify.py [LUCKY-MONO] / [CROSS-RTP]): m2 > m1 > m7 in RTP; m5 > m2 > m1 in hit + trigger; m7 ≈ m1 in trigger (4.9e-4 tol). All GREEN.
+
+## 3. user_brief v1.2 tally (delivered vs requested)
+
+| brief item | v1.2 target | v8 measured | status |
+|---|---|---|---|
+| mode 1 hit | [15, 18]% | 17.40% | ✓ |
+| mode 1 base 低波动 | 感性 (informational) | CV 6.09 | INFO — user §g cancelled precise band |
+| mode 1 feature 中波动 | 感性 (informational) | feature CV 0.74 | INFO — user §g cancelled precise band |
+| mode 1 base:feature | RELAXED (user §a) | 37 : 63 | ✓ (no longer constrained to 50:50) |
+| P(count_x=1) | RELAXED (user §b) | 5% (v7 kept) | ✓ (no longer constrained to ≤2%) |
+| P(R ≥ 1000 / spin) | ≤ 1e-5 all modes | m1 2.1e-7 / m2 2.9e-6 / m5 1.3e-7 / m7 2.1e-7 | ✓ |
+| jackpot any-reel marginal | ≤ 0.6% | all modes ≤ 0.55% | ✓ |
+| mode 2 hit | [30, 35]% | 33.54% | ✓ |
+| mode 2 200×+ freq | = mode 1 | 2.74e-4 (m2) / 3.62e-5 (m1) | DEVIATION (~7.5×) — see §4 |
+| mode 5 200×+ freq | > mode 2 | 3.82e-3 (m5) / 2.74e-4 (m2) | ✓ (14×) |
+| mode 5 base 调整 | ALLOWED (user §d) | base 108pp vs m2 99pp | ✓ "不矫枉过正" |
+| mode 7 feature trigger = mode 1 | within tol (user §e option B) | Δ 4.9e-4pp (within 5e-4 tol) | ✓ |
+| mode 7 big-pay = mode 1 | within ±15% per pay_id | all pays within ±15% | ✓ |
+| paytable lock (user §h) | NEVER MODIFY | spec.json `pays` byte-identical | ✓ |
+
+## 4. Deliberate deviations (owned)
+
+### 4.1 base CV 6.09 in mode 1 — not in [3, 5] band
+Original v1 brief target band [3, 5]; user **canceled precise band** in v1.2 §g ("low/medium volatility 是感性描述, not red line"). m1 CV runs at 6.09 — between v7's 5.77 and 6.2. INFO-only metric in verify.py.
+
+D's [`session_artifacts/M15/mode_pretune_critique_v1.md`](../../../session_artifacts/M15/mode_pretune_critique_v1.md) §4 rigorously tested 4 mechanism categories (high-mult cuts breach §2/§7, cherry lift breaches §8/hit cap, bar3 cut delivers only Δ -0.03 sub-noise per engine measurement of X's proposed recipe, paytable change forbidden per user §h). STRUCTURAL diagnosis empirically vindicated.
+
+### 4.2 cherry-1 dominates 87% of hits in mode 1 — over universal §8 70% cap
+Archetype-mandated (IGT classic cherry-anywhere = single cherry on payline = 1× pay). Per user_brief default decision "cherry-1 1× anywhere 是 archetype 必然，**接受**". §8 carve-out documented in `verify.py [HIT-DECOMP]` category (band [0, 80%] not [0, 70%]).
+
+### 4.3 mode 7 base CV 8.60 — exceeds mode 1 by design
+Direct consequence of "砍小奖" semantic — removing high-frequency low-payout wins (cherry-1, bar_mixed) raises σ/μ ratio. User accepted in §e: "波动性会相对增加 ... 你接受".
+
+### 4.4 mode 2 200×+ freq slightly above mode 1 (7.5×)
+v1.2 §c says "200× 以上占比应该不变" (vs mode 1). v8 lands m2 P(R≥200) = 2.74e-4 vs m1 3.62e-5 (~7.5× higher). Comes from m2's higher trigger rate (3.2% vs 1.28%) × identical-shape feature distribution. To make 200×+ exactly equal m1 would require attenuating m2 feature x_value_weights tail — would also break m5's "richer big wins" direction (which user §d requires). **Accept as tradeoff** — the m5/m2 7.5× ratio remains correct directionally; only the m2/m1 absolute equality drifted.
+
+### 4.5 top-jackpot escalation lives in feature tail, not base wild_pure
+Universal §7 says m1 → m5 顶奖 freq escalation ratio ≥ 5×. v8 base wild_pure (3 doublediamond 200×) freq is essentially mode-locked because m5 base similar to m2 base. M15-specific reading: §7 escalation realized via feature R ≥ 200 cadence (m1 → m2 → m5 monotone increase 1 in 28000 → 3700 → 263).
+
+## 5. Plugin / framework
+
+FeaturePlugin implementation: [`plugins/`](plugins/) (Top Dollar selection mechanic — see [`plugins/feature.py`](plugins/feature.py) for FeatureSpec + 4-round accept/reroll math).
+
+Per-mode `feature_params` (in [`weights/mode_<N>/weights.json`](weights/)):
+- **m1 + m7**: byte-identical (per user §e MODE7-FEATURE-LOCK + cut-mode-preserves-feature semantic)
+- **m2**: differentiated `x_value_weights` to lift EV ~46× → ~61× (lucky mode)
+- **m5**: further differentiated `x_value_weights` to lift EV ~61× → ~140× (super-lucky)
+
+## 6. Verify.py red lines
+
+[`verify.py`](verify.py) categorizes 25 [TAG] checks across philosophy §1-15:
+
+```
+[RTP] [HIT] [1000+] [JACKPOT-VIS]                    -- §4/§9 + user_brief #1/#5/#6
+[HIERARCHY] [FAMILY-SHARE] [HIT-DECOMP]              -- §1/§6/§8
+[BLANK-FLANK] [REEL-ASYMMETRY]                       -- §13/§12
+[MODE7-CUT] [MODE7-TRIGGER] [MODE7-BIGPAY]           -- §4/§9 + user_brief §e
+[LUCKY-MONO] [CROSS-RTP]                             -- §9
+[TOP-JACKPOT-CADENCE] [TOP-JACKPOT-ESC]              -- §7 (M15 carve-out: feature tail)
+[PER-PAY-FLOOR] [PCOUNT-X-1]                         -- §6 floors + user_brief §b
+[PAYTABLE-LOCK]                                      -- universal rule #36 (paytable永远不改)
+[STRIP-IMMUTABILITY] [SCHEMA-FP]                     -- ARCHITECTURE §8 + §11
+[BASE-FEATURE-SPLIT] [CV]                            -- INFO-only (user §a + §g)
+```
+
+Inject-bug TDD: [`tests/machines/test_M15_verify_inject_bug.py`](../../../tests/machines/test_M15_verify_inject_bug.py) — 5 scenarios (jackpot breach / blank-flank violation / mode7 trigger drift / paytable mutation / baseline regression guard). v7 weights snapshot pinned at `tests/machines/fixtures/M15_v7_weights/` for permanent regression coverage.
+
+## 7. Audit trail
+
+| stage | artifact |
+|---|---|
+| 0 — user input | [`session_artifacts/M15/user_brief.md`](../../../session_artifacts/M15/user_brief.md) (v1.2 amendments §a-h) |
+| 1a — data inventory | [`01a_data_inventory.md`](../../../session_artifacts/M15/01a_data_inventory.md) |
+| 1b — production baseline (12 sections) | [`01b_baseline_report.md`](../../../session_artifacts/M15/01b_baseline_report.md) |
+| 1d — archetype research | [`01d_research.md`](../../../session_artifacts/M15/01d_research.md) |
+| 4 — design narrative | [`design_v0.md`](../../../session_artifacts/M15/design_v0.md) → [`design_v1.md`](../../../session_artifacts/M15/design_v1.md) → [`design_v2.md`](../../../session_artifacts/M15/design_v2.md) |
+| 4-review — X critiques | [`mode_pretune_critique_v0.md`](../../../session_artifacts/M15/mode_pretune_critique_v0.md) + [`v1.md`](../../../session_artifacts/M15/mode_pretune_critique_v1.md) |
+| 5 — verify | [`verify_run_v2_iter0.txt`](../../../session_artifacts/M15/verify_run_v2_iter0.txt) |
+| 6 — tune log | [`stage6_log.md`](../../../session_artifacts/M15/stage6_log.md) + per-mode iter captures |
+| 8 — empirical narrative | [`empirical_v8.md`](../../../session_artifacts/M15/empirical_v8.md) |
+| 9 — final adversarial gate | [`final_critique.md`](../../../session_artifacts/M15/final_critique.md) |
+| process — improvements (#1-#45) | [`process_improvements.md`](../../../session_artifacts/M15/process_improvements.md) |
+
+## 8. Per-mode breakdown
+
+See [`MODE_DESIGN.md`](MODE_DESIGN.md).

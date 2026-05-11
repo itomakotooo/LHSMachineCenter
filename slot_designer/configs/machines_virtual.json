@@ -66,7 +66,7 @@
       "logicClassNames": [
         "SimulatedClassicPayline3ReelWithBonus"
       ],
-      "configSummaryMd5": "6938a5d73a27f4b2f83bdad117aae78d",
+      "configSummaryMd5": "aaaf27f17a7bb775adfc936ea95703ac",
       "codeSummaryMd5": "b763f30747a1dd07f7ef0427a4496658",
       "available": true,
       "_source_machine": "M15",
@@ -75,19 +75,19 @@
       "_weights_path_template": "slot_designer/machines/M15/weights/mode_{mode}/weights.json",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "0a3a1627f0a0235166b93fbde2d188e0",
+          "configSummaryMd5": "64feb72674cab14a32512308ab162893",
           "codeSummaryMd5": "b763f30747a1dd07f7ef0427a4496658"
         },
         "2": {
-          "configSummaryMd5": "195972e9ee554f29e48597269a2c7b87",
+          "configSummaryMd5": "3fc0c9ef6084e441de6fb06cfc71eac6",
           "codeSummaryMd5": "b763f30747a1dd07f7ef0427a4496658"
         },
         "5": {
-          "configSummaryMd5": "8a595e96909eec4e08fedeea44cae128",
+          "configSummaryMd5": "34a9e660c1918930c9582c133f5228ee",
           "codeSummaryMd5": "b763f30747a1dd07f7ef0427a4496658"
         },
         "7": {
-          "configSummaryMd5": "7d6100492dfa9e4b025cd822cda0d9fd",
+          "configSummaryMd5": "7b5643dfcfa864f7eb55dea87a017512",
           "codeSummaryMd5": "b763f30747a1dd07f7ef0427a4496658"
         }
       }
