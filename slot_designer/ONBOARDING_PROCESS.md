@@ -451,7 +451,7 @@ machines/<M>/MODE_DESIGN.md  这台机的 per-mode 设计  机台私有
 | M1 | pre-Phase-A | — | base only，refactor 时迁入新布局 |
 | M37 | pre-Phase-A | — | base only |
 | M279 | pre-Phase-A | — | custom engine adapter |
-| M15 | 2026-05-11 | (TBD on merge) | **首次跑完整流程** — 6-agent × 11-stage × 3 D waves × 2 X reviews → v8 weights GREEN on 25 verify categories；session_artifacts/M15/process_improvements.md 累 45 条改进，§1.1 / §1.2 / §2.1 已 backport；详细 audit trail 见 session_artifacts/M15/ |
+| M15 | 2026-05-11 | `275675c` (feature commit) + merge SHA below | **首次跑完整流程** — 6-agent × 11-stage × 3 D waves × 2 X reviews → v8 weights GREEN on 25 verify categories；session_artifacts/M15/process_improvements.md 累 45 条改进，§1.1 / §1.2 / §2.1 已 backport；详细 audit trail 见 session_artifacts/M15/ |
 
 ### §11.1 First-run lessons (M15 2026-05-11) backported
 
