@@ -205,17 +205,28 @@ Stage  Owner     Action
 4      D         Design Narrative：综合 R / A / brief / philosophy
                   写 DESIGN.md + MODE_DESIGN.md + target files
                   → design_v0.md + targets_v0/
+                  **必含**：§14 全 symbol 排布 audit（per PHILOSOPHY §14.5；
+                  每条 reel 每 symbol 都 audit，不只 bars/top）+ §15 PWDF
+                  mechanism 选择（per PHILOSOPHY §15.9；物理 reel 强制
+                  mechanism B redistribute，virtual reel 走 mechanism C）。
+                  违反任一直接修，不能"标 informational 跳过"。
 
        X         Pre-Tune Review (一次)：
                   - 玩家手感讲得通吗？
                   - 数字 cite 哪个 archetype 数据？
                   - 跨 mode 叙事自洽吗？
+                  - §14 audit 全 symbol 覆盖 + 违反点 D 给修复方案?
+                  - §15 PWDF active optimization 选了哪个 mechanism + 提
+                    升量?
                   → 不通过回 4 改；通过进 5
 
 5      V         TDD Verify Setup：从 design intent 写 verify.py 红线 (不
                   抄旧代码)；跑 baseline RED；注入 bug 测 verify 真能抓
                   → 5 通过条件：故意改坏 weights → 触发对应 RED；revert
                     → 回 baseline RED
+                  **必含**：[VISUAL-RHYTHM] 类别（§14.5；具体阈值机台特定）
+                  + [PWDF-FLOOR] 类别（§15.9；具体 floor 机台特定）。两者
+                  写不全 = Stage 5 不通过。
 
 6      多 agent  Per-Mode Tune Loop (mode 1 → 7 → 2 → 5 顺序)
                   详见 §5.6

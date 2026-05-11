@@ -75,12 +75,14 @@ Per-mode `feature_params` (in [`weights/mode_<N>/weights.json`](weights/)):
 
 ## 6. Verify.py red lines
 
-[`verify.py`](verify.py) categorizes 25 [TAG] checks across philosophy §1-15:
+[`verify.py`](verify.py) categorizes 27 [TAG] checks across philosophy §1-15:
 
 ```
 [RTP] [HIT] [1000+] [JACKPOT-VIS]                    -- §4/§9 + user_brief #1/#5/#6
 [HIERARCHY] [FAMILY-SHARE] [HIT-DECOMP]              -- §1/§6/§8
 [BLANK-FLANK] [REEL-ASYMMETRY]                       -- §13/§12
+[VISUAL-RHYTHM]                                      -- §14.5 (v8.1) bar/top cluster + same-sym gap + top-pair dist
+[PWDF-FLOOR]                                         -- §15.9 (v8.1) top any-reel + mid-pay floor
 [MODE7-CUT] [MODE7-TRIGGER] [MODE7-BIGPAY]           -- §4/§9 + user_brief §e
 [LUCKY-MONO] [CROSS-RTP]                             -- §9
 [TOP-JACKPOT-CADENCE] [TOP-JACKPOT-ESC]              -- §7 (M15 carve-out: feature tail)
@@ -90,7 +92,45 @@ Per-mode `feature_params` (in [`weights/mode_<N>/weights.json`](weights/)):
 [BASE-FEATURE-SPLIT] [CV]                            -- INFO-only (user §a + §g)
 ```
 
-Inject-bug TDD: [`tests/machines/test_M15_verify_inject_bug.py`](../../../tests/machines/test_M15_verify_inject_bug.py) — 5 scenarios (jackpot breach / blank-flank violation / mode7 trigger drift / paytable mutation / baseline regression guard). v7 weights snapshot pinned at `tests/machines/fixtures/M15_v7_weights/` for permanent regression coverage.
+Inject-bug TDD: [`tests/machines/test_M15_verify_inject_bug.py`](../../../tests/machines/test_M15_verify_inject_bug.py) — 7 scenarios (jackpot breach / blank-flank violation / mode7 trigger drift / paytable mutation / **visual-rhythm violation** (v8.1) / **pwdf floor breach** (v8.1) / baseline regression guard). v7 weights+strips snapshot pinned at `tests/machines/fixtures/M15_v7_weights/` for permanent regression coverage.
+
+## 6.1 v8.1 visual polish wave (2026-05-11)
+
+Two §14.5 / §15.9 PHILOSOPHY-mandate gaps from v8 closed in this wave; full audit trail at [`session_artifacts/M15/v81_visual_rhythm_audit.md`](../../../session_artifacts/M15/v81_visual_rhythm_audit.md) + [`session_artifacts/M15/v81_pwdf_audit.md`](../../../session_artifacts/M15/v81_pwdf_audit.md).
+
+### 6.1a §14 strip rearrange — visual rhythm
+
+**Before (v8)**: R1 non-blank sequence had 6-consecutive bar-family run (3bar→2bar→1bar→3bar→2bar→1bar at non-blank idx 6-11) — reads as "all bar zone" to player. R2 had 5-run. R1+R2 also had top-symbol adjacency (high7+doublediamond consecutive at non-blank idx 4-5 and 16-17).
+
+**After (v8.1)**: Per-(reel, symbol) multiset preserved → marginals + RTP + hit + share UNCHANGED. Non-blank position ordering rearranged to satisfy:
+
+| §14 threshold | M15 value | rationale |
+|---|---|---|
+| bar-family max consecutive run (non-blank seq) | ≤ 4 | 18-non-blank cyclic; 11 bars across tiers; R3 already at 3 proves achievable; 4 = compromise |
+| top-symbol max consecutive run (non-blank seq) | ≤ 1 | no top-top adjacency; 6 top instances across 18 nb-positions |
+| top-pair min cyclic distance (full strip) | ≥ 8 stops (~22% of reel) | prevent "two top in a flash" feel |
+| same-symbol min cyclic gap (full strip) | ≥ 5 stops | conservative floor; current min was 6 stops |
+
+R3 unchanged (already clean). R1/R2 hamming distance 4/18 each.
+
+### 6.1b §15 mechanism B — PWDF active optimization
+
+**Before (v8)**: PWDF was passive — top symbol any-reel max p_window 15.83% (mode 1 doublediamond) measured from natural strip layout. Per PHILOSOPHY §15.9 backport, passive measurement does NOT satisfy §15.
+
+**After (v8.1)**: Mechanism B (RTP-neutral Blank redistribute) applied per mode per reel: non-top-adj Blanks → floor=1; top-adj Blanks absorb the freed weight. Total Blank weight per reel **preserved exactly** → marginals UNCHANGED → RTP/hit/share UNCHANGED. Top symbol any-reel window visibility lifted:
+
+| mode | top symbol | pre-B max p_window | post-B max p_window | lift |
+|---|---|---:|---:|---:|
+| 1 | doublediamond | 16.42% | **31.47%** | +15.0pp |
+| 1 | high7 | 16.42% | **31.11%** | +14.7pp |
+| 1 | topdollar | 15.08% | **25.82%** | +10.7pp |
+| 2 | high7 | 20.97% | **29.24%** | +8.3pp |
+| 5 | high7 | 21.17% | **29.31%** | +8.1pp |
+| 7 | doublediamond | 19.36% | **38.71%** | +19.4pp |
+
+**Intentional side effect** (user-confirmed v8.1 brief: "不算副作用,甚至是需求"): mid-pay symbol (cherry / mid-bar) window visibility drops — e.g. mode 1 cherry R3 18.28% → 4.81%. Per philosophy §15.9: "玩家视觉关注从 hot mid-pays 转移到 branded top symbols" is welcomed.
+
+`[PWDF-FLOOR]` verify.py floors set ~2-5pp below post-B achieved to leave tuner margin; mid-pay floor (3% standard / 2% cut) is a "didn't disappear entirely" sanity check.
 
 ## 7. Audit trail
 

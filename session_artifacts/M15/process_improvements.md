@@ -576,4 +576,36 @@ Alternative fix: Stage 8 deliverable checklist should include "simulate.py invoc
 
 ---
 
+## #46 — Inject-bug fixtures must pin reel_strips.json too (v8.1 polish wave, 2026-05-11)
+
+**Symptom**: After v8.1 strip rearrange (`slot_designer/machines/M15/reel_strips.json` changed), `test_inject_blank_flank_violation` started failing because the test assumed v7 strip layout (R1 pos 1 = cherry) — mutation `pos[3] = cherry` was supposed to create X-Blank-X around `pos[2] = blank` between pos 1 (cherry) and pos 3 (cherry). Post-rearrange, pos 1 became `doublediamond`, so the mutation didn't create the violation.
+
+Also: `test_baseline_v2_iter0_pattern` failed because the v2 candidate weight-building code (in `design_v2_feasibility.build_candidate_*`) addresses non-blank stops by symbol→position-in-OLD-strip lookup. New strip → wrong symbol positions → wrong weights → cascade of REDs unrelated to verify.
+
+**Fix**: Pin v7 reel_strips.json alongside v7 weights in `tests/machines/fixtures/M15_v7_weights/`. Update fixture loader to use the pinned strip (not `m15_verify.DEFAULT_STRIPS` which points at live strip). Tests now reproducible regardless of future live-strip changes.
+
+**Fix for ONBOARDING_PROCESS.md §5 Stage 5**: When pinning weights as fixtures for inject-bug tests, also pin the strip used to build them. Any test that runs the engine needs BOTH (spec, strip, weights) to be in a coherent state.
+
+---
+
+## #47 — Strip rearrange CSP template (v8.1 polish wave, 2026-05-11)
+
+**Symptom**: `slot_designer/scripts/rearrange_m1_strips.py` handles M1-style strips (22 stops, single bar-tier check) with greedy first-violation swap. M15 needs more constraints simultaneously (bar-family ≤4 / top-symbol ≤1 / top-pair distance ≥8 / same-symbol gap ≥5 / §13). Wrote machine-specific `session_artifacts/M15/scripts/m15_v81_rearrange_strip.py` with broader greedy + restart loop.
+
+**Observation**: The two scripts share 80% structure (load strip, repair per reel, permute weights alongside, verify marginals unchanged). Promoting a generic CSP template to `slot_designer/scripts/rearrange_strip.py` with pluggable per-machine "constraint set" callable would be cleaner.
+
+**Fix for ARCHITECTURE.md**: Consider adding `slot_designer/scripts/rearrange_strip.py` as a reusable CSP template with machine-specific constraints injected. Out of scope for v8.1 (M15 has its own working script). Track for next strip-rearrange need.
+
+---
+
+## #48 — Mechanism B redistribute template parity (v8.1 polish wave, 2026-05-11)
+
+**Symptom**: `slot_designer/scripts/redistribute_m1_blanks.py` hardcodes `TOP_PRIZE_SYMBOLS = ("Diamond1", "Diamond2", "Seven1", "Seven2")` for M1. M15 needs `("doublediamond", "high7", "topdollar")`. Wrote machine-specific `session_artifacts/M15/scripts/m15_v81_mechanism_b.py`.
+
+**Observation**: Like #47, ~90% shared code. The "what are this machine's top symbols" is the only differentiator. Could promote to `slot_designer/scripts/mechanism_b_redistribute.py` with `--machine M15` flag reading `machines/<M>/reel_strips.json` `_archetype.top_symbols` or similar.
+
+**Fix for ARCHITECTURE.md + machines/<M>/reel_strips.json schema**: Add an optional `_design.top_symbols` block to reel_strips.json (or DESIGN.md frontmatter) declaring which symbols are "top" for §15 mechanism B purposes. Promote redistribute script to a generic CLI driven by that declaration.
+
+---
+
 (Continue logging as session progresses.)

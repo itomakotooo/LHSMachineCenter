@@ -287,6 +287,24 @@ verify 类别建议：`REEL-ASYMMETRY`（per-mode R1 vs 末 reel blank + 顶奖�
 
 文献：行业 IGT PAR sheet 实证 + [acaciainvestmentresearch (Near Misses)](https://www.acaciainvestmentresearch.com/post/reconfiguring-loss-the-power-of-near-misses-in-slot-machines)（"Symbol distribution adjusted purely for aesthetics"）。
 
+### 14.5 Iteration review mandate（M15 v8.1 backport）
+
+§14 audit 在 **Stage 4 Designer 设计阶段** 和 **Stage 5 Verifier 红线阶段** 都是 **mandatory gate**，不能"暂时接受 + 标 informational"。同 family 视觉扎堆是玩家**直接感知层**的硬问题，跟 §13 同级别强制。
+
+**Audit scope: 每条 reel 上每个 symbol 都要审，不只是 bars 或 top symbols**：
+
+- **同 family 连续段长度**（max consecutive run, 把 1/2/3 bar 视为同 family — 玩家粗看不分 tier）
+- **同 symbol 重复实例间距**（同一 reel 上同 symbol 多次出现，min 间距 stops）
+- **顶奖 symbol pair-wise 距离分布**（同 reel 上两个 ◆◆ 之间 / 两个 Seven 之间）
+- **Brand symbol 跨 reel 长度均匀性**（不集中前半段或后半段）
+- **Filler symbol**（jackpot / 装饰类）的位置合理性（不卡在两个顶奖之间作"挡路"）
+
+任一维度违反"合理"判定 → **必须 iterate 修复**，不可"verify GREEN with informational caveat 跳过"。
+
+修复路径：strip 重排（preserves per-(reel, symbol) marginal → §13 不变 → RTP/hit/share 不动）。代价：strip md5 翻 → 已有 rawdata 失效需要重采。可以接受。
+
+Universal layer **不写**具体数字（"max bar consecutive ≤ X" / "min top-symbol pair distance ≥ Y" 都在 machines/<M>/verify.py + DESIGN.md）。Universal layer 只规定**哪些维度必须 audit**、**违反时必须修不能跳过**。
+
 ---
 
 ## 15. Window visibility (PWDF) — 重要 symbol 视窗 visibility
@@ -389,6 +407,23 @@ Mechanism B redistribution 必须满足以下约束方向（universal direction�
 每机台用 `machines/<M>/verify.py` 的 **`WINDOW-VISIBILITY-CAP`** / **`BLANK-RATIO-CAP`** / **`MID-PAY-VISIBLE-FLOOR`** 三类红线强制。
 
 数字依据：(a) 该机台 archetype；(b) 玩家可见阈值；(c) 物理 reel 自然上限。**不要 cross-machine 抄数字** — 这是 [`memory/feedback_adversarial_self_review.md`](../../memory/feedback_adversarial_self_review.md) 警惕的 "picked threshold" 反例。
+
+### 15.9 Iteration review mandate（M15 v8.1 backport）
+
+§15 PWDF 是 **必须主动 optimize 的硬约束**，不是"measure 后 informational 反正物理 reel 自然就 4-7 PWDF"。
+
+**Physical-reel 机台（无 virtual mapping）**：
+- 必须跑 mechanism B (RTP-neutral blank redistribute) — 不是"可选 nice-to-have"
+- 跑前 measure baseline (strip 自然 PWDF) → 跑后 measure 提升量 → 写 verify.py PWDF floor
+- baseline PWDF 4-7（strip 自然） **不算"达成 §15"**，要靠 mechanism B 主动 push 才算
+
+**Virtual-reel-mapping 机台（Harrigan IGT 风格）**：
+- mechanism C（virtual reel mapping）→ PWDF 可达 50%+
+- 这条机台 PWDF floor 应显著高 (e.g., ≥ 40%) 反映 architecture 优势
+
+Side effect 不是 bug：mechanism B 让 non-top-adj 邻接的 mid-pay symbol (Cherry / mid bars) 视窗 visibility 下降 — 这通常是**设计需求**（玩家视觉关注从"hot mid-pays" 转移到"branded top symbols"），不是 regression。允许放低 mid-pay visibility floor 给 top symbols 让路。
+
+Universal 层强制方向："PWDF 必须 actively optimized via 某种 mechanism；passive measurement 不达成 §15"。**具体 floor / cap 数字、Side-effect mid-pay 视觉跌幅可接受范围 都在 machines/<M>/verify.py + DESIGN.md，不写在此处。**
 
 ---
 
