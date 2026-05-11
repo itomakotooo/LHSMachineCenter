@@ -1,0 +1,186 @@
+{
+  "label": "M15_mode5_v1_designer_authored",
+  "source_machine": "M15",
+  "source_mode": 5,
+  "source_spins": null,
+  "source_rtp_ci_pp": null,
+  "_provenance": {
+    "authored_by": "Agent D (Designer)",
+    "stage": "ONBOARDING Stage 4 revision",
+    "iteration": "v1",
+    "date": "2026-05-11",
+    "design_doc": "session_artifacts/M15/design_v1.md",
+    "feasibility_dump": "session_artifacts/M15/feasibility_v1.txt",
+    "_note": "Mode 5 v1 — MAJOR change vs v0: base byte-equal m2 lock DROPPED per v1.1 §d; m5 base CAN lift over m2. 200×+ freq lifts over m2 (mode 1 = mode 2 < mode 5)."
+  },
+
+  "rtp_pct": 500.0,
+  "bucket_rate": {
+    "_note": "Derived from base (m2-similar with modest lift per §d) + feature_params buffed (EV 133×).",
+    "_derive_from": "tuner output + analyzer report"
+  },
+
+  "hit_rate": 0.335,
+  "zero_win_rate": null,
+  "std_return_x": null,
+  "max_return_x": null,
+  "big_win_x10_rate": null,
+  "tail_dep_ge10x": null,
+  "tail_dep_ge20x": null,
+  "tail_dep_ge50x": null,
+  "tail_dep_ge100x": null,
+  "loss_streak_p95": null,
+  "loss_streak_max": null,
+
+  "_design_targets_v1_M15_only": {
+    "_schema_note": "Mode 5 derives from Mode 2 v1 candidate base + modest lift per v1.1 §d. feature_params block from v7 m5.",
+
+    "_v0_to_v1_changes": [
+      "§d MODE5_BASE_LOCK (m5 base byte-equal m2) DROPPED — m5 can lift base over m2",
+      "§d 200×+ frequency continues lifting (mode 1 = mode 2 < mode 5)",
+      "§d '不要矫枉过正' — lifts modest, not 'totally different machine'",
+      "Picked concrete X = 200 for §7 top-jackpot escalation (per X §3.3 + critique item 10)"
+    ],
+
+    "rtp": {
+      "target_pct": 500.0,
+      "band_pct": [480.0, 520.0],
+      "v1_feasibility": 515.92,
+      "v1_status": "PASS (just under upper band)",
+      "_source": "DESIGN_PHILOSOPHY §C mode 5 invariant"
+    },
+
+    "base_rtp_pp": {
+      "v1_feasibility": 108.45,
+      "_note": "Lifted modestly over m2's 99.13pp per §d. NO byte-equal lock to m2.",
+      "_source": "feasibility_v1.txt + user_brief.md v1.1 §d (base lift allowed)"
+    },
+
+    "feature_rtp_pp": {
+      "v1_feasibility": 407.47,
+      "_note": "Derived from trigger 3.07% × v7 m5 EV 132.81×. Feature_params preserved from v7 m5.",
+      "_source": "feasibility_v1.txt"
+    },
+
+    "base_feature_split_target_pp": {
+      "base": 25.0,
+      "feature": 75.0,
+      "tolerance_pp": 10.0,
+      "_note": "mode 5 super-lucky narrative: feature carries the lift; base ~108pp (modest lift over m2).",
+      "_source": "design_v1.md §5.4"
+    },
+
+    "hit_rate": {
+      "target": 0.335,
+      "band": [0.30, 0.35],
+      "v1_feasibility": 0.3352,
+      "v1_status": "PASS",
+      "_note_vs_m2": "v1 m5 hit 0.3352 ≈ m2 hit 0.3356 (within 0.04pp — both at top of [30, 35] band). m5 hit ≥ m2 hit invariant satisfied within noise.",
+      "_source": "design_v1.md §5.4"
+    },
+
+    "base_cv": {
+      "v1_feasibility": 4.58,
+      "_note": "Slightly higher than m2 base CV (4.38) due to lifted big-pay marginals (doublediamond) introducing more tail variance. Still well under m1's 6.12.",
+      "_source": "feasibility_v1.txt"
+    },
+
+    "feature_cv_conditional": {
+      "v1_feasibility": 0.858,
+      "_note": "Preserves v7 m5 feature_params. EV 133× via x_value_weights upper shift. Same near-miss vs [1,2] aspirational band.",
+      "_source": "preserve v7 m5 feature_params"
+    },
+
+    "trigger_rate": {
+      "target": 0.030,
+      "band": [0.028, 0.033],
+      "v1_feasibility": 0.03068,
+      "v1_status": "PASS",
+      "_note_vs_m2": "v1 m5 trigger 3.068% ≈ m2 trigger 3.089% (within noise; m5 slightly lower because R3 topdollar=16 same; minor weight changes propagate)",
+      "_source": "DESIGN_PHILOSOPHY §9 + FEATURE_mode5_trigger_ge_mode2"
+    },
+
+    "feature_ev_x": {
+      "target": 133.0,
+      "band": [125.0, 145.0],
+      "v1_feasibility": 132.81,
+      "v1_status": "PASS",
+      "_source": "v7 m5 feature_params preserved unchanged (EV calibrated for super-lucky narrative)"
+    },
+
+    "p_count_x_eq_1_max": {
+      "max": 0.06,
+      "v1_feasibility": 0.05,
+      "v1_status": "PASS",
+      "_source": "user_brief.md v1.1 §b (uses v7 m5 feature_params = 5%)"
+    },
+
+    "p_r_ge_1000_per_spin_max": {
+      "max": 0.00001,
+      "v1_feasibility": 9.98e-08,
+      "v1_status": "PASS (100× under cap — large safety margin)",
+      "_note": "v7 m5 already calibrated to kill value=1000 in x_value_weights; v1 preserves. P(R≥1000/spin) very low.",
+      "_source": "user_brief #5"
+    },
+
+    "p_value_1000_per_pick_max": {
+      "_note": "Per X §6.5 — explicit cap on per-pick weight of value=1000 in x_value_weights.",
+      "max": 0.001,
+      "v7_value": 0.0001,
+      "_source": "X §6.5 Pareto-trap defense for tuner avoidance of easy-EV-via-value=1000 path"
+    },
+
+    "top_jackpot_escalation_X_200": {
+      "_concrete_X_picked": 200,
+      "_note": "Per X §3.3 + critique item 10 — pick concrete X for P(feature R ≥ X per paid spin) escalation m5 > m2 > m1.",
+      "v1_p_r_ge_200_per_spin": {
+        "mode_1": "~8.5e-5 (trigger 1.22% × P(R ≥ 200 per trigger) ~0.7%)",
+        "mode_2": "~6.2e-4 (trigger 3.09% × P(R ≥ 200 per trigger) ~2.0%)",
+        "mode_5": "~6.1e-3 (trigger 3.07% × P(R ≥ 200 per trigger) ~20%)"
+      },
+      "ratio_m5_over_m2": "~9.8",
+      "ratio_m5_over_m1": "~72",
+      "_status": "PASS — m5 > m2 > m1 monotone with healthy gap (X §3.3 requested m5/m2 ≥ ~2; v1 has 9.8×)",
+      "_source": "X §3.3 + DESIGN_PHILOSOPHY §7 + design_v1.md §8.3"
+    },
+
+    "pay_id_1_freq_vs_mode_2_min": {
+      "_pay_id": 1,
+      "_pay_name": "wild_pure 200×",
+      "min_ratio": 1.1,
+      "v1_feasibility_ratio": 1.919,
+      "v1_status": "PASS (m5 wild_pure freq nearly 2× m2's per §d)",
+      "_source": "user_brief.md v1.1 §d (mode 1 = mode 2 < mode 5 for 200×+ freq)"
+    },
+
+    "jackpot_filler_marginal_max_per_reel": {
+      "max": 0.006,
+      "v1_feasibility": {"R1": 0.00334, "R2": 0.00407, "R3": 0.00384},
+      "v1_status": "PASS",
+      "_source": "user_brief #6"
+    },
+
+    "feature_lift_vs_mode_2": {
+      "feature_rtp_lift_pp_v1": "+222pp (m2 185 → m5 407)",
+      "feature_ev_lift_x_v1": "+73× (m2 60 → m5 133)",
+      "feature_ev_ratio": 2.22,
+      "_source": "design_v1.md §5.4",
+      "lever_x_value_weights": "v7 m5 has weight upper-shifted: value=100 weight 4.5 vs m2 0.09; per-value probs heavier on 100/50",
+      "lever_x_count_weights": "v7 m5 keeps (5,40,40,12,3) same as m1/m2 — relaxed per v1.1 §b",
+      "lever_y_count_weights": "v7 m5 = (40, 35, 25) — much heavier on count_y=2 (×4 multiplier) than m2 (60, 30, 10)"
+    },
+
+    "cross_mode_locks_reference": {
+      "_v0_to_v1_change": "v0 had MODE5_BASE_LOCK (m5 base byte-equal m2). v1.1 §d DROPS this lock.",
+      "mode_5_base_NOT_byte_equal_m2_per_v1.1_d": "m5 base lifted over m2 modestly; '不要矫枉过正' (don't go beyond modest lift)",
+      "mode_5_feature_ev_gt_mode_2_feature_ev": "DESIGN_PHILOSOPHY §7 + §9: m5 > m2 in feature EV ✓ (133 > 60)",
+      "mode_5_top_jackpot_in_feature_tail_X_200": "per design_v1.md §8.3 — top jackpot escalation via P(feature R ≥ 200) at m5 > m2 > m1 ratio 10-70×"
+    },
+
+    "deliberate_archetype_deviations_accepted": {
+      "feature_carries_top_jackpot_escalation": "design_v1.md §8.3 — concrete X = 200 picked",
+      "base_feature_25_75_split_super_lucky": "design_v1.md §5.4 — m5 deliberately feature-tilted",
+      "m5_base_lift_over_m2_allowed_per_v1.1_d": "explicit user permission"
+    }
+  }
+}

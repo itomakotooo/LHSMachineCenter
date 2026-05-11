@@ -18,8 +18,23 @@
 |---|---|---|
 | **A. rawdata** | **必有** | 上游生产 chunk JSON，或 user 直接 ship 一包 chunk。所有 rules / paytable / 玩家行为统计**唯一权威来源** |
 | **B. 规则文档 + paytable** | 可选 | 没给就 Analyst 从 rawdata 反推 (Stage 1c)；给了也只是辅助，跟 rawdata 冲突时 rawdata 赢 |
-| **C. 用户倾向性 brief** | 可选但很关键 | mode 1 hit 期望、bucket shape 倾向、机台 character、不变量严格度、不想要的体验。落到 `session_artifacts/<M>/user_brief.md`，Designer 必读 |
+| **C. 用户倾向性 brief** | 可选但很关键 | mode 1 hit 期望、bucket shape 倾向、机台 character、不变量严格度、不想要的体验。落到 `session_artifacts/<M>/user_brief.md`，Designer 必读。**首次 use case 强制要求 SESSION_BRIEF 模板里 user_brief.md 这个文件实际存在**（M15 process_improvement #1）|
 | **D. archetype hint** | 可选 | user 指定原型机（"这台是 Buffalo / Top Dollar / Wheel of Fortune 路线"）；没给就 Researcher WebSearch 推断 |
+
+### §1.1 Universal invariants (cross-machine, never violate)
+
+- **paytable 永远不改** (slot_designer/machines/<M>/spec.json `pays` block byte-identical from Stage 1c onward; cross-machine universal rule per M15 process_improvement #36, established 2026-05-11). Reel strips / weights / plugins **可改**；只锁 paytable structure.
+- **rawdata 是唯一权威源**：本台机器的真实玩家行为 > 业界平均（Stage 1c paytable inference 也走 rawdata 不走 manufacturer specs）。
+- **跨机台不互相 import**：machines/<M>/ 不 import 其他 machines.<other>.* （ARCHITECTURE.md §8 不变量 #2）。
+
+### §1.2 User brief vocabulary
+
+user brief 区分两种约束类型 — Agent 必须主动澄清：
+
+- **数值约束 (precise red line, with units)** — 例 "命中率 ∈ [15, 18]%" → verify.py [TAG] RED line
+- **感性描述 (qualitative direction)** — 例 "base 低波动 / feature 中波动" → verify.py 走 INFORMATIONAL metric，不当 RED
+
+当 user 写数字段（如 "[3, 5]"）但意图模糊，**Stage 4 design review 时显式问 user**："这是 red line 还是 directional descriptor?" 默认按 precise；user 回 "不需要控制精确" 即转 informational + 更新 user_brief.md amendment 段。(M15 process_improvement #37)
 
 ---
 
@@ -43,7 +58,20 @@
 - **layer 1 vs layer 2**：哲学赢；layer 1 数据用于校准 layer 2 容差
 - **layer 2 vs layer 3**：哲学赢；user brief 妥协部分明文记 DESIGN.md
 - **layer 1+2 vs layer 4**：machine-private 不能 override 上层；冲突时上层赢、layer 4 重写
-- **paytable 数学下限 vs 任何 layer**：paytable 结构赢（不能违反 math）；冲突 → escalate user 改 paytable
+- **paytable 数学下限 vs 任何 layer**：paytable 结构赢（不能违反 math）。**paytable 永久不可改**（§1.1 universal rule） → 冲突时调 weights/strips/plugin 兼容，或 escalate user 接受 deviation；**不再走"改 paytable"路径**。
+
+### §2.1 Designer 禁读 list (contamination firewall)
+
+Designer (Stage 4) 不能反向读 layer 4 派生层当输入 — 容易拿历史 narrative 当 ground truth 自我循环：
+
+| 禁读 | 原因 | M15 record |
+|---|---|---|
+| 已删 / git-history 中 `machines/<M>/DESIGN.md` / `MODE_DESIGN.md` / `NOTES.md` | layer 4 派生层 | M15 Phase 0a 已删 |
+| `machines/<M>/spec.json` 里的 `_design` / `_notes` / `_weights_rationale` / `_default_weights_note` 等 `_*` 段 | stale narrative blocks | M15 process_improvement #2 |
+| `machines/<M>/weights/mode_*/weights.json` 里的 `_tuned_summary` / `feature_params._analytic` | 历史 measurement snapshot | M15 process_improvement #3 |
+| sister machine targets / DESIGN.md（不同 paytable 结构） | cross-machine contamination | — |
+
+spec.json **mechanism 段** (`pays` / `symbols` / `evaluation_order` / `spin_types`) 是 authoritative — 这些可读。`_*` 前缀的 narrative blocks 必跳过。
 
 ---
 
@@ -423,4 +451,17 @@ machines/<M>/MODE_DESIGN.md  这台机的 per-mode 设计  机台私有
 | M1 | pre-Phase-A | — | base only，refactor 时迁入新布局 |
 | M37 | pre-Phase-A | — | base only |
 | M279 | pre-Phase-A | — | custom engine adapter |
-| M15 | (待重新设计) | — | Phase 0a 删了 design narrative，待跑本流程 |
+| M15 | 2026-05-11 | `275675c` (feature commit) + merge SHA below | **首次跑完整流程** — 6-agent × 11-stage × 3 D waves × 2 X reviews → v8 weights GREEN on 25 verify categories；session_artifacts/M15/process_improvements.md 累 45 条改进，§1.1 / §1.2 / §2.1 已 backport；详细 audit trail 见 session_artifacts/M15/ |
+
+### §11.1 First-run lessons (M15 2026-05-11) backported
+
+以下 process gaps 已在 M15 完成时 backport 到 ONBOARDING_PROCESS.md / 相关代码：
+
+- **§1.1 paytable 永久不变 invariant** ← process_improvement #36
+- **§1.2 数值约束 vs 感性描述区分** ← process_improvement #37
+- **§2.1 Designer contamination firewall** ← process_improvements #2 / #3
+- Stage 4 Designer 必跑 `analytic_profile` / `analyze_feature` feasibility-first（不再纸面推） ← process_improvements #20 / #25
+- Stage 5 V 必跑 inject-bug TDD + 独立 feasibility numerator check ← process_improvement #22
+- Escalate user 时必用玩家语言不是技术黑话 ← process_improvement #23
+
+剩余 ~30 条 process gaps（M15-specific 细节、工具 docstring drift、edge cases 等）在 [`session_artifacts/M15/process_improvements.md`](../session_artifacts/M15/process_improvements.md) — 下一个机台 onboarding 时按需 backport。

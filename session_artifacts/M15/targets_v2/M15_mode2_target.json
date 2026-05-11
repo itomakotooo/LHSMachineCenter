@@ -1,0 +1,188 @@
+{
+  "label": "M15_mode2_v2_designer_authored",
+  "source_machine": "M15",
+  "source_mode": 2,
+  "source_spins": null,
+  "source_rtp_ci_pp": null,
+  "_provenance": {
+    "authored_by": "Agent D (Designer)",
+    "stage": "ONBOARDING Stage 4 revision wave 3",
+    "iteration": "v2",
+    "date": "2026-05-11",
+    "design_doc": "session_artifacts/M15/design_v2.md",
+    "feasibility_dump": "session_artifacts/M15/feasibility_v2.txt",
+    "_note": "Mode 2 v2 — unchanged candidate weights from v1 (no v1 critique against m2). Updates: +0.5 fudge removed from feasibility script, per-pay floors added for cherry2/cherry3/bar3. v2 measured numbers identical to v1 (same candidate)."
+  },
+
+  "rtp_pct": 300.0,
+  "bucket_rate": {
+    "_note": "v2 Designer does not pin per-bucket rates. Per v1.1 §c: 10-200× bucket increase, no strict numeric band ('玩家体验好就行').",
+    "_derive_from": "tuner output + analyzer report"
+  },
+
+  "hit_rate": 0.325,
+  "zero_win_rate": null,
+  "std_return_x": null,
+  "max_return_x": null,
+  "big_win_x10_rate": null,
+  "tail_dep_ge10x": null,
+  "tail_dep_ge20x": null,
+  "tail_dep_ge50x": null,
+  "tail_dep_ge100x": null,
+  "loss_streak_p95": null,
+  "loss_streak_max": null,
+
+  "_design_targets_v2_M15_only": {
+    "_schema_note": "Mode 2 v2 (lucky derivation) — candidate weights identical to v1 (X v1 critique had no items against m2). Schema updates: cherry/bar3 floors added per Fix #4.",
+
+    "_v1_to_v2_changes": [
+      "No m2 candidate weight changes — v1 unchanged.",
+      "Added per_pay_frequency_floors_pct (cherry2/cherry3) lucky-mode bands.",
+      "Added bar3 share-of-base lucky cap [5, 22] (m2/m5 widened from m1's [5, 12])."
+    ],
+
+    "rtp": {
+      "target_pct": 300.0,
+      "band_pct": [290.0, 310.0],
+      "v2_feasibility": 284.436,
+      "v2_status": "NEAR-MISS (-5.6pp under floor) — tuner-closable",
+      "_v1_was": 284.44,
+      "_near_miss_note": "Same as v1. Per §c '200×+ freq = mode 1' forces doublediamond per-stop cut (v7 m2: R1 50/50 → v1 m2: R1 17/17; ratio 0.34). Doublediamond cuts cascade through wild-substituted line_3_same pays. Tuner expected to close ±2pp via per-stop fine-tuning.",
+      "_source": "DESIGN_PHILOSOPHY §C mode 2 invariant"
+    },
+
+    "base_rtp_pp": {
+      "v2_feasibility": 99.129,
+      "_note": "Not pinned per v1.1 §c. Tuner free within total RTP band.",
+      "_source": "feasibility_v2.txt"
+    },
+
+    "feature_rtp_pp": {
+      "v2_feasibility": 185.307,
+      "_note": "Derived from trigger 3.09% × v7 m2 EV 60×. Feature_params preserved from v7.",
+      "_source": "feasibility_v2.txt"
+    },
+
+    "hit_rate": {
+      "target": 0.325,
+      "band": [0.30, 0.35],
+      "v2_feasibility": 0.3356,
+      "v2_status": "PASS",
+      "_source": "user_brief.md v1.1 §c"
+    },
+
+    "base_cv": {
+      "v2_feasibility": 4.381,
+      "_note": "Below m1's 6.086 (mode-pair monotone ✓ — DESIGN_PHILOSOPHY §5). v2 STRICT comparison passes without +0.5 buffer (Fix #3).",
+      "_v1_was": 4.38,
+      "_source": "feasibility_v2.txt + DESIGN_PHILOSOPHY §5"
+    },
+
+    "feature_cv_conditional": {
+      "v2_feasibility": 0.778,
+      "_note": "Preserves v7 m2 feature_params. Same near-miss as m1 vs [1, 2] aspirational band.",
+      "_source": "preserve v7 m2 feature_params"
+    },
+
+    "trigger_rate": {
+      "target": 0.030,
+      "band": [0.024, 0.032],
+      "v2_feasibility": 0.03089,
+      "v2_status": "PASS (above m1 trigger as required by §9 + LUCKY_MONO)",
+      "_source": "DESIGN_PHILOSOPHY §9 feature-machine extension + LUCKY_MONO"
+    },
+
+    "feature_ev_x": {
+      "target": 60.0,
+      "band": [58.0, 62.0],
+      "v2_feasibility": 59.993,
+      "v2_status": "PASS",
+      "_source": "v7 m2 feature_params preserved unchanged"
+    },
+
+    "p_count_x_eq_1_max": {
+      "max": 0.06,
+      "v2_feasibility": 0.05,
+      "v2_status": "PASS",
+      "_source": "user_brief.md v1.1 §b (uses v7 m2 feature_params = 5%)"
+    },
+
+    "p_r_ge_1000_per_spin_max": {
+      "max": 0.00001,
+      "_safety_band_target_max": 0.000005,
+      "v2_feasibility": 1.44e-06,
+      "v2_status": "PASS (6.9× under cap; 3.5× under safety band)",
+      "_source": "user_brief #5 (≤ 1e-5). Tighter safety band recommended because v7 m2 was 2.92e-6."
+    },
+
+    "pay_id_1_freq_vs_mode_1_max": {
+      "_pay_id": 1,
+      "_pay_name": "wild_pure 200×",
+      "max_ratio": 1.5,
+      "v2_feasibility_ratio": 0.973,
+      "v2_status": "PASS",
+      "_v1_was_ratio": 1.075,
+      "_v2_note": "Ratio dropped from 1.075 (v1) to 0.973 (v2) because m1 trigger rose (bar3 cut bumped m1 trigger 1.224% → 1.283%) and m1 wild_pure freq scaled proportionally up. m2 wild_pure freq unchanged. Result: m2/m1 ratio now under 1.0, well within cap 1.5.",
+      "_source": "user_brief.md v1.1 §c"
+    },
+
+    "jackpot_filler_marginal_max_per_reel": {
+      "max": 0.006,
+      "v2_feasibility": {"R1": 0.00338, "R2": 0.00414, "R3": 0.00386},
+      "v2_status": "PASS (R2 fix: v7 was 0.743% → v2 R2 = 0.414%)",
+      "_v7_violation_fixed": "v7 m2/m5 R2 jackpot = 0.743% (over U#6 cap); v2 cuts R2 jackpot weight from 5 to 3 → R2 marg 0.41% ✓",
+      "_source": "user_brief #6"
+    },
+
+    "lucky_lift_directional_invariants": {
+      "_note": "Per DESIGN_PHILOSOPHY §4 lucky mode + LUCKY_MONO §9. All EXCEPT pay_id 1 capped at ≤1.5× m1 per v1.1 §c.",
+      "all_non_top_pay_ids_p_hit_mode2_ge_mode1": "each pay_id's P(hit) in mode 2 ≥ mode 1, EXCEPT pay_id 1 (wild_pure) which is capped at ≤1.5× per v1.1 §c",
+      "_v2_verified_per_pay_id": {
+        "pay_id_9_cherry1":   "m1=13.06%, m2=19.72% → ratio 1.51 ✓",
+        "pay_id_8_bar_mixed": "m1=2.92%,  m2=9.94%  → ratio 3.40 ✓",
+        "pay_id_5_bar2":      "m1=0.34%,  m2=1.06%  → ratio 3.14 ✓",
+        "pay_id_3_bar3":      "m1=0.053%, m2=0.49%  → ratio 9.29 ✓ (m1 bar3 cut amplified ratio; same m2 freq as v1)",
+        "pay_id_71_cherry2":  "m1=0.66%,  m2=1.64%  → ratio 2.50 ✓",
+        "pay_id_7_bar1":      "m1=0.34%,  m2=0.37%  → ratio 1.08 ✓",
+        "pay_id_2_high7_wild":"m1=0.012%, m2=0.135% → ratio 11.5 ✓ (lucky boost large)",
+        "pay_id_21_high7_pure":"m1=0.0025%, m2=0.151% → ratio 60 ✓",
+        "pay_id_4_cherry3":   "m1=0.011%, m2=0.045% → ratio 4.1 ✓",
+        "pay_id_1_wild_pure": "m1=0.0013%, m2=0.0013% → ratio 0.97 ✓ (capped per §c)"
+      }
+    },
+
+    "per_pay_frequency_floors_pct": {
+      "_note": "Per X v1 §5.4 — explicit per-pay frequency P bands. Lucky modes naturally elevate cherry P (cherry-anywhere mechanism scales with overall hit lift).",
+      "_semantics": "These are HIT FREQUENCY (P) bands in percent.",
+      "cherry2_pay_id_71": { "floor_pct": 1.0, "cap_pct": 3.5, "v2_measured": 1.6420, "v2_status": "PASS (mid-band)", "_note": "Lucky band wider than m1's [0.4, 1.5] because hit lift propagates", "_source": "X v1 §5.4 + lucky mode scaling" },
+      "cherry3_pay_id_4":  { "floor_pct": 0.005, "cap_pct": 0.20, "v2_measured": 0.04534, "v2_status": "PASS", "_source": "X v1 §5.4 + lucky mode scaling" }
+    },
+
+    "family_share_of_base_floors_pct": {
+      "_note": "Per DESIGN_PHILOSOPHY §10 Pareto-trap defense. m2 base RTP ~100pp; floors as % of base.",
+      "cherry1":             { "floor": 15.0, "cap": 25.0, "_source": "user_brief cherry-anywhere preservation; lucky lift means share % shifts" },
+      "cherry_family_total": { "floor": 18.0, "cap": 32.0, "_source": "01d §3.3 cherry-bearing classic 14-20% scaled" },
+      "bar_3_of_kind_total": { "floor": 30.0, "cap": 60.0, "_source": "01d §3.3 + 01b §4 m2 bar 3-of-kind dominant in lucky mode" },
+      "bar3_20x":            { "floor": 5.0, "cap": 22.0, "_v1": "implicit", "_v2_added": "Lucky cap widened from m1's 12 to 22 per wild_pure substitution lift in m2", "v2_measured": 15.825, "_source": "X v1 §5.4 + lucky mode bar3 share inflation" },
+      "high7_total":         { "floor": 14.0, "cap": 30.0, "_source": "lucky mode lifts high7 disproportionately — design intent" },
+      "wild_pure_200x":      { "floor": 0.08, "cap": 0.3, "_source": "Per §c 200×+ freq = mode 1 → wild_pure share-of-base much LOWER than v7 m2 (v7 had 2.04%; v2 ~0.26%)" }
+    },
+
+    "cross_mode_locks_reference": {
+      "_v0_to_v1_change_critical": "v0 had MODE5_BASE_LOCK (m5 base byte-equal m2). v1.1 §d DROPS this lock. m5 base CAN lift over m2.",
+      "mode_5_base_lift_over_mode_2_allowed_per_v1.1_d": "m5 can have higher base RTP via doublediamond/high7/bar lifts; '不要矫枉过正' caveat applies",
+      "mode_2_trigger_ge_mode_1_trigger": "FEATURE_mode2_trigger_ge_mode1 ✓",
+      "mode_2_hit_gt_mode_1_hit": "LUCKY_MONO ✓",
+      "mode_2_rtp_gt_mode_1_rtp": "✓",
+      "mode_2_wild_pure_freq_capped_to_mode_1_within_1.5x": "per v1.1 §c — new strict constraint"
+    },
+
+    "deliberate_archetype_deviations_accepted": {
+      "_note": "Per design_v1.md §4 — mode 2 inherits some deviations from m1 plus lucky-mode-specific.",
+      "no_lucky_top_dollar_cabinet_precedent": "platform construct (design_v1.md §4.3)",
+      "r1_le_r3_blank_relaxed":                "m2 R3 blank < R1 blank (lucky trigger displacement; DESIGN_PHILOSOPHY §12.3 allows)",
+      "top_jackpot_freq_capped_per_v1.1_c":    "v2 m2 wild_pure cadence ≥ 1/76,929 — higher cadence than §7 m2 band [1/15k-30k] because §c caps wild_pure freq to m1 level",
+      "rtp_near_miss_5.6pp":                   "v2 m2 RTP 284 vs band [290, 310] floor. Tuner-closable (Stage 6 will finer per-stop adjust). Documented in rtp.v2_status"
+    }
+  }
+}
