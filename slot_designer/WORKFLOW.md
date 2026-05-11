@@ -27,8 +27,10 @@ Verify 是我设计的，只检查我想到的东西。绿了只意味着"我没
 - Hit decomposition（每 pay 占 hit rate 的 %）
 - 顶奖 freq 跨 mode escalation
 - **每条 reel 的 blank weight + total weight + non-blank density** —— 看 R1/R2/R3 间是否有跨数量级差距，差距是否有结构性解释
+- **每条 reel 的 symbol 顺序排布**（PHILOSOPHY §14.5）—— 用眼/script 扫每条 reel 的 non-blank 序列，问"哪两段同 family 连成长段？同 symbol 重复实例是否散开？顶奖 symbol pair 间距合理？" 不能只看 §13 blank-flank 0 violations 就过 §14
+- **PWDF 表 per top symbol per reel**（PHILOSOPHY §15.9）—— `p_window / p_mid` 算 PWDF；问"这是 strip 自然 baseline 还是 mechanism B 主动 lift 之后？" Passive measure 不算达成 §15
 
-不"看了 verify 绿就过"，而是 **看实际数字** 是不是符合直觉，每个跨 reel / 跨 mode 大差异都问清"为什么"。
+不"看了 verify 绿就过"，而是 **看实际数字** 是不是符合直觉，每个跨 reel / 跨 mode 大差异都问清"为什么"。每个 §14 / §15 dump 都要主动跟 PHILOSOPHY §14.5 / §15.9 mandate 对照（"如果 audit 说违反，我有没有 propose 修复方案？还是在拖？"）
 
 ### Step 3：adversarial 反问自己（关键）
 

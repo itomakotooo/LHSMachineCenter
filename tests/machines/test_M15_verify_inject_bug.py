@@ -20,6 +20,12 @@ Tests:
      weight to push trigger > +- 5e-4 from m1 → expect [MODE7-TRIGGER] RED
   4. ``test_inject_paytable_mutation`` — modify spec.json `pays` block
      → expect [PAYTABLE-LOCK] RED (universal rule, proc_imp #36)
+  5. ``test_inject_visual_rhythm_violation`` — mutate strip to create
+     longer bar-family run on R1 → expect [VISUAL-RHYTHM] RED
+     (v8.1 §14.5 backport)
+  6. ``test_inject_pwdf_floor_breach`` — undo mechanism B on mode 1
+     (zero top-adj Blank lift) → expect [PWDF-FLOOR] RED
+     (v8.1 §15.9 backport)
 
 For each: confirm verify is RED on the targeted category, then revert
 (fixture cleanup) and confirm verify is GREEN on the same category
@@ -74,19 +80,25 @@ def baseline_fixture(tmp_path: Path) -> dict:
     """Materialize v2 candidate weights + copies of spec / strips into
     a temp directory. Returns a dict of paths the test can mutate.
 
+    Strips: pinned to ``FIXTURE_V7_DIR/reel_strips.json`` (pre-rearrange
+    v7 layout) so candidate-weight position references stay stable across
+    v8.1 strip rearrange. v2 candidate weights are designed against the
+    v7 strip; using the live (v8.1) strip would mis-align symbol positions.
+
     Layout mirrors the production tree:
         tmp_path/
           spec.json
-          reel_strips.json
+          reel_strips.json   <-- pinned v7 layout
           weights/
             mode_1/weights.json
             mode_2/weights.json
             mode_5/weights.json
             mode_7/weights.json
     """
-    # Copy spec + strips
+    # Copy spec from live, strips from v7 fixture (pinned for candidate
+    # weight position references — see fixture docstring above).
     spec_src = m15_verify.DEFAULT_SPEC
-    strips_src = m15_verify.DEFAULT_STRIPS
+    strips_src = FIXTURE_V7_DIR / "reel_strips.json"
     spec_dst = tmp_path / "spec.json"
     strips_dst = tmp_path / "reel_strips.json"
     shutil.copy(spec_src, spec_dst)
@@ -150,6 +162,42 @@ def _baseline_red_categories(checks: list) -> set[str]:
 # ----------------------------------------------------------------------
 # helper: load + mutate weights for one mode
 # ----------------------------------------------------------------------
+
+@pytest.fixture
+def v81_clean_fixture(tmp_path: Path) -> dict:
+    """Materialize a CLEAN v8.1 baseline (live spec / strips / weights).
+
+    Use this fixture for inject-bug tests of new v8.1 categories
+    ([VISUAL-RHYTHM] / [PWDF-FLOOR]) where the v2 candidate fixture
+    intentionally REDs (v2 was pre-rearrange, pre-mechanism-B).
+    """
+    spec_src = m15_verify.DEFAULT_SPEC
+    strips_src = m15_verify.DEFAULT_STRIPS
+    spec_dst = tmp_path / "spec.json"
+    strips_dst = tmp_path / "reel_strips.json"
+    shutil.copy(spec_src, spec_dst)
+    shutil.copy(strips_src, strips_dst)
+
+    weights_dir = tmp_path / "weights"
+    weights_paths = {}
+    for mode in (1, 2, 5, 7):
+        mode_dir = weights_dir / f"mode_{mode}"
+        mode_dir.mkdir(parents=True)
+        wpath = mode_dir / "weights.json"
+        shutil.copy(
+            m15_verify.DEFAULT_WEIGHTS_DIR / f"mode_{mode}" / "weights.json",
+            wpath,
+        )
+        weights_paths[mode] = wpath
+
+    return {
+        "tmp_path": tmp_path,
+        "spec": spec_dst,
+        "strips": strips_dst,
+        "weights_dir": weights_dir,
+        "weights_paths": weights_paths,
+    }
+
 
 def _read_weights(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -366,6 +414,133 @@ def test_inject_paytable_mutation(baseline_fixture):
 
 
 # ----------------------------------------------------------------------
+# test 5: visual rhythm violation -> [VISUAL-RHYTHM] RED
+# ----------------------------------------------------------------------
+
+def test_inject_visual_rhythm_violation(v81_clean_fixture):
+    """Bug class 5: mutate strip to create a 5-consecutive bar-family run
+    on R1 (the exact violation v8.1 rearrange fixed).
+
+    Strategy: swap a non-bar symbol on R1 with a bar symbol elsewhere on
+    R1 to create a 5-run. Specifically, find the current R1 non-blank
+    seq and shuffle so positions of bar-family symbols cluster.
+
+    Easiest concrete mutation against the v8.1 live R1 strip
+    ('blank','doublediamond','blank','3bar',...): swap pos 1 (doublediamond)
+    with pos 25 (cherry) so the leading non-blank zone now reads
+    cherry, 3bar, 2bar, 1bar, ... (still <=4 bar run). Better: find an
+    actual mutation that bumps bar-family run.
+
+    Concrete: on live v8.1 R1, replace pos 1 ('doublediamond') with
+    '1bar' to extend the bar run. This violates multiset (one extra 1bar,
+    one less doublediamond) but the test only cares about VISUAL-RHYTHM
+    triggering, not multiset preservation (we revert after).
+    """
+    # === baseline: clean ===
+    baseline_checks = _run_verify(v81_clean_fixture)
+    assert _no_red_in_category(baseline_checks, "VISUAL-RHYTHM"), (
+        "v8.1 clean baseline should not have VISUAL-RHYTHM RED"
+    )
+
+    # === inject: mutate R1 pos 1 from 'doublediamond' to '1bar' ===
+    # New R1 nb-seq: [1bar, 3bar, 2bar, 1bar, ...] — creates 4-run bar
+    # already in first 4 positions; if we make pos 17 (also a non-blank
+    # near doublediamond original) also extend bar family, we cross 4.
+    strips_doc = json.loads(
+        v81_clean_fixture["strips"].read_text(encoding="utf-8")
+    )
+    r1 = strips_doc["reels"][0]
+    original_pos1 = r1[1]
+    original_pos5 = r1[5]
+    # Replace top symbols with bars to create a longer bar run
+    r1[1] = "1bar"   # was 'doublediamond' -> now bar family
+    r1[5] = "3bar"   # was '2bar' -> kept bar but adjacent symbol consistency
+    # Now non-blank zone starts: 1bar, 3bar, 3bar, 1bar, high7, ...
+    # The bar run extends; if §14 max is 4, this should violate
+    v81_clean_fixture["strips"].write_text(
+        json.dumps(strips_doc, indent=2), encoding="utf-8"
+    )
+
+    # === verify: [VISUAL-RHYTHM] should RED ===
+    injected_checks = _run_verify(v81_clean_fixture)
+    assert _any_red_in_category(injected_checks, "VISUAL-RHYTHM"), (
+        f"inject-bug should trigger VISUAL-RHYTHM RED; got: "
+        f"{[(c.label, c.ok) for c in _checks_in_category(injected_checks, 'VISUAL-RHYTHM') if c.is_failing()]}"
+    )
+
+    # === revert ===
+    r1[1] = original_pos1
+    r1[5] = original_pos5
+    v81_clean_fixture["strips"].write_text(
+        json.dumps(strips_doc, indent=2), encoding="utf-8"
+    )
+    reverted_checks = _run_verify(v81_clean_fixture)
+    assert _no_red_in_category(reverted_checks, "VISUAL-RHYTHM"), (
+        "after revert, [VISUAL-RHYTHM] should return to clean"
+    )
+
+
+# ----------------------------------------------------------------------
+# test 6: PWDF floor breach -> [PWDF-FLOOR] RED
+# ----------------------------------------------------------------------
+
+def test_inject_pwdf_floor_breach(v81_clean_fixture):
+    """Bug class 6: zero out the top-adj Blank weights on mode 1 (undo
+    mechanism B) — the redistribution that lifted top symbol any-reel
+    window visibility above the floor. Without it, p_window drops back
+    to pre-mechanism-B numbers (~16-17%) and PWDF-FLOOR REDs since the
+    floor for doublediamond/high7 is 28%.
+
+    Mechanism: read live weights for mode 1, find top-adj Blank positions,
+    set them all to weight=1 (= same as non-top-adj). This collapses
+    p_window for top symbols back to near-uniform baseline.
+    """
+    # === baseline: clean ===
+    baseline_checks = _run_verify(v81_clean_fixture)
+    assert _no_red_in_category(baseline_checks, "PWDF-FLOOR"), (
+        "v8.1 clean baseline should not have PWDF-FLOOR RED"
+    )
+
+    # === inject: undo mechanism B on mode 1 (set top-adj Blank w=1) ===
+    wpath = v81_clean_fixture["weights_paths"][1]
+    doc = _read_weights(wpath)
+    strips = json.loads(v81_clean_fixture["strips"].read_text(encoding="utf-8"))
+    TOP_SYMBOLS = {"doublediamond", "high7", "topdollar"}
+
+    original: list[tuple[int, int, int]] = []  # (reel_idx, pos, old_w)
+    for r_idx, reel in enumerate(strips["reels"]):
+        n = len(reel)
+        for p in range(n):
+            if reel[p] != "blank":
+                continue
+            prev = reel[(p - 1) % n]
+            nxt = reel[(p + 1) % n]
+            if prev in TOP_SYMBOLS or nxt in TOP_SYMBOLS:
+                original.append((r_idx, p, doc["weights"][r_idx][p]))
+                doc["weights"][r_idx][p] = 1
+    assert len(original) > 0, "fixture: top-adj Blanks expected to exist"
+    _write_weights(wpath, doc)
+
+    # === verify: [PWDF-FLOOR] should RED on mode 1 ===
+    injected_checks = _run_verify(v81_clean_fixture)
+    pwdf_fail = [c for c in _checks_in_category(injected_checks, "PWDF-FLOOR")
+                 if c.mode == 1 and c.is_failing()]
+    assert len(pwdf_fail) > 0, (
+        f"inject-bug should trigger PWDF-FLOOR RED on mode 1; got: "
+        f"{[(c.label, c.ok) for c in _checks_in_category(injected_checks, 'PWDF-FLOOR') if c.is_failing()]}"
+    )
+
+    # === revert ===
+    for r_idx, p, w in original:
+        doc["weights"][r_idx][p] = w
+    _write_weights(wpath, doc)
+    reverted_checks = _run_verify(v81_clean_fixture)
+    assert _no_red_in_category(reverted_checks, "PWDF-FLOOR"), (
+        "after revert, [PWDF-FLOOR] should return to clean"
+    )
+
+
+# ----------------------------------------------------------------------
 # meta-test: baseline iter0 pattern matches Stage 5 expected
 # ----------------------------------------------------------------------
 
@@ -373,9 +548,16 @@ def test_baseline_v2_iter0_pattern(baseline_fixture):
     """Meta-test: confirm the v2 candidate baseline pattern matches the
     Stage 5 expected output.
 
-    Expected (per session_artifacts/M15/verify_run_v2_iter0.txt):
+    Expected (per session_artifacts/M15/verify_run_v2_iter0.txt + v8.1
+    backport):
       * 3 [RTP] REDs on m2/m5/m7 (tuner-closable)
-      * No other category should be RED on the baseline candidate
+      * [VISUAL-RHYTHM] REDs on v7 strip layout — pinned fixture strip
+        has 6-run bar on R1 + 5-run on R2 + top-symbol pairs. This is the
+        exact §14.5 audit failure that v8.1 strip rearrange fixed (LIVE
+        strip GREEN; v7 fixture strip RED).
+      * [PWDF-FLOOR] REDs on v7 weights — v2 candidate has not had
+        mechanism B applied (that's a Phase C deliverable, not a v2
+        candidate). LIVE weights GREEN; v7 fixture weights RED.
 
     This guards against a future verify.py refactor that quietly stops
     catching the iter0 RTP NEAR-MISS (which would be a regression — V
@@ -383,9 +565,11 @@ def test_baseline_v2_iter0_pattern(baseline_fixture):
     """
     checks = _run_verify(baseline_fixture)
     red_categories = _baseline_red_categories(checks)
-    assert red_categories == {"RTP"}, (
-        f"v2 baseline iter0 should RED ONLY on [RTP] (tuner-closable); "
-        f"got REDs in: {red_categories}"
+    expected_reds = {"RTP", "VISUAL-RHYTHM", "PWDF-FLOOR"}
+    assert red_categories == expected_reds, (
+        f"v2 baseline iter0 on v7 fixture strip should RED on "
+        f"{expected_reds} (RTP tuner-closable; VISUAL-RHYTHM + PWDF-FLOOR "
+        f"= v7 baseline pre-v8.1 polish); got REDs in: {red_categories}"
     )
     rtp_red = [c for c in checks if c.category == "RTP" and c.is_failing()]
     rtp_modes = {c.mode for c in rtp_red}

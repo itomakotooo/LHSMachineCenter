@@ -112,6 +112,21 @@
 | m5 base ≠ m2 base (per user §d) | base RTP lift 9.35pp | ✓ |
 | Schema fingerprint | virtual emit matches production `5d02773c069fc396` | ✓ |
 | Paytable lock | spec.json `pays` block unchanged | ✓ |
+| **§14.5 visual rhythm (v8.1)** | bar-family max run ≤ 4 / top max run ≤ 1 / top-pair ≥ 8 / same-sym gap ≥ 5 | ✓ all 30 strip checks GREEN |
+| **§15.9 PWDF floor (v8.1)** | top any-reel p_window ≥ mode-specific floor; mid-pay ≥ 2-3% floor | ✓ all 28 per-mode checks GREEN |
+
+## v8.1 visual polish wave (2026-05-11)
+
+§14 + §15 mandates closed via two RTP-neutral transformations layered on top of v8 weights:
+
+| transformation | what changed | what stayed |
+|---|---|---|
+| strip rearrange | non-blank position ordering on R1 / R2 (R3 untouched) | per-(reel, symbol) multiset → marginals UNCHANGED |
+| Mechanism B redistribute | per-reel Blank weights shifted to top-adj positions (non-top-adj floored to 1) | total Blank weight per reel preserved → marginals UNCHANGED |
+
+Combined effect: **RTP / hit / family share / cross-mode invariants identical bytes vs v8**; only strip md5 + chunk md5 turned over. See [`session_artifacts/M15/v81_visual_rhythm_audit.md`](../../../session_artifacts/M15/v81_visual_rhythm_audit.md) for the §14 audit per symbol per reel and [`session_artifacts/M15/v81_pwdf_audit.md`](../../../session_artifacts/M15/v81_pwdf_audit.md) for the §15 PWDF lift table per top symbol per reel.
+
+Mid-pay window visibility drop is intentional per user v8.1 brief ("不算副作用,甚至是需求") — see DESIGN.md §6.1b.
 
 ## Mode-derivation legend
 

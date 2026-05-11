@@ -55,6 +55,17 @@ LOCKED red lines (RED here means commit-stop):
   * ``[CROSS-RTP]`` m2 RTP > m1, m5 RTP > m2, m7 RTP < m1 (§9)
   * ``[TOP-JACKPOT-ESC]`` m5 pay_id 1 cadence >= 1.1x m2 (user_brief v1.1 §d);
     m2 pay_id 1 cadence within 1.5x m1 (user_brief v1.1 §c)
+  * ``[VISUAL-RHYTHM]`` per-reel §14.5 cluster / spacing thresholds:
+    - bar-family max consecutive run (non-blank seq) <= 4
+    - top-symbol max consecutive run (non-blank seq) <= 1
+    - top-symbol pair min distance (full strip) >= 8 stops
+    - same-symbol min cyclic gap (full strip) >= 5 stops
+    Thresholds M15-specific (NOT cross-machine defaults).
+  * ``[PWDF-FLOOR]`` philosophy §15.9 active-optimization mandate:
+    top symbol any-reel window visibility floors per mode, set below
+    post-mechanism-B achieved with safety margin. Mid-pay floor
+    prevents over-application (drop accepted per v8.1 brief but
+    symbol must remain visible).
 
 INFORMATIONAL (verify.py reports value but no RED, per v1.2 §g + #37):
 
@@ -97,13 +108,13 @@ PHILOSOPHY COVERAGE TABLE (every § cited by at least one category)
                                           single-§11 checkable.
   §12 reel asymmetry                   -> [REEL-ASYMMETRY]
   §13 blank-flank diversity            -> [BLANK-FLANK]
-  §14 visual rhythm                    -> reported only (no M15 sub-rule
-                                          locked; archetype rhythm
-                                          inherited from production strip)
-  §15 window visibility (PWDF)         -> informational
-                                          (process_improvements #5: M15 uses
-                                          natural PWDF; no redistribution
-                                          mechanism on M15 yet)
+  §14 visual rhythm                    -> [VISUAL-RHYTHM] per §14.5
+                                          (v8.1: bar-family / top-cluster
+                                           / same-sym gap / top-pair dist)
+  §15 window visibility (PWDF)         -> [PWDF-FLOOR] per §15.9
+                                          (v8.1: top any-reel floor +
+                                           mid-pay floor; mechanism B
+                                           applied post-tune)
   +   universal rule (proc_imp #36)    -> [PAYTABLE-LOCK]
 
 Categories where a §13 blank-flank-style "binary 0-violations" check is
@@ -138,6 +149,10 @@ if str(_ROOT) not in sys.path:
 from slot_designer.core.devtools.analytic_rtp import (  # noqa: E402
     analytic_profile,
     compute_reel_marginal,
+)
+from slot_designer.core.devtools.player_experience import (  # noqa: E402
+    symbol_mid_probability,
+    symbol_window_probability,
 )
 from slot_designer.core.engine.loader import load_engine  # noqa: E402
 from slot_designer.machines.M15.plugins.feature import (  # noqa: E402
@@ -304,6 +319,66 @@ FAMILY_SHARE_BANDS_PCT = {
     },
 }
 
+# ======================================================================
+# v8.1 visual polish — §14 visual rhythm + §15 PWDF active optimization
+# ======================================================================
+#
+# Thresholds set 2026-05-11 from v8.1 Phase A audit + Phase C
+# achievable-post-mechanism-B numbers. M15-specific (NOT cross-machine
+# defaults) — they derive from:
+#
+#   - M15 strip layout (36 stops / reel, 18 non-blank, 3 reels)
+#   - M15 archetype (Top Dollar / 1-line / Feature Play)
+#   - Post-rearrange + post-mechanism-B achievable numbers
+#
+# Cross-machine universal direction lives in DESIGN_PHILOSOPHY.md §14 / §15;
+# only NUMBERS are M15-specific. Per ONBOARDING §2.1 firewall — do NOT
+# copy these to sister machines.
+
+# §14 VISUAL-RHYTHM thresholds (per-reel checked against post-rearrange
+# achievable). Bar family = {1bar, 2bar, 3bar} — player perceives "all bar
+# zone" if too many consecutive. Top symbols = {doublediamond, high7,
+# topdollar} — should not appear back-to-back in non-blank sequence.
+_VISUAL_RHYTHM_BAR_FAMILY = ("1bar", "2bar", "3bar")
+_VISUAL_RHYTHM_TOP_SYMBOLS = ("doublediamond", "high7", "topdollar")
+_VISUAL_RHYTHM_MAX_BAR_FAMILY_RUN = 4   # in non-blank cyclic seq
+_VISUAL_RHYTHM_MAX_TOP_RUN = 1          # in non-blank cyclic seq (no top-top adjacency)
+_VISUAL_RHYTHM_MIN_TOP_PAIR_DISTANCE_STOPS = 8   # on full strip (incl blanks)
+_VISUAL_RHYTHM_MIN_SAME_SYMBOL_GAP_STOPS = 5     # on full strip
+
+# §15 PWDF floors — top symbol any-reel window visibility, by mode.
+# Floors set BELOW the post-mechanism-B achieved numbers (~2-5pp margin)
+# to allow tuner perturbations while still locking against regression.
+#
+# Achieved (v8.1 post-mechanism-B):
+#   mode 1: doublediamond max 31.5% / high7 31.1% / topdollar 25.8%
+#   mode 2: doublediamond max 20.1% / high7 29.2% / topdollar 12.5%
+#   mode 5: doublediamond max 20.9% / high7 29.3% / topdollar 12.6%
+#   mode 7: doublediamond max 38.7% / high7 38.7% / topdollar 27.0%
+#
+# Floors leave 2-5pp safety margin under achieved; mid_pay floor low
+# enough that mechanism B's intentional cherry/bar-mid drop still passes
+# (user-confirmed welcomed side effect per v8.1 brief).
+_PWDF_TOP_ANY_REEL_FLOOR_PCT = {
+    1: {"doublediamond": 28.0, "high7": 28.0, "topdollar": 22.0},
+    2: {"doublediamond": 17.0, "high7": 25.0, "topdollar": 10.0},
+    5: {"doublediamond": 17.0, "high7": 25.0, "topdollar": 10.0},
+    7: {"doublediamond": 34.0, "high7": 34.0, "topdollar": 24.0},
+}
+
+# Mid-pay window-visibility floor — prevent mechanism B from going extreme
+# (e.g. floor 0). M15 cherry visibility drop is intentional; floor here is
+# a "didn't disappear entirely" sanity check. Mid-pay symbols on reel
+# with at least 1 instance must keep p_window >= 3% in standard modes,
+# 2% in cut/lucky modes (cut shrinks total, lucky redistributes more).
+_PWDF_MID_PAY_SYMBOLS = ("3bar", "2bar", "1bar", "cherry")
+_PWDF_MID_PAY_FLOOR_PCT = {
+    1: 3.0,
+    2: 3.0,
+    5: 3.0,
+    7: 2.0,
+}
+
 # Per-mode per-pay HIT FREQUENCY floor (in percent units) — distinct
 # semantics from share-of-base. Per process_improvements #34 + targets_v2
 # `per_pay_frequency_floors_pct` block.
@@ -349,6 +424,7 @@ class ModeState:
     reel_marginals: list[dict]
     weights_doc: dict
     family_rtp_pp: dict  # family_name -> rtp pp (base only, excluding feature)
+    reel_strips: list[list[dict]]  # [reel_idx][stop_idx] -> {symbol, weight} for PWDF
 
 
 def _load_mode_state(
@@ -404,6 +480,12 @@ def _load_mode_state(
             continue
         family_rtp_pp[fam] += rtp_contrib * 100.0
 
+    # Build dict-shape reel strips for player_experience helpers (PWDF).
+    reel_strips_dict = [
+        [{"symbol": s.symbol, "weight": int(s.weight)} for s in r.stops]
+        for r in engine.reels
+    ]
+
     return ModeState(
         mode=mode,
         profile=profile,
@@ -418,6 +500,7 @@ def _load_mode_state(
         reel_marginals=reel_margs,
         weights_doc=weights_doc,
         family_rtp_pp=dict(family_rtp_pp),
+        reel_strips=reel_strips_dict,
     )
 
 
@@ -671,6 +754,56 @@ def _run_per_mode_checks(state: ModeState) -> list[Check]:
                           state.p_count_x_eq_1, 0.06, fmt="{:.4f}",
                           info="user_brief v1.1 §b relaxed to 6%"))
 
+    # [PWDF-FLOOR] philosophy §15.9 — top-symbol any-reel window visibility
+    # floor. v8.1 backport: M15 is physical-reel (no virtual mapping), so
+    # mechanism B redistribute is mandatory per §15.9. Floors set below
+    # post-mechanism-B achieved with safety margin for tuner perturbations.
+    top_floors = _PWDF_TOP_ANY_REEL_FLOOR_PCT.get(mode, {})
+    for sym, floor_pct in top_floors.items():
+        # any-reel max p_window
+        max_p_window = 0.0
+        max_r = None
+        for r_idx, strip in enumerate(state.reel_strips):
+            pw = symbol_window_probability(strip, sym)
+            if pw > max_p_window:
+                max_p_window = pw
+                max_r = r_idx + 1
+        ok = max_p_window * 100.0 >= floor_pct
+        checks.append(Check(
+            category="PWDF-FLOOR", mode=mode,
+            label=f"mode {mode} {sym} any-reel max p_window "
+                  f"{max_p_window*100:.2f}% >= floor {floor_pct:.1f}%  (R{max_r})",
+            ok=ok,
+            info="philosophy §15.9 active-optimization mandate (mechanism B)",
+        ))
+
+    # Mid-pay floor — prevent mechanism B from over-applying. Drop is
+    # accepted (user-confirmed welcomed) but symbols must not disappear.
+    mid_floor = _PWDF_MID_PAY_FLOOR_PCT.get(mode, 3.0)
+    for sym in _PWDF_MID_PAY_SYMBOLS:
+        # any-reel max p_window across reels containing this symbol
+        max_p_window = 0.0
+        max_r = None
+        for r_idx, strip in enumerate(state.reel_strips):
+            has_sym = any(s["symbol"] == sym for s in strip)
+            if not has_sym:
+                continue
+            pw = symbol_window_probability(strip, sym)
+            if pw > max_p_window:
+                max_p_window = pw
+                max_r = r_idx + 1
+        if max_r is None:
+            continue  # symbol absent from all reels (skip)
+        ok = max_p_window * 100.0 >= mid_floor
+        checks.append(Check(
+            category="PWDF-FLOOR", mode=mode,
+            label=f"mode {mode} {sym} (mid-pay) any-reel max p_window "
+                  f"{max_p_window*100:.2f}% >= mid-floor {mid_floor:.1f}%  (R{max_r})",
+            ok=ok,
+            info="philosophy §15.8 mid-pay visible floor — drop accepted "
+                 "(user v8.1 brief) but symbol must remain visible",
+        ))
+
     return checks
 
 
@@ -863,6 +996,111 @@ def _run_strip_checks(strips: list[list[str]], weights_by_mode: dict[int, list[l
             category="BLANK-FLANK", mode=None, label=label, ok=ok,
             info="philosophy §13 universal hard rule",
         ))
+
+    # [VISUAL-RHYTHM] philosophy §14.5 — bar-family / top-symbol clusters
+    # + same-symbol gaps + top-pair distance. Thresholds are M15-specific.
+    bar_family = set(_VISUAL_RHYTHM_BAR_FAMILY)
+    top_set = set(_VISUAL_RHYTHM_TOP_SYMBOLS)
+    for r_idx, reel in enumerate(strips):
+        n = len(reel)
+        # Non-blank cyclic sequence
+        nb_seq = [s for s in reel if s != "blank"]
+        nb_n = len(nb_seq)
+
+        # 1) Max bar-family consecutive run in non-blank cyclic seq
+        doubled = nb_seq + nb_seq
+        max_bar_run = 0
+        cur = 0
+        for s in doubled:
+            if s in bar_family:
+                cur += 1
+                if cur > max_bar_run:
+                    max_bar_run = cur
+            else:
+                cur = 0
+        max_bar_run = min(max_bar_run, nb_n)
+        ok = max_bar_run <= _VISUAL_RHYTHM_MAX_BAR_FAMILY_RUN
+        checks.append(Check(
+            category="VISUAL-RHYTHM", mode=None,
+            label=f"R{r_idx+1} bar-family max consecutive run "
+                  f"{max_bar_run} <= {_VISUAL_RHYTHM_MAX_BAR_FAMILY_RUN}",
+            ok=ok,
+            info="philosophy §14.5 — bar family = {1bar,2bar,3bar}; "
+                 "prevents 'all bar zone' visual cluster",
+        ))
+
+        # 2) Max top-symbol consecutive run (no top-top adjacency in nb seq)
+        max_top_run = 0
+        cur = 0
+        for s in doubled:
+            if s in top_set:
+                cur += 1
+                if cur > max_top_run:
+                    max_top_run = cur
+            else:
+                cur = 0
+        max_top_run = min(max_top_run, nb_n)
+        ok = max_top_run <= _VISUAL_RHYTHM_MAX_TOP_RUN
+        checks.append(Check(
+            category="VISUAL-RHYTHM", mode=None,
+            label=f"R{r_idx+1} top-symbol max consecutive run "
+                  f"{max_top_run} <= {_VISUAL_RHYTHM_MAX_TOP_RUN}",
+            ok=ok,
+            info="philosophy §14.5 — top symbols = {doublediamond,high7,topdollar}; "
+                 "no top-top adjacency in non-blank seq",
+        ))
+
+        # 3) Top-symbol pair distance on full strip (cyclic, counts blanks)
+        for top_sym in _VISUAL_RHYTHM_TOP_SYMBOLS:
+            positions = sorted([i for i, s in enumerate(reel) if s == top_sym])
+            if len(positions) < 2:
+                continue
+            min_gap = n
+            for i in range(len(positions)):
+                a = positions[i]
+                b = positions[(i + 1) % len(positions)]
+                if i == len(positions) - 1:
+                    gap = (b + n) - a
+                else:
+                    gap = b - a
+                if gap < min_gap:
+                    min_gap = gap
+            ok = min_gap >= _VISUAL_RHYTHM_MIN_TOP_PAIR_DISTANCE_STOPS
+            checks.append(Check(
+                category="VISUAL-RHYTHM", mode=None,
+                label=f"R{r_idx+1} {top_sym} pair min distance "
+                      f"{min_gap} >= {_VISUAL_RHYTHM_MIN_TOP_PAIR_DISTANCE_STOPS} stops",
+                ok=ok,
+                info="philosophy §14.5 — prevent 'two top symbols in a flash'",
+            ))
+
+        # 4) Same-symbol min cyclic gap (excl blank) on full strip
+        sym_positions: dict[str, list[int]] = {}
+        for i, s in enumerate(reel):
+            if s != "blank":
+                sym_positions.setdefault(s, []).append(i)
+        for sym, positions in sym_positions.items():
+            if len(positions) < 2:
+                continue
+            positions = sorted(positions)
+            min_gap = n
+            for i in range(len(positions)):
+                a = positions[i]
+                b = positions[(i + 1) % len(positions)]
+                if i == len(positions) - 1:
+                    gap = (b + n) - a
+                else:
+                    gap = b - a
+                if gap < min_gap:
+                    min_gap = gap
+            ok = min_gap >= _VISUAL_RHYTHM_MIN_SAME_SYMBOL_GAP_STOPS
+            checks.append(Check(
+                category="VISUAL-RHYTHM", mode=None,
+                label=f"R{r_idx+1} {sym} same-symbol min cyclic gap "
+                      f"{min_gap} >= {_VISUAL_RHYTHM_MIN_SAME_SYMBOL_GAP_STOPS} stops",
+                ok=ok,
+                info="philosophy §14.5 — same symbol shouldn't cluster on reel",
+            ))
 
     # [STRIP-IMMUTABILITY] defensive check (also covered by
     # tests/test_strips_identical_across_modes.py if it exists).

@@ -1,0 +1,96 @@
+==============================================================================
+M15 v8.1 PWDF / window visibility per top symbol per reel per mode
+==============================================================================
+
+--- mode 1 ---
+  doublediamond:
+    R1: p_mid=3.022%  p_window=15.822%  PWDF=5.24
+    R2: p_mid=4.238%  p_window=16.424%  PWDF=3.87
+    R3: p_mid=1.043%  p_window=7.939%  PWDF=7.62
+    any-reel max p_window = 16.424%
+  high7:
+    R1: p_mid=2.844%  p_window=15.644%  PWDF=5.50
+    R2: p_mid=4.238%  p_window=16.424%  PWDF=3.87
+    R3: p_mid=2.085%  p_window=15.878%  PWDF=7.62
+    any-reel max p_window = 16.424%
+  topdollar:
+    R1: p_mid=0.000%  p_window=0.000%  PWDF=0.00
+    R2: p_mid=0.000%  p_window=0.000%  PWDF=0.00
+    R3: p_mid=1.283%  p_window=15.076%  PWDF=11.75
+    any-reel max p_window = 15.076%
+  --- mid-pay (side-effect window visibility) ---
+    3bar           R1=29.87%  R2=28.61%  R3=28.39%  max=29.87% (R1)
+    2bar           R1=39.82%  R2=37.09%  R3=38.17%  max=39.82% (R1)
+    1bar           R1=32.53%  R2=32.19%  R3=31.28%  max=32.53% (R1)
+    cherry         R1=17.42%  R2=17.48%  R3=18.28%  max=18.28% (R3)
+    jackpot        R1=6.49%  R2=6.62%  R3=7.06%  max=7.06% (R3)
+
+--- mode 2 ---
+  doublediamond:
+    R1: p_mid=2.872%  p_window=10.304%  PWDF=3.59
+    R2: p_mid=4.690%  p_window=11.862%  PWDF=2.53
+    R3: p_mid=0.965%  p_window=3.668%  PWDF=3.80
+    any-reel max p_window = 11.862%
+  high7:
+    R1: p_mid=9.122%  p_window=16.554%  PWDF=1.81
+    R2: p_mid=13.793%  p_window=20.966%  PWDF=1.52
+    R3: p_mid=11.969%  p_window=17.375%  PWDF=1.45
+    any-reel max p_window = 20.966%
+  topdollar:
+    R1: p_mid=0.000%  p_window=0.000%  PWDF=0.00
+    R2: p_mid=0.000%  p_window=0.000%  PWDF=0.00
+    R3: p_mid=3.089%  p_window=8.494%  PWDF=2.75
+    any-reel max p_window = 8.494%
+  --- mid-pay (side-effect window visibility) ---
+    3bar           R1=32.43%  R2=23.17%  R3=24.90%  max=32.43% (R1)
+    2bar           R1=33.11%  R2=32.00%  R3=32.43%  max=33.11% (R1)
+    1bar           R1=22.80%  R2=24.83%  R3=20.85%  max=24.83% (R2)
+    cherry         R1=14.19%  R2=15.45%  R3=13.51%  max=15.45% (R2)
+    jackpot        R1=4.05%  R2=4.00%  R3=3.09%  max=4.05% (R1)
+
+--- mode 5 ---
+  doublediamond:
+    R1: p_mid=3.512%  p_window=10.870%  PWDF=3.10
+    R2: p_mid=5.699%  p_window=12.754%  PWDF=2.24
+    R3: p_mid=1.242%  p_window=3.916%  PWDF=3.15
+    any-reel max p_window = 12.754%
+  high7:
+    R1: p_mid=9.365%  p_window=16.722%  PWDF=1.79
+    R2: p_mid=14.111%  p_window=21.167%  PWDF=1.50
+    R3: p_mid=12.225%  p_window=17.574%  PWDF=1.44
+    any-reel max p_window = 21.167%
+  topdollar:
+    R1: p_mid=0.000%  p_window=0.000%  PWDF=0.00
+    R2: p_mid=0.000%  p_window=0.000%  PWDF=0.00
+    R3: p_mid=3.247%  p_window=8.596%  PWDF=2.65
+    any-reel max p_window = 8.596%
+  --- mid-pay (side-effect window visibility) ---
+    3bar           R1=32.11%  R2=22.80%  R3=24.64%  max=32.11% (R1)
+    2bar           R1=32.78%  R2=31.48%  R3=32.09%  max=32.78% (R1)
+    1bar           R1=22.58%  R2=24.42%  R3=20.63%  max=24.42% (R2)
+    cherry         R1=14.05%  R2=15.20%  R3=13.56%  max=15.20% (R2)
+    jackpot        R1=4.01%  R2=3.93%  R3=3.06%  max=4.01% (R1)
+
+--- mode 7 ---
+  doublediamond:
+    R1: p_mid=3.254%  p_window=17.416%  PWDF=5.35
+    R2: p_mid=3.441%  p_window=19.355%  PWDF=5.62
+    R3: p_mid=1.237%  p_window=8.468%  PWDF=6.85
+    any-reel max p_window = 19.355%
+  high7:
+    R1: p_mid=3.062%  p_window=17.225%  PWDF=5.62
+    R2: p_mid=3.441%  p_window=19.355%  PWDF=5.62
+    R3: p_mid=2.474%  p_window=16.936%  PWDF=6.85
+    any-reel max p_window = 19.355%
+  topdollar:
+    R1: p_mid=0.000%  p_window=0.000%  PWDF=0.00
+    R2: p_mid=0.000%  p_window=0.000%  PWDF=0.00
+    R3: p_mid=1.332%  p_window=15.794%  PWDF=11.86
+    any-reel max p_window = 15.794%
+  --- mid-pay (side-effect window visibility) ---
+    3bar           R1=32.15%  R2=33.98%  R3=27.97%  max=33.98% (R2)
+    2bar           R1=39.81%  R2=39.57%  R3=39.58%  max=39.81% (R1)
+    1bar           R1=32.15%  R2=32.26%  R3=30.83%  max=32.26% (R2)
+    cherry         R1=17.80%  R2=18.71%  R3=18.08%  max=18.71% (R2)
+    jackpot        R1=7.18%  R2=8.39%  R3=7.42%  max=8.39% (R2)
+
