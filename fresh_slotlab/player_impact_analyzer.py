@@ -3003,8 +3003,19 @@ def parse_chunk_response(
         # without a detectable trigger signal — M272 simple paid→bonus
         # round sequences, etc.) keep their naive accumulation
         # intact so pre-existing behavior is preserved.
+        #
+        # 2026-05-12: forward ``ctx`` so rules see the per-robot
+        # ``cycle_peak`` (used by BCMCycleAnchorRule to detect
+        # CollectCount-milestone trigger paid rounds whose
+        # PayoutIdToWinAmount is empty -- M274 mode 1 saw 8.25% of
+        # bonus rounds escape attribution before this fix; fleet sweep
+        # across cached BCM machines found 55 of 117 (machine, mode)
+        # pairs leaking similarly into _unattributed_st<N>) and the
+        # ``bet`` amount for SynthesizePayIdRule's multiplier labels.
+        _cycle_peak_for_ctx = detect_cycle_peak(rounds)
+        _trigger_ctx = {"cycle_peak": _cycle_peak_for_ctx, "bet": bet}
         _trig_sessions_for_robot = compute_trigger_sessions(
-            rounds, round_win_rules=round_win_rules,
+            rounds, round_win_rules=round_win_rules, ctx=_trigger_ctx,
         )
         session_win_by_trigger_idx: dict[int, float] = {
             int(s["trigger_idx"]): float(s.get("session_win", 0.0) or 0.0)
@@ -3087,14 +3098,41 @@ def parse_chunk_response(
                 return (0, str(s))
 
         for _trig_session in _trig_sessions_for_robot:
-            _sess_win = float(_trig_session.get("session_win", 0.0) or 0.0)
-            if _sess_win == 0.0:
-                continue
             _anchor_pids = _trig_session.get("trigger_pay_ids") or ()
             if not _anchor_pids:
                 continue
-            _chosen = max(_anchor_pids, key=_pid_anchor_sort_key)
-            payout_id_win[str(_chosen)] += _sess_win
+            _chosen = str(max(_anchor_pids, key=_pid_anchor_sort_key))
+            _sess_win = float(_trig_session.get("session_win", 0.0) or 0.0)
+            # Bump hits for rule-synthesized anchors (e.g. ``_bcm_cycle``
+            # from BCMCycleAnchorRule). The default round-level loop
+            # bumps ``payout_id_hits[pid]`` only for pids appearing in
+            # the round's ``PayoutIdToWinAmount`` dict -- a rule-only
+            # anchor never appears there and would silently report
+            # ``hits=0`` in the drilldown despite carrying nonzero win.
+            # The hit semantic for these anchors is "this trigger
+            # session is one occurrence of the synthetic feature": one
+            # bump per session regardless of session_win (a 0-win
+            # cycle-peak round is still a feature occurrence). Real
+            # numeric anchors are detected here as "_chosen is NOT a
+            # key in the trigger round's PayoutIdToWinAmount" -- those
+            # were credited a hit by the round-level loop already and
+            # bumping again would double-count.
+            _trig_idx = _trig_session.get("trigger_idx", -1)
+            try:
+                _trig_idx_int = int(_trig_idx)
+            except (TypeError, ValueError):
+                _trig_idx_int = -1
+            if 0 <= _trig_idx_int < len(rounds):
+                _trig_pid_dict = rounds[_trig_idx_int].get("PayoutIdToWinAmount") if isinstance(rounds[_trig_idx_int], dict) else None
+                _present_in_round = (
+                    isinstance(_trig_pid_dict, dict)
+                    and _chosen in {str(k) for k in _trig_pid_dict.keys()}
+                )
+                if not _present_in_round:
+                    payout_id_hits[_chosen] += 1
+            if _sess_win == 0.0:
+                continue
+            payout_id_win[_chosen] += _sess_win
 
         cur_loss = 0
         cur_win = 0
@@ -3133,7 +3171,9 @@ def parse_chunk_response(
         # New: detect peak ONCE per robot, then in the per-round walk
         # set the flag when cc == peak (the round AT cycle complete,
         # BEFORE the wheel/bonus chain opens).
-        robot_cycle_peak: int | None = detect_cycle_peak(rounds)
+        # 2026-05-12: reuse the peak value that was already computed for
+        # the trigger-session ctx above (single O(n) walk per robot).
+        robot_cycle_peak: int | None = _cycle_peak_for_ctx
         robot_final_cc = 0  # CC at chunk end (for pending calculation)
         prev_round_pids: dict[str, Any] = {}  # previous round's PayoutIdToWinAmount (for chain trigger classification)
         # Previous round's SpinType within this robot (reset per-robot
@@ -7298,9 +7338,16 @@ def main() -> int:
                 "win_streak_p95": win_streak_p95,
                 "win_streak_max": max_win_final,
             },
-            "paylines_top20": payline_rows[:20],
-            "payout_groups_top20": payout_group_rows[:20],
-            "payout_ids_top20": payout_id_rows[:20],
+            # 2026-05-12: top-N truncations lifted across the *_top20
+            # family. 字段名保留 "_top20" 后向兼容老 report + LLM prompt
+            # (它们已经把字段名写死),但实际不再截断。原因同
+            # symbols_by_column_top10:对比模式下截断会让排名 >N 的条目
+            # 在 A/B 一侧凭空消失,Δ chip + "A only"/"B only" 标签据此
+            # 推断出错误的 presence diff。机台 payline / pay_id / symbol
+            # 总数一般 ≤ 30,全部下发的开销可忽略。
+            "paylines_top20": list(payline_rows),
+            "payout_groups_top20": list(payout_group_rows),
+            "payout_ids_top20": list(payout_id_rows),
             "spin_type_breakdown": spin_type_rows,
             "spin_type_coverage": spin_type_coverage,
             # Extra fields discovered beyond _BASELINE_ROUND_FIELDS.
@@ -7398,7 +7445,7 @@ def main() -> int:
                     if v["hits"] > 0
                 ],
                 key=lambda x: -x["rtp_contribution_pp"],
-            )[:20],
+            ),  # 2026-05-12: 不再截断,见 paylines_top20 之上的注释
             # Session RTP curve: cumulative RTP per robot at sampled
             # paid-spin indices. Frontend can plot these as spaghetti
             # lines or compute p10/p50/p90 envelope.
@@ -7416,9 +7463,18 @@ def main() -> int:
                     for pos, cnt in all_reel_position_hits.items()
                 ],
                 key=lambda x: -x["hits"],
-            )[:20],
-            "symbols_top20": symbol_rows[:20],
-            "symbols_by_column_top10": {k: v[:10] for k, v in symbol_by_col_rows.items()},
+            ),  # 2026-05-12: 不再截断,见 paylines_top20 之上的注释
+            "symbols_top20": list(symbol_rows),  # 2026-05-12: 不再截断
+            # 2026-05-12: name kept as "top10" for back-compat with old
+            # reports + LLM prompt, but truncation removed. Reason: in
+            # report-compare mode, when a symbol existed in A's top 10
+            # but ranked >10 in B's column, B side rendered "—" and was
+            # tagged "A only", even though B's overall data had the
+            # symbol (just at lower per-column rank). 单机一共也就十几个
+            # 符号,全部下发开销可忽略,但能让按列对比的 presence diff
+            # 真实可信。下游 (pure.js / interpret prompt) 只 iterate,
+            # 不假设长度。
+            "symbols_by_column_top10": {k: list(v) for k, v in symbol_by_col_rows.items()},
             # 2026-04-24: payline-density variant of symbols_by_column_top10.
             # "symbols_by_column_top10" counts all visible window rows (top+mid+bot
             # — what player sees). "_payline" restricts to rows that paylines
@@ -7427,7 +7483,7 @@ def main() -> int:
             # Frontend shows both columns for comparison: symbols with
             # window% >> payline% are "near-miss amplifiers" (clustered with
             # blanks to tease).
-            "symbols_by_column_top10_payline": {k: v[:10] for k, v in symbol_by_col_rows_payline.items()},
+            "symbols_by_column_top10_payline": {k: list(v) for k, v in symbol_by_col_rows_payline.items()},
             "payline_rows_per_col": payline_row_mask_per_col,
             # Rawdata-replay bankruptcy simulation. UI renders the
             # ``tiers`` list as three side-by-side survival histograms

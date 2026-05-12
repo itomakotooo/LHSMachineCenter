@@ -27,7 +27,7 @@ from fresh_slotlab.trigger_sessions import (
     extract_trigger_pay_ids,
     is_new_trigger_remark,
 )
-from fresh_slotlab.round_win import SettlementWinAmountRule
+from fresh_slotlab.round_win import BCMCycleAnchorRule, SettlementWinAmountRule
 
 
 class TestIsNewTriggerRemark:
@@ -824,3 +824,143 @@ class TestRoundWinRulesIntegration:
         s = compute_trigger_sessions(rounds_t2)[0]
         assert s["win_rule"] == "sum_all"
         assert s["session_win"] == 600  # sum, not last
+
+
+class TestBCMCycleAnchorIntegration:
+    """End-to-end: feeding BCMCycleAnchorRule + ctx['cycle_peak'] into
+    ``compute_trigger_sessions`` opens a session at the cycle-complete
+    paid round (which previously had no anchor and was skipped) and
+    accumulates the bonus block's win to the synthetic anchor.
+
+    Locks the M274-style fix: 8.25% of bonus rounds previously fell
+    into ``_unattributed_st<N>`` because their trigger paid round
+    carried ``PayoutIdToWinAmount={}`` (no win==0 anchor) while
+    ``CollectCount == cycle_peak`` (BuffCollectionMap milestone).
+    """
+
+    def _paid_at_peak(self, cc: int) -> dict:
+        """Paid trigger round at cycle peak: no PayoutIdToWinAmount
+        anchor; CollectCount equals the peak we'll pass via ctx."""
+        return {
+            "SpinType": 140, "CostCredits": 1000, "BetAmount": 1000,
+            "WinCredits": 0, "PayoutIdToWinAmount": {},
+            "CollectCount": cc, "ReMarks": "",
+        }
+
+    def _bcm_bonus(self, win: int) -> dict:
+        """Bonus round on M274's ListRewardMinigame: cost=0, win>0,
+        no PayoutIdToWinAmount (round-level loop credits nothing,
+        session_win is the only attribution path)."""
+        return {
+            "SpinType": 139, "CostCredits": 0, "WinCredits": win,
+            "PayoutIdToWinAmount": {}, "ReMarks": "Minigame",
+        }
+
+    def _regular_paid(self) -> dict:
+        return {"SpinType": 140, "CostCredits": 1000, "BetAmount": 1000,
+                "WinCredits": 0, "PayoutIdToWinAmount": {}}
+
+    def test_bcm_anchor_fires_at_cycle_peak(self):
+        rounds = [
+            self._paid_at_peak(cc=1000),
+            self._bcm_bonus(win=1000),
+            self._bcm_bonus(win=2000),
+            self._bcm_bonus(win=0),
+            self._regular_paid(),
+        ]
+        rule = BCMCycleAnchorRule()
+        sessions = compute_trigger_sessions(
+            rounds, round_win_rules=[rule], ctx={"cycle_peak": 1000},
+        )
+        assert len(sessions) == 1
+        s = sessions[0]
+        assert s["trigger_idx"] == 0
+        assert s["trigger_pay_ids"] == ["_bcm_cycle"]
+        assert s["session_end_idx"] == 4
+        # Bonus rounds have empty PayoutIdToWinAmount -> not
+        # already-credited -> sum_win path
+        assert s["session_win"] == 3000
+
+    def test_no_anchor_without_ctx(self):
+        """Without ctx, the rule can't observe the peak and won't
+        contribute -- session must NOT open and the analyzer's
+        fallback synthesizer would absorb the gap (regression
+        protection)."""
+        rounds = [
+            self._paid_at_peak(cc=1000),
+            self._bcm_bonus(win=1000),
+            self._regular_paid(),
+        ]
+        rule = BCMCycleAnchorRule()
+        sessions = compute_trigger_sessions(rounds, round_win_rules=[rule])
+        assert sessions == []
+
+    def test_below_peak_no_session(self):
+        """Cycle counter not yet at peak: no anchor, no session."""
+        rounds = [
+            self._paid_at_peak(cc=999),
+            self._bcm_bonus(win=500),
+            self._regular_paid(),
+        ]
+        rule = BCMCycleAnchorRule()
+        sessions = compute_trigger_sessions(
+            rounds, round_win_rules=[rule], ctx={"cycle_peak": 1000},
+        )
+        assert sessions == []
+
+    def test_real_anchor_wins_over_synthetic(self):
+        """M274 has 5 of 3902 trigger rounds with BOTH ``5801`` anchor
+        AND CC==peak (overlap). The dispatcher merges anchors and the
+        analyzer's max-numeric heuristic picks '5801'. Lock that the
+        SESSION carries both anchors (so the analyzer can choose)."""
+        r0 = self._paid_at_peak(cc=1000)
+        r0["PayoutIdToWinAmount"] = {"5801": 0}
+        rounds = [r0, self._bcm_bonus(win=4000), self._regular_paid()]
+        rule = BCMCycleAnchorRule()
+        sessions = compute_trigger_sessions(
+            rounds, round_win_rules=[rule], ctx={"cycle_peak": 1000},
+        )
+        assert len(sessions) == 1
+        # Both anchors present, sorted lex
+        assert sessions[0]["trigger_pay_ids"] == sorted(["5801", "_bcm_cycle"])
+        assert sessions[0]["session_win"] == 4000
+
+    def test_multiple_cycles_per_robot(self):
+        """A robot can complete multiple cycles in one chunk. Each
+        cycle-peak paid round opens its own BCM session."""
+        rounds = [
+            self._paid_at_peak(cc=1000),
+            self._bcm_bonus(win=1500),
+            self._regular_paid(),
+            self._paid_at_peak(cc=1000),
+            self._bcm_bonus(win=2500),
+            self._regular_paid(),
+        ]
+        rule = BCMCycleAnchorRule()
+        sessions = compute_trigger_sessions(
+            rounds, round_win_rules=[rule], ctx={"cycle_peak": 1000},
+        )
+        assert len(sessions) == 2
+        assert all(s["trigger_pay_ids"] == ["_bcm_cycle"] for s in sessions)
+        assert [s["session_win"] for s in sessions] == [1500, 2500]
+
+    def test_already_credited_bonus_round_excluded(self):
+        """Bonus rounds whose own PayoutIdToWinAmount has nonzero
+        values are already credited at round level. Session_win must
+        exclude them (double-count guard) -- same semantic as the
+        existing M273/M257 freespin filter, now applied to BCM
+        sessions too."""
+        rounds = [
+            self._paid_at_peak(cc=1000),
+            # Bonus rounds, second one is round-level credited
+            self._bcm_bonus(win=1000),  # raw, contributes
+            {"SpinType": 139, "CostCredits": 0, "WinCredits": 7000,
+             "PayoutIdToWinAmount": {"6": 7000}},  # already at pay_id 6, excluded
+            self._regular_paid(),
+        ]
+        rule = BCMCycleAnchorRule()
+        sessions = compute_trigger_sessions(
+            rounds, round_win_rules=[rule], ctx={"cycle_peak": 1000},
+        )
+        assert len(sessions) == 1
+        assert sessions[0]["session_win"] == 1000  # 7000 excluded

@@ -47,10 +47,14 @@ def _to_float(v: Any, default: float = 0.0) -> float:
         return default
 
 
-def _is_paid_round(r: Any) -> bool:
-    """Paid round classifier mirroring trigger_sessions._is_paid_round
-    (CostCredits > 0). Duplicated to avoid circular import; both
-    modules need the predicate."""
+def is_paid_round(r: Any) -> bool:
+    """True iff ``CostCredits > 0``.
+
+    Canonical paid-round predicate for the whole pipeline. Bonus rounds
+    (freespin / wheel / settlement / nudge) carry ``CostCredits in
+    (None, 0)`` across every probed machine; only paid trigger rounds
+    have a positive cost.
+    """
     if not isinstance(r, dict):
         return False
     cc = r.get("CostCredits")
@@ -62,13 +66,50 @@ def _is_paid_round(r: Any) -> bool:
         return False
 
 
+# Underscored alias kept for callers that already imported the private
+# spelling (round_win internals + early trigger_sessions consumers).
+_is_paid_round = is_paid_round
+
+
+def extract_trigger_pay_ids_default(payout_id_to_win: Any) -> list[str]:
+    """Default trigger-anchor extraction: pay_id keys whose
+    ``PayoutIdToWinAmount`` value is 0 on a paid round.
+
+    Trigger tokens (pay_id 666 on M15 TopDollar, 5801 on M274
+    ListRewardWheel, etc.) are pure signal: their value is 0 but their
+    presence tells the math machine "activate the bonus feature".
+    Pay_ids with nonzero win on the same round are conventional payline
+    wins that happen to co-occur and must NOT be treated as trigger
+    anchors (they'd absorb the bonus session win that belongs to the
+    real trigger).
+
+    Returns a sorted list for deterministic downstream attribution.
+    """
+    if not isinstance(payout_id_to_win, dict):
+        return []
+    out: list[str] = []
+    for pid, win in payout_id_to_win.items():
+        try:
+            w = float(win) if win is not None else 0.0
+        except (TypeError, ValueError):
+            w = 0.0
+        if w == 0.0:
+            out.append(str(pid))
+    out.sort()
+    return out
+
+
 class RoundWinRule:
     """Base class for per-machine round-level overrides.
 
-    Subclasses override ``extract_win`` and/or ``extract_payouts``.
-    ``ctx`` is a free-form dict passed through by callers; current
-    callers populate ``{"bet": int}`` for rules that need the chunk
-    bet amount (e.g. multiplier-based pay_id synthesis).
+    Subclasses override ``extract_win`` and/or ``extract_payouts`` and/or
+    ``extract_trigger_anchor`` as needed. ``ctx`` is a free-form dict
+    passed through by callers. Standard keys:
+
+      * ``"bet"`` — chunk bet amount (used by multiplier-based pay_id
+        synthesis, e.g. SynthesizePayIdRule).
+      * ``"cycle_peak"`` — per-robot ``detect_cycle_peak`` result
+        (used by BCMCycleAnchorRule to detect cycle completion).
 
     A rule may be stateful per-robot (e.g. summary-vs-sub-round
     dedupe needs to remember the previous round). Stateful rules
@@ -88,6 +129,33 @@ class RoundWinRule:
         to default ``round.PayoutIdToWinAmount``. ``{}`` = explicitly
         suppress round-level credit (caller leaves payout_id_win
         unchanged for this round).
+        """
+        return None
+
+    def extract_trigger_anchor(self, round_dict: dict, ctx: dict | None = None) -> list[str] | None:
+        """Augment trigger-anchor extraction for a paid trigger round.
+
+        Called by ``compute_trigger_sessions`` when a paid round is
+        followed by at least one bonus round (cost==0). Lets a machine
+        contribute extra anchor pay_ids beyond the
+        ``PayoutIdToWinAmount`` win==0 default extraction, for trigger
+        mechanics that don't surface through PayoutIdToWinAmount at
+        all (e.g. M274 BuffCollectionMap milestone fires at
+        ``CollectCount==cycle_peak`` with ``PayoutIdToWinAmount={}``).
+
+        Return value semantics:
+          * ``None`` — no contribution from this rule; caller keeps
+            whatever default + other-rule anchors it has.
+          * ``[]`` — explicit "no anchor from this rule" (rare;
+            equivalent to ``None`` for the dispatcher).
+          * ``[pid, ...]`` — additional anchors to merge into the
+            session's trigger_pay_ids list.
+
+        The dispatcher (``extract_round_trigger_anchor``) merges rule
+        contributions into the default extraction; downstream the
+        analyzer's anchor-selection heuristic picks the "best" pid (max
+        numeric value), so a synthetic anchor like ``"_bcm_cycle"``
+        never displaces a real numeric pay_id when both are present.
         """
         return None
 
@@ -274,10 +342,88 @@ class SynthesizePayIdRule(RoundWinRule):
         return f"st{st}_x{int_mult}"
 
 
+class BCMCycleAnchorRule(RoundWinRule):
+    """Synthesize a trigger anchor on paid rounds where a buff-collection
+    cycle completes (i.e. ``CollectCount == cycle_peak``).
+
+    Covers the ``BuffCollectionMap`` mechanic used by the 159-machine
+    BCM family. The bonus feature fires once per cycle when the buff
+    counter reaches the peak; the math machine does NOT surface this
+    transition through ``PayoutIdToWinAmount`` (the trigger round
+    carries ``pid={}`` or only co-occurring regular-payline pids).
+    Without this rule, the bonus block's wins fall through every
+    layer of pay_id attribution and land in the ``_unattributed_st<N>``
+    catch-all -- silently, since the invariant
+    ``sum(payid_win)==chunk_win`` is force-closed by the synthesizer.
+
+    Verified 2026-05-12 on M274 mode 1 (8.25% of bonus rounds, 315 of
+    315 unattributed blocks deterministically preceded by paid round
+    with ``CollectCount==1000``; OLD cfg md5 showed 0% fallback, new
+    cfg introduced the milestone path). Fleet sweep across 117 cached
+    BCM (machine, mode) pairs found 55 with fallback_sum >0.5% of
+    chunk_win -- M250 mode 1/2/5/7 at 100%, M268/M260/M264 at 70-90%.
+
+    The cycle peak is detected by
+    ``fresh_slotlab.round_classification.detect_cycle_peak`` over the
+    full per-robot rounds list and passed via ``ctx["cycle_peak"]``.
+    Pass-through when:
+
+      * ``ctx`` is None or missing ``"cycle_peak"`` -- caller is not
+        wired for BCM detection (defensive).
+      * ``cycle_peak is None`` -- chunk too short to observe a reset
+        (single-chunk machines whose cycle is longer than the chunk).
+      * The round is not paid (``CostCredits<=0``) -- bonus rounds
+        themselves carry no CollectCount and are never trigger rounds.
+      * ``CollectCount != cycle_peak`` -- this paid round is not at
+        cycle completion.
+
+    Fires returning ``[anchor_pid]`` (default ``"_bcm_cycle"``). The
+    dispatcher merges this into the default ``PayoutIdToWinAmount``
+    win==0 extraction; if a paid round has both a real pay_id anchor
+    (rare overlap, e.g. M274 has 5/3902 trigger rounds with both '5801'
+    and CC==peak) the analyzer's anchor-selection picks max-numeric so
+    the real pid wins and the synthetic anchor is dropped harmlessly.
+    """
+
+    def __init__(
+        self,
+        anchor_pid: str = "_bcm_cycle",
+        cycle_field: str = "CollectCount",
+    ) -> None:
+        self.anchor_pid = str(anchor_pid)
+        self.cycle_field = str(cycle_field)
+
+    def extract_trigger_anchor(self, round_dict: dict, ctx: dict | None = None) -> list[str] | None:
+        if not isinstance(round_dict, dict):
+            return None
+        if not is_paid_round(round_dict):
+            return None
+        if not isinstance(ctx, dict):
+            return None
+        peak = ctx.get("cycle_peak")
+        if peak is None:
+            return None
+        try:
+            peak_int = int(peak)
+        except (TypeError, ValueError):
+            return None
+        if peak_int < 1:
+            return None
+        cv = round_dict.get(self.cycle_field)
+        try:
+            cv_int = int(cv) if cv is not None else None
+        except (TypeError, ValueError):
+            return None
+        if cv_int != peak_int:
+            return None
+        return [self.anchor_pid]
+
+
 # Stable type-string -> class. Add new rule types here.
 RULE_REGISTRY: dict[str, type[RoundWinRule]] = {
     "settlement_winamount": SettlementWinAmountRule,
     "synthesize_pay_id": SynthesizePayIdRule,
+    "bcm_cycle_anchor": BCMCycleAnchorRule,
 }
 
 
@@ -330,6 +476,82 @@ def extract_round_payouts(
     if isinstance(pid, dict):
         return {str(k): _to_float(v, 0.0) for k, v in pid.items()}
     return {}
+
+
+def extract_round_trigger_anchor(
+    round_dict: Any,
+    rules: list[RoundWinRule] | None = None,
+    ctx: dict | None = None,
+) -> list[str]:
+    """Round's trigger-anchor pay_id list (sorted, de-duplicated).
+
+    Combines:
+      * Default extraction over ``round.PayoutIdToWinAmount`` -- any
+        pay_id key with value 0 (matches the historical
+        ``extract_trigger_pay_ids`` semantics from trigger_sessions).
+      * Each rule's ``extract_trigger_anchor`` contribution -- merged
+        into the default. ``None`` / ``[]`` from a rule means "no
+        contribution"; a non-empty list adds those pids.
+
+    Order in the returned list is purely lexicographic; the analyzer's
+    downstream anchor-selection heuristic (``max(...,
+    key=_pid_anchor_sort_key)`` in player_impact_analyzer) picks the
+    canonical anchor when multiple are present, with numeric pids
+    winning over synthetic underscore-prefixed ones. This means a
+    rule-supplied ``"_bcm_cycle"`` anchor never displaces a real
+    numeric pid (e.g. ``"5801"``) on rounds where both signals appear.
+    """
+    if not isinstance(round_dict, dict):
+        return []
+    anchors: list[str] = list(
+        extract_trigger_pay_ids_default(round_dict.get("PayoutIdToWinAmount"))
+    )
+    if rules:
+        seen = set(anchors)
+        for rule in rules:
+            extra = rule.extract_trigger_anchor(round_dict, ctx)
+            if not extra:
+                continue
+            for a in extra:
+                a_str = str(a)
+                if a_str not in seen:
+                    seen.add(a_str)
+                    anchors.append(a_str)
+    anchors.sort()
+    return anchors
+
+
+def round_has_credited_win(
+    round_dict: Any,
+    rules: list[RoundWinRule] | None = None,
+    ctx: dict | None = None,
+) -> bool:
+    """True iff this round's ``WinCredits`` is already credited to
+    pay_ids at round level -- i.e. ``extract_round_payouts`` returns
+    a non-empty dict with at least one nonzero value.
+
+    Rule-aware unification of the legacy
+    ``trigger_sessions._round_has_credited_win`` (which only checked
+    raw ``round.PayoutIdToWinAmount``) and the parallel rule-driven
+    check trigger_sessions added later (``bool(rule_payouts)``). One
+    function, one source of truth: whatever round-level pay_id
+    attribution the configured rules + default produce.
+
+    Used by ``compute_trigger_sessions`` to exclude bonus rounds whose
+    win is already at pay_id level from the trigger-session sum
+    (double-count guard).
+    """
+    payouts = extract_round_payouts(round_dict, rules=rules, ctx=ctx)
+    if not payouts:
+        return False
+    for v in payouts.values():
+        try:
+            w = float(v) if v is not None else 0.0
+        except (TypeError, ValueError):
+            w = 0.0
+        if w != 0.0:
+            return True
+    return False
 
 
 def load_rules_for_machine(

@@ -1,22 +1,37 @@
 """End-to-end fleet verification of the payid attribution invariant.
 
 For each cached chunk, runs parse_chunk_response (rule-aware path)
-and checks: |chunk_win - sum(payout_id_win.values())| / chunk_win < 0.5%.
+and checks two invariants:
 
-This exercises the FULL pipeline: trigger_sessions session_win
-attribution + extract_round_payouts override + universal fallback
-synthesizer. So the verifier output is "what the analyzer actually
-emits" not just structural raw-data invariants.
+  1. **Total accounting**: |chunk_win - sum(payout_id_win.values())|
+     / chunk_win < 0.5% (gap_pct -- closes when the fallback
+     synthesizer absorbs whatever the named-pid path left over).
+  2. **Attribution quality**: fallback_pct = sum_of_synthetic_pids /
+     chunk_win < 2.0% (the synthetic ``_unattributed_st<N>`` /
+     ``_unattributed_residual`` catch-alls should be near-empty when
+     per-machine rules cover every trigger path).
 
-Output: TSV. Classes:
-  GREEN_OK     -- |gap_pct| < 0.5
-  YELLOW_SMALL -- 0.5 <= |gap_pct| < 5
-  RED_LARGE    -- |gap_pct| >= 5
-  ERROR        -- chunk parse failed
+Invariant 1 alone hides systematic mis-attribution -- a machine where
+EVERY bonus win lands in ``_unattributed_st<N>`` still scores
+gap_pct=0 because the fallback adds back exactly what the named pids
+missed. Invariant 2 was added 2026-05-12 after the M274 BCM cycle
+trigger investigation surfaced 55 of 117 cached BCM (machine, mode)
+pairs hiding 0.5--100% fallback shares behind GREEN_OK.
+
+Output: TSV. Classes (sorted highest-severity first in the report):
+  RED_GAP        -- gap_pct >= 5 (real arithmetic gap)
+  RED_FALLBACK   -- gap_pct < 5 but fallback_pct >= 5
+                    (structural mis-attribution masked by synthesizer)
+  YELLOW_SMALL   -- 0.5 <= gap_pct < 5
+  YELLOW_FALLBACK-- gap_pct < 0.5 but fallback_pct >= 2
+                    (low-grade leakage worth investigating)
+  GREEN_OK       -- gap_pct < 0.5 AND fallback_pct < 2
+  ERROR          -- chunk parse failed
 
 Run before vs after a change to confirm:
-  - All previously RED machines move to GREEN_OK
+  - All previously RED machines move to GREEN_OK / YELLOW_*
   - Zero machines regress from GREEN to RED/YELLOW
+  - Reducing fallback_pct on a machine never widens its gap_pct
 """
 from __future__ import annotations
 
@@ -64,19 +79,33 @@ def verify_pair(args):
     chunk_win = float(rec["win"])
     pid_win = rec.get("payout_id_win") or {}
     pid_sum = sum(pid_win.values())
-    fallback_pids = {k: v for k, v in pid_win.items() if k.startswith("_unattributed_")}
+    # Fallback pids are the synthetic catch-alls emitted when the
+    # primary pid attribution path leaves a round-level or
+    # session-level residual: ``_unattributed_st<N>`` (per-SpinType
+    # synthesis in the round loop) and ``_unattributed_residual``
+    # (chunk-level residual). They close the gap_pct invariant but
+    # hide mis-attribution; track them separately.
+    fallback_pids = {
+        k: v for k, v in pid_win.items()
+        if str(k).startswith("_unattributed_")
+    }
     fallback_sum = sum(fallback_pids.values())
     real_pid_sum = pid_sum - fallback_sum
 
     gap = chunk_win - pid_sum
     gap_pct = (abs(gap) / chunk_win * 100.0) if chunk_win > 0 else 0.0
+    fallback_pct = (fallback_sum / chunk_win * 100.0) if chunk_win > 0 else 0.0
 
-    if gap_pct < 0.5:
-        cls = "GREEN_OK"
-    elif gap_pct < 5.0:
+    if gap_pct >= 5.0:
+        cls = "RED_GAP"
+    elif fallback_pct >= 5.0:
+        cls = "RED_FALLBACK"
+    elif gap_pct >= 0.5:
         cls = "YELLOW_SMALL"
+    elif fallback_pct >= 2.0:
+        cls = "YELLOW_FALLBACK"
     else:
-        cls = "RED_LARGE"
+        cls = "GREEN_OK"
 
     return {
         "machine": machine, "mode": mode_dir, "class": cls,
@@ -85,6 +114,7 @@ def verify_pair(args):
         "real_pid_sum": real_pid_sum,
         "fallback_sum": fallback_sum,
         "fallback_pid_count": len(fallback_pids),
+        "fallback_pct": fallback_pct,
         "gap_pct": gap_pct,
         "rule_count": len(rules),
     }
@@ -126,25 +156,30 @@ def main():
         print(f"#   {k}: {cls_counts[k]}")
     print()
 
-    cls_order = {"RED_LARGE": 0, "YELLOW_SMALL": 1, "ERROR": 2, "GREEN_OK": 9}
+    cls_order = {
+        "RED_GAP": 0, "RED_FALLBACK": 1,
+        "YELLOW_SMALL": 2, "YELLOW_FALLBACK": 3,
+        "ERROR": 4, "GREEN_OK": 9,
+    }
     results.sort(key=lambda r: (
         cls_order.get(r.get("class"), 9),
-        -abs(r.get("gap_pct", 0))
+        -max(abs(r.get("gap_pct", 0)), abs(r.get("fallback_pct", 0))),
     ))
 
-    cols = ["class", "machine", "mode", "rule_count", "gap_pct",
+    cols = ["class", "machine", "mode", "rule_count", "gap_pct", "fallback_pct",
             "chunk_win", "pid_sum", "real_pid_sum", "fallback_sum", "fallback_count"]
     print("\t".join(cols))
     for r in results:
         if r.get("class") == "ERROR":
-            print(f"ERROR\t{r['machine']}\t{r['mode']}\t\t\t\t\t\t\t\t{r.get('msg','')}")
+            print(f"ERROR\t{r['machine']}\t{r['mode']}\t\t\t\t\t\t\t\t\t{r.get('msg','')}")
             continue
         if r["class"] == "GREEN_OK":
-            continue  # noise
+            continue  # only print rows that warrant attention
         print("\t".join([
             r["class"], r["machine"], r["mode"],
             str(r["rule_count"]),
             f"{r['gap_pct']:.4f}",
+            f"{r['fallback_pct']:.4f}",
             f"{r['chunk_win']:.0f}",
             f"{r['pid_sum']:.0f}",
             f"{r['real_pid_sum']:.0f}",

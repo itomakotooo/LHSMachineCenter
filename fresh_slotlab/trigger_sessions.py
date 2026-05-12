@@ -62,9 +62,25 @@ from typing import Any, Iterable
 # (regression introduced 2026-04-26 by 21357b3 + 6043b6f when
 # round_win was first wired into trigger_sessions).
 try:
-    from fresh_slotlab.round_win import RoundWinRule, extract_round_payouts, extract_round_win
+    from fresh_slotlab.round_win import (
+        RoundWinRule,
+        extract_round_payouts,
+        extract_round_trigger_anchor,
+        extract_round_win,
+        extract_trigger_pay_ids_default,
+        is_paid_round,
+        round_has_credited_win,
+    )
 except ImportError:  # running as a standalone script, not a package member
-    from round_win import RoundWinRule, extract_round_payouts, extract_round_win  # type: ignore[no-redef]
+    from round_win import (  # type: ignore[no-redef]
+        RoundWinRule,
+        extract_round_payouts,
+        extract_round_trigger_anchor,
+        extract_round_win,
+        extract_trigger_pay_ids_default,
+        is_paid_round,
+        round_has_credited_win,
+    )
 
 
 _NEW_TRIGGER_PREFIX = "Trigger"
@@ -95,49 +111,12 @@ def is_new_trigger_remark(remarks: Any) -> bool:
     return True
 
 
-def extract_trigger_pay_ids(payout_id_to_win: Any) -> list[str]:
-    """Return the pay_id keys on this trigger round whose win is 0.
-
-    Trigger tokens (pay_id 666 on M15, for example) are pure signal:
-    their ``PayoutIdToWinAmount`` value is 0 but their presence
-    tells the server "activate the bonus feature". Pay_ids with
-    nonzero win on the same round are conventional payline wins
-    that happen to co-occur (M15 sample: pay_id 9 cherry paying
-    1000 credits on the same round that pay_id 666 triggers
-    TopDollar). Those aren't the "cause" of the bonus and must not
-    be credited with the feature win.
-    """
-    if not isinstance(payout_id_to_win, dict):
-        return []
-    out: list[str] = []
-    for pid, win in payout_id_to_win.items():
-        try:
-            w = float(win) if win is not None else 0.0
-        except (TypeError, ValueError):
-            w = 0.0
-        if w == 0.0:
-            out.append(str(pid))
-    # Deterministic order for reproducible test + downstream attribution
-    out.sort()
-    return out
-
-
-def _is_paid_round(r: Any) -> bool:
-    """Paid-round classifier used by both Type 1 and Type 2 session
-    boundary logic. True iff ``CostCredits > 0``. Bonus rounds
-    carry CostCredits in (None, 0) uniformly across every machine
-    observed — TopDollar selector, M273 freespin, M201 selector
-    result, M209 move, M257 freespin, all non-paid side rounds
-    have CostCredits None or 0."""
-    if not isinstance(r, dict):
-        return False
-    cc = r.get("CostCredits")
-    if cc is None:
-        return False
-    try:
-        return float(cc) > 0.0
-    except (TypeError, ValueError):
-        return False
+# Back-compat alias: pre-refactor callers imported these names from
+# trigger_sessions. The canonical definitions live in round_win now;
+# re-export so external scripts / older test imports keep working.
+extract_trigger_pay_ids = extract_trigger_pay_ids_default
+_is_paid_round = is_paid_round
+_round_has_credited_win = round_has_credited_win
 
 
 def _to_float_or_zero(v: Any) -> float:
@@ -149,50 +128,10 @@ def _to_float_or_zero(v: Any) -> float:
         return 0.0
 
 
-def _round_has_credited_win(r: Any) -> bool:
-    """True iff this round's WinCredits has already been credited to
-    pay_ids by the round-level aggregator — i.e. the round carries
-    a non-empty ``PayoutIdToWinAmount`` with at least one nonzero
-    value. Such rounds MUST be excluded from the trigger-session
-    win sum (else double-count).
-
-    Observed live across probed machines:
-
-      * M273 freespin round ``{'6': 7000, '101': 2000}``,
-        WinCredits=9000 → round aggregator credits pay_id 6 (+7000)
-        and pay_id 101 (+2000). Folding 9000 into trigger pay_id
-        5801's win too would double-count the same 9000.
-      * M257 freespin round ``{'1': 33300}``: pay_id 1 already at
-        pay_id level; skip for trigger session.
-      * M201 bonus round ``{'20102': 11660}``: pay_id 20102 at
-        pay_id level, skip.
-      * M15 selector offer round ``PayoutIdToWinAmount=None`` (no
-        dict at all): NOT filtered — round-level aggregator sees
-        nothing here, so the session-level win is the ONLY way to
-        attribute the offer value to pay_id 666.
-      * M273 ``{}`` empty dict (e.g. "Minigame CellIndexes"): NOT
-        filtered — no pay_id got credit.
-      * Trigger round's own ``{'666': 0}`` / ``{'5801': 0}``: NOT
-        filtered — all zeros mean no pay_id actually got paid.
-    """
-    if not isinstance(r, dict):
-        return False
-    p = r.get("PayoutIdToWinAmount")
-    if not isinstance(p, dict) or not p:
-        return False
-    for win in p.values():
-        try:
-            w = float(win) if win is not None else 0.0
-        except (TypeError, ValueError):
-            w = 0.0
-        if w > 0.0:
-            return True
-    return False
-
-
 def compute_trigger_sessions(
     rounds: Iterable[dict],
     round_win_rules: list[RoundWinRule] | None = None,
+    ctx: dict | None = None,
 ) -> list[dict]:
     """Scan one robot's round sequence and detect all trigger sessions.
 
@@ -203,6 +142,18 @@ def compute_trigger_sessions(
     is byte-identical to legacy -- machines without an entry in
     ``configs/machine_round_win_rules.json`` see zero change.
 
+    ``ctx`` (optional, 2026-05-12): forwarded to the rule dispatcher
+    on every call to ``extract_round_trigger_anchor`` /
+    ``extract_round_payouts`` / ``extract_round_win``. Standard keys:
+
+      * ``"bet"`` -- chunk bet amount (multiplier-based pid synthesis).
+      * ``"cycle_peak"`` -- per-robot ``detect_cycle_peak`` result; lets
+        ``BCMCycleAnchorRule`` synthesize a trigger anchor on paid
+        rounds at cycle completion (e.g. M274 ``CollectCount==1000``
+        rounds with ``PayoutIdToWinAmount={}``). Without this hook 55
+        of 117 cached BCM (machine, mode) pairs leak bonus-feature
+        win into the ``_unattributed_st<N>`` catch-all.
+
     With rules: phantom bonus rounds (e.g. M12 ST=14 selector offer
     preview) contribute 0; settlement rounds (M12 ST=15 carrying real
     payout in WinAmount) contribute their WinAmount. ``last_non_none``
@@ -210,9 +161,10 @@ def compute_trigger_sessions(
     which is what the trigger pay_id must be credited with.
 
     A session opens when a paid round is followed by at least one
-    non-paid round AND the paid round carries at least one win==0
-    ``PayoutIdToWinAmount`` key (the "trigger pay_id anchor"). The
-    session ends at the next paid round (exclusive) or the rounds
+    non-paid round AND the paid round carries at least one trigger
+    anchor pay_id (from default ``PayoutIdToWinAmount`` win==0
+    extraction OR a rule's ``extract_trigger_anchor`` contribution).
+    The session ends at the next paid round (exclusive) or the rounds
     list end.
 
     The session's ``win_rule`` and ``session_win`` are determined
@@ -279,22 +231,25 @@ def compute_trigger_sessions(
         if not isinstance(r, dict):
             i += 1
             continue
-        if not _is_paid_round(r):
+        if not is_paid_round(r):
             i += 1
             continue
         # Peek ahead: is there at least one non-paid round right
         # after this paid one? No → regular paid spin, skip.
-        if i + 1 >= n or _is_paid_round(rounds_list[i + 1]):
+        if i + 1 >= n or is_paid_round(rounds_list[i + 1]):
             i += 1
             continue
-        # Has win=0 pay_id anchor? No → can't attribute a session
-        # win to any pay_id, skip (still advance past the bonus block
-        # so we don't re-scan it).
-        trigger_pids = extract_trigger_pay_ids(r.get("PayoutIdToWinAmount"))
+        # Has any trigger anchor? Default extraction = PayoutIdToWinAmount
+        # win==0 keys; rules may augment with synthetic anchors
+        # (e.g. BCMCycleAnchorRule contributes "_bcm_cycle" on paid
+        # rounds at cycle completion). No anchor → can't attribute a
+        # session win to any pay_id, skip (still advance past the bonus
+        # block so we don't re-scan it).
+        trigger_pids = extract_round_trigger_anchor(r, rules=round_win_rules, ctx=ctx)
         if not trigger_pids:
             # Still find session_end so we don't re-enter mid-bonus.
             j = i + 1
-            while j < n and not _is_paid_round(rounds_list[j]):
+            while j < n and not is_paid_round(rounds_list[j]):
                 j += 1
             i = j
             continue
@@ -330,17 +285,18 @@ def compute_trigger_sessions(
             if not isinstance(nr, dict):
                 j += 1
                 continue
-            if _is_paid_round(nr):
+            if is_paid_round(nr):
                 break
             bonus_sts.append(nr.get("SpinType"))
-            # Skip rounds whose win is ALREADY credited at round
-            # level. Two distinct credit paths to check:
-            #   (a) ``_round_has_credited_win``: raw round.PayoutIdToWinAmount
-            #       has nonzero values (M273/M257/M201 freespin attribution).
-            #   (b) Rule-driven (2026-04-27): when a SynthesizePayIdRule
+            # Skip rounds whose win is ALREADY credited at round level.
+            # ``round_has_credited_win`` is rule-aware -- it checks the
+            # union of:
+            #   (a) raw round.PayoutIdToWinAmount has nonzero values
+            #       (M273/M257/M201 freespin attribution).
+            #   (b) Rule-driven (2026-04-27): a SynthesizePayIdRule
             #       maps the round to a non-empty synthetic pid dict
             #       (M279 wheel ST=2 -> {'st2': WinCredits}; M272 freespin
-            #       ST=126 -> {'st126': WinCredits}), the analyzer's
+            #       ST=126 -> {'st126': WinCredits}); the analyzer's
             #       round-level pid aggregator already credits 'st<N>'.
             #       Adding the same win to session_win and attributing
             #       it to the trigger pay_id would double-count.
@@ -350,12 +306,7 @@ def compute_trigger_sessions(
             # explicitly DELEGATES attribution to session_win on the
             # trigger pay_id (e.g., '666' for TopDollar). So empty
             # dict from the rule still falls through to accumulation.
-            rule_payouts = (
-                extract_round_payouts(nr, rules=round_win_rules)
-                if round_win_rules else None
-            )
-            already_credited = _round_has_credited_win(nr) or bool(rule_payouts)
-            if not already_credited:
+            if not round_has_credited_win(nr, rules=round_win_rules, ctx=ctx):
                 if not round_win_rules:
                     # Legacy path -- byte-identical to pre-2026-04-27.
                     # ``WinCredits is None`` skip semantics: a missing
@@ -372,7 +323,7 @@ def compute_trigger_sessions(
                     # rule. Phantom rounds give 0; settlement rounds
                     # give WinAmount; ordinary rounds fall through to
                     # legacy WinCredits.
-                    w = extract_round_win(nr, rules=round_win_rules)
+                    w = extract_round_win(nr, rules=round_win_rules, ctx=ctx)
                     last_nonnone_win = w
                     sum_win += w
             j += 1

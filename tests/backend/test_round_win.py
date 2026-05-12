@@ -17,12 +17,17 @@ import pytest
 
 from fresh_slotlab.round_win import (
     RULE_REGISTRY,
+    BCMCycleAnchorRule,
     RoundWinRule,
     SettlementWinAmountRule,
     SynthesizePayIdRule,
     extract_round_payouts,
+    extract_round_trigger_anchor,
     extract_round_win,
+    extract_trigger_pay_ids_default,
+    is_paid_round,
     load_rules_for_machine,
+    round_has_credited_win,
 )
 
 
@@ -448,5 +453,244 @@ class TestLoadRulesForMachine:
 def test_registry_has_known_types():
     assert "settlement_winamount" in RULE_REGISTRY
     assert "synthesize_pay_id" in RULE_REGISTRY
+    assert "bcm_cycle_anchor" in RULE_REGISTRY
     assert RULE_REGISTRY["settlement_winamount"] is SettlementWinAmountRule
     assert RULE_REGISTRY["synthesize_pay_id"] is SynthesizePayIdRule
+    assert RULE_REGISTRY["bcm_cycle_anchor"] is BCMCycleAnchorRule
+
+
+# ---------------------------------------------------------------------
+# is_paid_round predicate
+# ---------------------------------------------------------------------
+
+
+class TestIsPaidRound:
+    def test_positive_cost_is_paid(self):
+        assert is_paid_round({"CostCredits": 1000}) is True
+
+    def test_zero_cost_not_paid(self):
+        assert is_paid_round({"CostCredits": 0}) is False
+
+    def test_none_cost_not_paid(self):
+        assert is_paid_round({"CostCredits": None}) is False
+        assert is_paid_round({}) is False
+
+    def test_non_numeric_cost_not_paid(self):
+        assert is_paid_round({"CostCredits": "abc"}) is False
+
+    def test_non_dict_input_not_paid(self):
+        assert is_paid_round(None) is False
+        assert is_paid_round([]) is False
+        assert is_paid_round("paid") is False
+
+
+# ---------------------------------------------------------------------
+# extract_trigger_pay_ids_default
+# ---------------------------------------------------------------------
+
+
+class TestExtractTriggerPayIdsDefault:
+    def test_returns_win_zero_keys_sorted(self):
+        # M15-style trigger: pid 9 (cherry, real win) + pid 666 (trigger token)
+        pid = {"9": 1000, "666": 0}
+        assert extract_trigger_pay_ids_default(pid) == ["666"]
+
+    def test_multiple_zero_keys_sorted(self):
+        pid = {"5801": 0, "666": 0, "9": 1000}
+        assert extract_trigger_pay_ids_default(pid) == ["5801", "666"]
+
+    def test_empty_dict_returns_empty(self):
+        assert extract_trigger_pay_ids_default({}) == []
+
+    def test_non_dict_returns_empty(self):
+        assert extract_trigger_pay_ids_default(None) == []
+        assert extract_trigger_pay_ids_default("x") == []
+
+    def test_none_values_treated_as_zero(self):
+        assert extract_trigger_pay_ids_default({"5801": None}) == ["5801"]
+
+
+# ---------------------------------------------------------------------
+# extract_round_trigger_anchor dispatcher
+# ---------------------------------------------------------------------
+
+
+class TestExtractRoundTriggerAnchor:
+    def test_no_rules_matches_default(self):
+        r = {"CostCredits": 1000, "PayoutIdToWinAmount": {"5801": 0, "1": 5000}}
+        assert extract_round_trigger_anchor(r) == ["5801"]
+
+    def test_rule_augments_default(self):
+        r = {"CostCredits": 1000, "CollectCount": 1000,
+             "PayoutIdToWinAmount": {"5801": 0}}
+        rule = BCMCycleAnchorRule()
+        # Default extracts '5801'; rule contributes '_bcm_cycle'; merged
+        result = extract_round_trigger_anchor(r, rules=[rule],
+                                              ctx={"cycle_peak": 1000})
+        assert result == sorted(["5801", "_bcm_cycle"])
+
+    def test_rule_only_when_default_empty(self):
+        r = {"CostCredits": 1000, "CollectCount": 1000,
+             "PayoutIdToWinAmount": {}}
+        rule = BCMCycleAnchorRule()
+        result = extract_round_trigger_anchor(r, rules=[rule],
+                                              ctx={"cycle_peak": 1000})
+        assert result == ["_bcm_cycle"]
+
+    def test_no_dupes_when_rule_returns_existing_anchor(self):
+        r = {"CostCredits": 1000, "CollectCount": 1000,
+             "PayoutIdToWinAmount": {"_bcm_cycle": 0}}
+
+        class _Echo(RoundWinRule):
+            def extract_trigger_anchor(self, rd, ctx=None):
+                return ["_bcm_cycle"]
+
+        result = extract_round_trigger_anchor(r, rules=[_Echo()])
+        assert result == ["_bcm_cycle"]  # de-duped
+
+    def test_non_dict_returns_empty(self):
+        assert extract_round_trigger_anchor(None) == []
+
+
+# ---------------------------------------------------------------------
+# round_has_credited_win predicate
+# ---------------------------------------------------------------------
+
+
+class TestRoundHasCreditedWin:
+    def test_nonzero_pid_value_counts(self):
+        assert round_has_credited_win({"PayoutIdToWinAmount": {"1": 5000}}) is True
+
+    def test_all_zero_pid_values_not_credited(self):
+        assert round_has_credited_win({"PayoutIdToWinAmount": {"666": 0}}) is False
+
+    def test_empty_dict_not_credited(self):
+        assert round_has_credited_win({"PayoutIdToWinAmount": {}}) is False
+
+    def test_none_payout_not_credited(self):
+        # M15 selector offer carries Payout=None; session_win should
+        # still own the offer attribution -- this is "not credited".
+        assert round_has_credited_win({"PayoutIdToWinAmount": None}) is False
+
+    def test_rule_supplied_payouts_counted(self):
+        """A rule synthesizing {'st2': 60000} means the round-level
+        aggregator credits 'st2' -- ``round_has_credited_win`` must
+        observe this and report True so trigger_sessions excludes the
+        round from session_win accumulation."""
+        r = {"CostCredits": 0, "WinCredits": 60000, "SpinType": 2,
+             "BetAmount": 1000, "PayoutIdToWinAmount": {}}
+
+        class _Synth(RoundWinRule):
+            def extract_payouts(self, rd, ctx=None):
+                return {"st2": 60000}
+
+        assert round_has_credited_win(r, rules=[_Synth()]) is True
+
+    def test_settlement_rule_empty_dict_not_credited(self):
+        """SettlementWinAmountRule returns {} on phantom/settlement
+        rounds -- this is explicit "no round-level credit, delegate
+        to session_win". Must NOT count as credited."""
+        r = {"CostCredits": 0, "WinCredits": 0, "SpinType": 15,
+             "WinAmount": 80000, "PayoutIdToWinAmount": None}
+
+        class _Empty(RoundWinRule):
+            def extract_payouts(self, rd, ctx=None):
+                return {}
+
+        assert round_has_credited_win(r, rules=[_Empty()]) is False
+
+
+# ---------------------------------------------------------------------
+# BCMCycleAnchorRule
+# ---------------------------------------------------------------------
+
+
+class TestBCMCycleAnchorRule:
+    def test_fires_at_cycle_peak(self):
+        rule = BCMCycleAnchorRule()
+        r = {"CostCredits": 1000, "CollectCount": 1000,
+             "PayoutIdToWinAmount": {}}
+        assert rule.extract_trigger_anchor(r, {"cycle_peak": 1000}) == ["_bcm_cycle"]
+
+    def test_does_not_fire_below_peak(self):
+        rule = BCMCycleAnchorRule()
+        r = {"CostCredits": 1000, "CollectCount": 999,
+             "PayoutIdToWinAmount": {}}
+        assert rule.extract_trigger_anchor(r, {"cycle_peak": 1000}) is None
+
+    def test_does_not_fire_on_bonus_round(self):
+        """Bonus rounds (cost=0) never carry CollectCount and should
+        never be classified as trigger anchors. Defensive check."""
+        rule = BCMCycleAnchorRule()
+        r = {"CostCredits": 0, "CollectCount": 1000,
+             "PayoutIdToWinAmount": {}}
+        assert rule.extract_trigger_anchor(r, {"cycle_peak": 1000}) is None
+
+    def test_no_ctx_no_fire(self):
+        rule = BCMCycleAnchorRule()
+        r = {"CostCredits": 1000, "CollectCount": 1000}
+        assert rule.extract_trigger_anchor(r, None) is None
+        assert rule.extract_trigger_anchor(r, {}) is None
+
+    def test_none_peak_no_fire(self):
+        """``detect_cycle_peak`` returns None when the chunk is too
+        short to observe a reset; rule must pass through silently."""
+        rule = BCMCycleAnchorRule()
+        r = {"CostCredits": 1000, "CollectCount": 1000}
+        assert rule.extract_trigger_anchor(r, {"cycle_peak": None}) is None
+
+    def test_non_numeric_cycle_field_no_fire(self):
+        rule = BCMCycleAnchorRule()
+        r = {"CostCredits": 1000, "CollectCount": "bogus"}
+        assert rule.extract_trigger_anchor(r, {"cycle_peak": 1000}) is None
+
+    def test_custom_anchor_pid(self):
+        rule = BCMCycleAnchorRule(anchor_pid="mycycle")
+        r = {"CostCredits": 1000, "CollectCount": 500}
+        assert rule.extract_trigger_anchor(r, {"cycle_peak": 500}) == ["mycycle"]
+
+    def test_custom_cycle_field(self):
+        rule = BCMCycleAnchorRule(cycle_field="MyCounter")
+        r = {"CostCredits": 1000, "MyCounter": 50}
+        assert rule.extract_trigger_anchor(r, {"cycle_peak": 50}) == ["_bcm_cycle"]
+
+    def test_extract_win_payouts_passthrough(self):
+        """Rule only contributes trigger anchors -- it must NOT
+        override extract_win or extract_payouts (those keep their
+        default behaviour)."""
+        rule = BCMCycleAnchorRule()
+        r = {"CostCredits": 1000, "CollectCount": 1000, "WinCredits": 0,
+             "PayoutIdToWinAmount": {"5": 1234}}
+        assert rule.extract_win(r) is None
+        assert rule.extract_payouts(r) is None
+
+    def test_invalid_peak_no_fire(self):
+        rule = BCMCycleAnchorRule()
+        r = {"CostCredits": 1000, "CollectCount": 1000}
+        assert rule.extract_trigger_anchor(r, {"cycle_peak": -1}) is None
+        assert rule.extract_trigger_anchor(r, {"cycle_peak": "bogus"}) is None
+
+    def test_non_dict_round_no_fire(self):
+        rule = BCMCycleAnchorRule()
+        assert rule.extract_trigger_anchor(None, {"cycle_peak": 1000}) is None
+        assert rule.extract_trigger_anchor([], {"cycle_peak": 1000}) is None
+
+    def test_load_from_config(self):
+        cfg = {"rules": {"bcm_m274": {
+            "type": "bcm_cycle_anchor",
+            "params": {"anchor_pid": "_bcm_cycle", "cycle_field": "CollectCount"},
+            "applies_to": ["M274"],
+        }}}
+        rules = load_rules_for_machine("M274", cfg)
+        assert len(rules) == 1
+        assert isinstance(rules[0], BCMCycleAnchorRule)
+        assert rules[0].anchor_pid == "_bcm_cycle"
+        assert rules[0].cycle_field == "CollectCount"
+
+    def test_other_machine_no_rule(self):
+        cfg = {"rules": {"bcm_m274": {
+            "type": "bcm_cycle_anchor",
+            "params": {},
+            "applies_to": ["M274"],
+        }}}
+        assert load_rules_for_machine("M275", cfg) == []

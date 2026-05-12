@@ -1,7 +1,19 @@
 {
   "_doc": "Per-machine round-win extraction rules. Default behaviour (machine not in any applies_to list) is byte-identical to legacy `r.get('WinCredits', 0)` lookup. See fresh_slotlab/round_win.py for rule type docs.",
   "_added": "2026-04-27 -- v1 TopDollar settlement rule. Universal fallback synthesizer in parse_chunk_response handles all other unattributed-payid cases (no per-machine config needed).",
+  "_added_2026_05_12": "v2 BCM cycle anchor rule (bcm_cycle_anchor type). Machines using BuffCollectionMap fire a bonus feature when CollectCount reaches the cycle peak; the trigger paid round emits no win==0 PayoutIdToWinAmount key, so default trigger-session anchor extraction missed the entire bonus block. M274 mode 1 saw 8.25% of bonus rounds (4.87% RTP) leak into `_unattributed_st139` before this rule; fleet sweep across 117 cached BCM (machine, mode) pairs found 55 with similar leakage (M250 at 100% / M268/M260/M264 at 70-90% / M163/M147 around 35%). Rollout strategy: enable per-machine as cached data is validated -- the rule augments rather than replaces default extraction, so over-attributing on a machine that doesn't actually have this trigger mechanic is benign (the synthetic anchor loses anchor-selection to any real numeric pid present on the same trigger round).",
   "rules": {
+    "bcm_cycle_anchor_m274": {
+      "_doc": "M274 BuffCollectionMap: CollectCount accumulates 1..1000 across paid spins; at CC=1000 a ListRewardMinigame fires (ST=139 bonus rounds), then CC resets to 1. The trigger paid round carries PayoutIdToWinAmount={} (no anchor) -- distinct from the also-present pay_id 5801 minigame trigger path which DOES carry {'5801':0} and is handled by default extraction. 315 of 315 unattributed bonus blocks across 8 chunks of current md5 (847d89cd) deterministically preceded by a paid round with CollectCount==1000; the rule restores their attribution to the synthetic anchor '_bcm_cycle' and the analyzer's session-win loop credits the bonus session-total to it.",
+      "type": "bcm_cycle_anchor",
+      "params": {
+        "anchor_pid": "_bcm_cycle",
+        "cycle_field": "CollectCount"
+      },
+      "applies_to": [
+        "M274"
+      ]
+    },
     "topdollar_selector_settlement": {
       "_doc": "TopDollar selector family (M12/M15/M90/M132): bonus flow is paid_trigger(ST=1, ReMarks='Trigger') -> N selector offer rounds (ST=14) showing OfferValue*bet as phantom WinCredits -> 1 settlement round (ST=15) carrying the actual payout in WinAmount (no WinCredits field). Without this rule the analyzer over-counts ST=14 phantom offers (variant 0/2 multi-pick) or under-counts ST=15 WinAmount (variant 1 single-pick where OfferValue==WinAmount happens to make the sum coincidentally match). Verified across all 13 fleet drift cases (B_overcount + C_undercount classes from drift scan). Variant 1 machines included even though our_total_win currently matches server_total_win -- phantom-offer attribution is still semantically wrong (per-SpinType / per-bucket round-level breakdown), so they get the same fix.",
       "type": "settlement_winamount",
