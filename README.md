@@ -63,6 +63,11 @@ It contains:
 
 ## Quick Start (Local)
 
+**Prerequisites:** Python ≥ 3.10 (the codebase uses PEP 604 union types like `int | None`).
+
+> 策划 / numeric designers: see [docs/FOR_DESIGNERS.md](docs/FOR_DESIGNERS.md) for the
+> config-iteration workflow (drop `<M>Cfg.txt` → sample → compare report → repeat).
+
 **One-click (Windows):** double-click `start.bat` in the repo root. It
 runs the launcher with `-OpenBrowser` so the console tab opens after
 uvicorn is up. On first run pass `/install` to pip-install deps once:
