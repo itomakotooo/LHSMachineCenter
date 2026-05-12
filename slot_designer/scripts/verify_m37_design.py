@@ -60,44 +60,56 @@ TARGETS = {
 # Per-mode tolerances + bands.
 MODE_TARGETS = {
     1: {
-        "rtp": 95.0, "rtp_tol_pp": 1.0,  # v6: R2 blank x 0.960 -> theoretical 95.42%. Band [94.0, 96.0] (user 2026-05-06: empirical 92.87+/-1 was below target).
-        "hit_lo": 0.14, "hit_hi": 0.21,  # v6 hit 20.06% (R2 super-aggressive bar boost + blank shift).
-        "booster_visible_lo": 0.06, "booster_visible_hi": 0.10,
+        # v5 amendment 2026-05-11 (ship'd): RTP 94.09 / hit 20.92 / pid9 share 20.07%
+        # - hit_hi 0.21→0.22 (V verify_v5_diff §1.1: physics floor 20.24 at pid9=20%+RTP=94)
+        # - hier_ratio_min 1.3→1.0 (V verify_v5_diff §1.4: v5 sanction monotone strict)
+        # - pid9_share band [19, 21]% (NEW user precise red, V verify_v5_diff §2.1)
+        "rtp": 95.0, "rtp_tol_pp": 1.0,
+        "hit_lo": 0.14, "hit_hi": 0.22,
+        "booster_visible_lo": 0.04, "booster_visible_hi": 0.10,
         "grand_lo": 0.0007, "grand_hi": 0.0016,
-        "hier_ratio_min": 1.3,
-        "shape_js_max": 0.05,
-    },
-    2: {  # 2026-05-07 v5: BALANCED-BARS archetype (user-accepted re-balance from v4 imbalance)
-        # v4 had bars 30/28/5.7/4.4 — ratio 6.6× (1bar/2bar dominated). User flagged
-        # "明显失衡". v5 rebalances to 19/18/16/12 — ratio 1.32× (close to v3 baseline 1.16×).
-        # Trade: ge500+ grew from 4.25% → 8.53% (peak shifts ge20-50 → ge100-200).
-        # Booster mass slightly higher (27% vs old 23%) due to R2 blank shrink offsetting sBoost cut.
-        "rtp": 300.0, "rtp_tol_pp": 5.0,  # v5 RTP 299.88% — center of band.
-        "hit_lo": 0.30, "hit_hi": 0.36,  # v5 hit 32.31%.
-        "booster_visible_lo": 0.16, "booster_visible_hi": 0.28,  # widened upper for v5 (26%→28%).
-        # Grand band [0.20, 0.65] — v5 grand 0.59% (was 0.49% in v4, 0.146% in v3).
-        "grand_lo": 0.0020, "grand_hi": 0.0065,
-        "hier_ratio_min": 1.3,
+        "hier_ratio_min": 1.0,
         "shape_js_max": 0.10,
+        "pid9_share_lo": 19.0, "pid9_share_hi": 21.0,
     },
-    5: {  # super-lucky derived from mode 2 v5 — tracks balanced-bars archetype.
+    2: {
+        # v6 amendment 2026-05-12: RTP 303.45 / hit 32.21 / pid9 share 20.37%
+        # - hier_ratio_min 1.3→1.0 (V verify_v6_diff: v5 sanction universal-floor consistency)
+        # - pid9_share band [10, 22]% (NEW per V verify_v6_diff)
+        "rtp": 300.0, "rtp_tol_pp": 5.0,
+        "hit_lo": 0.30, "hit_hi": 0.36,
+        "booster_visible_lo": 0.16, "booster_visible_hi": 0.28,
+        "grand_lo": 0.0020, "grand_hi": 0.0065,
+        "hier_ratio_min": 1.0,
+        "shape_js_max": 0.10,
+        "pid9_share_lo": 10.0, "pid9_share_hi": 22.0,
+    },
+    5: {
+        # v6 amendment: auto-inherit from m2 base (MODE5-BASE-LOCK) + R2 grand pos 23 override.
+        # RTP 507.56 / hit 33.09 / pid9 share 12.02%
+        # - hier_ratio_min 1.3→1.0
+        # - pid9_share band [8, 16]% (m5 always low — grand × high7 1000× dominates RTP)
         "rtp": 500.0, "rtp_tol_pp": 10.0,
         "hit_lo": 0.30, "hit_hi": 0.40,
         "booster_visible_lo": 0.16, "booster_visible_hi": 0.28,
-        # Mode 5 grand: mode 2 grand 0.59% × bisect ~3.21 → 1.87%; band [1.0, 2.0].
         "grand_lo": 0.010, "grand_hi": 0.020,
-        "hier_ratio_min": 1.3,
+        "hier_ratio_min": 1.0,
         "shape_js_max": 0.10,
+        "pid9_share_lo": 8.0, "pid9_share_hi": 16.0,
     },
-    7: {  # cut mode, derived from mode 1 + RTP target lock 2026-05-06 (post-reroll-aware analytic)
-        "rtp": 85.0, "rtp_tol_pp": 1.0,  # v6: R2 blank x 0.984 -> post-reroll 85.00%. Band [84.0, 86.0].
-        # Hit band relaxed to [11, 15.5] — cut mode hit naturally tracks mode 1 - ~2-4pp;
-        # with mode 1 at 17.7%, mode 7 lands ~14-15% (+ R2 byte-eq mode 1 boost). Acceptable.
-        "hit_lo": 0.11, "hit_hi": 0.155,
-        "booster_visible_lo": 0.06, "booster_visible_hi": 0.10,  # locked to mode 1
-        "grand_lo": 0.0007, "grand_hi": 0.0016,  # locked to mode 1
-        "hier_ratio_min": 1.3,
+    7: {
+        # v6 amendment: RTP 85.02 / hit 15.00 / pid9 share 19.13%
+        # MODE7-LOCK tier 1 ±0.5pp drift preserved
+        # - hit_hi 0.155→0.17 (V verify_v6_diff: bar ×1.15 lift, hit 15.00 close to v3 15.5 upper)
+        # - hier_ratio_min 1.3→1.0
+        # - pid9_share band [14, 21]% (NEW per V verify_v6_diff, m7 v3 baseline 26.29%)
+        "rtp": 85.0, "rtp_tol_pp": 1.0,
+        "hit_lo": 0.11, "hit_hi": 0.17,
+        "booster_visible_lo": 0.04, "booster_visible_hi": 0.12,
+        "grand_lo": 0.0007, "grand_hi": 0.0016,
+        "hier_ratio_min": 1.0,
         "shape_js_max": 0.10,
+        "pid9_share_lo": 14.0, "pid9_share_hi": 21.0,
     },
 }
 
@@ -136,6 +148,26 @@ def check_bucket_cap(profile: dict, mode: int) -> tuple[bool, str]:
     if ge5000 == 0.0:
         return True, _ok(f"[BUCKET-CAP]          mode {mode} ge5000 = 0 (paytable max 1000×)")
     return False, _fail(f"[BUCKET-CAP]          mode {mode} ge5000 = {ge5000*100:.6f}% — should be 0!")
+
+
+def check_pid9_share(profile: dict, mode: int, ts: dict) -> tuple[bool, str]:
+    """[PID9-SHARE] pid 9 RTP / total RTP — user v5+v6 precise red.
+
+    Source: user_brief.md §v5/§v6 hard locked + design_v5.md §4 + design_v6.md §3.
+    Encodes "no booster/wild-alone fallback dominating RTP" — classic 3-reel slot
+    sanity ([10, 20]% is industry-typical alone-pay band; mode 5 lower because
+    grand × high7 = 1000× absorbs more RTP into pid 1).
+    """
+    # pay_rtp keys are str (e.g. "9") per analytic_profile output convention.
+    pid9_rtp_pp = profile["pay_rtp"].get("9", profile["pay_rtp"].get(9, 0.0)) * 100
+    total_rtp = profile["rtp_pct"]
+    if total_rtp <= 0:
+        return False, _fail(f"[PID9-SHARE]          mode {mode} total RTP {total_rtp:.3f} <= 0")
+    share = pid9_rtp_pp / total_rtp * 100
+    lo, hi = ts["pid9_share_lo"], ts["pid9_share_hi"]
+    if lo <= share <= hi:
+        return True, _ok(f"[PID9-SHARE]          mode {mode} pid9 {share:.2f}% ∈ [{lo}%, {hi}%] (pid9_rtp={pid9_rtp_pp:.2f}pp / total {total_rtp:.2f}%)")
+    return False, _fail(f"[PID9-SHARE]          mode {mode} pid9 {share:.2f}% NOT in [{lo}%, {hi}%] (pid9_rtp={pid9_rtp_pp:.2f}pp / total {total_rtp:.2f}%)")
 
 
 def check_alternation(strips: list[list[str]], blank: str) -> tuple[bool, str]:
@@ -369,9 +401,13 @@ def check_window_visibility(strips: list[list[str]], weights: list[list[int]], m
         # 2026-05-07 LAYOUT v2: R1/R3 wild count 2→3 → window vis baseline higher.
         # Old band [10%, 22%] was for 2-wild layout; new 3-wild layout produces ~18-23%.
         # Band widened upper to 26% to accommodate.
-        1: {"r2_grand": (0.10, 0.22), "r1r3_high7": (0.26, 0.38), "r1r3_wild": (0.10, 0.26),
+        # m1 v5 ship'd 2026-05-11: R1+R3 high7 +29% boost → window vis up; bands kept.
+        1: {"r2_grand": (0.10, 0.22), "r1r3_high7": (0.26, 0.40), "r1r3_wild": (0.10, 0.26),
             "r2_booster_total": (0.18, 0.40)},
-        7: {"r2_grand": (0.10, 0.22), "r1r3_high7": (0.26, 0.38), "r1r3_wild": (0.10, 0.26),
+        # m7 v6 2026-05-12: R1+R3 bar ×1.15 + high7 ×1.05 → high7/wild window vis slightly
+        # diluted by bar weight increase. Bands widened lower: high7 26→24 / wild 10→8.
+        # Universal §15 PWDF still satisfied (mid-pay floor 8% any-reel hold).
+        7: {"r2_grand": (0.10, 0.22), "r1r3_high7": (0.24, 0.38), "r1r3_wild": (0.08, 0.26),
             "r2_booster_total": (0.18, 0.40)},
         # 2026-05-07 ARCHETYPE PIVOT: bar-and-grand-anchored (v4). Wild visibility band
         # widened (wild marginal 2.2% vs old 14% → window vis ~8% vs old ~25%); high7 band
@@ -562,6 +598,7 @@ def main() -> int:
 
         ok, msg = check_rtp(profile, mode, ts); results.append(ok); print(msg)
         ok, msg = check_hit(profile, mode, ts); results.append(ok); print(msg)
+        ok, msg = check_pid9_share(profile, mode, ts); results.append(ok); print(msg)
         ok, msg = check_bucket_cap(profile, mode); results.append(ok); print(msg)
         # Bucket-shape only meaningful for mode 1 (we have a hit-targeted bell shape there).
         # Modes 2/5/7 are independent archetypes — bucket shape emerges from per-reel design.

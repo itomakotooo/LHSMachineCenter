@@ -1,0 +1,186 @@
+{
+  "label": "M37_mode1_v0_designer_2026-05-11",
+  "source_machine": "M37",
+  "source_mode": 1,
+  "source_spins": 0,
+  "_note": [
+    "M37 mode 1 small-tune target (Designer fresh-context output, 2026-05-11).",
+    "",
+    "User precise red lines (per user_brief.md):",
+    "  - hit 14-16% (precise)",
+    "  - ge1_lt5 RTP-pp ~9.6 (cut 10pp from baseline 19.6) (precise)",
+    "  - ge20_lt100 RTP-pp +10pp (16.5 → ~26.5) — DESIGNER VERDICT: STRUCTURALLY INFEASIBLE",
+    "      Best feasible ceiling = 19.28 RTP-pp (only +2.7pp). Reason: when boosting R2 minor",
+    "      to lift ge20-100, the mini/minor-alone fallback (no R1+R3 match) lands in ge5_lt10",
+    "      bucket (5x flat), not ge20-100. To force minor mass into ge20-100 requires high",
+    "      R1+R3 paying density (= high hit), conflicting with hit 14-16 target.",
+    "      Independently verified via 4000-sample random lever search; documented in design_v0.md §2.",
+    "",
+    "Design v0 chosen point (analytic):",
+    "  RTP 95.98%, hit 15.97%, CV 8.20",
+    "  ge1_lt5 RTP-pp 9.54 (cut 10pp ✓), ge20_lt100 RTP-pp 19.28 (+2.7pp, NOT +10pp)",
+    "  Spill goes to ge5_lt10 (+15.6pp): mass shifts from low-end small wins to mid-range",
+    "  Grand 0.092% in [0.05, 0.15] GRAND-SIGNATURE band ✓",
+    "  Booster total 9.23% in [7, 13] BOOSTER-VISIBLE band ✓",
+    "",
+    "BOOSTER-HIER (universal §1 inverse-pyramid mini > minor > major > grand):",
+    "  VIOLATED — minor (6.40%) > mini (1.14%) — user-accepted per brief 2026-05-11.",
+    "  Per-mode override; mode 2/5/7 retain hierarchy.",
+    "",
+    "Cross-mode invariants preserved:",
+    "  RTP-MONOTONIC m7 < m1 < m2 < m5 ✓",
+    "  HIT-MONOTONIC m7 < m1 < m2 ≈ m5 (14.92 < 15.97 < 32.4 ≈ 33.2) ✓",
+    "  MODE5-BASE-LOCK ✓ (m2/m5 untouched)",
+    "  TOP-JACKPOT-ESCALATION m1 1/34k < m2 1/13k < m5 1/2.4k ✓",
+    "  MODE7-LOCK — DEPENDS ON USER DECISION (design_v0_questions_for_user.md Q2):",
+    "    option (a) m7 R2 follows m1 → preserves LOCK, requires m7 weights re-tune",
+    "    option (b) MODE7-LOCK tolerance loosen ±3x → m1 only commit"
+  ],
+  "rtp_pct": 95.0,
+  "rtp_tol_pp": 1.0,
+  "hit_target": 0.15,
+  "hit_lo": 0.14,
+  "hit_hi": 0.16,
+  "bucket_rate": {
+    "gt0_lt1": 0.0,
+    "ge1_lt5": 0.0753,
+    "ge5_lt10": 0.0591,
+    "ge10_lt20": 0.0185,
+    "ge20_lt50": 0.00301,
+    "ge50_lt100": 0.00235,
+    "ge100_lt200": 0.00135,
+    "ge200_lt500": 0.000044,
+    "ge500_lt1000": 0.000016,
+    "ge1000_lt5000": 0.000029,
+    "ge5000": 0.0
+  },
+  "bucket_rtp": {
+    "gt0_lt1": 0.0,
+    "ge1_lt5": 0.0954,
+    "ge5_lt10": 0.2964,
+    "ge10_lt20": 0.1902,
+    "ge20_lt50": 0.0740,
+    "ge50_lt100": 0.1188,
+    "ge100_lt200": 0.1345,
+    "ge200_lt500": 0.0123,
+    "ge500_lt1000": 0.0088,
+    "ge1000_lt5000": 0.0295,
+    "ge5000": 0.0
+  },
+  "hit_rate": 0.15970,
+  "zero_win_rate": 0.84030,
+  "std_return_x": 7.87,
+  "max_return_x": 1000.0,
+  "_design_constraints": {
+    "total_machine_rtp_target": 95.0,
+    "strict_tolerance_pp": 1.0,
+    "hit_band": [0.14, 0.16],
+    "archetype": "IGT Triple Diamond chassis + Lightning Link mini/minor/major/grand jackpot tier naming + M37Cfg published baseline reference (UNCHANGED — small tune retains v3 finalized archetype)",
+    "bucket_shape_intent": "Mid-tier bell shifted — ge1_5 cut hard, ge5_10 (minor-alone fallback) becomes new peak, ge20-100 lifted modestly. Grand 1000x lifetime tier preserved.",
+    "max_payout_cap_x": 1000,
+    "ge5000_must_be_zero": true,
+    "physical_layout_locked": true,
+    "per_mode_variation_mechanism": "per-mode reel weight remapping on shared physical layout (26 stops, alternating B/N) — strip layout unchanged from v3",
+    "booster_hier_per_mode_override": "mode 1 only: minor > mini > major > grand allowed (inverse top tier per user brief 2026-05-11). mode 2/5/7 retain universal §1 inverse pyramid mini > minor > major > grand.",
+    "ge20_100_target_status": "DIRECTIONAL_INFORMATIONAL — physical ceiling 19.28 RTP-pp documented; not enforced as red line. User to confirm acceptance per design_v0_questions_for_user.md Q1.",
+    "mode7_lock_decision": "PENDING_USER — see design_v0_questions_for_user.md Q2 (either m7 weights mirror m1 R2 changes, or MODE7-LOCK tolerance loosened ±3x)."
+  },
+  "per_reel_symbol_targets": [
+    {
+      "name": "R1_wild",
+      "symbols": ["wild"],
+      "per_reel_target_pct": {"1": 0.0149},
+      "tolerance_pct": 0.0020,
+      "cost_weight": 12.0,
+      "pattern": "R1 wild marginal 1.49% (cut from baseline 1.78%, -16%). Pareto trap anchor: high cost_weight prevents tuner collapsing to 0. Reduces side-wild-alone (pid 9 mult 1x) ge1_5 contribution."
+    },
+    {
+      "name": "R1_high7",
+      "symbols": ["high7"],
+      "per_reel_target_pct": {"1": 0.16946},
+      "tolerance_pct": 0.0050,
+      "cost_weight": 14.0,
+      "pattern": "R1 high7 marginal 16.95% (boost from baseline 14.25%, +19%). R1 winners-friendly per §12. Compensates the R2 high7 cut to preserve jackpot path (high7-grand-high7)."
+    },
+    {
+      "name": "R1_bar_total",
+      "symbols": ["1bar", "2bar", "3bar", "7bar"],
+      "per_reel_target_pct": {"1": 0.3600},
+      "tolerance_pct": 0.0150,
+      "cost_weight": 6.0,
+      "pattern": "R1 bar total marginal 36% (cut from baseline 49.5%, -27%). Reduces pid 7 anybar (ge1_5 main contributor) and overall R1 hit density."
+    },
+    {
+      "name": "R3_wild",
+      "symbols": ["wild"],
+      "per_reel_target_pct": {"3": 0.0150},
+      "tolerance_pct": 0.0020,
+      "cost_weight": 12.0,
+      "pattern": "R3 wild marginal 1.50% (mirrors R1, same scaling). Pareto trap anchor."
+    },
+    {
+      "name": "R3_high7",
+      "symbols": ["high7"],
+      "per_reel_target_pct": {"3": 0.16029},
+      "tolerance_pct": 0.0050,
+      "cost_weight": 14.0,
+      "pattern": "R3 high7 marginal 16.03% (boost from baseline 13.49%). Mirrors R1 boost (R3 slightly less to maintain §12 R1 > R3 winners-friendly direction)."
+    },
+    {
+      "name": "R3_bar_total",
+      "symbols": ["1bar", "2bar", "3bar", "7bar"],
+      "per_reel_target_pct": {"3": 0.3600},
+      "tolerance_pct": 0.0150,
+      "cost_weight": 6.0,
+      "pattern": "R3 bar total marginal 36% (mirrors R1)."
+    },
+    {
+      "name": "R2_mini",
+      "symbols": ["mini"],
+      "per_reel_target_pct": {"2": 0.0114},
+      "tolerance_pct": 0.0020,
+      "cost_weight": 15.0,
+      "pattern": "R2 mini marginal 1.14% (CUT 70% from baseline 3.73%). Eliminates the bulk of pid 9 mult 2x (mini-alone) ge1_5 contribution. HIER inversion accepted per user brief."
+    },
+    {
+      "name": "R2_minor",
+      "symbols": ["minor"],
+      "per_reel_target_pct": {"2": 0.0640},
+      "tolerance_pct": 0.0040,
+      "cost_weight": 18.0,
+      "pattern": "R2 minor marginal 6.40% (BOOST 2.4x from baseline 2.68%). Only 'clean' lever for ge20_lt100 lift (no spill to ge100+ — max minor combo high7×3 × 5 = 50× lands in ge50_lt100). High cost_weight + tight tolerance to keep this lift."
+    },
+    {
+      "name": "R2_major",
+      "symbols": ["major"],
+      "per_reel_target_pct": {"2": 0.0160},
+      "tolerance_pct": 0.0020,
+      "cost_weight": 15.0,
+      "pattern": "R2 major marginal 1.60% (slight cut from baseline 2.04%, -22%). Major contribution would spill into ge100_lt200 (high7×3 × 10 = 100×), so we trim it slightly to keep ge100-200 from inflating."
+    },
+    {
+      "name": "R2_grand",
+      "symbols": ["grand"],
+      "per_reel_target_pct": {"2": 0.00092},
+      "tolerance_pct": 0.00020,
+      "cost_weight": 25.0,
+      "pattern": "R2 grand marginal 0.092% (slight cut from baseline 0.112%, -18%). Still in GRAND-SIGNATURE [0.05%, 0.15%] band. Jackpot freq remains ~1/34-37k spins (lifetime tier). Tightest tolerance + highest cost_weight — brand-defining anchor."
+    },
+    {
+      "name": "R2_high7",
+      "symbols": ["high7"],
+      "per_reel_target_pct": {"2": 0.0481},
+      "tolerance_pct": 0.0050,
+      "cost_weight": 10.0,
+      "pattern": "R2 high7 marginal 4.81% (CUT 54% from baseline 10.50%). Releases RTP budget for minor boost. high7-grand-high7 jackpot path still satisfied via R1/R3 high7 boost (compensation). Trade-off documented in design_v0.md §8.3 — user-confirm via Q3."
+    },
+    {
+      "name": "R2_bar_total",
+      "symbols": ["1bar", "2bar", "3bar", "7bar"],
+      "per_reel_target_pct": {"2": 0.2700},
+      "tolerance_pct": 0.0150,
+      "cost_weight": 5.0,
+      "pattern": "R2 bar total ~27% (slight cut from baseline 30.3%, -11%). Maintains mid-pay (R2-bar in 3-bar combos via pid 5/6/7) but doesn't compete with minor for RTP budget."
+    }
+  ]
+}
