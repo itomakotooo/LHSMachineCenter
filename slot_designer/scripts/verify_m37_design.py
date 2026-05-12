@@ -98,13 +98,15 @@ MODE_TARGETS = {
         "pid9_share_lo": 8.0, "pid9_share_hi": 16.0,
     },
     7: {
-        # v6 amendment: RTP 85.02 / hit 15.00 / pid9 share 19.13%
-        # MODE7-LOCK tier 1 ±0.5pp drift preserved
-        # - hit_hi 0.155→0.17 (V verify_v6_diff: bar ×1.15 lift, hit 15.00 close to v3 15.5 upper)
-        # - hier_ratio_min 1.3→1.0
-        # - pid9_share band [14, 21]% (NEW per V verify_v6_diff, m7 v3 baseline 26.29%)
+        # v8 amendment 2026-05-12 (replace v6): RTP 85.16 / hit 20.11 / pid9 share 18.82%
+        # Designer v8 player-experience optimal: R2 mini unchanged (Lightning Link UX intact),
+        # R2 minor ×0.80, R2 major ×0.80, R1+R3 wild ×0.95. R1+R3 bar/high7 UNCHANGED.
+        # - hit_hi 0.17→0.21 (V verify_v8_diff: v8 hit 20.11 close to m1 hit due to bar-untouched;
+        #   §9 HIT-MONOTONIC-SAFETY m1-m7≥0.3pp守 cross-mode direction)
+        # - WINDOW-VISIBILITY r1r3_high7 lower revert 0.24→0.26 (v8 R1+R3 byte-eq m1)
+        # - per-pid ratio informational YELLOW (Designer §4 tier floors 0.85/0.80/0.50)
         "rtp": 85.0, "rtp_tol_pp": 1.0,
-        "hit_lo": 0.11, "hit_hi": 0.17,
+        "hit_lo": 0.11, "hit_hi": 0.21,
         "booster_visible_lo": 0.04, "booster_visible_hi": 0.12,
         "grand_lo": 0.0007, "grand_hi": 0.0016,
         "hier_ratio_min": 1.0,
@@ -404,10 +406,10 @@ def check_window_visibility(strips: list[list[str]], weights: list[list[int]], m
         # m1 v5 ship'd 2026-05-11: R1+R3 high7 +29% boost → window vis up; bands kept.
         1: {"r2_grand": (0.10, 0.22), "r1r3_high7": (0.26, 0.40), "r1r3_wild": (0.10, 0.26),
             "r2_booster_total": (0.18, 0.40)},
-        # m7 v6 2026-05-12: R1+R3 bar ×1.15 + high7 ×1.05 → high7/wild window vis slightly
-        # diluted by bar weight increase. Bands widened lower: high7 26→24 / wild 10→8.
-        # Universal §15 PWDF still satisfied (mid-pay floor 8% any-reel hold).
-        7: {"r2_grand": (0.10, 0.22), "r1r3_high7": (0.24, 0.38), "r1r3_wild": (0.08, 0.26),
+        # m7 v8 2026-05-12 (replace v6): R1+R3 bar/high7 byte-eq m1 v5 (no v6 boost),
+        # so high7 window vis reverts to m1-aligned. r1r3_high7 lower 0.24→0.26 revert.
+        # r1r3_wild kept at 0.08 lower (v8 wild ×0.95 cut needs floor).
+        7: {"r2_grand": (0.10, 0.22), "r1r3_high7": (0.26, 0.40), "r1r3_wild": (0.08, 0.26),
             "r2_booster_total": (0.18, 0.40)},
         # 2026-05-07 ARCHETYPE PIVOT: bar-and-grand-anchored (v4). Wild visibility band
         # widened (wild marginal 2.2% vs old 14% → window vis ~8% vs old ~25%); high7 band

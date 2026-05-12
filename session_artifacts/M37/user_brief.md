@@ -411,3 +411,165 @@ m1 v5 ship'd to production xlsx + 76/76 verify GREEN。User 要 m2/m5/m7 同 phi
 - `session_artifacts/M37/v6_sim_weights/mode_7/weights.json`
 
 ### Process: spawn X audit + V + A 全 agent 流程 (same as v5)
+
+---
+
+## v7 AMENDMENT — m7 re-derive per universal framework 2026-05-12
+
+> User 原话: "我说的不是按 v5 的逻辑搞，我说的是正常按框架，用从 mode 1 的派生逻辑搞" + "是全局设计哲学"
+
+主 session 在 v6 m7 brief 中错把 `M37/DESIGN.md §3.1.5` 派生因子 (×0.93/×0.78/×0.55) 当 framework — 但那是 **layer 4 派生层 historical narrative**, contamination firewall **禁读** per `ONBOARDING_PROCESS §2.1`. 真 framework 是 `DESIGN_PHILOSOPHY.md` universal layer 2.
+
+### Universal framework cite (only authoritative source)
+
+**§4 Per-tier hit preservation** (universal hard rule):
+> "Cut mode (m7 = m1 砍小奖): **小奖 hit ↓，中/大/顶奖 hit 不动**"
+> "不只看 total hit rate, 要看 per-pay_id 频率比"
+> "用 frozen weights / floor / ceiling 在 tune 里实现"
+
+**§9 Mode-pair monotonicity** (universal hard rule):
+> "mode 7 RTP < mode 1 RTP"
+> "mode 7 hit < mode 1 hit"
+
+### v7 m7 派生 spec (translated from universal)
+
+| 维度 | 规则 | 实施 |
+|---|---|---|
+| Source state | m1 v5 ship'd (current weights/mode_1/weights.json) | freeze, don't reinvent |
+| R2 全部 positions | "中/大/顶奖 hit 不动" → R2 booster + high7 + grand byte-equal m1 v5 | **byte-eq m1 v5 R2 strict** |
+| R1+R3 high7 positions | "中/大/顶奖 hit 不动" → high7×3 = pid 1 是 mid-high payout | **byte-eq m1 v5 R1+R3 high7 strict** |
+| R1+R3 wild positions | small-wins driver (pid 9 mult 1× side-wild-alone) | cut by K_wild ≤ 1.0 |
+| R1+R3 bar positions (1/2/3/7) | small-wins driver (pid 7 anybar + pid 9 booster-alone via no-match-substitute) | cut by K_bar ≤ 1.0 (uniform or per-symbol) |
+| R1+R3 blank | passive absorb saved bar/wild weight | derived |
+
+### v7 hard targets
+
+| Target | type |
+|---|---|
+| RTP ∈ [84, 86] | precise red (universal §C M37 contract) |
+| hit < m1 hit (20.92) − 0.3pp safety = 20.62 | universal §9 |
+| Per-tier hit preservation: mid/big/top per-pay_id frequencies ≥ baseline × 0.85 (允许 ±15% drift only, no more) | universal §4 |
+| R2 byte-eq m1 v5 | universal §4 派生 spec |
+| R1+R3 high7 byte-eq m1 v5 | universal §4 派生 spec |
+| Strip / paytable locked | universal §1.1 |
+
+### v7 输出 + pid 9 占比 status
+
+**pid 9 占比 ≤ 21% NOT a hard target in v7** — universal framework 不锁这条。v7 m7 输出的 pid 9 占比 是物理结果，**escalate user** if it 偏离 21%:
+
+- If pid 9 占比 落 ≤ 21% → ship (consistent with user v5/v6 goal)
+- If pid 9 占比 落 > 21% → escalate (universal framework derivation says X%, user goal was ≤ 21%, choose: accept framework or accept user override on top of framework)
+
+### v7 lever space
+
+Search dimension: very narrow. Only:
+- `K_bar` ∈ [0.5, 1.0] (uniform R1+R3 bar scale)
+- `K_wild` ∈ [0.3, 1.0] (R1+R3 wild scale)
+- (optional) per-symbol K_bar_{1,2,3,7} if uniform doesn't land RTP target
+
+Single objective: m7 RTP in [84, 86]. 输出 pid 9 占比 + per-pay frequencies + verify universal §4 (mid/big/top preserved).
+
+### v7 输出
+
+- `session_artifacts/M37/design_v7_m7.md` (≤ 150 lines)
+- `session_artifacts/M37/v7_sim_weights/mode_7/weights.json`
+
+### Contamination firewall (Designer 必须遵守)
+
+- **禁读** `slot_designer/machines/M37/DESIGN.md` (layer 4 派生层) — 特别是 §3.1.5 派生因子 × 0.93/×0.78/×0.55
+- **禁读** `slot_designer/scripts/verify_m37_design.py` 的 MODE_TARGETS m7 (layer 4 implementation, 不是 framework)
+- **禁读** `session_artifacts/M37/design_v6_m7.md` (前一轮 Designer 输出，contamination)
+- **可读** `slot_designer/DESIGN_PHILOSOPHY.md` §4 + §9 (universal framework)
+- **可读** `slot_designer/machines/M37/weights/mode_1/weights.json` (m1 v5 source, layer 1 truth)
+- **可读** `slot_designer/machines/M37/spec.json` mechanism blocks (paytable structure)
+
+---
+
+## v8 AMENDMENT — re-derive m7, player-experience optimal 2026-05-12
+
+> User 原话: "我只是给你举个例子，说明你的错误，但具体怎么砍，还是要你分析得出结果，我没说砍 wild 不行，但肯定要用玩家体感最好的方式去砍，在遵守全局哲学的前提下"
+
+v7 m7 设计 (Designer 自己解读 §4) 过度保守 — 把 R2 全部 byte-eq m1，导致只剩 R1+R3 bar 一条 lever 砍 RTP，结果中段 bar pid 2/3/4 ratio 0.73 + pid 9 占比 25.97%。
+
+User 反例: R2 booster 命中其实可以砍（mini-alone 是小奖 per §4 cut 目标），不锁 R2 byte-eq m1。但具体砍哪儿、砍多少 — **由 Designer 按全局哲学 + 玩家体感最优分析得出**。
+
+### v8 hard constraints (universal-only)
+
+- DESIGN_PHILOSOPHY.md §4 (per-pay_id 频率 mid/big/top 保留, 小奖砍)
+- §9 (m7 RTP < m1, hit < m1)
+- §1.1 paytable / strip locked
+- R2 grand weight (pos 23 = 11) locked (jackpot anchor)
+- M37 spec.json mechanism untouched
+
+### v8 lever scope = ALL available
+
+- R2 mini / minor / major / high7 / bar 全部可改（但要按 §4 评估每条 lever 是 affecting 哪个 tier）
+- R1+R3 wild / high7 / bar 全部可改
+- 不锁 byte-eq m1 — 但 Designer 必须**说明每条 lever change 对哪个 tier 频率有影响**
+
+### v8 真正任务 = Player-experience optimal selection
+
+Designer 必须：
+
+1. **Tier analysis 自己做**：列每条可能 lever 对 universal §4 每个 tier (顶/大/中/小) per-pay_id 频率的影响 + 量
+2. **Identify pure cut levers**：哪些 lever 100% 砍小奖 (pid 7 / pid 9 mult 1×&2× / etc) 而不动中/大/顶奖
+3. **Identify mixed levers**：哪些 lever 同时砍多 tier (e.g., R1+R3 bar 同时砍 pid 7 小奖 + pid 2/3/4 中段) — 评估 trade-off
+4. **Player experience metric**：每条 lever 玩家可见层影响:
+   - R2 中轴 booster reveal 频率 (visual prominence of mini/minor/major)
+   - R1/R3 winning symbol 视觉密度 (high7 / bar / wild)
+   - Reel blank ratio (玩家"reel 转转还是 blank-y")
+   - Per-pay tier 出场感觉 (玩家"是不是中奖更少")
+   - Brand identity 维系 (Triple Diamond chassis + Lightning Link tier UX)
+5. **Multi-option comparison**：跑 3-5 个不同 cutting strategy，对比每个的玩家体感 + universal §4 violation status
+6. **Recommend best**: 选玩家体感最好那个，cite reasoning
+
+### v8 hard outputs
+
+- m7 RTP ∈ [84, 86]
+- m7 hit < 20.62 (universal §9)
+- Universal §4 mid/big/top per-pay_id 频率 preservation (acceptable drift discussed by Designer in tier-analysis)
+- pid 9 占比 = informational (not optimized; reported)
+
+### v8 input - Designer 必须 read
+
+- `DESIGN_PHILOSOPHY.md` §4 + §9
+- `M37/spec.json` mechanism blocks (含 evaluation_order — Designer 必须理解每条 lever 触发哪个 pay path)
+- `M37/reel_strips.json` _archetype block (brand identity context)
+- `weights/mode_1/weights.json` (m1 v5 source state)
+- 各 pid 的 paytable kind + mult + booster substitution semantics
+
+### v8 forbidden
+
+- `M37/DESIGN.md` (layer 4, contamination)
+- `verify_m37_design.py` MODE_TARGETS m7
+- `session_artifacts/M37/design_v6_m7.md` / `design_v7_m7.md` (prior Designer outputs)
+- 任何固定 "派生因子" 数字 (×0.93/×0.78/×0.55 等)
+
+### v8 输出格式
+
+`session_artifacts/M37/design_v8_m7.md` (≤ 250 lines):
+
+```
+## 1. Universal framework cite (§4 + §9 only)
+## 2. Per-pay_id tier classification (Designer's own analysis)
+   - 列每 pay_id 的 tier (顶/大/中/小) + 理由 + 该 pay 的 driver levers
+## 3. Lever × tier impact matrix
+   - R2 mini cut → which pids?
+   - R2 minor cut → which pids?
+   - R2 major cut → which pids?
+   - R2 high7 cut → which pids?
+   - R2 bar cut → which pids?
+   - R1+R3 high7 cut → which pids?
+   - R1+R3 wild cut → which pids?
+   - R1+R3 bar cut → which pids?
+## 4. Cutting strategy options (3-5 candidates)
+   - Each: lever set, RTP/hit/pid9 outcome, player-experience评估
+## 5. Recommended (best player experience within §4)
+   - Lever values + rationale
+   - Per-pay frequency table
+   - Player-experience narrative
+   - Trade-offs explicit
+## 6. Output weights file path
+```
+
+`session_artifacts/M37/v8_sim_weights/mode_7/weights.json`
