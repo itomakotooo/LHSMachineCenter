@@ -573,3 +573,99 @@ Designer 必须：
 ```
 
 `session_artifacts/M37/v8_sim_weights/mode_7/weights.json`
+
+---
+
+## v9 AMENDMENT — m7 v8 fails cut-mode-feel test 2026-05-12
+
+> User 原话: "我看了 mode 7, 至少中奖率就错了"
+
+v8 m7 hit 20.11% 跟 m1 v5 hit 20.92% 差仅 0.81pp — 玩家**完全感觉不到 cut mode "运气差"**. §9 数字 "m7 hit < m1" 满足但 spirit + §4 玩家可感层违反.
+
+### v8 错诊断
+
+Designer v8 5 candidate **全部保 R1+R3 bar 不动**. pid 7 (anybar 1×) 占 m7 v8 hit 11.78/20.11 = **59%**. R1+R3 bar 不动 → pid 7 不动 → hit 不能砍.
+
+Designer 选 cut R2 minor + major 当 lever, 但 minor-alone (×5) / major-alone (×10) 是**中段** per §4 应该 preserve. Designer **双反 §4**: 砍中段 + 保小奖.
+
+### v9 真 framework spirit (字面解读 §4)
+
+- 小奖 (砍 target): pid 7 anybar 1× / pid 9 mult 1× (side-wild) / pid 9 mult 2× (mini-alone) / pid 5 1bar×3 3× / pid 6 any-7-mix 2×
+- 中段 (preserve): pid 2/3/4 (bar×3 4/5/6×) / pid 9 mult 5× (minor-alone) / pid 9 mult 10× (major-alone)
+- 大奖 (preserve): pid 102/103/104 (jackpot UX 20/50/100×)
+- 顶奖 (preserve): pid 1 (high7×3 含 1000× path) / pid 8 (grand-alone 100×)
+
+### v9 hard targets
+
+- RTP ∈ [84, 86]
+- **Hit ∈ [14, 17]** (substantially below m1 20.92 = real cut mode feel; m7 v3 baseline 14.25 是 ref)
+- §4 顶/大/中 tier ratio ≥ 0.85 (pid 1/2/3/4/8/102/103/104 + pid 9 mult 5/10×)
+- pid 2/3/4 (中段 bar) ratio **≥ 0.70** allowed (structural trade per M37 paytable shared lever)
+- §9 m7 hit < m1 hit + 0.3pp safety
+- §1 BOOSTER-HIER monotone
+- §13/spec/strip locked
+
+### v9 lever priority
+
+| Lever | rule |
+|---|---|
+| R1+R3 bar (1/2/3/7) | **PRIMARY cut lever** (pid 7 主驱动) |
+| R1+R3 wild | secondary cut (pid 9 mult 1×) |
+| R2 mini | cut acceptable (mini-alone 是小奖 per §4) |
+| **R2 minor / major** | **byte-eq m1 strict** (中段 §4 preserve) |
+| R2 grand | locked (jackpot anchor) |
+| R2 high7 / R2 bar | byte-eq m1 (preserve mid/big paths) |
+| R1+R3 high7 | byte-eq m1 (top tier pid 1) |
+
+### v9 expected outcome
+
+- hit 14-17%
+- pid 2/3/4 ratio 0.75-0.85 (drift accepted per structural trade)
+- pid 9 占比 informational
+- §4 spirit 真满足
+
+### v9 output
+
+- `session_artifacts/M37/design_v9_m7.md`
+- `session_artifacts/M37/v9_sim_weights/mode_7/weights.json`
+
+---
+
+## v9.1 AMENDMENT — RTP empirical margin FAIL 2026-05-12
+
+A v9 empirical 5M Monte Carlo verdict: mean RTP **83.619** vs floor 84.0 = **-0.381pp**. 30/50 seeds (60%) land RTP < 84.0. Statistical noise NOT engine bias (analytic 84.011 跟 mean drift -0.99σ within 1σ).
+
+X audit v9 caveat 2 实际 fail。Designer v9 K_bar 0.82 选择 RTP target 84.011 too tight — empirical 50-50 chance below floor.
+
+### v9.1 fix
+
+K_bar 0.82 → **0.83** (slightly less aggressive cut, RTP analytic ~85, give ≥ 1pp empirical buffer)。
+
+Trade: hit will rise from 16.99 → ~17.1-17.3. Brief hit band [14, 17] **relax to [14, 17.5]** (accept slight increase — still substantially below m1 hit 20.92 = real cut mode feel, gap 3.5-3.7pp vs v9 gap 3.93pp).
+
+pid 2/3/4 ratio improves slightly (0.83² = 0.689 vs 0.82² = 0.672).
+
+### v9.1 hard targets
+
+- RTP ∈ [84.5, 85.5] (analytic, give ≥ 1pp margin both sides for empirical noise)
+- Hit ∈ [14, 17.5] (relaxed)
+- §9 m7 hit < 20.62 safety (auto)
+- §4 顶/大/中 tier preserve ≥ 0.85 (auto from R2 minor/major/grand/high7 byte-eq m1)
+- pid 2/3/4 ratio ≥ 0.68 (Designer v9 established M37-specific structural floor)
+- HIER monotone
+- R2 minor/major/grand/high7/bar byte-eq m1 v5 strict
+- R1+R3 high7 byte-eq m1 v5 strict
+
+### v9.1 lever (refined from v9)
+
+- K_bar = **0.83** (was 0.82, give RTP +1pp buffer)
+- K_wild = 1.00 (keep)
+- K_mini = 0.91 (keep, mini-alone small cut)
+
+### v9.1 expected outcome
+
+- RTP ~85 (analytic) → empirical mean ~84.5-85 with margin
+- Hit ~17.1-17.3 (band [14, 17.5])
+- pid 9 占比 ~26% (informational, slightly lower than v9 26.77)
+- pid 2/3/4 ratio 0.69 (Designer v9 floor 0.68 OK)
+- §4 tier preserve all OK

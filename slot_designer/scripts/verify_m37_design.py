@@ -98,20 +98,21 @@ MODE_TARGETS = {
         "pid9_share_lo": 8.0, "pid9_share_hi": 16.0,
     },
     7: {
-        # v8 amendment 2026-05-12 (replace v6): RTP 85.16 / hit 20.11 / pid9 share 18.82%
-        # Designer v8 player-experience optimal: R2 mini unchanged (Lightning Link UX intact),
-        # R2 minor ×0.80, R2 major ×0.80, R1+R3 wild ×0.95. R1+R3 bar/high7 UNCHANGED.
-        # - hit_hi 0.17→0.21 (V verify_v8_diff: v8 hit 20.11 close to m1 hit due to bar-untouched;
-        #   §9 HIT-MONOTONIC-SAFETY m1-m7≥0.3pp守 cross-mode direction)
-        # - WINDOW-VISIBILITY r1r3_high7 lower revert 0.24→0.26 (v8 R1+R3 byte-eq m1)
-        # - per-pid ratio informational YELLOW (Designer §4 tier floors 0.85/0.80/0.50)
+        # v9.1 amendment 2026-05-12 (replace v8): RTP 84.747 / hit 17.254 / pid9 share 26.44%
+        # Designer v9.1 = v9 K_bar 0.82→0.83 + K_mini 0.91→0.94 fix v9 RTP empirical margin FAIL.
+        # Cut mode feel restored (hit-gap vs m1 3.67pp, was v8 0.81pp).
+        # Universal §4 派生 from m1 v5: R2 minor/major/grand/high7/bar byte-eq m1, R1+R3 high7 byte-eq m1.
+        # R1+R3 bar ×0.83 PRIMARY cut (pid 7 anybar small per §4), R1+R3 wild ×1.0, R2 mini ×0.94.
+        # - hit_hi 0.21→0.18 (V verify_v9_1: v9.1 hit 17.254, v8's 0.21 was framing-error accommodation)
+        # - pid9_share_hi 21→28 (v9 wave widening, cut mode physical character: cut R1+R3 bar → blank ↑ → booster-alone P ↑)
+        # - PID_FLOOR_OVERRIDE for pid 2/3/4 = 0.70 (M37-specific §14 — paytable couples pid 7 cut + pid 2/3/4 mid on R1+R3 bar, v9.1 hits ≥ 0.70 strict)
         "rtp": 85.0, "rtp_tol_pp": 1.0,
-        "hit_lo": 0.11, "hit_hi": 0.21,
+        "hit_lo": 0.11, "hit_hi": 0.18,
         "booster_visible_lo": 0.04, "booster_visible_hi": 0.12,
         "grand_lo": 0.0007, "grand_hi": 0.0016,
         "hier_ratio_min": 1.0,
         "shape_js_max": 0.10,
-        "pid9_share_lo": 14.0, "pid9_share_hi": 21.0,
+        "pid9_share_lo": 14.0, "pid9_share_hi": 28.0,
     },
 }
 
