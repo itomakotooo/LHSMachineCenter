@@ -16,13 +16,14 @@
 
 | 输入 | 必需性 | 说明 |
 |---|---|---|
-| **A. rawdata** | **必有** | 上游生产 chunk JSON，或 user 直接 ship 一包 chunk。所有 rules / paytable / 玩家行为统计**唯一权威来源** |
+| **A. rawdata** | **必有** | 上游生产 chunk JSON，或 user 直接 ship 一包 chunk。所有 rules / paytable / 玩家行为统计**唯一权威来源**。**Mode 1 rawdata 必有**；mode 2/5/7 rawdata 不强制（mode-1-first universal scope 下，7/2/5 在后续 session 启动） |
 | **B. 规则文档 + paytable** | 可选 | 没给就 Analyst 从 rawdata 反推 (Stage 1c)；给了也只是辅助，跟 rawdata 冲突时 rawdata 赢 |
-| **C. 用户倾向性 brief** | 可选但很关键 | mode 1 hit 期望、bucket shape 倾向、机台 character、不变量严格度、不想要的体验。落到 `session_artifacts/<M>/user_brief.md`，Designer 必读。**首次 use case 强制要求 SESSION_BRIEF 模板里 user_brief.md 这个文件实际存在**（M15 process_improvement #1）|
+| **C. 用户倾向性 brief** | 可选但很关键 | **mode 1 only**: hit 期望 / bucket shape 倾向 / 机台 character / 不变量严格度 / 不想要的体验。落到 `session_artifacts/<M>/user_brief.md`，Designer 必读。**首次 use case 强制要求 SESSION_BRIEF 模板里 user_brief.md 这个文件实际存在**（M15 process_improvement #1）|
 | **D. archetype hint** | 可选 | user 指定原型机（"这台是 Buffalo / Top Dollar / Wheel of Fortune 路线"）；没给就 Researcher WebSearch 推断 |
 
 ### §1.1 Universal invariants (cross-machine, never violate)
 
+- **Mode 1 first, derive other modes sequentially** (universal rule, user 2026-05-13). Every new machine onboarding ships **mode 1 standalone** through Stage 0→6 + 10 (intermediate ship commit). Mode 7 / 2 / 5 then derive in subsequent sessions per universal §C/§D rules + DESIGN_PHILOSOPHY.md §4/§7/§9. Stage 7 (cross-mode invariants) and Stage 8 (full-fleet empirical) only run when all 4 modes are ready. **Rationale**: keeps mode 1 as an independent risk-managed milestone; structural infeasibility in mode 1 doesn't waste mode 7/2/5 design effort; user mid-progress sign-off cleaner.
 - **paytable 永远不改** (slot_designer/machines/<M>/spec.json `pays` block byte-identical from Stage 1c onward; cross-machine universal rule per M15 process_improvement #36, established 2026-05-11). Reel strips / weights / plugins **可改**；只锁 paytable structure.
 - **rawdata 是唯一权威源**：本台机器的真实玩家行为 > 业界平均（Stage 1c paytable inference 也走 rawdata 不走 manufacturer specs）。
 - **跨机台不互相 import**：machines/<M>/ 不 import 其他 machines.<other>.* （ARCHITECTURE.md §8 不变量 #2）。
@@ -81,6 +82,8 @@ spec.json **mechanism 段** (`pays` / `symbols` / `evaluation_order` / `spin_typ
 ---
 
 ## §3 输出契约
+
+> **Note (mode-1-first universal scope)**: a machine reaches "ship-ready" in stages — **mode 1 first** (independent shippable milestone after Stage 0→6 + 10), then **mode 7 / 2 / 5** sequential derivation in subsequent sessions, then **cross-mode + full empirical** (Stage 7-9 + final commit). The deliverable list below is the **final** state after all stages. Mode 1 ship intermediate deliverable list is a subset (mode 1 weights + mode 1 entries in BOUNDARY_CONTRACT / DESIGN / verify only).
 
 ship-ready 必须产出：
 
@@ -192,6 +195,8 @@ analytic vs empirical 一致 → engine + emitter 实现没 bug
 ---
 
 ## §5 11-Stage 工作流
+
+> **Mode-1-first scope (universal rule)**: Stage 0 → Stage 6 default to **mode 1 only**. The full 11-stage flow below describes the **complete** journey for one machine; in practice mode 1 ships via Stage 0→6→10 (intermediate commit), then mode 7 / 2 / 5 each derive in subsequent sessions running Stage 3.5→6 with mode-specific scope, then Stage 7→8→9→10 run **once** when all 4 modes are ready (final commit). See §1.1 universal invariant + §5.M (mode-roll-out section after table).
 
 ```
 Stage  Owner     Action
@@ -517,6 +522,60 @@ iter k = 1..5:
 
 四锁分给四个 agent（V / A / A / X），**没人单枪匹马能过整 mode**。这是防 self-loop 的核心。
 
+### §5.M Mode roll-out — universal sequential scope
+
+**Universal rule (2026-05-13)**: 每台机台 onboarding 走 **mode-1-first sequential** flow，不是一次性 4 mode 并行。完整 roll-out 分 3 段：
+
+#### §5.M.1 Phase α — Mode 1 ship (this session, typical)
+
+走 **Stage 0 → 1 → 2 → 3 → 3.5 → 4 → 5 → 6 → 10**（intermediate commit），都只**针对 mode 1**：
+
+| stage | mode 1 scope |
+|---|---|
+| 0 | 建目录、读 user_brief（只含 mode 1 brief）|
+| 1a/1b/1c | A 跑 mode 1 only（mode 2/5/7 sections 标 N/A）|
+| 1d | R 研究 archetype + mode 1 baseline benchmarks（mode 7/2/5 benchmarks 待后续 session）|
+| 2 | I 写 spec.json + reel_strips.json + plugin（**跨 mode 通用**，但 tests 只验 mode 1）|
+| 3 | I+A 反推 mode 1 bootstrap weights |
+| 3.5 | 全 team 协商 mode 1 BOUNDARY_CONTRACT.md（§2 只含 mode 1 bounds + §2.5 cross-mode invariants 占位为空）→ user sign-off |
+| 4 | D 写 mode 1 design + DESIGN.md skeleton（mode 7/2/5 sections marked "TBD subsequent session"）|
+| 5 | V 写 verify.py，**只含 mode 1 red lines**（mode 7/2/5 verify 占位）|
+| 6 | mode 1 inner loop + 4-lock convergence |
+| 10 | mode 1 ship commit："feat(slot_designer/&lt;M&gt;): mode 1 baseline tuned"。`machines_virtual.json` 加 entry 标 `modes: [1]`；其它 mode 暂未 ready。 |
+
+#### §5.M.2 Phase β — Mode 7 derive (subsequent session)
+
+**Mode 7 = mode 1 砍小奖 derivation** per universal §C/§D + DESIGN_PHILOSOPHY.md §4 (cut-mode tier preservation). 重启 session 走：
+
+- Stage 0 (re-read updated context including mode 1 ship)
+- Stage 3.5 (amend BOUNDARY_CONTRACT.md §2.4 add mode 7 bounds, get user sign-off — typically much shorter than mode 1 since framework defines direction)
+- Stage 4 (D updates DESIGN.md + MODE_DESIGN.md mode 7 section)
+- Stage 5 (V extends verify.py with mode 7 red lines)
+- Stage 6 (mode 7 inner loop)
+- Stage 10 (mode 7 ship commit)
+
+#### §5.M.3 Phase γ — Mode 2 + Mode 5 (subsequent session(s))
+
+- **Mode 2** independent lucky archetype (per universal §C "mode 1 和 mode 2 是独立 archetypes 不派生"); lifts from mode 1 baseline. Same Stage 3.5/4/5/6/10 mini-flow.
+- **Mode 5** derives from mode 2 (base byte-identical + feature/top-bucket lift per universal §C); same mini-flow.
+
+Can be 1 session covering both or 2 separate sessions per user preference.
+
+#### §5.M.4 Phase δ — Cross-mode + full empirical + final commit
+
+**Only run when all 4 modes are tuned + shipped to their own commits.**
+
+- Stage 7 (V cross-mode invariants — LUCKY-MONO / MODE7-LOCK / MODE5-BASE-LOCK / monotonicity / top-jackpot escalation)
+- Stage 8 (A + V + X full empirical, 4 mode each ≥ 50k spin)
+- Stage 9 (X final adversarial gate)
+- Stage 10 (final commit + machines_virtual.json update modes:[1,2,5,7] available:true)
+
+**Why split**: mode 1 ship is independent risk milestone; if mode 1 design has structural bug, mode 7/2/5 effort isn't wasted. Cross-mode invariants (§7) can only run with all 4 modes anyway. Full empirical (§8) needs all 4 mode weights frozen. Sequential is also cleaner for user sign-off cadence.
+
+#### §5.M.5 Backward compatibility (legacy machines)
+
+M1 / M15 / M37 / M279 跑了 4-mode 一次性 onboarding pre-2026-05-13。Legacy machines 不回填 sequential flow，新 onboarding 强制 sequential。
+
 ---
 
 ## §6 Pareto Trap 警惕
@@ -578,29 +637,63 @@ session_artifacts/<M>/
 
 ## §8 收敛 / 终止条件
 
+Mode-1-first 工作流下，收敛分三档（per §5.M phased ship）：
+
+### §8.1 Mode 1 ship (Phase α, this session) — intermediate milestone
+
 **通过条件（同时满足）**：
 
-0. Stage 3.5 BOUNDARY_CONTRACT.md frozen (§0 status=Frozen + user sign-off)
-1. Stage 6 每个 mode 4-lock 都开
-2. Stage 7 cross-mode invariants 全 GREEN
-3. Stage 8 full empirical 通过：
+0. Stage 3.5 mode 1 BOUNDARY_CONTRACT.md §2 mode 1 bounds frozen (§0 status=Frozen + user sign-off)
+1. Stage 6 mode 1 4-lock 都开
+2. Mode 1 verify.py 全 GREEN（或 RED 都标 STRUCTURAL/STALE 带 user-accepted 注释）
+3. Mode 1 empirical（A 起虚拟 console ≥ 20k spin）±2σ within target
+4. Mode 1 analytic vs empirical 一致（两路验过）
+5. X mode 1 critique 5 反问全 closed loop
+6. Stage 10 mode 1 commit 落 collab/dev；machines_virtual.json 加 entry `modes: [1]`
+
+**Stop 触发**（任一即停手报 user）：
+
+- ✗ Stage 1c 反推机制 fail (paytable 反推不出 byte-aligned sim)
+- ✗ Stage 3.5 mode 1 feasibility 5 轮 iter 仍 INFEASIBLE → escalate user
+- ✗ Stage 3.5 user 5 次 sign-off 都不通过 → 回 Stage 1
+- ✗ Stage 6 mode 1 5 次 iter 仍同类 RED → 走 §5.3.5.c 唯二 escalation
+- ✗ Stage 6.k.d 出现 ① fail (engine bug) 类型，回 Stage 2 修后**全流程从 Stage 5 重跑**
+
+### §8.2 Mode 7 / 2 / 5 ship (Phase β/γ, subsequent sessions)
+
+每 mode 走 mini-flow (Stage 3.5 amend → 4 → 5 → 6 → 10)：
+
+**通过条件**（per mode 都满足）：
+
+1. BOUNDARY_CONTRACT.md §2.<X> mode 7/2/5 bounds amended + user sign-off
+2. Stage 6 该 mode 4-lock 都开
+3. 该 mode verify.py 全 GREEN（或 STRUCTURAL/STALE 注释完整）
+4. 该 mode empirical ±2σ within target
+5. X 该 mode critique 5 反问全 closed loop
+6. Stage 10 该 mode ship commit；machines_virtual.json modes 数组加该 mode 号
+
+**Stop 触发**：跟 §8.1 类似 + "Stage 3.5 amendment 5 次 user reject 回退 Phase α" 选项。
+
+### §8.3 Final ship (Phase δ, all 4 modes ready)
+
+**通过条件**：
+
+0. All 4 modes 都跑过 Phase α/β/γ
+1. Stage 7 cross-mode invariants 全 GREEN
+2. Stage 8 full empirical 通过：
    - 4 mode 全 ±2σ
    - schema 跟生产 rawdata 字节级对齐
    - X 抽样 round 看叙事自洽
-   - **Stage 8 critique 必含 BOUNDARY_CONTRACT.md §2 逐条 vs delivered 对照表**
-4. Stage 9 final_critique 5 反问全 closed loop
-5. BOUNDARY_CONTRACT.md §5 amendment log 任一新条目都有对应 user sign-off
+   - **必含 BOUNDARY_CONTRACT.md §2 逐条 vs delivered 对照表**
+3. Stage 9 final_critique 5 反问全 closed loop
+4. BOUNDARY_CONTRACT.md §5 amendment log 任一新条目都有对应 user sign-off
+5. Stage 10 final commit；machines_virtual.json `modes: [1, 2, 5, 7]` available: true
 
-**Stop 触发（任一即停手报 user）**：
+**Stop 触发**：
 
-- ✗ Stage 3.5 feasibility 5 轮 iter 仍 INFEASIBLE → escalate user
-- ✗ Stage 3.5 user 5 次 sign-off 都不通过 → 回 Stage 1
-- ✗ Stage 6 任一 mode 5 次 iter 仍同类 RED → 走 §5.3.5.c 唯二 escalation
-  (better idea propose 或 structural infeasibility + mechanism exhaustion)
-- ✗ Stage 7 同对 mode 来回踢皮球 ≥ 2 轮
+- ✗ Stage 7 同对 mode 来回踢皮球 ≥ 2 轮 → 回相应 mode 的 Phase β/γ amendment
 - ✗ Stage 8 realized 持续偏离 5σ+（不是 noise）
 - ✗ Stage 9 同条 stress-test 连拒 3 次（设计本身结构问题）
-- ✗ Stage 6.k.d 出现 ① fail (engine bug) 类型，回 Stage 2 修后**全流程从 Stage 5 重跑**
 
 ---
 
