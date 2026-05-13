@@ -1,0 +1,160 @@
+
+========================================================================
+M15 v14c Mode 2/5 Design Results
+========================================================================
+
+--- Mode 1 (C38_C14 shipped baseline) ---
+Total RTP: 94.288pp  (base 42.768pp + feature 51.520pp)
+Base hit: 16.216%   Trigger: 1.1200%
+P(b1): 0.7065%  P(b2): 0.4218%  P(b3): 0.1033%
+R1/R2/R3 blank: 38.52 / 50.26 / 59.01
+wild_pure cadence: 1/51314   P(R>=1000)/spin: 7.389e-08
+
+--- Mode 7 (M7_F110 shipped) ---
+Total RTP: 85.368pp
+Base hit: 13.063%   Trigger: 1.1220%
+wild_pure cadence: 1/51401
+
+--- Mode 2 RECOMMENDED (M2_LC) ---
+Total RTP: 296.129pp  (base 97.911pp + feature 198.218pp)
+RTP margin to [290, 310]: +6.13pp to floor, +13.87pp to ceiling
+Base hit: 33.852%   Trigger: 3.3040%
+P(b1): 1.6984%  P(b2): 0.9854%  P(b3): 0.2143%
+R1/R2/R3 blank: 27.53 / 24.78 / 23.19
+wild_pure cadence: 1/70607   m2/m1: 0.727
+P(R>=1000)/spin: 1.539e-06  P(R>=200)/spin: 2.824e-04
+
+Mode 2 marginals (%):
+  R1: 1bar=21.805 2bar=17.798 3bar=11.146 blank=27.528 cherry=6.400 doublediamond=2.755 high7=12.168 jackpot=0.400   sum=100.000000
+  R2: 1bar=23.774 2bar=19.483 3bar=10.498 blank=24.777 cherry=6.300 doublediamond=2.520 high7=12.248 jackpot=0.400   sum=100.000000
+  R3: 1bar=24.282 2bar=19.782 3bar=9.882 blank=23.190 cherry=5.000 doublediamond=2.040 high7=12.220 jackpot=0.300 topdollar=3.304   sum=100.000000
+
+Mode 2 per-pay-id breakdown:
+  pid   family         mult             hit%     1 in N   RTP pp
+  9     cherry1        1x            15.6841          6  15.6841
+  71    cherry2        5x             0.9777        102   4.8886
+  4     cherry3        15x            0.0202       4960   0.3024
+  1     wild_pure      200x           0.0014      70607   0.2833
+  2     high7_wild     30/60/120x     0.1307        765   9.1412
+  21    high7_pure     30x            0.1821        549   5.4636
+  3     bar3           20/40/80x      0.2143        467   7.0002
+  5     bar2           10/20/40x      0.9854        101  13.5258
+  7     bar1           5/10/20x       1.6984         59  11.1046
+  8     bar_mixed      2/4x          13.9574          7  30.5174
+
+Mode 2 family share-of-base:
+  bar_mixed       31.17%   30.517pp
+  cherry1         16.02%   15.684pp
+  high7           14.92%   14.605pp
+  bar2            13.81%   13.526pp
+  bar1            11.34%   11.105pp
+  bar3             7.15%    7.000pp
+  cherry2          4.99%    4.889pp
+  cherry3          0.31%    0.302pp
+  wild_pure        0.29%    0.283pp
+
+--- Mode 5 RECOMMENDED (M5_LC_plus) ---
+Total RTP: 504.561pp  (base 97.069pp + feature 407.491pp)
+RTP margin to [490, 510]: +14.56pp to floor, +5.44pp to ceiling
+Base hit: 33.892%   Trigger: 3.3040%
+P(b1): 1.7181%  P(b2): 0.9991%  P(b3): 0.2198%
+R1/R2/R3 blank: 28.64 / 25.50 / 23.96
+wild_pure cadence: 1/61424   m5/m2: 1.150
+P(R>=1000)/spin: 1.100e-07  P(R>=200)/spin: 3.887e-03
+Base lift vs m2: -0.84pp
+
+Mode 5 marginals (%):
+  R1: 1bar=21.805 2bar=17.798 3bar=11.146 blank=28.639 cherry=6.400 doublediamond=2.617 high7=11.195 jackpot=0.400   sum=100.000000
+  R2: 1bar=23.774 2bar=19.483 3bar=10.498 blank=25.505 cherry=6.300 doublediamond=2.772 high7=11.268 jackpot=0.400   sum=100.000000
+  R3: 1bar=24.282 2bar=19.782 3bar=9.882 blank=23.964 cherry=5.000 doublediamond=2.244 high7=11.242 jackpot=0.300 topdollar=3.304   sum=100.000000
+
+Mode 5 per-pay-id breakdown:
+  pid   family         mult             hit%     1 in N   RTP pp
+  9     cherry1        1x            15.6841          6  15.6841
+  71    cherry2        5x             0.9777        102   4.8886
+  4     cherry3        15x            0.0202       4960   0.3024
+  1     wild_pure      200x           0.0016      61424   0.3256
+  2     high7_wild     30/60/120x     0.1181        847   8.3894
+  21    high7_pure     30x            0.1418        705   4.2544
+  3     bar3           20/40/80x      0.2198        455   7.2917
+  5     bar2           10/20/40x      0.9991        100  13.8598
+  7     bar1           5/10/20x       1.7181         58  11.3385
+  8     bar_mixed      2/4x          14.0118          7  30.7349
+
+Mode 5 family share-of-base:
+  bar_mixed       31.66%   30.735pp
+  cherry1         16.16%   15.684pp
+  bar2            14.28%   13.860pp
+  high7           13.03%   12.644pp
+  bar1            11.68%   11.339pp
+  bar3             7.51%    7.292pp
+  cherry2          5.04%    4.889pp
+  wild_pure        0.34%    0.326pp
+  cherry3          0.31%    0.302pp
+
+--- Per-pay-id frequency ratios (cross-mode) ---
+  pid  family              m1 P%      m2 P%    m2/m1      m5 P%    m5/m2
+  9    cherry1            9.3561    15.6841    1.676    15.6841    1.000
+  71   cherry2            0.3170     0.9777    3.084     0.9777    1.000
+  4    cherry3            0.0035     0.0202    5.760     0.0202    1.000
+  1    wild_pure          0.0019     0.0014    0.727     0.0016    1.150
+  2    high7_wild         0.0398     0.1307    3.289     0.1181    0.903
+  21   high7_pure         0.0193     0.1821    9.425     0.1418    0.779
+  3    bar3               0.1033     0.2143    2.075     0.2198    1.026
+  5    bar2               0.4218     0.9854    2.336     0.9991    1.014
+  7    bar1               0.7065     1.6984    2.404     1.7181    1.012
+  8    bar_mixed          5.2472    13.9574    2.660    14.0118    1.004
+
+--- Mode 2 invariant checks ---
+PASS 18/18:
+  [PASS] [USER-RTP] m2 RTP in [292, 308]: 296.129pp
+  [PASS] [CROSS-RTP m2 band] [290, 310]: 296.129pp
+  [PASS] [CROSS-RTP] m2 > m1: 296.129 > 94.288
+  [PASS] [HIT m2 band] [0.30, 0.35]: 0.3385
+  [PASS] [LUCKY-MONO hit] m2 > m1: 0.3385 > 0.1622
+  [PASS] [LUCKY-MONO trig] m2 >= m1: 3.3040% >= 1.1200%
+  [PASS] [TOP-JACKPOT-CADENCE m2/m1 <= 1.5]: ratio=0.727
+  [PASS] [BAR-HIERARCHY-¡ì1] P(bar1) > P(bar2) > P(bar3): b1=1.6984% > b2=0.9854% > b3=0.2143%
+  [PASS] [CHERRY-HIERARCHY] c1 >= c2 >= c3: c1=15.6841% c2=0.9777% c3=0.0202%
+  [PASS] [H7-HIERARCHY] h7_wild >= h7_pure - 0.10pp: h7w=0.1307% h7p=0.1821% diff=0.0514pp
+  [PASS] [1000+] P(R>=1000)/spin <= 1e-5: 1.539e-06
+  [PASS] [JACKPOT-VIS] all reels jp <= 0.6%: 
+  [PASS] [REEL-ASYM-LUCKY] R1 blank >= R3 blank (shipped v9 direction): R1=27.53 R3=23.19
+  [PASS] [FAM-SHARE c1 [15, 25]]: 16.02%
+  [PASS] [FAM-SHARE b3 [5, 22]]: 7.15%
+  [PASS] [FAM-SHARE h7 [14, 30]]: 14.92%
+  [PASS] [FAM-SHARE wld [0.08, 0.30]]: 0.289%
+  [PASS] [TOP-JACKPOT-ESC] P(R>=200)/spin m2 > m1: 2.824e-04 > 3.159e-05
+
+--- Mode 5 invariant checks ---
+PASS 15/15:
+  [PASS] [USER-RTP] m5 RTP in [491.5, 508.5]: 504.561pp
+  [PASS] [CROSS-RTP m5 band] [480, 520]: 504.561pp
+  [PASS] [CROSS-RTP] m5 > m2: 504.561 > 296.129
+  [PASS] [HIT m5 band] [0.30, 0.35]: 0.3389
+  [PASS] [LUCKY-MONO hit] m5 >= m2: 0.3389 >= 0.3385
+  [PASS] [LUCKY-MONO trig] m5 >= m2: 3.3040% >= 3.3040%
+  [PASS] [TOP-JACKPOT-CADENCE m5/m2 >= 1.1]: ratio=1.150
+  [PASS] [BAR-HIERARCHY-¡ì1] P(bar1) > P(bar2) > P(bar3): b1=1.7181% > b2=0.9991% > b3=0.2198%
+  [PASS] [CHERRY-HIERARCHY] c1 >= c2 >= c3: c1=15.6841% c2=0.9777% c3=0.0202%
+  [PASS] [H7-HIERARCHY] h7_wild >= h7_pure - 0.10pp: h7w=0.1181% h7p=0.1418% diff=0.0237pp
+  [PASS] [1000+] P(R>=1000)/spin <= 1e-5: 1.100e-07
+  [PASS] [JACKPOT-VIS] all reels jp <= 0.6%: 
+  [PASS] [REEL-ASYM-LUCKY] R1 blank >= R3 blank (shipped v9 direction): R1=28.64 R3=23.96
+  [PASS] [FAM-SHARE b3 [5, 22] m5-explicit]: 7.51%
+  [PASS] [TOP-JACKPOT-ESC] P(R>=200)/spin m5 > m2: 3.887e-03 > 2.824e-04
+
+--- Cross-mode ladder checks ---
+PASS 10/10:
+  [PASS] [RTP-LADDER] m7 < m1: 85.368 < 94.288
+  [PASS] [RTP-LADDER] m1 < m2: 94.288 < 296.129
+  [PASS] [RTP-LADDER] m2 < m5: 296.129 < 504.561
+  [PASS] [HIT-LADDER] m7 < m1: 13.063% < 16.216%
+  [PASS] [HIT-LADDER] m1 < m2: 16.216% < 33.852%
+  [PASS] [HIT-LADDER] m5 >= m2 (LUCKY-MONO): 33.892% >= 33.852%
+  [PASS] [TRIG-LADDER] m7 ~ m1 (tol 5e-4): |0.011220 - 0.011200| = 0.000020
+  [PASS] [TRIG-LADDER] m2 >= m1: 3.3040% >= 1.1200%
+  [PASS] [TRIG-LADDER] m5 >= m2 (LUCKY-MONO): 3.3040% >= 3.3040%
+  [PASS] [TOP-JACKPOT-ESC] P(R>=200)/spin m1 < m2 < m5: 3.159e-05 < 2.824e-04 < 3.887e-03
+
+=== TOTAL: 43/43 checks pass ===

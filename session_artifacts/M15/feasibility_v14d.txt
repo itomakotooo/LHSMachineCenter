@@ -1,0 +1,123 @@
+================================================================================
+M15 v14d Mode 5 redesign ¡ª fix 'multiplier shift higher' intent
+================================================================================
+
+--- Anchors ---
+M1 base RTP = 42.768pp, hit = 16.216%, trigger = 1.1200%
+M1 base ¡Ý30¡Á share (combo): 19.70%  (payid-anchored: 34.26%)
+M2_LC base RTP = 97.911pp, hit = 33.852%, trigger = 3.3040%
+M2_LC total RTP = 296.129pp
+M2_LC base ¡Ý30¡Á share (combo): 21.38%  (payid-anchored: 36.17%) [task target ¡Ý40% per X's payid-anchored convention]
+M2_LC family pp: bar1=11.10, bar2=13.53, bar3=7.00, bar_mixed=30.52, cherry1=15.68, cherry2=4.89, cherry3=0.30, high7_pure=5.46, high7_wild=9.14, wild_pure=0.28
+
+FEATURE EV per mode: m1=46.00, m2=59.99, m5=123.33, m7=46.00
+
+M5 feature EV = 123.33x; with trigger 3.304% ¡ú feature_rtp ~= 407.49pp
+
+--- Sweeping candidates ---
+Tested 43200 candidates; 11202 after RTP/hit/trig filter; 29 pass ALL invariants
+
+29 candidates pass ALL invariants
+
+Top 10 by base ¡Ý30¡Á share:
+  ¡Ý30share=40.12%  RTP=508.21pp  hit=33.91%  trig=3.321%  wild_cad=1/60993  c=1.13 b1=0.85 b2=1.03 b3=1.05 h=(1.03, 1.03, 1.03) dd=(1.05, 1.05, 1.05) td=1.005
+  ¡Ý30share=40.11%  RTP=507.81pp  hit=33.94%  trig=3.321%  wild_cad=1/60993  c=1.13 b1=0.83 b2=1.03 b3=1.10 h=(1.0, 1.0, 1.0) dd=(1.05, 1.05, 1.05) td=1.005
+  ¡Ý30share=39.91%  RTP=508.33pp  hit=33.95%  trig=3.321%  wild_cad=1/56050  c=1.13 b1=0.85 b2=1.03 b3=1.05 h=(1.0, 1.0, 1.0) dd=(1.08, 1.08, 1.08) td=1.005
+  ¡Ý30share=39.79%  RTP=508.19pp  hit=33.92%  trig=3.321%  wild_cad=1/56050  c=1.13 b1=0.85 b2=1.00 b3=1.10 h=(1.0, 1.0, 1.0) dd=(1.08, 1.08, 1.08) td=1.005
+  ¡Ý30share=39.71%  RTP=508.47pp  hit=34.21%  trig=3.321%  wild_cad=1/60993  c=1.13 b1=0.85 b2=1.05 b3=1.05 h=(1.0, 1.0, 1.0) dd=(1.05, 1.05, 1.05) td=1.005
+  ¡Ý30share=39.32%  RTP=508.22pp  hit=34.06%  trig=3.321%  wild_cad=1/60993  c=1.13 b1=0.88 b2=1.03 b3=1.00 h=(1.03, 1.03, 1.03) dd=(1.05, 1.05, 1.05) td=1.005
+  ¡Ý30share=39.16%  RTP=508.03pp  hit=34.02%  trig=3.321%  wild_cad=1/60993  c=1.13 b1=0.88 b2=1.00 b3=1.05 h=(1.03, 1.03, 1.03) dd=(1.05, 1.05, 1.05) td=1.005
+  ¡Ý30share=39.12%  RTP=508.16pp  hit=34.02%  trig=3.321%  wild_cad=1/60993  c=1.10 b1=0.88 b2=1.03 b3=1.05 h=(1.0, 1.0, 1.0) dd=(1.05, 1.05, 1.05) td=1.005
+  ¡Ý30share=39.10%  RTP=508.33pp  hit=34.10%  trig=3.321%  wild_cad=1/56050  c=1.13 b1=0.88 b2=1.03 b3=1.00 h=(1.0, 1.0, 1.0) dd=(1.08, 1.08, 1.08) td=1.005
+  ¡Ý30share=39.00%  RTP=508.18pp  hit=33.98%  trig=3.321%  wild_cad=1/60993  c=1.13 b1=0.90 b2=1.00 b3=1.00 h=(1.05, 1.05, 1.05) dd=(1.05, 1.05, 1.05) td=1.005
+
+=== RECOMMENDED CANDIDATE ===
+c_lift=1.130  b1_lift=0.850  b2_lift=1.030  b3_lift=1.050
+h_lift_r=(1.03, 1.03, 1.03)  dd_lift_r=(1.05, 1.05, 1.05)  td_lift=1.005
+
+Key metrics:
+  Total RTP: 508.207pp  (target [491.5, 508.5])
+  Base RTP: 98.678pp
+  Feature RTP: 409.529pp
+  Base hit: 33.911%  (target ¡Ý M2 33.85% + 0.05pp margin)
+  Trigger: 3.3205%  (¡Ý M2 3.304% + 1e-4 margin)
+  Wild_pure cadence: 1/60993  (m5/m2 ratio = 1.158)
+  R1/R2/R3 blank: 28.37/25.92/24.61
+  P(R¡Ý1000)/spin: 1.105e-07
+  P(R¡Ý200)/spin: 3.906e-03
+
+Base mult tier decomp (relative to M2_LC):
+  1x_le1          17.437pp  (M2_LC 15.684, ¦¤=+1.753pp)
+  ge2_lt5         27.359pp  (M2_LC 30.517, ¦¤=-3.158pp)
+  ge5_lt10        10.057pp  (M2_LC 11.182, ¦¤=-1.125pp)
+  ge10_lt20       10.953pp  (M2_LC 11.144, ¦¤=-0.191pp)
+  ge20_lt30        9.372pp  (M2_LC  8.454, ¦¤=+0.918pp)
+  ge30_lt50       11.221pp  (M2_LC 10.025, ¦¤=+1.196pp)
+  ge50_lt100       9.005pp  (M2_LC  8.026, ¦¤=+0.979pp)
+  ge100_lt200      2.947pp  (M2_LC  2.595, ¦¤=+0.352pp)
+  ge200_lt500      0.328pp  (M2_LC  0.283, ¦¤=+0.045pp)
+  ge500            0.000pp  (M2_LC  0.000, ¦¤=+0.000pp)
+  ¡Ý30¡Á sum (combo bucketed by FINAL mult): 23.500pp  (M2_LC 20.929pp)
+  ¡Ý30¡Á share (combo): 23.81%  (M2_LC 21.38%)  ¦¤=+2.44pp
+  ¡Ý30¡Á share (payid-anchored, X's convention): 40.12%  (M2_LC 36.17%)  ¦¤=+3.95pp  [TASK TARGET ¡Ý 40%]
+  ¡Ý30¡Á share: 23.81%  (M2_LC 21.38%)  ¦¤=+2.44pp
+
+Family share (% of base RTP):
+  bar_mixed        27.73%  (M2_LC 31.17%, ¦¤=-3.44pp)
+  cherry1          17.67%  (M2_LC 16.02%, ¦¤=+1.65pp)
+  high7            16.43%  (M2_LC 14.92%, ¦¤=+1.51pp)
+  bar2             15.15%  (M2_LC 13.81%, ¦¤=+1.34pp)
+  bar3              8.21%  (M2_LC 7.15%, ¦¤=+1.06pp)
+  bar1              7.77%  (M2_LC 11.34%, ¦¤=-3.58pp)
+  cherry2           6.27%  (M2_LC 4.99%, ¦¤=+1.28pp)
+  cherry3           0.44%  (M2_LC 0.31%, ¦¤=+0.13pp)
+  wild_pure         0.33%  (M2_LC 0.29%, ¦¤=+0.04pp)
+
+Marginal table (R1/R2/R3):
+  blank           R1=28.373 (M2 27.528)  R2=25.921 (M2 24.777)  R3=24.610 (M2 23.190)
+  cherry          R1= 7.232 (M2 6.400)  R2= 7.119 (M2 6.300)  R3= 5.650 (M2 5.000)
+  1bar            R1=18.534 (M2 21.805)  R2=20.208 (M2 23.774)  R3=20.640 (M2 24.282)
+  2bar            R1=18.332 (M2 17.798)  R2=20.067 (M2 19.483)  R3=20.375 (M2 19.782)
+  3bar            R1=11.703 (M2 11.146)  R2=11.023 (M2 10.498)  R3=10.376 (M2 9.882)
+  high7           R1=12.533 (M2 12.168)  R2=12.615 (M2 12.248)  R3=12.587 (M2 12.220)
+  doublediamond   R1= 2.893 (M2 2.755)  R2= 2.646 (M2 2.520)  R3= 2.142 (M2 2.040)
+  topdollar       R1= 0.000 (M2 0.000)  R2= 0.000 (M2 0.000)  R3= 3.321 (M2 3.304)
+  jackpot         R1= 0.400 (M2 0.400)  R2= 0.400 (M2 0.400)  R3= 0.300 (M2 0.300)
+
+Invariants check (17/17 PASS):
+  [PASS]  [USER-RTP] m5 RTP in [491.5, 508.5]                           508.207pp
+  [PASS]  [CROSS-RTP m5 band] [490, 510]                                508.207pp
+  [PASS]  [CROSS-RTP] m5 > m2                                           508.207 > 296.129
+  [PASS]  [HIT m5 band] [0.30, 0.35]                                    0.3391
+  [PASS]  [LUCKY-MONO hit] m5 >= m2 + 0.05pp margin                     0.3391 vs 0.3385 (diff +0.059pp)
+  [PASS]  [LUCKY-MONO trig] m5 >= m2 + 1e-04 margin                     3.3205% vs 3.3040% (diff +0.0165pp)
+  [PASS]  [TOP-JACKPOT-CADENCE m5/m2 >= 1.1]                            ratio=1.158
+  [PASS]  [BAR-HIERARCHY-¡ì1] P(bar1)>=P(bar2)>=P(bar3) tied-tol 0.10pp  b1=1.1140% b2=1.0839% b3=0.2481%
+  [PASS]  [CHERRY-HIERARCHY] c1 >= c2 >= c3                             c1=17.4369% c2=1.2384% c3=0.0291%
+  [PASS]  [H7-HIERARCHY] h7_wild >= h7_pure - 0.10pp                    h7w=0.1461% h7p=0.1990% diff=+0.0529pp
+  [PASS]  [1000+] P(R>=1000)/spin <= 1e-5                               1.105e-07
+  [PASS]  [JACKPOT-VIS] all reels jp <= 0.6%                            
+  [PASS]  [REEL-ASYM-LUCKY] R1 blank >= R3 blank                        R1=28.37 R3=24.61
+  [PASS]  [TOP-JACKPOT-ESC] P(R>=200)/spin m5 > m2                      3.906e-03 > 2.824e-04
+  [PASS]  [H7-NOT-CUT] high7 marg ¡Ý M2_LC marg per reel                 R1: 12.533¡Ý12.168; R2: 12.615¡Ý12.248; R3: 12.587¡Ý12.220
+  [PASS]  [FAM-SHARE b3 [5, 22]]                                        8.21%
+  [PASS]  [FAM-SHARE wld informational]                                 0.332%
+
+Saved recommended candidate to: C:\Users\pangg\Documents\Projects\LHS\User_Managerment_GPT\session_artifacts\M15\scripts\m15_v14d_mode5_candidate.json
+
+=== TOP 5 BY ¡Ý30¡Á SHARE ===
+
+Alt 1: ¡Ý30share=40.12%  RTP=508.21  hit=33.91  trig=3.321  wild_cad=1/60993
+      c=1.13  b1=0.85  b2=1.03  b3=1.05  h=(1.03, 1.03, 1.03)  dd=(1.05, 1.05, 1.05)  td=1.005
+
+Alt 2: ¡Ý30share=40.11%  RTP=507.81  hit=33.94  trig=3.321  wild_cad=1/60993
+      c=1.13  b1=0.83  b2=1.03  b3=1.10  h=(1.0, 1.0, 1.0)  dd=(1.05, 1.05, 1.05)  td=1.005
+
+Alt 3: ¡Ý30share=39.91%  RTP=508.33  hit=33.95  trig=3.321  wild_cad=1/56050
+      c=1.13  b1=0.85  b2=1.03  b3=1.05  h=(1.0, 1.0, 1.0)  dd=(1.08, 1.08, 1.08)  td=1.005
+
+Alt 4: ¡Ý30share=39.79%  RTP=508.19  hit=33.92  trig=3.321  wild_cad=1/56050
+      c=1.13  b1=0.85  b2=1.00  b3=1.10  h=(1.0, 1.0, 1.0)  dd=(1.08, 1.08, 1.08)  td=1.005
+
+Alt 5: ¡Ý30share=39.71%  RTP=508.47  hit=34.21  trig=3.321  wild_cad=1/60993
+      c=1.13  b1=0.85  b2=1.05  b3=1.05  h=(1.0, 1.0, 1.0)  dd=(1.05, 1.05, 1.05)  td=1.005

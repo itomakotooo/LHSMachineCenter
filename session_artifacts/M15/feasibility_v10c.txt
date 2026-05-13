@@ -1,0 +1,219 @@
+================================================================================
+M15 v10c feasibility audit -- wave 6 (2026-05-11)
+================================================================================
+
+Status: STRUCTURAL ESCALATION (Rule 2)
+  User-authorized cherry §2 relaxation (floor 3.5% → 2.0% per reel) is
+  INSUFFICIENT to reach all 4 user-pinned bucket targets simultaneously.
+  bar_mixed (pay_id 8 at 2× with wild-substitution boost) structural
+  bloater in ge1_lt5 remains. See v10c_escalation.md for full proof.
+
+Targets (user v10c directive):
+  - R1 blank marginal in [30%, 40%]
+  - ge1_lt5 RTP in [11.0pp, 14.0pp]
+  - ge5_lt10 RTP in [8.0pp, 9.5pp]
+  - ge10_lt20 RTP in [8.5pp, 10.0pp]
+  - hit in [15%, 18%]
+  - total RTP in [94%, 96%]
+  - P(R>=1000)/spin <= 1e-5
+  - jackpot any-reel <= 0.6%
+  - wild_pure cadence in [1/50k, 1/120k]
+  - R1 max single non-blank marginal <= 22%
+
+User authorization: cherry per-reel marginal floor lowered 3.5% → 2.0%
+(owned §2 deviation, M15-specific). No other relaxations.
+
+v9 baseline (current weights.json on disk -- unchanged):
+  Total RTP 94.48%  Hit 17.78%  R1 blank 50.25%
+  ge1_lt5=22.33pp  ge5_lt10=3.72pp  ge10_lt20=4.16pp
+  Deltas vs target:
+    R1 blank: +10.25pp over band upper
+    ge1_lt5:  +8.33pp over band upper
+    ge5_lt10: -4.28pp under band lower
+    ge10_lt20:-4.34pp under band lower
+
+================================================================================
+KEY DISCOVERY -- pay_id 8 (bar_mixed) engine behavior
+================================================================================
+
+Critical mistake in brief math: pay_id 8 (line_3_group, mult 2×) fires when
+ALL 3 payline cells are bars (1bar/2bar/3bar) or wild AND not 3-of-same
+after wild substitution. NOT just strict {1bar, 2bar, 3bar} triples.
+
+Engine evaluator tests:
+  (1bar, 2bar, 3bar)  -> pay_id 8 mult 2.0x
+  (1bar, 1bar, 2bar)  -> pay_id 8 mult 2.0x  (not 3-of-same → not pay_id 7)
+  (1bar, 2bar, dd)    -> pay_id 8 mult 4.0x  (wild boost; not 3-same)
+  (1bar, 2bar, 2bar)  -> pay_id 8 mult 2.0x
+  (1bar, 1bar, 1bar)  -> pay_id 7 mult 5.0x  (pure bar1)
+  (1bar, dd, 1bar)    -> pay_id 7 mult 10.0x (wild boosts to 3-bar1)
+
+P(pay_id 8) scales roughly as (sum_bars)^3, NOT 6 × p1 × p2 × p3.
+
+This bloats ge1_lt5 RTP by ~10-14pp at any bar configuration that can
+support ge5_lt10 ≥ 8pp via bar1 pure pays.
+
+================================================================================
+LEVERS ATTEMPTED -- engine-measured (Rule 3 discipline)
+================================================================================
+
+------ Lever A: cherry 2.5% uniform, bars high (lift bar1 pure) ------
+  T1: cherry 2.5/2.5/2.5, 1bar=18/17/18, 2bar=17/16/18, 3bar=2/2/2
+    RTP=105.32% hit=15.63% R1blank=42.99%
+    g1l5=20.32pp  g5l10=4.47pp  g10l20=9.32pp
+    wild_cadence=1/38927  R1_max=20.0%
+    FAIL: hit_OK total_rtp R1_blank g1l5 g5l10 wild_cadence
+    7/12 PASS
+
+  T4: 1bar=19/18/19, 2bar=17/16/17, 3bar=1.5/1.5/1.5
+    RTP=101.17% hit=16.26% R1blank=43.90%
+    g1l5=21.08pp  g5l10=5.39pp  g10l20=9.74pp
+    8/12 PASS
+
+------ Lever B: high7 lifted on R1 to drop R1 blank ------
+  T46: cherry 2.5/2.5/2.5, 1bar=22/25/25 (R1 cap), 2bar=8/8/8, 3bar=1/1/1
+       h7=20/22/15, dd=3/3.5/1.4
+    RTP=119.38% hit=12.79% R1blank=43.02%
+    g1l5=12.86pp ✓  g5l10=7.79pp  g10l20=5.11pp
+    R1_max=22.0%  wild_cadence=1/68352
+    FAIL: hit total_rtp R1_blank g5l10 g10l20
+    7/12 PASS
+
+  T57: cherry 6/2.5/2.5 (R1 high cherry to drop blank), 1bar=22/25/25, 2bar=8,
+       3bar=1, h7=22/13/10, dd=3/3.5/1.4
+    RTP=104.64% hit=15.63% R1blank=37.47% ✓
+    g1l5=16.03pp  g5l10=8.63pp ✓  g10l20=5.14pp
+    R1_max=22.0%  wild_cadence=1/68352
+    FAIL: total_rtp g1l5 g10l20
+    8/12 PASS
+
+------ Lever C: cherry asymmetric (R3 high) for cherry-2 lift ------
+  T54: cherry 2.0/2.0/5.0 (R3 high), bars 22/25/25 / 12/12/12 / 1/1/1
+       h7=13/16/9, dd=4/4.5/0.6 (asym for cadence)
+    RTP=103.27% hit=15.40% R1blank=45.53%
+    g1l5=17.78pp  g5l10=8.04pp ✓  g10l20=6.79pp
+    8/12 PASS
+
+  T65: cherry 2.0/2.0/5.0, bars 22/25/25 / 14/14/14 / 1/1/1
+       h7=16/8/4, dd=4.5/5/0.5
+    RTP=101.11% hit=16.45% R1blank=39.98% ✓
+    g1l5=20.08pp  g5l10=8.04pp ✓  g10l20=8.62pp ✓
+    R1_max=22.001% (boundary)
+    FAIL: total_rtp g1l5 R1_max
+    9/12 PASS  -- BEST 4-bucket coverage but ge1_lt5 still over
+
+------ Lever D: dd asymmetric (R1/R2 high, R3 low) for cadence preservation ------
+  T59: cherry 2.5/2.5/2.5, bars 22/25/25 / 8/8/8 / 1/1/1
+       h7=22/12/10, dd=4/4.5/0.6
+    RTP=101.80% hit=12.44% R1blank=39.98% ✓
+    g1l5=13.09pp ✓  g5l10=7.79pp  g10l20=5.85pp
+    R1_max=22.0%  wild_cadence=1/92k
+    FAIL: hit total_rtp g5l10 g10l20 R1_max
+    7/12 PASS
+
+  T63: dd asymmetric + 2bar lifted to 14
+    RTP=99.92% hit=14.89% R1blank=39.98% ✓
+    g1l5=18.42pp  g5l10=7.79pp  g10l20=8.08pp
+    6/12 PASS
+
+------ Lever E: strip mechanism B (already applied in v9) ------
+  Does not change marginals → no bucket impact. Preserves per-reel marginal
+  while shifting blank weight to top-adj positions (PWDF visibility).
+
+------ Lever F (NEW v10c): cherry §2 relaxation ------
+  Best result via cherry @ 2-2.5% uniform vs v9's 5/5/2.5:
+  - Cherry-1 RTP drops from 11.5pp → 7pp (frees 4.5pp ge1_lt5 budget)
+  - But bar_mixed (12-14pp) still dominates ge1_lt5
+  - Net: ge1_lt5 at best 17-21pp, still 3-7pp over 14pp cap
+
+================================================================================
+SYSTEMATIC PARAMETER SWEEP
+================================================================================
+
+Sweep #1 (focused grid, 384 candidates):
+  Tested 6 dimensions: c_avg, p1_R1, p1_other, p2, p3, h7, dd
+  Result: 110 candidates with >= 9/12 PASS
+  Best: T65-style (10/12 PASS) but always fail with same 2 dimensions:
+    - bucket_ge1_lt5_RTP over (cap 14)
+    - bucket_ge10_lt20_RTP under (floor 8.5)
+    -- OR --
+    - total_rtp over (cap 96)
+    - bucket_ge1_lt5_RTP over
+
+Sweep #2 (broader grid, ~3000 candidates):
+  Search space:
+    cherry: c in {0.020, 0.025, 0.030, 0.035}, uniform + R3-asymmetric
+    1bar R1: {0.15, 0.18, 0.20, 0.215, 0.22}  (R1 max cap 22%)
+    1bar R2/R3: {0.18, 0.22, 0.25, 0.28}
+    2bar: {0.06, 0.10, 0.14, 0.18}
+    3bar: {0.010, 0.020}
+    high7 R1: {0.06, 0.12, 0.18, 0.24}
+    high7 R2: {0.06, 0.10, 0.14}
+    dd: {(3%/3.5%/1.4%), (4.5%/4.5%/0.6%)}
+
+  Results:
+    Candidates passing ALL 4 user-pinned numerical targets:  0 / 3000+
+    Candidates with ge1_lt5 ≤ 14pp AND R1 blank ≤ 40%:       0 / 3000+
+    Best n_pass across 12 hard constraints:                  10 / 12
+
+  Empirical bounds within philosophy-respecting parameter space:
+    R1 blank floor (cherry/h7 at archetype + R1 max=22%):    ~38-40% (achievable)
+    ge1_lt5 RTP floor (with bars supporting ge5_lt10 ≥ 8):  ~17-19pp (above 14 cap)
+    ge5_lt10 RTP ceiling (R1 max=22%):                       ~7-8.5pp (close to band)
+    ge10_lt20 RTP (with bar1+1wild + bar2 pure):             ~6-9pp (partial achievable)
+
+================================================================================
+DIAGNOSTIC: structural reason cherry relaxation alone fails
+================================================================================
+
+Math: ge1_lt5 = cherry-1 RTP + bar_mixed (2× pure) + bar_mixed (4× +1wild)
+  cherry-1 at cherry 2.5%/reel uniform: ~7.1pp (minimum)
+  bar_mixed pure 2× at bars supporting ge5_lt10 ≥ 8pp: ~10-12pp (minimum)
+  bar_mixed +1wild 4× boost: ~2-3pp
+  Total ge1_lt5 floor: 7 + 10 + 2 = 19pp >> 14pp cap
+
+To bring ge1_lt5 ≤ 14:
+  Option (a): cut bars hard (sum_bars ≤ 31%/reel)
+    → bar_mixed pure → 5pp, ge1_lt5 → 7+5+1 = 13pp ✓
+    → BUT bar1 pure RTP → (0.10)³ × 5 = 0.5pp; ge5_lt10 < 2pp ✗ FAR below floor
+
+  Option (b): cut cherry to 0%
+    → cherry-1 → 0pp, freed 7pp ge1_lt5 budget
+    → bar_mixed still 12pp; ge1_lt5 = 12pp ✓
+    → BUT user_brief: cherry must remain visible (floor 2%); 0% violates §2
+    → Also: cherry-2 → 0pp, ge5_lt10 from cherry contribution → 0pp;
+      bar1 pure alone insufficient at R1 cap
+    → STILL ge5_lt10 ≤ 7pp at best  -- fails floor
+
+  No configuration in archetype + R1 cap space achieves all 4 buckets.
+
+================================================================================
+FINAL DECISION: SHIP v9 BASELINE UNCHANGED (per Rule 5)
+================================================================================
+
+Per Rule 5: No candidate satisfies all hard constraints. DO NOT ship a
+best-effort weights.json. v9 weights remain on disk unchanged.
+
+See v10c_escalation.md for full proof of structural unreachability and
+recommended user options.
+
+verify.py untouched (per Rule 1, frozen).
+
+Best 10/12 candidate (informational, NOT shipped):
+  cherry 2.5% R1=2.5/R2=2.5/R3=5%, bars 1bar=21.5/25/25, 2bar=10/10/10,
+  3bar=1.5/1.5/1.5, h7=20/12/4.5, dd=4/4/0.6
+    RTP 94.89%, hit 15.47%, R1blank 39.7%
+    g1l5=17.34, g5l10=8.32, g10l20=6.05, R1max=21.8%
+    FAILS: bucket_ge1_lt5_RTP, bucket_ge10_lt20_RTP
+
+This best candidate's deficits:
+  ge1_lt5: +3.34pp over 14 cap
+  ge10_lt20: -2.45pp under 8.5 floor
+
+These two failing dimensions are structurally TIED to the paytable:
+- ge1_lt5 over comes from bar_mixed pay_id 8 (mult 2×) — cannot move
+  without paytable change (locked by universal rule)
+- ge10_lt20 under comes from bar2 pure cap + wild cadence cap — cannot
+  improve without paytable change or wild cadence philosophy change
+
+User should adjudicate per v10c_escalation.md §8 options.

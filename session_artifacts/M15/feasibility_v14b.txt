@@ -1,0 +1,366 @@
+================================================================================
+M15 v14b modes 7/2/5 design ¡ª derived from mode 1 v14 C38_C14_rtp_target_95
+================================================================================
+
+
+#### MODE 1 BASELINE (C38_C14, shipped) ####
+
+======== Mode 1 (baseline) ========
+  total_rtp=94.752pp  (base=42.77pp + feat=51.98pp)
+  hit_session=17.348%  base_hit=16.22%  trigger=1.130%
+  R1_blank=38.50%  R2_blank=50.30%  R3_blank=58.97%
+  wild_cadence=1/51314
+  base_cv=6.518
+  P(R>=200/spin)=3.188e-05  P(R>=1000/spin)=7.455e-08
+  family_shares:
+    cherry1: 21.87%
+    cherry2: 3.71%
+    cherry3: 0.12%
+    bar1: 12.11%
+    bar2: 15.37%
+    bar3: 9.27%
+    bar_mixed: 27.94%
+    high7: 8.69%
+    wild_pure: 0.91%
+  Per-pay P% (top families):
+    pay9 (cherry1): P=9.3555% (1/11) RTP=9.355pp
+    pay71 (cherry2): P=0.3170% (1/315) RTP=1.585pp
+    pay4 (cherry3): P=0.0035% (1/28571) RTP=0.053pp
+    pay1 (wild_pure): P=0.0019% (1/51314) RTP=0.390pp
+    pay2 (high7_wild): P=0.0397% (1/2518) RTP=3.140pp
+    pay21 (high7_pure): P=0.0193% (1/5184) RTP=0.579pp
+    pay3 (bar3): P=0.1034% (1/967) RTP=3.967pp
+    pay5 (bar2): P=0.4218% (1/237) RTP=6.574pp
+    pay7 (bar1): P=0.7069% (1/141) RTP=5.180pp
+    pay8 (bar_mixed): P=5.2492% (1/19) RTP=11.951pp
+
+
+================================================================================
+MODE 7 candidates (cut mode, RTP target 85%)
+================================================================================
+
+--- M7_F100 (verify): RTP=94.75pp hit_base=16.22% R1_blank=38.50% n_fail=10 n_jp_fail=0 ---
+
+--- M7_F105 (F=1.05): RTP=90.04pp hit_base=14.58% R1_blank=40.43% n_fail=1 n_jp_fail=0 ---
+
+--- M7_F108 (F=1.08): RTP=87.41pp hit_base=13.65% R1_blank=41.58% n_fail=1 n_jp_fail=0 ---
+
+--- M7_F110 (F=1.10): RTP=85.72pp hit_base=13.06% R1_blank=42.35% n_fail=0 n_jp_fail=0 ---
+
+--- M7_F112 (F=1.12): RTP=84.10pp hit_base=12.48% R1_blank=43.12% n_fail=0 n_jp_fail=0 ---
+
+--- M7_F115 (F=1.15): RTP=81.78pp hit_base=11.65% R1_blank=44.27% n_fail=1 n_jp_fail=0 ---
+
+--- M7_F118 (F=1.18): RTP=79.58pp hit_base=10.86% R1_blank=45.43% n_fail=1 n_jp_fail=0 ---
+
+--- M7_F120 (F=1.20): RTP=78.19pp hit_base=10.35% R1_blank=46.20% n_fail=1 n_jp_fail=0 ---
+
+--- M7_F125 (F=1.25): RTP=74.93pp hit_base=9.14% R1_blank=48.12% n_fail=2 n_jp_fail=0 ---
+
+
+### 2 mode 7 candidates pass ALL invariants ###
+
+======== Mode 7 winner: M7_F110 (F=1.10) ========
+  total_rtp=85.725pp  (base=33.74pp + feat=51.98pp)
+  hit_session=14.188%  base_hit=13.06%  trigger=1.130%
+  R1_blank=42.35%  R2_blank=55.33%  R3_blank=64.87%
+  wild_cadence=1/51314
+  base_cv=7.832
+  P(R>=200/spin)=3.188e-05  P(R>=1000/spin)=7.455e-08
+  family_shares:
+    cherry1: 24.64%
+    cherry2: 3.63%
+    cherry3: 0.10%
+    bar1: 11.30%
+    bar2: 14.55%
+    bar3: 9.21%
+    bar_mixed: 24.38%
+    high7: 11.02%
+    wild_pure: 1.16%
+  Per-pay P% (top families):
+    pay9 (cherry1): P=8.3160% (1/12) RTP=8.316pp
+    pay71 (cherry2): P=0.2450% (1/408) RTP=1.225pp
+    pay4 (cherry3): P=0.0023% (1/43064) RTP=0.035pp
+    pay1 (wild_pure): P=0.0019% (1/51314) RTP=0.390pp
+    pay2 (high7_wild): P=0.0397% (1/2518) RTP=3.140pp
+    pay21 (high7_pure): P=0.0193% (1/5184) RTP=0.579pp
+    pay3 (bar3): P=0.0769% (1/1300) RTP=3.109pp
+    pay5 (bar2): P=0.3011% (1/332) RTP=4.912pp
+    pay7 (bar1): P=0.4991% (1/200) RTP=3.814pp
+    pay8 (bar_mixed): P=3.5568% (1/28) RTP=8.226pp
+  ----- Cross-mode invariants -----
+    [PASS] MODE7-CUT pay9: got m7=8.3160% m1=9.3555%  expected m7<m1
+    [PASS] MODE7-CUT pay71: got m7=0.2450% m1=0.3170%  expected m7<m1
+    [PASS] MODE7-CUT pay8: got m7=3.5568% m1=5.2492%  expected m7<m1
+    [PASS] MODE7-CUT pay7: got m7=0.4991% m1=0.7069%  expected m7<m1
+    [PASS] MODE7-CUT pay5: got m7=0.3011% m1=0.4218%  expected m7<m1
+    [PASS] MODE7-CUT pay3: got m7=0.0769% m1=0.1034%  expected m7<m1
+    [PASS] MODE7-BIGPAY pay1: got ratio=1.000  expected [0.85, 1.15]
+    [PASS] MODE7-BIGPAY pay2: got ratio=1.000  expected [0.85, 1.15]
+    [PASS] MODE7-BIGPAY pay21: got ratio=1.000  expected [0.85, 1.15]
+    [PASS] MODE7-TRIGGER: got diff=0.000000  expected ¡Ü 5e-4
+    [PASS] CROSS-RTP m7 band: got 85.725pp  expected [83, 87]
+    [PASS] CROSS-RTP m7<m1: got m7=85.72 m1=94.75  expected m7 < m1
+    [PASS] HIT m7 band: got 13.058%  expected [10, 16]
+    [PASS] LUCKY-MONO m7<m1 hit: got m7=13.06% m1=16.22%  expected m7 < m1
+    [PASS] 1000+ m7: got 7.455e-08  expected ¡Ü 1e-5
+    [PASS] R1 jackpot: got 0.400%  expected ¡Ü 0.6%
+    [PASS] R2 jackpot: got 0.400%  expected ¡Ü 0.6%
+    [PASS] R3 jackpot: got 0.300%  expected ¡Ü 0.6%
+
+======== Mode 7 winner: M7_F112 (F=1.12) ========
+  total_rtp=84.103pp  (base=32.12pp + feat=51.98pp)
+  hit_session=13.612%  base_hit=12.48%  trigger=1.130%
+  R1_blank=43.12%  R2_blank=56.34%  R3_blank=66.05%
+  wild_cadence=1/51314
+  base_cv=8.140
+  P(R>=200/spin)=3.188e-05  P(R>=1000/spin)=7.455e-08
+  family_shares:
+    cherry1: 25.23%
+    cherry2: 3.60%
+    cherry3: 0.10%
+    bar1: 11.12%
+    bar2: 14.36%
+    bar3: 9.19%
+    bar_mixed: 23.60%
+    high7: 11.58%
+    wild_pure: 1.21%
+  Per-pay P% (top families):
+    pay9 (cherry1): P=8.1060% (1/12) RTP=8.106pp
+    pay71 (cherry2): P=0.2316% (1/432) RTP=1.158pp
+    pay4 (cherry3): P=0.0021% (1/47136) RTP=0.032pp
+    pay1 (wild_pure): P=0.0019% (1/51314) RTP=0.390pp
+    pay2 (high7_wild): P=0.0397% (1/2518) RTP=3.140pp
+    pay21 (high7_pure): P=0.0193% (1/5184) RTP=0.579pp
+    pay3 (bar3): P=0.0722% (1/1385) RTP=2.952pp
+    pay5 (bar2): P=0.2799% (1/357) RTP=4.614pp
+    pay7 (bar1): P=0.4628% (1/216) RTP=3.571pp
+    pay8 (bar_mixed): P=3.2661% (1/31) RTP=7.581pp
+  ----- Cross-mode invariants -----
+    [PASS] MODE7-CUT pay9: got m7=8.1060% m1=9.3555%  expected m7<m1
+    [PASS] MODE7-CUT pay71: got m7=0.2316% m1=0.3170%  expected m7<m1
+    [PASS] MODE7-CUT pay8: got m7=3.2661% m1=5.2492%  expected m7<m1
+    [PASS] MODE7-CUT pay7: got m7=0.4628% m1=0.7069%  expected m7<m1
+    [PASS] MODE7-CUT pay5: got m7=0.2799% m1=0.4218%  expected m7<m1
+    [PASS] MODE7-CUT pay3: got m7=0.0722% m1=0.1034%  expected m7<m1
+    [PASS] MODE7-BIGPAY pay1: got ratio=1.000  expected [0.85, 1.15]
+    [PASS] MODE7-BIGPAY pay2: got ratio=1.000  expected [0.85, 1.15]
+    [PASS] MODE7-BIGPAY pay21: got ratio=1.000  expected [0.85, 1.15]
+    [PASS] MODE7-TRIGGER: got diff=0.000000  expected ¡Ü 5e-4
+    [PASS] CROSS-RTP m7 band: got 84.103pp  expected [83, 87]
+    [PASS] CROSS-RTP m7<m1: got m7=84.10 m1=94.75  expected m7 < m1
+    [PASS] HIT m7 band: got 12.482%  expected [10, 16]
+    [PASS] LUCKY-MONO m7<m1 hit: got m7=12.48% m1=16.22%  expected m7 < m1
+    [PASS] 1000+ m7: got 7.455e-08  expected ¡Ü 1e-5
+    [PASS] R1 jackpot: got 0.400%  expected ¡Ü 0.6%
+    [PASS] R2 jackpot: got 0.400%  expected ¡Ü 0.6%
+    [PASS] R3 jackpot: got 0.300%  expected ¡Ü 0.6%
+
+
+================================================================================
+MODE 2 candidates (lucky, RTP target 300%)
+================================================================================
+
+--- M2_A_central_lucky: RTP=252.61pp hit_base=26.34% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_B_higher_h7_central: RTP=251.93pp hit_base=23.17% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_C_classic_lucky: RTP=265.00pp hit_base=29.39% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_D_higher_h7: RTP=253.15pp hit_base=23.88% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_E_higher_RTP: RTP=270.06pp hit_base=28.43% trigger=3.20% n_fail=2 n_jp_fail=0 ---
+
+--- M2_F_high_cherry: RTP=252.23pp hit_base=29.00% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_G_central_high_cherry: RTP=255.87pp hit_base=29.95% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_H_aggressive_bars_cherry: RTP=281.51pp hit_base=35.53% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_I_h7_anchor: RTP=267.99pp hit_base=27.95% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_J_balanced_high: RTP=271.24pp hit_base=32.06% trigger=3.00% n_fail=1 n_jp_fail=0 ---
+
+--- M2_K_balanced_high_v2: RTP=273.35pp hit_base=31.35% trigger=3.00% n_fail=1 n_jp_fail=0 ---
+
+--- M2_L_uneven_dd: RTP=267.02pp hit_base=29.22% trigger=3.00% n_fail=3 n_jp_fail=0 ---
+
+--- M2_M_uneven_dd_high_cherry: RTP=272.79pp hit_base=32.67% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_N_uneven_dd_strong_h7: RTP=268.81pp hit_base=28.51% trigger=3.00% n_fail=3 n_jp_fail=0 ---
+
+--- M2_O_aggressive_uneven: RTP=278.29pp hit_base=32.08% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_P_max_uneven_dd: RTP=291.73pp hit_base=36.71% trigger=3.00% n_fail=1 n_jp_fail=0 ---
+
+--- M2_Q_h7_max_uneven_dd: RTP=290.29pp hit_base=33.58% trigger=3.00% n_fail=0 n_jp_fail=0 ---
+
+--- M2_R_balanced_max: RTP=285.79pp hit_base=35.76% trigger=3.00% n_fail=2 n_jp_fail=0 ---
+
+--- M2_S_target_300: RTP=280.82pp hit_base=33.46% trigger=3.00% n_fail=1 n_jp_fail=0 ---
+
+
+### 1 mode 2 candidates pass ALL invariants ###
+
+======== Mode 2 winner: M2_Q_h7_max_uneven_dd ========
+  total_rtp=290.291pp  (base=110.31pp + feat=179.98pp)
+  hit_session=36.578%  base_hit=33.58%  trigger=3.000%
+  R1_blank=16.10%  R2_blank=27.60%  R3_blank=40.70%
+  wild_cadence=1/36364
+  base_cv=4.557
+  P(R>=200/spin)=2.564e-04  P(R>=1000/spin)=1.397e-06
+  family_shares:
+    cherry1: 17.81%
+    cherry2: 7.30%
+    cherry3: 0.59%
+    bar1: 3.71%
+    bar2: 20.69%
+    bar3: 9.03%
+    bar_mixed: 19.83%
+    high7: 20.54%
+    wild_pure: 0.50%
+  Per-pay P% (top families):
+    pay9 (cherry1): P=19.6496% (1/5) RTP=19.650pp
+    pay71 (cherry2): P=1.6104% (1/62) RTP=8.052pp
+    pay4 (cherry3): P=0.0432% (1/2315) RTP=0.648pp
+    pay1 (wild_pure): P=0.0028% (1/36364) RTP=0.550pp
+    pay2 (high7_wild): P=0.2255% (1/443) RTP=16.227pp
+    pay21 (high7_pure): P=0.2145% (1/466) RTP=6.435pp
+    pay3 (bar3): P=0.2740% (1/365) RTP=9.960pp
+    pay5 (bar2): P=1.5619% (1/64) RTP=22.820pp
+    pay7 (bar1): P=0.4789% (1/209) RTP=4.090pp
+    pay8 (bar_mixed): P=9.5170% (1/11) RTP=21.880pp
+  ----- Cross-mode invariants -----
+    [PASS] CROSS-RTP m2 band: got 290.291pp  expected [290, 310]
+    [PASS] CROSS-RTP m2>m1: got m2=290.29  expected >m1
+    [PASS] HIT m2 band: got 33.578%  expected [30, 35]
+    [PASS] LUCKY-MONO m2>m1 hit: got m2=33.58 m1=16.22  expected m2 > m1
+    [PASS] LUCKY-MONO m2>=m1 trig: got m2=3.000% m1=1.130%  expected m2 ¡Ý m1
+    [PASS] LUCKY-MONO bar2 peak: got b1=0.4789% b2=1.5619% b3=0.2740%  expected b2>b1 & b2>b3
+    [PASS] TOP-JACKPOT-ESC m2/m1: got ratio=1.411  expected ¡Ü 1.5
+    [PASS] 1000+ m2: got 1.397e-06  expected ¡Ü 1e-5
+    [PASS] R1 jackpot: got 0.400%  expected ¡Ü 0.6%
+    [PASS] R2 jackpot: got 0.400%  expected ¡Ü 0.6%
+    [PASS] R3 jackpot: got 0.300%  expected ¡Ü 0.6%
+
+
+=== Selected base for Mode 5 design: M2_Q_h7_max_uneven_dd ===
+
+
+================================================================================
+MODE 5 candidates (super-lucky, RTP target 500%)
+================================================================================
+
+--- M5_A_from_M2_E: RTP=488.40pp hit_base=29.11% trigger=3.296% n_fail=2 n_jp_fail=0 ---
+
+--- M5_B_from_M2_G: RTP=460.79pp hit_base=30.69% trigger=3.090% n_fail=2 n_jp_fail=0 ---
+
+--- M5_C_from_M2_L: RTP=472.72pp hit_base=29.93% trigger=3.090% n_fail=3 n_jp_fail=0 ---
+
+--- M5_D_from_M2_O: RTP=483.18pp hit_base=32.80% trigger=3.090% n_fail=1 n_jp_fail=0 ---
+
+--- M5_E_modest_M2_O: RTP=473.44pp hit_base=32.32% trigger=3.030% n_fail=2 n_jp_fail=0 ---
+
+--- M5_F_from_M2_N: RTP=474.73pp hit_base=29.22% trigger=3.090% n_fail=3 n_jp_fail=0 ---
+
+--- M5_G_from_M2_M: RTP=478.72pp hit_base=33.47% trigger=3.090% n_fail=2 n_jp_fail=0 ---
+
+--- M5_H_from_M2_Q: RTP=497.24pp hit_base=34.39% trigger=3.090% n_fail=0 n_jp_fail=0 ---
+
+--- M5_I_modest_M2_Q: RTP=486.13pp hit_base=33.86% trigger=3.030% n_fail=1 n_jp_fail=0 ---
+
+--- M5_J_aggressive_M2_Q: RTP=509.69pp hit_base=34.99% trigger=3.150% n_fail=0 n_jp_fail=0 ---
+
+--- M5_K_from_M2_S: RTP=486.97pp hit_base=34.25% trigger=3.090% n_fail=1 n_jp_fail=0 ---
+
+
+### 2 mode 5 candidates pass ALL invariants ###
+
+======== Mode 5 winner: M5_H_from_M2_Q ========
+  total_rtp=497.244pp  (base=116.15pp + feat=381.10pp)
+  hit_session=37.483%  base_hit=34.39%  trigger=3.090%
+  R1_blank=15.39%  R2_blank=26.96%  R3_blank=40.35%
+  wild_cadence=1/28867
+  base_cv=4.556
+  P(R>=200/spin)=3.635e-03  P(R>=1000/spin)=1.028e-07
+  family_shares:
+    cherry1: 17.34%
+    cherry2: 7.34%
+    cherry3: 0.61%
+    bar1: 3.79%
+    bar2: 20.76%
+    bar3: 9.30%
+    bar_mixed: 19.23%
+    high7: 21.03%
+    wild_pure: 0.60%
+  Per-pay P% (top families):
+    pay9 (cherry1): P=20.1397% (1/5) RTP=20.140pp
+    pay71 (cherry2): P=1.7043% (1/59) RTP=8.522pp
+    pay4 (cherry3): P=0.0472% (1/2118) RTP=0.708pp
+    pay1 (wild_pure): P=0.0035% (1/28867) RTP=0.693pp
+    pay2 (high7_wild): P=0.2475% (1/404) RTP=17.991pp
+    pay21 (high7_pure): P=0.2145% (1/466) RTP=6.435pp
+    pay3 (bar3): P=0.2893% (1/346) RTP=10.807pp
+    pay5 (bar2): P=1.6141% (1/62) RTP=24.110pp
+    pay7 (bar1): P=0.5025% (1/199) RTP=4.406pp
+    pay8 (bar_mixed): P=9.6308% (1/10) RTP=22.335pp
+  ----- Cross-mode invariants -----
+    [PASS] CROSS-RTP m5 band: got 497.244pp  expected [480, 520]
+    [PASS] CROSS-RTP m5>m2: got m5=497.24  expected >m2
+    [PASS] HIT m5 band: got 34.393%  expected [30, 35]
+    [PASS] LUCKY-MONO m5>=m2 hit: got m5=34.3934% m2=33.5778%  expected m5 ¡Ý m2
+    [PASS] LUCKY-MONO m5>=m2 trig: got m5=3.0900% m2=3.0000%  expected m5 ¡Ý m2
+    [PASS] LUCKY-MONO bar2 peak: got b1=0.5025% b2=1.6141% b3=0.2893%  expected b2>b1 & b2>b3
+    [PASS] TOP-JACKPOT-ESC m5/m2: got ratio=1.260  expected ¡Ý 1.1
+    [PASS] 1000+ m5: got 1.028e-07  expected ¡Ü 1e-5
+    [PASS] R1 jackpot: got 0.400%  expected ¡Ü 0.6%
+    [PASS] R2 jackpot: got 0.400%  expected ¡Ü 0.6%
+    [PASS] R3 jackpot: got 0.300%  expected ¡Ü 0.6%
+
+======== Mode 5 winner: M5_J_aggressive_M2_Q ========
+  total_rtp=509.687pp  (base=121.19pp + feat=388.50pp)
+  hit_session=38.135%  base_hit=34.99%  trigger=3.150%
+  R1_blank=14.82%  R2_blank=26.45%  R3_blank=40.10%
+  wild_cadence=1/23910
+  base_cv=4.559
+  P(R>=200/spin)=3.706e-03  P(R>=1000/spin)=1.048e-07
+  family_shares:
+    cherry1: 16.89%
+    cherry2: 7.30%
+    cherry3: 0.62%
+    bar1: 3.87%
+    bar2: 20.85%
+    bar3: 9.55%
+    bar_mixed: 18.76%
+    high7: 21.48%
+    wild_pure: 0.69%
+  Per-pay P% (top families):
+    pay9 (cherry1): P=20.4633% (1/5) RTP=20.463pp
+    pay71 (cherry2): P=1.7683% (1/57) RTP=8.842pp
+    pay4 (cherry3): P=0.0500% (1/2000) RTP=0.750pp
+    pay1 (wild_pure): P=0.0042% (1/23910) RTP=0.836pp
+    pay2 (high7_wild): P=0.2671% (1/374) RTP=19.590pp
+    pay21 (high7_pure): P=0.2145% (1/466) RTP=6.435pp
+    pay3 (bar3): P=0.3031% (1/330) RTP=11.577pp
+    pay5 (bar2): P=1.6605% (1/60) RTP=25.269pp
+    pay7 (bar1): P=0.5237% (1/191) RTP=4.692pp
+    pay8 (bar_mixed): P=9.7304% (1/10) RTP=22.734pp
+  ----- Cross-mode invariants -----
+    [PASS] CROSS-RTP m5 band: got 509.687pp  expected [480, 520]
+    [PASS] CROSS-RTP m5>m2: got m5=509.69  expected >m2
+    [PASS] HIT m5 band: got 34.985%  expected [30, 35]
+    [PASS] LUCKY-MONO m5>=m2 hit: got m5=34.9852% m2=33.5778%  expected m5 ¡Ý m2
+    [PASS] LUCKY-MONO m5>=m2 trig: got m5=3.1500% m2=3.0000%  expected m5 ¡Ý m2
+    [PASS] LUCKY-MONO bar2 peak: got b1=0.5237% b2=1.6605% b3=0.3031%  expected b2>b1 & b2>b3
+    [PASS] TOP-JACKPOT-ESC m5/m2: got ratio=1.521  expected ¡Ý 1.1
+    [PASS] 1000+ m5: got 1.048e-07  expected ¡Ü 1e-5
+    [PASS] R1 jackpot: got 0.400%  expected ¡Ü 0.6%
+    [PASS] R2 jackpot: got 0.400%  expected ¡Ü 0.6%
+    [PASS] R3 jackpot: got 0.300%  expected ¡Ü 0.6%
+
+
+=========== END SWEEP ===========
+Mode 1 (baseline): RTP=94.75pp hit=16.22%
+M1 trigger: 1.1300% (1 in 88)
+M1 wild_pure cadence: 1/51314
+Feature EV by mode: m1=46.00¡Á m7=46.00¡Á m2=59.99¡Á m5=123.33¡Á

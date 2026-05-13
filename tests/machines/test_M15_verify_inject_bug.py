@@ -548,7 +548,7 @@ def test_baseline_v2_iter0_pattern(baseline_fixture):
     """Meta-test: confirm the v2 candidate baseline pattern matches the
     Stage 5 expected output.
 
-    Expected (per session_artifacts/M15/verify_run_v2_iter0.txt + v8.1
+    Expected (per session_artifacts/M15/verify_run_v2_iter0.txt + v8.1 / v10
     backport):
       * 3 [RTP] REDs on m2/m5/m7 (tuner-closable)
       * [VISUAL-RHYTHM] REDs on v7 strip layout — pinned fixture strip
@@ -558,6 +558,11 @@ def test_baseline_v2_iter0_pattern(baseline_fixture):
       * [PWDF-FLOOR] REDs on v7 weights — v2 candidate has not had
         mechanism B applied (that's a Phase C deliverable, not a v2
         candidate). LIVE weights GREEN; v7 fixture weights RED.
+      * v10 (2026-05-11 wave 5) new categories: v7 baseline weights have
+        R1 blank ~54% (v10 band [30, 40]), ge1_lt5/ge5_lt10/ge10_lt20
+        buckets don't match v10 targets, family shares are v7-shaped not
+        v10-shaped — so the following also RED on v7 fixture:
+          [R1-BLANK-BAND], [BUCKET-RTP-TARGETS], [FAMILY-SHARE]
 
     This guards against a future verify.py refactor that quietly stops
     catching the iter0 RTP NEAR-MISS (which would be a regression — V
@@ -565,14 +570,125 @@ def test_baseline_v2_iter0_pattern(baseline_fixture):
     """
     checks = _run_verify(baseline_fixture)
     red_categories = _baseline_red_categories(checks)
-    expected_reds = {"RTP", "VISUAL-RHYTHM", "PWDF-FLOOR"}
+    expected_reds = {
+        "RTP", "VISUAL-RHYTHM", "PWDF-FLOOR",
+        # v10 wave 5 new categories — v7 fixture weights pre-date v10 design,
+        # so they RED on v10 bucket-shift directive checks
+        "R1-BLANK-BAND", "BUCKET-RTP-TARGETS", "FAMILY-SHARE",
+    }
     assert red_categories == expected_reds, (
         f"v2 baseline iter0 on v7 fixture strip should RED on "
         f"{expected_reds} (RTP tuner-closable; VISUAL-RHYTHM + PWDF-FLOOR "
-        f"= v7 baseline pre-v8.1 polish); got REDs in: {red_categories}"
+        f"= v7 baseline pre-v8.1 polish; R1-BLANK-BAND + BUCKET-RTP-TARGETS + "
+        f"FAMILY-SHARE = v7 baseline pre-v10 bucket-shift); got REDs in: {red_categories}"
     )
     rtp_red = [c for c in checks if c.category == "RTP" and c.is_failing()]
     rtp_modes = {c.mode for c in rtp_red}
     assert rtp_modes == {2, 5, 7}, (
         f"v2 baseline RTP REDs should be modes 2/5/7; got: {rtp_modes}"
+    )
+
+
+# ----------------------------------------------------------------------
+# test 7: v10 R1-BLANK-BAND inject -> [R1-BLANK-BAND] RED
+# ----------------------------------------------------------------------
+
+def test_inject_r1_blank_out_of_band(v81_clean_fixture):
+    """Bug class 7: silently raise R1 blank marginal above 40% in mode 1.
+
+    Mechanism: zero out the R1 1bar stops to force R1 sum_bar drop and R1
+    blank rise above 40% cap.
+
+    Pre: live baseline R1 blank ~ 35% (in v10 [30, 40] band).
+    Inject: set R1 1bar stop weights to 1 each.
+    Post: [R1-BLANK-BAND] should RED on mode 1.
+    Revert: restore. [R1-BLANK-BAND] back to GREEN.
+    """
+    # === baseline: clean ===
+    baseline_checks = _run_verify(v81_clean_fixture)
+    assert _no_red_in_category(baseline_checks, "R1-BLANK-BAND"), (
+        "v10 clean baseline should not have R1-BLANK-BAND RED"
+    )
+
+    # === inject: zero R1 1bar weights ===
+    wpath = v81_clean_fixture["weights_paths"][1]
+    doc = _read_weights(wpath)
+    strips = json.loads(v81_clean_fixture["strips"].read_text(encoding="utf-8"))
+    r1_strip = strips["reels"][0]
+    originals: list[tuple[int, int]] = []
+    for i, s in enumerate(r1_strip):
+        if s == "1bar":
+            originals.append((i, doc["weights"][0][i]))
+            doc["weights"][0][i] = 1
+    assert originals, "fixture: 1bar not found on R1"
+    _write_weights(wpath, doc)
+
+    # === verify: [R1-BLANK-BAND] should RED ===
+    injected_checks = _run_verify(v81_clean_fixture)
+    r1bb_fail = [c for c in _checks_in_category(injected_checks, "R1-BLANK-BAND")
+                 if c.is_failing()]
+    assert len(r1bb_fail) > 0, (
+        f"inject-bug should trigger R1-BLANK-BAND RED; got: "
+        f"{[(c.label, c.ok) for c in _checks_in_category(injected_checks, 'R1-BLANK-BAND')]}"
+    )
+
+    # === revert ===
+    for i, w in originals:
+        doc["weights"][0][i] = w
+    _write_weights(wpath, doc)
+    reverted_checks = _run_verify(v81_clean_fixture)
+    assert _no_red_in_category(reverted_checks, "R1-BLANK-BAND"), (
+        "after revert, [R1-BLANK-BAND] should return to clean"
+    )
+
+
+# ----------------------------------------------------------------------
+# test 8: v10 BUCKET-RTP-TARGETS inject -> [BUCKET-RTP-TARGETS] RED
+# ----------------------------------------------------------------------
+
+def test_inject_bucket_rtp_out_of_band(v81_clean_fixture):
+    """Bug class 8: silently swap mode 1 R1 1bar/2bar marginals to break
+    bucket RTP shift. With 1bar marginal slashed, pay 7 base hit drops →
+    ge5_lt10 RTP drops below band.
+
+    Pre: live baseline has ge5_lt10 ~ 8.2pp (in v10 [8.0, 9.5] band).
+    Inject: cut all R1 1bar weights drastically.
+    Post: [BUCKET-RTP-TARGETS] should RED on ge5_lt10 (below 8.0pp floor).
+    """
+    # === baseline: clean ===
+    baseline_checks = _run_verify(v81_clean_fixture)
+    assert _no_red_in_category(baseline_checks, "BUCKET-RTP-TARGETS"), (
+        "v10 clean baseline should not have BUCKET-RTP-TARGETS RED"
+    )
+
+    # === inject: cut R1 1bar stop weights ===
+    wpath = v81_clean_fixture["weights_paths"][1]
+    doc = _read_weights(wpath)
+    strips = json.loads(v81_clean_fixture["strips"].read_text(encoding="utf-8"))
+    r1_strip = strips["reels"][0]
+    originals: list[tuple[int, int]] = []
+    for i, s in enumerate(r1_strip):
+        if s == "1bar":
+            originals.append((i, doc["weights"][0][i]))
+            doc["weights"][0][i] = 1  # cut to 1
+    assert originals, "fixture: 1bar not found on R1"
+    _write_weights(wpath, doc)
+
+    # === verify: [BUCKET-RTP-TARGETS] should RED on ge5_lt10 (cut 1bar
+    #     -> pay 7 drops -> ge5_lt10 drops below floor 8.0) ===
+    injected_checks = _run_verify(v81_clean_fixture)
+    brt_fail = [c for c in _checks_in_category(injected_checks, "BUCKET-RTP-TARGETS")
+                if c.is_failing()]
+    assert len(brt_fail) > 0, (
+        f"inject-bug should trigger BUCKET-RTP-TARGETS RED; got: "
+        f"{[(c.label, c.ok) for c in _checks_in_category(injected_checks, 'BUCKET-RTP-TARGETS')]}"
+    )
+
+    # === revert ===
+    for i, w in originals:
+        doc["weights"][0][i] = w
+    _write_weights(wpath, doc)
+    reverted_checks = _run_verify(v81_clean_fixture)
+    assert _no_red_in_category(reverted_checks, "BUCKET-RTP-TARGETS"), (
+        "after revert, [BUCKET-RTP-TARGETS] should return to clean"
     )

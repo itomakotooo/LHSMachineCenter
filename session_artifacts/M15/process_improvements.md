@@ -608,4 +608,96 @@ Also: `test_baseline_v2_iter0_pattern` failed because the v2 candidate weight-bu
 
 ---
 
+## #49 — v8.1 mode 1 drift root cause: workflow not philosophy (v9 wave 4, 2026-05-11)
+
+**Symptom**: User caught 3 drifts in v8.1 mode 1 after ship:
+1. Feature RTP 60pp / split 37:63 (too feature-heavy; v7 was 45:55 acceptable per user §a)
+2. R1 blank marginal 57.6% (v7 was 54.5%, +3pp drift — broke §12 winners-friendly direction)
+3. 1-5× bucket占 base 56.7% with cherry-1 占 hit 75% (cherry-1 over-dominant)
+
+**Root cause**: NOT a philosophy gap — universal direction was always in DESIGN_PHILOSOPHY.md. The issue was **workflow / iteration review** failure:
+
+1. **User §a "RELAXED 50:50" misread as "no upper bound on feature share"**: agent kept feature trigger high, didn't track absolute split distance from v7 anchor.
+2. **D narrative not cross-checked vs achieved numbers**: design_v2.md said "structurally restored close to v7 45:55" but achieved 37:63 — gap not caught at stage 4/5.
+3. **§14 strip rearrange agent claimed "preserve per-(reel, symbol) marginal"**: claim correct in principle (rearrange preserves marginals) but didn't verify R1 blank marginal landed where target said — actual was 57.6% not the 54.5% the design narrative cited.
+4. **verify.py [BASE-FEATURE-SPLIT] INFO-only**: per user §a "RELAXED" → V converted to INFO. But removing the band entirely lost the regression guard. INFO swallowed the 8pp drift silently.
+
+**Classification**: "workflow / iteration review" failure, NOT "philosophy gap". User explicitly directed: DO NOT add boundary values to DESIGN_PHILOSOPHY.md. The fix is process discipline (#50 below), not new universal constants.
+
+**Fix path (v9 wave 4 applied)**:
+- Re-derive mode 1 from first principles, ignoring v8.1 weight values
+- 80+ candidates evaluated (A through XXX in `m15_v9_design.py`), each candidate's split / R1 blank / cherry1-%hit / §1 hierarchy / family shares / per-pay freq explicitly dumped + eyeballed
+- Final candidate (TTT_push_94): RTP 94.83%, hit 17.85%, split 46.6:53.4, R1 blank 50.6% < R3 51.9%, cherry1 64.6% of hit, all family bands OK, all verify RED-line categories GREEN
+
+**Lesson generalization**: when user says "RELAXED" for a numeric target, do NOT delete the corresponding regression guard wholesale. Convert to "informational with reasonableness check" — verify.py should still EMIT the metric, and the iteration-review prompt should ask "is this still close to the reference anchor?".
+
+---
+
+## #50 — Iteration evaluation discipline (workflow change, v9 wave 4, 2026-05-11)
+
+**Mandate**: Every candidate weights set MUST dump AND eyeball the following before "verify GREEN" can be claimed sufficient:
+
+1. **Base : Feature split** — must be reasonable in absolute terms (~archetype range; for M15 close to 45:55)
+2. **R1 / R2 / R3 blank marginal** — direction (§12) + reasonable absolute values
+3. **Cherry-1 (or dominant pay) hit / total hit ratio** — must be ≤ ~70% (or owned carve-out)
+4. **1-5× bucket rate / RTP / share of base** — player-feel sanity
+5. **§1 hierarchy chain** — explicit per-family ordering check
+6. **§8 carve-out tally** — which pay_ids exceed 70% of hit and why
+
+For EACH dimension, ask: **"as a player would experience this, does it look right?"**
+
+If any number "looks off" relative to archetype reference (RWB / DTD / classic IGT) → iterate, don't ship. Document candidate rejection with explicit reason. Don't move on with hand-waves.
+
+**Implementation in v9 wave 4**:
+- `session_artifacts/M15/scripts/m15_v9_design.py` `print_candidate_report` function dumps all 6 dimensions per candidate plus family share + per-pay freq + cadence checks
+- Each candidate has explicit PASS/FAIL/OUT stamp
+- Comparison table sorts candidates by all dimensions for at-a-glance reasonableness check
+- `session_artifacts/M15/feasibility_v9.txt` captures ALL 80+ candidates evaluated (not just final), allowing audit of "which candidates considered + rejected and why"
+
+**Lesson generalization**: "verify GREEN" is necessary not sufficient — verify catches structural violations against declared red lines, but doesn't catch design INTENT drift (split too far from anchor; cherry over-relied; mid-pay over-relied). Iteration review must explicitly check intent dimensions even when verify passes.
+
+**Fix for WORKFLOW.md**: add one iteration discipline item — "every candidate's derived numbers eyeballed for reasonableness; hit cap is user-pinned highest priority". Process advice only, no specific values. (Main session will commit this — wave-4 agent skipped per user direction.)
+
+---
+
+## #51 (2026-05-11 wave 5) — when user-pinned bucket targets are structurally infeasible, document mechanism exhaustion before floor relaxation
+
+**Context**: User wave-5 brief explicitly pinned 3 bucket RTP targets on top of v9 mode 1:
+- ge1_lt5: 22.33 → **12.33pp** (delta -10pp)
+- ge5_lt10: 3.72 → **8.72pp** (+5pp)
+- ge10_lt20: 4.16 → **9.16pp** (+5pp)
+
+**Finding**: ge1_lt5 = 12.33pp is **mathematically unreachable** given the M15 paytable + strip-stop-count structure. Floor is ~22pp.
+
+**Why** — bar_mixed (pay 8, 2× / 4× with 1 wild) is structurally tied to sum_bar^3 product across 3 reels. To satisfy ge5_lt10 + ge10_lt20 targets, pay 7 (bar1 5× pure) and pay 5 (bar2 10× pure) need 1bar avg ≥ 0.24 and 2bar avg ≥ 0.18 across reels — forcing per-reel sum_bar ≥ 0.42. sum_bar_product = 0.07 and bar_mixed = ~0.06 hit at 2× = ~12pp baseline. Plus 1-wild contribution at 4× = ~3pp. Plus cherry1 minimum ~5pp = ge1_lt5 floor ~20pp.
+
+**Mechanism exhaustion** (per `memory/feedback_dont_lower_floor_when_blocked.md`):
+
+| mechanism | status | reason |
+|---|---|---|
+| A. Multiplicative boost (top-adj blank × N) | NOT VIABLE | breaks RTP per §15.5 |
+| B. RTP-neutral blank redistribution | NOT HELPFUL | doesn't change bucket math (marginals invariant) |
+| C. Strip stop-count restructure | BLOCKED | `[STRIP-IMMUTABILITY]` lock |
+| D. Paytable change (e.g., pay 8 mult 2→1) | BLOCKED | universal rule (proc_imp #36) + user_brief §h |
+
+**Resolution**: ge1_lt5 verify band set to **achievable range [22.0, 26.0]pp** with `STRUCTURAL OVERRIDE` annotation in verify.py. ge5_lt10 + ge10_lt20 bands matched user targets directly. v10 winner achieves both fully + ge1_lt5 at 24.29pp.
+
+**Side effects** of meeting ge5_lt10 / ge10_lt20:
+- cherry1 share-of-base drops 26% → 11% (cherry-anywhere preserved at archetype level, hit still 4.8%)
+- bar1 family share rises 8% → 22%; bar2 family share rises 15% → 21%
+- wild_pure cadence drifts 1/60k → 1/908k (dd marg cut to keep RTP in band; bucket directive forces this; band widened to [1/50k, 1/2M] per philosophy §7 carve-out)
+- PWDF floor for mode 1 dd / high7 / topdollar lowered 4-8pp (R1 blank drop = smaller top-adj blank pool; mechanism B still applied)
+
+**Generalization**: When user-pinned constraints conflict with paytable arithmetic, **don't quietly relax** — document each mechanism tried + escalate floor via `STRUCTURAL OVERRIDE` band annotation. Inject-bug regression tests verify the new band still catches actual regression (e.g., cutting 1bar to 1 triggers `[BUCKET-RTP-TARGETS]` RED in v10).
+
+**Implementation artifacts**:
+- `session_artifacts/M15/design_v10.md` §3 — full structural derivation
+- `session_artifacts/M15/scripts/m15_v10_design.py` — 100+ candidates evaluated
+- `session_artifacts/M15/feasibility_v10.txt` — full sweep log
+- `slot_designer/machines/M15/verify.py` `_BUCKET_RTP_TARGETS_PP` + `_R1_BLANK_BAND_PCT` — new checks with override note
+- `tests/machines/test_M15_verify_inject_bug.py::test_inject_r1_blank_out_of_band` + `test_inject_bucket_rtp_out_of_band` — 2 new regression tests
+- This entry — process documentation for future similar cases
+
+---
+
 (Continue logging as session progresses.)

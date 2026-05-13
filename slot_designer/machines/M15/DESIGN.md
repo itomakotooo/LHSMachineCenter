@@ -17,33 +17,39 @@
 
 ## 2. Player narratives per mode
 
-| mode | RTP | hit | feature trigger | base CV | feature CV (cond) | narrative |
-|---|---|---|---|---|---|---|
-| 1 (paid) | **94.10%** | 17.40% | 1 in 78 | 6.09 | 0.74 | classic balanced — cherry-1 dominates 87% of hits; feature ~5 min cadence |
-| 7 (cut) | **83.27%** | 11.48% | 1 in 75 | 8.60 | 0.74 | "运气差档" — small wins thin out; feature unchanged from mode 1; CV naturally rises (accepted per user §e) |
-| 2 (lucky) | **291.07%** | 33.54% | 1 in 31 | 4.38 | 0.78 | "今天总是赢" — frequent mid wins (10-200×); 200×+ cadence ≈ mode 1 (not increased) |
-| 5 (super-lucky) | **508.89%** | 33.61% | 1 in 31 | 4.57 | 0.85 | "今天大奖多" — 200×+ cadence > mode 2 (P(R≥200) = 3.82e-3 vs m2 2.74e-4) |
+**v10 (2026-05-11 wave 5)** — mode 1 + mode 7 retuned per user-pinned bucket-shift directive on top of v9. Full narrative: [`session_artifacts/M15/design_v10.md`](../../../session_artifacts/M15/design_v10.md). Mode 2/5 inherit from v8/v9.
 
-Cross-mode invariants (verify.py [LUCKY-MONO] / [CROSS-RTP]): m2 > m1 > m7 in RTP; m5 > m2 > m1 in hit + trigger; m7 ≈ m1 in trigger (4.9e-4 tol). All GREEN.
+User directives (wave 5):
+1. **R1 blank marginal ∈ [30%, 40%]** (v9 was 50.25%)
+2. **Bucket RTP shift**: ge1_lt5 -10pp / ge5_lt10 +5pp / ge10_lt20 +5pp (net 0pp to base)
 
-## 3. user_brief v1.2 tally (delivered vs requested)
+| mode | RTP | hit | R1 blank | feature trigger | base CV | feature CV (cond) | narrative |
+|---|---|---|---|---|---|---|---|
+| 1 (paid) | **95.80%** | 16.81% | 35.28% | 1 in 91 | 3.65 | 0.74 | classic balanced — bucket shifted toward 5×/10× wins; bar-heavy R1 (winners-friendly philosophy §12); cherry-1 28.8% of hits (well under §8 70%); bar1 hit > bar2 hit (§1 inverse pyramid preserved) |
+| 7 (cut) | **84.96%** | 13.01% | 40.32% | 1 in 91 | 4.48 | 0.74 | "运气差档" — small wins cut via blank ×1.25; top marginal preserved via algebraic K-scaling; feature unchanged from mode 1 |
+| 2 (lucky) | **291.07%** | 33.54% | 33.45% | 1 in 31 | 4.38 | 0.78 | "今天总是赢" — unchanged from v8 (mode 2 not touched per wave-5 scope) |
+| 5 (super-lucky) | **508.89%** | 33.61% | 33.11% | 1 in 31 | 4.57 | 0.85 | "今天大奖多" — unchanged from v8 |
 
-| brief item | v1.2 target | v8 measured | status |
+Cross-mode invariants (verify.py [LUCKY-MONO] / [CROSS-RTP]): m2 > m1 > m7 in RTP; m5 > m2 > m1 in hit + trigger; m7 ≈ m1 in trigger (1.5e-5 tol). All GREEN.
+
+## 3. user_brief v1.2 tally (delivered vs requested, post-v9 wave-4)
+
+| brief item | v1.2 target | v9 measured (mode 1/7) | status |
 |---|---|---|---|
-| mode 1 hit | [15, 18]% | 17.40% | ✓ |
-| mode 1 base 低波动 | 感性 (informational) | CV 6.09 | INFO — user §g cancelled precise band |
+| mode 1 hit | [15, 18]% | 17.85% | ✓ |
+| mode 1 base 低波动 | 感性 (informational) | CV 6.34 | INFO — user §g cancelled precise band |
 | mode 1 feature 中波动 | 感性 (informational) | feature CV 0.74 | INFO — user §g cancelled precise band |
-| mode 1 base:feature | RELAXED (user §a) | 37 : 63 | ✓ (no longer constrained to 50:50) |
-| P(count_x=1) | RELAXED (user §b) | 5% (v7 kept) | ✓ (no longer constrained to ≤2%) |
-| P(R ≥ 1000 / spin) | ≤ 1e-5 all modes | m1 2.1e-7 / m2 2.9e-6 / m5 1.3e-7 / m7 2.1e-7 | ✓ |
-| jackpot any-reel marginal | ≤ 0.6% | all modes ≤ 0.55% | ✓ |
-| mode 2 hit | [30, 35]% | 33.54% | ✓ |
-| mode 2 200×+ freq | = mode 1 | 2.74e-4 (m2) / 3.62e-5 (m1) | DEVIATION (~7.5×) — see §4 |
-| mode 5 200×+ freq | > mode 2 | 3.82e-3 (m5) / 2.74e-4 (m2) | ✓ (14×) |
-| mode 5 base 调整 | ALLOWED (user §d) | base 108pp vs m2 99pp | ✓ "不矫枉过正" |
-| mode 7 feature trigger = mode 1 | within tol (user §e option B) | Δ 4.9e-4pp (within 5e-4 tol) | ✓ |
-| mode 7 big-pay = mode 1 | within ±15% per pay_id | all pays within ±15% | ✓ |
+| mode 1 base:feature | RELAXED (user §a; "close to v7 45:55") | 46.6 : 53.4 | ✓ (within 2pp of v7 anchor) |
+| P(count_x=1) | RELAXED (user §b) | 5% (v7 kept) | ✓ |
+| P(R ≥ 1000 / spin) | ≤ 1e-5 all modes | m1 7.3e-8 / m7 7.3e-8 (m2/m5 from v8) | ✓ |
+| jackpot any-reel marginal | ≤ 0.6% | m1 R1=0.40% R2=0.40% R3=0.10% | ✓ |
+| mode 2 hit | [30, 35]% | 33.54% (v8 unchanged) | ✓ |
+| mode 7 feature trigger = mode 1 | within tol (user §e option B) | Δ 1.5e-5pp (within 5e-4 tol) | ✓ |
+| mode 7 big-pay = mode 1 | within ±15% per pay_id | all pays within ±10% | ✓ |
 | paytable lock (user §h) | NEVER MODIFY | spec.json `pays` byte-identical | ✓ |
+| §1 inverse pyramid bar1 > bar2 > bar3 hit | required | bar1 0.45% > bar2 0.43% > bar3 0.15% | ✓ |
+| §8 cherry1 ≤ 70% of hit | preferred | cherry1 64.6% of hit | ✓ |
+| §12 R1 winners-friendly | direction | R1 blank 50.6% < R3 51.9% | ✓ |
 
 ## 4. Deliberate deviations (owned)
 

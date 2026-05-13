@@ -1,0 +1,2149 @@
+
+================================================================================
+M15 v13b DESIGN ！ candidate exploration
+================================================================================
+Total candidates: 93
+
+======== Candidate: A_balanced ========
+  total_rtp=94.093pp  hit_session=17.185%
+  base_rtp=43.493pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=45.600%  R2_blank=49.100%  R3_blank=53.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=20.230  g510=4.718  g1020=6.178  g2050=25.590  g50100=24.331  g100200=10.512  g200500=2.472
+  v6 direction: g15 dominant (g15=20.23, g510=4.72, g1020=6.18) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.49%   (9.78pp)
+    cherry2        4.05%   (1.76pp)
+    cherry3        0.14%   (0.06pp)
+    bar1          14.86%   (6.46pp)
+    bar2          12.25%   (5.33pp)
+    bar3           6.46%   (2.81pp)
+    bar_mixed     24.02%   (10.45pp)
+    high7         14.69%   (6.39pp)
+    wild_pure      1.03%   (0.45pp)
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  RTP safety margin: total_rtp=94.093 < 94.5pp
+  Hardline fails: 2/14
+    FAIL H3 R1_blank        =   45.600  target [30, 40]
+    FAIL H4 ge1_lt5         =   20.230  target [10, 15]
+
+======== Candidate: B_lower_bar1 ========
+  total_rtp=94.568pp  hit_session=17.077%
+  base_rtp=43.968pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=46.600%  R2_blank=49.100%  R3_blank=52.900%
+  trigger=1.100%  wild_cadence=1/41152
+  Buckets: g15=20.183  g510=4.133  g1020=6.324  g2050=26.249  g50100=24.475  g100200=10.635  g200500=2.508
+  v6 direction: g15 dominant (g15=20.18, g510=4.13, g1020=6.32) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.25%   (9.78pp)
+    cherry2        4.01%   (1.76pp)
+    cherry3        0.14%   (0.06pp)
+    bar1          12.58%   (5.53pp)
+    bar2          14.67%   (6.45pp)
+    bar3           6.58%   (2.89pp)
+    bar_mixed     23.65%   (10.40pp)
+    high7         15.01%   (6.60pp)
+    wild_pure      1.11%   (0.49pp)
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/41152
+  Hardline fails: 2/14
+    FAIL H3 R1_blank        =   46.600  target [30, 40]
+    FAIL H4 ge1_lt5         =   20.183  target [10, 15]
+
+======== Candidate: C_higher_dd ========
+  total_rtp=97.119pp  hit_session=17.244%
+  base_rtp=46.519pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=46.600%  R2_blank=48.600%  R3_blank=52.800%
+  trigger=1.100%  wild_cadence=1/29155
+  Buckets: g15=20.406  g510=4.574  g1020=6.484  g2050=26.715  g50100=25.013  g100200=11.157  g200500=2.708
+  v6 direction: g15 dominant (g15=20.41, g510=4.57, g1020=6.48) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       21.03%   (9.78pp)
+    cherry2        3.79%   (1.76pp)
+    cherry3        0.14%   (0.06pp)
+    bar1          14.80%   (6.88pp)
+    bar2          13.07%   (6.08pp)
+    bar3           7.25%   (3.37pp)
+    bar_mixed     22.84%   (10.62pp)
+    high7         15.62%   (7.27pp)
+    wild_pure      1.47%   (0.69pp)
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/29155
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =   97.119  target [94, 96]
+    FAIL H3 R1_blank        =   46.600  target [30, 40]
+    FAIL H4 ge1_lt5         =   20.406  target [10, 15]
+
+======== Candidate: D_bar2_heavy ========
+  total_rtp=95.638pp  hit_session=17.494%
+  base_rtp=45.038pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=46.100%  R2_blank=48.100%  R3_blank=52.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=20.946  g510=4.133  g1020=6.810  g2050=26.531  g50100=24.217  g100200=10.467  g200500=2.472
+  v6 direction: g15 dominant (g15=20.95, g510=4.13, g1020=6.81) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       21.72%   (9.78pp)
+    cherry2        3.91%   (1.76pp)
+    cherry3        0.14%   (0.06pp)
+    bar1          12.06%   (5.43pp)
+    bar2          16.48%   (7.42pp)
+    bar3           6.23%   (2.81pp)
+    bar_mixed     24.79%   (11.16pp)
+    high7         13.68%   (6.16pp)
+    wild_pure      1.00%   (0.45pp)
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 2/14
+    FAIL H3 R1_blank        =   46.100  target [30, 40]
+    FAIL H4 ge1_lt5         =   20.946  target [10, 15]
+
+======== Candidate: E_lower_cherry ========
+  total_rtp=94.043pp  hit_session=15.314%
+  base_rtp=43.443pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=44.600%  R2_blank=48.100%  R3_blank=52.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=19.217  g510=4.370  g1020=6.920  g2050=26.159  g50100=24.331  g100200=10.512  g200500=2.472
+  v6 direction: g15 dominant (g15=19.22, g510=4.37, g1020=6.92) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       16.42%   (7.13pp)
+    cherry2        2.08%   (0.90pp)
+    cherry3        0.05%   (0.02pp)
+    bar1          16.88%   (7.34pp)
+    bar2          14.54%   (6.32pp)
+    bar3           6.46%   (2.81pp)
+    bar_mixed     27.81%   (12.08pp)
+    high7         14.71%   (6.39pp)
+    wild_pure      1.04%   (0.45pp)
+  Family violations: [('bar_mixed', 27.8121396131474, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  RTP safety margin: total_rtp=94.043 < 94.5pp
+  Hardline fails: 2/14
+    FAIL H3 R1_blank        =   44.600  target [30, 40]
+    FAIL H4 ge1_lt5         =   19.217  target [10, 15]
+
+======== Candidate: F_dd25pct ========
+  total_rtp=91.249pp  hit_session=17.027%
+  base_rtp=40.649pp  feature_rtp=50.600pp  (split 45:55)
+  R1_blank=46.600%  R2_blank=49.600%  R3_blank=53.100%
+  trigger=1.100%  wild_cadence=1/64000
+  Buckets: g15=19.920  g510=4.718  g1020=5.874  g2050=24.651  g50100=23.668  g100200=10.022  g200500=2.335
+  v6 direction: g15 dominant (g15=19.92, g510=4.72, g1020=5.87) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       24.07%   (9.78pp)
+    cherry2        4.33%   (1.76pp)
+    cherry3        0.15%   (0.06pp)
+    bar1          14.70%   (5.98pp)
+    bar2          11.78%   (4.79pp)
+    bar3           5.93%   (2.41pp)
+    bar_mixed     24.94%   (10.14pp)
+    high7         13.32%   (5.42pp)
+    wild_pure      0.77%   (0.31pp)
+  RTP safety margin: total_rtp=91.249 < 94.5pp
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =   91.249  target [94, 96]
+    FAIL H3 R1_blank        =   46.600  target [30, 40]
+    FAIL H4 ge1_lt5         =   19.920  target [10, 15]
+
+======== Candidate: G_bar1_22 ========
+  total_rtp=92.672pp  hit_session=17.666%
+  base_rtp=42.072pp  feature_rtp=50.600pp  (split 45:55)
+  R1_blank=45.100%  R2_blank=48.100%  R3_blank=51.900%
+  trigger=1.100%  wild_cadence=1/72727
+  Buckets: g15=20.729  g510=5.798  g1020=6.312  g2050=24.196  g50100=23.404  g100200=9.873  g200500=2.297
+  v6 direction: g15 dominant (g15=20.73, g510=5.80, g1020=6.31) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       23.25%   (9.78pp)
+    cherry2        4.19%   (1.76pp)
+    cherry3        0.15%   (0.06pp)
+    bar1          17.84%   (7.51pp)
+    bar2          11.00%   (4.63pp)
+    bar3           4.67%   (1.96pp)
+    bar_mixed     26.02%   (10.95pp)
+    high7         12.23%   (5.15pp)
+    wild_pure      0.65%   (0.28pp)
+  Family violations: [('bar3', 4.665724307378999, 'below 5%'), ('bar_mixed', 26.017387931225063, 'above 25%')]
+  RTP safety margin: total_rtp=92.672 < 94.5pp
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =   92.672  target [94, 96]
+    FAIL H3 R1_blank        =   45.100  target [30, 40]
+    FAIL H4 ge1_lt5         =   20.729  target [10, 15]
+
+======== Candidate: H_higher_h7 ========
+  total_rtp=92.436pp  hit_session=16.624%
+  base_rtp=41.836pp  feature_rtp=50.600pp  (split 45:55)
+  R1_blank=45.100%  R2_blank=48.600%  R3_blank=52.400%
+  trigger=1.100%  wild_cadence=1/72727
+  Buckets: g15=19.145  g510=4.260  g1020=5.515  g2050=25.774  g50100=25.063  g100200=10.320  g200500=2.297
+  v6 direction: g15 dominant (g15=19.14, g510=4.26, g1020=5.51) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       23.38%   (9.78pp)
+    cherry2        4.21%   (1.76pp)
+    cherry3        0.15%   (0.06pp)
+    bar1          12.11%   (5.07pp)
+    bar2          11.07%   (4.63pp)
+    bar3           5.49%   (2.30pp)
+    bar_mixed     22.38%   (9.36pp)
+    high7         20.55%   (8.60pp)
+    wild_pure      0.66%   (0.28pp)
+  RTP safety margin: total_rtp=92.436 < 94.5pp
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =   92.436  target [94, 96]
+    FAIL H3 R1_blank        =   45.100  target [30, 40]
+    FAIL H4 ge1_lt5         =   19.145  target [10, 15]
+
+======== Candidate: I_bar1_17_bar3_4 ========
+  total_rtp=86.990pp  hit_session=15.655%
+  base_rtp=36.390pp  feature_rtp=50.600pp  (split 42:58)
+  R1_blank=49.600%  R2_blank=52.100%  R3_blank=55.900%
+  trigger=1.100%  wild_cadence=1/72727
+  Buckets: g15=17.355  g510=3.742  g1020=5.676  g2050=24.212  g50100=23.636  g100200=10.010  g200500=2.297
+  v6 direction: g15 dominant (g15=17.36, g510=3.74, g1020=5.68) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       26.88%   (9.78pp)
+    cherry2        4.84%   (1.76pp)
+    cherry3        0.17%   (0.06pp)
+    bar1          11.53%   (4.20pp)
+    bar2          15.19%   (5.53pp)
+    bar3           3.13%   (1.14pp)
+    bar_mixed     20.81%   (7.57pp)
+    high7         16.68%   (6.07pp)
+    wild_pure      0.76%   (0.28pp)
+  Family violations: [('cherry1', 26.882493856523276, 'above 25%'), ('bar3', 3.134907794606931, 'below 5%')]
+  RTP safety margin: total_rtp=86.990 < 94.5pp
+  Hardline fails: 4/14
+    FAIL H2 total_rtp       =   86.990  target [94, 96]
+    FAIL H3 R1_blank        =   49.600  target [30, 40]
+    FAIL H4 ge1_lt5         =   17.355  target [10, 15]
+    FAIL H5 sum_1_20        =   26.773  target [28, 36]
+
+======== Candidate: J_asym_dd35_30_20 ========
+  total_rtp=91.320pp  hit_session=16.718%
+  base_rtp=40.720pp  feature_rtp=50.600pp  (split 45:55)
+  R1_blank=46.600%  R2_blank=50.600%  R3_blank=55.100%
+  trigger=1.100%  wild_cadence=1/47619
+  Buckets: g15=19.275  g510=4.718  g1020=6.142  g2050=24.736  g50100=23.676  g100200=10.269  g200500=2.442
+  v6 direction: g15 dominant (g15=19.28, g510=4.72, g1020=6.14) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       24.02%   (9.78pp)
+    cherry2        4.33%   (1.76pp)
+    cherry3        0.15%   (0.06pp)
+    bar1          15.71%   (6.40pp)
+    bar2          13.03%   (5.30pp)
+    bar3           5.01%   (2.04pp)
+    bar_mixed     23.31%   (9.49pp)
+    high7         13.41%   (5.46pp)
+    wild_pure      1.03%   (0.42pp)
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/47619
+  RTP safety margin: total_rtp=91.320 < 94.5pp
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =   91.320  target [94, 96]
+    FAIL H3 R1_blank        =   46.600  target [30, 40]
+    FAIL H4 ge1_lt5         =   19.275  target [10, 15]
+
+======== Candidate: K_low_blank_R1 ========
+  total_rtp=97.508pp  hit_session=17.983%
+  base_rtp=46.908pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=40.900%  R2_blank=48.600%  R3_blank=52.700%
+  trigger=1.100%  wild_cadence=1/43403
+  Buckets: g15=21.185  g510=5.016  g1020=6.443  g2050=26.370  g50100=25.132  g100200=10.817  g200500=2.483
+  v6 direction: g15 dominant (g15=21.19, g510=5.02, g1020=6.44) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       21.79%   (10.22pp)
+    cherry2        4.09%   (1.92pp)
+    cherry3        0.15%   (0.07pp)
+    bar1          14.38%   (6.75pp)
+    bar2          12.11%   (5.68pp)
+    bar3           6.07%   (2.85pp)
+    bar_mixed     23.38%   (10.97pp)
+    high7         17.05%   (8.00pp)
+    wild_pure      0.98%   (0.46pp)
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/43403
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =   97.508  target [94, 96]
+    FAIL H3 R1_blank        =   40.900  target [30, 40]
+    FAIL H4 ge1_lt5         =   21.185  target [10, 15]
+
+======== Candidate: L_balanced_v2 ========
+  total_rtp=87.962pp  hit_session=14.899%
+  base_rtp=37.362pp  feature_rtp=50.600pp  (split 42:58)
+  R1_blank=49.100%  R2_blank=52.600%  R3_blank=56.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=17.333  g510=3.796  g1020=5.858  g2050=24.614  g50100=23.548  g100200=10.278  g200500=2.472
+  v6 direction: g15 dominant (g15=17.33, g510=3.80, g1020=5.86) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.68%   (8.47pp)
+    cherry2        3.47%   (1.30pp)
+    cherry3        0.11%   (0.04pp)
+    bar1          15.15%   (5.66pp)
+    bar2          14.26%   (5.33pp)
+    bar3           5.51%   (2.06pp)
+    bar_mixed     23.72%   (8.86pp)
+    high7         13.90%   (5.19pp)
+    wild_pure      1.20%   (0.45pp)
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  RTP safety margin: total_rtp=87.962 < 94.5pp
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   14.899  target [15, 18]
+    FAIL H2 total_rtp       =   87.962  target [94, 96]
+    FAIL H3 R1_blank        =   49.100  target [30, 40]
+    FAIL H4 ge1_lt5         =   17.333  target [10, 15]
+    FAIL H5 sum_1_20        =   26.987  target [28, 36]
+
+======== Candidate: M_archetype ========
+  total_rtp=87.223pp  hit_session=16.035%
+  base_rtp=36.623pp  feature_rtp=50.600pp  (split 42:58)
+  R1_blank=47.900%  R2_blank=52.400%  R3_blank=58.200%
+  trigger=1.100%  wild_cadence=1/57156
+  Buckets: g15=18.099  g510=4.260  g1020=5.675  g2050=23.780  g50100=23.036  g100200=9.938  g200500=2.372
+  v6 direction: g15 dominant (g15=18.10, g510=4.26, g1020=5.68) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       26.71%   (9.78pp)
+    cherry2        4.81%   (1.76pp)
+    cherry3        0.17%   (0.06pp)
+    bar1          14.58%   (5.34pp)
+    bar2          13.43%   (4.92pp)
+    bar3           4.43%   (1.62pp)
+    bar_mixed     22.71%   (8.32pp)
+    high7         12.19%   (4.47pp)
+    wild_pure      0.96%   (0.35pp)
+  Family violations: [('cherry1', 26.711950229585252, 'above 25%'), ('bar3', 4.433551341031321, 'below 5%')]
+  RTP safety margin: total_rtp=87.223 < 94.5pp
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =   87.223  target [94, 96]
+    FAIL H3 R1_blank        =   47.900  target [30, 40]
+    FAIL H4 ge1_lt5         =   18.099  target [10, 15]
+
+======== Candidate: N_lower_cherry_higher_bar1 ========
+  total_rtp=86.673pp  hit_session=13.923%
+  base_rtp=36.073pp  feature_rtp=50.600pp  (split 42:58)
+  R1_blank=47.400%  R2_blank=50.900%  R3_blank=56.700%
+  trigger=1.100%  wild_cadence=1/57156
+  Buckets: g15=16.459  g510=4.370  g1020=6.063  g2050=23.930  g50100=23.358  g100200=10.060  g200500=2.372
+  v6 direction: g15 dominant (g15=16.46, g510=4.37, g1020=6.06) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       19.78%   (7.13pp)
+    cherry2        2.50%   (0.90pp)
+    cherry3        0.06%   (0.02pp)
+    bar1          19.27%   (6.95pp)
+    bar2          12.87%   (4.64pp)
+    bar3           4.50%   (1.62pp)
+    bar_mixed     25.85%   (9.32pp)
+    high7         14.20%   (5.12pp)
+    wild_pure      0.97%   (0.35pp)
+  Family violations: [('bar3', 4.501045715270217, 'below 5%'), ('bar_mixed', 25.848745314933623, 'above 25%')]
+  RTP safety margin: total_rtp=86.673 < 94.5pp
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   13.923  target [15, 18]
+    FAIL H2 total_rtp       =   86.673  target [94, 96]
+    FAIL H3 R1_blank        =   47.400  target [30, 40]
+    FAIL H4 ge1_lt5         =   16.459  target [10, 15]
+    FAIL H5 sum_1_20        =   26.892  target [28, 36]
+
+======== Candidate: O_dd_2.7uniform ========
+  total_rtp=86.549pp  hit_session=14.826%
+  base_rtp=35.949pp  feature_rtp=50.600pp  (split 42:58)
+  R1_blank=49.400%  R2_blank=52.900%  R3_blank=56.500%
+  trigger=1.100%  wild_cadence=1/52759
+  Buckets: g15=17.199  g510=3.796  g1020=5.728  g2050=24.122  g50100=23.205  g100200=10.035  g200500=2.401
+  v6 direction: g15 dominant (g15=17.20, g510=3.80, g1020=5.73) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       23.57%   (8.47pp)
+    cherry2        3.61%   (1.30pp)
+    cherry3        0.11%   (0.04pp)
+    bar1          15.14%   (5.44pp)
+    bar2          14.06%   (5.06pp)
+    bar3           5.29%   (1.90pp)
+    bar_mixed     24.27%   (8.73pp)
+    high7         12.88%   (4.63pp)
+    wild_pure      1.05%   (0.38pp)
+  RTP safety margin: total_rtp=86.549 < 94.5pp
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   14.826  target [15, 18]
+    FAIL H2 total_rtp       =   86.549  target [94, 96]
+    FAIL H3 R1_blank        =   49.400  target [30, 40]
+    FAIL H4 ge1_lt5         =   17.199  target [10, 15]
+    FAIL H5 sum_1_20        =   26.723  target [28, 36]
+
+======== Candidate: P_tight_g15 ========
+  total_rtp=86.314pp  hit_session=14.352%
+  base_rtp=35.714pp  feature_rtp=50.600pp  (split 41:59)
+  R1_blank=49.400%  R2_blank=52.400%  R3_blank=56.100%
+  trigger=1.100%  wild_cadence=1/54870
+  Buckets: g15=16.471  g510=4.122  g1020=5.966  g2050=23.885  g50100=23.310  g100200=10.111  g200500=2.387
+  v6 direction: g15 dominant (g15=16.47, g510=4.12, g1020=5.97) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.47%   (8.03pp)
+    cherry2        3.27%   (1.17pp)
+    cherry3        0.09%   (0.03pp)
+    bar1          17.27%   (6.17pp)
+    bar2          14.00%   (5.00pp)
+    bar3           3.64%   (1.30pp)
+    bar_mixed     23.64%   (8.44pp)
+    high7         14.59%   (5.21pp)
+    wild_pure      1.02%   (0.36pp)
+  Family violations: [('bar3', 3.6368773109709553, 'below 5%')]
+  RTP safety margin: total_rtp=86.314 < 94.5pp
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   14.352  target [15, 18]
+    FAIL H2 total_rtp       =   86.314  target [94, 96]
+    FAIL H3 R1_blank        =   49.400  target [30, 40]
+    FAIL H4 ge1_lt5         =   16.471  target [10, 15]
+    FAIL H5 sum_1_20        =   26.559  target [28, 36]
+
+======== Candidate: Q_v9_balance_dd_lift ========
+  total_rtp=85.280pp  hit_session=14.315%
+  base_rtp=34.680pp  feature_rtp=50.600pp  (split 41:59)
+  R1_blank=51.400%  R2_blank=53.400%  R3_blank=56.600%
+  trigger=1.100%  wild_cadence=1/54870
+  Buckets: g15=16.357  g510=3.278  g1020=5.358  g2050=24.223  g50100=23.501  g100200=10.115  g200500=2.387
+  v6 direction: g15 dominant (g15=16.36, g510=3.28, g1020=5.36) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       24.43%   (8.47pp)
+    cherry2        3.74%   (1.30pp)
+    cherry3        0.11%   (0.04pp)
+    bar1          12.92%   (4.48pp)
+    bar2          14.42%   (5.00pp)
+    bar3           5.40%   (1.87pp)
+    bar_mixed     22.73%   (7.88pp)
+    high7         15.19%   (5.27pp)
+    wild_pure      1.05%   (0.36pp)
+  RTP safety margin: total_rtp=85.280 < 94.5pp
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   14.315  target [15, 18]
+    FAIL H2 total_rtp       =   85.280  target [94, 96]
+    FAIL H3 R1_blank        =   51.400  target [30, 40]
+    FAIL H4 ge1_lt5         =   16.357  target [10, 15]
+    FAIL H5 sum_1_20        =   24.993  target [28, 36]
+
+======== Candidate: R_lower_bar1_higher_bar2 ========
+  total_rtp=85.403pp  hit_session=14.310%
+  base_rtp=34.803pp  feature_rtp=50.600pp  (split 41:59)
+  R1_blank=51.400%  R2_blank=53.400%  R3_blank=57.100%
+  trigger=1.100%  wild_cadence=1/54870
+  Buckets: g15=16.418  g510=2.934  g1020=5.587  g2050=24.569  g50100=23.376  g100200=10.071  g200500=2.387
+  v6 direction: g15 dominant (g15=16.42, g510=2.93, g1020=5.59) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       24.34%   (8.47pp)
+    cherry2        3.73%   (1.30pp)
+    cherry3        0.11%   (0.04pp)
+    bar1          11.08%   (3.86pp)
+    bar2          17.09%   (5.95pp)
+    bar3           5.38%   (1.87pp)
+    bar_mixed     22.83%   (7.94pp)
+    high7         14.39%   (5.01pp)
+    wild_pure      1.05%   (0.36pp)
+  RTP safety margin: total_rtp=85.403 < 94.5pp
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   14.310  target [15, 18]
+    FAIL H2 total_rtp       =   85.403  target [94, 96]
+    FAIL H3 R1_blank        =   51.400  target [30, 40]
+    FAIL H4 ge1_lt5         =   16.418  target [10, 15]
+    FAIL H5 sum_1_20        =   24.939  target [28, 36]
+
+======== Candidate: S_asymmetric ========
+  total_rtp=90.581pp  hit_session=15.229%
+  base_rtp=39.981pp  feature_rtp=50.600pp  (split 44:56)
+  R1_blank=41.600%  R2_blank=50.600%  R3_blank=59.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=17.777  g510=4.112  g1020=6.085  g2050=25.116  g50100=24.355  g100200=10.602  g200500=2.472
+  v6 direction: g15 dominant (g15=17.78, g510=4.11, g1020=6.08) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       21.23%   (8.49pp)
+    cherry2        3.16%   (1.26pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          15.74%   (6.29pp)
+    bar2          13.24%   (5.29pp)
+    bar3           5.04%   (2.02pp)
+    bar_mixed     23.24%   (9.29pp)
+    high7         17.14%   (6.85pp)
+    wild_pure      1.13%   (0.45pp)
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  RTP safety margin: total_rtp=90.581 < 94.5pp
+  Hardline fails: 4/14
+    FAIL H2 total_rtp       =   90.581  target [94, 96]
+    FAIL H3 R1_blank        =   41.600  target [30, 40]
+    FAIL H4 ge1_lt5         =   17.777  target [10, 15]
+    FAIL H5 sum_1_20        =   27.974  target [28, 36]
+
+======== Candidate: T_low_g15 ========
+  total_rtp=87.758pp  hit_session=13.429%
+  base_rtp=37.158pp  feature_rtp=50.600pp  (split 42:58)
+  R1_blank=48.600%  R2_blank=51.600%  R3_blank=55.600%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=16.049  g510=3.749  g1020=6.603  g2050=24.883  g50100=23.571  g100200=10.368  g200500=2.472
+  v6 direction: g15 dominant (g15=16.05, g510=3.75, g1020=6.60) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       17.97%   (6.68pp)
+    cherry2        2.14%   (0.79pp)
+    cherry3        0.05%   (0.02pp)
+    bar1          17.39%   (6.46pp)
+    bar2          17.00%   (6.32pp)
+    bar3           3.88%   (1.44pp)
+    bar_mixed     25.22%   (9.37pp)
+    high7         15.14%   (5.63pp)
+    wild_pure      1.21%   (0.45pp)
+  Family violations: [('bar3', 3.8753665955509984, 'below 5%'), ('bar_mixed', 25.217871629827144, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  RTP safety margin: total_rtp=87.758 < 94.5pp
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   13.429  target [15, 18]
+    FAIL H2 total_rtp       =   87.758  target [94, 96]
+    FAIL H3 R1_blank        =   48.600  target [30, 40]
+    FAIL H4 ge1_lt5         =   16.049  target [10, 15]
+    FAIL H5 sum_1_20        =   26.401  target [28, 36]
+
+======== Candidate: U_high_density_low_cherry ========
+  total_rtp=97.688pp  hit_session=13.248%
+  base_rtp=47.088pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=40.100%  R2_blank=45.100%  R3_blank=50.400%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=17.381  g510=5.589  g1020=7.918  g2050=27.148  g50100=25.993  g100200=11.124  g200500=2.472
+  v6 direction: g15 dominant (g15=17.38, g510=5.59, g1020=7.92) ！ VIOLATION
+  Family shares-of-base:
+    cherry1        8.67%   (4.08pp)
+    cherry2        0.61%   (0.29pp)
+    cherry3        0.01%   (0.00pp)
+    bar1          21.93%   (10.33pp)
+    bar2          13.42%   (6.32pp)
+    bar3           4.37%   (2.06pp)
+    bar_mixed     28.24%   (13.30pp)
+    high7         21.79%   (10.26pp)
+    wild_pure      0.96%   (0.45pp)
+  Family violations: [('bar3', 4.3747959932814995, 'below 5%'), ('bar_mixed', 28.239945242844698, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 4/14
+    FAIL H1 hit_session     =   13.248  target [15, 18]
+    FAIL H2 total_rtp       =   97.688  target [94, 96]
+    FAIL H3 R1_blank        =   40.100  target [30, 40]
+    FAIL H4 ge1_lt5         =   17.381  target [10, 15]
+
+======== Candidate: V_dense_R1 ========
+  total_rtp=100.187pp  hit_session=13.444%
+  base_rtp=49.587pp  feature_rtp=50.600pp  (split 49:51)
+  R1_blank=38.600%  R2_blank=43.100%  R3_blank=50.900%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=17.329  g510=5.182  g1020=7.669  g2050=28.447  g50100=27.487  g100200=11.538  g200500=2.472
+  v6 direction: g15 dominant (g15=17.33, g510=5.18, g1020=7.67) ！ VIOLATION
+  Family shares-of-base:
+    cherry1        9.19%   (4.56pp)
+    cherry2        0.72%   (0.35pp)
+    cherry3        0.01%   (0.01pp)
+    bar1          19.30%   (9.57pp)
+    bar2          12.74%   (6.32pp)
+    bar3           4.15%   (2.06pp)
+    bar_mixed     25.76%   (12.77pp)
+    high7         27.22%   (13.50pp)
+    wild_pure      0.91%   (0.45pp)
+  Family violations: [('bar3', 4.154307936664143, 'below 5%'), ('bar_mixed', 25.756709207317684, 'above 25%'), ('high7', 27.224833565517446, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 4/14
+    FAIL H1 hit_session     =   13.444  target [15, 18]
+    FAIL H2 total_rtp       =  100.187  target [94, 96]
+    FAIL H4 ge1_lt5         =   17.329  target [10, 15]
+    FAIL H7 ge50_lt100      =   27.487  target [17, 27]
+
+======== Candidate: W_2bar_peak ========
+  total_rtp=96.543pp  hit_session=13.797%
+  base_rtp=45.943pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=42.100%  R2_blank=46.600%  R3_blank=51.600%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=17.493  g510=3.532  g1020=7.548  g2050=28.067  g50100=26.191  g100200=11.178  g200500=2.472
+  v6 direction: g15 dominant (g15=17.49, g510=3.53, g1020=7.55) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       12.55%   (5.77pp)
+    cherry2        1.25%   (0.58pp)
+    cherry3        0.02%   (0.01pp)
+    bar1          14.07%   (6.46pp)
+    bar2          17.85%   (8.20pp)
+    bar3           4.48%   (2.06pp)
+    bar_mixed     25.52%   (11.73pp)
+    high7         23.27%   (10.69pp)
+    wild_pure      0.98%   (0.45pp)
+  Family violations: [('bar3', 4.483802264320144, 'below 5%'), ('bar_mixed', 25.52154129614535, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 4/14
+    FAIL H1 hit_session     =   13.797  target [15, 18]
+    FAIL H2 total_rtp       =   96.543  target [94, 96]
+    FAIL H3 R1_blank        =   42.100  target [30, 40]
+    FAIL H4 ge1_lt5         =   17.493  target [10, 15]
+
+======== Candidate: X_bar2_dominant ========
+  total_rtp=94.267pp  hit_session=13.682%
+  base_rtp=43.667pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=43.300%  R2_blank=46.800%  R3_blank=52.800%
+  trigger=1.100%  wild_cadence=1/51020
+  Buckets: g15=17.256  g510=3.012  g1020=7.061  g2050=27.753  g50100=25.820  g100200=10.888  g200500=2.414
+  v6 direction: g15 dominant (g15=17.26, g510=3.01, g1020=7.06) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       13.83%   (6.04pp)
+    cherry2        1.47%   (0.64pp)
+    cherry3        0.03%   (0.01pp)
+    bar1          12.03%   (5.26pp)
+    bar2          18.11%   (7.91pp)
+    bar3           5.44%   (2.38pp)
+    bar_mixed     25.68%   (11.22pp)
+    high7         22.50%   (9.83pp)
+    wild_pure      0.90%   (0.39pp)
+  Family violations: [('bar_mixed', 25.683200014656254, 'above 25%')]
+  RTP safety margin: total_rtp=94.267 < 94.5pp
+  Hardline fails: 4/14
+    FAIL H1 hit_session     =   13.682  target [15, 18]
+    FAIL H3 R1_blank        =   43.300  target [30, 40]
+    FAIL H4 ge1_lt5         =   17.256  target [10, 15]
+    FAIL H5 sum_1_20        =   27.329  target [28, 36]
+
+======== Candidate: Y_dense_R1_h7 ========
+  total_rtp=102.902pp  hit_session=15.785%
+  base_rtp=52.302pp  feature_rtp=50.600pp  (split 51:49)
+  R1_blank=36.600%  R2_blank=43.100%  R3_blank=51.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=19.627  g510=4.718  g1020=7.293  g2050=29.170  g50100=27.931  g100200=11.628  g200500=2.472
+  v6 direction: g15 dominant (g15=19.63, g510=4.72, g1020=7.29) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       13.64%   (7.13pp)
+    cherry2        1.73%   (0.90pp)
+    cherry3        0.04%   (0.02pp)
+    bar1          15.14%   (7.92pp)
+    bar2          12.73%   (6.66pp)
+    bar3           4.82%   (2.52pp)
+    bar_mixed     23.89%   (12.49pp)
+    high7         27.15%   (14.20pp)
+    wild_pure      0.86%   (0.45pp)
+  Family violations: [('bar3', 4.818143752760396, 'below 5%'), ('high7', 27.153681578056805, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =  102.902  target [94, 96]
+    FAIL H4 ge1_lt5         =   19.627  target [10, 15]
+    FAIL H7 ge50_lt100      =   27.931  target [17, 27]
+
+======== Candidate: Z_dense_low_cherry ========
+  total_rtp=106.778pp  hit_session=11.917%
+  base_rtp=56.178pp  feature_rtp=50.600pp  (split 53:47)
+  R1_blank=33.400%  R2_blank=40.600%  R3_blank=51.300%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=15.450  g510=5.172  g1020=7.761  g2050=32.335  g50100=31.141  g100200=12.384  g200500=2.472
+  v6 direction: g15 dominant (g15=15.45, g510=5.17, g1020=7.76) ！ VIOLATION
+  Family shares-of-base:
+    cherry1        5.24%   (2.94pp)
+    cherry2        0.26%   (0.15pp)
+    cherry3        0.00%   (0.00pp)
+    bar1          17.61%   (9.89pp)
+    bar2          11.18%   (6.28pp)
+    bar3           3.24%   (1.82pp)
+    bar_mixed     22.27%   (12.51pp)
+    high7         39.41%   (22.14pp)
+    wild_pure      0.80%   (0.45pp)
+  Family violations: [('bar3', 3.2361141510252085, 'below 5%'), ('high7', 39.4101030273367, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   11.917  target [15, 18]
+    FAIL H2 total_rtp       =  106.778  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.450  target [10, 15]
+    FAIL H6 ge20_lt50       =   32.335  target [22, 32]
+    FAIL H7 ge50_lt100      =   31.141  target [17, 27]
+
+======== Candidate: AA_high_h7 ========
+  total_rtp=103.715pp  hit_session=12.974%
+  base_rtp=53.115pp  feature_rtp=50.600pp  (split 51:49)
+  R1_blank=36.100%  R2_blank=43.600%  R3_blank=53.600%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=15.448  g510=3.532  g1020=6.426  g2050=31.997  g50100=31.321  g100200=12.456  g200500=2.472
+  v6 direction: g15 dominant (g15=15.45, g510=3.53, g1020=6.43) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       10.86%   (5.77pp)
+    cherry2        1.08%   (0.58pp)
+    cherry3        0.02%   (0.01pp)
+    bar1          12.17%   (6.46pp)
+    bar2          11.22%   (5.96pp)
+    bar3           3.42%   (1.82pp)
+    bar_mixed     18.23%   (9.68pp)
+    high7         42.16%   (22.39pp)
+    wild_pure      0.85%   (0.45pp)
+  Family violations: [('bar3', 3.4227651536902512, 'below 5%'), ('high7', 42.157622289016565, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   12.974  target [15, 18]
+    FAIL H2 total_rtp       =  103.715  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.448  target [10, 15]
+    FAIL H5 sum_1_20        =   25.406  target [28, 36]
+    FAIL H7 ge50_lt100      =   31.321  target [17, 27]
+
+======== Candidate: BB_balanced_dense ========
+  total_rtp=99.810pp  hit_session=14.956%
+  base_rtp=49.211pp  feature_rtp=50.600pp  (split 49:51)
+  R1_blank=38.600%  R2_blank=44.100%  R3_blank=53.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=17.941  g510=4.718  g1020=6.955  g2050=28.295  g50100=27.739  g100200=11.628  g200500=2.472
+  v6 direction: g15 dominant (g15=17.94, g510=4.72, g1020=6.96) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       14.50%   (7.13pp)
+    cherry2        1.83%   (0.90pp)
+    cherry3        0.05%   (0.02pp)
+    bar1          16.09%   (7.92pp)
+    bar2          12.11%   (5.96pp)
+    bar3           3.69%   (1.82pp)
+    bar_mixed     21.96%   (10.81pp)
+    high7         28.86%   (14.20pp)
+    wild_pure      0.91%   (0.45pp)
+  Family violations: [('bar3', 3.6943335263815644, 'below 5%'), ('high7', 28.859694577376764, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 4/14
+    FAIL H1 hit_session     =   14.956  target [15, 18]
+    FAIL H2 total_rtp       =   99.810  target [94, 96]
+    FAIL H4 ge1_lt5         =   17.941  target [10, 15]
+    FAIL H7 ge50_lt100      =   27.739  target [17, 27]
+
+======== Candidate: CC_low_cherry_h7 ========
+  total_rtp=98.012pp  hit_session=12.109%
+  base_rtp=47.412pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=38.800%  R2_blank=44.100%  R3_blank=53.900%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=15.174  g510=4.144  g1020=6.938  g2050=28.967  g50100=28.447  g100200=11.808  g200500=2.472
+  v6 direction: g15 dominant (g15=15.17, g510=4.14, g1020=6.94) ！ VIOLATION
+  Family shares-of-base:
+    cherry1        9.21%   (4.37pp)
+    cherry2        0.69%   (0.33pp)
+    cherry3        0.01%   (0.00pp)
+    bar1          16.70%   (7.92pp)
+    bar2          12.56%   (5.96pp)
+    bar3           3.83%   (1.82pp)
+    bar_mixed     22.79%   (10.81pp)
+    high7         33.24%   (15.76pp)
+    wild_pure      0.95%   (0.45pp)
+  Family violations: [('bar3', 3.8344907252148266, 'below 5%'), ('high7', 33.24490803676351, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   12.109  target [15, 18]
+    FAIL H2 total_rtp       =   98.012  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.174  target [10, 15]
+    FAIL H5 sum_1_20        =   26.255  target [28, 36]
+    FAIL H7 ge50_lt100      =   28.447  target [17, 27]
+
+======== Candidate: DD_bar2_dense ========
+  total_rtp=97.454pp  hit_session=12.817%
+  base_rtp=46.854pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=40.100%  R2_blank=45.600%  R3_blank=54.600%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=15.557  g510=3.074  g1020=6.650  g2050=29.384  g50100=28.447  g100200=11.808  g200500=2.472
+  v6 direction: g15 dominant (g15=15.56, g510=3.07, g1020=6.65) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       12.31%   (5.77pp)
+    cherry2        1.23%   (0.58pp)
+    cherry3        0.02%   (0.01pp)
+    bar1          12.08%   (5.66pp)
+    bar2          14.98%   (7.02pp)
+    bar3           3.88%   (1.82pp)
+    bar_mixed     20.89%   (9.79pp)
+    high7         33.64%   (15.76pp)
+    wild_pure      0.96%   (0.45pp)
+  Family violations: [('bar3', 3.88012587999142, 'below 5%'), ('high7', 33.64056332256587, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 6/14
+    FAIL H1 hit_session     =   12.817  target [15, 18]
+    FAIL H2 total_rtp       =   97.454  target [94, 96]
+    FAIL H3 R1_blank        =   40.100  target [30, 40]
+    FAIL H4 ge1_lt5         =   15.557  target [10, 15]
+    FAIL H5 sum_1_20        =   25.281  target [28, 36]
+    FAIL H7 ge50_lt100      =   28.447  target [17, 27]
+
+======== Candidate: EE_g510_dom_balanced ========
+  total_rtp=95.092pp  hit_session=12.368%
+  base_rtp=44.492pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.600%  R2_blank=46.100%  R3_blank=54.400%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=15.136  g510=5.380  g1020=7.165  g2050=26.766  g50100=26.716  g100200=11.394  g200500=2.472
+  v6 direction: g15 dominant (g15=15.14, g510=5.38, g1020=7.17) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       10.24%   (4.56pp)
+    cherry2        0.80%   (0.35pp)
+    cherry3        0.01%   (0.01pp)
+    bar1          22.23%   (9.89pp)
+    bar2          11.25%   (5.00pp)
+    bar3           3.24%   (1.44pp)
+    bar_mixed     23.78%   (10.58pp)
+    high7         27.44%   (12.21pp)
+    wild_pure      1.01%   (0.45pp)
+  Family violations: [('bar3', 3.236516537250956, 'below 5%'), ('high7', 27.442963138773734, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 3/14
+    FAIL H1 hit_session     =   12.368  target [15, 18]
+    FAIL H4 ge1_lt5         =   15.136  target [10, 15]
+    FAIL H5 sum_1_20        =   27.682  target [28, 36]
+
+======== Candidate: FF_final_e_softer ========
+  total_rtp=97.147pp  hit_session=15.809%
+  base_rtp=46.547pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=39.800%  R2_blank=46.800%  R3_blank=56.100%
+  trigger=1.100%  wild_cadence=1/51020
+  Buckets: g15=15.309  g510=10.416  g1020=7.442  g2050=24.149  g50100=26.216  g100200=11.140  g200500=2.414
+  v6 direction: g15 dominant (g15=15.31, g510=10.42, g1020=7.44) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       19.16%   (8.92pp)
+    cherry2        3.07%   (1.43pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          33.49%   (15.59pp)
+    bar2           2.70%   (1.26pp)
+    bar3           1.71%   (0.80pp)
+    bar_mixed     13.73%   (6.39pp)
+    high7         25.20%   (11.73pp)
+    wild_pure      0.84%   (0.39pp)
+  Family violations: [('bar1', 33.490979291190456, 'above 25%'), ('bar2', 2.698500064665352, 'below 5%'), ('bar3', 1.709657308022329, 'below 5%'), ('high7', 25.20144008229044, 'above 25%')]
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   97.147  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.309  target [10, 15]
+
+======== Candidate: GG_low_bar23_dense ========
+  total_rtp=100.432pp  hit_session=17.464%
+  base_rtp=49.832pp  feature_rtp=50.600pp  (split 50:50)
+  R1_blank=39.800%  R2_blank=46.800%  R3_blank=56.100%
+  trigger=1.100%  wild_cadence=1/51020
+  Buckets: g15=15.882  g510=11.246  g1020=7.402  g2050=24.857  g50100=27.168  g100200=11.402  g200500=2.414
+  v6 direction: g15 dominant (g15=15.88, g510=11.25, g1020=7.40) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.23%   (11.08pp)
+    cherry2        4.54%   (2.26pp)
+    cherry3        0.18%   (0.09pp)
+    bar1          31.28%   (15.59pp)
+    bar2           1.83%   (0.91pp)
+    bar3           0.99%   (0.50pp)
+    bar_mixed      9.64%   (4.80pp)
+    high7         28.52%   (14.21pp)
+    wild_pure      0.79%   (0.39pp)
+  Family violations: [('bar1', 31.283382110479824, 'above 25%'), ('bar2', 1.8273770631288113, 'below 5%'), ('bar3', 0.9934162892658702, 'below 5%'), ('high7', 28.522349458421154, 'above 25%')]
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =  100.432  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.882  target [10, 15]
+    FAIL H7 ge50_lt100      =   27.168  target [17, 27]
+
+======== Candidate: HH_balanced_4_4 ========
+  total_rtp=101.838pp  hit_session=17.704%
+  base_rtp=51.238pp  feature_rtp=50.600pp  (split 50:50)
+  R1_blank=38.600%  R2_blank=45.600%  R3_blank=55.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=18.211  g510=7.561  g1020=6.255  g2050=26.863  g50100=28.552  g100200=11.862  g200500=2.472
+  v6 direction: g15 dominant (g15=18.21, g510=7.56, g1020=6.25) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       21.62%   (11.08pp)
+    cherry2        4.41%   (2.26pp)
+    cherry3        0.18%   (0.09pp)
+    bar1          20.15%   (10.33pp)
+    bar2           4.24%   (2.17pp)
+    bar3           2.62%   (1.34pp)
+    bar_mixed     13.92%   (7.13pp)
+    high7         31.99%   (16.39pp)
+    wild_pure      0.88%   (0.45pp)
+  Family violations: [('bar2', 4.239024790098012, 'below 5%'), ('bar3', 2.615236288550338, 'below 5%'), ('high7', 31.985901144068286, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =  101.838  target [94, 96]
+    FAIL H4 ge1_lt5         =   18.211  target [10, 15]
+    FAIL H7 ge50_lt100      =   28.552  target [17, 27]
+
+======== Candidate: II_low_cherry_dense ========
+  total_rtp=97.503pp  hit_session=12.396%
+  base_rtp=46.903pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=39.100%  R2_blank=46.600%  R3_blank=56.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=12.476  g510=8.002  g1020=7.082  g2050=26.748  g50100=28.708  g100200=11.952  g200500=2.472
+  v6 direction: g15 dominant (g15=12.48, g510=8.00, g1020=7.08) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       12.30%   (5.77pp)
+    cherry2        1.23%   (0.58pp)
+    cherry3        0.02%   (0.01pp)
+    bar1          29.02%   (13.61pp)
+    bar2           3.76%   (1.76pp)
+    bar3           1.82%   (0.85pp)
+    bar_mixed     14.30%   (6.71pp)
+    high7         36.58%   (17.16pp)
+    wild_pure      0.96%   (0.45pp)
+  Family violations: [('bar1', 29.02175245587946, 'above 25%'), ('bar2', 3.7599074681122127, 'below 5%'), ('bar3', 1.8229208308681264, 'below 5%'), ('high7', 36.58314277947456, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 4/14
+    FAIL H1 hit_session     =   12.396  target [15, 18]
+    FAIL H2 total_rtp       =   97.503  target [94, 96]
+    FAIL H5 sum_1_20        =   27.560  target [28, 36]
+    FAIL H7 ge50_lt100      =   28.708  target [17, 27]
+
+======== Candidate: JJ_split_cherry ========
+  total_rtp=98.311pp  hit_session=15.702%
+  base_rtp=47.711pp  feature_rtp=50.600pp  (split 49:51)
+  R1_blank=40.600%  R2_blank=46.600%  R3_blank=55.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=15.878  g510=8.479  g1020=7.003  g2050=25.487  g50100=27.337  g100200=11.592  g200500=2.472
+  v6 direction: g15 dominant (g15=15.88, g510=8.48, g1020=7.00) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       18.79%   (8.97pp)
+    cherry2        2.76%   (1.32pp)
+    cherry3        0.07%   (0.03pp)
+    bar1          27.69%   (13.21pp)
+    bar2           3.87%   (1.85pp)
+    bar3           1.96%   (0.94pp)
+    bar_mixed     14.48%   (6.91pp)
+    high7         29.43%   (14.04pp)
+    wild_pure      0.94%   (0.45pp)
+  Family violations: [('bar1', 27.68570054212331, 'above 25%'), ('bar2', 3.873357150567333, 'below 5%'), ('bar3', 1.9618302450925447, 'below 5%'), ('high7', 29.427453676388176, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 4/14
+    FAIL H2 total_rtp       =   98.311  target [94, 96]
+    FAIL H3 R1_blank        =   40.600  target [30, 40]
+    FAIL H4 ge1_lt5         =   15.878  target [10, 15]
+    FAIL H7 ge50_lt100      =   27.337  target [17, 27]
+
+======== Candidate: KK_bar1_23_bar2_8 ========
+  total_rtp=98.007pp  hit_session=14.133%
+  base_rtp=47.407pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=41.600%  R2_blank=47.600%  R3_blank=57.100%
+  trigger=1.100%  wild_cadence=1/44444
+  Buckets: g15=14.245  g510=5.687  g1020=5.730  g2050=27.986  g50100=29.674  g100200=12.150  g200500=2.472
+  v6 direction: g15 dominant (g15=14.25, g510=5.69, g1020=5.73) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       17.90%   (8.49pp)
+    cherry2        2.67%   (1.26pp)
+    cherry3        0.08%   (0.04pp)
+    bar1          18.80%   (8.91pp)
+    bar2           4.58%   (2.17pp)
+    bar3           1.80%   (0.85pp)
+    bar_mixed     12.15%   (5.76pp)
+    high7         41.07%   (19.47pp)
+    wild_pure      0.95%   (0.45pp)
+  Family violations: [('bar2', 4.581601873141096, 'below 5%'), ('bar3', 1.8035311240955971, 'below 5%'), ('high7', 41.0698841943173, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/44444
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   14.133  target [15, 18]
+    FAIL H2 total_rtp       =   98.007  target [94, 96]
+    FAIL H3 R1_blank        =   41.600  target [30, 40]
+    FAIL H5 sum_1_20        =   25.663  target [28, 36]
+    FAIL H7 ge50_lt100      =   29.674  target [17, 27]
+
+======== Candidate: LL_dd28_dense ========
+  total_rtp=98.750pp  hit_session=15.117%
+  base_rtp=48.150pp  feature_rtp=50.600pp  (split 49:51)
+  R1_blank=39.800%  R2_blank=46.800%  R3_blank=55.600%
+  trigger=1.100%  wild_cadence=1/51020
+  Buckets: g15=15.051  g510=7.486  g1020=6.290  g2050=26.957  g50100=28.752  g100200=11.738  g200500=2.414
+  v6 direction: g15 dominant (g15=15.05, g510=7.49, g1020=6.29) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       18.52%   (8.92pp)
+    cherry2        2.97%   (1.43pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          23.30%   (11.22pp)
+    bar2           3.63%   (1.75pp)
+    bar3           1.65%   (0.80pp)
+    bar_mixed     12.73%   (6.13pp)
+    high7         36.28%   (17.47pp)
+    wild_pure      0.81%   (0.39pp)
+  Family violations: [('bar2', 3.6309940415244895, 'below 5%'), ('bar3', 1.6527552497512972, 'below 5%'), ('high7', 36.28144606738539, 'above 25%')]
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =   98.750  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.051  target [10, 15]
+    FAIL H7 ge50_lt100      =   28.752  target [17, 27]
+
+======== Candidate: MM_dd25_h718 ========
+  total_rtp=97.046pp  hit_session=14.199%
+  base_rtp=46.446pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=40.100%  R2_blank=47.100%  R3_blank=57.100%
+  trigger=1.100%  wild_cadence=1/64000
+  Buckets: g15=13.990  g510=6.565  g1020=5.625  g2050=27.792  g50100=29.193  g100200=11.484  g200500=2.335
+  v6 direction: g15 dominant (g15=13.99, g510=6.56, g1020=5.62) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       18.27%   (8.49pp)
+    cherry2        2.72%   (1.26pp)
+    cherry3        0.08%   (0.04pp)
+    bar1          20.79%   (9.66pp)
+    bar2           3.30%   (1.53pp)
+    bar3           1.53%   (0.71pp)
+    bar_mixed     11.85%   (5.50pp)
+    high7         40.79%   (18.95pp)
+    wild_pure      0.67%   (0.31pp)
+  Family violations: [('bar2', 3.2963010808250472, 'below 5%'), ('bar3', 1.5286569349351953, 'below 5%'), ('high7', 40.78930370753137, 'above 25%')]
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   14.199  target [15, 18]
+    FAIL H2 total_rtp       =   97.046  target [94, 96]
+    FAIL H3 R1_blank        =   40.100  target [30, 40]
+    FAIL H5 sum_1_20        =   26.180  target [28, 36]
+    FAIL H7 ge50_lt100      =   29.193  target [17, 27]
+
+======== Candidate: NN_v9_inspired_h722 ========
+  total_rtp=102.796pp  hit_session=13.769%
+  base_rtp=52.196pp  feature_rtp=50.600pp  (split 51:49)
+  R1_blank=39.600%  R2_blank=46.100%  R3_blank=56.600%
+  trigger=1.100%  wild_cadence=1/64000
+  Buckets: g15=14.185  g510=3.390  g1020=4.562  g2050=33.399  g50100=32.778  g100200=12.084  g200500=2.335
+  v6 direction: g15 dominant (g15=14.19, g510=3.39, g1020=4.56) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       16.23%   (8.47pp)
+    cherry2        2.49%   (1.30pp)
+    cherry3        0.08%   (0.04pp)
+    bar1           8.67%   (4.53pp)
+    bar2           6.01%   (3.14pp)
+    bar3           2.16%   (1.13pp)
+    bar_mixed     10.94%   (5.71pp)
+    high7         52.82%   (27.57pp)
+    wild_pure      0.60%   (0.31pp)
+  Family violations: [('bar3', 2.1591785925201794, 'below 5%'), ('high7', 52.82036716573324, 'above 25%')]
+  Hardline fails: 5/14
+    FAIL H1 hit_session     =   13.769  target [15, 18]
+    FAIL H2 total_rtp       =  102.796  target [94, 96]
+    FAIL H5 sum_1_20        =   22.137  target [28, 36]
+    FAIL H6 ge20_lt50       =   33.399  target [22, 32]
+    FAIL H7 ge50_lt100      =   32.778  target [17, 27]
+
+======== Candidate: OO_dd27_bal ========
+  total_rtp=99.313pp  hit_session=15.243%
+  base_rtp=48.713pp  feature_rtp=50.600pp  (split 49:51)
+  R1_blank=39.400%  R2_blank=46.400%  R3_blank=55.000%
+  trigger=1.100%  wild_cadence=1/52759
+  Buckets: g15=15.674  g510=6.731  g1020=6.029  g2050=27.619  g50100=29.064  g100200=11.733  g200500=2.401
+  v6 direction: g15 dominant (g15=15.67, g510=6.73, g1020=6.03) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       18.31%   (8.92pp)
+    cherry2        2.94%   (1.43pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          20.53%   (10.00pp)
+    bar2           4.37%   (2.13pp)
+    bar3           2.04%   (1.00pp)
+    bar_mixed     13.87%   (6.75pp)
+    high7         37.07%   (18.06pp)
+    wild_pure      0.78%   (0.38pp)
+  Family violations: [('bar2', 4.370070524707971, 'below 5%'), ('bar3', 2.0441890787651635, 'below 5%'), ('high7', 37.069089661703316, 'above 25%')]
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =   99.313  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.674  target [10, 15]
+    FAIL H7 ge50_lt100      =   29.064  target [17, 27]
+
+======== Candidate: PP_bar1_dense_h7_low ========
+  total_rtp=96.648pp  hit_session=15.821%
+  base_rtp=46.048pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=39.000%  R2_blank=47.000%  R3_blank=55.600%
+  trigger=1.100%  wild_cadence=1/59172
+  Buckets: g15=15.298  g510=11.644  g1020=7.725  g2050=23.471  g50100=25.351  g100200=10.737  g200500=2.360
+  v6 direction: g15 dominant (g15=15.30, g510=11.64, g1020=7.72) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       18.43%   (8.49pp)
+    cherry2        2.74%   (1.26pp)
+    cherry3        0.08%   (0.04pp)
+    bar1          37.40%   (17.22pp)
+    bar2           2.57%   (1.18pp)
+    bar3           1.60%   (0.74pp)
+    bar_mixed     14.79%   (6.81pp)
+    high7         21.65%   (9.97pp)
+    wild_pure      0.73%   (0.34pp)
+  Family violations: [('bar1', 37.40246518498442, 'above 25%'), ('bar2', 2.5667319468567995, 'below 5%'), ('bar3', 1.6031216352796207, 'below 5%')]
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   96.648  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.298  target [10, 15]
+
+======== Candidate: QQ_v13_softer ========
+  total_rtp=96.996pp  hit_session=15.688%
+  base_rtp=46.396pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=39.900%  R2_blank=47.900%  R3_blank=56.300%
+  trigger=1.100%  wild_cadence=1/52759
+  Buckets: g15=14.138  g510=12.890  g1020=8.321  g2050=23.059  g50100=25.240  g100200=10.884  g200500=2.401
+  v6 direction: g15 dominant (g15=14.14, g510=12.89, g1020=8.32) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       18.67%   (8.66pp)
+    cherry2        2.87%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          41.41%   (19.21pp)
+    bar2           1.93%   (0.90pp)
+    bar3           1.05%   (0.49pp)
+    bar_mixed     11.81%   (5.48pp)
+    high7         21.37%   (9.92pp)
+    wild_pure      0.82%   (0.38pp)
+  Family violations: [('bar1', 41.40513021680886, 'above 25%'), ('bar2', 1.9344896186500034, 'below 5%'), ('bar3', 1.0459590005108226, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H2 total_rtp       =   96.996  target [94, 96]
+
+======== Candidate: RR_v13_minus_bars23 ========
+  total_rtp=92.847pp  hit_session=14.857%
+  base_rtp=42.247pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=40.300%  R2_blank=47.900%  R3_blank=57.300%
+  trigger=1.100%  wild_cadence=1/157828
+  Buckets: g15=12.007  g510=14.156  g1020=6.582  g2050=23.392  g50100=24.736  g100200=9.763  g200500=2.149
+  v6 direction: g510 leads (g510=14.16, g15=12.01, gap +2.15pp)
+  Family shares-of-base:
+    cherry1       20.50%   (8.66pp)
+    cherry2        3.15%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          43.11%   (18.21pp)
+    bar2           0.60%   (0.25pp)
+    bar3           0.43%   (0.18pp)
+    bar_mixed      7.92%   (3.35pp)
+    high7         23.90%   (10.10pp)
+    wild_pure      0.30%   (0.13pp)
+  Family violations: [('bar1', 43.10918348676191, 'above 25%'), ('bar2', 0.5967818941126375, 'below 5%'), ('bar3', 0.42954946186189247, 'below 5%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/157828
+  RTP safety margin: total_rtp=92.847 < 94.5pp
+  Hardline fails: 3/14
+    FAIL H1 hit_session     =   14.857  target [15, 18]
+    FAIL H2 total_rtp       =   92.847  target [94, 96]
+    FAIL H3 R1_blank        =   40.300  target [30, 40]
+
+======== Candidate: SS_v13_lower_cherry ========
+  total_rtp=90.946pp  hit_session=12.775%
+  base_rtp=40.346pp  feature_rtp=50.600pp  (split 44:56)
+  R1_blank=40.100%  R2_blank=47.700%  R3_blank=56.800%
+  trigger=1.100%  wild_cadence=1/157828
+  Buckets: g15=10.596  g510=13.487  g1020=6.620  g2050=23.559  g50100=24.711  g100200=9.763  g200500=2.149
+  v6 direction: g510 leads (g510=13.49, g15=10.60, gap +2.89pp)
+  Family shares-of-base:
+    cherry1       15.45%   (6.23pp)
+    cherry2        1.64%   (0.66pp)
+    cherry3        0.03%   (0.01pp)
+    bar1          45.14%   (18.21pp)
+    bar2           1.25%   (0.50pp)
+    bar3           0.34%   (0.14pp)
+    bar_mixed     10.81%   (4.36pp)
+    high7         25.03%   (10.10pp)
+    wild_pure      0.31%   (0.13pp)
+  Family violations: [('bar1', 45.139546820479495, 'above 25%'), ('bar2', 1.2501874085217766, 'below 5%'), ('bar3', 0.3350191446061627, 'below 5%'), ('high7', 25.026501157440467, 'above 25%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/157828
+  RTP safety margin: total_rtp=90.946 < 94.5pp
+  Hardline fails: 3/14
+    FAIL H1 hit_session     =   12.775  target [15, 18]
+    FAIL H2 total_rtp       =   90.946  target [94, 96]
+    FAIL H3 R1_blank        =   40.100  target [30, 40]
+
+======== Candidate: TT_dd27_softer ========
+  total_rtp=99.203pp  hit_session=17.585%
+  base_rtp=48.603pp  feature_rtp=50.600pp  (split 49:51)
+  R1_blank=39.900%  R2_blank=47.900%  R3_blank=56.500%
+  trigger=1.100%  wild_cadence=1/52759
+  Buckets: g15=15.536  g510=12.640  g1020=7.900  g2050=23.609  g50100=25.959  g100200=11.096  g200500=2.401
+  v6 direction: g15 dominant (g15=15.54, g510=12.64, g1020=7.90) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.79%   (11.08pp)
+    cherry2        4.65%   (2.26pp)
+    cherry3        0.19%   (0.09pp)
+    bar1          36.08%   (17.54pp)
+    bar2           1.64%   (0.80pp)
+    bar3           0.69%   (0.33pp)
+    bar_mixed      9.17%   (4.46pp)
+    high7         24.00%   (11.67pp)
+    wild_pure      0.78%   (0.38pp)
+  Family violations: [('bar1', 36.08300143356013, 'above 25%'), ('bar2', 1.6440727921399545, 'below 5%'), ('bar3', 0.6886643818177047, 'below 5%')]
+  Hardline fails: 3/14
+    FAIL H2 total_rtp       =   99.203  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.536  target [10, 15]
+    FAIL H5 sum_1_20        =   36.075  target [28, 36]
+
+======== Candidate: UU_final_e_dd27 ========
+  total_rtp=100.967pp  hit_session=15.706%
+  base_rtp=50.367pp  feature_rtp=50.600pp  (split 50:50)
+  R1_blank=38.200%  R2_blank=46.200%  R3_blank=55.200%
+  trigger=1.100%  wild_cadence=1/54870
+  Buckets: g15=13.344  g510=14.156  g1020=8.664  g2050=24.472  g50100=26.662  g100200=11.221  g200500=2.387
+  v6 direction: g510 leads (g510=14.16, g15=13.34, gap +0.81pp)
+  Family shares-of-base:
+    cherry1       17.19%   (8.66pp)
+    cherry2        2.64%   (1.33pp)
+    cherry3        0.08%   (0.04pp)
+    bar1          41.39%   (20.85pp)
+    bar2           1.56%   (0.79pp)
+    bar3           0.49%   (0.25pp)
+    bar_mixed      9.30%   (4.68pp)
+    high7         26.62%   (13.41pp)
+    wild_pure      0.72%   (0.36pp)
+  Family violations: [('bar1', 41.393091097301784, 'above 25%'), ('bar2', 1.5591427427995106, 'below 5%'), ('bar3', 0.4934649703186212, 'below 5%'), ('high7', 26.61665995031161, 'above 25%')]
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =  100.967  target [94, 96]
+    FAIL H5 sum_1_20        =   36.164  target [28, 36]
+
+======== Candidate: VV_bar1_28_bar2_7 ========
+  total_rtp=97.876pp  hit_session=15.168%
+  base_rtp=47.276pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=39.400%  R2_blank=46.400%  R3_blank=56.100%
+  trigger=1.100%  wild_cadence=1/52759
+  Buckets: g15=14.896  g510=8.756  g1020=6.846  g2050=25.762  g50100=27.675  g100200=11.477  g200500=2.401
+  v6 direction: g15 dominant (g15=14.90, g510=8.76, g1020=6.85) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       18.32%   (8.66pp)
+    cherry2        2.81%   (1.33pp)
+    cherry3        0.08%   (0.04pp)
+    bar1          27.97%   (13.23pp)
+    bar2           3.48%   (1.65pp)
+    bar3           1.31%   (0.62pp)
+    bar_mixed     13.19%   (6.24pp)
+    high7         32.02%   (15.14pp)
+    wild_pure      0.80%   (0.38pp)
+  Family violations: [('bar1', 27.97492955237386, 'above 25%'), ('bar2', 3.484566058296808, 'below 5%'), ('bar3', 1.312304973309764, 'below 5%'), ('high7', 32.020542559305234, 'above 25%')]
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   97.876  target [94, 96]
+    FAIL H7 ge50_lt100      =   27.675  target [17, 27]
+
+======== Candidate: WW_bar1_30_dd27 ========
+  total_rtp=98.132pp  hit_session=16.582%
+  base_rtp=47.532pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=39.900%  R2_blank=47.400%  R3_blank=57.000%
+  trigger=1.100%  wild_cadence=1/52759
+  Buckets: g15=15.186  g510=10.857  g1020=7.345  g2050=24.322  g50100=26.693  g100200=11.265  g200500=2.401
+  v6 direction: g15 dominant (g15=15.19, g510=10.86, g1020=7.35) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       21.54%   (10.24pp)
+    cherry2        3.94%   (1.87pp)
+    cherry3        0.14%   (0.07pp)
+    bar1          32.66%   (15.52pp)
+    bar2           2.00%   (0.95pp)
+    bar3           1.02%   (0.49pp)
+    bar_mixed     10.41%   (4.95pp)
+    high7         27.50%   (13.07pp)
+    wild_pure      0.80%   (0.38pp)
+  Family violations: [('bar1', 32.65778244365748, 'above 25%'), ('bar2', 2.0020270629204746, 'below 5%'), ('bar3', 1.0209580633607063, 'below 5%'), ('high7', 27.495430693014626, 'above 25%')]
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   98.132  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.186  target [10, 15]
+
+======== Candidate: XX_bar1_32_min_bars ========
+  total_rtp=97.778pp  hit_session=14.492%
+  base_rtp=47.178pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=39.400%  R2_blank=48.400%  R3_blank=58.800%
+  trigger=1.100%  wild_cadence=1/52759
+  Buckets: g15=11.881  g510=11.710  g1020=7.785  g2050=24.809  g50100=27.611  g100200=11.518  g200500=2.401
+  v6 direction: g15 dominant (g15=11.88, g510=11.71, g1020=7.79) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       18.36%   (8.66pp)
+    cherry2        2.82%   (1.33pp)
+    cherry3        0.08%   (0.04pp)
+    bar1          37.17%   (17.54pp)
+    bar2           0.91%   (0.43pp)
+    bar3           0.71%   (0.33pp)
+    bar_mixed      6.83%   (3.22pp)
+    high7         32.32%   (15.25pp)
+    wild_pure      0.80%   (0.38pp)
+  Family violations: [('bar1', 37.17281004844008, 'above 25%'), ('bar2', 0.9050005860798713, 'below 5%'), ('bar3', 0.7094639923336934, 'below 5%'), ('high7', 32.32108613636011, 'above 25%')]
+  Hardline fails: 3/14
+    FAIL H1 hit_session     =   14.492  target [15, 18]
+    FAIL H2 total_rtp       =   97.778  target [94, 96]
+    FAIL H7 ge50_lt100      =   27.611  target [17, 27]
+
+======== Candidate: YY_v13_dd27_lower_cherry ========
+  total_rtp=96.734pp  hit_session=13.762%
+  base_rtp=46.134pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=40.200%  R2_blank=48.200%  R3_blank=57.100%
+  trigger=1.100%  wild_cadence=1/54870
+  Buckets: g15=11.407  g510=12.513  g1020=8.161  g2050=24.321  g50100=26.662  g100200=11.221  g200500=2.387
+  v6 direction: g510 leads (g510=12.51, g15=11.41, gap +1.11pp)
+  Family shares-of-base:
+    cherry1       16.07%   (7.41pp)
+    cherry2        2.07%   (0.95pp)
+    cherry3        0.05%   (0.02pp)
+    bar1          41.36%   (19.08pp)
+    bar2           1.41%   (0.65pp)
+    bar3           0.54%   (0.25pp)
+    bar_mixed      8.66%   (3.99pp)
+    high7         29.06%   (13.41pp)
+    wild_pure      0.79%   (0.36pp)
+  Family violations: [('bar1', 41.359879147171064, 'above 25%'), ('bar2', 1.4077213856145416, 'below 5%'), ('bar3', 0.5387421533416183, 'below 5%'), ('high7', 29.058834079212808, 'above 25%')]
+  Hardline fails: 3/14
+    FAIL H1 hit_session     =   13.762  target [15, 18]
+    FAIL H2 total_rtp       =   96.734  target [94, 96]
+    FAIL H3 R1_blank        =   40.200  target [30, 40]
+
+======== Candidate: ZZ_final_e_repro ========
+  total_rtp=94.069pp  hit_session=15.337%
+  base_rtp=43.469pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=39.100%  R2_blank=46.700%  R3_blank=56.100%
+  trigger=1.100%  wild_cadence=1/157828
+  Buckets: g15=13.023  g510=14.156  g1020=6.646  g2050=23.559  g50100=24.711  g100200=9.763  g200500=2.149
+  v6 direction: g510 leads (g510=14.16, g15=13.02, gap +1.13pp)
+  Family shares-of-base:
+    cherry1       19.92%   (8.66pp)
+    cherry2        3.06%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          41.90%   (18.21pp)
+    bar2           1.16%   (0.50pp)
+    bar3           0.31%   (0.14pp)
+    bar_mixed     10.04%   (4.36pp)
+    high7         23.23%   (10.10pp)
+    wild_pure      0.29%   (0.13pp)
+  Family violations: [('bar1', 41.89730552679084, 'above 25%'), ('bar2', 1.1603901126632385, 'below 5%'), ('bar3', 0.310955701764385, 'below 5%')]
+  Wild cadence OUT OF BAND [1/100k, 1/50k]: 1/157828
+  RTP safety margin: total_rtp=94.069 < 94.5pp
+
+======== Candidate: AAA_final_e_dd25 ========
+  total_rtp=99.092pp  hit_session=15.608%
+  base_rtp=48.492pp  feature_rtp=50.600pp  (split 49:51)
+  R1_blank=38.400%  R2_blank=46.400%  R3_blank=55.400%
+  trigger=1.100%  wild_cadence=1/69565
+  Buckets: g15=13.260  g510=14.156  g1020=8.140  g2050=24.209  g50100=26.157  g100200=10.797  g200500=2.310
+  v6 direction: g510 leads (g510=14.16, g15=13.26, gap +0.90pp)
+  Family shares-of-base:
+    cherry1       17.86%   (8.66pp)
+    cherry2        2.74%   (1.33pp)
+    cherry3        0.08%   (0.04pp)
+    bar1          41.54%   (20.14pp)
+    bar2           1.46%   (0.71pp)
+    bar3           0.45%   (0.22pp)
+    bar_mixed      9.49%   (4.60pp)
+    high7         25.79%   (12.51pp)
+    wild_pure      0.59%   (0.29pp)
+  Family violations: [('bar1', 41.5422113679345, 'above 25%'), ('bar2', 1.456488139883737, 'below 5%'), ('bar3', 0.44523962387661814, 'below 5%'), ('high7', 25.792074143252837, 'above 25%')]
+  Hardline fails: 1/14
+    FAIL H2 total_rtp       =   99.092  target [94, 96]
+
+======== Candidate: BBB_final_e_dd24 ========
+  total_rtp=96.449pp  hit_session=15.298%
+  base_rtp=45.849pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=40.000%  R2_blank=47.500%  R3_blank=56.300%
+  trigger=1.100%  wild_cadence=1/72338
+  Buckets: g15=13.082  g510=13.331  g1020=7.805  g2050=23.582  g50100=25.638  g100200=10.650  g200500=2.299
+  v6 direction: g510 leads (g510=13.33, g15=13.08, gap +0.25pp)
+  Family shares-of-base:
+    cherry1       18.89%   (8.66pp)
+    cherry2        2.90%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          41.31%   (18.94pp)
+    bar2           1.51%   (0.69pp)
+    bar3           0.46%   (0.21pp)
+    bar_mixed      9.65%   (4.42pp)
+    high7         24.60%   (11.28pp)
+    wild_pure      0.60%   (0.28pp)
+  Family violations: [('bar1', 41.3073388332386, 'above 25%'), ('bar2', 1.5131508119953323, 'below 5%'), ('bar3', 0.45980469118737327, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H2 total_rtp       =   96.449  target [94, 96]
+
+======== Candidate: CCC_balance_dd25 ========
+  total_rtp=95.958pp  hit_session=15.436%
+  base_rtp=45.358pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=40.100%  R2_blank=47.600%  R3_blank=55.600%
+  trigger=1.100%  wild_cadence=1/69565
+  Buckets: g15=13.979  g510=12.158  g1020=7.530  g2050=23.697  g50100=25.566  g100200=10.656  g200500=2.310
+  v6 direction: g15 dominant (g15=13.98, g510=12.16, g1020=7.53) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       19.09%   (8.66pp)
+    cherry2        2.93%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          38.37%   (17.40pp)
+    bar2           2.20%   (1.00pp)
+    bar3           0.63%   (0.29pp)
+    bar_mixed     11.73%   (5.32pp)
+    high7         24.33%   (11.04pp)
+    wild_pure      0.63%   (0.29pp)
+  Family violations: [('bar1', 38.36758945347658, 'above 25%'), ('bar2', 2.201427199015831, 'below 5%'), ('bar3', 0.6293256492917744, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H3 R1_blank        =   40.100  target [30, 40]
+
+======== Candidate: DDD_bar2_6 ========
+  total_rtp=93.064pp  hit_session=15.159%
+  base_rtp=42.464pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=40.900%  R2_blank=48.900%  R3_blank=57.900%
+  trigger=1.100%  wild_cadence=1/69565
+  Buckets: g15=13.701  g510=11.710  g1020=7.393  g2050=22.799  g50100=24.642  g100200=10.446  g200500=2.310
+  v6 direction: g15 dominant (g15=13.70, g510=11.71, g1020=7.39) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       20.39%   (8.66pp)
+    cherry2        3.13%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          39.54%   (16.79pp)
+    bar2           2.46%   (1.05pp)
+    bar3           0.51%   (0.22pp)
+    bar_mixed     11.87%   (5.04pp)
+    high7         21.31%   (9.05pp)
+    wild_pure      0.68%   (0.29pp)
+  Family violations: [('bar1', 39.54494733306216, 'above 25%'), ('bar2', 2.464685711831188, 'below 5%'), ('bar3', 0.5084421019751586, 'below 5%')]
+  RTP safety margin: total_rtp=93.064 < 94.5pp
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   93.064  target [94, 96]
+    FAIL H3 R1_blank        =   40.900  target [30, 40]
+
+======== Candidate: EEE_final_e_minus_h7 ========
+  total_rtp=94.621pp  hit_session=15.487%
+  base_rtp=44.021pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=41.500%  R2_blank=48.500%  R3_blank=56.400%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=13.234  g510=14.156  g1020=7.980  g2050=22.329  g50100=24.298  g100200=10.275  g200500=2.287
+  v6 direction: g510 leads (g510=14.16, g15=13.23, gap +0.92pp)
+  Family shares-of-base:
+    cherry1       19.67%   (8.66pp)
+    cherry2        3.02%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          45.28%   (19.93pp)
+    bar2           1.55%   (0.68pp)
+    bar3           0.47%   (0.21pp)
+    bar_mixed     10.39%   (4.57pp)
+    high7         18.93%   (8.33pp)
+    wild_pure      0.60%   (0.26pp)
+  Family violations: [('bar1', 45.27557843264711, 'above 25%'), ('bar2', 1.5471750207227055, 'below 5%'), ('bar3', 0.46712725303564423, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H3 R1_blank        =   41.500  target [30, 40]
+
+======== Candidate: FFF_balance_v2 ========
+  total_rtp=89.773pp  hit_session=13.676%
+  base_rtp=39.173pp  feature_rtp=50.600pp  (split 44:56)
+  R1_blank=43.100%  R2_blank=50.100%  R3_blank=58.500%
+  trigger=1.100%  wild_cadence=1/69565
+  Buckets: g15=12.617  g510=9.997  g1020=6.838  g2050=22.756  g50100=24.746  g100200=10.446  g200500=2.310
+  v6 direction: g15 dominant (g15=12.62, g510=10.00, g1020=6.84) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       19.38%   (7.59pp)
+    cherry2        2.58%   (1.01pp)
+    cherry3        0.07%   (0.03pp)
+    bar1          37.88%   (14.84pp)
+    bar2           2.41%   (0.94pp)
+    bar3           1.01%   (0.40pp)
+    bar_mixed     12.83%   (5.03pp)
+    high7         23.11%   (9.05pp)
+    wild_pure      0.73%   (0.29pp)
+  Family violations: [('bar1', 37.879793529150476, 'above 25%'), ('bar2', 2.4083160168076665, 'below 5%'), ('bar3', 1.0139740532923522, 'below 5%')]
+  RTP safety margin: total_rtp=89.773 < 94.5pp
+  Hardline fails: 3/14
+    FAIL H1 hit_session     =   13.676  target [15, 18]
+    FAIL H2 total_rtp       =   89.773  target [94, 96]
+    FAIL H3 R1_blank        =   43.100  target [30, 40]
+
+======== Candidate: GGG_bar3_3 ========
+  total_rtp=96.545pp  hit_session=16.022%
+  base_rtp=45.945pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=39.100%  R2_blank=46.600%  R3_blank=55.600%
+  trigger=1.100%  wild_cadence=1/69565
+  Buckets: g15=14.982  g510=12.890  g1020=7.749  g2050=23.057  g50100=25.015  g100200=10.481  g200500=2.310
+  v6 direction: g15 dominant (g15=14.98, g510=12.89, g1020=7.75) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       18.85%   (8.66pp)
+    cherry2        2.90%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          40.09%   (18.42pp)
+    bar2           1.84%   (0.85pp)
+    bar3           1.48%   (0.68pp)
+    bar_mixed     13.76%   (6.32pp)
+    high7         20.38%   (9.36pp)
+    wild_pure      0.63%   (0.29pp)
+  Family violations: [('bar1', 40.086894368625074, 'above 25%'), ('bar2', 1.8391378992126328, 'below 5%'), ('bar3', 1.4774045041248938, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H2 total_rtp       =   96.545  target [94, 96]
+
+======== Candidate: HHH_dd24_sym ========
+  total_rtp=94.902pp  hit_session=15.028%
+  base_rtp=44.302pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=41.500%  R2_blank=48.000%  R3_blank=56.800%
+  trigger=1.100%  wild_cadence=1/72338
+  Buckets: g15=12.919  g510=12.542  g1020=7.534  g2050=23.429  g50100=25.501  g100200=10.615  g200500=2.299
+  v6 direction: g15 dominant (g15=12.92, g510=12.54, g1020=7.53) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       19.55%   (8.66pp)
+    cherry2        3.00%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          40.31%   (17.86pp)
+    bar2           1.57%   (0.69pp)
+    bar3           0.48%   (0.21pp)
+    bar_mixed      9.61%   (4.26pp)
+    high7         24.78%   (10.98pp)
+    wild_pure      0.62%   (0.28pp)
+  Family violations: [('bar1', 40.305302736365704, 'above 25%'), ('bar2', 1.5659950914479588, 'below 5%'), ('bar3', 0.47586260650031775, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H3 R1_blank        =   41.500  target [30, 40]
+
+======== Candidate: III_strong_g510_low_cherry ========
+  total_rtp=90.670pp  hit_session=12.350%
+  base_rtp=40.070pp  feature_rtp=50.600pp  (split 44:56)
+  R1_blank=42.000%  R2_blank=50.000%  R3_blank=58.600%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=10.129  g510=12.221  g1020=7.513  g2050=22.915  g50100=25.069  g100200=10.474  g200500=2.287
+  v6 direction: g510 leads (g510=12.22, g15=10.13, gap +2.09pp)
+  Family shares-of-base:
+    cherry1       15.55%   (6.23pp)
+    cherry2        1.65%   (0.66pp)
+    cherry3        0.03%   (0.01pp)
+    bar1          45.46%   (18.22pp)
+    bar2           1.40%   (0.56pp)
+    bar3           0.51%   (0.21pp)
+    bar_mixed      9.72%   (3.90pp)
+    high7         25.00%   (10.02pp)
+    wild_pure      0.66%   (0.26pp)
+  Family violations: [('bar1', 45.46308042275944, 'above 25%'), ('bar2', 1.3975386549209527, 'below 5%'), ('bar3', 0.5131761940869739, 'below 5%'), ('high7', 25.003563723570053, 'above 25%')]
+  RTP safety margin: total_rtp=90.670 < 94.5pp
+  Hardline fails: 3/14
+    FAIL H1 hit_session     =   12.350  target [15, 18]
+    FAIL H2 total_rtp       =   90.670  target [94, 96]
+    FAIL H3 R1_blank        =   42.000  target [30, 40]
+
+======== Candidate: JJJ_h7_drop ========
+  total_rtp=95.136pp  hit_session=15.498%
+  base_rtp=44.536pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=40.500%  R2_blank=48.500%  R3_blank=56.400%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=13.234  g510=14.156  g1020=7.980  g2050=22.539  g50100=24.537  g100200=10.342  g200500=2.287
+  v6 direction: g510 leads (g510=14.16, g15=13.23, gap +0.92pp)
+  Family shares-of-base:
+    cherry1       19.44%   (8.66pp)
+    cherry2        2.99%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          44.75%   (19.93pp)
+    bar2           1.53%   (0.68pp)
+    bar3           0.46%   (0.21pp)
+    bar_mixed     10.27%   (4.57pp)
+    high7         19.87%   (8.85pp)
+    wild_pure      0.59%   (0.26pp)
+  Family violations: [('bar1', 44.75198073594752, 'above 25%'), ('bar2', 1.5292824325927343, 'below 5%'), ('bar3', 0.4617250745937073, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H3 R1_blank        =   40.500  target [30, 40]
+
+======== Candidate: KKK_dd23_h7_12 ========
+  total_rtp=93.768pp  hit_session=15.449%
+  base_rtp=43.168pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=41.600%  R2_blank=48.600%  R3_blank=56.900%
+  trigger=1.100%  wild_cadence=1/82190
+  Buckets: g15=13.207  g510=14.156  g1020=7.820  g2050=22.070  g50100=24.045  g100200=10.143  g200500=2.265
+  v6 direction: g510 leads (g510=14.16, g15=13.21, gap +0.95pp)
+  Family shares-of-base:
+    cherry1       20.06%   (8.66pp)
+    cherry2        3.08%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          45.68%   (19.72pp)
+    bar2           1.52%   (0.66pp)
+    bar3           0.45%   (0.20pp)
+    bar_mixed     10.53%   (4.55pp)
+    high7         18.02%   (7.78pp)
+    wild_pure      0.56%   (0.24pp)
+  Family violations: [('bar1', 45.67639183927513, 'above 25%'), ('bar2', 1.5201858540050324, 'below 5%'), ('bar3', 0.45300141583791176, 'below 5%')]
+  RTP safety margin: total_rtp=93.768 < 94.5pp
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   93.768  target [94, 96]
+    FAIL H3 R1_blank        =   41.600  target [30, 40]
+
+======== Candidate: LLL_jjj_R1_lift ========
+  total_rtp=96.246pp  hit_session=15.635%
+  base_rtp=45.646pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=38.500%  R2_blank=48.500%  R3_blank=56.400%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=13.314  g510=14.531  g1020=8.109  g2050=22.760  g50100=24.775  g100200=10.408  g200500=2.287
+  v6 direction: g510 leads (g510=14.53, g15=13.31, gap +1.22pp)
+  Family shares-of-base:
+    cherry1       18.97%   (8.66pp)
+    cherry2        2.91%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          44.79%   (20.45pp)
+    bar2           1.49%   (0.68pp)
+    bar3           0.45%   (0.21pp)
+    bar_mixed     10.20%   (4.65pp)
+    high7         20.52%   (9.36pp)
+    wild_pure      0.58%   (0.26pp)
+  Family violations: [('bar1', 44.79206281211807, 'above 25%'), ('bar2', 1.4920938578355885, 'below 5%'), ('bar3', 0.4504969998523625, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H2 total_rtp       =   96.246  target [94, 96]
+
+======== Candidate: MMM_jjj_cherry5 ========
+  total_rtp=96.809pp  hit_session=16.458%
+  base_rtp=46.209pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=38.500%  R2_blank=48.500%  R3_blank=56.400%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=14.132  g510=14.406  g1020=7.990  g2050=22.749  g50100=24.775  g100200=10.408  g200500=2.287
+  v6 direction: g510 leads (g510=14.41, g15=14.13, gap +0.27pp)
+  Family shares-of-base:
+    cherry1       20.68%   (9.56pp)
+    cherry2        3.42%   (1.58pp)
+    cherry3        0.11%   (0.05pp)
+    bar1          43.13%   (19.93pp)
+    bar2           1.47%   (0.68pp)
+    bar3           0.45%   (0.21pp)
+    bar_mixed      9.90%   (4.57pp)
+    high7         20.27%   (9.36pp)
+    wild_pure      0.57%   (0.26pp)
+  Family violations: [('bar1', 43.13169927866045, 'above 25%'), ('bar2', 1.4739135320941137, 'below 5%'), ('bar3', 0.44500794689509504, 'below 5%')]
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   96.809  target [94, 96]
+    FAIL H5 sum_1_20        =   36.527  target [28, 36]
+
+======== Candidate: NNN_jjj_h7_16 ========
+  total_rtp=99.232pp  hit_session=16.055%
+  base_rtp=48.632pp  feature_rtp=50.600pp  (split 49:51)
+  R1_blank=37.000%  R2_blank=46.500%  R3_blank=55.900%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=13.683  g510=14.281  g1020=7.985  g2050=24.129  g50100=26.098  g100200=10.707  g200500=2.287
+  v6 direction: g510 leads (g510=14.28, g15=13.68, gap +0.60pp)
+  Family shares-of-base:
+    cherry1       18.73%   (9.11pp)
+    cherry2        2.99%   (1.46pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          40.98%   (19.93pp)
+    bar2           1.40%   (0.68pp)
+    bar3           0.42%   (0.21pp)
+    bar_mixed      9.40%   (4.57pp)
+    high7         25.43%   (12.37pp)
+    wild_pure      0.54%   (0.26pp)
+  Family violations: [('bar1', 40.982783540304276, 'above 25%'), ('bar2', 1.4004799313071348, 'below 5%'), ('bar3', 0.4228366761877161, 'below 5%'), ('high7', 25.429421394258444, 'above 25%')]
+  Hardline fails: 1/14
+    FAIL H2 total_rtp       =   99.232  target [94, 96]
+
+======== Candidate: OOO_bar3_1.5_bar2_5 ========
+  total_rtp=97.361pp  hit_session=15.875%
+  base_rtp=46.761pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=38.700%  R2_blank=47.200%  R3_blank=55.100%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=13.984  g510=14.156  g1020=8.014  g2050=23.244  g50100=25.139  g100200=10.476  g200500=2.287
+  v6 direction: g510 leads (g510=14.16, g15=13.98, gap +0.17pp)
+  Family shares-of-base:
+    cherry1       18.52%   (8.66pp)
+    cherry2        2.85%   (1.33pp)
+    cherry3        0.08%   (0.04pp)
+    bar1          42.62%   (19.93pp)
+    bar2           1.75%   (0.82pp)
+    bar3           0.58%   (0.27pp)
+    bar_mixed     11.39%   (5.32pp)
+    high7         21.65%   (10.12pp)
+    wild_pure      0.57%   (0.26pp)
+  Family violations: [('bar1', 42.62213957984265, 'above 25%'), ('bar2', 1.7450420809626825, 'below 5%'), ('bar3', 0.5822153266447183, 'below 5%')]
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   97.361  target [94, 96]
+    FAIL H5 sum_1_20        =   36.153  target [28, 36]
+
+======== Candidate: PPP_bar1_33_cherry5 ========
+  total_rtp=95.898pp  hit_session=16.205%
+  base_rtp=45.298pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.500%  R2_blank=49.000%  R3_blank=56.400%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=13.968  g510=13.619  g1020=7.725  g2050=22.874  g50100=24.922  g100200=10.441  g200500=2.287
+  v6 direction: g15 dominant (g15=13.97, g510=13.62, g1020=7.72) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       21.10%   (9.56pp)
+    cherry2        3.49%   (1.58pp)
+    cherry3        0.11%   (0.05pp)
+    bar1          41.63%   (18.86pp)
+    bar2           1.50%   (0.68pp)
+    bar3           0.45%   (0.21pp)
+    bar_mixed      9.74%   (4.41pp)
+    high7         21.40%   (9.69pp)
+    wild_pure      0.58%   (0.26pp)
+  Family violations: [('bar1', 41.6267338925853, 'above 25%'), ('bar2', 1.5035430368291038, 'below 5%'), ('bar3', 0.4539537668380756, 'below 5%')]
+
+======== Candidate: QQQ_pareto_relief ========
+  total_rtp=98.342pp  hit_session=18.601%
+  base_rtp=47.742pp  feature_rtp=50.600pp  (split 49:51)
+  R1_blank=39.100%  R2_blank=47.100%  R3_blank=56.400%
+  trigger=1.100%  wild_cadence=1/66667
+  Buckets: g15=17.403  g510=11.578  g1020=7.048  g2050=23.657  g50100=25.575  g100200=10.697  g200500=2.322
+  v6 direction: g15 dominant (g15=17.40, g510=11.58, g1020=7.05) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       25.01%   (11.94pp)
+    cherry2        5.43%   (2.59pp)
+    cherry3        0.23%   (0.11pp)
+    bar1          31.31%   (14.95pp)
+    bar2           2.36%   (1.13pp)
+    bar3           0.85%   (0.41pp)
+    bar_mixed     11.44%   (5.46pp)
+    high7         22.74%   (10.86pp)
+    wild_pure      0.63%   (0.30pp)
+  Family violations: [('cherry1', 25.013007534734943, 'above 25%'), ('bar1', 31.310246250855663, 'above 25%'), ('bar2', 2.359160446369999, 'below 5%'), ('bar3', 0.8520877826363451, 'below 5%')]
+  Hardline fails: 4/14
+    FAIL H1 hit_session     =   18.601  target [15, 18]
+    FAIL H2 total_rtp       =   98.342  target [94, 96]
+    FAIL H4 ge1_lt5         =   17.403  target [10, 15]
+    FAIL H5 sum_1_20        =   36.028  target [28, 36]
+
+======== Candidate: RRR_jjj_h7_14 ========
+  total_rtp=96.305pp  hit_session=15.525%
+  base_rtp=45.705pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.500%  R2_blank=47.500%  R3_blank=56.400%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=13.234  g510=14.156  g1020=7.980  g2050=23.043  g50100=25.069  g100200=10.474  g200500=2.287
+  v6 direction: g510 leads (g510=14.16, g15=13.23, gap +0.92pp)
+  Family shares-of-base:
+    cherry1       18.95%   (8.66pp)
+    cherry2        2.91%   (1.33pp)
+    cherry3        0.09%   (0.04pp)
+    bar1          43.61%   (19.93pp)
+    bar2           1.49%   (0.68pp)
+    bar3           0.45%   (0.21pp)
+    bar_mixed     10.01%   (4.57pp)
+    high7         21.92%   (10.02pp)
+    wild_pure      0.58%   (0.26pp)
+  Family violations: [('bar1', 43.607078833803996, 'above 25%'), ('bar2', 1.4901583907694038, 'below 5%'), ('bar3', 0.4499126384182272, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H2 total_rtp       =   96.305  target [94, 96]
+
+======== Candidate: SSS_bar1_33_cherry45 ========
+  total_rtp=94.592pp  hit_session=15.578%
+  base_rtp=43.992pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=40.000%  R2_blank=49.000%  R3_blank=57.400%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=13.431  g510=13.015  g1020=7.571  g2050=22.862  g50100=24.922  g100200=10.441  g200500=2.287
+  v6 direction: g15 dominant (g15=13.43, g510=13.02, g1020=7.57) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       20.71%   (9.11pp)
+    cherry2        3.31%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          41.41%   (18.22pp)
+    bar2           1.55%   (0.68pp)
+    bar3           0.47%   (0.21pp)
+    bar_mixed      9.83%   (4.32pp)
+    high7         22.03%   (9.69pp)
+    wild_pure      0.60%   (0.26pp)
+  Family violations: [('bar1', 41.410324082704626, 'above 25%'), ('bar2', 1.548176645369723, 'below 5%'), ('bar3', 0.4674296662491898, 'below 5%')]
+
+======== Candidate: TTT_pareto_relief_v2 ========
+  total_rtp=93.825pp  hit_session=15.756%
+  base_rtp=43.225pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=39.600%  R2_blank=48.600%  R3_blank=56.500%
+  trigger=1.100%  wild_cadence=1/66667
+  Buckets: g15=15.833  g510=8.881  g1020=6.590  g2050=23.975  g50100=25.500  g100200=10.661  g200500=2.322
+  v6 direction: g15 dominant (g15=15.83, g510=8.88, g1020=6.59) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       21.07%   (9.11pp)
+    cherry2        3.37%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          29.41%   (12.71pp)
+    bar2           4.16%   (1.80pp)
+    bar3           1.33%   (0.58pp)
+    bar_mixed     15.56%   (6.72pp)
+    high7         24.31%   (10.51pp)
+    wild_pure      0.69%   (0.30pp)
+  Family violations: [('bar1', 29.4068927480118, 'above 25%'), ('bar2', 4.158515436594384, 'below 5%'), ('bar3', 1.3325757393481863, 'below 5%')]
+  RTP safety margin: total_rtp=93.825 < 94.5pp
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   93.825  target [94, 96]
+    FAIL H4 ge1_lt5         =   15.833  target [10, 15]
+
+======== Candidate: UUU_bar1_28_balanced ========
+  total_rtp=95.807pp  hit_session=16.416%
+  base_rtp=45.207pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.600%  R2_blank=47.600%  R3_blank=56.500%
+  trigger=1.100%  wild_cadence=1/66667
+  Buckets: g15=16.041  g510=9.178  g1020=6.502  g2050=24.592  g50100=26.267  g100200=10.842  g200500=2.322
+  v6 direction: g15 dominant (g15=16.04, g510=9.18, g1020=6.50) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.09%   (9.99pp)
+    cherry2        3.88%   (1.75pp)
+    cherry3        0.13%   (0.06pp)
+    bar1          28.12%   (12.71pp)
+    bar2           3.33%   (1.51pp)
+    bar3           1.16%   (0.53pp)
+    bar_mixed     13.39%   (6.05pp)
+    high7         27.23%   (12.31pp)
+    wild_pure      0.66%   (0.30pp)
+  Family violations: [('bar1', 28.11755398294965, 'above 25%'), ('bar2', 3.3340238661869033, 'below 5%'), ('bar3', 1.1613339502044346, 'below 5%'), ('high7', 27.234940180794275, 'above 25%')]
+  Hardline fails: 1/14
+    FAIL H4 ge1_lt5         =   16.041  target [10, 15]
+
+======== Candidate: VVV_bar1_27_h7_19 ========
+  total_rtp=97.494pp  hit_session=14.610%
+  base_rtp=46.894pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=38.100%  R2_blank=47.100%  R3_blank=57.200%
+  trigger=1.100%  wild_cadence=1/66667
+  Buckets: g15=14.029  g510=7.886  g1020=6.126  g2050=27.138  g50100=28.583  g100200=11.348  g200500=2.322
+  v6 direction: g15 dominant (g15=14.03, g510=7.89, g1020=6.13) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       18.47%   (8.66pp)
+    cherry2        2.84%   (1.33pp)
+    cherry3        0.08%   (0.04pp)
+    bar1          24.41%   (11.45pp)
+    bar2           3.21%   (1.51pp)
+    bar3           0.87%   (0.41pp)
+    bar_mixed     11.45%   (5.37pp)
+    high7         38.03%   (17.83pp)
+    wild_pure      0.64%   (0.30pp)
+  Family violations: [('bar2', 3.214024337192777, 'below 5%'), ('bar3', 0.8674794986531462, 'below 5%'), ('high7', 38.03091536573174, 'above 25%')]
+  Hardline fails: 3/14
+    FAIL H1 hit_session     =   14.610  target [15, 18]
+    FAIL H2 total_rtp       =   97.494  target [94, 96]
+    FAIL H7 ge50_lt100      =   28.583  target [17, 27]
+
+======== Candidate: WWW_jjj_h7_13.5 ========
+  total_rtp=95.566pp  hit_session=15.968%
+  base_rtp=44.966pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.500%  R2_blank=48.500%  R3_blank=56.900%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=13.683  g510=14.281  g1020=7.985  g2050=22.441  g50100=24.487  g100200=10.340  g200500=2.287
+  v6 direction: g510 leads (g510=14.28, g15=13.68, gap +0.60pp)
+  Family shares-of-base:
+    cherry1       20.26%   (9.11pp)
+    cherry2        3.24%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          44.32%   (19.93pp)
+    bar2           1.51%   (0.68pp)
+    bar3           0.46%   (0.21pp)
+    bar_mixed     10.17%   (4.57pp)
+    high7         19.35%   (8.70pp)
+    wild_pure      0.59%   (0.26pp)
+  Family violations: [('bar1', 44.323777050059974, 'above 25%'), ('bar2', 1.5146496864297638, 'below 5%'), ('bar3', 0.45730711642612815, 'below 5%')]
+
+======== Candidate: XXX_jjj_dd23 ========
+  total_rtp=95.076pp  hit_session=15.940%
+  base_rtp=44.476pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.600%  R2_blank=48.600%  R3_blank=56.900%
+  trigger=1.100%  wild_cadence=1/82190
+  Buckets: g15=13.656  g510=14.281  g1020=7.825  g2050=22.362  g50100=24.386  g100200=10.239  g200500=2.265
+  v6 direction: g510 leads (g510=14.28, g15=13.66, gap +0.63pp)
+  Family shares-of-base:
+    cherry1       20.48%   (9.11pp)
+    cherry2        3.27%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          44.33%   (19.72pp)
+    bar2           1.48%   (0.66pp)
+    bar3           0.44%   (0.20pp)
+    bar_mixed     10.22%   (4.55pp)
+    high7         19.13%   (8.51pp)
+    wild_pure      0.55%   (0.24pp)
+  Family violations: [('bar1', 44.33283253519733, 'above 25%'), ('bar2', 1.4754699785641074, 'below 5%'), ('bar3', 0.43967649584092333, 'below 5%')]
+
+======== Candidate: YYY_softer_bar1 ========
+  total_rtp=95.505pp  hit_session=15.907%
+  base_rtp=44.906pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.200%  R2_blank=48.200%  R3_blank=56.600%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=14.143  g510=13.015  g1020=7.605  g2050=22.990  g50100=24.963  g100200=10.441  g200500=2.287
+  v6 direction: g15 dominant (g15=14.14, g510=13.02, g1020=7.60) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       20.28%   (9.11pp)
+    cherry2        3.24%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          40.57%   (18.22pp)
+    bar2           1.82%   (0.82pp)
+    bar3           0.61%   (0.27pp)
+    bar_mixed     11.21%   (5.03pp)
+    high7         21.58%   (9.69pp)
+    wild_pure      0.59%   (0.26pp)
+  Family violations: [('bar1', 40.56798375076912, 'above 25%'), ('bar2', 1.8171489423012905, 'below 5%'), ('bar3', 0.6062730386538312, 'below 5%')]
+
+======== Candidate: ZZZ_R1_cherry45_h7_14_dd23 ========
+  total_rtp=95.319pp  hit_session=15.945%
+  base_rtp=44.719pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.100%  R2_blank=48.600%  R3_blank=56.900%
+  trigger=1.100%  wild_cadence=1/82190
+  Buckets: g15=13.656  g510=14.281  g1020=7.825  g2050=22.460  g50100=24.500  g100200=10.270  g200500=2.265
+  v6 direction: g510 leads (g510=14.28, g15=13.66, gap +0.63pp)
+  Family shares-of-base:
+    cherry1       20.37%   (9.11pp)
+    cherry2        3.25%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          44.09%   (19.72pp)
+    bar2           1.47%   (0.66pp)
+    bar3           0.44%   (0.20pp)
+    bar_mixed     10.17%   (4.55pp)
+    high7         19.57%   (8.75pp)
+    wild_pure      0.54%   (0.24pp)
+  Family violations: [('bar1', 44.09184402116782, 'above 25%'), ('bar2', 1.4674494823021775, 'below 5%'), ('bar3', 0.43728646165345547, 'below 5%')]
+
+======== Candidate: AAAA_R1_blank_37.5 ========
+  total_rtp=96.598pp  hit_session=16.085%
+  base_rtp=45.998pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=37.500%  R2_blank=48.500%  R3_blank=57.400%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=13.880  g510=13.140  g1020=7.576  g2050=23.471  g50100=25.575  g100200=10.607  g200500=2.287
+  v6 direction: g15 dominant (g15=13.88, g510=13.14, g1020=7.58) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       20.78%   (9.56pp)
+    cherry2        3.44%   (1.58pp)
+    cherry3        0.11%   (0.05pp)
+    bar1          39.60%   (18.22pp)
+    bar2           1.48%   (0.68pp)
+    bar3           0.45%   (0.21pp)
+    bar_mixed      9.40%   (4.32pp)
+    high7         24.17%   (11.12pp)
+    wild_pure      0.58%   (0.26pp)
+  Family violations: [('bar1', 39.60457902142104, 'above 25%'), ('bar2', 1.4806666127076369, 'below 5%'), ('bar3', 0.4470468551984684, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H2 total_rtp       =   96.598  target [94, 96]
+
+======== Candidate: BBBB_dd22_h7_12 ========
+  total_rtp=94.124pp  hit_session=16.462%
+  base_rtp=43.524pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=39.700%  R2_blank=49.200%  R3_blank=57.500%
+  trigger=1.100%  wild_cadence=1/93914
+  Buckets: g15=14.142  g510=14.781  g1020=7.689  g2050=21.673  g50100=23.610  g100200=9.932  g200500=2.235
+  v6 direction: g510 leads (g510=14.78, g15=14.14, gap +0.64pp)
+  Family shares-of-base:
+    cherry1       21.96%   (9.56pp)
+    cherry2        3.63%   (1.58pp)
+    cherry3        0.11%   (0.05pp)
+    bar1          45.68%   (19.88pp)
+    bar2           1.42%   (0.62pp)
+    bar3           0.42%   (0.18pp)
+    bar_mixed     10.53%   (4.58pp)
+    high7         15.75%   (6.86pp)
+    wild_pure      0.49%   (0.21pp)
+  Family violations: [('bar1', 45.67903240003388, 'above 25%'), ('bar2', 1.4240176194623562, 'below 5%'), ('bar3', 0.41555301068344597, 'below 5%')]
+  RTP safety margin: total_rtp=94.124 < 94.5pp
+  Hardline fails: 2/14
+    FAIL H5 sum_1_20        =   36.612  target [28, 36]
+    FAIL H6 ge20_lt50       =   21.673  target [22, 32]
+
+======== Candidate: CCCC_target_95_blank_38 ========
+  total_rtp=96.261pp  hit_session=16.291%
+  base_rtp=45.661pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=38.300%  R2_blank=47.800%  R3_blank=56.100%
+  trigger=1.100%  wild_cadence=1/82190
+  Buckets: g15=14.402  g510=14.281  g1020=7.858  g2050=22.583  g50100=24.538  g100200=10.270  g200500=2.265
+  v6 direction: g15 dominant (g15=14.40, g510=14.28, g1020=7.86) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       19.95%   (9.11pp)
+    cherry2        3.19%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          43.18%   (19.72pp)
+    bar2           1.72%   (0.79pp)
+    bar3           0.57%   (0.26pp)
+    bar_mixed     11.59%   (5.29pp)
+    high7         19.17%   (8.75pp)
+    wild_pure      0.53%   (0.24pp)
+  Family violations: [('bar1', 43.18296896407938, 'above 25%'), ('bar2', 1.7244611551655877, 'below 5%'), ('bar3', 0.5678632625385894, 'below 5%')]
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   96.261  target [94, 96]
+    FAIL H5 sum_1_20        =   36.542  target [28, 36]
+
+======== Candidate: DDDD_target_945 ========
+  total_rtp=94.482pp  hit_session=16.337%
+  base_rtp=43.882pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=39.400%  R2_blank=48.400%  R3_blank=56.700%
+  trigger=1.100%  wild_cadence=1/93914
+  Buckets: g15=14.445  g510=14.656  g1020=7.717  g2050=21.790  g50100=23.645  g100200=9.932  g200500=2.235
+  v6 direction: g510 leads (g510=14.66, g15=14.45, gap +0.21pp)
+  Family shares-of-base:
+    cherry1       20.76%   (9.11pp)
+    cherry2        3.32%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          45.31%   (19.88pp)
+    bar2           1.70%   (0.75pp)
+    bar3           0.55%   (0.24pp)
+    bar_mixed     12.16%   (5.34pp)
+    high7         15.63%   (6.86pp)
+    wild_pure      0.49%   (0.21pp)
+  Family violations: [('bar1', 45.30593446851123, 'above 25%'), ('bar2', 1.6986421117854194, 'below 5%'), ('bar3', 0.5478086628013105, 'below 5%')]
+  RTP safety margin: total_rtp=94.482 < 94.5pp
+  Hardline fails: 2/14
+    FAIL H5 sum_1_20        =   36.819  target [28, 36]
+    FAIL H6 ge20_lt50       =   21.790  target [22, 32]
+
+======== Candidate: EEEE_dd225_balanced ========
+  total_rtp=95.368pp  hit_session=16.256%
+  base_rtp=44.768pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.350%  R2_blank=47.850%  R3_blank=56.150%
+  trigger=1.100%  wild_cadence=1/87791
+  Buckets: g15=14.378  g510=14.281  g1020=7.727  g2050=22.325  g50100=24.218  g100200=10.126  g200500=2.250
+  v6 direction: g15 dominant (g15=14.38, g510=14.28, g1020=7.73) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       20.35%   (9.11pp)
+    cherry2        3.25%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          43.66%   (19.55pp)
+    bar2           1.71%   (0.77pp)
+    bar3           0.56%   (0.25pp)
+    bar_mixed     11.77%   (5.27pp)
+    high7         18.09%   (8.10pp)
+    wild_pure      0.51%   (0.23pp)
+  Family violations: [('bar1', 43.66061515930152, 'above 25%'), ('bar2', 1.7115897072087074, 'below 5%'), ('bar3', 0.5578721427411087, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H5 sum_1_20        =   36.387  target [28, 36]
+
+======== Candidate: FFFF_bar1_31_balanced ========
+  total_rtp=94.292pp  hit_session=16.778%
+  base_rtp=43.692pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=39.300%  R2_blank=48.300%  R3_blank=57.500%
+  trigger=1.100%  wild_cadence=1/82190
+  Buckets: g15=15.716  g510=11.154  g1020=6.786  g2050=23.070  g50100=24.904  g100200=10.334  g200500=2.265
+  v6 direction: g15 dominant (g15=15.72, g510=11.15, g1020=6.79) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       23.43%   (10.24pp)
+    cherry2        4.28%   (1.87pp)
+    cherry3        0.15%   (0.07pp)
+    bar1          34.13%   (14.91pp)
+    bar2           2.37%   (1.04pp)
+    bar3           0.83%   (0.36pp)
+    bar_mixed     12.54%   (5.48pp)
+    high7         21.70%   (9.48pp)
+    wild_pure      0.56%   (0.24pp)
+  Family violations: [('bar1', 34.13272991048426, 'above 25%'), ('bar2', 2.3745721793384034, 'below 5%'), ('bar3', 0.8305761403307848, 'below 5%')]
+  RTP safety margin: total_rtp=94.292 < 94.5pp
+  Hardline fails: 1/14
+    FAIL H4 ge1_lt5         =   15.716  target [10, 15]
+
+======== Candidate: GGGG_bar1_25_balanced ========
+  total_rtp=93.392pp  hit_session=16.425%
+  base_rtp=42.792pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=39.700%  R2_blank=48.200%  R3_blank=56.600%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=17.179  g510=7.053  g1020=5.777  g2050=24.664  g50100=25.795  g100200=10.575  g200500=2.287
+  v6 direction: g15 dominant (g15=17.18, g510=7.05, g1020=5.78) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       23.34%   (9.99pp)
+    cherry2        4.09%   (1.75pp)
+    cherry3        0.13%   (0.06pp)
+    bar1          21.90%   (9.37pp)
+    bar2           5.36%   (2.29pp)
+    bar3           1.95%   (0.84pp)
+    bar_mixed     16.81%   (7.19pp)
+    high7         25.79%   (11.04pp)
+    wild_pure      0.62%   (0.26pp)
+  Family violations: [('bar3', 1.9516613518425996, 'below 5%'), ('high7', 25.794711473523478, 'above 25%')]
+  RTP safety margin: total_rtp=93.392 < 94.5pp
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   93.392  target [94, 96]
+    FAIL H4 ge1_lt5         =   17.179  target [10, 15]
+
+======== Candidate: HHHH_bar1_31_bar2_6 ========
+  total_rtp=94.732pp  hit_session=16.538%
+  base_rtp=44.132pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.200%  R2_blank=47.700%  R3_blank=57.800%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=15.498  g510=11.035  g1020=6.906  g2050=23.302  g50100=25.168  g100200=10.474  g200500=2.287
+  v6 direction: g15 dominant (g15=15.50, g510=11.03, g1020=6.91) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.63%   (9.99pp)
+    cherry2        3.97%   (1.75pp)
+    cherry3        0.13%   (0.06pp)
+    bar1          34.19%   (15.09pp)
+    bar2           2.43%   (1.07pp)
+    bar3           0.86%   (0.38pp)
+    bar_mixed     12.49%   (5.51pp)
+    high7         22.70%   (10.02pp)
+    wild_pure      0.60%   (0.26pp)
+  Family violations: [('bar1', 34.18889136680565, 'above 25%'), ('bar2', 2.4292547090602232, 'below 5%'), ('bar3', 0.8608346214749041, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H4 ge1_lt5         =   15.498  target [10, 15]
+
+======== Candidate: IIII_bar1_30_bar2_65 ========
+  total_rtp=95.394pp  hit_session=16.524%
+  base_rtp=44.794pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=38.200%  R2_blank=47.200%  R3_blank=57.600%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=15.916  g510=10.018  g1020=6.591  g2050=24.094  g50100=25.818  g100200=10.608  g200500=2.287
+  v6 direction: g15 dominant (g15=15.92, g510=10.02, g1020=6.59) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.30%   (9.99pp)
+    cherry2        3.91%   (1.75pp)
+    cherry3        0.13%   (0.06pp)
+    bar1          30.51%   (13.67pp)
+    bar2           2.79%   (1.25pp)
+    bar3           1.10%   (0.49pp)
+    bar_mixed     13.23%   (5.93pp)
+    high7         25.44%   (11.40pp)
+    wild_pure      0.59%   (0.26pp)
+  Family violations: [('bar1', 30.51002518882689, 'above 25%'), ('bar2', 2.785058692444713, 'below 5%'), ('bar3', 1.0971639519601761, 'below 5%'), ('high7', 25.444465702408387, 'above 25%')]
+  Hardline fails: 1/14
+    FAIL H4 ge1_lt5         =   15.916  target [10, 15]
+
+======== Candidate: JJJJ_bar1_30_h7_16 ========
+  total_rtp=95.335pp  hit_session=16.200%
+  base_rtp=44.735pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=38.200%  R2_blank=47.700%  R3_blank=58.300%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=15.174  g510=10.018  g1020=6.535  g2050=24.354  g50100=26.196  g100200=10.707  g200500=2.287
+  v6 direction: g15 dominant (g15=15.17, g510=10.02, g1020=6.54) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.33%   (9.99pp)
+    cherry2        3.92%   (1.75pp)
+    cherry3        0.13%   (0.06pp)
+    bar1          30.55%   (13.67pp)
+    bar2           2.40%   (1.07pp)
+    bar3           0.85%   (0.38pp)
+    bar_mixed     11.59%   (5.19pp)
+    high7         27.64%   (12.37pp)
+    wild_pure      0.59%   (0.26pp)
+  Family violations: [('bar1', 30.55034096905573, 'above 25%'), ('bar2', 2.3965364763411756, 'below 5%'), ('bar3', 0.849240535695021, 'below 5%'), ('high7', 27.644667909762276, 'above 25%')]
+  Hardline fails: 1/14
+    FAIL H4 ge1_lt5         =   15.174  target [10, 15]
+
+======== Candidate: KKKK_bar1_32_bar2_55 ========
+  total_rtp=94.642pp  hit_session=15.752%
+  base_rtp=44.042pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.400%  R2_blank=47.900%  R3_blank=57.300%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=14.396  g510=11.835  g1020=7.232  g2050=23.206  g50100=25.150  g100200=10.474  g200500=2.287
+  v6 direction: g15 dominant (g15=14.40, g510=11.84, g1020=7.23) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       20.68%   (9.11pp)
+    cherry2        3.30%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          37.70%   (16.60pp)
+    bar2           2.07%   (0.91pp)
+    bar3           0.78%   (0.35pp)
+    bar_mixed     12.00%   (5.29pp)
+    high7         22.75%   (10.02pp)
+    wild_pure      0.60%   (0.26pp)
+  Family violations: [('bar1', 37.70083094064937, 'above 25%'), ('bar2', 2.0718455023755333, 'below 5%'), ('bar3', 0.7847073970070404, 'below 5%')]
+
+======== Candidate: LLLL_bar1_27_h7_18 ========
+  total_rtp=96.855pp  hit_session=15.192%
+  base_rtp=46.255pp  feature_rtp=50.600pp  (split 48:52)
+  R1_blank=38.200%  R2_blank=46.700%  R3_blank=56.900%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=14.799  g510=8.011  g1020=5.964  g2050=26.711  g50100=27.979  g100200=11.042  g200500=2.287
+  v6 direction: g15 dominant (g15=14.80, g510=8.01, g1020=5.96) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       19.69%   (9.11pp)
+    cherry2        3.15%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          24.24%   (11.21pp)
+    bar2           3.11%   (1.44pp)
+    bar3           1.11%   (0.51pp)
+    bar_mixed     12.30%   (5.69pp)
+    high7         35.73%   (16.53pp)
+    wild_pure      0.57%   (0.26pp)
+  Family violations: [('bar2', 3.1122513826048905, 'below 5%'), ('bar3', 1.108578762532548, 'below 5%'), ('high7', 35.73128686918447, 'above 25%')]
+  Hardline fails: 2/14
+    FAIL H2 total_rtp       =   96.855  target [94, 96]
+    FAIL H7 ge50_lt100      =   27.979  target [17, 27]
+
+======== Candidate: MMMM_bar1_32_bar2_6_dd23 ========
+  total_rtp=94.884pp  hit_session=15.985%
+  base_rtp=44.284pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=38.800%  R2_blank=47.300%  R3_blank=56.800%
+  trigger=1.100%  wild_cadence=1/82190
+  Buckets: g15=14.918  g510=11.835  g1020=7.140  g2050=23.249  g50100=25.049  g100200=10.366  g200500=2.265
+  v6 direction: g15 dominant (g15=14.92, g510=11.84, g1020=7.14) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       20.57%   (9.11pp)
+    cherry2        3.29%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          37.07%   (16.42pp)
+    bar2           2.34%   (1.04pp)
+    bar3           0.82%   (0.36pp)
+    bar_mixed     13.12%   (5.81pp)
+    high7         22.14%   (9.81pp)
+    wild_pure      0.55%   (0.24pp)
+  Family violations: [('bar1', 37.07176222463723, 'above 25%'), ('bar2', 2.3428210926068513, 'below 5%'), ('bar3', 0.8194702681664152, 'below 5%')]
+
+======== Candidate: NNNN_bar1_31_dd25 ========
+  total_rtp=95.454pp  hit_session=16.590%
+  base_rtp=44.854pp  feature_rtp=50.600pp  (split 47:53)
+  R1_blank=39.800%  R2_blank=47.800%  R3_blank=57.300%
+  trigger=1.100%  wild_cadence=1/69565
+  Buckets: g15=15.210  g510=11.810  g1020=7.261  g2050=23.131  g50100=25.120  g100200=10.550  g200500=2.310
+  v6 direction: g15 dominant (g15=15.21, g510=11.81, g1020=7.26) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       22.27%   (9.99pp)
+    cherry2        3.91%   (1.75pp)
+    cherry3        0.13%   (0.06pp)
+    bar1          36.42%   (16.34pp)
+    bar2           2.10%   (0.94pp)
+    bar3           0.81%   (0.36pp)
+    bar_mixed     11.64%   (5.22pp)
+    high7         22.08%   (9.90pp)
+    wild_pure      0.64%   (0.29pp)
+  Family violations: [('bar1', 36.42261514684419, 'above 25%'), ('bar2', 2.1032812301925583, 'below 5%'), ('bar3', 0.8067824733222826, 'below 5%')]
+  Hardline fails: 1/14
+    FAIL H4 ge1_lt5         =   15.210  target [10, 15]
+
+======== Candidate: OOOO_bar1_31_bar3_2.5 ========
+  total_rtp=94.000pp  hit_session=15.756%
+  base_rtp=43.400pp  feature_rtp=50.600pp  (split 46:54)
+  R1_blank=39.200%  R2_blank=47.700%  R3_blank=57.600%
+  trigger=1.100%  wild_cadence=1/75483
+  Buckets: g15=14.965  g510=10.738  g1020=6.893  g2050=23.360  g50100=25.221  g100200=10.474  g200500=2.287
+  v6 direction: g15 dominant (g15=14.96, g510=10.74, g1020=6.89) ！ VIOLATION
+  Family shares-of-base:
+    cherry1       20.99%   (9.11pp)
+    cherry2        3.35%   (1.46pp)
+    cherry3        0.10%   (0.04pp)
+    bar1          34.77%   (15.09pp)
+    bar2           2.47%   (1.07pp)
+    bar3           1.13%   (0.49pp)
+    bar_mixed     13.49%   (5.86pp)
+    high7         23.09%   (10.02pp)
+    wild_pure      0.61%   (0.26pp)
+  Family violations: [('bar1', 34.76531569752071, 'above 25%'), ('bar2', 2.470211916615833, 'below 5%'), ('bar3', 1.1323878335012476, 'below 5%')]
+  RTP safety margin: total_rtp=94.000 < 94.5pp
+
+================================================================================
+SUMMARY
+================================================================================
+Total candidates: 93
+Full PASS (hardlines + v6 dir + family in [5,25] + cadence + rtp_safe): 0
+Hardline-only pass (no family/cadence/rtp_safe constraint): 4
+
+--- HARDLINE-only pass (with family/cadence/rtp_safe violations) ---
+  ZZ_final_e_repro: total_rtp=94.069  g15=13.02
+    family violations: [('bar1', 41.89730552679084, 'above 25%'), ('bar2', 1.1603901126632385, 'below 5%'), ('bar3', 0.310955701764385, 'below 5%')]
+    wild cadence: 1/157828
+    rtp not safe: 94.069
+  WWW_jjj_h7_13.5: total_rtp=95.566  g15=13.68
+    family violations: [('bar1', 44.323777050059974, 'above 25%'), ('bar2', 1.5146496864297638, 'below 5%'), ('bar3', 0.45730711642612815, 'below 5%')]
+  XXX_jjj_dd23: total_rtp=95.076  g15=13.66
+    family violations: [('bar1', 44.33283253519733, 'above 25%'), ('bar2', 1.4754699785641074, 'below 5%'), ('bar3', 0.43967649584092333, 'below 5%')]
+  ZZZ_R1_cherry45_h7_14_dd23: total_rtp=95.319  g15=13.66
+    family violations: [('bar1', 44.09184402116782, 'above 25%'), ('bar2', 1.4674494823021775, 'below 5%'), ('bar3', 0.43728646165345547, 'below 5%')]

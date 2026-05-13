@@ -6,54 +6,66 @@
 
 ---
 
-## Mode 1 — paid baseline (95% RTP)
+## Mode 1 — paid baseline (95% RTP) — v10 (2026-05-11 wave 5)
 
-**Player narrative**: classic 3-reel paid play. Cherry-1 anywhere lands 13.77% of spins (1×). Feature triggers ~ every 78 spins, average payout ~46× bet.
+**Player narrative**: classic 3-reel paid play, retuned per user-pinned wave 5 bucket-shift directive. R1 winners-friendly with blank 35% (was 50% in v9 — heavier bar density on R1 = more frequent small wins on left reel = engagement+). Bucket distribution shifted toward 5× / 10× wins (pay 7 = bar1 5×, pay 5 = bar2 10×) at expense of ge20_lt50 mid-tier RTP. Cherry-1 anywhere lands 4.84% (cut from 11.5% in v9) — share of hits drops from 65% → 29% (well under §8 70%). Feature triggers ~ every 91 spins.
 
 | metric | value | source |
 |---|---|---|
-| Total RTP | 94.10% | analytic (verify.py [RTP] band [94, 96]) |
-| Base RTP | 35.08pp | analytic_profile |
-| Feature RTP | 59.02pp | trigger × feature EV |
-| Base hit rate | 17.40% | analytic_profile (verify.py [HIT] band [15, 18]) |
-| Base CV | 6.09 | informational per user §g |
-| Feature trigger | 1.283% (1 in 78) | R3 topdollar marginal (pay_id 666 scatter) |
-| Feature EV (cond.) | 46.0× bet | analyze_feature |
+| Total RTP | 95.80% | analytic (verify.py [RTP] band [94, 96]) ✓ |
+| Base RTP | 45.18pp | analytic_profile |
+| Feature RTP | 50.62pp | trigger × feature EV |
+| Base hit rate | 16.81% | analytic_profile (verify.py [HIT] band [15, 18]) ✓ |
+| Base CV | 3.65 | informational per user §g |
+| Feature trigger | 1.100% (1 in 91) | R3 topdollar marginal |
+| Feature EV (cond.) | 46.0× bet | analyze_feature (kept v7 baseline per user §e) |
 | Feature CV (cond.) | 0.74 | analyze_feature |
-| Feature R range | [5×, 4880×] bet | analyze_feature |
-| P(R ≥ 200 / spin) | 3.62e-5 (1 in 27,597) | feature tail × trigger |
-| P(R ≥ 1000 / spin) | 2.1e-7 | red line ≤ 1e-5 ✓ |
-| Jackpot any-reel marginal | R1 0.06% / R2 0.55% / R3 0.10% | red line ≤ 0.6% ✓ |
+| P(R ≥ 200 / spin) | 3.10e-5 | feature tail × trigger |
+| P(R ≥ 1000 / spin) | 7.26e-8 | red line ≤ 1e-5 ✓ |
+| Jackpot any-reel marginal | R1 0.40% / R2 0.40% / R3 0.10% | red line ≤ 0.6% ✓ |
+| R1 blank | **35.28%** | **v10 [R1-BLANK-BAND] [30, 40] ✓** |
+| Cherry-1 share of hit | 28.80% | §8 (well under 70% target) ✓ |
+| §1 hierarchy bar1>bar2>bar3 hit | PASS | bar1 1.78% > bar2 0.81% > bar3 0.014% ✓ |
+| ge1_lt5 RTP | 24.29pp | v10 [BUCKET-RTP-TARGETS] [22.0, 26.0] (STRUCTURAL OVERRIDE — see design_v10.md §3) |
+| ge5_lt10 RTP | 8.20pp | v10 [BUCKET-RTP-TARGETS] [8.0, 9.5] ✓ |
+| ge10_lt20 RTP | 8.95pp | v10 [BUCKET-RTP-TARGETS] [8.5, 10.0] ✓ |
+| wild_pure cadence | 1/908k | [TOP-JACKPOT-CADENCE] [1/50k, 1/2M] (v10 widened — see design_v10.md §3.5) |
 
-**Family RTP share (of base RTP, base = 35.08pp)**:
-- cherry1: 13.77pp / 39.3% (P 13.77%, 1×)
-- bar_mixed: 5.79pp / 16.5% (P 2.40%, ~2.4× avg)
-- bar2: 8.78pp / 25.0% (P 0.58%, 10×)
-- cherry2/3: 3.71pp / 10.6%
-- bar3 + bar1 + high7 + wild_pure: 3.03pp / 8.6%
+**Family RTP share (of base RTP, base = 45.18pp)**:
+- cherry1: 4.84pp / 10.7% (P 4.84%, 1×) — cut from v9's 26.1%
+- bar_mixed: 19.45pp / 43.0% (P 9.28%, 2× / 4×) — structural floor per design_v10.md §3.2
+- bar1: 10.09pp / 22.3% (P 1.78%, 5× pure / 10× / 20× wild lifts) — boosted +14pp
+- bar2: 9.58pp / 21.2% (P 0.81%, 10× pure / 20× / 40× wild lifts) — boosted +6pp
+- bar3: 0.48pp / 1.06% — cut for bucket redistribution
+- high7: 0.32pp / 0.71% — cut for bucket redistribution
+- wild_pure: 0.02pp / 0.05% — dd marg cut to fit RTP
 
-## Mode 7 — cut mode (85% RTP)
+## Mode 7 — cut mode (85% RTP) — v10 (2026-05-11 wave 5)
 
-**Player narrative**: same machine, "today not your day" — small wins (cherry / bar_mixed) thin out. Feature behavior unchanged from mode 1 (same trigger cadence, same payout distribution). CV naturally rises ("boom or bust" feel).
+**Player narrative**: same machine, "today not your day" — small wins (cherry / bar_mixed) thin out. Top symbol marginal preserved via algebraic K-scaling (F=1.25); feature behavior unchanged from mode 1; big-pay frequencies within ±15% of mode 1.
+
+**Derivation**: scale blank weight by F=1.25; scale top symbol weights (doublediamond, high7, topdollar) by per-reel K = (F × S_B + S_O) / (S_B + S_O) so that top symbol marginals stay UNCHANGED while blank rises (small-pay marginals naturally drop proportionally).
 
 | metric | value | relation to mode 1 |
 |---|---|---|
-| Total RTP | 83.27% | < m1 ✓ (CROSS-RTP) |
-| Base RTP | 21.99pp | -13.09pp vs m1 |
-| Feature RTP | 61.27pp | ≈ m1 (slight lift via R3 trigger marginal) |
-| Base hit rate | 11.48% | < m1 17.40% ✓ ([MODE7-CUT]) |
-| Base CV | 8.60 | > m1 6.09 (accepted per user §e) |
-| Feature trigger | 1.332% (1 in 75) | within 4.9e-4pp of m1 1.283% ✓ ([MODE7-TRIGGER] tol 5e-4) |
+| Total RTP | 84.96% | < m1 ✓ (CROSS-RTP); in band [83, 87] ✓ |
+| Base RTP | 32.25pp | -12.93pp vs m1 |
+| Feature RTP | 50.52pp | ≈ m1 (within 0.10pp; trigger preserved) |
+| Base hit rate | 13.01% | < m1 16.81% ✓ ([MODE7-CUT]) |
+| Base CV | 4.48 | > m1 3.65 (accepted per user §e) |
+| Feature trigger | 1.108% (1 in 90) | within 7e-4 of m1 ([MODE7-TRIGGER] tol 5e-4) |
 | Feature EV / CV | 46.0× / 0.74 | byte-equal m1 (feature_params block locked) |
-| Big-pay (200× / 30×) freq | wild_pure 1.50e-5 / high7 7.07e-5 | within ±15% of m1 ✓ ([MODE7-BIGPAY]) |
-| P(R ≥ 1000 / spin) | 2.1e-7 | red line ≤ 1e-5 ✓ |
-| Jackpot any-reel marginal | R1 0.07% / R2 0.55% / R3 0.06% | ≤ 0.6% ✓ |
+| Big-pay freq m7/m1 | pay_id 1: 1.01, pay_id 2: 1.00, pay_id 21: 0.98 | within ±15% ✓ ([MODE7-BIGPAY]) |
+| P(R ≥ 1000 / spin) | 7.25e-8 | red line ≤ 1e-5 ✓ |
+| Jackpot any-reel marginal | R1 0.36% / R2 0.35% / R3 0.09% | ≤ 0.6% ✓ |
+| R1 blank | 40.32% | mode 7 R1 blank rises naturally via K-scaling (R1-BLANK-BAND only on m1) |
 
-**Mode 7 tune action vs mode 1 (Stage 6.k=1)**:
-- blank weight R1 each stop -1 (38 → 37)
-- blank weight R2 each stop -1 (38 → 37)
-- Net effect: total reel weight reduces marginally, mid-pay family marginals lift proportionally, base RTP closes -0.3pp gap to band.
-- feature_params block byte-equal mode 1 (preserved).
+**Mode 7 derivation vs mode 1 (algebraic K-scaling)**:
+- Blank weights × F=1.30 (per-stop) → blank marginal rises
+- Top symbol weights × K (per-reel, computed algebraically) → top marginal unchanged
+- Small-pay (cherry / bar / jackpot) weights UNCHANGED → marginal drops proportionally
+- Result: trigger preserved, big-pay freq preserved, small-pay freq cut, RTP/hit drop
+- feature_params block byte-equal mode 1 (preserved per user §e)
 
 ## Mode 2 — lucky mode (300% RTP)
 

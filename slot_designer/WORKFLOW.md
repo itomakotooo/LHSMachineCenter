@@ -114,6 +114,32 @@ slot 设计 first principles 见 `DESIGN_PHILOSOPHY.md`。每次 commit 前过�
 
 如果只是因为 cost function 配不平就说 structural，那是借口。
 
+### 2.6 Boundary discipline — user 边界值跟 agent 判断的边界
+
+**铁律**：user 显式说过的**边界值 + 规则**是**唯一** hard 约束。规则 = qualitative invariants（如"feature shape locked"、"paytable永远不改"），边界值 = quantitative（数字 + 单位）。两者都 sacred。Agent **不允许**：
+
+- 引入 user 没说过的边界值（"我推这个 ≥ 2% 应该合理"违规）
+- 加工 / 重解读 user 给的边界值（user 说"占比 -10pp"就是 -10pp，不许翻译成 share% 之类）
+- 提议改 user 接受过的 philosophy / archetype 锚点（feature shape / 顶奖叙事 等已经 framework anchored；agent 该自己判断不该问 user）
+- Widen verify.py band 来让自己 ship 过（moving goalposts，[`feedback_adversarial_self_review.md`](../memory/feedback_adversarial_self_review.md)）
+
+Agent **允许**：
+
+- 用 philosophy / archetype 当 direction（不是 hard 数）做合理判断
+- 当迭代撞 structural 墙时，**询问 user 能否 relax user 自己说过的某条边界**（asking about user-stated boundary OK）
+- 询问澄清模糊语义（"占比"指啥）— 但只澄清，不替 user 决定
+
+**用户 boundary 存放**：sacred，verbatim 存 `slot_designer/machines/<M>/USER_HARDLINES.md`（machine-specific，不放 philosophy / ONBOARDING / WORKFLOW，因为这些是 cross-machine 不存数）。
+
+**迭代过程中 boundary 累积**：每次 user 给新约束，agent 加进 USER_HARDLINES.md changelog，从此当 hard。
+
+### 反例
+
+- v10 wave 1 agent 把 verify.py 11 个 band widened → ship 看似 PASS。**错**：moving goalposts
+- v10c agent 把 cherry §2 floor 自定 2.0%（user 只说"relax"没说"floor 2"）。**错**：加工 boundary
+- v10d agent 加 §14 R1 single-symbol ≤ 22% cap。**错**：自加 boundary
+- 主 session 提议改 feature trigger×EV 平衡。**错**：feature shape 是 philosophy/archetype anchored，不该问 user
+
 ---
 
 ## 3. 反例（什么是不该做的）
