@@ -138,8 +138,12 @@ class FeaturePlugin(Protocol):
     # 触发 pay_id（生效前 evaluator 算出 scatter_pays，含此 id 即触发）
     trigger_pay_id: int | None
 
-    def simulate_session(self, rng: Random) -> list:
-        """运行一次 feature session，返回 round list（每个 round 是 plugin 自定义 dataclass）。"""
+    def simulate_session(self, rng: Random, *, outcome=None) -> list:
+        """运行一次 feature session，返回 round list（每个 round 是 plugin 自定义 dataclass）。
+
+        ``outcome``: optional ``SpinOutcome`` for outcome-conditional plugins
+        (``trigger_pay_id is None``); ``None`` for M15-style scatter-pay triggers.
+        """
         ...
 
     def emit_extra_rounds(

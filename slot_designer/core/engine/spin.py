@@ -128,10 +128,27 @@ class SpinEngine:
     def spin_session(self, rng: Random) -> tuple[SpinOutcome, list[Any]]:
         """Run one paid spin + any triggered feature rounds.
 
-        If the engine has a plugin AND the main spin's scatter_pays
-        contains ``plugin.trigger_pay_id``, the plugin runs a feature
-        session and returns its private per-round objects in the
-        second tuple element.
+        Two trigger modes:
+
+          1. **Scatter-pay trigger** (``plugin.trigger_pay_id`` is set):
+             plugin fires when ``outcome.scatter_pays`` contains the
+             configured ``pay_id`` (e.g. M15 topdollar on reel 3 →
+             pay_id 666). This is the historical M15-style trigger.
+
+          2. **Outcome-conditional trigger** (``plugin.trigger_pay_id``
+             is ``None``): plugin fires every paid spin and decides
+             internally whether to emit feature rounds based on the
+             paid spin's outcome. Returning ``[]`` from
+             ``simulate_session`` means "no extra rounds this spin".
+             Used by post-win mechanics like M43's respin / mini-game
+             (which fire probabilistically after wins, not on a scatter
+             symbol).
+
+        For backward compatibility, ``simulate_session(rng)`` is called
+        with positional ``rng`` only in mode 1; in mode 2 we additionally
+        pass ``outcome=<SpinOutcome>`` as a keyword argument. Plugins
+        that don't need outcome may simply ignore the kwarg (Python
+        permits **kwargs absorption or explicit ``outcome=None`` default).
 
         Returns:
           (outcome, feature_rounds)
@@ -141,10 +158,18 @@ class SpinEngine:
         """
         outcome = self.spin(rng)
         feature_rounds: list[Any] = []
-        if self.plugin is not None and self.plugin.trigger_pay_id is not None:
-            if any(
-                sp.pay_id == self.plugin.trigger_pay_id
-                for sp in (outcome.scatter_pays or [])
-            ):
-                feature_rounds = self.plugin.simulate_session(rng)
+        if self.plugin is not None:
+            if self.plugin.trigger_pay_id is not None:
+                # Scatter-pay trigger (M15-style).
+                if any(
+                    sp.pay_id == self.plugin.trigger_pay_id
+                    for sp in (outcome.scatter_pays or [])
+                ):
+                    feature_rounds = self.plugin.simulate_session(rng)
+            else:
+                # Outcome-conditional trigger (M43-style). Plugin sees
+                # the outcome and decides itself whether to emit extras.
+                feature_rounds = self.plugin.simulate_session(
+                    rng, outcome=outcome,
+                )
         return outcome, feature_rounds

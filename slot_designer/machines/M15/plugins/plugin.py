@@ -73,7 +73,12 @@ class M15FeaturePlugin:
 
     # ─── FeaturePlugin protocol ─────────────────────────────────────
 
-    def simulate_session(self, rng: Random) -> list[FeatureRound]:
+    def simulate_session(self, rng: Random, *, outcome=None) -> list[FeatureRound]:
+        # M15 uses scatter-pay trigger (trigger_pay_id=666); outcome is
+        # always None when invoked through SpinEngine.spin_session.
+        # Accept the keyword to remain protocol-conformant after the
+        # outcome-conditional trigger extension (M43 onboarding 2026-05-14).
+        del outcome
         return simulate_feature_session(self._spec, rng)
 
     def emit_extra_rounds(

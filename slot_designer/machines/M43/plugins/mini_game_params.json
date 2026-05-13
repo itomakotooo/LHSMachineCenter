@@ -1,0 +1,40 @@
+{
+  "machine": "M43",
+  "_note": "Mini-game (SpinType=51) parameters. Triggered probabilistically after paid spins (rate ~1.05% per Stage 1b §9.2). Each mini-game emits a token sequence; tokens 101-110 map to x-bet multipliers per M43Wheel.xlsx ratio/100 (verified to within 100% sum match across 4199 observed records).",
+  "token_to_xbet": {
+    "101": 1,
+    "102": 2,
+    "103": 3,
+    "104": 4,
+    "105": 5,
+    "106": 10,
+    "107": 15,
+    "108": 20,
+    "109": 25,
+    "110": 30
+  },
+  "trigger_prob": 0.0105,
+  "_trigger_prob_source": "Stage 1b §9.2 — 1.0534% of paid rounds spawn mini-game; observed 6,847/650,000 (LOW confidence on exact predicate per 01c §6 — best-guess uniform probability over all paid rounds at this rate; Stage 6 refit needed).",
+  "length_distribution": [
+    [1, 0.387],
+    [2, 0.382],
+    [3, 0.158],
+    [4, 0.054],
+    [5, 0.015],
+    [6, 0.004]
+  ],
+  "_length_distribution_source": "Stage 1c §6 token frequency cross — observed length distribution: 1-tk 38.7% / 2-tk 38.2% / 3-tk 15.8% / 4-tk 5.4% / 5-tk 1.5% / 6+ tk <1%. Sampled iid per position from token distribution; Stage 6 may refit with per-length token bias.",
+  "token_distribution": {
+    "101": 0.106,
+    "102": 0.107,
+    "103": 0.079,
+    "104": 0.075,
+    "105": 0.075,
+    "106": 0.060,
+    "107": 0.061,
+    "108": 0.159,
+    "109": 0.158,
+    "110": 0.151
+  },
+  "_token_distribution_source": "Stage 1b §9.2 token counts normalized to probabilities: {108: 2051, 109: 2044, 110: 1955, 102: 1376, 101: 1365, 103: 1014, 105: 970, 104: 961, 107: 792, 106: 771} / sum=13299."
+}

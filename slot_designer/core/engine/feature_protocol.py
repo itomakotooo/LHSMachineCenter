@@ -59,17 +59,31 @@ class FeaturePlugin(Protocol):
     """
 
     #: pay_id that, when present in a paid spin's scatter_pays,
-    #: indicates the feature should fire. ``None`` for plugins that
-    #: trigger via mechanisms other than scatter pay (e.g. single-line slots's
-    #: collect-meter-fills-to-threshold).
+    #: indicates the feature should fire (M15-style scatter trigger).
+    #: ``None`` for plugins that trigger via mechanisms other than
+    #: scatter pay — e.g. single-line slots's collect-meter-fills-to-threshold,
+    #: or M43-style outcome-conditional post-win respin / mini-game.
+    #: When ``None``, ``SpinEngine.spin_session`` calls
+    #: ``simulate_session(rng, outcome=...)`` after EVERY paid spin and
+    #: the plugin decides itself whether to emit feature rounds.
     trigger_pay_id: int | None
 
-    def simulate_session(self, rng: Random) -> list[Any]:
+    def simulate_session(self, rng: Random, *, outcome=None) -> list[Any]:
         """Run a single feature session, return per-round objects.
 
         The list type is plugin-private (e.g. ``M15FeatureRound``).
         Generic code passes the list to ``emit_extra_rounds`` without
         inspecting individual entries.
+
+        Args:
+          rng: Random source for any feature math (token draws / strip
+            re-sampling / etc.).
+          outcome: Optional ``SpinOutcome`` for the triggering paid spin.
+            Only passed when ``trigger_pay_id is None`` (outcome-
+            conditional trigger mode). Scatter-pay-triggered plugins
+            (``trigger_pay_id`` set) get ``outcome=None`` and need not
+            inspect the paid spin's grid/win to decide. Plugins may
+            return ``[]`` to mean "no feature rounds this spin".
         """
         ...
 
