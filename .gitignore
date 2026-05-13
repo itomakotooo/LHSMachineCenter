@@ -112,3 +112,15 @@ slot_designer/configs/machines_static.json
 # checkbox when a file matches. Content is machine-specific drafts /
 # experimental weights → per-operator, not shared.
 machineconfig/
+
+# slot_designer per-mode weights rollback artifacts. Designer iteration
+# may drop `weights.json.<tag>.bak` next to live weights for one-shot
+# rollback; git history already records predecessor state, so these
+# scratch .bak files are not versioned.
+slot_designer/machines/*/weights/mode_*/weights.json*.bak
+
+# Designer Stage 4 scratch (probe / grid / lever scripts that feed
+# into design_v*.md but aren't part of the audit trail). Final design
+# scripts (v_<final>_*.py + empirical_*_subgate.* + sim_weights/)
+# stay tracked; scratch dirs are local.
+session_artifacts/*/_designer_scratch*/

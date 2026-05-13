@@ -1,0 +1,429 @@
+
+################################################################################
+M37 v9.1 m7 Empirical Sub-gate (RTP margin fix verification) ¡ª Stage 6
+################################################################################
+
+
+################################################################################
+¡ì4. m1 invariance check
+################################################################################
+m1 ship'd vs v5 sim byte diffs: 0 (PASS)
+
+MODE5-BASE-LOCK check (m5 byte-eq m2 except [1][23]):
+  reel2 pos23: m2=52 m5=166
+  MODE5-BASE-LOCK: PASS (only R2 grand differs)
+
+
+################################################################################
+m1 v5 ship'd (locked) re-confirm
+################################################################################
+
+================================================================================
+m1 v5 ship'd: C:\Users\pangg\Documents\Projects\LHS\User_Managerment_GPT\slot_designer\machines\M37\weights\mode_1\weights.json
+================================================================================
+
+Analytic RTP: 94.0925%
+Analytic Hit: 20.9180%
+Analytic CV: 9.9658
+Analytic std_return_x: 9.3770
+
+Marginals:
+R1: blank=20.9818 1bar=17.8147 2bar=15.4394 3bar=15.4394 7bar=10.6888 high7=18.3888 wild=1.2470 [bar_sum=59.3824]
+R2: blank=50.2339 1bar=10.4637 2bar=7.3215 3bar=7.3215 7bar=5.2268 high7=13.0161 mini=2.7863 minor=1.9931 major=1.5253 grand=0.1119 [bar_sum=30.3335]
+R3: blank=21.9132 1bar=17.6991 2bar=15.1707 3bar=15.1707 7bar=11.3780 high7=17.4041 wild=1.2642 [bar_sum=59.4185]
+
+Analytic pid 9 share: 20.0650%
+
+Analytic per-pay_id RTP-pp / hit-pp:
+  pid 1: RTP-pp=20.0924, hit-pp=0.7113
+  pid 2: RTP-pp=4.2340, hit-pp=0.1747
+  pid 3: RTP-pp=6.7267, hit-pp=0.3757
+  pid 4: RTP-pp=5.3814, hit-pp=0.3757
+  pid 5: RTP-pp=5.6669, hit-pp=0.6092
+  pid 6: RTP-pp=5.5307, hit-pp=1.3598
+  pid 7: RTP-pp=21.3122, hit-pp=11.9846
+  pid 8: RTP-pp=6.2199, hit-pp=0.0622
+  pid 9: RTP-pp=18.8797, hit-pp=5.2638
+  pid 102: RTP-pp=0.0240, hit-pp=0.0002
+  pid 103: RTP-pp=0.0157, hit-pp=0.0003
+  pid 104: RTP-pp=0.0088, hit-pp=0.0004
+
+Analytic bucket distribution:
+  ge1_lt5: rate=16.1350%, rtp-pp=21.2106
+  ge5_lt10: rate=2.0870%, rtp-pp=10.8419
+  ge10_lt20: rate=1.9935%, rtp-pp=20.3766
+  ge20_lt50: rate=0.3974%, rtp-pp=9.8973
+  ge50_lt100: rate=0.1374%, rtp-pp=7.0991
+  ge100_lt200: rate=0.1475%, rtp-pp=14.7453
+  ge200_lt500: rate=0.0115%, rtp-pp=3.3119
+  ge500_lt1000: rate=0.0047%, rtp-pp=2.5271
+  ge1000_lt5000: rate=0.0041%, rtp-pp=4.0827
+  ge5000: rate=0.0000%, rtp-pp=0.0000
+
+Running Monte Carlo 50,000 spins seed=42...
+
+MC RTP: 94.6940% (analytic SE +/-8.2193pp) drift=+0.6015pp (+0.14sigma)
+MC Hit: 21.2740% (+/-0.3587pp 95% CI) drift=+0.3560pp (+1.95sigma)
+MC pid 9 share: 20.8376% (analytic=20.0650, drift=+0.7726pp)
+MC CV: 9.2821
+
+
+################################################################################
+m2 v6 ship state (untouched in v9.1)
+################################################################################
+
+================================================================================
+m2 v6: C:\Users\pangg\Documents\Projects\LHS\User_Managerment_GPT\session_artifacts\M37\v6_sim_weights\mode_2\weights.json
+================================================================================
+
+Analytic RTP: 303.4522%
+Analytic Hit: 32.2137%
+Analytic CV: 6.1445
+Analytic std_return_x: 18.6456
+
+Marginals:
+R1: blank=17.9468 1bar=20.0502 2bar=18.9828 3bar=16.6178 7bar=12.9134 high7=12.1390 wild=1.3499 [bar_sum=68.5643]
+R2: blank=57.2262 1bar=4.1162 2bar=1.8294 3bar=1.8294 7bar=1.3721 high7=8.0037 mini=10.9193 minor=8.1180 major=5.9913 grand=0.5946 [bar_sum=9.1470]
+R3: blank=21.5882 1bar=19.0286 2bar=17.9796 3bar=15.7348 7bar=11.7277 high7=12.5879 wild=1.3532 [bar_sum=64.4708]
+
+Analytic pid 9 share: 20.3664%
+
+Analytic per-pay_id RTP-pp / hit-pp:
+  pid 1: RTP-pp=35.3599, hit-pp=0.6277
+  pid 2: RTP-pp=20.3058, hit-pp=0.4990
+  pid 3: RTP-pp=28.0238, hit-pp=0.8382
+  pid 4: RTP-pp=28.7400, hit-pp=1.0745
+  pid 5: RTP-pp=24.2276, hit-pp=1.2925
+  pid 6: RTP-pp=12.0051, hit-pp=1.2406
+  pid 7: RTP-pp=63.5902, hit-pp=12.2926
+  pid 8: RTP-pp=29.1740, hit-pp=0.2917
+  pid 9: RTP-pp=61.8024, hit-pp=14.0524
+  pid 102: RTP-pp=0.1094, hit-pp=0.0011
+  pid 103: RTP-pp=0.0741, hit-pp=0.0015
+  pid 104: RTP-pp=0.0399, hit-pp=0.0020
+
+Analytic bucket distribution:
+  ge1_lt5: rate=15.6358%, rtp-pp=26.6132
+  ge5_lt10: rate=7.6331%, rtp-pp=39.9472
+  ge10_lt20: rate=6.1934%, rtp-pp=64.1006
+  ge20_lt50: rate=1.5980%, rtp-pp=41.9902
+  ge50_lt100: rate=0.4462%, rtp-pp=23.4172
+  ge100_lt200: rate=0.5997%, rtp-pp=59.9697
+  ge200_lt500: rate=0.0672%, rtp-pp=20.6783
+  ge500_lt1000: rate=0.0291%, rtp-pp=15.6638
+  ge1000_lt5000: rate=0.0111%, rtp-pp=11.0720
+  ge5000: rate=0.0000%, rtp-pp=0.0000
+
+Running Monte Carlo 50,000 spins seed=42...
+
+MC RTP: 307.5260% (analytic SE +/-16.3436pp) drift=+4.0738pp (+0.49sigma)
+MC Hit: 32.4500% (+/-0.4104pp 95% CI) drift=+0.2363pp (+1.13sigma)
+MC pid 9 share: 20.1576% (analytic=20.3664, drift=-0.2088pp)
+MC CV: 5.9928
+
+
+################################################################################
+m5 v6 ship state (untouched in v9.1)
+################################################################################
+
+================================================================================
+m5 v6: C:\Users\pangg\Documents\Projects\LHS\User_Managerment_GPT\session_artifacts\M37\v6_sim_weights\mode_5\weights.json
+================================================================================
+
+Analytic RTP: 507.5561%
+Analytic Hit: 33.0857%
+Analytic CV: 6.2361
+Analytic std_return_x: 31.6515
+
+Marginals:
+R1: blank=17.9468 1bar=20.0502 2bar=18.9828 3bar=16.6178 7bar=12.9134 high7=12.1390 wild=1.3499 [bar_sum=68.5643]
+R2: blank=56.4898 1bar=4.0632 2bar=1.8059 3bar=1.8059 7bar=1.3544 high7=7.9007 mini=10.7788 minor=8.0135 major=5.9142 grand=1.8736 [bar_sum=9.0293]
+R3: blank=21.5882 1bar=19.0286 2bar=17.9796 3bar=15.7348 7bar=11.7277 high7=12.5879 wild=1.3532 [bar_sum=64.4708]
+
+Analytic pid 9 share: 12.0198%
+
+Analytic per-pay_id RTP-pp / hit-pp:
+  pid 1: RTP-pp=58.8661, hit-pp=0.6436
+  pid 2: RTP-pp=34.3075, hit-pp=0.5163
+  pid 3: RTP-pp=47.2985, hit-pp=0.8667
+  pid 4: RTP-pp=48.5076, hit-pp=1.1110
+  pid 5: RTP-pp=40.6820, hit-pp=1.3317
+  pid 6: RTP-pp=19.6972, hit-pp=1.2639
+  pid 7: RTP-pp=105.0351, hit-pp=12.5571
+  pid 8: RTP-pp=91.9342, hit-pp=0.9193
+  pid 9: RTP-pp=61.0073, hit-pp=13.8717
+  pid 102: RTP-pp=0.1080, hit-pp=0.0011
+  pid 103: RTP-pp=0.0732, hit-pp=0.0015
+  pid 104: RTP-pp=0.0394, hit-pp=0.0020
+
+Analytic bucket distribution:
+  ge1_lt5: rate=15.4346%, rtp-pp=26.2709
+  ge5_lt10: rate=7.5349%, rtp-pp=39.4333
+  ge10_lt20: rate=6.1137%, rtp-pp=63.2759
+  ge20_lt50: rate=1.5775%, rtp-pp=41.4500
+  ge50_lt100: rate=0.4405%, rtp-pp=23.1160
+  ge100_lt200: rate=1.6460%, rtp-pp=164.5967
+  ge200_lt500: rate=0.2118%, rtp-pp=65.1622
+  ge500_lt1000: rate=0.0918%, rtp-pp=49.3605
+  ge1000_lt5000: rate=0.0349%, rtp-pp=34.8906
+  ge5000: rate=0.0000%, rtp-pp=0.0000
+
+Running Monte Carlo 50,000 spins seed=42...
+
+MC RTP: 506.6260% (analytic SE +/-27.7438pp) drift=-0.9301pp (-0.07sigma)
+MC Hit: 33.2060% (+/-0.4128pp 95% CI) drift=+0.1203pp (+0.57sigma)
+MC pid 9 share: 12.0910% (analytic=12.0198, drift=+0.0711pp)
+MC CV: 6.2600
+
+
+################################################################################
+¡ì1, ¡ì2: m7 v9.1 verification
+################################################################################
+
+================================================================================
+m7 v9.1: C:\Users\pangg\Documents\Projects\LHS\User_Managerment_GPT\session_artifacts\M37\v9_1_sim_weights\mode_7\weights.json
+================================================================================
+
+Analytic RTP: 84.7469%
+Analytic Hit: 17.2535%
+Analytic CV: 10.5852
+Analytic std_return_x: 8.9706
+
+Marginals:
+R1: blank=31.0768 1bar=14.7862 2bar=12.8147 3bar=12.8147 7bar=8.8717 high7=18.3888 wild=1.2470 [bar_sum=49.2874]
+R2: blank=50.4011 1bar=10.4637 2bar=7.3215 3bar=7.3215 7bar=5.2268 high7=13.0161 mini=2.6191 minor=1.9931 major=1.5253 grand=0.1119 [bar_sum=30.3335]
+R3: blank=32.0143 1bar=14.6903 2bar=12.5917 3bar=12.5917 7bar=9.4437 high7=17.4041 wild=1.2642 [bar_sum=49.3173]
+
+Analytic pid 9 share: 26.4388%
+
+Analytic per-pay_id RTP-pp / hit-pp:
+  pid 1: RTP-pp=19.9704, hit-pp=0.7052
+  pid 2: RTP-pp=3.0076, hit-pp=0.1234
+  pid 3: RTP-pp=4.7372, hit-pp=0.2634
+  pid 4: RTP-pp=3.7898, hit-pp=0.2634
+  pid 5: RTP-pp=3.9790, hit-pp=0.4265
+  pid 6: RTP-pp=4.5887, hit-pp=1.1333
+  pid 7: RTP-pp=14.6688, hit-pp=8.2732
+  pid 8: RTP-pp=7.5513, hit-pp=0.0755
+  pid 9: RTP-pp=22.4061, hit-pp=5.9885
+  pid 102: RTP-pp=0.0240, hit-pp=0.0002
+  pid 103: RTP-pp=0.0157, hit-pp=0.0003
+  pid 104: RTP-pp=0.0083, hit-pp=0.0004
+
+Analytic bucket distribution:
+  ge1_lt5: rate=12.6550%, rtp-pp=17.0457
+  ge5_lt10: rate=2.0221%, rtp-pp=10.3857
+  ge10_lt20: rate=1.9771%, rtp-pp=20.0804
+  ge20_lt50: rate=0.3126%, rtp-pp=7.6352
+  ge50_lt100: rate=0.1188%, rtp-pp=6.1041
+  ge100_lt200: rate=0.1516%, rtp-pp=15.1639
+  ge200_lt500: rate=0.0087%, rtp-pp=2.4517
+  ge500_lt1000: rate=0.0034%, rtp-pp=1.7975
+  ge1000_lt5000: rate=0.0041%, rtp-pp=4.0827
+  ge5000: rate=0.0000%, rtp-pp=0.0000
+
+Running Monte Carlo 50,000 spins seed=42...
+
+MC RTP: 79.5500% (analytic SE +/-7.8631pp) drift=-5.1969pp (-1.30sigma)
+MC Hit: 17.4360% (+/-0.3326pp 95% CI) drift=+0.1825pp (+1.08sigma)
+MC pid 9 share: 29.0308% (analytic=26.4388, drift=+2.5920pp)
+MC CV: 8.3589
+
+
+################################################################################
+¡ì2 (cont): m7 v9.1 single-seed 200k MC
+################################################################################
+
+m7 v9.1 200k MC seed=12345:
+  RTP analytic=84.7469, MC=83.8400 (analytic 95% CI +/-3.9316pp) drift=-0.9069pp (-0.45sigma)
+  RTP vs floor 84.0: margin -0.1600pp
+  Hit analytic=17.2535, MC=17.1900 drift=-0.0635pp (-0.75sigma)
+  pid9 share: 26.1152
+  CV: 10.5942
+
+
+################################################################################
+¡ì2. CRITICAL: 50 seeds ¡Á 100k = 5M MC RTP lower bound stress test
+################################################################################
+
+================================================================================
+5M Multi-seed RTP lower bound stress test (RTP floor 84.0)
+Analytic RTP: 84.7469, analytic CV: 10.5852
+100,000 spins per seed * 50 seeds = 5,000,000 total spins
+================================================================================
+  seed=   42: RTP=82.8130 (BELOW); hit=17.2520; pid9_share=27.3351%
+  seed=12345: RTP=84.2630 (PASS (+0.263pp)); hit=17.1410; pid9_share=26.2155%
+  seed=    7: RTP=81.5600 (BELOW); hit=17.2730; pid9_share=27.6128%
+  seed= 9999: RTP=83.5000 (BELOW); hit=17.1260; pid9_share=26.1988%
+  seed=31415: RTP=84.5910 (PASS (+0.591pp)); hit=17.3760; pid9_share=27.2547%
+  seed=27182: RTP=81.0710 (BELOW); hit=17.5830; pid9_share=27.9742%
+  seed=16180: RTP=85.3250 (PASS (+1.325pp)); hit=17.1140; pid9_share=26.0217%
+  seed=   11: RTP=83.6630 (BELOW); hit=17.1170; pid9_share=26.9856%
+  seed=   13: RTP=86.9730 (PASS (+2.973pp)); hit=17.3580; pid9_share=26.0012%
+  seed=   17: RTP=89.2340 (PASS (+5.234pp)); hit=17.4170; pid9_share=24.9165%
+  seed=   19: RTP=88.2940 (PASS (+4.294pp)); hit=17.4550; pid9_share=25.7299%
+  seed=   23: RTP=81.3860 (BELOW); hit=17.1590; pid9_share=27.9114%
+  seed=   29: RTP=86.9370 (PASS (+2.937pp)); hit=17.2250; pid9_share=25.0492%
+  seed=   31: RTP=87.2540 (PASS (+3.254pp)); hit=17.1050; pid9_share=25.0590%
+  seed=   37: RTP=86.5080 (PASS (+2.508pp)); hit=17.1970; pid9_share=26.2843%
+  seed=   41: RTP=81.7990 (BELOW); hit=17.2960; pid9_share=27.1568%
+  seed=   43: RTP=80.6130 (BELOW); hit=17.3940; pid9_share=27.0688%
+  seed=   47: RTP=78.8930 (BELOW); hit=17.2790; pid9_share=28.0063%
+  seed=   53: RTP=87.6610 (PASS (+3.661pp)); hit=17.1700; pid9_share=25.5667%
+  seed=   59: RTP=85.7190 (PASS (+1.719pp)); hit=17.2830; pid9_share=25.8951%
+  seed=   61: RTP=85.1450 (PASS (+1.145pp)); hit=17.4350; pid9_share=26.9552%
+  seed=   67: RTP=84.6870 (PASS (+0.687pp)); hit=17.3840; pid9_share=26.8270%
+  seed=   71: RTP=84.5280 (PASS (+0.528pp)); hit=17.1670; pid9_share=27.2241%
+  seed=   73: RTP=84.4210 (PASS (+0.421pp)); hit=17.3400; pid9_share=26.0800%
+  seed=   79: RTP=89.3410 (PASS (+5.341pp)); hit=17.3380; pid9_share=25.8649%
+  seed=   83: RTP=86.4120 (PASS (+2.412pp)); hit=17.3310; pid9_share=26.4211%
+  seed=   89: RTP=82.0890 (BELOW); hit=17.3590; pid9_share=27.7979%
+  seed=   97: RTP=87.7700 (PASS (+3.770pp)); hit=17.4690; pid9_share=26.0818%
+  seed=  101: RTP=84.0490 (PASS (+0.049pp)); hit=17.1200; pid9_share=26.4298%
+  seed=  103: RTP=79.3910 (BELOW); hit=17.1500; pid9_share=28.1102%
+  seed=  107: RTP=84.4440 (PASS (+0.444pp)); hit=17.2030; pid9_share=27.0167%
+  seed=  109: RTP=87.5360 (PASS (+3.536pp)); hit=17.3900; pid9_share=26.0967%
+  seed=  113: RTP=79.7260 (BELOW); hit=17.1240; pid9_share=28.0962%
+  seed=  127: RTP=82.3500 (BELOW); hit=17.1550; pid9_share=25.9927%
+  seed=  131: RTP=80.8380 (BELOW); hit=17.2000; pid9_share=27.6801%
+  seed=  137: RTP=89.8530 (PASS (+5.853pp)); hit=17.3120; pid9_share=25.1344%
+  seed=  139: RTP=87.5690 (PASS (+3.569pp)); hit=17.0920; pid9_share=25.4245%
+  seed=  149: RTP=82.0080 (BELOW); hit=17.1090; pid9_share=27.7449%
+  seed=  151: RTP=85.4970 (PASS (+1.497pp)); hit=17.3800; pid9_share=26.2980%
+  seed=  157: RTP=82.1120 (BELOW); hit=17.2730; pid9_share=26.6173%
+  seed=  163: RTP=84.9030 (PASS (+0.903pp)); hit=17.3920; pid9_share=26.2712%
+  seed=  167: RTP=85.4800 (PASS (+1.480pp)); hit=17.0950; pid9_share=26.1547%
+  seed=  173: RTP=85.3230 (PASS (+1.323pp)); hit=17.4030; pid9_share=26.0469%
+  seed=  179: RTP=81.9790 (BELOW); hit=17.3360; pid9_share=27.5205%
+  seed=  181: RTP=80.4390 (BELOW); hit=16.9570; pid9_share=27.8658%
+  seed=  191: RTP=88.1910 (PASS (+4.191pp)); hit=17.4170; pid9_share=25.5593%
+  seed=  193: RTP=78.1110 (BELOW); hit=17.3000; pid9_share=28.1446%
+  seed=  197: RTP=85.6610 (PASS (+1.661pp)); hit=17.2570; pid9_share=25.8566%
+  seed=  199: RTP=83.2740 (BELOW); hit=17.4520; pid9_share=27.2066%
+  seed=  211: RTP=81.1100 (BELOW); hit=17.3500; pid9_share=28.2135%
+
+Multi-seed stats (50 seeds, 5,000,000 total spins):
+  RTP mean: 84.2459% (+/- 0.8142 95% CI of mean)
+    CI of mean: [83.4317, 85.0601]
+  RTP stdev across seeds: 2.9374
+  RTP min: 78.1110, max: 89.8530
+  Hit mean: 17.2722% (+/- 0.0362 95% CI of mean)
+  Hit stdev across seeds: 0.1307
+  Hit min: 16.9570, max: 17.5830
+  pid 9 share mean: 26.6595% (stdev 0.9447)
+
+RTP lower bound stress test (84.0):
+  Mean RTP: 84.2459 (margin to 84.0: +0.2459pp)
+  Mean RTP CI lower bound: 83.4317
+  Single-seed worst (min): 78.1110
+  Seeds below floor: 21/50 (42.0%)
+  Empirical P(seed RTP < 84.0): 0.4200
+  Parametric P(single seed @100000 spins < 84.0) under N(analytic, analytic_SE): 0.3962 (z=-0.2633)
+  Parametric P(seed < 84.0) under N(observed_mean, observed_stdev): 0.4666
+
+Hit upper band stress (17.5):
+  Seeds above 17.5: 1/50
+  Seeds above 20.62 (universal ¡ì9): 0/50
+
+RTP stress test verdict: PASS-NARROW (mean ¡Ý floor but >10% seeds below)
+
+Aggregate per-pay frequency over 5,000,000 spins:
+  pid 1: count=35,577 freq=0.007115
+  pid 2: count=6,229 freq=0.001246
+  pid 3: count=13,294 freq=0.002659
+  pid 4: count=13,270 freq=0.002654
+  pid 5: count=21,320 freq=0.004264
+  pid 6: count=56,963 freq=0.011393
+  pid 7: count=413,474 freq=0.082695
+  pid 8: count=3,697 freq=0.000739
+  pid 9: count=299,730 freq=0.059946
+  pid 102: count=12 freq=0.000002
+  pid 103: count=17 freq=0.000003
+  pid 104: count=27 freq=0.000005
+
+
+################################################################################
+¡ì3. Hit ceiling check
+################################################################################
+Universal ¡ì9 ceiling: 20.62% (m1 hit 20.92 - 0.3 safety)
+Brief amended hit upper band: 17.5%
+
+Analytic hit m7 v9.1: 17.2535%
+  margin to ¡ì9 ceiling 20.62: +3.3665pp
+  margin to band upper 17.5: +0.2465pp
+Multi-seed mean hit (5M): 17.2722%
+  margin to ¡ì9 ceiling: +3.3478pp
+  margin to band upper: +0.2278pp
+Multi-seed hit max: 17.5830%
+Seeds with hit > 17.5: 1/50
+Seeds with hit > 20.62: 0/50
+¡ì9 hit ceiling PASS: True
+
+
+################################################################################
+¡ì5. Cross-mode invariants empirical
+################################################################################
+
+RTP m7 v9.1 5M mean=84.2459 < m1=94.6940 < m2=307.5260 < m5=506.6260
+  RTP-MONOTONIC m7 < m1 < m2 < m5: PASS
+
+HIT m1 analytic=20.9180 vs m7 v9.1 5M mean=17.2722 (delta=+3.6458pp)
+  HIT-MONOTONIC m1 > m7 + 0.3pp: PASS
+
+1000x freq (ge1000_lt5000) analytic:
+  m1: rate=0.004083% (1/24494)
+  m2: rate=0.011072% (1/9032)
+  m5: rate=0.034891% (1/2866)
+  m7 v9.1: rate=0.004083% (1/24494)
+
+MODE7-LOCK tier 1 (m7 v9.1 R2 booster drift vs m1 v5):
+  mini: m1_v5=2.7863% m7_v9.1=2.6191% drift=0.1672pp tier1(<=0.5pp): PASS
+  minor: m1_v5=1.9931% m7_v9.1=1.9931% drift=0.0000pp tier1(<=0.5pp): PASS
+  major: m1_v5=1.5253% m7_v9.1=1.5253% drift=0.0000pp tier1(<=0.5pp): PASS
+  grand: m1_v5=0.1119% m7_v9.1=0.1119% drift=0.0000pp tier1(<=0.5pp): PASS
+  MODE7-LOCK tier 1: PASS
+
+Designer ¡ì4 per-pay ratio table:
+  pid    m7_analytic    m1_analytic    ratio_analytic   m7_emp(5M)     ratio_empirical 
+  1      0.007052       0.007113       0.9914           0.007115       1.0003          
+  2      0.001234       0.001747       0.7062           0.001246       0.7132          
+  3      0.002634       0.003757       0.7011           0.002659       0.7076          
+  4      0.002634       0.003757       0.7011           0.002654       0.7063          
+  5      0.004265       0.006092       0.7002           0.004264       0.7000          
+  6      0.011333       0.013598       0.8334           0.011393       0.8378          
+  7      0.082732       0.119846       0.6903           0.082695       0.6900          
+  8      0.000755       0.000622       1.2140           0.000739       1.1888          
+  9      0.059885       0.052638       1.1377           0.059946       1.1388          
+  102    0.000002       0.000002       1.0000           0.000002       0.9980          
+  103    0.000003       0.000003       1.0000           0.000003       1.0821          
+  104    0.000004       0.000004       0.9400           0.000005       1.2293          
+
+
+################################################################################
+¡ì6. Verdict
+################################################################################
+
+Metric                                                 Analytic         50k MC        200k MC        5M mean
+--------------------------------------------------------------------------------------------------------------
+m7 v9.1 RTP                                             84.7469        79.5500        83.8400        84.2459
+m7 v9.1 Hit                                             17.2535        17.4360        17.1900        17.2722
+m7 v9.1 pid 9 share                                     26.4388        29.0308        26.1152        26.6595
+
+¡ì2 RTP LOWER BOUND STRESS TEST verdict: PASS-NARROW (mean ¡Ý floor but >10% seeds below)
+  Mean RTP: 84.2459 (margin to 84.0: +0.2459pp)
+  Mean CI lower: 83.4317 (margin to 84.0: -0.5683pp)
+  P(seed < 84.0) empirical: 0.4200, parametric (analytic): 0.3962
+
+v9 vs v9.1 RTP comparison:
+  v9   analytic RTP=84.011  mean=83.619  margin=-0.381  seeds<floor=30/50 (60%)  verdict=FAIL
+  v9.1 analytic RTP=84.747  mean=84.246  margin=+0.246  seeds<floor=21/50 (42.0%)  verdict=PASS-NARROW (mean ¡Ý floor but >10% seeds below)
+
+Hard target gates:
+  m7 v9.1 RTP [84, 86] 5M mean: 84.2459 ¡ª PASS
+  m7 v9.1 hit [14, 17.5] band 5M mean: 17.2722 ¡ª PASS
+  m7 v9.1 hit < 20.62 (universal ¡ì9) 5M max: 17.5830 ¡ª PASS
+  HIT-MONOTONIC m1 (20.92) > m7 v9.1 mean (17.2722) + 0.3pp: PASS
+  RTP-MONOTONIC m7<m1<m2<m5: PASS
+  m1 invariance (0 byte diffs vs v5): PASS
+  MODE5-BASE-LOCK: PASS
+  MODE7-LOCK tier 1: PASS
