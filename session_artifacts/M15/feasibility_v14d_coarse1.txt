@@ -1,0 +1,39 @@
+================================================================================
+M15 v14d Mode 5 redesign ¡ª fix 'multiplier shift higher' intent
+================================================================================
+
+--- Anchors ---
+M1 base RTP = 42.768pp, hit = 16.216%, trigger = 1.1200%
+M1 base ¡Ý30¡Á share (combo): 19.70%  (payid-anchored: 34.26%)
+M2_LC base RTP = 97.911pp, hit = 33.852%, trigger = 3.3040%
+M2_LC total RTP = 296.129pp
+M2_LC base ¡Ý30¡Á share (combo): 21.38%  (payid-anchored: 36.17%) [task target ¡Ý40% per X's payid-anchored convention]
+M2_LC family pp: bar1=11.10, bar2=13.53, bar3=7.00, bar_mixed=30.52, cherry1=15.68, cherry2=4.89, cherry3=0.30, high7_pure=5.46, high7_wild=9.14, wild_pure=0.28
+
+FEATURE EV per mode: m1=46.00, m2=59.99, m5=123.33, m7=46.00
+
+M5 feature EV = 123.33x; with trigger 3.304% ¡ú feature_rtp ~= 407.49pp
+
+--- Sweeping candidates ---
+Tested 4608 candidates; 1570 after RTP/hit/trig filter; 0 pass ALL invariants
+
+0 candidates pass ALL invariants
+
+No all-pass found. Best near-misses (filter: hit ¡Ý 33.85, trig ¡Ý 3.304):
+
+Top by ¡Ý30 share (any hit):
+  c=0.95 b1=0.60 b2=1.10 b3=1.00 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.000: ¡Ý30share=54.93%, RTP=508.51, hit=28.00, trig=3.304, fail=['[USER-RTP] m5 RTP in [491.5, 508.5]', '[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin']
+  c=0.95 b1=0.60 b2=1.05 b3=1.10 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.000: ¡Ý30share=54.66%, RTP=508.77, hit=28.07, trig=3.304, fail=['[USER-RTP] m5 RTP in [491.5, 508.5]', '[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin']
+  c=0.95 b1=0.60 b2=1.00 b3=1.20 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.000: ¡Ý30share=54.60%, RTP=509.37, hit=28.14, trig=3.304, fail=['[USER-RTP] m5 RTP in [491.5, 508.5]', '[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin']
+  c=0.95 b1=0.60 b2=1.05 b3=1.00 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.000: ¡Ý30share=54.57%, RTP=505.28, hit=27.33, trig=3.304, fail=['[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin', '[LUCKY-MONO trig] m5 >= m2 + 1e-04 margin']
+  c=0.95 b1=0.60 b2=1.05 b3=1.00 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.005: ¡Ý30share=54.57%, RTP=507.32, hit=27.33, trig=3.321, fail=['[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin', '[BAR-HIERARCHY-¡ì1] P(bar1)>P(bar2)>P(bar3)']
+  c=0.95 b1=0.60 b2=1.00 b3=1.10 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.000: ¡Ý30share=54.38%, RTP=505.66, hit=27.40, trig=3.304, fail=['[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin', '[LUCKY-MONO trig] m5 >= m2 + 1e-04 margin']
+  c=0.95 b1=0.60 b2=1.00 b3=1.10 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.005: ¡Ý30share=54.38%, RTP=507.69, hit=27.40, trig=3.321, fail=['[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin', '[BAR-HIERARCHY-¡ì1] P(bar1)>P(bar2)>P(bar3)']
+  c=0.95 b1=0.60 b2=1.15 b3=1.00 h=(1.05, 1.05, 1.05) dd=(1.4, 1.4, 1.4) td=1.000: ¡Ý30share=54.36%, RTP=509.72, hit=28.64, trig=3.304, fail=['[USER-RTP] m5 RTP in [491.5, 508.5]', '[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin']
+  c=1.00 b1=0.60 b2=1.10 b3=1.00 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.000: ¡Ý30share=54.28%, RTP=509.70, hit=28.78, trig=3.304, fail=['[USER-RTP] m5 RTP in [491.5, 508.5]', '[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin']
+  c=0.95 b1=0.60 b2=1.00 b3=1.00 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.000: ¡Ý30share=54.24%, RTP=502.23, hit=26.69, trig=3.304, fail=['[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin', '[LUCKY-MONO trig] m5 >= m2 + 1e-04 margin']
+  c=0.95 b1=0.60 b2=1.00 b3=1.00 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.005: ¡Ý30share=54.24%, RTP=504.27, hit=26.69, trig=3.321, fail=['[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin', '[BAR-HIERARCHY-¡ì1] P(bar1)>P(bar2)>P(bar3)']
+  c=0.95 b1=0.60 b2=1.15 b3=1.00 h=(1.1, 1.1, 1.1) dd=(1.3, 1.3, 1.3) td=1.000: ¡Ý30share=54.10%, RTP=507.67, hit=28.49, trig=3.304, fail=['[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin', '[LUCKY-MONO trig] m5 >= m2 + 1e-04 margin']
+  c=0.95 b1=0.60 b2=1.15 b3=1.00 h=(1.1, 1.1, 1.1) dd=(1.3, 1.3, 1.3) td=1.005: ¡Ý30share=54.10%, RTP=509.71, hit=28.49, trig=3.321, fail=['[USER-RTP] m5 RTP in [491.5, 508.5]', '[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin']
+  c=1.00 b1=0.60 b2=1.05 b3=1.10 h=(1.1, 1.1, 1.1) dd=(1.4, 1.4, 1.4) td=1.000: ¡Ý30share=54.02%, RTP=509.97, hit=28.86, trig=3.304, fail=['[USER-RTP] m5 RTP in [491.5, 508.5]', '[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin']
+  c=0.95 b1=0.60 b2=1.10 b3=1.10 h=(1.05, 1.05, 1.05) dd=(1.4, 1.4, 1.4) td=1.000: ¡Ý30share=54.01%, RTP=509.87, hit=28.72, trig=3.304, fail=['[USER-RTP] m5 RTP in [491.5, 508.5]', '[HIT m5 band] [0.30, 0.35]', '[LUCKY-MONO hit] m5 >= m2 + 0.05pp margin']

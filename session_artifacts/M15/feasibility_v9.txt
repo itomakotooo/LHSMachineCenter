@@ -1,0 +1,3836 @@
+M15 v9 mode 1 candidate exploration
+======================================================================
+
+======== Candidate: A_baseline ========
+Total RTP:        90.369%
+  Base RTP:       37.200pp  (41.2%)
+  Feature RTP:    53.168pp  (58.8%)
+Base hit rate:    16.678%
+Base CV:          6.326
+Trigger rate:     1.156%  (1 in 87)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.625e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=56.53%  cherry=5.23%  1bar=10.27%  2bar=14.15%  3bar=7.33%  high7=2.93%  dd=3.14%  jackpot=0.42%  topdollar=0.00%
+  R2: blank=57.56%  cherry=5.23%  1bar=9.00%  2bar=13.38%  3bar=6.06%  high7=4.70%  dd=3.66%  jackpot=0.42%  topdollar=0.00%
+  R3: blank=56.84%  cherry=2.58%  1bar=11.86%  2bar=15.69%  3bar=8.27%  high7=1.86%  dd=1.34%  jackpot=0.41%  topdollar=1.16%
+
+¡ì1 hierarchy:
+  bar1 P=0.2225%  bar2 P=0.5001%  bar3 P=0.0962%   ok=FAIL
+  cherry1 P=11.9737%  cherry2 P=0.5222%  cherry3 P=0.0071%
+  high7_wild P=0.0121%  high7_pure P=0.0026%  wild_pure P=0.0015%  bar_mixed P=3.3397%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 71.80%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.31%  RTP 19.75pp  share-of-base 53.10%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 32.40%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.42%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.86%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.419%  (cap 0.6%)
+  R2 jackpot = 0.418%  (cap 0.6%)
+  R3 jackpot = 0.413%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.97pp  share=32.19%  band=[26.0, 38.0]  OK
+  bar_mixed: 7.78pp  share=20.91%  band=[12.0, 25.0]  OK
+  bar1: 1.90pp  share=5.11%  band=[4.0, 12.0]  OK
+  bar2: 7.64pp  share=20.55%  band=[10.0, 20.0]  OUT
+  bar3: 3.74pp  share=10.05%  band=[5.0, 12.0]  OK
+  high7: 1.14pp  share=3.06%  band=[2.5, 8.0]  OK
+  wild_pure: 0.31pp  share=0.83%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5222%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0071%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 64893  band=[1/50k, 1/100k]  OK
+
+======== Candidate: B_cherry_reduce ========
+Total RTP:        83.170%
+  Base RTP:       31.660pp  (38.1%)
+  Feature RTP:    51.510pp  (61.9%)
+Base hit rate:    13.949%
+Base CV:          6.986
+Trigger rate:     1.120%  (1 in 89)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.387e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=59.25%  cherry=4.20%  1bar=9.81%  2bar=13.53%  3bar=7.00%  high7=2.80%  dd=3.00%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=60.16%  cherry=4.20%  1bar=8.62%  2bar=12.81%  3bar=5.80%  high7=4.50%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=58.49%  cherry=2.20%  1bar=11.49%  2bar=15.20%  3bar=8.01%  high7=1.80%  dd=1.30%  jackpot=0.40%  topdollar=1.12%
+
+¡ì1 hierarchy:
+  bar1 P=0.1972%  bar2 P=0.4434%  bar3 P=0.0853%   ok=FAIL
+  cherry1 P=9.8933%  cherry2 P=0.3498%  cherry3 P=0.0039%
+  high7_wild P=0.0108%  high7_pure P=0.0023%  wild_pure P=0.0014%  bar_mixed P=2.9612%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 70.93%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 12.85%  RTP 16.79pp  share-of-base 53.04%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 33.54%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.52%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 24.49%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.400%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 9.89pp  share=31.25%  band=[26.0, 38.0]  OK
+  bar_mixed: 6.90pp  share=21.79%  band=[12.0, 25.0]  OK
+  bar1: 1.69pp  share=5.32%  band=[4.0, 12.0]  OK
+  bar2: 6.78pp  share=21.41%  band=[10.0, 20.0]  OUT
+  bar3: 3.32pp  share=10.47%  band=[5.0, 12.0]  OK
+  high7: 1.01pp  share=3.19%  band=[2.5, 8.0]  OK
+  wild_pure: 0.27pp  share=0.86%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.3498%  band=[0.4, 1.5]  OUT
+  pay_id 4 (cherry3): P=0.0039%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 73187  band=[1/50k, 1/100k]  OK
+
+======== Candidate: C_bar_hierarchy_fix ========
+Total RTP:        78.756%
+  Base RTP:       27.225pp  (34.6%)
+  Feature RTP:    51.530pp  (65.4%)
+Base hit rate:    12.890%
+Base CV:          7.400
+Trigger rate:     1.120%  (1 in 89)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.390e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=60.82%  cherry=4.00%  1bar=12.99%  2bar=10.48%  3bar=5.52%  high7=2.80%  dd=3.00%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=61.58%  cherry=4.00%  1bar=11.49%  2bar=9.52%  3bar=5.00%  high7=4.50%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=60.85%  cherry=2.00%  1bar=14.01%  2bar=12.00%  3bar=6.51%  high7=1.80%  dd=1.30%  jackpot=0.40%  topdollar=1.12%
+
+¡ì1 hierarchy:
+  bar1 P=0.3657%  bar2 P=0.2321%  bar3 P=0.0552%   ok=PASS
+  cherry1 P=9.3699%  cherry2 P=0.3104%  cherry3 P=0.0032%
+  high7_wild P=0.0108%  high7_pure P=0.0023%  wild_pure P=0.0014%  bar_mixed P=2.5390%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 72.69%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 11.91%  RTP 15.31pp  share-of-base 56.25%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 34.25%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 35.23%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 25.43%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.400%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 9.37pp  share=34.42%  band=[26.0, 38.0]  OK
+  bar_mixed: 5.94pp  share=21.83%  band=[12.0, 25.0]  OK
+  bar1: 2.86pp  share=10.51%  band=[4.0, 12.0]  OK
+  bar2: 3.87pp  share=14.20%  band=[10.0, 20.0]  OK
+  bar3: 2.30pp  share=8.45%  band=[5.0, 12.0]  OK
+  high7: 1.01pp  share=3.70%  band=[2.5, 8.0]  OK
+  wild_pure: 0.27pp  share=1.00%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.3104%  band=[0.4, 1.5]  OUT
+  pay_id 4 (cherry3): P=0.0032%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 73245  band=[1/50k, 1/100k]  OK
+
+======== Candidate: D_cherry_relift ========
+Total RTP:        79.694%
+  Base RTP:       28.174pp  (35.4%)
+  Feature RTP:    51.520pp  (64.6%)
+Base hit rate:    13.631%
+Base CV:          7.163
+Trigger rate:     1.120%  (1 in 89)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.389e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=60.50%  cherry=4.30%  1bar=12.99%  2bar=10.48%  3bar=5.52%  high7=2.80%  dd=3.00%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=61.32%  cherry=4.30%  1bar=11.48%  2bar=9.51%  3bar=5.00%  high7=4.50%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=60.66%  cherry=2.20%  1bar=14.01%  2bar=12.00%  3bar=6.51%  high7=1.80%  dd=1.30%  jackpot=0.40%  topdollar=1.12%
+
+¡ì1 hierarchy:
+  bar1 P=0.3654%  bar2 P=0.2319%  bar3 P=0.0552%   ok=PASS
+  cherry1 P=10.0618%  cherry2 P=0.3617%  cherry3 P=0.0041%
+  high7_wild P=0.0107%  high7_pure P=0.0023%  wild_pure P=0.0014%  bar_mixed P=2.5369%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 73.81%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 12.60%  RTP 16.00pp  share-of-base 56.80%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 34.11%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 35.11%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 25.35%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.400%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 10.06pp  share=35.71%  band=[26.0, 38.0]  OK
+  bar_mixed: 5.94pp  share=21.08%  band=[12.0, 25.0]  OK
+  bar1: 2.86pp  share=10.15%  band=[4.0, 12.0]  OK
+  bar2: 3.86pp  share=13.71%  band=[10.0, 20.0]  OK
+  bar3: 2.30pp  share=8.16%  band=[5.0, 12.0]  OK
+  high7: 1.01pp  share=3.58%  band=[2.5, 8.0]  OK
+  wild_pure: 0.27pp  share=0.97%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.3617%  band=[0.4, 1.5]  OUT
+  pay_id 4 (cherry3): P=0.0041%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 73304  band=[1/50k, 1/100k]  OK
+
+======== Candidate: E_2bar_lift_for_rtp ========
+Total RTP:        81.575%
+  Base RTP:       30.096pp  (36.9%)
+  Feature RTP:    51.479pp  (63.1%)
+Base hit rate:    14.066%
+Base CV:          6.871
+Trigger rate:     1.119%  (1 in 89)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.383e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=59.20%  cherry=4.30%  1bar=12.99%  2bar=11.80%  3bar=5.52%  high7=2.80%  dd=3.00%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=59.98%  cherry=4.30%  1bar=11.50%  2bar=10.81%  3bar=5.00%  high7=4.50%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=59.17%  cherry=2.20%  1bar=14.00%  2bar=13.51%  3bar=6.50%  high7=1.80%  dd=1.30%  jackpot=0.40%  topdollar=1.12%
+
+¡ì1 hierarchy:
+  bar1 P=0.3655%  bar2 P=0.3122%  bar3 P=0.0552%   ok=PASS
+  cherry1 P=10.0640%  cherry2 P=0.3619%  cherry3 P=0.0041%
+  high7_wild P=0.0107%  high7_pure P=0.0023%  wild_pure P=0.0014%  bar_mixed P=2.8889%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 71.55%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 12.95%  RTP 16.79pp  share-of-base 55.78%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 33.44%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.44%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 24.76%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.400%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 10.06pp  share=33.44%  band=[26.0, 38.0]  OK
+  bar_mixed: 6.73pp  share=22.35%  band=[12.0, 25.0]  OK
+  bar1: 2.86pp  share=9.50%  band=[4.0, 12.0]  OK
+  bar2: 5.00pp  share=16.60%  band=[10.0, 20.0]  OK
+  bar3: 2.30pp  share=7.64%  band=[5.0, 12.0]  OK
+  high7: 1.01pp  share=3.35%  band=[2.5, 8.0]  OK
+  wild_pure: 0.27pp  share=0.91%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.3619%  band=[0.4, 1.5]  OUT
+  pay_id 4 (cherry3): P=0.0041%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 73289  band=[1/50k, 1/100k]  OK
+
+======== Candidate: F_R1_blank_lock_54 ========
+Total RTP:        83.723%
+  Base RTP:       32.244pp  (38.5%)
+  Feature RTP:    51.479pp  (61.5%)
+Base hit rate:    14.634%
+Base CV:          6.535
+Trigger rate:     1.119%  (1 in 89)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.383e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.99%  cherry=4.30%  1bar=15.60%  2bar=14.40%  3bar=5.52%  high7=2.80%  dd=3.00%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=59.98%  cherry=4.30%  1bar=11.50%  2bar=10.81%  3bar=5.00%  high7=4.50%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=59.17%  cherry=2.20%  1bar=14.00%  2bar=13.51%  3bar=6.50%  high7=1.80%  dd=1.30%  jackpot=0.40%  topdollar=1.12%
+
+¡ì1 hierarchy:
+  bar1 P=0.4254%  bar2 P=0.3673%  bar3 P=0.0552%   ok=PASS
+  cherry1 P=10.0644%  cherry2 P=0.3619%  cherry3 P=0.0041%
+  high7_wild P=0.0107%  high7_pure P=0.0023%  wild_pure P=0.0014%  bar_mixed P=3.3410%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.78%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 13.41%  RTP 17.79pp  share-of-base 55.17%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 33.44%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.44%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 24.76%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.400%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 10.06pp  share=31.21%  band=[26.0, 38.0]  OK
+  bar_mixed: 7.73pp  share=23.96%  band=[12.0, 25.0]  OK
+  bar1: 3.26pp  share=10.11%  band=[4.0, 12.0]  OK
+  bar2: 5.74pp  share=17.81%  band=[10.0, 20.0]  OK
+  bar3: 2.30pp  share=7.13%  band=[5.0, 12.0]  OK
+  high7: 1.01pp  share=3.13%  band=[2.5, 8.0]  OK
+  wild_pure: 0.27pp  share=0.85%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.3619%  band=[0.4, 1.5]  OUT
+  pay_id 4 (cherry3): P=0.0041%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 73282  band=[1/50k, 1/100k]  OK
+
+======== Candidate: G_cherry_70_cap ========
+Total RTP:        82.884%
+  Base RTP:       31.395pp  (37.9%)
+  Feature RTP:    51.489pp  (62.1%)
+Base hit rate:    13.916%
+Base CV:          6.706
+Trigger rate:     1.119%  (1 in 89)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.384e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.98%  cherry=4.00%  1bar=15.75%  2bar=14.56%  3bar=5.52%  high7=2.80%  dd=3.00%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=60.31%  cherry=4.00%  1bar=11.49%  2bar=10.80%  3bar=5.00%  high7=4.50%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=59.36%  cherry=2.00%  1bar=14.00%  2bar=13.51%  3bar=6.51%  high7=1.80%  dd=1.30%  jackpot=0.40%  topdollar=1.12%
+
+¡ì1 hierarchy:
+  bar1 P=0.4286%  bar2 P=0.3705%  bar3 P=0.0552%   ok=PASS
+  cherry1 P=9.3679%  cherry2 P=0.3103%  cherry3 P=0.0032%
+  high7_wild P=0.0107%  high7_pure P=0.0023%  wild_pure P=0.0014%  bar_mixed P=3.3662%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.32%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 12.73%  RTP 17.15pp  share-of-base 54.62%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 33.62%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.58%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 24.84%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.400%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 9.37pp  share=29.84%  band=[26.0, 38.0]  OK
+  bar_mixed: 7.78pp  share=24.78%  band=[12.0, 25.0]  OK
+  bar1: 3.28pp  share=10.46%  band=[4.0, 12.0]  OK
+  bar2: 5.79pp  share=18.43%  band=[10.0, 20.0]  OK
+  bar3: 2.30pp  share=7.32%  band=[5.0, 12.0]  OK
+  high7: 1.01pp  share=3.21%  band=[2.5, 8.0]  OK
+  wild_pure: 0.27pp  share=0.87%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.3103%  band=[0.4, 1.5]  OUT
+  pay_id 4 (cherry3): P=0.0032%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 73319  band=[1/50k, 1/100k]  OK
+
+======== Candidate: H_explicit_5_5_2_cherry ========
+Total RTP:        80.506%
+  Base RTP:       29.006pp  (36.0%)
+  Feature RTP:    51.499pp  (64.0%)
+Base hit rate:    14.518%
+Base CV:          7.061
+Trigger rate:     1.120%  (1 in 89)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.386e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=60.83%  cherry=5.00%  1bar=11.49%  2bar=10.48%  3bar=6.00%  high7=2.80%  dd=3.00%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=61.04%  cherry=5.00%  1bar=10.50%  2bar=9.52%  3bar=5.52%  high7=4.50%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=61.90%  cherry=2.00%  1bar=12.50%  2bar=12.00%  3bar=6.99%  high7=1.80%  dd=1.30%  jackpot=0.40%  topdollar=1.12%
+
+¡ì1 hierarchy:
+  bar1 P=0.2788%  bar2 P=0.2320%  bar3 P=0.0659%   ok=PASS
+  cherry1 P=11.1156%  cherry2 P=0.4350%  cherry3 P=0.0050%
+  high7_wild P=0.0107%  high7_pure P=0.0023%  wild_pure P=0.0014%  bar_mixed P=2.3715%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 76.56%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 13.49%  RTP 16.69pp  share-of-base 57.54%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 33.99%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.95%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 25.85%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.400%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.12pp  share=38.32%  band=[26.0, 38.0]  OUT
+  bar_mixed: 5.57pp  share=19.22%  band=[12.0, 25.0]  OK
+  bar1: 2.26pp  share=7.78%  band=[4.0, 12.0]  OK
+  bar2: 3.87pp  share=13.33%  band=[10.0, 20.0]  OK
+  bar3: 2.66pp  share=9.18%  band=[5.0, 12.0]  OK
+  high7: 1.01pp  share=3.48%  band=[2.5, 8.0]  OK
+  wild_pure: 0.27pp  share=0.94%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4350%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0050%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 73267  band=[1/50k, 1/100k]  OK
+
+======== Candidate: I_v7_with_bar_swap ========
+Total RTP:        91.548%
+  Base RTP:       40.953pp  (44.7%)
+  Feature RTP:    50.595pp  (55.3%)
+Base hit rate:    19.371%
+Base CV:          5.800
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.256e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=54.53%  cherry=6.10%  1bar=14.79%  2bar=10.60%  3bar=7.68%  high7=3.00%  dd=3.20%  jackpot=0.10%  topdollar=0.00%
+  R2: blank=54.56%  cherry=6.10%  1bar=14.19%  2bar=9.52%  3bar=6.32%  high7=5.00%  dd=3.70%  jackpot=0.60%  topdollar=0.00%
+  R3: blank=54.53%  cherry=3.10%  1bar=16.59%  2bar=12.48%  3bar=8.70%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5774%  bar2 P=0.2516%  bar3 P=0.1085%   ok=PASS
+  cherry1 P=13.8348%  cherry2 P=0.7158%  cherry3 P=0.0115%
+  high7_wild P=0.0137%  high7_pure P=0.0030%  wild_pure P=0.0017%  bar_mixed P=3.8534%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 71.42%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 17.69%  RTP 22.78pp  share-of-base 55.62%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.95%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.21%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.88%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.100%  (cap 0.6%)
+  R2 jackpot = 0.600%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 13.83pp  share=33.78%  band=[26.0, 38.0]  OK
+  bar_mixed: 8.94pp  share=21.84%  band=[12.0, 25.0]  OK
+  bar1: 4.37pp  share=10.67%  band=[4.0, 12.0]  OK
+  bar2: 4.26pp  share=10.41%  band=[10.0, 20.0]  OK
+  bar3: 4.18pp  share=10.20%  band=[5.0, 12.0]  OK
+  high7: 1.28pp  share=3.13%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.7158%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0115%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60322  band=[1/50k, 1/100k]  OK
+
+======== Candidate: J_cherry_5_5_2.5 ========
+Total RTP:        88.040%
+  Base RTP:       37.414pp  (42.5%)
+  Feature RTP:    50.625pp  (57.5%)
+Base hit rate:    16.824%
+Base CV:          6.315
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.260e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=55.63%  cherry=5.00%  1bar=14.79%  2bar=10.60%  3bar=7.68%  high7=3.00%  dd=3.20%  jackpot=0.10%  topdollar=0.00%
+  R2: blank=55.65%  cherry=5.00%  1bar=14.20%  2bar=9.52%  3bar=6.32%  high7=5.00%  dd=3.70%  jackpot=0.60%  topdollar=0.00%
+  R3: blank=55.11%  cherry=2.50%  1bar=16.60%  2bar=12.49%  3bar=8.70%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5780%  bar2 P=0.2518%  bar3 P=0.1086%   ok=PASS
+  cherry1 P=11.5223%  cherry2 P=0.4816%  cherry3 P=0.0063%
+  high7_wild P=0.0137%  high7_pure P=0.0030%  wild_pure P=0.0017%  bar_mixed P=3.8572%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.49%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.38%  RTP 20.48pp  share-of-base 54.73%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 31.48%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.78%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.11%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.100%  (cap 0.6%)
+  R2 jackpot = 0.600%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.52pp  share=30.80%  band=[26.0, 38.0]  OK
+  bar_mixed: 8.95pp  share=23.93%  band=[12.0, 25.0]  OK
+  bar1: 4.37pp  share=11.69%  band=[4.0, 12.0]  OK
+  bar2: 4.27pp  share=11.41%  band=[10.0, 20.0]  OK
+  bar3: 4.18pp  share=11.18%  band=[5.0, 12.0]  OK
+  high7: 1.28pp  share=3.43%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.89%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4816%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0063%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60262  band=[1/50k, 1/100k]  OK
+
+======== Candidate: K_R1_blank_lock ========
+Total RTP:        88.736%
+  Base RTP:       38.111pp  (42.9%)
+  Feature RTP:    50.625pp  (57.1%)
+Base hit rate:    17.038%
+Base CV:          6.216
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.260e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=54.01%  cherry=5.00%  1bar=16.41%  2bar=10.60%  3bar=7.68%  high7=3.00%  dd=3.20%  jackpot=0.10%  topdollar=0.00%
+  R2: blank=55.65%  cherry=5.00%  1bar=14.20%  2bar=9.52%  3bar=6.32%  high7=5.00%  dd=3.70%  jackpot=0.60%  topdollar=0.00%
+  R3: blank=55.11%  cherry=2.50%  1bar=16.60%  2bar=12.49%  3bar=8.70%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.6302%  bar2 P=0.2518%  bar3 P=0.1086%   ok=PASS
+  cherry1 P=11.5223%  cherry2 P=0.4816%  cherry3 P=0.0063%
+  high7_wild P=0.0137%  high7_pure P=0.0030%  wild_pure P=0.0017%  bar_mixed P=4.0193%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.63%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.54%  RTP 20.83pp  share-of-base 54.66%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 31.48%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.78%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.11%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.100%  (cap 0.6%)
+  R2 jackpot = 0.600%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.52pp  share=30.23%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.31pp  share=24.43%  band=[12.0, 25.0]  OK
+  bar1: 4.71pp  share=12.37%  band=[4.0, 12.0]  OUT
+  bar2: 4.27pp  share=11.20%  band=[10.0, 20.0]  OK
+  bar3: 4.18pp  share=10.97%  band=[5.0, 12.0]  OK
+  high7: 1.28pp  share=3.36%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.87%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4816%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0063%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60262  band=[1/50k, 1/100k]  OK
+
+======== Candidate: M_v7_aligned_swap ========
+Total RTP:        89.733%
+  Base RTP:       39.103pp  (43.6%)
+  Feature RTP:    50.630pp  (56.4%)
+Base hit rate:    17.898%
+Base CV:          6.108
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.261e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=54.44%  cherry=5.44%  1bar=14.31%  2bar=11.09%  3bar=8.07%  high7=3.02%  dd=3.23%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=55.04%  cherry=5.40%  1bar=14.00%  2bar=9.99%  3bar=6.48%  high7=5.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=55.47%  cherry=2.80%  1bar=16.21%  2bar=12.21%  3bar=8.71%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5447%  bar2 P=0.2650%  bar3 P=0.1144%   ok=PASS
+  cherry1 P=12.4717%  cherry2 P=0.5728%  cherry3 P=0.0082%
+  high7_wild P=0.0138%  high7_pure P=0.0030%  wild_pure P=0.0017%  bar_mixed P=3.9028%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 69.68%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.37%  RTP 21.52pp  share-of-base 55.05%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 31.18%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.46%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.25%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.403%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 12.47pp  share=31.89%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.05pp  share=23.15%  band=[12.0, 25.0]  OK
+  bar1: 4.15pp  share=10.63%  band=[4.0, 12.0]  OK
+  bar2: 4.44pp  share=11.37%  band=[10.0, 20.0]  OK
+  bar3: 4.37pp  share=11.17%  band=[5.0, 12.0]  OK
+  high7: 1.29pp  share=3.30%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.85%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5728%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0082%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 59845  band=[1/50k, 1/100k]  OK
+
+======== Candidate: N_RTP_balanced ========
+Total RTP:        89.502%
+  Base RTP:       38.952pp  (43.5%)
+  Feature RTP:    50.549pp  (56.5%)
+Base hit rate:    16.891%
+Base CV:          6.197
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=54.20%  cherry=5.00%  1bar=14.19%  2bar=12.00%  3bar=8.00%  high7=3.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.86%  cherry=5.00%  1bar=14.02%  2bar=11.53%  3bar=6.48%  high7=5.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=55.02%  cherry=2.00%  1bar=16.18%  2bar=13.51%  3bar=8.69%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5404%  bar2 P=0.3435%  bar3 P=0.1135%   ok=PASS
+  cherry1 P=11.1177%  cherry2 P=0.4352%  cherry3 P=0.0050%
+  high7_wild P=0.0137%  high7_pure P=0.0030%  wild_pure P=0.0017%  bar_mixed P=4.3177%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.82%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.44%  RTP 21.09pp  share-of-base 54.14%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.60%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.86%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.08%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.12pp  share=28.54%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.97pp  share=25.59%  band=[12.0, 25.0]  OUT
+  bar1: 4.12pp  share=10.58%  band=[4.0, 12.0]  OK
+  bar2: 5.55pp  share=14.25%  band=[10.0, 20.0]  OK
+  bar3: 4.33pp  share=11.12%  band=[5.0, 12.0]  OK
+  high7: 1.28pp  share=3.29%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.85%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4352%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0050%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60328  band=[1/50k, 1/100k]  OK
+
+======== Candidate: O_locked_R1_blank ========
+Total RTP:        89.586%
+  Base RTP:       39.037pp  (43.6%)
+  Feature RTP:    50.549pp  (56.4%)
+Base hit rate:    16.918%
+Base CV:          6.185
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=54.00%  cherry=5.00%  1bar=14.40%  2bar=12.00%  3bar=8.00%  high7=3.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.86%  cherry=5.00%  1bar=14.02%  2bar=11.53%  3bar=6.48%  high7=5.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=55.02%  cherry=2.00%  1bar=16.18%  2bar=13.51%  3bar=8.69%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5468%  bar2 P=0.3434%  bar3 P=0.1135%   ok=PASS
+  cherry1 P=11.1164%  cherry2 P=0.4350%  cherry3 P=0.0050%
+  high7_wild P=0.0137%  high7_pure P=0.0030%  wild_pure P=0.0017%  bar_mixed P=4.3397%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.71%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.46%  RTP 21.13pp  share-of-base 54.14%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.60%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.86%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.08%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.12pp  share=28.48%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.02pp  share=25.66%  band=[12.0, 25.0]  OUT
+  bar1: 4.16pp  share=10.66%  band=[4.0, 12.0]  OK
+  bar2: 5.55pp  share=14.21%  band=[10.0, 20.0]  OK
+  bar3: 4.33pp  share=11.09%  band=[5.0, 12.0]  OK
+  high7: 1.28pp  share=3.28%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.85%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4350%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0050%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 60346  band=[1/50k, 1/100k]  OK
+
+======== Candidate: P_rtp_to_94 ========
+Total RTP:        90.524%
+  Base RTP:       39.944pp  (44.1%)
+  Feature RTP:    50.580pp  (55.9%)
+Base hit rate:    17.108%
+Base CV:          6.133
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.254e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.69%  cherry=5.00%  1bar=14.20%  2bar=12.49%  3bar=8.01%  high7=3.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=52.59%  cherry=5.00%  1bar=14.02%  2bar=12.01%  3bar=6.48%  high7=5.80%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=54.52%  cherry=2.00%  1bar=16.19%  2bar=13.99%  3bar=8.70%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5409%  bar2 P=0.3778%  bar3 P=0.1136%   ok=PASS
+  cherry1 P=11.1204%  cherry2 P=0.4354%  cherry3 P=0.0050%
+  high7_wild P=0.0149%  high7_pure P=0.0035%  wild_pure P=0.0017%  bar_mixed P=4.4947%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.00%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.62%  RTP 21.48pp  share-of-base 53.78%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.01%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.04%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.87%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.12pp  share=27.84%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.36pp  share=25.94%  band=[12.0, 25.0]  OUT
+  bar1: 4.13pp  share=10.33%  band=[4.0, 12.0]  OK
+  bar2: 6.03pp  share=15.09%  band=[10.0, 20.0]  OK
+  bar3: 4.34pp  share=10.86%  band=[5.0, 12.0]  OK
+  high7: 1.39pp  share=3.48%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.83%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4354%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0050%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60268  band=[1/50k, 1/100k]  OK
+
+======== Candidate: Q_rtp_to_95 ========
+Total RTP:        91.194%
+  Base RTP:       40.583pp  (44.5%)
+  Feature RTP:    50.610pp  (55.5%)
+Base hit rate:    17.245%
+Base CV:          6.106
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.258e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.24%  cherry=5.00%  1bar=14.18%  2bar=12.47%  3bar=8.51%  high7=3.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=52.37%  cherry=5.00%  1bar=14.01%  2bar=12.00%  3bar=6.72%  high7=5.80%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=54.19%  cherry=2.00%  1bar=16.20%  2bar=14.00%  3bar=9.00%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5401%  bar2 P=0.3772%  bar3 P=0.1253%   ok=PASS
+  cherry1 P=11.1119%  cherry2 P=0.4348%  cherry3 P=0.0050%
+  high7_wild P=0.0149%  high7_pure P=0.0035%  wild_pure P=0.0017%  bar_mixed P=4.6305%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 64.44%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.74%  RTP 21.78pp  share-of-base 53.66%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.86%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.92%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.74%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.11pp  share=27.38%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.66pp  share=26.27%  band=[12.0, 25.0]  OUT
+  bar1: 4.12pp  share=10.15%  band=[4.0, 12.0]  OK
+  bar2: 6.02pp  share=14.83%  band=[10.0, 20.0]  OK
+  bar3: 4.70pp  share=11.59%  band=[5.0, 12.0]  OK
+  high7: 1.39pp  share=3.42%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.82%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4348%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0050%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 60364  band=[1/50k, 1/100k]  OK
+
+======== Candidate: R_final_balance ========
+Total RTP:        90.855%
+  Base RTP:       40.245pp  (44.3%)
+  Feature RTP:    50.610pp  (55.7%)
+Base hit rate:    17.136%
+Base CV:          6.152
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.258e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.99%  cherry=5.00%  1bar=13.41%  2bar=12.48%  3bar=8.52%  high7=3.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=52.37%  cherry=5.00%  1bar=14.01%  2bar=12.00%  3bar=6.72%  high7=5.80%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=54.19%  cherry=2.00%  1bar=16.20%  2bar=14.00%  3bar=9.00%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5161%  bar2 P=0.3775%  bar3 P=0.1253%   ok=PASS
+  cherry1 P=11.1145%  cherry2 P=0.4350%  cherry3 P=0.0050%
+  high7_wild P=0.0149%  high7_pure P=0.0035%  wild_pure P=0.0017%  bar_mixed P=4.5422%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 64.86%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.66%  RTP 21.58pp  share-of-base 53.63%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.16%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.92%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.74%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.11pp  share=27.62%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.47pp  share=26.02%  band=[12.0, 25.0]  OUT
+  bar1: 3.96pp  share=9.85%  band=[4.0, 12.0]  OK
+  bar2: 6.02pp  share=14.96%  band=[10.0, 20.0]  OK
+  bar3: 4.71pp  share=11.69%  band=[5.0, 12.0]  OK
+  high7: 1.39pp  share=3.45%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.82%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4350%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0050%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60328  band=[1/50k, 1/100k]  OK
+
+======== Candidate: S_45_55_target ========
+Total RTP:        93.079%
+  Base RTP:       42.443pp  (45.6%)
+  Feature RTP:    50.635pp  (54.4%)
+Base hit rate:    17.559%
+Base CV:          6.009
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.262e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=54.00%  cherry=5.00%  1bar=11.40%  2bar=14.00%  3bar=9.00%  high7=3.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.91%  cherry=5.00%  1bar=14.00%  2bar=12.99%  3bar=7.20%  high7=5.80%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.78%  cherry=2.00%  1bar=16.21%  2bar=15.01%  3bar=9.40%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4535%  bar2 P=0.4695%  bar3 P=0.1419%   ok=FAIL
+  cherry1 P=11.1140%  cherry2 P=0.4350%  cherry3 P=0.0050%
+  high7_wild P=0.0149%  high7_pure P=0.0035%  wild_pure P=0.0017%  bar_mixed P=4.9200%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 63.30%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.03%  RTP 22.42pp  share-of-base 52.83%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.16%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.18%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.18%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.11pp  share=26.19%  band=[26.0, 38.0]  OK
+  bar_mixed: 11.31pp  share=26.65%  band=[12.0, 25.0]  OUT
+  bar1: 3.55pp  share=8.38%  band=[4.0, 12.0]  OK
+  bar2: 7.28pp  share=17.14%  band=[10.0, 20.0]  OK
+  bar3: 5.22pp  share=12.29%  band=[5.0, 12.0]  OUT
+  high7: 1.39pp  share=3.27%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.78%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4350%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0050%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60316  band=[1/50k, 1/100k]  OK
+
+======== Candidate: T_balanced_4555 ========
+Total RTP:        90.577%
+  Base RTP:       39.982pp  (44.1%)
+  Feature RTP:    50.595pp  (55.9%)
+Base hit rate:    17.393%
+Base CV:          6.035
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.256e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.47%  cherry=4.95%  1bar=14.35%  2bar=12.87%  3bar=7.92%  high7=2.97%  dd=3.17%  jackpot=0.30%  topdollar=0.00%
+  R2: blank=53.92%  cherry=4.94%  1bar=13.85%  2bar=11.86%  3bar=6.52%  high7=4.94%  dd=3.66%  jackpot=0.30%  topdollar=0.00%
+  R3: blank=54.53%  cherry=2.50%  1bar=15.99%  2bar=13.68%  3bar=8.70%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5317%  bar2 P=0.3738%  bar3 P=0.1124%   ok=PASS
+  cherry1 P=11.4281%  cherry2 P=0.4737%  cherry3 P=0.0061%
+  high7_wild P=0.0134%  high7_pure P=0.0029%  wild_pure P=0.0016%  bar_mixed P=4.4493%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.70%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.88%  RTP 21.68pp  share-of-base 54.21%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.59%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.83%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.88%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.297%  (cap 0.6%)
+  R2 jackpot = 0.297%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.43pp  share=28.58%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.25pp  share=25.63%  band=[12.0, 25.0]  OUT
+  bar1: 4.05pp  share=10.12%  band=[4.0, 12.0]  OK
+  bar2: 5.94pp  share=14.86%  band=[10.0, 20.0]  OK
+  bar3: 4.28pp  share=10.70%  band=[5.0, 12.0]  OK
+  high7: 1.25pp  share=3.14%  band=[2.5, 8.0]  OK
+  wild_pure: 0.32pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4737%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0061%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 61632  band=[1/50k, 1/100k]  OK
+
+======== Candidate: U_trim_bar3 ========
+Total RTP:        89.654%
+  Base RTP:       38.367pp  (42.8%)
+  Feature RTP:    51.287pp  (57.2%)
+Base hit rate:    16.736%
+Base CV:          6.285
+Trigger rate:     1.115%  (1 in 90)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.355e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=54.60%  cherry=5.06%  1bar=13.65%  2bar=12.34%  3bar=7.68%  high7=3.03%  dd=3.24%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=54.73%  cherry=5.02%  1bar=13.55%  2bar=11.56%  3bar=6.02%  high7=5.02%  dd=3.71%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=55.28%  cherry=2.03%  1bar=15.72%  2bar=13.70%  3bar=8.61%  high7=2.03%  dd=1.42%  jackpot=0.10%  topdollar=1.11%
+
+¡ì1 hierarchy:
+  bar1 P=0.4978%  bar2 P=0.3579%  bar3 P=0.1048%   ok=PASS
+  cherry1 P=11.1996%  cherry2 P=0.4424%  cherry3 P=0.0051%
+  high7_wild P=0.0141%  high7_pure P=0.0031%  wild_pure P=0.0017%  bar_mixed P=4.1098%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.92%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.31%  RTP 20.72pp  share-of-base 54.00%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 31.05%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.31%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.19%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.404%  (cap 0.6%)
+  R2 jackpot = 0.401%  (cap 0.6%)
+  R3 jackpot = 0.101%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.20pp  share=29.19%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.52pp  share=24.81%  band=[12.0, 25.0]  OK
+  bar1: 3.85pp  share=10.03%  band=[4.0, 12.0]  OK
+  bar2: 5.77pp  share=15.04%  band=[10.0, 20.0]  OK
+  bar3: 4.08pp  share=10.64%  band=[5.0, 12.0]  OK
+  high7: 1.32pp  share=3.43%  band=[2.5, 8.0]  OK
+  wild_pure: 0.34pp  share=0.89%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4424%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0051%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 58665  band=[1/50k, 1/100k]  OK
+
+======== Candidate: V_final_tune ========
+Total RTP:        89.654%
+  Base RTP:       38.367pp  (42.8%)
+  Feature RTP:    51.287pp  (57.2%)
+Base hit rate:    16.736%
+Base CV:          6.285
+Trigger rate:     1.115%  (1 in 90)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.355e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=54.60%  cherry=5.06%  1bar=13.65%  2bar=12.34%  3bar=7.68%  high7=3.03%  dd=3.24%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=54.73%  cherry=5.02%  1bar=13.55%  2bar=11.56%  3bar=6.02%  high7=5.02%  dd=3.71%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=55.28%  cherry=2.03%  1bar=15.72%  2bar=13.70%  3bar=8.61%  high7=2.03%  dd=1.42%  jackpot=0.10%  topdollar=1.11%
+
+¡ì1 hierarchy:
+  bar1 P=0.4978%  bar2 P=0.3579%  bar3 P=0.1048%   ok=PASS
+  cherry1 P=11.1996%  cherry2 P=0.4424%  cherry3 P=0.0051%
+  high7_wild P=0.0141%  high7_pure P=0.0031%  wild_pure P=0.0017%  bar_mixed P=4.1098%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.92%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.31%  RTP 20.72pp  share-of-base 54.00%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 31.05%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.31%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.19%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.404%  (cap 0.6%)
+  R2 jackpot = 0.401%  (cap 0.6%)
+  R3 jackpot = 0.101%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.20pp  share=29.19%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.52pp  share=24.81%  band=[12.0, 25.0]  OK
+  bar1: 3.85pp  share=10.03%  band=[4.0, 12.0]  OK
+  bar2: 5.77pp  share=15.04%  band=[10.0, 20.0]  OK
+  bar3: 4.08pp  share=10.64%  band=[5.0, 12.0]  OK
+  high7: 1.32pp  share=3.43%  band=[2.5, 8.0]  OK
+  wild_pure: 0.34pp  share=0.89%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4424%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0051%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 58665  band=[1/50k, 1/100k]  OK
+
+======== Candidate: W_final_polish ========
+Total RTP:        89.654%
+  Base RTP:       38.367pp  (42.8%)
+  Feature RTP:    51.287pp  (57.2%)
+Base hit rate:    16.736%
+Base CV:          6.285
+Trigger rate:     1.115%  (1 in 90)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.355e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=54.60%  cherry=5.06%  1bar=13.65%  2bar=12.34%  3bar=7.68%  high7=3.03%  dd=3.24%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=54.73%  cherry=5.02%  1bar=13.55%  2bar=11.56%  3bar=6.02%  high7=5.02%  dd=3.71%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=55.28%  cherry=2.03%  1bar=15.72%  2bar=13.70%  3bar=8.61%  high7=2.03%  dd=1.42%  jackpot=0.10%  topdollar=1.11%
+
+¡ì1 hierarchy:
+  bar1 P=0.4978%  bar2 P=0.3579%  bar3 P=0.1048%   ok=PASS
+  cherry1 P=11.1996%  cherry2 P=0.4424%  cherry3 P=0.0051%
+  high7_wild P=0.0141%  high7_pure P=0.0031%  wild_pure P=0.0017%  bar_mixed P=4.1098%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.92%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.31%  RTP 20.72pp  share-of-base 54.00%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 31.05%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.31%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.19%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.404%  (cap 0.6%)
+  R2 jackpot = 0.401%  (cap 0.6%)
+  R3 jackpot = 0.101%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.20pp  share=29.19%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.52pp  share=24.81%  band=[12.0, 25.0]  OK
+  bar1: 3.85pp  share=10.03%  band=[4.0, 12.0]  OK
+  bar2: 5.77pp  share=15.04%  band=[10.0, 20.0]  OK
+  bar3: 4.08pp  share=10.64%  band=[5.0, 12.0]  OK
+  high7: 1.32pp  share=3.43%  band=[2.5, 8.0]  OK
+  wild_pure: 0.34pp  share=0.89%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4424%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0051%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 58665  band=[1/50k, 1/100k]  OK
+
+======== Candidate: X_aim_95 ========
+Total RTP:        90.948%
+  Base RTP:       40.665pp  (44.7%)
+  Feature RTP:    50.283pp  (55.3%)
+Base hit rate:    17.804%
+Base CV:          6.006
+Trigger rate:     1.093%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.211e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.68%  cherry=5.17%  1bar=14.91%  2bar=11.93%  3bar=7.75%  high7=2.98%  dd=3.18%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.25%  cherry=5.13%  1bar=14.58%  2bar=11.36%  3bar=6.51%  high7=5.13%  dd=3.65%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.66%  cherry=2.48%  1bar=16.90%  2bar=13.44%  3bar=8.65%  high7=2.19%  dd=1.49%  jackpot=0.10%  topdollar=1.09%
+
+¡ì1 hierarchy:
+  bar1 P=0.6050%  bar2 P=0.3367%  bar3 P=0.1108%   ok=PASS
+  cherry1 P=11.7591%  cherry2 P=0.5011%  cherry3 P=0.0066%
+  high7_wild P=0.0148%  high7_pure P=0.0033%  wild_pure P=0.0017%  bar_mixed P=4.4651%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.05%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.22%  RTP 22.05pp  share-of-base 54.23%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.23%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.69%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.53%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.398%  (cap 0.6%)
+  R2 jackpot = 0.394%  (cap 0.6%)
+  R3 jackpot = 0.099%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.76pp  share=28.92%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.29pp  share=25.31%  band=[12.0, 25.0]  OUT
+  bar1: 4.56pp  share=11.21%  band=[4.0, 12.0]  OK
+  bar2: 5.46pp  share=13.44%  band=[10.0, 20.0]  OK
+  bar3: 4.25pp  share=10.46%  band=[5.0, 12.0]  OK
+  high7: 1.38pp  share=3.40%  band=[2.5, 8.0]  OK
+  wild_pure: 0.35pp  share=0.85%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5011%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0066%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 57805  band=[1/50k, 1/100k]  OK
+
+======== Candidate: Y_polish ========
+Total RTP:        92.030%
+  Base RTP:       41.475pp  (45.1%)
+  Feature RTP:    50.554pp  (54.9%)
+Base hit rate:    18.051%
+Base CV:          5.961
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.43%  cherry=5.20%  1bar=14.99%  2bar=11.99%  3bar=7.80%  high7=3.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=52.58%  cherry=5.20%  1bar=14.79%  2bar=11.52%  3bar=6.60%  high7=5.20%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.41%  cherry=2.50%  1bar=16.99%  2bar=13.51%  3bar=8.69%  high7=2.20%  dd=1.50%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.6204%  bar2 P=0.3453%  bar3 P=0.1137%   ok=PASS
+  cherry1 P=11.8564%  cherry2 P=0.5098%  cherry3 P=0.0068%
+  high7_wild P=0.0152%  high7_pure P=0.0034%  wild_pure P=0.0018%  bar_mixed P=4.5784%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.68%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.43%  RTP 22.41pp  share-of-base 54.04%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.95%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.43%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.43%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.86pp  share=28.59%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.56pp  share=25.45%  band=[12.0, 25.0]  OUT
+  bar1: 4.67pp  share=11.27%  band=[4.0, 12.0]  OK
+  bar2: 5.60pp  share=13.51%  band=[10.0, 20.0]  OK
+  bar3: 4.36pp  share=10.52%  band=[5.0, 12.0]  OK
+  high7: 1.42pp  share=3.42%  band=[2.5, 8.0]  OK
+  wild_pure: 0.35pp  share=0.86%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5098%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0068%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 56374  band=[1/50k, 1/100k]  OK
+
+======== Candidate: Z_final_v9 ========
+Total RTP:        92.030%
+  Base RTP:       41.475pp  (45.1%)
+  Feature RTP:    50.554pp  (54.9%)
+Base hit rate:    18.051%
+Base CV:          5.961
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.43%  cherry=5.20%  1bar=14.99%  2bar=11.99%  3bar=7.80%  high7=3.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=52.58%  cherry=5.20%  1bar=14.79%  2bar=11.52%  3bar=6.60%  high7=5.20%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.41%  cherry=2.50%  1bar=16.99%  2bar=13.51%  3bar=8.69%  high7=2.20%  dd=1.50%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.6204%  bar2 P=0.3453%  bar3 P=0.1137%   ok=PASS
+  cherry1 P=11.8564%  cherry2 P=0.5098%  cherry3 P=0.0068%
+  high7_wild P=0.0152%  high7_pure P=0.0034%  wild_pure P=0.0018%  bar_mixed P=4.5784%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.68%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.43%  RTP 22.41pp  share-of-base 54.04%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.95%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.43%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.43%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.86pp  share=28.59%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.56pp  share=25.45%  band=[12.0, 25.0]  OUT
+  bar1: 4.67pp  share=11.27%  band=[4.0, 12.0]  OK
+  bar2: 5.60pp  share=13.51%  band=[10.0, 20.0]  OK
+  bar3: 4.36pp  share=10.52%  band=[5.0, 12.0]  OK
+  high7: 1.42pp  share=3.42%  band=[2.5, 8.0]  OK
+  wild_pure: 0.35pp  share=0.86%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5098%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0068%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 56374  band=[1/50k, 1/100k]  OK
+
+======== Candidate: AA_high7_boost ========
+Total RTP:        90.223%
+  Base RTP:       39.829pp  (44.1%)
+  Feature RTP:    50.393pp  (55.9%)
+Base hit rate:    17.289%
+Base CV:          6.416
+Trigger rate:     1.096%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.227e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.78%  cherry=5.18%  1bar=13.75%  2bar=11.95%  3bar=7.77%  high7=3.98%  dd=3.19%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.25%  cherry=5.13%  1bar=12.81%  2bar=11.36%  3bar=6.51%  high7=6.90%  dd=3.65%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.78%  cherry=2.49%  1bar=15.92%  2bar=13.46%  3bar=8.66%  high7=2.99%  dd=1.49%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4837%  bar2 P=0.3382%  bar3 P=0.1113%   ok=PASS
+  cherry1 P=11.7722%  cherry2 P=0.5024%  cherry3 P=0.0066%
+  high7_wild P=0.0240%  high7_pure P=0.0082%  wild_pure P=0.0017%  bar_mixed P=4.0409%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.09%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.81%  RTP 21.14pp  share-of-base 53.07%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.23%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.47%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.58%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.398%  (cap 0.6%)
+  R2 jackpot = 0.394%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.77pp  share=29.56%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.36pp  share=23.51%  band=[12.0, 25.0]  OK
+  bar1: 3.76pp  share=9.43%  band=[4.0, 12.0]  OK
+  bar2: 5.49pp  share=13.78%  band=[10.0, 20.0]  OK
+  bar3: 4.27pp  share=10.73%  band=[5.0, 12.0]  OK
+  high7: 2.22pp  share=5.57%  band=[2.5, 8.0]  OK
+  wild_pure: 0.35pp  share=0.87%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5024%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0066%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 57564  band=[1/50k, 1/100k]  OK
+
+======== Candidate: BB_high7_more ========
+Total RTP:        91.237%
+  Base RTP:       40.662pp  (44.6%)
+  Feature RTP:    50.575pp  (55.4%)
+Base hit rate:    17.485%
+Base CV:          6.411
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.253e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.62%  cherry=5.20%  1bar=13.79%  2bar=12.00%  3bar=7.80%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.62%  cherry=5.20%  1bar=12.98%  2bar=11.51%  3bar=6.60%  high7=7.99%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.61%  cherry=2.50%  1bar=15.98%  2bar=13.51%  3bar=8.70%  high7=3.00%  dd=1.50%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4937%  bar2 P=0.3452%  bar3 P=0.1136%   ok=PASS
+  cherry1 P=11.8536%  cherry2 P=0.5096%  cherry3 P=0.0067%
+  high7_wild P=0.0265%  high7_pure P=0.0096%  wild_pure P=0.0018%  bar_mixed P=4.1245%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.79%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.98%  RTP 21.41pp  share-of-base 52.66%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.97%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.74%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.51%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.85pp  share=29.15%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.56pp  share=23.51%  band=[12.0, 25.0]  OK
+  bar1: 3.83pp  share=9.43%  band=[4.0, 12.0]  OK
+  bar2: 5.60pp  share=13.77%  band=[10.0, 20.0]  OK
+  bar3: 4.36pp  share=10.72%  band=[5.0, 12.0]  OK
+  high7: 2.45pp  share=6.03%  band=[2.5, 8.0]  OK
+  wild_pure: 0.35pp  share=0.87%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5096%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0067%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 56396  band=[1/50k, 1/100k]  OK
+
+======== Candidate: CC_dd_boost ========
+Total RTP:        101.075%
+  Base RTP:       50.490pp  (50.0%)
+  Feature RTP:    50.585pp  (50.0%)
+Base hit rate:    18.055%
+Base CV:          6.967
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.255e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.34%  cherry=5.20%  1bar=13.79%  2bar=11.99%  3bar=7.79%  high7=4.00%  dd=4.50%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.78%  cherry=5.20%  1bar=12.99%  2bar=11.52%  3bar=6.60%  high7=7.00%  dd=5.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.90%  cherry=2.50%  1bar=15.99%  2bar=13.52%  3bar=8.70%  high7=3.00%  dd=2.20%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.6096%  bar2 P=0.4357%  bar3 P=0.1567%   ok=PASS
+  cherry1 P=11.8567%  cherry2 P=0.5099%  cherry3 P=0.0068%
+  high7_wild P=0.0414%  high7_pure P=0.0084%  wild_pure P=0.0054%  bar_mixed P=4.4247%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.67%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.28%  RTP 22.61pp  share-of-base 44.78%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.85%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.33%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.23%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.86pp  share=23.48%  band=[26.0, 38.0]  OUT
+  bar_mixed: 10.75pp  share=21.30%  band=[12.0, 25.0]  OK
+  bar1: 5.35pp  share=10.60%  band=[4.0, 12.0]  OK
+  bar2: 8.03pp  share=15.91%  band=[10.0, 20.0]  OK
+  bar3: 6.87pp  share=13.61%  band=[5.0, 12.0]  OUT
+  high7: 3.88pp  share=7.69%  band=[2.5, 8.0]  OK
+  wild_pure: 1.09pp  share=2.16%  band=[0.4, 2.0]  OUT
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5099%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0068%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 18380  band=[1/50k, 1/100k]  OUT
+
+======== Candidate: DD_combo ========
+Total RTP:        97.867%
+  Base RTP:       47.272pp  (48.3%)
+  Feature RTP:    50.595pp  (51.7%)
+Base hit rate:    17.890%
+Base CV:          6.834
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.256e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.77%  cherry=5.20%  1bar=13.81%  2bar=12.01%  3bar=7.80%  high7=4.00%  dd=4.00%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.78%  cherry=5.20%  1bar=12.99%  2bar=11.52%  3bar=6.60%  high7=7.50%  dd=5.00%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.09%  cherry=2.50%  1bar=15.99%  2bar=13.52%  3bar=8.70%  high7=3.00%  dd=2.00%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5725%  bar2 P=0.4065%  bar3 P=0.1426%   ok=PASS
+  cherry1 P=11.8633%  cherry2 P=0.5104%  cherry3 P=0.0068%
+  high7_wild P=0.0370%  high7_pure P=0.0090%  wild_pure P=0.0040%  bar_mixed P=4.3382%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.31%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.20%  RTP 22.26pp  share-of-base 47.09%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.35%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.83%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.31%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.86pp  share=25.10%  band=[26.0, 38.0]  OUT
+  bar_mixed: 10.40pp  share=21.99%  band=[12.0, 25.0]  OK
+  bar1: 4.85pp  share=10.27%  band=[4.0, 12.0]  OK
+  bar2: 7.23pp  share=15.29%  band=[10.0, 20.0]  OK
+  bar3: 6.03pp  share=12.75%  band=[5.0, 12.0]  OUT
+  high7: 3.45pp  share=7.30%  band=[2.5, 8.0]  OK
+  wild_pure: 0.80pp  share=1.69%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5104%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0068%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 24980  band=[1/50k, 1/100k]  OUT
+
+======== Candidate: EE_final ========
+Total RTP:        95.505%
+  Base RTP:       45.406pp  (47.5%)
+  Feature RTP:    50.099pp  (52.5%)
+Base hit rate:    17.457%
+Base CV:          6.893
+Trigger rate:     1.089%  (1 in 92)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.185e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.25%  cherry=5.13%  1bar=13.82%  2bar=11.83%  3bar=7.69%  high7=3.94%  dd=3.94%  jackpot=0.39%  topdollar=0.00%
+  R2: blank=52.32%  cherry=5.04%  1bar=13.08%  2bar=11.43%  3bar=6.12%  high7=6.78%  dd=4.84%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.47%  cherry=2.48%  1bar=15.83%  2bar=13.39%  3bar=8.70%  high7=2.97%  dd=1.98%  jackpot=0.10%  topdollar=1.09%
+
+¡ì1 hierarchy:
+  bar1 P=0.5632%  bar2 P=0.3908%  bar3 P=0.1325%   ok=PASS
+  cherry1 P=11.6400%  cherry2 P=0.4908%  cherry3 P=0.0064%
+  high7_wild P=0.0337%  high7_pure P=0.0079%  wild_pure P=0.0038%  bar_mixed P=4.1876%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.68%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.83%  RTP 21.66pp  share-of-base 47.70%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.96%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.88%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.45%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.394%  (cap 0.6%)
+  R2 jackpot = 0.388%  (cap 0.6%)
+  R3 jackpot = 0.099%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.64pp  share=25.64%  band=[26.0, 38.0]  OUT
+  bar_mixed: 10.02pp  share=22.07%  band=[12.0, 25.0]  OK
+  bar1: 4.74pp  share=10.44%  band=[4.0, 12.0]  OK
+  bar2: 6.92pp  share=15.25%  band=[10.0, 20.0]  OK
+  bar3: 5.63pp  share=12.41%  band=[5.0, 12.0]  OUT
+  high7: 3.14pp  share=6.92%  band=[2.5, 8.0]  OK
+  wild_pure: 0.76pp  share=1.67%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4908%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0064%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 26431  band=[1/50k, 1/100k]  OUT
+
+======== Candidate: FF_R1_lock_54 ========
+Total RTP:        98.203%
+  Base RTP:       47.563pp  (48.4%)
+  Feature RTP:    50.640pp  (51.6%)
+Base hit rate:    18.012%
+Base CV:          6.765
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.263e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.58%  cherry=5.20%  1bar=14.01%  2bar=12.00%  3bar=7.80%  high7=4.00%  dd=4.00%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.77%  cherry=5.20%  1bar=13.50%  2bar=11.80%  3bar=6.32%  high7=7.00%  dd=5.00%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.96%  cherry=2.50%  1bar=16.00%  2bar=13.53%  3bar=8.80%  high7=3.00%  dd=2.00%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5962%  bar2 P=0.4137%  bar3 P=0.1403%   ok=PASS
+  cherry1 P=11.8633%  cherry2 P=0.5105%  cherry3 P=0.0068%
+  high7_wild P=0.0356%  high7_pure P=0.0084%  wild_pure P=0.0040%  bar_mixed P=4.4330%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.86%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.30%  RTP 22.47pp  share-of-base 47.25%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.35%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.33%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.26%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.86pp  share=24.94%  band=[26.0, 38.0]  OUT
+  bar_mixed: 10.61pp  share=22.30%  band=[12.0, 25.0]  OK
+  bar1: 5.02pp  share=10.55%  band=[4.0, 12.0]  OK
+  bar2: 7.33pp  share=15.41%  band=[10.0, 20.0]  OK
+  bar3: 5.96pp  share=12.54%  band=[5.0, 12.0]  OUT
+  high7: 3.33pp  share=7.00%  band=[2.5, 8.0]  OK
+  wild_pure: 0.80pp  share=1.68%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5105%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0068%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 24968  band=[1/50k, 1/100k]  OUT
+
+======== Candidate: GG_dd_v7 ========
+Total RTP:        91.074%
+  Base RTP:       40.286pp  (44.2%)
+  Feature RTP:    50.788pp  (55.8%)
+Base hit rate:    17.553%
+Base CV:          6.154
+Trigger rate:     1.104%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.284e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.30%  cherry=5.13%  1bar=13.83%  2bar=12.83%  3bar=7.90%  high7=3.45%  dd=3.16%  jackpot=0.39%  topdollar=0.00%
+  R2: blank=53.21%  cherry=5.12%  1bar=13.30%  2bar=12.02%  3bar=6.39%  high7=5.91%  dd=3.65%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=54.20%  cherry=2.51%  1bar=15.57%  2bar=13.57%  3bar=9.03%  high7=2.51%  dd=1.41%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4871%  bar2 P=0.3736%  bar3 P=0.1141%   ok=PASS
+  cherry1 P=11.7452%  cherry2 P=0.5006%  cherry3 P=0.0066%
+  high7_wild P=0.0180%  high7_pure P=0.0051%  wild_pure P=0.0016%  bar_mixed P=4.3012%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.91%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.05%  RTP 21.67pp  share-of-base 53.78%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.21%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.46%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.75%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.395%  (cap 0.6%)
+  R2 jackpot = 0.394%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.75pp  share=29.15%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.92pp  share=24.63%  band=[12.0, 25.0]  OK
+  bar1: 3.75pp  share=9.30%  band=[4.0, 12.0]  OK
+  bar2: 5.93pp  share=14.72%  band=[10.0, 20.0]  OK
+  bar3: 4.35pp  share=10.79%  band=[5.0, 12.0]  OK
+  high7: 1.67pp  share=4.15%  band=[2.5, 8.0]  OK
+  wild_pure: 0.32pp  share=0.80%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5006%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0066%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 61794  band=[1/50k, 1/100k]  OK
+
+======== Candidate: HH_balance ========
+Total RTP:        92.849%
+  Base RTP:       42.224pp  (45.5%)
+  Feature RTP:    50.625pp  (54.5%)
+Base hit rate:    18.076%
+Base CV:          5.994
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.260e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.18%  cherry=5.20%  1bar=14.01%  2bar=13.52%  3bar=8.00%  high7=3.50%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.88%  cherry=5.20%  1bar=13.51%  2bar=12.81%  3bar=6.49%  high7=6.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.67%  cherry=2.50%  1bar=15.52%  2bar=14.21%  3bar=9.00%  high7=2.50%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4994%  bar2 P=0.4291%  bar3 P=0.1170%   ok=PASS
+  cherry1 P=11.8627%  cherry2 P=0.5104%  cherry3 P=0.0068%
+  high7_wild P=0.0185%  high7_pure P=0.0053%  wild_pure P=0.0017%  bar_mixed P=4.6255%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.63%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.49%  RTP 22.51pp  share-of-base 53.31%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.60%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.89%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.53%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.86pp  share=28.09%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.65pp  share=25.22%  band=[12.0, 25.0]  OUT
+  bar1: 3.84pp  share=9.10%  band=[4.0, 12.0]  OK
+  bar2: 6.71pp  share=15.90%  band=[10.0, 20.0]  OK
+  bar3: 4.46pp  share=10.55%  band=[5.0, 12.0]  OK
+  high7: 1.71pp  share=4.06%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.79%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5104%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0068%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60268  band=[1/50k, 1/100k]  OK
+
+======== Candidate: II_min_dd ========
+Total RTP:        91.626%
+  Base RTP:       41.042pp  (44.8%)
+  Feature RTP:    50.585pp  (55.2%)
+Base hit rate:    17.998%
+Base CV:          5.884
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.255e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.37%  cherry=5.20%  1bar=14.01%  2bar=13.52%  3bar=8.00%  high7=3.50%  dd=3.00%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=52.07%  cherry=5.21%  1bar=13.51%  2bar=12.81%  3bar=6.49%  high7=6.01%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.80%  cherry=2.50%  1bar=15.51%  2bar=14.20%  3bar=9.00%  high7=2.50%  dd=1.30%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4850%  bar2 P=0.4163%  bar3 P=0.1118%   ok=PASS
+  cherry1 P=11.8629%  cherry2 P=0.5104%  cherry3 P=0.0068%
+  high7_wild P=0.0169%  high7_pure P=0.0053%  wild_pure P=0.0014%  bar_mixed P=4.5818%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.91%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.44%  RTP 22.34pp  share-of-base 54.43%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.49%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 31.99%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.59%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.86pp  share=28.90%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.48pp  share=25.53%  band=[12.0, 25.0]  OUT
+  bar1: 3.66pp  share=8.92%  band=[4.0, 12.0]  OK
+  bar2: 6.39pp  share=15.56%  band=[10.0, 20.0]  OK
+  bar3: 4.16pp  share=10.14%  band=[5.0, 12.0]  OK
+  high7: 1.56pp  share=3.81%  band=[2.5, 8.0]  OK
+  wild_pure: 0.27pp  share=0.67%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5104%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0068%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 73216  band=[1/50k, 1/100k]  OK
+
+======== Candidate: JJ_final ========
+Total RTP:        90.276%
+  Base RTP:       39.376pp  (43.6%)
+  Feature RTP:    50.900pp  (56.4%)
+Base hit rate:    16.877%
+Base CV:          6.493
+Trigger rate:     1.107%  (1 in 90)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.300e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.57%  cherry=4.96%  1bar=13.10%  2bar=12.90%  3bar=7.94%  high7=3.97%  dd=3.17%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.15%  cherry=4.92%  1bar=12.31%  2bar=11.81%  3bar=6.38%  high7=7.38%  dd=3.64%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=54.32%  cherry=2.51%  1bar=14.88%  2bar=13.60%  3bar=9.05%  high7=3.02%  dd=1.41%  jackpot=0.10%  topdollar=1.11%
+
+¡ì1 hierarchy:
+  bar1 P=0.4212%  bar2 P=0.3711%  bar3 P=0.1149%   ok=PASS
+  cherry1 P=11.4300%  cherry2 P=0.4742%  cherry3 P=0.0061%
+  high7_wild P=0.0244%  high7_pure P=0.0088%  wild_pure P=0.0016%  bar_mixed P=4.0247%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.72%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.45%  RTP 20.75pp  share-of-base 52.69%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.18%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.90%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.80%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.397%  (cap 0.6%)
+  R2 jackpot = 0.394%  (cap 0.6%)
+  R3 jackpot = 0.101%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.43pp  share=29.03%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.32pp  share=23.66%  band=[12.0, 25.0]  OK
+  bar1: 3.31pp  share=8.40%  band=[4.0, 12.0]  OK
+  bar2: 5.90pp  share=14.99%  band=[10.0, 20.0]  OK
+  bar3: 4.37pp  share=11.11%  band=[5.0, 12.0]  OK
+  high7: 2.26pp  share=5.73%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.83%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4742%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0061%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 61413  band=[1/50k, 1/100k]  OK
+
+======== Candidate: KK_2bar_boost ========
+Total RTP:        92.683%
+  Base RTP:       42.078pp  (45.4%)
+  Feature RTP:    50.605pp  (54.6%)
+Base hit rate:    17.542%
+Base CV:          6.226
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.258e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.20%  cherry=5.00%  1bar=13.20%  2bar=14.00%  3bar=8.00%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.44%  cherry=5.00%  1bar=12.50%  2bar=12.99%  3bar=6.48%  high7=7.49%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.11%  cherry=2.50%  1bar=14.79%  2bar=15.00%  3bar=9.00%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4285%  bar2 P=0.4691%  bar3 P=0.1168%   ok=FAIL
+  cherry1 P=11.5160%  cherry2 P=0.4810%  cherry3 P=0.0062%
+  high7_wild P=0.0248%  high7_pure P=0.0090%  wild_pure P=0.0017%  bar_mixed P=4.4886%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.65%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.00%  RTP 21.87pp  share-of-base 51.97%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.38%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.16%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.31%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.52pp  share=27.37%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.35pp  share=24.60%  band=[12.0, 25.0]  OK
+  bar1: 3.36pp  share=7.99%  band=[4.0, 12.0]  OK
+  bar2: 7.27pp  share=17.28%  band=[10.0, 20.0]  OK
+  bar3: 4.45pp  share=10.57%  band=[5.0, 12.0]  OK
+  high7: 2.30pp  share=5.46%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.79%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4810%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0062%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60364  band=[1/50k, 1/100k]  OK
+
+======== Candidate: LL_3bar_boost ========
+Total RTP:        91.485%
+  Base RTP:       40.936pp  (44.7%)
+  Feature RTP:    50.549pp  (55.3%)
+Base hit rate:    17.268%
+Base CV:          6.403
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.71%  cherry=5.00%  1bar=13.19%  2bar=12.99%  3bar=8.51%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.87%  cherry=5.00%  1bar=12.52%  2bar=12.01%  3bar=7.00%  high7=7.50%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=54.13%  cherry=2.50%  1bar=14.78%  2bar=13.51%  3bar=9.50%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4283%  bar2 P=0.3774%  bar3 P=0.1350%   ok=PASS
+  cherry1 P=11.5163%  cherry2 P=0.4810%  cherry3 P=0.0062%
+  high7_wild P=0.0248%  high7_pure P=0.0090%  wild_pure P=0.0017%  bar_mixed P=4.2884%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.69%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.80%  RTP 21.43pp  share-of-base 52.34%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.59%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.38%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.72%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.52pp  share=28.13%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.91pp  share=24.21%  band=[12.0, 25.0]  OK
+  bar1: 3.36pp  share=8.21%  band=[4.0, 12.0]  OK
+  bar2: 6.00pp  share=14.66%  band=[10.0, 20.0]  OK
+  bar3: 5.02pp  share=12.26%  band=[5.0, 12.0]  OUT
+  high7: 2.30pp  share=5.61%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4810%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0062%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60395  band=[1/50k, 1/100k]  OK
+
+======== Candidate: MM_combined ========
+Total RTP:        90.747%
+  Base RTP:       40.030pp  (44.1%)
+  Feature RTP:    50.717pp  (55.9%)
+Base hit rate:    16.956%
+Base CV:          6.404
+Trigger rate:     1.103%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.274e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.15%  cherry=4.92%  1bar=12.79%  2bar=13.78%  3bar=7.87%  high7=3.94%  dd=3.15%  jackpot=0.39%  topdollar=0.00%
+  R2: blank=52.85%  cherry=4.89%  1bar=12.04%  2bar=12.53%  3bar=6.34%  high7=7.34%  dd=3.62%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=54.12%  cherry=2.51%  1bar=14.22%  2bar=14.51%  3bar=9.02%  high7=3.01%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.3883%  bar2 P=0.4336%  bar3 P=0.1129%   ok=FAIL
+  cherry1 P=11.3654%  cherry2 P=0.4687%  cherry3 P=0.0060%
+  high7_wild P=0.0240%  high7_pure P=0.0087%  wild_pure P=0.0016%  bar_mixed P=4.1464%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.03%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.51%  RTP 20.94pp  share-of-base 52.31%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.01%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.71%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.72%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.394%  (cap 0.6%)
+  R2 jackpot = 0.391%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.37pp  share=28.39%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.58pp  share=23.92%  band=[12.0, 25.0]  OK
+  bar1: 3.07pp  share=7.67%  band=[4.0, 12.0]  OK
+  bar2: 6.75pp  share=16.86%  band=[10.0, 20.0]  OK
+  bar3: 4.30pp  share=10.74%  band=[5.0, 12.0]  OK
+  high7: 2.22pp  share=5.54%  band=[2.5, 8.0]  OK
+  wild_pure: 0.32pp  share=0.80%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4687%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0060%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 62479  band=[1/50k, 1/100k]  OK
+
+======== Candidate: NN_final ========
+Total RTP:        91.829%
+  Base RTP:       41.204pp  (44.9%)
+  Feature RTP:    50.625pp  (55.1%)
+Base hit rate:    17.309%
+Base CV:          6.330
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.260e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.40%  cherry=5.00%  1bar=12.99%  2bar=14.00%  3bar=8.00%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.83%  cherry=5.00%  1bar=12.30%  2bar=12.80%  3bar=6.48%  high7=7.50%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=54.21%  cherry=2.50%  1bar=14.20%  2bar=14.49%  3bar=9.00%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4024%  bar2 P=0.4493%  bar3 P=0.1170%   ok=FAIL
+  cherry1 P=11.5202%  cherry2 P=0.4814%  cherry3 P=0.0063%
+  high7_wild P=0.0248%  high7_pure P=0.0090%  wild_pure P=0.0017%  bar_mixed P=4.2969%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.56%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.82%  RTP 21.44pp  share-of-base 52.04%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.57%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.35%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.75%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.52pp  share=27.96%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.92pp  share=24.08%  band=[12.0, 25.0]  OK
+  bar1: 3.18pp  share=7.72%  band=[4.0, 12.0]  OK
+  bar2: 6.99pp  share=16.97%  band=[10.0, 20.0]  OK
+  bar3: 4.45pp  share=10.81%  band=[5.0, 12.0]  OK
+  high7: 2.30pp  share=5.58%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4814%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0063%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60292  band=[1/50k, 1/100k]  OK
+
+======== Candidate: OO_balanced ========
+Total RTP:        90.273%
+  Base RTP:       39.723pp  (44.0%)
+  Feature RTP:    50.549pp  (56.0%)
+Base hit rate:    17.757%
+Base CV:          6.234
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.41%  cherry=5.44%  1bar=14.84%  2bar=11.87%  3bar=6.92%  high7=3.96%  dd=3.17%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.31%  cherry=5.43%  1bar=13.83%  2bar=10.86%  3bar=5.61%  high7=6.91%  dd=3.65%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.95%  cherry=2.50%  1bar=15.97%  2bar=13.51%  3bar=8.48%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5452%  bar2 P=0.3236%  bar3 P=0.0907%   ok=PASS
+  cherry1 P=12.2560%  cherry2 P=0.5447%  cherry3 P=0.0074%
+  high7_wild P=0.0233%  high7_pure P=0.0082%  wild_pure P=0.0016%  bar_mixed P=3.9561%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 69.02%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.21%  RTP 21.41pp  share-of-base 53.91%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.27%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.51%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.65%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.396%  (cap 0.6%)
+  R2 jackpot = 0.395%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 12.26pp  share=30.85%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.16pp  share=23.05%  band=[12.0, 25.0]  OK
+  bar1: 4.13pp  share=10.41%  band=[4.0, 12.0]  OK
+  bar2: 5.26pp  share=13.24%  band=[10.0, 20.0]  OK
+  bar3: 3.60pp  share=9.07%  band=[5.0, 12.0]  OK
+  high7: 2.15pp  share=5.42%  band=[2.5, 8.0]  OK
+  wild_pure: 0.32pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5447%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0074%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 61840  band=[1/50k, 1/100k]  OK
+
+======== Candidate: PP_more_2bar ========
+Total RTP:        91.854%
+  Base RTP:       41.203pp  (44.9%)
+  Feature RTP:    50.651pp  (55.1%)
+Base hit rate:    18.002%
+Base CV:          6.170
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.264e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.90%  cherry=5.50%  1bar=13.49%  2bar=13.51%  3bar=7.00%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=52.73%  cherry=5.50%  1bar=12.51%  2bar=12.48%  3bar=5.68%  high7=7.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.87%  cherry=2.50%  1bar=14.50%  2bar=15.02%  3bar=8.50%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4287%  bar2 P=0.4422%  bar3 P=0.0930%   ok=FAIL
+  cherry1 P=12.3673%  cherry2 P=0.5549%  cherry3 P=0.0076%
+  high7_wild P=0.0239%  high7_pure P=0.0084%  wild_pure P=0.0017%  bar_mixed P=4.0746%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.70%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.44%  RTP 21.80pp  share-of-base 52.91%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.02%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.32%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.62%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 12.37pp  share=30.02%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.43pp  share=22.89%  band=[12.0, 25.0]  OK
+  bar1: 3.36pp  share=8.16%  band=[4.0, 12.0]  OK
+  bar2: 6.92pp  share=16.79%  band=[10.0, 20.0]  OK
+  bar3: 3.69pp  share=8.97%  band=[5.0, 12.0]  OK
+  high7: 2.21pp  share=5.36%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5549%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0076%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60298  band=[1/50k, 1/100k]  OK
+
+======== Candidate: QQ_high7_lift ========
+Total RTP:        91.647%
+  Base RTP:       41.077pp  (44.8%)
+  Feature RTP:    50.570pp  (55.2%)
+Base hit rate:    18.016%
+Base CV:          6.289
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.252e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.39%  cherry=5.50%  1bar=15.00%  2bar=12.00%  3bar=7.00%  high7=4.50%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.69%  cherry=5.50%  1bar=14.02%  2bar=11.01%  3bar=5.68%  high7=8.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.43%  cherry=2.50%  1bar=15.98%  2bar=13.51%  3bar=8.48%  high7=3.50%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5589%  bar2 P=0.3317%  bar3 P=0.0930%   ok=PASS
+  cherry1 P=12.3698%  cherry2 P=0.5550%  cherry3 P=0.0076%
+  high7_wild P=0.0299%  high7_pure P=0.0126%  wild_pure P=0.0017%  bar_mixed P=4.0557%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.66%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.43%  RTP 21.76pp  share-of-base 52.97%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.51%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.78%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.44%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 12.37pp  share=30.11%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.39pp  share=22.85%  band=[12.0, 25.0]  OK
+  bar1: 4.24pp  share=10.32%  band=[4.0, 12.0]  OK
+  bar2: 5.39pp  share=13.13%  band=[10.0, 20.0]  OK
+  bar3: 3.69pp  share=8.99%  band=[5.0, 12.0]  OK
+  high7: 2.78pp  share=6.76%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5550%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0076%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60322  band=[1/50k, 1/100k]  OK
+
+======== Candidate: RR_combined ========
+Total RTP:        89.838%
+  Base RTP:       39.284pp  (43.7%)
+  Feature RTP:    50.554pp  (56.3%)
+Base hit rate:    17.031%
+Base CV:          6.526
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.57%  cherry=5.16%  1bar=13.39%  2bar=12.90%  3bar=6.94%  high7=4.46%  dd=3.17%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.21%  cherry=5.12%  1bar=12.33%  2bar=11.82%  3bar=5.60%  high7=7.88%  dd=3.65%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.95%  cherry=2.50%  1bar=14.99%  2bar=13.99%  3bar=8.48%  high7=3.50%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4320%  bar2 P=0.3809%  bar3 P=0.0908%   ok=PASS
+  cherry1 P=11.7577%  cherry2 P=0.5013%  cherry3 P=0.0066%
+  high7_wild P=0.0292%  high7_pure P=0.0123%  wild_pure P=0.0016%  bar_mixed P=3.8186%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 69.04%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.58%  RTP 20.61pp  share-of-base 52.47%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.21%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.43%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.65%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.397%  (cap 0.6%)
+  R2 jackpot = 0.394%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.76pp  share=29.93%  band=[26.0, 38.0]  OK
+  bar_mixed: 8.86pp  share=22.54%  band=[12.0, 25.0]  OK
+  bar1: 3.38pp  share=8.60%  band=[4.0, 12.0]  OK
+  bar2: 6.05pp  share=15.39%  band=[10.0, 20.0]  OK
+  bar3: 3.61pp  share=9.18%  band=[5.0, 12.0]  OK
+  high7: 2.71pp  share=6.90%  band=[2.5, 8.0]  OK
+  wild_pure: 0.32pp  share=0.82%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5013%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0066%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 61772  band=[1/50k, 1/100k]  OK
+
+======== Candidate: SS_v9_final ========
+Total RTP:        89.838%
+  Base RTP:       39.284pp  (43.7%)
+  Feature RTP:    50.554pp  (56.3%)
+Base hit rate:    17.031%
+Base CV:          6.526
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.57%  cherry=5.16%  1bar=13.39%  2bar=12.90%  3bar=6.94%  high7=4.46%  dd=3.17%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.21%  cherry=5.12%  1bar=12.33%  2bar=11.82%  3bar=5.60%  high7=7.88%  dd=3.65%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.95%  cherry=2.50%  1bar=14.99%  2bar=13.99%  3bar=8.48%  high7=3.50%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4320%  bar2 P=0.3809%  bar3 P=0.0908%   ok=PASS
+  cherry1 P=11.7577%  cherry2 P=0.5013%  cherry3 P=0.0066%
+  high7_wild P=0.0292%  high7_pure P=0.0123%  wild_pure P=0.0016%  bar_mixed P=3.8186%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 69.04%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.58%  RTP 20.61pp  share-of-base 52.47%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.21%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.43%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.65%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.397%  (cap 0.6%)
+  R2 jackpot = 0.394%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.76pp  share=29.93%  band=[26.0, 38.0]  OK
+  bar_mixed: 8.86pp  share=22.54%  band=[12.0, 25.0]  OK
+  bar1: 3.38pp  share=8.60%  band=[4.0, 12.0]  OK
+  bar2: 6.05pp  share=15.39%  band=[10.0, 20.0]  OK
+  bar3: 3.61pp  share=9.18%  band=[5.0, 12.0]  OK
+  high7: 2.71pp  share=6.90%  band=[2.5, 8.0]  OK
+  wild_pure: 0.32pp  share=0.82%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5013%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0066%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 61772  band=[1/50k, 1/100k]  OK
+
+======== Candidate: TT_close_bars ========
+Total RTP:        90.755%
+  Base RTP:       40.205pp  (44.3%)
+  Feature RTP:    50.549pp  (55.7%)
+Base hit rate:    17.753%
+Base CV:          6.277
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.68%  cherry=5.47%  1bar=13.42%  2bar=12.41%  3bar=7.48%  high7=3.98%  dd=3.18%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.15%  cherry=5.41%  1bar=12.79%  2bar=11.81%  3bar=5.91%  high7=6.89%  dd=3.64%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.95%  cherry=2.50%  1bar=14.99%  2bar=13.99%  3bar=8.99%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4452%  bar2 P=0.3690%  bar3 P=0.1041%   ok=PASS
+  cherry1 P=12.2653%  cherry2 P=0.5456%  cherry3 P=0.0074%
+  high7_wild P=0.0233%  high7_pure P=0.0082%  wild_pure P=0.0016%  bar_mixed P=3.9834%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 69.09%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.25%  RTP 21.49pp  share-of-base 53.45%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.18%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.41%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.65%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.398%  (cap 0.6%)
+  R2 jackpot = 0.394%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 12.27pp  share=30.51%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.22pp  share=22.94%  band=[12.0, 25.0]  OK
+  bar1: 3.47pp  share=8.62%  band=[4.0, 12.0]  OK
+  bar2: 5.89pp  share=14.64%  band=[10.0, 20.0]  OK
+  bar3: 4.04pp  share=10.06%  band=[5.0, 12.0]  OK
+  high7: 2.16pp  share=5.37%  band=[2.5, 8.0]  OK
+  wild_pure: 0.32pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5456%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0074%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 61717  band=[1/50k, 1/100k]  OK
+
+======== Candidate: UU_close_bars_v2 ========
+Total RTP:        92.258%
+  Base RTP:       41.693pp  (45.2%)
+  Feature RTP:    50.565pp  (54.8%)
+Base hit rate:    18.101%
+Base CV:          6.244
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.252e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.92%  cherry=5.50%  1bar=13.50%  2bar=12.48%  3bar=8.00%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.44%  cherry=5.50%  1bar=12.98%  2bar=11.99%  3bar=6.00%  high7=7.99%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.42%  cherry=2.50%  1bar=14.99%  2bar=13.99%  3bar=9.50%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4548%  bar2 P=0.3769%  bar3 P=0.1167%   ok=PASS
+  cherry1 P=12.3631%  cherry2 P=0.5543%  cherry3 P=0.0076%
+  high7_wild P=0.0258%  high7_pure P=0.0096%  wild_pure P=0.0017%  bar_mixed P=4.1902%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.30%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.55%  RTP 22.06pp  share-of-base 52.91%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.62%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.66%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.43%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 12.36pp  share=29.65%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.70pp  share=23.26%  band=[12.0, 25.0]  OK
+  bar1: 3.54pp  share=8.49%  band=[4.0, 12.0]  OK
+  bar2: 6.01pp  share=14.42%  band=[10.0, 20.0]  OK
+  bar3: 4.48pp  share=10.74%  band=[5.0, 12.0]  OK
+  high7: 2.39pp  share=5.72%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.79%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5543%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0076%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60413  band=[1/50k, 1/100k]  OK
+
+======== Candidate: VV_close_bars_v3 ========
+Total RTP:        94.750%
+  Base RTP:       44.185pp  (46.6%)
+  Feature RTP:    50.565pp  (53.4%)
+Base hit rate:    19.270%
+Base CV:          5.950
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.252e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=51.82%  cherry=5.80%  1bar=13.79%  2bar=12.99%  3bar=8.00%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.28%  cherry=5.81%  1bar=13.30%  2bar=12.49%  3bar=6.01%  high7=8.01%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.34%  cherry=2.80%  1bar=15.29%  2bar=14.47%  3bar=9.50%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4807%  bar2 P=0.4146%  bar3 P=0.1169%   ok=PASS
+  cherry1 P=13.1077%  cherry2 P=0.6331%  cherry3 P=0.0094%
+  high7_wild P=0.0258%  high7_pure P=0.0096%  wild_pure P=0.0017%  bar_mixed P=4.4706%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.02%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 17.58%  RTP 23.42pp  share-of-base 53.02%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.07%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.08%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.00%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 13.11pp  share=29.67%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.32pp  share=23.35%  band=[12.0, 25.0]  OK
+  bar1: 3.72pp  share=8.41%  band=[4.0, 12.0]  OK
+  bar2: 6.53pp  share=14.78%  band=[10.0, 20.0]  OK
+  bar3: 4.49pp  share=10.15%  band=[5.0, 12.0]  OK
+  high7: 2.39pp  share=5.41%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.75%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.6331%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0094%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60328  band=[1/50k, 1/100k]  OK
+
+======== Candidate: WW_lock_R1 ========
+Total RTP:        94.750%
+  Base RTP:       44.185pp  (46.6%)
+  Feature RTP:    50.565pp  (53.4%)
+Base hit rate:    19.270%
+Base CV:          5.950
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.252e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=51.82%  cherry=5.80%  1bar=13.79%  2bar=12.99%  3bar=8.00%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.28%  cherry=5.81%  1bar=13.30%  2bar=12.49%  3bar=6.01%  high7=8.01%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.34%  cherry=2.80%  1bar=15.29%  2bar=14.47%  3bar=9.50%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4807%  bar2 P=0.4146%  bar3 P=0.1169%   ok=PASS
+  cherry1 P=13.1077%  cherry2 P=0.6331%  cherry3 P=0.0094%
+  high7_wild P=0.0258%  high7_pure P=0.0096%  wild_pure P=0.0017%  bar_mixed P=4.4706%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.02%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 17.58%  RTP 23.42pp  share-of-base 53.02%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.07%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.08%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.00%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 13.11pp  share=29.67%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.32pp  share=23.35%  band=[12.0, 25.0]  OK
+  bar1: 3.72pp  share=8.41%  band=[4.0, 12.0]  OK
+  bar2: 6.53pp  share=14.78%  band=[10.0, 20.0]  OK
+  bar3: 4.49pp  share=10.15%  band=[5.0, 12.0]  OK
+  high7: 2.39pp  share=5.41%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.75%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.6331%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0094%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60328  band=[1/50k, 1/100k]  OK
+
+======== Candidate: XX_cherry_down ========
+Total RTP:        91.761%
+  Base RTP:       41.156pp  (44.9%)
+  Feature RTP:    50.605pp  (55.1%)
+Base hit rate:    17.081%
+Base CV:          6.365
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.258e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.58%  cherry=5.00%  1bar=13.81%  2bar=13.01%  3bar=8.00%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.13%  cherry=5.00%  1bar=13.29%  2bar=12.48%  3bar=6.00%  high7=8.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.11%  cherry=2.00%  1bar=15.30%  2bar=14.48%  3bar=9.51%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4810%  bar2 P=0.4148%  bar3 P=0.1169%   ok=PASS
+  cherry1 P=11.1173%  cherry2 P=0.4352%  cherry3 P=0.0050%
+  high7_wild P=0.0258%  high7_pure P=0.0096%  wild_pure P=0.0017%  bar_mixed P=4.4733%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.09%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.59%  RTP 21.44pp  share-of-base 52.10%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.45%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.50%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.31%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.12pp  share=27.01%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.32pp  share=25.08%  band=[12.0, 25.0]  OUT
+  bar1: 3.72pp  share=9.03%  band=[4.0, 12.0]  OK
+  bar2: 6.54pp  share=15.88%  band=[10.0, 20.0]  OK
+  bar3: 4.49pp  share=10.91%  band=[5.0, 12.0]  OK
+  high7: 2.39pp  share=5.81%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4352%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0050%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60292  band=[1/50k, 1/100k]  OK
+
+======== Candidate: YY_v9_final ========
+Total RTP:        91.127%
+  Base RTP:       40.522pp  (44.5%)
+  Feature RTP:    50.605pp  (55.5%)
+Base hit rate:    16.874%
+Base CV:          6.452
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.258e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=54.01%  cherry=5.00%  1bar=12.39%  2bar=13.00%  3bar=8.00%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.13%  cherry=5.00%  1bar=13.29%  2bar=12.48%  3bar=6.00%  high7=8.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.11%  cherry=2.00%  1bar=15.30%  2bar=14.48%  3bar=9.51%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4408%  bar2 P=0.4147%  bar3 P=0.1169%   ok=PASS
+  cherry1 P=11.1160%  cherry2 P=0.4351%  cherry3 P=0.0050%
+  high7_wild P=0.0258%  high7_pure P=0.0096%  wild_pure P=0.0017%  bar_mixed P=4.3084%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.88%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.42%  RTP 21.08pp  share-of-base 52.01%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.16%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.50%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.31%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.12pp  share=27.43%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.96pp  share=24.58%  band=[12.0, 25.0]  OK
+  bar1: 3.45pp  share=8.52%  band=[4.0, 12.0]  OK
+  bar2: 6.53pp  share=16.12%  band=[10.0, 20.0]  OK
+  bar3: 4.49pp  share=11.07%  band=[5.0, 12.0]  OK
+  high7: 2.39pp  share=5.90%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.82%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4351%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0050%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60310  band=[1/50k, 1/100k]  OK
+
+======== Candidate: ZZ_high7_max ========
+Total RTP:        92.275%
+  Base RTP:       41.629pp  (45.1%)
+  Feature RTP:    50.646pp  (54.9%)
+Base hit rate:    16.915%
+Base CV:          6.596
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.263e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.97%  cherry=5.00%  1bar=12.40%  2bar=13.01%  3bar=8.01%  high7=5.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.09%  cherry=5.00%  1bar=13.30%  2bar=12.49%  3bar=6.01%  high7=9.01%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.07%  cherry=2.00%  1bar=15.31%  2bar=14.49%  3bar=9.52%  high7=4.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4419%  bar2 P=0.4157%  bar3 P=0.1172%   ok=PASS
+  cherry1 P=11.1242%  cherry2 P=0.4358%  cherry3 P=0.0050%
+  high7_wild P=0.0367%  high7_pure P=0.0180%  wild_pure P=0.0017%  bar_mixed P=4.3188%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.77%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.44%  RTP 21.11pp  share-of-base 50.71%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.65%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.99%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 21.90%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.12pp  share=26.72%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.98pp  share=23.98%  band=[12.0, 25.0]  OK
+  bar1: 3.46pp  share=8.31%  band=[4.0, 12.0]  OK
+  bar2: 6.55pp  share=15.73%  band=[10.0, 20.0]  OK
+  bar3: 4.50pp  share=10.80%  band=[5.0, 12.0]  OK
+  high7: 3.43pp  share=8.23%  band=[2.5, 8.0]  OUT
+  wild_pure: 0.33pp  share=0.80%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4358%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0050%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60165  band=[1/50k, 1/100k]  OK
+
+======== Candidate: AAA_v9_targeted ========
+Total RTP:        89.723%
+  Base RTP:       39.674pp  (44.2%)
+  Feature RTP:    50.049pp  (55.8%)
+Base hit rate:    16.683%
+Base CV:          6.649
+Trigger rate:     1.088%  (1 in 92)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.178e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.63%  cherry=4.87%  1bar=13.65%  2bar=12.67%  3bar=7.80%  high7=4.87%  dd=3.12%  jackpot=0.39%  topdollar=0.00%
+  R2: blank=52.14%  cherry=4.83%  1bar=12.54%  2bar=11.59%  3bar=6.26%  high7=8.69%  dd=3.57%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.41%  cherry=2.47%  1bar=14.84%  2bar=13.85%  3bar=8.90%  high7=3.96%  dd=1.38%  jackpot=0.10%  topdollar=1.09%
+
+¡ì1 hierarchy:
+  bar1 P=0.4369%  bar2 P=0.3630%  bar3 P=0.1088%   ok=PASS
+  cherry1 P=11.2405%  cherry2 P=0.4577%  cherry3 P=0.0058%
+  high7_wild P=0.0340%  high7_pure P=0.0168%  wild_pure P=0.0015%  bar_mixed P=4.0177%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.38%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.26%  RTP 20.52pp  share-of-base 51.72%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.60%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.70%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.42%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.390%  (cap 0.6%)
+  R2 jackpot = 0.386%  (cap 0.6%)
+  R3 jackpot = 0.099%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.24pp  share=28.33%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.28pp  share=23.39%  band=[12.0, 25.0]  OK
+  bar1: 3.39pp  share=8.53%  band=[4.0, 12.0]  OK
+  bar2: 5.76pp  share=14.52%  band=[10.0, 20.0]  OK
+  bar3: 4.14pp  share=10.44%  band=[5.0, 12.0]  OK
+  high7: 3.18pp  share=8.01%  band=[2.5, 8.0]  OUT
+  wild_pure: 0.31pp  share=0.78%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4577%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0058%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 64818  band=[1/50k, 1/100k]  OK
+
+======== Candidate: BBB_R1_blank_lock ========
+Total RTP:        92.579%
+  Base RTP:       41.989pp  (45.4%)
+  Feature RTP:    50.590pp  (54.6%)
+Base hit rate:    17.348%
+Base CV:          6.503
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.255e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=51.43%  cherry=5.00%  1bar=14.00%  2bar=12.99%  3bar=7.99%  high7=5.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.42%  cherry=5.00%  1bar=12.99%  2bar=12.00%  3bar=6.48%  high7=9.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.91%  cherry=2.50%  1bar=15.00%  2bar=14.00%  3bar=9.00%  high7=4.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4690%  bar2 P=0.3897%  bar3 P=0.1168%   ok=PASS
+  cherry1 P=11.5158%  cherry2 P=0.4810%  cherry3 P=0.0062%
+  high7_wild P=0.0365%  high7_pure P=0.0180%  wild_pure P=0.0017%  bar_mixed P=4.3133%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.38%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.83%  RTP 21.48pp  share-of-base 51.15%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 28.87%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.15%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.24%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.52pp  share=27.43%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.96pp  share=23.72%  band=[12.0, 25.0]  OK
+  bar1: 3.63pp  share=8.66%  band=[4.0, 12.0]  OK
+  bar2: 6.19pp  share=14.73%  band=[10.0, 20.0]  OK
+  bar3: 4.45pp  share=10.59%  band=[5.0, 12.0]  OK
+  high7: 3.41pp  share=8.13%  band=[2.5, 8.0]  OUT
+  wild_pure: 0.33pp  share=0.79%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4810%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0062%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60376  band=[1/50k, 1/100k]  OK
+
+======== Candidate: CCC_hh_polish ========
+Total RTP:        90.441%
+  Base RTP:       39.897pp  (44.1%)
+  Feature RTP:    50.544pp  (55.9%)
+Base hit rate:    16.827%
+Base CV:          6.233
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.249e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.24%  cherry=4.73%  1bar=13.81%  2bar=13.33%  3bar=7.89%  high7=3.45%  dd=3.15%  jackpot=0.39%  topdollar=0.00%
+  R2: blank=53.11%  cherry=4.72%  1bar=13.28%  2bar=12.59%  3bar=6.37%  high7=5.90%  dd=3.64%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.94%  cherry=2.30%  1bar=15.49%  2bar=14.18%  3bar=8.99%  high7=2.50%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4832%  bar2 P=0.4152%  bar3 P=0.1132%   ok=PASS
+  cherry1 P=10.8847%  cherry2 P=0.4252%  cherry3 P=0.0051%
+  high7_wild P=0.0179%  high7_pure P=0.0051%  wild_pure P=0.0016%  bar_mixed P=4.4755%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 64.69%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.36%  RTP 21.19pp  share-of-base 53.11%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.15%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.40%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.65%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.394%  (cap 0.6%)
+  R2 jackpot = 0.393%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 10.88pp  share=27.28%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.30pp  share=25.83%  band=[12.0, 25.0]  OUT
+  bar1: 3.72pp  share=9.32%  band=[4.0, 12.0]  OK
+  bar2: 6.50pp  share=16.28%  band=[10.0, 20.0]  OK
+  bar3: 4.31pp  share=10.81%  band=[5.0, 12.0]  OK
+  high7: 1.66pp  share=4.15%  band=[2.5, 8.0]  OK
+  wild_pure: 0.32pp  share=0.80%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4252%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0051%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 62287  band=[1/50k, 1/100k]  OK
+
+======== Candidate: DDD_hh_polish_v2 ========
+Total RTP:        91.866%
+  Base RTP:       41.230pp  (44.9%)
+  Feature RTP:    50.635pp  (55.1%)
+Base hit rate:    17.161%
+Base CV:          6.214
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.262e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.57%  cherry=4.80%  1bar=14.01%  2bar=13.52%  3bar=8.00%  high7=3.50%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.79%  cherry=4.80%  1bar=13.51%  2bar=12.81%  3bar=6.48%  high7=7.50%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.86%  cherry=2.30%  1bar=15.52%  2bar=14.21%  3bar=9.01%  high7=2.50%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4996%  bar2 P=0.4293%  bar3 P=0.1171%   ok=PASS
+  cherry1 P=11.0177%  cherry2 P=0.4357%  cherry3 P=0.0053%
+  high7_wild P=0.0211%  high7_pure P=0.0066%  wild_pure P=0.0017%  bar_mixed P=4.6273%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 64.20%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.65%  RTP 21.67pp  share-of-base 52.56%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.44%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.84%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.62%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.02pp  share=26.72%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.65pp  share=25.84%  band=[12.0, 25.0]  OUT
+  bar1: 3.84pp  share=9.32%  band=[4.0, 12.0]  OK
+  bar2: 6.72pp  share=16.29%  band=[10.0, 20.0]  OK
+  bar3: 4.46pp  share=10.81%  band=[5.0, 12.0]  OK
+  high7: 1.95pp  share=4.73%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4357%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0053%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60244  band=[1/50k, 1/100k]  OK
+
+======== Candidate: EEE_final_v9 ========
+Total RTP:        89.589%
+  Base RTP:       39.035pp  (43.6%)
+  Feature RTP:    50.554pp  (56.4%)
+Base hit rate:    16.559%
+Base CV:          6.604
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.62%  cherry=4.97%  1bar=13.41%  2bar=12.71%  3bar=7.75%  high7=3.97%  dd=3.18%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.04%  cherry=4.91%  1bar=12.29%  2bar=11.79%  3bar=6.09%  high7=7.86%  dd=3.63%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.95%  cherry=2.20%  1bar=14.99%  2bar=13.99%  3bar=8.78%  high7=3.50%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4310%  bar2 P=0.3754%  bar3 P=0.1065%   ok=PASS
+  cherry1 P=11.1686%  cherry2 P=0.4449%  cherry3 P=0.0054%
+  high7_wild P=0.0277%  high7_pure P=0.0109%  wild_pure P=0.0016%  bar_mixed P=3.9873%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.45%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.16%  RTP 20.40pp  share-of-base 52.26%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.11%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.32%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.65%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.397%  (cap 0.6%)
+  R2 jackpot = 0.393%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.17pp  share=28.61%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.23pp  share=23.65%  band=[12.0, 25.0]  OK
+  bar1: 3.37pp  share=8.64%  band=[4.0, 12.0]  OK
+  bar2: 5.97pp  share=15.29%  band=[10.0, 20.0]  OK
+  bar3: 4.10pp  share=10.51%  band=[5.0, 12.0]  OK
+  high7: 2.56pp  share=6.56%  band=[2.5, 8.0]  OK
+  wild_pure: 0.32pp  share=0.83%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4449%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0054%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 61906  band=[1/50k, 1/100k]  OK
+
+======== Candidate: FFF_balanced ========
+Total RTP:        90.189%
+  Base RTP:       39.584pp  (43.9%)
+  Feature RTP:    50.605pp  (56.1%)
+Base hit rate:    17.124%
+Base CV:          6.496
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.258e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.67%  cherry=5.17%  1bar=12.91%  2bar=12.72%  3bar=7.47%  high7=4.47%  dd=3.18%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=53.57%  cherry=5.16%  1bar=12.41%  2bar=11.90%  3bar=5.95%  high7=6.94%  dd=3.67%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=54.01%  cherry=2.50%  1bar=14.49%  2bar=14.20%  3bar=8.70%  high7=3.50%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4096%  bar2 P=0.3848%  bar3 P=0.1019%   ok=PASS
+  cherry1 P=11.7973%  cherry2 P=0.5048%  cherry3 P=0.0067%
+  high7_wild P=0.0273%  high7_pure P=0.0109%  wild_pure P=0.0016%  bar_mixed P=3.8794%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.89%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.68%  RTP 20.79pp  share-of-base 52.53%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.41%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.67%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.67%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.398%  (cap 0.6%)
+  R2 jackpot = 0.397%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.80pp  share=29.80%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.00pp  share=22.73%  band=[12.0, 25.0]  OK
+  bar1: 3.23pp  share=8.15%  band=[4.0, 12.0]  OK
+  bar2: 6.11pp  share=15.44%  band=[10.0, 20.0]  OK
+  bar3: 3.97pp  share=10.03%  band=[5.0, 12.0]  OK
+  high7: 2.53pp  share=6.40%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.83%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5048%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0067%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 61182  band=[1/50k, 1/100k]  OK
+
+======== Candidate: GGG_ee_fixed ========
+Total RTP:        90.818%
+  Base RTP:       40.719pp  (44.8%)
+  Feature RTP:    50.099pp  (55.2%)
+Base hit rate:    16.413%
+Base CV:          6.972
+Trigger rate:     1.089%  (1 in 92)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.185e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.00%  cherry=4.91%  1bar=13.25%  2bar=12.25%  3bar=7.85%  high7=4.91%  dd=3.44%  jackpot=0.39%  topdollar=0.00%
+  R2: blank=52.97%  cherry=4.90%  1bar=11.98%  2bar=11.30%  3bar=6.20%  high7=8.34%  dd=3.92%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.47%  cherry=2.18%  1bar=14.85%  2bar=13.86%  3bar=8.91%  high7=3.96%  dd=1.58%  jackpot=0.10%  topdollar=1.09%
+
+¡ì1 hierarchy:
+  bar1 P=0.4339%  bar2 P=0.3667%  bar3 P=0.1178%   ok=PASS
+  cherry1 P=11.0972%  cherry2 P=0.4387%  cherry3 P=0.0052%
+  high7_wild P=0.0384%  high7_pure P=0.0162%  wild_pure P=0.0021%  bar_mixed P=3.8969%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.61%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 14.99%  RTP 20.23pp  share-of-base 49.68%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.37%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.76%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.45%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.393%  (cap 0.6%)
+  R2 jackpot = 0.392%  (cap 0.6%)
+  R3 jackpot = 0.099%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.10pp  share=27.25%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.13pp  share=22.43%  band=[12.0, 25.0]  OK
+  bar1: 3.51pp  share=8.62%  band=[4.0, 12.0]  OK
+  bar2: 6.06pp  share=14.89%  band=[10.0, 20.0]  OK
+  bar3: 4.65pp  share=11.43%  band=[5.0, 12.0]  OK
+  high7: 3.56pp  share=8.75%  band=[2.5, 8.0]  OUT
+  wild_pure: 0.43pp  share=1.05%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4387%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0052%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 46833  band=[1/50k, 1/100k]  OUT
+
+======== Candidate: HHH_dd_tune ========
+Total RTP:        91.787%
+  Base RTP:       41.147pp  (44.8%)
+  Feature RTP:    50.640pp  (55.2%)
+Base hit rate:    16.785%
+Base CV:          6.805
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.263e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.07%  cherry=5.01%  1bar=13.51%  2bar=12.49%  3bar=8.01%  high7=5.01%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=52.55%  cherry=5.00%  1bar=12.21%  2bar=11.52%  3bar=6.32%  high7=8.50%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.96%  cherry=2.20%  1bar=15.01%  2bar=14.01%  3bar=9.01%  high7=4.00%  dd=1.60%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4421%  bar2 P=0.3731%  bar3 P=0.1179%   ok=PASS
+  cherry1 P=11.2818%  cherry2 P=0.4540%  cherry3 P=0.0055%
+  high7_wild P=0.0382%  high7_pure P=0.0170%  wild_pure P=0.0020%  bar_mixed P=4.0529%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.22%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.33%  RTP 20.71pp  share-of-base 50.33%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.74%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.72%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.26%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.28pp  share=27.42%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.43pp  share=22.91%  band=[12.0, 25.0]  OK
+  bar1: 3.51pp  share=8.53%  band=[4.0, 12.0]  OK
+  bar2: 6.06pp  share=14.72%  band=[10.0, 20.0]  OK
+  bar3: 4.57pp  share=11.10%  band=[5.0, 12.0]  OK
+  high7: 3.55pp  share=8.64%  band=[2.5, 8.0]  OUT
+  wild_pure: 0.39pp  share=0.95%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4540%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0055%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 50934  band=[1/50k, 1/100k]  OK
+
+======== Candidate: III_dd_safer ========
+Total RTP:        90.348%
+  Base RTP:       39.789pp  (44.0%)
+  Feature RTP:    50.560pp  (56.0%)
+Base hit rate:    16.699%
+Base CV:          6.677
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.251e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.40%  cherry=5.00%  1bar=13.51%  2bar=12.48%  3bar=8.00%  high7=5.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=52.55%  cherry=5.00%  1bar=12.21%  2bar=11.52%  3bar=6.32%  high7=8.50%  dd=3.50%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.24%  cherry=2.20%  1bar=14.99%  2bar=13.99%  3bar=8.99%  high7=4.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4285%  bar2 P=0.3609%  bar3 P=0.1128%   ok=PASS
+  cherry1 P=11.2764%  cherry2 P=0.4534%  cherry3 P=0.0055%
+  high7_wild P=0.0346%  high7_pure P=0.0170%  wild_pure P=0.0016%  bar_mixed P=4.0085%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.53%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.28%  RTP 20.54pp  share-of-base 51.63%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.74%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.72%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.36%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.28pp  share=28.34%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.27pp  share=23.29%  band=[12.0, 25.0]  OK
+  bar1: 3.34pp  share=8.39%  band=[4.0, 12.0]  OK
+  bar2: 5.75pp  share=14.44%  band=[10.0, 20.0]  OK
+  bar3: 4.27pp  share=10.74%  band=[5.0, 12.0]  OK
+  high7: 3.23pp  share=8.11%  band=[2.5, 8.0]  OUT
+  wild_pure: 0.31pp  share=0.79%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4534%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0055%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 63807  band=[1/50k, 1/100k]  OK
+
+======== Candidate: JJJ_targeted_95 ========
+Total RTP:        89.554%
+  Base RTP:       38.999pp  (43.5%)
+  Feature RTP:    50.554pp  (56.5%)
+Base hit rate:    16.317%
+Base CV:          6.824
+Trigger rate:     1.099%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.250e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.43%  cherry=4.95%  1bar=12.85%  2bar=12.35%  3bar=7.92%  high7=4.95%  dd=3.17%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=52.38%  cherry=4.85%  1bar=12.14%  2bar=11.64%  3bar=6.29%  high7=8.73%  dd=3.59%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.95%  cherry=2.20%  1bar=14.48%  2bar=13.79%  3bar=8.99%  high7=4.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.3983%  bar2 P=0.3572%  bar3 P=0.1121%   ok=PASS
+  cherry1 P=11.1005%  cherry2 P=0.4395%  cherry3 P=0.0053%
+  high7_wild P=0.0351%  high7_pure P=0.0173%  wild_pure P=0.0016%  bar_mixed P=3.8502%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.03%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 14.95%  RTP 20.02pp  share-of-base 51.34%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.84%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.86%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.65%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.396%  (cap 0.6%)
+  R2 jackpot = 0.388%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.10pp  share=28.46%  band=[26.0, 38.0]  OK
+  bar_mixed: 8.92pp  share=22.87%  band=[12.0, 25.0]  OK
+  bar1: 3.14pp  share=8.04%  band=[4.0, 12.0]  OK
+  bar2: 5.70pp  share=14.62%  band=[10.0, 20.0]  OK
+  bar3: 4.27pp  share=10.95%  band=[5.0, 12.0]  OK
+  high7: 3.28pp  share=8.40%  band=[2.5, 8.0]  OUT
+  wild_pure: 0.32pp  share=0.82%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4395%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0053%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 62914  band=[1/50k, 1/100k]  OK
+
+======== Candidate: KKK_v9_final ========
+Total RTP:        91.737%
+  Base RTP:       41.101pp  (44.8%)
+  Feature RTP:    50.635pp  (55.2%)
+Base hit rate:    17.262%
+Base CV:          6.614
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.262e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.73%  cherry=5.20%  1bar=12.99%  2bar=12.48%  3bar=8.00%  high7=5.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.73%  cherry=5.20%  1bar=12.50%  2bar=11.99%  3bar=6.48%  high7=9.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=53.68%  cherry=2.40%  1bar=14.50%  2bar=13.81%  3bar=9.01%  high7=4.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4154%  bar2 P=0.3726%  bar3 P=0.1169%   ok=PASS
+  cherry1 P=11.7782%  cherry2 P=0.5005%  cherry3 P=0.0065%
+  high7_wild P=0.0366%  high7_pure P=0.0180%  wild_pure P=0.0017%  bar_mixed P=4.0156%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 68.23%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.79%  RTP 21.08pp  share-of-base 51.29%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.52%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.30%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.54%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.78pp  share=28.66%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.30pp  share=22.64%  band=[12.0, 25.0]  OK
+  bar1: 3.27pp  share=7.96%  band=[4.0, 12.0]  OK
+  bar2: 5.95pp  share=14.47%  band=[10.0, 20.0]  OK
+  bar3: 4.45pp  share=10.83%  band=[5.0, 12.0]  OK
+  high7: 3.42pp  share=8.31%  band=[2.5, 8.0]  OUT
+  wild_pure: 0.33pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.5005%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0065%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60322  band=[1/50k, 1/100k]  OK
+
+======== Candidate: LLL_v7_tight_swap ========
+Total RTP:        91.882%
+  Base RTP:       40.982pp  (44.6%)
+  Feature RTP:    50.900pp  (55.4%)
+Base hit rate:    19.214%
+Base CV:          5.936
+Trigger rate:     1.107%  (1 in 90)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.300e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=53.71%  cherry=6.01%  1bar=14.27%  2bar=10.44%  3bar=8.39%  high7=3.94%  dd=3.15%  jackpot=0.10%  topdollar=0.00%
+  R2: blank=54.23%  cherry=6.07%  1bar=13.93%  2bar=9.47%  3bar=6.56%  high7=5.97%  dd=3.68%  jackpot=0.10%  topdollar=0.00%
+  R3: blank=54.86%  cherry=3.12%  1bar=16.08%  2bar=12.55%  3bar=8.75%  high7=2.01%  dd=1.41%  jackpot=0.10%  topdollar=1.11%
+
+¡ì1 hierarchy:
+  bar1 P=0.5350%  bar2 P=0.2478%  bar3 P=0.1185%   ok=PASS
+  cherry1 P=13.7432%  cherry2 P=0.7067%  cherry3 P=0.0114%
+  high7_wild P=0.0170%  high7_pure P=0.0047%  wild_pure P=0.0016%  bar_mixed P=3.8280%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 71.53%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 17.57%  RTP 22.62pp  share-of-base 55.20%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.76%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.01%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.02%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.098%  (cap 0.6%)
+  R2 jackpot = 0.099%  (cap 0.6%)
+  R3 jackpot = 0.101%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 13.74pp  share=33.53%  band=[26.0, 38.0]  OK
+  bar_mixed: 8.88pp  share=21.67%  band=[12.0, 25.0]  OK
+  bar1: 4.07pp  share=9.94%  band=[4.0, 12.0]  OK
+  bar2: 4.20pp  share=10.24%  band=[10.0, 20.0]  OK
+  bar3: 4.47pp  share=10.91%  band=[5.0, 12.0]  OK
+  high7: 1.58pp  share=3.87%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.80%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.7067%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0114%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 61249  band=[1/50k, 1/100k]  OK
+
+======== Candidate: MMM_v7_tight_more ========
+Total RTP:        92.425%
+  Base RTP:       41.800pp  (45.2%)
+  Feature RTP:    50.625pp  (54.8%)
+Base hit rate:    19.397%
+Base CV:          5.975
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.260e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.96%  cherry=6.10%  1bar=14.50%  2bar=10.61%  3bar=8.53%  high7=4.00%  dd=3.20%  jackpot=0.10%  topdollar=0.00%
+  R2: blank=51.99%  cherry=6.10%  1bar=14.00%  2bar=9.52%  3bar=6.60%  high7=8.00%  dd=3.70%  jackpot=0.10%  topdollar=0.00%
+  R3: blank=55.11%  cherry=3.10%  1bar=16.00%  2bar=12.49%  3bar=8.70%  high7=2.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.5435%  bar2 P=0.2517%  bar3 P=0.1203%   ok=PASS
+  cherry1 P=13.8362%  cherry2 P=0.7160%  cherry3 P=0.0115%
+  high7_wild P=0.0206%  high7_pure P=0.0064%  wild_pure P=0.0017%  bar_mixed P=3.8891%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 71.33%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 17.73%  RTP 22.86pp  share-of-base 54.69%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.65%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.94%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 23.11%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.100%  (cap 0.6%)
+  R2 jackpot = 0.100%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 13.84pp  share=33.10%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.02pp  share=21.59%  band=[12.0, 25.0]  OK
+  bar1: 4.14pp  share=9.90%  band=[4.0, 12.0]  OK
+  bar2: 4.27pp  share=10.20%  band=[10.0, 20.0]  OK
+  bar3: 4.54pp  share=10.87%  band=[5.0, 12.0]  OK
+  high7: 1.91pp  share=4.57%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.79%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.7160%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0115%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60286  band=[1/50k, 1/100k]  OK
+
+======== Candidate: NNN_balance_bar1_more ========
+Total RTP:        89.903%
+  Base RTP:       40.065pp  (44.6%)
+  Feature RTP:    49.837pp  (55.4%)
+Base hit rate:    17.406%
+Base CV:          6.223
+Trigger rate:     1.083%  (1 in 92)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.147e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.88%  cherry=5.09%  1bar=15.19%  2bar=11.56%  3bar=7.83%  high7=3.92%  dd=3.13%  jackpot=0.39%  topdollar=0.00%
+  R2: blank=52.54%  cherry=5.06%  1bar=14.59%  2bar=10.70%  3bar=6.30%  high7=6.81%  dd=3.60%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.19%  cherry=2.36%  1bar=16.75%  2bar=13.32%  3bar=8.86%  high7=2.95%  dd=1.38%  jackpot=0.10%  topdollar=1.08%
+
+¡ì1 hierarchy:
+  bar1 P=0.6029%  bar2 P=0.3072%  bar3 P=0.1097%   ok=PASS
+  cherry1 P=11.5388%  cherry2 P=0.4794%  cherry3 P=0.0061%
+  high7_wild P=0.0224%  high7_pure P=0.0079%  wild_pure P=0.0016%  bar_mixed P=4.3305%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.29%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.87%  RTP 21.51pp  share-of-base 53.69%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.83%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.02%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.33%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.392%  (cap 0.6%)
+  R2 jackpot = 0.389%  (cap 0.6%)
+  R3 jackpot = 0.098%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.54pp  share=28.80%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.97pp  share=24.89%  band=[12.0, 25.0]  OK
+  bar1: 4.50pp  share=11.23%  band=[4.0, 12.0]  OK
+  bar2: 5.00pp  share=12.49%  band=[10.0, 20.0]  OK
+  bar3: 4.18pp  share=10.43%  band=[5.0, 12.0]  OK
+  high7: 2.07pp  share=5.17%  band=[2.5, 8.0]  OK
+  wild_pure: 0.31pp  share=0.78%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4794%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0061%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 64282  band=[1/50k, 1/100k]  OK
+
+======== Candidate: OOO_high1bar ========
+Total RTP:        91.406%
+  Base RTP:       40.771pp  (44.6%)
+  Feature RTP:    50.635pp  (55.4%)
+Base hit rate:    16.794%
+Base CV:          6.270
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.262e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=51.87%  cherry=4.50%  1bar=17.02%  2bar=11.01%  3bar=8.00%  high7=4.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.89%  cherry=4.50%  1bar=16.00%  2bar=10.01%  3bar=6.49%  high7=7.01%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=51.70%  cherry=2.20%  1bar=19.00%  2bar=12.49%  3bar=9.01%  high7=3.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.8114%  bar2 P=0.2689%  bar3 P=0.1172%   ok=PASS
+  cherry1 P=10.4191%  cherry2 P=0.3877%  cherry3 P=0.0045%
+  high7_wild P=0.0239%  high7_pure P=0.0084%  wild_pure P=0.0017%  bar_mixed P=4.7514%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 62.04%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.17%  RTP 21.34pp  share-of-base 52.35%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.61%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.89%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 21.75%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 10.42pp  share=25.56%  band=[26.0, 38.0]  OUT
+  bar_mixed: 10.93pp  share=26.80%  band=[12.0, 25.0]  OUT
+  bar1: 5.91pp  share=14.50%  band=[4.0, 12.0]  OUT
+  bar2: 4.50pp  share=11.04%  band=[10.0, 20.0]  OK
+  bar3: 4.46pp  share=10.94%  band=[5.0, 12.0]  OK
+  high7: 2.21pp  share=5.43%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.81%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.3877%  band=[0.4, 1.5]  OUT
+  pay_id 4 (cherry3): P=0.0045%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 60202  band=[1/50k, 1/100k]  OK
+
+======== Candidate: PPP_test ========
+Total RTP:        87.924%
+  Base RTP:       39.545pp  (45.0%)
+  Feature RTP:    48.379pp  (55.0%)
+Base hit rate:    16.063%
+Base CV:          6.553
+Trigger rate:     1.052%  (1 in 95)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  6.938e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=51.62%  cherry=4.30%  1bar=18.15%  2bar=9.10%  3bar=8.60%  high7=4.78%  dd=3.06%  jackpot=0.38%  topdollar=0.00%
+  R2: blank=51.36%  cherry=4.28%  1bar=16.64%  2bar=8.10%  3bar=7.15%  high7=8.56%  dd=3.52%  jackpot=0.38%  topdollar=0.00%
+  R3: blank=51.63%  cherry=2.10%  1bar=20.08%  2bar=10.33%  3bar=9.55%  high7=3.82%  dd=1.34%  jackpot=0.10%  topdollar=1.05%
+
+¡ì1 hierarchy:
+  bar1 P=0.9142%  bar2 P=0.1634%  bar3 P=0.1341%   ok=PASS
+  cherry1 P=9.9679%  cherry2 P=0.3530%  cherry3 P=0.0039%
+  high7_wild P=0.0318%  high7_pure P=0.0156%  wild_pure P=0.0014%  bar_mixed P=4.4778%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 62.05%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 14.45%  RTP 20.22pp  share-of-base 51.14%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.16%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.19%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 21.68%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.382%  (cap 0.6%)
+  R2 jackpot = 0.380%  (cap 0.6%)
+  R3 jackpot = 0.096%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 9.97pp  share=25.21%  band=[26.0, 38.0]  OUT
+  bar_mixed: 10.25pp  share=25.93%  band=[12.0, 25.0]  OUT
+  bar1: 6.48pp  share=16.39%  band=[4.0, 12.0]  OUT
+  bar2: 2.88pp  share=7.29%  band=[10.0, 20.0]  OUT
+  bar3: 4.88pp  share=12.34%  band=[5.0, 12.0]  OUT
+  high7: 2.97pp  share=7.51%  band=[2.5, 8.0]  OK
+  wild_pure: 0.29pp  share=0.73%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.3530%  band=[0.4, 1.5]  OUT
+  pay_id 4 (cherry3): P=0.0039%  band=[0.005, 0.05]  OUT
+  pay_id 1 (wild_pure) cadence: 1 in 69392  band=[1/50k, 1/100k]  OK
+
+======== Candidate: QQQ_v9_winner ========
+Total RTP:        89.816%
+  Base RTP:       39.767pp  (44.3%)
+  Feature RTP:    50.049pp  (55.7%)
+Base hit rate:    16.771%
+Base CV:          6.597
+Trigger rate:     1.088%  (1 in 92)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.178e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.63%  cherry=4.87%  1bar=13.65%  2bar=12.67%  3bar=7.80%  high7=4.87%  dd=3.12%  jackpot=0.39%  topdollar=0.00%
+  R2: blank=52.65%  cherry=4.87%  1bar=12.66%  2bar=11.70%  3bar=6.32%  high7=7.80%  dd=3.61%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.41%  cherry=2.47%  1bar=14.84%  2bar=13.85%  3bar=8.90%  high7=3.96%  dd=1.38%  jackpot=0.10%  topdollar=1.09%
+
+¡ì1 hierarchy:
+  bar1 P=0.4412%  bar2 P=0.3665%  bar3 P=0.1099%   ok=PASS
+  cherry1 P=11.2808%  cherry2 P=0.4610%  cherry3 P=0.0059%
+  high7_wild P=0.0321%  high7_pure P=0.0150%  wild_pure P=0.0016%  bar_mixed P=4.0569%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.26%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.34%  RTP 20.65pp  share-of-base 51.93%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.89%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.06%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.42%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.390%  (cap 0.6%)
+  R2 jackpot = 0.390%  (cap 0.6%)
+  R3 jackpot = 0.099%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.28pp  share=28.37%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.37pp  share=23.56%  band=[12.0, 25.0]  OK
+  bar1: 3.42pp  share=8.60%  band=[4.0, 12.0]  OK
+  bar2: 5.82pp  share=14.63%  band=[10.0, 20.0]  OK
+  bar3: 4.18pp  share=10.52%  band=[5.0, 12.0]  OK
+  high7: 2.99pp  share=7.52%  band=[2.5, 8.0]  OK
+  wild_pure: 0.31pp  share=0.78%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4610%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0059%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 64192  band=[1/50k, 1/100k]  OK
+
+======== Candidate: RRR_v9_winner_polish ========
+Total RTP:        93.067%
+  Base RTP:       42.432pp  (45.6%)
+  Feature RTP:    50.635pp  (54.4%)
+Base hit rate:    17.479%
+Base CV:          6.406
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.262e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=51.10%  cherry=5.00%  1bar=13.79%  2bar=13.51%  3bar=8.00%  high7=5.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=51.13%  cherry=5.00%  1bar=12.81%  2bar=12.48%  3bar=6.48%  high7=8.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.60%  cherry=2.50%  1bar=14.80%  2bar=14.49%  3bar=9.01%  high7=4.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4529%  bar2 P=0.4281%  bar3 P=0.1170%   ok=PASS
+  cherry1 P=11.5189%  cherry2 P=0.4813%  cherry3 P=0.0063%
+  high7_wild P=0.0342%  high7_pure P=0.0160%  wild_pure P=0.0017%  bar_mixed P=4.4226%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.90%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.94%  RTP 21.72pp  share-of-base 51.19%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.22%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.50%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.11%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.52pp  share=27.15%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.20pp  share=24.05%  band=[12.0, 25.0]  OK
+  bar1: 3.53pp  share=8.31%  band=[4.0, 12.0]  OK
+  bar2: 6.71pp  share=15.82%  band=[10.0, 20.0]  OK
+  bar3: 4.45pp  share=10.50%  band=[5.0, 12.0]  OK
+  high7: 3.18pp  share=7.51%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.78%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4813%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0063%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60304  band=[1/50k, 1/100k]  OK
+
+======== Candidate: SSS_v9_winner_v3 ========
+Total RTP:        93.747%
+  Base RTP:       43.127pp  (46.0%)
+  Feature RTP:    50.620pp  (54.0%)
+Base hit rate:    17.635%
+Base CV:          6.366
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.260e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=50.57%  cherry=5.00%  1bar=13.80%  2bar=13.52%  3bar=8.52%  high7=5.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.79%  cherry=5.00%  1bar=12.82%  2bar=12.49%  3bar=6.80%  high7=8.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.40%  cherry=2.50%  1bar=14.80%  2bar=14.49%  3bar=9.21%  high7=4.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4531%  bar2 P=0.4282%  bar3 P=0.1290%   ok=PASS
+  cherry1 P=11.5208%  cherry2 P=0.4814%  cherry3 P=0.0063%
+  high7_wild P=0.0342%  high7_pure P=0.0160%  wild_pure P=0.0017%  bar_mixed P=4.5641%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.33%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.08%  RTP 22.04pp  share-of-base 51.10%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.05%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.34%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.03%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.52pp  share=26.71%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.52pp  share=24.39%  band=[12.0, 25.0]  OK
+  bar1: 3.53pp  share=8.18%  band=[4.0, 12.0]  OK
+  bar2: 6.72pp  share=15.57%  band=[10.0, 20.0]  OK
+  bar3: 4.83pp  share=11.19%  band=[5.0, 12.0]  OK
+  high7: 3.19pp  share=7.39%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.77%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4814%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0063%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60286  band=[1/50k, 1/100k]  OK
+
+======== Candidate: TTT_push_94 ========
+Total RTP:        94.482%
+  Base RTP:       43.832pp  (46.4%)
+  Feature RTP:    50.651pp  (53.6%)
+Base hit rate:    17.782%
+Base CV:          6.336
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.264e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=50.25%  cherry=5.00%  1bar=13.81%  2bar=13.53%  3bar=8.81%  high7=5.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.28%  cherry=5.01%  1bar=12.82%  2bar=12.49%  3bar=7.09%  high7=8.21%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=52.07%  cherry=2.50%  1bar=14.80%  2bar=14.49%  3bar=9.52%  high7=4.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4540%  bar2 P=0.4291%  bar3 P=0.1399%   ok=PASS
+  cherry1 P=11.5280%  cherry2 P=0.4821%  cherry3 P=0.0063%
+  high7_wild P=0.0347%  high7_pure P=0.0164%  wild_pure P=0.0017%  bar_mixed P=4.6894%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 64.83%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.22%  RTP 22.33pp  share-of-base 50.94%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 28.81%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.28%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 21.90%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.53pp  share=26.30%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.80pp  share=24.64%  band=[12.0, 25.0]  OK
+  bar1: 3.53pp  share=8.06%  band=[4.0, 12.0]  OK
+  bar2: 6.73pp  share=15.35%  band=[10.0, 20.0]  OK
+  bar3: 5.17pp  share=11.79%  band=[5.0, 12.0]  OK
+  high7: 3.24pp  share=7.39%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.76%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4821%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0063%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60165  band=[1/50k, 1/100k]  OK
+
+======== Candidate: UUU_push_94_more ========
+Total RTP:        96.023%
+  Base RTP:       45.423pp  (47.3%)
+  Feature RTP:    50.600pp  (52.7%)
+Base hit rate:    18.145%
+Base CV:          6.198
+Trigger rate:     1.100%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.257e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=49.36%  cherry=5.00%  1bar=13.81%  2bar=14.01%  3bar=9.21%  high7=5.00%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=49.87%  cherry=5.00%  1bar=12.81%  2bar=13.00%  3bar=7.20%  high7=8.00%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=51.12%  cherry=2.50%  1bar=14.79%  2bar=15.00%  3bar=9.99%  high7=4.00%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4532%  bar2 P=0.4699%  bar3 P=0.1525%   ok=FAIL
+  cherry1 P=11.5234%  cherry2 P=0.4816%  cherry3 P=0.0063%
+  high7_wild P=0.0342%  high7_pure P=0.0160%  wild_pure P=0.0017%  bar_mixed P=5.0065%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 63.51%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.53%  RTP 23.02pp  share-of-base 50.69%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 28.59%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 32.89%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 21.52%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.52pp  share=25.37%  band=[26.0, 38.0]  OUT
+  bar_mixed: 11.50pp  share=25.32%  band=[12.0, 25.0]  OUT
+  bar1: 3.53pp  share=7.77%  band=[4.0, 12.0]  OK
+  bar2: 7.28pp  share=16.03%  band=[10.0, 20.0]  OK
+  bar3: 5.57pp  share=12.26%  band=[5.0, 12.0]  OUT
+  high7: 3.19pp  share=7.02%  band=[2.5, 8.0]  OK
+  wild_pure: 0.33pp  share=0.73%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4816%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0063%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60262  band=[1/50k, 1/100k]  OK
+
+======== Candidate: VVV_push_94_high7 ========
+Total RTP:        94.372%
+  Base RTP:       43.731pp  (46.3%)
+  Feature RTP:    50.640pp  (53.7%)
+Base hit rate:    17.657%
+Base CV:          6.432
+Trigger rate:     1.101%  (1 in 91)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.263e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=50.05%  cherry=5.00%  1bar=13.80%  2bar=13.52%  3bar=8.52%  high7=5.50%  dd=3.20%  jackpot=0.40%  topdollar=0.00%
+  R2: blank=50.27%  cherry=5.00%  1bar=12.82%  2bar=12.49%  3bar=6.81%  high7=8.51%  dd=3.70%  jackpot=0.40%  topdollar=0.00%
+  R3: blank=51.88%  cherry=2.50%  1bar=14.80%  2bar=14.49%  3bar=9.22%  high7=4.50%  dd=1.40%  jackpot=0.10%  topdollar=1.10%
+
+¡ì1 hierarchy:
+  bar1 P=0.4536%  bar2 P=0.4288%  bar3 P=0.1292%   ok=PASS
+  cherry1 P=11.5251%  cherry2 P=0.4818%  cherry3 P=0.0063%
+  high7_wild P=0.0400%  high7_pure P=0.0211%  wild_pure P=0.0017%  bar_mixed P=4.5696%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 65.27%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 16.09%  RTP 22.06pp  share-of-base 50.44%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 28.81%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.57%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 21.82%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.400%  (cap 0.6%)
+  R2 jackpot = 0.400%  (cap 0.6%)
+  R3 jackpot = 0.100%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.53pp  share=26.35%  band=[26.0, 38.0]  OK
+  bar_mixed: 10.53pp  share=24.08%  band=[12.0, 25.0]  OK
+  bar1: 3.53pp  share=8.07%  band=[4.0, 12.0]  OK
+  bar2: 6.72pp  share=15.37%  band=[10.0, 20.0]  OK
+  bar3: 4.83pp  share=11.05%  band=[5.0, 12.0]  OK
+  high7: 3.75pp  share=8.58%  band=[2.5, 8.0]  OUT
+  wild_pure: 0.33pp  share=0.76%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4818%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0063%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 60214  band=[1/50k, 1/100k]  OK
+
+======== Candidate: WWW_v9_final_winner ========
+Total RTP:        92.910%
+  Base RTP:       40.519pp  (43.6%)
+  Feature RTP:    52.391pp  (56.4%)
+Base hit rate:    16.938%
+Base CV:          6.475
+Trigger rate:     1.139%  (1 in 88)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.514e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.35%  cherry=4.85%  1bar=13.58%  2bar=13.11%  3bar=8.26%  high7=4.36%  dd=3.10%  jackpot=0.39%  topdollar=0.00%
+  R2: blank=52.14%  cherry=4.83%  1bar=12.54%  2bar=12.05%  3bar=6.76%  high7=7.72%  dd=3.57%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.02%  cherry=2.45%  1bar=14.73%  2bar=14.22%  3bar=9.04%  high7=3.93%  dd=1.37%  jackpot=0.10%  topdollar=1.14%
+
+¡ì1 hierarchy:
+  bar1 P=0.4314%  bar2 P=0.3933%  bar3 P=0.1208%   ok=PASS
+  cherry1 P=11.2038%  cherry2 P=0.4543%  cherry3 P=0.0057%
+  high7_wild P=0.0300%  high7_pure P=0.0132%  wild_pure P=0.0015%  bar_mixed P=4.2837%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 66.15%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.49%  RTP 21.07pp  share-of-base 51.99%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 29.60%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 33.74%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.32%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.388%  (cap 0.6%)
+  R2 jackpot = 0.386%  (cap 0.6%)
+  R3 jackpot = 0.098%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.20pp  share=27.65%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.86pp  share=24.34%  band=[12.0, 25.0]  OK
+  bar1: 3.34pp  share=8.25%  band=[4.0, 12.0]  OK
+  bar2: 6.17pp  share=15.22%  band=[10.0, 20.0]  OK
+  bar3: 4.50pp  share=11.10%  band=[5.0, 12.0]  OK
+  high7: 2.78pp  share=6.86%  band=[2.5, 8.0]  OK
+  wild_pure: 0.30pp  share=0.75%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4543%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0057%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 65642  band=[1/50k, 1/100k]  OK
+
+======== Candidate: XXX_v9_balanced ========
+Total RTP:        89.729%
+  Base RTP:       39.774pp  (44.3%)
+  Feature RTP:    49.956pp  (55.7%)
+Base hit rate:    16.681%
+Base CV:          6.696
+Trigger rate:     1.086%  (1 in 92)
+Feature EV:       46.00x
+Feature CV:       0.735
+P(R>=1000/spin):  7.164e-08  (cap 1e-5)
+
+Per-reel marginals:
+  R1: blank=52.89%  cherry=4.90%  1bar=13.22%  2bar=12.73%  3bar=7.84%  high7=4.90%  dd=3.13%  jackpot=0.39%  topdollar=0.00%
+  R2: blank=52.89%  cherry=4.90%  1bar=12.25%  2bar=11.75%  3bar=6.35%  high7=7.84%  dd=3.62%  jackpot=0.39%  topdollar=0.00%
+  R3: blank=53.31%  cherry=2.47%  1bar=14.31%  2bar=14.02%  3bar=8.89%  high7=4.44%  dd=1.38%  jackpot=0.10%  topdollar=1.09%
+
+¡ì1 hierarchy:
+  bar1 P=0.4059%  bar2 P=0.3742%  bar3 P=0.1107%   ok=PASS
+  cherry1 P=11.3175%  cherry2 P=0.4638%  cherry3 P=0.0059%
+  high7_wild P=0.0350%  high7_pure P=0.0170%  wild_pure P=0.0016%  bar_mixed P=3.9497%
+
+¡ì8 hit decomposition:
+  cherry1 share of hit = 67.84%  (cap 70-72; carve allows 80%)
+
+Bucket ge1_lt5: rate 15.27%  RTP 20.45pp  share-of-base 51.43%
+
+PWDF top-symbol any-reel max:
+  doublediamond: 30.03%  (floor doublediamond/high7=28%, topdollar=22%)
+  high7: 34.22%  (floor doublediamond/high7=28%, topdollar=22%)
+  topdollar: 22.38%  (floor doublediamond/high7=28%, topdollar=22%)
+
+Jackpot per-reel marginal:
+  R1 jackpot = 0.392%  (cap 0.6%)
+  R2 jackpot = 0.392%  (cap 0.6%)
+  R3 jackpot = 0.099%  (cap 0.6%)
+
+Family share-of-base (target_v2 bands for mode 1):
+  cherry1: 11.32pp  share=28.45%  band=[26.0, 38.0]  OK
+  bar_mixed: 9.14pp  share=22.97%  band=[12.0, 25.0]  OK
+  bar1: 3.18pp  share=8.00%  band=[4.0, 12.0]  OK
+  bar2: 5.93pp  share=14.92%  band=[10.0, 20.0]  OK
+  bar3: 4.22pp  share=10.60%  band=[5.0, 12.0]  OK
+  high7: 3.26pp  share=8.21%  band=[2.5, 8.0]  OUT
+  wild_pure: 0.31pp  share=0.79%  band=[0.4, 2.0]  OK
+
+Per-pay frequency (mode 1 bands):
+  pay_id 71 (cherry2): P=0.4638%  band=[0.4, 1.5]  OK
+  pay_id 4 (cherry3): P=0.0059%  band=[0.005, 0.05]  OK
+  pay_id 1 (wild_pure) cadence: 1 in 63694  band=[1/50k, 1/100k]  OK
+
+
+======================================================================
+Comparison summary table
+======================================================================
+cand                         RTP%    hit%      split  R1blnk%  ch1%hit   b1>b2>b3   1k+/spin  1-5RTP%
+A_baseline                  90.37   16.68  41.2:58.8    56.53    71.80       FAIL   7.63e-08    53.10
+B_cherry_reduce             83.17   13.95  38.1:61.9    59.25    70.93       FAIL   7.39e-08    53.04
+C_bar_hierarchy_fix         78.76   12.89  34.6:65.4    60.82    72.69       PASS   7.39e-08    56.25
+D_cherry_relift             79.69   13.63  35.4:64.6    60.50    73.81       PASS   7.39e-08    56.80
+E_2bar_lift_for_rtp         81.57   14.07  36.9:63.1    59.20    71.55       PASS   7.38e-08    55.78
+F_R1_blank_lock_54          83.72   14.63  38.5:61.5    53.99    68.78       PASS   7.38e-08    55.17
+G_cherry_70_cap             82.88   13.92  37.9:62.1    53.98    67.32       PASS   7.38e-08    54.62
+H_explicit_5_5_2_cherry     80.51   14.52  36.0:64.0    60.83    76.56       PASS   7.39e-08    57.54
+I_v7_with_bar_swap          91.55   19.37  44.7:55.3    54.53    71.42       PASS   7.26e-08    55.62
+J_cherry_5_5_2.5            88.04   16.82  42.5:57.5    55.63    68.49       PASS   7.26e-08    54.73
+K_R1_blank_lock             88.74   17.04  42.9:57.1    54.01    67.63       PASS   7.26e-08    54.66
+M_v7_aligned_swap           89.73   17.90  43.6:56.4    54.44    69.68       PASS   7.26e-08    55.05
+N_RTP_balanced              89.50   16.89  43.5:56.5    54.20    65.82       PASS   7.25e-08    54.14
+O_locked_R1_blank           89.59   16.92  43.6:56.4    54.00    65.71       PASS   7.25e-08    54.14
+P_rtp_to_94                 90.52   17.11  44.1:55.9    53.69    65.00       PASS   7.25e-08    53.78
+Q_rtp_to_95                 91.19   17.24  44.5:55.5    53.24    64.44       PASS   7.26e-08    53.66
+R_final_balance             90.86   17.14  44.3:55.7    53.99    64.86       PASS   7.26e-08    53.63
+S_45_55_target              93.08   17.56  45.6:54.4    54.00    63.30       FAIL   7.26e-08    52.83
+T_balanced_4555             90.58   17.39  44.1:55.9    53.47    65.70       PASS   7.26e-08    54.21
+U_trim_bar3                 89.65   16.74  42.8:57.2    54.60    66.92       PASS   7.36e-08    54.00
+V_final_tune                89.65   16.74  42.8:57.2    54.60    66.92       PASS   7.36e-08    54.00
+W_final_polish              89.65   16.74  42.8:57.2    54.60    66.92       PASS   7.36e-08    54.00
+X_aim_95                    90.95   17.80  44.7:55.3    53.68    66.05       PASS   7.21e-08    54.23
+Y_polish                    92.03   18.05  45.1:54.9    53.43    65.68       PASS   7.25e-08    54.04
+Z_final_v9                  92.03   18.05  45.1:54.9    53.43    65.68       PASS   7.25e-08    54.04
+AA_high7_boost              90.22   17.29  44.1:55.9    53.78    68.09       PASS   7.23e-08    53.07
+BB_high7_more               91.24   17.48  44.6:55.4    53.62    67.79       PASS   7.25e-08    52.66
+CC_dd_boost                101.08   18.06  50.0:50.0    52.34    65.67       PASS   7.25e-08    44.78
+DD_combo                    97.87   17.89  48.3:51.7    52.77    66.31       PASS   7.26e-08    47.09
+EE_final                    95.51   17.46  47.5:52.5    53.25    66.68       PASS   7.18e-08    47.70
+FF_R1_lock_54               98.20   18.01  48.4:51.6    52.58    65.86       PASS   7.26e-08    47.25
+GG_dd_v7                    91.07   17.55  44.2:55.8    53.30    66.91       PASS   7.28e-08    53.78
+HH_balance                  92.85   18.08  45.5:54.5    52.18    65.63       PASS   7.26e-08    53.31
+II_min_dd                   91.63   18.00  44.8:55.2    52.37    65.91       PASS   7.25e-08    54.43
+JJ_final                    90.28   16.88  43.6:56.4    53.57    67.72       PASS   7.30e-08    52.69
+KK_2bar_boost               92.68   17.54  45.4:54.6    52.20    65.65       FAIL   7.26e-08    51.97
+LL_3bar_boost               91.49   17.27  44.7:55.3    52.71    66.69       PASS   7.25e-08    52.34
+MM_combined                 90.75   16.96  44.1:55.9    53.15    67.03       FAIL   7.27e-08    52.31
+NN_final                    91.83   17.31  44.9:55.1    52.40    66.56       FAIL   7.26e-08    52.04
+OO_balanced                 90.27   17.76  44.0:56.0    53.41    69.02       PASS   7.25e-08    53.91
+PP_more_2bar                91.85   18.00  44.9:55.1    52.90    68.70       FAIL   7.26e-08    52.91
+QQ_high7_lift               91.65   18.02  44.8:55.2    52.39    68.66       PASS   7.25e-08    52.97
+RR_combined                 89.84   17.03  43.7:56.3    53.57    69.04       PASS   7.25e-08    52.47
+SS_v9_final                 89.84   17.03  43.7:56.3    53.57    69.04       PASS   7.25e-08    52.47
+TT_close_bars               90.75   17.75  44.3:55.7    53.68    69.09       PASS   7.25e-08    53.45
+UU_close_bars_v2            92.26   18.10  45.2:54.8    52.92    68.30       PASS   7.25e-08    52.91
+VV_close_bars_v3            94.75   19.27  46.6:53.4    51.82    68.02       PASS   7.25e-08    53.02
+WW_lock_R1                  94.75   19.27  46.6:53.4    51.82    68.02       PASS   7.25e-08    53.02
+XX_cherry_down              91.76   17.08  44.9:55.1    52.58    65.09       PASS   7.26e-08    52.10
+YY_v9_final                 91.13   16.87  44.5:55.5    54.01    65.88       PASS   7.26e-08    52.01
+ZZ_high7_max                92.27   16.91  45.1:54.9    52.97    65.77       PASS   7.26e-08    50.71
+AAA_v9_targeted             89.72   16.68  44.2:55.8    52.63    67.38       PASS   7.18e-08    51.72
+BBB_R1_blank_lock           92.58   17.35  45.4:54.6    51.43    66.38       PASS   7.26e-08    51.15
+CCC_hh_polish               90.44   16.83  44.1:55.9    53.24    64.69       PASS   7.25e-08    53.11
+DDD_hh_polish_v2            91.87   17.16  44.9:55.1    52.57    64.20       PASS   7.26e-08    52.56
+EEE_final_v9                89.59   16.56  43.6:56.4    53.62    67.45       PASS   7.25e-08    52.26
+FFF_balanced                90.19   17.12  43.9:56.1    53.67    68.89       PASS   7.26e-08    52.53
+GGG_ee_fixed                90.82   16.41  44.8:55.2    53.00    67.61       PASS   7.18e-08    49.68
+HHH_dd_tune                 91.79   16.78  44.8:55.2    52.07    67.22       PASS   7.26e-08    50.33
+III_dd_safer                90.35   16.70  44.0:56.0    52.40    67.53       PASS   7.25e-08    51.63
+JJJ_targeted_95             89.55   16.32  43.5:56.5    53.43    68.03       PASS   7.25e-08    51.34
+KKK_v9_final                91.74   17.26  44.8:55.2    52.73    68.23       PASS   7.26e-08    51.29
+LLL_v7_tight_swap           91.88   19.21  44.6:55.4    53.71    71.53       PASS   7.30e-08    55.20
+MMM_v7_tight_more           92.43   19.40  45.2:54.8    52.96    71.33       PASS   7.26e-08    54.69
+NNN_balance_bar1_more       89.90   17.41  44.6:55.4    52.88    66.29       PASS   7.15e-08    53.69
+OOO_high1bar                91.41   16.79  44.6:55.4    51.87    62.04       PASS   7.26e-08    52.35
+PPP_test                    87.92   16.06  45.0:55.0    51.62    62.05       PASS   6.94e-08    51.14
+QQQ_v9_winner               89.82   16.77  44.3:55.7    52.63    67.26       PASS   7.18e-08    51.93
+RRR_v9_winner_polish        93.07   17.48  45.6:54.4    51.10    65.90       PASS   7.26e-08    51.19
+SSS_v9_winner_v3            93.75   17.63  46.0:54.0    50.57    65.33       PASS   7.26e-08    51.10
+TTT_push_94                 94.48   17.78  46.4:53.6    50.25    64.83       PASS   7.26e-08    50.94
+UUU_push_94_more            96.02   18.15  47.3:52.7    49.36    63.51       FAIL   7.26e-08    50.69
+VVV_push_94_high7           94.37   17.66  46.3:53.7    50.05    65.27       PASS   7.26e-08    50.44
+WWW_v9_final_winner         92.91   16.94  43.6:56.4    52.35    66.15       PASS   7.51e-08    51.99
+XXX_v9_balanced             89.73   16.68  44.3:55.7    52.89    67.84       PASS   7.16e-08    51.43
+
+[WROTE] C:\Users\pangg\Documents\Projects\LHS\User_Managerment_GPT\slot_designer\machines\M15\weights\mode_1\weights.json
+[WROTE] C:\Users\pangg\Documents\Projects\LHS\User_Managerment_GPT\slot_designer\machines\M15\weights\mode_7\weights.json
