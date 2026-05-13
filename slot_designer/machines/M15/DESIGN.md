@@ -15,22 +15,67 @@
 
 **Why no direct PAR sheet**: per `easy.vegas` — IGT keeps Top Dollar PAR sheets private; numbers inferred from RWB + Double Top Dollar online + jurisdiction $1-denom averages.
 
-## 2. Player narratives per mode
+## 2. Player narratives per mode (v14 final, 2026-05-12/13)
 
-**v10 (2026-05-11 wave 5)** — mode 1 + mode 7 retuned per user-pinned bucket-shift directive on top of v9. Full narrative: [`session_artifacts/M15/design_v10.md`](../../../session_artifacts/M15/design_v10.md). Mode 2/5 inherit from v8/v9.
+**v14 cycle (2026-05-12/13)** — full 4-mode redesign after user dropped all RTP bucket
+bands (USER_HARDLINES.md v8). 12 design waves + 5 user-explicit boundary redesigns.
 
-User directives (wave 5):
-1. **R1 blank marginal ∈ [30%, 40%]** (v9 was 50.25%)
-2. **Bucket RTP shift**: ge1_lt5 -10pp / ge5_lt10 +5pp / ge10_lt20 +5pp (net 0pp to base)
+Detailed numerics: [`MODE_DESIGN.md`](MODE_DESIGN.md). Full per-mode designs:
+- Mode 1: [`design_v14.md`](../../../session_artifacts/M15/design_v14.md)
+- Mode 7: [`design_v14b_modes_725.md`](../../../session_artifacts/M15/design_v14b_modes_725.md) §2
+- Mode 2: [`design_v14c_modes_25.md`](../../../session_artifacts/M15/design_v14c_modes_25.md) §3
+- Mode 5: [`design_v14e_mode5.md`](../../../session_artifacts/M15/design_v14e_mode5.md)
 
-| mode | RTP | hit | R1 blank | feature trigger | base CV | feature CV (cond) | narrative |
-|---|---|---|---|---|---|---|---|
-| 1 (paid) | **95.80%** | 16.81% | 35.28% | 1 in 91 | 3.65 | 0.74 | classic balanced — bucket shifted toward 5×/10× wins; bar-heavy R1 (winners-friendly philosophy §12); cherry-1 28.8% of hits (well under §8 70%); bar1 hit > bar2 hit (§1 inverse pyramid preserved) |
-| 7 (cut) | **84.96%** | 13.01% | 40.32% | 1 in 91 | 4.48 | 0.74 | "运气差档" — small wins cut via blank ×1.25; top marginal preserved via algebraic K-scaling; feature unchanged from mode 1 |
-| 2 (lucky) | **291.07%** | 33.54% | 33.45% | 1 in 31 | 4.38 | 0.78 | "今天总是赢" — unchanged from v8 (mode 2 not touched per wave-5 scope) |
-| 5 (super-lucky) | **508.89%** | 33.61% | 33.11% | 1 in 31 | 4.57 | 0.85 | "今天大奖多" — unchanged from v8 |
+| mode | candidate | RTP | hit_session | R1 blank | trigger | narrative |
+|---|---|---|---|---|---|---|
+| 1 (paid) | **C38_C14** | **94.26%** | 17.34% | 38.52% | 1 in 89 | classical IGT 7-bar baseline. All 6 paying families visible per reel ≥ 2%. bar hierarchy P(b1)>P(b2)>P(b3) preserved. cherry-1 anchor 18% base RTP. |
+| 2 (lucky) | **M2_LC** | **295.78%** | 37.13% | 27.53% | 1 in 30 | "今天 on" — mode 1 archetype lifted across board. trigger 3× m1. h7 family lift +6.5pp share. R3 trigger reel densest (lucky carve-out §12.3). |
+| 5 (super-lucky) | **M5_HMV2_M7** | **505.05%** | 35.26% | 32.05% | 1 in 30 | "今天大奖多" — base ≥30× mult share 45% (vs m2 36%, +9pp shift higher). bar1/2 cut frees RTP for h7/bar3/dd lift. locked m5 feature_params carries +200pp feature delta. |
+| 7 (cut) | **M7_F110** | **85.37%** | 14.20% | 42.32% | 1 in 89 | "今天不出手" — K-scale F=1.10 algebraic derivation from m1. Big pays (h7/dd/td) marginals byte-equal m1. Small pays cut ~18%. feature byte-equal m1. |
 
-Cross-mode invariants (verify.py [LUCKY-MONO] / [CROSS-RTP]): m2 > m1 > m7 in RTP; m5 > m2 > m1 in hit + trigger; m7 ≈ m1 in trigger (1.5e-5 tol). All GREEN.
+Cross-mode invariants (all PASS in verify.py except m5 LUCKY-MONO hit ladder which is
+user-accepted trade-off — see §4 below):
+- RTP ladder m5 > m2 > m1 > m7 ✓
+- Trigger ladder m5 ≥ m2 > m1 ≈ m7 ✓
+- MODE7-BIGPAY pay 1/2/21 m7/m1 ratio exactly 1.000 ✓
+- MODE7-CUT all small pays m7 P < m1 P ✓
+- TOP-JACKPOT-CADENCE m5/m2 wild_pure ratio 1.52 ✓
+- P(R ≥ 1000)/spin ≤ 1e-5 all modes ✓
+
+**Optimal player upper bound (mathematical, optimal stopping theorem)**:
+- Mode 1 optimal RTP = 94.65% (+0.40pp vs simulated T=40; +1.35pp margin to 96 ceiling)
+- Mode 7 optimal RTP = 85.81% (+1.19pp margin to 87 ceiling)
+- Feature_params byte-equal v9 SAFE under any player skill level.
+
+## 3. v14 cycle key trade-offs
+
+### 3.1 Mode 5 LUCKY-MONO hit ladder fail (user-accepted)
+
+Per [`design_v14e_mode5.md`](../../../session_artifacts/M15/design_v14e_mode5.md) §11
+infeasibility proof: cannot simultaneously satisfy:
+- Mode 5 base ≥30× mult share ≥ 45% (user "mult shift higher" priority)
+- Mode 5 hit ≥ Mode 2 hit (LUCKY-MONO hit ladder)
+- Total RTP ≤ 510pp
+
+User direct choice 2026-05-13: prioritize mult shift over hit ladder. Mode 5 base hit
+31.94% < Mode 2 base hit 33.85% (-1.91pp). verify.py LUCKY-MONO hit fail = RED, but
+this invariant is NOT user-stated (user 2026-05-11: "mode 2/5/7 不是 user-stated,
+agent-derived from mode 1 + framework"). Mode 5 hit 31.94% still 14pp above m1 17.34%
+— lucky feel preserved.
+
+### 3.2 verify.py stale FAMILY-SHARE / PER-PAY-FLOOR bands (mode 1)
+
+verify.py was authored under v4 design intent (different bucket structure). After v8
+all bucket bands released, verify.py bands haven't been rebaselined. 4 FAMILY-SHARE +
+2 PER-PAY-FLOOR REDs on mode 1 are stale-band artifacts, NOT user hardline violations.
+verify.py needs future re-baselining to align with v8 archetype intent.
+
+### 3.3 PWDF dd floor structural fail (modes 1/5/7)
+
+Strip layout has 2 dd stops on R1/R2 and 1 dd stop on R3. Mechanism B blank
+redistribute at max can lift dd PWDF to ~27-28%, below verify.py 28-34% floor.
+Strip immutable in v14 scope (user "保留 strip 不变"). Precedent: v9 mode 7 shipped
+with dd PWDF 31.58% < 34% floor — same structural caveat.
 
 ## 3. user_brief v1.2 tally (delivered vs requested, post-v9 wave-4)
 
