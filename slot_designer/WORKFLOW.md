@@ -114,31 +114,60 @@ slot 设计 first principles 见 `DESIGN_PHILOSOPHY.md`。每次 commit 前过�
 
 如果只是因为 cost function 配不平就说 structural，那是借口。
 
-### 2.6 Boundary discipline — user 边界值跟 agent 判断的边界
+### 2.6 Boundary discipline — Boundary Contract 模式
 
-**铁律**：user 显式说过的**边界值 + 规则**是**唯一** hard 约束。规则 = qualitative invariants（如"feature shape locked"、"paytable永远不改"），边界值 = quantitative（数字 + 单位）。两者都 sacred。Agent **不允许**：
+**Stage 3.5 之后 user 不再过程介入**。所有边界值在 Stage 3.5 由全 team 协商一次性
+定下，写入 `machines/<M>/BOUNDARY_CONTRACT.md`，user sign-off frozen。Stage 4-10
+全部 agent 把 contract 当 single source of truth。
 
-- 引入 user 没说过的边界值（"我推这个 ≥ 2% 应该合理"违规）
-- 加工 / 重解读 user 给的边界值（user 说"占比 -10pp"就是 -10pp，不许翻译成 share% 之类）
-- 提议改 user 接受过的 philosophy / archetype 锚点（feature shape / 顶奖叙事 等已经 framework anchored；agent 该自己判断不该问 user）
-- Widen verify.py band 来让自己 ship 过（moving goalposts，[`feedback_adversarial_self_review.md`](../memory/feedback_adversarial_self_review.md)）
+**Contract 4 层**（详见 `slot_designer/templates/BOUNDARY_CONTRACT_TEMPLATE.md`）：
 
-Agent **允许**：
+- **§1 user-stated qualitative direction** — user_brief 原文摘录，无翻译
+- **§2 team-translated quantitative bounds** — D 把每条 §1 翻译成数字 band + cite 来源 + feasibility 验证。**这是 verify.py 红线的唯一合法来源**
+- **§3 physics floor** — paytable 数学限制，非 negotiable，team 透明告知 user
+- **§4 informational metrics** — 报告 dump 不当红线，user 看 final report 自检用
 
-- 用 philosophy / archetype 当 direction（不是 hard 数）做合理判断
-- 当迭代撞 structural 墙时，**询问 user 能否 relax user 自己说过的某条边界**（asking about user-stated boundary OK）
-- 询问澄清模糊语义（"占比"指啥）— 但只澄清，不替 user 决定
+### Stage 4-10 agent **不允许**（合 contract 后铁律）
 
-**用户 boundary 存放**：sacred，verbatim 存 `slot_designer/machines/<M>/USER_HARDLINES.md`（machine-specific，不放 philosophy / ONBOARDING / WORKFLOW，因为这些是 cross-machine 不存数）。
+- **引入 contract 没说的数字** — verify 红线 / tune cost / target band 必须 trace 回 §2 或 §3。
+  自造数字（"我推这个 ≥ 2% 应该合理"/"我加 §14 R1 single-symbol ≤ 22% cap"）= 违规
+- **加工 contract 数字** — §2 line 写 "[15, 18]%" 就是 [15, 18]%，不许翻成 share% / 改单位 / 加 buffer
+- **silent widen / soften** — verify 让 PASS 而调宽 §2 band = moving goalposts，反例 ref [`feedback_adversarial_self_review.md`](../memory/feedback_adversarial_self_review.md)
+- **silent carve-out** — verify per-mode exception / "this case acceptable" 不更新 contract = silent override
+- **提议改 philosophy / archetype 锚点** — feature shape / 顶奖叙事等已 framework anchored，agent 自己判断不该提
 
-**迭代过程中 boundary 累积**：每次 user 给新约束，agent 加进 USER_HARDLINES.md changelog，从此当 hard。
+### Stage 4-10 agent **唯二合法 escalation**
 
-### 反例
+- **Better idea**：team 发现更好设计 → 写 `boundary_contract_amendment_proposal_v<n>.md`，
+  附 before/after 对比 + experience 改善理由 → 主 session 转 user → user 决定改不改 contract
+- **Structural infeasibility**：穷尽 mechanism (mult / redistribute / restructure / architecture)
+  后 contract bound 不可达 → 写同样 proposal 文档，附 mechanism exhaustion 证据 + 选项
+  (改 bound vs accept deviation) → 主 session 转 user → user 决定
 
-- v10 wave 1 agent 把 verify.py 11 个 band widened → ship 看似 PASS。**错**：moving goalposts
-- v10c agent 把 cherry §2 floor 自定 2.0%（user 只说"relax"没说"floor 2"）。**错**：加工 boundary
-- v10d agent 加 §14 R1 single-symbol ≤ 22% cap。**错**：自加 boundary
-- 主 session 提议改 feature trigger×EV 平衡。**错**：feature shape 是 philosophy/archetype anchored，不该问 user
+两者**都不许 silent 实施** —— 必须 explicit proposal → user sign-off → 加 contract §5
+amendment log + 重新 freeze。
+
+### Agent **允许**（不需要 escalate）
+
+- 用 philosophy / archetype 当 direction 做合理判断（不引入新 §2 数字的前提下）
+- Stage 3.5 期间澄清 user_brief 模糊语义（"占比"指啥）— 但只澄清，不替 user 决定
+- 自由选择 process-internal 数字（tune step size / SA temperature / candidate enumeration count）
+  —— 这些不是 boundary value
+
+### Stage 3.5 之前 (Stage 0-3) 的 boundary 处理
+
+Stage 3.5 之前 contract 还没 frozen — agent 不要按下面规则操作。Stage 1c 反推机制 +
+Stage 1d 研究 + Stage 3 bootstrap weights 都是数据收集 + 工程实现，**不产生主观
+boundary 决策**。设计选择留给 Stage 3.5 全 team 协商 + Stage 4 D 落地。
+
+### 反例 (历史教训，all from M15 v10 cycle before contract 引入)
+
+- v10 wave 1 agent 把 verify.py 11 个 band widened → ship 看似 PASS。**错**：silent widen，无 amendment proposal
+- v10c agent 把 cherry §2 floor 自定 2.0%（user 只说"relax"没说"floor 2"）。**错**：引入 contract 没说的数字
+- v10d agent 加 §14 R1 single-symbol ≤ 22% cap。**错**：引入 contract 没说的数字
+- 主 session 提议改 feature trigger×EV 平衡。**错**：feature shape 是 framework anchored，不该 escalate
+- M15 v8→v14 共 5 次 user-explicit boundary redesign：**根因**是没有 Stage 3.5 contract，
+  user 不得不在 process 内反复介入。Contract 模式下这类 escalation 集中在 Stage 3.5 一次性谈完
 
 ---
 

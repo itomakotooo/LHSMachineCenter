@@ -228,8 +228,9 @@ mkdir slot_designer/machines/<M>/weights/mode_{1,2,5,7}
 | `machines/<M>/spec.json` | ✓ | paytable + rules（小写 symbol 名，对齐生产 schema）|
 | `machines/<M>/reel_strips.json` | ✓ | reel symbol 布局（跨 mode 字节级一致）|
 | `machines/<M>/weights/mode_<N>/weights.json` | ✓ | per-stop weights，每 mode 一份 |
-| `machines/<M>/DESIGN.md` | ✓ | 该机台**设计文档**（archetype 来源 + 玩家叙事 + per-mode 数值意图）。**机台私有，不能 override DESIGN_PHILOSOPHY**|
-| `machines/<M>/verify.py` | ✓ | 该机台 verify 脚本，引用 DESIGN_PHILOSOPHY 各 §条款 |
+| `machines/<M>/BOUNDARY_CONTRACT.md` | ✓ | Stage 3.5 全 team 协商 + user sign-off 4-layer contract。drives DESIGN.md / verify.py / target.json 全部数字。template 在 `slot_designer/templates/BOUNDARY_CONTRACT_TEMPLATE.md`。详 ONBOARDING_PROCESS §5.3.5 |
+| `machines/<M>/DESIGN.md` | ✓ | 该机台**设计文档**（archetype 来源 + 玩家叙事 + per-mode 数值意图，必须 trace BOUNDARY_CONTRACT.md §2）。**机台私有，不能 override DESIGN_PHILOSOPHY**|
+| `machines/<M>/verify.py` | ✓ | 该机台 verify 脚本，每条红线 trace BOUNDARY_CONTRACT.md §2 某条具体 bound，引用 DESIGN_PHILOSOPHY 各 §条款 |
 | `machines/<M>/plugins/__init__.py` | feature 机台才需要 | 暴露 `PLUGIN: FeaturePlugin` |
 | `machines/<M>/plugins/<*>.py` | feature 机台才需要 | plugin 实现拆模块 |
 

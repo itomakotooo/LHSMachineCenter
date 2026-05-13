@@ -29,12 +29,17 @@
 
 ### §1.2 User brief vocabulary
 
-user brief 区分两种约束类型 — Agent 必须主动澄清：
+user brief 区分两种约束类型，**Stage 3.5 Boundary Contract 落地时 D 必须主动澄清**：
 
-- **数值约束 (precise red line, with units)** — 例 "命中率 ∈ [15, 18]%" → verify.py [TAG] RED line
-- **感性描述 (qualitative direction)** — 例 "base 低波动 / feature 中波动" → verify.py 走 INFORMATIONAL metric，不当 RED
+- **数值约束 (precise red line, with units)** — 例 "命中率 ∈ [15, 18]%" → contract §2 数字 band → verify.py [TAG] RED line
+- **感性描述 (qualitative direction)** — 例 "base 低波动 / feature 中波动" → contract §4 informational metric → verify.py 走 INFO dump，不当 RED
 
-当 user 写数字段（如 "[3, 5]"）但意图模糊，**Stage 4 design review 时显式问 user**："这是 red line 还是 directional descriptor?" 默认按 precise；user 回 "不需要控制精确" 即转 informational + 更新 user_brief.md amendment 段。(M15 process_improvement #37)
+当 user 写数字段（如 "[3, 5]"）但意图模糊，**Stage 3.5 Step 7 user sign-off 时显式问**：
+"这是 red line 还是 directional descriptor?" 默认按 precise (进 §2)；user 回 "不需要
+控制精确" 即转 informational (进 §4) + 在 contract §1 写澄清记录。(M15 process_improvement #37)
+
+**Stage 4-10 不再问** —— Stage 3.5 sign-off 后 contract immutable，agent 撞墙
+只能走 §5.3.5.c 唯二 escalation。
 
 ---
 
@@ -88,7 +93,8 @@ ship-ready 必须产出：
    - 框架扩展 (若有完全新机制需要 `core/` 加 Protocol)
 
 2. **数值设计**
-   - `machines/<M>/DESIGN.md` (archetype 出处 + 4-mode 玩家叙事 + user_brief 兑现)
+   - `machines/<M>/BOUNDARY_CONTRACT.md` (Stage 3.5 user-signed-off 4-layer contract — drives everything below)
+   - `machines/<M>/DESIGN.md` (archetype 出处 + 4-mode 玩家叙事 + BOUNDARY_CONTRACT §2 兑现对照)
    - `machines/<M>/MODE_DESIGN.md` (per-mode 数值意图 + cross-mode 关系)
    - `core/tuner/targets/<M>_mode<N>_*.target.json` (mode 1 + 2 必填; 5/7 派生可省)
 
@@ -127,6 +133,23 @@ ship-ready 必须产出：
 | **X** Critic | 魔鬼律师 | 每个里程碑扮 user stress-test 5 反问；写 commit message 的 `## Self-critique` 段 | 读所有 artifact | 不实现任何代码 |
 
 主 session 是**协调员** — 决定该起哪个 agent / 跑 `tune.py` / 跑 `git` / 文件操作。**不做 design / verify / review 决策本身**——决策都在 agent 里。
+
+### §4.0 Stage 3.5 Boundary Contract — 全 team 协作
+
+`Stage 3.5` (Boundary Contract，详见 §5.3.5) 是 onboarding 唯一**全 team 同时参与**
+的 stage。每 agent 在这步的职责：
+
+| Agent | Stage 3.5 中干什么 | 产出 artifact |
+|---|---|---|
+| **D** | draft contract 4 layer，把 user 倾向翻译成数字 band 提案 | `boundary_contract_draft_v<n>.md` |
+| **R** | 审 §2 数字是否 cite 准确业界 anchor / archetype data | `boundary_contract_review_R_v<n>.md` |
+| **A** | feasibility pre-check 跑 analytic_profile 验证 §2 bounds 可解 | `boundary_contract_feasibility_v<n>.md` |
+| **I** | 在 bootstrap weights 上配合 A 跑 feasibility；标 paytable physics floor → §3 | (与 A 共写) |
+| **V** | 审每条 §2 bound 能否写成可计算 verify.py 红线 | `boundary_contract_review_V_v<n>.md` |
+| **X** | 当 user 视角问 5 个 stress test 问题 (per §5.3.5.b Step 5) | `boundary_contract_review_X_v<n>.md` |
+
+主 session 在 §5.3.5.b Step 7 把 draft 整理成 user-readable summary，一次性向 user
+sign-off。frozen 后 contract 进 `machines/<M>/BOUNDARY_CONTRACT.md`。
 
 ### §4.1 R / A 边界
 
@@ -202,9 +225,23 @@ Stage  Owner     Action
                   V 跑 analytic_profile 看 baseline RTP / hit (做 design
                   起点参考)
 
-4      D         Design Narrative：综合 R / A / brief / philosophy
-                  写 DESIGN.md + MODE_DESIGN.md + target files
-                  → design_v0.md + targets_v0/
+3.5    全 team   Boundary Contract：R/A/I/D/V/X 协作把 user 的"倾向"翻译
+                  成可验证的数字契约 → boundary_contract_draft_v<n>.md →
+                  user sign-off → machines/<M>/BOUNDARY_CONTRACT.md (frozen)。
+                  详见 §5.3.5。
+                  **必须包含 feasibility pre-check** — D 提案的数字必须经
+                  A+I+V 在 bootstrap weights 上验证可解，infeasible 提案不
+                  能进 sign-off。
+                  **frozen 后 Stage 4-10 不再 escalate user** —— 唯二例外：
+                  team 发现更好设计 (propose amendment) / 撞结构墙
+                  (mechanism exhaustion + escalate)。
+
+4      D         Design Narrative：综合 BOUNDARY_CONTRACT (frozen) +
+                  R / A / philosophy 写 DESIGN.md + MODE_DESIGN.md + target
+                  files → design_v0.md + targets_v0/
+                  **所有数字必须 trace 回 BOUNDARY_CONTRACT.md §2 或 §3**。
+                  D 不许引入新数字 — 该 widen/narrow 哪条 band → 不许；
+                  这是 Stage 3.5 已锁的事。
                   **必含**：§14 全 symbol 排布 audit（per PHILOSOPHY §14.5；
                   每条 reel 每 symbol 都 audit，不只 bars/top）+ §15 PWDF
                   mechanism 选择（per PHILOSOPHY §15.9；物理 reel 强制
@@ -220,13 +257,17 @@ Stage  Owner     Action
                     升量?
                   → 不通过回 4 改；通过进 5
 
-5      V         TDD Verify Setup：从 design intent 写 verify.py 红线 (不
-                  抄旧代码)；跑 baseline RED；注入 bug 测 verify 真能抓
+5      V         TDD Verify Setup：从 BOUNDARY_CONTRACT.md §2 写 verify.py
+                  红线 (不抄旧代码)；跑 baseline RED；注入 bug 测 verify 真能抓
                   → 5 通过条件：故意改坏 weights → 触发对应 RED；revert
                     → 回 baseline RED
+                  **每条 verify 红线必须 trace 回 contract §2 某条具体 bound**。
+                  V 不许引入 contract 没说的红线（包括"我觉得这个应该 cap"
+                  这种自加 boundary）—— 这是 M15 v10c/v10d 反例的根源。
                   **必含**：[VISUAL-RHYTHM] 类别（§14.5；具体阈值机台特定）
                   + [PWDF-FLOOR] 类别（§15.9；具体 floor 机台特定）。两者
                   写不全 = Stage 5 不通过。
+                  contract §4 informational metrics 写成 INFO-only dump，不当 RED。
 
 6      多 agent  Per-Mode Tune Loop (mode 1 → 7 → 2 → 5 顺序)
                   详见 §5.6
@@ -291,6 +332,131 @@ section 独立块 + 关键数字 + 哪条 §条款 / archetype baseline 触发�
 参考 / 模板：早期 commit 含的 `dump_m15_player_experience.py`（已删，git
 log 可查）—— 12 section 结构成熟，新 session 第一件事是仿照它写
 `session_artifacts/<M>/scripts/baseline_dump.py`，落 `01b_baseline_report.md`。
+
+### §5.3.5 Stage 3.5 — Boundary Contract (全 team 协商 + user sign-off)
+
+**目的**：把 user 给的"倾向"一次性翻译成可验证的数字契约，让 Stage 4-10 team
+闭嘴干，user 只在最终结果上把控。
+
+**为什么有这个 stage**：
+M15 跑出来的教训 —— user 想给倾向不想给数字，但 agent 没数字干不了活；过程
+中 agent 自己造数字（M15 v10c cherry floor 2%, v10d R1 single-symbol 22% cap
+等 11 处 self-defined boundary），最终失控反复 escalate user 调边界值。Stage 3.5
+把这套"过程内自拟"提前到"开局 team collaborative 协商 + user 一次性 sign-off"，
+让边界值从"team 内部失控量"变成"user 看 deliverable report 的契约"。
+
+#### §5.3.5.a 输入
+
+| 输入 | 来源 | 用途 |
+|---|---|---|
+| `session_artifacts/<M>/user_brief.md` | user (Stage 0) | §1 user-stated qualitative direction (原文摘录，不翻译) |
+| `01b_baseline_report.md` (12 sections) | A (Stage 1b) | 本机当前真 rawdata 数字 = §2 翻译时的实测 anchor |
+| `01c_field_analysis.md` | A (Stage 1c) | paytable 数学 → §3 physics floor 推导 |
+| `01d_research.md` | R (Stage 1d) | archetype 业界数字 = §2 翻译时的 industry anchor |
+| `machines/<M>/spec.json` + `reel_strips.json` + bootstrap weights | I+A (Stage 2+3) | feasibility pre-check 用 |
+| `slot_designer/DESIGN_PHILOSOPHY.md` 15 条 | universal | §2 翻译时的 direction 来源 |
+
+#### §5.3.5.b 流程
+
+```
+Step 1  D 读 §5.3.5.a 全部输入 → draft boundary_contract_draft_v0.md
+        (按 templates/BOUNDARY_CONTRACT_TEMPLATE.md 4-layer 结构)
+        §1 verbatim from user_brief
+        §2 D 把每条 §1 翻译成数字 band + cite 来源
+        §3 D 标 physics floor (cite 1c field analysis + paytable math)
+        §4 D 标 informational metrics (user 用"感性"/"informational"词汇的)
+
+Step 2  R 审 §2 — 业界数字 anchor 用对了吗？archetype 数据 cite 准吗？
+        verdict → boundary_contract_review_R_v0.md
+
+Step 3  A + I 跑 feasibility pre-check：
+        - A 把 §2 数字写成 analytic_profile target
+        - I 在 bootstrap weights 上跑 analytic 验证「在 paytable + strip
+          约束下，§2 bounds 有非空 feasible region」
+        - 不可行的 §2 line → 标 INFEASIBLE，附 mechanism exhaustion 说明
+        verdict → boundary_contract_feasibility_v0.md
+
+Step 4  V 审 §2 — 每条 bound 能写成 verify.py 可计算的红线吗？歧义？
+        verdict → boundary_contract_review_V_v0.md
+
+Step 5  X 审 — 作为 user 视角问 5 个问题：
+        - §2 哪条让 user 看到 final report 时会皱眉？
+        - §2 哪条跟 §1 user 原话脱钩了？
+        - §2 哪条 D 拍脑袋没 cite？
+        - §3 physics 哪条没 backing？
+        - §4 跟 §2 哪条分类错位（数字 band 写进 §4 或感性写进 §2）？
+        verdict → boundary_contract_review_X_v0.md
+
+Step 6  D 综合 R/A/I/V/X 反馈 → boundary_contract_draft_v1.md
+        若 feasibility INFEASIBLE → escalate user：
+          "§2 line K 不可行，原因 (mechanism exhaustion 说明)，建议
+          (a) 放宽 band 到 X / (b) 接受 deviation / (c) 改 paytable"
+        Step 1-5 重复直至全 PASS。
+
+Step 7  主 session 把 draft 整理成 user-readable summary，提交 user：
+        - §1 user 原话 (no change)
+        - §2 team proposal (each line with rationale)
+        - §3 physics floor (informational)
+        - §4 informational metrics
+        - §6 feasibility pre-check verdict
+        显式问：「sign-off this contract? 或哪条要调？」
+
+Step 8  user response →
+        (a) sign-off → freeze 到 machines/<M>/BOUNDARY_CONTRACT.md，写 §0 sign-off
+            状态 + 日期 + 引用 user 消息 → 进 Stage 4
+        (b) 调某 line → 主 session 回 Step 1 (D 改 draft) 直到 user sign-off
+        (c) reject 重做 → 重启 Step 1
+```
+
+#### §5.3.5.c sign-off 后的 contract immutability
+
+**Frozen contract = single source of truth**，Stage 4-10 全部 derive：
+- Stage 4 design narrative 数字必须 trace §2 / §3
+- Stage 5 verify.py 红线必须 trace §2
+- Stage 6/8 empirical 验证 vs §2 bounds
+- Stage 9 final critique 必含 "BOUNDARY_CONTRACT §2 逐条 vs delivered" 对照表
+
+**Stage 4-10 agent 不允许**：
+- 引入 contract 没说的数字 (band / floor / cap)
+- 让 verify pass 而 widen / soften / 删 §2 红线
+- 写 verify carve-out 而不更新 §2
+
+**唯二 escalation 触发 (Stage 4-10)**：
+- **Better idea**：team 发现更好设计 → 必须 explicit propose contract amendment
+  (写 boundary_contract_amendment_proposal_v<n>.md，附 before/after 对比，给 user 决定)
+- **Structural infeasibility**：穷尽 mechanism (per `feedback_dont_lower_floor_when_blocked.md`
+  的 4 类机制：mult / redistribute / restructure / architecture upgrade) 后
+  contract bound 不可达 → escalate user，附 mechanism exhaustion 证据 + 选项
+  (改 bound vs accept deviation)
+
+**不许 silent**：任何 §2 改动必须在 §5 amendment log 留痕 + 新 user sign-off。
+
+#### §5.3.5.d 为什么是 Stage 3.5 不是 Stage 1.5
+
+放在 Stage 3 之后 Stage 4 之前的原因：feasibility pre-check (§5.3.5.b Step 3)
+需要 `spec.json` + `reel_strips.json` + bootstrap weights 都到位才能跑
+`analytic_profile()` 算实际数学 floor。Stage 1.5 时只有 rawdata 反推、还没引擎，
+feasibility check 只能纸面推 (容易漏 wild-substitution / multi-pay 相互作用)。
+
+代价：Stage 1.5 之前 (Stage 2 引擎 + Stage 3 bootstrap) team 在没有 contract
+锁定的情况下干 ~1-2 stage，可能出现 I/A 选了不该选的实现路径。缓解：Stage 2/3
+的产物都是"工程实现 + 数据反推"，不涉及主观设计选择 (设计选择在 Stage 4 才有)，
+contamination 风险低。
+
+#### §5.3.5.e Stage 3.5 通过条件
+
+- ✓ `machines/<M>/BOUNDARY_CONTRACT.md` 写完 §0-§6 (按 template)
+- ✓ §0 status = Frozen + sign-off 日期 + user 消息引用
+- ✓ §6 feasibility pre-check verdict = ALL FEASIBLE 或显式 STRUCTURAL 标注
+- ✓ 全 R/A/I/D/V/X review pass (各自的 review_*_v<n>.md 都 PASS verdict)
+
+通过则进 Stage 4。失败回 §5.3.5.b Step 1。
+
+#### §5.3.5.f Stage 3.5 stop 条件
+
+- ✗ feasibility 5 轮 iter 仍有 INFEASIBLE line → escalate user (大概率 user_brief
+  数字 vs paytable 物理冲突，user 需选 paytable 改 / 接受 deviation / 等)
+- ✗ user 5 次 sign-off 都不通过 → 回 Stage 1 (可能 user_brief / archetype 没对齐)
 
 ### §5.6 Per-Mode Inner Loop (Stage 6 细节)
 
@@ -362,13 +528,17 @@ iter k = 1..5:
 或 mode 1 hit 总比 target 高 2pp 拉不下来）
 ```
 
-**不能死 tune**。说明设计本身跟 paytable 数学不自洽：
+**不能死 tune**。说明 BOUNDARY_CONTRACT.md §2 跟 paytable 数学不自洽（理论上
+Stage 3.5 feasibility pre-check 该抓到 — 没抓到说明 pre-check 漏了二阶交互）：
 
 ```
-回 Stage 4 让 D 改 design intent，理由：
-- 真原型 PAR sheet 数字可能跟当前 paytable 结构不兼容（cherry-anywhere
-  机制下 hit 物理下限就是某值）
-- user_brief 倾向性可能跟 paytable 结构冲突 → escalate user
+回到 §5.3.5.c 唯二 escalation：
+- **Structural infeasibility** → 穷尽 mechanism (mult/redistribute/restructure/architecture)
+  → escalate user，附 evidence + 选项
+  (a) amend contract §2 line → 写 amendment proposal → user 决定
+  (b) accept deviation → 写 contract §5 amendment log
+  (c) 改 paytable → forbidden per universal rule (proc_imp #36)
+- 不能回 Stage 4 silent 改 design — design 必须 trace contract
 ```
 
 参考 [`memory/feedback_tuner_pareto_trap.md`](../memory/feedback_tuner_pareto_trap.md) 跟 [`memory/feedback_dont_lower_floor_when_blocked.md`](../memory/feedback_dont_lower_floor_when_blocked.md)。
@@ -386,6 +556,12 @@ session_artifacts/<M>/
 ├── 01b_baseline_report.md        # A: production analyzer 输出摘要
 ├── 01c_field_analysis.md         # A: rawdata 反推 rules / paytable
 ├── 01d_research.md               # R: archetype + 业界数据
+├── boundary_contract_draft_v<n>.md       # Stage 3.5 — D 提案 (迭代版本号)
+├── boundary_contract_review_R_v<n>.md    # Stage 3.5 — R 审业界 anchor
+├── boundary_contract_review_V_v<n>.md    # Stage 3.5 — V 审可验证性
+├── boundary_contract_review_X_v<n>.md    # Stage 3.5 — X user 视角 5 反问
+├── boundary_contract_feasibility_v<n>.md # Stage 3.5 — A+I feasibility 验证
+├── boundary_contract_amendment_proposal_v<n>.md  # Stage 4-10 — 仅 escalation 时
 ├── design_v<n>.md                # D: 综合 4 路输入（迭代版本号）
 ├── targets_v<n>/                 # D: target file snapshots
 ├── verify_run_v<n>_iter<k>.txt   # V: 每次 verify 输出
@@ -404,17 +580,23 @@ session_artifacts/<M>/
 
 **通过条件（同时满足）**：
 
+0. Stage 3.5 BOUNDARY_CONTRACT.md frozen (§0 status=Frozen + user sign-off)
 1. Stage 6 每个 mode 4-lock 都开
 2. Stage 7 cross-mode invariants 全 GREEN
 3. Stage 8 full empirical 通过：
    - 4 mode 全 ±2σ
    - schema 跟生产 rawdata 字节级对齐
    - X 抽样 round 看叙事自洽
+   - **Stage 8 critique 必含 BOUNDARY_CONTRACT.md §2 逐条 vs delivered 对照表**
 4. Stage 9 final_critique 5 反问全 closed loop
+5. BOUNDARY_CONTRACT.md §5 amendment log 任一新条目都有对应 user sign-off
 
 **Stop 触发（任一即停手报 user）**：
 
-- ✗ Stage 6 任一 mode 5 次 iter 仍同类 RED
+- ✗ Stage 3.5 feasibility 5 轮 iter 仍 INFEASIBLE → escalate user
+- ✗ Stage 3.5 user 5 次 sign-off 都不通过 → 回 Stage 1
+- ✗ Stage 6 任一 mode 5 次 iter 仍同类 RED → 走 §5.3.5.c 唯二 escalation
+  (better idea propose 或 structural infeasibility + mechanism exhaustion)
 - ✗ Stage 7 同对 mode 来回踢皮球 ≥ 2 轮
 - ✗ Stage 8 realized 持续偏离 5σ+（不是 noise）
 - ✗ Stage 9 同条 stress-test 连拒 3 次（设计本身结构问题）
@@ -434,6 +616,7 @@ session_artifacts/<M>/
 8. **No Claude-self-loop**：永远不读上一轮 Claude 写的 narrative 当 input；每次 design 走 archetype + philosophy + brief 重新推
 9. **escalation over guessing**：遇到结构性矛盾（philosophy vs user brief vs paytable math）→ escalate user，不自决
 10. **commit hook 强制 4 段** (`.claude/hooks/verify-commit-msg.py`)：Verified happy path / Verified failure paths / Not verified / Tests added 全有非空内容
+11. **Contract immutability after Stage 3.5 sign-off**：`machines/<M>/BOUNDARY_CONTRACT.md` frozen 后，Stage 4-10 所有数字必须 trace 回 contract §2 或 §3。agent 不许引入新数字、widen / soften 已有 band、写 contract 没说的 carve-out。改 contract 唯二合法路径：(a) better idea proposal (b) structural infeasibility + mechanism exhaustion，两者都必走 §5 amendment log + user re-sign-off
 
 ---
 
