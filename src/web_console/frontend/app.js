@@ -3996,33 +3996,94 @@ function renderSpinTypeBreakdown(summary) {
   const tbody = byId("spinTypeTable") && byId("spinTypeTable").querySelector("tbody");
   if (!tbody) return;
   const rows = PURE.formatSpinTypeRows(summary);
+  // 2026-05-12: \u6539\u6210 compare-aware (\u8ddf paylineTable / bucketTable
+  // \u4e00\u4e2a\u6a21\u5f0f)\u3002\u5bf9\u6bd4\u6a21\u5f0f\u4e0b\u5408\u5e76 A/B spin_type \u5217\u8868\u3001\u6309 spin_type \u914d\u5bf9\u3001
+  // A-only / B-only \u52a0 presence tag,\u6bcf\u4e2a\u5355\u5143\u683c\u8d70 _cmpCell stack\u3002
+  const cmpB = state.compareMode && state.compareMode.b ? state.compareMode.b : null;
+  const rowsB = cmpB ? PURE.formatSpinTypeRows(cmpB) : [];
   const coverage = ((summary || {}).player_impact || {}).spin_type_coverage || 0;
-  // Update panel heading with coverage count.
+  const coverageB = cmpB ? ((cmpB.player_impact || {}).spin_type_coverage || 0) : 0;
   const heading = document.querySelector(".spin-types h2");
-  if (heading) heading.textContent = fmt("panelSpinType") + (coverage > 0 ? ` (${coverage})` : "");
-  if (!rows.length) {
+  if (heading) {
+    const covLabel = cmpB
+      ? (coverage > 0 || coverageB > 0 ? ` (A:${coverage} / B:${coverageB})` : "")
+      : (coverage > 0 ? ` (${coverage})` : "");
+    heading.textContent = fmt("panelSpinType") + covLabel;
+  }
+  const bMap = new Map();
+  for (const r of rowsB) bMap.set(String(r.spin_type), r);
+  const aSet = new Set(rows.map((r) => String(r.spin_type)));
+  const merged = [...rows];
+  if (cmpB) {
+    for (const r of rowsB) {
+      if (!aSet.has(String(r.spin_type))) merged.push(r);
+    }
+  }
+  if (!merged.length) {
     tbody.innerHTML = `<tr><td colspan="6">${fmt("spinTypeEmpty")}</td></tr>`;
     return;
   }
-  const maxRtp = Math.max(...rows.map((r) => r.rtp_contribution_pp), 0);
-  tbody.innerHTML = rows
+  const maxRtp = Math.max(
+    ...merged.map((r) => r.rtp_contribution_pp),
+    ...(cmpB ? rowsB.map((r) => r.rtp_contribution_pp) : []),
+    0,
+  );
+  tbody.innerHTML = merged
     .map((r) => {
-      const bar = maxRtp > 0 ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100) : 0;
-      const behavior = r.behavior_name
-        ? fmt("spinTypeBehavior_" + r.behavior_name)
+      const aIn = aSet.has(String(r.spin_type));
+      const bRow = cmpB ? bMap.get(String(r.spin_type)) || null : null;
+
+      const aShareRaw = aIn ? Number(r.share_pct || 0) : NaN;
+      const bShareRaw = bRow ? Number(bRow.share_pct || 0) : NaN;
+      const aHitRaw = aIn ? Number(r.hit_rate_pct || 0) : NaN;
+      const bHitRaw = bRow ? Number(bRow.hit_rate_pct || 0) : NaN;
+      const aRtpRaw = aIn && r.rtp_pct != null ? Number(r.rtp_pct) : NaN;
+      const bRtpRaw = bRow && bRow.rtp_pct != null ? Number(bRow.rtp_pct) : NaN;
+      const aContribRaw = aIn ? Number(r.rtp_contribution_pp || 0) : NaN;
+      const bContribRaw = bRow ? Number(bRow.rtp_contribution_pp || 0) : NaN;
+
+      const aShareFmt = aIn ? r.share_pct.toFixed(1) + "%" : "\u2014";
+      const bShareFmt = bRow ? bRow.share_pct.toFixed(1) + "%" : "\u2014";
+      const aHitFmt = aIn ? r.hit_rate_pct.toFixed(2) + "%" : "\u2014";
+      const bHitFmt = bRow ? bRow.hit_rate_pct.toFixed(2) + "%" : "\u2014";
+      const aRtpFmt = aIn ? (r.rtp_pct == null ? "N/A" : r.rtp_pct.toFixed(2) + "%") : "\u2014";
+      const bRtpFmt = bRow ? (bRow.rtp_pct == null ? "N/A" : bRow.rtp_pct.toFixed(2) + "%") : "\u2014";
+      const aContribFmt = aIn ? r.rtp_contribution_pp.toFixed(2) : "\u2014";
+      const bContribFmt = bRow ? bRow.rtp_contribution_pp.toFixed(2) : "\u2014";
+
+      const aBar = aIn && maxRtp > 0
+        ? Math.min(100, (r.rtp_contribution_pp / maxRtp) * 100)
+        : 0;
+      const bBar = bRow && maxRtp > 0
+        ? Math.min(100, (bRow.rtp_contribution_pp / maxRtp) * 100)
+        : 0;
+
+      const primary = aIn ? r : bRow;
+      const behavior = primary && primary.behavior_name
+        ? fmt("spinTypeBehavior_" + primary.behavior_name)
         : "\u2014";
-      const rtpCell = r.rtp_pct == null
-        ? `<td class="muted">N/A</td>`
-        : `<td>${r.rtp_pct.toFixed(2)}%</td>`;
-      const rareClass = r.rare ? ' class="rare-row"' : "";
+      const rareFlag = (aIn && r.rare) || (bRow && bRow.rare);
+      const rareClass = rareFlag ? ' class="rare-row"' : "";
+
+      let presence = "";
+      if (cmpB) {
+        if (aIn && !bRow) presence = ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
+        else if (!aIn && bRow) presence = ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
+      }
+      const stName = aIn ? r.spin_type : (bRow ? bRow.spin_type : "?");
+
+      const barCell = cmpB
+        ? `<td class="cmp-text-bar-cell">${_cmpCell(true, aContribFmt, bContribFmt, aContribRaw, bContribRaw, "pp", 2, { aBarPct: aBar, bBarPct: bBar })}</td>`
+        : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${aContribFmt}</td>`;
+
       return (
         `<tr${rareClass}>` +
-        `<td>${r.spin_type}${r.rare ? " \u26a0" : ""}</td>` +
+        `<td>${stName}${rareFlag ? " \u26a0" : ""}${presence}</td>` +
         `<td>${behavior}</td>` +
-        `<td>${r.share_pct.toFixed(1)}%</td>` +
-        `<td>${r.hit_rate_pct.toFixed(2)}%</td>` +
-        rtpCell +
-        `<td class="bar-cell" style="--bar:${bar.toFixed(1)}%">${r.rtp_contribution_pp.toFixed(2)}</td>` +
+        `<td>${_cmpCell(!!cmpB, aShareFmt, bShareFmt, aShareRaw, bShareRaw, "pp")}</td>` +
+        `<td>${_cmpCell(!!cmpB, aHitFmt, bHitFmt, aHitRaw, bHitRaw, "pp", 2)}</td>` +
+        `<td>${_cmpCell(!!cmpB, aRtpFmt, bRtpFmt, aRtpRaw, bRtpRaw, "pp", 2)}</td>` +
+        barCell +
         `</tr>`
       );
     })
@@ -4423,7 +4484,11 @@ async function renderPayIdOverview(summary) {
   const s = summary || {};
   const machine = s.machine;
   const mode = Number(s.mode);
-  const payoutRows = (s.player_impact || {}).payout_ids_top20 || [];
+  // 2026-05-12: clone — 之前直接拿 summary 里的数组引用,后面的
+  // declaredPays / B-only 合成行 push 会真的写回 summary,重渲染
+  // (轮询 / state 切换) 会累积幽灵行,退出对比模式回 single view 也
+  // 残留 B-only 占位。clone 让本函数 push 只影响本地数组。
+  const payoutRows = [...((s.player_impact || {}).payout_ids_top20 || [])];
 
   // Compare mode: pull B's payout rows so we can align by
   // payout_id and emit per-cell A/B stacks. Compare mode also
@@ -4982,11 +5047,16 @@ function _renderFeatureBucketTable(buckets, bucketsB) {
 
   const body = merged.map((b) => {
     const label = PURE.prettyBucketLabel(b.bucket);
-    const aCount = Number(b.spin_count || 0);
-    const aRateRaw = Number(b.spin_rate || 0) * 100;
-    const aRate = aRateRaw.toFixed(2);
-    const aRtpPp = Number(b.rtp_contribution_pp || 0);
-    const aBar = Math.min(100, (Math.abs(aRtpPp) / maxRtp) * 100);
+    // 2026-05-12: 同前页 bucketTable 的 fix —— merged 里 B-only 行
+    // 的迭代变量 b 是 B 的桶,不能直接读做 A 字段。
+    const aIn = aSet.has(String(b.bucket || ""));
+    const aCount = aIn ? Number(b.spin_count || 0) : NaN;
+    const aRateRaw = aIn ? Number(b.spin_rate || 0) * 100 : NaN;
+    const aRate = aIn ? aRateRaw.toFixed(2) + "%" : "—";
+    const aRtpPp = aIn ? Number(b.rtp_contribution_pp || 0) : NaN;
+    const aRtpPpFmt = aIn ? aRtpPp.toFixed(2) + "pp" : "—";
+    const aCountFmt = aIn ? aCount.toLocaleString() : "—";
+    const aBar = aIn ? Math.min(100, (Math.abs(aRtpPp) / maxRtp) * 100) : 0;
     const bRow = compareMode ? (bMap.get(String(b.bucket || "")) || {}) : null;
     const bCount = bRow ? Number(bRow.spin_count || 0) : 0;
     const bRateRaw = bRow ? Number(bRow.spin_rate || 0) * 100 : 0;
@@ -4999,9 +5069,9 @@ function _renderFeatureBucketTable(buckets, bucketsB) {
     return (
       `<tr>` +
       `<td>${_escHtml(label)}</td>` +
-      `<td>${_stack(aCount.toLocaleString(), bCount.toLocaleString(), aCount, bCount, "rel")}</td>` +
-      `<td>${_stack(aRate + "%", bRate + "%", aRateRaw, bRateRaw, "pp")}</td>` +
-      `<td>${_stack(aRtpPp.toFixed(2) + "pp", bRtpPp.toFixed(2) + "pp", aRtpPp, bRtpPp, "pp", 2)}</td>` +
+      `<td>${_stack(aCountFmt, bCount.toLocaleString(), aCount, bCount, "rel")}</td>` +
+      `<td>${_stack(aRate, bRate + "%", aRateRaw, bRateRaw, "pp")}</td>` +
+      `<td>${_stack(aRtpPpFmt, bRtpPp.toFixed(2) + "pp", aRtpPp, bRtpPp, "pp", 2)}</td>` +
       barCell +
       `</tr>`
     );
@@ -6394,13 +6464,17 @@ async function _paintAnalysisFromSummary(s) {
     )), 0.001);
     bucketBody.innerHTML = merged
       .map((b) => {
-        const aCountRaw = Number(b.spin_count || 0);
-        const aSpinPctRaw = Number(b.spin_rate || 0) * 100;
-        const aRtpPpRaw = Number(b.rtp_contribution_pp || 0);
-        const aCount = fInt(b.spin_count);
-        const aSpinPct = aSpinPctRaw.toFixed(2);
-        const aRtpPp = aRtpPpRaw.toFixed(2);
-        const aBar = Math.min(100, (aRtpPpRaw / maxRtp) * 100);
+        // 2026-05-12: B-only 行 (b 是 B 桶) 的 A 侧字段必须置 "—" / NaN,
+        // 否则 aCountRaw 会从 b 自己读到 B 的数,Δ chip 显示 ≈ 假象。
+        // 同形 bug 见 _renderFeatureBucketTable。
+        const aIn = aSet.has(String(b.bucket));
+        const aCountRaw = aIn ? Number(b.spin_count || 0) : NaN;
+        const aSpinPctRaw = aIn ? Number(b.spin_rate || 0) * 100 : NaN;
+        const aRtpPpRaw = aIn ? Number(b.rtp_contribution_pp || 0) : NaN;
+        const aCount = aIn ? fInt(b.spin_count) : "—";
+        const aSpinPct = aIn ? aSpinPctRaw.toFixed(2) : "—";
+        const aRtpPp = aIn ? aRtpPpRaw.toFixed(2) : "—";
+        const aBar = aIn ? Math.min(100, (aRtpPpRaw / maxRtp) * 100) : 0;
         let bCount = "—", bSpinPct = "—", bRtpPp = "—", bBar = 0;
         let bCountRaw = NaN, bSpinPctRaw = NaN, bRtpPpRaw = NaN;
         if (cmpB) {
