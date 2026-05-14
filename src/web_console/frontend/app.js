@@ -5012,6 +5012,20 @@ function _lineIdSignBadge(signOrId, numericId) {
 //
 // Graceful degradation: if the field is missing / empty on A (older
 // reports pre-729a6ca), the panel is hidden entirely.
+
+// Format a spin_type_label string (e.g. "ST43_paid") into a human-readable
+// heading. Parses "ST{N}_{behavior}" and substitutes the behavior token via
+// i18n. Falls back to _escHtml(label) unchanged for unrecognised formats so
+// unknown labels never crash the renderer.
+function _formatSpinTypeLabel(label) {
+  const m = /^ST(\d+)_(paid|free|mixed)$/.exec(label);
+  if (!m) return _escHtml(label);
+  const stNum = m[1];
+  const behavior = m[2];
+  const behaviorKey = "spinTypeBehavior" + behavior.charAt(0).toUpperCase() + behavior.slice(1);
+  return `SpinType ST${_escHtml(stNum)} · ${_escHtml(fmt(behaviorKey))}`;
+}
+
 function renderPayoutsBySpinType(summary) {
   const panel = byId("payoutsBySpinTypePanel");
   if (!panel) return;
@@ -5068,7 +5082,7 @@ function renderPayoutsBySpinType(summary) {
       else if (onlyB) presenceTag = ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
     }
 
-    html += `<h3 class="drilldown-subhead">${_escHtml(label)}${presenceTag}</h3>`;
+    html += `<h3 class="drilldown-subhead">${_formatSpinTypeLabel(label)}${presenceTag}</h3>`;
 
     if (cmpB) {
       // Sequential A then B blocks. bData null means the whole field
@@ -5096,12 +5110,12 @@ function _renderPayoutsByStTable(rows) {
   }
   const thead =
     `<thead><tr>` +
-    `<th>payout_id</th>` +
-    `<th>hit_count</th>` +
-    `<th>hit_rate_pct</th>` +
-    `<th>total_win</th>` +
-    `<th>avg_win_when_hit</th>` +
-    `<th>rtp_pp</th>` +
+    `<th>${_escHtml(fmt("stSplitPayIdCol"))}</th>` +
+    `<th>${_escHtml(fmt("stSplitHitCountCol"))}</th>` +
+    `<th>${_escHtml(fmt("stSplitHitRateCol"))}</th>` +
+    `<th>${_escHtml(fmt("stSplitTotalWinCol"))}</th>` +
+    `<th>${_escHtml(fmt("stSplitAvgWinCol"))}</th>` +
+    `<th>${_escHtml(fmt("stSplitRtpPpCol"))}</th>` +
     `</tr></thead>`;
   const tbody = rows
     .map((r) => {
@@ -5182,7 +5196,7 @@ function renderReelMarginalBySpinType(summary) {
       else if (onlyB) presenceTag = ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
     }
 
-    html += `<h3 class="drilldown-subhead">${_escHtml(label)}${presenceTag}</h3>`;
+    html += `<h3 class="drilldown-subhead">${_formatSpinTypeLabel(label)}${presenceTag}</h3>`;
 
     if (cmpB && bData !== null) {
       html += `<p class="drilldown-hint">A</p>`;
@@ -5225,13 +5239,13 @@ function _renderReelMarginalMatrix(colMap) {
         .join("");
       const head =
         `<thead><tr>` +
-        `<th>symbol</th>` +
-        `<th>count</th>` +
-        `<th>prob%</th>` +
+        `<th>${_escHtml(fmt("thSymbol"))}</th>` +
+        `<th>${_escHtml(fmt("thCount"))}</th>` +
+        `<th>${_escHtml(fmt("thProbPct"))}</th>` +
         `</tr></thead>`;
       return (
         `<div class="col-table">` +
-        `<h4>Col ${_escHtml(colIdx)}</h4>` +
+        `<h4>${_escHtml(fmt("reelColPrefix"))} ${_escHtml(colIdx)}</h4>` +
         `<table class="drilldown-table">${head}<tbody>${bodyRows}</tbody></table>` +
         `</div>`
       );

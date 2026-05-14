@@ -181,8 +181,8 @@
                (dynamic keys, e.g. ST43_paid / ST44_free). Only shown
                when payouts_by_spin_type is present in the summary JSON
                (requires analyzer commit 729a6ca or later). -->
-          <section class="panel hidden" id="payoutsBySpinTypePanel">
-            <h2>Per-pay_id by SpinType</h2>
+          <section class="panel payid-overview hidden" id="payoutsBySpinTypePanel">
+            <h2 data-i18n="panelPayoutsBySpinType">按 SpinType 拆分的 Pay ID</h2>
             <div id="payoutsBySpinTypeBody"></div>
           </section>
 
@@ -273,8 +273,8 @@
                each block shows one col-table per reel column (reuses
                .symbol-matrix / .col-table layout). Only shown when
                reel_marginal_by_spin_type is present (requires 729a6ca+). -->
-          <section class="panel hidden" id="reelMarginalBySpinTypePanel">
-            <h2>Per-reel Marginal by SpinType</h2>
+          <section class="panel symbols hidden" id="reelMarginalBySpinTypePanel">
+            <h2 data-i18n="panelReelMarginalBySpinType">按 SpinType 拆分的转轮边际分布</h2>
             <div id="reelMarginalBySpinTypeBody"></div>
           </section>
 
