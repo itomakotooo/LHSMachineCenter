@@ -124,18 +124,26 @@ ship-ready 必须产出：
 
 ## §4 Agent Team
 
-6 个独立 fresh-context 子 agent，每个 single-responsibility：
+6 个独立 fresh-context 子 agent，每个 single-responsibility。**实现层**：每个 agent 是 `.claude/agents/slot-<role>.md` 文件（Claude Code custom subagent，frontmatter `tools:` whitelist 由 harness **强制 enforce**，工具面真隔离不是约定）。主 session spawn 用 `subagent_type` 参数指定。
 
-| Agent | 角色 | 唯一职责 | 工具面 | 不做 |
-|---|---|---|---|---|
-| **R** Researcher | 业界研究员 | WebSearch archetype（PAR sheet / KnowYourSlots / SlotsMate / Wizard / 论坛 / 学术）+ 文献查阅 | WebSearch / WebFetch | 不碰 rawdata；不写 spec；不出设计意图 |
-| **A** Analyst | 数据 + 报告分析师 | (1) 拉上游 rawdata 进 cache (或确认已有);  (2) 跑 `fresh_slotlab/player_impact_analyzer.py --from-cache` 出 baseline report;  (3) 从 rawdata field-analyze 反推 rules + paytable + SpinType + feature 字段 (若 user 没给);  (4) 每次需要 empirical gate 时跑虚拟机产 chunks 过同一 analyzer，diff 虚拟 sim_report vs Stage 1b baseline_report | 子进程 + Python 数据分析 + JSON | 不调 weights；不出设计意图；不写 verify 红线 |
-| **I** Implementer | 引擎实现 | 写 `spec.json`、`reel_strips.json`(initial)、Plugin (若需要)、机制正确性测试 (sim output vs 生产 rawdata 字节比对) | Edit / pytest | 不出设计意图；不调 weights；不写 verify 红线 |
-| **D** Designer | 数值设计师 | 综合 (R archetype) × (A baseline) × (user brief) × (philosophy) → DESIGN.md / MODE_DESIGN.md / target.json。每个数字 cite 来源 | Read / Write | 不写 spec 或 plugin；不调 tune；不写 verify (但 verify 的红线由它的 design intent 派生) |
-| **V** Verifier | 数值校验员 | 写 + 跑 `machines/<M>/verify.py` (analytic 路径) → categorized RED/GREEN/WARN; 每次 tune 完跑 | Edit / Bash | 不调 weights；不改 design；不做 commit 决策；不跑 sampling (那是 A 的活) |
-| **X** Critic | 魔鬼律师 | 每个里程碑扮 user stress-test 5 反问；写 commit message 的 `## Self-critique` 段 | 读所有 artifact | 不实现任何代码 |
+| Agent | 角色 | `subagent_type` | 唯一职责 | 工具面 (enforced) | 不做 |
+|---|---|---|---|---|---|
+| **R** Researcher | 业界研究员 | `slot-researcher` | WebSearch archetype（PAR sheet / KnowYourSlots / SlotsMate / Wizard / 论坛 / 学术）+ 文献查阅 | WebSearch / WebFetch / Read / Glob / Grep / Write | 不碰 rawdata；不写 spec；不出设计意图 |
+| **A** Analyst | 数据 + 报告分析师 | `slot-analyst` | (1) 拉上游 rawdata 进 cache;  (2) 跑 `fresh_slotlab/player_impact_analyzer.py --from-cache` 出 baseline report;  (3) 从 rawdata field-analyze 反推 rules + paytable + SpinType + feature 字段;  (4) 每次需要 empirical gate 时跑虚拟机产 chunks 过同一 analyzer，diff 虚拟 sim_report vs baseline_report | Read / Glob / Grep / Bash / Write | 不调 weights；不出设计意图；不写 verify 红线；无 WebSearch（R 的活）；无 Edit |
+| **I** Implementer | 引擎实现 | `slot-implementer` | 写 `spec.json`、`reel_strips.json`、Plugin、必备 tests；sim chunk 跟生产 rawdata 字节比对 | Read / Glob / Grep / Edit / Write / Bash | 不出设计意图；不调 weights；不写 verify 红线；无 WebSearch |
+| **D** Designer | 数值设计师 | `slot-designer` | 综合 (R archetype) × (A baseline) × (user_brief) × (philosophy) → BOUNDARY_CONTRACT 提案 / DESIGN.md / MODE_DESIGN.md / target.json。每个数字 cite 来源 | Read / Glob / Grep / Write | 不写 spec / plugin（无 Edit）；不调 tune；不跑 Bash；无 WebSearch；不写 verify |
+| **V** Verifier | 数值校验员 | `slot-verifier` | 写 + 跑 `machines/<M>/verify.py` (analytic 路径) → categorized RED/GREEN/WARN; 每次 tune 完跑；inject-bug TDD | Read / Glob / Grep / Edit / Write / Bash | 不调 weights；不改 design (无 Designer 那些文件的 Edit)；无 WebSearch；无 sampling (A 的活) |
+| **X** Critic | 魔鬼律师 | `slot-critic` | 每个里程碑扮 user stress-test 5 反问；写 commit message 的 `## Self-critique` 段 | Read / Glob / Grep / Write | 不实现任何代码 (无 Edit / Bash)；无 WebSearch |
 
 主 session 是**协调员** — 决定该起哪个 agent / 跑 `tune.py` / 跑 `git` / 文件操作。**不做 design / verify / review 决策本身**——决策都在 agent 里。
+
+### §4.-1 Agent 文件加载机制 + reload 注意
+
+`.claude/agents/*.md` 在 **Claude Code session startup 时扫描**。新建或改 frontmatter 后**必须开新 session 才生效**（harness 不 hot-reload）。本 session 已经启动的，sees 旧的 agent 列表（如果 agents 是 session 内新加的就还没生效）。
+
+如果 `subagent_type: slot-researcher` 在 tool 列表里看不到（typeahead `@agent-slot-researcher` 不出来），开新 session 重启 Claude Code 即可。
+
+回退路径：紧急情况主 session 可以用 `subagent_type: "general-purpose"` 起 agent + inline 把 `.claude/agents/slot-<role>.md` body 作为 prompt 注入 + 提醒 agent 自我约束工具用法（**无 harness enforcement**，靠 prompt 遵守）。这是 fallback，不是正常路径。
 
 ### §4.0 Stage 3.5 Boundary Contract — 全 team 协作
 
