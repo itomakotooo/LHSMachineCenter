@@ -162,6 +162,71 @@ ship-ready 必须产出：
 主 session 在 §5.3.5.b Step 7 把 draft 整理成 user-readable summary，一次性向 user
 sign-off。frozen 后 contract 进 `machines/<M>/BOUNDARY_CONTRACT.md`。
 
+### §4.0.1 主 session "coordinator-only" 硬纪律（user-mandated 2026-05-14）
+
+主 session 的角色是**协调员**，不是另一个 agent。所有 substantive work 都委派给
+`.claude/agents/slot-*` 子 agent。否则即使结果对，agent boundary 也松了，Stage 3.5+
+高 stake 阶段会失序（D 需要 A 的 artifact 不是主 session 转述；V 需要 contract 文件
+不是主 session 摘要；agent 间的 file-based 信息流崩了）。
+
+#### 主 session **做**什么
+
+- 决定该起哪个 agent 干哪个任务（spawn `subagent_type` + per-task wrapper prompt）
+- 把 user 输入翻译成 agent 任务指令（artifact 输入路径 / 输出路径 / 成功条件）
+- Git commit / 文件操作 / 目录创建 / `ls` / `mkdir` 类操作
+- 汇总 agent 输出，简洁汇报 user
+- 在里程碑等 user 决策、把 user 回答落到 artifact 或下一个 agent prompt
+- TodoWrite 追踪进度
+- 读 ONBOARDING / WORKFLOW / PHILOSOPHY / ARCHITECTURE / template 文档（协调员必须掌握框架）
+- 读 agent 落到 `session_artifacts/` 的 output artifact（用于 brief 下个 agent 或 user）
+
+#### 主 session **不做**什么
+
+- ❌ Read rawdata chunk / `cache/chunks/` 内容做分析 → **Analyst 的活**
+- ❌ Read xlsx / production config 文件 → **Analyst（cross-check 任务）**
+- ❌ 跑 Python 子进程做数据统计 / token mapping / marginal 对比 → **Analyst**
+- ❌ Edit / Write `machines/<M>/spec.json` / `reel_strips.json` / `weights/` / `plugins/` → **Implementer**
+- ❌ Write `DESIGN.md` / `MODE_DESIGN.md` / `target.json` / `BOUNDARY_CONTRACT.md` → **Designer**
+- ❌ Write / 跑 `verify.py` → **Verifier**
+- ❌ 跑 empirical sampling / analyzer report → **Analyst**
+- ❌ WebSearch 业界 / archetype 数据 → **Researcher**
+- ❌ 写 commit message 的 `## Self-critique` 段（自己写） → **Critic**（主 session 把 X 的 final_critique.md 嵌进去而不是自创）
+- ❌ Cross-check 一个 agent 的输出靠"自己重做一遍"（应该让另一个 agent 做 cross-check，或者跑 inject-bug TDD 让 verify 抓）
+
+#### 触发操作规则
+
+任何时刻主 session 准备执行下面动作之一时 → **stop, spawn the right agent**：
+
+- Read 一个 rawdata chunk JSON
+- Edit 一个 `machines/<M>/*` 文件（除了 BOUNDARY_CONTRACT 由 user sign-off 后主 session 落地 frozen 拷贝）
+- Bash 跑 Python 做数据/数学分析
+- Write 一份 design narrative / verify code
+
+例外（确为协调员工作）：
+- 读 agent output artifact 用于 brief 下个 agent
+- 写 `session_artifacts/<M>/00_SESSION_BRIEF.md` 和 `user_brief.md`（这是 user 输入转录，协调员职责）
+- 写 `session_artifacts/<M>/03_session_handoff.md` 类 session-end 笔记
+- 写 commit message（拼装 agent 输出+Self-critique 段，不自创设计内容）
+- `git` / `mkdir` / `ls` / `cp` 类操作
+
+#### Session 1 历史反例（M43 onboarding, 2026-05-13/14）
+
+- 读 M43Basic / M43Reel / M43Wheel / Caculate / Jackpot xlsx 用 inline Python → 应起 Analyst（cross-check xlsx vs 01c rawdata-inferred mechanism 任务）
+- Mini-game token-to-multiplier sum verification（4199 records 100% match）→ Analyst 补充任务
+- Respin reel marginal comparison（base vs respin）→ Analyst 补充任务
+- xlsx surface triage（4 桶分类：可调 / read-only / 无用 / 隐藏） → Analyst 输出
+
+这些都是"主 session 顺手算了，反正结果对"——但 boundary 松了。Stage 3.5+ 高 stake 阶段 D / V / X 需要的是文件 artifact 不是主 session 转述，纪律必须收紧。
+
+#### "Even faster" 反 anti-rationalization
+
+主 session 拒绝下面这种 self-talk：
+- "我直接读一眼 xlsx 就知道了，起 agent 还要写 prompt 浪费时间"
+- "这个数据分析就 5 行 Python，没必要起 agent"
+- "agent 还要 fresh context 重读 SESSION_BRIEF，慢"
+
+**Even faster is no excuse**：协调员越界 = team 边界破坏 = 下游 agent 拿不到正确 artifact 输入 = Stage 3.5+ 决策类 agent 出错。短期省的几分钟，下游花几小时补。
+
 ### §4.1 R / A 边界
 
 ```
