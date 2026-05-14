@@ -4757,10 +4757,19 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
   } = opts || {};
   let { maxRtp = 0 } = opts || {};
 
+  // Schema fallback: pre-rename reports (rv_20260514T063337Z and earlier
+  // testing artifacts) emit rtp_pp / hit_rate_pct. New reports emit
+  // rtp_contribution_pp / hit_rate. Helper tolerates both so reports
+  // generated across the refactor boundary still render.
+  const _rtpOf = (r) => Number(r.rtp_contribution_pp ?? r.rtp_pp ?? 0);
+  const _hitRateOf = (r) => Number(
+    r.hit_rate ?? (r.hit_rate_pct != null ? r.hit_rate_pct / 100 : NaN),
+  );
+
   if (maxRtp === 0) {
     maxRtp = Math.max(
-      ...payoutRows.map((r) => Number(r.rtp_contribution_pp || 0)),
-      ...(cmpBMap ? Array.from(cmpBMap.values()).map((r) => Number(r.rtp_contribution_pp || 0)) : []),
+      ...payoutRows.map(_rtpOf),
+      ...(cmpBMap ? Array.from(cmpBMap.values()).map(_rtpOf) : []),
       0.001,
     );
   }
@@ -4825,8 +4834,8 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
       ? sh.notes.map(_escHtml).join("; ")
       : "";
 
-    const rtpPp = Number(pr.rtp_contribution_pp || 0);
-    const rtpPpB = prB ? Number(prB.rtp_contribution_pp || 0) : 0;
+    const rtpPp = _rtpOf(pr);
+    const rtpPpB = prB ? _rtpOf(prB) : 0;
     const aBar = Math.min(100, (rtpPp / maxRtp) * 100);
     const bBar = cmpB ? Math.min(100, (rtpPpB / maxRtp) * 100) : 0;
     const cat = pr.spin_type_category;
@@ -4873,8 +4882,8 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
       isBOnly ? "payid-b-only" : "",
     ].filter(Boolean).join(" ");
 
-    const hitRateRaw = Number(pr.hit_rate);
-    const hitRateRawB = prB ? Number(prB.hit_rate) : NaN;
+    const hitRateRaw = _hitRateOf(pr);
+    const hitRateRawB = prB ? _hitRateOf(prB) : NaN;
     const hitRateA = (isDeclaredOnly || isBOnly || !Number.isFinite(hitRateRaw))
       ? "—"
       : _fmtHitRate(hitRateRaw);
@@ -5077,10 +5086,12 @@ function renderPayoutsBySpinType(summary) {
     const onlyA = aRows.length > 0 && bRows.length === 0;
     const onlyB = aRows.length === 0 && bRows.length > 0;
 
-    // Sort each side by rtp_contribution_pp desc, cap at 20.
+    // Sort each side by rtp desc, cap at 20. Tolerates both schemas
+    // (post-rename rtp_contribution_pp + pre-rename rtp_pp).
+    const _rtpForSort = (r) => Number(r.rtp_contribution_pp ?? r.rtp_pp ?? 0);
     const sortCap = (rows) =>
       [...rows]
-        .sort((a, b) => Number(b.rtp_contribution_pp || 0) - Number(a.rtp_contribution_pp || 0))
+        .sort((a, b) => _rtpForSort(b) - _rtpForSort(a))
         .slice(0, 20);
     const aSorted = sortCap(aRows);
     const bSorted = sortCap(bRows);
