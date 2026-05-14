@@ -163,3 +163,32 @@ Tests:
 ## Open Issues
 
 None. Goal C (bucket distribution by ST) was decided to skip — requires rearchitecting paid-round attribution that currently ignores ST. If needed in future, would add `spin_type_bucket_spins_by_st` accumulator similar to existing `spin_type_bucket_spins`.
+
+
+---
+
+## Production Regen Note (2026-05-14T06:23:53Z)
+
+Regenerated M31 mode 1 production report from 25 cached chunks (394k paid spins).
+
+**Trigger**: latest.json was pointing to rv_20260514T061728Z_rawdata_e7f4aa_8067f1 (pre-ST-split, generated before commit 729a6ca). Backend in-process generate-report path yielded rv_20260514T061941Z_rawdata_e7f4aa_8067f1 also without ST-split because the running server process had imported the old module at startup (Python module caching;  reads file from disk so hash looked correct but loaded bytecode was old).
+
+**Fix**: ran analyzer as a fresh subprocess via , which loads the current .py/.pyc from scratch.
+
+**New version**: rv_20260514T062353Z_rawdata_e7f4aa_8067f1 / run_id gen_287f726f8d92
+
+**Verification passed**:
+- RTP: 92.6190pp (vs prior 92.62pp, delta 0.0001pp) PASS
+- ST43_paid: 12 pids, 53.5231pp
+- ST44_free: 11 pids, 39.0959pp
+- Sum: 92.6190pp == summary RTP (0.0000pp delta) PASS
+- All reel marginal col prob_pct sum = 100.00% (6 reel x ST checks) PASS
+- No _unattributed / fallback pids in ST-split or aggregate PASS
+
+latest.json updated: DONE  
+index.json updated: 3 entries (original + pre-ST-split backend attempt + new ST-split version)
+
+**Cleanup recommendation**: The following non-standard testing dirs are not referenced in index.json or latest.json and are safe to remove (main session decision):
+- reports/M31/mode_1/versions/rv_st_split_test/
+- reports/M31/mode_1/versions/rv_st_split_v2/
+- reports/M31/mode_1/versions/rv_20260514T_st_probe/
