@@ -65,4 +65,4 @@ After Stage 1 outputs land, main session evaluates and decides Stage 2 engine im
 
 - `slot_designer/ONBOARDING_PROCESS.md` — 11-stage flow + this session follows mode-1-first universal amendment
 - `slot_designer/templates/BOUNDARY_CONTRACT_TEMPLATE.md` — Stage 3.5 output template
-- `slot_designer/templates/agent_prompts/` — base prompts for R / A / I / D / V / X
+- `.claude/agents/slot-{researcher, analyst, implementer, designer, verifier, critic}.md` — Claude Code custom subagents with harness-enforced tool whitelists (replaces the deprecated `slot_designer/templates/agent_prompts/` assembly-template approach as of commit cleanup)
