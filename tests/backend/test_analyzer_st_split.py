@@ -7,13 +7,18 @@ Tests cover:
   4. Reel marginal prob_pct sums to 100% per (label, reel).
   5. Graceful base-only machine: single ST label.
   6. Existing aggregate fields are unchanged (regression guard).
+  9. payouts_by_spin_type rows use payout_ids_top20-aligned field names
+     (hit_rate fraction, rtp_contribution_pp) — schema parity guard.
 
 Mock chunk construction follows test_analyzer_parsing.py conventions.
 """
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,6 +27,8 @@ from fresh_slotlab.player_impact_analyzer import (
     parse_chunk_response,
     to_float,
 )
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 # ---------------------------------------------------------------------------
@@ -298,3 +305,100 @@ def test_single_st_base_only_machine():
     scst = rec.get("symbol_counts_by_col_by_spin_type") or {}
     assert set(scst.keys()) == {"1"}, \
         "Only ST=1 key should appear in symbol_counts_by_col_by_spin_type for base-only"
+
+
+# ---------------------------------------------------------------------------
+# Test 9: payouts_by_spin_type schema parity with payout_ids_top20
+# (integration test — runs the full finalize path via subprocess on M31 cache)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(
+    not (ROOT / "rawdata" / "M31" / "mode_1" / "chunk_0001.json").exists(),
+    reason="M31 mode 1 rawdata cache not present",
+)
+def test_payouts_by_spin_type_field_names_match_payout_ids_top20(tmp_path):
+    """payouts_by_spin_type rows must have hit_rate (fraction) and
+    rtp_contribution_pp — matching payout_ids_top20 field names.
+    Regression guard: ensures hit_rate_pct / rtp_pp are NOT emitted."""
+    cache_dir = ROOT / "rawdata" / "M31" / "mode_1"
+    # Discover the cfg_md5 + code_md5 from the first chunk so the
+    # analyzer accepts it without a filter mismatch.
+    chunk0 = cache_dir / "chunk_0001.json"
+    with open(chunk0, encoding="utf-8") as f:
+        env = json.load(f)
+    cfg_md5 = env.get("config_md5", "")
+    code_md5 = env.get("code_md5", "")
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    progress_file = tmp_path / "progress.jsonl"
+    cmd = [
+        sys.executable, "-m", "fresh_slotlab.player_impact_analyzer",
+        "--machine", "M31",
+        "--rtp-mode", "1",
+        "--bet", "1000",
+        "--output-dir", str(output_dir),
+        "--target-halfwidth-pp", "99",    # exit after 1 chunk
+        "--max-chunks", "1",
+        "--chunk-spin-times", "100",
+        "--chunk-robot-count", "2",
+        "--batch-concurrency", "1",
+        "--timeout", "10",
+        "--bankruptcy-session-spins", "100",
+        "--bankruptcy-bankroll-multipliers", "10",
+        "--from-cache", str(cache_dir),
+        "--upstream-config-md5", cfg_md5,
+        "--upstream-code-md5", code_md5,
+        "--progress-file", str(progress_file),
+        "--run-id", "test_schema_parity",
+    ]
+    result = subprocess.run(
+        cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, (
+        f"Analyzer subprocess failed:\nSTDOUT={result.stdout[-2000:]}\n"
+        f"STDERR={result.stderr[-2000:]}"
+    )
+
+    # Find the emitted player_impact_summary.json.
+    summaries = list(output_dir.rglob("player_impact_summary.json"))
+    assert summaries, "No player_impact_summary.json emitted"
+    with open(summaries[0], encoding="utf-8") as f:
+        summary = json.load(f)
+
+    pi = summary.get("player_impact", {})
+
+    # --- payout_ids_top20 reference schema ---
+    top20 = pi.get("payout_ids_top20", [])
+    assert top20, "payout_ids_top20 must be non-empty for regression check"
+    ref_row = top20[0]
+    assert "hit_rate" in ref_row, "payout_ids_top20 must have hit_rate (fraction)"
+    assert "rtp_contribution_pp" in ref_row, "payout_ids_top20 must have rtp_contribution_pp"
+
+    # --- payouts_by_spin_type schema must match ---
+    pbst = pi.get("payouts_by_spin_type", {})
+    assert pbst, "payouts_by_spin_type must be non-empty for M31 (has ST43_paid + ST44_free)"
+    for label, rows in pbst.items():
+        assert rows, f"payouts_by_spin_type[{label}] must be non-empty"
+        row = rows[0]
+        assert "hit_rate" in row, (
+            f"payouts_by_spin_type[{label}] row must have 'hit_rate' (fraction), "
+            f"got keys: {list(row.keys())}"
+        )
+        assert "hit_rate_pct" not in row, (
+            f"payouts_by_spin_type[{label}] must NOT have 'hit_rate_pct' (old name)"
+        )
+        assert "rtp_contribution_pp" in row, (
+            f"payouts_by_spin_type[{label}] row must have 'rtp_contribution_pp', "
+            f"got keys: {list(row.keys())}"
+        )
+        assert "rtp_pp" not in row, (
+            f"payouts_by_spin_type[{label}] must NOT have 'rtp_pp' (old name)"
+        )
+        # hit_rate must be a fraction (< 1.0 for typical pay_ids; grand
+        # jackpots may be ~1e-6; only bonus rounds can exceed ~50% hit_rate).
+        # Value > 2.0 almost certainly means the old percent form leaked.
+        assert float(row["hit_rate"]) <= 2.0, (
+            f"payouts_by_spin_type[{label}].hit_rate={row['hit_rate']} looks like "
+            f"a percentage (> 2.0); expected fraction"
+        )

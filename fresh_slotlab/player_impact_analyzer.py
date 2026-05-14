@@ -6450,9 +6450,12 @@ def main() -> int:
         )
 
     # ── SpinType-split pay_id breakdown (2026-05-14) ──────────────────
-    # payouts_by_spin_type: {spin_type_label → {pay_id → {hit_count,
-    # rate_pct, rtp_pp, total_win}}} where spin_type_label is
-    # "ST{N}_{behavior}" (e.g. "ST43_paid", "ST44_free").
+    # payouts_by_spin_type: {spin_type_label → [{payout_id, hit_count,
+    # hit_rate, total_win, avg_win_when_hit, rtp_contribution_pp}]} where
+    # spin_type_label is "ST{N}_{behavior}" (e.g. "ST43_paid", "ST44_free").
+    # Field names intentionally match payout_ids_top20 schema so the
+    # frontend can pass either array to the shared _renderPayoutRowsHtml
+    # helper without field-name translation.
     # Machine-agnostic: label is derived from behavior_name computed
     # above in spin_type_rows (CostCredits>0 = paid; =0 = free; mix).
     # Existing aggregate payout_ids_top20 stays untouched.
@@ -6482,18 +6485,21 @@ def main() -> int:
             st_pid_rows.append({
                 "payout_id": str(pid),
                 "hit_count": st_hits,
-                "hit_rate_pct": (st_hits / st_spins_count * 100.0) if st_spins_count > 0 else 0.0,
+                # hit_rate as a fraction (same semantics as
+                # payout_ids_top20.hit_rate — fraction, not percent).
+                "hit_rate": (st_hits / st_spins_count) if st_spins_count > 0 else 0.0,
                 "total_win": st_win,
                 "avg_win_when_hit": (st_win / st_hits) if st_hits > 0 else 0.0,
-                # rtp_pp relative to the GLOBAL paid-session denominator
-                # (same as aggregate payout row) so values are directly
-                # comparable with payout_ids_top20.rtp_contribution_pp.
-                "rtp_pp": (
+                # rtp_contribution_pp relative to the GLOBAL paid-session
+                # denominator (same as aggregate payout row) so values are
+                # directly comparable with payout_ids_top20.rtp_contribution_pp.
+                "rtp_contribution_pp": (
                     (st_win / effective_bet_for_rtp) * 100.0
                     if effective_bet_for_rtp > 0 else 0.0
                 ),
             })
-        # Sanity: sum(rtp_pp) for this ST should ≈ spin_type_rows rtp_contribution_pp.
+        # Sanity: sum(rtp_contribution_pp) for this ST should ≈
+        # spin_type_rows rtp_contribution_pp.
         payouts_by_spin_type[label] = st_pid_rows
 
     symbol_rows = []
@@ -7527,8 +7533,10 @@ def main() -> int:
             "payout_ids_top20": list(payout_id_rows),
             # 2026-05-14: SpinType-split breakdowns.
             # payouts_by_spin_type: {spin_type_label → sorted list of
-            # {payout_id, hit_count, hit_rate_pct, total_win,
-            # avg_win_when_hit, rtp_pp}} for pay_ids that fired in that ST.
+            # {payout_id, hit_count, hit_rate, total_win,
+            # avg_win_when_hit, rtp_contribution_pp}} for pay_ids that
+            # fired in that ST. Field names match payout_ids_top20 schema
+            # so frontend can use the same renderer for both.
             # Existing aggregate payout_ids_top20 stays untouched.
             "payouts_by_spin_type": payouts_by_spin_type,
             # reel_marginal_by_spin_type: {spin_type_label → {reel_col →
@@ -8054,7 +8062,7 @@ def main() -> int:
     md_lines.append("")
     md_lines.append("## Per-pay_id by SpinType")
     md_lines.append(
-        "Columns: payout_id | hit_count | rtp_pp | total_win. "
+        "Columns: payout_id | hit_count | rtp_contribution_pp | total_win. "
         "Each sub-section is one SpinType (base vs freespin etc.)."
     )
     for label, pid_rows in sorted(payouts_by_spin_type.items()):
@@ -8063,12 +8071,12 @@ def main() -> int:
         md_lines.append(f"")
         md_lines.append(f"### {label}")
         # Header
-        md_lines.append("| pay_id | hits | rtp_pp | total_win |")
-        md_lines.append("|--------|------|--------|-----------|")
+        md_lines.append("| pay_id | hits | rtp_contribution_pp | total_win |")
+        md_lines.append("|--------|------|---------------------|-----------|")
         for pr in pid_rows[:30]:
             md_lines.append(
                 f"| {pr['payout_id']} | {pr['hit_count']} "
-                f"| {pr['rtp_pp']:.4f} | {pr['total_win']:.0f} |"
+                f"| {pr['rtp_contribution_pp']:.4f} | {pr['total_win']:.0f} |"
             )
 
     md_lines.append("")

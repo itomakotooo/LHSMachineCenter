@@ -3781,6 +3781,8 @@ function renderSymbolDrilldown(summary) {
       if (!aCols.has(String(c))) allCols.push(c);
     }
   }
+  // Shared _renderReelColumnHtml helper produces per-column blocks with
+  // the same layout used by _renderReelMarginalMatrix (ST-split panels).
   matrixHost.innerHTML = allCols
     .map((col) => {
       const rows = matrix.rowsByCol[col] || [];
@@ -3802,72 +3804,15 @@ function renderSymbolDrilldown(summary) {
             rows: useRows.join(","),
           })
         : fmt("symbolColLabel", { idx: col });
-      // Per-symbol alignment within this column.
-      const aSymSet = new Set(rows.map((r) => String(r.symbol)));
-      const bMap = new Map();
-      for (const r of rowsB) bMap.set(String(r.symbol), r);
-      const merged = [...rows];
-      if (cmpB) {
-        for (const r of rowsB) if (!aSymSet.has(String(r.symbol))) merged.push(r);
-      }
-      const max = Math.max(
-        ...merged.map((r) => r.count),
-        ...(cmpB ? rowsB.map((r) => r.count) : []),
-        0,
-      );
-      const paylineUnavailable = fmt("paylineRateUnavailable");
-      const body = merged
-        .map((r) => {
-          const aIn = aSymSet.has(String(r.symbol));
-          const bRow = cmpB ? bMap.get(String(r.symbol)) : null;
-          const aCountRaw = aIn ? Number(r.count || 0) : NaN;
-          const bCountRaw = bRow ? Number(bRow.count || 0) : NaN;
-          const aRateRaw = aIn ? Number(r.rate_pct || 0) : NaN;
-          const bRateRaw = bRow ? Number(bRow.rate_pct || 0) : NaN;
-          const aCountFmt = aIn ? fInt(r.count) : "—";
-          const bCountFmt = bRow ? fInt(bRow.count) : "—";
-          const aRateFmt = aIn ? r.rate_pct.toFixed(2) + "%" : "—";
-          const bRateFmt = bRow ? bRow.rate_pct.toFixed(2) + "%" : "—";
-          // Payline rate may be missing on either side; keep "—".
-          const plEntryA = paylineMap[r.symbol];
-          const plEntryB = cmpB ? paylineMapB[r.symbol] : null;
-          const aPlFmt = plEntryA ? plEntryA.rate_pct.toFixed(2) + "%" : paylineUnavailable;
-          const bPlFmt = plEntryB ? plEntryB.rate_pct.toFixed(2) + "%" : paylineUnavailable;
-          const aPlRaw = plEntryA ? Number(plEntryA.rate_pct) : NaN;
-          const bPlRaw = plEntryB ? Number(plEntryB.rate_pct) : NaN;
-          const aBar = max > 0 ? Math.min(100, ((aIn ? r.count : 0) / max) * 100) : 0;
-          const bBar = cmpB && max > 0 ? Math.min(100, ((bRow ? bRow.count : 0) / max) * 100) : 0;
-          const barCell = cmpB
-            ? `<td class="cmp-text-bar-cell">${_cmpCell(true, aCountFmt, bCountFmt, aCountRaw, bCountRaw, "rel", 0, { aBarPct: aBar, bBarPct: bBar })}</td>`
-            : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${aCountFmt}</td>`;
-          let symCell = `<code>${_escHtml(r.symbol)}</code>`;
-          if (cmpB) {
-            if (aIn && !bRow) symCell += ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
-            else if (!aIn && bRow) symCell += ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
-          }
-          return (
-            `<tr>` +
-            `<td>${symCell}</td>` +
-            barCell +
-            `<td>${_cmpCell(!!cmpB, aRateFmt, bRateFmt, aRateRaw, bRateRaw, "pp", 2)}</td>` +
-            `<td>${_cmpCell(!!cmpB, aPlFmt, bPlFmt, aPlRaw, bPlRaw, "pp", 2)}</td>` +
-            `</tr>`
-          );
-        })
-        .join("");
-      const head =
-        `<thead><tr>` +
-        `<th>${fmt("thSymbol")}</th>` +
-        `<th>${fmt("thCount")}</th>` +
-        `<th>${fmt("thRate")}</th>` +
-        `<th>${fmt("thRatePayline")}</th>` +
-        `</tr></thead>`;
-      return (
-        `<div class="col-table">` +
-        `<h4>${headerLabel}</h4>` +
-        `<table class="drilldown-table">${head}<tbody>${body}</tbody></table>` +
-        `</div>`
-      );
+      return _renderReelColumnHtml(rows, {
+        colId: col,
+        headerLabel,
+        rowsB: cmpB ? rowsB : null,
+        paylineMap,
+        paylineMapB: cmpB ? paylineMapB : null,
+        cmpB: !!cmpB,
+        includePayline: true,
+      });
     })
     .join("");
 }
@@ -4687,198 +4632,27 @@ async function renderPayIdOverview(summary) {
     ...(cmpB ? cmpBPayoutRows.map((r) => Number(r.rtp_contribution_pp || 0)) : []),
     0.001,
   );
-  const categoryBadge = (cat) => {
-    if (cat === "paid") return `<span class="pid-cat pid-cat-paid">${_escHtml(fmt("payIdCatPaid"))}</span>`;
-    if (cat === "bonus") return `<span class="pid-cat pid-cat-bonus">${_escHtml(fmt("payIdCatBonus"))}</span>`;
-    if (cat === "mixed") return `<span class="pid-cat pid-cat-mixed">${_escHtml(fmt("payIdCatMixed"))}</span>`;
-    return `<span class="pid-cat pid-cat-unknown">—</span>`;
-  };
-
   // Bet denominator for multiplier column. Analyzer writes it under
   // summary.sampling.bet; fall back to 1000 (the default CLI bet) if
   // the field is missing from older reports. Compare mode: A and B
-  // can have different bets (cross-machine compare) — fmtMult takes
-  // the row's own bet so the multiplier reads correctly for each.
+  // can have different bets (cross-machine compare).
   const bet = Number(((summary || {}).sampling || {}).bet) || 1000;
   const betB = cmpB ? Number((cmpB.sampling || {}).bet) || 1000 : bet;
-  const fmtMult = (avgWin, betDenom) => {
-    const m = Number(avgWin || 0) / (betDenom || bet);
-    if (!Number.isFinite(m) || m === 0) return "—";
-    // ≥10× → 1 decimal; smaller → 2 decimals for readability.
-    return m >= 10 ? `${m.toFixed(1)}×` : `${m.toFixed(2)}×`;
-  };
-  // Helper: A/B stacked cell + Δ chip in compare mode; plain
-  // value in single mode. ``aRaw`` / ``bRaw`` drive the Δ chip
-  // when both numeric. ``kind`` is 'pp' (absolute pp delta, for
-  // hit_rate, rtp_pp, share %) or 'rel' (relative %, for counts
-  // and multipliers).
-  const _stackPid = (aVal, bVal, aRaw, bRaw, kind, digits) =>
-    _cmpCell(!!cmpB, aVal, bVal, aRaw, bRaw, kind, digits);
-  // Hit-rate cell formatter shared between A and B sides.
-  const _fmtHitRate = (raw) => {
-    if (!Number.isFinite(raw)) return "—";
-    return raw < 0.001
-      ? `${(raw * 100).toFixed(4)}%`
-      : `${(raw * 100).toFixed(2)}%`;
-  };
 
-  const rows = payoutRows.map((pr) => {
-    const pid = String(pr.payout_id);
-    const prB = cmpB ? cmpBMap.get(pid) || null : null;
-    const shape = shapeByPayId.get(pid) || null;
-    const sh = shape && shape.shape ? shape.shape : {};
-    const symSet = Array.isArray(sh.symbol_set) ? sh.symbol_set : [];
-    const mc = shape ? (shape.match_count ?? "—") : "—";
-    const symDisplay = symSet.length
-      ? `${mc}× ${symSet.map(_escHtml).join(" / ")}`
-      : "—";
-    const cols = Array.isArray(sh.position_cols_covered) ? sh.position_cols_covered : [];
-    const colStr = cols.length ? cols.join(",") : "—";
-    const lineSign = sh.line_id_sign || "—";
-    const lineBadge = _lineIdSignBadge(lineSign, Number(pid));
-    const notes = Array.isArray(sh.notes) && sh.notes.length
-      ? sh.notes.map(_escHtml).join("; ")
-      : "";
-    const rtpPp = Number(pr.rtp_contribution_pp || 0);
-    const rtpPpB = prB ? Number(prB.rtp_contribution_pp || 0) : 0;
-    const aBar = Math.min(100, (rtpPp / maxRtp) * 100);
-    const bBar = cmpB ? Math.min(100, (rtpPpB / maxRtp) * 100) : 0;
-    const cat = pr.spin_type_category;
-    const firesRaw = shape ? Number(shape.fires || 0) : null;
-    const firesAttr = firesRaw != null
-      ? ` title="rawdata fires: ${firesRaw.toLocaleString()} (script scan; includes bonus-round appearances)"`
-      : "";
-    const isBOnly = Boolean(pr._b_only);
-    const mainMultA = isBOnly ? "—" : fmtMult(pr.avg_win_when_hit, bet);
-    const mainMultB = prB ? fmtMult(prB.avg_win_when_hit, betB) : "—";
-    // Composition sub-rows — every pay_id with ≥2 distinct symbol
-    // tuples emits one sub-row per composition. For Bar/7 pays with
-    // wild substitutions this shows each (base + wild) variant's
-    // own multiplier; for all-wild pays it splits e.g. 3 DD vs
-    // 2DD+1TD vs 1DD+2TD. Trailing "其他 N 种组合" row collapses the
-    // long-tail (script caps display at 10 + 1 aggregate).
-    //
-    // Compare mode: suppress sub-rows. They're A-side composition
-    // detail (per-tuple breakdown of one machine's pay_id); diffing
-    // those across two reports doesn't carry a useful signal.
-    const breakdown = !cmpB && Array.isArray(sh.composition_breakdown)
-      ? sh.composition_breakdown
-      : (!cmpB && Array.isArray(sh.wild_composition_breakdown)
-        ? sh.wild_composition_breakdown
-        : null);
-    const hasBreakdown = breakdown && breakdown.length >= 2;
-    // 策划 wants per-sub-row share of the pay_id's TOTAL win amount:
-    // "the slice of RTP contribution each composition explains". Sum
-    // is the sample-observed win total across every composition under
-    // this (pay_id, match_count). The tail "其他 N 种组合" row is
-    // included in the sum since its rows are displayed as one bucket.
-    let parentWinTotal = 0;
-    if (hasBreakdown) {
-      for (const b of breakdown) {
-        parentWinTotal += Number(b.win_total || 0);
-      }
-    }
-    const toggleIcon = hasBreakdown
-      ? `<span class="payid-toggle" data-toggle-pid="${_escHtml(pid)}" role="button" title="展开 / 收起子组合">▸</span> `
-      : `<span class="payid-toggle-spacer"></span>`;
-    // Declared-only rows: pay_id exists in the paytable spec but
-    // didn't fire in this sample (typical: rtp_excluded grand
-    // jackpots). Render muted so operator can distinguish from
-    // observed-but-zero rows and reassure themselves the paytable
-    // is fully enumerated.
-    const isDeclaredOnly = Boolean(pr._declared_only);
-    const declaredNote = isDeclaredOnly
-      ? (pr._declared_grand_jackpot
-          ? "未命中 · grand jackpot"
-          : (pr._declared_rtp_excluded ? "未命中 · rtp_excluded" : "未命中"))
-      : "";
-    // Compare-mode notes column: presence tag for B-only / A-only
-    // rows, replacing the "未命中" declared note (which doesn't apply
-    // in compare mode since we skipped declared-paytable padding).
-    let cmpNote = "";
-    if (cmpB) {
-      if (isBOnly) cmpNote = `<span class="pid-presence-tag pid-presence-b">B only</span>`;
-      else if (!prB) cmpNote = `<span class="pid-presence-tag pid-presence-a">A only</span>`;
-    }
-    const mainRowClassList = [
-      hasBreakdown ? "payid-main payid-main-expandable" : "payid-main",
-      isDeclaredOnly ? "payid-declared-only" : "",
-      isBOnly ? "payid-b-only" : "",
-    ].filter(Boolean).join(" ");
-    // Hit rate: declared-only and B-only A-side rows have no observed
-    // rate → em-dash. Otherwise render as percentage with 4 decimals
-    // when very small (< 0.1%), 2 decimals otherwise. Grand-jackpots
-    // at 1e-6 would render as "0.00%" with 2 decimals, which hides
-    // the order of magnitude — 4 decimals fixes that.
-    const hitRateRaw = Number(pr.hit_rate);
-    const hitRateRawB = prB ? Number(prB.hit_rate) : NaN;
-    const hitRateA = (isDeclaredOnly || isBOnly || !Number.isFinite(hitRateRaw))
-      ? "—"
-      : _fmtHitRate(hitRateRaw);
-    const hitRateB = prB ? _fmtHitRate(hitRateRawB) : "—";
-    const hitCountRawA = isBOnly ? NaN : Number(pr.hit_count);
-    const hitCountRawB = prB ? Number(prB.hit_count) : NaN;
-    const hitCountA = isBOnly ? "—" : fInt(pr.hit_count);
-    const hitCountB = prB ? fInt(prB.hit_count) : "—";
-    const rtpCellA = isBOnly ? "—" : `${rtpPp.toFixed(2)}pp`;
-    const rtpCellB = prB ? `${rtpPpB.toFixed(2)}pp` : "—";
-    const rtpRawA = isBOnly ? NaN : rtpPp;
-    const rtpRawB = prB ? rtpPpB : NaN;
-    // Multiplier (avg_win/bet): float; relative Δ.
-    const multRawA = isBOnly ? NaN : Number(pr.avg_win_when_hit || 0) / bet;
-    const multRawB = prB ? Number(prB.avg_win_when_hit || 0) / betB : NaN;
-    // Pass hit_rate raw values × 100 so the Δ chip reads in pp
-    // (0.0030 → 0.30pp instead of 0.0030pp which is unreadable).
-    const barCell = cmpB
-      ? `<td class="cmp-text-bar-cell">${_cmpCell(true, rtpCellA, rtpCellB, rtpRawA, rtpRawB, "pp", 2, { aBarPct: aBar, bBarPct: bBar })}</td>`
-      : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>`;
-    const mainRow =
-      `<tr class="${mainRowClassList}" data-pid="${_escHtml(pid)}">` +
-      `<td>${toggleIcon}${_escHtml(pid)}</td>` +
-      `<td>${categoryBadge(cat)}</td>` +
-      `<td${firesAttr}>${_stackPid(hitCountA, hitCountB, hitCountRawA, hitCountRawB, "rel")}</td>` +
-      `<td class="payid-hitrate">${_stackPid(hitRateA, hitRateB, hitRateRaw * 100, hitRateRawB * 100, "pp", 2)}</td>` +
-      `<td class="payid-mult">${_stackPid(mainMultA, mainMultB, multRawA, multRawB, "rel")}</td>` +
-      `<td class="payid-winshare">—</td>` +
-      barCell +
-      `<td>${symDisplay}</td>` +
-      `<td>${_escHtml(colStr)}</td>` +
-      `<td>${lineBadge}</td>` +
-      `<td class="shape-notes">${cmpB ? cmpNote : (isDeclaredOnly ? _escHtml(declaredNote) : notes)}</td>` +
-      `</tr>`;
-    let subRows = "";
-    if (hasBreakdown) {
-      subRows = breakdown.map((b) => {
-        const subMult = fmtMult(b.avg_win, bet);
-        const isAggregate = Boolean(b.is_aggregate_tail);
-        const clsExtra = isAggregate ? " payid-subrow-aggregate" : "";
-        const subWin = Number(b.win_total || 0);
-        const winShareText = parentWinTotal > 0
-          ? `${((subWin / parentWinTotal) * 100).toFixed(1)}%`
-          : "—";
-        return (
-          `<tr class="payid-subrow payid-subrow-collapsed${clsExtra}" data-parent-pid="${_escHtml(pid)}">` +
-          `<td><span class="payid-subrow-indent">↳</span> <span class="payid-subrow-label">${_escHtml(b.label || "")}</span></td>` +
-          `<td>${categoryBadge(cat)}</td>` +
-          `<td>${fInt(b.fires)}</td>` +
-          // Hit-rate column placeholder — sub-rows don't carry per-
-          // composition hit rate yet (backend emits win_total + fires
-          // only); showing em-dash keeps the column count aligned with
-          // the main rows so CSS / colSpan don't shear.
-          `<td class="payid-subrow-muted">—</td>` +
-          `<td class="payid-mult">${subMult}</td>` +
-          `<td class="payid-winshare">${winShareText}</td>` +
-          `<td class="payid-subrow-muted">—</td>` +
-          `<td class="payid-subrow-muted">—</td>` +
-          `<td class="payid-subrow-muted">—</td>` +
-          `<td class="payid-subrow-muted">—</td>` +
-          `<td class="payid-subrow-muted">—</td>` +
-          `</tr>`
-        );
-      }).join("");
-    }
-    return mainRow + subRows;
-  }).join("");
+  // Shared helper produces thead + tbody with the same columns, i18n
+  // keys, and formatters as used by renderPayoutsBySpinType. Aggregate
+  // path: all columns on, sub-rows on, shape data available.
+  const tableInner = _renderPayoutRowsHtml(payoutRows, {
+    shapeByPayId,
+    cmpBMap: cmpB ? cmpBMap : null,
+    cmpB: !!cmpB,
+    bet,
+    betB,
+    includeShape: true,
+    includeNotes: true,
+    includeSubRows: !cmpB,
+    maxRtp,
+  });
 
   const controlsHtml =
     `<div class="payid-overview-controls">` +
@@ -4890,20 +4664,7 @@ async function renderPayIdOverview(summary) {
     headerHtml + reviewBanner + flagsBanner + noShapeBanner +
     controlsHtml +
     `<table class="drilldown-table payid-overview-table">` +
-    `<thead><tr>` +
-    `<th>${_escHtml(fmt("payIdCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdCatCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdPaidHitsCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdHitRateCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdMultCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdWinShareCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdRtpCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdShapeCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdColsCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdLineCol"))}</th>` +
-    `<th>${_escHtml(fmt("payIdNotesCol"))}</th>` +
-    `</tr></thead>` +
-    `<tbody>${rows}</tbody>` +
+    tableInner +
     `</table>` +
     evidenceHtml;
 
@@ -4966,6 +4727,231 @@ function _setAllPayIdSubrows(body, expand) {
   });
 }
 
+// ── Shared payout-row renderer ─────────────────────────────────────
+//
+// Shared by renderPayIdOverview (aggregate) and renderPayoutsBySpinType
+// (per-ST view). Returns the <thead>...<tbody>... HTML for a payout-id
+// table, using the same columns, i18n keys, and formatters as the
+// aggregate panel. Callers wrap in <table class="...">.
+//
+// opts:
+//   shapeByPayId  {Map|null}   — pay_id → shape row from /api/paytables shape
+//   cmpBMap       {Map|null}   — pay_id → B-side payout row; null = single mode
+//   cmpB          {bool}       — true when compare mode is active
+//   bet           {number}     — A-side bet denominator for multiplier column
+//   betB          {number}     — B-side bet denominator
+//   includeShape  {bool}       — add Shape / Cols / Line columns (aggregate only)
+//   includeNotes  {bool}       — add Notes column (aggregate only)
+//   includeSubRows {bool}      — render composition breakdown sub-rows
+//   maxRtp        {number}     — bar scale; 0 → computed from rows
+function _renderPayoutRowsHtml(payoutRows, opts) {
+  const {
+    shapeByPayId = null,
+    cmpBMap = null,
+    cmpB = false,
+    bet = 1000,
+    betB = 1000,
+    includeShape = true,
+    includeNotes = true,
+    includeSubRows = true,
+  } = opts || {};
+  let { maxRtp = 0 } = opts || {};
+
+  if (maxRtp === 0) {
+    maxRtp = Math.max(
+      ...payoutRows.map((r) => Number(r.rtp_contribution_pp || 0)),
+      ...(cmpBMap ? Array.from(cmpBMap.values()).map((r) => Number(r.rtp_contribution_pp || 0)) : []),
+      0.001,
+    );
+  }
+
+  // Local formatters — same semantics as the closures in renderPayIdOverview.
+  const _fmtMult = (avgWin, betDenom) => {
+    const m = Number(avgWin || 0) / (betDenom || bet);
+    if (!Number.isFinite(m) || m === 0) return "—";
+    return m >= 10 ? `${m.toFixed(1)}×` : `${m.toFixed(2)}×`;
+  };
+  const _fmtHitRate = (raw) => {
+    if (!Number.isFinite(raw)) return "—";
+    return raw < 0.001
+      ? `${(raw * 100).toFixed(4)}%`
+      : `${(raw * 100).toFixed(2)}%`;
+  };
+  const _catBadge = (cat) => {
+    if (cat === "paid") return `<span class="pid-cat pid-cat-paid">${_escHtml(fmt("payIdCatPaid"))}</span>`;
+    if (cat === "bonus") return `<span class="pid-cat pid-cat-bonus">${_escHtml(fmt("payIdCatBonus"))}</span>`;
+    if (cat === "mixed") return `<span class="pid-cat pid-cat-mixed">${_escHtml(fmt("payIdCatMixed"))}</span>`;
+    return `<span class="pid-cat pid-cat-unknown">—</span>`;
+  };
+  const _stack = (aVal, bVal, aRaw, bRaw, kind, digits) =>
+    _cmpCell(!!cmpB, aVal, bVal, aRaw, bRaw, kind, digits);
+
+  // thead — 7 base columns + optional shape (3) + optional notes (1)
+  const thead =
+    `<thead><tr>` +
+    `<th>${_escHtml(fmt("payIdCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdCatCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdPaidHitsCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdHitRateCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdMultCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdWinShareCol"))}</th>` +
+    `<th>${_escHtml(fmt("payIdRtpCol"))}</th>` +
+    (includeShape
+      ? `<th>${_escHtml(fmt("payIdShapeCol"))}</th>` +
+        `<th>${_escHtml(fmt("payIdColsCol"))}</th>` +
+        `<th>${_escHtml(fmt("payIdLineCol"))}</th>`
+      : "") +
+    (includeNotes ? `<th>${_escHtml(fmt("payIdNotesCol"))}</th>` : "") +
+    `</tr></thead>`;
+
+  // tbody
+  const tbody = payoutRows.map((pr) => {
+    const pid = String(pr.payout_id);
+    const prB = cmpB && cmpBMap ? (cmpBMap.get(pid) || null) : null;
+    const shape = shapeByPayId ? (shapeByPayId.get(pid) || null) : null;
+    const sh = shape && shape.shape ? shape.shape : {};
+
+    // Shape columns (only populated when includeShape=true)
+    const symSet = Array.isArray(sh.symbol_set) ? sh.symbol_set : [];
+    const mc = shape ? (shape.match_count ?? "—") : "—";
+    const symDisplay = symSet.length
+      ? `${mc}× ${symSet.map(_escHtml).join(" / ")}`
+      : "—";
+    const cols = Array.isArray(sh.position_cols_covered) ? sh.position_cols_covered : [];
+    const colStr = cols.length ? cols.join(",") : "—";
+    const lineSign = sh.line_id_sign || "—";
+    const lineBadge = _lineIdSignBadge(lineSign, Number(pid));
+    const notes = Array.isArray(sh.notes) && sh.notes.length
+      ? sh.notes.map(_escHtml).join("; ")
+      : "";
+
+    const rtpPp = Number(pr.rtp_contribution_pp || 0);
+    const rtpPpB = prB ? Number(prB.rtp_contribution_pp || 0) : 0;
+    const aBar = Math.min(100, (rtpPp / maxRtp) * 100);
+    const bBar = cmpB ? Math.min(100, (rtpPpB / maxRtp) * 100) : 0;
+    const cat = pr.spin_type_category;
+    const firesRaw = shape ? Number(shape.fires || 0) : null;
+    const firesAttr = firesRaw != null
+      ? ` title="rawdata fires: ${firesRaw.toLocaleString()} (script scan; includes bonus-round appearances)"`
+      : "";
+
+    const isBOnly = Boolean(pr._b_only);
+    const mainMultA = isBOnly ? "—" : _fmtMult(pr.avg_win_when_hit, bet);
+    const mainMultB = prB ? _fmtMult(prB.avg_win_when_hit, betB) : "—";
+
+    // Composition sub-rows (only when includeSubRows=true and not compare mode)
+    const breakdown = (includeSubRows && !cmpB && Array.isArray(sh.composition_breakdown))
+      ? sh.composition_breakdown
+      : (includeSubRows && !cmpB && Array.isArray(sh.wild_composition_breakdown)
+        ? sh.wild_composition_breakdown
+        : null);
+    const hasBreakdown = breakdown && breakdown.length >= 2;
+    let parentWinTotal = 0;
+    if (hasBreakdown) {
+      for (const b of breakdown) {
+        parentWinTotal += Number(b.win_total || 0);
+      }
+    }
+    const toggleIcon = hasBreakdown
+      ? `<span class="payid-toggle" data-toggle-pid="${_escHtml(pid)}" role="button" title="展开 / 收起子组合">▸</span> `
+      : `<span class="payid-toggle-spacer"></span>`;
+
+    const isDeclaredOnly = Boolean(pr._declared_only);
+    const declaredNote = isDeclaredOnly
+      ? (pr._declared_grand_jackpot
+          ? "未命中 · grand jackpot"
+          : (pr._declared_rtp_excluded ? "未命中 · rtp_excluded" : "未命中"))
+      : "";
+    let cmpNote = "";
+    if (cmpB) {
+      if (isBOnly) cmpNote = `<span class="pid-presence-tag pid-presence-b">B only</span>`;
+      else if (!prB) cmpNote = `<span class="pid-presence-tag pid-presence-a">A only</span>`;
+    }
+    const mainRowClassList = [
+      hasBreakdown ? "payid-main payid-main-expandable" : "payid-main",
+      isDeclaredOnly ? "payid-declared-only" : "",
+      isBOnly ? "payid-b-only" : "",
+    ].filter(Boolean).join(" ");
+
+    const hitRateRaw = Number(pr.hit_rate);
+    const hitRateRawB = prB ? Number(prB.hit_rate) : NaN;
+    const hitRateA = (isDeclaredOnly || isBOnly || !Number.isFinite(hitRateRaw))
+      ? "—"
+      : _fmtHitRate(hitRateRaw);
+    const hitRateB = prB ? _fmtHitRate(hitRateRawB) : "—";
+    const hitCountRawA = isBOnly ? NaN : Number(pr.hit_count);
+    const hitCountRawB = prB ? Number(prB.hit_count) : NaN;
+    const hitCountA = isBOnly ? "—" : fInt(pr.hit_count);
+    const hitCountB = prB ? fInt(prB.hit_count) : "—";
+    const rtpCellA = isBOnly ? "—" : `${rtpPp.toFixed(2)}pp`;
+    const rtpCellB = prB ? `${rtpPpB.toFixed(2)}pp` : "—";
+    const rtpRawA = isBOnly ? NaN : rtpPp;
+    const rtpRawB = prB ? rtpPpB : NaN;
+    const multRawA = isBOnly ? NaN : Number(pr.avg_win_when_hit || 0) / bet;
+    const multRawB = prB ? Number(prB.avg_win_when_hit || 0) / betB : NaN;
+    const barCell = cmpB
+      ? `<td class="cmp-text-bar-cell">${_cmpCell(true, rtpCellA, rtpCellB, rtpRawA, rtpRawB, "pp", 2, { aBarPct: aBar, bBarPct: bBar })}</td>`
+      : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>`;
+
+    // Extra columns that only appear in aggregate / shape-inclusive mode
+    const shapeCols = includeShape
+      ? `<td>${symDisplay}</td>` +
+        `<td>${_escHtml(colStr)}</td>` +
+        `<td>${lineBadge}</td>`
+      : "";
+    // Muted placeholders for sub-rows starting at the RTP bar column (col 7).
+    // Total trailing muted = 1 (RTP) + 3×shape + 1×notes when enabled.
+    const subRowMutedCount = 1 + (includeShape ? 3 : 0) + (includeNotes ? 1 : 0);
+    const noteCol = includeNotes
+      ? `<td class="shape-notes">${cmpB ? cmpNote : (isDeclaredOnly ? _escHtml(declaredNote) : notes)}</td>`
+      : "";
+
+    const mainRow =
+      `<tr class="${mainRowClassList}" data-pid="${_escHtml(pid)}">` +
+      `<td>${toggleIcon}${_escHtml(pid)}</td>` +
+      `<td>${_catBadge(cat)}</td>` +
+      `<td${firesAttr}>${_stack(hitCountA, hitCountB, hitCountRawA, hitCountRawB, "rel")}</td>` +
+      `<td class="payid-hitrate">${_stack(hitRateA, hitRateB, hitRateRaw * 100, hitRateRawB * 100, "pp", 2)}</td>` +
+      `<td class="payid-mult">${_stack(mainMultA, mainMultB, multRawA, multRawB, "rel")}</td>` +
+      `<td class="payid-winshare">—</td>` +
+      barCell +
+      shapeCols +
+      noteCol +
+      `</tr>`;
+
+    let subRows = "";
+    if (hasBreakdown) {
+      subRows = breakdown.map((b) => {
+        const subMult = _fmtMult(b.avg_win, bet);
+        const isAggregate = Boolean(b.is_aggregate_tail);
+        const clsExtra = isAggregate ? " payid-subrow-aggregate" : "";
+        const subWin = Number(b.win_total || 0);
+        const winShareText = parentWinTotal > 0
+          ? `${((subWin / parentWinTotal) * 100).toFixed(1)}%`
+          : "—";
+        // Trailing muted cells: 4 base (hitrate/mult/share/rtp) + shape cols + note col
+        const trailingMuted = `<td class="payid-subrow-muted">—</td>`.repeat(subRowMutedCount);
+        return (
+          `<tr class="payid-subrow payid-subrow-collapsed${clsExtra}" data-parent-pid="${_escHtml(pid)}">` +
+          `<td><span class="payid-subrow-indent">↳</span> <span class="payid-subrow-label">${_escHtml(b.label || "")}</span></td>` +
+          `<td>${_catBadge(cat)}</td>` +
+          `<td>${fInt(b.fires)}</td>` +
+          // Hit-rate placeholder — sub-rows don't carry per-composition
+          // hit rate; em-dash keeps column count aligned with main rows.
+          `<td class="payid-subrow-muted">—</td>` +
+          `<td class="payid-mult">${subMult}</td>` +
+          `<td class="payid-winshare">${winShareText}</td>` +
+          trailingMuted +
+          `</tr>`
+        );
+      }).join("");
+    }
+    return mainRow + subRows;
+  }).join("");
+
+  return thead + `<tbody>${tbody}</tbody>`;
+}
+
 // Render a friendly badge for a line_id or line_id_sign token. Slot
 // conventions: positive integers = line-pays, -1 = board-wide scatter,
 // -2 = alternative scatter mechanic (per 策划). Anything else we
@@ -4997,9 +4983,11 @@ function _lineIdSignBadge(signOrId, numericId) {
 // ── Per-pay_id by SpinType ─────────────────────────────────────────
 //
 // Renders one sub-table per spin_type_label found in
-// summary.player_impact.payouts_by_spin_type. Each table rows:
-//   payout_id | hit_count | hit_rate_pct | total_win | avg_win_when_hit | rtp_pp
-// sorted by rtp_pp descending, capped at top 20 per label.
+// summary.player_impact.payouts_by_spin_type. Each row:
+//   payout_id | hit_count | hit_rate | avg_win_when_hit | rtp_contribution_pp
+// sorted by rtp_contribution_pp descending, capped at top 20 per label.
+// Uses the same _renderPayoutRowsHtml helper as renderPayIdOverview so
+// column set, i18n keys, and formatters are shared (no parallel impl).
 //
 // SpinType label keys are dynamic (ST43_paid / ST1_paid / etc.) —
 // never hardcoded; derived from Object.keys() of the data object.
@@ -5011,7 +4999,7 @@ function _lineIdSignBadge(signOrId, numericId) {
 // data" note is shown instead of a B panel.
 //
 // Graceful degradation: if the field is missing / empty on A (older
-// reports pre-729a6ca), the panel is hidden entirely.
+// reports pre-field-rename), the panel is hidden entirely.
 
 // Format a spin_type_label string (e.g. "ST43_paid") into a human-readable
 // heading. Parses "ST{N}_{behavior}" and substitutes the behavior token via
@@ -5048,6 +5036,9 @@ function renderPayoutsBySpinType(summary) {
   const body = byId("payoutsBySpinTypeBody");
   if (!body) return;
 
+  const bet = Number(((summary || {}).sampling || {}).bet) || 1000;
+  const betB = cmpB ? Number((cmpB.sampling || {}).bet) || 1000 : bet;
+
   // Union of all labels, A's order first then B-only additions.
   const aLabelSet = new Set(aLabels);
   const allLabels = [...aLabels];
@@ -5056,10 +5047,29 @@ function renderPayoutsBySpinType(summary) {
   }
 
   const bOnlyNote = (cmpB && !hasB)
-    ? `<p class="drilldown-hint">B has no ST-split data (pre-729a6ca report).</p>`
+    ? `<p class="drilldown-hint">B has no ST-split data (pre-field-rename report).</p>`
     : "";
 
   let html = bOnlyNote;
+
+  // Inner helper: render one ST block's table using the shared
+  // _renderPayoutRowsHtml. Shape columns and sub-rows are omitted
+  // (includeShape=false, includeSubRows=false) since ST-split rows
+  // don't carry per-machine shape data.
+  const _stBlockHtml = (rows, isCmpBSide) => {
+    if (!rows.length) return `<p class="drilldown-hint">— no data —</p>`;
+    const tableInner = _renderPayoutRowsHtml(rows, {
+      shapeByPayId: null,
+      cmpBMap: null,
+      cmpB: false,
+      bet: isCmpBSide ? betB : bet,
+      betB,
+      includeShape: false,
+      includeNotes: false,
+      includeSubRows: false,
+    });
+    return `<table class="drilldown-table">${tableInner}</table>`;
+  };
 
   for (const label of allLabels) {
     const aRows = aData ? (aData[label] || []) : [];
@@ -5067,10 +5077,10 @@ function renderPayoutsBySpinType(summary) {
     const onlyA = aRows.length > 0 && bRows.length === 0;
     const onlyB = aRows.length === 0 && bRows.length > 0;
 
-    // Sort each side by rtp_pp desc, cap at 20.
+    // Sort each side by rtp_contribution_pp desc, cap at 20.
     const sortCap = (rows) =>
       [...rows]
-        .sort((a, b) => Number(b.rtp_pp || 0) - Number(a.rtp_pp || 0))
+        .sort((a, b) => Number(b.rtp_contribution_pp || 0) - Number(a.rtp_contribution_pp || 0))
         .slice(0, 20);
     const aSorted = sortCap(aRows);
     const bSorted = sortCap(bRows);
@@ -5089,52 +5099,17 @@ function renderPayoutsBySpinType(summary) {
       // is absent on B — bOnlyNote above already tells the user; just
       // render A and omit the B block.
       html += `<p class="drilldown-hint">A</p>`;
-      html += _renderPayoutsByStTable(aSorted);
+      html += _stBlockHtml(aSorted, false);
       if (bData !== null) {
         html += `<p class="drilldown-hint">B</p>`;
-        html += _renderPayoutsByStTable(bSorted);
+        html += _stBlockHtml(bSorted, true);
       }
     } else {
-      html += _renderPayoutsByStTable(aSorted);
+      html += _stBlockHtml(aSorted, false);
     }
   }
 
   body.innerHTML = html;
-}
-
-// Build a single payout-by-spintype table from a pre-sorted row array.
-// Columns: payout_id | hit_count | hit_rate_pct | total_win | avg_win_when_hit | rtp_pp
-function _renderPayoutsByStTable(rows) {
-  if (!rows.length) {
-    return `<p class="drilldown-hint">— no data —</p>`;
-  }
-  const thead =
-    `<thead><tr>` +
-    `<th>${_escHtml(fmt("stSplitPayIdCol"))}</th>` +
-    `<th>${_escHtml(fmt("stSplitHitCountCol"))}</th>` +
-    `<th>${_escHtml(fmt("stSplitHitRateCol"))}</th>` +
-    `<th>${_escHtml(fmt("stSplitTotalWinCol"))}</th>` +
-    `<th>${_escHtml(fmt("stSplitAvgWinCol"))}</th>` +
-    `<th>${_escHtml(fmt("stSplitRtpPpCol"))}</th>` +
-    `</tr></thead>`;
-  const tbody = rows
-    .map((r) => {
-      const hitRate = Number(r.hit_rate_pct || 0).toFixed(3);
-      const avgWin = Number(r.avg_win_when_hit || 0).toFixed(2);
-      const rtpPp = Number(r.rtp_pp || 0).toFixed(4);
-      return (
-        `<tr>` +
-        `<td><code>${_escHtml(String(r.payout_id))}</code></td>` +
-        `<td>${Number(r.hit_count || 0).toLocaleString()}</td>` +
-        `<td>${_escHtml(hitRate)}%</td>` +
-        `<td>${Number(r.total_win || 0).toLocaleString()}</td>` +
-        `<td>${_escHtml(avgWin)}</td>` +
-        `<td>${_escHtml(rtpPp)}pp</td>` +
-        `</tr>`
-      );
-    })
-    .join("");
-  return `<table class="drilldown-table"><colgroup></colgroup>${thead}<tbody>${tbody}</tbody></table>`;
 }
 
 // ── Per-reel Marginal by SpinType ──────────────────────────────────
@@ -5211,11 +5186,119 @@ function renderReelMarginalBySpinType(summary) {
   body.innerHTML = html;
 }
 
+// ── Shared reel-column renderer ────────────────────────────────────
+//
+// Shared by renderSymbolDrilldown (aggregate by-col matrix) and
+// renderReelMarginalBySpinType (per-ST reel matrix). Produces one
+// <div class="col-table"> block for a single reel column.
+//
+// rows: [{symbol, count, rate_pct|prob_pct}] — normalises either
+//   field name to a window-rate percentage for display.
+// opts:
+//   colId        {string}       — column index label (e.g. "0")
+//   headerLabel  {string}       — pre-formatted <h4> text (HTML-safe)
+//   rowsB        {array|null}   — B-side rows for compare mode
+//   paylineMap   {object|null}  — {symbol: {rate_pct}} for payline col
+//   paylineMapB  {object|null}  — B-side payline map
+//   cmpB         {bool}         — compare mode active
+//   includePayline {bool}       — add payline-rate column (4th col)
+function _renderReelColumnHtml(rows, opts) {
+  const {
+    colId = "0",
+    headerLabel = null,
+    rowsB = null,
+    paylineMap = null,
+    paylineMapB = null,
+    cmpB = false,
+    includePayline = false,
+  } = opts || {};
+
+  // Normalise rate field: aggregate uses rate_pct, ST-split uses prob_pct.
+  const _ratePct = (r) => Number(r.rate_pct ?? r.prob_pct ?? 0);
+
+  const aSymSet = new Set((rows || []).map((r) => String(r.symbol)));
+  const bMapLocal = new Map();
+  for (const r of (rowsB || [])) bMapLocal.set(String(r.symbol), r);
+  const merged = [...(rows || [])];
+  if (cmpB) {
+    for (const r of (rowsB || [])) {
+      if (!aSymSet.has(String(r.symbol))) merged.push(r);
+    }
+  }
+  const max = Math.max(
+    ...merged.map((r) => r.count || 0),
+    ...(cmpB ? (rowsB || []).map((r) => r.count || 0) : []),
+    0,
+  );
+
+  const paylineUnavailable = fmt("paylineRateUnavailable");
+  const body = merged
+    .map((r) => {
+      const aIn = aSymSet.has(String(r.symbol));
+      const bRow = cmpB ? bMapLocal.get(String(r.symbol)) : null;
+      const aCountRaw = aIn ? Number(r.count || 0) : NaN;
+      const bCountRaw = bRow ? Number(bRow.count || 0) : NaN;
+      const aRateRaw = aIn ? _ratePct(r) : NaN;
+      const bRateRaw = bRow ? _ratePct(bRow) : NaN;
+      const aCountFmt = aIn ? fInt(r.count) : "—";
+      const bCountFmt = bRow ? fInt(bRow.count) : "—";
+      const aRateFmt = aIn ? _ratePct(r).toFixed(2) + "%" : "—";
+      const bRateFmt = bRow ? _ratePct(bRow).toFixed(2) + "%" : "—";
+      const aBar = max > 0 ? Math.min(100, ((aIn ? r.count : 0) / max) * 100) : 0;
+      const bBar = cmpB && max > 0 ? Math.min(100, ((bRow ? bRow.count : 0) / max) * 100) : 0;
+      const barCell = cmpB
+        ? `<td class="cmp-text-bar-cell">${_cmpCell(true, aCountFmt, bCountFmt, aCountRaw, bCountRaw, "rel", 0, { aBarPct: aBar, bBarPct: bBar })}</td>`
+        : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${aCountFmt}</td>`;
+      let symCell = `<code>${_escHtml(String(r.symbol))}</code>`;
+      if (cmpB) {
+        if (aIn && !bRow) symCell += ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
+        else if (!aIn && bRow) symCell += ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
+      }
+      const plCols = includePayline
+        ? (() => {
+            const plEntryA = paylineMap ? paylineMap[r.symbol] : null;
+            const plEntryB = cmpB && paylineMapB ? paylineMapB[r.symbol] : null;
+            const aPlFmt = plEntryA ? plEntryA.rate_pct.toFixed(2) + "%" : paylineUnavailable;
+            const bPlFmt = plEntryB ? plEntryB.rate_pct.toFixed(2) + "%" : paylineUnavailable;
+            const aPlRaw = plEntryA ? Number(plEntryA.rate_pct) : NaN;
+            const bPlRaw = plEntryB ? Number(plEntryB.rate_pct) : NaN;
+            return `<td>${_cmpCell(!!cmpB, aPlFmt, bPlFmt, aPlRaw, bPlRaw, "pp", 2)}</td>`;
+          })()
+        : "";
+      return (
+        `<tr>` +
+        `<td>${symCell}</td>` +
+        barCell +
+        `<td>${_cmpCell(!!cmpB, aRateFmt, bRateFmt, aRateRaw, bRateRaw, "pp", 2)}</td>` +
+        plCols +
+        `</tr>`
+      );
+    })
+    .join("");
+
+  const head =
+    `<thead><tr>` +
+    `<th>${fmt("thSymbol")}</th>` +
+    `<th>${fmt("thCount")}</th>` +
+    `<th>${fmt("thRate")}</th>` +
+    (includePayline ? `<th>${fmt("thRatePayline")}</th>` : "") +
+    `</tr></thead>`;
+  const h4 = headerLabel != null
+    ? headerLabel
+    : `${_escHtml(fmt("reelColPrefix"))} ${_escHtml(String(colId))}`;
+  return (
+    `<div class="col-table">` +
+    `<h4>${h4}</h4>` +
+    `<table class="drilldown-table">${head}<tbody>${body}</tbody></table>` +
+    `</div>`
+  );
+}
+
 // Build the reel-matrix HTML for one spin_type_label's colMap.
 // colMap: { "0": [{symbol, count, prob_pct}, ...], "1": [...], ... }
 // Reel columns are sorted numerically. Within each column, rows are
-// sorted by prob_pct descending. Reuses .symbol-matrix / .col-table
-// layout (same as renderSymbolDrilldown by-column matrix).
+// sorted by prob_pct descending. Uses _renderReelColumnHtml so layout
+// matches the aggregate by-column matrix in renderSymbolDrilldown.
 function _renderReelMarginalMatrix(colMap) {
   const colKeys = Object.keys(colMap).sort((a, b) => Number(a) - Number(b));
   if (!colKeys.length) {
@@ -5225,30 +5308,15 @@ function _renderReelMarginalMatrix(colMap) {
     .map((colIdx) => {
       const rows = [...(colMap[colIdx] || [])]
         .sort((a, b) => Number(b.prob_pct || 0) - Number(a.prob_pct || 0));
-      const bodyRows = rows
-        .map((r) => {
-          const prob = Number(r.prob_pct || 0).toFixed(2);
-          return (
-            `<tr>` +
-            `<td><code>${_escHtml(String(r.symbol))}</code></td>` +
-            `<td>${Number(r.count || 0).toLocaleString()}</td>` +
-            `<td>${_escHtml(prob)}%</td>` +
-            `</tr>`
-          );
-        })
-        .join("");
-      const head =
-        `<thead><tr>` +
-        `<th>${_escHtml(fmt("thSymbol"))}</th>` +
-        `<th>${_escHtml(fmt("thCount"))}</th>` +
-        `<th>${_escHtml(fmt("thProbPct"))}</th>` +
-        `</tr></thead>`;
-      return (
-        `<div class="col-table">` +
-        `<h4>${_escHtml(fmt("reelColPrefix"))} ${_escHtml(colIdx)}</h4>` +
-        `<table class="drilldown-table">${head}<tbody>${bodyRows}</tbody></table>` +
-        `</div>`
-      );
+      return _renderReelColumnHtml(rows, {
+        colId: colIdx,
+        headerLabel: null,  // default: "列 N"
+        rowsB: null,
+        paylineMap: null,
+        paylineMapB: null,
+        cmpB: false,
+        includePayline: false,
+      });
     })
     .join("");
   return `<div class="symbol-matrix">${colHtml}</div>`;
