@@ -132,17 +132,17 @@ class SpinEngine:
 
           1. **Scatter-pay trigger** (``plugin.trigger_pay_id`` is set):
              plugin fires when ``outcome.scatter_pays`` contains the
-             configured ``pay_id`` (e.g. M15 topdollar on reel 3 →
-             pay_id 666). This is the historical M15-style trigger.
+             configured ``pay_id`` (e.g. a scatter symbol on a specific
+             reel → pay_id 666). This is the scatter-pay trigger mode.
 
           2. **Outcome-conditional trigger** (``plugin.trigger_pay_id``
              is ``None``): plugin fires every paid spin and decides
              internally whether to emit feature rounds based on the
              paid spin's outcome. Returning ``[]`` from
              ``simulate_session`` means "no extra rounds this spin".
-             Used by post-win mechanics like M43's respin / mini-game
-             (which fire probabilistically after wins, not on a scatter
-             symbol).
+             Used by post-win mechanics like outcome-conditional respin
+             or mini-game triggers (which fire based on the spin result,
+             not on a fixed scatter symbol).
 
         For backward compatibility, ``simulate_session(rng)`` is called
         with positional ``rng`` only in mode 1; in mode 2 we additionally
@@ -153,14 +153,15 @@ class SpinEngine:
         Returns:
           (outcome, feature_rounds)
             outcome — the paid spin (may also have regular payline pay).
-            feature_rounds — plugin-private list (e.g. M15FeatureRound
-              objects). Empty list when no plugin OR no trigger.
+            feature_rounds — plugin-private list (opaque per-plugin
+              dataclass instances). Empty list when no plugin OR no trigger.
         """
         outcome = self.spin(rng)
         feature_rounds: list[Any] = []
         if self.plugin is not None:
             if self.plugin.trigger_pay_id is not None:
-                # Scatter-pay trigger (M15-style).
+                # Scatter-pay trigger: plugin fires when a specific pay_id
+                # appears in the paid spin's scatter_pays list.
                 if any(
                     sp.pay_id == self.plugin.trigger_pay_id
                     for sp in (outcome.scatter_pays or [])

@@ -72,7 +72,7 @@
 
   "symbols": {
     "blank":   { "kind": "filler" },
-    "Scatter": { "kind": "filler" },
+    "Scatter": { "kind": "scatter" },
     "1bar":    { "kind": "regular" },
     "2bar":    { "kind": "regular" },
     "3bar":    { "kind": "regular" },

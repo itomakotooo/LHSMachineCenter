@@ -76,10 +76,15 @@ class PaytableEvaluator:
         if len(payline_symbols) == 3 and self.symbols.get(payline_symbols[1]).is_booster:
             return self._evaluate_booster_center(payline_symbols, all_positions)
 
-        # --- Stage 3: blank kills non-cherry / non-booster path ---
+        # --- Stage 3: blank/scatter kills non-cherry / non-booster path ---
+        # filler (blank) and scatter symbols are excluded from payline
+        # evaluation; both route identically here (no pay on line).
         # On machine, "wild on side + blank center" is handled by Stage 6
         # (side_wild_alone); blank-kill skipped when that rule exists.
-        if any(self.symbols.get(s).is_filler for s in payline_symbols):
+        if any(
+            self.symbols.get(s).is_filler or self.symbols.get(s).is_scatter
+            for s in payline_symbols
+        ):
             if "side_wild_alone" in self.order and self.rules.side_wild_alone is not None:
                 # Fall through to Stage 6; only return None if no wild
                 # on sides (Stage 6 will handle that cleanly).
@@ -123,9 +128,12 @@ class PaytableEvaluator:
         for w in wilds:
             wild_product *= self.symbols.get(w).multiplier
 
-        # Skip if any filler on payline (e.g. blank in col 1 with wild
-        # on side; falls through to Stage 6 side_wild_alone below).
-        if not any(self.symbols.get(s).is_filler for s in payline_symbols):
+        # Skip if any filler or scatter on payline (e.g. blank in col 1 with
+        # wild on side; falls through to Stage 6 side_wild_alone below).
+        if not any(
+            self.symbols.get(s).is_filler or self.symbols.get(s).is_scatter
+            for s in payline_symbols
+        ):
             candidates: list[tuple[int, int]] = []
 
             if "line_3_same" in self.order and len(set(non_wilds)) == 1:
@@ -207,12 +215,16 @@ class PaytableEvaluator:
 
         # (b) side-match with booster center
         # Both side cells must be WILD or the target symbol — if any side
-        # is blank/filler, the 3-match is broken (booster center alone
-        # with flanking blank doesn't form a pay).
-        has_filler_side = any(self.symbols.get(s).is_filler for s in (col_0, col_2))
+        # is blank/filler/scatter, the 3-match is broken (booster center alone
+        # with flanking blank/scatter doesn't form a pay).
+        has_filler_side = any(
+            self.symbols.get(s).is_filler or self.symbols.get(s).is_scatter
+            for s in (col_0, col_2)
+        )
         sides_non_wild = [s for s in (col_0, col_2)
                           if not self.symbols.get(s).is_wild
-                          and not self.symbols.get(s).is_filler]
+                          and not self.symbols.get(s).is_filler
+                          and not self.symbols.get(s).is_scatter]
 
         if (
             not has_filler_side

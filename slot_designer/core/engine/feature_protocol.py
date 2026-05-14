@@ -59,10 +59,10 @@ class FeaturePlugin(Protocol):
     """
 
     #: pay_id that, when present in a paid spin's scatter_pays,
-    #: indicates the feature should fire (M15-style scatter trigger).
+    #: indicates the feature should fire (scatter-pay trigger mode).
     #: ``None`` for plugins that trigger via mechanisms other than
-    #: scatter pay — e.g. single-line slots's collect-meter-fills-to-threshold,
-    #: or M43-style outcome-conditional post-win respin / mini-game.
+    #: scatter pay — e.g. collect-meter-fills-to-threshold,
+    #: or outcome-conditional post-win respin / mini-game.
     #: When ``None``, ``SpinEngine.spin_session`` calls
     #: ``simulate_session(rng, outcome=...)`` after EVERY paid spin and
     #: the plugin decides itself whether to emit feature rounds.
@@ -71,7 +71,7 @@ class FeaturePlugin(Protocol):
     def simulate_session(self, rng: Random, *, outcome=None) -> list[Any]:
         """Run a single feature session, return per-round objects.
 
-        The list type is plugin-private (e.g. ``M15FeatureRound``).
+        The list type is plugin-private (a per-plugin dataclass).
         Generic code passes the list to ``emit_extra_rounds`` without
         inspecting individual entries.
 

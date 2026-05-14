@@ -1,7 +1,11 @@
 """Symbol registry parsed from spec.
 
-Known kinds (2026-04-24):
+Known kinds (2026-04-24, updated 2026-05-14):
   - filler:        blank / decorative stops that never pay
+  - scatter:       any-position trigger symbol (counted across the full grid,
+                   not restricted to a single payline). Excluded from payline
+                   evaluation (same routing as 'filler'). Plugin or
+                   evaluate_scatters() handles the scatter-count logic.
   - cherry_special: machine cherry (independent count-based pay)
   - regular:       standard paying symbol (high7, bars, etc.)
   - wild:          substitutes for regular symbols (machine Diamond1/2, machine
@@ -21,7 +25,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Symbol:
     name: str
-    kind: str            # "regular" | "wild" | "cherry_special" | "filler" | "booster"
+    kind: str            # "regular" | "wild" | "cherry_special" | "filler" | "scatter" | "booster"
     multiplier: int = 1  # wild: per-wild stack multiplier; booster: tier multiplier
     # machine+ 2026-04-28: nudge anchor metadata for stacked-wild trio.
     # Symbols that are part of a stack carry this; non-stack wilds carry None.
@@ -41,6 +45,11 @@ class Symbol:
         return self.kind == "filler"
 
     @property
+    def is_scatter(self) -> bool:
+        """True for any-position trigger symbols (not evaluated on paylines)."""
+        return self.kind == "scatter"
+
+    @property
     def is_booster(self) -> bool:
         return self.kind == "booster"
 
@@ -50,7 +59,7 @@ class Symbol:
 
 
 class SymbolRegistry:
-    _KNOWN_KINDS = {"filler", "cherry_special", "regular", "wild", "booster"}
+    _KNOWN_KINDS = {"filler", "scatter", "cherry_special", "regular", "wild", "booster"}
 
     def __init__(self, spec_symbols: dict):
         self.by_name: dict[str, Symbol] = {}
