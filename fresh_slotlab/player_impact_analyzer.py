@@ -2651,6 +2651,20 @@ def parse_chunk_response(
     payout_id_by_spin_type: dict[str, dict[int, int]] = defaultdict(
         lambda: defaultdict(int)
     )
+    # Per (pay_id, spin_type) WIN amounts. Parallel to payout_id_by_spin_type
+    # (which tracks hit counts); this accumulates the credited win per ST so
+    # the ST-split payout breakdown can compute per-ST RTP contributions.
+    # Added 2026-05-14 for SpinType-split breakdowns (payouts_by_spin_type).
+    payout_id_win_by_spin_type: dict[str, dict[int, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    # Per-SpinType symbol counts per column. Mirrors symbol_counts_by_col
+    # but keyed by SpinType first so reel_marginal_by_spin_type can show
+    # base-game vs freespin symbol distributions separately.
+    # Added 2026-05-14 for SpinType-split reel marginal.
+    symbol_counts_by_col_by_spin_type: dict[int, dict[int, dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(int))
+    )
 
     # Per-SpinType tally. M14 mode 1 only emits SpinType=1 (Normal).
     # M272 mode 1 emits 140 (main) + 126 (collect/bonus re-spin); mode
@@ -3133,6 +3147,17 @@ def parse_chunk_response(
             if _sess_win == 0.0:
                 continue
             payout_id_win[_chosen] += _sess_win
+            # 2026-05-14: attribute trigger-session win to ST of the trigger round
+            # for the ST-split payout breakdown. Trigger round's SpinType is the
+            # paid round that opened the session.
+            if 0 <= _trig_idx_int < len(rounds):
+                _trig_r = rounds[_trig_idx_int]
+                if isinstance(_trig_r, dict):
+                    try:
+                        _trig_st = int(_trig_r.get("SpinType", -1) or -1)
+                    except (TypeError, ValueError):
+                        _trig_st = -1
+                    payout_id_win_by_spin_type[_chosen][_trig_st] += _sess_win
 
         cur_loss = 0
         cur_win = 0
@@ -3671,6 +3696,8 @@ def parse_chunk_response(
                     except (TypeError, ValueError):
                         _st_key = -1
                     payout_id_by_spin_type[pid][_st_key] += 1
+                    # 2026-05-14: also track win per (pid, ST) for ST-split breakdown.
+                    payout_id_win_by_spin_type[pid][_st_key] += _credited
 
             # 2026-04-27: fallback synthesizer for the unattributed
             # delta. Closes the ``sum(payid_win) ~= chunk_win``
@@ -3696,8 +3723,11 @@ def parse_chunk_response(
                     _fallback_st_key = -1
                 _fallback_pid = f"_unattributed_st{_fallback_st_key}"
                 payout_id_hits[_fallback_pid] += 1
-                payout_id_win[_fallback_pid] += (_win_this_round - _credited_sum)
+                _fallback_win_delta = _win_this_round - _credited_sum
+                payout_id_win[_fallback_pid] += _fallback_win_delta
                 payout_id_by_spin_type[_fallback_pid][_fallback_st_key] += 1
+                # 2026-05-14: also track win for ST-split breakdown.
+                payout_id_win_by_spin_type[_fallback_pid][_fallback_st_key] += _fallback_win_delta
 
             line_ids = parse_paylines(str(r.get("PayoutByPayline") or ""))
             if line_ids:
@@ -3709,6 +3739,12 @@ def parse_chunk_response(
             stop_cols = r.get("StopSymbolsByCol") or []
             col_symbol_sets: list[set[str]] = []
             if isinstance(stop_cols, list):
+                # Determine SpinType for per-ST reel marginal accumulation.
+                # sp_type was already assigned earlier in this round iteration.
+                try:
+                    _sym_st_key = int(sp_type) if sp_type is not None else -1
+                except (TypeError, ValueError):
+                    _sym_st_key = -1
                 for ci, col_text in enumerate(stop_cols):
                     col_syms = split_symbols(str(col_text))
                     col_symbol_sets.append({s for s in col_syms if s})
@@ -3717,6 +3753,8 @@ def parse_chunk_response(
                         symbol_counts_by_col[ci][sym] += 1
                         symbol_counts_by_col_by_row[ci][row_idx][sym] += 1
                         total_symbol_slots += 1
+                        # 2026-05-14: per-ST reel marginal accumulation.
+                        symbol_counts_by_col_by_spin_type[_sym_st_key][ci][sym] += 1
 
             # Infer the winning symbol(s) for each line that paid this
             # spin. Two streams run in parallel:
@@ -3963,6 +4001,12 @@ def parse_chunk_response(
             str(ci): {str(ri): dict(sm) for ri, sm in row_map.items()}
             for ci, row_map in symbol_counts_by_col_by_row.items()
         },
+        # 2026-05-14: per-SpinType symbol counts per column for ST-split
+        # reel marginal. Keys: str(ST) → str(col) → symbol → count.
+        "symbol_counts_by_col_by_spin_type": {
+            str(st): {str(ci): dict(cmap) for ci, cmap in col_map.items()}
+            for st, col_map in symbol_counts_by_col_by_spin_type.items()
+        },
         "payline_rows_per_col": {
             str(ci): sorted(rows) for ci, rows in payline_rows_per_col.items()
         },
@@ -3981,6 +4025,11 @@ def parse_chunk_response(
         "payout_id_by_spin_type": {
             pid: dict(st_map)
             for pid, st_map in payout_id_by_spin_type.items()
+        },
+        # 2026-05-14: per (pay_id, spin_type) WIN amounts for ST-split breakdown.
+        "payout_id_win_by_spin_type": {
+            pid: dict(st_map)
+            for pid, st_map in payout_id_win_by_spin_type.items()
         },
         "spin_type_spins": {str(k): v for k, v in spin_type_spins.items()},
         "spin_type_bet": {str(k): v for k, v in spin_type_bet.items()},
@@ -4370,6 +4419,10 @@ def main() -> int:
     symbol_counts_by_col_by_row: dict[int, dict[int, dict[str, int]]] = defaultdict(
         lambda: defaultdict(lambda: defaultdict(int))
     )
+    # 2026-05-14: per-ST symbol counts per column for ST-split reel marginal.
+    symbol_counts_by_col_by_spin_type_total: dict[int, dict[int, dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(int))
+    )
     payline_rows_per_col: dict[int, set[int]] = defaultdict(set)
     total_symbol_slots = 0
 
@@ -4388,6 +4441,10 @@ def main() -> int:
     payout_id_win: dict[str, float] = defaultdict(float)
     payout_id_by_spin_type_total: dict[str, dict[int, int]] = defaultdict(
         lambda: defaultdict(int)
+    )
+    # 2026-05-14: per (pay_id, ST) WIN totals across chunks.
+    payout_id_win_by_spin_type_total: dict[str, dict[int, float]] = defaultdict(
+        lambda: defaultdict(float)
     )
     spin_type_spins: dict[int, int] = defaultdict(int)
     spin_type_next_counts: dict[int, Counter] = defaultdict(Counter)
@@ -4786,6 +4843,21 @@ def main() -> int:
                             if isinstance(sym_map, dict):
                                 for sym, c in sym_map.items():
                                     symbol_counts_by_col_by_row[ci][ri][str(sym)] += int(c)
+                # 2026-05-14: merge per-ST symbol counts per column.
+                for st_text, col_map in (rec.get("symbol_counts_by_col_by_spin_type") or {}).items():
+                    try:
+                        _merge_st = int(st_text)
+                    except (TypeError, ValueError):
+                        continue
+                    if isinstance(col_map, dict):
+                        for ci_text2, sym_map in col_map.items():
+                            try:
+                                _merge_ci = int(ci_text2)
+                            except (TypeError, ValueError):
+                                continue
+                            if isinstance(sym_map, dict):
+                                for sym, c in sym_map.items():
+                                    symbol_counts_by_col_by_spin_type_total[_merge_st][_merge_ci][str(sym)] += int(c)
                 for ci_text, rows_list in (rec.get("payline_rows_per_col") or {}).items():
                     try:
                         ci = int(ci_text)
@@ -4823,6 +4895,16 @@ def main() -> int:
                         except (TypeError, ValueError):
                             _st_int = -1
                         payout_id_by_spin_type_total[str(pid)][_st_int] += int(cnt or 0)
+                # 2026-05-14: merge per (pay_id, ST) win amounts.
+                for pid, st_map in (rec.get("payout_id_win_by_spin_type") or {}).items():
+                    if not isinstance(st_map, dict):
+                        continue
+                    for st_key, win_val in st_map.items():
+                        try:
+                            _st_int = int(st_key)
+                        except (TypeError, ValueError):
+                            _st_int = -1
+                        payout_id_win_by_spin_type_total[str(pid)][_st_int] += float(win_val or 0.0)
                 for st, c in (rec.get("spin_type_spins") or {}).items():
                     spin_type_spins[int(st)] += int(c)
                 for st, b in (rec.get("spin_type_bet") or {}).items():
@@ -5467,6 +5549,21 @@ def main() -> int:
                             if isinstance(sym_map, dict):
                                 for sym, c in sym_map.items():
                                     symbol_counts_by_col_by_row[ci][ri][str(sym)] += int(c)
+                # 2026-05-14: merge per-ST symbol counts per column.
+                for st_text, col_map in (rec.get("symbol_counts_by_col_by_spin_type") or {}).items():
+                    try:
+                        _merge_st = int(st_text)
+                    except (TypeError, ValueError):
+                        continue
+                    if isinstance(col_map, dict):
+                        for ci_text2, sym_map in col_map.items():
+                            try:
+                                _merge_ci = int(ci_text2)
+                            except (TypeError, ValueError):
+                                continue
+                            if isinstance(sym_map, dict):
+                                for sym, c in sym_map.items():
+                                    symbol_counts_by_col_by_spin_type_total[_merge_st][_merge_ci][str(sym)] += int(c)
                 for ci_text, rows_list in (rec.get("payline_rows_per_col") or {}).items():
                     try:
                         ci = int(ci_text)
@@ -5510,6 +5607,16 @@ def main() -> int:
                         except (TypeError, ValueError):
                             _st_int = -1
                         payout_id_by_spin_type_total[str(pid)][_st_int] += int(cnt or 0)
+                # 2026-05-14: merge per (pay_id, ST) win amounts.
+                for pid, st_map in (rec.get("payout_id_win_by_spin_type") or {}).items():
+                    if not isinstance(st_map, dict):
+                        continue
+                    for st_key, win_val in st_map.items():
+                        try:
+                            _st_int = int(st_key)
+                        except (TypeError, ValueError):
+                            _st_int = -1
+                        payout_id_win_by_spin_type_total[str(pid)][_st_int] += float(win_val or 0.0)
                 # spin_type_* added in the SpinType-breakdown commit; old
                 # chunk records tolerate missing via .get().
                 for st, c in (rec.get("spin_type_spins") or {}).items():
@@ -6342,6 +6449,53 @@ def main() -> int:
             }
         )
 
+    # ── SpinType-split pay_id breakdown (2026-05-14) ──────────────────
+    # payouts_by_spin_type: {spin_type_label → {pay_id → {hit_count,
+    # rate_pct, rtp_pp, total_win}}} where spin_type_label is
+    # "ST{N}_{behavior}" (e.g. "ST43_paid", "ST44_free").
+    # Machine-agnostic: label is derived from behavior_name computed
+    # above in spin_type_rows (CostCredits>0 = paid; =0 = free; mix).
+    # Existing aggregate payout_ids_top20 stays untouched.
+    _st_label: dict[int, str] = {
+        int(row["spin_type"]): f"ST{int(row['spin_type'])}_{row['behavior_name']}"
+        for row in spin_type_rows
+    }
+    payouts_by_spin_type: dict[str, list[dict[str, Any]]] = {}
+    for st_int, label in sorted(_st_label.items()):
+        st_spins_count = int(spin_type_spins.get(st_int, 0))
+        st_paid_bet = float(spin_type_paid_bet.get(st_int, 0.0))
+        # Per-ST RTP denominator: use paid_bet for paid STs,
+        # effective_bet_for_rtp (global) for free STs (their wins
+        # belong to triggering sessions; showing a per-ST RTP without
+        # the triggering bet would be misleading, so we use the same
+        # global denominator as rtp_contribution_pp).
+        _st_rtp_denom = st_paid_bet if st_paid_bet > 0 else effective_bet_for_rtp
+        st_pid_rows: list[dict[str, Any]] = []
+        for pid, wins in sorted(payout_id_win.items(), key=lambda kv: kv[1], reverse=True):
+            # Win for this (pid, ST) pair from the accumulator.
+            st_win_map = payout_id_win_by_spin_type_total.get(str(pid)) or {}
+            st_win = float(st_win_map.get(st_int, 0.0))
+            if st_win == 0.0:
+                continue  # this pay_id didn't fire in this ST
+            st_hit_map = payout_id_by_spin_type_total.get(str(pid)) or {}
+            st_hits = int(st_hit_map.get(st_int, 0))
+            st_pid_rows.append({
+                "payout_id": str(pid),
+                "hit_count": st_hits,
+                "hit_rate_pct": (st_hits / st_spins_count * 100.0) if st_spins_count > 0 else 0.0,
+                "total_win": st_win,
+                "avg_win_when_hit": (st_win / st_hits) if st_hits > 0 else 0.0,
+                # rtp_pp relative to the GLOBAL paid-session denominator
+                # (same as aggregate payout row) so values are directly
+                # comparable with payout_ids_top20.rtp_contribution_pp.
+                "rtp_pp": (
+                    (st_win / effective_bet_for_rtp) * 100.0
+                    if effective_bet_for_rtp > 0 else 0.0
+                ),
+            })
+        # Sanity: sum(rtp_pp) for this ST should ≈ spin_type_rows rtp_contribution_pp.
+        payouts_by_spin_type[label] = st_pid_rows
+
     symbol_rows = []
     for sym, cnt in sorted(symbol_counts.items(), key=lambda kv: kv[1], reverse=True):
         symbol_rows.append(
@@ -6398,6 +6552,29 @@ def main() -> int:
                 }
             )
         symbol_by_col_rows_payline[str(ci)] = _rows_payline
+
+    # ── SpinType-split reel marginal (2026-05-14) ─────────────────────
+    # reel_marginal_by_spin_type: {spin_type_label → {reel_col → [{symbol,
+    # count, prob_pct}]}} where prob_pct sums to 100 per reel × ST.
+    # Existing aggregate symbols_by_column_top10 stays untouched.
+    reel_marginal_by_spin_type: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for st_int, label in sorted(_st_label.items()):
+        col_rows: dict[str, list[dict[str, Any]]] = {}
+        st_col_map = symbol_counts_by_col_by_spin_type_total.get(st_int) or {}
+        for ci, sym_map in sorted(st_col_map.items()):
+            col_total = sum(sym_map.values())
+            if col_total == 0:
+                continue
+            rows_for_col = [
+                {
+                    "symbol": sym,
+                    "count": int(cnt),
+                    "prob_pct": (cnt / col_total) * 100.0,
+                }
+                for sym, cnt in sorted(sym_map.items(), key=lambda kv: kv[1], reverse=True)
+            ]
+            col_rows[str(ci)] = rows_for_col
+        reel_marginal_by_spin_type[label] = col_rows
 
     # Upstream FeatureWin breakdown. The upstream API groups payouts by
     # a semantic feature name (string: e.g. "Normal", "NormalCollectionSpin",
@@ -7348,6 +7525,16 @@ def main() -> int:
             "paylines_top20": list(payline_rows),
             "payout_groups_top20": list(payout_group_rows),
             "payout_ids_top20": list(payout_id_rows),
+            # 2026-05-14: SpinType-split breakdowns.
+            # payouts_by_spin_type: {spin_type_label → sorted list of
+            # {payout_id, hit_count, hit_rate_pct, total_win,
+            # avg_win_when_hit, rtp_pp}} for pay_ids that fired in that ST.
+            # Existing aggregate payout_ids_top20 stays untouched.
+            "payouts_by_spin_type": payouts_by_spin_type,
+            # reel_marginal_by_spin_type: {spin_type_label → {reel_col →
+            # [{symbol, count, prob_pct}]}} where prob_pct sums to 100
+            # per (label, reel). Existing symbols_by_column_top10 untouched.
+            "reel_marginal_by_spin_type": reel_marginal_by_spin_type,
             "spin_type_breakdown": spin_type_rows,
             "spin_type_coverage": spin_type_coverage,
             # Extra fields discovered beyond _BASELINE_ROUND_FIELDS.
@@ -7862,6 +8049,47 @@ def main() -> int:
     md_lines.append("## Top Symbols")
     for row in symbol_rows[:20]:
         md_lines.append(f"- {row['symbol']}: rate={row['rate']:.6f}")
+
+    # ── SpinType-split sections (2026-05-14) ──────────────────────────
+    md_lines.append("")
+    md_lines.append("## Per-pay_id by SpinType")
+    md_lines.append(
+        "Columns: payout_id | hit_count | rtp_pp | total_win. "
+        "Each sub-section is one SpinType (base vs freespin etc.)."
+    )
+    for label, pid_rows in sorted(payouts_by_spin_type.items()):
+        if not pid_rows:
+            continue
+        md_lines.append(f"")
+        md_lines.append(f"### {label}")
+        # Header
+        md_lines.append("| pay_id | hits | rtp_pp | total_win |")
+        md_lines.append("|--------|------|--------|-----------|")
+        for pr in pid_rows[:30]:
+            md_lines.append(
+                f"| {pr['payout_id']} | {pr['hit_count']} "
+                f"| {pr['rtp_pp']:.4f} | {pr['total_win']:.0f} |"
+            )
+
+    md_lines.append("")
+    md_lines.append("## Per-reel Marginal by SpinType")
+    md_lines.append(
+        "Symbol probability per reel (col), split by SpinType. "
+        "prob_pct sums to 100 per (SpinType, reel)."
+    )
+    for label, col_rows in sorted(reel_marginal_by_spin_type.items()):
+        if not col_rows:
+            continue
+        md_lines.append(f"")
+        md_lines.append(f"### {label}")
+        for col_key, sym_list in sorted(col_rows.items(), key=lambda kv: int(kv[0])):
+            md_lines.append(f"#### Reel {col_key}")
+            md_lines.append("| symbol | prob_pct |")
+            md_lines.append("|--------|----------|")
+            for entry in sym_list[:15]:
+                md_lines.append(
+                    f"| {entry['symbol']} | {entry['prob_pct']:.3f}% |"
+                )
 
     md_lines.append("")
     md_lines.append("## Bankruptcy Simulation (rawdata replay)")
