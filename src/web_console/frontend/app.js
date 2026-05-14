@@ -4994,6 +4994,252 @@ function _lineIdSignBadge(signOrId, numericId) {
 // one unified row per pay_id that carries frequency / RTP / shape /
 // wild substitution / line-id semantics in one place.
 
+// ── Per-pay_id by SpinType ─────────────────────────────────────────
+//
+// Renders one sub-table per spin_type_label found in
+// summary.player_impact.payouts_by_spin_type. Each table rows:
+//   payout_id | hit_count | hit_rate_pct | total_win | avg_win_when_hit | rtp_pp
+// sorted by rtp_pp descending, capped at top 20 per label.
+//
+// SpinType label keys are dynamic (ST43_paid / ST1_paid / etc.) —
+// never hardcoded; derived from Object.keys() of the data object.
+//
+// Compare mode: if cmpB has the field, show A and B tables side-by-
+// side per spin_type_label. If a label only exists on one side, it
+// renders with an "(A only)" or "(B only)" note in the heading.
+// If the whole field is absent from B, a single "B has no ST-split
+// data" note is shown instead of a B panel.
+//
+// Graceful degradation: if the field is missing / empty on A (older
+// reports pre-729a6ca), the panel is hidden entirely.
+function renderPayoutsBySpinType(summary) {
+  const panel = byId("payoutsBySpinTypePanel");
+  if (!panel) return;
+
+  const cmpB = state.compareMode && state.compareMode.b ? state.compareMode.b : null;
+  const aData = ((summary || {}).player_impact || {}).payouts_by_spin_type || null;
+  const bData = cmpB ? ((cmpB.player_impact || {}).payouts_by_spin_type || null) : null;
+
+  const aLabels = aData ? Object.keys(aData) : [];
+  const bLabels = bData ? Object.keys(bData) : [];
+  const hasA = aLabels.length > 0;
+  const hasB = bLabels.length > 0;
+
+  if (!hasA && !hasB) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+
+  const body = byId("payoutsBySpinTypeBody");
+  if (!body) return;
+
+  // Union of all labels, A's order first then B-only additions.
+  const aLabelSet = new Set(aLabels);
+  const allLabels = [...aLabels];
+  for (const lb of bLabels) {
+    if (!aLabelSet.has(lb)) allLabels.push(lb);
+  }
+
+  const bOnlyNote = (cmpB && !hasB)
+    ? `<p class="drilldown-hint">B has no ST-split data (pre-729a6ca report).</p>`
+    : "";
+
+  let html = bOnlyNote;
+
+  for (const label of allLabels) {
+    const aRows = aData ? (aData[label] || []) : [];
+    const bRows = bData ? (bData[label] || []) : [];
+    const onlyA = aRows.length > 0 && bRows.length === 0;
+    const onlyB = aRows.length === 0 && bRows.length > 0;
+
+    // Sort each side by rtp_pp desc, cap at 20.
+    const sortCap = (rows) =>
+      [...rows]
+        .sort((a, b) => Number(b.rtp_pp || 0) - Number(a.rtp_pp || 0))
+        .slice(0, 20);
+    const aSorted = sortCap(aRows);
+    const bSorted = sortCap(bRows);
+
+    // Presence note appended to heading.
+    let presenceTag = "";
+    if (cmpB) {
+      if (onlyA) presenceTag = ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
+      else if (onlyB) presenceTag = ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
+    }
+
+    html += `<h3 class="drilldown-subhead">${_escHtml(label)}${presenceTag}</h3>`;
+
+    if (cmpB) {
+      // Sequential A then B blocks. bData null means the whole field
+      // is absent on B — bOnlyNote above already tells the user; just
+      // render A and omit the B block.
+      html += `<p class="drilldown-hint">A</p>`;
+      html += _renderPayoutsByStTable(aSorted);
+      if (bData !== null) {
+        html += `<p class="drilldown-hint">B</p>`;
+        html += _renderPayoutsByStTable(bSorted);
+      }
+    } else {
+      html += _renderPayoutsByStTable(aSorted);
+    }
+  }
+
+  body.innerHTML = html;
+}
+
+// Build a single payout-by-spintype table from a pre-sorted row array.
+// Columns: payout_id | hit_count | hit_rate_pct | total_win | avg_win_when_hit | rtp_pp
+function _renderPayoutsByStTable(rows) {
+  if (!rows.length) {
+    return `<p class="drilldown-hint">— no data —</p>`;
+  }
+  const thead =
+    `<thead><tr>` +
+    `<th>payout_id</th>` +
+    `<th>hit_count</th>` +
+    `<th>hit_rate_pct</th>` +
+    `<th>total_win</th>` +
+    `<th>avg_win_when_hit</th>` +
+    `<th>rtp_pp</th>` +
+    `</tr></thead>`;
+  const tbody = rows
+    .map((r) => {
+      const hitRate = Number(r.hit_rate_pct || 0).toFixed(3);
+      const avgWin = Number(r.avg_win_when_hit || 0).toFixed(2);
+      const rtpPp = Number(r.rtp_pp || 0).toFixed(4);
+      return (
+        `<tr>` +
+        `<td><code>${_escHtml(String(r.payout_id))}</code></td>` +
+        `<td>${Number(r.hit_count || 0).toLocaleString()}</td>` +
+        `<td>${_escHtml(hitRate)}%</td>` +
+        `<td>${Number(r.total_win || 0).toLocaleString()}</td>` +
+        `<td>${_escHtml(avgWin)}</td>` +
+        `<td>${_escHtml(rtpPp)}pp</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+  return `<table class="drilldown-table"><colgroup></colgroup>${thead}<tbody>${tbody}</tbody></table>`;
+}
+
+// ── Per-reel Marginal by SpinType ──────────────────────────────────
+//
+// Renders one block per spin_type_label in
+// summary.player_impact.reel_marginal_by_spin_type. Each block shows
+// one table per reel column (side-by-side via the existing
+// .symbol-matrix / .col-table layout). Columns: symbol | count | prob_pct.
+// Rows sorted by prob_pct descending within each reel.
+//
+// Compare mode: if cmpB has the field, each spin_type_label block
+// shows A reels then B reels with an A/B sub-heading. If only A
+// has the field, renders A-only and notes "B has no ST-split data".
+//
+// Graceful degradation: hidden entirely when field missing/empty on A.
+function renderReelMarginalBySpinType(summary) {
+  const panel = byId("reelMarginalBySpinTypePanel");
+  if (!panel) return;
+
+  const cmpB = state.compareMode && state.compareMode.b ? state.compareMode.b : null;
+  const aData = ((summary || {}).player_impact || {}).reel_marginal_by_spin_type || null;
+  const bData = cmpB ? ((cmpB.player_impact || {}).reel_marginal_by_spin_type || null) : null;
+
+  const aLabels = aData ? Object.keys(aData) : [];
+  const bLabels = bData ? Object.keys(bData) : [];
+  const hasA = aLabels.length > 0;
+  const hasB = bLabels.length > 0;
+
+  if (!hasA && !hasB) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+
+  const body = byId("reelMarginalBySpinTypeBody");
+  if (!body) return;
+
+  const aLabelSet = new Set(aLabels);
+  const allLabels = [...aLabels];
+  for (const lb of bLabels) {
+    if (!aLabelSet.has(lb)) allLabels.push(lb);
+  }
+
+  const bOnlyNote = (cmpB && !hasB)
+    ? `<p class="drilldown-hint">B has no ST-split data (pre-729a6ca report).</p>`
+    : "";
+
+  let html = bOnlyNote;
+
+  for (const label of allLabels) {
+    const aColMap = aData ? (aData[label] || {}) : {};
+    const bColMap = bData ? (bData[label] || {}) : {};
+    const onlyA = Object.keys(aColMap).length > 0 && Object.keys(bColMap).length === 0;
+    const onlyB = Object.keys(aColMap).length === 0 && Object.keys(bColMap).length > 0;
+
+    let presenceTag = "";
+    if (cmpB) {
+      if (onlyA) presenceTag = ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
+      else if (onlyB) presenceTag = ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
+    }
+
+    html += `<h3 class="drilldown-subhead">${_escHtml(label)}${presenceTag}</h3>`;
+
+    if (cmpB && bData !== null) {
+      html += `<p class="drilldown-hint">A</p>`;
+      html += _renderReelMarginalMatrix(aColMap);
+      html += `<p class="drilldown-hint">B</p>`;
+      html += _renderReelMarginalMatrix(bColMap);
+    } else {
+      html += _renderReelMarginalMatrix(aColMap);
+    }
+  }
+
+  body.innerHTML = html;
+}
+
+// Build the reel-matrix HTML for one spin_type_label's colMap.
+// colMap: { "0": [{symbol, count, prob_pct}, ...], "1": [...], ... }
+// Reel columns are sorted numerically. Within each column, rows are
+// sorted by prob_pct descending. Reuses .symbol-matrix / .col-table
+// layout (same as renderSymbolDrilldown by-column matrix).
+function _renderReelMarginalMatrix(colMap) {
+  const colKeys = Object.keys(colMap).sort((a, b) => Number(a) - Number(b));
+  if (!colKeys.length) {
+    return `<p class="drilldown-hint">— no reel data —</p>`;
+  }
+  const colHtml = colKeys
+    .map((colIdx) => {
+      const rows = [...(colMap[colIdx] || [])]
+        .sort((a, b) => Number(b.prob_pct || 0) - Number(a.prob_pct || 0));
+      const bodyRows = rows
+        .map((r) => {
+          const prob = Number(r.prob_pct || 0).toFixed(2);
+          return (
+            `<tr>` +
+            `<td><code>${_escHtml(String(r.symbol))}</code></td>` +
+            `<td>${Number(r.count || 0).toLocaleString()}</td>` +
+            `<td>${_escHtml(prob)}%</td>` +
+            `</tr>`
+          );
+        })
+        .join("");
+      const head =
+        `<thead><tr>` +
+        `<th>symbol</th>` +
+        `<th>count</th>` +
+        `<th>prob%</th>` +
+        `</tr></thead>`;
+      return (
+        `<div class="col-table">` +
+        `<h4>Col ${_escHtml(colIdx)}</h4>` +
+        `<table class="drilldown-table">${head}<tbody>${bodyRows}</tbody></table>` +
+        `</div>`
+      );
+    })
+    .join("");
+  return `<div class="symbol-matrix">${colHtml}</div>`;
+}
+
 // Build the per-feature bucket histogram as a standard drilldown-
 // table so typography + bar line match the global 倍率分布 panel
 // byte-for-byte. Columns: 倍率区间 / 次数 / 占比 / 本类 pp / bar.
@@ -6280,6 +6526,7 @@ function _resetDebugPanelsToEmpty() {
     "fieldDiscoveryPanel", "machineMechanicsPanel",
     "bonusChainDynamicsPanel", "collectCyclePanel",
     "bankruptcyPanel",
+    "payoutsBySpinTypePanel", "reelMarginalBySpinTypePanel",
   ]) {
     const el = byId(id);
     if (el) el.classList.add("hidden");
@@ -6510,12 +6757,14 @@ async function _paintAnalysisFromSummary(s) {
   // cover this machine.
   renderPaylineClassification(s);
   renderPayIdOverview(s);
+  renderPayoutsBySpinType(s);
   renderFieldDiscovery(s);
   renderMachineMechanics(s);
   renderBonusChainDynamicsPanel(s);
   renderCollectCyclePanel(s);
   renderPaylineDrilldown(s);
   renderSymbolDrilldown(s);
+  renderReelMarginalBySpinType(s);
   renderBankruptcyAnalysis(s);
 }
 
