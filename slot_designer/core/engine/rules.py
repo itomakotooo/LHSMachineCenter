@@ -163,6 +163,17 @@ class RuleSet:
         "pure_wild_with_booster",
         "center_booster_alone",
         "side_wild_alone",
+        # plugin_handled (2026-05-14): pay_id whose trigger + multiplier
+        # logic is entirely implemented in the machine's FeaturePlugin
+        # post-evaluator (e.g. M43 pay_id 8 "wild_blank_special").
+        # Primary reason this kind exists in core: WITHOUT it, a spec.json
+        # entry with kind="plugin_handled" would cause RuleSet.__init__ to
+        # raise ValueError at load time ("kind not supported"), breaking
+        # spec loading for ANY machine that uses plugin-side pay logic.
+        # Secondary: declaring the pay_id in spec.json documents which
+        # pay_ids are "owned" by the plugin; RTP tracking reads from
+        # emitted PayoutIdToWinAmount (not from spec entries directly).
+        "plugin_handled",
     }
 
     def __init__(self, spec_pays: list[dict], reroll_blocks: list[dict] | None = None):
@@ -267,3 +278,12 @@ class RuleSet:
                     pay_id=pid,
                     multiplier=int(p["multiplier"]),
                 )
+            elif kind == "plugin_handled":
+                # No-op: trigger + multiplier logic lives entirely in the
+                # machine's FeaturePlugin post-evaluator (ARCHITECTURE §3).
+                # This branch exists to prevent ValueError at load time for
+                # machines that declare plugin-owned pay_ids in spec.json.
+                # Core evaluator never fires for this kind. No rule object
+                # stored. RTP tracking reads from emitted round data, not
+                # from spec entries.
+                pass
