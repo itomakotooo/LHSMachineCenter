@@ -5080,6 +5080,25 @@ function renderPayoutsBySpinType(summary) {
     return `<table class="drilldown-table">${tableInner}</table>`;
   };
 
+  // Derive spin_type_category from the parent label (ST{N}_{behavior})
+  // so the "类型" column of each split row renders the same badge as
+  // aggregate (which has spin_type_category inline per row). Without this,
+  // split rows show "—" since payouts_by_spin_type rows don't carry the
+  // category field (it would be constant per parent label and therefore
+  // redundant in the analyzer schema; we derive it here at render time).
+  //
+  // Note: analyzer's behavior label uses "free" for FreeSpin / bonus
+  // rounds (per round_classification cost>0 vs cost=0). Aggregate's
+  // spin_type_category uses "bonus" terminology for the same concept.
+  // We translate "free" → "bonus" so _catBadge picks the existing
+  // pid-cat-bonus visual style + payIdCatBonus i18n string (no new
+  // badge style needed; align with aggregate vocabulary).
+  const _categoryFromLabel = (lb) => {
+    const m = /^ST\d+_(paid|free|mixed)$/.exec(String(lb || ""));
+    if (!m) return null;
+    return m[1] === "free" ? "bonus" : m[1];
+  };
+
   for (const label of allLabels) {
     const aRows = aData ? (aData[label] || []) : [];
     const bRows = bData ? (bData[label] || []) : [];
@@ -5089,8 +5108,15 @@ function renderPayoutsBySpinType(summary) {
     // Sort each side by rtp desc, cap at 20. Tolerates both schemas
     // (post-rename rtp_contribution_pp + pre-rename rtp_pp).
     const _rtpForSort = (r) => Number(r.rtp_contribution_pp ?? r.rtp_pp ?? 0);
+    const category = _categoryFromLabel(label);
+    const augmentCategory = (r) => (
+      category && r.spin_type_category == null
+        ? { ...r, spin_type_category: category }
+        : r
+    );
     const sortCap = (rows) =>
       [...rows]
+        .map(augmentCategory)
         .sort((a, b) => _rtpForSort(b) - _rtpForSort(a))
         .slice(0, 20);
     const aSorted = sortCap(aRows);
