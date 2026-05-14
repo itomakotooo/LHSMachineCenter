@@ -82,6 +82,36 @@ dd65211 feat(slot_designer/M43): Stage 1+2 — Lucky Ducky onboarding kickoff
 ef6bc6e chore(slot_designer): remove slot_designer/templates/agent_prompts/
 ```
 
+## Next session ground rules (user-mandated 2026-05-14)
+
+**Main session role: coordinator only.** All substantive work goes to agents.
+
+| Main session DOES | Main session does NOT |
+|---|---|
+| Decide which agent to spawn for which task | Read rawdata / xlsx / config files for analysis (Analyst does this) |
+| Translate user input into agent prompts | Run Python scripts for data verification (Analyst) |
+| Git commits / file operations / dir creation | Write spec.json / strips / weights / plugins (Implementer) |
+| Summarize agent outputs back to user | Write DESIGN.md / MODE_DESIGN.md / target.json / BOUNDARY_CONTRACT (Designer) |
+| Wait for user decisions and relay | Write verify.py red lines or run them (Verifier) |
+| Spawn X for critique at milestones | Make design / verify / review decisions (the corresponding agent) |
+| Track todos | Cross-check agent outputs by re-doing the work inline |
+
+**Session 1 violations (for awareness, not repeat)**:
+- Read M43Basic / M43Reel / M43Wheel / Caculate / Jackpot xlsx with inline Python — should have been Analyst with a "cross-check xlsx vs 01c rawdata-inferred mechanism" task
+- Mini-game token-to-multiplier sum verification (4199 records, 100% match) — should have been Analyst supplementary task
+- Respin reel marginal comparison (base vs respin) — should have been Analyst supplementary task
+- xlsx surface triage (4 buckets: tunable / read-only / useless / hidden) — should have been Analyst output
+
+These were all "main session figured it out inline because it was faster". User correction: even faster is no excuse — agent boundary must hold or Stage 3.5+ stakes break down (Designer needs A's report, not main session's summary; Verifier needs the artifact, not transcript).
+
+**Operational rule**: if at any point next session main session is about to Read a rawdata chunk / Edit a spec file / run a Python analysis / write a design narrative — STOP, spawn the right agent.
+
+Exceptions (genuinely main-session work):
+- Reading agent output artifacts to brief the next agent or relay to user
+- Writing SESSION_BRIEF / handoff notes / commit messages
+- Running `git` / `mkdir` / `ls`-style ops
+- Reading ONBOARDING / WORKFLOW / PHILOSOPHY / ARCHITECTURE (coordinator must know these)
+
 ## Process improvement candidates from this session
 
 1. **Agent base prompts confusion** — at one point I (main session)
