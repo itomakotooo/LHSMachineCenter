@@ -6401,20 +6401,30 @@ def main() -> int:
                 key=lambda kv: (int(kv[1]), -int(kv[0])),
             )[0]
             dominant_share = float(st_hits[dominant_st]) / total_st_hits
-        # Category resolution: if the dominant SpinType is "paid",
-        # label "paid"; if "free", label "bonus"; otherwise "mixed".
-        # When a pay_id spans multiple SpinTypes with no single
-        # category owning ≥80% of firings, force "mixed" so the
-        # operator investigates the breakdown.
+        # Category resolution: strict binary on the number of SpinTypes
+        # in which the pay_id actually fired (per rawdata):
+        #   exactly 1 firing SpinType → category derived from that ST's
+        #     behavior ("paid" or "bonus" / "mixed" for non-binary ST).
+        #   ≥2 firing SpinTypes        → "mixed" — always.
+        # Previously this used a dominant_share ≥ 0.8 threshold which
+        # labeled a pay_id "paid" when ≥80% of firings were on paid
+        # spins and silently hid the bonus firings from the aggregate
+        # badge (e.g. M31 pid 10/11 had 90% ST43 + 10% ST44 → labeled
+        # "paid" but the split panel showed both STs). Rawdata is
+        # authoritative — a single bonus firing makes the pid mixed.
         category: str | None = None
-        if dominant_st is not None:
-            st_behavior = _st_behavior.get(int(dominant_st), "mixed")
+        n_active_sts = len(st_hits)
+        if n_active_sts == 1:
+            sole_st = int(next(iter(st_hits.keys())))
+            st_behavior = _st_behavior.get(sole_st, "mixed")
             if st_behavior == "paid":
-                category = "paid" if dominant_share >= 0.8 else "mixed"
+                category = "paid"
             elif st_behavior == "free":
-                category = "bonus" if dominant_share >= 0.8 else "mixed"
+                category = "bonus"
             else:
                 category = "mixed"
+        elif n_active_sts >= 2:
+            category = "mixed"
         payout_id_rows.append(
             {
                 "payout_id": str(pid),

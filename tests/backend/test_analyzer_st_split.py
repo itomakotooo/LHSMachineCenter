@@ -484,3 +484,78 @@ def test_zero_win_but_fired_pid_retained_in_split(tmp_path):
     # Step 3: pid 666 split row must carry hits but 0 RTP contribution.
     assert pid666_split.get("hit_count", 0) > 0
     assert float(pid666_split.get("rtp_contribution_pp", 1.0)) == 0.0
+
+
+def test_spin_type_category_strict_binary(tmp_path):
+    """spin_type_category in payout_ids_top20 must be strictly derived
+    from the number of distinct SpinTypes in which the pay_id fired:
+      • exactly 1 firing ST → that ST's category (paid / bonus / mixed)
+      • ≥2 firing STs       → 'mixed' — no fuzzy threshold
+
+    Regression guard: previous logic used a 0.8 dominant-share threshold
+    which labeled pay_ids 'paid' when ≥80% of firings were on paid spins,
+    hiding bonus firings from the aggregate badge (M31 pid 10/11 case)."""
+    cache_dir = ROOT / "rawdata" / "M31" / "mode_1"
+    chunk0 = cache_dir / "chunk_0001.json"
+    with open(chunk0, encoding="utf-8") as f:
+        env = json.load(f)
+    cfg_md5 = env.get("config_md5", "")
+    code_md5 = env.get("code_md5", "")
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    progress_file = tmp_path / "progress.jsonl"
+    cmd = [
+        sys.executable, "-m", "fresh_slotlab.player_impact_analyzer",
+        "--machine", "M31",
+        "--rtp-mode", "1",
+        "--bet", "1000",
+        "--output-dir", str(output_dir),
+        "--target-halfwidth-pp", "99",
+        "--max-chunks", "1",
+        "--chunk-spin-times", "100",
+        "--chunk-robot-count", "2",
+        "--batch-concurrency", "1",
+        "--timeout", "10",
+        "--bankruptcy-session-spins", "100",
+        "--bankruptcy-bankroll-multipliers", "10",
+        "--from-cache", str(cache_dir),
+        "--upstream-config-md5", cfg_md5,
+        "--upstream-code-md5", code_md5,
+        "--progress-file", str(progress_file),
+        "--run-id", "test_category_strict_binary",
+    ]
+    result = subprocess.run(
+        cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, (
+        f"Analyzer subprocess failed:\nSTDOUT={result.stdout[-2000:]}\n"
+        f"STDERR={result.stderr[-2000:]}"
+    )
+
+    summaries = list(output_dir.rglob("player_impact_summary.json"))
+    assert summaries, "No player_impact_summary.json emitted"
+    with open(summaries[0], encoding="utf-8") as f:
+        summary = json.load(f)
+    pi = summary.get("player_impact", {})
+    top20 = pi.get("payout_ids_top20", [])
+    assert top20, "payout_ids_top20 must be non-empty"
+
+    for row in top20:
+        pid = row.get("payout_id")
+        cat = row.get("spin_type_category")
+        breakdown = row.get("spin_type_breakdown", [])
+        # Count active STs (those with hits > 0).
+        active_sts = [b for b in breakdown if int(b.get("count", 0)) > 0]
+        n_active = len(active_sts)
+        if n_active == 0:
+            # No firings at all — category may be None (never emitted to top20 in practice).
+            continue
+        if n_active >= 2:
+            assert cat == "mixed", (
+                f"pid {pid} fired in {n_active} SpinTypes ({[b['spin_type'] for b in active_sts]}) "
+                f"but spin_type_category='{cat}'. Strict binary rule: ≥2 STs → must be 'mixed'. "
+                f"Old threshold logic (≥80% dominant share) is forbidden."
+            )
+        # n_active == 1 → either "paid", "bonus", or "mixed" (per the sole ST's behavior).
+        # Specific value is implementation detail; here we only enforce the ≥2 → mixed rule.
