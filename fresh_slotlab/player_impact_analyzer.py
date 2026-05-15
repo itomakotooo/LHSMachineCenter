@@ -6475,13 +6475,19 @@ def main() -> int:
         _st_rtp_denom = st_paid_bet if st_paid_bet > 0 else effective_bet_for_rtp
         st_pid_rows: list[dict[str, Any]] = []
         for pid, wins in sorted(payout_id_win.items(), key=lambda kv: kv[1], reverse=True):
-            # Win for this (pid, ST) pair from the accumulator.
+            # Win + hits for this (pid, ST) pair from the accumulators.
             st_win_map = payout_id_win_by_spin_type_total.get(str(pid)) or {}
             st_win = float(st_win_map.get(st_int, 0.0))
-            if st_win == 0.0:
-                continue  # this pay_id didn't fire in this ST
             st_hit_map = payout_id_by_spin_type_total.get(str(pid)) or {}
             st_hits = int(st_hit_map.get(st_int, 0))
+            # Skip only if the pay_id genuinely did not fire in this ST.
+            # Trigger-marker pay_ids (e.g. M31 pid 666 always win=0 but
+            # fires 11,633 times in ST43_paid as the FreeSpin scatter
+            # marker) MUST be retained — they're meaningful data even
+            # at 0 RTP contribution. Previous st_win==0 filter dropped
+            # them silently.
+            if st_hits == 0:
+                continue
             st_pid_rows.append({
                 "payout_id": str(pid),
                 "hit_count": st_hits,

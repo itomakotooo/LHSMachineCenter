@@ -402,3 +402,85 @@ def test_payouts_by_spin_type_field_names_match_payout_ids_top20(tmp_path):
             f"payouts_by_spin_type[{label}].hit_rate={row['hit_rate']} looks like "
             f"a percentage (> 2.0); expected fraction"
         )
+
+
+def test_zero_win_but_fired_pid_retained_in_split(tmp_path):
+    """Trigger-marker pay_ids (M31 pid 666: always win=0 but fires on
+    every scatter-trigger paid round) MUST be retained in
+    payouts_by_spin_type[ST43_paid] despite their 0 total_win + 0 RTP
+    contribution. Regression guard: previous filter ``if st_win == 0.0:
+    continue`` silently dropped these rows; correct filter is on hits."""
+    cache_dir = ROOT / "rawdata" / "M31" / "mode_1"
+    chunk0 = cache_dir / "chunk_0001.json"
+    with open(chunk0, encoding="utf-8") as f:
+        env = json.load(f)
+    cfg_md5 = env.get("config_md5", "")
+    code_md5 = env.get("code_md5", "")
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    progress_file = tmp_path / "progress.jsonl"
+    cmd = [
+        sys.executable, "-m", "fresh_slotlab.player_impact_analyzer",
+        "--machine", "M31",
+        "--rtp-mode", "1",
+        "--bet", "1000",
+        "--output-dir", str(output_dir),
+        "--target-halfwidth-pp", "99",
+        "--max-chunks", "1",
+        "--chunk-spin-times", "100",
+        "--chunk-robot-count", "2",
+        "--batch-concurrency", "1",
+        "--timeout", "10",
+        "--bankruptcy-session-spins", "100",
+        "--bankruptcy-bankroll-multipliers", "10",
+        "--from-cache", str(cache_dir),
+        "--upstream-config-md5", cfg_md5,
+        "--upstream-code-md5", code_md5,
+        "--progress-file", str(progress_file),
+        "--run-id", "test_zero_win_pid_retained",
+    ]
+    result = subprocess.run(
+        cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, (
+        f"Analyzer subprocess failed:\nSTDOUT={result.stdout[-2000:]}\n"
+        f"STDERR={result.stderr[-2000:]}"
+    )
+
+    summaries = list(output_dir.rglob("player_impact_summary.json"))
+    assert summaries, "No player_impact_summary.json emitted"
+    with open(summaries[0], encoding="utf-8") as f:
+        summary = json.load(f)
+    pi = summary.get("player_impact", {})
+
+    # Step 1: confirm pid 666 IS in aggregate (analyzer must have seen it).
+    top20 = pi.get("payout_ids_top20", [])
+    pid666_agg = next((r for r in top20 if str(r.get("payout_id")) == "666"), None)
+    assert pid666_agg is not None, (
+        "pid 666 expected in payout_ids_top20 for M31 (FreeSpin trigger marker; "
+        "if missing, this machine doesn't exercise the regression — fixture issue)"
+    )
+    assert pid666_agg.get("hit_count", 0) > 0, (
+        f"pid 666 in aggregate must have hit_count > 0 (got {pid666_agg.get('hit_count')}). "
+        "Without observed fires this test cannot exercise the regression."
+    )
+    assert float(pid666_agg.get("total_win", 1)) == 0.0, (
+        f"pid 666 expected to have total_win == 0 (trigger marker), got "
+        f"{pid666_agg.get('total_win')}. Test assumption broken."
+    )
+
+    # Step 2: pid 666 MUST appear in ST43_paid split table despite 0 win.
+    pbst = pi.get("payouts_by_spin_type", {})
+    st43 = pbst.get("ST43_paid", [])
+    pid666_split = next((r for r in st43 if str(r.get("payout_id")) == "666"), None)
+    assert pid666_split is not None, (
+        "pid 666 MUST be retained in payouts_by_spin_type['ST43_paid'] even "
+        "with total_win=0. Previous filter on st_win silently dropped this row "
+        "and the aggregate panel showed a pid (666) that the split panel did not — "
+        "the data inconsistency user observed as '拆分跟总览不一样'. "
+        f"Current ST43_paid pid list: {[r.get('payout_id') for r in st43]}"
+    )
+    # Step 3: pid 666 split row must carry hits but 0 RTP contribution.
+    assert pid666_split.get("hit_count", 0) > 0
+    assert float(pid666_split.get("rtp_contribution_pp", 1.0)) == 0.0
