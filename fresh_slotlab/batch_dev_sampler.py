@@ -40,7 +40,6 @@ try:
         post_json_with_retry,
         utc_now,
         _compute_upstream_schema_fingerprint,
-        _lookup_machine_md5,
         _payload_sha256,
     )
 except ImportError:
@@ -51,9 +50,18 @@ except ImportError:
         post_json_with_retry,
         utc_now,
         _compute_upstream_schema_fingerprint,
-        _lookup_machine_md5,
         _payload_sha256,
     )
+
+# P1-B1 round-2 critic R3: third callsite migrated to canonical.
+# Previously imported `_lookup_machine_md5` from PIA (which was itself
+# an `as` alias for `lookup_machine_md5` from the canonical module);
+# now imports from canonical directly per memory
+# feedback_enumerate_safety_paths.md.
+try:
+    from fresh_slotlab.machine_md5 import lookup_machine_md5 as _lookup_machine_md5
+except ImportError:
+    from machine_md5 import lookup_machine_md5 as _lookup_machine_md5  # type: ignore[no-redef]
 
 RAWDATA_DIR = Path(__file__).resolve().parent.parent / "rawdata"
 

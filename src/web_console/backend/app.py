@@ -555,27 +555,35 @@ def _get_machine_md5(
 
     When ``mode`` is provided AND the entry has a ``modesMd5`` map
     (virtual registry, per-mode md5 2026-04-22), returns the md5
-    specific to that mode. Otherwise falls back to the top-level
-    ``configSummaryMd5`` / ``codeSummaryMd5`` (real-console schema
-    where all modes of a machine share the same reel strip).
+    specific to that mode. Otherwise falls back to the canonical
+    real-machine flat-schema lookup (``configSummaryMd5`` /
+    ``codeSummaryMd5``) via ``fresh_slotlab.machine_md5.lookup_machine_md5``
+    — the single source of truth for the real-console schema.
 
     Mode-aware callers (classify_chunks, generate-report, pre-batch
     refresh) should pass ``mode`` so virtual machines with per-mode
     reel strips classify each mode's chunks against the right md5.
+
+    P1-B1 (phase1/07_lookup_machine_md5_dedup §1 citing 04_v5 §6.1):
+    flat-schema fallback now delegates to canonical instead of duplicating
+    the read logic inline.
     """
+    # P1-B1: import canonical real-machine lookup (lazy — mirrors app.py style
+    # for fresh_slotlab imports; avoids circular-import risk at module load).
+    from fresh_slotlab.machine_md5 import lookup_machine_md5  # noqa: PLC0415
+
     target = machines_config if machines_config is not None else MACHINES_CONFIG
-    if not target.exists():
-        return "", ""
-    try:
-        data = read_json(target) or {}
-        for m in data.get("machines", []):
-            if m.get("machine") != machine:
-                continue
-            # Prefer per-mode md5 when available + caller asked for
-            # a specific mode. Falls through to top-level if mode isn't
-            # registered under modesMd5 (real-console path, or legacy
-            # virtual entry predating the 2026-04-22 rewrite).
-            if mode is not None:
+    if mode is not None:
+        # Virtual-machine path: check for per-mode modesMd5 block first.
+        # Only real machines + legacy virtual entries lack modesMd5; those
+        # fall through to the canonical flat-schema lookup below.
+        if not target.exists():
+            return "", ""
+        try:
+            data = read_json(target) or {}
+            for m in data.get("machines", []):
+                if m.get("machine") != machine:
+                    continue
                 per_mode = (m.get("modesMd5") or {}).get(str(int(mode)))
                 if isinstance(per_mode, dict) and (
                     per_mode.get("configSummaryMd5") or per_mode.get("codeSummaryMd5")
@@ -584,10 +592,18 @@ def _get_machine_md5(
                         str(per_mode.get("configSummaryMd5", "")),
                         str(per_mode.get("codeSummaryMd5", "")),
                     )
-            return (str(m.get("configSummaryMd5", "")), str(m.get("codeSummaryMd5", "")))
-    except Exception:
-        pass
-    return "", ""
+                # No modesMd5 for this mode — fall through to flat-schema below.
+                break
+        except (OSError, json.JSONDecodeError, TypeError):
+            # Narrowed per P1-B1 round-2 critic R2 to match canonical
+            # `fresh_slotlab.machine_md5.lookup_machine_md5`'s exception
+            # spec. Matches what JSON-on-disk reads can plausibly raise;
+            # any other exception (KeyError, AttributeError, etc.) is a
+            # programming bug worth surfacing rather than swallowing.
+            return "", ""
+    # Flat-schema path (real machines + virtual machines without modesMd5):
+    # delegate to canonical single source of truth.
+    return lookup_machine_md5(machine, target)
 
 
 def _empty_rawdata_status(**extra: Any) -> dict[str, Any]:

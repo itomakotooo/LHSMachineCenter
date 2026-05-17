@@ -56,6 +56,9 @@ try:
     # P1-B4: t_critical_95 consolidated to sampler.py (canonical source).
     # Ticket: phase1/01_t_critical_table_dedup §1.
     from fresh_slotlab.sampler import t_critical_95
+    # P1-B1: _lookup_machine_md5 consolidated to machine_md5.py (canonical source).
+    # Ticket: phase1/07_lookup_machine_md5_dedup §1.
+    from fresh_slotlab.machine_md5 import lookup_machine_md5 as _lookup_machine_md5
 except ImportError:  # running as a standalone script, not a package member
     from trigger_sessions import (  # type: ignore[no-redef]
         _round_has_credited_win,
@@ -78,6 +81,7 @@ except ImportError:  # running as a standalone script, not a package member
     )
     from rawdata_index import update_entry as _rawdata_index_update_entry  # type: ignore[no-redef]
     from sampler import t_critical_95  # type: ignore[no-redef]  # P1-B4
+    from machine_md5 import lookup_machine_md5 as _lookup_machine_md5  # type: ignore[no-redef]  # P1-B1
 
 DEFAULT_ENDPOINT_URL = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant"
 ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
@@ -2135,28 +2139,11 @@ def compute_analyzer_version() -> str:
     return hashlib.sha256(data).hexdigest()[:12]
 
 
-def _lookup_machine_md5(machine: str) -> tuple[str, str]:
-    """Look up (config_md5, code_md5) for a machine from configs/machines.json.
-
-    Returns ("", "") if not found — the envelope stores empty strings so
-    the file is still valid but MD5 verification is effectively disabled.
-    """
-    try:
-        cfg_path = Path(__file__).resolve().parent.parent / "configs" / "machines.json"
-        if not cfg_path.exists():
-            return "", ""
-        data = json.loads(cfg_path.read_text(encoding="utf-8"))
-        for m in data.get("machines", []):
-            if m.get("machine") == machine:
-                return (
-                    str(m.get("configSummaryMd5", "")),
-                    str(m.get("codeSummaryMd5", "")),
-                )
-    except (OSError, json.JSONDecodeError, TypeError):
-        # Data-level: missing / malformed machines.json. MD5 tagging is
-        # best-effort; reports stay valid without it.
-        pass
-    return "", ""
+# _lookup_machine_md5 is imported from fresh_slotlab.machine_md5 at module top
+# (P1-B1: phase1/07_lookup_machine_md5_dedup §1 citing 04_v5 §6.1).
+# The name is kept as a module-level attribute so callers (including
+# _save_chunk_cache below) can be monkeypatched in tests via
+# `monkeypatch.setattr(pia, "_lookup_machine_md5", ...)`.
 
 
 def _save_chunk_cache(
