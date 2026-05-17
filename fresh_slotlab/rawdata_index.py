@@ -75,6 +75,43 @@ INDEX_VERSION = 1
 _INDEX_LOCK = threading.Lock()
 
 
+def _persist_lock_degraded(rawdata_root: Path, reason: str, exc: BaseException) -> None:
+    """One-shot diagnostic when the OS-level lock degrades to in-process-only.
+
+    Per memory/feedback_no_silent_swallow.md: silent fall-through to a weaker
+    locking mode must be observable by operators so they can investigate
+    (AV/EDR interference, network share, permission issue, etc.).
+
+    One-shot: if the diagnostic file already exists we skip the write to avoid
+    log spam on persistent degradation conditions. Manual delete of the file
+    re-arms the diagnostic.
+
+    Last-resort fallback: if the disk write itself fails, print to stderr — we
+    don't swallow the diagnostic-write failure per feedback_no_silent_swallow.md.
+    """
+    diag_path = rawdata_root / f"{INDEX_FILENAME}.lock_degraded.json"
+    if diag_path.exists():
+        return  # one-shot; already flagged — operator must manually delete to re-arm
+    try:
+        diag_path.parent.mkdir(parents=True, exist_ok=True)
+        diag_path.write_text(
+            json.dumps({
+                "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "platform": sys.platform,
+                "reason": reason,
+                "error": f"{exc.__class__.__name__}: {exc}",
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as inner_exc:
+        # Last-resort stderr — don't silently swallow per feedback_no_silent_swallow.md.
+        print(
+            f"[rawdata-index] FAILED to persist lock-degraded diagnostic: "
+            f"{inner_exc.__class__.__name__}: {inner_exc}",
+            file=sys.stderr,
+        )
+
+
 @contextmanager
 def _cross_process_index_lock(rawdata_root: Path) -> Iterator[None]:
     """Hold an exclusive OS-level lock on `_index.json.lock` for the
@@ -111,11 +148,14 @@ def _cross_process_index_lock(rawdata_root: Path) -> Iterator[None]:
             # don't write any meaningful content into the lockfile.
             lockfile.touch(exist_ok=True)
             f = open(lockfile, "r+b")
-        except OSError:
+        except OSError as _open_exc:
             # Can't even open the lockfile — degrade to within-
             # process-only and continue. The caller's read-modify-write
             # is still atomic per-process via os.replace, so single-
             # process correctness is preserved.
+            # Phase 1 fix: one-shot diagnostic per feedback_no_silent_swallow.md
+            # so operators see when OS-level locking has silently degraded.
+            _persist_lock_degraded(rawdata_root, "lockfile_open_failed", _open_exc)
             yield
             return
 
@@ -128,11 +168,12 @@ def _cross_process_index_lock(rawdata_root: Path) -> Iterator[None]:
                 # this is plenty.
                 msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
                 os_lock_acquired = True
-            except (OSError, ImportError):
+            except (OSError, ImportError) as _msvcrt_exc:
                 # Module missing or lock contention timeout. Continue
                 # with within-process lock only; the os.replace below
                 # is still per-process-atomic.
-                pass
+                # Phase 1 fix: one-shot diagnostic per feedback_no_silent_swallow.md.
+                _persist_lock_degraded(rawdata_root, "msvcrt_locking_failed", _msvcrt_exc)
         else:
             try:
                 import fcntl
@@ -141,8 +182,9 @@ def _cross_process_index_lock(rawdata_root: Path) -> Iterator[None]:
                 # are sub-second.
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                 os_lock_acquired = True
-            except (OSError, ImportError):
-                pass
+            except (OSError, ImportError) as _fcntl_exc:
+                # Phase 1 fix: one-shot diagnostic per feedback_no_silent_swallow.md.
+                _persist_lock_degraded(rawdata_root, "fcntl_flock_failed", _fcntl_exc)
 
         yield
     finally:

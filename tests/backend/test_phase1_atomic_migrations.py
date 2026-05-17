@@ -93,7 +93,9 @@ class TestSQLiteWALMode:
         finally:
             conn.close()
         # WAL sidecar files should now exist
-        assert (tmp_path / "test.db-wal").exists() or (tmp_path / "test.db").stat().st_size > 0
+        assert (tmp_path / "test.db-wal").exists(), (
+            "WAL sidecar missing — PRAGMA journal_mode=WAL silently failed?"
+        )
 
 
 class TestChartJsVendored:

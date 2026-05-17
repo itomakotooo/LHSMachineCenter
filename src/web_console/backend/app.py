@@ -2163,6 +2163,12 @@ def _build_rawdata_overview(
 # Performance: in-memory cache keyed by file mtime_ns; atomic writes
 # via temp + os.replace; O(machines × modes) bootstrap walk runs once.
 _STATIC_ATTRS_CACHE: dict = {"mtime": 0, "data": None}
+# Phase 1 fix: guard parallel to _LOCK_CACHE_GUARD (added for _LOCK_CACHE in
+# Phase 1 commit cec5012; _STATIC_ATTRS_CACHE has the IDENTICAL TOCTOU shape
+# and was left unguarded — caught by impl-critic retroactive review).
+# Closes the race where concurrent _load + _save leave (mtime, data) in
+# an inconsistent state (mtime says fresh, data is stale or mid-build).
+_STATIC_ATTRS_CACHE_GUARD = threading.Lock()
 
 # ── In-use protection (2026-04-20 round 6) ──────────────────────────
 # Set of (machine, mode) pairs currently being sampled or consumed by
@@ -2283,36 +2289,48 @@ def _static_attrs_path(machines_config: Path) -> Path:
 
 
 def _load_static_attrs(path: Path) -> dict:
+    """Phase 1 fix: cache check+update guarded by ``_STATIC_ATTRS_CACHE_GUARD``
+    so concurrent _load calls can't race and produce inconsistent (mtime, data)
+    state. Mirrors the ``_LOCK_CACHE_GUARD`` fix in ``_load_rawdata_locks``.
+    Mtime stat is outside the lock (cheap + non-blocking; same pattern as
+    ``_load_rawdata_locks`` per 04_v2 Phase 1 deliverable #8).
+    """
     try:
         cur_mtime = path.stat().st_mtime_ns if path.exists() else 0
     except OSError:
         cur_mtime = 0
-    if (_STATIC_ATTRS_CACHE["data"] is not None
-            and _STATIC_ATTRS_CACHE["mtime"] == cur_mtime):
-        return _STATIC_ATTRS_CACHE["data"]
-    if not path.exists():
-        data: dict = {}
-    else:
-        try:
-            data = read_json(path) or {}
-        except Exception:
-            data = {}
-    data.setdefault("machines", {})
-    data.setdefault("feature_distribution", {})
-    data.setdefault("mechanics_distribution", {})
-    _STATIC_ATTRS_CACHE["mtime"] = cur_mtime
-    _STATIC_ATTRS_CACHE["data"] = data
-    return data
+    with _STATIC_ATTRS_CACHE_GUARD:
+        if (_STATIC_ATTRS_CACHE["data"] is not None
+                and _STATIC_ATTRS_CACHE["mtime"] == cur_mtime):
+            return _STATIC_ATTRS_CACHE["data"]
+        if not path.exists():
+            data: dict = {}
+        else:
+            try:
+                data = read_json(path) or {}
+            except Exception:
+                data = {}
+        data.setdefault("machines", {})
+        data.setdefault("feature_distribution", {})
+        data.setdefault("mechanics_distribution", {})
+        _STATIC_ATTRS_CACHE["mtime"] = cur_mtime
+        _STATIC_ATTRS_CACHE["data"] = data
+        return data
 
 
 def _save_static_attrs(path: Path, data: dict) -> None:
-    """Phase 1 deploy: atomic + per-file-locked write."""
+    """Phase 1 deploy: atomic + per-file-locked write.
+    Phase 1 fix: cache update guarded by ``_STATIC_ATTRS_CACHE_GUARD``
+    so concurrent _load can't observe a partial update (mtime written,
+    data not yet — or vice versa). Mirrors ``_save_rawdata_locks`` pattern.
+    """
     atomic_json_write(path, data)
-    try:
-        _STATIC_ATTRS_CACHE["mtime"] = path.stat().st_mtime_ns
-    except OSError:
-        pass
-    _STATIC_ATTRS_CACHE["data"] = data
+    with _STATIC_ATTRS_CACHE_GUARD:
+        try:
+            _STATIC_ATTRS_CACHE["mtime"] = path.stat().st_mtime_ns
+        except OSError:
+            pass
+        _STATIC_ATTRS_CACHE["data"] = data
 
 
 def _rebuild_static_distributions(data: dict) -> None:
@@ -5223,12 +5241,17 @@ class RunManager:
                             if isinstance(item, dict)
                             and item.get("report_version") != report_version
                         ]
-                        write_json(index_path, filtered)
+                        # Phase 1 deploy: atomic + per-file-locked (parallel to
+                        # _update_report_index at app.py:5090). Closes the
+                        # delete_run race: concurrent finalize + delete could
+                        # otherwise both read the same index baseline and one
+                        # would overwrite the other's update (Scenario 16).
+                        atomic_json_write(index_path, filtered)
                         # latest.json rolls back to the newest remaining
                         # item (list is append-ordered); if we just drained
                         # the last version, clear latest too.
                         if filtered:
-                            write_json(latest_path, filtered[-1])
+                            atomic_json_write(latest_path, filtered[-1])
                         elif latest_path.exists():
                             latest_path.unlink()
                 except (OSError, json.JSONDecodeError, TypeError):
@@ -5304,6 +5327,71 @@ def resolved_risk_thresholds() -> dict[str, int]:
     if high < medium:
         high = medium
     return {"medium_bytes": medium, "high_bytes": high}
+
+
+# ── MD5 refresh thread — testable error-persistence helpers ──────────────────
+# Extracted to module level so impl-tester can monkeypatch _do_refresh_machines_md5
+# and assert disk state without going through the full FastAPI TestClient.
+# Motivation: feedback_no_silent_swallow.md — the closure in start_batch_run
+# had an untestable inner OSError swallow; these helpers are each independently
+# exercisable. (Phase 1 fix, retroactive impl-critic item Fix 4.)
+
+
+def _md5_refresh_error_path(state_dir: Path) -> Path:
+    """State path for the persistent MD5 refresh error diagnostic."""
+    return state_dir / "md5_refresh_error.json"
+
+
+def _persist_md5_refresh_error(
+    state_dir: Path, server_id: str, exc: BaseException
+) -> None:
+    """Write diagnostic to disk per memory/feedback_no_silent_swallow.md.
+
+    Last-resort fallback: if the disk write fails, write to stderr — never
+    silently swallow the diagnostic-write failure (no infinite recursion of
+    logging because stderr is always available).
+
+    **Concurrency note (single-user deploy)**: this helper uses raw
+    ``write_text`` (not ``atomic_json_write``) because the deploy target
+    is single-machine Windows with a small number of planners
+    (see ``memory/project_internal_deploy_intent.md``). Under genuinely
+    concurrent calls (e.g. 10+ daemon threads firing simultaneously), Windows
+    may return ``PermissionError`` on contending writers, which falls through
+    to the stderr branch above; file ends up with one writer's content
+    (no torn writes since ``write_text`` is fd-buffered + ``close()`` flushes
+    atomically on most filesystems). For the documented deploy intent this
+    is acceptable; if the deploy ever sees high concurrent failure rates,
+    migrate to ``atomic_json_write``. Flagged by impl-critic P1-fix review
+    2026-05-17 (``session_artifacts/_impl/p1_fix/critique.md`` §3 item 1).
+    """
+    err_path = _md5_refresh_error_path(state_dir)
+    try:
+        err_path.parent.mkdir(parents=True, exist_ok=True)
+        err_path.write_text(
+            json.dumps({
+                "ts": utc_now(),
+                "server_id": server_id,
+                "error": f"{exc.__class__.__name__}: {exc}",
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as inner_exc:
+        # Last-resort: stderr. Don't silently swallow per feedback_no_silent_swallow.md.
+        print(
+            f"[md5-refresh] FAILED to persist error diagnostic: "
+            f"{inner_exc.__class__.__name__}: {inner_exc}",
+            file=sys.stderr,
+        )
+
+
+def _clear_md5_refresh_error(state_dir: Path) -> None:
+    """Clear the persistent diagnostic on success so UI doesn't show stale failure."""
+    err_path = _md5_refresh_error_path(state_dir)
+    try:
+        if err_path.exists():
+            err_path.unlink()
+    except OSError:
+        pass  # Stale file is cosmetic; not worth a diagnostic about a diagnostic.
 
 
 def create_app(
@@ -5847,33 +5935,19 @@ def create_app(
                 # diagnostic to disk so operators can see WHY the refresh
                 # didn't land. Picked up by GET /api/system-state
                 # md5_refresh_error field (Phase 1 deliverable #11).
-                # Falls back to silent swallow only when the diagnostic
-                # write itself fails — no infinite recursion of logging.
-                err_path = sd / "md5_refresh_error.json"
+                # Phase 1 fix: logic extracted to module-level helpers
+                # (_persist_md5_refresh_error / _clear_md5_refresh_error)
+                # so impl-tester can exercise each path in isolation without
+                # going through the full FastAPI TestClient.
                 try:
                     _do_refresh_machines_md5(
                         server_id=_refresh_sid, raise_on_error=False,
                     )
                     # Success — clear any prior error so UI doesn't show
-                    # stale failure. Best-effort unlink; missing is fine.
-                    try:
-                        if err_path.exists():
-                            err_path.unlink()
-                    except OSError:
-                        pass
+                    # stale failure.
+                    _clear_md5_refresh_error(sd)
                 except Exception as exc:  # noqa: BLE001
-                    try:
-                        err_path.parent.mkdir(parents=True, exist_ok=True)
-                        err_path.write_text(
-                            json.dumps({
-                                "ts": utc_now(),
-                                "server_id": _refresh_sid,
-                                "error": f"{exc.__class__.__name__}: {exc}",
-                            }, ensure_ascii=False, indent=2),
-                            encoding="utf-8",
-                        )
-                    except OSError:
-                        pass
+                    _persist_md5_refresh_error(sd, _refresh_sid, exc)
             _threading.Thread(
                 target=_refresh_md5_async,
                 daemon=True,
@@ -7886,10 +7960,11 @@ def create_app(
                             if isinstance(e, dict)
                             and e.get("report_version") != version
                         ]
-                        index_path.write_text(
-                            json.dumps(remaining, indent=2, ensure_ascii=False),
-                            encoding="utf-8",
-                        )
+                        # Phase 1 deploy: atomic + per-file-locked; mirrors
+                        # _update_report_index at app.py:5090. Prevents the
+                        # Scenario 16 race: concurrent finalize + delete-version
+                        # on same (machine, mode) see same index baseline.
+                        atomic_json_write(index_path, remaining)
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -7905,10 +7980,9 @@ def create_app(
                                 key=lambda e: str(e.get("report_version") or ""),
                                 reverse=True,
                             )[0]
-                            latest_path.write_text(
-                                json.dumps(survivor, indent=2, ensure_ascii=False),
-                                encoding="utf-8",
-                            )
+                            # Phase 1 deploy: atomic write, parallel to
+                            # index_path write above.
+                            atomic_json_write(latest_path, survivor)
                         else:
                             latest_path.unlink(missing_ok=True)
                 except Exception:  # noqa: BLE001
@@ -8257,21 +8331,25 @@ def create_app(
         # simultaneously, silently wiping all 393 rows from the fleet
         # registry. The per-file lock held across read+apply+write
         # makes the operation serializable.
-        _stats_holder: list[dict] = []
+        # Optional A (Phase 1 fix): single-element dict replaces the list-append
+        # pattern. If atomic_json_read_modify_write ever gains internal retry
+        # semantics, `[0]` would return stale stats from the first (failed)
+        # attempt; the dict-set pattern always reflects the final call's stats.
+        _stats_holder: dict[str, dict] = {}
 
         def _apply(current: Any) -> dict:
             base = current if isinstance(current, dict) else {"machines": []}
             updated, stats_local = apply_md5_refresh(
                 base, data, variants_map,
             )
-            _stats_holder.append(stats_local)
+            _stats_holder["stats"] = stats_local
             return updated
 
         existing = atomic_json_read_modify_write(
             Path(mc), _apply, default={"machines": []},
             trailing_newline=True,
         )
-        stats = _stats_holder[0]
+        stats = _stats_holder["stats"]
         _save_server_snapshot(server_id, data)
         return {
             "ok": True,
@@ -8507,10 +8585,11 @@ def create_app(
                             if isinstance(idx, list):
                                 idx = [e for e in idx if isinstance(e, dict)
                                        and e.get("report_version") == survivor_name]
-                                index_path.write_text(
-                                    json.dumps(idx, indent=2, ensure_ascii=False),
-                                    encoding="utf-8",
-                                )
+                                # Phase 1 deploy: atomic + per-file-locked;
+                                # mirrors _update_report_index at app.py:5090.
+                                # Prune + concurrent finalize on same (m, mode)
+                                # could race without this; now serialized.
+                                atomic_json_write(index_path, idx)
                         except Exception:
                             pass
                     # latest.json: remove if it now points at a deleted
@@ -8524,10 +8603,9 @@ def create_app(
                                 if survivor_name:
                                     # Point latest at the survivor.
                                     latest["report_version"] = survivor_name
-                                    latest_path.write_text(
-                                        json.dumps(latest, indent=2, ensure_ascii=False),
-                                        encoding="utf-8",
-                                    )
+                                    # Phase 1 deploy: atomic write, parallel
+                                    # to index_path write above.
+                                    atomic_json_write(latest_path, latest)
                                 else:
                                     latest_path.unlink(missing_ok=True)
                         except Exception:
