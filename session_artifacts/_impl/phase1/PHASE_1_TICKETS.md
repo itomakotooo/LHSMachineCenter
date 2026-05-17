@@ -224,20 +224,22 @@ Recommended **first ticket** (proof-of-concept for impl-* team): **P1-B4 t-criti
 
 ## Status tracker (filled in as tickets complete)
 
-| Ticket | Status | Branch commit | impl-critic verdict |
-|---|---|---|---|
-| P1-A1 | NOT STARTED | — | — |
-| P1-A2 | NOT STARTED | — | — |
-| P1-A3 | NOT STARTED | — | — |
-| P1-A4 | NOT STARTED | — | — |
-| P1-A5 | NOT STARTED | — | — |
-| P1-B1 | NOT STARTED | — | — |
-| P1-B2 | NOT STARTED | — | — |
-| P1-B3 | NOT STARTED | — | — |
-| **P1-B4** (FIRST) | **READY** (`00_ticket.md` written) | — | — |
-| P1-B5 | NOT STARTED | — | — |
-| P1-B6 | NOT STARTED | — | — |
-| P1-C1 | NOT STARTED | — | — |
+All 12 briefs written. Each `00_ticket.md` follows the §1-§7 template (scope / brief refs / contract / out-of-scope / rollback / risk / team workflow).
+
+| Ticket | Brief | Status | Branch commit | impl-critic verdict |
+|---|---|---|---|---|
+| **P1-B4** (FIRST POC) | [01_t_critical_table_dedup/00_ticket.md](01_t_critical_table_dedup/00_ticket.md) | **READY** | — | — |
+| P1-A1 (1a, BLOCKING) | [02_three_invocation_parity_test/00_ticket.md](02_three_invocation_parity_test/00_ticket.md) | READY | — | — |
+| P1-A2 (1a, BLOCKING) | [03_three_summary_md5_writer_parity/00_ticket.md](03_three_summary_md5_writer_parity/00_ticket.md) | READY | — | — |
+| P1-A5 (1b, bug fix) | [04_compare_reports_cache_bust_race/00_ticket.md](04_compare_reports_cache_bust_race/00_ticket.md) | READY | — | — |
+| P1-A3 (1b, docs) | [05_virtual_paytable_probe_docs/00_ticket.md](05_virtual_paytable_probe_docs/00_ticket.md) | READY | — | — |
+| P1-A4 (1b, docs+test) | [06_classify_chunks_historical_spec/00_ticket.md](06_classify_chunks_historical_spec/00_ticket.md) | READY | — | — |
+| P1-B1 (1c, dedup) | [07_lookup_machine_md5_dedup/00_ticket.md](07_lookup_machine_md5_dedup/00_ticket.md) | READY | — | — |
+| P1-B2 (1c, dedup) | [08_summary_md5_patcher_dedup/00_ticket.md](08_summary_md5_patcher_dedup/00_ticket.md) | READY | — | — |
+| P1-B3 (1c, dedup) | [09_session_ci_halfwidth_dedup/00_ticket.md](09_session_ci_halfwidth_dedup/00_ticket.md) | READY | — | — |
+| P1-B5 (1c, dedup) | [10_inference_trigger_dedup/00_ticket.md](10_inference_trigger_dedup/00_ticket.md) | READY | — | — |
+| P1-B6 (1d, globals) | [11_rawdata_root_to_instance/00_ticket.md](11_rawdata_root_to_instance/00_ticket.md) | READY | — | — |
+| P1-C1 (1d, broader) | [12_remaining_globals_and_pure_funcs/00_ticket.md](12_remaining_globals_and_pure_funcs/00_ticket.md) | READY | — | — |
 
 ---
 
@@ -246,10 +248,16 @@ Recommended **first ticket** (proof-of-concept for impl-* team): **P1-B4 t-criti
 After Claude Code restart (required to hot-load `.claude/agents/impl-*.md`):
 
 1. **Smoke-test the 4 impl-* agents** per `docs/IMPL_TEAM_PROCESS.md §9`. Expected: 6-15 sec each. If any fail "Agent type not found" → another restart.
-2. **Run ticket P1-B4** through the impl-* team flow:
+2. **Run ticket P1-B4** (proof-of-concept) through the impl-* team flow:
    - Spawn `impl-implementer` + `impl-tester` in parallel (Wave 1) with `session_artifacts/_impl/phase1/01_t_critical_table_dedup/00_ticket.md` as brief
    - Wait for both notifications
    - Spawn `impl-verifier` + `impl-critic` in parallel (Wave 2) with full chain (W1 outputs)
    - Wait for both notifications
    - Main session reads `04_verification.md` + `05_critique.md` → writes `06_resolution.md` → commits with critic's `## Self-critique` section
-3. **Then proceed to Batch 1a** (P1-A1 + P1-A2 in parallel) before any further dedup tickets.
+3. **Then proceed in batch order**:
+   - **Batch 1a (parallel)**: P1-A1 + P1-A2 — baseline contracts. BLOCKING for 1c.
+   - **Batch 1b (parallel)**: P1-A5 + P1-A3 + P1-A4 — bug fix + docs. Independent.
+   - **Batch 1c (parallel after 1a)**: P1-B1 + P1-B2 + P1-B3 + P1-B5 — remaining 4 dedups (B4 already done).
+   - **Batch 1d (serial)**: P1-B6 then P1-C1. Globals migration. Highest care.
+
+Estimated wall time for full Phase 1 (12 tickets): **6-9 hours of team time**, plus main session coordination. Parallelizable batches can compress further.
