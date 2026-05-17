@@ -924,6 +924,114 @@ def _classify_chunks(
     historical_spins, upstream_config_md5, upstream_code_md5}`` where
     each group is a list of dicts ``{path, spins, mtime, config_md5,
     code_md5}``.
+
+    ── Consumer enumeration (brief §3 C1) ──────────────────────────────
+
+    Every caller's semantics are documented here so reviewers can verify
+    that historical chunks are never silently auto-deleted or passed to
+    the analyzer without explicit operator intent (per memory
+    ``feedback_md5_is_a_tag_not_a_destruction_signal.md``).
+
+    **Display-only consumers** (read all three buckets; NO deletion,
+    NO analyzer input):
+
+    * ``_build_rawdata_overview`` (~line 2087) — walks every (machine,
+      mode), reads kept/deletable/historical byte counts + chunk counts
+      to build the rawdata overview panel. Purely aggregates numbers for
+      the UI; does not pass any chunks to the analyzer or delete
+      anything.
+
+    * ``get_rawdata_status`` endpoint (~line 5971, ``GET
+      /api/rawdata/{machine}``) — reads all three buckets, groups chunks
+      by (config_md5, code_md5) into ``versions`` for the per-mode
+      rawdata panel. All three buckets contribute to the display
+      breakdown (kept_chunks, deletable_chunks, historical_chunks in
+      ``status["classified"]``). No deletion; no analyzer input.
+
+    **Deletion consumers** (use deletable + historical for mtime-based
+    eviction; NEVER delete kept; historical deletion is always
+    explicitly-triggered, not md5-drift-triggered):
+
+    * ``delete_rawdata`` (~line 1133, triggered by manual 一键清理 /
+      per-mode 清理 button or ``POST /api/cache/cleanup``) — merges
+      ``cls["deletable"] + cls["historical"]`` into the eviction pool,
+      unlinks in mtime order until disk target or the list is exhausted.
+      Locked (machine, mode) pairs and in-use pairs are skipped entirely.
+      ``cls["kept"]`` is never touched. historical chunks are eligible
+      because they have no retention protection (user 2026-04-21: "保底
+      only applies to current md5").
+      **Force-flag bypass note (P1-A4 R4)**: when the caller passes
+      ``force=True`` the function takes the ``shutil.rmtree`` path
+      (whole mode directory) — `_classify_chunks` is NOT consulted at
+      all. The force path is operator-explicit and removes the entire
+      (machine, mode) tree including all three buckets.
+
+    * ``_auto_cleanup_for_space`` (~line 2617, disk-pressure auto-evict)
+      — same pool logic: ``deletable + historical``, mtime-sorted
+      oldest-first, stops at free-space target. Locked + in-use (machine,
+      mode) pairs skipped. This function is the ONLY place where
+      historical chunks can be deleted automatically (not by md5 drift —
+      by disk pressure). See 2026-04-20 M1|1 incident.
+
+    * ``_enumerate_rawdata_deletable`` (~line 8766, candidate collector
+      shared by the background auto-cleanup scheduler) — walks rd_root,
+      calls this function per (machine, mode), appends every entry in
+      ``cls["deletable"] + cls["historical"]`` to the returned candidate
+      list, sorted by mtime. Used by the periodic cleanup task that calls
+      ``_auto_cleanup_for_space``. Same lock + in-use guards as above.
+
+    **Analyzer-input consumers** (use kept + deletable; historical ONLY
+    when explicitly md5-filtered by the operator):
+
+    * ``_run_generate_report`` (~line 6789, in-process analyzer replay;
+      inject site for the filter check is at ~line 6845) — default
+      path (no md5 filter): uses ``classified["kept"] +
+      classified["deletable"]`` only. Historical chunks are NEVER
+      passed to the analyzer in this path. md5-filter path (operator
+      requests a historical-md5 cell via config_md5 + code_md5 query
+      params): merges all three buckets then filters to the exact md5
+      pair — effectively turns an explicitly-chosen historical bucket
+      into analyzer input. This is intentional and safe because the
+      operator explicitly named the version.
+
+    * ``_prepare_batch_gen_item`` (~line 7136, batch-generate parent
+      thread) — Python-level filter computes ``usable =
+      classified["kept"] + classified["deletable"]`` for **bookkeeping
+      / quota math only**. The actual analyzer subprocess input is the
+      raw ``chunk_dir`` (mode directory) passed to the batch worker
+      (``scripts/_batch_gen_worker.py``) as ``--from-cache <chunk_dir>``.
+      The worker does NOT forward ``--upstream-config-md5`` /
+      ``--upstream-code-md5`` filter args today, so the analyzer
+      subprocess defaults to "no filter" and reads ALL
+      ``chunk_*.json`` in the directory — INCLUDING historical chunks.
+      **The Python ``usable`` filter does NOT propagate to the
+      subprocess.** This is the P1-A4 round-2 critic finding (R1) and
+      a known prod issue requiring a separate fix ticket (TODO: open
+      ticket to forward md5 filter args from `_prepare_batch_gen_item`
+      → `_batch_gen_worker.py` → analyzer CLI). The regression test in
+      ``tests/backend/test_classify_chunks_historical_consumers.py``
+      includes an xfail-marked test that asserts the future-correct
+      behavior; flip to non-xfail when the bug is fixed.
+
+    **Out-of-scope non-consumer** (per-version DELETE endpoint):
+
+    * ``DELETE /api/rawdata/{machine}/mode/{mode}/version`` (~line
+      6042-6162) — does NOT call ``_classify_chunks``. It iterates raw
+      chunk files directly and matches by (config_md5, code_md5) in the
+      request body. Included here for completeness: this is the surgical
+      per-version delete path; classification buckets are irrelevant
+      because the target version is specified explicitly.
+
+    ── Safety invariant ────────────────────────────────────────────────
+
+    Historical bucket is NEVER auto-deleted by md5 drift alone. Deletion
+    always goes through ``_auto_cleanup_for_space`` (disk pressure,
+    explicit 一键清理) or the per-version DELETE endpoint (operator
+    names the exact version). The md5 mismatch flag is a display tag
+    only — it does NOT trigger unlink. This was broken before 2026-04-20
+    via ``check_rawdata_status(auto_delete_mismatched=True)``; that
+    parameter has been removed. ``check_rawdata_status`` is now
+    read-only and does not accept any ``auto_delete_*`` argument.
     """
     mode_dir = rawdata_root / machine / f"mode_{mode}"
     empty = {

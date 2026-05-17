@@ -228,18 +228,27 @@ All 12 briefs written. Each `00_ticket.md` follows the §1-§7 template (scope /
 
 | Ticket | Brief | Status | Branch commit | impl-critic verdict |
 |---|---|---|---|---|
-| **P1-B4** (FIRST POC) | [01_t_critical_table_dedup/00_ticket.md](01_t_critical_table_dedup/00_ticket.md) | **READY** | — | — |
-| P1-A1 (1a, BLOCKING) | [02_three_invocation_parity_test/00_ticket.md](02_three_invocation_parity_test/00_ticket.md) | READY | — | — |
-| P1-A2 (1a, BLOCKING) | [03_three_summary_md5_writer_parity/00_ticket.md](03_three_summary_md5_writer_parity/00_ticket.md) | READY | — | — |
-| P1-A5 (1b, bug fix) | [04_compare_reports_cache_bust_race/00_ticket.md](04_compare_reports_cache_bust_race/00_ticket.md) | READY | — | — |
-| P1-A3 (1b, docs) | [05_virtual_paytable_probe_docs/00_ticket.md](05_virtual_paytable_probe_docs/00_ticket.md) | READY | — | — |
-| P1-A4 (1b, docs+test) | [06_classify_chunks_historical_spec/00_ticket.md](06_classify_chunks_historical_spec/00_ticket.md) | READY | — | — |
+| **P1-B4** | [01_t_critical_table_dedup/00_ticket.md](01_t_critical_table_dedup/00_ticket.md) | **SHIPPED** | `f8d8360` | APPROVE-WITH-REVISIONS → fixed (OI-1 R1) |
+| P1-A1 | [02_three_invocation_parity_test/00_ticket.md](02_three_invocation_parity_test/00_ticket.md) | SHIPPED | `859dc80` | APPROVE-WITH-REVISIONS r1+r2 → addressed; RR1 prod bug deferred to P1-B6 |
+| P1-A2 | [03_three_summary_md5_writer_parity/00_ticket.md](03_three_summary_md5_writer_parity/00_ticket.md) | SHIPPED | `90b3de5` | APPROVE-WITH-REVISIONS r1+r2 → addressed in round 2 |
+| P1-A5 | [04_compare_reports_cache_bust_race/00_ticket.md](04_compare_reports_cache_bust_race/00_ticket.md) | SHIPPED | `b26b6d3` (bundle) | APPROVE-WITH-REVISIONS R1 prod bug → fixed; R2+R3 docs |
+| P1-A3 | [05_virtual_paytable_probe_docs/00_ticket.md](05_virtual_paytable_probe_docs/00_ticket.md) | SHIPPED | `b26b6d3` (bundle) | APPROVE-WITH-REVISIONS R1+R2 docs → fixed |
+| P1-A4 | [06_classify_chunks_historical_spec/00_ticket.md](06_classify_chunks_historical_spec/00_ticket.md) | **READY for commit** | — | round 1 APPROVE-WITH-REVISIONS → round 2 APPROVE |
 | P1-B1 (1c, dedup) | [07_lookup_machine_md5_dedup/00_ticket.md](07_lookup_machine_md5_dedup/00_ticket.md) | READY | — | — |
 | P1-B2 (1c, dedup) | [08_summary_md5_patcher_dedup/00_ticket.md](08_summary_md5_patcher_dedup/00_ticket.md) | READY | — | — |
 | P1-B3 (1c, dedup) | [09_session_ci_halfwidth_dedup/00_ticket.md](09_session_ci_halfwidth_dedup/00_ticket.md) | READY | — | — |
 | P1-B5 (1c, dedup) | [10_inference_trigger_dedup/00_ticket.md](10_inference_trigger_dedup/00_ticket.md) | READY | — | — |
-| P1-B6 (1d, globals) | [11_rawdata_root_to_instance/00_ticket.md](11_rawdata_root_to_instance/00_ticket.md) | READY | — | — |
+| P1-B6 (1d, globals) | [11_rawdata_root_to_instance/00_ticket.md](11_rawdata_root_to_instance/00_ticket.md) | READY (+ embedded RR1 fix for `check_rawdata_status:3259`) | — | — |
 | P1-C1 (1d, broader) | [12_remaining_globals_and_pure_funcs/00_ticket.md](12_remaining_globals_and_pure_funcs/00_ticket.md) | READY | — | — |
+
+---
+
+## Known follow-ups (real prod bugs surfaced by Phase 1 team work; need separate tickets)
+
+| Bug | Surfaced by | Description | Status |
+|---|---|---|---|
+| `check_rawdata_status:3259` reads global `RAWDATA_ROOT` not `self._rawdata_root` | P1-A1 round-2 critic | Function bypasses the instance-attribute injection pattern; classic footgun per memory `feedback_subprocess_import_suicide_and_module_globals.md` | **EMBEDDED IN P1-B6** brief §3 C1 — will fix during RAWDATA_ROOT migration with regression test |
+| Batch path missing md5 filter forwarding | P1-A4 round-2 critic + tester xfail | `_prepare_batch_gen_item` does not include `upstream_config_md5`/`upstream_code_md5` in job dict; `_batch_gen_worker.py` does not forward as CLI args; analyzer reads all `chunk_*.json` including historical | **OPEN — no ticket yet**. Half-fix risk: fix must add keys to job dict AND forward as CLI flags in worker. xfail strict=True markers in `test_classify_chunks_historical_consumers.py` are the only enforcement; both must be removed together when fix lands. Candidate for Phase 2 or a P1 follow-up ticket. |
 
 ---
 
