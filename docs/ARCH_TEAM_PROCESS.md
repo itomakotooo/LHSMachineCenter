@@ -150,6 +150,57 @@ The two teams complement each other: arch-* designs the framework + shared code;
 
 ---
 
-## §9 Memory pointer
+## §9 Liveness check + troubleshooting (added 2026-05-17 after spawn opacity issues)
 
-For future sessions: searchable via `memory/feedback_arch_team_process.md` (auto-memory pointer added 2026-05-15).
+The Agent tool harness gives **limited mid-flight visibility**. To avoid panic-killing live agents (or assuming dead agents alive), use this procedure.
+
+### What coordinator CAN see
+
+- **Spawn response**: returns `agentId`. If Bash exit code = 0 + message says "Async agent launched successfully", harness accepted the spawn.
+- **`.output` file size**: stays **0 bytes during run** (harness writes the full JSONL transcript only at completion). 0 bytes is NORMAL for in-flight tasks, even tasks running 30+ min.
+- **`TaskOutput` tool with `block: false`**: returns harness's current status:
+  - `running` — OS-level subprocess alive (harness tracks via PID lifecycle)
+  - `completed` / `killed` / `error` — done states
+  - `not_found` — task already disposed (e.g., after kill + cleanup, or harness restart wiped state)
+- **Task notification**: pushed automatically when task completes (success/kill/error). Wait for it.
+
+### What coordinator CANNOT see mid-flight
+
+- Whether the agent's LLM is producing tokens or hung in a loop
+- Tool-call success/failure (lives in JSONL transcript; reading it via Read overflows context — **do not Read the .output path**)
+- Progress against the task plan
+
+### Liveness procedure
+
+When in doubt about an agent that's "running too long":
+
+1. **Check elapsed time vs baseline**: smoke tests (trivial write) = 6-13 sec; Wave 1 mapper/taxonomist/auditor = 8-13 min; Wave 2 designer = 7-12 min; Wave 3 critic/validator = 7-13 min. Beyond 2× baseline → suspect hang.
+2. **`TaskOutput block: false`**: if status = `running` AND time within 2× baseline → trust + wait. If status = anything else → act accordingly.
+3. **DO NOT panic-kill** based on "0 bytes .output" — that's the design, not a failure signal.
+4. **If killing**: prefer waiting at least 2× baseline first. The 2026-05-17 session lost a live Designer v4 because coordinator killed at ~30 min (1.5× v3 baseline); kill-time notification showed agent was alive about to write output.
+
+### Smoke test baseline (run after any harness restart or agent-definition change)
+
+After restarting Claude Code or editing any `.claude/agents/arch-*.md`, run smoke tests to verify all 6 agent types are recognized by harness:
+
+```
+For each arch-* agent type: spawn with trivial task (write single-line file to
+session_artifacts/_arch/_team_test/test_<role>.md). Expect 6-13 seconds. If
+spawn fails with "Agent type not found" → agent files haven't been hot-loaded;
+restart Claude Code session. If spawn succeeds but task notification never
+arrives → likely transient; respawn once before deeper diagnosis.
+```
+
+Verified 2026-05-17: all 6 types work post-restart. arch-mapper 10.4s / arch-taxonomist 10.7s / arch-coupling-auditor 12.6s / arch-designer 6.2s / arch-critic 8.0s / arch-validator 10.2s.
+
+### Failure modes observed (2026-05-17 session)
+
+1. **Spawn returns agentId but agent silently dies**: 1st Designer v4 attempt with `arch-designer` subagent_type post-restart. After 1 hour, TaskOutput returned `not_found` (harness had disposed it). Cause unknown — possibly race between restart-pickup of agent definitions and the spawn call. **Recovery**: respawn with same or fallback type.
+2. **Coordinator kills live agent based on "0 bytes" assumption**: 2nd Designer v4 attempt. Killed at ~10 min when agent was about to write. Lost the work. **Recovery**: addressed by this troubleshooting section + procedure above.
+3. **Spawn → immediate `not_found`**: 3rd Designer v4 attempt. Spawn returned agentId but TaskOutput within 60 sec returned `not_found`. Possibly harness in cleanup-pending state from previous kill. **Recovery**: respawn after 30+ sec delay.
+
+---
+
+## §10 Memory pointer
+
+For future sessions: searchable via `memory/feedback_arch_team_process.md` (auto-memory pointer added 2026-05-15; troubleshooting added 2026-05-17).
