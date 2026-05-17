@@ -534,30 +534,29 @@ def _run_inference_scripts(machine: str, mode: int) -> None:
     """Trigger infer_paytable + verify_machine_labels for the virtual
     machine after a sampling run completes.
 
-    Mirrors the behavior ``_run_post_analyzer_inference`` in
-    ``src/web_console/backend/app.py`` gives to the in-process
-    generate-report path — but that hook ONLY fires from
-    ``_run_generate_report``, not from the sampling path
-    (``_watch_run``). Result: the rwtree's Pay ID 总览 panel stayed at
-    "形状推断暂未运行" after sampling-via-UI, even though the user had
-    just produced fresh rawdata.
+    Thin wrapper around ``fresh_slotlab.post_inference.run_post_analyzer_inference``
+    (P1-B5 — inference-trigger dedup; ticket §3 C1 + C2 citing
+    ``session_artifacts/_arch/03_coupling_audit.md §4.5``).
 
-    Running the scripts here (in the virtual_analyzer subprocess,
-    after delegate returns) keeps the fix out of
-    ``src/web_console/backend/app.py`` per the 2026-04-22 structural
-    guideline: virtual-only behavior must not leak into main-project
+    Original motivation preserved: mirrors the behavior
+    ``_run_post_analyzer_inference`` in ``src/web_console/backend/app.py``
+    gives to the in-process generate-report path — but that hook ONLY fires
+    from ``_run_generate_report``, not from the sampling path (``_watch_run``).
+    Running the scripts here (in the virtual_analyzer subprocess, after
+    delegate returns) keeps the fix out of app.py per the 2026-04-22
+    structural guideline: virtual-only behavior must not leak into main-project
     code.
 
     Best-effort: any failure (script missing, timeout, non-zero rc)
-    logs to stderr and proceeds. The analyzer's primary artefacts
-    (summary + report) are already on disk; missing shape inference
-    just leaves the panel in "not_run" state, same as before this
-    auto-trigger.
+    logs to stderr and proceeds (the canonical helper handles this; C3).
+    The analyzer's primary artefacts (summary + report) are already on disk.
     """
-    scripts_dir = _ROOT / "scripts"
+    from fresh_slotlab.post_inference import run_post_analyzer_inference as _canonical  # noqa: PLC0415
+
     paytables_dir = _ROOT / "slot_designer" / "configs" / "paytables_virtual"
     classify_dir = _ROOT / "slot_designer" / "dev_reports" / "_classify"
     rawdata_root = _ROOT / "slot_designer" / "rawdata"
+
     env = dict(os.environ)
     # Point inference scripts at the virtual rawdata tree. Without this
     # they'd scan the real console's rawdata/ and either find nothing
@@ -567,58 +566,26 @@ def _run_inference_scripts(machine: str, mode: int) -> None:
     if "SLOT_RAWDATA_ROOT" not in env:
         env["SLOT_RAWDATA_ROOT"] = str(rawdata_root)
 
-    paytables_dir.mkdir(parents=True, exist_ok=True)
-    classify_dir.mkdir(parents=True, exist_ok=True)
+    # summary_path: the canonical helper derives the failure-diagnostic dir
+    # from this. Virtual path writes into slot_designer/configs/paytables_virtual/
+    # so point the diagnostic next to the virtual paytables output.
+    _summary_path = paytables_dir / "player_impact_summary.json"
 
-    jobs = [
-        (
-            "paytable_shape",
-            scripts_dir / "infer_paytable.py",
-            ["--machine", machine, "--mode", str(int(mode)),
-             "--output-dir", str(paytables_dir)],
-        ),
-        (
-            "classifier",
-            scripts_dir / "verify_machine_labels.py",
-            ["--machines", machine, "--mode", str(int(mode)),
-             "--output-dir", str(classify_dir)],
-        ),
-    ]
-    for tag, script, argv in jobs:
-        if not script.exists():
-            print(
-                f"virtual_analyzer: inference script missing {script.name!r}, "
-                f"skipping {tag}",
-                file=sys.stderr,
-            )
-            continue
-        try:
-            proc = subprocess.run(
-                [sys.executable, str(script), *argv],
-                cwd=str(_ROOT),
-                capture_output=True, text=True,
-                timeout=300.0, check=False, env=env,
-            )
-            if proc.returncode != 0:
-                # stderr tail surfaces the reason without dumping full
-                # traceback to the parent log stream.
-                tail = (proc.stderr or proc.stdout or "").splitlines()[-5:]
-                print(
-                    f"virtual_analyzer: {tag} inference rc="
-                    f"{proc.returncode}; tail:\n" + "\n".join(tail),
-                    file=sys.stderr,
-                )
-        except subprocess.TimeoutExpired:
-            print(
-                f"virtual_analyzer: {tag} inference timed out at 300s",
-                file=sys.stderr,
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(
-                f"virtual_analyzer: {tag} inference failed: "
-                f"{type(exc).__name__}: {exc}",
-                file=sys.stderr,
-            )
+    _canonical(
+        summary_path=_summary_path,
+        paytables_dir=paytables_dir,
+        classify_dir=classify_dir,
+        opts={
+            "machine": machine,
+            "mode": mode,
+            "scripts_dir": _ROOT / "scripts",
+            "env": env,           # pass snapshot so no live os.environ read in helper (C4)
+            "timeout_sec": 300.0,
+            # No log_to_dir for virtual path — stderr logging is the
+            # persistence mechanism here (the subprocess stdout/stderr is
+            # captured by the parent virtual_app process).
+        },
+    )
 
 
 def _delegate_to_real_analyzer(

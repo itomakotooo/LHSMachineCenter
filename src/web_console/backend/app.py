@@ -78,8 +78,11 @@ SLOT_SPIN_ENDPOINT = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinV
 # per-(machine, mode) invocation — the classifier script writes a
 # per-machine file (`{machine}_mode<N>.json`) to avoid clobbering
 # other machines' verdicts under concurrent batch regen.
-INFER_PAYTABLE_SCRIPT = ROOT / "scripts" / "infer_paytable.py"
-VERIFY_LABELS_SCRIPT = ROOT / "scripts" / "verify_machine_labels.py"
+# INFER_PAYTABLE_SCRIPT / VERIFY_LABELS_SCRIPT constants removed per
+# P1-B5 round-2 critic R2: dead code after the dedup refactor. The
+# canonical helper `fresh_slotlab.post_inference.run_post_analyzer_
+# inference` resolves both script paths from its `scripts_dir`
+# parameter (which the wrapper below passes as `ROOT / "scripts"`).
 
 
 def _run_post_analyzer_inference(
@@ -93,6 +96,9 @@ def _run_post_analyzer_inference(
     log_to_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Fire the two offline inference scripts for one (machine, mode).
+
+    Thin wrapper around ``fresh_slotlab.post_inference.run_post_analyzer_inference``
+    (P1-B5 — inference-trigger dedup; ticket §3 C1 + C2).
 
     Called right after a successful generate-report so the UI's
     payline-classification + paytable-shape panels stay in sync
@@ -125,73 +131,77 @@ def _run_post_analyzer_inference(
     invisible. memory/feedback_no_silent_swallow.md: any best-effort
     post-hook must persist its outcome.
     """
-    import os as _os
-    import subprocess
-    import sys as _sys
+    from fresh_slotlab.post_inference import run_post_analyzer_inference as _canonical  # noqa: PLC0415
 
-    def _persist(r: dict[str, Any]) -> dict[str, Any]:
-        if log_to_dir is not None:
-            try:
-                Path(log_to_dir).mkdir(parents=True, exist_ok=True)
-                (Path(log_to_dir) / "_post_hook.json").write_text(
-                    json.dumps(r, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-            except OSError:
-                # Don't let a log-write failure alter the hook's
-                # effective outcome. We return the result regardless;
-                # caller still sees success/failure in-memory.
-                pass
-        return r
+    # summary_path: the canonical helper uses it to derive the dir for the
+    # failure-diagnostic file (C3). When log_to_dir is set it equals the
+    # output_dir; otherwise synthesise a plausible path from log_to_dir or
+    # fall back to a sentinel that produces no diagnostic (script_missing
+    # etc. still log to stderr per C3).
+    if log_to_dir is not None:
+        _summary_path = Path(log_to_dir) / "player_impact_summary.json"
+    else:
+        # No output_dir available from this call signature — use a no-op dir.
+        # Failure stderr logging still fires (C3); on-disk diagnostic is best-effort.
+        _summary_path = Path(".") / "player_impact_summary.json"
 
+    # Do NOT pass log_to_dir to the canonical helper — the canonical helper
+    # writes _post_hook.json in the InferenceResult / scripts-array format,
+    # but existing tests and callers expect the old flat dict format
+    # {machine, mode, paytable_shape: {ok, returncode, stderr_tail}, ...}.
+    # We reconstruct that format below and persist it ourselves.
+    _canonical_result = _canonical(
+        summary_path=_summary_path,
+        paytables_dir=paytables_dir,
+        classify_dir=classify_dir,
+        opts={
+            "machine": machine,
+            "mode": mode,
+            "scripts_dir": ROOT / "scripts",
+            "rawdata_root": rawdata_root,
+            "timeout_sec": timeout_sec,
+            # log_to_dir: NOT forwarded — we handle persistence below.
+        },
+    )
+
+    # Build backward-compatible result dict (same shape as original inline impl).
+    # Tests and the fire-and-forget daemon thread read this dict; keep field
+    # names stable (returncode vs rc — matches pre-P1-B5 key name).
     results: dict[str, Any] = {"machine": machine, "mode": mode}
-    # SLOT_SKIP_AUTO_INFER=1 short-circuits both scripts; tests use it
-    # to stay under the batch-gen 10s deadline. Production leaves it
-    # unset so inference panels refresh on every report.
-    if _os.environ.get("SLOT_SKIP_AUTO_INFER") == "1":
-        results["skipped"] = "env_SLOT_SKIP_AUTO_INFER"
-        return _persist(results)
-    # Optionally shortcut when the machine's rawdata dir has no
-    # chunks — avoids paying subprocess startup cost just to have the
-    # script scan nothing and exit. Safe no-op; the UI shows "not_run"
-    # until the next real sampling/generate pass.
-    if rawdata_root is not None:
-        per_mode_dir = Path(rawdata_root) / machine / f"mode_{int(mode)}"
-        if not per_mode_dir.is_dir():
-            results["skipped"] = "no_rawdata_for_pair"
-            return _persist(results)
-    env = dict(_os.environ)
-    if rawdata_root is not None:
-        env["SLOT_RAWDATA_ROOT"] = str(rawdata_root)
-    paytable_argv = ["--machine", machine, "--mode", str(int(mode))]
-    if paytables_dir is not None:
-        paytable_argv += ["--output-dir", str(paytables_dir)]
-    classify_argv = ["--machines", machine, "--mode", str(int(mode))]
-    if classify_dir is not None:
-        classify_argv += ["--output-dir", str(classify_dir)]
-    for name, script, argv in (
-        ("paytable_shape", INFER_PAYTABLE_SCRIPT, paytable_argv),
-        ("classifier", VERIFY_LABELS_SCRIPT, classify_argv),
-    ):
-        if not script.exists():
-            results[name] = {"ok": False, "error": "script_missing"}
-            continue
+    if _canonical_result.skipped is not None:
+        results["skipped"] = _canonical_result.skipped
+    for s in _canonical_result.scripts:
+        entry: dict[str, Any] = {"ok": s.ok}
+        if s.rc is not None:
+            entry["returncode"] = s.rc
+        if s.error is not None:
+            # Normalize timeout error to the short form the original impl used.
+            # The canonical helper uses "timeout_after_Xs"; callers (and tests)
+            # that predated P1-B5 expect "timeout" so backward compat is preserved.
+            _err = s.error
+            if _err.startswith("timeout_after_"):
+                _err = "timeout"
+            entry["error"] = _err
+        if s.stderr_tail:
+            entry["stderr_tail"] = s.stderr_tail
+        results[s.name] = entry
+
+    # Persist outcome to disk (per memory feedback_no_silent_swallow.md):
+    # the daemon thread drops its return value on the floor, so this file is
+    # the only persistence for in-process path outcomes.
+    if log_to_dir is not None:
+        import os as _os  # noqa: PLC0415
         try:
-            proc = subprocess.run(
-                [_sys.executable, str(script), *argv],
-                capture_output=True, text=True,
-                timeout=timeout_sec, check=False, env=env,
+            Path(log_to_dir).mkdir(parents=True, exist_ok=True)
+            (Path(log_to_dir) / "_post_hook.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2),
+                encoding="utf-8",
             )
-            results[name] = {
-                "ok": proc.returncode == 0,
-                "returncode": proc.returncode,
-                "stderr_tail": (proc.stderr or "")[-400:],
-            }
-        except subprocess.TimeoutExpired:
-            results[name] = {"ok": False, "error": "timeout"}
-        except Exception as exc:  # noqa: BLE001
-            results[name] = {"ok": False, "error": f"{exc.__class__.__name__}: {exc}"}
-    return _persist(results)
+        except OSError:
+            # Don't let a log-write failure alter the hook's effective outcome.
+            pass
+
+    return results
 
 
 PROVIDER_MODELS: dict[str, list[str]] = {
