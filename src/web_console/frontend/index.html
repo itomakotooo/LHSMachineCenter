@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Slot Console</title>
     <link rel="stylesheet" href="/console/styles.css?v={{ASSET_HASH}}" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Phase 1 deploy: vendored chart.js (v4.4.6 UMD min) — intranet
+         deploys have no CDN access. See src/web_console/frontend/vendor/. -->
+    <script src="/console/vendor/chart.min.js?v={{ASSET_HASH}}"></script>
   </head>
   <body>
     <header class="topbar dash-topbar">

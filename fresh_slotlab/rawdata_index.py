@@ -26,25 +26,140 @@ Schema (file at `<rawdata_root>/_index.json`):
 Consistency model:
 - The index is a *derived cache* — authoritative state is the on-disk
   chunks themselves.
-- Writers (`update_entry`) do read-modify-write + os.replace; atomic
-  per-process on same filesystem.
+- Writers (`update_entry`) do read-modify-write + os.replace, protected
+  by both an in-process `threading.Lock` AND an OS-level cross-process
+  exclusive file lock (`msvcrt.locking` on Windows / `fcntl.flock` on
+  POSIX). The cross-process lock is critical: this index is touched
+  by both the main backend process AND `ProcessPoolExecutor` workers
+  (`BatchGenerateManager`) running in separate processes; without a
+  cross-process lock, near-simultaneous writes from 4 workers race and
+  lose entries. Phase 1 deploy refactor (2026-05-15) added the
+  cross-process lock; before that, only the per-process os.replace
+  atomicity was relied on. NTFS mtime resolution is 100ns — too coarse
+  for the v1-designer-proposed mtime-retry to detect concurrent
+  writers, so we went straight to an OS lock instead.
 - Readers validate `entry.chunks` against the actual glob count; a
   mismatch triggers rescan + rewrite. This self-heals drift from
   failed writes, external deletion, or concurrent writers racing.
 - On any decode error / missing file, fall back to "empty index" and
   let the next call rebuild.
+
+Cross-refs:
+- session_artifacts/_arch/deploy/04_deploy_architecture_proposal_v2.md §4.2 R3
+- memory/reference_chunk_index_inverted_md5.md (analogous within-process
+  pattern for the per-cell sidecar; that one is single-process so
+  threading.Lock alone is sufficient)
 """
 
 from __future__ import annotations
 
 import json
 import os
+import sys
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 INDEX_FILENAME = "_index.json"
 INDEX_VERSION = 1
+
+# In-process lock — serializes threads within the same Python process.
+# Cross-process locking via msvcrt.locking / fcntl.flock is layered on
+# top inside _cross_process_index_lock. Both layers are needed: the
+# OS lock alone doesn't help when one process holds the OS lock and
+# multiple threads in the SAME process try to acquire it (msvcrt.locking
+# returns the lock to the same fd; concurrent threads in the same
+# process would still race on the underlying read+modify+write).
+_INDEX_LOCK = threading.Lock()
+
+
+@contextmanager
+def _cross_process_index_lock(rawdata_root: Path) -> Iterator[None]:
+    """Hold an exclusive OS-level lock on `_index.json.lock` for the
+    duration of an index read-modify-write.
+
+    Within-process: ``threading.Lock`` serializes Python threads.
+    Cross-process: ``msvcrt.locking`` (Windows) / ``fcntl.flock`` (POSIX)
+    serializes separate Python processes (e.g. ``ProcessPoolExecutor``
+    workers spawned by ``BatchGenerateManager``).
+
+    Degrades to within-process-only locking if the OS lock API is
+    unavailable (rare; both Windows ``msvcrt`` and POSIX ``fcntl`` are
+    in the stdlib). The within-process lock is always honored so a
+    single-process test environment stays safe.
+
+    Lock byte region: a single byte at offset 0 of the lockfile.
+    msvcrt.locking and fcntl.flock both operate at this granularity
+    by default; using a 1-byte region keeps the lock fast and
+    consistent across the two backends.
+    """
+    rawdata_root.mkdir(parents=True, exist_ok=True)
+    lockfile = rawdata_root / f"{INDEX_FILENAME}.lock"
+
+    # Acquire within-process lock first. If a thread in this process
+    # already holds the OS-level lock via this function, we must NOT
+    # re-enter; threading.Lock blocks (not re-entrant), which is the
+    # right semantics — the caller should not call this nested.
+    _INDEX_LOCK.acquire()
+    f = None
+    os_lock_acquired = False
+    try:
+        try:
+            # r+b creates the file via touch if it doesn't exist; we
+            # don't write any meaningful content into the lockfile.
+            lockfile.touch(exist_ok=True)
+            f = open(lockfile, "r+b")
+        except OSError:
+            # Can't even open the lockfile — degrade to within-
+            # process-only and continue. The caller's read-modify-write
+            # is still atomic per-process via os.replace, so single-
+            # process correctness is preserved.
+            yield
+            return
+
+        if sys.platform == "win32":
+            try:
+                import msvcrt
+                # LK_LOCK is blocking with retry: tries once per second
+                # for up to ~10 seconds, then raises OSError. For our
+                # workload (chunk-write completing in <1s typically),
+                # this is plenty.
+                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+                os_lock_acquired = True
+            except (OSError, ImportError):
+                # Module missing or lock contention timeout. Continue
+                # with within-process lock only; the os.replace below
+                # is still per-process-atomic.
+                pass
+        else:
+            try:
+                import fcntl
+                # fcntl.flock with LOCK_EX blocks indefinitely on
+                # contention; this is fine because critical sections
+                # are sub-second.
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                os_lock_acquired = True
+            except (OSError, ImportError):
+                pass
+
+        yield
+    finally:
+        if os_lock_acquired and f is not None:
+            try:
+                if sys.platform == "win32":
+                    import msvcrt
+                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                # POSIX: closing the fd releases flock automatically.
+            except (OSError, ImportError):
+                pass
+        if f is not None:
+            try:
+                f.close()
+            except OSError:
+                pass
+        _INDEX_LOCK.release()
 
 
 def entry_key(machine: str, mode: int) -> str:
@@ -188,27 +303,45 @@ def update_entry(
     file; also called by readers when the cached entry is stale. If the
     dir is empty (e.g. after all chunks were deleted), the entry is
     removed from the index.
+
+    Phase 1 deploy: read-modify-write is protected by both a
+    `threading.Lock` and an OS-level cross-process file lock so
+    near-simultaneous writes from `ProcessPoolExecutor` workers can't
+    silently lose entries. See `_cross_process_index_lock` for details.
     """
     try:
+        # Scan is done BEFORE acquiring the lock so we don't hold the
+        # cross-process lock during I/O-heavy chunk-dir iteration. The
+        # scan reads only sidecar metadata so it can't be corrupted by
+        # concurrent writers to _index.json (which is what the lock
+        # protects). If chunks change between scan and write, that's
+        # fine — the next update_entry call will pick up the new state.
         entry = _scan_mode_dir(chunk_dir)
-        data = load_index(rawdata_root)
-        key = entry_key(machine, mode)
-        if entry is None:
-            data["entries"].pop(key, None)
-        else:
-            data["entries"][key] = entry
-        _save_index(rawdata_root, data)
+        with _cross_process_index_lock(rawdata_root):
+            data = load_index(rawdata_root)
+            key = entry_key(machine, mode)
+            if entry is None:
+                data["entries"].pop(key, None)
+            else:
+                data["entries"][key] = entry
+            _save_index(rawdata_root, data)
     except OSError:
         # Best-effort; stale index self-heals on next read.
         pass
 
 
 def remove_entry(rawdata_root: Path, machine: str, mode: int) -> None:
-    """Drop the entry for a (machine, mode) — e.g. after rawdata delete."""
+    """Drop the entry for a (machine, mode) — e.g. after rawdata delete.
+
+    Phase 1 deploy: cross-process lock layered for the same reason as
+    `update_entry` — concurrent delete + sample-completion writes from
+    different processes must not collide.
+    """
     try:
-        data = load_index(rawdata_root)
-        data["entries"].pop(entry_key(machine, mode), None)
-        _save_index(rawdata_root, data)
+        with _cross_process_index_lock(rawdata_root):
+            data = load_index(rawdata_root)
+            data["entries"].pop(entry_key(machine, mode), None)
+            _save_index(rawdata_root, data)
     except OSError:
         pass
 
@@ -219,23 +352,30 @@ def rebuild_full(rawdata_root: Path) -> dict[str, Any]:
     Used by the `rebuild-rawdata-index` CLI / admin endpoint when the
     file got out of sync (batch delete done outside the app, manual
     file copies, etc.).
+
+    Phase 1 deploy: cross-process lock held for the entire scan + save
+    so a concurrent `update_entry` from another process can't slip in
+    between the rebuild's read and write. This blocks the rebuild
+    longer than ideal, but rebuild is a rare admin operation so the
+    trade-off is fine.
     """
     if not rawdata_root.is_dir():
         return _empty_index()
-    data = _empty_index()
-    for machine_dir in sorted(rawdata_root.iterdir()):
-        if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
-            continue
-        for mode_dir in sorted(machine_dir.iterdir()):
-            if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+    with _cross_process_index_lock(rawdata_root):
+        data = _empty_index()
+        for machine_dir in sorted(rawdata_root.iterdir()):
+            if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
                 continue
-            try:
-                mode_int = int(mode_dir.name.split("_")[1])
-            except (IndexError, ValueError):
-                continue
-            entry = _scan_mode_dir(mode_dir)
-            if entry is None:
-                continue
-            data["entries"][entry_key(machine_dir.name, mode_int)] = entry
-    _save_index(rawdata_root, data)
-    return data
+            for mode_dir in sorted(machine_dir.iterdir()):
+                if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                    continue
+                try:
+                    mode_int = int(mode_dir.name.split("_")[1])
+                except (IndexError, ValueError):
+                    continue
+                entry = _scan_mode_dir(mode_dir)
+                if entry is None:
+                    continue
+                data["entries"][entry_key(machine_dir.name, mode_int)] = entry
+        _save_index(rawdata_root, data)
+        return data

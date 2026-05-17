@@ -27,6 +27,15 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+# Phase 1 deploy refactor (2026-05-15): atomic JSON writers with per-file
+# threading.Lock — replaces ad-hoc write_text() across config writers
+# that raced under multi-user concurrency. See
+# session_artifacts/_arch/deploy/04_deploy_architecture_proposal_v2.md §4.2.
+from src.web_console.backend.config_writer import (
+    atomic_json_read_modify_write,
+    atomic_json_write,
+)
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -509,10 +518,11 @@ def _resolve_local_cfg_for_machine(
 
 def save_servers(data: dict[str, Any], path: Path | None = None) -> None:
     target = path if path is not None else SERVERS_CONFIG
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    # Phase 1 deploy: atomic + per-file-locked. Concurrent edits via
+    # POST/PUT/DELETE /api/servers/* now serialize per-file instead of
+    # racing on truncate-then-write (which under load could silently
+    # lose the first writer's change).
+    atomic_json_write(target, data, trailing_newline=True)
 
 
 RAWDATA_ROOT = Path(os.getenv("SLOT_RAWDATA_ROOT", str(RAWDATA_ROOT_DEFAULT)))
@@ -836,10 +846,11 @@ def _load_settings(settings_path: Path) -> dict[str, Any]:
 
 
 def _save_settings(settings_path: Path, data: dict[str, Any]) -> None:
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = settings_path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(tmp, settings_path)
+    # Phase 1 deploy: unified atomic writer adds per-file lock so
+    # concurrent settings POSTs serialize. Previously already atomic
+    # (tmp + os.replace) but racing concurrent writers could clobber
+    # each other; the per-file lock makes the outcome deterministic.
+    atomic_json_write(settings_path, data)
 
 
 def _peek_envelope_scalars(path: Path) -> dict[str, Any] | None:
@@ -1440,6 +1451,17 @@ class StateStore:
 
     def _init_db(self) -> None:
         with self._connect() as conn:
+            # Phase 1 deploy: enable WAL mode + busy_timeout so
+            # concurrent reads don't block writes (and vice versa).
+            # Required for <10 planners hitting the DB in parallel.
+            # WAL is idempotent on repeated apply — once set it
+            # persists in the .db header.
+            #
+            # NOTE: WAL creates .db-wal + .db-shm sidecars; the deploy
+            # README documents that state/console/ MUST be on local
+            # disk (NOT a network share — WAL is unsupported on SMB/CIFS).
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS runs (
@@ -2176,6 +2198,10 @@ def _get_in_use_snapshot() -> set[tuple[str, int]]:
 # Storage: configs/rawdata_locks.json, gitignored + per-fleet.
 # Key format: "<machine>|<mode>". Value: bool (true = locked).
 _LOCK_CACHE: dict = {"mtime": 0, "data": None}
+# Phase 1 deploy: guard cache access so concurrent _load + _save can't
+# leave (mtime, data) in inconsistent state (mtime says fresh, data is
+# stale or being-built). Minor TOCTOU fix per 04_v2 Phase 1 deliverable #8.
+_LOCK_CACHE_GUARD = threading.Lock()
 
 
 def _rawdata_locks_path(configs_root_machines_config: Path) -> Path:
@@ -2185,47 +2211,49 @@ def _rawdata_locks_path(configs_root_machines_config: Path) -> Path:
 def _load_rawdata_locks(path: Path) -> set[tuple[str, int]]:
     """Return the set of (machine, mode) tuples currently locked.
     Mtime-invalidated in-memory cache; file IO only on first call
-    or when file mtime changes."""
+    or when file mtime changes.
+
+    Phase 1 deploy: cache check+update guarded by ``_LOCK_CACHE_GUARD``
+    so concurrent _load calls can't race and produce inconsistent
+    (mtime, data) state.
+    """
     try:
         cur_mtime = path.stat().st_mtime_ns if path.exists() else 0
     except OSError:
         cur_mtime = 0
-    cached = _LOCK_CACHE.get("data")
-    if cached is not None and _LOCK_CACHE.get("mtime") == cur_mtime:
-        return cached
-    locks: set[tuple[str, int]] = set()
-    if path.exists():
-        try:
-            raw = read_json(path) or {}
-        except Exception:
-            raw = {}
-        for key in (raw.get("locked") or []):
+    with _LOCK_CACHE_GUARD:
+        cached = _LOCK_CACHE.get("data")
+        if cached is not None and _LOCK_CACHE.get("mtime") == cur_mtime:
+            return cached
+        locks: set[tuple[str, int]] = set()
+        if path.exists():
             try:
-                machine, mode_str = str(key).split("|", 1)
-                locks.add((machine, int(mode_str)))
-            except (ValueError, TypeError):
-                continue
-    _LOCK_CACHE["mtime"] = cur_mtime
-    _LOCK_CACHE["data"] = locks
-    return locks
+                raw = read_json(path) or {}
+            except Exception:
+                raw = {}
+            for key in (raw.get("locked") or []):
+                try:
+                    machine, mode_str = str(key).split("|", 1)
+                    locks.add((machine, int(mode_str)))
+                except (ValueError, TypeError):
+                    continue
+        _LOCK_CACHE["mtime"] = cur_mtime
+        _LOCK_CACHE["data"] = locks
+        return locks
 
 
 def _save_rawdata_locks(path: Path, locks: set[tuple[str, int]]) -> None:
+    """Phase 1 deploy: atomic + per-file-locked write; cache update
+    guarded so concurrent _load can't observe partial update."""
     keys = sorted(f"{m}|{mode}" for (m, mode) in locks)
     payload = {"locked": keys, "updated_at": utc_now()}
-    tmp = path.with_suffix(".json.tmp")
-    tmp.parent.mkdir(parents=True, exist_ok=True)
-    tmp.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    import os as _os
-    _os.replace(tmp, path)
-    try:
-        _LOCK_CACHE["mtime"] = path.stat().st_mtime_ns
-    except OSError:
-        pass
-    _LOCK_CACHE["data"] = set(locks)
+    atomic_json_write(path, payload)
+    with _LOCK_CACHE_GUARD:
+        try:
+            _LOCK_CACHE["mtime"] = path.stat().st_mtime_ns
+        except OSError:
+            pass
+        _LOCK_CACHE["data"] = set(locks)
 
 
 def _set_rawdata_lock(path: Path, machine: str, mode: int, locked: bool) -> bool:
@@ -2278,14 +2306,8 @@ def _load_static_attrs(path: Path) -> dict:
 
 
 def _save_static_attrs(path: Path, data: dict) -> None:
-    tmp = path.with_suffix(".json.tmp")
-    tmp.parent.mkdir(parents=True, exist_ok=True)
-    tmp.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    import os as _os
-    _os.replace(tmp, path)
+    """Phase 1 deploy: atomic + per-file-locked write."""
+    atomic_json_write(path, data)
     try:
         _STATIC_ATTRS_CACHE["mtime"] = path.stat().st_mtime_ns
     except OSError:
@@ -5064,8 +5086,9 @@ class RunManager:
             "analyzer_version": analyzer_version or "",
         }
         index_payload.append(item)
-        write_json(index_path, index_payload)
-        write_json(latest_path, item)
+        # Phase 1 deploy: atomic + per-file-locked
+        atomic_json_write(index_path, index_payload)
+        atomic_json_write(latest_path, item)
         # Persist the achieved RTP + CI + quality_label onto the runs
         # row so the merged Run History table can show them without
         # reading every summary.json on list.
@@ -5593,10 +5616,8 @@ def create_app(
             parsed = _parse_upstream_map_order(data["raw_upstream"])
             data.update(parsed)
             try:
-                halls_path.write_text(
-                    json.dumps(data, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
+                # Phase 1 deploy: atomic + per-file-locked write
+                atomic_json_write(halls_path, data)
             except OSError:
                 pass
         return {
@@ -5671,10 +5692,8 @@ def create_app(
                 "source": url,
                 "raw_upstream": upstream_payload,
             }
-            halls_path.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            # Phase 1 deploy: atomic + per-file-locked write
+            atomic_json_write(halls_path, payload)
             return {
                 "default_order": parsed["default_order"],
                 "current_hall_order": parsed["current_hall_order"],
@@ -5823,14 +5842,38 @@ def create_app(
             # reroute the pre-batch md5 refresh.
             _refresh_sid = _resolve_active_server_id() or "dev"
             def _refresh_md5_async() -> None:
+                # Phase 1 deploy: per memory/feedback_no_silent_swallow.md,
+                # best-effort background-thread failures must persist a
+                # diagnostic to disk so operators can see WHY the refresh
+                # didn't land. Picked up by GET /api/system-state
+                # md5_refresh_error field (Phase 1 deliverable #11).
+                # Falls back to silent swallow only when the diagnostic
+                # write itself fails — no infinite recursion of logging.
+                err_path = sd / "md5_refresh_error.json"
                 try:
                     _do_refresh_machines_md5(
                         server_id=_refresh_sid, raise_on_error=False,
                     )
-                except Exception:  # noqa: BLE001
-                    # Best-effort — swallow; next batch / explicit
-                    # refresh will pick up a newer md5 eventually.
-                    pass
+                    # Success — clear any prior error so UI doesn't show
+                    # stale failure. Best-effort unlink; missing is fine.
+                    try:
+                        if err_path.exists():
+                            err_path.unlink()
+                    except OSError:
+                        pass
+                except Exception as exc:  # noqa: BLE001
+                    try:
+                        err_path.parent.mkdir(parents=True, exist_ok=True)
+                        err_path.write_text(
+                            json.dumps({
+                                "ts": utc_now(),
+                                "server_id": _refresh_sid,
+                                "error": f"{exc.__class__.__name__}: {exc}",
+                            }, ensure_ascii=False, indent=2),
+                            encoding="utf-8",
+                        )
+                    except OSError:
+                        pass
             _threading.Thread(
                 target=_refresh_md5_async,
                 daemon=True,
@@ -7029,8 +7072,9 @@ def create_app(
                 except Exception:
                     pass
             index_payload.append(item)
-            write_json(index_path, index_payload)
-            write_json(latest_path, item)
+            # Phase 1 deploy: atomic + per-file-locked
+            atomic_json_write(index_path, index_payload)
+            atomic_json_write(latest_path, item)
 
             # Refresh machines_static.json from this fresh summary so
             # catalog filter chips + mechanic view reflect any new
@@ -7310,8 +7354,9 @@ def create_app(
             except Exception:
                 pass
         index_payload.append(item)
-        write_json(index_path, index_payload)
-        write_json(latest_path, item)
+        # Phase 1 deploy: atomic + per-file-locked
+        atomic_json_write(index_path, index_payload)
+        atomic_json_write(latest_path, item)
         try:
             _merge_machine_static(machine, summary, mc, _static_attrs_path(mc))
         except Exception:
@@ -8205,18 +8250,28 @@ def create_app(
         halls_path = ROOT / "configs" / "machine_halls.json"
         variants_map = load_variants_map(halls_path)
 
-        # Load current machines.json (single source of truth for row
-        # ownership — upstream drives md5, not row existence).
-        try:
-            existing = json.loads(Path(mc).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            existing = {"machines": []}
+        # Phase 1 deploy: atomic read-modify-write under per-file lock
+        # closes the Critical C1 race (Scenario 16) where two concurrent
+        # callers (pre-batch async refresh + explicit
+        # /api/machines/refresh-md5) truncate and write machines.json
+        # simultaneously, silently wiping all 393 rows from the fleet
+        # registry. The per-file lock held across read+apply+write
+        # makes the operation serializable.
+        _stats_holder: list[dict] = []
 
-        existing, stats = apply_md5_refresh(existing, data, variants_map)
-        Path(mc).write_text(
-            json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+        def _apply(current: Any) -> dict:
+            base = current if isinstance(current, dict) else {"machines": []}
+            updated, stats_local = apply_md5_refresh(
+                base, data, variants_map,
+            )
+            _stats_holder.append(stats_local)
+            return updated
+
+        existing = atomic_json_read_modify_write(
+            Path(mc), _apply, default={"machines": []},
+            trailing_newline=True,
         )
+        stats = _stats_holder[0]
         _save_server_snapshot(server_id, data)
         return {
             "ok": True,
