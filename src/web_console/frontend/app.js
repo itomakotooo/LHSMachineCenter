@@ -118,8 +118,15 @@ const state = {
   // per-mode versionHistoryPanel (which always knew its own mode).
   compareSelected: new Map(),
   // null when not in compare mode; { a, b, vA, vB } when active.
-  // Set by _enterCompareMode, cleared by _onCompareExit.
+  // Set by _enterCompareMode, cleared by _onCompareExit / _resetCompareModeToEmpty.
   compareMode: null,
+  // Monotonically-increasing counter. Incremented by compareReports()
+  // before each fetch pair. The fetch callback checks this value
+  // matches state._compareInvocationId before applying the response —
+  // if a DELETE raced and called _resetCompareModeToEmpty() in between,
+  // the counter will have advanced and the stale response is discarded
+  // (per memory feedback_fasttimer_overlap_needs_oneshot.md, C3).
+  _compareInvocationId: 0,
   // True for a short window right after a batch completes: blocks
   // renderSamplingProgress so the final error log stays readable.
   // Cleared when the user clicks 开始采样 for a fresh batch.
@@ -2484,7 +2491,21 @@ function _wireRwtreeGridActions(gridEl, machineName) {
         await apiDelete(
           `/api/reports/${encodeURIComponent(machineName)}/${encodeURIComponent(mode)}/${encodeURIComponent(rv)}`,
         );
+        // C1 (brief §3): remove deleted version from compareSelected Map.
+        // C2 (brief §3): if user was in compare mode with this version,
+        // exit compare mode and reset ALL compare-related UI panels
+        // (per memory feedback_error_branch_resets_all_state.md).
+        // _resetCompareModeToEmpty() also bumps _compareInvocationId
+        // to discard any in-flight compareReports() fetch (C3).
+        // R1 fix (P1-A5 round-2 critic): gate is compareMode.vA/vB
+        // match, NOT compareSelected membership. Without this fix, the
+        // sequence (uncheck vA → delete vA via per-row) leaves
+        // compareMode.vA pointing at the deleted version indefinitely.
         state.compareSelected?.delete?.(rv);
+        const cm = state.compareMode;
+        if (cm && (cm.vA === rv || cm.vB === rv)) {
+          _resetCompareModeToEmpty();
+        }
         await renderRawdataReportTree(machineName);
         refreshReportMgmtBanner();  // stale count likely changed
       } catch (err) {
@@ -2527,6 +2548,9 @@ function _updateRwtreeCompareBar() {
     // orphan disk versions (no DB row) delete cleanly too.
     const machine = state.focusedMachine;
     if (!machine) return;
+    // C2 (brief §3): snapshot compareMode before the loop so we can
+    // detect whether any deleted version was part of an active comparison.
+    const cmBefore = state.compareMode;
     let done = 0;
     let failed = 0;
     for (const [rv, meta] of entries) {
@@ -2537,11 +2561,24 @@ function _updateRwtreeCompareBar() {
           `/api/reports/${encodeURIComponent(machine)}/${encodeURIComponent(mode)}/${encodeURIComponent(rv)}`,
         );
         done += 1;
-      } catch (_) {
+      } catch (err) {
+        console.warn(`批量删除: ${rv} 失败:`, err);
         failed += 1;
       }
     }
-    state.compareSelected = new Map();
+    // C1 + C2 (brief §3): if any deleted version was in an active
+    // comparison, exit compare mode and reset ALL compare-related panels
+    // (per memory feedback_error_branch_resets_all_state.md).
+    // _resetCompareModeToEmpty() also bumps _compareInvocationId (C3).
+    const deletedVersions = entries.map(([rv]) => rv);
+    if (cmBefore && (
+      deletedVersions.includes(cmBefore.vA) ||
+      deletedVersions.includes(cmBefore.vB)
+    )) {
+      _resetCompareModeToEmpty();
+    } else {
+      state.compareSelected = new Map();
+    }
     await renderRawdataReportTree(machine);
     refreshReportMgmtBanner();
     const msg = failed > 0
@@ -3482,6 +3519,13 @@ async function compareReports() {
   if (entries.length !== 2) return;
   const focusedMachine = state.versionHistoryMachine || state.focusedMachine;
 
+  // C3 (brief §3): per-invocation guard. Increment before the fetch so
+  // that if DELETE fires _resetCompareModeToEmpty() while the fetch is
+  // in flight, the counter advances and the stale response is discarded
+  // rather than applied (per memory feedback_fasttimer_overlap_needs_oneshot.md).
+  state._compareInvocationId = (state._compareInvocationId || 0) + 1;
+  const myInvocationId = state._compareInvocationId;
+
   try {
     const [[vA, metaA], [vB, metaB]] = entries;
     const machineA = metaA?.machine || focusedMachine;
@@ -3491,6 +3535,16 @@ async function compareReports() {
       apiGet(`/api/reports/${encodeURIComponent(machineA)}/${metaA.mode}/${vA}`),
       apiGet(`/api/reports/${encodeURIComponent(machineB)}/${metaB.mode}/${vB}`),
     ]);
+    // C3: check invocation id is still current before applying response.
+    // If a DELETE raced and bumped _compareInvocationId, discard this
+    // response visibly (C4: console.warn, not silent swallow).
+    if (myInvocationId !== state._compareInvocationId) {
+      console.warn(
+        `compareReports: invocation ${myInvocationId} superseded by ` +
+        `${state._compareInvocationId} (DELETE raced) — discarding stale response`,
+      );
+      return;
+    }
     _enterCompareMode(a, b, vA, vB);
   } catch (e) {
     alert("加载对比 report 失败: " + (e.message || e));
@@ -3552,28 +3606,52 @@ function _renderCompareBanner() {
   byId("cmpBannerExit")?.addEventListener("click", _onCompareExit);
 }
 
-function _onCompareExit() {
+/** Reset ALL compare-mode state to a clean empty slate.
+ *  Called by both _onCompareExit (button) and the DELETE path
+ *  (per memory feedback_error_branch_resets_all_state.md, brief C2).
+ *  Also bumps _compareInvocationId to invalidate any in-flight
+ *  compareReports() fetch pair (brief C3). Does NOT repaint with
+ *  latestSummary — that is left to callers that know the primary
+ *  summary is still valid (e.g. _onCompareExit button press).
+ *  Per brief C4: no try/catch wrapper — let real errors surface. */
+function _resetCompareModeToEmpty() {
+  // Bump invocation id so any concurrent compareReports() fetch
+  // discards its response instead of applying stale compare data.
+  state._compareInvocationId = (state._compareInvocationId || 0) + 1;
   state.compareMode = null;
+  state.compareSelected = new Map();
   document.body.classList.remove("cmp-active");
   _renderCompareBanner();
-  state.compareSelected = new Map();
-  try { _updateRwtreeCompareBar(); } catch (_) {}
-  try { renderDetailPane(); } catch (_) {}
+  try { _updateRwtreeCompareBar(); } catch (e) {
+    console.warn("_resetCompareModeToEmpty: _updateRwtreeCompareBar failed:", e);
+  }
+  try { renderDetailPane(); } catch (e) {
+    console.warn("_resetCompareModeToEmpty: renderDetailPane failed:", e);
+  }
   try {
     const u = new URL(window.location.href);
     if (u.searchParams.has("compare")) {
       u.searchParams.delete("compare");
       window.history.replaceState({}, "", u.toString());
     }
-  } catch (_) {}
-  // Repaint analysis tab as single-mode using A's summary (or
-  // whatever the last loaded summary was). compareMode is now null
-  // so renderers' compare branches won't fire — they'll go down
-  // their normal single-render paths.
+  } catch (e) {
+    console.warn("_resetCompareModeToEmpty: URL update failed:", e);
+  }
+}
+
+function _onCompareExit() {
+  _resetCompareModeToEmpty();
+  // Repaint analysis tab as single-mode using the last loaded summary.
+  // compareMode is now null so renderers' compare branches won't fire —
+  // they'll go down their normal single-render paths. Only attempt
+  // repaint on explicit user exit (not on DELETE-triggered reset) because
+  // latestSummary may itself be stale after a delete.
   if (state.latestSummary) {
     try {
       _paintAnalysisFromSummary(state.latestSummary);
-    } catch (_) {}
+    } catch (e) {
+      console.warn("_onCompareExit: repaint failed:", e);
+    }
   }
 }
 
@@ -4480,6 +4558,7 @@ async function renderPayIdOverview(summary) {
   // is the focus there; injecting "未命中" placeholder rows would
   // look like B-only data that's actually just paytable padding.
   // See slot_designer/backend/virtual_app._register_virtual_only_routes.
+  // Real ↔ virtual asymmetries catalogued in docs/PROD_VS_VIRTUAL_CONTRACT.md
   let declaredPays = [];
   if (!cmpB) {
     try {

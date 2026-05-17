@@ -156,6 +156,7 @@ def _register_virtual_only_routes(app):
 
     Frontend probes these endpoints and falls back gracefully when
     they 404 — real-console UI therefore keeps its existing behavior.
+    Full real ↔ virtual asymmetry catalogue: docs/PROD_VS_VIRTUAL_CONTRACT.md
     """
     @app.get("/api/virtual/paytable/{machine}")
     def virtual_paytable_declared(machine: str) -> dict:
