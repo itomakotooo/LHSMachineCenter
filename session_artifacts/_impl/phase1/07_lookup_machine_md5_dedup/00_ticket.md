@@ -13,7 +13,7 @@
 Consolidate to one canonical location; both callsites import.
 
 Files expected to change:
-- `fresh_slotlab/machine_md5.py` (new) — canonical `lookup_machine_md5(machine, machines_config_path) -> (code_md5, config_md5)`
+- `fresh_slotlab/machine_md5.py` (new) — canonical `lookup_machine_md5(machine, machines_config_path) -> (config_md5, code_md5)` (matches `fresh_slotlab/player_impact_analyzer.py:2138` actual return order)
 - `src/web_console/backend/app.py:548-591` — drop local, import canonical
 - `fresh_slotlab/player_impact_analyzer.py:2163-2184` — drop local, import canonical
 - `tests/backend/test_lookup_machine_md5_canonical.py` (new) — regression per §3
@@ -40,7 +40,7 @@ Files expected to change:
 `app.py:548-591` body is `from fresh_slotlab.machine_md5 import lookup_machine_md5` (or thin wrapper if signature must change). `player_impact_analyzer.py:2163-2184` similarly.
 
 ### C3 — Value parity preserved
-For each of `[M14, M37, M101, M260, M279]` (mix of SC-Vanilla + complex archetypes): `lookup_machine_md5(M)` returns the same `(code_md5, config_md5)` as the pre-dedup implementations. Verifiable by snapshot test against current production `configs/machines.json` values.
+For each of `[M14, M37, M101, M260, M279]` (mix of SC-Vanilla + complex archetypes): `lookup_machine_md5(M)` returns the same `(config_md5, code_md5)` tuple as the pre-dedup implementations (note: `config_md5` first, `code_md5` second — matches existing return order; do not flip). Verifiable by snapshot test against current production `configs/machines.json` values.
 
 ### C4 — Virtual cousin documented
 `compute_machine_md5_for_mode` in `slot_designer/core/backend/machine_version.py:276-309` is the virtual-side equivalent (different schema — virtual computes from spec+weights+plugins, not from configs/machines.json). The relationship is documented in the canonical helper's docstring; the two are NOT merged in this ticket (different purposes).
