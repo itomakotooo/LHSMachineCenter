@@ -3390,7 +3390,19 @@ class BatchRunManager:
             # chunks are reported via ``mismatch_chunks`` but never
             # deleted here (2026-04-21 semantics rewrite; this was
             # the M1|1 regression path before).
-            raw_status = check_rawdata_status(it.machine, it.mode)
+            #
+            # P1-B6 R1 fix: pass rawdata_root + machines_config
+            # explicitly so virtual-console BatchRunManager instances
+            # scan VIRTUAL_RAWDATA_ROOT instead of falling back to the
+            # module-global RAWDATA_ROOT (real console tree). Per
+            # memory feedback_subprocess_import_suicide_and_module_
+            # globals.md — this was a real prod bug surfaced by P1-A1
+            # round-2 critic + caught by P1-B6 tester/verifier.
+            raw_status = check_rawdata_status(
+                it.machine, it.mode,
+                rawdata_root=self._rawdata_root,
+                machines_config=self._machines_config,
+            )
             # Cache routing (simplified 2026-04-17): cache always acts
             # as a resume starting point for user-initiated batch runs.
             # Fuzzy with cache used to be read-only which made the Fuzzy
