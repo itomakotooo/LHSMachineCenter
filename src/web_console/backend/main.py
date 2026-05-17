@@ -16,11 +16,15 @@ app = create_app()
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
+
+    _host = os.environ.get("SLOT_BIND_HOST", "0.0.0.0")
+    _port = int(os.environ.get("SLOT_BIND_PORT", "8877"))
 
     uvicorn.run(
         "src.web_console.backend.main:app",
-        host="127.0.0.1",
-        port=8765,
+        host=_host,
+        port=_port,
         reload=False,
     )
