@@ -144,6 +144,17 @@ const state = {
     try { return JSON.parse(localStorage.getItem("slot_console_tunedParams") || "{}"); }
     catch { return {}; }
   })(),
+  // Phase 3 (D11): fleet refresh state.
+  // Per memory/feedback_fasttimer_overlap_needs_oneshot.md: use a
+  // one-shot guard so each queue completion fires side-effects once.
+  fleetRefreshQueueId: null,
+  fleetRefreshPollTimer: null,
+  // One-shot guard: set to queue_id after auto-refresh fires for that
+  // completion, cleared on next queue start. JS is single-threaded so
+  // the check + set block is atomic.
+  _autoRefreshedForFleetRefreshId: null,
+  // Phase 3 (D11): uploaded configs list.
+  uploadedConfigs: [],
 };
 
 // Persist the sampling-panel selections + autotune cache across page
@@ -2094,6 +2105,11 @@ function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb
           } else if (analyzerStatus === "untagged") {
             analyzerBadge = `<span class="rwtree-analyzer-badge untagged" title="report 未标记 analyzer 版本">·</span>`;
           }
+          // Phase 3 (D10): show badge when underlying rawdata has been deleted.
+          // ``v.underlying_removed`` is set by _tag_reports_stale() on index.json entries.
+          const removedBadge = v.underlying_removed
+            ? `<span class="rwtree-analyzer-badge stale" title="${fmt("underlyingRemovedBadge")}">${fmt("underlyingRemovedBadge")}</span>`
+            : "";
           return `<div class="rwtree-report${expanded}" data-rv="${rv}">
             <div class="rwtree-report-summary">
               <input type="checkbox" class="rwtree-compare-check" data-rv="${rv}" data-mode="${mode}" ${checked} title="勾选以对比版本" />
@@ -2101,6 +2117,7 @@ function _renderRwtreeCell(machineName, mode, st, cell, reportMd5Map, fInt2, fMb
               <span class="rwtree-report-rtp">${rtp}</span>
               <span class="rwtree-report-ci">${ci}</span>
               ${analyzerBadge}
+              ${removedBadge}
               ${isBest ? '<span class="rwtree-best-tag" title="当前最佳 CI">⭐</span>' : ''}
             </div>
             <div class="rwtree-report-details">
@@ -7283,6 +7300,9 @@ async function loadBootstrap() {
   updateActionStates();
   const warnings = [...modelWarnings(), ...collectSystemWarnings()];
   setGlobalWarning(warnings);
+  // Phase 3 (D11): wire P3 panels after DOM and bootstrap data are ready.
+  _initConfigUploadPanel();
+  _initFleetRefreshPanel();
 }
 
 // Inline RTP mode bar: only when 按 RTP tab active. Shows a row of
@@ -7912,6 +7932,192 @@ async function boot() {
   } catch (e) {
     setHealth(false, String(e.message || e));
   }
+}
+
+// ── Phase 3 (D11): Config upload panel ──────────────────────────────
+
+function renderConfigList() {
+  const wrap = byId("configListWrap");
+  if (!wrap) return;
+  const configs = state.uploadedConfigs || [];
+  if (configs.length === 0) {
+    wrap.innerHTML = `<p class="muted">${fmt("configListEmpty")}</p>`;
+    return;
+  }
+  const header = fmt("configListHeader", { count: configs.length });
+  const rows = configs.map((c) =>
+    `<div class="config-list-row">
+      <span class="config-id-badge" title="${_escHtml(c.config_id || "")}">${_escHtml((c.config_id || "").slice(0, 8))}</span>
+      <span class="config-display-name">${_escHtml(c.display_name || "")}</span>
+      <span class="muted config-uploaded-at">${_escHtml((c.uploaded_at || "").slice(0, 16))}</span>
+    </div>`
+  ).join("");
+  wrap.innerHTML = `<p class="muted">${_escHtml(header)}</p>${rows}`;
+}
+
+async function refreshConfigList() {
+  try {
+    const data = await apiGet("/api/configs");
+    state.uploadedConfigs = Array.isArray(data.entries) ? data.entries : [];
+    renderConfigList();
+  } catch (_) {
+    // 404 means fleet_refresh_enabled=False (virtual console) — hide silently.
+  }
+}
+
+async function _handleConfigUpload() {
+  const fileInput = byId("configFileInput");
+  const nameInput = byId("configDisplayNameInput");
+  const statusEl = byId("configUploadStatus");
+  if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+    if (statusEl) statusEl.textContent = fmt("configUploadNoFile");
+    return;
+  }
+  const file = fileInput.files[0];
+  const displayName = (nameInput && nameInput.value.trim()) || file.name;
+  if (statusEl) statusEl.textContent = "...";
+  try {
+    const text = await file.text();
+    const content = JSON.parse(text);  // validate JSON client-side
+    const result = await apiPost("/api/configs/upload", {
+      content,
+      display_name: displayName,
+    });
+    if (statusEl) statusEl.textContent = fmt("configUploadOk", { id: (result.config_id || "").slice(0, 8) });
+    if (fileInput) fileInput.value = "";
+    if (nameInput) nameInput.value = "";
+    await refreshConfigList();
+  } catch (e) {
+    if (statusEl) statusEl.textContent = fmt("configUploadErr", { error: String(e.message || e).slice(0, 60) });
+  }
+}
+
+// ── Phase 3 (D11): Fleet refresh panel with one-shot guard ──────────
+// Per memory/feedback_fasttimer_overlap_needs_oneshot.md: use
+// _autoRefreshedForFleetRefreshId so each completion fires once.
+
+async function refreshFleetRefreshPanel() {
+  const startBtn = byId("fleetRefreshStartBtn");
+  const cancelBtn = byId("fleetRefreshCancelBtn");
+  const statusEl = byId("fleetRefreshStatus");
+  const progressDiv = byId("fleetRefreshProgress");
+  const metaEl = byId("fleetRefreshProgressMeta");
+  const barInner = byId("fleetRefreshProgressInner");
+
+  let data = null;
+  try {
+    data = await apiGet("/api/fleet/refresh");
+  } catch (e) {
+    // 404 = no queue yet OR virtual console (fleet disabled).
+    if (startBtn) startBtn.disabled = false;
+    if (cancelBtn) cancelBtn.classList.add("hidden");
+    if (statusEl) statusEl.textContent = fmt("fleetRefreshIdle");
+    if (progressDiv) progressDiv.classList.add("hidden");
+    // Stop polling when there's nothing to track.
+    if (state.fleetRefreshPollTimer && (!data || data.status !== "running")) {
+      clearInterval(state.fleetRefreshPollTimer);
+      state.fleetRefreshPollTimer = null;
+    }
+    return;
+  }
+
+  const queueStatus = data.status || "unknown";
+  const total = data.total_items || 0;
+  const done = (data.completed_items || 0) + (data.skipped_items || 0);
+  const failed = data.failed_items || 0;
+  const skipped = data.skipped_items || 0;
+  const queueId = data.queue_id || null;
+
+  if (queueStatus === "running") {
+    if (startBtn) startBtn.disabled = true;
+    if (cancelBtn) cancelBtn.classList.remove("hidden");
+    if (statusEl) statusEl.textContent = fmt("fleetRefreshRunning", { done, total });
+    if (progressDiv) progressDiv.classList.remove("hidden");
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    if (barInner) barInner.style.width = pct + "%";
+    if (metaEl) metaEl.textContent = `${done}/${total} (${pct}%) — failed=${failed} skipped=${skipped}`;
+  } else {
+    if (startBtn) startBtn.disabled = false;
+    if (cancelBtn) cancelBtn.classList.add("hidden");
+    if (queueStatus === "completed") {
+      if (statusEl) statusEl.textContent = fmt("fleetRefreshDone", { done, total, skipped });
+    } else if (queueStatus === "cancelled") {
+      if (statusEl) statusEl.textContent = fmt("fleetRefreshCancelled");
+    } else {
+      if (statusEl) statusEl.textContent = fmt("fleetRefreshIdle");
+    }
+    if (progressDiv) progressDiv.classList.remove("hidden");
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    if (barInner) barInner.style.width = pct + "%";
+    if (metaEl) metaEl.textContent = `${done}/${total} (${pct}%) — failed=${failed} skipped=${skipped}`;
+
+    // One-shot guard: fire side-effects on completion/cancel exactly once
+    // per queue_id transition. JS single-threaded guarantee makes check+set atomic.
+    if (queueId && state._autoRefreshedForFleetRefreshId !== queueId) {
+      state._autoRefreshedForFleetRefreshId = queueId;
+      // Side-effects: refresh machines summary etc.
+      refreshRunList(false).catch(() => {});
+    }
+
+    // Stop polling for a finished queue.
+    if (state.fleetRefreshPollTimer) {
+      clearInterval(state.fleetRefreshPollTimer);
+      state.fleetRefreshPollTimer = null;
+    }
+  }
+
+  state.fleetRefreshQueueId = queueId;
+}
+
+async function _startFleetRefresh() {
+  const startBtn = byId("fleetRefreshStartBtn");
+  const statusEl = byId("fleetRefreshStatus");
+  if (startBtn) startBtn.disabled = true;
+  try {
+    const result = await apiPost("/api/fleet/refresh", {});
+    state.fleetRefreshQueueId = result.queue_id || null;
+    // Reset one-shot guard for the new queue.
+    state._autoRefreshedForFleetRefreshId = null;
+    // Start polling.
+    if (state.fleetRefreshPollTimer) clearInterval(state.fleetRefreshPollTimer);
+    state.fleetRefreshPollTimer = setInterval(() => {
+      refreshFleetRefreshPanel().catch(() => {});
+    }, 3000);
+    await refreshFleetRefreshPanel();
+  } catch (e) {
+    if (statusEl) {
+      const msg = String((e && e.detail) || (e && e.message) || e);
+      statusEl.textContent = msg.includes("already running")
+        ? fmt("fleetRefreshConflict")
+        : fmt("configUploadErr", { error: msg.slice(0, 60) });
+    }
+    if (startBtn) startBtn.disabled = false;
+  }
+}
+
+async function _cancelFleetRefresh() {
+  try {
+    await apiFetch("/api/fleet/refresh", { method: "DELETE" });
+    await refreshFleetRefreshPanel();
+  } catch (e) {
+    const statusEl = byId("fleetRefreshStatus");
+    if (statusEl) statusEl.textContent = String((e && e.detail) || (e && e.message) || e).slice(0, 60);
+  }
+}
+
+function _initFleetRefreshPanel() {
+  const startBtn = byId("fleetRefreshStartBtn");
+  const cancelBtn = byId("fleetRefreshCancelBtn");
+  if (startBtn) startBtn.addEventListener("click", _startFleetRefresh);
+  if (cancelBtn) cancelBtn.addEventListener("click", _cancelFleetRefresh);
+  // Initial poll to recover state from a previous session.
+  refreshFleetRefreshPanel().catch(() => {});
+}
+
+function _initConfigUploadPanel() {
+  const uploadBtn = byId("configUploadBtn");
+  if (uploadBtn) uploadBtn.addEventListener("click", _handleConfigUpload);
+  refreshConfigList().catch(() => {});
 }
 
 boot();

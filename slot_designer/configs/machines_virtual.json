@@ -138,7 +138,7 @@
       "logicClassNames": [
         "SimulatedClassicPayline3ReelLuckyDuckyRespinMiniGame"
       ],
-      "configSummaryMd5": "f81b034a1f98c6507ff7aadaba9fecb0",
+      "configSummaryMd5": "cd2a1289594b25a35893ccb02a4800a8",
       "codeSummaryMd5": "92e79f8745268a151bbf9fee5d5ed181",
       "available": true,
       "_source_machine": "M43",
@@ -148,7 +148,7 @@
       "_status": "mode 1 only (universal mode-1-first onboarding 2026-05-14 — see session_artifacts/M43/00_SESSION_BRIEF.md)",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "f81b034a1f98c6507ff7aadaba9fecb0",
+          "configSummaryMd5": "cd2a1289594b25a35893ccb02a4800a8",
           "codeSummaryMd5": "92e79f8745268a151bbf9fee5d5ed181"
         }
       }
@@ -161,8 +161,8 @@
       "logicClassNames": [
         "SimulatedClassic3Reel5PaylineMultiplierWildFreeSpin"
       ],
-      "configSummaryMd5": "fd4e7a1ee0d83d0d457c140f48d74fa8",
-      "codeSummaryMd5": "097f10caa8e8ee3c0c2a9c32224ecd80",
+      "configSummaryMd5": "7fa4eec23022dc344862c12494521849",
+      "codeSummaryMd5": "411c5405cde3b9918ad178f739831680",
       "available": true,
       "_source_machine": "M31",
       "_spec_path": "slot_designer/machines/M31/spec.json",
@@ -172,8 +172,8 @@
       "_status": "mode 1 only (Stage 2 onboarding 2026-05-14)",
       "modesMd5": {
         "1": {
-          "configSummaryMd5": "fd4e7a1ee0d83d0d457c140f48d74fa8",
-          "codeSummaryMd5": "097f10caa8e8ee3c0c2a9c32224ecd80"
+          "configSummaryMd5": "7fa4eec23022dc344862c12494521849",
+          "codeSummaryMd5": "411c5405cde3b9918ad178f739831680"
         }
       }
     },

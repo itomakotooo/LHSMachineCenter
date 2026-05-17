@@ -78,6 +78,9 @@ CLASSIFY_DIR = ROOT / "dev_reports" / "_classify"
 PAYTABLES_DIR = ROOT / "configs" / "paytables"
 MACHINES_CONFIG = ROOT / "configs" / "machines.json"
 SERVERS_CONFIG = ROOT / "configs" / "servers.json"
+# Phase 3 deploy (2026-05-17): uploaded config JSONs live here.
+# Directory is gitignored; _registry.json inside tracks all uploads.
+CONFIGS_UPLOAD_DIR = ROOT / "configs" / "uploaded_configs"
 # Per-underlying MachineConfig override files that designers maintain
 # locally (gitignored). Naming is hardcoded as ``<underlying>Cfg.txt``
 # by convention — an M273 variant picks up machineconfig/M273Cfg.txt
@@ -1055,6 +1058,60 @@ def _classify_chunks(
     }
 
 
+def _tag_reports_stale(
+    machine: str,
+    mode: int,
+    reports_root: Path,
+    store: "StateStore",
+    state_dir: Path,
+) -> None:
+    """Phase 3 (D9): tag all reports for (machine, mode) as stale.
+
+    Sets ``underlying_removed=True`` on every entry in the per-mode
+    report index.json and ``underlying_removed=1`` in the SQLite
+    ``runs`` table.
+
+    Per memory/feedback_md5_is_a_tag_not_a_destruction_signal.md:
+    this is purely observability tagging — no reports are deleted.
+
+    Per memory/feedback_no_silent_swallow.md:
+    * Persists diagnostic to ``state_dir/stale_tag_error.json`` on failure.
+    * Re-raises so callers can detect and handle the failure
+      (typically: log, but don't block the delete that already succeeded).
+
+    INV-7 v2 carve-out: ``DELETE /api/machines/{machine}/all-data``
+    is EXEMPT from this call because it deletes both rawdata + reports
+    entirely; reports don't survive to need stale-tagging.
+    """
+    index_path = reports_root / machine / f"mode_{mode}" / "index.json"
+    try:
+        if index_path.exists():
+            def _mark_stale(data: Any) -> Any:
+                if isinstance(data, list):
+                    for entry in data:
+                        if isinstance(entry, dict):
+                            entry["underlying_removed"] = True
+                return data
+            atomic_json_read_modify_write(index_path, _mark_stale)
+        store.mark_runs_underlying_removed(machine, mode)
+    except Exception as exc:
+        # Persist diagnostic per memory/feedback_no_silent_swallow.md.
+        diag_path = state_dir / "stale_tag_error.json"
+        diag = {
+            "machine": machine,
+            "mode": mode,
+            "error": f"{exc.__class__.__name__}: {exc}",
+            "ts": utc_now(),
+        }
+        try:
+            atomic_json_write(diag_path, diag)
+        except Exception:
+            pass  # Last-resort: don't let log-write swallow original exc.
+        import traceback as _tb
+        _tb.print_exc()
+        raise  # Re-raise so caller can surface the failure.
+
+
 def delete_rawdata(
     machine: str,
     mode: int | None = None,
@@ -1449,7 +1506,18 @@ class StateStore:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Phase 3 (D6): queue_id to resume after crash recovery.
+        # Populated by _recover_fleet_refresh if a running queue is found.
+        # Consumed by create_app after FleetRefreshManager is constructed.
+        self._pending_resume_queue_id: str | None = None
         self._init_db()
+        # Phase 3 (D6): recover in-flight fleet refresh items after crash.
+        # Must run AFTER _init_db so the tables exist. Guard with
+        # OperationalError for pre-P3 databases that don't have the tables yet.
+        try:
+            self._recover_fleet_refresh()
+        except sqlite3.OperationalError:
+            pass  # Pre-P3 database — tables don't exist yet, nothing to recover
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -1533,6 +1601,13 @@ class StateStore:
             # summary.sampling.total_spins.
             if "total_spins" not in run_columns:
                 conn.execute("ALTER TABLE runs ADD COLUMN total_spins INTEGER")
+            # Phase 3 deploy (2026-05-17): flag set when the underlying rawdata
+            # for a run has been deleted.  Surfaced in list_runs / report endpoints
+            # so the frontend can show a "rawdata removed" badge.
+            if "underlying_removed" not in run_columns:
+                conn.execute(
+                    "ALTER TABLE runs ADD COLUMN underlying_removed INTEGER NOT NULL DEFAULT 0"
+                )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interpretations (
@@ -1551,7 +1626,156 @@ class StateStore:
                 conn.execute("ALTER TABLE interpretations ADD COLUMN source TEXT")
             if "warning" not in columns:
                 conn.execute("ALTER TABLE interpretations ADD COLUMN warning TEXT")
+            # Phase 3 deploy (2026-05-17): fleet refresh queue tables.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS fleet_refresh_queue (
+                    queue_id TEXT PRIMARY KEY,
+                    started_at TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    total_items INTEGER NOT NULL,
+                    completed_items INTEGER NOT NULL DEFAULT 0,
+                    failed_items INTEGER NOT NULL DEFAULT 0,
+                    skipped_items INTEGER NOT NULL DEFAULT 0,
+                    config_source TEXT NOT NULL DEFAULT 'server_default',
+                    server_id TEXT,
+                    cancelled_at TEXT,
+                    finished_at TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS fleet_refresh_items (
+                    queue_id TEXT NOT NULL REFERENCES fleet_refresh_queue(queue_id),
+                    machine TEXT NOT NULL,
+                    mode INTEGER NOT NULL,
+                    queue_position INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    run_id TEXT,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    started_at TEXT,
+                    finished_at TEXT,
+                    PRIMARY KEY (queue_id, machine, mode)
+                )
+                """
+            )
+            # Phase 3 deploy (2026-05-17): crash-recovery anchor for config_id
+            # sidecar annotation. Written before a sampling run starts;
+            # cleared after the sidecar is updated. On startup, orphaned rows
+            # trigger re-association of chunks with their config_id.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pending_batch_configs (
+                    batch_run_id TEXT NOT NULL,
+                    machine TEXT NOT NULL,
+                    mode INTEGER NOT NULL,
+                    config_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (batch_run_id, machine, mode)
+                )
+                """
+            )
             conn.commit()
+
+    def _recover_fleet_refresh(self) -> None:
+        """Phase 3 (D6): re-queue any in-flight items from a crashed queue.
+
+        Called during StateStore.__init__ AFTER _init_db.  If a
+        ``fleet_refresh_queue`` row with ``status='running'`` exists,
+        any of its items that are also ``status='running'`` crashed mid-run
+        (the daemon thread died with the process).  Reset them to
+        ``status='pending'`` so the next ``run_queue`` pass picks them up.
+
+        Sets ``self._pending_resume_queue_id`` so ``create_app`` can
+        resume the queue via FleetRefreshManager.run_queue() after it
+        constructs the manager.
+
+        Raises ``sqlite3.OperationalError`` if the tables don't exist
+        yet (pre-P3 database); caller swallows it.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT queue_id FROM fleet_refresh_queue "
+                "WHERE status='running' LIMIT 1"
+            ).fetchone()
+            if row:
+                queue_id = str(row["queue_id"])
+                # Re-queue in-flight items (they crashed mid-fetch).
+                conn.execute(
+                    "UPDATE fleet_refresh_items SET status='pending', run_id=NULL "
+                    "WHERE queue_id=? AND status='running'",
+                    (queue_id,),
+                )
+                conn.commit()
+                # Signal create_app to resume this queue.
+                self._pending_resume_queue_id = queue_id
+
+    # ── Phase 3 (D10): underlying_removed ────────────────────────────
+
+    def mark_runs_underlying_removed(self, machine: str, mode: int) -> int:
+        """Set ``underlying_removed=1`` on every run row matching
+        ``(machine, mode)``.  Called after rawdata deletion so the UI can
+        show a "underlying rawdata removed" badge on historical reports.
+
+        Returns the number of rows updated.
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE runs SET underlying_removed=1 "
+                "WHERE machine=? AND mode=?",
+                (str(machine), int(mode)),
+            )
+            conn.commit()
+            return cur.rowcount
+
+    # ── Phase 3 (D2): pending_batch_configs ──────────────────────────
+
+    def insert_pending_batch_config(
+        self,
+        batch_run_id: str,
+        machine: str,
+        mode: int,
+        config_id: str,
+    ) -> None:
+        """Write-config-first ordering anchor (R8 / D2).
+
+        Called BEFORE the analyzer subprocess starts sampling so that a
+        crash between subprocess start and sidecar update can be detected
+        and re-associated on next startup.
+        """
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO pending_batch_configs "
+                "(batch_run_id, machine, mode, config_id, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (batch_run_id, str(machine), int(mode), str(config_id), utc_now()),
+            )
+            conn.commit()
+
+    def delete_pending_batch_config(
+        self,
+        batch_run_id: str,
+        machine: str,
+        mode: int,
+    ) -> None:
+        """Remove the anchor after the sidecar is updated (D2)."""
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM pending_batch_configs "
+                "WHERE batch_run_id=? AND machine=? AND mode=?",
+                (batch_run_id, str(machine), int(mode)),
+            )
+            conn.commit()
+
+    def list_pending_batch_configs(self) -> list[dict[str, Any]]:
+        """Return all pending_batch_configs rows for startup re-association."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM pending_batch_configs ORDER BY created_at ASC"
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def insert_run(self, record: dict[str, Any]) -> None:
         fields = ", ".join(record.keys())
@@ -3708,7 +3932,16 @@ class BatchRunManager:
                 mode=_item_mode,
             )
             _item_upstream_md5 = f"{_item_up_cfg or ''}|{_item_up_code or ''}"
-            _item_config_id = "null"  # P3 will introduce real config IDs
+            # P3 known limitation: config_id wiring through the sampling path
+            # is deferred — update_chunk_entry currently has no config_id
+            # parameter, so all chunks are written to the "null" bucket of
+            # _chunks.json:by_config_id. The 4-tuple dedup infrastructure
+            # (pending_batch_configs + by_config_id inverted index + lazy
+            # migration + recovery) is fully in place and tested with the
+            # "null" sentinel; connecting the upload→batch→sidecar route is
+            # a follow-up. See session_artifacts/_impl/p3/critique_v3 if
+            # written, otherwise critique_v2 §2 RISK-1.
+            _item_config_id = "null"
             _sampling_info = {
                 "config_id": _item_config_id,
                 "upstream_md5": _item_upstream_md5,
@@ -3935,6 +4168,23 @@ class BatchRunManager:
                     )
                     return
                 _limiter_acquired = True
+                # Phase 3 (D2): write-config-first ordering — record the
+                # (batch_run_id, machine, mode, config_id) tuple BEFORE the
+                # analyzer subprocess starts so crash recovery can re-associate
+                # orphaned chunks with their config_id on next startup.
+                try:
+                    self._store.insert_pending_batch_config(
+                        batch["batch_id"], _item_machine, _item_mode, _item_config_id,
+                    )
+                except Exception as _pbc_exc:  # noqa: BLE001
+                    # Non-fatal: sidecar re-association falls back to "null"
+                    # if this row is missing. Log and continue.
+                    print(
+                        f"[_run_one] insert_pending_batch_config failed "
+                        f"({_item_machine} mode {_item_mode}): "
+                        f"{type(_pbc_exc).__name__}: {_pbc_exc}",
+                        flush=True,
+                    )
                 result = self._run_manager.start_run(req)
                 run_id = result.get("run_id")
                 item["run_id"] = run_id
@@ -3951,6 +4201,20 @@ class BatchRunManager:
                         _item_machine, _item_mode, str(run_id)
                     )
                 self._wait_for_run(run_id)
+                # Phase 3 (D2): sidecar is now updated by the subprocess.
+                # Clear the pending_batch_config row — crash recovery
+                # no longer needs it for this (batch, machine, mode).
+                try:
+                    self._store.delete_pending_batch_config(
+                        batch["batch_id"], _item_machine, _item_mode,
+                    )
+                except Exception as _dpbc_exc:  # noqa: BLE001
+                    print(
+                        f"[_run_one] delete_pending_batch_config failed "
+                        f"({_item_machine} mode {_item_mode}): "
+                        f"{type(_dpbc_exc).__name__}: {_dpbc_exc}",
+                        flush=True,
+                    )
                 row = self._store.get_run(run_id)
                 status = (row or {}).get("status", "failed")
                 if status == "completed":
@@ -5458,6 +5722,9 @@ def create_app(
     rawdata_root: Path | None = None,
     paytables_dir: Path | None = None,
     md5_refresh_override: "Callable[[str], dict[str, Any]] | None" = None,
+    # Phase 3 (D12): virtual console passes False to skip fleet refresh endpoints
+    # and the FleetRefreshManager daemon thread.  Production default is True.
+    fleet_refresh_enabled: bool = True,
 ) -> FastAPI:
     """Build a FastAPI app with all stateful singletons scoped to this instance.
 
@@ -5491,6 +5758,112 @@ def create_app(
     # summary.json for completed rows predating those columns -- quick
     # scan, safe on every startup (no-op once populated).
     store.backfill_rtp_ci_from_summaries()
+    # Phase 3 (D2): startup re-association — scan pending_batch_configs for
+    # orphaned rows left by a crashed _run_one. For each row, check the
+    # sidecar's by_config_id; if the machine+mode's sidecar exists but the
+    # config_id bucket doesn't contain the most-recently-written chunks,
+    # re-assign them. This is best-effort; failure is non-fatal (chunks stay
+    # tagged "null", which is the safe default). Run in a daemon thread so
+    # startup isn't blocked by potentially slow sidecar reads.
+    def _reassociate_orphaned_configs() -> None:
+        try:
+            from fresh_slotlab.chunk_index import load_chunks_index, set_chunk_config_id
+            pending = store.list_pending_batch_configs()
+            if not pending:
+                return
+            print(
+                f"[startup] re-associating {len(pending)} orphaned pending_batch_config rows",
+                flush=True,
+            )
+            for row in pending:
+                machine = row["machine"]
+                mode = int(row["mode"])
+                config_id = row["config_id"]
+                if config_id == "null":
+                    continue  # nothing useful to re-associate
+                mode_dir = rd_root / machine / f"mode_{mode}"
+                if not mode_dir.is_dir():
+                    continue
+                try:
+                    idx = load_chunks_index(mode_dir)
+                except Exception as _e:  # noqa: BLE001
+                    print(
+                        f"[startup] load_chunks_index failed {machine}/mode_{mode}: {_e}",
+                        flush=True,
+                    )
+                    continue
+                if idx is None:
+                    continue
+                by_cid = idx.get("by_config_id", {})
+                null_bucket = set(by_cid.get("null", []))
+                target_bucket = set(by_cid.get(config_id, []))
+                # Re-associate chunks that are still in the "null" bucket.
+                # This is conservative: only re-assign if there are no chunks
+                # already under this config_id (indicating the crash happened
+                # before ANY chunk was written and tagged).
+                if target_bucket:
+                    # At least one chunk already properly tagged — trust it.
+                    # Row is effectively done; delete so it doesn't accumulate.
+                    try:
+                        store.delete_pending_batch_config(
+                            row["batch_run_id"], machine, mode,
+                        )
+                    except Exception as _del_exc:  # noqa: BLE001
+                        print(
+                            f"[startup] delete_pending_batch_config (already-tagged) "
+                            f"failed {machine}/mode_{mode}: {_del_exc!r}",
+                            flush=True,
+                        )
+                    continue
+                _reassoc_failures = 0
+                for fname in list(null_bucket):
+                    try:
+                        set_chunk_config_id(mode_dir, fname, config_id)
+                    except Exception as _ce:  # noqa: BLE001
+                        _reassoc_failures += 1
+                        import traceback as _tb
+                        print(
+                            f"[startup] set_chunk_config_id failed "
+                            f"{machine}/mode_{mode}/{fname}: {_ce!r}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        _tb.print_exc()
+                        # Persist diagnostic per memory/feedback_no_silent_swallow.md.
+                        try:
+                            _err_path = sd / "reassociate_error.json"
+                            _err_path.parent.mkdir(parents=True, exist_ok=True)
+                            atomic_json_write(_err_path, {
+                                "ts": utc_now(),
+                                "chunk_file": str(fname),
+                                "machine": machine,
+                                "mode": mode,
+                                "config_id": config_id,
+                                "error": f"{_ce.__class__.__name__}: {_ce}",
+                            })
+                        except OSError:
+                            pass  # last-resort — can't write diagnostic
+                # Only delete the pending row when ALL chunks succeeded.
+                # If any failed, preserve it for retry on next startup.
+                if _reassoc_failures == 0:
+                    try:
+                        store.delete_pending_batch_config(
+                            row["batch_run_id"], machine, mode,
+                        )
+                    except Exception as _del_exc:  # noqa: BLE001
+                        print(
+                            f"[startup] delete_pending_batch_config failed "
+                            f"{machine}/mode_{mode}: {_del_exc!r}",
+                            flush=True,
+                        )
+        except Exception as _top:  # noqa: BLE001
+            import traceback
+            print("[startup] _reassociate_orphaned_configs error:", flush=True)
+            traceback.print_exc()
+
+    threading.Thread(
+        target=_reassociate_orphaned_configs, daemon=True, name="orphan-config-reassoc",
+    ).start()
     # Warm the machines-summary cache in a daemon thread so the first
     # page load doesn't block on a fresh 10k+ summary.json scan
     # (observed 11-14s on a fleet with many version iterations). The
@@ -6341,6 +6714,14 @@ def create_app(
             except OSError:
                 pass
 
+            # Phase 3 (D9): tag reports stale only when this delete
+            # empties the mode (last-chunk-removed path per brief D9).
+            # INV-7 v2: only tag — reports are NOT deleted here.
+            if deleted_chunks > 0 and not any(mode_dir.glob("chunk_*.json")):
+                try:
+                    _tag_reports_stale(machine, int(mode), rr, store, sd)
+                except Exception:
+                    pass  # Diagnostic persisted by helper; don't block return.
             return {
                 "ok": True,
                 "machine": machine,
@@ -6501,10 +6882,24 @@ def create_app(
 
         try:
             retention = _load_settings(settings_path)["min_retention_spins"]
-            return delete_rawdata(
+            result = delete_rawdata(
                 machine, mode, rawdata_root=rd_root, machines_config=mc,
                 min_retention_spins=retention, force=force,
             )
+            # Phase 3 (D9): tag reports stale for each deleted mode.
+            # INV-7 v2: only tag — reports are NOT deleted here.
+            # Best-effort: if tagging fails, log it but still return success
+            # (delete already happened; the helper persists the diagnostic
+            # to state/console/stale_tag_error.json and prints to stderr +
+            # traceback. Operators discover it via filesystem inspection;
+            # /api/system-state does NOT surface this file in P3 — adding
+            # that is a follow-up).
+            for _stale_mode in modes_to_lock:
+                try:
+                    _tag_reports_stale(machine, _stale_mode, rr, store, sd)
+                except Exception:
+                    pass  # Diagnostic already persisted + printed by helper.
+            return result
         finally:
             for am in acquired_modes:
                 registry.release_cell(machine, am, CellOperation.DELETING)
@@ -9298,6 +9693,342 @@ def create_app(
             except Exception:  # noqa: BLE001 — daemon; must not crash
                 import traceback
                 traceback.print_exc()
+
+    # ── Phase 3 (D1): Config upload endpoints ──────────────────────────
+    import hashlib as _hashlib
+
+    configs_upload_dir = CONFIGS_UPLOAD_DIR
+    configs_upload_dir.mkdir(parents=True, exist_ok=True)
+    _configs_registry_path = configs_upload_dir / "_registry.json"
+
+    @app.post("/api/configs/upload")
+    def upload_config(req: dict[str, Any]) -> dict[str, Any]:
+        """Upload a config JSON. Computes config_id = sha1(content).
+        Idempotent: uploading the same content twice with the same
+        display_name is a no-op; with a different display_name adds
+        an alias entry to the registry.
+
+        Body: {content: <JSON string or dict>, display_name: str}
+        """
+        raw_content = req.get("content")
+        display_name = str(req.get("display_name") or "").strip() or "unnamed"
+        if raw_content is None:
+            raise HTTPException(status_code=400, detail="content is required")
+        # Normalise to canonical JSON string.
+        if isinstance(raw_content, dict):
+            try:
+                content_str = json.dumps(raw_content, ensure_ascii=False,
+                                         sort_keys=True, separators=(",", ":"))
+                parsed_content = raw_content
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=400,
+                                    detail=f"content is not JSON-serialisable: {exc}")
+        elif isinstance(raw_content, str):
+            try:
+                parsed_content = json.loads(raw_content)
+                content_str = json.dumps(parsed_content, ensure_ascii=False,
+                                         sort_keys=True, separators=(",", ":"))
+            except (json.JSONDecodeError, TypeError) as exc:
+                raise HTTPException(status_code=400,
+                                    detail=f"content is not valid JSON: {exc}")
+        else:
+            raise HTTPException(status_code=400,
+                                detail="content must be a JSON string or object")
+
+        config_id = _hashlib.sha1(
+            content_str.encode("utf-8")
+        ).hexdigest()  # 40 hex chars
+
+        # Write content file (idempotent — if exists, content is identical).
+        content_path = configs_upload_dir / f"{config_id}.json"
+        if not content_path.exists():
+            atomic_json_write(content_path, parsed_content)
+
+        # Update registry atomically.
+        now_ts = utc_now()
+
+        def _register(reg: Any) -> Any:
+            if not isinstance(reg, dict):
+                reg = {"entries": []}
+            entries = reg.get("entries") or []
+            # Check for existing entry with this (config_id, display_name).
+            for e in entries:
+                if (e.get("config_id") == config_id
+                        and e.get("display_name") == display_name):
+                    return reg  # Idempotent: already registered.
+            entries.append({
+                "config_id": config_id,
+                "display_name": display_name,
+                "uploaded_at": now_ts,
+            })
+            reg["entries"] = entries
+            return reg
+
+        atomic_json_read_modify_write(
+            _configs_registry_path, _register,
+            default={"entries": []},
+        )
+        return {
+            "ok": True,
+            "config_id": config_id,
+            "display_name": display_name,
+            "uploaded_at": now_ts,
+        }
+
+    @app.get("/api/configs")
+    def list_configs() -> dict[str, Any]:
+        """List all uploaded configs from _registry.json."""
+        if not _configs_registry_path.exists():
+            return {"entries": []}
+        try:
+            data = json.loads(_configs_registry_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return {"entries": []}
+            return {"entries": data.get("entries") or []}
+        except (OSError, json.JSONDecodeError):
+            return {"entries": []}
+
+    @app.get("/api/configs/{config_id}")
+    def get_config(config_id: str) -> dict[str, Any]:
+        """Return metadata + content for a single config."""
+        content_path = configs_upload_dir / f"{config_id}.json"
+        if not content_path.exists():
+            raise HTTPException(status_code=404, detail="config not found")
+        try:
+            content = json.loads(content_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=500,
+                                detail=f"config file unreadable: {exc}")
+        # Pull display_name from registry.
+        display_name = config_id  # fallback
+        if _configs_registry_path.exists():
+            try:
+                reg = json.loads(_configs_registry_path.read_text(encoding="utf-8"))
+                for e in (reg.get("entries") or []):
+                    if e.get("config_id") == config_id:
+                        display_name = str(e.get("display_name") or config_id)
+                        break
+            except (OSError, json.JSONDecodeError):
+                pass
+        return {
+            "config_id": config_id,
+            "display_name": display_name,
+            "content": content,
+        }
+
+    # ── Phase 3 (D7 + D5 + D8): Fleet refresh endpoints ───────────────
+
+    if fleet_refresh_enabled:
+        from src.web_console.backend.fleet_refresh import FleetRefreshManager
+
+        # Build the per-item runner that FleetRefreshManager calls.
+        # This function runs a single (machine, mode) batch item and
+        # waits for it to complete, returning {run_id, status, error}.
+        def _fleet_batch_item_runner(
+            machine: str, mode: int, queue_id: str,
+        ) -> dict[str, Any]:
+            """Run one fleet-refresh item synchronously.
+
+            Reuses the existing BatchRunManager and RunManager infrastructure
+            so fleet refresh honors the same disk-pressure / md5-filter /
+            resume-from-cache logic as ad-hoc planner batches.
+
+            The item already has a SAMPLING lock (acquired by FleetRefreshManager
+            before calling this) and a ConcurrencyLimiter slot.  We skip the
+            lock-acquire step inside BatchRunManager by driving it directly via
+            RunManager.start_run.
+            """
+            import time as _time
+            try:
+                up_cfg, up_code = _get_machine_md5(machine, mc, mode)
+                cache_dir_str = str(rd_root / machine / f"mode_{mode}")
+                run_req = RunCreateRequest(
+                    machine=machine,
+                    mode=mode,
+                    chunk_spin_times=1000,
+                    chunk_robot_count=8,
+                    batch_concurrency=8,
+                    max_chunks=120,
+                    timeout=300.0,
+                    target_halfwidth_pp=0.5,
+                    server_id="",
+                    resume_from_cache_dir=cache_dir_str,
+                    upstream_config_md5=up_cfg or "",
+                    upstream_code_md5=up_code or "",
+                )
+                result = manager.start_run(run_req)
+                run_id = str(result.get("run_id") or "")
+                # Wait for the run to complete.
+                # Check cancel flag each iteration so DELETE /api/fleet/refresh
+                # can interrupt a long-running wait (up to 5s latency vs the
+                # previous 2-hour worst-case).
+                max_wait = 7200  # 2 hours
+                waited = 0
+                while waited < max_wait:
+                    # Cancel check before each poll — fleet_mgr is defined in
+                    # the enclosing scope immediately after this function and is
+                    # guaranteed assigned before the first call.
+                    if fleet_mgr._is_cancelled(queue_id):
+                        return {
+                            "run_id": run_id,
+                            "status": "cancelled",
+                            "error": "queue cancelled during run",
+                        }
+                    row = store.get_run(run_id)
+                    if row is None:
+                        break
+                    status = str(row.get("status") or "")
+                    if status not in ("running", "pending"):
+                        return {
+                            "run_id": run_id,
+                            "status": "completed" if status == "completed" else "failed",
+                            "error": str(row.get("error_message") or ""),
+                        }
+                    _time.sleep(5)
+                    waited += 5
+                return {"run_id": run_id, "status": "failed", "error": "timeout"}
+            except Exception as exc:  # noqa: BLE001
+                import traceback as _tb
+                _tb.print_exc()
+                return {"run_id": "", "status": "failed",
+                        "error": f"{exc.__class__.__name__}: {exc}"}
+
+        fleet_mgr = FleetRefreshManager(
+            db_path=db_path,
+            registry=registry,
+            limiter=limiter,
+            start_batch_item_fn=_fleet_batch_item_runner,
+        )
+        app.state.fleet_refresh_manager = fleet_mgr
+
+        # Resume crashed queue if any (D6).
+        if store._pending_resume_queue_id:
+            _resume_id = store._pending_resume_queue_id
+            threading.Thread(
+                target=fleet_mgr.run_queue,
+                args=(_resume_id,),
+                daemon=True,
+                name=f"fleet-refresh-resume-{_resume_id[:8]}",
+            ).start()
+
+        @app.post("/api/fleet/refresh")
+        def start_fleet_refresh(req: dict[str, Any] | None = None) -> dict[str, Any]:
+            """Trigger a new fleet refresh queue.
+
+            Single-instance enforcement: returns 409 if a queue is already
+            running.
+
+            Body (optional): {config_source: str, server_id: str,
+                              machines: [{machine, modes: [int]}]}
+            If machines is omitted, all machines from machines.json are queued.
+            """
+            # Single-instance check.
+            running_id = fleet_mgr.get_running_queue_id()
+            if running_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"fleet refresh already running (queue_id={running_id}). "
+                        "Cancel it first via DELETE /api/fleet/refresh"
+                    ),
+                )
+            # Build machine list.
+            body = req or {}
+            config_source = str(body.get("config_source") or "server_default")
+            server_id = str(body.get("server_id") or "") or None
+            raw_machines = body.get("machines")
+            if raw_machines is None:
+                # Default: all machines from machines.json with their
+                # supported modes (inferred from rawdata dirs or default [1]).
+                try:
+                    data = json.loads(Path(mc).read_text(encoding="utf-8"))
+                    machines_list = []
+                    for entry in (data.get("machines") or []):
+                        m = str(entry.get("machine") or "")
+                        if not m:
+                            continue
+                        # Default to modes that exist in rawdata, or mode 1.
+                        machine_rawdata = rd_root / m
+                        modes: list[int] = []
+                        if machine_rawdata.is_dir():
+                            for md in machine_rawdata.iterdir():
+                                if md.is_dir() and md.name.startswith("mode_"):
+                                    try:
+                                        modes.append(int(md.name.split("_", 1)[1]))
+                                    except (IndexError, ValueError):
+                                        continue
+                        if not modes:
+                            modes = [1]
+                        machines_list.append({"machine": m, "modes": sorted(modes)})
+                except (OSError, json.JSONDecodeError):
+                    machines_list = []
+            else:
+                machines_list = list(raw_machines)
+
+            if not machines_list:
+                raise HTTPException(status_code=400,
+                                    detail="no machines to refresh")
+
+            queue_id = fleet_mgr.start_queue(
+                machines_list,
+                config_source=config_source,
+                server_id=server_id,
+            )
+            return {
+                "ok": True,
+                "queue_id": queue_id,
+                "total_machines": len(machines_list),
+                "total_items": sum(
+                    len(m.get("modes") or []) for m in machines_list
+                ),
+            }
+
+        @app.get("/api/fleet/refresh")
+        def get_fleet_refresh() -> dict[str, Any]:
+            """Poll current fleet refresh progress.
+
+            Returns the most recently started queue (running or completed).
+            404 if no queue has ever been created.
+            """
+            queue_id = fleet_mgr.get_running_queue_id()
+            if queue_id is None:
+                # No running queue — return the most recently completed.
+                try:
+                    with fleet_mgr._connect() as _conn:
+                        row = _conn.execute(
+                            "SELECT queue_id FROM fleet_refresh_queue "
+                            "ORDER BY started_at DESC LIMIT 1"
+                        ).fetchone()
+                    queue_id = str(row["queue_id"]) if row else None
+                except sqlite3.OperationalError:
+                    queue_id = None
+
+            if queue_id is None:
+                raise HTTPException(
+                    status_code=404, detail="no fleet refresh queue found"
+                )
+
+            progress = fleet_mgr.get_queue_progress(queue_id)
+            if progress is None:
+                raise HTTPException(
+                    status_code=404, detail=f"queue {queue_id} not found"
+                )
+            return progress
+
+        @app.delete("/api/fleet/refresh")
+        def cancel_fleet_refresh() -> dict[str, Any]:
+            """Cancel the currently running fleet refresh queue."""
+            queue_id = fleet_mgr.get_running_queue_id()
+            if queue_id is None:
+                raise HTTPException(
+                    status_code=404, detail="no running fleet refresh queue"
+                )
+            fleet_mgr.cancel_queue(queue_id)
+            return {"ok": True, "queue_id": queue_id, "cancelled": True}
+
+    else:
+        # fleet_refresh_enabled=False (virtual console).
+        app.state.fleet_refresh_manager = None
 
     threading.Thread(target=_disk_monitor_loop, daemon=True, name="disk-monitor").start()
 
