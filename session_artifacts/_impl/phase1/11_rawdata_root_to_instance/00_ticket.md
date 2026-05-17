@@ -34,6 +34,7 @@ Confirmed via grep:
 - Line 695: `root = rawdata_root if rawdata_root is not None else RAWDATA_ROOT` — fallback pattern
 - Line 1064: same fallback
 - Line 3187: same fallback
+- **Line 3259: `check_rawdata_status` reads global RAWDATA_ROOT directly (no fallback) — REAL PROD BUG** surfaced by P1-A1 round-2 critic. This is exactly the failure pattern memory `feedback_subprocess_import_suicide_and_module_globals.md` warns about. This ticket MUST migrate this ref and add a regression test.
 - Line 4805: comment + use of RAWDATA_ROOT at runtime — verify usage
 - Line 5318: same fallback
 - Line 7489: `RAWDATA_ROOT` direct usage (no fallback flag); verify whether `rawdata_root` should be threaded through
