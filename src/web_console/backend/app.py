@@ -1178,6 +1178,7 @@ def delete_rawdata(
     machines_config: Path | None = None,
     min_retention_spins: int = _RAWDATA_MIN_RETENTION_SPINS_DEFAULT,
     force: bool = False,
+    _cs: "AppCacheState | None" = None,
 ) -> dict[str, Any]:
     """Delete rawdata for a machine / mode, respecting the retention
     quota by default.
@@ -1245,7 +1246,7 @@ def delete_rawdata(
     # carve-outs. Force mode (the "完全删除" button) skips this
     # entirely — that's the "I know what I'm doing" escape hatch.
     try:
-        _locks = _load_rawdata_locks(_rawdata_locks_path(mc))
+        _locks = _load_rawdata_locks(_rawdata_locks_path(mc), _cs=_cs)
     except Exception:  # noqa: BLE001
         _locks = set()
 
@@ -2111,14 +2112,56 @@ def _load_paytable_shape(
     }
 
 
-# Module-level cache for _build_machines_summary keyed on str(reports_root)
-# so multiple app instances (tests) don't pollute each other. Invalidated
-# when the aggregated mtime fingerprint of per-mode latest.json files
-# changes — new report versions touch latest.json, so any fleet change
-# bumps the fingerprint. Without this cache, every page load re-reads
-# ~9k summary.json files on a fleet with many version iterations
-# (11s+ observed → catalog appears broken).
-_MACHINES_SUMMARY_CACHE: dict[str, dict[str, Any]] = {}
+# ── Per-app-instance cache state (P1-C1 migration) ───────────────────
+# Previously these were bare module-level dicts/sets, which leaked
+# across multiple app instances created in the same process (tests).
+# Now each create_app() call gets its own AppCacheState(); the module-
+# level _MODULE_CACHE_STATE is the backward-compat default for any
+# standalone caller (scripts / tests that call helper fns directly
+# without going through create_app).
+# Per memory feedback_subprocess_import_suicide_and_module_globals.md:
+#   "module-level dict → self._xxx; tests that monkeypatch the module
+#    global no longer catch the bug → split-path regression needed."
+
+
+class AppCacheState:
+    """Per-app-instance cache container for the 5 formerly-module-global
+    mutable state structures.  Instantiate once per create_app() call
+    and pass via closure to every function that previously referenced a
+    module-level global.
+
+    NOT imported at module top — instantiated lazily inside create_app.
+    No build_*() side effects; safe to import (§3 C3 invariant).
+    """
+
+    __slots__ = (
+        "machines_summary_cache",
+        "rawdata_overview_cache",
+        "static_attrs_cache",
+        "lock_cache",
+        "in_use_modes",
+        "in_use_lock",
+    )
+
+    def __init__(self) -> None:
+        # Machines-summary: keyed by str(reports_root) → {fingerprint, result}
+        self.machines_summary_cache: dict[str, dict[str, Any]] = {}
+        # Rawdata-overview: keyed by str(rawdata_root) → {fp, retention, result}
+        self.rawdata_overview_cache: dict[str, dict[str, Any]] = {}
+        # Static-attrs: mtime-invalidated in-memory view of machines_static.json
+        self.static_attrs_cache: dict = {"mtime": 0, "data": None}
+        # Rawdata-locks: mtime-invalidated in-memory view of rawdata_locks.json
+        self.lock_cache: dict = {"mtime": 0, "data": None}
+        # In-use protection: (machine, mode) pairs currently being sampled/analyzed
+        self.in_use_modes: set[tuple[str, int]] = set()
+        self.in_use_lock: threading.Lock = threading.Lock()
+
+
+# Module-level singleton — backward-compat default for standalone callers
+# (scripts / tests that call helper fns without going through create_app).
+# Each create_app() instance gets its own AppCacheState() and passes it
+# via closure; the module global is NEVER used by in-process app routes.
+_MODULE_CACHE_STATE = AppCacheState()
 
 
 def _machines_summary_fingerprint(reports_root: Path) -> tuple[int, int]:
@@ -2161,7 +2204,8 @@ def _machines_summary_fingerprint(reports_root: Path) -> tuple[int, int]:
 # takes seconds on a large fleet; mtime-fingerprint cache makes it
 # effectively free when nothing changed. Invalidated by add/delete
 # of chunk files (mode_dir mtime bumps).
-_RAWDATA_OVERVIEW_CACHE: dict[str, dict[str, Any]] = {}
+# Migrated from _RAWDATA_OVERVIEW_CACHE module global to AppCacheState
+# per P1-C1 (feedback_subprocess_import_suicide_and_module_globals.md).
 
 
 def _rawdata_overview_fingerprint(rawdata_root: Path) -> tuple[int, int]:
@@ -2189,13 +2233,16 @@ def _build_rawdata_overview(
     rawdata_root: Path,
     machines_config: Path,
     retention_spins: int,
+    _cs: "AppCacheState | None" = None,
 ) -> dict[str, Any]:
     """Per-machine rawdata breakdown (baseline / reclaimable / historical
     bytes + last-sample mtime) + fleet aggregates. Cached keyed on
-    str(rawdata_root) with the mtime fingerprint above."""
+    str(rawdata_root) with the mtime fingerprint above.
+    _cs is the per-app-instance AppCacheState (P1-C1)."""
+    cs = _cs if _cs is not None else _MODULE_CACHE_STATE
     cache_key = str(rawdata_root)
     fp = _rawdata_overview_fingerprint(rawdata_root)
-    entry = _RAWDATA_OVERVIEW_CACHE.get(cache_key)
+    entry = cs.rawdata_overview_cache.get(cache_key)
     if entry and entry.get("fp") == fp and entry.get("retention") == retention_spins:
         return entry["result"]
 
@@ -2256,7 +2303,7 @@ def _build_rawdata_overview(
         "reclaimable_bytes": total_del + total_historical,
         "per_machine": per_machine,
     }
-    _RAWDATA_OVERVIEW_CACHE[cache_key] = {
+    cs.rawdata_overview_cache[cache_key] = {
         "fp": fp, "retention": retention_spins, "result": result,
     }
     return result
@@ -2274,7 +2321,8 @@ def _build_rawdata_overview(
 #   * Rebuilt on /api/reports/import success.
 # Performance: in-memory cache keyed by file mtime_ns; atomic writes
 # via temp + os.replace; O(machines × modes) bootstrap walk runs once.
-_STATIC_ATTRS_CACHE: dict = {"mtime": 0, "data": None}
+# Migrated from _STATIC_ATTRS_CACHE module global to AppCacheState
+# per P1-C1 (feedback_subprocess_import_suicide_and_module_globals.md).
 
 # ── In-use protection (2026-04-20 round 6) ──────────────────────────
 # Set of (machine, mode) pairs currently being sampled or consumed by
@@ -2283,23 +2331,37 @@ _STATIC_ATTRS_CACHE: dict = {"mtime": 0, "data": None}
 # analyzer invocation with ``_acquire_in_use`` / ``_release_in_use``.
 # In-memory only (process-local). On crash, restart clears it — safer
 # than persisting a stale lock that nothing will release.
-_IN_USE_MODES: set[tuple[str, int]] = set()
-_IN_USE_LOCK = threading.Lock()
+# Migrated from _IN_USE_MODES/_IN_USE_LOCK module globals to
+# AppCacheState per P1-C1.
 
 
-def _acquire_in_use(machine: str, mode: int) -> None:
-    with _IN_USE_LOCK:
-        _IN_USE_MODES.add((str(machine), int(mode)))
+def _acquire_in_use(
+    machine: str, mode: int, _cs: "AppCacheState | None" = None,
+) -> None:
+    """Register (machine, mode) as in-use.  _cs is the per-app-instance
+    AppCacheState; defaults to the module-level sentinel for standalone
+    callers outside create_app (per P1-C1 migration)."""
+    cs = _cs if _cs is not None else _MODULE_CACHE_STATE
+    with cs.in_use_lock:
+        cs.in_use_modes.add((str(machine), int(mode)))
 
 
-def _release_in_use(machine: str, mode: int) -> None:
-    with _IN_USE_LOCK:
-        _IN_USE_MODES.discard((str(machine), int(mode)))
+def _release_in_use(
+    machine: str, mode: int, _cs: "AppCacheState | None" = None,
+) -> None:
+    """Deregister (machine, mode).  See _acquire_in_use."""
+    cs = _cs if _cs is not None else _MODULE_CACHE_STATE
+    with cs.in_use_lock:
+        cs.in_use_modes.discard((str(machine), int(mode)))
 
 
-def _get_in_use_snapshot() -> set[tuple[str, int]]:
-    with _IN_USE_LOCK:
-        return set(_IN_USE_MODES)
+def _get_in_use_snapshot(
+    _cs: "AppCacheState | None" = None,
+) -> set[tuple[str, int]]:
+    """Return a snapshot copy of the in-use set.  See _acquire_in_use."""
+    cs = _cs if _cs is not None else _MODULE_CACHE_STATE
+    with cs.in_use_lock:
+        return set(cs.in_use_modes)
 
 
 # ── Rawdata lock registry (2026-04-20 round 6) ──────────────────────
@@ -2309,23 +2371,28 @@ def _get_in_use_snapshot() -> set[tuple[str, int]]:
 # chunks they want preserved beyond retention).
 # Storage: configs/rawdata_locks.json, gitignored + per-fleet.
 # Key format: "<machine>|<mode>". Value: bool (true = locked).
-_LOCK_CACHE: dict = {"mtime": 0, "data": None}
+# Migrated from _LOCK_CACHE module global to AppCacheState per P1-C1.
 
 
 def _rawdata_locks_path(configs_root_machines_config: Path) -> Path:
     return configs_root_machines_config.parent / "rawdata_locks.json"
 
 
-def _load_rawdata_locks(path: Path) -> set[tuple[str, int]]:
+def _load_rawdata_locks(
+    path: Path, _cs: "AppCacheState | None" = None,
+) -> set[tuple[str, int]]:
     """Return the set of (machine, mode) tuples currently locked.
     Mtime-invalidated in-memory cache; file IO only on first call
-    or when file mtime changes."""
+    or when file mtime changes.
+    _cs is the per-app-instance AppCacheState (P1-C1); defaults to the
+    module-level sentinel for standalone callers."""
+    cs = _cs if _cs is not None else _MODULE_CACHE_STATE
     try:
         cur_mtime = path.stat().st_mtime_ns if path.exists() else 0
     except OSError:
         cur_mtime = 0
-    cached = _LOCK_CACHE.get("data")
-    if cached is not None and _LOCK_CACHE.get("mtime") == cur_mtime:
+    cached = cs.lock_cache.get("data")
+    if cached is not None and cs.lock_cache.get("mtime") == cur_mtime:
         return cached
     locks: set[tuple[str, int]] = set()
     if path.exists():
@@ -2339,12 +2406,17 @@ def _load_rawdata_locks(path: Path) -> set[tuple[str, int]]:
                 locks.add((machine, int(mode_str)))
             except (ValueError, TypeError):
                 continue
-    _LOCK_CACHE["mtime"] = cur_mtime
-    _LOCK_CACHE["data"] = locks
+    cs.lock_cache["mtime"] = cur_mtime
+    cs.lock_cache["data"] = locks
     return locks
 
 
-def _save_rawdata_locks(path: Path, locks: set[tuple[str, int]]) -> None:
+def _save_rawdata_locks(
+    path: Path, locks: set[tuple[str, int]], _cs: "AppCacheState | None" = None,
+) -> None:
+    """Persist lock set to disk and update the in-memory cache.
+    _cs is the per-app-instance AppCacheState (P1-C1)."""
+    cs = _cs if _cs is not None else _MODULE_CACHE_STATE
     keys = sorted(f"{m}|{mode}" for (m, mode) in locks)
     payload = {"locked": keys, "updated_at": utc_now()}
     tmp = path.with_suffix(".json.tmp")
@@ -2356,17 +2428,21 @@ def _save_rawdata_locks(path: Path, locks: set[tuple[str, int]]) -> None:
     import os as _os
     _os.replace(tmp, path)
     try:
-        _LOCK_CACHE["mtime"] = path.stat().st_mtime_ns
+        cs.lock_cache["mtime"] = path.stat().st_mtime_ns
     except OSError:
         pass
-    _LOCK_CACHE["data"] = set(locks)
+    cs.lock_cache["data"] = set(locks)
 
 
-def _set_rawdata_lock(path: Path, machine: str, mode: int, locked: bool) -> bool:
+def _set_rawdata_lock(
+    path: Path, machine: str, mode: int, locked: bool,
+    _cs: "AppCacheState | None" = None,
+) -> bool:
     """Add or remove (machine, mode) from the lock set. Returns True if
     the state changed (lock applied or removed), False if it was already
-    in the desired state."""
-    locks = set(_load_rawdata_locks(path))
+    in the desired state.
+    _cs is the per-app-instance AppCacheState (P1-C1)."""
+    locks = set(_load_rawdata_locks(path, _cs=_cs))
     key = (str(machine), int(mode))
     was = key in locks
     if locked and not was:
@@ -2375,8 +2451,13 @@ def _set_rawdata_lock(path: Path, machine: str, mode: int, locked: bool) -> bool
         locks.discard(key)
     else:
         return False
-    _save_rawdata_locks(path, locks)
+    _save_rawdata_locks(path, locks, _cs=_cs)
     return True
+
+
+# _STATIC_ATTRS_MECH_KEYS is a true constant (immutable tuple of mechanic
+# key names), not mutable state.  Left as module-level per brief §4
+# "True constants — leave alone".  Justified in 02_implementation.md.
 _STATIC_ATTRS_MECH_KEYS = (
     "lock_lines", "lock_symbols", "lock_reels",
     "jackpot", "free_spin", "dollar_pick",
@@ -2388,14 +2469,20 @@ def _static_attrs_path(machines_config: Path) -> Path:
     return machines_config.parent / "machines_static.json"
 
 
-def _load_static_attrs(path: Path) -> dict:
+def _load_static_attrs(
+    path: Path, _cs: "AppCacheState | None" = None,
+) -> dict:
+    """Load (or return cached) machines_static.json.
+    _cs is the per-app-instance AppCacheState (P1-C1); defaults to the
+    module-level sentinel for standalone callers."""
+    cs = _cs if _cs is not None else _MODULE_CACHE_STATE
     try:
         cur_mtime = path.stat().st_mtime_ns if path.exists() else 0
     except OSError:
         cur_mtime = 0
-    if (_STATIC_ATTRS_CACHE["data"] is not None
-            and _STATIC_ATTRS_CACHE["mtime"] == cur_mtime):
-        return _STATIC_ATTRS_CACHE["data"]
+    if (cs.static_attrs_cache["data"] is not None
+            and cs.static_attrs_cache["mtime"] == cur_mtime):
+        return cs.static_attrs_cache["data"]
     if not path.exists():
         data: dict = {}
     else:
@@ -2406,12 +2493,17 @@ def _load_static_attrs(path: Path) -> dict:
     data.setdefault("machines", {})
     data.setdefault("feature_distribution", {})
     data.setdefault("mechanics_distribution", {})
-    _STATIC_ATTRS_CACHE["mtime"] = cur_mtime
-    _STATIC_ATTRS_CACHE["data"] = data
+    cs.static_attrs_cache["mtime"] = cur_mtime
+    cs.static_attrs_cache["data"] = data
     return data
 
 
-def _save_static_attrs(path: Path, data: dict) -> None:
+def _save_static_attrs(
+    path: Path, data: dict, _cs: "AppCacheState | None" = None,
+) -> None:
+    """Atomically write machines_static.json and update the in-memory cache.
+    _cs is the per-app-instance AppCacheState (P1-C1)."""
+    cs = _cs if _cs is not None else _MODULE_CACHE_STATE
     tmp = path.with_suffix(".json.tmp")
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_text(
@@ -2421,10 +2513,10 @@ def _save_static_attrs(path: Path, data: dict) -> None:
     import os as _os
     _os.replace(tmp, path)
     try:
-        _STATIC_ATTRS_CACHE["mtime"] = path.stat().st_mtime_ns
+        cs.static_attrs_cache["mtime"] = path.stat().st_mtime_ns
     except OSError:
         pass
-    _STATIC_ATTRS_CACHE["data"] = data
+    cs.static_attrs_cache["data"] = data
 
 
 def _rebuild_static_distributions(data: dict) -> None:
@@ -2495,11 +2587,13 @@ def _machine_static_from_machines_json(
 def _merge_machine_static(
     machine: str, summary: dict,
     machines_config: Path, static_path: Path,
+    _cs: "AppCacheState | None" = None,
 ) -> None:
     """Merge one machine's attrs from a fresh report summary. UNION for
     features + mechanics (history-preserving so short rawdata doesn't
-    erase entries)."""
-    data = _load_static_attrs(static_path)
+    erase entries).
+    _cs is the per-app-instance AppCacheState (P1-C1)."""
+    data = _load_static_attrs(static_path, _cs=_cs)
     entry = dict(data.get("machines", {}).get(machine, {}))
     features = set(entry.get("features") or [])
     features |= _extract_features_from_summary(summary)
@@ -2512,16 +2606,17 @@ def _merge_machine_static(
     data.setdefault("machines", {})[machine] = entry
     _rebuild_static_distributions(data)
     data["updated_at"] = entry["updated_at"]
-    _save_static_attrs(static_path, data)
+    _save_static_attrs(static_path, data, _cs=_cs)
 
 
 def _bootstrap_static_attrs(
     reports_root: Path, machines_config: Path, static_path: Path,
+    _cs: "AppCacheState | None" = None,
 ) -> dict:
     """First-call populate — walk existing report summaries + seed from
     machines.json. Called lazily from GET /api/machines/static when the
     cache file is missing or empty. O(machines × modes × versions).
-    """
+    _cs is the per-app-instance AppCacheState (P1-C1)."""
     try:
         mc_data = read_json(machines_config) or {}
     except Exception:
@@ -2582,7 +2677,7 @@ def _bootstrap_static_attrs(
                 entry["updated_at"] = utc_now()
     data = {"machines": machines_data, "updated_at": utc_now()}
     _rebuild_static_distributions(data)
-    _save_static_attrs(static_path, data)
+    _save_static_attrs(static_path, data, _cs=_cs)
     return data
 
 
@@ -2592,6 +2687,7 @@ def _auto_cleanup_for_space(
     retention: int,
     target_free_gb: float,
     low_water_gb: float | None = None,
+    _cs: "AppCacheState | None" = None,
 ) -> dict[str, Any]:
     """Evict deletable chunks oldest-first until free space ≥ target.
 
@@ -2635,8 +2731,8 @@ def _auto_cleanup_for_space(
         result["final_free_gb"] = result["initial_free_gb"]
         return result
 
-    locks = _load_rawdata_locks(_rawdata_locks_path(machines_config))
-    in_use = _get_in_use_snapshot()
+    locks = _load_rawdata_locks(_rawdata_locks_path(machines_config), _cs=_cs)
+    in_use = _get_in_use_snapshot(_cs=_cs)
 
     # Collect deletable chunks across all (machine, mode), skipping
     # locked + in_use groups entirely.
@@ -2849,13 +2945,18 @@ def _parse_upstream_map_order(upstream: dict) -> dict:
     }
 
 
-def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
-    """Scan reports dir, pick best-CI report per machine-mode, return summary."""
+def _build_machines_summary(
+    reports_root: Path, _cs: "AppCacheState | None" = None,
+) -> dict[str, Any]:
+    """Scan reports dir, pick best-CI report per machine-mode, return summary.
+    _cs is the per-app-instance AppCacheState (P1-C1); defaults to the
+    module-level sentinel for standalone callers."""
     import math
 
+    cs = _cs if _cs is not None else _MODULE_CACHE_STATE
     cache_key = str(reports_root)
     fingerprint = _machines_summary_fingerprint(reports_root)
-    entry = _MACHINES_SUMMARY_CACHE.get(cache_key)
+    entry = cs.machines_summary_cache.get(cache_key)
     if entry is not None and entry.get("fingerprint") == fingerprint:
         return entry["result"]
 
@@ -2989,7 +3090,7 @@ def _build_machines_summary(reports_root: Path) -> dict[str, Any]:
         "mechanics_distribution": dict(mechanics_dist),
         "feature_distribution": feature_distribution,
     }
-    _MACHINES_SUMMARY_CACHE[cache_key] = {"fingerprint": fingerprint, "result": out}
+    cs.machines_summary_cache[cache_key] = {"fingerprint": fingerprint, "result": out}
     return out
 
 
@@ -3303,6 +3404,7 @@ class BatchRunManager:
         state_dir: Path | None = None,
         machines_config: Path | None = None,
         rawdata_root: Path | None = None,
+        cache_state: "AppCacheState | None" = None,
     ) -> None:
         self._store = store
         self._run_manager = run_manager
@@ -3320,6 +3422,10 @@ class BatchRunManager:
         self._rawdata_root = (
             rawdata_root if rawdata_root is not None else RAWDATA_ROOT
         )
+        # Per-app-instance cache state (P1-C1). None → _MODULE_CACHE_STATE
+        # fallback inside each helper function; create_app injects the
+        # per-instance AppCacheState so in-use + lock caches are isolated.
+        self._cache_state = cache_state
         self._lock = threading.Lock()
         self._batches: dict[str, dict[str, Any]] = {}
         # Per-(machine, mode) busy set. Two concurrent batches that
@@ -3865,6 +3971,7 @@ class BatchRunManager:
                     summary = _auto_cleanup_for_space(
                         self._rawdata_root, self._machines_config,
                         retention_cur, target_free_gb=target_free,
+                        _cs=self._cache_state,
                     )
                     del_gb = summary["deleted_bytes"] / (1024 ** 3)
                     _log(
@@ -3904,7 +4011,7 @@ class BatchRunManager:
                 item["status"] = "running"
                 # Register this (m, mode) as in-use so concurrent
                 # cleanup passes won't touch its chunks mid-write.
-                _acquire_in_use(item["machine"], item["mode"])
+                _acquire_in_use(item["machine"], item["mode"], _cs=self._cache_state)
                 # Single routing path (2026-04-21 v2): always
                 # --resume-from-cache into rawdata/, with analyzer
                 # filtering stats by current upstream md5. New chunks
@@ -4118,7 +4225,7 @@ class BatchRunManager:
                 # Release in-use BEFORE semaphore/key — so any waiting
                 # batch item that's polling disk space sees deletable
                 # chunks from this (m, mode) as soon as analyzer exits.
-                _release_in_use(item["machine"], item["mode"])
+                _release_in_use(item["machine"], item["mode"], _cs=self._cache_state)
                 semaphore.release()
                 self._release_key(item["machine"], item["mode"])
 
@@ -5467,6 +5574,11 @@ def create_app(
     settings_path = sd / "settings.json"
 
     store = StateStore(db_path)
+    # Per-app-instance cache state (P1-C1 migration from module globals).
+    # Each create_app() call gets its own AppCacheState so multiple
+    # concurrent test app instances don't share cache/in-use state.
+    app_cache = AppCacheState()
+
     # Backfill achieved_rtp_pct / achieved_halfwidth_pp from on-disk
     # summary.json for completed rows predating those columns -- quick
     # scan, safe on every startup (no-op once populated).
@@ -5477,7 +5589,7 @@ def create_app(
     # cache is mtime-invalidated, so any subsequent fleet change rebuilds.
     def _prewarm_machines_summary() -> None:
         try:
-            _build_machines_summary(rr)
+            _build_machines_summary(rr, _cs=app_cache)
         except Exception:  # noqa: BLE001 — non-fatal, logged via print
             import traceback
             traceback.print_exc()
@@ -5495,10 +5607,16 @@ def create_app(
     batch_mgr = BatchRunManager(
         store, manager, cr,
         state_dir=sd, machines_config=mc, rawdata_root=rd_root,
+        cache_state=app_cache,
     )
     ops = OperationCoordinator()
 
     app = FastAPI(title="Slot Console API", version="0.1.0")
+    # Expose app_cache on app.state so tests and lifespan hooks can access
+    # the per-instance cache without passing it through function args.
+    # Per brief §3 C5: multi-worker tests inspect app.state.cache_state to
+    # confirm two create_app() calls produce independent AppCacheState objects.
+    app.state.cache_state = app_cache
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -5932,7 +6050,7 @@ def create_app(
         picks the report with the smallest CI half-width for each machine-mode,
         and returns RTP / CI / volatility metrics.
         """
-        return _build_machines_summary(rr)
+        return _build_machines_summary(rr, _cs=app_cache)
 
     @app.post("/api/batch-run")
     def start_batch_run(req: BatchRunRequest) -> dict[str, Any]:
@@ -6003,16 +6121,16 @@ def create_app(
     def machines_static_attrs() -> dict[str, Any]:
         """Per-machine static attrs (category / logicClassNames / features /
         mechanics / md5) — decoupled from report lifecycle so the catalog
-        filters survive report deletions. See _STATIC_ATTRS_CACHE docs.
+        filters survive report deletions. See AppCacheState.static_attrs_cache.
 
         Response adds a `drift` list of machine names whose cached md5
         differs from the current machines.json — the operator should
         refresh MD5 + regenerate reports for those.
         """
         path = _static_attrs_path(mc)
-        data = _load_static_attrs(path)
+        data = _load_static_attrs(path, _cs=app_cache)
         if not data.get("machines"):
-            data = _bootstrap_static_attrs(rr, mc, path)
+            data = _bootstrap_static_attrs(rr, mc, path, _cs=app_cache)
         # Compute drift on-the-fly (cheap read of machines.json).
         try:
             mc_data = read_json(mc) or {}
@@ -6053,7 +6171,7 @@ def create_app(
         across mode dirs so the operator-visible banner stays cheap
         to refresh."""
         retention = _load_settings(settings_path)["min_retention_spins"]
-        return _build_rawdata_overview(rd_root, mc, retention)
+        return _build_rawdata_overview(rd_root, mc, retention, _cs=app_cache)
 
     @app.get("/api/machines/{machine}/cfg-availability")
     def get_machine_cfg_availability(machine: str) -> dict[str, Any]:
@@ -6164,7 +6282,7 @@ def create_app(
                 # baseline is already safe via retention; lock is the
                 # operator's extra carve-out for deletable chunks they
                 # want preserved.
-                locks = _load_rawdata_locks(_rawdata_locks_path(mc))
+                locks = _load_rawdata_locks(_rawdata_locks_path(mc), _cs=app_cache)
                 status["locked"] = (machine, mode) in locks
                 result[str(mode)] = status
         return {"machine": machine, "modes": result}
@@ -6173,7 +6291,7 @@ def create_app(
     def lock_rawdata_mode(machine: str, mode: int) -> dict[str, Any]:
         """Mark (machine, mode) rawdata as locked — never auto-deleted.
         Operator-triggered; idempotent (relock is a no-op)."""
-        changed = _set_rawdata_lock(_rawdata_locks_path(mc), machine, mode, True)
+        changed = _set_rawdata_lock(_rawdata_locks_path(mc), machine, mode, True, _cs=app_cache)
         return {"ok": True, "machine": machine, "mode": mode,
                 "locked": True, "changed": changed}
 
@@ -6181,7 +6299,7 @@ def create_app(
     def unlock_rawdata_mode(machine: str, mode: int) -> dict[str, Any]:
         """Remove the auto-delete protection on (machine, mode).
         Idempotent (unlocking an unlocked entry is a no-op)."""
-        changed = _set_rawdata_lock(_rawdata_locks_path(mc), machine, mode, False)
+        changed = _set_rawdata_lock(_rawdata_locks_path(mc), machine, mode, False, _cs=app_cache)
         return {"ok": True, "machine": machine, "mode": mode,
                 "locked": False, "changed": changed}
 
@@ -6217,7 +6335,7 @@ def create_app(
         # per-mode endpoint; per-version intentionally doesn't expose
         # one since the granular case for overriding a lock is
         # vanishingly rare.
-        locks = _load_rawdata_locks(_rawdata_locks_path(mc))
+        locks = _load_rawdata_locks(_rawdata_locks_path(mc), _cs=app_cache)
         if (machine, int(mode)) in locks:
             raise HTTPException(
                 status_code=409,
@@ -6225,7 +6343,7 @@ def create_app(
             )
 
         # In-use gate — don't rug-pull an analyzer mid-run.
-        if (machine, int(mode)) in _get_in_use_snapshot():
+        if (machine, int(mode)) in _get_in_use_snapshot(_cs=app_cache):
             raise HTTPException(
                 status_code=409,
                 detail="machine+mode is currently sampling or generating; retry after it finishes",
@@ -6421,7 +6539,7 @@ def create_app(
             retention = _load_settings(settings_path)["min_retention_spins"]
             return delete_rawdata(
                 machine, mode, rawdata_root=rd_root, machines_config=mc,
-                min_retention_spins=retention, force=force,
+                min_retention_spins=retention, force=force, _cs=app_cache,
             )
         finally:
             ops.release()
@@ -6483,7 +6601,7 @@ def create_app(
                 )
             delete_rawdata(
                 machine, mode=None, rawdata_root=rd_root,
-                machines_config=mc, force=True,
+                machines_config=mc, force=True, _cs=app_cache,
             )
 
             # Step 2: reports tree.
@@ -6915,7 +7033,7 @@ def create_app(
         # Register (m, mode) as in-use so disk-pressure auto-cleanup
         # won't evict the chunks we're about to consume. Released in
         # the finally below.
-        _acquire_in_use(machine, mode)
+        _acquire_in_use(machine, mode, _cs=app_cache)
         try:
             # Pre-load responses — each call to analyzer's post_json
             # returns the next cached response in sequence.
@@ -7175,7 +7293,7 @@ def create_app(
             # features / mechanics this run surfaced (round 6 fix).
             try:
                 _merge_machine_static(
-                    machine, summary, mc, _static_attrs_path(mc),
+                    machine, summary, mc, _static_attrs_path(mc), _cs=app_cache,
                 )
             except Exception:
                 pass  # non-fatal — next generate-report retries
@@ -7246,7 +7364,7 @@ def create_app(
             # Release in-use protection regardless of success/failure
             # so subsequent cleanup passes can evict this (m, mode)'s
             # over-retention chunks.
-            _release_in_use(machine, mode)
+            _release_in_use(machine, mode, _cs=app_cache)
 
     # ── Pool-based batch generate (round 7) ───────────────────────────
     # The single-item endpoint above uses the in-process monkey-patch
@@ -7347,7 +7465,7 @@ def create_app(
         """Acquire in-use protection before submitting the worker.
         Released in _finalize_batch_gen_item_wrapper below."""
         prepared = _prepare_batch_gen_item(machine, mode)
-        _acquire_in_use(machine, mode)
+        _acquire_in_use(machine, mode, _cs=app_cache)
         return prepared
 
     def _finalize_batch_gen_item_wrapper(
@@ -7357,7 +7475,7 @@ def create_app(
         try:
             return _finalize_batch_gen_item(prepared, worker_result)
         finally:
-            _release_in_use(prepared.get("machine"), int(prepared.get("mode") or 0))
+            _release_in_use(prepared.get("machine"), int(prepared.get("mode") or 0), _cs=app_cache)
 
     def _finalize_batch_gen_item(
         prepared: dict[str, Any], worker_result: dict[str, Any],
@@ -7451,7 +7569,7 @@ def create_app(
         write_json(index_path, index_payload)
         write_json(latest_path, item)
         try:
-            _merge_machine_static(machine, summary, mc, _static_attrs_path(mc))
+            _merge_machine_static(machine, summary, mc, _static_attrs_path(mc), _cs=app_cache)
         except Exception:
             pass
         return {
@@ -8215,7 +8333,7 @@ def create_app(
         # infrequent + already holds the ops mutex).
         if imported > 0:
             try:
-                _bootstrap_static_attrs(rr, mc, _static_attrs_path(mc))
+                _bootstrap_static_attrs(rr, mc, _static_attrs_path(mc), _cs=app_cache)
             except Exception:
                 pass
 
@@ -8647,7 +8765,7 @@ def create_app(
         """Export fleet summary as CSV for offline analysis."""
         import csv
         import io
-        summary = _build_machines_summary(rr)
+        summary = _build_machines_summary(rr, _cs=app_cache)
         machines_data = summary.get("machines", {})
         buf = io.StringIO()
         writer = csv.writer(buf)
@@ -8830,8 +8948,8 @@ def create_app(
         work.
         """
         retention = _load_settings(settings_path)["min_retention_spins"]
-        locks = _load_rawdata_locks(_rawdata_locks_path(mc)) if respect_locks else set()
-        in_use = _get_in_use_snapshot() if respect_in_use else set()
+        locks = _load_rawdata_locks(_rawdata_locks_path(mc), _cs=app_cache) if respect_locks else set()
+        in_use = _get_in_use_snapshot(_cs=app_cache) if respect_in_use else set()
         candidates: list[dict[str, Any]] = []
         if not rd_root.is_dir():
             return candidates
@@ -8942,8 +9060,8 @@ def create_app(
             # the response can explain what was preserved. Enumeration
             # itself re-reads these internally (single source of truth
             # via the ``respect_*`` kwargs).
-            locked_pairs = _load_rawdata_locks(_rawdata_locks_path(mc))
-            in_use_pairs = _get_in_use_snapshot()
+            locked_pairs = _load_rawdata_locks(_rawdata_locks_path(mc), _cs=app_cache)
+            in_use_pairs = _get_in_use_snapshot(_cs=app_cache)
             targets = _enumerate_rawdata_deletable(
                 respect_locks=True, respect_in_use=True,
             )

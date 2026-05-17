@@ -270,8 +270,8 @@ def test_md5_drift_never_triggers_auto_delete(
     # NO lock file — the prior fix required a lock to protect data;
     # the current semantics protect it unconditionally.
     import src.web_console.backend.app as app_mod
-    app_mod._LOCK_CACHE["mtime"] = 0
-    app_mod._LOCK_CACHE["data"] = None
+    app_mod._MODULE_CACHE_STATE.lock_cache["mtime"] = 0
+    app_mod._MODULE_CACHE_STATE.lock_cache["data"] = None
 
     from src.web_console.backend.app import check_rawdata_status
     result = check_rawdata_status(
@@ -326,8 +326,8 @@ def test_delete_rawdata_respects_lock_without_force(
     }), encoding="utf-8")
 
     import src.web_console.backend.app as app_mod
-    app_mod._LOCK_CACHE["mtime"] = 0
-    app_mod._LOCK_CACHE["data"] = None
+    app_mod._MODULE_CACHE_STATE.lock_cache["mtime"] = 0
+    app_mod._MODULE_CACHE_STATE.lock_cache["data"] = None
 
     from src.web_console.backend.app import delete_rawdata
     # force=False: lock MUST hold → nothing deleted
@@ -394,9 +394,12 @@ def test_delete_rawdata_version_endpoint_targets_one_md5(
         for i in range(4, 7)
     ]
 
-    import src.web_console.backend.app as app_mod
-    app_mod._LOCK_CACHE["mtime"] = 0
-    app_mod._LOCK_CACHE["data"] = None
+    # P1-C1 R2 fix: route handlers under TestClient use the per-app
+    # `app.state.cache_state` (a fresh AppCacheState with data=None by
+    # default), NOT the module-level `_MODULE_CACHE_STATE`. Resetting
+    # the module singleton here is vacuous — the route does not read it.
+    # Fresh state is already null+stale, which is what the prior reset
+    # intended. No action needed pre-TestClient.
 
     from src.web_console.backend.app import create_app
     from fastapi.testclient import TestClient
@@ -460,9 +463,12 @@ def test_delete_rawdata_version_respects_lock(
     locks_path.write_text(json.dumps({
         "locked": ["M1|1"], "updated_at": "2026-04-21T00:00:00Z",
     }), encoding="utf-8")
-    import src.web_console.backend.app as app_mod
-    app_mod._LOCK_CACHE["mtime"] = 0
-    app_mod._LOCK_CACHE["data"] = None
+    # P1-C1 R2 fix: same as previous TestClient test — route uses
+    # `app.state.cache_state` (fresh AppCacheState), not the module
+    # global. Resetting `_MODULE_CACHE_STATE.lock_cache` here would
+    # be a no-op. Lock file on disk (locks_path) is what the route
+    # actually reads under the fresh cache_state, so the assertion
+    # below tests the real path.
 
     from src.web_console.backend.app import create_app
     from fastapi.testclient import TestClient
