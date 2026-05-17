@@ -7066,35 +7066,27 @@ def create_app(
                     detail=f"analyzer main() returned {rc} during generate-report",
                 )
 
-            # Patch empty md5 tags in the written summary. Real
-            # analyzer's ``_lookup_machine_md5`` only reads
+            # Patch empty md5 tags in the written summary via the shared
+            # helper (P1-B2, ticket §2.b citing 04_v5 §6.1.B).
+            # Real analyzer's ``_lookup_machine_md5`` only reads
             # ``configs/machines.json`` (real-console registry) —
             # virtual machines live in a different registry, so this
             # in-process generate-report path leaves ``config_md5`` /
             # ``code_md5`` empty in the summary. That cascades through
             # ``/api/report-validate`` → ``md5_status=untagged`` →
             # rwtree cell renders "无 fresh report" even though the
-            # report IS current. Mirrors the fix virtual_analyzer.py
-            # applies to its subprocess-delegated runs (f88fe2c).
-            if summary_file.exists():
-                try:
-                    _cur_cfg, _cur_code = _get_machine_md5(machine, mc, mode=mode)
-                    if _cur_cfg or _cur_code:
-                        _payload = read_json(summary_file) or {}
-                        _dirty = False
-                        if _cur_cfg and not _payload.get("config_md5"):
-                            _payload["config_md5"] = _cur_cfg
-                            _dirty = True
-                        if _cur_code and not _payload.get("code_md5"):
-                            _payload["code_md5"] = _cur_code
-                            _dirty = True
-                        if _dirty:
-                            write_json(summary_file, _payload)
-                except Exception:  # noqa: BLE001
-                    # Best-effort patch — never fail the whole
-                    # generate-report over a metadata hole. The
-                    # report + stats are still valid.
-                    pass
+            # report IS current.
+            # Mirrors the fix virtual_analyzer.py applies to its
+            # subprocess-delegated runs (f88fe2c).
+            # Deduped from virtual_analyzer._patch_summary_md5_tags per
+            # 03_coupling_audit.md §4.5.
+            from fresh_slotlab.summary_md5_patch import patch_summary_md5 as _patch_summary_md5  # noqa: PLC0415
+            _patch_summary_md5(
+                summary_file,
+                lambda: _get_machine_md5(machine, mc, mode=mode),
+                machine=machine,
+                mode=mode,
+            )
 
             summary: dict[str, Any] = {}
             if summary_file.exists():

@@ -501,9 +501,15 @@ def _patch_summary_md5_tags(
     output_dir: Path,
     config_md5: str,
     code_md5: str,
+    machine: str = "<unknown>",
+    mode: object = "<unknown>",
 ) -> None:
     """Fill ``config_md5`` / ``code_md5`` into the delegate's summary
     when they're empty.
+
+    Thin wrapper around ``fresh_slotlab.summary_md5_patch.patch_summary_md5``
+    (P1-B2, ticket §2.b, deduped from inline impl per
+    ``session_artifacts/_arch/03_coupling_audit.md §4.5``).
 
     Context: real analyzer's ``_lookup_machine_md5`` reads
     ``configs/machines.json`` (the real-console registry). Virtual
@@ -521,35 +527,19 @@ def _patch_summary_md5_tags(
     report. Only fills EMPTY fields — never overwrites values the
     delegate set, so if the real analyzer ever learns about virtual
     registries this patcher becomes a harmless no-op.
+
+    Failures are logged to stderr with machine/mode context (C5 —
+    ``feedback_no_silent_swallow.md``); the caller's primary artefacts
+    remain valid.
     """
-    if not (config_md5 or code_md5):
-        return
+    from fresh_slotlab.summary_md5_patch import patch_summary_md5  # noqa: PLC0415
     summary_file = output_dir / "player_impact_summary.json"
-    if not summary_file.exists():
-        return
-    try:
-        payload = json.loads(summary_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    dirty = False
-    if config_md5 and not payload.get("config_md5"):
-        payload["config_md5"] = config_md5
-        dirty = True
-    if code_md5 and not payload.get("code_md5"):
-        payload["code_md5"] = code_md5
-        dirty = True
-    if dirty:
-        try:
-            summary_file.write_text(
-                json.dumps(payload, ensure_ascii=False),
-                encoding="utf-8",
-            )
-        except OSError:
-            # Best-effort patch. Backend's _update_report_index will
-            # still see the empty values, but the chunks themselves
-            # carry the correct md5 tags on disk so drift detection
-            # still works at chunk granularity.
-            pass
+    patch_summary_md5(
+        summary_file,
+        lambda: (config_md5, code_md5),
+        machine=machine,
+        mode=mode,
+    )
 
 
 def _run_inference_scripts(machine: str, mode: int) -> None:
@@ -662,7 +652,13 @@ def _delegate_to_real_analyzer(
     rc = subprocess.call(cmd, cwd=_ROOT)
     if rc == 0 and patch_md5s is not None:
         cfg, code = patch_md5s
-        _patch_summary_md5_tags(original_args.output_dir, cfg, code)
+        _patch_summary_md5_tags(
+            original_args.output_dir,
+            cfg,
+            code,
+            machine=original_args.machine,
+            mode=original_args.rtp_mode,
+        )
         # Refresh the auto-inferred paytable shape + classifier labels so
         # the UI's "Pay ID 总览" panel (shape / coverage / payline
         # columns + expandable composition-breakdown sub-rows) has fresh

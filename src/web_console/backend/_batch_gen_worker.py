@@ -123,6 +123,19 @@ def run_analyzer_job(job: dict) -> dict:
                 "error": "no summary generated",
                 "elapsed_s": elapsed,
             }
+        # KNOWN GAP (P1-B2 R1 + P1-A4 R1) — see PHASE_1_TICKETS.md
+        # "Known follow-ups" section. This worker is missing TWO post-
+        # analyzer steps that _run_generate_report applies (app.py:7083):
+        #   1. patch_summary_md5(summary_file, lookup_fn=...) so virtual
+        #      machines do not land in rwtree with md5_status=untagged
+        #   2. forwarding --upstream-config-md5 / --upstream-code-md5
+        #      CLI args to the analyzer subprocess so historical-md5
+        #      chunks are filtered out of the current-md5 baseline
+        # Both gaps stem from the same architectural shortcut: this
+        # worker is a leaner driver than _run_generate_report. A unified
+        # follow-up ticket should bring this worker to parity. Until
+        # then, virtual-machine batch reports may have empty md5 fields
+        # AND batch reports may unknowingly include historical chunks.
         # Auto-run offline inference scripts so the UI's paytable-shape
         # + classifier panels stay in sync with the just-generated
         # report. Best-effort; a failure here doesn't fail the batch
