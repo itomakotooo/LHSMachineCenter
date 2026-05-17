@@ -74,6 +74,7 @@ from slot_designer.core.emitter.driver import (
 )
 from slot_designer.core.emitter.round import emit_round, emit_session
 from slot_designer.core.engine.loader import load_engine
+from fresh_slotlab.sampler import t_critical_95  # P1-B4: canonical t-critical source
 
 
 def _load_custom_engine_module(entry: dict):
@@ -256,23 +257,11 @@ def _run_simulator_chunk(
 # 120 chunks even when 3 chunks' worth of data already satisfied the
 # target. Users had to manually stop.
 
-# Two-sided 95% t-critical table for small N; above N=30 we fall back
-# to 1.96 (same cutoff the real analyzer uses). Keeps small-session
-# CIs honest without dragging scipy in.
-_T_CRITICAL_95_TABLE = {
-    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
-    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
-    11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
-    16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
-    21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
-    26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
-}
-
-
-def _t_critical_95(df: int) -> float:
-    if df <= 0:
-        return 12.706  # N=1 sentinel — should never be reached (guarded by n<=1 check)
-    return _T_CRITICAL_95_TABLE.get(df, 1.96)
+# P1-B4: _T_CRITICAL_95_TABLE + _t_critical_95 dropped — consolidated to
+# fresh_slotlab.sampler.t_critical_95 (canonical source, imported above).
+# Ticket: phase1/01_t_critical_table_dedup §1.
+# The old local table was a dense subset (df 1-30 only, sentinel 1.96 for
+# df>30) that diverged from the canonical table for df 11-19, 21-29, 31+.
 
 
 def _ci_halfwidth_pp(n: int, ret_sum: float, ret_sq_sum: float) -> float | None:
@@ -280,6 +269,11 @@ def _ci_halfwidth_pp(n: int, ret_sum: float, ret_sq_sum: float) -> float | None:
     when n ≤ 1 (variance undefined). Matches the formula used by the
     real analyzer so virtual sampling's stop decision and the delegated
     report's reported CI agree.
+
+    t-critical lookup delegated to ``fresh_slotlab.sampler.t_critical_95``
+    (canonical, P1-B4). Values for df 31-1000 now use linear interpolation
+    between table anchors (80→1.990, 120→1.980, 1000→1.962) rather than the
+    former hard-coded 1.96 sentinel.
     """
     if n <= 1:
         return None
@@ -287,7 +281,7 @@ def _ci_halfwidth_pp(n: int, ret_sum: float, ret_sq_sum: float) -> float | None:
     if var == 0.0:
         return 0.0
     se = math.sqrt(var / n)
-    t = _t_critical_95(n - 1)
+    t = t_critical_95(n - 1)  # P1-B4: was _t_critical_95(n - 1)
     return t * se * 100.0
 
 

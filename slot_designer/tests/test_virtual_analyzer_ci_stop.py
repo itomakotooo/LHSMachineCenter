@@ -30,18 +30,21 @@ Tests:
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
+
+import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from fresh_slotlab.sampler import t_critical_95
 from slot_designer.core.backend.virtual_analyzer import (
     _ci_halfwidth_pp,
     _load_existing_session_stats,
     _session_returns_from_chunk_dict,
-    _t_critical_95,
 )
 
 
@@ -66,18 +69,35 @@ def _make_chunk(robots_win_bet: list[tuple[int, int]], *, config_md5: str = "", 
 
 
 def test_t_critical_matches_small_n_table():
-    """Small-N t values should match the real analyzer's table. Large
-    N falls back to 1.96 (same cutoff real analyzer uses)."""
-    assert _t_critical_95(1) == 12.706
-    assert _t_critical_95(10) == 2.228
-    assert _t_critical_95(29) == 2.045
-    assert _t_critical_95(30) == 2.042
-    # Above table = normal approximation
-    assert _t_critical_95(100) == 1.96
-    assert _t_critical_95(500) == 1.96
-    # Edge: df <= 0 returns the n=1 sentinel (guarded by n<=1 check
-    # in _ci_halfwidth_pp, shouldn't be hit in practice).
-    assert _t_critical_95(0) == 12.706
+    """Virtual analyzer's session CI must use the same t-critical table
+    as the real analyzer. Post-P1-B4 dedup, both import canonical
+    ``t_critical_95`` from ``fresh_slotlab.sampler`` — so this test
+    locks the import contract by exercising values across the
+    small-N table (df=1..30) and the sparse-then-interpolated tail
+    (df=40..1000+).
+
+    Pre-dedup, virtual had a local ``_t_critical_95`` that sentineled
+    to 1.96 for df>30 and 12.706 for df<=0 — DIFFERENT from the real
+    analyzer's interpolation. The dedup snaps both to sampler's table.
+    See ``tests/backend/test_t_critical_table_canonical.py`` for the
+    full df=1..1200 coverage.
+    """
+    # Small-N (exact table entries, agree pre/post-dedup):
+    assert t_critical_95(1) == 12.706
+    assert t_critical_95(10) == 2.228
+    assert t_critical_95(29) == 2.045
+    assert t_critical_95(30) == 2.042
+    # Above 30: canonical interpolates between table entries
+    # (40→2.021, 60→2.000, 80→1.990, 120→1.980, 1000→1.962).
+    # Old virtual would have returned 1.96 here (incorrect by 0.025).
+    # Use pytest.approx to tolerate float-arithmetic noise on the
+    # linear-interp result:
+    assert t_critical_95(100) == pytest.approx(1.985, abs=1e-9)  # (80,1.990)↔(120,1.980) at 100
+    assert t_critical_95(500) == pytest.approx(1.97222727272, abs=1e-9)  # (120,1.980)↔(1000,1.962) at 500
+    # Edge: df <= 0 returns inf (canonical), not the n=1 sentinel
+    # 12.706 (old virtual behavior). Guarded upstream by n<=1 check
+    # in _ci_halfwidth_pp so this branch shouldn't be hit in practice.
+    assert t_critical_95(0) == math.inf
 
 
 def test_ci_halfwidth_pp_undefined_for_n_le_1():

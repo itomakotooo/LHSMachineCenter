@@ -137,6 +137,22 @@ def extract_chunk_metrics(response: Any) -> tuple[int, float, float]:
 
 
 def t_critical_95(df: int) -> float:
+    """Two-sided 95% t-critical value for the given degrees of freedom.
+
+    **Canonical source** — all modules in this repo that need a t-critical
+    lookup MUST import this function.  Do NOT define a local copy.
+
+    Ticket: P1-B4 (t_critical_95 dedup, phase1/01_t_critical_table_dedup).
+    Arch ref: session_artifacts/_arch/03_coupling_audit.md §4.5.
+
+    Table covers df 1-30 (every integer), then sparse: 40, 60, 80, 120, 1000.
+    For df not in the table, linear interpolation between adjacent entries is
+    used.  For df > 1000 the value is clamped to 1.962 (the z-score limit).
+    For df ≤ 0, returns ``math.inf`` (CI undefined; callers must guard n ≤ 1).
+
+    No third-party dependency (scipy/numpy) — intentional; keeps the
+    virtual-analyzer subprocess import-safe.
+    """
     if df <= 0:
         return math.inf
     table = {

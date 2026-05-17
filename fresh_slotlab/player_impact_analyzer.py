@@ -53,6 +53,9 @@ try:
         update_chunk_entry,
     )
     from fresh_slotlab.rawdata_index import update_entry as _rawdata_index_update_entry
+    # P1-B4: t_critical_95 consolidated to sampler.py (canonical source).
+    # Ticket: phase1/01_t_critical_table_dedup §1.
+    from fresh_slotlab.sampler import t_critical_95
 except ImportError:  # running as a standalone script, not a package member
     from trigger_sessions import (  # type: ignore[no-redef]
         _round_has_credited_win,
@@ -74,6 +77,7 @@ except ImportError:  # running as a standalone script, not a package member
         update_chunk_entry,
     )
     from rawdata_index import update_entry as _rawdata_index_update_entry  # type: ignore[no-redef]
+    from sampler import t_critical_95  # type: ignore[no-redef]  # P1-B4
 
 DEFAULT_ENDPOINT_URL = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant"
 ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
@@ -962,39 +966,10 @@ def post_json_with_retry(
     raise last_exc
 
 
-def t_critical_95(df: int) -> float:
-    if df <= 0:
-        return math.inf
-    table = {
-        1: 12.706,
-        2: 4.303,
-        3: 3.182,
-        4: 2.776,
-        5: 2.571,
-        6: 2.447,
-        7: 2.365,
-        8: 2.306,
-        9: 2.262,
-        10: 2.228,
-        20: 2.086,
-        30: 2.042,
-        40: 2.021,
-        60: 2.000,
-        120: 1.980,
-        1000: 1.962,
-    }
-    if df in table:
-        return table[df]
-    points = sorted(table.items())
-    if df < points[0][0]:
-        return points[0][1]
-    if df > points[-1][0]:
-        return points[-1][1]
-    for (x0, y0), (x1, y1) in zip(points, points[1:]):
-        if x0 <= df <= x1:
-            ratio = (df - x0) / (x1 - x0)
-            return y0 + (y1 - y0) * ratio
-    return 1.962
+# t_critical_95 — imported from fresh_slotlab.sampler (canonical source).
+# P1-B4: dropped local duplicate (sparse table, linear-interp missing df 11-19,
+# 21-29, 31+). See ticket phase1/01_t_critical_table_dedup §1 +
+# session_artifacts/_arch/03_coupling_audit.md §4.5.
 
 
 def ci_halfwidth_pp(chunk_rtps_pct: list[float]) -> float:
