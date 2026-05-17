@@ -75,6 +75,7 @@ from slot_designer.core.emitter.driver import (
 from slot_designer.core.emitter.round import emit_round, emit_session
 from slot_designer.core.engine.loader import load_engine
 from fresh_slotlab.sampler import t_critical_95  # P1-B4: canonical t-critical source
+from fresh_slotlab.sampler import session_halfwidth_pp  # P1-B3: canonical session CI source
 
 
 def _load_custom_engine_module(entry: dict):
@@ -263,26 +264,13 @@ def _run_simulator_chunk(
 # The old local table was a dense subset (df 1-30 only, sentinel 1.96 for
 # df>30) that diverged from the canonical table for df 11-19, 21-29, 31+.
 
-
-def _ci_halfwidth_pp(n: int, ret_sum: float, ret_sq_sum: float) -> float | None:
-    """Session-level 95% CI half-width in percentage points. ``None``
-    when n ≤ 1 (variance undefined). Matches the formula used by the
-    real analyzer so virtual sampling's stop decision and the delegated
-    report's reported CI agree.
-
-    t-critical lookup delegated to ``fresh_slotlab.sampler.t_critical_95``
-    (canonical, P1-B4). Values for df 31-1000 now use linear interpolation
-    between table anchors (80→1.990, 120→1.980, 1000→1.962) rather than the
-    former hard-coded 1.96 sentinel.
-    """
-    if n <= 1:
-        return None
-    var = max(0.0, (ret_sq_sum - (ret_sum * ret_sum) / n) / (n - 1))
-    if var == 0.0:
-        return 0.0
-    se = math.sqrt(var / n)
-    t = t_critical_95(n - 1)  # P1-B4: was _t_critical_95(n - 1)
-    return t * se * 100.0
+# P1-B3: _ci_halfwidth_pp local definition dropped — consolidated to
+# fresh_slotlab.sampler.session_halfwidth_pp (canonical source, imported above).
+# Ticket: phase1/09_session_ci_halfwidth_dedup §1.
+# _ci_halfwidth_pp is kept as a module-level alias so that:
+#   (a) existing internal callers (lines 864, 984, 1021) are unchanged, and
+#   (b) tests that import _ci_halfwidth_pp from this module still pass (§3 C6).
+_ci_halfwidth_pp = session_halfwidth_pp
 
 
 def _session_returns_from_chunk_dict(chunk: dict) -> list[float]:

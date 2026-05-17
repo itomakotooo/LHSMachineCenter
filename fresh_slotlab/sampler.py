@@ -216,6 +216,45 @@ def compute_ci_halfwidth_pp(chunk_rtps_pct: list[float]) -> float:
     return t * s / math.sqrt(len(chunk_rtps_pct))
 
 
+def session_halfwidth_pp(n: int, ret_sum: float, ret_sq_sum: float) -> float | None:
+    """Session-level 95% CI half-width in percentage points.
+
+    **Canonical source** — all modules that need a session-level CI half-width
+    MUST import this function.  Do NOT define a local copy.
+
+    Ticket: P1-B3 (session CI half-width dedup,
+    phase1/09_session_ci_halfwidth_dedup).
+    Arch ref: session_artifacts/_arch/03_coupling_audit.md §4.5.
+
+    Parameters
+    ----------
+    n:
+        Number of sessions (robots).  Must be ≥ 2; returns ``None`` when
+        n ≤ 1 (variance undefined for a single sample).
+    ret_sum:
+        Sum of per-session return multipliers (ret_x = session_win / session_bet).
+    ret_sq_sum:
+        Sum of squared per-session return multipliers.
+
+    Returns
+    -------
+    float | None
+        Half-width in percentage points (multiply by 100 to convert from the
+        return-multiplier scale to pp), or ``None`` when n ≤ 1.
+
+    No third-party dependency — intentional; keeps the virtual-analyzer
+    subprocess import-safe.
+    """
+    if n <= 1:
+        return None
+    var = max(0.0, (ret_sq_sum - (ret_sum * ret_sum / n)) / (n - 1))
+    if var == 0.0:
+        return 0.0
+    se = math.sqrt(var / n)
+    t = t_critical_95(n - 1)
+    return t * se * 100.0
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 

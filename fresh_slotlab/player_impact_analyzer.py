@@ -56,6 +56,9 @@ try:
     # P1-B4: t_critical_95 consolidated to sampler.py (canonical source).
     # Ticket: phase1/01_t_critical_table_dedup §1.
     from fresh_slotlab.sampler import t_critical_95
+    # P1-B3: session_halfwidth_pp consolidated to sampler.py (canonical source).
+    # Ticket: phase1/09_session_ci_halfwidth_dedup §1.
+    from fresh_slotlab.sampler import session_halfwidth_pp
     # P1-B1: _lookup_machine_md5 consolidated to machine_md5.py (canonical source).
     # Ticket: phase1/07_lookup_machine_md5_dedup §1.
     from fresh_slotlab.machine_md5 import lookup_machine_md5 as _lookup_machine_md5
@@ -81,6 +84,7 @@ except ImportError:  # running as a standalone script, not a package member
     )
     from rawdata_index import update_entry as _rawdata_index_update_entry  # type: ignore[no-redef]
     from sampler import t_critical_95  # type: ignore[no-redef]  # P1-B4
+    from sampler import session_halfwidth_pp  # type: ignore[no-redef]  # P1-B3
     from machine_md5 import lookup_machine_md5 as _lookup_machine_md5  # type: ignore[no-redef]  # P1-B1
 
 DEFAULT_ENDPOINT_URL = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant"
@@ -988,29 +992,13 @@ def ci_halfwidth_pp(chunk_rtps_pct: list[float]) -> float:
     )
 
 
-def session_halfwidth_pp(ret_count: int, ret_sum: float, ret_sq_sum: float) -> float | None:
-    """Session-level CI half-width in pp. Uses per-session return
-    multiplier (ret_x = session_win / session_bet) variance across
-    N = ret_count sessions. Returns None when N ≤ 1 (undefined).
-
-    Single authoritative CI across the codebase: the final summary and
-    the in-loop stop check both call this. Chunk-level CI (above) is
-    kept as a secondary diagnostic because it collapses to ~0 when
-    early chunks coincidentally have similar RTPs — triggering false
-    "target reached" breaks on high-variance machines whose TRUE CI
-    is still wide.
-    """
-    if ret_count <= 1:
-        return None
-    var = max(
-        0.0,
-        (ret_sq_sum - (ret_sum * ret_sum / ret_count)) / (ret_count - 1),
-    )
-    if var == 0.0:
-        return 0.0
-    se = math.sqrt(var / ret_count)
-    t = t_critical_95(ret_count - 1)
-    return t * se * 100.0
+# session_halfwidth_pp — imported from fresh_slotlab.sampler (canonical source).
+# P1-B3: dropped local duplicate; both this module and virtual_analyzer.py
+# now delegate to the single definition in sampler.py.
+# Ticket: phase1/09_session_ci_halfwidth_dedup §1 citing
+# session_artifacts/_arch/03_coupling_audit.md §4.5.
+# Note: caller signature uses (ret_count, ret_sum, ret_sq_sum) — the canonical
+# sampler signature uses (n, ret_sum, ret_sq_sum); positionally identical.
 
 
 def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
