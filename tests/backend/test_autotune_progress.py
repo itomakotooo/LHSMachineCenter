@@ -98,12 +98,12 @@ def test_progress_endpoint_unaffected_by_mutex_or_active_run(client, app_factory
     """Progress snapshot should be readable even while the ops mutex is
     held by another write op (this is a read-only endpoint)."""
     c, app = client
-    assert app.state.ops.acquire("auto_tune")
+    assert app.state.registry.try_acquire_global("auto_tune")
     try:
         resp = c.get("/api/autotune/progress")
         assert resp.status_code == 200
     finally:
-        app.state.ops.release()
+        app.state.registry.release_global("auto_tune")
 
 
 # ---------- run_auto_tune loop (compact grid + early exit) ----------

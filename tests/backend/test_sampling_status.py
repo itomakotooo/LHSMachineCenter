@@ -20,6 +20,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from src.web_console.backend.cell_lock_registry import CellOperation
+
 
 def _seed_chunk_with_bet(root: Path, machine: str, mode: int, idx: int, bet: int):
     from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
@@ -46,13 +48,16 @@ class TestSamplingStatusEndpoint:
     def test_reports_busy_keys_from_manager(self, client, app_factory):
         c, app = client
         bm = app.state.batch_manager
-        # Simulate a batch in flight by marking a key busy.
-        assert bm._try_acquire_key("M50", 2) is True
+        # Simulate a batch in flight by marking a key busy via SAMPLING.
+        assert bm._registry.try_acquire_cell(
+            "M50", 2, CellOperation.SAMPLING,
+            info={"run_id": "test", "config_id": "null", "upstream_md5": "test"},
+        ) is True
         try:
             body = c.get("/api/sampling-status").json()
             assert {"machine": "M50", "mode": 2} in body["busy_keys"]
         finally:
-            bm._release_key("M50", 2)
+            bm._registry.release_cell("M50", 2, CellOperation.SAMPLING)
 
     def test_reports_active_batch_snapshot(self, client, app_factory):
         c, app = client

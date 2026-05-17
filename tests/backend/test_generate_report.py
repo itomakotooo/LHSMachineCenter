@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from src.web_console.backend.cell_lock_registry import CellOperation
+
 
 _M14_FIXTURE = (
     Path(__file__).resolve().parents[2] / "tests" / "fixtures"
@@ -486,10 +488,9 @@ class TestBatchGenerateReport:
 
     def test_runs_sequentially_under_ops_lock(self, app_with_m14):
         """Second batch started while first in-flight must fail the
-        second's items (or the endpoint itself) — no two batches can
-        monkey-patch analyzer.post_json concurrently. Here we simulate
-        lock contention by acquiring ops manually before the batch
-        kick-off.
+        second's items — no two concurrent GENERATING operations on the
+        same cell. Here we simulate lock contention by acquiring GENERATING
+        on M14|1 via the registry before the batch kick-off.
         """
         c, app, rd_root, *_ = app_with_m14
         response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
@@ -498,9 +499,9 @@ class TestBatchGenerateReport:
             config_md5="test_cfg", code_md5="test_code",
             response=response_payload,
         )
-        # Pre-acquire ops under a different name so the batch worker
-        # finds it locked when its thread starts.
-        assert app.state.ops.acquire("auto_tune")
+        # Phase 2: pre-acquire GENERATING on M14|1 via registry so the
+        # batch worker's _prepare_batch_gen_item_wrapper finds it locked.
+        assert app.state.registry.try_acquire_cell("M14", 1, CellOperation.GENERATING)
         try:
             resp = c.post(
                 "/api/rawdata/batch-generate-report",
@@ -509,12 +510,15 @@ class TestBatchGenerateReport:
             assert resp.status_code == 200
             batch_id = resp.json()["batch_id"]
             final = self._wait_for_terminal(c, batch_id, timeout_s=5)
-            assert final["status"] == "failed"
-            assert "system busy" in (final["error"] or "").lower()
-            # Item also marked failed with a batch-abort note.
+            # Phase 2: batch status is "partial" when items fail (not "failed");
+            # "failed" was the old coarse-mutex path where the whole batch aborted.
+            # The "failed" branch is dead in Phase 2 — removed per impl-critic.
+            assert final["status"] == "partial"
+            # Item marked failed with the registry busy message.
             assert final["items"][0]["status"] == "failed"
+            assert "busy" in (final["items"][0].get("error") or "").lower()
         finally:
-            app.state.ops.release()
+            app.state.registry.release_cell("M14", 1, CellOperation.GENERATING)
 
 
 class TestGenerateReportAsyncPath:
@@ -660,11 +664,12 @@ class TestGenerateReportErrorPaths:
             config_md5="test_cfg", code_md5="test_code",
             response=response_payload,
         )
-        # Hold the coordinator under a different op name to force conflict.
-        assert app.state.ops.acquire("auto_tune")
+        # Phase 2: pre-acquire GENERATING on M14|1 so _run_generate_report
+        # returns 409 "cell busy" (replaces old OperationCoordinator mutex).
+        assert app.state.registry.try_acquire_cell("M14", 1, CellOperation.GENERATING)
         try:
             resp = c.post("/api/rawdata/M14/generate-report", json={"mode": 1})
             assert resp.status_code == 409
-            assert "system busy" in resp.json()["detail"].lower()
+            assert "busy" in resp.json()["detail"].lower()
         finally:
-            app.state.ops.release()
+            app.state.registry.release_cell("M14", 1, CellOperation.GENERATING)
