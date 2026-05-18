@@ -128,13 +128,13 @@ Start-ScheduledTask -TaskName SlotConsole
 Wait 30 seconds, then run the smoke script from the server itself:
 
 ```powershell
-pwsh -NoProfile -File scripts\deploy\run_smoke.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\run_smoke.ps1
 ```
 
 All 5 probes should pass. From another machine on the LAN, replace `localhost` with the server's IP:
 
 ```powershell
-pwsh -NoProfile -File scripts\deploy\run_smoke.ps1 -BaseUrl http://192.168.x.x:8877
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\run_smoke.ps1 -BaseUrl http://192.168.x.x:8877
 ```
 
 ---
@@ -165,7 +165,7 @@ Start-ScheduledTask -TaskName SlotConsole
 
 # 6. Smoke-test after restart.
 Start-Sleep -Seconds 15
-pwsh -NoProfile -File scripts\deploy\run_smoke.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\run_smoke.ps1
 ```
 
 ---
@@ -183,11 +183,11 @@ Stop-ScheduledTask -TaskName SlotConsole
 # Roll back to the previous commit.
 git revert HEAD --no-edit
 # OR, if you need to discard the bad commit entirely (destructive — asks for confirmation):
-pwsh -NoProfile -File scripts\deploy\rollback.ps1 -To HEAD~1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\rollback.ps1 -To HEAD~1
 
 # Restart.
 Start-ScheduledTask -TaskName SlotConsole
-pwsh -NoProfile -File scripts\deploy\run_smoke.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\deploy\run_smoke.ps1
 ```
 
 ### SQLite schema note

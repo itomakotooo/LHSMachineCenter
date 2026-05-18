@@ -105,7 +105,7 @@ def test_smoke_against_unroutable_fails_loudly_exit_1():
     reason=(
         "E2E test requires binding port 8877 locally. "
         "Run manually: start start_console.ps1 in background, then "
-        "pwsh -File scripts\\deploy\\run_smoke.ps1 and verify exit 0. "
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\deploy\\run_smoke.ps1 and verify exit 0. "
         "Automated version risks port conflicts with developer instance."
     )
 )

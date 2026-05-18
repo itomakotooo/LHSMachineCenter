@@ -107,13 +107,20 @@ def test_rollback_dry_run_shows_intended_ops():
 @WIN_ONLY
 def test_rollback_refuses_with_uncommitted_changes(tmp_path):
     """If git status shows uncommitted changes, rollback must exit 1 with
-    a clear error message. We create a dirty file in the repo tree."""
+    a clear error message. We create a dirty file in the repo tree.
+
+    T3 fix (round-2): timeout bumped from 30 → 60.  Root cause (RV1): the
+    rollback.ps1 Step 2 port-poll loop runs `while ($waited -lt 30)` and
+    Get-NetTCPConnection is slow enough to consume the full 30 s before the
+    script reaches Step 4 (the dirty-check).  60 s gives the script room to
+    complete Step 2 and reach the guard.
+    """
     # Create a temporary dirty file inside the repo.
     dirty_file = REPO_ROOT / "_rollback_test_dirty_sentinel.tmp"
     try:
         dirty_file.write_text("dirty for rollback test\n", encoding="utf-8")
 
-        result = _run_rollback(["-Force"], timeout=30)  # Force skips prompt
+        result = _run_rollback(["-Force"], timeout=60)  # T3: was 30 (TimeoutExpired)
 
         assert result.returncode == 1, (
             f"Expected exit 1 when uncommitted changes exist.\n"
@@ -184,12 +191,15 @@ def test_rollback_without_force_prompts_before_reset(tmp_path, monkeypatch):
     fixture_script = scripts_deploy / "rollback.ps1"
 
     # Empty stdin: operator types nothing → prompt returns "" → NOT "yes" → abort.
+    # T3 fix (round-2): timeout bumped from 30 → 60.  Same root cause as
+    # test_rollback_refuses_with_uncommitted_changes — Step 2 port-poll loop
+    # (while $waited -lt 30) exhausts the 30 s budget before Read-Host fires.
     result = subprocess.run(
         ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
          "-File", str(fixture_script)],
         cwd=str(repo),
         input="",
-        capture_output=True, text=True, timeout=30,
+        capture_output=True, text=True, timeout=60,  # T3: was 30 (TimeoutExpired)
     )
 
     assert result.returncode == 1, (

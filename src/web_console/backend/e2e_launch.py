@@ -32,9 +32,15 @@ def _required_env(key: str) -> str:
     return val
 
 
+# SLOT_E2E_SERVERS is optional: when provided (by e2e tests), create_app
+# routes all servers_config reads/writes through that tmp copy so the
+# committed configs/servers.json is never mutated by test runs.
+_servers_cfg = os.environ.get("SLOT_E2E_SERVERS")
+
 app = create_app(
     state_dir=Path(_required_env("SLOT_E2E_STATE_DIR")),
     reports_root=Path(_required_env("SLOT_E2E_REPORTS")),
     cache_root=Path(_required_env("SLOT_E2E_CACHE")),
     rawdata_root=Path(_required_env("SLOT_E2E_RAWDATA")),
+    servers_config=Path(_servers_cfg) if _servers_cfg else None,
 )

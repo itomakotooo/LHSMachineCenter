@@ -5725,6 +5725,10 @@ def create_app(
     # Phase 3 (D12): virtual console passes False to skip fleet refresh endpoints
     # and the FleetRefreshManager daemon thread.  Production default is True.
     fleet_refresh_enabled: bool = True,
+    # Optional override for the servers config path so tests can pass a tmp copy
+    # and avoid mutating the committed configs/servers.json.  Defaults to the
+    # module constant SERVERS_CONFIG (= configs/servers.json) when None.
+    servers_config: Path | None = None,
 ) -> FastAPI:
     """Build a FastAPI app with all stateful singletons scoped to this instance.
 
@@ -5744,7 +5748,7 @@ def create_app(
     rr = reports_root if reports_root is not None else REPORTS_ROOT
     cr = cache_root if cache_root is not None else CACHE_ROOT
     mc = machines_config if machines_config is not None else MACHINES_CONFIG
-    sc = SERVERS_CONFIG
+    sc = servers_config if servers_config is not None else SERVERS_CONFIG
     az = analyzer_path if analyzer_path is not None else ANALYZER
     cd = classify_dir if classify_dir is not None else CLASSIFY_DIR
     pd_root = paytables_dir if paytables_dir is not None else PAYTABLES_DIR
@@ -6852,16 +6856,27 @@ def create_app(
         if mode is not None:
             modes_to_lock = [int(mode)]
         else:
-            # All modes: enumerate dirs.
+            # All modes: enumerate dirs AND query the registry directly.
+            # The registry is authoritative for in-flight operations — disk
+            # enumeration alone misses the window before the first chunk is
+            # written (P2 INV-2 / design proposal §5.1: "delete_rawdata returns
+            # 409 when CellLockRegistry has any active registration").
             machine_dir = rd_root / machine
-            modes_to_lock = []
+            modes_set: set[int] = set()
+            # 1. On-disk mode dirs (covers completed + partially-written data).
             if machine_dir.is_dir():
                 for md in machine_dir.iterdir():
                     if md.is_dir() and md.name.startswith("mode_"):
                         try:
-                            modes_to_lock.append(int(md.name.split("_", 1)[1]))
+                            modes_set.add(int(md.name.split("_", 1)[1]))
                         except (IndexError, ValueError):
                             continue
+            # 2. Registry active cells for this machine (covers the race window
+            #    where SAMPLING has started but no chunk has landed on disk yet).
+            for cell_machine, cell_mode in registry.get_active_cells():
+                if cell_machine == machine:
+                    modes_set.add(cell_mode)
+            modes_to_lock = sorted(modes_set)
 
         # Acquire DELETING for all relevant modes — abort-and-rollback if
         # any fails (per 07_deploy_decision.md §6 OQ-3).
@@ -7152,10 +7167,12 @@ def create_app(
         default-server pointing to an unreachable entry just masks
         the bug with a silent fallthrough.
 
-        Reads ``SERVERS_CONFIG`` module attribute directly (not the
-        ``sc`` closure captured at app-build time) so tests and
-        runtime config swaps take effect immediately."""
-        cfg_path = SERVERS_CONFIG
+        Uses ``sc`` when an explicit ``servers_config`` path was passed to
+        ``create_app`` (test isolation), otherwise reads the module-level
+        ``SERVERS_CONFIG`` constant at call time so that existing tests that
+        use ``monkeypatch.setattr(app_mod, "SERVERS_CONFIG", p)`` continue to
+        work without modification."""
+        cfg_path = sc if servers_config is not None else SERVERS_CONFIG
         cfg = load_servers(cfg_path)
         target = next(
             (s for s in cfg.get("servers", []) if s.get("id") == server_id),
