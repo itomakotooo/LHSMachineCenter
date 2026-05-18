@@ -1,0 +1,24 @@
+{
+  "machine_id": "M15",
+  "manifest_version": 1,
+  "inherits_from": null,
+  "console_diagnostic_complete": false,
+  "layer4_applicable": false,
+  "spin_type_convention": {"paid": [1], "bonus": [14, 15]},
+  "feature_tags": ["Selector"],
+  "round_win_rules": ["topdollar_selector_settlement"],
+  "analyzer_features": [
+    "payouts_by_spin_type",
+    "bankruptcy_simulation",
+    "topdollar_settlement",
+    "multiplier_profile"
+  ],
+  "selector_type": "TopDollarSelector",
+  "trigger_session_pattern": "type_1",
+  "modes_supported": [1, 2, 5, 7],
+  "rtp_integrity_contract": {
+    "expected_paid_st": [1],
+    "expected_bonus_st": [14, 15],
+    "required_attribution_anchors": ["666"]
+  }
+}

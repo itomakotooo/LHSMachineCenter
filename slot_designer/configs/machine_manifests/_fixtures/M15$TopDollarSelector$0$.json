@@ -1,0 +1,9 @@
+{
+  "machine_id": "M15$TopDollarSelector$0$",
+  "manifest_version": 1,
+  "inherits_from": "M15.json",
+  "console_diagnostic_complete_override": false,
+  "override_set_at": "2026-05-17T09:00:00Z",
+  "override_set_reason": "Variant selector 0 has a specific edge case in Wheel nesting not present in M15 base rawdata sample.",
+  "override_set_by": "arch-team / 2026-05-17 arch review"
+}

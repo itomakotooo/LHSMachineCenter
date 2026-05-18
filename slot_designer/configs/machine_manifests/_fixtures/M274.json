@@ -1,0 +1,32 @@
+{
+  "machine_id": "M274",
+  "manifest_version": 1,
+  "inherits_from": null,
+  "console_diagnostic_complete": true,
+  "layer4_applicable": true,
+  "spin_type_convention": {"paid": [140], "bonus": [139]},
+  "feature_tags": ["BCM", "Wheel"],
+  "round_win_rules": ["bcm_cycle_anchor_m274"],
+  "analyzer_features": [
+    "payouts_by_spin_type",
+    "reel_marginal_by_spin_type",
+    "bankruptcy_simulation",
+    "bonus_chain_dynamics",
+    "collect_mechanic",
+    "multiplier_profile",
+    "cycle_peak_detection"
+  ],
+  "bcm_target_feature": "ListRewardWheel",
+  "trigger_session_pattern": null,
+  "modes_supported": [1, 5, 7],
+  "per_mode_overrides": {
+    "5": {
+      "analyzer_features_remove": ["bonus_chain_dynamics"]
+    }
+  },
+  "rtp_integrity_contract": {
+    "expected_paid_st": [140],
+    "expected_bonus_st": [139],
+    "required_attribution_anchors": ["_bcm_cycle", "5801"]
+  }
+}
