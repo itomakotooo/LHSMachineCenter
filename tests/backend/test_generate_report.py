@@ -499,24 +499,19 @@ class TestBatchGenerateReport:
             config_md5="test_cfg", code_md5="test_code",
             response=response_payload,
         )
-        # Phase 2: pre-acquire GENERATING on M14|1 via registry so the
-        # batch worker's _prepare_batch_gen_item_wrapper finds it locked.
+        # I6 (Round-3 fix): batch_generate_report now pre-checks the registry
+        # at submit time and returns 409 synchronously instead of starting
+        # the batch and failing the item asynchronously.  Pre-acquire GENERATING
+        # so the pre-check fires immediately.
         assert app.state.registry.try_acquire_cell("M14", 1, CellOperation.GENERATING)
         try:
             resp = c.post(
                 "/api/rawdata/batch-generate-report",
                 json={"items": [{"machine": "M14", "mode": 1}]},
             )
-            assert resp.status_code == 200
-            batch_id = resp.json()["batch_id"]
-            final = self._wait_for_terminal(c, batch_id, timeout_s=5)
-            # Phase 2: batch status is "partial" when items fail (not "failed");
-            # "failed" was the old coarse-mutex path where the whole batch aborted.
-            # The "failed" branch is dead in Phase 2 — removed per impl-critic.
-            assert final["status"] == "partial"
-            # Item marked failed with the registry busy message.
-            assert final["items"][0]["status"] == "failed"
-            assert "busy" in (final["items"][0].get("error") or "").lower()
+            # I6: synchronous 409 at submit time (not 200 + async item failure).
+            assert resp.status_code == 409
+            assert "busy" in resp.json().get("detail", "").lower()
         finally:
             app.state.registry.release_cell("M14", 1, CellOperation.GENERATING)
 

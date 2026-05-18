@@ -229,6 +229,22 @@ class CellLockRegistry:
             info["run_id"] = run_id
             return True
 
+    def peek_cell_status(self, machine: str, mode: int) -> set[CellOperation]:
+        """Return the current set of active operations on ``(machine, mode)``.
+
+        Non-mutating: never acquires or releases any lock.  Use for pre-flight
+        checks where the caller wants to surface a 409 at submit time rather
+        than letting the worker fail asynchronously (I6 / batch_generate_report).
+
+        Returns an empty set when the cell has no active operations.
+        """
+        key = (str(machine), int(mode))
+        with self._lock:
+            active = self._registry.get(key)
+            if active is None:
+                return set()
+            return set(active)  # defensive copy
+
     # ── Global op API ─────────────────────────────────────────────────
 
     def try_acquire_global(self, name: str) -> bool:

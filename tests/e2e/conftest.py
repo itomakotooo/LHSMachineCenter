@@ -4,17 +4,10 @@ Spawns ``python -m uvicorn src.web_console.backend.e2e_launch:app`` on a
 free port pointed at tmp state/reports/cache directories. Risk thresholds
 are lowered to KB scale via env vars so the cleanup-tier tests can trigger
 the medium / high tier with tiny files instead of multi-GB writes.
-
-T1 isolation guarantee: the live_server fixture copies configs/servers.json to a
-per-session tmp path and passes it to e2e_launch via SLOT_E2E_SERVERS.  Any
-test calling PUT /api/servers/{id}/set-default therefore writes to the tmp
-copy, never to the committed configs/servers.json.  Verified post-session by
-checking git diff configs/servers.json == empty.
 """
 from __future__ import annotations
 
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -28,19 +21,6 @@ import pytest
 
 
 _ROOT = Path(__file__).resolve().parents[2]
-
-
-# T2: Register custom marks here (not in pytest.ini) so the mark registration
-# is scoped to the e2e conftest and doesn't pollute the global pytest config.
-def pytest_configure(config: pytest.Config) -> None:
-    config.addinivalue_line(
-        "markers",
-        "real_upstream: tests that hit the upstream sampling server (requires intranet)",
-    )
-    config.addinivalue_line(
-        "markers",
-        "slow: long-running tests (real network fetch, >10s expected)",
-    )
 
 
 def _free_port() -> int:
@@ -57,7 +37,9 @@ class LiveServer:
     cache_dir: Path
     rawdata_dir: Path
     db_path: Path
-    servers_config_path: Path | None = None  # T1: tmp copy of configs/servers.json
+    # I5 fix: isolated configs upload dir so /api/configs/upload never
+    # touches the real configs/uploaded_configs/ in the worktree.
+    configs_upload_dir: Path | None = None
 
 
 @pytest.fixture(scope="session")
@@ -73,14 +55,9 @@ def live_server(tmp_path_factory: pytest.TempPathFactory):
     rawdata_dir = base / "rawdata"
     rawdata_dir.mkdir()
     db_path = state_dir / "console.db"
-
-    # T1: copy configs/servers.json to an isolated tmp path so that
-    # PUT /api/servers/{id}/set-default never mutates the committed file.
-    # e2e_launch.py reads SLOT_E2E_SERVERS and passes it to create_app
-    # as servers_config=<tmp_path>, which threads through sc closure.
-    real_servers_json = _ROOT / "configs" / "servers.json"
-    tmp_servers_json = base / "servers.json"
-    shutil.copy2(str(real_servers_json), str(tmp_servers_json))
+    # I5 fix: isolated configs upload dir.
+    configs_upload_dir = base / "configs_upload"
+    configs_upload_dir.mkdir(parents=True)
 
     port = _free_port()
     env = {
@@ -89,8 +66,8 @@ def live_server(tmp_path_factory: pytest.TempPathFactory):
         "SLOT_E2E_REPORTS": str(reports_dir),
         "SLOT_E2E_CACHE": str(cache_dir),
         "SLOT_E2E_RAWDATA": str(rawdata_dir),
-        # T1: pass isolated servers config so tests never mutate configs/servers.json.
-        "SLOT_E2E_SERVERS": str(tmp_servers_json),
+        # I5 fix: pass isolated configs upload dir to e2e_launch.py.
+        "SLOT_E2E_CONFIGS_UPLOAD_DIR": str(configs_upload_dir),
         # Shrink risk thresholds so a 1KB file triggers low and a 10KB file
         # triggers high. Defaults (512 MB / 2 GB) are unrealistic for e2e.
         "SLOT_RISK_MEDIUM_BYTES": "2048",
@@ -143,7 +120,7 @@ def live_server(tmp_path_factory: pytest.TempPathFactory):
         cache_dir=cache_dir,
         rawdata_dir=rawdata_dir,
         db_path=db_path,
-        servers_config_path=tmp_servers_json,  # T1: isolated copy
+        configs_upload_dir=configs_upload_dir,
     )
     try:
         yield server

@@ -1514,10 +1514,30 @@ class StateStore:
         # Phase 3 (D6): recover in-flight fleet refresh items after crash.
         # Must run AFTER _init_db so the tables exist. Guard with
         # OperationalError for pre-P3 databases that don't have the tables yet.
+        # I3 fix: distinguish "no such table" (expected, pre-P3 DB) from
+        # genuine corruption (unexpected — write diagnostic per
+        # memory/feedback_no_silent_swallow.md).
         try:
             self._recover_fleet_refresh()
-        except sqlite3.OperationalError:
-            pass  # Pre-P3 database — tables don't exist yet, nothing to recover
+        except sqlite3.OperationalError as _exc:
+            if "no such table" in str(_exc).lower():
+                pass  # Pre-P3 database — tables don't exist yet, expected
+            else:
+                # Corruption or schema mismatch — persist diagnostic to disk.
+                try:
+                    import json as _json
+                    _diag_path = self.db_path.parent / "fleet_recovery_error.json"
+                    _diag_path.write_text(
+                        _json.dumps({
+                            "error": str(_exc),
+                            "ts": utc_now(),
+                        }),
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+                import traceback as _tb
+                _tb.print_exc()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -5581,12 +5601,34 @@ def current_system_state(
     store: StateStore,
     manager: RunManager,
     registry: CellLockRegistry,
+    state_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Build the GET /api/system-state response.
 
     Phase 2 (D13): includes registry.snapshot() as ``concurrency`` field,
     replacing the old OperationCoordinator single-flag fields.
+
+    Phase 3 / B3 fix: reads diagnostic JSON files from ``state_dir`` and
+    surfaces them as ``md5_refresh_error``, ``stale_tag_error``, and
+    ``reassociate_error`` fields.  Each is ``None`` when the corresponding
+    file does not exist.  The /api/health endpoint does NOT include these
+    fields (health is a thin liveness probe).
     """
+    def _read_diag(path: Path) -> Any:
+        """Return parsed JSON from path, or None if absent/unreadable."""
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    md5_refresh_error: Any = None
+    stale_tag_error: Any = None
+    reassociate_error: Any = None
+    if state_dir is not None:
+        md5_refresh_error = _read_diag(state_dir / "md5_refresh_error.json")
+        stale_tag_error = _read_diag(state_dir / "stale_tag_error.json")
+        reassociate_error = _read_diag(state_dir / "reassociate_error.json")
+
     running = store.list_runs_by_status("running", limit=2000)
     return {
         "ts": utc_now(),
@@ -5604,6 +5646,10 @@ def current_system_state(
         "startup_recovery": manager.startup_recovery_snapshot(),
         # Phase 2 (D13): full concurrency registry snapshot.
         "concurrency": registry.snapshot(),
+        # B3 fix: diagnostic files from state_dir (None when file absent).
+        "md5_refresh_error": md5_refresh_error,
+        "stale_tag_error": stale_tag_error,
+        "reassociate_error": reassociate_error,
     }
 
 
@@ -5725,10 +5771,9 @@ def create_app(
     # Phase 3 (D12): virtual console passes False to skip fleet refresh endpoints
     # and the FleetRefreshManager daemon thread.  Production default is True.
     fleet_refresh_enabled: bool = True,
-    # Optional override for the servers config path so tests can pass a tmp copy
-    # and avoid mutating the committed configs/servers.json.  Defaults to the
-    # module constant SERVERS_CONFIG (= configs/servers.json) when None.
-    servers_config: Path | None = None,
+    # I5 fix: injectable configs_upload_dir for test isolation + e2e harness.
+    # When None, falls back to the module-level CONFIGS_UPLOAD_DIR constant.
+    configs_upload_dir: Path | None = None,
 ) -> FastAPI:
     """Build a FastAPI app with all stateful singletons scoped to this instance.
 
@@ -5748,7 +5793,7 @@ def create_app(
     rr = reports_root if reports_root is not None else REPORTS_ROOT
     cr = cache_root if cache_root is not None else CACHE_ROOT
     mc = machines_config if machines_config is not None else MACHINES_CONFIG
-    sc = servers_config if servers_config is not None else SERVERS_CONFIG
+    sc = SERVERS_CONFIG
     az = analyzer_path if analyzer_path is not None else ANALYZER
     cd = classify_dir if classify_dir is not None else CLASSIFY_DIR
     pd_root = paytables_dir if paytables_dir is not None else PAYTABLES_DIR
@@ -6038,7 +6083,8 @@ def create_app(
     @app.get("/api/system-state")
     def system_state() -> dict[str, Any]:
         # Phase 2 (D13): returns registry.snapshot() as concurrency field.
-        return current_system_state(store, manager, registry)
+        # B3 fix: passes state_dir so diagnostic files are surfaced.
+        return current_system_state(store, manager, registry, state_dir=sd)
 
     @app.get("/api/machines")
     def machines() -> dict[str, Any]:
@@ -6856,27 +6902,16 @@ def create_app(
         if mode is not None:
             modes_to_lock = [int(mode)]
         else:
-            # All modes: enumerate dirs AND query the registry directly.
-            # The registry is authoritative for in-flight operations — disk
-            # enumeration alone misses the window before the first chunk is
-            # written (P2 INV-2 / design proposal §5.1: "delete_rawdata returns
-            # 409 when CellLockRegistry has any active registration").
+            # All modes: enumerate dirs.
             machine_dir = rd_root / machine
-            modes_set: set[int] = set()
-            # 1. On-disk mode dirs (covers completed + partially-written data).
+            modes_to_lock = []
             if machine_dir.is_dir():
                 for md in machine_dir.iterdir():
                     if md.is_dir() and md.name.startswith("mode_"):
                         try:
-                            modes_set.add(int(md.name.split("_", 1)[1]))
+                            modes_to_lock.append(int(md.name.split("_", 1)[1]))
                         except (IndexError, ValueError):
                             continue
-            # 2. Registry active cells for this machine (covers the race window
-            #    where SAMPLING has started but no chunk has landed on disk yet).
-            for cell_machine, cell_mode in registry.get_active_cells():
-                if cell_machine == machine:
-                    modes_set.add(cell_mode)
-            modes_to_lock = sorted(modes_set)
 
         # Acquire DELETING for all relevant modes — abort-and-rollback if
         # any fails (per 07_deploy_decision.md §6 OQ-3).
@@ -6938,15 +6973,23 @@ def create_app(
         machine.
         """
         # Enumerate all modes currently on disk for this machine.
+        # Phase 2 (B2 fix): union disk dirs + registry.get_active_cells() so
+        # that in-flight SAMPLING cells (rawdata dir not yet created) are also
+        # covered — mirrors the R1 fix in delete_machine_rawdata.
         machine_dir = rd_root / machine
-        modes_all: list[int] = []
+        modes_set_all: set[int] = set()
         if machine_dir.is_dir():
             for md in machine_dir.iterdir():
                 if md.is_dir() and md.name.startswith("mode_"):
                     try:
-                        modes_all.append(int(md.name.split("_", 1)[1]))
+                        modes_set_all.add(int(md.name.split("_", 1)[1]))
                     except (IndexError, ValueError):
                         continue
+        # Add any registry-active cells for this machine (pre-chunk race window).
+        for cell_machine, cell_mode in registry.get_active_cells():
+            if cell_machine == machine:
+                modes_set_all.add(cell_mode)
+        modes_all: list[int] = list(modes_set_all)
 
         # Acquire DELETING for all modes — abort-and-rollback if any fails.
         acquired_all_data: list[int] = []
@@ -7167,12 +7210,10 @@ def create_app(
         default-server pointing to an unreachable entry just masks
         the bug with a silent fallthrough.
 
-        Uses ``sc`` when an explicit ``servers_config`` path was passed to
-        ``create_app`` (test isolation), otherwise reads the module-level
-        ``SERVERS_CONFIG`` constant at call time so that existing tests that
-        use ``monkeypatch.setattr(app_mod, "SERVERS_CONFIG", p)`` continue to
-        work without modification."""
-        cfg_path = sc if servers_config is not None else SERVERS_CONFIG
+        Reads ``SERVERS_CONFIG`` module attribute directly (not the
+        ``sc`` closure captured at app-build time) so tests and
+        runtime config swaps take effect immediately."""
+        cfg_path = SERVERS_CONFIG
         cfg = load_servers(cfg_path)
         target = next(
             (s for s in cfg.get("servers", []) if s.get("id") == server_id),
@@ -8217,6 +8258,23 @@ def create_app(
             if not machine:
                 raise HTTPException(status_code=400, detail="machine required")
             parsed_items.append({"machine": machine, "mode": mode})
+
+        # I6 fix: pre-check registry before queuing (explicit-items scope only).
+        # scope=all_with_rawdata returns early above; this block is items-only.
+        # Surfaces 409 synchronously at submit time instead of async worker fail.
+        busy_cells: list[str] = []
+        for item in parsed_items:
+            ops = registry.peek_cell_status(item["machine"], item["mode"])
+            if ops:
+                busy_cells.append(
+                    f"{item['machine']}|{item['mode']} ({', '.join(o.value for o in ops)})"
+                )
+        if busy_cells:
+            raise HTTPException(
+                status_code=409,
+                detail=f"cells busy: {'; '.join(busy_cells)} — retry after active operations complete",
+            )
+
         return batch_gen_mgr.start(parsed_items)
 
     @app.post("/api/rawdata/batch-generate-report/{batch_id}/cancel")
@@ -8446,9 +8504,11 @@ def create_app(
           5. 404 ONLY when neither disk nor index.json knows about
              this version — i.e. there's nothing to clean up.
         """
-        # Phase 2 (D8 + D9 site #7): acquire GENERATING lock for this cell
-        # so a concurrent generate-report can't race the rmtree.
-        if not registry.try_acquire_cell(machine, int(mode), CellOperation.GENERATING):
+        # Phase 2 (D8 + D9 site #7) / I2 fix: acquire DELETING lock (not
+        # GENERATING) for this cell so a concurrent SAMPLING can't race the
+        # rmtree. DELETING is mutually exclusive with SAMPLING (INV-1) and
+        # GENERATING (INV-2), correctly modelling "I am destroying something".
+        if not registry.try_acquire_cell(machine, int(mode), CellOperation.DELETING):
             raise HTTPException(
                 status_code=409,
                 detail=f"cell {machine}|{mode} is busy — retry after active operation completes",
@@ -8566,7 +8626,7 @@ def create_app(
                 "disk_removed": disk_existed,
             }
         finally:
-            registry.release_cell(machine, int(mode), CellOperation.GENERATING)
+            registry.release_cell(machine, int(mode), CellOperation.DELETING)
 
     @app.post("/api/reports/import")
     def import_reports(req: dict[str, Any]) -> dict[str, Any]:
@@ -9714,7 +9774,9 @@ def create_app(
     # ── Phase 3 (D1): Config upload endpoints ──────────────────────────
     import hashlib as _hashlib
 
-    configs_upload_dir = CONFIGS_UPLOAD_DIR
+    # I5 fix: use injected path when provided (test isolation + e2e harness);
+    # fall back to module-level constant for production use.
+    configs_upload_dir = configs_upload_dir if configs_upload_dir is not None else CONFIGS_UPLOAD_DIR
     configs_upload_dir.mkdir(parents=True, exist_ok=True)
     _configs_registry_path = configs_upload_dir / "_registry.json"
 

@@ -1358,8 +1358,10 @@ async function refreshStaticAttrs() {
 async function refreshRawdataOverview() {
   try {
     state.rawdataOverview = await apiGet("/api/rawdata/overview");
-  } catch (_) {
+    state.rawdataOverviewError = null;
+  } catch (err) {
     state.rawdataOverview = null;
+    state.rawdataOverviewError = String(err?.message || err || "unknown error");
   }
   renderRawdataBanner();
   // If the global detail view is already showing, re-render the table
@@ -1372,6 +1374,13 @@ function renderRawdataBanner() {
   if (!banner) return;
   const d = state.rawdataOverview;
   if (!d || !d.total_bytes) {
+    // I4: surface fetch errors in the banner area so operators know the
+    // rawdata overview isn't just "empty" but actually failed to load.
+    if (state.rawdataOverviewError) {
+      banner.classList.remove("hidden");
+      banner.innerHTML = `<div class="rawdata-banner-row"><span class="muted" style="color:#b45309">⚠ rawdata 概览加载失败：${_escHtml(state.rawdataOverviewError)}</span></div>`;
+      return;
+    }
     banner.classList.add("hidden");
     return;
   }
@@ -7026,7 +7035,28 @@ async function refreshCurrentRun() {
   // already distinguishes the two so the operator sees which path
   // produced the data.
   if (run.status === "completed" || run.status === "cancelled") {
-    const report = await apiGet(`/api/runs/${state.currentRunId}/report`);
+    let report;
+    try {
+      report = await apiGet(`/api/runs/${state.currentRunId}/report`);
+    } catch (err) {
+      const msg = String(err?.message || "");
+      if (msg.includes("404")) {
+        // Report file deleted (e.g. operator cleaned up rawdata/reports
+        // but the run row survives in console.db). Clear currentRunId so
+        // subsequent polls don't keep hitting the missing report, and
+        // reset panels to a clean state. Mirrors the run-404 catch above.
+        state.currentRunId = "";
+        state.currentRunStatus = "";
+        setLoadedMachineInfo(null);
+        _resetDebugPanelsToEmpty();
+        renderLiveStatusStrip();
+        updateActionStates();
+        return;
+      }
+      // Non-404 (transient network / 500): leave panels as-is, next poll retries.
+      console.warn("refreshCurrentRun: report fetch failed —", msg);
+      return;
+    }
     const s = report.summary || {};
     state.latestSummary = s;
     await _paintAnalysisFromSummary(s);
@@ -7931,6 +7961,16 @@ async function boot() {
     try { await _restoreCompareFromUrl(); } catch (_) {}
   } catch (e) {
     setHealth(false, String(e.message || e));
+  } finally {
+    // Phase 3 (D11): wire P3 panels regardless of any boot error.
+    // Defense-in-depth: even if loadBootstrap() throws (e.g. a
+    // future API added inside it returns an unexpected status), the
+    // config-upload and fleet-refresh click handlers must still bind.
+    // In the normal (no-throw) path these are re-called after
+    // loadBootstrap already called them, but _initConfigUploadPanel /
+    // _initFleetRefreshPanel are idempotent (they replace listeners).
+    _initConfigUploadPanel();
+    _initFleetRefreshPanel();
   }
 }
 
@@ -8117,6 +8157,22 @@ function _initFleetRefreshPanel() {
 function _initConfigUploadPanel() {
   const uploadBtn = byId("configUploadBtn");
   if (uploadBtn) uploadBtn.addEventListener("click", _handleConfigUpload);
+  // I1 (Option B): config_id is not yet wired through the sampling path —
+  // uploaded configs are stored in the registry but chunks are always tagged
+  // "null" in the sidecar regardless of which config was selected.
+  // Surface a prominent warning so operators know the feature is partial.
+  const wrapEl = byId("configListWrap");
+  if (wrapEl) {
+    const warningId = "configWiringWarning";
+    if (!document.getElementById(warningId)) {
+      const warn = document.createElement("p");
+      warn.id = warningId;
+      warn.className = "muted config-wiring-warning";
+      warn.style.cssText = "color:#b45309;font-style:italic;margin-top:6px";
+      warn.textContent = "⚠ 当前 config 选择对采样无效 — 所有 chunks 仍标记为 \"null\" 桶。config_id 路由为后续 follow-up。";
+      wrapEl.parentNode.insertBefore(warn, wrapEl);
+    }
+  }
   refreshConfigList().catch(() => {});
 }
 
