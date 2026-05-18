@@ -878,19 +878,6 @@ class TestBatchPathHistoricalFilterGap:
         )
         return captured["prepare_fn"], rawdata_root, mode_dir
 
-    @pytest.mark.xfail(
-        reason=(
-            "P1-A4 R1 critic finding (SQ4): _prepare_batch_gen_item passes "
-            "raw chunk_dir to the worker without --upstream-config-md5 / "
-            "--upstream-code-md5. The worker (_batch_gen_worker.py:81) forwards "
-            "--from-cache <chunk_dir> with no md5 filter -> analyzer reads ALL "
-            "chunks in the directory, including historical-md5 ones. "
-            "Fix: add upstream_config_md5 + upstream_code_md5 to the job dict "
-            "and forward them in _batch_gen_worker.py as CLI flags. "
-            "Remove this xfail marker when the fix is applied."
-        ),
-        strict=True,
-    )
     def test_batch_job_dict_includes_md5_filter_keys(self, _app_and_prepare_fn, tmp_path):
         """C2 batch path (xfail): the job dict built by _prepare_batch_gen_item
         must include upstream_config_md5 + upstream_code_md5 so the worker can
@@ -924,15 +911,20 @@ class TestBatchPathHistoricalFilterGap:
 
     @pytest.mark.xfail(
         reason=(
-            "P1-A4 R1 critic finding (SQ4): _prepare_batch_gen_item passes "
-            "raw chunk_dir (the mode directory) to the worker. The directory "
-            "contains BOTH current-md5 and historical-md5 chunks. Without md5 "
-            "filter args, the analyzer reads all of them. "
-            "Fix: replace chunk_dir with a filtered chunk list, OR add md5 "
-            "filter keys to the job dict for worker forwarding. "
-            "Remove this xfail marker when the fix is applied."
+            "P1-D1 Fix B was applied: upstream_config_md5 + upstream_code_md5 "
+            "are now in the job dict and the worker forwards them as "
+            "--upstream-config-md5 / --upstream-code-md5 CLI flags. "
+            "Fix B does NOT clean up the physical chunk_dir — historical files "
+            "remain on disk (md5-is-tag invariant). This test asserts Fix A "
+            "(chunk_dir physically clean), which was not chosen. "
+            "The contract this test cares about (analyzer NOT reading historical "
+            "chunks) is now enforced at the CLI level (--upstream-config-md5 filter), "
+            "not at the directory level. Fix A (symlink temp dir) would require "
+            "additional work not in scope for P1-D1. "
+            "The *other* xfail (test_batch_job_dict_includes_md5_filter_keys) "
+            "was the correct regression guard and is now passing."
         ),
-        strict=True,
+        strict=False,
     )
     def test_batch_job_chunk_dir_does_not_contain_historical_chunks(
         self, _app_and_prepare_fn, tmp_path

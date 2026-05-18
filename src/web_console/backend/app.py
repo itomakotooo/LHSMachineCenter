@@ -7431,6 +7431,15 @@ def create_app(
             "summary_file": str(summary_file),
             "report_file": str(report_file),
         })
+        # C1 (P1-D1 §3 C1): look up (config_md5, code_md5) for this
+        # (machine, mode) pair so the worker can forward them as
+        # --upstream-config-md5 / --upstream-code-md5 CLI flags to the
+        # analyzer, filtering historical-md5 chunks out of the batch run.
+        # Uses app-level _get_machine_md5 which handles both real machines
+        # (flat configSummaryMd5 schema) and virtual machines (per-mode
+        # modesMd5 schema). Matches the logic in _run_generate_report
+        # (lines 7185-7188 of the in-process path).
+        upstream_cfg, upstream_code = _get_machine_md5(machine, mc, mode=mode)
         return {
             "machine": machine,
             "mode": mode,
@@ -7451,6 +7460,18 @@ def create_app(
                 "chunk_spin_times": chunk_spin_times,
                 "chunk_robot_count": chunk_robot_count,
                 "bet": 1000,
+                # C1 (P1-D1 §3 C1): md5 filter keys — forwarded by the
+                # worker to the analyzer as --upstream-config-md5 /
+                # --upstream-code-md5 CLI flags so historical-md5 chunks
+                # are excluded from batch-generated reports (same as the
+                # in-process _run_generate_report path, lines 7185-7188).
+                "upstream_config_md5": upstream_cfg,
+                "upstream_code_md5": upstream_code,
+                # C3 (P1-D1 §3 C3): machines_config forwarded to the
+                # worker so patch_summary_md5 can call lookup_machine_md5
+                # with the correct config path (virtual machines need the
+                # per-mode modesMd5 schema, not the repo-root default).
+                "machines_config": str(mc),
                 # Forward the app-level output dirs to the worker's post-
                 # analyzer hook so alternate-universe callers (tests, the
                 # virtual-machine console) don't clobber real
