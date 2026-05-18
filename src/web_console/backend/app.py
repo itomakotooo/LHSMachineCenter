@@ -27,6 +27,22 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+# Phase 1 deploy refactor (2026-05-15): atomic JSON writers with per-file
+# threading.Lock — replaces ad-hoc write_text() across config writers
+# that raced under multi-user concurrency. See
+# session_artifacts/_arch/deploy/04_deploy_architecture_proposal_v2.md §4.2.
+from src.web_console.backend.config_writer import (
+    atomic_json_read_modify_write,
+    atomic_json_write,
+)
+
+# Phase 2 deploy refactor (2026-05-17): unified cell-level concurrency
+# primitives.  CellLockRegistry replaces _IN_USE_MODES + _busy_keys +
+# OperationCoordinator.  ConcurrencyLimiter replaces the v1 token bucket.
+# See session_artifacts/_arch/deploy/04_deploy_architecture_proposal_v2.md §4.1 + §4.5.
+from src.web_console.backend.cell_lock_registry import CellLockRegistry, CellOperation
+from src.web_console.backend.rate_limiter import ConcurrencyLimiter
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -62,6 +78,9 @@ CLASSIFY_DIR = ROOT / "dev_reports" / "_classify"
 PAYTABLES_DIR = ROOT / "configs" / "paytables"
 MACHINES_CONFIG = ROOT / "configs" / "machines.json"
 SERVERS_CONFIG = ROOT / "configs" / "servers.json"
+# Phase 3 deploy (2026-05-17): uploaded config JSONs live here.
+# Directory is gitignored; _registry.json inside tracks all uploads.
+CONFIGS_UPLOAD_DIR = ROOT / "configs" / "uploaded_configs"
 # Per-underlying MachineConfig override files that designers maintain
 # locally (gitignored). Naming is hardcoded as ``<underlying>Cfg.txt``
 # by convention — an M273 variant picks up machineconfig/M273Cfg.txt
@@ -509,10 +528,11 @@ def _resolve_local_cfg_for_machine(
 
 def save_servers(data: dict[str, Any], path: Path | None = None) -> None:
     target = path if path is not None else SERVERS_CONFIG
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    # Phase 1 deploy: atomic + per-file-locked. Concurrent edits via
+    # POST/PUT/DELETE /api/servers/* now serialize per-file instead of
+    # racing on truncate-then-write (which under load could silently
+    # lose the first writer's change).
+    atomic_json_write(target, data, trailing_newline=True)
 
 
 RAWDATA_ROOT = Path(os.getenv("SLOT_RAWDATA_ROOT", str(RAWDATA_ROOT_DEFAULT)))
@@ -836,10 +856,11 @@ def _load_settings(settings_path: Path) -> dict[str, Any]:
 
 
 def _save_settings(settings_path: Path, data: dict[str, Any]) -> None:
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = settings_path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(tmp, settings_path)
+    # Phase 1 deploy: unified atomic writer adds per-file lock so
+    # concurrent settings POSTs serialize. Previously already atomic
+    # (tmp + os.replace) but racing concurrent writers could clobber
+    # each other; the per-file lock makes the outcome deterministic.
+    atomic_json_write(settings_path, data)
 
 
 def _peek_envelope_scalars(path: Path) -> dict[str, Any] | None:
@@ -1035,6 +1056,60 @@ def _classify_chunks(
         # md5 bucket as "当前(服务端)" / "当前(本地 cfg)" / "历史".
         "current_md5_pairs": current_pairs,
     }
+
+
+def _tag_reports_stale(
+    machine: str,
+    mode: int,
+    reports_root: Path,
+    store: "StateStore",
+    state_dir: Path,
+) -> None:
+    """Phase 3 (D9): tag all reports for (machine, mode) as stale.
+
+    Sets ``underlying_removed=True`` on every entry in the per-mode
+    report index.json and ``underlying_removed=1`` in the SQLite
+    ``runs`` table.
+
+    Per memory/feedback_md5_is_a_tag_not_a_destruction_signal.md:
+    this is purely observability tagging — no reports are deleted.
+
+    Per memory/feedback_no_silent_swallow.md:
+    * Persists diagnostic to ``state_dir/stale_tag_error.json`` on failure.
+    * Re-raises so callers can detect and handle the failure
+      (typically: log, but don't block the delete that already succeeded).
+
+    INV-7 v2 carve-out: ``DELETE /api/machines/{machine}/all-data``
+    is EXEMPT from this call because it deletes both rawdata + reports
+    entirely; reports don't survive to need stale-tagging.
+    """
+    index_path = reports_root / machine / f"mode_{mode}" / "index.json"
+    try:
+        if index_path.exists():
+            def _mark_stale(data: Any) -> Any:
+                if isinstance(data, list):
+                    for entry in data:
+                        if isinstance(entry, dict):
+                            entry["underlying_removed"] = True
+                return data
+            atomic_json_read_modify_write(index_path, _mark_stale)
+        store.mark_runs_underlying_removed(machine, mode)
+    except Exception as exc:
+        # Persist diagnostic per memory/feedback_no_silent_swallow.md.
+        diag_path = state_dir / "stale_tag_error.json"
+        diag = {
+            "machine": machine,
+            "mode": mode,
+            "error": f"{exc.__class__.__name__}: {exc}",
+            "ts": utc_now(),
+        }
+        try:
+            atomic_json_write(diag_path, diag)
+        except Exception:
+            pass  # Last-resort: don't let log-write swallow original exc.
+        import traceback as _tb
+        _tb.print_exc()
+        raise  # Re-raise so caller can surface the failure.
 
 
 def delete_rawdata(
@@ -1431,7 +1506,38 @@ class StateStore:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Phase 3 (D6): queue_id to resume after crash recovery.
+        # Populated by _recover_fleet_refresh if a running queue is found.
+        # Consumed by create_app after FleetRefreshManager is constructed.
+        self._pending_resume_queue_id: str | None = None
         self._init_db()
+        # Phase 3 (D6): recover in-flight fleet refresh items after crash.
+        # Must run AFTER _init_db so the tables exist. Guard with
+        # OperationalError for pre-P3 databases that don't have the tables yet.
+        # I3 fix: distinguish "no such table" (expected, pre-P3 DB) from
+        # genuine corruption (unexpected — write diagnostic per
+        # memory/feedback_no_silent_swallow.md).
+        try:
+            self._recover_fleet_refresh()
+        except sqlite3.OperationalError as _exc:
+            if "no such table" in str(_exc).lower():
+                pass  # Pre-P3 database — tables don't exist yet, expected
+            else:
+                # Corruption or schema mismatch — persist diagnostic to disk.
+                try:
+                    import json as _json
+                    _diag_path = self.db_path.parent / "fleet_recovery_error.json"
+                    _diag_path.write_text(
+                        _json.dumps({
+                            "error": str(_exc),
+                            "ts": utc_now(),
+                        }),
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+                import traceback as _tb
+                _tb.print_exc()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -1440,6 +1546,17 @@ class StateStore:
 
     def _init_db(self) -> None:
         with self._connect() as conn:
+            # Phase 1 deploy: enable WAL mode + busy_timeout so
+            # concurrent reads don't block writes (and vice versa).
+            # Required for <10 planners hitting the DB in parallel.
+            # WAL is idempotent on repeated apply — once set it
+            # persists in the .db header.
+            #
+            # NOTE: WAL creates .db-wal + .db-shm sidecars; the deploy
+            # README documents that state/console/ MUST be on local
+            # disk (NOT a network share — WAL is unsupported on SMB/CIFS).
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS runs (
@@ -1504,6 +1621,13 @@ class StateStore:
             # summary.sampling.total_spins.
             if "total_spins" not in run_columns:
                 conn.execute("ALTER TABLE runs ADD COLUMN total_spins INTEGER")
+            # Phase 3 deploy (2026-05-17): flag set when the underlying rawdata
+            # for a run has been deleted.  Surfaced in list_runs / report endpoints
+            # so the frontend can show a "rawdata removed" badge.
+            if "underlying_removed" not in run_columns:
+                conn.execute(
+                    "ALTER TABLE runs ADD COLUMN underlying_removed INTEGER NOT NULL DEFAULT 0"
+                )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interpretations (
@@ -1522,7 +1646,156 @@ class StateStore:
                 conn.execute("ALTER TABLE interpretations ADD COLUMN source TEXT")
             if "warning" not in columns:
                 conn.execute("ALTER TABLE interpretations ADD COLUMN warning TEXT")
+            # Phase 3 deploy (2026-05-17): fleet refresh queue tables.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS fleet_refresh_queue (
+                    queue_id TEXT PRIMARY KEY,
+                    started_at TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    total_items INTEGER NOT NULL,
+                    completed_items INTEGER NOT NULL DEFAULT 0,
+                    failed_items INTEGER NOT NULL DEFAULT 0,
+                    skipped_items INTEGER NOT NULL DEFAULT 0,
+                    config_source TEXT NOT NULL DEFAULT 'server_default',
+                    server_id TEXT,
+                    cancelled_at TEXT,
+                    finished_at TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS fleet_refresh_items (
+                    queue_id TEXT NOT NULL REFERENCES fleet_refresh_queue(queue_id),
+                    machine TEXT NOT NULL,
+                    mode INTEGER NOT NULL,
+                    queue_position INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    run_id TEXT,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    started_at TEXT,
+                    finished_at TEXT,
+                    PRIMARY KEY (queue_id, machine, mode)
+                )
+                """
+            )
+            # Phase 3 deploy (2026-05-17): crash-recovery anchor for config_id
+            # sidecar annotation. Written before a sampling run starts;
+            # cleared after the sidecar is updated. On startup, orphaned rows
+            # trigger re-association of chunks with their config_id.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pending_batch_configs (
+                    batch_run_id TEXT NOT NULL,
+                    machine TEXT NOT NULL,
+                    mode INTEGER NOT NULL,
+                    config_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (batch_run_id, machine, mode)
+                )
+                """
+            )
             conn.commit()
+
+    def _recover_fleet_refresh(self) -> None:
+        """Phase 3 (D6): re-queue any in-flight items from a crashed queue.
+
+        Called during StateStore.__init__ AFTER _init_db.  If a
+        ``fleet_refresh_queue`` row with ``status='running'`` exists,
+        any of its items that are also ``status='running'`` crashed mid-run
+        (the daemon thread died with the process).  Reset them to
+        ``status='pending'`` so the next ``run_queue`` pass picks them up.
+
+        Sets ``self._pending_resume_queue_id`` so ``create_app`` can
+        resume the queue via FleetRefreshManager.run_queue() after it
+        constructs the manager.
+
+        Raises ``sqlite3.OperationalError`` if the tables don't exist
+        yet (pre-P3 database); caller swallows it.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT queue_id FROM fleet_refresh_queue "
+                "WHERE status='running' LIMIT 1"
+            ).fetchone()
+            if row:
+                queue_id = str(row["queue_id"])
+                # Re-queue in-flight items (they crashed mid-fetch).
+                conn.execute(
+                    "UPDATE fleet_refresh_items SET status='pending', run_id=NULL "
+                    "WHERE queue_id=? AND status='running'",
+                    (queue_id,),
+                )
+                conn.commit()
+                # Signal create_app to resume this queue.
+                self._pending_resume_queue_id = queue_id
+
+    # ── Phase 3 (D10): underlying_removed ────────────────────────────
+
+    def mark_runs_underlying_removed(self, machine: str, mode: int) -> int:
+        """Set ``underlying_removed=1`` on every run row matching
+        ``(machine, mode)``.  Called after rawdata deletion so the UI can
+        show a "underlying rawdata removed" badge on historical reports.
+
+        Returns the number of rows updated.
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE runs SET underlying_removed=1 "
+                "WHERE machine=? AND mode=?",
+                (str(machine), int(mode)),
+            )
+            conn.commit()
+            return cur.rowcount
+
+    # ── Phase 3 (D2): pending_batch_configs ──────────────────────────
+
+    def insert_pending_batch_config(
+        self,
+        batch_run_id: str,
+        machine: str,
+        mode: int,
+        config_id: str,
+    ) -> None:
+        """Write-config-first ordering anchor (R8 / D2).
+
+        Called BEFORE the analyzer subprocess starts sampling so that a
+        crash between subprocess start and sidecar update can be detected
+        and re-associated on next startup.
+        """
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO pending_batch_configs "
+                "(batch_run_id, machine, mode, config_id, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (batch_run_id, str(machine), int(mode), str(config_id), utc_now()),
+            )
+            conn.commit()
+
+    def delete_pending_batch_config(
+        self,
+        batch_run_id: str,
+        machine: str,
+        mode: int,
+    ) -> None:
+        """Remove the anchor after the sidecar is updated (D2)."""
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM pending_batch_configs "
+                "WHERE batch_run_id=? AND machine=? AND mode=?",
+                (batch_run_id, str(machine), int(mode)),
+            )
+            conn.commit()
+
+    def list_pending_batch_configs(self) -> list[dict[str, Any]]:
+        """Return all pending_batch_configs rows for startup re-association."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM pending_batch_configs ORDER BY created_at ASC"
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def insert_run(self, record: dict[str, Any]) -> None:
         fields = ", ".join(record.keys())
@@ -2141,31 +2414,19 @@ def _build_rawdata_overview(
 # Performance: in-memory cache keyed by file mtime_ns; atomic writes
 # via temp + os.replace; O(machines × modes) bootstrap walk runs once.
 _STATIC_ATTRS_CACHE: dict = {"mtime": 0, "data": None}
+# Phase 1 fix: guard parallel to _LOCK_CACHE_GUARD (added for _LOCK_CACHE in
+# Phase 1 commit cec5012; _STATIC_ATTRS_CACHE has the IDENTICAL TOCTOU shape
+# and was left unguarded — caught by impl-critic retroactive review).
+# Closes the race where concurrent _load + _save leave (mtime, data) in
+# an inconsistent state (mtime says fresh, data is stale or mid-build).
+_STATIC_ATTRS_CACHE_GUARD = threading.Lock()
 
-# ── In-use protection (2026-04-20 round 6) ──────────────────────────
-# Set of (machine, mode) pairs currently being sampled or consumed by
-# a generate-report run. Auto-cleanup must skip these — deleting chunks
-# mid-write corrupts the cache + kills the analyzer. Callers wrap the
-# analyzer invocation with ``_acquire_in_use`` / ``_release_in_use``.
-# In-memory only (process-local). On crash, restart clears it — safer
-# than persisting a stale lock that nothing will release.
-_IN_USE_MODES: set[tuple[str, int]] = set()
-_IN_USE_LOCK = threading.Lock()
-
-
-def _acquire_in_use(machine: str, mode: int) -> None:
-    with _IN_USE_LOCK:
-        _IN_USE_MODES.add((str(machine), int(mode)))
-
-
-def _release_in_use(machine: str, mode: int) -> None:
-    with _IN_USE_LOCK:
-        _IN_USE_MODES.discard((str(machine), int(mode)))
-
-
-def _get_in_use_snapshot() -> set[tuple[str, int]]:
-    with _IN_USE_LOCK:
-        return set(_IN_USE_MODES)
+# ── In-use protection — DELETED in Phase 2 deploy refactor ──────────
+# _IN_USE_MODES / _IN_USE_LOCK / _acquire_in_use / _release_in_use /
+# _get_in_use_snapshot were replaced by CellLockRegistry (imported above).
+# The registry is injected into create_app() and threaded through all
+# callers that previously used these helpers.
+# See session_artifacts/_arch/deploy/04_deploy_architecture_proposal_v2.md §4.1 D5.
 
 
 # ── Rawdata lock registry (2026-04-20 round 6) ──────────────────────
@@ -2176,6 +2437,10 @@ def _get_in_use_snapshot() -> set[tuple[str, int]]:
 # Storage: configs/rawdata_locks.json, gitignored + per-fleet.
 # Key format: "<machine>|<mode>". Value: bool (true = locked).
 _LOCK_CACHE: dict = {"mtime": 0, "data": None}
+# Phase 1 deploy: guard cache access so concurrent _load + _save can't
+# leave (mtime, data) in inconsistent state (mtime says fresh, data is
+# stale or being-built). Minor TOCTOU fix per 04_v2 Phase 1 deliverable #8.
+_LOCK_CACHE_GUARD = threading.Lock()
 
 
 def _rawdata_locks_path(configs_root_machines_config: Path) -> Path:
@@ -2185,47 +2450,49 @@ def _rawdata_locks_path(configs_root_machines_config: Path) -> Path:
 def _load_rawdata_locks(path: Path) -> set[tuple[str, int]]:
     """Return the set of (machine, mode) tuples currently locked.
     Mtime-invalidated in-memory cache; file IO only on first call
-    or when file mtime changes."""
+    or when file mtime changes.
+
+    Phase 1 deploy: cache check+update guarded by ``_LOCK_CACHE_GUARD``
+    so concurrent _load calls can't race and produce inconsistent
+    (mtime, data) state.
+    """
     try:
         cur_mtime = path.stat().st_mtime_ns if path.exists() else 0
     except OSError:
         cur_mtime = 0
-    cached = _LOCK_CACHE.get("data")
-    if cached is not None and _LOCK_CACHE.get("mtime") == cur_mtime:
-        return cached
-    locks: set[tuple[str, int]] = set()
-    if path.exists():
-        try:
-            raw = read_json(path) or {}
-        except Exception:
-            raw = {}
-        for key in (raw.get("locked") or []):
+    with _LOCK_CACHE_GUARD:
+        cached = _LOCK_CACHE.get("data")
+        if cached is not None and _LOCK_CACHE.get("mtime") == cur_mtime:
+            return cached
+        locks: set[tuple[str, int]] = set()
+        if path.exists():
             try:
-                machine, mode_str = str(key).split("|", 1)
-                locks.add((machine, int(mode_str)))
-            except (ValueError, TypeError):
-                continue
-    _LOCK_CACHE["mtime"] = cur_mtime
-    _LOCK_CACHE["data"] = locks
-    return locks
+                raw = read_json(path) or {}
+            except Exception:
+                raw = {}
+            for key in (raw.get("locked") or []):
+                try:
+                    machine, mode_str = str(key).split("|", 1)
+                    locks.add((machine, int(mode_str)))
+                except (ValueError, TypeError):
+                    continue
+        _LOCK_CACHE["mtime"] = cur_mtime
+        _LOCK_CACHE["data"] = locks
+        return locks
 
 
 def _save_rawdata_locks(path: Path, locks: set[tuple[str, int]]) -> None:
+    """Phase 1 deploy: atomic + per-file-locked write; cache update
+    guarded so concurrent _load can't observe partial update."""
     keys = sorted(f"{m}|{mode}" for (m, mode) in locks)
     payload = {"locked": keys, "updated_at": utc_now()}
-    tmp = path.with_suffix(".json.tmp")
-    tmp.parent.mkdir(parents=True, exist_ok=True)
-    tmp.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    import os as _os
-    _os.replace(tmp, path)
-    try:
-        _LOCK_CACHE["mtime"] = path.stat().st_mtime_ns
-    except OSError:
-        pass
-    _LOCK_CACHE["data"] = set(locks)
+    atomic_json_write(path, payload)
+    with _LOCK_CACHE_GUARD:
+        try:
+            _LOCK_CACHE["mtime"] = path.stat().st_mtime_ns
+        except OSError:
+            pass
+        _LOCK_CACHE["data"] = set(locks)
 
 
 def _set_rawdata_lock(path: Path, machine: str, mode: int, locked: bool) -> bool:
@@ -2255,42 +2522,48 @@ def _static_attrs_path(machines_config: Path) -> Path:
 
 
 def _load_static_attrs(path: Path) -> dict:
+    """Phase 1 fix: cache check+update guarded by ``_STATIC_ATTRS_CACHE_GUARD``
+    so concurrent _load calls can't race and produce inconsistent (mtime, data)
+    state. Mirrors the ``_LOCK_CACHE_GUARD`` fix in ``_load_rawdata_locks``.
+    Mtime stat is outside the lock (cheap + non-blocking; same pattern as
+    ``_load_rawdata_locks`` per 04_v2 Phase 1 deliverable #8).
+    """
     try:
         cur_mtime = path.stat().st_mtime_ns if path.exists() else 0
     except OSError:
         cur_mtime = 0
-    if (_STATIC_ATTRS_CACHE["data"] is not None
-            and _STATIC_ATTRS_CACHE["mtime"] == cur_mtime):
-        return _STATIC_ATTRS_CACHE["data"]
-    if not path.exists():
-        data: dict = {}
-    else:
-        try:
-            data = read_json(path) or {}
-        except Exception:
-            data = {}
-    data.setdefault("machines", {})
-    data.setdefault("feature_distribution", {})
-    data.setdefault("mechanics_distribution", {})
-    _STATIC_ATTRS_CACHE["mtime"] = cur_mtime
-    _STATIC_ATTRS_CACHE["data"] = data
-    return data
+    with _STATIC_ATTRS_CACHE_GUARD:
+        if (_STATIC_ATTRS_CACHE["data"] is not None
+                and _STATIC_ATTRS_CACHE["mtime"] == cur_mtime):
+            return _STATIC_ATTRS_CACHE["data"]
+        if not path.exists():
+            data: dict = {}
+        else:
+            try:
+                data = read_json(path) or {}
+            except Exception:
+                data = {}
+        data.setdefault("machines", {})
+        data.setdefault("feature_distribution", {})
+        data.setdefault("mechanics_distribution", {})
+        _STATIC_ATTRS_CACHE["mtime"] = cur_mtime
+        _STATIC_ATTRS_CACHE["data"] = data
+        return data
 
 
 def _save_static_attrs(path: Path, data: dict) -> None:
-    tmp = path.with_suffix(".json.tmp")
-    tmp.parent.mkdir(parents=True, exist_ok=True)
-    tmp.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    import os as _os
-    _os.replace(tmp, path)
-    try:
-        _STATIC_ATTRS_CACHE["mtime"] = path.stat().st_mtime_ns
-    except OSError:
-        pass
-    _STATIC_ATTRS_CACHE["data"] = data
+    """Phase 1 deploy: atomic + per-file-locked write.
+    Phase 1 fix: cache update guarded by ``_STATIC_ATTRS_CACHE_GUARD``
+    so concurrent _load can't observe a partial update (mtime written,
+    data not yet — or vice versa). Mirrors ``_save_rawdata_locks`` pattern.
+    """
+    atomic_json_write(path, data)
+    with _STATIC_ATTRS_CACHE_GUARD:
+        try:
+            _STATIC_ATTRS_CACHE["mtime"] = path.stat().st_mtime_ns
+        except OSError:
+            pass
+        _STATIC_ATTRS_CACHE["data"] = data
 
 
 def _rebuild_static_distributions(data: dict) -> None:
@@ -2458,6 +2731,7 @@ def _auto_cleanup_for_space(
     retention: int,
     target_free_gb: float,
     low_water_gb: float | None = None,
+    registry: "CellLockRegistry | None" = None,
 ) -> dict[str, Any]:
     """Evict deletable chunks oldest-first until free space ≥ target.
 
@@ -2502,7 +2776,12 @@ def _auto_cleanup_for_space(
         return result
 
     locks = _load_rawdata_locks(_rawdata_locks_path(machines_config))
-    in_use = _get_in_use_snapshot()
+    # Phase 2: use registry.get_active_cells() when registry is provided;
+    # fall back to empty set (no-op protection) when called without one
+    # (e.g. from very old test paths that pre-date registry injection).
+    in_use: set[tuple[str, int]] = (
+        registry.get_active_cells() if registry is not None else set()
+    )
 
     # Collect deletable chunks across all (machine, mode), skipping
     # locked + in_use groups entirely.
@@ -2873,14 +3152,14 @@ class BatchGenerateManager:
     callback (``prepare_fn``) just handles the DB row / output dir /
     chunk discovery; the actual analyzer.main() lives in the worker.
 
-    Holds the ``ops`` mutex for the whole batch duration.
+    Phase 2: per-item GENERATING locks via CellLockRegistry replace the old
+    coarse ops mutex.
     """
 
     def __init__(
         self,
         prepare_fn: Callable[[str, int], dict[str, Any]],
         finalize_fn: Callable[[dict, dict], dict[str, Any]],
-        ops: Any,
         concurrency: int = 4,
         root_path: str = "",
     ) -> None:
@@ -2889,13 +3168,14 @@ class BatchGenerateManager:
         #        run_id, etc.)
         #   plus any extra keys the caller wants (machine/mode/run_id/etc)
         #   which finalize_fn uses to update DB + index.json.
-        # Runs in the parent thread under ops mutex.
+        # Phase 2: runs per-item GENERATING acquire inside the wrapper
+        # (D7); no longer needs the coarse ops mutex.
         self._prepare_fn = prepare_fn
         # finalize_fn(prepared_dict, worker_result_dict) → dict with
         #   final metrics (rtp_point_pct, achieved_halfwidth_pp, etc.).
         # Runs in the parent thread after each worker result arrives.
         self._finalize_fn = finalize_fn
-        self._ops = ops
+        # Phase 2: _ops removed — per-item registry GENERATING replaces it.
         self._batches: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._concurrency = max(1, int(concurrency))
@@ -2966,22 +3246,10 @@ class BatchGenerateManager:
             state["items"][idx].update(patch)
 
     def _run(self, batch_id: str) -> None:
-        # Acquire the coarse ops mutex once for the whole batch.
-        if not self._ops.acquire("batch_generate_report"):
-            snap = self._ops.snapshot()
-            with self._lock:
-                state = self._batches.get(batch_id)
-                if state is not None:
-                    state["status"] = "failed"
-                    state["error"] = f"system busy: {snap.get('operation') or 'unknown'}"
-                    state["finished_at"] = utc_now()
-                    for it in state["items"]:
-                        if it["status"] == "pending":
-                            it["status"] = "failed"
-                            it["error"] = "batch aborted"
-                    state["failed"] = sum(1 for i in state["items"] if i["status"] == "failed")
-                    state["pending"] = 0
-            return
+        # Phase 2 (D9 site #1): the coarse ops mutex ("batch_generate_report")
+        # is removed.  Per-item GENERATING locks in the registry replace it.
+        # The per-item locks are acquired inside _prepare_batch_gen_item_wrapper
+        # and released inside _finalize_batch_gen_item_wrapper (D7).
 
         # Import locally — multiprocessing / concurrent.futures top-level
         # imports would pull all of stdlib into every reload cycle.
@@ -2993,168 +3261,173 @@ class BatchGenerateManager:
             _pool_worker_init, run_analyzer_job,
         )
 
-        try:
+        with self._lock:
+            state = self._batches.get(batch_id)
+            if state is None:
+                return
+            state["status"] = "running"
+            items_snapshot = list(state["items"])
+
+        # Phase A — prepare each item in the parent thread (DB row,
+        # output dir, chunk discovery). Failures here mark the item
+        # without a worker submission.
+        prepared: list[tuple[int, dict[str, Any]]] = []
+        for idx, item in enumerate(items_snapshot):
+            # Cancel check before preparing — avoids a half-created
+            # run row when operator hits Stop during prep.
             with self._lock:
                 state = self._batches.get(batch_id)
-                if state is None:
-                    return
-                state["status"] = "running"
-                items_snapshot = list(state["items"])
-
-            # Phase A — prepare each item in the parent thread (DB row,
-            # output dir, chunk discovery). Failures here mark the item
-            # without a worker submission.
-            prepared: list[tuple[int, dict[str, Any]]] = []
-            for idx, item in enumerate(items_snapshot):
-                # Cancel check before preparing — avoids a half-created
-                # run row when operator hits Stop during prep.
+                if state is not None and state.get("_cancel_requested"):
+                    break
+            try:
+                pre = self._prepare_fn(item["machine"], item["mode"])
+                prepared.append((idx, pre))
+                self._set_item(batch_id, idx, {
+                    "status": "running",
+                    "run_id": pre.get("run_id"),
+                })
+            except HTTPException as exc:
+                self._set_item(batch_id, idx, {
+                    "status": "failed",
+                    "error": str(exc.detail),
+                })
                 with self._lock:
-                    state = self._batches.get(batch_id)
-                    if state is not None and state.get("_cancel_requested"):
-                        break
-                try:
-                    pre = self._prepare_fn(item["machine"], item["mode"])
-                    prepared.append((idx, pre))
-                    self._set_item(batch_id, idx, {
-                        "status": "running",
-                        "run_id": pre.get("run_id"),
-                    })
-                except HTTPException as exc:
-                    self._set_item(batch_id, idx, {
-                        "status": "failed",
-                        "error": str(exc.detail),
-                    })
+                    st2 = self._batches.get(batch_id)
+                    if st2 is not None:
+                        st2["failed"] += 1
+                        st2["pending"] -= 1
+            except Exception as exc:  # noqa: BLE001
+                self._set_item(batch_id, idx, {
+                    "status": "failed",
+                    "error": f"{exc.__class__.__name__}: {exc}",
+                })
+                with self._lock:
+                    st2 = self._batches.get(batch_id)
+                    if st2 is not None:
+                        st2["failed"] += 1
+                        st2["pending"] -= 1
+
+        # Phase B — spin up the pool + submit all prepared jobs.
+        # Workers run analyzer.main() in their own process; parent
+        # reads each job's summary.json from disk after completion.
+        if prepared:
+            ctx = _mp.get_context("spawn")  # portable across POSIX/Windows
+            with ProcessPoolExecutor(
+                max_workers=self._concurrency,
+                mp_context=ctx,
+                initializer=_pool_worker_init,
+                initargs=(self._root_path,),
+            ) as pool:
+                futures: dict = {}
+                for idx, pre in prepared:
+                    fut = pool.submit(run_analyzer_job, pre["job"])
+                    futures[fut] = (idx, pre)
+
+                cancelled_submitted = False
+                for fut in as_completed(list(futures.keys())):
+                    idx, pre = futures[fut]
+
+                    # On first cancel after a result lands, cancel any
+                    # still-queued futures (in-flight ones finish).
                     with self._lock:
-                        st2 = self._batches.get(batch_id)
-                        if st2 is not None:
-                            st2["failed"] += 1
-                            st2["pending"] -= 1
-                except Exception as exc:  # noqa: BLE001
-                    self._set_item(batch_id, idx, {
-                        "status": "failed",
-                        "error": f"{exc.__class__.__name__}: {exc}",
-                    })
-                    with self._lock:
-                        st2 = self._batches.get(batch_id)
-                        if st2 is not None:
-                            st2["failed"] += 1
-                            st2["pending"] -= 1
+                        state = self._batches.get(batch_id)
+                        want_cancel = bool(
+                            state and state.get("_cancel_requested")
+                        )
+                    if want_cancel and not cancelled_submitted:
+                        for other in futures:
+                            if other is not fut and not other.done():
+                                other.cancel()
+                        cancelled_submitted = True
 
-            # Phase B — spin up the pool + submit all prepared jobs.
-            # Workers run analyzer.main() in their own process; parent
-            # reads each job's summary.json from disk after completion.
-            if prepared:
-                ctx = _mp.get_context("spawn")  # portable across POSIX/Windows
-                with ProcessPoolExecutor(
-                    max_workers=self._concurrency,
-                    mp_context=ctx,
-                    initializer=_pool_worker_init,
-                    initargs=(self._root_path,),
-                ) as pool:
-                    futures: dict = {}
-                    for idx, pre in prepared:
-                        fut = pool.submit(run_analyzer_job, pre["job"])
-                        futures[fut] = (idx, pre)
-
-                    cancelled_submitted = False
-                    for fut in as_completed(list(futures.keys())):
-                        idx, pre = futures[fut]
-
-                        # On first cancel after a result lands, cancel any
-                        # still-queued futures (in-flight ones finish).
+                    # Process this future's result.
+                    try:
+                        result = fut.result()
+                    except Exception as exc:  # noqa: BLE001
+                        self._set_item(batch_id, idx, {
+                            "status": "failed",
+                            "error": f"{exc.__class__.__name__}: {exc}",
+                        })
                         with self._lock:
-                            state = self._batches.get(batch_id)
-                            want_cancel = bool(
-                                state and state.get("_cancel_requested")
-                            )
-                        if want_cancel and not cancelled_submitted:
-                            for other in futures:
-                                if other is not fut and not other.done():
-                                    other.cancel()
-                            cancelled_submitted = True
+                            st3 = self._batches.get(batch_id)
+                            if st3 is not None:
+                                st3["failed"] += 1
+                                st3["pending"] -= 1
+                        continue
 
-                        # Process this future's result.
+                    if result.get("ok"):
                         try:
-                            result = fut.result()
+                            final = self._finalize_fn(pre, result)
+                            self._set_item(batch_id, idx, {
+                                "status": "completed",
+                                "rtp_point_pct": final.get("rtp_point_pct"),
+                                "achieved_halfwidth_pp": final.get("achieved_halfwidth_pp"),
+                                "chunks_processed": final.get("chunks_processed"),
+                            })
+                            with self._lock:
+                                st3 = self._batches.get(batch_id)
+                                if st3 is not None:
+                                    st3["completed"] += 1
+                                    st3["pending"] -= 1
                         except Exception as exc:  # noqa: BLE001
                             self._set_item(batch_id, idx, {
                                 "status": "failed",
-                                "error": f"{exc.__class__.__name__}: {exc}",
+                                "error": f"finalize: {exc}",
                             })
                             with self._lock:
                                 st3 = self._batches.get(batch_id)
                                 if st3 is not None:
                                     st3["failed"] += 1
                                     st3["pending"] -= 1
-                            continue
-
-                        if result.get("ok"):
-                            try:
-                                final = self._finalize_fn(pre, result)
-                                self._set_item(batch_id, idx, {
-                                    "status": "completed",
-                                    "rtp_point_pct": final.get("rtp_point_pct"),
-                                    "achieved_halfwidth_pp": final.get("achieved_halfwidth_pp"),
-                                    "chunks_processed": final.get("chunks_processed"),
-                                })
-                                with self._lock:
-                                    st3 = self._batches.get(batch_id)
-                                    if st3 is not None:
-                                        st3["completed"] += 1
-                                        st3["pending"] -= 1
-                            except Exception as exc:  # noqa: BLE001
-                                self._set_item(batch_id, idx, {
-                                    "status": "failed",
-                                    "error": f"finalize: {exc}",
-                                })
-                                with self._lock:
-                                    st3 = self._batches.get(batch_id)
-                                    if st3 is not None:
-                                        st3["failed"] += 1
-                                        st3["pending"] -= 1
-                        else:
-                            # Worker reported per-item failure. Call
-                            # finalize with a failure marker so DB row
-                            # flips to status=failed.
-                            try:
-                                self._finalize_fn(pre, result)
-                            except Exception:  # noqa: BLE001
-                                pass
-                            self._set_item(batch_id, idx, {
-                                "status": "failed",
-                                "error": str(result.get("error") or "worker failed"),
-                            })
-                            with self._lock:
-                                st3 = self._batches.get(batch_id)
-                                if st3 is not None:
-                                    st3["failed"] += 1
-                                    st3["pending"] -= 1
-
-            # Phase C — flip any still-pending items to cancelled (can
-            # happen if cancel fired during Phase A).
-            with self._lock:
-                state = self._batches.get(batch_id)
-                if state is not None:
-                    pending_idxs = [
-                        i for i, it in enumerate(state["items"])
-                        if it["status"] == "pending"
-                    ]
-                    if state.get("_cancel_requested") and pending_idxs:
-                        for i in pending_idxs:
-                            state["items"][i]["status"] = "cancelled"
-                            state["items"][i]["error"] = "cancelled by user"
-                        state["pending"] = 0
-                        state["status"] = "cancelled"
                     else:
-                        if state.get("_cancel_requested"):
-                            state["status"] = "cancelled"
-                        elif state["failed"] == 0:
-                            state["status"] = "completed"
-                        else:
-                            state["status"] = "partial"
-                    state["finished_at"] = utc_now()
-        finally:
-            self._ops.release()
+                        # Worker reported per-item failure. Call
+                        # finalize with a failure marker so DB row
+                        # flips to status=failed.
+                        try:
+                            self._finalize_fn(pre, result)
+                        except Exception as exc:  # noqa: BLE001
+                            # Per memory/feedback_no_silent_swallow.md —
+                            # surface diagnostic; GENERATING lock released
+                            # by the wrapper's finally regardless.
+                            import traceback
+                            print(
+                                f"[batch-generate-finalize] failed: {exc}",
+                                file=sys.stderr,
+                            )
+                            traceback.print_exc()
+                        self._set_item(batch_id, idx, {
+                            "status": "failed",
+                            "error": str(result.get("error") or "worker failed"),
+                        })
+                        with self._lock:
+                            st3 = self._batches.get(batch_id)
+                            if st3 is not None:
+                                st3["failed"] += 1
+                                st3["pending"] -= 1
+
+        # Phase C — flip any still-pending items to cancelled (can
+        # happen if cancel fired during Phase A).
+        with self._lock:
+            state = self._batches.get(batch_id)
+            if state is not None:
+                pending_idxs = [
+                    i for i, it in enumerate(state["items"])
+                    if it["status"] == "pending"
+                ]
+                if state.get("_cancel_requested") and pending_idxs:
+                    for i in pending_idxs:
+                        state["items"][i]["status"] = "cancelled"
+                        state["items"][i]["error"] = "cancelled by user"
+                    state["pending"] = 0
+                    state["status"] = "cancelled"
+                else:
+                    if state.get("_cancel_requested"):
+                        state["status"] = "cancelled"
+                    elif state["failed"] == 0:
+                        state["status"] = "completed"
+                    else:
+                        state["status"] = "partial"
+                state["finished_at"] = utc_now()
 
 
 class BatchRunManager:
@@ -3169,6 +3442,8 @@ class BatchRunManager:
         state_dir: Path | None = None,
         machines_config: Path | None = None,
         rawdata_root: Path | None = None,
+        registry: "CellLockRegistry | None" = None,
+        limiter: "ConcurrencyLimiter | None" = None,
     ) -> None:
         self._store = store
         self._run_manager = run_manager
@@ -3188,26 +3463,18 @@ class BatchRunManager:
         )
         self._lock = threading.Lock()
         self._batches: dict[str, dict[str, Any]] = {}
-        # Per-(machine, mode) busy set. Two concurrent batches that
-        # include the same key would otherwise race on chunk_cache_dir
-        # writes (chunk_NNNN.json.tmp from one process colliding with
-        # the other's rename). The lock is held only during item
-        # execution — not across the whole batch — so disjoint items
-        # in one batch can still run in parallel with disjoint items
-        # in another.
-        self._busy_keys: set[tuple[str, int]] = set()
-
-    def _try_acquire_key(self, machine: str, mode: int) -> bool:
-        with self._lock:
-            key = (machine, int(mode))
-            if key in self._busy_keys:
-                return False
-            self._busy_keys.add(key)
-            return True
-
-    def _release_key(self, machine: str, mode: int) -> None:
-        with self._lock:
-            self._busy_keys.discard((machine, int(mode)))
+        # Phase 2: _busy_keys / _try_acquire_key / _release_key replaced by
+        # CellLockRegistry (SAMPLING acquire/release).  The registry is the
+        # single source of truth for all (machine, mode) liveness checks.
+        # Falls back to a local registry if not injected (back-compat for
+        # tests that construct BatchRunManager directly without create_app).
+        self._registry: CellLockRegistry = registry if registry is not None else CellLockRegistry()
+        # Phase 2 (D2 Blocker 1): ConcurrencyLimiter caps concurrent analyzer
+        # subprocesses.  Falls back to a fresh limiter if not injected so
+        # tests that construct BatchRunManager directly still work.
+        self._limiter: ConcurrencyLimiter = (
+            limiter if limiter is not None else ConcurrencyLimiter(n_slots=5, foreground_reserve=2)
+        )
 
     def sampling_status(self) -> dict[str, Any]:
         """Snapshot of active batches + which (machine, mode) keys are
@@ -3231,11 +3498,14 @@ class BatchRunManager:
                             "running": len(running_items),
                             "created_at": b.get("created_at"),
                         })
+            # Phase 2: read active SAMPLING cells from the registry
+            # instead of the old _busy_keys set.
+            sampling_cells = self._registry.get_active_cells(CellOperation.SAMPLING)
             return {
                 "active_batches": active,
                 "busy_keys": [
                     {"machine": m, "mode": mode}
-                    for (m, mode) in sorted(self._busy_keys)
+                    for (m, mode) in sorted(sampling_cells)
                 ],
             }
 
@@ -3668,19 +3938,74 @@ class BatchRunManager:
                 item["status"] = "cancelled"
                 _log("info", "采样被取消（队列中）", item["machine"])
                 return
-            # Per-key lock: reject if another batch is actively sampling
-            # this same (machine, mode). Writing concurrent analyzers
-            # into one chunk_cache_dir races on chunk_*.json.tmp renames
-            # and corrupts the cache.
-            if not self._try_acquire_key(item["machine"], item["mode"]):
-                item["status"] = "failed"
-                item["error"] = "another batch is sampling this machine+mode"
-                _log(
-                    "warn",
-                    f"跳过：另一个批次正在采样 {item['machine']} mode {item['mode']}",
-                    item["machine"],
+            # Phase 2 (D4 + D12): replace _try_acquire_key with registry
+            # SAMPLING acquire.  If acquire fails, check whether the
+            # existing SAMPLING has the same (config_id, upstream_md5) —
+            # if so, return an "attached" response so the caller can poll
+            # the existing run instead of failing outright (R9 / INV-6).
+            _item_machine = item["machine"]
+            _item_mode = int(item["mode"])
+            # Determine the upstream md5 for this item (used for attach).
+            _item_up_cfg, _item_up_code = _get_machine_md5(
+                _item_machine,
+                machines_config=self._machines_config,
+                mode=_item_mode,
+            )
+            _item_upstream_md5 = f"{_item_up_cfg or ''}|{_item_up_code or ''}"
+            # P3 known limitation: config_id wiring through the sampling path
+            # is deferred — update_chunk_entry currently has no config_id
+            # parameter, so all chunks are written to the "null" bucket of
+            # _chunks.json:by_config_id. The 4-tuple dedup infrastructure
+            # (pending_batch_configs + by_config_id inverted index + lazy
+            # migration + recovery) is fully in place and tested with the
+            # "null" sentinel; connecting the upload→batch→sidecar route is
+            # a follow-up. See session_artifacts/_impl/p3/critique_v3 if
+            # written, otherwise critique_v2 §2 RISK-1.
+            _item_config_id = "null"
+            _sampling_info = {
+                "config_id": _item_config_id,
+                "upstream_md5": _item_upstream_md5,
+                # run_id not yet known; will be set after start_run returns.
+                "run_id": "",
+            }
+            if not self._registry.try_acquire_cell(
+                _item_machine, _item_mode, CellOperation.SAMPLING,
+                info=_sampling_info,
+            ):
+                # Acquire failed — check attach vs reject (D12).
+                existing_info = self._registry.get_active_sampling_info(
+                    _item_machine, _item_mode,
                 )
+                if (
+                    existing_info is not None
+                    and existing_info.get("config_id") == _item_config_id
+                    and existing_info.get("upstream_md5") == _item_upstream_md5
+                ):
+                    # Same (config_id, upstream_md5) → attach response.
+                    item["status"] = "attached"
+                    item["attached_to_run_id"] = existing_info.get("run_id") or ""
+                    item["error"] = ""
+                    _log(
+                        "info",
+                        (f"附加到已有采样 run {item['attached_to_run_id']!s} "
+                         f"({_item_machine} mode {_item_mode})"),
+                        _item_machine,
+                    )
+                else:
+                    # Different config → reject.
+                    item["status"] = "failed"
+                    item["error"] = "another batch is sampling this machine+mode (different config)"
+                    _log(
+                        "warn",
+                        f"跳过：另一个批次正在采样 {_item_machine} mode {_item_mode}（不同 config）",
+                        _item_machine,
+                    )
                 return
+            # Phase 2 (D2 Blocker 1): track whether the ConcurrencyLimiter
+            # slot was acquired so the finally block can release it.
+            # Initialised before semaphore.acquire() so it is always defined
+            # in the finally block even if semaphore.acquire() raises.
+            _limiter_acquired: bool = False
             semaphore.acquire()
             try:
                 # Disk-pressure handling (2026-04-20 round 6 rewrite).
@@ -3719,6 +4044,7 @@ class BatchRunManager:
                     summary = _auto_cleanup_for_space(
                         self._rawdata_root, self._machines_config,
                         retention_cur, target_free_gb=target_free,
+                        registry=self._registry,
                     )
                     del_gb = summary["deleted_bytes"] / (1024 ** 3)
                     _log(
@@ -3756,9 +4082,10 @@ class BatchRunManager:
                     item["status"] = "cancelled"
                     return
                 item["status"] = "running"
-                # Register this (m, mode) as in-use so concurrent
-                # cleanup passes won't touch its chunks mid-write.
-                _acquire_in_use(item["machine"], item["mode"])
+                # Phase 2: SAMPLING is already acquired in the registry
+                # before semaphore.acquire().  The old _acquire_in_use
+                # call here was a secondary registration in _IN_USE_MODES;
+                # CellLockRegistry unifies both — no second call needed.
                 # Single routing path (2026-04-21 v2): always
                 # --resume-from-cache into rawdata/, with analyzer
                 # filtering stats by current upstream md5. New chunks
@@ -3845,10 +4172,69 @@ class BatchRunManager:
                     # server's global cfg, which is the default.
                     machine_config=item.get("machine_config") or "",
                 )
+                # Phase 2 (D2 Blocker 1): acquire a ConcurrencyLimiter slot
+                # BEFORE spawning the analyzer subprocess.  This caps the
+                # total number of concurrent analyzer subprocesses across all
+                # batches to n_slots=5 (40 upstream connections max).
+                # If all slots are busy, we wait up to 30 s and then fail
+                # this item (not the whole batch).
+                if not self._limiter.acquire("foreground", timeout=30.0):
+                    item["status"] = "rate_limited"
+                    item["error"] = "Concurrency limit reached; too many analyzer subprocesses running"
+                    _log(
+                        "warn",
+                        f"并发限制：{_item_machine} mode {_item_mode} 等待 30s 仍无空位",
+                        _item_machine,
+                    )
+                    return
+                _limiter_acquired = True
+                # Phase 3 (D2): write-config-first ordering — record the
+                # (batch_run_id, machine, mode, config_id) tuple BEFORE the
+                # analyzer subprocess starts so crash recovery can re-associate
+                # orphaned chunks with their config_id on next startup.
+                try:
+                    self._store.insert_pending_batch_config(
+                        batch["batch_id"], _item_machine, _item_mode, _item_config_id,
+                    )
+                except Exception as _pbc_exc:  # noqa: BLE001
+                    # Non-fatal: sidecar re-association falls back to "null"
+                    # if this row is missing. Log and continue.
+                    print(
+                        f"[_run_one] insert_pending_batch_config failed "
+                        f"({_item_machine} mode {_item_mode}): "
+                        f"{type(_pbc_exc).__name__}: {_pbc_exc}",
+                        flush=True,
+                    )
                 result = self._run_manager.start_run(req)
                 run_id = result.get("run_id")
                 item["run_id"] = run_id
+                # Phase 2 (D12): update the registry SAMPLING info with
+                # the real run_id now that start_run allocated it.  The
+                # attach-response logic reads this to return the existing
+                # run_id to a second requester with the same config.
+                # IMPORTANT: try_acquire_cell stored a *copy* of _sampling_info
+                # (see cell_lock_registry.py:144), so mutating the local dict
+                # here does NOT propagate to the registry.  Must use the explicit
+                # update_sampling_run_id method (Blocker 2 fix per impl-critic).
+                if run_id:
+                    self._registry.update_sampling_run_id(
+                        _item_machine, _item_mode, str(run_id)
+                    )
                 self._wait_for_run(run_id)
+                # Phase 3 (D2): sidecar is now updated by the subprocess.
+                # Clear the pending_batch_config row — crash recovery
+                # no longer needs it for this (batch, machine, mode).
+                try:
+                    self._store.delete_pending_batch_config(
+                        batch["batch_id"], _item_machine, _item_mode,
+                    )
+                except Exception as _dpbc_exc:  # noqa: BLE001
+                    print(
+                        f"[_run_one] delete_pending_batch_config failed "
+                        f"({_item_machine} mode {_item_mode}): "
+                        f"{type(_dpbc_exc).__name__}: {_dpbc_exc}",
+                        flush=True,
+                    )
                 row = self._store.get_run(run_id)
                 status = (row or {}).get("status", "failed")
                 if status == "completed":
@@ -3969,12 +4355,20 @@ class BatchRunManager:
                 item["error"] = str(exc)[:200]
                 _log("error", f"异常: {str(exc)[:80]}", item["machine"])
             finally:
-                # Release in-use BEFORE semaphore/key — so any waiting
-                # batch item that's polling disk space sees deletable
-                # chunks from this (m, mode) as soon as analyzer exits.
-                _release_in_use(item["machine"], item["mode"])
+                # Phase 2: release the registry SAMPLING lock BEFORE
+                # releasing the semaphore — so any waiting batch item
+                # that's polling disk space sees this (m, mode) as
+                # available as soon as the analyzer exits.
+                self._registry.release_cell(
+                    item["machine"], int(item["mode"]), CellOperation.SAMPLING,
+                )
                 semaphore.release()
-                self._release_key(item["machine"], item["mode"])
+                # Phase 2 (D2 Blocker 1): release the ConcurrencyLimiter slot
+                # AFTER the semaphore so it is released last.  Only release if
+                # we actually acquired it (rate_limited early-return path did
+                # not reach the acquire call, so _limiter_acquired stays False).
+                if _limiter_acquired:
+                    self._limiter.release()
 
         threads: list[threading.Thread] = []
         for item in items:
@@ -3997,35 +4391,9 @@ class BatchRunManager:
             time.sleep(1)
 
 
-class OperationCoordinator:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._busy = False
-        self._name = ""
-        self._since = ""
-
-    def acquire(self, name: str) -> bool:
-        with self._lock:
-            if self._busy:
-                return False
-            self._busy = True
-            self._name = name
-            self._since = utc_now()
-            return True
-
-    def release(self) -> None:
-        with self._lock:
-            self._busy = False
-            self._name = ""
-            self._since = ""
-
-    def snapshot(self) -> dict[str, Any]:
-        with self._lock:
-            return {
-                "busy": self._busy,
-                "operation": self._name,
-                "since": self._since,
-            }
+# OperationCoordinator DELETED in Phase 2 deploy refactor (2026-05-17).
+# All 13 call sites migrated to CellLockRegistry per-cell or global ops.
+# See session_artifacts/_arch/deploy/04_deploy_architecture_proposal_v2.md §4.1 R5.
 
 
 def _coerce_pid(value: Any) -> int | None:
@@ -5064,8 +5432,9 @@ class RunManager:
             "analyzer_version": analyzer_version or "",
         }
         index_payload.append(item)
-        write_json(index_path, index_payload)
-        write_json(latest_path, item)
+        # Phase 1 deploy: atomic + per-file-locked
+        atomic_json_write(index_path, index_payload)
+        atomic_json_write(latest_path, item)
         # Persist the achieved RTP + CI + quality_label onto the runs
         # row so the merged Run History table can show them without
         # reading every summary.json on list.
@@ -5200,12 +5569,17 @@ class RunManager:
                             if isinstance(item, dict)
                             and item.get("report_version") != report_version
                         ]
-                        write_json(index_path, filtered)
+                        # Phase 1 deploy: atomic + per-file-locked (parallel to
+                        # _update_report_index at app.py:5090). Closes the
+                        # delete_run race: concurrent finalize + delete could
+                        # otherwise both read the same index baseline and one
+                        # would overwrite the other's update (Scenario 16).
+                        atomic_json_write(index_path, filtered)
                         # latest.json rolls back to the newest remaining
                         # item (list is append-ordered); if we just drained
                         # the last version, clear latest too.
                         if filtered:
-                            write_json(latest_path, filtered[-1])
+                            atomic_json_write(latest_path, filtered[-1])
                         elif latest_path.exists():
                             latest_path.unlink()
                 except (OSError, json.JSONDecodeError, TypeError):
@@ -5226,20 +5600,56 @@ class RunManager:
 def current_system_state(
     store: StateStore,
     manager: RunManager,
-    ops: OperationCoordinator,
+    registry: CellLockRegistry,
+    state_dir: Path | None = None,
 ) -> dict[str, Any]:
-    snap = ops.snapshot()
+    """Build the GET /api/system-state response.
+
+    Phase 2 (D13): includes registry.snapshot() as ``concurrency`` field,
+    replacing the old OperationCoordinator single-flag fields.
+
+    Phase 3 / B3 fix: reads diagnostic JSON files from ``state_dir`` and
+    surfaces them as ``md5_refresh_error``, ``stale_tag_error``, and
+    ``reassociate_error`` fields.  Each is ``None`` when the corresponding
+    file does not exist.  The /api/health endpoint does NOT include these
+    fields (health is a thin liveness probe).
+    """
+    def _read_diag(path: Path) -> Any:
+        """Return parsed JSON from path, or None if absent/unreadable."""
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    md5_refresh_error: Any = None
+    stale_tag_error: Any = None
+    reassociate_error: Any = None
+    if state_dir is not None:
+        md5_refresh_error = _read_diag(state_dir / "md5_refresh_error.json")
+        stale_tag_error = _read_diag(state_dir / "stale_tag_error.json")
+        reassociate_error = _read_diag(state_dir / "reassociate_error.json")
+
     running = store.list_runs_by_status("running", limit=2000)
     return {
         "ts": utc_now(),
         "app_started_at": APP_STARTED_AT,
-        "operation_busy": bool(snap["busy"]),
-        "operation_name": snap["operation"],
-        "operation_since": snap["since"],
+        # Phase 2: operation_busy / operation_name / operation_since removed;
+        # callers should read concurrency.cells + concurrency.global_ops instead.
+        # Backward-compat shim: if any global op is active, surface it here
+        # so older frontends that read operation_busy still get a signal.
+        "operation_busy": bool(registry.snapshot()["global_ops"]),
+        "operation_name": (registry.snapshot()["global_ops"] or [""])[0],
+        "operation_since": "",
         "running_runs_count": len(running),
         "running_run_ids": [str(r.get("run_id", "")) for r in running if r.get("run_id")],
         "in_memory_running_count": manager.running_count(),
         "startup_recovery": manager.startup_recovery_snapshot(),
+        # Phase 2 (D13): full concurrency registry snapshot.
+        "concurrency": registry.snapshot(),
+        # B3 fix: diagnostic files from state_dir (None when file absent).
+        "md5_refresh_error": md5_refresh_error,
+        "stale_tag_error": stale_tag_error,
+        "reassociate_error": reassociate_error,
     }
 
 
@@ -5283,6 +5693,71 @@ def resolved_risk_thresholds() -> dict[str, int]:
     return {"medium_bytes": medium, "high_bytes": high}
 
 
+# ── MD5 refresh thread — testable error-persistence helpers ──────────────────
+# Extracted to module level so impl-tester can monkeypatch _do_refresh_machines_md5
+# and assert disk state without going through the full FastAPI TestClient.
+# Motivation: feedback_no_silent_swallow.md — the closure in start_batch_run
+# had an untestable inner OSError swallow; these helpers are each independently
+# exercisable. (Phase 1 fix, retroactive impl-critic item Fix 4.)
+
+
+def _md5_refresh_error_path(state_dir: Path) -> Path:
+    """State path for the persistent MD5 refresh error diagnostic."""
+    return state_dir / "md5_refresh_error.json"
+
+
+def _persist_md5_refresh_error(
+    state_dir: Path, server_id: str, exc: BaseException
+) -> None:
+    """Write diagnostic to disk per memory/feedback_no_silent_swallow.md.
+
+    Last-resort fallback: if the disk write fails, write to stderr — never
+    silently swallow the diagnostic-write failure (no infinite recursion of
+    logging because stderr is always available).
+
+    **Concurrency note (single-user deploy)**: this helper uses raw
+    ``write_text`` (not ``atomic_json_write``) because the deploy target
+    is single-machine Windows with a small number of planners
+    (see ``memory/project_internal_deploy_intent.md``). Under genuinely
+    concurrent calls (e.g. 10+ daemon threads firing simultaneously), Windows
+    may return ``PermissionError`` on contending writers, which falls through
+    to the stderr branch above; file ends up with one writer's content
+    (no torn writes since ``write_text`` is fd-buffered + ``close()`` flushes
+    atomically on most filesystems). For the documented deploy intent this
+    is acceptable; if the deploy ever sees high concurrent failure rates,
+    migrate to ``atomic_json_write``. Flagged by impl-critic P1-fix review
+    2026-05-17 (``session_artifacts/_impl/p1_fix/critique.md`` §3 item 1).
+    """
+    err_path = _md5_refresh_error_path(state_dir)
+    try:
+        err_path.parent.mkdir(parents=True, exist_ok=True)
+        err_path.write_text(
+            json.dumps({
+                "ts": utc_now(),
+                "server_id": server_id,
+                "error": f"{exc.__class__.__name__}: {exc}",
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as inner_exc:
+        # Last-resort: stderr. Don't silently swallow per feedback_no_silent_swallow.md.
+        print(
+            f"[md5-refresh] FAILED to persist error diagnostic: "
+            f"{inner_exc.__class__.__name__}: {inner_exc}",
+            file=sys.stderr,
+        )
+
+
+def _clear_md5_refresh_error(state_dir: Path) -> None:
+    """Clear the persistent diagnostic on success so UI doesn't show stale failure."""
+    err_path = _md5_refresh_error_path(state_dir)
+    try:
+        if err_path.exists():
+            err_path.unlink()
+    except OSError:
+        pass  # Stale file is cosmetic; not worth a diagnostic about a diagnostic.
+
+
 def create_app(
     state_dir: Path | None = None,
     reports_root: Path | None = None,
@@ -5293,11 +5768,18 @@ def create_app(
     rawdata_root: Path | None = None,
     paytables_dir: Path | None = None,
     md5_refresh_override: "Callable[[str], dict[str, Any]] | None" = None,
+    # Phase 3 (D12): virtual console passes False to skip fleet refresh endpoints
+    # and the FleetRefreshManager daemon thread.  Production default is True.
+    fleet_refresh_enabled: bool = True,
+    # I5 fix: injectable configs_upload_dir for test isolation + e2e harness.
+    # When None, falls back to the module-level CONFIGS_UPLOAD_DIR constant.
+    configs_upload_dir: Path | None = None,
 ) -> FastAPI:
     """Build a FastAPI app with all stateful singletons scoped to this instance.
 
-    Each call constructs its own StateStore, RunManager, OperationCoordinator,
-    and RuntimeModelConfig, and registers all routes via closures over them.
+    Each call constructs its own StateStore, RunManager, CellLockRegistry,
+    ConcurrencyLimiter, and RuntimeModelConfig, and registers all routes via
+    closures over them.
     Tests pass tmp paths to get a fully isolated app; ``main.py`` calls this
     with no arguments to get the default production app.
     """
@@ -5325,6 +5807,112 @@ def create_app(
     # summary.json for completed rows predating those columns -- quick
     # scan, safe on every startup (no-op once populated).
     store.backfill_rtp_ci_from_summaries()
+    # Phase 3 (D2): startup re-association — scan pending_batch_configs for
+    # orphaned rows left by a crashed _run_one. For each row, check the
+    # sidecar's by_config_id; if the machine+mode's sidecar exists but the
+    # config_id bucket doesn't contain the most-recently-written chunks,
+    # re-assign them. This is best-effort; failure is non-fatal (chunks stay
+    # tagged "null", which is the safe default). Run in a daemon thread so
+    # startup isn't blocked by potentially slow sidecar reads.
+    def _reassociate_orphaned_configs() -> None:
+        try:
+            from fresh_slotlab.chunk_index import load_chunks_index, set_chunk_config_id
+            pending = store.list_pending_batch_configs()
+            if not pending:
+                return
+            print(
+                f"[startup] re-associating {len(pending)} orphaned pending_batch_config rows",
+                flush=True,
+            )
+            for row in pending:
+                machine = row["machine"]
+                mode = int(row["mode"])
+                config_id = row["config_id"]
+                if config_id == "null":
+                    continue  # nothing useful to re-associate
+                mode_dir = rd_root / machine / f"mode_{mode}"
+                if not mode_dir.is_dir():
+                    continue
+                try:
+                    idx = load_chunks_index(mode_dir)
+                except Exception as _e:  # noqa: BLE001
+                    print(
+                        f"[startup] load_chunks_index failed {machine}/mode_{mode}: {_e}",
+                        flush=True,
+                    )
+                    continue
+                if idx is None:
+                    continue
+                by_cid = idx.get("by_config_id", {})
+                null_bucket = set(by_cid.get("null", []))
+                target_bucket = set(by_cid.get(config_id, []))
+                # Re-associate chunks that are still in the "null" bucket.
+                # This is conservative: only re-assign if there are no chunks
+                # already under this config_id (indicating the crash happened
+                # before ANY chunk was written and tagged).
+                if target_bucket:
+                    # At least one chunk already properly tagged — trust it.
+                    # Row is effectively done; delete so it doesn't accumulate.
+                    try:
+                        store.delete_pending_batch_config(
+                            row["batch_run_id"], machine, mode,
+                        )
+                    except Exception as _del_exc:  # noqa: BLE001
+                        print(
+                            f"[startup] delete_pending_batch_config (already-tagged) "
+                            f"failed {machine}/mode_{mode}: {_del_exc!r}",
+                            flush=True,
+                        )
+                    continue
+                _reassoc_failures = 0
+                for fname in list(null_bucket):
+                    try:
+                        set_chunk_config_id(mode_dir, fname, config_id)
+                    except Exception as _ce:  # noqa: BLE001
+                        _reassoc_failures += 1
+                        import traceback as _tb
+                        print(
+                            f"[startup] set_chunk_config_id failed "
+                            f"{machine}/mode_{mode}/{fname}: {_ce!r}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        _tb.print_exc()
+                        # Persist diagnostic per memory/feedback_no_silent_swallow.md.
+                        try:
+                            _err_path = sd / "reassociate_error.json"
+                            _err_path.parent.mkdir(parents=True, exist_ok=True)
+                            atomic_json_write(_err_path, {
+                                "ts": utc_now(),
+                                "chunk_file": str(fname),
+                                "machine": machine,
+                                "mode": mode,
+                                "config_id": config_id,
+                                "error": f"{_ce.__class__.__name__}: {_ce}",
+                            })
+                        except OSError:
+                            pass  # last-resort — can't write diagnostic
+                # Only delete the pending row when ALL chunks succeeded.
+                # If any failed, preserve it for retry on next startup.
+                if _reassoc_failures == 0:
+                    try:
+                        store.delete_pending_batch_config(
+                            row["batch_run_id"], machine, mode,
+                        )
+                    except Exception as _del_exc:  # noqa: BLE001
+                        print(
+                            f"[startup] delete_pending_batch_config failed "
+                            f"{machine}/mode_{mode}: {_del_exc!r}",
+                            flush=True,
+                        )
+        except Exception as _top:  # noqa: BLE001
+            import traceback
+            print("[startup] _reassociate_orphaned_configs error:", flush=True)
+            traceback.print_exc()
+
+    threading.Thread(
+        target=_reassociate_orphaned_configs, daemon=True, name="orphan-config-reassoc",
+    ).start()
     # Warm the machines-summary cache in a daemon thread so the first
     # page load doesn't block on a fresh 10k+ summary.json scan
     # (observed 11-14s on a fleet with many version iterations). The
@@ -5346,11 +5934,16 @@ def create_app(
         cache_root=cr,
         machines_config=mc,
     )
+    # Phase 2 (D3): construct shared registry + limiter, inject into all managers.
+    registry = CellLockRegistry()
+    limiter = ConcurrencyLimiter(n_slots=5, foreground_reserve=2)
+
     batch_mgr = BatchRunManager(
         store, manager, cr,
         state_dir=sd, machines_config=mc, rawdata_root=rd_root,
+        registry=registry,
+        limiter=limiter,
     )
-    ops = OperationCoordinator()
 
     app = FastAPI(title="Slot Console API", version="0.1.0")
     app.add_middleware(
@@ -5396,7 +5989,9 @@ def create_app(
     app.state.store = store
     app.state.manager = manager
     app.state.batch_manager = batch_mgr
-    app.state.ops = ops
+    # Phase 2 (D3): registry + limiter replace ops on app.state.
+    app.state.registry = registry
+    app.state.limiter = limiter
     app.state.model_runtime = model_runtime
     app.state.cache_root = cr
     app.state.reports_root = rr
@@ -5474,7 +6069,7 @@ def create_app(
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
-        s = current_system_state(store, manager, ops)
+        s = current_system_state(store, manager, registry)
         return {
             "ok": True,
             "ts": s["ts"],
@@ -5487,7 +6082,9 @@ def create_app(
 
     @app.get("/api/system-state")
     def system_state() -> dict[str, Any]:
-        return current_system_state(store, manager, ops)
+        # Phase 2 (D13): returns registry.snapshot() as concurrency field.
+        # B3 fix: passes state_dir so diagnostic files are surfaced.
+        return current_system_state(store, manager, registry, state_dir=sd)
 
     @app.get("/api/machines")
     def machines() -> dict[str, Any]:
@@ -5593,10 +6190,8 @@ def create_app(
             parsed = _parse_upstream_map_order(data["raw_upstream"])
             data.update(parsed)
             try:
-                halls_path.write_text(
-                    json.dumps(data, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
+                # Phase 1 deploy: atomic + per-file-locked write
+                atomic_json_write(halls_path, data)
             except OSError:
                 pass
         return {
@@ -5622,11 +6217,11 @@ def create_app(
         we store the raw response for later inspection rather than
         dropping it.
         """
-        if not ops.acquire("refresh_machine_halls"):
-            snap = ops.snapshot()
+        # Phase 2 (D9 site #13): migrated from ops.acquire to registry global.
+        if not registry.try_acquire_global("refresh_halls"):
             raise HTTPException(
                 status_code=409,
-                detail=f"system busy: {snap.get('operation') or 'unknown'}",
+                detail="refresh_machine_halls already in progress",
             )
         try:
             # Resolve server precedence: caller-specified server_id
@@ -5671,10 +6266,8 @@ def create_app(
                 "source": url,
                 "raw_upstream": upstream_payload,
             }
-            halls_path.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            # Phase 1 deploy: atomic + per-file-locked write
+            atomic_json_write(halls_path, payload)
             return {
                 "default_order": parsed["default_order"],
                 "current_hall_order": parsed["current_hall_order"],
@@ -5689,7 +6282,7 @@ def create_app(
                 "source": url,
             }
         finally:
-            ops.release()
+            registry.release_global("refresh_halls")
 
     @app.get("/api/reports/stale-count")
     def stale_report_count() -> dict[str, Any]:
@@ -5823,14 +6416,24 @@ def create_app(
             # reroute the pre-batch md5 refresh.
             _refresh_sid = _resolve_active_server_id() or "dev"
             def _refresh_md5_async() -> None:
+                # Phase 1 deploy: per memory/feedback_no_silent_swallow.md,
+                # best-effort background-thread failures must persist a
+                # diagnostic to disk so operators can see WHY the refresh
+                # didn't land. Picked up by GET /api/system-state
+                # md5_refresh_error field (Phase 1 deliverable #11).
+                # Phase 1 fix: logic extracted to module-level helpers
+                # (_persist_md5_refresh_error / _clear_md5_refresh_error)
+                # so impl-tester can exercise each path in isolation without
+                # going through the full FastAPI TestClient.
                 try:
                     _do_refresh_machines_md5(
                         server_id=_refresh_sid, raise_on_error=False,
                     )
-                except Exception:  # noqa: BLE001
-                    # Best-effort — swallow; next batch / explicit
-                    # refresh will pick up a newer md5 eventually.
-                    pass
+                    # Success — clear any prior error so UI doesn't show
+                    # stale failure.
+                    _clear_md5_refresh_error(sd)
+                except Exception as exc:  # noqa: BLE001
+                    _persist_md5_refresh_error(sd, _refresh_sid, exc)
             _threading.Thread(
                 target=_refresh_md5_async,
                 daemon=True,
@@ -6078,88 +6681,111 @@ def create_app(
                 detail="machine+mode is locked; unlock first if you really want to delete",
             )
 
-        # In-use gate — don't rug-pull an analyzer mid-run.
-        if (machine, int(mode)) in _get_in_use_snapshot():
+        # Phase 2 (D8 Blocker 3): acquire DELETING lock atomically instead of
+        # snapshot check.  The old snapshot check was a TOCTOU race — a
+        # concurrent SAMPLING could start between the snapshot and the delete.
+        # try_acquire_cell(DELETING) returns False if SAMPLING or GENERATING is
+        # active (INV-1 + INV-2), atomically under the registry lock.
+        if not registry.try_acquire_cell(machine, int(mode), CellOperation.DELETING):
             raise HTTPException(
                 status_code=409,
                 detail="machine+mode is currently sampling or generating; retry after it finishes",
             )
-
-        deleted_chunks = 0
-        deleted_bytes = 0
-        matched_spins = 0
-        skipped_chunks = 0
-        # Track names of chunks unlinked this call so the per-mode
-        # `_chunks.json` sidecar can be patched in a single write at
-        # the end — keeps sidecar.mtime ≥ dir.mtime so future reads
-        # trust the sidecar instead of rebuilding via glob+peek.
-        unlinked_names: list[str] = []
-        for p in sorted(mode_dir.glob("chunk_*.json")):
-            try:
-                data = _peek_envelope_scalars(p)
-                if data is None:
-                    # Full parse fallback — peek can miss tiny chunks.
-                    try:
-                        data = json.loads(p.read_text(encoding="utf-8"))
-                    except (OSError, json.JSONDecodeError):
-                        # Unreadable envelope → not our target, leave
-                        # it alone. The per-mode force=true path is
-                        # the right tool for that case.
+        try:
+            deleted_chunks = 0
+            deleted_bytes = 0
+            matched_spins = 0
+            skipped_chunks = 0
+            # Track names of chunks unlinked this call so the per-mode
+            # `_chunks.json` sidecar can be patched in a single write at
+            # the end — keeps sidecar.mtime ≥ dir.mtime so future reads
+            # trust the sidecar instead of rebuilding via glob+peek.
+            unlinked_names: list[str] = []
+            for p in sorted(mode_dir.glob("chunk_*.json")):
+                try:
+                    data = _peek_envelope_scalars(p)
+                    if data is None:
+                        # Full parse fallback — peek can miss tiny chunks.
+                        try:
+                            data = json.loads(p.read_text(encoding="utf-8"))
+                        except (OSError, json.JSONDecodeError):
+                            # Unreadable envelope → not our target, leave
+                            # it alone. The per-mode force=true path is
+                            # the right tool for that case.
+                            skipped_chunks += 1
+                            continue
+                    cfg = str(data.get("_config_md5", ""))
+                    code = str(data.get("_code_md5", ""))
+                    if cfg != req.config_md5 or code != req.code_md5:
                         skipped_chunks += 1
                         continue
-                cfg = str(data.get("_config_md5", ""))
-                code = str(data.get("_code_md5", ""))
-                if cfg != req.config_md5 or code != req.code_md5:
+                    per_robot = int(data.get("_spin_times") or 0)
+                    robots = int(data.get("_robot_count") or 0) or 1
+                    matched_spins += per_robot * robots
+                    size = p.stat().st_size
+                    p.unlink()
+                    deleted_chunks += 1
+                    deleted_bytes += size
+                    unlinked_names.append(p.name)
+                except OSError:
                     skipped_chunks += 1
-                    continue
-                per_robot = int(data.get("_spin_times") or 0)
-                robots = int(data.get("_robot_count") or 0) or 1
-                matched_spins += per_robot * robots
-                size = p.stat().st_size
-                p.unlink()
-                deleted_chunks += 1
-                deleted_bytes += size
-                unlinked_names.append(p.name)
+
+            # Refresh the rawdata index so subsequent GET /api/rawdata is
+            # consistent without a cold-path rescan.
+            try:
+                from fresh_slotlab.rawdata_index import update_entry, remove_entry
+                from fresh_slotlab.chunk_index import bulk_remove_chunk_entries
+                if unlinked_names:
+                    bulk_remove_chunk_entries(mode_dir, unlinked_names)
+                if any(mode_dir.glob("chunk_*.json")):
+                    update_entry(rd_root, machine, mode, mode_dir)
+                else:
+                    remove_entry(rd_root, machine, mode)
+            except Exception as exc:  # noqa: BLE001
+                # Per feedback_no_silent_swallow.md: surface sidecar/index
+                # update failures so operators can see when cache_cleanup
+                # left the indices stale. Not fatal — next read self-heals.
+                import traceback
+                print(
+                    f"[cache-cleanup] sidecar/index update failed for "
+                    f"{machine}|{mode}: {exc.__class__.__name__}: {exc}",
+                    file=sys.stderr,
+                )
+                traceback.print_exc()
+
+            # Remove the empty mode dir if nothing's left AND (Commit 2)
+            # the caller will then re-check the mode-hide rule on the UI
+            # side (mode disappears when no rawdata + no reports remain).
+            mode_dir_removed = False
+            try:
+                if mode_dir.is_dir() and not any(mode_dir.iterdir()):
+                    mode_dir.rmdir()
+                    mode_dir_removed = True
             except OSError:
-                skipped_chunks += 1
+                pass
 
-        # Refresh the rawdata index so subsequent GET /api/rawdata is
-        # consistent without a cold-path rescan.
-        try:
-            from fresh_slotlab.rawdata_index import update_entry, remove_entry
-            from fresh_slotlab.chunk_index import bulk_remove_chunk_entries
-            if unlinked_names:
-                bulk_remove_chunk_entries(mode_dir, unlinked_names)
-            if any(mode_dir.glob("chunk_*.json")):
-                update_entry(rd_root, machine, mode, mode_dir)
-            else:
-                remove_entry(rd_root, machine, mode)
-        except Exception:  # noqa: BLE001
-            pass
-
-        # Remove the empty mode dir if nothing's left AND (Commit 2)
-        # the caller will then re-check the mode-hide rule on the UI
-        # side (mode disappears when no rawdata + no reports remain).
-        mode_dir_removed = False
-        try:
-            if mode_dir.is_dir() and not any(mode_dir.iterdir()):
-                mode_dir.rmdir()
-                mode_dir_removed = True
-        except OSError:
-            pass
-
-        return {
-            "ok": True,
-            "machine": machine,
-            "mode": mode,
-            "config_md5": req.config_md5,
-            "code_md5": req.code_md5,
-            "deleted_chunks": deleted_chunks,
-            "deleted_bytes": deleted_bytes,
-            "deleted_spins": matched_spins,
-            "skipped_chunks": skipped_chunks,
-            "mode_dir_removed": mode_dir_removed,
-        }
+            # Phase 3 (D9): tag reports stale only when this delete
+            # empties the mode (last-chunk-removed path per brief D9).
+            # INV-7 v2: only tag — reports are NOT deleted here.
+            if deleted_chunks > 0 and not any(mode_dir.glob("chunk_*.json")):
+                try:
+                    _tag_reports_stale(machine, int(mode), rr, store, sd)
+                except Exception:
+                    pass  # Diagnostic persisted by helper; don't block return.
+            return {
+                "ok": True,
+                "machine": machine,
+                "mode": mode,
+                "config_md5": req.config_md5,
+                "code_md5": req.code_md5,
+                "deleted_chunks": deleted_chunks,
+                "deleted_bytes": deleted_bytes,
+                "deleted_spins": matched_spins,
+                "skipped_chunks": skipped_chunks,
+                "mode_dir_removed": mode_dir_removed,
+            }
+        finally:
+            registry.release_cell(machine, int(mode), CellOperation.DELETING)
 
     @app.get("/api/events")
     def unified_events(
@@ -6263,22 +6889,70 @@ def create_app(
         ``force=true`` — nuclear: delete everything at the target path.
         UI exposes force under a separate confirmation-gated button.
 
-        Acquires the ops mutex so a concurrent generate-report /
-        batch-regen / sampling can't read half-deleted chunk files.
+        Phase 2 (D8 + D9 site #4): acquires per-mode DELETING lock instead
+        of the coarse ops mutex, so concurrent deletes on different cells
+        can proceed in parallel while blocking conflicting SAMPLING /
+        GENERATING on the same cell.
+
+        Per 07_deploy_decision.md §6 OQ-3: if mode is specified, acquires
+        DELETING for that mode only; if mode is None (all modes), enumerates
+        dirs and acquires per-mode with abort-and-rollback semantics.
         """
-        if not ops.acquire("delete_rawdata"):
-            raise HTTPException(
-                status_code=409,
-                detail=f"busy: {ops.snapshot()['operation']!s}",
-            )
+        # Collect modes to lock.
+        if mode is not None:
+            modes_to_lock = [int(mode)]
+        else:
+            # All modes: enumerate dirs.
+            machine_dir = rd_root / machine
+            modes_to_lock = []
+            if machine_dir.is_dir():
+                for md in machine_dir.iterdir():
+                    if md.is_dir() and md.name.startswith("mode_"):
+                        try:
+                            modes_to_lock.append(int(md.name.split("_", 1)[1]))
+                        except (IndexError, ValueError):
+                            continue
+
+        # Acquire DELETING for all relevant modes — abort-and-rollback if
+        # any fails (per 07_deploy_decision.md §6 OQ-3).
+        acquired_modes: list[int] = []
+        for m in modes_to_lock:
+            if not registry.try_acquire_cell(machine, m, CellOperation.DELETING):
+                # Roll back already-acquired modes.
+                for am in acquired_modes:
+                    registry.release_cell(machine, am, CellOperation.DELETING)
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"cell {machine}|{m} is busy (SAMPLING or GENERATING) — "
+                        "retry after the active operation completes"
+                    ),
+                )
+            acquired_modes.append(m)
+
         try:
             retention = _load_settings(settings_path)["min_retention_spins"]
-            return delete_rawdata(
+            result = delete_rawdata(
                 machine, mode, rawdata_root=rd_root, machines_config=mc,
                 min_retention_spins=retention, force=force,
             )
+            # Phase 3 (D9): tag reports stale for each deleted mode.
+            # INV-7 v2: only tag — reports are NOT deleted here.
+            # Best-effort: if tagging fails, log it but still return success
+            # (delete already happened; the helper persists the diagnostic
+            # to state/console/stale_tag_error.json and prints to stderr +
+            # traceback. Operators discover it via filesystem inspection;
+            # /api/system-state does NOT surface this file in P3 — adding
+            # that is a follow-up).
+            for _stale_mode in modes_to_lock:
+                try:
+                    _tag_reports_stale(machine, _stale_mode, rr, store, sd)
+                except Exception:
+                    pass  # Diagnostic already persisted + printed by helper.
+            return result
         finally:
-            ops.release()
+            for am in acquired_modes:
+                registry.release_cell(machine, am, CellOperation.DELETING)
 
     @app.delete("/api/machines/{machine}/all-data")
     def delete_machine_all_data(machine: str) -> dict[str, Any]:
@@ -6292,20 +6966,49 @@ def create_app(
              versions + index.json + latest.json.
           3. Drop every ``runs`` row whose machine column matches.
 
-        Acquires the ops mutex under a dedicated tag so concurrent
-        sample / generate-report / batch-regen can't race the rmtree.
-        Idempotent: returns ``ok=true`` even when nothing exists for
-        the machine.
+        Phase 2 (D8 + D9 site #5): acquires per-mode DELETING lock for
+        all modes of this machine. Abort-and-rollback if any mode is busy
+        (per 07_deploy_decision.md §6 OQ-3).
+        Idempotent: returns ``ok=true`` even when nothing exists for the
+        machine.
         """
-        if not ops.acquire("delete_machine_all_data"):
-            raise HTTPException(
-                status_code=409,
-                detail=f"busy: {ops.snapshot()['operation']!s}",
-            )
+        # Enumerate all modes currently on disk for this machine.
+        # Phase 2 (B2 fix): union disk dirs + registry.get_active_cells() so
+        # that in-flight SAMPLING cells (rawdata dir not yet created) are also
+        # covered — mirrors the R1 fix in delete_machine_rawdata.
+        machine_dir = rd_root / machine
+        modes_set_all: set[int] = set()
+        if machine_dir.is_dir():
+            for md in machine_dir.iterdir():
+                if md.is_dir() and md.name.startswith("mode_"):
+                    try:
+                        modes_set_all.add(int(md.name.split("_", 1)[1]))
+                    except (IndexError, ValueError):
+                        continue
+        # Add any registry-active cells for this machine (pre-chunk race window).
+        for cell_machine, cell_mode in registry.get_active_cells():
+            if cell_machine == machine:
+                modes_set_all.add(cell_mode)
+        modes_all: list[int] = list(modes_set_all)
+
+        # Acquire DELETING for all modes — abort-and-rollback if any fails.
+        acquired_all_data: list[int] = []
+        for m in modes_all:
+            if not registry.try_acquire_cell(machine, m, CellOperation.DELETING):
+                for am in acquired_all_data:
+                    registry.release_cell(machine, am, CellOperation.DELETING)
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"cell {machine}|{m} is busy — retry after active operation completes"
+                    ),
+                )
+            acquired_all_data.append(m)
+
         try:
             # Refuse if any run for this machine is still running —
             # we'd otherwise yank rawdata/reports out from under a
-            # live sample / generate-report. The ops mutex above
+            # live sample / generate-report.  The DELETING lock above
             # blocks NEW ops but the DB may still hold a row from a
             # run that started before this endpoint acquired the lock.
             machine_runs = [
@@ -6367,8 +7070,15 @@ def create_app(
                 try:
                     if store.delete_run(rid):
                         runs_deleted += 1
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    # Per memory/feedback_no_silent_swallow.md — surface
+                    # diagnostic; caller still gets the partial summary.
+                    import traceback
+                    print(
+                        f"[delete-machine-all-data] store.delete_run({rid!r}) failed: {exc}",
+                        file=sys.stderr,
+                    )
+                    traceback.print_exc()
 
             return {
                 "ok": True,
@@ -6378,7 +7088,8 @@ def create_app(
                 "runs_deleted": runs_deleted,
             }
         finally:
-            ops.release()
+            for am in acquired_all_data:
+                registry.release_cell(machine, am, CellOperation.DELETING)
 
     @app.get("/api/settings")
     def get_settings() -> dict[str, Any]:
@@ -6644,26 +7355,32 @@ def create_app(
         if existing:
             rid = str(existing[0].get("run_id", ""))
             raise HTTPException(status_code=409, detail=f"run already active: {rid}")
-        if not ops.acquire("start_run"):
-            snap = ops.snapshot()
-            raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
+        # Phase 2 (D6 + D9 site #3): acquire GENERATING lock for this cell.
+        # start_run is for from-cache / generate-report style runs; the
+        # SAMPLING path goes through BatchRunManager._run_one which acquires
+        # SAMPLING separately.
+        if not registry.try_acquire_cell(req.machine, req.mode, CellOperation.GENERATING):
+            raise HTTPException(
+                status_code=409,
+                detail=f"cell {req.machine}|{req.mode} is busy — retry after active operation completes",
+            )
         try:
             return manager.start_run(req)
         finally:
-            ops.release()
+            registry.release_cell(req.machine, req.mode, CellOperation.GENERATING)
 
     @app.post("/api/autotune")
     def auto_tune(req: AutoTuneRequest) -> dict[str, Any]:
         running = store.list_runs_by_status("running", limit=2000)
         if running:
             raise HTTPException(status_code=409, detail="auto tune is blocked while runs are active")
-        if not ops.acquire("auto_tune"):
-            snap = ops.snapshot()
-            raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
+        # Phase 2 (D9 site #12): migrated from ops.acquire to registry global.
+        if not registry.try_acquire_global("autotune"):
+            raise HTTPException(status_code=409, detail="autotune already in progress")
         try:
             return run_auto_tune(req, progress_callback=_autotune_progress_sink)
         finally:
-            ops.release()
+            registry.release_global("autotune")
 
     @app.get("/api/autotune/progress")
     def autotune_progress() -> dict[str, Any]:
@@ -6702,8 +7419,8 @@ def create_app(
         *, config_md5: str = "", code_md5: str = "",
         run_id: str | None = None,
     ) -> dict[str, Any]:
-        """Core generate-report work, no ops-mutex handling. Caller
-        (single endpoint or batch manager) owns the lock lifecycle.
+        """Core generate-report work. Acquires GENERATING lock via
+        CellLockRegistry internally; caller does not manage lock lifecycle.
 
         When ``config_md5`` + ``code_md5`` are both provided, scope the
         analyzer to chunks whose envelope md5 matches those values —
@@ -6766,10 +7483,14 @@ def create_app(
         # analyzer sees responses in their original sampling sequence.
         chunk_paths = sorted(Path(e["path"]) for e in usable_entries)
 
-        # Register (m, mode) as in-use so disk-pressure auto-cleanup
-        # won't evict the chunks we're about to consume. Released in
-        # the finally below.
-        _acquire_in_use(machine, mode)
+        # Phase 2 (D5 + D9 site #2): acquire GENERATING via registry so
+        # disk-pressure auto-cleanup won't evict the chunks we're about to
+        # consume, and concurrent DELETING is blocked.  Released in finally.
+        if not registry.try_acquire_cell(machine, mode, CellOperation.GENERATING):
+            raise HTTPException(
+                status_code=409,
+                detail=f"cell {machine}|{mode} is busy — retry after active operation completes",
+            )
         try:
             # Pre-load responses — each call to analyzer's post_json
             # returns the next cached response in sequence.
@@ -7029,8 +7750,9 @@ def create_app(
                 except Exception:
                     pass
             index_payload.append(item)
-            write_json(index_path, index_payload)
-            write_json(latest_path, item)
+            # Phase 1 deploy: atomic + per-file-locked
+            atomic_json_write(index_path, index_payload)
+            atomic_json_write(latest_path, item)
 
             # Refresh machines_static.json from this fresh summary so
             # catalog filter chips + mechanic view reflect any new
@@ -7105,10 +7827,10 @@ def create_app(
                 detail=f"generate-report failed: {exc.__class__.__name__}: {exc}",
             ) from exc
         finally:
-            # Release in-use protection regardless of success/failure
-            # so subsequent cleanup passes can evict this (m, mode)'s
-            # over-retention chunks.
-            _release_in_use(machine, mode)
+            # Phase 2: release GENERATING via registry regardless of
+            # success/failure so subsequent cleanup passes can evict
+            # this (m, mode)'s over-retention chunks.
+            registry.release_cell(machine, mode, CellOperation.GENERATING)
 
     # ── Pool-based batch generate (round 7) ───────────────────────────
     # The single-item endpoint above uses the in-process monkey-patch
@@ -7206,20 +7928,32 @@ def create_app(
         }
 
     def _prepare_batch_gen_item_wrapper(machine: str, mode: int) -> dict[str, Any]:
-        """Acquire in-use protection before submitting the worker.
+        """Acquire GENERATING protection before submitting the worker.
+        Phase 2 (D7): uses registry instead of _acquire_in_use.
         Released in _finalize_batch_gen_item_wrapper below."""
         prepared = _prepare_batch_gen_item(machine, mode)
-        _acquire_in_use(machine, mode)
+        # If registry says cell is already locked (e.g. concurrent DELETING),
+        # raise so BatchGenerateManager marks this item as failed.
+        if not registry.try_acquire_cell(machine, int(mode), CellOperation.GENERATING):
+            raise HTTPException(
+                status_code=409,
+                detail=f"cell {machine}|{mode} is busy — cannot start batch-generate",
+            )
         return prepared
 
     def _finalize_batch_gen_item_wrapper(
         prepared: dict[str, Any], worker_result: dict[str, Any],
     ) -> dict[str, Any]:
-        """Release in-use protection after each worker finishes."""
+        """Release GENERATING protection after each worker finishes.
+        Phase 2 (D7): uses registry instead of _release_in_use."""
         try:
             return _finalize_batch_gen_item(prepared, worker_result)
         finally:
-            _release_in_use(prepared.get("machine"), int(prepared.get("mode") or 0))
+            registry.release_cell(
+                prepared.get("machine") or "",
+                int(prepared.get("mode") or 0),
+                CellOperation.GENERATING,
+            )
 
     def _finalize_batch_gen_item(
         prepared: dict[str, Any], worker_result: dict[str, Any],
@@ -7310,8 +8044,9 @@ def create_app(
             except Exception:
                 pass
         index_payload.append(item)
-        write_json(index_path, index_payload)
-        write_json(latest_path, item)
+        # Phase 1 deploy: atomic + per-file-locked
+        atomic_json_write(index_path, index_payload)
+        atomic_json_write(latest_path, item)
         try:
             _merge_machine_static(machine, summary, mc, _static_attrs_path(mc))
         except Exception:
@@ -7325,12 +8060,11 @@ def create_app(
         }
 
     _batch_gen_concurrency = int(os.environ.get("SLOT_BATCH_GEN_WORKERS", "4"))
-    # Use the in-use-protection wrappers so auto-cleanup skips any
-    # (machine, mode) currently being processed by a worker.
+    # Phase 2 (D7): the wrappers now acquire/release GENERATING via registry
+    # instead of _acquire_in_use / _release_in_use.  ops= removed from ctor.
     batch_gen_mgr = BatchGenerateManager(
         prepare_fn=_prepare_batch_gen_item_wrapper,
         finalize_fn=_finalize_batch_gen_item_wrapper,
-        ops=ops,
         concurrency=_batch_gen_concurrency,
         root_path=str(ROOT),
     )
@@ -7368,30 +8102,16 @@ def create_app(
         code_md5 = str(req.get("code_md5") or "")
 
         if not use_async:
-            if not ops.acquire("generate_report"):
-                snap = ops.snapshot()
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"system busy: {snap.get('operation') or 'unknown'}",
-                )
-            try:
-                return _run_generate_report(
-                    machine, mode,
-                    config_md5=config_md5, code_md5=code_md5,
-                )
-            finally:
-                ops.release()
-
-        # Async path: acquire lock here, release inside the thread
-        # once work finishes (success or failure). Returning the
-        # caller before the work starts means the caller is responsible
-        # for polling /api/runs/{run_id} for completion.
-        if not ops.acquire("generate_report"):
-            snap = ops.snapshot()
-            raise HTTPException(
-                status_code=409,
-                detail=f"system busy: {snap.get('operation') or 'unknown'}",
+            # Phase 2 (D9 site #2): ops.acquire("generate_report") removed.
+            # _run_generate_report acquires GENERATING per cell via registry.
+            return _run_generate_report(
+                machine, mode,
+                config_md5=config_md5, code_md5=code_md5,
             )
+
+        # Async path: GENERATING lock is acquired inside _run_generate_report.
+        # The async thread acquires on entry and releases in the finally block
+        # of _run_generate_report.  No outer lock needed here.
 
         # 2026-04-22: pre-allocate run_id + insert ``status=queued``
         # placeholder row BEFORE spawning the thread, so the response
@@ -7434,10 +8154,9 @@ def create_app(
                 "report_file": "",
             })
         except Exception:
-            # Placeholder insert failed — release the lock and fail
-            # loudly. Leaving the thread to run would orphan the ops
-            # mutex.
-            ops.release()
+            # Placeholder insert failed — fail loudly.  Phase 2: no ops
+            # lock to release (GENERATING is acquired inside _run_generate_report,
+            # which hasn't started yet at this point).
             raise
 
         def _work() -> None:
@@ -7464,8 +8183,8 @@ def create_app(
                         })
                 except Exception:
                     pass
-            finally:
-                ops.release()
+            # Phase 2: no ops.release() needed — GENERATING lock is
+            # released inside _run_generate_report's own finally block.
 
         threading.Thread(target=_work, daemon=True).start()
         return {
@@ -7539,6 +8258,23 @@ def create_app(
             if not machine:
                 raise HTTPException(status_code=400, detail="machine required")
             parsed_items.append({"machine": machine, "mode": mode})
+
+        # I6 fix: pre-check registry before queuing (explicit-items scope only).
+        # scope=all_with_rawdata returns early above; this block is items-only.
+        # Surfaces 409 synchronously at submit time instead of async worker fail.
+        busy_cells: list[str] = []
+        for item in parsed_items:
+            ops = registry.peek_cell_status(item["machine"], item["mode"])
+            if ops:
+                busy_cells.append(
+                    f"{item['machine']}|{item['mode']} ({', '.join(o.value for o in ops)})"
+                )
+        if busy_cells:
+            raise HTTPException(
+                status_code=409,
+                detail=f"cells busy: {'; '.join(busy_cells)} — retry after active operations complete",
+            )
+
         return batch_gen_mgr.start(parsed_items)
 
     @app.post("/api/rawdata/batch-generate-report/{batch_id}/cancel")
@@ -7563,19 +8299,25 @@ def create_app(
 
     @app.delete("/api/runs/{run_id}")
     def run_delete(run_id: str) -> dict[str, Any]:
-        # Mutex under the shared ops coordinator so deletes don't race
-        # a run that's just finishing its _watch_run cleanup, and so
-        # the cache-cleanup / start-run paths can't interleave either.
-        if not ops.acquire("delete_run"):
-            snap = ops.snapshot()
-            raise HTTPException(
-                status_code=409,
-                detail=f"system busy: {snap.get('operation') or 'unknown'}",
-            )
-        try:
-            return manager.delete_run(run_id)
-        finally:
-            ops.release()
+        # Phase 2 (D9 site #6): delete_run acquires GENERATING lock for the
+        # run's (machine, mode) so it can't race a concurrent generate-report
+        # that's still writing to the same output dir.
+        row = store.get_run(run_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="run not found")
+        _machine = str(row.get("machine") or "")
+        _mode = int(row.get("mode") or 0)
+        if _machine and _mode:
+            if not registry.try_acquire_cell(_machine, _mode, CellOperation.GENERATING):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"cell {_machine}|{_mode} is busy — retry after active operation completes",
+                )
+            try:
+                return manager.delete_run(run_id)
+            finally:
+                registry.release_cell(_machine, _mode, CellOperation.GENERATING)
+        return manager.delete_run(run_id)
 
     @app.get("/api/runs/{run_id}/report")
     def run_report(run_id: str) -> dict[str, Any]:
@@ -7762,11 +8504,14 @@ def create_app(
           5. 404 ONLY when neither disk nor index.json knows about
              this version — i.e. there's nothing to clean up.
         """
-        if not ops.acquire("delete_report_version"):
-            snap = ops.snapshot()
+        # Phase 2 (D8 + D9 site #7) / I2 fix: acquire DELETING lock (not
+        # GENERATING) for this cell so a concurrent SAMPLING can't race the
+        # rmtree. DELETING is mutually exclusive with SAMPLING (INV-1) and
+        # GENERATING (INV-2), correctly modelling "I am destroying something".
+        if not registry.try_acquire_cell(machine, int(mode), CellOperation.DELETING):
             raise HTTPException(
                 status_code=409,
-                detail=f"system busy: {snap.get('operation') or 'unknown'}",
+                detail=f"cell {machine}|{mode} is busy — retry after active operation completes",
             )
         try:
             mode_dir = rr / machine / f"mode_{mode}"
@@ -7841,10 +8586,11 @@ def create_app(
                             if isinstance(e, dict)
                             and e.get("report_version") != version
                         ]
-                        index_path.write_text(
-                            json.dumps(remaining, indent=2, ensure_ascii=False),
-                            encoding="utf-8",
-                        )
+                        # Phase 1 deploy: atomic + per-file-locked; mirrors
+                        # _update_report_index at app.py:5090. Prevents the
+                        # Scenario 16 race: concurrent finalize + delete-version
+                        # on same (machine, mode) see same index baseline.
+                        atomic_json_write(index_path, remaining)
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -7860,10 +8606,9 @@ def create_app(
                                 key=lambda e: str(e.get("report_version") or ""),
                                 reverse=True,
                             )[0]
-                            latest_path.write_text(
-                                json.dumps(survivor, indent=2, ensure_ascii=False),
-                                encoding="utf-8",
-                            )
+                            # Phase 1 deploy: atomic write, parallel to
+                            # index_path write above.
+                            atomic_json_write(latest_path, survivor)
                         else:
                             latest_path.unlink(missing_ok=True)
                 except Exception:  # noqa: BLE001
@@ -7881,7 +8626,7 @@ def create_app(
                 "disk_removed": disk_existed,
             }
         finally:
-            ops.release()
+            registry.release_cell(machine, int(mode), CellOperation.DELETING)
 
     @app.post("/api/reports/import")
     def import_reports(req: dict[str, Any]) -> dict[str, Any]:
@@ -7903,191 +8648,217 @@ def create_app(
         making partial state impossible — either a version is fully
         imported (DB row + files) or not at all.
         """
-        source = req.get("source_path", "").strip()
-        mode_arg = req.get("mode", "merge")
-        if not source:
-            raise HTTPException(status_code=400, detail="source_path required")
-        src = Path(source)
-        if not src.is_dir():
-            raise HTTPException(status_code=400, detail=f"source_path not a directory: {source}")
+        # Phase 2 (D9 site #11): migrated from ops.acquire to registry global.
+        if not registry.try_acquire_global("import_reports"):
+            raise HTTPException(status_code=409, detail="import_reports already in progress")
+        # Phase 2 (Blocker 4 fix per impl-critic): wrap the ENTIRE function body
+        # in a single try/finally so the global lock is always released even if
+        # OSError fires in src.iterdir() mid-loop.  The previous code had a
+        # try/finally covering only the last ~15 lines (the return statement),
+        # leaving the 160-line main loop unprotected — any exception in iterdir()
+        # would leak the lock permanently.  Early-release calls removed; the
+        # finally handles all exit paths.  Per memory/feedback_no_silent_swallow.md.
+        try:
+            source = req.get("source_path", "").strip()
+            mode_arg = req.get("mode", "merge")
+            if not source:
+                raise HTTPException(status_code=400, detail="source_path required")
+            src = Path(source)
+            if not src.is_dir():
+                raise HTTPException(status_code=400, detail=f"source_path not a directory: {source}")
 
-        imported = 0
-        skipped = 0
-        machines_affected: set[str] = set()
-        failures: list[dict[str, str]] = []
-        MAX_FAILURES_REPORTED = 100
+            imported = 0
+            skipped = 0
+            machines_affected: set[str] = set()
+            failures: list[dict[str, str]] = []
+            MAX_FAILURES_REPORTED = 100
 
-        def _derive_run_id(version_name: str, machine_n: str, mode_n: int) -> str:
-            # "rv_20260416T073355Z_9d60553e" → "9d60553e" (real run, globally unique)
-            # Anything else (devcache / short suffix) → hash(machine+mode+version_name)
-            #   so M1 and M2 with same version timestamp don't collide.
-            parts = version_name.split("_")
-            tail = parts[-1] if parts else version_name
-            if tail not in ("devcache",) and len(tail) >= 8 and all(c in "0123456789abcdef" for c in tail):
-                return tail[:12]
-            import hashlib
-            key = f"{machine_n}|{mode_n}|{version_name}"
-            return hashlib.md5(key.encode()).hexdigest()[:12]
+            def _derive_run_id(version_name: str, machine_n: str, mode_n: int) -> str:
+                # "rv_20260416T073355Z_9d60553e" → "9d60553e" (real run, globally unique)
+                # Anything else (devcache / short suffix) → hash(machine+mode+version_name)
+                #   so M1 and M2 with same version timestamp don't collide.
+                parts = version_name.split("_")
+                tail = parts[-1] if parts else version_name
+                if tail not in ("devcache",) and len(tail) >= 8 and all(c in "0123456789abcdef" for c in tail):
+                    return tail[:12]
+                import hashlib
+                key = f"{machine_n}|{mode_n}|{version_name}"
+                return hashlib.md5(key.encode()).hexdigest()[:12]
 
-        def _record_failure(stage: str, machine_n: str, mode_n: int,
-                            version_name: str, run_id_n: str, exc: BaseException) -> None:
-            if len(failures) < MAX_FAILURES_REPORTED:
-                failures.append({
-                    "stage": stage,
-                    "machine": machine_n, "mode": str(mode_n),
-                    "version": version_name, "run_id": run_id_n,
-                    "error": f"{type(exc).__name__}: {exc}"[:200],
-                })
-            if len(failures) <= 3:
-                import traceback
-                traceback.print_exc()
+            def _record_failure(stage: str, machine_n: str, mode_n: int,
+                                version_name: str, run_id_n: str, exc: BaseException) -> None:
+                if len(failures) < MAX_FAILURES_REPORTED:
+                    failures.append({
+                        "stage": stage,
+                        "machine": machine_n, "mode": str(mode_n),
+                        "version": version_name, "run_id": run_id_n,
+                        "error": f"{type(exc).__name__}: {exc}"[:200],
+                    })
+                if len(failures) <= 3:
+                    import traceback
+                    traceback.print_exc()
 
-        def _rollback(run_id_n: str, dst_path: Path) -> None:
-            """Undo as much as possible; swallow secondary errors so the
-            outer loop keeps processing other versions."""
-            try:
-                store.delete_run(run_id_n)
-            except Exception:  # noqa: BLE001
-                pass
-            try:
-                if dst_path.exists():
-                    shutil.rmtree(dst_path)
-            except Exception:  # noqa: BLE001
-                pass
-
-        def _import_one(source_v: Path, dst: Path,
-                        machine_n: str, mode_n: int) -> bool:
-            """Transactional import of one version dir. Returns True on
-            full success (DB row + files both committed)."""
-            run_id = _derive_run_id(source_v.name, machine_n, mode_n)
-            if store.get_run(run_id):
-                run_id = run_id + "_i"
-
-            # 1. Read source summary BEFORE touching DB or dst — we want
-            #    rtp/ci/quality values in the initial insert so there's
-            #    never a moment where a row exists with placeholder data.
-            try:
-                s = json.loads(
-                    (source_v / "player_impact_summary.json").read_text(encoding="utf-8")
-                )
-            except (OSError, json.JSONDecodeError) as exc:
-                _record_failure("read_summary", machine_n, mode_n,
-                                source_v.name, run_id, exc)
-                return False
-
-            sam = s.get("sampling", {})
-            rtp_pct = (s.get("rtp", {}) or {}).get("point_pct")
-            ci_hw = sam.get("achieved_halfwidth_pp")
-            qa = (
-                s.get("guideline_assessment", {}).get("quality_label")
-                or s.get("quality_label")
-            )
-            row = {
-                "run_id": run_id,
-                "machine": machine_n,
-                "mode": mode_n,
-                "status": "importing",
-                "model_id": "",
-                "created_at": sam.get("started_at") or utc_now(),
-                "started_at": sam.get("started_at") or utc_now(),
-                "finished_at": sam.get("finished_at") or utc_now(),
-                "target_halfwidth_pp": sam.get("target_halfwidth_pp") or 0.5,
-                "chunk_spin_times": sam.get("chunk_spin_times") or 0,
-                "chunk_robot_count": sam.get("chunk_robot_count") or 0,
-                "batch_concurrency": sam.get("batch_concurrency") or 1,
-                "max_chunks": sam.get("chunks") or 0,
-                "timeout": 300.0,
-                "bankruptcy_session_spins": 10000,
-                "bankruptcy_bankroll_multipliers": "10,100,200,500",
-                "report_version": source_v.name,
-                "output_dir": str(dst),
-                "progress_file": str(dst / "progress.jsonl"),
-                "summary_file": str(dst / "player_impact_summary.json"),
-                "report_file": str(dst / "player_impact_report.md"),
-                "error_message": None,
-                "process_pid": 0,
-                "achieved_rtp_pct": rtp_pct,
-                "achieved_halfwidth_pp": ci_hw,
-                "quality_label": qa,
-            }
-
-            # 2. Insert placeholder row.
-            try:
-                store.insert_run(row)
-            except Exception as exc:  # noqa: BLE001
-                _record_failure("insert_run", machine_n, mode_n,
-                                source_v.name, run_id, exc)
-                return False
-
-            # 3. Copy files. Rollback row + partial dst on any failure.
-            try:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(source_v, dst)
-            except Exception as exc:  # noqa: BLE001
-                _rollback(run_id, dst)
-                _record_failure("copytree", machine_n, mode_n,
-                                source_v.name, run_id, exc)
-                return False
-
-            # 4. Flip status → completed. If this tiny final update fails,
-            #    we roll back the whole thing rather than leave a row
-            #    stuck at "importing" forever (operator re-imports cleanly).
-            try:
-                store.update_run(run_id, {"status": "completed"})
-            except Exception as exc:  # noqa: BLE001
-                _rollback(run_id, dst)
-                _record_failure("update_status", machine_n, mode_n,
-                                source_v.name, run_id, exc)
-                return False
-
-            return True
-
-        for machine_dir in src.iterdir():
-            if not machine_dir.is_dir():
-                continue
-            machine_name = machine_dir.name
-            dst_machine = rr / machine_name
-            if mode_arg == "replace" and dst_machine.is_dir():
-                shutil.rmtree(dst_machine)
-            for mode_dir in machine_dir.iterdir():
-                if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
-                    continue
+            def _rollback(run_id_n: str, dst_path: Path) -> None:
+                """Undo as much as possible; secondary errors are logged but
+                non-fatal so the outer loop keeps processing other versions
+                (per feedback_no_silent_swallow.md — log, do not abort)."""
                 try:
-                    mode_int = int(mode_dir.name.split("_")[1])
-                except (IndexError, ValueError):
-                    continue
-                versions_dir = mode_dir / "versions"
-                if not versions_dir.is_dir():
-                    continue
-                for v in versions_dir.iterdir():
-                    if not v.is_dir():
-                        continue
-                    if not (v / "player_impact_summary.json").exists():
-                        continue
-                    dst = rr / machine_name / mode_dir.name / "versions" / v.name
-                    if dst.exists():
-                        skipped += 1
-                        continue
-                    if _import_one(v, dst, machine_name, mode_int):
-                        imported += 1
-                        machines_affected.add(machine_name)
+                    store.delete_run(run_id_n)
+                except Exception as exc:  # noqa: BLE001
+                    import traceback
+                    print(
+                        f"[import-reports rollback] store.delete_run({run_id_n!r}) failed: "
+                        f"{exc.__class__.__name__}: {exc}",
+                        file=sys.stderr,
+                    )
+                    traceback.print_exc()
+                try:
+                    if dst_path.exists():
+                        shutil.rmtree(dst_path)
+                except Exception as exc:  # noqa: BLE001
+                    import traceback
+                    print(
+                        f"[import-reports rollback] rmtree({dst_path!s}) failed: "
+                        f"{exc.__class__.__name__}: {exc}",
+                        file=sys.stderr,
+                    )
+                    traceback.print_exc()
 
-        # Refresh static attrs from imported reports. Re-bootstrap
-        # across the fleet (simpler than per-machine merge; import is
-        # infrequent + already holds the ops mutex).
-        if imported > 0:
-            try:
-                _bootstrap_static_attrs(rr, mc, _static_attrs_path(mc))
-            except Exception:
-                pass
+            def _import_one(source_v: Path, dst: Path,
+                            machine_n: str, mode_n: int) -> bool:
+                """Transactional import of one version dir. Returns True on
+                full success (DB row + files both committed)."""
+                run_id = _derive_run_id(source_v.name, machine_n, mode_n)
+                if store.get_run(run_id):
+                    run_id = run_id + "_i"
 
-        return {
-            "imported": imported,
-            "skipped": skipped,
-            "failed": len(failures),
-            "failures": failures,
-            "machines_affected": sorted(machines_affected),
-        }
+                # 1. Read source summary BEFORE touching DB or dst — we want
+                #    rtp/ci/quality values in the initial insert so there's
+                #    never a moment where a row exists with placeholder data.
+                try:
+                    s = json.loads(
+                        (source_v / "player_impact_summary.json").read_text(encoding="utf-8")
+                    )
+                except (OSError, json.JSONDecodeError) as exc:
+                    _record_failure("read_summary", machine_n, mode_n,
+                                    source_v.name, run_id, exc)
+                    return False
+
+                sam = s.get("sampling", {})
+                rtp_pct = (s.get("rtp", {}) or {}).get("point_pct")
+                ci_hw = sam.get("achieved_halfwidth_pp")
+                qa = (
+                    s.get("guideline_assessment", {}).get("quality_label")
+                    or s.get("quality_label")
+                )
+                row = {
+                    "run_id": run_id,
+                    "machine": machine_n,
+                    "mode": mode_n,
+                    "status": "importing",
+                    "model_id": "",
+                    "created_at": sam.get("started_at") or utc_now(),
+                    "started_at": sam.get("started_at") or utc_now(),
+                    "finished_at": sam.get("finished_at") or utc_now(),
+                    "target_halfwidth_pp": sam.get("target_halfwidth_pp") or 0.5,
+                    "chunk_spin_times": sam.get("chunk_spin_times") or 0,
+                    "chunk_robot_count": sam.get("chunk_robot_count") or 0,
+                    "batch_concurrency": sam.get("batch_concurrency") or 1,
+                    "max_chunks": sam.get("chunks") or 0,
+                    "timeout": 300.0,
+                    "bankruptcy_session_spins": 10000,
+                    "bankruptcy_bankroll_multipliers": "10,100,200,500",
+                    "report_version": source_v.name,
+                    "output_dir": str(dst),
+                    "progress_file": str(dst / "progress.jsonl"),
+                    "summary_file": str(dst / "player_impact_summary.json"),
+                    "report_file": str(dst / "player_impact_report.md"),
+                    "error_message": None,
+                    "process_pid": 0,
+                    "achieved_rtp_pct": rtp_pct,
+                    "achieved_halfwidth_pp": ci_hw,
+                    "quality_label": qa,
+                }
+
+                # 2. Insert placeholder row.
+                try:
+                    store.insert_run(row)
+                except Exception as exc:  # noqa: BLE001
+                    _record_failure("insert_run", machine_n, mode_n,
+                                    source_v.name, run_id, exc)
+                    return False
+
+                # 3. Copy files. Rollback row + partial dst on any failure.
+                try:
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(source_v, dst)
+                except Exception as exc:  # noqa: BLE001
+                    _rollback(run_id, dst)
+                    _record_failure("copytree", machine_n, mode_n,
+                                    source_v.name, run_id, exc)
+                    return False
+
+                # 4. Flip status → completed. If this tiny final update fails,
+                #    we roll back the whole thing rather than leave a row
+                #    stuck at "importing" forever (operator re-imports cleanly).
+                try:
+                    store.update_run(run_id, {"status": "completed"})
+                except Exception as exc:  # noqa: BLE001
+                    _rollback(run_id, dst)
+                    _record_failure("update_status", machine_n, mode_n,
+                                    source_v.name, run_id, exc)
+                    return False
+
+                return True
+
+            for machine_dir in src.iterdir():
+                if not machine_dir.is_dir():
+                    continue
+                machine_name = machine_dir.name
+                dst_machine = rr / machine_name
+                if mode_arg == "replace" and dst_machine.is_dir():
+                    shutil.rmtree(dst_machine)
+                for mode_dir in machine_dir.iterdir():
+                    if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                        continue
+                    try:
+                        mode_int = int(mode_dir.name.split("_")[1])
+                    except (IndexError, ValueError):
+                        continue
+                    versions_dir = mode_dir / "versions"
+                    if not versions_dir.is_dir():
+                        continue
+                    for v in versions_dir.iterdir():
+                        if not v.is_dir():
+                            continue
+                        if not (v / "player_impact_summary.json").exists():
+                            continue
+                        dst = rr / machine_name / mode_dir.name / "versions" / v.name
+                        if dst.exists():
+                            skipped += 1
+                            continue
+                        if _import_one(v, dst, machine_name, mode_int):
+                            imported += 1
+                            machines_affected.add(machine_name)
+
+            # Refresh static attrs from imported reports. Re-bootstrap
+            # across the fleet (simpler than per-machine merge; import is
+            # infrequent).
+            if imported > 0:
+                try:
+                    _bootstrap_static_attrs(rr, mc, _static_attrs_path(mc))
+                except Exception:  # noqa: BLE001
+                    pass
+
+            return {
+                "imported": imported,
+                "skipped": skipped,
+                "failed": len(failures),
+                "failures": failures,
+                "machines_affected": sorted(machines_affected),
+            }
+        finally:
+            registry.release_global("import_reports")
 
     @app.post("/api/maintenance/prune-versions")
     def prune_versions_endpoint(req: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -8097,15 +8868,21 @@ def create_app(
         keep=5 matches the CLI. Active runs (status in {"running",
         "importing"}) are always skipped so we don't race a writer.
         """
-        from src.web_console.backend.reports_retention import prune_versions
-        body = req or {}
-        keep = int(body.get("keep", 5))
-        dry_run = bool(body.get("dry_run", False))
-        if keep < 1:
-            raise HTTPException(status_code=400, detail="keep must be >= 1")
-        return prune_versions(
-            reports_root=rr, store=store, keep_last=keep, dry_run=dry_run,
-        )
+        # Phase 2 (D9 site #9): migrated from ops.acquire to registry global.
+        if not registry.try_acquire_global("prune_versions"):
+            raise HTTPException(status_code=409, detail="prune_versions already in progress")
+        try:
+            from src.web_console.backend.reports_retention import prune_versions
+            body = req or {}
+            keep = int(body.get("keep", 5))
+            dry_run = bool(body.get("dry_run", False))
+            if keep < 1:
+                raise HTTPException(status_code=400, detail="keep must be >= 1")
+            return prune_versions(
+                reports_root=rr, store=store, keep_last=keep, dry_run=dry_run,
+            )
+        finally:
+            registry.release_global("prune_versions")
 
     def _do_refresh_machines_md5(
         server_id: str = "dev", *, raise_on_error: bool = True,
@@ -8205,18 +8982,32 @@ def create_app(
         halls_path = ROOT / "configs" / "machine_halls.json"
         variants_map = load_variants_map(halls_path)
 
-        # Load current machines.json (single source of truth for row
-        # ownership — upstream drives md5, not row existence).
-        try:
-            existing = json.loads(Path(mc).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            existing = {"machines": []}
+        # Phase 1 deploy: atomic read-modify-write under per-file lock
+        # closes the Critical C1 race (Scenario 16) where two concurrent
+        # callers (pre-batch async refresh + explicit
+        # /api/machines/refresh-md5) truncate and write machines.json
+        # simultaneously, silently wiping all 393 rows from the fleet
+        # registry. The per-file lock held across read+apply+write
+        # makes the operation serializable.
+        # Optional A (Phase 1 fix): single-element dict replaces the list-append
+        # pattern. If atomic_json_read_modify_write ever gains internal retry
+        # semantics, `[0]` would return stale stats from the first (failed)
+        # attempt; the dict-set pattern always reflects the final call's stats.
+        _stats_holder: dict[str, dict] = {}
 
-        existing, stats = apply_md5_refresh(existing, data, variants_map)
-        Path(mc).write_text(
-            json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+        def _apply(current: Any) -> dict:
+            base = current if isinstance(current, dict) else {"machines": []}
+            updated, stats_local = apply_md5_refresh(
+                base, data, variants_map,
+            )
+            _stats_holder["stats"] = stats_local
+            return updated
+
+        existing = atomic_json_read_modify_write(
+            Path(mc), _apply, default={"machines": []},
+            trailing_newline=True,
         )
+        stats = _stats_holder["stats"]
         _save_server_snapshot(server_id, data)
         return {
             "ok": True,
@@ -8342,167 +9133,194 @@ def create_app(
             read-only baseline (so the mode still has a report to load)
           * everything else deleted from disk + DB
         """
-        from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
-        cur_analyzer = compute_analyzer_version()
+        # Phase 2 (D9 site #10): migrated from ops.acquire to registry global.
+        if not registry.try_acquire_global("reports_cleanup"):
+            raise HTTPException(status_code=409, detail="reports_cleanup already in progress")
+        try:
+            from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+            cur_analyzer = compute_analyzer_version()
 
-        rv_to_run_id: dict[str, str] = {}
-        for row in store.list_runs(limit=100000):
-            rv = (row.get("report_version") or "").strip()
-            if rv:
-                rv_to_run_id[rv] = row.get("run_id", "")
+            rv_to_run_id: dict[str, str] = {}
+            for row in store.list_runs(limit=100000):
+                rv = (row.get("report_version") or "").strip()
+                if rv:
+                    rv_to_run_id[rv] = row.get("run_id", "")
 
-        def _version_analyzer(v_dir: Path) -> str:
-            sf = v_dir / "player_impact_summary.json"
-            if not sf.exists():
-                return ""
-            try:
-                s = json.loads(sf.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                return ""
-            return str(s.get("analyzer_version", "") or "")
+            def _version_analyzer(v_dir: Path) -> str:
+                sf = v_dir / "player_impact_summary.json"
+                if not sf.exists():
+                    return ""
+                try:
+                    s = json.loads(sf.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    return ""
+                return str(s.get("analyzer_version", "") or "")
 
-        deleted = 0
-        kept = 0
-        runs_deleted = 0
-        for machine_dir in rr.iterdir():
-            if not machine_dir.is_dir():
-                continue
-            for mode_dir in machine_dir.iterdir():
-                if not mode_dir.is_dir():
+            deleted = 0
+            kept = 0
+            runs_deleted = 0
+            for machine_dir in rr.iterdir():
+                if not machine_dir.is_dir():
                     continue
-                versions_dir = mode_dir / "versions"
-                if not versions_dir.is_dir():
-                    continue
-                versions = sorted(
-                    [v for v in versions_dir.iterdir() if v.is_dir()],
-                    reverse=True,  # newest first
-                )
-                if not versions:
-                    continue
+                for mode_dir in machine_dir.iterdir():
+                    if not mode_dir.is_dir():
+                        continue
+                    versions_dir = mode_dir / "versions"
+                    if not versions_dir.is_dir():
+                        continue
+                    versions = sorted(
+                        [v for v in versions_dir.iterdir() if v.is_dir()],
+                        reverse=True,  # newest first
+                    )
+                    if not versions:
+                        continue
 
-                # Partition by analyzer tag:
-                #   match     — summary.analyzer_version == current
-                #   stale     — tag present but different (tracked as
-                #               "analyzer 过期" by /api/reports/stale-count)
-                #   untagged  — pre-tagging migration; NOT counted as
-                #               stale by the banner, so we must NOT delete
-                #               them as part of "清理 stale"
-                match_versions: list[Path] = []
-                stale_versions: list[Path] = []
-                untagged_versions: list[Path] = []
-                for v in versions:
-                    ana = _version_analyzer(v)
-                    if not ana:
-                        untagged_versions.append(v)
-                    elif ana == cur_analyzer:
-                        match_versions.append(v)
+                    # Partition by analyzer tag:
+                    #   match     — summary.analyzer_version == current
+                    #   stale     — tag present but different (tracked as
+                    #               "analyzer 过期" by /api/reports/stale-count)
+                    #   untagged  — pre-tagging migration; NOT counted as
+                    #               stale by the banner, so we must NOT delete
+                    #               them as part of "清理 stale"
+                    match_versions: list[Path] = []
+                    stale_versions: list[Path] = []
+                    untagged_versions: list[Path] = []
+                    for v in versions:
+                        ana = _version_analyzer(v)
+                        if not ana:
+                            untagged_versions.append(v)
+                        elif ana == cur_analyzer:
+                            match_versions.append(v)
+                        else:
+                            stale_versions.append(v)
+
+                    # Cleanup policy (user feedback 2026-04-19 round 5):
+                    # drop ALL tagged-stale versions so the Report 管理
+                    # banner's "N analyzer 过期" actually zeros out after
+                    # click. Prune duplicates per class but preserve one
+                    # untagged-baseline when no match exists (don't destroy
+                    # legacy reports the operator may still need).
+                    if match_versions:
+                        survivor = match_versions[0]
+                        to_delete = (
+                            match_versions[1:]  # older duplicates of match
+                            + stale_versions     # all tagged-stale
+                            + untagged_versions  # superseded by match
+                        )
+                    elif untagged_versions:
+                        survivor = untagged_versions[0]
+                        to_delete = (
+                            untagged_versions[1:]
+                            + stale_versions
+                        )
+                    elif stale_versions:
+                        # Edge case: only stale-tagged versions. Delete them
+                        # all — operator should regenerate from rawdata.
+                        survivor = None
+                        to_delete = stale_versions
                     else:
-                        stale_versions.append(v)
+                        survivor = None
+                        to_delete = []
+                    if survivor is not None:
+                        kept += 1
 
-                # Cleanup policy (user feedback 2026-04-19 round 5):
-                # drop ALL tagged-stale versions so the Report 管理
-                # banner's "N analyzer 过期" actually zeros out after
-                # click. Prune duplicates per class but preserve one
-                # untagged-baseline when no match exists (don't destroy
-                # legacy reports the operator may still need).
-                if match_versions:
-                    survivor = match_versions[0]
-                    to_delete = (
-                        match_versions[1:]  # older duplicates of match
-                        + stale_versions     # all tagged-stale
-                        + untagged_versions  # superseded by match
-                    )
-                elif untagged_versions:
-                    survivor = untagged_versions[0]
-                    to_delete = (
-                        untagged_versions[1:]
-                        + stale_versions
-                    )
-                elif stale_versions:
-                    # Edge case: only stale-tagged versions. Delete them
-                    # all — operator should regenerate from rawdata.
-                    survivor = None
-                    to_delete = stale_versions
-                else:
-                    survivor = None
-                    to_delete = []
-                if survivor is not None:
-                    kept += 1
+                    for old in to_delete:
+                        rv_name = old.name
+                        shutil.rmtree(old, ignore_errors=True)
+                        deleted += 1
+                        run_id = rv_to_run_id.get(rv_name)
+                        if run_id:
+                            try:
+                                if store.delete_run(run_id):
+                                    runs_deleted += 1
+                            except Exception:
+                                pass
 
-                for old in to_delete:
-                    rv_name = old.name
-                    shutil.rmtree(old, ignore_errors=True)
-                    deleted += 1
-                    run_id = rv_to_run_id.get(rv_name)
-                    if run_id:
-                        try:
-                            if store.delete_run(run_id):
-                                runs_deleted += 1
-                        except Exception:
-                            pass
-
-                # Rewrite index.json to keep only the survivor's entry
-                # (or empty it when no survivor remains).
-                if to_delete:
-                    survivor_name = survivor.name if survivor else None
-                    index_path = mode_dir / "index.json"
-                    if index_path.exists():
-                        try:
-                            idx = read_json(index_path)
-                            if isinstance(idx, list):
-                                idx = [e for e in idx if isinstance(e, dict)
-                                       and e.get("report_version") == survivor_name]
-                                index_path.write_text(
-                                    json.dumps(idx, indent=2, ensure_ascii=False),
-                                    encoding="utf-8",
+                    # Rewrite index.json to keep only the survivor's entry
+                    # (or empty it when no survivor remains).
+                    if to_delete:
+                        survivor_name = survivor.name if survivor else None
+                        index_path = mode_dir / "index.json"
+                        if index_path.exists():
+                            try:
+                                idx = read_json(index_path)
+                                if isinstance(idx, list):
+                                    idx = [e for e in idx if isinstance(e, dict)
+                                           and e.get("report_version") == survivor_name]
+                                    # Phase 1 deploy: atomic + per-file-locked;
+                                    # mirrors _update_report_index at app.py:5090.
+                                    # Prune + concurrent finalize on same (m, mode)
+                                    # could race without this; now serialized.
+                                    atomic_json_write(index_path, idx)
+                            except Exception as exc:
+                                # Per feedback_no_silent_swallow.md
+                                import traceback
+                                print(
+                                    f"[cleanup-old-reports] index.json rewrite failed "
+                                    f"for {machine}|{mode}: {exc.__class__.__name__}: {exc}",
+                                    file=sys.stderr,
                                 )
-                        except Exception:
-                            pass
-                    # latest.json: remove if it now points at a deleted
-                    # version. For no-survivor modes we drop it entirely
-                    # (UI "无 report" surfaces naturally).
-                    latest_path = mode_dir / "latest.json"
-                    if latest_path.exists():
-                        try:
-                            latest = read_json(latest_path) or {}
-                            if not survivor_name or latest.get("report_version") != survivor_name:
-                                if survivor_name:
-                                    # Point latest at the survivor.
-                                    latest["report_version"] = survivor_name
-                                    latest_path.write_text(
-                                        json.dumps(latest, indent=2, ensure_ascii=False),
-                                        encoding="utf-8",
-                                    )
-                                else:
-                                    latest_path.unlink(missing_ok=True)
-                        except Exception:
-                            pass
+                                traceback.print_exc()
+                        # latest.json: remove if it now points at a deleted
+                        # version. For no-survivor modes we drop it entirely
+                        # (UI "无 report" surfaces naturally).
+                        latest_path = mode_dir / "latest.json"
+                        if latest_path.exists():
+                            try:
+                                latest = read_json(latest_path) or {}
+                                if not survivor_name or latest.get("report_version") != survivor_name:
+                                    if survivor_name:
+                                        # Point latest at the survivor.
+                                        latest["report_version"] = survivor_name
+                                        # Phase 1 deploy: atomic write, parallel
+                                        # to index_path write above.
+                                        atomic_json_write(latest_path, latest)
+                                    else:
+                                        latest_path.unlink(missing_ok=True)
+                            except Exception as exc:
+                                # Per feedback_no_silent_swallow.md
+                                import traceback
+                                print(
+                                    f"[cleanup-old-reports] latest.json rewrite failed "
+                                    f"for {machine}|{mode}: {exc.__class__.__name__}: {exc}",
+                                    file=sys.stderr,
+                                )
+                                traceback.print_exc()
 
-        # Second pass: delete all analyzer-stale DB rows that somehow
-        # survived the disk sweep (runs pointing at versions deleted
-        # ages ago / imported reports that never got a matching row).
-        # /api/reports/stale-count reads the DB directly — dropping
-        # these rows is what actually zeros the Report 管理 banner.
-        extra_runs_deleted = 0
-        for row in store.list_runs(limit=100000):
-            row_analyzer = (row.get("analyzer_version") or "").strip()
-            if not row_analyzer:
-                continue
-            if row_analyzer == cur_analyzer:
-                continue
-            run_id = row.get("run_id", "")
-            if not run_id:
-                continue
-            try:
-                if store.delete_run(run_id):
-                    extra_runs_deleted += 1
-            except Exception:
-                pass
+            # Second pass: delete all analyzer-stale DB rows that somehow
+            # survived the disk sweep (runs pointing at versions deleted
+            # ages ago / imported reports that never got a matching row).
+            # /api/reports/stale-count reads the DB directly — dropping
+            # these rows is what actually zeros the Report 管理 banner.
+            extra_runs_deleted = 0
+            for row in store.list_runs(limit=100000):
+                row_analyzer = (row.get("analyzer_version") or "").strip()
+                if not row_analyzer:
+                    continue
+                if row_analyzer == cur_analyzer:
+                    continue
+                run_id = row.get("run_id", "")
+                if not run_id:
+                    continue
+                try:
+                    if store.delete_run(run_id):
+                        extra_runs_deleted += 1
+                except Exception as exc:
+                    # Per feedback_no_silent_swallow.md
+                    import traceback
+                    print(
+                        f"[cleanup-old-reports] store.delete_run({run_id!r}) failed: "
+                        f"{exc.__class__.__name__}: {exc}",
+                        file=sys.stderr,
+                    )
+                    traceback.print_exc()
 
-        return {
-            "ok": True, "deleted": deleted, "kept": kept,
-            "runs_deleted": runs_deleted + extra_runs_deleted,
-        }
+            return {
+                "ok": True, "deleted": deleted, "kept": kept,
+                "runs_deleted": runs_deleted + extra_runs_deleted,
+            }
+        finally:
+            registry.release_global("reports_cleanup")
 
     @app.get("/api/fleet/export-csv")
     def export_fleet_csv() -> Any:
@@ -8693,7 +9511,8 @@ def create_app(
         """
         retention = _load_settings(settings_path)["min_retention_spins"]
         locks = _load_rawdata_locks(_rawdata_locks_path(mc)) if respect_locks else set()
-        in_use = _get_in_use_snapshot() if respect_in_use else set()
+        # Phase 2: use registry.get_active_cells() instead of removed _get_in_use_snapshot.
+        in_use = registry.get_active_cells() if respect_in_use else set()
         candidates: list[dict[str, Any]] = []
         if not rd_root.is_dir():
             return candidates
@@ -8792,9 +9611,9 @@ def create_app(
                 "deleted_bytes": 0,
                 "message": "cleanup blocked while runs are active",
             }
-        if not ops.acquire("cache_cleanup"):
-            snap = ops.snapshot()
-            raise HTTPException(status_code=409, detail=f"system busy: {snap.get('operation') or 'unknown'}")
+        # Phase 2 (D9 site #8): migrated from ops.acquire to registry global.
+        if not registry.try_acquire_global("disk_cleanup"):
+            raise HTTPException(status_code=409, detail="disk_cleanup already in progress")
 
         try:
             deleted_files = 0
@@ -8805,7 +9624,8 @@ def create_app(
             # itself re-reads these internally (single source of truth
             # via the ``respect_*`` kwargs).
             locked_pairs = _load_rawdata_locks(_rawdata_locks_path(mc))
-            in_use_pairs = _get_in_use_snapshot()
+            # Phase 2: use registry.get_active_cells() instead of removed _get_in_use_snapshot.
+            in_use_pairs = registry.get_active_cells()
             targets = _enumerate_rawdata_deletable(
                 respect_locks=True, respect_in_use=True,
             )
@@ -8861,7 +9681,7 @@ def create_app(
                 ],
             }
         finally:
-            ops.release()
+            registry.release_global("disk_cleanup")
 
     @app.post("/api/interpretations")
     def create_interpretation(req: InterpretationRequest) -> dict[str, Any]:
@@ -8922,6 +9742,374 @@ def create_app(
                 "created_at": "",
             }
         return payload
+
+    # Phase 2 (D11): disk monitor daemon thread — periodically triggers
+    # _auto_cleanup_for_space if free space drops below the low-water mark.
+    # Sequenced AFTER all D10 registry-aware _auto_cleanup_for_space edits
+    # are in place (same commit, later in create_app body).
+    # Env vars mirror BatchRunManager._run_one disk-pressure loop defaults.
+    def _disk_monitor_loop() -> None:
+        import time as _time
+        low_water = float(os.environ.get("SLOT_DISK_LOW_WATER_GB") or 5.0)
+        target_free = float(os.environ.get("SLOT_DISK_TARGET_FREE_GB") or 10.0)
+        interval = int(os.environ.get("SLOT_DISK_MONITOR_INTERVAL_S") or 60)
+        while True:
+            _time.sleep(interval)
+            try:
+                disk = _get_disk_space_info(rd_root)
+                if disk["free_gb"] < low_water:
+                    retention = _load_settings(settings_path).get(
+                        "min_retention_spins", _RAWDATA_MIN_RETENTION_SPINS_DEFAULT
+                    )
+                    _auto_cleanup_for_space(
+                        rd_root, mc, retention,
+                        target_free_gb=target_free,
+                        low_water_gb=low_water,
+                        registry=registry,
+                    )
+            except Exception:  # noqa: BLE001 — daemon; must not crash
+                import traceback
+                traceback.print_exc()
+
+    # ── Phase 3 (D1): Config upload endpoints ──────────────────────────
+    import hashlib as _hashlib
+
+    # I5 fix: use injected path when provided (test isolation + e2e harness);
+    # fall back to module-level constant for production use.
+    configs_upload_dir = configs_upload_dir if configs_upload_dir is not None else CONFIGS_UPLOAD_DIR
+    configs_upload_dir.mkdir(parents=True, exist_ok=True)
+    _configs_registry_path = configs_upload_dir / "_registry.json"
+
+    @app.post("/api/configs/upload")
+    def upload_config(req: dict[str, Any]) -> dict[str, Any]:
+        """Upload a config JSON. Computes config_id = sha1(content).
+        Idempotent: uploading the same content twice with the same
+        display_name is a no-op; with a different display_name adds
+        an alias entry to the registry.
+
+        Body: {content: <JSON string or dict>, display_name: str}
+        """
+        raw_content = req.get("content")
+        display_name = str(req.get("display_name") or "").strip() or "unnamed"
+        if raw_content is None:
+            raise HTTPException(status_code=400, detail="content is required")
+        # Normalise to canonical JSON string.
+        if isinstance(raw_content, dict):
+            try:
+                content_str = json.dumps(raw_content, ensure_ascii=False,
+                                         sort_keys=True, separators=(",", ":"))
+                parsed_content = raw_content
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=400,
+                                    detail=f"content is not JSON-serialisable: {exc}")
+        elif isinstance(raw_content, str):
+            try:
+                parsed_content = json.loads(raw_content)
+                content_str = json.dumps(parsed_content, ensure_ascii=False,
+                                         sort_keys=True, separators=(",", ":"))
+            except (json.JSONDecodeError, TypeError) as exc:
+                raise HTTPException(status_code=400,
+                                    detail=f"content is not valid JSON: {exc}")
+        else:
+            raise HTTPException(status_code=400,
+                                detail="content must be a JSON string or object")
+
+        config_id = _hashlib.sha1(
+            content_str.encode("utf-8")
+        ).hexdigest()  # 40 hex chars
+
+        # Write content file (idempotent — if exists, content is identical).
+        content_path = configs_upload_dir / f"{config_id}.json"
+        if not content_path.exists():
+            atomic_json_write(content_path, parsed_content)
+
+        # Update registry atomically.
+        now_ts = utc_now()
+
+        def _register(reg: Any) -> Any:
+            if not isinstance(reg, dict):
+                reg = {"entries": []}
+            entries = reg.get("entries") or []
+            # Check for existing entry with this (config_id, display_name).
+            for e in entries:
+                if (e.get("config_id") == config_id
+                        and e.get("display_name") == display_name):
+                    return reg  # Idempotent: already registered.
+            entries.append({
+                "config_id": config_id,
+                "display_name": display_name,
+                "uploaded_at": now_ts,
+            })
+            reg["entries"] = entries
+            return reg
+
+        atomic_json_read_modify_write(
+            _configs_registry_path, _register,
+            default={"entries": []},
+        )
+        return {
+            "ok": True,
+            "config_id": config_id,
+            "display_name": display_name,
+            "uploaded_at": now_ts,
+        }
+
+    @app.get("/api/configs")
+    def list_configs() -> dict[str, Any]:
+        """List all uploaded configs from _registry.json."""
+        if not _configs_registry_path.exists():
+            return {"entries": []}
+        try:
+            data = json.loads(_configs_registry_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return {"entries": []}
+            return {"entries": data.get("entries") or []}
+        except (OSError, json.JSONDecodeError):
+            return {"entries": []}
+
+    @app.get("/api/configs/{config_id}")
+    def get_config(config_id: str) -> dict[str, Any]:
+        """Return metadata + content for a single config."""
+        content_path = configs_upload_dir / f"{config_id}.json"
+        if not content_path.exists():
+            raise HTTPException(status_code=404, detail="config not found")
+        try:
+            content = json.loads(content_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=500,
+                                detail=f"config file unreadable: {exc}")
+        # Pull display_name from registry.
+        display_name = config_id  # fallback
+        if _configs_registry_path.exists():
+            try:
+                reg = json.loads(_configs_registry_path.read_text(encoding="utf-8"))
+                for e in (reg.get("entries") or []):
+                    if e.get("config_id") == config_id:
+                        display_name = str(e.get("display_name") or config_id)
+                        break
+            except (OSError, json.JSONDecodeError):
+                pass
+        return {
+            "config_id": config_id,
+            "display_name": display_name,
+            "content": content,
+        }
+
+    # ── Phase 3 (D7 + D5 + D8): Fleet refresh endpoints ───────────────
+
+    if fleet_refresh_enabled:
+        from src.web_console.backend.fleet_refresh import FleetRefreshManager
+
+        # Build the per-item runner that FleetRefreshManager calls.
+        # This function runs a single (machine, mode) batch item and
+        # waits for it to complete, returning {run_id, status, error}.
+        def _fleet_batch_item_runner(
+            machine: str, mode: int, queue_id: str,
+        ) -> dict[str, Any]:
+            """Run one fleet-refresh item synchronously.
+
+            Reuses the existing BatchRunManager and RunManager infrastructure
+            so fleet refresh honors the same disk-pressure / md5-filter /
+            resume-from-cache logic as ad-hoc planner batches.
+
+            The item already has a SAMPLING lock (acquired by FleetRefreshManager
+            before calling this) and a ConcurrencyLimiter slot.  We skip the
+            lock-acquire step inside BatchRunManager by driving it directly via
+            RunManager.start_run.
+            """
+            import time as _time
+            try:
+                up_cfg, up_code = _get_machine_md5(machine, mc, mode)
+                cache_dir_str = str(rd_root / machine / f"mode_{mode}")
+                run_req = RunCreateRequest(
+                    machine=machine,
+                    mode=mode,
+                    chunk_spin_times=1000,
+                    chunk_robot_count=8,
+                    batch_concurrency=8,
+                    max_chunks=120,
+                    timeout=300.0,
+                    target_halfwidth_pp=0.5,
+                    server_id="",
+                    resume_from_cache_dir=cache_dir_str,
+                    upstream_config_md5=up_cfg or "",
+                    upstream_code_md5=up_code or "",
+                )
+                result = manager.start_run(run_req)
+                run_id = str(result.get("run_id") or "")
+                # Wait for the run to complete.
+                # Check cancel flag each iteration so DELETE /api/fleet/refresh
+                # can interrupt a long-running wait (up to 5s latency vs the
+                # previous 2-hour worst-case).
+                max_wait = 7200  # 2 hours
+                waited = 0
+                while waited < max_wait:
+                    # Cancel check before each poll — fleet_mgr is defined in
+                    # the enclosing scope immediately after this function and is
+                    # guaranteed assigned before the first call.
+                    if fleet_mgr._is_cancelled(queue_id):
+                        return {
+                            "run_id": run_id,
+                            "status": "cancelled",
+                            "error": "queue cancelled during run",
+                        }
+                    row = store.get_run(run_id)
+                    if row is None:
+                        break
+                    status = str(row.get("status") or "")
+                    if status not in ("running", "pending"):
+                        return {
+                            "run_id": run_id,
+                            "status": "completed" if status == "completed" else "failed",
+                            "error": str(row.get("error_message") or ""),
+                        }
+                    _time.sleep(5)
+                    waited += 5
+                return {"run_id": run_id, "status": "failed", "error": "timeout"}
+            except Exception as exc:  # noqa: BLE001
+                import traceback as _tb
+                _tb.print_exc()
+                return {"run_id": "", "status": "failed",
+                        "error": f"{exc.__class__.__name__}: {exc}"}
+
+        fleet_mgr = FleetRefreshManager(
+            db_path=db_path,
+            registry=registry,
+            limiter=limiter,
+            start_batch_item_fn=_fleet_batch_item_runner,
+        )
+        app.state.fleet_refresh_manager = fleet_mgr
+
+        # Resume crashed queue if any (D6).
+        if store._pending_resume_queue_id:
+            _resume_id = store._pending_resume_queue_id
+            threading.Thread(
+                target=fleet_mgr.run_queue,
+                args=(_resume_id,),
+                daemon=True,
+                name=f"fleet-refresh-resume-{_resume_id[:8]}",
+            ).start()
+
+        @app.post("/api/fleet/refresh")
+        def start_fleet_refresh(req: dict[str, Any] | None = None) -> dict[str, Any]:
+            """Trigger a new fleet refresh queue.
+
+            Single-instance enforcement: returns 409 if a queue is already
+            running.
+
+            Body (optional): {config_source: str, server_id: str,
+                              machines: [{machine, modes: [int]}]}
+            If machines is omitted, all machines from machines.json are queued.
+            """
+            # Single-instance check.
+            running_id = fleet_mgr.get_running_queue_id()
+            if running_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"fleet refresh already running (queue_id={running_id}). "
+                        "Cancel it first via DELETE /api/fleet/refresh"
+                    ),
+                )
+            # Build machine list.
+            body = req or {}
+            config_source = str(body.get("config_source") or "server_default")
+            server_id = str(body.get("server_id") or "") or None
+            raw_machines = body.get("machines")
+            if raw_machines is None:
+                # Default: all machines from machines.json with their
+                # supported modes (inferred from rawdata dirs or default [1]).
+                try:
+                    data = json.loads(Path(mc).read_text(encoding="utf-8"))
+                    machines_list = []
+                    for entry in (data.get("machines") or []):
+                        m = str(entry.get("machine") or "")
+                        if not m:
+                            continue
+                        # Default to modes that exist in rawdata, or mode 1.
+                        machine_rawdata = rd_root / m
+                        modes: list[int] = []
+                        if machine_rawdata.is_dir():
+                            for md in machine_rawdata.iterdir():
+                                if md.is_dir() and md.name.startswith("mode_"):
+                                    try:
+                                        modes.append(int(md.name.split("_", 1)[1]))
+                                    except (IndexError, ValueError):
+                                        continue
+                        if not modes:
+                            modes = [1]
+                        machines_list.append({"machine": m, "modes": sorted(modes)})
+                except (OSError, json.JSONDecodeError):
+                    machines_list = []
+            else:
+                machines_list = list(raw_machines)
+
+            if not machines_list:
+                raise HTTPException(status_code=400,
+                                    detail="no machines to refresh")
+
+            queue_id = fleet_mgr.start_queue(
+                machines_list,
+                config_source=config_source,
+                server_id=server_id,
+            )
+            return {
+                "ok": True,
+                "queue_id": queue_id,
+                "total_machines": len(machines_list),
+                "total_items": sum(
+                    len(m.get("modes") or []) for m in machines_list
+                ),
+            }
+
+        @app.get("/api/fleet/refresh")
+        def get_fleet_refresh() -> dict[str, Any]:
+            """Poll current fleet refresh progress.
+
+            Returns the most recently started queue (running or completed).
+            404 if no queue has ever been created.
+            """
+            queue_id = fleet_mgr.get_running_queue_id()
+            if queue_id is None:
+                # No running queue — return the most recently completed.
+                try:
+                    with fleet_mgr._connect() as _conn:
+                        row = _conn.execute(
+                            "SELECT queue_id FROM fleet_refresh_queue "
+                            "ORDER BY started_at DESC LIMIT 1"
+                        ).fetchone()
+                    queue_id = str(row["queue_id"]) if row else None
+                except sqlite3.OperationalError:
+                    queue_id = None
+
+            if queue_id is None:
+                raise HTTPException(
+                    status_code=404, detail="no fleet refresh queue found"
+                )
+
+            progress = fleet_mgr.get_queue_progress(queue_id)
+            if progress is None:
+                raise HTTPException(
+                    status_code=404, detail=f"queue {queue_id} not found"
+                )
+            return progress
+
+        @app.delete("/api/fleet/refresh")
+        def cancel_fleet_refresh() -> dict[str, Any]:
+            """Cancel the currently running fleet refresh queue."""
+            queue_id = fleet_mgr.get_running_queue_id()
+            if queue_id is None:
+                raise HTTPException(
+                    status_code=404, detail="no running fleet refresh queue"
+                )
+            fleet_mgr.cancel_queue(queue_id)
+            return {"ok": True, "queue_id": queue_id, "cancelled": True}
+
+    else:
+        # fleet_refresh_enabled=False (virtual console).
+        app.state.fleet_refresh_manager = None
+
+    threading.Thread(target=_disk_monitor_loop, daemon=True, name="disk-monitor").start()
 
     return app
 

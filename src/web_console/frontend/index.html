@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Slot Console</title>
     <link rel="stylesheet" href="/console/styles.css?v={{ASSET_HASH}}" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Phase 1 deploy: vendored chart.js (v4.4.6 UMD min) — intranet
+         deploys have no CDN access. See src/web_console/frontend/vendor/. -->
+    <script src="/console/vendor/chart.min.js?v={{ASSET_HASH}}"></script>
   </head>
   <body>
     <header class="topbar dash-topbar">
@@ -509,6 +511,40 @@
                 <button id="compareServersBtn" class="primary-btn" data-i18n="btnCompareServers">对比 MD5</button>
               </div>
               <div id="serverCompareResult" class="compare-result"></div>
+            </div>
+          </section>
+
+          <!-- Phase 3 (D11): Config upload panel -->
+          <section class="panel config-upload" id="configUploadPanel">
+            <h2 data-i18n="panelConfigUpload">配置上传</h2>
+            <div class="config-upload-form">
+              <label>
+                <span data-i18n="labelConfigFile">配置文件 (JSON)</span>
+                <input type="file" id="configFileInput" accept=".json,application/json" />
+              </label>
+              <label>
+                <span data-i18n="labelConfigDisplayName">显示名称</span>
+                <input type="text" id="configDisplayNameInput" placeholder="e.g. M14_v2_draft" />
+              </label>
+              <button id="configUploadBtn" class="primary-btn" data-i18n="btnConfigUpload">上传</button>
+              <span id="configUploadStatus" class="muted"></span>
+            </div>
+            <div id="configListWrap" class="config-list-wrap"></div>
+          </section>
+
+          <!-- Phase 3 (D11): Fleet refresh progress panel -->
+          <section class="panel fleet-refresh" id="fleetRefreshPanel">
+            <h2 data-i18n="panelFleetRefresh">全机台刷新队列</h2>
+            <div class="fleet-refresh-controls">
+              <button id="fleetRefreshStartBtn" class="primary-btn" data-i18n="btnFleetRefreshStart">开始全刷新</button>
+              <button id="fleetRefreshCancelBtn" class="danger-btn hidden" data-i18n="btnFleetRefreshCancel">取消</button>
+              <span id="fleetRefreshStatus" class="muted"></span>
+            </div>
+            <div id="fleetRefreshProgress" class="fleet-refresh-progress hidden">
+              <div id="fleetRefreshProgressMeta" class="meta"></div>
+              <div id="fleetRefreshProgressBar" class="progress-bar-wrap">
+                <div id="fleetRefreshProgressInner" class="progress-bar-inner" style="width:0%"></div>
+              </div>
             </div>
           </section>
 

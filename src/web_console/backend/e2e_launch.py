@@ -32,9 +32,16 @@ def _required_env(key: str) -> str:
     return val
 
 
+# I5 fix: optional configs_upload_dir DI so e2e fixtures can isolate uploads.
+_configs_upload_dir_env = os.environ.get("SLOT_E2E_CONFIGS_UPLOAD_DIR")
+_configs_upload_dir: Path | None = (
+    Path(_configs_upload_dir_env) if _configs_upload_dir_env else None
+)
+
 app = create_app(
     state_dir=Path(_required_env("SLOT_E2E_STATE_DIR")),
     reports_root=Path(_required_env("SLOT_E2E_REPORTS")),
     cache_root=Path(_required_env("SLOT_E2E_CACHE")),
     rawdata_root=Path(_required_env("SLOT_E2E_RAWDATA")),
+    configs_upload_dir=_configs_upload_dir,
 )

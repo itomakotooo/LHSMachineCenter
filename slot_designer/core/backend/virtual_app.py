@@ -193,6 +193,10 @@ def build_virtual_app():
         rawdata_root=VIRTUAL_RAWDATA_ROOT,
         paytables_dir=VIRTUAL_PAYTABLES_DIR,
         md5_refresh_override=_local_md5_refresh,
+        # Phase 3 (D12): virtual console doesn't need fleet refresh.
+        # Passing False suppresses the FleetRefreshManager daemon thread
+        # and the /api/fleet/refresh endpoints.
+        fleet_refresh_enabled=False,
     )
     _register_virtual_only_routes(app)
     return app

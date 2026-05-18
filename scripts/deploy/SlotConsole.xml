@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SlotConsole — Windows Task Scheduler task definition (schema v1.2).
+
+  Deploy:
+    1. Set machine-level env var SLOT_REPO_ROOT:
+       [System.Environment]::SetEnvironmentVariable(
+           "SLOT_REPO_ROOT", "C:\path\to\repo", "Machine")
+
+    2. Register this task (requires Admin):
+       schtasks /Create /XML scripts\deploy\SlotConsole.xml /TN SlotConsole
+
+  Principal: current operator user (%USERNAME%) with highest available rights.
+  NOT SYSTEM / NOT LocalService — operator user has write access to rawdata/,
+  state/console/, and the Python venv.
+
+  Inner RestartOnFailure (Task Scheduler level) provides a second layer of
+  restart defense on top of start_console.ps1's own restart loop.
+-->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>SlotConsole — Slot machine analytics web console. Managed by start_console.ps1 restart loop. See %SLOT_REPO_ROOT%\scripts\deploy\README_DEPLOY.md.</Description>
+    <Author>%USERNAME%</Author>
+    <Version>1.0.0</Version>
+  </RegistrationInfo>
+  <Triggers>
+    <BootTrigger>
+      <Enabled>true</Enabled>
+      <!-- 60-second delay: wait for disk + network to be ready after boot. -->
+      <Delay>PT1M</Delay>
+    </BootTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <!-- Operator user — NOT SYSTEM / NOT LocalService / NOT LocalSystem.
+           %USERNAME% resolves at registration time to the registering operator. -->
+      <UserId>%USERNAME%</UserId>
+      <LogonType>Password</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+    <!-- Inner restart defense: Task Scheduler retries 3 times at 1-minute intervals
+         if start_console.ps1 itself exits non-zero (i.e. the Python import probe
+         failed, or the restart budget was fully exhausted). -->
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <!-- %SLOT_REPO_ROOT% is a machine-level env var set during deploy.
+           Dynamic: no hardcoded C:\... path — same XML works on any deploy target. -->
+      <Arguments>-NoProfile -ExecutionPolicy Bypass -File "%SLOT_REPO_ROOT%\scripts\start_console.ps1" -NoBanner</Arguments>
+      <WorkingDirectory>%SLOT_REPO_ROOT%</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

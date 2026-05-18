@@ -143,13 +143,100 @@ When user requests a new cross-cutting refactor / feature:
 | Pattern | When | Where defined |
 |---|---|---|
 | slot-* team (R/A/I/D/V/X) | New slot machine onboarding (rawdata → spec → weights → verify → ship) | `slot_designer/ONBOARDING_PROCESS.md` |
-| **arch-* team (this doc)** | **Cross-cutting refactor / architecture review touching shared code** | **`docs/ARCH_TEAM_PROCESS.md` (this file)** |
-| Direct edit | Single-file fix, no fan-out | n/a — main session |
+| **arch-* team (this doc §1-7)** | **Cross-cutting refactor / architecture review touching shared code (design phase)** | **`docs/ARCH_TEAM_PROCESS.md` §1-7** |
+| **impl-* team (this doc §9)** | **Implementation phase — execute an arch-* approved proposal (multi-file refactor, new module, cross-cutting code change)** | **`docs/ARCH_TEAM_PROCESS.md` §9** |
+| Direct edit | Single-file fix, no fan-out, trivial patches | n/a — main session |
 
-The two teams complement each other: arch-* designs the framework + shared code; slot-* uses the framework for per-machine onboarding. If arch-* output requires changes to slot-* definitions, that's part of the implementation pass downstream of arch-* approval.
+The teams complement each other: arch-* designs the framework + produces a written proposal; impl-* executes the proposal phase-by-phase (one commit per phase, with full implementer → tester → verifier → critic loop); slot-* uses the framework for per-machine onboarding (independent domain).
 
 ---
 
-## §9 Memory pointer
+## §9 Implementation phase (impl-* team)
 
-For future sessions: searchable via `memory/feedback_arch_team_process.md` (auto-memory pointer added 2026-05-15).
+> **Purpose**: when an arch-* proposal needs to be implemented (or any multi-file refactor / new module / cross-cutting code change), the impl-* 4-agent team executes the work with separation between author + reviewer. Designed to prevent the failure mode "same Claude wrote the code, wrote the test, signed off the commit — no external angle".
+>
+> **Not for**: single-file bug fix, docs-only commits, trivial patches. Use direct edit for those.
+
+### §9.1 When to use this team
+
+- Implementing a phase from an arch-* proposal (e.g. `04_v2.md §6 Phase N deliverables`)
+- Multi-file code change touching fleet-shared code
+- New module addition with non-trivial test coverage
+- Refactor that needs adversarial review before commit
+
+### §9.2 Team composition (4 agents, sequential)
+
+| Agent | `subagent_type` | Responsibility | Tool surface | Output |
+|---|---|---|---|---|
+| Implementer | `impl-implementer` | Write code per design proposal; minimum-delta; reuse sibling patterns; smoke check | Read, Glob, Grep, Edit, Write, Bash | uncommitted file changes |
+| Tester | `impl-tester` | Write tests + run inject-bug → red → revert → green per `feedback_enumerate_safety_paths.md` | Read, Glob, Grep, Edit, Write, Bash | uncommitted test files + inject-bug evidence |
+| Verifier | `impl-verifier` | E2E / smoke / broader-suite verification; real subprocess against cached fixtures; failure injection | Read, Glob, Grep, Bash | claim-by-claim verification report |
+| Critic | `impl-critic` | Adversarial review of diff + tests + claims before commit; 10+ stress questions; verdict | Read, Glob, Grep, Bash (read-only), Write | `session_artifacts/_impl/<phase>/critique.md` + APPROVE / APPROVE-WITH-FIXES / REJECT verdict |
+
+Sequential, not parallel — each agent reads the previous agent's output. Critic is the final gate before coordinator commits.
+
+### §9.3 Phase structure (per commit)
+
+```
+1. Coordinator briefs impl-implementer with design proposal section
+   → impl-implementer writes code + smoke check
+2. Coordinator briefs impl-tester with implementer's summary
+   → impl-tester writes tests + runs inject-bug verification
+3. Coordinator briefs impl-verifier with implementer + tester summaries
+   → impl-verifier runs broader e2e / smoke
+4. Coordinator briefs impl-critic with all three summaries + commit-message draft
+   → impl-critic adversarial review + verdict
+5. If REJECT or APPROVE-WITH-FIXES → loop back (implementer fixes; tester re-runs)
+6. If APPROVE → coordinator commits with 4-section message
+```
+
+### §9.4 Information flow
+
+All artifacts under `session_artifacts/_impl/<phase>/`:
+
+```
+session_artifacts/_impl/p1/
+├── brief.md         # coordinator writes: phase scope + deliverables + memory feedback to honor
+├── verification.md  # impl-verifier (optional — for written e2e report)
+└── critique.md      # impl-critic (always — final gate)
+```
+
+The implementer + tester outputs are CODE (committed via coordinator), not markdown artifacts.
+
+### §9.5 Invariants
+
+1. **No agent solo-commits** — only main-session coordinator commits, after impl-critic APPROVE
+2. **No skipping agents** — even if "obvious", run the loop. Especially impl-critic.
+3. **Each agent reads its predecessors' summaries** — coordinator passes them in brief
+4. **Inject-bug is mandatory** — per `feedback_enumerate_safety_paths.md`, tester must temporarily break protection and observe test failure as evidence the test catches the regression
+5. **Critic verdict is binding** — REJECT means loop. APPROVE-WITH-FIXES means fix before commit. APPROVE means commit.
+6. **Phases are atomic at commit boundary** — each phase is one logical commit (or one PR with multiple commits per the design). Don't mix phases.
+
+### §9.6 Anti-patterns
+
+- **Coordinator writing the code directly** — defeats the separation; use impl-implementer even for "small" tasks within a phase
+- **Skipping impl-critic because "tests pass"** — `memory/feedback_adversarial_self_review.md`: verify GREEN ≠ done when verify is what I designed
+- **Combining impl-implementer + impl-tester** — same Claude writes code + tests = no adversarial angle, even with the agent separation. Use distinct agent invocations.
+- **Running phases in parallel** — phases have dependencies (Phase 2 depends on Phase 1 backward-compat); serialize them
+
+### §9.7 How to invoke (coordinator)
+
+1. Read design proposal section for this phase (e.g. `04_v2.md §6 Phase 1`)
+2. Write `session_artifacts/_impl/<phase>/brief.md` with phase scope + memory feedback files + claims to verify
+3. Spawn `impl-implementer` (foreground or background) with brief → wait for completion
+4. Spawn `impl-tester` with implementer's summary → wait
+5. Spawn `impl-verifier` with both summaries → wait
+6. Spawn `impl-critic` with all three summaries + commit-message draft → wait
+7. Process critic verdict:
+   - APPROVE → coordinator commits
+   - APPROVE-WITH-FIXES → loop steps 3-6 with fix list
+   - REJECT → loop steps 3-6 with major rework
+8. After commit → mark phase done in TodoWrite → next phase
+
+---
+
+## §10 Memory pointer
+
+For future sessions:
+- `memory/feedback_arch_team_process.md` — when to spawn arch-* team for design phase (auto-memory pointer added 2026-05-15)
+- `memory/feedback_impl_team_required.md` — when to spawn impl-* team for implementation phase (auto-memory pointer added 2026-05-17)
