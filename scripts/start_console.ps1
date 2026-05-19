@@ -26,12 +26,29 @@ if ($Port -ne 0) {
 # resolved value throughout the script.
 $Port = $bindPort
 
-$url = "http://${bindHost}:${bindPort}/console/"
+# Server listens on $bindHost (typically 0.0.0.0 for LAN access), but the
+# browser opens the LOOPBACK URL — 0.0.0.0 is a server-side "bind to all
+# interfaces" sentinel and is NOT a client-reachable address. Hard-bug
+# 2026-05-18: P4 set $url to ${bindHost} and start.bat → -OpenBrowser
+# launched chrome at http://0.0.0.0:8877/console/ → HTTP ERROR 502.
+$url = "http://127.0.0.1:${bindPort}/console/"
+if ($bindHost -ne "127.0.0.1" -and $bindHost -ne "0.0.0.0") {
+  # Custom bind (e.g. specific NIC) — show that exact host in the banner so
+  # the operator knows what to type from another machine.
+  $lanUrl = "http://${bindHost}:${bindPort}/console/"
+} else {
+  $lanUrl = $null
+}
 
 if (-not $NoBanner) {
   Write-Host "================================================"
   Write-Host " Slot Console"
-  Write-Host " URL : $url"
+  Write-Host " URL (this machine)        : $url"
+  if ($lanUrl) {
+    Write-Host " URL (other LAN clients)   : $lanUrl"
+  } elseif ($bindHost -eq "0.0.0.0") {
+    Write-Host " URL (other LAN clients)   : http://<this-machine-ip>:${bindPort}/console/"
+  }
   Write-Host " Root: $root"
   Write-Host "================================================"
 }
