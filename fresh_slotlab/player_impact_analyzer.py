@@ -87,6 +87,65 @@ except ImportError:  # running as a standalone script, not a package member
     from sampler import session_halfwidth_pp  # type: ignore[no-redef]  # P1-B3
     from machine_md5 import lookup_machine_md5 as _lookup_machine_md5  # type: ignore[no-redef]  # P1-B1
 
+# P2-B1a: 14 chunk-parsing helpers + 1 exception + 8 constants moved to
+# fresh_slotlab/analyzer/core/parser.py per 04_v5 §6.2 deliverable 1.
+# Re-exported here so all existing callers continue to work via
+# ``from fresh_slotlab.player_impact_analyzer import parse_rounds`` etc.
+# parse_chunk_response (the 1857-line orchestrator) stays in this
+# module; P2-B1b will carve it separately.
+try:
+    from fresh_slotlab.analyzer.core.parser import (
+        ChunkIntegrityError,
+        PAYLINE_RE,
+        _BASELINE_ROUND_FIELDS,
+        _ENVELOPE_PEEK_BYTES,
+        _ENVELOPE_PEEK_RE,
+        _REMARKS_ADDFREESPINS_COUNT_RE,
+        _REMARKS_EXTRARATIO_RE,
+        _REMARKS_FREESPIN_RE,
+        _REQUIRED_BET_FIELDS_ANY,
+        _REQUIRED_ROUND_FIELDS,
+        _canonical_payload_bytes,
+        _check_round_schema,
+        _compute_bonus_correction,
+        _compute_nf_correction,
+        _compute_upstream_schema_fingerprint,
+        _payload_sha256,
+        load_chunk_envelope,
+        parse_freespin_remarks,
+        parse_paylines,
+        parse_rln_codes,
+        parse_rounds,
+        peek_chunk_envelope,
+        split_symbols,
+    )
+except ImportError:  # running as standalone script
+    from analyzer.core.parser import (  # type: ignore[no-redef]
+        ChunkIntegrityError,
+        PAYLINE_RE,
+        _BASELINE_ROUND_FIELDS,
+        _ENVELOPE_PEEK_BYTES,
+        _ENVELOPE_PEEK_RE,
+        _REMARKS_ADDFREESPINS_COUNT_RE,
+        _REMARKS_EXTRARATIO_RE,
+        _REMARKS_FREESPIN_RE,
+        _REQUIRED_BET_FIELDS_ANY,
+        _REQUIRED_ROUND_FIELDS,
+        _canonical_payload_bytes,
+        _check_round_schema,
+        _compute_bonus_correction,
+        _compute_nf_correction,
+        _compute_upstream_schema_fingerprint,
+        _payload_sha256,
+        load_chunk_envelope,
+        parse_freespin_remarks,
+        parse_paylines,
+        parse_rln_codes,
+        parse_rounds,
+        peek_chunk_envelope,
+        split_symbols,
+    )
+
 DEFAULT_ENDPOINT_URL = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant"
 ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
 # We always hit the Variant endpoint. ``MachineName`` on the payload is
@@ -96,7 +155,7 @@ ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
 # either rewrites to (underlying + selector params) or falls through
 # to a plain test-spin when the key isn't a variant. See
 # docs/upstream/MachineTest-TestSpin.md.
-PAYLINE_RE = re.compile(r"(\d+):")
+# PAYLINE_RE moved to fresh_slotlab.analyzer.core.parser (P2-B1a).
 # 11 win-bearing buckets. The old `eq0` bucket carried zero-win sessions
 # which already live in summary.hit_and_payout.zero_win_rate; a bucket
 # where avg_x / rtp_pp / win_share are all structurally zero is noise
@@ -1001,17 +1060,7 @@ def ci_halfwidth_pp(chunk_rtps_pct: list[float]) -> float:
 # sampler signature uses (n, ret_sum, ret_sq_sum); positionally identical.
 
 
-def parse_rounds(robot: dict[str, Any]) -> list[dict[str, Any]]:
-    rr = robot.get("roundResult")
-    if not rr:
-        return []
-    if isinstance(rr, str):
-        try:
-            parsed = json.loads(rr)
-        except json.JSONDecodeError:
-            return []
-        return parsed if isinstance(parsed, list) else []
-    return rr if isinstance(rr, list) else []
+# parse_rounds moved to fresh_slotlab.analyzer.core.parser (P2-B1a).
 
 
 # Rawdata-replay bankruptcy simulation. Each robot's round sequence is
@@ -1408,69 +1457,9 @@ def median_spins_from_list(
 # so the report surfaces unknown / machine-specific data for future
 # analyzer extensions. This list is intentionally stable — add a key
 # here only AFTER writing the code that consumes it.
-_BASELINE_ROUND_FIELDS = frozenset({
-    "BetAmount", "CostCredits", "WinCredits", "SpinType", "SpinTimes",
-    "RTPId", "IsLackCreditsSpin", "LastCredits", "CurJackpotStoreWin",
-    "PayLineGroupId", "PayoutGroupId", "PayoutByPayline",
-    "PayoutIdToWinAmount", "ReMarks", "ReelSkin",
-    "StopSymbolsByCol", "RewardLastNode",
-    # Collect-mechanic fields (consumed by cycle/trunk-clamp logic)
-    "CollectCount", "AccCredits", "CreditsSymbols", "SymbolIndexToRewards",
-})
-
-# Round-level fields that MUST appear on every spin regardless of
-# win / lose state. Missing one is almost certainly an upstream API
-# field rename and the analyzer should fail loudly instead of silently
-# producing all-zero metrics.
-#
-# Intentionally NOT in this set:
-#   - PayoutByPayline: legitimately absent on lose spins (no payline).
-#   - PayoutGroupId:   legitimately absent on no-payout spins.
-#   The first round of a chunk is statistically very likely to be a
-#   lose spin (RTP ~95% with hit_rate ~30% means ~70% lose), so
-#   strict-checking these caused false-positive run aborts.
-_REQUIRED_ROUND_FIELDS = (
-    "WinCredits",
-    "StopSymbolsByCol",
-)
-# Bet amount has a documented fallback chain (BetAmount -> CostCredits
-# -> the chunk-level `bet` arg). The schema check still wants AT LEAST
-# one of the first two to exist on a real round.
-_REQUIRED_BET_FIELDS_ANY = ("BetAmount", "CostCredits")
-
-
-def _check_round_schema(resp: list[Any]) -> list[str]:
-    """Inspect the first parsed round of a chunk response and return the
-    names of required fields that are missing. Returns [] when the
-    schema is intact, or when there are no parsed rounds at all (the
-    existing parse_failed_zero_chunk path handles the empty case).
-    """
-    if not isinstance(resp, list):
-        return []
-    for robot in resp:
-        if not isinstance(robot, dict):
-            continue
-        rounds = parse_rounds(robot)
-        for round_obj in rounds:
-            if not isinstance(round_obj, dict):
-                continue
-            missing = [f for f in _REQUIRED_ROUND_FIELDS if f not in round_obj]
-            if not any(f in round_obj for f in _REQUIRED_BET_FIELDS_ANY):
-                missing.append("BetAmount|CostCredits")
-            return missing
-    return []
-
-
-def parse_paylines(text: str) -> list[str]:
-    if not text:
-        return []
-    return PAYLINE_RE.findall(text)
-
-
-def split_symbols(col_text: str) -> list[str]:
-    if not col_text:
-        return []
-    return [x for x in col_text.split("-") if x]
+# _BASELINE_ROUND_FIELDS, _REQUIRED_ROUND_FIELDS, _REQUIRED_BET_FIELDS_ANY,
+# _check_round_schema, parse_paylines, split_symbols moved to
+# fresh_slotlab.analyzer.core.parser (P2-B1a).
 
 
 def quantile_from_hist(hist: dict[int, int], q: float) -> int:
@@ -1720,45 +1709,8 @@ def blank_like_symbol(symbol: str) -> bool:
 # multiplier the chain is currently at, and (c) whether it self-
 # retriggered. All three drive the bonus_chain_dynamics surface.
 # Machines without this field (M14) silently skip -- parse returns None.
-_REMARKS_FREESPIN_RE = re.compile(r"Freespin\s+(\d+)")
-_REMARKS_EXTRARATIO_RE = re.compile(r"ExtraRatio:(\d+)")
-_REMARKS_ADDFREESPINS_COUNT_RE = re.compile(r"AddFreespins;\s*(\d+)")
-
-
-def parse_freespin_remarks(remarks: Any) -> dict[str, Any] | None:
-    """Return freespin annotation metadata, or None if the string is
-    not a freespin line. Tolerant of missing fields -- extra_ratio
-    defaults to 100 (the baseline ratio observed in M272 early chain).
-    """
-    if not isinstance(remarks, str) or "Freespin" not in remarks:
-        return None
-    m_fs = _REMARKS_FREESPIN_RE.search(remarks)
-    if not m_fs:
-        return None
-    try:
-        fs_idx = int(m_fs.group(1))
-    except ValueError:
-        return None
-    m_er = _REMARKS_EXTRARATIO_RE.search(remarks)
-    extra_ratio = 100
-    if m_er:
-        try:
-            extra_ratio = int(m_er.group(1))
-        except ValueError:
-            pass
-    m_af = _REMARKS_ADDFREESPINS_COUNT_RE.search(remarks)
-    retrigger_count = 0
-    if m_af:
-        try:
-            retrigger_count = int(m_af.group(1))
-        except ValueError:
-            pass
-    return {
-        "freespin_index": fs_idx,
-        "extra_ratio": extra_ratio,
-        "has_retrigger": "AddFreespins" in remarks,
-        "retrigger_count": retrigger_count,
-    }
+# _REMARKS_*_RE constants and parse_freespin_remarks moved to
+# fresh_slotlab.analyzer.core.parser (P2-B1a).
 
 
 def bonus_chain_depth_bucket(fs_idx: int) -> str:
@@ -1775,90 +1727,8 @@ def bonus_chain_depth_bucket(fs_idx: int) -> str:
     return "21+"
 
 
-def _compute_bonus_correction(
-    bonus_feature: str | None,
-    cycle_peaks: list[int],
-    final_cc_values: list[int],
-    feature_tally: dict[str, dict[str, dict[str, Any]]],
-    completed_cycles: int,
-    total_paid_bet: float,
-) -> float | None:
-    """Estimate the RTP correction (in pp) from truncated collect-cycle
-    bonus rounds.
-
-    Each robot that ends mid-cycle (final_cc < cycle_length) has lost
-    a fraction of the expected bonus payout that would fire at cycle
-    completion. The correction is:
-        sum across robots of (progress_fraction × avg_bonus_payout)
-        / total_paid_bet × 100
-
-    ``bonus_feature`` is the resolved FeatureWin key for this machine
-    (from _resolve_bonus_feature — config override or heuristic).
-    Returns None when:
-      - bonus_feature could not be resolved (None)
-      - no cycles observed
-      - no completed cycles (resets yes, but sample too small)
-      - resolved feature has zero observed win
-
-    Previously hardcoded to "NewFreespin"; that worked for ~13 of 33
-    BCM machines and silently under-reported RTP on the other 20.
-    """
-    if bonus_feature is None:
-        return None
-    if not cycle_peaks or total_paid_bet <= 0:
-        return None
-    cycle_len = int(sorted(cycle_peaks)[len(cycle_peaks) // 2])
-    if cycle_len <= 0:
-        return None
-    bonus_total_win = sum(
-        float(e.get("win", 0.0))
-        for e in (feature_tally.get(bonus_feature) or {}).values()
-    )
-    if completed_cycles <= 0 or bonus_total_win <= 0:
-        return None
-    avg_bonus_payout = bonus_total_win / completed_cycles
-    total_lost = 0.0
-    for fcc in final_cc_values:
-        progress = min(fcc / cycle_len, 1.0)
-        if progress < 1.0:
-            total_lost += progress * avg_bonus_payout
-    return (total_lost / total_paid_bet) * 100.0
-
-
-# Backwards-compat alias for any external caller still using the old
-# name. New code should use `_compute_bonus_correction` and pass the
-# resolved feature explicitly.
-def _compute_nf_correction(
-    cycle_peaks: list[int],
-    final_cc_values: list[int],
-    feature_tally: dict[str, dict[str, dict[str, Any]]],
-    completed_cycles: int,
-    total_paid_bet: float,
-) -> float | None:
-    return _compute_bonus_correction(
-        "NewFreespin", cycle_peaks, final_cc_values,
-        feature_tally, completed_cycles, total_paid_bet,
-    )
-
-
-def parse_rln_codes(rln: Any) -> list[str]:
-    """RewardLastNode values look like ['3-', '7-', '668-'] -- numeric
-    symbol codes with a trailing '-' separator. Upstream populates this
-    on most winning spins (M14 + M272 both use it). Returning the
-    stripped codes lets the paylines drilldown credit winning symbols
-    directly instead of relying on the left-3-col intersection heuristic.
-    """
-    if not isinstance(rln, list):
-        return []
-    out: list[str] = []
-    for item in rln:
-        s = str(item).strip()
-        if s.endswith("-"):
-            s = s[:-1]
-        s = s.strip()
-        if s:
-            out.append(s)
-    return out
+# _compute_bonus_correction, _compute_nf_correction, parse_rln_codes
+# moved to fresh_slotlab.analyzer.core.parser (P2-B1a).
 
 
 def make_payload(
@@ -1973,54 +1843,8 @@ def build_multiplier_bucket_rows(
 CHUNK_CACHE_VERSION = 3  # v3: added _payload_sha256 + atomic (.tmp+os.replace) write
 
 
-class ChunkIntegrityError(ValueError):
-    """Envelope's stored _payload_sha256 didn't match the recomputed hash.
-
-    Indicates the chunk file is corrupt (partial write from an aborted
-    sampler, disk error, filesystem glitch) or was modified after write.
-    Distinct from json.JSONDecodeError, which means the envelope itself
-    is malformed — this one means the envelope parses cleanly but the
-    payload bytes have drifted from what was written.
-    """
-
-
-def _canonical_payload_bytes(resp: Any) -> bytes:
-    """Deterministic byte encoding of the cached response for hashing.
-
-    `sort_keys=True` + no whitespace + `ensure_ascii=False` makes the
-    writer and reader compute identical bytes regardless of dict key
-    order, indent, or non-ASCII handling.
-    """
-    return json.dumps(
-        resp, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-    ).encode("utf-8")
-
-
-def _payload_sha256(resp: Any) -> str:
-    import hashlib
-    return hashlib.sha256(_canonical_payload_bytes(resp)).hexdigest()
-
-
-def load_chunk_envelope(path: Path) -> dict:
-    """Load a chunk cache file and validate `_payload_sha256` if present.
-
-    v3+ envelopes carry a payload sha256; mismatch raises
-    ChunkIntegrityError with a readable message so the caller can
-    surface "this chunk is corrupt" instead of a generic decode error.
-    Legacy v2 envelopes without `_payload_sha256` are accepted as-is
-    (backwards compatible — existing 4000 cached chunks keep working).
-    """
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    stored_sha = raw.get("_payload_sha256")
-    if stored_sha:
-        actual_sha = _payload_sha256(raw.get("response"))
-        if actual_sha != stored_sha:
-            raise ChunkIntegrityError(
-                f"chunk {path.name}: payload sha256 mismatch "
-                f"(envelope={stored_sha[:16]}..., actual={actual_sha[:16]}...) — "
-                f"file is corrupt or was modified after write"
-            )
-    return raw
+# ChunkIntegrityError, _canonical_payload_bytes, _payload_sha256,
+# load_chunk_envelope moved to fresh_slotlab.analyzer.core.parser (P2-B1a).
 
 
 # Envelope header peek — extracts ``_chunk_index`` + ``_config_md5`` +
@@ -2038,71 +1862,9 @@ def load_chunk_envelope(path: Path) -> dict:
 # mode 5), peek cuts read+parse from ~15s to <200ms total. That's the
 # observable "replay stalls even though nothing matches my new md5"
 # pain when an operator swaps ``machineconfig/<u>Cfg.txt``.
-_ENVELOPE_PEEK_BYTES = 4096
-_ENVELOPE_PEEK_RE = re.compile(
-    r'"_chunk_index"\s*:\s*(\d+).*?'
-    r'"_config_md5"\s*:\s*"([^"]*)".*?'
-    r'"_code_md5"\s*:\s*"([^"]*)"',
-    re.DOTALL,
-)
-
-
-def peek_chunk_envelope(path: Path) -> tuple[int, str, str] | None:
-    """Return ``(chunk_index, config_md5, code_md5)`` from the
-    envelope header without parsing the whole file.
-
-    Returns ``None`` if any of the three fields isn't found in the
-    first ~4KB — caller must fall back to ``load_chunk_envelope``.
-    """
-    try:
-        with path.open("rb") as f:
-            head = f.read(_ENVELOPE_PEEK_BYTES)
-    except OSError:
-        return None
-    try:
-        text = head.decode("utf-8", errors="ignore")
-    except Exception:  # noqa: BLE001
-        return None
-    m = _ENVELOPE_PEEK_RE.search(text)
-    if not m:
-        return None
-    try:
-        return int(m.group(1)), m.group(2), m.group(3)
-    except (ValueError, IndexError):
-        return None
-
-
-def _compute_upstream_schema_fingerprint(resp: Any) -> str | None:
-    """Compute a deterministic fingerprint of the upstream round schema.
-
-    Takes the sorted key set from the first robot's first round and
-    hashes it. If the upstream renames / adds / removes a field, the
-    hash changes → cached data is flagged as incompatible.
-
-    Returns None when the response doesn't contain parseable rounds
-    (broken data — shouldn't normally happen).
-    """
-    import hashlib
-    try:
-        for robot in resp if isinstance(resp, list) else []:
-            if not isinstance(robot, dict):
-                continue
-            rr = robot.get("roundResult")
-            if not isinstance(rr, str):
-                continue
-            rounds = json.loads(rr)
-            if not isinstance(rounds, list) or not rounds:
-                continue
-            first_round = rounds[0]
-            if not isinstance(first_round, dict):
-                continue
-            keys = sorted(first_round.keys())
-            return hashlib.sha256("|".join(keys).encode()).hexdigest()[:16]
-    except (json.JSONDecodeError, TypeError, AttributeError, ValueError):
-        # Data-level: malformed upstream response shape. Fingerprint is
-        # best-effort diagnostic, not correctness-critical; fall through.
-        pass
-    return None
+# _ENVELOPE_PEEK_BYTES, _ENVELOPE_PEEK_RE, peek_chunk_envelope,
+# _compute_upstream_schema_fingerprint moved to
+# fresh_slotlab.analyzer.core.parser (P2-B1a).
 
 
 def compute_analyzer_version() -> str:
