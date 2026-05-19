@@ -4518,27 +4518,11 @@ def main() -> int:
             # blanks to tease).
             "symbols_by_column_top10_payline": {k: list(v) for k, v in symbol_by_col_rows_payline.items()},
             "payline_rows_per_col": payline_row_mask_per_col,
-            # Rawdata-replay bankruptcy simulation. UI renders the
-            # ``tiers`` list as three side-by-side survival histograms
-            # (x100 / x200 / x500 by default). Each tier's ``bins``
-            # records bankrupt counts by spins-survived decile; the
-            # ``survived`` scalar is the count of simulated paid-round
-            # sessions that reached ``session_spins`` intact. All
-            # percentages the UI displays are ratios over
-            # ``robots`` (=bankrupt+survived).
-            "bankruptcy_simulation": {
-                "source": "rawdata_replay",
-                "session_spins": bankruptcy_sim_session_spins,
-                # Percentile layout (list of ints). Each tier.percentiles
-                # maps these keys (as strings) → spin count at that
-                # percentile of the tier's full session population. UI
-                # renders a decile table instead of a bin histogram.
-                "percentile_keys": list(_BANKRUPTCY_PERCENTILES),
-                "tiers": bankruptcy_rows,
-            },
-            # Back-compat alias. Legacy consumers read bankruptcy_probe;
-            # same rows but wearing the old name.
-            "bankruptcy_probe": bankruptcy_rows,
+            # Wave 2c (P2-C): bankruptcy_simulation + bankruptcy_probe are
+            # no longer inlined here. BankruptcySimulation.emit() writes
+            # them into summary["player_impact"] after the feature loop
+            # (see below). Temp keys _bankruptcy_rows /
+            # _bankruptcy_sim_session_spins carry the pre-built data.
         },
         "upstream_analysis": {
             # Server-side analysisResult.TotalWin sum (across all chunk
@@ -4761,6 +4745,34 @@ def main() -> int:
     cm = summary.get("collect_mechanic") or {}
     if "bonus_cycle_correction" in cm and "newfreespin_correction" not in cm:
         cm["newfreespin_correction"] = cm["bonus_cycle_correction"]
+
+    # ── Wave 2c (P2-C): registered feature emit hooks ─────────────────────
+    # Stash temp keys for BankruptcySimulation.emit() (Pattern B).
+    # bankruptcy_rows was built at lines 4006-4051; it's still needed by
+    # the markdown section below (local variable, not deleted here).
+    # The temp keys carry it into the feature's emit and are removed there.
+    summary["_bankruptcy_rows"] = bankruptcy_rows
+    summary["_bankruptcy_sim_session_spins"] = bankruptcy_sim_session_spins
+    # Trigger feature module imports so their register() calls fire.
+    # Dual-path (package-mode / standalone-script) mirrors the pattern at
+    # the module top (lines 182-231). Each register() is idempotent.
+    try:
+        import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
+        import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
+        import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
+        import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
+        from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
+    except ImportError:  # running as standalone script
+        import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
+        import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
+        import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
+        import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
+        from analyzer.feature_registry import ALL_FEATURES  # type: ignore[no-redef]
+    # Invoke each feature's emit. Pattern A features verify key presence (no-op).
+    # Pattern B features (BankruptcySimulation) write their final schema keys.
+    for _feature in ALL_FEATURES:
+        _feature.emit(None, summary)
+    # ── End Wave 2c ────────────────────────────────────────────────────────
 
     out_json = write_summary_json(summary, args.output_dir)  # P2-B3
 

@@ -27,12 +27,12 @@ Spec only names `analyzer/core/base_pipeline.py` (§5.8). Other 3 file names are
 
 **Non-moved (stays in PIA)**: `pia.main()` itself stays at `fresh_slotlab/player_impact_analyzer.py:main` as the thin orchestrator per §5.8 (monkey-patches attach at same attribute). `compute_analyzer_version` already replaced by P2-A1 `compute_effective_analyzer_version`; legacy may be removed in P2-B4 or later.
 
-## Wave 2c — Universal features (4 tickets)
-Per §6.2 deliverable 2. Each ticket extracts one feature from PIA's `main()` aggregation into `analyzer/features/<feature_id>.py` subclass of `AnalyzerFeature` ABC (from P2-A1).
-- P2-C1 payouts_by_spin_type
-- P2-C2 reel_marginal_by_spin_type
-- P2-C3 bankruptcy_simulation
-- P2-C4 multiplier_profile
+## Wave 2c — Universal features (SHIPPED — 4 features batched into 1 commit)
+Per §6.2 deliverable 2. Pragmatic strategy: scaffolding-first (Pattern A) for the bigger features, logic-extraction (Pattern B) for bankruptcy_simulation. See [07_wave_2c_universal_features/00_ticket.md](07_wave_2c_universal_features/00_ticket.md).
+- P2-C1 payouts_by_spin_type (Pattern A) — SHIPPED
+- P2-C2 reel_marginal_by_spin_type (Pattern A) — SHIPPED
+- P2-C3 bankruptcy_simulation (Pattern B "split-ownership") — SHIPPED
+- P2-C4 multiplier_profile (Pattern A; B deferred to Wave 2d) — SHIPPED
 
 ## Wave 2d — Cluster-shared features (9 tickets)
 Per `02_taxonomy.md` cluster catalog. TBD names.

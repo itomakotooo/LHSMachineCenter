@@ -46,7 +46,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fresh_slotlab.analyzer.features._base import AnalyzerFeature
+# Dual-path import for standalone-script mode (P2-C).
+# Package mode (cwd = repo root, fresh_slotlab on sys.path as a package): try block.
+# Standalone mode (python fresh_slotlab/player_impact_analyzer.py, fresh_slotlab/ on
+# sys.path): except block resolves via analyzer.features._base.
+try:
+    from fresh_slotlab.analyzer.features._base import AnalyzerFeature
+except ImportError:  # running as standalone script
+    from analyzer.features._base import AnalyzerFeature  # type: ignore[no-redef]
 
 
 # ---------------------------------------------------------------------------

@@ -830,14 +830,24 @@ class TestFeatureRegistry:
 
     @pytest.fixture(autouse=True)
     def _reset_registry(self):
-        """Save and restore ALL_FEATURES around each test."""
+        """Save and restore ALL_FEATURES around each test.
+
+        Wave 2c added 4 feature modules that auto-register on import. If
+        any prior test pulls those modules into sys.modules (the import
+        chain via pia.main() does so), ALL_FEATURES is non-empty by the
+        time this test class runs. We snapshot the polluted state, clear,
+        run the test against a clean slate, then restore.
+        """
         if not _REGISTRY_IMPORTABLE:
             yield
             return
         original = list(_registry_mod.ALL_FEATURES)
-        yield
         _registry_mod.ALL_FEATURES.clear()
-        _registry_mod.ALL_FEATURES.extend(original)
+        try:
+            yield
+        finally:
+            _registry_mod.ALL_FEATURES.clear()
+            _registry_mod.ALL_FEATURES.extend(original)
 
     @requires_registry
     def test_all_features_empty_on_fresh_import(self):
@@ -957,9 +967,12 @@ class TestGetFeaturesForMachine:
             yield
             return
         original = list(_registry_mod.ALL_FEATURES)
-        yield
         _registry_mod.ALL_FEATURES.clear()
-        _registry_mod.ALL_FEATURES.extend(original)
+        try:
+            yield
+        finally:
+            _registry_mod.ALL_FEATURES.clear()
+            _registry_mod.ALL_FEATURES.extend(original)
 
     @requires_registry
     def test_filters_by_manifest_analyzer_features_list(self):
@@ -1363,9 +1376,12 @@ class TestInjectBugC3SilentDedup:
             yield
             return
         original = list(_registry_mod.ALL_FEATURES)
-        yield
         _registry_mod.ALL_FEATURES.clear()
-        _registry_mod.ALL_FEATURES.extend(original)
+        try:
+            yield
+        finally:
+            _registry_mod.ALL_FEATURES.clear()
+            _registry_mod.ALL_FEATURES.extend(original)
 
     @requires_registry
     def test_inject_unconditional_append_would_fail_idempotency(self):
@@ -1405,9 +1421,12 @@ class TestInjectBugC4ManifestFiltering:
             yield
             return
         original = list(_registry_mod.ALL_FEATURES)
-        yield
         _registry_mod.ALL_FEATURES.clear()
-        _registry_mod.ALL_FEATURES.extend(original)
+        try:
+            yield
+        finally:
+            _registry_mod.ALL_FEATURES.clear()
+            _registry_mod.ALL_FEATURES.extend(original)
 
     @requires_registry
     def test_inject_applies_to_based_filtering_would_fail(self):
