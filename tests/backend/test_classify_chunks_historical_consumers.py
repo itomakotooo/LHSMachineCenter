@@ -252,10 +252,18 @@ class TestHistoricalNeverFeedsDefaultAnalyzerPath(_AppFixtureMixin):
     """C2: Historical-bucket chunks must be filtered before reaching the
     analyzer in the default (no md5 filter) code path.
 
-    Verification strategy: monkeypatch pia.post_json to capture every
-    response the analyzer actually receives. The historical chunk writes
+    Verification strategy: wrap json.loads to capture every chunk response
+    the analyzer ingests via _cached_responses. The historical chunk writes
     _HISTORICAL_RESPONSE (with _marker="HISTORICAL"). If the bug exists,
     _HISTORICAL_RESPONSE appears in the captured calls.
+
+    Post-P2-B4 note: monkeypatching pia.post_json directly is no longer
+    sufficient because run_sampling_chunk now lives in
+    fresh_slotlab.analyzer.core.base_pipeline and reads post_json from
+    its own module namespace. _run_generate_report patches BOTH
+    pia.post_json AND _core_bp.post_json; intercepting only one site
+    misses the live lookup. This test bypasses the patch hazard
+    entirely by spying on the upstream json.loads.
 
     C4 inject-bug documentation:
       Bug location: src/web_console/backend/app.py inside _run_generate_report (line 6756)

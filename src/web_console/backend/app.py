@@ -7129,12 +7129,22 @@ def create_app(
             from io import StringIO
 
             import fresh_slotlab.player_impact_analyzer as pia
+            import fresh_slotlab.analyzer.core.base_pipeline as _core_bp
             _resp_iter = iter(_cached_responses)
             _saved_post = pia.post_json
+            # P2-B4: post_json is now canonical in core/base_pipeline.py.
+            # run_sampling_chunk calls post_json_with_retry → post_json
+            # from base_pipeline's own namespace, so we must patch BOTH
+            # pia.post_json (for any direct callers) and _core_bp.post_json
+            # (the live lookup site used by post_json_with_retry).
+            # Both are restored in the finally block below.
+            _saved_core_post = _core_bp.post_json
             # Each analyzer fetch pops the next pre-loaded response;
             # exhaustion yields [] which the analyzer already handles
             # via parse_failed_zero_chunk downstream.
-            pia.post_json = lambda payload, timeout: next(_resp_iter, [])
+            _post_stub = lambda payload, timeout: next(_resp_iter, [])  # noqa: E731
+            pia.post_json = _post_stub
+            _core_bp.post_json = _post_stub
             _saved_exit = os._exit
             os._exit = lambda rc: None
 
@@ -7198,6 +7208,7 @@ def create_app(
                 _sys.stdout = old_stdout
                 _sys.argv = old_argv
                 pia.post_json = _saved_post
+                _core_bp.post_json = _saved_core_post  # P2-B4: restore base_pipeline too
                 os._exit = _saved_exit
 
             if rc != 0:

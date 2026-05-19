@@ -57,7 +57,7 @@ Per `02_taxonomy.md` cluster catalog. TBD names.
 | **P2-B1b** | [03b_core_parser_orchestrator/00_ticket.md](03b_core_parser_orchestrator/00_ticket.md) | SHIPPED (parse_chunk_response carve) | `a1afc61` |
 | **P2-B2** | [04_core_aggregator/00_ticket.md](04_core_aggregator/00_ticket.md) | SHIPPED (aggregator.py + _utils.py + dedup; 457 of 7-suite GREEN) | `ee8ea21` |
 | **P2-B3** | [05_core_writer/00_ticket.md](05_core_writer/00_ticket.md) | SHIPPED (writer.py + DI for md5 lookup; 519 of 8-suite GREEN) | (this commit) |
-| P2-B4 | TBD | PENDING | — |
+| **P2-B4** | [06_core_base_pipeline/00_ticket.md](06_core_base_pipeline/00_ticket.md) | SHIPPED (HTTP layer + sampling helpers; main() refactor deferred to Wave 2c-2f) | (this commit) |
 | P2-C1..C4 | TBD | PENDING | — |
 | P2-D1..D9 | TBD | PENDING | — |
 | P2-E1..E13 | TBD | PENDING | — |
