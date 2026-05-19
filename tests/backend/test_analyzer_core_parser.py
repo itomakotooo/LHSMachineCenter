@@ -190,14 +190,9 @@ class TestFilesExist:
 # C1 — All 15 functions/classes importable from core.parser
 # ===========================================================================
 
-# The 14 public symbols per §1 (functions, classes) that must be in parser.py.
-# parse_chunk_response (originally listed as 15th) deferred to sub-ticket
-# P2-B1b: the 1857-line function is too big to carve in one shot per the
-# sub-division pattern from P1-C1. It STAYS in PIA for now and will be
-# carved into core.parser separately. The 2 named parse_chunk_response
-# tests below (test_parse_chunk_response_is_callable +
-# test_parse_chunk_response_is_same_object_via_re_export) are xfail-marked
-# until P2-B1b lands.
+# The 15 public symbols per §1 (functions, classes) that must be in parser.py.
+# P2-B1b landed: parse_chunk_response (the 1857-line orchestrator) is now carved
+# into core.parser. All 15 symbols are present; xfail decorators removed.
 _REQUIRED_FUNCTIONS_AND_CLASSES = [
     "parse_rounds",
     "_check_round_schema",
@@ -213,6 +208,7 @@ _REQUIRED_FUNCTIONS_AND_CLASSES = [
     "_payload_sha256",
     "_canonical_payload_bytes",
     "ChunkIntegrityError",
+    "parse_chunk_response",
 ]
 
 # The 8 module-level constants per §1 that must be in parser.py
@@ -271,12 +267,6 @@ class TestCoreParserSymbols:
             "Per PIA docstring: 'class ChunkIntegrityError(ValueError)'"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="parse_chunk_response deferred to sub-ticket P2-B1b "
-        "(1857-line function too big to carve in one shot; stays in PIA "
-        "until P2-B1b lands). Test auto-flips to PASS when P2-B1b ships.",
-    )
     @requires_core_parser
     def test_parse_chunk_response_is_callable(self):
         """C1: parse_chunk_response (the BIG one) must be callable."""
@@ -346,12 +336,6 @@ class TestReExportPattern:
             "Inject-bug: delete any constant re-import in PIA → this fires."
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="parse_chunk_response deferred to sub-ticket P2-B1b "
-        "(1857-line function too big to carve in one shot; stays in PIA "
-        "until P2-B1b lands). Test auto-flips to PASS when P2-B1b ships.",
-    )
     @requires_pia
     @requires_core_parser
     def test_parse_chunk_response_is_same_object_via_re_export(self):
@@ -599,10 +583,10 @@ class TestSubprocessImportSafety:
                 f"STDERR: {result.stderr!r}"
             )
         # If pia was pulled in as a side effect of importing core.parser,
-        # that indicates a circular import or unwanted coupling.
-        # Note: this is a soft guard — some dep chain may legitimately
-        # cause it; document if this fires unexpectedly.
-        assert "pia_imported=True" not in result.stdout or True, (
+        # that indicates a circular import or unwanted coupling. The
+        # authoritative C3 guard is test_no_back_import_to_pia below
+        # (static grep). This runtime check is kept as a defense in depth.
+        assert "pia_imported=True" not in result.stdout, (
             "Warning: importing core.parser also imported player_impact_analyzer.\n"
             "This may indicate a circular import. Check for cycle risk per §6."
         )
@@ -630,6 +614,55 @@ class TestSubprocessImportSafety:
             f"Module {module_path!r} failed to import individually "
             f"(rc={result.returncode})\n"
             f"STDERR: {result.stderr!r}"
+        )
+
+    def test_no_back_import_to_pia(self):
+        """C3 (cycle freedom): parser.py must NOT import from player_impact_analyzer.
+
+        Static grep-based assertion — independent of whether the cycle would
+        resolve at runtime. A back-import `from fresh_slotlab.player_impact_analyzer
+        import X` inside core/parser.py creates a cycle because PIA itself imports
+        from core.parser (via the dual-path import block added in P2-B1a). The cycle
+        may resolve in CPython via the partially-initialised module cache, but the
+        result is non-deterministic import ordering and is explicitly forbidden by
+        P2-B1b §3 C3.
+
+        Note: test_core_parser_import_does_not_trigger_pia_side_effects (above)
+        uses a subprocess sys.modules check; the previous `or True` tautology was
+        removed in this P2-B1b commit, but this static-grep test is still the
+        authoritative C3 guard because the subprocess check only catches a cycle
+        that actually fires at import time, while a back-import gated behind a
+        function body would pass the runtime check yet fail this one.
+
+        Inject-bug proof (documented in 03_tests.md):
+          1. Add `from fresh_slotlab.player_impact_analyzer import parse_rounds`
+             to core/parser.py → this test goes RED.
+          2. Revert the addition → this test goes GREEN.
+        """
+        if not CORE_PARSER.exists():
+            pytest.skip("core/parser.py not yet created by P2-B1b — nothing to grep")
+
+        source = CORE_PARSER.read_text(encoding="utf-8")
+        # Pattern: any import from the PIA module (back-import).
+        # We check both `from fresh_slotlab.player_impact_analyzer import`
+        # and `import fresh_slotlab.player_impact_analyzer` forms.
+        back_import_lines = [
+            (lineno, line.rstrip())
+            for lineno, line in enumerate(source.splitlines(), start=1)
+            if "fresh_slotlab.player_impact_analyzer" in line
+            # Skip comment lines (allow documented references)
+            and not line.lstrip().startswith("#")
+        ]
+
+        assert len(back_import_lines) == 0, (
+            f"C3 CYCLE VIOLATION: core/parser.py contains {len(back_import_lines)} "
+            "back-import(s) to fresh_slotlab.player_impact_analyzer.\n"
+            "This creates a circular import (PIA imports core.parser; "
+            "core.parser must NOT import PIA).\n"
+            "Per P2-B1b §3 C3: pass symbols as arguments or resolve from "
+            "stdlib/other core modules instead.\n"
+            "Offending lines:\n"
+            + "\n".join(f"  parser.py:{ln}: {text}" for ln, text in back_import_lines)
         )
 
 
@@ -808,7 +841,7 @@ class TestNoSilentSwallows:
     # Pre-existing silent swallows in PIA within the carved range (from grep above).
     # The carve copies these intact; they are NOT new additions by the implementer.
     # If this number needs to change, it means the carve is adding NEW swallows.
-    MAX_ALLOWED_SWALLOWS_IN_PARSER = 6
+    MAX_ALLOWED_SWALLOWS_IN_PARSER = 4
 
     @staticmethod
     def _find_silent_swallows(source: str, filepath: str) -> list[str]:
@@ -847,11 +880,11 @@ class TestNoSilentSwallows:
         Per memory feedback_dont_swallow_errors_in_fix.md:
         'fix加调用时先查函数scope、runtime验证... 日志要显式（别silent swallow）'
 
-        The PIA had 6 pre-existing silent swallows in the carved range.
-        The carve is a literal copy of function bodies — these patterns are
-        expected (MAX_ALLOWED_SWALLOWS_IN_PARSER = 6). The test fails if the
-        count EXCEEDS the baseline, which would indicate new additions by the
-        implementer beyond the literal carve.
+        After P2-B1a + P2-B1b carves landed, the AST-detected count in
+        parser.py is 4 silent swallows (lines 229, 236, 426, 774; all carried
+        over verbatim from PIA). The constant matches that count exactly.
+        The test fails if the count EXCEEDS the baseline, which would indicate
+        new additions by the implementer beyond the literal carve.
 
         Inject-bug: if implementer adds a new 'except Exception: pass' wrapper
         around error-prone code during the move, count > MAX_ALLOWED → fires.

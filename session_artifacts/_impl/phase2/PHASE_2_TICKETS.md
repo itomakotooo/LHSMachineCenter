@@ -21,6 +21,7 @@ Spec only names `analyzer/core/base_pipeline.py` (§5.8). Other 3 file names are
 | **P2-B1a** | `analyzer/core/parser.py` (helpers) | 14 helpers + `ChunkIntegrityError` + 8 constants | 1st (SHIPPED) |
 | **P2-B1b** | `analyzer/core/parser.py` (orchestrator) | `parse_chunk_response` only (~1857 lines) | 1st.5 (carve follow-up) |
 | **P2-B2** | `analyzer/core/aggregator.py` | `_BankruptcyStreamAccumulator`, `simulate_bankruptcy_from_response`, `compute_bankruptcy_percentiles`, `fastest_bankruptcy_spins_from_list`, `median_spins_from_list`, `_empty_bankruptcy_tier`, `_extract_bankruptcy_reps`, `build_multiplier_bucket_rows`, `return_bucket`, `quantile_from_hist`, `classify_volatility`, `classify_experience_archetype`, `_metric_path_get`, `_eval_operator`, `_deviation`, `evaluate_guideline_comparison` | 2nd |
+| | **DEDUP PREREQUISITE** for P2-B2 | P2-B1b duplicated 9 helpers into `core/parser.py` to break a cycle: `to_float`, `blank_like_symbol`, `bonus_chain_depth_bucket`, `return_bucket`, `_empty_bankruptcy_tier`, `_extract_bankruptcy_reps`, `simulate_bankruptcy_from_response`, `_DEFAULT_BANKROLL_MULTIPLIERS`, `_DEFAULT_BANKRUPTCY_SESSION_SPINS`. When P2-B2 moves the canonical copies out of PIA, the parser.py duplicates MUST be deleted in the same commit and parser.py MUST import from `core/aggregator.py` (or a shared `core/_utils.py`). Failing this creates a 3-copy drift trap. | (consolidation step) |
 | **P2-B3** | `analyzer/core/writer.py` | `_save_chunk_cache` + summary-write logic extracted from `main()` | 3rd |
 | **P2-B4** | `analyzer/core/base_pipeline.py` | `parse_args`, HTTP layer (`post_json`, `post_json_with_retry`, `aimd_tune`, `make_payload`, `_classify_failure`), `run_sampling_chunk`, `select_replay_chunks_by_md5`, high-level flow from `main()` ties parser+aggregator+writer; `pia.main` stays as thin shim per §5.8 | 4th (depends on B1+B2+B3) |
 
@@ -53,7 +54,7 @@ Per `02_taxonomy.md` cluster catalog. TBD names.
 | P2-A1 | [01_foundation_files/00_ticket.md](01_foundation_files/00_ticket.md) | SHIPPED | `170e25b` |
 | P2-A2 | [02_manifest_loader/00_ticket.md](02_manifest_loader/00_ticket.md) | SHIPPED | `81b0e81` |
 | **P2-B1a** | [03_core_parser/00_ticket.md](03_core_parser/00_ticket.md) | SHIPPED (helpers only) | (this commit) |
-| **P2-B1b** | [03b_core_parser_orchestrator/00_ticket.md](03b_core_parser_orchestrator/00_ticket.md) | **READY** (parse_chunk_response carve) | — |
+| **P2-B1b** | [03b_core_parser_orchestrator/00_ticket.md](03b_core_parser_orchestrator/00_ticket.md) | SHIPPED (parse_chunk_response carve) | (this commit) |
 | P2-B2 | TBD | PENDING | — |
 | P2-B3 | TBD | PENDING | — |
 | P2-B4 | TBD | PENDING | — |
