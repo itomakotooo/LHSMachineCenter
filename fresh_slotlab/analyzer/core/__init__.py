@@ -13,4 +13,8 @@ Sub-modules:
                volatility / archetype classification, guideline evaluation)
                carved from player_impact_analyzer.py per ticket P2-B2.
                C5: MUST NOT import from fresh_slotlab.player_impact_analyzer.
+  writer     — atomic chunk-cache writer (_save_chunk_cache) + summary JSON
+               writer (write_summary_json) + CHUNK_CACHE_VERSION + utc_now().
+               Carved from player_impact_analyzer.py per ticket P2-B3.
+               C5: MUST NOT import from fresh_slotlab.player_impact_analyzer.
 """

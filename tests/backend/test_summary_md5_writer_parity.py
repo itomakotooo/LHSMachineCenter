@@ -31,12 +31,16 @@ Round 2 changes (impl-critic R1 + R2):
        for inject-bug scenarios that need a controllable path-redirectable lookup
        but is no longer the primary vehicle for agreement assertions.
   R2 — module-global split-path test replaced with _save_chunk_cache-based test.
-       The new test monkeypatches pia._lookup_machine_md5 to a sentinel and calls
-       _save_chunk_cache (α's second call site at pia.py:2206), then reads back
-       the written chunk envelope and asserts the sentinel values appear.  This
-       proves the call site goes through the live module attribute rather than a
-       cached local — the pattern flagged in feedback_subprocess_import_suicide_
-       and_module_globals.md.
+       Post-P2-B3: _save_chunk_cache moved to core/writer.py and accepts the
+       md5 lookup as a keyword-only callable (`lookup_machine_md5`). The new
+       test (`test_c5_save_chunk_cache_propagates_sentinel_via_kwarg`) passes
+       a sentinel lambda directly as the kwarg and reads back the written
+       chunk envelope to assert the sentinel values appear — equivalent
+       contract to the pre-carve monkeypatch pattern but enforced through
+       the explicit DI surface rather than module-attribute mutation. The
+       cache-leakage failure mode from feedback_subprocess_import_suicide_
+       and_module_globals.md is now structurally impossible because writer
+       does not read PIA's module globals at all.
 """
 from __future__ import annotations
 
@@ -822,49 +826,37 @@ class TestInjectBugDivergence:
             "After revert (correct values): config_md5 must match expected M14 value."
         )
 
-    def test_c5_save_chunk_cache_propagates_sentinel_via_module_attr(
-        self, tmp_path, monkeypatch
+    def test_c5_save_chunk_cache_propagates_sentinel_via_kwarg(
+        self, tmp_path
     ):
-        """R2 split-path: _save_chunk_cache uses live pia._lookup_machine_md5, not a cached local.
+        """R3 split-path: _save_chunk_cache uses the injected lookup_machine_md5 kwarg.
 
-        Per memory feedback_subprocess_import_suicide_and_module_globals.md:
-        the dangerous pattern is a module-global function captured as a local
-        alias at import time, so monkeypatching the module attribute has no
-        effect on the running code path.
+        P2-B3 migrated _save_chunk_cache from module-global _lookup_machine_md5
+        to dependency-injection: callers pass lookup_machine_md5 as a
+        keyword-only argument.  This avoids the module-global leak bug documented
+        in feedback_subprocess_import_suicide_and_module_globals.md while also
+        eliminating the writer → PIA cycle (C5).
 
-        This test exercises the ACTUAL call site at player_impact_analyzer.py
-        line 2206: `config_md5, code_md5 = _lookup_machine_md5(machine)` inside
-        _save_chunk_cache.  Monkeypatch pia._lookup_machine_md5 to a sentinel,
-        call _save_chunk_cache, read back the written chunk envelope, assert the
-        sentinel values appear in _config_md5/_code_md5 fields.
+        Verify: when a sentinel callable is passed as lookup_machine_md5, its
+        return values appear in the written chunk envelope's _config_md5 /
+        _code_md5 fields.  This proves the kwarg is used rather than any
+        module-level capture.
 
-        If the call site used a cached local (`_lmm = _lookup_machine_md5` at
-        function top) instead of calling through the module attribute, the
-        sentinel would NOT appear in the envelope — the test would go RED,
-        exposing the caching bug.
-
-        Inject-bug RED: modify the internal call at line 2206 to use a
-          locally-captured alias instead of _lookup_machine_md5 — sentinel
-          does NOT appear in envelope.
+        Inject-bug RED: pass a NO-OP lambda that returns ("", "") instead of
+          the sentinel → sentinel NOT in envelope.
         Inject-bug GREEN (this test, no modification): sentinel appears.
 
-        Round 2 (R2) replaces the vacuous split-path test that only proved
-        monkeypatch.setattr works on module attrs (always true) without ever
-        invoking a real call site.
+        Supersedes the R2 monkeypatch-via-module-attr test which became
+        invalid after P2-B3 moved _save_chunk_cache to core/writer.py and
+        switched from module-global to kwarg injection.
         """
         import fresh_slotlab.player_impact_analyzer as pia
 
-        SENTINEL_CFG = "SENTINEL_CONFIG_MD5_SPLITPATH_R2"
-        SENTINEL_CODE = "SENTINEL_CODE_MD5_SPLITPATH_R2"
-
-        # INJECT: monkeypatch pia._lookup_machine_md5 at the module attr level
-        monkeypatch.setattr(
-            pia, "_lookup_machine_md5", lambda machine: (SENTINEL_CFG, SENTINEL_CODE)
-        )
+        SENTINEL_CFG = "SENTINEL_CONFIG_MD5_SPLITPATH_R3"
+        SENTINEL_CODE = "SENTINEL_CODE_MD5_SPLITPATH_R3"
 
         cache_dir = tmp_path / "cache"
-        # Call _save_chunk_cache — it calls _lookup_machine_md5(machine) internally
-        # when no override_config_md5/override_code_md5 is given (lines 2202-2206)
+        # Inject sentinel via the new keyword-only lookup_machine_md5 argument
         pia._save_chunk_cache(
             resp={"spins": []},  # minimal valid response
             chunk_index=0,
@@ -874,7 +866,9 @@ class TestInjectBugDivergence:
             spin_times=10,
             robot_count=1,
             cache_dir=cache_dir,
-            # No override args → must call _lookup_machine_md5
+            # No override args → must call lookup_machine_md5(machine)
+            lookup_machine_md5=lambda machine: (SENTINEL_CFG, SENTINEL_CODE),
+            rawdata_index_update_entry=None,
         )
 
         chunk_file = cache_dir / "chunk_0000.json"
@@ -884,21 +878,17 @@ class TestInjectBugDivergence:
 
         envelope = json.loads(chunk_file.read_text(encoding="utf-8"))
 
-        # The sentinel must propagate — proves _save_chunk_cache goes through
-        # the live module attribute, not a cached local
+        # The sentinel must propagate — proves _save_chunk_cache calls the injected
+        # lookup_machine_md5 kwarg, not a module-level alias
         assert envelope.get("_config_md5") == SENTINEL_CFG, (
             f"_config_md5 in chunk envelope is {envelope.get('_config_md5')!r}, "
             f"expected sentinel {SENTINEL_CFG!r}.  "
-            f"_save_chunk_cache must call pia._lookup_machine_md5 via the module "
-            f"attribute, not a cached local alias.  If this fails, the call site "
-            f"at player_impact_analyzer.py:2206 has been changed to a local alias "
-            f"(module-global leak bug)."
+            f"_save_chunk_cache must call the injected lookup_machine_md5 kwarg."
         )
         assert envelope.get("_code_md5") == SENTINEL_CODE, (
             f"_code_md5 in chunk envelope is {envelope.get('_code_md5')!r}, "
             f"expected sentinel {SENTINEL_CODE!r}."
         )
-        # monkeypatch scope exits → pia._lookup_machine_md5 restored to real function
 
 
 # ── Edge cases ────────────────────────────────────────────────────────────

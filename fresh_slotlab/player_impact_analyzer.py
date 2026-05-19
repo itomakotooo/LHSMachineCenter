@@ -211,6 +211,25 @@ except ImportError:  # running as standalone script
         evaluate_guideline_comparison,
     )
 
+# P2-B3: _save_chunk_cache + write_summary_json moved to core/writer.py.
+# CHUNK_CACHE_VERSION and utc_now() are also canonical in writer.py now.
+# Re-exported here so all existing callers continue to resolve via
+# ``from fresh_slotlab.player_impact_analyzer import _save_chunk_cache`` etc.
+try:
+    from fresh_slotlab.analyzer.core.writer import (
+        CHUNK_CACHE_VERSION,
+        _save_chunk_cache,
+        utc_now,
+        write_summary_json,
+    )
+except ImportError:  # running as standalone script
+    from analyzer.core.writer import (  # type: ignore[no-redef]
+        CHUNK_CACHE_VERSION,
+        _save_chunk_cache,
+        utc_now,
+        write_summary_json,
+    )
+
 DEFAULT_ENDPOINT_URL = "http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant"
 ENDPOINT_URL = DEFAULT_ENDPOINT_URL  # mutable; overridden by --endpoint-url
 # We always hit the Variant endpoint. ``MachineName`` on the payload is
@@ -411,9 +430,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
+# utc_now() moved to fresh_slotlab.analyzer.core.writer (P2-B3).
+# Re-exported via the dual-path import block above.
 
 # to_float moved to fresh_slotlab.analyzer.core._utils (P2-B2)
 
@@ -1309,10 +1327,8 @@ def make_payload(
 # build_multiplier_bucket_rows moved to fresh_slotlab.analyzer.core.aggregator (P2-B2)
 
 
-# Cache envelope version. Bumped when the wrapping envelope changes
-# (not when analyzer code changes -- raw API data is analyzer-agnostic).
-CHUNK_CACHE_VERSION = 3  # v3: added _payload_sha256 + atomic (.tmp+os.replace) write
-
+# CHUNK_CACHE_VERSION moved to fresh_slotlab.analyzer.core.writer (P2-B3).
+# Re-exported via the dual-path import block above.
 
 # ChunkIntegrityError, _canonical_payload_bytes, _payload_sha256,
 # load_chunk_envelope moved to fresh_slotlab.analyzer.core.parser (P2-B1a).
@@ -1367,103 +1383,10 @@ def compute_analyzer_version() -> str:
 # `monkeypatch.setattr(pia, "_lookup_machine_md5", ...)`.
 
 
-def _save_chunk_cache(
-    resp: Any,
-    chunk_index: int,
-    machine: str,
-    rtp_mode: int,
-    bet: int,
-    spin_times: int,
-    robot_count: int,
-    cache_dir: Path | None,
-    override_config_md5: str = "",
-    override_code_md5: str = "",
-) -> None:
-    """Best-effort atomic write of the raw API response to a cache file.
-
-    Writes to `chunk_NNNN.json.tmp` first, then `os.replace` to the
-    final path. This guarantees the reader never sees a half-written
-    file — either the full new chunk is present or the previous (or
-    nothing) is. Payload sha256 is stamped in the envelope so later
-    reads can detect silent corruption from e.g. disk block errors.
-
-    Silent on failure so a disk-full or permissions error doesn't abort
-    the sampling run. Leftover `.tmp` files (from a failed replace) are
-    cleaned up on the way out to avoid accumulating garbage.
-
-    ``override_config_md5`` / ``override_code_md5`` — when non-empty,
-    stamp the envelope with these values INSTEAD of
-    ``_lookup_machine_md5(machine)``'s machines.json global lookup.
-    This is what segregates chunks produced with a per-request
-    MachineConfig override into their own ``localcfg_<hash>`` md5
-    bucket (otherwise all chunks inherit the server's global md5 and
-    mix with non-override samples on resume). Mirrors the fix applied
-    to the report summary stamp (commit 334d6a9) — same root cause,
-    adjacent writer.
-    """
-    if cache_dir is None:
-        return
-    out_path = cache_dir / f"chunk_{chunk_index:04d}.json"
-    tmp_path = cache_dir / f"chunk_{chunk_index:04d}.json.tmp"
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        if override_config_md5 or override_code_md5:
-            config_md5 = override_config_md5 or ""
-            code_md5 = override_code_md5 or ""
-        else:
-            config_md5, code_md5 = _lookup_machine_md5(machine)
-        envelope = {
-            "_cache_version": CHUNK_CACHE_VERSION,
-            "_machine": machine,
-            "_mode": rtp_mode,
-            "_bet": bet,
-            "_spin_times": spin_times,
-            "_robot_count": robot_count,
-            "_chunk_index": chunk_index,
-            "_saved_at": utc_now(),
-            "_config_md5": config_md5,
-            "_code_md5": code_md5,
-            "_upstream_schema_fingerprint": _compute_upstream_schema_fingerprint(resp),
-            "_payload_sha256": _payload_sha256(resp),
-            "response": resp,
-        }
-        tmp_path.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp_path, out_path)
-        # Update the rawdata index so UI reads stay O(1). Best-effort:
-        # failure here only means the next UI status refresh falls back
-        # to a filesystem scan (which self-heals the index).
-        try:
-            # cache_dir is `<rawdata_root>/<machine>/mode_<N>`; the index
-            # lives at `<rawdata_root>/_index.json`.
-            rawdata_root = cache_dir.parent.parent
-            _rawdata_index_update_entry(rawdata_root, machine, rtp_mode, cache_dir)
-        except Exception:  # noqa: BLE001
-            pass
-        # Per-mode chunk metadata sidecar — lets resume-replay +
-        # rawdata-status skip full ``json.loads`` on historical
-        # chunks. Writes ``mode_<N>/_chunks.json`` atomically.
-        # Swallows failures itself; chunk file is already durable.
-        try:
-            update_chunk_entry(
-                cache_dir, out_path,
-                chunk_index=chunk_index,
-                config_md5=config_md5,
-                code_md5=code_md5,
-                spin_times=spin_times,
-                robot_count=robot_count,
-                saved_at=envelope["_saved_at"],
-            )
-        except Exception:  # noqa: BLE001
-            pass
-    except Exception:  # noqa: BLE001
-        # Clean up a stale .tmp so we don't accumulate partials from
-        # repeated failures. The final chunk file (if any) is left
-        # untouched — a successful prior write stays valid.
-        try:
-            if tmp_path.exists():
-                tmp_path.unlink()
-        except OSError:
-            pass
+# _save_chunk_cache moved to fresh_slotlab.analyzer.core.writer (P2-B3).
+# Re-exported via the dual-path import block above.
+# Callsite (run_sampling_chunk) updated to pass lookup_machine_md5 and
+# rawdata_index_update_entry as keyword-only arguments.
 
 
 def run_sampling_chunk(
@@ -1524,6 +1447,8 @@ def run_sampling_chunk(
         resp, chunk_index, machine, rtp_mode, bet, spin_times, robot_count, chunk_cache_dir,
         override_config_md5=envelope_config_md5,
         override_code_md5=envelope_code_md5,
+        lookup_machine_md5=_lookup_machine_md5,
+        rawdata_index_update_entry=_rawdata_index_update_entry,
     )
 
     return parse_chunk_response(
@@ -5259,8 +5184,7 @@ def main() -> int:
     if "bonus_cycle_correction" in cm and "newfreespin_correction" not in cm:
         cm["newfreespin_correction"] = cm["bonus_cycle_correction"]
 
-    out_json = args.output_dir / "player_impact_summary.json"
-    out_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    out_json = write_summary_json(summary, args.output_dir)  # P2-B3
 
     md_lines = [
         f"# {args.machine} Mode={args.rtp_mode} Player Impact Report",
