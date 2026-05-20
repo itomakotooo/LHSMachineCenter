@@ -33,10 +33,10 @@
     7
   ],
   "_generator_notes": {
-    "cluster_review_pending": true,
+    "config_not_reviewed": false,
     "sc_vanilla": false,
     "synthetic_template": true,
     "bootstrap_source": "scripts/generate_machine_manifests.py",
-    "bootstrap_version": "phase3_item1_2026-05-19"
+    "bootstrap_version": "phase3_item1_2026-05-20"
   }
 }

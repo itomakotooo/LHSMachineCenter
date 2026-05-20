@@ -2,7 +2,7 @@
   "machine_id": "M142",
   "manifest_version": 1,
   "inherits_from": null,
-  "console_diagnostic_complete": false,
+  "console_diagnostic_complete": true,
   "layer4_applicable": true,
   "spin_type_convention": {
     "paid": [
@@ -33,10 +33,10 @@
     7
   ],
   "_generator_notes": {
-    "cluster_review_pending": false,
+    "config_not_reviewed": false,
     "sc_vanilla": true,
     "synthetic_template": false,
     "bootstrap_source": "scripts/generate_machine_manifests.py",
-    "bootstrap_version": "phase3_item1_2026-05-19"
+    "bootstrap_version": "phase3_item1_2026-05-20"
   }
 }

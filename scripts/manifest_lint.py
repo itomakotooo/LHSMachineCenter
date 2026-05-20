@@ -4,10 +4,12 @@ Lint checks for the per-machine manifest fleet. Builds on
 ``validate_manifests.py`` (hard schema rules) with softer best-practice
 checks:
 
-- **L1** Bootstrap markers should be cleaned up. Any manifest with
-  ``_generator_notes.cluster_review_pending: true`` is flagged as
-  "needs operator review" — manifests should not ship to production
-  with the generator's review-pending marker still set.
+- **L1** Bootstrap config-not-reviewed marker still set. Any manifest
+  with ``_generator_notes.config_not_reviewed: true`` is using
+  bootstrap default values that have not been per-machine reviewed.
+  Operators see integrity-check results from these manifests rendered
+  as soft-confidence hints in the UI; this lint surfaces the backlog
+  of manifests waiting for review.
 - **L2** Stale override metadata. Variants with
   ``console_diagnostic_complete_override: false`` must have
   ``override_set_at`` (ISO-8601), ``override_set_reason`` (non-empty),
@@ -17,10 +19,6 @@ checks:
   Manifests with ``override_set_at`` older than 90 days are flagged
   per the quarterly QA cadence noted in architecture proposal v5
   section 5.5.7.
-- **L4** SC-Vanilla manifest should be flippable. SC-Vanilla cluster
-  members (``_generator_notes.sc_vanilla: true``) with
-  ``console_diagnostic_complete: false`` are reminder candidates for
-  Phase 3 item 0 (run RTP gate, flip to true).
 
 Exit codes:
 - ``0`` — no lint findings
@@ -59,11 +57,12 @@ def lint_manifest(machine_id: str, manifest: dict[str, Any]) -> list[str]:
     findings: list[str] = []
     notes = manifest.get("_generator_notes") or {}
 
-    # L1: bootstrap review marker still set.
-    if notes.get("cluster_review_pending"):
+    # L1: bootstrap config-not-reviewed marker still set.
+    if notes.get("config_not_reviewed"):
         findings.append(
-            "L1: _generator_notes.cluster_review_pending=true (per-machine "
-            "review pending — manifest still has generator defaults)."
+            "L1: _generator_notes.config_not_reviewed=true (manifest uses "
+            "bootstrap defaults; per-machine review pending — operator UI "
+            "renders integrity-check results from this manifest as soft hints)."
         )
 
     # L2: override metadata completeness.
@@ -100,16 +99,6 @@ def lint_manifest(machine_id: str, manifest: dict[str, Any]) -> list[str]:
                 "ISO-8601 timestamp."
             )
 
-    # L4: SC-Vanilla flip reminder.
-    if (
-        notes.get("sc_vanilla")
-        and manifest.get("console_diagnostic_complete") is False
-    ):
-        findings.append(
-            "L4: SC-Vanilla member with console_diagnostic_complete=false. "
-            "Run rtp_integrity.py and flip to true (Phase 3 item 0)."
-        )
-
     return findings
 
 
@@ -128,7 +117,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--rule",
-        choices=["L1", "L2", "L3", "L4"],
+        choices=["L1", "L2", "L3"],
         help="Show only findings of this rule (filter).",
     )
     parser.add_argument(

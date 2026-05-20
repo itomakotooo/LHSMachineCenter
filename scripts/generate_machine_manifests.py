@@ -77,28 +77,44 @@ def is_sc_vanilla(machine_record: dict[str, Any]) -> bool:
 
 
 def build_underlying_manifest(machine_record: dict[str, Any]) -> dict[str, Any]:
-    """Non-variant machine manifest with conservative defaults.
+    """Non-variant machine manifest.
 
-    SC-Vanilla cluster gets the 4 universal features wired up + clean
-    integrity contract. Other clusters get the same defaults but flagged
-    as ``cluster_review_pending: true`` so operators know per-machine
-    review is required before flipping completeness to true.
+    SC-Vanilla cluster (single-paytype machines with the plain F-Plain
+    logic-class names) ships ``console_diagnostic_complete: true``: these
+    are the 45 simplest machines in the fleet, in production for years
+    with no known correctness issues. Operator UI surfaces them as
+    "verified — reports treated as authoritative".
+
+    Other clusters ship with ``console_diagnostic_complete: false`` AND
+    ``_generator_notes.config_not_reviewed: true``. The latter is the
+    frontend signal that this machine's integrity contract uses
+    bootstrap defaults that have not been per-machine reviewed yet;
+    integrity-check results render as soft-confidence hints rather
+    than authoritative pass/fail.
 
     Default ``expected_paid_st: [1]`` for both clusters — paid=1 is the
-    overwhelming convention per `02_taxonomy.md §3.1`. The few machines
-    with paid=non-1 (M99 paid=96, M272 paid=140) are per-machine
-    review tasks; conservative default catches the common case.
+    overwhelming convention per the taxonomy. A handful of machines
+    have paid=non-1 (M99=96, M272=140); per-machine reviewers fix
+    those when they triage the ``config_not_reviewed`` flag.
     """
     machine_id = machine_record["machine"]
     modes = sorted(machine_record.get("modes", []))
     sc_vanilla = is_sc_vanilla(machine_record)
     is_synthetic_template = machine_record.get("_synthetic_underlying", False)
 
+    # Per user direction 2026-05-20: flip SC-Vanilla cluster to
+    # console_diagnostic_complete=true on Day-1 bootstrap. These 45
+    # machines have been in production for years; the daily empirical
+    # verification step (item 0 in the architecture proposal) is folded
+    # into the operator's normal report-review workflow rather than
+    # gated upfront.
+    console_diagnostic_complete = bool(sc_vanilla) and not is_synthetic_template
+
     manifest: dict[str, Any] = {
         "machine_id": machine_id,
         "manifest_version": 1,
         "inherits_from": None,
-        "console_diagnostic_complete": False,
+        "console_diagnostic_complete": console_diagnostic_complete,
         "layer4_applicable": True,
         "spin_type_convention": {
             "paid": [1],
@@ -115,11 +131,17 @@ def build_underlying_manifest(machine_record: dict[str, Any]) -> dict[str, Any]:
         },
         "modes": modes,
         "_generator_notes": {
-            "cluster_review_pending": not sc_vanilla,
+            # config_not_reviewed: frontend renders integrity-check
+            # results with reduced visual weight ("hint" not "alert")
+            # because the manifest's integrity contract is bootstrap
+            # defaults not per-machine confirmation. Flips to false
+            # when a reviewer opens this manifest and confirms the
+            # values match observed rawdata.
+            "config_not_reviewed": not sc_vanilla and not is_synthetic_template,
             "sc_vanilla": sc_vanilla,
             "synthetic_template": is_synthetic_template,
             "bootstrap_source": "scripts/generate_machine_manifests.py",
-            "bootstrap_version": "phase3_item1_2026-05-19",
+            "bootstrap_version": "phase3_item1_2026-05-20",
         },
     }
     return manifest
