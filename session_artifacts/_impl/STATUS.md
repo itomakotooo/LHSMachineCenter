@@ -26,6 +26,17 @@
   `bankruptcy_simulation`, `multiplier_profile`)
 - **P2-E1**: `rtp_integrity.py` — 4-layer integrity gate, warn-only default
 
+### Phase 5 (partial — gate wired to summary; per-machine error policy deferred)
+- PIA now invokes `check_rtp_integrity(summary, manifest, rawdata_dir=None,
+  warn_only=True)` after the summary build and stashes the result onto
+  `summary["rtp_integrity_check"]`. Operator sees layer-failure detail
+  in every report.
+- Best-effort: missing manifest / Layer4Error / unexpected exception all
+  record onto summary with a diagnostic string + stderr line.
+- Deferred: per-machine flip from warn_only to strict per
+  `manifest.console_diagnostic_complete` (the architectural "Phase 5
+  proper" — one line in PIA once frontend can surface the failures).
+
 ### Phase 3 (8 of 9 items shipped — only item 7 frontend remaining)
 - **P3-1**: 419 per-machine manifest files generated.
 - **P3-2**: manifest_loader (shipped earlier in P2-A2).

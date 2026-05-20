@@ -17,7 +17,15 @@ import urllib.request
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+from pathlib import Path
 from typing import Any
+
+# Phase 3 / Phase 5: default manifest root resolved relative to repo. Pure
+# path arithmetic, no I/O at import.
+_DEFAULT_MANIFEST_ROOT = (
+    Path(__file__).resolve().parent.parent
+    / "slot_designer" / "configs" / "machine_manifests"
+)
 
 # Dual-path import for the trigger-session helper: dir-level script
 # invocation (``python fresh_slotlab/player_impact_analyzer.py``) puts
@@ -4806,6 +4814,96 @@ def main() -> int:
     for _feature in ALL_FEATURES:
         _feature.emit(None, summary)
     # ── End Wave 2c ────────────────────────────────────────────────────────
+
+    # ── Phase 5 (P5-1 partial): RTP integrity gate, warn-only ──────────────
+    # Run the 4-layer integrity gate against the just-built summary and
+    # stash the result into summary["rtp_integrity_check"] per architecture
+    # proposal section 9 + ticket P2-E1 §3 C1. Default warn_only=True so
+    # the gate NEVER raises here — operator-facing layer-failure surfacing
+    # happens in the console UI. Phase 5 proper flips warn_only per
+    # manifest.console_diagnostic_complete (deferred).
+    #
+    # Best-effort: any exception inside the gate (e.g. missing manifest
+    # for this machine, or layer-internal data corruption that the gate
+    # itself cannot soft-catch) is recorded onto summary with a
+    # diagnostic string. Per memory feedback_no_silent_swallow.md the
+    # outcome is preserved on disk; per
+    # feedback_dont_swallow_errors_in_fix.md the catch is scoped to
+    # documented expected failure modes only.
+    try:
+        try:
+            from fresh_slotlab.analyzer.rtp_integrity import (
+                check_rtp_integrity as _check_rtp_integrity,
+                Layer4Error as _Layer4Error,
+            )
+            from fresh_slotlab.analyzer.manifest_loader import (
+                load_manifest as _load_manifest,
+                resolve_inheritance as _resolve_inheritance,
+                resolve_per_mode as _resolve_per_mode,
+            )
+        except ImportError:  # script-mode (no fresh_slotlab namespace)
+            from analyzer.rtp_integrity import (  # type: ignore[no-redef]
+                check_rtp_integrity as _check_rtp_integrity,
+                Layer4Error as _Layer4Error,
+            )
+            from analyzer.manifest_loader import (  # type: ignore[no-redef]
+                load_manifest as _load_manifest,
+                resolve_inheritance as _resolve_inheritance,
+                resolve_per_mode as _resolve_per_mode,
+            )
+        # Resolve manifest (best-effort; if missing the gate runs against
+        # an empty manifest stub which means Layer 3 anchor check is
+        # vacuous, Layer 4 is skipped if rawdata_dir is None).
+        _manifest: dict[str, Any] = {}
+        try:
+            _manifest = _load_manifest(args.machine, _DEFAULT_MANIFEST_ROOT)
+            if _manifest.get("inherits_from"):
+                _manifest = _resolve_inheritance(_manifest, _DEFAULT_MANIFEST_ROOT)
+            _manifest = _resolve_per_mode(_manifest, args.rtp_mode)
+        except (FileNotFoundError, KeyError):
+            _manifest = {}
+        _gate_result = _check_rtp_integrity(
+            summary, manifest=_manifest or None, rawdata_dir=None, warn_only=True,
+        )
+        summary["rtp_integrity_check"] = {
+            "passed": _gate_result.passed,
+            "layer1_invariant_ok": _gate_result.layer1_invariant_ok,
+            "layer1_error": _gate_result.layer1_error,
+            "layer2_no_fallback_buckets_ok": _gate_result.layer2_no_fallback_buckets_ok,
+            "layer2_fallback_buckets_found": list(_gate_result.layer2_fallback_buckets_found),
+            "layer3_anchors_ok": _gate_result.layer3_anchors_ok,
+            "layer3_missing_anchors": list(_gate_result.layer3_missing_anchors),
+            "layer4_applicable": _gate_result.layer4_applicable,
+            "layer4_per_st_consistency_ok": _gate_result.layer4_per_st_consistency_ok,
+            "layer4_inconsistencies": list(_gate_result.layer4_inconsistencies),
+            "summary_message": _gate_result.summary_message,
+            "suggested_actions": list(_gate_result.suggested_actions),
+            "completeness_declared": _gate_result.completeness_declared,
+        }
+    except _Layer4Error as _exc:  # noqa: F841 — recorded for operator
+        # Data corruption in rawdata (SpinType missing / invalid). Record
+        # but do NOT crash report generation — the operator needs the
+        # rest of the summary to investigate.
+        summary["rtp_integrity_check"] = {
+            "passed": False,
+            "error": f"Layer4Error: {_exc}",
+        }
+        print(
+            f"[pia] rtp_integrity gate Layer4Error for {args.machine} "
+            f"mode {args.rtp_mode}: {_exc}",
+            file=sys.stderr,
+        )
+    except Exception as _exc:  # noqa: BLE001 — best-effort
+        summary["rtp_integrity_check"] = {
+            "passed": None,
+            "error": f"{type(_exc).__name__}: {_exc}",
+        }
+        print(
+            f"[pia] rtp_integrity gate did not run for {args.machine} "
+            f"mode {args.rtp_mode}: {type(_exc).__name__}: {_exc}",
+            file=sys.stderr,
+        )
+    # ── End Phase 5 partial ─────────────────────────────────────────────────
 
     out_json = write_summary_json(summary, args.output_dir)  # P2-B3
 
