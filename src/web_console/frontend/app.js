@@ -81,6 +81,11 @@ const state = {
   // (from GET /api/versions/current). Used by renderRunHistory to
   // render fresh/stale/untagged badges without per-row fetches.
   currentVersions: { analyzer_version: "", machines: {} },
+  // Per-machine manifest review state (from GET /api/manifests/review-state).
+  // { M14: {verified: true, reviewed: true, variant: false}, ... }
+  // Drives the catalog's "verified / unreviewed" visual badge. Lazily
+  // populated; treat missing entries as no-badge (same UX as pre-Phase-3).
+  manifestReviewState: {},
   // Active batch-generate-report tracking. null when idle; holds
   // {batch_id, poll_timer} while a batch is in flight.
   batchGenerateId: null,
@@ -1039,12 +1044,27 @@ function renderMachineCatalog() {
       const brokenBadge = issues.length
         ? `<span class="catalog-broken" title="${issues.join(' · ').replace(/"/g, '&quot;')}">⚠</span>`
         : "";
+      // Manifest review badge: ✓ if verified, · if reviewed but not
+      // verified, ? if config_not_reviewed. Missing entry = no badge
+      // (same UX as pre-Phase-3 catalog). Variants inherit from
+      // underlying via the backend's eager cascade.
+      const review = (state.manifestReviewState || {})[m.machine];
+      let reviewBadge = "";
+      if (review) {
+        if (review.verified) {
+          reviewBadge = `<span class="catalog-review verified" title="该机型 manifest 已核对，自检结果以完整置信度呈现">✓</span>`;
+        } else if (review.reviewed) {
+          reviewBadge = `<span class="catalog-review reviewed" title="该机型 manifest 已人工核对但尚未声明 console_diagnostic_complete">·</span>`;
+        } else {
+          reviewBadge = `<span class="catalog-review pending" title="该机型 manifest 使用 bootstrap 默认值，配置未核对；自检结果作软提示呈现">?</span>`;
+        }
+      }
       // Multi-select checkbox: stopPropagation in click handler so
       // card body click still focuses. Click body = focus, click
       // checkbox = batch multi-select (two independent affordances).
       d.innerHTML =
         `<input type="checkbox" class="catalog-check" title="加入批量操作" ${isMulti ? "checked" : ""}>` +
-        `<div class="catalog-title">${m.machine}${brokenBadge}${reportBadge}</div>` +
+        `<div class="catalog-title">${m.machine}${reviewBadge}${brokenBadge}${reportBadge}</div>` +
         `${metrics || `<div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`}`;
       if (issues.length) d.classList.add("broken-machine");
       grid.appendChild(d);
@@ -7327,7 +7347,7 @@ async function refreshInterpretation() {
 }
 
 async function loadBootstrap() {
-  const [h, m, models, versions] = await Promise.all([
+  const [h, m, models, versions, reviewState] = await Promise.all([
     apiGet("/api/health"),
     apiGet("/api/machines"),
     apiGet("/api/models"),
@@ -7336,6 +7356,9 @@ async function loadBootstrap() {
     // cached in state — these change only when code is reloaded or
     // machines.json is refreshed, both of which already reload.
     apiGet("/api/versions/current").catch(() => null),
+    // Per-machine manifest review state (verified / reviewed flags).
+    // Drives the catalog badges; missing entries = no-badge.
+    apiGet("/api/manifests/review-state").catch(() => null),
   ]);
   // /api/machines/summary scans every summary.json across the fleet to
   // pick best-CI per (machine, mode) — on a fleet with many report
@@ -7349,6 +7372,7 @@ async function loadBootstrap() {
   state.modelMeta = models || {};
   state.machinesSummary = null;
   state.currentVersions = versions || { analyzer_version: "", machines: {} };
+  state.manifestReviewState = reviewState || {};
   summaryPromise.then((mSummary) => {
     if (!mSummary) return;
     state.machinesSummary = mSummary;

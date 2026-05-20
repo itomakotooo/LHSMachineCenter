@@ -2343,6 +2343,23 @@ button.feature-chip {
   box-shadow: inset 0 -2px 0 #fbbf24;
 }
 
+/* Manifest review badge (Phase 3 item 7). ✓ verified, · reviewed,
+   ? config_not_reviewed. Always shows in front of the report-count
+   badge so the operator's eye lands on review state first. */
+.catalog-review {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: help;
+  width: 14px;
+  text-align: center;
+  border-radius: 50%;
+}
+.catalog-review.verified { color: #1e5d2a; background: #d6efd9; }
+.catalog-review.reviewed { color: #4a5a6f; background: #e2e8f0; }
+.catalog-review.pending  { color: #8a5a00; background: #fdf2c8; }
+
 /* Category group dot */
 .catalog-group-dot {
   display: inline-block;
