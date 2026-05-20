@@ -52,8 +52,8 @@ Per `02_taxonomy.md` cluster catalog. TBD names.
 Item 0 — Day-1 verification (RTP gate against 46 candidates) — requires cached chunks for each Day-1 machine; not yet exercised.
 Item 1 — **419 per-machine manifest files SHIPPED** via `scripts/generate_machine_manifests.py`. 393 from machines.json + 26 synthesized underlying templates for variant inheritance. Fleet-wide validation: 0 errors across all 419. See [09_phase3_manifest_bootstrap/00_ticket.md](09_phase3_manifest_bootstrap/00_ticket.md).
 Item 2 — manifest_loader.py — already SHIPPED in Wave 2a (P2-A2).
-Item 3 — Wire compute_effective_analyzer_version to consult manifest — pending.
-Items 4-9 — pending.
+Item 3 — Versioning wired to manifests. `compute_base_analyzer_version()` hashes `core/*.py` per §4.1; `compute_effective_version_for_machine(machine_id, mode)` orchestrates manifest read → variant cascade → per-mode override → feature lookup → 12-hex string. 7 previously-skipped hash-composition tests now exercise the real API.
+Items 4-9 — pending (DB column ALTER, frontend manifest consumption, lint tools).
 
 ---
 
