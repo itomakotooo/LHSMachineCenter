@@ -53,7 +53,9 @@ Item 0 — Day-1 verification (RTP gate against 46 candidates) — requires cach
 Item 1 — **419 per-machine manifest files SHIPPED** via `scripts/generate_machine_manifests.py`. 393 from machines.json + 26 synthesized underlying templates for variant inheritance. Fleet-wide validation: 0 errors across all 419. See [09_phase3_manifest_bootstrap/00_ticket.md](09_phase3_manifest_bootstrap/00_ticket.md).
 Item 2 — manifest_loader.py — already SHIPPED in Wave 2a (P2-A2).
 Item 3 — Versioning wired to manifests. `compute_base_analyzer_version()` hashes `core/*.py` per §4.1; `compute_effective_version_for_machine(machine_id, mode)` orchestrates manifest read → variant cascade → per-mode override → feature lookup → 12-hex string. 7 previously-skipped hash-composition tests now exercise the real API.
-Items 4-9 — pending (DB column ALTER, frontend manifest consumption, lint tools).
+Items 4-7 — pending (PIA wiring, /api/reports/stale-count, DB column ALTER, frontend manifest consumption). High-risk; require user input on DB migration + backward-compat for existing run rows.
+Item 8 — `scripts/validate_manifests.py` SHIPPED. Fleet-wide validator CLI; 419/419 clean today; exits 1 if any error fires; --json mode for CI.
+Item 9 — `scripts/manifest_lint.py` SHIPPED. Soft-rule linter (L1-L4: bootstrap markers, override metadata, stale override age >90d, SC-Vanilla flip reminders). 45 L4 findings (Phase 3 item 0 follow-up).
 
 ---
 
