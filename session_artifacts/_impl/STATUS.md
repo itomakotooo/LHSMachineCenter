@@ -26,11 +26,13 @@
   `bankruptcy_simulation`, `multiplier_profile`)
 - **P2-E1**: `rtp_integrity.py` — 4-layer integrity gate, warn-only default
 
-### Phase 3 (5 of 9 items shipped)
-- **P3-1**: 419 per-machine manifest files generated (393 fleet + 26
-  synthesized variant parents). Validator passes 419/419.
+### Phase 3 (8 of 9 items shipped — only item 7 frontend remaining)
+- **P3-1**: 419 per-machine manifest files generated.
 - **P3-2**: manifest_loader (shipped earlier in P2-A2).
 - **P3-3**: `compute_base_analyzer_version` + `compute_effective_version_for_machine`.
+- **P3-4**: PIA writes `effective_analyzer_version` into summary.json (best-effort).
+- **P3-5**: backend `_update_report_index` + backfill read new field; persists to runs row.
+- **P3-6**: `runs` table grew `effective_analyzer_version TEXT` column via idempotent `ALTER`.
 - **P3-8**: `scripts/validate_manifests.py` fleet validator.
 - **P3-9**: `scripts/manifest_lint.py` soft-rule linter (L1-L4).
 
@@ -53,18 +55,24 @@ needs the per-machine specs in `slot_designer/machines/<M>/`.
 Example 6 M250 demo depends on P2-E12 M250 onboarding; per-cluster regression
 tests need the cluster-shared features (Wave 2d) to exist first.
 
-### Phase 3 items 4-7 (production-touching wiring)
+### Phase 3 items 4-7 (in scope for next round)
 - **Item 0**: Day-1 RTP gate verification against 46 candidates' cached
   chunks. Needs cached rawdata not exercised in this session.
 - **Item 4**: Swap PIA's `compute_analyzer_version` call sites (line 999,
-  4252) to `compute_effective_version_for_machine`. Risk: existing summaries
-  store the old version; switching invalidates them.
+  4252) to `compute_effective_version_for_machine`. The legacy
+  `analyzer_version` field stays in summary alongside the new
+  `effective_analyzer_version` so old run rows render as historical (per
+  memory `feedback_md5_is_a_tag_not_a_destruction_signal.md` — version is
+  a tag, not a destruction signal).
 - **Item 5**: Update `/api/reports/stale-count` to compare per-(machine, mode)
-  effective version. Backend code path.
-- **Item 6**: `ALTER TABLE runs ADD COLUMN effective_analyzer_version TEXT`.
-  DB migration; need backup + rollout plan.
+  effective version.
+- **Item 6**: Add `effective_analyzer_version TEXT` column to `runs`
+  table via the existing idempotent `ALTER TABLE ADD COLUMN` pattern in
+  `app.py:1606-1641`. Internal single-machine SQLite — no migration
+  risk, runs additively at startup.
 - **Item 7**: Frontend (app.js 7996 lines) reads manifest-driven feature
-  list to know which renderers to invoke. Substantial frontend work.
+  list to know which renderers to invoke. Substantial frontend work that
+  pairs naturally with Phase 4.
 
 ### Phase 4 (frontend renderer registry + SCHEMA_VERSION CI enforcement)
 - No existing SCHEMA_VERSION pattern in `src/web_console/frontend/app.js`.
@@ -93,14 +101,11 @@ Optional per architecture proposal §6.6.
    - flip `console_diagnostic_complete: true` if all applicable layers pass
    - leave at `false` if any layer fails (and triage in a separate session)
 
-2. **You / operator**: green-light DB migration strategy for Phase 3 Item 6
-   (ALTER TABLE) before Items 4-5 can wire up effective version.
-
-3. **Future implementation session**: Phase 2 Wave 2d cluster-shared features
+2. **Future implementation session**: Phase 2 Wave 2d cluster-shared features
    (needs per-cluster spec data); Phase 2 Wave 2e per-machine onboarding
    (one ticket per of the 12 forcing-function machines).
 
-4. **Future frontend session**: Phase 4 renderer registry + Phase 3 Item 7
+3. **Future frontend session**: Phase 4 renderer registry + Phase 3 Item 7
    manifest consumption (bundled — both edit `app.js`).
 
 ---

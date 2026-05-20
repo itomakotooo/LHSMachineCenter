@@ -1639,6 +1639,17 @@ class StateStore:
             # summary.sampling.total_spins.
             if "total_spins" not in run_columns:
                 conn.execute("ALTER TABLE runs ADD COLUMN total_spins INTEGER")
+            # Phase 3 item 6: per-(machine, mode) effective_analyzer_version
+            # composed of base_hash + sorted(feature_hashes) + mode. Lives
+            # alongside the legacy `analyzer_version` column — old run rows
+            # carry NULL here and render as historical (per memory
+            # feedback_md5_is_a_tag_not_a_destruction_signal.md: version is
+            # a tag, not a destruction signal). Populated by PIA's summary
+            # writer + backfilled at run finalize.
+            if "effective_analyzer_version" not in run_columns:
+                conn.execute(
+                    "ALTER TABLE runs ADD COLUMN effective_analyzer_version TEXT"
+                )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interpretations (
@@ -1732,6 +1743,7 @@ class StateStore:
                 SELECT run_id, status, summary_file, achieved_rtp_pct,
                        achieved_halfwidth_pp, quality_label,
                        rawdata_config_md5, rawdata_code_md5, analyzer_version,
+                       effective_analyzer_version,
                        total_spins
                 FROM runs
                 WHERE status IN ('completed', 'cancelled')
@@ -1741,6 +1753,7 @@ class StateStore:
                        OR rawdata_config_md5 IS NULL
                        OR rawdata_code_md5 IS NULL
                        OR analyzer_version IS NULL
+                       OR effective_analyzer_version IS NULL
                        OR total_spins IS NULL)
                 """
             ).fetchall()
@@ -1770,6 +1783,7 @@ class StateStore:
                 rpt_cfg = summary.get("config_md5")
                 rpt_code = summary.get("code_md5")
                 analyzer_ver = summary.get("analyzer_version")
+                eff_analyzer_ver = summary.get("effective_analyzer_version")
                 tot_spins = summary.get("sampling", {}).get("total_spins")
                 # Write whichever fields had a null stored + a real
                 # value available; leave others alone.
@@ -1786,6 +1800,10 @@ class StateStore:
                     patch_pairs.append(("rawdata_code_md5", str(rpt_code)))
                 if r["analyzer_version"] is None and analyzer_ver:
                     patch_pairs.append(("analyzer_version", str(analyzer_ver)))
+                if r["effective_analyzer_version"] is None and eff_analyzer_ver:
+                    patch_pairs.append(
+                        ("effective_analyzer_version", str(eff_analyzer_ver))
+                    )
                 if r["total_spins"] is None and tot_spins is not None:
                     patch_pairs.append(("total_spins", int(tot_spins)))
                 if not patch_pairs:
@@ -5289,6 +5307,15 @@ class RunManager:
         rawdata_config_md5 = summary.get("config_md5")
         rawdata_code_md5 = summary.get("code_md5")
         analyzer_version = summary.get("analyzer_version")
+        # Phase 3 item 4: effective_analyzer_version is the per-(machine,
+        # mode) hash that invalidates only machines actually using the
+        # changed feature(s). Lives alongside the legacy analyzer_version
+        # field (which hashes the analyzer source only — not per-machine).
+        # When PIA's summary writer ships the new field (deferred to a
+        # later commit; see ticket 09_phase3_manifest_bootstrap notes),
+        # this code picks it up automatically. Until then the value is
+        # None and old run rows render with empty-string in the index.
+        effective_analyzer_version = summary.get("effective_analyzer_version")
         total_spins = summary.get("sampling", {}).get("total_spins")
         item = {
             "report_version": managed.report_version,
@@ -5315,6 +5342,7 @@ class RunManager:
             "rawdata_config_md5": rawdata_config_md5 or "",
             "rawdata_code_md5": rawdata_code_md5 or "",
             "analyzer_version": analyzer_version or "",
+            "effective_analyzer_version": effective_analyzer_version or "",
         }
         index_payload.append(item)
         write_json(index_path, index_payload)
@@ -5335,6 +5363,8 @@ class RunManager:
             patch["rawdata_code_md5"] = str(rawdata_code_md5)
         if analyzer_version:
             patch["analyzer_version"] = str(analyzer_version)
+        if effective_analyzer_version:
+            patch["effective_analyzer_version"] = str(effective_analyzer_version)
         if total_spins is not None:
             patch["total_spins"] = int(total_spins)
         if patch:

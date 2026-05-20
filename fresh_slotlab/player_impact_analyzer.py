@@ -4250,6 +4250,36 @@ def main() -> int:
     else:
         _summary_config_md5, _summary_code_md5 = _lookup_machine_md5(args.machine)
     _summary_analyzer_version = compute_analyzer_version()
+    # Phase 3 item 4: per-(machine, mode) effective_analyzer_version
+    # composed of base_hash + sorted(feature_hashes_machine_uses) + mode.
+    # Lives alongside the legacy analyzer_version. Best-effort: if the
+    # manifest is missing or feature registry is empty, falls back to
+    # empty string and old run rows show as historical (per memory
+    # feedback_md5_is_a_tag_not_a_destruction_signal.md). The legacy
+    # analyzer_version field is unchanged; old summaries keep working.
+    _summary_effective_analyzer_version = ""
+    _effective_version_error: str | None = None
+    try:
+        from fresh_slotlab.analyzer.versioning import (
+            compute_effective_version_for_machine as _ceavfm,
+        )
+        _summary_effective_analyzer_version = _ceavfm(
+            args.machine, mode=args.rtp_mode,
+        )
+    except (FileNotFoundError, KeyError, ImportError, ValueError) as _exc:
+        # Manifest missing / feature in manifest not registered /
+        # versioning module unavailable. Record on disk per
+        # feedback_no_silent_swallow.md so a missing manifest does not
+        # vanish into the void — the empty string in the summary signals
+        # "not computed" and the diagnostic field below explains why.
+        # The legacy analyzer_version is still computed above so the
+        # report write succeeds for backward compat.
+        _effective_version_error = f"{type(_exc).__name__}: {_exc}"
+        print(
+            f"[pia] effective_analyzer_version not computed for "
+            f"{args.machine} mode {args.rtp_mode}: {_effective_version_error}",
+            file=sys.stderr,
+        )
     summary = {
         "report_id": f"impact_{args.machine}_mode{args.rtp_mode}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "run_id": run_id,
@@ -4264,6 +4294,9 @@ def main() -> int:
         # Staleness means the report was built with older Python code
         # → safe to regenerate from rawdata (same chunks, new code).
         "analyzer_version": _summary_analyzer_version,
+        # Per-(machine, mode) effective hash. Empty when manifest /
+        # registry not available; populated 12-hex when both are.
+        "effective_analyzer_version": _summary_effective_analyzer_version,
         "output_all_robots_result": True,
         "sampling": {
             "target_halfwidth_pp": args.target_halfwidth_pp,
