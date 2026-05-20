@@ -596,9 +596,21 @@ def validate_manifest(
     # Intentional per ticket §3 C5 note: "Rule 1: Every machine in configs/machines.json
     # MUST have a manifest file." — enforced at fleet-validation call site.
     # We emit an error only if machines_config is supplied AND machine_id not present.
+    #
+    # Phase 3 carve-out: ``_generator_notes.synthetic_template = True`` marks
+    # template-only manifests that exist solely as parents for variant
+    # ``inherits_from`` cascade (e.g. underlying M273 referenced by 33 variants,
+    # not listed in machines.json). These are intentional templates per
+    # §5.5.4-5.5.5; Rule 1 should not fire on them.
+    notes = manifest.get("_generator_notes") or {}
+    is_synthetic_template = bool(notes.get("synthetic_template"))
     if machines_config is not None:
         machine_ids_in_config = _extract_machine_ids(machines_config)
-        if machine_id not in machine_ids_in_config and not is_variant:
+        if (
+            machine_id not in machine_ids_in_config
+            and not is_variant
+            and not is_synthetic_template
+        ):
             errors.append(_ValidationError(
                 1,
                 f"Machine '{machine_id}' is not present in machines.json. "
@@ -807,9 +819,17 @@ def _extract_machine_ids(machines_config: dict[str, Any]) -> set[str]:
     """Extract machine IDs from the machines.json structure.
 
     Supports both list-of-dicts and dict-keyed-by-id forms.
+
+    Field-name fallback chain (per Phase 3 manifest-generator integration):
+    record["machine"] (current configs/machines.json schema) →
+    record["machine_id"] (manifest schema convention) →
+    record["id"] (legacy fallback).
     """
     if isinstance(machines_config, list):
-        return {m.get("machine_id", m.get("id", "")) for m in machines_config}
+        return {
+            m.get("machine", m.get("machine_id", m.get("id", "")))
+            for m in machines_config
+        }
     if isinstance(machines_config, dict):
         # May be keyed by machine_id directly, or have a "machines" sub-key
         if "machines" in machines_config:

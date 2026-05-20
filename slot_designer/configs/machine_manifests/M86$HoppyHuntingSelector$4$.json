@@ -1,0 +1,16 @@
+{
+  "machine_id": "M86$HoppyHuntingSelector$4$",
+  "manifest_version": 1,
+  "inherits_from": "M86.json",
+  "modes": [
+    1,
+    2,
+    5,
+    7
+  ],
+  "_generator_notes": {
+    "underlying": "M86",
+    "bootstrap_source": "scripts/generate_machine_manifests.py",
+    "bootstrap_version": "phase3_item1_2026-05-19"
+  }
+}

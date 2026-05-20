@@ -42,8 +42,18 @@ Per `02_taxonomy.md` cluster catalog. TBD names.
 - P2-E2..E13 — 12 forcing-function machines: M21/M260/M268/M279/M274/M113/M11/M250/M108/M65/M67/M120 (per-machine BoundaryContract work; defer to per-machine sessions when machine specs land in Phase 3)
 
 ## Wave 2f — Example 6 + cleanup
-- P2-F1 Example 6 workflow M250 end-to-end demo
-- P2-F2 per-cluster regression tests
+- P2-F1 Example 6 workflow M250 end-to-end demo (deferred to per-machine M250 session in Phase 3+)
+- P2-F2 per-cluster regression tests (deferred; framework lands when cluster-shared features land per Wave 2d)
+
+---
+
+# Phase 3 — partial progress
+
+Item 0 — Day-1 verification (RTP gate against 46 candidates) — requires cached chunks for each Day-1 machine; not yet exercised.
+Item 1 — **419 per-machine manifest files SHIPPED** via `scripts/generate_machine_manifests.py`. 393 from machines.json + 26 synthesized underlying templates for variant inheritance. Fleet-wide validation: 0 errors across all 419. See [09_phase3_manifest_bootstrap/00_ticket.md](09_phase3_manifest_bootstrap/00_ticket.md).
+Item 2 — manifest_loader.py — already SHIPPED in Wave 2a (P2-A2).
+Item 3 — Wire compute_effective_analyzer_version to consult manifest — pending.
+Items 4-9 — pending.
 
 ---
 
