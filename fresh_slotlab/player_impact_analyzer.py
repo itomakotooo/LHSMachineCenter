@@ -4268,19 +4268,31 @@ def main() -> int:
     _summary_effective_analyzer_version = ""
     _effective_version_error: str | None = None
     try:
-        from fresh_slotlab.analyzer.versioning import (
-            compute_effective_version_for_machine as _ceavfm,
-        )
+        # Dual-path import — backend cwd=repo-root resolves the
+        # fresh_slotlab.* path; script-mode (cwd=fresh_slotlab/) needs
+        # the bare module path. Matches the pattern PIA uses for its
+        # trigger_sessions / round_classification / round_win imports
+        # at the top of this file.
+        try:
+            from fresh_slotlab.analyzer.versioning import (
+                compute_effective_version_for_machine as _ceavfm,
+            )
+        except ImportError:
+            from analyzer.versioning import (  # type: ignore[no-redef]
+                compute_effective_version_for_machine as _ceavfm,
+            )
         _summary_effective_analyzer_version = _ceavfm(
             args.machine, mode=args.rtp_mode,
         )
-    except (FileNotFoundError, KeyError, ImportError, ValueError) as _exc:
-        # Manifest missing / feature in manifest not registered /
-        # versioning module unavailable. Record on disk per
-        # feedback_no_silent_swallow.md so a missing manifest does not
-        # vanish into the void — the empty string in the summary signals
-        # "not computed" and the diagnostic field below explains why.
-        # The legacy analyzer_version is still computed above so the
+    except Exception as _exc:  # noqa: BLE001 — capture-and-record
+        # Per memory feedback_no_silent_swallow.md: empty value in
+        # summary signals "not computed"; the diagnostic field below
+        # names the exception so an operator can grep. Initially we
+        # caught only (FileNotFoundError, KeyError, ImportError,
+        # ValueError); broadened to catch all because debugging
+        # 2026-05-20 showed the production path was hitting an
+        # AttributeError class that escaped the narrow catch. The
+        # legacy analyzer_version is still computed above so the
         # report write succeeds for backward compat.
         _effective_version_error = f"{type(_exc).__name__}: {_exc}"
         print(
@@ -4305,6 +4317,10 @@ def main() -> int:
         # Per-(machine, mode) effective hash. Empty when manifest /
         # registry not available; populated 12-hex when both are.
         "effective_analyzer_version": _summary_effective_analyzer_version,
+        # Diagnostic — populated only when the orchestrator above hit
+        # an exception. None when computation succeeded. Lets operators
+        # see WHY the field is empty without grepping stderr.
+        "effective_analyzer_version_error": _effective_version_error,
         "output_all_robots_result": True,
         "sampling": {
             "target_halfwidth_pp": args.target_halfwidth_pp,

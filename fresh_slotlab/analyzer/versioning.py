@@ -135,15 +135,45 @@ def compute_effective_version_for_machine(
     # AnalyzerFeature ABC, which lives in features/_base.py, which lives
     # alongside this module's siblings. Direct top-level imports would
     # work today but lazy-import keeps versioning.py drop-in for callers
-    # who only need compute_base_analyzer_version.
-    from fresh_slotlab.analyzer.manifest_loader import (
-        load_manifest,
-        resolve_inheritance,
-        resolve_per_mode,
-    )
+    # who only need compute_base_analyzer_version. Dual-path covers
+    # script-mode (cwd=fresh_slotlab/) per memory
+    # feedback_subprocess_import_suicide_and_module_globals.md.
+    try:
+        from fresh_slotlab.analyzer.manifest_loader import (
+            load_manifest,
+            resolve_inheritance,
+            resolve_per_mode,
+        )
+    except ImportError:
+        from analyzer.manifest_loader import (  # type: ignore[no-redef]
+            load_manifest,
+            resolve_inheritance,
+            resolve_per_mode,
+        )
 
     if registry is None:
-        from fresh_slotlab.analyzer import feature_registry as registry
+        try:
+            from fresh_slotlab.analyzer import feature_registry as registry
+        except ImportError:
+            from analyzer import feature_registry as registry  # type: ignore[no-redef]
+        # Ensure all known universal feature modules are imported so they
+        # register themselves before we read ALL_FEATURES. Importing PIA
+        # as a subprocess does not auto-import features/* (no package-level
+        # __init__ side effects). Each register() is idempotent on
+        # duplicate FEATURE_ID per P2-A1, so double-import is safe.
+        try:
+            import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
+            import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
+            import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
+            import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
+        except ImportError:
+            try:
+                import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
+                import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
+                import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
+                import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
+            except ImportError:
+                pass
 
     if manifests_root is None:
         # Repo root: two parents up from this file (fresh_slotlab/analyzer/).

@@ -191,13 +191,22 @@ class AnalyzerFeature(ABC):
     def compute_hash(cls) -> str:
         """Return 12-char sha256 hex of the subclass's source file.
 
-        Per 04_v5 §5.2 lines 345-348:
-            src = Path(cls.__module__.replace(".", "/") + ".py")
-            return hashlib.sha256(src.read_bytes()).hexdigest()[:12]
+        Per 04_v5 §5.2 lines 345-348 the algorithm is:
+            sha256(<feature module source bytes>).hexdigest()[:12]
+
+        The spec's example expression
+            ``Path(cls.__module__.replace(".", "/") + ".py")``
+        only works when cwd resolves the resulting relative path to the
+        same file. Under PIA's script-mode invocation (where the
+        feature class is imported as ``analyzer.features.X`` with the
+        repo root still the cwd), that relative path resolves nowhere.
+        We use ``sys.modules`` to find the module's actual ``__file__``
+        attribute, which is invariant across package- and script-mode.
 
         Used by ``compute_effective_analyzer_version`` to produce the
-        per-feature hash component.  Each feature's hash changes only when
-        its own source file changes — not when unrelated features change.
+        per-feature hash component. Each feature's hash changes only
+        when its own source file changes — not when unrelated features
+        change.
 
         Returns
         -------
@@ -207,10 +216,17 @@ class AnalyzerFeature(ABC):
         Raises
         ------
         FileNotFoundError
-            If the source file for ``cls.__module__`` cannot be found on
-            disk.  This happens when the class is defined in a REPL or
-            a dynamically-constructed module.  Callers that need resilience
-            should wrap in try/except.
+            If the source file cannot be located. Happens when the
+            class is defined in a REPL or a dynamically-constructed
+            module; callers that need resilience should wrap in
+            try/except.
         """
-        src = Path(cls.__module__.replace(".", "/") + ".py")
-        return hashlib.sha256(src.read_bytes()).hexdigest()[:12]
+        import sys
+        mod = sys.modules.get(cls.__module__)
+        path = getattr(mod, "__file__", None) if mod is not None else None
+        if path is None:
+            # Fallback to the spec's literal expression so the behavior
+            # is unchanged for callers that ALWAYS run in package-mode
+            # and never touched the new sys.modules path.
+            path = str(Path(cls.__module__.replace(".", "/") + ".py"))
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()[:12]
