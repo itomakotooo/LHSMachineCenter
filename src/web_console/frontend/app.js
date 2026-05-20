@@ -3993,6 +3993,98 @@ function renderPaylineDrilldown(summary) {
     .join("");
 }
 
+function renderReportSelfCheck(summary) {
+  // Surface summary.rtp_integrity_check (Phase 5 partial — PIA wires the
+  // 4-layer integrity gate into every report). Display contract:
+  //   - "verified" machines (completeness_declared=true): full visual weight
+  //   - "unreviewed" machines (completeness_declared=false): soft hint mode
+  //   - never blocks: gate is informational only per user direction 2026-05-20
+  // Hidden when the field is absent (old reports pre-Phase-5).
+  const el = byId("reportSelfCheck");
+  if (!el) return;
+  const chk = (summary || {}).rtp_integrity_check;
+  if (!chk || typeof chk !== "object") {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+    return;
+  }
+  // Error path (Layer4Error / unexpected exception during gate run).
+  if (chk.error) {
+    el.classList.remove("hidden");
+    el.className = "self-check-box self-check-error";
+    el.innerHTML = `
+      <div class="self-check-head">
+        <span class="self-check-icon">⚠</span>
+        <span class="self-check-title">报告自检未能完成</span>
+      </div>
+      <div class="self-check-body">${escapeHtml(chk.error)}</div>
+    `;
+    return;
+  }
+  // Normal path: 4 layers + summary message + suggested actions.
+  const reviewed = chk.completeness_declared === true;
+  const pass = chk.passed === true;
+  el.classList.remove("hidden");
+  // Tone classes: pass-verified / pass-hint / fail-verified / fail-hint.
+  const tone = (pass ? "pass" : "fail") + "-" + (reviewed ? "verified" : "hint");
+  el.className = "self-check-box self-check-" + tone;
+  // Layer line: ✓ passed | ✗ failed | ⏭ skipped
+  const layerLine = (label, ok, info) => {
+    const sym = ok === true ? "✓" : ok === false ? "✗" : "⏭";
+    const cls = ok === true ? "ok" : ok === false ? "bad" : "skip";
+    const tail = info ? ` <span class="muted">${escapeHtml(info)}</span>` : "";
+    return `<li class="self-check-layer ${cls}">${sym} ${escapeHtml(label)}${tail}</li>`;
+  };
+  const fallbacks = (chk.layer2_fallback_buckets_found || []).join(", ");
+  const missing = (chk.layer3_missing_anchors || []).join(", ");
+  const l4inc = (chk.layer4_inconsistencies || []).length;
+  const layers = [
+    layerLine("算术一致性（各奖项加总=总赢钱）", chk.layer1_invariant_ok,
+              chk.layer1_error ? "(" + chk.layer1_error + ")" : ""),
+    layerLine("未归类奖项（应为 0）", chk.layer2_no_fallback_buckets_ok,
+              fallbacks ? "发现: " + fallbacks : ""),
+    layerLine("关键奖项命中（按机型清单）", chk.layer3_anchors_ok,
+              missing ? "缺: " + missing : ""),
+    layerLine("付费类型归类（与原始数据对比）",
+              chk.layer4_applicable === false ? null : chk.layer4_per_st_consistency_ok,
+              chk.layer4_applicable === false ? "本机型按设计跳过"
+                                              : (l4inc ? l4inc + " 处不一致" : "")),
+  ].join("");
+  const msg = escapeHtml(chk.summary_message || "");
+  const actions = Array.isArray(chk.suggested_actions) && chk.suggested_actions.length
+    ? `<ul class="self-check-actions">${
+        chk.suggested_actions.map(a => "<li>" + escapeHtml(a) + "</li>").join("")
+      }</ul>`
+    : "";
+  const headTitle = reviewed
+    ? (pass ? "报告自检通过" : "报告自检发现问题")
+    : (pass ? "报告自检通过 · 该机型配置尚未核对，仅作参考"
+            : "报告自检发现问题 · 该机型配置尚未核对，仅作参考");
+  el.innerHTML = `
+    <div class="self-check-head">
+      <span class="self-check-icon">${pass ? "✓" : "⚠"}</span>
+      <span class="self-check-title">${escapeHtml(headTitle)}</span>
+    </div>
+    <ul class="self-check-layers">${layers}</ul>
+    ${msg ? `<div class="self-check-body">${msg}</div>` : ""}
+    ${actions}
+  `;
+}
+
+// Small helper. App.js already has fmt/byId/qs but no central escapeHtml;
+// the older renderers either inline-escape or trust their input. Adding a
+// scoped helper here keeps the new self-check renderer safe without
+// disturbing existing code.
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function renderRtpClampWarning(summary) {
   // Show the operator a heads-up when the analyzer detected truncated
   // collect cycles in the sample (chunk_spin_times ran out before the
@@ -6947,6 +7039,7 @@ async function _paintAnalysisFromSummary(s) {
       .join("");
   }
   renderRtpClampWarning(s);
+  renderReportSelfCheck(s);
   renderSpinTypeBreakdown(s);
   renderFeatureBreakdownPanel(s);
   // Classifier panel needs its own API call; fire-and-forget so the

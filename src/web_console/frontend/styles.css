@@ -1087,6 +1087,79 @@ button:disabled {
   font-size: 12px;
 }
 
+/* Report self-check panel (summary.rtp_integrity_check surface).
+   Soft-hint by default; visual weight scales with the manifest's
+   completeness_declared flag. Never blocking; informational only. */
+.self-check-box {
+  border: 1px solid #d0d8e2;
+  background: #f5f8fb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.self-check-box.self-check-pass-verified {
+  border-color: #b3d8b8;
+  background: #f0f8f2;
+  color: #1e5d2a;
+}
+.self-check-box.self-check-pass-hint {
+  border-color: #d0d8e2;
+  background: #f5f8fb;
+  color: #4a5a6f;
+  opacity: 0.85;
+}
+.self-check-box.self-check-fail-verified {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+  color: #8a3b00;
+}
+.self-check-box.self-check-fail-hint {
+  border-color: #d8c8b8;
+  background: #faf6f0;
+  color: #6e5a3a;
+  opacity: 0.9;
+}
+.self-check-box.self-check-error {
+  border-color: #d4b8b8;
+  background: #faf2f2;
+  color: #7a3030;
+}
+.self-check-head {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.self-check-icon {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+  margin-right: 4px;
+}
+.self-check-layers {
+  list-style: none;
+  padding-left: 6px;
+  margin: 4px 0;
+}
+.self-check-layer {
+  padding: 2px 0;
+}
+.self-check-layer.ok { color: #2a7a36; }
+.self-check-layer.bad { color: #9b3a2a; font-weight: 500; }
+.self-check-layer.skip { color: #6b7280; }
+.self-check-layer .muted { color: #6b7280; font-size: 11px; }
+.self-check-body {
+  margin: 6px 0;
+  font-size: 11px;
+  color: inherit;
+  opacity: 0.85;
+}
+.self-check-actions {
+  margin: 4px 0 0 0;
+  padding-left: 16px;
+  font-size: 11px;
+}
+
 .progressWrap {
   margin-top: 10px;
   height: 16px;

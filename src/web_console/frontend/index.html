@@ -84,6 +84,11 @@
               <div id="modelStatus" class="meta warnMeta"></div>
             </details>
             <div id="rtpClampWarning" class="warnBox hidden"></div>
+            <!-- Report self-check (Phase 5 partial): summary.rtp_integrity_check.
+                 Soft hint by default; render with reduced opacity when the
+                 machine manifest has not been per-machine reviewed
+                 (completeness_declared=false). Never blocks; informational. -->
+            <div id="reportSelfCheck" class="self-check-box hidden"></div>
             <div class="actions">
               <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
             </div>
