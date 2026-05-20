@@ -37,9 +37,9 @@ Per §6.2 deliverable 2. Pragmatic strategy: scaffolding-first (Pattern A) for t
 ## Wave 2d — Cluster-shared features (9 tickets)
 Per `02_taxonomy.md` cluster catalog. TBD names.
 
-## Wave 2e — Bespoke + RTP gate (13 tickets)
-- P2-E1 `rtp_integrity.py` (4 layers; warn-only mode by default)
-- P2-E2..E13 — 12 forcing-function machines: M21/M260/M268/M279/M274/M113/M11/M250/M108/M65/M67/M120
+## Wave 2e — Bespoke + RTP gate
+- P2-E1 `rtp_integrity.py` (4 layers; warn-only mode by default) — SHIPPED. See [08_rtp_integrity_gate/00_ticket.md](08_rtp_integrity_gate/00_ticket.md).
+- P2-E2..E13 — 12 forcing-function machines: M21/M260/M268/M279/M274/M113/M11/M250/M108/M65/M67/M120 (per-machine BoundaryContract work; defer to per-machine sessions when machine specs land in Phase 3)
 
 ## Wave 2f — Example 6 + cleanup
 - P2-F1 Example 6 workflow M250 end-to-end demo
