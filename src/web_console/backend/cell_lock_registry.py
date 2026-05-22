@@ -30,10 +30,14 @@ class CellOperation(Enum):
     Invariants (enforced by CellLockRegistry.try_acquire_cell):
       INV-1: SAMPLING and DELETING are mutually exclusive per cell.
       INV-2: GENERATING and DELETING are mutually exclusive per cell.
-      INV-3: SAMPLING + GENERATING on the same cell are ALLOWED.
-              (Generator snapshots chunks at start; new chunks written by
-               concurrent SAMPLING after that point are not included —
-               benign per 04_v2 §4.1 OQ-1 resolution.)
+      INV-3: SAMPLING + GENERATING on the same cell are ALLOWED by default
+              (benign per 04_v2 §4.1 OQ-1: generator snapshots chunks at
+               start; new chunks from concurrent SAMPLING are not included).
+              Callers that want stronger semantics (user-initiated single-cell
+              generate-report where partial data is misleading) pass
+              ``block_if_sampling_active=True`` to ``try_acquire_cell`` —
+              GENERATING then fails-closed while SAMPLING is active and the
+              caller surfaces a 409 to the user.
       INV-4: At most ONE SAMPLING per cell.
       INV-5: At most ONE GENERATING per cell.
     """
@@ -92,6 +96,8 @@ class CellLockRegistry:
         mode: int,
         op: CellOperation,
         info: dict[str, Any] | None = None,
+        *,
+        block_if_sampling_active: bool = False,
     ) -> bool:
         """Attempt to acquire ``op`` on ``(machine, mode)``.
 
@@ -105,6 +111,14 @@ class CellLockRegistry:
             {"run_id": str, "config_id": str, "upstream_md5": str}
 
         for attach-response lookup (R9 / D12).
+
+        ``block_if_sampling_active`` (keyword-only, default False) gates
+        INV-3: when True and ``op == GENERATING``, the acquire fails if
+        SAMPLING is already active on the cell. Used by user-facing
+        single-cell generate-report endpoints so the operator does not
+        receive a report that silently omits chunks the SAMPLING is still
+        writing. Batch / fleet-refresh callers leave this False to keep
+        the historical parallel-OK behavior.
         """
         key = (str(machine), int(mode))
         with self._lock:
@@ -124,6 +138,11 @@ class CellLockRegistry:
                     return False
                 # INV-5: at most one GENERATING
                 if CellOperation.GENERATING in active:
+                    return False
+                # INV-3 gate (opt-in): user-facing generate-report wants to
+                # avoid producing a report that silently omits chunks the
+                # SAMPLING is still writing.
+                if block_if_sampling_active and CellOperation.SAMPLING in active:
                     return False
 
             elif op is CellOperation.DELETING:

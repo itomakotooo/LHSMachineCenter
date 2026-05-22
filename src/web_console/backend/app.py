@@ -7687,10 +7687,22 @@ def create_app(
         # start_run is for from-cache / generate-report style runs; the
         # SAMPLING path goes through BatchRunManager._run_one which acquires
         # SAMPLING separately.
-        if not registry.try_acquire_cell(req.machine, req.mode, CellOperation.GENERATING):
+        #
+        # 2026-05-22 (Scenario D fix): user-facing single-cell generate-report
+        # opts into INV-3 gating so a report is not produced while SAMPLING
+        # is still writing chunks (which would silently omit data).
+        if not registry.try_acquire_cell(
+            req.machine, req.mode, CellOperation.GENERATING,
+            block_if_sampling_active=True,
+        ):
             raise HTTPException(
                 status_code=409,
-                detail=f"cell {req.machine}|{req.mode} is busy — retry after active operation completes",
+                detail=(
+                    f"cell {req.machine}|{req.mode} is busy — "
+                    "another generate/delete is in progress, or sampling is "
+                    "writing chunks (retry after it completes to get a "
+                    "complete report)"
+                ),
             )
         try:
             return manager.start_run(req)
@@ -7814,10 +7826,22 @@ def create_app(
         # Phase 2 (D5 + D9 site #2): acquire GENERATING via registry so
         # disk-pressure auto-cleanup won't evict the chunks we're about to
         # consume, and concurrent DELETING is blocked.  Released in finally.
-        if not registry.try_acquire_cell(machine, mode, CellOperation.GENERATING):
+        #
+        # 2026-05-22 (Scenario D fix): user-facing single-cell replay opts
+        # into INV-3 gating so a report is not produced while SAMPLING is
+        # still writing chunks (which would silently omit data).
+        if not registry.try_acquire_cell(
+            machine, mode, CellOperation.GENERATING,
+            block_if_sampling_active=True,
+        ):
             raise HTTPException(
                 status_code=409,
-                detail=f"cell {machine}|{mode} is busy — retry after active operation completes",
+                detail=(
+                    f"cell {machine}|{mode} is busy — "
+                    "another generate/delete is in progress, or sampling is "
+                    "writing chunks (retry after it completes to get a "
+                    "complete report)"
+                ),
             )
         try:
             # Pre-load responses — each call to analyzer's post_json

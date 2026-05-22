@@ -3,7 +3,11 @@
 Covers all 6 invariants from 04_deploy_architecture_proposal_v2.md §4.1:
   INV-1: SAMPLING + DELETING mutually exclusive per cell.
   INV-2: GENERATING + DELETING mutually exclusive per cell.
-  INV-3: SAMPLING + GENERATING on same cell: ALLOWED (concurrent is safe).
+  INV-3: SAMPLING + GENERATING on same cell: ALLOWED by default (concurrent
+         is safe); user-facing single-cell generate-report opts into
+         ``block_if_sampling_active=True`` and is rejected while SAMPLING is
+         writing chunks (Scenario D fix 2026-05-22). Two tests below cover
+         both modes of this invariant.
   INV-4: At most ONE SAMPLING per cell.
   INV-5: At most ONE GENERATING per cell.
   INV-6: Global ops: at most ONE per named global op at a time.
@@ -169,18 +173,20 @@ class TestMutualExclusionInvariants:
         registry.release_cell(machine, mode, CellOperation.DELETING)
 
     def test_sampling_and_generating_coexist(self, registry: CellLockRegistry):
-        """INV-3: SAMPLING + GENERATING on same cell are BOTH allowed.
+        """INV-3 default: SAMPLING + GENERATING on same cell are BOTH allowed.
 
         The generator snapshots chunks at start; concurrent SAMPLING writing
-        new chunks is benign per 04_v2 §4.1 OQ-1.
+        new chunks is benign per 04_v2 §4.1 OQ-1. Default behavior is kept
+        for batch / fleet-refresh callers.
 
         Inject-bug: add `if CellOperation.SAMPLING in active: return False`
-        to the GENERATING branch → second acquire returns False → test fails.
+        unconditionally to the GENERATING branch → second acquire returns
+        False → test fails.
         """
         machine, mode = "M14", 1
         assert registry.try_acquire_cell(machine, mode, CellOperation.SAMPLING) is True
         assert registry.try_acquire_cell(machine, mode, CellOperation.GENERATING) is True, (
-            "GENERATING must succeed even when SAMPLING is active (INV-3 coexistence)"
+            "GENERATING must succeed even when SAMPLING is active (INV-3 default coexistence)"
         )
 
         # Both should appear in active cells
@@ -191,6 +197,69 @@ class TestMutualExclusionInvariants:
 
         registry.release_cell(machine, mode, CellOperation.GENERATING)
         registry.release_cell(machine, mode, CellOperation.SAMPLING)
+
+    def test_generating_blocked_when_sampling_active_via_gate(
+        self, registry: CellLockRegistry,
+    ):
+        """INV-3 gate: block_if_sampling_active=True opts user-facing
+        generate-report into stronger semantics — fail-closed when SAMPLING
+        is still writing chunks, so the operator does not receive a report
+        that silently omits in-flight data.
+
+        Scenario: planner A starts sampling M14 mode 1; planner B clicks
+        'generate report' on the same cell via the user-facing endpoint.
+
+        Inject-bug recipe: remove the
+            ``if block_if_sampling_active and CellOperation.SAMPLING in active: return False``
+        guard from cell_lock_registry.try_acquire_cell GENERATING branch
+        → second acquire (with the gate) returns True → test fails. Revert →
+        test passes again.
+        """
+        machine, mode = "M14", 1
+
+        # Planner A: SAMPLING acquired.
+        assert registry.try_acquire_cell(
+            machine, mode, CellOperation.SAMPLING,
+        ) is True
+
+        # Planner B: GENERATING via the user-facing path (gate ON).
+        assert registry.try_acquire_cell(
+            machine, mode, CellOperation.GENERATING,
+            block_if_sampling_active=True,
+        ) is False, (
+            "GENERATING with gate ON must be rejected while SAMPLING is "
+            "active (Scenario D fix: avoid silently incomplete report)"
+        )
+
+        # Sanity: batch / fleet-refresh path (gate OFF, default) is still
+        # permitted in parallel — INV-3 default behavior unchanged.
+        assert registry.try_acquire_cell(
+            machine, mode, CellOperation.GENERATING,
+        ) is True, (
+            "GENERATING without gate must still coexist with SAMPLING "
+            "(INV-3 default; batch generators rely on this)"
+        )
+
+        registry.release_cell(machine, mode, CellOperation.GENERATING)
+        registry.release_cell(machine, mode, CellOperation.SAMPLING)
+
+    def test_generating_gate_no_effect_when_sampling_idle(
+        self, registry: CellLockRegistry,
+    ):
+        """Gate is a strict-mode opt-in: when SAMPLING is NOT active, the
+        gate has no effect — GENERATING acquires normally.
+
+        Guards against an over-eager refactor that flips the default or
+        rejects in the wrong direction.
+        """
+        machine, mode = "M14", 1
+        assert registry.try_acquire_cell(
+            machine, mode, CellOperation.GENERATING,
+            block_if_sampling_active=True,
+        ) is True, (
+            "Gate ON with no SAMPLING active must still allow GENERATING"
+        )
+        registry.release_cell(machine, mode, CellOperation.GENERATING)
 
     def test_one_sampling_per_cell(self, registry: CellLockRegistry):
         """INV-4: Second SAMPLING acquire on same cell → False.
