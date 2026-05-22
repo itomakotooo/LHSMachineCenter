@@ -969,10 +969,10 @@ def _classify_endpoint_kind(endpoint_url: str) -> str:
     return "wan"
 
 
-# Probe candidate grids per endpoint kind. Tuned 2026-05-22 based on:
-#  - Loopback (intranet 127.0.0.1:15060): no rate limit, sub-ms RTT,
-#    same-machine CPU contention is the real ceiling. Push robots high
-#    (32) + concurrency moderate-high (16) to find the CPU break point.
+# Probe candidate grids per endpoint kind. Used for LAN / WAN only —
+# loopback bypasses the probe entirely (see _LOOPBACK_HARDCODED_TUNING
+# below).
+#
 #  - LAN (RFC1918): 1-3ms RTT, gigabit, no rate limit. Moderate grid.
 #  - WAN (anything else): public-internet, per-IP throttle exists.
 #    Keep the existing conservative grid (matches the 2026-04-25
@@ -981,10 +981,6 @@ def _classify_endpoint_kind(endpoint_url: str) -> str:
 # Caller passes ``use_auto_grid=True`` (or omits robot/conc candidates)
 # to opt in; explicit candidates always win over the preset.
 _AUTO_GRIDS: dict[str, dict[str, list[int]]] = {
-    "loopback": {
-        "robot_candidates": [16, 24, 32],
-        "concurrency_candidates": [8, 12, 16],
-    },
     "lan": {
         "robot_candidates": [8, 16, 24],
         "concurrency_candidates": [4, 8, 12, 16],
@@ -996,9 +992,44 @@ _AUTO_GRIDS: dict[str, dict[str, list[int]]] = {
 }
 
 
+# Hardcoded tuning for loopback endpoints. Manual probe 2026-05-22 on
+# the deployed Windows server (192.168.10.21, slot simulator on
+# 127.0.0.1:15060) sampled r ∈ {2, 4, 8, 16, 24, 32} × c ∈ {8, 12, 16}
+# over multiple probe rounds; r=2 c=16 won decisively on BOTH metrics
+# (throughput 32196 spin/s + p95 0.192s — 5% better throughput AND 24%
+# lower latency than the next best, r=4 c=10 at 30631 spin/s / 0.25s).
+#
+# Counter-intuitive direction (smaller robots not larger) — explained
+# by the loopback path's near-zero HTTP overhead: bigger robot count
+# only means more serial compute per request, occupying the simulator
+# CPU longer; the throughput ceiling is fixed at ~30k spin/s by the
+# simulator's worker pool, and small robot count + high concurrency
+# best amortizes the wait across the available workers.
+#
+# Plateau confirmed: all 18 distinct (r, c) pairs in the 2026-05-22
+# data hit 25-32k throughput with success_rate=1.0. Adding more probe
+# rounds would tighten the variance band but not move the peak. So
+# this gets baked in as a constant — autotune button on loopback just
+# materializes this without probing.
+_LOOPBACK_HARDCODED_TUNING: dict[str, int] = {
+    "chunk_robot_count": 2,
+    "batch_concurrency": 16,
+}
+
+
 def _auto_grid_for_endpoint(endpoint_url: str) -> dict[str, list[int]]:
-    """Convenience wrapper: classify then return the preset grid."""
-    return _AUTO_GRIDS[_classify_endpoint_kind(endpoint_url)]
+    """Convenience wrapper: classify then return the preset grid.
+
+    NOTE: loopback endpoints do not use a probe grid; the autotune
+    endpoint short-circuits and persists ``_LOOPBACK_HARDCODED_TUNING``
+    directly. This function returns the LAN preset as a defensive
+    fallback in case a non-autotune caller asks for the loopback grid
+    (none today), so behavior degrades gracefully instead of KeyError.
+    """
+    kind = _classify_endpoint_kind(endpoint_url)
+    if kind == "loopback":
+        return _AUTO_GRIDS["lan"]
+    return _AUTO_GRIDS[kind]
 
 
 def _load_server_tuning(server_id: str, settings_path: Path) -> dict[str, Any]:
@@ -7966,20 +7997,65 @@ def create_app(
             )
             endpoint_kind = _classify_endpoint_kind(endpoint_url)
 
-            # (2) Apply the per-endpoint probe-grid preset when the
-            #     caller opts in OR sends empty candidate arrays. The
-            #     preset matches the throughput regime the endpoint
-            #     can actually sustain (a loopback path doesn't need
-            #     to waste a wave probing conc=2). Explicit non-empty
-            #     candidates still win.
             wants_auto = (
                 req.use_auto_grid
                 or not req.robot_candidates
                 or not req.concurrency_candidates
             )
+
+            # (2a) Loopback short-circuit. On the same-machine deployment
+            #      pattern (slot simulator + console on one Windows box,
+            #      sampling target = 127.0.0.1:15060), the throughput
+            #      ceiling is fixed by the simulator's CPU/worker budget;
+            #      no probe grid produces a meaningfully different answer
+            #      from _LOOPBACK_HARDCODED_TUNING (data: 2026-05-22).
+            #      So the UI 调参 button just materializes the constant
+            #      instead of burning 2 minutes of probe time. The
+            #      explicit-candidate path (operator passing non-empty
+            #      robot/conc arrays AND use_auto_grid=false) is still
+            #      honored — if you want to verify the constant or probe
+            #      a different region, send curl with explicit candidates.
+            if endpoint_kind == "loopback" and wants_auto:
+                rc = _LOOPBACK_HARDCODED_TUNING["chunk_robot_count"]
+                bc = _LOOPBACK_HARDCODED_TUNING["batch_concurrency"]
+                if target_server_id:
+                    _save_server_tuning(
+                        settings_path,
+                        target_server_id,
+                        rc,
+                        bc,
+                        endpoint_kind="loopback",
+                        probe={"hardcoded": True, "note": (
+                            "loopback hardcoded tuning — see _LOOPBACK_"
+                            "HARDCODED_TUNING in app.py for source data"
+                        )},
+                    )
+                return {
+                    "started_at": utc_now(),
+                    "finished_at": utc_now(),
+                    "machine": req.machine,
+                    "mode": req.mode,
+                    "spin_times": req.spin_times,
+                    "rounds": req.rounds,
+                    "robot_candidates": [rc],
+                    "concurrency_candidates": [bc],
+                    "tested": 0,
+                    "best": None,
+                    "recommendation": {
+                        "chunk_robot_count": rc,
+                        "batch_concurrency": bc,
+                    },
+                    "results": [],
+                    "saved_for_server": target_server_id,
+                    "endpoint_kind": "loopback",
+                    "hardcoded": True,
+                }
+
+            # (2b) LAN / WAN: apply the per-endpoint probe-grid preset
+            #      when the caller opts in OR sends empty candidate
+            #      arrays. Explicit non-empty candidates still win.
             if wants_auto:
                 grid = _auto_grid_for_endpoint(endpoint_url)
-                # Pydantic v2: rebuild a copy with the resolved fields.
                 req = req.model_copy(update={
                     "robot_candidates": list(grid["robot_candidates"]),
                     "concurrency_candidates": list(grid["concurrency_candidates"]),

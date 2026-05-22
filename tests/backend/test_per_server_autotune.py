@@ -57,30 +57,154 @@ class TestClassifyEndpointKind:
 
 
 class TestAutoGridForEndpoint:
-    def test_loopback_grid_is_higher_than_wan(self):
-        """The whole point of per-endpoint grids: loopback can sustain
-        more parallel load than WAN. If the loopback grid ever stops
-        being strictly more aggressive than WAN, the feature has
-        regressed.
+    def test_lan_grid_more_aggressive_than_wan(self):
+        """LAN has no rate limit + low latency, so a broader probe grid
+        is safe. WAN keeps the conservative grid (matches the 2026-04-25
+        external-server benchmark documented in AutoTuneRequest).
 
-        Inject-bug: make _AUTO_GRIDS["loopback"] equal to ["wan"] entry
-        → max(loopback robots) == max(wan robots) → assertion fails.
+        Inject-bug: swap _AUTO_GRIDS["lan"] and ["wan"] entries → LAN
+        gets the WAN-conservative grid → assertion fails.
         """
         from src.web_console.backend.app import _auto_grid_for_endpoint
-        loop = _auto_grid_for_endpoint("http://127.0.0.1:15060/x")
-        wan = _auto_grid_for_endpoint("http://example.com/x")
-        assert max(loop["robot_candidates"]) > max(wan["robot_candidates"])
-        assert max(loop["concurrency_candidates"]) > max(wan["concurrency_candidates"])
-
-    def test_lan_grid_is_between_loopback_and_wan(self):
-        """Sanity: a LAN endpoint gets a grid that is broader than WAN
-        but not as aggressive at the top end as loopback."""
-        from src.web_console.backend.app import _auto_grid_for_endpoint
-        loop = _auto_grid_for_endpoint("http://127.0.0.1:15060/x")
         lan = _auto_grid_for_endpoint("http://192.168.10.21:15060/x")
         wan = _auto_grid_for_endpoint("http://example.com/x")
         assert max(lan["concurrency_candidates"]) >= max(wan["concurrency_candidates"])
-        assert max(lan["robot_candidates"]) <= max(loop["robot_candidates"])
+        assert max(lan["robot_candidates"]) >= max(wan["robot_candidates"])
+
+    def test_loopback_falls_back_to_lan_grid(self):
+        """Loopback no longer has its own probe grid — the autotune
+        endpoint short-circuits to _LOOPBACK_HARDCODED_TUNING. But the
+        _auto_grid_for_endpoint helper still has to return *something*
+        sensible for non-autotune callers (none today). The fallback is
+        the LAN preset.
+
+        Inject-bug: remove the `if kind == "loopback": return ...`
+        fallback → KeyError on _AUTO_GRIDS["loopback"] → test fails.
+        """
+        from src.web_console.backend.app import _auto_grid_for_endpoint
+        loop = _auto_grid_for_endpoint("http://127.0.0.1:15060/x")
+        lan = _auto_grid_for_endpoint("http://192.168.10.21:15060/x")
+        assert loop == lan
+
+
+class TestLoopbackHardcodedTuning:
+    """Loopback short-circuit: same-machine deployments (slot simulator
+    on 127.0.0.1) use _LOOPBACK_HARDCODED_TUNING instead of a probe.
+
+    Why: 2026-05-22 manual probe sweep on the deployed Windows server
+    showed throughput ceiling fixed at ~30k spin/s by simulator CPU,
+    invariant across r ∈ {2..32}. Probing wastes 2 minutes for zero
+    information.
+    """
+
+    def test_autotune_endpoint_short_circuits_for_loopback(
+        self, client, app_factory, tmp_path, monkeypatch,
+    ):
+        """POST /api/autotune with use_auto_grid=true against a loopback
+        server skips the probe entirely + returns the hardcoded values
+        + persists them under the server_id.
+
+        Inject-bug: remove the
+            ``if endpoint_kind == "loopback" and wants_auto:``
+        short-circuit block in the auto_tune endpoint → the request
+        falls through to run_auto_tune, which calls the real
+        _post_slot_spin and tries to actually hit the upstream slot
+        simulator. In this test there's no server listening on the
+        configured endpoint, so the probe either hangs until timeout
+        or returns success_rate=0; either way, the assertion
+        `hardcoded == True` fails because the short-circuit synthetic
+        response wasn't returned.
+        """
+        import src.web_console.backend.app as app_mod
+
+        # Point SERVERS_CONFIG at a tmp servers.json with intranet
+        # mapped to loopback. Operator settings.json picks intranet as
+        # the default so _resolve_active_server_id returns it.
+        servers_p = tmp_path / "servers.json"
+        servers_p.write_text(json.dumps({
+            "servers": [
+                {"id": "intranet", "active": True,
+                 "endpoint": "http://127.0.0.1:15060"},
+            ],
+            "default_server": "intranet",
+        }), encoding="utf-8")
+        monkeypatch.setattr(app_mod, "SERVERS_CONFIG", servers_p)
+
+        # Make sure the operator override agrees so the resolver
+        # returns "intranet" deterministically (the app fixture's
+        # settings.json may already have a default_server from prior
+        # tests; explicit write here resets it).
+        settings_path = Path(app_factory.state_dir) / "settings.json"
+        from src.web_console.backend.app import _load_settings, _save_settings
+        s = _load_settings(settings_path)
+        s["default_server"] = "intranet"
+        _save_settings(settings_path, s)
+
+        c, _app = client
+        resp = c.post("/api/autotune", json={
+            "machine": "M14",
+            "mode": 1,
+            "spin_times": 200,
+            "rounds": 2,
+            "timeout": 60,
+            "bet": 1000,
+            "use_auto_grid": True,
+            "robot_candidates": [],
+            "concurrency_candidates": [],
+        })
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        # 1. Synthetic response shape
+        assert body.get("hardcoded") is True
+        assert body.get("endpoint_kind") == "loopback"
+        assert body.get("tested") == 0
+        assert body.get("results") == []
+        # 2. Recommendation matches the constant
+        assert body["recommendation"]["chunk_robot_count"] == (
+            app_mod._LOOPBACK_HARDCODED_TUNING["chunk_robot_count"]
+        )
+        assert body["recommendation"]["batch_concurrency"] == (
+            app_mod._LOOPBACK_HARDCODED_TUNING["batch_concurrency"]
+        )
+        # 3. Persisted against the server_id — fetch back via
+        #    /api/servers/{id}/tuning to prove the save path ran.
+        tuning_resp = c.get("/api/servers/intranet/tuning")
+        assert tuning_resp.status_code == 200
+        saved = tuning_resp.json()
+        assert saved["chunk_robot_count"] == (
+            app_mod._LOOPBACK_HARDCODED_TUNING["chunk_robot_count"]
+        )
+        assert saved["batch_concurrency"] == (
+            app_mod._LOOPBACK_HARDCODED_TUNING["batch_concurrency"]
+        )
+        assert saved["endpoint_kind"] == "loopback"
+        assert saved["probe"].get("hardcoded") is True
+
+    def test_constant_has_sensible_values(self):
+        """Smoke: the hardcoded constant exists with positive ints
+        matching what the data justified (small robot count, high
+        concurrency — the inverse of the WAN-optimal direction).
+
+        Inject-bug: change _LOOPBACK_HARDCODED_TUNING values to e.g.
+        {"chunk_robot_count": 32, "batch_concurrency": 4} (the WAN-
+        optimal shape) → assertion fails because robot_count > 8.
+        """
+        from src.web_console.backend.app import _LOOPBACK_HARDCODED_TUNING
+        assert _LOOPBACK_HARDCODED_TUNING["chunk_robot_count"] > 0
+        assert _LOOPBACK_HARDCODED_TUNING["batch_concurrency"] > 0
+        # Sanity: data showed small-robot wins. If this assertion fires,
+        # someone reverted the direction without updating the constant's
+        # docstring justification.
+        assert _LOOPBACK_HARDCODED_TUNING["chunk_robot_count"] <= 8, (
+            "loopback ceiling is set by simulator CPU not network; "
+            "high robot count just trades latency for nothing — see "
+            "the docstring on _LOOPBACK_HARDCODED_TUNING for the 2026-"
+            "05-22 measurement"
+        )
+        assert _LOOPBACK_HARDCODED_TUNING["batch_concurrency"] >= 8, (
+            "loopback rewards concurrency since simulator workers "
+            "process in parallel; conc<8 leaves the CPU pool unused"
+        )
 
 
 # ── 3. Persistence round-trip ────────────────────────────────────
