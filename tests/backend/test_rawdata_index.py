@@ -30,7 +30,24 @@ from fresh_slotlab.rawdata_index import (
     remove_entry,
     update_entry,
 )
-from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+from fresh_slotlab.player_impact_analyzer import _save_chunk_cache as _real_save_chunk_cache
+
+
+def _stub_md5_lookup(_machine: str) -> tuple[str, str]:
+    """Stub for the lookup_machine_md5 kwarg required post-P2-B3 carve."""
+    return ("", "")
+
+
+def _save_chunk_cache(*args, **kwargs):
+    """Wrapper defaulting lookup_machine_md5 + rawdata_index_update_entry.
+    Pre-P2-B3 callsites passed 8 positional args + expected the writer to
+    internally call rawdata_index.update_entry; post-P2-B3 both are DI."""
+    kwargs.setdefault("lookup_machine_md5", _stub_md5_lookup)
+    if "rawdata_index_update_entry" not in kwargs:
+        from fresh_slotlab import rawdata_index as _ri
+        kwargs["rawdata_index_update_entry"] = _ri.update_entry
+    return _real_save_chunk_cache(*args, **kwargs)
+
 
 from src.web_console.backend.app import check_rawdata_status
 

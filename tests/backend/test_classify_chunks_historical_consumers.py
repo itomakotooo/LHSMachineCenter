@@ -861,9 +861,12 @@ class TestBatchPathHistoricalFilterGap:
         captured: dict = {}
         _real_init = app_mod.BatchGenerateManager.__init__
 
-        def _capturing_init(self_mgr, prepare_fn, finalize_fn, ops, **kwargs):
+        # Phase 2 deploy refactor removed `ops` param from
+        # BatchGenerateManager.__init__ (per-item registry GENERATING
+        # replaces it). Accept variadic to stay version-tolerant.
+        def _capturing_init(self_mgr, prepare_fn, finalize_fn, *args, **kwargs):
             captured["prepare_fn"] = prepare_fn
-            _real_init(self_mgr, prepare_fn, finalize_fn, ops, **kwargs)
+            _real_init(self_mgr, prepare_fn, finalize_fn, *args, **kwargs)
 
         state_dir = tmp_path / "state"
         (state_dir / "progress").mkdir(parents=True)

@@ -20,11 +20,20 @@ import pytest
 
 import fresh_slotlab.batch_dev_sampler as sampler
 import fresh_slotlab.player_impact_analyzer as analyzer
+from fresh_slotlab.analyzer.core import base_pipeline as _bp
 
 # post_json_with_retry lives in analyzer now (shared with the live
-# sampling loop). The helper's internal `post_json` call and `time.sleep`
-# both resolve to analyzer's module namespace, so monkeypatches must
-# target analyzer — not sampler — to take effect.
+# sampling loop). Post-P2-B4 carve: post_json + post_json_with_retry moved
+# into fresh_slotlab/analyzer/core/base_pipeline.py. Since post_json_with_retry
+# calls its own module's post_json (not analyzer.post_json), we must patch
+# BOTH the analyzer re-export attr AND the base_pipeline canonical for the
+# stub to take effect.
+
+
+def _patch_post_json(monkeypatch, fn):
+    """Patch post_json on both the analyzer re-export and the core module."""
+    monkeypatch.setattr(analyzer, "post_json", fn)
+    monkeypatch.setattr(_bp, "post_json", fn)
 
 
 class _StubResp:
@@ -52,7 +61,7 @@ class TestPostJsonWithRetry:
             calls["n"] += 1
             return [{"ok": True}]
 
-        monkeypatch.setattr(analyzer, "post_json", post_ok)
+        _patch_post_json(monkeypatch, post_ok)
         result = sampler._post_json_with_retry({}, timeout=1.0)
         assert result == [{"ok": True}]
         assert calls["n"] == 1
@@ -68,7 +77,7 @@ class TestPostJsonWithRetry:
                 raise _http_error(502)
             return [{"final": True}]
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         result = sampler._post_json_with_retry(
             {}, timeout=1.0, max_attempts=3, initial_backoff_s=1.0
         )
@@ -87,7 +96,7 @@ class TestPostJsonWithRetry:
                 raise urllib.error.URLError("connection refused")
             return [{"ok": True}]
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         result = sampler._post_json_with_retry({}, timeout=1.0)
         assert result == [{"ok": True}]
         assert attempts["n"] == 2
@@ -102,7 +111,7 @@ class TestPostJsonWithRetry:
                 raise TimeoutError("read timeout")
             return [{"ok": True}]
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         assert sampler._post_json_with_retry({}, timeout=1.0)[0]["ok"]
 
     def test_retries_on_socket_timeout(self, monkeypatch):
@@ -115,7 +124,7 @@ class TestPostJsonWithRetry:
                 raise socket.timeout("connect")
             return [{"ok": True}]
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         assert sampler._post_json_with_retry({}, timeout=1.0)[0]["ok"]
 
     def test_non_retryable_http_error_fails_fast(self, monkeypatch):
@@ -128,7 +137,7 @@ class TestPostJsonWithRetry:
             attempts["n"] += 1
             raise _http_error(404)
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         with pytest.raises(urllib.error.HTTPError):
             sampler._post_json_with_retry({}, timeout=1.0)
         assert attempts["n"] == 1
@@ -144,7 +153,7 @@ class TestPostJsonWithRetry:
             attempts["n"] += 1
             raise json.JSONDecodeError("bad", "x", 0)
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         with pytest.raises(json.JSONDecodeError):
             sampler._post_json_with_retry({}, timeout=1.0)
         assert attempts["n"] == 1
@@ -157,7 +166,7 @@ class TestPostJsonWithRetry:
             attempts["n"] += 1
             raise urllib.error.URLError(f"fail-{attempts['n']}")
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         with pytest.raises(urllib.error.URLError) as exc_info:
             sampler._post_json_with_retry({}, timeout=1.0, max_attempts=3)
         assert attempts["n"] == 3
@@ -237,7 +246,7 @@ class TestTransientBurstRetries:
                 raise IncompleteRead(partial=b"")
             return [{"ok": True}]
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         result = sampler._post_json_with_retry(
             {}, timeout=1.0, max_attempts=5, initial_backoff_s=1.0
         )
@@ -257,7 +266,7 @@ class TestTransientBurstRetries:
                 raise ConnectionResetError("upstream sent RST")
             return [{"ok": True}]
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         assert sampler._post_json_with_retry({}, timeout=1.0)[0]["ok"]
         assert attempts["n"] == 2
 
@@ -274,7 +283,7 @@ class TestTransientBurstRetries:
                 raise RemoteDisconnected("close before response")
             return [{"ok": True}]
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         assert sampler._post_json_with_retry({}, timeout=1.0)[0]["ok"]
 
     def test_backoff_capped_at_max_backoff_s(self, monkeypatch):
@@ -291,7 +300,7 @@ class TestTransientBurstRetries:
                 raise _http_error(502)
             return [{"ok": True}]
 
-        monkeypatch.setattr(analyzer, "post_json", post)
+        _patch_post_json(monkeypatch, post)
         sampler._post_json_with_retry(
             {}, timeout=1.0, max_attempts=6,
             initial_backoff_s=1.0, max_backoff_s=5.0,

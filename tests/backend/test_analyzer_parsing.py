@@ -153,9 +153,17 @@ def _stub_chunk_resp(rounds):
 
 @pytest.fixture
 def patch_post_json(monkeypatch):
-    """Yield a setter that pins ana.post_json to return a canned response."""
+    """Yield a setter that pins post_json to return a canned response.
+
+    Post-P2-B4 carve: post_json moved to fresh_slotlab/analyzer/core/base_pipeline.py.
+    run_sampling_chunk (also in base_pipeline) calls its own module's post_json
+    directly, so we must patch BOTH the re-export attr on ana AND the canonical
+    one in base_pipeline. PIA's re-export aliases stay in sync as a side effect.
+    """
+    from fresh_slotlab.analyzer.core import base_pipeline as _bp
     def _set(resp):
         monkeypatch.setattr(ana, "post_json", lambda *_a, **_kw: resp)
+        monkeypatch.setattr(_bp, "post_json", lambda *_a, **_kw: resp)
     return _set
 
 

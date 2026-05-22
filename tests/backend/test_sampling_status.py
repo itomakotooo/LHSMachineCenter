@@ -24,7 +24,7 @@ from src.web_console.backend.cell_lock_registry import CellOperation
 
 
 def _seed_chunk_with_bet(root: Path, machine: str, mode: int, idx: int, bet: int):
-    from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+    from tests.backend._save_chunk_cache_compat import _save_chunk_cache
     mode_dir = root / machine / f"mode_{mode}"
     mode_dir.mkdir(parents=True, exist_ok=True)
     resp = [

@@ -230,9 +230,13 @@ def _make_app_and_prepare_fn(
     captured: dict = {}
     _real_init = app_mod.BatchGenerateManager.__init__
 
-    def _capturing_init(self_mgr, prepare_fn, finalize_fn, ops, **kwargs):
+    # Phase 2 deploy refactor: ops parameter was removed from
+    # BatchGenerateManager.__init__ (per-item registry GENERATING replaces
+    # the coarse ops mutex). Signature is now (prepare_fn, finalize_fn,
+    # concurrency=4, root_path="").
+    def _capturing_init(self_mgr, prepare_fn, finalize_fn, *args, **kwargs):
         captured["prepare_fn"] = prepare_fn
-        _real_init(self_mgr, prepare_fn, finalize_fn, ops, **kwargs)
+        _real_init(self_mgr, prepare_fn, finalize_fn, *args, **kwargs)
 
     state_dir = tmp_path / "state"
     (state_dir / "progress").mkdir(parents=True)

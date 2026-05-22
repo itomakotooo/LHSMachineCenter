@@ -20,9 +20,22 @@ from fresh_slotlab.player_impact_analyzer import (
     CHUNK_CACHE_VERSION,
     ChunkIntegrityError,
     _payload_sha256,
-    _save_chunk_cache,
+    _save_chunk_cache as _real_save_chunk_cache,
     load_chunk_envelope,
 )
+
+
+def _stub_md5_lookup(_machine: str) -> tuple[str, str]:
+    """Stub for the lookup_machine_md5 kwarg required post-P2-B3 carve.
+    Tests don't need real md5 — they just exercise the chunk-write contract."""
+    return ("", "")
+
+
+def _save_chunk_cache(*args, **kwargs):
+    """Wrapper that defaults the new required kwarg to a stub.
+    Pre-P2-B3 callsites passed 8 positional args; this preserves them."""
+    kwargs.setdefault("lookup_machine_md5", _stub_md5_lookup)
+    return _real_save_chunk_cache(*args, **kwargs)
 
 
 def _sample_response() -> list:

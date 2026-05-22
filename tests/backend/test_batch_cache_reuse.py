@@ -28,7 +28,7 @@ from typing import Any
 
 
 def _seed_v3_chunks(root: Path, machine: str, mode: int, n: int = 3) -> None:
-    from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+    from tests.backend._save_chunk_cache_compat import _save_chunk_cache
     mode_dir = root / machine / f"mode_{mode}"
     mode_dir.mkdir(parents=True, exist_ok=True)
     for i in range(1, n + 1):

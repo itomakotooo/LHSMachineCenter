@@ -62,7 +62,7 @@ def _run_analyzer(argv: list[str]) -> int:
 
 
 def _seed_chunks(cache_dir: Path, count: int) -> None:
-    from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+    from tests.backend._save_chunk_cache_compat import _save_chunk_cache
     cache_dir.mkdir(parents=True, exist_ok=True)
     for i in range(1, count + 1):
         _save_chunk_cache(_synthetic_response(), i, "MRESUME", 1, 1000, 40, 5, cache_dir)

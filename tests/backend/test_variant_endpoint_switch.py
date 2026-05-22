@@ -190,7 +190,7 @@ class TestBatchRunForwardsVariantToAnalyzerArgv:
         refactor url-encodes / sanitizes / splits on ``$`` the key,
         this goes red."""
         import src.web_console.backend.app as app_mod
-        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+        from tests.backend._save_chunk_cache_compat import _save_chunk_cache
 
         # Extend the seed machines.json with the variant row so the
         # batch-run validator accepts our request. fake_machines
@@ -254,7 +254,7 @@ class TestDisplayNameAndUpstreamKeySplit:
         fake_machines: Path,
     ):
         import src.web_console.backend.app as app_mod
-        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+        from tests.backend._save_chunk_cache_compat import _save_chunk_cache
 
         display = "M273$WheelSelector$1$1-2-3"
         upstream = "M273$1$1-2-3"
@@ -314,7 +314,7 @@ class TestDisplayNameAndUpstreamKeySplit:
         case and we skip the redundant flag entirely — analyzer
         falls back to --machine for MachineName."""
         import src.web_console.backend.app as app_mod
-        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+        from tests.backend._save_chunk_cache_compat import _save_chunk_cache
 
         existing = json.loads(fake_machines.read_text(encoding="utf-8"))
         # M14 already in fake_machines (conftest seed); ensure it has

@@ -2025,8 +2025,14 @@ class StateStore:
                        OR rawdata_config_md5 IS NULL
                        OR rawdata_code_md5 IS NULL
                        OR analyzer_version IS NULL
-                       OR effective_analyzer_version IS NULL
                        OR total_spins IS NULL)
+                  -- effective_analyzer_version intentionally NOT in this
+                  -- predicate: old summaries pre-Phase-3 lack the field,
+                  -- so its IS NULL would re-scan the same legacy rows on
+                  -- every backfill pass with no progress. The column
+                  -- still gets populated when the loop body runs for
+                  -- other reasons (any other NULL → loop fires → field
+                  -- is set on UPDATE if present in summary).
                 """
             ).fetchall()
             for r in rows:

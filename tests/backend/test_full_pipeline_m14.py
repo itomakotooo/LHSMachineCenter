@@ -39,8 +39,15 @@ BASELINE = {
 @pytest.fixture()
 def run_full_pipeline(monkeypatch):
     fixture_data = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    # Dual-path patch: post_json now lives in core/base_pipeline (P2-B4);
+    # run_sampling_chunk in that module calls its own module-local
+    # reference, so we patch BOTH the analyzer re-export AND the canonical.
     monkeypatch.setattr(
         "fresh_slotlab.player_impact_analyzer.post_json",
+        lambda payload, timeout: fixture_data,
+    )
+    monkeypatch.setattr(
+        "fresh_slotlab.analyzer.core.base_pipeline.post_json",
         lambda payload, timeout: fixture_data,
     )
     monkeypatch.setattr("os._exit", lambda rc: None)

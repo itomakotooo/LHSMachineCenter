@@ -833,12 +833,16 @@ class TestChunkEnvelopeStampsMatchAnalyzerFilter:
         from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
         import json as _json
         cache_dir = tmp_path / "M14" / "mode_1"
+        # Post-P2-B3: lookup_machine_md5 is now an explicit DI kwarg.
+        # When override_*_md5 are set, the lookup is not invoked, so a
+        # stub here is harmless — it satisfies the required-kwarg gate.
         _save_chunk_cache(
             resp=[], chunk_index=1, machine="M14",
             rtp_mode=1, bet=1000, spin_times=2000, robot_count=8,
             cache_dir=cache_dir,
             override_config_md5="localcfg_abc12345",
             override_code_md5="real_code_md5",
+            lookup_machine_md5=lambda _m: ("", ""),
         )
         cf = cache_dir / "chunk_0001.json"
         env = _json.loads(cf.read_text(encoding="utf-8"))
@@ -858,10 +862,14 @@ class TestChunkEnvelopeStampsMatchAnalyzerFilter:
             lambda m: ("global_cfg", "global_code"),
         )
         cache_dir = tmp_path / "M14" / "mode_1"
+        # Post-P2-B3: lookup_machine_md5 is an explicit DI kwarg. To
+        # preserve the test intent (pia._lookup_machine_md5 stub provides
+        # the md5), we explicitly pass the stub through the new kwarg.
         pia._save_chunk_cache(
             resp=[], chunk_index=1, machine="M14",
             rtp_mode=1, bet=1000, spin_times=2000, robot_count=8,
             cache_dir=cache_dir,
+            lookup_machine_md5=lambda m: ("global_cfg", "global_code"),
         )
         cf = cache_dir / "chunk_0001.json"
         env = _json.loads(cf.read_text(encoding="utf-8"))
@@ -883,6 +891,7 @@ class TestChunkEnvelopeStampsMatchAnalyzerFilter:
             cache_dir=cache_dir,
             override_config_md5="localcfg_xyz987",
             override_code_md5="real_code",
+            lookup_machine_md5=lambda _m: ("", ""),
         )
         sidecar = load_chunks_index(cache_dir)
         assert sidecar is not None

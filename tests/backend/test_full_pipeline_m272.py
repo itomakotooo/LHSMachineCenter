@@ -58,8 +58,15 @@ def run_full_pipeline(monkeypatch):
     the parsed summary dict."""
     fixture_data = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
 
+    # Dual-path patch: post_json now lives in core/base_pipeline (P2-B4);
+    # patch BOTH analyzer re-export AND canonical so the in-module call
+    # site picks up the stub.
     monkeypatch.setattr(
         "fresh_slotlab.player_impact_analyzer.post_json",
+        lambda payload, timeout: fixture_data,
+    )
+    monkeypatch.setattr(
+        "fresh_slotlab.analyzer.core.base_pipeline.post_json",
         lambda payload, timeout: fixture_data,
     )
     # Prevent os._exit from killing the test runner.

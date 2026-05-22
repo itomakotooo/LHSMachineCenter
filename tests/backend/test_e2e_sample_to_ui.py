@@ -113,7 +113,7 @@ class TestEndToEndPipeline:
         mode_cache_dir = rawdata_root / machine / f"mode_{mode}"
         mode_cache_dir.mkdir(parents=True)
 
-        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+        from tests.backend._save_chunk_cache_compat import _save_chunk_cache
         resp = _synthetic_response(robot_count=5, rounds_per_robot=50, bet=1000)
         _save_chunk_cache(
             resp, chunk_index=1, machine=machine, rtp_mode=mode,
@@ -195,8 +195,9 @@ class TestEndToEndPartial:
     def test_corrupt_chunk_fails_analyzer_clean_errno(self, tmp_path: Path):
         # Write a v3 envelope then tamper with response so sha mismatches.
         from fresh_slotlab.player_impact_analyzer import (
-            _save_chunk_cache, ChunkIntegrityError, load_chunk_envelope,
+            ChunkIntegrityError, load_chunk_envelope,
         )
+        from tests.backend._save_chunk_cache_compat import _save_chunk_cache
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         _save_chunk_cache(

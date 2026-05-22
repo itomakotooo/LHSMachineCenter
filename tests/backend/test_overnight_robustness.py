@@ -48,7 +48,12 @@ class TestAnalyzerChunkRetry:
             # testing the retry path here).
             return []
 
+        # Dual-path patch: P2-B4 carved post_json into core/base_pipeline;
+        # run_sampling_chunk in that module calls its own module-local
+        # post_json (not analyzer.post_json), so patch BOTH.
+        from fresh_slotlab.analyzer.core import base_pipeline as _bp
         monkeypatch.setattr(analyzer, "post_json", fake_post)
+        monkeypatch.setattr(_bp, "post_json", fake_post)
         monkeypatch.setattr(analyzer.time, "sleep", lambda _s: None)
 
         result = analyzer.run_sampling_chunk(
@@ -75,7 +80,12 @@ class TestAnalyzerChunkRetry:
                 url="x", code=404, msg="not found", hdrs=None, fp=None,
             )
 
+        # Dual-path patch: P2-B4 carved post_json into core/base_pipeline;
+        # run_sampling_chunk in that module calls its own module-local
+        # post_json (not analyzer.post_json), so patch BOTH.
+        from fresh_slotlab.analyzer.core import base_pipeline as _bp
         monkeypatch.setattr(analyzer, "post_json", fake_post)
+        monkeypatch.setattr(_bp, "post_json", fake_post)
         monkeypatch.setattr(analyzer.time, "sleep", lambda _s: None)
         result = analyzer.run_sampling_chunk(
             chunk_index=1, machine="M1", rtp_mode=1, bet=1000,
