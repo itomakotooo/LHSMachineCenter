@@ -904,11 +904,21 @@ def _load_settings(settings_path: Path) -> dict[str, Any]:
         tuning. Persisted server-side instead of frontend localStorage
         so the tuning survives browser swaps + benefits LAN clients
         that hit the same console backend.
+      * ``auto_resume_orphan_runs`` (bool, default True) — A2 task
+        2026-05-22. Controls whether RunManager._recover_orphan_running_runs
+        re-submits interrupted samples on console startup. True
+        (default): the previous run row is marked failed and a fresh
+        run is spawned with --resume-from-cache pointed at the rawdata
+        dir, so the analyzer picks up where it left off. False: the
+        orphan is marked failed and the operator must manually retrigger.
+        Flip to False when a runaway run was causing the console to
+        crash (auto-resume would otherwise loop).
     """
     defaults: dict[str, Any] = {
         "min_retention_spins": _RAWDATA_MIN_RETENTION_SPINS_DEFAULT,
         "default_server": "",
         "server_tuning": {},
+        "auto_resume_orphan_runs": True,
     }
     try:
         data = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -923,6 +933,9 @@ def _load_settings(settings_path: Path) -> dict[str, Any]:
     ds = data.get("default_server")
     if isinstance(ds, str):
         out["default_server"] = ds
+    ar = data.get("auto_resume_orphan_runs")
+    if isinstance(ar, bool):
+        out["auto_resume_orphan_runs"] = ar
     st = data.get("server_tuning")
     if isinstance(st, dict):
         clean: dict[str, dict[str, Any]] = {}
@@ -5483,6 +5496,8 @@ class RunManager:
         cache_root: Path | None = None,
         machines_config: Path | None = None,
         popen_factory: "Callable[[list[str], Path], Any] | None" = None,
+        rawdata_root: Path | None = None,
+        auto_resume_orphan_runs: bool = True,
     ) -> None:
         self.store = store
         self._analyzer = analyzer if analyzer is not None else ANALYZER
@@ -5497,6 +5512,14 @@ class RunManager:
             machines_config if machines_config is not None else MACHINES_CONFIG
         )
         self._popen_factory = popen_factory if popen_factory is not None else _default_popen_factory
+        # 2026-05-22 A2: auto-resume orphan runs needs the rawdata path
+        # to build a --resume-from-cache argument. Falls back to module
+        # default so tests that construct RunManager directly without
+        # create_app keep working.
+        self._rawdata_root = (
+            rawdata_root if rawdata_root is not None else RAWDATA_ROOT
+        )
+        self._auto_resume_orphan_runs = bool(auto_resume_orphan_runs)
         self._lock = threading.Lock()
         self._running: dict[str, ManagedRun] = {}
         self._startup_recovery = self._recover_orphan_running_runs()
@@ -5523,6 +5546,24 @@ class RunManager:
         return None
 
     def _recover_orphan_running_runs(self) -> dict[str, Any]:
+        """Recover ``status=running`` rows after a console restart.
+
+        Every such row corresponds to either:
+          a. A subprocess still alive — its PID is captured, terminated
+             cleanly so we don't double-spawn on resume.
+          b. A subprocess long dead — PID missing or process gone; the
+             chunks it wrote to rawdata/ are still on disk (atomic_json_write).
+
+        2026-05-22 A2 task: when ``self._auto_resume_orphan_runs`` is
+        True (default), each orphan is re-submitted via
+        ``_spawn_resume_for_orphan`` with --resume-from-cache pointed
+        at its rawdata directory. The previous run row is still marked
+        failed but the error_message records the new run_id so the UI
+        can render the chain. False mode preserves the pre-A2 behavior
+        ("mark failed, operator manually retriggers") for cases where
+        auto-resume would be dangerous (a runaway run causing the
+        console to crash repeatedly).
+        """
         stale = self.store.list_runs_by_status("running", limit=5000)
         if not stale:
             return {
@@ -5530,29 +5571,52 @@ class RunManager:
                 "run_ids": [],
                 "terminated_pids": [],
                 "failed_to_terminate_pids": [],
+                "auto_resumed": {},
             }
         recovered_ids: list[str] = []
         terminated_pids: list[int] = []
         failed_to_terminate_pids: list[int] = []
+        auto_resumed: dict[str, str] = {}
         for row in stale:
             run_id = str(row.get("run_id", "")).strip()
             if not run_id:
                 continue
             pid = _coerce_pid(row.get("process_pid"))
-            message = "run interrupted by console restart; please rerun if needed"
+            message_parts = ["run interrupted by console restart"]
             if pid is not None:
                 if _terminate_pid_if_running(pid):
                     terminated_pids.append(pid)
-                    message += " (stale worker process terminated)"
+                    message_parts.append("stale worker process terminated")
                 else:
                     failed_to_terminate_pids.append(pid)
-                    message += " (stale worker process may still exist)"
+                    message_parts.append("stale worker process may still exist")
+
+            # Try auto-resume first. If it succeeds, the operator gets a
+            # fresh run row that continues from the existing chunks. If
+            # it fails for any reason (missing required fields,
+            # rawdata path gone, start_run raises), fall through to the
+            # mark-failed-with-rerun-hint path.
+            new_run_id: str | None = None
+            if self._auto_resume_orphan_runs:
+                try:
+                    new_run_id = self._spawn_resume_for_orphan(row)
+                except Exception as exc:
+                    message_parts.append(
+                        f"auto-resume failed: {exc.__class__.__name__}: {exc}"
+                    )
+
+            if new_run_id:
+                auto_resumed[run_id] = new_run_id
+                message_parts.append(f"auto-resumed as {new_run_id}")
+            else:
+                message_parts.append("please rerun if needed")
+
             self.store.update_run(
                 run_id,
                 {
                     "status": "failed",
                     "finished_at": utc_now(),
-                    "error_message": message,
+                    "error_message": "; ".join(message_parts),
                 },
             )
             recovered_ids.append(run_id)
@@ -5561,7 +5625,65 @@ class RunManager:
             "run_ids": recovered_ids,
             "terminated_pids": terminated_pids,
             "failed_to_terminate_pids": failed_to_terminate_pids,
+            "auto_resumed": auto_resumed,
         }
+
+    def _spawn_resume_for_orphan(self, row: dict[str, Any]) -> str | None:
+        """Reconstruct a RunCreateRequest from a DB row and call
+        start_run with --resume-from-cache pointed at the rawdata
+        directory for that (machine, mode).
+
+        Returns the new run_id on success, None when the row is missing
+        a required field (machine, mode) or when start_run rejects the
+        request (cell locked by another in-flight SAMPLING — typically
+        means a different orphan for the same cell already won the
+        race; that's fine, this one just doesn't resume).
+        """
+        machine = (row.get("machine") or "").strip()
+        mode_raw = row.get("mode")
+        if not machine or mode_raw is None:
+            return None
+        try:
+            mode = int(mode_raw)
+        except (TypeError, ValueError):
+            return None
+
+        rawdata_dir = self._rawdata_root / machine / f"mode_{mode}"
+
+        # Use saved md5 fields so the resume's stats merge only includes
+        # chunks whose envelope md5 matches what this run was sampling
+        # against originally. Empty strings = no filter (legacy rows).
+        req = RunCreateRequest(
+            machine=machine,
+            mode=mode,
+            target_halfwidth_pp=float(row.get("target_halfwidth_pp") or 0.5),
+            chunk_spin_times=int(row.get("chunk_spin_times") or 10000),
+            chunk_robot_count=int(row.get("chunk_robot_count") or 8),
+            batch_concurrency=int(row.get("batch_concurrency") or 8),
+            max_chunks=int(row.get("max_chunks") or 120),
+            timeout=float(row.get("timeout") or 60.0),
+            bankruptcy_session_spins=int(row.get("bankruptcy_session_spins") or 10000),
+            bankruptcy_bankroll_multipliers=str(
+                row.get("bankruptcy_bankroll_multipliers") or "10,100,200,500"
+            ),
+            model_id=str(row.get("model_id") or "gpt-5.4-mini"),
+            resume_from_cache_dir=str(rawdata_dir),
+            upstream_config_md5=str(row.get("rawdata_config_md5") or ""),
+            upstream_code_md5=str(row.get("rawdata_code_md5") or ""),
+            # server_id intentionally empty — the resolver picks the
+            # current default at start_run time. If the operator
+            # flipped servers between the crash and the restart, we
+            # trust the post-restart choice.
+            server_id="",
+        )
+        try:
+            result = self.start_run(req)
+        except HTTPException:
+            # Cell locked (another orphan already winning the race, or
+            # an unrelated SAMPLING in flight). Skip this one; the
+            # outer caller logs "auto-resume failed" into error_message.
+            return None
+        return str(result.get("run_id") or "") or None
 
     def startup_recovery_snapshot(self) -> dict[str, Any]:
         return dict(self._startup_recovery)
@@ -6414,6 +6536,11 @@ def create_app(
 
     threading.Thread(target=_prewarm_machines_summary, daemon=True).start()
     model_runtime = RuntimeModelConfig(model_config_path)
+    # 2026-05-22 A2: read auto-resume preference from settings.json so
+    # the operator can flip it without touching code. Default True;
+    # set False via PUT /api/settings when a runaway run is crashing
+    # the console and you want manual control on restart.
+    _startup_settings = _load_settings(settings_path)
     manager = RunManager(
         store,
         analyzer=az,
@@ -6421,6 +6548,10 @@ def create_app(
         progress_dir=progress_dir,
         cache_root=cr,
         machines_config=mc,
+        rawdata_root=rd_root,
+        auto_resume_orphan_runs=bool(
+            _startup_settings.get("auto_resume_orphan_runs", True)
+        ),
     )
     # Phase 2 (D3): construct shared registry + limiter, inject into all managers.
     registry = CellLockRegistry()
