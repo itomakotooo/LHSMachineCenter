@@ -1,6 +1,12 @@
 {
   "servers": [
     {
+      "id": "intranet",
+      "name": "本地采样 (内网部署)",
+      "endpoint": "http://127.0.0.1:15060",
+      "active": true
+    },
+    {
       "id": "dev",
       "name": "开发服 (内网)",
       "endpoint": "http://192.168.10.21:15060",
@@ -19,5 +25,5 @@
       "active": true
     }
   ],
-  "default_server": "prod"
+  "default_server": "dev"
 }
