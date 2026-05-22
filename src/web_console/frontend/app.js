@@ -7288,29 +7288,36 @@ async function runAutoTune() {
 
   state.autoTuneRunning = true;
   updateActionStates();
-  // First click: 2 robots × 3 concs = 6 candidates × 2 rounds ≈ 1 min.
-  // Subsequent clicks: refine ±6 robots / ±2 concs around previous best.
-  // Defaults derived 2026-04-25 from external-server benchmark
-  // (M14 mode 1, 116.232.103.19:10288): throughput peaks at r=8 c=8
-  // ≈ 9,100 outer/s; r=16 adds 5%; conc<4 leaves perf unused; conc>12
-  // plateaus. Old grid (8/16/24 × 1/2/4) covered almost entirely
-  // the LEFT of peak — autotune always returned 24x4 because it
-  // never tested higher conc. Backend has matching defaults if the
-  // request omits these fields.
+  // First click (no prev): set use_auto_grid=true + send empty candidate
+  // arrays. Backend picks a probe grid sized for the current server
+  // endpoint kind (loopback / LAN / WAN per
+  // _classify_endpoint_kind in app.py). The 2026-04-25 external-server
+  // benchmark numbers (r=8 c=8 ≈ 9k outer/s peak) live in the WAN preset.
+  // Internal-deploy 2026-05-22 measurement: loopback can sustain 30k+
+  // outer/s but only at robots=16-32 / conc=8-16, which the old [8,16]
+  // × [4,8,12] grid never explored — the autotune capped at robot=8
+  // conc=8 not because it was the true peak, just because nothing
+  // higher was tested.
+  //
+  // Subsequent clicks (have prev): refine ±6 robots / ±2 concs around
+  // the previous best — frontend-side narrowing is still useful for
+  // iterating once the operator has a reasonable baseline.
+  const useAutoGrid = !prev;
   const robotCandidates = prev
     ? [...new Set([prev.robot_count - 6, prev.robot_count, prev.robot_count + 6]
         .map((x) => Math.max(4, x)).filter((x) => x <= 200))]
-    : [8, 16];
+    : [];
   const concurrencyCandidates = prev
     ? [...new Set([Math.max(2, prev.batch_concurrency - 2), prev.batch_concurrency, prev.batch_concurrency + 2]
         .filter((x) => x >= 1 && x <= 16))]
-    : [4, 8, 12];
+    : [];
   const payload = {
     machine,
     mode,
     spin_times: 200,
     robot_candidates: robotCandidates,
     concurrency_candidates: concurrencyCandidates,
+    use_auto_grid: useAutoGrid,
     rounds: 2,
     timeout: 60,
     bet: 1000,
@@ -7318,7 +7325,10 @@ async function runAutoTune() {
   const autoEl = byId("autotuneMeta");
   if (autoEl) {
     autoEl.classList.remove("hidden");
-    autoEl.textContent = `machine=${machine} mode=${mode}\nrobots=[${robotCandidates.join(",")}]\nconc=[${concurrencyCandidates.join(",")}]\n${fmt("autotuneProgressStarting")}`;
+    const gridLabel = useAutoGrid
+      ? "robots=<auto>\nconc=<auto>"
+      : `robots=[${robotCandidates.join(",")}]\nconc=[${concurrencyCandidates.join(",")}]`;
+    autoEl.textContent = `machine=${machine} mode=${mode}\n${gridLabel}\n${fmt("autotuneProgressStarting")}`;
   }
   startAutotunePolling();
   try {
