@@ -140,7 +140,25 @@ const state = {
   // / submit_failed / polling_started). These fill the observability
   // gap between a user click and the first analyzer chunk_progress
   // event (typically 30-60s of silence). Reset on each fresh batch.
-  clientEvents: [],
+  //
+  // 2026-05-22 L1: persisted to localStorage so a browser refresh
+  // does not erase the operator's UI-lifecycle trail (the backend
+  // events on the same panel ARE already durable — they live in the
+  // BatchRunManager state for the duration of the batch, and the
+  // per-chunk events live in state/progress/{run_id}.jsonl. This
+  // closes the last hole.). Capped at 100 entries to match the
+  // in-memory cap on pushClientEvent so the localStorage value never
+  // grows unbounded.
+  clientEvents: (() => {
+    try {
+      const raw = JSON.parse(
+        localStorage.getItem("slot_console_clientEvents") || "[]"
+      );
+      return Array.isArray(raw) ? raw.slice(-100) : [];
+    } catch {
+      return [];
+    }
+  })(),
   // Client-captured monotonic references so the UI can show "t+5.2s"
   // elapsed counters on running items — gives the operator visible
   // progress during the slow startup window.
@@ -2955,6 +2973,9 @@ async function startSampling() {
   state.batchJustCompleted = false;
   // Reset client-side observability state for this new batch.
   state.clientEvents = [];
+  // 2026-05-22 L1: wipe the persisted copy too so a refresh after
+  // starting fresh doesn't show prev-batch lifecycle events.
+  try { localStorage.removeItem("slot_console_clientEvents"); } catch {}
   state.itemStartTimes = {};
   state.batchStartedAt = Date.now();
   // Effective set: focused machine (single) OR multi-selected (all).
@@ -3108,6 +3129,20 @@ function pushClientEvent(kind, data) {
   // Hard cap so a pathological re-click loop can't grow this unbounded.
   if (state.clientEvents.length > 100) {
     state.clientEvents = state.clientEvents.slice(-100);
+  }
+  // 2026-05-22 L1: persist to localStorage so refresh / new tab in the
+  // same browser keeps the UI-lifecycle trail. The backend events
+  // (timeline) already survive refresh via re-fetch; this closes the
+  // gap for the client-side synthetic events (submit / batch_created /
+  // polling_started / resume_submitted / etc.).
+  try {
+    localStorage.setItem(
+      "slot_console_clientEvents",
+      JSON.stringify(state.clientEvents),
+    );
+  } catch {
+    // localStorage quota or disabled (private mode); the in-memory
+    // copy still works for this session.
   }
   // Also land the client event on the top "活动日志流" panel. Same
   // event shape (ts/level/source/text) but rendered by the ui-branch
@@ -3412,6 +3447,9 @@ async function resumeSampling() {
     state.itemStartTimes = {};
     state.batchJustCompleted = false;
     state.clientEvents = [];
+    // 2026-05-22 L1: also wipe the persisted copy so refresh after
+    // starting a new batch doesn't show stale prev-batch events.
+    try { localStorage.removeItem("slot_console_clientEvents"); } catch {}
     localStorage.setItem("slot_console_activeBatchId", r.batch_id);
     // Show progress panel + cancel button; hide start + resume.
     const panel = byId("sampleProgressPanel");
