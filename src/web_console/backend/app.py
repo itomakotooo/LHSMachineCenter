@@ -2036,6 +2036,34 @@ class StateStore:
                 conn.execute("ALTER TABLE interpretations ADD COLUMN source TEXT")
             if "warning" not in columns:
                 conn.execute("ALTER TABLE interpretations ADD COLUMN warning TEXT")
+            # 2026-05-22 L2: batches table persists BatchRunManager state
+            # across console restarts. Before this, _batches was an
+            # in-memory dict — a console restart erased the batch
+            # grouping (individual run records survived in the runs
+            # table + A2 auto-resumed them, but the batch outer shell
+            # was gone, so the A1 resume button could not work after a
+            # restart). With this table, restart recovery marks
+            # non-terminal batches as cancelled-by-restart and loads
+            # them back so the operator can still hit the resume
+            # button on yesterday's interrupted batch. params_json /
+            # items_json / events_json store the full batch dict
+            # contents; the manager rebuilds the in-memory state from
+            # these on __init__.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS batches (
+                    batch_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    finished_at TEXT,
+                    concurrency INTEGER NOT NULL DEFAULT 3,
+                    params_json TEXT NOT NULL,
+                    items_json TEXT NOT NULL,
+                    events_json TEXT NOT NULL,
+                    reports_root TEXT
+                )
+                """
+            )
             # Phase 3 deploy (2026-05-17): fleet refresh queue tables.
             conn.execute(
                 """
@@ -2222,6 +2250,107 @@ class StateStore:
                 (status, limit),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ── 2026-05-22 L2: BatchRunManager state persistence ──
+
+    def upsert_batch(
+        self,
+        batch_id: str,
+        *,
+        status: str,
+        created_at: str,
+        finished_at: str | None,
+        concurrency: int,
+        params: dict[str, Any],
+        items: list[dict[str, Any]],
+        events: list[dict[str, Any]],
+        reports_root: str | None,
+    ) -> None:
+        """Upsert a batch's full state. Called by BatchRunManager
+        at start_batch, at each item finalize, on cancel, and on
+        terminal status transition. Light-frequency writes — events
+        list is appended at logical milestones (typically 5-30 rows
+        per batch), not on each chunk_progress emission.
+        """
+        # Cap events at last 200 to bound the column size; matches
+        # the existing -100 read cap on get_batch but leaves a bit
+        # of headroom for criticals.
+        events_capped = list(events)[-200:]
+        payload = {
+            "batch_id": batch_id,
+            "status": status,
+            "created_at": created_at,
+            "finished_at": finished_at,
+            "concurrency": int(concurrency),
+            "params_json": json.dumps(params, ensure_ascii=False),
+            "items_json": json.dumps(items, ensure_ascii=False),
+            "events_json": json.dumps(events_capped, ensure_ascii=False),
+            "reports_root": reports_root,
+        }
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO batches (
+                    batch_id, status, created_at, finished_at,
+                    concurrency, params_json, items_json, events_json,
+                    reports_root
+                ) VALUES (
+                    :batch_id, :status, :created_at, :finished_at,
+                    :concurrency, :params_json, :items_json, :events_json,
+                    :reports_root
+                )
+                ON CONFLICT(batch_id) DO UPDATE SET
+                    status=:status,
+                    finished_at=:finished_at,
+                    concurrency=:concurrency,
+                    params_json=:params_json,
+                    items_json=:items_json,
+                    events_json=:events_json,
+                    reports_root=:reports_root
+                """,
+                payload,
+            )
+
+    def get_batch_row(self, batch_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM batches WHERE batch_id=?", (batch_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        out = dict(row)
+        # Decode JSON columns for caller convenience.
+        for col in ("params_json", "items_json", "events_json"):
+            try:
+                out[col.removesuffix("_json")] = json.loads(out.get(col) or "null")
+            except (TypeError, json.JSONDecodeError):
+                out[col.removesuffix("_json")] = None
+        return out
+
+    def list_batches_by_status(
+        self,
+        statuses: tuple[str, ...],
+        limit: int = 5000,
+    ) -> list[dict[str, Any]]:
+        if not statuses:
+            return []
+        placeholders = ",".join("?" for _ in statuses)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM batches WHERE status IN ({placeholders}) "
+                "ORDER BY created_at DESC LIMIT ?",
+                tuple(statuses) + (limit,),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            for col in ("params_json", "items_json", "events_json"):
+                try:
+                    d[col.removesuffix("_json")] = json.loads(d.get(col) or "null")
+                except (TypeError, json.JSONDecodeError):
+                    d[col.removesuffix("_json")] = None
+            out.append(d)
+        return out
 
     def list_runs_by_report_version(self, version: str) -> list[dict[str, Any]]:
         """Every run row pointing at a given `<rv_...>` version directory.
@@ -3935,6 +4064,80 @@ class BatchRunManager:
         self._limiter: ConcurrencyLimiter = (
             limiter if limiter is not None else ConcurrencyLimiter(n_slots=5, foreground_reserve=2)
         )
+        # 2026-05-22 L2: restore non-terminal batches from the batches
+        # table — they were running when the console died, so mark
+        # them cancelled-by-restart and load them back into memory so
+        # the operator can still hit "↻ 继续未完成项" on yesterday's
+        # interrupted batch. _restore_persisted_batches walks the
+        # store + builds in-memory state dicts; no threads are started.
+        self._restore_persisted_batches()
+
+    def _restore_persisted_batches(self) -> None:
+        """Read non-terminal batches from the batches SQLite table and
+        rehydrate the in-memory ``_batches`` dict so the resume endpoint
+        + sampling_status both surface them after a console restart.
+
+        Each restored batch is force-marked status='cancelled' with a
+        synthetic event noting the restart. Per-item status comes from
+        whatever the last persist captured; items that were 'running'
+        at the moment the console died get re-tagged 'cancelled' so the
+        resume endpoint's filter (which picks up cancelled / failed /
+        pending) treats them as work-to-do. The matching runs-table row
+        will have been marked failed by RunManager._recover_orphan_running_runs
+        on its own startup pass (which runs before this method via the
+        create_app construction order).
+        """
+        try:
+            persisted = self._store.list_batches_by_status(
+                ("pending", "running"),
+                limit=5000,
+            )
+        except Exception:
+            # batches table doesn't exist yet on a pre-L2 database;
+            # nothing to restore. Caller proceeds with an empty dict.
+            return
+        if not persisted:
+            return
+        for row in persisted:
+            batch_id = str(row.get("batch_id") or "").strip()
+            if not batch_id:
+                continue
+            params = row.get("params") or {}
+            items = row.get("items") or []
+            events = list(row.get("events") or [])
+            # Force any still-running items into cancelled so the A1
+            # resume button sees them in the incomplete set.
+            for it in items:
+                if isinstance(it, dict) and it.get("status") in ("pending", "running"):
+                    it["status"] = "cancelled"
+                    if not it.get("error"):
+                        it["error"] = "cancelled by console restart"
+            # Append a restart-marker event so the operator can see
+            # in the timeline why the batch ended where it did.
+            events.append({
+                "ts": utc_now(),
+                "level": "warn",
+                "text": (
+                    "⚠ console 重启,本批次保存的进度仅供续跑参考;"
+                    "已完成项保留,未完成项被标记为 cancelled — "
+                    "可点 ↻ 继续未完成项 让它们续跑"
+                ),
+            })
+            self._batches[batch_id] = {
+                "batch_id": batch_id,
+                "status": "cancelled",
+                "items": items,
+                "events": events,
+                "concurrency": int(row.get("concurrency") or 3),
+                "params": params,
+                "reports_root": str(row.get("reports_root") or "") or None,
+                "created_at": str(row.get("created_at") or utc_now()),
+                "finished_at": utc_now(),
+                "cancel_requested": True,
+            }
+            # Persist the cancelled-by-restart state back so subsequent
+            # reads of the SQLite row reflect the recovery decision.
+            self._persist_batch(batch_id)
 
     def sampling_status(self) -> dict[str, Any]:
         """Snapshot of active batches + which (machine, mode) keys are
@@ -4221,10 +4424,52 @@ class BatchRunManager:
         }
         with self._lock:
             self._batches[batch_id] = batch
+        # 2026-05-22 L2: persist initial batch state so a console
+        # restart during the sample can find the batch params + items
+        # and offer the resume button. The thread will continue
+        # persisting on each item finalize + the terminal status flip.
+        self._persist_batch(batch_id)
 
         thread = threading.Thread(target=self._run_batch, args=(batch_id,), daemon=True)
         thread.start()
         return {"batch_id": batch_id, "status": "running", "total": len(items)}
+
+    def _persist_batch(self, batch_id: str) -> None:
+        """Snapshot the in-memory batch dict to the batches SQLite
+        table. Safe to call from inside or outside the lock; takes
+        the lock itself to read a consistent snapshot.
+
+        Called at:
+          * start_batch (initial INSERT)
+          * each item finalize in _run_one (so we capture per-item
+            run_id + status as the run progresses)
+          * cancel_batch (records cancel_requested + may persist
+            in-flight items as cancelled by the run thread)
+          * _run_batch terminal status flip (final state)
+        """
+        with self._lock:
+            b = self._batches.get(batch_id)
+            if b is None:
+                return
+            snapshot = {
+                "status": str(b.get("status") or ""),
+                "created_at": str(b.get("created_at") or utc_now()),
+                "finished_at": b.get("finished_at"),
+                "concurrency": int(b.get("concurrency") or 3),
+                "params": dict(b.get("params") or {}),
+                "items": [dict(it) for it in b.get("items") or []],
+                "events": list(b.get("events") or []),
+                "reports_root": str(b.get("reports_root") or ""),
+            }
+        try:
+            self._store.upsert_batch(batch_id, **snapshot)
+        except Exception:
+            # Persistence is best-effort — never let it block the
+            # batch's foreground thread. A failed write means the
+            # post-restart restore won't see this batch, but the
+            # samples themselves still complete because the run
+            # records use the (separate) runs table.
+            pass
 
     def get_batch(self, batch_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -4396,7 +4641,13 @@ class BatchRunManager:
                                     f"{type(exc).__name__}: {exc}",
                                     flush=True,
                                 )
-            return True
+        # 2026-05-22 L2: snapshot cancel_requested so a restart while
+        # the batch is still draining lands it as cancelled-by-restart
+        # at recovery time (matching the in-flight intent). The
+        # _run_one finalize will overwrite per-item status as the
+        # running items wind down through stop-flag.
+        self._persist_batch(batch_id)
+        return True
 
     def _run_batch(self, batch_id: str) -> None:
         with self._lock:
@@ -4853,6 +5104,12 @@ class BatchRunManager:
                 # not reach the acquire call, so _limiter_acquired stays False).
                 if _limiter_acquired:
                     self._limiter.release()
+            # 2026-05-22 L2: persist the item's final state. Catches
+            # every terminal-status branch above (attached / failed /
+            # cancelled / completed) so the SQLite batches row stays
+            # in sync without scattering _persist_batch() calls at each
+            # `item["status"] = ...` site.
+            self._persist_batch(batch_id)
 
         threads: list[threading.Thread] = []
         for item in items:
@@ -4864,6 +5121,11 @@ class BatchRunManager:
             t.join()
 
         batch["status"] = "completed"
+        batch["finished_at"] = utc_now()
+        # 2026-05-22 L2: final terminal-state snapshot. Captures the
+        # cancelled / completed transition so a restart-recovery scan
+        # finds the batch in its true terminal state, not as "running".
+        self._persist_batch(batch_id)
 
     def _wait_for_run(self, run_id: str) -> None:
         """Poll until the run is no longer 'running'."""
