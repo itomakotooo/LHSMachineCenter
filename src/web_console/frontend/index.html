@@ -355,6 +355,11 @@
               <button id="batchGenerateBtn" class="secondary-btn" disabled title="从已缓存的 rawdata 批量重新生成 report（analyzer 代码升级后用）" data-i18n="btnBatchGenerate">⟳ 批量生成 Report</button>
               <button id="batchDeleteRawdataBtn" class="danger-btn" disabled title="删除所选机台当前 mode 的 rawdata chunks（destructive）" data-i18n="btnBatchDeleteRawdata">🗑 删 rawdata</button>
               <button id="sampleCancelBtn" class="danger-btn hidden" data-i18n="btnBatchCancel">停止</button>
+              <!-- Resume button (2026-05-22 task A1): shown after a batch ends with at
+                   least one cancelled / failed / pending item. Clicking it re-submits
+                   the same params + only the incomplete items; backend's per-item
+                   resume_from_cache picks up the existing chunks for each cell. -->
+              <button id="sampleResumeBtn" class="primary-btn hidden" title="继续未完成的机台（已完成项跳过；正在采样到一半的从已落盘 chunks 续上）">↻ 继续未完成项</button>
             </div>
 
             <!-- Non-sticky secondary area: hint + progress logs.

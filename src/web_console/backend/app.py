@@ -4325,6 +4325,12 @@ class BatchRunManager:
                     except Exception:
                         pass
                 items_out.append(entry)
+            # 2026-05-22 task A1: surface batch-level params + concurrency
+            # to the UI. The resume endpoint reads through here to rebuild
+            # a BatchRunRequest for the new batch, and the UI can display
+            # "本批参数: chunk_spin_times=10000 robot=2 conc=16 ..." for
+            # transparency. Shallow-copy params so caller can't mutate
+            # the live dict.
             return {
                 "batch_id": b["batch_id"],
                 "status": b["status"],
@@ -4333,6 +4339,8 @@ class BatchRunManager:
                 "items": items_out,
                 "events": list(b.get("events", []))[-100:],
                 "created_at": b["created_at"],
+                "concurrency": int(b.get("concurrency") or 3),
+                "params": dict(b.get("params") or {}),
             }
 
     def cancel_batch(self, batch_id: str) -> bool:
@@ -7736,6 +7744,97 @@ def create_app(
         if not batch_mgr.cancel_batch(batch_id):
             raise HTTPException(status_code=404, detail="batch not found")
         return {"ok": True}
+
+    @app.post("/api/batch-run/{batch_id}/resume")
+    def resume_batch_run(batch_id: str) -> dict[str, Any]:
+        """Re-submit a cancelled / failed / partial batch with the same
+        params, including only items that did NOT reach completed.
+
+        On the wire this is just a new batch_id. The "resume" is implicit:
+        ``start_batch`` already does resume_from_cache per-item against
+        ``rawdata/{machine}/mode_X/``, so chunks already written persist
+        and the analyzer continues from the next chunk index. Cancelled
+        or failed items pick up where they left off; pending items run
+        from scratch. The interrupted chunk (mid-HTTP at cancel time)
+        is always discarded — chunk files are atomic-written so any
+        partially-written file gets skipped as malformed.
+
+        2026-05-22 task A1: until this endpoint, the same UX required
+        the operator to re-select the same machines + re-click 开始采样
+        and trust that resume_from_cache would do the right thing. The
+        button just makes that two-step explicit.
+        """
+        state = batch_mgr.get_batch(batch_id)
+        if state is None:
+            raise HTTPException(status_code=404, detail="batch not found")
+
+        # Only let TERMINAL-incomplete batches be resumed. A still-running
+        # batch doesn't need a resume (it's still going); an already-
+        # completed batch has nothing left to do (the new submit would
+        # be a no-op at best, a confused double-spend at worst).
+        if state["status"] not in ("cancelled", "failed", "partial"):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"batch is in status '{state['status']}' — only "
+                    "cancelled / failed / partial batches can be resumed"
+                ),
+            )
+
+        # Items to re-submit. ``completed`` and ``attached`` items have
+        # already produced (or are already producing) a usable run for
+        # their cell, so we skip them. Everything else (failed /
+        # cancelled / pending / running-leftover) gets re-queued.
+        incomplete_statuses = {"failed", "cancelled", "pending", "running"}
+        items_to_resume = [
+            it for it in state["items"]
+            if it.get("status") in incomplete_statuses
+        ]
+        if not items_to_resume:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "all items already completed (or attached) — nothing "
+                    "to resume"
+                ),
+            )
+
+        # Rebuild BatchRunRequest from saved batch params. Per-item
+        # chunk_spin_times is preserved from the original (per-machine
+        # heuristic was already applied at submit time).
+        params = state.get("params") or {}
+        new_items = [
+            BatchRunItem(
+                machine=it["machine"],
+                mode=int(it["mode"]),
+                chunk_spin_times=int(it["chunk_spin_times"])
+                if it.get("chunk_spin_times") is not None
+                else None,
+            )
+            for it in items_to_resume
+        ]
+        new_req = BatchRunRequest(
+            items=new_items,
+            concurrency=int(state.get("concurrency") or 3),
+            server_id=str(params.get("server_id") or ""),
+            chunk_spin_times=int(params.get("chunk_spin_times") or 10000),
+            chunk_robot_count=int(params.get("chunk_robot_count") or 8),
+            batch_concurrency=int(params.get("batch_concurrency") or 8),
+            max_chunks=int(params.get("max_chunks") or 120),
+            timeout=float(params.get("timeout") or 60.0),
+            target_halfwidth_pp=float(params.get("target_halfwidth_pp") or 0.5),
+            auto_cleanup_cache=bool(params.get("auto_cleanup_cache", True)),
+        )
+
+        result = batch_mgr.start_batch(new_req)
+        # Tag the response so the UI can wire the new batch_id back into
+        # the same activity log entry / show "continuation of {old}".
+        result["resumed_from_batch_id"] = batch_id
+        result["resumed_items"] = len(items_to_resume)
+        result["skipped_completed_items"] = (
+            len(state["items"]) - len(items_to_resume)
+        )
+        return result
 
     # ── Server management ──
 

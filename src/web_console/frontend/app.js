@@ -3079,6 +3079,12 @@ async function startSampling() {
     updateSampleHint();
     byId("sampleCancelBtn").classList.remove("hidden");
     byId("sampleStartBtn").classList.add("hidden");
+    // Drop any stashed lastFinishedBatchId + hide the resume button —
+    // operator explicitly started a fresh batch, so the previous
+    // incomplete-set is no longer the natural thing to continue.
+    state.lastFinishedBatchId = null;
+    const _resumeBtnHide = byId("sampleResumeBtn");
+    if (_resumeBtnHide) _resumeBtnHide.classList.add("hidden");
     pollSampling();
   } catch (e) {
     pushClientEvent("submit_failed", { error: String(e.message || e) });
@@ -3162,6 +3168,12 @@ function pollSampling() {
         // Mark the log frozen so the user can read final state without
         // the panel re-rendering under them. Also stamp a completion
         // banner at the top so it's obvious why nothing's moving.
+        // 2026-05-22 task A1: capture incomplete-item count BEFORE
+        // nulling activeBatchId so the resume button (also below) can
+        // call POST /api/batch-run/{old_id}/resume with the right id.
+        const incompleteItems = (data.items || []).filter(
+          (i) => i.status === "cancelled" || i.status === "failed" || i.status === "pending"
+        );
         const meta = byId("sampleProgressMeta");
         if (meta) {
           const failedChunks = (data.items || []).reduce((sum, it) =>
@@ -3181,9 +3193,16 @@ function pollSampling() {
           const totalElapsed = state.batchStartedAt
             ? ` · 总耗时 ${PURE.computeElapsedSeconds(state.batchStartedAt).toFixed(1)}s`
             : "";
-          meta.textContent = `${bannerIcon} 批次已结束 · ${data.completed}/${data.total}${note}${partialNote}${fn}${totalElapsed} · 日志保留，点击开始采样可覆盖`;
+          const resumeHint = incompleteItems.length > 0
+            ? ` · 可点 ↻ 继续未完成项 (${incompleteItems.length}/${data.total})`
+            : "";
+          meta.textContent = `${bannerIcon} 批次已结束 · ${data.completed}/${data.total}${note}${partialNote}${fn}${totalElapsed} · 日志保留，点击开始采样可覆盖${resumeHint}`;
         }
         state.batchJustCompleted = true;  // prevent further re-render
+        // Stash the finished batch_id for the resume button. Cleared
+        // when operator clicks 开始采样 (new batch) or 继续未完成项
+        // (resume) so the stale id can't be replayed across sessions.
+        state.lastFinishedBatchId = incompleteItems.length > 0 ? state.activeBatchId : null;
         state.activeBatchId = null;
         localStorage.removeItem("slot_console_activeBatchId");
         byId("sampleCancelBtn").classList.add("hidden");
@@ -3191,6 +3210,18 @@ function pollSampling() {
         if (startBtnEl) {
           startBtnEl.classList.remove("hidden");
           startBtnEl.disabled = false;
+        }
+        // Surface the resume button only when there is something to
+        // resume; otherwise stays hidden (completed-clean batch).
+        const resumeBtnEl = byId("sampleResumeBtn");
+        if (resumeBtnEl) {
+          if (incompleteItems.length > 0) {
+            resumeBtnEl.classList.remove("hidden");
+            resumeBtnEl.disabled = false;
+            resumeBtnEl.textContent = `↻ 继续未完成项 (${incompleteItems.length}/${data.total})`;
+          } else {
+            resumeBtnEl.classList.add("hidden");
+          }
         }
         updateSampleHint();
         // Refresh catalog with new reports.
@@ -3351,6 +3382,60 @@ async function cancelSampling() {
     alert(String(e.message || e));
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = "停止"; }
+  }
+}
+
+// 2026-05-22 task A1: re-submit a finished-but-incomplete batch.
+// Backend extracts items whose status is not completed/attached, copies
+// the original batch's params, and starts a fresh batch_id. Frontend
+// adopts the new id and re-enters the polling loop just like a normal
+// 开始采样 click — the only difference is the resume button + hint
+// text. Cached chunks under rawdata/ are reused per-item via
+// resume_from_cache (existing behavior), so already-partial cells
+// continue from their last chunk index.
+async function resumeSampling() {
+  const oldBatchId = state.lastFinishedBatchId;
+  if (!oldBatchId) return;
+  const btn = byId("sampleResumeBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "提交中…"; }
+  try {
+    const r = await apiPost(`/api/batch-run/${oldBatchId}/resume`, {});
+    if (!r || !r.batch_id) {
+      throw new Error("resume response missing batch_id");
+    }
+    // Adopt the new batch_id and re-enter the polling lifecycle. Clear
+    // the stale finished-id so the resume button does not double-fire
+    // if the operator hits it again while waiting for the new batch.
+    state.lastFinishedBatchId = null;
+    state.activeBatchId = r.batch_id;
+    state.batchStartedAt = Date.now();
+    state.itemStartTimes = {};
+    state.batchJustCompleted = false;
+    state.clientEvents = [];
+    localStorage.setItem("slot_console_activeBatchId", r.batch_id);
+    // Show progress panel + cancel button; hide start + resume.
+    const panel = byId("sampleProgressPanel");
+    if (panel) panel.classList.remove("hidden");
+    const startBtnEl = byId("sampleStartBtn");
+    if (startBtnEl) startBtnEl.classList.add("hidden");
+    const cancelBtnEl = byId("sampleCancelBtn");
+    if (cancelBtnEl) cancelBtnEl.classList.remove("hidden");
+    if (btn) btn.classList.add("hidden");
+    pushClientEvent("resume_submitted", {
+      resumed_from_batch_id: oldBatchId,
+      resumed_items: r.resumed_items,
+      skipped_completed_items: r.skipped_completed_items,
+    });
+    pollSampling();
+  } catch (e) {
+    alert(String(e.message || e));
+    if (btn) {
+      btn.disabled = false;
+      // Keep the button label readable so the operator knows it failed
+      // and can retry; counters are stale at this point so the bare
+      // label is honest enough.
+      btn.textContent = "↻ 继续未完成项";
+    }
   }
 }
 
@@ -7809,6 +7894,14 @@ function bindEvents() {
   // Inline sampling panel controls.
   byId("sampleStartBtn").addEventListener("click", () => startSampling());
   byId("sampleCancelBtn").addEventListener("click", () => cancelSampling());
+  // 2026-05-22 task A1: 继续未完成项 button (hidden by default;
+  // surfaced by pollSampling when a batch ends with cancelled/failed
+  // items). Hidden again on fresh start so the operator cannot
+  // accidentally retrigger a stale id.
+  const _resumeBtnInit = byId("sampleResumeBtn");
+  if (_resumeBtnInit) {
+    _resumeBtnInit.addEventListener("click", () => resumeSampling());
+  }
   byId("sampleMode").addEventListener("change", () => { updateSampleHint(); _saveSamplingPrefs(); });
   byId("sampleCi").addEventListener("change", () => { updateSampleHint(); _saveSamplingPrefs(); });
   byId("sampleSpinCount")?.addEventListener("input", () => updateSampleHint());
