@@ -28,6 +28,24 @@ def _write_servers(tmp_path: Path, servers_json: dict) -> Path:
     return p
 
 
+def _empty_settings_path(tmp_path: Path) -> Path:
+    """Return a settings.json path that does NOT exist. Forces
+    ``_load_settings`` to return defaults (default_server="" → no
+    operator override). Tests that don't want to exercise the operator
+    override layer pass this so they're isolated from whatever
+    `state/console/settings.json` exists on the dev box."""
+    return tmp_path / "no_settings.json"
+
+
+def _write_settings(tmp_path: Path, settings_json: dict) -> Path:
+    p = tmp_path / "settings.json"
+    p.write_text(
+        json.dumps(settings_json, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return p
+
+
 def _batch_payload(**kw):
     base = {
         "items": [{"machine": "M14", "mode": 1, "chunk_spin_times": 1000}],
@@ -49,7 +67,9 @@ class TestResolveActiveServerId:
             ],
             "default_server": "dev",
         })
-        assert app_mod._resolve_active_server_id(p) == "dev"
+        assert app_mod._resolve_active_server_id(
+            p, settings_path=_empty_settings_path(tmp_path),
+        ) == "dev"
 
     def test_falls_through_when_default_has_empty_endpoint(self, tmp_path):
         import src.web_console.backend.app as app_mod
@@ -61,7 +81,9 @@ class TestResolveActiveServerId:
             "default_server": "dev",
         })
         # Default has no endpoint → skip to first active-with-endpoint.
-        assert app_mod._resolve_active_server_id(p) == "prod"
+        assert app_mod._resolve_active_server_id(
+            p, settings_path=_empty_settings_path(tmp_path),
+        ) == "prod"
 
     def test_returns_empty_when_nothing_routable(self, tmp_path):
         import src.web_console.backend.app as app_mod
@@ -72,7 +94,9 @@ class TestResolveActiveServerId:
             ],
             "default_server": "dev",
         })
-        assert app_mod._resolve_active_server_id(p) == ""
+        assert app_mod._resolve_active_server_id(
+            p, settings_path=_empty_settings_path(tmp_path),
+        ) == ""
 
     def test_skips_inactive_entries_with_endpoint(self, tmp_path):
         import src.web_console.backend.app as app_mod
@@ -83,7 +107,77 @@ class TestResolveActiveServerId:
             ],
             "default_server": "",  # no default
         })
-        assert app_mod._resolve_active_server_id(p) == "prod"
+        assert app_mod._resolve_active_server_id(
+            p, settings_path=_empty_settings_path(tmp_path),
+        ) == "prod"
+
+    # ── 2026-05-22: default_server moved out of tracked servers.json ──
+
+    def test_operator_override_in_settings_beats_shipped_default(self, tmp_path):
+        """state/console/settings.json default_server takes precedence
+        over servers.json's shipped default_server.
+
+        Inject-bug recipe: in _resolve_active_server_id, remove the
+        ``if operator_pref and ...: return operator_pref`` block →
+        resolver falls back to shipped default → test fails (returns
+        'shipped_default' instead of 'operator_pref').
+        """
+        import src.web_console.backend.app as app_mod
+        p = _write_servers(tmp_path, {
+            "servers": [
+                {"id": "shipped_default", "endpoint": "http://1.1.1.1", "active": True},
+                {"id": "operator_pref",   "endpoint": "http://2.2.2.2", "active": True},
+            ],
+            "default_server": "shipped_default",
+        })
+        sp = _write_settings(tmp_path, {"default_server": "operator_pref"})
+        assert app_mod._resolve_active_server_id(p, settings_path=sp) == "operator_pref"
+
+    def test_operator_override_dangling_falls_through_to_shipped(self, tmp_path):
+        """If operator settings.json points at a server that does NOT
+        exist anymore (renamed / deleted), silently drop to shipped
+        default instead of blowing up. Avoids the case where deleting
+        a server via UI leaves the resolver pinned to a stale id."""
+        import src.web_console.backend.app as app_mod
+        p = _write_servers(tmp_path, {
+            "servers": [
+                {"id": "shipped_default", "endpoint": "http://1.1.1.1", "active": True},
+            ],
+            "default_server": "shipped_default",
+        })
+        sp = _write_settings(tmp_path, {"default_server": "deleted_server"})
+        assert app_mod._resolve_active_server_id(p, settings_path=sp) == "shipped_default"
+
+    def test_operator_override_no_endpoint_falls_through(self, tmp_path):
+        """Operator override pointing at a server with NO endpoint is
+        treated the same as dangling — the resolver continues to the
+        next tier (avoids the silent-fallthrough-to-empty-string footgun
+        in the matching shipped-default guard above)."""
+        import src.web_console.backend.app as app_mod
+        p = _write_servers(tmp_path, {
+            "servers": [
+                {"id": "no_endpoint",     "endpoint": "",            "active": True},
+                {"id": "shipped_default", "endpoint": "http://2.2.2.2", "active": True},
+            ],
+            "default_server": "shipped_default",
+        })
+        sp = _write_settings(tmp_path, {"default_server": "no_endpoint"})
+        assert app_mod._resolve_active_server_id(p, settings_path=sp) == "shipped_default"
+
+    def test_missing_settings_file_returns_shipped_default(self, tmp_path):
+        """Fresh deploy: settings.json does not exist yet → no operator
+        override → resolver uses shipped default. This is the path most
+        production calls go through."""
+        import src.web_console.backend.app as app_mod
+        p = _write_servers(tmp_path, {
+            "servers": [
+                {"id": "shipped_default", "endpoint": "http://1.1.1.1", "active": True},
+            ],
+            "default_server": "shipped_default",
+        })
+        assert app_mod._resolve_active_server_id(
+            p, settings_path=_empty_settings_path(tmp_path),
+        ) == "shipped_default"
 
 
 class TestBatchRunHonorsServerResolution:
@@ -405,6 +499,10 @@ class TestSetDefaultServerEndpoint:
     servers.json + restart."""
 
     def test_set_default_updates_config(self, client, tmp_path, monkeypatch):
+        """2026-05-22 contract change: set-default writes to operator
+        settings.json (per-deploy preference), NOT tracked servers.json.
+        This is what unblocks the dev box ↔ deployed server git pull
+        from conflicting every time an operator flips the dropdown."""
         import src.web_console.backend.app as app_mod
         p = _write_servers(tmp_path, {
             "servers": [
@@ -420,9 +518,29 @@ class TestSetDefaultServerEndpoint:
         assert resp.status_code == 200, resp.text
         assert resp.json() == {"ok": True, "default_server": "prod"}
 
-        # Persisted to file + reflected in GET /api/servers.
+        # 1. servers.json's shipped default is UNTOUCHED (still "dev").
         cfg = json.loads(p.read_text(encoding="utf-8"))
-        assert cfg["default_server"] == "prod"
+        assert cfg["default_server"] == "dev", (
+            "set-default must not write to tracked servers.json; the "
+            "shipped default stays as is"
+        )
+
+        # 2. The operator override IS persisted — verify via GET
+        #    /api/settings (the canonical reader) so we don't couple
+        #    the test to the on-disk settings.json path.
+        settings_resp = c.get("/api/settings")
+        assert settings_resp.status_code == 200
+        assert settings_resp.json().get("default_server") == "prod", (
+            "operator override must land in state/console/settings.json "
+            "(read via GET /api/settings)"
+        )
+
+        # 3. GET /api/servers reflects the EFFECTIVE default (operator
+        #    override overlays shipped) so the UI's 默认服务器 chip is
+        #    truthful about what the resolver will pick.
+        servers_resp = c.get("/api/servers")
+        assert servers_resp.status_code == 200
+        assert servers_resp.json().get("default_server") == "prod"
 
     def test_set_default_404_for_unknown_id(
         self, client, tmp_path, monkeypatch,
@@ -457,9 +575,12 @@ class TestSetDefaultServerEndpoint:
         resp = c.put("/api/servers/test/set-default")
         assert resp.status_code == 400
         assert "endpoint" in resp.json()["detail"]
-        # Config untouched.
+        # servers.json's shipped default untouched.
         cfg = json.loads(p.read_text(encoding="utf-8"))
         assert cfg["default_server"] == "dev"
+        # And operator override stays empty (rejected before write).
+        settings_resp = c.get("/api/settings")
+        assert settings_resp.json().get("default_server", "") == ""
 
     def test_set_default_then_batch_run_routes_accordingly(
         self, client, app_factory, tmp_path, monkeypatch,

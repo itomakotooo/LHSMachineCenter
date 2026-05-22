@@ -78,6 +78,15 @@ CLASSIFY_DIR = ROOT / "dev_reports" / "_classify"
 PAYTABLES_DIR = ROOT / "configs" / "paytables"
 MACHINES_CONFIG = ROOT / "configs" / "machines.json"
 SERVERS_CONFIG = ROOT / "configs" / "servers.json"
+# Operator-pref overrides for things that LOOK like server config but
+# are per-deploy preferences (currently: default_server). Persisted next
+# to console.db; gitignored — flipping the default server via the UI must
+# NOT cause a merge conflict on next `git pull`. See `_load_settings`
+# defaults + `_resolve_active_server_id` priority. Each create_app() also
+# builds its own `settings_path` inside `sd / "settings.json"` for test
+# isolation; this module constant is the fallback for module-level
+# resolver calls that don't have a closure local in scope.
+SETTINGS_PATH = ROOT / "state" / "console" / "settings.json"
 # Phase 3 deploy (2026-05-17): uploaded config JSONs live here.
 # Directory is gitignored; _registry.json inside tracks all uploads.
 CONFIGS_UPLOAD_DIR = ROOT / "configs" / "uploaded_configs"
@@ -866,8 +875,19 @@ def _load_settings(settings_path: Path) -> dict[str, Any]:
     """Read operator-tunable settings from disk. Missing / malformed
     file → returns defaults. Callers read through here on each access
     so a settings update via /api/settings takes effect immediately.
+
+    Fields:
+      * ``min_retention_spins`` (int ≥ 0) — chunk-retention floor.
+      * ``default_server`` (str) — operator override for which server
+        sampling uses by default. Empty string means "follow servers.json
+        shipped default → first-active fallback" in ``_resolve_active_server_id``.
+        Stored here (not in tracked configs/servers.json) so flipping the
+        default via the UI does not create a merge conflict on next pull.
     """
-    defaults = {"min_retention_spins": _RAWDATA_MIN_RETENTION_SPINS_DEFAULT}
+    defaults = {
+        "min_retention_spins": _RAWDATA_MIN_RETENTION_SPINS_DEFAULT,
+        "default_server": "",
+    }
     try:
         data = json.loads(settings_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -878,6 +898,9 @@ def _load_settings(settings_path: Path) -> dict[str, Any]:
     mrs = data.get("min_retention_spins")
     if isinstance(mrs, (int, float)) and mrs >= 0:
         out["min_retention_spins"] = int(mrs)
+    ds = data.get("default_server")
+    if isinstance(ds, str):
+        out["default_server"] = ds
     return out
 
 
@@ -1512,25 +1535,49 @@ def _compare_snapshots(a: dict[str, Any], b: dict[str, Any]) -> list[dict[str, A
     return diffs
 
 
-def _resolve_active_server_id(path: Path | None = None) -> str:
+def _resolve_active_server_id(
+    path: Path | None = None,
+    settings_path: Path | None = None,
+) -> str:
     """Pick which server sampling should hit when the caller didn't
     specify one. Priority:
-      1. ``default_server`` if its entry has a non-empty endpoint
-      2. First entry with ``active=true`` AND non-empty endpoint
-      3. "" — sampler falls back to SLOT_SPIN_ENDPOINT hardcoded
+      1. ``default_server`` from state/console/settings.json (operator
+         override via PUT /api/servers/{id}/set-default) — kept here
+         instead of in tracked configs/servers.json so flipping does
+         not produce git merge conflicts on next pull.
+      2. ``default_server`` shipped in configs/servers.json (the
+         initial / fallback default — usually only set when the file
+         is first authored).
+      3. First entry with ``active=true`` AND non-empty endpoint.
+      4. "" — sampler falls back to SLOT_SPIN_ENDPOINT hardcoded.
 
-    Keeps the UI in control: flipping ``active`` / ``default_server``
-    via ``configs/servers.json`` (or the PUT /api/servers/{id}
-    endpoint) is enough to reroute batch-run without a backend
-    restart or a code edit."""
+    Each level still requires the picked server to (a) exist in the
+    servers list and (b) carry a non-empty endpoint, otherwise it
+    falls through. That way a stale operator override pointing at a
+    deleted/renamed server silently drops to the next tier instead of
+    blowing up.
+
+    Keeps the UI in control: flipping ``active`` via the 服务器管理 UI
+    or setting a new default via the resolver endpoint is enough to
+    reroute batch-run without a backend restart or a code edit.
+    """
     cfg = load_servers(path)
     entries = cfg.get("servers") or []
     by_id = {s.get("id"): s for s in entries if isinstance(s, dict)}
-    preferred = cfg.get("default_server")
-    if preferred and isinstance(by_id.get(preferred), dict):
-        ep = (by_id[preferred].get("endpoint") or "").strip()
+
+    sp = settings_path if settings_path is not None else SETTINGS_PATH
+    operator_pref = _load_settings(sp).get("default_server", "")
+    if operator_pref and isinstance(by_id.get(operator_pref), dict):
+        ep = (by_id[operator_pref].get("endpoint") or "").strip()
         if ep:
-            return preferred
+            return operator_pref
+
+    shipped = cfg.get("default_server")
+    if shipped and isinstance(by_id.get(shipped), dict):
+        ep = (by_id[shipped].get("endpoint") or "").strip()
+        if ep:
+            return shipped
+
     for s in entries:
         if s.get("active") and (s.get("endpoint") or "").strip():
             return s.get("id") or ""
@@ -3962,9 +4009,13 @@ class BatchRunManager:
                 # Resolve server selection once at batch submit time so
                 # every item spawns against the same endpoint, even if
                 # configs/servers.json flips mid-batch. Caller's
-                # server_id wins; otherwise use servers.json's
-                # default_server / first-active-with-endpoint.
-                "server_id": req.server_id or _resolve_active_server_id(),
+                # server_id wins; otherwise resolver checks
+                # state/console/settings.json operator override →
+                # servers.json default_server → first-active.
+                "server_id": (
+                    req.server_id
+                    or _resolve_active_server_id(settings_path=self._settings_path)
+                ),
             },
             "reports_root": rr,
             "created_at": utc_now(),
@@ -6478,7 +6529,10 @@ def create_app(
             # first-active. Avoids the SLOT_SPIN_ENDPOINT hardcode
             # silently routing halls-refresh to the wrong server
             # when default_server is non-"dev".
-            server_id = (req or {}).get("server_id") or _resolve_active_server_id()
+            server_id = (
+                (req or {}).get("server_id")
+                or _resolve_active_server_id(settings_path=settings_path)
+            )
             ep = get_server_endpoint(server_id) if server_id else SLOT_SPIN_ENDPOINT
             endpoint_base = ep.rstrip("/").rsplit("/MachineTest", 1)[0]
             url = f"{endpoint_base}/MachineTest/MapMachineOrder"
@@ -6663,7 +6717,9 @@ def create_app(
             # servers.json now. Hardcoding "dev" here meant flipping
             # default_server to "prod" via the UI didn't actually
             # reroute the pre-batch md5 refresh.
-            _refresh_sid = _resolve_active_server_id() or "dev"
+            _refresh_sid = (
+                _resolve_active_server_id(settings_path=settings_path) or "dev"
+            )
             def _refresh_md5_async() -> None:
                 # Phase 1 deploy: per memory/feedback_no_silent_swallow.md,
                 # best-effort background-thread failures must persist a
@@ -7500,7 +7556,25 @@ def create_app(
 
     @app.get("/api/servers")
     def list_servers() -> dict[str, Any]:
-        return load_servers(sc)
+        """Server list with the EFFECTIVE default merged in.
+
+        Reads tracked configs/servers.json for the actual server list,
+        then overlays state/console/settings.json's ``default_server``
+        if the operator has set one — that way the UI's "默认服务器"
+        chip shows what the resolver will actually use, not the stale
+        shipped default.
+
+        If the operator override points at a server that no longer
+        exists (e.g. operator deleted it), we silently drop the
+        override here too so the UI does not display a dangling ref.
+        """
+        cfg = load_servers(sc)
+        op_default = _load_settings(settings_path).get("default_server", "")
+        if op_default:
+            ids = {s.get("id") for s in (cfg.get("servers") or []) if isinstance(s, dict)}
+            if op_default in ids:
+                cfg["default_server"] = op_default
+        return cfg
 
     @app.post("/api/servers")
     def add_server(entry: ServerEntry) -> dict[str, Any]:
@@ -7531,12 +7605,20 @@ def create_app(
 
     @app.put("/api/servers/{server_id}/set-default")
     def set_default_server(server_id: str) -> dict[str, Any]:
-        """Mark ``server_id`` as the default for sampling. Batch-run
-        resolver (``_resolve_active_server_id``) picks this up on
-        every subsequent call, so the flip takes effect without a
-        backend restart. 400 if the target has no endpoint — a
-        default-server pointing to an unreachable entry just masks
-        the bug with a silent fallthrough.
+        """Mark ``server_id`` as the operator-preferred default for
+        sampling. Batch-run resolver (``_resolve_active_server_id``)
+        picks this up on every subsequent call, so the flip takes
+        effect without a backend restart. 400 if the target has no
+        endpoint — a default-server pointing to an unreachable entry
+        just masks the bug with a silent fallthrough.
+
+        Persistence: writes to state/console/settings.json (operator
+        override layer), NOT tracked configs/servers.json. Reason:
+        ``default_server`` is a per-deploy preference; persisting it
+        in tracked code causes git merge conflicts every time an
+        operator flips the dropdown and then the developer pushes an
+        unrelated change. servers.json keeps its shipped default
+        field intact as the fallback.
 
         Reads ``SERVERS_CONFIG`` module attribute directly (not the
         ``sc`` closure captured at app-build time) so tests and
@@ -7558,8 +7640,9 @@ def create_app(
                     f"endpoint configured"
                 ),
             )
-        cfg["default_server"] = server_id
-        save_servers(cfg, cfg_path)
+        current = _load_settings(settings_path)
+        current["default_server"] = server_id
+        _save_settings(settings_path, current)
         return {"ok": True, "default_server": server_id}
 
     @app.post("/api/servers/{server_id}/scan")
@@ -7653,6 +7736,15 @@ def create_app(
         if cfg.get("default_server") == server_id:
             cfg["default_server"] = cfg["servers"][0]["id"] if cfg["servers"] else ""
         save_servers(cfg, sc)
+        # Also clear the operator-override default in settings.json if
+        # it points at the just-deleted server. Otherwise list_servers
+        # would silently drop the override (it filters dangling refs)
+        # but a subsequent set-default to a different id would briefly
+        # display the stale string in the response.
+        op_settings = _load_settings(settings_path)
+        if op_settings.get("default_server") == server_id:
+            op_settings["default_server"] = ""
+            _save_settings(settings_path, op_settings)
         return {"ok": True}
 
     @app.get("/api/models")
@@ -9407,7 +9499,11 @@ def create_app(
         keeping symmetric with batch-run / autotune / halls-refresh.
         """
         payload = req or {}
-        server_id = payload.get("server_id") or _resolve_active_server_id() or "dev"
+        server_id = (
+            payload.get("server_id")
+            or _resolve_active_server_id(settings_path=settings_path)
+            or "dev"
+        )
         return _do_refresh_machines_md5(server_id, raise_on_error=True)
 
     @app.get("/api/report-validate/{machine}")
