@@ -336,19 +336,30 @@ class RunCreateRequest(BaseModel):
     # backend resolves max_chunks to target ~1M spins). Any positive
     # value is a normal CI half-width in percentage points.
     target_halfwidth_pp: float = Field(default=0.5, ge=0)
-    chunk_spin_times: int = Field(default=5000, gt=0)
-    # 2026-04-24: internal-server stress test (M14 mode 1, chunk=2000):
-    #   r=8 × conc=8 → 8,593 outer/s sustained (8-wave p50 14.5s max 16.7s)
-    #   r=8 × conc=16 → 7,861 outer/s, chunk 34s (2× retry cost, no gain)
-    #   r=8 × conc=32 → 23% timeout rate (ceiling approaches)
-    #   r=8 × conc=48 → 85% timeout (hard ceiling)
-    # 3M-spin single-machine sample at 8×8 = 5.7 min p50 / 6.5 min max.
-    # Per-machine chunk_spin_times (Collect 5000 / Lock-ReSpin-FreeSpin
-    # 2000 / others 1000) is picked separately in frontend, unchanged.
+    # 2026-05-22: floor lifted from 5000 -> 10000 per operator request
+    # (cleaner per-chunk RTP variance). Frontend's per-machine
+    # heuristic also enforces this floor for batch flows. Tests that
+    # want smaller chunks (cheaper fixtures) keep passing explicit
+    # values; this only affects callers that omit the field.
+    chunk_spin_times: int = Field(default=10000, gt=0)
+    # 2026-04-24 internal-server bench (M14 mode 1, chunk=2000) sized
+    # the 8×8 / 8×16 / 8×32 / 8×48 progression that justified r=8 c=8
+    # as the WAN-prod default. 2026-05-22 loopback measurement showed
+    # the direction inverts (small robot + high conc wins on loopback);
+    # the loopback-deployed console picks the right shape via
+    # _LOOPBACK_HARDCODED_TUNING + per-server tuning storage. These
+    # defaults stay tuned for the WAN regime so external operators
+    # who omit explicit values still get a sensible request.
     chunk_robot_count: int = Field(default=8, gt=0)
     batch_concurrency: int = Field(default=8, gt=0)
     max_chunks: int = Field(default=120, gt=0)
-    timeout: float = Field(default=300.0, gt=0)
+    # 2026-05-22: lowered 300 -> 60. Previous value was sized for a
+    # public-internet endpoint at p99 chunk wall ~30s with 10x retry
+    # safety. Internal-deploy / loopback p95 chunk wall is ~10s so
+    # 60s keeps 5-6x margin while giving the operator a quick failure
+    # signal instead of a 5-minute hang when the simulator stalls.
+    # WAN-prod operators who need more time can override per-request.
+    timeout: float = Field(default=60.0, gt=0)
     bankruptcy_session_spins: int = Field(default=10000, gt=0)
     bankruptcy_bankroll_multipliers: str = Field(default="10,100,200,500")
     model_id: str = Field(default="gpt-5.4-mini")
@@ -1786,13 +1797,15 @@ class BatchRunRequest(BaseModel):
     # non-empty endpoint). Lets operators flip endpoints via the
     # 服务器管理 UI without touching the SLOT_SPIN_ENDPOINT constant.
     server_id: str = Field(default="")
-    chunk_spin_times: int = Field(default=5000, gt=0)
-    # See RunRequest defaults above for the direct-connect benchmark
-    # rationale behind robot=8 / conc=8.
+    # 2026-05-22: defaults aligned with RunCreateRequest (see that
+    # class for the rationale of each value). chunk_spin_times floor
+    # lifted to 10000 per operator request; timeout dropped to 60s
+    # matching the loopback p95 measurement.
+    chunk_spin_times: int = Field(default=10000, gt=0)
     chunk_robot_count: int = Field(default=8, gt=0)
     batch_concurrency: int = Field(default=8, gt=0)
     max_chunks: int = Field(default=120, gt=0)
-    timeout: float = Field(default=300.0, gt=0)
+    timeout: float = Field(default=60.0, gt=0)
     target_halfwidth_pp: float = Field(default=0.5, ge=0)
     auto_cleanup_cache: bool = Field(default=True)
     # Sampling strategy for count-based runs:

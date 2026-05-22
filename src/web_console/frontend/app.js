@@ -2989,12 +2989,26 @@ async function startSampling() {
   });
 
   // Build items with smart chunk size per machine (category-based initial heuristic).
+  //
+  // 2026-05-22 floor lift: per user requirement, chunk_spin_times must be
+  // >= 10000 so per-chunk RTP variance is well-behaved (~10k samples give
+  // a tight CI for the chunk-level signal). Previous values (Collect 5000
+  // / Lock-ReSpin-FreeSpin 2000 / others 1000) were tuned for the public
+  // prod (WAN) endpoint where bigger chunks made wall time too long
+  // and timeout retries expensive. On the internal-deploy loopback path
+  // each 10k-spin chunk wall-times ~10s (vs 300s timeout default before
+  // this commit; now 60s), so the floor lift is cheap and gives cleaner
+  // per-chunk statistics.
+  //
+  // The category-aware branch is kept (instead of collapsing to a single
+  // literal) so a future per-machine differentiation can fan back out
+  // without re-discovering the structure.
   const items = selected.map((machine) => {
     const m = state.machines.find((x) => x.machine === machine);
     const cat = m?.category || "";
-    let chunk_spin_times = 1000;
-    if (cat === "Collect") chunk_spin_times = 5000;
-    else if (cat === "Lock" || cat === "ReSpin" || cat === "FreeSpin") chunk_spin_times = 2000;
+    let chunk_spin_times = 10000;
+    if (cat === "Collect") chunk_spin_times = 10000;
+    else if (cat === "Lock" || cat === "ReSpin" || cat === "FreeSpin") chunk_spin_times = 10000;
     const item = { machine, mode, chunk_spin_times };
     // Attach use_local_machine_config flag only on the focused-machine
     // flow (selected.length === 1 AND matches the focused machine
