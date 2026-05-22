@@ -25,6 +25,8 @@ from typing import Any
 
 import pytest
 
+from src.web_console.backend.cell_lock_registry import CellOperation
+
 
 class TestAnalyzerChunkRetry:
     """`run_sampling_chunk` now wraps `post_json` in exp-backoff retry.
@@ -92,13 +94,24 @@ class TestBatchRunManagerPerKeyLock:
         import src.web_console.backend.app as app_mod
         c, app = client
 
-        # Reach into the batch manager and manually acquire a key,
-        # simulating an in-flight batch. Then trigger a new batch
-        # request for the same key — its _run_one must see the key
-        # busy and short-circuit the item with "failed" + the
-        # specific error message.
+        # Reach into the batch manager and manually acquire a SAMPLING key
+        # via the registry, simulating an in-flight batch with a different
+        # upstream_md5. Then trigger a new batch request for the same key —
+        # its _run_one must see the key busy and short-circuit the item with
+        # "failed" + the specific error message.
         bm = app.state.batch_manager  # type: ignore[attr-defined]
-        assert bm._try_acquire_key("M99", 1) is True
+        # Test setup note: upstream_md5="test_md5" is intentionally different
+        # from what _get_machine_md5("M99", ...) returns (empty/"|" for unknown
+        # machine M99). The mismatch causes _run_one's attach-vs-reject check to
+        # hit the reject branch (different upstream_md5). If this value is changed
+        # to match what _get_machine_md5 returns (e.g. "" or "|"), the test would
+        # silently flip to exercising the attach path while still asserting
+        # "failed" — which would fail loudly, BUT future devs should know this
+        # value is load-bearing. Do not change it without updating the assertion.
+        assert bm._registry.try_acquire_cell(
+            "M99", 1, CellOperation.SAMPLING,
+            info={"run_id": "test_run", "config_id": "null", "upstream_md5": "test_md5"},
+        ) is True
         try:
             r = c.post("/api/batch-run", json={
                 "items": [{"machine": "M99", "mode": 1, "chunk_spin_times": 1000}],
@@ -118,7 +131,7 @@ class TestBatchRunManagerPerKeyLock:
             deadline = time.time() + 5
             while time.time() < deadline:
                 b = c.get(f"/api/batch-run/{batch_id}").json()
-                if b["items"][0]["status"] in ("failed", "completed", "cancelled"):
+                if b["items"][0]["status"] in ("failed", "completed", "cancelled", "attached"):
                     break
                 time.sleep(0.1)
             b = c.get(f"/api/batch-run/{batch_id}").json()
@@ -126,7 +139,7 @@ class TestBatchRunManagerPerKeyLock:
             assert it["status"] == "failed"
             assert "another batch is sampling" in (it.get("error") or "").lower()
         finally:
-            bm._release_key("M99", 1)
+            bm._registry.release_cell("M99", 1, CellOperation.SAMPLING)
 
     def test_lock_releases_on_completion(self, app_factory):
         """After an item finishes (or fails), the per-key lock must be
@@ -136,22 +149,32 @@ class TestBatchRunManagerPerKeyLock:
         # directly.
         app = app_factory()
         bm = app.state.batch_manager  # type: ignore[attr-defined]
-        assert bm._try_acquire_key("MX", 2) is True
-        assert bm._try_acquire_key("MX", 2) is False  # already held
-        bm._release_key("MX", 2)
-        assert bm._try_acquire_key("MX", 2) is True  # free again
-        bm._release_key("MX", 2)
+        assert bm._registry.try_acquire_cell(
+            "MX", 2, CellOperation.SAMPLING,
+            info={"run_id": "test", "config_id": "null", "upstream_md5": "test"},
+        ) is True
+        assert bm._registry.try_acquire_cell(
+            "MX", 2, CellOperation.SAMPLING,
+            info={"run_id": "test", "config_id": "null", "upstream_md5": "test"},
+        ) is False  # already held
+        bm._registry.release_cell("MX", 2, CellOperation.SAMPLING)
+        assert bm._registry.try_acquire_cell(
+            "MX", 2, CellOperation.SAMPLING,
+            info={"run_id": "test", "config_id": "null", "upstream_md5": "test"},
+        ) is True  # free again
+        bm._registry.release_cell("MX", 2, CellOperation.SAMPLING)
 
     def test_lock_is_per_key_not_global(self, app_factory):
         """Different (machine, mode) keys must not block each other."""
         app = app_factory()
         bm = app.state.batch_manager  # type: ignore[attr-defined]
-        assert bm._try_acquire_key("MA", 1) is True
-        assert bm._try_acquire_key("MA", 2) is True  # different mode
-        assert bm._try_acquire_key("MB", 1) is True  # different machine
-        bm._release_key("MA", 1)
-        bm._release_key("MA", 2)
-        bm._release_key("MB", 1)
+        _info = {"run_id": "test", "config_id": "null", "upstream_md5": "test"}
+        assert bm._registry.try_acquire_cell("MA", 1, CellOperation.SAMPLING, info=_info) is True
+        assert bm._registry.try_acquire_cell("MA", 2, CellOperation.SAMPLING, info=_info) is True  # different mode
+        assert bm._registry.try_acquire_cell("MB", 1, CellOperation.SAMPLING, info=_info) is True  # different machine
+        bm._registry.release_cell("MA", 1, CellOperation.SAMPLING)
+        bm._registry.release_cell("MA", 2, CellOperation.SAMPLING)
+        bm._registry.release_cell("MB", 1, CellOperation.SAMPLING)
 
 
 class TestSharedRetryHelper:

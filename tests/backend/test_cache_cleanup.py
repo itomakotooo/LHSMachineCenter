@@ -138,13 +138,13 @@ def test_cleanup_blocked_by_mutex_returns_409(client, app_factory):
             mode_dir, i, config_md5="cfg1", code_md5="code1",
             spin_times=10_000,
         )
-    assert app.state.ops.acquire("auto_tune")
+    assert app.state.registry.try_acquire_global("disk_cleanup")
     try:
         resp = c.post("/api/cache/cleanup", json={"max_delete_bytes": 0})
         assert resp.status_code == 409
-        assert resp.json()["detail"] == "system busy: auto_tune"
+        assert resp.json()["detail"] == "disk_cleanup already in progress"
     finally:
-        app.state.ops.release()
+        app.state.registry.release_global("disk_cleanup")
     # All chunks still there; mutex-blocked cleanup must not delete.
     assert len(list(mode_dir.glob("chunk_*.json"))) == 15
 

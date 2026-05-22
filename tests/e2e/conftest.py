@@ -37,6 +37,9 @@ class LiveServer:
     cache_dir: Path
     rawdata_dir: Path
     db_path: Path
+    # I5 fix: isolated configs upload dir so /api/configs/upload never
+    # touches the real configs/uploaded_configs/ in the worktree.
+    configs_upload_dir: Path | None = None
 
 
 @pytest.fixture(scope="session")
@@ -52,6 +55,9 @@ def live_server(tmp_path_factory: pytest.TempPathFactory):
     rawdata_dir = base / "rawdata"
     rawdata_dir.mkdir()
     db_path = state_dir / "console.db"
+    # I5 fix: isolated configs upload dir.
+    configs_upload_dir = base / "configs_upload"
+    configs_upload_dir.mkdir(parents=True)
 
     port = _free_port()
     env = {
@@ -60,6 +66,8 @@ def live_server(tmp_path_factory: pytest.TempPathFactory):
         "SLOT_E2E_REPORTS": str(reports_dir),
         "SLOT_E2E_CACHE": str(cache_dir),
         "SLOT_E2E_RAWDATA": str(rawdata_dir),
+        # I5 fix: pass isolated configs upload dir to e2e_launch.py.
+        "SLOT_E2E_CONFIGS_UPLOAD_DIR": str(configs_upload_dir),
         # Shrink risk thresholds so a 1KB file triggers low and a 10KB file
         # triggers high. Defaults (512 MB / 2 GB) are unrealistic for e2e.
         "SLOT_RISK_MEDIUM_BYTES": "2048",
@@ -112,6 +120,7 @@ def live_server(tmp_path_factory: pytest.TempPathFactory):
         cache_dir=cache_dir,
         rawdata_dir=rawdata_dir,
         db_path=db_path,
+        configs_upload_dir=configs_upload_dir,
     )
     try:
         yield server

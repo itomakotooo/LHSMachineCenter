@@ -88,17 +88,27 @@ SIDECAR_VERSION = 1
 # ``_chunks.json``. A per-(canonical-path) ``threading.Lock`` is
 # enough since all writers live in one process; cross-process writers
 # would need a file lock, but this codebase doesn't have any.
-_SIDECAR_LOCKS: dict[str, threading.Lock] = {}
+#
+# RLock (reentrant) — set_chunk_config_id holds the lock then calls
+# load_chunks_index which may trigger _migrate_by_config_id which
+# also tries to acquire the same lock. Non-reentrant Lock deadlocks here.
+# See session_artifacts/_impl/p3/critique_v2.md for the deadlock analysis.
+_SIDECAR_LOCKS: dict[str, threading.RLock] = {}
 _LOCKS_GUARD = threading.Lock()
 
 
-def _sidecar_lock_for(mode_dir: Path) -> threading.Lock:
-    """Return the singleton ``threading.Lock`` for a given mode_dir.
+def _sidecar_lock_for(mode_dir: Path) -> threading.RLock:
+    """Return the singleton ``threading.RLock`` for a given mode_dir.
     Keyed by ``str(resolve())`` so two ``Path`` objects pointing at
     the same directory share one lock. Falls back to ``str(mode_dir)``
     when ``resolve()`` raises (missing dir during teardown / tests)
     — string equality on un-resolved paths is good enough for the
-    cases that matter."""
+    cases that matter.
+
+    RLock is used (not Lock) so that set_chunk_config_id can hold the
+    lock while calling load_chunks_index, which may trigger
+    _migrate_by_config_id, which also acquires the same lock.  A plain
+    Lock would deadlock on the second acquire from the same thread."""
     try:
         key = str(mode_dir.resolve())
     except (OSError, RuntimeError):
@@ -106,7 +116,7 @@ def _sidecar_lock_for(mode_dir: Path) -> threading.Lock:
     with _LOCKS_GUARD:
         lock = _SIDECAR_LOCKS.get(key)
         if lock is None:
-            lock = threading.Lock()
+            lock = threading.RLock()  # Reentrant: allow same thread to re-acquire
             _SIDECAR_LOCKS[key] = lock
         return lock
 
@@ -241,7 +251,23 @@ def load_chunks_index(mode_dir: Path) -> dict[str, Any] | None:
     """Read the sidecar at ``mode_dir/_chunks.json``. Returns ``None``
     for missing / unreadable / version-mismatched sidecars so the
     caller can rebuild. Never raises on bad data — treats it like
-    cache invalidation."""
+    cache invalidation.
+
+    Phase 3 deploy (2026-05-17): lazy migration to v3 layout.  When
+    the sidecar exists but lacks the ``by_config_id`` inverted index
+    (pre-P3 on-disk sidecar), the migration assigns all existing chunks
+    to the ``"null"`` config_id bucket and persists the v3 layout
+    immediately so subsequent reads hit the fast path.
+
+    Design note: caller holds ``_sidecar_lock_for(mode_dir)`` in the
+    update/build paths, but ``load_chunks_index`` itself is sometimes
+    called without the lock (read-only callers). The write in the
+    migration block IS guarded — we re-acquire the per-mode lock
+    before the atomic write so concurrent readers see a consistent
+    sidecar. The outer read is a best-effort snapshot; if two callers
+    race the migration the second write is idempotent (re-writes the
+    same data).
+    """
     p = _sidecar_path(mode_dir)
     if not p.is_file():
         return None
@@ -260,7 +286,63 @@ def load_chunks_index(mode_dir: Path) -> dict[str, Any] | None:
     data["chunks"] = {
         str(k): v for k, v in chunks.items() if isinstance(v, dict)
     }
+    # Phase 3: lazy migration — add by_config_id if missing.
+    if "by_config_id" not in data:
+        _migrate_by_config_id(mode_dir, data)
     return data
+
+
+def _rebuild_by_config_id(chunks_dict: dict[str, Any]) -> dict[str, list[str]]:
+    """Derive the config_id → [filenames] inverted index from the per-chunk
+    dict.  Chunks without a ``config_id`` field fall into the ``"null"``
+    bucket (pre-P3 legacy data).
+
+    Phase 3 deploy (2026-05-17): parallel to ``_rebuild_by_md5``.
+    """
+    by_config_id: dict[str, list[str]] = {}
+    for fname, entry in chunks_dict.items():
+        if not isinstance(entry, dict):
+            continue
+        cid = str(entry.get("config_id") or "null")
+        by_config_id.setdefault(cid, []).append(str(fname))
+    # Sort each bucket by chunk index for deterministic iteration.
+    for names in by_config_id.values():
+        names.sort(
+            key=lambda n: int(n.split("_", 1)[1].split(".", 1)[0])
+            if "_" in n and "." in n else 0
+        )
+    return by_config_id
+
+
+def _migrate_by_config_id(mode_dir: Path, data: dict[str, Any]) -> None:
+    """One-time in-place migration: add ``by_config_id`` to an existing v3
+    sidecar that was written before P3 (no ``by_config_id`` field).
+
+    Assigns all existing chunks to the ``"null"`` config_id bucket and
+    backfills the ``config_id="null"`` field on each per-chunk entry so
+    subsequent readers don't need to re-migrate.
+
+    Persists the updated sidecar atomically under the per-mode-dir lock.
+    Failures are swallowed (sidecar is optimisation-only; next read
+    rebuilds if anything went wrong).  Migration is idempotent — calling
+    it twice produces the same output.
+    """
+    chunks = data.get("chunks") or {}
+    # Backfill config_id on each chunk entry.
+    for entry in chunks.values():
+        if isinstance(entry, dict):
+            entry.setdefault("config_id", "null")
+    # Build the inverted index.
+    data["by_config_id"] = _rebuild_by_config_id(chunks)
+    data["_updated_at"] = _now_iso()
+    # Persist under the per-mode lock so concurrent readers see a coherent
+    # sidecar.  Best-effort: IO failure leaves the in-memory dict migrated
+    # (caller returns the updated data); next write will persist it.
+    try:
+        with _sidecar_lock_for(mode_dir):
+            _write_sidecar_atomic(_sidecar_path(mode_dir), data)
+    except OSError:
+        pass
 
 
 def _md5_key(cfg_md5: str, code_md5: str) -> str:
@@ -345,6 +427,9 @@ def build_chunks_index(mode_dir: Path) -> dict[str, Any]:
         "_updated_at": _now_iso(),
         "chunks": entries,
         "by_md5": _rebuild_by_md5(entries),
+        # Phase 3 deploy (2026-05-17): include by_config_id in new sidecars.
+        # Chunks produced without an explicit config_id land in the "null" bucket.
+        "by_config_id": _rebuild_by_config_id(entries),
     }
     if mode_dir.is_dir():
         try:
@@ -459,6 +544,8 @@ def update_chunk_entry(
                 "_updated_at": _now_iso(),
                 "chunks": {},
                 "by_md5": {},
+                # Phase 3 deploy (2026-05-17): include by_config_id in new sidecars.
+                "by_config_id": {},
             }
             if idx.get("_version") != SIDECAR_VERSION:
                 # Can't merge into foreign schema; rebuild from scratch.
@@ -467,6 +554,7 @@ def update_chunk_entry(
                     "_updated_at": _now_iso(),
                     "chunks": {},
                     "by_md5": {},
+                    "by_config_id": {},
                 }
             if saved_at is None:
                 try:
@@ -510,6 +598,37 @@ def update_chunk_entry(
                 # downstream consumers that expect sorted iteration.
                 bucket.sort(key=lambda n: int(n.split("_", 1)[1].split(".", 1)[0])
                             if "_" in n and "." in n else 0)
+            # Phase 3 (D3): maintain by_config_id alongside by_md5.
+            # config_id defaults to "null" for chunks produced without
+            # an explicit config upload (pre-P3 data and server-default
+            # runs).  This matches the lazy migration sentinel so that
+            # both v2 and v3 sidecar reads land in the same bucket.
+            # NOTE: update_chunk_entry doesn't accept a config_id param
+            # today (it's a write hook used by the analyzer, which has no
+            # concept of uploaded configs yet). The "null" sentinel here
+            # preserves backward compat while the by_config_id index
+            # stays in sync.  Once P3 wires config_id through the
+            # sampling path, this sentinel will be replaced by the real ID.
+            _new_config_id = "null"
+            if isinstance(existing_entry, dict):
+                _old_config_id = str(existing_entry.get("config_id") or "null")
+            else:
+                _old_config_id = "null"
+            by_config_id = idx.setdefault(
+                "by_config_id", _rebuild_by_config_id(idx["chunks"])
+            )
+            if _old_config_id != _new_config_id and _old_config_id in by_config_id:
+                try:
+                    by_config_id[_old_config_id].remove(chunk_file.name)
+                    if not by_config_id[_old_config_id]:
+                        del by_config_id[_old_config_id]
+                except ValueError:
+                    pass
+            cid_bucket = by_config_id.setdefault(_new_config_id, [])
+            if chunk_file.name not in cid_bucket:
+                cid_bucket.append(chunk_file.name)
+                cid_bucket.sort(key=lambda n: int(n.split("_", 1)[1].split(".", 1)[0])
+                                if "_" in n and "." in n else 0)
             idx["chunks"][chunk_file.name] = {
                 "idx": int(chunk_index),
                 "cfg_md5": new_cfg,
@@ -518,6 +637,8 @@ def update_chunk_entry(
                 "robot_count": int(robot_count or 0),
                 "saved_at": saved_at,
                 "size_bytes": int(size_bytes),
+                # Phase 3 (D3): store config_id per chunk for by_config_id index.
+                "config_id": _new_config_id,
             }
             idx["_updated_at"] = _now_iso()
             _write_sidecar_atomic(_sidecar_path(mode_dir), idx)
@@ -576,15 +697,19 @@ def bulk_remove_chunk_entries(
             return 0
         chunks = idx.get("chunks") or {}
         by_md5 = idx.setdefault("by_md5", _rebuild_by_md5(chunks))
+        # Phase 3 (D3): maintain by_config_id alongside by_md5.
+        by_config_id = idx.setdefault(
+            "by_config_id", _rebuild_by_config_id(chunks)
+        )
         removed = 0
         for name in name_set:
             entry = chunks.pop(name, None)
             if entry is None:
                 continue
             removed += 1
-            # Drop from the inverted index too — keep both views in sync
-            # so chunks_by_md5() lookups don't return phantom filenames
-            # pointing at deleted files.
+            # Drop from BOTH inverted indexes — keep all views in sync
+            # so lookups don't return phantom filenames pointing at
+            # deleted files.
             if isinstance(entry, dict):
                 key = _md5_key(
                     str(entry.get("cfg_md5", "") or ""),
@@ -598,12 +723,23 @@ def bulk_remove_chunk_entries(
                         pass
                     if not bucket:
                         del by_md5[key]
+                # Phase 3 (D3): remove from by_config_id bucket.
+                cid = str(entry.get("config_id") or "null")
+                cid_bucket = by_config_id.get(cid)
+                if isinstance(cid_bucket, list):
+                    try:
+                        cid_bucket.remove(name)
+                    except ValueError:
+                        pass
+                    if not cid_bucket:
+                        del by_config_id[cid]
         if removed == 0:
             # No entries actually removed; skip the sidecar write so
             # we don't bump its mtime past dir.mtime unnecessarily.
             return 0
         idx["chunks"] = chunks
         idx["by_md5"] = by_md5
+        idx["by_config_id"] = by_config_id
         idx["_updated_at"] = _now_iso()
         try:
             _write_sidecar_atomic(_sidecar_path(mode_dir), idx)
@@ -627,6 +763,79 @@ def remove_sidecar(mode_dir: Path) -> None:
         sidecar.unlink()
     except OSError:
         pass
+
+
+def set_chunk_config_id(
+    mode_dir: Path,
+    chunk_file_name: str,
+    config_id: str,
+) -> None:
+    """Re-assign a chunk's ``config_id`` in the sidecar and keep the
+    ``by_config_id`` inverted index in sync.
+
+    Used by the startup orphan-recovery path
+    (``_reassociate_orphaned_configs`` in app.py) to fix up chunks whose
+    ``config_id`` was left as ``"null"`` when the process crashed after
+    writing the chunk but before the ``pending_batch_configs`` record was
+    deleted.
+
+    Raises ``KeyError`` when ``chunk_file_name`` is not found in the sidecar
+    (caller should treat this as a no-op — chunk may have been rebuilt).
+    All other IO errors propagate to the caller for diagnostic handling.
+
+    Concurrency: holds ``_sidecar_lock_for(mode_dir)`` across the entire
+    read-modify-write so concurrent writers (e.g. a parallel update_chunk_entry
+    call) don't race and lose our change or vice versa.
+    """
+    with _sidecar_lock_for(mode_dir):
+        idx = load_chunks_index(mode_dir)
+        if idx is None:
+            # No sidecar on disk — nothing to patch; caller's sidecar view
+            # is already stale; get_chunks_index will rebuild on next access.
+            raise KeyError(f"{chunk_file_name!r} not in sidecar (sidecar absent)")
+        chunks = idx.get("chunks") or {}
+        if chunk_file_name not in chunks:
+            raise KeyError(f"{chunk_file_name!r} not in sidecar chunks index")
+
+        entry = chunks[chunk_file_name]
+        if not isinstance(entry, dict):
+            raise KeyError(f"{chunk_file_name!r} sidecar entry is not a dict")
+
+        old_config_id = str(entry.get("config_id") or "null")
+        new_config_id = str(config_id or "null")
+
+        # Update the per-chunk entry.
+        entry["config_id"] = new_config_id
+
+        # Maintain the by_config_id inverted index.
+        by_config_id = idx.setdefault(
+            "by_config_id", _rebuild_by_config_id(chunks)
+        )
+
+        # Remove from the old bucket.
+        if old_config_id != new_config_id:
+            old_bucket = by_config_id.get(old_config_id)
+            if isinstance(old_bucket, list):
+                try:
+                    old_bucket.remove(chunk_file_name)
+                except ValueError:
+                    pass
+                if not old_bucket:
+                    del by_config_id[old_config_id]
+
+        # Add to the new bucket (idempotent: check-then-append).
+        new_bucket = by_config_id.setdefault(new_config_id, [])
+        if chunk_file_name not in new_bucket:
+            new_bucket.append(chunk_file_name)
+            new_bucket.sort(
+                key=lambda n: int(n.split("_", 1)[1].split(".", 1)[0])
+                if "_" in n and "." in n else 0
+            )
+
+        idx["chunks"][chunk_file_name] = entry
+        idx["by_config_id"] = by_config_id
+        idx["_updated_at"] = _now_iso()
+        _write_sidecar_atomic(_sidecar_path(mode_dir), idx)
 
 
 # ── Query helpers (reader convenience) ──────────────────────────────

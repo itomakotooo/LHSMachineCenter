@@ -1,0 +1,792 @@
+{
+  "report_id": "impact_M14_mode1_20260520T050323Z",
+  "run_id": "2b599ba53507",
+  "machine": "M14",
+  "mode": 1,
+  "config_md5": "4fcf00c48b3d6979aef058fed9ed5f94",
+  "code_md5": "536fc5a2a8f2ecf1fd8c6dfcf2c025cc",
+  "analyzer_version": "5fa3b0ddadf4",
+  "effective_analyzer_version": "",
+  "effective_analyzer_version_error": "ModuleNotFoundError: No module named 'fresh_slotlab'",
+  "output_all_robots_result": true,
+  "sampling": {
+    "target_halfwidth_pp": 0.5,
+    "achieved_halfwidth_pp": null,
+    "chunk_level_halfwidth_pp": null,
+    "session_level_halfwidth_pp": null,
+    "chunk_spin_times": 1000,
+    "chunk_robot_count": 8,
+    "batch_concurrency": 8,
+    "bet": 1000,
+    "chunks": 0,
+    "total_spins": 0,
+    "paid_spins": 0,
+    "bonus_spins": 0,
+    "stop_reason": "max_chunks_reached",
+    "duration_seconds": 903.091,
+    "started_at": "2026-05-20T04:48:20.123480Z",
+    "finished_at": "2026-05-20T05:03:23.214127Z"
+  },
+  "rtp": {
+    "point_pct": 0.0,
+    "ci95_interval_pct": null,
+    "numerator_source": "our_total_win",
+    "our_total_win": 0.0,
+    "server_total_win": null
+  },
+  "storage": {
+    "raw_round_data_persisted": false,
+    "reason": "Only aggregated metrics are persisted to keep local storage bounded."
+  },
+  "player_impact": {
+    "volatility": {
+      "avg_return_x": 0.0,
+      "std_return_x": 0.0,
+      "max_observed_return_x": 0.0,
+      "return_bucket_rate": {
+        "gt0_lt1": 0.0,
+        "ge1_lt5": 0.0,
+        "ge5_lt10": 0.0,
+        "ge10_lt20": 0.0,
+        "ge20_lt50": 0.0,
+        "ge50_lt100": 0.0,
+        "ge100_lt200": 0.0,
+        "ge200_lt500": 0.0,
+        "ge500_lt1000": 0.0,
+        "ge1000_lt5000": 0.0,
+        "ge5000": 0.0
+      }
+    },
+    "multiplier_profile": {
+      "metric": "ret_x = session_win / session_bet (paid bet only)",
+      "buckets": [
+        {
+          "bucket": "gt0_lt1",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge1_lt5",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge5_lt10",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge10_lt20",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge20_lt50",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge50_lt100",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge100_lt200",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge200_lt500",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge500_lt1000",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge1000_lt5000",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        },
+        {
+          "bucket": "ge5000",
+          "spin_count": 0,
+          "spin_rate": 0.0,
+          "avg_return_x_in_bucket": 0.0,
+          "rtp_contribution_pp": 0.0,
+          "win_share": 0.0
+        }
+      ],
+      "tail_spin_rate_ge10x": 0.0,
+      "tail_rtp_contribution_pp_ge10x": 0.0,
+      "tail_win_share_ge10x": 0.0
+    },
+    "hit_and_payout": {
+      "win_hit_rate": 0.0,
+      "zero_win_rate": 0.0,
+      "profit_spin_rate": 0.0,
+      "breakeven_or_more_rate": 0.0,
+      "big_win_x10_rate": 0.0,
+      "big_win_x20_rate": 0.0,
+      "big_win_x50_rate": 0.0,
+      "big_win_x100_rate": 0.0,
+      "avg_win_when_hit_x": 0.0,
+      "lack_credit_spin_rate": 0.0
+    },
+    "streaks": {
+      "loss_streak_p50": 0,
+      "loss_streak_p90": 0,
+      "loss_streak_p95": 0,
+      "loss_streak_max": 0,
+      "win_streak_p50": 0,
+      "win_streak_p90": 0,
+      "win_streak_p95": 0,
+      "win_streak_max": 0
+    },
+    "paylines_top20": [],
+    "payout_groups_top20": [],
+    "payout_ids_top20": [],
+    "payouts_by_spin_type": {},
+    "reel_marginal_by_spin_type": {},
+    "spin_type_breakdown": [],
+    "spin_type_coverage": 0,
+    "field_discovery": {
+      "extra_fields": [],
+      "extra_field_count": 0,
+      "baseline_field_count": 21
+    },
+    "machine_mechanics": {
+      "lock_lines": {
+        "applicable": false,
+        "lock_spins": 0,
+        "lock_rate": 0,
+        "total_lines_locked": 0,
+        "avg_lines_per_lock": 0,
+        "lock_win": 0.0,
+        "lock_rtp_contribution_pp": 0
+      },
+      "lock_symbols": {
+        "applicable": false,
+        "lock_spins": 0,
+        "lock_rate": 0,
+        "unique_symbols": [],
+        "unique_symbol_count": 0,
+        "lock_win": 0.0,
+        "lock_rtp_contribution_pp": 0
+      },
+      "lock_reels": {
+        "applicable": false,
+        "lock_spins": 0,
+        "lock_rate": 0,
+        "lock_win": 0.0,
+        "lock_rtp_contribution_pp": 0
+      },
+      "jackpot": {
+        "applicable": false,
+        "trigger_spins": 0,
+        "trigger_rate": 0,
+        "jackpot_ids": [],
+        "jackpot_id_count": 0,
+        "total_win": 0.0,
+        "rtp_contribution_pp": 0
+      },
+      "free_spin": {
+        "applicable": false,
+        "chain_spins": 0,
+        "chain_rate": 0,
+        "retriggers": 0,
+        "max_chain_length": 0,
+        "total_win": 0.0,
+        "rtp_contribution_pp": 0
+      },
+      "dollar_pick": {
+        "applicable": false,
+        "pick_spins": 0,
+        "pick_rate": 0,
+        "total_dollars_picked": 0,
+        "avg_dollars_per_pick": 0,
+        "total_win": 0.0,
+        "rtp_contribution_pp": 0
+      }
+    },
+    "upstream_feature_breakdown": {
+      "applicable": false,
+      "source": "analysisResult.FeatureWin",
+      "features": []
+    },
+    "bonus_chain_dynamics": {
+      "applicable": false,
+      "source": "ReMarks (Freespin annotation)",
+      "chain_count": 0,
+      "bonus_round_count": 0,
+      "avg_chain_length": 0.0,
+      "chain_length_quantiles": {
+        "p50": 0,
+        "p90": 0,
+        "p95": 0,
+        "max": 0,
+        "avg": 0.0
+      },
+      "chain_max_ratio_quantiles": {
+        "p50": 0,
+        "p90": 0,
+        "p95": 0,
+        "max": 0,
+        "avg": 0.0
+      },
+      "self_retrigger_round_rate": 0.0,
+      "avg_retriggers_per_chain": 0.0,
+      "extra_ratio_histogram": [],
+      "extra_ratio_by_chain_depth": [
+        {
+          "depth_bucket": "1",
+          "rounds": 0,
+          "avg_extra_ratio": 0.0
+        },
+        {
+          "depth_bucket": "2-5",
+          "rounds": 0,
+          "avg_extra_ratio": 0.0
+        },
+        {
+          "depth_bucket": "6-10",
+          "rounds": 0,
+          "avg_extra_ratio": 0.0
+        },
+        {
+          "depth_bucket": "11-20",
+          "rounds": 0,
+          "avg_extra_ratio": 0.0
+        },
+        {
+          "depth_bucket": "21+",
+          "rounds": 0,
+          "avg_extra_ratio": 0.0
+        }
+      ],
+      "by_feature": {}
+    },
+    "payline_symbol_top20": [],
+    "session_rtp_curves": [],
+    "chain_ratio_sequences": [],
+    "reel_position_top20": [],
+    "symbols_top20": [],
+    "symbols_by_column_top10": {},
+    "symbols_by_column_top10_payline": {},
+    "payline_rows_per_col": {},
+    "bankruptcy_simulation": {
+      "source": "rawdata_replay",
+      "session_spins": 10000,
+      "percentile_keys": [
+        10,
+        20,
+        30,
+        40,
+        50,
+        60,
+        70,
+        80,
+        90
+      ],
+      "tiers": [
+        {
+          "bankroll_multiplier": 10,
+          "init_credits": 10000,
+          "session_spins": 10000,
+          "robots": 0,
+          "bankrupt_robots": 0,
+          "completed_robots": 0,
+          "bankruptcy_rate": 0.0,
+          "median_spins_completed": 0,
+          "fastest_bankruptcy_spins": null,
+          "percentiles": {
+            "10": 0,
+            "20": 0,
+            "30": 0,
+            "40": 0,
+            "50": 0,
+            "60": 0,
+            "70": 0,
+            "80": 0,
+            "90": 0
+          }
+        },
+        {
+          "bankroll_multiplier": 100,
+          "init_credits": 100000,
+          "session_spins": 10000,
+          "robots": 0,
+          "bankrupt_robots": 0,
+          "completed_robots": 0,
+          "bankruptcy_rate": 0.0,
+          "median_spins_completed": 0,
+          "fastest_bankruptcy_spins": null,
+          "percentiles": {
+            "10": 0,
+            "20": 0,
+            "30": 0,
+            "40": 0,
+            "50": 0,
+            "60": 0,
+            "70": 0,
+            "80": 0,
+            "90": 0
+          }
+        },
+        {
+          "bankroll_multiplier": 200,
+          "init_credits": 200000,
+          "session_spins": 10000,
+          "robots": 0,
+          "bankrupt_robots": 0,
+          "completed_robots": 0,
+          "bankruptcy_rate": 0.0,
+          "median_spins_completed": 0,
+          "fastest_bankruptcy_spins": null,
+          "percentiles": {
+            "10": 0,
+            "20": 0,
+            "30": 0,
+            "40": 0,
+            "50": 0,
+            "60": 0,
+            "70": 0,
+            "80": 0,
+            "90": 0
+          }
+        },
+        {
+          "bankroll_multiplier": 500,
+          "init_credits": 500000,
+          "session_spins": 10000,
+          "robots": 0,
+          "bankrupt_robots": 0,
+          "completed_robots": 0,
+          "bankruptcy_rate": 0.0,
+          "median_spins_completed": 0,
+          "fastest_bankruptcy_spins": null,
+          "percentiles": {
+            "10": 0,
+            "20": 0,
+            "30": 0,
+            "40": 0,
+            "50": 0,
+            "60": 0,
+            "70": 0,
+            "80": 0,
+            "90": 0
+          }
+        }
+      ]
+    },
+    "bankruptcy_probe": [
+      {
+        "bankroll_multiplier": 10,
+        "init_credits": 10000,
+        "session_spins": 10000,
+        "robots": 0,
+        "bankrupt_robots": 0,
+        "completed_robots": 0,
+        "bankruptcy_rate": 0.0,
+        "median_spins_completed": 0,
+        "fastest_bankruptcy_spins": null,
+        "percentiles": {
+          "10": 0,
+          "20": 0,
+          "30": 0,
+          "40": 0,
+          "50": 0,
+          "60": 0,
+          "70": 0,
+          "80": 0,
+          "90": 0
+        }
+      },
+      {
+        "bankroll_multiplier": 100,
+        "init_credits": 100000,
+        "session_spins": 10000,
+        "robots": 0,
+        "bankrupt_robots": 0,
+        "completed_robots": 0,
+        "bankruptcy_rate": 0.0,
+        "median_spins_completed": 0,
+        "fastest_bankruptcy_spins": null,
+        "percentiles": {
+          "10": 0,
+          "20": 0,
+          "30": 0,
+          "40": 0,
+          "50": 0,
+          "60": 0,
+          "70": 0,
+          "80": 0,
+          "90": 0
+        }
+      },
+      {
+        "bankroll_multiplier": 200,
+        "init_credits": 200000,
+        "session_spins": 10000,
+        "robots": 0,
+        "bankrupt_robots": 0,
+        "completed_robots": 0,
+        "bankruptcy_rate": 0.0,
+        "median_spins_completed": 0,
+        "fastest_bankruptcy_spins": null,
+        "percentiles": {
+          "10": 0,
+          "20": 0,
+          "30": 0,
+          "40": 0,
+          "50": 0,
+          "60": 0,
+          "70": 0,
+          "80": 0,
+          "90": 0
+        }
+      },
+      {
+        "bankroll_multiplier": 500,
+        "init_credits": 500000,
+        "session_spins": 10000,
+        "robots": 0,
+        "bankrupt_robots": 0,
+        "completed_robots": 0,
+        "bankruptcy_rate": 0.0,
+        "median_spins_completed": 0,
+        "fastest_bankruptcy_spins": null,
+        "percentiles": {
+          "10": 0,
+          "20": 0,
+          "30": 0,
+          "40": 0,
+          "50": 0,
+          "60": 0,
+          "70": 0,
+          "80": 0,
+          "90": 0
+        }
+      }
+    ]
+  },
+  "upstream_analysis": {
+    "server_total_win": 0.0,
+    "our_total_win": 0.0,
+    "delta": 0.0,
+    "delta_pct": null,
+    "matches": null,
+    "server_robots_seen": 0
+  },
+  "collect_mechanic": {
+    "applicable": false,
+    "robots_with_data": 0,
+    "total_collects": 0,
+    "max_acc_credits_observed": 0,
+    "avg_spins_between_collects": null,
+    "clamp_warning": {
+      "applicable": false,
+      "pending_robots": 0,
+      "total_pending_paid_spins": 0,
+      "pending_share_of_paid_spins": null,
+      "avg_paid_spins_per_collect": null,
+      "note": null
+    },
+    "bonus_cycle_correction": {
+      "applicable": false,
+      "bonus_feature": null,
+      "bonus_feature_source": "none",
+      "detected_cycle_length": null,
+      "completed_cycles_total": 0,
+      "robots_with_pending_cycle": 0,
+      "avg_bonus_payout": null,
+      "estimated_correction_pp": null
+    },
+    "feature_match": {
+      "applicable": false,
+      "known_features": [],
+      "bonus_feature": null,
+      "bonus_feature_source": "none",
+      "warning": null
+    },
+    "cycle_observation": {
+      "mechanic_detected": false,
+      "reset_observed": false,
+      "cycle_len_lower_bound": null,
+      "warning": null
+    },
+    "newfreespin_correction": {
+      "applicable": false,
+      "bonus_feature": null,
+      "bonus_feature_source": "none",
+      "detected_cycle_length": null,
+      "completed_cycles_total": 0,
+      "robots_with_pending_cycle": 0,
+      "avg_bonus_payout": null,
+      "estimated_correction_pp": null
+    }
+  },
+  "guideline_assessment": {
+    "guideline": "classic_slots_report_guideline_v1",
+    "data_quality": {
+      "quality_label": "EXPLORATORY",
+      "ci_met": false,
+      "sample_size_met": false,
+      "buckets_complete": true,
+      "bankruptcy_ladder_met": true
+    },
+    "derived_metrics": {
+      "recovery_gap": 0.0,
+      "tail_dependency": 0.0,
+      "tail_dependency_ge10x": 0.0,
+      "tail_dependency_ge20x": 0.0,
+      "tail_dependency_ge50x": 0.0,
+      "tail_dependency_ge100x": 0.0,
+      "tail_rtp_contribution_pp_ge10x": 0.0,
+      "tail_rtp_contribution_pp_ge20x": 0.0,
+      "tail_rtp_contribution_pp_ge50x": 0.0,
+      "tail_rtp_contribution_pp_ge100x": 0.0
+    },
+    "classification": {
+      "volatility_class": "Low",
+      "experience_archetype": "Balanced"
+    },
+    "concentration_checks": {
+      "payline_top1_share": 0.0,
+      "payline_top3_share": 0.0,
+      "payline_top1_concentrated": false,
+      "payline_top3_concentrated": false
+    },
+    "symbol_checks": {
+      "blank_like_rate": 0.0,
+      "blank_like_rate_by_column": {},
+      "blank_like_col_spread": 0.0,
+      "symbol_distribution_skew": false
+    },
+    "bankruptcy_checks": {
+      "x100_bankruptcy_rate": 0.0,
+      "x200_bankruptcy_rate": 0.0,
+      "x500_bankruptcy_rate": 0.0
+    },
+    "alerts": [
+      {
+        "code": "A1_CI_NOT_REACHED",
+        "severity": "high",
+        "message": "CI half-width target not reached."
+      }
+    ],
+    "action_recommendations": [
+      "Profile is within baseline guardrails; run targeted A/B tests on mid buckets for finer tuning."
+    ],
+    "conclusion_template": {
+      "data_confidence": "CI half-width=None, target<=0.5, spins=0, quality=EXPLORATORY.",
+      "player_feel": "Balanced feel with Low volatility: zero_win_rate=0.0000, loss_streak_p95=0.",
+      "rtp_structure": ">=10x tail contributes 0.0000pp RTP (dependency=0.0000).",
+      "session_risk": "Bankruptcy ladder: x100=0.0000, x200=0.0000, x500=0.0000.",
+      "design_action": "Profile is within baseline guardrails; run targeted A/B tests on mid buckets for finer tuning."
+    }
+  },
+  "guideline_comparison": {
+    "guideline_id": "classic_slots_report_guideline_v1",
+    "rules_path": "C:\\Users\\pangg\\Documents\\Projects\\LHS\\User_Managerment_GPT\\.claude\\worktrees\\stoic-napier-f0ea00\\configs\\classic_slots_guideline_rules.json",
+    "evaluated_at": "2026-05-20T05:03:23.217753Z",
+    "overall_status": "FAIL",
+    "pass_count": 8,
+    "fail_count": 2,
+    "not_applicable_count": 1,
+    "missing_count": 0,
+    "hard_fail_count": 2,
+    "check_count": 11,
+    "failed_check_ids": [
+      "Q1_CI_HALF_WIDTH",
+      "Q2_SAMPLE_SIZE"
+    ],
+    "checks": [
+      {
+        "id": "Q1_CI_HALF_WIDTH",
+        "section": "Sampling Quality Gate",
+        "severity": "high",
+        "description": "CI half-width should be <= 0.5pp for report-grade output.",
+        "path": "sampling.achieved_halfwidth_pp",
+        "operator": "<=",
+        "target": 0.5,
+        "status": "fail",
+        "observed": null,
+        "deviation": null
+      },
+      {
+        "id": "Q2_SAMPLE_SIZE",
+        "section": "Sampling Quality Gate",
+        "severity": "high",
+        "description": "Total spins should usually be >= 2,000,000.",
+        "path": "sampling.total_spins",
+        "operator": ">=",
+        "target": 2000000,
+        "status": "fail",
+        "observed": 0,
+        "deviation": 2000000.0
+      },
+      {
+        "id": "Q3_BUCKETS_COMPLETE",
+        "section": "Sampling Quality Gate",
+        "severity": "high",
+        "description": "Multiplier buckets and tail metrics must exist.",
+        "path": "guideline_assessment.data_quality.buckets_complete",
+        "operator": "==",
+        "target": true,
+        "status": "pass",
+        "observed": true,
+        "deviation": 0.0
+      },
+      {
+        "id": "Q4_BANKRUPTCY_LADDER",
+        "section": "Sampling Quality Gate",
+        "severity": "high",
+        "description": "Bankruptcy probe should include at least 3 bankroll multipliers.",
+        "path": "guideline_assessment.data_quality.bankruptcy_ladder_met",
+        "operator": "==",
+        "target": true,
+        "status": "pass",
+        "observed": true,
+        "deviation": 0.0
+      },
+      {
+        "id": "A2_ZERO_PROFIT_BALANCE",
+        "section": "Report Alert Rules",
+        "severity": "high",
+        "description": "If zero_win_rate > 0.80, profit_spin_rate should be >= 0.10.",
+        "path": "player_impact.hit_and_payout.profit_spin_rate",
+        "operator": ">=",
+        "target": 0.1,
+        "status": "not_applicable",
+        "when": {
+          "path": "player_impact.hit_and_payout.zero_win_rate",
+          "operator": ">",
+          "target": 0.8,
+          "observed": 0.0
+        }
+      },
+      {
+        "id": "A3_LOSS_STREAK_P95",
+        "section": "Report Alert Rules",
+        "severity": "medium",
+        "description": "Loss streak p95 should stay below 15.",
+        "path": "player_impact.streaks.loss_streak_p95",
+        "operator": "<",
+        "target": 15,
+        "status": "pass",
+        "observed": 0,
+        "deviation": -15.0
+      },
+      {
+        "id": "A4_TAIL_DEPENDENCY",
+        "section": "Report Alert Rules",
+        "severity": "high",
+        "description": "tail_dependency should stay below 0.45.",
+        "path": "guideline_assessment.derived_metrics.tail_dependency",
+        "operator": "<",
+        "target": 0.45,
+        "status": "pass",
+        "observed": 0.0,
+        "deviation": -0.45
+      },
+      {
+        "id": "A5_BANKRUPTCY_X200",
+        "section": "Report Alert Rules",
+        "severity": "high",
+        "description": "x200 bankruptcy rate should stay below 0.10.",
+        "path": "guideline_assessment.bankruptcy_checks.x200_bankruptcy_rate",
+        "operator": "<",
+        "target": 0.1,
+        "status": "pass",
+        "observed": 0.0,
+        "deviation": -0.1
+      },
+      {
+        "id": "P1_PAYLINE_TOP1",
+        "section": "Payline Concentration",
+        "severity": "medium",
+        "description": "Top-1 payline share should stay <= 0.20.",
+        "path": "guideline_assessment.concentration_checks.payline_top1_share",
+        "operator": "<=",
+        "target": 0.2,
+        "status": "pass",
+        "observed": 0.0,
+        "deviation": -0.2
+      },
+      {
+        "id": "P2_PAYLINE_TOP3",
+        "section": "Payline Concentration",
+        "severity": "medium",
+        "description": "Top-3 payline share should stay <= 0.55.",
+        "path": "guideline_assessment.concentration_checks.payline_top3_share",
+        "operator": "<=",
+        "target": 0.55,
+        "status": "pass",
+        "observed": 0.0,
+        "deviation": -0.55
+      },
+      {
+        "id": "S1_SYMBOL_DISTRIBUTION_SKEW",
+        "section": "Symbol Balance",
+        "severity": "medium",
+        "description": "Symbol distribution skew flag should be false.",
+        "path": "guideline_assessment.symbol_checks.symbol_distribution_skew",
+        "operator": "==",
+        "target": false,
+        "status": "pass",
+        "observed": false,
+        "deviation": 0.0
+      }
+    ]
+  },
+  "rtp_integrity_check": {
+    "passed": true,
+    "layer1_invariant_ok": true,
+    "layer1_error": null,
+    "layer2_no_fallback_buckets_ok": true,
+    "layer2_fallback_buckets_found": [],
+    "layer3_anchors_ok": true,
+    "layer3_missing_anchors": [],
+    "layer4_applicable": true,
+    "layer4_per_st_consistency_ok": null,
+    "layer4_inconsistencies": [],
+    "summary_message": "RTP integrity PASS — M14 mode=1. L1=PASS, L2=PASS, L3=PASS, L4=SKIP(no-rawdata-dir).",
+    "suggested_actions": [
+      "All applicable layers pass. No action required."
+    ],
+    "completeness_declared": true
+  }
+}

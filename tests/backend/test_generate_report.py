@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from src.web_console.backend.cell_lock_registry import CellOperation
+
 
 _M14_FIXTURE = (
     Path(__file__).resolve().parents[2] / "tests" / "fixtures"
@@ -486,10 +488,9 @@ class TestBatchGenerateReport:
 
     def test_runs_sequentially_under_ops_lock(self, app_with_m14):
         """Second batch started while first in-flight must fail the
-        second's items (or the endpoint itself) — no two batches can
-        monkey-patch analyzer.post_json concurrently. Here we simulate
-        lock contention by acquiring ops manually before the batch
-        kick-off.
+        second's items — no two concurrent GENERATING operations on the
+        same cell. Here we simulate lock contention by acquiring GENERATING
+        on M14|1 via the registry before the batch kick-off.
         """
         c, app, rd_root, *_ = app_with_m14
         response_payload = json.loads(_M14_FIXTURE.read_text(encoding="utf-8"))
@@ -498,23 +499,21 @@ class TestBatchGenerateReport:
             config_md5="test_cfg", code_md5="test_code",
             response=response_payload,
         )
-        # Pre-acquire ops under a different name so the batch worker
-        # finds it locked when its thread starts.
-        assert app.state.ops.acquire("auto_tune")
+        # I6 (Round-3 fix): batch_generate_report now pre-checks the registry
+        # at submit time and returns 409 synchronously instead of starting
+        # the batch and failing the item asynchronously.  Pre-acquire GENERATING
+        # so the pre-check fires immediately.
+        assert app.state.registry.try_acquire_cell("M14", 1, CellOperation.GENERATING)
         try:
             resp = c.post(
                 "/api/rawdata/batch-generate-report",
                 json={"items": [{"machine": "M14", "mode": 1}]},
             )
-            assert resp.status_code == 200
-            batch_id = resp.json()["batch_id"]
-            final = self._wait_for_terminal(c, batch_id, timeout_s=5)
-            assert final["status"] == "failed"
-            assert "system busy" in (final["error"] or "").lower()
-            # Item also marked failed with a batch-abort note.
-            assert final["items"][0]["status"] == "failed"
+            # I6: synchronous 409 at submit time (not 200 + async item failure).
+            assert resp.status_code == 409
+            assert "busy" in resp.json().get("detail", "").lower()
         finally:
-            app.state.ops.release()
+            app.state.registry.release_cell("M14", 1, CellOperation.GENERATING)
 
 
 class TestGenerateReportAsyncPath:
@@ -660,11 +659,12 @@ class TestGenerateReportErrorPaths:
             config_md5="test_cfg", code_md5="test_code",
             response=response_payload,
         )
-        # Hold the coordinator under a different op name to force conflict.
-        assert app.state.ops.acquire("auto_tune")
+        # Phase 2: pre-acquire GENERATING on M14|1 so _run_generate_report
+        # returns 409 "cell busy" (replaces old OperationCoordinator mutex).
+        assert app.state.registry.try_acquire_cell("M14", 1, CellOperation.GENERATING)
         try:
             resp = c.post("/api/rawdata/M14/generate-report", json={"mode": 1})
             assert resp.status_code == 409
-            assert "system busy" in resp.json()["detail"].lower()
+            assert "busy" in resp.json()["detail"].lower()
         finally:
-            app.state.ops.release()
+            app.state.registry.release_cell("M14", 1, CellOperation.GENERATING)
