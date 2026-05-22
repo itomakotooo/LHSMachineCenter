@@ -883,10 +883,21 @@ def _load_settings(settings_path: Path) -> dict[str, Any]:
         shipped default → first-active fallback" in ``_resolve_active_server_id``.
         Stored here (not in tracked configs/servers.json) so flipping the
         default via the UI does not create a merge conflict on next pull.
+      * ``server_tuning`` (dict[server_id, dict]) — per-server-endpoint
+        autotune results persisted after /api/autotune completes. Each
+        entry: ``{"chunk_robot_count": int, "batch_concurrency": int,
+        "tuned_at": iso8601, "endpoint_kind": str, "probe": {...}}``.
+        Looked up by BatchRunManager when a batch-run request omits
+        the corresponding knob; lets a loopback-deployed server pick a
+        different concurrency than the WAN-prod path without per-call
+        tuning. Persisted server-side instead of frontend localStorage
+        so the tuning survives browser swaps + benefits LAN clients
+        that hit the same console backend.
     """
-    defaults = {
+    defaults: dict[str, Any] = {
         "min_retention_spins": _RAWDATA_MIN_RETENTION_SPINS_DEFAULT,
         "default_server": "",
+        "server_tuning": {},
     }
     try:
         data = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -901,7 +912,129 @@ def _load_settings(settings_path: Path) -> dict[str, Any]:
     ds = data.get("default_server")
     if isinstance(ds, str):
         out["default_server"] = ds
+    st = data.get("server_tuning")
+    if isinstance(st, dict):
+        clean: dict[str, dict[str, Any]] = {}
+        for sid, entry in st.items():
+            if not isinstance(sid, str) or not isinstance(entry, dict):
+                continue
+            rc = entry.get("chunk_robot_count")
+            bc = entry.get("batch_concurrency")
+            if (
+                isinstance(rc, (int, float)) and rc > 0
+                and isinstance(bc, (int, float)) and bc > 0
+            ):
+                clean[sid] = {
+                    "chunk_robot_count": int(rc),
+                    "batch_concurrency": int(bc),
+                    "tuned_at": str(entry.get("tuned_at") or ""),
+                    "endpoint_kind": str(entry.get("endpoint_kind") or ""),
+                    "probe": dict(entry.get("probe") or {}),
+                }
+        out["server_tuning"] = clean
     return out
+
+
+# ── Per-server endpoint classification (used by autotune to pick a
+# probe candidate grid sized to the endpoint's expected throughput) ──
+
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+_RFC1918_PREFIXES = (
+    "10.",
+    "192.168.",
+    *(f"172.{n}." for n in range(16, 32)),
+)
+
+
+def _classify_endpoint_kind(endpoint_url: str) -> str:
+    """Return ``"loopback"`` / ``"lan"`` / ``"wan"`` from an endpoint URL.
+
+    Used to pick a sane autotune probe grid: loopback can sustain much
+    higher concurrency than WAN before saturation, so the default
+    candidates differ by an order of magnitude. Heuristic-only — any
+    parse failure falls back to ``"wan"`` (the conservative grid).
+    """
+    if not isinstance(endpoint_url, str) or not endpoint_url:
+        return "wan"
+    try:
+        host = urllib.parse.urlparse(endpoint_url).hostname or ""
+    except (ValueError, TypeError):
+        return "wan"
+    host = host.lower()
+    if host in _LOOPBACK_HOSTS:
+        return "loopback"
+    if any(host.startswith(p) for p in _RFC1918_PREFIXES):
+        return "lan"
+    return "wan"
+
+
+# Probe candidate grids per endpoint kind. Tuned 2026-05-22 based on:
+#  - Loopback (intranet 127.0.0.1:15060): no rate limit, sub-ms RTT,
+#    same-machine CPU contention is the real ceiling. Push robots high
+#    (32) + concurrency moderate-high (16) to find the CPU break point.
+#  - LAN (RFC1918): 1-3ms RTT, gigabit, no rate limit. Moderate grid.
+#  - WAN (anything else): public-internet, per-IP throttle exists.
+#    Keep the existing conservative grid (matches the 2026-04-25
+#    external-server benchmark that lives in AutoTuneRequest's docstring).
+#
+# Caller passes ``use_auto_grid=True`` (or omits robot/conc candidates)
+# to opt in; explicit candidates always win over the preset.
+_AUTO_GRIDS: dict[str, dict[str, list[int]]] = {
+    "loopback": {
+        "robot_candidates": [16, 24, 32],
+        "concurrency_candidates": [8, 12, 16],
+    },
+    "lan": {
+        "robot_candidates": [8, 16, 24],
+        "concurrency_candidates": [4, 8, 12, 16],
+    },
+    "wan": {
+        "robot_candidates": [8, 16],
+        "concurrency_candidates": [4, 8, 12],
+    },
+}
+
+
+def _auto_grid_for_endpoint(endpoint_url: str) -> dict[str, list[int]]:
+    """Convenience wrapper: classify then return the preset grid."""
+    return _AUTO_GRIDS[_classify_endpoint_kind(endpoint_url)]
+
+
+def _load_server_tuning(server_id: str, settings_path: Path) -> dict[str, Any]:
+    """Return the persisted autotune result for ``server_id``, or an
+    empty dict if no tuning has been saved (yet). Reads through
+    ``_load_settings`` so the on-disk schema validation applies."""
+    if not server_id:
+        return {}
+    settings = _load_settings(settings_path)
+    return dict((settings.get("server_tuning") or {}).get(server_id) or {})
+
+
+def _save_server_tuning(
+    settings_path: Path,
+    server_id: str,
+    chunk_robot_count: int,
+    batch_concurrency: int,
+    *,
+    endpoint_kind: str = "",
+    probe: dict[str, Any] | None = None,
+) -> None:
+    """Persist autotune result against ``server_id``. Merges into the
+    existing settings.json without clobbering unrelated fields."""
+    if not server_id:
+        return
+    current = _load_settings(settings_path)
+    server_tuning = dict(current.get("server_tuning") or {})
+    server_tuning[server_id] = {
+        "chunk_robot_count": int(chunk_robot_count),
+        "batch_concurrency": int(batch_concurrency),
+        "tuned_at": utc_now(),
+        "endpoint_kind": endpoint_kind,
+        "probe": dict(probe or {}),
+    }
+    current["server_tuning"] = server_tuning
+    _save_settings(settings_path, current)
 
 
 def _save_settings(settings_path: Path, data: dict[str, Any]) -> None:
@@ -1674,6 +1807,14 @@ class AutoTuneRequest(BaseModel):
     # ``best=24x4`` purely because it never tried higher conc.
     robot_candidates: list[int] = Field(default_factory=lambda: [8, 16])
     concurrency_candidates: list[int] = Field(default_factory=lambda: [4, 8, 12])
+    # When True (or when both ``robot_candidates`` and
+    # ``concurrency_candidates`` arrive empty/list-of-zero), the autotune
+    # endpoint replaces the request grid with a preset sized for the
+    # current server endpoint's expected throughput regime (loopback vs
+    # LAN vs WAN). Frontend can either opt in by setting this True, or
+    # send explicit candidates and ignore this knob. See
+    # ``_auto_grid_for_endpoint`` for the actual presets and the rationale.
+    use_auto_grid: bool = Field(default=False)
     rounds: int = Field(default=2, gt=0, le=8)
     # Ceiling 60s = c=12 sustained max wall (~22s) × 2 round-trip
     # safety margin. c=16 hits 30s wall, c=24 hits 49s — operators
@@ -7810,7 +7951,72 @@ def create_app(
         if not registry.try_acquire_global("autotune"):
             raise HTTPException(status_code=409, detail="autotune already in progress")
         try:
-            return run_auto_tune(req, progress_callback=_autotune_progress_sink)
+            # 2026-05-22: per-server autotune.
+            # (1) Identify which server endpoint we're probing — this is
+            #     who the result will be persisted against. Resolver
+            #     reads settings.json operator override / servers.json
+            #     shipped default / first-active, same as batch-run.
+            target_server_id = _resolve_active_server_id(
+                settings_path=settings_path,
+            )
+            endpoint_url = (
+                get_server_endpoint(target_server_id)
+                if target_server_id
+                else SLOT_SPIN_ENDPOINT
+            )
+            endpoint_kind = _classify_endpoint_kind(endpoint_url)
+
+            # (2) Apply the per-endpoint probe-grid preset when the
+            #     caller opts in OR sends empty candidate arrays. The
+            #     preset matches the throughput regime the endpoint
+            #     can actually sustain (a loopback path doesn't need
+            #     to waste a wave probing conc=2). Explicit non-empty
+            #     candidates still win.
+            wants_auto = (
+                req.use_auto_grid
+                or not req.robot_candidates
+                or not req.concurrency_candidates
+            )
+            if wants_auto:
+                grid = _auto_grid_for_endpoint(endpoint_url)
+                # Pydantic v2: rebuild a copy with the resolved fields.
+                req = req.model_copy(update={
+                    "robot_candidates": list(grid["robot_candidates"]),
+                    "concurrency_candidates": list(grid["concurrency_candidates"]),
+                })
+
+            result = run_auto_tune(req, progress_callback=_autotune_progress_sink)
+
+            # (3) Persist the recommendation against target_server_id so
+            #     subsequent batch-runs (this server) can resolve
+            #     chunk_robot_count / batch_concurrency without the
+            #     caller having to remember the last-tuned values.
+            #     Probe metadata (machine + best success_rate + best
+            #     throughput) goes in the sidecar for "why this number"
+            #     traceability.
+            rec = result.get("recommendation") or {}
+            rc = rec.get("chunk_robot_count")
+            bc = rec.get("batch_concurrency")
+            if target_server_id and isinstance(rc, int) and isinstance(bc, int):
+                best = result.get("best") or {}
+                _save_server_tuning(
+                    settings_path,
+                    target_server_id,
+                    rc,
+                    bc,
+                    endpoint_kind=endpoint_kind,
+                    probe={
+                        "machine": req.machine,
+                        "mode": req.mode,
+                        "success_rate": float(best.get("success_rate") or 0.0),
+                        "throughput_spins_per_sec": float(
+                            best.get("throughput_spins_per_sec") or 0.0
+                        ),
+                    },
+                )
+                result["saved_for_server"] = target_server_id
+                result["endpoint_kind"] = endpoint_kind
+            return result
         finally:
             registry.release_global("autotune")
 
@@ -7821,6 +8027,18 @@ def create_app(
         when nothing has been run yet this process lifetime."""
         with app.state.autotune_progress_lock:
             return dict(app.state.autotune_progress)
+
+    @app.get("/api/servers/{server_id}/tuning")
+    def get_server_tuning_endpoint(server_id: str) -> dict[str, Any]:
+        """Return the persisted autotune recommendation for one server.
+
+        Empty body (``{}``) means no tuning has been saved yet for this
+        endpoint — caller (UI or batch-run resolver) falls back to the
+        hardcoded BatchRunRequest defaults. Frontend uses this to show
+        the "已调参" chip and to populate the sampling form with the
+        per-server tuned values instead of the local-storage cache.
+        """
+        return _load_server_tuning(server_id, settings_path)
 
     @app.get("/api/runs")
     def runs(limit: int = 2000) -> dict[str, Any]:
