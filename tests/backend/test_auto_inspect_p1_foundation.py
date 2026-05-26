@@ -475,33 +475,34 @@ class TestAutoInspectManagerSkeleton:
             f"Missing methods: {expected_methods - actual}"
         )
 
-    def test_start_sweep_raises_not_implemented(self, tmp_path):
-        """P1: start_sweep raises NotImplementedError (P2 impl)."""
-        import pytest
-        mgr, _ = self._make_mgr(tmp_path)
-        with pytest.raises(NotImplementedError):
-            mgr.start_sweep()
+    def test_start_sweep_is_callable(self, tmp_path):
+        """P2: start_sweep is implemented -- returns a sweep_id string.
 
-    def test_cancel_sweep_raises_not_implemented(self, tmp_path):
-        """P1: cancel_sweep raises NotImplementedError."""
-        import pytest
+        P1 skeleton checked NotImplementedError; P2 supersedes with real
+        implementation.  With empty machines.json, the sweep starts and
+        returns a sweep_id (no items, scan succeeds, sweep is created).
+        """
         mgr, _ = self._make_mgr(tmp_path)
-        with pytest.raises(NotImplementedError):
-            mgr.cancel_sweep("sw_fake")
+        result = mgr.start_sweep()
+        assert isinstance(result, str) and len(result) > 0
 
-    def test_get_sweep_status_raises_not_implemented(self, tmp_path):
-        """P1: get_sweep_status raises NotImplementedError."""
-        import pytest
+    def test_cancel_sweep_returns_false_for_missing(self, tmp_path):
+        """P2: cancel_sweep returns False for unknown sweep_id."""
         mgr, _ = self._make_mgr(tmp_path)
-        with pytest.raises(NotImplementedError):
-            mgr.get_sweep_status("sw_fake")
+        result = mgr.cancel_sweep("sw_fake_p2")
+        assert result is False
 
-    def test_list_recent_sweeps_raises_not_implemented(self, tmp_path):
-        """P1: list_recent_sweeps raises NotImplementedError."""
-        import pytest
+    def test_get_sweep_status_returns_none_for_missing(self, tmp_path):
+        """P2: get_sweep_status returns None for unknown sweep_id."""
         mgr, _ = self._make_mgr(tmp_path)
-        with pytest.raises(NotImplementedError):
-            mgr.list_recent_sweeps()
+        result = mgr.get_sweep_status("sw_fake_p2")
+        assert result is None
+
+    def test_list_recent_sweeps_returns_list(self, tmp_path):
+        """P2: list_recent_sweeps returns a list (empty when no sweeps)."""
+        mgr, _ = self._make_mgr(tmp_path)
+        result = mgr.list_recent_sweeps()
+        assert isinstance(result, list)
 
     def test_resume_sweep_is_noop_p1(self, tmp_path):
         """P1: resume_sweep logs and returns without raising."""

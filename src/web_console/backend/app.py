@@ -11790,6 +11790,17 @@ def create_app(
                         "Cancel it first via DELETE /api/fleet/refresh"
                     ),
                 )
+            # MF-3 reverse mutex: refuse fleet refresh while auto-inspect
+            # sweep is active (07_decision §2 MF-3).
+            _ai_mgr = getattr(app.state, "auto_inspect_manager", None)
+            if _ai_mgr is not None and _ai_mgr._has_running_sweep():
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "auto-inspect sweep is active -- wait for it to "
+                        "complete or cancel it first"
+                    ),
+                )
             # Build machine list.
             body = req or {}
             config_source = str(body.get("config_source") or "server_default")
@@ -11916,6 +11927,39 @@ def create_app(
             daemon=True,
             name=f"auto-inspect-resume-{_resume_sweep_id[:8]}",
         ).start()
+
+    # -- Phase 4 P2 -- auto-inspect HTTP endpoints ------------------------
+    # Wired unconditionally (not gated on fleet_refresh_enabled) so the
+    # endpoints are always present even in virtual-console mode.
+
+    @app.post("/api/auto-inspect/start")
+    def auto_inspect_start() -> dict[str, Any]:
+        """Trigger a new auto-inspect sweep.
+
+        409 if a sweep is already running or a fleet refresh is active.
+        Returns {sweep_id: str}.
+        """
+        return {"sweep_id": auto_inspect_mgr.start_sweep(trigger="manual")}
+
+    @app.post("/api/auto-inspect/{sweep_id}/cancel")
+    def auto_inspect_cancel(sweep_id: str) -> dict[str, Any]:
+        """Cancel a running sweep.  404 if sweep_id not found."""
+        if not auto_inspect_mgr.cancel_sweep(sweep_id):
+            raise HTTPException(status_code=404, detail="sweep not found")
+        return {"ok": True}
+
+    @app.get("/api/auto-inspect/{sweep_id}")
+    def auto_inspect_get(sweep_id: str) -> dict[str, Any]:
+        """Return sweep progress dict.  404 if sweep_id not found."""
+        state = auto_inspect_mgr.get_sweep_status(sweep_id)
+        if state is None:
+            raise HTTPException(status_code=404, detail="sweep not found")
+        return state
+
+    @app.get("/api/auto-inspect")
+    def auto_inspect_list(limit: int = 30) -> dict[str, Any]:
+        """Return list of recent sweeps, newest first."""
+        return {"sweeps": auto_inspect_mgr.list_recent_sweeps(limit=limit)}
 
     threading.Thread(target=_disk_monitor_loop, daemon=True, name="disk-monitor").start()
 
