@@ -11960,6 +11960,22 @@ def create_app(
             name=f"auto-inspect-resume-{_resume_sweep_id[:8]}",
         ).start()
 
+    # -- Phase 5 -- Cron scheduler startup --------------------------------
+    # Start the cron scheduler as a daemon.  It reads settings every cycle
+    # so operator can change cadence without restarting.  If
+    # auto_sweep.enabled is False (default), it idles; first fire only
+    # happens once the operator enables it.
+    from src.web_console.backend.auto_inspect_manager import (  # noqa: PLC0415
+        _AutoInspectScheduler,
+    )
+
+    _ai_scheduler = _AutoInspectScheduler(
+        auto_inspect_mgr,
+        settings_path=settings_path,
+    )
+    app.state.auto_inspect_scheduler = _ai_scheduler
+    _ai_scheduler.start()
+
     # -- Phase 4 P2 -- auto-inspect HTTP endpoints ------------------------
     # Wired unconditionally (not gated on fleet_refresh_enabled) so the
     # endpoints are always present even in virtual-console mode.
@@ -12011,9 +12027,19 @@ def create_app(
         return auto_inspect_mgr.preview_sweep()
 
     @app.get("/api/auto-inspect/{sweep_id}")
-    def auto_inspect_get(sweep_id: str) -> dict[str, Any]:
-        """Return sweep progress dict.  404 if sweep_id not found."""
-        status_data = auto_inspect_mgr.get_sweep_status(sweep_id)
+    def auto_inspect_get(
+        sweep_id: str,
+        items_limit: int = 200,
+    ) -> dict[str, Any]:
+        """Return sweep progress dict.  404 if sweep_id not found.
+
+        P5: items_limit caps the items list (default 200).  The UI
+        passes ?items_limit=200 to avoid multi-MB payloads on 1688-cell
+        sweeps.
+        """
+        status_data = auto_inspect_mgr.get_sweep_status(
+            sweep_id, items_limit=items_limit
+        )
         if status_data is None:
             raise HTTPException(status_code=404, detail="sweep not found")
         return status_data

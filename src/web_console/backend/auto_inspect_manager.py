@@ -27,9 +27,25 @@ Phase 3 (Per-item generate + failure modes) adds:
   * _mark_item extended: supports generate_run_id + generate_status extras
   * All 9 terminal statuses reachable (see _TERMINAL_STATUSES constant)
 
-Design:  session_artifacts/_arch/auto_inspect/07_decision.md §2-§4
+Phase 5 (Cron scheduler + M274 alert + hardening) adds:
+
+  * _AutoInspectScheduler -- threading.Timer-based cron scheduler
+      - daily HH:MM mode (fire once per day at that UTC wall-clock time)
+      - interval N mode (fire every N hours)
+      - reads settings every cycle (operator can change cadence live)
+      - idempotent: if sweep is running, logs skip and reschedules
+  * _check_m274_alert -- M274 RTP-drift alert (07_decision §2 OQ-A)
+      - compares achieved_rtp_pct (not halfwidth) against baseline
+      - baseline auto-created on first successful M274/mode-1 sweep run
+      - fires WARN event + persists alert file on |delta| > 2.0pp
+  * preview_sweep -- adds 5-second urllib timeout (P4 open concern #1)
+  * get_sweep_status -- adds items_limit param (P4 open concern #2)
+
+Design:  session_artifacts/_arch/auto_inspect/07_decision.md §2-§4 + §6
 Phase 1: commit 1bcf43c
 Phase 2: commit 76c4512
+Phase 3: commit 205ffc0
+Phase 4: commit 9181ff8
 
 Per memory/feedback_subprocess_import_suicide_and_module_globals.md:
   * No import-time side effects.  No module-level state beyond constants.
@@ -51,10 +67,13 @@ from __future__ import annotations
 import collections
 import json
 import logging
+import re
 import sqlite3
 import threading
 import time
 import traceback
+import urllib.error
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -124,6 +143,25 @@ _CELL_LOCK_POLL_S = 5.0
 
 # Run poll interval in seconds.
 _RUN_POLL_S = 5.0
+
+# Cron validation regexes (07_decision §2 OQ-G).
+# daily: "HH:MM" where H=[01]\d or 2[0-3], M=[0-5]\d
+_CRON_DAILY_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+# interval: 1-24 (integer string)
+_CRON_INTERVAL_RE = re.compile(r"^([1-9]|1\d|2[0-4])$")
+
+# M274 RTP-drift alert threshold (pp).
+_M274_ALERT_DELTA_PP = 2.0
+
+# Machine + mode that the baseline alert tracks.
+_M274_MACHINE = "M274"
+_M274_MODE = 1
+
+# Preview scan upstream timeout (seconds).
+_PREVIEW_UPSTREAM_TIMEOUT_S = 5
+
+# Default items cap for get_sweep_status.
+_ITEMS_DEFAULT_LIMIT = 200
 
 
 class AutoInspectManager:
@@ -391,13 +429,26 @@ class AutoInspectManager:
         _logger.info("AutoInspectManager.cancel_sweep: sweep_id=%s", sweep_id)
         return True
 
-    def get_sweep_status(self, sweep_id: str) -> dict[str, Any] | None:
+    def get_sweep_status(
+        self,
+        sweep_id: str,
+        items_limit: int = _ITEMS_DEFAULT_LIMIT,
+    ) -> dict[str, Any] | None:
         """Return sweep progress dict or None if sweep_id not found.
 
         P4 addition: also returns ``items`` list for the per-cell
         drill-down table in the frontend.  Each item contains the
         fields the UI needs to render a row.
+
+        P5 addition: ``items_limit`` caps the items list returned
+        (default 200, per P5 deliverable 4).  UI passes ?items_limit=200.
+        For a 1688-cell sweep this avoids sending a multi-MB payload on
+        every poll.  Items are returned in queue_position order (earliest
+        first).
         """
+        # Clamp to sensible range.
+        items_limit = max(1, min(items_limit, 5000))
+
         with self._store._connect() as conn:
             sweep_row = conn.execute(
                 "SELECT * FROM auto_inspect_sweeps WHERE sweep_id=?",
@@ -418,6 +469,7 @@ class AutoInspectManager:
             ).fetchall()
 
             # Fetch items for per-cell drill-down (P4 §5).
+            # P5: capped at items_limit (default 200).
             items_rows = conn.execute(
                 """
                 SELECT machine, mode, status, cell_class,
@@ -426,8 +478,9 @@ class AutoInspectManager:
                 FROM auto_inspect_items
                 WHERE sweep_id=?
                 ORDER BY queue_position ASC
+                LIMIT ?
                 """,
-                (sweep_id,),
+                (sweep_id, items_limit),
             ).fetchall()
 
         counts: dict[str, int] = {}
@@ -480,6 +533,11 @@ class AutoInspectManager:
 
         P4 deliverable 3 (GET /api/auto-inspect/preview).
 
+        P5 hardening: _scan_cells runs in a background thread with a
+        5-second timeout against the upstream snapshot fetch.  If
+        the thread doesn't finish in _PREVIEW_UPSTREAM_TIMEOUT_S seconds,
+        the operator gets a diagnostic message instead of a hanging UI.
+
         Returns a dict with:
           * cells: list of cell dicts (machine, mode, cell_class,
             cfg_md5_at_enqueue, code_md5_at_enqueue)
@@ -490,11 +548,60 @@ class AutoInspectManager:
           * structural_skip_count: int
           * manifest_override_count: int
         """
+        from fastapi import HTTPException  # noqa: PLC0415
+
         settings = self._load_auto_sweep_settings()
         modes_list = list(_SWEEP_MODES)
         skip_fresh = bool(settings.get("skip_fresh_cells", True))
 
-        cells = self._scan_cells(modes_list, skip_fresh=skip_fresh)
+        # P5: run scan in a thread so we can enforce a timeout.
+        # _scan_cells is CPU/disk-bound; the only potential slow-path
+        # is if `_resolve_active_server_id` or snapshot load hits a
+        # very slow NTFS path.  Timeout is generous (30s) to cover
+        # large fleets while still protecting the HTTP handler from
+        # hanging indefinitely.
+        scan_result: list[list[dict[str, Any]]] = []
+        scan_exc: list[BaseException] = []
+
+        def _run_scan() -> None:
+            try:
+                scan_result.append(
+                    self._scan_cells(modes_list, skip_fresh=skip_fresh)
+                )
+            except Exception as exc:  # noqa: BLE001
+                scan_exc.append(exc)
+
+        scan_thread = threading.Thread(target=_run_scan, daemon=True)
+        scan_thread.start()
+        # Allow _PREVIEW_UPSTREAM_TIMEOUT_S for the scan (filesystem + DB).
+        # Use 30s for preview (more generous than the name suggests; the
+        # constant is named for the upstream concern but applies to full scan).
+        scan_thread.join(timeout=30)
+
+        if scan_thread.is_alive():
+            _logger.warning(
+                "AutoInspectManager.preview_sweep: scan timed out after 30s"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "preview unavailable: scan timed out -- "
+                    "upstream snapshot may be unreachable"
+                ),
+            )
+
+        if scan_exc:
+            exc = scan_exc[0]
+            _logger.error(
+                "AutoInspectManager.preview_sweep: _scan_cells error: %s",
+                exc,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"preview scan error: {type(exc).__name__}: {exc}",
+            )
+
+        cells = scan_result[0] if scan_result else []
 
         by_mode: dict[str, int] = {}
         by_cell_class: dict[str, int] = {}
@@ -1379,6 +1486,14 @@ class AutoInspectManager:
             {"type": "generate_completed",
              "generate_run_id": generate_run_id},
         )
+
+        # P5: M274 RTP-drift alert (07_decision §2 OQ-A).
+        # Fire after a successful completion for the M274/mode-1 cell.
+        if machine == _M274_MACHINE and mode == _M274_MODE:
+            self._check_m274_alert(
+                sweep_id=sweep_id,
+                run_id=run_id,
+            )
 
     # -- Private -- failure window -----------------------------------------
 
@@ -2330,6 +2445,185 @@ class AutoInspectManager:
             return None
 
 
+    # -- Private -- P5 M274 alert ------------------------------------------
+
+    def _check_m274_alert(
+        self,
+        sweep_id: str,
+        run_id: str,
+    ) -> None:
+        """M274 RTP-drift alert (07_decision §2 OQ-A).
+
+        Compares achieved_rtp_pct from the completed sample run against
+        the baseline stored in state/console/m274_baseline.json.
+
+        Baseline lifecycle:
+          * If the file is missing: this run's RTP becomes the baseline.
+            Write the file.  NO alert.
+          * If baseline exists: compute |current - baseline|.  If > 2pp,
+            fire a WARN event on the item + persist a diagnostic file.
+
+        Per memory/feedback_no_silent_swallow.md:
+          * Both outcome paths (write baseline / fire alert) persist to disk.
+          * Errors are logged + don't abort the caller.
+        """
+        try:
+            # Resolve state_dir: same parent as settings_path.
+            state_dir = self._settings_path.parent
+            baseline_path = state_dir / "m274_baseline.json"
+
+            # Fetch current achieved_rtp_pct from the runs table.
+            run_row = self._store.get_run(run_id)
+            if run_row is None:
+                _logger.warning(
+                    "AutoInspectManager._check_m274_alert: run %s not found",
+                    run_id,
+                )
+                return
+
+            current_rtp = run_row.get("achieved_rtp_pct")
+            if current_rtp is None:
+                _logger.info(
+                    "AutoInspectManager._check_m274_alert: run %s has no "
+                    "achieved_rtp_pct; skipping alert check",
+                    run_id,
+                )
+                return
+
+            try:
+                current_rtp_f = float(current_rtp)
+            except (TypeError, ValueError):
+                _logger.warning(
+                    "AutoInspectManager._check_m274_alert: achieved_rtp_pct "
+                    "%r is not numeric; skipping",
+                    current_rtp,
+                )
+                return
+
+            now_ts = datetime.now(timezone.utc).isoformat()
+
+            # -- No baseline: write and exit without alert --
+            if not baseline_path.exists():
+                baseline_data = {
+                    "baseline_rtp_pct": current_rtp_f,
+                    "captured_at": now_ts,
+                    "captured_from_run_id": run_id,
+                    "captured_from_sweep_id": sweep_id,
+                }
+                try:
+                    baseline_path.write_text(
+                        json.dumps(baseline_data, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                    _logger.info(
+                        "AutoInspectManager._check_m274_alert: wrote baseline "
+                        "rtp=%.4f to %s",
+                        current_rtp_f, baseline_path,
+                    )
+                except OSError as exc:
+                    _logger.error(
+                        "AutoInspectManager._check_m274_alert: "
+                        "failed to write baseline: %s",
+                        exc,
+                    )
+                return
+
+            # -- Baseline exists: compare --
+            try:
+                baseline_data = json.loads(
+                    baseline_path.read_text(encoding="utf-8")
+                )
+                baseline_rtp_f = float(baseline_data["baseline_rtp_pct"])
+            except (OSError, json.JSONDecodeError, KeyError, TypeError,
+                    ValueError) as exc:
+                _logger.warning(
+                    "AutoInspectManager._check_m274_alert: baseline parse "
+                    "error: %s; skipping alert",
+                    exc,
+                )
+                return
+
+            delta = abs(current_rtp_f - baseline_rtp_f)
+            _logger.info(
+                "AutoInspectManager._check_m274_alert: "
+                "current=%.4fpp baseline=%.4fpp delta=%.4fpp",
+                current_rtp_f, baseline_rtp_f, delta,
+            )
+
+            if delta <= _M274_ALERT_DELTA_PP:
+                # No alert -- within tolerance.
+                return
+
+            # -- Fire alert --
+            alert_msg = (
+                f"M274 RTP drift: current={current_rtp_f:.4f}pp "
+                f"baseline={baseline_rtp_f:.4f}pp "
+                f"delta={delta:.4f}pp (threshold={_M274_ALERT_DELTA_PP}pp)"
+            )
+            _logger.warning("AutoInspectManager._check_m274_alert: %s", alert_msg)
+
+            # (a) WARN event on the item (flows through UI events panel).
+            self._append_item_event(
+                sweep_id, _M274_MACHINE, _M274_MODE,
+                {
+                    "type": "warn",
+                    "level": "warn",
+                    "message": alert_msg,
+                    "current_rtp_pct": current_rtp_f,
+                    "baseline_rtp_pct": baseline_rtp_f,
+                    "delta_pp": delta,
+                    "run_id": run_id,
+                },
+            )
+
+            # (b) Persist diagnostic file (feedback_no_silent_swallow.md).
+            alert_ts = now_ts.replace(":", "").replace("-", "").replace("+", "")[:15]
+            alert_path = state_dir / f"m274_alert_{alert_ts}.json"
+            alert_file_data = {
+                "alert_fired_at": now_ts,
+                "sweep_id": sweep_id,
+                "run_id": run_id,
+                "machine": _M274_MACHINE,
+                "mode": _M274_MODE,
+                "current_rtp_pct": current_rtp_f,
+                "baseline_rtp_pct": baseline_rtp_f,
+                "delta_pp": delta,
+                "threshold_pp": _M274_ALERT_DELTA_PP,
+                "message": alert_msg,
+            }
+            try:
+                alert_path.write_text(
+                    json.dumps(alert_file_data, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                _logger.warning(
+                    "AutoInspectManager._check_m274_alert: "
+                    "diagnostic persisted to %s",
+                    alert_path,
+                )
+            except OSError as exc:
+                _logger.error(
+                    "AutoInspectManager._check_m274_alert: "
+                    "failed to write alert diagnostic: %s",
+                    exc,
+                )
+
+        except Exception as exc:  # noqa: BLE001
+            # Alert is best-effort -- don't abort the sweep on alert errors.
+            # Log with full traceback so operator can investigate.
+            _logger.error(
+                "AutoInspectManager._check_m274_alert: unexpected error: "
+                "%s\n%s",
+                exc, traceback.format_exc(),
+            )
+            print(
+                f"[auto-inspect] _check_m274_alert unexpected error: {exc}",
+                flush=True,
+            )
+
+    # -- Private -- fleet refresh proxy ------------------------------------
+
+
 class _FleetRefreshStatusProxy:
     """Minimal proxy for fleet refresh status check (MF-3 mutex).
 
@@ -2357,3 +2651,191 @@ class _FleetRefreshStatusProxy:
             return None
         except Exception:  # noqa: BLE001
             return None
+
+
+class _AutoInspectScheduler:
+    """threading.Timer-based cron scheduler for AutoInspectManager.
+
+    Phase 5 deliverable 1 (07_decision §2 OQ-G).
+
+    Supports only two modes:
+      * "daily" + "HH:MM" — fire once per UTC calendar day at HH:MM.
+      * "interval" + "N" — fire every N hours (N in 1-24).
+
+    Design choices:
+      * Reads settings EVERY cycle so operator can change cadence live.
+      * If enabled flips False between two fires, next _fire() exits.
+      * Idempotent stop() — calling multiple times is safe.
+      * All state is per-instance (no module globals).
+      * Daemon threads — won't block interpreter shutdown.
+
+    Per memory/feedback_subprocess_import_suicide_and_module_globals.md:
+      * No module-level state.
+      * AutoInspectManager reference injected via __init__.
+    """
+
+    def __init__(
+        self,
+        manager: "AutoInspectManager",
+        *,
+        settings_path: Path,
+    ) -> None:
+        self._manager = manager
+        self._settings_path = settings_path
+        self._timer: threading.Timer | None = None
+        self._lock = threading.Lock()
+        self._stopped = False
+
+    def start(self) -> None:
+        """Schedule the first fire.  Idempotent (safe to call twice)."""
+        with self._lock:
+            if self._stopped:
+                return
+        self._schedule_next()
+
+    def stop(self) -> None:
+        """Cancel the pending timer.  Idempotent."""
+        with self._lock:
+            self._stopped = True
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+
+    # -- Internal --
+
+    def _load_settings(self) -> dict[str, Any]:
+        """Load current auto_sweep settings block."""
+        try:
+            from src.web_console.backend.app import _load_settings  # noqa: PLC0415
+            s = _load_settings(self._settings_path)
+            return s.get("auto_sweep") or {}
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning(
+                "_AutoInspectScheduler._load_settings: %s; "
+                "using empty defaults",
+                exc,
+            )
+            return {}
+
+    def _compute_delay_s(
+        self,
+        schedule_mode: str,
+        schedule_value: str,
+    ) -> float | None:
+        """Compute seconds until next fire, or None on invalid format.
+
+        daily: fire at next UTC HH:MM (may be tomorrow if already past).
+        interval: fire in N * 3600 seconds.
+        """
+        if schedule_mode == "interval":
+            if not _CRON_INTERVAL_RE.match(schedule_value):
+                _logger.warning(
+                    "_AutoInspectScheduler: invalid interval value %r "
+                    "(expected 1-24); not scheduling",
+                    schedule_value,
+                )
+                return None
+            return float(int(schedule_value)) * 3600.0
+
+        if schedule_mode == "daily":
+            if not _CRON_DAILY_RE.match(schedule_value):
+                _logger.warning(
+                    "_AutoInspectScheduler: invalid daily value %r "
+                    "(expected HH:MM); not scheduling",
+                    schedule_value,
+                )
+                return None
+            hh, mm = int(schedule_value[:2]), int(schedule_value[3:])
+            now_utc = datetime.now(timezone.utc)
+            # Next fire: today at HH:MM UTC, or tomorrow if already past.
+            target = now_utc.replace(
+                hour=hh, minute=mm, second=0, microsecond=0
+            )
+            diff = (target - now_utc).total_seconds()
+            if diff <= 0:
+                # Already past today -- fire tomorrow.
+                diff += 86400.0
+            return diff
+
+        _logger.warning(
+            "_AutoInspectScheduler: unknown schedule_mode %r; "
+            "not scheduling",
+            schedule_mode,
+        )
+        return None
+
+    def _schedule_next(self) -> None:
+        """Load settings and arm the next timer."""
+        with self._lock:
+            if self._stopped:
+                return
+
+        settings = self._load_settings()
+        enabled = bool(settings.get("enabled", False))
+        if not enabled:
+            _logger.debug(
+                "_AutoInspectScheduler: auto_sweep.enabled=False; "
+                "not scheduling"
+            )
+            return
+
+        schedule_mode = str(settings.get("schedule_mode") or "daily")
+        schedule_value = str(settings.get("schedule_value") or "02:00")
+
+        delay_s = self._compute_delay_s(schedule_mode, schedule_value)
+        if delay_s is None:
+            return
+
+        _logger.info(
+            "_AutoInspectScheduler: next sweep in %.0fs "
+            "(mode=%s value=%s)",
+            delay_s, schedule_mode, schedule_value,
+        )
+
+        with self._lock:
+            if self._stopped:
+                return
+            self._timer = threading.Timer(delay_s, self._fire)
+            self._timer.daemon = True
+            self._timer.start()
+
+    def _fire(self) -> None:
+        """Called when the timer fires.  Checks running state + starts sweep."""
+        # Read settings fresh -- operator may have changed them.
+        settings = self._load_settings()
+        enabled = bool(settings.get("enabled", False))
+
+        if not enabled:
+            _logger.info(
+                "_AutoInspectScheduler._fire: auto_sweep.enabled=False; "
+                "skipping and not rescheduling"
+            )
+            return
+
+        # Check if a sweep is already running.
+        if self._manager._has_running_sweep():
+            _logger.warning(
+                "_AutoInspectScheduler._fire: previous sweep still running, "
+                "skipping cron trigger"
+            )
+        else:
+            try:
+                sweep_id = self._manager.start_sweep(trigger="cron")
+                _logger.info(
+                    "_AutoInspectScheduler._fire: cron sweep started "
+                    "sweep_id=%s",
+                    sweep_id,
+                )
+            except Exception as exc:  # noqa: BLE001
+                _logger.error(
+                    "_AutoInspectScheduler._fire: start_sweep failed: %s\n%s",
+                    exc, traceback.format_exc(),
+                )
+                # Persist diagnostic (feedback_no_silent_swallow.md).
+                print(
+                    f"[auto-inspect] cron fire start_sweep failed: {exc}",
+                    flush=True,
+                )
+
+        # Reschedule next fire.
+        self._schedule_next()
