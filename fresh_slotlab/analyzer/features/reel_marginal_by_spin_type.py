@@ -11,7 +11,7 @@ Per memory feedback_subprocess_import_suicide_and_module_globals.md:
 """
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 try:
     from fresh_slotlab.analyzer.features._base import AnalyzerFeature
@@ -19,6 +19,12 @@ try:
 except ImportError:  # running as standalone script
     from analyzer.features._base import AnalyzerFeature  # type: ignore[no-redef]
     from analyzer.feature_registry import register  # type: ignore[no-redef]
+
+if TYPE_CHECKING:
+    try:
+        from fresh_slotlab.analyzer.pipeline_context import PipelineContext
+    except ImportError:
+        from analyzer.pipeline_context import PipelineContext  # type: ignore[assignment]
 
 
 class ReelMarginalBySpinType(AnalyzerFeature):
@@ -35,6 +41,7 @@ class ReelMarginalBySpinType(AnalyzerFeature):
     SCHEMA_KEYS: ClassVar[tuple[str, ...]] = ("reel_marginal_by_spin_type",)
     SCHEMA_VERSION: ClassVar[int] = 1
     RTP_CONTRIBUTION: ClassVar[bool] = False  # display only
+    DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
 
     def extract(self, parse_state: Any, chunk_dict: Any) -> dict:
         # No per-round work; aggregation owned by main() for now.
@@ -45,7 +52,7 @@ class ReelMarginalBySpinType(AnalyzerFeature):
         # No-op accumulator; main() owns the accumulation.
         return prev_acc
 
-    def emit(self, final_acc: Any, summary: dict) -> None:
+    def emit(self, final_acc: Any, summary: dict, ctx: "PipelineContext") -> None:
         # main() already populated summary["player_impact"]["reel_marginal_by_spin_type"]
         # inline (player_impact_analyzer.py line 4383).
         # This emit is a no-op verification: assert the key is present.

@@ -124,6 +124,17 @@ except ImportError:
     _cbav = None
     _BASE_VERSION_IMPORTABLE = False
 
+try:
+    from fresh_slotlab.analyzer.pipeline_context import (
+        PipelineContext as _PipelineContext,
+        MechanismRegistry as _MechanismRegistry,
+    )
+    _PIPELINE_CONTEXT_IMPORTABLE = True
+except ImportError:
+    _PipelineContext = None  # type: ignore[assignment, misc]
+    _MechanismRegistry = None  # type: ignore[assignment, misc]
+    _PIPELINE_CONTEXT_IMPORTABLE = False
+
 # ---------------------------------------------------------------------------
 # Skip markers
 # ---------------------------------------------------------------------------
@@ -488,14 +499,19 @@ class TestP1A1CanaryReference:
 # ===========================================================================
 
 class TestMainInvokesFeatureEmit:
-    """C4: main() must contain a loop over ALL_FEATURES that calls feature.emit.
+    """C4: main() must contain a loop over the registered features that calls feature.emit.
 
-    Per brief §4 C4:
+    Per brief §4 C4 (pre-C1 wording, retained for reference):
         for feature in ALL_FEATURES:
             feature.emit(None, summary)
 
+    Post-C1 actual form (topo-sorted, 3-arg emit per 04_v3 §4.2):
+        for _feature in _sorted_features:
+            _feature.emit(final_acc, summary, ctx)
+
     Two-part check:
-    (a) Source-level: main()'s function source contains 'feature.emit(' substring.
+    (a) Source-level: main()'s function source contains 'feature.emit(' substring,
+        whether the iterable is ALL_FEATURES (legacy) or _sorted_features (C1+).
     (b) Source-level: main() or PIA module imports ALL_FEATURES from feature_registry.
 
     These are structural guards. The emit-invocation inject-bug proof (C8b)
@@ -516,21 +532,30 @@ class TestMainInvokesFeatureEmit:
         """
         pia_source = PIA_PATH.read_text(encoding="utf-8-sig")
 
-        # Locate the ALL_FEATURES loop and check that a .emit( call appears
+        # Locate the feature-emit loop and check that a .emit( call appears
         # on the loop variable within that loop body.
         #
         # Strategy:
-        #   1. Find `for <var> in ALL_FEATURES:` to identify the loop variable name.
+        #   1. Find `for <var> in ALL_FEATURES:` (pre-C1) OR
+        #          `for <var> in _sorted_features:` (C1+, after topo sort)
+        #      to identify the loop variable name.
         #   2. Assert `<var>.emit(` appears anywhere after that loop header.
         #
+        # The OR-pattern lets the test survive both the legacy direct-ALL_FEATURES
+        # loop and the C1+ topo-sorted _sorted_features loop.
         # This is robust to variable name differences ('feature', '_feature', etc.)
         # and correctly excludes class-method calls like 'BankruptcySimulation.emit('.
         import re
 
-        loop_match = re.search(r'for\s+(\w+)\s+in\s+ALL_FEATURES\s*:', pia_source)
+        loop_match = re.search(
+            r'for\s+(\w+)\s+in\s+(?:ALL_FEATURES|_sorted_features)\s*:',
+            pia_source,
+        )
         assert loop_match is not None, (
-            f"No 'for <var> in ALL_FEATURES:' loop found in {PIA_PATH.name}.\n"
-            f"C4 contract: main() must loop over ALL_FEATURES."
+            f"No 'for <var> in ALL_FEATURES:' or 'for <var> in _sorted_features:' "
+            f"loop found in {PIA_PATH.name}.\n"
+            f"C4 contract: main() must loop over the registered features and call "
+            f"feature.emit() for each."
         )
 
         loop_var = loop_match.group(1)
@@ -540,10 +565,10 @@ class TestMainInvokesFeatureEmit:
         emit_calls = emit_pattern.findall(source_after_loop)
 
         assert len(emit_calls) >= 1, (
-            f"No '{loop_var}.emit(' call found after 'for {loop_var} in ALL_FEATURES:' "
+            f"No '{loop_var}.emit(' call found after the feature loop header "
             f"in {PIA_PATH.name}.\n"
             f"C4 contract: main() must invoke feature.emit() for each registered feature.\n"
-            f"C8 inject-bug: removing the ALL_FEATURES loop makes this RED."
+            f"C8 inject-bug: removing the feature loop makes this RED."
         )
 
     def test_pia_imports_all_features_from_registry(self):
@@ -971,8 +996,24 @@ class TestPatternANoOpExtractReduce:
         player_impact_section = {key: {} for key in spec["schema_keys_include"]}
         summary_with_player_impact = {"player_impact": player_impact_section}
 
+        # Build a minimal PipelineContext for the C1 3-arg emit() signature.
+        # Phase C1 changed emit() from (final_acc, summary) to
+        # (final_acc, summary, ctx). Pattern A plugins accept ctx but do not
+        # use it. Skip if PipelineContext is not yet importable.
+        if not _PIPELINE_CONTEXT_IMPORTABLE:
+            pytest.skip("PipelineContext not importable -- C1 not yet landed")
+        _ctx = _PipelineContext(
+            effective_bet_for_rtp=1.0,
+            total_spins=10,
+            total_paid_sessions=5,
+            total_paid_spins=5,
+            clamp_pending_robots_total=0,
+            robots_with_pending_cycle=0,
+            mechanism_registry=_MechanismRegistry(),
+            manifest={},
+        )
         try:
-            instance.emit(None, summary_with_player_impact)
+            instance.emit(None, summary_with_player_impact, _ctx)
         except AssertionError as exc:
             pytest.fail(
                 f"{cls.__name__}.emit() raised AssertionError with a summary "
@@ -984,7 +1025,7 @@ class TestPatternANoOpExtractReduce:
         except TypeError as exc:
             pytest.fail(
                 f"{cls.__name__}.emit() raised TypeError: {exc}\n"
-                f"emit() signature must accept (final_acc, summary: dict)."
+                f"emit() signature must accept (final_acc, summary: dict, ctx: PipelineContext)."
             )
 
 

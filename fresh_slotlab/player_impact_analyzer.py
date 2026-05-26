@@ -1404,6 +1404,14 @@ def main() -> int:
     # outside the main loop so it persists across batches.
     rtp_out_of_band_consecutive = 0
 
+    # Phase C1: per-feature accumulator dict — keyed by FEATURE_ID.
+    # extract() and reduce() calls in the merge loop fold per-chunk data here.
+    # Initialized to empty dict per feature; the final value is passed to
+    # emit() as ``final_acc`` in the Phase D emit loop.
+    # Feature list is not yet known here (plugins register via import in the
+    # Wave 2c block below); we use a defaultdict so any FEATURE_ID is safe.
+    _feature_accs: dict[str, dict] = {}
+
     # ── Cache read phase ─────────────────────────────────────────────
     # Two modes share the reader, differ only in what happens after:
     # - `--from-cache <dir>`: read-only. Run the pipeline offline on
@@ -1960,6 +1968,38 @@ def main() -> int:
                 total_dollar_pick_spins += int(rec.get("dollar_pick_spins", 0) or 0)
                 total_dollar_pick_total_dollars += int(rec.get("dollar_pick_total_dollars", 0) or 0)
                 total_dollar_pick_win += float(rec.get("dollar_pick_win", 0) or 0)
+                # Phase C1: wire extract() per chunk (from-cache path).
+                # ALL_FEATURES is not imported yet at this point; we defer
+                # to a lazy import pattern so we can call extract() here without
+                # pulling the full feature set into the module top. The import
+                # is idempotent (Python module cache). Pattern-A plugins return {}
+                # so no behavior change in C1. We use a try/except so a missing
+                # feature module doesn't abort the cache replay.
+                try:
+                    try:
+                        from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES as _fc_features
+                        from fresh_slotlab.analyzer.parse_state import ParseState as _fc_ParseState
+                    except ImportError:
+                        from analyzer.feature_registry import ALL_FEATURES as _fc_features  # type: ignore[no-redef]
+                        from analyzer.parse_state import ParseState as _fc_ParseState  # type: ignore[no-redef]
+                    _fc_parse_state = _fc_ParseState(
+                        chunk_dict=rec,
+                        machine_id=args.machine,
+                        mode=args.rtp_mode,
+                        manifest={},  # manifest not yet loaded; plugins don't use it in extract()
+                    )
+                    for _fc_feat in _fc_features:
+                        try:
+                            _fc_this = _fc_feat.extract(_fc_parse_state, rec)
+                            _feature_accs[_fc_feat.FEATURE_ID] = _fc_feat.reduce(
+                                _feature_accs.get(_fc_feat.FEATURE_ID, {}),
+                                _fc_this,
+                            )
+                        except Exception:  # noqa: BLE001
+                            # extract() / reduce() error: use prev_acc unchanged.
+                            pass
+                except Exception:  # noqa: BLE001
+                    pass
 
             # Emit heartbeat every read_progress_step chunks so the
             # batch log keeps ticking during the long silent replay.
@@ -2690,6 +2730,33 @@ def main() -> int:
                 total_dollar_pick_spins += int(rec.get("dollar_pick_spins", 0) or 0)
                 total_dollar_pick_total_dollars += int(rec.get("dollar_pick_total_dollars", 0) or 0)
                 total_dollar_pick_win += float(rec.get("dollar_pick_win", 0) or 0)
+                # Phase C1: wire extract() per chunk (online/live-sampling path).
+                # Mirrors the from-cache path wiring above. Same lazy-import pattern.
+                try:
+                    try:
+                        from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES as _ol_features
+                        from fresh_slotlab.analyzer.parse_state import ParseState as _ol_ParseState
+                    except ImportError:
+                        from analyzer.feature_registry import ALL_FEATURES as _ol_features  # type: ignore[no-redef]
+                        from analyzer.parse_state import ParseState as _ol_ParseState  # type: ignore[no-redef]
+                    _ol_parse_state = _ol_ParseState(
+                        chunk_dict=rec,
+                        machine_id=args.machine,
+                        mode=args.rtp_mode,
+                        manifest={},  # manifest not yet loaded; plugins don't use it in extract()
+                    )
+                    for _ol_feat in _ol_features:
+                        try:
+                            _ol_this = _ol_feat.extract(_ol_parse_state, rec)
+                            _feature_accs[_ol_feat.FEATURE_ID] = _ol_feat.reduce(
+                                _feature_accs.get(_ol_feat.FEATURE_ID, {}),
+                                _ol_this,
+                            )
+                        except Exception:  # noqa: BLE001
+                            # extract() / reduce() error: use prev_acc unchanged.
+                            pass
+                except Exception:  # noqa: BLE001
+                    pass
 
                 hw = ci_halfwidth_pp(chunk_rtps_pct)
                 if math.isfinite(hw):
@@ -4803,13 +4870,21 @@ def main() -> int:
     if "bonus_cycle_correction" in cm and "newfreespin_correction" not in cm:
         cm["newfreespin_correction"] = cm["bonus_cycle_correction"]
 
-    # ── Wave 2c (P2-C): registered feature emit hooks ─────────────────────
+    # ── Wave 2c / Phase C1: registered feature emit hooks ─────────────────
+    # Phase C1 of analyzer unbundle (04_v3 §7.2) — plumbing only.
+    # No visible output change; M14 + M275 cached rebuilds byte-identical.
+    #
+    # Execution order per 04_v3 §4.2:
+    #   Phase B (F1 inline, already complete above) → Phase C (registry
+    #   build, placeholder in C1) → Phase D (topo-sorted emit loop).
+    #
     # Stash temp keys for BankruptcySimulation.emit() (Pattern B).
     # bankruptcy_rows was built at lines 4006-4051; it's still needed by
     # the markdown section below (local variable, not deleted here).
     # The temp keys carry it into the feature's emit and are removed there.
     summary["_bankruptcy_rows"] = bankruptcy_rows
     summary["_bankruptcy_sim_session_spins"] = bankruptcy_sim_session_spins
+
     # Trigger feature module imports so their register() calls fire.
     # Dual-path (package-mode / standalone-script) mirrors the pattern at
     # the module top (lines 182-231). Each register() is idempotent.
@@ -4818,18 +4893,174 @@ def main() -> int:
         import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
         import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
         import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
-        from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
+        from fresh_slotlab.analyzer.feature_registry import (
+            ALL_FEATURES as _ALL_FEATURES,
+            get_features_for_machine as _get_features_for_machine,
+        )
+        from fresh_slotlab.analyzer.pipeline_context import (
+            PipelineContext as _PipelineContext,
+            MechanismRegistry as _MechanismRegistry,
+        )
+        from fresh_slotlab.analyzer.parse_state import ParseState as _ParseState
+        from fresh_slotlab.analyzer.topo_sort import (
+            topological_sort as _topological_sort,
+            PluginCyclicDependencyError as _PluginCyclicDependencyError,
+            PluginMissingDependencyError as _PluginMissingDependencyError,
+        )
+        from fresh_slotlab.analyzer.manifest_loader import (
+            load_manifest as _c1_load_manifest,
+            resolve_inheritance as _c1_resolve_inheritance,
+            resolve_per_mode as _c1_resolve_per_mode,
+        )
     except ImportError:  # running as standalone script
         import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
-        from analyzer.feature_registry import ALL_FEATURES  # type: ignore[no-redef]
-    # Invoke each feature's emit. Pattern A features verify key presence (no-op).
+        from analyzer.feature_registry import (  # type: ignore[no-redef]
+            ALL_FEATURES as _ALL_FEATURES,
+            get_features_for_machine as _get_features_for_machine,
+        )
+        from analyzer.pipeline_context import (  # type: ignore[no-redef]
+            PipelineContext as _PipelineContext,
+            MechanismRegistry as _MechanismRegistry,
+        )
+        from analyzer.parse_state import ParseState as _ParseState  # type: ignore[no-redef]
+        from analyzer.topo_sort import (  # type: ignore[no-redef]
+            topological_sort as _topological_sort,
+            PluginCyclicDependencyError as _PluginCyclicDependencyError,
+            PluginMissingDependencyError as _PluginMissingDependencyError,
+        )
+        from analyzer.manifest_loader import (  # type: ignore[no-redef]
+            load_manifest as _c1_load_manifest,
+            resolve_inheritance as _c1_resolve_inheritance,
+            resolve_per_mode as _c1_resolve_per_mode,
+        )
+
+    # ── Phase C1 — Step 1: resolve manifest for PipelineContext ──────────
+    # Load the per-mode manifest so PipelineContext.manifest is populated.
+    # Best-effort: failure falls back to empty dict (same graceful degradation
+    # as the RTP integrity gate below at line ~4875).
+    _c1_manifest: dict[str, Any] = {}
+    try:
+        _c1_manifest = _c1_load_manifest(args.machine, _DEFAULT_MANIFEST_ROOT)
+        if _c1_manifest.get("inherits_from"):
+            _c1_manifest = _c1_resolve_inheritance(_c1_manifest, _DEFAULT_MANIFEST_ROOT)
+        _c1_manifest = _c1_resolve_per_mode(_c1_manifest, args.rtp_mode)
+    except (FileNotFoundError, KeyError, Exception):  # noqa: BLE001
+        _c1_manifest = {}
+
+    # ── Phase C1 — Step 2: build MechanismRegistry (placeholder) ─────────
+    # C1 ships a pure placeholder (empty frozensets, all False).
+    # C4 will replace this with the real Tier 1/2/3 detection logic.
+    # INVARIANT: F1 inline MUST have written spin_type_breakdown before this
+    # call (see 04_v3 §4.2 ordering contract).
+    assert "spin_type_breakdown" in summary.get("player_impact", {}), (
+        "PHASE C1 INVARIANT: F1 inline must write player_impact.spin_type_breakdown "
+        "before MechanismRegistry build. Ordering contract violated."
+    )
+    _mechanism_registry = _MechanismRegistry()
+    # Phase C4 will call _build_mechanism_registry() here instead.
+    summary["_mechanism_registry"] = _mechanism_registry
+
+    # ── Phase C1 — Step 3: compute robots_with_pending_cycle ─────────────
+    # Mirrors the inline computation in collect_mechanic block (~line 4687).
+    # Extracted here so PipelineContext.robots_with_pending_cycle is correct
+    # without duplicating logic or reading from the summary dict.
+    _c1_cycle_median: int | None = (
+        int(sorted(all_cycle_peaks)[len(all_cycle_peaks) // 2])
+        if all_cycle_peaks else None
+    )
+    _c1_robots_with_pending_cycle: int = (
+        sum(
+            1 for fcc in all_final_cc_values
+            if _c1_cycle_median is not None and fcc < _c1_cycle_median
+        )
+    )
+
+    # ── Phase C1 — Step 4: construct PipelineContext ──────────────────────
+    # All fields from local accumulator variables per 04_v3 §4.1 + §4.3.
+    # total_paid_spins = sum of paid rounds across all SpinTypes (rounds
+    # where CostCredits > 0, accumulated into spin_type_paid_rounds).
+    _c1_ctx = _PipelineContext(
+        effective_bet_for_rtp=effective_bet_for_rtp,
+        total_spins=total_spins,
+        total_paid_sessions=total_paid_sessions,
+        total_paid_spins=int(sum(spin_type_paid_rounds.values())),
+        clamp_pending_robots_total=clamp_pending_robots_total,
+        robots_with_pending_cycle=_c1_robots_with_pending_cycle,
+        mechanism_registry=_mechanism_registry,
+        manifest=_c1_manifest,
+    )
+
+    # ── Phase C1 — Step 5: topo-sort + emit loop ─────────────────────────
+    # Use manifest-filtered feature set (get_features_for_machine).
+    # Falls back to ALL_FEATURES if manifest is empty (Phase 2 stub behavior).
+    _machine_features = _get_features_for_machine(
+        args.machine,
+        manifest=_c1_manifest if _c1_manifest else None,
+    )
+
+    try:
+        _sorted_features = _topological_sort(_machine_features)
+    except (_PluginCyclicDependencyError, _PluginMissingDependencyError) as _topo_exc:
+        # Programming error: cycle or missing dep in REQUIRES declarations.
+        # Per 04_v3 §4.2 topo-sort failure surfacing + feedback_no_silent_swallow.md.
+        import sys as _sys
+        from datetime import datetime as _dt, timezone as _tz
+        _topo_error_dict = {
+            "error_type": type(_topo_exc).__name__,
+            "message": str(_topo_exc),
+            "plugin_dep_graph": {
+                f.FEATURE_ID: list(f.REQUIRES)
+                for f in _machine_features
+            },
+            "timestamp": _dt.now(_tz.utc).isoformat(),
+        }
+        summary["analyzer_init_error"] = _topo_error_dict
+        print(
+            f"ERROR: analyzer plugin topo-sort failed: "
+            f"{type(_topo_exc).__name__} — {_topo_exc}",
+            file=_sys.stderr,
+        )
+        # Non-zero exit so backend marks run as failed.
+        raise SystemExit(1) from _topo_exc
+
+    # Invoke each feature's emit in topological order.
+    # Pattern A features verify key presence (no-op).
     # Pattern B features (BankruptcySimulation) write their final schema keys.
-    for _feature in ALL_FEATURES:
-        _feature.emit(None, summary)
-    # ── End Wave 2c ────────────────────────────────────────────────────────
+    # Per 04_v3 §4.2 error handling: emit() errors log + set
+    # summary["feature_errors"][fid]; do NOT crash the run.
+    for _feature in _sorted_features:
+        # Validate DECLARED_DEPS are present in summary before calling emit.
+        # A missing dep key is a programming error (ordering bug or typo).
+        for _dep_key in _feature.DECLARED_DEPS:
+            if _dep_key not in summary:
+                raise RuntimeError(
+                    f"Feature '{_feature.FEATURE_ID}' declared dep "
+                    f"'{_dep_key}' absent from summary. Ordering error or typo."
+                )
+        try:
+            _feature.emit(_feature_accs.get(_feature.FEATURE_ID, {}), summary, _c1_ctx)
+        except Exception as _emit_exc:  # noqa: BLE001
+            import sys as _sys
+            print(
+                f"ERROR: feature '{_feature.FEATURE_ID}' emit() failed: {_emit_exc}",
+                file=_sys.stderr,
+            )
+            if "feature_errors" not in summary:
+                summary["feature_errors"] = {}
+            summary["feature_errors"][_feature.FEATURE_ID] = str(_emit_exc)
+
+    # Cleanup: remove all _-prefixed temp keys (DECLARED_DEPS + registry).
+    # This includes _bankruptcy_rows, _bankruptcy_sim_session_spins,
+    # _mechanism_registry, and any future plugin temp keys.
+    # Use pop() with default to guard against keys already deleted by emit()
+    # (BankruptcySimulation.emit() deletes its own temp keys in-situ).
+    for _tmp_key in list(summary.keys()):
+        if _tmp_key.startswith("_"):
+            summary.pop(_tmp_key, None)
+    # ── End Wave 2c / Phase C1 ─────────────────────────────────────────────
 
     # ── Phase 5 (P5-1 partial): RTP integrity gate, warn-only ──────────────
     # Run the 4-layer integrity gate against the just-built summary and

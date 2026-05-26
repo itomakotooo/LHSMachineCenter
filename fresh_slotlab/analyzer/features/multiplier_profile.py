@@ -12,7 +12,7 @@ Per memory feedback_subprocess_import_suicide_and_module_globals.md:
 """
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 try:
     from fresh_slotlab.analyzer.features._base import AnalyzerFeature
@@ -20,6 +20,12 @@ try:
 except ImportError:  # running as standalone script
     from analyzer.features._base import AnalyzerFeature  # type: ignore[no-redef]
     from analyzer.feature_registry import register  # type: ignore[no-redef]
+
+if TYPE_CHECKING:
+    try:
+        from fresh_slotlab.analyzer.pipeline_context import PipelineContext
+    except ImportError:
+        from analyzer.pipeline_context import PipelineContext  # type: ignore[assignment]
 
 
 class MultiplierProfile(AnalyzerFeature):
@@ -42,6 +48,7 @@ class MultiplierProfile(AnalyzerFeature):
     SCHEMA_KEYS: ClassVar[tuple[str, ...]] = ("multiplier_profile",)
     SCHEMA_VERSION: ClassVar[int] = 1
     RTP_CONTRIBUTION: ClassVar[bool] = False  # display only
+    DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
 
     def extract(self, parse_state: Any, chunk_dict: Any) -> dict:
         # No per-round work; aggregation owned by main() for now.
@@ -52,7 +59,7 @@ class MultiplierProfile(AnalyzerFeature):
         # No-op accumulator; main() owns the accumulation.
         return prev_acc
 
-    def emit(self, final_acc: Any, summary: dict) -> None:
+    def emit(self, final_acc: Any, summary: dict, ctx: "PipelineContext") -> None:
         # main() already populated summary["player_impact"]["multiplier_profile"]
         # inline at player_impact_analyzer.py lines 4329-4337.
         # This emit is a no-op verification: assert the key is present.

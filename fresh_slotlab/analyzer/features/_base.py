@@ -3,17 +3,23 @@
 Per ticket P2-A1 §3 C1 (Round 2 spec-aligned) and
 04_architecture_proposal_v5.md §5.2 verbatim.
 
+Phase C1 additions (04_v3 §4.1 / §7.2):
+- ``DECLARED_DEPS``    ClassVar[tuple] — summary temp-keys this feature reads
+                                         in its emit() call (for ordering validation)
+- ``emit()`` signature extended to accept ``ctx: PipelineContext`` as 3rd arg
+
 Design notes
 ------------
 - ``FEATURE_ID``               ClassVar[str]  — unique snake_case plugin identifier
 - ``SCHEMA_KEYS``              ClassVar[tuple] — keys written to the summary block
 - ``SCHEMA_VERSION``           ClassVar[int]  — bump invalidates downstream renderers
 - ``REQUIRES``                 ClassVar[tuple] — feature IDs this feature depends on
+- ``DECLARED_DEPS``            ClassVar[tuple] — summary ``_`` temp-keys consumed in emit()
 - ``RTP_CONTRIBUTION``         ClassVar[bool]  — True if this feature contributes RTP;
                                                  Wave 2e RTP gate reads this (AttributeError
                                                  if absent — this ClassVar is load-bearing)
 - ``REGISTERED_FALLBACK_RULES`` ClassVar[dict] — per-SCHEMA_VERSION fallback renderer rules
-- ``extract``                  abstractmethod — per-round extraction
+- ``extract``                  abstractmethod — per-chunk extraction (called once per chunk)
 - ``reduce``                   abstractmethod — accumulator reduction across chunks
 - ``emit``                     abstractmethod — produce final summary block
 
@@ -32,7 +38,16 @@ from __future__ import annotations
 import hashlib
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    # Imported for type annotations only; avoids circular import at runtime.
+    # PipelineContext lives in fresh_slotlab/analyzer/pipeline_context.py
+    # (not under features/) so there is no import cycle at runtime.
+    try:
+        from fresh_slotlab.analyzer.pipeline_context import PipelineContext
+    except ImportError:  # standalone script mode
+        from analyzer.pipeline_context import PipelineContext  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +78,7 @@ class AnalyzerFeature(ABC):
                 result["my_key"] = result.get("my_key", 0) + this_acc.get("my_key", 0)
                 return result
 
-            def emit(self, final_acc, summary: dict) -> None:
+            def emit(self, final_acc, summary: dict, ctx) -> None:
                 summary["my_feature"] = final_acc  # mutate summary in place
     """
 
@@ -92,6 +107,21 @@ class AnalyzerFeature(ABC):
     """FEATURE_IDs of features this feature depends on.
 
     The orchestrator guarantees dependencies run before this feature.
+    """
+
+    DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
+    """Summary ``_`` temp-keys this feature reads in its emit() call.
+
+    Per 04_v3 §4.1 Phase C1.  Listing a key here signals to the emit-loop
+    runner that this feature depends on a pre-stashed temp-key in the summary
+    dict.  The runner validates that each declared dep key is present before
+    invoking emit().
+
+    Convention: dep keys use the ``_`` prefix (e.g. ``"_bankruptcy_rows"``,
+    ``"_mechanism_registry"``).  They are cleaned up by the emit loop after
+    all plugins have run.
+
+    Subclasses that need no summary deps leave this as ``()`` (the default).
     """
 
     RTP_CONTRIBUTION: ClassVar[bool] = False
@@ -167,19 +197,32 @@ class AnalyzerFeature(ABC):
         ...
 
     @abstractmethod
-    def emit(self, final_acc, summary: dict) -> None:
+    def emit(self, final_acc: Any, summary: dict, ctx: "PipelineContext") -> None:
         """Write the final feature result into the summary dict.
 
         Called once after all rounds in all chunks have been processed.
         Mutates ``summary`` in place — does NOT return a new dict.
 
+        Phase C1 change (04_v3 §4.1): added ``ctx`` as 3rd parameter.
+        Existing Pattern-A plugins accept ``ctx`` but do not use it yet.
+        Pattern-B plugins use ``ctx.effective_bet_for_rtp`` etc. for RTP math.
+
         Parameters
         ----------
         final_acc:
             The fully-reduced accumulator (result of all ``reduce`` calls).
+            Pattern-A plugins receive ``{}`` (empty dict) for final_acc
+            because their extract() / reduce() are no-ops.
         summary:
             The partial summary dict assembled so far.  Add this feature's
-            keys to ``summary`` in place.
+            keys to ``summary`` in place.  Read ``_``-prefixed temp keys
+            listed in ``DECLARED_DEPS`` from here; they are cleaned up after
+            the emit loop.
+        ctx:
+            PipelineContext carrying effective_bet_for_rtp, total_spins,
+            total_paid_sessions, total_paid_spins, clamp_pending_robots_total,
+            robots_with_pending_cycle, mechanism_registry, and manifest.
+            None of the 4 existing Pattern-A plugins use ctx in C1.
         """
         ...
 

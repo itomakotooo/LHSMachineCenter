@@ -44,7 +44,7 @@ Parity guarantee (ticket P2-C §4 C3):
 """
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 try:
     from fresh_slotlab.analyzer.features._base import AnalyzerFeature
@@ -52,6 +52,12 @@ try:
 except ImportError:  # running as standalone script
     from analyzer.features._base import AnalyzerFeature  # type: ignore[no-redef]
     from analyzer.feature_registry import register  # type: ignore[no-redef]
+
+if TYPE_CHECKING:
+    try:
+        from fresh_slotlab.analyzer.pipeline_context import PipelineContext
+    except ImportError:
+        from analyzer.pipeline_context import PipelineContext  # type: ignore[assignment]
 
 # Canonical percentile tuple — same constant as _BANKRUPTCY_PERCENTILES in pia.
 # Defined locally to avoid importing from player_impact_analyzer (cycle risk).
@@ -75,6 +81,7 @@ class BankruptcySimulation(AnalyzerFeature):
     SCHEMA_KEYS: ClassVar[tuple[str, ...]] = ("bankruptcy_simulation", "bankruptcy_probe")
     SCHEMA_VERSION: ClassVar[int] = 1
     RTP_CONTRIBUTION: ClassVar[bool] = False
+    DECLARED_DEPS: ClassVar[tuple[str, ...]] = ("_bankruptcy_rows", "_bankruptcy_sim_session_spins")
 
     def extract(self, parse_state: Any, chunk_dict: Any) -> dict:
         # Bankruptcy reps are already computed during chunk parsing by main().
@@ -85,7 +92,7 @@ class BankruptcySimulation(AnalyzerFeature):
         # No per-round accumulation; main() owns this via _BankruptcyStreamAccumulator.
         return prev_acc
 
-    def emit(self, final_acc: Any, summary: dict) -> None:
+    def emit(self, final_acc: Any, summary: dict, ctx: "PipelineContext") -> None:
         """Produce bankruptcy_simulation + bankruptcy_probe in summary["player_impact"].
 
         Reads temp keys (set by main() just before invoking features):
