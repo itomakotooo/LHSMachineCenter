@@ -914,11 +914,38 @@ def _load_settings(settings_path: Path) -> dict[str, Any]:
         Flip to False when a runaway run was causing the console to
         crash (auto-resume would otherwise loop).
     """
+    # Default per-mode settings for auto_sweep (07_decision §3).
+    _AUTO_SWEEP_MODE_DEFAULTS: dict[str, Any] = {
+        "chunk_spin_times": 10000,
+        "chunk_robot_count": 2,
+        "batch_concurrency": 16,
+        "target_halfwidth_pp": 0.5,
+        "max_chunks": 60,
+    }
     defaults: dict[str, Any] = {
         "min_retention_spins": _RAWDATA_MIN_RETENTION_SPINS_DEFAULT,
         "default_server": "",
         "server_tuning": {},
         "auto_resume_orphan_runs": True,
+        "auto_sweep": {
+            "enabled": False,
+            "schedule_mode": "daily",
+            "schedule_value": "02:00",
+            "skip_fresh_cells": True,
+            "sweep_concurrency": 2,
+            "binary_group_large_cap": 2,
+            "max_consecutive_failures": 3,
+            "consecutive_failure_window": 10,
+            "structural_skip_machines": ["M250", "M260", "M264", "M268"],
+            "cell_busy_timeout_s": 1800,
+            "wall_time_per_cell_s": 7200,
+            "modes": {
+                "1": dict(_AUTO_SWEEP_MODE_DEFAULTS),
+                "2": dict(_AUTO_SWEEP_MODE_DEFAULTS),
+                "5": dict(_AUTO_SWEEP_MODE_DEFAULTS),
+                "7": dict(_AUTO_SWEEP_MODE_DEFAULTS),
+            },
+        },
     }
     try:
         data = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -956,6 +983,67 @@ def _load_settings(settings_path: Path) -> dict[str, Any]:
                     "probe": dict(entry.get("probe") or {}),
                 }
         out["server_tuning"] = clean
+    # ── auto_sweep block (07_decision §3) ────────────────────────────────
+    # If auto_sweep is missing or non-dict, use defaults wholesale.
+    # If individual sub-keys are missing, fall back per-key.
+    raw_as = data.get("auto_sweep")
+    if isinstance(raw_as, dict):
+        as_out: dict[str, Any] = dict(defaults["auto_sweep"])
+        # Scalar booleans.
+        for _bool_key in ("enabled", "skip_fresh_cells"):
+            _v = raw_as.get(_bool_key)
+            if isinstance(_v, bool):
+                as_out[_bool_key] = _v
+        # schedule_mode: must be "daily" or "interval".
+        _sm = raw_as.get("schedule_mode")
+        if isinstance(_sm, str) and _sm in ("daily", "interval"):
+            as_out["schedule_mode"] = _sm
+        # schedule_value: str (not validated further — upstream UI enforces format).
+        _sv = raw_as.get("schedule_value")
+        if isinstance(_sv, str):
+            as_out["schedule_value"] = _sv
+        # Positive-int scalars with inclusive bounds.
+        _int_bounds: dict[str, tuple[int, int]] = {
+            "sweep_concurrency": (1, 16),
+            "binary_group_large_cap": (1, 16),
+            "max_consecutive_failures": (1, 100),
+            "consecutive_failure_window": (1, 1000),
+            "cell_busy_timeout_s": (60, 86400),
+            "wall_time_per_cell_s": (60, 86400),
+        }
+        for _ik, (_lo, _hi) in _int_bounds.items():
+            _iv = raw_as.get(_ik)
+            if isinstance(_iv, (int, float)) and _lo <= int(_iv) <= _hi:
+                as_out[_ik] = int(_iv)
+        # structural_skip_machines: list of strings.
+        _ssm = raw_as.get("structural_skip_machines")
+        if isinstance(_ssm, list) and all(isinstance(x, str) for x in _ssm):
+            as_out["structural_skip_machines"] = list(_ssm)
+        # modes: dict keyed by str mode number.
+        raw_modes = raw_as.get("modes")
+        if isinstance(raw_modes, dict):
+            clean_modes: dict[str, dict[str, Any]] = dict(as_out["modes"])
+            for _mode_key, _mode_def in defaults["auto_sweep"]["modes"].items():
+                raw_mode = raw_modes.get(_mode_key)
+                if not isinstance(raw_mode, dict):
+                    continue
+                clean_mode: dict[str, Any] = dict(_mode_def)
+                _mode_int_bounds: dict[str, tuple[int, int]] = {
+                    "chunk_spin_times": (1000, 100000),
+                    "chunk_robot_count": (1, 16),
+                    "batch_concurrency": (1, 32),
+                    "max_chunks": (1, 1000),
+                }
+                for _mk, (_mlo, _mhi) in _mode_int_bounds.items():
+                    _mv = raw_mode.get(_mk)
+                    if isinstance(_mv, (int, float)) and _mlo <= int(_mv) <= _mhi:
+                        clean_mode[_mk] = int(_mv)
+                _thw = raw_mode.get("target_halfwidth_pp")
+                if isinstance(_thw, (int, float)) and 0.0 <= float(_thw) <= 5.0:
+                    clean_mode["target_halfwidth_pp"] = float(_thw)
+                clean_modes[_mode_key] = clean_mode
+            as_out["modes"] = clean_modes
+        out["auto_sweep"] = as_out
     return out
 
 
@@ -2125,6 +2213,55 @@ class StateStore:
                     created_at TEXT NOT NULL,
                     PRIMARY KEY (batch_run_id, machine, mode)
                 )
+                """
+            )
+            # Phase 4 (auto-inspect): sweep + item tables.  Idempotent
+            # CREATE IF NOT EXISTS — safe on every startup, no ALTER needed.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS auto_inspect_sweeps (
+                    sweep_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    finished_at TEXT,
+                    settings_snapshot_json TEXT NOT NULL,
+                    modes_json TEXT NOT NULL,
+                    trigger TEXT NOT NULL,
+                    total_items INTEGER NOT NULL DEFAULT 0,
+                    completed_items INTEGER NOT NULL DEFAULT 0,
+                    failed_items INTEGER NOT NULL DEFAULT 0,
+                    skipped_items INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS auto_inspect_items (
+                    sweep_id TEXT NOT NULL REFERENCES auto_inspect_sweeps(sweep_id),
+                    machine TEXT NOT NULL,
+                    mode INTEGER NOT NULL,
+                    queue_position INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    cell_class TEXT NOT NULL,
+                    sample_run_id TEXT,
+                    generate_run_id TEXT,
+                    generate_status TEXT,
+                    cfg_md5_at_enqueue TEXT NOT NULL DEFAULT '',
+                    code_md5_at_enqueue TEXT NOT NULL DEFAULT '',
+                    claimed_by TEXT,
+                    claimed_at TEXT,
+                    started_at TEXT,
+                    finished_at TEXT,
+                    terminal_reason TEXT,
+                    events_json TEXT NOT NULL DEFAULT '[]',
+                    PRIMARY KEY (sweep_id, machine, mode)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_auto_inspect_items_status
+                    ON auto_inspect_items (sweep_id, status)
                 """
             )
             conn.commit()
@@ -6087,19 +6224,19 @@ class RunManager:
     ) -> str | None:
         """Return a human-readable owner description if ``(machine, mode)``
         is currently held by a non-terminal queue (fleet refresh queue,
-        sampling batch, or generate batch). Returns None when no queue
-        is interested — A2 is free to spawn a resume run.
+        sampling batch, generate batch, or auto-inspect sweep). Returns
+        None when no queue is interested — A2 is free to spawn a resume run.
 
         Used by ``_recover_orphan_running_runs`` (R1, 2026-05-26) to
         avoid racing the queue's own restart-recovery path. The orphan
         is still marked failed; the queue picks up the cell on its own
         resume cycle (operator clicks ↻ 继续未完成项 / fleet refresh
-        resume thread).
+        resume thread / auto-inspect resume thread).
 
-        Pre-L2 / pre-L3 databases may not have the batches table or
-        fleet_refresh_queue table; sqlite3.OperationalError is swallowed
-        and the check returns "no owner found", which preserves the
-        old A2 behavior (spawn anyway).
+        Pre-L2 / pre-L3 / pre-Phase-4 databases may not have the batches
+        table, fleet_refresh_queue, or auto_inspect_sweeps tables;
+        sqlite3.OperationalError is swallowed and the check returns
+        "no owner found", which preserves the old A2 behavior (spawn anyway).
         """
         # 1. fleet refresh — table has its own indexes so a SQL join
         #    is cheap.
@@ -6136,6 +6273,32 @@ class RunManager:
                         continue
                     if it_machine == str(machine) and it_mode == int(mode):
                         return f"batch {r.get('batch_id')} (kind={r.get('kind') or 'sampling'})"
+        except sqlite3.OperationalError:
+            pass
+        # 3. auto_inspect_items — new table (Phase 4 / auto-inspect).
+        #    A sweep in scanning / sampling / finalizing with a non-terminal
+        #    item for this (machine, mode) owns the cell.  OperationalError
+        #    is swallowed like the other branches (pre-Phase-4 databases
+        #    won't have the table yet).
+        try:
+            with self.store._connect() as conn:
+                row_ai = conn.execute(
+                    """
+                    SELECT s.sweep_id
+                    FROM auto_inspect_items i
+                    JOIN auto_inspect_sweeps s ON s.sweep_id = i.sweep_id
+                    WHERE i.machine = ? AND i.mode = ?
+                      AND s.status IN ('scanning', 'sampling', 'finalizing')
+                      AND i.status NOT IN ('completed', 'failed', 'structural_skip',
+                                           'convergence_timeout',
+                                           'manifest_override_partial',
+                                           'md5_drift_invalidated')
+                    LIMIT 1
+                    """,
+                    (str(machine), int(mode)),
+                ).fetchone()
+                if row_ai:
+                    return f"auto-inspect sweep {row_ai['sweep_id']}"
         except sqlite3.OperationalError:
             pass
         return None
@@ -11724,6 +11887,35 @@ def create_app(
     else:
         # fleet_refresh_enabled=False (virtual console).
         app.state.fleet_refresh_manager = None
+
+    # ── Phase 4 (auto-inspect) — AutoInspectManager construction ──────────
+    # Construction is always done (not gated on fleet_refresh_enabled) so
+    # the schema tables are always present and _is_cell_owned_by_active_queue
+    # branch 3 always works.  No HTTP in __init__ (MF-1).
+    from src.web_console.backend.auto_inspect_manager import AutoInspectManager
+
+    auto_inspect_mgr = AutoInspectManager(
+        store=store,
+        run_manager=manager,
+        registry=registry,
+        limiter=limiter,
+        settings_path=settings_path,
+        machines_config=mc,
+        rawdata_root=rd_root,
+    )
+    app.state.auto_inspect_manager = auto_inspect_mgr
+
+    # If a non-terminal sweep was found on startup, resume it via daemon
+    # thread after create_app finishes — same pattern as FleetRefreshManager
+    # restart-recovery at line ~11762 above (07_decision §2 MF-1 resolution).
+    if auto_inspect_mgr._pending_resume_sweep_id:
+        _resume_sweep_id = auto_inspect_mgr._pending_resume_sweep_id
+        threading.Thread(
+            target=auto_inspect_mgr.resume_sweep,
+            args=(_resume_sweep_id,),
+            daemon=True,
+            name=f"auto-inspect-resume-{_resume_sweep_id[:8]}",
+        ).start()
 
     threading.Thread(target=_disk_monitor_loop, daemon=True, name="disk-monitor").start()
 
