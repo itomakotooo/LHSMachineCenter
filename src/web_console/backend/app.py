@@ -2060,10 +2060,22 @@ class StateStore:
                     params_json TEXT NOT NULL,
                     items_json TEXT NOT NULL,
                     events_json TEXT NOT NULL,
-                    reports_root TEXT
+                    reports_root TEXT,
+                    kind TEXT NOT NULL DEFAULT 'sampling'
                 )
                 """
             )
+            # 2026-05-26 L3: add kind column to existing L2 batches table
+            # so the unified history covers both BatchRunManager (sampling)
+            # and BatchGenerateManager (generate). Existing L2 rows default
+            # to 'sampling' which matches their semantics.
+            batches_columns = {row[1] for row in conn.execute(
+                "PRAGMA table_info(batches)"
+            ).fetchall()}
+            if "kind" not in batches_columns:
+                conn.execute(
+                    "ALTER TABLE batches ADD COLUMN kind TEXT NOT NULL DEFAULT 'sampling'"
+                )
             # Phase 3 deploy (2026-05-17): fleet refresh queue tables.
             conn.execute(
                 """
@@ -2265,12 +2277,17 @@ class StateStore:
         items: list[dict[str, Any]],
         events: list[dict[str, Any]],
         reports_root: str | None,
+        kind: str = "sampling",
     ) -> None:
         """Upsert a batch's full state. Called by BatchRunManager
         at start_batch, at each item finalize, on cancel, and on
-        terminal status transition. Light-frequency writes — events
-        list is appended at logical milestones (typically 5-30 rows
-        per batch), not on each chunk_progress emission.
+        terminal status transition; also called by BatchGenerateManager
+        (2026-05-26 L3) with kind='generate' for the same lifecycle
+        events.
+
+        Light-frequency writes — events list is appended at logical
+        milestones (typically 5-30 rows per batch), not on each
+        chunk_progress emission.
         """
         # Cap events at last 200 to bound the column size; matches
         # the existing -100 read cap on get_batch but leaves a bit
@@ -2279,6 +2296,7 @@ class StateStore:
         payload = {
             "batch_id": batch_id,
             "status": status,
+            "kind": str(kind or "sampling"),
             "created_at": created_at,
             "finished_at": finished_at,
             "concurrency": int(concurrency),
@@ -2291,16 +2309,17 @@ class StateStore:
             conn.execute(
                 """
                 INSERT INTO batches (
-                    batch_id, status, created_at, finished_at,
+                    batch_id, status, kind, created_at, finished_at,
                     concurrency, params_json, items_json, events_json,
                     reports_root
                 ) VALUES (
-                    :batch_id, :status, :created_at, :finished_at,
+                    :batch_id, :status, :kind, :created_at, :finished_at,
                     :concurrency, :params_json, :items_json, :events_json,
                     :reports_root
                 )
                 ON CONFLICT(batch_id) DO UPDATE SET
                     status=:status,
+                    kind=:kind,
                     finished_at=:finished_at,
                     concurrency=:concurrency,
                     params_json=:params_json,
@@ -2331,16 +2350,55 @@ class StateStore:
         self,
         statuses: tuple[str, ...],
         limit: int = 5000,
+        kind: str | None = None,
     ) -> list[dict[str, Any]]:
+        """List batches matching ``statuses``. ``kind`` optional filter
+        (e.g. 'sampling' or 'generate'). Returns most-recent first by
+        created_at."""
         if not statuses:
             return []
         placeholders = ",".join("?" for _ in statuses)
+        params: tuple[Any, ...] = tuple(statuses)
+        sql = f"SELECT * FROM batches WHERE status IN ({placeholders})"
+        if kind is not None:
+            sql += " AND kind=?"
+            params = params + (kind,)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params = params + (limit,)
         with self._connect() as conn:
-            rows = conn.execute(
-                f"SELECT * FROM batches WHERE status IN ({placeholders}) "
-                "ORDER BY created_at DESC LIMIT ?",
-                tuple(statuses) + (limit,),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            for col in ("params_json", "items_json", "events_json"):
+                try:
+                    d[col.removesuffix("_json")] = json.loads(d.get(col) or "null")
+                except (TypeError, json.JSONDecodeError):
+                    d[col.removesuffix("_json")] = None
+            out.append(d)
+        return out
+
+    def list_recent_batches(
+        self,
+        limit: int = 50,
+        kind: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List recent batches across ALL statuses (running / completed /
+        cancelled / partial / failed / pending). Used by the UI
+        history panel so the operator can see what happened across
+        every console session, not just what's currently in flight.
+
+        Kind filter optional — pass 'sampling' or 'generate' to scope
+        to one batch manager's history; omit for unified view."""
+        sql = "SELECT * FROM batches"
+        params: tuple[Any, ...] = ()
+        if kind is not None:
+            sql += " WHERE kind=?"
+            params = (kind,)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params = params + (int(limit),)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
         out: list[dict[str, Any]] = []
         for r in rows:
             d = dict(r)
@@ -3751,6 +3809,7 @@ class BatchGenerateManager:
         finalize_fn: Callable[[dict, dict], dict[str, Any]],
         concurrency: int = 4,
         root_path: str = "",
+        store: "StateStore | None" = None,
     ) -> None:
         # prepare_fn(machine, mode) → dict with:
         #   job: pickle-safe dict for the worker (chunk_dir, output_dir,
@@ -3769,6 +3828,99 @@ class BatchGenerateManager:
         self._lock = threading.Lock()
         self._concurrency = max(1, int(concurrency))
         self._root_path = root_path
+        # 2026-05-26 L3: persist state to SQLite so a console restart
+        # mid-batch doesn't erase the operator's view. None when caller
+        # doesn't supply a store (e.g. tests constructing the manager
+        # directly without create_app); persistence becomes a no-op in
+        # that case so the rest of the manager still works.
+        self._store = store
+        if self._store is not None:
+            self._restore_persisted()
+
+    def _persist(self, batch_id: str) -> None:
+        """Snapshot state to the batches SQLite table with kind='generate'.
+        Safe to call from inside or outside the lock; takes the lock
+        itself to read a consistent snapshot. Wrapped in try/except so
+        a persistence failure never blocks the foreground thread.
+        """
+        if self._store is None:
+            return
+        with self._lock:
+            state = self._batches.get(batch_id)
+            if state is None:
+                return
+            snapshot = {
+                "status": str(state.get("status") or ""),
+                "created_at": str(state.get("started_at") or utc_now()),
+                "finished_at": state.get("finished_at"),
+                "concurrency": self._concurrency,
+                # BatchGenerateManager has no equivalent of BatchRunManager's
+                # `params` (the analyzer-side knobs are computed per-item
+                # by prepare_fn). Persist counter fields here so the
+                # history view can show "5/20 completed" without parsing
+                # items_json.
+                "params": {
+                    "total": int(state.get("total") or 0),
+                    "completed": int(state.get("completed") or 0),
+                    "failed": int(state.get("failed") or 0),
+                    "pending": int(state.get("pending") or 0),
+                    "error": state.get("error"),
+                },
+                "items": [dict(it) for it in state.get("items") or []],
+                "events": [],  # BatchGenerateManager has no events list
+                "reports_root": None,
+                "kind": "generate",
+            }
+        try:
+            self._store.upsert_batch(batch_id, **snapshot)
+        except Exception:
+            pass
+
+    def _restore_persisted(self) -> None:
+        """Read non-terminal generate batches from the batches table
+        and rehydrate as cancelled-by-restart. Same pattern as
+        BatchRunManager._restore_persisted_batches but with
+        kind='generate' filter."""
+        if self._store is None:
+            return
+        try:
+            persisted = self._store.list_batches_by_status(
+                ("pending", "running"),
+                limit=5000,
+                kind="generate",
+            )
+        except Exception:
+            return
+        for row in persisted:
+            batch_id = str(row.get("batch_id") or "").strip()
+            if not batch_id:
+                continue
+            items = row.get("items") or []
+            counter_params = row.get("params") or {}
+            cancelled_during_running = 0
+            for it in items:
+                if isinstance(it, dict) and it.get("status") in ("pending", "running"):
+                    it["status"] = "cancelled"
+                    if not it.get("error"):
+                        it["error"] = "cancelled by console restart"
+                    cancelled_during_running += 1
+            state = {
+                "batch_id": batch_id,
+                "started_at": str(row.get("created_at") or utc_now()),
+                "finished_at": utc_now(),
+                "status": "cancelled",
+                "total": int(counter_params.get("total") or len(items)),
+                "completed": int(counter_params.get("completed") or 0),
+                "failed": int(counter_params.get("failed") or 0),
+                "pending": 0,  # nothing left pending after restart
+                "error": "interrupted by console restart",
+                "items": items,
+                "_cancel_requested": True,
+            }
+            self._batches[batch_id] = state
+            # Persist the cancelled-by-restart state back so subsequent
+            # reads of the SQLite row reflect the recovery decision.
+            self._persist(batch_id)
 
     def start(self, items: list[dict[str, Any]]) -> dict[str, Any]:
         batch_id = f"bgen_{uuid.uuid4().hex[:12]}"
@@ -3798,6 +3950,9 @@ class BatchGenerateManager:
         }
         with self._lock:
             self._batches[batch_id] = state
+        # 2026-05-26 L3: persist initial state so a restart mid-batch
+        # leaves a trail (cancelled-by-restart on next startup).
+        self._persist(batch_id)
         thread = threading.Thread(
             target=self._run, args=(batch_id,), daemon=True,
         )
@@ -3825,7 +3980,10 @@ class BatchGenerateManager:
             if state["status"] in ("completed", "partial", "failed", "cancelled"):
                 return False
             state["_cancel_requested"] = True
-            return True
+        # 2026-05-26 L3: persist the cancel-requested intent so a
+        # restart while still draining lands as cancelled at recovery.
+        self._persist(batch_id)
+        return True
 
     def _set_item(self, batch_id: str, idx: int, patch: dict[str, Any]) -> None:
         with self._lock:
@@ -3833,6 +3991,11 @@ class BatchGenerateManager:
             if state is None:
                 return
             state["items"][idx].update(patch)
+        # 2026-05-26 L3: persist after every item-status mutation so the
+        # SQLite row stays in sync. Frequency is bounded (1 per item
+        # finalize + 1 per "running" transition; not per chunk_progress
+        # — those don't pass through _set_item).
+        self._persist(batch_id)
 
     def _run(self, batch_id: str) -> None:
         # Phase 2 (D9 site #1): the coarse ops mutex ("batch_generate_report")
@@ -4017,6 +4180,11 @@ class BatchGenerateManager:
                     else:
                         state["status"] = "partial"
                 state["finished_at"] = utc_now()
+        # 2026-05-26 L3: persist the terminal state outside the lock so
+        # the SQLite row reflects the true final status + finished_at.
+        # Restart recovery filters batches by status IN (pending, running)
+        # so this entry will not be re-restored on next __init__.
+        self._persist(batch_id)
 
 
 class BatchRunManager:
@@ -4091,6 +4259,7 @@ class BatchRunManager:
             persisted = self._store.list_batches_by_status(
                 ("pending", "running"),
                 limit=5000,
+                kind="sampling",
             )
         except Exception:
             # batches table doesn't exist yet on a pre-L2 database;
@@ -9334,6 +9503,10 @@ def create_app(
         finalize_fn=_finalize_batch_gen_item_wrapper,
         concurrency=_batch_gen_concurrency,
         root_path=str(ROOT),
+        # 2026-05-26 L3: pass store so the manager can persist state
+        # to the batches table (kind='generate') and restore non-
+        # terminal batches as cancelled-by-restart on startup.
+        store=store,
     )
 
     @app.post("/api/rawdata/{machine}/generate-report")
