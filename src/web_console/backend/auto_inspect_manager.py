@@ -12,8 +12,24 @@ _scan_persisted_for_resume.  Phase 2 implements:
   * get_sweep_status -- aggregate progress dict
   * list_recent_sweeps -- recent sweeps for UI
 
+Phase 3 (Per-item generate + failure modes) adds:
+
+  * _dispatch_generate_for_item -- post-sample generate run dispatch
+  * _wait_for_run -- generic run-completion poller
+  * _sample_cell extended:
+      - md5_drift_invalidated pre-flight check
+      - convergence_timeout detection after sample
+      - manifest_override_partial stub detection
+      - generate dispatch + wait inline (MF-2 resolution)
+  * resume_sweep extended:
+      - running items (mid-sample crash) reset to pending
+      - generating items (mid-generate crash) recovered from runs table
+  * _mark_item extended: supports generate_run_id + generate_status extras
+  * All 9 terminal statuses reachable (see _TERMINAL_STATUSES constant)
+
 Design:  session_artifacts/_arch/auto_inspect/07_decision.md §2-§4
 Phase 1: commit 1bcf43c
+Phase 2: commit 76c4512
 
 Per memory/feedback_subprocess_import_suicide_and_module_globals.md:
   * No import-time side effects.  No module-level state beyond constants.
@@ -84,6 +100,20 @@ _COUNTER_SKIP_STATUSES = frozenset({
 # Item statuses that mean the item is non-terminal (sweep still owns cell).
 _ITEM_NON_TERMINAL_STATUSES = frozenset({
     "pending", "claimed", "running", "generating",
+})
+
+# All 9 terminal item statuses (07_decision §3 + §4 P3 deliverable 2).
+# Each must be paired with a non-null terminal_reason (§6 acceptance).
+_TERMINAL_STATUSES = frozenset({
+    "completed",              # sample + generate both succeeded
+    "failed",                 # subprocess crash / HTTP error / disk error
+    "structural_skip",        # machine in structural_skip_machines roster
+    "convergence_timeout",    # max_chunks hit before target CI half-width
+    "manifest_override_partial",  # manifest bootstrap-default data (stub for P5)
+    "deferred_lock_conflict", # cell-lock yield exceeded cell_busy_timeout_s
+    "wall_time_timeout",      # item sampling/generate exceeded wall_time_per_cell_s
+    "md5_drift_invalidated",  # upstream md5 changed between enqueue and dispatch
+    "cancelled",              # operator-requested cancellation
 })
 
 # Worker poll interval in seconds.
@@ -421,6 +451,40 @@ class AutoInspectManager:
         _logger.info(
             "AutoInspectManager.resume_sweep: resuming sweep_id=%s", sweep_id,
         )
+
+        # Phase 3 recovery: resolve 'running' and 'generating' items first,
+        # then reset 'claimed' to 'pending'.
+        #
+        # (a) Items mid-sample (status='running', sample_run_id IS NOT NULL):
+        #     Check if the sample run succeeded, failed, or is still orphaned.
+        #     - completed -> dispatch generate phase (set to 'running' so
+        #       the worker will re-dispatch generate from recovery)
+        #     - failed / orphaned -> reset to 'pending' so worker re-samples
+        #
+        # (b) Items mid-generate (status='generating', generate_run_id IS NOT NULL):
+        #     Check the generate run's status in runs table.
+        #     - completed -> mark item 'completed'
+        #     - failed / still-running (orphan) -> clear generate_run_id,
+        #       reset to 'running' so worker will re-dispatch generate
+        #
+        # (c) Items with terminal status: no-op (already done).
+        try:
+            self._resume_recover_running_items(sweep_id)
+            self._resume_recover_generating_items(sweep_id)
+        except Exception as exc:  # noqa: BLE001
+            tb = traceback.format_exc()
+            _logger.error(
+                "AutoInspectManager.resume_sweep: phase-recovery failed for "
+                "%s: %s\n%s",
+                sweep_id, exc, tb,
+            )
+            # Persist to stdout so operator can see it even without log rotation.
+            print(
+                f"[auto-inspect] resume_sweep({sweep_id!r}) phase-recovery "
+                f"failed: {exc}",
+                flush=True,
+            )
+            # Fall through to claimed-reset; don't abort the whole resume.
 
         # Reset claimed items back to pending (crash recovery for V1 atomic
         # claim -- claimed rows are orphaned on crash).
@@ -879,8 +943,20 @@ class AutoInspectManager:
         settings: dict[str, Any],
         cancel_ev: threading.Event | None,
     ) -> None:
-        """Run the sampling step for one cell.  Called with cell lock held."""
-        from src.web_console.backend.app import RunCreateRequest  # noqa: PLC0415
+        """Run the sampling step for one cell, then dispatch generate.
+
+        Called with cell lock held.
+
+        Phase 3 additions vs P2:
+          * md5_drift_invalidated pre-flight check (07_decision §4 P3 del.5)
+          * convergence_timeout detection after sample completes (del.3)
+          * manifest_override_partial stub (del.3, real heuristic in P5)
+          * generate dispatch + wait inline (del.1, MF-2 resolution)
+        """
+        from src.web_console.backend.app import (  # noqa: PLC0415
+            RunCreateRequest,
+            _get_machine_md5,
+        )
 
         mode_settings = (settings.get("modes") or {}).get(str(mode)) or {}
         chunk_spin_times: int = int(mode_settings.get("chunk_spin_times") or 10000)
@@ -891,7 +967,17 @@ class AutoInspectManager:
         )
         max_chunks: int = int(mode_settings.get("max_chunks") or 60)
 
-        # Build RunCreateRequest.
+        # -- P3 del.5: md5_drift_invalidated pre-flight ----------------------
+        # Compare item's cfg_md5_at_enqueue / code_md5_at_enqueue against the
+        # current local md5.  If they diverged, the upstream config changed
+        # since this cell was enqueued; sampling with stale md5 would produce
+        # a mixed-md5 report.  Mark and skip.
+        # NOTE: explicit mode= required (07_decision §6 acceptance criteria).
+        if self._check_md5_drift(sweep_id, machine, mode, settings):
+            # _check_md5_drift marks the item itself; just return.
+            return
+
+        # Build RunCreateRequest for sampling.
         req = RunCreateRequest(
             machine=machine,
             mode=mode,
@@ -902,7 +988,7 @@ class AutoInspectManager:
             max_chunks=max_chunks,
         )
 
-        # Start the run.
+        # Start the sample run.
         try:
             run_result = self._run_manager.start_run(req)
         except Exception as exc:  # noqa: BLE001
@@ -930,13 +1016,13 @@ class AutoInspectManager:
             self._record_failure_window(sweep_id, "failed")
             return
 
-        # Store sample_run_id on the item row.
+        # Store sample_run_id + set status='running' on the item row.
         now_ts = datetime.now(timezone.utc).isoformat()
         with self._store._connect() as conn:
             conn.execute(
                 """
                 UPDATE auto_inspect_items
-                SET sample_run_id=?, started_at=?
+                SET sample_run_id=?, started_at=?, status='running'
                 WHERE sweep_id=? AND machine=? AND mode=?
                 """,
                 (run_id, now_ts, sweep_id, machine, mode),
@@ -948,11 +1034,12 @@ class AutoInspectManager:
             {"type": "sample_started", "run_id": run_id, "worker": worker_id},
         )
 
-        # Wait for run completion (poll runs table).
+        # Wait for sample run completion (poll runs table).
         wall_time_s: float = float(
             settings.get("wall_time_per_cell_s") or 7200
         )
-        deadline = time.monotonic() + wall_time_s
+        wall_start = time.monotonic()
+        deadline = wall_start + wall_time_s
         run_terminal_status = ""
 
         while time.monotonic() < deadline:
@@ -975,11 +1062,14 @@ class AutoInspectManager:
             time.sleep(_RUN_POLL_S)
 
         if not run_terminal_status:
-            # Wall time exceeded.
+            # Wall time exceeded during sampling.
             self._mark_item(
                 sweep_id, machine, mode,
                 status="wall_time_timeout",
-                reason=f"run {run_id} exceeded wall_time {wall_time_s}s",
+                reason=(
+                    f"sampling run {run_id} exceeded wall_time "
+                    f"{wall_time_s}s; sampling aborted"
+                ),
                 extra={"sample_run_id": run_id},
             )
             self._record_failure_window(sweep_id, "skip")
@@ -994,35 +1084,215 @@ class AutoInspectManager:
             )
             return
 
-        if run_terminal_status == "completed":
-            # P2 marks 'completed' (generate phase is P3).
+        if run_terminal_status != "completed":
+            # run_terminal_status in ('failed',).
+            sample_row = self._store.get_run(run_id)
+            err_msg = str((sample_row or {}).get("error_message") or "")
             self._mark_item(
                 sweep_id, machine, mode,
-                status="completed",
-                reason="sampling completed",
+                status="failed",
+                reason=(
+                    f"sample run {run_id} terminal "
+                    f"status={run_terminal_status}: {err_msg}"
+                ),
                 extra={"sample_run_id": run_id},
             )
-            self._record_failure_window(sweep_id, "ok")
-            self._append_item_event(
+            self._record_failure_window(sweep_id, "failed")
+            return
+
+        # ---------- sampling completed ----------
+        self._append_item_event(
+            sweep_id, machine, mode,
+            {"type": "sample_completed", "run_id": run_id},
+        )
+
+        # -- P3 del.3: convergence_timeout detection -------------------------
+        # After sampling, check achieved_halfwidth_pp vs target.
+        # We still generate the report (bcm_uncharted rationale per OQ-D:
+        # partial data is informative even when CI not fully converged).
+        sample_row = self._store.get_run(run_id)
+        achieved_hw = None
+        if sample_row:
+            _ahw = sample_row.get("achieved_halfwidth_pp")
+            if _ahw is not None:
+                try:
+                    achieved_hw = float(_ahw)
+                except (TypeError, ValueError):
+                    achieved_hw = None
+
+        convergence_timed_out = (
+            achieved_hw is not None and achieved_hw > target_halfwidth_pp
+        )
+
+        # -- P3 del.3: manifest_override_partial stub ------------------------
+        # Real heuristic deferred to P5.  Always returns False for now.
+        manifest_partial = self._detect_manifest_override_partial_stub(
+            sweep_id, machine, mode, sample_row or {},
+        )
+
+        # -- P3 del.1: dispatch generate for THIS item (MF-2 resolution) ----
+        # We dispatch generate whether or not CI converged (bcm_uncharted
+        # rationale).  convergence_timeout status is set AFTER generate
+        # if CI wasn't met.
+        try:
+            generate_run_id = self._dispatch_generate_for_item(
+                sweep_id, machine, mode, settings, run_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            tb = traceback.format_exc()
+            _logger.error(
+                "AutoInspectManager._sample_cell: "
+                "_dispatch_generate_for_item(%s/%d) failed: %s\n%s",
+                machine, mode, exc, tb,
+            )
+            self._mark_item(
                 sweep_id, machine, mode,
-                {"type": "sample_completed", "run_id": run_id},
+                status="failed",
+                reason=f"generate dispatch error: {type(exc).__name__}: {exc}",
+                extra={"sample_run_id": run_id},
+            )
+            self._record_failure_window(sweep_id, "failed")
+            return
+
+        if not generate_run_id:
+            self._mark_item(
+                sweep_id, machine, mode,
+                status="failed",
+                reason="generate dispatch returned empty run_id",
+                extra={"sample_run_id": run_id},
+            )
+            self._record_failure_window(sweep_id, "failed")
+            return
+
+        # Store generate_run_id and set status='generating'.
+        now_ts2 = datetime.now(timezone.utc).isoformat()
+        with self._store._connect() as conn:
+            conn.execute(
+                """
+                UPDATE auto_inspect_items
+                SET generate_run_id=?, generate_status='running', status='generating'
+                WHERE sweep_id=? AND machine=? AND mode=?
+                """,
+                (generate_run_id, sweep_id, machine, mode),
+            )
+            conn.commit()
+
+        self._append_item_event(
+            sweep_id, machine, mode,
+            {"type": "generate_started", "generate_run_id": generate_run_id},
+        )
+
+        # Wait for generate run to terminal (remaining wall time).
+        elapsed = time.monotonic() - wall_start
+        remaining_wall = max(0.0, wall_time_s - elapsed)
+        gen_terminal = self._wait_for_run(
+            generate_run_id,
+            timeout_s=remaining_wall,
+            cancel_ev=cancel_ev,
+        )
+
+        if gen_terminal == "wall_time":
+            self._mark_item(
+                sweep_id, machine, mode,
+                status="wall_time_timeout",
+                reason=(
+                    f"generate run {generate_run_id} exceeded remaining "
+                    f"wall_time; total cell budget was {wall_time_s}s"
+                ),
+                extra={
+                    "sample_run_id": run_id,
+                    "generate_run_id": generate_run_id,
+                    "generate_status": "timeout",
+                },
+            )
+            self._record_failure_window(sweep_id, "skip")
+            return
+
+        if gen_terminal == "cancelled":
+            self._mark_item(
+                sweep_id, machine, mode,
+                status="cancelled",
+                reason="cancelled by operator during generate",
+                extra={
+                    "sample_run_id": run_id,
+                    "generate_run_id": generate_run_id,
+                    "generate_status": "cancelled",
+                },
             )
             return
 
-        # run_terminal_status in ('failed',).
-        row = self._store.get_run(run_id)
-        err_msg = (
-            str((row or {}).get("error_message") or "") if row else ""
-        )
+        if gen_terminal != "completed":
+            gen_row = self._store.get_run(generate_run_id)
+            gen_err = str((gen_row or {}).get("error_message") or "")
+            self._mark_item(
+                sweep_id, machine, mode,
+                status="failed",
+                reason=(
+                    f"generate run {generate_run_id} failed: "
+                    f"status={gen_terminal}: {gen_err}"
+                ),
+                extra={
+                    "sample_run_id": run_id,
+                    "generate_run_id": generate_run_id,
+                    "generate_status": gen_terminal,
+                },
+            )
+            self._record_failure_window(sweep_id, "failed")
+            return
+
+        # Generate completed.  Now apply post-sampling classification.
+        if manifest_partial:
+            self._mark_item(
+                sweep_id, machine, mode,
+                status="manifest_override_partial",
+                reason=(
+                    "manifest override detected bootstrap-default paid "
+                    "spin_type; report may be imprecise (P5 heuristic pending)"
+                ),
+                extra={
+                    "sample_run_id": run_id,
+                    "generate_run_id": generate_run_id,
+                    "generate_status": "completed",
+                },
+            )
+            self._record_failure_window(sweep_id, "skip")
+            return
+
+        if convergence_timed_out:
+            self._mark_item(
+                sweep_id, machine, mode,
+                status="convergence_timeout",
+                reason=(
+                    f"sampling achieved halfwidth {achieved_hw:.4f}pp > "
+                    f"target {target_halfwidth_pp:.4f}pp after {max_chunks} "
+                    f"max chunks; report generated with partial data"
+                ),
+                extra={
+                    "sample_run_id": run_id,
+                    "generate_run_id": generate_run_id,
+                    "generate_status": "completed",
+                },
+            )
+            self._record_failure_window(sweep_id, "skip")
+            return
+
+        # All good -- mark completed.
         self._mark_item(
             sweep_id, machine, mode,
-            status="failed",
-            reason=(
-                f"run {run_id} terminal status={run_terminal_status}: {err_msg}"
-            ),
-            extra={"sample_run_id": run_id},
+            status="completed",
+            reason="sample + generate complete",
+            extra={
+                "sample_run_id": run_id,
+                "generate_run_id": generate_run_id,
+                "generate_status": "completed",
+            },
         )
-        self._record_failure_window(sweep_id, "failed")
+        self._record_failure_window(sweep_id, "ok")
+        self._append_item_event(
+            sweep_id, machine, mode,
+            {"type": "generate_completed",
+             "generate_run_id": generate_run_id},
+        )
 
     # -- Private -- failure window -----------------------------------------
 
@@ -1077,6 +1347,379 @@ class AutoInspectManager:
                 WHERE sweep_id=?
                 """,
                 (now_ts, sweep_id),
+            )
+            conn.commit()
+
+    # -- Private -- P3 generate + failure modes ----------------------------
+
+    def _dispatch_generate_for_item(
+        self,
+        sweep_id: str,
+        machine: str,
+        mode: int,
+        settings: dict[str, Any],
+        sample_run_id: str,
+    ) -> str:
+        """Dispatch a from-cache generate-report run for a single item.
+
+        Per 07_decision §2 MF-2: each item dispatches its OWN generate run
+        after sampling completes.  No batch-level generate; no duplicate
+        generate risk.
+
+        Returns the generate run_id string.  Raises on error.
+
+        Note: md5 drift is NOT re-checked here (it was checked in
+        _sample_cell pre-flight).  The rawdata written by sampling already
+        uses the correct md5.
+        """
+        from src.web_console.backend.app import RunCreateRequest  # noqa: PLC0415
+
+        # from_cache_dir = rawdata path for (machine, mode).
+        # This is the directory where sampling wrote its chunks.
+        rawdata_dir = self._rawdata_root / machine / f"mode_{mode}"
+
+        # Snapshot the md5 that sampling used (from the item row).
+        with self._store._connect() as conn:
+            item_row = conn.execute(
+                "SELECT cfg_md5_at_enqueue, code_md5_at_enqueue "
+                "FROM auto_inspect_items "
+                "WHERE sweep_id=? AND machine=? AND mode=?",
+                (sweep_id, machine, mode),
+            ).fetchone()
+        # sqlite3.Row supports index-access but not .get(); convert to dict.
+        item_dict = dict(item_row) if item_row is not None else {}
+        cfg_md5 = str(item_dict.get("cfg_md5_at_enqueue") or "")
+        code_md5 = str(item_dict.get("code_md5_at_enqueue") or "")
+
+        req = RunCreateRequest(
+            machine=machine,
+            mode=mode,
+            from_cache_dir=str(rawdata_dir),
+            upstream_config_md5=cfg_md5,
+            upstream_code_md5=code_md5,
+        )
+
+        _logger.debug(
+            "AutoInspectManager._dispatch_generate_for_item: "
+            "%s/mode_%d from_cache_dir=%s",
+            machine, mode, rawdata_dir,
+        )
+
+        run_result = self._run_manager.start_run(req)
+        return str(run_result.get("run_id") or "")
+
+    def _wait_for_run(
+        self,
+        run_id: str,
+        *,
+        timeout_s: float,
+        cancel_ev: threading.Event | None,
+    ) -> str:
+        """Poll until run_id reaches a terminal status.
+
+        Returns one of: 'completed', 'failed', 'cancelled', 'wall_time'.
+        Never returns an empty string or raises (all errors become 'failed').
+        """
+        if timeout_s <= 0:
+            return "wall_time"
+
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if cancel_ev and cancel_ev.is_set():
+                return "cancelled"
+            try:
+                row = self._store.get_run(run_id)
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning(
+                    "AutoInspectManager._wait_for_run(%s): get_run error: %s",
+                    run_id, exc,
+                )
+                return "failed"
+            if row is None:
+                return "failed"
+            status = str(row.get("status") or "")
+            if status == "completed":
+                return "completed"
+            if status in ("failed", "cancelled"):
+                return status
+            time.sleep(_RUN_POLL_S)
+
+        return "wall_time"
+
+    def _check_md5_drift(
+        self,
+        sweep_id: str,
+        machine: str,
+        mode: int,
+        settings: dict[str, Any],
+    ) -> bool:
+        """Check for md5 drift between enqueue time and current dispatch.
+
+        Per 07_decision §4 P3 del.5:
+          Compare item.cfg_md5_at_enqueue / code_md5_at_enqueue against
+          the CURRENT local md5 (re-read from machines.json).
+
+        Returns True if drift detected (item marked, caller should return).
+        Returns False if no drift (proceed with sampling).
+
+        Mode is always passed explicitly -- no mode=None footgun.
+        """
+        from src.web_console.backend.app import _get_machine_md5  # noqa: PLC0415
+
+        try:
+            with self._store._connect() as conn:
+                item_row = conn.execute(
+                    "SELECT cfg_md5_at_enqueue, code_md5_at_enqueue "
+                    "FROM auto_inspect_items "
+                    "WHERE sweep_id=? AND machine=? AND mode=?",
+                    (sweep_id, machine, mode),
+                ).fetchone()
+            if item_row is None:
+                return False  # Can't determine drift; proceed
+
+            # sqlite3.Row supports index-access but not .get(); use dict().
+            item_dict = dict(item_row)
+            enqueue_cfg = str(item_dict.get("cfg_md5_at_enqueue") or "")
+            enqueue_code = str(item_dict.get("code_md5_at_enqueue") or "")
+
+            # Explicitly pass mode (never None).
+            current_cfg, current_code = _get_machine_md5(
+                machine, self._machines_config, mode=mode
+            )
+
+            # Drift: both md5s were non-empty at enqueue AND current differs.
+            if (enqueue_cfg or enqueue_code) and (
+                enqueue_cfg != current_cfg or enqueue_code != current_code
+            ):
+                self._mark_item(
+                    sweep_id, machine, mode,
+                    status="md5_drift_invalidated",
+                    reason=(
+                        f"upstream md5 changed between enqueue and dispatch; "
+                        f"enqueue=({enqueue_cfg[:8]},{enqueue_code[:8]}) "
+                        f"current=({current_cfg[:8]},{current_code[:8]}); "
+                        "this cell's data would be stale"
+                    ),
+                )
+                self._record_failure_window(sweep_id, "skip")
+                self._append_item_event(
+                    sweep_id, machine, mode,
+                    {"type": "md5_drift", "machine": machine, "mode": mode,
+                     "enqueue_cfg": enqueue_cfg, "current_cfg": current_cfg},
+                )
+                return True
+
+        except Exception as exc:  # noqa: BLE001
+            # md5 drift check is best-effort; log but don't abort sampling.
+            _logger.warning(
+                "AutoInspectManager._check_md5_drift(%s/%d): %s",
+                machine, mode, exc,
+            )
+        return False
+
+    def _detect_manifest_override_partial_stub(
+        self,
+        sweep_id: str,
+        machine: str,
+        mode: int,
+        sample_run_row: dict[str, Any],
+    ) -> bool:
+        """Stub: detect manifest_override_partial condition.
+
+        Per 07_decision §4 P3 del.4:
+          Real heuristic deferred to P5.  This stub always returns False.
+
+        P5 heuristic will inspect summary.paid_spin_type against the
+        manifest's expected paid_spin_type to detect bootstrap-default
+        data scenarios.
+        """
+        # P5: inspect sample_run_row['summary_path'] or loaded summary JSON
+        # for paid_spin_type matching manifest's spin_type_convention.paid.
+        # For now: stub always returns False.
+        return False
+
+    def _resume_recover_running_items(self, sweep_id: str) -> None:
+        """Recovery for items in status='running' (mid-sample crash).
+
+        Per 07_decision §4 P3 del.3 restart recovery:
+          - If sample_run_id's run row is 'completed': keep 'running' so
+            worker will re-claim and jump straight to generate dispatch.
+            (Actually we reset to 'pending' so normal claim path fires;
+            the worker will re-check the sample run and can re-dispatch
+            generate.  Simpler and safe because from-cache generate is
+            idempotent.)
+          - If sample_run_id's run is 'failed' / orphan / missing: reset
+            to 'pending' so worker re-samples.
+        """
+        with self._store._connect() as conn:
+            running_items = conn.execute(
+                """
+                SELECT machine, mode, sample_run_id
+                FROM auto_inspect_items
+                WHERE sweep_id=? AND status='running'
+                """,
+                (sweep_id,),
+            ).fetchall()
+
+        for item in running_items:
+            machine = str(item["machine"])
+            mode = int(item["mode"])
+            sample_run_id = item["sample_run_id"]
+
+            if not sample_run_id:
+                # No run dispatched yet -- safe to reset to pending.
+                self._reset_item_to_pending(sweep_id, machine, mode)
+                continue
+
+            try:
+                run_row = self._store.get_run(str(sample_run_id))
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning(
+                    "AutoInspectManager._resume_recover_running_items: "
+                    "get_run(%s) failed: %s; resetting to pending",
+                    sample_run_id, exc,
+                )
+                self._reset_item_to_pending(sweep_id, machine, mode)
+                continue
+
+            if run_row is None:
+                self._reset_item_to_pending(sweep_id, machine, mode)
+                continue
+
+            run_status = str(run_row.get("status") or "")
+            if run_status == "completed":
+                # Sampling was done; worker will re-dispatch generate.
+                # Reset to pending so it goes through normal claim + sample
+                # path; _sample_cell will see existing chunks and skip
+                # re-sampling (analyzer's --from-cache handles this).
+                # For P3 simplicity: reset to pending.
+                self._reset_item_to_pending(sweep_id, machine, mode)
+                _logger.info(
+                    "AutoInspectManager._resume_recover_running_items: "
+                    "%s/mode_%d sample was completed; reset to pending "
+                    "for generate re-dispatch",
+                    machine, mode,
+                )
+            else:
+                # Run is failed, cancelled, or still running (orphan).
+                # A2 will have marked orphaned runs 'failed' by this point
+                # (per R1 crash recovery).  Reset to pending for re-sample.
+                self._reset_item_to_pending(sweep_id, machine, mode)
+                _logger.info(
+                    "AutoInspectManager._resume_recover_running_items: "
+                    "%s/mode_%d sample run=%s status=%s; reset to pending",
+                    machine, mode, sample_run_id, run_status,
+                )
+
+    def _resume_recover_generating_items(self, sweep_id: str) -> None:
+        """Recovery for items in status='generating' (mid-generate crash).
+
+        Per 07_decision §4 P3 del.3 restart recovery:
+          - generate_run_id run is 'completed': mark item 'completed'.
+          - generate_run_id run is 'failed' / orphan / missing: clear
+            generate_run_id, reset to 'running' so worker re-dispatches
+            generate (item's sample_run_id is still valid).
+        """
+        with self._store._connect() as conn:
+            gen_items = conn.execute(
+                """
+                SELECT machine, mode, sample_run_id, generate_run_id
+                FROM auto_inspect_items
+                WHERE sweep_id=? AND status='generating'
+                """,
+                (sweep_id,),
+            ).fetchall()
+
+        for item in gen_items:
+            machine = str(item["machine"])
+            mode = int(item["mode"])
+            generate_run_id = item["generate_run_id"]
+            sample_run_id = item["sample_run_id"]
+
+            if not generate_run_id:
+                # No generate run dispatched yet -- reset to running so
+                # worker re-dispatches generate.
+                self._reset_item_to_running(sweep_id, machine, mode)
+                continue
+
+            try:
+                gen_row = self._store.get_run(str(generate_run_id))
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning(
+                    "AutoInspectManager._resume_recover_generating_items: "
+                    "get_run(%s) failed: %s; resetting to running",
+                    generate_run_id, exc,
+                )
+                self._reset_item_to_running(sweep_id, machine, mode)
+                continue
+
+            if gen_row is None:
+                self._reset_item_to_running(sweep_id, machine, mode)
+                continue
+
+            gen_status = str(gen_row.get("status") or "")
+            if gen_status == "completed":
+                # Generate actually finished before the crash -- mark done.
+                _logger.info(
+                    "AutoInspectManager._resume_recover_generating_items: "
+                    "%s/mode_%d generate was completed; marking item completed",
+                    machine, mode,
+                )
+                self._mark_item(
+                    sweep_id, machine, mode,
+                    status="completed",
+                    reason="sample + generate complete (recovered on resume)",
+                    extra={
+                        "sample_run_id": str(sample_run_id or ""),
+                        "generate_run_id": generate_run_id,
+                        "generate_status": "completed",
+                    },
+                )
+            else:
+                # Generate run failed or is orphaned (A2 will have marked
+                # orphaned runs 'failed' per R1).  Clear generate_run_id
+                # and reset to 'running' so worker re-dispatches generate.
+                _logger.info(
+                    "AutoInspectManager._resume_recover_generating_items: "
+                    "%s/mode_%d generate run=%s status=%s; re-dispatch",
+                    machine, mode, generate_run_id, gen_status,
+                )
+                self._reset_item_to_running(sweep_id, machine, mode)
+
+    def _reset_item_to_pending(
+        self, sweep_id: str, machine: str, mode: int
+    ) -> None:
+        """Reset an item to 'pending', clearing sample_run_id."""
+        with self._store._connect() as conn:
+            conn.execute(
+                """
+                UPDATE auto_inspect_items
+                SET status='pending', claimed_by=NULL, claimed_at=NULL,
+                    sample_run_id=NULL, started_at=NULL
+                WHERE sweep_id=? AND machine=? AND mode=?
+                """,
+                (sweep_id, machine, mode),
+            )
+            conn.commit()
+
+    def _reset_item_to_running(
+        self, sweep_id: str, machine: str, mode: int
+    ) -> None:
+        """Reset a 'generating' item to 'running', clearing generate_run_id.
+
+        The worker will re-claim and re-dispatch generate from _sample_cell.
+        Because sampling already completed, _sample_cell will re-check the
+        sample run row and proceed directly to generate dispatch.
+        """
+        with self._store._connect() as conn:
+            conn.execute(
+                """
+                UPDATE auto_inspect_items
+                SET status='running', generate_run_id=NULL,
+                    generate_status=NULL
+                WHERE sweep_id=? AND machine=? AND mode=?
+                """,
+                (sweep_id, machine, mode),
             )
             conn.commit()
 
@@ -1189,6 +1832,12 @@ class AutoInspectManager:
             for k, v in extra.items():
                 if k == "sample_run_id":
                     update_fields.append("sample_run_id=?")
+                    params.append(str(v))
+                elif k == "generate_run_id":
+                    update_fields.append("generate_run_id=?")
+                    params.append(str(v))
+                elif k == "generate_status":
+                    update_fields.append("generate_status=?")
                     params.append(str(v))
 
         params.extend([sweep_id, machine, mode])
