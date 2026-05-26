@@ -6027,14 +6027,37 @@ class RunManager:
             # it fails for any reason (missing required fields,
             # rawdata path gone, start_run raises), fall through to the
             # mark-failed-with-rerun-hint path.
+            #
+            # 2026-05-26 R1: skip the spawn if the cell is owned by a
+            # non-terminal queue (fleet_refresh / sampling batch /
+            # generate batch). The queue's own restart-recovery path
+            # will handle the resume in a coordinated way — A2
+            # spawning here would race + create duplicate orphan runs
+            # for the same cell. Leaves the row marked failed so the
+            # queue's resume creates the new run cleanly.
             new_run_id: str | None = None
+            queue_owner: str | None = None
             if self._auto_resume_orphan_runs:
-                try:
-                    new_run_id = self._spawn_resume_for_orphan(row)
-                except Exception as exc:
+                machine = (row.get("machine") or "").strip()
+                mode_raw = row.get("mode")
+                if machine and mode_raw is not None:
+                    try:
+                        queue_owner = self._is_cell_owned_by_active_queue(
+                            machine, int(mode_raw),
+                        )
+                    except (TypeError, ValueError):
+                        queue_owner = None
+                if queue_owner is not None:
                     message_parts.append(
-                        f"auto-resume failed: {exc.__class__.__name__}: {exc}"
+                        f"skip auto-resume: owned by {queue_owner}"
                     )
+                else:
+                    try:
+                        new_run_id = self._spawn_resume_for_orphan(row)
+                    except Exception as exc:
+                        message_parts.append(
+                            f"auto-resume failed: {exc.__class__.__name__}: {exc}"
+                        )
 
             if new_run_id:
                 auto_resumed[run_id] = new_run_id
@@ -6058,6 +6081,64 @@ class RunManager:
             "failed_to_terminate_pids": failed_to_terminate_pids,
             "auto_resumed": auto_resumed,
         }
+
+    def _is_cell_owned_by_active_queue(
+        self, machine: str, mode: int,
+    ) -> str | None:
+        """Return a human-readable owner description if ``(machine, mode)``
+        is currently held by a non-terminal queue (fleet refresh queue,
+        sampling batch, or generate batch). Returns None when no queue
+        is interested — A2 is free to spawn a resume run.
+
+        Used by ``_recover_orphan_running_runs`` (R1, 2026-05-26) to
+        avoid racing the queue's own restart-recovery path. The orphan
+        is still marked failed; the queue picks up the cell on its own
+        resume cycle (operator clicks ↻ 继续未完成项 / fleet refresh
+        resume thread).
+
+        Pre-L2 / pre-L3 databases may not have the batches table or
+        fleet_refresh_queue table; sqlite3.OperationalError is swallowed
+        and the check returns "no owner found", which preserves the
+        old A2 behavior (spawn anyway).
+        """
+        # 1. fleet refresh — table has its own indexes so a SQL join
+        #    is cheap.
+        try:
+            with self.store._connect() as conn:
+                row = conn.execute(
+                    """
+                    SELECT q.queue_id FROM fleet_refresh_items i
+                    JOIN fleet_refresh_queue q ON q.queue_id = i.queue_id
+                    WHERE i.machine = ? AND i.mode = ?
+                      AND q.status IN ('pending', 'running')
+                    LIMIT 1
+                    """,
+                    (str(machine), int(mode)),
+                ).fetchone()
+                if row:
+                    return f"fleet_refresh queue {row['queue_id']}"
+        except sqlite3.OperationalError:
+            pass
+        # 2. sampling + generate batches — items_json is a TEXT column,
+        #    no SQL way to index by content; read each non-terminal
+        #    batch's items list and check membership. Bounded by the
+        #    number of non-terminal batches (typically 0-3 across both
+        #    kinds), so the linear scan is fine.
+        try:
+            for r in self.store.list_batches_by_status(("pending", "running")):
+                for it in r.get("items") or []:
+                    if not isinstance(it, dict):
+                        continue
+                    try:
+                        it_machine = str(it.get("machine") or "")
+                        it_mode = int(it.get("mode", -1))
+                    except (TypeError, ValueError):
+                        continue
+                    if it_machine == str(machine) and it_mode == int(mode):
+                        return f"batch {r.get('batch_id')} (kind={r.get('kind') or 'sampling'})"
+        except sqlite3.OperationalError:
+            pass
+        return None
 
     def _spawn_resume_for_orphan(self, row: dict[str, Any]) -> str | None:
         """Reconstruct a RunCreateRequest from a DB row and call
