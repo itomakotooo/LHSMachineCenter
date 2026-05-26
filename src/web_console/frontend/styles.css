@@ -464,6 +464,50 @@ body {
 }
 .batch-gen-header #batchGenerateCancelBtn { flex: 0 0 auto; }
 
+/* 2026-05-26 B2: persistent batch history panel. Always visible,
+   compact, sticks to bottom of action area. Lists recent batches
+   across every session via /api/batches (reads SQLite L2/L3). */
+.batch-history-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.batch-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.batch-history-title { font-weight: 600; }
+.batch-history-rows { max-height: 240px; overflow-y: auto; }
+.batch-history-empty { font-style: italic; padding: 4px 0; }
+.batch-history-row {
+  display: grid;
+  grid-template-columns: 32px 120px 56px 80px 1fr;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  align-items: center;
+}
+.batch-history-row:hover { background: rgba(127, 127, 127, 0.08); }
+.batch-history-icon { font-size: 14px; }
+.batch-history-time { font-family: monospace; opacity: 0.75; }
+.batch-history-kind { opacity: 0.85; }
+.batch-history-status { font-weight: 500; }
+.batch-history-counts { font-family: monospace; }
+/* Status-flavored left border so the eye can scan completed vs
+   cancelled vs running at a glance without reading status text. */
+.batch-history-row.batch-history-status-completed { border-left: 3px solid #16a34a; }
+.batch-history-row.batch-history-status-cancelled { border-left: 3px solid #6b7280; }
+.batch-history-row.batch-history-status-partial   { border-left: 3px solid #f59e0b; }
+.batch-history-row.batch-history-status-failed    { border-left: 3px solid #dc2626; }
+.batch-history-row.batch-history-status-running   { border-left: 3px solid #2563eb; }
+.batch-history-row.batch-history-status-pending   { border-left: 3px solid #9ca3af; }
+
 /* Rawdata banner (topbar row #3): compact one-liner with actions.
    Settings row (min_retention_spins) collapses/expands via gear btn. */
 .rawdata-banner {

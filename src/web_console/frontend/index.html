@@ -380,6 +380,19 @@
                 <div id="batchGenerateProgressLog" class="sample-log"></div>
               </div>
               <div id="autotuneMeta" class="pre compact hidden">No auto tune run yet.</div>
+              <!-- 2026-05-26 B2: persistent batch history panel. Lists the
+                   N most recent batches (sampling + generate) across every
+                   console session — survives refresh and console restart
+                   via the batches SQLite table (L2 + L3). Operator's
+                   first-glance view of "what's been done lately."
+                   Always visible; auto-refreshes every 10s. -->
+              <div id="batchHistoryPanel" class="batch-history-panel">
+                <div class="batch-history-header">
+                  <span class="batch-history-title">📋 最近批次</span>
+                  <button id="batchHistoryRefreshBtn" class="small-btn" title="手动刷新历史列表">⟳</button>
+                </div>
+                <div id="batchHistoryRows" class="batch-history-rows muted">加载中…</div>
+              </div>
             </div>
 
             <section class="panel machine-catalog">

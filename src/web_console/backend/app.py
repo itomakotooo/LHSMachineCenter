@@ -8290,9 +8290,43 @@ def create_app(
     @app.get("/api/batch-run/{batch_id}")
     def get_batch_run(batch_id: str) -> dict[str, Any]:
         result = batch_mgr.get_batch(batch_id)
-        if result is None:
+        if result is not None:
+            return result
+        # 2026-05-26 B1: fall back to the persisted batches table so
+        # the operator can still inspect a batch that finished a while
+        # ago and was never re-loaded into the in-memory _batches dict
+        # (restart restore only rehydrates non-terminal kinds, and
+        # completed batches GC-out across the next restart). Returns
+        # the same shape as get_batch — params + items live in the
+        # row's json columns, just need to project them into the
+        # response.
+        try:
+            row = store.get_batch_row(batch_id)
+        except sqlite3.OperationalError:
+            row = None
+        if row is None:
             raise HTTPException(status_code=404, detail="batch not found")
-        return result
+        items = row.get("items") or []
+        completed = sum(
+            1 for it in items
+            if isinstance(it, dict)
+            and it.get("status") in ("completed", "failed", "cancelled")
+        )
+        return {
+            "batch_id": row.get("batch_id"),
+            "status": row.get("status"),
+            "total": len(items),
+            "completed": completed,
+            "items": items,
+            "events": row.get("events") or [],
+            "created_at": row.get("created_at"),
+            "concurrency": row.get("concurrency"),
+            "params": row.get("params") or {},
+            # Sentinel so UI knows this came from disk (no live
+            # in-memory state — chunk_events would be stale, etc.).
+            "from_history": True,
+            "kind": row.get("kind") or "sampling",
+        }
 
     @app.get("/api/sampling-status")
     def sampling_status_endpoint() -> dict[str, Any]:
@@ -8306,6 +8340,63 @@ def create_app(
         if not batch_mgr.cancel_batch(batch_id):
             raise HTTPException(status_code=404, detail="batch not found")
         return {"ok": True}
+
+    @app.get("/api/batches")
+    def list_batches(limit: int = 30, kind: str | None = None) -> dict[str, Any]:
+        """Unified batch history across both managers (sampling +
+        generate). Returns most-recent first by created_at.
+
+        Surfaces completed/failed/cancelled batches that the in-memory
+        _batches dicts don't carry (sampling: completed batches are
+        filtered out of restore; generate: same). This is the
+        "console restart, what happened yesterday?" view.
+
+        Params:
+          limit: cap rows (default 30; max 500)
+          kind:  optional filter — 'sampling' or 'generate'
+
+        Each item carries enough for the UI history panel to render a
+        row + click into details (which goes through the existing GET
+        /api/batch-run/{id} for sampling kind or the
+        /api/rawdata/batch-generate-report/{id} for generate kind).
+        params + items + events are intentionally NOT included in this
+        list view (each row could be 50-500KB JSON); UI fetches detail
+        on click.
+
+        2026-05-26 B1 task.
+        """
+        eff_limit = max(1, min(500, int(limit)))
+        if kind not in (None, "sampling", "generate"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"kind must be 'sampling' or 'generate' (got {kind!r})",
+            )
+        try:
+            rows = store.list_recent_batches(limit=eff_limit, kind=kind)
+        except sqlite3.OperationalError:
+            # pre-L2 db: no batches table yet, return empty.
+            rows = []
+        # Strip the heavy json columns; surface metadata + per-item
+        # counts that the UI history row needs.
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            items = r.get("items") or []
+            counts: dict[str, int] = {}
+            for it in items:
+                if isinstance(it, dict):
+                    s = str(it.get("status") or "?")
+                    counts[s] = counts.get(s, 0) + 1
+            out.append({
+                "batch_id": r.get("batch_id"),
+                "kind": r.get("kind") or "sampling",
+                "status": r.get("status"),
+                "created_at": r.get("created_at"),
+                "finished_at": r.get("finished_at"),
+                "concurrency": r.get("concurrency"),
+                "total_items": len(items),
+                "item_status_counts": counts,
+            })
+        return {"batches": out, "count": len(out)}
 
     @app.post("/api/batch-run/{batch_id}/resume")
     def resume_batch_run(batch_id: str) -> dict[str, Any]:

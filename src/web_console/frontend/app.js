@@ -185,6 +185,10 @@ const state = {
   _autoRefreshedForFleetRefreshId: null,
   // Phase 3 (D11): uploaded configs list.
   uploadedConfigs: [],
+  // 2026-05-26 B2: setInterval handle for the batch history panel
+  // auto-refresh. Cleared on _initBatchHistoryPanel so re-init
+  // (HMR / test) doesn't leak timers.
+  batchHistoryTimer: null,
 };
 
 // Persist the sampling-panel selections + autotune cache across page
@@ -7932,6 +7936,8 @@ function bindEvents() {
   // Inline sampling panel controls.
   byId("sampleStartBtn").addEventListener("click", () => startSampling());
   byId("sampleCancelBtn").addEventListener("click", () => cancelSampling());
+  // 2026-05-26 B2: persistent batch history panel.
+  _initBatchHistoryPanel();
   // 2026-05-22 task A1: 继续未完成项 button (hidden by default;
   // surfaced by pollSampling when a batch ends with cancelled/failed
   // items). Hidden again on fresh start so the operator cannot
@@ -8503,6 +8509,108 @@ function _initFleetRefreshPanel() {
   if (cancelBtn) cancelBtn.addEventListener("click", _cancelFleetRefresh);
   // Initial poll to recover state from a previous session.
   refreshFleetRefreshPanel().catch(() => {});
+}
+
+// ── 2026-05-26 B2: persistent batch history panel ────────────
+//
+// Single source of truth: GET /api/batches. Lists recent sampling +
+// generate batches across every console session by reading the
+// batches SQLite table (L2 + L3 persist there). The previous problem
+// the operator hit:
+//   "I launched 全量 yesterday, console restarted overnight, today
+//    I refresh and see nothing — no idea if it ran or not."
+// This panel sits in the action area + auto-refreshes every 10s
+// so the first-glance view always shows what's been done.
+
+function _initBatchHistoryPanel() {
+  const btn = byId("batchHistoryRefreshBtn");
+  if (btn) btn.addEventListener("click", () => refreshBatchHistoryPanel());
+  // Initial render + start the auto-refresh loop.
+  refreshBatchHistoryPanel().catch(() => {});
+  // 10s cadence: balances "feels responsive when a batch is running"
+  // vs "doesn't hammer the API while operator is reading something
+  // else." Active batches also update via their own poll, so this
+  // is just the safety-net refresh.
+  if (state.batchHistoryTimer) clearInterval(state.batchHistoryTimer);
+  state.batchHistoryTimer = setInterval(() => {
+    refreshBatchHistoryPanel().catch(() => {});
+  }, 10000);
+}
+
+async function refreshBatchHistoryPanel() {
+  const container = byId("batchHistoryRows");
+  if (!container) return;
+  let data;
+  try {
+    data = await apiGet("/api/batches?limit=15");
+  } catch (e) {
+    container.textContent = "(无法获取批次历史: " + (e.message || e) + ")";
+    return;
+  }
+  const rows = data.batches || [];
+  if (rows.length === 0) {
+    container.innerHTML = '<div class="batch-history-empty">没有批次记录 — 启动一次采样后这里会显示历史。</div>';
+    return;
+  }
+  // Render compact rows: icon, time, kind, status, counts. Click
+  // opens the detail via the existing GET /api/batch-run/{id} path
+  // (which now serves from DB for completed batches per B1).
+  const statusIcon = {
+    running: "▶", pending: "⏳", completed: "✓",
+    cancelled: "⏸", partial: "⚠", failed: "✗",
+  };
+  const kindIcon = { sampling: "🎰", generate: "📊" };
+  const html = rows.map((b) => {
+    const sIcon = statusIcon[b.status] || "?";
+    const kIcon = kindIcon[b.kind] || "·";
+    const created = (b.created_at || "").slice(11, 19);  // HH:MM:SS
+    const day = (b.created_at || "").slice(5, 10);  // MM-DD
+    const counts = b.item_status_counts || {};
+    const done = counts.completed || 0;
+    const failed = counts.failed || 0;
+    const cancelled = counts.cancelled || 0;
+    const pending = (counts.pending || 0) + (counts.running || 0);
+    const total = b.total_items || 0;
+    const countSummary = total > 0
+      ? `${done}/${total}` + (failed > 0 ? ` · ✗${failed}` : "") + (cancelled > 0 ? ` · ⏸${cancelled}` : "") + (pending > 0 ? ` · ▶${pending}` : "")
+      : "(空)";
+    const kindLabel = b.kind === "generate" ? "重生成" : "采样";
+    return `<div class="batch-history-row batch-history-status-${b.status || 'unknown'}"
+                 data-batch-id="${b.batch_id}"
+                 data-kind="${b.kind}"
+                 title="${b.batch_id}">
+              <span class="batch-history-icon">${sIcon}${kIcon}</span>
+              <span class="batch-history-time">${day} ${created}</span>
+              <span class="batch-history-kind">${kindLabel}</span>
+              <span class="batch-history-status">${b.status || "?"}</span>
+              <span class="batch-history-counts">${countSummary}</span>
+            </div>`;
+  }).join("");
+  container.innerHTML = html;
+  // Click handler: log the detail to console for now. Future:
+  // open a side-panel with full items + events.
+  container.querySelectorAll(".batch-history-row").forEach((el) => {
+    el.addEventListener("click", async () => {
+      const bid = el.getAttribute("data-batch-id");
+      const kind = el.getAttribute("data-kind");
+      try {
+        const url = kind === "generate"
+          ? `/api/rawdata/batch-generate-report/${bid}`
+          : `/api/batch-run/${bid}`;
+        const detail = await apiGet(url);
+        // Brief inline summary (no big modal needed for the MVP).
+        const items = detail.items || [];
+        const itemSummary = items.slice(0, 20)
+          .map((it) => `  ${it.machine} m${it.mode} -> ${it.status}${it.run_id ? " ("+it.run_id.slice(0,8)+")" : ""}`)
+          .join("\n");
+        const more = items.length > 20 ? `\n  ... (+${items.length - 20} more)` : "";
+        const fromHist = detail.from_history ? " [from DB history]" : "";
+        alert(`Batch ${bid}${fromHist}\nStatus: ${detail.status}\nItems (${items.length}):\n${itemSummary}${more}`);
+      } catch (e) {
+        alert("无法读取批次详情: " + (e.message || e));
+      }
+    });
+  });
 }
 
 function _initConfigUploadPanel() {
