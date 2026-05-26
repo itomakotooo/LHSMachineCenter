@@ -189,6 +189,15 @@ const state = {
   // auto-refresh. Cleared on _initBatchHistoryPanel so re-init
   // (HMR / test) doesn't leak timers.
   batchHistoryTimer: null,
+  // ── P4 auto-inspect tab state ──────────────────────────────────────
+  // Current sweep being displayed (null = none loaded / idle).
+  aiCurrentSweepId: null,
+  // setInterval handle for the live-progress poll (5s cadence).
+  aiPollTimer: null,
+  // One-shot guard so completed/cancelled/failed transition side-effects
+  // (e.g. re-fetch history) only fire once per sweep terminal event.
+  // Keyed by sweep_id.
+  _aiAutoActedForSweepId: null,
 };
 
 // Persist the sampling-panel selections + autotune cache across page
@@ -7845,6 +7854,12 @@ function bindEvents() {
   });
   byId("tabBtnDebug").addEventListener("click", () => switchTab("debug"));
   byId("tabBtnManage").addEventListener("click", () => switchTab("manage"));
+  // P4: auto-inspect tab — fetch settings + active sweep on open.
+  const tabBtnAI = byId("tabBtnAutoInspect");
+  if (tabBtnAI) tabBtnAI.addEventListener("click", () => {
+    switchTab("auto-inspect");
+    _onAutoInspectTabOpen();
+  });
   // Mobile drawer: hamburger toggles the sidebar on/off; tapping the
   // dimmed backdrop (anywhere inside .dashboard that isn't the sidebar
   // or the toggle itself) closes it. CSS hides .sidebar-toggle above
@@ -8328,6 +8343,7 @@ async function boot() {
     // _initFleetRefreshPanel are idempotent (they replace listeners).
     _initConfigUploadPanel();
     _initFleetRefreshPanel();
+    _initAutoInspectTab();
   }
 }
 
@@ -8636,3 +8652,577 @@ function _initConfigUploadPanel() {
 }
 
 boot();
+
+// ── P4: Auto-Inspect tab ─────────────────────────────────────────────────
+//
+// Per memory/feedback_no_parallel_panel_impl.md:
+//   - Reuses .panel, .meta, .drilldown-table, apiGet/apiPost/apiPut helpers
+//   - Reuses switchTab() from existing tab mechanism
+//   - No new parallel fetch helpers
+//
+// Per memory/feedback_no_silent_swallow.md:
+//   - Every catch block shows visible error to user (status span or banner)
+//
+// Per memory/feedback_fasttimer_overlap_needs_oneshot.md:
+//   - _aiAutoActedForSweepId guards the "sweep completed" side-effect
+
+// ── Status label helpers ──────────────────────────────────────────────────
+
+function _aiSweepStatusLabel(status) {
+  const map = {
+    scanning:   fmt("aiStatusScanning"),
+    sampling:   fmt("aiStatusSampling"),
+    finalizing: fmt("aiStatusFinalizing"),
+    completed:  fmt("aiSweepCompleted"),
+    cancelled:  fmt("aiSweepCancelled"),
+    failed:     fmt("aiSweepFailed"),
+  };
+  return map[status] || status || "—";
+}
+
+function _aiItemStatusLabel(status) {
+  const map = {
+    pending:                  fmt("aiStatusPending"),
+    claimed:                  fmt("aiStatusClaimed"),
+    running:                  fmt("aiStatusRunning"),
+    generating:               fmt("aiStatusGenerating"),
+    completed:                fmt("aiStatusCompleted"),
+    failed:                   fmt("aiStatusFailed"),
+    structural_skip:          fmt("aiStatusStructuralSkip"),
+    convergence_timeout:      fmt("aiStatusConvergenceTimeout"),
+    manifest_override_partial: fmt("aiStatusManifestPartial"),
+    deferred_lock_conflict:   fmt("aiStatusDeferredLock"),
+    wall_time_timeout:        fmt("aiStatusWallTime"),
+    md5_drift_invalidated:    fmt("aiStatusMd5Drift"),
+    cancelled:                fmt("aiStatusCancelled"),
+  };
+  return map[status] || status || "—";
+}
+
+function _aiItemStatusIcon(status) {
+  const icons = {
+    completed: "✓",
+    failed:    "✗",
+    running:   "⟳",
+    generating: "⟳",
+    structural_skip: "⏭",
+    convergence_timeout: "⏱",
+    manifest_override_partial: "⚠",
+    deferred_lock_conflict: "⏳",
+    wall_time_timeout: "⏱",
+    md5_drift_invalidated: "⚡",
+    cancelled: "✕",
+    pending:   "·",
+    claimed:   "·",
+  };
+  return icons[status] || "·";
+}
+
+function _aiSweepStatusIcon(status) {
+  const icons = {
+    scanning:   "⟳",
+    sampling:   "⟳",
+    finalizing: "⟳",
+    completed:  "✓",
+    cancelled:  "✕",
+    failed:     "✗",
+  };
+  return icons[status] || "·";
+}
+
+// ── Settings load / save ─────────────────────────────────────────────────
+
+function _aiLoadSettingsIntoForm(settings) {
+  // settings is the auto_sweep block from GET /api/settings
+  const as = settings || {};
+
+  const enabledEl = byId("aiEnabled");
+  if (enabledEl) enabledEl.checked = Boolean(as.enabled);
+
+  const skipFreshEl = byId("aiSkipFreshCells");
+  if (skipFreshEl) skipFreshEl.checked = (as.skip_fresh_cells !== false);
+
+  // Schedule mode picker
+  const sm = as.schedule_mode || "daily";
+  const rdDaily = byId("aiScheduleDaily");
+  const rdInterval = byId("aiScheduleInterval");
+  if (rdDaily) rdDaily.checked = (sm === "daily");
+  if (rdInterval) rdInterval.checked = (sm === "interval");
+
+  const sv = String(as.schedule_value || "02:00");
+  if (sm === "daily") {
+    const timeEl = byId("aiScheduleTime");
+    if (timeEl) timeEl.value = sv;
+  } else {
+    const nEl = byId("aiScheduleIntervalN");
+    if (nEl) nEl.value = sv;
+  }
+  _aiUpdateScheduleVisibility();
+
+  // Scalar ints
+  const intFields = {
+    aiSweepConcurrency:       "sweep_concurrency",
+    aiBinaryGroupLargeCap:    "binary_group_large_cap",
+    aiMaxConsecutiveFailures: "max_consecutive_failures",
+    aiConsecutiveFailureWindow: "consecutive_failure_window",
+    aiCellBusyTimeoutS:       "cell_busy_timeout_s",
+    aiWallTimePerCellS:       "wall_time_per_cell_s",
+  };
+  for (const [elId, key] of Object.entries(intFields)) {
+    const el = byId(elId);
+    if (el && as[key] != null) el.value = as[key];
+  }
+
+  // Structural skip machines (list → comma-separated string)
+  const ssmEl = byId("aiStructuralSkipMachines");
+  if (ssmEl) {
+    const ssm = as.structural_skip_machines;
+    ssmEl.value = Array.isArray(ssm) ? ssm.join(",") : (ssm || "");
+  }
+
+  // Per-mode fields
+  const modes_cfg = as.modes || {};
+  document.querySelectorAll("#aiModeTableBody tr[data-mode]").forEach((row) => {
+    const mode = row.dataset.mode;
+    const modeCfg = modes_cfg[mode] || {};
+    row.querySelectorAll("input.ai-mode-field").forEach((inp) => {
+      const field = inp.dataset.field;
+      if (modeCfg[field] != null) inp.value = modeCfg[field];
+    });
+  });
+}
+
+function _aiCollectSettingsFromForm() {
+  const as = {};
+
+  const enabledEl = byId("aiEnabled");
+  as.enabled = enabledEl ? enabledEl.checked : false;
+
+  const skipFreshEl = byId("aiSkipFreshCells");
+  as.skip_fresh_cells = skipFreshEl ? skipFreshEl.checked : true;
+
+  // Schedule picker
+  const rdDaily = byId("aiScheduleDaily");
+  as.schedule_mode = (rdDaily && rdDaily.checked) ? "daily" : "interval";
+  if (as.schedule_mode === "daily") {
+    const timeEl = byId("aiScheduleTime");
+    as.schedule_value = (timeEl && timeEl.value) || "02:00";
+    // Validate HH:MM format
+    if (!/^\d{2}:\d{2}$/.test(as.schedule_value)) {
+      throw new Error("时间格式必须为 HH:MM（如 02:00）");
+    }
+  } else {
+    const nEl = byId("aiScheduleIntervalN");
+    const n = parseInt((nEl && nEl.value) || "6", 10);
+    if (n < 1 || n > 24) {
+      throw new Error("间隔小时数必须在 1-24 之间");
+    }
+    as.schedule_value = String(n);
+  }
+
+  // Scalar int fields
+  const intFields = {
+    aiSweepConcurrency:       "sweep_concurrency",
+    aiBinaryGroupLargeCap:    "binary_group_large_cap",
+    aiMaxConsecutiveFailures: "max_consecutive_failures",
+    aiConsecutiveFailureWindow: "consecutive_failure_window",
+    aiCellBusyTimeoutS:       "cell_busy_timeout_s",
+    aiWallTimePerCellS:       "wall_time_per_cell_s",
+  };
+  for (const [elId, key] of Object.entries(intFields)) {
+    const el = byId(elId);
+    if (el) as[key] = parseInt(el.value || "0", 10);
+  }
+
+  // Structural skip machines
+  const ssmEl = byId("aiStructuralSkipMachines");
+  if (ssmEl) {
+    const raw = (ssmEl.value || "").trim();
+    as.structural_skip_machines = raw
+      ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+  }
+
+  // Per-mode
+  as.modes = {};
+  document.querySelectorAll("#aiModeTableBody tr[data-mode]").forEach((row) => {
+    const mode = row.dataset.mode;
+    const modeCfg = {};
+    row.querySelectorAll("input.ai-mode-field").forEach((inp) => {
+      const field = inp.dataset.field;
+      if (field === "target_halfwidth_pp") {
+        modeCfg[field] = parseFloat(inp.value || "0.5");
+      } else {
+        modeCfg[field] = parseInt(inp.value || "0", 10);
+      }
+    });
+    as.modes[mode] = modeCfg;
+  });
+
+  return as;
+}
+
+function _aiUpdateScheduleVisibility() {
+  const rdDaily = byId("aiScheduleDaily");
+  const timeEl = byId("aiScheduleTime");
+  const nEl = byId("aiScheduleIntervalN");
+  if (!rdDaily) return;
+  const isDaily = rdDaily.checked;
+  if (timeEl) timeEl.style.display = isDaily ? "" : "none";
+  if (nEl) nEl.style.display = isDaily ? "none" : "";
+}
+
+async function _aiSaveSettings() {
+  const statusEl = byId("aiSettingsStatus");
+  if (statusEl) statusEl.textContent = "...";
+  try {
+    const as = _aiCollectSettingsFromForm();
+    await apiPut("/api/settings", { auto_sweep: as });
+    if (statusEl) statusEl.textContent = fmt("aiSettingsSaved");
+    setTimeout(() => {
+      if (statusEl && statusEl.textContent === fmt("aiSettingsSaved")) {
+        statusEl.textContent = "";
+      }
+    }, 3000);
+  } catch (e) {
+    if (statusEl) statusEl.textContent = fmt("aiSettingsError", {
+      error: String(e.message || e).slice(0, 80),
+    });
+  }
+}
+
+// ── Preview ───────────────────────────────────────────────────────────────
+
+async function _aiRunPreview() {
+  const previewBody = byId("aiPreviewBody");
+  if (!previewBody) return;
+  previewBody.textContent = fmt("aiPreviewLoading");
+  previewBody.className = "ai-preview-body";
+  try {
+    const data = await apiGet("/api/auto-inspect/preview");
+    const total = data.total || 0;
+    if (total === 0) {
+      previewBody.innerHTML = `<span class="muted">${fmt("aiPreviewEmpty")}</span>`;
+      return;
+    }
+    const estSecs = data.estimated_wall_time_s || (total * 300);
+    const hours = Math.floor(estSecs / 3600);
+    const mins = Math.floor((estSecs % 3600) / 60);
+    const skip = data.structural_skip_count || 0;
+    const override = data.manifest_override_count || 0;
+
+    const summaryLine = fmt("aiPreviewResult", { total, hours, mins, skip, override });
+
+    // Per-mode breakdown
+    const byMode = data.by_mode || {};
+    const modeLines = Object.entries(byMode)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([mode, count]) => fmt("aiPreviewByMode", { mode, count }))
+      .join(" · ");
+
+    // Cell-class breakdown
+    const byCc = data.by_cell_class || {};
+    const ccLines = Object.entries(byCc)
+      .map(([cc, count]) => `${cc}: ${count}`)
+      .join(", ");
+
+    let html = `<div><strong>${summaryLine}</strong></div>`;
+    if (modeLines) html += `<div class="ai-preview-by-mode">${modeLines}</div>`;
+    if (ccLines) html += `<div class="ai-preview-by-mode">${ccLines}</div>`;
+    if (skip > 0) {
+      html += `<div class="ai-preview-warn">⚠ ${skip} 个机台在结构跳过名单 — 仅标记 structural_skip，不实际采样</div>`;
+    }
+    if (override > 0) {
+      html += `<div class="ai-preview-warn">⚠ ${override} 个 manifest_override 机台 — 会正常采样，请确认 manifest 配置</div>`;
+    }
+
+    previewBody.innerHTML = html;
+  } catch (e) {
+    previewBody.innerHTML = `<span style="color:var(--danger)">${fmt("aiPreviewError", { error: String(e.message || e).slice(0, 100) })}</span>`;
+  }
+}
+
+// ── Start / Cancel ────────────────────────────────────────────────────────
+
+async function _aiStartSweep() {
+  const statusEl = byId("aiSweepStatus");
+  if (statusEl) statusEl.textContent = "...";
+  try {
+    const data = await apiPost("/api/auto-inspect/start", {});
+    state.aiCurrentSweepId = data.sweep_id;
+    state._aiAutoActedForSweepId = null;
+    _aiStartPoll();
+    _aiRenderSweepControls(true);
+    if (statusEl) statusEl.textContent = "";
+  } catch (e) {
+    const msg = String(e.message || e);
+    const isConflict = msg.includes("409") || msg.toLowerCase().includes("already running") || msg.toLowerCase().includes("active");
+    if (statusEl) statusEl.textContent = isConflict
+      ? fmt("aiSweepConflict")
+      : String(e.message || e).slice(0, 120);
+  }
+}
+
+async function _aiCancelSweep() {
+  const sweepId = state.aiCurrentSweepId;
+  if (!sweepId) return;
+  try {
+    await apiPost(`/api/auto-inspect/${sweepId}/cancel`, {});
+    // Poll will detect terminal state + stop itself.
+  } catch (e) {
+    const statusEl = byId("aiSweepStatus");
+    if (statusEl) statusEl.textContent = String(e.message || e).slice(0, 80);
+  }
+}
+
+// ── Live progress polling ────────────────────────────────────────────────
+
+function _aiStartPoll() {
+  _aiStopPoll();
+  state.aiPollTimer = setInterval(() => {
+    _aiPollOnce().catch(() => {});
+  }, 5000);
+  // Immediate first paint
+  _aiPollOnce().catch(() => {});
+}
+
+function _aiStopPoll() {
+  if (state.aiPollTimer) {
+    clearInterval(state.aiPollTimer);
+    state.aiPollTimer = null;
+  }
+}
+
+async function _aiPollOnce() {
+  const sweepId = state.aiCurrentSweepId;
+  if (!sweepId) return;
+  let data;
+  try {
+    data = await apiGet(`/api/auto-inspect/${sweepId}`);
+  } catch (_) {
+    return; // transient error — don't reset UI
+  }
+  _aiRenderProgress(data);
+
+  // Stop polling when sweep reaches terminal state.
+  const terminalStatuses = new Set(["completed", "cancelled", "failed"]);
+  if (terminalStatuses.has(data.status)) {
+    _aiStopPoll();
+    _aiRenderSweepControls(false);
+
+    // One-shot: refresh history once after terminal.
+    if (state._aiAutoActedForSweepId !== sweepId) {
+      state._aiAutoActedForSweepId = sweepId;
+      _aiLoadHistory().catch(() => {});
+    }
+  }
+}
+
+// ── Progress rendering ───────────────────────────────────────────────────
+
+function _aiRenderProgress(data) {
+  const progressBody = byId("aiProgressBody");
+  const bannerEl = byId("aiProgressBanner");
+  if (!data || !progressBody) return;
+
+  progressBody.classList.remove("hidden");
+
+  const total = data.total_items || 0;
+  const done = data.completed_items || 0;
+  const failed = data.failed_items || 0;
+  const skipped = data.skipped_items || 0;
+  const byStatus = data.items_by_status || {};
+  const pending = (byStatus.pending || 0) + (byStatus.claimed || 0)
+    + (byStatus.running || 0) + (byStatus.generating || 0);
+
+  if (bannerEl) {
+    bannerEl.className = `ai-progress-banner status-${data.status || ""}`;
+    bannerEl.innerHTML = `
+      <strong>${_aiSweepStatusIcon(data.status)} ${_aiSweepStatusLabel(data.status)}</strong>
+      &nbsp;&nbsp;
+      ${fmt("aiCounterBanner", { done, total, failed, skipped, pending })}
+      <span class="muted" style="margin-left:8px;font-size:11px">#${data.sweep_id || ""}</span>
+    `.trim();
+  }
+
+  // Items drilldown
+  _aiRenderItemsTable(data.items || []);
+}
+
+function _aiRenderItemsTable(items) {
+  const tbody = byId("aiItemsBody");
+  const filterEl = byId("aiItemFilter");
+  if (!tbody) return;
+
+  const filterVal = (filterEl && filterEl.value) || "all";
+  const filtered = filterVal === "all"
+    ? items
+    : items.filter((it) => {
+        if (filterVal === "pending") {
+          return ["pending", "claimed", "running", "generating"].includes(it.status);
+        }
+        if (filterVal === "structural_skip") {
+          return ["structural_skip", "convergence_timeout", "manifest_override_partial",
+                  "deferred_lock_conflict", "wall_time_timeout", "md5_drift_invalidated",
+                  "cancelled"].includes(it.status);
+        }
+        return it.status === filterVal;
+      });
+
+  tbody.innerHTML = filtered.map((it) => {
+    const rowClass = `ai-row-${it.status || "pending"}`;
+    const icon = _aiItemStatusIcon(it.status);
+    const label = _aiItemStatusLabel(it.status);
+    const reason = it.terminal_reason || "";
+    return `<tr class="${rowClass}">
+      <td>${it.machine || ""}</td>
+      <td>${it.mode || ""}</td>
+      <td><span class="ai-status-icon">${icon}</span> ${label}</td>
+      <td>${it.cell_class || "easy"}</td>
+      <td class="ai-reason" title="${reason.replace(/"/g, "&quot;")}">${reason.slice(0, 120)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function _aiRenderSweepControls(sweepRunning) {
+  const startBtn = byId("aiStartBtn");
+  const cancelBtn = byId("aiCancelBtn");
+  if (startBtn) startBtn.classList.toggle("hidden", sweepRunning);
+  if (cancelBtn) cancelBtn.classList.toggle("hidden", !sweepRunning);
+}
+
+// ── History ───────────────────────────────────────────────────────────────
+
+async function _aiLoadHistory() {
+  const histBody = byId("aiHistoryBody");
+  if (!histBody) return;
+  try {
+    const data = await apiGet("/api/auto-inspect?limit=10");
+    const sweeps = (data.sweeps || []).slice(0, 10);
+    if (sweeps.length === 0) {
+      histBody.innerHTML = `<span class="muted">${fmt("aiHistoryEmpty")}</span>`;
+      return;
+    }
+    histBody.innerHTML = sweeps.map((sw) => {
+      const rowClass = `ai-history-row ai-row-${sw.status || ""}`;
+      const icon = _aiSweepStatusIcon(sw.status);
+      const label = _aiSweepStatusLabel(sw.status);
+      const time = String(sw.created_at || "").slice(0, 16).replace("T", " ");
+      const done = sw.completed_items || 0;
+      const total = sw.total_items || 0;
+      const trigger = sw.trigger === "cron"
+        ? fmt("aiSweepTriggerCron")
+        : fmt("aiSweepTriggerManual");
+      return `<div class="${rowClass}" data-sweep-id="${sw.sweep_id || ""}" title="${fmt("aiHistoryClickHint")}">
+        <span class="ai-history-icon">${icon}</span>
+        <span class="ai-history-time">${time}</span>
+        <span class="ai-history-status">${label}</span>
+        <span class="ai-history-counts">${done}/${total}</span>
+        <span class="ai-history-trigger">${trigger}</span>
+      </div>`;
+    }).join("");
+
+    // Click on history row → load that sweep into the progress panel.
+    histBody.querySelectorAll(".ai-history-row[data-sweep-id]").forEach((row) => {
+      row.addEventListener("click", () => {
+        const sid = row.dataset.sweepId;
+        if (!sid) return;
+        state.aiCurrentSweepId = sid;
+        state._aiAutoActedForSweepId = null;
+        // Show progress panel
+        const progressBody = byId("aiProgressBody");
+        if (progressBody) progressBody.classList.remove("hidden");
+        // Non-terminal sweeps resume polling; terminal sweeps do one fetch.
+        const terminalStatuses = new Set(["completed", "cancelled", "failed"]);
+        const sweepStatus = row.querySelector(".ai-history-status");
+        const isTerminal = sweepStatus && terminalStatuses.has(
+          sweeps.find((s) => s.sweep_id === sid)?.status || ""
+        );
+        if (!isTerminal) {
+          _aiStartPoll();
+          _aiRenderSweepControls(true);
+        } else {
+          _aiStopPoll();
+          _aiRenderSweepControls(false);
+          _aiPollOnce().catch(() => {});
+        }
+      });
+    });
+  } catch (_) {
+    histBody.innerHTML = `<span class="muted">${fmt("aiHistoryEmpty")}</span>`;
+  }
+}
+
+// ── Tab open handler ──────────────────────────────────────────────────────
+
+async function _onAutoInspectTabOpen() {
+  // 1. Load settings → populate form
+  try {
+    const settings = await apiGet("/api/settings");
+    _aiLoadSettingsIntoForm(settings.auto_sweep || {});
+  } catch (_) { /* best effort */ }
+
+  // 2. Check for an active (non-terminal) sweep
+  try {
+    const listData = await apiGet("/api/auto-inspect?limit=5");
+    const sweeps = listData.sweeps || [];
+    const nonTerminalStatuses = new Set(["scanning", "sampling", "finalizing"]);
+    const active = sweeps.find((s) => nonTerminalStatuses.has(s.status));
+    if (active) {
+      state.aiCurrentSweepId = active.sweep_id;
+      state._aiAutoActedForSweepId = null;
+      _aiStartPoll();
+      _aiRenderSweepControls(true);
+    } else {
+      // Show last completed/cancelled sweep detail if any
+      const last = sweeps[0];
+      if (last) {
+        state.aiCurrentSweepId = last.sweep_id;
+        state._aiAutoActedForSweepId = last.sweep_id; // already terminal
+        _aiStopPoll();
+        _aiRenderSweepControls(false);
+        // One-time render without starting poll
+        const progressBody = byId("aiProgressBody");
+        if (progressBody) progressBody.classList.remove("hidden");
+        _aiPollOnce().catch(() => {});
+      }
+    }
+  } catch (_) { /* best effort */ }
+
+  // 3. Load history list
+  _aiLoadHistory().catch(() => {});
+}
+
+// ── Init (wires click handlers, schedule toggle) ─────────────────────────
+
+function _initAutoInspectTab() {
+  // Schedule radio toggles visibility
+  const rdDaily = byId("aiScheduleDaily");
+  const rdInterval = byId("aiScheduleInterval");
+  if (rdDaily) rdDaily.addEventListener("change", _aiUpdateScheduleVisibility);
+  if (rdInterval) rdInterval.addEventListener("change", _aiUpdateScheduleVisibility);
+
+  // Save settings
+  const saveBtn = byId("aiSaveSettingsBtn");
+  if (saveBtn) saveBtn.addEventListener("click", _aiSaveSettings);
+
+  // Preview
+  const previewBtn = byId("aiPreviewBtn");
+  if (previewBtn) previewBtn.addEventListener("click", _aiRunPreview);
+
+  // Start / Cancel
+  const startBtn = byId("aiStartBtn");
+  if (startBtn) startBtn.addEventListener("click", _aiStartSweep);
+  const cancelBtn = byId("aiCancelBtn");
+  if (cancelBtn) cancelBtn.addEventListener("click", _aiCancelSweep);
+
+  // Filter dropdown: re-render items with new filter (if data in state)
+  const filterEl = byId("aiItemFilter");
+  if (filterEl) filterEl.addEventListener("change", () => {
+    // Re-fetch current sweep items
+    if (state.aiCurrentSweepId) _aiPollOnce().catch(() => {});
+  });
+
+  // Initial schedule visibility
+  _aiUpdateScheduleVisibility();
+}

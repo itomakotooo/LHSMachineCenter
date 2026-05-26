@@ -37,6 +37,7 @@
     <nav class="tabs">
       <button id="tabBtnManage" class="tab-btn active" data-tab="manage" data-i18n="tabManage">机台管理</button>
       <button id="tabBtnDebug" class="tab-btn" data-tab="debug" data-i18n="tabDebug">调试机台</button>
+      <button id="tabBtnAutoInspect" class="tab-btn" data-tab="auto-inspect" data-i18n="tabAutoInspect">自动巡检</button>
     </nav>
 
     <main class="tab-pages">
@@ -569,6 +570,193 @@
                 <div id="fleetRefreshProgressInner" class="progress-bar-inner" style="width:0%"></div>
               </div>
             </div>
+          </section>
+
+        </div>
+      </section>
+
+      <!-- ── 自动巡检 tab (P4) ─────────────────────────────────────────── -->
+      <section id="tab-auto-inspect" class="tab-page">
+        <div class="auto-inspect-layout">
+
+          <!-- ① Settings form -->
+          <section class="panel auto-inspect-settings-panel">
+            <h2 data-i18n="panelAutoInspectSettings">自动巡检设置</h2>
+
+            <!-- Top-level knobs -->
+            <div class="auto-inspect-top-settings">
+              <label class="ai-toggle-row">
+                <span data-i18n="labelAiEnabled">启用自动巡检</span>
+                <input type="checkbox" id="aiEnabled" />
+              </label>
+
+              <!-- Schedule picker (OQ-G) -->
+              <fieldset class="ai-schedule-fieldset">
+                <legend data-i18n="labelAiSchedule">执行计划</legend>
+                <label class="ai-radio-row">
+                  <input type="radio" name="aiScheduleMode" id="aiScheduleDaily" value="daily" checked />
+                  <span data-i18n="labelAiScheduleDaily">每天</span>
+                  <input type="time" id="aiScheduleTime" value="02:00" class="ai-time-input" />
+                </label>
+                <label class="ai-radio-row">
+                  <input type="radio" name="aiScheduleMode" id="aiScheduleInterval" value="interval" />
+                  <span data-i18n="labelAiScheduleInterval">每</span>
+                  <input type="number" id="aiScheduleIntervalN" min="1" max="24" value="6" class="ai-narrow-input" />
+                  <span data-i18n="labelAiScheduleHours">小时</span>
+                </label>
+              </fieldset>
+
+              <div class="ai-top-grid">
+                <label>
+                  <span data-i18n="labelAiSweepConcurrency">巡检并发</span>
+                  <input type="number" id="aiSweepConcurrency" min="1" max="16" value="2" />
+                </label>
+                <label>
+                  <span data-i18n="labelAiSkipFresh">跳过新鲜格</span>
+                  <input type="checkbox" id="aiSkipFreshCells" checked />
+                </label>
+                <label>
+                  <span data-i18n="labelAiBinaryGroupCap">二元组并发上限</span>
+                  <input type="number" id="aiBinaryGroupLargeCap" min="1" max="16" value="2" />
+                </label>
+                <label>
+                  <span data-i18n="labelAiMaxConsecutiveFailures">连续失败上限</span>
+                  <input type="number" id="aiMaxConsecutiveFailures" min="1" max="100" value="3" />
+                </label>
+                <label>
+                  <span data-i18n="labelAiConsecutiveFailureWindow">失败计数窗口</span>
+                  <input type="number" id="aiConsecutiveFailureWindow" min="1" max="1000" value="10" />
+                </label>
+                <label>
+                  <span data-i18n="labelAiCellBusyTimeout">格锁超时(s)</span>
+                  <input type="number" id="aiCellBusyTimeoutS" min="60" max="86400" value="1800" />
+                </label>
+                <label>
+                  <span data-i18n="labelAiWallTimePerCell">单格时限(s)</span>
+                  <input type="number" id="aiWallTimePerCellS" min="60" max="86400" value="7200" />
+                </label>
+                <label class="ai-fullwidth">
+                  <span data-i18n="labelAiStructuralSkipMachines">结构跳过机台 (逗号分隔)</span>
+                  <input type="text" id="aiStructuralSkipMachines" value="M250,M260,M264,M268" class="ai-wide-input" />
+                </label>
+              </div>
+            </div>
+
+            <!-- Per-mode settings table -->
+            <h3 data-i18n="labelAiPerModeSettings" class="ai-sub-heading">各 Mode 参数</h3>
+            <table class="auto-inspect-mode-table drilldown-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thAiMode">Mode</th>
+                  <th data-i18n="thAiChunkSpinTimes">每批 Spins</th>
+                  <th data-i18n="thAiChunkRobotCount">每批机器人</th>
+                  <th data-i18n="thAiBatchConcurrency">并发</th>
+                  <th data-i18n="thAiTargetHalfwidth">目标半宽(pp)</th>
+                  <th data-i18n="thAiMaxChunks">最大批次</th>
+                </tr>
+              </thead>
+              <tbody id="aiModeTableBody">
+                <!-- Rows inserted by JS -->
+                <tr data-mode="1">
+                  <td>1</td>
+                  <td><input type="number" class="ai-mode-field" data-field="chunk_spin_times" min="1000" max="100000" value="10000" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="chunk_robot_count" min="1" max="16" value="2" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="batch_concurrency" min="1" max="32" value="16" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="target_halfwidth_pp" min="0.1" max="5" step="0.1" value="0.5" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="max_chunks" min="1" max="1000" value="60" /></td>
+                </tr>
+                <tr data-mode="2">
+                  <td>2</td>
+                  <td><input type="number" class="ai-mode-field" data-field="chunk_spin_times" min="1000" max="100000" value="10000" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="chunk_robot_count" min="1" max="16" value="2" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="batch_concurrency" min="1" max="32" value="16" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="target_halfwidth_pp" min="0.1" max="5" step="0.1" value="0.5" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="max_chunks" min="1" max="1000" value="60" /></td>
+                </tr>
+                <tr data-mode="5">
+                  <td>5</td>
+                  <td><input type="number" class="ai-mode-field" data-field="chunk_spin_times" min="1000" max="100000" value="10000" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="chunk_robot_count" min="1" max="16" value="2" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="batch_concurrency" min="1" max="32" value="16" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="target_halfwidth_pp" min="0.1" max="5" step="0.1" value="0.5" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="max_chunks" min="1" max="1000" value="60" /></td>
+                </tr>
+                <tr data-mode="7">
+                  <td>7</td>
+                  <td><input type="number" class="ai-mode-field" data-field="chunk_spin_times" min="1000" max="100000" value="10000" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="chunk_robot_count" min="1" max="16" value="2" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="batch_concurrency" min="1" max="32" value="16" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="target_halfwidth_pp" min="0.1" max="5" step="0.1" value="0.5" /></td>
+                  <td><input type="number" class="ai-mode-field" data-field="max_chunks" min="1" max="1000" value="60" /></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="ai-form-actions">
+              <button id="aiSaveSettingsBtn" class="primary-btn" data-i18n="btnAiSaveSettings">保存设置</button>
+              <span id="aiSettingsStatus" class="muted"></span>
+            </div>
+          </section>
+
+          <!-- ② Preview block -->
+          <section class="panel auto-inspect-preview-panel">
+            <h2 data-i18n="panelAutoInspectPreview">巡检预览</h2>
+            <div class="ai-preview-actions">
+              <button id="aiPreviewBtn" class="secondary-btn" data-i18n="btnAiPreview">预览将巡检的机台</button>
+            </div>
+            <div id="aiPreviewBody" class="ai-preview-body muted" data-i18n="aiPreviewIdle">点击「预览」查看本次巡检范围</div>
+          </section>
+
+          <!-- ③ Start / Cancel + Live progress -->
+          <section class="panel auto-inspect-progress-panel">
+            <h2 data-i18n="panelAutoInspectProgress">巡检进度</h2>
+
+            <div class="ai-sweep-actions">
+              <button id="aiStartBtn" class="primary-btn" data-i18n="btnAiStart">开始巡检</button>
+              <button id="aiCancelBtn" class="danger-btn hidden" data-i18n="btnAiCancel">取消巡检</button>
+              <span id="aiSweepStatus" class="muted"></span>
+            </div>
+
+            <div id="aiProgressBody" class="ai-progress-body hidden">
+              <!-- Aggregate counter banner -->
+              <div id="aiProgressBanner" class="ai-progress-banner"></div>
+
+              <!-- Filter dropdown -->
+              <div class="ai-filter-row">
+                <label>
+                  <span data-i18n="labelAiFilter">过滤</span>
+                  <select id="aiItemFilter">
+                    <option value="all" data-i18n="aiFilterAll">全部</option>
+                    <option value="completed" data-i18n="aiFilterCompleted">已完成</option>
+                    <option value="failed" data-i18n="aiFilterFailed">失败</option>
+                    <option value="structural_skip" data-i18n="aiFilterSkipped">跳过</option>
+                    <option value="pending" data-i18n="aiFilterPending">待处理</option>
+                  </select>
+                </label>
+              </div>
+
+              <!-- Per-cell drill-down table -->
+              <div class="ai-items-wrap">
+                <table id="aiItemsTable" class="drilldown-table auto-inspect-items-table">
+                  <thead>
+                    <tr>
+                      <th data-i18n="thAiItemMachine">机台</th>
+                      <th data-i18n="thAiItemMode">Mode</th>
+                      <th data-i18n="thAiItemStatus">状态</th>
+                      <th data-i18n="thAiItemCellClass">类别</th>
+                      <th data-i18n="thAiItemReason">原因</th>
+                    </tr>
+                  </thead>
+                  <tbody id="aiItemsBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- ④ Recent sweep history -->
+          <section class="panel auto-inspect-history-panel">
+            <h2 data-i18n="panelAutoInspectHistory">最近巡检记录</h2>
+            <div id="aiHistoryBody" class="ai-history-body muted" data-i18n="aiHistoryEmpty">暂无记录</div>
           </section>
 
         </div>

@@ -8483,7 +8483,15 @@ def create_app(
     def put_settings(req: dict[str, Any]) -> dict[str, Any]:
         """Upsert operator settings. Unknown fields ignored; invalid
         values (e.g. negative retention) clamped by _load_settings
-        on next read."""
+        on next read.
+
+        Accepted keys:
+          * min_retention_spins (int >= 0)
+          * auto_sweep (dict) — P4 addition.  Merged into the persisted
+            auto_sweep block; _load_settings validates the sub-fields on
+            next read, so this handler only checks type + persists the
+            raw dict (validation is centralised there).
+        """
         current = _load_settings(settings_path)
         if "min_retention_spins" in req:
             try:
@@ -8499,8 +8507,32 @@ def create_app(
                     detail="min_retention_spins must be non-negative",
                 )
             current["min_retention_spins"] = v
+        # P4: accept auto_sweep block.  Merge incoming dict onto disk so
+        # partial updates (e.g. just changing enabled) don't wipe other
+        # keys.  _load_settings validates sub-fields on next read.
+        if "auto_sweep" in req:
+            raw_as = req["auto_sweep"]
+            if not isinstance(raw_as, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail="auto_sweep must be an object",
+                )
+            existing_as = current.get("auto_sweep") or {}
+            if not isinstance(existing_as, dict):
+                existing_as = {}
+            # Deep-merge: modes dict gets merged per-key so a partial
+            # POST doesn't wipe modes that weren't included.
+            merged = dict(existing_as)
+            merged.update(raw_as)
+            if "modes" in raw_as and isinstance(raw_as["modes"], dict):
+                existing_modes = dict((existing_as.get("modes") or {}))
+                existing_modes.update(raw_as["modes"])
+                merged["modes"] = existing_modes
+            current["auto_sweep"] = merged
         _save_settings(settings_path, current)
-        return current
+        # Return the validated (parsed) version so the caller gets back
+        # the clamped/validated values rather than the raw input.
+        return _load_settings(settings_path)
 
     @app.get("/api/classifier/{machine}")
     def get_classifier_verdict(machine: str) -> dict[str, Any]:
@@ -11948,18 +11980,43 @@ def create_app(
             raise HTTPException(status_code=404, detail="sweep not found")
         return {"ok": True}
 
-    @app.get("/api/auto-inspect/{sweep_id}")
-    def auto_inspect_get(sweep_id: str) -> dict[str, Any]:
-        """Return sweep progress dict.  404 if sweep_id not found."""
-        state = auto_inspect_mgr.get_sweep_status(sweep_id)
-        if state is None:
-            raise HTTPException(status_code=404, detail="sweep not found")
-        return state
-
     @app.get("/api/auto-inspect")
     def auto_inspect_list(limit: int = 30) -> dict[str, Any]:
         """Return list of recent sweeps, newest first."""
         return {"sweeps": auto_inspect_mgr.list_recent_sweeps(limit=limit)}
+
+    @app.get("/api/auto-inspect/preview")
+    def auto_inspect_preview() -> dict[str, Any]:
+        """Preview what a new sweep would enqueue, without committing.
+
+        P4 deliverable 3.  Calls _scan_cells (read-only) and returns
+        aggregate counts + per-cell list so the operator can confirm
+        scope before clicking 开始巡检.
+
+        IMPORTANT: this fixed-path route is registered BEFORE the
+        parameterised /api/auto-inspect/{sweep_id} route below.
+        FastAPI / Starlette resolves routes in registration order;
+        placing this first ensures GET /api/auto-inspect/preview is
+        never swallowed by the {sweep_id} catch-all.
+
+        Returns:
+          * total (int)
+          * by_mode ({str: int})
+          * by_cell_class ({str: int})
+          * structural_skip_count (int)
+          * manifest_override_count (int)
+          * estimated_wall_time_s (int, rough: total * 300s)
+          * cells (list[{machine, mode, cell_class, cfg_md5, code_md5}])
+        """
+        return auto_inspect_mgr.preview_sweep()
+
+    @app.get("/api/auto-inspect/{sweep_id}")
+    def auto_inspect_get(sweep_id: str) -> dict[str, Any]:
+        """Return sweep progress dict.  404 if sweep_id not found."""
+        status_data = auto_inspect_mgr.get_sweep_status(sweep_id)
+        if status_data is None:
+            raise HTTPException(status_code=404, detail="sweep not found")
+        return status_data
 
     threading.Thread(target=_disk_monitor_loop, daemon=True, name="disk-monitor").start()
 

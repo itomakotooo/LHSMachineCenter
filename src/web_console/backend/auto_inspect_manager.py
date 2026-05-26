@@ -392,7 +392,12 @@ class AutoInspectManager:
         return True
 
     def get_sweep_status(self, sweep_id: str) -> dict[str, Any] | None:
-        """Return sweep progress dict or None if sweep_id not found."""
+        """Return sweep progress dict or None if sweep_id not found.
+
+        P4 addition: also returns ``items`` list for the per-cell
+        drill-down table in the frontend.  Each item contains the
+        fields the UI needs to render a row.
+        """
         with self._store._connect() as conn:
             sweep_row = conn.execute(
                 "SELECT * FROM auto_inspect_sweeps WHERE sweep_id=?",
@@ -412,9 +417,36 @@ class AutoInspectManager:
                 (sweep_id,),
             ).fetchall()
 
+            # Fetch items for per-cell drill-down (P4 §5).
+            items_rows = conn.execute(
+                """
+                SELECT machine, mode, status, cell_class,
+                       terminal_reason, started_at, finished_at,
+                       queue_position
+                FROM auto_inspect_items
+                WHERE sweep_id=?
+                ORDER BY queue_position ASC
+                """,
+                (sweep_id,),
+            ).fetchall()
+
         counts: dict[str, int] = {}
         for cr in counts_rows:
             counts[str(cr["status"])] = int(cr["cnt"])
+
+        items: list[dict[str, Any]] = [
+            {
+                "machine": str(ir["machine"]),
+                "mode": int(ir["mode"]),
+                "status": str(ir["status"]),
+                "cell_class": str(ir["cell_class"]),
+                "terminal_reason": ir["terminal_reason"],
+                "started_at": ir["started_at"],
+                "finished_at": ir["finished_at"],
+                "queue_position": int(ir["queue_position"]),
+            }
+            for ir in items_rows
+        ]
 
         return {
             "sweep_id": sweep_id,
@@ -427,6 +459,7 @@ class AutoInspectManager:
             "failed_items": int(sweep_row["failed_items"] or 0),
             "skipped_items": int(sweep_row["skipped_items"] or 0),
             "items_by_status": counts,
+            "items": items,
         }
 
     def list_recent_sweeps(self, limit: int = 30) -> list[dict[str, Any]]:
@@ -441,6 +474,59 @@ class AutoInspectManager:
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def preview_sweep(self) -> dict[str, Any]:
+        """Return what a new sweep would enqueue, without committing anything.
+
+        P4 deliverable 3 (GET /api/auto-inspect/preview).
+
+        Returns a dict with:
+          * cells: list of cell dicts (machine, mode, cell_class,
+            cfg_md5_at_enqueue, code_md5_at_enqueue)
+          * total: int
+          * by_mode: {str(mode): int}
+          * by_cell_class: {cell_class: int}
+          * estimated_wall_time_s: int (total * 300 rough estimate)
+          * structural_skip_count: int
+          * manifest_override_count: int
+        """
+        settings = self._load_auto_sweep_settings()
+        modes_list = list(_SWEEP_MODES)
+        skip_fresh = bool(settings.get("skip_fresh_cells", True))
+
+        cells = self._scan_cells(modes_list, skip_fresh=skip_fresh)
+
+        by_mode: dict[str, int] = {}
+        by_cell_class: dict[str, int] = {}
+        for cell in cells:
+            mode_key = str(cell["mode"])
+            by_mode[mode_key] = by_mode.get(mode_key, 0) + 1
+            cc = str(cell.get("cell_class") or "easy")
+            by_cell_class[cc] = by_cell_class.get(cc, 0) + 1
+
+        structural_skip_count = by_cell_class.get("bcm_hard", 0)
+        manifest_override_count = by_cell_class.get("manifest_override", 0)
+        # Rough estimate: 5 minutes per cell.
+        estimated_wall_time_s = len(cells) * 300
+
+        return {
+            "total": len(cells),
+            "cells": [
+                {
+                    "machine": c["machine"],
+                    "mode": c["mode"],
+                    "cell_class": c.get("cell_class") or "easy",
+                    "cfg_md5_at_enqueue": c.get("cfg_md5_at_enqueue") or "",
+                    "code_md5_at_enqueue": c.get("code_md5_at_enqueue") or "",
+                }
+                for c in cells
+            ],
+            "by_mode": by_mode,
+            "by_cell_class": by_cell_class,
+            "structural_skip_count": structural_skip_count,
+            "manifest_override_count": manifest_override_count,
+            "estimated_wall_time_s": estimated_wall_time_s,
+        }
 
     def resume_sweep(self, sweep_id: str) -> None:
         """Resume a sweep that was interrupted by a console restart.
