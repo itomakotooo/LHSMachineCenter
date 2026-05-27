@@ -168,6 +168,8 @@ def compute_effective_version_for_machine(
             import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
             import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
             import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
+            import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
+            import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
         except ImportError:
             try:
                 import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
@@ -176,6 +178,8 @@ def compute_effective_version_for_machine(
                 import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
                 import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
                 import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
+                import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
+                import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
             except ImportError:
                 pass
 

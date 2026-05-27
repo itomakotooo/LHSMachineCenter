@@ -1533,6 +1533,8 @@ def main() -> int:
             import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
             import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
             import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
+            import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
+            import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
         except ImportError:  # running as standalone script
             import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
             import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
@@ -1540,6 +1542,8 @@ def main() -> int:
             import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
             import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
             import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
+            import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
+            import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
 
         for read_idx, cf in enumerate(chunk_files):
             # Fast path: when a md5 filter is active, consult the
@@ -2207,6 +2211,8 @@ def main() -> int:
         import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
         import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
         import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
+        import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
+        import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
     except ImportError:  # running as standalone script
         import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
@@ -2214,6 +2220,8 @@ def main() -> int:
         import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
         import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
+        import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
+        import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
 
     # ── online sampling path (skipped in read-only --from-cache mode) ──
     while not skip_sampling_loop and next_chunk_index <= args.max_chunks:
@@ -3249,26 +3257,47 @@ def main() -> int:
             }
         )
 
+    # Gap #5 (C5): detect "all PayoutGroupId == 0" condition.
+    # When every round has PayoutGroupId=0, it means the machine doesn't use
+    # PayoutGroupId for real grouping — it's just the default value.  Showing
+    # a single "{group_id: 0, hit_count: 89090, rtp_pp: 80.13}" row is noise,
+    # not signal.  If the only key in payout_group_hits is 0, filter the list
+    # to empty and set payout_groups_status to "all_zeros_filtered".
+    # Per feedback_invariant_with_fallback_hides_drift.md: the status flag is
+    # an explicit operator-readable signal, not a silent bucket.
+    _payout_group_keys_nonzero = set(k for k in payout_group_hits if int(k) != 0)
+    payout_groups_status: str
+    if not payout_group_hits:
+        payout_groups_status = "absent_field"
+    elif not _payout_group_keys_nonzero:
+        # All rounds have PayoutGroupId == 0 — noise, not signal.
+        payout_groups_status = "all_zeros_filtered"
+    else:
+        payout_groups_status = "populated"
+
     payout_group_rows: list[dict[str, Any]] = []
-    for gid, hits in sorted(payout_group_hits.items(), key=lambda kv: kv[1], reverse=True):
-        wins = float(payout_group_win.get(gid, 0.0))
-        win_spins_in_group = hits if gid != 0 else 0
-        payout_group_rows.append(
-            {
-                "group_id": int(gid),
-                "hit_count": int(hits),
-                "hit_rate": (hits / total_spins) if total_spins > 0 else 0.0,
-                "total_win": wins,
-                "avg_win_when_hit_x": (
-                    (wins / win_spins_in_group) / args.bet
-                    if win_spins_in_group > 0 and args.bet > 0
-                    else 0.0
-                ),
-                "rtp_contribution_pp": (
-                    (wins / total_bet) * 100.0 if total_bet > 0 else 0.0
-                ),
-            }
-        )
+    if payout_groups_status == "populated":
+        for gid, hits in sorted(payout_group_hits.items(), key=lambda kv: kv[1], reverse=True):
+            wins = float(payout_group_win.get(gid, 0.0))
+            win_spins_in_group = hits if gid != 0 else 0
+            payout_group_rows.append(
+                {
+                    "group_id": int(gid),
+                    "hit_count": int(hits),
+                    "hit_rate": (hits / total_spins) if total_spins > 0 else 0.0,
+                    "total_win": wins,
+                    "avg_win_when_hit_x": (
+                        (wins / win_spins_in_group) / args.bet
+                        if win_spins_in_group > 0 and args.bet > 0
+                        else 0.0
+                    ),
+                    "rtp_contribution_pp": (
+                        (wins / total_bet) * 100.0 if total_bet > 0 else 0.0
+                    ),
+                }
+            )
+    # payout_groups_status is written into summary["player_impact"] below
+    # alongside payout_groups_top20.
 
     # SpinType breakdown: per-type spins / bet / win + share of total.
     # Order by spins desc so the dominant type lands first; for collect
@@ -4497,6 +4526,13 @@ def main() -> int:
             # 总数一般 ≤ 30,全部下发的开销可忽略。
             "paylines_top20": list(payline_rows),
             "payout_groups_top20": list(payout_group_rows),
+            # Gap #5 (C5): explicit status for payout_groups_top20.
+            # "populated" — real group IDs; "all_zeros_filtered" — all rounds
+            # had PayoutGroupId=0 (noise, list is empty); "absent_field" — no
+            # PayoutGroupId field observed at all.
+            # Per feedback_invariant_with_fallback_hides_drift.md: explicit
+            # named status, not a silent catch-all bucket.
+            "payout_groups_status": payout_groups_status,
             "payout_ids_top20": list(payout_id_rows),
             # Phase C2: payouts_by_spin_type is now written by the
             # PayoutsBySpinType plugin's emit() (Pattern B). The key is
@@ -4531,11 +4567,14 @@ def main() -> int:
             # analyzer_features so the plugin runs for every machine that
             # previously had the inline block.  The inline block is removed
             # per 04_v3 §7.2 C4 acceptance criterion #10 (grep verifies absence).
-            "upstream_feature_breakdown": {
-                "applicable": upstream_feature_applicable,
-                "source": "analysisResult.FeatureWin",
-                "features": upstream_feature_rows,
-            },
+            #
+            # Phase C5: upstream_feature_breakdown is now written by the
+            # UpstreamFeatureBreakdown plugin's emit() (Pattern B stash pattern).
+            # The stash key below carries the computed data into the plugin;
+            # the plugin writes the final summary["player_impact"][
+            # "upstream_feature_breakdown"] key in Phase D.
+            # All 253 base manifests declare "upstream_feature_breakdown".
+            # The inline block is removed per 04_v3 §7.2 C5 acceptance criterion.
             "bonus_chain_dynamics": bonus_chain_dynamics,
             # --- Raw-data analysis surfaces ---
             # Payline × Symbol joint: top 20 (payline, symbol) pairs
@@ -4628,131 +4667,12 @@ def main() -> int:
             ),
             "server_robots_seen": upstream_robots_seen,
         },
-        "collect_mechanic": {
-            # M272+ collect mechanic: total CollectCount triggers across
-            # all robots, plus peak AccCredits seen. M14 (and any other
-            # non-collect machine) reports applicable=false so the
-            # frontend / interpretation can suppress the section
-            # entirely. avg_spins_between_collects is null when no
-            # triggers were observed (avoids div-by-zero).
-            "applicable": collect_robots_seen_total > 0,
-            "robots_with_data": collect_robots_seen_total,
-            "total_collects": collect_count_total,
-            "max_acc_credits_observed": acc_credits_max_global,
-            "avg_spins_between_collects": (
-                (total_spins / collect_count_total)
-                if collect_count_total > 0
-                else None
-            ),
-            # Trunk-clamp warning. When chunk_spin_times truncates the
-            # robot's run mid-cycle (paid spins accumulated past the
-            # last collect-trigger but the next one never fires before
-            # SpinTimes runs out), the bonus that those pending paid
-            # spins would have eventually triggered is missing from the
-            # sample -- observed RTP under-reports the true RTP. We
-            # surface the raw signals (pending counts + avg paid spins
-            # per collect) instead of fabricating a lost_pp number,
-            # because the bonus payout per collect varies a lot per
-            # machine and a heuristic estimate gives false confidence.
-            # Operator interpretation: if pending_robots is large and
-            # pending_paid_spins / paid_spins is non-trivial, widen
-            # chunk_spin_times and rerun.
-            "clamp_warning": {
-                "applicable": (
-                    collect_robots_seen_total > 0
-                    and clamp_pending_robots_total > 0
-                ),
-                "pending_robots": clamp_pending_robots_total,
-                "total_pending_paid_spins": clamp_pending_paid_spins_total,
-                "pending_share_of_paid_spins": (
-                    (clamp_pending_paid_spins_total / total_paid_sessions)
-                    if total_paid_sessions > 0
-                    else None
-                ),
-                "avg_paid_spins_per_collect": (
-                    (total_paid_sessions / collect_count_total)
-                    if collect_count_total > 0
-                    else None
-                ),
-                "note": (
-                    "Pending paid spins were accumulating toward the next collect "
-                    "trigger when chunk_spin_times ran out; the bonus those spins "
-                    "would have triggered isn't in the sample. If this is a large "
-                    "fraction of total paid spins, widen chunk_spin_times and "
-                    "rerun to get a tighter RTP estimate."
-                ) if (
-                    collect_robots_seen_total > 0 and clamp_pending_robots_total > 0
-                ) else None,
-            },
-            # BCM cycle-bonus RTP correction. When the
-            # BuffCollectionMap cycle doesn't complete (chunk ends
-            # mid-cycle), the bonus that fires at cycle completion is
-            # missing from the sample. This block estimates the lost
-            # RTP based on:
-            #   - detected cycle length (median of observed CC peaks)
-            #   - average payout of the machine's bonus feature (resolved
-            #     per-machine via configs/bcm_pairings.json → heuristic
-            #     fallback; see _resolve_bonus_feature)
-            #   - each robot's final CC as fraction of cycle length
-            #
-            # Previously hardcoded to "NewFreespin" — worked for ~13/33
-            # BCM machines, silently under-reported the rest. Now
-            # self-resolving with operator-override.
-            "bonus_cycle_correction": (lambda: (lambda bonus_feat, bonus_src: {
-                "applicable": len(all_cycle_peaks) > 0,
-                "bonus_feature": bonus_feat,
-                "bonus_feature_source": bonus_src,
-                "detected_cycle_length": (
-                    int(sorted(all_cycle_peaks)[len(all_cycle_peaks)//2])
-                    if all_cycle_peaks else None
-                ),
-                "completed_cycles_total": total_completed_cycles,
-                "robots_with_pending_cycle": sum(
-                    1 for fcc in all_final_cc_values
-                    if all_cycle_peaks and fcc < sorted(all_cycle_peaks)[len(all_cycle_peaks)//2]
-                ),
-                "avg_bonus_payout": (
-                    (lambda bonus_total, cyc: bonus_total / cyc if cyc > 0 else None)(
-                        sum(
-                            float(e.get("win", 0.0))
-                            for e in (upstream_feature_tally.get(bonus_feat) or {}).values()
-                        ) if bonus_feat else 0.0,
-                        total_completed_cycles,
-                    )
-                ),
-                "estimated_correction_pp": _compute_bonus_correction(
-                    bonus_feat,
-                    all_cycle_peaks, all_final_cc_values,
-                    upstream_feature_tally, total_completed_cycles,
-                    effective_bet_for_rtp,
-                ),
-            })(*_resolve_bonus_feature(
-                args.machine, args.rtp_mode, upstream_feature_tally, _load_bcm_pairings()
-            )))(),
-            # Feature-match block — now driven by the resolved feature
-            # instead of a hardcoded check. Warning only fires when a
-            # cycle was observed AND neither config nor heuristic
-            # could identify a bonus feature (the worst case where RTP
-            # correction falls through to 0pp).
-            "feature_match": collect_feature_match_warning(
-                all_cycle_peaks,
-                upstream_feature_tally,
-                *_resolve_bonus_feature(
-                    args.machine, args.rtp_mode, upstream_feature_tally, _load_bcm_pairings()
-                ),
-            ),
-            # Cycle-observation block: distinguishes "no collect mechanic"
-            # from "collect mechanic but cache too short to capture a
-            # reset" (M272-style: all robots stopped at CC=1000
-            # boundary). Without this, both cases look identical in the
-            # summary and operator can't tell if RTP correction is
-            # missing or genuinely inapplicable.
-            "cycle_observation": build_cycle_observation(
-                collect_robots_seen_total,
-                all_cycle_peaks,
-                all_final_cc_values,
-            ),
-        },
+        # Phase C5: collect_mechanic is now written by the CollectMechanic plugin
+        # emit() in the Phase D plugin emit loop (stash pattern, analogous to
+        # BankruptcySimulation C1).  The stash key _collect_mechanic_data is
+        # written after the summary dict is closed (see post-summary block below).
+        # All 253 base manifests declare "collect_mechanic" in analyzer_features.
+        # The inline block is removed per 04_v3 §7.2 C5 acceptance criterion.
         "guideline_assessment": {
             "guideline": "classic_slots_report_guideline_v1",
             "data_quality": {
@@ -4818,13 +4738,110 @@ def main() -> int:
     guideline_comparison = evaluate_guideline_comparison(summary, args.guideline_rules)
     summary["guideline_comparison"] = guideline_comparison
 
-    # Backward-compat alias: keep `newfreespin_correction` pointing at
-    # the same dict as `bonus_cycle_correction` so any report-reader
-    # still expecting the legacy key keeps working. New code should
-    # read `bonus_cycle_correction` directly.
-    cm = summary.get("collect_mechanic") or {}
-    if "bonus_cycle_correction" in cm and "newfreespin_correction" not in cm:
-        cm["newfreespin_correction"] = cm["bonus_cycle_correction"]
+    # ── Phase C5 — stash keys for UpstreamFeatureBreakdown + CollectMechanic ──
+    # Analogous to _bankruptcy_rows / _bankruptcy_sim_session_spins (C1).
+    # Each stash key carries pre-computed data into the plugin's emit() method,
+    # which reads it, augments it (collect_mechanic adds gap #6 recommendation),
+    # removes the stash key, and writes the final summary location.
+
+    # Stash for UpstreamFeatureBreakdown plugin (Pattern B stash).
+    # upstream_feature_applicable + upstream_feature_rows are local PIA variables
+    # computed above (lines ~3627-3944).  Inline write removed per C5 carve.
+    summary["_upstream_feature_breakdown_data"] = {
+        "applicable": upstream_feature_applicable,
+        "source": "analysisResult.FeatureWin",
+        "features": upstream_feature_rows,
+    }
+
+    # Stash for CollectMechanic plugin (Pattern B stash).
+    # All variables below are local PIA accumulators from the merge loop.
+    # Backward-compat newfreespin_correction alias is now handled by the plugin.
+    _cm_bonus_feat, _cm_bonus_src = _resolve_bonus_feature(
+        args.machine, args.rtp_mode, upstream_feature_tally, _load_bcm_pairings()
+    )
+    _cm_cycle_peaks_sorted = sorted(all_cycle_peaks) if all_cycle_peaks else []
+    _cm_cycle_median = (
+        _cm_cycle_peaks_sorted[len(_cm_cycle_peaks_sorted) // 2]
+        if _cm_cycle_peaks_sorted else None
+    )
+    summary["_collect_mechanic_data"] = {
+        "applicable": collect_robots_seen_total > 0,
+        "robots_with_data": collect_robots_seen_total,
+        "total_collects": collect_count_total,
+        "max_acc_credits_observed": acc_credits_max_global,
+        "avg_spins_between_collects": (
+            (total_spins / collect_count_total)
+            if collect_count_total > 0
+            else None
+        ),
+        "clamp_warning": {
+            "applicable": (
+                collect_robots_seen_total > 0
+                and clamp_pending_robots_total > 0
+            ),
+            "pending_robots": clamp_pending_robots_total,
+            "total_pending_paid_spins": clamp_pending_paid_spins_total,
+            "pending_share_of_paid_spins": (
+                (clamp_pending_paid_spins_total / total_paid_sessions)
+                if total_paid_sessions > 0
+                else None
+            ),
+            "avg_paid_spins_per_collect": (
+                (total_paid_sessions / collect_count_total)
+                if collect_count_total > 0
+                else None
+            ),
+            "note": (
+                "Pending paid spins were accumulating toward the next collect "
+                "trigger when chunk_spin_times ran out; the bonus those spins "
+                "would have triggered isn't in the sample. If this is a large "
+                "fraction of total paid spins, widen chunk_spin_times and "
+                "rerun to get a tighter RTP estimate."
+            ) if (
+                collect_robots_seen_total > 0 and clamp_pending_robots_total > 0
+            ) else None,
+        },
+        "bonus_cycle_correction": {
+            "applicable": len(all_cycle_peaks) > 0,
+            "bonus_feature": _cm_bonus_feat,
+            "bonus_feature_source": _cm_bonus_src,
+            "detected_cycle_length": (
+                int(_cm_cycle_median)
+                if _cm_cycle_median is not None else None
+            ),
+            "completed_cycles_total": total_completed_cycles,
+            "robots_with_pending_cycle": sum(
+                1 for fcc in all_final_cc_values
+                if _cm_cycle_median is not None and fcc < _cm_cycle_median
+            ),
+            "avg_bonus_payout": (
+                (
+                    sum(
+                        float(e.get("win", 0.0))
+                        for e in (upstream_feature_tally.get(_cm_bonus_feat) or {}).values()
+                    ) / total_completed_cycles
+                    if total_completed_cycles > 0 else None
+                ) if _cm_bonus_feat else None
+            ),
+            "estimated_correction_pp": _compute_bonus_correction(
+                _cm_bonus_feat,
+                all_cycle_peaks, all_final_cc_values,
+                upstream_feature_tally, total_completed_cycles,
+                effective_bet_for_rtp,
+            ),
+        },
+        "feature_match": collect_feature_match_warning(
+            all_cycle_peaks,
+            upstream_feature_tally,
+            _cm_bonus_feat,
+            _cm_bonus_src,
+        ),
+        "cycle_observation": build_cycle_observation(
+            collect_robots_seen_total,
+            all_cycle_peaks,
+            all_final_cc_values,
+        ),
+    }
 
     # ── Wave 2c / Phase C1: registered feature emit hooks ─────────────────
     # Phase C1 of analyzer unbundle (04_v3 §7.2) — plumbing only.
@@ -4851,6 +4868,8 @@ def main() -> int:
         import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
         import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
         import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
+        import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
+        import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
         from fresh_slotlab.analyzer.feature_registry import (
             ALL_FEATURES as _ALL_FEATURES,
             get_features_for_machine as _get_features_for_machine,
@@ -4877,6 +4896,8 @@ def main() -> int:
         import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
         import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
+        import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
+        import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
         from analyzer.feature_registry import (  # type: ignore[no-redef]
             ALL_FEATURES as _ALL_FEATURES,
             get_features_for_machine as _get_features_for_machine,
@@ -5060,9 +5081,11 @@ def main() -> int:
 
     # Cleanup: remove all _-prefixed temp keys (DECLARED_DEPS + registry).
     # This includes _bankruptcy_rows, _bankruptcy_sim_session_spins,
-    # _mechanism_registry, and any future plugin temp keys.
+    # _mechanism_registry, _upstream_feature_breakdown_data (C5),
+    # _collect_mechanic_data (C5), and any future plugin temp keys.
     # Use pop() with default to guard against keys already deleted by emit()
-    # (BankruptcySimulation.emit() deletes its own temp keys in-situ).
+    # (BankruptcySimulation.emit() and C5 plugins delete their own temp keys
+    # in-situ via summary.pop(_STASH_KEY)).
     for _tmp_key in list(summary.keys()):
         if _tmp_key.startswith("_"):
             summary.pop(_tmp_key, None)

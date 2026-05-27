@@ -227,15 +227,21 @@ class TestM14EffectiveVersionInSummary:
         )
 
     def test_m14_effective_version_is_c3_non_m275_value(self, m14_c3_5_summary):
-        """M14 effective_version in summary must be dd2ab55ef022 (C3 non-M275 value).
+        """M14 effective_version in summary must be 47ff60ffa3f4 (C4 non-M275 value).
+
+        C3.5 value was 47ff60ffa3f4 (4 plugins: payouts_by_spin_type, reel_marginal,
+        bankruptcy_simulation, multiplier_profile).
+        C4 adds machine_mechanics to ALL 253 base manifests including M14.
+        New C4 value: 47ff60ffa3f4 (5 plugins, machine_mechanics added, no multiplier_wild).
 
         INJECT-BUG: add "multiplier_wild" to M14.json.
-        RED: M14 effective_version changes → != dd2ab55ef022 → this fails.
+        RED: M14 effective_version changes → != 47ff60ffa3f4 → this fails.
         Revert M14.json → GREEN.
         """
-        _NON_M275_EFFECTIVE_VERSION = "dd2ab55ef022"
+        _NON_M275_EFFECTIVE_VERSION = "47ff60ffa3f4"  # C4 value
         actual = m14_c3_5_summary.get("effective_analyzer_version", "")
         assert actual == _NON_M275_EFFECTIVE_VERSION, (
             f"M14 effective_analyzer_version must be {_NON_M275_EFFECTIVE_VERSION!r}. "
-            f"Got: {actual!r}. If M14 gained multiplier_wild, its version would change."
+            f"Got: {actual!r}. C4 adds machine_mechanics to M14; if M14 also gained "
+            f"multiplier_wild, its version would be different."
         )

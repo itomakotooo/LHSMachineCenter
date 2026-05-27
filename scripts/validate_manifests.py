@@ -47,6 +47,8 @@ import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
 import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
 import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
 import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
+import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
+import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
 
 from fresh_slotlab.analyzer import feature_registry as _registry
 from fresh_slotlab.analyzer.manifest_loader import (

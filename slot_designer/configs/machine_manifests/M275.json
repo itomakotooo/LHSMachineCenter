@@ -17,7 +17,9 @@
     "bankruptcy_simulation",
     "multiplier_profile",
     "multiplier_wild",
-    "machine_mechanics"
+    "machine_mechanics",
+    "upstream_feature_breakdown",
+    "collect_mechanic"
   ],
   "rtp_integrity_contract": {
     "required_attribution_anchors": [],
