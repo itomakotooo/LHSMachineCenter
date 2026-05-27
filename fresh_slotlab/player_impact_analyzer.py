@@ -1532,12 +1532,14 @@ def main() -> int:
             import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
             import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
             import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
+            import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
         except ImportError:  # running as standalone script
             import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
             import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
             import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
             import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
             import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
+            import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
 
         for read_idx, cf in enumerate(chunk_files):
             # Fast path: when a md5 filter is active, consult the
@@ -2204,12 +2206,14 @@ def main() -> int:
         import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
         import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
         import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
+        import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
     except ImportError:  # running as standalone script
         import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
+        import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
 
     # ── online sampling path (skipped in read-only --from-cache mode) ──
     while not skip_sampling_loop and next_chunk_index <= args.max_chunks:
@@ -4517,62 +4521,16 @@ def main() -> int:
                 "extra_field_count": len(total_extra_fields_seen),
                 "baseline_field_count": len(_BASELINE_ROUND_FIELDS),
             },
-            # Per-machine mechanic analysis. Sections are only present
-            # when the mechanic's fields were observed (applicable=true).
-            "machine_mechanics": {
-                "lock_lines": {
-                    "applicable": total_lock_lines_spins > 0,
-                    "lock_spins": total_lock_lines_spins,
-                    "lock_rate": (total_lock_lines_spins / total_spins) if total_spins > 0 else 0,
-                    "total_lines_locked": total_lock_lines_total_lines,
-                    "avg_lines_per_lock": (total_lock_lines_total_lines / total_lock_lines_spins) if total_lock_lines_spins > 0 else 0,
-                    "lock_win": total_lock_lines_win,
-                    "lock_rtp_contribution_pp": (total_lock_lines_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
-                },
-                "lock_symbols": {
-                    "applicable": total_lock_symbols_spins > 0,
-                    "lock_spins": total_lock_symbols_spins,
-                    "lock_rate": (total_lock_symbols_spins / total_spins) if total_spins > 0 else 0,
-                    "unique_symbols": sorted(total_lock_symbols_unique),
-                    "unique_symbol_count": len(total_lock_symbols_unique),
-                    "lock_win": total_lock_symbols_win,
-                    "lock_rtp_contribution_pp": (total_lock_symbols_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
-                },
-                "lock_reels": {
-                    "applicable": total_lock_reels_spins > 0,
-                    "lock_spins": total_lock_reels_spins,
-                    "lock_rate": (total_lock_reels_spins / total_spins) if total_spins > 0 else 0,
-                    "lock_win": total_lock_reels_win,
-                    "lock_rtp_contribution_pp": (total_lock_reels_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
-                },
-                "jackpot": {
-                    "applicable": total_jackpot_spins > 0,
-                    "trigger_spins": total_jackpot_spins,
-                    "trigger_rate": (total_jackpot_spins / total_spins) if total_spins > 0 else 0,
-                    "jackpot_ids": sorted(total_jackpot_ids_seen),
-                    "jackpot_id_count": len(total_jackpot_ids_seen),
-                    "total_win": total_jackpot_win,
-                    "rtp_contribution_pp": (total_jackpot_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
-                },
-                "free_spin": {
-                    "applicable": total_freespin_chain_spins > 0,
-                    "chain_spins": total_freespin_chain_spins,
-                    "chain_rate": (total_freespin_chain_spins / total_spins) if total_spins > 0 else 0,
-                    "retriggers": total_freespin_retriggers,
-                    "max_chain_length": total_freespin_max_chain,
-                    "total_win": total_freespin_win,
-                    "rtp_contribution_pp": (total_freespin_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
-                },
-                "dollar_pick": {
-                    "applicable": total_dollar_pick_spins > 0,
-                    "pick_spins": total_dollar_pick_spins,
-                    "pick_rate": (total_dollar_pick_spins / total_spins) if total_spins > 0 else 0,
-                    "total_dollars_picked": total_dollar_pick_total_dollars,
-                    "avg_dollars_per_pick": (total_dollar_pick_total_dollars / total_dollar_pick_spins) if total_dollar_pick_spins > 0 else 0,
-                    "total_win": total_dollar_pick_win,
-                    "rtp_contribution_pp": (total_dollar_pick_win / effective_bet_for_rtp * 100) if effective_bet_for_rtp > 0 else 0,
-                },
-            },
+            # Per-machine mechanic analysis (machine_mechanics).
+            # Phase C4: this key is now written by the MachineMechanics plugin
+            # emit() in the Phase D plugin emit loop (after this summary dict
+            # is constructed). The plugin uses ctx.mechanism_registry for
+            # jackpot + freespin detection (Tier 1/2/3) and the extract()
+            # accumulator for quantitative fields.
+            # All 253 base manifests declare "machine_mechanics" in
+            # analyzer_features so the plugin runs for every machine that
+            # previously had the inline block.  The inline block is removed
+            # per 04_v3 §7.2 C4 acceptance criterion #10 (grep verifies absence).
             "upstream_feature_breakdown": {
                 "applicable": upstream_feature_applicable,
                 "source": "analysisResult.FeatureWin",
@@ -4892,6 +4850,7 @@ def main() -> int:
         import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
         import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
         import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
+        import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
         from fresh_slotlab.analyzer.feature_registry import (
             ALL_FEATURES as _ALL_FEATURES,
             get_features_for_machine as _get_features_for_machine,
@@ -4917,6 +4876,7 @@ def main() -> int:
         import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
+        import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
         from analyzer.feature_registry import (  # type: ignore[no-redef]
             ALL_FEATURES as _ALL_FEATURES,
             get_features_for_machine as _get_features_for_machine,
@@ -4950,17 +4910,48 @@ def main() -> int:
     except (FileNotFoundError, KeyError, Exception):  # noqa: BLE001
         _c1_manifest = {}
 
-    # ── Phase C1 — Step 2: build MechanismRegistry (placeholder) ─────────
-    # C1 ships a pure placeholder (empty frozensets, all False).
-    # C4 will replace this with the real Tier 1/2/3 detection logic.
+    # ── Phase C4 — Step 2: build MechanismRegistry (Tier 1/2/3 detection) ──
+    # Phase C4 replaces the C1 placeholder with real detection logic.
     # INVARIANT: F1 inline MUST have written spin_type_breakdown before this
     # call (see 04_v3 §4.2 ordering contract).
     assert "spin_type_breakdown" in summary.get("player_impact", {}), (
         "PHASE C1 INVARIANT: F1 inline must write player_impact.spin_type_breakdown "
         "before MechanismRegistry build. Ordering contract violated."
     )
-    _mechanism_registry = _MechanismRegistry()
-    # Phase C4 will call _build_mechanism_registry() here instead.
+    # C4 FIX-1 (per impl-critic): machine_mechanics.emit() also reads
+    # payout_ids_top20 + bonus_chain_dynamics via defensive .get(..., []).
+    # If Phase B ordering is violated by a future edit, those defensive paths
+    # silently produce jp_win=0 + fs_chain_spins=0 — wrong numbers with NO
+    # error. Assert all three sentinels for the inline-F-blocks-complete
+    # invariant.
+    assert "payout_ids_top20" in summary.get("player_impact", {}), (
+        "PHASE C4 INVARIANT: F2 inline must write player_impact.payout_ids_top20 "
+        "before MechanismRegistry build. machine_mechanics.jackpot Tier 3 reads "
+        "this; silent fallback would produce jackpot.applicable=false for "
+        "M275-class machines. Ordering contract violated."
+    )
+    assert "bonus_chain_dynamics" in summary.get("player_impact", {}), (
+        "PHASE C4 INVARIANT: F6 inline must write player_impact.bonus_chain_dynamics "
+        "before MechanismRegistry build. machine_mechanics.free_spin Tier 2 reads "
+        "this; silent fallback would produce free_spin.applicable=false for "
+        "M275-class machines. Ordering contract violated."
+    )
+    # Extract pid_has_regular_line from payouts_by_spin_type plugin accumulator.
+    # This is built by PayoutsBySpinType.extract() across all chunks and tells
+    # us which PIDs have at least one regular payline record (line_id != -1).
+    # PIDs absent from this dict (or with False value) are scatter-trigger-only.
+    _c4_pbs_acc = _feature_accs.get("payouts_by_spin_type") or {}
+    _c4_pid_has_regular_line: dict[str, bool] = _c4_pbs_acc.get("pid_has_regular_line") or {}
+    _mechanism_registry = _MechanismRegistry.build(
+        manifest=_c1_manifest,
+        payout_id_win=dict(payout_id_win),
+        payout_id_hits=dict(payout_id_hits),
+        jackpot_ids_seen=total_jackpot_ids_seen,
+        bonus_chain_lengths=bonus_chain_lengths,
+        total_freespin_chain_spins=total_freespin_chain_spins,
+        payout_group_win=dict(payout_group_win),
+        pid_has_regular_line=_c4_pid_has_regular_line,
+    )
     summary["_mechanism_registry"] = _mechanism_registry
 
     # ── Phase C1 — Step 3: compute robots_with_pending_cycle ─────────────

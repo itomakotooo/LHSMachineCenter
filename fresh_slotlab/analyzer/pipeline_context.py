@@ -1,7 +1,10 @@
-"""PipelineContext and MechanismRegistry placeholder.
+"""PipelineContext and MechanismRegistry re-export.
 
 Phase C1 of analyzer unbundle (M275-driven) per
 session_artifacts/_arch_analyzer_unbundle/04_architecture_proposal_v3.md §4.1–§4.3.
+Phase C4: MechanismRegistry moved to mechanism_registry.py; this module
+re-exports it for backward compatibility with any caller that imports
+from pipeline_context.
 
 PipelineContext
 ---------------
@@ -13,67 +16,27 @@ compute ``rtp_contribution_pp`` or other RTP-denominated metrics need
 
 Frozen so plugins cannot accidentally mutate shared pipeline state.
 
-MechanismRegistry (placeholder)
----------------------------------
-Empty placeholder class.  The actual detection logic (Tier 1/2/3 per §5.2)
-ships in Phase C4 of the carve plan.  C1 ships just the class definition so
-PipelineContext can carry a typed ``mechanism_registry`` field without depending
-on a future module that does not exist yet.
+MechanismRegistry
+-----------------
+Real Tier 1/2/3 detection logic implemented in Phase C4.
+Class definition lives in mechanism_registry.py (outside core/) so changes
+to detection logic do NOT flip compute_base_analyzer_version() fleet-wide.
+This module re-exports MechanismRegistry for callers that import from here.
 
 No import-time I/O per memory/feedback_subprocess_import_suicide_and_module_globals.md.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-
-# ---------------------------------------------------------------------------
-# MechanismRegistry — Phase C4 fills this; C1 ships a pure placeholder.
-# ---------------------------------------------------------------------------
-
-class MechanismRegistry:
-    """Single source of truth for machine mechanism detection.
-
-    Phase C1 placeholder — no detection logic yet.  All attributes return
-    empty / falsy values, making mechanism-registry-aware emit() plugins
-    degrade gracefully to their current (pre-C4) fallback behaviour.
-
-    Phase C4 will replace this class body with the Tier 1/2/3 detection
-    algorithm described in 04_v3 §5.2.
-
-    Instance is built once per run by ``_build_mechanism_registry()`` in the
-    PIA finalization block and passed through ``PipelineContext`` to every
-    ``emit()`` call.  The same instance is also stashed temporarily in
-    ``summary["_mechanism_registry"]`` for the DECLARED_DEPS mechanism
-    (and cleaned up after the emit loop like all ``_`` prefixed temp keys).
-    """
-
-    def __init__(self) -> None:
-        # Tier 1/2/3 fields — all falsy so C1 is a no-op for any plugin
-        # that reads the registry.  C4 populates these.
-        self.jackpot_applicable: bool = False
-        self.jackpot_pid_set: frozenset[str] = frozenset()
-        self.freespin_applicable: bool = False
-        self.scatter_marker_pids: frozenset[str] = frozenset()
-        self.payout_groups_applicable: bool = False
-        self._detection_source: dict[str, str] = {}
-
-    def to_summary_dict(self) -> dict[str, Any]:
-        """Serialise registry state for inclusion in the summary JSON.
-
-        C1 returns a minimal dict.  C4 will return the full portrait.
-        """
-        return {
-            "jackpot_applicable": self.jackpot_applicable,
-            "jackpot_pid_set": sorted(self.jackpot_pid_set),
-            "freespin_applicable": self.freespin_applicable,
-            "scatter_marker_pids": sorted(self.scatter_marker_pids),
-            "payout_groups_applicable": self.payout_groups_applicable,
-            "_detection_source": dict(self._detection_source),
-            "_phase": "C1_placeholder",
-        }
+# Phase C4: real MechanismRegistry lives in mechanism_registry.py.
+# Re-export here for backward compatibility with any existing caller.
+try:
+    from fresh_slotlab.analyzer.mechanism_registry import MechanismRegistry
+except ImportError:  # running as standalone script
+    from analyzer.mechanism_registry import MechanismRegistry  # type: ignore[no-redef]
 
 
 # ---------------------------------------------------------------------------
