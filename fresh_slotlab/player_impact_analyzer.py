@@ -1282,10 +1282,11 @@ def main() -> int:
     payout_id_by_spin_type_total: dict[str, dict[int, int]] = defaultdict(
         lambda: defaultdict(int)
     )
-    # 2026-05-14: per (pay_id, ST) WIN totals across chunks.
-    payout_id_win_by_spin_type_total: dict[str, dict[int, float]] = defaultdict(
-        lambda: defaultdict(float)
-    )
+    # Note: payout_id_win_by_spin_type_total removed in Phase C2.
+    # It was only consumed by Block F3 (payouts_by_spin_type), which is
+    # now owned by the PayoutsBySpinType plugin's extract/reduce/emit.
+    # payout_id_by_spin_type_total is kept: F2 (payout_ids_top20) still
+    # uses it for dominant-SpinType attribution at finalization.
     spin_type_spins: dict[int, int] = defaultdict(int)
     spin_type_next_counts: dict[int, Counter] = defaultdict(Counter)
     spin_type_remarks_sample: dict[int, list[str]] = defaultdict(list)
@@ -1517,6 +1518,25 @@ def main() -> int:
         md5_filter_active = bool(args.upstream_config_md5 or args.upstream_code_md5)
         historical_md5_skipped = 0
 
+        # Phase C2: pre-register feature plugins BEFORE the merge loop so
+        # that ALL_FEATURES is populated when extract() is called per chunk.
+        # Without this block, ALL_FEATURES is empty during the merge loop
+        # (plugins are lazy-imported at emit time) → extract() is never called
+        # → payouts_by_spin_type accumulator stays empty → emit() writes
+        # empty lists (C1 latent bug class; C2 is first phase with real
+        # extract() work). Imports are idempotent (Python module cache +
+        # register() duplicate guard).
+        try:
+            import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
+            import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
+            import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
+            import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
+        except ImportError:  # running as standalone script
+            import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
+            import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
+            import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
+            import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
+
         for read_idx, cf in enumerate(chunk_files):
             # Fast path: when a md5 filter is active, consult the
             # per-mode sidecar (``_chunks.json``) first. Sidecar
@@ -1743,16 +1763,8 @@ def main() -> int:
                         except (TypeError, ValueError):
                             _st_int = -1
                         payout_id_by_spin_type_total[str(pid)][_st_int] += int(cnt or 0)
-                # 2026-05-14: merge per (pay_id, ST) win amounts.
-                for pid, st_map in (rec.get("payout_id_win_by_spin_type") or {}).items():
-                    if not isinstance(st_map, dict):
-                        continue
-                    for st_key, win_val in st_map.items():
-                        try:
-                            _st_int = int(st_key)
-                        except (TypeError, ValueError):
-                            _st_int = -1
-                        payout_id_win_by_spin_type_total[str(pid)][_st_int] += float(win_val or 0.0)
+                # Phase C2: payout_id_win_by_spin_type_total removed — now owned
+                # by PayoutsBySpinType plugin's extract()/reduce() accumulator.
                 for st, c in (rec.get("spin_type_spins") or {}).items():
                     spin_type_spins[int(st)] += int(c)
                 for st, b in (rec.get("spin_type_bet") or {}).items():
@@ -1995,10 +2007,24 @@ def main() -> int:
                                 _feature_accs.get(_fc_feat.FEATURE_ID, {}),
                                 _fc_this,
                             )
-                        except Exception:  # noqa: BLE001
-                            # extract() / reduce() error: use prev_acc unchanged.
-                            pass
+                        except Exception as _fc_exc:  # noqa: BLE001
+                            # Phase C2: extract()/reduce() error — persist diagnostic
+                            # per feedback_no_silent_swallow.md; do NOT silently pass.
+                            # Use prev_acc unchanged; capture error for feature_errors.
+                            import sys as _fc_sys
+                            print(
+                                f"WARNING: feature '{_fc_feat.FEATURE_ID}' "
+                                f"extract()/reduce() failed on chunk "
+                                f"{rec.get('index', '?')}: {_fc_exc}",
+                                file=_fc_sys.stderr,
+                            )
+                            _feature_accs.setdefault(
+                                f"_extract_error_{_fc_feat.FEATURE_ID}", []
+                            ).append(str(_fc_exc))
                 except Exception:  # noqa: BLE001
+                    # Outer guard: import failure or ParseState construction
+                    # failure. These are infrastructure errors; keep pass here
+                    # to avoid aborting the cache replay on transient issues.
                     pass
 
             # Emit heartbeat every read_progress_step chunks so the
@@ -2162,6 +2188,24 @@ def main() -> int:
     current_chunk_spins = args.chunk_spin_times
     consecutive_successful_batches = 0
     last_batch_pause_until = 0.0  # time.time() to resume after circuit pause
+
+    # Phase C2: pre-register feature plugins BEFORE the online merge loop so
+    # that ALL_FEATURES is populated when extract() is called per chunk.
+    # Mirrors the from-cache pre-registration block above (lines ~1521-1538).
+    # Without this block, ALL_FEATURES is empty during the online loop
+    # (plugins are lazy-imported at emit time only) → extract() is never called
+    # → payouts_by_spin_type accumulator stays empty in pure-online mode.
+    # Imports are idempotent (Python module cache + register() duplicate guard).
+    try:
+        import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
+        import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
+        import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
+        import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
+    except ImportError:  # running as standalone script
+        import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
+        import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
+        import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
+        import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
 
     # ── online sampling path (skipped in read-only --from-cache mode) ──
     while not skip_sampling_loop and next_chunk_index <= args.max_chunks:
@@ -2487,16 +2531,8 @@ def main() -> int:
                         except (TypeError, ValueError):
                             _st_int = -1
                         payout_id_by_spin_type_total[str(pid)][_st_int] += int(cnt or 0)
-                # 2026-05-14: merge per (pay_id, ST) win amounts.
-                for pid, st_map in (rec.get("payout_id_win_by_spin_type") or {}).items():
-                    if not isinstance(st_map, dict):
-                        continue
-                    for st_key, win_val in st_map.items():
-                        try:
-                            _st_int = int(st_key)
-                        except (TypeError, ValueError):
-                            _st_int = -1
-                        payout_id_win_by_spin_type_total[str(pid)][_st_int] += float(win_val or 0.0)
+                # Phase C2: payout_id_win_by_spin_type_total removed — now owned
+                # by PayoutsBySpinType plugin's extract()/reduce() accumulator.
                 # spin_type_* added in the SpinType-breakdown commit; old
                 # chunk records tolerate missing via .get().
                 for st, c in (rec.get("spin_type_spins") or {}).items():
@@ -2752,9 +2788,18 @@ def main() -> int:
                                 _feature_accs.get(_ol_feat.FEATURE_ID, {}),
                                 _ol_this,
                             )
-                        except Exception:  # noqa: BLE001
-                            # extract() / reduce() error: use prev_acc unchanged.
-                            pass
+                        except Exception as _ol_exc:  # noqa: BLE001
+                            # Phase C2: persist diagnostic per feedback_no_silent_swallow.md.
+                            import sys as _ol_sys
+                            print(
+                                f"WARNING: feature '{_ol_feat.FEATURE_ID}' "
+                                f"extract()/reduce() failed on chunk "
+                                f"{rec.get('index', '?')}: {_ol_exc}",
+                                file=_ol_sys.stderr,
+                            )
+                            _feature_accs.setdefault(
+                                f"_extract_error_{_ol_feat.FEATURE_ID}", []
+                            ).append(str(_ol_exc))
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -3356,64 +3401,16 @@ def main() -> int:
             }
         )
 
-    # ── SpinType-split pay_id breakdown (2026-05-14) ──────────────────
-    # payouts_by_spin_type: {spin_type_label → [{payout_id, hit_count,
-    # hit_rate, total_win, avg_win_when_hit, rtp_contribution_pp}]} where
-    # spin_type_label is "ST{N}_{behavior}" (e.g. "ST43_paid", "ST44_free").
-    # Field names intentionally match payout_ids_top20 schema so the
-    # frontend can pass either array to the shared _renderPayoutRowsHtml
-    # helper without field-name translation.
-    # Machine-agnostic: label is derived from behavior_name computed
-    # above in spin_type_rows (CostCredits>0 = paid; =0 = free; mix).
-    # Existing aggregate payout_ids_top20 stays untouched.
+    # ── SpinType label map — used by F4 (reel_marginal_by_spin_type) ────────
+    # Phase C2: payouts_by_spin_type construction moved to the plugin's
+    # emit() method (PayoutsBySpinType.emit()). _st_label is kept here
+    # because Block F4 (reel_marginal_by_spin_type, not yet carved) still
+    # needs it. Per 04_v3 §7.1 ordering note: _st_label is a shared
+    # intermediate derived from F1's spin_type_rows.
     _st_label: dict[int, str] = {
         int(row["spin_type"]): f"ST{int(row['spin_type'])}_{row['behavior_name']}"
         for row in spin_type_rows
     }
-    payouts_by_spin_type: dict[str, list[dict[str, Any]]] = {}
-    for st_int, label in sorted(_st_label.items()):
-        st_spins_count = int(spin_type_spins.get(st_int, 0))
-        st_paid_bet = float(spin_type_paid_bet.get(st_int, 0.0))
-        # Per-ST RTP denominator: use paid_bet for paid STs,
-        # effective_bet_for_rtp (global) for free STs (their wins
-        # belong to triggering sessions; showing a per-ST RTP without
-        # the triggering bet would be misleading, so we use the same
-        # global denominator as rtp_contribution_pp).
-        _st_rtp_denom = st_paid_bet if st_paid_bet > 0 else effective_bet_for_rtp
-        st_pid_rows: list[dict[str, Any]] = []
-        for pid, wins in sorted(payout_id_win.items(), key=lambda kv: kv[1], reverse=True):
-            # Win + hits for this (pid, ST) pair from the accumulators.
-            st_win_map = payout_id_win_by_spin_type_total.get(str(pid)) or {}
-            st_win = float(st_win_map.get(st_int, 0.0))
-            st_hit_map = payout_id_by_spin_type_total.get(str(pid)) or {}
-            st_hits = int(st_hit_map.get(st_int, 0))
-            # Skip only if the pay_id genuinely did not fire in this ST.
-            # Trigger-marker pay_ids (e.g. M31 pid 666 always win=0 but
-            # fires 11,633 times in ST43_paid as the FreeSpin scatter
-            # marker) MUST be retained — they're meaningful data even
-            # at 0 RTP contribution. Previous st_win==0 filter dropped
-            # them silently.
-            if st_hits == 0:
-                continue
-            st_pid_rows.append({
-                "payout_id": str(pid),
-                "hit_count": st_hits,
-                # hit_rate as a fraction (same semantics as
-                # payout_ids_top20.hit_rate — fraction, not percent).
-                "hit_rate": (st_hits / st_spins_count) if st_spins_count > 0 else 0.0,
-                "total_win": st_win,
-                "avg_win_when_hit": (st_win / st_hits) if st_hits > 0 else 0.0,
-                # rtp_contribution_pp relative to the GLOBAL paid-session
-                # denominator (same as aggregate payout row) so values are
-                # directly comparable with payout_ids_top20.rtp_contribution_pp.
-                "rtp_contribution_pp": (
-                    (st_win / effective_bet_for_rtp) * 100.0
-                    if effective_bet_for_rtp > 0 else 0.0
-                ),
-            })
-        # Sanity: sum(rtp_contribution_pp) for this ST should ≈
-        # spin_type_rows rtp_contribution_pp.
-        payouts_by_spin_type[label] = st_pid_rows
 
     symbol_rows = []
     for sym, cnt in sorted(symbol_counts.items(), key=lambda kv: kv[1], reverse=True):
@@ -4493,14 +4490,11 @@ def main() -> int:
             "paylines_top20": list(payline_rows),
             "payout_groups_top20": list(payout_group_rows),
             "payout_ids_top20": list(payout_id_rows),
-            # 2026-05-14: SpinType-split breakdowns.
-            # payouts_by_spin_type: {spin_type_label → sorted list of
-            # {payout_id, hit_count, hit_rate, total_win,
-            # avg_win_when_hit, rtp_contribution_pp}} for pay_ids that
-            # fired in that ST. Field names match payout_ids_top20 schema
-            # so frontend can use the same renderer for both.
-            # Existing aggregate payout_ids_top20 stays untouched.
-            "payouts_by_spin_type": payouts_by_spin_type,
+            # Phase C2: payouts_by_spin_type is now written by the
+            # PayoutsBySpinType plugin's emit() (Pattern B). The key is
+            # populated in Phase D (plugin emit loop) after this summary
+            # dict is constructed. The plugin writes directly into
+            # summary["player_impact"]["payouts_by_spin_type"].
             # reel_marginal_by_spin_type: {spin_type_label → {reel_col →
             # [{symbol, count, prob_pct}]}} where prob_pct sums to 100
             # per (label, reel). Existing symbols_by_column_top10 untouched.
@@ -5052,6 +5046,21 @@ def main() -> int:
                 summary["feature_errors"] = {}
             summary["feature_errors"][_feature.FEATURE_ID] = str(_emit_exc)
 
+    # Phase C2: surface _extract_error_* entries from _feature_accs into
+    # summary["feature_errors"] so they persist to disk.
+    # Per feedback_no_silent_swallow.md: extract() errors must not be silently
+    # swallowed — they are captured per-feature during the merge loop and
+    # surfaced here after the emit loop completes.
+    for _feat_key, _feat_errs in list(_feature_accs.items()):
+        if _feat_key.startswith("_extract_error_") and _feat_errs:
+            _fid = _feat_key[len("_extract_error_"):]
+            if "feature_errors" not in summary:
+                summary["feature_errors"] = {}
+            # Join all per-chunk errors for this feature into one entry.
+            summary["feature_errors"][f"extract_{_fid}"] = "; ".join(
+                str(e) for e in _feat_errs
+            )
+
     # Cleanup: remove all _-prefixed temp keys (DECLARED_DEPS + registry).
     # This includes _bankruptcy_rows, _bankruptcy_sim_session_spins,
     # _mechanism_registry, and any future plugin temp keys.
@@ -5060,7 +5069,7 @@ def main() -> int:
     for _tmp_key in list(summary.keys()):
         if _tmp_key.startswith("_"):
             summary.pop(_tmp_key, None)
-    # ── End Wave 2c / Phase C1 ─────────────────────────────────────────────
+    # ── End Wave 2c / Phase C1 + C2 ───────────────────────────────────────────
 
     # ── Phase 5 (P5-1 partial): RTP integrity gate, warn-only ──────────────
     # Run the 4-layer integrity gate against the just-built summary and
@@ -5292,7 +5301,9 @@ def main() -> int:
         "Columns: payout_id | hit_count | rtp_contribution_pp | total_win. "
         "Each sub-section is one SpinType (base vs freespin etc.)."
     )
-    for label, pid_rows in sorted(payouts_by_spin_type.items()):
+    # Phase C2: payouts_by_spin_type local var removed; read from summary.
+    _md_pbst = (summary.get("player_impact") or {}).get("payouts_by_spin_type") or {}
+    for label, pid_rows in sorted(_md_pbst.items()):
         if not pid_rows:
             continue
         md_lines.append(f"")

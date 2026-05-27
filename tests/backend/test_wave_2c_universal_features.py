@@ -69,7 +69,7 @@ FEATURE_SPECS = [
         "feature_id": "payouts_by_spin_type",
         "module_name": "fresh_slotlab.analyzer.features.payouts_by_spin_type",
         "module_file": "payouts_by_spin_type.py",
-        "pattern": "A",  # scaffolding: extract={}, reduce=prev_acc
+        "pattern": "B",  # Phase C2: Pattern A → B (real extract/reduce/emit)
         "schema_keys_include": ("payouts_by_spin_type",),
     },
     {
