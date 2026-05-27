@@ -68,7 +68,11 @@ except ImportError:  # running as a standalone script (fresh_slotlab/ on sys.pat
 # Now that the function lives here we must make the same imports explicit.
 try:
     from fresh_slotlab.trigger_sessions import compute_trigger_sessions
-    from fresh_slotlab.round_classification import detect_cycle_peak, is_wild_nudge_round
+    from fresh_slotlab.round_classification import (
+        detect_cycle_peak,
+        is_wild_nudge_round,
+        attribute_lines_to_pay_ids,
+    )
     from fresh_slotlab.round_win import (
         RoundWinRule,
         extract_round_payouts,
@@ -76,7 +80,11 @@ try:
     )
 except ImportError:  # running as a standalone script
     from trigger_sessions import compute_trigger_sessions  # type: ignore[no-redef]
-    from round_classification import detect_cycle_peak, is_wild_nudge_round  # type: ignore[no-redef]
+    from round_classification import (  # type: ignore[no-redef]
+        detect_cycle_peak,
+        is_wild_nudge_round,
+        attribute_lines_to_pay_ids,
+    )
     from round_win import (  # type: ignore[no-redef]
         RoundWinRule,
         extract_round_payouts,
@@ -945,6 +953,29 @@ def parse_chunk_response(
     # Reel position distribution: from PayoutByPayline "(pos1,pos2,...)" groups.
     reel_position_hits: dict[str, int] = defaultdict(int)
     _POSITION_RE = re.compile(r"\(([0-9,]+)\)")
+
+    # C3 enrichment: per-pid payline attribution data.
+    # Used by payouts_by_spin_type plugin to emit shape / covered_columns /
+    # paylines / notes enrichment per (pid, spin_type).
+    #
+    # payout_id_payline_hits[pid_str][payline_id_str] = hit_count
+    #   Every PayoutByPayline record attributed to pid increments this.
+    #   line_id==-1 (scatter trigger) records use "-1" as the payline key.
+    # payout_id_match_count_dist[pid_str][match_count_int] = occurrences
+    #   Records match_count (n-of-a-kind) only for line_id != -1 records.
+    # payout_id_col_set[pid_str] = {col_int, ...}
+    #   Decoded column indices from PayoutByPayline positions, all records.
+    #   col = (pos + 1) // 100 - 1  (per parser position-encoding doc).
+    # payout_id_has_regular_line[pid_str] = True if ANY record had line_id != -1
+    #   False (default) means all observed records are scatter-trigger lines.
+    payout_id_payline_hits: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    payout_id_match_count_dist: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    payout_id_col_set: dict[str, set[int]] = defaultdict(set)
+    # Sparse True-only: only set when a non-trigger line_id is seen.
+    # Absent key means "no regular line observed" (default False at consumer).
+    # Used by plugin to distinguish pure-scatter pids (e.g. M275 pid 666)
+    # from regular-line pids.
+    payout_id_has_regular_line: dict[str, bool] = {}
 
     # Bonus-chain dynamics (from ReMarks). A "chain" is a contiguous run
     # of Freespin-annotated rounds within one robot. We track per chain:
@@ -1822,6 +1853,33 @@ def parse_chunk_response(
                     # 2026-05-14: also track win per (pid, ST) for ST-split breakdown.
                     payout_id_win_by_spin_type[pid][_st_key] += _credited
 
+            # C3: per-pid payline attribution enrichment.
+            # Runs whenever PayoutByPayline is present on this round.
+            # attribute_lines_to_pay_ids handles symbol→pid matching
+            # (direct / suffix / single-remaining) via existing helpers.
+            # This is the only call site; adds no duplicate logic.
+            _pbp_c3 = r.get("PayoutByPayline")
+            if _pbp_c3:
+                for _c3rec in attribute_lines_to_pay_ids(r):
+                    _c3pid = _c3rec.get("pay_id")
+                    if _c3pid is None:
+                        continue
+                    _c3pid_s = str(_c3pid)
+                    _c3lid = _c3rec.get("line_id", 0)
+                    _c3lid_s = str(_c3lid)
+                    payout_id_payline_hits[_c3pid_s][_c3lid_s] += 1
+                    # Decode col indices from positions (all records incl line_id=-1)
+                    for _c3pos in _c3rec.get("positions", []):
+                        _c3col = (_c3pos + 1) // 100 - 1
+                        if _c3col >= 0:
+                            payout_id_col_set[_c3pid_s].add(_c3col)
+                    # match_count distribution only for non-trigger lines
+                    if _c3lid != -1:
+                        payout_id_has_regular_line[_c3pid_s] = True
+                        _c3mc = _c3rec.get("match_count", 0)
+                        if _c3mc > 0:
+                            payout_id_match_count_dist[_c3pid_s][_c3mc] += 1
+
             # 2026-04-27: fallback synthesizer for the unattributed
             # delta. Closes the ``sum(payid_win) ~= chunk_win``
             # invariant fleet-wide. Skipped when:
@@ -2328,4 +2386,20 @@ def parse_chunk_response(
         # fall back to per-chunk merge — produces zeros but doesn't
         # crash, and operators can rebuild reports to refresh.
         "bankruptcy_reps": _extract_bankruptcy_reps(resp, round_win_rules=round_win_rules),
+        # C3 enrichment: per-pid payline attribution data.
+        # payouts_by_spin_type plugin reads these in extract() to compute
+        # shape / covered_columns / paylines / notes per (pid, spin_type).
+        "payout_id_payline_hits": {
+            pid_s: dict(pl_map)
+            for pid_s, pl_map in payout_id_payline_hits.items()
+        },
+        "payout_id_match_count_dist": {
+            pid_s: dict(mc_map)
+            for pid_s, mc_map in payout_id_match_count_dist.items()
+        },
+        "payout_id_col_set": {
+            pid_s: sorted(col_set)
+            for pid_s, col_set in payout_id_col_set.items()
+        },
+        "payout_id_has_regular_line": dict(payout_id_has_regular_line),
     }

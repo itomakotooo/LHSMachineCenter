@@ -21,9 +21,13 @@ parser, which DOES have the correct data. This is a C2 improvement.
 The test therefore does NOT assert byte-identical to pre-C2 for M37.
 Instead it asserts:
   1. payouts_by_spin_type has NON-EMPTY rows (improvement over pre-C2 empty output).
-  2. Row schema is correct (SCHEMA_VERSION 1).
+  2. Row schema is correct (SCHEMA_VERSION 1 legacy 6 fields via subset check).
   3. No temp key leaks.
   4. RTP integrity still passes.
+
+**Updated post-C3**: Under C3 (SCHEMA_VERSION=2), each row gains 4 new optional fields:
+shape / covered_columns / paylines / notes.  This test verifies only the LEGACY 6 fields
+remain present via subset comparison (_REQUIRED_ROW_KEYS).
 
 Inject-bug recipe (per memory/feedback_enumerate_safety_paths.md)
 -----------------------------------------------------------------
@@ -155,7 +159,12 @@ class TestM37C2PayoutsBySpinType:
         )
 
     def test_payouts_by_spin_type_row_schema(self, m37_c2_summary):
-        """Every row must have the 6 required SCHEMA_VERSION 1 keys."""
+        """Every row must have the 6 required SCHEMA_VERSION 1 keys (subset check).
+
+        Post-C3 note: rows now contain additional SCHEMA_VERSION 2 fields
+        (shape/covered_columns/paylines/notes); this test verifies only the
+        legacy 6 fields are present, not the full C3 schema.
+        """
         pbst = m37_c2_summary["player_impact"]["payouts_by_spin_type"]
         for label, rows in pbst.items():
             for row in rows:

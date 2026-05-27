@@ -11,6 +11,11 @@ This test verifies:
 2. The bonus-chain path was not broken by C2's plugin carve.
 3. No other player_impact subkey regressed.
 
+**Updated post-C3**: Under C3 (SCHEMA_VERSION=2), each row gains 4 new optional fields:
+shape / covered_columns / paylines / notes.  These tests verify only the LEGACY 6 fields
+remain byte-identical via subset comparison (_REQUIRED_ROW_KEYS); new C3 fields are
+validated in test_c3_byte_identical_legacy_fields_m275.py.
+
 Inject-bug recipe (per memory/feedback_enumerate_safety_paths.md)
 -----------------------------------------------------------------
 Bug: in payouts_by_spin_type.py extract(), change the hits accumulator to:
@@ -141,7 +146,12 @@ class TestM275C2PayoutsBySpinType:
         )
 
     def test_payouts_by_spin_type_row_schema(self, m275_c2_summary):
-        """Every row must have the 6 SCHEMA_VERSION 1 required keys."""
+        """Every row must have the 6 SCHEMA_VERSION 1 required keys (subset check).
+
+        Post-C3 note: rows now contain additional SCHEMA_VERSION 2 fields
+        (shape/covered_columns/paylines/notes); this test verifies only the
+        legacy 6 fields are present, not the full C3 schema.
+        """
         pbst = m275_c2_summary["player_impact"]["payouts_by_spin_type"]
         for label, rows in pbst.items():
             for row in rows:
