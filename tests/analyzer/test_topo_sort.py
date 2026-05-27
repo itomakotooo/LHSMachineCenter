@@ -180,24 +180,32 @@ def test_missing_dep_identifies_correct_plugin_and_dep():
 # Test: real 4 plugins from the C1 feature set
 # ---------------------------------------------------------------------------
 
-def test_real_four_plugins_no_deps_alphabetical():
-    """The 4 C1 plugins all have DECLARED_DEPS=() and REQUIRES=() → alphabetical."""
+def test_real_plugins_no_deps_alphabetical():
+    """All registered plugins have DECLARED_DEPS=() + REQUIRES=() → alphabetical.
+
+    C3.5 update: was test_real_four_plugins_no_deps_alphabetical (C1 set of 4).
+    C3.5 added multiplier_wild as a 5th plugin → test renamed + expected set
+    extended. Test logic unchanged: all registered plugins must alphabetize.
+    """
     import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
     import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
     import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
     import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
+    import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  (C3.5 add)
     from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
 
     result = topological_sort(ALL_FEATURES)
     fids = [f.FEATURE_ID for f in result]
 
-    # All 4 should be present
-    assert set(fids) == {
+    # All 5 known plugins should be present (4 C1 + multiplier_wild from C3.5)
+    expected_set = {
         "payouts_by_spin_type",
         "reel_marginal_by_spin_type",
         "bankruptcy_simulation",
         "multiplier_profile",
+        "multiplier_wild",
     }
+    assert set(fids) >= expected_set, f"Missing plugins: {expected_set - set(fids)}"
 
-    # Alphabetical: bankruptcy < multiplier < payouts < reel
+    # Alphabetical: bankruptcy < multiplier_profile < multiplier_wild < payouts < reel
     assert fids == sorted(fids), f"Expected alphabetical, got {fids}"

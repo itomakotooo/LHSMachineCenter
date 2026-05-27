@@ -74,7 +74,7 @@ _C2_BASE_HASH = "b0ba0ce7c7e2"
 # Expected post-C3 base_hash (after parser.py adds 4 C3 aggregation dicts).
 # Computed from coordinator-verified smoke run 2026-05-27.
 # Update if parser.py is edited further before C3 commit.
-_EXPECTED_C3_BASE_HASH = "64409ab1b68c"
+_EXPECTED_C3_BASE_HASH = "fa440e3eb5f6"  # C3.5: updated post-C3-fix-pass parser comment addition that flipped 64409ab1b68c -> fa440e3eb5f6 (stash drift round 3 also confirmed unchanged)
 
 _HEX12_RE = re.compile(r"^[0-9a-f]{12}$")
 
@@ -88,7 +88,13 @@ def _compute_base_hash() -> str:
 
 
 class TestBaseHashFlipExpected:
-    """base_hash flipped from C2 (b0ba0ce7c7e2) to C3 (64409ab1b68c) — EXPECTED."""
+    """base_hash flipped from C2 (b0ba0ce7c7e2) to C3 (fa440e3eb5f6) — EXPECTED.
+
+    Note: C3 commit initially shipped at 64409ab1b68c, but post-commit fix-pass
+    added a parser comment which shifted the hash to fa440e3eb5f6 (C3 stable
+    final value). C3.5 verified this value via stash-and-recompute. The
+    _EXPECTED_C3_BASE_HASH constant at line 77 is the authoritative pin.
+    """
 
     def test_base_hash_is_valid_12_hex(self):
         """compute_base_analyzer_version() returns a non-empty 12-char lowercase hex string.
@@ -118,11 +124,12 @@ class TestBaseHashFlipExpected:
         )
 
     def test_base_hash_matches_expected_c3_value(self):
-        """base_hash must be the known post-C3 value (64409ab1b68c).
+        """base_hash must be the known post-C3 value (currently fa440e3eb5f6).
 
-        This pins the exact hash of the C3 parser change. If this test fails
-        with a different hex value (not the C2 value), it means parser.py was
-        edited further — update _EXPECTED_C3_BASE_HASH to the new value.
+        This pins the exact hash of the C3 parser change + any subsequent
+        parser fix-passes. If this test fails with a different hex value (not
+        the C2 value), it means parser.py was edited further — update
+        _EXPECTED_C3_BASE_HASH at line 77 to the new value.
         """
         h = _compute_base_hash()
         assert h == _EXPECTED_C3_BASE_HASH, (

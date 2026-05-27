@@ -166,12 +166,14 @@ def compute_effective_version_for_machine(
             import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
             import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
             import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
+            import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
         except ImportError:
             try:
                 import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
                 import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
                 import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
                 import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
+                import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
             except ImportError:
                 pass
 

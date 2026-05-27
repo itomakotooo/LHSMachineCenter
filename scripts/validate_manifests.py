@@ -45,6 +45,7 @@ import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
 import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
 import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
 import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
+import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
 
 from fresh_slotlab.analyzer import feature_registry as _registry
 from fresh_slotlab.analyzer.manifest_loader import (

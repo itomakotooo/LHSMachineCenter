@@ -1531,11 +1531,13 @@ def main() -> int:
             import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
             import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
             import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
+            import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
         except ImportError:  # running as standalone script
             import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
             import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
             import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
             import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
+            import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
 
         for read_idx, cf in enumerate(chunk_files):
             # Fast path: when a md5 filter is active, consult the
@@ -2201,11 +2203,13 @@ def main() -> int:
         import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
         import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
         import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
+        import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
     except ImportError:  # running as standalone script
         import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
+        import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
 
     # ── online sampling path (skipped in read-only --from-cache mode) ──
     while not skip_sampling_loop and next_chunk_index <= args.max_chunks:
@@ -4887,6 +4891,7 @@ def main() -> int:
         import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
         import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
         import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
+        import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
         from fresh_slotlab.analyzer.feature_registry import (
             ALL_FEATURES as _ALL_FEATURES,
             get_features_for_machine as _get_features_for_machine,
@@ -4911,6 +4916,7 @@ def main() -> int:
         import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
+        import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
         from analyzer.feature_registry import (  # type: ignore[no-redef]
             ALL_FEATURES as _ALL_FEATURES,
             get_features_for_machine as _get_features_for_machine,
