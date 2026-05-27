@@ -4843,6 +4843,30 @@ def main() -> int:
         ),
     }
 
+    # ── Phase C6 — stash key for BonusChainDynamics plugin ───────────────
+    # Analogous to _collect_mechanic_data / _upstream_feature_breakdown_data (C5).
+    #
+    # The inline F6 block (lines ~3975-4063) continues to write
+    # summary["player_impact"]["bonus_chain_dynamics"] so that:
+    #   (a) the C4 invariant assert at line ~4954 remains satisfied, AND
+    #   (b) machine_mechanics.emit() can read bonus_chain_dynamics to derive
+    #       fs_chain_spins when total_freespin_chain_spins == 0 (M275 case).
+    #
+    # The stash carries:
+    #   - bonus_chain_dynamics: the pre-built public dict (passthrough — plugin
+    #     overwrites the same key with the same value; pure carve step).
+    #   - scatter_feature_names: sorted list of feature names from
+    #     all_chains_by_feature keys that have non-empty lengths (the same
+    #     filter as by_feature in the F6 inline block). Used by the plugin to
+    #     infer trigger_target for scatter-marker pids (gap #3).
+    summary["_bonus_chain_dynamics_data"] = {
+        "bonus_chain_dynamics": summary["player_impact"]["bonus_chain_dynamics"],
+        "scatter_feature_names": sorted(
+            feat for feat, afb in all_chains_by_feature.items()
+            if afb.get("lengths")
+        ),
+    }
+
     # ── Wave 2c / Phase C1: registered feature emit hooks ─────────────────
     # Phase C1 of analyzer unbundle (04_v3 §7.2) — plumbing only.
     # No visible output change; M14 + M275 cached rebuilds byte-identical.
@@ -4870,6 +4894,7 @@ def main() -> int:
         import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
         import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
         import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
+        import fresh_slotlab.analyzer.features.bonus_chain_dynamics  # noqa: F401  # C6
         from fresh_slotlab.analyzer.feature_registry import (
             ALL_FEATURES as _ALL_FEATURES,
             get_features_for_machine as _get_features_for_machine,
@@ -4898,6 +4923,7 @@ def main() -> int:
         import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
         import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
         import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
+        import analyzer.features.bonus_chain_dynamics  # type: ignore[no-redef]  # noqa: F401  # C6
         from analyzer.feature_registry import (  # type: ignore[no-redef]
             ALL_FEATURES as _ALL_FEATURES,
             get_features_for_machine as _get_features_for_machine,

@@ -18,7 +18,8 @@
     "multiplier_profile",
     "machine_mechanics",
     "upstream_feature_breakdown",
-    "collect_mechanic"
+    "collect_mechanic",
+    "bonus_chain_dynamics"
   ],
   "rtp_integrity_contract": {
     "required_attribution_anchors": [],

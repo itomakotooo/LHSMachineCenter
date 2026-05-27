@@ -2,10 +2,10 @@
 
 This is the most important new test in C3.5. It asserts that:
   1. base_hash is UNCHANGED from C3 (fa440e3eb5f6) — no core/*.py modification.
-  2. M275 effective_version FLIPPED to a4d1fa45cf36 (new plugin adds to hash).
-  3. M14 effective_version UNCHANGED at 47ff60ffa3f4.
-  4. M37 effective_version UNCHANGED at 47ff60ffa3f4.
-  5. M272 effective_version UNCHANGED at 47ff60ffa3f4.
+  2. M275 effective_version FLIPPED to 5c78f3834a1e (new plugin adds to hash).
+  3. M14 effective_version UNCHANGED at 6aae41144cea.
+  4. M37 effective_version UNCHANGED at 6aae41144cea.
+  5. M272 effective_version UNCHANGED at 6aae41144cea.
 
 This is the C-phases' textbook demonstration of per-machine isolation property:
 adding a new plugin file (NOT in core/) does NOT flip base_hash; only machines
@@ -22,10 +22,10 @@ Invariants asserted
 -------------------
 1. compute_base_analyzer_version() returns 12-char hex string.
 2. base_hash == 'fa440e3eb5f6' (C3 value — unchanged in C3.5).
-3. M275 mode 1 effective_version == 'a4d1fa45cf36' (flipped by C3.5 plugin).
-4. M14 mode 1 effective_version == '47ff60ffa3f4' (unchanged).
-5. M37 mode 1 effective_version == '47ff60ffa3f4' (unchanged).
-6. M272 mode 1 effective_version == '47ff60ffa3f4' (unchanged).
+3. M275 mode 1 effective_version == '5c78f3834a1e' (flipped by C3.5 plugin).
+4. M14 mode 1 effective_version == '6aae41144cea' (unchanged).
+5. M37 mode 1 effective_version == '6aae41144cea' (unchanged).
+6. M272 mode 1 effective_version == '6aae41144cea' (unchanged).
 7. M14 effective_version != M275 effective_version (the isolation invariant).
 8. All non-M275 machines above share the same effective_version (they have
    identical feature sets: payouts_by_spin_type + reel_marginal + bankruptcy +
@@ -36,7 +36,7 @@ Inject-bug recipes (per memory/feedback_enumerate_safety_paths.md)
 Bug A — M14 manifest gains multiplier_wild (must flip M14 effective_version):
     In M14.json, add "multiplier_wild" to analyzer_features list.
     RED: test_m14_effective_version_unchanged fails (M14's version now includes
-         multiplier_wild hash → different from 47ff60ffa3f4).
+         multiplier_wild hash → different from 6aae41144cea).
          test_m14_does_not_equal_m275_effective_version also fails (now equal).
     Revert M14.json (remove "multiplier_wild" from analyzer_features) → GREEN.
 
@@ -80,26 +80,33 @@ sys.path.insert(0, str(_REPO_ROOT))
 # so this must remain identical.
 _C3_BASE_HASH = "fa440e3eb5f6"
 
-# C5 M275 effective_version — incorporates multiplier_wild + machine_mechanics +
-# upstream_feature_breakdown + collect_mechanic plugin hashes.
+# C6 M275 effective_version — incorporates multiplier_wild + machine_mechanics +
+# upstream_feature_breakdown + collect_mechanic + bonus_chain_dynamics plugin hashes.
 # Version history for M275:
 #   C3.5 ship: 2ef11cd69c8d (payouts/reel_marginal/bankruptcy/multiplier_profile + multiplier_wild = 5 plugins)
 #   C4 ship:   7489a1582d6d (add machine_mechanics = 6 plugins)
-#   C5 ship:   a4d1fa45cf36 (add upstream_feature_breakdown + collect_mechanic = 8 plugins; current)
+#   C5 ship:   a4d1fa45cf36 (add upstream_feature_breakdown + collect_mechanic = 8 plugins)
+#   C6 ship:   5c78f3834a1e (add bonus_chain_dynamics = 9 plugins; current)
 # Each phase added plugins → hash changed each time (as expected per
 # compute_effective_analyzer_version algorithm).
-# Updated 2026-05-27 in C5 commit when C5 added 2 plugins to manifest.
-_M275_C3_5_EFFECTIVE_VERSION = "a4d1fa45cf36"
+# Updated 2026-05-27 in C6 commit (third coordinator update of this constant).
+_M275_C3_5_EFFECTIVE_VERSION = "5c78f3834a1e"
 
-# C5 effective_version for non-M275 machines (M14/M37/M272).
-# Version history for non-M275 (4 C1 plugins + machine_mechanics from C4):
+# C6 effective_version for non-M275 machines (M14/M37/M272).
+# Version history for non-M275 (no multiplier_wild ever — opt-out):
 #   C3.5 ship: dd2ab55ef022 (only the 4 C1 plugins; multiplier_wild NOT in their manifest)
 #   C4 ship:   0427b30fb92e (add machine_mechanics = 5 plugins)
 #   C5 ship:   47ff60ffa3f4 (add upstream_feature_breakdown + collect_mechanic = 7 plugins)
+#   C6 ship:   6aae41144cea (add bonus_chain_dynamics = 8 plugins; current)
 # Isolation invariant from C3.5 era still holds: M275 ≠ M14/M37/M272 because
-# multiplier_wild is M275-only — they declare 7 plugins, M275 declares 8.
-# Updated 2026-05-27 in C5 commit.
-_NON_M275_EFFECTIVE_VERSION = "47ff60ffa3f4"
+# multiplier_wild is M275-only — they declare 8 plugins, M275 declares 9.
+# NOTE: variable name says "UNCHANGED" historically (since C3.5) but the value
+# itself changes EACH phase that adds a universal-rollout plugin (C4/C5/C6).
+# The "UNCHANGED" semantic refers to the C3.5 isolation invariant being still
+# valid (non-M275 machines all share the same hash; M275 differs by exactly
+# multiplier_wild's contribution), NOT that the literal hex value is stable.
+# Updated 2026-05-27 in C6 commit (third coordinator update of this constant).
+_NON_M275_EFFECTIVE_VERSION = "6aae41144cea"
 
 _HEX12_RE = re.compile(r"^[0-9a-f]{12}$")
 
@@ -180,13 +187,13 @@ class TestM275EffectiveVersionFlipped:
     """M275 effective_version must be the NEW C3.5 value (multiplier_wild included)."""
 
     def test_m275_effective_version_is_c3_5_value(self):
-        """M275 mode 1 effective_version must be a4d1fa45cf36 (C3.5 value).
+        """M275 mode 1 effective_version must be 5c78f3834a1e (C3.5 value).
 
         This confirms that multiplier_wild.py's hash is being folded into
         M275's effective_version composition.
 
         INJECT-BUG (Bug A): remove "multiplier_wild" from M275.json analyzer_features.
-        RED: M275 effective_version reverts to C3 non-M275 value (47ff60ffa3f4).
+        RED: M275 effective_version reverts to C3 non-M275 value (6aae41144cea).
         Revert M275.json → GREEN.
         """
         ev = _compute_effective_version("M275", 1)
@@ -223,7 +230,7 @@ class TestM14EffectiveVersionUnchanged:
 
     INJECT-BUG (Bug A): add "multiplier_wild" to M14.json analyzer_features.
     RED: test_m14_effective_version_unchanged fails (M14's hash now includes
-         multiplier_wild → different from 47ff60ffa3f4).
+         multiplier_wild → different from 6aae41144cea).
     Revert M14.json → GREEN.
 
     This is the CRITICAL isolation test — it proves the manifest-declared
@@ -231,7 +238,7 @@ class TestM14EffectiveVersionUnchanged:
     """
 
     def test_m14_effective_version_unchanged(self):
-        """M14 mode 1 effective_version must be 47ff60ffa3f4 (unchanged from C3).
+        """M14 mode 1 effective_version must be 6aae41144cea (unchanged from C3).
 
         INJECT-BUG (Bug A): add 'multiplier_wild' to M14.json analyzer_features.
         RED: M14 effective_version changes → this assertion fails.
@@ -277,7 +284,7 @@ class TestM37EffectiveVersionUnchanged:
     """M37 effective_version must be unchanged from C3 — M37 does NOT declare multiplier_wild."""
 
     def test_m37_effective_version_unchanged(self):
-        """M37 mode 1 effective_version must be 47ff60ffa3f4 (C3 value, unchanged).
+        """M37 mode 1 effective_version must be 6aae41144cea (C3 value, unchanged).
 
         INJECT-BUG (Bug B): add comment to core/parser.py.
         RED: base_hash flips → effective_version changes → this fails.
@@ -298,7 +305,7 @@ class TestM272EffectiveVersionUnchanged:
     """M272 effective_version must be unchanged from C3 — M272 does NOT declare multiplier_wild."""
 
     def test_m272_effective_version_unchanged(self):
-        """M272 mode 1 effective_version must be 47ff60ffa3f4 (C3 value, unchanged).
+        """M272 mode 1 effective_version must be 6aae41144cea (C3 value, unchanged).
 
         INJECT-BUG (Bug B): add comment to core/parser.py.
         RED: base_hash flips → effective_version changes → this fails.
