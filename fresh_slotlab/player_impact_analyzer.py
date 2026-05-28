@@ -4930,6 +4930,7 @@ def main() -> int:
             topological_sort as _topological_sort,
             PluginCyclicDependencyError as _PluginCyclicDependencyError,
             PluginMissingDependencyError as _PluginMissingDependencyError,
+            PluginDeclaredDepMissingError as _PluginDeclaredDepMissingError,
         )
         from fresh_slotlab.analyzer.manifest_loader import (
             load_manifest as _c1_load_manifest,
@@ -4959,6 +4960,7 @@ def main() -> int:
             topological_sort as _topological_sort,
             PluginCyclicDependencyError as _PluginCyclicDependencyError,
             PluginMissingDependencyError as _PluginMissingDependencyError,
+            PluginDeclaredDepMissingError as _PluginDeclaredDepMissingError,
         )
         from analyzer.manifest_loader import (  # type: ignore[no-redef]
             load_manifest as _c1_load_manifest,
@@ -5056,6 +5058,52 @@ def main() -> int:
     # ── Phase C1 — Step 5: topo-sort + emit loop ─────────────────────────
     # Use manifest-filtered feature set (get_features_for_machine).
     # Falls back to ALL_FEATURES if manifest is empty (Phase 2 stub behavior).
+
+    # R1 Cluster A: helper defined here so it is in scope for BOTH error
+    # regions below (Region 1 = topo-sort block; Region 2 = DECLARED_DEPS
+    # check inside the emit loop).  Per feedback_no_silent_swallow.md: any
+    # best-effort post-hook must persist diagnostic to disk.
+    #
+    # CRITICAL: stderr_ref is passed at CALL TIME (sys.stderr), NOT captured
+    # via closure from main() top, per arch-v2 §4.3 critique BF-2.
+    def _strip_internal_stash_keys(summary):
+        """Remove all _-prefixed top-level temp/stash keys (live, non-serializable).
+
+        Mirrors the success-path cleanup later in main(). Stash keys hold live
+        Python objects — _mechanism_registry (a MechanismRegistry), _bankruptcy_rows,
+        the C5 temp dicts — that are NOT JSON-serializable. They MUST be stripped
+        before ANY write_summary_json, including the Region 1/2 error-path writes,
+        or the write raises "Object of type X is not JSON serializable" and the
+        diagnostic never reaches disk (defeating Cluster A). Partial player_impact
+        plugin output (non _-prefixed) is preserved as the diagnostic per arch-v2
+        §4.3 "keep partial + annotate".
+        """
+        for _tmp_key in list(summary.keys()):
+            if _tmp_key.startswith("_"):
+                summary.pop(_tmp_key, None)
+
+    def _safe_write_summary_json(summary, output_dir, *, stderr_ref):
+        """Write summary JSON without letting write failure suppress caller's exception.
+
+        If write_summary_json raises (e.g. OSError, disk full, permission denied),
+        log the write failure to stderr_ref and RETURN — do NOT re-raise.
+        The caller's SystemExit(1) propagates unmolested.
+        Per feedback_no_silent_swallow.md: diagnostic is persisted on best-effort;
+        if the write itself fails, the stderr log is the fallback record.
+        """
+        # Region 1/2 fire BEFORE the success-path stash cleanup, so non-serializable
+        # internal stash objects (_mechanism_registry et al.) are still in summary
+        # and would make the write fail. Strip them first; keep partial player_impact.
+        _strip_internal_stash_keys(summary)
+        try:
+            write_summary_json(summary, output_dir)
+        except Exception as _write_exc:
+            print(
+                f"ERROR: failed to write summary JSON on error path: {_write_exc}",
+                file=stderr_ref,
+            )
+            # Return — do not re-raise. Caller's SystemExit(1) propagates.
+
     _machine_features = _get_features_for_machine(
         args.machine,
         manifest=_c1_manifest if _c1_manifest else None,
@@ -5064,25 +5112,32 @@ def main() -> int:
     try:
         _sorted_features = _topological_sort(_machine_features)
     except (_PluginCyclicDependencyError, _PluginMissingDependencyError) as _topo_exc:
+        # R1 Cluster A — Region 1: topo-sort hard error.
         # Programming error: cycle or missing dep in REQUIRES declarations.
         # Per 04_v3 §4.2 topo-sort failure surfacing + feedback_no_silent_swallow.md.
-        import sys as _sys
-        from datetime import datetime as _dt, timezone as _tz
-        _topo_error_dict = {
+        # Per arch-v2 §4.3: affected_plugin=None (multiple plugins may be involved
+        # in a cycle; PluginMissingDependencyError.plugin is set on the exc itself
+        # but for schema uniformity both use None here); region=1 signals pre-emit.
+        summary["analyzer_init_error"] = {
             "error_type": type(_topo_exc).__name__,
             "message": str(_topo_exc),
             "plugin_dep_graph": {
                 f.FEATURE_ID: list(f.REQUIRES)
                 for f in _machine_features
             },
-            "timestamp": _dt.now(_tz.utc).isoformat(),
+            "affected_plugin": None,
+            "region": 1,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        summary["analyzer_init_error"] = _topo_error_dict
         print(
             f"ERROR: analyzer plugin topo-sort failed: "
             f"{type(_topo_exc).__name__} — {_topo_exc}",
-            file=_sys.stderr,
+            file=sys.stderr,
         )
+        # Write structured diagnostic to disk BEFORE exit so backend/operator
+        # can inspect the error. _safe_write_summary_json guards against write
+        # failure replacing the original SystemExit(1) (per arch-v2 §4.3).
+        _safe_write_summary_json(summary, args.output_dir, stderr_ref=sys.stderr)
         # Non-zero exit so backend marks run as failed.
         raise SystemExit(1) from _topo_exc
 
@@ -5092,14 +5147,42 @@ def main() -> int:
     # Per 04_v3 §4.2 error handling: emit() errors log + set
     # summary["feature_errors"][fid]; do NOT crash the run.
     for _feature in _sorted_features:
-        # Validate DECLARED_DEPS are present in summary before calling emit.
-        # A missing dep key is a programming error (ordering bug or typo).
+        # R1 Cluster A — Region 2: DECLARED_DEPS check.
+        # Validate DECLARED_DEPS summary-dict keys are present in summary before
+        # calling emit. A missing dep key is a programming error (ordering bug or
+        # typo in DECLARED_DEPS). Per arch-v2 §4.3: write structured diagnostic to
+        # disk + raise SystemExit(1) so backend marks run as failed.
+        # Partial plugin output preceding analyzer_init_error is intentional and
+        # diagnostic (region=2): plugins that emitted before the failing one are
+        # preserved in summary; affected_plugin identifies the break point.
         for _dep_key in _feature.DECLARED_DEPS:
             if _dep_key not in summary:
-                raise RuntimeError(
-                    f"Feature '{_feature.FEATURE_ID}' declared dep "
-                    f"'{_dep_key}' absent from summary. Ordering error or typo."
+                _dep_exc = _PluginDeclaredDepMissingError(
+                    plugin=_feature.FEATURE_ID,
+                    missing_dep_key=_dep_key,
                 )
+                summary["analyzer_init_error"] = {
+                    "error_type": type(_dep_exc).__name__,
+                    "message": str(_dep_exc),
+                    "plugin_dep_graph": {
+                        f.FEATURE_ID: list(f.REQUIRES)
+                        for f in _machine_features
+                    },
+                    "affected_plugin": _feature.FEATURE_ID,
+                    "region": 2,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                print(
+                    f"ERROR: analyzer DECLARED_DEPS check failed for "
+                    f"'{_feature.FEATURE_ID}': key '{_dep_key}' absent from summary",
+                    file=sys.stderr,
+                )
+                # Write structured diagnostic to disk BEFORE exit so backend/operator
+                # can inspect the error (per feedback_no_silent_swallow.md).
+                # Partial plugin output preceding analyzer_init_error is intentional
+                # and diagnostic (region=2).
+                _safe_write_summary_json(summary, args.output_dir, stderr_ref=sys.stderr)
+                raise SystemExit(1) from _dep_exc
         try:
             _feature.emit(_feature_accs.get(_feature.FEATURE_ID, {}), summary, _c1_ctx)
         except Exception as _emit_exc:  # noqa: BLE001
@@ -5133,10 +5216,10 @@ def main() -> int:
     # _collect_mechanic_data (C5), and any future plugin temp keys.
     # Use pop() with default to guard against keys already deleted by emit()
     # (BankruptcySimulation.emit() and C5 plugins delete their own temp keys
-    # in-situ via summary.pop(_STASH_KEY)).
-    for _tmp_key in list(summary.keys()):
-        if _tmp_key.startswith("_"):
-            summary.pop(_tmp_key, None)
+    # in-situ via summary.pop(_STASH_KEY)). Shared with the error-path writes
+    # (Region 1/2) via _strip_internal_stash_keys — single definition of
+    # "what is an internal stash key".
+    _strip_internal_stash_keys(summary)
     # ── End Wave 2c / Phase C1 + C2 ───────────────────────────────────────────
 
     # ── Phase 5 (P5-1 partial): RTP integrity gate, warn-only ──────────────

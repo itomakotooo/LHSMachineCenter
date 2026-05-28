@@ -20,7 +20,16 @@ PluginMissingDependencyError
     the features-for-this-machine set.  This is also a programming error
     (missing manifest entry or typo in REQUIRES).
 
-Both exceptions are caught by PIA main() and written to
+PluginDeclaredDepMissingError
+    Raised inside the emit loop when a plugin's DECLARED_DEPS names a
+    summary-dict key that is absent from ``summary`` at emit time.  This is
+    a programming error (ordering bug or typo in DECLARED_DEPS).  Note the
+    distinction from PluginMissingDependencyError: REQUIRES carries
+    FEATURE_IDs (graph-level); DECLARED_DEPS carries summary-dict keys
+    (data-contract level).  Caught by PIA main() Region 2 handler and written
+    to ``summary["analyzer_init_error"]`` with region=2 before SystemExit(1).
+
+All three exceptions are caught by PIA main() and written to
 ``summary["analyzer_init_error"]`` with stderr ERROR log and non-zero rc.
 
 No import-time I/O per memory/feedback_subprocess_import_suicide_and_module_globals.md.
@@ -80,6 +89,38 @@ class PluginMissingDependencyError(Exception):
             f"which is not present in the feature set for this machine. "
             "Either add the missing plugin to the manifest's analyzer_features "
             "list, or remove the incorrect REQUIRES entry."
+        )
+
+
+class PluginDeclaredDepMissingError(Exception):
+    """A plugin's DECLARED_DEPS names a summary-dict key absent at emit time.
+
+    This is a data-contract error, distinct from PluginMissingDependencyError
+    which is a graph-level REQUIRES error.  DECLARED_DEPS carries summary-dict
+    keys (str keys expected to exist in ``summary`` before emit() is called),
+    whereas REQUIRES carries FEATURE_IDs (plugin graph nodes).
+
+    Raised inside the PIA emit loop (Region 2) before emit() is called for the
+    offending plugin.  Caught by PIA main() Region 2 handler; written to
+    ``summary["analyzer_init_error"]`` with region=2 before SystemExit(1).
+
+    Attributes
+    ----------
+    plugin : str
+        FEATURE_ID of the plugin whose DECLARED_DEPS named the missing key.
+    missing_dep_key : str
+        The summary-dict key that was absent from ``summary``.
+    """
+
+    def __init__(self, plugin: str, missing_dep_key: str) -> None:
+        self.plugin = plugin
+        self.missing_dep_key = missing_dep_key
+        super().__init__(
+            f"Plugin '{plugin}' declares DECLARED_DEPS key '{missing_dep_key}' "
+            f"which is absent from summary at emit time. "
+            "Ordering error or typo in DECLARED_DEPS. "
+            "Ensure the plugin that writes this summary key runs before this plugin "
+            "in topo order, or remove the incorrect DECLARED_DEPS entry."
         )
 
 
