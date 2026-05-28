@@ -4985,6 +4985,20 @@ def main() -> int:
     # Phase C4 replaces the C1 placeholder with real detection logic.
     # INVARIANT: F1 inline MUST have written spin_type_breakdown before this
     # call (see 04_v3 §4.2 ordering contract).
+    #
+    # NOTE (R1 Cluster A scope boundary — post-commit critic Q8): the three
+    # asserts below are DEV-TIME ordering invariants, NOT operator-facing runtime
+    # errors. They can only fire if a developer reorders the inline F-blocks
+    # (caught immediately by these asserts in that developer's own test/CI run);
+    # they CANNOT fire on any shipped machine config or runtime/data condition.
+    # They are therefore deliberately OUTSIDE Cluster A's structured-error disk-
+    # surfacing (Region 1 topo-sort / Region 2 DECLARED_DEPS), which targets
+    # errors reachable from real machine configs. An AssertionError here fails
+    # fast and loud (descriptive message + traceback to stderr) — the correct
+    # behavior for an internal code invariant, and NOT a silent swallow (the
+    # traceback IS surfaced; it is simply not the structured analyzer_init_error
+    # JSON). If a future invariant in this region becomes runtime/data-reachable,
+    # convert it to a checked raise routed through _safe_write_summary_json.
     assert "spin_type_breakdown" in summary.get("player_impact", {}), (
         "PHASE C1 INVARIANT: F1 inline must write player_impact.spin_type_breakdown "
         "before MechanismRegistry build. Ordering contract violated."

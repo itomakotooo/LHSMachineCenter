@@ -31,14 +31,18 @@ Region 1 inject-bug:
   Test ``test_a_region1_topo_cycle_disk_surfacing`` turns RED.
   Restore -> GREEN.
 
-Region 2 inject-bug:
-  Skip the ``DECLARED_DEPS`` check entirely by patching the check guard to
-  always treat the dep as satisfied (set an inner function / monkeypatch the
-  condition so it never fires).
-  Expected: ``player_impact_summary.json`` does NOT contain ``analyzer_init_error``
-  AND rc falls through to whatever the plugin raises later.
-  Test ``test_a_region2_declared_dep_miss_disk_surfacing`` turns RED.
-  Restore -> GREEN.
+Region 2 inject-bug (coverage is IMPLICIT — via assertion 3, not a dedicated
+inject method in this test body):
+  The DECLARED_DEPS guard in PIA's emit loop is ``if _dep_key not in summary``.
+  If that guard is removed/bypassed in production, _BadDepPlugin.emit() runs and
+  no analyzer_init_error is ever written. Assertion 3 of
+  ``test_a_region2_declared_dep_miss_disk_surfacing``
+  (``"analyzer_init_error" in summary``) is the tripwire that then turns the test
+  RED. To exercise manually: comment out the Region 2 guard in
+  player_impact_analyzer.py -> this test RED -> restore -> GREEN.
+  (The protection is real but implicit; there is intentionally no separate
+  "monkeypatch the check to a no-op" mechanism inside the test — assertion 3
+  carries the regression coverage.)
 
 Memory files cited
 ------------------
