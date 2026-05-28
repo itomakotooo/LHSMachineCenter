@@ -92,6 +92,9 @@ class MechanismRegistry:
         self.scatter_marker_pids = scatter_marker_pids
         self.payout_groups_applicable = payout_groups_applicable
         self._detection_source: dict[str, str] = detection_source if detection_source is not None else {}
+        # B-4 (CR-2): populated by build(); empty list when no unknown keys.
+        # Set here so the attribute always exists regardless of build() vs __init__.
+        self.unknown_override_keys: list[str] = []
 
     @classmethod
     def build(
@@ -134,6 +137,22 @@ class MechanismRegistry:
         """
         overrides: dict[str, Any] = manifest.get("mechanism_overrides") or {}
         detection_source: dict[str, str] = {}
+
+        # B-4 (CR-2): collect unrecognized override keys so the PIA call site
+        # can surface them to summary["feature_errors"] per
+        # feedback_invariant_with_fallback_hides_drift.md and
+        # feedback_no_silent_swallow.md.  Dormant today (0 manifests use
+        # mechanism_overrides) but fires when an operator uses an unknown key.
+        _RECOGNIZED_OVERRIDE_KEYS = frozenset({
+            "scatter_marker_pids",
+            "jackpot_applicable",
+            "jackpot_pid_set",
+            "freespin_applicable",
+            "payout_groups_applicable",
+        })
+        _unknown_keys: list[str] = [
+            k for k in overrides if k not in _RECOGNIZED_OVERRIDE_KEYS
+        ]
 
         # ── Scatter marker detection (runs first, output used by jackpot) ──
         # A PID is a scatter trigger marker if:
@@ -239,7 +258,7 @@ class MechanismRegistry:
             )
             detection_source["payout_groups_applicable"] = "tier3_raw"
 
-        return cls(
+        registry = cls(
             jackpot_applicable=jackpot_applicable,
             jackpot_pid_set=jackpot_pid_set,
             freespin_applicable=freespin_applicable,
@@ -247,6 +266,9 @@ class MechanismRegistry:
             payout_groups_applicable=payout_groups_applicable,
             detection_source=detection_source,
         )
+        # B-4 (CR-2): expose unknown keys for surfacing at the PIA call site.
+        registry.unknown_override_keys = _unknown_keys
+        return registry
 
     def to_summary_dict(self) -> dict[str, Any]:
         """Serialise registry state for inclusion in the summary JSON."""

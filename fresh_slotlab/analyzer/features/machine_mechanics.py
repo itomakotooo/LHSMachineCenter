@@ -75,12 +75,12 @@ NOT change compute_base_analyzer_version().  Only machines that declare
 "machine_mechanics" in their manifest's analyzer_features list will include
 this plugin's hash in their effective_analyzer_version.
 
-REQUIRES = () — the Mechanism Registry is built PRE-emit (Phase C of the
-ordering contract in 04_v3 §4.2) so it is always available via
-ctx.mechanism_registry at emit() time regardless of plugin ordering.
-machine_mechanics does not need to declare REQUIRES on payouts_by_spin_type
-or bonus_chain_dynamics because it reads from ctx.mechanism_registry, not
-from their emitted summary keys.
+REQUIRES = ("bonus_chain_dynamics",) — R2 Phase 2 C-3: machine_mechanics.emit()
+reads summary["player_impact"]["bonus_chain_dynamics"] for the M275 freespin
+fallback path (fs_chain_spins from bonus_round_count).  After C-1 removes the
+F6 inline write, this key is written only by the BonusChainDynamics plugin.
+REQUIRES = ("bonus_chain_dynamics",) ensures topo-sort places machine_mechanics
+after bonus_chain_dynamics regardless of alphabetical order.
 
 Memory feedback honored
 -----------------------
@@ -147,7 +147,17 @@ class MachineMechanics(AnalyzerFeature):
     SCHEMA_VERSION: ClassVar[int] = 2  # C4: bumped from v1; adds _detection_source
     RTP_CONTRIBUTION: ClassVar[bool] = False  # display only; doesn't add to RTP totals
     DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
-    REQUIRES: ClassVar[tuple[str, ...]] = ()  # Registry is pre-built; no emit-loop deps
+    REQUIRES: ClassVar[tuple[str, ...]] = ("bonus_chain_dynamics",)
+    # R2 Phase 2 C-3: REQUIRES now declares the bonus_chain_dynamics dependency
+    # explicitly.  machine_mechanics.emit() reads
+    # summary["player_impact"]["bonus_chain_dynamics"] for the M275 freespin
+    # fallback (fs_chain_spins from bonus_round_count when CurFreeSpin is absent).
+    # Pre-R2, this dependency was satisfied by alphabetical topo-sort accident
+    # (bonus_chain_dynamics < machine_mechanics).  C-3 makes it a declared
+    # structural constraint: topo-sort places machine_mechanics after
+    # bonus_chain_dynamics regardless of alphabetical order.
+    # All 253 manifests that declare machine_mechanics also declare
+    # bonus_chain_dynamics — validated by arch-validator R2 W3.
 
     # v1 → v2: _detection_source field is new; old summaries render it as None.
     REGISTERED_FALLBACK_RULES: ClassVar[dict[int, dict]] = {
@@ -387,8 +397,9 @@ class MachineMechanics(AnalyzerFeature):
         # bonus_chain_dynamics (ReMarks-based) rather than CurFreeSpin
         # (which populates freespin_chain_spins = 0), fall back to
         # bonus_chain_dynamics.bonus_round_count as chain_spins.
-        # bonus_chain_dynamics is guaranteed present (inline block runs before
-        # plugin emit loop per 04_v3 §4.2 Phase B ordering contract).
+        # bonus_chain_dynamics is guaranteed present because
+        # REQUIRES = ("bonus_chain_dynamics",) (R2 Phase 2 C-3) makes topo-sort
+        # run bonus_chain_dynamics.emit() before this plugin's emit().
         if fs_chain_spins == 0 and fs_applicable:
             _bcd = (
                 summary.get("player_impact", {})

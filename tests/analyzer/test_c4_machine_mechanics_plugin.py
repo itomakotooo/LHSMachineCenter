@@ -10,7 +10,8 @@ Invariants asserted
 2. FEATURE_ID == "machine_mechanics".
 3. SCHEMA_VERSION == 2 (C4 adds _detection_source field).
 4. REGISTERED_FALLBACK_RULES[1] == {"_detection_source": None}.
-5. REQUIRES == () (Mechanism Registry is pre-built; no emit-loop deps).
+5. REQUIRES == ("bonus_chain_dynamics",) (R2 Phase 2 C-3: explicit ordering — mm
+   reads summary["player_impact"]["bonus_chain_dynamics"] written by that plugin).
 6. RTP_CONTRIBUTION == False (display only, doesn't add to RTP totals).
 7. register() is idempotent — duplicate import does not grow ALL_FEATURES.
 8. machine_mechanics present in ALL_FEATURES after import.
@@ -216,15 +217,21 @@ class TestMachineMechanicsClassInvariants:
         )
 
     def test_requires_is_empty_tuple(self):
-        """REQUIRES must be () — registry is pre-built, no emit-loop deps needed.
+        """REQUIRES must be ("bonus_chain_dynamics",) — R2 Phase 2 C-3.
 
-        Per 04_v3 §4.2: MechanismRegistry is built in Phase C (pre-emit),
-        so machine_mechanics can read ctx.mechanism_registry directly
-        without declaring REQUIRES on payouts_by_spin_type or bonus_chain_dynamics.
+        machine_mechanics.emit() reads summary["player_impact"]["bonus_chain_dynamics"]
+        for the M275 freespin fallback (fs_chain_spins from bonus_round_count).
+        After C-1 removes the F6 inline write, that key is written only by the
+        BonusChainDynamics plugin.  REQUIRES ensures topo-sort places
+        machine_mechanics after bonus_chain_dynamics regardless of alphabetical order.
+
+        CR-3: test name preserved (test_requires_is_empty_tuple) for grep
+        compatibility; assertion updated per 07_decision.md CR-3.
         """
         cls = _import_plugin_class()
-        assert cls.REQUIRES == (), (
-            f"REQUIRES must be () (registry pre-built), got {cls.REQUIRES!r}"
+        assert cls.REQUIRES == ("bonus_chain_dynamics",), (
+            f"REQUIRES must be ('bonus_chain_dynamics',) (R2 C-3 explicit ordering), "
+            f"got {cls.REQUIRES!r}"
         )
 
     def test_rtp_contribution_is_false(self):

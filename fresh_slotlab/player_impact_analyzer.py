@@ -4575,7 +4575,10 @@ def main() -> int:
             # "upstream_feature_breakdown"] key in Phase D.
             # All 253 base manifests declare "upstream_feature_breakdown".
             # The inline block is removed per 04_v3 §7.2 C5 acceptance criterion.
-            "bonus_chain_dynamics": bonus_chain_dynamics,
+            # R2 Phase 2 C-1: "bonus_chain_dynamics" key REMOVED from this inline
+            # dict literal.  The BonusChainDynamics plugin now writes it during
+            # the Phase D emit loop (after REQUIRES ordering via C-3 ensures
+            # bonus_chain_dynamics runs before machine_mechanics).
             # --- Raw-data analysis surfaces ---
             # Payline × Symbol joint: top 20 (payline, symbol) pairs
             # by win contribution. Answers "which symbol on which line
@@ -4857,11 +4860,18 @@ def main() -> int:
     # ── Phase C6 — stash key for BonusChainDynamics plugin ───────────────
     # Analogous to _collect_mechanic_data / _upstream_feature_breakdown_data (C5).
     #
-    # The inline F6 block (lines ~3975-4063) continues to write
-    # summary["player_impact"]["bonus_chain_dynamics"] so that:
-    #   (a) the C4 invariant assert at line ~4954 remains satisfied, AND
-    #   (b) machine_mechanics.emit() can read bonus_chain_dynamics to derive
-    #       fs_chain_spins when total_freespin_chain_spins == 0 (M275 case).
+    # R2 Phase 2 C-1: the stash now reads the LOCAL variable `bonus_chain_dynamics`
+    # (defined at ~line 4011) instead of the summary key.  This decouples the
+    # stash builder from the F6 inline write that C-1 removes, so:
+    #   - the stash is still correctly populated (local var == the dict that WAS
+    #     written into the summary key), AND
+    #   - the C-2 ordering assert is updated to check `_bonus_chain_dynamics_data`
+    #     stash key rather than the removed summary key (see assert below).
+    #
+    # machine_mechanics.emit() reads summary["player_impact"]["bonus_chain_dynamics"]
+    # for the M275 freespin fallback path.  That key is now written ONLY by the
+    # BonusChainDynamics plugin emit() — which runs before machine_mechanics.emit()
+    # because machine_mechanics.REQUIRES = ("bonus_chain_dynamics",) (C-3).
     #
     # The stash carries:
     #   - bonus_chain_dynamics: the pre-built public dict (passthrough — plugin
@@ -4871,7 +4881,7 @@ def main() -> int:
     #     filter as by_feature in the F6 inline block). Used by the plugin to
     #     infer trigger_target for scatter-marker pids (gap #3).
     summary["_bonus_chain_dynamics_data"] = {
-        "bonus_chain_dynamics": summary["player_impact"]["bonus_chain_dynamics"],
+        "bonus_chain_dynamics": bonus_chain_dynamics,  # R2 C-1: local var, not summary key
         "scatter_feature_names": sorted(
             feat for feat, afb in all_chains_by_feature.items()
             if afb.get("lengths")
@@ -5015,11 +5025,12 @@ def main() -> int:
         "this; silent fallback would produce jackpot.applicable=false for "
         "M275-class machines. Ordering contract violated."
     )
-    assert "bonus_chain_dynamics" in summary.get("player_impact", {}), (
-        "PHASE C4 INVARIANT: F6 inline must write player_impact.bonus_chain_dynamics "
-        "before MechanismRegistry build. machine_mechanics.free_spin Tier 2 reads "
-        "this; silent fallback would produce free_spin.applicable=false for "
-        "M275-class machines. Ordering contract violated."
+    assert "_bonus_chain_dynamics_data" in summary, (
+        "PHASE R2-C2 INVARIANT: F6 stash builder must write _bonus_chain_dynamics_data "
+        "before MechanismRegistry build. BonusChainDynamics plugin (and transitively "
+        "machine_mechanics via REQUIRES) depends on this stash being present. "
+        "If absent, BCD plugin raises PluginDeclaredDepMissingError (Region 2). "
+        "Ordering contract violated."
     )
     # Extract pid_has_regular_line from payouts_by_spin_type plugin accumulator.
     # This is built by PayoutsBySpinType.extract() across all chunks and tells
@@ -5038,6 +5049,27 @@ def main() -> int:
         pid_has_regular_line=_c4_pid_has_regular_line,
     )
     summary["_mechanism_registry"] = _mechanism_registry
+
+    # ── B-4 (CR-2): surface unrecognized mechanism_overrides keys to disk ──
+    # Per feedback_invariant_with_fallback_hides_drift.md + feedback_no_silent_swallow.md:
+    # an unknown override key (e.g. a typo in the manifest) must appear in
+    # summary["feature_errors"] on disk, not just as a log line.
+    # Today 0 manifests use mechanism_overrides, so this block is dormant —
+    # it fires only if an operator adds a manifest override with an unknown key.
+    for _b4_key in _mechanism_registry.unknown_override_keys:
+        if "feature_errors" not in summary:
+            summary["feature_errors"] = {}
+        summary["feature_errors"][f"mechanism_registry_unknown_override_{_b4_key}"] = {
+            "type": "UnrecognizedMechanismOverrideKey",
+            "key": _b4_key,
+            "machine_id": summary.get("machine_id", "unknown"),
+            "detail": (
+                f"Manifest mechanism_overrides contains unrecognized key '{_b4_key}'. "
+                f"Recognized keys: scatter_marker_pids, jackpot_applicable, "
+                f"jackpot_pid_set, freespin_applicable, payout_groups_applicable. "
+                f"This override was silently ignored; fix the manifest to suppress."
+            ),
+        }
 
     # ── Phase C1 — Step 3: compute robots_with_pending_cycle ─────────────
     # Mirrors the inline computation in collect_mechanic block (~line 4687).

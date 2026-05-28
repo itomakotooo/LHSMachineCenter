@@ -169,10 +169,20 @@ class TestBonusChainDynamicsClassInvariants:
         )
 
     def test_declared_deps_is_empty_tuple(self):
-        """DECLARED_DEPS must be () — stash key is delivery mechanism."""
+        """DECLARED_DEPS must be ("_bonus_chain_dynamics_data",) — R2 Phase 2 C-4.
+
+        BonusChainDynamics.emit() requires _bonus_chain_dynamics_data stash key
+        to be present in summary before emit() runs.  DECLARED_DEPS makes this
+        a Region 2 pre-flight check (PluginDeclaredDepMissingError → structured
+        analyzer_init_error on disk) rather than a soft RuntimeError inside emit().
+
+        CR-3: test name preserved for grep compatibility; assertion updated
+        per 07_decision.md CR-3.
+        """
         cls = _import_plugin_class()
-        assert cls.DECLARED_DEPS == (), (
-            f"DECLARED_DEPS must be (), got {cls.DECLARED_DEPS!r}"
+        assert cls.DECLARED_DEPS == ("_bonus_chain_dynamics_data",), (
+            f"DECLARED_DEPS must be ('_bonus_chain_dynamics_data',) (R2 C-4), "
+            f"got {cls.DECLARED_DEPS!r}"
         )
 
     def test_rtp_contribution_is_false(self):

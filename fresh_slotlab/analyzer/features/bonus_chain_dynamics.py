@@ -59,9 +59,14 @@ This is documented behavior, not a bug.
 
 Stash pattern
 -------------
-The PIA inline F6 block continues to write the pre-built ``bonus_chain_dynamics``
-dict into ``summary["player_impact"]["bonus_chain_dynamics"]`` (so the C4 invariant
-assert and machine_mechanics.emit() ordering contract remain satisfied).
+After R2 Phase 2 (C-1), the PIA inline F6 block NO LONGER writes the public
+``bonus_chain_dynamics`` dict into ``summary["player_impact"]``. The PIA stash
+builder reads the local variable ``bonus_chain_dynamics`` (R2 C-1) and stores it;
+THIS plugin's emit() is now the sole writer of
+``summary["player_impact"]["bonus_chain_dynamics"]``. Ordering for
+machine_mechanics.emit() (which reads that key) is guaranteed by
+``machine_mechanics.REQUIRES = ("bonus_chain_dynamics",)`` (R2 C-3); the pre-build
+ordering invariant is now the C-2 assert on the ``_bonus_chain_dynamics_data`` stash.
 
 The PIA block additionally writes ``summary["_bonus_chain_dynamics_data"]``
 (stash key) carrying:
@@ -88,7 +93,8 @@ in payout_ids_top20 rows but payout_ids_top20 is not a plugin-owned key so
 no plugin-level SCHEMA_VERSION bump needed).
 
 REQUIRES = () — stash key pre-exists before emit loop.
-DECLARED_DEPS = () — stash key is the delivery mechanism.
+DECLARED_DEPS = ("_bonus_chain_dynamics_data",) — R2 Phase 2 C-4: Region 2
+pre-flight check fires PluginDeclaredDepMissingError if stash is absent.
 
 Per-machine isolation
 ---------------------
@@ -165,7 +171,13 @@ class BonusChainDynamics(AnalyzerFeature):
     SCHEMA_KEYS: ClassVar[tuple[str, ...]] = ("player_impact.bonus_chain_dynamics",)
     SCHEMA_VERSION: ClassVar[int] = 1  # C6: pure carve; notes added to sibling key
     RTP_CONTRIBUTION: ClassVar[bool] = False  # display only
-    DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
+    DECLARED_DEPS: ClassVar[tuple[str, ...]] = ("_bonus_chain_dynamics_data",)
+    # R2 Phase 2 C-4: DECLARED_DEPS now declares the stash key dependency.
+    # The PIA emit loop Region 2 check fires PluginDeclaredDepMissingError
+    # (structured analyzer_init_error on disk) if the stash key is absent,
+    # instead of the previous soft RuntimeError inside emit().
+    # This makes a missing stash (e.g. from a CR-1 cascade) a first-class
+    # structured error surfaced to disk, not a swallowed runtime exception.
     REQUIRES: ClassVar[tuple[str, ...]] = ()  # stash key pre-exists before emit loop
     # R1 Phase 2 d2+d3: trigger_target confidence levels
     # "unique"               — len(scatter_feature_names) == 1 (deterministic)
