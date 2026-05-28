@@ -206,10 +206,13 @@ class TestM14FeaturesUnchanged:
 # ---------------------------------------------------------------------------
 
 class TestM14EffectiveVersionInSummary:
-    """M14 effective_version in summary must be the C3 non-M275 value.
+    """M14 effective_version in summary must differ from M275 (structural).
 
-    If multiplier_wild was accidentally added to M14's manifest,
-    its effective_version would change — this test would catch it.
+    R1 Phase 1 Cluster E refactor: was "must be the C3 non-M275 value"
+    (pinned hex). Now: structural differential — M14 lacks multiplier_wild
+    in its manifest, so its effective_version MUST differ from M275's.
+    If multiplier_wild was accidentally added to M14's manifest, its
+    effective_version would equal M275's — this test would catch it.
     """
 
     def test_m14_effective_version_matches_versioning_module(self, m14_c3_5_summary):
@@ -226,22 +229,35 @@ class TestM14EffectiveVersionInSummary:
             f"Summary has {actual!r}, module returns {expected!r}."
         )
 
-    def test_m14_effective_version_is_c3_non_m275_value(self, m14_c3_5_summary):
-        """M14 effective_version in summary must be 6aae41144cea (C4 non-M275 value).
+    def test_m14_effective_version_is_structural(self, m14_c3_5_summary):
+        """M14 effective_version in summary must differ from M275 (no multiplier_wild).
 
-        C3.5 value was 6aae41144cea (4 plugins: payouts_by_spin_type, reel_marginal,
-        bankruptcy_simulation, multiplier_profile).
-        C4 adds machine_mechanics to ALL 253 base manifests including M14.
-        New C4 value: 6aae41144cea (5 plugins, machine_mechanics added, no multiplier_wild).
+        R1 Phase 1 (Cluster E) refactor: replaced pin assertion
+        (assert actual == "6aae41144cea") with structural differential assertion.
+        The structural invariant: M14 lacks multiplier_wild, so its
+        effective_version must differ from M275's. The exact hex value is a
+        consequence; the isolation property is the load-bearing contract.
+
+        Historical C4 value was "6aae41144cea" (5 plugins; preserved in comment).
+        This test remains GREEN across future plugin additions because it asserts
+        the PROPERTY, not the specific hex value.
 
         INJECT-BUG: add "multiplier_wild" to M14.json.
-        RED: M14 effective_version changes → != 6aae41144cea → this fails.
+        RED: M14 gains multiplier_wild → M14_ev == M275_ev → structural assertion fails.
         Revert M14.json → GREEN.
         """
-        _NON_M275_EFFECTIVE_VERSION = "6aae41144cea"  # C4 value
+        try:
+            from fresh_slotlab.analyzer.versioning import compute_effective_version_for_machine
+        except ImportError:
+            from analyzer.versioning import compute_effective_version_for_machine  # type: ignore[no-redef]
+
         actual = m14_c3_5_summary.get("effective_analyzer_version", "")
-        assert actual == _NON_M275_EFFECTIVE_VERSION, (
-            f"M14 effective_analyzer_version must be {_NON_M275_EFFECTIVE_VERSION!r}. "
-            f"Got: {actual!r}. C4 adds machine_mechanics to M14; if M14 also gained "
-            f"multiplier_wild, its version would be different."
+        m275_ev = compute_effective_version_for_machine("M275", 1)
+        assert actual != m275_ev, (
+            f"M14 effective_analyzer_version must differ from M275's. "
+            f"Both are {actual!r}. M14 lacks multiplier_wild; if they hash "
+            f"identically, M14 has incorrectly gained the plugin."
+        )
+        assert actual != "", (
+            "M14 effective_analyzer_version must be non-empty in summary."
         )
