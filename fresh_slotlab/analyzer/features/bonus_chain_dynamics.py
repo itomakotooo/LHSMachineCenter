@@ -26,26 +26,36 @@ to every row in payout_ids_top20:
   - ``trigger_target``: the bonus feature name this scatter triggers,
     inferred from ``all_chains_by_feature`` keys carried in the stash.
     Null when not inferable (e.g. machine has no chain data).
-  - ``trigger_target_confidence``: "data_inferred" when trigger_target is set
-    from chain-dynamics data; "unknown" when null.
+  - ``trigger_target_confidence``: confidence level for the trigger_target inference;
+    one of "unique" / "data_inferred" / "fallback_no_chain_data" / "unknown".
 
-Trigger_target inference (Option B per brief §2.4)
----------------------------------------------------
+Trigger_target inference (R1 Phase 2 d2+d3 correctness fix)
+------------------------------------------------------------
 payout_ids_top20 is a per-pid aggregate; shape/cols/paylines are per-(pid,ST)
 and already live in payouts_by_spin_type (C3).  Only ``notes`` is added here.
 
-Inference algorithm:
-  1. If pid NOT in scatter_marker_pids → trigger_target = None, confidence = n/a
-  2. If pid IN scatter_marker_pids AND ``by_feature`` has exactly one feature
-     with chain data → trigger_target = that feature name, confidence = "data_inferred"
-  3. If pid IN scatter_marker_pids AND ``by_feature`` has multiple features →
-     trigger_target = first feature alphabetically, confidence = "data_inferred"
-     (conservative — most machines have a single scatter-triggered bonus feature)
-  4. If pid IN scatter_marker_pids AND ``by_feature`` is empty →
-     trigger_target = None, confidence = "unknown"
+Inference algorithm (len-first dispatch per coordinator CR-1):
+  1. If scatter_feature_names is empty → trigger_target = None, confidence = "unknown"
+     (scatter markers exist but no chain data)
+  2. If len(scatter_feature_names) == 1 → trigger_target = that feature name,
+     confidence = "unique" (deterministic, no chain_counts needed)
+  3. If len(scatter_feature_names) >= 2 AND scatter_feature_chain_counts missing
+     from stash → raise RuntimeError (schema drift; caught by pia:5083 emit-error
+     handler → feature_errors["bonus_chain_dynamics"])
+  4. If len >= 2 AND chain_counts present AND max > 0 → trigger_target = majority
+     (highest chain count), confidence = "data_inferred"
+  5. If len >= 2 AND chain_counts present AND all zero → trigger_target =
+     alphabetical-first (sorted list, deterministic), confidence = "fallback_no_chain_data"
+     PLUS companion feature_errors warning per feedback_invariant_with_fallback_hides_drift.md
 
-For M275: by_feature has "NormalCollectionSpin" → trigger_target = "NormalCollectionSpin".
+Chain-count majority vote (d2 correctness fix):
+  M275 BEFORE: alphabetical-first → "NewFreespin" (67 chains) — WRONG
+  M275 AFTER:  majority vote → "NormalCollectionSpin" (841 chains) — CORRECT
+
+For M275: chain_counts NCS=841 >> NF=67 → "NormalCollectionSpin" (d2 fix).
 For M14: scatter_marker_pids is empty → all rows get is_trigger_marker=False.
+On tie (all counts equal): max() uses sorted list order (deterministic alphabetical).
+This is documented behavior, not a bug.
 
 Stash pattern
 -------------
@@ -94,10 +104,18 @@ Memory feedback honored
 - feedback_no_silent_swallow.md:
     If _bonus_chain_dynamics_data stash key is missing, emit() raises a
     diagnostic RuntimeError (not silently skipped).
+    If scatter_feature_chain_counts key is missing from stash when len>=2,
+    emit() raises RuntimeError (caught by pia:5083 → feature_errors, not silent).
 - feedback_invariant_with_fallback_hides_drift.md:
     is_trigger_marker is an explicit positive signal, not a catch-all fallback.
     trigger_target_confidence is absent for non-trigger rows (explicit "no data"
     versus silent null).
+    fallback_no_chain_data confidence emits companion feature_errors warning so
+    operators monitoring feature_errors see the degradation signal (not just
+    the confidence field which requires specific inspection).
+- feedback_capture_drift.md:
+    RuntimeError on missing scatter_feature_chain_counts identifies schema drift
+    (stash extension not deployed) with a descriptive message.
 - feedback_no_parallel_panel_impl.md:
     notes shape mirrors payouts_by_spin_type notes shape (C3 sibling).
     is_trigger_marker logic uses mechanism_registry.scatter_marker_pids (C4 signal)
@@ -149,6 +167,11 @@ class BonusChainDynamics(AnalyzerFeature):
     RTP_CONTRIBUTION: ClassVar[bool] = False  # display only
     DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
     REQUIRES: ClassVar[tuple[str, ...]] = ()  # stash key pre-exists before emit loop
+    # R1 Phase 2 d2+d3: trigger_target confidence levels
+    # "unique"               — len(scatter_feature_names) == 1 (deterministic)
+    # "data_inferred"        — len >= 2, chain-count majority vote, max > 0
+    # "fallback_no_chain_data" — len >= 2, all chain counts are zero; alphabetical-first
+    # "unknown"              — scatter markers exist but scatter_feature_names is empty
 
     REGISTERED_FALLBACK_RULES: ClassVar[dict[int, dict]] = {}
 
@@ -168,16 +191,23 @@ class BonusChainDynamics(AnalyzerFeature):
         1. Read and remove the stash key written by PIA inline F6.
         2. Overwrite summary["player_impact"]["bonus_chain_dynamics"] with the
            pre-built dict (byte-identical to pre-C6; pure carve step).
-        3. Infer trigger_target from scatter_feature_names in stash.
+        3. Infer trigger_target from stash using len-first dispatch (R1 d2+d3).
         4. For each row in summary["player_impact"]["payout_ids_top20"], add
            ``notes`` block:
              - is_trigger_marker: True iff pid in mechanism_registry.scatter_marker_pids
              - trigger_target: feature name or None (gap #3)
-             - trigger_target_confidence: "data_inferred" | "unknown" (only present
-               when is_trigger_marker is True)
+             - trigger_target_confidence: "unique"|"data_inferred"|
+               "fallback_no_chain_data"|"unknown" (only present when
+               is_trigger_marker is True)
 
-        Raises RuntimeError (surfaced as feature_error) if the stash key is
-        absent.  Per feedback_no_silent_swallow.md: never silently skip.
+        Raises RuntimeError (surfaced as feature_error) if:
+          - The stash key is absent (per feedback_no_silent_swallow.md)
+          - scatter_feature_chain_counts missing from stash when len >= 2
+            (per feedback_capture_drift.md + feedback_no_silent_swallow.md)
+
+        CR-2: when confidence == "fallback_no_chain_data", a companion warning
+        is written to summary["feature_errors"] so operators scanning that panel
+        see the degradation (per feedback_invariant_with_fallback_hides_drift.md).
         """
         if _STASH_KEY not in summary:
             raise RuntimeError(
@@ -194,18 +224,79 @@ class BonusChainDynamics(AnalyzerFeature):
         player_impact = summary.setdefault("player_impact", {})
         player_impact["bonus_chain_dynamics"] = bcd
 
-        # ── Step 3: infer trigger_target for scatter pids ──
-        # scatter_feature_names are feature names from all_chains_by_feature keys
-        # that have non-empty lengths (same filter as by_feature in F6 inline).
-        # A scatter-marker pid triggers the bonus feature(s) tracked in by_feature.
-        # If there are multiple features, pick the first alphabetically (conservative).
+        # ── Step 3: infer trigger_target for scatter pids (R1 d2+d3) ──
+        # Len-first dispatch (coordinator CR-1): determine confidence by len
+        # first, then consult chain_counts only when needed (len >= 2).
+        # This avoids requiring scatter_feature_chain_counts for single-feature
+        # machines where the target is deterministic.
+        #
+        # Confidence table:
+        #   "unique"               — exactly 1 feature (deterministic)
+        #   "data_inferred"        — 2+ features, majority by chain count (max > 0)
+        #   "fallback_no_chain_data" — 2+ features, all counts zero (alphabetical-first)
+        #   "unknown"              — scatter pids exist but scatter_feature_names empty
         scatter_marker_pids: frozenset[str] = ctx.mechanism_registry.scatter_marker_pids
 
         trigger_target: str | None = None
+        trigger_target_confidence: str | None = None
+        fallback_pid_str: str | None = None  # set when CR-2 warning is needed
+
         if scatter_marker_pids and scatter_feature_names:
-            # Sort for deterministic pick when multiple features present.
-            trigger_target = sorted(scatter_feature_names)[0]
-            trigger_target_confidence = "data_inferred"
+            n = len(scatter_feature_names)
+            if n == 1:
+                # Branch: unique — deterministic, no chain_counts needed (d3 fix).
+                trigger_target = scatter_feature_names[0]
+                trigger_target_confidence = "unique"
+            else:
+                # Branch: 2+ features — need chain_counts (d2 fix).
+                if "scatter_feature_chain_counts" not in stash:
+                    # Missing stash key is schema drift (stash extension at pia:4862
+                    # not deployed with this plugin). Raise to emit-error handler
+                    # (pia:5083 → feature_errors["bonus_chain_dynamics"]).
+                    # Per feedback_no_silent_swallow.md + feedback_capture_drift.md:
+                    # must raise, not silently fall back to alphabetical-first.
+                    raise RuntimeError(
+                        f"bonus_chain_dynamics: 'scatter_feature_chain_counts' missing "
+                        f"from stash for {n} scatter features {scatter_feature_names!r}. "
+                        f"The pia:4862 stash extension (R1 d2) may not be deployed. "
+                        f"Cannot disambiguate trigger_target without chain count data."
+                    )
+                _chain_counts: dict[str, int] = stash["scatter_feature_chain_counts"]
+                _max_count = max(
+                    (_chain_counts.get(f, 0) for f in scatter_feature_names),
+                    default=0,
+                )
+                if _max_count > 0:
+                    # Majority vote — the feature with the highest observed chain count
+                    # is the primary scatter trigger target (R1 d2 correctness fix).
+                    # M275 BEFORE: alphabetical "NewFreespin" (67 chains) — WRONG
+                    # M275 AFTER:  majority "NormalCollectionSpin" (841 chains) — CORRECT
+                    # On tie (equal counts): max() picks the first in scatter_feature_names
+                    # which is already alphabetically sorted (PIA stash extension uses sorted()).
+                    trigger_target = max(
+                        scatter_feature_names,
+                        key=lambda f: _chain_counts.get(f, 0),
+                    )
+                    trigger_target_confidence = "data_inferred"
+                else:
+                    # All chain counts are zero — stash key present but data absent.
+                    # Fall back to alphabetical-first (sorted list — deterministic).
+                    # CR-2: emit companion feature_errors warning per
+                    # feedback_invariant_with_fallback_hides_drift.md so operators
+                    # scanning feature_errors see the degradation, not just the
+                    # confidence field which requires specific BCD panel inspection.
+                    #
+                    # NOTE: unreachable in current production — PIA's stash builder
+                    # (pia:~4862) filters `if afb.get("lengths")`, so every value
+                    # in scatter_feature_chain_counts is >= 1 and max_count is
+                    # never 0. This branch + its CR-2 companion warning exist as
+                    # forward-compat defensive code for future code paths that might
+                    # emit zero-count features. Unit-tested via synthetic all-zero
+                    # stash in test_d2_fallback_no_chain_data_warning.py.
+                    trigger_target = scatter_feature_names[0]  # sorted → alphabetical-first
+                    trigger_target_confidence = "fallback_no_chain_data"
+                    # fallback_pid_str set below when we know the scatter pid(s)
+                    fallback_pid_str = ",".join(sorted(scatter_marker_pids))
         elif scatter_marker_pids:
             # Scatter markers exist but no by_feature chain data (empty machine).
             trigger_target = None
@@ -214,6 +305,24 @@ class BonusChainDynamics(AnalyzerFeature):
             # No scatter markers — trigger_target is not applicable.
             trigger_target = None
             trigger_target_confidence = None  # absent for non-trigger machines
+
+        # CR-2: companion feature_errors warning for fallback_no_chain_data state.
+        # Written here (after trigger_target_confidence is set) so the warning key
+        # is always consistent with what we actually emitted.
+        # Per feedback_invariant_with_fallback_hides_drift.md: fallback signals must
+        # surface in feature_errors, not only in the data field itself.
+        if trigger_target_confidence == "fallback_no_chain_data" and fallback_pid_str is not None:
+            # Use a pid-tagged key so multiple scatter pids on the same machine
+            # each get their own warning entry (though in practice most machines
+            # have a single scatter pid).
+            warning_key = f"bonus_chain_dynamics_fallback_{fallback_pid_str}"
+            summary.setdefault("feature_errors", {})[warning_key] = {
+                "type": "alphabetical_fallback",
+                "reason": "scatter_feature_chain_counts all-zero; trigger_target is alphabetical-first, not data-driven",
+                "pids": fallback_pid_str,
+                "chosen_target": trigger_target,
+                "candidates": list(scatter_feature_names),
+            }
 
         # ── Step 4: augment payout_ids_top20 rows (gap #3) ──
         # payout_ids_top20 is guaranteed present (C4 invariant assert writes it

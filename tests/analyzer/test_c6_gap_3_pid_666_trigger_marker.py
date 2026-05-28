@@ -4,7 +4,8 @@ Invariants asserted (critical path — gap #3 closure guard)
 ----------------------------------------------------------
 1.  M275 payout_ids_top20 row for pid 666 exists.
 2.  pid 666 notes.is_trigger_marker == True.
-3.  pid 666 notes.trigger_target == "NormalCollectionSpin" (alphabetically-first feature).
+3.  pid 666 notes.trigger_target == "NormalCollectionSpin" (majority chain-count winner;
+    NCS=841 chains vs NewFreespin=67 — correctness fix R1 Phase 2 d2).
 4.  pid 666 notes.trigger_target_confidence in {"data_inferred", "unique"}.
 5.  pid 1: notes.is_trigger_marker == False (regular pay pid, not scatter).
 6.  pid 4: notes.is_trigger_marker == False (regular pay pid, not scatter).
@@ -148,18 +149,24 @@ class TestPid666TriggerMarker:
             f"notes: {notes}"
         )
 
-    def test_pid_666_trigger_target_is_new_freespin(self, m275_row_by_pid):
-        """pid 666 notes.trigger_target must be 'NewFreespin'.
+    def test_pid_666_trigger_target_is_normal_collection_spin(self, m275_row_by_pid):
+        """pid 666 notes.trigger_target must be 'NormalCollectionSpin'.
 
-        M275 by_feature has ['NewFreespin', 'NormalCollectionSpin'] (two features).
-        Alphabetically: 'NewFreespin' < 'NormalCollectionSpin' ('NewF' < 'NorC').
-        Plugin picks the first alphabetically => 'NewFreespin'.
+        R1 Phase 2 d2 correctness fix: M275 by_feature has NormalCollectionSpin (841
+        chains) and NewFreespin (67 chains). Chain-count majority vote picks
+        NormalCollectionSpin as the primary scatter trigger target.
+        BEFORE d2: alphabetical-first 'NewFreespin' was WRONG.
+        AFTER d2:  majority-vote 'NormalCollectionSpin' is CORRECT.
+
+        INJECT-BUG (d2 regression guard): revert bonus_chain_dynamics.py to
+        alphabetical-first sort → trigger_target becomes 'NewFreespin' → RED.
+        Restore chain-count majority vote → GREEN.
         """
         row = m275_row_by_pid["666"]
         notes = row.get("notes", {})
-        assert notes.get("trigger_target") == "NewFreespin", (
-            f"pid 666 trigger_target must be 'NewFreespin' (alphabetically first among "
-            f"M275 by_feature features ['NewFreespin', 'NormalCollectionSpin']). "
+        assert notes.get("trigger_target") == "NormalCollectionSpin", (
+            f"pid 666 trigger_target must be 'NormalCollectionSpin' (chain-count "
+            f"majority: NCS=841 > NewFreespin=67). "
             f"notes: {notes}"
         )
 

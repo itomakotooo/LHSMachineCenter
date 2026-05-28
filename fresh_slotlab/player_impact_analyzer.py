@@ -4814,12 +4814,23 @@ def main() -> int:
                 1 for fcc in all_final_cc_values
                 if _cm_cycle_median is not None and fcc < _cm_cycle_median
             ),
+            # R1 Phase 2 d4: None when bonus_feat unresolved OR cycles==0 OR
+            # sum(win)==0 (data-resolution issue — "identified but no measurable win"
+            # is semantically distinct from "0 RTP from bonus").  The 0.0/cycles=0.0
+            # case from pre-fix is wrong; frontend app.js:6196 has != null guard.
+            # d4 regression test: the case-3 (sum==0, cycles>0) edge case cannot
+            # occur in any cached fixture machine, so it is tested via the mirror
+            # helper `_compute_avg_bonus_payout` in test_d4_avg_bonus_payout_none.py.
+            # If you refactor this expression, update that helper too or the test
+            # goes stale-green without catching a regression in this line.
             "avg_bonus_payout": (
                 (
-                    sum(
-                        float(e.get("win", 0.0))
-                        for e in (upstream_feature_tally.get(_cm_bonus_feat) or {}).values()
-                    ) / total_completed_cycles
+                    (lambda _s: _s / total_completed_cycles if _s > 0 else None)(
+                        sum(
+                            float(e.get("win", 0.0))
+                            for e in (upstream_feature_tally.get(_cm_bonus_feat) or {}).values()
+                        )
+                    )
                     if total_completed_cycles > 0 else None
                 ) if _cm_bonus_feat else None
             ),
@@ -4865,6 +4876,17 @@ def main() -> int:
             feat for feat, afb in all_chains_by_feature.items()
             if afb.get("lengths")
         ),
+        # R1 Phase 2 d2: chain counts per feature for trigger_target majority-vote
+        # heuristic.  Picks the feature with the most observed chains as the scatter
+        # trigger target (e.g. M275: NCS=841 >> NewFreespin=67 → NCS correct).
+        # The bonus_chain_dynamics plugin uses this to disambiguate when 2+ scatter
+        # features are present.  Must be in this same commit as the plugin change
+        # (the plugin raises RuntimeError if the key is absent and len >= 2).
+        "scatter_feature_chain_counts": {
+            feat: len(afb["lengths"])
+            for feat, afb in all_chains_by_feature.items()
+            if afb.get("lengths")
+        },
     }
 
     # ── Wave 2c / Phase C1: registered feature emit hooks ─────────────────

@@ -18,8 +18,10 @@ Invariants asserted
 14. emit() adds notes to every payout_ids_top20 row with is_trigger_marker field.
 15. emit() sets is_trigger_marker=True for pids in scatter_marker_pids.
 16. emit() sets is_trigger_marker=False for pids NOT in scatter_marker_pids.
-17. emit() sets trigger_target from scatter_feature_names (alphabetically first).
-18. emit() sets trigger_target_confidence="data_inferred" when inferred from chain data.
+17. emit() sets trigger_target via chain-count majority vote (R1 d2 fix).
+18. emit() sets trigger_target_confidence="unique" when exactly 1 feature (R1 d3 fix);
+    "data_inferred" when 2+ features and chain count majority; "fallback_no_chain_data"
+    when all chain counts are zero.
 19. M275 subprocess: applicable=True, chain_count=908, by_feature has NormalCollectionSpin.
 20. M275 subprocess: bonus_chain_dynamics in player_impact (not top-level).
 21. M275 subprocess: stash key absent from final summary.
@@ -287,7 +289,15 @@ class TestBonusChainDynamicsEmit:
         return ctx
 
     def _make_stash(self, applicable: bool = True, chain_count: int = 908) -> dict:
-        """Build minimal _bonus_chain_dynamics_data stash dict."""
+        """Build minimal _bonus_chain_dynamics_data stash dict.
+
+        R1 Phase 2 d2: includes scatter_feature_chain_counts so emit() can run
+        the len-first dispatch without raising RuntimeError. The single-feature
+        case ("NormalCollectionSpin" only) hits the 'unique' confidence branch
+        which does not need chain_counts — but chain_counts is always present
+        here to keep the stash schema complete (stash extension added at pia:4862
+        unconditionally for all machines with non-empty scatter_feature_names).
+        """
         return {
             "bonus_chain_dynamics": {
                 "applicable": applicable,
@@ -300,6 +310,10 @@ class TestBonusChainDynamicsEmit:
                 },
             },
             "scatter_feature_names": ["NormalCollectionSpin"] if applicable else [],
+            # R1 d2 stash extension: chain counts per feature for majority-vote
+            "scatter_feature_chain_counts": (
+                {"NormalCollectionSpin": chain_count} if applicable else {}
+            ),
         }
 
     def test_emit_raises_when_stash_absent(self, plugin):
@@ -412,10 +426,26 @@ class TestBonusChainDynamicsEmit:
         )
 
     def test_emit_trigger_target_from_scatter_feature_names(self, plugin):
-        """trigger_target must be alphabetically-first scatter_feature_names entry."""
+        """trigger_target must use chain-count majority vote when 2+ features present.
+
+        R1 Phase 2 d2 correctness fix: AFeature (100 chains) wins over ZFeature
+        (1 chain) by majority vote — not alphabetical order.
+        scatter_feature_names sorted alphabetically (["AFeature", "ZFeature"]) per
+        PIA stash construction which uses sorted() — matches real production behavior.
+
+        INJECT-BUG (d2 regression): revert to alphabetical-first sort in plugin →
+        trigger_target becomes "AFeature" for the wrong reason (alphabetical, not
+        chain count). With chain_counts present, this test only catches the case where
+        majority-vote correctly picks "AFeature" by count; inject-bug must use a case
+        where alphabetical != majority (see test_c6_gap_3_pid_666_trigger_marker.py
+        for the real M275 NCS vs NewFreespin case where they differ).
+        """
         stash = {
             "bonus_chain_dynamics": {"applicable": True, "chain_count": 100},
-            "scatter_feature_names": ["ZFeature", "AFeature"],
+            # sorted() alphabetically — matches PIA stash construction behavior
+            "scatter_feature_names": ["AFeature", "ZFeature"],
+            # R1 d2: chain_counts required when len >= 2; AFeature wins by majority
+            "scatter_feature_chain_counts": {"AFeature": 100, "ZFeature": 1},
         }
         pid_rows = [{"payout_id": "666", "hit_count": 100, "total_win": 0}]
         summary = {
@@ -428,15 +458,29 @@ class TestBonusChainDynamicsEmit:
         plugin.emit({}, summary, self._make_ctx(frozenset({"666"})))
 
         row_666 = summary["player_impact"]["payout_ids_top20"][0]
-        # AFeature < ZFeature alphabetically
+        # AFeature wins by chain count (100 > 1), confidence = "data_inferred"
         assert row_666["notes"]["trigger_target"] == "AFeature", (
-            f"trigger_target must be first alphabetically ('AFeature' < 'ZFeature'). "
+            f"trigger_target must be 'AFeature' (chain-count majority: 100 > 1). "
             f"Got: {row_666['notes'].get('trigger_target')!r}"
         )
+        assert row_666["notes"]["trigger_target_confidence"] == "data_inferred", (
+            f"trigger_target_confidence must be 'data_inferred' for 2-feature majority-vote. "
+            f"Got: {row_666['notes'].get('trigger_target_confidence')!r}"
+        )
 
-    def test_emit_trigger_target_confidence_data_inferred(self, plugin):
-        """trigger_target_confidence must be 'data_inferred' when feature names present."""
-        stash = self._make_stash()
+    def test_emit_trigger_target_confidence_unique_for_single_feature(self, plugin):
+        """trigger_target_confidence must be 'unique' when exactly 1 scatter feature.
+
+        R1 Phase 2 d3 fix: len-first dispatch sets confidence="unique" for single-
+        feature machines (deterministic — no chain_counts needed). _make_stash()
+        produces a 1-element scatter_feature_names list, hitting this branch.
+
+        INJECT-BUG (d3 regression): remove the len==1 branch from emit() → single-
+        feature case falls into the 2+ branch → hits RuntimeError (missing
+        scatter_feature_chain_counts with unsorted name → wrong path) OR emits
+        "data_inferred" instead of "unique". Test fails. Restore → GREEN.
+        """
+        stash = self._make_stash()  # 1 feature: ["NormalCollectionSpin"]
         pid_rows = [{"payout_id": "666", "hit_count": 829, "total_win": 0}]
         summary = {
             "_bonus_chain_dynamics_data": stash,
@@ -448,9 +492,14 @@ class TestBonusChainDynamicsEmit:
         plugin.emit({}, summary, self._make_ctx(frozenset({"666"})))
 
         row_666 = summary["player_impact"]["payout_ids_top20"][0]
-        assert row_666["notes"]["trigger_target_confidence"] == "data_inferred", (
-            f"trigger_target_confidence must be 'data_inferred'. "
+        # Single feature → "unique" confidence (d3 fix)
+        assert row_666["notes"]["trigger_target_confidence"] == "unique", (
+            f"trigger_target_confidence must be 'unique' for single-feature stash. "
             f"Got: {row_666['notes'].get('trigger_target_confidence')!r}"
+        )
+        assert row_666["notes"]["trigger_target"] == "NormalCollectionSpin", (
+            f"trigger_target must be 'NormalCollectionSpin' (only feature). "
+            f"Got: {row_666['notes'].get('trigger_target')!r}"
         )
 
     def test_emit_non_trigger_rows_omit_trigger_target_confidence(self, plugin):

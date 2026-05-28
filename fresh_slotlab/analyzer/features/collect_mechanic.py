@@ -87,6 +87,10 @@ summary["collect_mechanic"]:
     completed_cycles_total      — int
     robots_with_pending_cycle   — int
     avg_bonus_payout            — float | None
+      Note (R1 d4 decision): avg_bonus_payout is None when bonus_feature is
+      unresolved OR when sum(win) == 0.0 with cycles > 0 (data-resolution issue).
+      The 0.0 case returns None rather than 0.0 to preserve "unknown" semantics.
+      Frontend consumer at app.js:6196 has !=(null) guard already — renders "—".
     estimated_correction_pp     — float
   feature_match:
     applicable                  — bool

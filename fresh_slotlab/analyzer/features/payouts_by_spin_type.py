@@ -419,20 +419,42 @@ class PayoutsBySpinType(AnalyzerFeature):
                 # regular pids; for trigger markers, show the -1 entry.
                 pl_map = pid_payline_hits.get(pid_str) or {}
                 is_trigger = not pid_has_regular_line.get(pid_str, False) and _total_win == 0.0
+
+                # Defensive pre-validation: payline_id must be accepted by int().
+                # Using try/except int() directly mirrors the sort key — anything
+                # int() accepts passes (e.g. "-1", "-10", "5", "10"); anything it
+                # rejects (e.g. "--1", "1-2", "abc", "") gets the descriptive
+                # RuntimeError rather than a bare ValueError at the sort call.
+                # Per feedback_capture_drift.md: schema drift must surface as a
+                # human-readable error. Caught by pia:5083 emit-error handler →
+                # feature_errors["payouts_by_spin_type"] (not a hard crash).
+                for pl_id in pl_map:
+                    try:
+                        int(pl_id)
+                    except (ValueError, TypeError):
+                        raise RuntimeError(
+                            f"payouts_by_spin_type: non-integer payline_id {pl_id!r} "
+                            f"encountered for pid {pid_str!r}. Schema drift? All audited "
+                            f"machines have int-parseable payline_ids."
+                        )
+
                 if is_trigger:
-                    # Trigger marker: include all entries (only -1 lines expected)
+                    # Trigger marker: include all entries (only -1 lines expected).
+                    # int("-1") = -1 < 1, so scatter sentinel sorts first naturally.
                     paylines: list[dict[str, Any]] = sorted(
                         [{"payline_id": pl_id, "hit_count": cnt}
                          for pl_id, cnt in pl_map.items()],
-                        key=lambda x: x["payline_id"],
+                        key=lambda x: int(x["payline_id"]),
                     )
                 else:
-                    # Regular pid: exclude -1 (trigger-marker line) entries
+                    # Regular pid: exclude -1 (trigger-marker line) entries.
+                    # Sort by int key — fixes lexicographic "1","10","11","2" for
+                    # machines with 10+ paylines (d1 fix, R1 Phase 2).
                     paylines = sorted(
                         [{"payline_id": pl_id, "hit_count": cnt}
                          for pl_id, cnt in pl_map.items()
                          if pl_id != "-1"],
-                        key=lambda x: x["payline_id"],
+                        key=lambda x: int(x["payline_id"]),
                     )
 
                 # notes: explicit signal fields per pid.
