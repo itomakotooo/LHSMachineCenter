@@ -163,7 +163,11 @@ class TestPipelineContextIsFrozen:
 # ---------------------------------------------------------------------------
 
 class TestMechanismRegistry:
-    """MechanismRegistry placeholder must instantiate and return expected keys."""
+    """MechanismRegistry must instantiate and return expected keys.
+
+    Phase C4: real Tier 1/2/3 detection replaces C1 placeholder.
+    _phase key removed (it was a C1-only marker, no longer needed).
+    """
 
     EXPECTED_SUMMARY_KEYS = {
         "jackpot_applicable",
@@ -172,7 +176,7 @@ class TestMechanismRegistry:
         "scatter_marker_pids",
         "payout_groups_applicable",
         "_detection_source",
-        "_phase",
+        # Note: _phase was a C1 placeholder marker; C4 real registry omits it.
     }
 
     def test_instantiates_no_error(self):
@@ -202,12 +206,22 @@ class TestMechanismRegistry:
             f"Got: {sorted(result.keys())}"
         )
 
-    def test_c1_phase_marker(self):
-        """_phase key must be 'C1_placeholder' — confirms C4 logic not yet shipped."""
+    def test_c4_phase_no_placeholder_marker(self):
+        """_phase key must be absent — C4 ships real registry (no C1 placeholder marker).
+
+        Phase C4 replaces the C1 placeholder with real Tier 1/2/3 detection.
+        The _phase: 'C1_placeholder' marker is removed as the registry is no
+        longer a placeholder.
+
+        INJECT-BUG: add '_phase': 'C1_placeholder' back to to_summary_dict().
+        RED: '_phase' appears in result.keys() → this assertion fails.
+        Revert: remove _phase key → GREEN.
+        """
         mr = MechanismRegistry()
         result = mr.to_summary_dict()
-        assert result["_phase"] == "C1_placeholder", (
-            f"Expected C1_placeholder, got {result['_phase']!r}"
+        assert "_phase" not in result, (
+            f"_phase key must be absent in C4 (real registry, not placeholder). "
+            f"Got: {result.get('_phase')!r}"
         )
 
 
