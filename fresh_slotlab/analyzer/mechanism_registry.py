@@ -14,7 +14,10 @@ Tier precedence (highest → lowest)
 Tier 1 — manifest["mechanism_overrides"] dict — explicit operator declaration.
 Tier 2 — inferred from merge-loop accumulators available post-Phase A:
   freespin  : len(bonus_chain_lengths) > 0
-  jackpot   : upstream_feature_tally contains a jackpot-like feature key
+  jackpot   : NOT IMPLEMENTED (intentionally deferred). Tier 3
+              (PID >= 10,000 OR JackpotIds field) is correct for all known
+              fleet machines as of R2. Add Tier 2 only if a machine has
+              jackpot PIDs < 10,000 with no JackpotIds field.
 Tier 3 — raw evidence:
   jackpot   : payout_id_win PIDs with int(pid) >= 10000 (Path A)
               UNION jackpot_ids_seen from raw JackpotIds field (Path B)
@@ -211,6 +214,13 @@ class MechanismRegistry:
                 # Even if total_freespin_chain_spins > 0, Tier 2 explicit-False
                 # blocks Tier 3.  In practice, if bonus_chain_lengths is empty
                 # then total_freespin_chain_spins will also be 0.
+                #
+                # total_freespin_chain_spins is accepted for forward-compatibility
+                # but is NOT read in the current detection logic. Tier 2
+                # explicit-False (bonus_chain_lengths empty) blocks Tier 3 before
+                # this value could be used. Add Tier 3 freespin logic here only if
+                # a machine class does not annotate ReMarks but DOES have freespin
+                # behavior observable via total_freespin_chain_spins > 0.
                 freespin_applicable = False
                 detection_source["freespin_applicable"] = "tier2_bonus_chain_lengths_empty"
 

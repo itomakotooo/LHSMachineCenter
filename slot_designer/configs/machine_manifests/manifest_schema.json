@@ -135,6 +135,36 @@
       }
     },
 
+    "mechanism_overrides": {
+      "type": "object",
+      "description": "Tier 1 explicit operator overrides for mechanism detection. When present, these values take precedence over Tier 2/3 inference in MechanismRegistry.build(). Optional — 0 of 253 manifests use this today (forward-compat scaffolding per R2 B-3). Per-mode override is intentionally NOT supported: the per-mode resolver does not wire it, so a per-mode mechanism override would be silently dropped — deferred until both the resolver and a real use case exist (per R2 Phase 1 critic).",
+      "properties": {
+        "scatter_marker_pids": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Explicit scatter trigger marker PID list. Overrides Tier 3 win==0 + no-regular-line detection."
+        },
+        "jackpot_applicable": {
+          "type": "boolean",
+          "description": "Explicit jackpot presence flag. Overrides Tier 3 PID >= 10000 detection."
+        },
+        "jackpot_pid_set": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Explicit jackpot PID list. Used when jackpot_applicable is true. Overrides Tier 3 PID >= 10000 + JackpotIds detection."
+        },
+        "freespin_applicable": {
+          "type": "boolean",
+          "description": "Explicit freespin presence flag. Overrides Tier 2 bonus_chain_lengths inference."
+        },
+        "payout_groups_applicable": {
+          "type": "boolean",
+          "description": "Explicit payout grouping flag. Overrides Tier 3 gid != 0 detection."
+        }
+      },
+      "additionalProperties": false
+    },
+
     "rtp_integrity_contract": {
       "$ref": "#/definitions/rtp_integrity_contract",
       "description": "RTP integrity contract for this machine. Per §5.5.2."
