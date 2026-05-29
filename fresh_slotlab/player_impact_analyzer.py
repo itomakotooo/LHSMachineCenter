@@ -3582,52 +3582,36 @@ def main() -> int:
     # taken on every fresh sampling / report rebuild.
     if bankruptcy_stream_acc.has_data:
         bankruptcy_sim_totals = bankruptcy_stream_acc.finalize()
-    bankruptcy_rows: list[dict[str, Any]] = []
-    for m in _bankruptcy_mults_tuple:
-        tier = bankruptcy_sim_totals.get(int(m))
-        if tier is None:
-            tier = _empty_bankruptcy_tier()
-        total_sessions = int(tier["bankrupt"]) + int(tier["survived"])
-        rate = (tier["bankrupt"] / total_sessions) if total_sessions > 0 else 0.0
-        # Sort the exact spins_done list once — all per-tier stats flow
-        # from this sorted view. Preserves spin-level precision (the
-        # previous histogram-based path collapsed ranges like
-        # [100, 199] to a single midpoint 150, which quantized P10/P20
-        # into visually identical rows when early deciles shared a bin).
-        sd_sorted = sorted(int(v) for v in (tier.get("spins_done") or []))
-        survived_ref = int(tier.get("survived") or 0)
-        percentiles = compute_bankruptcy_percentiles(
-            sd_sorted,
-            survived_ref,
-            bankruptcy_sim_session_spins,
+    # Phase 6 carve (analyzer unbundle — the LAST carve; see
+    # session_artifacts/_impl/phase_extract_6_bankruptcy/brief.md):
+    # the tier ROW-BUILD loop moved VERBATIM into the bankruptcy_simulation
+    # plugin as build_bankruptcy_rows(). PIA imports it (dual-path) and calls
+    # it HERE — the pre-summary row-build site — because bankruptcy_rows feeds
+    # the pre-summary x100_br/x200_br/x500_br derivation (split-ownership: the
+    # late-running emit() cannot own a build the pre-summary path consumes).
+    # The returned rows are byte-identical to the pre-carve inline loop;
+    # x100_br etc. and the stash + markdown read-back below are UNCHANGED.
+    # Importing the plugin here is safe for the R-1 drift-guard: PIA already
+    # imports this registered plugin (for register()), so no new content module
+    # enters the closure — the guard still excludes it (R-4). The row-build
+    # bytes now live in the plugin → editing them flips ITS feature_hash, not
+    # base. Dual-path per memory
+    # feedback_subprocess_import_suicide_and_module_globals.md; NEVER the
+    # reverse import (the plugin must not import PIA — cycle risk).
+    try:
+        from fresh_slotlab.analyzer.features.bankruptcy_simulation import (
+            build_bankruptcy_rows,
         )
-        median_spins = median_spins_from_list(
-            sd_sorted,
-            survived_ref,
-            bankruptcy_sim_session_spins,
+    except ImportError:  # running as standalone script
+        from analyzer.features.bankruptcy_simulation import (  # type: ignore[no-redef]
+            build_bankruptcy_rows,
         )
-        fastest = fastest_bankruptcy_spins_from_list(sd_sorted)
-        bankruptcy_rows.append(
-            {
-                "bankroll_multiplier": int(m),
-                "init_credits": int(m) * int(args.bet),
-                "session_spins": bankruptcy_sim_session_spins,
-                "robots": total_sessions,
-                "bankrupt_robots": int(tier["bankrupt"]),
-                "completed_robots": int(tier["survived"]),
-                "bankruptcy_rate": rate,
-                "median_spins_completed": median_spins,
-                # Fastest observed bankruptcy (None when the tier saw
-                # zero bankruptcies — e.g. a bankroll so large every
-                # session survived). UI highlights this separately.
-                "fastest_bankruptcy_spins": fastest,
-                # Decile table keyed by percentile int → spin count at
-                # that percentile across ALL simulated sessions (not
-                # just bankrupt). JSON keys will serialize as strings.
-                "percentiles": {str(k): v for k, v in percentiles.items()},
-            }
-        )
-    bankruptcy_rows.sort(key=lambda row: int(row.get("bankroll_multiplier", 0)))
+    bankruptcy_rows: list[dict[str, Any]] = build_bankruptcy_rows(
+        bankruptcy_sim_totals,
+        _bankruptcy_mults_tuple,
+        args.bet,
+        bankruptcy_sim_session_spins,
+    )
 
     ci_met = achieved_halfwidth_pp is not None and achieved_halfwidth_pp <= args.target_halfwidth_pp
     sample_size_met = total_spins >= 2_000_000
@@ -4443,8 +4427,9 @@ def main() -> int:
     #   build, placeholder in C1) → Phase D (topo-sorted emit loop).
     #
     # Stash temp keys for BankruptcySimulation.emit() (Pattern B).
-    # bankruptcy_rows was built at lines 4006-4051; it's still needed by
-    # the markdown section below (local variable, not deleted here).
+    # bankruptcy_rows was built earlier (pre-summary) by the plugin's
+    # build_bankruptcy_rows() — Phase 6 carve; it's still needed by the
+    # markdown section below (local variable, not deleted here).
     # The temp keys carry it into the feature's emit and are removed there.
     summary["_bankruptcy_rows"] = bankruptcy_rows
     summary["_bankruptcy_sim_session_spins"] = bankruptcy_sim_session_spins

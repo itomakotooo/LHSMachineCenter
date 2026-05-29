@@ -23,12 +23,13 @@ Hard gate (must pass before and after all edits):
   python -c "import sys; sys.path.insert(0,'fresh_slotlab');
              from analyzer.versioning import compute_base_analyzer_version as f;
              print(f())"
-  MUST print: ccc1ecce185d  (960e9d18d83d pre phase-2a; 57fdb323585d after the
+  MUST print: d8b8c138874a  (960e9d18d83d pre phase-2a; 57fdb323585d after the
               collect_mechanic carve; 980f488f4bb2 after the bonus_chain_dynamics
               carve; c89db791d8a1 after the upstream_feature_breakdown row-build
               carve; ce298f055495 after the multiplier_profile dict-build carve;
-              ccc1ecce185d after the reel_marginal_by_spin_type dict-build carve
-              — PIA shrank each time a feature's compute was carved out)
+              ccc1ecce185d after the reel_marginal_by_spin_type dict-build carve;
+              d8b8c138874a after the bankruptcy_simulation row-build carve — the
+              LAST carve — PIA shrank each time a feature's compute was carved out)
 """
 from __future__ import annotations
 

@@ -23,7 +23,7 @@ Additionally verifies:
   - stash key absent from final M275 summary (cleanup complete).
   - stash key absent from final M14 summary.
   - No _ prefix keys at top level of either summary.
-  - base_hash is the R-1 closure value (ccc1ecce185d as of phase-5; registered plugins excluded by R-4).
+  - base_hash is the R-1 closure value (d8b8c138874a as of phase-6; registered plugins excluded by R-4).
 
 Inject-bug recipe (complementary — main Bug A in test_c6_bonus_chain_dynamics_plugin.py):
     Change PIA stash key to carry a MODIFIED bonus_chain_dynamics (e.g. set
@@ -102,7 +102,7 @@ class TestBaseHashUnchangedC6:
     """base_hash must be the R-1 closure value after C6 (registered plugin excluded by R-4)."""
 
     def test_base_hash_value(self):
-        """compute_base_analyzer_version() must return ccc1ecce185d.
+        """compute_base_analyzer_version() must return d8b8c138874a.
 
         Phase honesty-2 redefined base_hash to the 25-file report-production
         import closure (R-1) → 960e9d18d83d. C6 adds bonus_chain_dynamics.py in
@@ -115,7 +115,9 @@ class TestBaseHashUnchangedC6:
         re-baselined again to c89db791d8a1. Phase 4 carved multiplier_profile's
         inline dict-build out of PIA → base re-baselined again to ce298f055495.
         Phase 5 carved reel_marginal_by_spin_type's inline dict-build out of PIA →
-        base re-baselined again to ccc1ecce185d
+        base re-baselined again to ccc1ecce185d. Phase 6 carved
+        bankruptcy_simulation's inline tier ROW-BUILD loop out of PIA (the LAST
+        carve of the unbundle) → base re-baselined again to d8b8c138874a
         (one-time fleet re-baseline; report content byte-identical, proven by the
         deep-diff test below).
         If base_hash changes again, it signals a modification to a production-path
@@ -123,8 +125,8 @@ class TestBaseHashUnchangedC6:
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "ccc1ecce185d", (
-            f"base_hash must be 'ccc1ecce185d' (R-1 closure value, post phase-5). "
+        assert actual == "d8b8c138874a", (
+            f"base_hash must be 'd8b8c138874a' (R-1 closure value, post phase-6). "
             f"Got: {actual!r}. "
             f"Registered plugin additions must NOT change base_hash (R-4 exclusion). "
             f"If a production-path file (in _CLOSURE_FILES) was modified, update this pin."

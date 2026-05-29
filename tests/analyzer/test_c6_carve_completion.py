@@ -16,7 +16,7 @@ Gap closure assertions
 
 Cross-phase invariants
 ----------------------
-- base_hash is the R-1 closure value (ccc1ecce185d as of phase-5; registered plugins excluded by R-4).
+- base_hash is the R-1 closure value (d8b8c138874a as of phase-6; registered plugins excluded by R-4).
 - 9 plugins registered in ALL_FEATURES.
 - feature_errors absent or empty for M275.
 - No _ prefix stash keys at top level of final summary.
@@ -108,7 +108,7 @@ class TestCarveCompletionPreconditions:
         )
 
     def test_base_hash_unchanged(self):
-        """base_hash must be ccc1ecce185d (R-1 closure value, post phase-5).
+        """base_hash must be d8b8c138874a (R-1 closure value, post phase-6).
 
         Phase honesty-2 (2026-05-29) redefined base_hash to the 25-file report-
         production import closure → 960e9d18d83d. All C-phase plugins are
@@ -121,14 +121,16 @@ class TestCarveCompletionPreconditions:
         re-baselined to c89db791d8a1. Phase 4 carved multiplier_profile's inline
         dict-build OUT of PIA → base re-baselined to ce298f055495. Phase 5 carved
         reel_marginal_by_spin_type's inline dict-build OUT of PIA → base
-        re-baselined to ccc1ecce185d (report content byte-identical; only where
+        re-baselined to ccc1ecce185d. Phase 6 carved bankruptcy_simulation's inline
+        tier ROW-BUILD loop OUT of PIA (the LAST carve of the unbundle) → base
+        re-baselined to d8b8c138874a (report content byte-identical; only where
         the code lives changed). The value is stable until another production-path
         file in _CLOSURE_FILES is modified.
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "ccc1ecce185d", (
-            f"base_hash must be 'ccc1ecce185d' (R-1 closure value, post phase-5). "
+        assert actual == "d8b8c138874a", (
+            f"base_hash must be 'd8b8c138874a' (R-1 closure value, post phase-6). "
             f"Got: {actual!r}. "
             f"Registered plugin modifications must NOT change base_hash (R-4 exclusion). "
             f"Check _CLOSURE_FILES in versioning.py for unintended production-path changes."
