@@ -1286,16 +1286,18 @@ class TestHashCompositionRollsForward:
             f"compute_base_analyzer_version() is non-deterministic: {actual1!r} vs {actual2!r}"
         )
 
-        # (b) Pin check: must be the known R-1 closure value (post phase-2b)
+        # (b) Pin check: must be the known R-1 closure value (post phase-3)
         # honesty-2 closed the R-1 gap: 25-file set covering full production path.
         # Phase 2a carved collect_mechanic's compute out of PIA (a closure file),
         # shrinking base 960e9d18d83d -> 57fdb323585d; phase 2b carved
-        # bonus_chain_dynamics out of PIA -> 980f488f4bb2 (report content byte-identical).
+        # bonus_chain_dynamics out of PIA -> 980f488f4bb2; phase 3 carved
+        # upstream_feature_breakdown's row-build out of PIA -> c89db791d8a1
+        # (report content byte-identical).
         # If this value changes again, a _CLOSURE_FILES source was edited.
-        assert actual1 == "980f488f4bb2", (
+        assert actual1 == "c89db791d8a1", (
             f"compute_base_analyzer_version() diverges from R-1 closure reference:\n"
             f"  actual   = {actual1!r}\n"
-            f"  expected = '980f488f4bb2' (R-1 closure value, post phase-2b)\n"
+            f"  expected = 'c89db791d8a1' (R-1 closure value, post phase-3)\n"
             "The R-1 closure covers core/*.py plus content modules (round_classification,\n"
             "round_win, trigger_sessions, sampler, machine_md5, chunk_index, rawdata_index)\n"
             "and support modules. If this changed, update the pin to the new value and\n"

@@ -28,14 +28,12 @@ C5 false-positive invariants for M14
 
 Inject-bug recipe (per memory/feedback_enumerate_safety_paths.md)
 -----------------------------------------------------------------
-Bug: Set a permanent applicable=True regardless of feature count in
-     upstream_feature_breakdown PIA inline logic:
-    In player_impact_analyzer.py, find:
-        upstream_feature_applicable = (
-            ...
-        )
-    Force it to True by adding:
-        upstream_feature_applicable = True  # BUG: always True
+Bug: Set a permanent applicable=True regardless of feature count.
+     Phase 3 moved this compute OUT of player_impact_analyzer.py INTO the
+     plugin fresh_slotlab/analyzer/features/upstream_feature_breakdown.py:
+    In upstream_feature_breakdown.py emit(), find where ``applicable`` is
+    derived from the feature count and force it True:
+        applicable = True  # BUG: always True
 
     RED: M14 upstream_feature_breakdown.applicable becomes True (false positive).
          test_m14_upstream_feature_breakdown_applicable_false fails.

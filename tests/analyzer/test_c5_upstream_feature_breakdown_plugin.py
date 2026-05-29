@@ -21,20 +21,35 @@ Invariants asserted
 16. M14 subprocess: applicable=False (only "Normal" feature; single-feature machine).
 17. No feature_errors in M275 or M14 subprocess output.
 
+Phase 3 carve note
+------------------
+The plugin now OWNS the ~400-line row-build (moved VERBATIM out of PIA per
+session_artifacts/_impl/phase_extract_3_upstream_feature/brief.md §2). The stash
+carries RAW inputs (upstream_feature_tally, the resolved feature→SpinType maps,
+the transition/bucket/chain accumulators, etc.); emit() re-sources them and BUILDS
+the {applicable, source, features} dict. The assertions below are unchanged; only
+the _make_stash_data() fixture body changed to feed the new raw-input contract.
+A full deep-diff byte-identity regression (REAL subprocess vs frozen goldens) lives
+in test_3_byte_identical_upstream_feature_carve.py.
+
 Inject-bug recipes (per memory/feedback_enumerate_safety_paths.md)
 -------------------------------------------------------------------
-Bug A — emit() returns empty features list instead of reading stash:
-    In upstream_feature_breakdown.py UpstreamFeatureBreakdown.emit(), change:
-        data: dict[str, Any] = summary.pop(_STASH_KEY)
+Bug A — emit() writes an empty/forced breakdown instead of building from the stash:
+    In upstream_feature_breakdown.py UpstreamFeatureBreakdown.emit(), replace the
+    final write block:
         player_impact = summary.setdefault("player_impact", {})
-        player_impact["upstream_feature_breakdown"] = data
-    to:
-        summary.pop(_STASH_KEY, None)
+        player_impact["upstream_feature_breakdown"] = {
+            "applicable": upstream_feature_applicable,
+            "source": "analysisResult.FeatureWin",
+            "features": upstream_feature_rows,
+        }
+    with (forcing the wrong value):
+        summary.pop(_STASH_KEY, None)  # already popped above; harmless
         player_impact = summary.setdefault("player_impact", {})
         player_impact["upstream_feature_breakdown"] = {"applicable": False, "features": []}
     RED: test_emit_reads_stash_and_writes_player_impact fails (applicable/features wrong).
          test_m275_applicable_true fails (subprocess level).
-    Revert (restore original emit body) -> GREEN.
+    Revert (restore the build-from-stash write) -> GREEN.
 
 Memory files cited
 ------------------
@@ -264,10 +279,74 @@ class TestUpstreamFeatureBreakdownEmit:
         return _import_plugin_class()()
 
     def _make_stash_data(self, applicable=True, features=None):
+        """Build a minimal _upstream_feature_breakdown_data stash (Phase 3 RAW inputs).
+
+        Phase 3 carve: the stash now carries the RAW row-build inputs instead of
+        the pre-built {applicable, source, features} dict. emit() re-sources these
+        raw inputs and BUILDS the dict verbatim (the ~400-line row-build moved out
+        of PIA). The assertions in this suite stay identical; only this fixture body
+        changes to match the new stash contract.
+
+        Raw input design (drives the assertions byte-for-byte):
+          - applicable=True  → upstream_feature_tally has a single bonus-named
+            feature "NormalCollectionSpin" (non-"Normal" → has_bonus_named_feature
+            → applicable=True), one pid with win>0 + times>0 (NOT trigger_only →
+            single aggregate row). feature_to_spin_type={} so resolved_spin_type is
+            None → no bucket/transition lookups needed; one clean aggregate row
+            named "NormalCollectionSpin" is emitted (len(features)==1).
+          - applicable=False → single "Normal" feature only (has_multiple_features
+            False + has_bonus_named_feature False → applicable=False).
+          - source is the constant "analysisResult.FeatureWin" baked into the build.
+          - the ``features`` kwarg (legacy passthrough param) is accepted for
+            signature compat but ignored — the plugin now BUILDS features from the
+            tally (it no longer accepts a pre-built features list).
+
+        All transition/bucket/chain accumulators are empty (resolved_spin_type is
+        None for these synthetic features, so the build never indexes them). The
+        full raw-input key set is present so the plugin's fail-loud guard passes.
+        """
+        if applicable:
+            _tally = {
+                "NormalCollectionSpin": {
+                    "1": {"win": 500.0, "times": 100},
+                },
+            }
+        else:
+            _tally = {
+                "Normal": {
+                    "1": {"win": 500.0, "times": 100},
+                },
+            }
         return {
-            "applicable": applicable,
-            "source": "analysisResult.FeatureWin",
-            "features": features or [],
+            # Resolved helper RESULTS (empty → resolved_spin_type None for both).
+            "feature_to_spin_type": {},
+            "spin_type_to_feature": {},
+            "ambiguous_mapped": set(),
+            "bcm_bonus_feature": None,
+            "bcm_bonus_source": "none",
+            # The per-feature per-pid {win, times} tally the row headers read.
+            "upstream_feature_tally": _tally,
+            # SpinType transition table (empty — no successor/predecessor edges).
+            "spin_type_next_counts": {},
+            # Chain post-processing accumulators (empty — no per-path sub_streams).
+            "chain_chunk_summaries": {},
+            "chain_bucket_spins": {},
+            "chain_bucket_bet": {},
+            "chain_bucket_win": {},
+            # Round-level multiplier-bucket accumulators + settlement-ST fallbacks.
+            "spin_type_bucket_spins": {},
+            "spin_type_bucket_bet": {},
+            "spin_type_bucket_win": {},
+            "session_bucket_spins_by_settlement_st": {},
+            "session_bucket_bet_by_settlement_st": {},
+            "session_bucket_win_by_settlement_st": {},
+            # Wild-nudge tagging inputs.
+            "spin_type_spins": {},
+            "spin_type_nudge_round_count": {},
+            # Scalars.
+            "total_spins": 1000,
+            "effective_bet_for_rtp": 1000.0,
+            "upstream_total_win": 500.0,
         }
 
     def test_emit_raises_when_stash_absent(self, plugin):
