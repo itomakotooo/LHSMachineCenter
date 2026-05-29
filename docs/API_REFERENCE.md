@@ -834,7 +834,7 @@ endpoint). Missing file → empty halls.
 {
   "halls": {"G1": ["M9", "M88", "M51", ...], "G10": ["M70", ...], ...},
   "updated_at": "2026-04-18T13:04:09Z",
-  "source": "http://buffalo-debug.citrusjoy.com/MachineTest/MapMachineOrder"
+  "source": "http://192.168.10.21:15060/MachineTest/MapMachineOrder"
 }
 ```
 
@@ -986,10 +986,11 @@ Get latest interpretation for a run.
 
 ## Upstream API (GM MachineTest)
 
-Base URL: `http://buffalo-debug.citrusjoy.com` (test env, no auth)
-or `http://127.0.0.1:1111` (local GM, auth required).
+Base URL: the active server from `configs/servers.json` — e.g.
+`http://192.168.10.21:15060` (`dev`, internal) or `http://116.232.103.19:10288`
+(`prod`, public). No auth.
 
-Full documentation: `MachineTest-TestSpin (3).md` in project root.
+Full documentation: `docs/upstream/MachineTest-TestSpin.md`.
 
 ### `POST /MachineTest/MultiRobotTestSpinVariant`
 

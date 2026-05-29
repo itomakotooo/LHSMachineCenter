@@ -140,20 +140,7 @@ Use combined judgment from `std_return_x`, `zero_win_rate`, `tail_dependency`, `
 2. If blank-like symbol > 58%, usually expect drier feel.
 3. If same symbol rate differs by reel/column > 5pp, flag distribution skew for review.
 
-## 8) Bankruptcy Interpretation (session view)
-
-Use fixed session length (default 500 spins), then check bankroll ladder:
-
-1. `x100` bankroll bust rate:
-   - > 25%: high short-session frustration risk
-2. `x200` bankroll bust rate:
-   - > 10%: medium-high retention risk
-3. `x500` bankroll bust rate:
-   - > 1%: long-session harshness warning
-
-Also report slope between bankroll points; steep drop indicates bankroll sensitivity.
-
-## 9) Report Alert Rules
+## 8) Report Alert Rules
 
 Trigger alert when any of these occurs:
 
@@ -164,7 +151,7 @@ Trigger alert when any of these occurs:
 5. `x200` bankruptcy rate >= 0.10.
 6. Payline concentration or symbol skew flags are hit.
 
-## 10) Required Conclusion Template
+## 9) Required Conclusion Template
 
 Each report conclusion should follow this order:
 
@@ -174,7 +161,7 @@ Each report conclusion should follow this order:
 4. `Session risk` (bankruptcy curve)
 5. `Design action` (what to tune first and expected effect)
 
-## 11) Tuning Priority Map
+## 10) Tuning Priority Map
 
 When player feel is too dry:
 

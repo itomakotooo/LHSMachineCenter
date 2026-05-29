@@ -32,7 +32,7 @@ This file tracks executable next steps for the current phase.
 
 - [ ] **Upstream sampling throughput crisis — switch to internal server**
       (2026-04-24 investigation). Direct-connect to
-      `buffalo-debug.citrusjoy.com` shows two distinct regimes:
+      the external test endpoint showed two distinct regimes:
       fresh-probe peak 3,765-4,411 outer spin/s at 8×8, dropping to
       ~710-1,085 outer/s after a few hundred requests (per-source
       rate limit). Historical proxy-era single-stream was 4,113

@@ -12,10 +12,14 @@ It contains:
 
 ## Current Scope
 
-- test endpoint: `http://buffalo-debug.citrusjoy.com/MachineTest/MultiRobotTestSpinVariant`
-  (accepts both variant keys like `M273$1$1-2-3` and plain machine names
-  like `M14` — variants get rewritten to underlying+selector params
-  upstream, non-variants fall through to plain test-spin)
+- test endpoint: the active server from `configs/servers.json`, path
+  `/MachineTest/MultiRobotTestSpinVariant` — internal `dev`
+  (`http://192.168.10.21:15060`) on the intranet, public `prod`
+  (`http://116.232.103.19:10288`) off-site; pick the default via the
+  server-management UI. It accepts both variant keys like `M273$1$1-2-3` and
+  plain machine names like `M14` — variants get rewritten to
+  underlying+selector params upstream, non-variants fall through to plain
+  test-spin.
 - machine registry from `configs/machines.json` — non-variant machines plus
   one variant row per entry in `machineTestVariantsJson` (from
   `/MapMachineOrder`); see the file for the live roster/count. Each row is an

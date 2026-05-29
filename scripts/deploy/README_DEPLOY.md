@@ -262,7 +262,7 @@ The following gaps are known as of P4 (2026-05-17). They are tracked for future 
 | Rollback script does not clean SQLite if schema changed | Schema rollback requires manual DB inspection | Schema changes are additive; old code ignores new columns |
 | POSIX/Linux not supported | Windows-only deploy | By design (per project requirements) |
 | No HTTPS / TLS | HTTP only over LAN | Acceptable for intranet; future: nginx reverse proxy or cert mgmt |
-| Frontend Playwright tests absent | Visual regressions not caught by CI | Backend API tests cover the data layer; visual check is manual |
+| Playwright e2e not in the deploy smoke | Visual regressions not caught by the single-box deploy smoke | A Playwright e2e suite exists under `tests/e2e/` (run via `scripts/test.ps1 -E2E`); it is a dev-time check, not part of the deploy smoke |
 | `refreshConfigList` on the frontend silently swallows non-404 errors | Server errors during config list fetch may be invisible in the UI | Check browser console or `/api/configs` directly |
 
 ---

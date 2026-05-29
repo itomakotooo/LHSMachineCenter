@@ -36,6 +36,8 @@ Do NOT trigger for:
 
 Tools per agent are enforced via frontmatter `tools:` whitelist in `.claude/agents/impl-*.md`. Implementer + Tester can Edit/Write code; Verifier is read-only on prod code (Bash only); Critic is read-only (Write to critique markdown only).
 
+An optional 5th agent, `impl-committer` (`.claude/agents/impl-committer.md`), is a **pre-commit gate**: before the coordinator commits, it reviews the staged working-tree diff + the drafted commit message against the phase brief — catching accidental file modifications, claim-vs-diff mismatches, unstaged-but-should-commit files, and destructive-git-op fingerprints (reset/stash/checkout accidents). It is read-only (no code, test, or git mutations) and is invoked at the coordinator's discretion during Consolidation; the coordinator still performs the actual commit (§5 invariant 1).
+
 ---
 
 ## §3 Wave structure

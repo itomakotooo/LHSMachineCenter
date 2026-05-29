@@ -60,7 +60,7 @@ Guide for engineers taking over this repository.
 
 ## 4. Git Workflow
 
-- Branch from `main` with small, focused scopes.
+- Branch from `collab/dev` with small, focused scopes.
 - Keep one logical concern per commit.
 - Include docs update when behavior/contract changes.
 - Prefer PR merge to `main` after checks pass.
@@ -91,15 +91,21 @@ Guide for engineers taking over this repository.
 - Migration/compatibility:
   any API/schema/runtime behavior changes.
 
-## 7. How to Use Codex for Review
+## 7. Code Review (agent-team driven)
 
-- Provide commit hash or PR diff.
-- Ask for:
-  bug risk, regression risk, missing tests, and safety contract violations.
-- Example:
-  `review commit <hash>, focus on run safety, restart robustness, and cache cleanup protections`
-- Treat review findings as merge blockers if they affect:
-  data correctness, safety guarantees, or API contract stability.
+Review runs through the Claude Code agent teams (see `docs/ARCH_TEAM_PROCESS.md`
++ `docs/IMPL_TEAM_PROCESS.md`), not an external tool:
+
+- Cross-cutting design is reviewed by the arch-* team's `arch-critic` +
+  `arch-validator` before any code is written.
+- Implementation is reviewed by the impl-* team's `impl-verifier` (end-to-end)
+  + `impl-critic` (adversarial) on every change; the coordinator
+  trust-but-verifies each.
+- Ask reviewers to focus on: bug risk, regression risk, missing tests, and
+  safety-contract violations (run safety, restart robustness, cache-cleanup
+  protections).
+- Treat findings as merge blockers if they affect data correctness, safety
+  guarantees, or API-contract stability.
 
 ## 8. Run Config Workflow
 
