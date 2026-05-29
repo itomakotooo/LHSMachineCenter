@@ -718,17 +718,18 @@ class TestHashComposition:
             "registered plugin. R-4 excludes only registered plugins; __init__.py stays in base."
         )
 
-        # (c) Live value must be the known R-1 closure pin (post phase-3)
+        # (c) Live value must be the known R-1 closure pin (post phase-4)
         # Phase 2a carved collect_mechanic's compute out of PIA (a closure file),
         # shrinking base 960e9d18d83d -> 57fdb323585d; phase 2b carved
         # bonus_chain_dynamics out of PIA -> 980f488f4bb2; phase 3 carved
-        # upstream_feature_breakdown's row-build out of PIA -> c89db791d8a1
+        # upstream_feature_breakdown's row-build out of PIA -> c89db791d8a1;
+        # phase 4 carved multiplier_profile's dict-build out of PIA -> ce298f055495
         # (report content byte-identical).
         actual = _cbav()
-        assert actual == "c89db791d8a1", (
+        assert actual == "ce298f055495", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = 'c89db791d8a1' (R-1 closure value, post phase-3)\n"
+            f"  expected = 'ce298f055495' (R-1 closure value, post phase-4)\n"
             "R-4 exclusion covers registered plugins only (not all features/*.py).\n"
             "_base.py and features/__init__.py are still in base (not registered plugins)."
         )

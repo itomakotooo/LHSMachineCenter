@@ -5,7 +5,7 @@ inadvertently change fields that are outside its scope.
 
 Invariants asserted
 -------------------
-1. base_hash == "c89db791d8a1" (R-1 closure value, post phase-3; registered plugins excluded by R-4).
+1. base_hash == "ce298f055495" (R-1 closure value, post phase-4; registered plugins excluded by R-4).
 2. M275 summary: payout_groups_top20 == [] (gap #5 closed).
 3. M275 summary: payout_groups_status == "all_zeros_filtered" (gap #5 closed).
 4. M275 summary: upstream_feature_breakdown.applicable == True (C5 plugin).
@@ -91,7 +91,7 @@ class TestBaseHashUnchanged:
     """base_hash must be the R-1 closure value (honesty-2, 2026-05-29)."""
 
     def test_base_hash_value(self):
-        """compute_base_analyzer_version() must return c89db791d8a1.
+        """compute_base_analyzer_version() must return ce298f055495.
 
         Phase honesty-2 redefined base_hash to the 25-file report-production
         import closure (R-1) → 960e9d18d83d. C5 adds registered plugin files in
@@ -101,15 +101,16 @@ class TestBaseHashUnchanged:
         57fdb323585d. Phase 2b (the bonus_chain_dynamics carve) removed that
         feature's dict-build from PIA → base shrank to 980f488f4bb2. Phase 3 (the
         upstream_feature_breakdown carve) removed that feature's ~400-line row-build
-        from PIA → base shrank to c89db791d8a1 (one-time fleet re-baseline; report
-        content byte-identical).
+        from PIA → base shrank to c89db791d8a1. Phase 4 (the multiplier_profile
+        carve) removed that feature's inline dict-build from PIA → base shrank to
+        ce298f055495 (one-time fleet re-baseline; report content byte-identical).
         If base_hash changes again, it signals a modification to a production-
         path file in the _CLOSURE_FILES tuple.
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "c89db791d8a1", (
-            f"base_hash must be 'c89db791d8a1' (R-1 closure value, post phase-3). "
+        assert actual == "ce298f055495", (
+            f"base_hash must be 'ce298f055495' (R-1 closure value, post phase-4). "
             f"Got: {actual!r}. "
             f"Registered plugin additions must NOT change base_hash (R-4 exclusion). "
             f"If a production-path file (in _CLOSURE_FILES) was modified, update this pin."

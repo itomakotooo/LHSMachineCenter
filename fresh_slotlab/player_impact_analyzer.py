@@ -3961,15 +3961,15 @@ def main() -> int:
                     for row in multiplier_bucket_rows
                 },
             },
-            "multiplier_profile": {
-                "metric": "ret_x = session_win / session_bet (paid bet only)",
-                "buckets": multiplier_bucket_rows,
-                "tail_spin_rate_ge10x": (
-                    tail_spins_ge10 / mb_total_spins if mb_total_spins > 0 else 0.0
-                ),
-                "tail_rtp_contribution_pp_ge10x": tail_rtp_contribution_pp_ge10x,
-                "tail_win_share_ge10x": tail_win_share_ge10x,
-            },
+            # Phase 4 (analyzer honesty/isolation): multiplier_profile is now
+            # written by the MultiplierProfile plugin's emit() (Pattern B stash
+            # pattern, analogous to upstream_feature_breakdown C5 / bonus_chain_dynamics
+            # 2b). The inline dict-build was carved OUT of this file into the plugin
+            # so editing it flips only multiplier_profile's feature_hash, not
+            # base_hash. The plugin reads summary["_multiplier_profile_data"] (the
+            # RAW inputs stashed below, after this summary dict is closed), builds
+            # the dict VERBATIM (byte-identical), and writes it into
+            # summary["player_impact"]["multiplier_profile"] in the Phase D emit loop.
             "hit_and_payout": {
                 "win_hit_rate": hit_rate,
                 "zero_win_rate": zero_win_rate,
@@ -4370,6 +4370,39 @@ def main() -> int:
             for feat, afb in all_chains_by_feature.items()
             if afb.get("lengths")
         },
+    }
+
+    # ── Phase 4 — stash key for MultiplierProfile plugin ──────────────────
+    # Analogous to _bonus_chain_dynamics_data / _upstream_feature_breakdown_data /
+    # _collect_mechanic_data (the 2a/2b/3 carves).
+    #
+    # Phase 4 (analyzer honesty/isolation; 07_decision.md §5 Phase 3-6 + R-11):
+    # the multiplier_profile dict-BUILD was carved OUT of this file (was the inline
+    # player_impact.multiplier_profile literal — pre-carve PIA:~3964) and INTO the
+    # MultiplierProfile plugin's emit().  The stash now carries the RAW inputs the
+    # build reads — NOT the pre-built {metric, buckets, ...} dict.  The plugin
+    # re-sources each raw input from this stash and builds the dict VERBATIM (key
+    # order / float / None-vs-0.0 forms preserved → report output byte-identical).
+    # PIA shed the dict literal, so base_hash shrinks one-time and editing this
+    # feature's compute flips only its feature_hash, not base.
+    #
+    # All 5 inputs are PIA-local values that remain SHARED with other consumers
+    # (multiplier_bucket_rows → volatility.return_bucket_rate at ~3961 + the
+    # buckets_complete quality gate at ~3641 + the markdown bucket section at ~4878;
+    # tail_rtp_contribution_pp_ge10x → guideline derived_metrics at ~4180;
+    # tail_spins_ge10 / mb_total_spins / tail_win_share_ge10x → the markdown section).
+    # Phase 4 moves ONLY the dict-build, not those derivations — so the values are
+    # computed once above and merely passed here as raw inputs.
+    #
+    # Per feedback_no_silent_swallow.md the plugin reads each raw key by explicit
+    # indexing and raises if any is absent (no silent default that would corrupt
+    # report numbers).
+    summary["_multiplier_profile_data"] = {
+        "multiplier_bucket_rows": multiplier_bucket_rows,
+        "tail_spins_ge10": tail_spins_ge10,
+        "mb_total_spins": mb_total_spins,
+        "tail_rtp_contribution_pp_ge10x": tail_rtp_contribution_pp_ge10x,
+        "tail_win_share_ge10x": tail_win_share_ge10x,
     }
 
     # ── Wave 2c / Phase C1: registered feature emit hooks ─────────────────

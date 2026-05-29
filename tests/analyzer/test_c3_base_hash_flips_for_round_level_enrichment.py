@@ -82,8 +82,9 @@ _C2_BASE_HASH = "b0ba0ce7c7e2"
 # Phase 2a (collect_mechanic carve) shrank PIA (a closure file) → re-baselined
 # to 57fdb323585d; phase 2b (bonus_chain_dynamics carve) shrank PIA again →
 # 980f488f4bb2; phase 3 (upstream_feature_breakdown row-build carve) shrank PIA
-# again → c89db791d8a1 (one-time fleet re-baseline, report content byte-identical).
-_EXPECTED_C3_BASE_HASH = "c89db791d8a1"  # phase 3: PIA shrank (upstream_feature_breakdown carve)
+# again → c89db791d8a1; phase 4 (multiplier_profile dict-build carve) shrank PIA
+# again → ce298f055495 (one-time fleet re-baseline, report content byte-identical).
+_EXPECTED_C3_BASE_HASH = "ce298f055495"  # phase 4: PIA shrank (multiplier_profile carve)
 
 _HEX12_RE = re.compile(r"^[0-9a-f]{12}$")
 
@@ -103,10 +104,11 @@ class TestBaseHashFlipExpected:
     report-production import closure (R-1): 25 files including content modules
     (round_classification, round_win, trigger_sessions, sampler, machine_md5,
     chunk_index, rawdata_index) and support modules. Old C3 value (fa440e3eb5f6)
-    is superseded. Closure value is c89db791d8a1 as of phase-3 (honesty-2 was
+    is superseded. Closure value is ce298f055495 as of phase-4 (honesty-2 was
     960e9d18d83d, LF-normalized FIX-2; phase-2a's collect_mechanic carve shrank PIA
     to 57fdb323585d; phase-2b's bonus_chain_dynamics carve shrank PIA to 980f488f4bb2;
-    phase-3's upstream_feature_breakdown row-build carve shrank PIA again).
+    phase-3's upstream_feature_breakdown row-build carve shrank PIA to c89db791d8a1;
+    phase-4's multiplier_profile dict-build carve shrank PIA again).
 
     The _EXPECTED_C3_BASE_HASH constant above is the authoritative pin.
     """
@@ -139,7 +141,7 @@ class TestBaseHashFlipExpected:
         )
 
     def test_base_hash_matches_expected_c3_value(self):
-        """base_hash must be the R-1 closure value (currently c89db791d8a1, phase-3).
+        """base_hash must be the R-1 closure value (currently ce298f055495, phase-4).
 
         Phase honesty-2 expanded base_hash from the core/*.py glob (fa440e3eb5f6)
         to the full 25-file report-production import closure (960e9d18d83d). The

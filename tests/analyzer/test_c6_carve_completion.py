@@ -16,7 +16,7 @@ Gap closure assertions
 
 Cross-phase invariants
 ----------------------
-- base_hash is the R-1 closure value (c89db791d8a1 as of phase-3; registered plugins excluded by R-4).
+- base_hash is the R-1 closure value (ce298f055495 as of phase-4; registered plugins excluded by R-4).
 - 9 plugins registered in ALL_FEATURES.
 - feature_errors absent or empty for M275.
 - No _ prefix stash keys at top level of final summary.
@@ -108,7 +108,7 @@ class TestCarveCompletionPreconditions:
         )
 
     def test_base_hash_unchanged(self):
-        """base_hash must be c89db791d8a1 (R-1 closure value, post phase-3).
+        """base_hash must be ce298f055495 (R-1 closure value, post phase-4).
 
         Phase honesty-2 (2026-05-29) redefined base_hash to the 25-file report-
         production import closure → 960e9d18d83d. All C-phase plugins are
@@ -118,14 +118,15 @@ class TestCarveCompletionPreconditions:
         bonus_chain_dynamics' dict-build (incl. its _quantiles closure) OUT of PIA
         → base re-baselined to 980f488f4bb2. Phase 3 carved
         upstream_feature_breakdown's ~400-line row-build OUT of PIA → base
-        re-baselined to c89db791d8a1 (report content byte-identical; only
-        where the code lives changed). The value is stable until another
-        production-path file in _CLOSURE_FILES is modified.
+        re-baselined to c89db791d8a1. Phase 4 carved multiplier_profile's inline
+        dict-build OUT of PIA → base re-baselined to ce298f055495 (report content
+        byte-identical; only where the code lives changed). The value is stable
+        until another production-path file in _CLOSURE_FILES is modified.
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "c89db791d8a1", (
-            f"base_hash must be 'c89db791d8a1' (R-1 closure value, post phase-3). "
+        assert actual == "ce298f055495", (
+            f"base_hash must be 'ce298f055495' (R-1 closure value, post phase-4). "
             f"Got: {actual!r}. "
             f"Registered plugin modifications must NOT change base_hash (R-4 exclusion). "
             f"Check _CLOSURE_FILES in versioning.py for unintended production-path changes."

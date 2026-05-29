@@ -737,22 +737,24 @@ class TestBaseAnalyzerVersionHash:
         actual = _compute_base_ver_fn()
         assert actual is not None, "compute_base_analyzer_version() returned None"
 
-        # Pin check: must be the known R-1 closure value (post phase-3)
+        # Pin check: must be the known R-1 closure value (post phase-4)
         # R-1 closure = 25-file set: core/*.py + content modules + support modules
         # (MINUS registered feature plugins, which have their own feature_hash).
         # Phase 2a (collect_mechanic carve) shrank player_impact_analyzer.py (a
         # closure file) → re-baselined 960e9d18d83d -> 57fdb323585d. Phase 2b
         # (bonus_chain_dynamics carve) shrank PIA again -> 980f488f4bb2. Phase 3
         # (upstream_feature_breakdown row-build carve) shrank PIA again -> c89db791d8a1.
-        assert actual == "c89db791d8a1", (
+        # Phase 4 (multiplier_profile dict-build carve) shrank PIA again -> ce298f055495.
+        assert actual == "ce298f055495", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = 'c89db791d8a1' (R-1 closure value, post phase-3)\n"
+            f"  expected = 'ce298f055495' (R-1 closure value, post phase-4)\n"
             "Phase honesty-2 expanded base_hash from core/*.py (old: fa440e3eb5f6) to the\n"
             "25-file report-production import closure (960e9d18d83d); phase 2a then carved\n"
             "collect_mechanic's compute out of PIA (-> 57fdb323585d), phase 2b carved\n"
-            "bonus_chain_dynamics' compute out of PIA (-> 980f488f4bb2), and phase 3 carved\n"
-            "upstream_feature_breakdown's row-build out of PIA (-> c89db791d8a1).\n"
+            "bonus_chain_dynamics' compute out of PIA (-> 980f488f4bb2), phase 3 carved\n"
+            "upstream_feature_breakdown's row-build out of PIA (-> c89db791d8a1), and phase 4\n"
+            "carved multiplier_profile's dict-build out of PIA (-> ce298f055495).\n"
             "core/parser.py is still in the closure — editing it still flips base_hash."
         )
 
