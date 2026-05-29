@@ -1,14 +1,35 @@
-"""AnalyzerFeature: bonus_chain_dynamics — Pattern B stash pattern.
+"""AnalyzerFeature: bonus_chain_dynamics — Pattern B plugin that OWNS the compute.
 
-Phase C6 of analyzer unbundle (M275-driven) per
+Phase C6 of analyzer unbundle (M275-driven) introduced this plugin per
 session_artifacts/_arch_analyzer_unbundle/04_architecture_proposal_v3.md §7.2
 and session_artifacts/_impl/phase_c6/brief.md §2.
 
-Replaces the PIA inline F6 block that builds
-``summary["player_impact"]["bonus_chain_dynamics"]`` (lines ~3975-4063 in
-player_impact_analyzer.py).  Pre-C6 fields are preserved byte-identical;
-C6 additionally closes gap #3 by augmenting each ``payout_ids_top20`` row with
-a ``notes`` block that identifies scatter-trigger marker pids.
+Phase 2b (analyzer honesty/isolation; see
+session_artifacts/_arch_honesty_isolation/07_decision.md §5 Phase 2 + R-11 and
+session_artifacts/_impl/phase_extract_2b_bonus_chain/brief.md) carved the
+``bonus_chain_dynamics`` dict-BUILD OUT of player_impact_analyzer.py (PIA) and
+INTO this plugin's ``emit()`` (mirrors the 2a collect_mechanic carve).  Before
+2b the plugin was a Pattern-B stash *shell*: PIA built the fully-formed dict
+inline (the ``_quantiles`` closure + ``depth_curve`` loop + the dict literal,
+PIA:~3900) and stashed it; this plugin only re-wrote it back unchanged
+(passthrough), then added gap #3.  After 2b:
+
+  - PIA's stash ``summary["_bonus_chain_dynamics_data"]`` carries only the RAW
+    accumulator inputs (bonus_chain_lengths, all_chains_by_feature, the depth
+    histograms, etc. — no compute) plus scatter_feature_names /
+    scatter_feature_chain_counts (kept in PIA for the trigger-inference below).
+  - ``emit()`` re-sources those raw inputs, builds the ``bonus_chain_dynamics``
+    dict VERBATIM (key order / float / 0.0-default / by_feature ``if
+    afb["lengths"]`` filter preserved — output byte-identical to the pre-carve
+    report), writes ``summary["player_impact"]["bonus_chain_dynamics"]``, then
+    closes gap #3 by augmenting each ``payout_ids_top20`` row with a ``notes``
+    block that identifies scatter-trigger marker pids.
+
+Why the carve: editing this feature's logic must flip ONLY bonus_chain_dynamics'
+feature_hash, not ``compute_base_analyzer_version()`` (the fleet-wide base).  PIA
+shed the dict-builder (incl. the ``_quantiles`` closure, now a module-level
+helper here), so base shrinks one-time and this feature's compute now lives with
+its own hash.
 
 Gap #3: scatter_trigger_marker on payout_ids_top20
 ---------------------------------------------------
@@ -57,28 +78,35 @@ For M14: scatter_marker_pids is empty → all rows get is_trigger_marker=False.
 On tie (all counts equal): max() uses sorted list order (deterministic alphabetical).
 This is documented behavior, not a bug.
 
-Stash pattern
--------------
+Stash pattern (Phase 2b — raw inputs; plugin OWNS the build)
+------------------------------------------------------------
 After R2 Phase 2 (C-1), the PIA inline F6 block NO LONGER writes the public
-``bonus_chain_dynamics`` dict into ``summary["player_impact"]``. The PIA stash
-builder reads the local variable ``bonus_chain_dynamics`` (R2 C-1) and stores it;
-THIS plugin's emit() is now the sole writer of
+``bonus_chain_dynamics`` dict into ``summary["player_impact"]``. After Phase 2b
+the PIA block no longer BUILDS that dict at all — THIS plugin's emit() builds it
+from raw inputs and is the sole writer of
 ``summary["player_impact"]["bonus_chain_dynamics"]``. Ordering for
 machine_mechanics.emit() (which reads that key) is guaranteed by
 ``machine_mechanics.REQUIRES = ("bonus_chain_dynamics",)`` (R2 C-3); the pre-build
-ordering invariant is now the C-2 assert on the ``_bonus_chain_dynamics_data`` stash.
+ordering invariant is the C-2 assert on the ``_bonus_chain_dynamics_data`` stash.
 
-The PIA block additionally writes ``summary["_bonus_chain_dynamics_data"]``
-(stash key) carrying:
-  - ``bonus_chain_dynamics``: the already-built public dict (passthrough)
+The PIA block writes ``summary["_bonus_chain_dynamics_data"]`` (stash key)
+carrying (Phase 2b — RAW inputs, no compute):
+  - the 9 raw accumulators the dict-build reads: ``bonus_chain_lengths``,
+    ``bonus_chain_max_ratios``, ``bonus_total_rounds_global``,
+    ``bonus_retrigger_rounds_global``, ``bonus_chain_retrigger_events``,
+    ``bonus_extra_ratio_counts``, ``bonus_depth_ratio_count``,
+    ``bonus_depth_ratio_sum``, ``all_chains_by_feature``.
   - ``scatter_feature_names``: sorted list of feature names from
     ``all_chains_by_feature`` keys that have non-empty ``lengths`` data
-    (same filter as the by_feature construction — omits empty features)
+    (same filter as the by_feature construction — omits empty features). Kept in
+    PIA (cheap; consumed by this plugin's trigger-inference below).
+  - ``scatter_feature_chain_counts``: per-feature chain counts (same filter),
+    for the len>=2 majority-vote trigger_target heuristic.
 
-emit() reads the stash, removes it, overwrites
-``summary["player_impact"]["bonus_chain_dynamics"]`` (byte-identical), and
-augments each row in ``summary["player_impact"]["payout_ids_top20"]`` with
-``notes``.
+emit() reads the stash, removes it, BUILDS the ``bonus_chain_dynamics`` dict
+verbatim (byte-identical to the pre-carve report), writes
+``summary["player_impact"]["bonus_chain_dynamics"]``, and augments each row in
+``summary["player_impact"]["payout_ids_top20"]`` with ``notes``.
 
 Gap #8 scope decision: Option B
 --------------------------------
@@ -147,18 +175,48 @@ if TYPE_CHECKING:
     except ImportError:
         from analyzer.pipeline_context import PipelineContext  # type: ignore[assignment]
 
-# Stash key written by PIA inline F6 block (Phase C6 carve).
-# Analogous to _collect_mechanic_data used by CollectMechanic (C5).
+# Stash key written by the PIA stash builder. Carries the RAW dict-build inputs
+# (Phase 2b carve — this plugin builds the dict). Analogous to _collect_mechanic_data
+# used by CollectMechanic (C5, also a Phase 2a raw-input stash).
 _STASH_KEY = "_bonus_chain_dynamics_data"
 
 
-class BonusChainDynamics(AnalyzerFeature):
-    """Pattern B plugin: bonus chain dynamics summary panel + gap #3 trigger marker.
+# ---------------------------------------------------------------------------
+# Private helper — moved VERBATIM from player_impact_analyzer.py (Phase 2b
+# carve; was a local closure inside the PIA bonus_chain_dynamics build at
+# PIA:~3900). It is PRIVATE to this feature: on the report-production path only
+# this plugin's compute calls it (grep-confirmed no other Python caller). Moving
+# it here removes its bytes from base_hash so editing this feature's logic flips
+# only bonus_chain_dynamics' feature_hash, not base.
+# ---------------------------------------------------------------------------
+def _quantiles(xs: list[int]) -> dict[str, int | float]:
+    if not xs:
+        return {"p50": 0, "p90": 0, "p95": 0, "max": 0, "avg": 0.0}
+    xs_sorted = sorted(xs)
+    n = len(xs_sorted)
+    def q(p: float) -> int:
+        if n == 0:
+            return 0
+        idx = min(n - 1, max(0, int(round(p * (n - 1)))))
+        return int(xs_sorted[idx])
+    return {
+        "p50": q(0.50),
+        "p90": q(0.90),
+        "p95": q(0.95),
+        "max": int(xs_sorted[-1]),
+        "avg": sum(xs_sorted) / n,
+    }
 
-    extract() is a no-op (data flows via pre-emit stash key).
-    emit() reads the stash, overwrites summary["player_impact"]["bonus_chain_dynamics"]
-    (byte-identical to pre-C6 inline), and augments each payout_ids_top20 row
-    with ``notes`` containing is_trigger_marker + trigger_target (gap #3).
+
+class BonusChainDynamics(AnalyzerFeature):
+    """Pattern B plugin that OWNS the bonus_chain_dynamics compute + gap #3 marker.
+
+    extract() / reduce() are no-ops (data flows via the pre-emit stash key).
+    emit() re-sources the raw accumulators from the stash, BUILDS the
+    ``bonus_chain_dynamics`` dict verbatim (Phase 2b carve — byte-identical to
+    the pre-carve report), writes summary["player_impact"]["bonus_chain_dynamics"],
+    and augments each payout_ids_top20 row with ``notes`` containing
+    is_trigger_marker + trigger_target (gap #3).
 
     Accumulator structure
     ---------------------
@@ -196,13 +254,15 @@ class BonusChainDynamics(AnalyzerFeature):
         return {}
 
     def emit(self, final_acc: dict, summary: dict, ctx: "PipelineContext") -> None:
-        """Read stash, overwrite bonus_chain_dynamics, augment payout_ids_top20.
+        """Build bonus_chain_dynamics from raw stash, augment payout_ids_top20.
 
         Steps
         -----
-        1. Read and remove the stash key written by PIA inline F6.
-        2. Overwrite summary["player_impact"]["bonus_chain_dynamics"] with the
-           pre-built dict (byte-identical to pre-C6; pure carve step).
+        1. Read and remove the stash key written by the PIA inline block; read the
+           9 RAW accumulator inputs by explicit indexing (fail-loud — no silent
+           default that would corrupt report numbers).
+        2. BUILD summary["player_impact"]["bonus_chain_dynamics"] verbatim from the
+           raw inputs (Phase 2b carve — byte-identical to the pre-carve report).
         3. Infer trigger_target from stash using len-first dispatch (R1 d2+d3).
         4. For each row in summary["player_impact"]["payout_ids_top20"], add
            ``notes`` block:
@@ -214,6 +274,8 @@ class BonusChainDynamics(AnalyzerFeature):
 
         Raises RuntimeError (surfaced as feature_error) if:
           - The stash key is absent (per feedback_no_silent_swallow.md)
+          - Any of the 9 raw input keys is absent (Phase 2b carve contract;
+            per feedback_no_silent_swallow.md — never silently default)
           - scatter_feature_chain_counts missing from stash when len >= 2
             (per feedback_capture_drift.md + feedback_no_silent_swallow.md)
 
@@ -224,13 +286,118 @@ class BonusChainDynamics(AnalyzerFeature):
         if _STASH_KEY not in summary:
             raise RuntimeError(
                 f"bonus_chain_dynamics plugin: stash key '{_STASH_KEY}' "
-                f"not found in summary. PIA inline F6 carve may be incomplete. "
-                f"Expected the inline block to write this key before the emit loop."
+                f"not found in summary. PIA stash builder (Phase 2b carve) may be "
+                f"incomplete. Expected it to write this key before the emit loop."
             )
 
         stash: dict[str, Any] = summary.pop(_STASH_KEY)
-        bcd: dict[str, Any] = stash["bonus_chain_dynamics"]
+
+        # ── Read the RAW accumulator inputs (Phase 2b carve) ──
+        # The PIA stash now carries raw inputs only; this plugin OWNS the
+        # dict-build (moved verbatim from PIA:~3900). Per
+        # feedback_no_silent_swallow.md: each expected raw key is read by
+        # explicit indexing so a missing key raises a diagnostic RuntimeError
+        # (never a silent default that would corrupt the report numbers).
+        _expected_keys = (
+            "bonus_chain_lengths", "bonus_chain_max_ratios",
+            "bonus_total_rounds_global", "bonus_retrigger_rounds_global",
+            "bonus_chain_retrigger_events", "bonus_extra_ratio_counts",
+            "bonus_depth_ratio_count", "bonus_depth_ratio_sum",
+            "all_chains_by_feature",
+        )
+        _missing = [k for k in _expected_keys if k not in stash]
+        if _missing:
+            raise RuntimeError(
+                f"bonus_chain_dynamics plugin: stash '{_STASH_KEY}' is missing "
+                f"expected raw input key(s) {_missing!r}. The PIA Phase 2b carve "
+                f"stash builder must populate every raw accumulator before the "
+                f"emit loop. Refusing to silently default (would corrupt report "
+                f"numbers) — see feedback_no_silent_swallow.md."
+            )
+
+        bonus_chain_lengths = stash["bonus_chain_lengths"]
+        bonus_chain_max_ratios = stash["bonus_chain_max_ratios"]
+        bonus_total_rounds_global = stash["bonus_total_rounds_global"]
+        bonus_retrigger_rounds_global = stash["bonus_retrigger_rounds_global"]
+        bonus_chain_retrigger_events = stash["bonus_chain_retrigger_events"]
+        bonus_extra_ratio_counts = stash["bonus_extra_ratio_counts"]
+        bonus_depth_ratio_count = stash["bonus_depth_ratio_count"]
+        bonus_depth_ratio_sum = stash["bonus_depth_ratio_sum"]
+        all_chains_by_feature = stash["all_chains_by_feature"]
+
         scatter_feature_names: list[str] = stash.get("scatter_feature_names") or []
+
+        # ── Build the bonus_chain_dynamics dict — moved VERBATIM from PIA:~3900.
+        # Key insertion order, float forms, 0.0-defaults, and the
+        # `if afb["lengths"]` by_feature filter preserved exactly (the
+        # byte-identity contract depends on this being a verbatim move, not a
+        # rewrite). _quantiles is the module-level helper above (was a local
+        # closure in PIA — grep-confirmed private to this build).
+        depth_curve: list[dict[str, Any]] = []
+        for bucket in ("1", "2-5", "6-10", "11-20", "21+"):
+            cnt = bonus_depth_ratio_count.get(bucket, 0)
+            tot = bonus_depth_ratio_sum.get(bucket, 0.0)
+            depth_curve.append(
+                {
+                    "depth_bucket": bucket,
+                    "rounds": int(cnt),
+                    "avg_extra_ratio": (tot / cnt) if cnt > 0 else 0.0,
+                }
+            )
+        bonus_chain_count = len(bonus_chain_lengths)
+        bcd: dict[str, Any] = {
+            "applicable": bonus_chain_count > 0,
+            "source": "ReMarks (Freespin annotation)",
+            "chain_count": bonus_chain_count,
+            "bonus_round_count": bonus_total_rounds_global,
+            "avg_chain_length": (
+                sum(bonus_chain_lengths) / bonus_chain_count
+                if bonus_chain_count > 0 else 0.0
+            ),
+            "chain_length_quantiles": _quantiles(bonus_chain_lengths),
+            "chain_max_ratio_quantiles": _quantiles(bonus_chain_max_ratios),
+            "self_retrigger_round_rate": (
+                bonus_retrigger_rounds_global / bonus_total_rounds_global
+                if bonus_total_rounds_global > 0 else 0.0
+            ),
+            "avg_retriggers_per_chain": (
+                sum(bonus_chain_retrigger_events) / bonus_chain_count
+                if bonus_chain_count > 0 else 0.0
+            ),
+            # Sorted by ratio ascending so the histogram reads naturally
+            # left-to-right; counts are per-round (same round may not
+            # double-count because each round emits exactly one ratio).
+            "extra_ratio_histogram": [
+                {"ratio": r, "rounds": bonus_extra_ratio_counts[r]}
+                for r in sorted(bonus_extra_ratio_counts.keys())
+            ],
+            # Energy ramp: average ExtraRatio at each chain depth bucket.
+            # Shows how the MapCollection multiplier escalates as the
+            # chain extends.
+            "extra_ratio_by_chain_depth": depth_curve,
+            # Per-feature breakdown: same structure as aggregate but split
+            # by trigger type. NormalCollectionSpin = random (PayId 666),
+            # NewFreespin = forced at cycle boundary (no PayId). Empty
+            # features are omitted.
+            "by_feature": {
+                feat: {
+                    "chain_count": len(afb["lengths"]),
+                    "bonus_round_count": afb["total_rounds"],
+                    "avg_chain_length": (
+                        sum(afb["lengths"]) / len(afb["lengths"])
+                        if afb["lengths"] else 0.0
+                    ),
+                    "chain_length_quantiles": _quantiles(afb["lengths"]),
+                    "chain_max_ratio_quantiles": _quantiles(afb["max_ratios"]),
+                    "self_retrigger_round_rate": (
+                        afb["retrigger_rounds"] / afb["total_rounds"]
+                        if afb["total_rounds"] > 0 else 0.0
+                    ),
+                }
+                for feat, afb in all_chains_by_feature.items()
+                if afb["lengths"]
+            },
+        }
 
         # ── Step 2: overwrite player_impact.bonus_chain_dynamics (byte-identical) ──
         player_impact = summary.setdefault("player_impact", {})

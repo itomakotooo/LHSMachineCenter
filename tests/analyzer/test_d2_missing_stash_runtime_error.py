@@ -67,6 +67,38 @@ def _make_ctx(scatter_marker_pids: frozenset[str]) -> Any:
     return ctx
 
 
+def _raw_inputs(features: list[str] | None = None) -> dict:
+    """Phase 2b RAW dict-build inputs the plugin re-sources to BUILD the dict.
+
+    Phase 2b carve (test_2b_*): the plugin now BUILDS the bonus_chain_dynamics
+    dict from these 9 raw accumulator inputs (it no longer reads a pre-built
+    dict).  These d2 tests assert the trigger_target INFERENCE (step 3, which
+    raises on missing scatter_feature_chain_counts) — that runs AFTER the
+    dict-build (step 2), so the raw inputs just need to be present + valid for
+    the build to succeed and the step-3 raise to be the one under test.  When
+    ``features`` is given, all_chains_by_feature carries one chain per feature so
+    the build's by_feature filter passes; scatter_feature_chain_counts is
+    deliberately NOT included here (the caller controls its presence).
+    """
+    feats = features or []
+    all_chains = {
+        f: {"lengths": [5], "max_ratios": [1], "total_rounds": 5, "retrigger_rounds": 0}
+        for f in feats
+    }
+    lengths = [5] * len(feats)
+    return {
+        "bonus_chain_lengths": lengths,
+        "bonus_chain_max_ratios": [1] * len(feats),
+        "bonus_total_rounds_global": 5 * len(feats),
+        "bonus_retrigger_rounds_global": 0,
+        "bonus_chain_retrigger_events": [0] * len(feats),
+        "bonus_extra_ratio_counts": {},
+        "bonus_depth_ratio_count": {},
+        "bonus_depth_ratio_sum": {},
+        "all_chains_by_feature": all_chains,
+    }
+
+
 def _make_stash_missing_chain_counts(features: list[str]) -> dict:
     """Build a stash with 2+ scatter features but NO scatter_feature_chain_counts key.
 
@@ -74,10 +106,7 @@ def _make_stash_missing_chain_counts(features: list[str]) -> dict:
     is not deployed — old PIA code would write a stash without the key.
     """
     return {
-        "bonus_chain_dynamics": {
-            "applicable": True,
-            "chain_count": 5,
-        },
+        **_raw_inputs(features),  # Phase 2b: plugin builds the dict from raw inputs
         "scatter_feature_names": sorted(features),
         # NOTE: scatter_feature_chain_counts is intentionally ABSENT here
     }
@@ -112,7 +141,7 @@ class TestMissingChainCountsRaisesRuntimeError:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -130,7 +159,7 @@ class TestMissingChainCountsRaisesRuntimeError:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -155,7 +184,7 @@ class TestMissingChainCountsRaisesRuntimeError:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -177,7 +206,7 @@ class TestMissingChainCountsRaisesRuntimeError:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -232,7 +261,7 @@ class TestSingleFeatureNoRaise:
         """
         scatter_pid = "666"
         stash = {
-            "bonus_chain_dynamics": {"applicable": True, "chain_count": 5},
+            **_raw_inputs(["OnlyFeature"]),  # Phase 2b: plugin builds the dict from raw inputs
             "scatter_feature_names": ["OnlyFeature"],
             # scatter_feature_chain_counts intentionally ABSENT
         }
@@ -240,7 +269,7 @@ class TestSingleFeatureNoRaise:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }

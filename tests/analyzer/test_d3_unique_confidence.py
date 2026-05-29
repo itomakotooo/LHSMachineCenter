@@ -63,6 +63,31 @@ def _make_ctx(scatter_marker_pids: frozenset[str]) -> Any:
     return ctx
 
 
+def _raw_inputs() -> dict:
+    """Phase 2b RAW dict-build inputs (empty/applicable=False shape).
+
+    Phase 2b carve (test_2b_*): the plugin now BUILDS the bonus_chain_dynamics
+    dict from these 9 raw accumulator inputs (it no longer reads a pre-built
+    dict).  These d3 tests assert the trigger_target INFERENCE (which reads
+    scatter_feature_names / scatter_feature_chain_counts, downstream of and
+    independent from the dict-build), so an empty raw set is sufficient — it
+    builds a valid applicable=False dict and lets the inference run unchanged.
+    Every key is present so the plugin's fail-loud guard (test_2b_bonus_chain_
+    fail_loud_stash.py) is satisfied.
+    """
+    return {
+        "bonus_chain_lengths": [],
+        "bonus_chain_max_ratios": [],
+        "bonus_total_rounds_global": 0,
+        "bonus_retrigger_rounds_global": 0,
+        "bonus_chain_retrigger_events": [],
+        "bonus_extra_ratio_counts": {},
+        "bonus_depth_ratio_count": {},
+        "bonus_depth_ratio_sum": {},
+        "all_chains_by_feature": {},
+    }
+
+
 def _make_single_feature_stash(feature_name: str, include_chain_counts: bool = False) -> dict:
     """Build stash with exactly 1 scatter feature.
 
@@ -70,7 +95,7 @@ def _make_single_feature_stash(feature_name: str, include_chain_counts: bool = F
     The 'unique' branch should fire regardless (len-first dispatch).
     """
     stash: dict = {
-        "bonus_chain_dynamics": {"applicable": True, "chain_count": 0},
+        **_raw_inputs(),  # Phase 2b: plugin builds the dict from raw inputs
         "scatter_feature_names": [feature_name],
     }
     if include_chain_counts:
@@ -81,7 +106,7 @@ def _make_single_feature_stash(feature_name: str, include_chain_counts: bool = F
 def _make_zero_feature_stash() -> dict:
     """Build stash with 0 scatter features (unknown branch)."""
     return {
-        "bonus_chain_dynamics": {"applicable": False, "chain_count": 0},
+        **_raw_inputs(),  # Phase 2b: plugin builds the dict from raw inputs
         "scatter_feature_names": [],
     }
 
@@ -109,7 +134,7 @@ class TestSingleFeatureUniqueConfidence:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -132,7 +157,7 @@ class TestSingleFeatureUniqueConfidence:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -161,7 +186,7 @@ class TestSingleFeatureUniqueConfidence:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -192,7 +217,7 @@ class TestSingleFeatureUniqueConfidence:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -229,7 +254,7 @@ class TestZeroFeatureUnknownConfidence:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -277,7 +302,7 @@ class TestUniqueConfidenceOnlyOnTriggerRow:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }

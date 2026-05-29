@@ -3897,89 +3897,15 @@ def main() -> int:
     # machines (M272) this gives quantiles of chain length, peak ratio,
     # and the energy-ramp curve -- the real window into the "map
     # collection bonus" experience the aggregate RTP can't describe.
-    def _quantiles(xs: list[int]) -> dict[str, int | float]:
-        if not xs:
-            return {"p50": 0, "p90": 0, "p95": 0, "max": 0, "avg": 0.0}
-        xs_sorted = sorted(xs)
-        n = len(xs_sorted)
-        def q(p: float) -> int:
-            if n == 0:
-                return 0
-            idx = min(n - 1, max(0, int(round(p * (n - 1)))))
-            return int(xs_sorted[idx])
-        return {
-            "p50": q(0.50),
-            "p90": q(0.90),
-            "p95": q(0.95),
-            "max": int(xs_sorted[-1]),
-            "avg": sum(xs_sorted) / n,
-        }
-
-    depth_curve: list[dict[str, Any]] = []
-    for bucket in ("1", "2-5", "6-10", "11-20", "21+"):
-        cnt = bonus_depth_ratio_count.get(bucket, 0)
-        tot = bonus_depth_ratio_sum.get(bucket, 0.0)
-        depth_curve.append(
-            {
-                "depth_bucket": bucket,
-                "rounds": int(cnt),
-                "avg_extra_ratio": (tot / cnt) if cnt > 0 else 0.0,
-            }
-        )
-    bonus_chain_count = len(bonus_chain_lengths)
-    bonus_chain_dynamics = {
-        "applicable": bonus_chain_count > 0,
-        "source": "ReMarks (Freespin annotation)",
-        "chain_count": bonus_chain_count,
-        "bonus_round_count": bonus_total_rounds_global,
-        "avg_chain_length": (
-            sum(bonus_chain_lengths) / bonus_chain_count
-            if bonus_chain_count > 0 else 0.0
-        ),
-        "chain_length_quantiles": _quantiles(bonus_chain_lengths),
-        "chain_max_ratio_quantiles": _quantiles(bonus_chain_max_ratios),
-        "self_retrigger_round_rate": (
-            bonus_retrigger_rounds_global / bonus_total_rounds_global
-            if bonus_total_rounds_global > 0 else 0.0
-        ),
-        "avg_retriggers_per_chain": (
-            sum(bonus_chain_retrigger_events) / bonus_chain_count
-            if bonus_chain_count > 0 else 0.0
-        ),
-        # Sorted by ratio ascending so the histogram reads naturally
-        # left-to-right; counts are per-round (same round may not
-        # double-count because each round emits exactly one ratio).
-        "extra_ratio_histogram": [
-            {"ratio": r, "rounds": bonus_extra_ratio_counts[r]}
-            for r in sorted(bonus_extra_ratio_counts.keys())
-        ],
-        # Energy ramp: average ExtraRatio at each chain depth bucket.
-        # Shows how the MapCollection multiplier escalates as the
-        # chain extends.
-        "extra_ratio_by_chain_depth": depth_curve,
-        # Per-feature breakdown: same structure as aggregate but split
-        # by trigger type. NormalCollectionSpin = random (PayId 666),
-        # NewFreespin = forced at cycle boundary (no PayId). Empty
-        # features are omitted.
-        "by_feature": {
-            feat: {
-                "chain_count": len(afb["lengths"]),
-                "bonus_round_count": afb["total_rounds"],
-                "avg_chain_length": (
-                    sum(afb["lengths"]) / len(afb["lengths"])
-                    if afb["lengths"] else 0.0
-                ),
-                "chain_length_quantiles": _quantiles(afb["lengths"]),
-                "chain_max_ratio_quantiles": _quantiles(afb["max_ratios"]),
-                "self_retrigger_round_rate": (
-                    afb["retrigger_rounds"] / afb["total_rounds"]
-                    if afb["total_rounds"] > 0 else 0.0
-                ),
-            }
-            for feat, afb in all_chains_by_feature.items()
-            if afb["lengths"]
-        },
-    }
+    #
+    # Phase 2b carve (07_decision.md §5 Phase 2 + R-11): the dict-BUILD that
+    # used to live here (the `_quantiles` closure + the `depth_curve` loop + the
+    # `bonus_chain_dynamics` dict literal incl. the `by_feature` comprehension)
+    # was moved VERBATIM into the BonusChainDynamics plugin's emit().  The plugin
+    # re-sources the raw accumulators from the `_bonus_chain_dynamics_data` stash
+    # (built below) and produces the byte-identical dict.  This shed PIA bytes →
+    # base_hash shrinks one-time; editing the feature's compute now flips only its
+    # feature_hash, not the fleet-wide base.
 
     # Session-level streak quantiles (player perspective: runs of
     # losing / winning paid sessions). Falls back to spin-level if no
@@ -4706,31 +4632,49 @@ def main() -> int:
         "bonus_feature_source": _cm_bonus_src,
     }
 
-    # ── Phase C6 — stash key for BonusChainDynamics plugin ───────────────
+    # ── Phase C6 / Phase 2b — stash key for BonusChainDynamics plugin ─────
     # Analogous to _collect_mechanic_data / _upstream_feature_breakdown_data (C5).
     #
-    # R2 Phase 2 C-1: the stash now reads the LOCAL variable `bonus_chain_dynamics`
-    # (defined at ~line 4011) instead of the summary key.  This decouples the
-    # stash builder from the F6 inline write that C-1 removes, so:
-    #   - the stash is still correctly populated (local var == the dict that WAS
-    #     written into the summary key), AND
-    #   - the C-2 ordering assert is updated to check `_bonus_chain_dynamics_data`
-    #     stash key rather than the removed summary key (see assert below).
+    # Phase 2b (analyzer honesty/isolation; 07_decision.md §5 Phase 2 + R-11):
+    # the bonus_chain_dynamics dict-BUILD was carved OUT of this file and INTO the
+    # BonusChainDynamics plugin's emit() (mirrors the 2a collect_mechanic carve).
+    # The stash now carries the RAW accumulator inputs the build reads — NOT the
+    # pre-built dict.  The plugin re-sources each raw input from this stash and
+    # builds the dict VERBATIM (key order / float / 0.0-default forms preserved →
+    # report output byte-identical).  PIA shed the `_quantiles` closure + the
+    # `depth_curve` loop + the dict literal, so base_hash shrinks one-time and
+    # editing this feature's compute flips only its feature_hash, not base.
     #
     # machine_mechanics.emit() reads summary["player_impact"]["bonus_chain_dynamics"]
     # for the M275 freespin fallback path.  That key is now written ONLY by the
     # BonusChainDynamics plugin emit() — which runs before machine_mechanics.emit()
     # because machine_mechanics.REQUIRES = ("bonus_chain_dynamics",) (C-3).
     #
-    # The stash carries:
-    #   - bonus_chain_dynamics: the pre-built public dict (passthrough — plugin
-    #     overwrites the same key with the same value; pure carve step).
+    # The stash carries (Phase 2b — raw inputs, no compute):
+    #   - the 9 raw accumulators the dict-build reads (see plugin emit() for the
+    #     verbatim build): bonus_chain_lengths, bonus_chain_max_ratios,
+    #     bonus_total_rounds_global, bonus_retrigger_rounds_global,
+    #     bonus_chain_retrigger_events, bonus_extra_ratio_counts,
+    #     bonus_depth_ratio_count, bonus_depth_ratio_sum, all_chains_by_feature.
     #   - scatter_feature_names: sorted list of feature names from
     #     all_chains_by_feature keys that have non-empty lengths (the same
-    #     filter as by_feature in the F6 inline block). Used by the plugin to
-    #     infer trigger_target for scatter-marker pids (gap #3).
+    #     filter as by_feature in the build). Used by the plugin to
+    #     infer trigger_target for scatter-marker pids (gap #3). KEPT in PIA
+    #     (cheap; the plugin's trigger-inference consumes it) — Phase 2b moves
+    #     ONLY the bcd dict-build, not this derivation.
     summary["_bonus_chain_dynamics_data"] = {
-        "bonus_chain_dynamics": bonus_chain_dynamics,  # R2 C-1: local var, not summary key
+        # Phase 2b RAW inputs (the dict-build moved into the plugin re-sources
+        # each of these). Per feedback_no_silent_swallow.md the plugin reads each
+        # by explicit indexing and raises if any is absent (no silent default).
+        "bonus_chain_lengths": bonus_chain_lengths,
+        "bonus_chain_max_ratios": bonus_chain_max_ratios,
+        "bonus_total_rounds_global": bonus_total_rounds_global,
+        "bonus_retrigger_rounds_global": bonus_retrigger_rounds_global,
+        "bonus_chain_retrigger_events": bonus_chain_retrigger_events,
+        "bonus_extra_ratio_counts": bonus_extra_ratio_counts,
+        "bonus_depth_ratio_count": bonus_depth_ratio_count,
+        "bonus_depth_ratio_sum": bonus_depth_ratio_sum,
+        "all_chains_by_feature": all_chains_by_feature,
         "scatter_feature_names": sorted(
             feat for feat, afb in all_chains_by_feature.items()
             if afb.get("lengths")

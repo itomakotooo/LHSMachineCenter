@@ -299,7 +299,25 @@ class TestBonusChainDynamicsEmit:
         return ctx
 
     def _make_stash(self, applicable: bool = True, chain_count: int = 908) -> dict:
-        """Build minimal _bonus_chain_dynamics_data stash dict.
+        """Build minimal _bonus_chain_dynamics_data stash dict (Phase 2b RAW inputs).
+
+        Phase 2b carve: the stash now carries the 9 raw accumulator inputs instead
+        of the pre-built bonus_chain_dynamics dict. emit() re-sources these raw
+        inputs and BUILDS the dict verbatim. The assertions stay identical; only this
+        fixture body changes to match the new stash contract.
+
+        Raw input design:
+          - bonus_chain_lengths: list of `chain_count` ints (each = 5) so that
+            len(lengths) == chain_count and applicable = (chain_count > 0) is correct.
+          - bonus_chain_max_ratios: same length list (each ratio = 1) for _quantiles.
+          - bonus_total_rounds_global: chain_count * 5 (each chain has 5 rounds).
+          - bonus_retrigger_rounds_global: 0 (no retriggering in the test fixture).
+          - bonus_chain_retrigger_events: list of 0s, same length as bonus_chain_lengths.
+          - bonus_extra_ratio_counts: empty dict (no extra ratio entries).
+          - bonus_depth_ratio_count: empty dict (all depth buckets get cnt=0 → 0 rounds).
+          - bonus_depth_ratio_sum: empty dict.
+          - all_chains_by_feature: for applicable=True, includes NormalCollectionSpin
+            with non-empty lengths so the by_feature filter (if afb["lengths"]) passes.
 
         R1 Phase 2 d2: includes scatter_feature_chain_counts so emit() can run
         the len-first dispatch without raising RuntimeError. The single-feature
@@ -308,17 +326,32 @@ class TestBonusChainDynamicsEmit:
         here to keep the stash schema complete (stash extension added at pia:4862
         unconditionally for all machines with non-empty scatter_feature_names).
         """
-        return {
-            "bonus_chain_dynamics": {
-                "applicable": applicable,
-                "chain_count": chain_count,
-                "by_feature": {
-                    "NormalCollectionSpin": {
-                        "chain_count": chain_count,
-                        "avg_chain_length": 5.0,
-                    }
+        _lengths = [5] * chain_count  # chain_count chains, each of length 5
+        _max_ratios = [1] * chain_count
+        _retrigger_events = [0] * chain_count
+        _total_rounds = chain_count * 5  # 5 rounds per chain
+        if applicable and chain_count > 0:
+            _all_chains = {
+                "NormalCollectionSpin": {
+                    "lengths": list(_lengths),
+                    "max_ratios": list(_max_ratios),
+                    "total_rounds": _total_rounds,
+                    "retrigger_rounds": 0,
                 },
-            },
+            }
+        else:
+            _all_chains = {}
+        return {
+            # Phase 2b RAW inputs (plugin OWNS the build):
+            "bonus_chain_lengths": _lengths,
+            "bonus_chain_max_ratios": _max_ratios,
+            "bonus_total_rounds_global": _total_rounds,
+            "bonus_retrigger_rounds_global": 0,
+            "bonus_chain_retrigger_events": _retrigger_events,
+            "bonus_extra_ratio_counts": {},
+            "bonus_depth_ratio_count": {},
+            "bonus_depth_ratio_sum": {},
+            "all_chains_by_feature": _all_chains,
             "scatter_feature_names": ["NormalCollectionSpin"] if applicable else [],
             # R1 d2 stash extension: chain counts per feature for majority-vote
             "scatter_feature_chain_counts": (
@@ -335,7 +368,11 @@ class TestBonusChainDynamicsEmit:
             plugin.emit({}, {}, self._make_ctx(frozenset()))
 
     def test_emit_reads_stash_overwrites_bonus_chain_dynamics(self, plugin):
-        """emit() must write summary['player_impact']['bonus_chain_dynamics'] (byte-identical carve).
+        """emit() must BUILD + write summary['player_impact']['bonus_chain_dynamics'] from raw stash.
+
+        Phase 2b carve: the plugin now OWNS the dict build (moved verbatim from PIA).
+        The stash carries RAW inputs; emit() re-sources them and builds the dict.
+        Assertions are unchanged: applicable=True (chain_count=908 > 0), chain_count=908.
 
         INJECT-BUG (Bug A): change emit() to write empty dict to bonus_chain_dynamics.
         RED: applicable missing/wrong.
@@ -345,8 +382,8 @@ class TestBonusChainDynamicsEmit:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
                 "payout_ids_top20": [],
+                # bonus_chain_dynamics is NOT pre-populated — plugin builds it from raw stash
             },
         }
         plugin.emit({}, summary, self._make_ctx(frozenset()))
@@ -365,7 +402,6 @@ class TestBonusChainDynamicsEmit:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
                 "payout_ids_top20": [],
             },
         }
@@ -385,7 +421,6 @@ class TestBonusChainDynamicsEmit:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -404,7 +439,6 @@ class TestBonusChainDynamicsEmit:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -423,7 +457,6 @@ class TestBonusChainDynamicsEmit:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -450,8 +483,22 @@ class TestBonusChainDynamicsEmit:
         where alphabetical != majority (see test_c6_gap_3_pid_666_trigger_marker.py
         for the real M275 NCS vs NewFreespin case where they differ).
         """
+        # Phase 2b: stash carries RAW inputs; plugin builds the bcd dict.
+        # 100 chains for AFeature, 1 chain for ZFeature → AFeature wins majority vote.
+        # all_chains_by_feature must have non-empty "lengths" for by_feature filter.
         stash = {
-            "bonus_chain_dynamics": {"applicable": True, "chain_count": 100},
+            "bonus_chain_lengths": [5] * 101,   # 101 total chains (AFeature:100 + ZFeature:1)
+            "bonus_chain_max_ratios": [1] * 101,
+            "bonus_total_rounds_global": 101 * 5,
+            "bonus_retrigger_rounds_global": 0,
+            "bonus_chain_retrigger_events": [0] * 101,
+            "bonus_extra_ratio_counts": {},
+            "bonus_depth_ratio_count": {},
+            "bonus_depth_ratio_sum": {},
+            "all_chains_by_feature": {
+                "AFeature": {"lengths": [5] * 100, "max_ratios": [1] * 100, "total_rounds": 500, "retrigger_rounds": 0},
+                "ZFeature": {"lengths": [5], "max_ratios": [1], "total_rounds": 5, "retrigger_rounds": 0},
+            },
             # sorted() alphabetically — matches PIA stash construction behavior
             "scatter_feature_names": ["AFeature", "ZFeature"],
             # R1 d2: chain_counts required when len >= 2; AFeature wins by majority
@@ -461,7 +508,6 @@ class TestBonusChainDynamicsEmit:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -495,7 +541,6 @@ class TestBonusChainDynamicsEmit:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -522,7 +567,6 @@ class TestBonusChainDynamicsEmit:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -536,8 +580,17 @@ class TestBonusChainDynamicsEmit:
 
     def test_emit_no_scatter_markers_produces_no_trigger_markers(self, plugin):
         """When scatter_marker_pids is empty, all rows get is_trigger_marker=False."""
+        # Phase 2b: stash carries RAW inputs; applicable=False → bonus_chain_lengths=[].
         stash = {
-            "bonus_chain_dynamics": {"applicable": False, "chain_count": 0},
+            "bonus_chain_lengths": [],
+            "bonus_chain_max_ratios": [],
+            "bonus_total_rounds_global": 0,
+            "bonus_retrigger_rounds_global": 0,
+            "bonus_chain_retrigger_events": [],
+            "bonus_extra_ratio_counts": {},
+            "bonus_depth_ratio_count": {},
+            "bonus_depth_ratio_sum": {},
+            "all_chains_by_feature": {},
             "scatter_feature_names": [],
         }
         pid_rows = [
@@ -547,7 +600,6 @@ class TestBonusChainDynamicsEmit:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
                 "payout_ids_top20": pid_rows,
             },
         }

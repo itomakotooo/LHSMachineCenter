@@ -737,18 +737,20 @@ class TestBaseAnalyzerVersionHash:
         actual = _compute_base_ver_fn()
         assert actual is not None, "compute_base_analyzer_version() returned None"
 
-        # Pin check: must be the known R-1 closure value (post phase-2a)
+        # Pin check: must be the known R-1 closure value (post phase-2b)
         # R-1 closure = 25-file set: core/*.py + content modules + support modules
         # (MINUS registered feature plugins, which have their own feature_hash).
         # Phase 2a (collect_mechanic carve) shrank player_impact_analyzer.py (a
-        # closure file) → re-baselined 960e9d18d83d -> 57fdb323585d.
-        assert actual == "57fdb323585d", (
+        # closure file) → re-baselined 960e9d18d83d -> 57fdb323585d. Phase 2b
+        # (bonus_chain_dynamics carve) shrank PIA again -> 980f488f4bb2.
+        assert actual == "980f488f4bb2", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = '57fdb323585d' (R-1 closure value, post phase-2a)\n"
+            f"  expected = '980f488f4bb2' (R-1 closure value, post phase-2b)\n"
             "Phase honesty-2 expanded base_hash from core/*.py (old: fa440e3eb5f6) to the\n"
             "25-file report-production import closure (960e9d18d83d); phase 2a then carved\n"
-            "collect_mechanic's compute out of PIA, shrinking base to 57fdb323585d.\n"
+            "collect_mechanic's compute out of PIA (-> 57fdb323585d), and phase 2b carved\n"
+            "bonus_chain_dynamics' compute out of PIA (-> 980f488f4bb2).\n"
             "core/parser.py is still in the closure — editing it still flips base_hash."
         )
 

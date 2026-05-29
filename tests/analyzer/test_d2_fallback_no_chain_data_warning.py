@@ -61,6 +61,38 @@ def _make_ctx(scatter_marker_pids: frozenset[str]) -> Any:
     return ctx
 
 
+def _raw_inputs(features: list[str]) -> dict:
+    """Phase 2b RAW dict-build inputs the plugin re-sources to BUILD the dict.
+
+    Phase 2b carve (test_2b_*): the plugin now BUILDS the bonus_chain_dynamics
+    dict from these 9 raw accumulator inputs (it no longer reads a pre-built
+    dict).  These d2 tests assert the trigger_target INFERENCE + the CR-2
+    companion warning (step 3, which reads scatter_feature_chain_counts DIRECTLY
+    from the stash) — that runs AFTER the dict-build (step 2) and is independent
+    of all_chains_by_feature.  So the raw inputs just need to be present + valid
+    for the build to succeed; one chain per feature keeps by_feature non-empty.
+    NOTE: scatter_feature_chain_counts is supplied SEPARATELY by each builder
+    below (all-zero vs non-zero) — that injected value is the thing under test,
+    and is read independently of these raw all_chains_by_feature inputs.
+    """
+    all_chains = {
+        f: {"lengths": [5], "max_ratios": [1], "total_rounds": 5, "retrigger_rounds": 0}
+        for f in features
+    }
+    n = len(features)
+    return {
+        "bonus_chain_lengths": [5] * n,
+        "bonus_chain_max_ratios": [1] * n,
+        "bonus_total_rounds_global": 5 * n,
+        "bonus_retrigger_rounds_global": 0,
+        "bonus_chain_retrigger_events": [0] * n,
+        "bonus_extra_ratio_counts": {},
+        "bonus_depth_ratio_count": {},
+        "bonus_depth_ratio_sum": {},
+        "all_chains_by_feature": all_chains,
+    }
+
+
 def _make_all_zero_stash(features: list[str]) -> dict:
     """Build stash where scatter_feature_chain_counts has all-zero values.
 
@@ -68,13 +100,9 @@ def _make_all_zero_stash(features: list[str]) -> dict:
       len >= 2 AND chain_counts present AND all-zero → "fallback_no_chain_data"
     """
     return {
-        "bonus_chain_dynamics": {
-            "applicable": True,
-            "chain_count": 0,
-            "by_feature": {f: {"chain_count": 0} for f in features},
-        },
+        **_raw_inputs(features),  # Phase 2b: plugin builds the dict from raw inputs
         "scatter_feature_names": sorted(features),  # sorted per PIA stash construction
-        "scatter_feature_chain_counts": {f: 0 for f in features},  # all zero
+        "scatter_feature_chain_counts": {f: 0 for f in features},  # all zero (the path under test)
     }
 
 
@@ -84,12 +112,9 @@ def _make_data_inferred_stash(features: list[str], counts: dict[str, int]) -> di
     This exercises branch 2: len >= 2 AND chain_counts present AND max > 0.
     """
     return {
-        "bonus_chain_dynamics": {
-            "applicable": True,
-            "chain_count": sum(counts.values()),
-        },
+        **_raw_inputs(features),  # Phase 2b: plugin builds the dict from raw inputs
         "scatter_feature_names": sorted(features),
-        "scatter_feature_chain_counts": counts,
+        "scatter_feature_chain_counts": counts,  # the path under test
     }
 
 
@@ -114,7 +139,7 @@ class TestFallbackNoChainDataConfidence:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -239,7 +264,7 @@ class TestDataInferredNoCompanionWarning:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }
@@ -288,7 +313,7 @@ class TestThreeFeatureFallback:
         summary = {
             "_bonus_chain_dynamics_data": stash,
             "player_impact": {
-                "bonus_chain_dynamics": stash["bonus_chain_dynamics"],
+                # Phase 2b: NOT pre-populated — plugin builds it from raw stash
                 "payout_ids_top20": pid_rows,
             },
         }

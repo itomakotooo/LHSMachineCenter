@@ -23,8 +23,9 @@ Hard gate (must pass before and after all edits):
   python -c "import sys; sys.path.insert(0,'fresh_slotlab');
              from analyzer.versioning import compute_base_analyzer_version as f;
              print(f())"
-  MUST print: 57fdb323585d  (was 960e9d18d83d pre phase-2a; PIA shrank when
-              collect_mechanic's compute was carved into its plugin)
+  MUST print: 980f488f4bb2  (960e9d18d83d pre phase-2a; 57fdb323585d after the
+              collect_mechanic carve; 980f488f4bb2 after the bonus_chain_dynamics
+              carve — PIA shrank each time a feature's compute was carved out)
 """
 from __future__ import annotations
 
