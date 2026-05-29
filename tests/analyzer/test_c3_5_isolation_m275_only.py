@@ -1,7 +1,8 @@
 """Phase C3.5 — CRITICAL per-machine isolation invariant test.
 
 This is the most important new test in C3.5. It asserts that:
-  1. base_hash is UNCHANGED from C3 (fa440e3eb5f6) — no core/*.py modification.
+  1. base_hash is the R-1 closure value (960e9d18d83d, honesty-2) — no production-path
+     module was modified (registered plugin additions are excluded by R-4).
   2. M275 effective_version DIFFERS from M14 (multiplier_wild is M275-only).
   3. M14 effective_version == M37 == M272 (identical plugin set, identical hash).
   4. M14 / M37 / M272 effective_version all differ from M275 (isolation invariant).
@@ -15,11 +16,18 @@ _NON_M275_EFFECTIVE_VERSION) were updated manually 3 times during C-phases
 Per arch-proposal v2 §3.2–§3.3, the correct approach is structural differential
 assertions: test the PROPERTY ("M275 differs from M14 by exactly multiplier_wild's
 contribution; M14/M37/M272 share one hash because they have identical plugin sets")
-rather than pinning the literal hex value. The base_hash pin (fa440e3eb5f6) REMAINS
-because it is a regression guard against accidental core/*.py edits.
+rather than pinning the literal hex value. The base_hash pin (960e9d18d83d, honesty-2)
+REMAINS because it is a regression guard against accidental production-path module edits.
+
+Phase honesty-2 update (2026-05-29):
+  base_hash was redefined from sha256(core/*.py) [old: fa440e3eb5f6] to the 25-file
+  R-1 closure [new: 960e9d18d83d]. The isolation property is UNCHANGED: a registered
+  plugin addition still does NOT flip base_hash (R-4 exclusion). The invariant now
+  also correctly detects changes to content modules (round_classification, round_win,
+  trigger_sessions, sampler, machine_md5, chunk_index, rawdata_index).
 
 This is the C-phases' textbook demonstration of per-machine isolation property:
-adding a new plugin file (NOT in core/) does NOT flip base_hash; only machines
+adding a new registered plugin file does NOT flip base_hash; only machines
 that DECLARE the plugin in their manifest get a new effective_version.
 
 As of C3.5:
@@ -32,7 +40,7 @@ plugin model. This test PROVES it holds.
 Invariants asserted
 -------------------
 1. compute_base_analyzer_version() returns 12-char hex string.
-2. base_hash == 'fa440e3eb5f6' (C3 value — unchanged in C3.5; intentional pin).
+2. base_hash == '960e9d18d83d' (R-1 closure value, honesty-2; intentional pin).
 3. M275 mode 1 effective_version DIFFERS from M14 mode 1 effective_version.
 4. M14 / M37 / M272 all share the same effective_version (identical plugin sets).
 5. M275 differs from M14 / M37 / M272 (isolation: multiplier_wild is M275-only).
@@ -80,11 +88,14 @@ sys.path.insert(0, str(_REPO_ROOT))
 # Known hash constants
 # ---------------------------------------------------------------------------
 
-# C3 base_hash — the parser.py C3 additions set this. C3.5 adds NO core changes
-# so this must remain identical. INTENTIONAL PIN: this is a regression guard
-# against accidental core/*.py edits. Making it dynamic would remove the guard.
+# R-1 closure base_hash (honesty-2, 2026-05-29). Phase honesty-2 redefined
+# base_hash to cover the full report-production import closure (25 files),
+# not just core/*.py. INTENTIONAL PIN: this is a regression guard against
+# accidental content-module edits. Making it dynamic would remove the guard.
 # Do NOT replace this with a dynamic compute call — per arch-proposal v2 §3.3.
-_C3_BASE_HASH = "fa440e3eb5f6"
+# Old C3 value (core/*.py glob): fa440e3eb5f6
+# New R-1 closure value (25-file set): 960e9d18d83d
+_C3_BASE_HASH = "960e9d18d83d"
 
 # R1 Phase 1 (Cluster E) note: _M275_C3_5_EFFECTIVE_VERSION and
 # _NON_M275_EFFECTIVE_VERSION hex pins have been REMOVED. They were updated
@@ -124,12 +135,13 @@ def _compute_effective_version(machine_id: str, mode: int) -> str:
 # ---------------------------------------------------------------------------
 
 class TestBaseHashUnchangedInC3_5:
-    """base_hash must be identical to C3 — no core/*.py modifications in C3.5.
+    """base_hash must be the R-1 closure value — no production-path modifications in C3.5.
 
-    C3.5 adds only a new plugin file (fresh_slotlab/analyzer/features/multiplier_wild.py)
-    which is NOT in core/. Per the versioning algorithm:
-        base_hash = sha256(all core/*.py files)
-    A plugin-only addition CANNOT change this hash.
+    C3.5 adds only a new plugin file (fresh_slotlab/analyzer/features/multiplier_wild.py).
+    That plugin is a registered feature in ALL_FEATURES, so it is EXCLUDED from
+    base_hash by R-4. Per the R-1 closure algorithm (honesty-2):
+        base_hash = sha256(25-file report-production closure, plugins excluded)
+    A registered-plugin addition CANNOT change this hash.
     """
 
     def test_base_hash_is_valid_12_hex(self):
@@ -141,23 +153,25 @@ class TestBaseHashUnchangedInC3_5:
         )
 
     def test_base_hash_unchanged_from_c3(self):
-        """base_hash must still be the C3 value (fa440e3eb5f6) in C3.5.
+        """base_hash must be the R-1 closure value (960e9d18d83d) in C3.5.
 
-        C3.5 adds multiplier_wild.py in features/ (NOT core/). Per §4.1 algorithm,
-        base_hash hashes only core/*.py — a features/ addition is invisible to it.
+        C3.5 adds multiplier_wild.py in features/. That plugin IS in ALL_FEATURES
+        and therefore EXCLUDED from base_hash by R-4. Per the R-1 closure algorithm
+        (honesty-2), a registered-plugin addition does not change base_hash.
 
-        INJECT-BUG (Bug B): add a comment line to core/parser.py.
-        RED: base_hash flips (any byte change in core/*.py changes sha256).
-        Revert parser.py → GREEN.
+        INJECT-BUG (Bug B): add a comment line to core/parser.py (which IS in the
+        25-file closure). RED: base_hash flips (any byte change in a closure file
+        changes sha256). Revert parser.py → GREEN.
 
         This is the PRIMARY proof of per-machine isolation for C3.5.
         """
         h = _compute_base_hash()
         assert h == _C3_BASE_HASH, (
-            f"base_hash must be unchanged from C3 ({_C3_BASE_HASH!r}) in C3.5. "
-            f"Got: {h!r}. If this changed, a core/*.py file was modified — "
-            f"C3.5 must NOT touch core/ (per brief §3). "
-            f"If this is a legitimate future change, update _C3_BASE_HASH."
+            f"base_hash must be the R-1 closure value ({_C3_BASE_HASH!r}). "
+            f"Got: {h!r}. "
+            f"If a production-path file was modified, base_hash will flip. "
+            f"If a registered feature plugin was added/modified, base_hash must NOT flip. "
+            f"If this is a legitimate change, update _C3_BASE_HASH."
         )
 
     def test_base_hash_deterministic(self):

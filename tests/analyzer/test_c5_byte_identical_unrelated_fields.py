@@ -5,7 +5,7 @@ inadvertently change fields that are outside its scope.
 
 Invariants asserted
 -------------------
-1. base_hash == "fa440e3eb5f6" (parser / core unchanged; same as post-C4).
+1. base_hash == "960e9d18d83d" (R-1 closure value, honesty-2; registered plugins excluded by R-4).
 2. M275 summary: payout_groups_top20 == [] (gap #5 closed).
 3. M275 summary: payout_groups_status == "all_zeros_filtered" (gap #5 closed).
 4. M275 summary: upstream_feature_breakdown.applicable == True (C5 plugin).
@@ -88,22 +88,24 @@ def m14_bi_summary() -> dict:
 # ---------------------------------------------------------------------------
 
 class TestBaseHashUnchanged:
-    """base_hash must remain fa440e3eb5f6 (parser/core not touched in C5)."""
+    """base_hash must be the R-1 closure value (honesty-2, 2026-05-29)."""
 
     def test_base_hash_value(self):
-        """compute_base_analyzer_version() must return fa440e3eb5f6.
+        """compute_base_analyzer_version() must return 960e9d18d83d.
 
-        C5 adds 2 plugin files in features/ (not core/).
-        Per versioning.py: core/*.py only. Plugin additions do not change base_hash.
-        If base_hash changes, it signals an accidental core-file modification.
+        Phase honesty-2 redefined base_hash to the 25-file report-production
+        import closure (R-1). C5 adds registered plugin files in features/ which
+        are EXCLUDED from base_hash by R-4. The closure value is 960e9d18d83d.
+        If base_hash changes, it signals a modification to a production-path file
+        in the _CLOSURE_FILES tuple (versioning.py) — or versioning.py was edited.
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "fa440e3eb5f6", (
-            f"base_hash must be 'fa440e3eb5f6' (unchanged from C4). "
+        assert actual == "960e9d18d83d", (
+            f"base_hash must be '960e9d18d83d' (R-1 closure value, honesty-2). "
             f"Got: {actual!r}. "
-            f"C5 must NOT touch core/*.py files. "
-            f"If changed, check: fresh_slotlab/analyzer/core/ for accidental modifications."
+            f"Registered plugin additions must NOT change base_hash (R-4 exclusion). "
+            f"If a production-path file (in _CLOSURE_FILES) was modified, update this pin."
         )
 
 

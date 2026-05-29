@@ -71,10 +71,15 @@ sys.path.insert(0, str(_REPO_ROOT))
 # If base_hash == this value, the C3 parser changes are NOT present.
 _C2_BASE_HASH = "b0ba0ce7c7e2"
 
-# Expected post-C3 base_hash (after parser.py adds 4 C3 aggregation dicts).
-# Computed from coordinator-verified smoke run 2026-05-27.
-# Update if parser.py is edited further before C3 commit.
-_EXPECTED_C3_BASE_HASH = "fa440e3eb5f6"  # C3.5: updated post-C3-fix-pass parser comment addition that flipped 64409ab1b68c -> fa440e3eb5f6 (stash drift round 3 also confirmed unchanged)
+# Expected base_hash under the R-1 closure (honesty-2, 2026-05-29).
+# Phase honesty-2 redefined base_hash to cover the transitive repo-local
+# import closure of the report-production path (R-1), not just core/*.py.
+# The old C3 value (fa440e3eb5f6, core/*.py glob) is superseded by the
+# new closure value (960e9d18d83d, 25-file set including content modules).
+# The C3 parser changes are still present; the flip here is from closure
+# expansion (round_classification, round_win, trigger_sessions, sampler,
+# machine_md5, chunk_index, rawdata_index, and support modules now hashed).
+_EXPECTED_C3_BASE_HASH = "960e9d18d83d"  # honesty-2: R-1 closure value (25-file set, LF-normalized)
 
 _HEX12_RE = re.compile(r"^[0-9a-f]{12}$")
 
@@ -88,12 +93,15 @@ def _compute_base_hash() -> str:
 
 
 class TestBaseHashFlipExpected:
-    """base_hash flipped from C2 (b0ba0ce7c7e2) to C3 (fa440e3eb5f6) — EXPECTED.
+    """base_hash flipped from C2 (b0ba0ce7c7e2) to the honesty-2 closure value — EXPECTED.
 
-    Note: C3 commit initially shipped at 64409ab1b68c, but post-commit fix-pass
-    added a parser comment which shifted the hash to fa440e3eb5f6 (C3 stable
-    final value). C3.5 verified this value via stash-and-recompute. The
-    _EXPECTED_C3_BASE_HASH constant at line 77 is the authoritative pin.
+    Phase honesty-2 redefined base_hash from a core/*.py glob to the full
+    report-production import closure (R-1): 25 files including content modules
+    (round_classification, round_win, trigger_sessions, sampler, machine_md5,
+    chunk_index, rawdata_index) and support modules. Old C3 value (fa440e3eb5f6)
+    is superseded. New closure value is 960e9d18d83d (LF-normalized, FIX-2).
+
+    The _EXPECTED_C3_BASE_HASH constant above is the authoritative pin.
     """
 
     def test_base_hash_is_valid_12_hex(self):
@@ -124,19 +132,21 @@ class TestBaseHashFlipExpected:
         )
 
     def test_base_hash_matches_expected_c3_value(self):
-        """base_hash must be the known post-C3 value (currently fa440e3eb5f6).
+        """base_hash must be the R-1 closure value (currently 960e9d18d83d).
 
-        This pins the exact hash of the C3 parser change + any subsequent
-        parser fix-passes. If this test fails with a different hex value (not
-        the C2 value), it means parser.py was edited further — update
-        _EXPECTED_C3_BASE_HASH at line 77 to the new value.
+        Phase honesty-2 expanded base_hash from the core/*.py glob (fa440e3eb5f6)
+        to the full 25-file report-production import closure (960e9d18d83d). The
+        C3 parser changes are still present; this pin covers the broader closure.
+        If this test fails with a different value, check whether _CLOSURE_FILES in
+        versioning.py was edited or whether a new content module was added.
         """
         h = _compute_base_hash()
         assert h == _EXPECTED_C3_BASE_HASH, (
-            f"base_hash is {h!r}, expected post-C3 value {_EXPECTED_C3_BASE_HASH!r}. \n"
-            "If parser.py was edited since last check:\n"
-            "  Update _EXPECTED_C3_BASE_HASH = {h!r!r} in this test file.\n"
-            "If base_hash == C2 value, the C3 parser changes are missing entirely."
+            f"base_hash is {h!r}, expected R-1 closure value {_EXPECTED_C3_BASE_HASH!r}. \n"
+            "If the closure set (_CLOSURE_FILES in versioning.py) was legitimately edited,\n"
+            "  update _EXPECTED_C3_BASE_HASH to the new value.\n"
+            "If base_hash == C2 value (b0ba0ce7c7e2), the C3 parser changes are missing.\n"
+            "If base_hash == old C3 value (fa440e3eb5f6), honesty-2 closure change was reverted."
         )
 
     def test_base_hash_is_deterministic(self):

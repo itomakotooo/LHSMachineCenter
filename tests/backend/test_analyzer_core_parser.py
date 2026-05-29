@@ -135,6 +135,14 @@ def _ref_base_version() -> str | None:
 
     Returns None if core/ directory doesn't exist yet.
     Per 04_architecture_proposal_v5.md §4.1.
+
+    Internal reference ONLY. As of honesty-2 this is never cross-compared
+    against the live compute_base_analyzer_version() (which now hashes the
+    25-file R-1 closure and CRLF-normalizes). It is only ever compared against
+    a modified copy of itself (same raw-byte method) in the two hash-sensitivity
+    tests below. It is therefore intentionally NOT CRLF-normalized — both sides
+    of every comparison use identical bytes, so a CRLF/LF checkout cannot cause a
+    false failure. Do NOT add it back as a cross-check of the live closure hash.
     """
     if not CORE_DIR.exists():
         return None
@@ -711,25 +719,34 @@ class TestBaseAnalyzerVersionHash:
 
     @requires_base_version
     def test_matches_reference_implementation(self):
-        """C5: implementer's output must match the reference impl (_ref_base_version).
+        """honesty-2 update: base_hash covers the R-1 closure (25-file set), not just core/*.py.
 
-        The reference is coded directly from §4.1 (sha256 of sorted core/*.py).
-        If they differ, either the algo or file list is wrong.
+        Phase honesty-2 (2026-05-29) redefined compute_base_analyzer_version() to hash the
+        transitive repo-local import closure of the report-production path (R-1). The old
+        reference (_ref_base_version: sha256 of core/*.py only) is now obsolete.
+
+        core/parser.py IS still in the closure; editing it still flips base_hash.
+        The test intent survives: we verify determinism + the known R-1 closure pin.
         """
         if not CORE_DIR.exists() or not list(CORE_DIR.glob("*.py")):
             pytest.skip(
                 "core/ directory empty or missing — impl-implementer hasn't created "
                 "core/parser.py yet. Test will go green when files land."
             )
-        expected = _ref_base_version()
-        assert expected is not None, "Reference implementation returned None — no core/*.py files"
 
         actual = _compute_base_ver_fn()
-        assert actual == expected, (
-            f"compute_base_analyzer_version() mismatch vs reference:\n"
+        assert actual is not None, "compute_base_analyzer_version() returned None"
+
+        # Pin check: must be the known R-1 closure value (honesty-2)
+        # R-1 closure = 25-file set: core/*.py + content modules + support modules
+        # (MINUS registered feature plugins, which have their own feature_hash).
+        assert actual == "960e9d18d83d", (
+            f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = {expected!r} (sha256 of sorted core/*.py files [:12])\n"
-            "Per §4.1: hash must be sha256 of all core/*.py files combined (sorted)."
+            f"  expected = '960e9d18d83d' (R-1 closure value, honesty-2)\n"
+            "Phase honesty-2 expanded base_hash from core/*.py (old: fa440e3eb5f6) to the\n"
+            "25-file report-production import closure (new: 960e9d18d83d).\n"
+            "core/parser.py is still in the closure — editing it still flips base_hash."
         )
 
     @requires_base_version

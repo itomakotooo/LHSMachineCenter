@@ -1,18 +1,21 @@
 """Versioning primitives for the analyzer plugin model.
 
-Per ticket P2-A1 §3 C1-C3 and 04_architecture_proposal_v5.md §4.1.
+Per ticket honesty-2 (phase_honesty_2/brief.md) and
+session_artifacts/_arch_honesty_isolation/07_decision.md R-1/R-3/R-4/R-5.
 
 Public surface
 --------------
-- :func:`compute_base_analyzer_version` — 12-hex hash of the universal
-  ``fresh_slotlab/analyzer/core/*.py`` sources. Changes when any core
-  module body changes; stable when only feature plugins change.
+- :func:`compute_base_analyzer_version` — 12-hex hash of the transitive
+  repo-local import closure of the report-production path, excluding
+  registered feature-plugin files. This is the "universal code" identity:
+  any change to a content or support module on the production path flips
+  this hash; changes confined to a registered feature plugin do not.
 - :func:`compute_effective_analyzer_version` — per-(machine, mode)
   hash composition. The result invalidates only machines that actually
   use the changed feature(s).
 - :func:`compute_effective_version_for_machine` — convenience orchestrator
   that reads the machine's manifest, resolves features via the
-  registry, hashes core + feature bodies, and returns the 12-hex string.
+  registry, hashes the closure + feature bodies, and returns the 12-hex string.
 
 Algorithm (verbatim from §4.1)
 -------------------------------
@@ -24,10 +27,38 @@ Algorithm (verbatim from §4.1)
   return h.hexdigest()[:12]
 
 Where:
-  base_hash      — 12-hex hash of fresh_slotlab/analyzer/core/*.py (universal code)
+  base_hash      — 12-hex hash of the transitive report-production closure
+                   (content + support modules, MINUS registered feature plugins)
   feature_hashes — {feature_id: 12-hex hash} from feature_registry
   machine_features — list[str] of feature IDs the machine declares
   mode           — int | None; if provided, the per-mode dimension is included
+
+R-1 closure definition (honesty-2)
+------------------------------------
+base_hash covers all repo-local Python modules reachable from the
+report-production path, MINUS registered feature-plugin files (R-4).
+
+The closure is encoded as an explicit, version-controlled tuple of
+repo-relative paths (``_CLOSURE_FILES`` below) hashed in sorted order.
+This is deterministic across the dual import paths (script-mode vs
+package-mode) per memory/feedback_subprocess_import_suicide_and_module_globals.md.
+
+Line-ending normalization (FIX-2): bytes are CRLF-normalized before hashing
+(``read_bytes().replace(b"\\r\\n", b"\\n")``) so base_hash is a function of
+SOURCE CONTENT, not of checkout config (autocrlf) or platform. Without this,
+adding a ``.gitattributes`` or checking out on Linux would flip the hash and
+mark all 393 reports stale without any code change.
+
+A CI drift-guard test (tests/analyzer/test_honesty2_drift_guard.py) introspects
+the actual runtime import closure and FAILS if a new repo-local content module
+is imported on the production path but absent from _CLOSURE_FILES.
+
+R-4 exclusion
+--------------
+The base-exclusion set = exactly the ``__file__``s of the registered features
+(``feature_registry.ALL_FEATURES``). ``_base.py`` and ``features/__init__.py``
+are NOT in ALL_FEATURES and therefore STAY in base. A glob over
+``features/*.py`` would be wrong (it would drop _base.py and __init__.py).
 
 No import-time side effects per
 memory/feedback_subprocess_import_suicide_and_module_globals.md.
@@ -40,25 +71,107 @@ from pathlib import Path
 from typing import Any, Optional
 
 
-# Where core/*.py lives. Computed at import as a Path constant — pure path
-# arithmetic, no I/O.
-_CORE_DIR = Path(__file__).parent / "core"
+# ---------------------------------------------------------------------------
+# R-1: Explicit, version-controlled closure file set (honesty-2)
+# ---------------------------------------------------------------------------
+# This tuple is the authoritative set of repo-local Python files that
+# contribute to base_hash. Resolved from the live import graph (introspection
+# of sys.modules after importing player_impact_analyzer and its support chain).
+#
+# Files in this list: content modules + support modules on the report-
+# production path, EXCLUDING registered feature-plugin files (R-4).
+#
+# NOTE: versioning.py is itself in this list. Editing the closure set (or any
+# source in it) flips base_hash — which is correct, because the hash algorithm
+# changed. The self-referential inclusion is intentional and correct.
+#
+# Lazy imports inside main() (rtp_integrity, parse_state, pipeline_context,
+# topo_sort, mechanism_registry) ARE included because they execute on every
+# real report-production run.
+#
+# Modules intentionally NOT in the closure:
+#   - fresh_slotlab/analyzer/_stub_features.py   (test-only, never imported by PIA)
+#   - fresh_slotlab/reporter.py                  (standalone script, not imported by PIA)
+#   - fresh_slotlab/analyzer/features/*.py       (registered plugins, excluded by R-4)
+#     EXCEPT _base.py and __init__.py which ARE in the closure (not registered plugins)
+#
+# Backend-orchestrated post-hooks (run after pia.main() by app.py / virtual_analyzer.py,
+# NOT by PIA's own import graph — they are intentionally outside the closure):
+#   - fresh_slotlab/post_inference.py    — run_post_analyzer_inference: launches
+#                                          inference scripts as subprocesses after pia.main()
+#   - fresh_slotlab/summary_md5_patch.py — patch_summary_md5: stamps md5 fields in the
+#                                          written summary after pia.main() returns
+#   - fresh_slotlab/batch_dev_sampler.py — dev-only sampling helper, not on report path
+# Changes to these post-hooks do NOT flip base_hash. This is a known, accepted scope
+# boundary: R-1 defines the report-production path as PIA's import closure, not the
+# full backend pipeline. If their honesty ever matters independently, that is a separate
+# follow-on (they carry their own md5/patch semantics separate from analyzer_version).
+#
+# Drift guard: tests/analyzer/test_honesty2_drift_guard.py walks sys.modules
+# after importing PIA + support modules and fails if any repo-local content
+# module is imported but absent from this list. Update this list if the
+# guard fires after a legitimate new content module is added.
+_CLOSURE_FILES: tuple[str, ...] = (
+    "fresh_slotlab/analyzer/__init__.py",
+    "fresh_slotlab/analyzer/core/__init__.py",
+    "fresh_slotlab/analyzer/core/_utils.py",
+    "fresh_slotlab/analyzer/core/aggregator.py",
+    "fresh_slotlab/analyzer/core/base_pipeline.py",
+    "fresh_slotlab/analyzer/core/parser.py",
+    "fresh_slotlab/analyzer/core/writer.py",
+    "fresh_slotlab/analyzer/feature_registry.py",
+    "fresh_slotlab/analyzer/features/__init__.py",
+    "fresh_slotlab/analyzer/features/_base.py",
+    "fresh_slotlab/analyzer/manifest_loader.py",
+    "fresh_slotlab/analyzer/mechanism_registry.py",
+    "fresh_slotlab/analyzer/parse_state.py",
+    "fresh_slotlab/analyzer/pipeline_context.py",
+    "fresh_slotlab/analyzer/rtp_integrity.py",
+    "fresh_slotlab/analyzer/topo_sort.py",
+    "fresh_slotlab/analyzer/versioning.py",
+    "fresh_slotlab/chunk_index.py",
+    "fresh_slotlab/machine_md5.py",
+    "fresh_slotlab/player_impact_analyzer.py",
+    "fresh_slotlab/rawdata_index.py",
+    "fresh_slotlab/round_classification.py",
+    "fresh_slotlab/round_win.py",
+    "fresh_slotlab/sampler.py",
+    "fresh_slotlab/trigger_sessions.py",
+)
+
+# Repo root: two parents up from fresh_slotlab/analyzer/versioning.py
+# (i.e., fresh_slotlab/analyzer/ -> fresh_slotlab/ -> repo_root/).
+# Pure path arithmetic, no I/O at import time.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
-def compute_base_analyzer_version(*, core_dir: Optional[Path] = None) -> str:
-    """Return the 12-char hex hash of the analyzer core code.
+def compute_base_analyzer_version(
+    *,
+    closure_files: Optional[tuple[str, ...]] = None,
+    repo_root: Optional[Path] = None,
+) -> str:
+    """Return the 12-char hex hash of the report-production import closure.
 
-    Hashes every ``*.py`` file in ``fresh_slotlab/analyzer/core/`` in
-    deterministic alphabetical order. Per §4.1 the base_hash is the
-    "universal code" identity: any change to a core module flips this
-    hash; changes confined to a feature plugin do not.
+    Hashes every file in the explicit closure set ``_CLOSURE_FILES`` in
+    deterministic sorted-by-path order, with CRLF→LF normalization so that
+    the hash is a function of SOURCE CONTENT rather than checkout-config
+    (autocrlf) or platform.
+
+    Per R-1 (honesty-2) the base_hash covers the full transitive repo-local
+    import closure of the report-production path (not just ``core/*.py``):
+    any change to a content or support module on the production path flips
+    this hash; changes confined to a registered feature plugin do not (R-4
+    exclusion via the registry — not a glob).
 
     Parameters
     ----------
-    core_dir:
-        Override the core directory path (used by tests). When ``None``
-        (default), uses ``fresh_slotlab/analyzer/core/`` next to this
-        module.
+    closure_files:
+        Override the closure file set (used by tests to inject a synthetic
+        closure). When ``None`` (default), uses ``_CLOSURE_FILES``. Each
+        entry is a repo-relative path string.
+    repo_root:
+        Override the repo root (used by tests). When ``None`` (default),
+        uses the repo root derived from this module's location.
 
     Returns
     -------
@@ -68,23 +181,37 @@ def compute_base_analyzer_version(*, core_dir: Optional[Path] = None) -> str:
     Raises
     ------
     FileNotFoundError
-        If *core_dir* does not exist. The core package is a hard
-        dependency; absence indicates a broken install or wrong path.
+        If any file in the closure set does not exist. The closure is a
+        hard dependency; absence indicates a broken install, wrong path,
+        or an out-of-date ``_CLOSURE_FILES`` tuple. Never silently swallowed
+        (per memory/feedback_no_silent_swallow.md).
     """
-    target = core_dir if core_dir is not None else _CORE_DIR
-    if not target.exists():
-        raise FileNotFoundError(
-            f"core_dir does not exist: {target}. "
-            f"compute_base_analyzer_version requires fresh_slotlab/analyzer/core/."
-        )
+    files = closure_files if closure_files is not None else _CLOSURE_FILES
+    root = repo_root if repo_root is not None else _REPO_ROOT
 
     h = hashlib.sha256()
-    # Per §4.1: hash is sha256 of all core/*.py files concatenated in
-    # sorted-by-path order. Reference impl in tests matches this exactly;
-    # do not add filename prefixes / separators (they would break the
-    # reference parity check the test suite enforces).
-    for source_file in sorted(target.glob("*.py")):
-        h.update(source_file.read_bytes())
+    # Hash in sorted-by-path order for determinism. The sort is on the
+    # repo-relative string (posix path form) so it is identical across
+    # platforms that use different path separators.
+    #
+    # CRLF normalization (FIX-2): normalize line endings before hashing so
+    # that the hash depends only on source content, not on git checkout
+    # config (core.autocrlf) or OS. Without this, adding .gitattributes or
+    # checking out on Linux would flip base_hash and mark 393 reports stale
+    # without any code change — a false-stale lie. Per
+    # memory/feedback_invariant_with_fallback_hides_drift.md: the hash must
+    # be honest; a platform-induced false-stale is as wrong as a false-fresh.
+    for rel in sorted(files):
+        source_file = root / rel
+        if not source_file.exists():
+            raise FileNotFoundError(
+                f"Closure file does not exist: {source_file}. "
+                f"The _CLOSURE_FILES tuple in versioning.py may be out of date, "
+                f"or the repo root is wrong (repo_root={root!r}). "
+                f"Per memory/feedback_no_silent_swallow.md: do not swallow this error."
+            )
+        raw = source_file.read_bytes()
+        h.update(raw.replace(b"\r\n", b"\n"))
 
     return h.hexdigest()[:12]
 
@@ -95,13 +222,15 @@ def compute_effective_version_for_machine(
     *,
     manifests_root: Optional[Path] = None,
     registry: Optional[Any] = None,
-    core_dir: Optional[Path] = None,
+    closure_files: Optional[tuple[str, ...]] = None,
+    repo_root: Optional[Path] = None,
 ) -> str:
     """Convenience orchestrator — full pipeline for one (machine, mode).
 
     Reads the machine's manifest, resolves variant inheritance, resolves
     per-mode overrides, looks up feature hashes from the registry, hashes
-    core/*.py, and returns the 12-hex effective version.
+    the report-production closure (R-1), and returns the 12-hex effective
+    version.
 
     Parameters
     ----------
@@ -116,8 +245,10 @@ def compute_effective_version_for_machine(
     registry:
         Object exposing ``ALL_FEATURES``. Defaults to the package
         ``feature_registry`` module.
-    core_dir:
-        Override core directory. Used by tests; production passes None.
+    closure_files:
+        Override the closure file set for tests. Production passes None.
+    repo_root:
+        Override the repo root for tests. Production passes None.
 
     Returns
     -------
@@ -127,7 +258,7 @@ def compute_effective_version_for_machine(
     Raises
     ------
     FileNotFoundError
-        Manifest file missing.
+        Manifest file missing, or a closure file is missing.
     KeyError
         Manifest references a feature ID not registered.
     """
@@ -187,10 +318,12 @@ def compute_effective_version_for_machine(
 
     if manifests_root is None:
         # Repo root: two parents up from this file (fresh_slotlab/analyzer/).
-        repo_root = Path(__file__).resolve().parent.parent.parent
-        manifests_root = repo_root / "slot_designer" / "configs" / "machine_manifests"
+        manifests_root = _REPO_ROOT / "slot_designer" / "configs" / "machine_manifests"
 
-    base_hash = compute_base_analyzer_version(core_dir=core_dir)
+    base_hash = compute_base_analyzer_version(
+        closure_files=closure_files,
+        repo_root=repo_root,
+    )
 
     manifest = load_manifest(machine_id, manifests_root)
     if manifest.get("inherits_from"):
@@ -231,7 +364,7 @@ def compute_effective_analyzer_version(
     Parameters
     ----------
     base_hash:
-        12-hex hash of the universal analyzer core code.
+        12-hex hash of the universal report-production closure (R-1).
     feature_hashes:
         Mapping of feature_id → 12-hex hash for every registered feature.
         Only features in *machine_features* are included in the digest.

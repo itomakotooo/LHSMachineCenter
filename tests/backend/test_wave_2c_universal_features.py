@@ -673,36 +673,59 @@ class TestHashComposition:
 
     @requires_base_version
     def test_base_version_does_not_include_features_dir(self):
-        """C5: compute_base_analyzer_version() hashes core/*.py only, not features/*.py.
+        """honesty-2 update: base_hash excludes REGISTERED feature plugins (R-4), not features/*.py.
 
-        Per §4.1 and ticket C5: the base hash is the universal-code hash
-        (core/*.py). Adding feature files must NOT change it — each feature's
-        hash is separate via feature.compute_hash().
+        Phase honesty-2 (2026-05-29) refined the exclusion rule: instead of excluding all
+        features/*.py (which would wrongly drop _base.py and __init__.py from base), only
+        REGISTERED feature plugin files (those in ALL_FEATURES) are excluded (R-4).
+        _base.py and features/__init__.py are NOT registered plugins → they STAY IN base.
 
-        We verify this by confirming the reference implementation (which only
-        reads core/*.py) matches the function's output.
+        The C5 intent still holds: adding a registered feature plugin must NOT change base_hash.
+        We verify: (a) registered plugin files are NOT in _CLOSURE_FILES, (b) _base.py and
+        features/__init__.py ARE in _CLOSURE_FILES (they stay in base), (c) live value is
+        the known R-1 closure pin.
         """
-        import hashlib
-        core_dir = ROOT / "fresh_slotlab" / "analyzer" / "core"
-        if not core_dir.exists():
-            pytest.skip("core/ directory not yet created")
+        from fresh_slotlab.analyzer.versioning import _CLOSURE_FILES
 
-        py_files = sorted(core_dir.glob("*.py"))
-        if not py_files:
-            pytest.skip("core/ has no .py files yet")
+        # (a) Registered plugin files must NOT be in _CLOSURE_FILES
+        registered_plugin_stems = [
+            "payouts_by_spin_type",
+            "reel_marginal_by_spin_type",
+            "bankruptcy_simulation",
+            "multiplier_profile",
+            "multiplier_wild",
+            "machine_mechanics",
+            "upstream_feature_breakdown",
+            "collect_mechanic",
+            "bonus_chain_dynamics",
+        ]
+        for stem in registered_plugin_stems:
+            plugin_rel = f"fresh_slotlab/analyzer/features/{stem}.py"
+            assert plugin_rel not in _CLOSURE_FILES, (
+                f"Registered plugin {plugin_rel!r} is in _CLOSURE_FILES — it must be EXCLUDED "
+                f"(R-4: exclusion via registry, not glob). Registered plugins carry their own "
+                f"feature_hash; including them in base would cause FALSE-STALE ×393."
+            )
 
-        h = hashlib.sha256()
-        for f in py_files:
-            h.update(f.read_bytes())
-        expected = h.hexdigest()[:12]
+        # (b) _base.py and __init__.py must stay IN the closure (they are not registered plugins)
+        assert "fresh_slotlab/analyzer/features/_base.py" in _CLOSURE_FILES, (
+            "features/_base.py must be in _CLOSURE_FILES. It defines the AnalyzerFeature ABC "
+            "and is NOT a registered plugin (not in ALL_FEATURES). R-4 excludes only registered "
+            "plugins; _base.py stays in base."
+        )
+        assert "fresh_slotlab/analyzer/features/__init__.py" in _CLOSURE_FILES, (
+            "features/__init__.py must be in _CLOSURE_FILES. It is a package marker, not a "
+            "registered plugin. R-4 excludes only registered plugins; __init__.py stays in base."
+        )
 
+        # (c) Live value must be the known R-1 closure pin (honesty-2)
         actual = _cbav()
-        assert actual == expected, (
-            f"compute_base_analyzer_version() mismatch vs reference:\n"
+        assert actual == "960e9d18d83d", (
+            f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = {expected!r} (sha256 of all core/*.py files)\n"
-            f"C5 contract: base hash must only cover core/*.py, not features/*.py.\n"
-            f"If this fails after Wave 2c, a feature file is being included in the base hash."
+            f"  expected = '960e9d18d83d' (R-1 closure value, honesty-2)\n"
+            "R-4 exclusion covers registered plugins only (not all features/*.py).\n"
+            "_base.py and features/__init__.py are still in base (not registered plugins)."
         )
 
     @requires_abc

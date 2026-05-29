@@ -1265,24 +1265,38 @@ class TestHashCompositionRollsForward:
 
     @requires_base_version
     def test_base_version_matches_reference_after_p2_b2(self):
-        """C6: after P2-B2 lands, implementer's hash must match reference.
+        """honesty-2 update: base_hash covers the R-1 closure (25-file set), not just core/*.py.
 
-        The reference hashes all core/*.py sorted — including both new files.
-        If the implementer's function misses _utils.py or aggregator.py, the
-        hash diverges from reference.
+        Phase honesty-2 (2026-05-29) redefined compute_base_analyzer_version() to hash the
+        transitive repo-local import closure of the report-production path (R-1), not just
+        core/*.py. The test intent survives: core/*.py files (including _utils.py and
+        aggregator.py) ARE in the closure, and the function must be deterministic.
+
+        The old assertion (actual == _ref_base_version()) is now wrong because _ref_base_version()
+        only hashes core/*.py, but the live function hashes 25 files. Replaced with:
+        (a) determinism check, and (b) pin check against the known R-1 closure value.
         """
         if not CORE_DIR.exists() or not list(CORE_DIR.glob("*.py")):
             pytest.skip("core/ directory empty — waiting on impl-implementer")
 
-        expected = _ref_base_version()
-        actual = _compute_base_ver_fn()
+        # (a) Determinism: two calls must return the same value
+        actual1 = _compute_base_ver_fn()
+        actual2 = _compute_base_ver_fn()
+        assert actual1 == actual2, (
+            f"compute_base_analyzer_version() is non-deterministic: {actual1!r} vs {actual2!r}"
+        )
 
-        assert actual == expected, (
-            f"compute_base_analyzer_version() diverges from reference after P2-B2:\n"
-            f"  actual   = {actual!r}\n"
-            f"  expected = {expected!r}\n"
-            "The reference hashes all core/*.py files (sorted). If actual differs,\n"
-            "the implementer's function is either missing _utils.py or aggregator.py."
+        # (b) Pin check: must be the known R-1 closure value (honesty-2)
+        # honesty-2 closed the R-1 gap: 25-file set covering full production path.
+        # If this value changes, it means _CLOSURE_FILES in versioning.py was edited.
+        assert actual1 == "960e9d18d83d", (
+            f"compute_base_analyzer_version() diverges from R-1 closure reference:\n"
+            f"  actual   = {actual1!r}\n"
+            f"  expected = '960e9d18d83d' (R-1 closure value, honesty-2)\n"
+            "The R-1 closure covers core/*.py plus content modules (round_classification,\n"
+            "round_win, trigger_sessions, sampler, machine_md5, chunk_index, rawdata_index)\n"
+            "and support modules. If this changed, update the pin to the new value and\n"
+            "verify _CLOSURE_FILES in versioning.py reflects the intent."
         )
 
 
