@@ -588,6 +588,102 @@ def _run_inference_scripts(machine: str, mode: int) -> None:
     )
 
 
+def _patch_summary_effective_version(
+    output_dir: Path,
+    machine: str,
+    mode: object,
+) -> None:
+    """Stamp an honest effective_analyzer_version into the virtual summary.
+
+    R-8 (honesty-3): virtual machines have no manifest, so PIA's
+    ``compute_effective_version_for_machine`` raises FileNotFoundError
+    and the summary lands with ``effective_analyzer_version = ""`` plus a
+    swallowed error. After legacy retirement (honesty-1.5) that would leave
+    the virtual console with no staleness axis.
+
+    Fix: stamp the base hash (``compute_base_analyzer_version()``) as the
+    virtual effective value, plus an explicit
+    ``effective_analyzer_version_kind = "virtual_base_only"`` marker.
+    This is honest: virtual delegates to the REAL PIA code (same closure),
+    so when the production closure changes, virtual reports also correctly
+    mark stale. The marker flags that per-feature-isolation is unavailable
+    (no manifest), so callers know this is base-level resolution only.
+
+    The stamp is applied ONLY when the field is empty (PIA left it blank
+    because the manifest was missing). If PIA ever gains virtual-registry
+    awareness and fills the field itself, this patch becomes a no-op.
+
+    Failures are logged to stderr with context; they do NOT fail the run
+    (the canonical summary + report are already on disk).
+    Per memory/feedback_no_silent_swallow.md: outcome is always logged.
+    """
+    import json as _json  # noqa: PLC0415
+    summary_file = output_dir / "player_impact_summary.json"
+    if not summary_file.exists():
+        print(
+            f"virtual_analyzer: _patch_summary_effective_version: "
+            f"summary not found at {summary_file!s} — skipping",
+            file=sys.stderr,
+        )
+        return
+    try:
+        text = summary_file.read_text(encoding="utf-8")
+        data = _json.loads(text)
+    except (OSError, _json.JSONDecodeError) as exc:
+        print(
+            f"virtual_analyzer: _patch_summary_effective_version: "
+            f"cannot read summary ({type(exc).__name__}: {exc}) — skipping",
+            file=sys.stderr,
+        )
+        return
+
+    existing_eff = data.get("effective_analyzer_version") or ""
+    if existing_eff:
+        # PIA already set it (future-proofing: if PIA gains virtual support)
+        return
+
+    # Compute the base hash. This raises FileNotFoundError if a closure file
+    # is missing (broken install). That is a real error — not caught here.
+    # Per memory/feedback_no_silent_swallow.md: broken installs must surface.
+    try:
+        from fresh_slotlab.analyzer.versioning import (  # noqa: PLC0415
+            compute_base_analyzer_version,
+        )
+    except ImportError:
+        from analyzer.versioning import compute_base_analyzer_version  # type: ignore[no-redef]  # noqa: PLC0415
+
+    try:
+        base_hash = compute_base_analyzer_version()
+    except FileNotFoundError:
+        # Closure file missing — broken install. Log loudly and return;
+        # the summary remains with empty effective (run already succeeded).
+        # Per feedback_no_silent_swallow.md: outcome persisted to stderr.
+        print(
+            f"virtual_analyzer: _patch_summary_effective_version: "
+            f"closure file missing — cannot compute base hash for "
+            f"{machine} mode {mode}. Effective version left empty.",
+            file=sys.stderr,
+        )
+        return  # Non-fatal for the run; the error is visible in stderr.
+
+    data["effective_analyzer_version"] = base_hash
+    data["effective_analyzer_version_kind"] = "virtual_base_only"
+    data["effective_analyzer_version_error"] = None  # clear any PIA-swallowed error
+
+    try:
+        summary_file.write_text(
+            _json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        print(
+            f"virtual_analyzer: _patch_summary_effective_version: "
+            f"cannot write patched summary ({exc}) — "
+            f"effective_analyzer_version remains empty for {machine} mode {mode}",
+            file=sys.stderr,
+        )
+
+
 def _delegate_to_real_analyzer(
     original_args: argparse.Namespace,
     from_cache_dir: Path,
@@ -602,6 +698,8 @@ def _delegate_to_real_analyzer(
     empty ``config_md5`` / ``code_md5`` fields in the written summary
     with these values so ``/api/report-validate`` classifies the
     report as ``md5_status=match`` rather than ``untagged``.
+    R-8 (honesty-3): also stamp an honest effective_analyzer_version
+    (base hash + kind marker) when patch_md5s is set and the field is empty.
     """
     cmd = _build_delegate_cmd(original_args, from_cache_dir)
     rc = subprocess.call(cmd, cwd=_ROOT)
@@ -611,6 +709,18 @@ def _delegate_to_real_analyzer(
             original_args.output_dir,
             cfg,
             code,
+            machine=original_args.machine,
+            mode=original_args.rtp_mode,
+        )
+        # R-8 (honesty-3): stamp effective_analyzer_version for virtual machines.
+        # Virtual machines have no manifest, so PIA leaves the field empty.
+        # We stamp base_hash + "virtual_base_only" kind marker so the virtual
+        # console gets a real staleness axis (changes to the production closure
+        # correctly mark virtual reports stale, while honestly disclosing that
+        # per-feature isolation is unavailable). Called alongside
+        # _patch_summary_md5_tags — same post-delegate stamp pattern.
+        _patch_summary_effective_version(
+            original_args.output_dir,
             machine=original_args.machine,
             mode=original_args.rtp_mode,
         )

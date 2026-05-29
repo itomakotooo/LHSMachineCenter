@@ -7393,18 +7393,29 @@ def create_app(
     def versions_current() -> dict[str, Any]:
         """Current server-side + analyzer versions.
 
-        Returned shape:
+        Returned shape (honesty-3 extended):
           {
-            "analyzer_version": "<12-char hex>",
-            "machines": {"<machine>": {"config_md5": ..., "code_md5": ...}}
+            "analyzer_version": "<12-char hex>",    # legacy global; kept for back-compat
+            "machines": {"<machine>": {"config_md5": ..., "code_md5": ...}},
+            "effective_versions": {                  # per-(machine,mode) effective hash
+              "<machine>|<mode>": "<12-hex or UNVERIFIABLE>",
+              ...
+            }
           }
 
-        Used by the frontend to compute per-run staleness badges in the
-        Run History table without the backend having to join summary
-        files on every list call. Run rows store what they saw at
-        generation time; this endpoint returns what's current now.
+        ``effective_versions`` is populated for the bounded set of
+        (machine, mode) pairs that have completed runs — the exact set
+        the frontend needs for Run History staleness badges. Machines with
+        no manifest (virtual/unregistered) map to the ``UNVERIFIABLE``
+        sentinel; the frontend treats those as "untagged" rather than stale.
+
+        ``analyzer_version`` is kept for backward-compat (older cached
+        frontends); it is no longer the comparator for staleness decisions
+        (honesty-3 cutover). The frontend comparator (versionBadges) now
+        uses ``effective_versions``.
         """
         from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+        from src.web_console.backend.effective_version_cache import EffectiveVersionCache
         machines_payload: dict[str, dict[str, str]] = {}
         if mc.exists():
             try:
@@ -7421,9 +7432,41 @@ def create_app(
                 # Malformed machines.json → return empty map; frontend
                 # degrades to "untagged" badges rather than blank cells.
                 pass
+        # Build effective_versions for all (machine, mode) pairs that have
+        # completed runs. This is the bounded set the frontend needs — not
+        # all 393 machines × all modes, just the ones with existing runs.
+        # Per-request cache (R-7): base_hash computed once for this call.
+        eff_cache = EffectiveVersionCache()
+        effective_versions: dict[str, str] = {}
+        try:
+            completed = store.list_runs_by_status("completed", limit=10000) or []
+            seen_pairs: set[tuple[str, int]] = set()
+            for row in completed:
+                machine = row.get("machine")
+                mode = row.get("mode")
+                if not machine or mode is None:
+                    continue
+                pair = (str(machine), int(mode))
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                key = f"{machine}|{mode}"
+                eff = eff_cache.get(str(machine), int(mode))
+                effective_versions[key] = eff
+        except FileNotFoundError:
+            raise  # broken install — let the endpoint 500 honestly
+        except Exception as _exc:  # noqa: BLE001 — DB/index read failure: return partial map
+            # Non-fatal: return partial effective_versions map so the frontend
+            # degrades gracefully. Log so the operator can investigate.
+            print(
+                f"[versions/current] effective_versions build failed at "
+                f"{machine}|{mode}: {type(_exc).__name__}: {_exc}",
+                file=sys.stderr,
+            )
         return {
             "analyzer_version": compute_analyzer_version(),
             "machines": machines_payload,
+            "effective_versions": effective_versions,
         }
 
     @app.get("/api/machines/halls")
@@ -7602,13 +7645,32 @@ def create_app(
         * ``fixable_items`` — (machine, mode) pairs where analyzer is
           stale AND rawdata is fresh — exactly the set a one-click
           "batch regen" should submit.
+        * ``needs_rawdata_items`` — (machine, mode) pairs where analyzer
+          is stale AND there is NO usable rawdata cache — cannot be
+          auto-fixed; operator must resample first. Honest dead-end
+          per R-6 (M275/mode_7 = 0 chunks verified empty-index case).
 
         De-duplicated by (machine, mode): if 3 runs exist for M14
         mode 1 all with stale analyzer, only one fixable item lands
         (the operator regenerates the mode, not each individual run).
+
+        Honesty-3 (2026-05-29): the analyzer-staleness comparison now
+        uses per-(machine, mode) ``effective_analyzer_version`` from the
+        row, compared against the current effective computed by
+        ``EffectiveVersionCache``. This means editing one machine's
+        analysis flags ONLY that machine — not all 393 (the M31 bug).
+        Machines with no manifest (virtual/unregistered) are "unverifiable"
+        and are never counted stale or fixable (honest).
         """
-        from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
-        cur_analyzer = compute_analyzer_version()
+        from src.web_console.backend.effective_version_cache import EffectiveVersionCache
+        # Legacy global hash: kept in the response for display/backward-compat;
+        # it NO LONGER drives the stale/fixable decision (honesty-3).
+        try:
+            from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+            cur_analyzer = compute_analyzer_version()
+        except Exception:  # noqa: BLE001 — best-effort display only
+            cur_analyzer = ""
+
         cur_machines: dict[str, tuple[str, str]] = {}
         if mc.exists():
             try:
@@ -7628,16 +7690,23 @@ def create_app(
         stale_rawdata = 0
         stale_analyzer = 0
         untagged = 0
-        # Use sets keyed by (machine, mode) for fixable to dedupe
-        # across multiple runs for the same mode.
+        # Use sets keyed by (machine, mode) to dedupe across multiple runs.
         fixable_keys: set[tuple[str, int]] = set()
+        needs_rawdata_keys: set[tuple[str, int]] = set()
+        # Per-request memoized effective-version cache (R-7): one instance
+        # for this endpoint invocation. Computes base_hash once; memoizes
+        # per-(machine, mode). Avoids O(rows × 25-file-read) I/O storm.
+        eff_cache = EffectiveVersionCache()
         for row in completed:
             machine = row.get("machine")
             mode = row.get("mode")
             row_cfg = row.get("rawdata_config_md5") or ""
             row_code = row.get("rawdata_code_md5") or ""
-            row_analyzer = row.get("analyzer_version") or ""
-            if not row_cfg and not row_code and not row_analyzer:
+            # Honesty-3: use effective_analyzer_version, not legacy analyzer_version.
+            # effective is the per-(machine, mode) hash that changes only when
+            # that machine's analysis code changed — the M31-isolation fix.
+            row_eff = row.get("effective_analyzer_version") or ""
+            if not row_cfg and not row_code and not row_eff:
                 untagged += 1
                 continue
             cur_cfg, cur_code = cur_machines.get(machine or "", ("", ""))
@@ -7647,10 +7716,21 @@ def create_app(
                 and (cur_cfg or cur_code)
                 and (row_cfg != cur_cfg or row_code != cur_code)
             )
-            # Analyzer staleness: row has fingerprint + doesn't match current
-            analyzer_is_stale = bool(
-                row_analyzer and cur_analyzer and row_analyzer != cur_analyzer
-            )
+            # Analyzer staleness: compare row's effective against the current
+            # per-(machine, mode) effective. UNVERIFIABLE (no manifest) → NOT
+            # stale (can't verify, honest). Empty row_eff → untagged for this
+            # dimension (also not counted stale — it's legacy/pre-honesty-3).
+            analyzer_is_stale = False
+            if row_eff and machine and mode is not None:
+                try:
+                    cur_eff = eff_cache.get(str(machine), int(mode))
+                except FileNotFoundError:
+                    # A closure file is missing — broken install. Surface it,
+                    # don't swallow (feedback_no_silent_swallow.md). Not caught
+                    # here so the endpoint 500s and the operator investigates.
+                    raise
+                if cur_eff != EffectiveVersionCache.UNVERIFIABLE and cur_eff:
+                    analyzer_is_stale = row_eff != cur_eff
             if rawdata_is_stale:
                 stale_rawdata += 1
             if analyzer_is_stale:
@@ -7658,10 +7738,35 @@ def create_app(
             # Fixable = analyzer stale AND rawdata fresh (or rawdata
             # unverifiable → treat as fresh enough). Resampling-only
             # cases are NOT fixable by the batch regen button.
+            # R-6: if stale AND no usable rawdata → needs_rawdata (not fixable).
             if analyzer_is_stale and not rawdata_is_stale and machine and mode is not None:
-                fixable_keys.add((machine, int(mode)))
+                m_int = int(mode)
+                # Check whether there is usable rawdata to run the analyzer on.
+                # Reuses check_rawdata_status (already defined in this file).
+                try:
+                    rs = check_rawdata_status(
+                        str(machine), m_int, rawdata_root=rd_root, machines_config=mc,
+                    )
+                    has_rawdata = bool(rs.get("usable_chunks", 0) > 0)
+                except Exception as _rdc_exc:  # noqa: BLE001 — rawdata check is best-effort
+                    # If status check fails, conservatively treat as has rawdata
+                    # so the item lands in fixable (operator can retry).
+                    # Log so the operator can investigate the index failure.
+                    print(
+                        f"[stale-count] check_rawdata_status failed for "
+                        f"{machine}|{m_int}: {type(_rdc_exc).__name__}: {_rdc_exc}",
+                        file=sys.stderr,
+                    )
+                    has_rawdata = True
+                if has_rawdata:
+                    fixable_keys.add((str(machine), m_int))
+                else:
+                    needs_rawdata_keys.add((str(machine), m_int))
         fixable_items = [
             {"machine": m, "mode": mode} for (m, mode) in sorted(fixable_keys)
+        ]
+        needs_rawdata_items = [
+            {"machine": m, "mode": mode} for (m, mode) in sorted(needs_rawdata_keys)
         ]
         return {
             "total_completed_runs": total,
@@ -7670,6 +7775,8 @@ def create_app(
             "untagged": untagged,
             "fixable_items": fixable_items,
             "fixable_count": len(fixable_items),
+            "needs_rawdata_items": needs_rawdata_items,
+            "needs_rawdata_count": len(needs_rawdata_items),
             "current_analyzer_version": cur_analyzer,
         }
 
@@ -10852,8 +10959,18 @@ def create_app(
         Per-report status: md5_status (match / outdated / untagged) +
         analyzer_status (match / outdated / untagged). Frontend surfaces
         both as small badges next to each report row.
+
+        Honesty-3 (2026-05-29): analyzer_status is now based on per-mode
+        ``effective_analyzer_version`` (from the summary) vs the current
+        per-(machine, mode) effective hash. Machines with no manifest are
+        "unverifiable" — status "untagged", not "outdated".
+        ``report_effective_version`` is added to each result row so
+        the frontend badge (versionBadges via rwtree) can compare against
+        current.effective_versions[machine|mode] directly.
+        ``current_analyzer_version`` is kept for display/back-compat.
         """
         from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+        from src.web_console.backend.effective_version_cache import EffectiveVersionCache
         # Machine-level aggregate (used as response-level hint so
         # frontend can show "current cfg md5" at the card header).
         up_config, up_code = _get_machine_md5(machine, mc)
@@ -10870,6 +10987,9 @@ def create_app(
                 "machine": machine, "unverifiable": False, "reports": [],
                 "current_analyzer_version": current_analyzer,
             }
+        # Per-request effective-version cache (R-7): one instance for this
+        # endpoint call, shared across all mode_dirs. Computes base_hash once.
+        eff_cache = EffectiveVersionCache()
         for mode_dir in machine_dir.iterdir():
             if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
                 continue
@@ -10883,6 +11003,12 @@ def create_app(
             # Real machines (no modesMd5 map) fall through to the
             # aggregate via _get_machine_md5's fallback path.
             mode_cfg, mode_code = _get_machine_md5(machine, mc, mode=mode_val)
+            # Current per-(machine, mode) effective for analyzer comparison.
+            try:
+                cur_eff = eff_cache.get(machine, mode_val)
+            except FileNotFoundError:
+                # Closure file missing (broken install) — surface it.
+                raise
             versions_dir = mode_dir / "versions"
             if not versions_dir.is_dir():
                 continue
@@ -10898,6 +11024,9 @@ def create_app(
                     continue
                 rpt_config = str(s.get("config_md5", ""))
                 rpt_code = str(s.get("code_md5", ""))
+                # Honesty-3: use effective_analyzer_version for the staleness
+                # decision. Legacy analyzer_version kept for display only.
+                rpt_effective = str(s.get("effective_analyzer_version", ""))
                 rpt_analyzer = str(s.get("analyzer_version", ""))
                 if not rpt_config and not rpt_code:
                     md5_status = "untagged"
@@ -10905,9 +11034,15 @@ def create_app(
                     md5_status = "match"
                 else:
                     md5_status = "outdated"
-                if not rpt_analyzer:
+                # analyzer_status based on effective (per-machine/mode):
+                #   - no rpt_effective → untagged (pre-honesty-3 legacy)
+                #   - no cur_eff (UNVERIFIABLE) → untagged (no manifest)
+                #   - match → "match"; mismatch → "outdated"
+                if not rpt_effective:
                     analyzer_status = "untagged"
-                elif rpt_analyzer == current_analyzer:
+                elif cur_eff == EffectiveVersionCache.UNVERIFIABLE or not cur_eff:
+                    analyzer_status = "untagged"
+                elif rpt_effective == cur_eff:
                     analyzer_status = "match"
                 else:
                     analyzer_status = "outdated"
@@ -10917,6 +11052,9 @@ def create_app(
                     "analyzer_status": analyzer_status,
                     "report_config_md5": rpt_config, "report_code_md5": rpt_code,
                     "report_analyzer_version": rpt_analyzer,
+                    # Honesty-3: per-mode effective; the rwtree badge compares
+                    # this against current.effective_versions[machine|mode].
+                    "report_effective_version": rpt_effective,
                 })
         return {
             "machine": machine, "unverifiable": False,

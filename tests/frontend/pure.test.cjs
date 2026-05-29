@@ -1830,16 +1830,25 @@ test("mergeTimeline: adaptive_tune + circuit_pause are CRITICAL (never pruned)",
 });
 
 
-// ---------- versionBadges (Commit 4: Run History staleness) ----------
+// ---------- versionBadges (honesty-3: per-(machine,mode) effective) ----------
+// All tests updated for honesty-3 API:
+//   row.effective_analyzer_version  — stamped at report-gen time
+//   current.effective_versions      — {"<machine>|<mode>": "<12-hex|UNVERIFIABLE>"}
+// Legacy row.analyzer_version and current.analyzer_version are kept for
+// display/back-compat but no longer drive the staleness DECISION.
 
 test("versionBadges: both match current → both fresh", () => {
+  // honesty-3: uses effective_analyzer_version + effective_versions map
   const row = {
-    machine: "M14", rawdata_config_md5: "CFG", rawdata_code_md5: "CODE",
-    analyzer_version: "AAAA",
+    machine: "M14", mode: 1,
+    rawdata_config_md5: "CFG", rawdata_code_md5: "CODE",
+    effective_analyzer_version: "abcdef123456",
+    analyzer_version: "AAAA",  // legacy; not used for decision
   };
   const current = {
-    analyzer_version: "AAAA",
+    analyzer_version: "AAAA",  // legacy; kept for back-compat display
     machines: { M14: { config_md5: "CFG", code_md5: "CODE" } },
+    effective_versions: { "M14|1": "abcdef123456" },
   };
   const badges = PURE.versionBadges(row, current);
   assert.equal(badges.rawdata.tier, "fresh");
@@ -1848,12 +1857,15 @@ test("versionBadges: both match current → both fresh", () => {
 
 test("versionBadges: rawdata mismatch → rawdata stale, analyzer fresh", () => {
   const row = {
-    machine: "M14", rawdata_config_md5: "OLD_CFG", rawdata_code_md5: "OLD_CODE",
+    machine: "M14", mode: 1,
+    rawdata_config_md5: "OLD_CFG", rawdata_code_md5: "OLD_CODE",
+    effective_analyzer_version: "abcdef123456",
     analyzer_version: "AAAA",
   };
   const current = {
     analyzer_version: "AAAA",
     machines: { M14: { config_md5: "NEW_CFG", code_md5: "NEW_CODE" } },
+    effective_versions: { "M14|1": "abcdef123456" },
   };
   const badges = PURE.versionBadges(row, current);
   assert.equal(badges.rawdata.tier, "stale");
@@ -1863,46 +1875,77 @@ test("versionBadges: rawdata mismatch → rawdata stale, analyzer fresh", () => 
 
 test("versionBadges: analyzer mismatch → analyzer stale, rawdata fresh", () => {
   const row = {
-    machine: "M14", rawdata_config_md5: "CFG", rawdata_code_md5: "CODE",
+    machine: "M14", mode: 1,
+    rawdata_config_md5: "CFG", rawdata_code_md5: "CODE",
+    effective_analyzer_version: "old123456789",
     analyzer_version: "OLDAAAA",
   };
   const current = {
     analyzer_version: "NEWBBBB",
     machines: { M14: { config_md5: "CFG", code_md5: "CODE" } },
+    effective_versions: { "M14|1": "new987654321" },
   };
   const badges = PURE.versionBadges(row, current);
   assert.equal(badges.rawdata.tier, "fresh");
   assert.equal(badges.analyzer.tier, "stale");
+  assert.ok(badges.analyzer.tip.includes("cur="));
 });
 
 test("versionBadges: legacy row (null fingerprints) → both untagged", () => {
+  // Pre-honesty-3 row: no effective_analyzer_version stamped → untagged
   const row = {
-    machine: "M14", rawdata_config_md5: null, rawdata_code_md5: null,
+    machine: "M14", mode: 1,
+    rawdata_config_md5: null, rawdata_code_md5: null,
+    effective_analyzer_version: null,
     analyzer_version: null,
   };
   const current = {
     analyzer_version: "AAAA",
     machines: { M14: { config_md5: "CFG", code_md5: "CODE" } },
+    effective_versions: { "M14|1": "abcdef123456" },
   };
   const badges = PURE.versionBadges(row, current);
   assert.equal(badges.rawdata.tier, "untagged");
-  assert.equal(badges.analyzer.tier, "untagged");
+  assert.equal(badges.analyzer.tier, "untagged");  // no effective → untagged
 });
 
-test("versionBadges: machine missing from current → rawdata untagged", () => {
-  /* Unregistered machine (not in machines.json). Without an upstream
-     reference, we can't verify — show untagged, not stale. */
+test("versionBadges: machine missing from current → rawdata untagged, analyzer untagged", () => {
+  /* Unregistered machine (not in machines.json and not in effective_versions).
+     Without an upstream reference, rawdata can't be verified → untagged.
+     No effective_versions entry → analyzer also untagged (not stale — honest). */
   const row = {
-    machine: "M999", rawdata_config_md5: "CFG", rawdata_code_md5: "CODE",
+    machine: "M999", mode: 1,
+    rawdata_config_md5: "CFG", rawdata_code_md5: "CODE",
+    effective_analyzer_version: "abcdef123456",
     analyzer_version: "AAAA",
   };
   const current = {
     analyzer_version: "AAAA",
     machines: { M14: { config_md5: "CFG", code_md5: "CODE" } },
+    effective_versions: { "M14|1": "abcdef123456" },  // M999 not present
   };
   const badges = PURE.versionBadges(row, current);
-  assert.equal(badges.rawdata.tier, "untagged");
-  assert.equal(badges.analyzer.tier, "fresh");
+  assert.equal(badges.rawdata.tier, "untagged");  // no M999 upstream
+  assert.equal(badges.analyzer.tier, "untagged"); // no effective_versions["M999|1"] → untagged
+});
+
+test("versionBadges: UNVERIFIABLE sentinel → analyzer untagged (not stale)", () => {
+  /* Virtual/unregistered machine has UNVERIFIABLE in effective_versions.
+     Must show "untagged" not "stale" — we can't verify, not a mismatch. */
+  const row = {
+    machine: "M1sim", mode: 1,
+    rawdata_config_md5: "CFG", rawdata_code_md5: "CODE",
+    effective_analyzer_version: "someoldhash1",
+    analyzer_version: "AAAA",
+  };
+  const current = {
+    analyzer_version: "AAAA",
+    machines: {},
+    effective_versions: { "M1sim|1": "UNVERIFIABLE" },
+  };
+  const badges = PURE.versionBadges(row, current);
+  assert.equal(badges.analyzer.tier, "untagged");
+  assert.ok(badges.analyzer.tip.includes("manifest"));
 });
 
 test("versionBadges: null row / empty current → safe defaults", () => {

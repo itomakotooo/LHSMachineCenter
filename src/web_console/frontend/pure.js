@@ -498,6 +498,8 @@ const I18N = {
     fleetRefreshIdle: "空闲",
     fleetRefreshConflict: "已有队列在运行，请先取消",
     underlyingRemovedBadge: "rawdata 已删",
+    // ── honesty-3: R-6 needs-rawdata banner hint ──
+    needsRawdataCount: "{count} 个机台需重新采样后才可重生 report",
     // ── P4 auto-inspect tab ──
     tabAutoInspect: "自动巡检",
     panelAutoInspectSettings: "自动巡检设置",
@@ -1060,6 +1062,8 @@ const I18N = {
     fleetRefreshIdle: "Idle",
     fleetRefreshConflict: "Queue already running — cancel first",
     underlyingRemovedBadge: "rawdata removed",
+    // ── honesty-3: R-6 needs-rawdata banner hint ──
+    needsRawdataCount: "{count} machine(s) need re-sampling before reports can be refreshed",
     // ── P4 auto-inspect tab ──
     tabAutoInspect: "Auto-Inspect",
     panelAutoInspectSettings: "Auto-Inspect Settings",
@@ -2178,14 +2182,23 @@ function mergeTimeline(data, clientEvents, progressCap) {
 //
 // Inputs:
 //   row     — runs row fields as returned by /api/runs (may have
-//             rawdata_config_md5 / rawdata_code_md5 / analyzer_version
-//             null on pre-migration legacy rows).
-//   current — { analyzer_version, machines: {machine: {config_md5, code_md5}} }
+//             rawdata_config_md5 / rawdata_code_md5 / analyzer_version /
+//             effective_analyzer_version null on pre-migration legacy rows).
+//             Must also carry machine and mode for the effective lookup.
+//   current — { analyzer_version, machines: {machine: {config_md5, code_md5}},
+//               effective_versions: {"<machine>|<mode>": "<12-hex or UNVERIFIABLE>"} }
 //             from /api/versions/current.
 //
 // Returns { rawdata: { tier, tip }, analyzer: { tier, tip } } where
 // tier ∈ "fresh" | "stale" | "untagged". The caller is responsible
 // for picking badge colors / text via i18n using the returned tier.
+//
+// Honesty-3: the analyzer half now compares row.effective_analyzer_version
+// vs current.effective_versions["<machine>|<mode>"] (per-machine/mode hash).
+// This means editing one machine's analysis flags ONLY that machine — not all
+// 393 (the M31 bug fix). Machines/modes with UNVERIFIABLE (no manifest) and
+// rows without effective_analyzer_version (pre-honesty-3 legacy) both degrade
+// to "untagged" (not "stale" — honest, not alarmist).
 function versionBadges(row, current) {
   const out = {
     rawdata: { tier: "untagged", tip: "" },
@@ -2212,20 +2225,37 @@ function versionBadges(row, current) {
     out.rawdata.tier = "stale";
     out.rawdata.tip = `cur=${(curCfg || "?").slice(0, 8)}/${(curCode || "?").slice(0, 8)}; row=${(rowCfg || "?").slice(0, 8)}/${(rowCode || "?").slice(0, 8)}`;
   }
-  const curAnalyzer = (current && current.analyzer_version) || "";
-  const rowAnalyzer = row.analyzer_version || "";
-  if (!rowAnalyzer) {
+  // Analyzer half — honesty-3: per-(machine, mode) effective comparison.
+  // row.effective_analyzer_version is the value stamped at report-gen time.
+  // current.effective_versions["<machine>|<mode>"] is what the current code
+  // would produce for this machine+mode. UNVERIFIABLE = no manifest (virtual
+  // or unregistered machine) — show "untagged", not "stale" (honest).
+  const rowEffective = row.effective_analyzer_version || "";
+  const effectiveMap = (current && current.effective_versions) || {};
+  const modeKey = (row.machine != null && row.mode != null)
+    ? `${row.machine}|${row.mode}` : "";
+  const curEffective = modeKey ? (effectiveMap[modeKey] || "") : "";
+  // UNVERIFIABLE sentinel: backend stamps this when the machine has no
+  // manifest. The frontend must NOT treat it as a real hash — it means
+  // "cannot verify", not "stale".
+  const UNVERIFIABLE = "UNVERIFIABLE";
+  if (!rowEffective) {
+    // Pre-honesty-3 row: effective was not stamped. Show untagged (not stale)
+    // so the existing legacy reports don't all flip to "stale" at cutover.
     out.analyzer.tier = "untagged";
-    out.analyzer.tip = "untagged";
-  } else if (!curAnalyzer) {
+    out.analyzer.tip = "analyzer version untagged (pre-honesty-3 report)";
+  } else if (!curEffective || curEffective === UNVERIFIABLE) {
+    // No current reference (no manifest, or versions map not loaded yet).
     out.analyzer.tier = "untagged";
-    out.analyzer.tip = "no current analyzer reference";
-  } else if (rowAnalyzer === curAnalyzer) {
+    out.analyzer.tip = curEffective === UNVERIFIABLE
+      ? "no manifest — cannot verify analyzer version"
+      : "no current analyzer reference";
+  } else if (rowEffective === curEffective) {
     out.analyzer.tier = "fresh";
     out.analyzer.tip = "analyzer code unchanged";
   } else {
     out.analyzer.tier = "stale";
-    out.analyzer.tip = `cur=${curAnalyzer.slice(0, 8)}; row=${rowAnalyzer.slice(0, 8)}`;
+    out.analyzer.tip = `cur=${curEffective.slice(0, 8)}; row=${rowEffective.slice(0, 8)}`;
   }
   return out;
 }

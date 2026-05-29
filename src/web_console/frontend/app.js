@@ -345,40 +345,27 @@ function setLoadedMachineInfo(run, summaryLine) {
     `<div><span class="lm-label">report_version:</span> <code>${rv}</code> · <span class="lm-label">config_md5:</span> <code>${cfgMd5}</code></div>`,
     savedAt ? `<div><span class="lm-label">saved_at:</span> ${savedAt}</div>` : "",
   ];
-  // Freshness row: compare this run's analyzer_version + config/code md5
-  // against the CURRENT upstream/local snapshots (state.currentVersions,
-  // populated by loadBootstrap). "✓ 当前" when match, "⚠ 过期" when
-  // drifted. Keeps the operator from staring at a months-old run
-  // thinking it reflects reality. Classifier / paytable-shape panels
-  // are auto-regenerated post generate-report, so they track analyzer
-  // freshness; no separate per-artifact badge needed here.
-  const cv = state.currentVersions || {};
-  const cvAnalyzer = cv.analyzer_version || "";
-  const cvMachines = cv.machines || {};
-  const cvCfg = ((cvMachines[run.machine] || {}).config_md5) || "";
-  const cvCode = ((cvMachines[run.machine] || {}).code_md5) || "";
-  const analyzerMatch = run.analyzer_version && cvAnalyzer
-    ? String(run.analyzer_version) === String(cvAnalyzer)
-    : null;
-  const cfgMatch = run.rawdata_config_md5 && cvCfg
-    ? String(run.rawdata_config_md5) === String(cvCfg)
-    : null;
-  const codeMatch = run.rawdata_code_md5 && cvCode
-    ? String(run.rawdata_code_md5) === String(cvCode)
-    : null;
-  const rawdataMatch = (cfgMatch != null && codeMatch != null)
-    ? (cfgMatch && codeMatch)
-    : (cfgMatch != null ? cfgMatch : codeMatch);
-  const analyzerBadge = analyzerMatch == null
-    ? `<span class="lm-badge lm-badge-unknown">${fmt("freshnessUntagged")}</span>`
-    : analyzerMatch
-      ? `<span class="lm-badge lm-badge-fresh">${fmt("freshnessFresh")}</span>`
-      : `<span class="lm-badge lm-badge-stale">${fmt("freshnessStale")}</span>`;
-  const rawdataBadge = rawdataMatch == null
-    ? `<span class="lm-badge lm-badge-unknown">${fmt("freshnessUntagged")}</span>`
-    : rawdataMatch
-      ? `<span class="lm-badge lm-badge-fresh">${fmt("freshnessFresh")}</span>`
-      : `<span class="lm-badge lm-badge-stale">${fmt("freshnessStale")}</span>`;
+  // Freshness row: compare this run's effective_analyzer_version +
+  // config/code md5 against the CURRENT snapshots (state.currentVersions,
+  // populated by loadBootstrap). "✓ 当前" when match, "⚠ 过期" when drifted.
+  //
+  // Honesty-3: routes through PURE.versionBadges (the single pure helper)
+  // instead of duplicating comparison logic here. versionBadges uses
+  // per-(machine, mode) effective_analyzer_version — not the global hash —
+  // so editing one machine's analysis only flags that machine's runs.
+  // Do NOT hand-roll the comparison here (feedback_no_parallel_panel_impl.md).
+  const badges = PURE.versionBadges(run, state.currentVersions || {});
+  const tierToClass = (tier) => tier === "fresh" ? "lm-badge-fresh" : tier === "stale" ? "lm-badge-stale" : "lm-badge-unknown";
+  const analyzerBadge = badges.analyzer.tier === "fresh"
+    ? `<span class="lm-badge lm-badge-fresh" title="${badges.analyzer.tip}">${fmt("freshnessFresh")}</span>`
+    : badges.analyzer.tier === "stale"
+      ? `<span class="lm-badge lm-badge-stale" title="${badges.analyzer.tip}">${fmt("freshnessStale")}</span>`
+      : `<span class="lm-badge lm-badge-unknown" title="${badges.analyzer.tip}">${fmt("freshnessUntagged")}</span>`;
+  const rawdataBadge = badges.rawdata.tier === "fresh"
+    ? `<span class="lm-badge lm-badge-fresh" title="${badges.rawdata.tip}">${fmt("freshnessFresh")}</span>`
+    : badges.rawdata.tier === "stale"
+      ? `<span class="lm-badge lm-badge-stale" title="${badges.rawdata.tip}">${fmt("freshnessStale")}</span>`
+      : `<span class="lm-badge lm-badge-unknown" title="${badges.rawdata.tip}">${fmt("freshnessUntagged")}</span>`;
   rows.push(
     `<div class="lm-freshness">` +
     `<span class="lm-label">${fmt("freshnessAnalyzer")}:</span> ${analyzerBadge}` +
@@ -6775,6 +6762,7 @@ async function refreshReportMgmtBanner() {
   state.staleCount = body;
   const staleAnalyzer = body.stale_analyzer || 0;
   const fixable = body.fixable_count || 0;
+  const needsRawdata = body.needs_rawdata_count || 0;
   const analyzerShort = (body.current_analyzer_version || "").slice(0, 10) || "—";
 
   // Report 管理 banner is report-scope only (2026-04-21). "Rawdata
@@ -6789,6 +6777,11 @@ async function refreshReportMgmtBanner() {
   } else {
     staleText = `<span class="report-mgmt-warn">⚠ ${staleAnalyzer} 个 analyzer 过期</span>`;
   }
+  // R-6: surface the "needs rawdata" count so operators know those cells
+  // can't be auto-fixed and must be re-sampled first.
+  const needsRawdataHint = needsRawdata > 0
+    ? `<span class="report-mgmt-warn muted" title="这些 (机台, mode) analyzer 过期但无可用 rawdata，需先重新采样">⚠ ${needsRawdata} 个需先采样</span>`
+    : "";
 
   const regenBtn = fixable > 0
     ? `<button id="regenerateStaleBtn" class="small-btn primary-btn" title="只重生 analyzer 过期 + rawdata 未过期的 report (轻量修复)">⟳ 重生 ${fixable}</button>`
@@ -6796,7 +6789,7 @@ async function refreshReportMgmtBanner() {
 
   banner.innerHTML = `
     <div class="report-mgmt-row">
-      <span class="report-mgmt-main">💼 Report 管理 · analyzer <code>${analyzerShort}</code> · ${staleText}</span>
+      <span class="report-mgmt-main">💼 Report 管理 · analyzer <code>${analyzerShort}</code> · ${staleText}${needsRawdataHint ? " · " + needsRawdataHint : ""}</span>
       <span class="report-mgmt-actions">
         ${regenBtn}
         <button id="rebuildAllReportsBtn" class="small-btn" title="扫所有含 rawdata 的 (机台, mode)，用当前 analyzer 全部重跑 generate-report (大批量，耗时长)">⟳ 全 fleet 重建</button>
