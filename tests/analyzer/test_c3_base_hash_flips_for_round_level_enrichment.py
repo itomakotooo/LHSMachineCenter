@@ -75,11 +75,13 @@ _C2_BASE_HASH = "b0ba0ce7c7e2"
 # Phase honesty-2 redefined base_hash to cover the transitive repo-local
 # import closure of the report-production path (R-1), not just core/*.py.
 # The old C3 value (fa440e3eb5f6, core/*.py glob) is superseded by the
-# new closure value (960e9d18d83d, 25-file set including content modules).
+# closure value (960e9d18d83d, 25-file set including content modules).
 # The C3 parser changes are still present; the flip here is from closure
 # expansion (round_classification, round_win, trigger_sessions, sampler,
 # machine_md5, chunk_index, rawdata_index, and support modules now hashed).
-_EXPECTED_C3_BASE_HASH = "960e9d18d83d"  # honesty-2: R-1 closure value (25-file set, LF-normalized)
+# Phase 2a (collect_mechanic carve) shrank PIA (a closure file) → re-baselined
+# to 57fdb323585d (one-time fleet re-baseline, report content byte-identical).
+_EXPECTED_C3_BASE_HASH = "57fdb323585d"  # phase 2a: PIA shrank (collect_mechanic carve)
 
 _HEX12_RE = re.compile(r"^[0-9a-f]{12}$")
 
@@ -99,7 +101,8 @@ class TestBaseHashFlipExpected:
     report-production import closure (R-1): 25 files including content modules
     (round_classification, round_win, trigger_sessions, sampler, machine_md5,
     chunk_index, rawdata_index) and support modules. Old C3 value (fa440e3eb5f6)
-    is superseded. New closure value is 960e9d18d83d (LF-normalized, FIX-2).
+    is superseded. Closure value is 57fdb323585d as of phase-2a (honesty-2 was
+    960e9d18d83d, LF-normalized FIX-2; phase-2a's collect_mechanic carve shrank PIA).
 
     The _EXPECTED_C3_BASE_HASH constant above is the authoritative pin.
     """
@@ -132,7 +135,7 @@ class TestBaseHashFlipExpected:
         )
 
     def test_base_hash_matches_expected_c3_value(self):
-        """base_hash must be the R-1 closure value (currently 960e9d18d83d).
+        """base_hash must be the R-1 closure value (currently 57fdb323585d, phase-2a).
 
         Phase honesty-2 expanded base_hash from the core/*.py glob (fa440e3eb5f6)
         to the full 25-file report-production import closure (960e9d18d83d). The

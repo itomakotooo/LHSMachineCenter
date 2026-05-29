@@ -233,34 +233,28 @@ class TestChunkSpinTimesRecommendationFormula:
             from analyzer.features.collect_mechanic import CollectMechanic  # type: ignore[no-redef]
 
         plugin = CollectMechanic()
+        # Phase 2a contract: stash carries RAW accumulator inputs; the plugin
+        # OWNS the dict-build + gap #6. Raw values are chosen so the rebuilt dict
+        # yields detected_cycle_length=cycle_length (median of [cycle_length])
+        # and avg_paid_spins_per_collect=avg_spins (total_paid_sessions/collects).
+        _collects = 100
         stash = {
-            "applicable": True,
-            "robots_with_data": 5,
-            "total_collects": 100,
-            "max_acc_credits_observed": 999,
-            "avg_spins_between_collects": avg_spins,
-            "clamp_warning": {
-                "applicable": True,
-                "pending_robots": 3,
-                "total_pending_paid_spins": 15,
-                "pending_share_of_paid_spins": 0.03,
-                "avg_paid_spins_per_collect": avg_spins,
-                "note": "test",
+            "collect_robots_seen_total": 5,
+            "collect_count_total": _collects,
+            "acc_credits_max_global": 999,
+            "total_spins": _collects * 5,
+            "clamp_pending_robots_total": 3,
+            "clamp_pending_paid_spins_total": 15,
+            "total_paid_sessions": int(round(avg_spins * _collects)),
+            "all_cycle_peaks": [cycle_length],
+            "all_final_cc_values": [500, 500, 500],
+            "total_completed_cycles": 80,
+            "upstream_feature_tally": {
+                "TestFeature": {"1": {"win": 3200000.0, "times": 80}},
             },
-            "bonus_cycle_correction": {
-                "applicable": True,
-                "bonus_feature": "TestFeature",
-                "bonus_feature_source": "bcm_pairings",
-                "detected_cycle_length": cycle_length,
-                "completed_cycles_total": 80,
-                "robots_with_pending_cycle": 3,
-                "avg_bonus_payout": 40.0,
-                "estimated_correction_pp": 0.0,
-            },
-            "feature_match": {"applicable": True, "known_features": [], "bonus_feature": None,
-                              "bonus_feature_source": "none", "warning": None},
-            "cycle_observation": {"mechanic_detected": True, "reset_observed": True,
-                                  "cycle_len_lower_bound": cycle_length, "warning": None},
+            "effective_bet_for_rtp": 1000.0 * _collects,
+            "bonus_feature": "TestFeature",
+            "bonus_feature_source": "bcm_pairings",
         }
         summary: dict[str, Any] = {
             "_collect_mechanic_data": stash,

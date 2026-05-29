@@ -23,7 +23,7 @@ Additionally verifies:
   - stash key absent from final M275 summary (cleanup complete).
   - stash key absent from final M14 summary.
   - No _ prefix keys at top level of either summary.
-  - base_hash is the R-1 closure value (960e9d18d83d, honesty-2; registered plugins excluded by R-4).
+  - base_hash is the R-1 closure value (57fdb323585d as of phase-2a; registered plugins excluded by R-4).
 
 Inject-bug recipe (complementary — main Bug A in test_c6_bonus_chain_dynamics_plugin.py):
     Change PIA stash key to carry a MODIFIED bonus_chain_dynamics (e.g. set
@@ -102,19 +102,23 @@ class TestBaseHashUnchangedC6:
     """base_hash must be the R-1 closure value after C6 (registered plugin excluded by R-4)."""
 
     def test_base_hash_value(self):
-        """compute_base_analyzer_version() must return 960e9d18d83d.
+        """compute_base_analyzer_version() must return 57fdb323585d.
 
         Phase honesty-2 redefined base_hash to the 25-file report-production
-        import closure (R-1). C6 adds bonus_chain_dynamics.py in features/, which
-        is a registered plugin EXCLUDED from base_hash by R-4. The closure value
-        is 960e9d18d83d (unchanged from C5/C4 under honesty-2 semantics).
-        If base_hash changes, it signals a modification to a production-path file
-        in the _CLOSURE_FILES tuple (versioning.py) — or versioning.py was edited.
+        import closure (R-1) → 960e9d18d83d. C6 adds bonus_chain_dynamics.py in
+        features/, a registered plugin EXCLUDED from base_hash by R-4. Phase 2a
+        carved collect_mechanic's compute out of player_impact_analyzer.py (a
+        closure file) → base re-baselined to 57fdb323585d (one-time fleet
+        re-baseline; report content byte-identical). NOTE: phase 2a touched
+        collect_mechanic only — bonus_chain_dynamics is 2b — but base shrinking
+        is shared, so this pin moves too.
+        If base_hash changes again, it signals a modification to a production-path
+        file in the _CLOSURE_FILES tuple (versioning.py).
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "960e9d18d83d", (
-            f"base_hash must be '960e9d18d83d' (R-1 closure value, honesty-2). "
+        assert actual == "57fdb323585d", (
+            f"base_hash must be '57fdb323585d' (R-1 closure value, post phase-2a). "
             f"Got: {actual!r}. "
             f"Registered plugin additions must NOT change base_hash (R-4 exclusion). "
             f"If a production-path file (in _CLOSURE_FILES) was modified, update this pin."

@@ -741,93 +741,12 @@ def _resolve_bonus_feature(
     return best_feat, "heuristic"
 
 
-def collect_feature_match_warning(
-    cycle_peaks: list[int],
-    upstream_feature_tally: dict,
-    resolved_feature: str | None,
-    resolved_source: str,
-) -> dict:
-    """Summary block reporting the BCM-bonus-feature resolution.
-
-    ``warning`` is non-None only when a cycle was observed AND neither
-    the config nor the heuristic could identify a bonus feature. In
-    that case RTP correction falls through to 0pp and the operator
-    needs to either add a config entry or investigate the machine.
-
-    Happy paths (warning is None):
-      * cycle_peaks empty → no cycle observed in sample (separate
-        ``cycle_observation`` block surfaces the "need more data"
-        case; this block stays silent).
-      * cycle_peaks non-empty AND resolved_feature is not None →
-        pairing known, correction computable.
-    """
-    has_cycles = len(cycle_peaks) > 0
-    features = sorted((upstream_feature_tally or {}).keys())
-    warn = None
-    if has_cycles and resolved_feature is None:
-        warn = (
-            "collect cycle detected (from BuffCollectionMap CC resets) "
-            "but no bonus feature could be resolved for this machine. "
-            "RTP correction will report 0pp which likely under-reports "
-            "true RTP. Fix by either: (a) adding this machine to "
-            "configs/bcm_pairings.json with the correct bonus_feature, "
-            "or (b) resampling so the heuristic has non-zero win data "
-            f"for the bonus channel. Features seen: {features!r}"
-        )
-    return {
-        "applicable": has_cycles,
-        "known_features": features,
-        "bonus_feature": resolved_feature,
-        "bonus_feature_source": resolved_source,
-        "warning": warn,
-    }
-
-
-def build_cycle_observation(
-    collect_robots_seen: int,
-    cycle_peaks: list[int],
-    final_cc_values: list[int],
-) -> dict:
-    """Surface the "collect mechanic present but cache too short to
-    capture a cycle reset" case (M272-style: one chunk, all 10 robots
-    ended exactly at CC=1000 without resetting).
-
-    Without this block, the analyzer silently conflates "mechanic not
-    present" with "mechanic present but under-sampled" — both come out
-    as `cycle_peaks == []` and RTP correction gives 0pp. The warning
-    here distinguishes the two so the operator knows to resume-sample
-    rather than treat the current RTP as final.
-
-    Fields:
-      * mechanic_detected — ``collect_robots_seen > 0`` (robot's
-        rounds carried CollectCount)
-      * reset_observed — ``len(cycle_peaks) > 0`` (at least one CC
-        reset event observed)
-      * cycle_len_lower_bound — ``max(final_cc_values)`` when no reset;
-        the cycle length is AT LEAST this (robots can't exceed it if
-        they never reset, so the max-final-CC is a lower bound)
-      * warning — non-None iff mechanic_detected AND NOT reset_observed
-    """
-    mechanic = collect_robots_seen > 0
-    reset = len(cycle_peaks) > 0
-    lower_bound = max(final_cc_values) if final_cc_values else None
-    warn = None
-    if mechanic and not reset:
-        target = lower_bound * 2 if lower_bound else None
-        warn = (
-            f"collect mechanic detected (CollectCount field present on "
-            f"{collect_robots_seen} robots) but no cycle reset observed "
-            f"in this sample. Cycle length is at least {lower_bound} "
-            f"(max final CC). RTP correction unavailable until resample "
-            f"/ resume with ≥ {target} SpinTimes so at least one full "
-            f"cycle completes + resets."
-        )
-    return {
-        "mechanic_detected": mechanic,
-        "reset_observed": reset,
-        "cycle_len_lower_bound": lower_bound,
-        "warning": warn,
-    }
+# collect_feature_match_warning + build_cycle_observation moved to
+# fresh_slotlab.analyzer.features.collect_mechanic (Phase 2a carve). They are
+# PRIVATE to the collect_mechanic feature (only that plugin's compute calls
+# them on the report-production path), so they now live with the feature whose
+# hash they belong to. External callers (tests/backend/test_bcm_resolver.py,
+# scripts/scan_collect_feature_match.py) import them from the plugin module.
 
 
 # aimd_tune moved to fresh_slotlab.analyzer.core.base_pipeline (P2-B4).
@@ -4756,105 +4675,35 @@ def main() -> int:
         "features": upstream_feature_rows,
     }
 
-    # Stash for CollectMechanic plugin (Pattern B stash).
-    # All variables below are local PIA accumulators from the merge loop.
-    # Backward-compat newfreespin_correction alias is now handled by the plugin.
+    # Stash for CollectMechanic plugin (Pattern B stash — Phase 2a carve).
+    # The plugin now OWNS the collect_mechanic dict-building compute; this stash
+    # carries only the RAW accumulator inputs (no compute here).  All variables
+    # below are local PIA accumulators from the merge loop.
+    #
+    # _resolve_bonus_feature stays in PIA (it is SHARED with the bonus-chain
+    # accumulation path at ~3579; the plugin must not import it — circular law).
+    # PIA pre-resolves the (feature, source) strings and passes them as raw data;
+    # the plugin re-sources them from this stash and runs the dict-build + the
+    # _compute_bonus_correction / collect_feature_match_warning /
+    # build_cycle_observation calls (all moved into / imported by the plugin).
     _cm_bonus_feat, _cm_bonus_src = _resolve_bonus_feature(
         args.machine, args.rtp_mode, upstream_feature_tally, _load_bcm_pairings()
     )
-    _cm_cycle_peaks_sorted = sorted(all_cycle_peaks) if all_cycle_peaks else []
-    _cm_cycle_median = (
-        _cm_cycle_peaks_sorted[len(_cm_cycle_peaks_sorted) // 2]
-        if _cm_cycle_peaks_sorted else None
-    )
     summary["_collect_mechanic_data"] = {
-        "applicable": collect_robots_seen_total > 0,
-        "robots_with_data": collect_robots_seen_total,
-        "total_collects": collect_count_total,
-        "max_acc_credits_observed": acc_credits_max_global,
-        "avg_spins_between_collects": (
-            (total_spins / collect_count_total)
-            if collect_count_total > 0
-            else None
-        ),
-        "clamp_warning": {
-            "applicable": (
-                collect_robots_seen_total > 0
-                and clamp_pending_robots_total > 0
-            ),
-            "pending_robots": clamp_pending_robots_total,
-            "total_pending_paid_spins": clamp_pending_paid_spins_total,
-            "pending_share_of_paid_spins": (
-                (clamp_pending_paid_spins_total / total_paid_sessions)
-                if total_paid_sessions > 0
-                else None
-            ),
-            "avg_paid_spins_per_collect": (
-                (total_paid_sessions / collect_count_total)
-                if collect_count_total > 0
-                else None
-            ),
-            "note": (
-                "Pending paid spins were accumulating toward the next collect "
-                "trigger when chunk_spin_times ran out; the bonus those spins "
-                "would have triggered isn't in the sample. If this is a large "
-                "fraction of total paid spins, widen chunk_spin_times and "
-                "rerun to get a tighter RTP estimate."
-            ) if (
-                collect_robots_seen_total > 0 and clamp_pending_robots_total > 0
-            ) else None,
-        },
-        "bonus_cycle_correction": {
-            "applicable": len(all_cycle_peaks) > 0,
-            "bonus_feature": _cm_bonus_feat,
-            "bonus_feature_source": _cm_bonus_src,
-            "detected_cycle_length": (
-                int(_cm_cycle_median)
-                if _cm_cycle_median is not None else None
-            ),
-            "completed_cycles_total": total_completed_cycles,
-            "robots_with_pending_cycle": sum(
-                1 for fcc in all_final_cc_values
-                if _cm_cycle_median is not None and fcc < _cm_cycle_median
-            ),
-            # R1 Phase 2 d4: None when bonus_feat unresolved OR cycles==0 OR
-            # sum(win)==0 (data-resolution issue — "identified but no measurable win"
-            # is semantically distinct from "0 RTP from bonus").  The 0.0/cycles=0.0
-            # case from pre-fix is wrong; frontend app.js:6196 has != null guard.
-            # d4 regression test: the case-3 (sum==0, cycles>0) edge case cannot
-            # occur in any cached fixture machine, so it is tested via the mirror
-            # helper `_compute_avg_bonus_payout` in test_d4_avg_bonus_payout_none.py.
-            # If you refactor this expression, update that helper too or the test
-            # goes stale-green without catching a regression in this line.
-            "avg_bonus_payout": (
-                (
-                    (lambda _s: _s / total_completed_cycles if _s > 0 else None)(
-                        sum(
-                            float(e.get("win", 0.0))
-                            for e in (upstream_feature_tally.get(_cm_bonus_feat) or {}).values()
-                        )
-                    )
-                    if total_completed_cycles > 0 else None
-                ) if _cm_bonus_feat else None
-            ),
-            "estimated_correction_pp": _compute_bonus_correction(
-                _cm_bonus_feat,
-                all_cycle_peaks, all_final_cc_values,
-                upstream_feature_tally, total_completed_cycles,
-                effective_bet_for_rtp,
-            ),
-        },
-        "feature_match": collect_feature_match_warning(
-            all_cycle_peaks,
-            upstream_feature_tally,
-            _cm_bonus_feat,
-            _cm_bonus_src,
-        ),
-        "cycle_observation": build_cycle_observation(
-            collect_robots_seen_total,
-            all_cycle_peaks,
-            all_final_cc_values,
-        ),
+        "collect_robots_seen_total": collect_robots_seen_total,
+        "collect_count_total": collect_count_total,
+        "acc_credits_max_global": acc_credits_max_global,
+        "total_spins": total_spins,
+        "clamp_pending_robots_total": clamp_pending_robots_total,
+        "clamp_pending_paid_spins_total": clamp_pending_paid_spins_total,
+        "total_paid_sessions": total_paid_sessions,
+        "all_cycle_peaks": all_cycle_peaks,
+        "all_final_cc_values": all_final_cc_values,
+        "total_completed_cycles": total_completed_cycles,
+        "upstream_feature_tally": upstream_feature_tally,
+        "effective_bet_for_rtp": effective_bet_for_rtp,
+        "bonus_feature": _cm_bonus_feat,
+        "bonus_feature_source": _cm_bonus_src,
     }
 
     # ── Phase C6 — stash key for BonusChainDynamics plugin ───────────────
@@ -5072,9 +4921,10 @@ def main() -> int:
         }
 
     # ── Phase C1 — Step 3: compute robots_with_pending_cycle ─────────────
-    # Mirrors the inline computation in collect_mechanic block (~line 4687).
-    # Extracted here so PipelineContext.robots_with_pending_cycle is correct
-    # without duplicating logic or reading from the summary dict.
+    # Mirrors the robots_with_pending_cycle computation that the
+    # collect_mechanic plugin runs (bonus_cycle_correction) on the same
+    # accumulators.  Computed here so PipelineContext.robots_with_pending_cycle
+    # is correct without duplicating logic or reading from the summary dict.
     _c1_cycle_median: int | None = (
         int(sorted(all_cycle_peaks)[len(all_cycle_peaks) // 2])
         if all_cycle_peaks else None

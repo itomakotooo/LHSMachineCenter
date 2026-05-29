@@ -1,8 +1,8 @@
 """Phase C3.5 — CRITICAL per-machine isolation invariant test.
 
 This is the most important new test in C3.5. It asserts that:
-  1. base_hash is the R-1 closure value (960e9d18d83d, honesty-2) — no production-path
-     module was modified (registered plugin additions are excluded by R-4).
+  1. base_hash is the R-1 closure value (57fdb323585d as of phase-2a) — no
+     stray production-path edit (registered plugin additions are excluded by R-4).
   2. M275 effective_version DIFFERS from M14 (multiplier_wild is M275-only).
   3. M14 effective_version == M37 == M272 (identical plugin set, identical hash).
   4. M14 / M37 / M272 effective_version all differ from M275 (isolation invariant).
@@ -16,12 +16,14 @@ _NON_M275_EFFECTIVE_VERSION) were updated manually 3 times during C-phases
 Per arch-proposal v2 §3.2–§3.3, the correct approach is structural differential
 assertions: test the PROPERTY ("M275 differs from M14 by exactly multiplier_wild's
 contribution; M14/M37/M272 share one hash because they have identical plugin sets")
-rather than pinning the literal hex value. The base_hash pin (960e9d18d83d, honesty-2)
+rather than pinning the literal hex value. The base_hash pin (57fdb323585d as of phase-2a)
 REMAINS because it is a regression guard against accidental production-path module edits.
 
 Phase honesty-2 update (2026-05-29):
   base_hash was redefined from sha256(core/*.py) [old: fa440e3eb5f6] to the 25-file
-  R-1 closure [new: 960e9d18d83d]. The isolation property is UNCHANGED: a registered
+  R-1 closure [honesty-2: 960e9d18d83d]; phase-2a's collect_mechanic carve then shrank
+  PIA (a closure file) so the current value is 57fdb323585d. The isolation property is
+  UNCHANGED across all of these: a registered
   plugin addition still does NOT flip base_hash (R-4 exclusion). The invariant now
   also correctly detects changes to content modules (round_classification, round_win,
   trigger_sessions, sampler, machine_md5, chunk_index, rawdata_index).
@@ -40,7 +42,7 @@ plugin model. This test PROVES it holds.
 Invariants asserted
 -------------------
 1. compute_base_analyzer_version() returns 12-char hex string.
-2. base_hash == '960e9d18d83d' (R-1 closure value, honesty-2; intentional pin).
+2. base_hash == '57fdb323585d' (R-1 closure value, post phase-2a; intentional pin).
 3. M275 mode 1 effective_version DIFFERS from M14 mode 1 effective_version.
 4. M14 / M37 / M272 all share the same effective_version (identical plugin sets).
 5. M275 differs from M14 / M37 / M272 (isolation: multiplier_wild is M275-only).
@@ -94,8 +96,11 @@ sys.path.insert(0, str(_REPO_ROOT))
 # accidental content-module edits. Making it dynamic would remove the guard.
 # Do NOT replace this with a dynamic compute call — per arch-proposal v2 §3.3.
 # Old C3 value (core/*.py glob): fa440e3eb5f6
-# New R-1 closure value (25-file set): 960e9d18d83d
-_C3_BASE_HASH = "960e9d18d83d"
+# R-1 closure value (25-file set, honesty-2): 960e9d18d83d
+# Phase 2a (collect_mechanic carve) shrank PIA (a closure file) → base
+# re-baselined to 57fdb323585d. The isolation RELATIONSHIPS below are
+# unchanged (M275_ev != M14_ev etc.); only the base value moved.
+_C3_BASE_HASH = "57fdb323585d"
 
 # R1 Phase 1 (Cluster E) note: _M275_C3_5_EFFECTIVE_VERSION and
 # _NON_M275_EFFECTIVE_VERSION hex pins have been REMOVED. They were updated
@@ -153,7 +158,7 @@ class TestBaseHashUnchangedInC3_5:
         )
 
     def test_base_hash_unchanged_from_c3(self):
-        """base_hash must be the R-1 closure value (960e9d18d83d) in C3.5.
+        """base_hash must be the R-1 closure value (57fdb323585d as of phase-2a).
 
         C3.5 adds multiplier_wild.py in features/. That plugin IS in ALL_FEATURES
         and therefore EXCLUDED from base_hash by R-4. Per the R-1 closure algorithm

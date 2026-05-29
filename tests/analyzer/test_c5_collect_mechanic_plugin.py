@@ -273,44 +273,41 @@ class TestCollectMechanicEmit:
     def _make_stash(self, applicable=True, robots=5, collects=100,
                     clamp_applicable=True, pending_robots=3, avg_spins=5.0,
                     cycle_length=1000):
-        """Build a minimal _collect_mechanic_data stash dict."""
+        """Build a minimal _collect_mechanic_data stash dict.
+
+        Phase 2a contract: the stash carries RAW accumulator inputs (the plugin
+        now OWNS the dict-build). These raw values are chosen so the dict the
+        plugin rebuilds yields the SAME derived fields the assertions check:
+          - applicable          <- collect_robots_seen_total > 0
+          - robots_with_data    <- collect_robots_seen_total
+          - total_collects      <- collect_count_total
+          - detected_cycle_length <- int(median(sorted(all_cycle_peaks)))
+          - clamp_warning.applicable <- robots>0 and clamp_pending_robots_total>0
+          - avg_paid_spins_per_collect <- total_paid_sessions / collect_count_total
+        ``applicable`` (legacy kwarg) toggles robots_seen so callers that passed
+        applicable=False still produce a non-applicable summary.
+        """
+        robots_seen = robots if applicable else 0
+        # avg_paid_spins_per_collect = total_paid_sessions / collect_count_total
+        total_paid_sessions = int(round(avg_spins * collects))
         return {
-            "applicable": applicable,
-            "robots_with_data": robots,
-            "total_collects": collects,
-            "max_acc_credits_observed": 999,
-            "avg_spins_between_collects": 5.0,
-            "clamp_warning": {
-                "applicable": clamp_applicable,
-                "pending_robots": pending_robots,
-                "total_pending_paid_spins": 15,
-                "pending_share_of_paid_spins": 0.03,
-                "avg_paid_spins_per_collect": avg_spins,
-                "note": "test note",
+            "collect_robots_seen_total": robots_seen,
+            "collect_count_total": collects,
+            "acc_credits_max_global": 999,
+            "total_spins": collects * 5,  # avg_spins_between_collects = 5.0
+            "clamp_pending_robots_total": pending_robots if clamp_applicable else 0,
+            "clamp_pending_paid_spins_total": 15,
+            "total_paid_sessions": total_paid_sessions,
+            # Single cycle peak -> median == cycle_length -> detected_cycle_length
+            "all_cycle_peaks": [cycle_length],
+            "all_final_cc_values": [500, 500, 500],
+            "total_completed_cycles": 80,
+            "upstream_feature_tally": {
+                "NewFreespin": {"1": {"win": 3200000.0, "times": 80}},
             },
-            "bonus_cycle_correction": {
-                "applicable": True,
-                "bonus_feature": "NewFreespin",
-                "bonus_feature_source": "bcm_pairings",
-                "detected_cycle_length": cycle_length,
-                "completed_cycles_total": 80,
-                "robots_with_pending_cycle": 3,
-                "avg_bonus_payout": 40.0,
-                "estimated_correction_pp": 0.0,
-            },
-            "feature_match": {
-                "applicable": True,
-                "known_features": ["NormalCollectionSpin"],
-                "bonus_feature": "NewFreespin",
-                "bonus_feature_source": "bcm_pairings",
-                "warning": None,
-            },
-            "cycle_observation": {
-                "mechanic_detected": True,
-                "reset_observed": True,
-                "cycle_len_lower_bound": 1000,
-                "warning": None,
-            },
+            "effective_bet_for_rtp": 1000.0 * collects,
+            "bonus_feature": "NewFreespin",
+            "bonus_feature_source": "bcm_pairings",
         }
 
     def test_emit_raises_when_stash_absent(self, plugin):
@@ -427,9 +424,10 @@ class TestCollectMechanicEmit:
         Per feedback_invariant_with_fallback_hides_drift.md: absent means
         'no BCM cycle mid-truncation' — not 0 or placeholder.
         """
+        # Phase 2a: clamp non-applicability is driven by the raw input
+        # clamp_pending_robots_total == 0 (set by clamp_applicable=False), since
+        # the plugin now derives clamp_warning.applicable itself.
         stash = self._make_stash(clamp_applicable=False, avg_spins=5.0, cycle_length=1000)
-        # Override clamp_warning.applicable explicitly
-        stash["clamp_warning"]["applicable"] = False
         summary = {
             "_collect_mechanic_data": stash,
             "sampling": {"chunk_spin_times": 5000},

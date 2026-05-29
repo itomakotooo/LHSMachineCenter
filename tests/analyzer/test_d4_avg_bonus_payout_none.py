@@ -31,7 +31,11 @@ Inject-bug recipe (per memory/feedback_enumerate_safety_paths.md)
 -----------------------------------------------------------------
 Bug d4: remove the `_s > 0` guard in the avg_bonus_payout lambda.
   The unit tests exercise this via the `_compute_avg_bonus_payout` helper in THIS
-  file, which is a byte-for-byte copy of the PIA:4821-4831 inline expression.
+  file, which is a byte-for-byte copy of the avg_bonus_payout expression. Phase
+  2a carved that expression VERBATIM out of PIA into the collect_mechanic plugin
+  (fresh_slotlab/analyzer/features/collect_mechanic.py, in CollectMechanic.emit()'s
+  bonus_cycle_correction dict). The expression text is unchanged; only its file
+  moved.
 
   Step 1: In this test file, find:
       (lambda _s: _s / total_completed_cycles if _s > 0 else None)(
@@ -41,18 +45,19 @@ Bug d4: remove the `_s > 0` guard in the avg_bonus_payout lambda.
   RED: test_case3_zero_win_is_none_not_zero and 3 siblings fail — returns 0.0.
   Step 3: Revert (restore `if _s > 0 else None`) → all GREEN.
 
-  To verify the production code directly, also apply the same change to
-  player_impact_analyzer.py:4823 and run a subprocess test with a synthetic
-  fixture (no cached machine naturally produces case 3 in existing cache).
+  To verify the production code directly, also apply the same change to the
+  avg_bonus_payout lambda in collect_mechanic.py and run a subprocess test with a
+  synthetic fixture (no cached machine naturally produces case 3 in existing cache).
 
 NOTE on test approach (per brief §6 AC#6):
-  The avg_bonus_payout computation is PIA inline (not in a plugin file).
-  Direct unit testing is done by evaluating an equivalent expression matching
-  the exact PIA code, parameterized over the three distinct cases.
-  A subprocess test covers case 4 (M275 real data) and case 2 (M14 real data).
-  Case 3 (sum==0, cycles>0) is tested via synthetic expression evaluation because
-  no cached machine produces this edge case in its real data.
-  The helper `_compute_avg_bonus_payout` must stay in sync with PIA:4821-4831.
+  The avg_bonus_payout computation now lives in the collect_mechanic plugin
+  (Phase 2a carve; was PIA inline). Direct unit testing is done by evaluating an
+  equivalent expression matching the exact plugin code, parameterized over the
+  three distinct cases. A subprocess test covers case 4 (M275 real data) and
+  case 2 (M14 real data). Case 3 (sum==0, cycles>0) is tested via synthetic
+  expression evaluation because no cached machine produces this edge case in its
+  real data. The helper `_compute_avg_bonus_payout` must stay in sync with the
+  avg_bonus_payout expression in collect_mechanic.py.
 
 Memory files cited
 ------------------
@@ -79,10 +84,11 @@ _M14_CACHE = _REPO_ROOT / "rawdata" / "M14" / "mode_1"
 
 
 # ---------------------------------------------------------------------------
-# The exact inline expression from PIA:4821-4831 as a testable function
+# The exact avg_bonus_payout expression (now in collect_mechanic.py's emit(),
+# carved verbatim from PIA in Phase 2a) as a testable function.
 #
-# This mirrors the PIA code exactly, allowing case-3 testing without subprocess.
-# If PIA code changes, update this function AND the inject-bug recipe.
+# This mirrors the plugin code exactly, allowing case-3 testing without subprocess.
+# If the plugin code changes, update this function AND the inject-bug recipe.
 # ---------------------------------------------------------------------------
 
 def _compute_avg_bonus_payout(

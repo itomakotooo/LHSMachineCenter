@@ -13,8 +13,13 @@ import pytest
 
 from fresh_slotlab.player_impact_analyzer import (
     _resolve_bonus_feature,
-    collect_feature_match_warning,
     PAID_NORMAL_FEATURES,
+)
+# Phase 2a carve: collect_feature_match_warning + build_cycle_observation moved
+# from player_impact_analyzer into the collect_mechanic feature plugin (they are
+# private to that feature). _resolve_bonus_feature stays in PIA (shared).
+from fresh_slotlab.analyzer.features.collect_mechanic import (
+    collect_feature_match_warning,
 )
 
 
@@ -315,11 +320,11 @@ class TestCycleObservation:
     warning rather than silently treating as not-a-collect-machine."""
 
     def test_import_builder(self):
-        from fresh_slotlab.player_impact_analyzer import build_cycle_observation
+        from fresh_slotlab.analyzer.features.collect_mechanic import build_cycle_observation
         assert callable(build_cycle_observation)
 
     def test_no_mechanic_detected_no_warning(self):
-        from fresh_slotlab.player_impact_analyzer import build_cycle_observation
+        from fresh_slotlab.analyzer.features.collect_mechanic import build_cycle_observation
         out = build_cycle_observation(
             collect_robots_seen=0,
             cycle_peaks=[],
@@ -330,7 +335,7 @@ class TestCycleObservation:
         assert out["warning"] is None
 
     def test_mechanic_with_reset_observed_no_warning(self):
-        from fresh_slotlab.player_impact_analyzer import build_cycle_observation
+        from fresh_slotlab.analyzer.features.collect_mechanic import build_cycle_observation
         out = build_cycle_observation(
             collect_robots_seen=10,
             cycle_peaks=[1000, 1000, 999],
@@ -342,7 +347,7 @@ class TestCycleObservation:
 
     def test_mechanic_without_reset_warns_with_lower_bound(self):
         # M272-style scenario: 10 robots all ended at CC=1000, no reset.
-        from fresh_slotlab.player_impact_analyzer import build_cycle_observation
+        from fresh_slotlab.analyzer.features.collect_mechanic import build_cycle_observation
         out = build_cycle_observation(
             collect_robots_seen=10,
             cycle_peaks=[],
@@ -356,7 +361,7 @@ class TestCycleObservation:
         assert "1000" in out["warning"]
 
     def test_lower_bound_is_max_of_finals(self):
-        from fresh_slotlab.player_impact_analyzer import build_cycle_observation
+        from fresh_slotlab.analyzer.features.collect_mechanic import build_cycle_observation
         out = build_cycle_observation(
             collect_robots_seen=3,
             cycle_peaks=[],

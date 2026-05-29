@@ -16,7 +16,7 @@ Gap closure assertions
 
 Cross-phase invariants
 ----------------------
-- base_hash is the R-1 closure value (960e9d18d83d, honesty-2; registered plugins excluded by R-4).
+- base_hash is the R-1 closure value (57fdb323585d as of phase-2a; registered plugins excluded by R-4).
 - 9 plugins registered in ALL_FEATURES.
 - feature_errors absent or empty for M275.
 - No _ prefix stash keys at top level of final summary.
@@ -108,17 +108,20 @@ class TestCarveCompletionPreconditions:
         )
 
     def test_base_hash_unchanged(self):
-        """base_hash must be 960e9d18d83d (R-1 closure value, honesty-2 phase).
+        """base_hash must be 57fdb323585d (R-1 closure value, post phase-2a).
 
         Phase honesty-2 (2026-05-29) redefined base_hash to the 25-file report-
-        production import closure. All C-phase plugins are registered features
-        excluded by R-4. The closure value 960e9d18d83d is stable across C-phases
-        as long as no production-path file in _CLOSURE_FILES is modified.
+        production import closure → 960e9d18d83d. All C-phase plugins are
+        registered features excluded by R-4. Phase 2a carved collect_mechanic's
+        compute (dict-builder + 2 private helpers) OUT of player_impact_analyzer.py
+        (a closure file) → base re-baselined to 57fdb323585d (report content
+        byte-identical; only where the code lives changed). The value is stable
+        until another production-path file in _CLOSURE_FILES is modified.
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "960e9d18d83d", (
-            f"base_hash must be '960e9d18d83d' (R-1 closure value, honesty-2). "
+        assert actual == "57fdb323585d", (
+            f"base_hash must be '57fdb323585d' (R-1 closure value, post phase-2a). "
             f"Got: {actual!r}. "
             f"Registered plugin modifications must NOT change base_hash (R-4 exclusion). "
             f"Check _CLOSURE_FILES in versioning.py for unintended production-path changes."

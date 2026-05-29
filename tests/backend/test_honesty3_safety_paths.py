@@ -23,7 +23,8 @@ Hard gate (must pass before and after all edits):
   python -c "import sys; sys.path.insert(0,'fresh_slotlab');
              from analyzer.versioning import compute_base_analyzer_version as f;
              print(f())"
-  MUST print: 960e9d18d83d
+  MUST print: 57fdb323585d  (was 960e9d18d83d pre phase-2a; PIA shrank when
+              collect_mechanic's compute was carved into its plugin)
 """
 from __future__ import annotations
 
