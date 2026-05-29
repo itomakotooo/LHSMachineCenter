@@ -10927,30 +10927,46 @@ def create_app(
 
     @app.post("/api/reports/cleanup")
     def cleanup_old_reports() -> dict[str, Any]:
-        """Drop stale report versions — per-mode, keep only the newest
-        version whose analyzer_version matches the current one. Every
-        other version (older duplicates OR stale-analyzer regardless of
-        recency) is deleted along with its runs row.
+        """Prune redundant DUPLICATE report versions — per-mode, recency
+        dedup WITHIN a single analyzer-tag class. An analyzer-version
+        mismatch NEVER selects a version for deletion.
 
-        User feedback 2026-04-19: the earlier "keep newest" policy
-        missed the common case where the sole (and therefore newest)
-        version for a mode was analyzer-stale — cleanup skipped it,
-        leaving the Report 管理 banner still reading "N 过期" after click.
+        Honesty-1 (2026-05-29, `feedback_md5_is_a_tag_not_a_destruction_signal.md`
+        + `feedback_enumerate_safety_paths.md`): a version/staleness tag
+        is a classification signal, NOT a destruction trigger. The prior
+        policy deleted every analyzer-stale version from disk + DB (and a
+        DB second-pass dropped every run row whose analyzer_version !=
+        current). At the upcoming honest-signal cutover — which marks
+        every machine stale exactly once when the signal's definition
+        changes — that coupling would wipe the whole fleet's reports.
+        So staleness is decoupled from deletion here: stale-analyzer and
+        untagged versions are KEPT regardless of recency.
 
-        Now: for each (machine, mode):
-          * group versions by analyzer-match vs stale
-          * keep only the newest analyzer-match version (if any exists)
-          * if no match version exists, keep the newest overall as a
-            read-only baseline (so the mode still has a report to load)
-          * everything else deleted from disk + DB
+        What this still does (genuine, non-verdict disk hygiene only):
+          for each (machine, mode), within the survivor's analyzer-tag
+          class, drop OLDER exact-tag DUPLICATES (operator freeing disk,
+          keeping the newest of an equivalent class). Cross-class
+          deletion keyed on a tag mismatch is removed entirely. If the
+          only reason to delete a version would be its analyzer tag,
+          nothing is deleted.
+
+        Interim cosmetic (intended): the "清理过期" banner may now show a
+        non-zero analyzer-stale count that clicking no longer zeros by
+        deletion. That is resolved when the honest signal + the
+        needs_rebaseline lifecycle land (honesty-3). The lock, the
+        index.json/latest.json rewrite, and the no_silent_swallow
+        diagnostics still apply to whatever duplicates are pruned.
         """
         # Phase 2 (D9 site #10): migrated from ops.acquire to registry global.
         if not registry.try_acquire_global("reports_cleanup"):
             raise HTTPException(status_code=409, detail="reports_cleanup already in progress")
         try:
-            from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
-            cur_analyzer = compute_analyzer_version()
-
+            # Honesty-1 (2026-05-29): the current analyzer version is
+            # deliberately NOT computed or consulted here anymore. This
+            # endpoint no longer makes ANY delete decision from an
+            # analyzer-version (mis)match — it only dedups exact-tag
+            # duplicate versions. compute_analyzer_version() still backs the
+            # read-only /api/reports/stale-count + validate endpoints.
             rv_to_run_id: dict[str, str] = {}
             for row in store.list_runs(limit=100000):
                 rv = (row.get("report_version") or "").strip()
@@ -10986,54 +11002,28 @@ def create_app(
                     if not versions:
                         continue
 
-                    # Partition by analyzer tag:
-                    #   match     — summary.analyzer_version == current
-                    #   stale     — tag present but different (tracked as
-                    #               "analyzer 过期" by /api/reports/stale-count)
-                    #   untagged  — pre-tagging migration; NOT counted as
-                    #               stale by the banner, so we must NOT delete
-                    #               them as part of "清理 stale"
-                    match_versions: list[Path] = []
-                    stale_versions: list[Path] = []
-                    untagged_versions: list[Path] = []
-                    for v in versions:
-                        ana = _version_analyzer(v)
-                        if not ana:
-                            untagged_versions.append(v)
-                        elif ana == cur_analyzer:
-                            match_versions.append(v)
-                        else:
-                            stale_versions.append(v)
-
-                    # Cleanup policy (user feedback 2026-04-19 round 5):
-                    # drop ALL tagged-stale versions so the Report 管理
-                    # banner's "N analyzer 过期" actually zeros out after
-                    # click. Prune duplicates per class but preserve one
-                    # untagged-baseline when no match exists (don't destroy
-                    # legacy reports the operator may still need).
-                    if match_versions:
-                        survivor = match_versions[0]
-                        to_delete = (
-                            match_versions[1:]  # older duplicates of match
-                            + stale_versions     # all tagged-stale
-                            + untagged_versions  # superseded by match
-                        )
-                    elif untagged_versions:
-                        survivor = untagged_versions[0]
-                        to_delete = (
-                            untagged_versions[1:]
-                            + stale_versions
-                        )
-                    elif stale_versions:
-                        # Edge case: only stale-tagged versions. Delete them
-                        # all — operator should regenerate from rawdata.
-                        survivor = None
-                        to_delete = stale_versions
-                    else:
-                        survivor = None
-                        to_delete = []
-                    if survivor is not None:
-                        kept += 1
+                    # Cleanup policy (honesty-1, 2026-05-29): the survivor
+                    # is the newest version overall, so every mode always
+                    # keeps a loadable baseline regardless of analyzer tag.
+                    # We prune ONLY older versions whose analyzer tag is
+                    # BYTE-IDENTICAL to the survivor's — i.e. superseded
+                    # exact-duplicates of the SAME version (recency dedup,
+                    # operator freeing disk). A version is NEVER deleted
+                    # because its tag mismatches the current analyzer (or
+                    # the survivor's) — a version tag classifies, it does
+                    # not destroy (`feedback_md5_is_a_tag_not_a_destruction_signal`).
+                    # The current analyzer version is intentionally NOT
+                    # consulted here for any delete decision (it backs only
+                    # the read-only banner endpoints). This is what stops the
+                    # honest-signal cutover (every machine marked stale
+                    # exactly once) from wiping the fleet's reports.
+                    survivor = versions[0]
+                    survivor_tag = _version_analyzer(survivor)
+                    to_delete = [
+                        v for v in versions[1:]
+                        if _version_analyzer(v) == survivor_tag
+                    ]
+                    kept += 1
 
                     for old in to_delete:
                         rv_name = old.name
@@ -11044,91 +11034,90 @@ def create_app(
                             try:
                                 if store.delete_run(run_id):
                                     runs_deleted += 1
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                # Per feedback_no_silent_swallow.md — this
+                                # prune path survives honesty-1, so its
+                                # best-effort DB delete must still persist a
+                                # diagnostic, not swallow silently.
+                                import traceback
+                                print(
+                                    f"[cleanup-old-reports] store.delete_run({run_id!r}) "
+                                    f"failed during duplicate prune: "
+                                    f"{exc.__class__.__name__}: {exc}",
+                                    file=sys.stderr,
+                                )
+                                traceback.print_exc()
 
-                    # Rewrite index.json to keep only the survivor's entry
-                    # (or empty it when no survivor remains).
+                    # Rewrite index.json to drop ONLY the entries for the
+                    # versions we actually pruned (older exact-tag duplicates),
+                    # keeping every surviving version's entry so the
+                    # version-history panel still lists them. Mirrors the
+                    # explicit per-version DELETE endpoint's "drop the deleted
+                    # entry" rewrite (app.py:10385). Under honesty-1 the survivor
+                    # is NO LONGER the only kept version (distinct-tag versions
+                    # survive), so collapsing the index to the survivor alone
+                    # would orphan still-on-disk reports from the UI version list.
                     if to_delete:
-                        survivor_name = survivor.name if survivor else None
+                        survivor_name = survivor.name
+                        deleted_names = {old.name for old in to_delete}
                         index_path = mode_dir / "index.json"
                         if index_path.exists():
                             try:
                                 idx = read_json(index_path)
                                 if isinstance(idx, list):
                                     idx = [e for e in idx if isinstance(e, dict)
-                                           and e.get("report_version") == survivor_name]
+                                           and e.get("report_version") not in deleted_names]
                                     # Phase 1 deploy: atomic + per-file-locked;
-                                    # mirrors _update_report_index at app.py:5090.
-                                    # Prune + concurrent finalize on same (m, mode)
-                                    # could race without this; now serialized.
+                                    # mirrors _update_report_index. Prune +
+                                    # concurrent finalize on same (m, mode) could
+                                    # race without this; now serialized.
                                     atomic_json_write(index_path, idx)
                             except Exception as exc:
                                 # Per feedback_no_silent_swallow.md
                                 import traceback
                                 print(
                                     f"[cleanup-old-reports] index.json rewrite failed "
-                                    f"for {machine}|{mode}: {exc.__class__.__name__}: {exc}",
+                                    f"for {machine_dir.name}|{mode_dir.name}: {exc.__class__.__name__}: {exc}",
                                     file=sys.stderr,
                                 )
                                 traceback.print_exc()
-                        # latest.json: remove if it now points at a deleted
-                        # version. For no-survivor modes we drop it entirely
-                        # (UI "无 report" surfaces naturally).
+                        # latest.json points at the newest version. If it was
+                        # left pointing at a pruned duplicate, repoint it at the
+                        # survivor (always the newest, so under honesty-1 it
+                        # always exists — there is no no-survivor case).
                         latest_path = mode_dir / "latest.json"
                         if latest_path.exists():
                             try:
                                 latest = read_json(latest_path) or {}
-                                if not survivor_name or latest.get("report_version") != survivor_name:
-                                    if survivor_name:
-                                        # Point latest at the survivor.
-                                        latest["report_version"] = survivor_name
-                                        # Phase 1 deploy: atomic write, parallel
-                                        # to index_path write above.
-                                        atomic_json_write(latest_path, latest)
-                                    else:
-                                        latest_path.unlink(missing_ok=True)
+                                if latest.get("report_version") != survivor_name:
+                                    # Point latest at the survivor.
+                                    latest["report_version"] = survivor_name
+                                    # Phase 1 deploy: atomic write, parallel
+                                    # to index_path write above.
+                                    atomic_json_write(latest_path, latest)
                             except Exception as exc:
                                 # Per feedback_no_silent_swallow.md
                                 import traceback
                                 print(
                                     f"[cleanup-old-reports] latest.json rewrite failed "
-                                    f"for {machine}|{mode}: {exc.__class__.__name__}: {exc}",
+                                    f"for {machine_dir.name}|{mode_dir.name}: {exc.__class__.__name__}: {exc}",
                                     file=sys.stderr,
                                 )
                                 traceback.print_exc()
 
-            # Second pass: delete all analyzer-stale DB rows that somehow
-            # survived the disk sweep (runs pointing at versions deleted
-            # ages ago / imported reports that never got a matching row).
-            # /api/reports/stale-count reads the DB directly — dropping
-            # these rows is what actually zeros the Report 管理 banner.
-            extra_runs_deleted = 0
-            for row in store.list_runs(limit=100000):
-                row_analyzer = (row.get("analyzer_version") or "").strip()
-                if not row_analyzer:
-                    continue
-                if row_analyzer == cur_analyzer:
-                    continue
-                run_id = row.get("run_id", "")
-                if not run_id:
-                    continue
-                try:
-                    if store.delete_run(run_id):
-                        extra_runs_deleted += 1
-                except Exception as exc:
-                    # Per feedback_no_silent_swallow.md
-                    import traceback
-                    print(
-                        f"[cleanup-old-reports] store.delete_run({run_id!r}) failed: "
-                        f"{exc.__class__.__name__}: {exc}",
-                        file=sys.stderr,
-                    )
-                    traceback.print_exc()
-
+            # Honesty-1 (2026-05-29): the DB "second pass" that deleted
+            # EVERY run row whose analyzer_version != cur_analyzer (with no
+            # disk coupling) has been REMOVED. Dropping a run row purely
+            # because its analyzer tag mismatches the current one is the
+            # exact tag-as-destruction anti-pattern this phase kills
+            # (`feedback_md5_is_a_tag_not_a_destruction_signal`). The
+            # /api/reports/stale-count banner may now report a non-zero
+            # analyzer-stale count that this endpoint no longer zeros by
+            # deletion; that interim cosmetic is intended and resolved by
+            # the honest signal + needs_rebaseline lifecycle (honesty-3).
             return {
                 "ok": True, "deleted": deleted, "kept": kept,
-                "runs_deleted": runs_deleted + extra_runs_deleted,
+                "runs_deleted": runs_deleted,
             }
         finally:
             registry.release_global("reports_cleanup")
