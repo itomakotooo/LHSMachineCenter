@@ -3357,16 +3357,16 @@ def main() -> int:
             }
         )
 
-    # ── SpinType label map — used by F4 (reel_marginal_by_spin_type) ────────
-    # Phase C2: payouts_by_spin_type construction moved to the plugin's
-    # emit() method (PayoutsBySpinType.emit()). _st_label is kept here
-    # because Block F4 (reel_marginal_by_spin_type, not yet carved) still
-    # needs it. Per 04_v3 §7.1 ordering note: _st_label is a shared
-    # intermediate derived from F1's spin_type_rows.
-    _st_label: dict[int, str] = {
-        int(row["spin_type"]): f"ST{int(row['spin_type'])}_{row['behavior_name']}"
-        for row in spin_type_rows
-    }
+    # ── SpinType label map (_st_label) was here until Phase 5 ───────────────
+    # Phase C2 carved payouts_by_spin_type's construction into its plugin's
+    # emit() (PayoutsBySpinType.emit(), which RE-DERIVES _st_label from
+    # summary["player_impact"]["spin_type_breakdown"]).  Phase 5 then carved
+    # reel_marginal_by_spin_type's build into ITS plugin's emit() — the last
+    # remaining consumer of this PIA-local _st_label.  Both plugins now derive
+    # the {spin_type → "ST{N}_{behavior_name}"} map locally from the
+    # spin_type_breakdown rows F1 wrote into the summary, so the inline map is
+    # gone (no consumer left in PIA).  See ReelMarginalBySpinType.emit() and
+    # PayoutsBySpinType.emit().
 
     symbol_rows = []
     for sym, cnt in sorted(symbol_counts.items(), key=lambda kv: kv[1], reverse=True):
@@ -3426,27 +3426,20 @@ def main() -> int:
         symbol_by_col_rows_payline[str(ci)] = _rows_payline
 
     # ── SpinType-split reel marginal (2026-05-14) ─────────────────────
-    # reel_marginal_by_spin_type: {spin_type_label → {reel_col → [{symbol,
-    # count, prob_pct}]}} where prob_pct sums to 100 per reel × ST.
-    # Existing aggregate symbols_by_column_top10 stays untouched.
-    reel_marginal_by_spin_type: dict[str, dict[str, list[dict[str, Any]]]] = {}
-    for st_int, label in sorted(_st_label.items()):
-        col_rows: dict[str, list[dict[str, Any]]] = {}
-        st_col_map = symbol_counts_by_col_by_spin_type_total.get(st_int) or {}
-        for ci, sym_map in sorted(st_col_map.items()):
-            col_total = sum(sym_map.values())
-            if col_total == 0:
-                continue
-            rows_for_col = [
-                {
-                    "symbol": sym,
-                    "count": int(cnt),
-                    "prob_pct": (cnt / col_total) * 100.0,
-                }
-                for sym, cnt in sorted(sym_map.items(), key=lambda kv: kv[1], reverse=True)
-            ]
-            col_rows[str(ci)] = rows_for_col
-        reel_marginal_by_spin_type[label] = col_rows
+    # Phase 5 (analyzer honesty/isolation): the reel_marginal_by_spin_type
+    # dict-BUILD was carved OUT of this file and INTO the
+    # ReelMarginalBySpinType plugin's emit() (Pattern B stash pattern,
+    # analogous to upstream_feature_breakdown C5 / multiplier_profile Phase 4).
+    # The plugin reads summary["_reel_marginal_by_spin_type_data"] (the RAW
+    # per-ST symbol-count accumulator stashed below, after this summary dict is
+    # closed), RE-DERIVES the {spin_type → label} map from the
+    # spin_type_breakdown rows (exactly as PayoutsBySpinType.emit() already
+    # does — F1 wrote spin_type_breakdown above), builds the dict VERBATIM
+    # (byte-identical: same sort order / int(count) / prob_pct = (cnt/total)*100),
+    # and writes it into summary["player_impact"]["reel_marginal_by_spin_type"]
+    # in the Phase D emit loop.  Editing this panel's logic now flips only
+    # reel_marginal_by_spin_type's feature_hash, not base_hash.
+    # (Aggregate symbols_by_column_top10 stays untouched.)
 
     # Upstream FeatureWin breakdown. The upstream API groups payouts by
     # a semantic feature name (string: e.g. "Normal", "NormalCollectionSpin",
@@ -4016,10 +4009,14 @@ def main() -> int:
             # populated in Phase D (plugin emit loop) after this summary
             # dict is constructed. The plugin writes directly into
             # summary["player_impact"]["payouts_by_spin_type"].
-            # reel_marginal_by_spin_type: {spin_type_label → {reel_col →
-            # [{symbol, count, prob_pct}]}} where prob_pct sums to 100
-            # per (label, reel). Existing symbols_by_column_top10 untouched.
-            "reel_marginal_by_spin_type": reel_marginal_by_spin_type,
+            # Phase 5: reel_marginal_by_spin_type is likewise now written by
+            # the ReelMarginalBySpinType plugin's emit() (Pattern B). It is
+            # populated in Phase D (plugin emit loop) from the raw stash
+            # summary["_reel_marginal_by_spin_type_data"]. Shape unchanged:
+            # {spin_type_label → {reel_col → [{symbol, count, prob_pct}]}}
+            # where prob_pct sums to 100 per (label, reel). The plugin writes
+            # directly into summary["player_impact"]["reel_marginal_by_spin_type"].
+            # Existing symbols_by_column_top10 untouched.
             "spin_type_breakdown": spin_type_rows,
             "spin_type_coverage": spin_type_coverage,
             # Extra fields discovered beyond _BASELINE_ROUND_FIELDS.
@@ -4403,6 +4400,38 @@ def main() -> int:
         "mb_total_spins": mb_total_spins,
         "tail_rtp_contribution_pp_ge10x": tail_rtp_contribution_pp_ge10x,
         "tail_win_share_ge10x": tail_win_share_ge10x,
+    }
+
+    # ── Phase 5 — stash key for ReelMarginalBySpinType plugin ─────────────
+    # Analogous to _multiplier_profile_data (Phase 4) / _upstream_feature_breakdown_data
+    # (C5) / _bonus_chain_dynamics_data (2b) / _collect_mechanic_data (2a).
+    #
+    # Phase 5 (analyzer honesty/isolation; 07_decision.md §5 Phase 3-6 + R-11):
+    # the reel_marginal_by_spin_type dict-BUILD was carved OUT of this file (was the
+    # inline build at pre-carve PIA:~3432, the
+    # `for st_int, label in sorted(_st_label.items())` loop) and INTO the
+    # ReelMarginalBySpinType plugin's emit().  The stash carries the single RAW
+    # accumulator the build reads — the per-ST per-column symbol-count map — NOT
+    # the pre-built {label → {col → [...]}} dict.  PIA shed the dict literal, so
+    # base_hash shrinks one-time and editing this feature's compute flips only its
+    # feature_hash, not base.
+    #
+    # Only ONE raw input is stashed: symbol_counts_by_col_by_spin_type_total
+    # (built at ~1182, populated at ~1655/~2425).  After this carve it has NO
+    # other consumer in PIA — it fed only this build.  The OTHER build input,
+    # the {spin_type → "ST{N}_{behavior_name}"} label map (was the PIA-local
+    # _st_label), is NOT stashed: the plugin RE-DERIVES it from
+    # summary["player_impact"]["spin_type_breakdown"] (the rows F1 wrote above),
+    # exactly as PayoutsBySpinType.emit() already does.  spin_type_breakdown is
+    # itself SHARED (the spin_type_breakdown panel + the pay_id category column),
+    # so it stays in PIA and the plugin reads its already-emitted value — no
+    # circular import, no duplicated source of truth.
+    #
+    # Per feedback_no_silent_swallow.md the plugin reads the stash key by explicit
+    # indexing and raises if absent (no silent default that would corrupt the
+    # report numbers).
+    summary["_reel_marginal_by_spin_type_data"] = {
+        "symbol_counts_by_col_by_spin_type_total": symbol_counts_by_col_by_spin_type_total,
     }
 
     # ── Wave 2c / Phase C1: registered feature emit hooks ─────────────────
@@ -5027,7 +5056,16 @@ def main() -> int:
         "Symbol probability per reel (col), split by SpinType. "
         "prob_pct sums to 100 per (SpinType, reel)."
     )
-    for label, col_rows in sorted(reel_marginal_by_spin_type.items()):
+    # Phase 5: reel_marginal_by_spin_type is built by the ReelMarginalBySpinType
+    # plugin emit() (no longer an inline PIA local). The emit loop above
+    # populated summary["player_impact"]["reel_marginal_by_spin_type"] BEFORE this
+    # markdown section runs, so read it from there. The dict is byte-identical to
+    # the pre-carve local var (same labels — including empty col_rows ones, which
+    # the loop below still skips — same sort order), so the markdown is unchanged.
+    _reel_marginal_by_spin_type_md = (
+        (summary.get("player_impact") or {}).get("reel_marginal_by_spin_type") or {}
+    )
+    for label, col_rows in sorted(_reel_marginal_by_spin_type_md.items()):
         if not col_rows:
             continue
         md_lines.append(f"")

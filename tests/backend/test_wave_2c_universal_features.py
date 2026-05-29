@@ -76,7 +76,11 @@ FEATURE_SPECS = [
         "feature_id": "reel_marginal_by_spin_type",
         "module_name": "fresh_slotlab.analyzer.features.reel_marginal_by_spin_type",
         "module_file": "reel_marginal_by_spin_type.py",
-        "pattern": "A",
+        # Phase 5: Pattern A → B. The dict-build was carved out of PIA into the
+        # plugin's emit() (stash pattern). reduce() now returns {} (not prev_acc)
+        # and emit() raises on a missing stash — so it is excluded from the C7
+        # Pattern-A no-op-reduce / no-op-emit assertions (same as multiplier_profile).
+        "pattern": "B",  # Phase 5 carve; we don't assert reduce semantics
         "schema_keys_include": ("reel_marginal_by_spin_type",),
     },
     {
@@ -718,18 +722,19 @@ class TestHashComposition:
             "registered plugin. R-4 excludes only registered plugins; __init__.py stays in base."
         )
 
-        # (c) Live value must be the known R-1 closure pin (post phase-4)
+        # (c) Live value must be the known R-1 closure pin (post phase-5)
         # Phase 2a carved collect_mechanic's compute out of PIA (a closure file),
         # shrinking base 960e9d18d83d -> 57fdb323585d; phase 2b carved
         # bonus_chain_dynamics out of PIA -> 980f488f4bb2; phase 3 carved
         # upstream_feature_breakdown's row-build out of PIA -> c89db791d8a1;
-        # phase 4 carved multiplier_profile's dict-build out of PIA -> ce298f055495
+        # phase 4 carved multiplier_profile's dict-build out of PIA -> ce298f055495;
+        # phase 5 carved reel_marginal_by_spin_type's dict-build out of PIA -> ccc1ecce185d
         # (report content byte-identical).
         actual = _cbav()
-        assert actual == "ce298f055495", (
+        assert actual == "ccc1ecce185d", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = 'ce298f055495' (R-1 closure value, post phase-4)\n"
+            f"  expected = 'ccc1ecce185d' (R-1 closure value, post phase-5)\n"
             "R-4 exclusion covers registered plugins only (not all features/*.py).\n"
             "_base.py and features/__init__.py are still in base (not registered plugins)."
         )
