@@ -155,6 +155,8 @@ The teams complement each other: arch-* designs the framework + produces a writt
 
 > **Purpose**: when an arch-* proposal needs to be implemented (or any multi-file refactor / new module / cross-cutting code change), the impl-* 4-agent team executes the work with separation between author + reviewer. Designed to prevent the failure mode "same Claude wrote the code, wrote the test, signed off the commit — no external angle".
 >
+> **Status**: actively used. The impl-* loop ran end-to-end for the 6-phase analyzer plugin unbundle (2026-05-29/30) and caught real regressions a solo pass would have missed. The full process lives in `docs/IMPL_TEAM_PROCESS.md`; this section is the arch-* → impl-* handoff summary.
+>
 > **Not for**: single-file bug fix, docs-only commits, trivial patches. Use direct edit for those.
 
 ### §9.1 When to use this team

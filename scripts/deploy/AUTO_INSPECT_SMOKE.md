@@ -7,7 +7,7 @@ Use this guide after deploying a build that includes the auto-inspect feature
 
 ## Prerequisites
 
-- Console server is running and reachable at `http://localhost:8000` (or the
+- Console server is running and reachable at `http://localhost:8877` (or the
   configured host).
 - `configs/machines.json` is populated (the fleet).
 - At least one upstream server snapshot exists under `.probe/server_snapshots/`.
@@ -31,7 +31,7 @@ schtasks /Run /TN "SlotConsole"
 Verify the server is up:
 
 ```powershell
-Invoke-WebRequest -Uri http://localhost:8000/api/system-state | Select-Object StatusCode
+Invoke-WebRequest -Uri http://localhost:8877/api/system-state | Select-Object StatusCode
 # Expected: StatusCode 200
 ```
 
@@ -39,7 +39,7 @@ Invoke-WebRequest -Uri http://localhost:8000/api/system-state | Select-Object St
 
 ## Step 2 — Open the UI and switch to the 自动巡检 tab
 
-1. Open a browser to `http://localhost:8000`.
+1. Open a browser to `http://localhost:8877`.
 2. Click the **自动巡检** tab in the main navigation.
 3. The settings panel should appear (sweep concurrency, target CI, cron picker,
    schedule mode/value fields).
@@ -76,7 +76,7 @@ Expected:
 Verify via API:
 
 ```powershell
-$r = Invoke-RestMethod http://localhost:8000/api/auto-inspect
+$r = Invoke-RestMethod http://localhost:8877/api/auto-inspect
 $r.sweeps[0].status
 # Expected: "sampling" (or "scanning" if the fleet is large)
 ```
@@ -107,7 +107,7 @@ Expected (within ~10 seconds):
 Verify:
 
 ```powershell
-$r = Invoke-RestMethod http://localhost:8000/api/auto-inspect
+$r = Invoke-RestMethod http://localhost:8877/api/auto-inspect
 $r.sweeps[0].status
 # Expected: "cancelled"
 ```
@@ -134,7 +134,7 @@ Expected:
 Verify:
 
 ```powershell
-$r = Invoke-RestMethod http://localhost:8000/api/auto-inspect
+$r = Invoke-RestMethod http://localhost:8877/api/auto-inspect
 $r.sweeps[0].status
 # Expected: "sampling" (still running, not "failed")
 ```

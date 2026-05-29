@@ -8,14 +8,16 @@
 
 ---
 
-## §1 当前架构的两个根本问题（重构出发点）
+## §1 重构出发点（历史 — 两个根本问题，均已解决）
 
-### 1.1 fleet-wide `code_md5` ── 改一个机台 ⇒ 全 fleet cache 失效
+> **状态**：本节描述重构**之前**的问题状态，作为 §2-§9 设计的 rationale 保留。两个问题都已在 Phase A-E 解决（见 §10 进度表 + §10 兑现的承诺）。当前 `code_md5` 已是 per-machine（`machines_virtual.json` 每台 `codeSummaryMd5` 已各不相同），`core/` 已无机台名漏出（`tests/core/test_no_machine_leakage.py` 守住）。
 
-`backend/machine_version.py::compute_code_md5()` 把 `engine/*.py` + `emitter/*.py` 全部 hash 进同一个 digest。结果：
+### 1.1 （历史）fleet-wide `code_md5` ── 改一个机台 ⇒ 全 fleet cache 失效
+
+重构前 `compute_code_md5()` 不带 machine 参数，把 `engine/*.py` + `emitter/*.py` 一锅炖成单一 fleet-wide digest，所有机台 `codeSummaryMd5` 相同：
 
 ```python
-# machines_virtual.json 现状
+# machines_virtual.json 重构前
 M1sim   codeSummaryMd5: 6d7a7d03dc...   ← 全相同
 M15sim  codeSummaryMd5: 6d7a7d03dc...
 M37sim  codeSummaryMd5: 6d7a7d03dc...
@@ -23,9 +25,11 @@ M279sim codeSummaryMd5: 6d7a7d03dc...
 ```
 
 → 改 M15 的 feature 实现 1 个字符 → fleet-wide hash 翻 → M1 / M37 / M279 所有 cached chunks 全部 stale。
-→ 几百个机台扩展后，单点改动会触发全 fleet 重采样。
+→ 几百个机台扩展后，单点改动会触发全 fleet 重采样。**修法见 §4**（per-machine `compute_code_md5(machine_name)`）。
 
-### 1.2 机台名漏到通用层 ── code 边界混乱
+### 1.2 （历史）机台名漏到通用层 ── code 边界混乱
+
+重构前漏出点（现已全部清理，列出仅作 rationale）：
 
 | 位置 | 漏出的机台名 |
 |---|---|
@@ -39,7 +43,9 @@ M279sim codeSummaryMd5: 6d7a7d03dc...
 
 ---
 
-## §2 目标布局
+## §2 当前布局（重构 Phase A-E 已落地）
+
+> 下树是 schematic（重在边界 + 归属规则，不逐字枚举每个文件）；权威以磁盘为准。
 
 ```
 slot_designer/
@@ -63,8 +69,9 @@ slot_designer/
 │   │   └── driver.py            base sample_one_chunk
 │   ├── tuner/                   通用 tuner 框架
 │   ├── devtools/                analytic_rtp / shape_distance / 等
-│   ├── backend/                 virtual console FastAPI app
-│   └── version.py               compute_code_md5(machine_name) per-machine
+│   └── backend/                 virtual console FastAPI app (virtual_app / virtual_analyzer /
+│                                virtual_registry) + machine_version.py
+│                                (compute_code_md5(machine_name) per-machine)
 │
 ├── machines/                    ← 每台机台一个独立目录，互不 import
 │   ├── M1/
@@ -84,22 +91,22 @@ slot_designer/
 │   │   ├── DESIGN.md
 │   │   ├── verify.py
 │   │   └── plugins/
-│   │       ├── __init__.py      暴露 PLUGIN: FeaturePlugin 实例
-│   │       ├── feature.py       M15 accept/reject 实现 (旧 feature_m15.py 移过来)
-│   │       └── emitter.py       M15 ST=14/15 emit + classify_round 实现
+│   │       ├── __init__.py      暴露 build_plugin(spec, weights_doc) 工厂
+│   │       ├── plugin.py        M15FeaturePlugin + build_plugin（emit_extra_rounds / classify_round）
+│   │       └── feature.py       M15 accept/reject + ST=14/15 feature 子轮实现
 │   │
 │   ├── M37/                     同 M1（base only）
-│   └── M279/
+│   ├── M31/                     FeaturePlugin 机台（multiplier-wild free-spin）
+│   ├── M43/                     FeaturePlugin 机台（lucky-ducky respin mini-game）
+│   └── M279/                    custom-engine 机台（registry 标 _engine="m279"）
 │       ├── spec.json  reel_strips.json  weights/
 │       ├── DESIGN.md  verify.py
 │       └── plugins/
-│           ├── __init__.py
-│           ├── engine.py        M279SpinEngine（多 payline 引擎）
-│           ├── nudge_stack.py
-│           ├── collect.py
-│           ├── wheel.py
-│           ├── round_emitter.py
-│           └── driver.py
+│           ├── __init__.py      暴露 load_engine / build_plugin(→None) / sample_one_chunk /
+│           │                    compute_schema_fingerprint
+│           ├── m279_round.py / m279_driver.py
+│           └── m279/            嵌套子包：loader / engine（M279SpinEngine 多 payline）/
+│                                nudge / collect / wheel
 │
 ├── configs/
 │   └── machines_virtual.json    每台 entry 指向 machines/<M>/
@@ -168,49 +175,35 @@ class FeaturePlugin(Protocol):
 
 ### 3.1 plugin 加载
 
-`machines_virtual.json` entry 加可选 `_plugin_module`：
+约定：`machines/<machine>/plugins/__init__.py` 暴露 **`build_plugin(spec_dict, weights_doc) -> FeaturePlugin | None`** 工厂函数（不是 `PLUGIN` 顶层变量）。返回配置好的 plugin 实例；spec 不声明 feature 时返回 `None`。
 
-```json
-{
-  "machine": "M15sim",
-  "_plugin_module": "slot_designer.machines.M15.plugins"
-}
-```
+`core/engine/loader.py` 的 `_load_plugin_for_machine()` 在 `load_engine` 时按 `spec["machine"]` 拼出模块路径 `slot_designer.machines.<machine>.plugins`，`importlib.import_module` 加载后调 `build_plugin`。下列任一情况 plugin 为 `None`（engine 跑 base-only，`spin_session()` 永远返回空 feature_rounds）：
 
-`core/engine/loader.py` 通过 `importlib.import_module(_plugin_module)` 加载，从模块取 `PLUGIN: FeaturePlugin` 顶层变量。**不**直接 import `machines.M15.*`。
+- `machines/<M>/plugins/` 不存在（base-only 机台）
+- 模块没有 `build_plugin` 属性
+- `build_plugin` 对该 spec 返回 `None`
+
+**不**静态 import 任何 `machines.<M>.*`。注：模块路径由 `spec["machine"]` 派生，不读 registry 字段（`machines_virtual.json` 里历史遗留的 `_plugin_module` 字段当前不被加载逻辑使用）。自定义引擎机台（如 M279）走另一条路：registry 标 `_engine` marker，plugin 模块暴露 `load_engine` / `sample_one_chunk` / `compute_schema_fingerprint`（见 §10 兑现 #4）。
 
 ---
 
 ## §4 per-machine `code_md5` 算法
 
-`core/version.py`：
+`core/backend/machine_version.py` 的 `compute_code_md5(machine_name)`。Hash 输入按顺序：
 
-```python
-def compute_code_md5(machine_name: str) -> str:
-    """Per-machine code hash.
+1. `core/engine/**/*.py`   （核心引擎；排除 `__init__.py` / `__pycache__`）
+2. `core/emitter/**/*.py`  （核心 emitter；同上排除）
+3. `machines/<machine_name>/plugins/**/*.py`  （该机台私有 plugin，base 机台为空）
 
-    Hash 顺序：
-      1. core/engine/**/*.py   (核心引擎)
-      2. core/emitter/**/*.py  (核心 emitter)
-      3. machines/<M>/plugins/**/*.py  (该机台私有 plugin，base 机台跳过)
+**注意 hash 边界只含 `engine/` + `emitter/`**，不含 `core/tuner/` / `core/devtools/` / `core/backend/` ——
+所以改 tuner / devtools / backend / tests / docs / scripts / configs **不翻**任何机台 md5。翻 md5 的条件：
 
-    改 core/* → 全机台 md5 翻（合理：框架变更）
-    改 machines/M15/plugins/* → 只 M15 md5 翻
-    改 machines/M279/plugins/* → 只 M279 md5 翻
-    """
-    h = hashlib.md5()
-    for p in sorted((_ROOT / "core").rglob("*.py")):
-        if p.name != "__init__.py":
-            h.update(p.read_bytes())
-    plugin_dir = _ROOT / "machines" / machine_name / "plugins"
-    if plugin_dir.exists():
-        for p in sorted(plugin_dir.rglob("*.py")):
-            if p.name != "__init__.py":
-                h.update(p.read_bytes())
-    return h.hexdigest()
-```
+- 改 `core/engine/*` 或 `core/emitter/*` → 全机台 md5 翻（合理：框架引擎变更是 fleet-wide 事件）
+- 改 `machines/M15/plugins/*` → 只 M15 md5 翻
+- 改 `machines/M279/plugins/*` → 只 M279 md5 翻
 
-**所有 callsite**（chunk stamping / registry refresh / classify_chunks）必须通过本函数获取 code_md5，不重新实现。
+权威实现 + 完整 docstring 见 `core/backend/machine_version.py`（`_core_source_files` / `_plugin_source_files` / `compute_code_md5`）。
+**所有 callsite**（chunk stamping via `virtual_analyzer._compute_md5s` / registry refresh via `virtual_app.refresh_machines_virtual` / `scripts/tune.py`）必须通过本函数获取 code_md5，不重新实现。
 
 ---
 
@@ -235,7 +228,7 @@ mkdir slot_designer/machines/<M>/weights/mode_{1,2,5,7}
 | `machines/<M>/BOUNDARY_CONTRACT.md` | ✓ | Stage 3.5 全 team 协商 + user sign-off 4-layer contract。drives DESIGN.md / verify.py / target.json 全部数字。template 在 `slot_designer/templates/BOUNDARY_CONTRACT_TEMPLATE.md`。详 ONBOARDING_PROCESS §5.3.5 |
 | `machines/<M>/DESIGN.md` | ✓ | 该机台**设计文档**（archetype 来源 + 玩家叙事 + per-mode 数值意图，必须 trace BOUNDARY_CONTRACT.md §2）。**机台私有，不能 override DESIGN_PHILOSOPHY**|
 | `machines/<M>/verify.py` | ✓ | 该机台 verify 脚本，每条红线 trace BOUNDARY_CONTRACT.md §2 某条具体 bound，引用 DESIGN_PHILOSOPHY 各 §条款 |
-| `machines/<M>/plugins/__init__.py` | feature 机台才需要 | 暴露 `PLUGIN: FeaturePlugin` |
+| `machines/<M>/plugins/__init__.py` | feature 机台才需要 | 暴露 `build_plugin(spec_dict, weights_doc) -> FeaturePlugin \| None` 工厂 |
 | `machines/<M>/plugins/<*>.py` | feature 机台才需要 | plugin 实现拆模块 |
 
 ### 5.3 注册到 `machines_virtual.json`
@@ -246,12 +239,14 @@ mkdir slot_designer/machines/<M>/weights/mode_{1,2,5,7}
   "modes": [1, 2, 5, 7],
   "available": true,
   "_source_machine": "<M>",
-  "_machine_dir": "slot_designer/machines/<M>",
-  "_plugin_module": "slot_designer.machines.<M>.plugins"   // feature 机台才填
+  "_spec_path": "slot_designer/machines/<M>/spec.json",
+  "_strips_path": "slot_designer/machines/<M>/reel_strips.json",
+  "_weights_path_template": "slot_designer/machines/<M>/weights/mode_{mode}/weights.json",
+  "_engine": "<engine_marker>"   // 仅自定义引擎机台才填（如 M279 = "m279"）；FeaturePlugin 机台不填
 }
 ```
 
-旧字段 `_spec_path` / `_strips_path` / `_weights_path_template` 由 `_machine_dir` 派生，per-machine resolver 在 `core/backend/virtual_registry.py` 处理。
+`_spec_path` / `_strips_path` / `_weights_path_template` 是路径来源，`_source_machine` 标 `machines/<M>/` 目录名（md5 + plugin 解析用）。`configSummaryMd5` / `codeSummaryMd5` / `modesMd5` 由 `core/backend/virtual_registry.refresh_machines_virtual()` + `machine_version.py` 在 console boot 和每次采样前自动 refresh（不手填）。`refresh_machines_virtual` 还会扫描 weights 目录自动 union 新落盘的 mode。
 
 ### 5.4 **强制**测试（每台新机台必加）
 
@@ -286,21 +281,17 @@ mkdir slot_designer/machines/<M>/weights/mode_{1,2,5,7}
 ```
 tests/
 ├── core/                             ← 测 core 框架（机台无关）
-│   ├── test_engine_spin.py
-│   ├── test_engine_loader.py
-│   ├── test_engine_feature_protocol.py
-│   ├── test_emitter_round.py
-│   ├── test_emitter_robot.py
-│   ├── test_emitter_driver.py
-│   ├── test_version_per_machine_md5.py
-│   └── test_no_machine_imports_in_core.py    ← 静态检查 core/ 不 import machines.*
-├── machines/                         ← 每台机台一组
-│   ├── test_M1_*.py
-│   ├── test_M15_*.py
-│   ├── test_M37_*.py
-│   └── test_M279_*.py
-└── integration/                      ← 跨机台 e2e
-    └── test_virtual_console_flow.py
+│   ├── test_layout.py                目录布局 + 每台机台必备文件
+│   ├── test_per_machine_code_md5.py  per-machine md5 隔离
+│   ├── test_no_machine_leakage.py    ← 静态检查 core/ 不 import machines.* + 无机台名 token
+│   ├── test_feature_plugin_protocol.py  FeaturePlugin Protocol 合约
+│   ├── test_custom_engine_adapter.py    _engine marker 自定义引擎路径
+│   └── test_end_to_end_refactor.py      4 台 fleet load + 1 chunk e2e
+├── machines/                         ← 每台机台一组（test_<M>_engine / _strips_invariants /
+│   │                                   _plugin_protocol / _md5_isolation，见 §5.4）
+│   └── test_M31_*.py                 （新机台模板；legacy M1/M15/M37/M279 fixture 测试在 tests/ 顶层）
+└── （其它通用 + 机台 fixture 测试散在 tests/ 顶层，如 test_machine_version / test_per_mode_md5 /
+    test_analytic_vs_sim / test_m279 / test_virtual_* 等）
 ```
 
 ### 6.4 commit 工作流
@@ -332,7 +323,7 @@ tests/
 - `core/` 里**架构层概念**（如 `FeaturePlugin`, `feature_protocol.py`）OK——这些是抽象，不是机台名
 - `tests/machines/test_<M>_*.py` 自然要含机台名，没问题
 
-**自动化 enforcement**：`tests/core/test_no_machine_imports_in_core.py` 跑 grep 检查 `core/` 子树没 `M\d+` / `from .*machines\.` import 字符串。
+**自动化 enforcement**：`tests/core/test_no_machine_leakage.py` 跑 grep 检查 `core/` 子树没 `M\d+` / `from .*machines\.` import 字符串。
 
 ---
 
@@ -344,7 +335,7 @@ tests/
 | 2 | `machines/<M>/` 不 import 任何 `machines.<other>.*` | 跨机台耦合 |
 | 3 | `machines/<M>/plugins/` 通过 importlib 加载，不写在通用 import 链 | 静态 import 触发 `__init__` 副作用 |
 | 4 | `code_md5(machine)` 是 per-machine | fleet-wide 缓存失效 |
-| 5 | `machines_virtual.json` `_machine_dir` 字段是单一真理（spec/strips/weights 路径全派生）| 路径分散维护，drift |
+| 5 | `machines_virtual.json` 的 `_spec_path` / `_strips_path` / `_weights_path_template` 指向 `machines/<M>/` 树（md5 / plugin 解析全走它们 + `_source_machine`）| 路径分散维护，drift |
 | 6 | `core/` 任何机台名字面量出现 | 通用代码认识具体机台 |
 | 7 | plugin 实现满足 `FeaturePlugin` Protocol 且通过 `tests/machines/test_<M>_plugin_protocol.py` | 静默 contract 违反 |
 | 8 | 每台机台 `DESIGN.md` 不 override 全局 `DESIGN_PHILOSOPHY.md`，只 specialize | 机台私有文档篡改 universal 哲学 |

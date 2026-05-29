@@ -2,6 +2,8 @@
 
 > **Purpose**: when arch-* has finished its 3-wave design pass and the codebase is ready for change, this 4-agent team translates the approved architecture proposal into shipped code, one ticket at a time, with parallel critic + validator pressure. Designed to prevent the failure mode "implementer designs their own diff + writes their own tests → no adversarial pressure → 5/10 regressions per memory `feedback_impl_team_required.md`".
 >
+> **Status**: actively used. Most recently it ran the full 6-phase analyzer plugin unbundle (2026-05-29/30 — carving `bonus_chain_dynamics`, `collect_mechanic`, `upstream_feature_breakdown`, `multiplier_profile`, `reel_marginal_by_spin_type`, `bankruptcy_simulation` out of the monolith into byte-identical plugins), where the critic/verifier loop caught regressions a solo pass would have missed. Per-phase artifacts are under `session_artifacts/_impl/phase_extract_*/` (audit trail, not living docs).
+>
 > **Not for**: single-file fixes with no fan-out, docs-only changes, per-machine `slot_designer/machines/<M>/` edits. Use direct edit (single file) or slot-* team (per-machine) for those.
 
 ---

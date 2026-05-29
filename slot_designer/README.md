@@ -11,11 +11,12 @@
 | 文件 | 写啥 | 什么时候读 |
 |---|---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 代码层布局、Plugin 协议、per-machine md5、新机台 onboarding 工程步骤、命名禁区、不变量 | 第一次接触本目录 / 新机台 / 改 core/ / 改 md5 |
+| [`ONBOARDING_PROCESS.md`](ONBOARDING_PROCESS.md) | 新机台 onboarding 全流程：slot-* 6-agent team 分工 + 11-stage 工作流 + Stage 3.5 Boundary Contract + 收敛/stop 条件 | 新机台 onboarding（开 session 第一步）|
 | [`DESIGN_PHILOSOPHY.md`](DESIGN_PHILOSOPHY.md) | slot 设计 first principles（家族倒金字塔 / brand visibility / CV-RTP / pareto trap / reel asymmetry / PWDF / blank flank / visual rhythm）| 设计任何机台前 |
 | [`WORKFLOW.md`](WORKFLOW.md) | 每次 commit 前 adversarial self-review 5 步流程 | 每次提交前 |
 | [`SPEC_SCHEMA.md`](SPEC_SCHEMA.md) | spec DSL 字段定义 | 写 / 改 spec.json 时 |
 
-新机台 onboarding 走 [ARCHITECTURE.md §5](ARCHITECTURE.md#5-新机台-onboarding-步骤)。
+新机台 onboarding 工程步骤见 [ARCHITECTURE.md §5](ARCHITECTURE.md#5-新机台-onboarding-步骤)；完整团队 + stage 流程见 [`ONBOARDING_PROCESS.md`](ONBOARDING_PROCESS.md)。
 
 ---
 
@@ -34,6 +35,8 @@ slot_designer/
 │   ├── M1/                  spec.json + reel_strips.json + weights/mode_<N>/ + DESIGN.md  (base only)
 │   ├── M15/                 + plugins/ — Top Dollar Feature Play (FeaturePlugin)
 │   ├── M37/                 (base only)
+│   ├── M31/                 + plugins/ — multiplier-wild free-spin (FeaturePlugin)
+│   ├── M43/                 + plugins/ — lucky-ducky respin mini-game (FeaturePlugin)
 │   └── M279/                + plugins/ — 自定义引擎（多 payline + 收集 + nudge stack + wheel）
 │
 ├── configs/
@@ -79,7 +82,7 @@ powershell -File slot_designer/scripts/start_virtual_console.ps1 -OpenBrowser
 ## 最小可工作流（已注册机台）
 
 1. 启动虚拟 console (`start_virtual.bat`) → 浏览器打开 `http://127.0.0.1:8878/console/`
-2. 选机台 (M1sim / M15sim / M37sim / M279sim) + 选 mode (1/2/5/7)
+2. 选机台 (M1sim / M15sim / M37sim / M31sim / M43sim / M279sim) + 选 mode (1/2/5/7；M31sim / M43sim 当前仅 mode 1)
 3. **开始采样** → 调 `core/backend/virtual_analyzer.py` (subprocess) → 走 `core/emitter/driver.sample_one_chunk` 或自定义引擎 adapter → 写 chunk 到 `slot_designer/rawdata/<M>sim/mode_<N>/`
 4. **生成 Report** → 委托给 `fresh_slotlab/player_impact_analyzer.py --from-cache` → 输出 `slot_designer/reports/<M>sim/mode_<N>/`
 5. 浏览器看分析结果（RTP / bucket / hit / 跨 mode 对比 / etc.）

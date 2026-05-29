@@ -75,7 +75,7 @@ console 起来后浏览器自动打开 `http://127.0.0.1:8877/console/`。
 
 **迭代完想拆掉:** 把 `machineconfig/<M>Cfg.txt` 删了或改名 → checkbox 自动隐藏 → 下次采样回服务端默认 cfg。
 
-**改 cfg 又想试一版:** 直接覆盖 `machineconfig/<M>Cfg.txt`(文件名不变)→ md5 变 → 旧 chunks 自动归为 stale bucket(不参与新统计但留 disk),新 chunks 重新采。**不需要清缓存**。
+**改 cfg 又想试一版:** 直接覆盖 `machineconfig/<M>Cfg.txt`(文件名不变)→ md5 变 → 旧 chunks 自动归为 historical bucket(不参与新统计但留 disk,md5 只是分类 tag、不触发删除),新 chunks 重新采。**不需要清缓存**。
 
 ---
 
@@ -152,7 +152,8 @@ Mode 2 / 5(super-lucky / mega-lucky)CI 锁定 fuzzy 模式,不需要调收敛精
 - 点 **停止**(■)。会 graceful cancel — 已采完的 chunks 保留(status 变 `cancelled`),summary 仍可看,interpretation 也能跑(LLM 能基于不完整数据给出评论)。
 
 **Q: code 改了想重新算 report 但不想重采**
-- Fleet Management 找到 run → 点 **Rebuild**。从已 cache 的 raw chunks 重新过 analyzer 出新 report。
+- analyzer 改动后,受影响机台的旧 report 会按 per-(机台, mode) 的版本被标成"过期"(report 行上的 **⚠ 过期** 角标 + 顶部 "{n} 个 report 的 analyzer 版本已过期" 提示条),只标不删——旧 report 一直在,直到你主动重生成。
+- 在机台目录选中机台 → 点 **批量生成 Report**(⟳)从已 cache 的 raw chunks 重新过 analyzer 出新 report;或对一批过期 report 点 **一键重生成**。不需要重采上游。
 
 ---
 

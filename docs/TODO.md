@@ -12,13 +12,21 @@ This file tracks executable next steps for the current phase.
 
 - [ ] **Fuzzy live-sampling CI-stop latent bug** (still pending —
       now less critical since fuzzy is replaced by count-mode in
-      the sampling UI as of 00f73b8, but the backend path still
-      exists). Backend sets ``target_halfwidth_pp=999`` as the
-      fuzzy sentinel (app.py ~line 2735) but analyzer's stop
-      branch fires when ``session_halfwidth_pp ≤ target`` — 999 is
-      usually satisfied after chunks=2. Fix: backend passes 0.001
-      to analyzer + relies on max_chunks solely (same pattern as
-      ecc5bd4). Add a regression test.
+      the sampling UI, but the backend fuzzy path still exists).
+      The live-sampling path (`app.py` `RunManager.start_run`, fuzzy
+      tier `target_halfwidth_pp == 0`) still feeds the analyzer
+      `effective_halfwidth_pp = 999.0` as the sentinel and bounds the
+      run only via the `FUZZY_TARGET_TOTAL_SPINS` max_chunks override.
+      The analyzer's stop branch fires when
+      ``session_halfwidth_pp ≤ target`` — 999 is usually satisfied
+      after chunks=2, so the CI-stop branch can still terminate the
+      live run early before max_chunks is reached. The from-cache /
+      generate-report paths were already hardened to pass `0.001`
+      (so max_chunks is the sole gate, same pattern as ecc5bd4); the
+      live `start_run` path was NOT. Fix: make `start_run` also pass
+      `0.001` for the fuzzy tier and rely on max_chunks solely. Add a
+      regression test. (PARTIALLY ADDRESSED — verify live path before
+      closing.)
 
 - [ ] Multi-server 实测: 基础设施就绪，等用户提供 test/prod 地址。
 
@@ -71,13 +79,68 @@ This file tracks executable next steps for the current phase.
   controlled machine/mode/test profile templates with versioning and approval flow.
 - [ ] Deployment packaging:
   produce repeatable deploy assets for company server environment.
-- [ ] **Batch state persistence to DB** so "continue last batch" survives
-      uvicorn restarts (today the batch object is in-memory; chunks on
-      disk survive, but the "which machines did I tell it to sample"
-      list is lost). Workaround: user全选 + 点批量, resume-from-cache
-      handles the rest.
+  (Partial: a single-box Windows deploy flow now exists —
+  `scripts/deploy/` (Task Scheduler XML + run_smoke.ps1 + rollback.ps1 +
+  README_DEPLOY.md) plus `scripts/start_console.ps1`. "Repeatable
+  deploy assets" packaging beyond that is open.)
 
 ## Done Recently
+
+- [x] **Analyzer plugin unbundle + honest per-(machine,mode) staleness +
+      auto-inspect + restart recovery + team process** (2026-05-17 →
+      2026-05-30; commits include `82bad7a`/`f675556` recovery
+      persistence, `1bcf43c`→`fad7f2c` auto-inspect P1–P5,
+      `fc1598b`/`3c7e0ba`/`7246a91` honesty-1/2/3,
+      `b8ad3fa`→`0045cae` unbundle Phases 2a–6):
+      - **Analyzer "unbundle"**: the ~5,600-line PIA monolith no longer
+        builds report sections inline. All 9 display features are
+        plugins under `fresh_slotlab/analyzer/features/`
+        (`payouts_by_spin_type`, `reel_marginal_by_spin_type`,
+        `bankruptcy_simulation`, `multiplier_profile`, `multiplier_wild`,
+        `machine_mechanics`, `upstream_feature_breakdown`,
+        `collect_mechanic`, `bonus_chain_dynamics`). The monolith runs a
+        topo-sorted feature emit loop; plugins register in
+        `fresh_slotlab/analyzer/feature_registry.py` (`ALL_FEATURES`),
+        and each machine's manifest
+        (`slot_designer/configs/machine_manifests/<machine>.json` →
+        `analyzer_features`) declares which it uses. Report content kept
+        **byte-identical** (code moved, numbers unchanged).
+      - **Hash / versioning model** (`fresh_slotlab/analyzer/versioning.py`):
+        `compute_base_analyzer_version()` hashes the report-production
+        import closure (`_CLOSURE_FILES`, CRLF-normalized) MINUS the
+        registered feature-plugin files; editing a plugin does not flip
+        base, editing a closure/core file does.
+        `compute_effective_version_for_machine(machine, mode)` =
+        sha256(base ⊕ declared-feature hashes ⊕ mode) — the
+        per-(machine,mode) version the console uses for report freshness.
+        Legacy `compute_analyzer_version()` (sha of PIA's own bytes) is
+        still stamped into the summary but is RETIRED from the freshness
+        decision.
+      - **Honest report-staleness signal**: the console compares the
+        per-(machine,mode) effective version (memoized via
+        `src/web_console/backend/effective_version_cache.py`). Adding or
+        changing one machine no longer invalidates the whole fleet — only
+        the affected machine(s). The verdict is **non-destructive**: a
+        mismatch marks a cell `needs_rebaseline` and NEVER deletes report
+        artifacts (re-baseline is lazy/on-demand + a rate-limited
+        background sweep). Virtual machines (no manifest) stamp the base
+        hash + `kind="virtual_base_only"`, never an empty value.
+      - **Auto-inspect ("自动巡检") fleet sweep**: scan + atomic claim +
+        worker dispatch, per-item generate with 9 failure modes + restart
+        recovery, frontend tab, cron scheduler, and an M274 RTP-drift
+        baseline/alert. See `scripts/deploy/AUTO_INSPECT_SMOKE.md`.
+      - **Restart recovery / batch persistence**: the `batches` SQLite
+        table (RunManager `_store`, added 2026-05-22) persists
+        BatchRunManager + BatchGenerateManager state across console
+        restarts; non-terminal batches are restored on startup
+        (`_restore_persisted_batches`). This SUPERSEDES the old
+        "batch object is in-memory, machine list lost on restart"
+        limitation. Orphan runs also auto-resume on startup.
+      - **Team process**: `docs/ARCH_TEAM_PROCESS.md` (`arch-*` 6-agent
+        design team, markdown only) + `docs/IMPL_TEAM_PROCESS.md`
+        (`impl-*` 4-agent implementation team) were used end-to-end for
+        the unbundle and honesty work.
+
 
 - [x] **Variants rollout (stages 1-8) + Analyzer RTP parity (iter 1-6)**
       (2026-04-22→23 round 6, branch `feat/machine-variants` 17 commits

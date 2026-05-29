@@ -16,9 +16,10 @@ Guide for engineers taking over this repository.
 ## 2. Non-Negotiable Product Constraints
 
 - Sampling endpoint is `POST /MachineTest/MultiRobotTestSpinVariant`
-  (since 2026-04-22 variants rollout). All 393 machine rows route
-  through this endpoint. Non-variant `MachineName` (e.g. `M14`) is
-  accepted verbatim per upstream spec.
+  (since 2026-04-22 variants rollout). All machine rows in
+  `configs/machines.json` route through this endpoint.
+  Non-variant `MachineName` (e.g. `M14`) is accepted verbatim per
+  upstream spec.
 - Every `machines.json` row has two name fields:
   - `machine` — display name (e.g. `M273$WheelSelector$1$1-2-3` for
     variants, `M14` for non-variants). Used for rawdata directory,
@@ -149,7 +150,22 @@ must stay safe against a direct curl that skips the UI.
 ## 9. File Ownership (Current)
 
 - `fresh_slotlab/`:
-  analyzer and metrics logic.
+  analyzer and metrics logic. `player_impact_analyzer.py` is the
+  report-production entrypoint; it no longer builds each display
+  section inline — it runs a topo-sorted feature **emit loop** over
+  plugins registered in `fresh_slotlab/analyzer/feature_registry.py`
+  (`ALL_FEATURES`). The 9 display features live as plugins under
+  `fresh_slotlab/analyzer/features/` (e.g. `payouts_by_spin_type`,
+  `reel_marginal_by_spin_type`, `bankruptcy_simulation`,
+  `multiplier_profile`, `multiplier_wild`, `machine_mechanics`,
+  `upstream_feature_breakdown`, `collect_mechanic`,
+  `bonus_chain_dynamics`); each owns its own extract/reduce/emit.
+  Analyzer core/support modules are under `fresh_slotlab/analyzer/core/`
+  + `fresh_slotlab/analyzer/` (parser, aggregator, writer, manifest
+  loader, topo-sort, versioning). Which features a machine uses is
+  declared in its manifest
+  (`slot_designer/configs/machine_manifests/<machine>.json` →
+  `analyzer_features`).
 - `src/web_console/backend/app.py`:
   `create_app()` factory, routes, safety interlock, persistence.
   **Side-effect free at module level**; a lint guard enforces this
@@ -167,6 +183,66 @@ must stay safe against a direct curl that skips the UI.
   machine configs and guideline rules.
 - `docs/`:
   operational and contract documentation.
+
+## 9a. Analyzer plugin model + version / report-freshness (honesty)
+
+The analyzer was historically a single large module that built every
+report section inline. It is now plugin-based: each display section is
+an `AnalyzerFeature` plugin (`fresh_slotlab/analyzer/features/*.py`,
+ABC in `features/_base.py`) that owns its own extract → reduce → emit;
+`player_impact_analyzer.py` runs a topo-sorted emit loop over the
+plugins a machine declares. Plugins self-register via
+`feature_registry.register()`; the machine's manifest
+(`slot_designer/configs/machine_manifests/<machine>.json` →
+`analyzer_features`) selects which apply. When you add a display
+section, write a plugin + add its `FEATURE_ID` to the relevant
+manifests — do **not** thread new logic back into the monolith.
+
+Versioning lives in `fresh_slotlab/analyzer/versioning.py`:
+
+- `compute_base_analyzer_version()` — sha256 over the report-production
+  import closure (the explicit `_CLOSURE_FILES` tuple, CRLF-normalized)
+  **minus** the registered feature-plugin files. Editing a core/closure
+  module flips the base hash; editing a single feature plugin does not.
+- `compute_effective_version_for_machine(machine, mode)` — composes
+  `base ⊕ {hash of each DECLARED feature} ⊕ mode` into the
+  per-`(machine, mode)` `effective_analyzer_version`. This is the value
+  the console uses for report freshness, so changing one machine's
+  features invalidates only that machine, not the whole fleet.
+- A drift-guard test (`tests/analyzer/test_honesty2_drift_guard.py`)
+  fails if a new repo-local content module joins the production import
+  closure but is missing from `_CLOSURE_FILES` — update the tuple when
+  the guard fires for a legitimate new module.
+- Do **not** hard-code a base/effective hash value in code or docs; the
+  pinned hashes that exist live only in `tests/` as regression guards.
+
+Report-freshness decision (honest + non-destructive):
+
+- The console compares a report's stored `effective_analyzer_version`
+  (in `player_impact_summary.json`) against the current value for that
+  `(machine, mode)`. A mismatch marks the cell `needs_rebaseline`; it
+  **never deletes** report artifacts. Re-baseline is lazy (re-analyze
+  on next open) plus a rate-limited background sweep. The legacy
+  whole-PIA `compute_analyzer_version()` is retained only behind the
+  read-only stale-count / validate endpoints, not the delete path.
+  For cache eviction, the term for non-current-md5 chunks is
+  `historical` (a tag, not a destruction signal — see
+  `memory/feedback_md5_is_a_tag_not_a_destruction_signal.md`).
+- Backend memoization: `src/web_console/backend/effective_version_cache.py`
+  (deliberately outside the closure so importing it can't flip the base
+  hash) caches the per-`(machine, mode)` version per request and
+  distinguishes "no manifest" (UNVERIFIABLE — not stale) from "closure
+  file missing" (loud error).
+- Virtual machines have no manifest, so the virtual analyzer
+  (`slot_designer/core/backend/virtual_analyzer.py`) stamps the base
+  hash + `effective_analyzer_version_kind = "virtual_base_only"` — an
+  honest "virtual: no manifest" state, never an empty/swallowed value.
+  The prod-vs-virtual contract is in `docs/PROD_VS_VIRTUAL_CONTRACT.md`.
+
+The 2026-05-29/30 unbundle that produced this model kept report output
+**byte-identical** (code moved between modules; emitted numbers
+unchanged), locked by per-feature `tests/analyzer/test_*byte_identical*`
+golden tests.
 
 ## 10. Test Layout
 
@@ -419,6 +495,14 @@ If you expand `_REQUIRED_ROUND_FIELDS`, also update
 contract change shows up in code review.
 
 ## 13b. Round-level surfaces in summary.player_impact
+
+> Sections 13b–13g document what each summary surface *contains* and
+> why. Several of these surfaces are now produced by analyzer feature
+> plugins rather than inline monolith code (see §9a); where a section
+> below says "the analyzer emits/aggregates X", the owning plugin under
+> `fresh_slotlab/analyzer/features/` is what computes it. The field
+> contents and contracts described here are unchanged by that move (the
+> unbundle was byte-identical).
 
 After investigating M14 + M272 round-level fields, the analyzer
 emits four surfaces that previous versions either missed or showed

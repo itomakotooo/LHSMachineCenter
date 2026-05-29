@@ -70,27 +70,45 @@ Stop:
 7. Optionally trigger model interpretation. Available on `completed`
    AND `cancelled` runs (LLM can comment on partial data).
 
-## 3a. Rebuild from Cache
+## 3a. Regenerate Report from Rawdata
 
 When the analyzer code changes (new surfaces, bug fixes, classification
-tweaks), you can rebuild an existing run's report from the same raw
-data without re-fetching from the upstream API:
+tweaks), you can regenerate a report from the same cached rawdata without
+re-fetching from the upstream API. This is keyed on **(machine, mode)** —
+on the cached chunks under `RAWDATA_ROOT/{machine}/mode_{mode}/`, where
+actual chunks live — not on a per-run cache directory.
 
-1. Go to "Fleet Management" tab.
-2. Find the run in the history table. The "Rebuild" button shows:
-   - **"N chunks ✓"**: cached data is compatible; click to rebuild.
-   - **"N chunks ✗ stale"**: upstream schema changed since sampling;
-     the cached data can't be parsed by the current analyzer. Delete
-     the stale cache and resample.
-   - **Disabled (greyed)**: no cached chunks exist for this run.
-3. Click "Rebuild" → the backend re-parses all cached raw API
-   responses through the current analyzer → overwrites summary +
-   report → updates RTP/CI/quality in the run history.
+1. Go to "Fleet Management" tab. The run-history banner shows an
+   "⚠ N analyzer 过期" count when reports were built with older analyzer
+   code than the current per-(machine, mode) `effective_analyzer_version`.
+2. Click "⟳ 一键重生成" (batch regen for the fixable set) — or trigger a
+   single (machine, mode) regen — which submits to
+   `POST /api/rawdata/{machine}/generate-report` (single) /
+   `POST /api/rawdata/batch-generate-report` (fleet).
+3. The backend re-parses the cached raw API responses through the current
+   analyzer → writes a **new** report version (`rv_<ts>_rawdata`) + a new
+   run row (`gen_<uuid>`). Pre-existing runs are never overwritten or
+   deleted.
 
-Raw chunks are saved automatically during every run
-(`cache/chunks/{run_id}/chunk_*.json`, ~250KB each). The cache
-can be cleaned via the "Chunk Cache" panel at the bottom of the
-Fleet Management tab.
+Staleness is **non-destructive**: a stale verdict is a read-only
+classification (the staleness badge / banner counts), never a deletion
+trigger — `POST /api/reports/cleanup` no longer deletes versions on an
+analyzer-tag mismatch, and `check_rawdata_status` never unlinks chunks.
+Re-baselining is on-demand: the operator regenerates via the buttons above
+(an auto_sweep / auto-inspect background mechanism + per-mode settings also
+exist to drive bounded re-analysis; see `/api/settings`). If a machine's
+chunks were sampled against an older server md5 (rawdata stale, not just
+analyzer stale), regeneration from the current-md5 chunks needs fresh
+sampling first — those land in `needs_rawdata_items` from
+`/api/reports/stale-count` rather than the fixable set. Historical-md5
+chunks are kept on disk (not deleted); a report can still be generated from
+a specific historical md5 by passing `config_md5`+`code_md5` to the
+generate-report endpoint.
+
+The old per-run "Rebuild" button + `POST /api/runs/{run_id}/rebuild`
+endpoint (keyed on the transient `cache/chunks/{run_id}/` directory) are
+RETIRED — that directory is no longer populated by the current sampling
+flow.
 
 ## 4. Auto Tune Notes
 
@@ -107,15 +125,31 @@ Safety:
 
 - auto tune is blocked while any run is active
 
-## 5. Cache and Retention
+## 5. Rawdata Cache and Retention
 
-- cache path: `cache/chunks/`
-- cache cleanup is manual-only from UI
-- cleanup is blocked while runs are active
-- cleanup has risk-tier confirmation:
+- rawdata (sampled chunks) lives under `RAWDATA_ROOT` (default `rawdata/`;
+  prod overrides via `SLOT_RAWDATA_ROOT`). The legacy `cache/chunks/` root
+  is kept only for back-compat reporting and is empty in the current flow.
+- chunks are classified per (machine, mode) into **kept** (current md5,
+  within retention quota), **deletable** (current md5, above quota), and
+  **historical** (md5 drifted from current machines.json). md5 is a
+  classification tag, NOT a destruction signal — historical chunks are
+  never auto-deleted.
+- cache cleanup is manual-only from UI; only deletable + historical chunks
+  are removed (oldest-mtime first). The kept baseline quota is never
+  touched by cleanup.
+- cleanup is blocked while runs are active and has risk-tier confirmation:
   - low risk: one confirmation dialog
   - medium/high risk: confirmation + token input (`DELETE`)
-- report assets are stored in `reports/` and intended for long-term retention
+- operators can **lock** a (machine, mode) pair
+  (`POST /api/rawdata/{m}/mode/{n}/lock`) to exempt its chunks from
+  disk-pressure auto-cleanup, manual cleanup, and the default
+  (non-forced) per-machine delete. `force=true` deletion is the explicit
+  escape hatch that bypasses the lock.
+- report assets are stored in `reports/` and intended for long-term
+  retention; report staleness is non-destructive — it is a read-only
+  classification signal and never deletes report artifacts (operators
+  regenerate on demand; see §3a).
 
 ## 6. Safety Interlock and Recovery
 

@@ -16,10 +16,11 @@ It contains:
   (accepts both variant keys like `M273$1$1-2-3` and plain machine names
   like `M14` — variants get rewritten to underlying+selector params
   upstream, non-variants fall through to plain test-spin)
-- machine registry from `configs/machines.json` — 393 rows = 227 non-variant
-  machines + 166 variant rows (one per entry in `machineTestVariantsJson`
-  from `/MapMachineOrder`). Each row is an independent machine — its own
-  md5, modes, rawdata directory, reports. Current default: `M14`, mode `1`.
+- machine registry from `configs/machines.json` — non-variant machines plus
+  one variant row per entry in `machineTestVariantsJson` (from
+  `/MapMachineOrder`); see the file for the live roster/count. Each row is an
+  independent machine — its own md5, modes, rawdata directory, reports.
+  Current default: `M14`, mode `1`.
 - report output under `reports/<machine>/mode_<id>/versions/<report_version>/`
 
 ## Core Capabilities
@@ -45,7 +46,12 @@ It contains:
 ## Repository Layout
 
 - `fresh_slotlab/`:
-  analyzer and sampling scripts
+  analyzer and sampling scripts. The analyzer's 9 display sections are
+  feature **plugins** under `fresh_slotlab/analyzer/features/` (each
+  owns its own compute/emit); the analyzer core runs a topo-sorted
+  feature emit loop rather than building sections inline. Per-machine
+  manifests (`slot_designer/configs/machine_manifests/<machine>.json`)
+  declare which features a machine uses.
 - `src/web_console/`:
   FastAPI backend + frontend console
 - `configs/`:
@@ -179,6 +185,12 @@ Important request flags used by the analyzer/autotune path:
 3. Aggregated metrics and report versions are long-term assets.
 4. `reports/<machine>/mode_<id>/index.json` is append-only history.
 5. `reports/<machine>/mode_<id>/latest.json` points to current latest version.
+6. Report freshness is judged per-`(machine, mode)` via an
+   `effective_analyzer_version` (analyzer core + only that machine's
+   declared feature plugins). Changing one machine's features no longer
+   marks the whole fleet stale — only the affected machine(s). The
+   verdict is **non-destructive**: a mismatch flags the report stale and it
+   is re-generated on demand — report artifacts are never deleted.
 
 ## Model Interpretation
 
@@ -194,6 +206,9 @@ Important request flags used by the analyzer/autotune path:
 - Console operations and troubleshooting: `docs/CONSOLE_OPERATIONS.md`
 - Engineering TODO: `docs/TODO.md`
 - Handover guideline for new developers: `docs/HANDOVER_GUIDELINE.md`
+- Production vs virtual console contract: `docs/PROD_VS_VIRTUAL_CONTRACT.md`
+- Architecture-team process (cross-cutting design): `docs/ARCH_TEAM_PROCESS.md`
+- Implementation-team process: `docs/IMPL_TEAM_PROCESS.md`
 
 ## Git Boundary
 

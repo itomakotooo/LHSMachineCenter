@@ -27,6 +27,22 @@ Expected top-level fields:
 - `run_id`
 - `machine`
 - `mode`
+- `config_md5` / `code_md5` -- server-side machine fingerprint at
+  sampling time (paytable / paylines / engine code on the server).
+  Drift means rawdata is from an older server version → resample.
+- `analyzer_version` -- legacy 12-hex SHA of `player_impact_analyzer.py`
+  source. Kept for back-compat; no longer the freshness comparator.
+- `effective_analyzer_version` -- per-(machine, mode) effective hash
+  (honesty-3): `sha256(base ⊕ {declared feature hashes} ⊕ mode)[:12]`.
+  This is the value the console compares for report freshness. Empty
+  string when the machine has no manifest / registry (e.g. virtual);
+  see `effective_analyzer_version_error` and (virtual only)
+  `effective_analyzer_version_kind = "virtual_base_only"`. Produced by
+  `fresh_slotlab/analyzer/versioning.py`
+  `compute_effective_version_for_machine`.
+- `effective_analyzer_version_error` -- diagnostic; `null` on success,
+  else `"<ExcType>: <msg>"` naming why the field is empty (so operators
+  don't have to grep stderr).
 - `output_all_robots_result`
 - `sampling`
 - `rtp`
@@ -37,6 +53,26 @@ Expected top-level fields:
 - `guideline_assessment`
 - `guideline_comparison`
 - `storage`
+
+### How sections are produced (post-unbundle, 2026-05-29/30)
+
+The report CONTENT is **byte-identical** to the pre-unbundle monolith
+(numbers unchanged) — the schema below is unchanged. What changed is
+*how* sections are built: the 9 display features below are now produced
+by **plugins** under `fresh_slotlab/analyzer/features/`
+(`payouts_by_spin_type`, `reel_marginal_by_spin_type`,
+`bankruptcy_simulation`, `multiplier_profile`, `multiplier_wild`,
+`machine_mechanics`, `upstream_feature_breakdown`, `collect_mechanic`,
+`bonus_chain_dynamics`), each owning its own display compute. The
+analyzer no longer builds those sections inline in `main()`; it runs a
+topo-sorted feature-emit loop. Plugins register in
+`fresh_slotlab/analyzer/feature_registry.py` (`ALL_FEATURES`); each
+machine's manifest
+(`slot_designer/configs/machine_manifests/<machine>.json` →
+`analyzer_features`) declares which features it emits — so the exact set
+of populated sections is per-machine. A section absent from a machine's
+manifest is simply not emitted (distinct from `applicable=false`, which
+a declared feature emits when it has no data for that machine).
 
 ## `sampling`
 
@@ -232,6 +268,10 @@ Symbol-level and reel/column-level frequency breakdown.
 
 ### `bankruptcy_probe`
 
+Back-compat alias for the tier list inside `bankruptcy_simulation`
+(see API_REFERENCE `summary.player_impact.bankruptcy_simulation` for the
+richer rawdata-replay shape). Legacy consumers read `bankruptcy_probe`;
+both keys are produced by the `bankruptcy_simulation` feature plugin.
 List entries by bankroll multiplier:
 
 - `bankroll_multiplier`

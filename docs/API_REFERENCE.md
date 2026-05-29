@@ -205,8 +205,13 @@ full response shape below.
 
 Pre-checks:
 - 400 if `mode` is missing or non-integer
-- 404 if no rawdata exists for (machine, mode), or if all chunks are
-  stale md5 (server upgraded since sampling → resample required)
+- 404 if no usable rawdata exists. Default (no `config_md5`/`code_md5`)
+  uses the kept+deletable (current-md5) chunks and 404s when both are
+  zero — historical-md5 chunks are NOT consumed by the default path
+  (the server md5 drifted since sampling). To generate a report from a
+  historical-md5 bucket, pass `config_md5`+`code_md5` explicitly; that
+  path combines all three tiers and filters by the given md5 (historical
+  chunks are kept on disk, never auto-deleted, and remain available).
 - 409 if system busy (operation mutex)
 
 Response:
@@ -406,24 +411,45 @@ curl usage.
 
 Fleet-wide staleness summary for the run-history banner. Walks runs
 table (status=completed), compares each row's stored fingerprints
-against the current snapshot, buckets into three kinds:
+against the current snapshot, buckets into kinds:
 
 ```json
 {
   "total_completed_runs": 2013,
   "stale_rawdata": 5,      // server md5 drifted → resample required
   "stale_analyzer": 28,    // analyzer code drifted → batch-regen fixes
-  "untagged": 7,           // pre-migration, no fingerprint stored
+  "untagged": 7,           // pre-honesty-3, no effective fingerprint stored
   "fixable_items": [{"machine": "M14", "mode": 1}, ...],
   "fixable_count": 15,     // dedup'd by (machine, mode)
+  "needs_rawdata_items": [{"machine": "M275", "mode": 7}, ...],
+  "needs_rawdata_count": 1,
   "current_analyzer_version": "269ca1cf0a26"
 }
 ```
+
+Honesty-3 (2026-05-29): the analyzer-staleness comparison uses the
+**per-(machine, mode) `effective_analyzer_version`** stored on each run
+row, compared against the current effective hash computed by
+`EffectiveVersionCache` (`src/web_console/backend/effective_version_cache.py`).
+Editing one machine's analysis flags ONLY that machine — adding/changing one
+machine no longer marks the whole fleet stale (the M31 bug). Machines with no
+manifest (virtual/unregistered) resolve to the `UNVERIFIABLE` sentinel and are
+**never** counted stale or fixable (honest). `current_analyzer_version` is the
+legacy global `compute_analyzer_version()` hash, kept for display/back-compat
+only — it no longer drives the stale/fixable decision.
 
 ``fixable_items`` is the set of (machine, mode) pairs where analyzer
 is stale AND rawdata is fresh — exactly the payload the UI's
 "⟳ 一键重生成" button submits to
 ``POST /api/rawdata/batch-generate-report``.
+
+``needs_rawdata_items`` is the honest dead-end set (R-6): analyzer stale
+AND no usable rawdata cache to re-run from — the operator must resample
+first; the batch-regen button can't fix these.
+
+Note: this is a **non-destructive read-only** summary. A stale verdict
+never deletes report artifacts — re-baselining is on-demand (operator
+regenerates via the batch-regen button / generate-report endpoint).
 
 ### `GET /api/library/distributions?mode=N`
 
@@ -471,25 +497,30 @@ Rawdata (sampled chunks) lives under `RAWDATA_ROOT` (default
 `rawdata/`; prod deploys override via `SLOT_RAWDATA_ROOT` env var).
 Chunks are partitioned per (machine, mode) by a retention-quota
 classifier into **kept** (md5 matches + within quota), **deletable**
-(md5 matches + above quota), and **stale** (md5 drifted from current
-machines.json).
+(md5 matches + above quota), and **historical** (md5 drifted from current
+machines.json). NOTE: the third bucket is `historical`, not `stale` —
+md5 drift is a classification tag, not a destruction signal, and historical
+chunks are never auto-deleted (`feedback_md5_is_a_tag_not_a_destruction_signal.md`).
 
 ### `GET /api/rawdata/{machine}`
 
 Per-mode status. Each mode entry includes:
-- `usable_chunks` / `mismatch_chunks` / `total_size_mb` (legacy shape)
-- `classified` — `{kept_chunks, deletable_chunks, stale_chunks,
-  kept_spins, deletable_spins, stale_spins, min_retention_spins}`
+- `usable_chunks` / `mismatch_chunks` / `total_size_mb` (legacy shape;
+  `mismatch_chunks` = chunks with non-current md5, i.e. historical)
+- `classified` — `{min_retention_spins, kept_chunks, deletable_chunks,
+  historical_chunks, kept_spins, deletable_spins, historical_spins}`
 - `versions` — array grouped by (config_md5, code_md5) with
-  `is_current` flag, used by the UI to show "current server version"
-  vs "outdated" chunk groups.
+  `is_current` flag (+ per-group `kept/deletable/historical` chunk/spin
+  counts), used by the UI to show "current server version" vs "outdated"
+  chunk groups.
+- `locked` — bool; whether this (machine, mode) pair is operator-locked.
 
 ### `DELETE /api/rawdata/{machine}?mode=N&force=false`
 
 Delete rawdata for a machine (all modes or specific mode).
 
 - `force=false` (default) — respects the retention quota AND the
-  operator lock registry: only deletable + stale chunks on unlocked
+  operator lock registry: only deletable + historical chunks on unlocked
   (machine, mode) pairs are removed. Locked pairs are counted as
   kept and surface via `skipped_locked_modes`.
 - `force=true` — nuclear. UI gates this behind a "DELETE" token
@@ -508,8 +539,14 @@ pair. Registry lives at `configs/rawdata_locks.json` (atomic writes).
 Locked pairs are skipped by:
 - `_auto_cleanup_for_space` (disk-pressure auto-cleanup loop)
 - `POST /api/cache/cleanup` (manual 一键清理)
-- `check_rawdata_status(auto_delete_mismatched=True)` md5-drift
-  auto-delete (ecc7c92 regression fix — previously ignored lock)
+- `DELETE /api/rawdata/{m}?force=false` (the default non-forced delete)
+
+Note: the historical `check_rawdata_status(auto_delete_mismatched=True)`
+md5-drift auto-delete path was REMOVED on 2026-04-21
+(`feedback_md5_is_a_tag_not_a_destruction_signal.md`). `check_rawdata_status`
+is now read-only and never unlinks chunks — md5 drift only classifies chunks
+as `stale`/`historical`, it does not destroy them. There is therefore no
+md5-drift auto-delete for the lock to guard against anymore.
 
 Operator surfaces:
 - `GET /api/rawdata/{m}` response now carries `locked: bool` per
@@ -517,7 +554,8 @@ Operator surfaces:
 - Lock/unlock endpoints are idempotent — POST on an already-locked
   pair is a no-op 200; DELETE on an unlocked pair is a no-op 200.
 
-Response: `{ok: true, machine, mode, locked: <bool>}`
+Response: `{ok: true, machine, mode, locked: <bool>, changed: <bool>}`
+(`changed` is false when the call was a no-op idempotent re-lock/re-unlock).
 
 Related disk-pressure env vars (set in the uvicorn shell):
 - `SLOT_DISK_LOW_WATER_GB=5` — below this free space, batch sampling
@@ -607,19 +645,22 @@ the `💾 rawdata` topbar banner + the `[明细]` drill-down table.
   "total_bytes": 9636025962,
   "baseline_bytes": 5980012345,
   "deletable_bytes": 3600000000,
-  "stale_bytes": 56013617,
+  "historical_bytes": 56013617,
   "reclaimable_bytes": 3656013617,
   "per_machine": [
     {
       "machine": "M273",
-      "kept_bytes": 180000000, "deletable_bytes": 20000000, "stale_bytes": 0,
-      "kept_chunks": 21, "deletable_chunks": 30, "stale_chunks": 0,
+      "kept_bytes": 180000000, "deletable_bytes": 20000000, "historical_bytes": 0,
+      "kept_chunks": 21, "deletable_chunks": 30, "historical_chunks": 0,
       "last_sample_mtime": 1745000000.0
     },
     ...
   ]
 }
 ```
+
+(`reclaimable_bytes` = `deletable_bytes + historical_bytes`. `baseline_bytes`
+is the kept quota. No `stale_*` keys — the third tier is `historical`.)
 
 Cached with mtime_ns fingerprint across all mode_dirs — warm
 reads <1ms, cold walk ~5s on 9k chunks across 1006 modes.
@@ -641,7 +682,8 @@ include analyzer fields alongside md5).
       "md5_status": "match",
       "analyzer_status": "match",
       "report_config_md5": "070d2f9...", "report_code_md5": "ecd...",
-      "report_analyzer_version": "badf2e2c3d4e"
+      "report_analyzer_version": "badf2e2c3d4e",
+      "report_effective_version": "<12-hex>"
     },
     ...
   ]
@@ -650,28 +692,45 @@ include analyzer fields alongside md5).
 
 md5_status / analyzer_status values: `"match" | "outdated" | "untagged"`.
 
+Honesty-3 (2026-05-29): `analyzer_status` is now decided by the per-mode
+`effective_analyzer_version` (from the summary) vs the current per-(machine,
+mode) effective hash (`EffectiveVersionCache`), NOT the legacy global
+analyzer_version. Each report row carries `report_effective_version` so the
+rwtree badge can compare directly against
+`current.effective_versions[machine|mode]` from `/api/versions/current`.
+Machines with no manifest are "unverifiable" → `analyzer_status="untagged"`
+(never "outdated"). `current_analyzer_version` / `report_analyzer_version` are
+kept for display/back-compat only.
+
 ### `POST /api/reports/cleanup`
 
-Aggressive cleanup (rewritten 2026-04-19 round 2). Partitions each
-(machine, mode)'s versions into match / stale / untagged based on
-summary.analyzer_version. Keeps newest match (or newest untagged
-as baseline) per mode, deletes every tagged-stale version + their
-runs DB rows. Second pass sweeps any remaining DB runs with
-stale analyzer_version tag.
+Duplicate-version pruning only (rewritten honesty-1, 2026-05-29). A
+version/staleness tag is a CLASSIFICATION signal, NOT a destruction
+trigger (`feedback_md5_is_a_tag_not_a_destruction_signal.md`). For each
+(machine, mode) it keeps the newest version overall as the survivor and
+prunes ONLY older versions whose analyzer tag is **byte-identical** to the
+survivor's — i.e. superseded exact-duplicates (operator freeing disk). A
+version is **NEVER** deleted because its analyzer tag mismatches the current
+analyzer (or the survivor's). The current analyzer version is intentionally
+not consulted for any delete decision here. This decoupling is what stops the
+honesty-3 cutover (every machine marked stale exactly once) from wiping the
+fleet's reports.
 
 Response:
 
 ```json
 {
   "ok": true,
-  "deleted": 1005,     // disk dirs removed
-  "kept": 1,           // survivors across fleet
-  "runs_deleted": 23   // DB rows dropped
+  "deleted": 12,       // older exact-tag duplicate dirs removed
+  "kept": 393,         // per-mode survivors (newest version each)
+  "runs_deleted": 12   // DB rows for pruned duplicates
 }
 ```
 
-Driving behavior: the "⚠ N analyzer 过期" banner zeros after
-click (stale_count reads DB which now matches disk).
+Note: the "⚠ N analyzer 过期" banner is no longer zeroed by clicking this
+(deletion is decoupled from staleness). Stale reports are resolved by
+on-demand regeneration (the honest read-only signal + operator regen),
+not by deletion (honesty-1/honesty-3).
 
 ### `GET /api/events`
 
@@ -820,9 +879,10 @@ for perf (exact classification only runs inside cleanup).
 
 ### `POST /api/cache/cleanup`
 
-Tier-based cleanup over `RAWDATA_ROOT`. Deletes stale + deletable
-chunks oldest-mtime first, across all (machine, mode) pairs. Baseline
-kept quota is never touched (operator must use
+Tier-based cleanup over `RAWDATA_ROOT`. Deletes deletable + historical
+chunks oldest-mtime first, across all (machine, mode) pairs (md5 is a tag,
+not a priority signal — cleanup runs oldest-first regardless of md5).
+Baseline kept quota is never touched (operator must use
 `DELETE /api/rawdata/{m}?force=true` per machine for that).
 
 **Locked + in-use (m, mode) pairs are skipped** — the response
@@ -878,11 +938,25 @@ Snapshot of current fingerprints for the Run History staleness badges:
   "analyzer_version": "<12-char hex>",
   "machines": {
     "M14": { "config_md5": "...", "code_md5": "..." }
+  },
+  "effective_versions": {
+    "M14|1": "<12-hex>",
+    "M273|1": "UNVERIFIABLE"
   }
 }
 ```
 
-`analyzer_version` = SHA256[:12] of `player_impact_analyzer.py` source.
+`effective_versions` (honesty-3) is the per-`<machine>|<mode>` effective
+analyzer hash and is the **actual comparator** the frontend staleness badge
+(`versionBadges`) uses. It is populated for the bounded set of (machine, mode)
+pairs that have completed runs (not all 393 × all modes). Machines with no
+manifest (virtual/unregistered) map to the `UNVERIFIABLE` sentinel — the
+frontend treats those as "untagged", never stale. Computed via a per-request
+`EffectiveVersionCache` so base_hash is hashed once per call.
+
+`analyzer_version` = SHA256[:12] of `player_impact_analyzer.py` source
+(legacy global hash). Kept for backward-compat (older cached frontends); it is
+**no longer the comparator** for staleness decisions (honesty-3 cutover).
 Per-machine md5 comes from `configs/machines.json`.
 
 ## Interpretation
@@ -947,8 +1021,8 @@ Response: raw `_machineConfigMd5` JToken from `cfg.json`.
 **Current integration**: config MD5 + code MD5 are stored per-chunk
 in envelopes (`_config_md5`, `_code_md5`) and per-report in summary
 files (`config_md5`, `code_md5`). The classifier compares envelope
-md5 vs current machines.json to partition chunks into kept / stale
-tiers, and the Run History UI shows a staleness badge when the
+md5 vs current machines.json to partition chunks into kept / deletable /
+historical tiers, and the Run History UI shows a staleness badge when the
 report's stored md5 differs from the current server snapshot.
 
 ### `POST /MachineTest/RTPTest`

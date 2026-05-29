@@ -182,13 +182,15 @@ M1 没有 features，这个字段留空数组。
 
 可选。覆盖默认 round schema。默认 emitter 输出现有 rawdata 观察到的通用字段集（`WinCredits / CostCredits / BetAmount / StopSymbolsByCol / PayoutByPayline / PayoutIdToWinAmount / SpinType / ReMarks / RewardLastNode / PayoutGroupId / PayLineGroupId / CurJackpotStoreWin / IsLackCreditsSpin / SpinTimes / RTPId / LastCredits / ReelSkin`）。
 
-M1 spec 不需要 override。复杂机台（带 collect）可能需要：
+`emit_fields` 是顶层 block，里面唯一的 key 是 `extra_round_fields`（symbol→state-path 映射）。所有现役 spec 都声明 `emit_fields`，base 机台（M1 / M15 / M31）填空对象 `{"extra_round_fields": {}}`；带 state 的复杂机台（M37 / M43 / M279）填实际映射：
 
 ```jsonc
 {
-  "extra_round_fields": {
-    "CollectCount": "state.collect_count",
-    "AccCredits":   "state.acc_credits"
+  "emit_fields": {
+    "extra_round_fields": {
+      "CollectCount": "state.collect_count",
+      "AccCredits":   "state.acc_credits"
+    }
   }
 }
 ```

@@ -806,12 +806,16 @@ machines/<M>/MODE_DESIGN.md  这台机的 per-mode 设计  机台私有
 
 每次 onboarding 完成后在此追加一行：
 
+表只记**已完成全流程**的 onboarding。进行中（mode-1-first 未 ship 完）的机台见 `machines_virtual.json` 各 entry 的 `_status` 字段 + `session_artifacts/<M>/`。
+
 | 机台 | 完成日期 | merge commit | 备注 |
 |---|---|---|---|
 | M1 | pre-Phase-A | — | base only，refactor 时迁入新布局 |
 | M37 | pre-Phase-A | — | base only |
 | M279 | pre-Phase-A | — | custom engine adapter |
-| M15 | 2026-05-11 | `275675c` (feature commit) + merge SHA below | **首次跑完整流程** — 6-agent × 11-stage × 3 D waves × 2 X reviews → v8 weights GREEN on 25 verify categories；session_artifacts/M15/process_improvements.md 累 45 条改进，§1.1 / §1.2 / §2.1 已 backport；详细 audit trail 见 session_artifacts/M15/ |
+| M15 | 2026-05-11 | `275675c` (feature commit) | **首次跑完整流程** — 6-agent × 11-stage × 3 D waves × 2 X reviews → v8 weights GREEN on 25 verify categories；session_artifacts/M15/process_improvements.md 累 45 条改进，§1.1 / §1.2 / §2.1 已 backport；详细 audit trail 见 session_artifacts/M15/ |
+
+> **进行中（截至 2026-05-30，尚未追加到上表）**：M31（multiplier-wild free-spin，FeaturePlugin）、M43（lucky-ducky respin mini-game，FeaturePlugin）均走 universal mode-1-first onboarding（§5.M），当前 mode 1 仍在 Stage 6 调音 / RTP tuning，未 ship-ready。完成后再各追加一行。
 
 ### §11.1 First-run lessons (M15 2026-05-11) backported
 
