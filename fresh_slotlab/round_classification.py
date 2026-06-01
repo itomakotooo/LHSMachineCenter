@@ -375,6 +375,64 @@ def detect_cycle_peak(
     return peak
 
 
+def compute_robot_cycle_peaks(rounds: list[Any]) -> list[int]:
+    """Return the list of CC values at each cycle reset observed in *rounds*.
+
+    **This is the single source of truth for per-robot cycle-peak lists.**
+    Both the inline parser.py accumulation and ``BCMBaseAccumulator.on_robot_end``
+    call this function.  Any change to cycle-peak semantics must be made here.
+
+    Reproduces EXACTLY the inline ``robot_cycle_peaks`` logic in
+    ``parse_chunk_response``:
+
+    * Only PAID rounds (CostCredits > 0) with ``cc_int > 0`` are considered.
+    * ``prev`` initialised to ``0`` (same as ``robot_prev_cc_for_cycle = 0``).
+    * Reset condition: ``cc_int < prev AND prev > 10``.
+      - ANY drop (not ``< prev - 1``), floor is ``prev > 10`` (NOT ``>= 5``).
+    * Appends ``prev`` at each qualifying reset.
+
+    **Why this differs from detect_cycle_peak:**
+    ``detect_cycle_peak`` is an INFERENCE function — it finds the cycle length
+    from observed resets using a tighter condition (``cc < prev - 1 and
+    prev >= 5``) and a mode-averaging approach.  It is robust against jitter
+    and partial cycles.  ``compute_robot_cycle_peaks`` is a COUNTING function —
+    it records every reset event so that ``len(result)`` equals the number of
+    completed cycles in this robot's rounds.  The liberal ANY-drop condition
+    matches the inline code's conservative intent: never miss a real reset.
+    The higher floor (> 10 vs >= 5) avoids counting transient noise on the
+    first few paid rounds of a fresh robot.
+
+    BCM machines in practice have cycle peaks in the hundreds to thousands,
+    so both conditions agree on real pilots.  The synthetic inject-bug B
+    test in ``test_bcm_base.py`` proves the two functions DISAGREE on small
+    cycles (peaks in [5,10]) and single-step drops.
+    """
+    peaks: list[int] = []
+    prev: int = 0
+    for r in rounds:
+        if not isinstance(r, dict):
+            continue
+        # BCM machines always have CostCredits populated.  is_paid_round
+        # uses the same CostCredits > 0 predicate as the inline for the
+        # paid-round gate.  For cost_credits_unreliable machines (M10 etc.)
+        # the inline sets is_paid=True unconditionally, but those machines
+        # have no CollectCount → cc_int == 0 → skipped below regardless.
+        if not is_paid_round(r):
+            continue
+        cc_raw = r.get("CollectCount")
+        try:
+            cc_int = int(cc_raw or 0)
+        except (TypeError, ValueError):
+            cc_int = 0
+        if cc_int <= 0:
+            continue
+        # Match the inline condition exactly.
+        if cc_int < prev and prev > 10:
+            peaks.append(prev)
+        prev = cc_int
+    return peaks
+
+
 def at_cycle_peak_indices(rounds: list[Any], cycle_peak: int) -> list[int]:
     """Indices of paid rounds where ``CollectCount == cycle_peak``.
 

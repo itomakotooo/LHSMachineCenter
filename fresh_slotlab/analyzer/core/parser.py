@@ -70,6 +70,7 @@ except ImportError:  # running as a standalone script (fresh_slotlab/ on sys.pat
 try:
     from fresh_slotlab.trigger_sessions import compute_trigger_sessions
     from fresh_slotlab.round_classification import (
+        compute_robot_cycle_peaks,
         detect_cycle_peak,
         is_wild_nudge_round,
         attribute_lines_to_pay_ids,
@@ -82,6 +83,7 @@ try:
 except ImportError:  # running as a standalone script
     from trigger_sessions import compute_trigger_sessions  # type: ignore[no-redef]
     from round_classification import (  # type: ignore[no-redef]
+        compute_robot_cycle_peaks,
         detect_cycle_peak,
         is_wild_nudge_round,
         attribute_lines_to_pay_ids,
@@ -106,6 +108,20 @@ except ImportError:  # running as a standalone script
     from analyzer.play_types._detector import detect_play_types  # type: ignore[no-redef]
     from analyzer.play_types._machine_config import MachinePlayTypeConfig as _PlayTypeMachineConfig  # type: ignore[no-redef]
     from analyzer.play_type_registry import get_all_plugins  # type: ignore[no-redef]
+
+# Commit C2: import concrete play-type plugin modules so their
+# module-level ``register(MyPlugin())`` calls execute at import time.
+# Each plugin self-registers in ALL_PLAY_TYPE_PLUGINS via ``_register()``.
+# This import list grows as new plugins are added in later commits.
+# Import order does NOT affect behaviour (registry deduplicates by FEATURE_ID
+# and detect_play_types sorts by MECHANIC_DEPS topo-sort, not registration order).
+try:
+    import fresh_slotlab.analyzer.play_types.bcm_base as _  # noqa: F401
+except ImportError:
+    try:
+        import analyzer.play_types.bcm_base as _  # type: ignore[no-redef]  # noqa: F401
+    except ImportError:
+        pass  # plugin not installed; registry stays empty for this plugin
 
 
 # Payline format ``"1:..2:.."`` — number followed by colon. Used by
@@ -740,6 +756,19 @@ def parse_chunk_response(
                 for fid in _pt_config.active_plugins
                 if fid in _registry_by_fid
             ]
+
+    # Commit C2 carve flag: BCMBasePlugin is active for this machine.
+    # When True, the per-robot inline cycle-peak accumulation into
+    # chunk_cycle_peaks and chunk_collect_seen is SKIPPED (gated below)
+    # and BCMBaseAccumulator.to_chunk_partial() provides "cycle_peaks" and
+    # "collect_robots_seen" instead.  Flag is False when:
+    #   (a) use_play_type_plugins is False, OR
+    #   (b) registry is empty (no plugins active), OR
+    #   (c) "bcm_base" is not in the active plugin list (non-BCM machine).
+    # This ensures the flag-OFF / non-BCM-machine path is UNCHANGED.
+    _bcm_base_active: bool = use_play_type_plugins and any(
+        p.FEATURE_ID == "bcm_base" for p in _active_plugins
+    )
 
     # --- Extra-field discovery: track fields beyond _BASELINE_ROUND_FIELDS.
     extra_fields_seen: dict[str, int] = defaultdict(int)
@@ -1458,13 +1487,17 @@ def parse_chunk_response(
         robot_paid_spin_idx = 0
         robot_last_collect_paid_idx = 0
         robot_prev_collect_count = 0
-        # BuffCollectionMap cycle detection: track CC resets to find the
-        # cycle length (e.g., M272 mode 1 = 1000 paid spins). The cycle
-        # length varies per machine/mode and is NOT hardcoded. We detect
-        # it by observing when CC drops from a high value back to a low
-        # value (reset). The peak CC before each reset = cycle length.
-        robot_cycle_peaks: list[int] = []  # CC value just before each reset
-        robot_prev_cc_for_cycle = 0  # previous CC (for reset detection)
+        # BuffCollectionMap cycle detection: computed in ONE place via
+        # compute_robot_cycle_peaks(rounds) called after the per-round loop.
+        # robot_cycle_peaks is assigned there; declared here so later
+        # references (chunk_completed_cycles, chunk_cycle_peaks) are in scope
+        # even if the robot has zero rounds.
+        robot_cycle_peaks: list[int] = []  # assigned post-loop via helper
+        # robot_prev_cc_for_cycle is kept ONLY for the chain-flag clear
+        # predicate below (``if is_paid and cc_int == 0 and ...``).
+        # It is NOT used for cycle-peak detection any more; that logic
+        # lives in compute_robot_cycle_peaks (round_classification.py).
+        robot_prev_cc_for_cycle = 0  # only used for chain-flag clear check
         # 2026-04-28 chain-timing fix (Bug 4): pre-compute cycle peak
         # from this robot's full round list using observed-reset
         # detection. The OLD logic set _bonus_chain_last_cc_reset on
@@ -1897,11 +1930,10 @@ def parse_chunk_response(
                     and cc_int == robot_cycle_peak
                 ):
                     _bonus_chain_last_cc_reset = True
-                # Cycle-peak count tracking (used by clamp_warning +
-                # completed_cycles_total). Detected at cc-drop -- the
-                # round AFTER cycle completion sees prev_cc at peak.
-                if cc_int < robot_prev_cc_for_cycle and robot_prev_cc_for_cycle > 10:
-                    robot_cycle_peaks.append(robot_prev_cc_for_cycle)
+                # robot_cycle_peaks is built post-loop via
+                # compute_robot_cycle_peaks(rounds) — see below.
+                # robot_prev_cc_for_cycle is still updated here so the
+                # chain-flag clear predicate at line ~1940 has its value.
                 robot_prev_cc_for_cycle = cc_int
                 robot_final_cc = cc_int
             # On a paid round without a reset, clear any stale BCM
@@ -2386,7 +2418,14 @@ def parse_chunk_response(
         if robot_max_acc_credits > chunk_acc_credits_max:
             chunk_acc_credits_max = robot_max_acc_credits
         if robot_collect_observed:
-            chunk_collect_seen += 1
+            # Commit C2 carve: when BCMBasePlugin is active, "collect_robots_seen"
+            # is provided by BCMBaseAccumulator.to_chunk_partial() instead of the
+            # inline chunk_collect_seen tally.  Gate chunk_collect_seen here so
+            # we don't double-produce the value when the plugin is active.
+            # The clamp-pending signals (pending_paid_spins, pending_robots) are
+            # NOT provided by the plugin and remain inline regardless.
+            if not _bcm_base_active:
+                chunk_collect_seen += 1
             pending = robot_paid_spin_idx - robot_last_collect_paid_idx
             if pending > 0:
                 chunk_clamp_pending_paid_spins += pending
@@ -2396,8 +2435,25 @@ def parse_chunk_response(
         # dynamically (not hardcoded); final_cc tells us how far into
         # the current incomplete cycle this robot was when the chunk
         # ended.
-        if robot_cycle_peaks:
-            chunk_cycle_peaks.extend(robot_cycle_peaks)
+        #
+        # Compute cycle peaks via the shared helper (single source of truth).
+        # BCMBaseAccumulator.on_robot_end also calls this helper — the two
+        # paths are identical by construction.  Previously the inline had its
+        # own incremental walk (cc < prev and prev > 10) which has now been
+        # extracted here.
+        robot_cycle_peaks = compute_robot_cycle_peaks(rounds)
+        #
+        # Commit C2 carve: when BCMBasePlugin is active (_bcm_base_active),
+        # the inline accumulation of cycle peaks into chunk_cycle_peaks is
+        # SKIPPED.  BCMBaseAccumulator.to_chunk_partial() provides "cycle_peaks"
+        # instead.  The type-aware merge in wiring point 5 extends the list
+        # across robots; **_chunk_plugin_partial spreads it into the return dict,
+        # overwriting the empty "cycle_peaks" list from the inline path.
+        # robot_final_cc and chunk_completed_cycles are NOT provided by the
+        # plugin — they remain inline regardless.
+        if not _bcm_base_active:
+            if robot_cycle_peaks:
+                chunk_cycle_peaks.extend(robot_cycle_peaks)
         if robot_final_cc > 0:
             chunk_final_cc_values.append(robot_final_cc)
         # Detect NewFreespin chains: chains that started at exactly
