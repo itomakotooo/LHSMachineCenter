@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -676,6 +677,13 @@ def parse_chunk_response(
     #
     # The _active_plugins list drives all subsequent wiring points.
     _active_plugins: list = []
+    # FIX _pt_cfg_empty (critique_commitC1 finding #3): keep a reference to
+    # the real MachinePlayTypeConfig produced by detect_play_types so that
+    # the per-robot accumulator instantiation (wiring point 2) can pass the
+    # real config to make_accumulator() instead of the empty stub.  Stays
+    # None when flag is off or registry is empty — the per-robot block gates
+    # on `_active_plugins` being non-empty before using this value.
+    _pt_config_for_accs: "_PlayTypeMachineConfig | None" = None
     if use_play_type_plugins:
         _registry_plugins = get_all_plugins()
         if _registry_plugins:
@@ -694,25 +702,44 @@ def parse_chunk_response(
             )
             if _first_robot_for_probe is not None:
                 _probe_sample = parse_rounds(_first_robot_for_probe)[:5000]
-            # detect_play_types returns a MachinePlayTypeConfig; extract
-            # active plugin instances in topo-sorted order.
+            # FIX 5 (critique_commitB finding #3): Run PreParseProbes BEFORE
+            # detect_play_types so the probe result (e.g.
+            # cost_credits_unreliable=True) is available to
+            # ClaimSignature.matches() during detection.  This resolves the
+            # bootstrapping inversion flagged in critique_commitB §3: the old
+            # order (detect → probe) meant M10-family detection ran with the
+            # stale cost_credits_unreliable=False from the pre-scan, not the
+            # probe-updated value.
+            # We run probes for ALL registered plugins so that any plugin whose
+            # probe affects detection fires first (plugins that don't implement
+            # get_probe() return None and are skipped cheaply).
+            for _pt_plugin_pre in _registry_plugins:
+                _pre_probe = _pt_plugin_pre.get_probe()
+                if _pre_probe is not None:
+                    _pre_probe.run(_probe_sample, _chunk_parse_state)
+            # Sync probe results back to the local variable so the U1 body
+            # (which reads `cost_credits_unreliable`) picks up any override.
+            cost_credits_unreliable = _chunk_parse_state.cost_credits_unreliable
+            # detect_play_types returns a MachinePlayTypeConfig with
+            # active_plugins as a FEATURE_ID list in MECHANIC_DEPS topo order.
             _pt_config = detect_play_types(
                 _probe_sample, _registry_plugins, _chunk_parse_state,
             )
-            # Resolve active plugin instances from the registry.
-            _active_plugin_fids = set(_pt_config.active_plugins)
+            # Thread the real config into the robot loop (FIX _pt_cfg_empty,
+            # critique_commitC1 finding #3).  C2's BCMBaseAccumulator reads
+            # machine_config.mode / machine_config.plugin_configs; the empty
+            # stub (machine_id="", mode=0) would silently use wrong defaults.
+            _pt_config_for_accs = _pt_config
+            # FIX 2 (critique_commitB finding #1): Rebuild _active_plugins from
+            # _pt_config.active_plugins (the FID list in topo order), NOT by
+            # filtering _registry_plugins (registration order).  Mapping via a
+            # lookup dict preserves the topo-sort order from detect_play_types.
+            _registry_by_fid: dict = {p.FEATURE_ID: p for p in _registry_plugins}
             _active_plugins = [
-                p for p in _registry_plugins
-                if p.FEATURE_ID in _active_plugin_fids
+                _registry_by_fid[fid]
+                for fid in _pt_config.active_plugins
+                if fid in _registry_by_fid
             ]
-            # Run PreParseProbes for each active plugin (§4.5 lifecycle).
-            for _pt_plugin in _active_plugins:
-                _probe = _pt_plugin.get_probe()
-                if _probe is not None:
-                    _probe.run(_probe_sample, _chunk_parse_state)
-            # Sync probe results back to the local variable so U1 body
-            # (which reads `cost_credits_unreliable`) picks up any override.
-            cost_credits_unreliable = _chunk_parse_state.cost_credits_unreliable
 
     # --- Extra-field discovery: track fields beyond _BASELINE_ROUND_FIELDS.
     extra_fields_seen: dict[str, int] = defaultdict(int)
@@ -1204,6 +1231,12 @@ def parse_chunk_response(
     # Always initialized (even flag-off) so the final return reference is safe.
     # When flag is OFF or registry is empty: stays {} → no keys added to dict.
     _chunk_plugin_partial: dict = {}
+    # FIX 6 (critique_commitB finding #2 / EC-4): accumulator exception
+    # diagnostics collected across all robots and all wiring points (3+4+5).
+    # Per memory/feedback_no_silent_swallow.md: written into _chunk_plugin_partial
+    # so the chunk dict carries the structured signal (not only stderr).
+    # Key: "_plugin_partial_attribution_errors".  List of dicts, one per fault.
+    _chunk_plugin_attribution_errors: list = []
 
     for robot in resp:
         if not isinstance(robot, dict):
@@ -1219,10 +1252,18 @@ def parse_chunk_response(
         _all_round_ctxs: list = []   # populated in wiring point 3; consumed in point 4
         _all_rounds_for_accs: list = []  # parallel list of round dicts for on_robot_end
         if use_play_type_plugins and _active_plugins:
-            _pt_cfg_empty = _PlayTypeMachineConfig(machine_id="", mode=0)
+            # FIX _pt_cfg_empty (critique_commitC1 finding #3): pass the REAL
+            # MachinePlayTypeConfig from detect_play_types (set above as
+            # _pt_config_for_accs) to make_accumulator().  The old empty stub
+            # (_PlayTypeMachineConfig(machine_id="", mode=0)) caused C2's
+            # BCMBaseAccumulator to silently read wrong machine_id/mode/
+            # plugin_configs.  _pt_config_for_accs is guaranteed non-None here
+            # because _active_plugins non-empty ↔ detect_play_types ran and
+            # set _pt_config_for_accs above.
+            _pt_cfg_real = _pt_config_for_accs  # real config, never None here
             for _pt_plugin in _active_plugins:
                 _robot_accs[_pt_plugin.FEATURE_ID] = _pt_plugin.make_accumulator(
-                    _pt_cfg_empty
+                    _pt_cfg_real
                 )
 
         # Trigger session win attribution (iteration 1 — Type 1 families
@@ -2113,18 +2154,26 @@ def parse_chunk_response(
             # per the MechanicAccumulator contract.  Gated on flag + accs.
             # _all_round_ctxs is populated here; consumed by wiring point 4.
             if use_play_type_plugins and _robot_accs:
-                # Build frozen RoundCtx from already-computed U1 values.
-                # Re-use the local variables set earlier in this iteration;
-                # do NOT recompute them (recompute risks float-order drift).
-                _win_credits_raw = r.get("WinCredits")
-                try:
-                    _win_credits_int = int(_win_credits_raw) if _win_credits_raw is not None else 0
-                except (TypeError, ValueError):
-                    _win_credits_int = 0
-                _auth_pids_raw = r.get("PayoutIdToWinAmount")
-                _auth_pay_ids = frozenset(
-                    str(k) for k in (_auth_pids_raw.keys() if isinstance(_auth_pids_raw, dict) else ())
-                )
+                # Build frozen RoundCtx from already-computed U1+rule-processed
+                # values.  Re-use the local variables set earlier in this
+                # iteration; do NOT recompute them (recompute risks float-order
+                # drift).
+                #
+                # FIX 4 (critique_commitB findings #4 + #5):
+                #   win_credits → use rule-processed `win_amt` (not raw
+                #     r.get("WinCredits")), so settlement-suppressed rounds
+                #     (SettlementWinAmountRule → win_amt=0) and synth rounds
+                #     show the correct value to accumulators.
+                #   authoritative_pay_ids → use rule-processed `pid_to_win`
+                #     keys (not raw PayoutIdToWinAmount keys), so
+                #     SynthesizePayIdRule machines expose synthesized pay_ids
+                #     and SettlementWinAmountRule machines correctly expose {}.
+                # Both `win_amt` and `pid_to_win` are already computed above
+                # this block (by extract_round_win and extract_round_payouts
+                # respectively) and are available as local variables in this
+                # loop iteration.  (Stale line-number citations removed —
+                # critique_commitC1 finding #10.)
+                _auth_pay_ids = frozenset(str(k) for k in pid_to_win.keys())
                 _remarks_raw = r.get("ReMarks")
                 if isinstance(_remarks_raw, list):
                     _remarks_str = ";".join(str(x) for x in _remarks_raw)
@@ -2134,7 +2183,7 @@ def parse_chunk_response(
                     _remarks_str = ""
                 _round_ctx = RoundCtx(
                     is_paid=is_paid,
-                    win_credits=_win_credits_int,
+                    win_credits=win_amt,
                     authoritative_pay_ids=_auth_pay_ids,
                     round_idx=_round_idx_in_robot,
                     spin_type=sp_type,
@@ -2144,8 +2193,8 @@ def parse_chunk_response(
                 _all_round_ctxs.append(_round_ctx)
                 _all_rounds_for_accs.append(r)
                 # Dispatch on_round in MECHANIC_DEPS topo-sort order.
-                # `_active_plugins` is already topo-sorted (detect_play_types
-                # returns them via _topo_sort_plugins).
+                # `_active_plugins` is already topo-sorted (FIX 2: rebuilt from
+                # _pt_config.active_plugins FID list, not _registry_plugins).
                 # peers = accumulators earlier in topo-sort for this round.
                 _fired_fids: list = []
                 for _acc_plugin in _active_plugins:
@@ -2158,15 +2207,23 @@ def parse_chunk_response(
                         _acc.on_round(r, _round_ctx, _peers)
                     except Exception as _acc_exc:  # noqa: BLE001
                         # Per EC-4: log and continue; accumulator state is
-                        # invalid — its to_chunk_partial() returns {} below.
-                        # Per memory/feedback_no_silent_swallow.md: persist
-                        # diagnostic (written to return dict at finalize).
-                        import sys as _sys
+                        # invalid — disable this acc for this robot.
+                        # FIX 6 (critique_commitB finding #2): persist
+                        # diagnostic to chunk dict (not only stderr) per
+                        # memory/feedback_no_silent_swallow.md.
+                        _err_record = {
+                            "phase": "on_round",
+                            "fid": _fid,
+                            "round_idx": _round_idx_in_robot,
+                            "exc_type": type(_acc_exc).__name__,
+                            "exc_repr": repr(_acc_exc),
+                        }
+                        _chunk_plugin_attribution_errors.append(_err_record)
                         print(
                             f"[play_type_plugins] on_round error fid={_fid!r} "
                             f"round_idx={_round_idx_in_robot} "
                             f"exc={_acc_exc!r}",
-                            file=_sys.stderr,
+                            file=sys.stderr,
                         )
                         _robot_accs.pop(_fid, None)  # disable this acc
                     else:
@@ -2253,11 +2310,19 @@ def parse_chunk_response(
                 try:
                     _acc.on_robot_end(_all_rounds_for_accs, _all_round_ctxs)
                 except Exception as _acc_exc:  # noqa: BLE001
-                    import sys as _sys
+                    # FIX 6 (EC-4 / feedback_no_silent_swallow): persist to
+                    # chunk dict, not only stderr.
+                    _err_record = {
+                        "phase": "on_robot_end",
+                        "fid": _fid,
+                        "exc_type": type(_acc_exc).__name__,
+                        "exc_repr": repr(_acc_exc),
+                    }
+                    _chunk_plugin_attribution_errors.append(_err_record)
                     print(
                         f"[play_type_plugins] on_robot_end error fid={_fid!r} "
                         f"exc={_acc_exc!r}",
-                        file=_sys.stderr,
+                        file=sys.stderr,
                     )
                     _robot_accs.pop(_fid, None)  # disable this acc
                     continue
@@ -2267,13 +2332,53 @@ def parse_chunk_response(
                 # values — MechanicAccumulator contract; enforced by tests.
                 try:
                     _robot_partial = _acc.to_chunk_partial()
-                    _chunk_plugin_partial.update(_robot_partial)
+                    # FIX 3 (critique_commitB finding #6): type-aware merge
+                    # instead of dict.update() which would overwrite list-valued
+                    # keys (e.g. all_cycle_peaks) with the LAST robot's value.
+                    # Rule: list values → extend; int/numeric values → +=;
+                    # all other types → overwrite (last-robot wins, same as
+                    # dict.update, which is correct for scalar non-numeric keys
+                    # like strings that represent state rather than tallies).
+                    for _mk, _mv in _robot_partial.items():
+                        if _mk not in _chunk_plugin_partial:
+                            # First robot: initialise the slot with a COPY.
+                            # FIX dict-aliasing (critique_commitC1 finding #4):
+                            # dict-valued keys must be copied, not stored by
+                            # reference — the accumulator may retain + mutate the
+                            # same dict object after to_chunk_partial() returns,
+                            # corrupting _chunk_plugin_partial via the alias.
+                            if isinstance(_mv, list):
+                                _chunk_plugin_partial[_mk] = list(_mv)
+                            elif isinstance(_mv, dict):
+                                _chunk_plugin_partial[_mk] = dict(_mv)
+                            else:
+                                _chunk_plugin_partial[_mk] = _mv
+                        elif isinstance(_mv, list):
+                            # Accumulate list-valued keys across robots (e.g.
+                            # all_cycle_peaks).  Mirrors inline extend() at
+                            # line 2295 (`chunk_cycle_peaks.extend(...)`).
+                            _chunk_plugin_partial[_mk].extend(_mv)
+                        elif isinstance(_mv, (int, float)):
+                            # Accumulate numeric tallies (e.g.
+                            # collect_robots_seen_total).
+                            _chunk_plugin_partial[_mk] += _mv
+                        else:
+                            # Scalars that represent configuration / state
+                            # (not running totals): last-robot wins.
+                            _chunk_plugin_partial[_mk] = _mv
                 except Exception as _acc_exc:  # noqa: BLE001
-                    import sys as _sys
+                    # FIX 6 (EC-4 / feedback_no_silent_swallow): persist.
+                    _err_record = {
+                        "phase": "to_chunk_partial",
+                        "fid": _fid,
+                        "exc_type": type(_acc_exc).__name__,
+                        "exc_repr": repr(_acc_exc),
+                    }
+                    _chunk_plugin_attribution_errors.append(_err_record)
                     print(
                         f"[play_type_plugins] to_chunk_partial error fid={_fid!r} "
                         f"exc={_acc_exc!r}",
-                        file=_sys.stderr,
+                        file=sys.stderr,
                     )
 
         # Roll the per-robot collect totals into the chunk-level tally.
@@ -2301,6 +2406,27 @@ def parse_chunk_response(
         # their wins contribute to the NewFreespin expected payout.
         # For correction, we just need the cycle peaks + final CCs.
         chunk_completed_cycles += len(robot_cycle_peaks)
+
+    # FIX 6 (EC-4 / feedback_no_silent_swallow): if any accumulator faulted,
+    # write the structured diagnostics into _chunk_plugin_partial so they appear
+    # in the chunk dict (not only stderr).  The key is only written when non-
+    # empty so the empty-registry no-op path adds zero keys.
+    # FIX collision guard (critique_commitC1 finding Q5 / finding #4 minor):
+    # if a plugin's to_chunk_partial() emitted a key named
+    # "_plugin_partial_attribution_errors" (unlikely but possible name collision),
+    # the type-aware merge above extended it as a list (correct).  Overwriting
+    # that merged list with our runtime-exception list would silently discard the
+    # plugin's own attribution-error records.  Instead, EXTEND the existing list
+    # if it already exists, so both sources survive.
+    if _chunk_plugin_attribution_errors:
+        _existing = _chunk_plugin_partial.get("_plugin_partial_attribution_errors")
+        if isinstance(_existing, list):
+            # Plugin already wrote records via to_chunk_partial(); append ours.
+            _existing.extend(_chunk_plugin_attribution_errors)
+        else:
+            _chunk_plugin_partial["_plugin_partial_attribution_errors"] = list(
+                _chunk_plugin_attribution_errors
+            )
 
     if chunk_spins <= 0 or chunk_bet <= 0:
         return {"ok": False, "index": chunk_index, "error": "parse_failed_zero_chunk"}

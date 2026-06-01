@@ -94,10 +94,16 @@ class RoundCtx(NamedTuple):
         True when CostCredits > 0, OR when
         parse_state.cost_credits_unreliable=True (M10 family where CostCredits
         is always 0 but BetAmount > 0).  Set by the universal U1 body.
-    win_credits : int
-        WinCredits for this round.
+    win_credits : float
+        Rule-processed win amount for this round (from extract_round_win, NOT
+        raw WinCredits).  For settlement-suppressed rounds (SettlementWinAmountRule)
+        this is 0.0 even when raw WinCredits is non-zero.  For SynthesizePayIdRule
+        machines, this reflects the synthesized win.
     authoritative_pay_ids : frozenset[str]
-        Pay IDs present in PayoutIdToWinAmount for this round.
+        Rule-processed pay IDs for this round (keys from extract_round_payouts,
+        NOT raw PayoutIdToWinAmount.keys()).  For SynthesizePayIdRule machines,
+        these are synthesized pay_ids.  For SettlementWinAmountRule machines
+        this is frozenset() (empty — suppressed at round level).
     round_idx : int
         Zero-based index of this round within the robot's round list.
     spin_type : int
@@ -107,7 +113,7 @@ class RoundCtx(NamedTuple):
     """
 
     is_paid: bool
-    win_credits: int
+    win_credits: float  # rule-processed win amount (from extract_round_win, not raw WinCredits)
     authoritative_pay_ids: frozenset
     round_idx: int
     spin_type: int

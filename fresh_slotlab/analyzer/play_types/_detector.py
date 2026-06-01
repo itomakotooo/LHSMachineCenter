@@ -126,9 +126,10 @@ def detect_play_types(
         )
 
     # ------------------------------------------------------------------
-    # Step 1: Evaluate ClaimSignature.matches() for each plugin.
-    # Rule 1 (structural exclusion) is already embedded in matches() —
-    # exclude_if_fields_present causes matches() to return False.
+    # Step 1: Evaluate ClaimSignature.matches() for each plugin against
+    # the full sample (machine-level match).  Rule 1 (structural exclusion
+    # via exclude_if_fields_present) is embedded in matches() — a plugin
+    # that fails exclusion returns False here.
     # ------------------------------------------------------------------
     matching_plugins: list = []
     for plugin in registered_plugins:
@@ -148,18 +149,120 @@ def detect_play_types(
         )
 
     # ------------------------------------------------------------------
-    # Step 2: Determine the set of SpinTypes observed in the sample.
+    # Step 2: Bucket sample rounds by SpinType.
+    # Each bucket is the population of rounds for one SpinType value.
     # ------------------------------------------------------------------
-    observed_spin_types: set = set()
+    from collections import defaultdict as _defaultdict
+    _rounds_by_st: dict = _defaultdict(list)
     for r in sample_rounds:
         st = r.get("SpinType")
         if st is not None:
-            observed_spin_types.add(str(st))
+            _rounds_by_st[str(st)].append(r)
+
+    observed_spin_types: set = set(_rounds_by_st.keys())
 
     # ------------------------------------------------------------------
-    # Step 3: Build st_map — assign each SpinType to one primary plugin,
-    # applying Rule 2 (dep-subordination) and Rule 3 (most-specific) after
-    # Rule 1 is already handled by matches().
+    # Step 3: Per-ST ownership — FIX 1 (critique_commitA PREREQ-1).
+    #
+    # The original code made EVERY machine-matching plugin a claimant for
+    # EVERY observed ST.  On multi-play-type machines (e.g. M272:
+    # ST=140 paid with CollectCount / ST=126 bonus with "Freespin" remark)
+    # this made both BCMBase (paid field signal) and BCMFreespin (bonus
+    # remark signal) claim ST=140 AND ST=126 simultaneously, so the
+    # precedence resolver picked one winner for ALL STs instead of routing
+    # each ST to the plugin whose signal actually fires there.
+    #
+    # Fix: for each matching plugin, determine which STs it "owns" by re-
+    # evaluating its ClaimSignature signals against each ST's per-ST round
+    # population instead of the full sample.  Only if a plugin's signal
+    # fires within an ST's rounds is that plugin a claimant for that ST.
+    # This produces per-ST claimant lists and routes each ST independently.
+    #
+    # Signal ownership rules (per §4.2-rev):
+    #   required_fields (paid signal)       → claims STs whose rounds carry
+    #     those fields.  _bonus_-prefixed fields target bonus rounds.
+    #   required_bonus_remark_pattern       → claims STs whose rounds match
+    #     the remark pattern on bonus rounds.
+    #   required_trigger_pay_id             → claims STs whose paid rounds
+    #     carry the pay_id in PayoutIdToWinAmount.
+    #   No specific signal (empty sig)      → claims ALL observed STs
+    #     (universal plugins like PurePaid match by absence of signals).
+    #
+    # After per-ST claimants are determined, the same three-rule precedence
+    # (§4.6) is applied independently per ST over the ACTUAL claimants for
+    # that ST, not over all matching plugins.
+    # ------------------------------------------------------------------
+    _cost_credits_unreliable: bool = getattr(
+        parse_state, "cost_credits_unreliable", False
+    )
+
+    def _is_paid(r: dict) -> bool:
+        if _cost_credits_unreliable:
+            return True
+        return (r.get("CostCredits") or 0) > 0
+
+    def _plugin_signals_fire_in_st_rounds(
+        plugin: object, st_rounds: list
+    ) -> bool:
+        """Return True if any of plugin's ClaimSignature signals fire within
+        st_rounds (the round population for a specific SpinType).
+
+        An EMPTY signature (no required_fields, no remark pattern, no pay_id)
+        always fires — it is a universal/fallback plugin.
+
+        This is distinct from ClaimSignature.matches(), which runs on the
+        FULL sample and handles exclude_if_fields_present (Rule 1).
+        exclude_if_fields_present is a machine-level veto already resolved
+        in Step 1; we only check signal fire per ST here.
+        """
+        import re as _re
+        sig = getattr(plugin, "CLAIM_SIGNATURE", None)
+        if sig is None:
+            return False
+
+        required_fields = getattr(sig, "required_fields", frozenset())
+        remark_pattern = getattr(sig, "required_bonus_remark_pattern", None)
+        trigger_pay_id = getattr(sig, "required_trigger_pay_id", None)
+
+        # Empty signature = universal plugin; claims every ST.
+        has_any_signal = bool(required_fields) or (remark_pattern is not None) or (trigger_pay_id is not None)
+        if not has_any_signal:
+            return True
+
+        paid_rounds = [r for r in st_rounds if _is_paid(r)]
+        bonus_rounds = [r for r in st_rounds if not _is_paid(r)]
+
+        # Check required_fields against the appropriate round population.
+        for fname in required_fields:
+            if fname.startswith("_bonus_"):
+                actual_fname = fname[len("_bonus_"):]
+                target = bonus_rounds
+            else:
+                actual_fname = fname
+                target = paid_rounds
+            if any(actual_fname in r for r in target):
+                return True
+
+        # Check remark pattern against bonus rounds.
+        if remark_pattern is not None:
+            flags = _re.IGNORECASE if getattr(sig, "bonus_remark_case_insensitive", False) else 0
+            pattern = _re.compile(remark_pattern, flags)
+            for r in bonus_rounds:
+                remarks = r.get("ReMarks") or ""
+                if pattern.search(remarks):
+                    return True
+
+        # Check trigger pay_id against paid rounds.
+        if trigger_pay_id is not None:
+            for r in paid_rounds:
+                payout_map = r.get("PayoutIdToWinAmount") or {}
+                if trigger_pay_id in payout_map:
+                    return True
+
+        return False
+
+    # ------------------------------------------------------------------
+    # Step 3b: Build per-ST claimant lists and assign winners.
     # ------------------------------------------------------------------
     st_map: dict = {}
     onboarding_alerts: list = []
@@ -169,9 +272,15 @@ def detect_play_types(
     plugin_by_fid: dict = {p.FEATURE_ID: p for p in matching_plugins}
 
     for st in sorted(observed_spin_types):
-        claimants: list = list(matching_plugins)  # all matching plugins are candidates
+        st_rounds = _rounds_by_st[st]
+        # Per-ST claimants: only plugins whose signal fires in this ST's rounds.
+        claimants: list = [
+            p for p in matching_plugins
+            if _plugin_signals_fire_in_st_rounds(p, st_rounds)
+        ]
 
         if not claimants:
+            # No plugin claims this ST — leave unowned (inline logic handles it).
             continue
 
         if len(claimants) == 1:
@@ -180,7 +289,7 @@ def detect_play_types(
             active_plugin_ids.add(winner.FEATURE_ID)
             continue
 
-        # Multiple claimants — apply Rule 2 and Rule 3.
+        # Multiple per-ST claimants — apply Rule 2 and Rule 3.
         winner = _resolve_claimants(claimants, plugin_by_fid, st, onboarding_alerts)
         if winner is not None:
             st_map[st] = winner.FEATURE_ID

@@ -1332,6 +1332,14 @@ def main() -> int:
     # Wave 2c block below); we use a defaultdict so any FEATURE_ID is safe.
     _feature_accs: dict[str, dict] = {}
 
+    # EC-4 consumer (critique_commitC1 finding #2): collect
+    # _plugin_partial_attribution_errors from every chunk across the whole run.
+    # Per memory/feedback_no_silent_swallow.md: the key is written per chunk by
+    # parse_chunk_response when an accumulator faults; we surface the aggregate
+    # into summary["play_type_plugin_warnings"] + a stderr log so operators see
+    # the signal rather than having it sit silently in the chunk dict.
+    _play_type_plugin_errors_total: list = []
+
     # ── Cache read phase ─────────────────────────────────────────────
     # Two modes share the reader, differ only in what happens after:
     # - `--from-cache <dir>`: read-only. Run the pipeline offline on
@@ -1908,6 +1916,16 @@ def main() -> int:
                 total_dollar_pick_spins += int(rec.get("dollar_pick_spins", 0) or 0)
                 total_dollar_pick_total_dollars += int(rec.get("dollar_pick_total_dollars", 0) or 0)
                 total_dollar_pick_win += float(rec.get("dollar_pick_win", 0) or 0)
+                # EC-4 consumer (critique_commitC1 finding #2): collect
+                # _plugin_partial_attribution_errors from each chunk dict.
+                # parse_chunk_response writes this key only when non-empty;
+                # tolerate absence (old cached chunks or no-fault chunks).
+                _chunk_plugin_errs = rec.get("_plugin_partial_attribution_errors")
+                if isinstance(_chunk_plugin_errs, list) and _chunk_plugin_errs:
+                    for _cpe in _chunk_plugin_errs:
+                        _play_type_plugin_errors_total.append(
+                            dict(_cpe, chunk_index=rec.get("index", "?"))
+                        )
                 # Phase C1: wire extract() per chunk (from-cache path).
                 # ALL_FEATURES is not imported yet at this point; we defer
                 # to a lazy import pattern so we can call extract() here without
@@ -2703,6 +2721,15 @@ def main() -> int:
                 total_dollar_pick_spins += int(rec.get("dollar_pick_spins", 0) or 0)
                 total_dollar_pick_total_dollars += int(rec.get("dollar_pick_total_dollars", 0) or 0)
                 total_dollar_pick_win += float(rec.get("dollar_pick_win", 0) or 0)
+                # EC-4 consumer (critique_commitC1 finding #2): collect
+                # _plugin_partial_attribution_errors from each chunk dict.
+                # Mirrors the from-cache path consumer above.
+                _ol_chunk_plugin_errs = rec.get("_plugin_partial_attribution_errors")
+                if isinstance(_ol_chunk_plugin_errs, list) and _ol_chunk_plugin_errs:
+                    for _ol_cpe in _ol_chunk_plugin_errs:
+                        _play_type_plugin_errors_total.append(
+                            dict(_ol_cpe, chunk_index=rec.get("index", "?"))
+                        )
                 # Phase C1: wire extract() per chunk (online/live-sampling path).
                 # Mirrors the from-cache path wiring above. Same lazy-import pattern.
                 try:
@@ -4880,6 +4907,27 @@ def main() -> int:
             file=sys.stderr,
         )
     # ── End Phase 5 partial ─────────────────────────────────────────────────
+
+    # EC-4 surface (critique_commitC1 finding #2): if any play-type plugin
+    # accumulator faulted across any chunk during this run, write the
+    # aggregated diagnostics into the summary and emit a stderr warning so
+    # the operator sees the signal.  The summary key is only written when
+    # non-empty (empty-registry / no-fault runs add zero keys — byte-identical
+    # invariant preserved for the 9-pilot golden baseline).
+    # Per memory/feedback_no_silent_swallow.md: both a durable (summary JSON)
+    # and an immediate (stderr) signal are required.
+    if _play_type_plugin_errors_total:
+        summary["play_type_plugin_warnings"] = {
+            "total_faults": len(_play_type_plugin_errors_total),
+            "records": _play_type_plugin_errors_total,
+        }
+        print(
+            f"[play_type_plugins] WARNING: {len(_play_type_plugin_errors_total)} "
+            f"accumulator fault(s) across {chunks} chunk(s) for "
+            f"{args.machine} mode {args.rtp_mode}. "
+            f"See summary['play_type_plugin_warnings'] for details.",
+            file=sys.stderr,
+        )
 
     out_json = write_summary_json(summary, args.output_dir)  # P2-B3
 
