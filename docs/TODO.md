@@ -92,7 +92,7 @@ This file tracks executable next steps for the current phase.
       persistence, `1bcf43c`→`fad7f2c` auto-inspect P1–P5,
       `fc1598b`/`3c7e0ba`/`7246a91` honesty-1/2/3,
       `b8ad3fa`→`0045cae` unbundle Phases 2a–6):
-      - **Analyzer "unbundle"**: the ~5,600-line PIA monolith no longer
+      - **Analyzer "unbundle"**: the PIA monolith no longer
         builds report sections inline. All 9 display features are
         plugins under `fresh_slotlab/analyzer/features/`
         (`payouts_by_spin_type`, `reel_marginal_by_spin_type`,
@@ -118,9 +118,12 @@ This file tracks executable next steps for the current phase.
         decision.
       - **Honest report-staleness signal**: the console compares the
         per-(machine,mode) effective version (memoized via
-        `src/web_console/backend/effective_version_cache.py`). Adding or
-        changing one machine no longer invalidates the whole fleet — only
-        the affected machine(s). The verdict is **non-destructive**: a
+        `src/web_console/backend/effective_version_cache.py`). Adding a
+        machine invalidates zero existing machines; changing a machine's
+        declared features invalidates only that machine. Editing shared
+        analyzer logic (closure/core/rule-engines) still invalidates every
+        machine that declares an affected feature — by design, a shared-logic
+        change really does affect them all. The verdict is **non-destructive**: a
         mismatch marks a cell `needs_rebaseline` and NEVER deletes report
         artifacts (re-baseline is lazy/on-demand + a rate-limited
         background sweep). Virtual machines (no manifest) stamp the base

@@ -41,7 +41,7 @@ Stop:
 2. Set target CI half-width (default `0.5`; mode 2/5 locks to fuzzy).
 3. (Optional) Click `Auto Tune Parallelism` to probe per-machine
    optimal robot / concurrency. Not required -- `Chunk Robot Count`
-   and `Batch Concurrency` ship with preset defaults (robot=24,
+   and `Batch Concurrency` ship with preset defaults (robot=20,
    conc=2) validated against M272 mode 1.
 4. (Optional) Tweak advanced params in the collapsed section:
    `chunk_spin_times` / `max_chunks` / `timeout`.

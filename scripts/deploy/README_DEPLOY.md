@@ -13,9 +13,9 @@ Run these checks on the machine that will host the server **before** starting th
 $PSVersionTable.PSVersion.Major
 # Expected: 5 or higher
 
-# 1b. Python on PATH — must be 3.9+.
+# 1b. Python on PATH — must be 3.10+ (the codebase uses PEP 604 union types like `int | None`).
 python --version
-# Expected: Python 3.9.x or higher
+# Expected: Python 3.10.x or higher
 
 # 1c. pip available.
 python -m pip --version

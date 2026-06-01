@@ -431,9 +431,12 @@ Honesty-3 (2026-05-29): the analyzer-staleness comparison uses the
 **per-(machine, mode) `effective_analyzer_version`** stored on each run
 row, compared against the current effective hash computed by
 `EffectiveVersionCache` (`src/web_console/backend/effective_version_cache.py`).
-Editing one machine's analysis flags ONLY that machine — adding/changing one
-machine no longer marks the whole fleet stale (the M31 bug). Machines with no
-manifest (virtual/unregistered) resolve to the `UNVERIFIABLE` sentinel and are
+Adding a machine flags zero existing machines; changing a machine's declared
+features (its manifest) flags only that machine. Editing shared analyzer logic
+(the closure/core/rule-engines) still re-flags every machine that declares an
+affected feature — by design, since a shared-logic change genuinely affects them
+all. Machines with no manifest (virtual/unregistered) resolve to the
+`UNVERIFIABLE` sentinel and are
 **never** counted stale or fixable (honest). `current_analyzer_version` is the
 legacy global `compute_analyzer_version()` hash, kept for display/back-compat
 only — it no longer drives the stale/fixable decision.

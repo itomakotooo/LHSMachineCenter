@@ -119,7 +119,7 @@ Report 出来后可以点 **生成解读** 按钮触发 LLM 解释(支持 gemini
 |---|---|---|
 | `target_halfwidth_pp` | 0.5pp | 想跑快一点出粗略结果调到 1.0 / 2.0;想跑细到 0.2(但会慢很多) |
 | `chunk_spin_times` | 5000 | 一般不动 |
-| `chunk_robot_count` | 24 | 一般不动;吞吐压力大时调小 |
+| `chunk_robot_count` | 20 | 一般不动;吞吐压力大时调小 |
 | `batch_concurrency` | 2 | 一般不动 |
 | `max_chunks` | 120 | 跑得久但不收敛时手动调大 |
 

@@ -124,22 +124,20 @@ Console operators build a run payload through these gated steps:
    when mode ∈ {2, 5} is paired with a non-zero half-width, so the
    constraint is enforced server-side even on direct API calls.
 3. (Optional) Click "Auto Tune Parallelism" to probe the current upstream
-   load and get a machine-specific recommendation. The compact candidate
-   grid `[8,16,24]` × `[1,2,4]` (3x3) balances coverage vs wall time; a
-   per-robot early-exit skips higher conc once a lower one saturates.
-   chunk_robot_count and batch_concurrency are **editable inputs** with
-   preset defaults (robot=8, conc=8) — picked 2026-04-24 against
-   direct-connect upstream with M14 mode 1 benchmarks (4,411 outer
-   spin/s at 8×8 = 64 concurrent requests, well under the robot×conc
-   >= 128 upstream ceiling). The operator can Start immediately or
-   refine via Auto Tune. Changing machine or mode resets both inputs
-   back to the preset so the screen always carries sensible defaults.
-   NOTE: throughput heavily depends on upstream path. The 4,411 outer/s
-   number is the fresh-upstream peak; per-source rate-limiting caps
-   steady-state throughput at ~1,100 outer/s after a few hundred
-   requests. Production sampling plans that assume sustained 4k/s
-   will be wrong — budget 50-60 min per 3M-spin machine/mode in the
-   limited state, not 12 min.
+   load and get a machine-specific recommendation. The probe grid is
+   sized to the endpoint kind (`_AUTO_GRIDS` in `app.py`): a larger grid
+   for LAN/RFC1918 endpoints, a conservative grid for WAN. Loopback
+   endpoints skip probing entirely and materialize a baked-in tuning
+   (`_LOOPBACK_HARDCODED_TUNING`). chunk_robot_count and batch_concurrency
+   are **editable inputs** with hardcoded preset defaults (robot=20,
+   conc=2); the operator can Start immediately or refine via Auto Tune.
+   Changing machine or mode resets both inputs back to the preset so the
+   screen always carries sensible defaults; persisted Auto Tune results
+   for the current machine/mode override the preset.
+   NOTE: throughput heavily depends on the upstream path. A fresh upstream
+   sustains a much higher peak than the steady state once per-source
+   rate-limiting kicks in, so production sampling plans that assume the
+   peak rate will under-budget wall time in the rate-limited state.
 4. Optionally tweak advanced params (chunk_spin_times / max_chunks /
    timeout) in the collapsed "Advanced parameters" section.
 5. Pick bankroll multiplier preset. Only "Standard (100x / 200x /
