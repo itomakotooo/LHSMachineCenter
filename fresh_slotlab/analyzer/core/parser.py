@@ -91,6 +91,21 @@ except ImportError:  # running as a standalone script
         extract_round_win,
     )
 
+# Commit B: play-type plugin framework imports (§9-rev Phase 1 #14).
+# All gated behind `use_play_type_plugins` at runtime; importing the
+# framework here is always safe (no side effects on import per
+# memory/feedback_subprocess_import_suicide_and_module_globals.md).
+try:
+    from fresh_slotlab.analyzer.play_types._base import RoundCtx, MechanicAccumulator
+    from fresh_slotlab.analyzer.play_types._detector import detect_play_types
+    from fresh_slotlab.analyzer.play_types._machine_config import MachinePlayTypeConfig as _PlayTypeMachineConfig
+    from fresh_slotlab.analyzer.play_type_registry import get_all_plugins
+except ImportError:  # running as a standalone script
+    from analyzer.play_types._base import RoundCtx, MechanicAccumulator  # type: ignore[no-redef]
+    from analyzer.play_types._detector import detect_play_types  # type: ignore[no-redef]
+    from analyzer.play_types._machine_config import MachinePlayTypeConfig as _PlayTypeMachineConfig  # type: ignore[no-redef]
+    from analyzer.play_type_registry import get_all_plugins  # type: ignore[no-redef]
+
 
 # Payline format ``"1:..2:.."`` — number followed by colon. Used by
 # parse_paylines to enumerate the payline indices a winning spin lit.
@@ -490,6 +505,7 @@ def parse_chunk_response(
     bankruptcy_session_spins: int = _DEFAULT_BANKRUPTCY_SESSION_SPINS,
     bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
     round_win_rules: list[RoundWinRule] | None = None,
+    use_play_type_plugins: bool = False,
 ) -> dict[str, Any]:
     """Parse a raw API response (list of robot dicts) into chunk metrics.
 
@@ -646,6 +662,57 @@ def parse_chunk_response(
                 if isinstance(rd, dict)
             )
             cost_credits_unreliable = _all_zero_cost and _any_positive_bet
+
+    # --- Commit B wiring point 1 of 5: PreParseProbe dispatch (§9-rev Phase 1 #14).
+    # Runs ONCE per chunk, BEFORE the per-robot loop.
+    # Gated on flag + non-empty registry — zero overhead when flag is OFF
+    # or registry is empty.  The existing `cost_credits_unreliable` local
+    # variable is the pre-existing equivalent; the probe writes to a
+    # simple namespace so the U1 body (which reads the local) is unchanged.
+    # When a concrete CostCreditsReliabilityProbe arrives in a later commit,
+    # it may set chunk_parse_state.cost_credits_unreliable=True and the U1
+    # body will be wired to read from chunk_parse_state instead of the local.
+    # For now (empty registry) the namespace is created but never mutated.
+    #
+    # The _active_plugins list drives all subsequent wiring points.
+    _active_plugins: list = []
+    if use_play_type_plugins:
+        _registry_plugins = get_all_plugins()
+        if _registry_plugins:
+            # Build a minimal parse-state namespace for probe consumption.
+            # Using types.SimpleNamespace avoids a new import; the probe
+            # contract only requires an object with .cost_credits_unreliable.
+            import types as _types
+            _chunk_parse_state = _types.SimpleNamespace(
+                cost_credits_unreliable=cost_credits_unreliable,
+            )
+            # Gather a sample of up to 5000 rounds from the first robot
+            # (§4.2-rev sample contract).
+            _probe_sample: list = []
+            _first_robot_for_probe = next(
+                (r for r in resp if isinstance(r, dict)), None
+            )
+            if _first_robot_for_probe is not None:
+                _probe_sample = parse_rounds(_first_robot_for_probe)[:5000]
+            # detect_play_types returns a MachinePlayTypeConfig; extract
+            # active plugin instances in topo-sorted order.
+            _pt_config = detect_play_types(
+                _probe_sample, _registry_plugins, _chunk_parse_state,
+            )
+            # Resolve active plugin instances from the registry.
+            _active_plugin_fids = set(_pt_config.active_plugins)
+            _active_plugins = [
+                p for p in _registry_plugins
+                if p.FEATURE_ID in _active_plugin_fids
+            ]
+            # Run PreParseProbes for each active plugin (§4.5 lifecycle).
+            for _pt_plugin in _active_plugins:
+                _probe = _pt_plugin.get_probe()
+                if _probe is not None:
+                    _probe.run(_probe_sample, _chunk_parse_state)
+            # Sync probe results back to the local variable so U1 body
+            # (which reads `cost_credits_unreliable`) picks up any override.
+            cost_credits_unreliable = _chunk_parse_state.cost_credits_unreliable
 
     # --- Extra-field discovery: track fields beyond _BASELINE_ROUND_FIELDS.
     extra_fields_seen: dict[str, int] = defaultdict(int)
@@ -1132,10 +1199,31 @@ def parse_chunk_response(
         sess_state["bonus_win_from_helper"] = 0.0
         sess_state["is_trigger_session"] = False
 
+    # Commit B wiring point 5 init: accumulates to_chunk_partial() results
+    # across robots. Merged into the final return dict after the robot loop.
+    # Always initialized (even flag-off) so the final return reference is safe.
+    # When flag is OFF or registry is empty: stays {} → no keys added to dict.
+    _chunk_plugin_partial: dict = {}
+
     for robot in resp:
         if not isinstance(robot, dict):
             continue
         rounds = parse_rounds(robot)
+
+        # --- Commit B wiring point 2 of 5: per-robot accumulator instantiation
+        # (§9-rev Phase 1 #14, §4.1-rev Step P).
+        # Instantiate a fresh MechanicAccumulator per active plugin per robot.
+        # Gated on flag + non-empty _active_plugins.  Empty list → no accs,
+        # no per-round dispatch, no overhead.  round_dict is READ ONLY in accs.
+        _robot_accs: dict = {}
+        _all_round_ctxs: list = []   # populated in wiring point 3; consumed in point 4
+        _all_rounds_for_accs: list = []  # parallel list of round dicts for on_robot_end
+        if use_play_type_plugins and _active_plugins:
+            _pt_cfg_empty = _PlayTypeMachineConfig(machine_id="", mode=0)
+            for _pt_plugin in _active_plugins:
+                _robot_accs[_pt_plugin.FEATURE_ID] = _pt_plugin.make_accumulator(
+                    _pt_cfg_empty
+                )
 
         # Trigger session win attribution (iteration 1 — Type 1 families
         # with ReMarks.startswith("Trigger"): TopDollar / QuickDollar /
@@ -2018,6 +2106,72 @@ def parse_chunk_response(
                         if col_decoded >= 0 and 0 <= row_decoded <= 2:
                             payline_rows_per_col[col_decoded].add(row_decoded)
 
+            # --- Commit B wiring point 3 of 5: per-round plugin accumulator
+            # dispatch (§9-rev Phase 1 #14, §4.1-rev Step P).
+            # Fires AFTER all U1 (universal field reads) and U2 (session
+            # accumulators) work for this round.  round_dict (r) is READ ONLY
+            # per the MechanicAccumulator contract.  Gated on flag + accs.
+            # _all_round_ctxs is populated here; consumed by wiring point 4.
+            if use_play_type_plugins and _robot_accs:
+                # Build frozen RoundCtx from already-computed U1 values.
+                # Re-use the local variables set earlier in this iteration;
+                # do NOT recompute them (recompute risks float-order drift).
+                _win_credits_raw = r.get("WinCredits")
+                try:
+                    _win_credits_int = int(_win_credits_raw) if _win_credits_raw is not None else 0
+                except (TypeError, ValueError):
+                    _win_credits_int = 0
+                _auth_pids_raw = r.get("PayoutIdToWinAmount")
+                _auth_pay_ids = frozenset(
+                    str(k) for k in (_auth_pids_raw.keys() if isinstance(_auth_pids_raw, dict) else ())
+                )
+                _remarks_raw = r.get("ReMarks")
+                if isinstance(_remarks_raw, list):
+                    _remarks_str = ";".join(str(x) for x in _remarks_raw)
+                elif isinstance(_remarks_raw, str):
+                    _remarks_str = _remarks_raw
+                else:
+                    _remarks_str = ""
+                _round_ctx = RoundCtx(
+                    is_paid=is_paid,
+                    win_credits=_win_credits_int,
+                    authoritative_pay_ids=_auth_pay_ids,
+                    round_idx=_round_idx_in_robot,
+                    spin_type=sp_type,
+                    remarks=_remarks_str,
+                )
+                # Collect for on_robot_end (wiring point 4).
+                _all_round_ctxs.append(_round_ctx)
+                _all_rounds_for_accs.append(r)
+                # Dispatch on_round in MECHANIC_DEPS topo-sort order.
+                # `_active_plugins` is already topo-sorted (detect_play_types
+                # returns them via _topo_sort_plugins).
+                # peers = accumulators earlier in topo-sort for this round.
+                _fired_fids: list = []
+                for _acc_plugin in _active_plugins:
+                    _fid = _acc_plugin.FEATURE_ID
+                    _acc = _robot_accs.get(_fid)
+                    if _acc is None:
+                        continue
+                    _peers = {f: _robot_accs[f] for f in _fired_fids if f in _robot_accs}
+                    try:
+                        _acc.on_round(r, _round_ctx, _peers)
+                    except Exception as _acc_exc:  # noqa: BLE001
+                        # Per EC-4: log and continue; accumulator state is
+                        # invalid — its to_chunk_partial() returns {} below.
+                        # Per memory/feedback_no_silent_swallow.md: persist
+                        # diagnostic (written to return dict at finalize).
+                        import sys as _sys
+                        print(
+                            f"[play_type_plugins] on_round error fid={_fid!r} "
+                            f"round_idx={_round_idx_in_robot} "
+                            f"exc={_acc_exc!r}",
+                            file=_sys.stderr,
+                        )
+                        _robot_accs.pop(_fid, None)  # disable this acc
+                    else:
+                        _fired_fids.append(_fid)
+
             # Track previous round's PayIds for chain trigger
             # classification. MUST be the last thing inside the round
             # loop so every paid spin updates it before the next
@@ -2081,6 +2235,46 @@ def parse_chunk_response(
             if sess_state["cur_win_streak"] > session_max_win_streak:
                 session_max_win_streak = sess_state["cur_win_streak"]
             sess_state["cur_win_streak"] = 0
+
+        # --- Commit B wiring points 4+5 of 5: on_robot_end + to_chunk_partial
+        # (§9-rev Phase 1 #14, §4.1-rev).
+        # Wiring point 4: on_robot_end called once per robot after all rounds.
+        # Wiring point 5: to_chunk_partial() called per robot; results merged
+        #   into _chunk_plugin_partial (initialized before the robot loop).
+        # Gated on flag + non-empty accs (same guard as point 3).
+        # With empty registry: _robot_accs={} → both blocks skip entirely.
+        if use_play_type_plugins and _robot_accs:
+            for _pt_plugin in _active_plugins:
+                _fid = _pt_plugin.FEATURE_ID
+                _acc = _robot_accs.get(_fid)
+                if _acc is None:
+                    continue
+                # Wiring point 4: on_robot_end.
+                try:
+                    _acc.on_robot_end(_all_rounds_for_accs, _all_round_ctxs)
+                except Exception as _acc_exc:  # noqa: BLE001
+                    import sys as _sys
+                    print(
+                        f"[play_type_plugins] on_robot_end error fid={_fid!r} "
+                        f"exc={_acc_exc!r}",
+                        file=_sys.stderr,
+                    )
+                    _robot_accs.pop(_fid, None)  # disable this acc
+                    continue
+                # Wiring point 5 (per-robot contribution): to_chunk_partial.
+                # Merge in topo-sort order (active_plugins is topo-sorted).
+                # Per EC-1: empty-robot accs must return same keys with zero
+                # values — MechanicAccumulator contract; enforced by tests.
+                try:
+                    _robot_partial = _acc.to_chunk_partial()
+                    _chunk_plugin_partial.update(_robot_partial)
+                except Exception as _acc_exc:  # noqa: BLE001
+                    import sys as _sys
+                    print(
+                        f"[play_type_plugins] to_chunk_partial error fid={_fid!r} "
+                        f"exc={_acc_exc!r}",
+                        file=_sys.stderr,
+                    )
 
         # Roll the per-robot collect totals into the chunk-level tally.
         chunk_collect_count_total += robot_max_collect_count
@@ -2402,4 +2596,13 @@ def parse_chunk_response(
             for pid_s, col_set in payout_id_col_set.items()
         },
         "payout_id_has_regular_line": dict(payout_id_has_regular_line),
+        # --- Commit B wiring point 5 of 5: plugin chunk partial merge.
+        # _chunk_plugin_partial accumulates to_chunk_partial() results from
+        # all robots in MECHANIC_DEPS topo-sort order.  With an empty plugin
+        # registry (Commit B default) this is always {} — the spread adds
+        # zero keys and the output is byte-identical to the pre-Commit-B
+        # baseline.  Concrete plugins that write keys here must match the
+        # key names produced by the current inline code exactly (enforced by
+        # byte-identical golden tests in later commits per §9-rev Phase 1 #16).
+        **_chunk_plugin_partial,
     }

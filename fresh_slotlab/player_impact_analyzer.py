@@ -1555,6 +1555,7 @@ def main() -> int:
                 bankruptcy_session_spins=args.bankruptcy_session_spins,
                 bankruptcy_bankroll_mults=_bankruptcy_mults_tuple,
                 round_win_rules=_round_win_rules,
+                use_play_type_plugins=getattr(args, "use_play_type_plugins", False),
             )
             if not rec.get("ok"):
                 raise SystemExit(f"{tag}: {cf.name} parse failed: {rec.get('error')}")
@@ -2281,6 +2282,7 @@ def main() -> int:
                     envelope_config_md5=args.upstream_config_md5 or "",
                     envelope_code_md5=args.upstream_code_md5 or "",
                     round_win_rules=_round_win_rules,
+                    use_play_type_plugins=getattr(args, "use_play_type_plugins", False),
                 )
                 for idx in indices
             ]

@@ -273,6 +273,23 @@ def parse_args() -> argparse.Namespace:
             "batch runs generally should NOT share an override."
         ),
     )
+    # Commit B: play-type plugin framework flag (§9-rev Phase 1 #18).
+    # Default OFF — flag-off path is byte-identical to the pre-Commit-B
+    # baseline.  Flag-ON with an empty registry is also byte-identical
+    # (all plugin loops short-circuit on `if active_plugins`).
+    # Removal of inline mechanic code happens in later commits (C+).
+    parser.add_argument(
+        "--use-play-type-plugins",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable the play-type plugin framework wiring in parse_chunk_response. "
+            "With an empty plugin registry (Commit B) this flag is a no-op: "
+            "no accumulators fire, output is byte-identical to flag-off. "
+            "Concrete plugins are registered in later commits (C+). "
+            "Per 04_v2.md §9-rev Phase 1 deliverable #18."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -565,6 +582,7 @@ def run_sampling_chunk(
     envelope_config_md5: str = "",
     envelope_code_md5: str = "",
     round_win_rules: list[RoundWinRule] | None = None,
+    use_play_type_plugins: bool = False,
 ) -> dict[str, Any]:
     payload = make_payload(
         machine=machine,
@@ -616,4 +634,5 @@ def run_sampling_chunk(
         bankruptcy_session_spins=bankruptcy_session_spins,
         bankruptcy_bankroll_mults=bankruptcy_bankroll_mults,
         round_win_rules=round_win_rules,
+        use_play_type_plugins=use_play_type_plugins,
     )
