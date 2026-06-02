@@ -62,7 +62,7 @@ if str(_ROOT_FOR_IMPORT) not in sys.path:
 # a high-frequency mid-cycle feature (MoveSpin nudge, freespin)
 # dominates feature_win even though the actual BCM-cycle trigger is
 # a low-frequency Wheel ST=2.
-from fresh_slotlab.round_classification import (
+from fresh_slotlab.analyzer.play_types.bcm_cycle import (
     detect_cycle_peak,
     infer_bcm_target_spin_type,
 )

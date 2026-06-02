@@ -87,7 +87,7 @@ _C2_BASE_HASH = "b0ba0ce7c7e2"
 # PIA again → ccc1ecce185d; phase 6 (bankruptcy_simulation row-build carve — the LAST
 # carve) shrank PIA again → d8b8c138874a (one-time fleet re-baseline, report content
 # byte-identical).
-_EXPECTED_C3_BASE_HASH = "48eada424d82"  # PT-7 wild-nudge carve: is_wild_nudge_round moved out of round_classification.py (closure)
+_EXPECTED_C3_BASE_HASH = "85666c4c4407"  # PT-3 BCM-cycle carve: 5 cycle fns moved to play_types/bcm_cycle.py (out of closure)
 
 _HEX12_RE = re.compile(r"^[0-9a-f]{12}$")
 

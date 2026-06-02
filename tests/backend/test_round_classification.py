@@ -12,14 +12,16 @@ from __future__ import annotations
 
 from fresh_slotlab.round_classification import (
     PAYLINE_RE,
-    at_cycle_peak_indices,
     attribute_lines_to_pay_ids,
-    detect_cycle_peak,
     extract_authoritative_pay_ids,
-    get_collect_count,
-    infer_bcm_target_spin_type,
     is_paid_round,
     parse_payline_records,
+)
+from fresh_slotlab.analyzer.play_types.bcm_cycle import (
+    at_cycle_peak_indices,
+    detect_cycle_peak,
+    get_collect_count,
+    infer_bcm_target_spin_type,
 )
 # is_wild_nudge_round was carved out of round_classification into the
 # base-excluded wild_nudge play-type module (PT-7); import from its new home.

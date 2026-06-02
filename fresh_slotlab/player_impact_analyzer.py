@@ -44,9 +44,6 @@ try:
         extract_round_win,
         load_rules_for_machine,
     )
-    from fresh_slotlab.round_classification import (
-        detect_cycle_peak,
-    )
     # chunk_index / rawdata_index are also script-mode-fragile: they
     # used to be lazy-imported inside best-effort try/except blocks,
     # which silently swallowed the ImportError in script mode and
@@ -79,9 +76,6 @@ except ImportError:  # running as a standalone script, not a package member
         extract_round_payouts,
         extract_round_win,
         load_rules_for_machine,
-    )
-    from round_classification import (  # type: ignore[no-redef]
-        detect_cycle_peak,
     )
     from chunk_index import (  # type: ignore[no-redef]
         _rebuild_by_md5,

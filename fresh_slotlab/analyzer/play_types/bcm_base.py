@@ -98,7 +98,7 @@ try:
     from fresh_slotlab.analyzer.play_types._base import MechanicAccumulator, RoundCtx
     from fresh_slotlab.analyzer.play_types._claim import ClaimSignature
     from fresh_slotlab.analyzer.play_types._plugin import PlayTypePlugin
-    from fresh_slotlab.round_classification import (
+    from fresh_slotlab.analyzer.play_types.bcm_cycle import (
         at_cycle_peak_indices,
         compute_robot_cycle_peaks,
         detect_cycle_peak,
@@ -109,7 +109,7 @@ except ImportError:  # running as standalone script
     from analyzer.play_types._base import MechanicAccumulator, RoundCtx  # type: ignore[no-redef]
     from analyzer.play_types._claim import ClaimSignature  # type: ignore[no-redef]
     from analyzer.play_types._plugin import PlayTypePlugin  # type: ignore[no-redef]
-    from round_classification import (  # type: ignore[no-redef]
+    from analyzer.play_types.bcm_cycle import (  # type: ignore[no-redef]
         at_cycle_peak_indices,
         compute_robot_cycle_peaks,
         detect_cycle_peak,

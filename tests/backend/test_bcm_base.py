@@ -84,7 +84,7 @@ RAWDATA_DIR = ROOT / "rawdata"
 # Import guards
 # ---------------------------------------------------------------------------
 try:
-    from fresh_slotlab.round_classification import compute_robot_cycle_peaks
+    from fresh_slotlab.analyzer.play_types.bcm_cycle import compute_robot_cycle_peaks
     from fresh_slotlab.analyzer.play_types._claim import ClaimSignature
     from fresh_slotlab.analyzer.play_types._detector import detect_play_types
     from fresh_slotlab.analyzer.play_types._machine_config import MachinePlayTypeConfig

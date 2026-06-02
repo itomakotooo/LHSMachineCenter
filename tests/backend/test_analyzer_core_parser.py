@@ -737,7 +737,7 @@ class TestBaseAnalyzerVersionHash:
         actual = _compute_base_ver_fn()
         assert actual is not None, "compute_base_analyzer_version() returned None"
 
-        # Pin check: must be the known R-1 closure value (post PT-7 wild-nudge carve)
+        # Pin check: must be the known R-1 closure value (post PT-3 BCM-cycle carve)
         # R-1 closure = 25-file set: core/*.py + content modules + support modules
         # (MINUS registered feature plugins, which have their own feature_hash).
         # Phase 2a (collect_mechanic carve) shrank player_impact_analyzer.py (a
@@ -748,13 +748,13 @@ class TestBaseAnalyzerVersionHash:
         # Phase 5 (reel_marginal_by_spin_type dict-build carve) shrank PIA again -> ccc1ecce185d.
         # Phase 6 (bankruptcy_simulation tier row-build carve — the LAST carve) shrank PIA again -> d8b8c138874a.
         # playtype C3 (per-machine config layer): added machine_id/mode params to
-        # parse_chunk_response in core/parser.py -> 48eada424d82.
+        # parse_chunk_response in core/parser.py -> 85666c4c4407.
         # Report content byte-identical: bonus_feature value is unchanged; the params
         # only thread context to detect_play_types for per-machine config loading.
-        assert actual == "48eada424d82", (
+        assert actual == "85666c4c4407", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = '48eada424d82' (R-1 closure value, post PT-7 wild-nudge carve)\n"
+            f"  expected = '85666c4c4407' (R-1 closure value, post PT-3 BCM-cycle carve)\n"
             "Phase honesty-2 expanded base_hash from core/*.py (old: fa440e3eb5f6) to the\n"
             "25-file report-production import closure (960e9d18d83d); phase 2a then carved\n"
             "collect_mechanic's compute out of PIA (-> 57fdb323585d), phase 2b carved\n"
@@ -763,7 +763,7 @@ class TestBaseAnalyzerVersionHash:
             "carved multiplier_profile's dict-build out of PIA (-> ce298f055495), phase 5\n"
             "carved reel_marginal_by_spin_type's dict-build out of PIA (-> ccc1ecce185d),\n"
             "phase 6 carved bankruptcy_simulation's tier row-build out of PIA (-> d8b8c138874a),\n"
-            "PT-7 wild-nudge carve moved is_wild_nudge_round out of the closure (-> 48eada424d82).\n"
+            "PT-3 BCM-cycle carve moved the 5 cycle fns out of the closure (-> 85666c4c4407).\n"
             "core/parser.py is still in the closure — editing it still flips base_hash."
         )
 

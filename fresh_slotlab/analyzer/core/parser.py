@@ -69,10 +69,10 @@ except ImportError:  # running as a standalone script (fresh_slotlab/ on sys.pat
 # Now that the function lives here we must make the same imports explicit.
 try:
     from fresh_slotlab.trigger_sessions import compute_trigger_sessions
-    from fresh_slotlab.round_classification import (
+    from fresh_slotlab.round_classification import attribute_lines_to_pay_ids
+    from fresh_slotlab.analyzer.play_types.bcm_cycle import (
         compute_robot_cycle_peaks,
         detect_cycle_peak,
-        attribute_lines_to_pay_ids,
     )
     from fresh_slotlab.analyzer.play_types.wild_nudge import is_wild_nudge_round
     from fresh_slotlab.round_win import (
@@ -82,10 +82,10 @@ try:
     )
 except ImportError:  # running as a standalone script
     from trigger_sessions import compute_trigger_sessions  # type: ignore[no-redef]
-    from round_classification import (  # type: ignore[no-redef]
+    from round_classification import attribute_lines_to_pay_ids  # type: ignore[no-redef]
+    from analyzer.play_types.bcm_cycle import (  # type: ignore[no-redef]
         compute_robot_cycle_peaks,
         detect_cycle_peak,
-        attribute_lines_to_pay_ids,
     )
     from analyzer.play_types.wild_nudge import is_wild_nudge_round  # type: ignore[no-redef]
     from round_win import (  # type: ignore[no-redef]

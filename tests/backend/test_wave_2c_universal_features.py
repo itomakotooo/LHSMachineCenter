@@ -732,12 +732,12 @@ class TestHashComposition:
         # phase 6 carved bankruptcy_simulation's tier row-build out of PIA (the LAST
         # carve) -> d8b8c138874a (report content byte-identical).
         # playtype C3 (per-machine config layer): added machine_id/mode params to
-        # parse_chunk_response in core/parser.py -> 48eada424d82.
+        # parse_chunk_response in core/parser.py -> 85666c4c4407.
         actual = _cbav()
-        assert actual == "48eada424d82", (
+        assert actual == "85666c4c4407", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = '48eada424d82' (R-1 closure value, post PT-7 wild-nudge carve)\n"
+            f"  expected = '85666c4c4407' (R-1 closure value, post PT-3 BCM-cycle carve)\n"
             "R-4 exclusion covers registered plugins only (not all features/*.py).\n"
             "_base.py and features/__init__.py are still in base (not registered plugins)."
         )

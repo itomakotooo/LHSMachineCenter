@@ -129,8 +129,8 @@ class TestCarveCompletionPreconditions:
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "48eada424d82", (
-            f"base_hash must be '48eada424d82' (R-1 closure value, post PT-7 wild-nudge carve). "
+        assert actual == "85666c4c4407", (
+            f"base_hash must be '85666c4c4407' (R-1 closure value, post PT-3 BCM-cycle carve). "
             f"Got: {actual!r}. "
             f"Registered plugin modifications must NOT change base_hash (R-4 exclusion). "
             f"Check _CLOSURE_FILES in versioning.py for unintended production-path changes."
