@@ -5,6 +5,10 @@
 > Data source: `rawdata/<M>/mode_<n>/chunk_*.json` for 12 pilot machines + fleet-wide signal scan of 255 machines.
 > Date: 2026-06-01
 
+> **⚠ AS-BUILT NOTE (2026-06-02):** This taxonomy is APPROVED and accurate. One historical correction: wherever
+> PT-6 / M274's **`_unattributed_st139` (4.87% RTP)** is flagged as a suspect leak, that bug is **ALREADY FIXED** in
+> current output (BCMCycleAnchorRule, 2026-05-12) — verified no fallback bucket remains. See `HANDOFF.md`.
+
 ---
 
 ## PART A — Technical taxonomy
