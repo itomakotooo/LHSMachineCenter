@@ -24,6 +24,10 @@ is the MECHANIC axis, which is where the real isolation lives.
   - Fix a play-type → only machines that have it. Change a machine's payid config → only that machine.
 
 ## 3. Decomposition principle (decided; grounded in real rawdata)
+> **⚠ SUPERSEDED IN PART by §12 (2026-06-02).** "Split by SpinType" is WRONG for shared reward STs: the
+> SAME ST (e.g. freespin), triggered by BCM vs scatter, parses identically but has different 统计口径 →
+> belongs to different play-types. The play-type UNIT is the **trigger-session**, not the ST. The PayId =
+> config point below still holds; the ST-as-partition framing does not. Read §12.
 - **Split by the RIGOROUS signals: SpinType + feature** (server-authoritative, structurally meaningful, portable).
   Verified examples: M14 = `{ST1_paid}` (single paid play-type); M275 = `{ST126_free, ST140_paid}` + features
   (collect/freespin/scatter-trigger/jackpot) = an aggregation of several play-types.
@@ -109,6 +113,11 @@ is the MECHANIC axis, which is where the real isolation lives.
   byte-identity. Do NOT let byte-identical launder a pre-existing bug.
 
 ## 10. Foundation signed off (2026-06-01, user approved in conversation — the boundary contract W2+ designs against)
+> **⚠ The "SpinType = PRIMARY partition" + "claim key = feature, ST = partition" model in this section is
+> SUPERSEDED by §12 (2026-06-02).** ST cannot express "same ST, different trigger → different 统计口径"
+> (real: M275 freespin triggered by BCM cycle vs scatter). The play-type unit is the **trigger-session**.
+> The pilot list + the "feature is a portable signature, not ST-number" insight remain useful; the
+> ST-as-the-partition claim does not. Read §12 first.
 - **Taxonomy APPROVED**: the 15 play-types in `02_taxonomy.md` Part B are the round-1 play-type set.
 - **Pilots LOCKED at 12**: M14, M31, M43, M15, M99, M272, M275, M274, M279, M268, M120, M10 — these exercise all
   15 play-types. Round-1 architecture must FULLY support these 12; the remaining ~310 onboard later as "new machines".
@@ -156,3 +165,41 @@ Built + committed on branch `claude/playtype-rearch` (HEAD `c21eb4e`): **A** fra
   base_hash unchanged AND editing a universal closure fn flips it, pinned by a permanent test. byte-identical
   alone is what let the hollow C2 pass. **Read `CARVE_METHODOLOGY.md`.**
 - **Process learning:** background impl agents died silently TWICE — prefer FOREGROUND / check liveness early.
+
+## 12. MODEL CORRECTION (2026-06-02, user-confirmed — SUPERSEDES the ST-primary framing in §3 + §10)
+§3/§10 said "partition by SpinType; feature is the claim key." That is WRONG for shared reward STs.
+**Real counter-example (M275):** a freespin ST can be triggered by the BCM cycle OR by a scatter
+(pay_id 666). The **parsing of those freespin rounds is identical**, but the **统计口径 (which play-type's
+economy they count toward) differs by TRIGGER** — BCM-reward vs scatter-reward. ST cannot express this;
+the same ST splits across play-types by trigger. So `ST → one play-type` is false.
+
+**The corrected model — two SEPARATE layers:**
+1. **Shared round-PARSING layer** (keyed by round TYPE, not play-type): how to read a freespin / wheel /
+   paid / respin round (win, cost, spin count, symbols). A round type parses the SAME no matter what
+   triggered it → shared library, reused across play-types. Editing a shared parser legitimately re-flags
+   every machine with that round type (correct — it IS shared).
+2. **Trigger-session ATTRIBUTION layer (统计口径)** (keyed by TRIGGER): the trigger-session logic groups
+   rounds into sessions by which trigger opened them and routes each session's economy to the play-type
+   that triggered it. THIS is where a play-type is defined.
+
+**A play-type = a TRIGGER + its session's attribution + that play-type's stat rollup.** It owns trigger
+detection + attribution; it DELEGATES round parsing to the shared layer. It is NOT "an ST's parsing."
+
+**Consequences (correct the earlier docs):**
+- The play-type UNIT is the trigger-session, NOT the SpinType. `detect_play_types`'s "per-ST ownership"
+  (04_v2 / C1) is INSUFFICIENT — same ST, different trigger → different play-type.
+- PT-2 (scatter-freespin) and PT-4 (BCM-freespin) ARE distinct play-types (different 口径), NOT collapsible.
+  The `02_taxonomy.md` A4 list conflates "round-parsing mechanism" with "trigger 口径"; re-cut it as TWO
+  tables (shared parsers + trigger-rooted play-types).
+- The **trigger-session / win-attribution layer is the CORE** of this refactor, NOT a deferred "Phase-2
+  linchpin." It defines play-types and decides 口径.
+- The base_hash isolation gate (`CARVE_METHODOLOGY.md`) still holds; the carve UNIT changes: carving a
+  play-type = moving {its trigger + attribution + rollup} out of the closure, with shared parsers as a
+  shared dependency.
+- Already done (still valid as isolation, re-labeled by this model): PT-3 BCM-cycle carve = the BCM
+  TRIGGER detector (cycle-peak detection) — legitimately part of the BCM play-type. PT-7 wild-nudge =
+  a shared round-CLASSIFIER (attributes a nudge round to the paid spin it extends), not a trigger-rooted
+  play-type per se.
+
+**The W2 design round (arch-*) designs the detailed two-layer architecture FROM this correction; the prior
+02/04_v2 design is the OLD (ST-primary) model and is superseded for the play-type unit.**

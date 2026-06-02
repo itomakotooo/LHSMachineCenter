@@ -5,9 +5,14 @@
 > Data source: `rawdata/<M>/mode_<n>/chunk_*.json` for 12 pilot machines + fleet-wide signal scan of 255 machines.
 > Date: 2026-06-01
 
-> **⚠ AS-BUILT NOTE (2026-06-02):** This taxonomy is APPROVED and accurate. One historical correction: wherever
-> PT-6 / M274's **`_unattributed_st139` (4.87% RTP)** is flagged as a suspect leak, that bug is **ALREADY FIXED** in
-> current output (BCMCycleAnchorRule, 2026-05-12) — verified no fallback bucket remains. See `HANDOFF.md`.
+> **⚠ MODEL CORRECTION (2026-06-02) — read `DIRECTION.md §12` BEFORE using this list.** The A4 list is a rawdata
+> SIGNAL CENSUS, not a clean play-type ontology. It CONFLATES two layers that must be separated: round-PARSING
+> (shared, keyed by round TYPE) vs trigger 统计口径 (per-TRIGGER). **The play-type UNIT is the trigger-session,
+> NOT the ST.** Consequences: **PT-1 = the base game** (not a play-type — nothing to carve); **PT-2
+> (scatter-freespin) ≠ PT-4 (BCM-freespin)** — identical freespin parsing but different 口径 by trigger, so
+> distinct (NOT collapsible); **PT-4/5/6/11 ("BCM + reward") are BCM-cycle-triggered sessions, not separate
+> parsers.** This table must be re-cut as TWO tables (shared round-parsers + trigger-rooted play-types) in the
+> W2 design round. (Historical: M274's old `_unattributed_st139` 4.87% leak is ALREADY FIXED — not a pending bug.)
 
 ---
 

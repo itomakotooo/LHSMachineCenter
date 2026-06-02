@@ -5,6 +5,13 @@
 > Every claim here is backed by a runnable check. If something doesn't match the code, trust the code
 > and `CARVE_METHODOLOGY.md §0` — do not inherit a label on faith.
 
+> **⚠ MODEL CORRECTED (2026-06-02) — read `DIRECTION.md §12`.** The play-type UNIT is the **trigger-session,
+> NOT the SpinType**. Two layers: shared round-PARSING (by round type) vs trigger-session 统计口径 (by trigger).
+> Same reward ST (freespin) via BCM vs scatter = identical parse, different 口径 → different play-types (real:
+> M275). So `ST → one play-type` is false; the per-ST detector is insufficient; PT-2 ≠ PT-4; and the
+> **trigger-session / win-attribution layer is the CORE**, not the deferred "Phase-2" framed below. PT-7
+> wild-nudge is a shared round-CLASSIFIER, not a trigger-rooted play-type.
+
 ## TL;DR (honest state — no labels, just what's true)
 - Framework built + wired (commits A–C3); flag `--use-play-type-plugins` default **OFF**.
 - **2 GENUINE carves done** (logic moved OUT of the closure → editing it no longer re-flags the fleet;
@@ -50,11 +57,14 @@
 
 ## What's genuinely done vs not
 - **DONE (genuine, isolated):** PT-7 wild-nudge (`wild_nudge.py`) + PT-3 BCM cycle (`bcm_cycle.py`).
-- **NOT STARTED:** PT-1 pure-paid, PT-2 scatter, PT-8 TopDollar, PT-9/10/11 lock-*, PT-12 win-respin,
-  PT-13 minigame, PT-14 multi-collection, PT-15 wheel — and the heavy **Phase-2 trigger-session /
-  win-attribution carve** (`trigger_sessions.py` + `round_win.py` rule classes). Phase-2 is the linchpin:
-  it unlocks isolation for freespin/minigame/lockreels/scatter/TopDollar at once AND closes the 4 layer-2
-  attribution gaps above.
+- **NEXT = the CORE (per `DIRECTION.md §12`), not deferred:** design + carve the two-layer model — a **shared
+  round-parsing library** (freespin / wheel / respin / paid, keyed by round type) + the **trigger-session
+  attribution layer** (`trigger_sessions.py` + `round_win.py`) that decides 统计口径. This layer DEFINES the
+  play-types (a play-type = trigger + attribution + rollup) and also closes the 4 layer-2 gaps above. The W2
+  design round (arch-*) produces this design from §12.
+- **NOTE on the old play-type list:** PT-1 "pure-paid" is the BASE (not a carve-able play-type); PT-2 / PT-4 /
+  etc. are trigger-rooted sessions that SHARE parsers (same ST, different 口径). Do NOT carve them per the old
+  per-ST model — they get re-derived as trigger-rooted play-types in the §12 design.
 
 ## How to carve
 **Read `CARVE_METHODOLOGY.md`.** One paragraph: move the logic OUT of the closure into a base-excluded
