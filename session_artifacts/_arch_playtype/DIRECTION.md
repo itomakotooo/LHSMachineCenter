@@ -135,15 +135,16 @@ is the MECHANIC axis, which is where the real isolation lives.
 - **Plugin claim key = feature signature; ST = the resulting per-machine partition** (NOT ST-number-as-key).
 
 ## 11. AS-BUILT status (2026-06-02 — full state in `HANDOFF.md`, carve method in `CARVE_METHODOLOGY.md`)
-Built + committed on branch `claude/playtype-rearch` (HEAD `8445312`): **A** framework · **B** parse-loop wiring
-(flag `--use-play-type-plugins`, default OFF) · **C1** plumbing (per-ST ownership + 5 fixes) · **C2** BCMBasePlugin
-· **C3** per-machine config layer · **PT-7 wild-nudge** (the first genuine carve).
-- **Genuine carves: 1 (PT-7 wild-nudge, commit `8445312`)** — `is_wild_nudge_round` moved OUT of the
-  `round_classification.py` closure into `play_types/wild_nudge.py`; editing it leaves base_hash unchanged
-  (proven by `tests/backend/test_wild_nudge_carve.py`). This is the reference implementation.
-- **⚠ C2's BCM "carve" is HOLLOW, not a milestone.** The cycle logic stayed in `round_classification.py` (a
-  closure file); editing it still flips base_hash → zero isolation. It must be REDONE per `CARVE_METHODOLOGY.md`.
-  The earlier "first real carve / MILESTONE / 1 of 15 carved" framing was an overclaim — corrected here.
+Built + committed on branch `claude/playtype-rearch` (HEAD `c21eb4e`): **A** framework · **B** parse-loop wiring
+(flag `--use-play-type-plugins`, default OFF) · **C1** plumbing · **C2** BCMBasePlugin · **C3** per-machine config
+· **PT-7 wild-nudge** carve · **PT-3 BCM-cycle** carve (the genuine redo of C2).
+- **Genuine carves: 2** — PT-7 wild-nudge (`8445312`, `is_wild_nudge_round` → `play_types/wild_nudge.py`) and
+  PT-3 BCM cycle (`c21eb4e`, the 5 cycle fns → `play_types/bcm_cycle.py`). Each moved the logic OUT of the
+  `round_classification.py` closure; editing it now leaves base_hash unchanged (pinned by
+  `test_wild_nudge_carve.py` / `test_bcm_cycle_carve.py`). These are the reference implementations.
+- **C2 shipped HOLLOW** (logic stayed in the closure; the plugin just called it → zero isolation; was
+  mislabeled "first real carve / MILESTONE / 1 of 15"). **REDONE genuinely in `c21eb4e`** — `bcm_base.py`
+  (the plugin) now imports the cycle logic from `bcm_cycle.py`.
 - **Correctness is NOT all-clean:** 4 of 9 golden pilots carry a pre-existing layer-2 `_unattributed` fallback
   (M15/M268 large, M272/M279 small). Preserved byte-identically (not a regression); real attribution gaps,
   DEFERRED by user decision. The Phase-2 win-attribution carve closes them.
