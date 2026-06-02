@@ -6,6 +6,17 @@
 
 ---
 
+## §0 REDESIGN (2026-06-02) — why, and the one principle
+
+**Why redesigned.** The original team (mapper/taxonomist/coupling → designer → critic/validator) produced an architecture that was **fundamentally wrong, and its own critic + validator did not catch it**: the play-type model was ST-primary and could not express "same SpinType, different trigger, different 统计口径" — which is real on M275 (one freespin ST, triggered by both a scatter and the BCM cycle, same parse but different accounting). **Every correction came from the USER's domain knowledge applied to real rawdata, never from the team's internal review.** Root cause: the team reasoned about the DOMAIN from artifacts (a signal census, the code) without grounding in how machines actually behave; its adversarial layer checked internal consistency, not domain truth against real data; and the coordinator "review" was abstract endorsement (it rubber-stamped a hollow carve as a "milestone").
+
+**The one principle (everything below enforces it):**
+> **Every architectural claim must be anchored to (a) a real-rawdata TRACE, (b) an objective GATE result (base_hash gate / byte-identical), or (c) the user's explicit domain SIGN-OFF. A claim resting on plausibility or "I read it and it looks right" is NOT done. Agents do NOT invent the domain model.**
+
+This brings the arch team up to the discipline the **slot_designer team already has and that works**: a real-data analyst (there: `slot-analyst`), objective red-line gates (there: `verify.py` + inject-bug), and a user-signed contract grounded in data (there: the Boundary Contract). The arch team had **none** of those equivalents — that is the gap this redesign closes.
+
+---
+
 ## §1 When to use this team
 
 Trigger this team when any of the following apply to a planned change:
@@ -27,18 +38,38 @@ Do NOT trigger for:
 
 ---
 
-## §2 Team composition (6 agents, 3 waves)
+## §2 Team composition (redesigned 2026-06-02)
 
-| Agent | `subagent_type` | Wave | Responsibility | Output |
-|---|---|---|---|---|
-| Pipeline Mapper | `arch-mapper` | 1 | End-to-end data-flow map of target pipeline; reuse-vs-duplication audit | `01_pipeline_map.md` |
-| Fleet Taxonomist | `arch-taxonomist` | 1 | Classify fleet by structural similarity; outliers named | `02_taxonomy.md` |
-| Coupling Auditor | `arch-coupling-auditor` | 1 | Blast radius of every shared symbol; hash composition map | `03_coupling_audit.md` |
-| Architecture Designer | `arch-designer` | 2 | Synthesize Wave 1 → proposal with plugin model + hash rules + migration | `04_architecture_proposal.md` |
-| Adversarial Critic | `arch-critic` | 3 | Hostile review; 10 stress questions; verdict | `05_critique.md` |
-| Sample Validator | `arch-validator` | 3 | Walk 5-7 representative cases through proposal; verdict | `06_validation.md` |
+| Agent | `subagent_type` | Wave | Responsibility | Anchored to | Output |
+|---|---|---|---|---|---|
+| Pipeline Mapper | `arch-mapper` | 1 | Data/control-flow map + reuse-vs-duplication audit (mechanical) | code (objective) | `01_pipeline_map.md` |
+| **Tracer** (NEW) | `arch-tracer` | 1 | **Real-rawdata TRACES of how machines actually behave** — session traces, trigger→reward attribution, per-round economy, edge cases. **NO design, NO opinions — evidence tables only.** Has **Bash**; deep-parses cached chunks (`json.loads` the JSON-string `response`). | **real rawdata (ground truth)** | `02_traces.md` |
+| Coupling Auditor | `arch-coupling-auditor` | 1 | Blast radius of shared symbols + closure / hash-composition map (mechanical) | code + `_CLOSURE_FILES` (objective) | `03_coupling_audit.md` |
+| Architecture Designer | `arch-designer` | 2 | Synthesize → proposal. **Every domain claim cites a Tracer trace ID, or is tagged `UNVERIFIED-NEEDS-TRACE`.** May NOT assert domain facts on its own. | Tracer traces + coupling map | `04_architecture_proposal.md` |
+| **Breaker** (replaces critic+validator) | `arch-breaker` | 3 | **Adversarial against REAL machines**: pick the hardest / weirdest real machines, trace them through the design, and produce a concrete **breaking counterexample (with the rawdata)** OR attach the traces proving the design held. Has **Bash**. NOT internal-consistency review. | real-rawdata counterexamples | `05_breaker.md` |
 
-Tools per agent are enforced via frontmatter `tools:` whitelist in `.claude/agents/arch-*.md`. None of them edit code — proposal stays in markdown until the user approves implementation.
+**Demoted — `arch-taxonomist`:** its old job (abstract clustering of fleet signals into an *ontology*) is exactly what produced the wrong play-type taxonomy. It is retained ONLY as a fleet **census** input (which machines emit which signals), NEVER as the source of the domain model. The model comes from Tracer evidence → Designer → the user's sign-off.
+
+**Superseded — `arch-critic` + `arch-validator`:** the internal-consistency reviewer pair is replaced by `arch-breaker` (real-data counterexample attacker). The old pair failed to catch the M275 flaw precisely because they attacked the proposal's internal logic, not ground truth. (The `.md` files remain but are not spawned for this kind of work.)
+
+Tools per agent are enforced via the frontmatter `tools:` whitelist in `.claude/agents/arch-*.md`. **No agent edits source code** — design output is markdown only; the Tracer/Breaker get Bash for read-only rawdata tracing (no Edit/Write to code). Implementation is a separate pass (impl-* team, §9), gated objectively.
+
+---
+
+## §2A Coordinator (main session) responsibilities
+
+The main session is **NOT a passive relay**, and **NOT an architect who endorses on reading**. Its job:
+
+1. **Own the gates, not the opinions.** For every agent deliverable, the coordinator runs an **independent objective check** — re-run a Tracer trace, run the base_hash gate, run byte-identical, or try to break a claim — and reports **"verified by trace/gate X"** or **"UNVERIFIED — needs the user's domain check."** The coordinator **NEVER** signs off on "it reads correctly." (Abstract endorsement is the exact original failure: it stamped a hollow carve "MILESTONE".)
+2. **Bring the user DATA-STRESS-TESTED choices, not summaries.** When presenting the domain model for sign-off, the package MUST include the **hardest real cases TRACED OUT** (e.g. "M275: same freespin ST, two triggers — here is the trace; does your model handle it?"). The ST-primary model would have been caught at sign-off had M275 been traced; a clean summary hid it.
+3. **Do not scale past the pilot before the user signs the domain model.** No carving all N play-types, no fleet onboarding, no flipping a default flag, on the strength of a design review alone.
+4. **Route + sequence agents; author `00_brief.md` + `07_decision.md`.** Don't do an agent's job; don't let an agent invent the domain model.
+
+### §2A.1 Interaction boundary with the user (what to discuss, what NOT to) — user directive, 2026-06-02
+
+- **DISCUSS WITH THE USER → architecture + domain model.** What is a play-type; how attribution / 统计口径 works; the trigger-session model; which mechanic is which; the boundary contract. The user holds the domain knowledge and is the authority here — surface these, **with real-data traces**, and get sign-off.
+- **DO NOT bring to the user → internal implementation.** Variable names, function/class names, file layout, plugin internals, code structure, hash-composition mechanics, test names. The user explicitly does not read these ("变量名什么的我又看不懂"). They are verified by the **objective gates** (base_hash / byte-identical / trace-match) + the impl-* team — never by user review.
+- **The line:** if a decision changes **WHAT the analyzer concludes** about a machine (domain / semantics) → **user**. If it only changes **HOW the code is organized** (implementation) → **coordinator + gates, never the user**.
 
 ---
 
@@ -46,7 +77,7 @@ Tools per agent are enforced via frontmatter `tools:` whitelist in `.claude/agen
 
 ### Wave 1 — Discovery (parallel)
 
-Spawn `arch-mapper`, `arch-taxonomist`, `arch-coupling-auditor` in **parallel** (background). Each is independent — they don't read each other's output.
+Spawn `arch-mapper`, `arch-tracer`, `arch-coupling-auditor` in **parallel** (background). Each is independent. **`arch-tracer` is the ground-truth role — it deep-parses real cached rawdata and produces evidence tables, NO design.** (`arch-taxonomist` may be spawned as a census input only — which machines emit which signals — never as the source of the domain model; see §2.)
 
 Inputs to each: codebase + relevant config files + user-supplied scope (which pipeline, which fleet).
 
@@ -56,15 +87,15 @@ When all three complete → Wave 2 starts.
 
 Spawn `arch-designer`. Reads `01_pipeline_map.md` + `02_taxonomy.md` + `03_coupling_audit.md` + user-stated goals. Produces `04_architecture_proposal.md` with 2-3 design alternatives + recommended choice + migration plan.
 
-### Wave 3 — Review (parallel)
+### Wave 3 — Break against real data (single agent)
 
-Spawn `arch-critic` and `arch-validator` in **parallel**. Both read `04_architecture_proposal.md` + Wave 1 outputs. Produce `05_critique.md` + `06_validation.md`. Both deliver a verdict: APPROVE / APPROVE-WITH-REVISIONS / REJECT.
+Spawn `arch-breaker`. It reads `04_architecture_proposal.md` + the Tracer's `02_traces.md`, picks the hardest / weirdest real machines, and **traces them through the design against real rawdata** (it has Bash). Output `05_breaker.md`: either a concrete **breaking counterexample** (machine + the rawdata trace the design mis-handles) OR the **per-machine traces proving the design held** — verdict `HELD` / `BREAKS-ON-<machine>`. It does NOT do internal-consistency review (that is what missed the M275 flaw).
 
-### Consolidation (main session, coordinator)
+### Consolidation (main session, coordinator) — run gates, present data-stress-tested choices
 
-Main session reads all 6 artifacts → produces a short decision summary for the user. **Main session does NOT make the architectural decision** — it relays critic + validator verdicts and asks user to pick.
+Main session (per §2A): (1) **independently re-runs** the key Tracer traces + the Breaker's counterexample (or a base_hash / byte-identical gate where code exists) — verifies, does not endorse; (2) assembles the **domain-model sign-off package = the design + the Breaker's hardest-case traces + the `UNVERIFIED` list** and presents it to the user **at the architecture / domain level only** (§2A.1); (3) does NOT decide the domain model itself, and does NOT scale past the pilot before sign-off.
 
-If Wave 3 verdict is APPROVE-WITH-REVISIONS or REJECT → loop back: arch-designer reads 05 + 06, produces `04_architecture_proposal_v2.md`. Wave 3 re-runs.
+If the Breaker reports `BREAKS-ON`, or the user's domain check rejects the model → loop back: `arch-designer` reads `05_breaker.md` + the user's correction → `04_..._v2.md`; Tracer adds any missing traces; Breaker re-runs.
 
 ---
 
@@ -74,14 +105,13 @@ All artifacts under `session_artifacts/_arch/`:
 
 ```
 session_artifacts/_arch/
-├── 00_brief.md                       # main session writes: task scope + user goals
+├── 00_brief.md                       # main session: task scope + user goals
 ├── 01_pipeline_map.md                # arch-mapper
-├── 02_taxonomy.md                    # arch-taxonomist
+├── 02_traces.md                      # arch-tracer (real-rawdata evidence — ground truth)
 ├── 03_coupling_audit.md              # arch-coupling-auditor
-├── 04_architecture_proposal.md       # arch-designer (vN bump on revisions)
-├── 05_critique.md                    # arch-critic (vN matches 04 version)
-├── 06_validation.md                  # arch-validator
-└── 07_decision.md                    # main session writes: user decision + next steps
+├── 04_architecture_proposal.md       # arch-designer (vN on revisions; every claim cites a 02 trace ID)
+├── 05_breaker.md                     # arch-breaker (counterexample or held-traces; HELD / BREAKS-ON-<M>)
+└── 07_decision.md                    # main session: user DOMAIN sign-off + next steps
 ```
 
 Agents read other agents' artifacts directly from disk (not via main session relay). Main session only authors `00_brief.md` and `07_decision.md`.
@@ -95,7 +125,9 @@ Agents read other agents' artifacts directly from disk (not via main session rel
 3. **Wave 1 agents run in parallel** — they don't depend on each other.
 4. **Wave 3 agents run in parallel** — they're independent reviewers.
 5. **All decisions cite Wave 1 evidence** — Designer cannot propose without grounding in 01/02/03; Critic cannot critique without specific references.
-6. **User signs off the recommendation** — main session presents critic + validator verdicts; user decides whether to proceed to implementation, request revision, or abandon.
+6. **User signs off the DATA-STRESS-TESTED domain model** — the sign-off package includes the hardest real cases traced out (§2A point 2), not a clean summary. (A "user signed a plausible summary" gate is what let the ST-primary model through.)
+7. **Every claim anchored to evidence (§0 principle)** — a real-rawdata trace, an objective gate (base_hash / byte-identical), or the user's domain sign-off. Never abstract endorsement. Agents do NOT invent the domain model.
+8. **Architecture ↔ user; implementation ↛ user (§2A.1)** — domain / semantic decisions go to the user with traces; implementation detail (names, layout, code) is gated objectively, never user-reviewed.
 
 ---
 
