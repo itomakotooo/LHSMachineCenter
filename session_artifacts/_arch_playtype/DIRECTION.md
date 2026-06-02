@@ -134,23 +134,24 @@ is the MECHANIC axis, which is where the real isolation lives.
   [claim key] + (B) what I measure about them [payload].
 - **Plugin claim key = feature signature; ST = the resulting per-machine partition** (NOT ST-number-as-key).
 
-## 11. AS-BUILT status (2026-06-02 — full detail + resume recipe in `HANDOFF.md`, the next session's read-first)
-Built + committed on branch `claude/playtype-rearch` (HEAD `63dd609`): **A** framework · **B** parse-loop wiring
+## 11. AS-BUILT status (2026-06-02 — full state in `HANDOFF.md`, carve method in `CARVE_METHODOLOGY.md`)
+Built + committed on branch `claude/playtype-rearch` (HEAD `8445312`): **A** framework · **B** parse-loop wiring
 (flag `--use-play-type-plugins`, default OFF) · **C1** plumbing (per-ST ownership + 5 fixes) · **C2** BCMBasePlugin
-(BCM-cycle carve — MILESTONE; byte-identical on 5 BCM pilots + proven-engaged via inject-bug) · **C3** per-machine
-config layer (BCM `bonus_feature` moved off the global `bcm_pairings.json` silent-dependency into the hashed
-per-machine config). All byte-identical; play-type test suite re-verified **170/170 green** on HEAD.
-- **Status:** architecture PROVEN; all 12 pilots correctly analyzed; **NO bugs remain.** **1 of 15 play-types
-  carved** (BCM cycle). All remaining work is structural ISOLATION — **zero correctness urgency.**
-- **Corrections to the sections above (as-built refinements — `HANDOFF.md` is current truth where these conflict):**
-  - **§9's M274 4.87% `_unattributed_st139` example is ALREADY FIXED** in current output (BCMCycleAnchorRule,
-    2026-05-12) — it is NOT a pending bug. The §9 *principle* (byte-identical ≠ correctness) stands; that specific
-    example is now historical.
-  - **§6's "delete obsolete tests" → in practice RE-PIN.** base_hash-value pin tests are re-pinned to the new value
-    with a documented reason (a conscious-acknowledgment gate), not deleted. The C-phase *output*-byte-identical
-    tests + canonical-md5 tests remain (test-migration, task #8).
-  - **D/E/F (BCM reward variants: freespin / ListReward / lockreels) need no separate plugins** — the reward is now
-    per-machine config (C3); their hash-isolation folds into the deferred Phase-2 trigger-session carve, which is the
-    next-highest-leverage piece.
-- **Process learning:** background impl agents died silently TWICE — prefer FOREGROUND / check liveness early. Carve
-  recipe: extract a SHARED helper that BOTH the inline path AND the plugin call (NEVER reimplement). See `HANDOFF.md`.
+· **C3** per-machine config layer · **PT-7 wild-nudge** (the first genuine carve).
+- **Genuine carves: 1 (PT-7 wild-nudge, commit `8445312`)** — `is_wild_nudge_round` moved OUT of the
+  `round_classification.py` closure into `play_types/wild_nudge.py`; editing it leaves base_hash unchanged
+  (proven by `tests/backend/test_wild_nudge_carve.py`). This is the reference implementation.
+- **⚠ C2's BCM "carve" is HOLLOW, not a milestone.** The cycle logic stayed in `round_classification.py` (a
+  closure file); editing it still flips base_hash → zero isolation. It must be REDONE per `CARVE_METHODOLOGY.md`.
+  The earlier "first real carve / MILESTONE / 1 of 15 carved" framing was an overclaim — corrected here.
+- **Correctness is NOT all-clean:** 4 of 9 golden pilots carry a pre-existing layer-2 `_unattributed` fallback
+  (M15/M268 large, M272/M279 small). Preserved byte-identically (not a regression); real attribution gaps,
+  DEFERRED by user decision. The Phase-2 win-attribution carve closes them.
+- **Corrections to the sections above:** §9's M274 4.87% example is ALREADY FIXED (not a pending bug; the §9
+  *principle* — byte-identical ≠ correctness — stands and was just re-proven by C2's hollow carve). §6's "delete
+  obsolete tests" → in practice RE-PIN base_hash-value tests with a documented reason. On a CLEAN tree the C-phase
+  output + canonical-md5 tests are green (the "task #8 reds" were dirty-tree `configs/machines.json` drift).
+- **THE acceptance gate (replaces "byte-identical alone"):** a carve is done iff editing the carved logic leaves
+  base_hash unchanged AND editing a universal closure fn flips it, pinned by a permanent test. byte-identical
+  alone is what let the hollow C2 pass. **Read `CARVE_METHODOLOGY.md`.**
+- **Process learning:** background impl agents died silently TWICE — prefer FOREGROUND / check liveness early.
