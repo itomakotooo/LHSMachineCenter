@@ -19,9 +19,11 @@ from fresh_slotlab.round_classification import (
     get_collect_count,
     infer_bcm_target_spin_type,
     is_paid_round,
-    is_wild_nudge_round,
     parse_payline_records,
 )
+# is_wild_nudge_round was carved out of round_classification into the
+# base-excluded wild_nudge play-type module (PT-7); import from its new home.
+from fresh_slotlab.analyzer.play_types.wild_nudge import is_wild_nudge_round
 
 
 # ---------------------------------------------------------------------

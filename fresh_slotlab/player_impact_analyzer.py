@@ -46,7 +46,6 @@ try:
     )
     from fresh_slotlab.round_classification import (
         detect_cycle_peak,
-        is_wild_nudge_round,
     )
     # chunk_index / rawdata_index are also script-mode-fragile: they
     # used to be lazy-imported inside best-effort try/except blocks,
@@ -83,7 +82,6 @@ except ImportError:  # running as a standalone script, not a package member
     )
     from round_classification import (  # type: ignore[no-redef]
         detect_cycle_peak,
-        is_wild_nudge_round,
     )
     from chunk_index import (  # type: ignore[no-redef]
         _rebuild_by_md5,

@@ -110,7 +110,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 # Phase 6 (bankruptcy_simulation row-build carve — the LAST carve) shrank PIA again → d8b8c138874a.
 # The isolation RELATIONSHIPS below are unchanged across all of these
 # (M275_ev != M14_ev etc.); only the base value moved.
-_C3_BASE_HASH = "fd5f7d01e1cb"  # playtype C3: machine_id/mode added to parse_chunk_response in parser.py
+_C3_BASE_HASH = "48eada424d82"  # PT-7 wild-nudge carve: is_wild_nudge_round moved out of round_classification.py (closure)
 
 # R1 Phase 1 (Cluster E) note: _M275_C3_5_EFFECTIVE_VERSION and
 # _NON_M275_EFFECTIVE_VERSION hex pins have been REMOVED. They were updated

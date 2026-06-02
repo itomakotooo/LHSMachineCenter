@@ -28,12 +28,11 @@ Five bug families (M279 / M260 / M250 / M120 / etc, 2026-04-27/28):
     in scripts/infer_bcm_pairing.py.
 
   Bug 3 — **Wild auto-nudge classification** (``is_wild_nudge_round``).
-    M279/M226/M149 etc emit ST=36 + ReMarks="move" + cost=0 as the
-    wild auto-nudge continuation of the preceding paid spin (no
-    extra cost). Pre-fix the analyzer treated MoveSpin as a top-
-    level feature, inflating its win and confusing BCM heuristics.
-    Fix: classify by ReMarks word-boundary + cost==0; tag features
-    with is_wild_nudge=True; exclude from BCM heuristic candidates.
+    CARVED OUT (2026-06-02) to the base-excluded
+    ``analyzer/play_types/wild_nudge.py`` (PT-7) so editing the detection
+    logic no longer flips base_hash / re-flags the fleet. It detects
+    M279/M226/M149 etc ST=36 + ReMarks="move" + cost=0 wild auto-nudge
+    continuations of the preceding paid spin. (No longer defined here.)
 
   Bug 4 — **Cycle-peak detection semantics** (``detect_cycle_peak``).
     Initial implementation used max(CollectCount). For machines
@@ -87,14 +86,6 @@ def _to_float(v: Any, default: float = 0.0) -> float:
 # ``<line>:<sym>-<sym>(<positions>)`` -- existing format used across the fleet.
 PAYLINE_RE = re.compile(r"(-?\d+):(-?\d+)-(-?\d+)\(([^)]*)\)")
 
-# Regex for nudge-flavor remarks. M279 uses lower-case "move"; other
-# machines may emit "Move", "Nudge", "WildMove", etc. Word-boundary
-# anchors avoid accidental matches like "Move..." in trigger names
-# such as "MoveSpinTrigger" (which is a different feature name, not
-# a nudge marker).
-_NUDGE_REMARK_RE = re.compile(r"\b(move|nudge)\b", re.IGNORECASE)
-
-
 # ---------------------------------------------------------------------
 # Paid / bonus classification (duplicates trigger_sessions._is_paid_round
 # intentionally; see module docstring)
@@ -128,40 +119,6 @@ def get_collect_count(r: Any) -> int | None:
         return int(cc)
     except (TypeError, ValueError):
         return None
-
-
-# ---------------------------------------------------------------------
-# Bug 3: wild-nudge classifier
-# ---------------------------------------------------------------------
-
-
-def is_wild_nudge_round(r: Any) -> bool:
-    """True iff this round is a wild auto-nudge continuation of a
-    preceding paid spin.
-
-    Detection signals (all required):
-      * ``CostCredits`` is None or 0 (no extra cost; nudge is free)
-      * ``ReMarks`` contains "move" or "nudge" (case-insensitive)
-
-    Verified across M279 / M226 / M149 / M140 / M26 / M51 / M256 in
-    the 2026-04-27 fleet investigation: 25 (machine, mode) pairs
-    emit ST=36 + ReMarks="move" + CostCredits=0 in a uniform shape.
-    Other machines emit nothing matching this signature, so the
-    classifier is False on them by construction.
-    """
-    if not isinstance(r, dict):
-        return False
-    cost = r.get("CostCredits")
-    if cost is not None:
-        try:
-            if float(cost) > 0.0:
-                return False
-        except (TypeError, ValueError):
-            return False
-    rmk = r.get("ReMarks")
-    if not isinstance(rmk, str):
-        return False
-    return bool(_NUDGE_REMARK_RE.search(rmk))
 
 
 # ---------------------------------------------------------------------

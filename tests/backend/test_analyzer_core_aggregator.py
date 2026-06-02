@@ -1297,14 +1297,14 @@ class TestHashCompositionRollsForward:
         # phase 6 carved bankruptcy_simulation's tier row-build out of PIA (the LAST
         # carve) -> d8b8c138874a (report content byte-identical).
         # playtype C3 (per-machine config layer): added machine_id/mode params to
-        # parse_chunk_response in parser.py -> fd5f7d01e1cb (report byte-identical:
+        # parse_chunk_response in parser.py -> 48eada424d82 (report byte-identical:
         # bonus_feature value unchanged; the new params merely thread context to
         # detect_play_types for per-machine config loading).
         # If this value changes again, a _CLOSURE_FILES source was edited.
-        assert actual1 == "fd5f7d01e1cb", (
+        assert actual1 == "48eada424d82", (
             f"compute_base_analyzer_version() diverges from R-1 closure reference:\n"
             f"  actual   = {actual1!r}\n"
-            f"  expected = 'fd5f7d01e1cb' (R-1 closure value, post playtype-C3)\n"
+            f"  expected = '48eada424d82' (R-1 closure value, post PT-7 wild-nudge carve)\n"
             "The R-1 closure covers core/*.py plus content modules (round_classification,\n"
             "round_win, trigger_sessions, sampler, machine_md5, chunk_index, rawdata_index)\n"
             "and support modules. If this changed, update the pin to the new value and\n"

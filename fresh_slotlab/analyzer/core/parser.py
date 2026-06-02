@@ -72,9 +72,9 @@ try:
     from fresh_slotlab.round_classification import (
         compute_robot_cycle_peaks,
         detect_cycle_peak,
-        is_wild_nudge_round,
         attribute_lines_to_pay_ids,
     )
+    from fresh_slotlab.analyzer.play_types.wild_nudge import is_wild_nudge_round
     from fresh_slotlab.round_win import (
         RoundWinRule,
         extract_round_payouts,
@@ -85,9 +85,9 @@ except ImportError:  # running as a standalone script
     from round_classification import (  # type: ignore[no-redef]
         compute_robot_cycle_peaks,
         detect_cycle_peak,
-        is_wild_nudge_round,
         attribute_lines_to_pay_ids,
     )
+    from analyzer.play_types.wild_nudge import is_wild_nudge_round  # type: ignore[no-redef]
     from round_win import (  # type: ignore[no-redef]
         RoundWinRule,
         extract_round_payouts,
