@@ -635,4 +635,6 @@ def run_sampling_chunk(
         bankruptcy_bankroll_mults=bankruptcy_bankroll_mults,
         round_win_rules=round_win_rules,
         use_play_type_plugins=use_play_type_plugins,
+        machine_id=machine,
+        mode=rtp_mode,
     )

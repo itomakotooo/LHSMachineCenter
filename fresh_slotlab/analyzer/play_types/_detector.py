@@ -315,7 +315,7 @@ def detect_play_types(
         [p for p in matching_plugins if p.FEATURE_ID in all_active_ids]
     )
 
-    return MachinePlayTypeConfig(
+    detected_config = MachinePlayTypeConfig(
         machine_id=machine_id,
         mode=mode,
         active_plugins=[p.FEATURE_ID for p in active_plugins_ordered],
@@ -323,6 +323,50 @@ def detect_play_types(
         plugin_configs={},
         onboarding_alerts=onboarding_alerts,
     )
+
+    # Phase C3 (per-machine config layer): load plugin_configs from the
+    # persisted JSON file (configs/play_type_configs/<machine>/mode_<n>.json)
+    # if it exists.  The disk file is the operator-curated truth for
+    # parameters that cannot be auto-detected from rawdata alone
+    # (e.g. bcm_base.bonus_feature from bcm_pairings migration).
+    #
+    # Merge strategy: on-disk plugin_configs values WIN over auto-detected
+    # values (disk = intentional operator config; auto-detect = best-effort
+    # heuristic).  active_plugins / st_map / onboarding_alerts from
+    # auto-detection are kept (disk file's values for those fields are
+    # IGNORED — they may be stale from a previous detection run).
+    #
+    # No crash on missing file (normal for new machines / non-BCM).
+    # No crash on parse error: persists diagnostic and returns detected
+    # config without merge (per memory/feedback_no_silent_swallow.md).
+    if machine_id:
+        try:
+            disk_config = MachinePlayTypeConfig.read(machine_id, mode)
+            if disk_config is not None and disk_config.plugin_configs:
+                # Merge: for each plugin FEATURE_ID in disk plugin_configs,
+                # overlay the disk values on top of any auto-detected values.
+                merged = dict(detected_config.plugin_configs)  # shallow copy
+                for fid, fid_cfg in disk_config.plugin_configs.items():
+                    if isinstance(fid_cfg, dict):
+                        existing = merged.get(fid, {})
+                        if isinstance(existing, dict):
+                            merged[fid] = {**existing, **fid_cfg}
+                        else:
+                            merged[fid] = dict(fid_cfg)
+                detected_config.plugin_configs = merged
+        except Exception as _merge_exc:  # noqa: BLE001
+            # Per memory/feedback_no_silent_swallow.md: do NOT silently
+            # pass.  Log the error to stderr so operators see it without
+            # crashing a production run.
+            import sys as _sys
+            print(
+                f"[play_types._detector] WARNING: failed to load per-machine "
+                f"config for ({machine_id!r}, mode={mode}): {_merge_exc!r}. "
+                "plugin_configs will be empty for this run.",
+                file=_sys.stderr,
+            )
+
+    return detected_config
 
 
 def _resolve_claimants(

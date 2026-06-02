@@ -731,11 +731,13 @@ class TestHashComposition:
         # phase 5 carved reel_marginal_by_spin_type's dict-build out of PIA -> ccc1ecce185d;
         # phase 6 carved bankruptcy_simulation's tier row-build out of PIA (the LAST
         # carve) -> d8b8c138874a (report content byte-identical).
+        # playtype C3 (per-machine config layer): added machine_id/mode params to
+        # parse_chunk_response in core/parser.py -> fd5f7d01e1cb.
         actual = _cbav()
-        assert actual == "d8b8c138874a", (
+        assert actual == "fd5f7d01e1cb", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = 'd8b8c138874a' (R-1 closure value, post phase-6)\n"
+            f"  expected = 'fd5f7d01e1cb' (R-1 closure value, post playtype-C3)\n"
             "R-4 exclusion covers registered plugins only (not all features/*.py).\n"
             "_base.py and features/__init__.py are still in base (not registered plugins)."
         )

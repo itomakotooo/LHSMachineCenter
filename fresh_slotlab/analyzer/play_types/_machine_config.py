@@ -218,6 +218,35 @@ class MachinePlayTypeConfig:
         )
 
     # ------------------------------------------------------------------
+    # BCM bonus-feature helpers
+    # ------------------------------------------------------------------
+
+    def get_bcm_bonus_feature(self) -> "str | None":
+        """Return the BCM bonus-feature name from plugin_configs, or None.
+
+        Reads ``plugin_configs["bcm_base"]["bonus_feature"]``.  Returns
+        ``None`` if the key is absent (machine has no per-config bonus
+        feature; caller falls back to bcm_pairings.json heuristic).
+
+        This is the Phase-3 read path:
+          1. PIA loads the per-machine config via ``MachinePlayTypeConfig.read()``.
+          2. Calls ``get_bcm_bonus_feature()`` for layer-1 of
+             ``_resolve_bonus_feature()`` instead of ``_load_bcm_pairings()``.
+          3. Same value → byte-identical output for all BCM pilots.
+
+        Per memory/feedback_no_silent_swallow.md: returns ``None`` (not an
+        empty string) so the caller can distinguish "no config" from
+        "config says no bonus feature".
+        """
+        bcm_cfg = self.plugin_configs.get("bcm_base")
+        if not isinstance(bcm_cfg, dict):
+            return None
+        feat = bcm_cfg.get("bonus_feature")
+        if not feat:
+            return None
+        return str(feat)
+
+    # ------------------------------------------------------------------
     # Version hash
     # ------------------------------------------------------------------
 

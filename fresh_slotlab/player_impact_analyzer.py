@@ -685,11 +685,18 @@ def _resolve_bonus_feature(
     config: dict[str, dict[int, str]],
     feature_to_spin_type: dict[str, int] | None = None,
     wild_nudge_spin_types: set[int] | None = None,
+    play_type_config: "Any | None" = None,
 ) -> tuple[str | None, str]:
     """Decide which FeatureWin key pairs with BuffCollectionMap for a
     given (machine, mode).
 
-    Three-layer strategy (config → heuristic → none):
+    Four-layer strategy (per-machine-config → bcm_pairings → heuristic → none):
+      0. Phase C3 (per-machine config layer): if ``play_type_config`` is
+         provided and its ``plugin_configs["bcm_base"]["bonus_feature"]`` is
+         non-None → return that feature, source="config". This is the new
+         primary path after the bcm_pairings migration. The per-machine config
+         JSON (configs/play_type_configs/<M>/mode_<n>.json) is the
+         operator-curated truth, hashed by the version system.
       1. If ``config[machine][mode]`` exists → return that feature,
          source="config". Respect operator override even when the
          feature's current win is zero (small cache, rare feature;
@@ -709,7 +716,27 @@ def _resolve_bonus_feature(
          Caller should skip RTP correction + surface a warning.
 
     Returns ``(feature_name_or_None, source_string)``.
+
+    Parameters
+    ----------
+    play_type_config:
+        Optional ``MachinePlayTypeConfig`` instance (from the per-machine
+        play-type config layer, Phase C3).  When provided and its
+        ``plugin_configs["bcm_base"]["bonus_feature"]`` is a non-empty
+        string, that value is returned immediately (layer 0).  The
+        ``bcm_pairings.json`` lookup (layer 1) is reached only for machines
+        whose per-machine config file does not exist or has no bcm_base entry.
     """
+    # Layer 0 (Phase C3): per-machine config takes precedence over bcm_pairings.
+    if play_type_config is not None:
+        _pt_feat = None
+        try:
+            _pt_feat = play_type_config.get_bcm_bonus_feature()
+        except Exception:  # noqa: BLE001 — defensive; should never fail
+            pass
+        if _pt_feat:
+            return _pt_feat, "config"
+
     cfg = config or {}
     per_mode = cfg.get(machine)
     if isinstance(per_mode, dict) and mode in per_mode:
@@ -1564,6 +1591,8 @@ def main() -> int:
                 bankruptcy_bankroll_mults=_bankruptcy_mults_tuple,
                 round_win_rules=_round_win_rules,
                 use_play_type_plugins=getattr(args, "use_play_type_plugins", False),
+                machine_id=args.machine,
+                mode=args.rtp_mode,
             )
             if not rec.get("ok"):
                 raise SystemExit(f"{tag}: {cf.name} parse failed: {rec.get('error')}")
@@ -3513,15 +3542,39 @@ def main() -> int:
         if _st_total > 0 and (_nudge_n / _st_total) >= 0.9:
             _wild_nudge_st_set.add(_st_int)
 
+    # Phase C3 (per-machine config layer): load the per-machine play-type
+    # config from configs/play_type_configs/<machine>/mode_<n>.json.
+    # This config carries plugin_configs["bcm_base"]["bonus_feature"] for
+    # BCM pilot machines (migrated from bcm_pairings.json).  Non-BCM
+    # machines have no file → None.  Missing file is not an error.
+    #
+    # Circular-law: must NOT import play_types modules at the top of PIA.
+    # We do the import here (inside main()) to avoid the circular import.
+    # The MachinePlayTypeConfig module has no side effects at import time.
+    try:
+        from fresh_slotlab.analyzer.play_types._machine_config import (
+            MachinePlayTypeConfig as _MachinePlayTypeConfig,
+        )
+    except ImportError:
+        from analyzer.play_types._machine_config import (  # type: ignore[no-redef]
+            MachinePlayTypeConfig as _MachinePlayTypeConfig,
+        )
+    _pia_machine_pt_config = _MachinePlayTypeConfig.read(
+        args.machine, args.rtp_mode
+    )
+
     # Preload BCM pairing (config → heuristic) once. Falls back the
     # "BuffCollectionMap" feature to its cycle-pair when SpinType
     # inference can't bind it (BCM is per-spin background state, not
     # a round-level type — never has its own SpinType count).
+    # Phase C3: pass _pia_machine_pt_config so layer-0 (per-machine config)
+    # takes precedence over bcm_pairings.json when a config file exists.
     _bcm_bonus_feature, _bcm_bonus_source = _resolve_bonus_feature(
         args.machine, args.rtp_mode,
         upstream_feature_tally, _load_bcm_pairings(),
         feature_to_spin_type=feature_to_spin_type,
         wild_nudge_spin_types=_wild_nudge_st_set,
+        play_type_config=_pia_machine_pt_config,
     )
 
     # Upstream FeatureWin breakdown -- row-build carved out (Phase 3).
@@ -4302,8 +4355,11 @@ def main() -> int:
     # the plugin re-sources them from this stash and runs the dict-build + the
     # _compute_bonus_correction / collect_feature_match_warning /
     # build_cycle_observation calls (all moved into / imported by the plugin).
+    # Phase C3: pass _pia_machine_pt_config (loaded above) so layer-0
+    # (per-machine config) takes precedence over bcm_pairings.json.
     _cm_bonus_feat, _cm_bonus_src = _resolve_bonus_feature(
-        args.machine, args.rtp_mode, upstream_feature_tally, _load_bcm_pairings()
+        args.machine, args.rtp_mode, upstream_feature_tally, _load_bcm_pairings(),
+        play_type_config=_pia_machine_pt_config,
     )
     summary["_collect_mechanic_data"] = {
         "collect_robots_seen_total": collect_robots_seen_total,

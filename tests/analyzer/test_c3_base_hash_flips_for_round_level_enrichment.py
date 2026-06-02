@@ -87,7 +87,7 @@ _C2_BASE_HASH = "b0ba0ce7c7e2"
 # PIA again → ccc1ecce185d; phase 6 (bankruptcy_simulation row-build carve — the LAST
 # carve) shrank PIA again → d8b8c138874a (one-time fleet re-baseline, report content
 # byte-identical).
-_EXPECTED_C3_BASE_HASH = "d8b8c138874a"  # phase 6: PIA shrank (bankruptcy_simulation row-build carve)
+_EXPECTED_C3_BASE_HASH = "fd5f7d01e1cb"  # playtype C3: machine_id/mode added to parse_chunk_response in parser.py
 
 _HEX12_RE = re.compile(r"^[0-9a-f]{12}$")
 

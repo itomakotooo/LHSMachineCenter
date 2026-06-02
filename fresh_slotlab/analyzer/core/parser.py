@@ -523,6 +523,8 @@ def parse_chunk_response(
     bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
     round_win_rules: list[RoundWinRule] | None = None,
     use_play_type_plugins: bool = False,
+    machine_id: str = "",
+    mode: int = 1,
 ) -> dict[str, Any]:
     """Parse a raw API response (list of robot dicts) into chunk metrics.
 
@@ -539,6 +541,13 @@ def parse_chunk_response(
     contribution merged at finalize). Defaults produce the standard
     (100/200/500) × 500-spin ladder even when callers forget to plumb
     through the CLI value.
+
+    ``machine_id`` and ``mode`` are threaded to ``detect_play_types`` so
+    the per-machine play-type config (configs/play_type_configs/) can be
+    loaded and merged into the detected config.  Defaults of "" / 1
+    preserve backward-compatibility: callers that don't supply these
+    values get the same behaviour as before (empty machine_id → no on-disk
+    config load in detect_play_types).
     """
     if started is None:
         started = time.time()
@@ -738,8 +747,13 @@ def parse_chunk_response(
             cost_credits_unreliable = _chunk_parse_state.cost_credits_unreliable
             # detect_play_types returns a MachinePlayTypeConfig with
             # active_plugins as a FEATURE_ID list in MECHANIC_DEPS topo order.
+            # Phase C3: thread machine_id + mode so detect_play_types can load
+            # plugin_configs (incl. bcm_base.bonus_feature) from the persisted
+            # per-machine config JSON (configs/play_type_configs/).
             _pt_config = detect_play_types(
                 _probe_sample, _registry_plugins, _chunk_parse_state,
+                machine_id=machine_id,
+                mode=mode,
             )
             # Thread the real config into the robot loop (FIX _pt_cfg_empty,
             # critique_commitC1 finding #3).  C2's BCMBaseAccumulator reads
