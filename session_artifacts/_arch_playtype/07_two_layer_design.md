@@ -711,3 +711,36 @@ primitive; PT-7 = shared Layer-1 classifier).
 **Not over-claiming:** OP-1 (the engine stays universal → an engine bug still re-flags all attributed machines) is
 accepted, not solved — correct for a universal primitive; worth watching that policy churn actually moves into the
 plugins post-refactor.
+
+---
+
+## 13. M15 TopDollar — worked event-model + ST=14 stats (validated on real rawdata, 2026-06-02)
+
+The **milestone node**. M15 is a TopDollar machine; its events (per `DIRECTION.md §13` — SpinType = event token):
+- **ST=1** — base paid spin (cost 1000). A `ReMarks="Trigger"` ST=1 opens a TopDollar session.
+- **ST=14** — a player PICK. 玩法: up to **4 picks**; the player may **stop early** or is **forced to take the 4th**.
+  Fields: `DollarCount` (dollars in the offer), `ChosenDollar` (the dollars, e.g. "5-10-5"), `OfferValue` (their sum).
+  **`WinCredits` on ST=14 is a PREVIEW of the offer, NOT real win** → contributes 0 economy (else RTP double-counts).
+- **ST=15** — settlement; `WinAmount` = the accepted/forced offer = the real win.
+- TopDollar play-type session = ST=1 trigger + the ST=14 pick sequence + the ST=15 settlement.
+
+**ST=14 behavioral stats — validated over 5 chunks / 440 sessions / 40,000 base spins:**
+
+| Stat | Real value (M15) |
+|---|---|
+| picks-per-session (1 / 2 / 3 / 4) | 104 / 66 / 69 / **201** |
+| stopped-early vs forced-4th | 54.3% / 45.7% |
+| bad-gamble (forced 4th < a passed offer) | 91 of 201 forced = **45.3%** |
+| final settled value | min 10k / median 40k / mean 45.8k / max 440k |
+| dollar-tier composition | 5:2188, 10:1030, 20:230, 50:22, 100:2 |
+| trigger rate | 440/40000 = **1.10%** of base spins |
+| **TopDollar RTP contribution** | **50.4%** of total bet |
+
+These are exactly the behavioral signals the old "phantom 0-win selector" model discarded (it kept only the ST=15
+win). Headline: TopDollar is a **1.1%-frequency feature carrying ~50% of RTP**, where players gamble to the 4th pick
+46% of the time and ~45% of those over-gambles land below an offer they'd passed.
+
+**Parser build (the milestone):** event parsers for ST=1 / ST=14 / ST=15 + trigger-session attribution + the ST=14
+stat rollup, with ST=14 win = preview (0 economy). Gated: byte-identical vs current M15 output (the existing
+settlement/phantom handling must still hold) + base_hash isolation + this session trace. The stats above are the
+validated spec the parser encodes.
