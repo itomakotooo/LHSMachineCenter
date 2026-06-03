@@ -7257,7 +7257,7 @@ def create_app(
     # Declared early so the console_root route below can use it.
     def _asset_hash_for_console() -> str:
         latest = 0
-        for name in ("pure.js", "app.js", "styles.css"):
+        for name in ("pure.js", "app.js", "panel_registry.js", "styles.css"):
             p = FRONTEND_DIR / name
             try:
                 ts = int(p.stat().st_mtime)
@@ -7347,7 +7347,7 @@ def create_app(
     # ``?v=<token>`` and the browser reliably picks up edits.
     def _asset_hash() -> str:
         latest = 0
-        for name in ("pure.js", "app.js", "styles.css"):
+        for name in ("pure.js", "app.js", "panel_registry.js", "styles.css"):
             p = FRONTEND_DIR / name
             try:
                 ts = int(p.stat().st_mtime)

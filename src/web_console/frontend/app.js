@@ -7020,26 +7020,18 @@ function _resetDebugPanelsToEmpty() {
 }
 
 
-/** Render the analysis panels (KPI tiles, tail/big-win grids,
- *  bucket table, paylines, symbols, payouts, features, mechanics,
- *  bankruptcy, library ranking) from a given summary dict. Used by
- *  both refreshCurrentRun (after fetching from /api/runs/.../report)
- *  and _enterCompareMode (which has both summaries in memory and
- *  doesn't need an API round-trip). Compare-aware renderers branch
- *  on state.compareMode.b INSIDE this function — the caller just
- *  passes the primary summary as `s`.
- *
- *  Returns nothing. Async because applyLibraryRanking does its own
- *  /api/library/distributions fetch + several panel renderers are
- *  async on their own.
+// ── Extracted named panel render functions ─────────────────────────────────────
+// These were previously inline inside _paintAnalysisFromSummary. Extracted so
+// they can be referenced by PANEL_REGISTRY descriptors in panel_registry.js.
+// Each function produces BYTE-IDENTICAL DOM output to the original inline code.
+
+/**
+ * renderKpiTiles(s) — KPI card row (RTP, CI, Spins, Zero-win, Archetype,
+ * Loss-streak, Max-return). Compare-aware via state.compareMode.b.
+ * Extracted from _paintAnalysisFromSummary (was lines 7039-7086).
  */
-async function _paintAnalysisFromSummary(s) {
-  // Drive the KPI cards from a single pure helper so tone classification
-  // stays in one place (testable without DOM).
+function renderKpiTiles(s) {
   const cards = PURE.extractMetricCards(s, state.lang);
-  // Compare mode: extract a parallel "cardsB" so each KPI tile can
-  // also show B's value + Δ inline. The single-mode UI is unchanged
-  // when compareMode is null.
   const cardsB = state.compareMode && state.compareMode.b
     ? PURE.extractMetricCards(state.compareMode.b, state.lang)
     : null;
@@ -7061,8 +7053,6 @@ async function _paintAnalysisFromSummary(s) {
     let compareArg = null;
     if (cardsB) {
       const cB = cardsB[key] || { value: "N/A" };
-      // For RTP we have CI half-widths so we can flag significance;
-      // for other metrics we lean on the unknown-CI fallback.
       let deltaText = "";
       let deltaSig = "unknown";
       if (key === "rtp") {
@@ -7084,10 +7074,15 @@ async function _paintAnalysisFromSummary(s) {
       if (subEl) subEl.textContent = c.sub || "";
     }
   }
-  // Tail dependency 2×2 grid. Compare-aware: each .tail-cell
-  // shows A on top + B underneath with cmp-cell-a / cmp-cell-b
-  // styling when state.compareMode is active. Single-mode renders
-  // the same <b>{val}</b> shape as before.
+}
+
+/**
+ * renderTailDepGrid(s) — Tail-dependency 2x2 grid (#kpiTailGrid).
+ * Compare-aware via state.compareMode.b.
+ * Extracted from _paintAnalysisFromSummary (was lines 7091-7122).
+ */
+function renderTailDepGrid(s) {
+  const cards = PURE.extractMetricCards(s, state.lang);
   const tailGrid = byId("kpiTailGrid");
   if (tailGrid) {
     const td = cards.tailDep || {};
@@ -7095,7 +7090,7 @@ async function _paintAnalysisFromSummary(s) {
     const dmB = state.compareMode && state.compareMode.b
       ? (state.compareMode.b.guideline_assessment?.derived_metrics || {})
       : null;
-    const fmt1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(1) + "%";
+    const fmt1 = (v) => v == null ? "—" : (Number(v) * 100).toFixed(1) + "%";
     const tone = td.tone || "neutral";
     const _tcell = (label, key) => {
       const aRaw = dm[key];
@@ -7103,24 +7098,32 @@ async function _paintAnalysisFromSummary(s) {
       if (!dmB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
       const bRaw = dmB[key];
       const bV = fmt1(bRaw);
-      // Tail-dep raws are 0\u20131 fractions \u2192 render \u0394 in pp scale.
+      // Tail-dep raws are 0–1 fractions → render Δ in pp scale.
       const aN = aRaw == null ? NaN : Number(aRaw) * 100;
       const bN = bRaw == null ? NaN : Number(bRaw) * 100;
       return `<div class="tail-cell"><em>${label}</em><b>` +
         _cmpCell(true, aV, bV, aN, bN, "pp", 2) + `</b></div>`;
     };
     tailGrid.innerHTML =
-      _tcell("\u226510x", "tail_dependency_ge10x") +
-      _tcell("\u226520x", "tail_dependency_ge20x") +
-      _tcell("\u226550x", "tail_dependency_ge50x") +
-      _tcell("\u2265100x", "tail_dependency_ge100x");
+      _tcell("≥10x", "tail_dependency_ge10x") +
+      _tcell("≥20x", "tail_dependency_ge20x") +
+      _tcell("≥50x", "tail_dependency_ge50x") +
+      _tcell("≥100x", "tail_dependency_ge100x");
     const card = tailGrid.closest(".kpi");
     if (card) {
       card.classList.remove("kpi--good", "kpi--warn", "kpi--bad");
       if (tone === "good" || tone === "warn" || tone === "bad") card.classList.add(`kpi--${tone}`);
     }
   }
-  // Big-win rate 4-tile grid — same compare-aware shape as tail-dep.
+}
+
+/**
+ * renderBigWinGrid(s) — Big-win rate 4-tile grid (#kpiBigWinGrid).
+ * Compare-aware via state.compareMode.b.
+ * Extracted from _paintAnalysisFromSummary (was lines 7123-7148).
+ */
+function renderBigWinGrid(s) {
+  const cards = PURE.extractMetricCards(s, state.lang);
   const bigWinGrid = byId("kpiBigWinGrid");
   if (bigWinGrid) {
     const tiles = (cards.bigWin && cards.bigWin.tiles) || {};
@@ -7128,25 +7131,33 @@ async function _paintAnalysisFromSummary(s) {
       ? PURE.extractMetricCards(state.compareMode.b, state.lang)
       : null;
     const tilesB = cardsBLocal && cardsBLocal.bigWin ? cardsBLocal.bigWin.tiles : null;
-    const pct1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(2) + "%";
+    const pct1 = (v) => v == null ? "—" : (Number(v) * 100).toFixed(2) + "%";
     const _bcell = (label, key) => {
       const aRaw = tiles[key];
       const aV = pct1(aRaw);
       if (!tilesB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
       const bRaw = tilesB[key];
       const bV = pct1(bRaw);
-      // Big-win tile raws are 0\u20131 fractions \u2192 render \u0394 in pp.
+      // Big-win tile raws are 0–1 fractions → render Δ in pp.
       const aN = aRaw == null ? NaN : Number(aRaw) * 100;
       const bN = bRaw == null ? NaN : Number(bRaw) * 100;
       return `<div class="tail-cell"><em>${label}</em><b>` +
         _cmpCell(true, aV, bV, aN, bN, "pp", 2) + `</b></div>`;
     };
     bigWinGrid.innerHTML =
-      _bcell("\u226510x", "ge10") +
-      _bcell("\u226520x", "ge20") +
-      _bcell("\u226550x", "ge50") +
-      _bcell("\u2265100x", "ge100");
+      _bcell("≥10x", "ge10") +
+      _bcell("≥20x", "ge20") +
+      _bcell("≥50x", "ge50") +
+      _bcell("≥100x", "ge100");
   }
+}
+
+/**
+ * renderLibraryRanking(s) — Across-library ranking fetch + apply.
+ * Async; registered as fireAndForget:true (non-blocking for the panel sequence).
+ * Extracted from _paintAnalysisFromSummary (was lines 7154-7164).
+ */
+async function renderLibraryRanking(s) {
   // Across-library ranking, filtered to the same mode so a mode 1
   // baseline machine isn't ranked against mode 5 bonus-mode reports
   // (their ranges are inherently different). Falls back to cross-mode
@@ -7162,6 +7173,14 @@ async function _paintAnalysisFromSummary(s) {
   } catch (_err) {
     // Non-fatal: leave sub-lines cleared.
   }
+}
+
+/**
+ * renderBucketDistribution(s) — Multiplier-bucket distribution table (#bucketTable tbody).
+ * Compare-aware via state.compareMode.b.
+ * Extracted from _paintAnalysisFromSummary (was lines 7166-7228).
+ */
+function renderBucketDistribution(s) {
   // Bucket distribution: table-based (replaces Chart.js canvas).
   const buckets = s.player_impact?.multiplier_profile?.buckets || [];
   const bucketBody = byId("bucketTable")?.querySelector("tbody");
@@ -7227,26 +7246,57 @@ async function _paintAnalysisFromSummary(s) {
       })
       .join("");
   }
-  renderRtpClampWarning(s);
-  renderReportSelfCheck(s);
-  renderSpinTypeBreakdown(s);
-  renderFeatureBreakdownPanel(s);
-  // Classifier panel needs its own API call; fire-and-forget so the
-  // rest of the debug tab isn't blocked on a second network round-
-  // trip. Hidden automatically when the classifier output doesn't
-  // cover this machine.
-  renderPaylineClassification(s);
-  renderPayIdOverview(s);
-  renderPayoutsBySpinType(s);
-  renderFieldDiscovery(s);
-  renderMachineMechanics(s);
-  renderBonusChainDynamicsPanel(s);
-  renderCollectCyclePanel(s);
-  renderPaylineDrilldown(s);
-  renderSymbolDrilldown(s);
-  renderReelMarginalBySpinType(s);
-  renderBankruptcyAnalysis(s);
 }
+
+// ── End extracted named panel render functions ──────────────────────────────────
+
+/** Render the analysis panels (KPI tiles, tail/big-win grids,
+ *  bucket table, paylines, symbols, payouts, features, mechanics,
+ *  bankruptcy, library ranking) from a given summary dict. Used by
+ *  both refreshCurrentRun (after fetching from /api/runs/.../report)
+ *  and _enterCompareMode (which has both summaries in memory and
+ *  doesn't need an API round-trip). Compare-aware renderers branch
+ *  on state.compareMode.b INSIDE this function — the caller just
+ *  passes the primary summary as `s`.
+ *
+ *  Returns nothing. Async because applyLibraryRanking does its own
+ *  /api/library/distributions fetch + several panel renderers are
+ *  async on their own.
+ */
+async function _paintAnalysisFromSummary(s) {
+  // Build the ctx object that PANEL_REGISTRY descriptors receive.
+  // P1: wrapped fns still read state.compareMode.b internally — no change to
+  // their bodies. ctx.b is wired for P2+ panels that accept it as a parameter.
+  const ctx = {
+    a: s,
+    b: (state.compareMode && state.compareMode.b) || null,
+    machine: s.machine,
+    mode: s.mode,
+    compare: !!state.compareMode,
+  };
+
+  // Iterate PANEL_REGISTRY in order-value order.
+  // fireAndForget descriptors are called WITHOUT await — matches the original
+  // dispatch, which called the 3 async panels (library-ranking,
+  // renderPaylineClassification, renderPayIdOverview) without await. The
+  // remaining panels are synchronous; awaiting a non-Promise is immediate, so
+  // the original sequencing is preserved exactly.
+  const _registry = window.PANEL_REGISTRY;
+  if (!Array.isArray(_registry) || _registry.length === 0) {
+    console.warn("PANEL_REGISTRY missing/empty — analysis panels will not render (panel_registry.js failed to load?)");
+  }
+  const sorted = (_registry || [])
+    .slice()
+    .sort((a, b) => a.order - b.order);
+  for (const descriptor of sorted) {
+    if (descriptor.fireAndForget) {
+      descriptor.render(ctx); // intentionally not awaited
+    } else {
+      await descriptor.render(ctx);
+    }
+  }
+}
+
 
 async function refreshCurrentRun() {
   if (!state.currentRunId) {

@@ -768,6 +768,11 @@
     <!-- compare_diff.js: pure diff/significance helpers, used by
          compare-aware renderers in app.js. Must load before app.js. -->
     <script src="/console/compare_diff.js?v={{ASSET_HASH}}"></script>
+    <!-- panel_registry.js: ordered panel descriptor array (window.PANEL_REGISTRY).
+         Must load BEFORE app.js so the registry exists when _paintAnalysisFromSummary
+         iterates it. render() fns reference app.js globals by name; they are only
+         called at runtime (after app.js has executed), so references resolve correctly. -->
+    <script src="/console/panel_registry.js?v={{ASSET_HASH}}"></script>
     <script src="/console/app.js?v={{ASSET_HASH}}"></script>
   </body>
 </html>
