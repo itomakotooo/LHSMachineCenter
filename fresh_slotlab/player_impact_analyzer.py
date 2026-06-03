@@ -1203,6 +1203,13 @@ def main() -> int:
     # now owned by the PayoutsBySpinType plugin's extract/reduce/emit.
     # payout_id_by_spin_type_total is kept: F2 (payout_ids_top20) still
     # uses it for dominant-SpinType attribution at finalization.
+    # C4 symbol enrichment: per-pid col_set (union) and symbol combo histogram.
+    # Both sourced from payout_id_col_set / payout_id_symbol_combos chunk keys.
+    # Used by payout_ids_top20 to add covered_columns + symbol_combo per row.
+    payout_id_col_set_total: dict[str, set[int]] = defaultdict(set)
+    payout_id_symbol_combos_total: dict[str, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
     spin_type_spins: dict[int, int] = defaultdict(int)
     spin_type_next_counts: dict[int, Counter] = defaultdict(Counter)
     spin_type_remarks_sample: dict[int, list[str]] = defaultdict(list)
@@ -1691,6 +1698,16 @@ def main() -> int:
                         payout_id_by_spin_type_total[str(pid)][_st_int] += int(cnt or 0)
                 # Phase C2: payout_id_win_by_spin_type_total removed — now owned
                 # by PayoutsBySpinType plugin's extract()/reduce() accumulator.
+                # C4: merge per-pid col_set (union) and symbol_combos (additive).
+                # Old cached chunks (pre-C4) won't have these keys; tolerate via .get().
+                for pid, cols in (rec.get("payout_id_col_set") or {}).items():
+                    if isinstance(cols, (list, set)):
+                        for c in cols:
+                            payout_id_col_set_total[str(pid)].add(int(c))
+                for pid, sc_map in (rec.get("payout_id_symbol_combos") or {}).items():
+                    if isinstance(sc_map, dict):
+                        for combo, cnt in sc_map.items():
+                            payout_id_symbol_combos_total[str(pid)][str(combo)] += int(cnt or 0)
                 for st, c in (rec.get("spin_type_spins") or {}).items():
                     spin_type_spins[int(st)] += int(c)
                 for st, b in (rec.get("spin_type_bet") or {}).items():
@@ -2469,6 +2486,16 @@ def main() -> int:
                         payout_id_by_spin_type_total[str(pid)][_st_int] += int(cnt or 0)
                 # Phase C2: payout_id_win_by_spin_type_total removed — now owned
                 # by PayoutsBySpinType plugin's extract()/reduce() accumulator.
+                # C4: merge per-pid col_set (union) and symbol_combos (additive).
+                # Old cached chunks (pre-C4) won't have these keys; tolerate via .get().
+                for pid, cols in (rec.get("payout_id_col_set") or {}).items():
+                    if isinstance(cols, (list, set)):
+                        for c in cols:
+                            payout_id_col_set_total[str(pid)].add(int(c))
+                for pid, sc_map in (rec.get("payout_id_symbol_combos") or {}).items():
+                    if isinstance(sc_map, dict):
+                        for combo, cnt in sc_map.items():
+                            payout_id_symbol_combos_total[str(pid)][str(combo)] += int(cnt or 0)
                 # spin_type_* added in the SpinType-breakdown commit; old
                 # chunk records tolerate missing via .get().
                 for st, c in (rec.get("spin_type_spins") or {}).items():
@@ -3324,6 +3351,27 @@ def main() -> int:
                 category = "bonus" if dominant_share >= 0.8 else "mixed"
             else:
                 category = "mixed"
+        # C4 enrichment: covered_columns + symbol_combo for this pid.
+        # covered_columns: sorted list of 0-indexed column indices (union across all STs).
+        _c4_pid_s = str(pid)
+        _c4_col_set = payout_id_col_set_total.get(_c4_pid_s)
+        _c4_covered_columns: list[int] = sorted(_c4_col_set) if _c4_col_set else []
+        _c4_sc_map = payout_id_symbol_combos_total.get(_c4_pid_s) or {}
+        if _c4_sc_map:
+            _c4_dominant: str | None = max(
+                _c4_sc_map.items(), key=lambda kv: kv[1]
+            )[0]
+            _c4_all_syms: set[str] = set()
+            for _c4_combo_str in _c4_sc_map:
+                for _c4_sym in _c4_combo_str.split("|"):
+                    if _c4_sym:
+                        _c4_all_syms.add(_c4_sym)
+            _c4_symbol_combo: dict[str, Any] = {
+                "dominant": _c4_dominant,
+                "distinct_symbols": sorted(_c4_all_syms),
+            }
+        else:
+            _c4_symbol_combo = {"dominant": None, "distinct_symbols": []}
         payout_id_rows.append(
             {
                 "payout_id": str(pid),
@@ -3337,9 +3385,7 @@ def main() -> int:
                 # this, payout rows used total_bet which included
                 # BetAmount on bonus rounds where the player doesn't
                 # actually pay, so sum(payout_ids_top20.rtp_pp)
-                # lagged summary.rtp by the ratio (paid / total)
-                # (e.g. M15: 200M / 208.84M = 95.77%). Now the sum
-                # converges on summary.rtp at fleet level.
+                # lagged summary.rtp at fleet level.
                 "rtp_contribution_pp": (
                     (wins_f / effective_bet_for_rtp) * 100.0
                     if effective_bet_for_rtp > 0 else 0.0
@@ -3355,6 +3401,14 @@ def main() -> int:
                     {"spin_type": int(k), "count": int(v)}
                     for k, v in sorted(st_hits.items(), key=lambda kv: -int(kv[1]))
                 ],
+                # C4 enrichment: covered_columns + symbol_combo from live data.
+                # covered_columns: union of column indices across all STs.
+                # symbol_combo.dominant: most-frequent combo string (e.g. "cherry|wild|cherry").
+                # symbol_combo.distinct_symbols: sorted union of all symbol names.
+                # Both are None/[] for pids with no StopSymbolsByCol decode data
+                # (scatter-only pids, old cached chunks, or STs without PayoutByPayline).
+                "covered_columns": _c4_covered_columns,
+                "symbol_combo": _c4_symbol_combo,
             }
         )
 

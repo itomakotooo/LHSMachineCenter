@@ -355,8 +355,8 @@ class TestM275ByteIdentical:
         — the carve is shape-preserving.)
         """
         n = len(_flatten_leaves(m275_summary))
-        assert n == 4667, (
-            f"M275 raw leaf count must be 4667 (pre-carve baseline figure), got {n}. "
+        assert n == 4887, (
+            f"M275 raw leaf count must be 4887 (re-baselined post Phase-P3 symbol_combo/covered_columns enrichment), got {n}. "
             f"The carve changed the report shape."
         )
 
@@ -506,10 +506,10 @@ class TestM14ByteIdentical:
         )
 
     def test_m14_leaf_count_matches_baseline(self, m14_summary):
-        """Raw M14 leaf count must be 6864 (pre-carve baseline figure)."""
+        """Raw M14 leaf count must be 6957 (re-baselined post Phase-P3 symbol_combo enrichment)."""
         n = len(_flatten_leaves(m14_summary))
-        assert n == 6864, (
-            f"M14 raw leaf count must be 6864 (pre-carve baseline figure), got {n}."
+        assert n == 6957, (
+            f"M14 raw leaf count must be 6957 (re-baselined post Phase-P3 symbol_combo enrichment), got {n}."
         )
 
     def test_m14_three_bankruptcy_consumers_equal_golden(self, m14_summary):

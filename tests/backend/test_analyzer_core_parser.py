@@ -737,7 +737,7 @@ class TestBaseAnalyzerVersionHash:
         actual = _compute_base_ver_fn()
         assert actual is not None, "compute_base_analyzer_version() returned None"
 
-        # Pin check: must be the known R-1 closure value (post PT-3 BCM-cycle carve)
+        # Pin check: must be the known R-1 closure value (post P3 payid symbol enrichment)
         # R-1 closure = 25-file set: core/*.py + content modules + support modules
         # (MINUS registered feature plugins, which have their own feature_hash).
         # Phase 2a (collect_mechanic carve) shrank player_impact_analyzer.py (a
@@ -754,12 +754,19 @@ class TestBaseAnalyzerVersionHash:
         # base_pipeline.py + C3 Layer-0 from PIA -> 8a791a69cd05.
         # Behavior byte-identical: framework was flag-off-dormant; C3 L0 redundant
         # with bcm_pairings L1 (same value + source="config" for all 5 pilots).
-        assert actual == "adf08191dd9c", (
+        # Phase E: topdollar_choice plugin registered + parser.py TD session
+        # accumulator -> adf08191dd9c (M15-only applicability).
+        # P3 payid symbol enrichment: parser.py C4 symbol decode (payout_id_symbol_combos
+        # chunk key) + PIA C4 accumulators (payout_id_col_set_total /
+        # payout_id_symbol_combos_total) → covered_columns + symbol_combo in
+        # payout_ids_top20; payouts_by_spin_type SCHEMA_VERSION 2→3 -> 04691124fde6.
+        assert actual == "04691124fde6", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = 'adf08191dd9c' (R-1 closure value, post Phase-E topdollar_choice registration:\n"
-            "  closure import add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c;\n"
-            "  M15-only applicability; existing output additive-only).\n"
+            f"  expected = '04691124fde6' (R-1 closure value, post P3 payid symbol enrichment:\n"
+            "  parser.py C4 symbol decode + PIA C4 accumulators → base_hash adf08191dd9c→04691124fde6;\n"
+            "  additive-only new fields: payout_id_symbol_combos in chunk dict, covered_columns +\n"
+            "  symbol_combo in payout_ids_top20 + payouts_by_spin_type (SCHEMA_VERSION 2→3).\n"
             "Phase honesty-2 expanded base_hash from core/*.py (old: fa440e3eb5f6) to the\n"
             "25-file report-production import closure (960e9d18d83d); phase 2a then carved\n"
             "collect_mechanic's compute out of PIA (-> 57fdb323585d), phase 2b carved\n"
@@ -770,7 +777,8 @@ class TestBaseAnalyzerVersionHash:
             "phase 6 carved bankruptcy_simulation's tier row-build out of PIA (-> d8b8c138874a),\n"
             "PT-3 BCM-cycle carve moved the 5 cycle fns out of the closure (-> 85666c4c4407),\n"
             "Phase D deleted the play-type plugin framework + C3 Layer-0 wiring (-> 8a791a69cd05),\n"
-            "Phase E registered topdollar_choice + parser.py TD accumulator (-> adf08191dd9c).\n"
+            "Phase E registered topdollar_choice + parser.py TD accumulator (-> adf08191dd9c),\n"
+            "P3 payid symbol enrichment: parser.py C4 + PIA accumulators (-> 04691124fde6).\n"
             "core/parser.py is still in the closure — editing it still flips base_hash."
         )
 

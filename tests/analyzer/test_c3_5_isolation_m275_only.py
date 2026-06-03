@@ -110,7 +110,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 # Phase 6 (bankruptcy_simulation row-build carve — the LAST carve) shrank PIA again → d8b8c138874a.
 # The isolation RELATIONSHIPS below are unchanged across all of these
 # (M275_ev != M14_ev etc.); only the base value moved.
-_C3_BASE_HASH = "adf08191dd9c"  # Phase E: registered topdollar_choice feature → closure import add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c; M15-only applicability; existing output additive-only
+_C3_BASE_HASH = "04691124fde6"  # Phase E: registered topdollar_choice feature → closure import add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c; M15-only applicability; existing output additive-only
 
 # R1 Phase 1 (Cluster E) note: _M275_C3_5_EFFECTIVE_VERSION and
 # _NON_M275_EFFECTIVE_VERSION hex pins have been REMOVED. They were updated

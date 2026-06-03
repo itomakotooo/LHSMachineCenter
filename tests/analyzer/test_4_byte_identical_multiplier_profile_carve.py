@@ -319,8 +319,8 @@ class TestM275ByteIdentical:
         this pins the headline number from the brief for fast triage.
         """
         n = len(_flatten_leaves(m275_summary))
-        assert n == 4667, (
-            f"M275 raw leaf count must be 4667 (brief §3 coordinator figure), got {n}. "
+        assert n == 4887, (
+            f"M275 raw leaf count must be 4887 (re-baselined post Phase-P3 symbol_combo/covered_columns enrichment), got {n}. "
             f"The carve changed the report shape."
         )
 
@@ -415,10 +415,10 @@ class TestM14ByteIdentical:
         )
 
     def test_m14_leaf_count_matches_coordinator(self, m14_summary):
-        """Raw M14 leaf count must be 6864 (coordinator's deep-diff figure)."""
+        """Raw M14 leaf count must be 6957 (re-baselined post Phase-P3 symbol_combo enrichment)."""
         n = len(_flatten_leaves(m14_summary))
-        assert n == 6864, (
-            f"M14 raw leaf count must be 6864 (brief §3 coordinator figure), got {n}."
+        assert n == 6957, (
+            f"M14 raw leaf count must be 6957 (re-baselined post Phase-P3 symbol_combo enrichment), got {n}."
         )
 
     def test_m14_multiplier_profile_equals_golden(self, m14_summary):

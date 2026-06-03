@@ -1508,6 +1508,11 @@
     "payout_ids_top20": [
       {
         "avg_win_when_hit": 1978.355122207162,
+        "covered_columns": [
+          0,
+          1,
+          2
+        ],
         "dominant_spin_type": 1,
         "hit_count": 22871,
         "hit_rate": 0.09943913043478261,
@@ -1523,10 +1528,26 @@
           }
         ],
         "spin_type_category": "paid",
+        "symbol_combo": {
+          "distinct_symbols": [
+            "1bar",
+            "2bar",
+            "35x_wild",
+            "3bar",
+            "5x_wild",
+            "7x_wild"
+          ],
+          "dominant": "1bar|2bar|1bar"
+        },
         "total_win": 45246960.0
       },
       {
         "avg_win_when_hit": 2325.1651842439646,
+        "covered_columns": [
+          0,
+          1,
+          2
+        ],
         "dominant_spin_type": 1,
         "hit_count": 18888,
         "hit_rate": 0.08212173913043479,
@@ -1542,10 +1563,24 @@
           }
         ],
         "spin_type_category": "paid",
+        "symbol_combo": {
+          "distinct_symbols": [
+            "35x_wild",
+            "5x_wild",
+            "7x_wild",
+            "cherry"
+          ],
+          "dominant": "cherry|cherry|cherry"
+        },
         "total_win": 43917720.0
       },
       {
         "avg_win_when_hit": 14973.377672209026,
+        "covered_columns": [
+          0,
+          1,
+          2
+        ],
         "dominant_spin_type": 1,
         "hit_count": 2105,
         "hit_rate": 0.009152173913043479,
@@ -1561,10 +1596,24 @@
           }
         ],
         "spin_type_category": "paid",
+        "symbol_combo": {
+          "distinct_symbols": [
+            "35x_wild",
+            "5x_wild",
+            "7x_wild",
+            "high7"
+          ],
+          "dominant": "high7|high7|high7"
+        },
         "total_win": 31518960.0
       },
       {
         "avg_win_when_hit": 7919.772020725389,
+        "covered_columns": [
+          0,
+          1,
+          2
+        ],
         "dominant_spin_type": 1,
         "hit_count": 3860,
         "hit_rate": 0.016782608695652172,
@@ -1580,10 +1629,24 @@
           }
         ],
         "spin_type_category": "paid",
+        "symbol_combo": {
+          "distinct_symbols": [
+            "1bar",
+            "35x_wild",
+            "5x_wild",
+            "7x_wild"
+          ],
+          "dominant": "1bar|1bar|1bar"
+        },
         "total_win": 30570320.0
       },
       {
         "avg_win_when_hit": 10947.229419139156,
+        "covered_columns": [
+          0,
+          1,
+          2
+        ],
         "dominant_spin_type": 1,
         "hit_count": 2393,
         "hit_rate": 0.010404347826086957,
@@ -1599,10 +1662,24 @@
           }
         ],
         "spin_type_category": "paid",
+        "symbol_combo": {
+          "distinct_symbols": [
+            "35x_wild",
+            "3bar",
+            "5x_wild",
+            "7x_wild"
+          ],
+          "dominant": "3bar|3bar|3bar"
+        },
         "total_win": 26196720.0
       },
       {
         "avg_win_when_hit": 8540.3574087863,
+        "covered_columns": [
+          0,
+          1,
+          2
+        ],
         "dominant_spin_type": 1,
         "hit_count": 2686,
         "hit_rate": 0.011678260869565218,
@@ -1618,10 +1695,24 @@
           }
         ],
         "spin_type_category": "paid",
+        "symbol_combo": {
+          "distinct_symbols": [
+            "2bar",
+            "35x_wild",
+            "5x_wild",
+            "7x_wild"
+          ],
+          "dominant": "2bar|2bar|2bar"
+        },
         "total_win": 22939400.0
       },
       {
         "avg_win_when_hit": 44478.66141732284,
+        "covered_columns": [
+          0,
+          1,
+          2
+        ],
         "dominant_spin_type": 1,
         "hit_count": 254,
         "hit_rate": 0.0011043478260869565,
@@ -1637,6 +1728,14 @@
           }
         ],
         "spin_type_category": "paid",
+        "symbol_combo": {
+          "distinct_symbols": [
+            "35x_wild",
+            "5x_wild",
+            "7x_wild"
+          ],
+          "dominant": "5x_wild|5x_wild|5x_wild"
+        },
         "total_win": 11297580.0
       }
     ],
@@ -1698,6 +1797,17 @@
           "shape": {
             "3_of_a_kind": 26014
           },
+          "symbol_combo": {
+            "distinct_symbols": [
+              "1bar",
+              "2bar",
+              "35x_wild",
+              "3bar",
+              "5x_wild",
+              "7x_wild"
+            ],
+            "dominant": "1bar|2bar|1bar"
+          },
           "total_win": 45246960.0
         },
         {
@@ -1755,6 +1865,15 @@
           "rtp_contribution_pp": 19.094660869565217,
           "shape": {
             "3_of_a_kind": 22077
+          },
+          "symbol_combo": {
+            "distinct_symbols": [
+              "35x_wild",
+              "5x_wild",
+              "7x_wild",
+              "cherry"
+            ],
+            "dominant": "cherry|cherry|cherry"
           },
           "total_win": 43917720.0
         },
@@ -1814,6 +1933,15 @@
           "shape": {
             "3_of_a_kind": 2115
           },
+          "symbol_combo": {
+            "distinct_symbols": [
+              "35x_wild",
+              "5x_wild",
+              "7x_wild",
+              "high7"
+            ],
+            "dominant": "high7|high7|high7"
+          },
           "total_win": 31518960.0
         },
         {
@@ -1871,6 +1999,15 @@
           "rtp_contribution_pp": 13.29144347826087,
           "shape": {
             "3_of_a_kind": 5163
+          },
+          "symbol_combo": {
+            "distinct_symbols": [
+              "1bar",
+              "35x_wild",
+              "5x_wild",
+              "7x_wild"
+            ],
+            "dominant": "1bar|1bar|1bar"
           },
           "total_win": 30570320.0
         },
@@ -1930,6 +2067,15 @@
           "shape": {
             "3_of_a_kind": 2393
           },
+          "symbol_combo": {
+            "distinct_symbols": [
+              "35x_wild",
+              "3bar",
+              "5x_wild",
+              "7x_wild"
+            ],
+            "dominant": "3bar|3bar|3bar"
+          },
           "total_win": 26196720.0
         },
         {
@@ -1988,6 +2134,15 @@
           "shape": {
             "3_of_a_kind": 2686
           },
+          "symbol_combo": {
+            "distinct_symbols": [
+              "2bar",
+              "35x_wild",
+              "5x_wild",
+              "7x_wild"
+            ],
+            "dominant": "2bar|2bar|2bar"
+          },
           "total_win": 22939400.0
         },
         {
@@ -2045,6 +2200,14 @@
           "rtp_contribution_pp": 4.9119913043478265,
           "shape": {
             "3_of_a_kind": 254
+          },
+          "symbol_combo": {
+            "distinct_symbols": [
+              "35x_wild",
+              "5x_wild",
+              "7x_wild"
+            ],
+            "dominant": "5x_wild|5x_wild|5x_wild"
           },
           "total_win": 11297580.0
         }

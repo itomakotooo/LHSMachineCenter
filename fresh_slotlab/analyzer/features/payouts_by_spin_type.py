@@ -4,14 +4,16 @@ Phase C2 of analyzer unbundle (M275-driven) per
 session_artifacts/_arch_analyzer_unbundle/04_architecture_proposal_v3.md §7.2.
 Phase C3 adds shape / covered_columns / paylines / notes enrichment per row,
 and bumps SCHEMA_VERSION 1 → 2.
+Phase C4 (payid symbol enrichment) adds symbol_combo per row (dominant combo
+from StopSymbolsByCol decode, cross-machine) and bumps SCHEMA_VERSION 2 → 3.
 
 Pattern B: extract() reads per-chunk payout_id_by_spin_type +
-payout_id_win_by_spin_type + C3 enrichment fields; reduce() merges across
+payout_id_win_by_spin_type + C3/C4 enrichment fields; reduce() merges across
 chunks; emit() writes summary["player_impact"]["payouts_by_spin_type"].
 
-SCHEMA_VERSION = 2 (bumped in C3; v1 summaries are handled by
-REGISTERED_FALLBACK_RULES — frontend renders the 4 new fields as None for
-v1 reports already on disk).
+SCHEMA_VERSION = 3 (bumped in C4; v1/v2 summaries are handled by
+REGISTERED_FALLBACK_RULES — frontend renders missing fields as None for
+old reports already on disk).
 
 DECLARED_DEPS = () — emit() reads summary["player_impact"]["spin_type_breakdown"]
   directly (written by F1 inline before the plugin emit loop starts, per
@@ -67,6 +69,11 @@ class PayoutsBySpinType(AnalyzerFeature):
     pid_has_regular_line: dict[pid_str, bool]
         True if ANY record for this pid had line_id != -1.
         False (absent from dict) means all records are trigger-marker lines.
+    pid_symbol_combos: dict[pid_str, dict[combo_str, int]]
+        Per-pid symbol combination histogram. combo_str = "|"-joined
+        column-ordered symbol names (e.g. "cherry|cherry|35x_wild").
+        Only populated when StopSymbolsByCol is available and positions
+        decode cleanly. Empty positions (scatter/feature pay) → no entry.
 
     The key types are:
     - pid_str: str (payout id as string, e.g. "6", "666", "27502")
@@ -81,11 +88,12 @@ class PayoutsBySpinType(AnalyzerFeature):
 
     FEATURE_ID: ClassVar[str] = "payouts_by_spin_type"
     SCHEMA_KEYS: ClassVar[tuple[str, ...]] = ("payouts_by_spin_type",)
-    SCHEMA_VERSION: ClassVar[int] = 2  # C3: bumped from 1; adds 4 new per-row fields
+    SCHEMA_VERSION: ClassVar[int] = 3  # C4: bumped from 2; adds symbol_combo per-row field
     RTP_CONTRIBUTION: ClassVar[bool] = False  # display only
     DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
 
     # C3: fallback rules for v1 summaries already on disk.
+    # C4: v2→v3 fallback for symbol_combo field absent in v2 summaries.
     # Frontend renderer: if row is missing these keys, render as None / hide.
     # Per memory/feedback_md5_is_a_tag_not_a_destruction_signal.md:
     # schema bump invalidates downstream renderers gracefully, does NOT delete.
@@ -96,7 +104,11 @@ class PayoutsBySpinType(AnalyzerFeature):
             "covered_columns": None,
             "paylines": None,
             "notes": None,
-        }
+        },
+        2: {
+            # v2 → v3: symbol_combo field absent in v2 summaries.
+            "symbol_combo": None,
+        },
     }
 
     def extract(self, parse_state: Any, chunk_dict: Any) -> dict:
@@ -109,15 +121,17 @@ class PayoutsBySpinType(AnalyzerFeature):
           payout_id_match_count_dist — dict[pid, dict[mc_int, int]]         (C3)
           payout_id_col_set        — dict[pid, list[int]]                   (C3)
           payout_id_has_regular_line — dict[pid, bool]                      (C3)
+          payout_id_symbol_combos  — dict[pid, dict[combo_str, int]]        (C4)
 
-        Returns accumulator dict with 6 keys:
+        Returns accumulator dict with 7 keys:
           by_st_hits, by_st_win  (C2)
           pid_payline_hits, pid_match_count_dist, pid_col_set,
           pid_has_regular_line   (C3)
+          pid_symbol_combos      (C4)
 
         Handles:
           - None or non-dict chunk_dict: returns empty acc (C2 unchanged)
-          - Missing C3 keys: treated as empty dicts (old cached chunks)
+          - Missing C3/C4 keys: treated as empty dicts (old cached chunks)
           - Non-int st_key: int() conversion, falls back to -1 on failure
         """
         if not chunk_dict or not isinstance(chunk_dict, dict):
@@ -125,6 +139,7 @@ class PayoutsBySpinType(AnalyzerFeature):
                 "by_st_hits": {}, "by_st_win": {},
                 "pid_payline_hits": {}, "pid_match_count_dist": {},
                 "pid_col_set": {}, "pid_has_regular_line": {},
+                "pid_symbol_combos": {},
             }
 
         by_st_hits: dict[str, dict[int, int]] = {}
@@ -182,6 +197,18 @@ class PayoutsBySpinType(AnalyzerFeature):
             if flag:  # only carry True values; False/absent = trigger-only
                 pid_has_regular_line[str(pid)] = True
 
+        # C4: symbol combination histogram from chunk_dict.
+        # Old cached chunks (pre-C4) won't have this key; default to {}.
+        pid_symbol_combos: dict[str, dict[str, int]] = {}
+        raw_sc = chunk_dict.get("payout_id_symbol_combos") or {}
+        for pid, sc_map in raw_sc.items():
+            if isinstance(sc_map, dict):
+                pid_symbol_combos[str(pid)] = {
+                    str(combo): int(cnt or 0)
+                    for combo, cnt in sc_map.items()
+                    if cnt
+                }
+
         return {
             "by_st_hits": by_st_hits,
             "by_st_win": by_st_win,
@@ -189,6 +216,7 @@ class PayoutsBySpinType(AnalyzerFeature):
             "pid_match_count_dist": pid_match_count_dist,
             "pid_col_set": pid_col_set,
             "pid_has_regular_line": pid_has_regular_line,
+            "pid_symbol_combos": pid_symbol_combos,
         }
 
     def reduce(self, prev_acc: dict, this_acc: dict) -> dict:
@@ -197,6 +225,7 @@ class PayoutsBySpinType(AnalyzerFeature):
         For each (pid, st_int) pair, sums hits and wins from both accs.
         For C3 enrichment: merges payline_hits and match_count_dist additively;
         col_set is union; has_regular_line is OR across chunks.
+        For C4 enrichment: merges symbol_combos additively.
         Handles empty dicts (first chunk, empty chunk).
         """
         if not prev_acc:
@@ -204,6 +233,7 @@ class PayoutsBySpinType(AnalyzerFeature):
                 "by_st_hits": {}, "by_st_win": {},
                 "pid_payline_hits": {}, "pid_match_count_dist": {},
                 "pid_col_set": {}, "pid_has_regular_line": {},
+                "pid_symbol_combos": {},
             }
         if not this_acc:
             return prev_acc
@@ -286,6 +316,20 @@ class PayoutsBySpinType(AnalyzerFeature):
             if flag:
                 merged_hrl[pid_str] = True
 
+        # C4: merge symbol_combos (additive — sum counts per combo string)
+        prev_sc = prev_acc.get("pid_symbol_combos") or {}
+        this_sc = this_acc.get("pid_symbol_combos") or {}
+        merged_sc: dict[str, dict[str, int]] = {}
+        for pid_str, sc_map in prev_sc.items():
+            merged_sc[pid_str] = dict(sc_map)
+        for pid_str, sc_map in this_sc.items():
+            if pid_str not in merged_sc:
+                merged_sc[pid_str] = dict(sc_map)
+            else:
+                dest = merged_sc[pid_str]
+                for combo, cnt in sc_map.items():
+                    dest[combo] = dest.get(combo, 0) + cnt
+
         return {
             "by_st_hits": merged_hits,
             "by_st_win": merged_wins,
@@ -293,6 +337,7 @@ class PayoutsBySpinType(AnalyzerFeature):
             "pid_match_count_dist": merged_mc,
             "pid_col_set": merged_cs,
             "pid_has_regular_line": merged_hrl,
+            "pid_symbol_combos": merged_sc,
         }
 
     def emit(self, final_acc: dict, summary: dict, ctx: "PipelineContext") -> None:
@@ -304,14 +349,15 @@ class PayoutsBySpinType(AnalyzerFeature):
             spins counts (written by F1 inline; guaranteed present per
             04_v3 §4.2 Phase B ordering contract)
           final_acc — accumulated (pid, ST) hit/win data from extract/reduce
-            plus C3 enrichment fields (pid_payline_hits, pid_match_count_dist,
-            pid_col_set, pid_has_regular_line)
+            plus C3/C4 enrichment fields (pid_payline_hits, pid_match_count_dist,
+            pid_col_set, pid_has_regular_line, pid_symbol_combos)
 
         Writes:
           summary["player_impact"]["payouts_by_spin_type"]:
             {spin_type_label: [{payout_id, hit_count, hit_rate, total_win,
                                 avg_win_when_hit, rtp_contribution_pp,
-                                shape, covered_columns, paylines, notes}]}
+                                shape, covered_columns, paylines, notes,
+                                symbol_combo}]}
 
         C2 fields (payout_id ... rtp_contribution_pp) are byte-identical
         to pre-C3 output. C3 adds 4 new fields per row.
@@ -342,6 +388,17 @@ class PayoutsBySpinType(AnalyzerFeature):
             AND total_win == 0 for this pid (across all STs).
           max_match_count_observed: largest match_count seen for this pid.
 
+        Symbol_combo enrichment (C4):
+          symbol_combo = {
+            dominant: str | None  — most-frequent combo string (e.g.
+                "cherry|cherry|35x_wild"), or None if no decode available.
+            distinct_symbols: list[str]  — sorted union of all symbol names
+                seen across all combos for this pid (wilds preserved).
+          }
+          Absent for pids with no StopSymbolsByCol data (old cached chunks,
+          scatter-only pids, or STs without PayoutByPayline). The combo is
+          aggregate across ALL STs (decode is per-round, not per-ST).
+
         Sort order (unchanged from C2):
           - STs: by spin_type ascending (via _st_label sorted iteration)
           - PIDs within each ST: by total_win descending
@@ -365,11 +422,12 @@ class PayoutsBySpinType(AnalyzerFeature):
         by_st_hits = (final_acc or {}).get("by_st_hits") or {}
         by_st_win = (final_acc or {}).get("by_st_win") or {}
 
-        # C3 enrichment fields from accumulator.
+        # C3/C4 enrichment fields from accumulator.
         pid_payline_hits: dict[str, dict[str, int]] = (final_acc or {}).get("pid_payline_hits") or {}
         pid_match_count_dist: dict[str, dict[int, int]] = (final_acc or {}).get("pid_match_count_dist") or {}
         pid_col_set: dict[str, list[int]] = (final_acc or {}).get("pid_col_set") or {}
         pid_has_regular_line: dict[str, bool] = (final_acc or {}).get("pid_has_regular_line") or {}
+        pid_symbol_combos: dict[str, dict[str, int]] = (final_acc or {}).get("pid_symbol_combos") or {}
 
         # Compute per-pid total win across all STs (for sort order).
         # This must match `payout_id_win` ordering: sum over all STs.
@@ -464,7 +522,29 @@ class PayoutsBySpinType(AnalyzerFeature):
                     "is_trigger_marker": is_trigger,
                     "max_match_count_observed": max_mc,
                 }
-                # --- end C3 enrichment ---
+
+                # --- C4 enrichment: symbol_combo ---
+                # Aggregate across ALL STs (decode is per-round, not per-ST).
+                # dominant: combo_str with highest cumulative count for this pid.
+                # distinct_symbols: sorted union of all symbol names across combos.
+                sc_map = pid_symbol_combos.get(pid_str) or {}
+                if sc_map:
+                    dominant_combo: str | None = max(
+                        sc_map.items(), key=lambda kv: kv[1]
+                    )[0]
+                    # Collect all symbol names from all combos (split by "|")
+                    _all_syms: set[str] = set()
+                    for _combo_str in sc_map:
+                        for _sym in _combo_str.split("|"):
+                            if _sym:
+                                _all_syms.add(_sym)
+                    symbol_combo: dict[str, Any] = {
+                        "dominant": dominant_combo,
+                        "distinct_symbols": sorted(_all_syms),
+                    }
+                else:
+                    symbol_combo = {"dominant": None, "distinct_symbols": []}
+                # --- end C4 enrichment ---
 
                 st_pid_rows.append({
                     # C2 fields (byte-identical to pre-C3)
@@ -486,6 +566,8 @@ class PayoutsBySpinType(AnalyzerFeature):
                     "covered_columns": covered_columns,
                     "paylines": paylines,
                     "notes": notes,
+                    # C4 new field
+                    "symbol_combo": symbol_combo,
                 })
             payouts_by_spin_type[label] = st_pid_rows
 

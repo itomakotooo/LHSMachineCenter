@@ -121,7 +121,7 @@ _TARGET_SETTLED_MAX = 440000
 _TARGET_RTP_CONTRIBUTION_LOW = 49.0
 _TARGET_RTP_CONTRIBUTION_HIGH = 52.0
 
-_EXPECTED_BASE_HASH = "adf08191dd9c"  # Phase E post-registration value
+_EXPECTED_BASE_HASH = "04691124fde6"  # Phase E post-registration value
 
 
 # ---------------------------------------------------------------------------
@@ -957,7 +957,7 @@ class TestBaseHashRePin:
     """Gate 6: base_hash must be adf08191dd9c; no assertion on 8a791a69cd05 remains."""
 
     def test_base_hash_equals_phase_e_value(self):
-        """compute_base_analyzer_version() == 'adf08191dd9c' (Phase E registration).
+        """compute_base_analyzer_version() == '04691124fde6' (Phase E registration).
 
         Phase E added the topdollar_choice feature import to versioning.py's
         try block (+ parser.py TD session accumulator). Both are closure files

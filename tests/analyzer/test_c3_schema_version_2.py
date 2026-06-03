@@ -72,24 +72,29 @@ def _import_base_class():
 class TestSchemaVersion:
     """SCHEMA_VERSION == 2 after C3 bump."""
 
-    def test_schema_version_is_exactly_2(self):
-        """SCHEMA_VERSION must be exactly 2.
+    def test_schema_version_is_exactly_3(self):
+        """SCHEMA_VERSION must be exactly 3 after C4/Phase-P3 (symbol_combo enrichment).
 
-        INJECT-BUG: set SCHEMA_VERSION = 1 in plugin.
-        RED: 2 != 1 → assertion fails.
+        C3 bumped 1 → 2. C4/Phase-P3 bumped 2 → 3 for symbol_combo field.
+
+        INJECT-BUG: set SCHEMA_VERSION = 2 in plugin.
+        RED: 3 != 2 → assertion fails.
         Revert → GREEN.
         """
         cls = _import_plugin_class()
-        assert cls.SCHEMA_VERSION == 2, (
-            f"SCHEMA_VERSION must be 2 after C3, got {cls.SCHEMA_VERSION}. "
-            "C3 bumps from 1 → 2 to signal 4 new per-row fields."
+        assert cls.SCHEMA_VERSION == 3, (
+            f"SCHEMA_VERSION must be 3 after C4/Phase-P3, got {cls.SCHEMA_VERSION}. "
+            "C4/Phase-P3 bumps from 2 → 3 to signal symbol_combo per-row field."
         )
 
-    def test_schema_version_not_1(self):
-        """Explicit not-1 check: C2 value must not be present after C3."""
+    def test_schema_version_not_1_or_2(self):
+        """Explicit not-1/not-2 check: pre-C4 values must not be present."""
         cls = _import_plugin_class()
         assert cls.SCHEMA_VERSION != 1, (
             "SCHEMA_VERSION is still 1 — C3 bump (1 → 2) did not apply."
+        )
+        assert cls.SCHEMA_VERSION != 2, (
+            "SCHEMA_VERSION is still 2 — C4/Phase-P3 bump (2 → 3) did not apply."
         )
 
     def test_schema_version_is_int(self):
@@ -100,7 +105,7 @@ class TestSchemaVersion:
         )
 
     def test_base_class_default_schema_version_is_1(self):
-        """ABC default SCHEMA_VERSION is 1; plugin overrides to 2.
+        """ABC default SCHEMA_VERSION is 1; plugin overrides to 3 (C4/Phase-P3).
 
         This confirms the override pattern is working (not just inheriting default).
         """

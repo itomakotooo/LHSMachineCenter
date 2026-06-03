@@ -989,6 +989,13 @@ def parse_chunk_response(
     # Used by plugin to distinguish pure-scatter pids (e.g. M275 pid 666)
     # from regular-line pids.
     payout_id_has_regular_line: dict[str, bool] = {}
+    # C4 symbol enrichment: per-pid symbol combination histogram.
+    # Key: pid_str → combo_str → count.
+    # combo_str = "|"-joined column-ordered symbol names (e.g. "cherry|cherry|35x_wild").
+    # Only populated when StopSymbolsByCol is present AND positions decode cleanly.
+    # Empty positions (scatter/feature pay, line_id==-1000/-1) → no combo entry.
+    # Missing StopSymbolsByCol on the round → no combo entry.
+    payout_id_symbol_combos: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
     # Bonus-chain dynamics (from ReMarks). A "chain" is a contiguous run
     # of Freespin-annotated rounds within one robot. We track per chain:
@@ -1941,6 +1948,22 @@ def parse_chunk_response(
             # This is the only call site; adds no duplicate logic.
             _pbp_c3 = r.get("PayoutByPayline")
             if _pbp_c3:
+                # C4 symbol decode: read StopSymbolsByCol once per round.
+                # Format: list of "s0-s1-s2-" strings (one per column).
+                # Absent or non-list → no symbol decode for this round.
+                _c4_ssbc = r.get("StopSymbolsByCol")
+                _c4_ssbc_cols: list[list[str]] | None = None
+                if isinstance(_c4_ssbc, list) and _c4_ssbc:
+                    try:
+                        # Split each column string by "-"; keep empty strings
+                        # so that index arithmetic (row = pos - col*100 + 1)
+                        # maps cleanly. Trailing dash produces a trailing empty
+                        # string — that's expected and harmless since we index
+                        # by the decoded row value, not by iteration.
+                        _c4_ssbc_cols = [str(col_txt).split("-") for col_txt in _c4_ssbc]
+                    except Exception:
+                        _c4_ssbc_cols = None
+
                 for _c3rec in attribute_lines_to_pay_ids(r):
                     _c3pid = _c3rec.get("pay_id")
                     if _c3pid is None:
@@ -1950,10 +1973,47 @@ def parse_chunk_response(
                     _c3lid_s = str(_c3lid)
                     payout_id_payline_hits[_c3pid_s][_c3lid_s] += 1
                     # Decode col indices from positions (all records incl line_id=-1)
-                    for _c3pos in _c3rec.get("positions", []):
+                    _c3positions = _c3rec.get("positions", [])
+                    for _c3pos in _c3positions:
                         _c3col = (_c3pos + 1) // 100 - 1
                         if _c3col >= 0:
                             payout_id_col_set[_c3pid_s].add(_c3col)
+                    # C4 symbol combo decode: per-position symbol lookup.
+                    # Only when StopSymbolsByCol is available and positions non-empty.
+                    # Decode formula (verified M14/M1/M275/M279/M268/M274):
+                    #   col_1indexed = (pos + 1) // 100
+                    #   col0idx = col_1indexed - 1
+                    #   row = pos - col_1indexed * 100 + 1
+                    #   symbol = StopSymbolsByCol[col0idx].split("-")[row]
+                    # Offset: row=0→top, row=1→middle(center), row=2→bottom.
+                    if _c4_ssbc_cols is not None and _c3positions:
+                        _c4_symbols: list[str] = []
+                        _c4_decode_ok = True
+                        for _c4pos in _c3positions:
+                            _c4col_1idx = (_c4pos + 1) // 100
+                            _c4col0 = _c4col_1idx - 1
+                            _c4row = _c4pos - _c4col_1idx * 100 + 1
+                            if _c4col0 < 0 or _c4col0 >= len(_c4_ssbc_cols):
+                                # Column index out of range for this machine's grid.
+                                # FAIL LOUD: record nothing for this round's combo
+                                # rather than mis-mapping. Per brief §decode.
+                                _c4_decode_ok = False
+                                break
+                            _c4col_syms = _c4_ssbc_cols[_c4col0]
+                            if _c4row < 0 or _c4row >= len(_c4col_syms):
+                                # Row index out of range.
+                                _c4_decode_ok = False
+                                break
+                            _c4sym = _c4col_syms[_c4row]
+                            if not _c4sym:
+                                # Empty string at this index (trailing dash artifact
+                                # or malformed data) — skip this combo.
+                                _c4_decode_ok = False
+                                break
+                            _c4_symbols.append(_c4sym)
+                        if _c4_decode_ok and _c4_symbols:
+                            _c4_combo = "|".join(_c4_symbols)
+                            payout_id_symbol_combos[_c3pid_s][_c4_combo] += 1
                     # match_count distribution only for non-trigger lines
                     if _c3lid != -1:
                         payout_id_has_regular_line[_c3pid_s] = True
@@ -2490,4 +2550,13 @@ def parse_chunk_response(
             for pid_s, col_set in payout_id_col_set.items()
         },
         "payout_id_has_regular_line": dict(payout_id_has_regular_line),
+        # C4 symbol enrichment: per-pid symbol combination histogram.
+        # combo_str = "|"-joined column-ordered symbol names per winning line.
+        # payouts_by_spin_type plugin reads this in extract() to emit
+        # the dominant symbol_combo per (pid, spin_type).
+        # payout_ids_top20 aggregates across all STs for the overview table.
+        "payout_id_symbol_combos": {
+            pid_s: dict(combo_map)
+            for pid_s, combo_map in payout_id_symbol_combos.items()
+        },
     }

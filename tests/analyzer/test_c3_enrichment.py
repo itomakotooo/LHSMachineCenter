@@ -170,17 +170,19 @@ _SINGLE_ST_SUMMARY = [
 class TestC3SchemaAndFallback:
     """SCHEMA_VERSION == 2; REGISTERED_FALLBACK_RULES populated for v1."""
 
-    def test_schema_version_is_2(self):
-        """C3 bumps SCHEMA_VERSION from 1 → 2.
+    def test_schema_version_is_3(self):
+        """C4/Phase-P3 bumps SCHEMA_VERSION from 2 → 3 for symbol_combo enrichment.
 
-        INJECT-BUG: set SCHEMA_VERSION = 1 in plugin file.
+        C3 bumped from 1 → 2. C4/Phase-P3 bumped from 2 → 3 for symbol_combo.
+
+        INJECT-BUG: set SCHEMA_VERSION = 2 in plugin file.
         RED: this assertion fires.
         Revert → GREEN.
         """
         PayoutsBySpinType = _import_plugin()
-        assert PayoutsBySpinType.SCHEMA_VERSION == 2, (
-            f"Expected SCHEMA_VERSION=2, got {PayoutsBySpinType.SCHEMA_VERSION}. "
-            "C3 must bump schema version to 2."
+        assert PayoutsBySpinType.SCHEMA_VERSION == 3, (
+            f"Expected SCHEMA_VERSION=3, got {PayoutsBySpinType.SCHEMA_VERSION}. "
+            "C4/Phase-P3 must bump schema version to 3 for symbol_combo enrichment."
         )
 
     def test_registered_fallback_rules_has_key_1(self):

@@ -143,16 +143,16 @@ class TestPluginImportAndRegistration:
             f"register() may not be idempotent."
         )
 
-    def test_schema_version_is_2(self):
-        """SCHEMA_VERSION must be 2 (bumped in C3 from the original C2 value of 1).
+    def test_schema_version_is_3(self):
+        """SCHEMA_VERSION must be 3 (bumped in C4/Phase-P3 for symbol_combo enrichment).
 
-        C2 shipped with SCHEMA_VERSION=1. C3 bumped to 2 for the 4 new fields.
-        This test updated from C2's assertion (==1) to C3's expectation (==2).
-        See test_c3_schema_version_2.py for the C3 schema contract gate.
+        C2 shipped with SCHEMA_VERSION=1. C3 bumped to 2 for the 4 new fields
+        (shape/covered_columns/paylines/notes). C4/Phase-P3 bumped to 3 for symbol_combo.
+        See test_c3_schema_version_2.py for the full schema contract gate.
         """
         PayoutsBySpinType = _import_plugin()
-        assert PayoutsBySpinType.SCHEMA_VERSION == 2, (
-            f"Expected SCHEMA_VERSION=2 (C3 bumped from 1), got {PayoutsBySpinType.SCHEMA_VERSION}."
+        assert PayoutsBySpinType.SCHEMA_VERSION == 3, (
+            f"Expected SCHEMA_VERSION=3 (C4/Phase-P3 bumped from 2), got {PayoutsBySpinType.SCHEMA_VERSION}."
         )
 
     def test_declared_deps_empty(self):

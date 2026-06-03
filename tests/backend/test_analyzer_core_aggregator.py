@@ -1286,7 +1286,7 @@ class TestHashCompositionRollsForward:
             f"compute_base_analyzer_version() is non-deterministic: {actual1!r} vs {actual2!r}"
         )
 
-        # (b) Pin check: must be the known R-1 closure value (post phase-6)
+        # (b) Pin check: must be the known R-1 closure value (post P3 payid symbol enrichment)
         # honesty-2 closed the R-1 gap: 25-file set covering full production path.
         # Phase 2a carved collect_mechanic's compute out of PIA (a closure file),
         # shrinking base 960e9d18d83d -> 57fdb323585d; phase 2b carved
@@ -1303,13 +1303,18 @@ class TestHashCompositionRollsForward:
         # Phase D (play-type layer delete): removed plugin framework wiring from
         # parser.py / base_pipeline.py + C3 Layer-0 from PIA -> 8a791a69cd05.
         # Behavior byte-identical: framework flag-off-dormant; C3 L0 == L1 for pilots.
+        # Phase E: topdollar_choice + parser.py TD accumulator -> adf08191dd9c.
+        # P3 payid symbol enrichment: parser.py C4 symbol decode + PIA C4 accumulators
+        # → covered_columns + symbol_combo in payout_ids_top20; payouts_by_spin_type
+        # SCHEMA_VERSION 2→3 -> 04691124fde6.
         # If this value changes again, a _CLOSURE_FILES source was edited.
-        assert actual1 == "adf08191dd9c", (
+        assert actual1 == "04691124fde6", (
             f"compute_base_analyzer_version() diverges from R-1 closure reference:\n"
             f"  actual   = {actual1!r}\n"
-            f"  expected = 'adf08191dd9c' (R-1 closure value, post Phase-E topdollar_choice registration:\n"
-            "  closure import add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c;\n"
-            "  M15-only applicability; existing output additive-only).\n"
+            f"  expected = '04691124fde6' (R-1 closure value, post P3 payid symbol enrichment:\n"
+            "  parser.py C4 symbol decode + PIA C4 accumulators → base_hash adf08191dd9c→04691124fde6;\n"
+            "  additive-only new fields: payout_id_symbol_combos in chunk dict, covered_columns +\n"
+            "  symbol_combo in payout_ids_top20 + payouts_by_spin_type (SCHEMA_VERSION 2→3).\n"
             "The R-1 closure covers core/*.py plus content modules (round_classification,\n"
             "round_win, trigger_sessions, sampler, machine_md5, chunk_index, rawdata_index)\n"
             "and support modules. If this changed, update the pin to the new value and\n"
