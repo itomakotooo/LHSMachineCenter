@@ -733,11 +733,14 @@ class TestHashComposition:
         # carve) -> d8b8c138874a (report content byte-identical).
         # playtype C3 (per-machine config layer): added machine_id/mode params to
         # parse_chunk_response in core/parser.py -> 85666c4c4407.
+        # Phase D (play-type layer delete): removed plugin framework wiring from
+        # parser.py / base_pipeline.py + C3 Layer-0 from PIA -> 8a791a69cd05.
+        # Behavior byte-identical: framework flag-off-dormant; C3 L0 == L1 for pilots.
         actual = _cbav()
-        assert actual == "85666c4c4407", (
+        assert actual == "8a791a69cd05", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = '85666c4c4407' (R-1 closure value, post PT-3 BCM-cycle carve)\n"
+            f"  expected = '8a791a69cd05' (R-1 closure value, post Phase-D play-type layer delete)\n"
             "R-4 exclusion covers registered plugins only (not all features/*.py).\n"
             "_base.py and features/__init__.py are still in base (not registered plugins)."
         )

@@ -3,12 +3,12 @@
 CARVED OUT of round_classification.py (a base-closure file in
 versioning._CLOSURE_FILES) into this base-excluded module, so editing the BCM
 cycle logic no longer changes base_hash / re-flags the fleet. Pure functions; NO
-registration and NO import-time side effects (do not put the plugin here — that
-self-registers; keep these primitives separate so importing them stays inert).
+registration and NO import-time side effects (keep these primitives free of side
+effects so importing them stays inert).
 
-Consumers import these from here: the BCMBasePlugin accumulator (bcm_base.py), the
-inline parser path (parser.py), and scripts/infer_bcm_pairing.py. They depend only
-on is_paid_round (an A-class universal helper that stays in round_classification).
+Consumers import these from here: the inline parser path (parser.py) and
+scripts/infer_bcm_pairing.py. They depend only on is_paid_round (an A-class
+universal helper that stays in round_classification).
 
 Pinned by tests/backend/test_bcm_cycle_carve.py (the base_hash isolation gate).
 """
@@ -109,8 +109,8 @@ def compute_robot_cycle_peaks(rounds: list[Any]) -> list[int]:
     """Return the list of CC values at each cycle reset observed in *rounds*.
 
     **This is the single source of truth for per-robot cycle-peak lists.**
-    Both the inline parser.py accumulation and ``BCMBaseAccumulator.on_robot_end``
-    call this function.  Any change to cycle-peak semantics must be made here.
+    The inline parser.py accumulation calls this function.  Any change to
+    cycle-peak semantics must be made here.
 
     Reproduces EXACTLY the inline ``robot_cycle_peaks`` logic in
     ``parse_chunk_response``:
@@ -133,8 +133,9 @@ def compute_robot_cycle_peaks(rounds: list[Any]) -> list[int]:
     first few paid rounds of a fresh robot.
 
     BCM machines in practice have cycle peaks in the hundreds to thousands,
-    so both conditions agree on real pilots.  The synthetic inject-bug B
-    test in ``test_bcm_base.py`` proves the two functions DISAGREE on small
+    so both conditions agree on real pilots.  The unit tests in
+    ``test_bcm_cycle_carve.py`` (test_small_peak_not_recorded /
+    test_single_step_drop_recorded) prove the two functions DISAGREE on small
     cycles (peaks in [5,10]) and single-step drops.
     """
     peaks: list[int] = []

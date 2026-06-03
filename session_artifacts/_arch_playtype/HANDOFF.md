@@ -16,8 +16,15 @@ group of related SpinTypes. **Do not invent any layer the rawdata doesn't have.*
 - **BCM-cycle functions** moved OUT → `fresh_slotlab/analyzer/play_types/bcm_cycle.py`
   (pinned by `tests/backend/test_bcm_cycle_carve.py`; a redo of a hollow earlier attempt that stayed in the closure).
 - These are per-SpinType parsing + a trigger primitive — **NOT "play-types"**.
-- `base_hash = 85666c4c4407`. Suites green at **code-HEAD `c21eb4e`** (1221 passed + pin/gate 447 + 375).
-  Every commit since is **docs-only** (deletions + this rewrite) → code unchanged → still green.
+- **Phase D (DONE): the dormant ST-primary play-type plugin framework was DELETED** — code now matches
+  "no play-type layer". Removed `play_types/{_base,_claim,_detector,_machine_config,_plugin,_probe,bcm_base}.py`,
+  `play_type_registry.py`, `configs/play_type_configs/`, the 5 framework tests, the `--use-play-type-plugins`
+  flag + all parser wiring, and the C3 per-machine-config Layer-0 (it was output-redundant with
+  `bcm_pairings.json` Layer-1 — same value AND `source="config"`). Only the 2 function carves remain.
+  Gated byte-identical (M14/M15 + 5 BCM pilots, all `bcm_bonus_source` held "config" incl. M279) + base_hash
+  gate + zero suite regressions (worktree delta). 13 `compute_robot_cycle_peaks` unit tests salvaged into
+  `test_bcm_cycle_carve.py`.
+- `base_hash = 8a791a69cd05` (was `85666c4c4407` pre-Phase-D; closure edit, behavior byte-identical).
 
 ## Validated on real rawdata (the model proven, not asserted)
 - **M275**: the same freespin SpinType is opened by a scatter (437 sessions) or the BCM cycle (39) — **identical

@@ -749,12 +749,15 @@ class TestBaseAnalyzerVersionHash:
         # Phase 6 (bankruptcy_simulation tier row-build carve — the LAST carve) shrank PIA again -> d8b8c138874a.
         # playtype C3 (per-machine config layer): added machine_id/mode params to
         # parse_chunk_response in core/parser.py -> 85666c4c4407.
-        # Report content byte-identical: bonus_feature value is unchanged; the params
-        # only thread context to detect_play_types for per-machine config loading.
-        assert actual == "85666c4c4407", (
+        # Phase D (play-type layer delete): removed the plugin framework wiring
+        # (use_play_type_plugins / machine_id / mode params) from parser.py /
+        # base_pipeline.py + C3 Layer-0 from PIA -> 8a791a69cd05.
+        # Behavior byte-identical: framework was flag-off-dormant; C3 L0 redundant
+        # with bcm_pairings L1 (same value + source="config" for all 5 pilots).
+        assert actual == "8a791a69cd05", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = '85666c4c4407' (R-1 closure value, post PT-3 BCM-cycle carve)\n"
+            f"  expected = '8a791a69cd05' (R-1 closure value, post Phase-D play-type layer delete)\n"
             "Phase honesty-2 expanded base_hash from core/*.py (old: fa440e3eb5f6) to the\n"
             "25-file report-production import closure (960e9d18d83d); phase 2a then carved\n"
             "collect_mechanic's compute out of PIA (-> 57fdb323585d), phase 2b carved\n"
@@ -763,7 +766,8 @@ class TestBaseAnalyzerVersionHash:
             "carved multiplier_profile's dict-build out of PIA (-> ce298f055495), phase 5\n"
             "carved reel_marginal_by_spin_type's dict-build out of PIA (-> ccc1ecce185d),\n"
             "phase 6 carved bankruptcy_simulation's tier row-build out of PIA (-> d8b8c138874a),\n"
-            "PT-3 BCM-cycle carve moved the 5 cycle fns out of the closure (-> 85666c4c4407).\n"
+            "PT-3 BCM-cycle carve moved the 5 cycle fns out of the closure (-> 85666c4c4407),\n"
+            "Phase D deleted the play-type plugin framework + C3 Layer-0 wiring (-> 8a791a69cd05).\n"
             "core/parser.py is still in the closure — editing it still flips base_hash."
         )
 

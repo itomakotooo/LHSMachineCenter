@@ -125,8 +125,8 @@ class TestBaseHashUnchangedC6:
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "85666c4c4407", (
-            f"base_hash must be '85666c4c4407' (R-1 closure value, post PT-3 BCM-cycle carve). "
+        assert actual == "8a791a69cd05", (
+            f"base_hash must be '8a791a69cd05' (R-1 closure value, post Phase-D play-type layer delete). "
             f"Got: {actual!r}. "
             f"Registered plugin additions must NOT change base_hash (R-4 exclusion). "
             f"If a production-path file (in _CLOSURE_FILES) was modified, update this pin."

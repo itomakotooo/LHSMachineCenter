@@ -1,20 +1,20 @@
-"""play_types.wild_nudge — wild auto-nudge classification (PT-7).
+"""play_types.wild_nudge — wild auto-nudge classification.
 
-Home of the wild-nudge play-type's mechanic logic. ``is_wild_nudge_round`` was
+Home of the wild-nudge mechanic logic. ``is_wild_nudge_round`` was
 CARVED OUT of ``round_classification.py`` (a base-closure file listed in
 ``versioning._CLOSURE_FILES``) into this module, which is **NOT** in the
 closure. Consequence: editing the wild-nudge detection logic no longer changes
 ``base_hash`` — it does not re-flag the fleet; only machines whose analysis
 depends on this module are affected. That hash-level isolation is the whole
-point of the play-type refactor, and it is the property an automated test in
+point of the carve, and it is the property an automated test in
 ``tests/backend/test_wild_nudge_carve.py`` pins.
 
-Scope note (honesty): this module currently houses the pure classifier only.
-``parser.py`` imports and calls it directly — the same dependency pattern PIA
-already uses for the base-excluded ``analyzer/features/*`` modules. Wrapping it
-as an accumulator-dispatched ``PlayTypePlugin`` is a later increment and does
-NOT change the hash isolation proven here (the logic already lives outside the
-closure; that is what makes editing it free of fleet re-flags).
+Scope note: this module houses the pure per-SpinType classifier. ``parser.py``
+imports and calls it directly — the same dependency pattern PIA already uses for
+the base-excluded ``analyzer/features/*`` modules. The carve IS the isolation
+(the logic already lives outside the closure; that is what makes editing it free
+of fleet re-flags) — there is no plugin wrapper (the event model has no
+play-type plugin layer; see ``session_artifacts/_arch_playtype/DIRECTION.md``).
 
 Verified across M279 / M226 / M149 / M140 / M26 / M51 / M256 (2026-04-27 fleet
 investigation): 25 (machine, mode) pairs emit ST=36 + ReMarks="move" +

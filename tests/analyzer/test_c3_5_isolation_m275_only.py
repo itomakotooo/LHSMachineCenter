@@ -110,7 +110,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 # Phase 6 (bankruptcy_simulation row-build carve — the LAST carve) shrank PIA again → d8b8c138874a.
 # The isolation RELATIONSHIPS below are unchanged across all of these
 # (M275_ev != M14_ev etc.); only the base value moved.
-_C3_BASE_HASH = "85666c4c4407"  # PT-3 BCM-cycle carve: 5 cycle fns moved to play_types/bcm_cycle.py (out of closure)
+_C3_BASE_HASH = "8a791a69cd05"  # Phase D: play-type plugin framework + C3 Layer-0 deleted from closure (behavior byte-identical)
 
 # R1 Phase 1 (Cluster E) note: _M275_C3_5_EFFECTIVE_VERSION and
 # _NON_M275_EFFECTIVE_VERSION hex pins have been REMOVED. They were updated

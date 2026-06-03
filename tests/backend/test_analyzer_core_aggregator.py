@@ -1300,11 +1300,14 @@ class TestHashCompositionRollsForward:
         # parse_chunk_response in parser.py -> 85666c4c4407 (report byte-identical:
         # bonus_feature value unchanged; the new params merely thread context to
         # detect_play_types for per-machine config loading).
+        # Phase D (play-type layer delete): removed plugin framework wiring from
+        # parser.py / base_pipeline.py + C3 Layer-0 from PIA -> 8a791a69cd05.
+        # Behavior byte-identical: framework flag-off-dormant; C3 L0 == L1 for pilots.
         # If this value changes again, a _CLOSURE_FILES source was edited.
-        assert actual1 == "85666c4c4407", (
+        assert actual1 == "8a791a69cd05", (
             f"compute_base_analyzer_version() diverges from R-1 closure reference:\n"
             f"  actual   = {actual1!r}\n"
-            f"  expected = '85666c4c4407' (R-1 closure value, post PT-3 BCM-cycle carve)\n"
+            f"  expected = '8a791a69cd05' (R-1 closure value, post Phase-D play-type layer delete)\n"
             "The R-1 closure covers core/*.py plus content modules (round_classification,\n"
             "round_win, trigger_sessions, sampler, machine_md5, chunk_index, rawdata_index)\n"
             "and support modules. If this changed, update the pin to the new value and\n"
