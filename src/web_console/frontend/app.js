@@ -7006,6 +7006,7 @@ function _resetDebugPanelsToEmpty() {
     "bonusChainDynamicsPanel", "collectCyclePanel",
     "bankruptcyPanel",
     "payoutsBySpinTypePanel", "reelMarginalBySpinTypePanel",
+    "topDollarChoicePanel",  // P2 registry panel — self-hides on paint; reset here too for the clean nothing-loaded state (same as siblings).
   ]) {
     const el = byId(id);
     if (el) el.classList.add("hidden");
@@ -7248,6 +7249,161 @@ function renderBucketDistribution(s) {
   }
 }
 
+// ── Generic spec-driven stats panel renderer (P2) ──────────────────────────────
+//
+// renderStatsPanel(ctx, spec) — builds a KV table + optional tally sub-tables
+// from a declarative spec. Zero bespoke render code per feature; add a spec,
+// get a panel.
+//
+// spec shape:
+//   {
+//     panelId:        string  — DOM id of the <section> container
+//     summaryKey:     string  — top-level key in ctx.a (e.g. "topdollar_choice")
+//     titleKey:       string  — i18n key for the panel title (written to h2[data-i18n])
+//     applicableField:string  — field inside the data obj that must be truthy
+//     sections: [
+//       { type:"kv", rows:[{labelKey, path, fmt}] }
+//         — KV table: one row per spec entry.
+//           fmt ∈ "int"  → PURE.fInt(v)
+//                "pct"   → PURE.fRate(v)          (fraction 0-1 → "X.XX%")
+//                "pp"    → v.toFixed(2) + "pp"     (already in pp units)
+//                "raw"   → String(v)
+//       { type:"tally", titleKey, path }
+//         — small two-column table: key → count, sourced from an object dict.
+//     ]
+//   }
+//
+// Single-mode for P2 (reads ctx.a only). Compare-mode: renders A's values, no Δ
+// column — P3 will add that. Does NOT break compare (panel is new; no prior DOM).
+//
+// Mirrors renderBonusChainDynamicsPanel conventions:
+//   - panel.classList.add/remove("hidden") gating
+//   - fmt() for i18n labels
+//   - PURE.fInt / PURE.fRate for values
+//   - .drilldown-table CSS (same as all sibling panels)
+//   - .mech-section / .mech-stat / .mech-label / .mech-value CSS for KV grid
+//
+function renderStatsPanel(ctx, spec) {
+  const panel = byId(spec.panelId);
+  if (!panel) return;
+  const data = (ctx.a || {})[spec.summaryKey];
+  const appField = spec.applicableField || "applicable";
+  if (!data || !data[appField]) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+
+  // Update the h2 data-i18n label in-place so it translates with applyI18n().
+  const h2 = panel.querySelector("h2");
+  if (h2) {
+    h2.dataset.i18n = spec.titleKey;
+    h2.textContent = fmt(spec.titleKey);
+  }
+
+  // Resolve body container: first <div> inside the panel (mirrors siblings).
+  let body = panel.querySelector("div");
+  if (!body) {
+    body = document.createElement("div");
+    panel.appendChild(body);
+  }
+
+  // Value formatter dispatch.
+  const _fmtVal = (v, fmtType) => {
+    if (v === null || v === undefined) return "N/A";
+    switch (fmtType) {
+      case "int": return fInt(v);
+      case "pct": return fRate(v);           // fraction 0–1 → "X.XX%"
+      case "pp":  return Number(v).toFixed(2) + "pp";
+      case "raw": return String(v);
+      default:    return String(v);
+    }
+  };
+
+  let html = "";
+  for (const section of (spec.sections || [])) {
+    if (section.type === "kv") {
+      // KV grid: reuse .mech-section / .mech-grid / .mech-stat / .mech-label / .mech-value
+      // (same CSS as renderMachineMechanics) — visual parity with siblings.
+      const rowsHtml = (section.rows || []).map((row) => {
+        // Resolve nested path: path can be "a.b.c" or bare "field".
+        const parts = row.path.split(".");
+        let v = data;
+        for (const p of parts) { v = (v != null && typeof v === "object") ? v[p] : undefined; }
+        const label = fmt(row.labelKey);
+        const value = _fmtVal(v, row.fmt);
+        return (
+          `<div class="mech-stat">` +
+          `<span class="mech-label">${label}</span>` +
+          `<span class="mech-value">${value}</span>` +
+          `</div>`
+        );
+      }).join("");
+      html += `<div class="mech-section"><div class="mech-grid">${rowsHtml}</div></div>`;
+
+    } else if (section.type === "tally") {
+      // Tally sub-table: dict of key→count. Reuses .drilldown-table CSS (same as SpinType,
+      // Payline, Symbol tables) — visual parity with siblings.
+      const parts = section.path.split(".");
+      let dict = data;
+      for (const p of parts) { dict = (dict != null && typeof dict === "object") ? dict[p] : undefined; }
+      const title = fmt(section.titleKey);
+      let rowsHtml = "";
+      if (dict && typeof dict === "object") {
+        rowsHtml = Object.keys(dict)
+          .sort((a, b) => Number(a) - Number(b))  // numeric sort for pick counts / tiers
+          .map((k) => `<tr><td>${k}</td><td>${fInt(dict[k])}</td></tr>`)
+          .join("");
+      }
+      // Column headers are per-section (a tally's key column is NOT a SpinType —
+      // e.g. picks_per_session keys are pick counts, dollar_tier_counts keys are
+      // dollar tiers). Each tally section declares keyColKey / countColKey.
+      const _keyCol = fmt(section.keyColKey || "tdColKey");
+      const _countCol = fmt(section.countColKey || "tdColCount");
+      html += (
+        `<div class="mech-section">` +
+        `<h3>${title}</h3>` +
+        `<table class="drilldown-table">` +
+        `<thead><tr><th>${_keyCol}</th><th>${_countCol}</th></tr></thead>` +
+        `<tbody>${rowsHtml}</tbody>` +
+        `</table></div>`
+      );
+    }
+  }
+  body.innerHTML = html;
+}
+
+// TOPDOLLAR_CHOICE_SPEC — first user of renderStatsPanel.
+// Declares the KV rows + 2 tally sections for summary.topdollar_choice.
+// Changing this spec → panel changes; no new render code needed.
+const TOPDOLLAR_CHOICE_SPEC = {
+  panelId:        "topDollarChoicePanel",
+  summaryKey:     "topdollar_choice",
+  titleKey:       "tdChoiceTitle",
+  applicableField:"applicable",
+  sections: [
+    {
+      type: "kv",
+      rows: [
+        { labelKey: "tdTotalSessions",  path: "total_sessions",    fmt: "int" },
+        { labelKey: "tdTriggerRate",    path: "trigger_rate",      fmt: "pct" },
+        { labelKey: "tdStoppedEarly",   path: "stopped_early_rate",fmt: "pct" },
+        { labelKey: "tdForced4th",      path: "forced_4th_rate",   fmt: "pct" },
+        { labelKey: "tdForced4thCount", path: "forced_4th_count",  fmt: "int" },
+        { labelKey: "tdBadGamble",      path: "bad_gamble_rate",   fmt: "pct" },
+        { labelKey: "tdBadGambleCount", path: "bad_gamble_count",  fmt: "int" },
+        { labelKey: "tdSettledMedian",  path: "settled_win_median",fmt: "int" },
+        { labelKey: "tdSettledMax",     path: "settled_win_max",   fmt: "int" },
+        { labelKey: "tdRtpContribution",path: "rtp_contribution_pp",fmt:"pp"  },
+      ],
+    },
+    { type: "tally", titleKey: "tdPicksPerSession", path: "picks_per_session",
+      keyColKey: "tdColPicks", countColKey: "tdColSessions" },
+    { type: "tally", titleKey: "tdDollarTiers", path: "dollar_tier_counts",
+      keyColKey: "tdColTier", countColKey: "tdColCount" },
+  ],
+};
+
 // ── End extracted named panel render functions ──────────────────────────────────
 
 /** Render the analysis panels (KPI tiles, tail/big-win grids,
@@ -7288,6 +7444,10 @@ async function _paintAnalysisFromSummary(s) {
   const sorted = (_registry || [])
     .slice()
     .sort((a, b) => a.order - b.order);
+  // Every descriptor's render() runs on each paint and SELF-HIDES when its data is
+  // absent (the P1 pattern). No present()/skip shortcut — skipping render would leave
+  // a panel showing stale data after a machine switch (the load path does not reset
+  // before painting). render() must be cheap + idempotent.
   for (const descriptor of sorted) {
     if (descriptor.fireAndForget) {
       descriptor.render(ctx); // intentionally not awaited

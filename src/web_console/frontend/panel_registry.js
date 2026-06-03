@@ -37,6 +37,14 @@ window.PANEL_REGISTRY = [
   { id: "rtp_clamp_warning",    order: 600,  render: (ctx) => renderRtpClampWarning(ctx.a) },
   { id: "report_self_check",    order: 700,  render: (ctx) => renderReportSelfCheck(ctx.a) },
   { id: "spin_type_breakdown",  order: 800,  render: (ctx) => renderSpinTypeBreakdown(ctx.a) },
+
+  // TopDollar player-choice panel (P2 generic renderer). NO present() skip:
+  // renderStatsPanel SELF-HIDES when the feature is absent (same pattern as every
+  // P1 panel) — so it always runs on each paint and can never go stale on a machine
+  // switch. render() delegates to the generic renderStatsPanel driven by
+  // TOPDOLLAR_CHOICE_SPEC (both defined in app.js; resolved at call time).
+  { id: "topdollar_choice", order: 850, render: (ctx) => renderStatsPanel(ctx, TOPDOLLAR_CHOICE_SPEC) },
+
   { id: "feature_breakdown",    order: 900,  render: (ctx) => renderFeatureBreakdownPanel(ctx.a) },
 
   // Classifier panel: fire-and-forget (its own API call; must not block the rest of the tab).

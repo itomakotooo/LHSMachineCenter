@@ -172,6 +172,15 @@
             <div id="featureBreakdownInline" class="feature-inline-section"></div>
           </section>
 
+          <!-- TopDollar player-choice panel (order 850 — between spin_type_breakdown 800
+               and feature_breakdown 900). Only visible on M15-family machines that emit
+               summary.topdollar_choice with applicable:true. Rendered by renderStatsPanel
+               driven by TOPDOLLAR_CHOICE_SPEC. -->
+          <section class="panel machine-mechanics hidden" id="topDollarChoicePanel">
+            <h2 data-i18n="tdChoiceTitle">TopDollar 玩家选择（ST=14）</h2>
+            <div id="topDollarChoiceBody"></div>
+          </section>
+
           <!-- Pay ID 总览 — merged view combining the live analyzer's
                PayID depth (frequency, avg win, RTP contribution,
                paid/bonus category) with the offline paytable shape
