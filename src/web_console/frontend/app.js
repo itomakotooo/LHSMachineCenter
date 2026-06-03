@@ -5094,10 +5094,11 @@ function _setAllPayIdSubrows(body, expand) {
 //   cmpB          {bool}       — true when compare mode is active
 //   bet           {number}     — A-side bet denominator for multiplier column
 //   betB          {number}     — B-side bet denominator
-//   includeShape  {bool}       — add Shape / Cols / Line columns (aggregate only)
-//   includeNotes  {bool}       — add Notes column (aggregate only)
-//   includeSubRows {bool}      — render composition breakdown sub-rows
-//   maxRtp        {number}     — bar scale; 0 → computed from rows
+//   includeShape      {bool}   — add Shape / Cols / Line columns (aggregate only)
+//   includeNotes      {bool}   — add Notes column (aggregate only)
+//   includeSubRows    {bool}   — render composition breakdown sub-rows
+//   includeLiveSymbols {bool}  — add Symbol combo + Covered cols from live data (default true)
+//   maxRtp            {number} — bar scale; 0 → computed from rows
 function _renderPayoutRowsHtml(payoutRows, opts) {
   const {
     shapeByPayId = null,
@@ -5108,6 +5109,7 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
     includeShape = true,
     includeNotes = true,
     includeSubRows = true,
+    includeLiveSymbols = true,
   } = opts || {};
   let { maxRtp = 0 } = opts || {};
 
@@ -5149,7 +5151,7 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
   const _stack = (aVal, bVal, aRaw, bRaw, kind, digits) =>
     _cmpCell(!!cmpB, aVal, bVal, aRaw, bRaw, kind, digits);
 
-  // thead — 7 base columns + optional shape (3) + optional notes (1)
+  // thead — 7 base columns + optional live-symbol (2) + optional shape (3) + optional notes (1)
   const thead =
     `<thead><tr>` +
     `<th>${_escHtml(fmt("payIdCol"))}</th>` +
@@ -5159,6 +5161,10 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
     `<th>${_escHtml(fmt("payIdMultCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdWinShareCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdRtpCol"))}</th>` +
+    (includeLiveSymbols
+      ? `<th>${_escHtml(fmt("colSymbolCombo"))}</th>` +
+        `<th>${_escHtml(fmt("colCoveredCols"))}</th>`
+      : "") +
     (includeShape
       ? `<th>${_escHtml(fmt("payIdShapeCol"))}</th>` +
         `<th>${_escHtml(fmt("payIdColsCol"))}</th>` +
@@ -5256,6 +5262,18 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
       ? `<td class="cmp-text-bar-cell">${_cmpCell(true, rtpCellA, rtpCellB, rtpRawA, rtpRawB, "pp", 2, { aBarPct: aBar, bBarPct: bBar })}</td>`
       : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>`;
 
+    // Live-symbol columns: symbol_combo.dominant + covered_columns from live data.
+    // 1-indexed display for covered_columns so humans read "1,2,3" not "0,1,2".
+    const liveCombo = pr.symbol_combo;
+    const liveDominant = (liveCombo && liveCombo.dominant) ? _escHtml(liveCombo.dominant) : "—";
+    const liveCovCols = Array.isArray(pr.covered_columns) && pr.covered_columns.length
+      ? pr.covered_columns.map((c) => c + 1).join(",")
+      : "—";
+    const liveSymbolCols = includeLiveSymbols
+      ? `<td class="payid-symbol-combo">${liveDominant}</td>` +
+        `<td class="payid-covered-cols">${_escHtml(liveCovCols)}</td>`
+      : "";
+
     // Extra columns that only appear in aggregate / shape-inclusive mode
     const shapeCols = includeShape
       ? `<td>${symDisplay}</td>` +
@@ -5263,8 +5281,8 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
         `<td>${lineBadge}</td>`
       : "";
     // Muted placeholders for sub-rows starting at the RTP bar column (col 7).
-    // Total trailing muted = 1 (RTP) + 3×shape + 1×notes when enabled.
-    const subRowMutedCount = 1 + (includeShape ? 3 : 0) + (includeNotes ? 1 : 0);
+    // Total trailing muted = 1 (RTP) + 2×live-symbol + 3×shape + 1×notes when enabled.
+    const subRowMutedCount = 1 + (includeLiveSymbols ? 2 : 0) + (includeShape ? 3 : 0) + (includeNotes ? 1 : 0);
     const noteCol = includeNotes
       ? `<td class="shape-notes">${cmpB ? cmpNote : (isDeclaredOnly ? _escHtml(declaredNote) : notes)}</td>`
       : "";
@@ -5278,6 +5296,7 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
       `<td class="payid-mult">${_stack(mainMultA, mainMultB, multRawA, multRawB, "rel")}</td>` +
       `<td class="payid-winshare">—</td>` +
       barCell +
+      liveSymbolCols +
       shapeCols +
       noteCol +
       `</tr>`;
