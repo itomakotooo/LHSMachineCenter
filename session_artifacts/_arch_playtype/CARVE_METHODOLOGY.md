@@ -2,7 +2,7 @@
 
 > Authoritative "how to carve a play-type" doc. Written 2026-06-02 after C2 shipped a **hollow**
 > carve (the logic never left the base closure → zero isolation) that was mislabeled a "milestone".
-> Reference implementation of a GENUINE carve: PT-7 wild-nudge, commit `8445312`.
+> Reference implementation of a GENUINE carve: the wild-nudge carve, commit `8445312`.
 
 ## 0. The rule that stops "docs don't match reality"
 Every carve claim — in any doc, commit message, or handoff — MUST be a **verified, reproducible
@@ -95,13 +95,13 @@ A function-level carve (logic out of the closure; parser imports it) achieves th
 does NOT change the hash property. Do not conflate "function carved" with "full plugin built", and do
 not claim either without the §3 gate.
 
-## 8. What counts as a carve UNIT (per `DIRECTION.md §12`)
-This doc is about HOW to carve (move logic out of the closure + the base_hash gate) — unchanged, applies to
-any unit. But WHAT to carve is defined by the trigger-session model in `DIRECTION.md §12`, NOT by SpinType:
-- **Shared round parsers** (freespin / wheel / paid / respin, keyed by round TYPE) carve into a shared
-  base-excluded library — editing one re-flags every machine with that round type (correct; it IS shared).
-- **A play-type** = a TRIGGER + its session attribution (统计口径) + stat rollup; it carves out the
-  trigger/attribution logic and DELEGATES parsing to the shared library. The same reward ST under different
-  triggers belongs to different play-types (real: M275 freespin via BCM cycle vs scatter).
-Do NOT carve "an ST's parsing" as if it were a play-type — that re-conflates the two layers. Already-done
-examples of the distinction: PT-3 BCM-cycle (a trigger detector) vs PT-7 wild-nudge (a shared round-classifier).
+## 8. What counts as a carve UNIT (per `DIRECTION.md` §2–§3)
+This doc is about HOW to carve (move logic out of the closure + the base_hash gate) — unchanged, applies to any
+unit. WHAT to carve mirrors the rawdata (no invented "play-type" layer):
+- **Per-SpinType parsing** (how to read a given event kind — a freespin parses the same regardless of trigger)
+  carves into a shared base-excluded library — editing one re-flags every machine with that SpinType (correct;
+  it IS shared).
+- **A trigger primitive / attribution rule** (which account an event's economy books to — the M275 case) carves
+  out the per-machine trigger/attribution logic and re-flags only that machine.
+Already-done examples of the distinction: the BCM-cycle carve (a trigger detector) vs the wild-nudge carve
+(a shared per-SpinType classifier).

@@ -1,98 +1,53 @@
-# HANDOFF — play-type re-architecture (READ THIS FIRST)
+# HANDOFF — analyzer event-based re-architecture (READ THIS FIRST)
 
-> As of 2026-06-02. Branch `claude/playtype-rearch`, HEAD `c21eb4e`. Companions: `DIRECTION.md`
-> (signed-off design/requirements) and **`CARVE_METHODOLOGY.md`** (how to carve + the acceptance gate).
-> Every claim here is backed by a runnable check. If something doesn't match the code, trust the code
-> and `CARVE_METHODOLOGY.md §0` — do not inherit a label on faith.
+> 2026-06-02, branch `claude/playtype-rearch`. The MODEL lives in `DIRECTION.md` — read it first. It is
+> **event-based, by SpinType, with NO fabricated "play-type / PT" layer.** `CARVE_METHODOLOGY.md` = the
+> isolation gate. Every claim here is backed by a runnable check — trust the code over any label.
 
-> **⚠ MODEL CORRECTED (2026-06-02) — read `DIRECTION.md §12`.** The play-type UNIT is the **trigger-session,
-> NOT the SpinType**. Two layers: shared round-PARSING (by round type) vs trigger-session 统计口径 (by trigger).
-> Same reward ST (freespin) via BCM vs scatter = identical parse, different 口径 → different play-types (real:
-> M275). So `ST → one play-type` is false; the per-ST detector is insufficient; PT-2 ≠ PT-4; and the
-> **trigger-session / win-attribution layer is the CORE**, not the deferred "Phase-2" framed below. PT-7
-> wild-nudge is a shared round-CLASSIFIER, not a trigger-rooted play-type.
+## The model (one line; full in DIRECTION)
+The rawdata is records tagged with a **SpinType** (an EVENT kind: reel spin / player-choice / settlement / state)
+plus fields. **The unit is the SpinType** — each is understood → parsed → its statistics. **"Trigger" is not a
+layer**; it only decides 统计口径 (which account an event's economy books to). **"玩法"** (e.g. TopDollar) = a
+group of related SpinTypes. **Do not invent any layer the rawdata doesn't have.**
 
-## TL;DR (honest state — no labels, just what's true)
-- Framework built + wired (commits A–C3); flag `--use-play-type-plugins` default **OFF**.
-- **2 GENUINE carves done** (logic moved OUT of the closure → editing it no longer re-flags the fleet;
-  each proven by a per-carve base_hash gate test):
-  - **PT-7 wild-nudge** (commit `8445312`) — `is_wild_nudge_round` → `play_types/wild_nudge.py`.
-  - **PT-3 BCM cycle** (commit `c21eb4e`) — the 5 cycle fns (`detect_cycle_peak`,
-    `compute_robot_cycle_peaks`, `get_collect_count`, `at_cycle_peak_indices`,
-    `infer_bcm_target_spin_type`) → `play_types/bcm_cycle.py`. This **redid C2**, which had shipped
-    HOLLOW (logic left in the `round_classification.py` closure; the plugin just called it → zero
-    isolation; was mislabeled "MILESTONE"). `bcm_base.py` (the plugin) now imports from `bcm_cycle`.
-  - Method + reference: `CARVE_METHODOLOGY.md`. PT-7 (1 fn) and PT-3 (5-fn cluster) are both worked examples.
-- **Correctness is NOT "all clean."** 4 of 9 golden pilots carry a pre-existing layer-2 `_unattributed`
-  fallback (M15 ~39pp, M268 ~40pp, M272/M279 ~4pp; `rtp_integrity_check.layer2_ok=False`). The branch
-  preserves these **byte-identically (not a regression)**, but they are real per-pay_id attribution
-  gaps, **DEFERRED by user decision (2026-06-02)**. The Phase-2 win-attribution carve is the lever that
-  closes them — so remaining work is NOT "zero correctness value", just deferred by choice.
+## Done — genuine, isolation-proven by the base_hash gate
+- **wild-nudge classifier** moved OUT of the closure → `fresh_slotlab/analyzer/play_types/wild_nudge.py`
+  (pinned by `tests/backend/test_wild_nudge_carve.py`).
+- **BCM-cycle functions** moved OUT → `fresh_slotlab/analyzer/play_types/bcm_cycle.py`
+  (pinned by `tests/backend/test_bcm_cycle_carve.py`; a redo of a hollow earlier attempt that stayed in the closure).
+- These are per-SpinType parsing + a trigger primitive — **NOT "play-types"**.
+- `base_hash = 85666c4c4407`. Suites green at **code-HEAD `c21eb4e`** (1221 passed + pin/gate 447 + 375).
+  Every commit since is **docs-only** (deletions + this rewrite) → code unchanged → still green.
 
-## Committed (branch `claude/playtype-rearch`)
-| commit | what | status |
-|---|---|---|
-| `6ab4f8a` | docs — design (DIRECTION + W1–W3 + 04_v2) | — |
-| `7babf1e` | **A** framework: `play_types/` + registry. Inert. | byte-identical |
-| `ff5935c` | **B** wired into `parse_chunk_response`; flag default OFF. Dormant. | byte-identical |
-| `adc42f6` | **C1** plumbing: per-ST ownership + 5 wiring fixes | byte-identical + inject-bug |
-| `6b10942` | **C2** BCMBasePlugin | shipped HOLLOW (logic stayed in closure) — superseded by `c21eb4e` |
-| `63dd609` | **C3** per-machine config layer (BCM bonus_feature off the silent side-file) | byte-identical |
-| `cb35679` | docs handoff (prior version) | — |
-| `8445312` | **PT-7 wild-nudge — GENUINE carve** | ✅ isolated (base_hash gate) + byte-identical + engaged |
-| `cb888be` | docs — CARVE_METHODOLOGY + clean overclaims | — |
-| `c21eb4e` | **PT-3 BCM cycle — GENUINE carve (redo of C2)**: 5 cycle fns → `bcm_cycle.py` | ✅ isolated + byte-identical (5 pilots) + engaged |
+## Validated on real rawdata (the model proven, not asserted)
+- **M275**: the same freespin SpinType is opened by a scatter (437 sessions) or the BCM cycle (39) — **identical
+  parse, different account**; every session attributes to exactly one trigger (0 orphan, no double-count).
+  → proves trigger = attribution, not a per-SpinType thing; the old "split by SpinType" model can't express it.
+- **M15 TopDollar**: ST=14 is the player's pick (玩法: up to 4 picks, stop early or forced at the 4th); its
+  `WinCredits` is a preview (0 economy), real win on ST=15. The pick statistics are real — **1.1% trigger rate,
+  ~50% of RTP**, gamble-to-4th 46%, of which 45% land below a passed offer. Spec: `07_two_layer_design.md §13`.
 
-## Verification status (re-run; do not trust labels)
-- HEAD `c21eb4e` suites green: **1221 passed** (`tests/analyzer/` + `test_bcm_base` + play-type framework)
-  + the fast pin/gate runs (447 + 375 passed). Integration-skips only.
-- Isolation gates (the property C2 lacked): `pytest tests/backend/test_wild_nudge_carve.py` (11) +
-  `tests/backend/test_bcm_cycle_carve.py` (7) — each pins "edit the carved module → base_hash unchanged;
-  edit `round_classification.py` → flips".
-- `base_hash` is `85666c4c4407` (chain: `fd5f7d01e1cb` → `48eada424d82` [wild-nudge] → `85666c4c4407`
-  [BCM carve]; each move edits closure files = expected one-time shift; the 8 base_hash-pin tests re-pinned).
-- Prior fresh-session re-verify (recorded in memory): on a CLEAN tree the C-phase output byte-identical
-  suite is 189/189 and canonical-md5 19/19 — the "task #8 reds" were **dirty-tree `configs/machines.json`
-  drift**, not a real failure. `git stash push -- configs/machines.json` before running md5/canonical tests.
+## Next
+Build the integrated per-SpinType event parser — first instance **M15** (parse ST=1 / 14 / 15 + the ST=14 stats +
+trigger attribution), gated byte-identical + base_hash + the M275/M15 traces. Through the redesigned arch process
+(`docs/ARCH_TEAM_PROCESS.md`).
 
-## What's genuinely done vs not
-- **DONE (genuine, isolated):** PT-7 wild-nudge (`wild_nudge.py`) + PT-3 BCM cycle (`bcm_cycle.py`).
-- **NEXT = the CORE (per `DIRECTION.md §12`), not deferred:** design + carve the two-layer model — a **shared
-  round-parsing library** (freespin / wheel / respin / paid, keyed by round type) + the **trigger-session
-  attribution layer** (`trigger_sessions.py` + `round_win.py`) that decides 统计口径. This layer DEFINES the
-  play-types (a play-type = trigger + attribution + rollup) and also closes the 4 layer-2 gaps above. The W2
-  design round (arch-*) produces this design from §12.
-- **NOTE on the old play-type list:** PT-1 "pure-paid" is the BASE (not a carve-able play-type); PT-2 / PT-4 /
-  etc. are trigger-rooted sessions that SHARE parsers (same ST, different 口径). Do NOT carve them per the old
-  per-ST model — they get re-derived as trigger-rooted play-types in the §12 design.
+## Carve method (read `CARVE_METHODOLOGY.md`)
+Move the logic OUT of the `base_hash` closure → prove with the **base_hash gate** (edit it → hash unchanged; edit
+a universal closure fn → flips; permanent test) **+ byte-identical + engagement**. byte-identical alone is not enough.
 
-## How to carve
-**Read `CARVE_METHODOLOGY.md`.** One paragraph: move the logic OUT of the closure into a base-excluded
-module; prove with the **base_hash gate** (edit the carved logic → hash unchanged; edit a universal fn →
-hash flips) + **byte-identical** (on a machine that actually exercises the mechanic — deep-parse to
-confirm its rounds are present) + **engagement** (corrupt it → parser output changes). **byte-identical
-ALONE is NOT enough** — that is what let the hollow C2 pass. Worked examples: PT-7 wild-nudge (`8445312`,
-1 fn) and PT-3 BCM cycle (`c21eb4e`, 5-fn cluster — the redo of the hollow C2).
-
-## Other resume notes
-- **Test isolation:** `ALL_PLAY_TYPE_PLUGINS` is a module global → every test file relying on the registry
-  needs a module-level autouse snapshot/restore fixture (`test_bcm_base.py` 146–159), else engagement tests
-  flake cross-file. Per `feedback_subprocess_import_suicide_and_module_globals.md`.
-- **⚠ Background agents died silently TWICE** in an earlier session — run agents FOREGROUND / check liveness
-  early; don't blind-wait on a background spawn.
-- **Surgical commits:** the tree has pre-existing junk (`configs/machines.json`, `cache/`, `reports/`, prior
+## Resume notes
+- `ALL_PLAY_TYPE_PLUGINS` is a module global → test files need a module-level autouse snapshot/restore fixture
+  (`test_bcm_base.py` 146–159), else engagement tests flake cross-file.
+- ⚠ Background agents died silently twice — run agents FOREGROUND / check liveness; don't blind-wait.
+- Surgical commits — the tree has pre-existing junk (`configs/machines.json`, `cache/`, `reports/`, prior
   `session_artifacts/_impl`) — never `git add -A`; stage explicit paths.
-- **base_hash-pin re-pin:** any closure-touching change shifts `base_hash`; re-pin the 8 pin tests
-  (`test_analyzer_core_parser`/`_aggregator`, `test_wave_2c_universal_features`,
-  `tests/analyzer/test_c3_5`/`c3`/`c5`/`c6`) to the new value with a documented reason.
+- Any closure-touching change shifts `base_hash` → re-pin the 8 base_hash-pin tests with a documented reason.
 
 ## File map
-- **Methodology:** `CARVE_METHODOLOGY.md` (read before carving)
-- Design record: `DIRECTION.md` (§1–11) + `01_pipeline_map` / `02_taxonomy` (15 play-types) / `03_coupling_audit` / `04_v2` / `05_critique` / `06_validation` + `impl/critique_commit{A,B,C1}.md`
-- Genuine carves (REFERENCE): `play_types/wild_nudge.py` (+ `tests/backend/test_wild_nudge_carve.py`) and
-  `play_types/bcm_cycle.py` (+ `tests/backend/test_bcm_cycle_carve.py`)
-- BCM plugin wrapper: `play_types/bcm_base.py` (claim signature + accumulator; imports the cycle logic from `bcm_cycle.py`)
-- Framework: `fresh_slotlab/analyzer/play_types/{_base,_probe,_claim,_plugin,_machine_config,_detector}.py` + `play_type_registry.py`
-- Wiring + flag: `fresh_slotlab/analyzer/core/parser.py::parse_chunk_response` (`use_play_type_plugins`)
+- Model + direction: `DIRECTION.md` · isolation gate: `CARVE_METHODOLOGY.md` · arch process: `docs/ARCH_TEAM_PROCESS.md`
+- Carves (reference): `play_types/wild_nudge.py` + `play_types/bcm_cycle.py` (+ their `test_*_carve.py`)
+- M15 event spec: `07_two_layer_design.md §13` (NOTE: 07's broader "two-layer play-type design" predates the
+  event-model rewrite and still needs reworking; its empirical parts — the M275 trace + this M15 spec — are valid)
+- Mechanical maps (factual, pre-model): `01_pipeline_map.md`, `03_coupling_audit.md`
 - Closure list (what `base_hash` covers): `fresh_slotlab/analyzer/versioning.py::_CLOSURE_FILES`
-- Per-machine configs: `configs/play_type_configs/<M>/mode_<n>.json`
