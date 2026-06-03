@@ -203,3 +203,24 @@ detection + attribution; it DELEGATES round parsing to the shared layer. It is N
 
 **The W2 design round (arch-*) designs the detailed two-layer architecture FROM this correction; the prior
 02/04_v2 design is the OLD (ST-primary) model and is superseded for the play-type unit.**
+
+## 13. EVENT semantics — "SpinType is NOT a spin" (2026-06-02, user-taught, with M15 evidence)
+SpinType is a **server↔client protocol token for a kind of EVENT** — NOT "a kind of spin". This holds for
+EVERY SpinType on every machine. An event can be:
+- a reel **spin** (paid base, freespin, respin, …);
+- a **player CHOICE / operation** — e.g. **M15 ST=14**: `DollarCount=3` / `ChosenDollar=5-10-5` / `OfferValue=20`
+  is the player PICKING dollars in TopDollar — no reel, no cost;
+- a **settlement** (M15 ST=15: `WinAmount`);
+- a **state / transition** (M260 ST=105: cost 0, win 0, no fields — an empty marker between a bonus and the
+  resuming base game).
+
+**You CANNOT infer what a SpinType IS from "does it have a win."** Understand the rawdata for each. And
+**non-economy events still carry statistical value** — a player's choice (which offers, how many picks, the
+value distribution, when they stop) is behavior worth analyzing even when the money settles elsewhere.
+
+**Model consequence — Layer 1 is "EVENT parsing", NOT "spin parsing":** each event type is read by
+understanding its protocol meaning and extracting whatever is meaningful — economy (win/cost) **AND**
+player-behavior (the choice) **AND** state — never bucketed by has-win / no-win. A play-type's session stats
+therefore include the player's choices (M15 TopDollar = the picks ST=14 **+** the settlement ST=15), not just
+the settled win. (This corrects a shallow habit — ST≈spin, and no-win⇒no-op — both wrong.) The web console
+will eventually render per-SpinType displays off these event parsers (deferred until the parser arch lands).

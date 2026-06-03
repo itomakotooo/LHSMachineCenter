@@ -10,6 +10,14 @@
 > `trigger_sessions.py`, `round_win.py`, `round_classification.py`, `analyzer/core/parser.py`, `analyzer/versioning.py`,
 > and the whole `analyzer/play_types/` framework + 2 carves.
 
+> **⚠ COORDINATOR CORRECTION (2026-06-02, user-taught — read `DIRECTION.md §13`):** "Layer 1 = round parser"
+> below must be read as an **EVENT parser**. A SpinType is a protocol token for a kind of EVENT (reel spin /
+> player CHOICE / settlement / state), NOT "a spin". Layer 1 must understand each event and extract what's
+> meaningful — **economy AND player behavior (e.g. M15 ST=14 = the player's TopDollar picks) AND state** —
+> never bucket by has-win / no-win. The round-type table in §2/§4a is INCOMPLETE: it omits player-choice +
+> state event types and their behavioral statistics. **M15 (a full event parser — base spin ST=1 + the
+> choice ST=14 with its pick statistics + settlement ST=15) is the milestone node** for this architecture.
+
 ---
 
 ## 0. TL;DR (the decision)

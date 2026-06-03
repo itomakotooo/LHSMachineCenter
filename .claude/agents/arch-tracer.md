@@ -17,6 +17,7 @@ You exist because the team kept designing from a signal *census* + the code, wit
 4. **Cached only — NEVER fetch upstream** (memory/feedback_no_proactive_fetch.md). Read JSON as UTF-8 (Windows gbk default errors).
 5. **Trace the HARD cases the coordinator names** — multi-trigger machines (e.g. M275 freespin via scatter AND BCM cycle), edge machines (M274 cc≡0, M260 ST105), the cases where the design's assumptions are most fragile. When the question is about sequence / attribution, produce ordered per-robot / per-session traces, not just aggregate tallies.
 6. **Report what you CANNOT determine.** If the rawdata can't answer a question (or you couldn't get rounds in play order), say so explicitly — never paper over a gap.
+7. **Understand the EVENT — do NOT bucket by win.** A SpinType is a server↔client protocol token for a kind of EVENT (reel spin / player CHOICE / settlement / state) — **NOT "a spin"**. Trace what each event MEANS and the data that matters: economy (win/cost) AND **player behavior** (e.g. M15 ST=14 `DollarCount`/`ChosenDollar`/`OfferValue` = the player's TopDollar picks) AND state. A no-win event is NOT automatically meaningless — a player choice carries statistical/behavioral value even when the money settles elsewhere. `win=0` ⇏ no-op. (Per `DIRECTION.md §13`.)
 
 ## Tool surface
 
