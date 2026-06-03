@@ -25,7 +25,7 @@ group of related SpinTypes. **Do not invent any layer the rawdata doesn't have.*
   → proves trigger = attribution, not a per-SpinType thing; the old "split by SpinType" model can't express it.
 - **M15 TopDollar**: ST=14 is the player's pick (玩法: up to 4 picks, stop early or forced at the 4th); its
   `WinCredits` is a preview (0 economy), real win on ST=15. The pick statistics are real — **1.1% trigger rate,
-  ~50% of RTP**, gamble-to-4th 46%, of which 45% land below a passed offer. Spec: `07_two_layer_design.md §13`.
+  ~50% of RTP**, gamble-to-4th 46%, of which 45% land below a passed offer. Spec + the M275 trace: `02_traces.md`.
 
 ## Next
 Build the integrated per-SpinType event parser — first instance **M15** (parse ST=1 / 14 / 15 + the ST=14 stats +
@@ -47,7 +47,5 @@ a universal closure fn → flips; permanent test) **+ byte-identical + engagemen
 ## File map
 - Model + direction: `DIRECTION.md` · isolation gate: `CARVE_METHODOLOGY.md` · arch process: `docs/ARCH_TEAM_PROCESS.md`
 - Carves (reference): `play_types/wild_nudge.py` + `play_types/bcm_cycle.py` (+ their `test_*_carve.py`)
-- M15 event spec: `07_two_layer_design.md §13` (NOTE: 07's broader "two-layer play-type design" predates the
-  event-model rewrite and still needs reworking; its empirical parts — the M275 trace + this M15 spec — are valid)
-- Mechanical maps (factual, pre-model): `01_pipeline_map.md`, `03_coupling_audit.md`
+- Real-rawdata ground truth (the M275 trigger trace + the M15 event spec / ST=14 stats): `02_traces.md`
 - Closure list (what `base_hash` covers): `fresh_slotlab/analyzer/versioning.py::_CLOSURE_FILES`

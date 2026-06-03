@@ -51,7 +51,7 @@ what let a hollow earlier carve pass).
   (`fresh_slotlab/analyzer/play_types/wild_nudge.py`) and the **BCM-cycle functions**
   (`fresh_slotlab/analyzer/play_types/bcm_cycle.py`, a redo of a hollow earlier attempt). Correct as isolation —
   they are per-SpinType parsing + a trigger primitive, NOT "play-types".
-- **M15 TopDollar event model + ST=14 statistics validated on real rawdata** (`07_two_layer_design.md §13`):
+- **M15 TopDollar event model + ST=14 statistics validated on real rawdata** (`02_traces.md`):
   ST=14 is the player's pick (win is a preview = 0 economy; real win on ST=15); the pick statistics are real
   (TopDollar is a 1.1%-frequency event carrying ~50% of RTP).
 - **NOT built yet:** the integrated per-SpinType event parser (the new model's first real instance, M15). Next step.
