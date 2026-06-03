@@ -107,12 +107,14 @@ def _is_repo_local_content(module_name: str, fpath: Path) -> bool:
 def _get_registered_plugin_files() -> set[Path]:
     """Return the set of __file__ paths for all registered feature plugins.
 
-    Imports all 9 known plugins to ensure they are registered, then reads
+    Imports all 10 known plugins to ensure they are registered, then reads
     ALL_FEATURES to get the registered set. This is the R-4 exclusion set.
 
     Does NOT use a glob — per brief §3.2, exclusion is via the registry,
     not a directory glob. _base.py and __init__.py are NOT in ALL_FEATURES
     and therefore NOT in this exclusion set.
+
+    Phase E update: added topdollar_choice import (10th plugin).
     """
     # Ensure plugins are registered
     try:
@@ -125,6 +127,7 @@ def _get_registered_plugin_files() -> set[Path]:
         import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401
         import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401
         import fresh_slotlab.analyzer.features.bonus_chain_dynamics  # noqa: F401
+        import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
     except ImportError as exc:
         raise ImportError(
             f"Failed to import a registered plugin — cannot build exclusion set: {exc}"
@@ -371,7 +374,7 @@ class TestR4RegistrationCompleteness:
         }
 
         # Ensure plugins are registered (importing them triggers register())
-        _get_registered_plugin_files()  # side effect: all 9 plugins imported
+        _get_registered_plugin_files()  # side effect: all 10 plugins imported (Phase E: +topdollar_choice)
 
         from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
 
@@ -434,17 +437,19 @@ class TestR4RegistrationCompleteness:
         )
 
     def test_registered_plugins_count(self):
-        """Exactly 9 plugins must be registered after importing all known plugins.
+        """Exactly 10 plugins must be registered after importing all known plugins.
 
         This is a count-guard: if a new plugin is added without being registered,
         the file-set check above catches it; if a plugin is registered twice
         (idempotency), the count here reveals the dedup worked correctly.
+
+        Phase E update: count bumped 9→10 to include topdollar_choice.
         """
-        _get_registered_plugin_files()  # imports all 9
+        _get_registered_plugin_files()  # imports all 10
         from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
 
-        assert len(ALL_FEATURES) == 9, (
-            f"Expected exactly 9 registered plugins, got {len(ALL_FEATURES)}. "
+        assert len(ALL_FEATURES) == 10, (
+            f"Expected exactly 10 registered plugins, got {len(ALL_FEATURES)}. "
             f"Registered FEATURE_IDs: {[f.FEATURE_ID for f in ALL_FEATURES]}. "
             f"If a new plugin was added, update this count AND add the plugin "
             f"to the feature-loading block in versioning.py."
@@ -691,7 +696,7 @@ class TestContentCoverageFlip:
 
         actual_hash = compute_base_analyzer_version()
 
-        # These are all 9 registered plugin files. Simulating edits to them
+        # These are all 10 registered plugin files. Simulating edits to them
         # must NOT change base_hash (they are excluded by R-4).
         plugin_paths = [
             "fresh_slotlab/analyzer/features/payouts_by_spin_type.py",
@@ -703,6 +708,7 @@ class TestContentCoverageFlip:
             "fresh_slotlab/analyzer/features/upstream_feature_breakdown.py",
             "fresh_slotlab/analyzer/features/collect_mechanic.py",
             "fresh_slotlab/analyzer/features/bonus_chain_dynamics.py",
+            "fresh_slotlab/analyzer/features/topdollar_choice.py",
         ]
 
         for plugin_path in plugin_paths:

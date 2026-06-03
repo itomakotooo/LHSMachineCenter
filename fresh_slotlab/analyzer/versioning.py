@@ -302,6 +302,7 @@ def compute_effective_version_for_machine(
             import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
             import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
             import fresh_slotlab.analyzer.features.bonus_chain_dynamics  # noqa: F401  # C6
+            import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
         except ImportError:
             try:
                 import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
@@ -313,6 +314,7 @@ def compute_effective_version_for_machine(
                 import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
                 import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
                 import analyzer.features.bonus_chain_dynamics  # type: ignore[no-redef]  # noqa: F401  # C6
+                import analyzer.features.topdollar_choice  # type: ignore[no-redef]  # noqa: F401  # Phase E
             except ImportError:
                 pass
 

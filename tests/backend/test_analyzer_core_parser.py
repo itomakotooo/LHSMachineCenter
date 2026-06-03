@@ -754,10 +754,12 @@ class TestBaseAnalyzerVersionHash:
         # base_pipeline.py + C3 Layer-0 from PIA -> 8a791a69cd05.
         # Behavior byte-identical: framework was flag-off-dormant; C3 L0 redundant
         # with bcm_pairings L1 (same value + source="config" for all 5 pilots).
-        assert actual == "8a791a69cd05", (
+        assert actual == "adf08191dd9c", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = '8a791a69cd05' (R-1 closure value, post Phase-D play-type layer delete)\n"
+            f"  expected = 'adf08191dd9c' (R-1 closure value, post Phase-E topdollar_choice registration:\n"
+            "  closure import add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c;\n"
+            "  M15-only applicability; existing output additive-only).\n"
             "Phase honesty-2 expanded base_hash from core/*.py (old: fa440e3eb5f6) to the\n"
             "25-file report-production import closure (960e9d18d83d); phase 2a then carved\n"
             "collect_mechanic's compute out of PIA (-> 57fdb323585d), phase 2b carved\n"
@@ -767,7 +769,8 @@ class TestBaseAnalyzerVersionHash:
             "carved reel_marginal_by_spin_type's dict-build out of PIA (-> ccc1ecce185d),\n"
             "phase 6 carved bankruptcy_simulation's tier row-build out of PIA (-> d8b8c138874a),\n"
             "PT-3 BCM-cycle carve moved the 5 cycle fns out of the closure (-> 85666c4c4407),\n"
-            "Phase D deleted the play-type plugin framework + C3 Layer-0 wiring (-> 8a791a69cd05).\n"
+            "Phase D deleted the play-type plugin framework + C3 Layer-0 wiring (-> 8a791a69cd05),\n"
+            "Phase E registered topdollar_choice + parser.py TD accumulator (-> adf08191dd9c).\n"
             "core/parser.py is still in the closure — editing it still flips base_hash."
         )
 

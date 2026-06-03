@@ -1304,10 +1304,12 @@ class TestHashCompositionRollsForward:
         # parser.py / base_pipeline.py + C3 Layer-0 from PIA -> 8a791a69cd05.
         # Behavior byte-identical: framework flag-off-dormant; C3 L0 == L1 for pilots.
         # If this value changes again, a _CLOSURE_FILES source was edited.
-        assert actual1 == "8a791a69cd05", (
+        assert actual1 == "adf08191dd9c", (
             f"compute_base_analyzer_version() diverges from R-1 closure reference:\n"
             f"  actual   = {actual1!r}\n"
-            f"  expected = '8a791a69cd05' (R-1 closure value, post Phase-D play-type layer delete)\n"
+            f"  expected = 'adf08191dd9c' (R-1 closure value, post Phase-E topdollar_choice registration:\n"
+            "  closure import add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c;\n"
+            "  M15-only applicability; existing output additive-only).\n"
             "The R-1 closure covers core/*.py plus content modules (round_classification,\n"
             "round_win, trigger_sessions, sampler, machine_md5, chunk_index, rawdata_index)\n"
             "and support modules. If this changed, update the pin to the new value and\n"

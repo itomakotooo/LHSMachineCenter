@@ -684,6 +684,12 @@ def parse_chunk_response(
     dollar_pick_total_dollars = 0
     dollar_pick_win = 0.0
 
+    # TopDollar session accumulator (Phase E, topdollar_choice feature).
+    # Populated per-robot from _trig_sessions_for_robot when ST=14 picks are
+    # present.  Only non-empty for M15-family machines; transparent to others.
+    # Shape: list[dict] where each dict = one TopDollar session (see feature).
+    chunk_topdollar_sessions: list[dict] = []
+
     chunk_spins = 0
     chunk_bet = 0.0
     chunk_win = 0.0
@@ -1319,6 +1325,71 @@ def parse_chunk_response(
                     except (TypeError, ValueError):
                         _trig_st = -1
                     payout_id_win_by_spin_type[_chosen][_trig_st] += _sess_win
+
+        # Phase E: TopDollar session behavioral accumulation.
+        # For each trigger session that contains ST=14 picks, extract the
+        # per-session behavioral data (picks, offers, chosen dollar strings,
+        # settled win).  The session dict structure matches what
+        # topdollar_choice.extract() expects from chunk_dict["topdollar_sessions"].
+        #
+        # Runs AFTER the trigger-session attribution loop so _trig_sessions_for_robot
+        # is already fully populated.  Operates on the raw `rounds` list using
+        # trigger_idx / session_end_idx as slice boundaries — no re-parsing.
+        #
+        # Non-TopDollar machines produce zero ST=14 rounds → this loop is a
+        # cheap no-op (each session's inner loop finds nothing and appends nothing).
+        for _td_s in _trig_sessions_for_robot:
+            _td_trig_i = int(_td_s.get("trigger_idx", -1))
+            _td_end_i = int(_td_s.get("session_end_idx", _td_trig_i + 1))
+            if _td_trig_i < 0 or _td_end_i <= _td_trig_i + 1:
+                continue
+            # Walk the bonus rounds in this session; collect ST=14 pick data.
+            _td_picks: list[dict] = []
+            _td_settled_win: int | None = None
+            for _td_ri in range(_td_trig_i + 1, _td_end_i):
+                if _td_ri >= len(rounds):
+                    break
+                _td_r = rounds[_td_ri]
+                if not isinstance(_td_r, dict):
+                    continue
+                _td_st = _td_r.get("SpinType")
+                try:
+                    _td_st_int = int(_td_st) if _td_st is not None else -1
+                except (TypeError, ValueError):
+                    _td_st_int = -1
+                if _td_st_int == 14:  # player-choice round
+                    _td_offer = _td_r.get("OfferValue")
+                    _td_dollar_count = _td_r.get("DollarCount")
+                    _td_chosen = _td_r.get("ChosenDollar")
+                    try:
+                        _td_offer_int = int(_td_offer) if _td_offer is not None else 0
+                    except (TypeError, ValueError):
+                        _td_offer_int = 0
+                    try:
+                        _td_dc_int = int(_td_dollar_count) if _td_dollar_count is not None else 0
+                    except (TypeError, ValueError):
+                        _td_dc_int = 0
+                    _td_picks.append({
+                        "offer": _td_offer_int,
+                        "dollar_count": _td_dc_int,
+                        "chosen": str(_td_chosen) if _td_chosen is not None else "",
+                    })
+                elif _td_st_int == 15:  # settlement round
+                    _td_wa = _td_r.get("WinAmount")
+                    try:
+                        _td_settled_win = int(_td_wa) if _td_wa is not None else None
+                    except (TypeError, ValueError):
+                        _td_settled_win = None
+            if _td_picks:
+                # Only record sessions with at least one ST=14 pick (i.e. actual
+                # TopDollar sessions; skip non-TD trigger sessions silently).
+                chunk_topdollar_sessions.append({
+                    "n_picks": len(_td_picks),
+                    "offers": [p["offer"] for p in _td_picks],
+                    "dollar_counts": [p["dollar_count"] for p in _td_picks],
+                    "chosen": [p["chosen"] for p in _td_picks],
+                    "settled_win": _td_settled_win,
+                })
 
         cur_loss = 0
         cur_win = 0
@@ -2378,6 +2449,10 @@ def parse_chunk_response(
         "dollar_pick_spins": dollar_pick_spins,
         "dollar_pick_total_dollars": dollar_pick_total_dollars,
         "dollar_pick_win": dollar_pick_win,
+        # Phase E: TopDollar session behavioral data.
+        # Consumed by topdollar_choice.extract().  Empty list for non-TD machines
+        # (no ST=14 rounds → inner loop in the per-robot TD block appends nothing).
+        "topdollar_sessions": chunk_topdollar_sessions,
         # Rawdata-replay bankruptcy histogram: per-tier survival breakdown
         # derived from the robot round sequences. Merged at finalize;
         # replaces the old live HTTP `run_bankruptcy_probe` loop so

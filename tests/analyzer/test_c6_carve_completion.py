@@ -129,16 +129,25 @@ class TestCarveCompletionPreconditions:
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "8a791a69cd05", (
-            f"base_hash must be '8a791a69cd05' (R-1 closure value, post Phase-D play-type layer delete). "
+        assert actual == "adf08191dd9c", (
+            f"base_hash must be 'adf08191dd9c' (R-1 closure value, post Phase-E topdollar_choice registration: "
+            f"closure import add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c; "
+            f"M15-only applicability; existing output additive-only). "
             f"Got: {actual!r}. "
             f"Registered plugin modifications must NOT change base_hash (R-4 exclusion). "
             f"Check _CLOSURE_FILES in versioning.py for unintended production-path changes."
         )
 
-    def test_nine_plugins_registered(self):
-        """Exactly 9 plugins must be in ALL_FEATURES after all phase imports."""
-        # Import all 9 to trigger registration
+    def test_ten_plugins_registered(self):
+        """Exactly 10 plugins must be in ALL_FEATURES after all phase imports.
+
+        Phase E update: count bumped 9→10 to include topdollar_choice.
+        10 plugins: payouts_by_spin_type / reel_marginal_by_spin_type /
+        bankruptcy_simulation / multiplier_profile / multiplier_wild /
+        machine_mechanics / upstream_feature_breakdown / collect_mechanic /
+        bonus_chain_dynamics (C6) / topdollar_choice (Phase E).
+        """
+        # Import all 10 to trigger registration
         import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
         import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
         import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
@@ -148,10 +157,11 @@ class TestCarveCompletionPreconditions:
         import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401
         import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401
         import fresh_slotlab.analyzer.features.bonus_chain_dynamics  # noqa: F401
+        import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
         from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
         count = len(ALL_FEATURES)
-        assert count == 9, (
-            f"Expected exactly 9 plugins in ALL_FEATURES. Got {count}: "
+        assert count == 10, (
+            f"Expected exactly 10 plugins in ALL_FEATURES. Got {count}: "
             f"{[f.FEATURE_ID for f in ALL_FEATURES]}"
         )
 

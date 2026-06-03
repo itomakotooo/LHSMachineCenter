@@ -27,7 +27,7 @@ Invariants asserted
 21. M275 subprocess: stash key absent from final summary.
 22. M14 subprocess: applicable=False.
 23. M14 subprocess: no false trigger markers in payout_ids_top20.
-24. 9 plugins in ALL_FEATURES after all are imported (base 8 + bonus_chain_dynamics).
+24. 10 plugins in ALL_FEATURES after all are imported (base 8 + bonus_chain_dynamics + topdollar_choice).
 
 Inject-bug recipe A (per memory/feedback_enumerate_safety_paths.md)
 -------------------------------------------------------------------
@@ -235,12 +235,14 @@ class TestBonusChainDynamicsImportSafety:
         )
 
     def test_nine_plugins_in_all_features(self):
-        """After all 9 phase plugins imported, ALL_FEATURES has exactly 9 entries.
+        """After all 10 phase plugins imported, ALL_FEATURES has exactly 10 entries.
 
-        9 plugins: payouts_by_spin_type / reel_marginal_by_spin_type /
+        10 plugins: payouts_by_spin_type / reel_marginal_by_spin_type /
         bankruptcy_simulation / multiplier_profile / multiplier_wild /
         machine_mechanics / upstream_feature_breakdown / collect_mechanic /
-        bonus_chain_dynamics (C6).
+        bonus_chain_dynamics (C6) / topdollar_choice (Phase E).
+
+        Phase E update: count bumped 9→10 to include topdollar_choice.
         """
         import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
         import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
@@ -251,10 +253,11 @@ class TestBonusChainDynamicsImportSafety:
         import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401
         import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401
         import fresh_slotlab.analyzer.features.bonus_chain_dynamics  # noqa: F401
+        import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
         from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
         count = len(ALL_FEATURES)
-        assert count == 9, (
-            f"Expected exactly 9 plugins in ALL_FEATURES after all phase imports. "
+        assert count == 10, (
+            f"Expected exactly 10 plugins in ALL_FEATURES after all phase imports. "
             f"Got {count}: {[f.FEATURE_ID for f in ALL_FEATURES]}"
         )
 

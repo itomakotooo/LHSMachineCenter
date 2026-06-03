@@ -1451,6 +1451,7 @@ def main() -> int:
             import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
             import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
             import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
+            import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
         except ImportError:  # running as standalone script
             import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
             import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
@@ -1460,6 +1461,7 @@ def main() -> int:
             import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
             import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
             import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
+            import analyzer.features.topdollar_choice  # type: ignore[no-redef]  # noqa: F401  # Phase E
 
         for read_idx, cf in enumerate(chunk_files):
             # Fast path: when a md5 filter is active, consult the
@@ -2129,6 +2131,7 @@ def main() -> int:
         import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
         import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
         import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
+        import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
     except ImportError:  # running as standalone script
         import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
         import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
@@ -2138,6 +2141,7 @@ def main() -> int:
         import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
         import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
         import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
+        import analyzer.features.topdollar_choice  # type: ignore[no-redef]  # noqa: F401  # Phase E
 
     # ── online sampling path (skipped in read-only --from-cache mode) ──
     while not skip_sampling_loop and next_chunk_index <= args.max_chunks:
@@ -4444,6 +4448,7 @@ def main() -> int:
         import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
         import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
         import fresh_slotlab.analyzer.features.bonus_chain_dynamics  # noqa: F401  # C6
+        import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
         from fresh_slotlab.analyzer.feature_registry import (
             ALL_FEATURES as _ALL_FEATURES,
             get_features_for_machine as _get_features_for_machine,
@@ -4474,6 +4479,7 @@ def main() -> int:
         import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
         import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
         import analyzer.features.bonus_chain_dynamics  # type: ignore[no-redef]  # noqa: F401  # C6
+        import analyzer.features.topdollar_choice  # type: ignore[no-redef]  # noqa: F401  # Phase E
         from analyzer.feature_registry import (  # type: ignore[no-redef]
             ALL_FEATURES as _ALL_FEATURES,
             get_features_for_machine as _get_features_for_machine,
