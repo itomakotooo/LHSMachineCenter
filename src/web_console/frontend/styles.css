@@ -4059,6 +4059,54 @@ body.cmp-active .kpi {
   cursor: help;
 }
 
+/* Per-SpinType outcome distribution panel (spin_type_outcomes feature). */
+.spin-type-outcomes .sto-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: #fcfdff;
+}
+.spin-type-outcomes .sto-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.spin-type-outcomes .sto-label {
+  color: #94a3b8;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+}
+.spin-type-outcomes .sto-round,
+.spin-type-outcomes .sto-vol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+.spin-type-outcomes .sto-round b,
+.spin-type-outcomes .sto-vol b { color: #0f172a; }
+.spin-type-outcomes .sto-round-na,
+.spin-type-outcomes .sto-note {
+  font-size: 12px;
+  color: #64748b;
+  font-style: italic;
+}
+.spin-type-outcomes .sto-tables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+.spin-type-outcomes .sto-bands { flex: 0 0 280px; }
+.spin-type-outcomes .sto-combos { flex: 1 1 360px; }
+.spin-type-outcomes .sto-num { text-align: right; font-variant-numeric: tabular-nums; }
+.spin-type-outcomes .sto-band-name { font-family: ui-monospace, monospace; }
+
 /* Pay ID row that's only in B (synthetic A-side placeholder).
    Mute the row slightly so observers see "this row's A-side data
    is filler" — same affordance as .payid-declared-only but with

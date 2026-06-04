@@ -38,6 +38,12 @@ window.PANEL_REGISTRY = [
   { id: "report_self_check",    order: 700,  render: (ctx) => renderReportSelfCheck(ctx.a) },
   { id: "spin_type_breakdown",  order: 800,  render: (ctx) => renderSpinTypeBreakdown(ctx.a) },
 
+  // Per-SpinType outcome distribution (spin_type_outcomes feature). Self-hides
+  // when summary.player_impact.spin_type_outcomes is absent/empty (P1 pattern,
+  // never skip-render). Gives ST=1/ST=15/every-ST a win-band + top-combo module,
+  // not just ST=14's behavioral panel.
+  { id: "spin_type_outcomes",   order: 810,  render: (ctx) => renderSpinTypeOutcomes(ctx.a) },
+
   // TopDollar player-choice panel (P2 generic renderer). NO present() skip:
   // renderStatsPanel SELF-HIDES when the feature is absent (same pattern as every
   // P1 panel) — so it always runs on each paint and can never go stale on a machine

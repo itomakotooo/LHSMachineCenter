@@ -172,6 +172,15 @@
             <div id="featureBreakdownInline" class="feature-inline-section"></div>
           </section>
 
+          <!-- Per-SpinType outcome distribution (order 810). Cross-machine: every ST
+               with payout data gets a win-band volatility shape + top combos + round
+               summary. Rendered by renderSpinTypeOutcomes; self-hides when
+               summary.player_impact.spin_type_outcomes is absent/empty. -->
+          <section class="panel spin-type-outcomes hidden" id="spinTypeOutcomesPanel">
+            <h2 data-i18n="stoTitle">各 SpinType 产出分布</h2>
+            <div id="spinTypeOutcomesBody"></div>
+          </section>
+
           <!-- TopDollar player-choice panel (order 850 — between spin_type_breakdown 800
                and feature_breakdown 900). Only visible on M15-family machines that emit
                summary.topdollar_choice with applicable:true. Rendered by renderStatsPanel

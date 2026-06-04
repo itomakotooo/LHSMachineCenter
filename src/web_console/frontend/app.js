@@ -4402,6 +4402,122 @@ function renderSpinTypeBreakdown(summary) {
     .join("");
 }
 
+// Per-SpinType outcome distribution (spin_type_outcomes feature). Cross-machine:
+// every ST with payout data gets a win-band volatility shape + top-combo ranking
+// + round-level summary. This is the answer to "还是只有st14的分析?" — ST=1, ST=15
+// and every ST now have their own outcome module, not just ST=14.
+// Self-hides (P1 pattern) when summary.player_impact.spin_type_outcomes is
+// absent/empty — never skip-render (would leave stale data on machine switch).
+function renderSpinTypeOutcomes(summary) {
+  const panel = byId("spinTypeOutcomesPanel");
+  if (!panel) return;
+  const body = byId("spinTypeOutcomesBody");
+  const sto = ((summary || {}).player_impact || {}).spin_type_outcomes || {};
+  const labels = Object.keys(sto);
+  if (!labels.length) {
+    panel.classList.add("hidden");
+    if (body) body.innerHTML = "";
+    return;
+  }
+  // feature_name per label from spin_type_breakdown (header chip), so each card
+  // says e.g. "ST=15 · TopDollar".
+  const stbRows = ((summary || {}).player_impact || {}).spin_type_breakdown || [];
+  const featByLabel = {};
+  for (const r of stbRows) {
+    featByLabel["ST" + r.spin_type + "_" + (r.behavior_name || "")] =
+      r.feature_name || null;
+  }
+
+  const cards = labels.map((label) => {
+    const e = sto[label] || {};
+    const feat = featByLabel[label];
+    const featChip = feat
+      ? ` <span class="st-feature-tag">${escapeHtml(feat)}</span>`
+      : "";
+    const roundUnknown = e.round_stats_available === false;
+    // Round-level summary line (from spin_type_breakdown).
+    const roundLine = roundUnknown
+      ? `<div class="sto-round sto-round-na">${fmt("stoRoundStatsNA")}</div>`
+      : `<div class="sto-round">` +
+          `<span>${fmt("stoHit")}: <b>${PURE.fRate(e.hit_rate || 0)}</b></span>` +
+          `<span>${fmt("stoDead")}: <b>${PURE.fRate(e.dead_spin_rate || 0)}</b></span>` +
+          `<span>${fmt("stoAvgWin")}: <b>${PURE.fInt(e.avg_win_when_hit || 0)}</b></span>` +
+          `<span>${fmt("stoRtpPp")}: <b>${(Number(e.rtp_contribution_pp) || 0).toFixed(2)}</b></span>` +
+        `</div>`;
+
+    let inner;
+    if (!e.has_payouts) {
+      // ST with no payline payouts (e.g. M15 ST=14 selector / ST=15 settlement —
+      // their wins are session-attributed to the triggering round). Honest note.
+      inner = `<div class="sto-note">${fmt("stoNoPayouts")}</div>`;
+    } else {
+      const bands = e.win_bands || [];
+      const maxHits = Math.max(1, ...bands.map((b) => Number(b.hit_count) || 0));
+      const bandRows = bands
+        .map((b) => {
+          const hits = Number(b.hit_count) || 0;
+          const pct = maxHits > 0 ? (hits / maxHits) * 100 : 0;
+          const rtp = (Number(b.rtp_pp) || 0).toFixed(2);
+          return (
+            `<tr>` +
+            `<td class="sto-band-name">${escapeHtml(b.band)}</td>` +
+            `<td class="bar-cell" style="--bar:${pct.toFixed(1)}%">${PURE.fInt(hits)}</td>` +
+            `<td class="sto-num">${rtp}</td>` +
+            `</tr>`
+          );
+        })
+        .join("");
+      const combos = (e.top_combos || [])
+        .map((c) => {
+          const combo = c.combo ? escapeHtml(c.combo) : escapeHtml(String(c.payout_id || "?"));
+          const mult = c.mult == null ? "—" : Number(c.mult).toFixed(1) + "×";
+          const cols = Array.isArray(c.covered_columns) && c.covered_columns.length
+            ? c.covered_columns.map((n) => n + 1).join(",")
+            : "—";
+          return (
+            `<tr>` +
+            `<td>${combo}</td>` +
+            `<td class="sto-num">${mult}</td>` +
+            `<td class="sto-num">${PURE.fInt(Number(c.hit_count) || 0)}</td>` +
+            `<td class="sto-num">${(Number(c.rtp_pp) || 0).toFixed(2)}</td>` +
+            `<td class="sto-num">${cols}</td>` +
+            `</tr>`
+          );
+        })
+        .join("");
+      const volLine =
+        `<div class="sto-vol">` +
+        `<span>${fmt("stoMaxMult")}: <b>${(Number(e.max_mult) || 0).toFixed(1)}×</b></span>` +
+        `<span>${fmt("stoSmall")}: <b>${PURE.fRate(e.pct_small_hits || 0)}</b></span>` +
+        `<span>${fmt("stoBig")}: <b>${PURE.fRate(e.pct_big_hits || 0)}</b></span>` +
+        `</div>`;
+      inner =
+        volLine +
+        `<div class="sto-tables">` +
+          `<table class="drilldown-table sto-bands"><thead><tr>` +
+            `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th><th>${fmt("stoColRtp")}</th>` +
+          `</tr></thead><tbody>${bandRows}</tbody></table>` +
+          `<table class="drilldown-table sto-combos"><thead><tr>` +
+            `<th>${fmt("stoColCombo")}</th><th>${fmt("stoColMult")}</th><th>${fmt("stoColHits")}</th>` +
+            `<th>${fmt("stoColRtp")}</th><th>${fmt("stoColCols")}</th>` +
+          `</tr></thead><tbody>${combos}</tbody></table>` +
+        `</div>`;
+    }
+
+    return (
+      `<div class="sto-card">` +
+      `<div class="sto-head"><b>ST=${e.spin_type}</b>${featChip}` +
+        `<span class="sto-label">${escapeHtml(label)}</span></div>` +
+      roundLine +
+      inner +
+      `</div>`
+    );
+  });
+
+  body.innerHTML = cards.join("");
+  panel.classList.remove("hidden");
+}
+
 function renderMachineMechanics(summary) {
   const panel = byId("machineMechanicsPanel");
   if (!panel) return;
@@ -7040,6 +7156,7 @@ function _resetDebugPanelsToEmpty() {
     "bankruptcyPanel",
     "payoutsBySpinTypePanel", "reelMarginalBySpinTypePanel",
     "topDollarChoicePanel",  // P2 registry panel — self-hides on paint; reset here too for the clean nothing-loaded state (same as siblings).
+    "spinTypeOutcomesPanel",  // self-hides on paint; reset here for the clean nothing-loaded state.
   ]) {
     const el = byId(id);
     if (el) el.classList.add("hidden");

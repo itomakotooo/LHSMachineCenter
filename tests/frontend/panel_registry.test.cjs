@@ -72,11 +72,12 @@ test("panel_registry: all order values are unique (no two descriptors at same or
     `Duplicate order values found: ${orders.join(", ")}`);
 });
 
-test("panel_registry: descriptor count is 21 (P1=20 + P2 topdollar_choice=1)", () => {
+test("panel_registry: descriptor count is 22 (P1=20 + topdollar_choice + spin_type_outcomes)", () => {
   // P1: 5 extracted inline (kpi_tiles, tail_dep_grid, big_win_grid, library_ranking, bucket_distribution)
   //   + 15 named (rtp_clamp_warning .. bankruptcy_analysis) = 20
   // P2: + 1 (topdollar_choice at order 850) = 21
-  assert.equal(REGISTRY.length, 21, `Expected 21 descriptors, got ${REGISTRY.length}`);
+  // playtype-rearch: + 1 (spin_type_outcomes at order 810) = 22
+  assert.equal(REGISTRY.length, 22, `Expected 22 descriptors, got ${REGISTRY.length}`);
 });
 
 // ── Order sequence matches original dispatch order ──────────────────────────────
@@ -92,6 +93,7 @@ test("panel_registry: descriptors in order 100→2000 when sorted (P2: topdollar
     "rtp_clamp_warning",    // 600  — named panels begin
     "report_self_check",    // 700
     "spin_type_breakdown",  // 800
+    "spin_type_outcomes",   // 810  — per-SpinType win-distribution (self-hides)
     "topdollar_choice",     // 850  — P2 generic renderer (self-hides; no present skip)
     "feature_breakdown",    // 900
     "payline_classification",// 1000 — fireAndForget
@@ -189,7 +191,7 @@ test("inject-bug (P1): removing bucket_distribution from registry excludes it fr
     !ids.includes("bucket_distribution"),
     "After inject: bucket_distribution must not appear in registry iteration"
   );
-  assert.equal(ids.length, 20, "After inject: registry must have 20 descriptors (21 - 1)");
+  assert.equal(ids.length, 21, "After inject: registry must have 21 descriptors (22 - 1)");
 
   // --- RESTORE ---
   shimWindow.PANEL_REGISTRY = originalRegistry;
@@ -202,12 +204,12 @@ test("inject-bug (P1): removing bucket_distribution from registry excludes it fr
     idsRestored.includes("bucket_distribution"),
     "After restore: bucket_distribution must be present in registry iteration"
   );
-  assert.equal(idsRestored.length, 21, "After restore: registry must have 21 descriptors");
+  assert.equal(idsRestored.length, 22, "After restore: registry must have 22 descriptors");
 });
 
-// ── Descriptor id set matches all 21 expected panel ids (P1=20 + P2=1) ─────────
+// ── Descriptor id set matches all 22 expected panel ids (P1=20 + P2=1 + 1) ─────
 
-test("panel_registry: descriptor id set is complete — all 21 expected panels present (P1+P2)", () => {
+test("panel_registry: descriptor id set is complete — all 22 expected panels present", () => {
   const ids = new Set(REGISTRY.map((d) => d.id));
   const EXPECTED_IDS = [
     // P1 (20)
@@ -218,6 +220,8 @@ test("panel_registry: descriptor id set is complete — all 21 expected panels p
     "symbol_drilldown", "reel_marginal", "bankruptcy_analysis",
     // P2 (1)
     "topdollar_choice",
+    // playtype-rearch (1)
+    "spin_type_outcomes",
   ];
   for (const id of EXPECTED_IDS) {
     assert.ok(ids.has(id), `Expected descriptor id "${id}" to be present in PANEL_REGISTRY`);
