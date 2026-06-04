@@ -1070,9 +1070,9 @@ class TestFeaturePluginContract:
         assert "topdollar_choice" in td_mod.TopDollarChoice.SCHEMA_KEYS
 
     def test_schema_version(self):
-        """SCHEMA_VERSION == 2 (paytype-rearch: added feature_name field; v1 fallback rule present)."""
+        """SCHEMA_VERSION == 4 (Phase E→2 feature_name; Phase B→3 combos; Phase D→4 total_mult)."""
         import fresh_slotlab.analyzer.features.topdollar_choice as td_mod
-        assert td_mod.TopDollarChoice.SCHEMA_VERSION == 2
+        assert td_mod.TopDollarChoice.SCHEMA_VERSION == 4
 
     def test_declared_deps_is_empty(self):
         """DECLARED_DEPS == () — no summary temp-key dependencies."""

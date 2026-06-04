@@ -193,10 +193,10 @@ class TestSchemaVersion:
         assert 2 in rules, "Fallback rule 2 (v2->v3) missing after Phase B"
 
     def test_topdollar_schema_version_3(self):
-        """TopDollarChoice.SCHEMA_VERSION == 3 (Phase B bumped from 2)."""
+        """TopDollarChoice.SCHEMA_VERSION == 4 (Phase B→3 combos; Phase D→4 total_mult)."""
         from fresh_slotlab.analyzer.features.topdollar_choice import TopDollarChoice
-        assert TopDollarChoice.SCHEMA_VERSION == 3, (
-            f"Expected SCHEMA_VERSION=3 (Phase B), got {TopDollarChoice.SCHEMA_VERSION}"
+        assert TopDollarChoice.SCHEMA_VERSION == 4, (
+            f"Expected SCHEMA_VERSION=4 (Phase D total_mult_buckets), got {TopDollarChoice.SCHEMA_VERSION}"
         )
 
     def test_topdollar_fallback_rule_v2_exists(self):

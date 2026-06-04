@@ -87,9 +87,13 @@ from typing import TYPE_CHECKING, Any, ClassVar
 try:
     from fresh_slotlab.analyzer.features._base import AnalyzerFeature
     from fresh_slotlab.analyzer.feature_registry import register
+    from fresh_slotlab.analyzer.core.aggregator import RETURN_BUCKET_ORDER
+    from fresh_slotlab.analyzer.core._utils import return_bucket
 except ImportError:  # running as standalone script
     from analyzer.features._base import AnalyzerFeature  # type: ignore[no-redef]
     from analyzer.feature_registry import register  # type: ignore[no-redef]
+    from analyzer.core.aggregator import RETURN_BUCKET_ORDER  # type: ignore[no-redef]
+    from analyzer.core._utils import return_bucket  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
     try:
@@ -120,7 +124,7 @@ class TopDollarChoice(AnalyzerFeature):
 
     FEATURE_ID: ClassVar[str] = "topdollar_choice"
     SCHEMA_KEYS: ClassVar[tuple[str, ...]] = ("topdollar_choice",)
-    SCHEMA_VERSION: ClassVar[int] = 3  # Phase B: bumped from 2; adds chosen_combo_counts
+    SCHEMA_VERSION: ClassVar[int] = 4  # Phase D: bumped from 3; adds total_mult_buckets + total_mult_*
     RTP_CONTRIBUTION: ClassVar[bool] = False  # economy is ST=15 SettlementWinAmountRule
     DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
     REQUIRES: ClassVar[tuple[str, ...]] = ()
@@ -134,6 +138,14 @@ class TopDollarChoice(AnalyzerFeature):
             # v2 → v3: chosen_combo_counts was absent in v2 summaries.
             # Frontend renders it as {} (no combo data) for historical reports.
             "chosen_combo_counts": {},
+        },
+        3: {
+            # v3 → v4: total_mult_buckets + total_mult_median/max absent in v3.
+            # The whole-minigame TOTAL MULTIPLIER distribution (settled_win/bet
+            # bucketed) — the user wants 倍率/概率/分布, not credit amounts.
+            "total_mult_buckets": [],
+            "total_mult_median": None,
+            "total_mult_max": None,
         },
     }
 
@@ -299,6 +311,10 @@ class TopDollarChoice(AnalyzerFeature):
                 "dollar_tier_counts": {},
                 # Phase B: no sessions -> no combo data.
                 "chosen_combo_counts": {},
+                # Phase D: total mini-game multiplier distribution (no sessions).
+                "total_mult_buckets": [],
+                "total_mult_median": None,
+                "total_mult_max": None,
                 "rtp_contribution_pp": None,
             }
             return
@@ -420,6 +436,40 @@ class TopDollarChoice(AnalyzerFeature):
             if n_settled > 0 else None
         )
 
+        # ── Phase D: total mini-game MULTIPLIER distribution (倍率/概率/分布) ──
+        # The user wants the WHOLE TopDollar mini-game's total multiplier (final
+        # win ÷ per-spin bet), bucketed — NOT credit amounts. settled_win is the
+        # mini-game total (credits); the per-spin base bet is summary.sampling.bet.
+        # Buckets use the canonical RETURN_BUCKET_ORDER (same as the per-SpinType
+        # RTP buckets) so the TopDollar payout shape is directly comparable.
+        sampling_bet = float((summary.get("sampling") or {}).get("bet") or 0.0)
+        mult_bucket_counts: dict[str, int] = {}
+        mult_values: list[float] = []
+        if sampling_bet > 0:
+            for _sw in settled_values:
+                _m = _sw / sampling_bet
+                mult_values.append(_m)
+                _bk = return_bucket(_m)
+                mult_bucket_counts[_bk] = mult_bucket_counts.get(_bk, 0) + 1
+        n_mult = len(mult_values)
+        total_mult_buckets: list[dict[str, Any]] = []
+        if n_mult > 0:
+            for _bk in RETURN_BUCKET_ORDER:
+                _cnt = mult_bucket_counts.get(_bk, 0)
+                if _cnt > 0:
+                    total_mult_buckets.append({
+                        "bucket": _bk,
+                        "count": _cnt,
+                        "prob": _cnt / n_mult,
+                    })
+        _mult_sorted = sorted(mult_values)
+        total_mult_median: float | None = (
+            _mult_sorted[n_mult // 2] if n_mult > 0 else None
+        )
+        total_mult_max: float | None = (
+            _mult_sorted[-1] if n_mult > 0 else None
+        )
+
         # ── RTP contribution (informational — NOT added to RTP sum) ──
         # ctx.effective_bet_for_rtp = session_bet_sum = sum(paid_spin_bets) across
         # all paid spins (same denominator PIA uses for summary.rtp).
@@ -477,6 +527,12 @@ class TopDollarChoice(AnalyzerFeature):
             # OFFERED set is NOT in rawdata (only chosen is available).
             # Normalized: trailing "-" stripped. Top-20 by count; "_other" if truncated.
             "chosen_combo_counts": chosen_combo_counts,
+            # Phase D: WHOLE mini-game TOTAL MULTIPLIER distribution (settled_win /
+            # per-spin bet), bucketed into RETURN_BUCKET_ORDER, with probability.
+            # This is the "最终小游戏总倍率分析" — multiplier/probability, not credits.
+            "total_mult_buckets": total_mult_buckets,
+            "total_mult_median": total_mult_median,
+            "total_mult_max": total_mult_max,
             "rtp_contribution_pp": rtp_contribution_pp,
         }
 

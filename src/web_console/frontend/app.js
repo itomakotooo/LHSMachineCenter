@@ -4433,30 +4433,36 @@ const _CANON_BUCKETS = [
 // the shared _buildStatsSectionsHtml. The ST→block mapping is DATA-DRIVEN below
 // (trigger_only ST gets the pick block; the ST whose feature == the settlement
 // feature_name gets the settlement block) — not hardcoded to ST14/ST15.
+// ST14 (the CHOICE event) — all the per-draw distributions, as probability:
+// trigger/stop/forced/bad-gamble RATES + pick-count dist + denomination-chosen
+// dist + denomination-combination dist. No credit amounts (user: 倍率/概率/分布).
 const _TD_PICK_SECTIONS = [
   { type: "kv", rows: [
     { labelKey: "tdTotalSessions",  path: "total_sessions",     fmt: "int" },
     { labelKey: "tdTriggerRate",    path: "trigger_rate",       fmt: "pct" },
     { labelKey: "tdStoppedEarly",   path: "stopped_early_rate", fmt: "pct" },
     { labelKey: "tdForced4th",      path: "forced_4th_rate",    fmt: "pct" },
-    { labelKey: "tdForced4thCount", path: "forced_4th_count",   fmt: "int" },
     { labelKey: "tdBadGamble",      path: "bad_gamble_rate",    fmt: "pct" },
-    { labelKey: "tdBadGambleCount", path: "bad_gamble_count",   fmt: "int" },
   ] },
+  // 选中次数的分布 (how many picks per session).
   { type: "tally", titleKey: "tdPicksPerSession", path: "picks_per_session",
     keyColKey: "tdColPicks", countColKey: "tdColSessions" },
-  // ST14 denomination COMBINATION per draw (Phase B) — the multi-denomination
-  // combo shown in one pick ("5-10-5"), not just per-tier counts.
+  // 面额被选的分布 (which denominations get chosen).
+  { type: "tally", titleKey: "tdDollarTiers", path: "dollar_tier_counts",
+    keyColKey: "tdColTier", countColKey: "tdColCount" },
+  // 一次抽取的面额组合分布 (the multi-denomination combo per draw).
   { type: "tally", titleKey: "tdChosenCombos", path: "chosen_combo_counts",
     keyColKey: "tdColCombo", countColKey: "tdColCount" },
 ];
+// ST15 (the SETTLEMENT event) — the WHOLE mini-game's TOTAL MULTIPLIER
+// distribution (settled_win/bet, bucketed) + multiplier median/max. NO credit
+// amounts (user: 我对结算的金钱额度没有分析需求，我只对倍率/概率/分布).
 const _TD_SETTLE_SECTIONS = [
   { type: "kv", rows: [
-    { labelKey: "tdSettledMedian", path: "settled_win_median", fmt: "int" },
-    { labelKey: "tdSettledMax",    path: "settled_win_max",    fmt: "int" },
+    { labelKey: "tdTotalMultMedian", path: "total_mult_median", fmt: "mult" },
+    { labelKey: "tdTotalMultMax",    path: "total_mult_max",    fmt: "mult" },
   ] },
-  { type: "tally", titleKey: "tdDollarTiers", path: "dollar_tier_counts",
-    keyColKey: "tdColTier", countColKey: "tdColCount" },
+  { type: "mult_buckets", titleKey: "tdTotalMultDist", path: "total_mult_buckets" },
 ];
 
 // Dimension: overview KV (share / hit / self-RTP / RTP contribution / feature).
@@ -7473,45 +7479,74 @@ function _buildStatsSectionsHtml(data, sections) {
       case "int": return fInt(v);
       case "pct": return fRate(v);           // fraction 0–1 → "X.XX%"
       case "pp":  return Number(v).toFixed(2) + "pp";
+      case "mult": return Number(v).toFixed(1) + "×";  // multiplier
       case "raw": return String(v);
       default:    return String(v);
     }
   };
+  const _resolve = (path) => {
+    let v = data;
+    for (const p of String(path).split(".")) { v = (v != null && typeof v === "object") ? v[p] : undefined; }
+    return v;
+  };
   let html = "";
   for (const section of (sections || [])) {
     if (section.type === "kv") {
-      const rowsHtml = (section.rows || []).map((row) => {
-        const parts = row.path.split(".");
-        let v = data;
-        for (const p of parts) { v = (v != null && typeof v === "object") ? v[p] : undefined; }
-        return (
-          `<div class="mech-stat">` +
-          `<span class="mech-label">${fmt(row.labelKey)}</span>` +
-          `<span class="mech-value">${_fmtVal(v, row.fmt)}</span>` +
-          `</div>`
-        );
-      }).join("");
+      const rowsHtml = (section.rows || []).map((row) => (
+        `<div class="mech-stat">` +
+        `<span class="mech-label">${fmt(row.labelKey)}</span>` +
+        `<span class="mech-value">${_fmtVal(_resolve(row.path), row.fmt)}</span>` +
+        `</div>`
+      )).join("");
       html += `<div class="mech-section"><div class="mech-grid">${rowsHtml}</div></div>`;
     } else if (section.type === "tally") {
-      const parts = section.path.split(".");
-      let dict = data;
-      for (const p of parts) { dict = (dict != null && typeof dict === "object") ? dict[p] : undefined; }
+      // Distribution table: key | count | 概率 (share). "_other" pinned last;
+      // numeric-string keys come out ascending (JS), combo keys preserve the
+      // analyzer's count-desc order.
+      const dict = _resolve(section.path);
       let rowsHtml = "";
       if (dict && typeof dict === "object") {
-        rowsHtml = Object.keys(dict)
-          .sort((a, b) => Number(a) - Number(b))
-          .map((k) => `<tr><td>${k}</td><td>${fInt(dict[k])}</td></tr>`)
+        let keys = Object.keys(dict).filter((k) => k !== "_other");
+        if (Object.prototype.hasOwnProperty.call(dict, "_other")) keys.push("_other");
+        const total = keys.reduce((a, k) => a + (Number(dict[k]) || 0), 0) || 1;
+        rowsHtml = keys
+          .map((k) => {
+            const cnt = Number(dict[k]) || 0;
+            return `<tr><td>${escapeHtml(String(k))}</td><td>${fInt(cnt)}</td>` +
+              `<td>${((cnt / total) * 100).toFixed(1)}%</td></tr>`;
+          })
           .join("");
       }
-      const _keyCol = fmt(section.keyColKey || "tdColKey");
-      const _countCol = fmt(section.countColKey || "tdColCount");
       html += (
-        `<div class="mech-section">` +
-        `<h3>${fmt(section.titleKey)}</h3>` +
-        `<table class="drilldown-table">` +
-        `<thead><tr><th>${_keyCol}</th><th>${_countCol}</th></tr></thead>` +
-        `<tbody>${rowsHtml}</tbody>` +
-        `</table></div>`
+        `<div class="mech-section"><h3>${fmt(section.titleKey)}</h3>` +
+        `<table class="drilldown-table"><thead><tr>` +
+        `<th>${fmt(section.keyColKey || "tdColKey")}</th>` +
+        `<th>${fmt(section.countColKey || "tdColCount")}</th>` +
+        `<th>${fmt("stoColShare")}</th></tr></thead>` +
+        `<tbody>${rowsHtml}</tbody></table></div>`
+      );
+    } else if (section.type === "mult_buckets") {
+      // Multiplier bucket distribution: 倍率区间 | 次数 | 概率 (+bar). For the
+      // TopDollar total-mini-game multiplier (settled_win/bet) — 倍率/概率/分布.
+      const list = Array.isArray(_resolve(section.path)) ? _resolve(section.path) : [];
+      let rowsHtml = "";
+      if (list.length) {
+        const maxProb = Math.max(...list.map((b) => Number(b.prob) || 0), 0.0001);
+        rowsHtml = list
+          .map((b) => {
+            const prob = Number(b.prob) || 0;
+            const barPct = (prob / maxProb) * 100;
+            return `<tr><td>${PURE.prettyBucketLabel(b.bucket)}×</td>` +
+              `<td>${fInt(Number(b.count) || 0)}</td>` +
+              `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${(prob * 100).toFixed(1)}%</td></tr>`;
+          })
+          .join("");
+      }
+      html += (
+        `<div class="mech-section"><h3>${fmt(section.titleKey)}</h3>` +
+        `<table class="drilldown-table"><thead><tr>` +
+        `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th><th>${fmt("stoColShare")}</th>` +
+        `</tr></thead><tbody>${rowsHtml}</tbody></table></div>`
       );
     }
   }
