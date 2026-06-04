@@ -72,12 +72,13 @@ test("panel_registry: all order values are unique (no two descriptors at same or
     `Duplicate order values found: ${orders.join(", ")}`);
 });
 
-test("panel_registry: descriptor count is 22 (P1=20 + topdollar_choice + spin_type_outcomes)", () => {
+test("panel_registry: descriptor count is 20 (per-SpinType consolidation)", () => {
   // P1: 5 extracted inline (kpi_tiles, tail_dep_grid, big_win_grid, library_ranking, bucket_distribution)
   //   + 15 named (rtp_clamp_warning .. bankruptcy_analysis) = 20
-  // P2: + 1 (topdollar_choice at order 850) = 21
-  // playtype-rearch: + 1 (spin_type_outcomes at order 810) = 22
-  assert.equal(REGISTRY.length, 22, `Expected 22 descriptors, got ${REGISTRY.length}`);
+  // P2 topdollar_choice + payouts_by_spin_type were CONSOLIDATED into
+  // spin_type_outcomes (the unified per-SpinType panel at order 810): +1 (sto)
+  // -1 (topdollar) -1 (payouts_by_spin_type) = net 20.
+  assert.equal(REGISTRY.length, 20, `Expected 20 descriptors, got ${REGISTRY.length}`);
 });
 
 // ── Order sequence matches original dispatch order ──────────────────────────────
@@ -93,12 +94,10 @@ test("panel_registry: descriptors in order 100→2000 when sorted (P2: topdollar
     "rtp_clamp_warning",    // 600  — named panels begin
     "report_self_check",    // 700
     "spin_type_breakdown",  // 800
-    "spin_type_outcomes",   // 810  — per-SpinType win-distribution (self-hides)
-    "topdollar_choice",     // 850  — P2 generic renderer (self-hides; no present skip)
+    "spin_type_outcomes",   // 810  — unified per-SpinType panel (consolidates payouts-by-spintype + topdollar)
     "feature_breakdown",    // 900
     "payline_classification",// 1000 — fireAndForget
-    "pay_id_overview",      // 1100
-    "payouts_by_spin_type", // 1200
+    "pay_id_overview",      // 1100  — aggregate pay-id overview (NOT per-ST; kept)
     "field_discovery",      // 1300
     "machine_mechanics",    // 1400
     "bonus_chain_dynamics", // 1500
@@ -191,7 +190,7 @@ test("inject-bug (P1): removing bucket_distribution from registry excludes it fr
     !ids.includes("bucket_distribution"),
     "After inject: bucket_distribution must not appear in registry iteration"
   );
-  assert.equal(ids.length, 21, "After inject: registry must have 21 descriptors (22 - 1)");
+  assert.equal(ids.length, 19, "After inject: registry must have 19 descriptors (20 - 1)");
 
   // --- RESTORE ---
   shimWindow.PANEL_REGISTRY = originalRegistry;
@@ -204,23 +203,21 @@ test("inject-bug (P1): removing bucket_distribution from registry excludes it fr
     idsRestored.includes("bucket_distribution"),
     "After restore: bucket_distribution must be present in registry iteration"
   );
-  assert.equal(idsRestored.length, 22, "After restore: registry must have 22 descriptors");
+  assert.equal(idsRestored.length, 20, "After restore: registry must have 20 descriptors");
 });
 
-// ── Descriptor id set matches all 22 expected panel ids (P1=20 + P2=1 + 1) ─────
+// ── Descriptor id set matches all 20 expected panel ids ────────────────────────
 
-test("panel_registry: descriptor id set is complete — all 22 expected panels present", () => {
+test("panel_registry: descriptor id set is complete — all 20 expected panels present", () => {
   const ids = new Set(REGISTRY.map((d) => d.id));
   const EXPECTED_IDS = [
-    // P1 (20)
+    // 18 P1 panels (payouts_by_spin_type was consolidated into spin_type_outcomes)
     "kpi_tiles", "tail_dep_grid", "big_win_grid", "library_ranking", "bucket_distribution",
     "rtp_clamp_warning", "report_self_check", "spin_type_breakdown", "feature_breakdown",
-    "payline_classification", "pay_id_overview", "payouts_by_spin_type", "field_discovery",
+    "payline_classification", "pay_id_overview", "field_discovery",
     "machine_mechanics", "bonus_chain_dynamics", "collect_cycle", "payline_drilldown",
     "symbol_drilldown", "reel_marginal", "bankruptcy_analysis",
-    // P2 (1)
-    "topdollar_choice",
-    // playtype-rearch (1)
+    // unified per-SpinType panel (consolidates payouts_by_spin_type + topdollar_choice)
     "spin_type_outcomes",
   ];
   for (const id of EXPECTED_IDS) {
@@ -229,19 +226,22 @@ test("panel_registry: descriptor id set is complete — all 22 expected panels p
   assert.equal(ids.size, EXPECTED_IDS.length, "No extra unexpected descriptor ids");
 });
 
-// ── P2: topdollar_choice descriptor shape (NO present() — renderer self-hides) ──
+// ── Per-SpinType consolidation: topdollar_choice + payouts_by_spin_type folded in ──
 
-test("P2: topdollar_choice descriptor is registered at order 850, no present() skip", () => {
-  const d = REGISTRY.find((d) => d.id === "topdollar_choice");
-  assert.ok(d, "topdollar_choice descriptor must be in PANEL_REGISTRY");
-  assert.equal(d.order, 850, "topdollar_choice must be at order 850");
-  assert.equal(typeof d.render, "function", "topdollar_choice must have a render() function");
-  assert.ok(d.fireAndForget !== true, "topdollar_choice must NOT be fireAndForget");
-  // NO present() — renderStatsPanel SELF-HIDES when the feature is absent. A present()
-  // skip would leave the panel showing stale data after a machine switch (the completed-run
-  // load path does not reset before painting). See the stale-panel fix.
-  assert.equal(typeof d.present, "undefined",
-    "topdollar_choice must NOT have a present() skip — renderStatsPanel self-hides instead");
+test("consolidation: topdollar_choice + payouts_by_spin_type are NOT separate descriptors", () => {
+  // They were consolidated into the unified per-SpinType panel (spin_type_outcomes):
+  // the TopDollar behavior + per-ST payid breakdown now render inside each ST's
+  // own section, not as separate floating registry panels.
+  const ids = new Set(REGISTRY.map((d) => d.id));
+  assert.ok(!ids.has("topdollar_choice"),
+    "topdollar_choice must NOT be a separate descriptor — it is folded into spin_type_outcomes");
+  assert.ok(!ids.has("payouts_by_spin_type"),
+    "payouts_by_spin_type must NOT be a separate descriptor — it is folded into spin_type_outcomes");
+  const sto = REGISTRY.find((d) => d.id === "spin_type_outcomes");
+  assert.ok(sto, "spin_type_outcomes (the unified per-SpinType panel) must be in PANEL_REGISTRY");
+  assert.equal(sto.order, 810, "spin_type_outcomes must be at order 810");
+  assert.equal(typeof sto.present, "undefined",
+    "spin_type_outcomes must NOT have a present() skip — it self-hides");
 });
 
 test("P2: NO descriptor uses a present() skip (renderers self-hide — no stale-panel trap)", () => {
@@ -271,9 +271,9 @@ test("P2: dispatch loop has NO present/skip — every descriptor renders (self-h
     "Dispatch loop must NOT reference descriptor.present — no skip (skip → stale panel; renderers self-hide)");
 });
 
-test("P2: topDollarChoicePanel is in the _resetDebugPanelsToEmpty hide-list (clean empty state)", () => {
-  // Like every gated panel, the registry panel must be reset to hidden on the
-  // nothing-loaded / error paths so the debug tab shows a clean empty state.
+test("spinTypeOutcomesPanel is in the _resetDebugPanelsToEmpty hide-list (clean empty state)", () => {
+  // The unified per-SpinType panel must be reset to hidden on the nothing-loaded /
+  // error paths so the debug tab shows a clean empty state.
   const appSource = fs.readFileSync(
     path.resolve(__dirname, "../../src/web_console/frontend/app.js"),
     "utf8"
@@ -281,8 +281,8 @@ test("P2: topDollarChoicePanel is in the _resetDebugPanelsToEmpty hide-list (cle
   const fnStart = appSource.indexOf("function _resetDebugPanelsToEmpty()");
   assert.ok(fnStart !== -1, "_resetDebugPanelsToEmpty must exist");
   const fnSlice = appSource.slice(fnStart, fnStart + 1500);
-  assert.ok(fnSlice.includes('"topDollarChoicePanel"'),
-    "_resetDebugPanelsToEmpty must include topDollarChoicePanel in its hide-list");
+  assert.ok(fnSlice.includes('"spinTypeOutcomesPanel"'),
+    "_resetDebugPanelsToEmpty must include spinTypeOutcomesPanel in its hide-list");
 });
 
 // ── P2 inject-bug: break spec path → wrong value → revert → correct value ──────

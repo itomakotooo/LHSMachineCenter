@@ -181,14 +181,9 @@
             <div id="spinTypeOutcomesBody"></div>
           </section>
 
-          <!-- TopDollar player-choice panel (order 850 — between spin_type_breakdown 800
-               and feature_breakdown 900). Only visible on M15-family machines that emit
-               summary.topdollar_choice with applicable:true. Rendered by renderStatsPanel
-               driven by TOPDOLLAR_CHOICE_SPEC. -->
-          <section class="panel machine-mechanics hidden" id="topDollarChoicePanel">
-            <h2 data-i18n="tdChoiceTitle">TopDollar 玩家选择（ST=14）</h2>
-            <div id="topDollarChoiceBody"></div>
-          </section>
+          <!-- (TopDollar player-choice consolidated into the per-SpinType panel
+               above — it now renders inside ST=14's section, not as a separate
+               floating module.) -->
 
           <!-- Pay ID 总览 — merged view combining the live analyzer's
                PayID depth (frequency, avg win, RTP contribution,
@@ -203,14 +198,9 @@
             <div id="payIdOverviewBody"></div>
           </section>
 
-          <!-- Per-pay_id by SpinType: one sub-table per spin_type_label
-               (dynamic keys, e.g. ST43_paid / ST44_free). Only shown
-               when payouts_by_spin_type is present in the summary JSON
-               (requires analyzer commit 729a6ca or later). -->
-          <section class="panel payid-overview hidden" id="payoutsBySpinTypePanel">
-            <h2 data-i18n="panelPayoutsBySpinType">按 SpinType 拆分的 Pay ID</h2>
-            <div id="payoutsBySpinTypeBody"></div>
-          </section>
+          <!-- (Per-pay_id by SpinType consolidated into the per-SpinType panel
+               above — the payid breakdown now renders as the "payid dimension"
+               inside each ST's own section.) -->
 
           <!-- Payline structure classification: per-mode label + channel
                split + feature-mode rule delta. Fetched lazily from

@@ -38,18 +38,13 @@ window.PANEL_REGISTRY = [
   { id: "report_self_check",    order: 700,  render: (ctx) => renderReportSelfCheck(ctx.a) },
   { id: "spin_type_breakdown",  order: 800,  render: (ctx) => renderSpinTypeBreakdown(ctx.a) },
 
-  // Per-SpinType outcome distribution (spin_type_outcomes feature). Self-hides
-  // when summary.player_impact.spin_type_outcomes is absent/empty (P1 pattern,
-  // never skip-render). Gives ST=1/ST=15/every-ST a win-band + top-combo module,
-  // not just ST=14's behavioral panel.
+  // Unified per-SpinType analysis: organized strictly BY SpinType. Each ST section
+  // carries its dimensions — feature + payid (symbol combos / covered cols) +
+  // outcome (win bands) + a special behavior block (e.g. ST=14 TopDollar pick
+  // behavior). This CONSOLIDATES what were separate parallel panels
+  // (spin_type_outcomes / payouts_by_spin_type / topdollar_choice) so they no
+  // longer float as redundant sibling modules. Self-hides (P1 pattern).
   { id: "spin_type_outcomes",   order: 810,  render: (ctx) => renderSpinTypeOutcomes(ctx.a) },
-
-  // TopDollar player-choice panel (P2 generic renderer). NO present() skip:
-  // renderStatsPanel SELF-HIDES when the feature is absent (same pattern as every
-  // P1 panel) — so it always runs on each paint and can never go stale on a machine
-  // switch. render() delegates to the generic renderStatsPanel driven by
-  // TOPDOLLAR_CHOICE_SPEC (both defined in app.js; resolved at call time).
-  { id: "topdollar_choice", order: 850, render: (ctx) => renderStatsPanel(ctx, TOPDOLLAR_CHOICE_SPEC) },
 
   { id: "feature_breakdown",    order: 900,  render: (ctx) => renderFeatureBreakdownPanel(ctx.a) },
 
@@ -62,7 +57,9 @@ window.PANEL_REGISTRY = [
   // original latency/ordering byte-for-byte.
   { id: "pay_id_overview",      order: 1100, render: (ctx) => renderPayIdOverview(ctx.a), fireAndForget: true },
 
-  { id: "payouts_by_spin_type", order: 1200, render: (ctx) => renderPayoutsBySpinType(ctx.a) },
+  // (payouts_by_spin_type + topdollar_choice CONSOLIDATED into spin_type_outcomes
+  //  at order 810 — the per-SpinType payid breakdown + TopDollar behavior now
+  //  render inside each ST's own section, not as separate floating panels.)
   { id: "field_discovery",      order: 1300, render: (ctx) => renderFieldDiscovery(ctx.a) },
   { id: "machine_mechanics",    order: 1400, render: (ctx) => renderMachineMechanics(ctx.a) },
   { id: "bonus_chain_dynamics", order: 1500, render: (ctx) => renderBonusChainDynamicsPanel(ctx.a) },
