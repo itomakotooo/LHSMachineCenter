@@ -4477,11 +4477,45 @@ function _stDimOverview(stCtx) {
   return `<div class="mech-section"><div class="mech-grid">${cells}</div></div>`;
 }
 
-// Dimension: win distribution — re-bin this ST's payid wins into the canonical
-// multiplier buckets (fine granularity) with a 占比 (share) column + bar.
-// (Phase A: payline-level, from payid avg_win/bet. Phase C upgrades to round-level.)
+// Dimension: win distribution — per-SpinType RTP bucket distribution.
+// PREFERRED (Phase C): ROUND-LEVEL — each spin's total win/bet binned into the
+//   canonical buckets (spin_type_rtp_buckets, same as the global multiplier table).
+//   占比 = fraction of this ST's PAID spins in the bucket (so named buckets sum to
+//   the hit rate; the remainder are dead spins). This is "基于 spin 的 RTP 分桶".
+// FALLBACK (Phase A): PAYLINE-level re-bin of payid avg_win/bet — used only for
+//   old reports generated before spin_type_rtp_buckets existed.
 function _stDimWinDistribution(stCtx) {
-  const { payRows, bet } = stCtx;
+  const { summary, label, payRows, bet } = stCtx;
+
+  // ── Round-level (preferred) ──
+  const roundBuckets =
+    (((summary.player_impact || {}).spin_type_rtp_buckets) || {})[label];
+  if (Array.isArray(roundBuckets) && roundBuckets.length) {
+    const shown = roundBuckets.filter((b) => (Number(b.spin_count) || 0) > 0);
+    if (!shown.length) return "";
+    const maxShare = Math.max(...shown.map((b) => Number(b.spin_rate) || 0), 0.0001);
+    const rows = shown
+      .map((b) => {
+        const share = Number(b.spin_rate) || 0;
+        const barPct = (share / maxShare) * 100;
+        return (
+          `<tr><td>${PURE.prettyBucketLabel(b.bucket)}×</td>` +
+          `<td>${PURE.fInt(Number(b.spin_count) || 0)}</td>` +
+          `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${(share * 100).toFixed(2)}%</td>` +
+          `<td>${(Number(b.rtp_contribution_pp) || 0).toFixed(2)}</td></tr>`
+        );
+      })
+      .join("");
+    return (
+      `<p class="drilldown-hint">${fmt("stoBandsTitle")} · ${fmt("stoBandsRoundNote")}</p>` +
+      `<table class="drilldown-table"><thead><tr>` +
+      `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th>` +
+      `<th>${fmt("stoColShare")}</th><th>${fmt("stoColRtp")}</th>` +
+      `</tr></thead><tbody>${rows}</tbody></table>`
+    );
+  }
+
+  // ── Payline-level fallback (old reports) ──
   if (!(bet > 0)) return "";
   const real = payRows.filter((pr) => !String(pr.payout_id || "").startsWith("_"));
   if (!real.length) return "";
@@ -4513,7 +4547,7 @@ function _stDimWinDistribution(stCtx) {
     })
     .join("");
   return (
-    `<p class="drilldown-hint">${fmt("stoBandsTitle")}</p>` +
+    `<p class="drilldown-hint">${fmt("stoBandsTitle")} · ${fmt("stoBandsPaylineNote")}</p>` +
     `<table class="drilldown-table"><thead><tr>` +
     `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th>` +
     `<th>${fmt("stoColShare")}</th><th>${fmt("stoColRtp")}</th>` +
