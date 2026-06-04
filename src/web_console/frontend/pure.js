@@ -622,11 +622,13 @@ const I18N = {
     tdRtpContribution: "占总 RTP（pp）",
     tdPicksPerSession: "每局抽取次数分布",
     tdDollarTiers: "面额分布（credits）",
+    tdChosenCombos: "一次抽取的面额组合",
     tdColKey: "项",
     tdColCount: "次数",
     tdColPicks: "抽取次数",
     tdColSessions: "局数",
     tdColTier: "面额（credits）",
+    tdColCombo: "面额组合",
   },
   en: {
     appTitle: "Slot Console",
@@ -1236,11 +1238,13 @@ const I18N = {
     tdRtpContribution: "RTP contribution (pp)",
     tdPicksPerSession: "Picks per session distribution",
     tdDollarTiers: "Dollar tier distribution (credits)",
+    tdChosenCombos: "Denomination combo per draw",
     tdColKey: "Key",
     tdColCount: "Count",
     tdColPicks: "Picks",
     tdColSessions: "Sessions",
     tdColTier: "Dollar tier (credits)",
+    tdColCombo: "Denomination combo",
   },
 };
 

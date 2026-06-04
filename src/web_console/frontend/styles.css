@@ -4064,6 +4064,25 @@ body.cmp-active .kpi {
    (.drilldown-subhead / .drilldown-hint / .drilldown-table) — no custom
    per-card layout, so it stays in visual parity with the other panels. */
 
+/* Phase B: per-payid combo breakdown (symbol_combo.combos) as a native
+   <details> inside the payid symbol-combo cell. Expand to see all winning
+   combos with their share; wild-substituted combos flagged ⚡. */
+.combo-details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.combo-details > summary::-webkit-details-marker { display: none; }
+.combo-details > summary::after { content: " ▸"; color: #94a3b8; font-size: 10px; }
+.combo-details[open] > summary::after { content: " ▾"; }
+.combo-details .combo-item {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: #475569;
+  padding: 1px 0 1px 8px;
+}
+.combo-details .combo-pct { color: #94a3b8; }
+.combo-details .combo-wild { color: #b45309; font-weight: 700; }
+
 /* Pay ID row that's only in B (synthetic A-side placeholder).
    Mute the row slightly so observers see "this row's A-side data
    is filler" — same affordance as .payid-declared-only but with

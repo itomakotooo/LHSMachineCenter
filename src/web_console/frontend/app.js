@@ -4445,6 +4445,10 @@ const _TD_PICK_SECTIONS = [
   ] },
   { type: "tally", titleKey: "tdPicksPerSession", path: "picks_per_session",
     keyColKey: "tdColPicks", countColKey: "tdColSessions" },
+  // ST14 denomination COMBINATION per draw (Phase B) — the multi-denomination
+  // combo shown in one pick ("5-10-5"), not just per-tier counts.
+  { type: "tally", titleKey: "tdChosenCombos", path: "chosen_combo_counts",
+    keyColKey: "tdColCombo", countColKey: "tdColCount" },
 ];
 const _TD_SETTLE_SECTIONS = [
   { type: "kv", rows: [
@@ -5527,8 +5531,27 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
     const liveCovCols = Array.isArray(pr.covered_columns) && pr.covered_columns.length
       ? pr.covered_columns.map((c) => c + 1).join(",")
       : "—";
+    // Phase B: symbol_combo.combos = full per-payid combo breakdown
+    // [{combo,count,is_wild}]. Render as a native <details> (expand/collapse, no
+    // JS wiring — same idiom as the wild-evidence panel) so wild-substituted
+    // combos (flagged ⚡) split out from direct combos. Falls back to plain
+    // dominant when combos absent (old reports).
+    const liveCombos = (liveCombo && Array.isArray(liveCombo.combos)) ? liveCombo.combos : [];
+    let comboCell = liveDominant;
+    if (liveCombos.length) {
+      const totalC = liveCombos.reduce((a, c) => a + (Number(c.count) || 0), 0) || 1;
+      const items = liveCombos
+        .map((c) => {
+          const pct = (((Number(c.count) || 0) / totalC) * 100).toFixed(0);
+          const wild = c.is_wild ? ` <span class="combo-wild" title="wild">⚡</span>` : "";
+          return `<div class="combo-item">${_escHtml(String(c.combo || "?"))}` +
+            ` <span class="combo-pct">${pct}%</span>${wild}</div>`;
+        })
+        .join("");
+      comboCell = `<details class="combo-details"><summary>${liveDominant}</summary>${items}</details>`;
+    }
     const liveSymbolCols = includeLiveSymbols
-      ? `<td class="payid-symbol-combo">${liveDominant}</td>` +
+      ? `<td class="payid-symbol-combo">${comboCell}</td>` +
         `<td class="payid-covered-cols">${_escHtml(liveCovCols)}</td>`
       : "";
 
