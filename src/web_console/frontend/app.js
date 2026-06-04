@@ -4360,6 +4360,20 @@ function renderSpinTypeBreakdown(summary) {
       const behavior = primary && primary.behavior_name
         ? fmt("spinTypeBehavior_" + primary.behavior_name)
         : "\u2014";
+      // ST x FeatureWin cross: tag the SpinType with the "\u73a9\u6cd5" (FeatureWin
+      // feature) it maps to, e.g. "ST=15  TopDollar". trigger_only events
+      // (fires>0/win==0, e.g. the ST=14 selector) get a "\u89e6\u53d1" marker so the
+      // player sees they cost a pick but pay nothing on their own.
+      let featureTag = "";
+      if (primary && primary.feature_name) {
+        const fname = escapeHtml(primary.feature_name);
+        const trig = primary.feature_trigger_only
+          ? ` \u00b7 ${escapeHtml(fmt("spinTypeFeatureTriggerOnly"))}`
+          : "";
+        featureTag =
+          ` <span class="st-feature-tag" title="${escapeHtml(fmt("spinTypeFeatureTitle"))}">` +
+          `${fname}${trig}</span>`;
+      }
       const rareFlag = (aIn && r.rare) || (bRow && bRow.rare);
       const rareClass = rareFlag ? ' class="rare-row"' : "";
 
@@ -4376,7 +4390,7 @@ function renderSpinTypeBreakdown(summary) {
 
       return (
         `<tr${rareClass}>` +
-        `<td>${stName}${rareFlag ? " \u26a0" : ""}${presence}</td>` +
+        `<td>${stName}${rareFlag ? " \u26a0" : ""}${featureTag}${presence}</td>` +
         `<td>${behavior}</td>` +
         `<td>${_cmpCell(!!cmpB, aShareFmt, bShareFmt, aShareRaw, bShareRaw, "pp")}</td>` +
         `<td>${_cmpCell(!!cmpB, aHitFmt, bHitFmt, aHitRaw, bHitRaw, "pp", 2)}</td>` +

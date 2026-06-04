@@ -118,6 +118,8 @@ const I18N = {
     spinTypeBehavior_paid: "付费",
     spinTypeBehavior_free: "免费",
     spinTypeBehavior_mixed: "混合",
+    spinTypeFeatureTriggerOnly: "触发",
+    spinTypeFeatureTitle: "此 SpinType 对应的 FeatureWin 玩法",
     panelFeatureBreakdown: "上游 Feature 分布",
     panelBonusChainDynamics: "Bonus Chain 动态",
     featureBreakdownMeta: "{count} 个 feature · 上游权威分组（analysisResult.FeatureWin）",
@@ -704,6 +706,8 @@ const I18N = {
     spinTypeBehavior_paid: "paid",
     spinTypeBehavior_free: "free",
     spinTypeBehavior_mixed: "mixed",
+    spinTypeFeatureTriggerOnly: "trigger",
+    spinTypeFeatureTitle: "FeatureWin feature this SpinType maps to",
     panelFeatureBreakdown: "Upstream feature breakdown",
     panelBonusChainDynamics: "Bonus chain dynamics",
     featureBreakdownMeta: "{count} feature(s) · upstream-authoritative grouping (analysisResult.FeatureWin)",
@@ -1476,6 +1480,15 @@ function formatSpinTypeRows(summary) {
     rtp_pct: r.rtp_pct === null || r.rtp_pct === undefined ? null : Number(r.rtp_pct),
     rtp_contribution_pp: Number(r.rtp_contribution_pp || 0),
     rare: Boolean(r.rare),
+    // ST x FeatureWin cross (added 2c987fa). feature_name is the upstream
+    // FeatureWin feature this SpinType maps to (null when the ST has no
+    // feature mapping -- e.g. a pure paid spin). feature_rtp_pp is that
+    // feature's RTP contribution (pp); feature_trigger_only marks a
+    // fires>0/win==0 selector/trigger event. All null on legacy reports.
+    feature_name: r.feature_name == null ? null : String(r.feature_name),
+    feature_rtp_pp: r.feature_rtp_pp == null ? null : Number(r.feature_rtp_pp),
+    feature_fire_rate: r.feature_fire_rate == null ? null : Number(r.feature_fire_rate),
+    feature_trigger_only: Boolean(r.feature_trigger_only),
   }));
 }
 

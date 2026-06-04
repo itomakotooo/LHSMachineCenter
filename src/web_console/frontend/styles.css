@@ -4041,6 +4041,24 @@ body.cmp-active .kpi {
   border: 1px solid #c7d2fe;
 }
 
+/* ST x FeatureWin cross tag: labels a SpinType with the upstream FeatureWin
+   "玩法" it maps to (e.g. ST=15 -> TopDollar). Teal to read as a semantic
+   feature label, distinct from the indigo A/B presence chips. */
+.st-feature-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 6px;
+  border-radius: 9px;
+  margin-left: 6px;
+  vertical-align: middle;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  cursor: help;
+}
+
 /* Pay ID row that's only in B (synthetic A-side placeholder).
    Mute the row slightly so observers see "this row's A-side data
    is filler" — same affordance as .payid-declared-only but with
