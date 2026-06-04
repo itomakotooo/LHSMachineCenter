@@ -435,7 +435,7 @@ Adding a machine flags zero existing machines; changing a machine's declared
 features (its manifest) flags only that machine. Editing shared analyzer logic
 (the closure/core/rule-engines) still re-flags every machine that declares an
 affected feature — by design, since a shared-logic change genuinely affects them
-all. Machines with no manifest (virtual/unregistered) resolve to the
+all. Machines with no manifest (unregistered) resolve to the
 `UNVERIFIABLE` sentinel and are
 **never** counted stale or fixable (honest). `current_analyzer_version` is the
 legacy global `compute_analyzer_version()` hash, kept for display/back-compat
@@ -953,7 +953,7 @@ Snapshot of current fingerprints for the Run History staleness badges:
 analyzer hash and is the **actual comparator** the frontend staleness badge
 (`versionBadges`) uses. It is populated for the bounded set of (machine, mode)
 pairs that have completed runs (not all 393 × all modes). Machines with no
-manifest (virtual/unregistered) map to the `UNVERIFIABLE` sentinel — the
+manifest (unregistered) map to the `UNVERIFIABLE` sentinel — the
 frontend treats those as "untagged", never stale. Computed via a per-request
 `EffectiveVersionCache` so base_hash is hashed once per call.
 

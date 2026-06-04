@@ -94,23 +94,6 @@ configs/machines_static.json
 # auto-cleanup. Not versioned (operator preference, not config).
 configs/rawdata_locks.json
 
-# slot_designer sim outputs (rawdata-format chunks, regenerable)
-slot_designer/out/
-
-# slot_designer virtual console state / data (regenerable / per-operator)
-slot_designer/rawdata/
-slot_designer/reports/
-slot_designer/state/
-slot_designer/cache_chunks/
-slot_designer/dev_reports/
-slot_designer/configs/paytables_virtual/
-# slot_designer DEV scratch (simulate.py / tune.py ephemeral rawdata —
-# intentionally separate from slot_designer/rawdata/ above so developer
-# iteration never writes into the virtual console's data pool)
-slot_designer/_dev_scratch/
-# Per-fleet static attrs cache — auto-rebuilt from reports + machines_virtual.json
-slot_designer/configs/machines_static.json
-
 # Per-operator MachineConfig overrides for focused-machine A/B testing.
 # Operator drops ``<underlying>Cfg.txt`` files here (e.g. M15Cfg.txt);
 # the focused-machine detail panel auto-reveals a "use local cfg"
@@ -118,14 +101,3 @@ slot_designer/configs/machines_static.json
 # experimental weights → per-operator, not shared.
 machineconfig/
 
-# slot_designer per-mode weights rollback artifacts. Designer iteration
-# may drop `weights.json.<tag>.bak` next to live weights for one-shot
-# rollback; git history already records predecessor state, so these
-# scratch .bak files are not versioned.
-slot_designer/machines/*/weights/mode_*/weights.json*.bak
-
-# Designer Stage 4 scratch (probe / grid / lever scripts that feed
-# into design_v*.md but aren't part of the audit trail). Final design
-# scripts (v_<final>_*.py + empirical_*_subgate.* + sim_weights/)
-# stay tracked; scratch dirs are local.
-session_artifacts/*/_designer_scratch*/

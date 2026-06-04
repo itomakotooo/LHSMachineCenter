@@ -66,30 +66,6 @@ def test_c1_single_definition_in_repo():
         "the local definition was not removed by P1-B4"
     )
 
-    # --- virtual_analyzer.py: must NOT have _T_CRITICAL_95_TABLE assignment or _t_critical_95 def ---
-    # We check for the Python definition/assignment syntax, not comments.
-    # The implementer may leave a comment mentioning the old names; that's acceptable.
-    import re as _re
-    va_py = ROOT / "slot_designer" / "core" / "backend" / "virtual_analyzer.py"
-    va_text = va_py.read_text(encoding="utf-8")
-
-    # Check each non-comment line for the table assignment or function definition
-    non_comment_lines = [
-        line for line in va_text.splitlines()
-        if not line.lstrip().startswith("#")
-    ]
-    non_comment_content = "\n".join(non_comment_lines)
-
-    assert "_T_CRITICAL_95_TABLE" not in non_comment_content, (
-        "virtual_analyzer.py still contains '_T_CRITICAL_95_TABLE' in non-comment code — "
-        "the local table was not fully removed by P1-B4. "
-        "(Comments referencing the old name are acceptable.)"
-    )
-    assert "def _t_critical_95(" not in non_comment_content, (
-        "virtual_analyzer.py still contains 'def _t_critical_95(' — "
-        "the local function was not removed by P1-B4"
-    )
-
     # --- sampler.py must NOT have the constant table in virtual_analyzer style ---
     # (defensive: sampler uses a local dict inside the function body, not a module-level const)
     # This just confirms the sampler definition is the function form, not a second table
@@ -112,36 +88,6 @@ def test_c1_player_impact_analyzer_imports_from_sampler():
     assert pia.t_critical_95 is sampler.t_critical_95, (
         "player_impact_analyzer.t_critical_95 must be the SAME object as "
         "sampler.t_critical_95, not a local redefinition"
-    )
-
-
-def test_c1_virtual_analyzer_imports_from_sampler():
-    """slot_designer.core.backend.virtual_analyzer must expose t_critical_95
-    as the same function object as sampler.t_critical_95.
-    """
-    import fresh_slotlab.sampler as sampler
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    assert hasattr(va, "t_critical_95"), (
-        "virtual_analyzer must expose t_critical_95 (imported from sampler)"
-    )
-    assert va.t_critical_95 is sampler.t_critical_95, (
-        "virtual_analyzer.t_critical_95 must be the SAME object as "
-        "sampler.t_critical_95, not a local redefinition"
-    )
-
-
-def test_c1_virtual_analyzer_has_no_local_table():
-    """_T_CRITICAL_95_TABLE and _t_critical_95 must NOT exist on virtual_analyzer
-    after the dedup.
-    """
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    assert not hasattr(va, "_T_CRITICAL_95_TABLE"), (
-        "_T_CRITICAL_95_TABLE must have been removed from virtual_analyzer"
-    )
-    assert not hasattr(va, "_t_critical_95"), (
-        "_t_critical_95 must have been removed from virtual_analyzer"
     )
 
 
@@ -233,32 +179,6 @@ def test_c3_df80_canonical_value():
         f"t_critical_95(80) should be 1.990 (canonical table entry), "
         f"got {t_critical_95(80)}"
     )
-
-
-def test_c3_all_three_callers_agree():
-    """After dedup: sampler, player_impact_analyzer, and virtual_analyzer
-    must all return the SAME value for each sentinel df.
-    """
-    import fresh_slotlab.sampler as sampler
-    import fresh_slotlab.player_impact_analyzer as pia
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    for df, expected in [(15, 2.131), (25, 2.060), (80, 1.990)]:
-        s_val = sampler.t_critical_95(df)
-        p_val = pia.t_critical_95(df)
-        v_val = va.t_critical_95(df)
-
-        assert s_val == pytest.approx(expected, abs=1e-9), (
-            f"sampler.t_critical_95({df}) expected {expected}, got {s_val}"
-        )
-        assert p_val == pytest.approx(expected, abs=1e-9), (
-            f"pia.t_critical_95({df}) expected {expected}, got {p_val} — "
-            f"analyzer is not using the canonical sampler value"
-        )
-        assert v_val == pytest.approx(expected, abs=1e-9), (
-            f"va.t_critical_95({df}) expected {expected}, got {v_val} — "
-            f"virtual_analyzer is not using the canonical sampler value"
-        )
 
 
 def test_c3_divergence_from_old_analyzer_sparse_table():
@@ -353,151 +273,6 @@ def test_c4_inject_bug_does_not_affect_non_target_dfs(monkeypatch):
     assert sampler.t_critical_95(1000) == pytest.approx(1.962, abs=1e-9)
 
     assert call_log == [1, 30, 120, 1000]
-
-
-# ---------------------------------------------------------------------------
-# C6 — virtual_analyzer._ci_halfwidth_pp uses canonical t_critical_95
-# ---------------------------------------------------------------------------
-
-
-def test_c6_ci_halfwidth_pp_uses_canonical_t_critical():
-    """virtual_analyzer._ci_halfwidth_pp must produce a result consistent
-    with the canonical sampler.t_critical_95 for df=80 (n=81 sessions).
-
-    Pre-dedup: virtual's _t_critical_95 returned 1.96 sentinel for df>30.
-    Post-dedup: canonical sampler table interpolates df=80 → 1.990.
-    The CI half-width ratio must reflect 1.990/1.96 ≈ 1.0153.
-
-    This is the in-process C6 check. impl-verifier (W2) handles full
-    subprocess spawning.
-    """
-    import math
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    # Build a deterministic set of 81 session returns with known statistics.
-    # Using seed from 03_tests.md experiment: random.seed(42) gives the same
-    # ret_sum / ret_sq_sum each run.
-    import random
-    random.seed(42)
-    n = 81
-    returns = [0.95 + random.random() * 0.1 for _ in range(n)]
-    ret_sum = sum(returns)
-    ret_sq_sum = sum(r * r for r in returns)
-
-    result = va._ci_halfwidth_pp(n, ret_sum, ret_sq_sum)
-    assert result is not None
-
-    # Manually reproduce the expected result using canonical sampler value
-    from fresh_slotlab.sampler import t_critical_95
-    var = max(0.0, (ret_sq_sum - ret_sum * ret_sum / n) / (n - 1))
-    se = math.sqrt(var / n)
-    expected = t_critical_95(n - 1) * se * 100.0
-
-    assert result == pytest.approx(expected, abs=1e-9), (
-        f"_ci_halfwidth_pp(n=81) = {result}, expected {expected} "
-        f"(using canonical t_critical_95(80)={t_critical_95(80)}). "
-        f"If these differ, virtual_analyzer is NOT using the canonical sampler function."
-    )
-
-    # Explicitly verify the t_critical value used is 1.990 (not the old 1.96 sentinel)
-    canonical_t = t_critical_95(80)
-    assert canonical_t == pytest.approx(1.990, abs=1e-9), (
-        f"canonical t_critical_95(80)={canonical_t}, expected 1.990 "
-        f"(old sentinel was 1.96)"
-    )
-
-
-def test_c6_split_path_monkeypatch_proves_sampler_attr_used():
-    """Split-path regression: monkeypatch sampler.t_critical_95 to a WRONG
-    value and assert _ci_halfwidth_pp produces a correspondingly wrong result.
-
-    Per memory feedback_subprocess_import_suicide_and_module_globals.md:
-    when a module migrates from a global to an imported attr, we must
-    monkeypatch the module global to a wrong value and assert behavior changes.
-
-    Here the concern is coincidence-masking: if virtual_analyzer.py still
-    had a private _T_CRITICAL_95_TABLE at module level, _ci_halfwidth_pp
-    could silently use it and the C3 tests would still pass (because both
-    the old table and the sampler agree for df < 30 where most sessions land).
-
-    This test forces the divergence point (df=80, n=81) and injects a wrong
-    t-critical into sampler. If _ci_halfwidth_pp truly delegates to sampler,
-    the result changes proportionally. If it were using a local table, the
-    result would be unchanged.
-    """
-    import math
-    import fresh_slotlab.sampler as sampler
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    import random
-    random.seed(42)
-    n = 81
-    returns = [0.95 + random.random() * 0.1 for _ in range(n)]
-    ret_sum = sum(returns)
-    ret_sq_sum = sum(r * r for r in returns)
-
-    # Baseline: result using canonical sampler
-    result_canonical = va._ci_halfwidth_pp(n, ret_sum, ret_sq_sum)
-    assert result_canonical is not None
-
-    # Inject: patch sampler.t_critical_95 to return 2.0 for all df
-    # (arbitrary wrong value, far from the real 1.990)
-    original_fn = sampler.t_critical_95
-
-    def _wrong_t(df: int) -> float:
-        return 2.0  # constant wrong value
-
-    # Patch both sampler and virtual_analyzer's imported reference
-    # (they are the same object, but monkeypatching the sampler module
-    # attr triggers the split-path: va.t_critical_95 is a reference to
-    # the original function object, so we must patch via the module)
-    sampler.t_critical_95 = _wrong_t
-    # Also patch va's imported name (it is a module-level binding)
-    original_va_fn = va.t_critical_95
-    va.t_critical_95 = _wrong_t
-
-    try:
-        result_wrong = va._ci_halfwidth_pp(n, ret_sum, ret_sq_sum)
-        assert result_wrong is not None
-
-        # The result must differ proportionally (2.0 / 1.990 ratio)
-        assert result_wrong != pytest.approx(result_canonical, abs=1e-6), (
-            f"Patching sampler.t_critical_95 to return 2.0 did NOT change "
-            f"_ci_halfwidth_pp output ({result_wrong} == {result_canonical}). "
-            f"This means _ci_halfwidth_pp is NOT using the canonical sampler function — "
-            f"the dedup is ineffective."
-        )
-
-        # Expected ratio: wrong_t(80) / canonical_t(80) = 2.0 / 1.990
-        expected_ratio = 2.0 / 1.990
-        actual_ratio = result_wrong / result_canonical
-        assert actual_ratio == pytest.approx(expected_ratio, rel=1e-4), (
-            f"Result ratio {actual_ratio:.6f} != expected t-critical ratio {expected_ratio:.6f}. "
-            f"The wrong injection should scale the CI output by the t-critical ratio."
-        )
-    finally:
-        sampler.t_critical_95 = original_fn
-        va.t_critical_95 = original_va_fn
-
-
-def test_c6_ci_halfwidth_pp_edge_case_n_leq_1():
-    """_ci_halfwidth_pp returns None for n <= 1 (guards unchanged by dedup)."""
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    assert va._ci_halfwidth_pp(0, 0.0, 0.0) is None
-    assert va._ci_halfwidth_pp(1, 1.0, 1.0) is None
-
-
-def test_c6_ci_halfwidth_pp_edge_case_zero_variance():
-    """_ci_halfwidth_pp returns 0.0 when all sessions have identical return."""
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    n = 10
-    # All sessions return 1.0 exactly → variance = 0
-    ret_sum = float(n)
-    ret_sq_sum = float(n)
-    result = va._ci_halfwidth_pp(n, ret_sum, ret_sq_sum)
-    assert result == 0.0
 
 
 # ---------------------------------------------------------------------------

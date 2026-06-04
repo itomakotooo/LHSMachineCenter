@@ -109,28 +109,6 @@ def test_c1_no_local_definition_in_player_impact_analyzer():
     )
 
 
-def test_c1_no_local_definition_in_virtual_analyzer():
-    """After dedup, virtual_analyzer.py must NOT contain '_ci_halfwidth_pp'
-    as a function definition (nor 'session_halfwidth_pp' as a local copy).
-
-    Pre-dedup location: virtual_analyzer.py:267-285 ('def _ci_halfwidth_pp(').
-    After dedup the body is replaced with an import + thin call (or alias).
-    """
-    va_py = ROOT / "slot_designer" / "core" / "backend" / "virtual_analyzer.py"
-    va_text = va_py.read_text(encoding="utf-8")
-
-    non_comment_lines = [
-        line for line in va_text.splitlines()
-        if not line.lstrip().startswith("#")
-    ]
-    non_comment_text = "\n".join(non_comment_lines)
-
-    assert "def _ci_halfwidth_pp(" not in non_comment_text, (
-        "virtual_analyzer.py still has 'def _ci_halfwidth_pp(' as a local definition — "
-        "P1-B3 dedup not complete: the local copy was not replaced with an import/alias"
-    )
-
-
 def test_c1_grep_single_definition_count():
     """Grep-level contract: exactly one 'def session_halfwidth_pp' in the
     combined fresh_slotlab/ + slot_designer/ + src/ trees.
@@ -140,7 +118,6 @@ def test_c1_grep_single_definition_count():
     # Collect all Python files in the three trees
     target_dirs = [
         ROOT / "fresh_slotlab",
-        ROOT / "slot_designer",
         ROOT / "src",
     ]
     definition_count = 0
@@ -198,54 +175,6 @@ def test_c2_player_impact_analyzer_exposes_session_halfwidth_pp_from_sampler():
         "sampler.session_halfwidth_pp, not a locally redefined copy. "
         "P1-B3 dedup requires an 'from fresh_slotlab.sampler import session_halfwidth_pp' callsite."
     )
-
-
-def test_c2_virtual_analyzer_uses_canonical_session_halfwidth_pp():
-    """virtual_analyzer must call the canonical session_halfwidth_pp from
-    sampler, not its own local _ci_halfwidth_pp.
-
-    After dedup: either (a) virtual_analyzer imports session_halfwidth_pp
-    from sampler directly, or (b) _ci_halfwidth_pp becomes a thin wrapper
-    that delegates to sampler.session_halfwidth_pp. Either way the canonical
-    function must be reachable from virtual_analyzer's module namespace.
-
-    We verify via the numerical parity: calling va._ci_halfwidth_pp (or
-    va.session_halfwidth_pp) with known inputs must return the same value
-    as sampler.session_halfwidth_pp for those inputs.
-    """
-    import fresh_slotlab.sampler as sampler
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    assert hasattr(sampler, "session_halfwidth_pp"), (
-        "fresh_slotlab.sampler must expose session_halfwidth_pp"
-    )
-
-    # The C2 contract has two acceptable implementation forms:
-    #   (a) va.session_halfwidth_pp is sampler.session_halfwidth_pp
-    #   (b) va._ci_halfwidth_pp delegates to sampler.session_halfwidth_pp
-    #       (tested indirectly via numerical parity in C3 / C4 tests)
-    # We check (a) first; if absent we accept (b) and verify numerically.
-    if hasattr(va, "session_halfwidth_pp"):
-        assert va.session_halfwidth_pp is sampler.session_halfwidth_pp, (
-            "virtual_analyzer.session_halfwidth_pp must be the SAME object as "
-            "sampler.session_halfwidth_pp when form (a) is used"
-        )
-    else:
-        # Form (b): _ci_halfwidth_pp must still exist and delegate.
-        assert hasattr(va, "_ci_halfwidth_pp"), (
-            "virtual_analyzer must have either session_halfwidth_pp (form a) "
-            "or _ci_halfwidth_pp (form b) after dedup"
-        )
-        # Numerical parity for the canonical test input
-        n, ret_sum, ret_sq_sum = 1000, 950.0, 910.0
-        canonical = sampler.session_halfwidth_pp(n, ret_sum, ret_sq_sum)
-        va_result = va._ci_halfwidth_pp(n, ret_sum, ret_sq_sum)
-        assert va_result == pytest.approx(canonical, abs=1e-9), (
-            f"virtual_analyzer._ci_halfwidth_pp({n}, {ret_sum}, {ret_sq_sum}) "
-            f"= {va_result}, expected {canonical} (sampler canonical). "
-            f"If these differ, the dedup is incomplete — _ci_halfwidth_pp "
-            f"still uses a local formula instead of delegating to sampler."
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -460,64 +389,6 @@ def test_c5_n_2_is_defined():
 
 
 # ---------------------------------------------------------------------------
-# C6 — Existing ci_stop test parity (guard invariants; ci_stop test itself
-#       runs in W2 by impl-verifier)
-# ---------------------------------------------------------------------------
-
-
-def test_c6_virtual_ci_halfwidth_and_sampler_agree_for_canonical_input():
-    """virtual_analyzer's CI function (whichever form post-dedup) must produce
-    the same value as sampler.session_halfwidth_pp for the C3 canonical input.
-
-    This locks C6: the 'existing test stays green' invariant requires the
-    virtual analyzer's session CI and the canonical to be numerically
-    identical. Any divergence here would break test_virtual_analyzer_ci_stop.py.
-    """
-    import fresh_slotlab.sampler as sampler
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    canonical = sampler.session_halfwidth_pp(_C3_N, _C3_RET_SUM, _C3_RET_SQ_SUM)
-    assert canonical is not None
-
-    # Check whichever form virtual_analyzer uses post-dedup
-    if hasattr(va, "session_halfwidth_pp"):
-        va_result = va.session_halfwidth_pp(_C3_N, _C3_RET_SUM, _C3_RET_SQ_SUM)
-    elif hasattr(va, "_ci_halfwidth_pp"):
-        va_result = va._ci_halfwidth_pp(_C3_N, _C3_RET_SUM, _C3_RET_SQ_SUM)
-    else:
-        pytest.fail(
-            "virtual_analyzer has neither session_halfwidth_pp nor _ci_halfwidth_pp. "
-            "C6 contract requires one of these to exist."
-        )
-
-    assert va_result == pytest.approx(canonical, abs=1e-9), (
-        f"virtual_analyzer CI function = {va_result:.10f}, "
-        f"sampler.session_halfwidth_pp = {canonical:.10f}. "
-        f"These must agree for the existing ci_stop test to remain green."
-    )
-
-
-def test_c6_virtual_ci_n_le_1_returns_none():
-    """virtual_analyzer's CI function must still return None for n <= 1.
-
-    This is the same guard as C5 but applied to the virtual_analyzer callsite,
-    ensuring the dedup did not break the edge-case behavior that
-    test_virtual_analyzer_ci_stop.py::test_ci_halfwidth_pp_undefined_for_n_le_1 checks.
-    """
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    if hasattr(va, "session_halfwidth_pp"):
-        ci_fn = va.session_halfwidth_pp
-    elif hasattr(va, "_ci_halfwidth_pp"):
-        ci_fn = va._ci_halfwidth_pp
-    else:
-        pytest.fail("virtual_analyzer has no CI half-width function post-dedup")
-
-    assert ci_fn(0, 0.0, 0.0) is None
-    assert ci_fn(1, 0.93, 0.86) is None
-
-
-# ---------------------------------------------------------------------------
 # C7 — Inject-bug TDD
 # ---------------------------------------------------------------------------
 
@@ -568,60 +439,6 @@ def test_c7_inject_bug_wrong_multiplier_in_sampler(monkeypatch):
     # Simulate what test_c3_numerical_snapshot would assert
     with pytest.raises(AssertionError):
         assert buggy_result == pytest.approx(_C3_EXPECTED_PP, abs=1e-9)
-
-
-def test_c7_inject_bug_divergent_formula_in_virtual_callsite(monkeypatch):
-    """If virtual_analyzer's `_ci_halfwidth_pp` alias had been overridden
-    with a divergent formula (pre-dedup local copy with * 50.0), the
-    direct call would diverge from sampler's canonical output.
-
-    P1-B3 R1 fix (round-2 critic): the previous version of this test
-    patched `sampler.session_halfwidth_pp` and asserted the canonical
-    diverged — trivially true and irrelevant to the alias. The alias
-    `va._ci_halfwidth_pp = session_halfwidth_pp` at virtual_analyzer.py
-    line 273 is frozen at import time and points at the original
-    function object; replacing the sampler module attribute does NOT
-    update `va._ci_halfwidth_pp` (Python rebinds the source-module
-    attribute, but the alias module's binding still holds the original
-    function reference). To genuinely test the alias path, monkeypatch
-    `va._ci_halfwidth_pp` directly and invoke through it.
-    """
-    import slot_designer.core.backend.virtual_analyzer as va
-
-    def _buggy(n: int, ret_sum: float, ret_sq_sum: float) -> float | None:
-        if n <= 1:
-            return None
-        var = max(0.0, (ret_sq_sum - (ret_sum * ret_sum / n)) / (n - 1))
-        if var == 0.0:
-            return 0.0
-        se = math.sqrt(var / n)
-        # BUG: wrong multiplier (matches the "old local copy with * 50.0"
-        # scenario the round-1 docstring described).
-        t = 1.96
-        return t * se * 50.0
-
-    monkeypatch.setattr(va, "_ci_halfwidth_pp", _buggy)
-
-    # Invoke through the alias (the production call path in virtual_analyzer
-    # internally uses `_ci_halfwidth_pp(...)` at lines 852/972/1009).
-    buggy_via_alias = va._ci_halfwidth_pp(_C3_N, _C3_RET_SUM, _C3_RET_SQ_SUM)
-    assert buggy_via_alias is not None
-
-    # Must differ from the correct canonical snapshot — proves the alias
-    # path is exercisable and a divergent local formula would be caught.
-    assert buggy_via_alias != pytest.approx(_C3_EXPECTED_PP, abs=1e-9), (
-        "BUG INJECTION FAILED: monkeypatching va._ci_halfwidth_pp with a "
-        "divergent formula did not change the alias-path output. The test "
-        "cannot catch a regression that re-introduces a local copy."
-    )
-
-    # Sanity check: the un-patched canonical at sampler is unchanged.
-    import fresh_slotlab.sampler as sampler
-    canonical = sampler.session_halfwidth_pp(_C3_N, _C3_RET_SUM, _C3_RET_SQ_SUM)
-    assert canonical == pytest.approx(_C3_EXPECTED_PP, abs=1e-9), (
-        "Canonical at sampler.session_halfwidth_pp should be untouched "
-        "by monkeypatch of va._ci_halfwidth_pp."
-    )
 
 
 def test_c7_inject_bug_t_critical_wrong_value(monkeypatch):

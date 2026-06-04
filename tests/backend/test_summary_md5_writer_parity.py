@@ -66,22 +66,6 @@ def _import_beta():
     return _get_machine_md5
 
 
-def _import_gamma_patch():
-    """Import γ: virtual post-delegate patcher."""
-    from slot_designer.core.backend.virtual_analyzer import _patch_summary_md5_tags
-    return _patch_summary_md5_tags
-
-
-def _import_gamma_compute():
-    """Import γ source: virtual md5 computation (feeds the patcher)."""
-    from slot_designer.core.backend.virtual_analyzer import (
-        _load_virtual_registry,
-        _find_machine_entry,
-        _compute_md5s,
-    )
-    return _load_virtual_registry, _find_machine_entry, _compute_md5s
-
-
 # ── Fixtures ──────────────────────────────────────────────────────────────
 
 
@@ -177,16 +161,6 @@ class TestThreeWriterHarness:
         result = _get_machine_md5("M14", m14_machines_json, mode=1)
         assert isinstance(result, tuple)
         assert len(result) == 2
-
-    def test_gamma_patcher_is_callable(self, summary_file):
-        """γ path: _patch_summary_md5_tags can be called and modifies a file."""
-        _patch_summary_md5_tags = _import_gamma_patch()
-        cfg = "test_config_md5_aabbcc"
-        code = "test_code_md5_112233"
-        _patch_summary_md5_tags(summary_file.parent, cfg, code)
-        payload = json.loads(summary_file.read_text(encoding="utf-8"))
-        assert payload["config_md5"] == cfg
-        assert payload["code_md5"] == code
 
 
 def _patched_alpha_lookup(machine: str, machines_json: Path) -> tuple[str, str]:
@@ -335,98 +309,6 @@ class TestThreeWriterAgreement:
         assert buggy_md5_alpha[0] != correct_md5_beta[0], (
             "config_md5 must differ between M1 and M14 for inject-bug to work."
         )
-        # monkeypatch exits scope → pia._lookup_machine_md5 restored to real function
-        # GREEN case is verified by test_alpha_beta_agree_m14_mode1 (no monkeypatch).
-
-    def test_beta_gamma_agree_virtual_m1sim_mode1(self):
-        """β and γ agree for M1sim mode 1 (virtual machine path).
-
-        γ is the virtual post-delegate patcher; its values come from
-        _compute_md5s(entry, mode=1) against machines_virtual.json.
-        β can also read machines_virtual.json when given that path.
-        They must agree so the patched summary ends up with the same
-        md5 as what β would write.
-        """
-        virtual_config = ROOT / "slot_designer" / "configs" / "machines_virtual.json"
-        if not virtual_config.exists():
-            pytest.skip("machines_virtual.json not present in this checkout")
-
-        _load_virtual_registry, _find_machine_entry, _compute_md5s = _import_gamma_compute()
-        _get_machine_md5 = _import_beta()
-
-        registry = _load_virtual_registry()
-        try:
-            entry = _find_machine_entry(registry, "M1sim")
-        except RuntimeError:
-            pytest.skip("M1sim not in machines_virtual.json")
-
-        md5_gamma = _compute_md5s(entry, mode=1)
-        md5_beta = _get_machine_md5("M1sim", virtual_config, mode=1)
-
-        assert md5_gamma == md5_beta, (
-            f"β/γ divergence for M1sim mode 1: β={md5_beta!r}, γ={md5_gamma!r}. "
-            f"Both read machines_virtual.json; γ stores per-mode modesMd5 which "
-            f"β should look up via _get_machine_md5(mode=1)."
-        )
-        assert md5_gamma[0], "config_md5 must be non-empty for M1sim"
-        assert md5_gamma[1], "code_md5 must be non-empty for M1sim"
-
-    def test_three_way_agreement_virtual_m1sim_mode1(self):
-        """Full C1 harness: α, β, γ all evaluated on M1sim mode 1.
-
-        α is not applicable to virtual machines (configs/machines.json
-        does NOT contain M1sim). This test verifies α returns empty for
-        M1sim (correct behavior — real analyzer has no knowledge of virtual
-        machines) while β and γ agree on the virtual registry values.
-
-        The three-writer invariant for virtual machines is therefore:
-          α("M1sim") == ("", "")   [correctly ignorant]
-          β("M1sim", virtual_config, mode=1) == γ value
-          γ value non-empty
-
-        Round 2 (R1): α is now called via pia._lookup_machine_md5 directly
-        (not the local stub), so this test verifies the REAL function's
-        behavior for a machine not in configs/machines.json.
-        """
-        import fresh_slotlab.player_impact_analyzer as pia
-
-        real_config = ROOT / "configs" / "machines.json"
-        virtual_config = ROOT / "slot_designer" / "configs" / "machines_virtual.json"
-        if not virtual_config.exists():
-            pytest.skip("machines_virtual.json not present")
-        if not real_config.exists():
-            pytest.skip("configs/machines.json not present")
-
-        _load_virtual_registry, _find_machine_entry, _compute_md5s = _import_gamma_compute()
-        _get_machine_md5 = _import_beta()
-
-        # α — REAL function, real machines.json; M1sim must NOT be there
-        md5_alpha = pia._lookup_machine_md5("M1sim")
-
-        # β — virtual registry, mode=1
-        md5_beta = _get_machine_md5("M1sim", virtual_config, mode=1)
-
-        # γ — computed from virtual entry
-        registry = _load_virtual_registry()
-        try:
-            entry = _find_machine_entry(registry, "M1sim")
-        except RuntimeError:
-            pytest.skip("M1sim not in machines_virtual.json")
-        md5_gamma = _compute_md5s(entry, mode=1)
-
-        # α must be empty for virtual machines (correct: real analyzer is ignorant)
-        assert md5_alpha == ("", ""), (
-            f"α should return empty for virtual machine M1sim, got {md5_alpha!r}. "
-            f"configs/machines.json must NOT contain virtual machines."
-        )
-
-        # β and γ must agree
-        assert md5_beta == md5_gamma, (
-            f"β/γ divergence for M1sim mode 1: β={md5_beta!r}, γ={md5_gamma!r}"
-        )
-
-        # γ must be non-empty
-        assert md5_gamma[0], "config_md5 must be non-empty for M1sim virtual path"
 
 
 # ── C3: Per-mode granularity ──────────────────────────────────────────────
@@ -461,214 +343,6 @@ class TestPerModeGranularity:
             "M14 is a real machine with flat md5 schema — modes 1 and 2 share "
             "the same configSummaryMd5/codeSummaryMd5 by design."
         )
-
-    def test_virtual_machine_m1sim_modes_differ(self):
-        """M1sim has modesMd5 → mode 1 md5 MUST differ from mode 2 md5.
-
-        Per memory feedback_md5_granularity_and_stamping.md: compute_machine_md5
-        collapsed modes together (bug). compute_machine_md5_for_mode fixes it.
-        This test is the regression guard.
-        """
-        virtual_config = ROOT / "slot_designer" / "configs" / "machines_virtual.json"
-        if not virtual_config.exists():
-            pytest.skip("machines_virtual.json not present")
-
-        _get_machine_md5 = _import_beta()
-        md5_mode1 = _get_machine_md5("M1sim", virtual_config, mode=1)
-        md5_mode2 = _get_machine_md5("M1sim", virtual_config, mode=2)
-
-        assert md5_mode1 != md5_mode2, (
-            f"M1sim mode 1 and mode 2 must have DIFFERENT config_md5 "
-            f"(per-mode granularity regression). Got identical: {md5_mode1!r}. "
-            f"Root cause: compute_machine_md5 collapses all modes — use "
-            f"compute_machine_md5_for_mode instead."
-        )
-        # config_md5 differs (weights differ per mode)
-        assert md5_mode1[0] != md5_mode2[0], (
-            "config_md5 must differ across modes (each mode has its own weights)"
-        )
-        # code_md5 is shared (same code for all modes of a machine)
-        assert md5_mode1[1] == md5_mode2[1], (
-            "code_md5 should be the same across modes (code is mode-agnostic)"
-        )
-
-    def test_virtual_gamma_per_mode_granularity_m1sim(self):
-        """γ path (_compute_md5s) returns mode-specific values for M1sim.
-
-        Regression: the old compute_machine_md5 aggregate hashed ALL modes
-        → adding mode 2 flipped mode 1's md5 → historical chunks appeared.
-        compute_machine_md5_for_mode fixes this. Assert mode 1 ≠ mode 2 from
-        the γ computation path directly.
-        """
-        virtual_config = ROOT / "slot_designer" / "configs" / "machines_virtual.json"
-        if not virtual_config.exists():
-            pytest.skip("machines_virtual.json not present")
-
-        _load_virtual_registry, _find_machine_entry, _compute_md5s = _import_gamma_compute()
-        registry = _load_virtual_registry()
-        try:
-            entry = _find_machine_entry(registry, "M1sim")
-        except RuntimeError:
-            pytest.skip("M1sim not in machines_virtual.json")
-
-        md5_mode1 = _compute_md5s(entry, mode=1)
-        md5_mode2 = _compute_md5s(entry, mode=2)
-
-        assert md5_mode1 != md5_mode2, (
-            f"γ _compute_md5s must return different md5 for mode 1 vs mode 2. "
-            f"Got identical: {md5_mode1!r}. Regression: compute_machine_md5 was "
-            f"used instead of compute_machine_md5_for_mode."
-        )
-
-    @pytest.mark.parametrize("mode_pair", [(1, 2), (1, 5), (2, 7)])
-    def test_virtual_gamma_all_mode_pairs_differ(self, mode_pair):
-        """γ produces distinct config_md5 for every mode pair of M1sim."""
-        virtual_config = ROOT / "slot_designer" / "configs" / "machines_virtual.json"
-        if not virtual_config.exists():
-            pytest.skip("machines_virtual.json not present")
-
-        _load_virtual_registry, _find_machine_entry, _compute_md5s = _import_gamma_compute()
-        registry = _load_virtual_registry()
-        try:
-            entry = _find_machine_entry(registry, "M1sim")
-        except RuntimeError:
-            pytest.skip("M1sim not in machines_virtual.json")
-
-        mode_a, mode_b = mode_pair
-        md5_a = _compute_md5s(entry, mode=mode_a)
-        md5_b = _compute_md5s(entry, mode=mode_b)
-
-        assert md5_a[0] != md5_b[0], (
-            f"config_md5 for M1sim mode {mode_a} == mode {mode_b}: {md5_a[0]!r}. "
-            f"Per-mode granularity broken — modes with different weights must hash differently."
-        )
-
-
-# ── C4: Virtual path coverage ─────────────────────────────────────────────
-
-
-class TestVirtualPathCoverage:
-    """C4 — γ output non-empty for virtual machines; regression on 'untagged' issue.
-
-    2026-04-XX: virtual machines' summary had empty config_md5/code_md5
-    because real analyzer's _lookup_machine_md5 doesn't know about virtual
-    machines (reads configs/machines.json only). Result: md5_status=untagged
-    → frontend showed "无 fresh report" even when report was current.
-    _patch_summary_md5_tags was added to fix this.
-    """
-
-    def test_gamma_patcher_fills_empty_summary(self, tmp_path):
-        """γ patcher fills empty config_md5/code_md5 in summary file."""
-        _patch_summary_md5_tags = _import_gamma_patch()
-
-        # Simulate what the real analyzer writes: empty md5 fields
-        summary_f = tmp_path / "player_impact_summary.json"
-        summary_f.write_text(
-            json.dumps({"config_md5": "", "code_md5": "", "rtp": {"point_pct": 95.0}}),
-            encoding="utf-8",
-        )
-
-        cfg = "virtual_cfg_md5_4b84e145e995fdcc"
-        code = "virtual_code_md5_eb2c52375000ab55"
-        _patch_summary_md5_tags(tmp_path, cfg, code)
-
-        payload = json.loads(summary_f.read_text(encoding="utf-8"))
-        assert payload["config_md5"] == cfg, (
-            f"γ patcher must fill config_md5. Got: {payload['config_md5']!r}"
-        )
-        assert payload["code_md5"] == code, (
-            f"γ patcher must fill code_md5. Got: {payload['code_md5']!r}"
-        )
-        # Other fields must be preserved
-        assert payload["rtp"]["point_pct"] == 95.0
-
-    def test_gamma_patcher_does_not_overwrite_existing_md5(self, tmp_path):
-        """γ patcher must not overwrite md5 that the delegate already set.
-
-        The contract: "Only fills EMPTY fields — never overwrites values
-        the delegate set." If the real analyzer somehow does know the md5
-        (future-proofing), the patcher becomes a harmless no-op.
-        """
-        _patch_summary_md5_tags = _import_gamma_patch()
-
-        existing_cfg = "existing_cfg_md5_original"
-        existing_code = "existing_code_md5_original"
-        summary_f = tmp_path / "player_impact_summary.json"
-        summary_f.write_text(
-            json.dumps({"config_md5": existing_cfg, "code_md5": existing_code}),
-            encoding="utf-8",
-        )
-
-        # Attempt to patch with different values
-        _patch_summary_md5_tags(tmp_path, "NEW_CFG", "NEW_CODE")
-
-        payload = json.loads(summary_f.read_text(encoding="utf-8"))
-        assert payload["config_md5"] == existing_cfg, (
-            "γ patcher must not overwrite non-empty config_md5"
-        )
-        assert payload["code_md5"] == existing_code, (
-            "γ patcher must not overwrite non-empty code_md5"
-        )
-
-    def test_gamma_compute_m1sim_mode1_non_empty(self):
-        """γ computation yields non-empty md5 for M1sim mode 1."""
-        virtual_config = ROOT / "slot_designer" / "configs" / "machines_virtual.json"
-        if not virtual_config.exists():
-            pytest.skip("machines_virtual.json not present")
-
-        _load_virtual_registry, _find_machine_entry, _compute_md5s = _import_gamma_compute()
-        registry = _load_virtual_registry()
-        try:
-            entry = _find_machine_entry(registry, "M1sim")
-        except RuntimeError:
-            pytest.skip("M1sim not in machines_virtual.json")
-
-        cfg_md5, code_md5 = _compute_md5s(entry, mode=1)
-        assert cfg_md5, (
-            "γ _compute_md5s must return non-empty config_md5 for M1sim mode 1. "
-            "Empty → summary tagged as untagged → '无 fresh report' regression."
-        )
-        assert code_md5, (
-            "γ _compute_md5s must return non-empty code_md5 for M1sim mode 1."
-        )
-
-    def test_gamma_compute_m15sim_mode1_non_empty(self):
-        """γ computation yields non-empty md5 for M15sim mode 1."""
-        virtual_config = ROOT / "slot_designer" / "configs" / "machines_virtual.json"
-        if not virtual_config.exists():
-            pytest.skip("machines_virtual.json not present")
-
-        _load_virtual_registry, _find_machine_entry, _compute_md5s = _import_gamma_compute()
-        registry = _load_virtual_registry()
-        try:
-            entry = _find_machine_entry(registry, "M15sim")
-        except RuntimeError:
-            pytest.skip("M15sim not in machines_virtual.json")
-
-        cfg_md5, code_md5 = _compute_md5s(entry, mode=1)
-        assert cfg_md5, (
-            "γ _compute_md5s must return non-empty config_md5 for M15sim mode 1."
-        )
-        assert code_md5, (
-            "γ _compute_md5s must return non-empty code_md5 for M15sim mode 1."
-        )
-
-    def test_gamma_patcher_no_op_when_both_md5s_empty_input(self, tmp_path):
-        """γ patcher is a no-op when called with empty cfg AND code.
-
-        The patcher's guard: `if not (config_md5 or code_md5): return`.
-        This avoids accidentally clearing a summary.
-        """
-        _patch_summary_md5_tags = _import_gamma_patch()
-
-        summary_f = tmp_path / "player_impact_summary.json"
-        original = {"config_md5": "", "code_md5": "", "rtp": {}}
-        summary_f.write_text(json.dumps(original), encoding="utf-8")
-
-        _patch_summary_md5_tags(tmp_path, "", "")  # both empty → no-op
-
-        payload = json.loads(summary_f.read_text(encoding="utf-8"))
-        assert payload == original  # file unchanged
 
 
 # ── C5: Inject-bug TDD ────────────────────────────────────────────────────
@@ -782,50 +456,6 @@ class TestInjectBugDivergence:
             f"α={md5_alpha!r}, β={md5_beta!r}"
         )
 
-    def test_c5_gamma_patcher_divergence_caught_via_wrong_value(self, tmp_path):
-        """C5 for γ: patcher writes wrong md5 → read-back catches divergence.
-
-        Inject bug: call γ patcher with wrong (M1's) values instead of M14's.
-        Then verify that checking the expected (M14) values shows a mismatch.
-        Proves the patcher does write, and read-back of the summary detects
-        a value that doesn't match what the machine registry says.
-        """
-        _patch_summary_md5_tags = _import_gamma_patch()
-
-        # Expected M14 values
-        expected_cfg = "4fcf00c48b3d6979aef058fed9ed5f94"
-        expected_code = "536fc5a2a8f2ecf1fd8c6dfcf2c025cc"
-        # Injected wrong M1 values
-        wrong_cfg = "f61f85932f314aff5f11e278931dde1d"
-        wrong_code = "536fc5a2a8f2ecf1fd8c6dfcf2c025cc"  # code happens to match; cfg differs
-
-        summary_f = tmp_path / "player_impact_summary.json"
-        summary_f.write_text(
-            json.dumps({"config_md5": "", "code_md5": ""}),
-            encoding="utf-8",
-        )
-
-        # INJECT: patcher called with wrong values (simulates bug where γ has wrong source)
-        _patch_summary_md5_tags(tmp_path, wrong_cfg, wrong_code)
-
-        payload = json.loads(summary_f.read_text(encoding="utf-8"))
-        # Written config_md5 doesn't match expected M14 value → divergence
-        assert payload["config_md5"] != expected_cfg, (
-            "Bug injection check: wrong cfg was written — divergence should be detectable."
-        )
-
-        # Now REVERT: write the correct values (second call doesn't overwrite since fields non-empty)
-        # To test revert, create a fresh summary
-        summary_f.write_text(
-            json.dumps({"config_md5": "", "code_md5": ""}),
-            encoding="utf-8",
-        )
-        _patch_summary_md5_tags(tmp_path, expected_cfg, expected_code)
-        payload_after_revert = json.loads(summary_f.read_text(encoding="utf-8"))
-        assert payload_after_revert["config_md5"] == expected_cfg, (
-            "After revert (correct values): config_md5 must match expected M14 value."
-        )
-
     def test_c5_save_chunk_cache_propagates_sentinel_via_kwarg(
         self, tmp_path
     ):
@@ -919,14 +549,6 @@ class TestEdgeCases:
         )
         result = _get_machine_md5("M999_NONEXISTENT", machines_json, mode=1)
         assert result == ("", ""), f"expected empty tuple, got {result!r}"
-
-    def test_gamma_patcher_no_op_when_summary_missing(self, tmp_path):
-        """γ patcher is a no-op when summary file doesn't exist — no crash."""
-        _patch_summary_md5_tags = _import_gamma_patch()
-        empty_dir = tmp_path / "no_summary_here"
-        empty_dir.mkdir()
-        # Should not raise
-        _patch_summary_md5_tags(empty_dir, "some_cfg", "some_code")
 
     def test_alpha_beta_both_handle_malformed_json(self, tmp_path):
         """α logic and β both return ('', '') when machines.json is malformed.

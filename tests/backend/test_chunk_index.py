@@ -360,35 +360,6 @@ class TestSelfHeal:
         assert "chunk_0002.json" in idx["chunks"]
 
 
-# ── 4. Writer hook parity ────────────────────────────────────────
-
-
-class TestWriterParity:
-    """Both real and virtual writers populate the SAME sidecar format
-    — so readers don't need to know which side wrote the chunks."""
-
-    def test_virtual_write_chunk_populates_sidecar(self, tmp_path):
-        """slot_designer's ``write_chunk`` must call ``update_chunk_entry``
-        — the integration proof for virtual rawdata."""
-        from slot_designer.core.emitter.chunk import emit_chunk, write_chunk
-        from fresh_slotlab.chunk_index import load_chunks_index
-
-        out = tmp_path / "M1sim" / "mode_1"
-        chunk = emit_chunk(
-            robots=[], machine="M1sim", mode=1, bet=1000,
-            spin_times=100, robot_count=1, chunk_index=3,
-            upstream_schema_fingerprint="abc",
-            config_md5="virtual_cfg", code_md5="virtual_code",
-        )
-        cf = write_chunk(chunk, out, 3)
-        assert cf.is_file()
-
-        idx = load_chunks_index(out)
-        assert idx is not None
-        assert idx["chunks"]["chunk_0003.json"]["cfg_md5"] == "virtual_cfg"
-        assert idx["chunks"]["chunk_0003.json"]["code_md5"] == "virtual_code"
-
-
 # ── 5. Query helpers ─────────────────────────────────────────────
 
 

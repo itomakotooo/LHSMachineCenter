@@ -231,52 +231,6 @@ class TestC1SingleHelperInjectableLookup:
         assert callable(fn), (
             "fresh_slotlab.summary_md5_patch.patch_summary_md5 must be callable."
         )
-
-    def test_c1_old_patcher_body_removed_from_virtual_analyzer(self):
-        """virtual_analyzer.py._patch_summary_md5_tags must now be a thin wrapper.
-
-        Pre-dedup: _patch_summary_md5_tags was ~52 lines (lines 500-552) of
-        self-contained JSON read / check / write logic.
-        Post-dedup: it must be a thin wrapper delegating to patch_summary_md5.
-
-        This test counts the non-docstring executable lines in the function body
-        to detect if the old patcher implementation was left in place.
-        The executable code after dedup should be <= 10 lines; a docstring may
-        add more total lines but we exclude it from the count.
-
-        Inject-bug: revert dedup → _patch_summary_md5_tags regains its 30+ lines
-        of executable code (JSON read/check/write loop) → executable count > 10 → RED.
-        """
-        if not _CANONICAL_MODULE_FILE.exists():
-            pytest.skip("fresh_slotlab/summary_md5_patch.py not created yet (pre-impl)")
-        if not _VIRTUAL_ANALYZER_PY.exists():
-            pytest.skip("virtual_analyzer.py not present")
-
-        source = _VIRTUAL_ANALYZER_PY.read_text(encoding="utf-8", errors="ignore")
-        tree = ast.parse(source, filename=str(_VIRTUAL_ANALYZER_PY))
-
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.FunctionDef)
-                and node.name == "_patch_summary_md5_tags"
-            ):
-                # Count non-docstring executable statements in the function body
-                body = node.body
-                # Skip the docstring (first Expr node with a Constant string value)
-                executable_stmts = [
-                    s for i, s in enumerate(body)
-                    if not (i == 0 and isinstance(s, ast.Expr)
-                            and isinstance(s.value, ast.Constant))
-                ]
-                exec_count = len(executable_stmts)
-                assert exec_count <= 10, (
-                    f"virtual_analyzer.py._patch_summary_md5_tags has {exec_count} "
-                    f"executable statements (excluding docstring). Old body had ~30. "
-                    f"After dedup it must be a thin wrapper (<= 10 executable statements) "
-                    f"delegating to fresh_slotlab.summary_md5_patch.patch_summary_md5. "
-                    f"Statements found: {[type(s).__name__ for s in executable_stmts]}"
-                )
-                return
         # Function removed entirely is also acceptable (brief allows full removal)
 
     def test_c1_old_inline_block_removed_from_app_py(self):
@@ -354,27 +308,6 @@ class TestC2CallersDelegateToCanonical:
             "and call patch_summary_md5 (brief §1: '_run_generate_report becomes a thin callsite')."
         )
 
-    def test_c2_virtual_analyzer_references_canonical_patcher(self):
-        """virtual_analyzer.py must import or reference summary_md5_patch after dedup.
-
-        After dedup, virtual_analyzer.py's _patch_summary_md5_tags becomes a
-        thin wrapper calling patch_summary_md5 from the canonical module.
-
-        Goes RED if implementer forgets to update virtual_analyzer.py.
-
-        Inject-bug: revert virtual_analyzer.py change → 'summary_md5_patch'
-        disappears → RED.
-        """
-        if not _CANONICAL_MODULE_FILE.exists():
-            pytest.skip("fresh_slotlab/summary_md5_patch.py not created yet (pre-impl)")
-
-        source = _VIRTUAL_ANALYZER_PY.read_text(encoding="utf-8", errors="ignore")
-        assert "summary_md5_patch" in source, (
-            "virtual_analyzer.py does not reference 'summary_md5_patch'. "
-            "After dedup, virtual_analyzer.py must call patch_summary_md5 "
-            "(brief §1: 'virtual_analyzer.py:506-558 becomes a thin callsite')."
-        )
-
     def test_c2_patch_summary_md5_called_in_app_py(self):
         """app.py must call patch_summary_md5 (text grep for the call expression).
 
@@ -392,24 +325,6 @@ class TestC2CallersDelegateToCanonical:
             "app.py contains 'summary_md5_patch' import but does not call "
             "'patch_summary_md5'. The callsite must actually invoke the helper. "
             "Check that _run_generate_report has the call (brief §1 callsite 1)."
-        )
-
-    def test_c2_patch_summary_md5_called_in_virtual_analyzer(self):
-        """virtual_analyzer.py must call patch_summary_md5 (text grep for the call).
-
-        After dedup, the call should appear where _patch_summary_md5_tags
-        previously had its inline body (now a thin wrapper).
-
-        Inject-bug: remove the call but keep the import → RED.
-        """
-        if not _CANONICAL_MODULE_FILE.exists():
-            pytest.skip("fresh_slotlab/summary_md5_patch.py not created yet (pre-impl)")
-
-        source = _VIRTUAL_ANALYZER_PY.read_text(encoding="utf-8", errors="ignore")
-        assert "patch_summary_md5" in source, (
-            "virtual_analyzer.py contains 'summary_md5_patch' import but does not call "
-            "'patch_summary_md5'. The callsite must actually invoke the helper. "
-            "Check that _patch_summary_md5_tags has the call (brief §1 callsite 2)."
         )
 
     def test_c2_app_py_callsite_uses_lambda(self):
@@ -439,30 +354,6 @@ class TestC2CallersDelegateToCanonical:
             f"Context around call: {window!r}. "
             "Per the helper's interface: md5_lookup_fn is zero-arg; machine+mode are bound "
             "in the lambda at the callsite."
-        )
-
-    def test_c2_virtual_analyzer_callsite_uses_lambda(self):
-        """virtual_analyzer.py callsite must pass a lambda (zero-arg callable).
-
-        Mirrors test_c2_app_py_callsite_uses_lambda for the virtual path.
-
-        Inject-bug: callsite passes _compute_md5s(entry, mode) directly (two-arg)
-        → TypeError when helper calls md5_lookup_fn() → RED at runtime.
-        """
-        if not _CANONICAL_MODULE_FILE.exists():
-            pytest.skip("fresh_slotlab/summary_md5_patch.py not created yet (pre-impl)")
-
-        source = _VIRTUAL_ANALYZER_PY.read_text(encoding="utf-8", errors="ignore")
-
-        # Find the section around the patch_summary_md5 call
-        call_idx = source.find("patch_summary_md5(")
-        assert call_idx != -1, "patch_summary_md5( not found in virtual_analyzer.py"
-
-        window = source[max(0, call_idx - 50): call_idx + 300]
-        assert "lambda" in window, (
-            "virtual_analyzer.py's patch_summary_md5 callsite must pass a lambda. "
-            f"Context around call: {window!r}. "
-            "Per the helper's interface: md5_lookup_fn is zero-arg."
         )
 
 

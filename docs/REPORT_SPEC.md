@@ -35,9 +35,8 @@ Expected top-level fields:
 - `effective_analyzer_version` -- per-(machine, mode) effective hash
   (honesty-3): `sha256(base ⊕ {declared feature hashes} ⊕ mode)[:12]`.
   This is the value the console compares for report freshness. Empty
-  string when the machine has no manifest / registry (e.g. virtual);
-  see `effective_analyzer_version_error` and (virtual only)
-  `effective_analyzer_version_kind = "virtual_base_only"`. Produced by
+  string when the machine has no manifest / registry; see
+  `effective_analyzer_version_error`. Produced by
   `fresh_slotlab/analyzer/versioning.py`
   `compute_effective_version_for_machine`.
 - `effective_analyzer_version_error` -- diagnostic; `null` on success,

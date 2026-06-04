@@ -126,8 +126,7 @@ This file tracks executable next steps for the current phase.
         change really does affect them all. The verdict is **non-destructive**: a
         mismatch marks a cell `needs_rebaseline` and NEVER deletes report
         artifacts (re-baseline is lazy/on-demand + a rate-limited
-        background sweep). Virtual machines (no manifest) stamp the base
-        hash + `kind="virtual_base_only"`, never an empty value.
+        background sweep).
       - **Auto-inspect ("自动巡检") fleet sweep**: scan + atomic claim +
         worker dispatch, per-item generate with 9 failure modes + restart
         recovery, frontend tab, cron scheduler, and an M274 RTP-drift

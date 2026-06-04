@@ -237,11 +237,6 @@ Report-freshness decision (honest + non-destructive):
   hash) caches the per-`(machine, mode)` version per request and
   distinguishes "no manifest" (UNVERIFIABLE — not stale) from "closure
   file missing" (loud error).
-- Virtual machines have no manifest, so the virtual analyzer
-  (`slot_designer/core/backend/virtual_analyzer.py`) stamps the base
-  hash + `effective_analyzer_version_kind = "virtual_base_only"` — an
-  honest "virtual: no manifest" state, never an empty/swallowed value.
-  The prod-vs-virtual contract is in `docs/PROD_VS_VIRTUAL_CONTRACT.md`.
 
 The 2026-05-29/30 unbundle that produced this model kept report output
 **byte-identical** (code moved between modules; emitted numbers
