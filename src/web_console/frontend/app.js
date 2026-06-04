@@ -4402,17 +4402,177 @@ function renderSpinTypeBreakdown(summary) {
     .join("");
 }
 
-// Unified per-SpinType analysis (the single home for everything SpinType-scoped).
-// Organized STRICTLY BY SpinType: one section per ST, and within each section the
-// analysis DIMENSIONS are feature + payid + outcome (+ a special behavior block
-// for STs that have one, e.g. ST=14 TopDollar pick behavior). This consolidates
-// what used to be separate parallel panels (产出分布 / payid-by-spintype /
-// TopDollar) so they no longer float as sibling modules.
-// Driven by spin_type_breakdown (the canonical ST list + per-ST overview + feature
-// cross); pulls outcome bands from spin_type_outcomes, the payid table from
-// payouts_by_spin_type (via the shared _renderPayoutRowsHtml), and the TopDollar
-// behavior from topdollar_choice (via the shared _buildStatsSectionsHtml).
-// Self-hides (P1 pattern) when there is no SpinType data.
+// ── Per-SpinType analysis — data-driven DIMENSION framework ──────────────────
+// The console organizes everything STRICTLY BY SpinType. Each ST section is
+// assembled from a declarative list of DIMENSION renderers (SPINTYPE_DIMENSIONS).
+// Each dimension is a pure fn (stCtx) -> html|"" that SELF-APPLIES iff its data
+// exists for that ST — there is NO machine/ST hardcoding. Adding a new dimension
+// (or supporting a new feature on a SpinType for another machine) = add/extend a
+// dimension fn keyed on the DATA SHAPE, not on "if ST14" / "if M15".
+//
+// stCtx = { row, label, outcome, payRows, summary, bet }
+//   row     — spin_type_breakdown row (overview + feature cross)
+//   label   — "ST{n}_{behavior}" (the payouts_by_spin_type / spin_type_outcomes key)
+//   outcome — spin_type_outcomes[label] (has_payouts, max_mult, ...)
+//   payRows — payouts_by_spin_type[label] (per-payid rows)
+//   summary — the full summary (for cross-feature blocks like topdollar_choice)
+//   bet     — sampling.bet (multiplier denominator)
+
+// Canonical multiplier buckets — same edges as the analyzer's global
+// RETURN_BUCKET_ORDER (aggregator.py) so the per-SpinType win distribution uses
+// the same fine granularity as the global multiplier-bucket table. [lo, hi).
+const _CANON_BUCKETS = [
+  ["gt0_lt1", 0, 1], ["ge1_lt5", 1, 5], ["ge5_lt10", 5, 10], ["ge10_lt20", 10, 20],
+  ["ge20_lt50", 20, 50], ["ge50_lt100", 50, 100], ["ge100_lt200", 100, 200],
+  ["ge200_lt500", 200, 500], ["ge500_lt1000", 500, 1000], ["ge1000_lt5000", 1000, 5000],
+  ["ge5000", 5000, Infinity],
+];
+
+// TopDollar behavior split across its two SpinTypes (the user's event model:
+// ST14 = the CHOICE/pick, ST15 = the SETTLEMENT). Built from topdollar_choice via
+// the shared _buildStatsSectionsHtml. The ST→block mapping is DATA-DRIVEN below
+// (trigger_only ST gets the pick block; the ST whose feature == the settlement
+// feature_name gets the settlement block) — not hardcoded to ST14/ST15.
+const _TD_PICK_SECTIONS = [
+  { type: "kv", rows: [
+    { labelKey: "tdTotalSessions",  path: "total_sessions",     fmt: "int" },
+    { labelKey: "tdTriggerRate",    path: "trigger_rate",       fmt: "pct" },
+    { labelKey: "tdStoppedEarly",   path: "stopped_early_rate", fmt: "pct" },
+    { labelKey: "tdForced4th",      path: "forced_4th_rate",    fmt: "pct" },
+    { labelKey: "tdForced4thCount", path: "forced_4th_count",   fmt: "int" },
+    { labelKey: "tdBadGamble",      path: "bad_gamble_rate",    fmt: "pct" },
+    { labelKey: "tdBadGambleCount", path: "bad_gamble_count",   fmt: "int" },
+  ] },
+  { type: "tally", titleKey: "tdPicksPerSession", path: "picks_per_session",
+    keyColKey: "tdColPicks", countColKey: "tdColSessions" },
+];
+const _TD_SETTLE_SECTIONS = [
+  { type: "kv", rows: [
+    { labelKey: "tdSettledMedian", path: "settled_win_median", fmt: "int" },
+    { labelKey: "tdSettledMax",    path: "settled_win_max",    fmt: "int" },
+  ] },
+  { type: "tally", titleKey: "tdDollarTiers", path: "dollar_tier_counts",
+    keyColKey: "tdColTier", countColKey: "tdColCount" },
+];
+
+// Dimension: overview KV (share / hit / self-RTP / RTP contribution / feature).
+function _stDimOverview(stCtx) {
+  const r = stCtx.row;
+  const kv = [
+    [fmt("stoShare"), (Number(r.share_pct) || 0).toFixed(1) + "%"],
+    [fmt("stoHit"), PURE.fRate(r.hit_rate || 0)],
+    [fmt("stoSelfRtp"), r.rtp_pct == null ? "N/A" : Number(r.rtp_pct).toFixed(2) + "%"],
+    [fmt("stoRtpPp"), (Number(r.rtp_contribution_pp) || 0).toFixed(2) + "pp"],
+  ];
+  if (r.feature_name) {
+    const feat = escapeHtml(r.feature_name)
+      + (r.feature_trigger_only
+        ? " (" + escapeHtml(fmt("spinTypeFeatureTriggerOnly")) + ")"
+        : (r.feature_rtp_pp != null ? " " + Number(r.feature_rtp_pp).toFixed(2) + "pp" : ""));
+    kv.push([fmt("stoFeature"), feat]);
+  }
+  const cells = kv
+    .map(([k, v]) => `<div class="mech-stat"><span class="mech-label">${k}</span><span class="mech-value">${v}</span></div>`)
+    .join("");
+  return `<div class="mech-section"><div class="mech-grid">${cells}</div></div>`;
+}
+
+// Dimension: win distribution — re-bin this ST's payid wins into the canonical
+// multiplier buckets (fine granularity) with a 占比 (share) column + bar.
+// (Phase A: payline-level, from payid avg_win/bet. Phase C upgrades to round-level.)
+function _stDimWinDistribution(stCtx) {
+  const { payRows, bet } = stCtx;
+  if (!(bet > 0)) return "";
+  const real = payRows.filter((pr) => !String(pr.payout_id || "").startsWith("_"));
+  if (!real.length) return "";
+  const acc = _CANON_BUCKETS.map(([key, lo, hi]) => ({ key, lo, hi, hits: 0, rtp: 0 }));
+  let totalHits = 0;
+  for (const pr of real) {
+    const hits = Number(pr.hit_count) || 0;
+    const mult = (Number(pr.avg_win_when_hit) || 0) / bet;
+    const rtp = Number(pr.rtp_contribution_pp ?? pr.rtp_pp ?? 0);
+    let bi = acc.findIndex((b) => mult >= b.lo && mult < b.hi);
+    if (bi < 0) bi = acc.length - 1;
+    acc[bi].hits += hits;
+    acc[bi].rtp += rtp;
+    totalHits += hits;
+  }
+  const shown = acc.filter((b) => b.hits > 0);
+  if (!shown.length || totalHits <= 0) return "";
+  const maxShare = Math.max(...shown.map((b) => b.hits / totalHits), 0.0001);
+  const rows = shown
+    .map((b) => {
+      const share = b.hits / totalHits;
+      const barPct = (share / maxShare) * 100;
+      return (
+        `<tr><td>${PURE.prettyBucketLabel(b.key)}×</td>` +
+        `<td>${PURE.fInt(b.hits)}</td>` +
+        `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${(share * 100).toFixed(1)}%</td>` +
+        `<td>${b.rtp.toFixed(2)}</td></tr>`
+      );
+    })
+    .join("");
+  return (
+    `<p class="drilldown-hint">${fmt("stoBandsTitle")}</p>` +
+    `<table class="drilldown-table"><thead><tr>` +
+    `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th>` +
+    `<th>${fmt("stoColShare")}</th><th>${fmt("stoColRtp")}</th>` +
+    `</tr></thead><tbody>${rows}</tbody></table>`
+  );
+}
+
+// Dimension: payid breakdown (symbol combo + covered cols) via the shared
+// _renderPayoutRowsHtml — same renderer the Pay ID overview uses.
+function _stDimPayid(stCtx) {
+  const { payRows, bet, label } = stCtx;
+  if (!payRows.length) return "";
+  const m = /^ST\d+_(paid|free|mixed)$/.exec(label);
+  const category = m ? (m[1] === "free" ? "bonus" : m[1]) : null;
+  const ranked = [...payRows]
+    .map((pr) => (category && pr.spin_type_category == null
+      ? { ...pr, spin_type_category: category } : pr))
+    .sort((a, b) => Number(b.rtp_contribution_pp ?? b.rtp_pp ?? 0) - Number(a.rtp_contribution_pp ?? a.rtp_pp ?? 0))
+    .slice(0, 20);
+  const tableInner = _renderPayoutRowsHtml(ranked, {
+    shapeByPayId: null, cmpBMap: null, cmpB: false, bet, betB: bet,
+    includeShape: false, includeNotes: false, includeSubRows: false,
+  });
+  return `<p class="drilldown-hint">${fmt("stoPayidTitle")}</p>` +
+    `<table class="drilldown-table">${tableInner}</table>`;
+}
+
+// Dimension: selector/choice behavior — attaches to the CHOICE event (the
+// trigger_only ST). Data-driven: present iff a topdollar_choice-style section
+// exists. (Phase B4 generalizes the data side beyond topdollar_choice.)
+function _stDimSelectorChoice(stCtx) {
+  const td = stCtx.summary.topdollar_choice;
+  if (!td || !td.applicable) return "";
+  if (!stCtx.row.feature_trigger_only) return "";
+  return `<p class="drilldown-hint">${fmt("stoBehaviorTitle")}</p>` +
+    _buildStatsSectionsHtml(td, _TD_PICK_SECTIONS);
+}
+
+// Dimension: settlement outcome — attaches to the SETTLEMENT event (the ST whose
+// feature matches the settlement feature_name and is NOT trigger-only). This is
+// how ST=15 gets its OWN settlement analysis (not folded into ST=14).
+function _stDimSettlement(stCtx) {
+  const td = stCtx.summary.topdollar_choice;
+  if (!td || !td.applicable) return "";
+  const r = stCtx.row;
+  if (r.feature_trigger_only) return "";
+  if (!r.feature_name || r.feature_name !== td.feature_name) return "";
+  return `<p class="drilldown-hint">${fmt("stoSettlementTitle")}</p>` +
+    _buildStatsSectionsHtml(td, _TD_SETTLE_SECTIONS);
+}
+
+// The dimension list (order = render order within each ST section).
+const SPINTYPE_DIMENSIONS = [
+  _stDimWinDistribution,
+  _stDimPayid,
+  _stDimSelectorChoice,
+  _stDimSettlement,
+];
+
 function renderSpinTypeOutcomes(summary) {
   const panel = byId("spinTypeOutcomesPanel");
   if (!panel) return;
@@ -4427,91 +4587,25 @@ function renderSpinTypeOutcomes(summary) {
   const sto = pi.spin_type_outcomes || {};
   const pbst = pi.payouts_by_spin_type || {};
   const bet = Number((summary.sampling || {}).bet) || 1000;
-  // TopDollar (or any spec-driven) behavior block, attached to the SpinType that
-  // is the trigger/choice event (feature_trigger_only). One special block for now.
-  const tdData = (summary.topdollar_choice && summary.topdollar_choice.applicable)
-    ? summary.topdollar_choice : null;
 
   let html = "";
   for (const r of stbRows) {
-    const stNum = r.spin_type;
-    const label = "ST" + stNum + "_" + (r.behavior_name || "");
-    const e = sto[label] || {};
+    const label = "ST" + r.spin_type + "_" + (r.behavior_name || "");
+    const stCtx = { row: r, label, outcome: sto[label] || {}, payRows: pbst[label] || [], summary, bet };
 
-    // ── Header: SpinType + feature chip (the feature DIMENSION, as a label) ──
+    // Header (feature chip) + always-present overview KV.
     const featChip = r.feature_name
       ? ` <span class="st-feature-tag" title="${escapeHtml(fmt("spinTypeFeatureTitle"))}">${escapeHtml(r.feature_name)}` +
         `${r.feature_trigger_only ? " · " + escapeHtml(fmt("spinTypeFeatureTriggerOnly")) : ""}</span>`
       : "";
     html += `<h3 class="drilldown-subhead">${_formatSpinTypeLabel(label)}${featChip}</h3>`;
+    html += _stDimOverview(stCtx);
 
-    // ── Overview line: share / hit / RTP / contribution / feature RTP ──
-    const ovParts = [
-      `${fmt("stoShare")} ${(Number(r.share_pct) || 0).toFixed(1)}%`,
-      `${fmt("stoHit")} ${PURE.fRate(r.hit_rate || 0)}`,
-      `${fmt("stoSelfRtp")} ${r.rtp_pct == null ? "N/A" : (Number(r.rtp_pct).toFixed(2) + "%")}`,
-      `${fmt("stoRtpPp")} ${(Number(r.rtp_contribution_pp) || 0).toFixed(2)}`,
-    ];
-    if (r.feature_name && !r.feature_trigger_only && r.feature_rtp_pp != null) {
-      ovParts.push(`${fmt("stoFeatureRtp")} ${Number(r.feature_rtp_pp).toFixed(2)}`);
-    }
-    html += `<p class="drilldown-hint">${ovParts.join(" · ")}</p>`;
-
-    // ── Outcome DIMENSION: win-band volatility table (bar-cell on count) ──
-    if (e.has_payouts && (e.win_bands || []).length) {
-      const bands = e.win_bands;
-      const maxHits = Math.max(1, ...bands.map((b) => Number(b.hit_count) || 0));
-      const bandRows = bands
-        .map((b) => {
-          const hits = Number(b.hit_count) || 0;
-          const pct = maxHits > 0 ? (hits / maxHits) * 100 : 0;
-          return (
-            `<tr><td>${escapeHtml(b.band)}</td>` +
-            `<td class="bar-cell" style="--bar:${pct.toFixed(1)}%">${PURE.fInt(hits)}</td>` +
-            `<td>${(Number(b.rtp_pp) || 0).toFixed(2)}</td></tr>`
-          );
-        })
-        .join("");
-      html +=
-        `<p class="drilldown-hint">${fmt("stoBandsTitle")} — ` +
-        `${fmt("stoMaxMult")} ${(Number(e.max_mult) || 0).toFixed(1)}× · ` +
-        `${fmt("stoSmall")} ${PURE.fRate(e.pct_small_hits || 0)} · ` +
-        `${fmt("stoBig")} ${PURE.fRate(e.pct_big_hits || 0)}</p>`;
-      html +=
-        `<table class="drilldown-table"><thead><tr>` +
-        `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th><th>${fmt("stoColRtp")}</th>` +
-        `</tr></thead><tbody>${bandRows}</tbody></table>`;
-    }
-
-    // ── payid DIMENSION: per-ST payout breakdown (symbol combo + covered cols) ──
-    // Reuse the shared _renderPayoutRowsHtml (same renderer the payid panels use).
-    const payRows = pbst[label] || [];
-    if (payRows.length) {
-      const _category = (() => {
-        const m = /^ST\d+_(paid|free|mixed)$/.exec(label);
-        return m ? (m[1] === "free" ? "bonus" : m[1]) : null;
-      })();
-      const ranked = [...payRows]
-        .map((pr) => (_category && pr.spin_type_category == null
-          ? { ...pr, spin_type_category: _category } : pr))
-        .sort((a, b) => Number(b.rtp_contribution_pp ?? b.rtp_pp ?? 0) - Number(a.rtp_contribution_pp ?? a.rtp_pp ?? 0))
-        .slice(0, 20);
-      const tableInner = _renderPayoutRowsHtml(ranked, {
-        shapeByPayId: null, cmpBMap: null, cmpB: false, bet, betB: bet,
-        includeShape: false, includeNotes: false, includeSubRows: false,
-      });
-      html += `<p class="drilldown-hint">${fmt("stoPayidTitle")}</p>`;
-      html += `<table class="drilldown-table">${tableInner}</table>`;
-    }
-
-    // ── Special behavior DIMENSION: TopDollar pick behavior under its choice ST ──
-    if (tdData && r.feature_trigger_only) {
-      html += `<p class="drilldown-hint">${fmt("stoBehaviorTitle")}</p>`;
-      html += _buildStatsSectionsHtml(tdData, TOPDOLLAR_CHOICE_SPEC.sections);
-    } else if (!e.has_payouts && !payRows.length && !(tdData && r.feature_trigger_only)) {
-      // No payline payouts and no special block (e.g. ST=15 settlement): honest note.
-      html += `<p class="drilldown-hint">${fmt("stoNoPayouts")}</p>`;
-    }
+    // Detail dimensions — each self-applies by data present.
+    let detail = "";
+    for (const dim of SPINTYPE_DIMENSIONS) detail += dim(stCtx) || "";
+    if (detail) html += detail;
+    else html += `<p class="drilldown-hint">${fmt("stoNoPayouts")}</p>`;
   }
 
   body.innerHTML = html;
@@ -5526,131 +5620,9 @@ function _formatSpinTypeLabel(label) {
   return `SpinType ST${_escHtml(stNum)} · ${_escHtml(fmt(behaviorKey))}`;
 }
 
-function renderPayoutsBySpinType(summary) {
-  const panel = byId("payoutsBySpinTypePanel");
-  if (!panel) return;
-
-  const cmpB = state.compareMode && state.compareMode.b ? state.compareMode.b : null;
-  const aData = ((summary || {}).player_impact || {}).payouts_by_spin_type || null;
-  const bData = cmpB ? ((cmpB.player_impact || {}).payouts_by_spin_type || null) : null;
-
-  const aLabels = aData ? Object.keys(aData) : [];
-  const bLabels = bData ? Object.keys(bData) : [];
-  const hasA = aLabels.length > 0;
-  const hasB = bLabels.length > 0;
-
-  if (!hasA && !hasB) {
-    panel.classList.add("hidden");
-    return;
-  }
-  panel.classList.remove("hidden");
-
-  const body = byId("payoutsBySpinTypeBody");
-  if (!body) return;
-
-  const bet = Number(((summary || {}).sampling || {}).bet) || 1000;
-  const betB = cmpB ? Number((cmpB.sampling || {}).bet) || 1000 : bet;
-
-  // Union of all labels, A's order first then B-only additions.
-  const aLabelSet = new Set(aLabels);
-  const allLabels = [...aLabels];
-  for (const lb of bLabels) {
-    if (!aLabelSet.has(lb)) allLabels.push(lb);
-  }
-
-  const bOnlyNote = (cmpB && !hasB)
-    ? `<p class="drilldown-hint">B has no ST-split data (pre-field-rename report).</p>`
-    : "";
-
-  let html = bOnlyNote;
-
-  // Inner helper: render one ST block's table using the shared
-  // _renderPayoutRowsHtml. Shape columns and sub-rows are omitted
-  // (includeShape=false, includeSubRows=false) since ST-split rows
-  // don't carry per-machine shape data.
-  const _stBlockHtml = (rows, isCmpBSide) => {
-    if (!rows.length) return `<p class="drilldown-hint">— no data —</p>`;
-    const tableInner = _renderPayoutRowsHtml(rows, {
-      shapeByPayId: null,
-      cmpBMap: null,
-      cmpB: false,
-      bet: isCmpBSide ? betB : bet,
-      betB,
-      includeShape: false,
-      includeNotes: false,
-      includeSubRows: false,
-    });
-    return `<table class="drilldown-table">${tableInner}</table>`;
-  };
-
-  // Derive spin_type_category from the parent label (ST{N}_{behavior})
-  // so the "类型" column of each split row renders the same badge as
-  // aggregate (which has spin_type_category inline per row). Without this,
-  // split rows show "—" since payouts_by_spin_type rows don't carry the
-  // category field (it would be constant per parent label and therefore
-  // redundant in the analyzer schema; we derive it here at render time).
-  //
-  // Note: analyzer's behavior label uses "free" for FreeSpin / bonus
-  // rounds (per round_classification cost>0 vs cost=0). Aggregate's
-  // spin_type_category uses "bonus" terminology for the same concept.
-  // We translate "free" → "bonus" so _catBadge picks the existing
-  // pid-cat-bonus visual style + payIdCatBonus i18n string (no new
-  // badge style needed; align with aggregate vocabulary).
-  const _categoryFromLabel = (lb) => {
-    const m = /^ST\d+_(paid|free|mixed)$/.exec(String(lb || ""));
-    if (!m) return null;
-    return m[1] === "free" ? "bonus" : m[1];
-  };
-
-  for (const label of allLabels) {
-    const aRows = aData ? (aData[label] || []) : [];
-    const bRows = bData ? (bData[label] || []) : [];
-    const onlyA = aRows.length > 0 && bRows.length === 0;
-    const onlyB = aRows.length === 0 && bRows.length > 0;
-
-    // Sort each side by rtp desc, cap at 20. Tolerates both schemas
-    // (post-rename rtp_contribution_pp + pre-rename rtp_pp).
-    const _rtpForSort = (r) => Number(r.rtp_contribution_pp ?? r.rtp_pp ?? 0);
-    const category = _categoryFromLabel(label);
-    const augmentCategory = (r) => (
-      category && r.spin_type_category == null
-        ? { ...r, spin_type_category: category }
-        : r
-    );
-    const sortCap = (rows) =>
-      [...rows]
-        .map(augmentCategory)
-        .sort((a, b) => _rtpForSort(b) - _rtpForSort(a))
-        .slice(0, 20);
-    const aSorted = sortCap(aRows);
-    const bSorted = sortCap(bRows);
-
-    // Presence note appended to heading.
-    let presenceTag = "";
-    if (cmpB) {
-      if (onlyA) presenceTag = ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
-      else if (onlyB) presenceTag = ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
-    }
-
-    html += `<h3 class="drilldown-subhead">${_formatSpinTypeLabel(label)}${presenceTag}</h3>`;
-
-    if (cmpB) {
-      // Sequential A then B blocks. bData null means the whole field
-      // is absent on B — bOnlyNote above already tells the user; just
-      // render A and omit the B block.
-      html += `<p class="drilldown-hint">A</p>`;
-      html += _stBlockHtml(aSorted, false);
-      if (bData !== null) {
-        html += `<p class="drilldown-hint">B</p>`;
-        html += _stBlockHtml(bSorted, true);
-      }
-    } else {
-      html += _stBlockHtml(aSorted, false);
-    }
-  }
-
-  body.innerHTML = html;
-}
+// (renderPayoutsBySpinType removed — the per-ST payid breakdown is now the
+//  "payid dimension" inside renderSpinTypeOutcomes' per-SpinType sections,
+//  built from the same shared _renderPayoutRowsHtml.)
 
 // ── Per-reel Marginal by SpinType ──────────────────────────────────
 //
@@ -7489,63 +7461,9 @@ function _buildStatsSectionsHtml(data, sections) {
   return html;
 }
 
-function renderStatsPanel(ctx, spec) {
-  const panel = byId(spec.panelId);
-  if (!panel) return;
-  const data = (ctx.a || {})[spec.summaryKey];
-  const appField = spec.applicableField || "applicable";
-  if (!data || !data[appField]) {
-    panel.classList.add("hidden");
-    return;
-  }
-  panel.classList.remove("hidden");
-
-  // Update the h2 data-i18n label in-place so it translates with applyI18n().
-  const h2 = panel.querySelector("h2");
-  if (h2) {
-    h2.dataset.i18n = spec.titleKey;
-    h2.textContent = fmt(spec.titleKey);
-  }
-
-  // Resolve body container: first <div> inside the panel (mirrors siblings).
-  let body = panel.querySelector("div");
-  if (!body) {
-    body = document.createElement("div");
-    panel.appendChild(body);
-  }
-  body.innerHTML = _buildStatsSectionsHtml(data, spec.sections);
-}
-
-// TOPDOLLAR_CHOICE_SPEC — first user of renderStatsPanel.
-// Declares the KV rows + 2 tally sections for summary.topdollar_choice.
-// Changing this spec → panel changes; no new render code needed.
-const TOPDOLLAR_CHOICE_SPEC = {
-  panelId:        "topDollarChoicePanel",
-  summaryKey:     "topdollar_choice",
-  titleKey:       "tdChoiceTitle",
-  applicableField:"applicable",
-  sections: [
-    {
-      type: "kv",
-      rows: [
-        { labelKey: "tdTotalSessions",  path: "total_sessions",    fmt: "int" },
-        { labelKey: "tdTriggerRate",    path: "trigger_rate",      fmt: "pct" },
-        { labelKey: "tdStoppedEarly",   path: "stopped_early_rate",fmt: "pct" },
-        { labelKey: "tdForced4th",      path: "forced_4th_rate",   fmt: "pct" },
-        { labelKey: "tdForced4thCount", path: "forced_4th_count",  fmt: "int" },
-        { labelKey: "tdBadGamble",      path: "bad_gamble_rate",   fmt: "pct" },
-        { labelKey: "tdBadGambleCount", path: "bad_gamble_count",  fmt: "int" },
-        { labelKey: "tdSettledMedian",  path: "settled_win_median",fmt: "int" },
-        { labelKey: "tdSettledMax",     path: "settled_win_max",   fmt: "int" },
-        { labelKey: "tdRtpContribution",path: "rtp_contribution_pp",fmt:"pp"  },
-      ],
-    },
-    { type: "tally", titleKey: "tdPicksPerSession", path: "picks_per_session",
-      keyColKey: "tdColPicks", countColKey: "tdColSessions" },
-    { type: "tally", titleKey: "tdDollarTiers", path: "dollar_tier_counts",
-      keyColKey: "tdColTier", countColKey: "tdColCount" },
-  ],
-};
+// (renderStatsPanel + TOPDOLLAR_CHOICE_SPEC removed — the per-SpinType view now
+//  builds the TopDollar pick/settlement blocks inline via _buildStatsSectionsHtml
+//  with _TD_PICK_SECTIONS / _TD_SETTLE_SECTIONS, split across ST=14 and ST=15.)
 
 // ── End extracted named panel render functions ──────────────────────────────────
 
