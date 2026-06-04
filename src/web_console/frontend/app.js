@@ -4428,93 +4428,88 @@ function renderSpinTypeOutcomes(summary) {
       r.feature_name || null;
   }
 
-  const cards = labels.map((label) => {
+  // Same structural idiom as renderPayoutsBySpinType (the sibling per-ST panel):
+  // an <h3 class="drilldown-subhead"> header per ST, a <p class="drilldown-hint">
+  // stat line, then full-width <table class="drilldown-table"> blocks stacked
+  // vertically. No custom flex cards — keeps visual parity with every other panel.
+  let html = "";
+  for (const label of labels) {
     const e = sto[label] || {};
     const feat = featByLabel[label];
     const featChip = feat
       ? ` <span class="st-feature-tag">${escapeHtml(feat)}</span>`
       : "";
-    const roundUnknown = e.round_stats_available === false;
-    // Round-level summary line (from spin_type_breakdown).
-    const roundLine = roundUnknown
-      ? `<div class="sto-round sto-round-na">${fmt("stoRoundStatsNA")}</div>`
-      : `<div class="sto-round">` +
-          `<span>${fmt("stoHit")}: <b>${PURE.fRate(e.hit_rate || 0)}</b></span>` +
-          `<span>${fmt("stoDead")}: <b>${PURE.fRate(e.dead_spin_rate || 0)}</b></span>` +
-          `<span>${fmt("stoAvgWin")}: <b>${PURE.fInt(e.avg_win_when_hit || 0)}</b></span>` +
-          `<span>${fmt("stoRtpPp")}: <b>${(Number(e.rtp_contribution_pp) || 0).toFixed(2)}</b></span>` +
-        `</div>`;
+    html += `<h3 class="drilldown-subhead">${_formatSpinTypeLabel(label)}${featChip}</h3>`;
 
-    let inner;
-    if (!e.has_payouts) {
-      // ST with no payline payouts (e.g. M15 ST=14 selector / ST=15 settlement —
-      // their wins are session-attributed to the triggering round). Honest note.
-      inner = `<div class="sto-note">${fmt("stoNoPayouts")}</div>`;
+    // Round-level summary as a hint line (round-level fields come from
+    // spin_type_breakdown, not the payid list).
+    if (e.round_stats_available === false) {
+      html += `<p class="drilldown-hint">${fmt("stoRoundStatsNA")}</p>`;
     } else {
-      const bands = e.win_bands || [];
-      const maxHits = Math.max(1, ...bands.map((b) => Number(b.hit_count) || 0));
-      const bandRows = bands
-        .map((b) => {
-          const hits = Number(b.hit_count) || 0;
-          const pct = maxHits > 0 ? (hits / maxHits) * 100 : 0;
-          const rtp = (Number(b.rtp_pp) || 0).toFixed(2);
-          return (
-            `<tr>` +
-            `<td class="sto-band-name">${escapeHtml(b.band)}</td>` +
-            `<td class="bar-cell" style="--bar:${pct.toFixed(1)}%">${PURE.fInt(hits)}</td>` +
-            `<td class="sto-num">${rtp}</td>` +
-            `</tr>`
-          );
-        })
-        .join("");
-      const combos = (e.top_combos || [])
-        .map((c) => {
-          const combo = c.combo ? escapeHtml(c.combo) : escapeHtml(String(c.payout_id || "?"));
-          const mult = c.mult == null ? "—" : Number(c.mult).toFixed(1) + "×";
-          const cols = Array.isArray(c.covered_columns) && c.covered_columns.length
-            ? c.covered_columns.map((n) => n + 1).join(",")
-            : "—";
-          return (
-            `<tr>` +
-            `<td>${combo}</td>` +
-            `<td class="sto-num">${mult}</td>` +
-            `<td class="sto-num">${PURE.fInt(Number(c.hit_count) || 0)}</td>` +
-            `<td class="sto-num">${(Number(c.rtp_pp) || 0).toFixed(2)}</td>` +
-            `<td class="sto-num">${cols}</td>` +
-            `</tr>`
-          );
-        })
-        .join("");
-      const volLine =
-        `<div class="sto-vol">` +
-        `<span>${fmt("stoMaxMult")}: <b>${(Number(e.max_mult) || 0).toFixed(1)}×</b></span>` +
-        `<span>${fmt("stoSmall")}: <b>${PURE.fRate(e.pct_small_hits || 0)}</b></span>` +
-        `<span>${fmt("stoBig")}: <b>${PURE.fRate(e.pct_big_hits || 0)}</b></span>` +
-        `</div>`;
-      inner =
-        volLine +
-        `<div class="sto-tables">` +
-          `<table class="drilldown-table sto-bands"><thead><tr>` +
-            `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th><th>${fmt("stoColRtp")}</th>` +
-          `</tr></thead><tbody>${bandRows}</tbody></table>` +
-          `<table class="drilldown-table sto-combos"><thead><tr>` +
-            `<th>${fmt("stoColCombo")}</th><th>${fmt("stoColMult")}</th><th>${fmt("stoColHits")}</th>` +
-            `<th>${fmt("stoColRtp")}</th><th>${fmt("stoColCols")}</th>` +
-          `</tr></thead><tbody>${combos}</tbody></table>` +
-        `</div>`;
+      const parts = [
+        `${fmt("stoHit")} ${PURE.fRate(e.hit_rate || 0)}`,
+        `${fmt("stoDead")} ${PURE.fRate(e.dead_spin_rate || 0)}`,
+        `${fmt("stoAvgWin")} ${PURE.fInt(e.avg_win_when_hit || 0)}`,
+        `${fmt("stoRtpPp")} ${(Number(e.rtp_contribution_pp) || 0).toFixed(2)}`,
+      ];
+      if (e.has_payouts) {
+        parts.push(`${fmt("stoMaxMult")} ${(Number(e.max_mult) || 0).toFixed(1)}×`);
+        parts.push(`${fmt("stoSmall")} ${PURE.fRate(e.pct_small_hits || 0)}`);
+        parts.push(`${fmt("stoBig")} ${PURE.fRate(e.pct_big_hits || 0)}`);
+      }
+      html += `<p class="drilldown-hint">${parts.join(" · ")}</p>`;
     }
 
-    return (
-      `<div class="sto-card">` +
-      `<div class="sto-head"><b>ST=${e.spin_type}</b>${featChip}` +
-        `<span class="sto-label">${escapeHtml(label)}</span></div>` +
-      roundLine +
-      inner +
-      `</div>`
-    );
-  });
+    // ST with no payline payouts (e.g. M15 ST=14 selector / ST=15 settlement —
+    // wins are session-attributed to the triggering round). Honest note, no table.
+    if (!e.has_payouts) {
+      html += `<p class="drilldown-hint">${fmt("stoNoPayouts")}</p>`;
+      continue;
+    }
 
-  body.innerHTML = cards.join("");
+    // Win-band volatility table (full-width; bar-cell on the count column,
+    // same as the SpinType breakdown / bucket tables).
+    const bands = e.win_bands || [];
+    const maxHits = Math.max(1, ...bands.map((b) => Number(b.hit_count) || 0));
+    const bandRows = bands
+      .map((b) => {
+        const hits = Number(b.hit_count) || 0;
+        const pct = maxHits > 0 ? (hits / maxHits) * 100 : 0;
+        return (
+          `<tr><td>${escapeHtml(b.band)}</td>` +
+          `<td class="bar-cell" style="--bar:${pct.toFixed(1)}%">${PURE.fInt(hits)}</td>` +
+          `<td>${(Number(b.rtp_pp) || 0).toFixed(2)}</td></tr>`
+        );
+      })
+      .join("");
+    html +=
+      `<table class="drilldown-table"><thead><tr>` +
+      `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th><th>${fmt("stoColRtp")}</th>` +
+      `</tr></thead><tbody>${bandRows}</tbody></table>`;
+
+    // Top-combo table (full-width).
+    const comboRows = (e.top_combos || [])
+      .map((c) => {
+        const combo = c.combo ? escapeHtml(c.combo) : escapeHtml(String(c.payout_id || "?"));
+        const mult = c.mult == null ? "—" : Number(c.mult).toFixed(1) + "×";
+        const cols = Array.isArray(c.covered_columns) && c.covered_columns.length
+          ? c.covered_columns.map((n) => n + 1).join(",")
+          : "—";
+        return (
+          `<tr><td>${combo}</td><td>${mult}</td>` +
+          `<td>${PURE.fInt(Number(c.hit_count) || 0)}</td>` +
+          `<td>${(Number(c.rtp_pp) || 0).toFixed(2)}</td><td>${cols}</td></tr>`
+        );
+      })
+      .join("");
+    html +=
+      `<table class="drilldown-table"><thead><tr>` +
+      `<th>${fmt("stoColCombo")}</th><th>${fmt("stoColMult")}</th><th>${fmt("stoColHits")}</th>` +
+      `<th>${fmt("stoColRtp")}</th><th>${fmt("stoColCols")}</th>` +
+      `</tr></thead><tbody>${comboRows}</tbody></table>`;
+  }
+
+  body.innerHTML = html;
   panel.classList.remove("hidden");
 }
 
