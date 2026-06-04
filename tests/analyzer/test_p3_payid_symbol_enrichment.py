@@ -62,7 +62,7 @@ _M15_CACHE = _RAWDATA / "M15" / "mode_1"
 
 # The pinned base_hash after C4 symbol enrichment (parser.py + PIA edits).
 # This is the authoritative value re-pinned by coordinator after implementer.
-_EXPECTED_BASE_HASH = "99b1dec52f88"  # spin_type_rtp_buckets: parser paid-bucket + versioning play_types closure → 8dbbfad6f90f→99b1dec52f88
+_EXPECTED_BASE_HASH = "3b852134b03a"  # spin_type_rtp_buckets: parser paid-bucket accumulator (play_types stays carved) → 8dbbfad6f90f→3b852134b03a
 
 # C3 existing fields that MUST be unchanged post-C4 (byte-identical).
 _C3_LEGACY_KEYS = frozenset({

@@ -110,7 +110,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 # Phase 6 (bankruptcy_simulation row-build carve — the LAST carve) shrank PIA again → d8b8c138874a.
 # The isolation RELATIONSHIPS below are unchanged across all of these
 # (M275_ev != M14_ev etc.); only the base value moved.
-_C3_BASE_HASH = "99b1dec52f88"  # spin_type_rtp_buckets: parser.py adds paid-round bucket accumulator + versioning.py adds play_types to closure → base_hash 8dbbfad6f90f→99b1dec52f88; additive (new per-ST RTP distribution, no existing fields changed)
+_C3_BASE_HASH = "3b852134b03a"  # spin_type_rtp_buckets: parser.py adds paid-round bucket accumulator (play_types stays carved) → base_hash 8dbbfad6f90f→3b852134b03a; additive (new per-ST RTP distribution, no existing fields changed)
 
 # R1 Phase 1 (Cluster E) note: _M275_C3_5_EFFECTIVE_VERSION and
 # _NON_M275_EFFECTIVE_VERSION hex pins have been REMOVED. They were updated

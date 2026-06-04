@@ -125,9 +125,9 @@ class TestBaseHashUnchangedC6:
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "99b1dec52f88", (
-            f"base_hash must be '99b1dec52f88' (R-1 closure value, post spin_type_rtp_buckets: "
-            f"parser paid-bucket accumulator + play_types→closure → base_hash 8dbbfad6f90f→99b1dec52f88; "
+        assert actual == "3b852134b03a", (
+            f"base_hash must be '3b852134b03a' (R-1 closure value, post spin_type_rtp_buckets: "
+            f"parser paid-bucket accumulator (play_types stays carved) → base_hash 8dbbfad6f90f→3b852134b03a; "
             f"additive display metadata only, no RTP change). "
             f"Got: {actual!r}. "
             f"Registered plugin additions must NOT change base_hash (R-4 exclusion). "

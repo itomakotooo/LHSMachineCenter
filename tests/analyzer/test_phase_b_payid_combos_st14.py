@@ -1,7 +1,7 @@
 """Phase B gates — payid combo breakdown + ST14 denomination-combination distribution.
 
 Gates per brief:
-  Gate 0 — base_hash UNCHANGED at 99b1dec52f88 (feature-only edits).
+  Gate 0 — base_hash UNCHANGED at 3b852134b03a (feature-only edits).
   Gate 1 — B1: payout_ids_top20 pid=8 symbol_combo.combos is non-empty list;
     counts sum correctly; is_wild flags are present and correctly typed.
     Per-ST rows also carry combos.
@@ -49,7 +49,7 @@ _PIA = _ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
 _PAYOUTS_FEATURE = _ROOT / "fresh_slotlab" / "analyzer" / "features" / "payouts_by_spin_type.py"
 _TOPDOLLAR_FEATURE = _ROOT / "fresh_slotlab" / "analyzer" / "features" / "topdollar_choice.py"
 
-_EXPECTED_BASE_HASH = "99b1dec52f88"
+_EXPECTED_BASE_HASH = "3b852134b03a"
 
 _M15_AVAILABLE = _RAWDATA_M15.is_dir() and any(_RAWDATA_M15.glob("chunk_*.json"))
 _SKIP_NO_M15 = pytest.mark.skipif(not _M15_AVAILABLE, reason="M15 rawdata not available")
@@ -122,8 +122,8 @@ def _make_pipeline_ctx(bet: float = 100_000.0, total_paid_spins: int = 10_000):
 class TestBaseHash:
     """Gate 0: editing feature files MUST NOT flip base_hash."""
 
-    def test_base_hash_unchanged_at_99b1dec52f88(self):
-        """base_hash must remain 99b1dec52f88 after Phase B feature edits.
+    def test_base_hash_unchanged_at_3b852134b03a(self):
+        """base_hash must remain 3b852134b03a after Phase B feature edits.
 
         Both payouts_by_spin_type.py and topdollar_choice.py are base-EXCLUDED
         (R-4: only registered feature plugins are excluded). Editing them MUST NOT

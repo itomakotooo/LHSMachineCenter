@@ -7,7 +7,7 @@ Gate 1 — Trace: real M15 run -> spin_type_rtp_buckets["ST1_paid"] buckets;
   and assert match.  Sum of per-ST bucket rtp_contribution_pp == that ST's
   spin_type_breakdown.rtp_contribution_pp (parity).  Sum of spin_rate ≈ 1.0.
 
-Gate 2 — base_hash: the parser change re-pins base_hash to 99b1dec52f88
+Gate 2 — base_hash: the parser change re-pins base_hash to 3b852134b03a
   (from 8dbbfad6f90f).  New feature file must NOT be in _CLOSURE_FILES
   (editing it does NOT flip base_hash).
 
@@ -55,7 +55,7 @@ _M15_AVAILABLE = _RAWDATA_M15.is_dir() and any(_RAWDATA_M15.glob("chunk_*.json")
 _SKIP_NO_M15 = pytest.mark.skipif(not _M15_AVAILABLE, reason="M15 rawdata not available")
 
 # Current base_hash after parser + versioning changes.
-_EXPECTED_BASE_HASH = "99b1dec52f88"
+_EXPECTED_BASE_HASH = "3b852134b03a"
 
 # Known RETURN_BUCKET_ORDER labels (same order as aggregator.RETURN_BUCKET_ORDER)
 _BUCKET_ORDER = [
@@ -508,12 +508,12 @@ class TestGate1Trace:
 # ---------------------------------------------------------------------------
 
 class TestGate2BaseHash:
-    """Gate 2: base_hash must be 99b1dec52f88 (parser + versioning change).
+    """Gate 2: base_hash must be 3b852134b03a (parser + versioning change).
     Editing the feature file must NOT change base_hash (R-4 exclusion).
     """
 
     def test_base_hash_is_expected_value(self):
-        """base_hash must be 99b1dec52f88 (spin_type_rtp_buckets phase).
+        """base_hash must be 3b852134b03a (spin_type_rtp_buckets phase).
 
         The parser change (paid-round bucket accumulator) and the versioning.py
         change (adding play_types files to _CLOSURE_FILES) both flip base_hash.

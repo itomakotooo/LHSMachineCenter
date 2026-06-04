@@ -761,11 +761,11 @@ class TestBaseAnalyzerVersionHash:
         # payout_id_symbol_combos_total) → covered_columns + symbol_combo in
         # payout_ids_top20; payouts_by_spin_type SCHEMA_VERSION 2→3 -> 04691124fde6.
         # paytype-rearch: PIA spin_type_rows enrichment (feature cross-reference) -> 8dbbfad6f90f.
-        assert actual == "99b1dec52f88", (
+        assert actual == "3b852134b03a", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = '99b1dec52f88' (R-1 closure value, post spin_type_rtp_buckets:\n"
-            "  parser paid-bucket accumulator + play_types→closure → 8dbbfad6f90f→99b1dec52f88;\n"
+            f"  expected = '3b852134b03a' (R-1 closure value, post spin_type_rtp_buckets:\n"
+            "  parser paid-bucket accumulator (play_types stays carved) → 8dbbfad6f90f→3b852134b03a;\n"
             "  additive-only new fields: feature_name/rtp_pp/fire_rate/trigger_only in spin_type_breakdown rows.\n"
             "Phase honesty-2 expanded base_hash from core/*.py (old: fa440e3eb5f6) to the\n"
             "25-file report-production import closure (960e9d18d83d); phase 2a then carved\n"

@@ -1309,11 +1309,11 @@ class TestHashCompositionRollsForward:
         # SCHEMA_VERSION 2→3 -> 04691124fde6.
         # paytype-rearch: PIA spin_type_rows enrichment (feature cross-reference) -> 8dbbfad6f90f.
         # If this value changes again, a _CLOSURE_FILES source was edited.
-        assert actual1 == "99b1dec52f88", (
+        assert actual1 == "3b852134b03a", (
             f"compute_base_analyzer_version() diverges from R-1 closure reference:\n"
             f"  actual   = {actual1!r}\n"
-            f"  expected = '99b1dec52f88' (R-1 closure value, post spin_type_rtp_buckets:\n"
-            "  parser paid-bucket accumulator + play_types→closure → 8dbbfad6f90f→99b1dec52f88;\n"
+            f"  expected = '3b852134b03a' (R-1 closure value, post spin_type_rtp_buckets:\n"
+            "  parser paid-bucket accumulator (play_types stays carved) → 8dbbfad6f90f→3b852134b03a;\n"
             "  PIA spin_type_rows enrichment (feature_name/rtp_pp/fire_rate/trigger_only) → 04691124fde6→8dbbfad6f90f;\n"
             "  additive-only new fields: feature_* in each spin_type_breakdown row.\n"
             "The R-1 closure covers core/*.py plus content modules (round_classification,\n"

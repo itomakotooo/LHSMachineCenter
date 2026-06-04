@@ -126,9 +126,12 @@ _CLOSURE_FILES: tuple[str, ...] = (
     "fresh_slotlab/analyzer/mechanism_registry.py",
     "fresh_slotlab/analyzer/parse_state.py",
     "fresh_slotlab/analyzer/pipeline_context.py",
-    "fresh_slotlab/analyzer/play_types/__init__.py",
-    "fresh_slotlab/analyzer/play_types/bcm_cycle.py",
-    "fresh_slotlab/analyzer/play_types/wild_nudge.py",
+    # NOTE: play_types/{__init__,bcm_cycle,wild_nudge}.py are INTENTIONAL CARVES —
+    # base-EXCLUDED so editing a machine's mechanic logic does NOT re-flag the whole
+    # fleet (the core playtype-rearch goal). They must NOT be added here, even though
+    # parser.py imports them on the production path (the R-1 drift guard allowlists
+    # them; per-machine hashing is the tracked follow-up). Adding them broke
+    # test_{wild_nudge,bcm_cycle}_carve — see the carve-isolation tests.
     "fresh_slotlab/analyzer/rtp_integrity.py",
     "fresh_slotlab/analyzer/topo_sort.py",
     "fresh_slotlab/analyzer/versioning.py",
