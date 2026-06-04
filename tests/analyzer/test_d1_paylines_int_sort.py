@@ -65,12 +65,17 @@ def _make_summary_with_st(
     st_int: int = 1,
     behavior: str = "paid",
 ) -> dict:
-    """Build a minimal summary with spin_type_breakdown."""
+    """Build a minimal summary with spin_type_breakdown.
+
+    Phase B: also includes payout_ids_top20 = [] so that
+    PayoutsBySpinType.emit() does not warn about missing aggregate rows.
+    """
     return {
         "player_impact": {
             "spin_type_breakdown": [
                 {"spin_type": st_int, "behavior_name": behavior, "spins": spins}
             ],
+            "payout_ids_top20": [],  # Phase B: emit() mutates this if present
         }
     }
 

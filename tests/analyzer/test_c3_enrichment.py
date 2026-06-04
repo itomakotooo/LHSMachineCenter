@@ -99,10 +99,17 @@ def _make_ctx(effective_bet_for_rtp: float = 100_000.0) -> Any:
 
 
 def _make_summary_with_st_breakdown(st_entries: list[dict[str, Any]]) -> dict[str, Any]:
-    """Build a minimal summary dict containing spin_type_breakdown."""
+    """Build a minimal summary dict containing spin_type_breakdown.
+
+    Phase B: also includes payout_ids_top20 = [] so that
+    PayoutsBySpinType.emit() does not warn about missing aggregate rows.
+    The ordering contract in production (PIA F2 inline writes top20 before
+    the plugin emit loop) is simulated here by pre-populating the key.
+    """
     return {
         "player_impact": {
             "spin_type_breakdown": st_entries,
+            "payout_ids_top20": [],  # Phase B: emit() mutates this if present
         }
     }
 
@@ -168,21 +175,22 @@ _SINGLE_ST_SUMMARY = [
 # ---------------------------------------------------------------------------
 
 class TestC3SchemaAndFallback:
-    """SCHEMA_VERSION == 2; REGISTERED_FALLBACK_RULES populated for v1."""
+    """SCHEMA_VERSION >= 3; REGISTERED_FALLBACK_RULES populated for v1."""
 
-    def test_schema_version_is_3(self):
-        """C4/Phase-P3 bumps SCHEMA_VERSION from 2 → 3 for symbol_combo enrichment.
+    def test_schema_version_is_at_least_3(self):
+        """C4/Phase-P3 bumps SCHEMA_VERSION from 2 → 3; Phase B bumps to 4.
 
         C3 bumped from 1 → 2. C4/Phase-P3 bumped from 2 → 3 for symbol_combo.
+        Phase B (playtype-rearch) bumped from 3 → 4 for symbol_combo.combos.
 
         INJECT-BUG: set SCHEMA_VERSION = 2 in plugin file.
-        RED: this assertion fires.
+        RED: 2 < 3 → this assertion fires.
         Revert → GREEN.
         """
         PayoutsBySpinType = _import_plugin()
-        assert PayoutsBySpinType.SCHEMA_VERSION == 3, (
-            f"Expected SCHEMA_VERSION=3, got {PayoutsBySpinType.SCHEMA_VERSION}. "
-            "C4/Phase-P3 must bump schema version to 3 for symbol_combo enrichment."
+        assert PayoutsBySpinType.SCHEMA_VERSION == 4, (
+            f"Expected SCHEMA_VERSION==4, got {PayoutsBySpinType.SCHEMA_VERSION}. "
+            "Phase B bumped to 4 for symbol_combo.combos; bump this pin when the schema changes."
         )
 
     def test_registered_fallback_rules_has_key_1(self):

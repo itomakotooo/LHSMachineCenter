@@ -120,7 +120,7 @@ class TopDollarChoice(AnalyzerFeature):
 
     FEATURE_ID: ClassVar[str] = "topdollar_choice"
     SCHEMA_KEYS: ClassVar[tuple[str, ...]] = ("topdollar_choice",)
-    SCHEMA_VERSION: ClassVar[int] = 2  # bumped 1→2 (paytype-rearch): added feature_name field
+    SCHEMA_VERSION: ClassVar[int] = 3  # Phase B: bumped from 2; adds chosen_combo_counts
     RTP_CONTRIBUTION: ClassVar[bool] = False  # economy is ST=15 SettlementWinAmountRule
     DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
     REQUIRES: ClassVar[tuple[str, ...]] = ()
@@ -130,11 +130,21 @@ class TopDollarChoice(AnalyzerFeature):
             # Frontend renders it as None (unmapped) for historical reports.
             "feature_name": None,
         },
+        2: {
+            # v2 → v3: chosen_combo_counts was absent in v2 summaries.
+            # Frontend renders it as {} (no combo data) for historical reports.
+            "chosen_combo_counts": {},
+        },
     }
+
+    # Top-N combo entries emitted for chosen_combo_counts.
+    # Keeps output small; a residual "_other" key is added only when truncated.
+    _CHOSEN_COMBO_TOP_N: ClassVar[int] = 20
 
     # Phase E: M15 TopDollar — schema v1 (initial).
     # paytype-rearch: bumped to v2 — added feature_name (FeatureWin feature
     # the TopDollar settlement maps to, e.g. "TopDollar" on M15).
+    # Phase B: bumped to v3 — added chosen_combo_counts (COMBINATION distribution).
 
     def extract(self, parse_state: Any, chunk_dict: Any) -> dict:
         """Lift topdollar_sessions list from chunk_dict.
@@ -188,8 +198,22 @@ class TopDollarChoice(AnalyzerFeature):
             "dollar_tier_counts": {           # ChosenDollar segment frequency
               "5": int, "10": int, "20": int, "50": int, "100": int, ...
             },
+            "chosen_combo_counts": {          # Phase B: COMBINATION distribution
+              "5-10-5": int,                  # normalized ChosenDollar (trailing "-" stripped)
+              "5-5": int,                     # e.g. a 2-dollar draw combination
+              ...                             # top-20 by count desc; "_other" if truncated
+            },
             "rtp_contribution_pp": float|None, # sum(settled_win)/total_paid_bet * 100
           }
+
+        ``chosen_combo_counts`` note (Phase B):
+            ChosenDollar is the CHOSEN combination per draw (one entry per
+            ST=14 pick round), e.g. "5-10-5-" means the player saw and
+            accepted the combination {5, 10, 5}. The per-pick OFFERED set is
+            NOT in rawdata — only the chosen combination is available.
+            Do not infer offered denominations from this field alone.
+            Normalization: strip trailing "-" before counting (so "5-10-5-"
+            and "5-10-5" are the same key).
 
         ``rtp_contribution_pp`` is informational only — it is NOT added to the
         RTP sum (``RTP_CONTRIBUTION = False``).  It shows how much of total
@@ -273,6 +297,8 @@ class TopDollarChoice(AnalyzerFeature):
                 "settled_win_median": None,
                 "settled_win_max": None,
                 "dollar_tier_counts": {},
+                # Phase B: no sessions -> no combo data.
+                "chosen_combo_counts": {},
                 "rtp_contribution_pp": None,
             }
             return
@@ -283,6 +309,11 @@ class TopDollarChoice(AnalyzerFeature):
         bad_gamble_count = 0
         all_offer_values: list[int] = []
         tier_counts: dict[str, int] = {}
+        # Phase B: combination distribution — one entry per ST=14 pick round,
+        # normalized by stripping the trailing "-" from ChosenDollar strings.
+        # Note: ChosenDollar is the CHOSEN combination per draw; the per-pick
+        # OFFERED set is NOT in rawdata — only chosen is available.
+        chosen_combo_raw: dict[str, int] = {}
         total_settled_win = 0.0
         settled_values: list[int] = []
 
@@ -316,12 +347,24 @@ class TopDollarChoice(AnalyzerFeature):
                     if final < max_earlier:
                         bad_gamble_count += 1
 
-            # ── dollar tier counts from ChosenDollar strings ──
+            # ── dollar tier counts + combo counts from ChosenDollar strings ──
+            # ChosenDollar is the CHOSEN combination per draw (one string per
+            # ST=14 pick round). Each string looks like "5-10-5-" (trailing dash).
+            # Tier counts: per individual denomination segment.
+            # Combo counts (Phase B): per full normalized combination.
             chosen_list: list[str] = s.get("chosen") or []
             for c in chosen_list:
                 if not isinstance(c, str):
                     continue
-                segments = [seg for seg in c.rstrip("-").split("-") if seg.strip()]
+                # Normalize: strip trailing "-" for the combo key.
+                normalized_combo = c.rstrip("-")
+                # Phase B: count the full combination (one per ST=14 pick round).
+                if normalized_combo:
+                    chosen_combo_raw[normalized_combo] = (
+                        chosen_combo_raw.get(normalized_combo, 0) + 1
+                    )
+                # Tier counts: flatten into per-denomination segments.
+                segments = [seg for seg in normalized_combo.split("-") if seg.strip()]
                 for seg in segments:
                     try:
                         tier = str(int(seg))
@@ -389,6 +432,30 @@ class TopDollarChoice(AnalyzerFeature):
             if effective_bet > 0 else None
         )
 
+        # ── Phase B: chosen_combo_counts — top-N combination distribution ──
+        # Sort by count descending; ties broken by combo string (deterministic).
+        # Emit top-N; add "_other" only if truncated (omit if not truncated).
+        # Per memory/feedback_no_hardcode.md: no machine-specific keys hardcoded.
+        # Note: ChosenDollar is the CHOSEN combination per draw; the per-pick
+        # OFFERED set is NOT in rawdata (only chosen is available).
+        _sorted_combos = sorted(
+            chosen_combo_raw.items(), key=lambda kv: (-kv[1], kv[0])
+        )
+        chosen_combo_counts: dict[str, int] = {}
+        if len(_sorted_combos) <= self._CHOSEN_COMBO_TOP_N:
+            # No truncation — emit all combos as-is.
+            for _combo_key, _combo_cnt in _sorted_combos:
+                chosen_combo_counts[_combo_key] = _combo_cnt
+        else:
+            # Truncate to top-N; add _other residual for the remainder.
+            _other_total = 0
+            for _combo_key, _combo_cnt in _sorted_combos[: self._CHOSEN_COMBO_TOP_N]:
+                chosen_combo_counts[_combo_key] = _combo_cnt
+            for _, _combo_cnt in _sorted_combos[self._CHOSEN_COMBO_TOP_N :]:
+                _other_total += _combo_cnt
+            if _other_total > 0:
+                chosen_combo_counts["_other"] = _other_total
+
         summary["topdollar_choice"] = {
             "applicable": True,
             "feature_name": _settlement_feature_name,
@@ -405,6 +472,11 @@ class TopDollarChoice(AnalyzerFeature):
             "dollar_tier_counts": dict(
                 sorted(tier_counts.items(), key=lambda kv: int(kv[0]))
             ),
+            # Phase B: combination distribution (one entry per ST=14 pick round).
+            # ChosenDollar is the CHOSEN combination per draw; the per-pick
+            # OFFERED set is NOT in rawdata (only chosen is available).
+            # Normalized: trailing "-" stripped. Top-20 by count; "_other" if truncated.
+            "chosen_combo_counts": chosen_combo_counts,
             "rtp_contribution_pp": rtp_contribution_pp,
         }
 

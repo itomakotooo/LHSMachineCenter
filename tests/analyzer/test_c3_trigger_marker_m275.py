@@ -114,13 +114,13 @@ class TestM275TriggerMarkerAnalyzerRuns:
         # If fixture succeeded, rc was 0. Just verify summary is dict.
         assert isinstance(m275_trigger_marker_summary, dict)
 
-    def test_schema_version_is_3(self, m275_trigger_marker_summary):
-        """C3/C4 enrichment fields must be present (SCHEMA_VERSION == 3, C4/Phase-P3 active).
+    def test_schema_version_is_at_least_3(self, m275_trigger_marker_summary):
+        """C3/C4 enrichment fields must be present (SCHEMA_VERSION >= 3, C4/Phase-P3 active).
 
         The summary doesn't directly contain SCHEMA_VERSION, but we can verify
         C3+ code ran by checking that the C3 new fields exist in the output.
-        SCHEMA_VERSION was bumped 1→2 in C3 (shape/covered_columns/paylines/notes)
-        and 2→3 in C4/Phase-P3 (symbol_combo).
+        SCHEMA_VERSION was bumped 1→2 in C3 (shape/covered_columns/paylines/notes),
+        2→3 in C4/Phase-P3 (symbol_combo), and 3→4 in Phase B (symbol_combo.combos).
         """
         pbst = _get_pbst_rows(m275_trigger_marker_summary)
         rows_flat = [r for rows in pbst.values() for r in rows]

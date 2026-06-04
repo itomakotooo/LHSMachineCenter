@@ -84,10 +84,15 @@ def _make_ctx(effective_bet_for_rtp: float = 100_000.0) -> Any:
 def _make_summary_with_st_breakdown(
     st_entries: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Build a minimal summary dict containing spin_type_breakdown."""
+    """Build a minimal summary dict containing spin_type_breakdown.
+
+    Phase B: also includes payout_ids_top20 = [] so that
+    PayoutsBySpinType.emit() does not warn about missing aggregate rows.
+    """
     return {
         "player_impact": {
             "spin_type_breakdown": st_entries,
+            "payout_ids_top20": [],  # Phase B: emit() mutates this if present
         }
     }
 
@@ -143,16 +148,18 @@ class TestPluginImportAndRegistration:
             f"register() may not be idempotent."
         )
 
-    def test_schema_version_is_3(self):
-        """SCHEMA_VERSION must be 3 (bumped in C4/Phase-P3 for symbol_combo enrichment).
+    def test_schema_version_is_at_least_3(self):
+        """SCHEMA_VERSION must be >= 3 (bumped in C4/Phase-P3 for symbol_combo enrichment).
 
         C2 shipped with SCHEMA_VERSION=1. C3 bumped to 2 for the 4 new fields
         (shape/covered_columns/paylines/notes). C4/Phase-P3 bumped to 3 for symbol_combo.
+        Phase B (playtype-rearch) bumped to 4 for symbol_combo.combos.
         See test_c3_schema_version_2.py for the full schema contract gate.
         """
         PayoutsBySpinType = _import_plugin()
-        assert PayoutsBySpinType.SCHEMA_VERSION == 3, (
-            f"Expected SCHEMA_VERSION=3 (C4/Phase-P3 bumped from 2), got {PayoutsBySpinType.SCHEMA_VERSION}."
+        assert PayoutsBySpinType.SCHEMA_VERSION == 4, (
+            f"Expected SCHEMA_VERSION==4 (Phase B bumped from 3 for symbol_combo.combos), "
+            f"got {PayoutsBySpinType.SCHEMA_VERSION}. Bump this pin when the schema changes."
         )
 
     def test_declared_deps_empty(self):

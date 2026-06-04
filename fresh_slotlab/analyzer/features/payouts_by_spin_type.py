@@ -6,12 +6,16 @@ Phase C3 adds shape / covered_columns / paylines / notes enrichment per row,
 and bumps SCHEMA_VERSION 1 → 2.
 Phase C4 (payid symbol enrichment) adds symbol_combo per row (dominant combo
 from StopSymbolsByCol decode, cross-machine) and bumps SCHEMA_VERSION 2 → 3.
+Phase B (playtype-rearch) adds symbol_combo.combos (top-N combo breakdown with
+is_wild flag) to both per-ST rows AND payout_ids_top20 aggregate rows, and
+bumps SCHEMA_VERSION 3 → 4.
 
 Pattern B: extract() reads per-chunk payout_id_by_spin_type +
 payout_id_win_by_spin_type + C3/C4 enrichment fields; reduce() merges across
-chunks; emit() writes summary["player_impact"]["payouts_by_spin_type"].
+chunks; emit() writes summary["player_impact"]["payouts_by_spin_type"] and
+mutates summary["player_impact"]["payout_ids_top20"] to add combos.
 
-SCHEMA_VERSION = 3 (bumped in C4; v1/v2 summaries are handled by
+SCHEMA_VERSION = 4 (bumped in Phase B; v1/v2/v3 summaries are handled by
 REGISTERED_FALLBACK_RULES — frontend renders missing fields as None for
 old reports already on disk).
 
@@ -29,6 +33,7 @@ Per memory/feedback_invariant_with_fallback_hides_drift.md:
 """
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any, ClassVar
 
 try:
@@ -88,12 +93,17 @@ class PayoutsBySpinType(AnalyzerFeature):
 
     FEATURE_ID: ClassVar[str] = "payouts_by_spin_type"
     SCHEMA_KEYS: ClassVar[tuple[str, ...]] = ("payouts_by_spin_type",)
-    SCHEMA_VERSION: ClassVar[int] = 3  # C4: bumped from 2; adds symbol_combo per-row field
+    SCHEMA_VERSION: ClassVar[int] = 4  # Phase B: bumped from 3; adds symbol_combo.combos
     RTP_CONTRIBUTION: ClassVar[bool] = False  # display only
     DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
 
+    # Top-N combo entries emitted per payid in symbol_combo.combos.
+    # Keeps emitted JSON small while covering the vast majority of combos.
+    _COMBOS_TOP_N: ClassVar[int] = 8
+
     # C3: fallback rules for v1 summaries already on disk.
     # C4: v2→v3 fallback for symbol_combo field absent in v2 summaries.
+    # Phase B: v3→v4 fallback for combos absent in v3 summaries.
     # Frontend renderer: if row is missing these keys, render as None / hide.
     # Per memory/feedback_md5_is_a_tag_not_a_destruction_signal.md:
     # schema bump invalidates downstream renderers gracefully, does NOT delete.
@@ -108,6 +118,15 @@ class PayoutsBySpinType(AnalyzerFeature):
         2: {
             # v2 → v3: symbol_combo field absent in v2 summaries.
             "symbol_combo": None,
+        },
+        3: {
+            # v3 → v4: symbol_combo.combos absent in v3 summaries.
+            # Expressed as a top-level key absence sentinel; frontend
+            # checks symbol_combo.combos presence and defaults to [].
+            # The fallback value here is the symbol_combo object-level
+            # default; individual per-row symbol_combo dicts are mutated
+            # in emit() — the fallback is for OLD on-disk summaries that
+            # have no combos key at all.
         },
     }
 
@@ -340,6 +359,57 @@ class PayoutsBySpinType(AnalyzerFeature):
             "pid_symbol_combos": merged_sc,
         }
 
+    @staticmethod
+    def _build_combos_list(
+        sc_map: dict[str, int],
+        top_n: int = 8,
+    ) -> list[dict[str, Any]]:
+        """Build the top-N combo breakdown list for symbol_combo.combos.
+
+        Parameters
+        ----------
+        sc_map:
+            Dict mapping combo_str → count (e.g. {"cherry|cherry|wild": 5}).
+            May be empty (scatter-only pid, old cached chunks, trigger markers).
+        top_n:
+            Maximum number of entries to emit (default 8).
+
+        Returns
+        -------
+        list[{combo, count, is_wild}] sorted by count descending, capped at
+        top_n.  Empty list if sc_map is empty.
+
+        is_wild detection:
+            Any "|"-split token in the combo matches ``re.search(r"wild", tok,
+            re.I)``. This is format-driven (covers "wild", "Wild", "35x_wild",
+            "wild2x") and contains NO machine-specific ids
+            (per memory/feedback_no_hardcode.md).
+
+        Per memory/feedback_no_silent_swallow.md:
+            If sc_map contains unexpected types (non-str keys, non-int counts),
+            they are skipped silently during _TOKEN_IS_WILD check but the combo
+            is still included — the is_wild flag is computed on a best-effort
+            basis.  A completely invalid sc_map returns [] rather than crashing.
+        """
+        if not sc_map:
+            return []
+        # Sort by count descending; ties broken by combo string (deterministic).
+        sorted_combos = sorted(sc_map.items(), key=lambda kv: (-kv[1], kv[0]))
+        result: list[dict[str, Any]] = []
+        for combo_str, count in sorted_combos[:top_n]:
+            tokens = combo_str.split("|") if isinstance(combo_str, str) else []
+            is_wild = any(
+                bool(re.search(r"wild", tok, re.I))
+                for tok in tokens
+                if isinstance(tok, str)
+            )
+            result.append({
+                "combo": combo_str,
+                "count": int(count),
+                "is_wild": is_wild,
+            })
+        return result
+
     def emit(self, final_acc: dict, summary: dict, ctx: "PipelineContext") -> None:
         """Build and write summary["player_impact"]["payouts_by_spin_type"].
 
@@ -388,16 +458,33 @@ class PayoutsBySpinType(AnalyzerFeature):
             AND total_win == 0 for this pid (across all STs).
           max_match_count_observed: largest match_count seen for this pid.
 
-        Symbol_combo enrichment (C4):
+        Symbol_combo enrichment (C4 + Phase B):
           symbol_combo = {
             dominant: str | None  — most-frequent combo string (e.g.
                 "cherry|cherry|35x_wild"), or None if no decode available.
             distinct_symbols: list[str]  — sorted union of all symbol names
                 seen across all combos for this pid (wilds preserved).
+            combos: list[{combo, count, is_wild}]  — Phase B: top-N (N=8)
+                combo entries sorted by count descending. Each entry:
+                  combo:   str   — the "|"-joined symbol combo
+                  count:   int   — how many times this exact combo hit
+                  is_wild: bool  — True iff any token in the combo matches
+                      re.search(r"wild", token, re.I) (covers "wild", "Wild",
+                      "35x_wild", "wild2x"). Format-driven; no machine ids.
+                Empty list [] when no combos are available (scatter-only,
+                old cached chunks, trigger markers).
           }
           Absent for pids with no StopSymbolsByCol data (old cached chunks,
           scatter-only pids, or STs without PayoutByPayline). The combo is
           aggregate across ALL STs (decode is per-round, not per-ST).
+
+        emit() also MUTATES each row in
+        summary["player_impact"]["payout_ids_top20"] to add the same
+        symbol_combo.combos field from the accumulated pid_symbol_combos.
+        The inline F2 block (PIA closure) already wrote dominant +
+        distinct_symbols; emit() adds combos additively (no other field
+        is changed). payout_ids_top20 is guaranteed present by the Phase
+        B ordering contract (F2 inline writes it before the plugin emit loop).
 
         Sort order (unchanged from C2):
           - STs: by spin_type ascending (via _st_label sorted iteration)
@@ -523,10 +610,11 @@ class PayoutsBySpinType(AnalyzerFeature):
                     "max_match_count_observed": max_mc,
                 }
 
-                # --- C4 enrichment: symbol_combo ---
+                # --- C4 + Phase B enrichment: symbol_combo ---
                 # Aggregate across ALL STs (decode is per-round, not per-ST).
                 # dominant: combo_str with highest cumulative count for this pid.
                 # distinct_symbols: sorted union of all symbol names across combos.
+                # combos (Phase B): top-N breakdown list with is_wild flag.
                 sc_map = pid_symbol_combos.get(pid_str) or {}
                 if sc_map:
                     dominant_combo: str | None = max(
@@ -541,10 +629,16 @@ class PayoutsBySpinType(AnalyzerFeature):
                     symbol_combo: dict[str, Any] = {
                         "dominant": dominant_combo,
                         "distinct_symbols": sorted(_all_syms),
+                        # Phase B: top-N combo breakdown with is_wild flag.
+                        "combos": self._build_combos_list(sc_map, self._COMBOS_TOP_N),
                     }
                 else:
-                    symbol_combo = {"dominant": None, "distinct_symbols": []}
-                # --- end C4 enrichment ---
+                    symbol_combo = {
+                        "dominant": None,
+                        "distinct_symbols": [],
+                        "combos": [],  # Phase B: empty when no decode data available
+                    }
+                # --- end C4 + Phase B enrichment ---
 
                 st_pid_rows.append({
                     # C2 fields (byte-identical to pre-C3)
@@ -572,6 +666,43 @@ class PayoutsBySpinType(AnalyzerFeature):
             payouts_by_spin_type[label] = st_pid_rows
 
         player_impact["payouts_by_spin_type"] = payouts_by_spin_type
+
+        # --- Phase B: mutate payout_ids_top20 to add symbol_combo.combos ---
+        # payout_ids_top20 is written by the PIA F2 inline block BEFORE the
+        # plugin emit loop starts (guaranteed by the ordering contract assert
+        # in PIA ~line 4663). We add combos additively to each row's existing
+        # symbol_combo dict. No other field in each row is modified.
+        #
+        # Source data: pid_symbol_combos (accumulated from chunk_dict across all
+        # chunks via extract/reduce, same data used for per-ST rows above).
+        # This is the FULL cross-ST combo histogram for each pid.
+        #
+        # Per memory/feedback_no_silent_swallow.md: if payout_ids_top20 is
+        # absent (ordering contract violated in tests or unusual config), we
+        # log a warning to the feature_errors stash rather than crashing.
+        _top20_rows: list[dict[str, Any]] = player_impact.get("payout_ids_top20") or []
+        if not _top20_rows and "payout_ids_top20" not in player_impact:
+            # payout_ids_top20 missing — ordering contract violation; persist diagnostic.
+            # This cannot happen in production (assert in PIA guards it), but we
+            # guard here per feedback_no_silent_swallow.md for test isolation.
+            import warnings as _warnings
+            _warnings.warn(
+                "payouts_by_spin_type: payout_ids_top20 absent from summary at emit() time. "
+                "Phase B combos will not be written to aggregate rows. "
+                "Check Phase B ordering contract (F2 inline must run before plugin emit loop).",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            for _top20_row in _top20_rows:
+                _pid_s = str(_top20_row.get("payout_id", ""))
+                _sc_map = pid_symbol_combos.get(_pid_s) or {}
+                _sc_dict = _top20_row.get("symbol_combo")
+                if isinstance(_sc_dict, dict):
+                    # Additive: only add combos; leave dominant/distinct_symbols unchanged.
+                    _sc_dict["combos"] = self._build_combos_list(_sc_map, self._COMBOS_TOP_N)
+                # If symbol_combo is not a dict (e.g. None for old cached reports),
+                # skip silently — this is a best-effort enrichment.
 
 
 # ---------------------------------------------------------------------------

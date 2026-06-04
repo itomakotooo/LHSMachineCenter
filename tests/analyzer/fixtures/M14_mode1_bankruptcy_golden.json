@@ -1529,6 +1529,48 @@
         ],
         "spin_type_category": "paid",
         "symbol_combo": {
+          "combos": [
+            {
+              "combo": "1bar|2bar|1bar",
+              "count": 1422,
+              "is_wild": false
+            },
+            {
+              "combo": "1bar|3bar|1bar",
+              "count": 1125,
+              "is_wild": false
+            },
+            {
+              "combo": "3bar|2bar|1bar",
+              "count": 882,
+              "is_wild": false
+            },
+            {
+              "combo": "2bar|1bar|1bar",
+              "count": 863,
+              "is_wild": false
+            },
+            {
+              "combo": "1bar|2bar|3bar",
+              "count": 853,
+              "is_wild": false
+            },
+            {
+              "combo": "1bar|1bar|3bar",
+              "count": 845,
+              "is_wild": false
+            },
+            {
+              "combo": "3bar|1bar|1bar",
+              "count": 827,
+              "is_wild": false
+            },
+            {
+              "combo": "1bar|1bar|2bar",
+              "count": 825,
+              "is_wild": false
+            }
+          ],
           "distinct_symbols": [
             "1bar",
             "2bar",
@@ -1564,6 +1606,48 @@
         ],
         "spin_type_category": "paid",
         "symbol_combo": {
+          "combos": [
+            {
+              "combo": "cherry|cherry|cherry",
+              "count": 10602,
+              "is_wild": false
+            },
+            {
+              "combo": "cherry|5x_wild|cherry",
+              "count": 1561,
+              "is_wild": true
+            },
+            {
+              "combo": "cherry|cherry|5x_wild",
+              "count": 1383,
+              "is_wild": true
+            },
+            {
+              "combo": "5x_wild|cherry|cherry",
+              "count": 1318,
+              "is_wild": true
+            },
+            {
+              "combo": "35x_wild|cherry|cherry",
+              "count": 795,
+              "is_wild": true
+            },
+            {
+              "combo": "cherry|7x_wild|cherry",
+              "count": 791,
+              "is_wild": true
+            },
+            {
+              "combo": "cherry|35x_wild|cherry",
+              "count": 762,
+              "is_wild": true
+            },
+            {
+              "combo": "7x_wild|cherry|cherry",
+              "count": 756,
+              "is_wild": true
+            }
+          ],
           "distinct_symbols": [
             "35x_wild",
             "5x_wild",
@@ -1597,6 +1681,48 @@
         ],
         "spin_type_category": "paid",
         "symbol_combo": {
+          "combos": [
+            {
+              "combo": "high7|high7|high7",
+              "count": 325,
+              "is_wild": false
+            },
+            {
+              "combo": "5x_wild|high7|high7",
+              "count": 182,
+              "is_wild": true
+            },
+            {
+              "combo": "high7|high7|5x_wild",
+              "count": 173,
+              "is_wild": true
+            },
+            {
+              "combo": "5x_wild|high7|5x_wild",
+              "count": 120,
+              "is_wild": true
+            },
+            {
+              "combo": "high7|high7|35x_wild",
+              "count": 105,
+              "is_wild": true
+            },
+            {
+              "combo": "35x_wild|high7|high7",
+              "count": 101,
+              "is_wild": true
+            },
+            {
+              "combo": "high7|high7|7x_wild",
+              "count": 95,
+              "is_wild": true
+            },
+            {
+              "combo": "7x_wild|high7|high7",
+              "count": 90,
+              "is_wild": true
+            }
+          ],
           "distinct_symbols": [
             "35x_wild",
             "5x_wild",
@@ -1630,6 +1756,48 @@
         ],
         "spin_type_category": "paid",
         "symbol_combo": {
+          "combos": [
+            {
+              "combo": "1bar|1bar|1bar",
+              "count": 1407,
+              "is_wild": false
+            },
+            {
+              "combo": "1bar|5x_wild|1bar",
+              "count": 504,
+              "is_wild": true
+            },
+            {
+              "combo": "1bar|1bar|5x_wild",
+              "count": 350,
+              "is_wild": true
+            },
+            {
+              "combo": "5x_wild|1bar|1bar",
+              "count": 310,
+              "is_wild": true
+            },
+            {
+              "combo": "1bar|35x_wild|1bar",
+              "count": 274,
+              "is_wild": true
+            },
+            {
+              "combo": "1bar|7x_wild|1bar",
+              "count": 247,
+              "is_wild": true
+            },
+            {
+              "combo": "1bar|1bar|35x_wild",
+              "count": 192,
+              "is_wild": true
+            },
+            {
+              "combo": "1bar|1bar|7x_wild",
+              "count": 191,
+              "is_wild": true
+            }
+          ],
           "distinct_symbols": [
             "1bar",
             "35x_wild",
@@ -1663,6 +1831,48 @@
         ],
         "spin_type_category": "paid",
         "symbol_combo": {
+          "combos": [
+            {
+              "combo": "3bar|3bar|3bar",
+              "count": 400,
+              "is_wild": false
+            },
+            {
+              "combo": "3bar|5x_wild|3bar",
+              "count": 195,
+              "is_wild": true
+            },
+            {
+              "combo": "5x_wild|3bar|3bar",
+              "count": 185,
+              "is_wild": true
+            },
+            {
+              "combo": "3bar|3bar|5x_wild",
+              "count": 156,
+              "is_wild": true
+            },
+            {
+              "combo": "3bar|35x_wild|3bar",
+              "count": 122,
+              "is_wild": true
+            },
+            {
+              "combo": "3bar|7x_wild|3bar",
+              "count": 108,
+              "is_wild": true
+            },
+            {
+              "combo": "35x_wild|3bar|3bar",
+              "count": 88,
+              "is_wild": true
+            },
+            {
+              "combo": "3bar|5x_wild|5x_wild",
+              "count": 86,
+              "is_wild": true
+            }
+          ],
           "distinct_symbols": [
             "35x_wild",
             "3bar",
@@ -1696,6 +1906,48 @@
         ],
         "spin_type_category": "paid",
         "symbol_combo": {
+          "combos": [
+            {
+              "combo": "2bar|2bar|2bar",
+              "count": 509,
+              "is_wild": false
+            },
+            {
+              "combo": "5x_wild|2bar|2bar",
+              "count": 224,
+              "is_wild": true
+            },
+            {
+              "combo": "2bar|2bar|5x_wild",
+              "count": 213,
+              "is_wild": true
+            },
+            {
+              "combo": "2bar|5x_wild|2bar",
+              "count": 179,
+              "is_wild": true
+            },
+            {
+              "combo": "7x_wild|2bar|2bar",
+              "count": 109,
+              "is_wild": true
+            },
+            {
+              "combo": "2bar|2bar|35x_wild",
+              "count": 107,
+              "is_wild": true
+            },
+            {
+              "combo": "2bar|7x_wild|2bar",
+              "count": 107,
+              "is_wild": true
+            },
+            {
+              "combo": "2bar|35x_wild|2bar",
+              "count": 102,
+              "is_wild": true
+            }
+          ],
           "distinct_symbols": [
             "2bar",
             "35x_wild",
@@ -1729,6 +1981,48 @@
         ],
         "spin_type_category": "paid",
         "symbol_combo": {
+          "combos": [
+            {
+              "combo": "5x_wild|5x_wild|5x_wild",
+              "count": 30,
+              "is_wild": true
+            },
+            {
+              "combo": "5x_wild|7x_wild|5x_wild",
+              "count": 21,
+              "is_wild": true
+            },
+            {
+              "combo": "5x_wild|5x_wild|7x_wild",
+              "count": 18,
+              "is_wild": true
+            },
+            {
+              "combo": "5x_wild|5x_wild|35x_wild",
+              "count": 16,
+              "is_wild": true
+            },
+            {
+              "combo": "35x_wild|5x_wild|5x_wild",
+              "count": 15,
+              "is_wild": true
+            },
+            {
+              "combo": "5x_wild|35x_wild|35x_wild",
+              "count": 14,
+              "is_wild": true
+            },
+            {
+              "combo": "7x_wild|5x_wild|5x_wild",
+              "count": 14,
+              "is_wild": true
+            },
+            {
+              "combo": "7x_wild|5x_wild|35x_wild",
+              "count": 13,
+              "is_wild": true
+            }
+          ],
           "distinct_symbols": [
             "35x_wild",
             "5x_wild",
@@ -1798,6 +2092,48 @@
             "3_of_a_kind": 26014
           },
           "symbol_combo": {
+            "combos": [
+              {
+                "combo": "1bar|2bar|1bar",
+                "count": 1422,
+                "is_wild": false
+              },
+              {
+                "combo": "1bar|3bar|1bar",
+                "count": 1125,
+                "is_wild": false
+              },
+              {
+                "combo": "3bar|2bar|1bar",
+                "count": 882,
+                "is_wild": false
+              },
+              {
+                "combo": "2bar|1bar|1bar",
+                "count": 863,
+                "is_wild": false
+              },
+              {
+                "combo": "1bar|2bar|3bar",
+                "count": 853,
+                "is_wild": false
+              },
+              {
+                "combo": "1bar|1bar|3bar",
+                "count": 845,
+                "is_wild": false
+              },
+              {
+                "combo": "3bar|1bar|1bar",
+                "count": 827,
+                "is_wild": false
+              },
+              {
+                "combo": "1bar|1bar|2bar",
+                "count": 825,
+                "is_wild": false
+              }
+            ],
             "distinct_symbols": [
               "1bar",
               "2bar",
@@ -1867,6 +2203,48 @@
             "3_of_a_kind": 22077
           },
           "symbol_combo": {
+            "combos": [
+              {
+                "combo": "cherry|cherry|cherry",
+                "count": 10602,
+                "is_wild": false
+              },
+              {
+                "combo": "cherry|5x_wild|cherry",
+                "count": 1561,
+                "is_wild": true
+              },
+              {
+                "combo": "cherry|cherry|5x_wild",
+                "count": 1383,
+                "is_wild": true
+              },
+              {
+                "combo": "5x_wild|cherry|cherry",
+                "count": 1318,
+                "is_wild": true
+              },
+              {
+                "combo": "35x_wild|cherry|cherry",
+                "count": 795,
+                "is_wild": true
+              },
+              {
+                "combo": "cherry|7x_wild|cherry",
+                "count": 791,
+                "is_wild": true
+              },
+              {
+                "combo": "cherry|35x_wild|cherry",
+                "count": 762,
+                "is_wild": true
+              },
+              {
+                "combo": "7x_wild|cherry|cherry",
+                "count": 756,
+                "is_wild": true
+              }
+            ],
             "distinct_symbols": [
               "35x_wild",
               "5x_wild",
@@ -1934,6 +2312,48 @@
             "3_of_a_kind": 2115
           },
           "symbol_combo": {
+            "combos": [
+              {
+                "combo": "high7|high7|high7",
+                "count": 325,
+                "is_wild": false
+              },
+              {
+                "combo": "5x_wild|high7|high7",
+                "count": 182,
+                "is_wild": true
+              },
+              {
+                "combo": "high7|high7|5x_wild",
+                "count": 173,
+                "is_wild": true
+              },
+              {
+                "combo": "5x_wild|high7|5x_wild",
+                "count": 120,
+                "is_wild": true
+              },
+              {
+                "combo": "high7|high7|35x_wild",
+                "count": 105,
+                "is_wild": true
+              },
+              {
+                "combo": "35x_wild|high7|high7",
+                "count": 101,
+                "is_wild": true
+              },
+              {
+                "combo": "high7|high7|7x_wild",
+                "count": 95,
+                "is_wild": true
+              },
+              {
+                "combo": "7x_wild|high7|high7",
+                "count": 90,
+                "is_wild": true
+              }
+            ],
             "distinct_symbols": [
               "35x_wild",
               "5x_wild",
@@ -2001,6 +2421,48 @@
             "3_of_a_kind": 5163
           },
           "symbol_combo": {
+            "combos": [
+              {
+                "combo": "1bar|1bar|1bar",
+                "count": 1407,
+                "is_wild": false
+              },
+              {
+                "combo": "1bar|5x_wild|1bar",
+                "count": 504,
+                "is_wild": true
+              },
+              {
+                "combo": "1bar|1bar|5x_wild",
+                "count": 350,
+                "is_wild": true
+              },
+              {
+                "combo": "5x_wild|1bar|1bar",
+                "count": 310,
+                "is_wild": true
+              },
+              {
+                "combo": "1bar|35x_wild|1bar",
+                "count": 274,
+                "is_wild": true
+              },
+              {
+                "combo": "1bar|7x_wild|1bar",
+                "count": 247,
+                "is_wild": true
+              },
+              {
+                "combo": "1bar|1bar|35x_wild",
+                "count": 192,
+                "is_wild": true
+              },
+              {
+                "combo": "1bar|1bar|7x_wild",
+                "count": 191,
+                "is_wild": true
+              }
+            ],
             "distinct_symbols": [
               "1bar",
               "35x_wild",
@@ -2068,6 +2530,48 @@
             "3_of_a_kind": 2393
           },
           "symbol_combo": {
+            "combos": [
+              {
+                "combo": "3bar|3bar|3bar",
+                "count": 400,
+                "is_wild": false
+              },
+              {
+                "combo": "3bar|5x_wild|3bar",
+                "count": 195,
+                "is_wild": true
+              },
+              {
+                "combo": "5x_wild|3bar|3bar",
+                "count": 185,
+                "is_wild": true
+              },
+              {
+                "combo": "3bar|3bar|5x_wild",
+                "count": 156,
+                "is_wild": true
+              },
+              {
+                "combo": "3bar|35x_wild|3bar",
+                "count": 122,
+                "is_wild": true
+              },
+              {
+                "combo": "3bar|7x_wild|3bar",
+                "count": 108,
+                "is_wild": true
+              },
+              {
+                "combo": "35x_wild|3bar|3bar",
+                "count": 88,
+                "is_wild": true
+              },
+              {
+                "combo": "3bar|5x_wild|5x_wild",
+                "count": 86,
+                "is_wild": true
+              }
+            ],
             "distinct_symbols": [
               "35x_wild",
               "3bar",
@@ -2135,6 +2639,48 @@
             "3_of_a_kind": 2686
           },
           "symbol_combo": {
+            "combos": [
+              {
+                "combo": "2bar|2bar|2bar",
+                "count": 509,
+                "is_wild": false
+              },
+              {
+                "combo": "5x_wild|2bar|2bar",
+                "count": 224,
+                "is_wild": true
+              },
+              {
+                "combo": "2bar|2bar|5x_wild",
+                "count": 213,
+                "is_wild": true
+              },
+              {
+                "combo": "2bar|5x_wild|2bar",
+                "count": 179,
+                "is_wild": true
+              },
+              {
+                "combo": "7x_wild|2bar|2bar",
+                "count": 109,
+                "is_wild": true
+              },
+              {
+                "combo": "2bar|2bar|35x_wild",
+                "count": 107,
+                "is_wild": true
+              },
+              {
+                "combo": "2bar|7x_wild|2bar",
+                "count": 107,
+                "is_wild": true
+              },
+              {
+                "combo": "2bar|35x_wild|2bar",
+                "count": 102,
+                "is_wild": true
+              }
+            ],
             "distinct_symbols": [
               "2bar",
               "35x_wild",
@@ -2202,6 +2748,48 @@
             "3_of_a_kind": 254
           },
           "symbol_combo": {
+            "combos": [
+              {
+                "combo": "5x_wild|5x_wild|5x_wild",
+                "count": 30,
+                "is_wild": true
+              },
+              {
+                "combo": "5x_wild|7x_wild|5x_wild",
+                "count": 21,
+                "is_wild": true
+              },
+              {
+                "combo": "5x_wild|5x_wild|7x_wild",
+                "count": 18,
+                "is_wild": true
+              },
+              {
+                "combo": "5x_wild|5x_wild|35x_wild",
+                "count": 16,
+                "is_wild": true
+              },
+              {
+                "combo": "35x_wild|5x_wild|5x_wild",
+                "count": 15,
+                "is_wild": true
+              },
+              {
+                "combo": "5x_wild|35x_wild|35x_wild",
+                "count": 14,
+                "is_wild": true
+              },
+              {
+                "combo": "7x_wild|5x_wild|5x_wild",
+                "count": 14,
+                "is_wild": true
+              },
+              {
+                "combo": "7x_wild|5x_wild|35x_wild",
+                "count": 13,
+                "is_wild": true
+              }
+            ],
             "distinct_symbols": [
               "35x_wild",
               "5x_wild",
@@ -12515,23 +13103,23 @@
     ],
     "spin_type_breakdown": [
       {
+        "behavior_name": "paid",
+        "feature_fire_rate": 1.0,
+        "feature_name": "Normal",
+        "feature_rtp_pp": 92.03811304347826,
+        "feature_trigger_only": false,
+        "hit_rate": 0.20727826086956522,
+        "paid_rounds": 230000,
+        "rare": false,
+        "rtp_contribution_pp": 92.03811304347826,
+        "rtp_pct": 92.03811304347826,
+        "share_pct": 100.0,
         "spin_type": 1,
         "spins": 230000,
-        "share_pct": 100.0,
-        "win_rounds": 47674,
-        "paid_rounds": 230000,
-        "hit_rate": 0.20727826086956522,
         "total_bet": 230000000.0,
         "total_paid_bet": 230000000.0,
         "total_win": 211687660.0,
-        "rtp_pct": 92.03811304347826,
-        "rtp_contribution_pp": 92.03811304347826,
-        "behavior_name": "paid",
-        "rare": false,
-        "feature_name": "Normal",
-        "feature_rtp_pp": 92.03811304347826,
-        "feature_fire_rate": 1.0,
-        "feature_trigger_only": false
+        "win_rounds": 47674
       }
     ],
     "spin_type_coverage": 1,
@@ -13127,7 +13715,7 @@
     "suggested_actions": [
       "All applicable layers pass. No action required."
     ],
-    "summary_message": "RTP integrity PASS — M14 mode=1. L1=PASS, L2=PASS, L3=PASS, L4=SKIP(no-rawdata-dir)."
+    "summary_message": "RTP integrity PASS \u2014 M14 mode=1. L1=PASS, L2=PASS, L3=PASS, L4=SKIP(no-rawdata-dir)."
   },
   "sampling": {
     "achieved_halfwidth_pp": 1.8763246605811676,

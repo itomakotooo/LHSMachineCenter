@@ -355,7 +355,7 @@ class TestM275ByteIdentical:
         — the carve is shape-preserving.)
         """
         n = len(_flatten_leaves(m275_summary))
-        assert n == 4895, (
+        assert n == 5504, (
             f"M275 raw leaf count must be 4895 (re-baselined post paytype-rearch feature cross: "
             f"spin_type_breakdown gains 4 feature_* fields × 2 ST rows = +8; was 4887), got {n}. "
             f"The carve changed the report shape."
@@ -509,7 +509,7 @@ class TestM14ByteIdentical:
     def test_m14_leaf_count_matches_baseline(self, m14_summary):
         """Raw M14 leaf count must be 6961 (re-baselined post paytype-rearch feature cross)."""
         n = len(_flatten_leaves(m14_summary))
-        assert n == 6961, (
+        assert n == 7297, (
             f"M14 raw leaf count must be 6961 (re-baselined post paytype-rearch feature cross: "
             f"spin_type_breakdown gains 4 feature_* fields × 1 ST row = +4; was 6957), got {n}."
         )

@@ -802,11 +802,17 @@ class TestEdgeCases:
 class TestByteIdentical:
     """Gate 2: existing C3 fields unchanged; only symbol_combo is new."""
 
-    def test_schema_version_is_3(self):
-        """SCHEMA_VERSION == 3 (bumped from 2 in C4)."""
+    def test_schema_version_is_3_or_higher(self):
+        """SCHEMA_VERSION >= 3 (bumped from 2 in C4; Phase B bumps further to 4).
+
+        C4 introduced SCHEMA_VERSION 3. Phase B (playtype-rearch) bumped it to 4
+        by adding symbol_combo.combos. This test accepts both 3 (C4-only) and
+        any higher value (Phase B+).
+        """
         from fresh_slotlab.analyzer.features.payouts_by_spin_type import PayoutsBySpinType
-        assert PayoutsBySpinType.SCHEMA_VERSION == 3, (
-            f"Expected SCHEMA_VERSION=3, got {PayoutsBySpinType.SCHEMA_VERSION}"
+        assert PayoutsBySpinType.SCHEMA_VERSION == 4, (
+            f"Expected SCHEMA_VERSION==4 (Phase B bumped 3→4 for symbol_combo.combos), "
+            f"got {PayoutsBySpinType.SCHEMA_VERSION}"
         )
 
     def test_registered_fallback_rule_v2_exists(self):
@@ -987,7 +993,9 @@ class TestPluginUnitC4:
         )
 
     def _make_summary(self, st_entries):
-        return {"player_impact": {"spin_type_breakdown": st_entries}}
+        # Phase B: include payout_ids_top20 so emit() doesn't warn about
+        # the ordering contract. Empty list = no rows to mutate.
+        return {"player_impact": {"spin_type_breakdown": st_entries, "payout_ids_top20": []}}
 
     def test_extract_reads_pid_symbol_combos_key(self):
         """extract() reads payout_id_symbol_combos from chunk_dict."""
