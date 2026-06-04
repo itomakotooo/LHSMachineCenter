@@ -78,7 +78,7 @@ _SKIP_NO_M14 = pytest.mark.skipif(not _M14_AVAILABLE, reason="M14 rawdata not av
 # ---------------------------------------------------------------------------
 # Expected base_hash (paytype-rearch; must NOT flip after adding this feature)
 # ---------------------------------------------------------------------------
-_EXPECTED_BASE_HASH = "8dbbfad6f90f"
+_EXPECTED_BASE_HASH = "99b1dec52f88"  # spin_type_rtp_buckets: parser paid-bucket + versioning play_types closure → 8dbbfad6f90f→99b1dec52f88
 
 # ---------------------------------------------------------------------------
 # Ground-truth trace values — from a full 224-chunk M15 run (2,048,000 ST1 spins)

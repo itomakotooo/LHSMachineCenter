@@ -121,7 +121,7 @@ _TARGET_SETTLED_MAX = 440000
 _TARGET_RTP_CONTRIBUTION_LOW = 49.0
 _TARGET_RTP_CONTRIBUTION_HIGH = 52.0
 
-_EXPECTED_BASE_HASH = "8dbbfad6f90f"  # paytype-rearch: PIA spin_type_rows enrichment → 04691124fde6→8dbbfad6f90f
+_EXPECTED_BASE_HASH = "99b1dec52f88"  # spin_type_rtp_buckets: parser paid-bucket + versioning play_types closure → 8dbbfad6f90f→99b1dec52f88
 
 
 # ---------------------------------------------------------------------------

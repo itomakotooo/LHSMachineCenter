@@ -87,7 +87,7 @@ _C2_BASE_HASH = "b0ba0ce7c7e2"
 # PIA again → ccc1ecce185d; phase 6 (bankruptcy_simulation row-build carve — the LAST
 # carve) shrank PIA again → d8b8c138874a (one-time fleet re-baseline, report content
 # byte-identical).
-_EXPECTED_C3_BASE_HASH = "8dbbfad6f90f"  # paytype-rearch feature cross: PIA spin_type_rows enrichment → base_hash 04691124fde6→8dbbfad6f90f; additive (display metadata only, no RTP change)
+_EXPECTED_C3_BASE_HASH = "99b1dec52f88"  # spin_type_rtp_buckets: parser.py adds paid-round bucket accumulator + versioning.py adds play_types to closure → base_hash 8dbbfad6f90f→99b1dec52f88; additive (new per-ST RTP distribution, no existing fields changed)
 
 _HEX12_RE = re.compile(r"^[0-9a-f]{12}$")
 

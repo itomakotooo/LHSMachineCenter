@@ -27,7 +27,7 @@ Invariants asserted
 21. M275 subprocess: stash key absent from final summary.
 22. M14 subprocess: applicable=False.
 23. M14 subprocess: no false trigger markers in payout_ids_top20.
-24. 11 plugins in ALL_FEATURES after all are imported (base 8 + bonus_chain_dynamics + topdollar_choice + spin_type_outcomes).
+24. 12 plugins in ALL_FEATURES after all are imported (base 8 + bonus_chain_dynamics + topdollar_choice + spin_type_outcomes + spin_type_rtp_buckets).
 
 Inject-bug recipe A (per memory/feedback_enumerate_safety_paths.md)
 -------------------------------------------------------------------
@@ -235,17 +235,19 @@ class TestBonusChainDynamicsImportSafety:
         )
 
     def test_nine_plugins_in_all_features(self):
-        """After all 11 phase plugins imported, ALL_FEATURES has exactly 11 entries.
+        """After all phase plugins imported, ALL_FEATURES has exactly 12 entries.
 
-        11 plugins: payouts_by_spin_type / reel_marginal_by_spin_type /
+        12 plugins: payouts_by_spin_type / reel_marginal_by_spin_type /
         bankruptcy_simulation / multiplier_profile / multiplier_wild /
         machine_mechanics / upstream_feature_breakdown / collect_mechanic /
         bonus_chain_dynamics (C6) / topdollar_choice (Phase E) /
-        spin_type_outcomes (playtype-rearch).
+        spin_type_outcomes (playtype-rearch) / spin_type_rtp_buckets.
 
         Phase E update: count bumped 9→10 to include topdollar_choice.
         playtype-rearch: count bumped 10→11 to include spin_type_outcomes
           (auto-registered via payouts_by_spin_type.py import).
+        spin_type_rtp_buckets: count bumped 11→12 (auto-registered via
+          spin_type_outcomes.py import).
         """
         import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
         # spin_type_outcomes auto-registers when payouts_by_spin_type is imported.
@@ -260,8 +262,8 @@ class TestBonusChainDynamicsImportSafety:
         import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
         from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
         count = len(ALL_FEATURES)
-        assert count == 11, (
-            f"Expected exactly 11 plugins in ALL_FEATURES after all phase imports. "
+        assert count == 12, (
+            f"Expected exactly 12 plugins in ALL_FEATURES after all phase imports. "
             f"Got {count}: {[f.FEATURE_ID for f in ALL_FEATURES]}"
         )
 

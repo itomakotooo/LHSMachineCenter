@@ -881,6 +881,22 @@ def parse_chunk_response(
     spin_type_bucket_win: dict[int, dict[str, float]] = defaultdict(
         lambda: defaultdict(float)
     )
+    # Per-SpinType PAID-round-level return-bucket histograms.
+    # Mirrors spin_type_bucket_{spins,bet,win} but accumulates ONLY rounds
+    # where is_paid==True and bet_amt>0 (free/bonus rounds are excluded so
+    # win/bet ratios are well-defined and directly comparable to the global
+    # multiplier_profile buckets).  Used by the spin_type_rtp_buckets plugin
+    # to emit a per-SpinType round-level RTP distribution.
+    # Keys: sp_type (int) → bucket_label (str) → count/sum.
+    spin_type_paid_bucket_spins: dict[int, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+    spin_type_paid_bucket_bet: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    spin_type_paid_bucket_win: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
     # Iter 6 (2026-04-23): settlement-SpinType bucket histogram built
     # from TRIGGER SESSION wins rather than round-level WinCredits.
     # Settlement SpinTypes (M15 TopDollar's ST=15, QuickDollar family's
@@ -1687,6 +1703,16 @@ def parse_chunk_response(
             spin_type_bucket_spins[sp_type][bucket] += 1
             spin_type_bucket_bet[sp_type][bucket] += bet_amt
             spin_type_bucket_win[sp_type][bucket] += win_amt
+            # Per-SpinType PAID-round bucket: only when is_paid and bet>0
+            # so the win/bet ratio is meaningful (free rounds have bet==0).
+            # Uses the same `bucket` label already computed above via
+            # return_bucket(win_amt / bet_amt).  spin_type_rtp_buckets plugin
+            # reads spin_type_rtp_buckets from the chunk dict (see return dict
+            # below) to emit the per-ST round-level RTP distribution.
+            if is_paid and bet_amt > 0:
+                spin_type_paid_bucket_spins[sp_type][bucket] += 1
+                spin_type_paid_bucket_bet[sp_type][bucket] += bet_amt
+                spin_type_paid_bucket_win[sp_type][bucket] += win_amt
             # Bonus-chain trigger-path bookkeeping. A chain opens on
             # the first non-paid round after a paid run; it accrues
             # all subsequent non-paid rounds keyed to a stable
@@ -2383,6 +2409,21 @@ def parse_chunk_response(
         },
         "spin_type_bucket_win": {
             str(k): dict(v) for k, v in spin_type_bucket_win.items()
+        },
+        # Per-SpinType PAID-round-level bucket histogram.
+        # Consumed by spin_type_rtp_buckets plugin (extract/reduce/emit).
+        # Keys: str(sp_type) → {bucket_label: {"spins": int, "bet": float, "win": float}}
+        # Aggregated at emit() time (not here) to keep chunk dict compact.
+        "spin_type_rtp_buckets": {
+            str(st): {
+                b: {
+                    "spins": spin_type_paid_bucket_spins[st].get(b, 0),
+                    "bet": spin_type_paid_bucket_bet[st].get(b, 0.0),
+                    "win": spin_type_paid_bucket_win[st].get(b, 0.0),
+                }
+                for b in spin_type_paid_bucket_spins[st]
+            }
+            for st in spin_type_paid_bucket_spins
         },
         # Iter 6: session-level bucket histogram keyed by trigger
         # session's settlement SpinType. Finalize merges these across

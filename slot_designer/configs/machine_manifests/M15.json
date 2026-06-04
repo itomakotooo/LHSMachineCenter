@@ -21,7 +21,8 @@
     "collect_mechanic",
     "bonus_chain_dynamics",
     "topdollar_choice",
-    "spin_type_outcomes"
+    "spin_type_outcomes",
+    "spin_type_rtp_buckets"
   ],
   "rtp_integrity_contract": {
     "required_attribution_anchors": [],

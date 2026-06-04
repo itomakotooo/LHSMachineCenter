@@ -467,3 +467,37 @@ class SpinTypeOutcomes(AnalyzerFeature):
 # register() is idempotent: duplicate FEATURE_ID is a silent no-op.
 # ---------------------------------------------------------------------------
 register(SpinTypeOutcomes())
+
+# ---------------------------------------------------------------------------
+# Auto-import spin_type_rtp_buckets so it self-registers whenever
+# spin_type_outcomes is imported.
+#
+# Mirrors the payouts_by_spin_type → spin_type_outcomes auto-import pattern:
+# uses find_spec to distinguish "module genuinely absent" (non-fatal — skip)
+# from "module present but its import raised" (a real bug — must surface, NOT
+# be swallowed, per feedback_no_silent_swallow.md).
+#
+# spin_type_rtp_buckets.REQUIRES = ("spin_type_outcomes",) ensures the
+# topo-sort places it after us in the emit loop.
+#
+# Neither this file nor spin_type_rtp_buckets.py is in _CLOSURE_FILES so
+# editing either does NOT flip base_hash (R-4 exclusion).
+# ---------------------------------------------------------------------------
+import importlib as _il_strb
+import importlib.util as _ilu_strb
+
+for _strb_name in (
+    "fresh_slotlab.analyzer.features.spin_type_rtp_buckets",
+    "analyzer.features.spin_type_rtp_buckets",
+):
+    try:
+        _strb_spec = _ilu_strb.find_spec(_strb_name)
+    except ModuleNotFoundError:
+        _strb_spec = None  # parent package not importable on this path — try next
+    if _strb_spec is not None:
+        # Found — import WITHOUT swallowing so any error inside the module
+        # (broken import, syntax/name error) propagates loudly.
+        _il_strb.import_module(_strb_name)
+        break
+# If neither path resolves a spec, spin_type_rtp_buckets is genuinely absent
+# (e.g. a trimmed deployment) — that is a non-fatal skip.

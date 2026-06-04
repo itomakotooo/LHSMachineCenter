@@ -117,6 +117,8 @@ def _get_registered_plugin_files() -> set[Path]:
     Phase E update: added topdollar_choice import (10th plugin).
     playtype-rearch: added spin_type_outcomes (11th plugin; auto-registers
       via payouts_by_spin_type.py auto-import to avoid closure-file edits).
+    spin_type_rtp_buckets phase: added spin_type_rtp_buckets (12th plugin; auto-registers
+      via spin_type_outcomes.py auto-import to avoid closure-file edits).
     """
     # Ensure plugins are registered
     try:
@@ -132,6 +134,7 @@ def _get_registered_plugin_files() -> set[Path]:
         import fresh_slotlab.analyzer.features.bonus_chain_dynamics  # noqa: F401
         import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
         import fresh_slotlab.analyzer.features.spin_type_outcomes  # noqa: F401  # playtype-rearch
+        import fresh_slotlab.analyzer.features.spin_type_rtp_buckets  # noqa: F401  # spin_type_rtp_buckets phase
     except ImportError as exc:
         raise ImportError(
             f"Failed to import a registered plugin — cannot build exclusion set: {exc}"
@@ -378,7 +381,7 @@ class TestR4RegistrationCompleteness:
         }
 
         # Ensure plugins are registered (importing them triggers register())
-        _get_registered_plugin_files()  # side effect: all 10 plugins imported (Phase E: +topdollar_choice)
+        _get_registered_plugin_files()  # side effect: all 12 plugins imported (Phase E: +topdollar_choice; spin_type_rtp_buckets phase: +spin_type_rtp_buckets)
 
         from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
 
@@ -451,16 +454,19 @@ class TestR4RegistrationCompleteness:
         playtype-rearch: count bumped 10→11 to include spin_type_outcomes.
           spin_type_outcomes auto-registers via payouts_by_spin_type.py import
           (avoiding closure-file edits that would flip base_hash).
+        spin_type_rtp_buckets phase: count bumped 11→12 to include spin_type_rtp_buckets.
+          spin_type_rtp_buckets auto-registers via spin_type_outcomes.py import
+          (same pattern; does NOT flip base_hash).
         """
-        _get_registered_plugin_files()  # imports all 11 (including auto-registered)
+        _get_registered_plugin_files()  # imports all 12 (including auto-registered)
         from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
 
-        assert len(ALL_FEATURES) == 11, (
-            f"Expected exactly 11 registered plugins, got {len(ALL_FEATURES)}. "
+        assert len(ALL_FEATURES) == 12, (
+            f"Expected exactly 12 registered plugins, got {len(ALL_FEATURES)}. "
             f"Registered FEATURE_IDs: {[f.FEATURE_ID for f in ALL_FEATURES]}. "
             f"If a new plugin was added, update this count AND ensure the plugin "
             f"is registered (either via direct import or via the auto-import "
-            f"mechanism in an existing plugin file like payouts_by_spin_type.py)."
+            f"mechanism in an existing plugin file like spin_type_outcomes.py)."
         )
 
     def test_no_plugin_path_in_closure(self):
@@ -718,6 +724,7 @@ class TestContentCoverageFlip:
             "fresh_slotlab/analyzer/features/bonus_chain_dynamics.py",
             "fresh_slotlab/analyzer/features/topdollar_choice.py",
             "fresh_slotlab/analyzer/features/spin_type_outcomes.py",  # playtype-rearch
+            "fresh_slotlab/analyzer/features/spin_type_rtp_buckets.py",  # spin_type_rtp_buckets phase
         ]
 
         for plugin_path in plugin_paths:
