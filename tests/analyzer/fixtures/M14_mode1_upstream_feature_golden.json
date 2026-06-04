@@ -12515,19 +12515,23 @@
     ],
     "spin_type_breakdown": [
       {
-        "behavior_name": "paid",
-        "hit_rate": 0.20727826086956522,
-        "paid_rounds": 230000,
-        "rare": false,
-        "rtp_contribution_pp": 92.03811304347826,
-        "rtp_pct": 92.03811304347826,
-        "share_pct": 100.0,
         "spin_type": 1,
         "spins": 230000,
+        "share_pct": 100.0,
+        "win_rounds": 47674,
+        "paid_rounds": 230000,
+        "hit_rate": 0.20727826086956522,
         "total_bet": 230000000.0,
         "total_paid_bet": 230000000.0,
         "total_win": 211687660.0,
-        "win_rounds": 47674
+        "rtp_pct": 92.03811304347826,
+        "rtp_contribution_pp": 92.03811304347826,
+        "behavior_name": "paid",
+        "rare": false,
+        "feature_name": "Normal",
+        "feature_rtp_pp": 92.03811304347826,
+        "feature_fire_rate": 1.0,
+        "feature_trigger_only": false
       }
     ],
     "spin_type_coverage": 1,
@@ -13123,7 +13127,7 @@
     "suggested_actions": [
       "All applicable layers pass. No action required."
     ],
-    "summary_message": "RTP integrity PASS \u2014 M14 mode=1. L1=PASS, L2=PASS, L3=PASS, L4=SKIP(no-rawdata-dir)."
+    "summary_message": "RTP integrity PASS — M14 mode=1. L1=PASS, L2=PASS, L3=PASS, L4=SKIP(no-rawdata-dir)."
   },
   "sampling": {
     "achieved_halfwidth_pp": 1.8763246605811676,

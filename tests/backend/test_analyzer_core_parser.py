@@ -760,13 +760,13 @@ class TestBaseAnalyzerVersionHash:
         # chunk key) + PIA C4 accumulators (payout_id_col_set_total /
         # payout_id_symbol_combos_total) → covered_columns + symbol_combo in
         # payout_ids_top20; payouts_by_spin_type SCHEMA_VERSION 2→3 -> 04691124fde6.
-        assert actual == "04691124fde6", (
+        # paytype-rearch: PIA spin_type_rows enrichment (feature cross-reference) -> 8dbbfad6f90f.
+        assert actual == "8dbbfad6f90f", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = '04691124fde6' (R-1 closure value, post P3 payid symbol enrichment:\n"
-            "  parser.py C4 symbol decode + PIA C4 accumulators → base_hash adf08191dd9c→04691124fde6;\n"
-            "  additive-only new fields: payout_id_symbol_combos in chunk dict, covered_columns +\n"
-            "  symbol_combo in payout_ids_top20 + payouts_by_spin_type (SCHEMA_VERSION 2→3).\n"
+            f"  expected = '8dbbfad6f90f' (R-1 closure value, post paytype-rearch feature cross:\n"
+            "  PIA spin_type_rows enrichment → base_hash 04691124fde6→8dbbfad6f90f;\n"
+            "  additive-only new fields: feature_name/rtp_pp/fire_rate/trigger_only in spin_type_breakdown rows.\n"
             "Phase honesty-2 expanded base_hash from core/*.py (old: fa440e3eb5f6) to the\n"
             "25-file report-production import closure (960e9d18d83d); phase 2a then carved\n"
             "collect_mechanic's compute out of PIA (-> 57fdb323585d), phase 2b carved\n"
@@ -778,7 +778,8 @@ class TestBaseAnalyzerVersionHash:
             "PT-3 BCM-cycle carve moved the 5 cycle fns out of the closure (-> 85666c4c4407),\n"
             "Phase D deleted the play-type plugin framework + C3 Layer-0 wiring (-> 8a791a69cd05),\n"
             "Phase E registered topdollar_choice + parser.py TD accumulator (-> adf08191dd9c),\n"
-            "P3 payid symbol enrichment: parser.py C4 + PIA accumulators (-> 04691124fde6).\n"
+            "P3 payid symbol enrichment: parser.py C4 + PIA accumulators (-> 04691124fde6),\n"
+            "paytype-rearch feature cross: PIA spin_type_rows enrichment (-> 8dbbfad6f90f).\n"
             "core/parser.py is still in the closure — editing it still flips base_hash."
         )
 

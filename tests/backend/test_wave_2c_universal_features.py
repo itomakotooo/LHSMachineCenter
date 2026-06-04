@@ -737,12 +737,12 @@ class TestHashComposition:
         # parser.py / base_pipeline.py + C3 Layer-0 from PIA -> 8a791a69cd05.
         # Behavior byte-identical: framework flag-off-dormant; C3 L0 == L1 for pilots.
         actual = _cbav()
-        assert actual == "04691124fde6", (
+        assert actual == "8dbbfad6f90f", (
             f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
             f"  actual   = {actual!r}\n"
-            f"  expected = '04691124fde6' (R-1 closure value, post Phase-E topdollar_choice registration:\n"
-            "  closure import add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c;\n"
-            "  M15-only applicability; existing output additive-only).\n"
+            f"  expected = '8dbbfad6f90f' (R-1 closure value, post paytype-rearch feature cross:\n"
+            "  PIA spin_type_rows enrichment → base_hash 04691124fde6→8dbbfad6f90f;\n"
+            "  additive display metadata only, no RTP change).\n"
             "R-4 exclusion covers registered plugins only (not all features/*.py).\n"
             "_base.py and features/__init__.py are still in base (not registered plugins)."
         )

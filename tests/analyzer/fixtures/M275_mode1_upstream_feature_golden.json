@@ -18,7 +18,7 @@
       "avg_paid_spins_per_collect": 5.0,
       "chunk_spin_times_recommendation": {
         "current": 5000,
-        "rationale": "BCM cycle length 1000 * avg 5.00 spins/collect = 5000 spins/cycle; current chunk_spin_times 5000 meets recommended minimum 5000 but is below safety margin 7500 (x1.5) \u2014 consider widening for more reliable cycle completion",
+        "rationale": "BCM cycle length 1000 * avg 5.00 spins/collect = 5000 spins/cycle; current chunk_spin_times 5000 meets recommended minimum 5000 but is below safety margin 7500 (x1.5) — consider widening for more reliable cycle completion",
         "recommended_min": 5000,
         "recommended_safety": 7500
       },
@@ -7294,34 +7294,42 @@
     ],
     "spin_type_breakdown": [
       {
-        "behavior_name": "paid",
-        "hit_rate": 0.1385875,
-        "paid_rounds": 80000,
-        "rare": false,
-        "rtp_contribution_pp": 40.24862498596924,
-        "rtp_pct": 44.821875,
-        "share_pct": 89.79683466157819,
         "spin_type": 140,
         "spins": 80000,
+        "share_pct": 89.79683466157819,
+        "win_rounds": 11087,
+        "paid_rounds": 80000,
+        "hit_rate": 0.1385875,
         "total_bet": 80000000.0,
         "total_paid_bet": 80000000.0,
         "total_win": 35857500.0,
-        "win_rounds": 11087
+        "rtp_pct": 44.821875,
+        "rtp_contribution_pp": 40.24862498596924,
+        "behavior_name": "paid",
+        "rare": false,
+        "feature_name": "NormalCollectionSpin",
+        "feature_rtp_pp": 44.821875,
+        "feature_fire_rate": 0.8979683466157818,
+        "feature_trigger_only": false
       },
       {
-        "behavior_name": "free",
-        "hit_rate": 0.2503850385038504,
-        "paid_rounds": 0,
-        "rare": false,
-        "rtp_contribution_pp": 39.882702884723315,
-        "rtp_pct": null,
-        "share_pct": 10.20316533842182,
         "spin_type": 126,
         "spins": 9090,
+        "share_pct": 10.20316533842182,
+        "win_rounds": 2276,
+        "paid_rounds": 0,
+        "hit_rate": 0.2503850385038504,
         "total_bet": 9090000.0,
         "total_paid_bet": 0.0,
         "total_win": 35531500.0,
-        "win_rounds": 2276
+        "rtp_pct": null,
+        "rtp_contribution_pp": 39.882702884723315,
+        "behavior_name": "free",
+        "rare": false,
+        "feature_name": "NewFreespin",
+        "feature_rtp_pp": 44.414375,
+        "feature_fire_rate": 0.10203165338421821,
+        "feature_trigger_only": false
       }
     ],
     "spin_type_coverage": 2,
@@ -8249,7 +8257,7 @@
     "suggested_actions": [
       "All applicable layers pass. No action required."
     ],
-    "summary_message": "RTP integrity PASS \u2014 M275 mode=1. L1=PASS, L2=PASS, L3=PASS, L4=SKIP(no-rawdata-dir)."
+    "summary_message": "RTP integrity PASS — M275 mode=1. L1=PASS, L2=PASS, L3=PASS, L4=SKIP(no-rawdata-dir)."
   },
   "sampling": {
     "achieved_halfwidth_pp": 2.1594723888368157,

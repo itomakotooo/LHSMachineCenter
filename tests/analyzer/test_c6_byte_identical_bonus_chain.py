@@ -125,10 +125,10 @@ class TestBaseHashUnchangedC6:
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
-        assert actual == "04691124fde6", (
-            f"base_hash must be '04691124fde6' (R-1 closure value, post Phase-E topdollar_choice registration: "
-            f"closure import add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c; "
-            f"M15-only applicability; existing output additive-only). "
+        assert actual == "8dbbfad6f90f", (
+            f"base_hash must be '8dbbfad6f90f' (R-1 closure value, post paytype-rearch feature cross: "
+            f"PIA spin_type_rows enrichment → base_hash 04691124fde6→8dbbfad6f90f; "
+            f"additive display metadata only, no RTP change). "
             f"Got: {actual!r}. "
             f"Registered plugin additions must NOT change base_hash (R-4 exclusion). "
             f"If a production-path file (in _CLOSURE_FILES) was modified, update this pin."

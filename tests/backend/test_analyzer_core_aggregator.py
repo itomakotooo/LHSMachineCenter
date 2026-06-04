@@ -1307,14 +1307,14 @@ class TestHashCompositionRollsForward:
         # P3 payid symbol enrichment: parser.py C4 symbol decode + PIA C4 accumulators
         # → covered_columns + symbol_combo in payout_ids_top20; payouts_by_spin_type
         # SCHEMA_VERSION 2→3 -> 04691124fde6.
+        # paytype-rearch: PIA spin_type_rows enrichment (feature cross-reference) -> 8dbbfad6f90f.
         # If this value changes again, a _CLOSURE_FILES source was edited.
-        assert actual1 == "04691124fde6", (
+        assert actual1 == "8dbbfad6f90f", (
             f"compute_base_analyzer_version() diverges from R-1 closure reference:\n"
             f"  actual   = {actual1!r}\n"
-            f"  expected = '04691124fde6' (R-1 closure value, post P3 payid symbol enrichment:\n"
-            "  parser.py C4 symbol decode + PIA C4 accumulators → base_hash adf08191dd9c→04691124fde6;\n"
-            "  additive-only new fields: payout_id_symbol_combos in chunk dict, covered_columns +\n"
-            "  symbol_combo in payout_ids_top20 + payouts_by_spin_type (SCHEMA_VERSION 2→3).\n"
+            f"  expected = '8dbbfad6f90f' (R-1 closure value, post paytype-rearch feature cross:\n"
+            "  PIA spin_type_rows enrichment (feature_name/rtp_pp/fire_rate/trigger_only) → 04691124fde6→8dbbfad6f90f;\n"
+            "  additive-only new fields: feature_* in each spin_type_breakdown row.\n"
             "The R-1 closure covers core/*.py plus content modules (round_classification,\n"
             "round_win, trigger_sessions, sampler, machine_md5, chunk_index, rawdata_index)\n"
             "and support modules. If this changed, update the pin to the new value and\n"

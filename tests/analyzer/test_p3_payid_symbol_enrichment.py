@@ -5,7 +5,7 @@ Tests all 7 gates from the impl-tester brief (2026-06-03):
   Gate 2 — byte-identical (additive-only): existing fields unchanged
   Gate 3 — RTP parity: rtp_integrity_check.passed == True
   Gate 4 — Edge cases: empty positions (), special line_id -1/-1000, missing SSBC
-  Gate 5 — base_hash gate: compute_base_analyzer_version() == '04691124fde6'
+  Gate 5 — base_hash gate: compute_base_analyzer_version() == '8dbbfad6f90f'
   Gate 6 — inject-bug: corrupt row decode -> symbol_combo wrong -> revert -> GREEN
   Gate 7 — suite delta: no NEW failures
 
@@ -62,7 +62,7 @@ _M15_CACHE = _RAWDATA / "M15" / "mode_1"
 
 # The pinned base_hash after C4 symbol enrichment (parser.py + PIA edits).
 # This is the authoritative value re-pinned by coordinator after implementer.
-_EXPECTED_BASE_HASH = "04691124fde6"
+_EXPECTED_BASE_HASH = "8dbbfad6f90f"  # paytype-rearch: PIA spin_type_rows enrichment → 04691124fde6→8dbbfad6f90f
 
 # C3 existing fields that MUST be unchanged post-C4 (byte-identical).
 _C3_LEGACY_KEYS = frozenset({
@@ -256,14 +256,13 @@ def m15_summary():
 # ---------------------------------------------------------------------------
 
 class TestBaseHash:
-    """Gate 5: base_hash must be 04691124fde6 (C4 re-pin)."""
+    """Gate 5: base_hash must be 8dbbfad6f90f (paytype-rearch re-pin)."""
 
     def test_base_hash_equals_pinned_value(self):
-        """compute_base_analyzer_version() == '04691124fde6'.
+        """compute_base_analyzer_version() == '8dbbfad6f90f'.
 
-        The C4 symbol enrichment edits parser.py (new accumulator + decode block)
-        and player_impact_analyzer.py (new aggregator path). Both are closure files
-        -> base_hash flips from adf08191dd9c to 04691124fde6.
+        The C4 symbol enrichment (parser.py + PIA) → 04691124fde6.
+        paytype-rearch feature cross (PIA spin_type_rows enrichment) → 8dbbfad6f90f.
 
         INJECT-BUG: edit parser.py to add a no-op comment to the C4 block.
         RED: base_hash will differ from _EXPECTED_BASE_HASH.
@@ -273,8 +272,8 @@ class TestBaseHash:
         actual = compute_base_analyzer_version()
         assert actual == _EXPECTED_BASE_HASH, (
             f"base_hash mismatch: expected {_EXPECTED_BASE_HASH!r}, got {actual!r}.\n"
-            "If C4 symbol enrichment (parser.py + player_impact_analyzer.py) is present,\n"
-            "base_hash must be 04691124fde6. A different value means a closure file was\n"
+            "If paytype-rearch feature cross (player_impact_analyzer.py spin_type_rows enrichment) is present,\n"
+            "base_hash must be 8dbbfad6f90f. A different value means a closure file was\n"
             "unexpectedly added or changed."
         )
 
@@ -309,6 +308,30 @@ class TestBaseHash:
                     violations.append(f"{test_file.relative_to(_REPO_ROOT)}:{lineno}: {line.rstrip()}")
         assert not violations, (
             f"Found hard equality assertions on old hash {old_hash!r}:\n"
+            + "\n".join(violations)
+        )
+
+    def test_no_p3_hash_asserted_anywhere(self):
+        """No test file (other than this one) asserts equality to the retired 04691124fde6 hash.
+
+        That hash was the P3/Phase-E value; paytype-rearch re-pins to 8dbbfad6f90f.
+        History references in comments are allowed; equality assertions are not.
+        """
+        old_hash = "04691124fde6"
+        this_file = Path(__file__).resolve()
+        violations: list[str] = []
+        for test_file in ((_REPO_ROOT / "tests").rglob("*.py")):
+            if test_file.resolve() == this_file:
+                continue  # skip self
+            lines = test_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            for lineno, line in enumerate(lines, 1):
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    continue
+                if f'== "{old_hash}"' in line or f"== '{old_hash}'" in line:
+                    violations.append(f"{test_file.relative_to(_REPO_ROOT)}:{lineno}: {line.rstrip()}")
+        assert not violations, (
+            f"Found hard equality assertions on retired hash {old_hash!r}:\n"
             + "\n".join(violations)
         )
 

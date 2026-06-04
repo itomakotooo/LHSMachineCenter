@@ -3522,6 +3522,70 @@ def main() -> int:
         )
     )
 
+    # ── per-SpinType × feature cross-reference enrichment (paytype-rearch) ──
+    # Deliverable 1: enrich spin_type_breakdown rows (built earlier at ~3266)
+    # with a feature cross from the just-computed spin_type_to_feature mapping.
+    # Sources:
+    #   - spin_type_to_feature  (dict[int, str]) — mapping from _infer_feature_spin_type_mapping above
+    #   - feature_times_total   (dict[str, int]) — for fire_rate denominator
+    #   - feature_win_total     (dict[str, float]) — for rtp_contribution_pp
+    #   - total_spins           (int) — already accumulated in the merge loop
+    #   - effective_bet_for_rtp (float) — already computed above
+    #
+    # The four new fields per row:
+    #   feature_name       — str | None (feature the SpinType maps to)
+    #   feature_rtp_pp     — float | None (feature's rtp_contribution_pp in the global sense)
+    #   feature_fire_rate  — float | None (feature_times / total_spins)
+    #   feature_trigger_only — bool | None (win==0 but fires>0)
+    #
+    # No crash if spin_type_to_feature is empty (non-feature machines, or machines
+    # where inference found no binding). Per feedback_no_silent_swallow.md: the
+    # lookup is purely additive/display-only; any KeyError would be a code bug,
+    # not a runtime/data condition, so we use .get() (None if missing).
+    if spin_type_to_feature:
+        # Pre-build a per-feature scalar lookup so the inner loop is O(1).
+        _feat_rtp_pp_lookup: dict[str, float | None] = {}
+        _feat_fire_rate_lookup: dict[str, float | None] = {}
+        _feat_trigger_only_lookup: dict[str, bool | None] = {}
+        for _fname, _ftimes in feature_times_total.items():
+            _fwin = feature_win_total.get(_fname, 0.0)
+            _fpp: float | None = (
+                (_fwin / effective_bet_for_rtp) * 100.0
+                if effective_bet_for_rtp > 0 and _ftimes > 0 else None
+            )
+            _frate: float | None = (
+                _ftimes / total_spins if total_spins > 0 and _ftimes > 0 else None
+            )
+            _ftrigonly: bool | None = (
+                bool(_ftimes > 0 and _fwin == 0.0) if _ftimes > 0 else None
+            )
+            _feat_rtp_pp_lookup[_fname] = _fpp
+            _feat_fire_rate_lookup[_fname] = _frate
+            _feat_trigger_only_lookup[_fname] = _ftrigonly
+
+        for _stb_row in spin_type_rows:
+            _st_int_val = int(_stb_row["spin_type"])
+            _mapped_feat = spin_type_to_feature.get(_st_int_val)
+            _stb_row["feature_name"] = _mapped_feat
+            _stb_row["feature_rtp_pp"] = (
+                _feat_rtp_pp_lookup.get(_mapped_feat) if _mapped_feat else None
+            )
+            _stb_row["feature_fire_rate"] = (
+                _feat_fire_rate_lookup.get(_mapped_feat) if _mapped_feat else None
+            )
+            _stb_row["feature_trigger_only"] = (
+                _feat_trigger_only_lookup.get(_mapped_feat) if _mapped_feat else None
+            )
+    else:
+        # No feature mapping available (machine has no FeatureWin data or inference
+        # found no bindings). Pad all rows with None so the schema stays consistent.
+        for _stb_row in spin_type_rows:
+            _stb_row["feature_name"] = None
+            _stb_row["feature_rtp_pp"] = None
+            _stb_row["feature_fire_rate"] = None
+            _stb_row["feature_trigger_only"] = None
+    # ── end feature cross-reference ──────────────────────────────────────────
+
     # Compute wild-nudge SpinType set once for the whole chunk-stream.
     # A SpinType counts as wild-nudge when >=90% of its rounds were
     # tagged by ``is_wild_nudge_round`` during chunk parsing (cost=0

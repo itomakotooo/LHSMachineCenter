@@ -120,13 +120,21 @@ class TopDollarChoice(AnalyzerFeature):
 
     FEATURE_ID: ClassVar[str] = "topdollar_choice"
     SCHEMA_KEYS: ClassVar[tuple[str, ...]] = ("topdollar_choice",)
-    SCHEMA_VERSION: ClassVar[int] = 1
+    SCHEMA_VERSION: ClassVar[int] = 2  # bumped 1→2 (paytype-rearch): added feature_name field
     RTP_CONTRIBUTION: ClassVar[bool] = False  # economy is ST=15 SettlementWinAmountRule
     DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
     REQUIRES: ClassVar[tuple[str, ...]] = ()
-    REGISTERED_FALLBACK_RULES: ClassVar[dict[int, dict]] = {}
+    REGISTERED_FALLBACK_RULES: ClassVar[dict[int, dict]] = {
+        1: {
+            # v1 → v2: feature_name was absent in v1 summaries.
+            # Frontend renders it as None (unmapped) for historical reports.
+            "feature_name": None,
+        },
+    }
 
-    # Phase E: M15 TopDollar — no prior schema versions.
+    # Phase E: M15 TopDollar — schema v1 (initial).
+    # paytype-rearch: bumped to v2 — added feature_name (FeatureWin feature
+    # the TopDollar settlement maps to, e.g. "TopDollar" on M15).
 
     def extract(self, parse_state: Any, chunk_dict: Any) -> dict:
         """Lift topdollar_sessions list from chunk_dict.
@@ -164,6 +172,7 @@ class TopDollarChoice(AnalyzerFeature):
 
           {
             "applicable":         bool,       # True iff any TD sessions were seen
+            "feature_name":       str|None,   # FeatureWin name the settlement ST maps to
             "total_sessions":     int,        # total TopDollar sessions
             "trigger_rate":       float,      # sessions / total_paid_spins
             "picks_per_session":  {           # distribution of n_picks (1-4)
@@ -186,14 +195,73 @@ class TopDollarChoice(AnalyzerFeature):
         RTP sum (``RTP_CONTRIBUTION = False``).  It shows how much of total
         machine RTP this mechanic accounts for.
 
+        ``feature_name`` is the FeatureWin feature bound to the TopDollar
+        settlement (the paying feature, trigger_only=False).  Sourced from
+        the ``spin_type_to_feature`` mapping in the upstream stash or from
+        the already-emitted upstream_feature_breakdown, whichever is available.
+        None if no mapping is resolvable (graceful — does not affect RTP).
+
         Raises RuntimeError if accumulated data is malformed (per
         feedback_no_silent_swallow.md).
         """
         sessions: list[dict] = (final_acc or {}).get("sessions") or []
 
+        # ── Resolve feature_name from the upstream mapping (SCHEMA_VERSION 2) ──
+        # Strategy:
+        #   1. Try the _upstream_feature_breakdown_data stash (present if the
+        #      upstream_feature_breakdown plugin hasn't run yet).
+        #   2. Try already-emitted player_impact.upstream_feature_breakdown.features
+        #      (present if upstream_feature_breakdown ran before us).
+        #   3. None (graceful fallback — never crashes).
+        #
+        # We identify the settlement feature as the non-trigger-only feature
+        # with the highest rtp_contribution_pp in the upstream breakdown.
+        # This generalises to M12/M90/M132/M206 without hardcoding "TopDollar".
+        _settlement_feature_name: str | None = None
+        try:
+            # Path 1: stash still present
+            _stash = summary.get("_upstream_feature_breakdown_data") or {}
+            _st2feat = _stash.get("spin_type_to_feature") or {}
+            _feat_tally = _stash.get("upstream_feature_tally") or {}
+            _eff_bet = _stash.get("effective_bet_for_rtp") or 0.0
+            if _st2feat and _feat_tally:
+                # Find the paying (non-trigger-only) feature with highest rtp_pp.
+                _best_feat: str | None = None
+                _best_pp = -1.0
+                for _feat_name, _payouts in _feat_tally.items():
+                    _fwin = sum(float(p.get("win", 0) or 0) for p in _payouts.values())
+                    _ftimes = sum(int(p.get("times", 0)) for p in _payouts.values())
+                    if _ftimes > 0 and _fwin > 0.0:
+                        _fpp = (_fwin / _eff_bet * 100.0) if _eff_bet > 0 else 0.0
+                        if _fpp > _best_pp:
+                            _best_pp = _fpp
+                            _best_feat = str(_feat_name)
+                _settlement_feature_name = _best_feat
+            elif not _st2feat:
+                # Path 2: stash consumed — try already-emitted breakdown
+                _ufb = (summary.get("player_impact") or {}).get(
+                    "upstream_feature_breakdown"
+                ) or {}
+                _ufb_feats = _ufb.get("features") or []
+                _best_feat2: str | None = None
+                _best_pp2 = -1.0
+                for _row in _ufb_feats:
+                    if not _row.get("trigger_only") and float(
+                        _row.get("rtp_contribution_pp") or 0.0
+                    ) > _best_pp2:
+                        _best_pp2 = float(_row.get("rtp_contribution_pp") or 0.0)
+                        _best_feat2 = _row.get("feature_name")
+                _settlement_feature_name = _best_feat2
+        except Exception:  # noqa: BLE001
+            # Per feedback_no_silent_swallow.md: feature_name resolution is
+            # best-effort display metadata. A lookup failure must not crash
+            # the analyzer — leave _settlement_feature_name as None.
+            _settlement_feature_name = None
+
         if not sessions:
             summary["topdollar_choice"] = {
                 "applicable": False,
+                "feature_name": _settlement_feature_name,
                 "total_sessions": 0,
                 "trigger_rate": 0.0,
                 "picks_per_session": {"1": 0, "2": 0, "3": 0, "4": 0},
@@ -323,6 +391,7 @@ class TopDollarChoice(AnalyzerFeature):
 
         summary["topdollar_choice"] = {
             "applicable": True,
+            "feature_name": _settlement_feature_name,
             "total_sessions": total_sessions,
             "trigger_rate": trigger_rate,
             "picks_per_session": picks_dist,

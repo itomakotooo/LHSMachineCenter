@@ -121,7 +121,7 @@ _TARGET_SETTLED_MAX = 440000
 _TARGET_RTP_CONTRIBUTION_LOW = 49.0
 _TARGET_RTP_CONTRIBUTION_HIGH = 52.0
 
-_EXPECTED_BASE_HASH = "04691124fde6"  # Phase E post-registration value
+_EXPECTED_BASE_HASH = "8dbbfad6f90f"  # paytype-rearch: PIA spin_type_rows enrichment → 04691124fde6→8dbbfad6f90f
 
 
 # ---------------------------------------------------------------------------
@@ -954,26 +954,25 @@ class TestRTPIntegrity:
 # ---------------------------------------------------------------------------
 
 class TestBaseHashRePin:
-    """Gate 6: base_hash must be adf08191dd9c; no assertion on 8a791a69cd05 remains."""
+    """Gate 6: base_hash must be 8dbbfad6f90f; no assertion on 04691124fde6 remains."""
 
     def test_base_hash_equals_phase_e_value(self):
-        """compute_base_analyzer_version() == '04691124fde6' (Phase E registration).
+        """compute_base_analyzer_version() == '8dbbfad6f90f' (paytype-rearch re-pin).
 
-        Phase E added the topdollar_choice feature import to versioning.py's
-        try block (+ parser.py TD session accumulator). Both are closure files
-        → base_hash flipped 8a791a69cd05 → adf08191dd9c.
+        Phase E registered topdollar_choice → 04691124fde6.
+        paytype-rearch: PIA spin_type_rows enrichment (player_impact_analyzer.py
+        gains feature_* fields per row) → base_hash 04691124fde6→8dbbfad6f90f.
 
         Note: editing topdollar_choice.py itself does NOT flip this (R-4).
-        The flip happened because versioning.py and parser.py (closure files)
-        were edited to add the import + accumulator.
+        The flip happened because player_impact_analyzer.py (a closure file) was
+        edited to add the feature cross-reference enrichment to spin_type_rows.
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         actual = compute_base_analyzer_version()
         assert actual == _EXPECTED_BASE_HASH, (
-            f"base_hash mismatch. Expected {_EXPECTED_BASE_HASH!r} (Phase E value), "
+            f"base_hash mismatch. Expected {_EXPECTED_BASE_HASH!r} (paytype-rearch value), "
             f"got {actual!r}.\n"
-            "Phase E change: registered topdollar_choice feature → versioning.py import "
-            "add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c.\n"
+            "paytype-rearch: PIA spin_type_rows enrichment → base_hash 04691124fde6→8dbbfad6f90f.\n"
             "If you see a different hash, a closure file was edited unexpectedly."
         )
 
@@ -1013,9 +1012,9 @@ class TestFeaturePluginContract:
         assert "topdollar_choice" in td_mod.TopDollarChoice.SCHEMA_KEYS
 
     def test_schema_version(self):
-        """SCHEMA_VERSION == 1 (no prior versions)."""
+        """SCHEMA_VERSION == 2 (paytype-rearch: added feature_name field; v1 fallback rule present)."""
         import fresh_slotlab.analyzer.features.topdollar_choice as td_mod
-        assert td_mod.TopDollarChoice.SCHEMA_VERSION == 1
+        assert td_mod.TopDollarChoice.SCHEMA_VERSION == 2
 
     def test_declared_deps_is_empty(self):
         """DECLARED_DEPS == () — no summary temp-key dependencies."""

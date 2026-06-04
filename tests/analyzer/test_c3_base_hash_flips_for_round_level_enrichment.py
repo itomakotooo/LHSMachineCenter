@@ -87,7 +87,7 @@ _C2_BASE_HASH = "b0ba0ce7c7e2"
 # PIA again → ccc1ecce185d; phase 6 (bankruptcy_simulation row-build carve — the LAST
 # carve) shrank PIA again → d8b8c138874a (one-time fleet re-baseline, report content
 # byte-identical).
-_EXPECTED_C3_BASE_HASH = "04691124fde6"  # Phase E: registered topdollar_choice feature → closure import add + parser.py TD session accumulator → base_hash 8a791a69cd05→adf08191dd9c; M15-only applicability; existing output additive-only
+_EXPECTED_C3_BASE_HASH = "8dbbfad6f90f"  # paytype-rearch feature cross: PIA spin_type_rows enrichment → base_hash 04691124fde6→8dbbfad6f90f; additive (display metadata only, no RTP change)
 
 _HEX12_RE = re.compile(r"^[0-9a-f]{12}$")
 
