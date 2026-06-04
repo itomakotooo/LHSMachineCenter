@@ -279,6 +279,48 @@ def _strip_volatile(data: dict) -> dict:
     return data
 
 
+def _leaf_paths(obj, path: str = "", acc: dict | None = None) -> dict:
+    """Flatten a normalized summary into {leaf_path: scalar_value}.
+
+    Dicts recurse by key (``.key``); lists by index (``[i]``). Used by the
+    additive-only gate to compare at LEAF granularity rather than top-level
+    keys -- so an additive change *nested inside* an existing key (e.g.
+    payid symbol-combo or ST x feature fields added to player_impact rows)
+    is correctly classified as "added", not "changed".
+    """
+    if acc is None:
+        acc = {}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            _leaf_paths(v, f"{path}.{k}", acc)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            _leaf_paths(v, f"{path}[{i}]", acc)
+    else:
+        acc[path] = obj
+    return acc
+
+
+def _additive_diff(golden: dict, post: dict) -> tuple[list, list, list]:
+    """Leaf-level diff: (changed, removed, added) path lists.
+
+    ``changed`` = a pre-existing leaf whose value differs (FORBIDDEN by the
+    additive-only invariant). ``removed`` = a pre-existing leaf gone
+    (FORBIDDEN). ``added`` = a new leaf path (ALLOWED -- this is what an
+    additive enrichment looks like). The pristine golden stays frozen as the
+    immutable pre-feature reference; every later additive change (Phase E
+    topdollar_choice, payid symbol combos, ST x feature cross) must show up
+    only in ``added``.
+    """
+    g = _leaf_paths(golden)
+    p = _leaf_paths(post)
+    gk, pk = set(g), set(p)
+    changed = sorted(k for k in gk & pk if g[k] != p[k])
+    removed = sorted(gk - pk)
+    added = sorted(pk - gk)
+    return changed, removed, added
+
+
 def _load_norm(path: Path) -> dict:
     return _strip_volatile(json.loads(path.read_bytes().decode("utf-8")))
 
@@ -508,37 +550,50 @@ class TestByteIdenticalGate:
     @_SKIP_NO_GOLDEN
     @_SKIP_NO_M15
     def test_m15_additive_only_new_section(self, tmp_path):
-        """M15: only 'topdollar_choice' key added; zero pre-existing diffs.
+        """M15: every change vs the pristine golden is ADDITIVE (leaf-level).
 
-        The pre-change golden (--max-chunks 2) must match the post-change
-        run (--max-chunks 2) in all pre-existing fields. Only 'topdollar_choice'
-        is new.
+        The pristine golden (--max-chunks 2) is the frozen pre-feature
+        reference. Running current code (--max-chunks 2) may only ADD leaf
+        paths -- no pre-existing leaf may change value or disappear.
+
+        At LEAF granularity this tolerates additive enrichments nested inside
+        an existing top-level key (payid symbol-combo + covered-cols, ST x
+        feature cross fields added to player_impact rows) while still catching
+        any destructive drift. At TOP-LEVEL granularity, 'topdollar_choice' is
+        the only new key (the nested enrichments do not add a top-level key).
         """
         out_dir = tmp_path / "m15_bite_identical"
         summary_post = _run_pia_subprocess("M15", 1, _RAWDATA_M15, out_dir, max_chunks=2)
         golden = _load_norm(_GOLDEN_M15)
         post = _strip_volatile(summary_post)
 
-        new_keys = set(post.keys()) - set(golden.keys())
-        changed_pre_existing = {
-            k for k in golden.keys() if golden.get(k) != post.get(k)
-        }
-        assert not changed_pre_existing, (
-            f"Pre-existing fields changed in M15 post-Phase-E run: {sorted(changed_pre_existing)}. "
-            "Phase E must be additive-only — no pre-existing field may change."
+        changed, removed, added = _additive_diff(golden, post)
+        assert not changed, (
+            f"Pre-existing leaves CHANGED in M15 (additive-only violated): "
+            f"{changed[:20]}"
         )
-        assert new_keys == {"topdollar_choice"}, (
-            f"Expected only 'topdollar_choice' as new key, got: {sorted(new_keys)}"
+        assert not removed, (
+            f"Pre-existing leaves REMOVED in M15 (additive-only violated): "
+            f"{removed[:20]}"
+        )
+        assert added, "Expected additive new leaves (topdollar_choice et al.); found none."
+
+        new_top_keys = set(post.keys()) - set(golden.keys())
+        assert new_top_keys == {"topdollar_choice"}, (
+            f"Expected only 'topdollar_choice' as new TOP-LEVEL key, got: {sorted(new_top_keys)}"
         )
 
     @_SKIP_NO_GOLDEN
     @_SKIP_NO_M14
-    def test_m14_fully_identical_no_topdollar_section(self, tmp_path):
-        """M14 (non-TD machine): fully byte-identical — no new key, no change.
+    def test_m14_additive_only_no_topdollar_section(self, tmp_path):
+        """M14 (non-TD machine): NO topdollar_choice; all change additive-only.
 
-        M14.json does NOT list topdollar_choice, so the feature must not appear.
-        The parser.py accumulator must also produce zero sessions for M14
-        (it has no ST=14 rounds), keeping the output bit-for-bit identical.
+        M14.json does NOT list topdollar_choice, so the feature must not appear
+        (no top-level 'topdollar_choice' key, and the parser accumulator yields
+        zero sessions). Cross-machine additive enrichments (payid symbol-combo
+        + covered-cols, and the ST x feature cross for M14's own FeatureWin
+        mapping) DO legitimately add nested leaves to player_impact -- so the
+        invariant is additive-only at leaf granularity, not full byte-equality.
         """
         out_dir = tmp_path / "m14_byte_identical"
         summary_post = _run_pia_subprocess("M14", 1, _RAWDATA_M14, out_dir, max_chunks=2)
@@ -549,9 +604,12 @@ class TestByteIdenticalGate:
             "topdollar_choice section appeared in M14 output — feature should NOT "
             "apply to non-TD machines."
         )
-        assert golden == post, (
-            "M14 output changed after Phase E — must be fully byte-identical.\n"
-            f"Changed keys: {sorted(k for k in set(golden)|set(post) if golden.get(k)!=post.get(k))}"
+        changed, removed, added = _additive_diff(golden, post)
+        assert not changed, (
+            f"Pre-existing leaves CHANGED in M14 (additive-only violated): {changed[:20]}"
+        )
+        assert not removed, (
+            f"Pre-existing leaves REMOVED in M14 (additive-only violated): {removed[:20]}"
         )
 
 
