@@ -20,7 +20,8 @@
     "upstream_feature_breakdown",
     "collect_mechanic",
     "bonus_chain_dynamics",
-    "topdollar_choice"
+    "topdollar_choice",
+    "spin_type_outcomes"
   ],
   "rtp_integrity_contract": {
     "required_attribution_anchors": [],

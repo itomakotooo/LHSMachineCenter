@@ -17,7 +17,7 @@ Gap closure assertions
 Cross-phase invariants
 ----------------------
 - base_hash is the R-1 closure value (d8b8c138874a as of phase-6; registered plugins excluded by R-4).
-- 9 plugins registered in ALL_FEATURES.
+- 11 plugins registered in ALL_FEATURES (10 post-Phase-E + spin_type_outcomes playtype-rearch).
 - feature_errors absent or empty for M275.
 - No _ prefix stash keys at top level of final summary.
 
@@ -139,15 +139,19 @@ class TestCarveCompletionPreconditions:
         )
 
     def test_ten_plugins_registered(self):
-        """Exactly 10 plugins must be in ALL_FEATURES after all phase imports.
+        """Exactly 11 plugins must be in ALL_FEATURES after all phase imports.
 
         Phase E update: count bumped 9→10 to include topdollar_choice.
-        10 plugins: payouts_by_spin_type / reel_marginal_by_spin_type /
+        playtype-rearch: count bumped 10→11 to include spin_type_outcomes
+          (auto-registered via payouts_by_spin_type.py import).
+        11 plugins: payouts_by_spin_type / reel_marginal_by_spin_type /
         bankruptcy_simulation / multiplier_profile / multiplier_wild /
         machine_mechanics / upstream_feature_breakdown / collect_mechanic /
-        bonus_chain_dynamics (C6) / topdollar_choice (Phase E).
+        bonus_chain_dynamics (C6) / topdollar_choice (Phase E) /
+        spin_type_outcomes (playtype-rearch).
         """
-        # Import all 10 to trigger registration
+        # Import all 11 to trigger registration
+        # (spin_type_outcomes auto-registers via payouts_by_spin_type import)
         import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
         import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
         import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
@@ -160,8 +164,8 @@ class TestCarveCompletionPreconditions:
         import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
         from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
         count = len(ALL_FEATURES)
-        assert count == 10, (
-            f"Expected exactly 10 plugins in ALL_FEATURES. Got {count}: "
+        assert count == 11, (
+            f"Expected exactly 11 plugins in ALL_FEATURES. Got {count}: "
             f"{[f.FEATURE_ID for f in ALL_FEATURES]}"
         )
 

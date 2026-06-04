@@ -579,3 +579,41 @@ class PayoutsBySpinType(AnalyzerFeature):
 # Per ticket P2-C §4 C2: duplicate registration is a silent no-op.
 # ---------------------------------------------------------------------------
 register(PayoutsBySpinType())
+
+# ---------------------------------------------------------------------------
+# Auto-import spin_type_outcomes so it self-registers whenever
+# payouts_by_spin_type is imported.
+#
+# This avoids touching player_impact_analyzer.py (a closure file) and
+# therefore does NOT flip base_hash (R-4 exclusion: feature plugin files
+# are excluded from _CLOSURE_FILES).
+#
+# spin_type_outcomes.REQUIRES = ("payouts_by_spin_type",) ensures the
+# topo-sort places it after us in the emit loop.
+#
+# Both this file and spin_type_outcomes.py are feature plugin files
+# (NOT in _CLOSURE_FILES) so editing either does not flip base_hash.
+# ---------------------------------------------------------------------------
+# Use find_spec to distinguish "module genuinely absent" (non-fatal — skip)
+# from "module present but its import raised" (a real bug — must surface, NOT
+# be swallowed, per feedback_no_silent_swallow.md). A bare `except ImportError:
+# pass` would hide a broken spin_type_outcomes as silent non-registration,
+# which only resurfaces later as a misleading PluginMissingDependencyError.
+import importlib as _il
+import importlib.util as _ilu
+
+for _sto_name in (
+    "fresh_slotlab.analyzer.features.spin_type_outcomes",
+    "analyzer.features.spin_type_outcomes",
+):
+    try:
+        _sto_spec = _ilu.find_spec(_sto_name)
+    except ModuleNotFoundError:
+        _sto_spec = None  # parent package not importable on this path — try next
+    if _sto_spec is not None:
+        # Found — import WITHOUT swallowing so any error inside the module
+        # (broken import, syntax/name error) propagates loudly.
+        _il.import_module(_sto_name)
+        break
+# If neither path resolves a spec, spin_type_outcomes is genuinely absent
+# (e.g. a trimmed deployment) — that is a non-fatal skip.

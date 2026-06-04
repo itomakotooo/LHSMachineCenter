@@ -27,7 +27,7 @@ Invariants asserted
 21. M275 subprocess: stash key absent from final summary.
 22. M14 subprocess: applicable=False.
 23. M14 subprocess: no false trigger markers in payout_ids_top20.
-24. 10 plugins in ALL_FEATURES after all are imported (base 8 + bonus_chain_dynamics + topdollar_choice).
+24. 11 plugins in ALL_FEATURES after all are imported (base 8 + bonus_chain_dynamics + topdollar_choice + spin_type_outcomes).
 
 Inject-bug recipe A (per memory/feedback_enumerate_safety_paths.md)
 -------------------------------------------------------------------
@@ -235,16 +235,20 @@ class TestBonusChainDynamicsImportSafety:
         )
 
     def test_nine_plugins_in_all_features(self):
-        """After all 10 phase plugins imported, ALL_FEATURES has exactly 10 entries.
+        """After all 11 phase plugins imported, ALL_FEATURES has exactly 11 entries.
 
-        10 plugins: payouts_by_spin_type / reel_marginal_by_spin_type /
+        11 plugins: payouts_by_spin_type / reel_marginal_by_spin_type /
         bankruptcy_simulation / multiplier_profile / multiplier_wild /
         machine_mechanics / upstream_feature_breakdown / collect_mechanic /
-        bonus_chain_dynamics (C6) / topdollar_choice (Phase E).
+        bonus_chain_dynamics (C6) / topdollar_choice (Phase E) /
+        spin_type_outcomes (playtype-rearch).
 
         Phase E update: count bumped 9→10 to include topdollar_choice.
+        playtype-rearch: count bumped 10→11 to include spin_type_outcomes
+          (auto-registered via payouts_by_spin_type.py import).
         """
         import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
+        # spin_type_outcomes auto-registers when payouts_by_spin_type is imported.
         import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
         import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
         import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
@@ -256,8 +260,8 @@ class TestBonusChainDynamicsImportSafety:
         import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
         from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
         count = len(ALL_FEATURES)
-        assert count == 10, (
-            f"Expected exactly 10 plugins in ALL_FEATURES after all phase imports. "
+        assert count == 11, (
+            f"Expected exactly 11 plugins in ALL_FEATURES after all phase imports. "
             f"Got {count}: {[f.FEATURE_ID for f in ALL_FEATURES]}"
         )
 
