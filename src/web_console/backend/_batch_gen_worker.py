@@ -64,8 +64,11 @@ def _pool_worker_init(root_path: str) -> None:
     _project_root = root_path
     if root_path not in sys.path:
         sys.path.insert(0, root_path)
-    import fresh_slotlab.player_impact_analyzer as _mod
-    _analyzer_mod = _mod
+    # 2026-06-05: report-generation engine (player_impact_analyzer) removed
+    # pending the new SpinType-native orchestrator. Batch generation is
+    # offline until then — run_analyzer_job() returns an error dict when
+    # _analyzer_mod is None.
+    _analyzer_mod = None
     # C3 — canonical summary md5 patcher (P1-B2)
     from fresh_slotlab.summary_md5_patch import patch_summary_md5 as _psm
     _patch_summary_md5_fn = _psm

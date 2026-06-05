@@ -137,7 +137,6 @@ _CLOSURE_FILES: tuple[str, ...] = (
     "fresh_slotlab/analyzer/versioning.py",
     "fresh_slotlab/chunk_index.py",
     "fresh_slotlab/machine_md5.py",
-    "fresh_slotlab/player_impact_analyzer.py",
     "fresh_slotlab/rawdata_index.py",
     "fresh_slotlab/round_classification.py",
     "fresh_slotlab/round_win.py",
@@ -220,6 +219,24 @@ def compute_base_analyzer_version(
         h.update(raw.replace(b"\r\n", b"\n"))
 
     return h.hexdigest()[:12]
+
+
+def compute_analyzer_version() -> str:
+    """Analyzer "version" tag stamped in summary.json for report freshness.
+
+    Historically this hashed ``player_impact_analyzer.py``'s own source. That
+    monolith has been removed (orchestrator rebuild); freshness now tracks the
+    report-production closure — the same hash that drives per-machine
+    ``effective_version`` — which is a strictly more honest signal (it flips
+    when any core/support module on the production path changes).
+
+    Returns "" (untagged) rather than crashing the console if the closure
+    can't be read, preserving the old never-crash contract.
+    """
+    try:
+        return compute_base_analyzer_version()
+    except OSError:
+        return ""
 
 
 def compute_effective_version_for_machine(
