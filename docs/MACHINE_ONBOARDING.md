@@ -4,6 +4,21 @@ How to add analyzer support for a new slot machine, correctly. Written 2026-06-0
 after the M15 / M90 investigation; the rules below are hard-won — violating any of
 them produces a confident-but-wrong analysis.
 
+> **⚠ STATUS — 2026-06-05 (read before using this doc).** The report-production
+> orchestrator (`fresh_slotlab/player_impact_analyzer.py`) has been DELETED and is being
+> rebuilt SpinType-native. What this means for onboarding RIGHT NOW:
+> - **Analysis works** (steps 0–4, 6–7): rawdata + the core parser / round_win primitives
+>   survive; `python -m fresh_slotlab.analyzer.st_inventory <M> <mode>` runs; you can fully
+>   understand a machine and author its manifest — the SpinType-native manifest SCHEMA is
+>   LOCKED in `fresh_slotlab/analyzer/machine_spec.py` (reference instance:
+>   `configs/machine_manifests/M15.json`).
+> - **Report-generation verification is PAUSED** (step 5 value-agnostic gates): they run
+>   against a generated `player_impact_summary.json`, but report GENERATION now returns
+>   HTTP 503 until the new engine lands (viewing existing reports still works). So you
+>   cannot yet close the numeric invariants by generating a report — do the analysis +
+>   manifest now, resume numeric verification when the new engine is built.
+> - The timeless PRINCIPLES and the analysis METHOD below are unaffected.
+
 ---
 
 ## The model (locked)
@@ -88,7 +103,9 @@ them produces a confident-but-wrong analysis.
    the docstring.
 
 5. **Run value-agnostic invariants** on this machine (rule 5). They prove the global
-   numeric parsing is logically correct regardless of the RTP value.
+   numeric parsing is logically correct regardless of the RTP value. (⚠ currently
+   PAUSED — these gates run against a generated report and report generation is offline
+   pending the new engine; see STATUS at the top. Resume this step with the new engine.)
 
 6. **DOMAIN CHECK — mandatory (the M90 lesson).** Ask the user: *does this machine
    have any mechanic that random testspin can't show* — a progression/loyalty
@@ -104,8 +121,12 @@ them produces a confident-but-wrong analysis.
 8. **Confirm + record.** When the 5 gates pass, write the machine's SpinType-native
    manifest (`spin_types{role, play}` + derived analyses + `validation: confirmed` +
    any domain-declared invisible mechanics) and its per-machine digest regression
-   baseline. (The manifest schema + digest harness are Phase 0 — being built; until
-   then, steps 1–7 + the gates are the substance.)
+   baseline. (The SpinType-native manifest SCHEMA is now LOCKED —
+   `fresh_slotlab/analyzer/machine_spec.py` + the `configs/machine_manifests/M15.json`
+   reference; `machine_spec.derive_analyses()` derives the analysis set from `spin_types`.
+   The per-machine DIGEST harness and wiring the schema into the live engine are pending
+   the orchestrator rebuild. Until then: steps 0–4 / 6–7 + the authored manifest are the
+   substance; the numeric gates (step 5) resume with the new engine.)
 
 ---
 
@@ -149,21 +170,33 @@ gate 5 still applies (M90 looks identical to M15 in data but isn't).
 
 - **ST extractor**: `fresh_slotlab/analyzer/st_inventory.py` (reuses `parse_rounds`;
   not in the report closure, so it does not flip `base_hash`).
+- **Manifest schema + analysis derivation**: `fresh_slotlab/analyzer/machine_spec.py` —
+  the LOCKED SpinType-native manifest loader/validator, `derive_analyses()` (analysis set
+  derived from `spin_types`), the validation state (`auto`|`confirmed`), and the
+  `out_of_engine_mechanics` slot (the M90 case). Reference instance:
+  `configs/machine_manifests/M15.json`.
 - **Chunk structure**: file = metadata + `response` (list of robots);
   `parse_rounds(robot)` → ordered rounds, each a dict with `SpinType` + fields.
 - **Existing per-ST features**: `fresh_slotlab/analyzer/features/*`
   (e.g. `topdollar_choice` = the ST=14 choice; `spin_type_outcomes`,
   `spin_type_rtp_buckets`, `payouts_by_spin_type` = per-ST; others are cross-cutting).
-- **Invariant gate**: `tests/backend/test_rtp_integrity_gate.py` + the
-  `rtp_integrity` logic (the value-agnostic correctness net).
+- **Invariant gate**: `fresh_slotlab/analyzer/rtp_integrity.py` logic +
+  `tests/backend/test_rtp_integrity_gate.py` (the value-agnostic correctness net). ⚠ it
+  scores a generated `player_impact_summary.json` — report generation is currently offline
+  pending the new engine (see STATUS), so this gate is not runnable end-to-end yet.
 - **Sampler**: `fresh_slotlab/batch_dev_sampler.py` + `make_payload`
   (`analyzer/core/base_pipeline.py`). Endpoint = `base_pipeline.ENDPOINT_URL`
   (default `http://192.168.10.21:15060/MachineTest/MultiRobotTestSpinVariant`, the
   internal dev server). `reset_each_spin` toggles `ResetPlayerStateAfterEachSpin`
   (True = stateless IID for clean RTP; False = continuous session — but **neither
   captures out-of-engine mechanics**).
-- **Per-machine manifests** (current, load-bearing): `slot_designer/configs/machine_manifests/<M>.json`
-  — read by `versioning.py` / `player_impact_analyzer.py` for the per-machine
-  `effective_version`. (Slated to relocate to `configs/machine_manifests/` in Phase 0.)
+- **Per-machine manifests**: NEW SpinType-native schema → `configs/machine_manifests/<M>.json`
+  (M15 is the first; load via `machine_spec.load_manifest`). LEGACY flat manifests still
+  live at `slot_designer/configs/machine_manifests/<M>.json` and are read by `versioning.py`
+  for the per-machine `effective_version`; converting + relocating them to the new schema
+  is pending (the `player_impact_analyzer.py` that also read them is deleted).
+- **Note**: `configs/machines.json` (the roster + per-machine config/code md5s) is a
+  DOWNLOADED upstream cache (gitignored) — refreshed via the console's MapMachineOrder /
+  refresh-md5 path, not hand-edited.
 - **Direction / state**: `session_artifacts/_arch_playtype/` (DIRECTION, HANDOFF,
   02_traces = M15 ground truth, CARVE_METHODOLOGY).
