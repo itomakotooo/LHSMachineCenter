@@ -1,0 +1,35 @@
+{
+  "machine_id": "M15",
+  "schema": "spintype-native/1",
+  "modes": [1, 2, 5, 7],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "WinCredits"]
+    },
+    "14": {
+      "role": "player_choice",
+      "play": "TopDollar",
+      "economy": {"win_field": "WinCredits", "kind": "preview"},
+      "signature": ["DollarCount", "ChosenDollar", "OfferValue", "ExtraRatio", "WinCredits"]
+    },
+    "15": {
+      "role": "settlement",
+      "play": "TopDollar",
+      "economy": {"win_field": "WinAmount", "kind": "real"},
+      "signature": ["WinAmount"]
+    }
+  },
+  "trigger": {"payout_id": "666", "remarks": "Trigger", "opens": "TopDollar"},
+  "validation": {
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {"mode": 1, "rawdata": "M15/mode_1"},
+    "evidence": "session_artifacts/_arch_playtype/02_traces.md — ST roles from real fields; ST14 stats reproduce; sum(payid)==summary; ST14 WinCredits preview→0 (no double-count); ST15 settles LAST offer 806/806.",
+    "date": "2026-06-04"
+  },
+  "out_of_engine_mechanics": [],
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}
