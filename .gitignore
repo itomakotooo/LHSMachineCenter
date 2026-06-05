@@ -86,6 +86,15 @@ configs/machine_halls.json
 
 # Per-fleet static attributes cache (category / features / mechanics /
 # md5). Bootstrapped from reports + machines.json on first access;
+# Machine roster — DOWNLOADED from upstream, not source. The config/code summary
+# md5s are the server's own version tags (fetched via POST /MachineTest/MapMachineOrder
+# + MachineConfigMd5 through the console's refresh path), NOT locally computed; every
+# roster refresh rewrites this file wholesale (e.g. 393 -> 422 machines + a fleet
+# code-md5 bump), which is pure churn in git. It is a runtime cache of upstream state,
+# like machines_static.json below. Missing file => load_machines() falls back to an
+# M14-only roster until a refresh rebuilds it. Not versioned.
+configs/machines.json
+
 # auto-refreshed on every generate-report. Not versioned.
 configs/machines_static.json
 
