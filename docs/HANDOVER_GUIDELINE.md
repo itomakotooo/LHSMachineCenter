@@ -91,21 +91,21 @@ Guide for engineers taking over this repository.
 - Migration/compatibility:
   any API/schema/runtime behavior changes.
 
-## 7. Code Review (agent-team driven)
+## 7. Code Review (gates-first; agent teams opt-in)
 
-Review runs through the Claude Code agent teams (see `docs/ARCH_TEAM_PROCESS.md`
-+ `docs/IMPL_TEAM_PROCESS.md`), not an external tool:
+Review is **gates-first**: every change is gated by objective, value-agnostic
+checks before commit — `base_hash` delta (which machines a change re-flags),
+targeted tests for the touched code, a real-rawdata trace for the affected
+machine(s), and the invariant gates (`rtp_integrity`, aggregator parity).
 
-- Cross-cutting design is reviewed by the arch-* team's `arch-critic` +
-  `arch-validator` before any code is written.
-- Implementation is reviewed by the impl-* team's `impl-verifier` (end-to-end)
-  + `impl-critic` (adversarial) on every change; the coordinator
-  trust-but-verifies each.
-- Ask reviewers to focus on: bug risk, regression risk, missing tests, and
-  safety-contract violations (run safety, restart robustness, cache-cleanup
-  protections).
-- Treat findings as merge blockers if they affect data correctness, safety
-  guarantees, or API-contract stability.
+For a change that provably moves the thin core / schema / whole fleet, the
+`arch-*` (design) and `impl-*` (implementation) agent teams are available as an
+**opt-in** deeper review (`arch-breaker` attacks the design against real
+machines; `impl-verifier` / `impl-critic` review the implementation). Local
+changes (one machine's feature, one feature body, docs) ride the gates alone.
+
+Treat findings as merge blockers if they affect data correctness, safety
+guarantees, or API-contract stability.
 
 ## 8. Run Config Workflow
 
@@ -238,10 +238,13 @@ Report-freshness decision (honest + non-destructive):
   distinguishes "no manifest" (UNVERIFIABLE — not stale) from "closure
   file missing" (loud error).
 
-The 2026-05-29/30 unbundle that produced this model kept report output
-**byte-identical** (code moved between modules; emitted numbers
-unchanged), locked by per-feature `tests/analyzer/test_*byte_identical*`
-golden tests.
+The 2026-05-29/30 unbundle that produced this model moved code between
+modules without changing emitted numbers. (The per-feature byte-identical
+golden tests that originally locked this were removed 2026-06-05 when the
+"byte-identical vs the old monolith" constraint was abandoned in favour of
+starting fresh on the SpinType-native model. Correctness is now guarded by
+value-agnostic invariants — `rtp_integrity` / aggregator parity — plus
+per-machine report-digest manifests, which grow as machines are confirmed.)
 
 ## 10. Test Layout
 

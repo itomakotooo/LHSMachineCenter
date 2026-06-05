@@ -138,10 +138,10 @@ This file tracks executable next steps for the current phase.
         (`_restore_persisted_batches`). This SUPERSEDES the old
         "batch object is in-memory, machine list lost on restart"
         limitation. Orphan runs also auto-resume on startup.
-      - **Team process**: `docs/ARCH_TEAM_PROCESS.md` (`arch-*` 6-agent
-        design team, markdown only) + `docs/IMPL_TEAM_PROCESS.md`
-        (`impl-*` 4-agent implementation team) were used end-to-end for
-        the unbundle and honesty work.
+      - **Team process**: the `arch-*` (design) + `impl-*` (implementation)
+        agent teams were used end-to-end for the unbundle and honesty work.
+        (Now gates-first / opt-in; the standalone process docs were removed
+        2026-06-05.)
 
 
 - [x] **Variants rollout (stages 1-8) + Analyzer RTP parity (iter 1-6)**
