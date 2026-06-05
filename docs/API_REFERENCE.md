@@ -1,5 +1,27 @@
 # API Reference
 
+> **Status (2026-06-05): report GENERATION + live SAMPLING are OFFLINE.**
+> The report-production orchestrator (`fresh_slotlab/player_impact_analyzer.py`)
+> was deleted and is being rebuilt SpinType-native. Its surviving primitives
+> live under `fresh_slotlab/analyzer/core/*` (parser / aggregator / base
+> pipeline), plus `fresh_slotlab/sampler.py`, `round_win`, `versioning`,
+> `machine_spec`, etc. Until the new engine lands:
+> - `POST /api/rawdata/{machine}/generate-report` returns **503** (sync + async).
+> - `POST /api/rawdata/batch-generate-report` accepts the batch but every item
+>   fails with `"worker not initialized"` (the worker's analyzer module is `None`).
+> - `POST /api/runs` and `POST /api/batch-run` (live sampling) fail at spawn with
+>   **500 "analyzer script not found"** — the console drove sampling *through*
+>   the now-deleted orchestrator (`RunManager.start_run` spawns `ANALYZER` =
+>   `fresh_slotlab/player_impact_analyzer.py`, which no longer exists). The
+>   standalone `fresh_slotlab/sampler.py` CLI still works, but is not reachable
+>   from these console endpoints.
+> - Report **VIEWING / management** is unaffected — `/api/reports/...`,
+>   `/api/runs/{id}/report`, delete/import/validate read `player_impact_summary.json`
+>   straight off disk and do not touch the analyzer module.
+>
+> Endpoints below are annotated **[OFFLINE]** where they depend on the removed
+> engine. Everything else is live.
+
 ## Console API (our backend)
 
 Base URL (local):
@@ -83,10 +105,17 @@ file mtime_ns.
 ```
 
 Populated on first call via `_bootstrap_static_attrs` (walks
-machines.json + existing report summaries). Updated on every
-successful generate-report + /api/reports/import. `drift` list =
-machines whose cached md5 differs from current machines.json md5
-(operator should regenerate after refreshing MD5).
+machines.json + existing report summaries). Refreshed on
+/api/reports/import and (when generation is restored) on every
+successful generate-report. `drift` list = machines whose cached
+md5 differs from current `configs/machines.json` md5 (operator
+should regenerate after refreshing MD5 — currently blocked while
+generation is offline).
+
+Note: `configs/machines.json` (and `configs/machines_static.json`)
+is the **downloaded upstream roster** — md5s come from the server via
+`POST /api/machines/refresh-md5` (`MapMachineOrder` / the refresh-md5
+path), not from the repo. Both files are gitignored.
 
 ### `GET /api/models`
 
@@ -110,9 +139,18 @@ Notes:
 
 ## Run Lifecycle
 
-### `POST /api/runs`
+### `POST /api/runs`  **[OFFLINE]**
 
 Start a sampling+report run.
+
+> **Currently fails at spawn with `500 "analyzer script not found"`.**
+> `RunManager.start_run` guards on `self._analyzer.exists()` and the
+> orchestrator it spawns (`fresh_slotlab/player_impact_analyzer.py`) was
+> deleted. Validation (mode 2/5 fuzzy check, 409 active-run / busy-cell
+> guards) still runs *before* the spawn, so those error responses are
+> unchanged; a request that passes validation then 500s. Restored when the
+> SpinType-native engine lands. (`POST /api/batch-run` shares the same
+> spawn path and the same failure.)
 
 Request:
 
@@ -182,13 +220,22 @@ to `TerminateProcess` which doesn't deliver a catchable signal, so
 the file-flag is the primary channel. Signal handlers (SIGTERM /
 SIGINT) are also registered where catchable.
 
-### `POST /api/rawdata/{machine}/generate-report`
+### `POST /api/rawdata/{machine}/generate-report`  **[OFFLINE — 503]**
 
-Generate a new report from cached rawdata chunks. Reads chunks from
-`RAWDATA_ROOT/{machine}/mode_{mode}/`, pre-loads their `response`
-payloads, and runs the analyzer through them end-to-end. Produces a
-**new** report version (`rv_<ts>_rawdata`) + **new** run row
-(`gen_<uuid>`) — pre-existing runs are never overwritten.
+Generate a new report from cached rawdata chunks (when the engine is
+live: reads chunks from `RAWDATA_ROOT/{machine}/mode_{mode}/`, pre-loads
+their `response` payloads, runs the report-production pipeline over them,
+and produces a **new** report version (`rv_<ts>_rawdata`) + **new** run
+row (`gen_<uuid>`) — pre-existing runs are never overwritten).
+
+> **Currently returns `503` for BOTH `async:false` and `async:true`.**
+> `_run_generate_report` raises `503` ("report generation engine under
+> reconstruction") on entry because `player_impact_analyzer.py` was
+> removed. The async path still pre-inserts a `status=queued` run row and
+> returns `{run_id, status:"accepted"}`, but the background thread then
+> 503s internally and the row is marked `failed`. The body / pre-checks
+> below describe the intended live behavior and resume when the new engine
+> lands.
 
 Body:
 
@@ -198,12 +245,11 @@ Body:
 
 When `async: true` (recommended from UI), the endpoint spawns a
 daemon thread and returns immediately with `{run_id, status:
-"running"}` — operator polls progress via `GET /api/events` /
+"accepted"}` — operator polls progress via `GET /api/events` /
 `GET /api/runs/{run_id}`. When `async: false` (default — direct API
-clients), endpoint blocks until analyzer completes and returns the
-full response shape below.
+clients), endpoint blocks and returns the full response shape below.
 
-Pre-checks:
+Pre-checks (intended live behavior):
 - 400 if `mode` is missing or non-integer
 - 404 if no usable rawdata exists. Default (no `config_md5`/`code_md5`)
   uses the kept+deletable (current-md5) chunks and 404s when both are
@@ -212,9 +258,8 @@ Pre-checks:
   historical-md5 bucket, pass `config_md5`+`code_md5` explicitly; that
   path combines all three tiers and filters by the given md5 (historical
   chunks are kept on disk, never auto-deleted, and remain available).
-- 409 if system busy (operation mutex)
 
-Response:
+Response (when live):
 
 ```json
 {
@@ -444,7 +489,9 @@ only — it no longer drives the stale/fixable decision.
 ``fixable_items`` is the set of (machine, mode) pairs where analyzer
 is stale AND rawdata is fresh — exactly the payload the UI's
 "⟳ 一键重生成" button submits to
-``POST /api/rawdata/batch-generate-report``.
+``POST /api/rawdata/batch-generate-report``. (This summary endpoint is
+read-only and live, but the regen action it feeds is **OFFLINE** until the
+new engine lands — the batch accepts and then errors every item.)
 
 ``needs_rawdata_items`` is the honest dead-end set (R-6): analyzer stale
 AND no usable rawdata cache to re-run from — the operator must resample
@@ -568,17 +615,25 @@ Related disk-pressure env vars (set in the uvicorn shell):
   retries exhausted)
 - `SLOT_WAIT_RETRIES=30` — max 10s waits before failing an item
 
-### `POST /api/rawdata/{machine}/generate-report`
+### `POST /api/rawdata/{machine}/generate-report`  **[OFFLINE — 503]**
 
 Documented above under Run Lifecycle.
 
-### `POST /api/rawdata/batch-generate-report`
+### `POST /api/rawdata/batch-generate-report`  **[OFFLINE]**
 
 Kick off a batch of generate-report runs. Items run in a
 `ProcessPoolExecutor` of N worker subprocesses (default 4, env
 `SLOT_BATCH_GEN_WORKERS`); each worker has its own interpreter
-state so analyzer's module-level `post_json` monkey-patch no
-longer forces sequential. Held under the ops mutex.
+state so the per-worker analyzer module no longer forces sequential.
+Held under the ops mutex.
+
+> **Currently every item fails.** The kickoff still returns a
+> `batch_id` (202-style) and the batch progresses, but each worker's
+> `run_analyzer_job` short-circuits with
+> `{"ok": false, "error": "worker not initialized"}` — the worker
+> initializer sets `_analyzer_mod = None` because the report-production
+> engine was removed. Batch status resolves to `partial`/`failed` with
+> every item errored. Resumes when the new engine lands.
 
 Body (two variants):
 
@@ -764,6 +819,9 @@ Returns the per-pay_id shape JSON for (machine, mode) from
 `configs/paytables/{machine}_mode{mode}.json`. Generated by
 `scripts/infer_paytable.py` — auto-triggered post generate-report
 (daemon thread, ~60-120s on large machines like M1 with 384 chunks).
+The read endpoint is live and serves any file already on disk; the
+auto-trigger does not fire while generation is **OFFLINE** (run the
+script manually if you need a fresh shape in the meantime).
 
 ```json
 {
@@ -957,10 +1015,16 @@ manifest (unregistered) map to the `UNVERIFIABLE` sentinel — the
 frontend treats those as "untagged", never stale. Computed via a per-request
 `EffectiveVersionCache` so base_hash is hashed once per call.
 
-`analyzer_version` = SHA256[:12] of `player_impact_analyzer.py` source
-(legacy global hash). Kept for backward-compat (older cached frontends); it is
-**no longer the comparator** for staleness decisions (honesty-3 cutover).
-Per-machine md5 comes from `configs/machines.json`.
+`analyzer_version` (legacy global hash) is kept for backward-compat (older
+cached frontends); it is **no longer the comparator** for staleness decisions
+(honesty-3 cutover). It historically hashed `player_impact_analyzer.py`'s
+source, but that monolith was removed — `compute_analyzer_version()`
+(`fresh_slotlab/analyzer/versioning.py`) now delegates to the
+report-production **closure** hash (`compute_base_analyzer_version()`), the
+same base hash that drives per-machine `effective_version`, and returns `""`
+(untagged) instead of crashing if the closure can't be read. Per-machine md5
+comes from `configs/machines.json` (the downloaded, gitignored upstream
+roster).
 
 ## Interpretation
 

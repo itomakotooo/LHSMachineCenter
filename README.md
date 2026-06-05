@@ -7,6 +7,8 @@ It contains:
 
 - deterministic spin sampling with CI-based stopping
 - report generation focused on player-impact metrics
+  (**currently offline** — the orchestrator is being rebuilt SpinType-native;
+  see [Analyzer status](#analyzer-status))
 - deterministic external guideline comparison
 - a local web console for run control, progress, visualization, and model-based interpretation
 
@@ -20,11 +22,12 @@ It contains:
   plain machine names like `M14` — variants get rewritten to
   underlying+selector params upstream, non-variants fall through to plain
   test-spin.
-- machine registry from `configs/machines.json` — non-variant machines plus
-  one variant row per entry in `machineTestVariantsJson` (from
-  `/MapMachineOrder`); see the file for the live roster/count. Each row is an
-  independent machine — its own md5, modes, rawdata directory, reports.
-  Current default: `M14`, mode `1`.
+- machine registry from `configs/machines.json` — a **downloaded upstream
+  roster** (gitignored, not tracked); refreshed from upstream rather than
+  hand-edited. It lists non-variant machines plus one variant row per entry
+  in `machineTestVariantsJson` (from `/MapMachineOrder`); see the file for
+  the live roster/count. Each row is an independent machine — its own md5,
+  modes, rawdata directory, reports. Current default: `M14`, mode `1`.
 - report output under `reports/<machine>/mode_<id>/versions/<report_version>/`
 
 ## Core Capabilities
@@ -47,15 +50,45 @@ It contains:
    - cache cleanup risk-tier confirmation (low/medium/high)
    - model interpretation routing (`gemini` / `gpt` / `claude`)
 
+## Analyzer status
+
+(2026-06-05) The report-production **orchestrator**
+(`fresh_slotlab/player_impact_analyzer.py`) was **deleted** (commit `c72b05a`)
+and is being rebuilt SpinType-native.
+Report **generation is temporarily OFFLINE**:
+
+- `POST /api/batch-run` (in-process generate) returns **HTTP 503**.
+- `scripts/batch_generate_reports.py` is a stub that exits non-zero.
+
+Report **viewing is unaffected** — `/api/reports/...` reads
+`player_impact_summary.json` straight off disk and does not import the
+analyzer. Sampling (chunk acquisition) is likewise independent.
+
+The reusable analyzer **core survives** and is the foundation the new
+engine is built on:
+
+- `fresh_slotlab/analyzer/core/{parser,aggregator,writer,base_pipeline}.py`
+- `fresh_slotlab/{round_win,round_classification,trigger_sessions,sampler,machine_md5}.py`
+- `fresh_slotlab/analyzer/{versioning,rtp_integrity,manifest_loader,machine_spec,st_inventory}.py`
+- feature plugins under `fresh_slotlab/analyzer/features/`
+
+The `player_impact_summary.json` **output schema is the preserved contract**
+the new engine must reproduce (the frontend panel registry hard-depends on
+it). See `docs/REPORT_SPEC.md`.
+
 ## Repository Layout
 
 - `fresh_slotlab/`:
-  analyzer and sampling scripts. The analyzer's 9 display sections are
-  feature **plugins** under `fresh_slotlab/analyzer/features/` (each
-  owns its own compute/emit); the analyzer core runs a topo-sorted
-  feature emit loop rather than building sections inline. Per-machine
-  manifests (`slot_designer/configs/machine_manifests/<machine>.json`)
-  declare which features a machine uses.
+  analyzer core and sampling scripts (the top-level report orchestrator is
+  being rebuilt — see [Analyzer status](#analyzer-status)). Display sections
+  are feature **plugins** under `fresh_slotlab/analyzer/features/` (each owns
+  its own compute/emit), registered in
+  `fresh_slotlab/analyzer/feature_registry.py`. A machine's manifest declares
+  which features it emits. Manifests come in two forms today: legacy flat
+  manifests under `slot_designer/configs/machine_manifests/<machine>.json`
+  (read by `versioning.py`), and the new SpinType-native schema under
+  `configs/machine_manifests/<machine>.json` (e.g. `M15.json`, parsed by
+  `fresh_slotlab/analyzer/machine_spec.py`).
 - `src/web_console/`:
   FastAPI backend + frontend console
 - `configs/`:
@@ -159,25 +192,14 @@ machine without Node 18+ to skip the frontend pure-function suite.
 
 ## Analyzer CLI (Direct)
 
-Example run:
+> **Offline.** The standalone report-generation CLI lived in
+> `fresh_slotlab/player_impact_analyzer.py`, which was removed in the analyzer
+> re-architecture (see [Analyzer status](#analyzer-status)). There is no direct
+> generation entry point until the SpinType-native orchestrator lands;
+> `scripts/batch_generate_reports.py` is a documented stub that exits non-zero.
+> Sampling still works through the console / sampler.
 
-```powershell
-python fresh_slotlab\player_impact_analyzer.py `
-  --machine M14 `
-  --rtp-mode 1 `
-  --target-halfwidth-pp 0.5 `
-  --chunk-spin-times 5000 `
-  --chunk-robot-count 20 `
-  --batch-concurrency 2 `
-  --max-chunks 120 `
-  --timeout 300 `
-  --bankruptcy-session-spins 500 `
-  --bankruptcy-bankroll-multipliers 100,200,500 `
-  --output-dir reports\M14\mode_1\versions\manual_test `
-  --guideline-rules configs\classic_slots_guideline_rules.json
-```
-
-Important request flags used by the analyzer/autotune path:
+Request flags the sampling + (future) analyzer path relies on:
 
 - `ResetPlayerStateAfterEachSpin=true`
 - `OutputAllRobotResult=true`
@@ -222,3 +244,4 @@ Do not track:
 
 - runtime db/logs/progress files and local API keys under `state/console/`
 - temporary chunk cache under `cache/chunks/`
+- `configs/machines.json` — downloaded upstream roster (gitignored)
