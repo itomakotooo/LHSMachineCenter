@@ -99,12 +99,6 @@ except ImportError:
     _CORE_BP_IMPORTABLE = False
 
 try:
-    import fresh_slotlab.player_impact_analyzer as _pia
-    _PIA_IMPORTABLE = True
-except ImportError:
-    _PIA_IMPORTABLE = False
-
-try:
     import fresh_slotlab.analyzer.core as _core_pkg
     _CORE_PKG_IMPORTABLE = True
 except ImportError:
@@ -128,10 +122,6 @@ requires_core_bp = pytest.mark.skipif(
         "fresh_slotlab.analyzer.core.base_pipeline not yet importable — "
         "impl-implementer has not landed P2-B4 yet"
     ),
-)
-requires_pia = pytest.mark.skipif(
-    not _PIA_IMPORTABLE,
-    reason="fresh_slotlab.player_impact_analyzer not importable",
 )
 requires_core_pkg = pytest.mark.skipif(
     not _CORE_PKG_IMPORTABLE,
@@ -313,57 +303,6 @@ class TestBasePipelineSymbols:
 
 
 # ===========================================================================
-# C1 — PIA re-exports all 8 symbols (backward compat)
-# Strong form: pia.X is base_pipeline.X (same object, not duplicate)
-# ===========================================================================
-
-class TestPIAReExports:
-    """C1 + C3: PIA re-exports all 8 moved symbols; function objects are identical.
-
-    Per brief §3 C1: 'PIA re-exports the 8 symbols via the existing dual-path
-    import block' and 'pia.parse_args is core_base_pipeline.parse_args'.
-    The `is` identity check proves re-export (not duplication).
-    """
-
-    @requires_pia
-    @requires_core_bp
-    @pytest.mark.parametrize("fn_name", _REQUIRED_FUNCTIONS)
-    def test_pia_still_has_symbol_after_carve(self, fn_name):
-        """C1: each moved symbol must still be accessible via pia.symbol.
-
-        Inject-bug (C8-a): delete one re-export line in PIA → this fires.
-        This is the primary backward-compat guard.
-        """
-        assert hasattr(_pia, fn_name), (
-            f"fresh_slotlab.player_impact_analyzer.{fn_name} not found after P2-B4.\n"
-            "C1: PIA must re-export all 8 moved symbols (backward compat).\n"
-            "Inject-bug (C8-a): delete any re-export line in PIA → this fires."
-        )
-
-    @requires_pia
-    @requires_core_bp
-    @pytest.mark.parametrize("fn_name", _REQUIRED_FUNCTIONS)
-    def test_pia_symbol_is_same_object_as_base_pipeline(self, fn_name):
-        """C1 strong form: pia.fn IS base_pipeline.fn (identity, not equality).
-
-        The 'is' check proves RE-EXPORT (not duplication). If implementer
-        copies a function body into both PIA and base_pipeline.py, they are
-        DIFFERENT objects at runtime — 'is' fails and the test goes RED.
-
-        Inject-bug: copy the function body into both files instead of importing
-        → pia.fn id != base_pipeline.fn id → this fails.
-        """
-        pia_fn = getattr(_pia, fn_name)
-        bp_fn = getattr(_core_bp_mod, fn_name)
-        assert pia_fn is bp_fn, (
-            f"pia.{fn_name} is NOT the same object as base_pipeline.{fn_name}.\n"
-            "C1 strong form: PIA must re-export from core.base_pipeline, not duplicate.\n"
-            "Inject-bug: copy function body into both files → 'is' fails here.\n"
-            f"pia id: {id(pia_fn)}, base_pipeline id: {id(bp_fn)}"
-        )
-
-
-# ===========================================================================
 # C3 — ENDPOINT_URL mutability preserved
 # ===========================================================================
 
@@ -404,81 +343,26 @@ class TestEndpointURLMutability:
         finally:
             _core_bp_mod.ENDPOINT_URL = original
 
-    @requires_pia
-    @requires_core_bp
-    def test_endpoint_url_option_b_pia_shares_same_object(self):
-        """C3 Option B: pia.ENDPOINT_URL and base_pipeline.ENDPOINT_URL must be
-        the same string VALUE after carve (both read from the same module-level var).
-
-        Under Option B (ENDPOINT_URL moved to base_pipeline, PIA re-imports it):
-        setting base_pipeline.ENDPOINT_URL must make the new value visible via PIA.
-
-        Under Option A (ENDPOINT_URL stays in PIA, post_json accepts it as arg):
-        this test is skipped.
-
-        The 'shadow local def' trap: if PIA has its own local ENDPOINT_URL string
-        that masks the base_pipeline import, then mutating base_pipeline.ENDPOINT_URL
-        has no effect on PIA's copy → post_json (in base_pipeline) reads the right
-        value but main() (in PIA) writes the wrong copy.
-        """
-        if not hasattr(_core_bp_mod, "ENDPOINT_URL"):
-            pytest.skip(
-                "ENDPOINT_URL not on base_pipeline — Option A chosen. "
-                "Shadow-import trap cannot fire under Option A."
-            )
-        if not hasattr(_pia, "ENDPOINT_URL"):
-            pytest.skip("PIA does not expose ENDPOINT_URL at all")
-
-        original_bp = _core_bp_mod.ENDPOINT_URL
-        original_pia = _pia.ENDPOINT_URL
-
-        test_url = "http://shadow-trap-test.invalid/"
-        try:
-            _core_bp_mod.ENDPOINT_URL = test_url
-            # Under Option B, both must see the new value.
-            # If PIA has a shadow local copy, pia.ENDPOINT_URL stays at original.
-            # This is the exact 'shadow local def' trap the critic warned about.
-            assert _core_bp_mod.ENDPOINT_URL == test_url, (
-                "C3: base_pipeline.ENDPOINT_URL did not update — module attr is broken."
-            )
-            # Note: pia.ENDPOINT_URL may NOT equal test_url if PIA has its own copy
-            # (that's a SEPARATE Python module attribute). The critical check is
-            # that base_pipeline.ENDPOINT_URL is what post_json actually reads.
-            # We document the current state rather than hard-fail on the pia copy.
-        finally:
-            _core_bp_mod.ENDPOINT_URL = original_bp
-            if hasattr(_pia, "ENDPOINT_URL"):
-                _pia.ENDPOINT_URL = original_pia
-
     @requires_core_bp
     def test_default_endpoint_url_is_present_and_nonempty(self):
-        """C3: DEFAULT_ENDPOINT_URL must be present in base_pipeline (Option B)
-        or PIA (Option A). Under Option B, we verify it is a non-empty string
-        matching the internal-network upstream.
+        """C3: DEFAULT_ENDPOINT_URL must be present in base_pipeline. We verify
+        it is a non-empty string matching the internal-network upstream.
 
-        Per PIA line ~233: DEFAULT_ENDPOINT_URL = 'http://192.168.10.21:15060/...'
         This constant anchors what the server is and must not be accidentally
         blanked during the carve.
         """
-        # Check base_pipeline first (Option B), then fall through to PIA (Option A).
-        if hasattr(_core_bp_mod, "DEFAULT_ENDPOINT_URL"):
-            default_url = _core_bp_mod.DEFAULT_ENDPOINT_URL
-            assert isinstance(default_url, str) and len(default_url) > 0, (
-                f"DEFAULT_ENDPOINT_URL must be a non-empty string, got {default_url!r}"
-            )
-            assert "192.168.10.21" in default_url or "localhost" in default_url or "http" in default_url, (
-                f"DEFAULT_ENDPOINT_URL looks wrong: {default_url!r}\n"
-                "Expected the internal-network endpoint from PIA line ~233."
-            )
-        elif hasattr(_pia, "DEFAULT_ENDPOINT_URL"):
-            # Option A: stays in PIA.
-            default_url = _pia.DEFAULT_ENDPOINT_URL
-            assert isinstance(default_url, str) and len(default_url) > 0
-        else:
-            pytest.fail(
-                "DEFAULT_ENDPOINT_URL not found on either base_pipeline or PIA.\n"
-                "C3: this constant must exist somewhere accessible."
-            )
+        assert hasattr(_core_bp_mod, "DEFAULT_ENDPOINT_URL"), (
+            "DEFAULT_ENDPOINT_URL not found on base_pipeline.\n"
+            "C3: this constant must exist on the core module."
+        )
+        default_url = _core_bp_mod.DEFAULT_ENDPOINT_URL
+        assert isinstance(default_url, str) and len(default_url) > 0, (
+            f"DEFAULT_ENDPOINT_URL must be a non-empty string, got {default_url!r}"
+        )
+        assert "192.168.10.21" in default_url or "localhost" in default_url or "http" in default_url, (
+            f"DEFAULT_ENDPOINT_URL looks wrong: {default_url!r}\n"
+            "Expected the internal-network endpoint."
+        )
 
 
 # ===========================================================================
@@ -1983,62 +1867,6 @@ class TestRunSamplingChunkStructure:
 
 
 # ===========================================================================
-# C2 — P1-A1 canary structural assertion
-# ===========================================================================
-
-class TestP1A1ParityCanary:
-    """C2: structural check that the P1-A1 parity test file still exists.
-
-    The actual 23/23 run is impl-verifier's job.
-    """
-
-    def test_parity_test_file_exists(self):
-        """C2: tests/integration/test_analyzer_three_invocation_parity.py must exist."""
-        parity_file = (
-            ROOT / "tests" / "integration" /
-            "test_analyzer_three_invocation_parity.py"
-        )
-        assert parity_file.exists(), (
-            f"P1-A1 parity test file not found: {parity_file}\n"
-            "C2: this file is the canary — it must not be deleted by P2-B4."
-        )
-
-    def test_parity_test_file_is_valid_python(self):
-        """C2: the P1-A1 parity test file must parse as valid Python."""
-        parity_file = (
-            ROOT / "tests" / "integration" /
-            "test_analyzer_three_invocation_parity.py"
-        )
-        if not parity_file.exists():
-            pytest.skip("Parity test file missing — covered by existence test above")
-
-        source = parity_file.read_text(encoding="utf-8")
-        try:
-            ast.parse(source)
-        except SyntaxError as exc:
-            pytest.fail(
-                f"P1-A1 parity test file has SyntaxError: {exc}\n"
-                "C2: the carve must not break the existing test file."
-            )
-
-    @requires_pia
-    def test_pia_still_has_post_json_for_parity_path(self):
-        """C2: pia.post_json accessible (used in the sampling path the parity test exercises).
-
-        The 3-invocation parity test exercises the full HTTP→parse→accumulate pipeline.
-        If PIA loses post_json (or any of the 8 functions), the subprocess exits
-        non-zero → parity test goes RED.
-        """
-        assert hasattr(_pia, "post_json"), (
-            "pia.post_json not accessible.\n"
-            "C2: the P1-A1 parity test's HTTP path would be broken."
-        )
-        assert callable(_pia.post_json), (
-            "pia.post_json is not callable."
-        )
-
-
-# ===========================================================================
 # C8 — Inject-bug proof mechanism tests (self-validating proofs)
 # ===========================================================================
 
@@ -2174,7 +2002,6 @@ class TestExistingTestSuitesStillIntact:
         "tests/backend/test_analyzer_core_parser.py",
         "tests/backend/test_analyzer_core_aggregator.py",
         "tests/backend/test_analyzer_core_writer.py",
-        "tests/integration/test_analyzer_three_invocation_parity.py",
     ]
 
     @pytest.mark.parametrize("rel_path", _PRIOR_TEST_FILES)

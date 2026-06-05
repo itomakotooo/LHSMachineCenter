@@ -82,12 +82,6 @@ try:
 except ImportError:
     _CORE_PKG_IMPORTABLE = False
 
-try:
-    import fresh_slotlab.player_impact_analyzer as _pia
-    _PIA_IMPORTABLE = True
-except ImportError:
-    _PIA_IMPORTABLE = False
-
 # compute_base_analyzer_version may live in versioning.py per P2-A1 extension,
 # or in a separate module — we probe both locations.
 _compute_base_ver_fn = None
@@ -110,10 +104,6 @@ requires_core_parser = pytest.mark.skipif(
 requires_core_pkg = pytest.mark.skipif(
     not _CORE_PKG_IMPORTABLE,
     reason="fresh_slotlab.analyzer.core package not yet importable",
-)
-requires_pia = pytest.mark.skipif(
-    not _PIA_IMPORTABLE,
-    reason="fresh_slotlab.player_impact_analyzer not importable",
 )
 requires_base_version = pytest.mark.skipif(
     not _BASE_VERSION_IMPORTABLE,
@@ -302,159 +292,16 @@ class TestCoreParserSymbols:
 
 
 # ===========================================================================
-# C3 — Re-export pattern: PIA still exposes moved symbols (backward compat)
-# Strong form: pia.symbol IS core_parser.symbol (same object, not duplicate)
+# C1b — _REQUIRED_ROUND_FIELDS locked value (canonical in core.parser)
 # ===========================================================================
 
-class TestReExportPattern:
-    """C3: PIA re-exports all moved symbols; function objects are identical.
+class TestRequiredRoundFieldsLocked:
+    """The _REQUIRED_ROUND_FIELDS constant value is load-bearing: test_analyzer_parsing.py
+    asserts it equals {"WinCredits", "StopSymbolsByCol"}. Lock it on core.parser directly."""
 
-    Per brief §3 C3 + §3 (function identity check):
-    'after carve, pia.parse_chunk_response is core_parser.parse_chunk_response'
-    This catches cases where implementer accidentally duplicates the function
-    instead of re-exporting.
-    """
-
-    @requires_pia
     @requires_core_parser
-    @pytest.mark.parametrize("symbol_name", _REQUIRED_FUNCTIONS_AND_CLASSES)
-    def test_pia_still_has_symbol_after_carve(self, symbol_name):
-        """C3: each moved symbol must still be accessible via pia.symbol.
-
-        Inject-bug: delete one re-export line in PIA → this fires for that symbol.
-        This is inject-bug (a) from C8.
-        """
-        assert hasattr(_pia, symbol_name), (
-            f"fresh_slotlab.player_impact_analyzer.{symbol_name} not found.\n"
-            "C3: PIA must re-export all moved symbols (backward compat).\n"
-            "Inject-bug (C8-a): delete any re-export line in PIA → this fires."
-        )
-
-    @requires_pia
-    @requires_core_parser
-    @pytest.mark.parametrize("const_name", _REQUIRED_CONSTANTS)
-    def test_pia_still_has_constant_after_carve(self, const_name):
-        """C3: each moved constant must still be accessible via pia.const.
-
-        Inject-bug: delete the re-import of a constant in PIA → this fires.
-        """
-        assert hasattr(_pia, const_name), (
-            f"fresh_slotlab.player_impact_analyzer.{const_name} not found.\n"
-            "C3: PIA must re-export all moved constants (backward compat).\n"
-            "Inject-bug: delete any constant re-import in PIA → this fires."
-        )
-
-    @requires_pia
-    @requires_core_parser
-    def test_parse_chunk_response_is_same_object_via_re_export(self):
-        """C3 strong form: pia.parse_chunk_response IS core_parser.parse_chunk_response.
-
-        The 'is' check (identity, not equality) proves the function was RE-EXPORTED
-        (not duplicated). Per brief §3 function identity check:
-          import fresh_slotlab.player_impact_analyzer as pia
-          import fresh_slotlab.analyzer.core.parser as core_parser
-          assert pia.parse_chunk_response is core_parser.parse_chunk_response
-
-        Inject-bug: if implementer copies the function body into both files
-        (instead of re-exporting), they are DIFFERENT objects → 'is' fails.
-        """
-        pia_fn = getattr(_pia, "parse_chunk_response")
-        core_fn = getattr(_core_parser_mod, "parse_chunk_response")
-        assert pia_fn is core_fn, (
-            "pia.parse_chunk_response is NOT the same object as "
-            "core_parser.parse_chunk_response.\n"
-            "C3 strong form: PIA must re-export from core.parser, not duplicate.\n"
-            "Inject-bug: copy function body into both files → 'is' fails here.\n"
-            f"pia_fn id: {id(pia_fn)}, core_fn id: {id(core_fn)}"
-        )
-
-    @requires_pia
-    @requires_core_parser
-    def test_parse_rounds_is_same_object_via_re_export(self):
-        """C3 strong form: identity check for parse_rounds."""
-        pia_fn = getattr(_pia, "parse_rounds")
-        core_fn = getattr(_core_parser_mod, "parse_rounds")
-        assert pia_fn is core_fn, (
-            "pia.parse_rounds is NOT the same object as core_parser.parse_rounds.\n"
-            "C3 strong form: re-export, not duplication."
-        )
-
-    @requires_pia
-    @requires_core_parser
-    def test_load_chunk_envelope_is_same_object_via_re_export(self):
-        """C3 strong form: identity check for load_chunk_envelope."""
-        pia_fn = getattr(_pia, "load_chunk_envelope")
-        core_fn = getattr(_core_parser_mod, "load_chunk_envelope")
-        assert pia_fn is core_fn, (
-            "pia.load_chunk_envelope is NOT the same object as "
-            "core_parser.load_chunk_envelope.\n"
-            "C3 strong form: re-export, not duplication."
-        )
-
-    @requires_pia
-    @requires_core_parser
-    def test_chunk_integrity_error_is_same_class_via_re_export(self):
-        """C3 strong form: ChunkIntegrityError class identity.
-
-        This also proves existing code catching 'except ChunkIntegrityError'
-        imported from PIA will still catch exceptions raised by core.parser
-        — only true if they are the SAME class object.
-        """
-        pia_cls = getattr(_pia, "ChunkIntegrityError")
-        core_cls = getattr(_core_parser_mod, "ChunkIntegrityError")
-        assert pia_cls is core_cls, (
-            "pia.ChunkIntegrityError is NOT the same class as "
-            "core_parser.ChunkIntegrityError.\n"
-            "C3: if they differ, 'except pia.ChunkIntegrityError' won't catch "
-            "exceptions raised by core.parser functions — silent runtime failure."
-        )
-
-    @requires_pia
-    @requires_core_parser
-    def test_peek_chunk_envelope_is_same_object_via_re_export(self):
-        """C3 strong form: identity check for peek_chunk_envelope."""
-        pia_fn = getattr(_pia, "peek_chunk_envelope")
-        core_fn = getattr(_core_parser_mod, "peek_chunk_envelope")
-        assert pia_fn is core_fn, (
-            "pia.peek_chunk_envelope is NOT the same object as "
-            "core_parser.peek_chunk_envelope.\n"
-            "C3 strong form: re-export, not duplication."
-        )
-
-    @requires_pia
-    @requires_core_parser
-    def test_check_round_schema_is_same_object_via_re_export(self):
-        """C3 strong form: identity check for _check_round_schema.
-
-        test_analyzer_parsing.py imports _check_round_schema from pia;
-        after carve it must be the same object as core_parser._check_round_schema.
-        """
-        pia_fn = getattr(_pia, "_check_round_schema")
-        core_fn = getattr(_core_parser_mod, "_check_round_schema")
-        assert pia_fn is core_fn, (
-            "pia._check_round_schema is NOT the same object as "
-            "core_parser._check_round_schema.\n"
-            "test_analyzer_parsing.py imports this; identity must hold."
-        )
-
-    @requires_pia
-    @requires_core_parser
-    def test_required_round_fields_constant_same_object_via_re_export(self):
-        """C3 strong form: _REQUIRED_ROUND_FIELDS must be the same object.
-
-        test_analyzer_parsing.py imports _REQUIRED_ROUND_FIELDS from pia and
-        asserts its value. After carve, pia._REQUIRED_ROUND_FIELDS must still
-        point to the constant defined in core.parser (not a copy).
-        """
-        pia_const = getattr(_pia, "_REQUIRED_ROUND_FIELDS")
+    def test_required_round_fields_locked_value(self):
         core_const = getattr(_core_parser_mod, "_REQUIRED_ROUND_FIELDS")
-        # For frozenset/tuple constants, 'is' may not hold (CPython may intern
-        # differently); check equal value + that pia's value matches core's.
-        assert pia_const == core_const, (
-            "pia._REQUIRED_ROUND_FIELDS != core_parser._REQUIRED_ROUND_FIELDS.\n"
-            "C3: constant value must be identical after re-export."
-        )
-        # Also verify the locked value from test_analyzer_parsing.py test:
         assert set(core_const) == {"WinCredits", "StopSymbolsByCol"}, (
             f"_REQUIRED_ROUND_FIELDS changed! expected {{'WinCredits', 'StopSymbolsByCol'}}, "
             f"got {set(core_const)!r}\n"
@@ -718,72 +565,6 @@ class TestBaseAnalyzerVersionHash:
         )
 
     @requires_base_version
-    def test_matches_reference_implementation(self):
-        """honesty-2 update: base_hash covers the R-1 closure (25-file set), not just core/*.py.
-
-        Phase honesty-2 (2026-05-29) redefined compute_base_analyzer_version() to hash the
-        transitive repo-local import closure of the report-production path (R-1). The old
-        reference (_ref_base_version: sha256 of core/*.py only) is now obsolete.
-
-        core/parser.py IS still in the closure; editing it still flips base_hash.
-        The test intent survives: we verify determinism + the known R-1 closure pin.
-        """
-        if not CORE_DIR.exists() or not list(CORE_DIR.glob("*.py")):
-            pytest.skip(
-                "core/ directory empty or missing — impl-implementer hasn't created "
-                "core/parser.py yet. Test will go green when files land."
-            )
-
-        actual = _compute_base_ver_fn()
-        assert actual is not None, "compute_base_analyzer_version() returned None"
-
-        # Pin check: must be the known R-1 closure value (post P3 payid symbol enrichment)
-        # R-1 closure = 25-file set: core/*.py + content modules + support modules
-        # (MINUS registered feature plugins, which have their own feature_hash).
-        # Phase 2a (collect_mechanic carve) shrank player_impact_analyzer.py (a
-        # closure file) → re-baselined 960e9d18d83d -> 57fdb323585d. Phase 2b
-        # (bonus_chain_dynamics carve) shrank PIA again -> 980f488f4bb2. Phase 3
-        # (upstream_feature_breakdown row-build carve) shrank PIA again -> c89db791d8a1.
-        # Phase 4 (multiplier_profile dict-build carve) shrank PIA again -> ce298f055495.
-        # Phase 5 (reel_marginal_by_spin_type dict-build carve) shrank PIA again -> ccc1ecce185d.
-        # Phase 6 (bankruptcy_simulation tier row-build carve — the LAST carve) shrank PIA again -> d8b8c138874a.
-        # playtype C3 (per-machine config layer): added machine_id/mode params to
-        # parse_chunk_response in core/parser.py -> 85666c4c4407.
-        # Phase D (play-type layer delete): removed the plugin framework wiring
-        # (use_play_type_plugins / machine_id / mode params) from parser.py /
-        # base_pipeline.py + C3 Layer-0 from PIA -> 8a791a69cd05.
-        # Behavior byte-identical: framework was flag-off-dormant; C3 L0 redundant
-        # with bcm_pairings L1 (same value + source="config" for all 5 pilots).
-        # Phase E: topdollar_choice plugin registered + parser.py TD session
-        # accumulator -> adf08191dd9c (M15-only applicability).
-        # P3 payid symbol enrichment: parser.py C4 symbol decode (payout_id_symbol_combos
-        # chunk key) + PIA C4 accumulators (payout_id_col_set_total /
-        # payout_id_symbol_combos_total) → covered_columns + symbol_combo in
-        # payout_ids_top20; payouts_by_spin_type SCHEMA_VERSION 2→3 -> 04691124fde6.
-        # paytype-rearch: PIA spin_type_rows enrichment (feature cross-reference) -> 8dbbfad6f90f.
-        assert actual == "3b852134b03a", (
-            f"compute_base_analyzer_version() mismatch vs R-1 closure reference:\n"
-            f"  actual   = {actual!r}\n"
-            f"  expected = '3b852134b03a' (R-1 closure value, post spin_type_rtp_buckets:\n"
-            "  parser paid-bucket accumulator (play_types stays carved) → 8dbbfad6f90f→3b852134b03a;\n"
-            "  additive-only new fields: feature_name/rtp_pp/fire_rate/trigger_only in spin_type_breakdown rows.\n"
-            "Phase honesty-2 expanded base_hash from core/*.py (old: fa440e3eb5f6) to the\n"
-            "25-file report-production import closure (960e9d18d83d); phase 2a then carved\n"
-            "collect_mechanic's compute out of PIA (-> 57fdb323585d), phase 2b carved\n"
-            "bonus_chain_dynamics' compute out of PIA (-> 980f488f4bb2), phase 3 carved\n"
-            "upstream_feature_breakdown's row-build out of PIA (-> c89db791d8a1), phase 4\n"
-            "carved multiplier_profile's dict-build out of PIA (-> ce298f055495), phase 5\n"
-            "carved reel_marginal_by_spin_type's dict-build out of PIA (-> ccc1ecce185d),\n"
-            "phase 6 carved bankruptcy_simulation's tier row-build out of PIA (-> d8b8c138874a),\n"
-            "PT-3 BCM-cycle carve moved the 5 cycle fns out of the closure (-> 85666c4c4407),\n"
-            "Phase D deleted the play-type plugin framework + C3 Layer-0 wiring (-> 8a791a69cd05),\n"
-            "Phase E registered topdollar_choice + parser.py TD accumulator (-> adf08191dd9c),\n"
-            "P3 payid symbol enrichment: parser.py C4 + PIA accumulators (-> 04691124fde6),\n"
-            "paytype-rearch feature cross: PIA spin_type_rows enrichment (-> 8dbbfad6f90f).\n"
-            "core/parser.py is still in the closure — editing it still flips base_hash."
-        )
-
-    @requires_base_version
     def test_hash_is_nonzero_after_parser_carve(self):
         """C5: once core/parser.py exists, hash must not be all-zeros.
 
@@ -982,47 +763,6 @@ class TestNoSilentSwallows:
 # C8 — Inject-bug TDD verification
 # ===========================================================================
 
-class TestInjectBugC8a_ReExportDeletion:
-    """C8-a inject-bug: delete a re-export line → existing test goes RED.
-
-    Proof that our C3 tests catch the regression.
-    We simulate the inject scenario structurally:
-    - If pia.parse_chunk_response is missing → hasattr check fires → C3 test is RED.
-    """
-
-    @requires_pia
-    @requires_core_parser
-    def test_inject_delete_reexport_proof(self):
-        """C8-a proof: if re-export is deleted, C3 guard fires.
-
-        We prove this by verifying the MECHANISM: our C3 test uses hasattr().
-        A missing attribute on _pia means hasattr → False → assert fails.
-
-        To explicitly prove the inject scenario without modifying files:
-        We verify that IF pia.parse_chunk_response were missing, the
-        test_pia_still_has_symbol_after_carve assertion would fire.
-        """
-        # Simulate the post-inject state: pia has NO parse_chunk_response.
-        # We use a dummy object to prove the guard mechanism.
-        class _FakePIA:
-            pass  # No parse_chunk_response attribute
-
-        fake_pia = _FakePIA()
-        # This is what the C3 test checks:
-        has_it = hasattr(fake_pia, "parse_chunk_response")
-        assert not has_it, (
-            "INJECT-BUG PROOF C8-a: a module missing parse_chunk_response "
-            "would cause hasattr() → False.\n"
-            "The C3 test test_pia_still_has_symbol_after_carve would go RED."
-        )
-
-        # Prove that the real pia DOES have it (so after the fix it's green):
-        assert hasattr(_pia, "parse_chunk_response"), (
-            "INJECT-BUG PROOF C8-a: real pia.parse_chunk_response is present.\n"
-            "After impl lands re-export, this is green; before it, it's red."
-        )
-
-
 class TestInjectBugC8b_HashFlip:
     """C8-b inject-bug: edit core/parser.py body → hash changes.
 
@@ -1129,72 +869,6 @@ class TestInjectBugC8c_SideEffectSmoke:
 
 
 # ===========================================================================
-# C2 — Canary: P1-A1 3-invocation parity test file still exists
-# ===========================================================================
-
-class TestP1A1ParityCanary:
-    """C2: structural assertion that the P1-A1 parity test exists and is valid.
-
-    The actual parity check (3 invocations, byte-identical summary) is done
-    by tests/integration/test_analyzer_three_invocation_parity.py.
-    Our role is to assert:
-    1. The test file exists (wasn't accidentally deleted)
-    2. The file can be imported without SyntaxError
-    3. Our re-export check ensures pia.parse_chunk_response still works
-       (since the parity test ultimately exercises the full parse path)
-    """
-
-    def test_p1_a1_parity_test_file_exists(self):
-        """C2: the P1-A1 parity test file must still exist."""
-        parity_file = (
-            ROOT / "tests" / "integration" /
-            "test_analyzer_three_invocation_parity.py"
-        )
-        assert parity_file.exists(), (
-            f"P1-A1 parity test file not found: {parity_file}\n"
-            "C2: this file is the canary — it must not be deleted by P2-B1."
-        )
-
-    def test_p1_a1_parity_test_file_is_valid_python(self):
-        """C2: the P1-A1 parity test file must parse as valid Python."""
-        parity_file = (
-            ROOT / "tests" / "integration" /
-            "test_analyzer_three_invocation_parity.py"
-        )
-        if not parity_file.exists():
-            pytest.skip("Parity test file missing — covered by test above")
-
-        source = parity_file.read_text(encoding="utf-8")
-        try:
-            ast.parse(source)
-        except SyntaxError as exc:
-            pytest.fail(
-                f"P1-A1 parity test file has a SyntaxError: {exc}\n"
-                "C2: the carve must not break the existing test file."
-            )
-
-    @requires_pia
-    def test_pia_still_has_parse_chunk_response_for_parity_path(self):
-        """C2: pia.parse_chunk_response accessible (used by the parity test path).
-
-        The 3-invocation parity test ultimately calls parse_chunk_response
-        through the analyzer subprocess. If PIA loses this symbol, the
-        subprocess exits non-zero → parity test goes RED.
-
-        This assertion ensures the re-export is in place before the parity
-        test is even run.
-        """
-        assert hasattr(_pia, "parse_chunk_response"), (
-            "pia.parse_chunk_response not accessible.\n"
-            "C2: the P1-A1 parity test would go RED — parse path is broken."
-        )
-        assert callable(_pia.parse_chunk_response), (
-            "pia.parse_chunk_response is not callable.\n"
-            "C2: the parse path for the 3-invocation parity test is broken."
-        )
-
-
-# ===========================================================================
 # C6 — Existing test suites still importable (structural check)
 # ===========================================================================
 
@@ -1209,9 +883,7 @@ class TestExistingTestSuitesImportable:
     """
 
     _EXISTING_TEST_FILES = [
-        "tests/integration/test_analyzer_three_invocation_parity.py",    # P1-A1
         "tests/backend/test_lookup_machine_md5_canonical.py",             # P1-B1
-        "tests/backend/test_summary_md5_writer_parity.py",               # P1-A2
         "tests/backend/test_analyzer_foundation.py",                     # P2-A1
         "tests/backend/test_manifest_loader.py",                         # P2-A2
     ]
@@ -1239,48 +911,4 @@ class TestExistingTestSuitesImportable:
             pytest.fail(
                 f"Existing test suite {rel_path} has SyntaxError: {exc}\n"
                 "C6: carve must not corrupt existing test files."
-            )
-
-    @requires_pia
-    def test_test_analyzer_parsing_imports_still_work(self):
-        """C6 spot check: key imports used by test_analyzer_parsing.py still resolve.
-
-        test_analyzer_parsing.py does:
-          from fresh_slotlab.player_impact_analyzer import (
-              _REQUIRED_ROUND_FIELDS, _check_round_schema, return_bucket
-          )
-        After carve, these must still be importable from PIA (via re-exports).
-        """
-        # _REQUIRED_ROUND_FIELDS and _check_round_schema are moved to core.parser;
-        # return_bucket stays in PIA (not in the carve list).
-        assert hasattr(_pia, "_REQUIRED_ROUND_FIELDS"), (
-            "pia._REQUIRED_ROUND_FIELDS missing — test_analyzer_parsing.py import would fail.\n"
-            "C6: PIA must re-export this constant from core.parser."
-        )
-        assert hasattr(_pia, "_check_round_schema"), (
-            "pia._check_round_schema missing — test_analyzer_parsing.py import would fail.\n"
-            "C6: PIA must re-export this function from core.parser."
-        )
-        assert hasattr(_pia, "return_bucket"), (
-            "pia.return_bucket missing — test_analyzer_parsing.py import would fail.\n"
-            "C6: return_bucket is NOT in the carve list; it must stay in PIA."
-        )
-
-    @requires_pia
-    def test_test_chunk_integrity_imports_still_work(self):
-        """C6 spot check: test_chunk_integrity.py imports still resolve.
-
-        test_chunk_integrity.py does:
-          from fresh_slotlab.player_impact_analyzer import (
-              CHUNK_CACHE_VERSION, ChunkIntegrityError, _payload_sha256,
-              _save_chunk_cache, load_chunk_envelope
-          )
-        ChunkIntegrityError, _payload_sha256, load_chunk_envelope are moved to
-        core.parser — they must be re-exported from PIA.
-        """
-        for sym in ["CHUNK_CACHE_VERSION", "ChunkIntegrityError",
-                    "_payload_sha256", "_save_chunk_cache", "load_chunk_envelope"]:
-            assert hasattr(_pia, sym), (
-                f"pia.{sym} missing — test_chunk_integrity.py import would fail.\n"
-                "C6: all symbols imported by existing tests must remain accessible via PIA."
             )

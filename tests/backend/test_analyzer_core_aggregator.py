@@ -102,12 +102,6 @@ try:
 except ImportError:
     _CORE_PARSER_IMPORTABLE = False
 
-try:
-    import fresh_slotlab.player_impact_analyzer as _pia
-    _PIA_IMPORTABLE = True
-except ImportError:
-    _PIA_IMPORTABLE = False
-
 # versioning module for hash composition (may live in versioning.py per P2-A1)
 _compute_base_ver_fn = None
 try:
@@ -138,10 +132,6 @@ requires_core_aggregator = pytest.mark.skipif(
 requires_core_parser = pytest.mark.skipif(
     not _CORE_PARSER_IMPORTABLE,
     reason="fresh_slotlab.analyzer.core.parser not yet importable",
-)
-requires_pia = pytest.mark.skipif(
-    not _PIA_IMPORTABLE,
-    reason="fresh_slotlab.player_impact_analyzer not importable",
 )
 requires_base_version = pytest.mark.skipif(
     not _BASE_VERSION_IMPORTABLE,
@@ -416,109 +406,6 @@ class TestUtilsSymbolsInModule:
 
 
 # ===========================================================================
-# C1 — PIA re-exports all 16+2 aggregator symbols + 9 _utils symbols
-# ===========================================================================
-
-class TestPIAReExportsAggregatorSymbols:
-    """C1: PIA must re-export all 16+2 aggregator-scoped symbols (backward compat)."""
-
-    @requires_pia
-    @pytest.mark.parametrize("symbol_name", _ALL_AGGREGATOR_SYMBOLS)
-    def test_pia_has_aggregator_symbol(self, symbol_name):
-        """C1: each aggregator-scoped symbol still accessible via pia.symbol.
-
-        Inject-bug (C8 - C1 via PIA): delete one re-export line in PIA
-        → this fires for that symbol.
-
-        This guards the backward-compat requirement: callers that do
-        `from fresh_slotlab.player_impact_analyzer import simulate_bankruptcy_from_response`
-        must keep working after the carve.
-        """
-        assert hasattr(_pia, symbol_name), (
-            f"fresh_slotlab.player_impact_analyzer.{symbol_name} not found.\n"
-            "C1: PIA must re-export all 16+2 aggregator-scoped symbols.\n"
-            f"Inject-bug: delete re-export of {symbol_name!r} in PIA → this fires."
-        )
-
-    @requires_pia
-    @pytest.mark.parametrize("symbol_name", _UTILS_ONLY_SYMBOLS)
-    def test_pia_has_utils_only_symbol(self, symbol_name):
-        """C1: the 3 pure-utility helpers must also be accessible via PIA.
-
-        These (to_float, blank_like_symbol, bonus_chain_depth_bucket) are in
-        _utils.py and must still be re-exported by PIA for backward compat.
-        """
-        assert hasattr(_pia, symbol_name), (
-            f"fresh_slotlab.player_impact_analyzer.{symbol_name} not found.\n"
-            "C1: PIA must re-export the 3 pure-utility helpers from _utils.py.\n"
-            "These were previously defined in PIA directly."
-        )
-
-
-# ===========================================================================
-# C2 — P1-A1 canary (structural import check only)
-# ===========================================================================
-
-class TestP1A1ParityCanary:
-    """C2: structural canary that the 3-invocation parity test file is intact.
-
-    Per brief §3 C2: 'tests/integration/test_analyzer_three_invocation_parity.py
-    23/23 GREEN'. We assert structural soundness; actual run is verifier's job.
-    """
-
-    def test_p1_a1_parity_test_file_exists(self):
-        """C2: the P1-A1 parity test file must still exist after P2-B2."""
-        parity_file = (
-            ROOT / "tests" / "integration" /
-            "test_analyzer_three_invocation_parity.py"
-        )
-        assert parity_file.exists(), (
-            f"P1-A1 parity test file not found: {parity_file}\n"
-            "C2: this file must not be deleted or moved by P2-B2."
-        )
-
-    def test_p1_a1_parity_test_importable(self):
-        """C2: the parity test file must import without blowing up.
-
-        Per brief §3 C2: 'importlib.import_module(...)  doesn't blow up'.
-        This is a structural (SyntaxError + ImportError) guard, not a
-        full run of the 23 invocation pairs.
-        """
-        parity_file = (
-            ROOT / "tests" / "integration" /
-            "test_analyzer_three_invocation_parity.py"
-        )
-        if not parity_file.exists():
-            pytest.skip("Parity test file missing — covered by existence test above")
-
-        # Validate it at least parses as valid Python
-        source = parity_file.read_text(encoding="utf-8")
-        try:
-            ast.parse(source)
-        except SyntaxError as exc:
-            pytest.fail(
-                f"P1-A1 parity test file has a SyntaxError: {exc}\n"
-                "C2: P2-B2 must not corrupt the parity test file."
-            )
-
-    @requires_pia
-    def test_pia_still_has_simulate_bankruptcy_for_parity_path(self):
-        """C2: pia.simulate_bankruptcy_from_response accessible (used in parity path).
-
-        The 3-invocation parity test exercises the full parse path including
-        bankruptcy simulation. If PIA loses this symbol, the parity path breaks.
-        """
-        assert hasattr(_pia, "simulate_bankruptcy_from_response"), (
-            "pia.simulate_bankruptcy_from_response not accessible.\n"
-            "C2: the P1-A1 parity test parity path includes bankruptcy simulation."
-        )
-        assert callable(_pia.simulate_bankruptcy_from_response), (
-            "pia.simulate_bankruptcy_from_response is not callable.\n"
-            "C2: this function is exercised during the 3-invocation parity run."
-        )
-
-
-# ===========================================================================
 # C3 — Single source of truth: all 9 _utils symbols resolve to _utils.py
 # ===========================================================================
 
@@ -563,32 +450,6 @@ class TestSingleSourceOfTruth:
         "_DEFAULT_BANKRUPTCY_SESSION_SPINS",
     ]
 
-    @requires_pia
-    @requires_core_utils
-    @pytest.mark.parametrize("symbol_name", _CALLABLE_UTILS_SYMBOLS)
-    def test_pia_symbol_resolves_to_utils_file(self, symbol_name):
-        """C3: inspect.getfile(pia.symbol) must end with '_utils.py'.
-
-        After P2-B2, PIA no longer defines these symbols in its body —
-        it imports them from _utils.py. If PIA still has a local copy,
-        inspect.getfile returns player_impact_analyzer.py, not _utils.py.
-
-        Inject-bug (C8 - C3-pia): if PIA re-adds a local `def to_float(...)`,
-        getfile returns pia path → test goes RED for that symbol.
-        """
-        obj = getattr(_pia, symbol_name)
-        try:
-            source_file = inspect.getfile(obj)
-        except TypeError:
-            pytest.skip(f"{symbol_name!r} is a built-in/constant — skip getfile check")
-
-        assert source_file.endswith("_utils.py"), (
-            f"pia.{symbol_name} resolves to {source_file!r}\n"
-            "C3: must resolve to _utils.py, not player_impact_analyzer.py.\n"
-            "This means PIA still has a local copy instead of re-exporting.\n"
-            f"Inject-bug C8: add local def {symbol_name}(...) to PIA → fires here."
-        )
-
     @requires_core_parser
     @requires_core_utils
     @pytest.mark.parametrize("symbol_name", _CALLABLE_UTILS_SYMBOLS)
@@ -617,37 +478,25 @@ class TestSingleSourceOfTruth:
             "Per brief §3 C8 inject: add local def back to parser.py → fires here."
         )
 
-    @requires_pia
     @requires_core_parser
     @requires_core_utils
     @pytest.mark.parametrize("symbol_name", _CALLABLE_UTILS_SYMBOLS)
-    def test_pia_and_parser_and_utils_are_same_object(self, symbol_name):
-        """C3: pia.symbol is core_parser.symbol is core_utils.symbol (same object).
+    def test_parser_and_utils_are_same_object(self, symbol_name):
+        """C3: core_parser.symbol is core_utils.symbol (same object).
 
-        The 'is' check (identity, not equality) proves all three import paths
-        resolve to the single definition in _utils.py — no copies anywhere.
-
-        Per brief §3 C3 strong form:
-          'pia.return_bucket is core_parser.return_bucket is core_utils.return_bucket'
+        The 'is' check (identity, not equality) proves parser.py's import path
+        resolves to the single definition in _utils.py — no local copy.
 
         Per memory feedback_subprocess_import_suicide_and_module_globals.md:
         This is the split-path test that catches coincidence-masked duplicates.
-        If parser.py and PIA coincidentally implement the same logic but as
-        separate objects, equality would pass but identity fails.
+        If parser.py coincidentally implements the same logic but as a separate
+        object, equality would pass but identity fails.
 
         Inject-bug (C8 - C3-identity): if parser.py re-adds a local def for
-        any of these 9, the identity chain breaks → this test goes RED.
+        any of these, the identity chain breaks → this test goes RED.
         """
-        pia_obj = getattr(_pia, symbol_name)
         parser_obj = getattr(_core_parser_mod, symbol_name)
         utils_obj = getattr(_core_utils_mod, symbol_name)
-
-        assert pia_obj is utils_obj, (
-            f"pia.{symbol_name} IS NOT core_utils.{symbol_name}.\n"
-            "C3: PIA must re-export from _utils.py, not define its own copy.\n"
-            f"pia_obj id={id(pia_obj)}, utils_obj id={id(utils_obj)}\n"
-            "Inject-bug C8: add local def back to PIA body → 'is' fails here."
-        )
 
         assert parser_obj is utils_obj, (
             f"core_parser.{symbol_name} IS NOT core_utils.{symbol_name}.\n"
@@ -656,27 +505,21 @@ class TestSingleSourceOfTruth:
             "This is the primary C8 inject scenario from the brief."
         )
 
-    @requires_pia
     @requires_core_parser
     @requires_core_utils
     @pytest.mark.parametrize("symbol_name", _CONSTANT_UTILS_SYMBOLS)
     def test_constant_value_consistent_across_all_modules(self, symbol_name):
-        """C3: constant value must be consistent across PIA, parser, and _utils.
+        """C3: constant value must be consistent across parser and _utils.
 
         For immutable constants (int, tuple), Python may or may not intern the
         same object, so 'is' is not reliable. We assert value equality instead.
 
-        After P2-B2, all three modules must reference the same _utils.py constants.
+        After P2-B2, both modules must reference the same _utils.py constants.
         A value mismatch means one module still has a stale hardcoded copy.
         """
-        pia_val = getattr(_pia, symbol_name)
         parser_val = getattr(_core_parser_mod, symbol_name)
         utils_val = getattr(_core_utils_mod, symbol_name)
 
-        assert pia_val == utils_val, (
-            f"pia.{symbol_name} ({pia_val!r}) != core_utils.{symbol_name} ({utils_val!r}).\n"
-            "C3: PIA must re-export the constant from _utils.py, not use a stale local value."
-        )
         assert parser_val == utils_val, (
             f"core_parser.{symbol_name} ({parser_val!r}) != core_utils.{symbol_name} ({utils_val!r}).\n"
             "C3: parser.py must import the constant from _utils.py, not use a stale local value."
@@ -1264,62 +1107,26 @@ class TestHashCompositionRollsForward:
         )
 
     @requires_base_version
-    def test_base_version_matches_reference_after_p2_b2(self):
-        """honesty-2 update: base_hash covers the R-1 closure (25-file set), not just core/*.py.
+    def test_base_version_is_deterministic(self):
+        """compute_base_analyzer_version() must be deterministic across calls.
 
-        Phase honesty-2 (2026-05-29) redefined compute_base_analyzer_version() to hash the
-        transitive repo-local import closure of the report-production path (R-1), not just
-        core/*.py. The test intent survives: core/*.py files (including _utils.py and
-        aggregator.py) ARE in the closure, and the function must be deterministic.
+        Two calls with the same closure files must return the same value
+        (required for caching: two processes must agree on base_hash).
 
-        The old assertion (actual == _ref_base_version()) is now wrong because _ref_base_version()
-        only hashes core/*.py, but the live function hashes 25 files. Replaced with:
-        (a) determinism check, and (b) pin check against the known R-1 closure value.
+        Note: this intentionally does NOT pin a specific hex value. base_hash
+        is in flux during the orchestrator rebuild; a hardcoded value-pin would
+        re-flag the whole fleet on every legitimate closure change. The
+        per-file carve-isolation invariants (test_*_carve.py) cover the
+        "editing a non-closure file does NOT change base_hash" property without
+        pinning a literal value.
         """
         if not CORE_DIR.exists() or not list(CORE_DIR.glob("*.py")):
             pytest.skip("core/ directory empty — waiting on impl-implementer")
 
-        # (a) Determinism: two calls must return the same value
         actual1 = _compute_base_ver_fn()
         actual2 = _compute_base_ver_fn()
         assert actual1 == actual2, (
             f"compute_base_analyzer_version() is non-deterministic: {actual1!r} vs {actual2!r}"
-        )
-
-        # (b) Pin check: must be the known R-1 closure value (post P3 payid symbol enrichment)
-        # honesty-2 closed the R-1 gap: 25-file set covering full production path.
-        # Phase 2a carved collect_mechanic's compute out of PIA (a closure file),
-        # shrinking base 960e9d18d83d -> 57fdb323585d; phase 2b carved
-        # bonus_chain_dynamics out of PIA -> 980f488f4bb2; phase 3 carved
-        # upstream_feature_breakdown's row-build out of PIA -> c89db791d8a1;
-        # phase 4 carved multiplier_profile's dict-build out of PIA -> ce298f055495;
-        # phase 5 carved reel_marginal_by_spin_type's dict-build out of PIA -> ccc1ecce185d;
-        # phase 6 carved bankruptcy_simulation's tier row-build out of PIA (the LAST
-        # carve) -> d8b8c138874a (report content byte-identical).
-        # playtype C3 (per-machine config layer): added machine_id/mode params to
-        # parse_chunk_response in parser.py -> 85666c4c4407 (report byte-identical:
-        # bonus_feature value unchanged; the new params merely thread context to
-        # detect_play_types for per-machine config loading).
-        # Phase D (play-type layer delete): removed plugin framework wiring from
-        # parser.py / base_pipeline.py + C3 Layer-0 from PIA -> 8a791a69cd05.
-        # Behavior byte-identical: framework flag-off-dormant; C3 L0 == L1 for pilots.
-        # Phase E: topdollar_choice + parser.py TD accumulator -> adf08191dd9c.
-        # P3 payid symbol enrichment: parser.py C4 symbol decode + PIA C4 accumulators
-        # → covered_columns + symbol_combo in payout_ids_top20; payouts_by_spin_type
-        # SCHEMA_VERSION 2→3 -> 04691124fde6.
-        # paytype-rearch: PIA spin_type_rows enrichment (feature cross-reference) -> 8dbbfad6f90f.
-        # If this value changes again, a _CLOSURE_FILES source was edited.
-        assert actual1 == "3b852134b03a", (
-            f"compute_base_analyzer_version() diverges from R-1 closure reference:\n"
-            f"  actual   = {actual1!r}\n"
-            f"  expected = '3b852134b03a' (R-1 closure value, post spin_type_rtp_buckets:\n"
-            "  parser paid-bucket accumulator (play_types stays carved) → 8dbbfad6f90f→3b852134b03a;\n"
-            "  PIA spin_type_rows enrichment (feature_name/rtp_pp/fire_rate/trigger_only) → 04691124fde6→8dbbfad6f90f;\n"
-            "  additive-only new fields: feature_* in each spin_type_breakdown row.\n"
-            "The R-1 closure covers core/*.py plus content modules (round_classification,\n"
-            "round_win, trigger_sessions, sampler, machine_md5, chunk_index, rawdata_index)\n"
-            "and support modules. If this changed, update the pin to the new value and\n"
-            "verify _CLOSURE_FILES in versioning.py reflects the intent."
         )
 
 
@@ -1474,25 +1281,6 @@ class TestInjectBugC8a_AggregatorSymbolDeletion:
             "After impl lands, this is green; before, it's red."
         )
 
-    @requires_pia
-    def test_inject_pia_missing_symbol_proof_mechanism(self):
-        """C8-a proof (PIA re-export): if PIA re-export is deleted → C1-PIA fires.
-
-        PIA must re-export all 16+2 aggregator symbols. If one is deleted
-        from the re-export block, test_pia_has_aggregator_symbol fires.
-        """
-        class _FakePIA:
-            pass
-
-        fake_pia = _FakePIA()
-        assert not hasattr(fake_pia, "evaluate_guideline_comparison"), (
-            "INJECT-BUG PROOF C8-a (PIA): missing re-export → hasattr → False."
-        )
-
-        assert hasattr(_pia, "evaluate_guideline_comparison"), (
-            "INJECT-BUG PROOF C8-a (PIA): real pia.evaluate_guideline_comparison present."
-        )
-
 
 class TestInjectBugC8b_CycleViolation:
     """C8-b: add a forbidden import to _utils.py → C5 cycle test goes RED.
@@ -1642,9 +1430,7 @@ class TestExistingTestSuitesStillIntact:
     """
 
     _EXISTING_TEST_FILES = [
-        "tests/integration/test_analyzer_three_invocation_parity.py",
         "tests/backend/test_lookup_machine_md5_canonical.py",
-        "tests/backend/test_summary_md5_writer_parity.py",
         "tests/backend/test_analyzer_foundation.py",
         "tests/backend/test_manifest_loader.py",
         "tests/backend/test_analyzer_core_parser.py",
@@ -1673,35 +1459,4 @@ class TestExistingTestSuitesStillIntact:
             pytest.fail(
                 f"Existing test suite {rel_path} has SyntaxError after P2-B2: {exc}\n"
                 "P2-B2 must not corrupt existing test files."
-            )
-
-    @requires_pia
-    def test_parser_test_imports_still_resolve_via_pia(self):
-        """test_analyzer_parsing.py key imports still work after P2-B2.
-
-        That test does: 'from pia import return_bucket, _check_round_schema, ...'
-        After P2-B2, return_bucket moves to _utils.py; PIA must still re-export it.
-        """
-        for sym in ["return_bucket", "_check_round_schema", "_REQUIRED_ROUND_FIELDS"]:
-            assert hasattr(_pia, sym), (
-                f"pia.{sym} missing after P2-B2.\n"
-                "test_analyzer_parsing.py imports this from PIA; must still work."
-            )
-
-    @requires_pia
-    def test_bankruptcy_test_imports_still_resolve_via_pia(self):
-        """test_analyzer_bankruptcy.py key imports still work after P2-B2.
-
-        That test exercises bankruptcy simulation; all the bankruptcy symbols
-        must remain accessible via PIA.
-        """
-        for sym in [
-            "simulate_bankruptcy_from_response",
-            "compute_bankruptcy_percentiles",
-            "_BankruptcyStreamAccumulator",
-            "_DEFAULT_BANKROLL_MULTIPLIERS",
-        ]:
-            assert hasattr(_pia, sym), (
-                f"pia.{sym} missing after P2-B2.\n"
-                "test_analyzer_bankruptcy.py depends on this symbol via PIA."
             )

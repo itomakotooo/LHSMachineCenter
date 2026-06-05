@@ -33,7 +33,7 @@ class TestAnalyzerChunkRetry:
     First 5xx used to abort the whole machine; now it retries."""
 
     def test_run_sampling_chunk_retries_on_502_then_succeeds(self, monkeypatch):
-        import fresh_slotlab.player_impact_analyzer as analyzer
+        import fresh_slotlab.analyzer.core.base_pipeline as analyzer
         attempts = {"n": 0}
 
         def fake_post(payload, timeout):
@@ -71,7 +71,7 @@ class TestAnalyzerChunkRetry:
         assert "request_failed_http" not in str(result.get("error", ""))
 
     def test_non_retryable_404_fails_fast(self, monkeypatch):
-        import fresh_slotlab.player_impact_analyzer as analyzer
+        import fresh_slotlab.analyzer.core.base_pipeline as analyzer
         attempts = {"n": 0}
 
         def fake_post(payload, timeout):
@@ -192,12 +192,12 @@ class TestSharedRetryHelper:
     batch_dev_sampler. Both modules must expose it at import time."""
 
     def test_analyzer_exports_post_json_with_retry(self):
-        import fresh_slotlab.player_impact_analyzer as analyzer
+        import fresh_slotlab.analyzer.core.base_pipeline as analyzer
         assert callable(analyzer.post_json_with_retry)
 
     def test_sampler_aliases_shared_helper(self):
         import fresh_slotlab.batch_dev_sampler as sampler
-        import fresh_slotlab.player_impact_analyzer as analyzer
+        import fresh_slotlab.analyzer.core.base_pipeline as analyzer
         # _post_json_with_retry in sampler is literally the analyzer's
         # function — same object, not a wrapper.
         assert sampler._post_json_with_retry is analyzer.post_json_with_retry

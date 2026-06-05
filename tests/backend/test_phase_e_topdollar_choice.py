@@ -121,8 +121,6 @@ _TARGET_SETTLED_MAX = 440000
 _TARGET_RTP_CONTRIBUTION_LOW = 49.0
 _TARGET_RTP_CONTRIBUTION_HIGH = 52.0
 
-_EXPECTED_BASE_HASH = "3b852134b03a"  # spin_type_rtp_buckets: parser paid-bucket accumulator (play_types stays carved) → 8dbbfad6f90f→3b852134b03a
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1012,27 +1010,15 @@ class TestRTPIntegrity:
 # ---------------------------------------------------------------------------
 
 class TestBaseHashRePin:
-    """Gate 6: base_hash must be 8dbbfad6f90f; no assertion on 04691124fde6 remains."""
+    """Gate 6: base_hash format + determinism.
 
-    def test_base_hash_equals_phase_e_value(self):
-        """compute_base_analyzer_version() == '8dbbfad6f90f' (paytype-rearch re-pin).
-
-        Phase E registered topdollar_choice → 04691124fde6.
-        paytype-rearch: PIA spin_type_rows enrichment (player_impact_analyzer.py
-        gains feature_* fields per row) → base_hash 04691124fde6→8dbbfad6f90f.
-
-        Note: editing topdollar_choice.py itself does NOT flip this (R-4).
-        The flip happened because player_impact_analyzer.py (a closure file) was
-        edited to add the feature cross-reference enrichment to spin_type_rows.
-        """
-        from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
-        actual = compute_base_analyzer_version()
-        assert actual == _EXPECTED_BASE_HASH, (
-            f"base_hash mismatch. Expected {_EXPECTED_BASE_HASH!r} (paytype-rearch value), "
-            f"got {actual!r}.\n"
-            "paytype-rearch: PIA spin_type_rows enrichment → base_hash 04691124fde6→8dbbfad6f90f.\n"
-            "If you see a different hash, a closure file was edited unexpectedly."
-        )
+    The literal base_hash VALUE pin has been removed — base_hash is in flux
+    during the orchestrator rebuild and a hardcoded pin re-flags the whole
+    fleet on every legitimate closure change. The "editing topdollar_choice.py
+    does NOT flip base_hash" property is covered structurally by
+    test_editing_topdollar_feature_leaves_base_hash_unchanged (simulated-edit
+    comparison, no literal value).
+    """
 
     def test_base_hash_is_valid_12_hex(self):
         """base_hash is a 12-char lowercase hex string."""

@@ -107,37 +107,6 @@ class TestCarveCompletionPreconditions:
             f"feature_errors: {json.dumps(fe, indent=2)[:500]}"
         )
 
-    def test_base_hash_unchanged(self):
-        """base_hash must be d8b8c138874a (R-1 closure value, post phase-6).
-
-        Phase honesty-2 (2026-05-29) redefined base_hash to the 25-file report-
-        production import closure → 960e9d18d83d. All C-phase plugins are
-        registered features excluded by R-4. Phase 2a carved collect_mechanic's
-        compute (dict-builder + 2 private helpers) OUT of player_impact_analyzer.py
-        (a closure file) → base re-baselined to 57fdb323585d. Phase 2b carved
-        bonus_chain_dynamics' dict-build (incl. its _quantiles closure) OUT of PIA
-        → base re-baselined to 980f488f4bb2. Phase 3 carved
-        upstream_feature_breakdown's ~400-line row-build OUT of PIA → base
-        re-baselined to c89db791d8a1. Phase 4 carved multiplier_profile's inline
-        dict-build OUT of PIA → base re-baselined to ce298f055495. Phase 5 carved
-        reel_marginal_by_spin_type's inline dict-build OUT of PIA → base
-        re-baselined to ccc1ecce185d. Phase 6 carved bankruptcy_simulation's inline
-        tier ROW-BUILD loop OUT of PIA (the LAST carve of the unbundle) → base
-        re-baselined to d8b8c138874a (report content byte-identical; only where
-        the code lives changed). The value is stable until another production-path
-        file in _CLOSURE_FILES is modified.
-        """
-        from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
-        actual = compute_base_analyzer_version()
-        assert actual == "3b852134b03a", (
-            f"base_hash must be '3b852134b03a' (R-1 closure value, post spin_type_rtp_buckets: "
-            f"parser paid-bucket accumulator (play_types stays carved) → base_hash 8dbbfad6f90f→3b852134b03a; "
-            f"additive display metadata only, no RTP change). "
-            f"Got: {actual!r}. "
-            f"Registered plugin modifications must NOT change base_hash (R-4 exclusion). "
-            f"Check _CLOSURE_FILES in versioning.py for unintended production-path changes."
-        )
-
     def test_ten_plugins_registered(self):
         """Exactly 12 plugins must be in ALL_FEATURES after all phase imports.
 

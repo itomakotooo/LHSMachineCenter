@@ -151,7 +151,7 @@ class TestRawdataIndexCrossProcess:
         # Seed chunks for 4 distinct (machine, mode) cells. Each
         # subprocess will then call update_entry on its own cell — the
         # _index.json is the contention point.
-        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+        from fresh_slotlab.analyzer.core.writer import _save_chunk_cache
 
         cells = [("M1", 1), ("M2", 1), ("M3", 1), ("M4", 1)]
         for machine, mode in cells:

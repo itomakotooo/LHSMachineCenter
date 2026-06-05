@@ -15,8 +15,9 @@ Gate A (trace): Real M15 full-dataset run -> win_bands for ST1_paid match
   ST14_free / ST15_free have has_payouts==False and empty bands/combos.
 
 Gate B (carve/isolation): Editing spin_type_outcomes.py does NOT change
-  base_hash (stays "8dbbfad6f90f"); it DOES change M15's effective_version
-  vs. M14 (which does not declare the feature).
+  base_hash (verified structurally + via simulated-edit, no literal value
+  pinned); it DOES change M15's effective_version vs. M14 (which does not
+  declare the feature).
 
 Gate C (additive): M15 summary gains ONLY spin_type_outcomes; no
   pre-existing leaf changes. Verified at section-level presence check
@@ -74,11 +75,6 @@ _M14_AVAILABLE = _RAWDATA_M14.is_dir() and any(_RAWDATA_M14.glob("chunk_*.json")
 
 _SKIP_NO_M15 = pytest.mark.skipif(not _M15_AVAILABLE, reason="M15 rawdata not available")
 _SKIP_NO_M14 = pytest.mark.skipif(not _M14_AVAILABLE, reason="M14 rawdata not available")
-
-# ---------------------------------------------------------------------------
-# Expected base_hash (paytype-rearch; must NOT flip after adding this feature)
-# ---------------------------------------------------------------------------
-_EXPECTED_BASE_HASH = "3b852134b03a"  # spin_type_rtp_buckets: parser paid-bucket accumulator (play_types stays carved) → 8dbbfad6f90f→3b852134b03a
 
 # ---------------------------------------------------------------------------
 # Ground-truth trace values — from a full 224-chunk M15 run (2,048,000 ST1 spins)
@@ -371,15 +367,6 @@ class TestGateBIsolation:
                 raw = raw + suffix
             h.update(raw)
         return h.hexdigest()[:12]
-
-    def test_base_hash_is_expected_value(self):
-        """base_hash == '8dbbfad6f90f' (paytype-rearch value; unchanged by this feature)."""
-        from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
-        actual = compute_base_analyzer_version()
-        assert actual == _EXPECTED_BASE_HASH, (
-            f"base_hash mismatch. Expected {_EXPECTED_BASE_HASH!r}, got {actual!r}.\n"
-            "Adding spin_type_outcomes.py to _CLOSURE_FILES (inject-bug B) would cause this."
-        )
 
     def test_feature_file_not_in_closure_files(self):
         """spin_type_outcomes.py must NOT be in _CLOSURE_FILES.

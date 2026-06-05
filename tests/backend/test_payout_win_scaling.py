@@ -29,7 +29,7 @@ import json
 
 import pytest
 
-from fresh_slotlab.player_impact_analyzer import parse_chunk_response
+from fresh_slotlab.analyzer.core.parser import parse_chunk_response
 
 
 def _robot(rounds: list[dict]) -> dict:

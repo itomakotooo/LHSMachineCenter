@@ -288,7 +288,6 @@ class TestHistoricalNeverFeedsDefaultAnalyzerPath(_AppFixtureMixin):
         Revert → GREEN.
         """
         import src.web_console.backend.app as app_mod
-        import fresh_slotlab.player_impact_analyzer as pia_real
         from fastapi.testclient import TestClient
 
         synthetic = self._make_synthetic_classified(rawdata_root)
@@ -350,7 +349,6 @@ class TestHistoricalNeverFeedsDefaultAnalyzerPath(_AppFixtureMixin):
         CURRENT markers must appear (kept + deletable chunks are read).
         """
         import src.web_console.backend.app as app_mod
-        import fresh_slotlab.player_impact_analyzer as pia_real
 
         synthetic = self._make_synthetic_classified(rawdata_root)
 

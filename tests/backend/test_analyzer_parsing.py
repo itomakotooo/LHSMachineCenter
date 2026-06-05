@@ -19,12 +19,12 @@ import json
 
 import pytest
 
-from fresh_slotlab import player_impact_analyzer as ana
-from fresh_slotlab.player_impact_analyzer import (
+from fresh_slotlab.analyzer.core import base_pipeline as ana
+from fresh_slotlab.analyzer.core.parser import (
     _REQUIRED_ROUND_FIELDS,
     _check_round_schema,
-    return_bucket,
 )
+from fresh_slotlab.analyzer.core._utils import return_bucket
 
 
 # ---------- _check_round_schema ----------

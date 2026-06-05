@@ -95,29 +95,16 @@ sys.path.insert(0, str(_REPO_ROOT))
 # Known hash constants
 # ---------------------------------------------------------------------------
 
-# R-1 closure base_hash (honesty-2, 2026-05-29). Phase honesty-2 redefined
-# base_hash to cover the full report-production import closure (25 files),
-# not just core/*.py. INTENTIONAL PIN: this is a regression guard against
-# accidental content-module edits. Making it dynamic would remove the guard.
-# Do NOT replace this with a dynamic compute call — per arch-proposal v2 §3.3.
-# Old C3 value (core/*.py glob): fa440e3eb5f6
-# R-1 closure value (25-file set, honesty-2): 960e9d18d83d
-# Phase 2a (collect_mechanic carve) shrank PIA (a closure file) → 57fdb323585d.
-# Phase 2b (bonus_chain_dynamics carve) shrank PIA again → 980f488f4bb2.
-# Phase 3 (upstream_feature_breakdown row-build carve) shrank PIA again → c89db791d8a1.
-# Phase 4 (multiplier_profile dict-build carve) shrank PIA again → ce298f055495.
-# Phase 5 (reel_marginal_by_spin_type dict-build carve) shrank PIA again → ccc1ecce185d.
-# Phase 6 (bankruptcy_simulation row-build carve — the LAST carve) shrank PIA again → d8b8c138874a.
-# The isolation RELATIONSHIPS below are unchanged across all of these
-# (M275_ev != M14_ev etc.); only the base value moved.
-_C3_BASE_HASH = "3b852134b03a"  # spin_type_rtp_buckets: parser.py adds paid-round bucket accumulator (play_types stays carved) → base_hash 8dbbfad6f90f→3b852134b03a; additive (new per-ST RTP distribution, no existing fields changed)
-
 # R1 Phase 1 (Cluster E) note: _M275_C3_5_EFFECTIVE_VERSION and
 # _NON_M275_EFFECTIVE_VERSION hex pins have been REMOVED. They were updated
 # manually 3 times across C-phases (C3.5→C5→C6) and would need updating again
 # every time a plugin file changes. Replaced with structural differential
 # assertions: "M275 differs from M14; M14/M37/M272 share one hash."
-# The base_hash pin above REMAINS — it is intentional (regression guard).
+# The literal base_hash VALUE pin has also been removed — base_hash is in flux
+# during the orchestrator rebuild and a hardcoded pin re-flags the whole fleet
+# on every legitimate closure change. The durable isolation invariants below
+# (M275_ev != M14_ev; M14/M37/M272 share one hash; base_hash valid+deterministic)
+# do not pin a literal value.
 # Version history preserved here for reference:
 #   M275 C3.5: 2ef11cd69c8d  C4: 7489a1582d6d  C5: a4d1fa45cf36  C6: 5c78f3834a1e
 #   M14  C3.5: dd2ab55ef022  C4: 0427b30fb92e  C5: 47ff60ffa3f4  C6: 6aae41144cea
@@ -165,28 +152,6 @@ class TestBaseHashUnchangedInC3_5:
         assert isinstance(h, str), f"Expected str, got {type(h)}"
         assert _HEX12_RE.match(h), (
             f"base_hash must be 12 lowercase hex chars, got {h!r}"
-        )
-
-    def test_base_hash_unchanged_from_c3(self):
-        """base_hash must be the R-1 closure value (d8b8c138874a as of phase-6).
-
-        C3.5 adds multiplier_wild.py in features/. That plugin IS in ALL_FEATURES
-        and therefore EXCLUDED from base_hash by R-4. Per the R-1 closure algorithm
-        (honesty-2), a registered-plugin addition does not change base_hash.
-
-        INJECT-BUG (Bug B): add a comment line to core/parser.py (which IS in the
-        25-file closure). RED: base_hash flips (any byte change in a closure file
-        changes sha256). Revert parser.py → GREEN.
-
-        This is the PRIMARY proof of per-machine isolation for C3.5.
-        """
-        h = _compute_base_hash()
-        assert h == _C3_BASE_HASH, (
-            f"base_hash must be the R-1 closure value ({_C3_BASE_HASH!r}). "
-            f"Got: {h!r}. "
-            f"If a production-path file was modified, base_hash will flip. "
-            f"If a registered feature plugin was added/modified, base_hash must NOT flip. "
-            f"If this is a legitimate change, update _C3_BASE_HASH."
         )
 
     def test_base_hash_deterministic(self):

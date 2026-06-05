@@ -92,12 +92,6 @@ except ImportError:
     _CORE_WRITER_IMPORTABLE = False
 
 try:
-    import fresh_slotlab.player_impact_analyzer as _pia
-    _PIA_IMPORTABLE = True
-except ImportError:
-    _PIA_IMPORTABLE = False
-
-try:
     from fresh_slotlab.analyzer.core.parser import load_chunk_envelope as _load_chunk_envelope
     _PARSER_IMPORTABLE = True
 except ImportError:
@@ -121,10 +115,6 @@ requires_core_writer = pytest.mark.skipif(
         "fresh_slotlab.analyzer.core.writer not yet importable — "
         "impl-implementer has not landed P2-B3 yet"
     ),
-)
-requires_pia = pytest.mark.skipif(
-    not _PIA_IMPORTABLE,
-    reason="fresh_slotlab.player_impact_analyzer not importable",
 )
 requires_parser = pytest.mark.skipif(
     not _PARSER_IMPORTABLE,
@@ -284,127 +274,6 @@ class TestCoreWriterSymbols:
         assert "output_dir" in sig.parameters, (
             "write_summary_json missing 'output_dir' parameter.\n"
             "C1: signature per §1: def write_summary_json(summary, output_dir)"
-        )
-
-
-# ===========================================================================
-# C1 — PIA re-exports: same runtime objects (not duplicates)
-# ===========================================================================
-
-class TestPIAReExports:
-    """C1: PIA re-exports _save_chunk_cache and write_summary_json; identity holds.
-
-    Per §3 C1: 'PIA re-exports _save_chunk_cache and write_summary_json via the
-    existing dual-path import block, so external callers keep resolving via PIA.'
-
-    Strong form: pia._save_chunk_cache IS writer._save_chunk_cache (same object).
-    This is inject-bug (a) from C8: removing the re-export line in PIA → RED.
-    """
-
-    @requires_pia
-    def test_pia_has_save_chunk_cache(self):
-        """C1: pia._save_chunk_cache must be accessible after P2-B3.
-
-        Inject-bug (C8-a): comment out the re-export in PIA's dual-path
-        import block → hasattr returns False → this test goes RED.
-        """
-        assert hasattr(_pia, "_save_chunk_cache"), (
-            "fresh_slotlab.player_impact_analyzer._save_chunk_cache not found.\n"
-            "C1: PIA must re-export _save_chunk_cache from core.writer.\n"
-            "Inject-bug C8-a: delete re-export line in PIA → fires here."
-        )
-
-    @requires_pia
-    def test_pia_has_write_summary_json(self):
-        """C1: pia.write_summary_json must be accessible after P2-B3."""
-        assert hasattr(_pia, "write_summary_json"), (
-            "fresh_slotlab.player_impact_analyzer.write_summary_json not found.\n"
-            "C1: PIA must re-export write_summary_json from core.writer."
-        )
-
-    @requires_pia
-    @requires_core_writer
-    def test_pia_save_chunk_cache_is_same_object(self):
-        """C1 strong form: pia._save_chunk_cache IS writer._save_chunk_cache.
-
-        The 'is' identity check proves the function was RE-EXPORTED (not
-        duplicated). If implementer copies the function body into PIA instead
-        of re-exporting, they are DIFFERENT objects → 'is' fails.
-
-        Inject-bug C8-a: comment out the re-export block in PIA → this fires
-        (AttributeError on getattr before the 'is' comparison).
-        """
-        pia_fn = getattr(_pia, "_save_chunk_cache")
-        writer_fn = getattr(_core_writer_mod, "_save_chunk_cache")
-        assert pia_fn is writer_fn, (
-            "pia._save_chunk_cache is NOT the same object as writer._save_chunk_cache.\n"
-            "C1 strong form: PIA must re-export from core.writer, not duplicate.\n"
-            "Inject-bug: copy function body into PIA without re-export → 'is' fails.\n"
-            f"pia_fn id: {id(pia_fn)}, writer_fn id: {id(writer_fn)}"
-        )
-
-    @requires_pia
-    @requires_core_writer
-    def test_pia_write_summary_json_is_same_object(self):
-        """C1 strong form: pia.write_summary_json IS writer.write_summary_json."""
-        pia_fn = getattr(_pia, "write_summary_json")
-        writer_fn = getattr(_core_writer_mod, "write_summary_json")
-        assert pia_fn is writer_fn, (
-            "pia.write_summary_json is NOT the same object as writer.write_summary_json.\n"
-            "C1 strong form: PIA must re-export from core.writer, not duplicate.\n"
-            f"pia_fn id: {id(pia_fn)}, writer_fn id: {id(writer_fn)}"
-        )
-
-    @requires_pia
-    @requires_core_writer
-    def test_pia_chunk_cache_version_re_exported_from_writer(self):
-        """C1: CHUNK_CACHE_VERSION is canonical in writer.py and re-imported by PIA.
-
-        Per §1: 'CHUNK_CACHE_VERSION and utc_now() are canonical in writer.py now.'
-        Per ticket §1: 'writer.py MAY depend on PIA for module-level constants
-        if we cannot easily extract them' — but the implementer moved it to writer.py.
-        PIA must re-import it from there.
-        """
-        pia_ver = getattr(_pia, "CHUNK_CACHE_VERSION", None)
-        writer_ver = getattr(_core_writer_mod, "CHUNK_CACHE_VERSION", None)
-        assert pia_ver is not None, (
-            "pia.CHUNK_CACHE_VERSION not found.\n"
-            "C1: CHUNK_CACHE_VERSION must be re-exported from writer.py via PIA."
-        )
-        assert writer_ver is not None, (
-            "writer.CHUNK_CACHE_VERSION not found.\n"
-            "C1: CHUNK_CACHE_VERSION must be defined in writer.py (canonical source)."
-        )
-        assert pia_ver == writer_ver, (
-            f"CHUNK_CACHE_VERSION mismatch: pia={pia_ver!r}, writer={writer_ver!r}.\n"
-            "C1: the same constant must appear in both (via re-export)."
-        )
-        # For int constants Python may intern, so 'is' holds but equality is enough
-        assert isinstance(writer_ver, int) and writer_ver > 0, (
-            f"CHUNK_CACHE_VERSION must be a positive int, got {writer_ver!r}."
-        )
-
-
-# ===========================================================================
-# C2 — Canary: P1-A1 parity test file still exists (structural only)
-# ===========================================================================
-
-class TestP1A1ParityCanary:
-    """C2: structural assertion that the P1-A1 parity test still exists.
-
-    The actual 23/23 parity run is impl-verifier's job.
-    Per ticket: 'C2 — skip — covered by test_analyzer_three_invocation_parity.py'.
-    """
-
-    def test_p1_a1_parity_test_file_exists(self):
-        """C2: the P1-A1 parity test file must not have been accidentally deleted."""
-        parity_file = (
-            ROOT / "tests" / "integration" /
-            "test_analyzer_three_invocation_parity.py"
-        )
-        assert parity_file.exists(), (
-            f"P1-A1 parity test file not found: {parity_file}\n"
-            "C2: this file is the canary — it must not be deleted by P2-B3."
         )
 
 
@@ -1526,39 +1395,6 @@ class TestNoSilentSwallows:
 # C8 — Inject-bug TDD proofs
 # ===========================================================================
 
-class TestInjectBugC8a_ReExportDeletion:
-    """C8-a inject-bug: PIA missing _save_chunk_cache re-export → RED.
-
-    Proof documented in 03_tests.md (actual file-edit inject performed
-    and verified; this test captures the structural mechanism).
-    """
-
-    @requires_pia
-    @requires_core_writer
-    def test_inject_delete_reexport_proof_mechanism(self):
-        """C8-a proof: if re-export is deleted, C1 guard fires.
-
-        We prove the mechanism: our C1 test uses hasattr().
-        A missing attribute on _pia → hasattr → False → assert fails.
-        """
-        class _FakePIA:
-            pass  # No _save_chunk_cache attribute
-
-        fake_pia = _FakePIA()
-        # This is what the C1 test checks:
-        has_it = hasattr(fake_pia, "_save_chunk_cache")
-        assert not has_it, (
-            "INJECT-BUG PROOF C8-a: a module missing _save_chunk_cache "
-            "would cause hasattr() → False.\n"
-            "The C1 test test_pia_has_save_chunk_cache would go RED."
-        )
-
-        # Prove that the real pia DOES have it (so after the fix it's green):
-        assert hasattr(_pia, "_save_chunk_cache"), (
-            "INJECT-BUG PROOF C8-a: real pia._save_chunk_cache is present (GREEN)."
-        )
-
-
 class TestInjectBugC8b_OverridePathIgnored:
     """C8-b inject-bug: forcing override_config_md5 to "" in writer.py → RED.
 
@@ -1712,9 +1548,7 @@ class TestExistingTestSuitesNotBroken:
     """
 
     _EXISTING_TEST_FILES = [
-        "tests/integration/test_analyzer_three_invocation_parity.py",
         "tests/backend/test_lookup_machine_md5_canonical.py",
-        "tests/backend/test_summary_md5_writer_parity.py",
         "tests/backend/test_analyzer_foundation.py",
         "tests/backend/test_manifest_loader.py",
         "tests/backend/test_analyzer_core_parser.py",
@@ -1744,24 +1578,4 @@ class TestExistingTestSuitesNotBroken:
             pytest.fail(
                 f"Existing test suite {rel_path} has SyntaxError: {exc}\n"
                 "C7: carve must not corrupt existing test files."
-            )
-
-    @requires_pia
-    def test_pia_still_has_chunk_integrity_symbols(self):
-        """C7 spot check: test_chunk_integrity.py imports still resolve.
-
-        test_chunk_integrity.py imports CHUNK_CACHE_VERSION, ChunkIntegrityError,
-        _payload_sha256, _save_chunk_cache, load_chunk_envelope from PIA.
-        After P2-B3, _save_chunk_cache must also be re-exported from PIA.
-        """
-        for sym in [
-            "CHUNK_CACHE_VERSION",
-            "ChunkIntegrityError",
-            "_payload_sha256",
-            "_save_chunk_cache",
-            "load_chunk_envelope",
-        ]:
-            assert hasattr(_pia, sym), (
-                f"pia.{sym} missing — test_chunk_integrity.py import would fail.\n"
-                "C7: all symbols imported by existing tests must remain accessible via PIA."
             )

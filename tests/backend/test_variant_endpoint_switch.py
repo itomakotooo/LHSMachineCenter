@@ -75,7 +75,7 @@ class TestEndpointConstants:
     variant machines would get rejected or mishandled by upstream."""
 
     def test_analyzer_default_endpoint_is_variant(self):
-        from fresh_slotlab.player_impact_analyzer import DEFAULT_ENDPOINT_URL
+        from fresh_slotlab.analyzer.core.base_pipeline import DEFAULT_ENDPOINT_URL
         assert DEFAULT_ENDPOINT_URL.endswith("/MachineTest/MultiRobotTestSpinVariant"), (
             f"analyzer ENDPOINT must target Variant endpoint; got {DEFAULT_ENDPOINT_URL}"
         )
@@ -83,7 +83,7 @@ class TestEndpointConstants:
     def test_analyzer_runtime_endpoint_tracks_default(self):
         """ENDPOINT_URL is mutable (CLI --endpoint-url overrides it)
         but initialises to the Variant default."""
-        from fresh_slotlab.player_impact_analyzer import (
+        from fresh_slotlab.analyzer.core.base_pipeline import (
             DEFAULT_ENDPOINT_URL, ENDPOINT_URL,
         )
         assert ENDPOINT_URL == DEFAULT_ENDPOINT_URL
@@ -120,7 +120,7 @@ class TestMakePayloadPassthroughForVariantKey:
     "sanitize" step here would break the upstream routing."""
 
     def test_variant_key_with_dollar_and_dash_preserved(self):
-        from fresh_slotlab.player_impact_analyzer import make_payload
+        from fresh_slotlab.analyzer.core.base_pipeline import make_payload
         payload = make_payload(
             machine="M273$1$1-2-3",
             rtp_mode=1, bet=1000, spin_times=100, robot_count=5,
@@ -133,7 +133,7 @@ class TestMakePayloadPassthroughForVariantKey:
         """M201 uses commas in the CommonParam: ``M201$1$2,3,4`` is
         one variant. JSON body handles commas fine; only a bad
         sanitizer would split on them."""
-        from fresh_slotlab.player_impact_analyzer import make_payload
+        from fresh_slotlab.analyzer.core.base_pipeline import make_payload
         payload = make_payload(
             machine="M201$1$2,3,4",
             rtp_mode=1, bet=1000, spin_times=100, robot_count=5,
@@ -146,7 +146,7 @@ class TestMakePayloadPassthroughForVariantKey:
         """Non-variant machines (227 of 393) travel the same
         make_payload path — Variant endpoint accepts them verbatim
         per upstream docs."""
-        from fresh_slotlab.player_impact_analyzer import make_payload
+        from fresh_slotlab.analyzer.core.base_pipeline import make_payload
         payload = make_payload(
             machine="M14",
             rtp_mode=1, bet=1000, spin_times=100, robot_count=5,
@@ -160,7 +160,7 @@ class TestMakePayloadPassthroughForVariantKey:
         the way to the upstream. ``$`` / ``,`` / ``-`` in strings
         are legal JSON — the round-trip must preserve the key
         unchanged."""
-        from fresh_slotlab.player_impact_analyzer import make_payload
+        from fresh_slotlab.analyzer.core.base_pipeline import make_payload
         payload = make_payload(
             machine="M273$1$1-2-3",
             rtp_mode=1, bet=1000, spin_times=100, robot_count=5,

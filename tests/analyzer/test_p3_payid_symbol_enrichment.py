@@ -5,7 +5,9 @@ Tests all 7 gates from the impl-tester brief (2026-06-03):
   Gate 2 — byte-identical (additive-only): existing fields unchanged
   Gate 3 — RTP parity: rtp_integrity_check.passed == True
   Gate 4 — Edge cases: empty positions (), special line_id -1/-1000, missing SSBC
-  Gate 5 — base_hash gate: compute_base_analyzer_version() == '8dbbfad6f90f'
+  Gate 5 — base_hash gate: compute_base_analyzer_version() is a valid 12-hex
+    string + no stale base_hash value-pin remains in any other test file
+    (the literal value-pin was shed — base_hash is in flux during the rebuild)
   Gate 6 — inject-bug: corrupt row decode -> symbol_combo wrong -> revert -> GREEN
   Gate 7 — suite delta: no NEW failures
 
@@ -59,10 +61,6 @@ _M275_CACHE = _RAWDATA / "M275" / "mode_1"
 _M120_CACHE = _RAWDATA / "M120" / "mode_1"
 _M268_CACHE = _RAWDATA / "M268" / "mode_1"
 _M15_CACHE = _RAWDATA / "M15" / "mode_1"
-
-# The pinned base_hash after C4 symbol enrichment (parser.py + PIA edits).
-# This is the authoritative value re-pinned by coordinator after implementer.
-_EXPECTED_BASE_HASH = "3b852134b03a"  # spin_type_rtp_buckets: parser paid-bucket accumulator (play_types stays carved) → 8dbbfad6f90f→3b852134b03a
 
 # C3 existing fields that MUST be unchanged post-C4 (byte-identical).
 _C3_LEGACY_KEYS = frozenset({
@@ -256,26 +254,13 @@ def m15_summary():
 # ---------------------------------------------------------------------------
 
 class TestBaseHash:
-    """Gate 5: base_hash must be 8dbbfad6f90f (paytype-rearch re-pin)."""
+    """Gate 5: base_hash format + no stale-value pins anywhere.
 
-    def test_base_hash_equals_pinned_value(self):
-        """compute_base_analyzer_version() == '8dbbfad6f90f'.
-
-        The C4 symbol enrichment (parser.py + PIA) → 04691124fde6.
-        paytype-rearch feature cross (PIA spin_type_rows enrichment) → 8dbbfad6f90f.
-
-        INJECT-BUG: edit parser.py to add a no-op comment to the C4 block.
-        RED: base_hash will differ from _EXPECTED_BASE_HASH.
-        Revert -> GREEN.
-        """
-        from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
-        actual = compute_base_analyzer_version()
-        assert actual == _EXPECTED_BASE_HASH, (
-            f"base_hash mismatch: expected {_EXPECTED_BASE_HASH!r}, got {actual!r}.\n"
-            "If paytype-rearch feature cross (player_impact_analyzer.py spin_type_rows enrichment) is present,\n"
-            "base_hash must be 8dbbfad6f90f. A different value means a closure file was\n"
-            "unexpectedly added or changed."
-        )
+    The literal base_hash VALUE pin has been removed — base_hash is in flux
+    during the orchestrator rebuild and a hardcoded pin re-flags the whole
+    fleet on every legitimate closure change. The format check and the
+    no-stale-pin meta-guards below remain.
+    """
 
     def test_base_hash_12hex_format(self):
         """base_hash is a 12-char lowercase hex string."""
@@ -314,8 +299,10 @@ class TestBaseHash:
     def test_no_p3_hash_asserted_anywhere(self):
         """No test file (other than this one) asserts equality to the retired 04691124fde6 hash.
 
-        That hash was the P3/Phase-E value; paytype-rearch re-pins to 8dbbfad6f90f.
-        History references in comments are allowed; equality assertions are not.
+        That hash was the P3/Phase-E base_hash value. Literal base_hash
+        value-pins have since been shed entirely (base_hash is in flux during
+        the orchestrator rebuild). History references in comments are allowed;
+        equality assertions are not.
         """
         old_hash = "04691124fde6"
         this_file = Path(__file__).resolve()

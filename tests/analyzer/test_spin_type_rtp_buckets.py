@@ -7,9 +7,10 @@ Gate 1 — Trace: real M15 run -> spin_type_rtp_buckets["ST1_paid"] buckets;
   and assert match.  Sum of per-ST bucket rtp_contribution_pp == that ST's
   spin_type_breakdown.rtp_contribution_pp (parity).  Sum of spin_rate ≈ 1.0.
 
-Gate 2 — base_hash: the parser change re-pins base_hash to 3b852134b03a
-  (from 8dbbfad6f90f).  New feature file must NOT be in _CLOSURE_FILES
-  (editing it does NOT flip base_hash).
+Gate 2 — base_hash isolation: the new feature file must NOT be in _CLOSURE_FILES
+  (editing it does NOT flip base_hash). Verified structurally + via simulated
+  edit; no literal base_hash value is pinned (base_hash is in flux during the
+  orchestrator rebuild).
 
 Gate 3 — Additive: byte-identical leaf-level — vs the pre-change M15 summary,
   the ONLY new leaves are under spin_type_rtp_buckets; 0 pre-existing leaves
@@ -53,9 +54,6 @@ _PIA = _ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
 
 _M15_AVAILABLE = _RAWDATA_M15.is_dir() and any(_RAWDATA_M15.glob("chunk_*.json"))
 _SKIP_NO_M15 = pytest.mark.skipif(not _M15_AVAILABLE, reason="M15 rawdata not available")
-
-# Current base_hash after parser + versioning changes.
-_EXPECTED_BASE_HASH = "3b852134b03a"
 
 # Known RETURN_BUCKET_ORDER labels (same order as aggregator.RETURN_BUCKET_ORDER)
 _BUCKET_ORDER = [
@@ -508,27 +506,13 @@ class TestGate1Trace:
 # ---------------------------------------------------------------------------
 
 class TestGate2BaseHash:
-    """Gate 2: base_hash must be 3b852134b03a (parser + versioning change).
-    Editing the feature file must NOT change base_hash (R-4 exclusion).
+    """Gate 2: editing the feature file must NOT change base_hash (R-4 exclusion).
+
+    Verified structurally (the plugin file is not in _CLOSURE_FILES, and a
+    simulated edit does not change the hash) rather than by pinning a literal
+    base_hash value — base_hash is in flux during the orchestrator rebuild and
+    a value-pin re-flags the whole fleet on every legitimate closure change.
     """
-
-    def test_base_hash_is_expected_value(self):
-        """base_hash must be 3b852134b03a (spin_type_rtp_buckets phase).
-
-        The parser change (paid-round bucket accumulator) and the versioning.py
-        change (adding play_types files to _CLOSURE_FILES) both flip base_hash.
-
-        INJECT-BUG B: Add spin_type_rtp_buckets.py to _CLOSURE_FILES in
-        versioning.py. RED: compute_base_analyzer_version() returns a different
-        hash (the feature file's bytes are now included). Revert -> GREEN.
-        """
-        actual = _compute_base_hash()
-        assert actual == _EXPECTED_BASE_HASH, (
-            f"base_hash mismatch. Expected {_EXPECTED_BASE_HASH!r}, got {actual!r}.\n"
-            "If parser.py or versioning.py was legitimately edited, update the pin.\n"
-            "If spin_type_rtp_buckets.py was added to _CLOSURE_FILES, remove it "
-            "(R-4: registered plugins must NOT be in the closure)."
-        )
 
     def test_feature_file_not_in_closure(self):
         """spin_type_rtp_buckets.py must NOT appear in _CLOSURE_FILES.

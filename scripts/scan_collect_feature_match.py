@@ -41,7 +41,7 @@ def _worker_init() -> None:
     global _parser, _warn_fn
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
-    from fresh_slotlab.player_impact_analyzer import parse_chunk_response
+    from fresh_slotlab.analyzer.core.parser import parse_chunk_response
     # Phase 2a carve: collect_feature_match_warning moved from PIA into the
     # collect_mechanic feature plugin (it is private to that feature).
     from fresh_slotlab.analyzer.features.collect_mechanic import (

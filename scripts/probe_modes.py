@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from fresh_slotlab.player_impact_analyzer import make_payload, post_json  # noqa: E402
+from fresh_slotlab.analyzer.core.base_pipeline import make_payload, post_json  # noqa: E402
 
 MACHINES_CONFIG = ROOT / "configs" / "machines.json"
 OUTPUT = ROOT / "configs" / "machine_modes.json"

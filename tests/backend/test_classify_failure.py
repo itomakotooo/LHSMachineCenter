@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "fresh_slotlab"))
 
-from player_impact_analyzer import _classify_failure  # noqa: E402
+from analyzer.core.base_pipeline import _classify_failure  # noqa: E402
 
 
 # ── Network-class: retry might help ───────────────────────────────

@@ -32,13 +32,13 @@ def _patch_post_json(monkeypatch):
     """Replace the live HTTP call with the fixture data."""
     fixture_data = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
     monkeypatch.setattr(
-        "fresh_slotlab.player_impact_analyzer.post_json",
+        "fresh_slotlab.analyzer.core.base_pipeline.post_json",
         lambda payload, timeout: fixture_data,
     )
 
 
 def _run_chunk(**kwargs: Any) -> dict[str, Any]:
-    from fresh_slotlab.player_impact_analyzer import run_sampling_chunk
+    from fresh_slotlab.analyzer.core.base_pipeline import run_sampling_chunk
     defaults = dict(
         chunk_index=1,
         machine="M272",
@@ -122,7 +122,7 @@ def test_rtp_within_plausible_range():
 def test_eq0_in_internal_buckets_but_not_in_output_order():
     """eq0 is tracked internally (for correct totals) but excluded from
     RETURN_BUCKET_ORDER so the output rows don't carry a zero-info bar."""
-    from fresh_slotlab.player_impact_analyzer import RETURN_BUCKET_ORDER
+    from fresh_slotlab.analyzer.core.aggregator import RETURN_BUCKET_ORDER
 
     rec = _run_chunk()
     assert rec["ok"]

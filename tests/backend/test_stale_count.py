@@ -74,7 +74,7 @@ def _write_machines_config(path: Path, machines: dict[str, tuple[str, str]]) -> 
 def test_stale_count_all_fresh(client, app_factory):
     """Every run matches current machines.json + current analyzer → 0 stale."""
     c, _ = client
-    from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+    from fresh_slotlab.analyzer.versioning import compute_analyzer_version
     cur_analyzer = compute_analyzer_version()
     # Machine M14 is in the fake_machines fixture with empty md5s.
     # Seed a run with matching (empty) md5s + current analyzer.
@@ -174,7 +174,7 @@ def test_stale_count_rawdata_stale_not_fixable(
     _write_machines_config(mc, {"M14": ("CUR_CFG", "CUR_CODE")})
     from src.web_console.backend.app import create_app
     from fastapi.testclient import TestClient
-    from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+    from fresh_slotlab.analyzer.versioning import compute_analyzer_version
     cur_analyzer = compute_analyzer_version()
     app = create_app(
         state_dir=tmp_state_dir, reports_root=tmp_reports, cache_root=tmp_cache,
