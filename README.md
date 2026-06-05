@@ -232,6 +232,7 @@ Request flags the sampling + (future) analyzer path relies on:
 - Console operations and troubleshooting: `docs/CONSOLE_OPERATIONS.md`
 - Engineering TODO: `docs/TODO.md`
 - Handover guideline for new developers: `docs/HANDOVER_GUIDELINE.md`
+- **Analyzer architecture & rebuild spec (read first — the engine foundation + cleanup plan): `docs/ANALYZER_ARCHITECTURE.md`**
 - Adding a new machine — analyzer onboarding workflow: `docs/MACHINE_ONBOARDING.md`
 - Real-machine numeric tuning workflow (edit cfg → build → sample → report → iterate): `docs/MACHINE_TUNING_WORKFLOW.md`
 
