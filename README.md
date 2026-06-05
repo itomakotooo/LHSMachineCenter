@@ -210,6 +210,7 @@ Important request flags used by the analyzer/autotune path:
 - Console operations and troubleshooting: `docs/CONSOLE_OPERATIONS.md`
 - Engineering TODO: `docs/TODO.md`
 - Handover guideline for new developers: `docs/HANDOVER_GUIDELINE.md`
+- Adding a new machine — analyzer onboarding workflow: `docs/MACHINE_ONBOARDING.md`
 
 ## Git Boundary
 
