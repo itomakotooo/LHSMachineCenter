@@ -40,6 +40,11 @@ class LiveServer:
     # I5 fix: isolated configs upload dir so /api/configs/upload never
     # touches the real configs/uploaded_configs/ in the worktree.
     configs_upload_dir: Path | None = None
+    # Optional per-instance servers.json path. Set by function-scoped fixtures
+    # (e.g. b1_server in test_p4_bootstrap_stale_run.py) that boot a dedicated
+    # uvicorn with an isolated servers config; the session live_server leaves
+    # it None. Pure data field — held for the test body to reference.
+    servers_config_path: Path | None = None
 
 
 @pytest.fixture(scope="session")

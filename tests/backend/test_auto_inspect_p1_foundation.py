@@ -642,41 +642,9 @@ class TestMF4ManifestLoaderWired:
         assert isinstance(stc, dict), "spin_type_convention must be dict"
         assert "paid" in stc, "spin_type_convention must have 'paid' list"
 
-    def test_manifest_loader_wired_into_analyzer_main_function(self):
-        """Verify that player_impact_analyzer.main() contains the manifest
-        loader call site (_c1_load_manifest / _c1_resolve_inheritance /
-        _c1_resolve_per_mode pattern).
-
-        This is a static analysis check — we parse the source and look for
-        the load_manifest call. A subprocess e2e test would be more robust
-        but requires cached fixture data for M272 mode 1.
-
-        Inject-bug: comment out the _c1_load_manifest call in main() ->
-        this assertion fails because the call is no longer in the AST.
-        """
-        # Use a text search rather than AST parse to avoid BOM/encoding issues.
-        # The file may have a UTF-8 BOM; read with utf-8-sig to strip it.
-        analyzer_src = (
-            ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
-        ).read_text(encoding="utf-8-sig")
-        assert "_c1_load_manifest" in analyzer_src or "load_manifest" in analyzer_src, (
-            "Manifest loader call not found in player_impact_analyzer.py. "
-            "MF-4 prerequisite: the manifest must be loaded during each analyzer run."
-        )
-
-    def test_manifest_loader_wired_into_analyzer_pipeline_context(self):
-        """Verify PipelineContext in player_impact_analyzer.py receives
-        manifest= argument from _c1_manifest.
-
-        Inject-bug: change manifest=_c1_manifest to manifest={} ->
-        PipelineContext always gets empty manifest -> MF-4 broken.
-        """
-        # Read with utf-8-sig to strip BOM if present.
-        analyzer_src = (
-            ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
-        ).read_text(encoding="utf-8-sig")
-        # Check for PipelineContext( ... manifest=_c1_manifest ...) pattern.
-        assert "manifest=_c1_manifest" in analyzer_src, (
-            "PipelineContext is not receiving manifest=_c1_manifest in "
-            "player_impact_analyzer.py. MF-4 wiring is broken."
-        )
+    # NOTE: the two `test_manifest_loader_wired_into_analyzer_*` tests that
+    # grepped player_impact_analyzer.py source for the MF-4 wiring were removed
+    # — that orchestrator file was deleted (the new SpinType-native engine is
+    # pending). The surviving manifest_loader is exercised directly by the
+    # test_m272_manifest_* tests above; wiring into the new engine will get its
+    # own per-machine manifest regression.

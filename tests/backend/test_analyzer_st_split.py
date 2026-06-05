@@ -1,32 +1,26 @@
-"""SpinType-split breakdown tests for player_impact_analyzer.
+"""SpinType-split breakdown unit tests for parse_chunk_response.
 
-Tests cover:
+Tests cover (in-process; the former subprocess integration tests that
+spawned the removed player_impact_analyzer.py orchestrator were dropped):
   1. New field presence and schema structure in parse_chunk_response output.
   2. Spin-type label derivation (machine-agnostic, behavior_name-based).
   3. Cross-signal sanity: sum(payouts_by_spin_type rtp_pp) == aggregate sum.
   4. Reel marginal prob_pct sums to 100% per (label, reel).
   5. Graceful base-only machine: single ST label.
   6. Existing aggregate fields are unchanged (regression guard).
-  9. payouts_by_spin_type rows use payout_ids_top20-aligned field names
-     (hit_rate fraction, rtp_contribution_pp) — schema parity guard.
 
 Mock chunk construction follows test_analyzer_parsing.py conventions.
 """
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from collections import defaultdict
-from pathlib import Path
 from typing import Any
 
 import pytest
 
 from fresh_slotlab.analyzer.core.parser import parse_chunk_response
 from fresh_slotlab.analyzer.core._utils import to_float
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 # ---------------------------------------------------------------------------
@@ -304,181 +298,3 @@ def test_single_st_base_only_machine():
     assert set(scst.keys()) == {"1"}, \
         "Only ST=1 key should appear in symbol_counts_by_col_by_spin_type for base-only"
 
-
-# ---------------------------------------------------------------------------
-# Test 9: payouts_by_spin_type schema parity with payout_ids_top20
-# (integration test — runs the full finalize path via subprocess on M31 cache)
-# ---------------------------------------------------------------------------
-
-@pytest.mark.skipif(
-    not (ROOT / "rawdata" / "M31" / "mode_1" / "chunk_0001.json").exists(),
-    reason="M31 mode 1 rawdata cache not present",
-)
-def test_payouts_by_spin_type_field_names_match_payout_ids_top20(tmp_path):
-    """payouts_by_spin_type rows must have hit_rate (fraction) and
-    rtp_contribution_pp — matching payout_ids_top20 field names.
-    Regression guard: ensures hit_rate_pct / rtp_pp are NOT emitted."""
-    cache_dir = ROOT / "rawdata" / "M31" / "mode_1"
-    # Discover the cfg_md5 + code_md5 from the first chunk so the
-    # analyzer accepts it without a filter mismatch.
-    chunk0 = cache_dir / "chunk_0001.json"
-    with open(chunk0, encoding="utf-8") as f:
-        env = json.load(f)
-    cfg_md5 = env.get("config_md5", "")
-    code_md5 = env.get("code_md5", "")
-
-    output_dir = tmp_path / "out"
-    output_dir.mkdir()
-    progress_file = tmp_path / "progress.jsonl"
-    cmd = [
-        sys.executable, "-m", "fresh_slotlab.player_impact_analyzer",
-        "--machine", "M31",
-        "--rtp-mode", "1",
-        "--bet", "1000",
-        "--output-dir", str(output_dir),
-        "--target-halfwidth-pp", "99",    # exit after 1 chunk
-        "--max-chunks", "1",
-        "--chunk-spin-times", "100",
-        "--chunk-robot-count", "2",
-        "--batch-concurrency", "1",
-        "--timeout", "10",
-        "--bankruptcy-session-spins", "100",
-        "--bankruptcy-bankroll-multipliers", "10",
-        "--from-cache", str(cache_dir),
-        "--upstream-config-md5", cfg_md5,
-        "--upstream-code-md5", code_md5,
-        "--progress-file", str(progress_file),
-        "--run-id", "test_schema_parity",
-    ]
-    result = subprocess.run(
-        cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=60,
-    )
-    assert result.returncode == 0, (
-        f"Analyzer subprocess failed:\nSTDOUT={result.stdout[-2000:]}\n"
-        f"STDERR={result.stderr[-2000:]}"
-    )
-
-    # Find the emitted player_impact_summary.json.
-    summaries = list(output_dir.rglob("player_impact_summary.json"))
-    assert summaries, "No player_impact_summary.json emitted"
-    with open(summaries[0], encoding="utf-8") as f:
-        summary = json.load(f)
-
-    pi = summary.get("player_impact", {})
-
-    # --- payout_ids_top20 reference schema ---
-    top20 = pi.get("payout_ids_top20", [])
-    assert top20, "payout_ids_top20 must be non-empty for regression check"
-    ref_row = top20[0]
-    assert "hit_rate" in ref_row, "payout_ids_top20 must have hit_rate (fraction)"
-    assert "rtp_contribution_pp" in ref_row, "payout_ids_top20 must have rtp_contribution_pp"
-
-    # --- payouts_by_spin_type schema must match ---
-    pbst = pi.get("payouts_by_spin_type", {})
-    assert pbst, "payouts_by_spin_type must be non-empty for M31 (has ST43_paid + ST44_free)"
-    for label, rows in pbst.items():
-        assert rows, f"payouts_by_spin_type[{label}] must be non-empty"
-        row = rows[0]
-        assert "hit_rate" in row, (
-            f"payouts_by_spin_type[{label}] row must have 'hit_rate' (fraction), "
-            f"got keys: {list(row.keys())}"
-        )
-        assert "hit_rate_pct" not in row, (
-            f"payouts_by_spin_type[{label}] must NOT have 'hit_rate_pct' (old name)"
-        )
-        assert "rtp_contribution_pp" in row, (
-            f"payouts_by_spin_type[{label}] row must have 'rtp_contribution_pp', "
-            f"got keys: {list(row.keys())}"
-        )
-        assert "rtp_pp" not in row, (
-            f"payouts_by_spin_type[{label}] must NOT have 'rtp_pp' (old name)"
-        )
-        # hit_rate must be a fraction (< 1.0 for typical pay_ids; grand
-        # jackpots may be ~1e-6; only bonus rounds can exceed ~50% hit_rate).
-        # Value > 2.0 almost certainly means the old percent form leaked.
-        assert float(row["hit_rate"]) <= 2.0, (
-            f"payouts_by_spin_type[{label}].hit_rate={row['hit_rate']} looks like "
-            f"a percentage (> 2.0); expected fraction"
-        )
-
-
-def test_zero_win_but_fired_pid_retained_in_split(tmp_path):
-    """Trigger-marker pay_ids (M31 pid 666: always win=0 but fires on
-    every scatter-trigger paid round) MUST be retained in
-    payouts_by_spin_type[ST43_paid] despite their 0 total_win + 0 RTP
-    contribution. Regression guard: previous filter ``if st_win == 0.0:
-    continue`` silently dropped these rows; correct filter is on hits."""
-    cache_dir = ROOT / "rawdata" / "M31" / "mode_1"
-    chunk0 = cache_dir / "chunk_0001.json"
-    with open(chunk0, encoding="utf-8") as f:
-        env = json.load(f)
-    cfg_md5 = env.get("config_md5", "")
-    code_md5 = env.get("code_md5", "")
-
-    output_dir = tmp_path / "out"
-    output_dir.mkdir()
-    progress_file = tmp_path / "progress.jsonl"
-    cmd = [
-        sys.executable, "-m", "fresh_slotlab.player_impact_analyzer",
-        "--machine", "M31",
-        "--rtp-mode", "1",
-        "--bet", "1000",
-        "--output-dir", str(output_dir),
-        "--target-halfwidth-pp", "99",
-        "--max-chunks", "1",
-        "--chunk-spin-times", "100",
-        "--chunk-robot-count", "2",
-        "--batch-concurrency", "1",
-        "--timeout", "10",
-        "--bankruptcy-session-spins", "100",
-        "--bankruptcy-bankroll-multipliers", "10",
-        "--from-cache", str(cache_dir),
-        "--upstream-config-md5", cfg_md5,
-        "--upstream-code-md5", code_md5,
-        "--progress-file", str(progress_file),
-        "--run-id", "test_zero_win_pid_retained",
-    ]
-    result = subprocess.run(
-        cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=60,
-    )
-    assert result.returncode == 0, (
-        f"Analyzer subprocess failed:\nSTDOUT={result.stdout[-2000:]}\n"
-        f"STDERR={result.stderr[-2000:]}"
-    )
-
-    summaries = list(output_dir.rglob("player_impact_summary.json"))
-    assert summaries, "No player_impact_summary.json emitted"
-    with open(summaries[0], encoding="utf-8") as f:
-        summary = json.load(f)
-    pi = summary.get("player_impact", {})
-
-    # Step 1: confirm pid 666 IS in aggregate (analyzer must have seen it).
-    top20 = pi.get("payout_ids_top20", [])
-    pid666_agg = next((r for r in top20 if str(r.get("payout_id")) == "666"), None)
-    assert pid666_agg is not None, (
-        "pid 666 expected in payout_ids_top20 for M31 (FreeSpin trigger marker; "
-        "if missing, this machine doesn't exercise the regression — fixture issue)"
-    )
-    assert pid666_agg.get("hit_count", 0) > 0, (
-        f"pid 666 in aggregate must have hit_count > 0 (got {pid666_agg.get('hit_count')}). "
-        "Without observed fires this test cannot exercise the regression."
-    )
-    assert float(pid666_agg.get("total_win", 1)) == 0.0, (
-        f"pid 666 expected to have total_win == 0 (trigger marker), got "
-        f"{pid666_agg.get('total_win')}. Test assumption broken."
-    )
-
-    # Step 2: pid 666 MUST appear in ST43_paid split table despite 0 win.
-    pbst = pi.get("payouts_by_spin_type", {})
-    st43 = pbst.get("ST43_paid", [])
-    pid666_split = next((r for r in st43 if str(r.get("payout_id")) == "666"), None)
-    assert pid666_split is not None, (
-        "pid 666 MUST be retained in payouts_by_spin_type['ST43_paid'] even "
-        "with total_win=0. Previous filter on st_win silently dropped this row "
-        "and the aggregate panel showed a pid (666) that the split panel did not — "
-        "the data inconsistency user observed as '拆分跟总览不一样'. "
-        f"Current ST43_paid pid list: {[r.get('payout_id') for r in st43]}"
-    )
-    # Step 3: pid 666 split row must carry hits but 0 RTP contribution.
-    assert pid666_split.get("hit_count", 0) > 0
-    assert float(pid666_split.get("rtp_contribution_pp", 1.0)) == 0.0

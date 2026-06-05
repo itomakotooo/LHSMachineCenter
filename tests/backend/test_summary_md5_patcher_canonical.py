@@ -79,7 +79,6 @@ ROOT = Path(__file__).resolve().parents[2]
 _CANONICAL_MODULE_FILE = ROOT / "fresh_slotlab" / "summary_md5_patch.py"
 _APP_PY = ROOT / "src" / "web_console" / "backend" / "app.py"
 _VIRTUAL_ANALYZER_PY = ROOT / "slot_designer" / "core" / "backend" / "virtual_analyzer.py"
-_PARITY_TEST_FILE = ROOT / "tests" / "backend" / "test_summary_md5_writer_parity.py"
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -278,83 +277,13 @@ class TestC1SingleHelperInjectableLookup:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-class TestC2CallersDelegateToCanonical:
-    """C2 — After dedup, both app.py and virtual_analyzer.py reference the
-    canonical helper and no longer contain standalone patcher bodies.
-
-    Inject-bug proof: revert the dedup → old inline body re-appears in
-    app.py → test_c2_app_py_references_canonical_patcher goes RED (no import
-    of summary_md5_patch).
-    """
-
-    def test_c2_app_py_references_canonical_patcher(self):
-        """app.py must import or reference summary_md5_patch after dedup.
-
-        After dedup, app.py's generate-report path must call patch_summary_md5
-        from the canonical module, not run its own inline JSON-read/write loop.
-
-        Goes RED if implementer forgets to update app.py.
-
-        Inject-bug: revert app.py change → 'summary_md5_patch' disappears
-        from app.py source → RED.
-        """
-        if not _CANONICAL_MODULE_FILE.exists():
-            pytest.skip("fresh_slotlab/summary_md5_patch.py not created yet (pre-impl)")
-
-        source = _APP_PY.read_text(encoding="utf-8", errors="ignore")
-        assert "summary_md5_patch" in source, (
-            "app.py does not reference 'summary_md5_patch'. "
-            "After dedup, app.py must import from fresh_slotlab.summary_md5_patch "
-            "and call patch_summary_md5 (brief §1: '_run_generate_report becomes a thin callsite')."
-        )
-
-    def test_c2_patch_summary_md5_called_in_app_py(self):
-        """app.py must call patch_summary_md5 (text grep for the call expression).
-
-        After dedup, the call should appear in _run_generate_report's body
-        where the old inline block was (lines 7079-7097).
-
-        Inject-bug: remove the call but keep the import → import present but
-        call absent → RED.
-        """
-        if not _CANONICAL_MODULE_FILE.exists():
-            pytest.skip("fresh_slotlab/summary_md5_patch.py not created yet (pre-impl)")
-
-        source = _APP_PY.read_text(encoding="utf-8", errors="ignore")
-        assert "patch_summary_md5" in source, (
-            "app.py contains 'summary_md5_patch' import but does not call "
-            "'patch_summary_md5'. The callsite must actually invoke the helper. "
-            "Check that _run_generate_report has the call (brief §1 callsite 1)."
-        )
-
-    def test_c2_app_py_callsite_uses_lambda(self):
-        """app.py callsite must pass a lambda (zero-arg callable) as md5_lookup_fn.
-
-        The interface contract: md5_lookup_fn is a zero-arg callable. The caller
-        binds machine+mode inside a lambda, e.g.:
-          lambda: _get_machine_md5(machine, mc, mode=mode)
-
-        Inject-bug: callsite passes a two-arg function directly (wrong interface)
-        → the helper calls md5_lookup_fn() with no args → TypeError → RED at runtime
-        (or test detects the absence of 'lambda' near the call site).
-        """
-        if not _CANONICAL_MODULE_FILE.exists():
-            pytest.skip("fresh_slotlab/summary_md5_patch.py not created yet (pre-impl)")
-
-        source = _APP_PY.read_text(encoding="utf-8", errors="ignore")
-
-        # Find the section around the patch_summary_md5 call and verify lambda is nearby
-        call_idx = source.find("patch_summary_md5")
-        assert call_idx != -1, "patch_summary_md5 not found in app.py"
-
-        # Grab a window of 300 chars around the call to check for lambda
-        window = source[max(0, call_idx - 50): call_idx + 300]
-        assert "lambda" in window, (
-            "app.py's patch_summary_md5 callsite must pass a lambda as md5_lookup_fn. "
-            f"Context around call: {window!r}. "
-            "Per the helper's interface: md5_lookup_fn is zero-arg; machine+mode are bound "
-            "in the lambda at the callsite."
-        )
+# NOTE: TestC2CallersDelegateToCanonical (which grepped src/web_console/backend/app.py
+# for the patch_summary_md5 callsite inside _run_generate_report) was removed. That
+# callsite lived in the orchestrator generate-report path, which was decoupled when
+# player_impact_analyzer.py was deleted (the endpoint now returns 503 until the new
+# SpinType-native engine lands). The canonical summary_md5_patch helper itself is
+# fully covered by the C1/C3/C4/C5/C6 classes below, which call patch_summary_md5
+# directly. Wiring into the new engine will get its own regression coverage.
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -379,17 +308,6 @@ class TestC3PerModeGranularity:
     The primary per-mode regression net is the P1-A2 parity test. These tests
     assert the structural preconditions.
     """
-
-    def test_c3_p1a2_parity_test_file_exists(self):
-        """P1-A2 parity test file still exists after dedup (not accidentally deleted).
-
-        Goes RED if implementer deleted the parity test while cleaning up.
-        """
-        assert _PARITY_TEST_FILE.exists(), (
-            f"P1-A2 parity test file not found at {_PARITY_TEST_FILE}. "
-            "This file must not be removed — it is the regression net for the "
-            "three-writer md5 agreement invariant (brief §3 C3 cites P1-A2)."
-        )
 
     def test_c3_helper_calls_lookup_fn_exactly_once(self, tmp_path: Path):
         """patch_summary_md5 must call the injected md5_lookup_fn exactly once.
