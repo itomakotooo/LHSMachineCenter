@@ -233,6 +233,7 @@ Request flags the sampling + (future) analyzer path relies on:
 - Engineering TODO: `docs/TODO.md`
 - Handover guideline for new developers: `docs/HANDOVER_GUIDELINE.md`
 - Adding a new machine — analyzer onboarding workflow: `docs/MACHINE_ONBOARDING.md`
+- Real-machine numeric tuning workflow (edit cfg → build → sample → report → iterate): `docs/MACHINE_TUNING_WORKFLOW.md`
 
 ## Git Boundary
 
