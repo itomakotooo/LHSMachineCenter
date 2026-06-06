@@ -32,7 +32,10 @@ from pathlib import Path
 
 # Populated lazily in _pool_worker_init(); cached across jobs within
 # the same worker process so we only pay the analyzer-import cost once.
+# Phase 2b: _analyzer_mod is retained for signature compat but is no
+# longer used; generation goes through _report_engine_mod instead.
 _analyzer_mod = None
+_report_engine_mod = None  # fresh_slotlab.analyzer.report_engine (phase 2b)
 # Captured here (rather than read from sys.path[0] at job-time) because
 # third-party imports or analyzer.main() can reorder sys.path — the
 # post-analyzer hook needs a stable anchor to locate scripts/.
@@ -58,17 +61,30 @@ def _pool_worker_init(root_path: str) -> None:
     Also pre-imports the P1-D1 canonical helpers (C3/C4) so they are
     available at job time without live module reads (per memory
     feedback_subprocess_import_suicide_and_module_globals.md §C6).
+
+    Phase 2b: imports report_engine (the new SpinType-native orchestrator)
+    instead of the deleted player_impact_analyzer. _analyzer_mod is kept
+    None (no longer used for generation) so existing callers that test
+    ``_analyzer_mod is None`` stay compatible.
     """
-    global _analyzer_mod, _project_root
+    global _analyzer_mod, _report_engine_mod, _project_root
     global _patch_summary_md5_fn, _run_post_inference_fn, _lookup_machine_md5_fn
     _project_root = root_path
     if root_path not in sys.path:
         sys.path.insert(0, root_path)
-    # 2026-06-05: report-generation engine (player_impact_analyzer) removed
-    # pending the new SpinType-native orchestrator. Batch generation is
-    # offline until then — run_analyzer_job() returns an error dict when
-    # _analyzer_mod is None.
+    # _analyzer_mod: kept None — the deleted player_impact_analyzer is gone.
     _analyzer_mod = None
+    # Phase 2b: pre-import the new report engine.
+    try:
+        import fresh_slotlab.analyzer.report_engine as _rem
+        _report_engine_mod = _rem
+    except Exception as _exc:
+        import sys as _sys
+        print(
+            f"batch_gen_worker: could not import report_engine: {_exc}",
+            file=_sys.stderr,
+        )
+        _report_engine_mod = None
     # C3 — canonical summary md5 patcher (P1-B2)
     from fresh_slotlab.summary_md5_patch import patch_summary_md5 as _psm
     _patch_summary_md5_fn = _psm
@@ -81,9 +97,13 @@ def _pool_worker_init(root_path: str) -> None:
 
 
 def run_analyzer_job(job: dict) -> dict:
-    """Run analyzer.main() for one (machine, mode). Writes outputs to
+    """Run report generation for one (machine, mode). Writes outputs to
     job['output_dir']. Returns a terse status dict; parent reads the
     actual summary.json from disk for final metrics + DB update.
+
+    Phase 2b: uses report_engine.generate_report_from_chunks for
+    registered machines (configs/machine_manifests/<M>.json exists).
+    Non-registered machines return a clear per-item "not registered" status.
 
     Expected job keys:
       machine (str), mode (int), chunk_dir (str), output_dir (str),
@@ -92,74 +112,62 @@ def run_analyzer_job(job: dict) -> dict:
       upstream_config_md5 (str), upstream_code_md5 (str)  [P1-D1 C1/C2]
       machines_config (str)                               [P1-D1 C3]
     """
-    if _analyzer_mod is None:
+    machine = job.get("machine") or ""
+    mode_raw = job.get("mode")
+    if not machine or mode_raw is None:
         return {
-            "machine": job.get("machine"),
-            "mode": job.get("mode"),
+            "machine": machine,
+            "mode": mode_raw,
             "ok": False,
-            "error": "worker not initialized",
+            "error": "job missing required 'machine' or 'mode' key",
             "elapsed_s": 0.0,
         }
-    machine = job["machine"]
-    mode = int(job["mode"])
+    mode = int(mode_raw)
     output_dir = Path(job["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    argv = [
-        "analyzer",
-        "--machine", str(machine),
-        "--rtp-mode", str(mode),
-        "--bet", str(job.get("bet", 1000)),
-        "--from-cache", str(job["chunk_dir"]),
-        "--output-dir", str(output_dir),
-        "--max-chunks", str(job["max_chunks"]),
-        "--chunk-spin-times", str(job["chunk_spin_times"]),
-        "--chunk-robot-count", str(job["chunk_robot_count"]),
-        "--batch-concurrency", "1",
-        # 0.001 keeps session-CI stop unreachable so max_chunks is
-        # the sole termination gate (same rationale as in-process
-        # _run_generate_report — see its comment for history).
-        "--target-halfwidth-pp", "0.001",
-        # 2026-04-22: disable Tier-2 non-convergence abort. With
-        # target=0.001pp the abort's (ci/target)² projection always
-        # overflows the chunks-budget ceiling and bails at the 20-
-        # chunk floor. Batch generate-report is exhaustive replay,
-        # never targeting a real CI — abort is user-facing sampling
-        # logic only. Mirrors the fix in in-process _run_generate_report.
-        "--disable-non-convergence-abort",
-        "--timeout", "30",
-        "--run-id", str(job["run_id"]),
-        "--progress-file", str(job["progress_file"]),
-        "--bankruptcy-session-spins", "10000",
-        "--bankruptcy-bankroll-multipliers", "10,100,200,500",
-    ]
-    # C2 (P1-D1 §3 C2): forward md5 filter flags so the analyzer
-    # subprocess only reads chunks whose envelope md5 matches the
-    # current-md5 baseline, filtering out historical-md5 chunks.
-    # Mirrors _run_generate_report lines 7185-7188 (in-process path).
-    # Keys are set by _prepare_batch_gen_item via _get_machine_md5.
-    upstream_cfg = job.get("upstream_config_md5") or ""
-    upstream_code = job.get("upstream_code_md5") or ""
-    if upstream_cfg:
-        argv.extend(["--upstream-config-md5", upstream_cfg])
-    if upstream_code:
-        argv.extend(["--upstream-code-md5", upstream_code])
-    orig_argv = sys.argv
-    sys.argv = argv
-    t0 = time.time()
-    try:
-        # analyzer.main() prints its summary JSON to stdout; silence it
-        # here — we read the summary from disk instead.
-        with contextlib.redirect_stdout(io.StringIO()):
-            rc = _analyzer_mod.main()
-        elapsed = round(time.time() - t0, 2)
-        summary_file = output_dir / "player_impact_summary.json"
-        if rc != 0:
+    # Phase 2b: use the new report engine for registered machines.
+    _rem = _report_engine_mod
+    if _rem is None:
+        # Engine not available — try lazy import (e.g. unit-test callers
+        # that bypass _pool_worker_init).
+        try:
+            import fresh_slotlab.analyzer.report_engine as _rem  # noqa: PLC0415
+        except Exception as _exc:
             return {
                 "machine": machine, "mode": mode, "ok": False,
-                "error": f"analyzer rc={rc}",
-                "elapsed_s": elapsed,
+                "error": f"report_engine not available: {_exc}",
+                "elapsed_s": 0.0,
             }
+
+    # Registered check: configs/machine_manifests/<machine>.json must exist.
+    # Resolve the manifests root relative to this worker's project root or
+    # fall back to repo-relative default from the engine module.
+    _root = Path(_project_root) if _project_root else Path(_rem.__file__).resolve().parent.parent.parent
+    _manifests_root = _root / "configs" / "machine_manifests"
+    if not (_manifests_root / f"{machine}.json").exists():
+        return {
+            "machine": machine, "mode": mode, "ok": False,
+            "error": (
+                f"machine {machine} is not registered for the SpinType-native engine "
+                "(no configs/machine_manifests/{machine}.json); "
+                "see docs/ANALYZER_ARCHITECTURE.md"
+            ),
+            "elapsed_s": 0.0,
+        }
+
+    chunk_dir = Path(job["chunk_dir"])
+    run_id = str(job["run_id"])
+    t0 = time.time()
+    try:
+        _rem.generate_report_from_chunks(
+            machine, mode,
+            chunk_dir=chunk_dir,
+            output_dir=output_dir,
+            run_id=run_id,
+        )
+        elapsed = round(time.time() - t0, 2)
+        summary_file = output_dir / "player_impact_summary.json"
         if not summary_file.exists():
             return {
                 "machine": machine, "mode": mode, "ok": False,
@@ -239,8 +247,8 @@ def run_analyzer_job(job: dict) -> dict:
             if _rpi is None:
                 from fresh_slotlab.post_inference import run_post_analyzer_inference as _rpi  # noqa: PLC0415
             import os as _os
-            chunk_dir = Path(job["chunk_dir"])
-            rawdata_root = chunk_dir.parent.parent if chunk_dir.is_dir() else None
+            _chunk_dir_for_infer = chunk_dir
+            rawdata_root = _chunk_dir_for_infer.parent.parent if _chunk_dir_for_infer.is_dir() else None
             env = dict(_os.environ)
             if rawdata_root is not None:
                 env.setdefault("SLOT_RAWDATA_ROOT", str(rawdata_root))
@@ -303,7 +311,7 @@ def run_analyzer_job(job: dict) -> dict:
             "post_hook": hook_results,
         }
     except SystemExit as exc:
-        # analyzer raises SystemExit on argparse / validation failures —
+        # report_engine raises SystemExit on hard errors (topo-sort failure, etc.)
         # treat as per-item failure, don't kill the worker.
         return {
             "machine": machine, "mode": mode, "ok": False,
@@ -316,5 +324,3 @@ def run_analyzer_job(job: dict) -> dict:
             "error": f"{type(exc).__name__}: {exc}",
             "elapsed_s": round(time.time() - t0, 2),
         }
-    finally:
-        sys.argv = orig_argv

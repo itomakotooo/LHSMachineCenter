@@ -9346,20 +9346,263 @@ def create_app(
         endpoint surfaces standard HTTP errors; the batch manager
         catches them to record per-item failures.
         """
-        # 2026-06-05: the report-generation engine (player_impact_analyzer.py)
-        # has been removed pending the SpinType-native orchestrator rebuild.
-        # Generation is intentionally OFFLINE (HTTP 503); viewing existing
-        # reports is unaffected (the /api/reports read path is independent of
-        # the analyzer module). The original generation body below is retained
-        # but UNREACHABLE; it is replaced when the new engine lands.
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "report generation engine under reconstruction — the old "
-                "player_impact_analyzer was removed; the new SpinType-native "
-                "engine is pending. Existing reports remain viewable."
-            ),
+        # 2026-06-06 Phase 2b: wire to report_engine.generate_report_from_chunks.
+        # Registered machines (configs/machine_manifests/<M>.json exists) → generate.
+        # Non-registered machines → clear HTTPException(422).
+        # The live-sampling RunManager subprocess path (ANALYZER constant / spawning)
+        # is untouched — only the from-cache path is wired here.
+
+        # -- REGISTERED CHECK (before any disk I/O) --
+        from fresh_slotlab.analyzer.report_engine import (  # noqa: PLC0415
+            generate_report_from_chunks as _gen_report,
+            MachineNotRegistered,
         )
+        _manifests_root = ROOT / "configs" / "machine_manifests"
+        if not (_manifests_root / f"{machine}.json").exists():
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"machine {machine} is not registered for the SpinType-native engine "
+                    "(only machines with a confirmed machine_spec manifest generate reports); "
+                    "see docs/ANALYZER_ARCHITECTURE.md"
+                ),
+            )
+
+        mode_dir = rd_root / machine / f"mode_{mode}"
+        if not mode_dir.is_dir():
+            raise HTTPException(
+                status_code=404,
+                detail=f"no rawdata for {machine} mode {mode} — resample required",
+            )
+        retention = _load_settings(settings_path)["min_retention_spins"]
+        classified = _classify_chunks(machine, mode, rd_root, mc, retention)
+        md5_filter = bool(config_md5 and code_md5)
+        if md5_filter:
+            all_entries = (
+                classified["kept"] + classified["deletable"] + classified["historical"]
+            )
+            usable_entries = [
+                e for e in all_entries
+                if e.get("config_md5") == config_md5 and e.get("code_md5") == code_md5
+            ]
+            if not usable_entries:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"no chunks for {machine} mode {mode} "
+                        f"matching md5 cfg={config_md5[:8]}… code={code_md5[:8]}…"
+                    ),
+                )
+        else:
+            usable_entries = classified["kept"] + classified["deletable"]
+            if not usable_entries:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"no usable chunks for {machine} mode {mode} "
+                        f"(kept=0, deletable=0; historical={len(classified['historical'])})"
+                    ),
+                )
+
+        if not registry.try_acquire_cell(
+            machine, mode, CellOperation.GENERATING,
+            block_if_sampling_active=True,
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"cell {machine}|{mode} is busy — "
+                    "another generate/delete is in progress, or sampling is "
+                    "writing chunks (retry after it completes to get a "
+                    "complete report)"
+                ),
+            )
+        try:
+            chunk_paths = sorted(Path(e["path"]) for e in usable_entries)
+
+            new_run_id = run_id or f"gen_{uuid.uuid4().hex[:12]}"
+            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            if md5_filter:
+                cfg_short = (config_md5 or "")[:6] or "-"
+                code_short = (code_md5 or "")[:6] or "-"
+                report_version = f"rv_{ts}_rawdata_{cfg_short}_{code_short}"
+            else:
+                report_version = f"rv_{ts}_rawdata"
+            output_dir = rr / machine / f"mode_{mode}" / "versions" / report_version
+            output_dir.mkdir(parents=True, exist_ok=True)
+            progress_file = sd / "progress" / f"{new_run_id}.jsonl"
+            summary_file = output_dir / "player_impact_summary.json"
+            report_file = output_dir / "player_impact_report.md"
+
+            # Reuse the first usable chunk's robot_count / spin_times.
+            sample_env = json.loads(chunk_paths[0].read_text(encoding="utf-8"))
+            chunk_spin_times = int(sample_env.get("_spin_times") or 5000)
+            chunk_robot_count = int(sample_env.get("_robot_count") or 24)
+
+            started_now = utc_now()
+            row_fields = {
+                "machine": machine,
+                "mode": mode,
+                "status": "running",
+                "model_id": "generate-report",
+                "started_at": started_now,
+                "target_halfwidth_pp": 0.001,
+                "chunk_spin_times": chunk_spin_times,
+                "chunk_robot_count": chunk_robot_count,
+                "batch_concurrency": 1,
+                "max_chunks": len(chunk_paths),
+                "timeout": 30,
+                "bankruptcy_session_spins": 10000,
+                "bankruptcy_bankroll_multipliers": "10,100,200,500",
+                "report_version": report_version,
+                "output_dir": str(output_dir),
+                "progress_file": str(progress_file),
+                "summary_file": str(summary_file),
+                "report_file": str(report_file),
+            }
+            if run_id and store.get_run(run_id):
+                store.update_run(new_run_id, row_fields)
+            else:
+                store.insert_run({
+                    "run_id": new_run_id,
+                    "created_at": started_now,
+                    **row_fields,
+                })
+
+            # -- NEW ENGINE: report_engine.generate_report_from_chunks --
+            # Chunk dir: the whole mode dir (engine reads chunk_*.json from it).
+            # Note: md5-filtering of mixed-md5 dirs is a follow-up; for M15 all
+            # chunks share one md5 so the full mode_dir is safe. The engine raises
+            # MachineNotRegistered if the manifest is absent (already caught above).
+            try:
+                _gen_report(
+                    machine, mode,
+                    chunk_dir=mode_dir,
+                    output_dir=output_dir,
+                    run_id=new_run_id,
+                )
+            except MachineNotRegistered as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=str(exc),
+                ) from exc
+
+            # Patch empty md5 tags in the written summary (mirrors old path).
+            from fresh_slotlab.summary_md5_patch import patch_summary_md5 as _patch_summary_md5  # noqa: PLC0415
+            _patch_summary_md5(
+                summary_file,
+                lambda: _get_machine_md5(machine, mc, mode=mode),
+                machine=machine,
+                mode=mode,
+            )
+
+            summary: dict[str, Any] = {}
+            if summary_file.exists():
+                summary = read_json(summary_file) or {}
+            rtp = (summary.get("rtp") or {}).get("point_pct")
+            hw = (summary.get("sampling") or {}).get("achieved_halfwidth_pp")
+            ql = (
+                (summary.get("guideline_assessment") or {})
+                .get("data_quality", {})
+                .get("quality_label")
+            )
+            rawdata_cfg = summary.get("config_md5") or ""
+            rawdata_code = summary.get("code_md5") or ""
+            analyzer_ver = summary.get("analyzer_version") or ""
+            total_spins_val = summary.get("sampling", {}).get("total_spins")
+
+            store.update_run(new_run_id, {
+                "status": "completed",
+                "finished_at": utc_now(),
+                "achieved_rtp_pct": float(rtp) if rtp is not None else None,
+                "achieved_halfwidth_pp": float(hw) if hw is not None else None,
+                "quality_label": str(ql) if ql else None,
+                "rawdata_config_md5": str(rawdata_cfg) if rawdata_cfg else None,
+                "rawdata_code_md5": str(rawdata_code) if rawdata_code else None,
+                "analyzer_version": str(analyzer_ver) if analyzer_ver else None,
+                "total_spins": int(total_spins_val) if total_spins_val is not None else None,
+            })
+
+            mode_reports_dir = rr / machine / f"mode_{mode}"
+            index_path = mode_reports_dir / "index.json"
+            latest_path = mode_reports_dir / "latest.json"
+            item = {
+                "report_version": report_version,
+                "run_id": new_run_id,
+                "created_at": utc_now(),
+                "summary_file": str(summary_file),
+                "report_file": str(report_file),
+                "rtp_point_pct": rtp,
+                "achieved_rtp_pct": rtp,
+                "achieved_halfwidth_pp": hw,
+                "total_spins": total_spins_val,
+                "quality_label": ql,
+            }
+            index_payload = []
+            if index_path.exists():
+                try:
+                    raw = read_json(index_path)
+                    if isinstance(raw, list):
+                        index_payload = raw
+                except Exception:
+                    pass
+            index_payload.append(item)
+            atomic_json_write(index_path, index_payload)
+            atomic_json_write(latest_path, item)
+
+            try:
+                _merge_machine_static(
+                    machine, summary, mc, _static_attrs_path(mc),
+                )
+            except Exception:
+                pass
+
+            try:
+                import threading as _threading
+                _threading.Thread(
+                    target=lambda: _run_post_analyzer_inference(
+                        machine, mode, rawdata_root=rd_root,
+                        paytables_dir=pd_root, classify_dir=cd,
+                        timeout_sec=300.0,
+                        log_to_dir=output_dir,
+                    ),
+                    daemon=True,
+                    name=f"post-infer-{machine}-{mode}",
+                ).start()
+            except Exception:
+                pass
+
+            return {
+                "run_id": new_run_id,
+                "machine": machine,
+                "mode": mode,
+                "report_version": report_version,
+                "chunks_processed": len(chunk_paths),
+                "rtp_point_pct": rtp,
+                "achieved_halfwidth_pp": hw,
+                "analyzer_version": analyzer_ver,
+            }
+        except HTTPException as exc:
+            if "new_run_id" in locals() and store.get_run(new_run_id):
+                store.update_run(new_run_id, {
+                    "status": "failed",
+                    "finished_at": utc_now(),
+                    "error_message": str(getattr(exc, "detail", exc))[:500],
+                })
+            raise
+        except Exception as exc:
+            if "new_run_id" in locals() and store.get_run(new_run_id):
+                store.update_run(new_run_id, {
+                    "status": "failed",
+                    "finished_at": utc_now(),
+                    "error_message": f"{exc.__class__.__name__}: {exc}"[:500],
+                })
+            raise HTTPException(
+                status_code=500,
+                detail=f"generate-report failed: {exc.__class__.__name__}: {exc}",
+            ) from exc
+        finally:
+            registry.release_cell(machine, mode, CellOperation.GENERATING)
 
     def _prepare_batch_gen_item(machine: str, mode: int) -> dict[str, Any]:
         """Parent-thread prep: validate chunks, create output dir, insert

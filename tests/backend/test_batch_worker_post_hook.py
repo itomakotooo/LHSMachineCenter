@@ -27,6 +27,9 @@ import pytest
 from src.web_console.backend import _batch_gen_worker as worker
 
 
+import json
+
+
 @pytest.fixture(autouse=True)
 def _reset_worker_globals():
     """Each test gets a clean module state — the pool-initializer path
@@ -35,29 +38,47 @@ def _reset_worker_globals():
 
     P1-D1 round-2 verifier fix: extended to cover the 3 new globals
     added by P1-D1 C3/C4 (`_patch_summary_md5_fn`,
-    `_run_post_inference_fn`, `_lookup_machine_md5_fn`). Without these
-    save/restore lines, cross-file state contamination from
-    test_batch_gen_worker_parity.py left these set to real fn objects
-    and these tests passed in isolation but failed in full-suite runs.
+    `_run_post_inference_fn`, `_lookup_machine_md5_fn`).
+
+    Phase 2b: also saves/restores `_report_engine_mod`.
     """
+    _MISSING = object()
     prev_mod = worker._analyzer_mod
     prev_root = worker._project_root
     prev_psm = worker._patch_summary_md5_fn
     prev_rpi = worker._run_post_inference_fn
     prev_lmm = worker._lookup_machine_md5_fn
+    prev_rem = getattr(worker, "_report_engine_mod", _MISSING)
     yield
     worker._analyzer_mod = prev_mod
     worker._project_root = prev_root
     worker._patch_summary_md5_fn = prev_psm
     worker._run_post_inference_fn = prev_rpi
     worker._lookup_machine_md5_fn = prev_lmm
+    if prev_rem is _MISSING:
+        if hasattr(worker, "_report_engine_mod"):
+            delattr(worker, "_report_engine_mod")
+    else:
+        worker._report_engine_mod = prev_rem
+
+
+def _make_fake_manifest(root: Path, machine: str) -> None:
+    """Write a minimal SpinType-native manifest so the registered check passes."""
+    manifests_dir = root / "configs" / "machine_manifests"
+    manifests_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = manifests_dir / f"{machine}.json"
+    if not manifest_path.exists():
+        manifest_path.write_text(
+            json.dumps({"machine_id": machine, "spin_types": {}}),
+            encoding="utf-8",
+        )
 
 
 def _make_job(tmp_path: Path, *, machine: str = "M1", mode: int = 7) -> dict:
     chunk_dir = tmp_path / "rawdata" / machine / f"mode_{mode}"
-    chunk_dir.mkdir(parents=True)
+    chunk_dir.mkdir(parents=True, exist_ok=True)
     output_dir = tmp_path / "out"
-    output_dir.mkdir()
+    output_dir.mkdir(exist_ok=True)
     return {
         "machine": machine,
         "mode": mode,
@@ -95,18 +116,21 @@ def test_post_hook_skips_when_env_set(tmp_path, monkeypatch):
     "hook ran but produced nothing"."""
     monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
     worker._project_root = str(tmp_path)
+    _make_fake_manifest(tmp_path, "M1")
 
-    # Stand-in analyzer that returns 0 without any work.
-    class _FakeAnalyzer:
+    # Stand-in engine (phase 2b) that writes a minimal summary.
+    class _FakeEngine:
         @staticmethod
-        def main():
-            summary = Path(_FakeAnalyzer.output_dir) / "player_impact_summary.json"
+        def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kw):
+            summary = Path(output_dir) / "player_impact_summary.json"
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
             summary.write_text('{"ok": true}', encoding="utf-8")
-            return 0
+
+        class MachineNotRegistered(ValueError):
+            pass
 
     job = _make_job(tmp_path)
-    _FakeAnalyzer.output_dir = job["output_dir"]
-    worker._analyzer_mod = _FakeAnalyzer
+    worker._report_engine_mod = _FakeEngine
 
     result = worker.run_analyzer_job(job)
     assert result["ok"] is True
@@ -134,21 +158,23 @@ def test_post_hook_records_script_missing(tmp_path, monkeypatch):
     """
     monkeypatch.delenv("SLOT_SKIP_AUTO_INFER", raising=False)
     # Point _project_root at an empty tmp dir — no scripts/ subtree.
-    worker._project_root = str(tmp_path / "empty_root")
-    (tmp_path / "empty_root").mkdir()
+    empty_root = tmp_path / "empty_root"
+    empty_root.mkdir()
+    worker._project_root = str(empty_root)
+    _make_fake_manifest(empty_root, "M1")
 
-    class _FakeAnalyzer:
-        output_dir = None
-
+    class _FakeEngine:
         @staticmethod
-        def main():
-            summary = Path(_FakeAnalyzer.output_dir) / "player_impact_summary.json"
+        def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kw):
+            summary = Path(output_dir) / "player_impact_summary.json"
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
             summary.write_text('{"ok": true}', encoding="utf-8")
-            return 0
+
+        class MachineNotRegistered(ValueError):
+            pass
 
     job = _make_job(tmp_path)
-    _FakeAnalyzer.output_dir = job["output_dir"]
-    worker._analyzer_mod = _FakeAnalyzer
+    worker._report_engine_mod = _FakeEngine
 
     result = worker.run_analyzer_job(job)
     assert result["ok"] is True
@@ -198,19 +224,20 @@ def test_post_hook_context_includes_anchoring_info(tmp_path, monkeypatch):
     proj_root = tmp_path / "proj"
     proj_root.mkdir()
     worker._project_root = str(proj_root)
+    _make_fake_manifest(proj_root, "M1")
 
-    class _FakeAnalyzer:
-        output_dir = None
-
+    class _FakeEngine:
         @staticmethod
-        def main():
-            summary = Path(_FakeAnalyzer.output_dir) / "player_impact_summary.json"
+        def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kw):
+            summary = Path(output_dir) / "player_impact_summary.json"
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
             summary.write_text('{"ok": true}', encoding="utf-8")
-            return 0
+
+        class MachineNotRegistered(ValueError):
+            pass
 
     job = _make_job(tmp_path)
-    _FakeAnalyzer.output_dir = job["output_dir"]
-    worker._analyzer_mod = _FakeAnalyzer
+    worker._report_engine_mod = _FakeEngine
 
     result = worker.run_analyzer_job(job)
     post_hook = result["post_hook"]
@@ -256,22 +283,23 @@ def test_post_hook_handles_missing_chunk_dir(tmp_path, monkeypatch):
     """
     monkeypatch.delenv("SLOT_SKIP_AUTO_INFER", raising=False)
     worker._project_root = str(tmp_path)
+    _make_fake_manifest(tmp_path, "M1")
 
-    class _FakeAnalyzer:
-        output_dir = None
-
+    class _FakeEngine:
         @staticmethod
-        def main():
-            summary = Path(_FakeAnalyzer.output_dir) / "player_impact_summary.json"
+        def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kw):
+            summary = Path(output_dir) / "player_impact_summary.json"
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
             summary.write_text('{"ok": true}', encoding="utf-8")
-            return 0
+
+        class MachineNotRegistered(ValueError):
+            pass
 
     job = _make_job(tmp_path)
-    _FakeAnalyzer.output_dir = job["output_dir"]
     # Destroy chunk_dir after job construction to simulate the race.
     import shutil
     shutil.rmtree(job["chunk_dir"])
-    worker._analyzer_mod = _FakeAnalyzer
+    worker._report_engine_mod = _FakeEngine
 
     result = worker.run_analyzer_job(job)
     # Primary: must not crash.
