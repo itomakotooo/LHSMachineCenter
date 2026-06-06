@@ -125,9 +125,37 @@ configs/machine_manifests/<M>.json   (machine_spec, SpinType-native)
 4. **Auto-discover plugins.** Replace the hardcoded feature import list with discovery so a new
    plugin doesn't touch a closure file. Gate: invariant 2 (adding a dummy plugin doesn't flip
    base_hash for un-declaring machines).
-5. **Delete the old (§4).** Remove manifest_loader / mechanism_registry / 420 flat manifests /
-   console_diagnostic_complete / _stub_features. Gate: suite green; M15 generates; grep shows no
-   live references to deleted symbols.
+5. **Delete the old (§4) — coupling-aware (audited 2026-06-06; phases 1-4 are committed/verified).**
+   This is NOT just file deletion: three live consumers still read the legacy flat manifest /
+   mechanism_registry on M15's WORKING path and must be re-sourced from the SpinType-native
+   manifest FIRST, then the old files deleted. **Key de-risking finding: no plugin reads
+   `ctx.manifest` (the flat one)** — every feature reads `ctx.machine_spec_manifest` — so the flat
+   manifest is load-bearing for only the 3 spots below. Pre-delete rewiring:
+   - `report_engine.py:~467` loads M15's flat manifest into `_legacy_manifest`, which feeds:
+     (a) `MechanismRegistry.build(manifest=_legacy_manifest)` (~L1808) — for new-manifest machines
+     the 2 mechanism plugins already use `derive_mechanism_flags(machine_spec_manifest)`, so the
+     built registry is UNUSED by M15; build from `{}` or skip for registered machines.
+     (b) `PipelineContext(manifest=_legacy_manifest)` (~L1843) — VESTIGIAL (no plugin reads it);
+     set `manifest={}`. (c) `check_rtp_integrity(manifest=_legacy_manifest)` (~L1914) — reads
+     `console_diagnostic_complete` for Layer-2 gating; re-source from the new manifest's
+     `rtp_integrity`/`validation` block (M15's new manifest already has an `rtp_integrity` key).
+   - `app.py:~7912` builds the verified-badge map by ITERATING the flat-manifest dir; deleting the
+     420 flat manifests empties that loop → M15 vanishes from the badge map. Rewire it to iterate
+     `configs/machine_manifests/` (new dir). NOTE: the catalog "broken-machine ⚠" flag is a
+     SEPARATE pre-existing roster check (`_machineBrokenIssues` → "缺 mode 2,5,7"), not this.
+   - `rtp_integrity.py:~631` reads `manifest.console_diagnostic_complete` — same re-source.
+   - `versioning.py:~308` flat fallback (legacy branch) + the `_CLOSURE_FILES` entries (~L125/126)
+     for manifest_loader.py / mechanism_registry.py. Removing those 2 closure entries flips
+     base_hash ONCE — this is an INTENTIONAL final-baseline re-flag (not the phase-4 churn it
+     fixed); re-baseline + pin once, all reports re-flag stale a single time (acceptable).
+   - Also fold report_engine's extract loop (~L987, currently iterates `ALL_FEATURES`) onto the
+     per-machine `get_features_for_machine` set, computed BEFORE the chunk loop (it's currently
+     resolved at ~L1850, after). Harmless today (emit already filters) but completes the model.
+   Then delete: manifest_loader.py, mechanism_registry.py, 420 flat manifests, _stub_features.py,
+   console_diagnostic_complete readers. Gate: M15 schema + integrity byte-stable (value-agnostic)
+   BEFORE vs AFTER; full suite green; grep shows no live refs to deleted symbols; base_hash
+   re-baselined exactly once + pinned. Given the M15-working-path surgery, run the impl-* team
+   (cross-cutting deletion) with byte-identical M15 report diffs as the gate.
 
 ---
 
