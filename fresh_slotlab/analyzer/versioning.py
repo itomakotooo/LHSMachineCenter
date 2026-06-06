@@ -90,7 +90,7 @@ from typing import Any, Optional
 # real report-production run.
 #
 # Modules intentionally NOT in the closure:
-#   - fresh_slotlab/analyzer/_stub_features.py   (test-only, never imported by PIA)
+#   - fresh_slotlab/analyzer/_stub_features.py   (deleted in 5B — was test-only)
 #   - fresh_slotlab/reporter.py                  (standalone script, not imported by PIA)
 #   - fresh_slotlab/analyzer/features/*.py       (registered plugins, excluded by R-4)
 #     EXCEPT _base.py and __init__.py which ARE in the closure (not registered plugins)
@@ -122,7 +122,7 @@ _CLOSURE_FILES: tuple[str, ...] = (
     "fresh_slotlab/analyzer/feature_registry.py",
     "fresh_slotlab/analyzer/features/__init__.py",
     "fresh_slotlab/analyzer/features/_base.py",
-    "fresh_slotlab/analyzer/manifest_loader.py",
+    # manifest_loader.py removed (5B): flat-manifest layer deleted.
     "fresh_slotlab/analyzer/mechanism_registry.py",
     "fresh_slotlab/analyzer/parse_state.py",
     "fresh_slotlab/analyzer/pipeline_context.py",
@@ -257,11 +257,11 @@ def compute_effective_version_for_machine(
     the report-production closure (R-1), and returns the 12-hex effective
     version.
 
-    Phase 1 (L5 rewire): when a SpinType-native manifest exists at
-    ``configs/machine_manifests/<M>.json``, the analysis set is resolved via
-    ``machine_spec.derive_analyses`` (the new path).  Otherwise falls back to
-    the legacy ``slot_designer/configs/machine_manifests`` path using
-    ``manifest.analyzer_features`` (unchanged).
+    Phase 1 (L5 rewire, 5B: flat-manifest layer deleted): when a SpinType-native
+    manifest exists at ``configs/machine_manifests/<M>.json``, the analysis set
+    is resolved via ``machine_spec.derive_analyses`` (the new path).  Otherwise
+    (non-registered machine, no manifest) returns base_hash with empty
+    machine_features — no flat manifest fallback (flat layer deleted in 5B).
 
     Parameters
     ----------
@@ -270,9 +270,9 @@ def compute_effective_version_for_machine(
     mode:
         Integer mode. ``None`` to compute the mode-agnostic version (rare).
     manifests_root:
-        Legacy manifests directory. Defaults to
-        ``slot_designer/configs/machine_manifests`` resolved relative to
-        this module's repo root.
+        Unused after 5B (flat-manifest layer deleted).  Kept so existing
+        test helpers that pass ``tmp_path`` manifests do not break; the
+        parameter is accepted but not read on any live code path.
     new_manifests_root:
         SpinType-native manifests directory (Phase 1 addition). Defaults to
         ``configs/machine_manifests`` resolved relative to this module's repo
@@ -293,7 +293,7 @@ def compute_effective_version_for_machine(
     Raises
     ------
     FileNotFoundError
-        Manifest file missing, or a closure file is missing.
+        A closure file is missing (broken install).
     KeyError
         Manifest references a feature ID not registered.
     """
@@ -304,19 +304,6 @@ def compute_effective_version_for_machine(
     # who only need compute_base_analyzer_version. Dual-path covers
     # script-mode (cwd=fresh_slotlab/) per memory
     # feedback_subprocess_import_suicide_and_module_globals.md.
-    try:
-        from fresh_slotlab.analyzer.manifest_loader import (
-            load_manifest,
-            resolve_inheritance,
-            resolve_per_mode,
-        )
-    except ImportError:
-        from analyzer.manifest_loader import (  # type: ignore[no-redef]
-            load_manifest,
-            resolve_inheritance,
-            resolve_per_mode,
-        )
-
     if registry is None:
         try:
             from fresh_slotlab.analyzer import feature_registry as registry
@@ -328,10 +315,9 @@ def compute_effective_version_for_machine(
         # discover_features() is idempotent (duplicate FEATURE_ID is a no-op).
         registry.discover_features()
 
-    if manifests_root is None:
-        # Repo root: two parents up from this file (fresh_slotlab/analyzer/).
-        manifests_root = _REPO_ROOT / "slot_designer" / "configs" / "machine_manifests"
-
+    # manifests_root kept as a parameter for callers that pass tmp manifests in
+    # tests, but the flat-manifest layer is deleted (5B) so real machines will
+    # not have files there.  new_manifests_root defaults to configs/machine_manifests.
     if new_manifests_root is None:
         new_manifests_root = _REPO_ROOT / "configs" / "machine_manifests"
 
@@ -340,10 +326,9 @@ def compute_effective_version_for_machine(
         repo_root=repo_root,
     )
 
-    # Phase 1 (L5 rewire): prefer SpinType-native manifest when it exists.
-    # machine_spec is NOT in _CLOSURE_FILES (it is a standalone module that
-    # does not touch the report-production path), so importing it here does
-    # NOT change base_hash. Per ANALYZER_ARCHITECTURE.md §6 Phase 1.
+    # 5B: flat-manifest layer deleted.  Only the SpinType-native path is active.
+    # Non-registered machines (no new-schema manifest) resolve to base_hash with
+    # empty machine_features — graceful, no crash.
     _new_manifest_path = Path(new_manifests_root) / f"{machine_id}.json"
     if _new_manifest_path.exists():
         # New path: load SpinType-native manifest, derive analyses from spin_types.
@@ -360,13 +345,10 @@ def compute_effective_version_for_machine(
         new_manifest = ms_load_manifest(machine_id, new_manifests_root)
         machine_features = derive_analyses(new_manifest)
     else:
-        # Legacy fallback: read flat analyzer_features from slot_designer manifest.
-        manifest = load_manifest(machine_id, manifests_root)
-        if manifest.get("inherits_from"):
-            manifest = resolve_inheritance(manifest, manifests_root)
-        if mode is not None:
-            manifest = resolve_per_mode(manifest, mode)
-        machine_features = list(manifest.get("analyzer_features") or [])
+        # Non-registered machine: no flat manifest (deleted in 5B), no new-schema
+        # manifest.  Return base_hash with empty feature set — not "unregistered
+        # error", just the version for a machine with no declared analyses.
+        machine_features = []
 
     feature_hashes = {f.FEATURE_ID: f.compute_hash() for f in registry.ALL_FEATURES}
 

@@ -1432,7 +1432,7 @@ class TestExistingTestSuitesStillIntact:
     _EXISTING_TEST_FILES = [
         "tests/backend/test_lookup_machine_md5_canonical.py",
         "tests/backend/test_analyzer_foundation.py",
-        "tests/backend/test_manifest_loader.py",
+        # test_manifest_loader.py removed (5B): manifest_loader.py deleted.
         "tests/backend/test_analyzer_core_parser.py",
     ]
 

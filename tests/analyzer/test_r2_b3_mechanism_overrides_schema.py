@@ -11,11 +11,11 @@ Invariants asserted
    mention the unexpected key.
 
 Note: per-mode ``mechanism_overrides_override`` was intentionally NOT shipped in
-R2 Phase 1.  The per-mode resolver (manifest_loader.resolve_per_mode) does not
-wire it, so the schema would validate a key the resolver silently drops
-(schema-that-lies, violating feedback_no_silent_swallow.md).  Deferred until the
-resolver is wired AND a real use case exists (per R2 Phase 1 critic).  Only the
-root-level ``mechanism_overrides`` (which build() actually reads) ships here.
+R2 Phase 1.  The per-mode resolver does not wire it, so the schema would validate
+a key the resolver silently drops (schema-that-lies, violating
+feedback_no_silent_swallow.md).  Deferred until the resolver is wired AND a real
+use case exists (per R2 Phase 1 critic).  Only the root-level
+``mechanism_overrides`` (which build() actually reads) ships here.
 
 Inject-bug recipe (per memory/feedback_enumerate_safety_paths.md)
 -----------------------------------------------------------------
@@ -43,7 +43,7 @@ write_text(), to avoid CRLF/whitespace drift (per coordinator brief — two
 earlier agents left residue this way).
 
 After reverting, run:
-    git diff slot_designer/configs/machine_manifests/manifest_schema.json
+    git diff fresh_slotlab/analyzer/manifest_schema.json
 
 Only the B-3 addition (mechanism_overrides root block) must appear;
 no formatting/line-ending drift.
@@ -82,9 +82,8 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 _SCHEMA_PATH = (
     _REPO_ROOT
-    / "slot_designer"
-    / "configs"
-    / "machine_manifests"
+    / "fresh_slotlab"
+    / "analyzer"
     / "manifest_schema.json"
 )
 
@@ -367,6 +366,6 @@ class TestSchemaStructureMatchesSpec:
         )
         assert "mechanism_overrides_override" not in per_mode_props, (
             "mechanism_overrides_override must NOT be in per_mode_override_block until "
-            "manifest_loader.resolve_per_mode() wires it (R2 Phase 1 critic). "
+            "The per-mode resolver does not wire it (R2 Phase 1 critic). "
             f"Found keys: {sorted(per_mode_props.keys())}"
         )

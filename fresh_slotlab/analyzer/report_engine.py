@@ -411,11 +411,6 @@ def generate_report_from_chunks(
         PluginMissingDependencyError,
         PluginDeclaredDepMissingError,
     )
-    from fresh_slotlab.analyzer.manifest_loader import (
-        load_manifest as _legacy_load_manifest,
-        resolve_inheritance as _legacy_resolve_inheritance,
-        resolve_per_mode as _legacy_resolve_per_mode,
-    )
     from fresh_slotlab.analyzer.rtp_integrity import (
         check_rtp_integrity,
         Layer4Error,
@@ -456,20 +451,13 @@ def generate_report_from_chunks(
     # Derive the analysis set from spin_types (SpinType-native model).
     analysis_set = derive_analyses(new_manifest)
 
-    # Also load the legacy flat manifest for PipelineContext.manifest
-    # (plugins that read ctx.manifest still expect the flat schema, which
-    # carries mechanism_overrides / per-mode grid / etc.).  Best-effort:
-    # falls back to empty dict if the flat manifest doesn't exist for
-    # this machine (non-M15 registered machines don't need it).
+    # Phase 5: the legacy flat manifest is NO LONGER loaded. No feature plugin
+    # reads ctx.manifest (all read ctx.machine_spec_manifest); the flat manifest
+    # was load-bearing only for (a) MechanismRegistry.build mechanism_overrides,
+    # (b) the vestigial ctx.manifest, (c) check_rtp_integrity's cdc gate — all now
+    # re-sourced from the SpinType-native manifest. DECISIVE-TEST step: neutralized
+    # to {} and gated byte-identical against the M15 golden.
     _legacy_manifest: dict[str, Any] = {}
-    _flat_manifests_root = _REPO_ROOT / "slot_designer" / "configs" / "machine_manifests"
-    try:
-        _legacy_manifest = _legacy_load_manifest(machine_id, _flat_manifests_root)
-        if _legacy_manifest.get("inherits_from"):
-            _legacy_manifest = _legacy_resolve_inheritance(_legacy_manifest, _flat_manifests_root)
-        _legacy_manifest = _legacy_resolve_per_mode(_legacy_manifest, mode)
-    except (FileNotFoundError, KeyError, Exception):  # noqa: BLE001
-        _legacy_manifest = {}
 
     # -- Round-win rules (ported from deleted PIA lines ~1031-1039) --
     # Per-machine extraction rules that correct phantom WinCredits

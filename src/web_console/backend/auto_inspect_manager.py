@@ -98,7 +98,8 @@ _logger = logging.getLogger(__name__)
 _SWEEP_MODES: tuple[int, ...] = (1, 2, 5, 7)
 
 # Manifest directory path relative to project root.
-_MANIFEST_SUBPATH = Path("slot_designer") / "configs" / "machine_manifests"
+# 5B: flat-manifest layer deleted; point to SpinType-native dir.
+_MANIFEST_SUBPATH = Path("configs") / "machine_manifests"
 
 # Terminal item statuses that count as "attempt" for the windowed failure
 # counter (per 07_decision §2 MF-5).

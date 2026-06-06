@@ -125,9 +125,12 @@ def test_stale_count_analyzer_stale_fixable(
 
     Honesty-3: the staleness decision uses effective_analyzer_version (per-
     machine/mode), not the global analyzer_version. The row must have a non-
-    current effective value for the endpoint to flag it stale. M14 has a
-    manifest so the endpoint computes its real current effective; the row's
-    "OLD_EFF" differs → stale + fixable.
+    current effective value for the endpoint to flag it stale. M15 has a
+    SpinType-native manifest (configs/machine_manifests/M15.json) so the
+    endpoint computes its real current effective; the row's "OLD_EFF" differs
+    → stale + fixable.
+    (5B: flat manifests deleted; M14 has no manifest anywhere and returns
+    UNVERIFIABLE, so M15 is used instead.)
     R-6: a dummy chunk file is created so check_rawdata_status returns
     usable_chunks=1 → item goes to fixable_items (not needs_rawdata_items).
     """
@@ -137,7 +140,7 @@ def test_stale_count_analyzer_stale_fixable(
     )
     # machines.json with real md5 values so rawdata md5 can match
     mc = tmp_path / "machines.json"
-    _write_machines_config(mc, {"M14": ("CUR_CFG", "CUR_CODE")})
+    _write_machines_config(mc, {"M15": ("CUR_CFG", "CUR_CODE")})
 
     from src.web_console.backend.app import create_app
     from fastapi.testclient import TestClient
@@ -147,9 +150,9 @@ def test_stale_count_analyzer_stale_fixable(
     )
     db_path = tmp_state_dir / "console.db"
     # Create a stub chunk so check_rawdata_status reports usable_chunks > 0.
-    _write_stub_chunk(tmp_rawdata, "M14", 1, "CUR_CFG", "CUR_CODE")
+    _write_stub_chunk(tmp_rawdata, "M15", 1, "CUR_CFG", "CUR_CODE")
     # Row: rawdata FRESH (matches), effective STALE (old hash != computed current)
-    _seed_run(db_path, "r1", "M14", 1,
+    _seed_run(db_path, "r1", "M15", 1,
               cfg="CUR_CFG", code="CUR_CODE", analyzer="OLD_ANALYZER",
               effective="OLD_EFF_HASH_12")
     with TestClient(app) as c:
@@ -157,7 +160,7 @@ def test_stale_count_analyzer_stale_fixable(
     assert resp["stale_analyzer"] == 1
     assert resp["stale_rawdata"] == 0
     assert resp["fixable_count"] == 1
-    assert resp["fixable_items"] == [{"machine": "M14", "mode": 1}]
+    assert resp["fixable_items"] == [{"machine": "M15", "mode": 1}]
 
 
 def test_stale_count_rawdata_stale_not_fixable(
@@ -200,7 +203,10 @@ def test_stale_count_fixable_deduped_by_machine_mode(
     only one fixable item (operator regenerates the mode once).
 
     Honesty-3: rows carry effective="OLD_EFF" which differs from the
-    current M14 effective → all 3 rows are stale; deduped to 1 fixable.
+    current M15 effective → all 3 rows are stale; deduped to 1 fixable.
+    (5B: flat manifests deleted; M15 is used because it has a SpinType-native
+    manifest at configs/machine_manifests/M15.json. M14 has no manifest and
+    returns UNVERIFIABLE — always skipped by the staleness comparator.)
     R-6: dummy chunk present so item is fixable (not needs-rawdata).
     """
     monkeypatch.setattr(
@@ -208,7 +214,7 @@ def test_stale_count_fixable_deduped_by_machine_mode(
         lambda pid: True,
     )
     mc = tmp_path / "machines.json"
-    _write_machines_config(mc, {"M14": ("CUR_CFG", "CUR_CODE")})
+    _write_machines_config(mc, {"M15": ("CUR_CFG", "CUR_CODE")})
     from src.web_console.backend.app import create_app
     from fastapi.testclient import TestClient
     app = create_app(
@@ -217,16 +223,16 @@ def test_stale_count_fixable_deduped_by_machine_mode(
     )
     db_path = tmp_state_dir / "console.db"
     # Create a stub chunk so the R-6 check finds usable rawdata.
-    _write_stub_chunk(tmp_rawdata, "M14", 1, "CUR_CFG", "CUR_CODE")
+    _write_stub_chunk(tmp_rawdata, "M15", 1, "CUR_CFG", "CUR_CODE")
     for i in range(3):
-        _seed_run(db_path, f"r{i}", "M14", 1,
+        _seed_run(db_path, f"r{i}", "M15", 1,
                   cfg="CUR_CFG", code="CUR_CODE", analyzer="OLD",
                   effective="OLD_EFF_HASH_12")
     with TestClient(app) as c:
         resp = c.get("/api/reports/stale-count").json()
     assert resp["stale_analyzer"] == 3  # 3 rows stale
     assert resp["fixable_count"] == 1   # but dedup to 1 (machine, mode)
-    assert resp["fixable_items"] == [{"machine": "M14", "mode": 1}]
+    assert resp["fixable_items"] == [{"machine": "M15", "mode": 1}]
 
 
 def test_stale_count_untagged_rows_separate_bucket(

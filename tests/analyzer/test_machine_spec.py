@@ -1,13 +1,13 @@
 """Tests for the SpinType-native machine manifest (Phase 0 — framework lock).
 
-The load-bearing gate is `test_derive_reproduces_confirmed_m15`: the analysis set
-DERIVED from M15's spin_types must EXACTLY equal the hand-listed analyzer_features
-of the confirmed M15 — i.e. the derivation reproduces the confirmed machine, so
-switching the live analyzer from hand-listed to derived is provably a no-op for M15.
+The load-bearing gate is `test_derive_m15_is_nonempty_and_sorted`: the analysis
+set DERIVED from M15's spin_types must be a non-empty sorted list of known feature
+IDs.  Phase 5B removed the flat manifest layer so the equivalence comparison
+against the old flat M15.json is no longer possible; structural shape is gated
+instead.
 """
 from __future__ import annotations
 
-import json
 import copy
 from pathlib import Path
 
@@ -24,7 +24,6 @@ from fresh_slotlab.analyzer.machine_spec import (
 
 _REPO = Path(__file__).resolve().parents[2]
 _NEW_ROOT = _REPO / "configs" / "machine_manifests"
-_OLD_ROOT = _REPO / "slot_designer" / "configs" / "machine_manifests"
 
 
 @pytest.fixture()
@@ -63,10 +62,39 @@ def test_validate_schema_catches_problems():
 
 # ── derivation: the load-bearing gate ────────────────────────────────────
 
-def test_derive_reproduces_confirmed_m15(m15):
-    """derive_analyses(M15) must equal the confirmed M15's hand-listed features."""
-    old = json.loads((_OLD_ROOT / "M15.json").read_text(encoding="utf-8"))
-    assert sorted(old["analyzer_features"]) == derive_analyses(m15)
+def test_derive_m15_is_nonempty_and_sorted(m15):
+    """derive_analyses(M15) returns a non-empty sorted list of known feature IDs.
+
+    5B: flat manifest layer deleted; equivalence against old flat M15.json is no
+    longer possible.  We gate structural shape instead: non-empty, sorted, contains
+    the core cross-cutting features that M15 declares via its spin_types.
+    """
+    result = derive_analyses(m15)
+    assert isinstance(result, list), "derive_analyses must return a list"
+    assert len(result) > 0, "M15 must derive at least one analysis"
+    assert result == sorted(result), f"derive_analyses must return sorted list; got {result}"
+    # Structural superset gate (value-agnostic): every analysis M15's spin_types
+    # REQUIRE must be derived. M15 = paid_spin (ST1) + player_choice (ST14) +
+    # settlement (ST15). A regression that silently drops any of these from
+    # derive_analyses (e.g. CROSS_CUTTING / PER_SPINTYPE / role-gating bug) is
+    # caught here. Uses analysis NAMES (structural), never an RTP value. Asserts
+    # ⊇ (additions allowed), not == (so adding a new cross-cutting analysis later
+    # does not falsely break this). Replaces the deleted flat-equivalence gate.
+    required = {
+        # cross-cutting (any machine with paid_spin)
+        "payouts_by_spin_type", "reel_marginal_by_spin_type",
+        "bankruptcy_simulation", "multiplier_profile",
+        "machine_mechanics", "bonus_chain_dynamics",
+        # per-SpinType (any machine with spin_types)
+        "spin_type_outcomes", "spin_type_rtp_buckets",
+        # role-specific: M15 has player_choice (ST14 TopDollar)
+        "topdollar_choice",
+    }
+    missing = required - set(result)
+    assert not missing, (
+        f"M15 derived analyses dropped required structural analyses: {sorted(missing)}. "
+        f"Full derived set: {result}"
+    )
 
 
 def test_derive_gates_role_specific_analyses():

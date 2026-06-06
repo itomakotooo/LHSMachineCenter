@@ -90,10 +90,12 @@ class EffectiveVersionCache:
         closure_files: Optional[tuple[str, ...]] = None,
         repo_root: Optional[Path] = None,
     ) -> None:
+        # 5B: flat-manifest layer deleted.  Default to the SpinType-native dir
+        # so M15.json is found and returns a real hash instead of UNVERIFIABLE.
         self._manifests_root = (
             manifests_root
             if manifests_root is not None
-            else _REPO_ROOT / "slot_designer" / "configs" / "machine_manifests"
+            else _REPO_ROOT / "configs" / "machine_manifests"
         )
         self._closure_files = closure_files  # None → use _CLOSURE_FILES default
         self._repo_root = repo_root          # None → use _REPO_ROOT default

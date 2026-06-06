@@ -89,7 +89,7 @@ class PipelineContext:
 
     manifest : dict[str, Any]
         Resolved (inheritance + per-mode) manifest for this (machine, mode).
-        Source: already produced by manifest_loader early in main().
+        Source: resolved by report_engine before the chunk loop.
         Plugins that need manifest fields at emit() time read from here
         rather than re-loading from disk or stashing via extract().
         Example: ctx.manifest.get("modes", {}).get(str(mode), {}).get("grid", {})

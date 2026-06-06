@@ -885,7 +885,7 @@ class TestExistingTestSuitesImportable:
     _EXISTING_TEST_FILES = [
         "tests/backend/test_lookup_machine_md5_canonical.py",             # P1-B1
         "tests/backend/test_analyzer_foundation.py",                     # P2-A1
-        "tests/backend/test_manifest_loader.py",                         # P2-A2
+        # test_manifest_loader.py removed (5B): manifest_loader.py deleted.
     ]
 
     @pytest.mark.parametrize("rel_path", _EXISTING_TEST_FILES)

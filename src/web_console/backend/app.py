@@ -7894,25 +7894,19 @@ def create_app(
         from the response (the UI falls back to no-badge for missing
         entries).
         """
-        manifests_root = (
-            Path(__file__).resolve().parent.parent.parent.parent
-            / "slot_designer" / "configs" / "machine_manifests"
-        )
-        # Phase 1 (L5 rewire): SpinType-native manifests take precedence for
-        # the "verified" badge when they exist. validation.status == "confirmed"
-        # supersedes console_diagnostic_complete. The legacy path remains for
-        # machines that have no new-schema manifest yet.
+        # 5B: flat-manifest layer deleted. Iterate SpinType-native manifests only.
+        # Only M15.json (confirmed) lives here; the badge map will contain M15 only.
+        # The catalog machine list (from machines.json roster) is NOT affected — that
+        # is a separate check. The "broken ⚠ 缺 mode" flag is also independent.
         new_manifests_root = (
             Path(__file__).resolve().parent.parent.parent.parent
             / "configs" / "machine_manifests"
         )
         out: dict[str, dict[str, bool]] = {}
-        if not manifests_root.exists():
+        if not new_manifests_root.exists():
             return out
-        for path in sorted(manifests_root.iterdir()):
+        for path in sorted(new_manifests_root.iterdir()):
             if not path.is_file() or path.suffix != ".json":
-                continue
-            if path.name == "manifest_schema.json":
                 continue
             try:
                 m = json.loads(path.read_text(encoding="utf-8"))
@@ -7920,57 +7914,17 @@ def create_app(
                 continue
             if not isinstance(m, dict):
                 continue
-            notes = m.get("_generator_notes") or {}
-            # Skip synthetic templates — not operator-facing.
-            if notes.get("synthetic_template"):
-                continue
             mid = m.get("machine_id")
             if not mid:
                 continue
-            is_variant = bool(m.get("inherits_from"))
-            # Phase 1: prefer new-schema manifest validation.status == "confirmed"
-            # when a SpinType-native manifest exists; else fall back to
-            # console_diagnostic_complete from the legacy flat manifest.
-            new_manifest_path = new_manifests_root / f"{mid}.json"
-            if new_manifest_path.exists():
-                try:
-                    new_m = json.loads(new_manifest_path.read_text(encoding="utf-8"))
-                    validation = new_m.get("validation") or {}
-                    verified = validation.get("status") == "confirmed"
-                except (OSError, json.JSONDecodeError):
-                    verified = bool(m.get("console_diagnostic_complete"))
-            else:
-                verified = bool(m.get("console_diagnostic_complete"))
+            # SpinType-native manifests use validation.status == "confirmed".
+            validation = m.get("validation") or {}
+            verified = validation.get("status") == "confirmed"
+            # New-schema manifests have no _generator_notes; default reviewed=True.
+            notes = m.get("_generator_notes") or {}
             reviewed = not bool(notes.get("config_not_reviewed"))
-            # Variants inherit verified/reviewed from the parent. Resolve
-            # cheaply: load parent if present, propagate fields. Skip if
-            # the parent is missing (UI falls back to no-badge).
-            if is_variant:
-                parent_name = m.get("inherits_from")
-                if isinstance(parent_name, str):
-                    parent_path = manifests_root / parent_name
-                    if parent_path.exists():
-                        try:
-                            parent_m = json.loads(
-                                parent_path.read_text(encoding="utf-8")
-                            )
-                            parent_mid = parent_m.get("machine_id", "")
-                            parent_new_path = new_manifests_root / f"{parent_mid}.json"
-                            if parent_new_path.exists():
-                                try:
-                                    parent_new_m = json.loads(
-                                        parent_new_path.read_text(encoding="utf-8")
-                                    )
-                                    parent_validation = parent_new_m.get("validation") or {}
-                                    verified = parent_validation.get("status") == "confirmed"
-                                except (OSError, json.JSONDecodeError):
-                                    verified = bool(parent_m.get("console_diagnostic_complete"))
-                            else:
-                                verified = bool(parent_m.get("console_diagnostic_complete"))
-                            parent_notes = parent_m.get("_generator_notes") or {}
-                            reviewed = not bool(parent_notes.get("config_not_reviewed"))
-                        except (OSError, json.JSONDecodeError):
-                            pass
+            # New-schema manifests are non-variant (no inherits_from at top level).
+            is_variant = False
             out[mid] = {
                 "verified": verified,
                 "reviewed": reviewed,

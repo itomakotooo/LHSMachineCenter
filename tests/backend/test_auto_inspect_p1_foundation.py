@@ -30,6 +30,8 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
+# 5B: flat manifest layer deleted.  MANIFEST_ROOT kept for reference but the
+# directory no longer exists; no live tests use it.
 MANIFEST_ROOT = ROOT / "slot_designer" / "configs" / "machine_manifests"
 
 
@@ -601,50 +603,8 @@ class TestAutoInspectManagerSkeleton:
 
 
 class TestMF4ManifestLoaderWired:
-    def test_m272_manifest_file_exists(self):
-        """M272 manifest file exists at the expected path.
-
-        Inject-bug: delete M272.json -> FileNotFoundError -> assertion fails.
-        """
-        m272_manifest = MANIFEST_ROOT / "M272.json"
-        assert m272_manifest.exists(), (
-            f"M272 manifest not found at {m272_manifest}. "
-            "MF-4 prerequisite cannot be verified."
-        )
-
-    def test_m272_manifest_loadable(self):
-        """manifest_loader.load_manifest can parse M272.json without error.
-
-        Inject-bug: corrupt M272.json with invalid JSON ->
-        JSONDecodeError raised -> test fails.
-        """
-        from fresh_slotlab.analyzer.manifest_loader import load_manifest
-        manifest = load_manifest("M272", MANIFEST_ROOT)
-        assert isinstance(manifest, dict), "load_manifest must return dict"
-        assert manifest.get("machine_id") == "M272"
-
-    def test_m272_manifest_has_spin_type_convention(self):
-        """M272 manifest has spin_type_convention field.
-
-        The convention declares which SpinTypes are 'paid' — the
-        field is consumed by the pipeline's PipelineContext at
-        player_impact_analyzer.py main() via _c1_manifest.
-
-        Inject-bug: remove spin_type_convention from M272.json ->
-        KeyError or None -> assertion fails.
-        """
-        from fresh_slotlab.analyzer.manifest_loader import load_manifest
-        manifest = load_manifest("M272", MANIFEST_ROOT)
-        assert "spin_type_convention" in manifest, (
-            "M272 manifest missing spin_type_convention"
-        )
-        stc = manifest["spin_type_convention"]
-        assert isinstance(stc, dict), "spin_type_convention must be dict"
-        assert "paid" in stc, "spin_type_convention must have 'paid' list"
-
-    # NOTE: the two `test_manifest_loader_wired_into_analyzer_*` tests that
-    # grepped player_impact_analyzer.py source for the MF-4 wiring were removed
-    # — that orchestrator file was deleted (the new SpinType-native engine is
-    # pending). The surviving manifest_loader is exercised directly by the
-    # test_m272_manifest_* tests above; wiring into the new engine will get its
-    # own per-machine manifest regression.
+    # 5B: flat-manifest layer (manifest_loader.py + slot_designer/configs/machine_manifests/)
+    # deleted.  M272.json no longer exists and manifest_loader is gone.
+    # These tests have been removed.  The manifest loading contract is now exercised
+    # by test_machine_spec.py (SpinType-native manifests via machine_spec.load_manifest).
+    pass
