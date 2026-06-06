@@ -9956,11 +9956,22 @@ def create_app(
                     config_md5=config_md5, code_md5=code_md5,
                     run_id=new_run_id,
                 )
-            except Exception:
+            except Exception as _async_exc:
+                # Persist the real traceback (memory/feedback_no_silent_swallow.md) —
+                # the daemon-thread exception was previously swallowed, hiding the cause.
+                import traceback as _tb
+                try:
+                    (sd / "_async_gen_err.txt").write_text(
+                        f"run={new_run_id} machine={machine} mode={mode}\n"
+                        f"{_async_exc!r}\n\n{_tb.format_exc()}",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
                 # _run_generate_report already marks the runs row as
                 # failed on its way out. Swallow here so the daemon
                 # thread exits cleanly without tracebacks in the log
-                # (the failure is surfaced via the runs table).
+                # (the failure is surfaced via the runs table + the err file above).
                 # Mark the placeholder row as failed in case the
                 # raise happened before the inner status=running flip.
                 try:
@@ -9969,7 +9980,7 @@ def create_app(
                         store.update_run(new_run_id, {
                             "status": "failed",
                             "finished_at": utc_now(),
-                            "error_message": "generate-report aborted early",
+                            "error_message": f"generate-report failed: {_async_exc}",
                         })
                 except Exception:
                     pass
