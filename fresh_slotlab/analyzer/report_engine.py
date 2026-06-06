@@ -400,7 +400,6 @@ def generate_report_from_chunks(
         compute_effective_version_for_machine,
     )
     from fresh_slotlab.analyzer.feature_registry import (
-        ALL_FEATURES,
         get_features_for_machine,
     )
     from fresh_slotlab.analyzer.parse_state import ParseState
@@ -450,6 +449,15 @@ def generate_report_from_chunks(
 
     # Derive the analysis set from spin_types (SpinType-native model).
     analysis_set = derive_analyses(new_manifest)
+
+    # Phase 5D: select this machine's feature plugins ONCE — used for BOTH the
+    # per-chunk extract loop AND the emit loop. derive_analyses gates which plugins
+    # RUN, not just which emit: a plugin the machine does not declare no longer runs
+    # its extract() here. (Previously the extract loop iterated ALL_FEATURES and only
+    # emit filtered — wasteful but correct via emit-filtering. Folding onto the
+    # declared set completes the SpinType-native model.)
+    _synthetic_manifest = {"analyzer_features": analysis_set}
+    _machine_features = get_features_for_machine(machine_id, manifest=_synthetic_manifest)
 
     # Phase 5: the legacy flat manifest is NO LONGER loaded. No feature plugin
     # reads ctx.manifest (all read ctx.machine_spec_manifest); the flat manifest
@@ -972,7 +980,7 @@ def generate_report_from_chunks(
             mode=mode,
             manifest={},
         )
-        for _feat in ALL_FEATURES:
+        for _feat in _machine_features:
             try:
                 _this_acc = _feat.extract(parse_state, rec)
                 _feature_accs[_feat.FEATURE_ID] = _feat.reduce(
@@ -1805,11 +1813,8 @@ def generate_report_from_chunks(
         machine_spec_manifest=new_manifest,  # Phase 3: SpinType-native manifest
     )
 
-    # Select features based on derived analysis_set (the SpinType-native model)
-    # Build a synthetic manifest that get_features_for_machine can read
-    _synthetic_manifest = {"analyzer_features": analysis_set}
-    _machine_features = get_features_for_machine(machine_id, manifest=_synthetic_manifest)
-
+    # _machine_features was selected before the chunk loop (Phase 5D) — used for
+    # both extract and emit. Topo-sort it for the emit ordering contract.
     # Topo-sort
     try:
         _sorted_features = topological_sort(_machine_features)
