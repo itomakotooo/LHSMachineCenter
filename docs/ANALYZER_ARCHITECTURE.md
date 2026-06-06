@@ -163,7 +163,7 @@ impl-critic):
 - **5B (done, `bd8a831`)** — flat-manifest layer gone: deleted manifest_loader.py, 420 flat
   manifests (slot_designer/ removed), _stub_features.py; rewired report_engine / versioning /
   effective_version_cache / app.py-badge / auto_inspect to the new dir. base_hash flipped once here.
-- **5C (next)** — remove mechanism_registry: fold features/{bonus_chain_dynamics,machine_mechanics}
+- **5C (done, `0adad7f`)** — remove mechanism_registry: fold features/{bonus_chain_dynamics,machine_mechanics}
   fully onto the manifest (drop the `ctx.mechanism_registry` legacy-fallback branch); remove the
   `mechanism_registry` field from PipelineContext (update all ctor sites + ~7 test files:
   test_c4_mechanism_registry, test_c4_machine_mechanics_plugin, test_phase3_mechanism_decouple,
@@ -171,8 +171,12 @@ impl-critic):
   mechanism_registry.py + remove from _CLOSURE_FILES (base_hash flips a 2nd time — unavoidable for a
   safe split); DELETE the temporary fresh_slotlab/analyzer/manifest_schema.json +
   test_r2_b3_mechanism_overrides_schema.py (both only exist for mechanism_overrides validation).
-- **5D (after 5C)** — console_diagnostic_complete final cleanup; fold report_engine extract loop
-  (~L987) onto get_features_for_machine; pin the final base_hash once.
+- **5D (done, `8ddf81f`)** — folded report_engine's extract loop onto get_features_for_machine
+  (derive_analyses now gates which plugins RUN, not just which emit). NOTE: the console_diagnostic_complete
+  final cleanup moved into follow-up #1 (it is behavior-changing — re-source completeness from the new
+  manifest's validation/rtp_integrity); base_hash needs NO pin (spec §8 — scattered pins were removed on
+  purpose). **Phase 5 COMPLETE.** Final base_hash `916ed8021606`. M15 verified end-to-end (byte-identical
+  gate + full suite 2211 passed + in-browser: verified badge + 7 contract keys + integrity passed).
 
 Carried follow-ups (NOT regressions — M15 byte-identical throughout; do AFTER phase 5, each needs its
 own gate because it CHANGES behavior):
