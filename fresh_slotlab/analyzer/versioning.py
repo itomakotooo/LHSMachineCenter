@@ -244,6 +244,7 @@ def compute_effective_version_for_machine(
     mode: Optional[int] = None,
     *,
     manifests_root: Optional[Path] = None,
+    new_manifests_root: Optional[Path] = None,
     registry: Optional[Any] = None,
     closure_files: Optional[tuple[str, ...]] = None,
     repo_root: Optional[Path] = None,
@@ -255,6 +256,12 @@ def compute_effective_version_for_machine(
     the report-production closure (R-1), and returns the 12-hex effective
     version.
 
+    Phase 1 (L5 rewire): when a SpinType-native manifest exists at
+    ``configs/machine_manifests/<M>.json``, the analysis set is resolved via
+    ``machine_spec.derive_analyses`` (the new path).  Otherwise falls back to
+    the legacy ``slot_designer/configs/machine_manifests`` path using
+    ``manifest.analyzer_features`` (unchanged).
+
     Parameters
     ----------
     machine_id:
@@ -262,9 +269,13 @@ def compute_effective_version_for_machine(
     mode:
         Integer mode. ``None`` to compute the mode-agnostic version (rare).
     manifests_root:
-        Manifests directory. Defaults to
+        Legacy manifests directory. Defaults to
         ``slot_designer/configs/machine_manifests`` resolved relative to
         this module's repo root.
+    new_manifests_root:
+        SpinType-native manifests directory (Phase 1 addition). Defaults to
+        ``configs/machine_manifests`` resolved relative to this module's repo
+        root. Override in tests to point at a synthetic directory.
     registry:
         Object exposing ``ALL_FEATURES``. Defaults to the package
         ``feature_registry`` module.
@@ -345,18 +356,42 @@ def compute_effective_version_for_machine(
         # Repo root: two parents up from this file (fresh_slotlab/analyzer/).
         manifests_root = _REPO_ROOT / "slot_designer" / "configs" / "machine_manifests"
 
+    if new_manifests_root is None:
+        new_manifests_root = _REPO_ROOT / "configs" / "machine_manifests"
+
     base_hash = compute_base_analyzer_version(
         closure_files=closure_files,
         repo_root=repo_root,
     )
 
-    manifest = load_manifest(machine_id, manifests_root)
-    if manifest.get("inherits_from"):
-        manifest = resolve_inheritance(manifest, manifests_root)
-    if mode is not None:
-        manifest = resolve_per_mode(manifest, mode)
+    # Phase 1 (L5 rewire): prefer SpinType-native manifest when it exists.
+    # machine_spec is NOT in _CLOSURE_FILES (it is a standalone module that
+    # does not touch the report-production path), so importing it here does
+    # NOT change base_hash. Per ANALYZER_ARCHITECTURE.md §6 Phase 1.
+    _new_manifest_path = Path(new_manifests_root) / f"{machine_id}.json"
+    if _new_manifest_path.exists():
+        # New path: load SpinType-native manifest, derive analyses from spin_types.
+        try:
+            from fresh_slotlab.analyzer.machine_spec import (  # type: ignore[attr-defined]
+                load_manifest as ms_load_manifest,
+                derive_analyses,
+            )
+        except ImportError:
+            from analyzer.machine_spec import (  # type: ignore[no-redef]
+                load_manifest as ms_load_manifest,
+                derive_analyses,
+            )
+        new_manifest = ms_load_manifest(machine_id, new_manifests_root)
+        machine_features = derive_analyses(new_manifest)
+    else:
+        # Legacy fallback: read flat analyzer_features from slot_designer manifest.
+        manifest = load_manifest(machine_id, manifests_root)
+        if manifest.get("inherits_from"):
+            manifest = resolve_inheritance(manifest, manifests_root)
+        if mode is not None:
+            manifest = resolve_per_mode(manifest, mode)
+        machine_features = list(manifest.get("analyzer_features") or [])
 
-    machine_features = list(manifest.get("analyzer_features") or [])
     feature_hashes = {f.FEATURE_ID: f.compute_hash() for f in registry.ALL_FEATURES}
 
     return compute_effective_analyzer_version(
