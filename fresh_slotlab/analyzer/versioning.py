@@ -126,6 +126,7 @@ _CLOSURE_FILES: tuple[str, ...] = (
     "fresh_slotlab/analyzer/mechanism_registry.py",
     "fresh_slotlab/analyzer/parse_state.py",
     "fresh_slotlab/analyzer/pipeline_context.py",
+    "fresh_slotlab/analyzer/report_engine.py",
     # NOTE: play_types/{__init__,bcm_cycle,wild_nudge}.py are INTENTIONAL CARVES —
     # base-EXCLUDED so editing a machine's mechanic logic does NOT re-flag the whole
     # fleet (the core playtype-rearch goal). They must NOT be added here, even though
