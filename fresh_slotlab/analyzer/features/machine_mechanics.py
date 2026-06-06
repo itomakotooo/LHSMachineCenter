@@ -277,6 +277,31 @@ class MachineMechanics(AnalyzerFeature):
         ebet = ctx.effective_bet_for_rtp
         total_spins = ctx.total_spins
 
+        # Phase 3 de-couple: derive mechanism flags from manifest when available.
+        # For machines with a SpinType-native manifest, derive from spin_types role/play.
+        # Fall back to mechanism_registry for legacy machines (no SpinType-native manifest).
+        # Guard with isinstance(dict): a MagicMock / non-dict ctx (legacy unit tests use
+        # MagicMock, whose attributes are auto-truthy) must fall through to the registry,
+        # not wrongly take the manifest path. Only a real non-empty dict is a manifest.
+        if isinstance(ctx.machine_spec_manifest, dict) and ctx.machine_spec_manifest:
+            try:
+                from fresh_slotlab.analyzer.machine_spec import derive_mechanism_flags
+            except ImportError:
+                from analyzer.machine_spec import derive_mechanism_flags  # type: ignore[no-redef]
+            _mflags = derive_mechanism_flags(ctx.machine_spec_manifest)
+            _jp_applicable = _mflags["jackpot_applicable"]
+            _jp_pid_set_manifest = _mflags["jackpot_pid_set"]
+            _fs_applicable = _mflags["freespin_applicable"]
+            _detection_src_jp = _mflags["detection_source"]
+            _detection_src_fs = _mflags["detection_source"]
+        else:
+            # Legacy path: runtime detection via mechanism_registry.
+            _jp_applicable = reg.jackpot_applicable
+            _jp_pid_set_manifest = reg.jackpot_pid_set
+            _fs_applicable = reg.freespin_applicable
+            _detection_src_jp = reg._detection_source.get("jackpot_applicable", "unknown")
+            _detection_src_fs = reg._detection_source.get("freespin_applicable", "unknown")
+
         def _rtp(win: float) -> float:
             return (win / ebet * 100) if ebet > 0 else 0.0
 
@@ -322,18 +347,18 @@ class MachineMechanics(AnalyzerFeature):
             "lock_rtp_contribution_pp": _rtp(lr_win),
         }
 
-        # Jackpot — DRIVEN BY MECHANISM REGISTRY (closes gap #1)
-        # applicable and jackpot_ids come from the registry (Tier 1/2/3).
-        # Quantitative fields (trigger_spins, total_win, rtp) come from
-        # the extract() accumulator (raw parser counts, unchanged semantics).
+        # Jackpot — DRIVEN BY MANIFEST (phase 3) or MECHANISM REGISTRY (legacy).
+        # applicable and jackpot_ids come from manifest spin_types (phase 3) or
+        # registry (Tier 1/2/3). Quantitative fields (trigger_spins, total_win, rtp)
+        # come from the extract() accumulator (raw parser counts, unchanged semantics).
         jp_spins = int(acc.get("jp_spins", 0))
         jp_ids_acc = sorted(acc.get("jp_ids") or set())  # from JackpotIds field only
         jp_win = float(acc.get("jp_win", 0.0))
 
-        # Registry-driven fields:
-        jp_applicable = reg.jackpot_applicable
-        jp_pid_set = sorted(reg.jackpot_pid_set)  # union of Path A + Path B
-        jp_detection_src = reg._detection_source.get("jackpot_applicable", "unknown")
+        # Manifest-driven fields (phase 3) or registry-driven (legacy):
+        jp_applicable = _jp_applicable
+        jp_pid_set = sorted(_jp_pid_set_manifest)  # from manifest spin_types
+        jp_detection_src = _detection_src_jp
 
         # jackpot_ids: prefer the registry's union result (more complete than
         # jp_ids_acc which only has IDs from the JackpotIds raw field).
@@ -382,16 +407,17 @@ class MachineMechanics(AnalyzerFeature):
             "_detection_source": jp_detection_src,  # C4 transparency field
         }
 
-        # Free spin — DRIVEN BY MECHANISM REGISTRY (closes gap #2)
-        # applicable comes from the registry (Tier 1/2 bonus_chain_lengths check).
-        # Quantitative fields come from extract() accumulator.
+        # Free spin — DRIVEN BY MANIFEST (phase 3) or MECHANISM REGISTRY (legacy).
+        # applicable comes from manifest spin_types play=="freespin" (phase 3) or
+        # registry (Tier 1/2 bonus_chain_lengths check). Quantitative fields come
+        # from extract() accumulator.
         fs_chain_spins = int(acc.get("fs_chain_spins", 0))
         fs_retriggers = int(acc.get("fs_retriggers", 0))
         fs_max_chain = int(acc.get("fs_max_chain", 0))
         fs_win = float(acc.get("fs_win", 0.0))
 
-        fs_applicable = reg.freespin_applicable
-        fs_detection_src = reg._detection_source.get("freespin_applicable", "unknown")
+        fs_applicable = _fs_applicable
+        fs_detection_src = _detection_src_fs
 
         # For machines like M275 where freespin chains are tracked via
         # bonus_chain_dynamics (ReMarks-based) rather than CurFreeSpin

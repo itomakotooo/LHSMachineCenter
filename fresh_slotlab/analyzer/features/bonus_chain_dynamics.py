@@ -404,6 +404,14 @@ class BonusChainDynamics(AnalyzerFeature):
         player_impact["bonus_chain_dynamics"] = bcd
 
         # ── Step 3: infer trigger_target for scatter pids (R1 d2+d3) ──
+        # Phase 3 de-couple: derive scatter_trigger_pids from the SpinType-native
+        # manifest's trigger block instead of from mechanism_registry.
+        # The manifest declares {trigger: {payout_id: "666", remarks: "Trigger"}}
+        # as the authoritative scatter-trigger marker — no runtime detection needed.
+        #
+        # For machines without a SpinType-native manifest (empty machine_spec_manifest),
+        # fall back to mechanism_registry.scatter_marker_pids (backward compat).
+        #
         # Len-first dispatch (coordinator CR-1): determine confidence by len
         # first, then consult chain_counts only when needed (len >= 2).
         # This avoids requiring scatter_feature_chain_counts for single-feature
@@ -414,7 +422,21 @@ class BonusChainDynamics(AnalyzerFeature):
         #   "data_inferred"        — 2+ features, majority by chain count (max > 0)
         #   "fallback_no_chain_data" — 2+ features, all counts zero (alphabetical-first)
         #   "unknown"              — scatter pids exist but scatter_feature_names empty
-        scatter_marker_pids: frozenset[str] = ctx.mechanism_registry.scatter_marker_pids
+        scatter_marker_pids: frozenset[str]
+        # Guard with isinstance(dict): a MagicMock / non-dict ctx (legacy unit tests use
+        # MagicMock, whose attributes are auto-truthy) must fall through to the registry,
+        # not wrongly take the manifest path. Only a real non-empty dict is a manifest.
+        if isinstance(ctx.machine_spec_manifest, dict) and ctx.machine_spec_manifest:
+            # Phase 3: manifest-declared trigger pids (no runtime detection).
+            try:
+                from fresh_slotlab.analyzer.machine_spec import derive_mechanism_flags
+            except ImportError:
+                from analyzer.machine_spec import derive_mechanism_flags  # type: ignore[no-redef]
+            _mflags = derive_mechanism_flags(ctx.machine_spec_manifest)
+            scatter_marker_pids = _mflags["scatter_trigger_pids"]
+        else:
+            # Backward compat: legacy manifest path still uses mechanism_registry.
+            scatter_marker_pids = ctx.mechanism_registry.scatter_marker_pids
 
         trigger_target: str | None = None
         trigger_target_confidence: str | None = None

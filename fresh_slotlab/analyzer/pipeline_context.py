@@ -28,7 +28,7 @@ No import-time I/O per memory/feedback_subprocess_import_suicide_and_module_glob
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 # Phase C4: real MechanismRegistry lives in mechanism_registry.py.
@@ -93,6 +93,15 @@ class PipelineContext:
         Plugins that need manifest fields at emit() time read from here
         rather than re-loading from disk or stashing via extract().
         Example: ctx.manifest.get("modes", {}).get(str(mode), {}).get("grid", {})
+
+    machine_spec_manifest : dict[str, Any]
+        SpinType-native manifest for this machine (phase 3 de-couple).
+        Carries the ``spin_types`` role/play declarations and the ``trigger``
+        block.  Plugins that derive mechanism flags (freespin_applicable,
+        jackpot_applicable, scatter_trigger_pids) read from here via
+        ``machine_spec.derive_mechanism_flags(ctx.machine_spec_manifest)``
+        instead of from ``mechanism_registry`` (phase 3 mandate).
+        Empty dict ({}) when no SpinType-native manifest exists for this machine.
     """
 
     effective_bet_for_rtp: float
@@ -103,3 +112,4 @@ class PipelineContext:
     robots_with_pending_cycle: int
     mechanism_registry: MechanismRegistry
     manifest: dict[str, Any]
+    machine_spec_manifest: dict[str, Any] = field(default_factory=dict)

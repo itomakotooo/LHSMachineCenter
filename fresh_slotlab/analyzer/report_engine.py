@@ -1846,6 +1846,7 @@ def generate_report_from_chunks(
         robots_with_pending_cycle=_c1_robots_with_pending_cycle,
         mechanism_registry=_mechanism_registry,
         manifest=_legacy_manifest,
+        machine_spec_manifest=new_manifest,  # Phase 3: SpinType-native manifest
     )
 
     # Select features based on derived analysis_set (the SpinType-native model)

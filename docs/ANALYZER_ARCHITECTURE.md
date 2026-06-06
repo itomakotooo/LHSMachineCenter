@@ -30,7 +30,7 @@ before editing. Do NOT invent structure not described here.
 | **L2 plugin framework + plugins** | `fresh_slotlab/analyzer/{feature_registry,topo_sort,pipeline_context,parse_state}.py`, `features/_base.py`; the plugins `features/*.py` | **KEEP**. The "general / non-ST analyses" the console shows (bankruptcy, multiplier_profile, hit_and_payout, volatility, streaks, …) ARE these plugins — reused, not rewritten. |
 | **L3 resolution / manifest** | OLD: `manifest_loader.py` + 420 flat manifests in `slot_designer/configs/machine_manifests/` (`analyzer_features` list + `console_diagnostic_complete` + `spin_type_convention`) + `feature_registry.get_features_for_machine` (reads flat) + `mechanism_registry.py` (Tier-2 mechanism DETECTION) | **REPLACE** → `machine_spec` (SpinType-native manifest) + `derive_analyses()` + `validation:{auto,confirmed}`. Mechanism is **declared** in the manifest (role/play), not detected. |
 | **L4 orchestrator** | OLD `fresh_slotlab/player_impact_analyzer.py` (DELETED) | **REBUILD** (slim): load manifest → derive_analyses → sample(L1) → parse(L1) → run plugins(L2) → write `player_impact_summary.json`(L1). |
-| **L5 versioning / freshness** | `fresh_slotlab/analyzer/versioning.py` + `src/web_console/backend/effective_version_cache.py` (read flat `analyzer_features`); the 2 carves `analyzer/play_types/{bcm_cycle,wild_nudge}.py` (base-excluded, no per-machine hash) | **REWIRE** to read `derive_analyses`; convert the 2 carves to `AnalyzerFeature` plugins (so they get per-machine hashing — closes the stale-report gap). |
+| **L5 versioning / freshness** | `fresh_slotlab/analyzer/versioning.py` + `src/web_console/backend/effective_version_cache.py` (read flat `analyzer_features`); the 2 carves `analyzer/play_types/{bcm_cycle,wild_nudge}.py` (base-excluded, no per-machine hash) | **REWIRE** to read `derive_analyses`; converting the 2 carves to `AnalyzerFeature` plugins (per-machine hashing — closes the stale-report gap) is DEFERRED to BCM/wild-nudge machine onboarding (validate emit against real data). |
 
 **Live coupling to the OLD system after the orchestrator deletion (narrow):**
 - `versioning.py` (`compute_effective_version_for_machine`, line ~359 reads
@@ -116,8 +116,12 @@ configs/machine_manifests/<M>.json   (machine_spec, SpinType-native)
    write summary. Wire `app.py` `_run_generate_report` + the batch worker to it for registered
    machines; non-registered → clean "not registered". Gate: invariants 1+3+4 on M15.
 3. **Mechanism de-couple.** `features/{bonus_chain_dynamics,machine_mechanics}` take mechanism
-   from manifest role/play; retire `mechanism_registry`. Convert the 2 `play_types` carves to
-   `AnalyzerFeature` plugins (per-machine hash). Gate: M15 byte-stable schema; suite green.
+   from the manifest role/play (`machine_spec.derive_mechanism_flags`), with a `mechanism_registry`
+   fallback when no SpinType-native manifest is present. **DEFERRED** (to BCM/wild-nudge machine
+   onboarding): the carve→`AnalyzerFeature` conversion that gives `play_types/{bcm_cycle,wild_nudge}`
+   per-machine hashing — its emit logic can only be validated against a real BCM/nudge machine, and
+   M15 has neither (it would be empty-validated only). Gate: M15 schema + integrity stable
+   (value-agnostic); suite green.
 4. **Auto-discover plugins.** Replace the hardcoded feature import list with discovery so a new
    plugin doesn't touch a closure file. Gate: invariant 2 (adding a dummy plugin doesn't flip
    base_hash for un-declaring machines).

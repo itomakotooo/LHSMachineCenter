@@ -94,6 +94,65 @@ def has_hidden_mechanics(manifest: dict[str, Any]) -> bool:
     return bool(manifest.get("out_of_engine_mechanics"))
 
 
+def derive_mechanism_flags(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Derive mechanism flags from a SpinType-native manifest.
+
+    Returns a dict with the mechanism fields that `bonus_chain_dynamics` and
+    `machine_mechanics` need, derived purely from manifest declarations instead
+    of runtime detection (phase 3 de-couple).
+
+    Fields returned:
+      freespin_applicable : bool
+          True if any SpinType has play == "freespin" (case-insensitive).
+      jackpot_applicable : bool
+          True if any SpinType has play == "jackpot" (case-insensitive).
+      jackpot_pid_set : frozenset[str]
+          The payout_ids listed in spin_types with play == "jackpot".
+          Typically empty; operators declare pids in the spin_type spec.
+      scatter_trigger_pids : frozenset[str]
+          The payout_id from the top-level "trigger" block, if present.
+          These are scatter-trigger marker pids that open a bonus feature.
+      detection_source : str
+          Always "manifest_spin_types" — identifies phase 3 manifest-driven path.
+
+    For M15 (ST1=Normal/paid_spin, ST14=TopDollar/player_choice,
+    ST15=TopDollar/settlement): no freespin/jackpot plays declared → both
+    applicable flags are False. scatter_trigger_pids carries the trigger pid
+    (payout_id "666" from the trigger block).
+
+    No I/O: pure computation on the already-loaded manifest dict.
+    """
+    spin_types: dict[str, Any] = manifest.get("spin_types") or {}
+    plays_lower = {str(spec.get("play", "")).lower() for spec in spin_types.values()}
+
+    freespin_applicable: bool = "freespin" in plays_lower
+    jackpot_applicable: bool = "jackpot" in plays_lower
+
+    # Jackpot pid set: collect pids from spin_types that declare a jackpot play.
+    jackpot_pid_set: frozenset[str] = frozenset(
+        str(st_id)
+        for st_id, spec in spin_types.items()
+        if isinstance(spec, dict) and str(spec.get("play", "")).lower() == "jackpot"
+    )
+
+    # Scatter trigger pids: from the top-level "trigger" block.
+    # The trigger block carries {payout_id, remarks, opens} — the payout_id
+    # is the scatter marker that starts a bonus feature (e.g. "666" on M15).
+    _trigger: dict[str, Any] = manifest.get("trigger") or {}
+    _trigger_pid = _trigger.get("payout_id")
+    scatter_trigger_pids: frozenset[str] = (
+        frozenset({str(_trigger_pid)}) if _trigger_pid is not None else frozenset()
+    )
+
+    return {
+        "freespin_applicable": freespin_applicable,
+        "jackpot_applicable": jackpot_applicable,
+        "jackpot_pid_set": jackpot_pid_set,
+        "scatter_trigger_pids": scatter_trigger_pids,
+        "detection_source": "manifest_spin_types",
+    }
+
+
 def validate_schema(manifest: dict[str, Any]) -> list[str]:
     """Return a list of schema problems ([] = valid)."""
     errs: list[str] = []
