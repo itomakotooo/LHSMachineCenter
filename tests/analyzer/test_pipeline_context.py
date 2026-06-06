@@ -1,13 +1,13 @@
-"""Tests for fresh_slotlab/analyzer/pipeline_context.py — Phase C1.
+"""Tests for fresh_slotlab/analyzer/pipeline_context.py — Phase C1, updated 5C.
+
+Phase 5C: MechanismRegistry removed. PipelineContext now has 7 fields.
+The mechanism_registry field is gone. MechanismRegistry class is deleted.
 
 Failure modes caught by these tests
 -------------------------------------
 1. PipelineContext missing a required field (TypeError on construction).
 2. PipelineContext mutability — a plugin accidentally mutates shared pipeline
    state.  frozen=True raises dataclasses.FrozenInstanceError on any attempt.
-3. MechanismRegistry missing to_summary_dict() or returning wrong keys.
-4. MechanismRegistry initial state is not all-falsy (would mean C1 ships
-   live detection logic that was explicitly deferred to C4).
 
 Inject-bug contracts (per memory/feedback_enumerate_safety_paths.md)
 ----------------------------------------------------------------------
@@ -16,16 +16,6 @@ Test: test_frozen_raises_on_mutation
   Expected: FrozenInstanceError is NOT raised → test fails because ctx.total_spins = 99
              assignment succeeds silently instead of raising.
   Revert: restore frozen=True → test passes again.
-
-Test: test_mechanism_registry_all_falsy_initial_state
-  Bug: set self.jackpot_applicable = True in MechanismRegistry.__init__
-  Expected: assertion `mr.jackpot_applicable == False` fails.
-  Revert: restore False → test passes again.
-
-Test: test_mechanism_registry_to_summary_dict_keys
-  Bug: remove "jackpot_applicable" key from to_summary_dict() return dict
-  Expected: assertion about key presence fails.
-  Revert: restore the key → test passes.
 
 Memory files cited
 ------------------
@@ -43,7 +33,7 @@ import dataclasses
 
 import pytest
 
-from fresh_slotlab.analyzer.pipeline_context import MechanismRegistry, PipelineContext
+from fresh_slotlab.analyzer.pipeline_context import PipelineContext
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +41,7 @@ from fresh_slotlab.analyzer.pipeline_context import MechanismRegistry, PipelineC
 # ---------------------------------------------------------------------------
 
 def _make_ctx(**overrides) -> PipelineContext:
-    """Build a minimal valid PipelineContext for tests."""
+    """Build a minimal valid PipelineContext for tests (7 fields, no mechanism_registry)."""
     defaults = dict(
         effective_bet_for_rtp=1_000_000.0,
         total_spins=10_000,
@@ -59,7 +49,6 @@ def _make_ctx(**overrides) -> PipelineContext:
         total_paid_spins=10_000,
         clamp_pending_robots_total=0,
         robots_with_pending_cycle=0,
-        mechanism_registry=MechanismRegistry(),
         manifest={},
     )
     defaults.update(overrides)
@@ -67,15 +56,17 @@ def _make_ctx(**overrides) -> PipelineContext:
 
 
 # ---------------------------------------------------------------------------
-# Test 1: all 8 fields can be set without TypeError
+# Test 1: all 7 fields can be set without TypeError
 # ---------------------------------------------------------------------------
 
 class TestPipelineContextConstruction:
-    """PipelineContext(all 8 fields) must succeed with correct types."""
+    """PipelineContext(all 7 fields) must succeed with correct types.
+
+    Phase 5C: mechanism_registry field removed; 7 fields (was 8).
+    """
 
     def test_all_fields_construct_no_error(self):
-        """Construction with all 8 required fields must not raise."""
-        mr = MechanismRegistry()
+        """Construction with all 7 required fields must not raise."""
         ctx = PipelineContext(
             effective_bet_for_rtp=500.0,
             total_spins=230_000,
@@ -83,7 +74,6 @@ class TestPipelineContextConstruction:
             total_paid_spins=10_000,
             clamp_pending_robots_total=3,
             robots_with_pending_cycle=1,
-            mechanism_registry=mr,
             manifest={"modes": {"1": {}}},
         )
         assert ctx.effective_bet_for_rtp == 500.0
@@ -92,7 +82,6 @@ class TestPipelineContextConstruction:
         assert ctx.total_paid_spins == 10_000
         assert ctx.clamp_pending_robots_total == 3
         assert ctx.robots_with_pending_cycle == 1
-        assert ctx.mechanism_registry is mr
         assert ctx.manifest == {"modes": {"1": {}}}
 
     def test_missing_field_raises_type_error(self):
@@ -105,22 +94,70 @@ class TestPipelineContextConstruction:
                 total_paid_spins=10_000,
                 clamp_pending_robots_total=0,
                 robots_with_pending_cycle=0,
-                mechanism_registry=MechanismRegistry(),
                 manifest={},
             )
 
     def test_all_fields_attribute_access(self):
-        """All 8 fields accessible as attributes."""
+        """All 7 fields accessible as attributes (no mechanism_registry)."""
         ctx = _make_ctx()
-        # Verify all 8 attributes are accessible and return the right type
         assert isinstance(ctx.effective_bet_for_rtp, float)
         assert isinstance(ctx.total_spins, int)
         assert isinstance(ctx.total_paid_sessions, int)
         assert isinstance(ctx.total_paid_spins, int)
         assert isinstance(ctx.clamp_pending_robots_total, int)
         assert isinstance(ctx.robots_with_pending_cycle, int)
-        assert isinstance(ctx.mechanism_registry, MechanismRegistry)
         assert isinstance(ctx.manifest, dict)
+
+    def test_mechanism_registry_field_absent(self):
+        """PipelineContext must NOT have a mechanism_registry field (5C removed it)."""
+        ctx = _make_ctx()
+        assert not hasattr(ctx, "mechanism_registry"), (
+            "mechanism_registry field must not exist in PipelineContext after 5C. "
+            "The field was removed when MechanismRegistry was deleted."
+        )
+
+    def test_no_mechanism_registry_in_dataclass_fields(self):
+        """mechanism_registry must not appear in dataclasses.fields(PipelineContext)."""
+        field_names = {f.name for f in dataclasses.fields(PipelineContext)}
+        assert "mechanism_registry" not in field_names, (
+            f"mechanism_registry must not be a dataclass field after 5C. "
+            f"Got fields: {sorted(field_names)}"
+        )
+
+    def test_exactly_seven_fields(self):
+        """PipelineContext must have exactly 7 dataclass fields after 5C removal."""
+        field_names = {f.name for f in dataclasses.fields(PipelineContext)}
+        expected = {
+            "effective_bet_for_rtp",
+            "total_spins",
+            "total_paid_sessions",
+            "total_paid_spins",
+            "clamp_pending_robots_total",
+            "robots_with_pending_cycle",
+            "manifest",
+            "machine_spec_manifest",  # optional, has default
+        }
+        # 7 required + 1 optional with default = 8 names; but machine_spec_manifest
+        # is optional (default_factory=dict), so it's still a field.
+        assert field_names == expected, (
+            f"PipelineContext must have fields: {sorted(expected)}\n"
+            f"Got: {sorted(field_names)}"
+        )
+
+    def test_with_machine_spec_manifest(self):
+        """machine_spec_manifest optional field accepted."""
+        ctx = PipelineContext(
+            effective_bet_for_rtp=1000.0,
+            total_spins=10000,
+            total_paid_sessions=500,
+            total_paid_spins=500,
+            clamp_pending_robots_total=0,
+            robots_with_pending_cycle=0,
+            manifest={},
+            machine_spec_manifest={"spin_types": {"1": {"role": "paid_spin", "play": "Normal"}}},
+        )
+        assert ctx.machine_spec_manifest is not None
+        assert "spin_types" in ctx.machine_spec_manifest
 
 
 # ---------------------------------------------------------------------------
@@ -150,129 +187,8 @@ class TestPipelineContextIsFrozen:
         with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
             ctx.new_field = "should_fail"  # type: ignore[attr-defined]
 
-    def test_frozen_mechanism_registry_field(self):
-        """Replacing mechanism_registry on a frozen ctx must raise."""
+    def test_frozen_manifest_field(self):
+        """Replacing manifest on a frozen ctx must raise."""
         ctx = _make_ctx()
-        new_mr = MechanismRegistry()
         with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
-            ctx.mechanism_registry = new_mr  # type: ignore[misc]
-
-
-# ---------------------------------------------------------------------------
-# Test 3: MechanismRegistry construction and to_summary_dict()
-# ---------------------------------------------------------------------------
-
-class TestMechanismRegistry:
-    """MechanismRegistry must instantiate and return expected keys.
-
-    Phase C4: real Tier 1/2/3 detection replaces C1 placeholder.
-    _phase key removed (it was a C1-only marker, no longer needed).
-    """
-
-    EXPECTED_SUMMARY_KEYS = {
-        "jackpot_applicable",
-        "jackpot_pid_set",
-        "freespin_applicable",
-        "scatter_marker_pids",
-        "payout_groups_applicable",
-        "_detection_source",
-        # Note: _phase was a C1 placeholder marker; C4 real registry omits it.
-    }
-
-    def test_instantiates_no_error(self):
-        """MechanismRegistry() must not raise."""
-        mr = MechanismRegistry()
-        assert mr is not None
-
-    def test_to_summary_dict_returns_dict(self):
-        """to_summary_dict() must return a dict."""
-        mr = MechanismRegistry()
-        result = mr.to_summary_dict()
-        assert isinstance(result, dict), f"Expected dict, got {type(result)}"
-
-    def test_to_summary_dict_keys_present(self):
-        """to_summary_dict() must contain all expected keys.
-
-        INJECT-BUG: remove any key (e.g. 'jackpot_applicable') from the return
-        dict in to_summary_dict().
-        Expected: assertion fails because key missing from result.
-        Revert: restore the key → test passes.
-        """
-        mr = MechanismRegistry()
-        result = mr.to_summary_dict()
-        missing = self.EXPECTED_SUMMARY_KEYS - set(result.keys())
-        assert not missing, (
-            f"to_summary_dict() missing expected keys: {missing}. "
-            f"Got: {sorted(result.keys())}"
-        )
-
-    def test_c4_phase_no_placeholder_marker(self):
-        """_phase key must be absent — C4 ships real registry (no C1 placeholder marker).
-
-        Phase C4 replaces the C1 placeholder with real Tier 1/2/3 detection.
-        The _phase: 'C1_placeholder' marker is removed as the registry is no
-        longer a placeholder.
-
-        INJECT-BUG: add '_phase': 'C1_placeholder' back to to_summary_dict().
-        RED: '_phase' appears in result.keys() → this assertion fails.
-        Revert: remove _phase key → GREEN.
-        """
-        mr = MechanismRegistry()
-        result = mr.to_summary_dict()
-        assert "_phase" not in result, (
-            f"_phase key must be absent in C4 (real registry, not placeholder). "
-            f"Got: {result.get('_phase')!r}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Test 4: MechanismRegistry initial state all-falsy (C1 is a no-op)
-# ---------------------------------------------------------------------------
-
-class TestMechanismRegistryInitialState:
-    """C1 ships placeholder — all detection fields must be falsy.
-
-    INJECT-BUG: set self.jackpot_applicable = True in MechanismRegistry.__init__.
-    Expected: assertion mr.jackpot_applicable == False fails.
-    Revert: restore False → test passes.
-    """
-
-    def test_all_applicable_flags_false(self):
-        """All *_applicable booleans must be False in the C1 placeholder."""
-        mr = MechanismRegistry()
-        assert mr.jackpot_applicable is False, (
-            "jackpot_applicable must be False in C1 placeholder"
-        )
-        assert mr.freespin_applicable is False, (
-            "freespin_applicable must be False in C1 placeholder"
-        )
-        assert mr.payout_groups_applicable is False, (
-            "payout_groups_applicable must be False in C1 placeholder"
-        )
-
-    def test_all_pid_sets_empty(self):
-        """All frozenset fields must be empty in the C1 placeholder."""
-        mr = MechanismRegistry()
-        assert len(mr.jackpot_pid_set) == 0, (
-            f"jackpot_pid_set must be empty, got {mr.jackpot_pid_set}"
-        )
-        assert len(mr.scatter_marker_pids) == 0, (
-            f"scatter_marker_pids must be empty, got {mr.scatter_marker_pids}"
-        )
-
-    def test_detection_source_empty(self):
-        """_detection_source dict must be empty in the C1 placeholder."""
-        mr = MechanismRegistry()
-        assert mr._detection_source == {}, (
-            f"_detection_source must be empty, got {mr._detection_source}"
-        )
-
-    def test_summary_dict_falsy_applicable_values(self):
-        """to_summary_dict() must reflect the falsy state in all applicable flags."""
-        mr = MechanismRegistry()
-        d = mr.to_summary_dict()
-        assert d["jackpot_applicable"] is False
-        assert d["freespin_applicable"] is False
-        assert d["payout_groups_applicable"] is False
-        assert d["jackpot_pid_set"] == []
-        assert d["scatter_marker_pids"] == []
+            ctx.manifest = {}  # type: ignore[misc]

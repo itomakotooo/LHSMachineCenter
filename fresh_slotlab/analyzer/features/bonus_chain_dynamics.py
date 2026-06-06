@@ -41,8 +41,8 @@ regular pay-id rows that happened to win 0 credits.
 C6 adds ``notes: {is_trigger_marker, trigger_target, trigger_target_confidence}``
 to every row in payout_ids_top20:
 
-  - ``is_trigger_marker``: True iff pid is in mechanism_registry.scatter_marker_pids
-    (win==0 AND no regular line_id != -1 records — same signal as C3 computed
+  - ``is_trigger_marker``: True iff pid is in the manifest-declared trigger/scatter
+    pid set (win==0 AND no regular line_id != -1 records — same signal as C3 computed
     for payouts_by_spin_type rows).
   - ``trigger_target``: the bonus feature name this scatter triggers,
     inferred from ``all_chains_by_feature`` keys carried in the stash.
@@ -152,11 +152,11 @@ Memory feedback honored
     (stash extension not deployed) with a descriptive message.
 - feedback_no_parallel_panel_impl.md:
     notes shape mirrors payouts_by_spin_type notes shape (C3 sibling).
-    is_trigger_marker logic uses mechanism_registry.scatter_marker_pids (C4 signal)
+    is_trigger_marker logic uses the manifest-declared trigger pids (5C signal)
     not a parallel detector.
 - feedback_no_hardcode.md:
     No machine-specific pid values hardcoded; inference derives entirely from
-    mechanism_registry (built from observed data + manifest overrides).
+    the SpinType-native manifest (trigger block / derive_mechanism_flags).
 """
 from __future__ import annotations
 
@@ -266,7 +266,7 @@ class BonusChainDynamics(AnalyzerFeature):
         3. Infer trigger_target from stash using len-first dispatch (R1 d2+d3).
         4. For each row in summary["player_impact"]["payout_ids_top20"], add
            ``notes`` block:
-             - is_trigger_marker: True iff pid in mechanism_registry.scatter_marker_pids
+             - is_trigger_marker: True iff pid in the manifest-declared trigger pid set
              - trigger_target: feature name or None (gap #3)
              - trigger_target_confidence: "unique"|"data_inferred"|
                "fallback_no_chain_data"|"unknown" (only present when
@@ -409,8 +409,9 @@ class BonusChainDynamics(AnalyzerFeature):
         # The manifest declares {trigger: {payout_id: "666", remarks: "Trigger"}}
         # as the authoritative scatter-trigger marker — no runtime detection needed.
         #
-        # For machines without a SpinType-native manifest (empty machine_spec_manifest),
-        # fall back to mechanism_registry.scatter_marker_pids (backward compat).
+        # Phase 5C: manifest-only. For non-registered machines (empty
+        # machine_spec_manifest) scatter_marker_pids is empty — they don't
+        # generate chain reports anyway (non-registered → no report).
         #
         # Len-first dispatch (coordinator CR-1): determine confidence by len
         # first, then consult chain_counts only when needed (len >= 2).
@@ -423,11 +424,10 @@ class BonusChainDynamics(AnalyzerFeature):
         #   "fallback_no_chain_data" — 2+ features, all counts zero (alphabetical-first)
         #   "unknown"              — scatter pids exist but scatter_feature_names empty
         scatter_marker_pids: frozenset[str]
-        # Guard with isinstance(dict): a MagicMock / non-dict ctx (legacy unit tests use
-        # MagicMock, whose attributes are auto-truthy) must fall through to the registry,
-        # not wrongly take the manifest path. Only a real non-empty dict is a manifest.
+        # Guard with isinstance(dict): a MagicMock / non-dict ctx (legacy unit tests
+        # use MagicMock, whose attributes are auto-truthy) must NOT wrongly take the
+        # manifest path — only a real non-empty dict is a manifest; else → empty.
         if isinstance(ctx.machine_spec_manifest, dict) and ctx.machine_spec_manifest:
-            # Phase 3: manifest-declared trigger pids (no runtime detection).
             try:
                 from fresh_slotlab.analyzer.machine_spec import derive_mechanism_flags
             except ImportError:
@@ -435,8 +435,7 @@ class BonusChainDynamics(AnalyzerFeature):
             _mflags = derive_mechanism_flags(ctx.machine_spec_manifest)
             scatter_marker_pids = _mflags["scatter_trigger_pids"]
         else:
-            # Backward compat: legacy manifest path still uses mechanism_registry.
-            scatter_marker_pids = ctx.mechanism_registry.scatter_marker_pids
+            scatter_marker_pids = frozenset()
 
         trigger_target: str | None = None
         trigger_target_confidence: str | None = None

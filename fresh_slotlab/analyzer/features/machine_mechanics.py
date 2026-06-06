@@ -12,14 +12,16 @@ Mechanism
 ---------
 This plugin replaces the PIA inline machine_mechanics block.  Instead of
 independent detection per mechanic (the root cause of gaps #1+#2), the plugin
-delegates ALL detection to the MechanismRegistry — the single source of truth
-built in PIA finalization (Phase C of the emit ordering contract).
+takes jackpot / free_spin applicability from the machine's DECLARED mechanism
+(the SpinType-native manifest), the single source of truth.
 
-For jackpot and free_spin, the plugin reads ctx.mechanism_registry for the
-authoritative applicable flag and PID set.  For the quantitative fields
-(trigger_spins, trigger_rate, total_win, rtp_contribution_pp) the plugin
-reads from its own extract() accumulator, which mirrors the existing inline
-aggregation but is now centralized here.
+For jackpot and free_spin, the plugin reads
+``machine_spec.derive_mechanism_flags(ctx.machine_spec_manifest)`` for the
+authoritative applicable flag and PID set (phase 5C: mechanism_registry deleted;
+mechanism is declared in the manifest's spin_types role/play, not detected at
+runtime).  For the quantitative fields (trigger_spins, trigger_rate, total_win,
+rtp_contribution_pp) the plugin reads from its own extract() accumulator, which
+mirrors the existing inline aggregation but is now centralized here.
 
 For lock_lines / lock_symbols / lock_reels / dollar_pick (not yet in the
 Mechanism Registry), the plugin continues to use the extract() accumulator
@@ -37,8 +39,8 @@ extract() reads from chunk_dict (parser output):
   dollar_pick_spins, dollar_pick_total_dollars, dollar_pick_win
 
 emit() reads:
-  ctx.mechanism_registry — jackpot_applicable, jackpot_pid_set,
-                           freespin_applicable, _detection_source
+  derive_mechanism_flags(ctx.machine_spec_manifest) — jackpot_applicable,
+                           jackpot_pid_set, freespin_applicable, detection_source
   ctx.effective_bet_for_rtp — RTP denominator
   ctx.total_spins — rate denominator
 
@@ -252,8 +254,8 @@ class MachineMechanics(AnalyzerFeature):
         """Build and write summary["player_impact"]["machine_mechanics"].
 
         Reads:
-          ctx.mechanism_registry — jackpot_applicable, jackpot_pid_set,
-                                   freespin_applicable, _detection_source
+          derive_mechanism_flags(ctx.machine_spec_manifest) — jackpot_applicable,
+                                   jackpot_pid_set, freespin_applicable, detection_source
           ctx.effective_bet_for_rtp — RTP denominator
           ctx.total_spins — rate denominator
           final_acc — accumulated mechanic counters from extract/reduce
@@ -263,9 +265,9 @@ class MachineMechanics(AnalyzerFeature):
           6-section schema (lock_lines / lock_symbols / lock_reels / jackpot /
           free_spin / dollar_pick) plus _detection_source on jackpot+free_spin.
 
-        Jackpot and free_spin applicable flags come from ctx.mechanism_registry
-        (Tier 1/2/3 detection), NOT from the raw counter > 0 test that the
-        old inline block used.  This closes gaps #1 and #2.
+        Jackpot and free_spin applicable flags come from the DECLARED mechanism
+        (manifest spin_types role/play via derive_mechanism_flags), NOT from the
+        raw counter > 0 test that the old inline block used.  This closes gaps #1 and #2.
 
         For lock_lines / lock_symbols / lock_reels / dollar_pick, the
         applicable flag is still counter > 0 (these mechanics are not yet
@@ -273,16 +275,12 @@ class MachineMechanics(AnalyzerFeature):
         """
         player_impact = summary.setdefault("player_impact", {})
         acc = final_acc or {}
-        reg = ctx.mechanism_registry
         ebet = ctx.effective_bet_for_rtp
         total_spins = ctx.total_spins
 
-        # Phase 3 de-couple: derive mechanism flags from manifest when available.
-        # For machines with a SpinType-native manifest, derive from spin_types role/play.
-        # Fall back to mechanism_registry for legacy machines (no SpinType-native manifest).
-        # Guard with isinstance(dict): a MagicMock / non-dict ctx (legacy unit tests use
-        # MagicMock, whose attributes are auto-truthy) must fall through to the registry,
-        # not wrongly take the manifest path. Only a real non-empty dict is a manifest.
+        # Phase 5C: mechanism_registry removed. Manifest-only path.
+        # For non-registered machines (no machine_spec_manifest), all mechanism flags
+        # default to False — non-registered machines don't generate reports anyway.
         if isinstance(ctx.machine_spec_manifest, dict) and ctx.machine_spec_manifest:
             try:
                 from fresh_slotlab.analyzer.machine_spec import derive_mechanism_flags
@@ -295,12 +293,11 @@ class MachineMechanics(AnalyzerFeature):
             _detection_src_jp = _mflags["detection_source"]
             _detection_src_fs = _mflags["detection_source"]
         else:
-            # Legacy path: runtime detection via mechanism_registry.
-            _jp_applicable = reg.jackpot_applicable
-            _jp_pid_set_manifest = reg.jackpot_pid_set
-            _fs_applicable = reg.freespin_applicable
-            _detection_src_jp = reg._detection_source.get("jackpot_applicable", "unknown")
-            _detection_src_fs = reg._detection_source.get("freespin_applicable", "unknown")
+            _jp_applicable = False
+            _jp_pid_set_manifest = frozenset()
+            _fs_applicable = False
+            _detection_src_jp = "manifest_absent"
+            _detection_src_fs = "manifest_absent"
 
         def _rtp(win: float) -> float:
             return (win / ebet * 100) if ebet > 0 else 0.0

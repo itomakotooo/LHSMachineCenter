@@ -86,8 +86,8 @@ from typing import Any, Optional
 # changed. The self-referential inclusion is intentional and correct.
 #
 # Lazy imports inside main() (rtp_integrity, parse_state, pipeline_context,
-# topo_sort, mechanism_registry) ARE included because they execute on every
-# real report-production run.
+# topo_sort) ARE included because they execute on every real
+# report-production run.
 #
 # Modules intentionally NOT in the closure:
 #   - fresh_slotlab/analyzer/_stub_features.py   (deleted in 5B — was test-only)
@@ -123,7 +123,7 @@ _CLOSURE_FILES: tuple[str, ...] = (
     "fresh_slotlab/analyzer/features/__init__.py",
     "fresh_slotlab/analyzer/features/_base.py",
     # manifest_loader.py removed (5B): flat-manifest layer deleted.
-    "fresh_slotlab/analyzer/mechanism_registry.py",
+    # mechanism_registry.py removed (5C): MechanismRegistry deleted.
     "fresh_slotlab/analyzer/parse_state.py",
     "fresh_slotlab/analyzer/pipeline_context.py",
     "fresh_slotlab/analyzer/report_engine.py",

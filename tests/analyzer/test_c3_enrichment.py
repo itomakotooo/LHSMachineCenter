@@ -83,9 +83,9 @@ sys.path.insert(0, str(_REPO_ROOT))
 def _make_ctx(effective_bet_for_rtp: float = 100_000.0) -> Any:
     """Build a minimal PipelineContext-like object for C3 unit tests."""
     try:
-        from fresh_slotlab.analyzer.pipeline_context import PipelineContext, MechanismRegistry
+        from fresh_slotlab.analyzer.pipeline_context import PipelineContext
     except ImportError:
-        from analyzer.pipeline_context import PipelineContext, MechanismRegistry  # type: ignore[no-redef]
+        from analyzer.pipeline_context import PipelineContext  # type: ignore[no-redef]
     return PipelineContext(
         effective_bet_for_rtp=effective_bet_for_rtp,
         total_spins=10_000,
@@ -93,8 +93,8 @@ def _make_ctx(effective_bet_for_rtp: float = 100_000.0) -> Any:
         total_paid_spins=10_000,
         clamp_pending_robots_total=0,
         robots_with_pending_cycle=0,
-        mechanism_registry=MechanismRegistry(),
         manifest={},
+        machine_spec_manifest={},
     )
 
 

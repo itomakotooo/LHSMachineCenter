@@ -1,4 +1,9 @@
-"""Phase 3 mechanism de-couple: inject-bug gate.
+"""Phase 3 mechanism de-couple: inject-bug gate, adapted for 5C.
+
+Phase 5C: MechanismRegistry removed. PipelineContext no longer has a
+mechanism_registry field. The inject-bug tests are updated to verify that
+the manifest-driven path is the ONLY path (there is no registry fallback
+to accidentally use).
 
 ANALYZER_ARCHITECTURE.md §6 phase 3 mandates that machine_mechanics and
 bonus_chain_dynamics derive their mechanism flags from the SpinType-native
@@ -19,6 +24,7 @@ from __future__ import annotations
 
 import pytest
 from unittest.mock import patch
+
 
 # ---------------------------------------------------------------------------
 # 1. Unit tests for derive_mechanism_flags
@@ -103,16 +109,19 @@ class TestDeriveMechanismFlagsUnit:
 
 
 # ---------------------------------------------------------------------------
-# 2. PipelineContext carries machine_spec_manifest field
+# 2. PipelineContext carries machine_spec_manifest field (no mechanism_registry)
 # ---------------------------------------------------------------------------
 
 class TestPipelineContextMachineSpecManifest:
-    """PipelineContext.machine_spec_manifest must be present (Phase 3 field)."""
+    """PipelineContext.machine_spec_manifest must be present (Phase 3 field).
+    Phase 5C: mechanism_registry field gone; PipelineContext has 7 fields.
+    """
 
     def test_pipeline_context_has_machine_spec_manifest_field(self) -> None:
-        """PipelineContext must accept machine_spec_manifest kwarg (Phase 3)."""
+        """PipelineContext must accept machine_spec_manifest kwarg (Phase 3).
+        Phase 5C: no mechanism_registry argument.
+        """
         from fresh_slotlab.analyzer.pipeline_context import PipelineContext
-        from fresh_slotlab.analyzer.mechanism_registry import MechanismRegistry
         ctx = PipelineContext(
             effective_bet_for_rtp=1000.0,
             total_spins=10000,
@@ -120,7 +129,6 @@ class TestPipelineContextMachineSpecManifest:
             total_paid_spins=500,
             clamp_pending_robots_total=0,
             robots_with_pending_cycle=0,
-            mechanism_registry=MechanismRegistry(),
             manifest={},
             machine_spec_manifest={"spin_types": {"1": {"role": "paid_spin", "play": "Normal"}}},
         )
@@ -128,9 +136,8 @@ class TestPipelineContextMachineSpecManifest:
         assert "spin_types" in ctx.machine_spec_manifest
 
     def test_pipeline_context_empty_machine_spec_manifest(self) -> None:
-        """PipelineContext with empty machine_spec_manifest is valid (legacy path)."""
+        """PipelineContext with empty machine_spec_manifest is valid."""
         from fresh_slotlab.analyzer.pipeline_context import PipelineContext
-        from fresh_slotlab.analyzer.mechanism_registry import MechanismRegistry
         ctx = PipelineContext(
             effective_bet_for_rtp=1000.0,
             total_spins=10000,
@@ -138,26 +145,32 @@ class TestPipelineContextMachineSpecManifest:
             total_paid_spins=500,
             clamp_pending_robots_total=0,
             robots_with_pending_cycle=0,
-            mechanism_registry=MechanismRegistry(),
             manifest={},
             machine_spec_manifest={},
         )
         assert ctx.machine_spec_manifest == {}
 
+    def test_pipeline_context_has_no_mechanism_registry_field(self) -> None:
+        """PipelineContext must NOT have mechanism_registry field (5C removed it)."""
+        import dataclasses
+        from fresh_slotlab.analyzer.pipeline_context import PipelineContext
+        field_names = {f.name for f in dataclasses.fields(PipelineContext)}
+        assert "mechanism_registry" not in field_names, (
+            f"mechanism_registry must not be a field in PipelineContext after 5C. "
+            f"Got fields: {sorted(field_names)}"
+        )
+
 
 # ---------------------------------------------------------------------------
-# 3. machine_mechanics reads from manifest when machine_spec_manifest present
+# 3. machine_mechanics reads from manifest (only path — no registry fallback)
 # ---------------------------------------------------------------------------
 
 class TestMachineMechanicsManifestDriven:
-    """machine_mechanics.emit() must read from manifest, not mechanism_registry."""
+    """machine_mechanics.emit() must read from manifest (the only path in 5C)."""
 
-    def _make_ctx(self, machine_spec_manifest: dict, registry=None) -> object:
-        """Build a minimal PipelineContext for testing."""
+    def _make_ctx(self, machine_spec_manifest: dict) -> object:
+        """Build a minimal PipelineContext for testing (no mechanism_registry)."""
         from fresh_slotlab.analyzer.pipeline_context import PipelineContext
-        from fresh_slotlab.analyzer.mechanism_registry import MechanismRegistry
-        if registry is None:
-            registry = MechanismRegistry()
         return PipelineContext(
             effective_bet_for_rtp=10000.0,
             total_spins=1000,
@@ -165,14 +178,12 @@ class TestMachineMechanicsManifestDriven:
             total_paid_spins=1000,
             clamp_pending_robots_total=0,
             robots_with_pending_cycle=0,
-            mechanism_registry=registry,
             manifest={},
             machine_spec_manifest=machine_spec_manifest,
         )
 
     def test_m15_manifest_jackpot_false(self) -> None:
         """M15 manifest → jackpot_applicable=False in machine_mechanics output."""
-        from fresh_slotlab.analyzer.mechanism_registry import MechanismRegistry
         from fresh_slotlab.analyzer.features.machine_mechanics import MachineMechanics
 
         # M15 manifest: no jackpot/freespin SpinTypes
@@ -205,36 +216,17 @@ class TestMachineMechanicsManifestDriven:
             "Check machine_mechanics.emit() manifest-driven path."
         )
 
-    def test_inject_bug_wrong_mechanism_detected(self) -> None:
-        """INJECT BUG: if machine_mechanics reads mechanism_registry INSTEAD of
-        manifest, a registry with jackpot_applicable=True would leak into the output.
-        This proves the manifest-driven path is actually used.
-
-        The inject: pass a manifest with NO jackpot SpinTypes, but a registry
-        with jackpot_applicable=True. If the code INCORRECTLY uses the registry,
-        jackpot.applicable would be True (wrong). If the code CORRECTLY uses the
-        manifest, jackpot.applicable is False (correct).
-        """
-        from fresh_slotlab.analyzer.mechanism_registry import MechanismRegistry
+    def test_jackpot_manifest_gives_applicable_true(self) -> None:
+        """Manifest with jackpot SpinType → jackpot.applicable=True."""
         from fresh_slotlab.analyzer.features.machine_mechanics import MachineMechanics
 
-        # Manifest declares no jackpot (correct state for M15).
-        m15_manifest = {
+        jackpot_manifest = {
             "spin_types": {
                 "1": {"role": "paid_spin", "play": "Normal"},
+                "5": {"role": "settlement", "play": "Jackpot"},
             },
         }
-        # Registry with jackpot=True (what runtime detection might produce on a
-        # different machine or if the detection logic is faulty).
-        rogue_registry = MechanismRegistry(
-            jackpot_applicable=True,
-            jackpot_pid_set=frozenset({"99999"}),
-            freespin_applicable=True,
-            detection_source={"jackpot_applicable": "tier3_pid_ge_10000",
-                              "freespin_applicable": "tier2_bonus_chain_lengths"},
-        )
-
-        ctx = self._make_ctx(m15_manifest, registry=rogue_registry)
+        ctx = self._make_ctx(jackpot_manifest)
         summary: dict = {"player_impact": {
             "payout_ids_top20": [],
             "bonus_chain_dynamics": {"applicable": False, "bonus_round_count": 0, "chain_count": 0, "avg_chain_length": 0},
@@ -243,18 +235,34 @@ class TestMachineMechanicsManifestDriven:
         plugin.emit({}, summary, ctx)
 
         mm = summary["player_impact"]["machine_mechanics"]
-        # CORRECT: manifest wins → jackpot=False (even though registry says True)
+        assert mm["jackpot"]["applicable"] is True, (
+            f"Manifest with jackpot SpinType (play='Jackpot') must give applicable=True. "
+            f"Got: {mm['jackpot']['applicable']}"
+        )
+
+    def test_no_manifest_gives_false_not_error(self) -> None:
+        """Empty machine_spec_manifest → all mechanism flags False, no crash.
+
+        In 5C the else branch returns False for non-registered machines
+        (not registered → no report path anyway, but plugin must not crash).
+        """
+        from fresh_slotlab.analyzer.features.machine_mechanics import MachineMechanics
+
+        ctx = self._make_ctx({})  # empty dict = no SpinType-native manifest
+        summary: dict = {"player_impact": {
+            "payout_ids_top20": [],
+            "bonus_chain_dynamics": {"applicable": False, "bonus_round_count": 0, "chain_count": 0, "avg_chain_length": 0},
+        }}
+        plugin = MachineMechanics()
+        # Must not raise
+        plugin.emit({}, summary, ctx)
+
+        mm = summary["player_impact"]["machine_mechanics"]
         assert mm["jackpot"]["applicable"] is False, (
-            f"INJECT-BUG DETECTION: machine_mechanics used mechanism_registry "
-            f"(jackpot=True) instead of manifest (no jackpot SpinType). "
-            f"Got jackpot.applicable={mm['jackpot']['applicable']}. "
-            "The manifest-driven path is not being used."
+            "Empty manifest must give jackpot.applicable=False (safe default)."
         )
         assert mm["free_spin"]["applicable"] is False, (
-            f"INJECT-BUG DETECTION: machine_mechanics used mechanism_registry "
-            f"(freespin=True) instead of manifest (no freespin SpinType). "
-            f"Got free_spin.applicable={mm['free_spin']['applicable']}. "
-            "The manifest-driven path is not being used."
+            "Empty manifest must give free_spin.applicable=False (safe default)."
         )
 
 
@@ -265,11 +273,8 @@ class TestMachineMechanicsManifestDriven:
 class TestBonusChainDynamicsManifestDriven:
     """bonus_chain_dynamics.emit() must read scatter_trigger_pids from manifest."""
 
-    def _make_ctx(self, machine_spec_manifest: dict, registry=None) -> object:
+    def _make_ctx(self, machine_spec_manifest: dict) -> object:
         from fresh_slotlab.analyzer.pipeline_context import PipelineContext
-        from fresh_slotlab.analyzer.mechanism_registry import MechanismRegistry
-        if registry is None:
-            registry = MechanismRegistry()
         return PipelineContext(
             effective_bet_for_rtp=10000.0,
             total_spins=1000,
@@ -277,7 +282,6 @@ class TestBonusChainDynamicsManifestDriven:
             total_paid_spins=1000,
             clamp_pending_robots_total=0,
             robots_with_pending_cycle=0,
-            mechanism_registry=registry,
             manifest={},
             machine_spec_manifest=machine_spec_manifest,
         )
@@ -327,28 +331,14 @@ class TestBonusChainDynamicsManifestDriven:
             "Check bonus_chain_dynamics.emit() manifest-driven scatter path."
         )
 
-    def test_inject_bug_wrong_scatter_pids_detected(self) -> None:
-        """INJECT BUG: if bonus_chain_dynamics reads mechanism_registry INSTEAD of
-        manifest, a registry with scatter_marker_pids={'999'} would produce
-        is_trigger_marker=True for pid '999', even though the manifest says
-        trigger.payout_id='666'.
+    def test_empty_manifest_gives_empty_scatter_pids_no_crash(self) -> None:
+        """Empty manifest → scatter_marker_pids=frozenset(), no crash.
 
-        This proves the manifest-driven path is used: with manifest trigger='666',
-        pid '666' must be the trigger marker, NOT pid '999' from the registry.
+        In 5C the else branch returns frozenset() for non-registered machines.
         """
-        from fresh_slotlab.analyzer.mechanism_registry import MechanismRegistry
         from fresh_slotlab.analyzer.features.bonus_chain_dynamics import BonusChainDynamics
 
-        m15_manifest = {
-            "spin_types": {"1": {"role": "paid_spin", "play": "Normal"}},
-            "trigger": {"payout_id": "666", "remarks": "Trigger"},
-        }
-        # Registry says scatter pid is '999', NOT '666' (wrong/rogue registry).
-        rogue_registry = MechanismRegistry(
-            scatter_marker_pids=frozenset({"999"}),
-            detection_source={"scatter_marker_pids": "tier3_raw"},
-        )
-        ctx = self._make_ctx(m15_manifest, registry=rogue_registry)
+        ctx = self._make_ctx({})  # empty = no SpinType-native manifest
 
         summary: dict = {
             "_bonus_chain_dynamics_data": {
@@ -367,27 +357,16 @@ class TestBonusChainDynamicsManifestDriven:
             "player_impact": {
                 "payout_ids_top20": [
                     {"payout_id": "666", "hit_count": 100, "total_win": 0},
-                    {"payout_id": "999", "hit_count": 5,   "total_win": 0},
                 ],
             },
         }
         plugin = BonusChainDynamics()
+        # Must not raise
         plugin.emit({}, summary, ctx)
-
+        # 666 is not a scatter marker because no manifest says it is
         pid_rows = summary["player_impact"].get("payout_ids_top20", [])
         row_666 = next((r for r in pid_rows if str(r.get("payout_id")) == "666"), None)
-        row_999 = next((r for r in pid_rows if str(r.get("payout_id")) == "999"), None)
-
-        # CORRECT: manifest wins → pid '666' is the trigger, '999' is not.
         assert row_666 is not None
-        assert row_666.get("notes", {}).get("is_trigger_marker") is True, (
-            "INJECT-BUG DETECTION: manifest trigger='666' must make pid 666 a "
-            f"trigger marker. Got notes={row_666.get('notes')}. "
-            "The manifest-driven scatter path is not being used."
-        )
-        assert row_999 is not None
-        assert row_999.get("notes", {}).get("is_trigger_marker") is False, (
-            "INJECT-BUG DETECTION: manifest does NOT list pid '999' as trigger. "
-            f"Got notes={row_999.get('notes')}. "
-            "If the registry path was used, '999' would incorrectly be a trigger marker."
+        assert row_666.get("notes", {}).get("is_trigger_marker") is not True, (
+            "With empty manifest, pid 666 must NOT be marked as trigger_marker."
         )

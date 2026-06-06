@@ -404,7 +404,7 @@ def generate_report_from_chunks(
         get_features_for_machine,
     )
     from fresh_slotlab.analyzer.parse_state import ParseState
-    from fresh_slotlab.analyzer.pipeline_context import PipelineContext, MechanismRegistry
+    from fresh_slotlab.analyzer.pipeline_context import PipelineContext
     from fresh_slotlab.analyzer.topo_sort import (
         topological_sort,
         PluginCyclicDependencyError,
@@ -1783,7 +1783,8 @@ def generate_report_from_chunks(
             import sys as _sys
             print(f"ERROR: failed to write summary JSON on error path: {_write_exc}", file=_sys.stderr)
 
-    # Build MechanismRegistry
+    # Phase 5C: MechanismRegistry removed. Build BCM cycle stats (still used by
+    # collect_mechanic plugin via robots_with_pending_cycle in PipelineContext).
     _c1_cycle_median: int | None = (
         int(sorted(all_cycle_peaks)[len(all_cycle_peaks) // 2])
         if all_cycle_peaks else None
@@ -1791,35 +1792,8 @@ def generate_report_from_chunks(
     _c1_robots_with_pending_cycle: int = (
         sum(1 for fcc in all_final_cc_values if _c1_cycle_median is not None and fcc < _c1_cycle_median)
     )
-    _c4_pbs_acc = _feature_accs.get("payouts_by_spin_type") or {}
-    _c4_pid_has_regular_line: dict[str, bool] = _c4_pbs_acc.get("pid_has_regular_line") or {}
-    _mechanism_registry = MechanismRegistry.build(
-        manifest=_legacy_manifest,
-        payout_id_win=dict(payout_id_win),
-        payout_id_hits=dict(payout_id_hits),
-        jackpot_ids_seen=total_jackpot_ids_seen,
-        bonus_chain_lengths=bonus_chain_lengths,
-        total_freespin_chain_spins=total_freespin_chain_spins,
-        payout_group_win=dict(payout_group_win),
-        pid_has_regular_line=_c4_pid_has_regular_line,
-    )
-    summary["_mechanism_registry"] = _mechanism_registry
 
-    # Surface unknown mechanism_overrides keys
-    for _b4_key in _mechanism_registry.unknown_override_keys:
-        if "feature_errors" not in summary:
-            summary["feature_errors"] = {}
-        summary["feature_errors"][f"mechanism_registry_unknown_override_{_b4_key}"] = {
-            "type": "UnrecognizedMechanismOverrideKey",
-            "key": _b4_key,
-            "machine_id": machine_id,
-            "detail": (
-                f"Manifest mechanism_overrides contains unrecognized key '{_b4_key}'. "
-                f"This override was silently ignored."
-            ),
-        }
-
-    # Build PipelineContext
+    # Build PipelineContext (7 fields — mechanism_registry removed in 5C)
     _c1_ctx = PipelineContext(
         effective_bet_for_rtp=effective_bet_for_rtp,
         total_spins=total_spins,
@@ -1827,7 +1801,6 @@ def generate_report_from_chunks(
         total_paid_spins=int(sum(spin_type_paid_rounds.values())),
         clamp_pending_robots_total=clamp_pending_robots_total,
         robots_with_pending_cycle=_c1_robots_with_pending_cycle,
-        mechanism_registry=_mechanism_registry,
         manifest=_legacy_manifest,
         machine_spec_manifest=new_manifest,  # Phase 3: SpinType-native manifest
     )

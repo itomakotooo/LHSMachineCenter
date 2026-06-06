@@ -103,9 +103,9 @@ def _import_plugin_class():
 def _make_ctx(total_spins: int = 10_000) -> Any:
     """Build a minimal PipelineContext-like object."""
     try:
-        from fresh_slotlab.analyzer.pipeline_context import PipelineContext, MechanismRegistry
+        from fresh_slotlab.analyzer.pipeline_context import PipelineContext
     except ImportError:
-        from analyzer.pipeline_context import PipelineContext, MechanismRegistry  # type: ignore[no-redef]
+        from analyzer.pipeline_context import PipelineContext  # type: ignore[no-redef]
     return PipelineContext(
         effective_bet_for_rtp=10_000_000.0,
         total_spins=total_spins,
@@ -113,8 +113,8 @@ def _make_ctx(total_spins: int = 10_000) -> Any:
         total_paid_spins=total_spins,
         clamp_pending_robots_total=0,
         robots_with_pending_cycle=0,
-        mechanism_registry=MechanismRegistry(),
         manifest={},
+        machine_spec_manifest={},
     )
 
 

@@ -2,10 +2,11 @@
 
 Phase C1 of analyzer unbundle (M275-driven) per
 session_artifacts/_arch_analyzer_unbundle/04_architecture_proposal_v3.md §4.1.
+Phase 5C: mechanism_registry field removed (MechanismRegistry deleted).
 
 ParseState is the typed container for what ``extract(parse_state, chunk_dict)``
 receives at plugin call sites in the merge loop.  It is constructed once per
-chunk (per plugin call) in player_impact_analyzer.main().
+chunk (per plugin call) in report_engine.generate_report_from_chunks().
 
 Schema contract (Wave 2 stable)
 --------------------------------
@@ -14,11 +15,6 @@ guaranteed top-level keys are listed in the docstring below.  Pattern-A
 plugins (no-op extract) ignore ``chunk_dict``; Pattern-B plugins (real carve)
 read it.  The ``machine_id`` / ``mode`` / ``manifest`` fields carry context
 that the chunk dict does not provide.
-
-``mechanism_registry`` is ALWAYS None during ``extract()`` calls.
-It is only available at ``emit()`` time via ``PipelineContext.mechanism_registry``
-and ``summary["_mechanism_registry"]``.  Plugins MUST NOT assume
-``mechanism_registry`` is populated during ``extract()``.
 
 No import-time I/O per memory/feedback_subprocess_import_suicide_and_module_globals.md.
 """
@@ -85,14 +81,9 @@ class ParseState:
         Resolved per-mode manifest for this (machine, mode).  Static for
         the lifetime of the run; provided here so plugins that need manifest
         data during per-chunk extraction do not have to re-load from disk.
-
-    mechanism_registry : None
-        Always None during extract().  Do NOT use it here.
-        The registry is available only in emit() via PipelineContext.
     """
 
     chunk_dict: dict[str, Any]
     machine_id: str
     mode: int
     manifest: dict[str, Any]
-    mechanism_registry: None = None  # Always None during extract(); do not use.

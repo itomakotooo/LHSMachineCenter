@@ -41,7 +41,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -61,10 +60,40 @@ def _import_plugin_class():
     return BonusChainDynamics
 
 
-def _make_ctx(scatter_marker_pids: frozenset[str]) -> Any:
-    ctx = MagicMock()
-    ctx.mechanism_registry.scatter_marker_pids = scatter_marker_pids
-    return ctx
+def _make_ctx(scatter_marker_pids: "frozenset[str]") -> Any:
+    """Build a PipelineContext that declares scatter trigger pids via machine_spec_manifest.
+
+    Phase 5C: mechanism_registry removed — scatter pids come from the manifest
+    trigger block (read by derive_mechanism_flags). These tests use a single
+    scatter pid; trigger.payout_id carries it.
+    """
+    try:
+        from fresh_slotlab.analyzer.pipeline_context import PipelineContext
+    except ImportError:
+        from analyzer.pipeline_context import PipelineContext  # type: ignore[no-redef]
+
+    if scatter_marker_pids:
+        sorted_pids = sorted(scatter_marker_pids)
+        trigger_block: dict = {"payout_id": sorted_pids[0]}
+        if len(sorted_pids) > 1:
+            trigger_block["additional_pids"] = sorted_pids[1:]
+        manifest = {
+            "spin_types": {"1": {"role": "paid_spin", "play": "Normal"}},
+            "trigger": trigger_block,
+        }
+    else:
+        manifest = {"spin_types": {"1": {"role": "paid_spin", "play": "Normal"}}}
+
+    return PipelineContext(
+        effective_bet_for_rtp=10_000.0,
+        total_spins=1_000,
+        total_paid_sessions=1_000,
+        total_paid_spins=1_000,
+        clamp_pending_robots_total=0,
+        robots_with_pending_cycle=0,
+        manifest={},
+        machine_spec_manifest=manifest,
+    )
 
 
 def _raw_inputs(features: list[str] | None = None) -> dict:
