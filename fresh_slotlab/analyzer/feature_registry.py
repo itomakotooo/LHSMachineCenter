@@ -25,6 +25,11 @@ Design
 - ``get_features_for_machine()``  reads the manifest's ``analyzer_features`` list
                     (declarative) and returns features whose FEATURE_ID appears
                     in that list.  Registration order is preserved.
+- ``discover_features()``  globs ``features/*.py``, excludes helpers (_base,
+                    __init__), imports each in deterministic sorted order so each
+                    module's top-level ``register()`` call fires.  Call this once
+                    before reading ALL_FEATURES in any context that does NOT
+                    already import plugin modules individually.
 
 Applicability semantic (04_v5 §5.5.2):
     Applicability is manifest-declared, NOT a runtime instance predicate.
@@ -38,12 +43,20 @@ Phase 3 note:
     The API surface is the manifest-list form; callers must not assume
     the stub behavior persists beyond Phase 3.
 
+Phase 4 note (auto-discover):
+    ``discover_features()`` replaces the hardcoded import lists in
+    ``versioning.py`` and ``report_engine.py``.  Adding a new plugin no
+    longer requires editing a closure file — new plugin files live in
+    ``features/`` which is already base-excluded (R-4).
+
 No import-time side effects per
 memory/feedback_subprocess_import_suicide_and_module_globals.md.
 """
 
 from __future__ import annotations
 
+import importlib
+from pathlib import Path
 from typing import Any
 
 # Dual-path import for standalone-script mode (P2-C).
@@ -54,6 +67,14 @@ try:
     from fresh_slotlab.analyzer.features._base import AnalyzerFeature
 except ImportError:  # running as standalone script
     from analyzer.features._base import AnalyzerFeature  # type: ignore[no-redef]
+
+
+# ---------------------------------------------------------------------------
+# Exclusion set — files under features/ that are NOT plugin modules.
+# _base.py: ABC definition; __init__.py: package marker.
+# Both stay in _CLOSURE_FILES (not registered plugins) per R-4 notes.
+# ---------------------------------------------------------------------------
+_DISCOVERY_EXCLUDE: frozenset[str] = frozenset({"_base.py", "__init__.py"})
 
 
 # ---------------------------------------------------------------------------
@@ -157,3 +178,91 @@ def get_features_for_machine(
     declared_set = set(declared_ids)
 
     return [f for f in ALL_FEATURES if f.FEATURE_ID in declared_set]
+
+
+def discover_features(*, _features_dir: Path | None = None) -> None:
+    """Import every plugin module under ``features/`` so each self-registers.
+
+    This is the Phase 4 root fix: previously ``versioning.py`` and
+    ``report_engine.py`` each maintained a hardcoded import list of plugin
+    modules.  Adding a new plugin required editing one of those files, which
+    flips ``base_hash`` and re-flags ALL machines as stale.
+
+    After this change, callers replace those hardcoded blocks with a single
+    ``discover_features()`` call.  New plugin files added to ``features/``
+    are auto-discovered here — no closure file is touched.
+
+    Algorithm
+    ---------
+    1. Glob ``features/*.py`` (relative to this file's directory).
+    2. Exclude ``_base.py`` and ``__init__.py`` (ABC definition + package
+       marker; both stay in ``_CLOSURE_FILES`` per R-4).
+    3. Sort the remaining names for determinism (sorted order = reproducible
+       registration order across platforms / Python versions).
+    4. For each, try the ``fresh_slotlab.analyzer.features.<name>`` package
+       path first (package mode), then fall back to ``analyzer.features.<name>``
+       (standalone-script mode) — matching the dual-path style used throughout
+       this codebase per memory/feedback_subprocess_import_suicide_and_module_globals.md.
+    5. Importing the module fires its top-level ``register()`` call, which is
+       idempotent (duplicate FEATURE_ID is a silent no-op per §3 C3).
+
+    Parameters
+    ----------
+    _features_dir:
+        Override the features directory (used by tests to inject a synthetic
+        directory).  When ``None`` (default), resolves relative to this file
+        (``<this_file>/../features/``).
+
+    Side effects
+    ------------
+    Mutates ``ALL_FEATURES`` via each plugin module's ``register()`` call.
+    Idempotent: calling twice with the same plugins present leaves
+    ``ALL_FEATURES`` unchanged (each ``register()`` deduplicates by FEATURE_ID).
+
+    Error handling
+    --------------
+    Per memory/feedback_no_silent_swallow.md: import errors are NOT swallowed.
+    If a plugin module fails to import (syntax error, missing dependency),
+    ``ImportError`` propagates to the caller so the failure is visible rather
+    than silently producing an incomplete feature set.
+
+    Notes
+    -----
+    ``_base.py`` and ``__init__.py`` are explicitly excluded from discovery
+    because they are NOT registered plugins: they are the ABC definition and
+    the package marker respectively, and both appear in ``_CLOSURE_FILES``
+    (contributing to ``base_hash``).  A glob over ``features/*.py`` without
+    this exclusion would erroneously attempt to import them as plugins.
+    """
+    if _features_dir is None:
+        _features_dir = Path(__file__).resolve().parent / "features"
+
+    # Collect candidate module stem names in deterministic sorted order.
+    stems: list[str] = sorted(
+        p.name
+        for p in _features_dir.glob("*.py")
+        if p.name not in _DISCOVERY_EXCLUDE
+    )
+
+    for stem_py in stems:
+        stem = stem_py[:-3]  # strip ".py"
+        # Dual-path: package mode first, standalone-script mode second.
+        # Per memory/feedback_subprocess_import_suicide_and_module_globals.md.
+        try:
+            importlib.import_module(f"fresh_slotlab.analyzer.features.{stem}")
+        except ImportError:
+            # If the package-mode path fails, try standalone-script mode.
+            # Only suppress the ImportError if the fallback succeeds; otherwise
+            # re-raise so the caller sees the failure (no silent swallow).
+            try:
+                importlib.import_module(f"analyzer.features.{stem}")
+            except ImportError:
+                # Neither path resolved — this is a hard failure, not a soft
+                # "plugin absent" case.  Re-raise with both paths named so the
+                # developer can diagnose.  Per feedback_no_silent_swallow.md.
+                raise ImportError(
+                    f"discover_features: could not import plugin module '{stem}' "
+                    f"via either 'fresh_slotlab.analyzer.features.{stem}' or "
+                    f"'analyzer.features.{stem}'. "
+                    f"Check the plugin file for syntax errors or missing dependencies."
+                ) from None

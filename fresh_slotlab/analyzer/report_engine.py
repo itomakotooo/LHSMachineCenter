@@ -427,16 +427,11 @@ def generate_report_from_chunks(
     from fresh_slotlab.round_win import RoundWinRule, load_rules_for_machine
 
     # -- feature plugins: trigger register() calls --
-    import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
-    import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
-    import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
-    import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
-    import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401
-    import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401
-    import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401
-    import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401
-    import fresh_slotlab.analyzer.features.bonus_chain_dynamics  # noqa: F401
-    import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401
+    # Phase 4: replaced hardcoded import list with auto-discovery.
+    # discover_features() globs features/*.py (excluding _base, __init__),
+    # imports each in sorted order, idempotent (duplicate FEATURE_ID no-op).
+    from fresh_slotlab.analyzer.feature_registry import discover_features
+    discover_features()
 
     # -- resolve paths --
     chunk_dir = Path(chunk_dir)

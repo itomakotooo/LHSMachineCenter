@@ -322,36 +322,11 @@ def compute_effective_version_for_machine(
             from fresh_slotlab.analyzer import feature_registry as registry
         except ImportError:
             from analyzer import feature_registry as registry  # type: ignore[no-redef]
-        # Ensure all known universal feature modules are imported so they
-        # register themselves before we read ALL_FEATURES. Importing PIA
-        # as a subprocess does not auto-import features/* (no package-level
-        # __init__ side effects). Each register() is idempotent on
-        # duplicate FEATURE_ID per P2-A1, so double-import is safe.
-        try:
-            import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
-            import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
-            import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
-            import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
-            import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
-            import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
-            import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
-            import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
-            import fresh_slotlab.analyzer.features.bonus_chain_dynamics  # noqa: F401  # C6
-            import fresh_slotlab.analyzer.features.topdollar_choice  # noqa: F401  # Phase E
-        except ImportError:
-            try:
-                import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
-                import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
-                import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
-                import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
-                import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
-                import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
-                import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
-                import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
-                import analyzer.features.bonus_chain_dynamics  # type: ignore[no-redef]  # noqa: F401  # C6
-                import analyzer.features.topdollar_choice  # type: ignore[no-redef]  # noqa: F401  # Phase E
-            except ImportError:
-                pass
+        # Phase 4: auto-discover all plugin modules under features/ so each
+        # self-registers.  Replaces the old hardcoded import list — adding a
+        # new plugin no longer requires editing this closure file.
+        # discover_features() is idempotent (duplicate FEATURE_ID is a no-op).
+        registry.discover_features()
 
     if manifests_root is None:
         # Repo root: two parents up from this file (fresh_slotlab/analyzer/).
