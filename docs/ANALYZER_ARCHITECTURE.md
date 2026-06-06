@@ -157,6 +157,38 @@ configs/machine_manifests/<M>.json   (machine_spec, SpinType-native)
    re-baselined exactly once + pinned. Given the M15-working-path surgery, run the impl-* team
    (cross-cutting deletion) with byte-identical M15 report diffs as the gate.
 
+### Phase 5 — sub-commit status + carried follow-ups (2026-06-06)
+Executed as gated sub-commits (each: M15 byte-identical gate via `_p5_gate.py` + full suite +
+impl-critic):
+- **5B (done, `bd8a831`)** — flat-manifest layer gone: deleted manifest_loader.py, 420 flat
+  manifests (slot_designer/ removed), _stub_features.py; rewired report_engine / versioning /
+  effective_version_cache / app.py-badge / auto_inspect to the new dir. base_hash flipped once here.
+- **5C (next)** — remove mechanism_registry: fold features/{bonus_chain_dynamics,machine_mechanics}
+  fully onto the manifest (drop the `ctx.mechanism_registry` legacy-fallback branch); remove the
+  `mechanism_registry` field from PipelineContext (update all ctor sites + ~7 test files:
+  test_c4_mechanism_registry, test_c4_machine_mechanics_plugin, test_phase3_mechanism_decouple,
+  test_pipeline_context, test_d2/d3, test_r2_b3); stop building it in report_engine; delete
+  mechanism_registry.py + remove from _CLOSURE_FILES (base_hash flips a 2nd time — unavoidable for a
+  safe split); DELETE the temporary fresh_slotlab/analyzer/manifest_schema.json +
+  test_r2_b3_mechanism_overrides_schema.py (both only exist for mechanism_overrides validation).
+- **5D (after 5C)** — console_diagnostic_complete final cleanup; fold report_engine extract loop
+  (~L987) onto get_features_for_machine; pin the final base_hash once.
+
+Carried follow-ups (NOT regressions — M15 byte-identical throughout; do AFTER phase 5, each needs its
+own gate because it CHANGES behavior):
+1. **rtp_integrity re-source from the new manifest.** check_rtp_integrity currently gets
+   `manifest=None` → `completeness_declared=False` + default fallback thresholds. M15's flat cdc was
+   already False so this is byte-identical, but the new manifest's `rtp_integrity {paid_st,
+   fallback_warn, fallback_fail}` + `validation.status=="confirmed"` are NOT yet consumed. Wire them
+   (confirmed → enforce completeness; honor declared thresholds). Re-baseline the gate when done.
+2. **versioning dual-root collapse.** `compute_effective_version_for_machine` still has both
+   `manifests_root` (legacy, now feeds only the empty fallback) + `new_manifests_root`. Collapse to
+   one. Fixes effective_version_cache tests that currently pass for the wrong reason (injected
+   `manifests_root` is ignored). Requires migrating those test fixtures to the new schema.
+3. **auto_inspect schema-align.** auto_inspect_manager reads `spin_type_convention.paid` (old flat
+   schema) from the new manifests, which use `spin_types.{N}.role=="paid_spin"`. Accidentally correct
+   for M15 (paid=ST1=default); wrong for a future paid!=ST1 machine. Re-read from spin_types role.
+
 ---
 
 ## 7. Post-rebuild API — the ONLY work future sessions do
