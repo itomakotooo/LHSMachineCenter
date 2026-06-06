@@ -94,6 +94,14 @@ configs/machine_manifests/<M>.json   (machine_spec, SpinType-native)
 4. **M15 e2e**: M15 regenerates a report with the correct schema; `rtp_integrity` passes
    (`sum(payid)==summary`, `our==server`, fallback < threshold).
 5. **No silent drift**: any `_unattributed_*` / `_other` share over threshold is an ALARM.
+6. **Tests/regressions are VALUE-AGNOSTIC.** Assert `rtp_integrity` (L1 sum==our_total,
+   L2 no fallback buckets, L3 anchors; `our==server` when server aggregate is available —
+   note: NOT available on the from-cache path, `server_total_win` is null there) + schema
+   keys + structural rule-effects (e.g. a preview ST contributes 0). **NEVER pin an RTP
+   value OR a range** — the source machine's numbers change (re-sample / re-tune / upstream
+   config), so any value-based assertion is a brittle false-alarm. The ST14-double-count
+   regression is caught by L2 (the phantom win has no pay_id → fallback bucket), not by an
+   RTP threshold.
 
 ---
 

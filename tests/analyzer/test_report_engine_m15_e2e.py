@@ -74,12 +74,11 @@ _EXPECTED_PI_KEYS = frozenset({
     "upstream_feature_breakdown",
 })
 
-# RTP bounds for correctness (not exact — depends on which chunks are present).
-# Without round_win rules: ~128%. With rules: 80-110% (M15 is ~95% RTP machine).
-_RTP_LOWER_BOUND = 80.0
-_RTP_UPPER_BOUND = 110.0
-# The double-count artifact; any value >= this indicates broken rule application.
-_RTP_DOUBLE_COUNT_THRESHOLD = 115.0
+# NO RTP value/range reference here ON PURPOSE. The source machine's numbers can
+# change at any time (re-sample, re-tune, upstream config change), so pinning an RTP
+# value OR a range would be a brittle false-alarm. The ST14 double-count regression is
+# caught VALUE-AGNOSTICALLY via rtp_integrity: a phantom ST14 win with no pay_id (rule
+# not applied) lands in a Layer-2 fallback bucket and breaks the Layer-1 sum invariant.
 
 
 def _requires_chunks() -> bool:
@@ -118,27 +117,27 @@ def kept_good_summary():
 
 
 # ---------------------------------------------------------------------------
-# CORRECTNESS GATE: RTP must NOT be double-counting ST14 phantom wins
-# This is the primary Phase 2a gate. Without round_win rules, RTP = ~128%.
-# With rules, RTP is in [80, 110] and rtp_integrity_check.passed = True.
+# CORRECTNESS GATE — VALUE-AGNOSTIC (no RTP value/range; source numbers can change).
+# The ST14 double-count regression (round_win rule not applied) is caught because the
+# unattributed phantom win trips rtp_integrity: it has no pay_id → Layer-2 fallback
+# bucket, and breaks the Layer-1 sum(pay_id)==our_total invariant.
 # ---------------------------------------------------------------------------
 
 class TestCorrectnessGate:
-    def test_rtp_not_double_counting(self, m15_summary):
-        """Primary gate: RTP must be below double-count threshold (~128%)."""
-        rtp = m15_summary["rtp"]["point_pct"]
-        assert rtp < _RTP_DOUBLE_COUNT_THRESHOLD, (
-            f"RTP {rtp:.2f}% exceeds double-count threshold {_RTP_DOUBLE_COUNT_THRESHOLD}%: "
-            f"round_win rules (SettlementWinAmountRule) are not being applied — "
-            f"ST=14 phantom WinCredits are being double-counted."
+    def test_no_unattributed_fallback_buckets(self, m15_summary):
+        """Value-agnostic double-count guard: a phantom ST14 win with no pay_id
+        (round_win rule not applied) lands in a Layer-2 fallback bucket. Assert none."""
+        ric = m15_summary.get("rtp_integrity_check", {})
+        assert ric.get("layer2_no_fallback_buckets_ok") is True, (
+            f"Layer-2 fallback buckets present: {ric.get('layer2_fallback_buckets_found')}. "
+            f"Indicates ST14 phantom wins not zeroed by round_win rules (double-count)."
         )
 
-    def test_rtp_in_reasonable_range(self, m15_summary):
-        """RTP must be in the expected range for an M15-class machine."""
-        rtp = m15_summary["rtp"]["point_pct"]
-        assert _RTP_LOWER_BOUND <= rtp <= _RTP_UPPER_BOUND, (
-            f"RTP {rtp:.2f}% is outside expected range [{_RTP_LOWER_BOUND}, {_RTP_UPPER_BOUND}]. "
-            f"This suggests a round_win rule was applied incorrectly or new double-counting exists."
+    def test_layer1_sum_invariant_holds(self, m15_summary):
+        """Value-agnostic: sum(pay_id win) == our_total_win (no orphan / double-count)."""
+        ric = m15_summary.get("rtp_integrity_check", {})
+        assert ric.get("layer1_invariant_ok") is True, (
+            f"Layer-1 invariant broken: {ric.get('layer1_error')}"
         )
 
     def test_rtp_integrity_passes(self, m15_summary):
@@ -250,11 +249,11 @@ class TestMachineNotRegistered:
 # ---------------------------------------------------------------------------
 
 class TestInjectBugProof:
-    def test_inject_no_round_win_rules_rtp_doubles(self, monkeypatch):
+    def test_inject_no_round_win_rules_breaks_integrity(self, monkeypatch):
         """Inject: monkey-patch load_rules_for_machine to return [].
-        Assert: RTP exceeds double-count threshold AND integrity fails.
-        This is the RED state that proves the guard is real.
-        After monkeypatch auto-reverts, the GREEN state resumes.
+        Assert (VALUE-AGNOSTIC): the ST14 phantom win (no pay_id) lands in a Layer-2
+        fallback bucket and rtp_integrity fails — the double-count's signature, NOT an
+        RTP number. After monkeypatch auto-reverts, the GREEN state resumes.
         """
         if not _requires_chunks():
             pytest.skip("M15 cached chunks not present")
@@ -274,18 +273,22 @@ class TestInjectBugProof:
                 chunk_dir=_CHUNK_DIR,
                 output_dir=Path(tmpdir),
             )
-            rtp = summary["rtp"]["point_pct"]
             ric = summary.get("rtp_integrity_check", {})
             passed = ric.get("passed")
 
-            # Inject-bug RED assertions: double-count artifact must be observable
-            assert rtp >= _RTP_DOUBLE_COUNT_THRESHOLD, (
-                f"inject-bug: with no round_win rules, M15 RTP should be >= {_RTP_DOUBLE_COUNT_THRESHOLD}% "
-                f"(ST14 phantom double-count), got {rtp:.2f}%"
+            # Inject-bug RED assertions — VALUE-AGNOSTIC. Without round_win rules the ST14
+            # phantom win has no pay_id → it lands in a Layer-2 fallback bucket and the
+            # integrity gate fails. The double-count's signature is the fallback bucket,
+            # NOT an RTP magic number (the source machine's RTP can change at any time).
+            assert ric.get("layer2_no_fallback_buckets_ok") is False, (
+                "inject-bug: with no round_win rules, ST14 phantom wins must create a "
+                f"Layer-2 fallback bucket; got layer2_no_fallback_buckets_ok="
+                f"{ric.get('layer2_no_fallback_buckets_ok')}, "
+                f"buckets={ric.get('layer2_fallback_buckets_found')}"
             )
             assert passed is not True, (
-                f"inject-bug: with no round_win rules, rtp_integrity_check.passed must NOT be True, "
-                f"got passed={passed} (sum(payid) incorrectly matches because ST14 phantom inflates both)"
+                "inject-bug: with no round_win rules, rtp_integrity_check.passed must NOT be True, "
+                f"got passed={passed}"
             )
         # monkeypatch auto-reverts after this test — the next run (without inject) is GREEN
 
