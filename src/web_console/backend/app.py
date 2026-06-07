@@ -9311,14 +9311,23 @@ def create_app(
             generate_report_from_chunks as _gen_report,
             MachineNotRegistered,
         )
+        # Variant resolution: a variant (e.g. "M15$TopDollarSelector$0$") shares the
+        # underlying machine's rawdata format + parsing and has NO manifest of its own —
+        # only its preset analysis configs differ. Resolve the base (M15$…→M15) and
+        # register/generate via the underlying's manifest, while keeping the variant's
+        # own rawdata source + report identity. Non-variant machine: base == machine.
+        from src.web_console.backend.machine_variants import (  # noqa: PLC0415
+            extract_base_machine_name as _extract_base,
+        )
+        _base_machine = _extract_base(machine)
         _manifests_root = ROOT / "configs" / "machine_manifests"
-        if not (_manifests_root / f"{machine}.json").exists():
+        if not (_manifests_root / f"{_base_machine}.json").exists():
             raise HTTPException(
                 status_code=422,
                 detail=(
                     f"machine {machine} is not registered for the SpinType-native engine "
-                    "(only machines with a confirmed machine_spec manifest generate reports); "
-                    "see docs/ANALYZER_ARCHITECTURE.md"
+                    f"(no machine_spec manifest for underlying '{_base_machine}'); only "
+                    "machines with a manifest generate reports — see docs/ANALYZER_ARCHITECTURE.md"
                 ),
             )
 
@@ -9434,6 +9443,7 @@ def create_app(
                     chunk_dir=mode_dir,
                     output_dir=output_dir,
                     run_id=new_run_id,
+                    manifest_machine_id=_base_machine,
                 )
             except MachineNotRegistered as exc:
                 raise HTTPException(

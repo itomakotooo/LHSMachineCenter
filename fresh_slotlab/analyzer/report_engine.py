@@ -333,6 +333,7 @@ def generate_report_from_chunks(
     manifests_root: Optional[Path | str] = None,
     bet: int = 1,
     run_id: Optional[str] = None,
+    manifest_machine_id: Optional[str] = None,
 ) -> dict:
     """Generate a player_impact_summary.json from cached rawdata chunks.
 
@@ -433,18 +434,28 @@ def generate_report_from_chunks(
     output_dir.mkdir(parents=True, exist_ok=True)
     _manifests_root = Path(manifests_root) if manifests_root else _DEFAULT_MANIFESTS_ROOT
 
+    # Variant resolution: a variant machine (e.g. "M15$TopDollarSelector$0$") shares the
+    # underlying machine's rawdata format + parsing — only its preset analysis configs
+    # differ — and has NO manifest of its own. Resolve everything mechanism-level
+    # (manifest / derived features / round_win rules / bcm feature / effective_version /
+    # md5) from the underlying base via ``manifest_machine_id``, while keeping the
+    # variant's own identity (``machine_id``) for the report's "machine" field + storage.
+    # When manifest_machine_id is None (a non-variant machine), _mech_id == machine_id,
+    # so the bare-machine path is byte-identical to before.
+    _mech_id = manifest_machine_id or machine_id
+
     # -- L3: load SpinType-native manifest (registered machines only) --
-    manifest_path = _manifests_root / f"{machine_id}.json"
+    manifest_path = _manifests_root / f"{_mech_id}.json"
     if not manifest_path.exists():
         raise MachineNotRegistered(
-            f"Machine '{machine_id}' is not registered: no manifest at {manifest_path}. "
+            f"Machine '{_mech_id}' is not registered: no manifest at {manifest_path}. "
             f"Add a SpinType-native manifest per docs/MACHINE_ONBOARDING.md to register it."
         )
     try:
-        new_manifest = _ms_load_manifest(machine_id, _manifests_root)
+        new_manifest = _ms_load_manifest(_mech_id, _manifests_root)
     except ValueError as exc:
         raise MachineNotRegistered(
-            f"Machine '{machine_id}' manifest is invalid: {exc}"
+            f"Machine '{_mech_id}' manifest is invalid: {exc}"
         ) from exc
 
     # Derive the analysis set from spin_types (SpinType-native model).
@@ -457,7 +468,7 @@ def generate_report_from_chunks(
     # emit filtered — wasteful but correct via emit-filtering. Folding onto the
     # declared set completes the SpinType-native model.)
     _synthetic_manifest = {"analyzer_features": analysis_set}
-    _machine_features = get_features_for_machine(machine_id, manifest=_synthetic_manifest)
+    _machine_features = get_features_for_machine(_mech_id, manifest=_synthetic_manifest)
 
     # Phase 5: the legacy flat manifest is NO LONGER loaded. No feature plugin
     # reads ctx.manifest (all read ctx.machine_spec_manifest); the flat manifest
@@ -480,7 +491,7 @@ def generate_report_from_chunks(
     try:
         if _rules_config_path.exists():
             _rules_config = json.loads(_rules_config_path.read_text(encoding="utf-8"))
-            _round_win_rules = load_rules_for_machine(machine_id, _rules_config)
+            _round_win_rules = load_rules_for_machine(_mech_id, _rules_config)
     except (OSError, json.JSONDecodeError):
         _round_win_rules = []
 
@@ -1332,7 +1343,7 @@ def generate_report_from_chunks(
 
     # BCM bonus feature resolution
     _bcm_bonus_feature, _bcm_bonus_source = _resolve_bonus_feature(
-        machine_id, mode,
+        _mech_id, mode,
         upstream_feature_tally, _load_bcm_pairings(),
         feature_to_spin_type=feature_to_spin_type,
         wild_nudge_spin_types=_wild_nudge_st_set,
@@ -1500,12 +1511,12 @@ def generate_report_from_chunks(
     _summary_effective_analyzer_version = ""
     _effective_version_error: str | None = None
     try:
-        _summary_effective_analyzer_version = compute_effective_version_for_machine(machine_id, mode=mode)
+        _summary_effective_analyzer_version = compute_effective_version_for_machine(_mech_id, mode=mode)
     except Exception as _exc:  # noqa: BLE001
         _effective_version_error = f"{type(_exc).__name__}: {_exc}"
 
-    # MD5 fingerprints
-    _summary_config_md5, _summary_code_md5 = lookup_machine_md5(machine_id)
+    # MD5 fingerprints (mechanism-level: variants share the underlying's config)
+    _summary_config_md5, _summary_code_md5 = lookup_machine_md5(_mech_id)
 
     # -- Build summary dict --
     summary: dict[str, Any] = {
@@ -1721,7 +1732,7 @@ def generate_report_from_chunks(
     }
 
     _cm_bonus_feat, _cm_bonus_src = _resolve_bonus_feature(
-        machine_id, mode, upstream_feature_tally, _load_bcm_pairings(),
+        _mech_id, mode, upstream_feature_tally, _load_bcm_pairings(),
     )
     summary["_collect_mechanic_data"] = {
         "collect_robots_seen_total": collect_robots_seen_total,

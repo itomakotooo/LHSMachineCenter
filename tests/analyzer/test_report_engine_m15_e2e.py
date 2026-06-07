@@ -321,3 +321,68 @@ class TestInjectBugProof:
             )
             assert "injected_gate_failure" in str(ric["error"])
             assert ric.get("passed") is None
+
+
+# ---------------------------------------------------------------------------
+# Variant resolution (2026-06-07) — VALUE-AGNOSTIC.
+# A variant machine (machine_id with a "$" selector suffix, e.g.
+# "M15$TopDollarSelector$0$") has NO manifest of its own — it shares the
+# underlying base machine's rawdata format + parsing; only its preset analysis
+# configs differ (it is sampled separately). generate_report_from_chunks(
+# manifest_machine_id=<base>) must resolve mechanism (manifest / derived analyses
+# / round_win / bcm / version / md5) from the BASE while keeping the VARIANT's own
+# identity in the report ("machine" field + report_id). This guards the fix for
+# the console 422 "<variant> is not registered" regression.
+# ---------------------------------------------------------------------------
+
+class TestVariantResolution:
+    # A synthetic variant key whose base is M15. It has no manifest of its own;
+    # we reuse M15's own cached chunks as the variant's rawdata source so the test
+    # needs no separate variant rawdata (robust + value-agnostic).
+    _FAKE_VARIANT = "M15$FakeVariant$0$"
+
+    def test_variant_uses_base_manifest_keeps_own_identity(self):
+        """machine_id=variant + manifest_machine_id=M15: report identity is the
+        VARIANT, but analyses/integrity come from M15's manifest."""
+        if not _requires_chunks():
+            pytest.skip("M15 cached chunks not present")
+        from fresh_slotlab.analyzer.report_engine import generate_report_from_chunks
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            summary = generate_report_from_chunks(
+                self._FAKE_VARIANT, 1,
+                chunk_dir=_CHUNK_DIR,
+                output_dir=Path(tmpdir),
+                manifest_machine_id="M15",
+            )
+        # Identity = the variant (NOT the base) — "独立报表，标变体名".
+        assert summary["machine"] == self._FAKE_VARIANT
+        assert summary["report_id"].startswith(f"impact_{self._FAKE_VARIANT}_")
+        # Mechanism resolved from base M15: its player_choice analysis is present
+        # + the cross-cutting / per-ST panels are all present (same as bare M15).
+        assert "topdollar_choice" in summary
+        gen_pi = set(summary["player_impact"].keys())
+        assert not (_EXPECTED_PI_KEYS - gen_pi), (
+            f"variant missing player_impact panels: {sorted(_EXPECTED_PI_KEYS - gen_pi)}"
+        )
+        # Value-agnostic correctness gate (NOT an RTP value).
+        assert summary["rtp_integrity_check"]["passed"] is True
+
+    def test_variant_without_manifest_machine_id_is_unregistered(self):
+        """INJECT-BUG / proof the fix matters: WITHOUT manifest_machine_id, a variant
+        (no manifest of its own) raises MachineNotRegistered — exactly the console 422
+        before the fix. Reverting the manifest_machine_id plumbing reproduces this."""
+        if not _requires_chunks():
+            pytest.skip("M15 cached chunks not present")
+        from fresh_slotlab.analyzer.report_engine import (
+            generate_report_from_chunks,
+            MachineNotRegistered,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with pytest.raises(MachineNotRegistered):
+                generate_report_from_chunks(
+                    self._FAKE_VARIANT, 1,
+                    chunk_dir=_CHUNK_DIR,
+                    output_dir=Path(tmpdir),
+                    # no manifest_machine_id → the variant key has no manifest → 422
+                )

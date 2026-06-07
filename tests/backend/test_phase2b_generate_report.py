@@ -287,15 +287,19 @@ class TestInjectBugRegisteredCheck:
         import src.web_console.backend.app as _app_mod
         original_root = _app_mod.ROOT
 
-        # Create a fake manifests dir with a stub manifest for M99999_nonexistent.
+        # Create a fake manifests dir with a stub manifest for M99999.
+        # NOTE: the registered-check resolves the variant BASE
+        # (extract_base_machine_name) before looking up the manifest, so the fake
+        # machine must be its own base (a plain "M<digits>" with no "$"/"_" suffix);
+        # "M99999_nonexistent" would base-resolve to "M99999" and miss this stub.
         fake_manifests = Path(tempfile.mkdtemp()) / "machine_manifests"
         fake_manifests.mkdir(parents=True)
         stub_manifest = {
-            "machine_id": "M99999_nonexistent",
+            "machine_id": "M99999",
             "spin_types": {},
             "validation": {"status": "confirmed"},
         }
-        (fake_manifests / "M99999_nonexistent.json").write_text(
+        (fake_manifests / "M99999.json").write_text(
             json.dumps(stub_manifest), encoding="utf-8"
         )
         # Also copy M15's real manifest so M15 still works.
@@ -319,11 +323,11 @@ class TestInjectBugRegisteredCheck:
         monkeypatch.setattr(_app_mod, "ROOT", _FakeRoot())
 
         client, _ = m15_app_client
-        # With registered check bypassed, M99999_nonexistent has "manifests" but no rawdata.
+        # With registered check bypassed, M99999 has "manifests" but no rawdata.
         # It should reach the rawdata check and return 404 (not 422).
         # If this returns 422 → INJECT BUG DID NOT WORK (test should fail).
         resp = client.post(
-            "/api/rawdata/M99999_nonexistent/generate-report",
+            "/api/rawdata/M99999/generate-report",
             json={"mode": 1},
         )
         # With the inject: registered check is bypassed → machine reaches rawdata check
