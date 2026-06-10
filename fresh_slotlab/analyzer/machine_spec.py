@@ -82,8 +82,14 @@ ROLE_ANALYSES: dict[str, tuple[str, ...]] = {
 # role would wrongly fire it on M15. Keying on play "WinMiniGame" scopes it to the
 # minigame feature only. (Play match is case-sensitive: it is the exact FeatureWin
 # key from the rawdata per the user's naming directive.)
+#   Wheel -> wheel_dynamics (M279 ST2): the guaranteed-payout collect wheel. Its
+#   role is `settlement` — the SAME role M15's ST15 (TopDollar) and M43's ST51
+#   (WinMiniGame) settlement use — so attaching wheel_dynamics by role would
+#   wrongly fire it on those machines. Keying on play "Wheel" scopes it to M279's
+#   wheel only (same role-vs-play discipline as WinMiniGame above).
 PLAY_ANALYSES: dict[str, tuple[str, ...]] = {
     "WinMiniGame": ("minigame_dynamics",),
+    "Wheel": ("wheel_dynamics",),
 }
 
 

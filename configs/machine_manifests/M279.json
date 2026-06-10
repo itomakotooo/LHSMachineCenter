@@ -1,0 +1,49 @@
+{
+  "machine_id": "M279",
+  "schema": "spintype-native/1",
+  "modes": [1, 7],
+  "inherits_from": null,
+  "spin_types": {
+    "140": {
+      "role": "paid_spin",
+      "play": "NormalCollectionSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"]
+    },
+    "36": {
+      "role": "respin",
+      "play": "MoveSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"]
+    },
+    "2": {
+      "role": "settlement",
+      "play": "Wheel",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"]
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "move|WheelSpin", "opens": "MoveSpin|Wheel", "note": "no round-level trigger pid. MoveSpin (ST36) is a win-driven server-side wild-nudge sharing the triggering paid spin's SpinTimes (cost=0). Wheel (ST2) is the collect settlement, fired deterministically every 1000th paid spin (CollectCount metronome), NOT a payid scatter — see analysis caveats."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M279/mode_1", "cross_mode": [1, 7]},
+    "evidence": "session_artifacts/_onboard/M279/01_understanding.md (W1, 2,139,508 rounds; ST roles from real fields; brief pre-framing REVERSED by data — ST140=paid, ST36=free move, ST2=wheel collect; per-ST WinCredits==server FeatureWin exact 938,630,710/754,184,340/76,780,000; HARD economy invariant sum(round WinCredits)==sum(server SummaryWin) 48/48 robots; observed RTP 92.17%) + 02_reuse.md (W2: live engine on 48 real chunks; ST140 STRICT-REUSE 4 PER_SPINTYPE + collect_mechanic [estimated_correction_pp=0.0 correct]; ST36 STRICT-REUSE 4 PER_SPINTYPE + respin_dynamics via respin role [openers=145,242 EXACT, uplift=3.845, continuation=0.3325]; ST2 NEW-EVENT config-only SynthesizePayIdRule PROVEN _unattributed_st2->0). W3 (this doc): wheel_dynamics is NEW & play-keyed to 'Wheel' because the generic RETURN_BUCKET banding MERGES the 20x/30x prizes into ge20_lt50 and cannot surface the 12-cell/jackpot-cell map (re-verified on real chunks: 6 prizes -> 5 bands; cells 8&10 = 100x). Both modes [1,7] share the SAME STRUCTURE (value-agnostic).",
+    "caveats": [
+      "ST36 move-burst-length histogram (len1/2/3) + win-gating proof need per-round run-length accumulation in parser.py (base-closure) — respin_dynamics surfaces continuation_prob 0.3325 base-excluded and flags the histogram parser_blind (W1 CROSS-2). Framework-team item.",
+      "ST2 wheel exact 6-prize un-merge (the 20x vs 30x split that RETURN_BUCKET's ge20_lt50 band merges) needs a per-round WinCredits-value tally — band-level prize shape (5 bands) + 100% hit-rate ARE base-derivable; the un-merge is parser_blind. Framework-team item.",
+      "ST2 wheel 12-cell landing map + jackpot-cell probability (cells 8&10 = 100x) need a per-round ReMarks CellIndex accumulator (parser keeps only 3 sample ReMarks/ST) — wheel_dynamics flags it parser_blind, same boundary as M43 minigame node-list G4/G5. Framework-team item.",
+      "collect_mechanic cosmetic imprecision (completed_cycles_total undercount by one cycle/robot -> avg_bonus_payout +25%; always-on clamp_warning) is fleet-wide on every 1000-spin-BCM machine (PROVEN identical on M275), NOT M279-specific; estimated_correction_pp (the RTP-bearing output) is correct. Framework-team low-priority precision fix.",
+      "config-md5 split in mode_1 (chunks 0001-0040 vs 0041-0048, same code_md5) — a 历史 rawdata-cell / regenerate-from-which-md5 consideration; parse-correctness-neutral (W2 ran all 48 cleanly, feature_errors {}).",
+      "bcm_pairings.json M279 entry is self-contradicting (mode-1 bonus_feature='Wheel' correct via spintype signal, but sibling spintype_pair='MoveSpin' wrong; modes 2&5 carry 'high confidence' entries despite being EMPTY) — SHARED-CONFIG hygiene item: regenerate M279's bcm pairing once this manifest is confirmed, drop the empty-mode entries. Parse-correct on mode 1 today (collect_mechanic resolved 'Wheel')."
+    ],
+    "date": "2026-06-10"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive", "desc": "Field 'CurJackpotStoreWin' is present on every ST140/ST36 round but =0 on 100% of 2,137,588 in-sample records (W1 §5). Its name suggests a stateful progressive jackpot that only accrues/fires across real wallet sessions — a horizon the stateless ResetPlayerStateAfterEachSpin testspin cannot reach. Whether it is a live progressive is a DOMAIN fact, not derivable from rawdata.", "rtp_impact": true, "source": "domain"},
+    {"name": "Wheel meta-progression", "desc": "The 12-cell -> fixed-prize map (cells 8&10 = 100x) is stable in-sample (W1 CROSS-5), but any meta-progression (cells unlock / prizes grow across real play) is invisible to stateless testspin. DOMAIN fact.", "rtp_impact": true, "source": "domain"},
+    {"name": "Skin-11 boost-reel trigger condition", "desc": "Skin 11 (1% of ST140 spins) is a wild-rich boosted reel with 13.6x the base-spin RTP and 3.8x hit-rate (W1 CROSS-3, RTP 1361%). The CONDITION that selects it (random? hidden feature counter? buy?) is NOT in the round fields (GameplayTriggerType is always 0). DOMAIN fact.", "rtp_impact": false, "source": "domain"}
+  ],
+  "round_win_rule": "m279_wheel_settlement (synthesize_pay_id, spin_types=[2], label_format=spin_type) — added to configs/machine_round_win_rules.json; PROVEN in 02_reuse.md to zero _unattributed_st2 (76,780,000 -> real pid st2). EXACT M43 precedent (m43_minigame_settlement).",
+  "rtp_integrity": {"paid_st": [140], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}
