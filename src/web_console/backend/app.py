@@ -7279,6 +7279,19 @@ def create_app(
         return Response(
             content=text.replace("{{ASSET_HASH}}", _asset_hash_for_console()),
             media_type="text/html; charset=utf-8",
+            headers={
+                # The index document carries the ASSET_HASH cache-bust token for the
+                # JS/CSS (app.js?v=<mtime>). If the BROWSER caches the document itself,
+                # it keeps serving a STALE hash → stale app.js → the operator sees an
+                # OLD report render long after the code was fixed. That is exactly the
+                # "报表还是错的 / report still wrong" cache trap (2026-06-10 M43): the
+                # served report + app.js were already correct, but a cached index.html
+                # pinned the browser to a pre-fix bundle. Force revalidation of the
+                # (tiny, dynamic) document so the fresh hash is always fetched; the
+                # hashed JS/CSS assets keep their long cache for perf.
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+            },
         )
 
     app.mount("/console", StaticFiles(directory=FRONTEND_DIR, html=True), name="console")
