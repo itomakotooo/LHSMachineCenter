@@ -4,20 +4,21 @@ How to add analyzer support for a new slot machine, correctly. Written 2026-06-0
 after the M15 / M90 investigation; the rules below are hard-won — violating any of
 them produces a confident-but-wrong analysis.
 
-> **⚠ STATUS — 2026-06-05 (read before using this doc).** The report-production
-> orchestrator (`fresh_slotlab/player_impact_analyzer.py`) has been DELETED and is being
-> rebuilt SpinType-native. What this means for onboarding RIGHT NOW:
-> - **Analysis works** (steps 0–4, 6–7): rawdata + the core parser / round_win primitives
->   survive; `python -m fresh_slotlab.analyzer.st_inventory <M> <mode>` runs; you can fully
->   understand a machine and author its manifest — the SpinType-native manifest SCHEMA is
->   LOCKED in `fresh_slotlab/analyzer/machine_spec.py` (reference instance:
->   `configs/machine_manifests/M15.json`).
-> - **Report-generation verification is PAUSED** (step 5 value-agnostic gates): they run
->   against a generated `player_impact_summary.json`, but report GENERATION now returns
->   HTTP 503 until the new engine lands (viewing existing reports still works). So you
->   cannot yet close the numeric invariants by generating a report — do the analysis +
->   manifest now, resume numeric verification when the new engine is built.
-> - The timeless PRINCIPLES and the analysis METHOD below are unaffected.
+> **STATUS — 2026-06-07 (post-rebuild).** The SpinType-native rebuild LANDED:
+> `fresh_slotlab/analyzer/report_engine.py` replaced the deleted PIA; per-machine manifests
+> at `configs/machine_manifests/<M>.json`; `machine_spec.derive_analyses` is wired into the
+> report + versioning; feature plugins are AUTO-DISCOVERED (adding one no longer flips the
+> fleet `base_hash`). Report generation + the step-5 value-agnostic gates WORK again, via
+> `report_engine.generate_report_from_chunks(<M>, <mode>, chunk_dir=…)`, for REGISTERED
+> machines (registered = a confirmed `configs/machine_manifests/<M>.json`); unregistered
+> machines get a clean "not registered" (only M15 + M43 onboarded so far).
+> - ⚠ **The per-ST EXTRACTION layer is still a shared monolith parser** (`core/parser.py`).
+>   Metrics that need per-round ReMarks / sequence data (node lists, run-lengths,
+>   predecessor-outcome) are `parser_blind` until that layer is carved into a per-ST
+>   base-excluded library (DIRECTION.md §3 — framework work; see the M43 case study).
+> - This doc is the live onboarding playbook: **record every reusable workflow / method /
+>   trap here (and agent-actionable methods into `.claude/agents/onboard-*.md`) in real
+>   time** — the goal is a self-sufficient onboarding team.
 
 ---
 
@@ -74,10 +75,20 @@ them produces a confident-but-wrong analysis.
 
 ## The workflow (per machine)
 
-0. **Use cached rawdata** (`rawdata/<M>/mode_<n>/chunk_*.json`). Re-sample only with
-   user OK. **Check the cache isn't stale**: chunk `_config_md5` / `_code_md5` vs the
-   current `machines.json` entry — a changed `code_md5` means the machine logic moved
-   since the cache (the data may pre-date a feature).
+0. **Use cached rawdata** (`rawdata/<M>/mode_<n>/chunk_*.json`). Re-sample only with user OK.
+   - **PROVENANCE FIRST — is the cache REAL or VIRTUAL? (M43 lesson, do this before anything.)**
+     The deleted virtual framework's chunk emitter wrote `_cache_version: 2` (+ `_dev_sample:
+     true`); the real console sampler writes `_cache_version: 3` and CANNOT be faked (v3
+     requires the real payload hash the decoupled virtual emitter couldn't compute). So
+     **v3 = real; v2 = virtual → must be deleted before analysis** (a per-machine,
+     user-approved delete — not auto). Scan EVERY mode (a whole mode can be 100% virtual).
+     Analyzing virtual chunks = validating the parser against fabricated event structures.
+     *Why this beats worrying about config drift:* you are writing a **value-agnostic parser** —
+     the config VALUES don't matter; what matters is that the event STRUCTURES are the real
+     machine's.
+   - **Cache staleness** (secondary): chunk `_config_md5`/`_code_md5` vs `machines.json`.
+     A `code_md5` drift does NOT threaten the parser (value-agnostic) — it only means the
+     reported NUMBERS may reflect older logic. Note it; it is not a blocker.
 
 1. **Extract the ST inventory** from real data:
    `python -m fresh_slotlab.analyzer.st_inventory <M> <mode>` →
@@ -163,6 +174,38 @@ gate 5 still applies (M90 looks identical to M15 in data but isn't).
   the spin engine → invisible to ALL testspin sampling, at any length / reset / code.
   Only the user's domain knowledge surfaced it. This is exactly why Rule 3 + Step 6
   exist.
+
+- **M43 (Bar/Seven/Wild + WinRespin + WinMiniGame) — onboarded; multiple reusable traps.**
+  3 STs: **st1** Normal (paid reel spin → strict-reuse the per-ST plugins, no new code);
+  **st50** WinRespin (FREE `cost=0` reel spin on a premium **skin-6** reel → a NEW `respin`
+  role + new respin-mechanic analysis); **st51** WinMiniGame (settlement, NO payid,
+  `ReMarks="MiniGame[101-110]"` → NEW; its win attributed via a **config-only**
+  `SynthesizePayIdRule` so `sum(payid)==summary` holds and `_unattributed_st51`→0). Lessons:
+  - **Provenance: the cache was contaminated with VIRTUAL chunks** (one `_cache_version:2`
+    chunk per mode; mode_2/5 were 100% virtual). Caught ONLY by the v2/v3 check (step 0).
+    Deleted; the model was unchanged on the clean real chunks — but you can NEVER assume a
+    virtual chunk is representative; exclude on principle.
+  - **Naming from rawdata, not invented:** the new role for st50 = `respin` (from
+    `ReMarks="ReSpin"` / feature `WinRespin`). The team resolves naming/attribution/metric
+    selection INTERNALLY — do NOT ask the user (that signals a process gap).
+  - **`rtp_integrity.paid_st`:** st50/st51 carry `BetAmount` at `cost=0`, so a global-bet RTP
+    denominator inflates; set `paid_st:[1]` (only truly-paid STs) for the correct paid-round RTP.
+  - **The server `analysisResult` (`TotalWin`/`FeatureWin`/`SummaryWin`) IS the machine's own
+    multiplier×feature taxonomy** — the centerpiece for the multiplier distribution; prefer it
+    over hand-rolled bands. (`analysisResult` is a JSON string; each view is a nested JSON
+    string — `json.loads` twice. It was missed on the first pass; opening it is mandatory.)
+  - **All modes share STRUCTURE, only config VALUES differ** (user-confirmed) → onboarding ONE
+    real mode confirms the parsing for all modes (the parser is value-agnostic); the manifest
+    lists all `modes` but `confirmed_against` the one with real data.
+  - **PARSER-BLIND → the per-ST extraction layer (the structural finding).** Some
+    felt-experience metrics (minigame node-count×mult, node-code ladder, surprise-on-loss
+    rate, respin burst-length) need PER-ROUND data (ReMarks node-lists, run-lengths,
+    predecessor-outcome) that the SHARED monolith parser does NOT accumulate. The implementer
+    correctly flagged these `parser_blind` and **did NOT fabricate them**. Fix (decided): make
+    the per-ST EXTRACTION a base-excluded per-ST library — mirror the analysis-plugin layer
+    (registry + auto-discover) — so adding an ST's extraction re-flags only that ST's machines,
+    not the fleet (DIRECTION.md §3). Until that framework layer lands, such metrics are
+    DEFERRED (flag, never fake).
 
 ---
 
