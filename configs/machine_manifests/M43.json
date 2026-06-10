@@ -1,0 +1,45 @@
+{
+  "machine_id": "M43",
+  "schema": "spintype-native/1",
+  "modes": [1, 2, 5, 7],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"]
+    },
+    "50": {
+      "role": "respin",
+      "play": "WinRespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"]
+    },
+    "51": {
+      "role": "settlement",
+      "play": "WinMiniGame",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "IsLackCreditsSpin", "LastCredits"]
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "ReSpin|MiniGame", "opens": "WinRespin|WinMiniGame", "note": "no round-level trigger pid; both features fire server-side (st50 win-gated, st51 per-spin random) — see analysis caveats"},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M43/mode_1"},
+    "evidence": "session_artifacts/_onboard/M43/01_understanding_struct.md + 01_understanding_econ.md (ST roles from real fields; ST<->feature 0/338 mismatch; sum(WinCredits) 642,770,000 exact). st51 attribution via config-only SynthesizePayIdRule PROVEN in 02_reuse.md (_unattributed_st51 197,453,000 -> 0). All modes [1,2,5,7] share the SAME STRUCTURE (value-agnostic parser); mode_1 real data confirms parsing for all.",
+    "caveats": [
+      "st50 respin trigger gate (which winning configs open a respin) not in rawdata — grant-rate observed, gate rule not [struct 8.4].",
+      "st51 minigame trigger is in-engine per-spin random (USER signed off, NOT an M90 hidden mechanic); the exact trigger probability is rawdata-unobservable [struct 8.1].",
+      "st51 per-node prize table not derivable (path win != sum of node solo values; codes 101-105 never appear solo) [struct 8.2].",
+      "code_md5 drift: cache 6e02924b vs registry 473d1f54 — verdicts derived on cached generation; re-verify on a re-sample [struct 0].",
+      "chunk_0042 schema-fp divergence (sole carrier of GameplayTriggerType, always 0) — constant-0 artifact, no economy signal [econ 0/7].",
+      "ANALYZER DATA BOUNDARY: respin burst-length histogram + win-gating (M4), minigame surprise-on-loss rate (G3), and minigame node-count/node-code distributions (G4/G5) require per-round ReMarks / run-length accumulation that lives only in the parser (a base-closure file). respin_dynamics/minigame_dynamics compute every metric the frozen framework's accumulators expose (grant-rate, hit-rate uplift, multiplier distributions, continuation probability, trigger frequency, RTP concentration) and mark the parser-blind sub-metrics explicitly in their `parser_blind` field. The blind sub-metrics are framework-team work (parser accumulator), escalated to the coordinator."
+    ],
+    "date": "2026-06-07"
+  },
+  "out_of_engine_mechanics": [],
+  "round_win_rule": "m43_minigame_settlement (synthesize_pay_id, spin_types=[51], label_format=spin_type) — added to configs/machine_round_win_rules.json; PROVEN to zero _unattributed_st51.",
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

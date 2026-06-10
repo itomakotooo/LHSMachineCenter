@@ -2,7 +2,21 @@
   "_doc": "Per-machine round-win extraction rules. Default behaviour (machine not in any applies_to list) is byte-identical to legacy `r.get('WinCredits', 0)` lookup. See fresh_slotlab/round_win.py for rule type docs.",
   "_added": "2026-04-27 -- v1 TopDollar settlement rule. Universal fallback synthesizer in parse_chunk_response handles all other unattributed-payid cases (no per-machine config needed).",
   "_added_2026_05_12": "v2 BCM cycle anchor rule (bcm_cycle_anchor type). Machines using BuffCollectionMap fire a bonus feature when CollectCount reaches the cycle peak; the trigger paid round emits no win==0 PayoutIdToWinAmount key, so default trigger-session anchor extraction missed the entire bonus block. M274 mode 1 saw 8.25% of bonus rounds (4.87% RTP) leak into `_unattributed_st139` before this rule; fleet sweep across 117 cached BCM (machine, mode) pairs found 55 with similar leakage (M250 at 100% / M268/M260/M264 at 70-90% / M163/M147 around 35%). Rollout strategy: enable per-machine as cached data is validated -- the rule augments rather than replaces default extraction, so over-attributing on a machine that doesn't actually have this trigger mechanic is benign (the synthetic anchor loses anchor-selection to any real numeric pid present on the same trigger round).",
+  "_added_2026_06_07": "v3 M43 minigame settlement rule (synthesize_pay_id type). M43 ST51 (WinMiniGame) carries WinCredits>0 on 100% of rounds but NO PayoutIdToWinAmount (no round-level pid), so the parser's universal fallback dumps its entire 197,453,000 (30.7% of all win) into _unattributed_st51 and the RTP-integrity gate FAILS. The config-only SynthesizePayIdRule attributes the whole ST51 win to a single real pid 'st51' (label_format=spin_type), zeroing the fallback. PROVEN on M43's 41 real v3 chunks (_tmp/m43_reuse_audit/test_synth_rule.py): _unattributed_st51 197,453,000 -> 0, real pid 'st51' == 197,453,000 exact. The minigame's multiplier distribution is surfaced by the minigame_dynamics analysis (its own win/bet banding), NOT spread across multiplier-tier pids in the payid table (which for ST1/ST50 means symbol pids 2-9 -- a different identifier space). One honest feature row keeps the payid table semantically clean.",
   "rules": {
+    "m43_minigame_settlement": {
+      "_doc": "M43 WinMiniGame (ST51) settlement: WinCredits>0 on 100% with no PayoutIdToWinAmount. Without this rule the whole prize lands in _unattributed_st51 and the RTP-integrity gate fails. label_format=spin_type attributes it to a single real pid 'st51' (the minigame as one honest feature row). The real multiplier shape lives in the minigame_dynamics analysis (win/bet banding), per charter invariant 4 (prefer the machine's own taxonomy over a flat payid sprawl).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          51
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M43"
+      ]
+    },
     "bcm_cycle_anchor_m274": {
       "_doc": "M274 BuffCollectionMap: CollectCount accumulates 1..1000 across paid spins; at CC=1000 a ListRewardMinigame fires (ST=139 bonus rounds), then CC resets to 1. The trigger paid round carries PayoutIdToWinAmount={} (no anchor) -- distinct from the also-present pay_id 5801 minigame trigger path which DOES carry {'5801':0} and is handled by default extraction. 315 of 315 unattributed bonus blocks across 8 chunks of current md5 (847d89cd) deterministically preceded by a paid round with CollectCount==1000; the rule restores their attribution to the synthetic anchor '_bcm_cycle' and the analyzer's session-win loop credits the bonus session-total to it.",
       "type": "bcm_cycle_anchor",

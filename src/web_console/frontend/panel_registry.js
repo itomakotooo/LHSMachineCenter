@@ -63,6 +63,11 @@ window.PANEL_REGISTRY = [
   { id: "field_discovery",      order: 1300, render: (ctx) => renderFieldDiscovery(ctx.a) },
   { id: "machine_mechanics",    order: 1400, render: (ctx) => renderMachineMechanics(ctx.a) },
   { id: "bonus_chain_dynamics", order: 1500, render: (ctx) => renderBonusChainDynamicsPanel(ctx.a) },
+
+  // respin_dynamics / minigame_dynamics (M43 ST50/ST51) are now rendered as
+  // per-SpinType dimensions (_stDimRespin / _stDimMinigame) inside the ST
+  // section of spinTypeOutcomes, not as separate floating panels.
+
   { id: "collect_cycle",        order: 1600, render: (ctx) => renderCollectCyclePanel(ctx.a) },
   { id: "payline_drilldown",    order: 1700, render: (ctx) => renderPaylineDrilldown(ctx.a) },
   { id: "symbol_drilldown",     order: 1800, render: (ctx) => renderSymbolDrilldown(ctx.a) },

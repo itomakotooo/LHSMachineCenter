@@ -4609,12 +4609,257 @@ function _stDimSettlement(stCtx) {
     _buildStatsSectionsHtml(td, _TD_SETTLE_SECTIONS);
 }
 
+// Dimension: respin dynamics — attaches to the RESPIN event (the ST whose
+// spin_type matches respin_dynamics.respin_spin_type). Data-driven: returns ""
+// for every other ST so the analysis lives only inside the matching ST section.
+// Reuses the same mech-section/mech-grid KPI blocks + drilldown-table/bar-cell
+// markup that the former standalone renderRespinDynamics panel built.
+function _stDimRespin(stCtx) {
+  const rd = ((stCtx.summary || {}).player_impact || {}).respin_dynamics;
+  if (!rd || !rd.applicable) return "";
+  if (Number(rd.respin_spin_type) !== Number(stCtx.row.spin_type)) return "";
+
+  // Helper: format a probability value as a percentage string or "—".
+  const _pct = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+  // Helper: format a ratio/multiplier value or "—".
+  const _ratio = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${Number(v).toFixed(d)}×`;
+  // Helper: render a band distribution table (respin or base).
+  const _bandTable = (dist, titleKey) => {
+    if (!dist || !Array.isArray(dist.bands) || !dist.bands.length) return "";
+    const bands = dist.bands.filter((b) => b.prob != null && Number(b.prob) > 0);
+    if (!bands.length) return "";
+    const maxProb = Math.max(...bands.map((b) => Number(b.prob) || 0), 0.0001);
+    const rows = bands.map((b) => {
+      const prob = Number(b.prob) || 0;
+      const barPct = (prob / maxProb) * 100;
+      const winShare = b.win_share != null ? `${(Number(b.win_share) * 100).toFixed(1)}%` : "—";
+      return (
+        `<tr>` +
+        `<td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
+        `<td>${fInt(b.spin_count)}</td>` +
+        `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
+        `<td>${winShare}</td>` +
+        `</tr>`
+      );
+    }).join("");
+    const tail = dist.tail_ge20x_win_share != null
+      ? `<p class="drilldown-hint">${fmt("rdTailGe20")}: ${_pct(dist.tail_ge20x_win_share, 1)}</p>`
+      : "";
+    return (
+      `<p class="drilldown-hint"><strong>${fmt(titleKey)}</strong> · ${fInt(dist.total_spins)} 次 · ${fInt(dist.win_rounds)} 次赢钱</p>` +
+      `<table class="drilldown-table"><thead><tr>` +
+      `<th>${fmt("rdColBand")}</th><th>${fmt("stoColHits")}</th>` +
+      `<th>${fmt("rdColProb")}</th><th>${fmt("rdColWinShare")}</th>` +
+      `</tr></thead><tbody>${rows}</tbody></table>` +
+      tail
+    );
+  };
+
+  // ── M1 Grant-rate KPI block ──
+  const gr = rd.grant_rate || {};
+  const grantHtml = `<div class="mech-section">
+    <h3>${fmt("rdGrantRate")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantOpeners")}</span><span class="mech-value">${fInt(gr.openers)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantRatePerWin")}</span><span class="mech-value">${_pct(gr.per_winning_paid_spin, 2)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantRatePerSpin")}</span><span class="mech-value">${_pct(gr.per_paid_spin, 3)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantRateOnePerN")}</span><span class="mech-value">${gr.one_per_n_paid_spins != null ? Number(gr.one_per_n_paid_spins).toFixed(1) : "—"}</span></div>
+    </div>
+  </div>`;
+
+  // ── M2 Hit-rate uplift KPI block ──
+  const hru = rd.hit_rate_uplift || {};
+  const upliftHtml = `<div class="mech-section">
+    <h3>${fmt("rdHitRateUplift")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("rdRespinHitRate")}</span><span class="mech-value">${_pct(hru.respin_hit_rate, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdBaseHitRate")}</span><span class="mech-value">${_pct(hru.base_hit_rate, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdUpliftRatio")}</span><span class="mech-value">${_ratio(hru.uplift_ratio, 2)}</span></div>
+    </div>
+  </div>`;
+
+  // ── M2 Multiplier distributions (respin + base side by side) ──
+  const multHtml =
+    _bandTable(rd.respin_multiplier_distribution, "rdRespinMultDist") +
+    _bandTable(rd.base_multiplier_distribution, "rdBaseMultDist");
+
+  // ── M3 PayID mix (respin vs base) ──
+  const mix = rd.payid_mix || {};
+  const _payidRows = (shareMap) => {
+    const entries = Object.entries(shareMap || {});
+    if (!entries.length) return "<tr><td colspan='3'>—</td></tr>";
+    return entries
+      .sort((a, b) => Number(b[1].hit_share || 0) - Number(a[1].hit_share || 0))
+      .map(([pid, v]) =>
+        `<tr><td>${pid}</td>` +
+        `<td>${fInt(v.hit_count)}</td>` +
+        `<td>${_pct(v.hit_share, 1)}</td>` +
+        `<td>${_pct(v.win_share, 1)}</td></tr>`
+      ).join("");
+  };
+  const payidHtml = (mix.respin_payid_share || mix.base_payid_share)
+    ? (`<p class="drilldown-hint"><strong>${fmt("rdPayidMix")}</strong></p>` +
+       `<div style="display:flex;gap:1rem;flex-wrap:wrap;">` +
+       `<div><p class="drilldown-hint">Respin (ST${rd.respin_spin_type})</p>` +
+       `<table class="drilldown-table"><thead><tr><th>${fmt("rdColPayid")}</th><th>${fmt("stoColHits")}</th><th>${fmt("rdColHitShare")}</th><th>${fmt("rdColWinShare")}</th></tr></thead><tbody>${_payidRows(mix.respin_payid_share)}</tbody></table></div>` +
+       `<div><p class="drilldown-hint">Base (ST${rd.base_spin_type})</p>` +
+       `<table class="drilldown-table"><thead><tr><th>${fmt("rdColPayid")}</th><th>${fmt("stoColHits")}</th><th>${fmt("rdColHitShare")}</th><th>${fmt("rdColWinShare")}</th></tr></thead><tbody>${_payidRows(mix.base_payid_share)}</tbody></table></div>` +
+       `</div>` +
+       (mix.note ? `<p class="drilldown-hint">${fmt("rdPayidNote")}: ${_escHtml(mix.note)}</p>` : ""))
+    : "";
+
+  // ── M4 Continuity ──
+  const cont = rd.continuity || {};
+  const exitRows = Object.entries(cont.exit_breakdown || {})
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .map(([st, cnt]) => `<tr><td>ST${st}</td><td>${fInt(cnt)}</td></tr>`)
+    .join("");
+  const parserBlindItems = Array.isArray(cont.parser_blind) ? cont.parser_blind : [];
+  const parserBlindHtml = parserBlindItems.length
+    ? (`<p class="drilldown-hint"><em>${fmt("rdParserBlind")} (待 per-ST 提取层):</em></p>` +
+       `<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
+       parserBlindItems.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
+       `</ul>`)
+    : "";
+  const continuityHtml = `<div class="mech-section">
+    <h3>${fmt("rdContinuity")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("rdContinuationProb")}</span><span class="mech-value">${_pct(cont.continuation_prob, 2)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdRespinToRespin")}</span><span class="mech-value">${fInt(cont.respin_to_respin_transitions)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdExitTotal")}</span><span class="mech-value">${fInt(cont.respin_exit_transitions)}</span></div>
+    </div>
+    ${exitRows ? (`<p class="drilldown-hint">${fmt("rdExitBreakdown")}</p><table class="drilldown-table"><thead><tr><th>ST</th><th>${fmt("tdColCount")}</th></tr></thead><tbody>${exitRows}</tbody></table>`) : ""}
+    ${parserBlindHtml}
+  </div>`;
+
+  // ── M5 RTP concentration KPI block ──
+  const rtpC = rd.rtp_concentration || {};
+  const rtpHtml = `<div class="mech-section">
+    <h3>${fmt("rdRtpConcentration")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("rdRtpContrib")}</span><span class="mech-value">${rtpC.respin_rtp_contribution_pp != null ? Number(rtpC.respin_rtp_contribution_pp).toFixed(2) + "pp" : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdShareOfWin")}</span><span class="mech-value">${_pct(rtpC.share_of_all_win, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdFatTailShare")}</span><span class="mech-value">${_pct(rtpC.fat_tail_ge20x_win_share, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdLossRate")}</span><span class="mech-value">${_pct(rtpC.loss_rate, 1)}</span></div>
+    </div>
+    ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
+  </div>`;
+
+  return `<p class="drilldown-hint"><strong>${fmt("panelRespinDynamics")}</strong></p>` +
+    grantHtml + upliftHtml + multHtml + payidHtml + continuityHtml + rtpHtml;
+}
+
+// Dimension: minigame dynamics — attaches to the MINIGAME event (the ST whose
+// spin_type matches minigame_dynamics.minigame_spin_type). Returns "" for all
+// other STs so the analysis renders only inside the matching ST section.
+// Reuses the same mech-section/mech-grid KPI blocks + drilldown-table/bar-cell
+// markup that the former standalone renderMinigameDynamics panel built.
+function _stDimMinigame(stCtx) {
+  const mg = ((stCtx.summary || {}).player_impact || {}).minigame_dynamics;
+  if (!mg || !mg.applicable) return "";
+  if (Number(mg.minigame_spin_type) !== Number(stCtx.row.spin_type)) return "";
+
+  // Helper: format a probability value as a percentage string or "—".
+  const _pct = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+
+  // ── G1 Multiplier distribution ──
+  const dist = mg.multiplier_distribution || {};
+  const bands = Array.isArray(dist.bands) ? dist.bands.filter((b) => b.prob != null && Number(b.prob) > 0) : [];
+  const maxProb = Math.max(...bands.map((b) => Number(b.prob) || 0), 0.0001);
+  const bandRows = bands.map((b) => {
+    const prob = Number(b.prob) || 0;
+    const barPct = (prob / maxProb) * 100;
+    const winShare = b.win_share != null ? `${(Number(b.win_share) * 100).toFixed(1)}%` : "—";
+    return (
+      `<tr>` +
+      `<td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
+      `<td>${fInt(b.spin_count)}</td>` +
+      `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
+      `<td>${winShare}</td>` +
+      `</tr>`
+    );
+  }).join("");
+  const multHtml = bands.length
+    ? (`<p class="drilldown-hint"><strong>${fmt("mgMultDist")}</strong> · ${fInt(dist.total_events)} 次 · ${fmt("mgModalBand")}: ${dist.modal_band || "—"} · ${fmt("mgDominantShare")}: ${_pct(dist.dominant_band_share, 1)}</p>` +
+       `<table class="drilldown-table"><thead><tr>` +
+       `<th>${fmt("mgColBand")}</th><th>${fmt("mgColCount")}</th>` +
+       `<th>${fmt("mgColProb")}</th><th>${fmt("mgColWinShare")}</th>` +
+       `</tr></thead><tbody>${bandRows}</tbody></table>` +
+       (dist.source ? `<p class="drilldown-hint">${_escHtml(dist.source)}</p>` : ""))
+    : "";
+
+  // ── G2 Trigger frequency KPI block ──
+  const tf = mg.trigger_frequency || {};
+  const freqHtml = `<div class="mech-section">
+    <h3>${fmt("mgTriggerFreq")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("mgEvents")}</span><span class="mech-value">${fInt(tf.minigame_events)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgPerPaidSpin")}</span><span class="mech-value">${_pct(tf.per_paid_spin, 3)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgOnePerN")}</span><span class="mech-value">${tf.one_per_n_paid_spins != null ? Number(tf.one_per_n_paid_spins).toFixed(1) : "—"}</span></div>
+    </div>
+  </div>`;
+
+  // ── G3 Trigger context ──
+  const tc = mg.trigger_context || {};
+  const tcParserBlindItems = Array.isArray(tc.parser_blind) ? tc.parser_blind : [];
+  const tcParserBlindHtml = tcParserBlindItems.length
+    ? (`<p class="drilldown-hint"><em>${fmt("mgParserBlind")} (待 per-ST 提取层):</em></p>` +
+       `<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
+       tcParserBlindItems.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
+       `</ul>`)
+    : "";
+  const contextHtml = `<div class="mech-section">
+    <h3>${fmt("mgTriggerContext")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("mgFromBase")}</span><span class="mech-value">${fInt(tc.opener_from_base_spin)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgShareFromBase")}</span><span class="mech-value">${_pct(tc.share_from_base_spin, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgFromRespin")}</span><span class="mech-value">${fInt(tc.opener_from_respin_burst)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgShareFromRespin")}</span><span class="mech-value">${_pct(tc.share_from_respin_burst, 1)}</span></div>
+    </div>
+    ${tcParserBlindHtml}
+  </div>`;
+
+  // ── G4/G5 Node path analysis (parser-blind) ──
+  const npa = mg.node_path_analysis || {};
+  const npaItems = Array.isArray(npa.parser_blind) ? npa.parser_blind : [];
+  const nodeHtml = `<div class="mech-section">
+    <h3>${fmt("mgNodePath")}</h3>
+    <p class="drilldown-hint"><em>${fmt("mgNodePathNA")} (${fmt("mgParserBlind")}):</em></p>
+    ${npaItems.length
+      ? (`<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
+         npaItems.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
+         `</ul>`)
+      : ""}
+  </div>`;
+
+  // ── G6 RTP concentration KPI block ──
+  const rtpC = mg.rtp_concentration || {};
+  const rtpHtml = `<div class="mech-section">
+    <h3>${fmt("mgRtpConcentration")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("mgRtpContrib")}</span><span class="mech-value">${rtpC.minigame_rtp_contribution_pp != null ? Number(rtpC.minigame_rtp_contribution_pp).toFixed(2) + "pp" : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgShareOfWin")}</span><span class="mech-value">${_pct(rtpC.share_of_all_win, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgEventRate")}</span><span class="mech-value">${_pct(rtpC.event_rate, 3)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgHitRate")}</span><span class="mech-value">${_pct(rtpC.hit_rate, 1)}</span></div>
+    </div>
+    ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
+  </div>`;
+
+  return `<p class="drilldown-hint"><strong>${fmt("panelMinigameDynamics")}</strong></p>` +
+    multHtml + freqHtml + contextHtml + nodeHtml + rtpHtml;
+}
+
 // The dimension list (order = render order within each ST section).
 const SPINTYPE_DIMENSIONS = [
   _stDimWinDistribution,
   _stDimPayid,
   _stDimSelectorChoice,
   _stDimSettlement,
+  _stDimRespin,
+  _stDimMinigame,
 ];
 
 function renderSpinTypeOutcomes(summary) {
@@ -7602,10 +7847,19 @@ async function _paintAnalysisFromSummary(s) {
   // a panel showing stale data after a machine switch (the load path does not reset
   // before painting). render() must be cheap + idempotent.
   for (const descriptor of sorted) {
-    if (descriptor.fireAndForget) {
-      descriptor.render(ctx); // intentionally not awaited
-    } else {
-      await descriptor.render(ctx);
+    // Per-panel isolation: one panel throwing must NOT blank out the rest of the
+    // report. Without this, a single bad render() aborts the loop → every later
+    // panel (incl. the machine-general ones) vanishes and the report reads as
+    // "completely unreadable". Log + continue; the failed panel just self-hides.
+    try {
+      if (descriptor.fireAndForget) {
+        Promise.resolve(descriptor.render(ctx)).catch((e) =>
+          console.error(`panel '${descriptor.id}' render() failed:`, e));
+      } else {
+        await descriptor.render(ctx);
+      }
+    } catch (e) {
+      console.error(`panel '${descriptor.id}' render() failed:`, e);
     }
   }
 }

@@ -40,7 +40,11 @@ from typing import Any
 SCHEMA_VERSION = "spintype-native/1"
 
 # Roles a SpinType can play in the gameplay (open set; extend as machines confirm).
-KNOWN_ROLES = frozenset({"paid_spin", "player_choice", "settlement", "state"})
+# "respin" added 2026-06-07 (M43 onboarding): a free reel-spin extension of a paid
+# spin (cost=0, premium-skin board, full reels, can win, shares the triggering
+# spin's SpinTimes, win-gated continuation). Data-grounded on M43's WinRespin /
+# ReMarks="ReSpin" feature — it does not fit paid_spin/player_choice/settlement/state.
+KNOWN_ROLES = frozenset({"paid_spin", "player_choice", "settlement", "state", "respin"})
 
 # ── Analysis derivation (replaces the old hand-listed analyzer_features) ──────
 # CROSS_CUTTING: whole-session analyses that apply to every machine.
@@ -61,23 +65,48 @@ PER_SPINTYPE: tuple[str, ...] = (
     "spin_type_rtp_buckets",
 )
 # ROLE_ANALYSES: analyses attached to a specific SpinType ROLE.
+# A role-keyed analysis applies whenever ANY SpinType declares that role.
+#   player_choice -> topdollar_choice  (M15 ST14)
+#   respin        -> respin_dynamics   (M43 ST50: grant-rate / hit-rate uplift /
+#                    continuity / skin-premium symbol mix / RTP-share)
 ROLE_ANALYSES: dict[str, tuple[str, ...]] = {
     "player_choice": ("topdollar_choice",),
+    "respin": ("respin_dynamics",),
+}
+
+# PLAY_ANALYSES: analyses attached to a specific SpinType PLAY (the rawdata
+# feature name), NOT its role. This is the correct hook when an analysis is
+# specific to one feature whose role is SHARED with an unrelated feature on
+# another machine. M43's minigame settles via the `settlement` role — the SAME
+# role M15's ST15 (TopDollar) settlement uses — so attaching minigame_dynamics by
+# role would wrongly fire it on M15. Keying on play "WinMiniGame" scopes it to the
+# minigame feature only. (Play match is case-sensitive: it is the exact FeatureWin
+# key from the rawdata per the user's naming directive.)
+PLAY_ANALYSES: dict[str, tuple[str, ...]] = {
+    "WinMiniGame": ("minigame_dynamics",),
 }
 
 
 def derive_analyses(manifest: dict[str, Any]) -> list[str]:
     """Derive the analysis set for a machine from its spin_types.
 
-    = CROSS_CUTTING + PER_SPINTYPE + role-specific analyses for each role present.
-    Reproduces the confirmed M15 set exactly (see test_machine_spec).
+    = CROSS_CUTTING + PER_SPINTYPE
+      + role-specific analyses for each ROLE present (ROLE_ANALYSES)
+      + play-specific analyses for each PLAY present (PLAY_ANALYSES).
+
+    Reproduces the confirmed M15 set exactly (M15 has no `respin` role and no
+    `WinMiniGame` play, so neither M43 analysis attaches to it — see
+    test_machine_spec). For M43: ST50 role=`respin` adds respin_dynamics; ST51
+    play=`WinMiniGame` adds minigame_dynamics (NOT via its `settlement` role).
     """
     out: set[str] = set(CROSS_CUTTING) | set(PER_SPINTYPE)
-    roles = {
-        str(st.get("role", "")) for st in (manifest.get("spin_types") or {}).values()
-    }
+    spin_types = (manifest.get("spin_types") or {}).values()
+    roles = {str(st.get("role", "")) for st in spin_types}
+    plays = {str(st.get("play", "")) for st in spin_types}
     for role in roles:
         out.update(ROLE_ANALYSES.get(role, ()))
+    for play in plays:
+        out.update(PLAY_ANALYSES.get(play, ()))
     return sorted(out)
 
 
