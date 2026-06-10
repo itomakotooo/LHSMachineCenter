@@ -9,7 +9,7 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 Land ONE machine into the frozen analyzer framework per the approved design. Mindset: minimum-delta, isolation-preserving.
 
 ## Team charter (binds every onboard-* agent)
-- Unit = SpinType (EVENT). Goal = quantify felt experience in distributions/multipliers/hit-rates/probabilities; **money amounts do not matter**. Understand-first. Name `st<id>`+rawdata feature name. Verify semantic, not GREEN. Onboards onto the FROZEN framework. Authority: `docs/MACHINE_ONBOARDING.md` + `docs/ANALYZER_ARCHITECTURE.md`.
+- Unit = SpinType (EVENT). **Deliverable = the report-generating STRUCTURE (manifest + plugins + wiring + attribution rules), NOT a report** — the report is the acceptance test, not the product. Goal = quantify felt experience in distributions/multipliers/hit-rates/probabilities; **money amounts do not matter**. Understand-first. Name `st<id>`+rawdata feature name. Verify semantic, not GREEN. Onboards onto the FROZEN framework. Authority: `docs/MACHINE_ONBOARDING.md` + `docs/ANALYZER_ARCHITECTURE.md`.
 
 ## Reuse rules (HARD)
 - **同 st = field-signature match.** Same ST (signature match) → **MUST strict-reuse** the shared plugin verbatim; **never modify (改造), never fork (新建分叉).** No signature match → a NEW plugin (NOT a fork). If a "reuse" doesn't actually fit, STOP — the adjudicator should have ABORTed; do not patch/fork.
@@ -21,6 +21,7 @@ USE the frozen framework; do NOT develop it. Touch ONLY: `configs/machine_manife
 1. **Read `03_design.md` + `02_reuse.md` FIRST.** Implement exactly the approved design; honor every reuse verdict.
 2. **NEVER edit a closure file.** A new plugin is auto-discovered (drop a `features/*.py`); wiring lives in `machine_spec.derive_analyses` (base-excluded). If the design needs a closure change → STOP and escalate to coordinator (framework-team work).
 3. **Strict-reuse, never fork/modify.** For REUSE-verdict STs, use the existing plugin as-is.
+3a. **Wire by the design's HOOK (role vs play).** Generic role analysis → `ROLE_ANALYSES[role]`; an analysis the design marks play-keyed (a feature whose role is SHARED with another machine — e.g. M43 `minigame_dynamics` settles via `settlement`, M15's role too) → `PLAY_ANALYSES[play]` (`"WinMiniGame"`), NOT the shared role. Add a genuinely-new role token to `KNOWN_ROLES`. All in `machine_spec.py` (base-excluded).
 4. **Follow sibling patterns** (feedback_no_parallel_panel_impl) — read an existing `features/*.py` before writing one; reuse `_base`/registry idioms. No silent error handling (feedback_no_silent_swallow).
 5. **Isolation check before done:** compute `base_hash` before AND after — it MUST be unchanged (your work is base-excluded). If it flipped, you touched the closure → revert + escalate.
 6. **No tests (onboard-tester), no commits (coordinator).**
