@@ -13,7 +13,10 @@ rules below are hard-won — violating any of them produces a confident-but-wron
 >   for any REGISTERED machine (registered = a `configs/machine_manifests/<M>.json` exists);
 >   unregistered machines get a clean 422 "not registered".
 > - The value-agnostic acceptance gates (`rtp_integrity_check`) RUN against the generated summary.
-> - **Onboarded: M15** (confirmed) **+ M43** (confirmed; modes 1 & 7 generate clean reports).
+> - **Onboarded: M15** (confirmed) **+ M43** (confirmed; modes 1 & 7) **+ M279** (confirmed; the 3rd
+>   machine — a Collect/Wheel + wild-nudge archetype that validated framework robustness: a new
+>   archetype onboarded by reusing existing plugins (incl. M43's `respin_dynamics`) + 1 new plugin,
+>   base_hash unchanged, breaker held — see the M279 case study).
 > - ⚠ **The per-ST EXTRACTION layer is still a shared monolith parser** (`core/parser.py`).
 >   Metrics that need per-round ReMarks / sequence data (node lists, run-lengths,
 >   predecessor-outcome) are `parser_blind` until that layer is carved into a per-ST
@@ -347,6 +350,44 @@ driver will encode.
     (stale `index.html` → stale `app.js`), fixed with a `no-cache` header — the served structure
     was already correct. And the user regenerated from the "历史" rawdata cell (the `code_md5`-drift
     path), confirming the STRUCTURE, not a specific report, is what was delivered.
+
+- **M279 (Collect/Wheel + wild-nudge) — confirmed; the 3rd machine, a NEW archetype that validated
+  the framework's robustness.** 3 STs: **st140** NormalCollectionSpin (the PAID reel spin; carries a
+  CollectCount metronome that ticks +1/spin and resets every 1000); **st36** MoveSpin (a FREE cost=0
+  wild-nudge re-spin → role `respin`); **st2** Wheel (the collect settlement — a 12-cell prize wheel
+  fired DETERMINISTICALLY every 1000th paid spin; no payid). Robustness signals (the framework held
+  on an archetype it was NOT built on): the understander REVERSED the brief's wrong pre-framing from
+  the data alone (cardinal rule 1 working); **`respin_dynamics` — built for M43 — STRICT-REUSED
+  unchanged** for M279's wild-nudge (the incremental payoff: only ONE new plugin `wheel_dynamics` +
+  one config rule were written); `base_hash` unchanged throughout; NO ABORT (no shared parser broke);
+  the breaker HELD on the hardest sessions (our==server 384/384 robots; every distribution recomputed
+  from raw == the report). Two reusable DOMAIN patterns surfaced (gate 7, user-confirmed) — **these
+  recur; "occasionally a machine does this":**
+  - **Pure-random rare-boost state (skin-11).** 1% of paid spins use a wild-rich "boost reel" (hit
+    55% vs 15%, ~13.6× avg, RTP 1361%, ~28% of the base-game RTP). It has NO trigger signal in the
+    data. **Before concluding "random", do the EXHAUSTIVE negative search** (the user rightly demanded
+    "look harder"): cycle-position correlation, the feature dimension (here `BuffCollectionMap` — an
+    empty per-cycle marker), EVERY round field skin-on vs skin-off (here: identical except the win
+    OUTCOME), run-length (isolated, not a buff window), the preceding spin (normal, no trigger). Only
+    the absence of ANY signal + user sign-off confirms it is genuinely **in-engine pure random** → the
+    stateless testspin captures it FAITHFULLY (the observed rate IS real), so it is **NOT out-of-engine
+    and the RTP is COMPLETE.** Record it as a VOLATILITY/felt dimension; an explicit per-skin labeled
+    breakout is `parser_blind` (plugins get coarse per-ST histograms, not per-round `ReelSkin`).
+    *Contrast with M90:* M90's trigger is real-but-invisible (out-of-engine); skin-11's "no signal"
+    means genuinely-random (in-engine). **The exhaustive search is what tells them apart — never
+    assume either way; the user's domain sign-off is the tiebreaker.**
+  - **Test-interface-zeroed field (CurJackpotStoreWin).** A REAL in-engine mechanic (a progressive
+    jackpot store) that the CURRENT testspin interface forces to 0 (so it is 0 on 100% of the sample).
+    User direction: parse as-is (it contributes 0 now), KEEP the field in the ST signature so parsing
+    is FORWARD-COMPATIBLE — when the interface is later optimized to populate it, the existing parser
+    picks it up unchanged. The data RTP is the BASE (excludes the mechanic); it grows when the field
+    is enabled. Record in `out_of_engine_mechanics` with `status: real_but_test_interface_zeroed` +
+    `rtp_impact_current: 0`.
+  - **Role-vs-play + parser-blind held:** `wheel_dynamics` attaches by PLAY `"Wheel"` (the
+    `settlement` role is shared with M15/M43 — a role hook would cross-fire), with symmetric non-leak
+    tests; ST2's no-payid win attributed by the M43-precedent config-only `SynthesizePayIdRule`. The
+    parser-blind boundary recurred (the wheel 6-prize un-merge + CellIndex map + the move burst-length
+    + the skin breakout all need the per-ST extraction accumulator — DIRECTION.md §3, framework-team).
 
 ---
 
