@@ -949,16 +949,21 @@ def generate_report_from_chunks(
         for pos, c in (rec.get("reel_position_hits") or {}).items():
             all_reel_position_hits[str(pos)] += int(c)
 
-        total_paid_sessions += int(rec.get("paid_sessions", 0) or 0)
-        total_bonus_spins += int(rec.get("bonus_spins", 0) or 0)
-        total_session_wins += int(rec.get("session_wins", 0) or 0)
-        total_session_loses += int(rec.get("session_loses", 0) or 0)
-        total_session_profits += int(rec.get("session_profits", 0) or 0)
-        total_session_breakevens += int(rec.get("session_breakevens", 0) or 0)
-        total_session_big_win_x10 += int(rec.get("session_big_win_x10", 0) or 0)
-        total_session_big_win_x20 += int(rec.get("session_big_win_x20", 0) or 0)
-        total_session_big_win_x50 += int(rec.get("session_big_win_x50", 0) or 0)
-        total_session_big_win_x100 += int(rec.get("session_big_win_x100", 0) or 0)
+        # ⚠ Key names MUST match the parser's chunk-return dict (parser.py ~2508):
+        # it writes the descriptive ``..._count`` names. A prior port read the short
+        # names (``paid_sessions`` etc.) → every read returned 0 → total_paid_sessions=0
+        # → hit_and_payout all 0.0 + effective_bet_for_rtp fell back to total_bet
+        # (inflated RTP). Fleet-wide (M15 too). Aligned to the producer.
+        total_paid_sessions += int(rec.get("paid_session_count", 0) or 0)
+        total_bonus_spins += int(rec.get("bonus_spin_count", 0) or 0)
+        total_session_wins += int(rec.get("session_win_count", 0) or 0)
+        total_session_loses += int(rec.get("session_lose_count", 0) or 0)
+        total_session_profits += int(rec.get("session_profit_count", 0) or 0)
+        total_session_breakevens += int(rec.get("session_breakeven_count", 0) or 0)
+        total_session_big_win_x10 += int(rec.get("session_big_win_x10_count", 0) or 0)
+        total_session_big_win_x20 += int(rec.get("session_big_win_x20_count", 0) or 0)
+        total_session_big_win_x50 += int(rec.get("session_big_win_x50_count", 0) or 0)
+        total_session_big_win_x100 += int(rec.get("session_big_win_x100_count", 0) or 0)
         total_session_ret_count += int(rec.get("session_ret_count", 0) or 0)
         total_session_ret_sum += float(rec.get("session_ret_sum", 0.0) or 0.0)
         total_session_ret_sq_sum += float(rec.get("session_ret_sq_sum", 0.0) or 0.0)
