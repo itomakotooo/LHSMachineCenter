@@ -250,6 +250,45 @@ class TestNonRegisteredMachine:
         )
 
 
+class TestVariantRegistration:
+    """A variant machine (machine_id with a '$' selector suffix) has no manifest of
+    its own; the registered-check must resolve it to the underlying base (M15$…→M15)
+    so it generates via the base's manifest. Guards the console 422 regression."""
+
+    def test_variant_passes_registered_check_via_base(self, m15_app_client):
+        """POST for a variant must NOT 422 'not registered' — extract_base_machine_name
+        resolves M15$TopDollarSelector$0$ → M15 (which has a manifest). It may then 404
+        (the test machines.json has no md5 entry for the variant so chunk classification
+        yields nothing), but the registered-check itself is satisfied. Before the fix
+        this returned 422. Value-agnostic (asserts NOT 422, no RTP/md5 value)."""
+        client, _ = m15_app_client
+        resp = client.post(
+            "/api/rawdata/M15$TopDollarSelector$0$/generate-report",
+            json={"mode": 1},
+        )
+        assert resp.status_code != 422, (
+            f"variant must resolve to base M15 + pass the registered-check (was 422 "
+            f"before the fix); got {resp.status_code}: {resp.text[:300]}"
+        )
+
+    def test_variant_of_unregistered_base_still_422(self, m15_app_client):
+        """The registered-check is LIVE and requires the BASE to be registered: a variant
+        whose base has NO manifest (M999$SomeVariant$0$ → base M999, no M999.json) must
+        still 422 'not registered'. Pairs with the test above — together they pin
+        base-resolution (registered base → through; unregistered base → 422), so a future
+        bug that simply removed the registered-check (everything → 404) would be caught."""
+        client, _ = m15_app_client
+        resp = client.post(
+            "/api/rawdata/M999$SomeVariant$0$/generate-report",
+            json={"mode": 1},
+        )
+        assert resp.status_code == 422, (
+            f"a variant of an UNREGISTERED base (M999) must 422 'not registered'; "
+            f"got {resp.status_code}: {resp.text[:300]}"
+        )
+        assert "not registered" in resp.json().get("detail", "").lower()
+
+
 # ---------------------------------------------------------------------------
 # Gate 3: Inject-bug → registered-check broken → test goes RED → revert → GREEN
 #

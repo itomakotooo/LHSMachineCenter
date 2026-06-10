@@ -386,3 +386,39 @@ class TestVariantResolution:
                     output_dir=Path(tmpdir),
                     # no manifest_machine_id → the variant key has no manifest → 422
                 )
+
+    def test_variant_stamps_its_own_md5_not_the_base(self):
+        """The variant's report must carry the VARIANT's md5 (its own machines.json
+        codeSummaryMd5), NOT the base's — else the console freshness badge reads
+        'outdated' the instant the report is generated (it compares the stamped md5
+        against the variant's own current md5). Value-agnostic: compares to
+        lookup_machine_md5, never a pinned hash. Uses a REAL variant key (it needs a
+        distinct machines.json md5 entry); reuses M15's chunks as the rawdata source."""
+        if not _requires_chunks():
+            pytest.skip("M15 cached chunks not present")
+        from fresh_slotlab.analyzer.report_engine import generate_report_from_chunks
+        from fresh_slotlab.machine_md5 import lookup_machine_md5
+
+        real_variant = "M15$TopDollarSelector$0$"
+        v_cfg, v_code = lookup_machine_md5(real_variant)
+        b_cfg, b_code = lookup_machine_md5("M15")
+        if not v_code or v_code == b_code:
+            pytest.skip(
+                "variant has no distinct code_md5 in machines.json — nothing to differentiate"
+            )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            summary = generate_report_from_chunks(
+                real_variant, 1,
+                chunk_dir=_CHUNK_DIR,
+                output_dir=Path(tmpdir),
+                manifest_machine_id="M15",
+            )
+        # The stamped md5 is the VARIANT's own (matches its lookup), NOT the base's.
+        assert summary["code_md5"] == v_code, (
+            f"variant report stamped code_md5={summary['code_md5']!r}, "
+            f"expected the variant's own {v_code!r}"
+        )
+        assert summary["code_md5"] != b_code, (
+            "variant report stamped the BASE's code_md5 → UI would read 'outdated'"
+        )
+        assert summary["config_md5"] == v_cfg

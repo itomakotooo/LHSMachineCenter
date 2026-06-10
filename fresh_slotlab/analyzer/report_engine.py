@@ -340,8 +340,11 @@ def generate_report_from_chunks(
     Parameters
     ----------
     machine_id:
-        Machine identifier (e.g. "M15").  Must have a SpinType-native
-        manifest under ``manifests_root`` or raises MachineNotRegistered.
+        The machine's IDENTITY (e.g. "M15", or a variant "M15$TopDollarSelector$0$").
+        Stamped into the report ("machine" field / report_id) and used for the
+        variant-specific lookups (round_win rules, md5). The MANIFEST is loaded for
+        ``manifest_machine_id`` (which defaults to machine_id), so a bare machine
+        must have a SpinType-native manifest or raises MachineNotRegistered.
     mode:
         RTP mode integer (e.g. 1).
     chunk_dir:
@@ -356,6 +359,14 @@ def generate_report_from_chunks(
         Bet size in credits used during sampling (default 1).
     run_id:
         Run identifier stamped in the summary.  Auto-generated if None.
+    manifest_machine_id:
+        The UNDERLYING base machine for manifest/mechanism resolution (manifest
+        load + registration + derived analyses + bcm feature + effective_version).
+        Defaults to ``machine_id`` (a non-variant machine is its own base, so the
+        path is byte-identical). For a variant, the caller passes the base (e.g.
+        "M15" for "M15$TopDollarSelector$0$") — variants share the base's parsing +
+        have no manifest of their own. The variant keeps its own identity + md5 +
+        round_win (those use ``machine_id``, not this).
 
     Returns
     -------
@@ -435,13 +446,17 @@ def generate_report_from_chunks(
     _manifests_root = Path(manifests_root) if manifests_root else _DEFAULT_MANIFESTS_ROOT
 
     # Variant resolution: a variant machine (e.g. "M15$TopDollarSelector$0$") shares the
-    # underlying machine's rawdata format + parsing — only its preset analysis configs
-    # differ — and has NO manifest of its own. Resolve everything mechanism-level
-    # (manifest / derived features / round_win rules / bcm feature / effective_version /
-    # md5) from the underlying base via ``manifest_machine_id``, while keeping the
-    # variant's own identity (``machine_id``) for the report's "machine" field + storage.
-    # When manifest_machine_id is None (a non-variant machine), _mech_id == machine_id,
-    # so the bare-machine path is byte-identical to before.
+    # underlying base's rawdata format + parsing and has NO manifest of its own (only its
+    # preset analysis configs differ). Split — be precise about base vs variant:
+    #   _mech_id (the BASE, via manifest_machine_id) — what variants SHARE: manifest load +
+    #       registration + derived analyses + bcm feature + effective_analyzer_version.
+    #   machine_id (the VARIANT) — what is variant-specific: report identity ("machine"
+    #       field / report_id), round_win rules (machine_round_win_rules.json applies_to is
+    #       keyed on the variant id), and md5 fingerprints (a variant has its OWN
+    #       codeSummaryMd5 in machines.json — stamping the base's code_md5 would make every
+    #       fresh variant report read "outdated" in the UI freshness badge).
+    # When manifest_machine_id is None (a non-variant machine), _mech_id == machine_id, so
+    # the bare-machine path is byte-identical to before.
     _mech_id = manifest_machine_id or machine_id
 
     # -- L3: load SpinType-native manifest (registered machines only) --
@@ -491,7 +506,17 @@ def generate_report_from_chunks(
     try:
         if _rules_config_path.exists():
             _rules_config = json.loads(_rules_config_path.read_text(encoding="utf-8"))
-            _round_win_rules = load_rules_for_machine(_mech_id, _rules_config)
+            # round_win rules: machine_round_win_rules.json applies_to may list a machine's
+            # variants, its base, or both. Try the VARIANT's own key first (so any
+            # variant-specific entry takes precedence); fall back to the BASE (_mech_id) when
+            # the variant is not listed — a variant SHARES the base's mechanism, so it must
+            # inherit the base's rules. (Concretely: the M274/M43 rules list only the base, so
+            # their variants reach the rule ONLY via this fallback; M15's ST14/ST15
+            # SettlementWinAmountRule zeroes the ST14 phantom WinCredits — without inheritance a
+            # variant's ST14 double-counts → rtp_integrity fails.) Non-variant: ids equal, no fallback.
+            _round_win_rules = load_rules_for_machine(machine_id, _rules_config)
+            if not _round_win_rules and machine_id != _mech_id:
+                _round_win_rules = load_rules_for_machine(_mech_id, _rules_config)
     except (OSError, json.JSONDecodeError):
         _round_win_rules = []
 
@@ -1515,8 +1540,10 @@ def generate_report_from_chunks(
     except Exception as _exc:  # noqa: BLE001
         _effective_version_error = f"{type(_exc).__name__}: {_exc}"
 
-    # MD5 fingerprints (mechanism-level: variants share the underlying's config)
-    _summary_config_md5, _summary_code_md5 = lookup_machine_md5(_mech_id)
+    # MD5 fingerprints: a variant has its OWN code_md5 in machines.json (its preset config),
+    # so stamp the VARIANT's md5 (machine_id), NOT the base's — else the UI freshness badge
+    # would read "outdated" the instant the variant report is generated. (Equal for non-variants.)
+    _summary_config_md5, _summary_code_md5 = lookup_machine_md5(machine_id)
 
     # -- Build summary dict --
     summary: dict[str, Any] = {

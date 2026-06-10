@@ -48,6 +48,7 @@ _project_root: str | None = None
 _patch_summary_md5_fn = None   # fresh_slotlab.summary_md5_patch.patch_summary_md5
 _run_post_inference_fn = None  # fresh_slotlab.post_inference.run_post_analyzer_inference
 _lookup_machine_md5_fn = None  # fresh_slotlab.machine_md5.lookup_machine_md5
+_extract_base_machine_name_fn = None  # machine_variants.extract_base_machine_name (variant→base)
 
 
 def _pool_worker_init(root_path: str) -> None:
@@ -69,6 +70,7 @@ def _pool_worker_init(root_path: str) -> None:
     """
     global _analyzer_mod, _report_engine_mod, _project_root
     global _patch_summary_md5_fn, _run_post_inference_fn, _lookup_machine_md5_fn
+    global _extract_base_machine_name_fn
     _project_root = root_path
     if root_path not in sys.path:
         sys.path.insert(0, root_path)
@@ -94,6 +96,20 @@ def _pool_worker_init(root_path: str) -> None:
     # C3 — canonical real-machine md5 lookup (P1-B1)
     from fresh_slotlab.machine_md5 import lookup_machine_md5 as _lmm
     _lookup_machine_md5_fn = _lmm
+    # Variant→base resolver, pre-imported per C6 (no live module read at job time).
+    # Graceful: if it cannot import, leave None → run_analyzer_job treats machine as
+    # its own base (non-variant behaviour, the pre-fix status quo).
+    try:
+        from src.web_console.backend.machine_variants import extract_base_machine_name as _ebm
+        _extract_base_machine_name_fn = _ebm
+    except Exception as _exc:  # noqa: BLE001
+        import sys as _sys
+        print(
+            f"batch_gen_worker: could not import extract_base_machine_name "
+            f"(variant resolution disabled for batch): {_exc}",
+            file=_sys.stderr,
+        )
+        _extract_base_machine_name_fn = None
 
 
 def run_analyzer_job(job: dict) -> dict:
@@ -145,12 +161,21 @@ def run_analyzer_job(job: dict) -> dict:
     # fall back to repo-relative default from the engine module.
     _root = Path(_project_root) if _project_root else Path(_rem.__file__).resolve().parent.parent.parent
     _manifests_root = _root / "configs" / "machine_manifests"
-    if not (_manifests_root / f"{machine}.json").exists():
+    # Variant resolution — MIRROR of app.py._run_generate_report: a variant
+    # (machine_id with a "$" selector suffix) shares the underlying base's parsing
+    # and has no manifest of its own. Resolve the base, register against it, and pass
+    # manifest_machine_id so the engine uses the base's manifest while keeping the
+    # variant's identity. Uses the resolver pre-imported in _pool_worker_init (C6 — no
+    # live module read at job time); if unavailable, machine is its own base (non-variant).
+    _base_machine = (
+        _extract_base_machine_name_fn(machine) if _extract_base_machine_name_fn else machine
+    )
+    if not (_manifests_root / f"{_base_machine}.json").exists():
         return {
             "machine": machine, "mode": mode, "ok": False,
             "error": (
                 f"machine {machine} is not registered for the SpinType-native engine "
-                "(no configs/machine_manifests/{machine}.json); "
+                f"(no configs/machine_manifests/{_base_machine}.json); "
                 "see docs/ANALYZER_ARCHITECTURE.md"
             ),
             "elapsed_s": 0.0,
@@ -165,6 +190,7 @@ def run_analyzer_job(job: dict) -> dict:
             chunk_dir=chunk_dir,
             output_dir=output_dir,
             run_id=run_id,
+            manifest_machine_id=_base_machine,
         )
         elapsed = round(time.time() - t0, 2)
         summary_file = output_dir / "player_impact_summary.json"
