@@ -9393,6 +9393,7 @@ def create_app(
                     "complete report)"
                 ),
             )
+        scoped_chunk_dir: Path | None = None
         try:
             chunk_paths = sorted(Path(e["path"]) for e in usable_entries)
 
@@ -9422,6 +9423,27 @@ def create_app(
             # real `_bet`; the engine already uses per-chunk `_bet` for
             # parsing, so this only fixes the SUMMARY stamp.
             chunk_bet = int(sample_env.get("_bet") or 1)
+
+            # SCOPE (2026-06-11 M279): the engine has NO md5 filter — it parses every
+            # chunk_*.json in chunk_dir. Passing the raw mode_dir silently widened a
+            # scoped generation to ALL chunks on mixed-md5 dirs: the rwtree
+            # historical-cell "生成 Report" (cfg 39a01e76, 40 chunks) produced a
+            # 48-chunk report mixing TWO configs (spins 2,139,508 vs the requested
+            # 1,600,000). Benign only while every chunk in the dir shares one md5
+            # (M15/M43). When the selection is a strict subset, hardlink it into a
+            # throwaway scoped dir and feed THAT to the engine.
+            all_chunk_files = sorted(mode_dir.glob("chunk_*.json"))
+            gen_chunk_dir: Path = mode_dir
+            if len(chunk_paths) != len(all_chunk_files):
+                scoped_chunk_dir = ROOT / "cache" / "_gen_scope" / new_run_id
+                scoped_chunk_dir.mkdir(parents=True, exist_ok=True)
+                for _cp in chunk_paths:
+                    _dst = scoped_chunk_dir / _cp.name
+                    try:
+                        os.link(_cp, _dst)          # same-volume hardlink: instant
+                    except OSError:
+                        shutil.copyfile(_cp, _dst)  # cross-volume / no-hardlink FS
+                gen_chunk_dir = scoped_chunk_dir
 
             started_now = utc_now()
             row_fields = {
@@ -9461,7 +9483,7 @@ def create_app(
             try:
                 _gen_report(
                     machine, mode,
-                    chunk_dir=mode_dir,
+                    chunk_dir=gen_chunk_dir,
                     output_dir=output_dir,
                     bet=chunk_bet,
                     run_id=new_run_id,
@@ -9481,6 +9503,28 @@ def create_app(
                 machine=machine,
                 mode=mode,
             )
+
+            # PROVENANCE STAMP (2026-06-11 M279): the engine stamps the summary with
+            # the roster's CURRENT md5 pair regardless of which chunks it parsed, so
+            # a report generated from HISTORICAL-md5 rawdata landed in the rwtree's
+            # "当前" cell while its source chunks sat in a "历史" cell (and the 当前
+            # cell showed 无本地 rawdata — the contradiction in the user's
+            # screenshot). A report's md5 tag is its SOURCE-CHUNK provenance: the
+            # explicit filter pair when scoped, else the md5 the usable chunks
+            # actually carry (on the default path those are roster-current by
+            # construction, so this is a no-op there). Runs AFTER patch_summary_md5
+            # so provenance wins over the roster fallback.
+            _src_cfg = config_md5 or str(sample_env.get("_config_md5") or "")
+            _src_code = code_md5 or str(sample_env.get("_code_md5") or "")
+            if (_src_cfg or _src_code) and summary_file.exists():
+                _sum_doc = read_json(summary_file) or {}
+                if (
+                    (_sum_doc.get("config_md5") or "") != _src_cfg
+                    or (_sum_doc.get("code_md5") or "") != _src_code
+                ):
+                    _sum_doc["config_md5"] = _src_cfg
+                    _sum_doc["code_md5"] = _src_code
+                    atomic_json_write(summary_file, _sum_doc)
 
             summary: dict[str, Any] = {}
             if summary_file.exists():
@@ -9588,6 +9632,8 @@ def create_app(
                 detail=f"generate-report failed: {exc.__class__.__name__}: {exc}",
             ) from exc
         finally:
+            if scoped_chunk_dir is not None:
+                shutil.rmtree(scoped_chunk_dir, ignore_errors=True)
             registry.release_cell(machine, mode, CellOperation.GENERATING)
 
     def _prepare_batch_gen_item(machine: str, mode: int) -> dict[str, Any]:
