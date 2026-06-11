@@ -1225,6 +1225,21 @@ def parse_chunk_response(
             int(s["trigger_idx"]): float(s.get("session_win", 0.0) or 0.0)
             for s in _trig_sessions_for_robot
         }
+        # 2026-06-11 (session-dim fix): parallel map for the player-experience
+        # dimension.  session_dim_win carries the full bonus win without the
+        # credited-win exclusion.  On Type-1 shapes (M15/M12/M132) the
+        # exclusion never fires, so session_dim_win == session_win and this
+        # map is byte-identical to session_win_by_trigger_idx.  On Type-2
+        # self-crediting shapes (M273/M275) session_dim_win > session_win
+        # (often session_win==0 while session_dim_win==total bonus win).
+        # Only _close_session's bonus_win_from_helper uses this map; every
+        # OTHER consumer (pid attribution fold, session_handled_bonus_indices,
+        # Pass-5 binding) stays on session_win_by_trigger_idx so pid parity
+        # is preserved.
+        session_dim_win_by_trigger_idx: dict[int, float] = {
+            int(s["trigger_idx"]): float(s.get("session_dim_win", 0.0) or 0.0)
+            for s in _trig_sessions_for_robot
+        }
         trigger_session_paid_indices: set[int] = set(session_win_by_trigger_idx.keys())
         # 2026-04-27: bonus-round indices that are part of a trigger
         # session (i.e. their win is attributed via session_win on the
@@ -1246,8 +1261,27 @@ def parse_chunk_response(
         # round's SpinType in the session. Bet is pulled from the
         # trigger paid round's CostCredits / BetAmount (1 paid spin
         # per trigger session).
+        #
+        # 2026-06-11 (session-dim fix): use session_dim_win (the
+        # player-experience total) rather than session_win (the
+        # pid-attribution total which excludes credited rounds).
+        # This is a DISPLAY dimension — the correct seed for any
+        # future consumer of the settlement-ST bucket histogram.
+        # Practical effect of this switch:
+        #   Type-1 shapes (M15, TopDollar): session_dim_win ==
+        #     session_win (credited-win exclusion never fires on
+        #     phantom offer rounds) → byte-identical bucket data.
+        #   Type-2 shapes (M275-style, bonus rounds self-credit):
+        #     upstream_feature_breakdown's fallback guard
+        #     (feat_bucket_total_win==0 → keep existing bucket data)
+        #     means the bucket card is driven by the per-ST plugin,
+        #     NOT by this iter-6 feed — so the dim-switch does NOT
+        #     affect M275's session-level multiplier display.  That
+        #     display arrives via the per-ST extraction layer (sub-
+        #     pass B / W4 scope, not this pass).
+        #   M43/M279: no detected trigger sessions → loop no-op.
         for _s in _trig_sessions_for_robot:
-            _sess_win = float(_s.get("session_win", 0.0) or 0.0)
+            _sess_win = float(_s.get("session_dim_win", 0.0) or 0.0)
             _bonus_sts = _s.get("bonus_spin_types") or []
             if not _bonus_sts:
                 continue
@@ -1602,10 +1636,21 @@ def parse_chunk_response(
                 # Non-trigger sessions keep naive accumulation —
                 # matches pre-iter-5 behavior for machines whose
                 # bonus flows aren't caught by the trigger detector.
+                #
+                # 2026-06-11 (session-dim fix): bonus_win_from_helper
+                # now uses session_dim_win_by_trigger_idx (player-
+                # experience dimension), NOT session_win_by_trigger_idx
+                # (pid-attribution dimension).  _close_session computes
+                # the session KPI value (avg_return_x, win hit-rate,
+                # ≥10x rate) from this, so it must reflect what the
+                # player actually received — not the pid-scoped subset.
+                # pid attribution (session_win_by_trigger_idx) is
+                # unchanged and still used in the payout_id_win fold
+                # below and in session_handled_bonus_indices.
                 if _round_idx_in_robot in trigger_session_paid_indices:
                     sess_state["is_trigger_session"] = True
                     sess_state["bonus_win_from_helper"] = (
-                        session_win_by_trigger_idx.get(_round_idx_in_robot, 0.0)
+                        session_dim_win_by_trigger_idx.get(_round_idx_in_robot, 0.0)
                     )
                 else:
                     sess_state["is_trigger_session"] = False

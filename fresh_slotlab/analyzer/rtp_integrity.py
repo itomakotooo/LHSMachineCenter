@@ -55,7 +55,7 @@ takes precedence over the nested ``rtp_integrity_contract`` sub-dict.
 
 Public API
 ----------
-- RTPIntegrityResult   — frozen dataclass, 16 fields per ticket §1 / §9.2
+- RTPIntegrityResult   — frozen dataclass, 20 fields (16 original §9.2 + 4 conservation fields 2026-06-11)
 - RTPIntegrityError    — raised in strict (warn_only=False) mode on failure
 - Layer4Error          — raised inside Step B on SpinType / JSON corruption
 - check_rtp_integrity  — main entry point; 4-layer check on a summary dict
@@ -142,9 +142,10 @@ class RTPIntegrityResult:
 
     Per ticket §1 / 04_architecture_proposal_v5.md §9.2 Combined check structure.
 
-    The ticket §1 lists 15 named fields + ``completeness_declared`` = 16 fields total.
-    The test checks for exactly 16 fields (``test_rtp_integrity_result_has_15_fields``
-    asserts len == 16 with a comment mismatch, reflecting that the test counts 16).
+    Original ticket §1 listed 15 named fields + ``completeness_declared`` = 16 fields.
+    2026-06-11 (FRAMEWORK_PASS_2026-06-11.md §A): four session-conservation fields
+    added (session_conservation_ok, session_conservation_level,
+    session_conservation_skip_reason, session_conservation_notes) bringing the total to 20.
 
     Fields
     ------
@@ -184,6 +185,22 @@ class RTPIntegrityResult:
         List of operator-facing action strings derived from which layers failed.
     completeness_declared:
         Mirrors manifest.console_diagnostic_complete (default False if no manifest).
+    session_conservation_ok:
+        Convenience bool: True iff session_conservation_level == "ok".
+        False when level is "warn" or "fail". None when the check is skipped.
+        Does NOT flip ``passed`` — the check is informational only.
+    session_conservation_level:
+        "ok" | "warn" | "fail" when evaluated; None when skipped.
+        Level classification:
+          "ok"   — |session_win_sum / total_win - 1| < 1%  (conservation holds)
+          "warn" — difference 1%–5%  (plausible orphan bonus or rounding)
+          "fail" — difference >= 5%  (investigate session_dim_win computation)
+        None when session_conservation_ok is None (check was skipped).
+    session_conservation_skip_reason:
+        Human-readable reason string when session_conservation_ok=None; else None.
+    session_conservation_notes:
+        List of human-readable strings explaining the check result (ratio,
+        orphan-bonus caveat, tolerance class). Empty when skipped or when no notes.
     """
 
     machine: str
@@ -202,6 +219,13 @@ class RTPIntegrityResult:
     summary_message: str
     suggested_actions: list[str]
     completeness_declared: bool
+    # Session-conservation check (2026-06-11, session-dim fix).
+    # Populated only when machine_spec_manifest is passed to check_rtp_integrity
+    # and all ST economy.kind == "real"; None otherwise.
+    session_conservation_ok: bool | None
+    session_conservation_level: str | None  # "ok" | "warn" | "fail" | None
+    session_conservation_skip_reason: str | None
+    session_conservation_notes: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +534,169 @@ def _build_suggested_actions(
 
 
 # ---------------------------------------------------------------------------
+# Session-conservation check helpers (2026-06-11, session-dim fix)
+# ---------------------------------------------------------------------------
+
+def _all_sts_real_economy(machine_spec_manifest: dict[str, Any]) -> bool:
+    """Return True iff every ST in the manifest declares economy.kind == 'real'.
+
+    Machines with any preview ST (e.g. M15 ST14 economy.kind='preview') return
+    False — the session-dim total is rule-view (not raw), so conservation does not
+    hold by design.  Machines with no spin_types declared also return False.
+    """
+    spin_types = machine_spec_manifest.get("spin_types") or {}
+    if not spin_types:
+        return False
+    for _st_key, _st_info in spin_types.items():
+        if not isinstance(_st_info, dict):
+            return False
+        econ = _st_info.get("economy") or {}
+        if econ.get("kind") != "real":
+            return False
+    return True
+
+
+def _check_session_conservation(
+    machine_spec_manifest: dict[str, Any],
+    *,
+    session_win_total: float | None,
+    total_win: float | None,
+) -> tuple[bool | None, str | None, str | None, list[str]]:
+    """Run the session-conservation check.
+
+    Returns (ok, level, skip_reason, notes).
+      ok           — True iff level=="ok"; False for "warn"/"fail"; None for skip.
+      level        — "ok" | "warn" | "fail" when evaluated; None when skipped.
+      skip_reason  — human-readable string when ok=None, else None.
+      notes        — list of human-readable detail strings.
+
+    Conservation invariant (when applicable):
+      sum(session_dim_win for all sessions) ≈ total_win
+
+    Caveat: orphan bonus rounds (bonus rounds before the first paid round, or
+    after the last paid round closes) contribute to total_win but are NOT
+    attributed to any session.  The standard summary JSON does not currently
+    surface orphan bonus win separately, so the check uses a WARN threshold
+    rather than demanding exact equality.
+
+    Level classification:
+      "ok"   — |session_win_sum / total_win - 1| < 0.01 (1% tolerance)
+      "warn" — difference between 1% and 5% (plausible orphan bonus or rounding)
+      "fail" — |session_win_sum / total_win - 1| >= 0.05 (5%) AND both > 0
+
+    Machines with preview STs (session_dim_win is rule-view, conservation does
+    NOT hold) → SKIP with explicit reason.
+    """
+    notes: list[str] = []
+
+    # Gate 1: machine_spec_manifest must declare all-real economy.
+    if not _all_sts_real_economy(machine_spec_manifest):
+        # Build a precise skip reason by categorising which STs failed.
+        spin_types = machine_spec_manifest.get("spin_types") or {}
+        malformed_sts = [
+            str(st_k)
+            for st_k, st_info in spin_types.items()
+            if not isinstance(st_info, dict)
+        ]
+        non_real_sts = [
+            str(st_k)
+            for st_k, st_info in spin_types.items()
+            if isinstance(st_info, dict)
+            and (st_info.get("economy") or {}).get("kind") != "real"
+        ]
+        if malformed_sts:
+            skip_reason = (
+                f"malformed spin_types entr{'y' if len(malformed_sts) == 1 else 'ies'} "
+                f"(not a dict): {malformed_sts}. "
+                f"Cannot determine economy.kind. "
+                f"Conservation check skipped."
+            )
+        elif non_real_sts:
+            skip_reason = (
+                f"preview or non-real economy STs present: {non_real_sts}. "
+                f"session_dim_win is rule-view (phantom rounds contribute 0), "
+                f"so sum(session_dim_win) < total_win by design. "
+                f"Conservation check skipped for this machine."
+            )
+        elif not spin_types:
+            skip_reason = (
+                "machine_spec_manifest has no spin_types block. "
+                "Cannot determine economy.kind for all STs. "
+                "Conservation check skipped."
+            )
+        else:
+            skip_reason = (
+                "Not all STs declare economy.kind == 'real'. "
+                "Conservation check skipped."
+            )
+        return None, None, skip_reason, notes
+
+    # Gate 2: session_win_total must have been passed explicitly.
+    # report_engine passes total_session_win_sum (Σ chunk-record session_win_sum),
+    # which post-dim-fix IS the session-dim total (bonus_win_from_helper now holds
+    # session_dim_win, not session_win).  Direct callers and tests pass it too.
+    # There is no fallback to summary key lookup — that path was dead on arrival
+    # (session_dim_win_sum was never written to the summary JSON).
+    session_win_sum = session_win_total
+    if session_win_sum is None:
+        skip_reason = (
+            "session_win_total not provided to check_rtp_integrity. "
+            "Pass session_win_total=total_session_win_sum from report_engine "
+            "to enable the conservation check."
+        )
+        return None, None, skip_reason, notes
+
+    # Gate 3: total_win must be known.
+    if total_win is None or total_win <= 0.0:
+        skip_reason = (
+            f"total_win={total_win!r} is absent or zero; "
+            "cannot compute conservation ratio. Check skipped."
+        )
+        return None, None, skip_reason, notes
+
+    # Conservation ratio and classification.
+    ratio = session_win_sum / total_win
+    diff_pct = abs(ratio - 1.0) * 100.0
+
+    notes.append(
+        f"session_win_sum={session_win_sum:.1f}, total_win={total_win:.1f}, "
+        f"ratio={ratio:.6f} (diff={diff_pct:.2f}%)."
+    )
+    notes.append(
+        "Caveat: orphan bonus rounds (bonus before first paid round) contribute "
+        "to total_win but not to session_win_sum, so a small negative gap is "
+        "expected and normal.  The standard summary JSON does not surface orphan "
+        "bonus win separately; diff < 5% is classified WARN (not FAIL) for this reason."
+    )
+
+    # Classify into three levels: "ok" / "warn" / "fail".
+    level: str
+    if diff_pct < 1.0:
+        # Tight match — conservation holds.
+        level = "ok"
+        notes.append("Conservation OK: diff < 1%.")
+    elif diff_pct < 5.0:
+        # Plausible orphan-bonus gap or minor rounding.
+        level = "warn"
+        notes.append(
+            f"Conservation WARN: diff {diff_pct:.2f}% is in the 1%-5% range. "
+            "Likely orphan bonus rounds or rounding across chunks. "
+            "Investigate if unexpected."
+        )
+    else:
+        # Substantial gap — likely a session-dim bug or attribution issue.
+        level = "fail"
+        notes.append(
+            f"Conservation FAIL: diff {diff_pct:.2f}% >= 5%. "
+            "Investigate session_dim_win computation in trigger_sessions.py "
+            "and _close_session in parser.py."
+        )
+
+    ok: bool | None = (level == "ok")
+    return ok, level, None, notes
+
+
+# ---------------------------------------------------------------------------
 # Main public entry point
 # ---------------------------------------------------------------------------
 
@@ -517,6 +704,8 @@ def check_rtp_integrity(
     summary: dict[str, Any],
     *,
     manifest: dict[str, Any] | None = None,
+    machine_spec_manifest: dict[str, Any] | None = None,
+    session_win_total: float | None = None,
     rawdata_dir: Path | None = None,
     warn_only: bool = True,
 ) -> "RTPIntegrityResult":
@@ -535,6 +724,22 @@ def check_rtp_integrity(
         Parsed manifest dict (flat or nested layout — see module docstring).
         If None: Layer 3 vacuously passes (no required anchors); Layer 4 defaults
         to applicable=True; completeness_declared=False.
+    machine_spec_manifest:
+        SpinType-native manifest dict (configs/machine_manifests/<M>.json format).
+        When provided and all ST economy.kind == "real", runs the session-
+        conservation check (``session_conservation_ok``).  When None or when any
+        ST has economy.kind != "real" (e.g. M15 preview STs), the conservation
+        check is skipped with an explicit reason.  The check does NOT flip
+        ``passed`` — it is informational and surfaced via ``session_conservation_ok``.
+    session_win_total:
+        Explicit session-dimension win total (Σ chunk-record session_win_sum).
+        After the 2026-06-11 session-dim fix, report_engine's total_session_win_sum
+        accumulates session_win_sum per chunk, and _close_session's bonus_win_from_helper
+        now holds session_dim_win (player-experienced total, no credited-win exclusion).
+        So total_session_win_sum IS the session-dim total.  Pass it explicitly here
+        rather than relying on summary key lookup (which was dead — session_dim_win_sum
+        was never written to the summary JSON).  When None, the conservation check
+        records a skip with an explicit reason.
     rawdata_dir:
         Path to directory containing chunk_*.json files for Layer 4 Step B.
         If None: Layer 4 Step B is skipped with a descriptive skip_reason.
@@ -736,9 +941,40 @@ def check_rtp_integrity(
             layer4_per_st_consistency_ok = len(inconsistencies) == 0
 
     # ------------------------------------------------------------------
+    # Session-conservation check (2026-06-11, session-dim fix).
+    # Informational only — does NOT flip ``passed``.
+    # Runs only when machine_spec_manifest is provided and all STs
+    # declare economy.kind == "real".  Machines with preview STs (M15)
+    # or without a machine_spec_manifest SKIP with an explicit reason.
+    # ------------------------------------------------------------------
+    session_conservation_ok: bool | None = None
+    session_conservation_level: str | None = None
+    session_conservation_skip_reason: str | None = None
+    session_conservation_notes: list[str] = []
+
+    if machine_spec_manifest is not None:
+        (
+            session_conservation_ok,
+            session_conservation_level,
+            session_conservation_skip_reason,
+            session_conservation_notes,
+        ) = _check_session_conservation(
+            machine_spec_manifest,
+            session_win_total=session_win_total,
+            total_win=chunk_win_total,
+        )
+    else:
+        session_conservation_skip_reason = (
+            "machine_spec_manifest not provided; "
+            "session-conservation check skipped. "
+            "Pass machine_spec_manifest=<manifest_dict> to enable."
+        )
+
+    # ------------------------------------------------------------------
     # Final verdict: passed iff ALL applicable layers pass.
     # Layer 4 contributes only when layer4_applicable=True AND
     # layer4_per_st_consistency_ok is not None (i.e., was evaluated).
+    # Session-conservation check is informational — does NOT affect passed.
     # Per §9.2: "A machine passes only if all applicable layers pass."
     # Ticket §1 C7.
     # ------------------------------------------------------------------
@@ -809,6 +1045,10 @@ def check_rtp_integrity(
         summary_message=summary_message,
         suggested_actions=suggested_actions,
         completeness_declared=completeness_declared,
+        session_conservation_ok=session_conservation_ok,
+        session_conservation_level=session_conservation_level,
+        session_conservation_skip_reason=session_conservation_skip_reason,
+        session_conservation_notes=session_conservation_notes,
     )
 
     # Per memory/feedback_no_silent_swallow.md: never silently swallow.

@@ -1921,6 +1921,8 @@ def generate_report_from_chunks(
         _gate_result = check_rtp_integrity(
             summary,
             manifest=_legacy_manifest or None,
+            machine_spec_manifest=new_manifest,
+            session_win_total=total_session_win_sum,
             rawdata_dir=None,
             warn_only=True,
         )
@@ -1938,6 +1940,12 @@ def generate_report_from_chunks(
             "summary_message": _gate_result.summary_message,
             "suggested_actions": list(_gate_result.suggested_actions),
             "completeness_declared": _gate_result.completeness_declared,
+            # Session-conservation check (2026-06-11, session-dim fix).
+            # Informational only — does NOT affect "passed".
+            "session_conservation_ok": _gate_result.session_conservation_ok,
+            "session_conservation_level": _gate_result.session_conservation_level,
+            "session_conservation_skip_reason": _gate_result.session_conservation_skip_reason,
+            "session_conservation_notes": list(_gate_result.session_conservation_notes),
         }
     except Layer4Error as _exc:
         summary["rtp_integrity_check"] = {"passed": False, "error": f"Layer4Error: {_exc}"}
