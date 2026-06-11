@@ -1,6 +1,6 @@
 # 02_traces — real-rawdata ground truth (event-based)
 
-> Per the redesigned arch process (`docs/ARCH_TEAM_PROCESS.md`): **real-rawdata traces only — no design, no
+> Per the redesigned arch process (agent charters `.claude/agents/arch-*.md`): **real-rawdata traces only — no design, no
 > opinions.** These are the validated facts the model + any build must hold. Produced 2026-06-02 by deep-parsing
 > cached chunks (`json.loads` the JSON-string `response`; walk `roundResult`; a raw grep false-negatives on
 > escaped JSON). Cached only — no upstream fetch.

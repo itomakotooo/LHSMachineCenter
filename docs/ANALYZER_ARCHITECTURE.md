@@ -1,18 +1,22 @@
 # Analyzer Architecture & Rebuild Spec
 
-Authoritative spec for the analyzer's **settled foundation** + the in-progress
-**rebuild** (orchestrator deleted 2026-06-05, being rebuilt SpinType-native).
+Authoritative spec for the analyzer's **settled foundation**. The SpinType-native
+rebuild is **COMPLETE** (orchestrator deleted 2026-06-05; `report_engine.py` live since
+2026-06-07; phase 5 cleanup done — §6 is the execution record). Machines onboard via
+`docs/MACHINE_ONBOARDING.md` (M15 + M43 + M279 confirmed as of 2026-06-11).
 
 **Implementation agents MUST follow this doc.** Any deviation needs human sign-off.
-Every factual path/claim here was verified against the tree on 2026-06-05; re-verify
-before editing. Do NOT invent structure not described here.
+Factual paths/claims re-verified 2026-06-11; re-verify before editing. Do NOT invent
+structure not described here.
 
 ---
 
 ## 1. The model — LOCKED, do not re-litigate
 
 - The unit is the **SpinType** — a protocol event token with a **role**:
-  `paid_spin` / `player_choice` / `settlement` / `state`. NOT "a spin".
+  `paid_spin` / `player_choice` / `settlement` / `state` / `respin` (an OPEN set —
+  `machine_spec.KNOWN_ROLES`; extended from a machine's own rawdata feature name, e.g.
+  `respin` added for M43's WinRespin / M279's MoveSpin). NOT "a spin".
 - A machine = the set of SpinTypes it emits. A 玩法/feature = a group of related
   SpinTypes. Analyses are **DERIVED from `spin_types`**, never hand-listed.
 - Source of truth: `fresh_slotlab/analyzer/machine_spec.py` (schema + `derive_analyses`)
@@ -28,21 +32,15 @@ before editing. Do NOT invent structure not described here.
 |---|---|---|
 | **L1 core math** | `fresh_slotlab/analyzer/core/{parser,aggregator,writer,base_pipeline}.py`; `fresh_slotlab/{round_win,round_classification,trigger_sessions,sampler,machine_md5,rawdata_index,chunk_index}.py`; `fresh_slotlab/analyzer/rtp_integrity.py` | **KEEP** (framework-agnostic: sample→parse→aggregate→write) |
 | **L2 plugin framework + plugins** | `fresh_slotlab/analyzer/{feature_registry,topo_sort,pipeline_context,parse_state}.py`, `features/_base.py`; the plugins `features/*.py` | **KEEP**. The "general / non-ST analyses" the console shows (bankruptcy, multiplier_profile, hit_and_payout, volatility, streaks, …) ARE these plugins — reused, not rewritten. |
-| **L3 resolution / manifest** | OLD: `manifest_loader.py` + 420 flat manifests in `slot_designer/configs/machine_manifests/` (`analyzer_features` list + `console_diagnostic_complete` + `spin_type_convention`) + `feature_registry.get_features_for_machine` (reads flat) + `mechanism_registry.py` (Tier-2 mechanism DETECTION) | **REPLACE** → `machine_spec` (SpinType-native manifest) + `derive_analyses()` + `validation:{auto,confirmed}`. Mechanism is **declared** in the manifest (role/play), not detected. |
-| **L4 orchestrator** | OLD `fresh_slotlab/player_impact_analyzer.py` (DELETED) | **REBUILD** (slim): load manifest → derive_analyses → sample(L1) → parse(L1) → run plugins(L2) → write `player_impact_summary.json`(L1). |
-| **L5 versioning / freshness** | `fresh_slotlab/analyzer/versioning.py` + `src/web_console/backend/effective_version_cache.py` (read flat `analyzer_features`); the 2 carves `analyzer/play_types/{bcm_cycle,wild_nudge}.py` (base-excluded, no per-machine hash) | **REWIRE** to read `derive_analyses`; converting the 2 carves to `AnalyzerFeature` plugins (per-machine hashing — closes the stale-report gap) is DEFERRED to BCM/wild-nudge machine onboarding (validate emit against real data). |
+| **L3 resolution / manifest** | `fresh_slotlab/analyzer/machine_spec.py` (SpinType-native manifests at `configs/machine_manifests/<M>.json`) + `derive_analyses()` (`CROSS_CUTTING` + `PER_SPINTYPE` + `ROLE_ANALYSES[role]` + `PLAY_ANALYSES[play]`) + `validation:{auto,confirmed}` | **LIVE** (replaced the flat-manifest layer + mechanism_registry in phase 5; mechanism is **declared** via role/play, not detected) |
+| **L4 orchestrator** | `fresh_slotlab/analyzer/report_engine.py` — `generate_report_from_chunks`: load manifest → derive_analyses → parse(L1) → run plugins(L2) → write `player_impact_summary.json` | **LIVE** (rebuilt slim 2026-06-07; the old `player_impact_analyzer.py` is gone). NOTE: it parses EVERY chunk in `chunk_dir` (no md5 filter) and its `bet` param lands in `sampling.bet` — callers scope + stamp (the console path does both since `fd6b507`). |
+| **L5 versioning / freshness** | `fresh_slotlab/analyzer/versioning.py` (base_hash over `_CLOSURE_FILES` + per-machine `effective_version` from `derive_analyses`) + `effective_version_cache.py`; the 2 carves `analyzer/play_types/{bcm_cycle,wild_nudge}.py` (base-excluded) | **LIVE**. Converting the 2 carves to `AnalyzerFeature` plugins stays DEFERRED to a BCM/wild-nudge framework pass (M279 onboarded against the existing carve via `round_classification.is_wild_nudge_round` + `respin_dynamics`; no conversion was needed). |
 
-**Live coupling to the OLD system after the orchestrator deletion (narrow):**
-- `versioning.py` (`compute_effective_version_for_machine`, line ~359 reads
-  `manifest.get("analyzer_features")`) + `effective_version_cache.py` → drives console
-  report-freshness.
-- `src/web_console/backend/app.py` (~7923) reads `console_diagnostic_complete` → the
-  "verified" UI badge. Also reads `rtp_integrity.py` + `manifest_loader.py`.
-- `mechanism_registry` is entangled in `features/{bonus_chain_dynamics,machine_mechanics}.py`
-  + `_base.py` + `pipeline_context.py` + `parse_state.py` — removing it requires those
-  two plugins to take mechanism from the manifest (role/play) instead.
-- **Report VIEWING (`/api/reports/...`) is independent** — reads `player_impact_summary.json`
-  off disk, touches none of the above.
+**Legacy coupling: REMOVED** (phase 5B/5C deleted manifest_loader / mechanism_registry /
+the 420 flat manifests; every consumer reads the SpinType-native manifest). **Report
+VIEWING (`/api/reports/...`) is independent** — reads `player_impact_summary.json` off
+disk. Reports are bucketed in the rwtree by their summary md5 pair, which since `fd6b507`
+is the SOURCE-CHUNK provenance (not the roster's current md5).
 
 ---
 
@@ -59,9 +57,11 @@ configs/machine_manifests/<M>.json   (machine_spec, SpinType-native)
         player_impact_summary.json  (UNCHANGED schema — frontend contract)
 ```
 
-- **Registry = registered machines only.** A machine is "registered" iff it has a
-  `configs/machine_manifests/<M>.json` with `validation.status == confirmed`. Only such
-  machines generate reports. **Only M15 is registered now.**
+- **Registry = registered machines only.** A machine is "registered" iff
+  `configs/machine_manifests/<M>.json` EXISTS (that is what the engine/endpoint check);
+  `validation.status: auto → confirmed` tracks the USER DOMAIN SIGN-OFF (onboarding
+  gate 8), not registration. Registered machines generate reports.
+  **Registered + confirmed now: M15, M43, M279.**
 - **Non-registered machines → graceful "not registered, no report"** (HTTP-level clear
   message, not a crash). This is ACCEPTED — do not migrate the other 420 machines, do not
   keep the old path alive for them.
@@ -70,7 +70,7 @@ configs/machine_manifests/<M>.json   (machine_spec, SpinType-native)
 
 ---
 
-## 4. Cleanup — files to DELETE (no coexistence left behind)
+## 4. Cleanup — EXECUTED in phase 5 (kept as the record of what was removed)
 
 - `fresh_slotlab/analyzer/manifest_loader.py`
 - `fresh_slotlab/analyzer/mechanism_registry.py` (after folding its 2 plugin consumers onto manifest role/play)
@@ -197,19 +197,25 @@ own gate because it CHANGES behavior):
 
 ## 7. Post-rebuild API — the ONLY work future sessions do
 
-1. **Add a machine** = write `configs/machine_manifests/<M>.json` (`spin_types{role,play}`,
-   economy, trigger, `validation`) per `docs/MACHINE_ONBOARDING.md`, then it's registered.
-2. **Add an ST parser/analysis** = add a per-ST handler / `AnalyzerFeature` plugin; wire it via
-   role/play in `derive_analyses`.
+1. **Add a machine** = the 5 base-excluded onboarding artifacts per
+   `docs/MACHINE_ONBOARDING.md` (manifest / new plugins / machine_spec wiring /
+   attribution rule / frontend ST dimension), produced by the onboard-* 5-wave team and
+   accepted by the 8 objective gates. Writing the manifest is what registers it.
+2. **Add an ST analysis** = an `AnalyzerFeature` plugin wired via role (generic) or play
+   (feature-specific, when the role is shared across machines) in `derive_analyses`,
+   PLUS its frontend dimension (artifact #5).
 Everything else — general analyses, versioning/freshness, report generation — is automatic.
 
 ---
 
 ## 8. Non-goals (do NOT do these)
 
-- Do NOT migrate the 420 legacy machines or keep the old flat-manifest path alive for them.
-- Do NOT make non-M15 machines generate reports (graceful "not registered" is the correct
-  behavior).
-- Do NOT change the `player_impact_summary.json` schema or the frontend (`panel_registry.js`).
+- Do NOT bulk-migrate the legacy fleet — machines onboard ONE AT A TIME via the
+  `docs/MACHINE_ONBOARDING.md` team flow (or its future fan-out driver).
+- Do NOT make UNREGISTERED machines generate reports (graceful "not registered" is the
+  correct behavior).
+- Do NOT break the `player_impact_summary.json` frontend contract. EXTENDING it is the
+  sanctioned mechanism: a NEW analysis plugin ships WITH its per-ST frontend dimension
+  (onboarding artifact #5 — `_stDim*` in `SPINTYPE_DIMENSIONS`, sibling-mirrored).
 - Do NOT invent domain layers; the SpinType model is locked (§1).
 - Do NOT re-baseline scattered base_hash pins (they were removed on purpose; §5.2 is the fix).

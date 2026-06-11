@@ -58,10 +58,17 @@ what let a hollow earlier carve pass).
 - **M15 TopDollar event model + ST=14 statistics validated on real rawdata** (`02_traces.md`):
   ST=14 is the player's pick (win is a preview = 0 economy; real win on ST=15); the pick statistics are real
   (TopDollar is a 1.1%-frequency event carrying ~50% of RTP).
-- **NOT built yet:** the integrated per-SpinType event parser (the new model's first real instance, M15). Next step.
+- **BUILT (2026-06-07..11):** the SpinType-native engine is LIVE — `report_engine.py` + per-machine manifests
+  (`machine_spec.derive_analyses`) + auto-discovered plugins; **M15 + M43 + M279 onboarded & confirmed** via the
+  onboard-* 5-wave team (`docs/MACHINE_ONBOARDING.md` is the living playbook; `docs/ANALYZER_ARCHITECTURE.md`
+  the framework spec). REMAINING from §3.1: the per-ST EXTRACTION layer is still the shared monolith parser —
+  metrics needing per-round ReMarks/sequence accumulation (wheel CellIndex map, 6-prize un-merge, move
+  burst-length, reel-skin breakout) are `parser_blind` until that carve lands (framework-team).
 
 ## 6. Process (the redesigned arch team)
-`docs/ARCH_TEAM_PROCESS.md`: ground every claim in a **real-rawdata trace** (`arch-tracer`) / an **objective gate**
+Agent definitions: `.claude/agents/arch-*.md` (the process doc was deleted; the principles live in the agent
+charters + memory). Ground every claim in a **real-rawdata trace** (`arch-tracer`) / an **objective gate**
 (base_hash, byte-identical) / the **user's domain sign-off** — never abstract endorsement, **never a fabricated
 layer**. Architecture / domain is discussed with the user (with traces); implementation detail (names, layout,
-code) is gated objectively, not user-reviewed.
+code) is gated objectively, not user-reviewed. Machine ONBOARDING (vs framework dev) uses the onboard-* team:
+`docs/MACHINE_ONBOARDING.md`.

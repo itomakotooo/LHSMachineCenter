@@ -2,7 +2,8 @@
 
 How to add analyzer support for a new slot machine, correctly, and at a cadence that
 scales to a whole fleet. Written 2026-06-05 after the M15 / M90 investigation; distilled
-2026-06-10 from the two machines now fully onboarded (M15 TopDollar, M43 ReSpin). The
+2026-06-10/11 from the three machines now fully onboarded (M15 TopDollar, M43 ReSpin,
+M279 Collect/Wheel). The
 rules below are hard-won — violating any of them produces a confident-but-wrong analysis.
 
 > **STATUS — 2026-06-10.** The SpinType-native engine is LIVE and report generation WORKS.
@@ -41,7 +42,7 @@ not N reports. Reports are regenerated on demand per `(machine, mode, md5)` from
 + cached rawdata (the console's "⟳ 生成 Report" path). A machine is onboarded the moment its
 structure exists and passes its gates — independent of whether any report has been rendered yet.
 
-### The 4 deliverable artifacts (all base-excluded — onboarding never flips `base_hash`)
+### The 5 deliverable artifacts (all base-excluded — onboarding never flips `base_hash`)
 
 | # | Artifact | Path | What it carries |
 |---|----------|------|-----------------|
@@ -169,6 +170,12 @@ prior wave's artifact and is GATED before the next starts.
   parse correctness; a value-agnostic parser does not care about config VALUES. Note it; not a
   blocker. M43's data carried `code_md5` 6e02924b vs registry 473d1f54 → it shows in the console's
   "历史" rawdata cell and regenerates from there.)*
+- **If the dir MIXES multiple config-md5 buckets, enumerate each bucket explicitly** (md5,
+  chunk count, saved dates — M279 mode_1: 40×`39a01e76` + 8×`5e28f301` after an upstream
+  config retune). Parsing/structure work may use all real chunks (value-agnostic), but **served
+  REPORTS must be generated per bucket** — mixing configs pollutes the numbers (M279's mixed
+  48-chunk report said 92.17% when the truth was 93.17% old-config / 87.15% new-config). The
+  console generate path scopes + provenance-stamps per bucket since `fd6b507`.
 - Extract the ST inventory: `extract_st_inventory(<M>, <mode>)` (in `analyzer/st_inventory.py`;
   not in the closure) → `{spin_types: {st: {count, field_presence}}}`.
 - Understand each ST from its OWN fields + the SpinType *sequence* (the state machine per robot).
@@ -199,8 +206,9 @@ metric selection are resolved INTERNALLY from the rules — never a user questio
 
 **W4 — Implement + Test (parallel).**
 - *Implement:* write the manifest, write NEW plugins (`features/*.py`, mirror a sibling — read
-  one first), wire `machine_spec.derive_analyses` (role/play), add any attribution rule. Touch
-  ONLY the 4 artifacts. **Compute `base_hash` before AND after — it MUST be unchanged.** If it
+  one first), wire `machine_spec.derive_analyses` (role/play), add any attribution rule, and —
+  for every NEW plugin — its FRONTEND ST dimension (artifact #5; mirror a sibling `_stDim*`).
+  Touch ONLY the 5 artifacts. **Compute `base_hash` before AND after — it MUST be unchanged.** If it
   flipped you touched the closure → revert + escalate.
 - *Test:* value-agnostic regression (structure/flags/invariants only — NEVER pin an RTP value
   or range) + **inject-bug → red → revert → green** for every safety claim. Regenerate the REAL
@@ -228,7 +236,7 @@ A machine's structure is correct when ALL hold (value-independent — these neve
 
 1. **Provenance clean** — analysis ran on real (`_cache_version:3`) chunks only; virtual excluded.
 2. **ST roles from real fields** — every ST's role/play justified by its signature, not guessed.
-3. **`base_hash` unchanged** — the 4 artifacts are all base-excluded; onboarding did not touch
+3. **`base_hash` unchanged** — the 5 artifacts are all base-excluded; onboarding did not touch
    the closure.
 4. **`rtp_integrity_check.passed == True`** — L1 `sum(payid) == our_total`; L2 NO `_unattributed_*`
    fallback bucket (share == 0); L3 anchors present; `our == server` when the server aggregate is
@@ -260,7 +268,7 @@ artifacts under `session_artifacts/_onboard/<M>/`.
 | W1 | `onboard-understander` | cached rawdata | `01_understanding.md` | provenance clean; every ST + field + analysisResult + cross-dims enumerated |
 | W2 | `onboard-reuse-adjudicator` | `01` | `02_reuse.md` | per-ST REUSE/NEW/ABORT with 3-layer proof; **any ABORT halts onboarding** |
 | W3 | `onboard-quant-designer` | `01` + `02` | `03_design.md` | metrics data-grounded + money-agnostic; manifest proposed; attribution + role/play resolved |
-| W4 | `onboard-implementer` | `03` + `02` | the 4 artifacts (uncommitted) | `base_hash` unchanged; report_engine smoke produces a summary |
+| W4 | `onboard-implementer` | `03` + `02` | the 5 artifacts (uncommitted) | `base_hash` unchanged; report_engine smoke produces a summary |
 | W4 | `onboard-tester` | implemented machine | tests + results | inject-bug→red→revert→green; REAL report asserted; non-leak tests |
 | W5 | `onboard-breaker` | everything | `05_breaker.md` | hardest-session metric-vs-raw match; gates hold; reuse integrity held — or a counterexample |
 
@@ -285,7 +293,7 @@ artifacts under `session_artifacts/_onboard/<M>/`.
 
 The structure above is built to scale to many machines at once. What makes batch possible:
 
-- **Per-machine isolation = parallelizable.** Each machine's 4 artifacts are machine-scoped and
+- **Per-machine isolation = parallelizable.** Each machine's 5 artifacts are machine-scoped and
   base-excluded; landing machine B never re-flags machine A. N machines can run the W1→W5 pipeline
   concurrently.
 - **The one shared coordination point is the REUSE REGISTRY** — the set of existing validated
@@ -395,6 +403,17 @@ driver will encode.
     tests; ST2's no-payid win attributed by the M43-precedent config-only `SynthesizePayIdRule`. The
     parser-blind boundary recurred (the wheel 6-prize un-merge + CellIndex map + the move burst-length
     + the skin breakout all need the per-ST extraction accumulator — DIRECTION.md §3, framework-team).
+  - **Mixed-md5 rawdata epilogue (2026-06-11).** Upstream retuned M279's config AFTER onboarding
+    (roster md5 → `5802aa97`; all cached chunks correctly went "历史·config 变更" — onboarding did
+    NOT cause this, the classification was right). The mixed dir then exposed two console defects,
+    both fixed in `fd6b507`: the generate path fed the engine the WHOLE dir regardless of the
+    requested md5 scope (a 40-chunk historical-cell click produced a 48-chunk two-config report),
+    and summaries were stamped with the CURRENT roster md5 instead of source-chunk provenance
+    (historical-sourced reports landed in the empty "当前" cell). Per-bucket regeneration then
+    cross-validated EXACTLY against the original per-bucket reports (93.17↔93.17, 87.15↔87.15) —
+    the mixed 92.17 was pollution. Rules distilled: **reports are generated per md5 bucket; a
+    report's md5 tag is its SOURCE-chunk provenance; the engine itself never filters** (locked by
+    `tests/backend/test_generate_report_md5_scope.py`).
 
 ---
 
@@ -408,9 +427,15 @@ driver will encode.
   `PLAY_ANALYSES`, and `derive_analyses()` (analysis set derived from `spin_types`). References:
   `configs/machine_manifests/M15.json` (player_choice/settlement) + `M43.json` (respin + play-keyed).
 - **Report engine:** `report_engine.generate_report_from_chunks(<M>, <mode>, chunk_dir=…,
-  output_dir=…, bet=…)` — the orchestrator; registered machines only. The console reaches it via
-  `POST /api/rawdata/<M>/generate-report` (`{mode, config_md5?, code_md5?}` — pass the historical
-  md5 to regenerate from a "历史" rawdata cell).
+  output_dir=…, bet=…)` — the orchestrator; registered machines only. Two traps when calling it
+  DIRECTLY: (a) it parses EVERY `chunk_*.json` in `chunk_dir` — it has NO md5 filter, so a
+  mixed-md5 dir mixes configs into one report; (b) `bet` defaults to 1 and lands in
+  `sampling.bet` — the frontend divides every "× bet" column by it, so omitting it renders
+  1000×-inflated multipliers. **Prefer the console path:** `POST
+  /api/rawdata/<M>/generate-report` (`{mode, config_md5?, code_md5?}`) — since `fd6b507` it
+  hardlink-scopes the engine input to the selected md5 bucket, stamps the summary with the
+  SOURCE-chunk md5 pair (so the report lands in the rwtree cell of its rawdata), and passes the
+  chunks' `_bet`. Pass the historical pair to regenerate from a "历史" cell.
 - **Attribution rules:** `configs/machine_round_win_rules.json` — `SynthesizePayIdRule` etc.
   (`spin_types`, `label_format`, `applies_to`). Config-only; never a closure change.
 - **Invariant gate:** `rtp_integrity.py` scores the generated `player_impact_summary.json`

@@ -39,6 +39,7 @@ onboard-implementer complete.
 - New plugins (files):
 - derive_analyses wiring:
 - Attribution rule (config):
+- Frontend ST dimension(s) (artifact #5 — one per NEW plugin, sibling mirrored):
 - Reused (unchanged) plugins:
 - base_hash before/after (MUST match):
 - Smoke (report_engine on <M>):
