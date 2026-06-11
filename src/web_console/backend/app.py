@@ -9435,7 +9435,7 @@ def create_app(
             all_chunk_files = sorted(mode_dir.glob("chunk_*.json"))
             gen_chunk_dir: Path = mode_dir
             if len(chunk_paths) != len(all_chunk_files):
-                scoped_chunk_dir = ROOT / "cache" / "_gen_scope" / new_run_id
+                scoped_chunk_dir = cr / "_gen_scope" / new_run_id
                 scoped_chunk_dir.mkdir(parents=True, exist_ok=True)
                 for _cp in chunk_paths:
                     _dst = scoped_chunk_dir / _cp.name
@@ -9663,11 +9663,37 @@ def create_app(
         sample_env = json.loads(chunk_paths[0].read_text(encoding="utf-8"))
         chunk_spin_times = int(sample_env.get("_spin_times") or 5000)
         chunk_robot_count = int(sample_env.get("_robot_count") or 24)
+        # The chunks' real bet — forwarded to the engine so summary.sampling.bet
+        # is correct (the frontend divides every "× bet" column by it; the old
+        # hardcoded job value was never even forwarded by the worker → bet=1
+        # summaries → 1000× inflated multiplier columns, same trap as fd6b507).
+        chunk_bet = int(sample_env.get("_bet") or 1)
         new_run_id = f"gen_{uuid.uuid4().hex[:12]}"
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         report_version = f"rv_{ts}_rawdata"
         output_dir = rr / machine / f"mode_{mode}" / "versions" / report_version
         output_dir.mkdir(parents=True, exist_ok=True)
+        # SCOPE (mirror _run_generate_report, fd6b507): the engine parses EVERY
+        # chunk_*.json in chunk_dir — it has NO md5 filter. ``usable`` here is
+        # kept+deletable = CURRENT-md5 chunks only; if the mode dir also holds
+        # historical chunks, handing it the raw dir silently mixes them into
+        # the batch report (the 全 fleet 重建 latent defect). Hardlink the
+        # selection into a throwaway scoped dir and put THAT in the job.
+        # Cleaned up in _finalize_batch_gen_item_wrapper (and on the 409
+        # lock-conflict path in _prepare_batch_gen_item_wrapper).
+        all_chunk_files = sorted(mode_dir.glob("chunk_*.json"))
+        gen_chunk_dir: Path = mode_dir
+        scoped_chunk_dir: Path | None = None
+        if len(chunk_paths) != len(all_chunk_files):
+            scoped_chunk_dir = cr / "_gen_scope" / new_run_id
+            scoped_chunk_dir.mkdir(parents=True, exist_ok=True)
+            for _cp in chunk_paths:
+                _dst = scoped_chunk_dir / _cp.name
+                try:
+                    os.link(_cp, _dst)          # same-volume hardlink: instant
+                except OSError:
+                    shutil.copyfile(_cp, _dst)  # cross-volume / no-hardlink FS
+            gen_chunk_dir = scoped_chunk_dir
         progress_file = sd / "progress" / f"{new_run_id}.jsonl"
         summary_file = output_dir / "player_impact_summary.json"
         report_file = output_dir / "player_impact_report.md"
@@ -9712,17 +9738,31 @@ def create_app(
             "summary_file": summary_file,
             "report_file": report_file,
             "chunk_count": len(usable),
+            # Cleanup handle for the scoped hardlink dir (None when the whole
+            # mode dir was already exactly the usable set).
+            "scoped_chunk_dir": scoped_chunk_dir,
             "job": {
                 "machine": machine,
                 "mode": mode,
-                "chunk_dir": str(mode_dir),
+                "chunk_dir": str(gen_chunk_dir),
                 "output_dir": str(output_dir),
                 "run_id": new_run_id,
                 "progress_file": str(progress_file),
                 "max_chunks": len(usable),
                 "chunk_spin_times": chunk_spin_times,
                 "chunk_robot_count": chunk_robot_count,
-                "bet": 1000,
+                "bet": chunk_bet,
+                # PROVENANCE (mirror fd6b507): the md5 pair the SELECTED chunks
+                # actually carry — the worker stamps the summary with it after
+                # generation (the engine stamps the roster's current pair, which
+                # must not be trusted as provenance). For this batch path the
+                # selection is current-md5 by construction, so these normally
+                # equal upstream_*; they are the honest source of truth.
+                "source_config_md5": str(sample_env.get("_config_md5") or ""),
+                "source_code_md5": str(sample_env.get("_code_md5") or ""),
+                # The REAL rawdata root — the worker's post-inference hook must
+                # not derive it from chunk_dir (which may be the scoped temp dir).
+                "rawdata_root": str(rd_root),
                 # C1 (P1-D1 §3 C1): md5 filter keys — forwarded by the
                 # worker to the analyzer as --upstream-config-md5 /
                 # --upstream-code-md5 CLI flags so historical-md5 chunks
@@ -9751,8 +9791,13 @@ def create_app(
         Released in _finalize_batch_gen_item_wrapper below."""
         prepared = _prepare_batch_gen_item(machine, mode)
         # If registry says cell is already locked (e.g. concurrent DELETING),
-        # raise so BatchGenerateManager marks this item as failed.
+        # raise so BatchGenerateManager marks this item as failed. The scoped
+        # hardlink dir was already created by prepare — reclaim it here since
+        # _finalize_batch_gen_item_wrapper will never run for this item.
         if not registry.try_acquire_cell(machine, int(mode), CellOperation.GENERATING):
+            _scoped = prepared.get("scoped_chunk_dir")
+            if _scoped:
+                shutil.rmtree(_scoped, ignore_errors=True)
             raise HTTPException(
                 status_code=409,
                 detail=f"cell {machine}|{mode} is busy — cannot start batch-generate",
@@ -9767,6 +9812,9 @@ def create_app(
         try:
             return _finalize_batch_gen_item(prepared, worker_result)
         finally:
+            _scoped = prepared.get("scoped_chunk_dir")
+            if _scoped:
+                shutil.rmtree(_scoped, ignore_errors=True)
             registry.release_cell(
                 prepared.get("machine") or "",
                 int(prepared.get("mode") or 0),

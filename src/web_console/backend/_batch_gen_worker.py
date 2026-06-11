@@ -124,9 +124,16 @@ def run_analyzer_job(job: dict) -> dict:
     Expected job keys:
       machine (str), mode (int), chunk_dir (str), output_dir (str),
       run_id (str), progress_file (str), max_chunks (int),
-      chunk_spin_times (int), chunk_robot_count (int), bet (int),
+      chunk_spin_times (int), chunk_robot_count (int),
+      bet (int)                — FORWARDED to the engine (sampling.bet)
       upstream_config_md5 (str), upstream_code_md5 (str)  [P1-D1 C1/C2]
       machines_config (str)                               [P1-D1 C3]
+      source_config_md5 / source_code_md5 (str) — the SELECTED chunks' own
+        md5 pair; stamped onto the summary after generation (provenance,
+        mirrors fd6b507). chunk_dir may be a SCOPED hardlink dir containing
+        only the selected chunks (the engine has no md5 filter of its own).
+      rawdata_root (str) — the real rawdata root for the post-inference
+        hook (chunk_dir may be the scoped temp dir; never derive from it).
     """
     machine = job.get("machine") or ""
     mode_raw = job.get("mode")
@@ -185,10 +192,16 @@ def run_analyzer_job(job: dict) -> dict:
     run_id = str(job["run_id"])
     t0 = time.time()
     try:
+        # bet MUST be forwarded: the engine's default bet=1 lands in
+        # summary.sampling.bet, and the frontend divides every "× bet"
+        # multiplier column by it — dropping it rendered 1000× inflated
+        # multipliers (the fd6b507 trap; the job always carried "bet" but
+        # this call previously never passed it on).
         _rem.generate_report_from_chunks(
             machine, mode,
             chunk_dir=chunk_dir,
             output_dir=output_dir,
+            bet=int(job.get("bet") or 1),
             run_id=run_id,
             manifest_machine_id=_base_machine,
         )
@@ -256,6 +269,43 @@ def run_analyzer_job(job: dict) -> dict:
                 file=sys.stderr,
             )
 
+        # PROVENANCE STAMP (mirror app.py _run_generate_report, fd6b507):
+        # the engine stamps the summary with the roster's CURRENT md5 pair
+        # regardless of which chunks it parsed. A report's md5 tag must be
+        # its SOURCE-chunk provenance (the rwtree buckets reports into
+        # rawdata cells by this pair). The job carries the selected chunks'
+        # own md5 (source_config_md5/source_code_md5, set by
+        # _prepare_batch_gen_item). Runs AFTER patch_summary_md5 so
+        # provenance wins. Atomic write (tmp + os.replace) — the parent
+        # reads this file in _finalize_batch_gen_item.
+        _src_cfg = str(job.get("source_config_md5") or "")
+        _src_code = str(job.get("source_code_md5") or "")
+        if (_src_cfg or _src_code) and summary_file.exists():
+            try:
+                import json as _json  # noqa: PLC0415
+                import os as _os  # noqa: PLC0415
+                _doc = _json.loads(summary_file.read_text(encoding="utf-8"))
+                if (
+                    (_doc.get("config_md5") or "") != _src_cfg
+                    or (_doc.get("code_md5") or "") != _src_code
+                ):
+                    _doc["config_md5"] = _src_cfg
+                    _doc["code_md5"] = _src_code
+                    _tmp = summary_file.with_suffix(".json.tmp")
+                    _tmp.write_text(
+                        _json.dumps(_doc, ensure_ascii=False), encoding="utf-8",
+                    )
+                    _os.replace(_tmp, summary_file)
+            except Exception as exc:  # noqa: BLE001
+                # Non-fatal but LOUD: a failed stamp means the report lands
+                # in the wrong rwtree cell (per feedback_no_silent_swallow).
+                print(
+                    f"batch_gen_worker: provenance stamp failed for "
+                    f"machine={machine!r} mode={mode!r}: "
+                    f"{type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
+
         # C4 (P1-D1 §3 C4): trigger offline inference scripts via the
         # canonical shared helper (P1-B5 dedup). Replaces the legacy
         # inline subprocess block that required script_root resolution
@@ -273,8 +323,15 @@ def run_analyzer_job(job: dict) -> dict:
             if _rpi is None:
                 from fresh_slotlab.post_inference import run_post_analyzer_inference as _rpi  # noqa: PLC0415
             import os as _os
-            _chunk_dir_for_infer = chunk_dir
-            rawdata_root = _chunk_dir_for_infer.parent.parent if _chunk_dir_for_infer.is_dir() else None
+            # Prefer the job's explicit rawdata_root: chunk_dir may be the
+            # SCOPED hardlink dir (cache/_gen_scope/<run_id>) whose
+            # parent.parent is NOT the rawdata root.
+            _job_rd_root = job.get("rawdata_root")
+            if _job_rd_root:
+                rawdata_root = Path(_job_rd_root)
+            else:
+                _chunk_dir_for_infer = chunk_dir
+                rawdata_root = _chunk_dir_for_infer.parent.parent if _chunk_dir_for_infer.is_dir() else None
             env = dict(_os.environ)
             if rawdata_root is not None:
                 env.setdefault("SLOT_RAWDATA_ROOT", str(rawdata_root))

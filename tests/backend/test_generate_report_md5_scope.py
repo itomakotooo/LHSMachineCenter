@@ -106,7 +106,8 @@ def scoped_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
     app = create_app(state_dir=state_dir, reports_root=reports_dir,
-                     machines_config=mc, rawdata_root=rd_root)
+                     machines_config=mc, rawdata_root=rd_root,
+                     cache_root=tmp_path / "cache")
     with TestClient(app) as client:
         yield client, reports_dir, calls
 

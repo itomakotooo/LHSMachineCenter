@@ -699,45 +699,20 @@ class TestBatchPathHistoricalFilterGap:
             f"Full job keys: {sorted(job.keys())}"
         )
 
-    @pytest.mark.xfail(
-        reason=(
-            "P1-D1 Fix B was applied: upstream_config_md5 + upstream_code_md5 "
-            "are now in the job dict and the worker forwards them as "
-            "--upstream-config-md5 / --upstream-code-md5 CLI flags. "
-            "Fix B does NOT clean up the physical chunk_dir — historical files "
-            "remain on disk (md5-is-tag invariant). This test asserts Fix A "
-            "(chunk_dir physically clean), which was not chosen. "
-            "The contract this test cares about (analyzer NOT reading historical "
-            "chunks) is now enforced at the CLI level (--upstream-config-md5 filter), "
-            "not at the directory level. Fix A (symlink temp dir) would require "
-            "additional work not in scope for P1-D1. "
-            "The *other* xfail (test_batch_job_dict_includes_md5_filter_keys) "
-            "was the correct regression guard and is now passing."
-        ),
-        strict=False,
-    )
     def test_batch_job_chunk_dir_does_not_contain_historical_chunks(
         self, _app_and_prepare_fn, tmp_path
     ):
-        """C2 batch path alternative assertion (xfail): even if the job uses
-        chunk_dir rather than per-chunk paths, the directory must not contain
-        any historical-md5 chunks at the time the job is built.
+        """C2 batch path: the directory the job hands the engine must not
+        contain any historical-md5 chunks at the time the job is built.
 
-        Today chunk_dir is the raw mode directory which contains both current
-        and historical chunks. max_chunks=len(usable) limits count but does NOT
-        guarantee md5-correctness: the analyzer sorts by filename and may read
-        historical chunks before current ones if chunk indices interleave.
-
-        Per 05_critique.md edge case 1: if historical chunks have earlier
-        indices than current chunks, the analyzer reads the historical ones first
-        within the max_chunks budget.
-
-        Fix A: job["chunk_dir"] becomes a temp dir containing ONLY current-md5
-        chunk files (symlinks or copies).
-        Fix B: job dict includes upstream_config_md5 + upstream_code_md5 for
-        worker-side CLI filtering (tested in test_batch_job_dict_includes_md5_filter_keys).
-
-        Regression comment: this is a known bug. When fixed, remove xfail.
+        FIXED (the long-deferred "Fix A"): since the batch md5-scope port of
+        fd6b507, _prepare_batch_gen_item hardlinks the usable (current-md5)
+        selection into cache/_gen_scope/<run_id> and puts THAT in
+        job["chunk_dir"] whenever the mode dir holds extra chunks — the
+        SpinType-native engine reads every chunk in chunk_dir and has no CLI
+        filter, so directory-level scoping is the only enforcement. The
+        xfail marker was removed when the fix landed (this test is now the
+        hard regression guard; see also tests/backend/test_batch_gen_md5_scope.py).
         """
         prepare_fn, rawdata_root, mode_dir = _app_and_prepare_fn
         prepared = prepare_fn("M14", 1)
