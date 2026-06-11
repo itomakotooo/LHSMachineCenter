@@ -691,6 +691,18 @@ const I18N = {
     mgShareOfWin: "赢钱总占比",
     mgEventRate: "事件占比（占所有转）",
     mgHitRate: "命中率",
+    // ── Wheel dynamics (M279 ST2) ──
+    panelWheelDynamics: "转盘动态 (Wheel)",
+    wdGuaranteed: "保底必中 · 节奏",
+    wdEvents: "转盘次数",
+    wdHitRate: "命中率（每次必中）",
+    wdPrizeDist: "离散奖项分布",
+    wdColPrize: "奖项倍率",
+    wdMergedTag: "合并段",
+    wdCellMap: "12 格转盘 · 头奖格",
+    wdCells: "转盘格数",
+    wdJackpotCells: "头奖格（100×）",
+    wdRtpContrib: "转盘 RTP 贡献（pp）",
   },
   en: {
     appTitle: "Slot Console",
@@ -1369,6 +1381,18 @@ const I18N = {
     mgShareOfWin: "Share of all win",
     mgEventRate: "Event rate (share of all spins)",
     mgHitRate: "Hit rate",
+    // ── Wheel dynamics (M279 ST2) ──
+    panelWheelDynamics: "Wheel Dynamics",
+    wdGuaranteed: "Guaranteed payout · cadence",
+    wdEvents: "Wheel events",
+    wdHitRate: "Hit rate (always pays)",
+    wdPrizeDist: "Discrete prize distribution",
+    wdColPrize: "Prize ×",
+    wdMergedTag: "merged band",
+    wdCellMap: "12-cell wheel · jackpot cells",
+    wdCells: "Wheel cells",
+    wdJackpotCells: "Jackpot cells (100×)",
+    wdRtpContrib: "Wheel RTP contribution (pp)",
   },
 };
 

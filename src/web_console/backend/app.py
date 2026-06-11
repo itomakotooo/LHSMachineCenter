@@ -9410,10 +9410,18 @@ def create_app(
             summary_file = output_dir / "player_impact_summary.json"
             report_file = output_dir / "player_impact_report.md"
 
-            # Reuse the first usable chunk's robot_count / spin_times.
+            # Reuse the first usable chunk's robot_count / spin_times / bet.
             sample_env = json.loads(chunk_paths[0].read_text(encoding="utf-8"))
             chunk_spin_times = int(sample_env.get("_spin_times") or 5000)
             chunk_robot_count = int(sample_env.get("_robot_count") or 24)
+            # The engine's `bet` param defaults to 1 and is what lands in
+            # summary.sampling.bet — the frontend divides every "× bet"
+            # multiplier column by it. Not passing it produced bet=1 summaries
+            # whose multiplier columns rendered 1000× inflated (M279/M43
+            # console-regenerated reports, 2026-06-10). The chunks carry the
+            # real `_bet`; the engine already uses per-chunk `_bet` for
+            # parsing, so this only fixes the SUMMARY stamp.
+            chunk_bet = int(sample_env.get("_bet") or 1)
 
             started_now = utc_now()
             row_fields = {
@@ -9455,6 +9463,7 @@ def create_app(
                     machine, mode,
                     chunk_dir=mode_dir,
                     output_dir=output_dir,
+                    bet=chunk_bet,
                     run_id=new_run_id,
                     manifest_machine_id=_base_machine,
                 )

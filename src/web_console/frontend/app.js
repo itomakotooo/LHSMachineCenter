@@ -4852,6 +4852,97 @@ function _stDimMinigame(stCtx) {
     multHtml + freqHtml + contextHtml + nodeHtml + rtpHtml;
 }
 
+// Dimension: wheel dynamics — attaches to the WHEEL settlement event (the ST
+// whose spin_type matches wheel_dynamics.wheel_spin_type, e.g. M279 ST2's
+// collect wheel). Returns "" for all other STs. Reuses the same
+// mech-section/mech-grid KPI blocks + drilldown-table/bar-cell markup as the
+// sibling respin/minigame dimensions.
+function _stDimWheel(stCtx) {
+  const wd = ((stCtx.summary || {}).player_impact || {}).wheel_dynamics;
+  if (!wd || !wd.applicable) return "";
+  if (Number(wd.wheel_spin_type) !== Number(stCtx.row.spin_type)) return "";
+
+  // Helper: format a probability value as a percentage string or "—".
+  const _pct = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+  // Helper: a parser-blind bullet list (same markup as the sibling dims).
+  const _blindList = (items) => (Array.isArray(items) && items.length)
+    ? (`<p class="drilldown-hint"><em>${fmt("mgParserBlind")}:</em></p>` +
+       `<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
+       items.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
+       `</ul>`)
+    : "";
+
+  // ── W1 Guaranteed payout / cadence KPI block ──
+  const gp = wd.guaranteed_payout || {};
+  const gpHtml = `<div class="mech-section">
+    <h3>${fmt("wdGuaranteed")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("wdEvents")}</span><span class="mech-value">${fInt(gp.events)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("wdHitRate")}</span><span class="mech-value">${_pct(gp.hit_rate, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgOnePerN")}</span><span class="mech-value">${gp.one_per_n_paid_spins != null ? Number(gp.one_per_n_paid_spins).toFixed(1) : "—"}</span></div>
+    </div>
+    ${gp.cadence_note ? `<p class="drilldown-hint">${_escHtml(gp.cadence_note)}</p>` : ""}
+  </div>`;
+
+  // ── W2 Discrete prize distribution (band table + the exact prize × per band) ──
+  const dist = wd.prize_distribution || {};
+  const bands = Array.isArray(dist.bands) ? dist.bands.filter((b) => b.prob != null && Number(b.prob) > 0) : [];
+  const maxProb = Math.max(...bands.map((b) => Number(b.prob) || 0), 0.0001);
+  const bandRows = bands.map((b) => {
+    const prob = Number(b.prob) || 0;
+    const barPct = (prob / maxProb) * 100;
+    const winShare = b.win_share != null ? `${(Number(b.win_share) * 100).toFixed(1)}%` : "—";
+    const prize = Array.isArray(b.prize_multipliers_merged)
+      ? `${b.prize_multipliers_merged.join("×/")}× <em>(${fmt("wdMergedTag")})</em>`
+      : (b.prize_multiplier != null ? `${b.prize_multiplier}×` : "—");
+    return (
+      `<tr>` +
+      `<td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
+      `<td>${prize}</td>` +
+      `<td>${fInt(b.spin_count)}</td>` +
+      `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
+      `<td>${winShare}</td>` +
+      `</tr>`
+    );
+  }).join("");
+  const multHtml = bands.length
+    ? (`<p class="drilldown-hint"><strong>${fmt("wdPrizeDist")}</strong> · ${fInt(dist.total_events)} 次 · ${fmt("mgModalBand")}: ${dist.modal_band || "—"} · ${fmt("mgDominantShare")}: ${_pct(dist.dominant_band_share, 1)}</p>` +
+       `<table class="drilldown-table"><thead><tr>` +
+       `<th>${fmt("rdColBand")}</th><th>${fmt("wdColPrize")}</th><th>${fmt("mgColCount")}</th>` +
+       `<th>${fmt("rdColProb")}</th><th>${fmt("rdColWinShare")}</th>` +
+       `</tr></thead><tbody>${bandRows}</tbody></table>` +
+       _blindList(dist.parser_blind))
+    : "";
+
+  // ── W3 Cell map (12-cell wheel; the landing distribution is parser-blind) ──
+  const cm = wd.cell_map || {};
+  const cellHtml = `<div class="mech-section">
+    <h3>${fmt("wdCellMap")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("wdCells")}</span><span class="mech-value">${fInt(cm.wheel_cell_count)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("wdJackpotCells")}</span><span class="mech-value">${Array.isArray(cm.jackpot_cells) ? cm.jackpot_cells.map((c) => `#${c}`).join(" ") : "—"}</span></div>
+    </div>
+    ${_blindList(cm.parser_blind)}
+  </div>`;
+
+  // ── W4 RTP concentration KPI block ──
+  const rtpC = wd.rtp_concentration || {};
+  const rtpHtml = `<div class="mech-section">
+    <h3>${fmt("mgRtpConcentration")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("wdRtpContrib")}</span><span class="mech-value">${rtpC.wheel_rtp_contribution_pp != null ? Number(rtpC.wheel_rtp_contribution_pp).toFixed(2) + "pp" : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgShareOfWin")}</span><span class="mech-value">${_pct(rtpC.share_of_all_win, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgEventRate")}</span><span class="mech-value">${_pct(rtpC.event_rate, 3)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgHitRate")}</span><span class="mech-value">${_pct(rtpC.hit_rate, 1)}</span></div>
+    </div>
+    ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
+  </div>`;
+
+  return `<p class="drilldown-hint"><strong>${fmt("panelWheelDynamics")}</strong></p>` +
+    gpHtml + multHtml + cellHtml + rtpHtml;
+}
+
 // The dimension list (order = render order within each ST section).
 const SPINTYPE_DIMENSIONS = [
   _stDimWinDistribution,
@@ -4860,6 +4951,7 @@ const SPINTYPE_DIMENSIONS = [
   _stDimSettlement,
   _stDimRespin,
   _stDimMinigame,
+  _stDimWheel,
 ];
 
 function renderSpinTypeOutcomes(summary) {
