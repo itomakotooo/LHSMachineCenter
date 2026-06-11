@@ -49,6 +49,7 @@ structure exists and passes its gates — independent of whether any report has 
 | 2 | **Plugins** (new mechanics only) | `fresh_slotlab/analyzer/features/<mechanic>.py` | NEW `AnalyzerFeature` plugins, auto-discovered; STRICT-REUSE existing ones, never fork |
 | 3 | **Wiring** (role/play → analysis) | `fresh_slotlab/analyzer/machine_spec.py` | `ROLE_ANALYSES`, `PLAY_ANALYSES`, `KNOWN_ROLES` extension — how a manifest's roles/plays pull in the right analyses |
 | 4 | **Attribution rule** (only if needed) | `configs/machine_round_win_rules.json` | payid synthesis for a settlement ST with no natural payid, so `sum(payid)==summary` and the fallback bucket stays 0 |
+| 5 | **Frontend ST dimension** (paired with every NEW plugin) | `src/web_console/frontend/app.js` (`_stDim<Mechanic>` in `SPINTYPE_DIMENSIONS`) + `pure.js` i18n | a NEW analysis plugin's output does NOT render by itself — without its per-ST dimension the console shows "almost no information" for that ST. Mirror a sibling dimension (`_stDimRespin`/`_stDimMinigame`/`_stDimWheel`); reuse generic i18n keys; render the `parser_blind` lists honestly. **Missed TWICE (M43 reactively, M279 again — caught only by the user asking "did you open the console?"); it is artifact #5, not an afterthought.** |
 
 None of these is a `_CLOSURE_FILES` member. That is the **isolation invariant**: a new machine
 re-flags only ITS OWN `effective_version`, never the fleet `base_hash`. If onboarding ever needs
@@ -235,9 +236,15 @@ A machine's structure is correct when ALL hold (value-independent — these neve
 5. **Report generates** — `report_engine.generate_report_from_chunks` returns a full summary with
    the frontend-contract keys + every declared ST's output present.
 6. **No double-count** — preview fields → 0; the settlement is the only real win.
-7. **User domain sign-off** — including declaration of any rawdata-invisible (out-of-engine)
+7. **Report RENDERS in the console** — drive the live console headlessly (Playwright; template
+   `scripts/_render_check_m279.py`): every declared ST's section renders, every NEW analysis's
+   dimension displays (artifact #5), values are SANE (the M279 trap: a `sampling.bet=1` summary
+   made every "× bet" column display 1000× inflated — generate via the console path or pass
+   `bet=<chunk _bet>`), zero pageerrors. JSON-correct ≠ rendered-correct; this gate exists because
+   it failed twice (M43, M279) and was only caught by the user opening the console.
+8. **User domain sign-off** — including declaration of any rawdata-invisible (out-of-engine)
    mechanic. Until this, `validation.status` stays `auto` (data-derived, possibly incomplete),
-   NOT `confirmed`. A same-archetype match to a confirmed machine is NOT enough — gate 7 still
+   NOT `confirmed`. A same-archetype match to a confirmed machine is NOT enough — this gate still
    applies (M90 looks identical to M15 in data but isn't).
 
 ---
@@ -285,9 +292,9 @@ The structure above is built to scale to many machines at once. What makes batch
   STs/plugins that W2 checks against, and which GROWS as machines confirm. Two machines that need
   the SAME genuinely-new plugin is the only real conflict; the coordinator de-dups (one plugin,
   both strict-reuse it). Truly-new machine-specific plugins never conflict; reuse is read-only.
-- **The objective gates ARE the batch QC.** Each machine self-certifies via gates 1–6 (value-
+- **The objective gates ARE the batch QC.** Each machine self-certifies via gates 1–7 (value-
   agnostic, automatable). A machine that fails its gates is flagged and set aside — it does NOT
-  block the others. Only gate 7 (user domain sign-off) is human-in-the-loop, and it batches: the
+  block the others. Only gate 8 (user domain sign-off) is human-in-the-loop, and it batches: the
   coordinator collects all machines' domain questions and asks the user once.
 - **ABORT is the back-pressure signal.** A shared-parser ABORT pauses only the machines that need
   that ST; it routes to the framework team (a closure fix re-flags that ST's machines), while
@@ -361,7 +368,7 @@ driver will encode.
   unchanged** for M279's wild-nudge (the incremental payoff: only ONE new plugin `wheel_dynamics` +
   one config rule were written); `base_hash` unchanged throughout; NO ABORT (no shared parser broke);
   the breaker HELD on the hardest sessions (our==server 384/384 robots; every distribution recomputed
-  from raw == the report). Two reusable DOMAIN patterns surfaced (gate 7, user-confirmed) — **these
+  from raw == the report). Two reusable DOMAIN patterns surfaced (gate 8, user-confirmed) — **these
   recur; "occasionally a machine does this":**
   - **Pure-random rare-boost state (skin-11).** 1% of paid spins use a wild-rich "boost reel" (hit
     55% vs 15%, ~13.6× avg, RTP 1361%, ~28% of the base-game RTP). It has NO trigger signal in the
