@@ -438,6 +438,39 @@ class MachineMechanics(AnalyzerFeature):
                     if _avg_len:
                         fs_max_chain = round(_avg_len)
 
+        # Same fallback family for the WIN: on those role/play-declared
+        # machines the CurFreeSpin-based ``freespin_win`` accumulator stays 0
+        # while the free rounds' settled wins live in spin_type_breakdown
+        # (written inline by the engine before the emit loop). Without this,
+        # an APPLICABLE card renders rtp_contribution_pp 0.00 while the same
+        # report shows the real pp elsewhere (the M275 W5 breaker
+        # counterexample). Manifest-driven: sum total_win of the STs whose
+        # role/play is "freespin" — no machine-specific code.
+        if fs_win == 0.0 and fs_applicable and fs_chain_spins > 0:
+            _ms_manifest = getattr(ctx, "machine_spec_manifest", None) or {}
+            _fs_sts: set[str] = set()
+            for _st_key, _st_spec in (_ms_manifest.get("spin_types") or {}).items():
+                if not isinstance(_st_spec, dict):
+                    continue
+                if (str(_st_spec.get("role") or "").lower() == "freespin"
+                        or str(_st_spec.get("play") or "").lower() == "freespin"):
+                    _fs_sts.add(str(_st_key))
+            if _fs_sts:
+                _stb_rows = (
+                    summary.get("player_impact", {})
+                           .get("spin_type_breakdown") or []
+                )
+                _fb_win = 0.0
+                for _stb_row in _stb_rows:
+                    if str(_stb_row.get("spin_type")) in _fs_sts:
+                        _fb_win += float(_stb_row.get("total_win") or 0.0)
+                if _fb_win > 0:
+                    fs_win = _fb_win
+                    fs_detection_src = (
+                        f"{fs_detection_src}+stb_win_fallback"
+                        if fs_detection_src else "stb_win_fallback"
+                    )
+
         free_spin_block = {
             "applicable": fs_applicable,
             "chain_spins": fs_chain_spins,

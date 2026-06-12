@@ -44,7 +44,15 @@ SCHEMA_VERSION = "spintype-native/1"
 # spin (cost=0, premium-skin board, full reels, can win, shares the triggering
 # spin's SpinTimes, win-gated continuation). Data-grounded on M43's WinRespin /
 # ReMarks="ReSpin" feature — it does not fit paid_spin/player_choice/settlement/state.
-KNOWN_ROLES = frozenset({"paid_spin", "player_choice", "settlement", "state", "respin"})
+# "freespin" added 2026-06-12 (M275 onboarding): a GRANTED multi-spin FREE session
+# (cost=0 reel spins) opened by a trigger event (scatter pid and/or counter peak)
+# with a structurally fixed/granted length — NOT a win-driven extension of the
+# same paid spin (that is "respin": nothing here is win-gated; the trigger round
+# typically wins 0). Data-grounded on M275's NewFreespin / ReMarks="Freespin N"
+# (token derived from the machine's own naming, branding prefix belongs to play).
+KNOWN_ROLES = frozenset({
+    "paid_spin", "player_choice", "settlement", "state", "respin", "freespin",
+})
 
 # ── Analysis derivation (replaces the old hand-listed analyzer_features) ──────
 # CROSS_CUTTING: whole-session analyses that apply to every machine.
@@ -69,9 +77,16 @@ PER_SPINTYPE: tuple[str, ...] = (
 #   player_choice -> topdollar_choice  (M15 ST14)
 #   respin        -> respin_dynamics   (M43 ST50: grant-rate / hit-rate uplift /
 #                    continuity / skin-premium symbol mix / RTP-share)
+#   freespin      -> freespin_dynamics (M275 ST126: session cadence / hot-board
+#                    uplift / trigger-path dimension). ROLE hook (not play):
+#                    the analysis applies to ANY freespin-role ST generically
+#                    across the freespin family; there is no role collision to
+#                    scope away (unlike WinMiniGame/Wheel on the shared
+#                    `settlement` role).
 ROLE_ANALYSES: dict[str, tuple[str, ...]] = {
     "player_choice": ("topdollar_choice",),
     "respin": ("respin_dynamics",),
+    "freespin": ("freespin_dynamics",),
 }
 
 # PLAY_ANALYSES: analyses attached to a specific SpinType PLAY (the rawdata
@@ -138,7 +153,12 @@ def derive_mechanism_flags(manifest: dict[str, Any]) -> dict[str, Any]:
 
     Fields returned:
       freespin_applicable : bool
-          True if any SpinType has play == "freespin" (case-insensitive).
+          True if any SpinType has play == "freespin" (case-insensitive) OR
+          role == "freespin" (the structural-kind token; M275's play is the
+          literal FeatureWin key "NewFreespin", so the play check alone would
+          self-contradict the report — bonus_chain_dynamics showing freespin
+          chains while free_spin reads "not applicable". Additive: only
+          manifests declaring the freespin role change output).
       jackpot_applicable : bool
           True if any SpinType has play == "jackpot" (case-insensitive).
       jackpot_pid_set : frozenset[str]
@@ -159,8 +179,18 @@ def derive_mechanism_flags(manifest: dict[str, Any]) -> dict[str, Any]:
     """
     spin_types: dict[str, Any] = manifest.get("spin_types") or {}
     plays_lower = {str(spec.get("play", "")).lower() for spec in spin_types.values()}
+    roles_lower = {
+        str(spec.get("role", "")).lower()
+        for spec in spin_types.values()
+        if isinstance(spec, dict)
+    }
 
-    freespin_applicable: bool = "freespin" in plays_lower
+    # Role-aware freespin derivation (M275, 2026-06-12): a machine whose
+    # freespin feature carries a branded play name (e.g. "NewFreespin")
+    # declares the structural kind via role == "freespin".
+    freespin_applicable: bool = (
+        "freespin" in plays_lower or "freespin" in roles_lower
+    )
     jackpot_applicable: bool = "jackpot" in plays_lower
 
     # Jackpot pid set: collect pids from spin_types that declare a jackpot play.

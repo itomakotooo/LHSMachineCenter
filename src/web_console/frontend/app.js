@@ -4943,6 +4943,225 @@ function _stDimWheel(stCtx) {
     gpHtml + multHtml + cellHtml + rtpHtml;
 }
 
+// Dimension: freespin dynamics — attaches to the FREESPIN event (the ST whose
+// spin_type matches freespin_dynamics.freespin_spin_type, e.g. M275 ST126's
+// NewFreespin granted 10-spin session). Returns "" for all other STs. Reuses
+// the same mech-section/mech-grid KPI blocks + drilldown-table/bar-cell markup
+// as the sibling respin/minigame/wheel dimensions.
+function _stDimFreespin(stCtx) {
+  const fd = ((stCtx.summary || {}).player_impact || {}).freespin_dynamics;
+  if (!fd || !fd.applicable) return "";
+  if (Number(fd.freespin_spin_type) !== Number(stCtx.row.spin_type)) return "";
+
+  // Helper: format a probability value as a percentage string or "—".
+  const _pct = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+  // Helper: format a ratio/multiplier value or "—".
+  const _ratio = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${Number(v).toFixed(d)}×`;
+  // Helper: render a band distribution table (same markup as _stDimRespin).
+  const _bandTable = (dist, titleKey) => {
+    if (!dist || !Array.isArray(dist.bands) || !dist.bands.length) return "";
+    const bands = dist.bands.filter((b) => b.prob != null && Number(b.prob) > 0);
+    if (!bands.length) return "";
+    const maxProb = Math.max(...bands.map((b) => Number(b.prob) || 0), 0.0001);
+    const rows = bands.map((b) => {
+      const prob = Number(b.prob) || 0;
+      const barPct = (prob / maxProb) * 100;
+      const winShare = b.win_share != null ? `${(Number(b.win_share) * 100).toFixed(1)}%` : "—";
+      return (
+        `<tr>` +
+        `<td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
+        `<td>${fInt(b.spin_count)}</td>` +
+        `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
+        `<td>${winShare}</td>` +
+        `</tr>`
+      );
+    }).join("");
+    const tail = dist.tail_ge20x_win_share != null
+      ? `<p class="drilldown-hint">${fmt("rdTailGe20")}: ${_pct(dist.tail_ge20x_win_share, 1)}</p>`
+      : "";
+    return (
+      `<p class="drilldown-hint"><strong>${fmt(titleKey)}</strong> · ${fInt(dist.total_spins)} 次 · ${fInt(dist.win_rounds)} 次赢钱</p>` +
+      `<table class="drilldown-table"><thead><tr>` +
+      `<th>${fmt("rdColBand")}</th><th>${fmt("stoColHits")}</th>` +
+      `<th>${fmt("rdColProb")}</th><th>${fmt("rdColWinShare")}</th>` +
+      `</tr></thead><tbody>${rows}</tbody></table>` +
+      tail
+    );
+  };
+  // Helper: a parser-blind bullet list (same markup as the sibling dims).
+  const _blindList = (items) => (Array.isArray(items) && items.length)
+    ? (`<p class="drilldown-hint"><em>${fmt("mgParserBlind")}:</em></p>` +
+       `<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
+       items.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
+       `</ul>`)
+    : "";
+
+  // ── F1 Session cadence KPI block ──
+  const sc = fd.session_cadence || {};
+  const cont = sc.continuation || {};
+  const corr = sc.chain_structure_corroboration || {};
+  const exitRows = Object.entries(cont.exit_breakdown || {})
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .map(([st, cnt]) => `<tr><td>ST${st}</td><td>${fInt(cnt)}</td></tr>`)
+    .join("");
+  const cadenceHtml = `<div class="mech-section">
+    <h3>${fmt("fsCadence")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("fsOpeners")}</span><span class="mech-value">${fInt(sc.openers)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantRatePerSpin")}</span><span class="mech-value">${_pct(sc.per_paid_spin, 3)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantRateOnePerN")}</span><span class="mech-value">${sc.one_per_n_paid_spins != null ? Number(sc.one_per_n_paid_spins).toFixed(1) : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("fsAvgBlockLen")}</span><span class="mech-value">${sc.avg_block_length_rounds != null ? Number(sc.avg_block_length_rounds).toFixed(2) : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdContinuationProb")}</span><span class="mech-value">${_pct(cont.continuation_prob, 2)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("fsChainCount")}</span><span class="mech-value">${corr.chain_count != null ? fInt(corr.chain_count) : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("fsAvgChainLen")}</span><span class="mech-value">${corr.avg_chain_length != null ? Number(corr.avg_chain_length).toFixed(2) : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("fsRetriggersPerChain")}</span><span class="mech-value">${corr.avg_retriggers_per_chain != null ? Number(corr.avg_retriggers_per_chain).toFixed(3) : "—"}</span></div>
+    </div>
+    ${cont.note ? `<p class="drilldown-hint">${_escHtml(cont.note)}</p>` : ""}
+    ${exitRows ? (`<p class="drilldown-hint">${fmt("rdExitBreakdown")}</p><table class="drilldown-table"><thead><tr><th>ST</th><th>${fmt("tdColCount")}</th></tr></thead><tbody>${exitRows}</tbody></table>`) : ""}
+    ${corr.source ? `<p class="drilldown-hint">${_escHtml(corr.source)}</p>` : ""}
+  </div>`;
+
+  // ── F2 Hot-board uplift KPI block ──
+  const hbu = fd.hot_board_uplift || {};
+  const upliftHtml = `<div class="mech-section">
+    <h3>${fmt("rdHitRateUplift")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("fsFreespinHitRate")}</span><span class="mech-value">${_pct(hbu.freespin_hit_rate, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdBaseHitRate")}</span><span class="mech-value">${_pct(hbu.base_hit_rate, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdUpliftRatio")}</span><span class="mech-value">${_ratio(hbu.uplift_ratio, 2)}</span></div>
+    </div>
+  </div>`;
+
+  // ── F2 Multiplier distributions (freespin + base side by side) ──
+  const multHtml =
+    _bandTable(fd.freespin_multiplier_distribution, "fsFreespinMultDist") +
+    _bandTable(fd.base_multiplier_distribution, "rdBaseMultDist");
+
+  // ── F2 PayID mix (freespin vs base) ──
+  const mix = fd.payid_mix || {};
+  const _payidRows = (shareMap) => {
+    const entries = Object.entries(shareMap || {});
+    if (!entries.length) return "<tr><td colspan='3'>—</td></tr>";
+    return entries
+      .sort((a, b) => Number(b[1].hit_share || 0) - Number(a[1].hit_share || 0))
+      .map(([pid, v]) =>
+        `<tr><td>${pid}</td>` +
+        `<td>${fInt(v.hit_count)}</td>` +
+        `<td>${_pct(v.hit_share, 1)}</td>` +
+        `<td>${_pct(v.win_share, 1)}</td></tr>`
+      ).join("");
+  };
+  const payidHtml = (mix.freespin_payid_share || mix.base_payid_share)
+    ? (`<p class="drilldown-hint"><strong>${fmt("fsPayidMix")}</strong></p>` +
+       `<div style="display:flex;gap:1rem;flex-wrap:wrap;">` +
+       `<div><p class="drilldown-hint">Freespin (ST${fd.freespin_spin_type})</p>` +
+       `<table class="drilldown-table"><thead><tr><th>${fmt("rdColPayid")}</th><th>${fmt("stoColHits")}</th><th>${fmt("rdColHitShare")}</th><th>${fmt("rdColWinShare")}</th></tr></thead><tbody>${_payidRows(mix.freespin_payid_share)}</tbody></table></div>` +
+       `<div><p class="drilldown-hint">Base (ST${fd.base_spin_type})</p>` +
+       `<table class="drilldown-table"><thead><tr><th>${fmt("rdColPayid")}</th><th>${fmt("stoColHits")}</th><th>${fmt("rdColHitShare")}</th><th>${fmt("rdColWinShare")}</th></tr></thead><tbody>${_payidRows(mix.base_payid_share)}</tbody></table></div>` +
+       `</div>` +
+       (mix.note ? `<p class="drilldown-hint">${fmt("rdPayidNote")}: ${_escHtml(mix.note)}</p>` : ""))
+    : "";
+
+  // ── F6 Trigger-path dimension (side-by-side: one column per path) ──
+  const tp = fd.trigger_paths || {};
+  let pathsHtml = "";
+  if (tp.available && Array.isArray(tp.paths) && tp.paths.length) {
+    const paths = tp.paths;
+    const headCols = paths.map((p) => `<th>${_escHtml(p.label || p.path)}</th>`).join("");
+    const _metricRow = (labelKey, cellFn) =>
+      `<tr><td>${fmt(labelKey)}</td>` +
+      paths.map((p) => `<td>${cellFn(p)}</td>`).join("") + `</tr>`;
+    const metricRows =
+      _metricRow("fsRowSessions", (p) => fInt(p.session_count)) +
+      _metricRow("fsRowSessionShare", (p) => _pct(p.session_share, 1)) +
+      _metricRow("fsRowTriggerRate", (p) => _pct(p.trigger_rate_per_paid_spin, 3)) +
+      _metricRow("fsRowOnePerN", (p) => p.one_per_n_paid_spins != null ? Number(p.one_per_n_paid_spins).toFixed(1) : "—") +
+      _metricRow("fsRowRounds", (p) => fInt(p.round_count)) +
+      _metricRow("fsRowWinShare", (p) => _pct(p.win_share, 1)) +
+      _metricRow("fsRowRtpPp", (p) => p.rtp_contribution_pp_split != null ? Number(p.rtp_contribution_pp_split).toFixed(2) + "pp" : "—");
+    // Per-path round-level multiplier band histograms, side by side.
+    const _pathBandTable = (p) => {
+      const rows = (Array.isArray(p.win_band_hist) ? p.win_band_hist : [])
+        .filter((b) => (Number(b.round_count) || 0) > 0);
+      if (!rows.length) return "";
+      const maxProb = Math.max(...rows.map((b) => Number(b.prob) || 0), 0.0001);
+      const body = rows.map((b) => {
+        const prob = Number(b.prob) || 0;
+        const barPct = (prob / maxProb) * 100;
+        return (
+          `<tr><td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
+          `<td>${fInt(b.round_count)}</td>` +
+          `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td></tr>`
+        );
+      }).join("");
+      return (
+        `<div><p class="drilldown-hint">${_escHtml(p.label || p.path)}</p>` +
+        `<table class="drilldown-table"><thead><tr>` +
+        `<th>${fmt("rdColBand")}</th><th>${fmt("fsRowRounds")}</th><th>${fmt("rdColProb")}</th>` +
+        `</tr></thead><tbody>${body}</tbody></table></div>`
+      );
+    };
+    const bandTables = paths.map(_pathBandTable).filter(Boolean).join("");
+    // Surfaced alarm buckets (unknown discriminator values / multi-trigger).
+    const _alarmRows = (list) => (Array.isArray(list) ? list : [])
+      .map((p) =>
+        `<tr><td>${_escHtml(p.path)}</td><td>${fInt(p.session_count)}</td>` +
+        `<td>${fInt(p.round_count)}</td><td>${_pct(p.win_share, 1)}</td></tr>`)
+      .join("");
+    const unknownHtml = (tp.unknown_paths && tp.unknown_paths.length)
+      ? (`<p class="drilldown-hint"><strong>⚠ ${fmt("fsUnknownPaths")}</strong></p>` +
+         `<table class="drilldown-table"><thead><tr><th>${fmt("fsColPath")}</th><th>${fmt("fsRowSessions")}</th><th>${fmt("fsRowRounds")}</th><th>${fmt("rdColWinShare")}</th></tr></thead>` +
+         `<tbody>${_alarmRows(tp.unknown_paths)}</tbody></table>` +
+         (tp.unknown_paths_alarm ? `<p class="drilldown-hint">${_escHtml(tp.unknown_paths_alarm)}</p>` : ""))
+      : "";
+    const multiHtml = (tp.multi_buckets && tp.multi_buckets.length)
+      ? (`<p class="drilldown-hint"><strong>${fmt("fsMultiBuckets")}</strong></p>` +
+         `<table class="drilldown-table"><thead><tr><th>${fmt("fsColPath")}</th><th>${fmt("fsRowSessions")}</th><th>${fmt("fsRowRounds")}</th><th>${fmt("rdColWinShare")}</th></tr></thead>` +
+         `<tbody>${_alarmRows(tp.multi_buckets)}</tbody></table>` +
+         (tp.multi_buckets_note ? `<p class="drilldown-hint">${_escHtml(tp.multi_buckets_note)}</p>` : ""))
+      : "";
+    const errHtml = (tp.extraction_errors && tp.extraction_errors.length)
+      ? `<p class="drilldown-hint"><strong>⚠ extract errors:</strong> ${tp.extraction_errors.map(_escHtml).join("; ")}</p>`
+      : "";
+    pathsHtml = `<div class="mech-section">
+      <h3>${fmt("fsTriggerPaths")}</h3>
+      <p class="drilldown-hint">${fmt("fsTotalSessions")}: ${fInt(tp.total_sessions)}</p>
+      <table class="drilldown-table"><thead><tr><th>${fmt("fsColMetric")}</th>${headCols}</tr></thead><tbody>${metricRows}</tbody></table>
+      ${bandTables ? `<p class="drilldown-hint"><strong>${fmt("fsPathBands")}</strong></p><div style="display:flex;gap:1rem;flex-wrap:wrap;">${bandTables}</div>` : ""}
+      ${unknownHtml}${multiHtml}${errHtml}
+      ${tp.source ? `<p class="drilldown-hint">${_escHtml(tp.source)}</p>` : ""}
+    </div>`;
+  } else if (tp && tp.available === false) {
+    pathsHtml = `<div class="mech-section">
+      <h3>${fmt("fsTriggerPaths")}</h3>
+      <p class="drilldown-hint">${_escHtml(tp.reason || "—")}</p>
+      ${(tp.extraction_errors && tp.extraction_errors.length) ? `<p class="drilldown-hint"><strong>⚠</strong> ${tp.extraction_errors.map(_escHtml).join("; ")}</p>` : ""}
+    </div>`;
+  }
+
+  // ── RTP concentration KPI block ──
+  const rtpC = fd.rtp_concentration || {};
+  const rtpHtml = `<div class="mech-section">
+    <h3>${fmt("rdRtpConcentration")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("fsRtpContrib")}</span><span class="mech-value">${rtpC.freespin_rtp_contribution_pp != null ? Number(rtpC.freespin_rtp_contribution_pp).toFixed(2) + "pp" : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdShareOfWin")}</span><span class="mech-value">${_pct(rtpC.share_of_all_win, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdFatTailShare")}</span><span class="mech-value">${_pct(rtpC.fat_tail_ge20x_win_share, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdLossRate")}</span><span class="mech-value">${_pct(rtpC.zero_win_round_rate, 1)}</span></div>
+    </div>
+    ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
+  </div>`;
+
+  // ── F3a/F4/F5 honest parser-blind notice ──
+  const blindHtml = _blindList(fd.parser_blind) +
+    (fd.parser_blind_reason ? `<p class="drilldown-hint">${_escHtml(fd.parser_blind_reason)}</p>` : "");
+
+  return `<p class="drilldown-hint"><strong>${fmt("panelFreespinDynamics")}</strong></p>` +
+    cadenceHtml + upliftHtml + multHtml + payidHtml + pathsHtml + rtpHtml + blindHtml;
+}
+
 // The dimension list (order = render order within each ST section).
 const SPINTYPE_DIMENSIONS = [
   _stDimWinDistribution,
@@ -4952,6 +5171,7 @@ const SPINTYPE_DIMENSIONS = [
   _stDimRespin,
   _stDimMinigame,
   _stDimWheel,
+  _stDimFreespin,
 ];
 
 function renderSpinTypeOutcomes(summary) {
@@ -5003,7 +5223,13 @@ function renderMachineMechanics(summary) {
   const ls = mm.lock_symbols || {};
   const lr = mm.lock_reels || {};
   const jp = mm.jackpot || {};
-  const anyApplicable = ll.applicable || ls.applicable || lr.applicable || jp.applicable;
+  const fsMech = mm.free_spin || {};
+  const dpMech = mm.dollar_pick || {};
+  // Visibility gate must cover EVERY section the body below renders —
+  // free_spin/dollar_pick were missing, so a machine whose ONLY applicable
+  // mechanic is free_spin (M275) hid the whole panel (gate-7 finding).
+  const anyApplicable = ll.applicable || ls.applicable || lr.applicable ||
+    jp.applicable || fsMech.applicable || dpMech.applicable;
   if (!anyApplicable) { panel.classList.add("hidden"); return; }
 
   panel.classList.remove("hidden");
