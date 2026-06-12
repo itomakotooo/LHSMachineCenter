@@ -42,6 +42,10 @@ from src.web_console.backend.config_writer import (
 # See session_artifacts/_arch/deploy/04_deploy_architecture_proposal_v2.md §4.1 + §4.5.
 from src.web_console.backend.cell_lock_registry import CellLockRegistry, CellOperation
 from src.web_console.backend.rate_limiter import ConcurrencyLimiter
+from src.web_console.backend.report_index import (
+    build_index_entry,
+    append_and_rewrite_latest,
+)
 
 
 def utc_now() -> str:
@@ -2804,7 +2808,10 @@ def load_machines(
                 logic = m.get("logicClassNames", [])
                 m.setdefault("category", _classify_machine(logic))
                 m.setdefault("available", bool(logic))
-                # Count on-disk report versions for this machine.
+                # Count on-disk report versions that have a player_impact_summary.json.
+                # Empty dirs and dirs holding only machine_config.json / progress.jsonl
+                # (failed runs) are excluded so the catalog count matches what the panel
+                # actually shows (F3 fix, 2026-06-12).
                 report_count = 0
                 machine_dir = rr / m["machine"]
                 if machine_dir.is_dir():
@@ -2812,7 +2819,9 @@ def load_machines(
                         versions_dir = mode_dir / "versions"
                         if versions_dir.is_dir():
                             report_count += sum(
-                                1 for v in versions_dir.iterdir() if v.is_dir()
+                                1 for v in versions_dir.iterdir()
+                                if v.is_dir()
+                                and (v / "player_impact_summary.json").exists()
                             )
                 m["report_count"] = report_count
             return machines
@@ -6645,77 +6654,38 @@ class RunManager:
             self._running.pop(managed.run_id, None)
 
     def _update_report_index(self, managed: ManagedRun) -> None:
+        """Write index.json + latest.json for a completed sampling run.
+
+        Routes through ``build_index_entry`` + ``append_and_rewrite_latest``
+        for shape unification (F1, 2026-06-12): same builder as the
+        generate-report and batch-generate paths.
+        """
         mode_dir = self._reports_root / managed.machine / f"mode_{managed.mode}"
-        index_path = mode_dir / "index.json"
-        latest_path = mode_dir / "latest.json"
         summary = read_json(managed.summary_file)
 
-        index_payload = []
-        if index_path.exists():
-            try:
-                raw = read_json(index_path)
-                if isinstance(raw, list):
-                    index_payload = raw
-            except Exception:
-                index_payload = []
-        rtp_point_pct = summary.get("rtp", {}).get("point_pct")
-        achieved_hw_pp = summary.get("sampling", {}).get("achieved_halfwidth_pp")
-        quality_label = summary.get("guideline_assessment", {}).get("data_quality", {}).get("quality_label")
-        # Version fingerprints let run-history flag stale reports without
-        # re-reading summary.json on every list. Three dimensions:
-        #   rawdata_config_md5 / rawdata_code_md5 = server-side machine
-        #     version captured at sampling time (fresh iff matches
-        #     machines.json current). Stale → resample required.
-        #   analyzer_version = local analyzer source hash at report-
-        #     generation time (fresh iff matches current Python code).
-        #     Stale → regenerate from rawdata via the new Part A path.
-        rawdata_config_md5 = summary.get("config_md5")
-        rawdata_code_md5 = summary.get("code_md5")
-        analyzer_version = summary.get("analyzer_version")
-        # Phase 3 item 4: effective_analyzer_version is the per-(machine,
-        # mode) hash that invalidates only machines actually using the
-        # changed feature(s). Lives alongside the legacy analyzer_version
-        # field (which hashes the analyzer source only — not per-machine).
-        # When PIA's summary writer ships the new field (deferred to a
-        # later commit; see ticket 09_phase3_manifest_bootstrap notes),
-        # this code picks it up automatically. Until then the value is
-        # None and old run rows render with empty-string in the index.
-        effective_analyzer_version = summary.get("effective_analyzer_version")
-        total_spins = summary.get("sampling", {}).get("total_spins")
-        item = {
-            "report_version": managed.report_version,
-            "run_id": managed.run_id,
-            "created_at": utc_now(),
-            "summary_file": str(managed.summary_file),
-            "report_file": str(managed.report_file),
-            "rtp_point_pct": rtp_point_pct,
-            # Keep both legacy (rtp_point_pct) and frontend-expected
-            # (achieved_*) keys so the version-history table can
-            # render RTP / CI / Spins without re-reading summary.json
-            # per row.
-            "achieved_rtp_pct": rtp_point_pct,
-            "achieved_halfwidth_pp": achieved_hw_pp,
-            "total_spins": total_spins,
-            "quality_label": quality_label,
-            # 2026-04-26: stamp rawdata md5 onto the index row so the
-            # /api/reports/{m}/{n} endpoint can filter by rawdata
-            # version WITHOUT re-opening every summary file. Reports
-            # generated before this commit have no md5 here; the
-            # endpoint treats "missing" as "untagged" so old reports
-            # neither leak into a current-md5 view nor disappear from
-            # an "include_historical=true" view.
-            "rawdata_config_md5": rawdata_config_md5 or "",
-            "rawdata_code_md5": rawdata_code_md5 or "",
-            "analyzer_version": analyzer_version or "",
-            "effective_analyzer_version": effective_analyzer_version or "",
-        }
-        index_payload.append(item)
-        # Phase 1 deploy: atomic + per-file-locked
-        atomic_json_write(index_path, index_payload)
-        atomic_json_write(latest_path, item)
+        # F1: use canonical builder + locked writer.
+        item = build_index_entry(
+            self._reports_root,
+            managed.machine,
+            managed.mode,
+            managed.report_version,
+            managed.run_id,
+            summary=summary,
+            summary_path=managed.summary_file,
+        )
+        append_and_rewrite_latest(mode_dir, item)
+
         # Persist the achieved RTP + CI + quality_label onto the runs
         # row so the merged Run History table can show them without
         # reading every summary.json on list.
+        rtp_point_pct = item.get("rtp_point_pct")
+        achieved_hw_pp = item.get("achieved_halfwidth_pp")
+        quality_label = item.get("quality_label")
+        rawdata_config_md5 = item.get("rawdata_config_md5")
+        rawdata_code_md5 = item.get("rawdata_code_md5")
+        analyzer_version = item.get("analyzer_version")
+        effective_analyzer_version = item.get("effective_analyzer_version")
+        total_spins = item.get("total_spins")
         patch: dict[str, Any] = {}
         if rtp_point_pct is not None:
             patch["achieved_rtp_pct"] = float(rtp_point_pct)
@@ -9539,6 +9509,7 @@ def create_app(
             rawdata_cfg = summary.get("config_md5") or ""
             rawdata_code = summary.get("code_md5") or ""
             analyzer_ver = summary.get("analyzer_version") or ""
+            eff_analyzer_ver = summary.get("effective_analyzer_version") or ""
             total_spins_val = summary.get("sampling", {}).get("total_spins")
 
             store.update_run(new_run_id, {
@@ -9550,35 +9521,17 @@ def create_app(
                 "rawdata_config_md5": str(rawdata_cfg) if rawdata_cfg else None,
                 "rawdata_code_md5": str(rawdata_code) if rawdata_code else None,
                 "analyzer_version": str(analyzer_ver) if analyzer_ver else None,
+                "effective_analyzer_version": str(eff_analyzer_ver) if eff_analyzer_ver else None,
                 "total_spins": int(total_spins_val) if total_spins_val is not None else None,
             })
 
             mode_reports_dir = rr / machine / f"mode_{mode}"
-            index_path = mode_reports_dir / "index.json"
-            latest_path = mode_reports_dir / "latest.json"
-            item = {
-                "report_version": report_version,
-                "run_id": new_run_id,
-                "created_at": utc_now(),
-                "summary_file": str(summary_file),
-                "report_file": str(report_file),
-                "rtp_point_pct": rtp,
-                "achieved_rtp_pct": rtp,
-                "achieved_halfwidth_pp": hw,
-                "total_spins": total_spins_val,
-                "quality_label": ql,
-            }
-            index_payload = []
-            if index_path.exists():
-                try:
-                    raw = read_json(index_path)
-                    if isinstance(raw, list):
-                        index_payload = raw
-                except Exception:
-                    pass
-            index_payload.append(item)
-            atomic_json_write(index_path, index_payload)
-            atomic_json_write(latest_path, item)
+            # F1: use builder + locked writer for full shape + race-safe index.
+            item = build_index_entry(
+                rr, machine, mode, report_version, new_run_id,
+                summary=summary, summary_path=summary_file,
+            )
+            append_and_rewrite_latest(mode_reports_dir, item)
 
             try:
                 _merge_machine_static(
@@ -9619,6 +9572,30 @@ def create_app(
                     "finished_at": utc_now(),
                     "error_message": str(getattr(exc, "detail", exc))[:500],
                 })
+            # F2: remove the created version dir when it has no summary (litter guard).
+            if "output_dir" in locals() and isinstance(output_dir, Path):
+                _sf = output_dir / "player_impact_summary.json"
+                if output_dir.exists() and not _sf.exists():
+                    try:
+                        shutil.rmtree(output_dir, ignore_errors=True)
+                    except Exception as _f2_exc:  # noqa: BLE001
+                        # Persist sidecar note (feedback_no_silent_swallow).
+                        _f2_rid = str(new_run_id)[:8] if "new_run_id" in dir() else "gen"
+                        _f2_note = output_dir.parent / f"_cleanup_failed_{_f2_rid}.json"
+                        try:
+                            _f2_note.parent.mkdir(parents=True, exist_ok=True)
+                            _f2_note.write_text(
+                                json.dumps({"output_dir": str(output_dir),
+                                            "error": f"{type(_f2_exc).__name__}: {_f2_exc}"}),
+                                encoding="utf-8",
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                        print(
+                            f"[generate] F2 cleanup failed for {output_dir}: "
+                            f"{type(_f2_exc).__name__}: {_f2_exc}",
+                            file=sys.stderr,
+                        )
             raise
         except Exception as exc:
             if "new_run_id" in locals() and store.get_run(new_run_id):
@@ -9627,6 +9604,30 @@ def create_app(
                     "finished_at": utc_now(),
                     "error_message": f"{exc.__class__.__name__}: {exc}"[:500],
                 })
+            # F2: remove the created version dir when it has no summary (litter guard).
+            if "output_dir" in locals() and isinstance(output_dir, Path):
+                _sf = output_dir / "player_impact_summary.json"
+                if output_dir.exists() and not _sf.exists():
+                    try:
+                        shutil.rmtree(output_dir, ignore_errors=True)
+                    except Exception as _f2_exc:  # noqa: BLE001
+                        # Persist sidecar note (feedback_no_silent_swallow).
+                        _f2_rid = str(new_run_id)[:8] if "new_run_id" in dir() else "gen"
+                        _f2_note = output_dir.parent / f"_cleanup_failed_{_f2_rid}.json"
+                        try:
+                            _f2_note.parent.mkdir(parents=True, exist_ok=True)
+                            _f2_note.write_text(
+                                json.dumps({"output_dir": str(output_dir),
+                                            "error": f"{type(_f2_exc).__name__}: {_f2_exc}"}),
+                                encoding="utf-8",
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                        print(
+                            f"[generate] F2 cleanup failed for {output_dir}: "
+                            f"{type(_f2_exc).__name__}: {_f2_exc}",
+                            file=sys.stderr,
+                        )
             raise HTTPException(
                 status_code=500,
                 detail=f"generate-report failed: {exc.__class__.__name__}: {exc}",
@@ -9853,6 +9854,34 @@ def create_app(
 
         if not worker_result.get("ok"):
             err = str(worker_result.get("error") or "worker failed")
+            # F2: remove the version dir when no summary was written (litter guard).
+            # Must be BEFORE the return so the cleanup actually runs.
+            _sf_batch = output_dir / "player_impact_summary.json"
+            if output_dir.exists() and not _sf_batch.exists():
+                try:
+                    shutil.rmtree(output_dir, ignore_errors=True)
+                except Exception as _f2_exc:  # noqa: BLE001
+                    # Write a sidecar note so the operator can see why the dir
+                    # survived (feedback_no_silent_swallow).
+                    _note_path = output_dir.parent / f"_cleanup_failed_{run_id[:8]}.json"
+                    try:
+                        _note_path.parent.mkdir(parents=True, exist_ok=True)
+                        import json as _json_mod
+                        _note_path.write_text(
+                            _json_mod.dumps({
+                                "run_id": run_id,
+                                "output_dir": str(output_dir),
+                                "error": f"{type(_f2_exc).__name__}: {_f2_exc}",
+                            }),
+                            encoding="utf-8",
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
+                    print(
+                        f"[batch-generate] F2 cleanup failed for {output_dir}: "
+                        f"{type(_f2_exc).__name__}: {_f2_exc}",
+                        file=sys.stderr,
+                    )
             if store.get_run(run_id):
                 store.update_run(run_id, {
                     "status": "failed",
@@ -9874,6 +9903,7 @@ def create_app(
         rawdata_cfg = summary.get("config_md5") or ""
         rawdata_code = summary.get("code_md5") or ""
         analyzer_ver = summary.get("analyzer_version") or ""
+        eff_analyzer_ver = summary.get("effective_analyzer_version") or ""
         total_spins_val = summary.get("sampling", {}).get("total_spins")
         store.update_run(run_id, {
             "status": "completed",
@@ -9884,35 +9914,16 @@ def create_app(
             "rawdata_config_md5": str(rawdata_cfg) if rawdata_cfg else None,
             "rawdata_code_md5": str(rawdata_code) if rawdata_code else None,
             "analyzer_version": str(analyzer_ver) if analyzer_ver else None,
+            "effective_analyzer_version": str(eff_analyzer_ver) if eff_analyzer_ver else None,
             "total_spins": int(total_spins_val) if total_spins_val is not None else None,
         })
         mode_reports_dir = rr / machine / f"mode_{mode}"
-        index_path = mode_reports_dir / "index.json"
-        latest_path = mode_reports_dir / "latest.json"
-        item = {
-            "report_version": report_version,
-            "run_id": run_id,
-            "created_at": utc_now(),
-            "summary_file": str(summary_file),
-            "report_file": str(report_file),
-            "rtp_point_pct": rtp,
-            "achieved_rtp_pct": rtp,
-            "achieved_halfwidth_pp": hw,
-            "total_spins": total_spins_val,
-            "quality_label": ql,
-        }
-        index_payload = []
-        if index_path.exists():
-            try:
-                raw = read_json(index_path)
-                if isinstance(raw, list):
-                    index_payload = raw
-            except Exception:
-                pass
-        index_payload.append(item)
-        # Phase 1 deploy: atomic + per-file-locked
-        atomic_json_write(index_path, index_payload)
-        atomic_json_write(latest_path, item)
+        # F1: use builder + locked writer for full shape + race-safe index.
+        item = build_index_entry(
+            rr, machine, mode, report_version, run_id,
+            summary=summary, summary_path=summary_file,
+        )
+        append_and_rewrite_latest(mode_reports_dir, item)
         try:
             _merge_machine_static(machine, summary, mc, _static_attrs_path(mc))
         except Exception:
@@ -10273,7 +10284,8 @@ def create_app(
                     or entry.get("achieved_halfwidth_pp") is None
                     or entry.get("total_spins") is None
                 )
-                if not needs_md5_fill and not needs_perf_fill:
+                needs_eff_ver_fill = "effective_analyzer_version" not in entry
+                if not needs_md5_fill and not needs_perf_fill and not needs_eff_ver_fill:
                     continue
                 sf = entry.get("summary_file")
                 if not sf or not Path(sf).exists():
@@ -10282,6 +10294,8 @@ def create_app(
                     if needs_md5_fill:
                         entry.setdefault("rawdata_config_md5", "")
                         entry.setdefault("rawdata_code_md5", "")
+                    if needs_eff_ver_fill:
+                        entry.setdefault("effective_analyzer_version", "")
                     continue
                 try:
                     s = read_json(Path(sf)) or {}
@@ -10289,6 +10303,8 @@ def create_app(
                     if needs_md5_fill:
                         entry.setdefault("rawdata_config_md5", "")
                         entry.setdefault("rawdata_code_md5", "")
+                    if needs_eff_ver_fill:
+                        entry.setdefault("effective_analyzer_version", "")
                     continue
                 samp = s.get("sampling") or {}
                 if entry.get("achieved_rtp_pct") is None:
@@ -10304,6 +10320,10 @@ def create_app(
                     entry["rawdata_config_md5"] = str(s.get("config_md5") or "")
                     entry["rawdata_code_md5"] = str(s.get("code_md5") or "")
                     entry.setdefault("analyzer_version", str(s.get("analyzer_version") or ""))
+                if needs_eff_ver_fill:
+                    entry["effective_analyzer_version"] = str(
+                        s.get("effective_analyzer_version") or ""
+                    )
 
         # md5 filtering. When EITHER query md5 is set we treat it as
         # "filter to this rawdata version". Reports with empty stored
@@ -10632,6 +10652,11 @@ def create_app(
                     s.get("guideline_assessment", {}).get("quality_label")
                     or s.get("quality_label")
                 )
+                _imp_rawdata_cfg = s.get("config_md5") or ""
+                _imp_rawdata_code = s.get("code_md5") or ""
+                _imp_analyzer_ver = s.get("analyzer_version") or ""
+                _imp_eff_analyzer_ver = s.get("effective_analyzer_version") or ""
+                _imp_total_spins = sam.get("total_spins")
                 row = {
                     "run_id": run_id,
                     "machine": machine_n,
@@ -10653,12 +10678,23 @@ def create_app(
                     "output_dir": str(dst),
                     "progress_file": str(dst / "progress.jsonl"),
                     "summary_file": str(dst / "player_impact_summary.json"),
-                    "report_file": str(dst / "player_impact_report.md"),
+                    # report_file: only set when the .md actually exists in the source
+                    # (mirrors build_index_entry logic — new-engine reports have no .md).
+                    "report_file": (
+                        str(dst / "player_impact_report.md")
+                        if (source_v / "player_impact_report.md").exists()
+                        else None
+                    ),
                     "error_message": None,
                     "process_pid": 0,
                     "achieved_rtp_pct": rtp_pct,
                     "achieved_halfwidth_pp": ci_hw,
                     "quality_label": qa,
+                    "rawdata_config_md5": _imp_rawdata_cfg or None,
+                    "rawdata_code_md5": _imp_rawdata_code or None,
+                    "analyzer_version": _imp_analyzer_ver or None,
+                    "effective_analyzer_version": _imp_eff_analyzer_ver or None,
+                    "total_spins": int(_imp_total_spins) if _imp_total_spins is not None else None,
                 }
 
                 # 2. Insert placeholder row.
@@ -10679,9 +10715,9 @@ def create_app(
                                     source_v.name, run_id, exc)
                     return False
 
-                # 4. Flip status → completed. If this tiny final update fails,
-                #    we roll back the whole thing rather than leave a row
-                #    stuck at "importing" forever (operator re-imports cleanly).
+                # 4. Flip status → completed + index+latest entry (F1).
+                # If this tiny final update fails, roll back the whole thing
+                # rather than leave a row stuck at "importing" forever.
                 try:
                     store.update_run(run_id, {"status": "completed"})
                 except Exception as exc:  # noqa: BLE001
@@ -10689,6 +10725,24 @@ def create_app(
                     _record_failure("update_status", machine_n, mode_n,
                                     source_v.name, run_id, exc)
                     return False
+
+                # 5. F1: append index+latest (best-effort; failure does NOT
+                #    roll back — reconcile can re-index later).
+                try:
+                    _dst_summary_path = dst / "player_impact_summary.json"
+                    _mode_reports_dir = rr / machine_n / f"mode_{mode_n}"
+                    _idx_entry = build_index_entry(
+                        rr, machine_n, mode_n, source_v.name, run_id,
+                        summary=s, summary_path=_dst_summary_path,
+                    )
+                    append_and_rewrite_latest(_mode_reports_dir, _idx_entry)
+                except Exception as _idx_exc:  # noqa: BLE001
+                    print(
+                        f"[import-reports] index append failed for "
+                        f"{machine_n}|{mode_n}|{source_v.name}: "
+                        f"{type(_idx_exc).__name__}: {_idx_exc}",
+                        file=sys.stderr,
+                    )
 
                 return True
 
@@ -10764,6 +10818,580 @@ def create_app(
             )
         finally:
             registry.release_global("prune_versions")
+
+    def reconcile_reports(
+        dry_run: bool = True,
+        reports_root_override: Path | None = None,
+    ) -> dict[str, Any]:
+        """Repair the existing report-store litter (F4, 2026-06-12).
+
+        Action classes (per design — EXACTLY these, never md5-driven):
+          1. empty version dir → delete.
+          2. dir without player_impact_summary.json → delete ONLY IF
+             no running/pending run references it AND mtime > 1 h old.
+          3. dir WITH summary but not in index.json → append rebuilt entry.
+          4. index entry whose summary_file path is non-canonical:
+               - canonical exists → rewrite entry to canonical path.
+               - old path exists → copy version dir to canonical, rewrite.
+               - neither → drop the entry (zombie).
+          5. index entries missing md5/analyzer/effective/perf fields →
+             persist-backfill from summary.
+          6. report_file key in entry but .md not on disk → drop the key.
+          7. Recompute latest.json from the final index.
+          8. SQLite: backfill effective_analyzer_version (and rawdata
+             md5s) on completed rows from their summaries.
+
+        Never deletes based on md5 (feedback_md5_is_a_tag_not_a_destruction_signal).
+        Returns a full action report; never silent (feedback_no_silent_swallow).
+        """
+        import time as _time_mod
+
+        _rr = reports_root_override if reports_root_override is not None else rr
+        now_ts = _time_mod.time()
+        ONE_HOUR = 3600.0
+
+        # Build a set of report_version strings referenced by active runs.
+        # Non-terminal statuses that create dirs-without-summaries:
+        #   "running"   — generate/batch-generate inserts as "running" BEFORE engine runs
+        #   "importing" — import inserts as "importing" BEFORE copytree completes
+        #   "pending"   — queued items that may have had output_dir created already
+        # Guard is fail-CLOSED: if the DB query throws, skip ALL no-summary-dir
+        # deletions (safer than proceeding with an empty guard set).
+        _NON_TERMINAL_STATUSES = ("running", "importing", "pending")
+        active_run_versions: set[str] = set()
+        _guard_unavailable = 0
+        try:
+            for _status in _NON_TERMINAL_STATUSES:
+                try:
+                    _status_rows = store.list_runs_by_status(_status, limit=5000)
+                    for _r in _status_rows:
+                        _rv = _r.get("report_version")
+                        if _rv:
+                            active_run_versions.add(str(_rv))
+                except Exception as _inner_exc:  # noqa: BLE001
+                    _guard_unavailable += 1
+                    print(
+                        f"[reconcile] could not list {_status!r} runs: "
+                        f"{type(_inner_exc).__name__}: {_inner_exc}",
+                        file=sys.stderr,
+                    )
+        except Exception as _outer_exc:  # noqa: BLE001
+            _guard_unavailable += len(_NON_TERMINAL_STATUSES)
+            print(
+                f"[reconcile] unexpected error building active_run_versions: "
+                f"{type(_outer_exc).__name__}: {_outer_exc}",
+                file=sys.stderr,
+            )
+
+        result: dict[str, Any] = {
+            "dry_run": dry_run,
+            "actions": [],
+            "counts": {
+                "empty_dir_delete": 0,
+                "no_summary_dir_delete": 0,
+                "no_summary_dir_skip_active": 0,
+                "no_summary_dir_skip_recent": 0,
+                "guard_unavailable": _guard_unavailable,
+                "unindexed_summary_append": 0,
+                "path_rewrite_to_canonical": 0,
+                "path_copy_to_canonical": 0,
+                "zombie_entry_drop": 0,
+                "persist_backfill": 0,
+                "unfillable_field": 0,
+                "report_file_key_drop": 0,
+                "latest_recompute": 0,
+                "sqlite_backfill": 0,
+                "errors": 0,
+            },
+        }
+
+        def _log_action(cls: str, path: str, detail: str = "") -> None:
+            result["actions"].append({"class": cls, "path": path, "detail": detail})
+            result["counts"][cls] = result["counts"].get(cls, 0) + 1
+
+        def _log_error(path: str, detail: str) -> None:
+            result["actions"].append({"class": "error", "path": path, "detail": detail})
+            result["counts"]["errors"] += 1
+
+        if not _rr.is_dir():
+            return result
+
+        VERSION_PFX = "rv_"
+        MODE_PFX = "mode_"
+
+        for machine_dir in sorted(_rr.iterdir()):
+            if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
+                continue
+            machine_name = machine_dir.name
+            for mode_dir in sorted(machine_dir.iterdir()):
+                if not mode_dir.is_dir() or not mode_dir.name.startswith(MODE_PFX):
+                    continue
+                try:
+                    mode_int = int(mode_dir.name.split("_", 1)[1])
+                except (IndexError, ValueError):
+                    continue
+
+                versions_dir = mode_dir / "versions"
+                if not versions_dir.is_dir():
+                    continue
+
+                index_path = mode_dir / "index.json"
+
+                # Read current index (may be empty / missing).
+                current_index: list[dict[str, Any]] = []
+                if index_path.exists():
+                    try:
+                        raw = read_json(index_path)
+                        if isinstance(raw, list):
+                            current_index = [e for e in raw if isinstance(e, dict)]
+                    except Exception:  # noqa: BLE001
+                        current_index = []
+
+                # Build lookup: report_version → index entry.
+                indexed_by_rv: dict[str, dict[str, Any]] = {
+                    str(e.get("report_version", "")): e
+                    for e in current_index
+                    if e.get("report_version")
+                }
+
+                new_index: list[dict[str, Any]] = list(current_index)
+                index_dirty = False
+
+                # --- Scan version dirs on disk ---
+                try:
+                    vdirs = sorted(
+                        [d for d in versions_dir.iterdir()
+                         if d.is_dir() and d.name.startswith(VERSION_PFX)],
+                        key=lambda p: p.name,
+                    )
+                except OSError as _exc:
+                    _log_error(str(versions_dir), f"iterdir failed: {_exc}")
+                    continue
+
+                for vdir in vdirs:
+                    summary_path = vdir / "player_impact_summary.json"
+                    vname = vdir.name
+
+                    # Action 1: empty dir (no files at all).
+                    try:
+                        dir_files = list(vdir.iterdir())
+                    except OSError:
+                        dir_files = []
+                    if not dir_files:
+                        _log_action("empty_dir_delete", str(vdir))
+                        if not dry_run:
+                            try:
+                                vdir.rmdir()
+                            except OSError as _exc:
+                                _log_error(str(vdir), f"rmdir: {_exc}")
+                        # Remove from index if present.
+                        if vname in indexed_by_rv:
+                            new_index = [e for e in new_index if e.get("report_version") != vname]
+                            del indexed_by_rv[vname]
+                            index_dirty = True
+                        continue
+
+                    # Action 2: no summary, not empty.
+                    if not summary_path.exists():
+                        if vname in active_run_versions:
+                            _log_action("no_summary_dir_skip_active", str(vdir),
+                                        "run still active")
+                            result["counts"]["no_summary_dir_skip_active"] = (
+                                result["counts"].get("no_summary_dir_skip_active", 0) + 1
+                            )
+                            continue
+                        # Fail-CLOSED: if the active-run guard query failed for any
+                        # status, do NOT delete — we cannot confirm the run is inactive.
+                        if _guard_unavailable:
+                            _log_action("no_summary_dir_skip_active", str(vdir),
+                                        f"guard_unavailable={_guard_unavailable} "
+                                        "skipped for safety")
+                            result["counts"]["no_summary_dir_skip_active"] = (
+                                result["counts"].get("no_summary_dir_skip_active", 0) + 1
+                            )
+                            result["counts"]["guard_unavailable"] = _guard_unavailable
+                            continue
+                        try:
+                            mtime = vdir.stat().st_mtime
+                            age = now_ts - mtime
+                        except OSError:
+                            age = ONE_HOUR + 1
+                        if age < ONE_HOUR:
+                            _log_action("no_summary_dir_skip_recent", str(vdir),
+                                        f"age={age:.0f}s < 1h")
+                            result["counts"]["no_summary_dir_skip_recent"] = (
+                                result["counts"].get("no_summary_dir_skip_recent", 0) + 1
+                            )
+                            continue
+                        _log_action("no_summary_dir_delete", str(vdir))
+                        if not dry_run:
+                            try:
+                                import shutil as _shutil
+                                _shutil.rmtree(vdir, ignore_errors=True)
+                            except Exception as _exc:  # noqa: BLE001
+                                _log_error(str(vdir), f"rmtree: {_exc}")
+                        if vname in indexed_by_rv:
+                            new_index = [e for e in new_index if e.get("report_version") != vname]
+                            del indexed_by_rv[vname]
+                            index_dirty = True
+                        continue
+
+                    # Summary exists — read it.
+                    try:
+                        summary = read_json(summary_path)
+                    except Exception as _exc:  # noqa: BLE001
+                        _log_error(str(vdir), f"read_summary: {_exc}")
+                        continue
+
+                    run_id_in_summary = str(summary.get("run_id") or "")
+
+                    # Action 3: dir with summary but not in index.
+                    if vname not in indexed_by_rv:
+                        _log_action("unindexed_summary_append", str(vdir))
+                        if not dry_run:
+                            try:
+                                entry = build_index_entry(
+                                    _rr, machine_name, mode_int, vname,
+                                    run_id_in_summary,
+                                    summary=summary, summary_path=summary_path,
+                                )
+                                new_index.append(entry)
+                                indexed_by_rv[vname] = entry
+                                index_dirty = True
+                            except Exception as _exc:  # noqa: BLE001
+                                _log_error(str(vdir), f"build_entry: {_exc}")
+                        continue
+
+                    # Action 4: path canonicality.
+                    existing_entry = indexed_by_rv[vname]
+                    stored_sf = str(existing_entry.get("summary_file") or "")
+                    canonical_sf = str(summary_path)
+                    if stored_sf != canonical_sf:
+                        if summary_path.exists():
+                            # Canonical copy exists — just rewrite the entry path.
+                            _log_action("path_rewrite_to_canonical", str(vdir),
+                                        f"{stored_sf!r} → {canonical_sf!r}")
+                            if not dry_run:
+                                try:
+                                    new_entry = dict(existing_entry)
+                                    new_entry["summary_file"] = canonical_sf
+                                    # Also fix report_file if it pointed elsewhere.
+                                    stored_rf = str(new_entry.get("report_file") or "")
+                                    canonical_rf = str(vdir / "player_impact_report.md")
+                                    if stored_rf and stored_rf != canonical_rf:
+                                        if Path(canonical_rf).exists():
+                                            new_entry["report_file"] = canonical_rf
+                                        elif not Path(stored_rf).exists():
+                                            new_entry.pop("report_file", None)
+                                    idx_pos = next(
+                                        (i for i, e in enumerate(new_index)
+                                         if e.get("report_version") == vname), None
+                                    )
+                                    if idx_pos is not None:
+                                        new_index[idx_pos] = new_entry
+                                    indexed_by_rv[vname] = new_entry
+                                    index_dirty = True
+                                except Exception as _exc:  # noqa: BLE001
+                                    _log_error(str(vdir), f"rewrite_entry: {_exc}")
+                        elif stored_sf and Path(stored_sf).exists():
+                            # Old path exists but canonical doesn't (or exists
+                            # partially with litter) — copy dir.
+                            # Use dirs_exist_ok=True so partial canonical vdirs
+                            # (machine_config.json / progress.jsonl litter) don't
+                            # cause FileExistsError (Python >= 3.8).
+                            _files_copied: list[str] = []
+                            _log_action("path_copy_to_canonical", str(vdir),
+                                        f"copy from {stored_sf!r}")
+                            if not dry_run:
+                                try:
+                                    import shutil as _shutil
+
+                                    def _record_copy(src: str, dst: str, **_kw: Any) -> str:
+                                        _files_copied.append(dst)
+                                        return dst
+
+                                    _shutil.copytree(
+                                        Path(stored_sf).parent, vdir,
+                                        dirs_exist_ok=True,
+                                        copy_function=_shutil.copy2,
+                                    )
+                                    new_entry = dict(existing_entry)
+                                    new_entry["summary_file"] = canonical_sf
+                                    new_entry.pop("report_file", None)
+                                    md_path = vdir / "player_impact_report.md"
+                                    if md_path.exists():
+                                        new_entry["report_file"] = str(md_path)
+                                    idx_pos = next(
+                                        (i for i, e in enumerate(new_index)
+                                         if e.get("report_version") == vname), None
+                                    )
+                                    if idx_pos is not None:
+                                        new_index[idx_pos] = new_entry
+                                    indexed_by_rv[vname] = new_entry
+                                    index_dirty = True
+                                    # Surface what was copied in the action detail.
+                                    result["actions"][-1]["detail"] = (
+                                        f"copy from {stored_sf!r}; "
+                                        f"files_copied={len(_files_copied)}"
+                                    )
+                                except Exception as _exc:  # noqa: BLE001
+                                    _log_error(str(vdir), f"copytree: {_exc}")
+                        else:
+                            # Neither path exists — zombie entry.
+                            _log_action("zombie_entry_drop", str(vdir),
+                                        f"summary_file={stored_sf!r} not found")
+                            if not dry_run:
+                                new_index = [
+                                    e for e in new_index
+                                    if e.get("report_version") != vname
+                                ]
+                                del indexed_by_rv[vname]
+                                index_dirty = True
+                        continue  # path action handled; actions 5+6 run on next pass
+
+                    # Actions 5+6: persist-backfill + report_file key drop.
+                    entry = indexed_by_rv[vname]
+                    needs_backfill = False
+                    patched = dict(entry)
+
+                    # Action 5: missing fields.
+                    # Idempotency rule: only add a field to _fill_pairs when the
+                    # new value is ACTUALLY different from the current stored value
+                    # (i.e. new_val is truthy and differs, OR current is None and
+                    # new_val is truthy).  If the summary also lacks the field
+                    # (new_val is falsy), emit informational "unfillable_field"
+                    # instead — that is NOT a mutation and must not mark index_dirty.
+                    _fill_pairs: list[tuple[str, Any]] = []
+                    _unfillable: list[str] = []
+
+                    def _check_str_field(
+                        field: str, summary_key: str
+                    ) -> None:
+                        cur = patched.get(field) or ""
+                        new_val = summary.get(summary_key) or ""
+                        if cur:
+                            return  # already has a value — nothing to do
+                        if new_val:
+                            _fill_pairs.append((field, new_val))
+                        else:
+                            _unfillable.append(field)
+
+                    def _check_num_field(
+                        field: str, new_val: Any
+                    ) -> None:
+                        if patched.get(field) is not None:
+                            return  # already set
+                        if new_val is not None:
+                            _fill_pairs.append((field, new_val))
+                        # no unfillable tracking for numeric fields — they're
+                        # less critical and missing from many legacy summaries
+
+                    _check_str_field("rawdata_config_md5", "config_md5")
+                    _check_str_field("rawdata_code_md5", "code_md5")
+                    _check_str_field("analyzer_version", "analyzer_version")
+                    _check_str_field("effective_analyzer_version",
+                                     "effective_analyzer_version")
+                    _check_num_field(
+                        "achieved_rtp_pct",
+                        (summary.get("rtp") or {}).get("point_pct"),
+                    )
+                    _check_num_field(
+                        "achieved_halfwidth_pp",
+                        (summary.get("sampling") or {}).get("achieved_halfwidth_pp"),
+                    )
+                    _check_num_field(
+                        "total_spins",
+                        (summary.get("sampling") or {}).get("total_spins"),
+                    )
+
+                    if _fill_pairs:
+                        needs_backfill = True
+                        for _k, _v in _fill_pairs:
+                            patched[_k] = _v
+
+                    # Informational only — no mutation, does not set index_dirty.
+                    if _unfillable:
+                        _log_action("unfillable_field", str(vdir),
+                                    f"fields={_unfillable} not in summary")
+
+                    # Action 6: report_file key with no file.
+                    rf = patched.get("report_file")
+                    if rf and not Path(rf).exists():
+                        patched.pop("report_file", None)
+                        needs_backfill = True
+
+                    if needs_backfill:
+                        _log_action("persist_backfill", str(vdir),
+                                    f"fields={[k for k, _ in _fill_pairs]}")
+                        if not dry_run:
+                            try:
+                                idx_pos = next(
+                                    (i for i, e in enumerate(new_index)
+                                     if e.get("report_version") == vname), None
+                                )
+                                if idx_pos is not None:
+                                    new_index[idx_pos] = patched
+                                indexed_by_rv[vname] = patched
+                                index_dirty = True
+                            except Exception as _exc:  # noqa: BLE001
+                                _log_error(str(vdir), f"backfill_entry: {_exc}")
+
+                # After processing all vdirs in this mode: write updated index + latest.
+                # Idempotency rule for latest_recompute: only write + count when the
+                # recomputed latest.json content actually differs from what is on disk.
+                # This prevents index_dirty paths (e.g. persist_backfill no-ops)
+                # from triggering a spurious latest_recompute on every run.
+                if index_dirty and not dry_run:
+                    try:
+                        from src.web_console.backend.report_index import (  # noqa: PLC0415
+                            _report_index_lock as _ril,
+                            _atomic_write_json as _awj,
+                        )
+                        latest_path = mode_dir / "latest.json"
+                        with _ril(mode_dir):
+                            _awj(index_path, new_index)
+                            if new_index:
+                                latest = max(
+                                    enumerate(new_index),
+                                    key=lambda ie: (
+                                        str(ie[1].get("created_at") or ""),
+                                        str(ie[1].get("report_version") or ""),
+                                        ie[0],
+                                    ),
+                                )[1]
+                                # Only write + count when content actually changes.
+                                _latest_cur: dict[str, Any] = {}
+                                if latest_path.exists():
+                                    try:
+                                        _latest_cur = read_json(latest_path) or {}
+                                    except Exception:  # noqa: BLE001
+                                        pass
+                                if _latest_cur.get("report_version") != latest.get("report_version"):
+                                    _awj(latest_path, latest)
+                                    _log_action("latest_recompute", str(mode_dir))
+                            elif latest_path.exists():
+                                try:
+                                    latest_path.unlink()
+                                    _log_action("latest_recompute", str(mode_dir),
+                                                "deleted (index empty)")
+                                except OSError:
+                                    pass
+                    except Exception as _exc:  # noqa: BLE001
+                        _log_error(str(mode_dir), f"write_index: {_exc}")
+                elif not index_dirty:
+                    # Always check latest even if index unchanged (stale latest fix).
+                    try:
+                        latest_path = mode_dir / "latest.json"
+                        if current_index:
+                            latest_candidate = max(
+                                enumerate(current_index),
+                                key=lambda ie: (
+                                    str(ie[1].get("created_at") or ""),
+                                    str(ie[1].get("report_version") or ""),
+                                    ie[0],
+                                ),
+                            )[1]
+                            latest_current: dict[str, Any] = {}
+                            if latest_path.exists():
+                                try:
+                                    latest_current = read_json(latest_path) or {}
+                                except Exception:  # noqa: BLE001
+                                    pass
+                            if (latest_current.get("report_version") !=
+                                    latest_candidate.get("report_version")):
+                                _log_action("latest_recompute", str(mode_dir),
+                                            "latest.json was stale")
+                                if not dry_run:
+                                    from src.web_console.backend.report_index import (  # noqa: PLC0415
+                                        _atomic_write_json as _awj,
+                                    )
+                                    _awj(latest_path, latest_candidate)
+                        elif latest_path.exists():
+                            _log_action("latest_recompute", str(mode_dir),
+                                        "delete latest.json (index empty)")
+                            if not dry_run:
+                                try:
+                                    latest_path.unlink()
+                                except OSError:
+                                    pass
+                    except Exception as _exc:  # noqa: BLE001
+                        _log_error(str(mode_dir), f"latest_recompute: {_exc}")
+
+        # Action 8: SQLite backfill effective_analyzer_version (and md5s) on
+        # completed rows from their on-disk summaries.
+        try:
+            with store._connect() as _conn:
+                _rows = _conn.execute(
+                    """
+                    SELECT run_id, summary_file,
+                           rawdata_config_md5, rawdata_code_md5,
+                           effective_analyzer_version
+                    FROM runs
+                    WHERE status IN ('completed', 'cancelled')
+                      AND (effective_analyzer_version IS NULL
+                           OR rawdata_config_md5 IS NULL
+                           OR rawdata_code_md5 IS NULL)
+                    """
+                ).fetchall()
+            for _row in _rows:
+                _sf = _row["summary_file"]
+                if not _sf or not Path(_sf).exists():
+                    continue
+                try:
+                    _s = json.loads(Path(_sf).read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                _patch: dict[str, Any] = {}
+                if _row["effective_analyzer_version"] is None:
+                    _ev = _s.get("effective_analyzer_version")
+                    if _ev:
+                        _patch["effective_analyzer_version"] = str(_ev)
+                if _row["rawdata_config_md5"] is None:
+                    _cfg = _s.get("config_md5")
+                    if _cfg:
+                        _patch["rawdata_config_md5"] = str(_cfg)
+                if _row["rawdata_code_md5"] is None:
+                    _code = _s.get("code_md5")
+                    if _code:
+                        _patch["rawdata_code_md5"] = str(_code)
+                if _patch:
+                    _log_action("sqlite_backfill", str(_sf),
+                                f"run_id={_row['run_id']!r} fields={list(_patch.keys())}")
+                    if not dry_run:
+                        try:
+                            store.update_run(_row["run_id"], _patch)
+                        except Exception as _exc:  # noqa: BLE001
+                            _log_error(_row["run_id"], f"sqlite_backfill: {_exc}")
+        except Exception as _exc:  # noqa: BLE001
+            _log_error("sqlite", f"backfill query: {type(_exc).__name__}: {_exc}")
+
+        return result
+
+    @app.post("/api/maintenance/reconcile-reports")
+    def reconcile_reports_endpoint(req: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Repair report-store litter (F4, 2026-06-12).
+
+        Body: ``{"dry_run": true}`` — dry_run defaults to **true** so
+        the operator always sees what would happen before committing.
+        Pass ``{"dry_run": false}`` to execute.
+
+        Action classes: empty-dir delete, no-summary-dir delete (with
+        running-run + 1h-mtime guards), unindexed-summary append,
+        non-canonical path rewrite/copy-back/drop-zombie,
+        persist-backfill of missing fields, report_file key drop,
+        latest.json recompute, SQLite effective_analyzer_version backfill.
+
+        Returns a full action report (counts + per-action list).
+        Never silent (feedback_no_silent_swallow).
+        """
+        if not registry.try_acquire_global("reconcile_reports"):
+            raise HTTPException(status_code=409, detail="reconcile-reports already in progress")
+        try:
+            body = req or {}
+            dry_run = bool(body.get("dry_run", True))
+            return reconcile_reports(dry_run=dry_run)
+        finally:
+            registry.release_global("reconcile_reports")
 
     def _do_refresh_machines_md5(
         server_id: str = "dev", *, raise_on_error: bool = True,

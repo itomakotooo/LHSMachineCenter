@@ -74,6 +74,12 @@ reports/M14/mode_1/versions/*_devcache/
 reports/M14/mode_2/
 reports/M14/mode_5/
 reports/M14/mode_7/
+# The mutable store files (index.json/latest.json) are RUNTIME state — every
+# generate/reconcile rewrites them, so tracking them keeps the tree perpetually
+# dirty. The baseline VERSION DIRS stay tracked; the reconcile endpoint
+# (POST /api/maintenance/reconcile-reports) rebuilds the index from dirs.
+reports/M14/mode_1/index.json
+reports/M14/mode_1/latest.json
 state/probes/
 dev_reports/_classify/
 
