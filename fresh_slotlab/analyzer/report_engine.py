@@ -439,6 +439,17 @@ def generate_report_from_chunks(
     from fresh_slotlab.analyzer.feature_registry import discover_features
     discover_features()
 
+    # -- st_extract plugins: discover and register extractor modules --
+    # Sub-pass B: mirrors the feature discovery pattern.  discover_extractors()
+    # globs st_extract/*.py (excluding _base, __init__), imports each in sorted
+    # order.  Machines whose manifest declares no trigger_paths (or any other
+    # extraction key) → empty extractor list → byte-identical parse behavior.
+    from fresh_slotlab.analyzer.st_extract import (
+        discover_extractors,
+        get_extractors_for_manifest,
+    )
+    discover_extractors()
+
     # -- resolve paths --
     chunk_dir = Path(chunk_dir)
     output_dir = Path(output_dir)
@@ -484,6 +495,13 @@ def generate_report_from_chunks(
     # declared set completes the SpinType-native model.)
     _synthetic_manifest = {"analyzer_features": analysis_set}
     _machine_features = get_features_for_machine(_mech_id, manifest=_synthetic_manifest)
+
+    # Sub-pass B: resolve st_extractors for this machine ONCE.
+    # get_extractors_for_manifest returns instantiated (cloned) extractors for
+    # STs that declare extraction in the manifest.  Machines with no
+    # extraction declarations → empty list → byte-identical parse behavior
+    # (no "st_extract" key in chunk records, no state change).
+    _st_extractors = get_extractors_for_manifest(new_manifest)
 
     # Phase 5: the legacy flat manifest is NO LONGER loaded. No feature plugin
     # reads ctx.manifest (all read ctx.machine_spec_manifest); the flat manifest
@@ -706,6 +724,7 @@ def generate_report_from_chunks(
             bankruptcy_session_spins=_bankruptcy_session_spins,
             bankruptcy_bankroll_mults=_bankruptcy_mults_tuple,
             round_win_rules=_round_win_rules if _round_win_rules else None,
+            st_extractors=_st_extractors if _st_extractors else None,
         )
         if not rec.get("ok"):
             raise ValueError(f"{cf.name} parse failed: {rec.get('error')}")

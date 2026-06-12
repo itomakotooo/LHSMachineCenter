@@ -122,6 +122,13 @@ _CLOSURE_FILES: tuple[str, ...] = (
     "fresh_slotlab/analyzer/feature_registry.py",
     "fresh_slotlab/analyzer/features/__init__.py",
     "fresh_slotlab/analyzer/features/_base.py",
+    # Sub-pass B: st_extract framework files (discovery + ABC) are in the
+    # closure.  Extractor modules (trigger_path.py etc.) are base-EXCLUDED —
+    # editing them changes only machines that declare the extractor, not fleet.
+    # Analogy: features/__init__.py + _base.py are in closure; plugin modules
+    # are excluded.
+    "fresh_slotlab/analyzer/st_extract/__init__.py",
+    "fresh_slotlab/analyzer/st_extract/_base.py",
     # manifest_loader.py removed (5B): flat-manifest layer deleted.
     # mechanism_registry.py removed (5C): MechanismRegistry deleted.
     "fresh_slotlab/analyzer/parse_state.py",
@@ -133,6 +140,15 @@ _CLOSURE_FILES: tuple[str, ...] = (
     # parser.py imports them on the production path (the R-1 drift guard allowlists
     # them; per-machine hashing is the tracked follow-up). Adding them broke
     # test_{wild_nudge,bcm_cycle}_carve — see the carve-isolation tests.
+    #
+    # NOTE: st_extract/trigger_path.py (and future extractor modules) are
+    # INTENTIONAL CARVES — base-EXCLUDED so editing an extractor re-flags only
+    # machines that declare it, not the fleet.  Only st_extract/__init__.py and
+    # st_extract/_base.py (framework files) are in the closure above.
+    # parser.py imports st_extract extractor modules at parse time via the
+    # st_extractors parameter; the R-1 drift guard must allowlist
+    # "fresh_slotlab/analyzer/st_extract/trigger_path.py" the same way it
+    # allowlists play_types/ modules (if the guard is ever restored).
     "fresh_slotlab/analyzer/rtp_integrity.py",
     "fresh_slotlab/analyzer/topo_sort.py",
     "fresh_slotlab/analyzer/versioning.py",
@@ -315,6 +331,22 @@ def compute_effective_version_for_machine(
         # discover_features() is idempotent (duplicate FEATURE_ID is a no-op).
         registry.discover_features()
 
+    # Sub-pass B: discover extractor modules so their hashes can be folded
+    # into the effective_version for machines that declare extraction.
+    try:
+        from fresh_slotlab.analyzer.st_extract import (
+            discover_extractors as _discover_extractors,
+            get_extractors_for_manifest as _get_extractors_for_manifest,
+            extractor_hashes as _extractor_hashes,
+        )
+    except ImportError:
+        from analyzer.st_extract import (  # type: ignore[no-redef]
+            discover_extractors as _discover_extractors,
+            get_extractors_for_manifest as _get_extractors_for_manifest,
+            extractor_hashes as _extractor_hashes,
+        )
+    _discover_extractors()
+
     # manifests_root kept as a parameter for callers that pass tmp manifests in
     # tests, but the flat-manifest layer is deleted (5B) so real machines will
     # not have files there.  new_manifests_root defaults to configs/machine_manifests.
@@ -330,6 +362,7 @@ def compute_effective_version_for_machine(
     # Non-registered machines (no new-schema manifest) resolve to base_hash with
     # empty machine_features — graceful, no crash.
     _new_manifest_path = Path(new_manifests_root) / f"{machine_id}.json"
+    _loaded_manifest: Optional[Any] = None
     if _new_manifest_path.exists():
         # New path: load SpinType-native manifest, derive analyses from spin_types.
         try:
@@ -342,8 +375,8 @@ def compute_effective_version_for_machine(
                 load_manifest as ms_load_manifest,
                 derive_analyses,
             )
-        new_manifest = ms_load_manifest(machine_id, new_manifests_root)
-        machine_features = derive_analyses(new_manifest)
+        _loaded_manifest = ms_load_manifest(machine_id, new_manifests_root)
+        machine_features = derive_analyses(_loaded_manifest)
     else:
         # Non-registered machine: no flat manifest (deleted in 5B), no new-schema
         # manifest.  Return base_hash with empty feature set — not "unregistered
@@ -351,6 +384,20 @@ def compute_effective_version_for_machine(
         machine_features = []
 
     feature_hashes = {f.FEATURE_ID: f.compute_hash() for f in registry.ALL_FEATURES}
+
+    # Sub-pass B: fold extractor pseudo-entries ("xt:<EXTRACTOR_ID>" -> hash)
+    # into machine_features + feature_hashes for machines whose manifest
+    # declares extraction.  No signature change to compute_effective_analyzer_version.
+    # Machines without extraction declarations: no pseudo-entries → unchanged.
+    if _loaded_manifest is not None:
+        _active_extractors = _get_extractors_for_manifest(_loaded_manifest)
+        _ext_hashes = _extractor_hashes()
+        for _ext in _active_extractors:
+            _pseudo_id = f"xt:{_ext.EXTRACTOR_ID}"
+            if _pseudo_id not in feature_hashes:
+                feature_hashes[_pseudo_id] = _ext_hashes.get(_ext.EXTRACTOR_ID, "")
+            if _pseudo_id not in machine_features:
+                machine_features = list(machine_features) + [_pseudo_id]
 
     return compute_effective_analyzer_version(
         base_hash=base_hash,

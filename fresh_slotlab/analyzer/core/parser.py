@@ -492,6 +492,7 @@ def parse_chunk_response(
     bankruptcy_session_spins: int = _DEFAULT_BANKRUPTCY_SESSION_SPINS,
     bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
     round_win_rules: list[RoundWinRule] | None = None,
+    st_extractors: list | None = None,
 ) -> dict[str, Any]:
     """Parse a raw API response (list of robot dicts) into chunk metrics.
 
@@ -508,6 +509,16 @@ def parse_chunk_response(
     contribution merged at finalize). Defaults produce the standard
     (100/200/500) × 500-spin ladder even when callers forget to plumb
     through the CLI value.
+
+    ``st_extractors`` is an optional list of STExtractor instances
+    (from fresh_slotlab.analyzer.st_extract).  Default None / empty list:
+    every legacy caller is byte-identical — no "st_extract" key is added to
+    the returned record.  When provided, each extractor receives begin_robot
+    before the per-round loop and observe_round for every round; finalize_chunk
+    is called once per chunk; the results are stored in rec["st_extract"] keyed
+    by EXTRACTOR_ID.  Per-extractor exceptions are caught and surfaced in the
+    record as "_extract_error_<EXTRACTOR_ID>" entries (never silently swallowed
+    per memory/feedback_no_silent_swallow.md), never killing the parse.
 
     Phase D (2026-06-03): the play-type plugin framework (use_play_type_plugins /
     machine_id / mode params) has been deleted.  The inline carve path
@@ -1168,6 +1179,9 @@ def parse_chunk_response(
         sess_state["bonus_win_from_helper"] = 0.0
         sess_state["is_trigger_session"] = False
 
+    _robot_idx_counter = 0  # 0-based index for st_extractors.begin_robot
+    _active_st_extractors: list = list(st_extractors) if st_extractors else []
+
     for robot in resp:
         if not isinstance(robot, dict):
             continue
@@ -1240,6 +1254,42 @@ def parse_chunk_response(
             int(s["trigger_idx"]): float(s.get("session_dim_win", 0.0) or 0.0)
             for s in _trig_sessions_for_robot
         }
+        # Sub-pass B: build trigger_round_idx -> session record map for
+        # st_extractors.begin_robot.  Allows extractors to look up which
+        # session (if any) a given round_idx belongs to without a linear
+        # scan of the session list per round.
+        _trig_sessions_by_idx: dict[int, dict] = {
+            int(s["trigger_idx"]): s for s in _trig_sessions_for_robot
+        }
+        # Build round_idx -> session record for bonus rounds (non-trigger
+        # rounds within a trigger session) for use in observe_round's
+        # round_ctx["session"].  This is the same map the TriggerPathExtractor
+        # builds in begin_robot, but materialised here for the inline hook
+        # so we don't depend on any extractor's internal state.
+        _round_to_session_for_ext: dict[int, dict] = {}
+        if _active_st_extractors:
+            for _s in _trig_sessions_for_robot:
+                _s_trig = int(_s.get("trigger_idx", -1))
+                _s_end = int(_s.get("session_end_idx", _s_trig + 1))
+                if _s_trig < 0:
+                    continue
+                for _sri in range(_s_trig + 1, _s_end):
+                    _round_to_session_for_ext[_sri] = _s
+        # Notify st_extractors for this robot.
+        if _active_st_extractors:
+            _robot_ctx = {
+                "robot_idx": _robot_idx_counter,
+                "trig_sessions": _trig_sessions_by_idx,
+                "cycle_peak": _cycle_peak_for_ctx,
+            }
+            for _ext in _active_st_extractors:
+                try:
+                    _ext.begin_robot(_robot_ctx)
+                except Exception as _ext_begin_err:
+                    # Record but do not kill the parse.
+                    _ext._begin_robot_error = (
+                        f"{type(_ext_begin_err).__name__}: {_ext_begin_err}"
+                    )
         trigger_session_paid_indices: set[int] = set(session_win_by_trigger_idx.keys())
         # 2026-04-27: bonus-round indices that are part of a trigger
         # session (i.e. their win is attributed via session_win on the
@@ -1515,6 +1565,13 @@ def parse_chunk_response(
         sess_state["cur_loss_streak"] = 0
         sess_state["cur_win_streak"] = 0
 
+        # Sub-pass B (defect fix): track last paid round for st_extractors
+        # round_ctx.  A "block" is the contiguous run of non-paid rounds that
+        # follow a paid round; block_id == that paid round's round_idx.
+        # None before the first paid round (no block has opened yet).
+        _last_paid_round_for_ext: dict | None = None
+        _last_paid_round_idx_for_ext: int | None = None
+
         for _round_idx_in_robot, r in enumerate(rounds):
             if not isinstance(r, dict):
                 continue
@@ -1613,6 +1670,15 @@ def parse_chunk_response(
                     is_paid = bet_val > 0.0
                 else:
                     is_paid = to_float(cost_credits_raw, default=0.0) > 0.0
+
+            # Sub-pass B (defect fix): update block-boundary reference for
+            # st_extractors.  A paid round opens a new block; subsequent
+            # non-paid rounds belong to that block (block_id == round_idx of
+            # the opening paid round).  Updated BEFORE observe_round so every
+            # round sees the current block_id.
+            if is_paid and _active_st_extractors:
+                _last_paid_round_for_ext = r
+                _last_paid_round_idx_for_ext = _round_idx_in_robot
 
             win_amt = extract_round_win(r, rules=round_win_rules)
             chunk_spins += 1
@@ -2230,6 +2296,47 @@ def parse_chunk_response(
                         if col_decoded >= 0 and 0 <= row_decoded <= 2:
                             payline_rows_per_col[col_decoded].add(row_decoded)
 
+            # Sub-pass B: per-round hook for st_extractors.
+            # Runs after sp_type is assigned and win_amt is computed so
+            # observe_round sees both without re-parsing.  Per-extractor
+            # exceptions are caught here and surfaced as error entries in
+            # the chunk record; they do NOT kill the parse
+            # (feedback_no_silent_swallow: diagnosed, not silenced).
+            if _active_st_extractors:
+                _round_ctx_for_ext = {
+                    "robot_idx": _robot_idx_counter,
+                    "round_idx": _round_idx_in_robot,
+                    "session": _round_to_session_for_ext.get(_round_idx_in_robot),
+                    "bet": bet,
+                    # RISK-1 FIX: expose the rule-view win_amt so extractors
+                    # use the same attribution logic as the rest of the parser
+                    # (e.g. SynthesizePayIdRule, chunk-residual attribution).
+                    # Extractor helpers should read round_ctx["win"] when
+                    # present rather than re-parsing raw WinCredits.
+                    "win": win_amt,
+                    # Defect fix: generic block-boundary signal.
+                    # last_paid_round: reference to the most recent paid round
+                    #   dict (None before the first paid round in this robot).
+                    # block_id: that paid round's round_idx — identifies the
+                    #   contiguous non-paid block opened by it.  Paid rounds
+                    #   set their own block_id (their round IS the opener).
+                    "last_paid_round": _last_paid_round_for_ext,
+                    "block_id": _last_paid_round_idx_for_ext,
+                }
+                for _ext in _active_st_extractors:
+                    try:
+                        _ext.observe_round(r, sp_type, _round_ctx_for_ext)
+                    except Exception as _ext_obs_err:
+                        # Accumulate error into a per-extractor list so
+                        # finalize_chunk can surface it.
+                        _ext_obs_errors = getattr(_ext, "_obs_errors", None)
+                        if _ext_obs_errors is None:
+                            _ext._obs_errors = []
+                        _ext._obs_errors.append(
+                            f"robot={_robot_idx_counter} round={_round_idx_in_robot}: "
+                            f"{type(_ext_obs_err).__name__}: {_ext_obs_err}"
+                        )
+
             # Track previous round's PayIds for chain trigger
             # classification. MUST be the last thing inside the round
             # loop so every paid spin updates it before the next
@@ -2322,6 +2429,7 @@ def parse_chunk_response(
         # their wins contribute to the NewFreespin expected payout.
         # For correction, we just need the cycle peaks + final CCs.
         chunk_completed_cycles += len(robot_cycle_peaks)
+        _robot_idx_counter += 1
 
     if chunk_spins <= 0 or chunk_bet <= 0:
         return {"ok": False, "index": chunk_index, "error": "parse_failed_zero_chunk"}
@@ -2353,6 +2461,55 @@ def parse_chunk_response(
         payout_id_win["_unattributed_residual"] += _residual
         # Don't add to payout_id_by_spin_type -- this delta isn't
         # tied to any single SpinType by definition.
+
+    # Sub-pass B: finalize extractors and collect results.
+    # finalize_chunk() is called once (after ALL robots in the chunk).
+    # Per-extractor exceptions are caught and surfaced as
+    # "_extract_error_<EXTRACTOR_ID>" entries — never silently swallowed
+    # (feedback_no_silent_swallow.md).  The "st_extract" key is OMITTED
+    # entirely when no extractors ran (inertness: old records remain valid).
+    _st_extract_result: dict | None = None
+    if _active_st_extractors:
+        _st_extract_result = {}
+        for _ext in _active_st_extractors:
+            _eid = _ext.EXTRACTOR_ID
+            # Snapshot error accumulators BEFORE finalize_chunk so they are
+            # never lost regardless of what finalize_chunk does internally.
+            # The parser then RESETS both attributes on the extractor instance
+            # before calling finalize_chunk — this is the authoritative reset
+            # for cross-chunk isolation and does NOT depend on extractor-author
+            # discipline (finalize_chunk's own resets are idempotent guards).
+            # Contract (see _base.py STExtractor.finalize_chunk docstring):
+            #   1. parser snapshots _obs_errors + _begin_robot_error
+            #   2. parser resets both to empty/None on the extractor
+            #   3. parser calls finalize_chunk() (resets payload state;
+            #      its own _obs_errors/_begin_robot_error resets are idempotent)
+            #   4. parser surfaces snapshots as _extract_error_<ID> if non-empty
+            _obs_errs = list(getattr(_ext, "_obs_errors", None) or [])
+            _begin_err = getattr(_ext, "_begin_robot_error", None)
+            _ext._obs_errors = []           # parser-side reset (authoritative)
+            _ext._begin_robot_error = None  # parser-side reset (authoritative)
+            try:
+                _chunk_data = _ext.finalize_chunk()
+                _st_extract_result[_eid] = _chunk_data
+            except Exception as _ext_fin_err:
+                _st_extract_result[f"_extract_error_{_eid}"] = (
+                    f"finalize_chunk: {type(_ext_fin_err).__name__}: {_ext_fin_err}"
+                )
+            # Surface any accumulated observe_round errors (snapshot taken above).
+            if _obs_errs:
+                existing = _st_extract_result.get(f"_extract_error_{_eid}", "")
+                _st_extract_result[f"_extract_error_{_eid}"] = (
+                    (existing + "; " if existing else "")
+                    + "observe_round errors: " + "; ".join(_obs_errs[:5])
+                )
+            # Surface begin_robot errors (snapshot taken above).
+            if _begin_err:
+                existing = _st_extract_result.get(f"_extract_error_{_eid}", "")
+                _st_extract_result[f"_extract_error_{_eid}"] = (
+                    (existing + "; " if existing else "")
+                    + f"begin_robot: {_begin_err}"
+                )
 
     return {
         "ok": True,
@@ -2645,4 +2802,10 @@ def parse_chunk_response(
             pid_s: dict(combo_map)
             for pid_s, combo_map in payout_id_symbol_combos.items()
         },
+        # Sub-pass B: per-ST extraction layer output.
+        # Key is OMITTED entirely when no extractors ran (st_extractors=None
+        # or empty) to preserve byte-identical behavior for all existing
+        # callers and cached chunks.  Missing key == no extraction ran,
+        # which is a legitimate state.
+        **({} if _st_extract_result is None else {"st_extract": _st_extract_result}),
     }
