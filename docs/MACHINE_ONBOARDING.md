@@ -254,6 +254,11 @@ A machine's structure is correct when ALL hold (value-independent — these neve
    mechanic. Until this, `validation.status` stays `auto` (data-derived, possibly incomplete),
    NOT `confirmed`. A same-archetype match to a confirmed machine is NOT enough — this gate still
    applies (M90 looks identical to M15 in data but isn't).
+   **Protocol (user ruling 2026-06-12): DECLARATION-BASED, not exhaustive-doubt-based.** Ask
+   once, presenting the data-derived gaps; the user/platform declares known invisible mechanics
+   (the M90 gift was caught by declaration, not by doubt). **No declaration ⇒ default "does not
+   exist" ⇒ confirm** ("看不见你就默认没有,否则逻辑框架不成立"). The exhaustive negative search
+   stays only for in-data questions (random-vs-hidden-signal, the M279 skin-11 pattern).
 
 ---
 
@@ -397,7 +402,9 @@ driver will encode.
     is FORWARD-COMPATIBLE — when the interface is later optimized to populate it, the existing parser
     picks it up unchanged. The data RTP is the BASE (excludes the mechanic); it grows when the field
     is enabled. Record in `out_of_engine_mechanics` with `status: real_but_test_interface_zeroed` +
-    `rtp_impact_current: 0`.
+    `rtp_impact_current: 0`. **FLEET-WIDE (user-confirmed 2026-06-12 during M275 gate 8): this is
+    the test interface's behavior on ALL machines** — record once per machine, never a per-machine
+    re-confirmation question.
   - **Role-vs-play + parser-blind held:** `wheel_dynamics` attaches by PLAY `"Wheel"` (the
     `settlement` role is shared with M15/M43 — a role hook would cross-fire), with symmetric non-leak
     tests; ST2's no-payid win attributed by the M43-precedent config-only `SynthesizePayIdRule`. The
