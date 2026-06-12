@@ -42,7 +42,12 @@ def _run_smoke(extra_args: list[str], timeout: int = 30) -> subprocess.Completed
         return subprocess.run(
             ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
              "-File", str(SMOKE_SCRIPT)] + extra_args,
-            capture_output=True, text=True, timeout=timeout,
+            # encoding pinned: text=True alone decodes with the locale codepage
+            # (GBK on zh-CN Windows) and a single non-GBK byte kills the reader
+            # thread -> stdout=None -> TypeError in assertions. The asserted
+            # substrings are ASCII, so utf-8 + replace is locale-independent.
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout,
             cwd=str(REPO_ROOT),
         )
     except FileNotFoundError:

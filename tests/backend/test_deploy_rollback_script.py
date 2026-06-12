@@ -55,7 +55,11 @@ def _run_rollback(extra_args: list[str], stdin_text: str = "",
             ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
              "-File", str(ROLLBACK_SCRIPT)] + extra_args,
             input=stdin_text,
-            capture_output=True, text=True, timeout=timeout,
+            # encoding pinned: locale-codepage decoding (GBK on zh-CN Windows)
+            # dies on non-GBK bytes -> stdout=None. ASCII assertions only, so
+            # utf-8 + replace is locale-independent.
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout,
             cwd=str(REPO_ROOT),
         )
     except FileNotFoundError:
@@ -199,7 +203,9 @@ def test_rollback_without_force_prompts_before_reset(tmp_path, monkeypatch):
          "-File", str(fixture_script)],
         cwd=str(repo),
         input="",
-        capture_output=True, text=True, timeout=60,  # T3: was 30 (TimeoutExpired)
+        # encoding pinned: see _run_rollback (locale-independent decoding).
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=60,  # T3: was 30 (TimeoutExpired)
     )
 
     assert result.returncode == 1, (
