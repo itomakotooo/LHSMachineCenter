@@ -118,14 +118,37 @@ class TriggerPathExtractor(STExtractor):
     """Generic per-ST trigger-path splitter.
 
     Declared by manifest spin_types blocks carrying "trigger_paths".
+
+    Phase 1 — Dimension data substrate (04_dimension_framework.md §6 Phase 1):
+    In addition to the existing "trigger_path" output sub-key (read by
+    freespin_dynamics, preserved byte-for-byte), finalize_chunk now also emits
+    a "dimensions" sub-key with the full per-(ST, dim, value) metric set:
+    round_count, win_sum, paid_round_count, win_round_count, bet_sum,
+    bucket_hist, session_count, symbol_counts, next_st_counts.
+
+    The "trigger_path" sub-key is UNCHANGED — freespin_dynamics and the M275
+    fwpass golden depend on it.
+
+    GAP-A fix (05_breaker.md §GAP-A): next_st_counts for the PREVIOUS declared
+    ST is recorded at the TOP of observe_round, BEFORE the early-return that
+    skips undeclared STs.  This captures freespin-session-exit transitions
+    (e.g. ST126 -> ST140) that would otherwise be silently dropped.
     """
 
     EXTRACTOR_ID: ClassVar[str] = "trigger_path"
     DECLARED_IN_KEY: ClassVar[str] = "trigger_paths"
 
+    # Dimension name derived from the manifest's "trigger_paths" block.
+    # The dimension system (04_dimension_framework.md §3.2) uses "trigger_path"
+    # as the dim_name for every ST block declared under "trigger_paths".
+    _DIM_NAME: str = "trigger_path"
+
     def __init__(self, manifest: dict) -> None:
         self._manifest = manifest
-        # Chunk-level accumulation keyed by (st_int, path_label).
+        # ------------------------------------------------------------------
+        # Existing chunk-level accumulators (produce the "trigger_path" key).
+        # Shape: (st_int, path_label) -> value
+        # ------------------------------------------------------------------
         self._chunk_round_count: dict[tuple[int, str], int] = defaultdict(int)
         self._chunk_win_sum: dict[tuple[int, str], float] = defaultdict(float)
         self._chunk_win_band: dict[tuple[int, str], dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -134,8 +157,35 @@ class TriggerPathExtractor(STExtractor):
         # block boundary signal that works even without a trigger-session record.
         self._chunk_session_keys: dict[tuple[int, str], set[tuple[int, int]]] = defaultdict(set)
 
+        # ------------------------------------------------------------------
+        # Phase 1 — new dimension-level accumulators (produce the "dimensions"
+        # key).  Shape: (st_int, dim_name, value) -> value, or
+        # (st_int, dim_name, value, col) -> {sym: count} for symbol_counts.
+        # dim_name is always _DIM_NAME for the trigger_paths case.
+        # ------------------------------------------------------------------
+        # (st_int, dim_name, label) -> count / sum / set
+        self._dim_round_count: dict[tuple[int, str, str], int] = defaultdict(int)
+        self._dim_win_sum: dict[tuple[int, str, str], float] = defaultdict(float)
+        self._dim_paid_round_count: dict[tuple[int, str, str], int] = defaultdict(int)
+        self._dim_win_round_count: dict[tuple[int, str, str], int] = defaultdict(int)
+        self._dim_bet_sum: dict[tuple[int, str, str], float] = defaultdict(float)
+        self._dim_bucket_hist: dict[tuple[int, str, str], dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        self._dim_session_keys: dict[tuple[int, str, str], set[tuple[int, int]]] = defaultdict(set)
+        # (st_int, dim_name, label, col_str) -> {sym: count}
+        self._dim_symbol_counts: dict[tuple[int, str, str, str], dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        # (st_int, dim_name, label) -> {next_st_int: count}
+        self._dim_next_st_counts: dict[tuple[int, str, str], dict[int, int]] = defaultdict(lambda: defaultdict(int))
+
         # Per-robot state (set by begin_robot).
         self._robot_ctx: dict = {}
+        # GAP-A fix: (st_int, dim_name, label) of the most recently observed
+        # declared-ST round within this robot.  None before the first declared-ST
+        # round and after begin_robot resets.  Used to record the outgoing
+        # next_st transition AT THE START of the following observe_round call,
+        # BEFORE the early-return that skips undeclared STs — so
+        # ST126->ST140 (freespin-exit) transitions are captured even though
+        # ST140 is not a declared ST.
+        self._prev_dim_key: "tuple[int, str, str] | None" = None
 
         # Pre-parse the ST-level declarations from the manifest once.
         self._st_declarations: dict[int, dict] = {}  # st_int -> trigger_paths block
@@ -191,6 +241,9 @@ class TriggerPathExtractor(STExtractor):
           cycle_peak   : int | None
         """
         self._robot_ctx = robot_ctx
+        # GAP-A fix: reset the previous-declared-ST key so no cross-robot
+        # transition is recorded.
+        self._prev_dim_key = None
 
     # ------------------------------------------------------------------
     # observe_round
@@ -204,9 +257,20 @@ class TriggerPathExtractor(STExtractor):
     ) -> None:
         """Accumulate per-round signal for declared STs.
 
-        Only rounds whose spin_type matches a declared ST are processed.
+        GAP-A fix: if the PREVIOUS round was a declared ST, record the
+        prev->current transition into dim_next_st_counts BEFORE the
+        early-return that skips undeclared STs.  This captures transitions
+        from a declared ST to any undeclared ST (e.g. ST126->ST140 = freespin
+        session exits, ~9.8% of ST126 transitions).
         """
+        # GAP-A FIX: record outgoing transition from the previous declared-ST
+        # round regardless of whether the current spin_type is declared.
+        if self._prev_dim_key is not None:
+            self._dim_next_st_counts[self._prev_dim_key][spin_type] += 1
+
         if spin_type not in self._st_declarations:
+            # Undeclared ST: clear prev_dim_key so we don't chain further.
+            self._prev_dim_key = None
             return
 
         tp_block: dict = self._st_declarations[spin_type]
@@ -220,11 +284,26 @@ class TriggerPathExtractor(STExtractor):
         # (RISK-1 FIX) so that extractors stay consistent with parser attribution.
         win_amt = self._get_win(round_dict, round_ctx)
 
+        # Shared bet/multiplier computation used by both old and new paths.
+        effective_bet = float(bet) if bet and bet > 0 else 1.0
+        mult = win_amt / effective_bet if effective_bet > 0 else 0.0
+        bucket = return_bucket(mult)
+
+        # is_paid: CostCredits > 0 (same signal the parser uses).
+        cost_raw = round_dict.get("CostCredits")
+        try:
+            is_paid = float(cost_raw) > 0.0 if cost_raw is not None else False
+        except (TypeError, ValueError):
+            is_paid = False
+
         # Resolve path label(s).
         # In normal cases: one label string.
         # In multi-trigger fallback: list of two matched path labels.
         labels = self._resolve_labels(round_dict, spin_type, tp_block, round_ctx)
 
+        # ------------------------------------------------------------------
+        # Existing "trigger_path" sub-key accumulation (UNCHANGED).
+        # ------------------------------------------------------------------
         if isinstance(labels, list):
             # Multi-trigger block (fallback mode, additive_sessions policy).
             # Rounds/wins go to the combined "multi:<A>+<B>" bucket.
@@ -232,9 +311,6 @@ class TriggerPathExtractor(STExtractor):
             key_multi = (spin_type, multi_label)
             self._chunk_round_count[key_multi] += 1
             self._chunk_win_sum[key_multi] += win_amt
-            effective_bet = float(bet) if bet and bet > 0 else 1.0
-            mult = win_amt / effective_bet if effective_bet > 0 else 0.0
-            bucket = return_bucket(mult)
             self._chunk_win_band[key_multi][bucket] += 1
             # Session_count +1 to EACH matching individual path.
             if block_id is not None:
@@ -247,11 +323,6 @@ class TriggerPathExtractor(STExtractor):
             key = (spin_type, label)
             self._chunk_round_count[key] += 1
             self._chunk_win_sum[key] += win_amt
-
-            # Win-band histogram: win_amt / bet gives the multiplier.
-            effective_bet = float(bet) if bet and bet > 0 else 1.0
-            mult = win_amt / effective_bet if effective_bet > 0 else 0.0
-            bucket = return_bucket(mult)
             self._chunk_win_band[key][bucket] += 1
 
             # session_count: count once per distinct block_id per (st, path).
@@ -260,6 +331,54 @@ class TriggerPathExtractor(STExtractor):
                 if sess_key not in self._chunk_session_keys[key]:
                     self._chunk_session_keys[key].add(sess_key)
 
+        # ------------------------------------------------------------------
+        # Phase 1 — new "dimensions" sub-key accumulation.
+        # The dim_name is _DIM_NAME ("trigger_path") for all trigger_paths
+        # declarations.  We accumulate stats for the same resolved label(s).
+        # ------------------------------------------------------------------
+        dim_name = self._DIM_NAME
+
+        # Determine the single effective label for dimension accumulation.
+        # Multi-trigger → "multi:<A>+<B>" bucket (same label as the old path).
+        if isinstance(labels, list):
+            eff_label: str = "multi:" + "+".join(sorted(labels))
+        else:
+            eff_label = labels  # type: ignore[assignment]
+
+        dim_key = (spin_type, dim_name, eff_label)
+
+        self._dim_round_count[dim_key] += 1
+        self._dim_win_sum[dim_key] += win_amt
+        self._dim_bet_sum[dim_key] += effective_bet
+        self._dim_bucket_hist[dim_key][bucket] += 1
+        if is_paid:
+            self._dim_paid_round_count[dim_key] += 1
+        if win_amt > 0.0:
+            self._dim_win_round_count[dim_key] += 1
+
+        # session_count via (robot_idx, block_id).
+        if block_id is not None:
+            sess_key = (robot_idx, block_id)
+            self._dim_session_keys[dim_key].add(sess_key)
+            # For multi-trigger, also +1 to each individual path's session set
+            # (mirrors the old trigger_path logic: additive_sessions).
+            if isinstance(labels, list):
+                for path_label in labels:
+                    ind_dim_key = (spin_type, dim_name, path_label)
+                    self._dim_session_keys[ind_dim_key].add(sess_key)
+
+        # symbol_counts: from StopSymbolsByCol when present.
+        stop_syms = round_dict.get("StopSymbolsByCol")
+        if isinstance(stop_syms, dict):
+            for col_raw, sym_val in stop_syms.items():
+                col_str = str(col_raw)
+                sym_str = str(sym_val) if sym_val is not None else "None"
+                sym_key = (spin_type, dim_name, eff_label, col_str)
+                self._dim_symbol_counts[sym_key][sym_str] += 1
+
+        # Update _prev_dim_key for the NEXT call's GAP-A transition.
+        self._prev_dim_key = dim_key
+
     # ------------------------------------------------------------------
     # finalize_chunk
     # ------------------------------------------------------------------
@@ -267,15 +386,59 @@ class TriggerPathExtractor(STExtractor):
     def finalize_chunk(self) -> dict:
         """Return per-(st, path) statistics as a JSON-serializable dict.
 
-        Output shape:
+        The returned dict is stored in rec["st_extract"]["trigger_path"] by
+        the parser (EXTRACTOR_ID = "trigger_path").  Its top-level shape is:
+
+          {
+            "<st_int>":   { "<path_label>": {4-stat-dict}, ... },  # numeric ST keys
+            ...
+            "dimensions": { "<st_int>": { "<dim_name>": { "<value>": {9-stat-dict} } } }
+          }
+
+        That is: the backward-compat 4-stat path data is at the TOP LEVEL of
+        this dict, keyed by numeric ST strings ("126", etc.).  "dimensions" is
+        a SIBLING key at that same top level, NOT a wrapper around the ST data.
+
+        A consumer reading st_extract["trigger_path"]["trigger_path"] gets None
+        — the flat path data is directly at st_extract["trigger_path"]["126"].
+
+        freespin_dynamics.extract() iterates the top-level keys and uses
+        `if not str(st_key).isdigit(): continue` to skip "dimensions".  This
+        is an intentional transitional guard: the clean architecture (a
+        "dimensions" EXTRACTOR_ID that owns this output entirely) is deferred
+        to Phase 2, when freespin_dynamics migrates off the legacy flat key.
+
+        Backward-compat 4-stat shape (per numeric ST key):
+          "<st_int>": {
+            "<path_label>": {
+              "round_count": int,
+              "win_sum": float,
+              "session_count": int,
+              "win_band_hist": {<bucket>: int, ...}
+            }, ...
+          }
+
+        "dimensions" value shape (Phase 1 data substrate,
+        04_dimension_framework.md §6):
           {
             "<st_int>": {
-              "<path_label>": {
-                "round_count": int,
-                "win_sum": float,
-                "session_count": int,
-                "win_band_hist": {<bucket>: int, ...}
-              }, ...
+              "<dim_name>": {          # e.g. "trigger_path"
+                "<value>": {           # e.g. "scatter", "collect_peak"
+                  "round_count": int,
+                  "win_sum": float,
+                  "paid_round_count": int,
+                  "win_round_count": int,
+                  "bet_sum": float,
+                  "bucket_hist": {<bucket>: int, ...},
+                  "session_count": int,
+                  "symbol_counts": {<col>: {<sym>: int}, ...},
+                  "next_st_counts": {<next_st_int>: int, ...}
+                  # PHASE-2 NOTE (a): next_st_counts keys are int in memory
+                  # but become str after JSON round-trip from stored reports.
+                  # Phase-2 consumers reading from the report JSON must use
+                  # str keys (e.g. "126", not 126).
+                }, ...
+              }
             }, ...
           }
 
@@ -286,23 +449,96 @@ class TriggerPathExtractor(STExtractor):
             for each robot: begin_robot() ... observe_round() ...
             chunk_rec["st_extract"] = extractor.finalize_chunk()  # also resets
         """
-        result: dict[str, dict[str, Any]] = {}
+        # ------------------------------------------------------------------
+        # 1. Build the existing "trigger_path" backward-compat output.
+        # Shape is BYTE-FOR-BYTE identical to the pre-Phase-1 output.
+        # freespin_dynamics reads this key — it MUST NOT change.
+        # ------------------------------------------------------------------
+        trigger_path_result: dict[str, dict[str, Any]] = {}
         all_keys = set(self._chunk_round_count) | set(self._chunk_win_sum)
         for (st_int, label) in all_keys:
             st_str = str(st_int)
-            if st_str not in result:
-                result[st_str] = {}
-            result[st_str][label] = {
+            if st_str not in trigger_path_result:
+                trigger_path_result[st_str] = {}
+            trigger_path_result[st_str][label] = {
                 "round_count": int(self._chunk_round_count.get((st_int, label), 0)),
                 "win_sum": float(self._chunk_win_sum.get((st_int, label), 0.0)),
                 "session_count": int(len(self._chunk_session_keys.get((st_int, label), set()))),
                 "win_band_hist": dict(self._chunk_win_band.get((st_int, label), {})),
             }
-        # Reset chunk-level state so this instance can be reused for the next chunk.
+
+        # ------------------------------------------------------------------
+        # 2. Build the new "dimensions" output sub-key.
+        # Shape: {st_str: {dim_name: {value: {all_stats}}}}
+        # ------------------------------------------------------------------
+        dimensions_result: dict[str, dict[str, dict[str, Any]]] = {}
+
+        # Collect all (st_int, dim_name, value) keys from all dimension accumulators.
+        all_dim_keys: set[tuple[int, str, str]] = (
+            set(self._dim_round_count)
+            | set(self._dim_win_sum)
+            | set(self._dim_next_st_counts)
+        )
+
+        for (st_int, dim_name, value) in all_dim_keys:
+            st_str = str(st_int)
+            if st_str not in dimensions_result:
+                dimensions_result[st_str] = {}
+            if dim_name not in dimensions_result[st_str]:
+                dimensions_result[st_str][dim_name] = {}
+
+            # Collect symbol_counts for this (st, dim_name, value).
+            # PHASE-2 NOTE (b): this loop is O(D×C) where D = number of
+            # distinct (st,dim,value) keys and C = number of distinct
+            # (st,dim,value,col) keys.  For M275 (2 values, 5 cols) this
+            # is negligible.  If a future machine has a high-cardinality
+            # discriminator that produces many "unknown:<v>" buckets, D can
+            # grow unboundedly and this scan becomes expensive.  Phase 2
+            # should restructure symbol_counts into a nested dict keyed by
+            # (st,dim,value) → {col→{sym→count}} to eliminate the scan.
+            sym_counts: dict[str, dict[str, int]] = {}
+            for sym_key, sym_map in self._dim_symbol_counts.items():
+                if sym_key[:3] == (st_int, dim_name, value):
+                    col_str = sym_key[3]
+                    sym_counts[col_str] = dict(sym_map)
+
+            # next_st_counts: {next_st_int: count} → JSON keys as int.
+            next_st_raw = dict(self._dim_next_st_counts.get((st_int, dim_name, value), {}))
+            next_st_counts_out = {int(k): int(v) for k, v in next_st_raw.items()}
+
+            dimensions_result[st_str][dim_name][value] = {
+                "round_count": int(self._dim_round_count.get((st_int, dim_name, value), 0)),
+                "win_sum": float(self._dim_win_sum.get((st_int, dim_name, value), 0.0)),
+                "paid_round_count": int(self._dim_paid_round_count.get((st_int, dim_name, value), 0)),
+                "win_round_count": int(self._dim_win_round_count.get((st_int, dim_name, value), 0)),
+                "bet_sum": float(self._dim_bet_sum.get((st_int, dim_name, value), 0.0)),
+                "bucket_hist": dict(self._dim_bucket_hist.get((st_int, dim_name, value), {})),
+                "session_count": int(len(self._dim_session_keys.get((st_int, dim_name, value), set()))),
+                "symbol_counts": sym_counts,
+                "next_st_counts": next_st_counts_out,
+            }
+
+        # ------------------------------------------------------------------
+        # 3. Reset ALL chunk-level accumulators so this instance can be
+        # reused across chunks by report_engine.
+        # ------------------------------------------------------------------
+        # Existing accumulators.
         self._chunk_round_count = defaultdict(int)
         self._chunk_win_sum = defaultdict(float)
         self._chunk_win_band = defaultdict(lambda: defaultdict(int))
         self._chunk_session_keys = defaultdict(set)
+        # Phase 1 dimension accumulators.
+        self._dim_round_count = defaultdict(int)
+        self._dim_win_sum = defaultdict(float)
+        self._dim_paid_round_count = defaultdict(int)
+        self._dim_win_round_count = defaultdict(int)
+        self._dim_bet_sum = defaultdict(float)
+        self._dim_bucket_hist = defaultdict(lambda: defaultdict(int))
+        self._dim_session_keys = defaultdict(set)
+        self._dim_symbol_counts = defaultdict(lambda: defaultdict(int))
+        self._dim_next_st_counts = defaultdict(lambda: defaultdict(int))
+        # Also reset prev_dim_key — finalize_chunk starts a new chunk context.
+        self._prev_dim_key = None
         # BUG-1 / BUG-2 FIX: clear per-chunk error accumulators AFTER the
         # parser has already snapshotted them (parser reads _obs_errors and
         # _begin_robot_error BEFORE calling finalize_chunk — see parser.py
@@ -313,7 +549,28 @@ class TriggerPathExtractor(STExtractor):
         #   → surfaces snapshots as _extract_error_<ID> if non-empty.
         self._obs_errors: list[str] = []  # type: ignore[attr-defined]
         self._begin_robot_error: str | None = None  # type: ignore[attr-defined]
-        return result
+
+        # ------------------------------------------------------------------
+        # 4. Return the combined result.
+        # The parser stores this under rec["st_extract"]["trigger_path"].
+        # Consumers of the "trigger_path" sub-key (freespin_dynamics) see
+        # trigger_path_result unchanged.  The "dimensions" sub-key is NEW
+        # and only present when declared STs were observed.
+        # ------------------------------------------------------------------
+        out: dict[str, Any] = {}
+        if trigger_path_result:
+            # Emit backward-compat data at the top-level of this dict (the
+            # parser stores the whole dict under rec["st_extract"]["trigger_path"],
+            # so freespin_dynamics which does
+            #   st_extract.get("trigger_path") → {st: {label: {...}}}
+            # must receive the flat {st: {label: {...}}} shape, NOT wrapped
+            # under a "trigger_path" sub-key again).
+            # THEREFORE: we return trigger_path_result directly as the top-level
+            # shape, and add "dimensions" as an ADDITIONAL key at the same level.
+            out = dict(trigger_path_result)
+        if dimensions_result:
+            out["dimensions"] = dimensions_result
+        return out
 
     # ------------------------------------------------------------------
     # Internal helpers

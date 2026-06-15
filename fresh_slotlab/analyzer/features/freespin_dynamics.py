@@ -276,6 +276,7 @@ class FreespinDynamics(AnalyzerFeature):
             if isinstance(tp_raw, dict):
                 chunks_with_extract = 1
                 for st_key, paths in tp_raw.items():
+                    if not str(st_key).isdigit(): continue  # skip "dimensions" and any future non-ST sibling keys
                     if not isinstance(paths, dict):
                         continue
                     dest = trigger_paths.setdefault(str(st_key), {})
