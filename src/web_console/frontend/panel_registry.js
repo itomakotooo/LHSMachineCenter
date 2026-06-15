@@ -36,6 +36,7 @@ window.PANEL_REGISTRY = [
 
   { id: "rtp_clamp_warning",    order: 600,  render: (ctx) => renderRtpClampWarning(ctx.a) },
   { id: "report_self_check",    order: 700,  render: (ctx) => renderReportSelfCheck(ctx.a) },
+  { id: "structure_drift",      order: 710,  render: (ctx) => renderStructureDriftPanel(ctx.a) },
   { id: "spin_type_breakdown",  order: 800,  render: (ctx) => renderSpinTypeBreakdown(ctx.a) },
 
   // Unified per-SpinType analysis: organized strictly BY SpinType. Each ST section

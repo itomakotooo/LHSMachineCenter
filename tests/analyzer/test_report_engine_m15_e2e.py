@@ -56,6 +56,7 @@ _EXPECTED_TOP_KEYS = frozenset({
     "guideline_assessment", "guideline_comparison",
     "rtp_integrity_check",
     "storage",
+    "structure_drift",
 })
 
 # Expected player_impact sub-keys (from kept-good report schema).

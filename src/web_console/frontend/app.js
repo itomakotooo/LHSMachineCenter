@@ -4268,6 +4268,155 @@ function escapeHtml(s) {
     .replace(/'/g, "&#39;");
 }
 
+function renderStructureDriftPanel(summary) {
+  // Surface summary.structure_drift (structure-drift gate, 2026-06-12).
+  // Badge: green ok / yellow warn / red fail / grey unaudited.
+  // Drill-down: undeclared STs + per-ST field drift.
+  // Self-hides when the block is absent (old reports / unregistered machines).
+  const el = byId("structureDriftPanel");
+  if (!el) return;
+  const drift = (summary || {}).structure_drift;
+  if (!drift || typeof drift !== "object") {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+    return;
+  }
+  el.classList.remove("hidden");
+  const lang = (typeof PURE !== "undefined" && PURE.currentLang) || state.lang || "zh";
+  const t = (key) => PURE.fmt(lang, key);
+  const fmtPct = (v) => (v == null ? "N/A" : `${(Number(v) * 100).toFixed(1)}%`);
+
+  const status = drift.status || "unaudited";
+  const toneMap = { ok: "sd-ok", warn: "sd-warn", fail: "sd-fail", unaudited: "sd-unaudited" };
+  const tone = toneMap[status] || "sd-unaudited";
+  el.className = `structure-drift-box structure-drift-${tone}`;
+
+  const statusLabelKey = {
+    ok: "sdStatusOk", warn: "sdStatusWarn", fail: "sdStatusFail", unaudited: "sdStatusUnaudited",
+  }[status] || "sdStatusUnaudited";
+  const icon = status === "ok" ? "✓" : status === "fail" ? "✗" : status === "warn" ? "⚠" : "·";
+
+  // Undeclared STs section.
+  const undecSts = Array.isArray(drift.undeclared_sts) ? drift.undeclared_sts : [];
+  let undecStHtml = "";
+  if (undecSts.length > 0) {
+    const rows = undecSts.map(e =>
+      `<tr><td>${escapeHtml(String(e.st))}</td><td>${escapeHtml(fInt(e.rounds))}</td>` +
+      `<td>${escapeHtml(fmtPct(e.share))}</td></tr>`
+    ).join("");
+    undecStHtml = `
+      <div class="sd-section">
+        <div class="sd-section-title">${escapeHtml(t("sdUndeclaredSts"))}</div>
+        <table class="sd-table">
+          <thead><tr>
+            <th>${escapeHtml(t("sdColSt"))}</th>
+            <th>${escapeHtml(t("sdColRounds"))}</th>
+            <th>${escapeHtml(t("sdColShare"))}</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  // Declared-absent STs (informational).
+  const declaredAbsent = Array.isArray(drift.declared_sts_absent) ? drift.declared_sts_absent : [];
+  let absentHtml = "";
+  if (declaredAbsent.length > 0) {
+    absentHtml = `
+      <div class="sd-section sd-info">
+        <div class="sd-section-title">${escapeHtml(t("sdDeclaredAbsent"))}</div>
+        <div class="sd-absent-list">${declaredAbsent.map(s => escapeHtml(String(s))).join(", ")}</div>
+      </div>`;
+  }
+
+  // Per-ST field drift detail.
+  const perSt = drift.per_st || {};
+  const perStKeys = Object.keys(perSt).sort();
+  let perStHtml = "";
+  if (perStKeys.length > 0) {
+    const stSections = perStKeys.map(st => {
+      const stData = perSt[st] || {};
+      // Keys MUST match the structure_drift plugin's emitted schema exactly:
+      // signature_fields_missing (dict), new_fields (dict), observed_fields_absent (list).
+      const missFields = stData.signature_fields_missing || {};
+      const newFields = stData.new_fields || {};
+      const absentFields = Array.isArray(stData.observed_fields_absent) ? stData.observed_fields_absent : [];
+      const missKeys = Object.keys(missFields).sort();
+      const newKeys = Object.keys(newFields).sort();
+      let inner = "";
+      if (missKeys.length > 0) {
+        const rows = missKeys.map(f =>
+          `<tr><td>${escapeHtml(f)}</td><td>${escapeHtml(fmtPct(missFields[f]))}</td></tr>`
+        ).join("");
+        inner += `<div class="sd-field-group">
+          <div class="sd-field-group-title">${escapeHtml(t("sdMissingDeclaredFields"))}</div>
+          <table class="sd-table"><thead><tr>
+            <th>${escapeHtml(t("sdColField"))}</th>
+            <th>${escapeHtml(t("sdColPresence"))}</th>
+          </tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+      if (newKeys.length > 0) {
+        const rows = newKeys.map(f =>
+          `<tr><td>${escapeHtml(f)}</td><td>${escapeHtml(fmtPct(newFields[f]))}</td></tr>`
+        ).join("");
+        inner += `<div class="sd-field-group">
+          <div class="sd-field-group-title">${escapeHtml(t("sdNewUndeclaredFields"))}</div>
+          <table class="sd-table"><thead><tr>
+            <th>${escapeHtml(t("sdColField"))}</th>
+            <th>${escapeHtml(t("sdColPresence"))}</th>
+          </tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+      if (absentFields.length > 0) {
+        // Informational only (optional-field presence is config-dependent).
+        inner += `<div class="sd-field-group sd-field-group-info">
+          <div class="sd-field-group-title">${escapeHtml(t("sdObservedAbsent"))}</div>
+          <div class="sd-absent-list">${absentFields.map(f => escapeHtml(f)).join(", ")}</div></div>`;
+      }
+      // unaudited_fields: ST has a signature but no observed_fields inventory →
+      // the envelope (new-field) audit cannot run. Surface it honestly — never
+      // silent (feedback_no_silent_swallow at the UI layer).
+      if (stData.observed_fields_status === "unaudited_fields") {
+        inner += `<div class="sd-field-group sd-field-group-info">
+          <div class="sd-field-group-title">${escapeHtml(t("sdUnauditedFields"))}</div></div>`;
+      }
+      return inner ? `<div class="sd-st-block"><strong>ST ${escapeHtml(st)}</strong>${inner}</div>` : "";
+    }).filter(Boolean).join("");
+    if (stSections) {
+      perStHtml = `
+        <div class="sd-section">
+          <div class="sd-section-title">${escapeHtml(t("sdPerStDrift"))}</div>
+          ${stSections}
+        </div>`;
+    }
+  } else if (status === "ok") {
+    perStHtml = `<div class="sd-section sd-ok-note">${escapeHtml(t("sdNoDrift"))}</div>`;
+  }
+
+  // Reason (for unaudited).
+  const reasonHtml = drift.reason
+    ? `<div class="sd-reason">${escapeHtml(t("sdReason"))}: ${escapeHtml(drift.reason)}</div>`
+    : "";
+
+  // Footer: audited rounds + source.
+  const footerHtml = `
+    <div class="sd-footer">
+      ${escapeHtml(t("sdAuditedRounds"))}: ${escapeHtml(fInt(drift.audited_rounds || 0))}
+      &nbsp;·&nbsp; ${escapeHtml(drift.source || "")}
+    </div>`;
+
+  el.innerHTML = `
+    <div class="sd-head">
+      <span class="sd-icon">${icon}</span>
+      <span class="sd-title">${escapeHtml(t(statusLabelKey))}</span>
+    </div>
+    ${reasonHtml}
+    ${undecStHtml}
+    ${absentHtml}
+    ${perStHtml}
+    ${footerHtml}
+  `;
+}
+
 function renderRtpClampWarning(summary) {
   // Show the operator a heads-up when the analyzer detected truncated
   // collect cycles in the sample (chunk_spin_times ran out before the

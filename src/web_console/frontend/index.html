@@ -92,6 +92,11 @@
                  machine manifest has not been per-machine reviewed
                  (completeness_declared=false). Never blocks; informational. -->
             <div id="reportSelfCheck" class="self-check-box hidden"></div>
+            <!-- Structure-drift gate (2026-06-12): summary.structure_drift.
+                 Green ok / yellow warn / red fail / grey unaudited badge.
+                 Drill-down: undeclared STs + per-ST field drift.
+                 Never blocks; informational alarm. -->
+            <div id="structureDriftPanel" class="structure-drift-box hidden"></div>
             <div class="actions">
               <button id="interpretBtn" data-i18n="btnInterpret">生成解读</button>
             </div>

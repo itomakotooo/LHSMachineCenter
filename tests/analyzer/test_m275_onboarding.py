@@ -113,6 +113,7 @@ _EXPECTED_M275_ANALYSES = frozenset({
     "payouts_by_spin_type", "reel_marginal_by_spin_type",
     "spin_type_outcomes", "spin_type_rtp_buckets",
     "freespin_dynamics",
+    "structure_drift",
 })
 _EXPECTED_M15_ANALYSES = (_EXPECTED_M275_ANALYSES - {"freespin_dynamics"}) | {
     "topdollar_choice",
@@ -143,6 +144,7 @@ _EXPECTED_TOP_KEYS = frozenset({
     "guideline_assessment", "guideline_comparison",
     "rtp_integrity_check",
     "storage",
+    "structure_drift",
 })
 
 # Expected player_impact sub-keys: the standard set PLUS freespin_dynamics
@@ -391,17 +393,18 @@ class TestTriggerPathDeclaration:
         )
         discover_extractors()
         exts = get_extractors_for_manifest(m275_manifest)
-        assert len(exts) == 1, (
-            f"M275 must configure EXACTLY one extractor (trigger_path); got "
-            f"{[e.EXTRACTOR_ID for e in exts]}"
+        ext_ids = [e.EXTRACTOR_ID for e in exts]
+        # trigger_path must be present (the M275-specific discriminated extractor).
+        # signature_audit is also present because all M275 STs declare "signature".
+        assert "trigger_path" in ext_ids, (
+            f"M275 must configure the trigger_path extractor; got {ext_ids}"
         )
-        ext = exts[0]
-        assert ext.EXTRACTOR_ID == "trigger_path"
+        tp_ext = next(e for e in exts if e.EXTRACTOR_ID == "trigger_path")
         # The per-ST declaration parsed: ST126 only (private attr read — the
         # only direct evidence the declaration reached the extractor config).
-        assert set(ext._st_declarations.keys()) == {_ST_FREESPIN}, (
+        assert set(tp_ext._st_declarations.keys()) == {_ST_FREESPIN}, (
             f"trigger_path must be configured for ST{_ST_FREESPIN} only; got "
-            f"{sorted(ext._st_declarations.keys())}"
+            f"{sorted(tp_ext._st_declarations.keys())}"
         )
 
     def test_discriminator_maps_only_observed_gtt_vocabulary(self, m275_manifest):
@@ -431,10 +434,13 @@ class TestTriggerPathDeclaration:
         assert tp["multi_trigger_policy"] == "additive_sessions"
         assert tp["fallback"]["kind"] == "trigger_anchor_walk"
 
-    def test_sibling_manifests_configure_no_extractors(self):
-        """Extraction non-leak: M15/M43/M279 declare no trigger_paths → empty
-        extractor list → byte-identical parse behavior (the inertness contract
-        the _fwpass_gate locks at report level)."""
+    def test_sibling_manifests_configure_no_trigger_path_extractor(self):
+        """Trigger-path non-leak: M15/M43/M279 declare no trigger_paths →
+        the trigger_path extractor must NOT appear in their extractor list
+        (the inertness contract the _fwpass_gate locks at report level).
+        Note: signature_audit IS present for all machines that declare
+        "signature" (all 4 registered manifests do), so the list is non-empty;
+        the assertion is specifically about trigger_path isolation."""
         from fresh_slotlab.analyzer.machine_spec import load_manifest
         from fresh_slotlab.analyzer.st_extract import (
             discover_extractors, get_extractors_for_manifest,
@@ -443,9 +449,10 @@ class TestTriggerPathDeclaration:
         for machine in ("M15", "M43", "M279"):
             manifest = load_manifest(machine, _MANIFESTS_ROOT)
             exts = get_extractors_for_manifest(manifest)
-            assert exts == [], (
-                f"{machine} must configure NO st_extractors; got "
-                f"{[e.EXTRACTOR_ID for e in exts]}"
+            ext_ids = [e.EXTRACTOR_ID for e in exts]
+            assert "trigger_path" not in ext_ids, (
+                f"{machine} must NOT configure the trigger_path extractor "
+                f"(no trigger_paths declared in manifest); got {ext_ids}"
             )
 
 

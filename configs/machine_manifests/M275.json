@@ -8,13 +8,17 @@
       "role": "paid_spin",
       "play": "NormalCollectionSpin",
       "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"]
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
+      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "observed_fields_source": "st_inventory M275/mode_1 bucket 8c89bc95/9b453ffc 2026-06-12"
     },
     "126": {
       "role": "freespin",
       "play": "NewFreespin",
       "economy": {"win_field": "WinCredits", "kind": "real"},
       "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "ExtraRatio", "GameplayTriggerType", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "ExtraRatio", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_fields_source": "st_inventory M275/mode_1 bucket 8c89bc95/9b453ffc 2026-06-12",
       "trigger_paths": {
         "discriminator": {"kind": "round_field", "field": "GameplayTriggerType", "map": {"0": "scatter", "2": "collect_peak"}, "unmapped_value_policy": "surface_as_unknown_path"},
         "fallback": {"kind": "trigger_anchor_walk", "note": "pid-666 anchor vs CollectCount-reset entry — the walk upstream_feature_breakdown's [via ...] split already implements; near-exact (1-in-909 double-trigger edge bins to the counter path, same merge the server's SummaryWin does)"},

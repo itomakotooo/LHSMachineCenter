@@ -63,6 +63,7 @@ CROSS_CUTTING: tuple[str, ...] = (
     "upstream_feature_breakdown",
     "collect_mechanic",
     "bonus_chain_dynamics",
+    "structure_drift",
 )
 # PER_SPINTYPE: analyses that run per-SpinType (a machine gets them because it
 # emits SpinTypes at all).

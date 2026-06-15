@@ -1205,6 +1205,115 @@ button:disabled {
   font-size: 11px;
 }
 
+/* Structure-drift gate panel (summary.structure_drift surface, 2026-06-12).
+   Status-toned badge: ok=green / warn=yellow / fail=red / unaudited=grey.
+   Compact drill-down with per-ST field tables. Never blocking; alarm signal. */
+.structure-drift-box {
+  border: 1px solid #d0d8e2;
+  background: #f5f8fb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.structure-drift-sd-ok {
+  border-color: #b3d8b8;
+  background: #f0f8f2;
+  color: #1e5d2a;
+}
+.structure-drift-sd-warn {
+  border-color: #e0cc88;
+  background: #fffdf0;
+  color: #6b5000;
+}
+.structure-drift-sd-fail {
+  border-color: var(--warn-line, #d4b8b8);
+  background: var(--warn-bg, #faf2f2);
+  color: #8a3b00;
+}
+.structure-drift-sd-unaudited {
+  border-color: #c8ccd4;
+  background: #f4f5f7;
+  color: #5a6070;
+  opacity: 0.9;
+}
+.sd-head {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.sd-icon {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+  margin-right: 4px;
+}
+.sd-title {
+  font-weight: 600;
+}
+.sd-section {
+  margin-top: 8px;
+}
+.sd-section.sd-info {
+  opacity: 0.8;
+}
+.sd-section.sd-ok-note {
+  color: #2a7a36;
+  font-size: 11px;
+}
+.sd-section-title {
+  font-weight: 500;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: inherit;
+  opacity: 0.8;
+}
+.sd-absent-list {
+  font-size: 11px;
+  font-family: monospace;
+}
+.sd-st-block {
+  margin: 6px 0 6px 8px;
+  border-left: 2px solid currentColor;
+  padding-left: 8px;
+  opacity: 0.85;
+}
+.sd-field-group {
+  margin-top: 4px;
+}
+.sd-field-group-title {
+  font-size: 11px;
+  font-style: italic;
+  margin-bottom: 2px;
+}
+.sd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.sd-table th,
+.sd-table td {
+  text-align: left;
+  padding: 2px 6px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+.sd-table th {
+  font-weight: 500;
+  opacity: 0.7;
+}
+.sd-reason {
+  font-size: 11px;
+  margin: 4px 0;
+  opacity: 0.85;
+  font-style: italic;
+}
+.sd-footer {
+  margin-top: 6px;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
 .progressWrap {
   margin-top: 10px;
   height: 16px;
