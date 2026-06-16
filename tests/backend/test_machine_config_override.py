@@ -648,7 +648,7 @@ class TestReportMd5StampMatchesAnalyzerFilter:
     verifies the analyzer emits summary with the arg-provided md5."""
 
     def test_report_uses_arg_md5_over_machines_json_lookup(self, monkeypatch):
-        import fresh_slotlab.player_impact_analyzer as pia
+        import fresh_slotlab.machine_md5 as pia
 
         # Simulate analyzer CLI with explicit upstream-*-md5 set. The
         # stamping block:
@@ -666,9 +666,9 @@ class TestReportMd5StampMatchesAnalyzerFilter:
         # bug now — test doesn't call it so a monkeypatch-guard is
         # sufficient proof.
         monkeypatch.setattr(
-            pia, "_lookup_machine_md5",
+            pia, "lookup_machine_md5",
             lambda m: (_ for _ in ()).throw(AssertionError(
-                "_lookup_machine_md5 must NOT be called when args.upstream_config_md5 is set"
+                "lookup_machine_md5 must NOT be called when args.upstream_config_md5 is set"
             )),
         )
 
@@ -677,7 +677,7 @@ class TestReportMd5StampMatchesAnalyzerFilter:
             cfg_md5 = args.upstream_config_md5 or ""
             code_md5 = args.upstream_code_md5 or ""
         else:
-            cfg_md5, code_md5 = pia._lookup_machine_md5(args.machine)
+            cfg_md5, code_md5 = pia.lookup_machine_md5(args.machine)
 
         assert cfg_md5 == "localcfg_abc12345"
         assert code_md5 == "server_code_md5"
@@ -686,7 +686,7 @@ class TestReportMd5StampMatchesAnalyzerFilter:
         """Back-compat: direct /api/runs caller that didn't pass
         ``--upstream-config-md5`` still gets a report with
         machines.json's global md5 (the pre-2026-04-24 behavior)."""
-        import fresh_slotlab.player_impact_analyzer as pia
+        import fresh_slotlab.machine_md5 as pia
 
         class FakeArgs:
             upstream_config_md5 = ""
@@ -694,7 +694,7 @@ class TestReportMd5StampMatchesAnalyzerFilter:
             machine = "M14"
 
         monkeypatch.setattr(
-            pia, "_lookup_machine_md5",
+            pia, "lookup_machine_md5",
             lambda m: ("global_cfg_md5", "global_code_md5"),
         )
 
@@ -703,7 +703,7 @@ class TestReportMd5StampMatchesAnalyzerFilter:
             cfg_md5 = args.upstream_config_md5 or ""
             code_md5 = args.upstream_code_md5 or ""
         else:
-            cfg_md5, code_md5 = pia._lookup_machine_md5(args.machine)
+            cfg_md5, code_md5 = pia.lookup_machine_md5(args.machine)
 
         assert cfg_md5 == "global_cfg_md5"
         assert code_md5 == "global_code_md5"
@@ -830,7 +830,7 @@ class TestChunkEnvelopeStampsMatchAnalyzerFilter:
     的 rawdata md5 管理还是有问题"."""
 
     def test_save_chunk_cache_uses_override_md5_when_set(self, tmp_path):
-        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+        from fresh_slotlab.analyzer.core.writer import _save_chunk_cache
         import json as _json
         cache_dir = tmp_path / "M14" / "mode_1"
         # Post-P2-B3: lookup_machine_md5 is now an explicit DI kwarg.
@@ -853,18 +853,14 @@ class TestChunkEnvelopeStampsMatchAnalyzerFilter:
         self, tmp_path, monkeypatch,
     ):
         """Back-compat: when no override is passed, the stamp still
-        comes from ``_lookup_machine_md5`` (pre-2026-04-24 behavior)."""
-        import fresh_slotlab.player_impact_analyzer as pia
+        comes from ``lookup_machine_md5`` (pre-2026-04-24 behavior)."""
+        from fresh_slotlab.analyzer.core import writer as pia
         import json as _json
 
-        monkeypatch.setattr(
-            pia, "_lookup_machine_md5",
-            lambda m: ("global_cfg", "global_code"),
-        )
         cache_dir = tmp_path / "M14" / "mode_1"
         # Post-P2-B3: lookup_machine_md5 is an explicit DI kwarg. To
-        # preserve the test intent (pia._lookup_machine_md5 stub provides
-        # the md5), we explicitly pass the stub through the new kwarg.
+        # preserve the test intent (the stub provides the md5), we
+        # explicitly pass the stub through the new kwarg.
         pia._save_chunk_cache(
             resp=[], chunk_index=1, machine="M14",
             rtp_mode=1, bet=1000, spin_times=2000, robot_count=8,
@@ -882,7 +878,7 @@ class TestChunkEnvelopeStampsMatchAnalyzerFilter:
         sidecar-backed fast paths (``_classify_chunks``,
         ``check_rawdata_status`` cold, ``_scan_mode_dir``) would
         disagree with the chunk file itself."""
-        from fresh_slotlab.player_impact_analyzer import _save_chunk_cache
+        from fresh_slotlab.analyzer.core.writer import _save_chunk_cache
         from fresh_slotlab.chunk_index import load_chunks_index
         cache_dir = tmp_path / "M14" / "mode_1"
         _save_chunk_cache(
@@ -906,7 +902,7 @@ class TestMakePayloadInjectsMachineConfigField:
     proves the override actually reaches upstream."""
 
     def test_non_empty_machine_config_adds_field(self):
-        from fresh_slotlab.player_impact_analyzer import make_payload
+        from fresh_slotlab.analyzer.core.base_pipeline import make_payload
         p = make_payload(
             machine="M14", rtp_mode=1, bet=1000, spin_times=100,
             robot_count=1, init_credits=10**14,
@@ -916,7 +912,7 @@ class TestMakePayloadInjectsMachineConfigField:
         assert p.get("MachineConfig") == '{"x":1}'
 
     def test_none_machine_config_omits_field(self):
-        from fresh_slotlab.player_impact_analyzer import make_payload
+        from fresh_slotlab.analyzer.core.base_pipeline import make_payload
         for empty in (None, ""):
             p = make_payload(
                 machine="M14", rtp_mode=1, bet=1000, spin_times=100,

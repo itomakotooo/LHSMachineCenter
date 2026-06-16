@@ -132,12 +132,139 @@ class ReelMarginalBySpinType(AnalyzerFeature):
     REQUIRES: ClassVar[tuple[str, ...]] = ()  # stash key pre-exists before emit loop
 
     def extract(self, parse_state: Any, chunk_dict: Any) -> dict:
-        """No-op — reel_marginal_by_spin_type uses the pre-emit stash pattern."""
-        return {}
+        """Accumulate per-dim symbol counts from st_extract.trigger_path.dimensions.
+
+        Phase 2 extension: also reads chunk_dict["st_extract"]["trigger_path"]
+        ["dimensions"] to accumulate symbol_counts per (st_str, dim_name, dim_value,
+        col_str). These feed the "__by_dim__" sibling keys emitted in emit().
+
+        GUARD: only on the precise "dimensions" sub-key inside "trigger_path"
+        (per 05_breaker.md BREAK-1 — st_extract is NON-empty fleet-wide).
+        Machines with no declared dimensions return empty dict → byte-identical.
+
+        Alarm semantics (feedback_invariant_with_fallback_hides_drift.md):
+        unknown/multi dim values are excluded from symbol_count accumulation (their
+        symbol_counts carry mixed-path data). Their ROUND COUNTS are tracked in
+        dim_unknown_counts / dim_multi_counts so emit() can surface a
+        "_unknown_excluded_count" / "_multi_excluded_count" alarm key when non-zero.
+        """
+        if not chunk_dict or not isinstance(chunk_dict, dict):
+            return {"dim_symbol_counts": {}, "dim_unknown_counts": {}, "dim_multi_counts": {}}
+
+        # dim_symbol_counts[(st_str, dim_name, dim_value, col_str)] = {sym: count}
+        dim_symbol_counts: dict[tuple[str, str, str, str], dict[str, int]] = {}
+        # dim_unknown_counts[(st_str, dim_name)] = count of excluded unknown: rounds
+        dim_unknown_counts: dict[tuple[str, str], int] = {}
+        # dim_multi_counts[(st_str, dim_name)] = count of excluded multi: rounds
+        dim_multi_counts: dict[tuple[str, str], int] = {}
+
+        _st_extract = chunk_dict.get("st_extract")
+        if isinstance(_st_extract, dict):
+            _tp_raw = _st_extract.get("trigger_path")
+            if isinstance(_tp_raw, dict):
+                _dims_raw = _tp_raw.get("dimensions")
+                if isinstance(_dims_raw, dict):
+                    for _st_str, _dim_data in _dims_raw.items():
+                        if not str(_st_str).isdigit():
+                            continue
+                        if not isinstance(_dim_data, dict):
+                            continue
+                        for _dim_name, _dim_vals in _dim_data.items():
+                            if not isinstance(_dim_vals, dict):
+                                continue
+                            _real_vals = [
+                                v for v in _dim_vals
+                                if not str(v).startswith("unknown:")
+                                and not str(v).startswith("multi:")
+                            ]
+                            if len(_real_vals) < 2:
+                                continue
+                            _dim_key = (str(_st_str), str(_dim_name))
+                            for _dim_value, _dim_stats in _dim_vals.items():
+                                if not isinstance(_dim_stats, dict):
+                                    continue
+                                _dv_str = str(_dim_value)
+                                _rc = int(_dim_stats.get("round_count") or 0)
+                                if _dv_str.startswith("unknown:"):
+                                    # Track excluded unknown: rounds — alarm signal.
+                                    dim_unknown_counts[_dim_key] = (
+                                        dim_unknown_counts.get(_dim_key, 0) + _rc
+                                    )
+                                    continue
+                                if _dv_str.startswith("multi:"):
+                                    # Track excluded multi: rounds — alarm signal.
+                                    dim_multi_counts[_dim_key] = (
+                                        dim_multi_counts.get(_dim_key, 0) + _rc
+                                    )
+                                    continue
+                                _sym_counts = _dim_stats.get("symbol_counts")
+                                if not isinstance(_sym_counts, dict):
+                                    continue
+                                for _col_str, _sym_map in _sym_counts.items():
+                                    if not isinstance(_sym_map, dict):
+                                        continue
+                                    _k = (
+                                        str(_st_str), str(_dim_name),
+                                        _dv_str, str(_col_str),
+                                    )
+                                    _dest = dim_symbol_counts.setdefault(_k, {})
+                                    for _sym, _cnt in _sym_map.items():
+                                        _dest[str(_sym)] = (
+                                            _dest.get(str(_sym), 0)
+                                            + int(_cnt or 0)
+                                        )
+
+        return {
+            "dim_symbol_counts": dim_symbol_counts,
+            "dim_unknown_counts": dim_unknown_counts,
+            "dim_multi_counts": dim_multi_counts,
+        }
 
     def reduce(self, prev_acc: Any, this_acc: Any) -> Any:
-        """No-op — no per-chunk accumulator."""
-        return {}
+        """Merge per-dim symbol counts additively across chunks."""
+        _empty: dict[str, Any] = {
+            "dim_symbol_counts": {},
+            "dim_unknown_counts": {},
+            "dim_multi_counts": {},
+        }
+        if not prev_acc:
+            return this_acc if this_acc else _empty
+        if not this_acc:
+            return prev_acc
+
+        prev_dsc = (prev_acc or {}).get("dim_symbol_counts") or {}
+        this_dsc = (this_acc or {}).get("dim_symbol_counts") or {}
+        merged_dsc: dict[tuple[str, str, str, str], dict[str, int]] = {}
+        for k, sym_map in prev_dsc.items():
+            merged_dsc[k] = dict(sym_map)
+        for k, sym_map in this_dsc.items():
+            if k not in merged_dsc:
+                merged_dsc[k] = dict(sym_map)
+            else:
+                dest = merged_dsc[k]
+                for sym, cnt in sym_map.items():
+                    dest[sym] = dest.get(sym, 0) + cnt
+
+        def _merge_int_counts(
+            prev: dict[tuple[str, str], int],
+            this: dict[tuple[str, str], int],
+        ) -> dict[tuple[str, str], int]:
+            merged: dict[tuple[str, str], int] = dict(prev)
+            for k, v in this.items():
+                merged[k] = merged.get(k, 0) + v
+            return merged
+
+        return {
+            "dim_symbol_counts": merged_dsc,
+            "dim_unknown_counts": _merge_int_counts(
+                (prev_acc or {}).get("dim_unknown_counts") or {},
+                (this_acc or {}).get("dim_unknown_counts") or {},
+            ),
+            "dim_multi_counts": _merge_int_counts(
+                (prev_acc or {}).get("dim_multi_counts") or {},
+                (this_acc or {}).get("dim_multi_counts") or {},
+            ),
+        }
 
     def emit(self, final_acc: Any, summary: dict, ctx: "PipelineContext") -> None:
         """Build reel_marginal_by_spin_type from the raw stash (Phase 5 carve).
@@ -230,6 +357,97 @@ class ReelMarginalBySpinType(AnalyzerFeature):
             reel_marginal_by_spin_type[label] = col_rows
 
         player_impact["reel_marginal_by_spin_type"] = reel_marginal_by_spin_type
+
+        # --- Phase 2: emit per-dim reel marginal sibling keys "__by_dim__<dim_name>" ---
+        # For each ST label with dimension symbol_count data (>=2 real dim values):
+        #   reel_marginal_by_spin_type["<label>__by_dim__<dim_name>"] = {
+        #     dim_value: {col_str: [symbol_rows]},
+        #     # When non-zero (alarm semantics per feedback_invariant_with_fallback_hides_drift.md):
+        #     "_unknown_excluded_count": N,  # rounds excluded (unknown: prefix)
+        #     "_multi_excluded_count": N,    # rounds excluded (multi: prefix)
+        #   }
+        # Same schema as the aggregate per-col rows (symbol, count, prob_pct).
+        # Guard: dim_symbol_counts is empty for machines with no declared dimensions
+        # (M15/M43/M279) → no sibling keys emitted → byte-identical output.
+        dim_symbol_counts = (final_acc or {}).get("dim_symbol_counts") or {}
+        dim_unknown_counts: dict[tuple[str, str], int] = (
+            (final_acc or {}).get("dim_unknown_counts") or {}
+        )
+        dim_multi_counts: dict[tuple[str, str], int] = (
+            (final_acc or {}).get("dim_multi_counts") or {}
+        )
+
+        if dim_symbol_counts:
+            # Group by (st_str, dim_name, dim_value, col_str).
+            # First collect all (st_str, dim_name) pairs to find sibling key names.
+            from collections import defaultdict as _defaultdict2
+            # Nested structure: {(st_str, dim_name): {dim_value: {col_str: {sym: count}}}}
+            st_dim_data: dict[
+                tuple[str, str],
+                dict[str, dict[str, dict[str, int]]]
+            ] = _defaultdict2(lambda: _defaultdict2(lambda: _defaultdict2(dict)))
+
+            for (st_str_k, dim_name_k, dim_value_k, col_str_k), sym_map in dim_symbol_counts.items():
+                if not str(st_str_k).isdigit():
+                    continue
+                # extract() already excluded unknown:/multi: values; guard is defensive.
+                if str(dim_value_k).startswith("unknown:") or str(dim_value_k).startswith("multi:"):
+                    continue
+                _dmap = st_dim_data[(st_str_k, dim_name_k)]
+                _cmap = _dmap[dim_value_k][col_str_k]
+                for sym, cnt in sym_map.items():
+                    _cmap[sym] = _cmap.get(sym, 0) + cnt
+
+            for (st_str_k, dim_name_k), dv_map in sorted(st_dim_data.items()):
+                try:
+                    _st_int_k = int(st_str_k)
+                except (TypeError, ValueError):
+                    continue
+                _label_k = _st_label.get(_st_int_k)
+                if _label_k is None:
+                    continue
+                # >=2 real dim values guard.
+                _real_dv = list(dv_map.keys())
+                if len(_real_dv) < 2:
+                    continue
+
+                _sibling_key = f"{_label_k}__by_dim__{dim_name_k}"
+                _sibling_val: dict[str, Any] = {}
+
+                for _dv, _col_sym_map in sorted(dv_map.items()):
+                    _col_rows: dict[str, list[dict[str, Any]]] = {}
+                    for _ci, _sym_map_dv in sorted(_col_sym_map.items()):
+                        _col_total = sum(_sym_map_dv.values())
+                        if _col_total == 0:
+                            continue
+                        _rows_for_col = [
+                            {
+                                "symbol": _sym,
+                                "count": int(_cnt),
+                                "prob_pct": (_cnt / _col_total) * 100.0,
+                            }
+                            for _sym, _cnt in sorted(
+                                _sym_map_dv.items(),
+                                key=lambda kv: kv[1],
+                                reverse=True,
+                            )
+                        ]
+                        _col_rows[str(_ci)] = _rows_for_col
+                    if _col_rows:
+                        _sibling_val[_dv] = _col_rows
+
+                # Alarm semantics: surface excluded unknown/multi round counts
+                # when non-zero (feedback_invariant_with_fallback_hides_drift.md).
+                _dim_key = (st_str_k, dim_name_k)
+                _unk_n = dim_unknown_counts.get(_dim_key, 0)
+                _multi_n = dim_multi_counts.get(_dim_key, 0)
+                if _unk_n > 0:
+                    _sibling_val["_unknown_excluded_count"] = _unk_n
+                if _multi_n > 0:
+                    _sibling_val["_multi_excluded_count"] = _multi_n
+
+                if _sibling_val:
+                    reel_marginal_by_spin_type[_sibling_key] = _sibling_val
 
 
 # ---------------------------------------------------------------------------

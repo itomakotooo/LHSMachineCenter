@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from fresh_slotlab.player_impact_analyzer import parse_chunk_response  # noqa: E402
+from fresh_slotlab.analyzer.core.parser import parse_chunk_response  # noqa: E402
 
 
 def main() -> None:

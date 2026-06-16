@@ -4,6 +4,15 @@
 >
 > 工程细节(API / 内部架构 / 高级故障排查)在 [CONSOLE_OPERATIONS.md](CONSOLE_OPERATIONS.md)、[API_REFERENCE.md](API_REFERENCE.md)、[REPORT_SPEC.md](REPORT_SPEC.md)。
 
+> ⚠️ **当前状态(2026-06-05):采样 + 出报告暂时离线,这个闭环目前跑不通。**
+> 报告生成引擎(`player_impact_analyzer.py`)正在按 SpinType 重构,被临时删掉了。
+> 影响:
+> - **点「开始采样」会报错**(`500 analyzer script not found`)——console 是通过这个引擎来驱动采样的。
+> - 因此第 3 节的迭代主流程(③ 检测本地 cfg → ④ 采样 → ⑤ 对比报告)**目前走不完**:本地 cfg 检测(checkbox)还在,但采样和出报告都做不了。
+> - **看已有的报告不受影响**——KPI / 图表 / 各 drilldown / 版本历史都能正常看(这些是从磁盘读的)。
+>
+> 新引擎上线后这个闭环会恢复。在那之前,本文档描述的是**恢复后的预期用法**;现在能用的只有「看已有报告」那部分。
+
 ---
 
 ## 1. 它能干嘛
@@ -34,11 +43,15 @@
 
 console 起来后浏览器自动打开 `http://127.0.0.1:8877/console/`。
 
-第一次先验证能拉到数据:随便选一台已有的机台(比如 `M14`)、mode `1`、直接点 **开始采样**。等几分钟出第一份 report。看到 KPI / chart 填上数字就说明环境 OK。
+> ⚠️ **采样目前离线**(见顶部说明),点「开始采样」会报 `500`。要确认环境 OK,改成:打开 **Fleet Management** tab,能看到已有机台的 run 历史 + 点开任意一份已有 report 能看到 KPI / chart 有数字,就说明 console 起来了。
+>
+> (恢复后的验证方式:随便选一台已有机台如 `M14`、mode `1`、点 **开始采样**,等几分钟出第一份 report,KPI / chart 填上数字即 OK。)
 
 ---
 
 ## 3. 迭代主流程 ⭐
+
+> ⚠️ **本节闭环目前离线**(采样 + 出报告暂停,见顶部)。③ 的本地 cfg 检测还在,④/⑤ 采样和对比报告做不了。下面是恢复后的预期流程。
 
 这是策划日常工作流。一次完整闭环:
 
@@ -152,8 +165,9 @@ Mode 2 / 5(super-lucky / mega-lucky)CI 锁定 fuzzy 模式,不需要调收敛精
 - 点 **停止**(■)。会 graceful cancel — 已采完的 chunks 保留(status 变 `cancelled`),summary 仍可看,interpretation 也能跑(LLM 能基于不完整数据给出评论)。
 
 **Q: code 改了想重新算 report 但不想重采**
-- analyzer 改动后,受影响机台的旧 report 会按 per-(机台, mode) 的版本被标成"过期"(report 行上的 **⚠ 过期** 角标 + 顶部 "{n} 个 report 的 analyzer 版本已过期" 提示条),只标不删——旧 report 一直在,直到你主动重生成。
-- 在机台目录选中机台 → 点 **批量生成 Report**(⟳)从已 cache 的 raw chunks 重新过 analyzer 出新 report;或对一批过期 report 点 **一键重生成**。不需要重采上游。
+- ⚠️ **重生成目前离线**(引擎重构中):**批量生成 Report** / **一键重生成** 点了会失败。已 cache 的 raw chunks 都还在、不会动,等新引擎上线就能直接重算。
+- (恢复后)analyzer 改动后,受影响机台的旧 report 会按 per-(机台, mode) 的版本被标成"过期"(report 行上的 **⚠ 过期** 角标 + 顶部 "{n} 个 report 的 analyzer 版本已过期" 提示条),只标不删——旧 report 一直在,直到你主动重生成。
+- (恢复后)在机台目录选中机台 → 点 **批量生成 Report**(⟳)从已 cache 的 raw chunks 重新过 analyzer 出新 report;或对一批过期 report 点 **一键重生成**。不需要重采上游。
 
 ---
 

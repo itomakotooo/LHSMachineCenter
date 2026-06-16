@@ -20,7 +20,7 @@ explicit kwargs.
 """
 from __future__ import annotations
 
-from fresh_slotlab.player_impact_analyzer import _save_chunk_cache as _real
+from fresh_slotlab.analyzer.core.writer import _save_chunk_cache as _real
 from fresh_slotlab import rawdata_index as _ri
 
 

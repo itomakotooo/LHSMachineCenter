@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from fresh_slotlab.player_impact_analyzer import (
+from fresh_slotlab.analyzer.core.base_pipeline import (
     aimd_tune,
     MIN_CHUNK_SPINS,
     SUCCESS_STREAK_FOR_GROW,

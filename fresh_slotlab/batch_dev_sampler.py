@@ -33,22 +33,24 @@ from typing import Any
 # player_impact_analyzer.py and trigger_sessions.py; see
 # ``tests/backend/test_script_mode_imports.py`` for the contract.
 try:
-    from fresh_slotlab.player_impact_analyzer import (
-        CHUNK_CACHE_VERSION,
+    from fresh_slotlab.analyzer.core.base_pipeline import (
         make_payload,
         post_json,
         post_json_with_retry,
-        utc_now,
+    )
+    from fresh_slotlab.analyzer.core.writer import CHUNK_CACHE_VERSION, utc_now
+    from fresh_slotlab.analyzer.core.parser import (
         _compute_upstream_schema_fingerprint,
         _payload_sha256,
     )
 except ImportError:
-    from player_impact_analyzer import (  # type: ignore[no-redef]
-        CHUNK_CACHE_VERSION,
+    from analyzer.core.base_pipeline import (  # type: ignore[no-redef]
         make_payload,
         post_json,
         post_json_with_retry,
-        utc_now,
+    )
+    from analyzer.core.writer import CHUNK_CACHE_VERSION, utc_now  # type: ignore[no-redef]
+    from analyzer.core.parser import (  # type: ignore[no-redef]
         _compute_upstream_schema_fingerprint,
         _payload_sha256,
     )

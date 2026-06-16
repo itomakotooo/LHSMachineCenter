@@ -7,6 +7,8 @@ monkeypatched so startup recovery tests don't actually shoot down processes.
 """
 from __future__ import annotations
 
+import os
+import shutil
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -16,6 +18,8 @@ from fastapi.testclient import TestClient
 
 from src.web_console.backend.app import create_app
 
+_CONF_REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 # Disable the post-generate-report auto-inference subprocess hook for
 # ALL backend tests — it spawns infer_paytable + verify_machine_labels
@@ -24,6 +28,49 @@ from src.web_console.backend.app import create_app
 @pytest.fixture(autouse=True)
 def _disable_auto_inference_hook(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
+
+
+@pytest.fixture
+def isolated_rawdata_factory(tmp_path: Path) -> Callable[..., Path]:
+    """Factory → an ISOLATED tmp rawdata root holding ONLY the requested
+    machine's modes, hardlinked from the real repo ``rawdata/`` (copy fallback).
+
+    Why this exists (2026-06-16 M43/mode_7 loss): generating a report via the
+    app calls ``_auto_cleanup_for_space``, which — when the box is low on disk —
+    evicts the OLDEST ``deletable``/``historical`` chunks across the ENTIRE
+    ``rawdata_root``. A fixture that pointed ``rawdata_root`` at the real repo
+    ``rawdata/`` therefore let a single-machine generate silently delete OTHER
+    machines' cached chunks fleet-wide (every chunk of a machine absent from the
+    fixture's ``machines.json`` is ``historical`` → eviction candidate). Disk
+    pressure is nondeterministic, which is why it went un-root-caused.
+
+    Hardlinking just the one machine into a tmp root keeps ``generate`` reading
+    real data while bounding cleanup to the tmp tree (which holds only the
+    declared, ``kept`` machine → zero eviction candidates). Even if a hardlink
+    were unlinked, the real chunk survives (shared inode, separate dentry).
+    See ``tests/test_rawdata_isolation_guard.py`` for the belt-and-suspenders
+    guard that hard-fails any test that still tries to delete real rawdata.
+    """
+    def _make(machine: str, modes: list[int], *, root_name: str = "rawdata") -> Path:
+        dst_root = tmp_path / root_name
+        real = _CONF_REPO_ROOT / "rawdata"
+        dst_root.mkdir(parents=True, exist_ok=True)
+        for mode in modes:
+            src = real / machine / f"mode_{mode}"
+            if not src.is_dir():
+                continue
+            dst = dst_root / machine / f"mode_{mode}"
+            dst.mkdir(parents=True, exist_ok=True)
+            for f in src.iterdir():
+                if not f.is_file():
+                    continue
+                tgt = dst / f.name
+                try:
+                    os.link(f, tgt)
+                except OSError:
+                    shutil.copyfile(f, tgt)
+        return dst_root
+    return _make
 
 
 # -------------------------------------------------------------------- paths

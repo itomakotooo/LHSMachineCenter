@@ -41,7 +41,7 @@ Inject-bug recipes (reproduce the RED, then revert for GREEN)
     In `cleanup_old_reports`, re-add the verdict-coupled deletion. Replace the
     survivor/to_delete block with the pre-honesty-1 cross-class delete, e.g.::
 
-        from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+        from fresh_slotlab.analyzer.versioning import compute_analyzer_version
         cur = compute_analyzer_version()
         survivor = versions[0]
         to_delete = [v for v in versions if _version_analyzer(v) not in ("", cur)]
@@ -83,7 +83,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+from fresh_slotlab.analyzer.versioning import compute_analyzer_version
 from src.web_console.backend.app import StateStore
 
 

@@ -42,6 +42,10 @@ from src.web_console.backend.config_writer import (
 # See session_artifacts/_arch/deploy/04_deploy_architecture_proposal_v2.md §4.1 + §4.5.
 from src.web_console.backend.cell_lock_registry import CellLockRegistry, CellOperation
 from src.web_console.backend.rate_limiter import ConcurrencyLimiter
+from src.web_console.backend.report_index import (
+    build_index_entry,
+    append_and_rewrite_latest,
+)
 
 
 def utc_now() -> str:
@@ -2804,7 +2808,10 @@ def load_machines(
                 logic = m.get("logicClassNames", [])
                 m.setdefault("category", _classify_machine(logic))
                 m.setdefault("available", bool(logic))
-                # Count on-disk report versions for this machine.
+                # Count on-disk report versions that have a player_impact_summary.json.
+                # Empty dirs and dirs holding only machine_config.json / progress.jsonl
+                # (failed runs) are excluded so the catalog count matches what the panel
+                # actually shows (F3 fix, 2026-06-12).
                 report_count = 0
                 machine_dir = rr / m["machine"]
                 if machine_dir.is_dir():
@@ -2812,7 +2819,9 @@ def load_machines(
                         versions_dir = mode_dir / "versions"
                         if versions_dir.is_dir():
                             report_count += sum(
-                                1 for v in versions_dir.iterdir() if v.is_dir()
+                                1 for v in versions_dir.iterdir()
+                                if v.is_dir()
+                                and (v / "player_impact_summary.json").exists()
                             )
                 m["report_count"] = report_count
             return machines
@@ -6645,77 +6654,38 @@ class RunManager:
             self._running.pop(managed.run_id, None)
 
     def _update_report_index(self, managed: ManagedRun) -> None:
+        """Write index.json + latest.json for a completed sampling run.
+
+        Routes through ``build_index_entry`` + ``append_and_rewrite_latest``
+        for shape unification (F1, 2026-06-12): same builder as the
+        generate-report and batch-generate paths.
+        """
         mode_dir = self._reports_root / managed.machine / f"mode_{managed.mode}"
-        index_path = mode_dir / "index.json"
-        latest_path = mode_dir / "latest.json"
         summary = read_json(managed.summary_file)
 
-        index_payload = []
-        if index_path.exists():
-            try:
-                raw = read_json(index_path)
-                if isinstance(raw, list):
-                    index_payload = raw
-            except Exception:
-                index_payload = []
-        rtp_point_pct = summary.get("rtp", {}).get("point_pct")
-        achieved_hw_pp = summary.get("sampling", {}).get("achieved_halfwidth_pp")
-        quality_label = summary.get("guideline_assessment", {}).get("data_quality", {}).get("quality_label")
-        # Version fingerprints let run-history flag stale reports without
-        # re-reading summary.json on every list. Three dimensions:
-        #   rawdata_config_md5 / rawdata_code_md5 = server-side machine
-        #     version captured at sampling time (fresh iff matches
-        #     machines.json current). Stale → resample required.
-        #   analyzer_version = local analyzer source hash at report-
-        #     generation time (fresh iff matches current Python code).
-        #     Stale → regenerate from rawdata via the new Part A path.
-        rawdata_config_md5 = summary.get("config_md5")
-        rawdata_code_md5 = summary.get("code_md5")
-        analyzer_version = summary.get("analyzer_version")
-        # Phase 3 item 4: effective_analyzer_version is the per-(machine,
-        # mode) hash that invalidates only machines actually using the
-        # changed feature(s). Lives alongside the legacy analyzer_version
-        # field (which hashes the analyzer source only — not per-machine).
-        # When PIA's summary writer ships the new field (deferred to a
-        # later commit; see ticket 09_phase3_manifest_bootstrap notes),
-        # this code picks it up automatically. Until then the value is
-        # None and old run rows render with empty-string in the index.
-        effective_analyzer_version = summary.get("effective_analyzer_version")
-        total_spins = summary.get("sampling", {}).get("total_spins")
-        item = {
-            "report_version": managed.report_version,
-            "run_id": managed.run_id,
-            "created_at": utc_now(),
-            "summary_file": str(managed.summary_file),
-            "report_file": str(managed.report_file),
-            "rtp_point_pct": rtp_point_pct,
-            # Keep both legacy (rtp_point_pct) and frontend-expected
-            # (achieved_*) keys so the version-history table can
-            # render RTP / CI / Spins without re-reading summary.json
-            # per row.
-            "achieved_rtp_pct": rtp_point_pct,
-            "achieved_halfwidth_pp": achieved_hw_pp,
-            "total_spins": total_spins,
-            "quality_label": quality_label,
-            # 2026-04-26: stamp rawdata md5 onto the index row so the
-            # /api/reports/{m}/{n} endpoint can filter by rawdata
-            # version WITHOUT re-opening every summary file. Reports
-            # generated before this commit have no md5 here; the
-            # endpoint treats "missing" as "untagged" so old reports
-            # neither leak into a current-md5 view nor disappear from
-            # an "include_historical=true" view.
-            "rawdata_config_md5": rawdata_config_md5 or "",
-            "rawdata_code_md5": rawdata_code_md5 or "",
-            "analyzer_version": analyzer_version or "",
-            "effective_analyzer_version": effective_analyzer_version or "",
-        }
-        index_payload.append(item)
-        # Phase 1 deploy: atomic + per-file-locked
-        atomic_json_write(index_path, index_payload)
-        atomic_json_write(latest_path, item)
+        # F1: use canonical builder + locked writer.
+        item = build_index_entry(
+            self._reports_root,
+            managed.machine,
+            managed.mode,
+            managed.report_version,
+            managed.run_id,
+            summary=summary,
+            summary_path=managed.summary_file,
+        )
+        append_and_rewrite_latest(mode_dir, item)
+
         # Persist the achieved RTP + CI + quality_label onto the runs
         # row so the merged Run History table can show them without
         # reading every summary.json on list.
+        rtp_point_pct = item.get("rtp_point_pct")
+        achieved_hw_pp = item.get("achieved_halfwidth_pp")
+        quality_label = item.get("quality_label")
+        rawdata_config_md5 = item.get("rawdata_config_md5")
+        rawdata_code_md5 = item.get("rawdata_code_md5")
+        analyzer_version = item.get("analyzer_version")
+        effective_analyzer_version = item.get("effective_analyzer_version")
+        total_spins = item.get("total_spins")
         patch: dict[str, Any] = {}
         if rtp_point_pct is not None:
             patch["achieved_rtp_pct"] = float(rtp_point_pct)
@@ -7257,7 +7227,7 @@ def create_app(
     # Declared early so the console_root route below can use it.
     def _asset_hash_for_console() -> str:
         latest = 0
-        for name in ("pure.js", "app.js", "styles.css"):
+        for name in ("pure.js", "app.js", "panel_registry.js", "styles.css"):
             p = FRONTEND_DIR / name
             try:
                 ts = int(p.stat().st_mtime)
@@ -7279,6 +7249,19 @@ def create_app(
         return Response(
             content=text.replace("{{ASSET_HASH}}", _asset_hash_for_console()),
             media_type="text/html; charset=utf-8",
+            headers={
+                # The index document carries the ASSET_HASH cache-bust token for the
+                # JS/CSS (app.js?v=<mtime>). If the BROWSER caches the document itself,
+                # it keeps serving a STALE hash → stale app.js → the operator sees an
+                # OLD report render long after the code was fixed. That is exactly the
+                # "报表还是错的 / report still wrong" cache trap (2026-06-10 M43): the
+                # served report + app.js were already correct, but a cached index.html
+                # pinned the browser to a pre-fix bundle. Force revalidation of the
+                # (tiny, dynamic) document so the fresh hash is always fetched; the
+                # hashed JS/CSS assets keep their long cache for perf.
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+            },
         )
 
     app.mount("/console", StaticFiles(directory=FRONTEND_DIR, html=True), name="console")
@@ -7347,7 +7330,7 @@ def create_app(
     # ``?v=<token>`` and the browser reliably picks up edits.
     def _asset_hash() -> str:
         latest = 0
-        for name in ("pure.js", "app.js", "styles.css"):
+        for name in ("pure.js", "app.js", "panel_registry.js", "styles.css"):
             p = FRONTEND_DIR / name
             try:
                 ts = int(p.stat().st_mtime)
@@ -7414,7 +7397,7 @@ def create_app(
         (honesty-3 cutover). The frontend comparator (versionBadges) now
         uses ``effective_versions``.
         """
-        from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+        from fresh_slotlab.analyzer.versioning import compute_analyzer_version
         from src.web_console.backend.effective_version_cache import EffectiveVersionCache
         machines_payload: dict[str, dict[str, str]] = {}
         if mc.exists():
@@ -7666,7 +7649,7 @@ def create_app(
         # Legacy global hash: kept in the response for display/backward-compat;
         # it NO LONGER drives the stale/fixable decision (honesty-3).
         try:
-            from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+            from fresh_slotlab.analyzer.versioning import compute_analyzer_version
             cur_analyzer = compute_analyzer_version()
         except Exception:  # noqa: BLE001 — best-effort display only
             cur_analyzer = ""
@@ -7894,17 +7877,19 @@ def create_app(
         from the response (the UI falls back to no-badge for missing
         entries).
         """
-        manifests_root = (
+        # 5B: flat-manifest layer deleted. Iterate SpinType-native manifests only.
+        # Only M15.json (confirmed) lives here; the badge map will contain M15 only.
+        # The catalog machine list (from machines.json roster) is NOT affected — that
+        # is a separate check. The "broken ⚠ 缺 mode" flag is also independent.
+        new_manifests_root = (
             Path(__file__).resolve().parent.parent.parent.parent
-            / "slot_designer" / "configs" / "machine_manifests"
+            / "configs" / "machine_manifests"
         )
         out: dict[str, dict[str, bool]] = {}
-        if not manifests_root.exists():
+        if not new_manifests_root.exists():
             return out
-        for path in sorted(manifests_root.iterdir()):
+        for path in sorted(new_manifests_root.iterdir()):
             if not path.is_file() or path.suffix != ".json":
-                continue
-            if path.name == "manifest_schema.json":
                 continue
             try:
                 m = json.loads(path.read_text(encoding="utf-8"))
@@ -7912,33 +7897,17 @@ def create_app(
                 continue
             if not isinstance(m, dict):
                 continue
-            notes = m.get("_generator_notes") or {}
-            # Skip synthetic templates — not operator-facing.
-            if notes.get("synthetic_template"):
-                continue
             mid = m.get("machine_id")
             if not mid:
                 continue
-            is_variant = bool(m.get("inherits_from"))
-            verified = bool(m.get("console_diagnostic_complete"))
+            # SpinType-native manifests use validation.status == "confirmed".
+            validation = m.get("validation") or {}
+            verified = validation.get("status") == "confirmed"
+            # New-schema manifests have no _generator_notes; default reviewed=True.
+            notes = m.get("_generator_notes") or {}
             reviewed = not bool(notes.get("config_not_reviewed"))
-            # Variants inherit verified/reviewed from the parent. Resolve
-            # cheaply: load parent if present, propagate fields. Skip if
-            # the parent is missing (UI falls back to no-badge).
-            if is_variant:
-                parent_name = m.get("inherits_from")
-                if isinstance(parent_name, str):
-                    parent_path = manifests_root / parent_name
-                    if parent_path.exists():
-                        try:
-                            parent_m = json.loads(
-                                parent_path.read_text(encoding="utf-8")
-                            )
-                            verified = bool(parent_m.get("console_diagnostic_complete"))
-                            parent_notes = parent_m.get("_generator_notes") or {}
-                            reviewed = not bool(parent_notes.get("config_not_reviewed"))
-                        except (OSError, json.JSONDecodeError):
-                            pass
+            # New-schema manifests are non-variant (no inherits_from at top level).
+            is_variant = False
             out[mid] = {
                 "verified": verified,
                 "reviewed": reviewed,
@@ -9314,6 +9283,37 @@ def create_app(
         endpoint surfaces standard HTTP errors; the batch manager
         catches them to record per-item failures.
         """
+        # 2026-06-06 Phase 2b: wire to report_engine.generate_report_from_chunks.
+        # Registered machines (configs/machine_manifests/<M>.json exists) → generate.
+        # Non-registered machines → clear HTTPException(422).
+        # The live-sampling RunManager subprocess path (ANALYZER constant / spawning)
+        # is untouched — only the from-cache path is wired here.
+
+        # -- REGISTERED CHECK (before any disk I/O) --
+        from fresh_slotlab.analyzer.report_engine import (  # noqa: PLC0415
+            generate_report_from_chunks as _gen_report,
+            MachineNotRegistered,
+        )
+        # Variant resolution: a variant (e.g. "M15$TopDollarSelector$0$") shares the
+        # underlying machine's rawdata format + parsing and has NO manifest of its own —
+        # only its preset analysis configs differ. Resolve the base (M15$…→M15) and
+        # register/generate via the underlying's manifest, while keeping the variant's
+        # own rawdata source + report identity. Non-variant machine: base == machine.
+        from src.web_console.backend.machine_variants import (  # noqa: PLC0415
+            extract_base_machine_name as _extract_base,
+        )
+        _base_machine = _extract_base(machine)
+        _manifests_root = ROOT / "configs" / "machine_manifests"
+        if not (_manifests_root / f"{_base_machine}.json").exists():
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"machine {machine} is not registered for the SpinType-native engine "
+                    f"(no machine_spec manifest for underlying '{_base_machine}'); only "
+                    "machines with a manifest generate reports — see docs/ANALYZER_ARCHITECTURE.md"
+                ),
+            )
+
         mode_dir = rd_root / machine / f"mode_{mode}"
         if not mode_dir.is_dir():
             raise HTTPException(
@@ -9324,10 +9324,6 @@ def create_app(
         classified = _classify_chunks(machine, mode, rd_root, mc, retention)
         md5_filter = bool(config_md5 and code_md5)
         if md5_filter:
-            # Combine all three buckets then filter by envelope md5 so
-            # historical-md5 cells can feed their chunks to the
-            # analyzer. No retention concept when targeting historical —
-            # the operator explicitly asked for this bucket.
             all_entries = (
                 classified["kept"] + classified["deletable"] + classified["historical"]
             )
@@ -9353,17 +9349,7 @@ def create_app(
                         f"(kept=0, deletable=0; historical={len(classified['historical'])})"
                     ),
                 )
-        # Sort chunk file paths by chunk_index (filename order) so the
-        # analyzer sees responses in their original sampling sequence.
-        chunk_paths = sorted(Path(e["path"]) for e in usable_entries)
 
-        # Phase 2 (D5 + D9 site #2): acquire GENERATING via registry so
-        # disk-pressure auto-cleanup won't evict the chunks we're about to
-        # consume, and concurrent DELETING is blocked.  Released in finally.
-        #
-        # 2026-05-22 (Scenario D fix): user-facing single-cell replay opts
-        # into INV-3 gating so a report is not produced while SAMPLING is
-        # still writing chunks (which would silently omit data).
         if not registry.try_acquire_cell(
             machine, mode, CellOperation.GENERATING,
             block_if_sampling_active=True,
@@ -9377,35 +9363,10 @@ def create_app(
                     "complete report)"
                 ),
             )
+        scoped_chunk_dir: Path | None = None
         try:
-            # Pre-load responses — each call to analyzer's post_json
-            # returns the next cached response in sequence.
-            _cached_responses: list[Any] = []
-            for cf in chunk_paths:
-                try:
-                    parsed = json.loads(cf.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    continue
-                resp = parsed.get("response")
-                if resp is not None:
-                    _cached_responses.append(resp)
-            if not _cached_responses:
-                raise HTTPException(
-                    status_code=422,
-                    detail="all usable chunks failed to load response payload",
-                )
+            chunk_paths = sorted(Path(e["path"]) for e in usable_entries)
 
-            # New run row + new output version dir. When md5-filtered,
-            # tag the version suffix with BOTH md5 shorts so cells
-            # that share config_md5 but differ in code_md5 (or vice
-            # versa) don't collide on the same versions/ path —
-            # either md5 half changing counts as a distinct rawdata
-            # generation (2026-04-21: user pointed out the previous
-            # code used ONLY config_md5, which collided if code
-            # flipped independently).
-            # run_id may be pre-allocated by the async endpoint (so the
-            # UI can poll from the moment the POST returns). Otherwise
-            # generate a new one for the sync / batch paths.
             new_run_id = run_id or f"gen_{uuid.uuid4().hex[:12]}"
             ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             if md5_filter:
@@ -9420,23 +9381,40 @@ def create_app(
             summary_file = output_dir / "player_impact_summary.json"
             report_file = output_dir / "player_impact_report.md"
 
-            # Reuse the first usable chunk's robot_count / spin_times
-            # as the synthetic run config (real values, since those
-            # chunks came from actual sampling with those params).
+            # Reuse the first usable chunk's robot_count / spin_times / bet.
             sample_env = json.loads(chunk_paths[0].read_text(encoding="utf-8"))
             chunk_spin_times = int(sample_env.get("_spin_times") or 5000)
             chunk_robot_count = int(sample_env.get("_robot_count") or 24)
+            # The engine's `bet` param defaults to 1 and is what lands in
+            # summary.sampling.bet — the frontend divides every "× bet"
+            # multiplier column by it. Not passing it produced bet=1 summaries
+            # whose multiplier columns rendered 1000× inflated (M279/M43
+            # console-regenerated reports, 2026-06-10). The chunks carry the
+            # real `_bet`; the engine already uses per-chunk `_bet` for
+            # parsing, so this only fixes the SUMMARY stamp.
+            chunk_bet = int(sample_env.get("_bet") or 1)
 
-            # Insert or update the RUNNING row so the run surfaces in
-            # the unified /api/runs?status=running feed while the
-            # analyzer is mid-work. End-of-function updates
-            # status=completed with final metrics. On analyzer failure,
-            # the outer except-block updates status=failed.
-            # 2026-04-22: when the async endpoint pre-inserted a
-            # ``status=queued`` placeholder row (to return run_id to
-            # the UI), UPDATE that row instead of re-inserting (would
-            # error on UNIQUE constraint). The sync / batch paths hit
-            # the insert branch because they never pre-insert.
+            # SCOPE (2026-06-11 M279): the engine has NO md5 filter — it parses every
+            # chunk_*.json in chunk_dir. Passing the raw mode_dir silently widened a
+            # scoped generation to ALL chunks on mixed-md5 dirs: the rwtree
+            # historical-cell "生成 Report" (cfg 39a01e76, 40 chunks) produced a
+            # 48-chunk report mixing TWO configs (spins 2,139,508 vs the requested
+            # 1,600,000). Benign only while every chunk in the dir shares one md5
+            # (M15/M43). When the selection is a strict subset, hardlink it into a
+            # throwaway scoped dir and feed THAT to the engine.
+            all_chunk_files = sorted(mode_dir.glob("chunk_*.json"))
+            gen_chunk_dir: Path = mode_dir
+            if len(chunk_paths) != len(all_chunk_files):
+                scoped_chunk_dir = cr / "_gen_scope" / new_run_id
+                scoped_chunk_dir.mkdir(parents=True, exist_ok=True)
+                for _cp in chunk_paths:
+                    _dst = scoped_chunk_dir / _cp.name
+                    try:
+                        os.link(_cp, _dst)          # same-volume hardlink: instant
+                    except OSError:
+                        shutil.copyfile(_cp, _dst)  # cross-volume / no-hardlink FS
+                gen_chunk_dir = scoped_chunk_dir
+
             started_now = utc_now()
             row_fields = {
                 "machine": machine,
@@ -9448,7 +9426,7 @@ def create_app(
                 "chunk_spin_times": chunk_spin_times,
                 "chunk_robot_count": chunk_robot_count,
                 "batch_concurrency": 1,
-                "max_chunks": len(_cached_responses),
+                "max_chunks": len(chunk_paths),
                 "timeout": 30,
                 "bankruptcy_session_spins": 10000,
                 "bankruptcy_bankroll_multipliers": "10,100,200,500",
@@ -9459,7 +9437,6 @@ def create_app(
                 "report_file": str(report_file),
             }
             if run_id and store.get_run(run_id):
-                # Pre-allocated placeholder row exists — fill it in.
                 store.update_run(new_run_id, row_fields)
             else:
                 store.insert_run({
@@ -9468,112 +9445,27 @@ def create_app(
                     **row_fields,
                 })
 
-            import sys as _sys
-            from io import StringIO
-
-            import fresh_slotlab.player_impact_analyzer as pia
-            import fresh_slotlab.analyzer.core.base_pipeline as _core_bp
-            _resp_iter = iter(_cached_responses)
-            _saved_post = pia.post_json
-            # P2-B4: post_json is now canonical in core/base_pipeline.py.
-            # run_sampling_chunk calls post_json_with_retry → post_json
-            # from base_pipeline's own namespace, so we must patch BOTH
-            # pia.post_json (for any direct callers) and _core_bp.post_json
-            # (the live lookup site used by post_json_with_retry).
-            # Both are restored in the finally block below.
-            _saved_core_post = _core_bp.post_json
-            # Each analyzer fetch pops the next pre-loaded response;
-            # exhaustion yields [] which the analyzer already handles
-            # via parse_failed_zero_chunk downstream.
-            _post_stub = lambda payload, timeout: next(_resp_iter, [])  # noqa: E731
-            pia.post_json = _post_stub
-            _core_bp.post_json = _post_stub
-            _saved_exit = os._exit
-            os._exit = lambda rc: None
-
-            test_argv = [
-                "analyzer",
-                "--machine", machine,
-                "--rtp-mode", str(mode),
-                "--bet", "1000",
-                "--chunk-spin-times", str(chunk_spin_times),
-                "--chunk-robot-count", str(chunk_robot_count),
-                "--batch-concurrency", "1",
-                "--max-chunks", str(len(_cached_responses)),
-                # Goal: process every pre-loaded response exactly once.
-                # The analyzer's session-CI stop branch fires when
-                # ``session_halfwidth_pp <= target`` — so target=999
-                # (a previous naive "fuzzy" sentinel) actually triggers
-                # stop after chunks>=2 because nearly any CI drops
-                # below 999pp immediately. Using 0.001pp makes the
-                # threshold effectively unreachable on real data,
-                # leaving max_chunks as the only termination gate.
-                "--target-halfwidth-pp", "0.001",
-                # 2026-04-22: the analyzer's Tier-2 non-convergence
-                # early-abort (added by ca7e638) projects "predicted
-                # chunks to converge" as chunks × (ci_now / target)²
-                # and bails when that exceeds max_chunks × 5. Our
-                # 0.001pp sentinel makes (ci_now / 0.001)² astronomical
-                # — at 20 chunks (the floor) the projection always
-                # explodes and the abort fires with only ~400k spins
-                # processed (user-reported regression 2026-04-22:
-                # "196w chunks, 只用了 40w, 低精度 report"). The
-                # abort exists for REAL user targets on bug/in-dev
-                # machines; this in-process rawdata replay is neither —
-                # we explicitly want to burn every cached response.
-                "--disable-non-convergence-abort",
-                "--timeout", "30",
-                "--output-dir", str(output_dir),
-                "--progress-file", str(progress_file),
-                "--run-id", new_run_id,
-                "--bankruptcy-session-spins", "10000",
-                "--bankruptcy-bankroll-multipliers", "10,100,200,500",
-            ]
-            # Scope analyzer to the rawdata cell's md5 so the report's
-            # summary.config_md5 matches the chunks it was built from.
-            # Without this, analyzer's _lookup_machine_md5 stamps the
-            # report with machines.json global md5, routing localcfg_
-            # reports to the wrong rwtree cell (old-report-still-
-            # hanging-below bug, 2026-04-24).
-            if config_md5:
-                test_argv.extend(["--upstream-config-md5", config_md5])
-            if code_md5:
-                test_argv.extend(["--upstream-code-md5", code_md5])
-            old_argv = _sys.argv
-            _sys.argv = test_argv
-            captured = StringIO()
-            old_stdout = _sys.stdout
-            _sys.stdout = captured
+            # -- NEW ENGINE: report_engine.generate_report_from_chunks --
+            # Chunk dir: the whole mode dir (engine reads chunk_*.json from it).
+            # Note: md5-filtering of mixed-md5 dirs is a follow-up; for M15 all
+            # chunks share one md5 so the full mode_dir is safe. The engine raises
+            # MachineNotRegistered if the manifest is absent (already caught above).
             try:
-                from fresh_slotlab.player_impact_analyzer import main
-                rc = main()
-            finally:
-                _sys.stdout = old_stdout
-                _sys.argv = old_argv
-                pia.post_json = _saved_post
-                _core_bp.post_json = _saved_core_post  # P2-B4: restore base_pipeline too
-                os._exit = _saved_exit
-
-            if rc != 0:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"analyzer main() returned {rc} during generate-report",
+                _gen_report(
+                    machine, mode,
+                    chunk_dir=gen_chunk_dir,
+                    output_dir=output_dir,
+                    bet=chunk_bet,
+                    run_id=new_run_id,
+                    manifest_machine_id=_base_machine,
                 )
+            except MachineNotRegistered as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=str(exc),
+                ) from exc
 
-            # Patch empty md5 tags in the written summary via the shared
-            # helper (P1-B2, ticket §2.b citing 04_v5 §6.1.B).
-            # Real analyzer's ``_lookup_machine_md5`` only reads
-            # ``configs/machines.json`` (real-console registry) —
-            # virtual machines live in a different registry, so this
-            # in-process generate-report path leaves ``config_md5`` /
-            # ``code_md5`` empty in the summary. That cascades through
-            # ``/api/report-validate`` → ``md5_status=untagged`` →
-            # rwtree cell renders "无 fresh report" even though the
-            # report IS current.
-            # Mirrors the fix virtual_analyzer.py applies to its
-            # subprocess-delegated runs (f88fe2c).
-            # Deduped from virtual_analyzer._patch_summary_md5_tags per
-            # 03_coupling_audit.md §4.5.
+            # Patch empty md5 tags in the written summary (mirrors old path).
             from fresh_slotlab.summary_md5_patch import patch_summary_md5 as _patch_summary_md5  # noqa: PLC0415
             _patch_summary_md5(
                 summary_file,
@@ -9581,6 +9473,28 @@ def create_app(
                 machine=machine,
                 mode=mode,
             )
+
+            # PROVENANCE STAMP (2026-06-11 M279): the engine stamps the summary with
+            # the roster's CURRENT md5 pair regardless of which chunks it parsed, so
+            # a report generated from HISTORICAL-md5 rawdata landed in the rwtree's
+            # "当前" cell while its source chunks sat in a "历史" cell (and the 当前
+            # cell showed 无本地 rawdata — the contradiction in the user's
+            # screenshot). A report's md5 tag is its SOURCE-CHUNK provenance: the
+            # explicit filter pair when scoped, else the md5 the usable chunks
+            # actually carry (on the default path those are roster-current by
+            # construction, so this is a no-op there). Runs AFTER patch_summary_md5
+            # so provenance wins over the roster fallback.
+            _src_cfg = config_md5 or str(sample_env.get("_config_md5") or "")
+            _src_code = code_md5 or str(sample_env.get("_code_md5") or "")
+            if (_src_cfg or _src_code) and summary_file.exists():
+                _sum_doc = read_json(summary_file) or {}
+                if (
+                    (_sum_doc.get("config_md5") or "") != _src_cfg
+                    or (_sum_doc.get("code_md5") or "") != _src_code
+                ):
+                    _sum_doc["config_md5"] = _src_cfg
+                    _sum_doc["code_md5"] = _src_code
+                    atomic_json_write(summary_file, _sum_doc)
 
             summary: dict[str, Any] = {}
             if summary_file.exists():
@@ -9595,12 +9509,9 @@ def create_app(
             rawdata_cfg = summary.get("config_md5") or ""
             rawdata_code = summary.get("code_md5") or ""
             analyzer_ver = summary.get("analyzer_version") or ""
+            eff_analyzer_ver = summary.get("effective_analyzer_version") or ""
             total_spins_val = summary.get("sampling", {}).get("total_spins")
 
-            # Flip the RUNNING row to completed with final metrics.
-            # The row was inserted upfront (see top of this function)
-            # so the run shows up in /api/runs?status=running while
-            # the analyzer was mid-work.
             store.update_run(new_run_id, {
                 "status": "completed",
                 "finished_at": utc_now(),
@@ -9610,56 +9521,25 @@ def create_app(
                 "rawdata_config_md5": str(rawdata_cfg) if rawdata_cfg else None,
                 "rawdata_code_md5": str(rawdata_code) if rawdata_code else None,
                 "analyzer_version": str(analyzer_ver) if analyzer_ver else None,
+                "effective_analyzer_version": str(eff_analyzer_ver) if eff_analyzer_ver else None,
                 "total_spins": int(total_spins_val) if total_spins_val is not None else None,
             })
 
-            # Wire the new version into index.json + latest.json so the
-            # UI catalog surfaces it immediately.
             mode_reports_dir = rr / machine / f"mode_{mode}"
-            index_path = mode_reports_dir / "index.json"
-            latest_path = mode_reports_dir / "latest.json"
-            item = {
-                "report_version": report_version,
-                "run_id": new_run_id,
-                "created_at": utc_now(),
-                "summary_file": str(summary_file),
-                "report_file": str(report_file),
-                "rtp_point_pct": rtp,
-                "achieved_rtp_pct": rtp,
-                "achieved_halfwidth_pp": hw,
-                "total_spins": total_spins_val,
-                "quality_label": ql,
-            }
-            index_payload = []
-            if index_path.exists():
-                try:
-                    raw = read_json(index_path)
-                    if isinstance(raw, list):
-                        index_payload = raw
-                except Exception:
-                    pass
-            index_payload.append(item)
-            # Phase 1 deploy: atomic + per-file-locked
-            atomic_json_write(index_path, index_payload)
-            atomic_json_write(latest_path, item)
+            # F1: use builder + locked writer for full shape + race-safe index.
+            item = build_index_entry(
+                rr, machine, mode, report_version, new_run_id,
+                summary=summary, summary_path=summary_file,
+            )
+            append_and_rewrite_latest(mode_reports_dir, item)
 
-            # Refresh machines_static.json from this fresh summary so
-            # catalog filter chips + mechanic view reflect any new
-            # features / mechanics this run surfaced (round 6 fix).
             try:
                 _merge_machine_static(
                     machine, summary, mc, _static_attrs_path(mc),
                 )
             except Exception:
-                pass  # non-fatal — next generate-report retries
+                pass
 
-            # Auto-trigger the offline inference scripts for this
-            # (machine, mode) so the paytable-shape + classifier
-            # panels in the UI stay in sync with the analyzer output.
-            # Fire-and-forget in a daemon thread — M1-sized machines
-            # take ~1-2 min for infer_paytable.py and we don't want
-            # the ops mutex locked that long. Next UI refresh after
-            # the thread finishes will surface the updated shape.
             try:
                 import threading as _threading
                 _threading.Thread(
@@ -9667,13 +9547,6 @@ def create_app(
                         machine, mode, rawdata_root=rd_root,
                         paytables_dir=pd_root, classify_dir=cd,
                         timeout_sec=300.0,
-                        # Persist outcome next to the report so an
-                        # operator (or curious engineer investigating
-                        # why the UI shape panel is blank) can see
-                        # whether the hook ran, succeeded, or failed
-                        # with which stderr tail. memory/
-                        # feedback_no_silent_swallow.md — the daemon
-                        # thread otherwise drops its return value.
                         log_to_dir=output_dir,
                     ),
                     daemon=True,
@@ -9687,20 +9560,42 @@ def create_app(
                 "machine": machine,
                 "mode": mode,
                 "report_version": report_version,
-                "chunks_processed": len(_cached_responses),
+                "chunks_processed": len(chunk_paths),
                 "rtp_point_pct": rtp,
                 "achieved_halfwidth_pp": hw,
                 "analyzer_version": analyzer_ver,
             }
         except HTTPException as exc:
-            # Mark any RUNNING row as failed so the async run_id polled
-            # by the frontend doesn't stay stuck in "running" forever.
             if "new_run_id" in locals() and store.get_run(new_run_id):
                 store.update_run(new_run_id, {
                     "status": "failed",
                     "finished_at": utc_now(),
                     "error_message": str(getattr(exc, "detail", exc))[:500],
                 })
+            # F2: remove the created version dir when it has no summary (litter guard).
+            if "output_dir" in locals() and isinstance(output_dir, Path):
+                _sf = output_dir / "player_impact_summary.json"
+                if output_dir.exists() and not _sf.exists():
+                    try:
+                        shutil.rmtree(output_dir, ignore_errors=True)
+                    except Exception as _f2_exc:  # noqa: BLE001
+                        # Persist sidecar note (feedback_no_silent_swallow).
+                        _f2_rid = str(new_run_id)[:8] if "new_run_id" in dir() else "gen"
+                        _f2_note = output_dir.parent / f"_cleanup_failed_{_f2_rid}.json"
+                        try:
+                            _f2_note.parent.mkdir(parents=True, exist_ok=True)
+                            _f2_note.write_text(
+                                json.dumps({"output_dir": str(output_dir),
+                                            "error": f"{type(_f2_exc).__name__}: {_f2_exc}"}),
+                                encoding="utf-8",
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                        print(
+                            f"[generate] F2 cleanup failed for {output_dir}: "
+                            f"{type(_f2_exc).__name__}: {_f2_exc}",
+                            file=sys.stderr,
+                        )
             raise
         except Exception as exc:
             if "new_run_id" in locals() and store.get_run(new_run_id):
@@ -9709,24 +9604,38 @@ def create_app(
                     "finished_at": utc_now(),
                     "error_message": f"{exc.__class__.__name__}: {exc}"[:500],
                 })
-            # Wrap unexpected failures as 500 so the caller's error
-            # handling still gets a structured HTTPException.
+            # F2: remove the created version dir when it has no summary (litter guard).
+            if "output_dir" in locals() and isinstance(output_dir, Path):
+                _sf = output_dir / "player_impact_summary.json"
+                if output_dir.exists() and not _sf.exists():
+                    try:
+                        shutil.rmtree(output_dir, ignore_errors=True)
+                    except Exception as _f2_exc:  # noqa: BLE001
+                        # Persist sidecar note (feedback_no_silent_swallow).
+                        _f2_rid = str(new_run_id)[:8] if "new_run_id" in dir() else "gen"
+                        _f2_note = output_dir.parent / f"_cleanup_failed_{_f2_rid}.json"
+                        try:
+                            _f2_note.parent.mkdir(parents=True, exist_ok=True)
+                            _f2_note.write_text(
+                                json.dumps({"output_dir": str(output_dir),
+                                            "error": f"{type(_f2_exc).__name__}: {_f2_exc}"}),
+                                encoding="utf-8",
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                        print(
+                            f"[generate] F2 cleanup failed for {output_dir}: "
+                            f"{type(_f2_exc).__name__}: {_f2_exc}",
+                            file=sys.stderr,
+                        )
             raise HTTPException(
                 status_code=500,
                 detail=f"generate-report failed: {exc.__class__.__name__}: {exc}",
             ) from exc
         finally:
-            # Phase 2: release GENERATING via registry regardless of
-            # success/failure so subsequent cleanup passes can evict
-            # this (m, mode)'s over-retention chunks.
+            if scoped_chunk_dir is not None:
+                shutil.rmtree(scoped_chunk_dir, ignore_errors=True)
             registry.release_cell(machine, mode, CellOperation.GENERATING)
-
-    # ── Pool-based batch generate (round 7) ───────────────────────────
-    # The single-item endpoint above uses the in-process monkey-patch
-    # path; it stays single-threaded. For the batch path we split the
-    # work into Phase A (prepare — DB row + output dir in parent) and
-    # Phase B (analyzer subprocess in worker) so N items can run in
-    # parallel without racing post_json.
 
     def _prepare_batch_gen_item(machine: str, mode: int) -> dict[str, Any]:
         """Parent-thread prep: validate chunks, create output dir, insert
@@ -9755,11 +9664,37 @@ def create_app(
         sample_env = json.loads(chunk_paths[0].read_text(encoding="utf-8"))
         chunk_spin_times = int(sample_env.get("_spin_times") or 5000)
         chunk_robot_count = int(sample_env.get("_robot_count") or 24)
+        # The chunks' real bet — forwarded to the engine so summary.sampling.bet
+        # is correct (the frontend divides every "× bet" column by it; the old
+        # hardcoded job value was never even forwarded by the worker → bet=1
+        # summaries → 1000× inflated multiplier columns, same trap as fd6b507).
+        chunk_bet = int(sample_env.get("_bet") or 1)
         new_run_id = f"gen_{uuid.uuid4().hex[:12]}"
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         report_version = f"rv_{ts}_rawdata"
         output_dir = rr / machine / f"mode_{mode}" / "versions" / report_version
         output_dir.mkdir(parents=True, exist_ok=True)
+        # SCOPE (mirror _run_generate_report, fd6b507): the engine parses EVERY
+        # chunk_*.json in chunk_dir — it has NO md5 filter. ``usable`` here is
+        # kept+deletable = CURRENT-md5 chunks only; if the mode dir also holds
+        # historical chunks, handing it the raw dir silently mixes them into
+        # the batch report (the 全 fleet 重建 latent defect). Hardlink the
+        # selection into a throwaway scoped dir and put THAT in the job.
+        # Cleaned up in _finalize_batch_gen_item_wrapper (and on the 409
+        # lock-conflict path in _prepare_batch_gen_item_wrapper).
+        all_chunk_files = sorted(mode_dir.glob("chunk_*.json"))
+        gen_chunk_dir: Path = mode_dir
+        scoped_chunk_dir: Path | None = None
+        if len(chunk_paths) != len(all_chunk_files):
+            scoped_chunk_dir = cr / "_gen_scope" / new_run_id
+            scoped_chunk_dir.mkdir(parents=True, exist_ok=True)
+            for _cp in chunk_paths:
+                _dst = scoped_chunk_dir / _cp.name
+                try:
+                    os.link(_cp, _dst)          # same-volume hardlink: instant
+                except OSError:
+                    shutil.copyfile(_cp, _dst)  # cross-volume / no-hardlink FS
+            gen_chunk_dir = scoped_chunk_dir
         progress_file = sd / "progress" / f"{new_run_id}.jsonl"
         summary_file = output_dir / "player_impact_summary.json"
         report_file = output_dir / "player_impact_report.md"
@@ -9804,17 +9739,31 @@ def create_app(
             "summary_file": summary_file,
             "report_file": report_file,
             "chunk_count": len(usable),
+            # Cleanup handle for the scoped hardlink dir (None when the whole
+            # mode dir was already exactly the usable set).
+            "scoped_chunk_dir": scoped_chunk_dir,
             "job": {
                 "machine": machine,
                 "mode": mode,
-                "chunk_dir": str(mode_dir),
+                "chunk_dir": str(gen_chunk_dir),
                 "output_dir": str(output_dir),
                 "run_id": new_run_id,
                 "progress_file": str(progress_file),
                 "max_chunks": len(usable),
                 "chunk_spin_times": chunk_spin_times,
                 "chunk_robot_count": chunk_robot_count,
-                "bet": 1000,
+                "bet": chunk_bet,
+                # PROVENANCE (mirror fd6b507): the md5 pair the SELECTED chunks
+                # actually carry — the worker stamps the summary with it after
+                # generation (the engine stamps the roster's current pair, which
+                # must not be trusted as provenance). For this batch path the
+                # selection is current-md5 by construction, so these normally
+                # equal upstream_*; they are the honest source of truth.
+                "source_config_md5": str(sample_env.get("_config_md5") or ""),
+                "source_code_md5": str(sample_env.get("_code_md5") or ""),
+                # The REAL rawdata root — the worker's post-inference hook must
+                # not derive it from chunk_dir (which may be the scoped temp dir).
+                "rawdata_root": str(rd_root),
                 # C1 (P1-D1 §3 C1): md5 filter keys — forwarded by the
                 # worker to the analyzer as --upstream-config-md5 /
                 # --upstream-code-md5 CLI flags so historical-md5 chunks
@@ -9843,8 +9792,13 @@ def create_app(
         Released in _finalize_batch_gen_item_wrapper below."""
         prepared = _prepare_batch_gen_item(machine, mode)
         # If registry says cell is already locked (e.g. concurrent DELETING),
-        # raise so BatchGenerateManager marks this item as failed.
+        # raise so BatchGenerateManager marks this item as failed. The scoped
+        # hardlink dir was already created by prepare — reclaim it here since
+        # _finalize_batch_gen_item_wrapper will never run for this item.
         if not registry.try_acquire_cell(machine, int(mode), CellOperation.GENERATING):
+            _scoped = prepared.get("scoped_chunk_dir")
+            if _scoped:
+                shutil.rmtree(_scoped, ignore_errors=True)
             raise HTTPException(
                 status_code=409,
                 detail=f"cell {machine}|{mode} is busy — cannot start batch-generate",
@@ -9859,6 +9813,9 @@ def create_app(
         try:
             return _finalize_batch_gen_item(prepared, worker_result)
         finally:
+            _scoped = prepared.get("scoped_chunk_dir")
+            if _scoped:
+                shutil.rmtree(_scoped, ignore_errors=True)
             registry.release_cell(
                 prepared.get("machine") or "",
                 int(prepared.get("mode") or 0),
@@ -9897,6 +9854,34 @@ def create_app(
 
         if not worker_result.get("ok"):
             err = str(worker_result.get("error") or "worker failed")
+            # F2: remove the version dir when no summary was written (litter guard).
+            # Must be BEFORE the return so the cleanup actually runs.
+            _sf_batch = output_dir / "player_impact_summary.json"
+            if output_dir.exists() and not _sf_batch.exists():
+                try:
+                    shutil.rmtree(output_dir, ignore_errors=True)
+                except Exception as _f2_exc:  # noqa: BLE001
+                    # Write a sidecar note so the operator can see why the dir
+                    # survived (feedback_no_silent_swallow).
+                    _note_path = output_dir.parent / f"_cleanup_failed_{run_id[:8]}.json"
+                    try:
+                        _note_path.parent.mkdir(parents=True, exist_ok=True)
+                        import json as _json_mod
+                        _note_path.write_text(
+                            _json_mod.dumps({
+                                "run_id": run_id,
+                                "output_dir": str(output_dir),
+                                "error": f"{type(_f2_exc).__name__}: {_f2_exc}",
+                            }),
+                            encoding="utf-8",
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
+                    print(
+                        f"[batch-generate] F2 cleanup failed for {output_dir}: "
+                        f"{type(_f2_exc).__name__}: {_f2_exc}",
+                        file=sys.stderr,
+                    )
             if store.get_run(run_id):
                 store.update_run(run_id, {
                     "status": "failed",
@@ -9918,6 +9903,7 @@ def create_app(
         rawdata_cfg = summary.get("config_md5") or ""
         rawdata_code = summary.get("code_md5") or ""
         analyzer_ver = summary.get("analyzer_version") or ""
+        eff_analyzer_ver = summary.get("effective_analyzer_version") or ""
         total_spins_val = summary.get("sampling", {}).get("total_spins")
         store.update_run(run_id, {
             "status": "completed",
@@ -9928,35 +9914,16 @@ def create_app(
             "rawdata_config_md5": str(rawdata_cfg) if rawdata_cfg else None,
             "rawdata_code_md5": str(rawdata_code) if rawdata_code else None,
             "analyzer_version": str(analyzer_ver) if analyzer_ver else None,
+            "effective_analyzer_version": str(eff_analyzer_ver) if eff_analyzer_ver else None,
             "total_spins": int(total_spins_val) if total_spins_val is not None else None,
         })
         mode_reports_dir = rr / machine / f"mode_{mode}"
-        index_path = mode_reports_dir / "index.json"
-        latest_path = mode_reports_dir / "latest.json"
-        item = {
-            "report_version": report_version,
-            "run_id": run_id,
-            "created_at": utc_now(),
-            "summary_file": str(summary_file),
-            "report_file": str(report_file),
-            "rtp_point_pct": rtp,
-            "achieved_rtp_pct": rtp,
-            "achieved_halfwidth_pp": hw,
-            "total_spins": total_spins_val,
-            "quality_label": ql,
-        }
-        index_payload = []
-        if index_path.exists():
-            try:
-                raw = read_json(index_path)
-                if isinstance(raw, list):
-                    index_payload = raw
-            except Exception:
-                pass
-        index_payload.append(item)
-        # Phase 1 deploy: atomic + per-file-locked
-        atomic_json_write(index_path, index_payload)
-        atomic_json_write(latest_path, item)
+        # F1: use builder + locked writer for full shape + race-safe index.
+        item = build_index_entry(
+            rr, machine, mode, report_version, run_id,
+            summary=summary, summary_path=summary_file,
+        )
+        append_and_rewrite_latest(mode_reports_dir, item)
         try:
             _merge_machine_static(machine, summary, mc, _static_attrs_path(mc))
         except Exception:
@@ -10080,11 +10047,22 @@ def create_app(
                     config_md5=config_md5, code_md5=code_md5,
                     run_id=new_run_id,
                 )
-            except Exception:
+            except Exception as _async_exc:
+                # Persist the real traceback (memory/feedback_no_silent_swallow.md) —
+                # the daemon-thread exception was previously swallowed, hiding the cause.
+                import traceback as _tb
+                try:
+                    (sd / "_async_gen_err.txt").write_text(
+                        f"run={new_run_id} machine={machine} mode={mode}\n"
+                        f"{_async_exc!r}\n\n{_tb.format_exc()}",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
                 # _run_generate_report already marks the runs row as
                 # failed on its way out. Swallow here so the daemon
                 # thread exits cleanly without tracebacks in the log
-                # (the failure is surfaced via the runs table).
+                # (the failure is surfaced via the runs table + the err file above).
                 # Mark the placeholder row as failed in case the
                 # raise happened before the inner status=running flip.
                 try:
@@ -10093,7 +10071,7 @@ def create_app(
                         store.update_run(new_run_id, {
                             "status": "failed",
                             "finished_at": utc_now(),
-                            "error_message": "generate-report aborted early",
+                            "error_message": f"generate-report failed: {_async_exc}",
                         })
                 except Exception:
                     pass
@@ -10306,7 +10284,8 @@ def create_app(
                     or entry.get("achieved_halfwidth_pp") is None
                     or entry.get("total_spins") is None
                 )
-                if not needs_md5_fill and not needs_perf_fill:
+                needs_eff_ver_fill = "effective_analyzer_version" not in entry
+                if not needs_md5_fill and not needs_perf_fill and not needs_eff_ver_fill:
                     continue
                 sf = entry.get("summary_file")
                 if not sf or not Path(sf).exists():
@@ -10315,6 +10294,8 @@ def create_app(
                     if needs_md5_fill:
                         entry.setdefault("rawdata_config_md5", "")
                         entry.setdefault("rawdata_code_md5", "")
+                    if needs_eff_ver_fill:
+                        entry.setdefault("effective_analyzer_version", "")
                     continue
                 try:
                     s = read_json(Path(sf)) or {}
@@ -10322,6 +10303,8 @@ def create_app(
                     if needs_md5_fill:
                         entry.setdefault("rawdata_config_md5", "")
                         entry.setdefault("rawdata_code_md5", "")
+                    if needs_eff_ver_fill:
+                        entry.setdefault("effective_analyzer_version", "")
                     continue
                 samp = s.get("sampling") or {}
                 if entry.get("achieved_rtp_pct") is None:
@@ -10337,6 +10320,10 @@ def create_app(
                     entry["rawdata_config_md5"] = str(s.get("config_md5") or "")
                     entry["rawdata_code_md5"] = str(s.get("code_md5") or "")
                     entry.setdefault("analyzer_version", str(s.get("analyzer_version") or ""))
+                if needs_eff_ver_fill:
+                    entry["effective_analyzer_version"] = str(
+                        s.get("effective_analyzer_version") or ""
+                    )
 
         # md5 filtering. When EITHER query md5 is set we treat it as
         # "filter to this rawdata version". Reports with empty stored
@@ -10665,6 +10652,11 @@ def create_app(
                     s.get("guideline_assessment", {}).get("quality_label")
                     or s.get("quality_label")
                 )
+                _imp_rawdata_cfg = s.get("config_md5") or ""
+                _imp_rawdata_code = s.get("code_md5") or ""
+                _imp_analyzer_ver = s.get("analyzer_version") or ""
+                _imp_eff_analyzer_ver = s.get("effective_analyzer_version") or ""
+                _imp_total_spins = sam.get("total_spins")
                 row = {
                     "run_id": run_id,
                     "machine": machine_n,
@@ -10686,12 +10678,23 @@ def create_app(
                     "output_dir": str(dst),
                     "progress_file": str(dst / "progress.jsonl"),
                     "summary_file": str(dst / "player_impact_summary.json"),
-                    "report_file": str(dst / "player_impact_report.md"),
+                    # report_file: only set when the .md actually exists in the source
+                    # (mirrors build_index_entry logic — new-engine reports have no .md).
+                    "report_file": (
+                        str(dst / "player_impact_report.md")
+                        if (source_v / "player_impact_report.md").exists()
+                        else None
+                    ),
                     "error_message": None,
                     "process_pid": 0,
                     "achieved_rtp_pct": rtp_pct,
                     "achieved_halfwidth_pp": ci_hw,
                     "quality_label": qa,
+                    "rawdata_config_md5": _imp_rawdata_cfg or None,
+                    "rawdata_code_md5": _imp_rawdata_code or None,
+                    "analyzer_version": _imp_analyzer_ver or None,
+                    "effective_analyzer_version": _imp_eff_analyzer_ver or None,
+                    "total_spins": int(_imp_total_spins) if _imp_total_spins is not None else None,
                 }
 
                 # 2. Insert placeholder row.
@@ -10712,9 +10715,9 @@ def create_app(
                                     source_v.name, run_id, exc)
                     return False
 
-                # 4. Flip status → completed. If this tiny final update fails,
-                #    we roll back the whole thing rather than leave a row
-                #    stuck at "importing" forever (operator re-imports cleanly).
+                # 4. Flip status → completed + index+latest entry (F1).
+                # If this tiny final update fails, roll back the whole thing
+                # rather than leave a row stuck at "importing" forever.
                 try:
                     store.update_run(run_id, {"status": "completed"})
                 except Exception as exc:  # noqa: BLE001
@@ -10722,6 +10725,24 @@ def create_app(
                     _record_failure("update_status", machine_n, mode_n,
                                     source_v.name, run_id, exc)
                     return False
+
+                # 5. F1: append index+latest (best-effort; failure does NOT
+                #    roll back — reconcile can re-index later).
+                try:
+                    _dst_summary_path = dst / "player_impact_summary.json"
+                    _mode_reports_dir = rr / machine_n / f"mode_{mode_n}"
+                    _idx_entry = build_index_entry(
+                        rr, machine_n, mode_n, source_v.name, run_id,
+                        summary=s, summary_path=_dst_summary_path,
+                    )
+                    append_and_rewrite_latest(_mode_reports_dir, _idx_entry)
+                except Exception as _idx_exc:  # noqa: BLE001
+                    print(
+                        f"[import-reports] index append failed for "
+                        f"{machine_n}|{mode_n}|{source_v.name}: "
+                        f"{type(_idx_exc).__name__}: {_idx_exc}",
+                        file=sys.stderr,
+                    )
 
                 return True
 
@@ -10797,6 +10818,580 @@ def create_app(
             )
         finally:
             registry.release_global("prune_versions")
+
+    def reconcile_reports(
+        dry_run: bool = True,
+        reports_root_override: Path | None = None,
+    ) -> dict[str, Any]:
+        """Repair the existing report-store litter (F4, 2026-06-12).
+
+        Action classes (per design — EXACTLY these, never md5-driven):
+          1. empty version dir → delete.
+          2. dir without player_impact_summary.json → delete ONLY IF
+             no running/pending run references it AND mtime > 1 h old.
+          3. dir WITH summary but not in index.json → append rebuilt entry.
+          4. index entry whose summary_file path is non-canonical:
+               - canonical exists → rewrite entry to canonical path.
+               - old path exists → copy version dir to canonical, rewrite.
+               - neither → drop the entry (zombie).
+          5. index entries missing md5/analyzer/effective/perf fields →
+             persist-backfill from summary.
+          6. report_file key in entry but .md not on disk → drop the key.
+          7. Recompute latest.json from the final index.
+          8. SQLite: backfill effective_analyzer_version (and rawdata
+             md5s) on completed rows from their summaries.
+
+        Never deletes based on md5 (feedback_md5_is_a_tag_not_a_destruction_signal).
+        Returns a full action report; never silent (feedback_no_silent_swallow).
+        """
+        import time as _time_mod
+
+        _rr = reports_root_override if reports_root_override is not None else rr
+        now_ts = _time_mod.time()
+        ONE_HOUR = 3600.0
+
+        # Build a set of report_version strings referenced by active runs.
+        # Non-terminal statuses that create dirs-without-summaries:
+        #   "running"   — generate/batch-generate inserts as "running" BEFORE engine runs
+        #   "importing" — import inserts as "importing" BEFORE copytree completes
+        #   "pending"   — queued items that may have had output_dir created already
+        # Guard is fail-CLOSED: if the DB query throws, skip ALL no-summary-dir
+        # deletions (safer than proceeding with an empty guard set).
+        _NON_TERMINAL_STATUSES = ("running", "importing", "pending")
+        active_run_versions: set[str] = set()
+        _guard_unavailable = 0
+        try:
+            for _status in _NON_TERMINAL_STATUSES:
+                try:
+                    _status_rows = store.list_runs_by_status(_status, limit=5000)
+                    for _r in _status_rows:
+                        _rv = _r.get("report_version")
+                        if _rv:
+                            active_run_versions.add(str(_rv))
+                except Exception as _inner_exc:  # noqa: BLE001
+                    _guard_unavailable += 1
+                    print(
+                        f"[reconcile] could not list {_status!r} runs: "
+                        f"{type(_inner_exc).__name__}: {_inner_exc}",
+                        file=sys.stderr,
+                    )
+        except Exception as _outer_exc:  # noqa: BLE001
+            _guard_unavailable += len(_NON_TERMINAL_STATUSES)
+            print(
+                f"[reconcile] unexpected error building active_run_versions: "
+                f"{type(_outer_exc).__name__}: {_outer_exc}",
+                file=sys.stderr,
+            )
+
+        result: dict[str, Any] = {
+            "dry_run": dry_run,
+            "actions": [],
+            "counts": {
+                "empty_dir_delete": 0,
+                "no_summary_dir_delete": 0,
+                "no_summary_dir_skip_active": 0,
+                "no_summary_dir_skip_recent": 0,
+                "guard_unavailable": _guard_unavailable,
+                "unindexed_summary_append": 0,
+                "path_rewrite_to_canonical": 0,
+                "path_copy_to_canonical": 0,
+                "zombie_entry_drop": 0,
+                "persist_backfill": 0,
+                "unfillable_field": 0,
+                "report_file_key_drop": 0,
+                "latest_recompute": 0,
+                "sqlite_backfill": 0,
+                "errors": 0,
+            },
+        }
+
+        def _log_action(cls: str, path: str, detail: str = "") -> None:
+            result["actions"].append({"class": cls, "path": path, "detail": detail})
+            result["counts"][cls] = result["counts"].get(cls, 0) + 1
+
+        def _log_error(path: str, detail: str) -> None:
+            result["actions"].append({"class": "error", "path": path, "detail": detail})
+            result["counts"]["errors"] += 1
+
+        if not _rr.is_dir():
+            return result
+
+        VERSION_PFX = "rv_"
+        MODE_PFX = "mode_"
+
+        for machine_dir in sorted(_rr.iterdir()):
+            if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
+                continue
+            machine_name = machine_dir.name
+            for mode_dir in sorted(machine_dir.iterdir()):
+                if not mode_dir.is_dir() or not mode_dir.name.startswith(MODE_PFX):
+                    continue
+                try:
+                    mode_int = int(mode_dir.name.split("_", 1)[1])
+                except (IndexError, ValueError):
+                    continue
+
+                versions_dir = mode_dir / "versions"
+                if not versions_dir.is_dir():
+                    continue
+
+                index_path = mode_dir / "index.json"
+
+                # Read current index (may be empty / missing).
+                current_index: list[dict[str, Any]] = []
+                if index_path.exists():
+                    try:
+                        raw = read_json(index_path)
+                        if isinstance(raw, list):
+                            current_index = [e for e in raw if isinstance(e, dict)]
+                    except Exception:  # noqa: BLE001
+                        current_index = []
+
+                # Build lookup: report_version → index entry.
+                indexed_by_rv: dict[str, dict[str, Any]] = {
+                    str(e.get("report_version", "")): e
+                    for e in current_index
+                    if e.get("report_version")
+                }
+
+                new_index: list[dict[str, Any]] = list(current_index)
+                index_dirty = False
+
+                # --- Scan version dirs on disk ---
+                try:
+                    vdirs = sorted(
+                        [d for d in versions_dir.iterdir()
+                         if d.is_dir() and d.name.startswith(VERSION_PFX)],
+                        key=lambda p: p.name,
+                    )
+                except OSError as _exc:
+                    _log_error(str(versions_dir), f"iterdir failed: {_exc}")
+                    continue
+
+                for vdir in vdirs:
+                    summary_path = vdir / "player_impact_summary.json"
+                    vname = vdir.name
+
+                    # Action 1: empty dir (no files at all).
+                    try:
+                        dir_files = list(vdir.iterdir())
+                    except OSError:
+                        dir_files = []
+                    if not dir_files:
+                        _log_action("empty_dir_delete", str(vdir))
+                        if not dry_run:
+                            try:
+                                vdir.rmdir()
+                            except OSError as _exc:
+                                _log_error(str(vdir), f"rmdir: {_exc}")
+                        # Remove from index if present.
+                        if vname in indexed_by_rv:
+                            new_index = [e for e in new_index if e.get("report_version") != vname]
+                            del indexed_by_rv[vname]
+                            index_dirty = True
+                        continue
+
+                    # Action 2: no summary, not empty.
+                    if not summary_path.exists():
+                        if vname in active_run_versions:
+                            _log_action("no_summary_dir_skip_active", str(vdir),
+                                        "run still active")
+                            result["counts"]["no_summary_dir_skip_active"] = (
+                                result["counts"].get("no_summary_dir_skip_active", 0) + 1
+                            )
+                            continue
+                        # Fail-CLOSED: if the active-run guard query failed for any
+                        # status, do NOT delete — we cannot confirm the run is inactive.
+                        if _guard_unavailable:
+                            _log_action("no_summary_dir_skip_active", str(vdir),
+                                        f"guard_unavailable={_guard_unavailable} "
+                                        "skipped for safety")
+                            result["counts"]["no_summary_dir_skip_active"] = (
+                                result["counts"].get("no_summary_dir_skip_active", 0) + 1
+                            )
+                            result["counts"]["guard_unavailable"] = _guard_unavailable
+                            continue
+                        try:
+                            mtime = vdir.stat().st_mtime
+                            age = now_ts - mtime
+                        except OSError:
+                            age = ONE_HOUR + 1
+                        if age < ONE_HOUR:
+                            _log_action("no_summary_dir_skip_recent", str(vdir),
+                                        f"age={age:.0f}s < 1h")
+                            result["counts"]["no_summary_dir_skip_recent"] = (
+                                result["counts"].get("no_summary_dir_skip_recent", 0) + 1
+                            )
+                            continue
+                        _log_action("no_summary_dir_delete", str(vdir))
+                        if not dry_run:
+                            try:
+                                import shutil as _shutil
+                                _shutil.rmtree(vdir, ignore_errors=True)
+                            except Exception as _exc:  # noqa: BLE001
+                                _log_error(str(vdir), f"rmtree: {_exc}")
+                        if vname in indexed_by_rv:
+                            new_index = [e for e in new_index if e.get("report_version") != vname]
+                            del indexed_by_rv[vname]
+                            index_dirty = True
+                        continue
+
+                    # Summary exists — read it.
+                    try:
+                        summary = read_json(summary_path)
+                    except Exception as _exc:  # noqa: BLE001
+                        _log_error(str(vdir), f"read_summary: {_exc}")
+                        continue
+
+                    run_id_in_summary = str(summary.get("run_id") or "")
+
+                    # Action 3: dir with summary but not in index.
+                    if vname not in indexed_by_rv:
+                        _log_action("unindexed_summary_append", str(vdir))
+                        if not dry_run:
+                            try:
+                                entry = build_index_entry(
+                                    _rr, machine_name, mode_int, vname,
+                                    run_id_in_summary,
+                                    summary=summary, summary_path=summary_path,
+                                )
+                                new_index.append(entry)
+                                indexed_by_rv[vname] = entry
+                                index_dirty = True
+                            except Exception as _exc:  # noqa: BLE001
+                                _log_error(str(vdir), f"build_entry: {_exc}")
+                        continue
+
+                    # Action 4: path canonicality.
+                    existing_entry = indexed_by_rv[vname]
+                    stored_sf = str(existing_entry.get("summary_file") or "")
+                    canonical_sf = str(summary_path)
+                    if stored_sf != canonical_sf:
+                        if summary_path.exists():
+                            # Canonical copy exists — just rewrite the entry path.
+                            _log_action("path_rewrite_to_canonical", str(vdir),
+                                        f"{stored_sf!r} → {canonical_sf!r}")
+                            if not dry_run:
+                                try:
+                                    new_entry = dict(existing_entry)
+                                    new_entry["summary_file"] = canonical_sf
+                                    # Also fix report_file if it pointed elsewhere.
+                                    stored_rf = str(new_entry.get("report_file") or "")
+                                    canonical_rf = str(vdir / "player_impact_report.md")
+                                    if stored_rf and stored_rf != canonical_rf:
+                                        if Path(canonical_rf).exists():
+                                            new_entry["report_file"] = canonical_rf
+                                        elif not Path(stored_rf).exists():
+                                            new_entry.pop("report_file", None)
+                                    idx_pos = next(
+                                        (i for i, e in enumerate(new_index)
+                                         if e.get("report_version") == vname), None
+                                    )
+                                    if idx_pos is not None:
+                                        new_index[idx_pos] = new_entry
+                                    indexed_by_rv[vname] = new_entry
+                                    index_dirty = True
+                                except Exception as _exc:  # noqa: BLE001
+                                    _log_error(str(vdir), f"rewrite_entry: {_exc}")
+                        elif stored_sf and Path(stored_sf).exists():
+                            # Old path exists but canonical doesn't (or exists
+                            # partially with litter) — copy dir.
+                            # Use dirs_exist_ok=True so partial canonical vdirs
+                            # (machine_config.json / progress.jsonl litter) don't
+                            # cause FileExistsError (Python >= 3.8).
+                            _files_copied: list[str] = []
+                            _log_action("path_copy_to_canonical", str(vdir),
+                                        f"copy from {stored_sf!r}")
+                            if not dry_run:
+                                try:
+                                    import shutil as _shutil
+
+                                    def _record_copy(src: str, dst: str, **_kw: Any) -> str:
+                                        _files_copied.append(dst)
+                                        return dst
+
+                                    _shutil.copytree(
+                                        Path(stored_sf).parent, vdir,
+                                        dirs_exist_ok=True,
+                                        copy_function=_shutil.copy2,
+                                    )
+                                    new_entry = dict(existing_entry)
+                                    new_entry["summary_file"] = canonical_sf
+                                    new_entry.pop("report_file", None)
+                                    md_path = vdir / "player_impact_report.md"
+                                    if md_path.exists():
+                                        new_entry["report_file"] = str(md_path)
+                                    idx_pos = next(
+                                        (i for i, e in enumerate(new_index)
+                                         if e.get("report_version") == vname), None
+                                    )
+                                    if idx_pos is not None:
+                                        new_index[idx_pos] = new_entry
+                                    indexed_by_rv[vname] = new_entry
+                                    index_dirty = True
+                                    # Surface what was copied in the action detail.
+                                    result["actions"][-1]["detail"] = (
+                                        f"copy from {stored_sf!r}; "
+                                        f"files_copied={len(_files_copied)}"
+                                    )
+                                except Exception as _exc:  # noqa: BLE001
+                                    _log_error(str(vdir), f"copytree: {_exc}")
+                        else:
+                            # Neither path exists — zombie entry.
+                            _log_action("zombie_entry_drop", str(vdir),
+                                        f"summary_file={stored_sf!r} not found")
+                            if not dry_run:
+                                new_index = [
+                                    e for e in new_index
+                                    if e.get("report_version") != vname
+                                ]
+                                del indexed_by_rv[vname]
+                                index_dirty = True
+                        continue  # path action handled; actions 5+6 run on next pass
+
+                    # Actions 5+6: persist-backfill + report_file key drop.
+                    entry = indexed_by_rv[vname]
+                    needs_backfill = False
+                    patched = dict(entry)
+
+                    # Action 5: missing fields.
+                    # Idempotency rule: only add a field to _fill_pairs when the
+                    # new value is ACTUALLY different from the current stored value
+                    # (i.e. new_val is truthy and differs, OR current is None and
+                    # new_val is truthy).  If the summary also lacks the field
+                    # (new_val is falsy), emit informational "unfillable_field"
+                    # instead — that is NOT a mutation and must not mark index_dirty.
+                    _fill_pairs: list[tuple[str, Any]] = []
+                    _unfillable: list[str] = []
+
+                    def _check_str_field(
+                        field: str, summary_key: str
+                    ) -> None:
+                        cur = patched.get(field) or ""
+                        new_val = summary.get(summary_key) or ""
+                        if cur:
+                            return  # already has a value — nothing to do
+                        if new_val:
+                            _fill_pairs.append((field, new_val))
+                        else:
+                            _unfillable.append(field)
+
+                    def _check_num_field(
+                        field: str, new_val: Any
+                    ) -> None:
+                        if patched.get(field) is not None:
+                            return  # already set
+                        if new_val is not None:
+                            _fill_pairs.append((field, new_val))
+                        # no unfillable tracking for numeric fields — they're
+                        # less critical and missing from many legacy summaries
+
+                    _check_str_field("rawdata_config_md5", "config_md5")
+                    _check_str_field("rawdata_code_md5", "code_md5")
+                    _check_str_field("analyzer_version", "analyzer_version")
+                    _check_str_field("effective_analyzer_version",
+                                     "effective_analyzer_version")
+                    _check_num_field(
+                        "achieved_rtp_pct",
+                        (summary.get("rtp") or {}).get("point_pct"),
+                    )
+                    _check_num_field(
+                        "achieved_halfwidth_pp",
+                        (summary.get("sampling") or {}).get("achieved_halfwidth_pp"),
+                    )
+                    _check_num_field(
+                        "total_spins",
+                        (summary.get("sampling") or {}).get("total_spins"),
+                    )
+
+                    if _fill_pairs:
+                        needs_backfill = True
+                        for _k, _v in _fill_pairs:
+                            patched[_k] = _v
+
+                    # Informational only — no mutation, does not set index_dirty.
+                    if _unfillable:
+                        _log_action("unfillable_field", str(vdir),
+                                    f"fields={_unfillable} not in summary")
+
+                    # Action 6: report_file key with no file.
+                    rf = patched.get("report_file")
+                    if rf and not Path(rf).exists():
+                        patched.pop("report_file", None)
+                        needs_backfill = True
+
+                    if needs_backfill:
+                        _log_action("persist_backfill", str(vdir),
+                                    f"fields={[k for k, _ in _fill_pairs]}")
+                        if not dry_run:
+                            try:
+                                idx_pos = next(
+                                    (i for i, e in enumerate(new_index)
+                                     if e.get("report_version") == vname), None
+                                )
+                                if idx_pos is not None:
+                                    new_index[idx_pos] = patched
+                                indexed_by_rv[vname] = patched
+                                index_dirty = True
+                            except Exception as _exc:  # noqa: BLE001
+                                _log_error(str(vdir), f"backfill_entry: {_exc}")
+
+                # After processing all vdirs in this mode: write updated index + latest.
+                # Idempotency rule for latest_recompute: only write + count when the
+                # recomputed latest.json content actually differs from what is on disk.
+                # This prevents index_dirty paths (e.g. persist_backfill no-ops)
+                # from triggering a spurious latest_recompute on every run.
+                if index_dirty and not dry_run:
+                    try:
+                        from src.web_console.backend.report_index import (  # noqa: PLC0415
+                            _report_index_lock as _ril,
+                            _atomic_write_json as _awj,
+                        )
+                        latest_path = mode_dir / "latest.json"
+                        with _ril(mode_dir):
+                            _awj(index_path, new_index)
+                            if new_index:
+                                latest = max(
+                                    enumerate(new_index),
+                                    key=lambda ie: (
+                                        str(ie[1].get("created_at") or ""),
+                                        str(ie[1].get("report_version") or ""),
+                                        ie[0],
+                                    ),
+                                )[1]
+                                # Only write + count when content actually changes.
+                                _latest_cur: dict[str, Any] = {}
+                                if latest_path.exists():
+                                    try:
+                                        _latest_cur = read_json(latest_path) or {}
+                                    except Exception:  # noqa: BLE001
+                                        pass
+                                if _latest_cur.get("report_version") != latest.get("report_version"):
+                                    _awj(latest_path, latest)
+                                    _log_action("latest_recompute", str(mode_dir))
+                            elif latest_path.exists():
+                                try:
+                                    latest_path.unlink()
+                                    _log_action("latest_recompute", str(mode_dir),
+                                                "deleted (index empty)")
+                                except OSError:
+                                    pass
+                    except Exception as _exc:  # noqa: BLE001
+                        _log_error(str(mode_dir), f"write_index: {_exc}")
+                elif not index_dirty:
+                    # Always check latest even if index unchanged (stale latest fix).
+                    try:
+                        latest_path = mode_dir / "latest.json"
+                        if current_index:
+                            latest_candidate = max(
+                                enumerate(current_index),
+                                key=lambda ie: (
+                                    str(ie[1].get("created_at") or ""),
+                                    str(ie[1].get("report_version") or ""),
+                                    ie[0],
+                                ),
+                            )[1]
+                            latest_current: dict[str, Any] = {}
+                            if latest_path.exists():
+                                try:
+                                    latest_current = read_json(latest_path) or {}
+                                except Exception:  # noqa: BLE001
+                                    pass
+                            if (latest_current.get("report_version") !=
+                                    latest_candidate.get("report_version")):
+                                _log_action("latest_recompute", str(mode_dir),
+                                            "latest.json was stale")
+                                if not dry_run:
+                                    from src.web_console.backend.report_index import (  # noqa: PLC0415
+                                        _atomic_write_json as _awj,
+                                    )
+                                    _awj(latest_path, latest_candidate)
+                        elif latest_path.exists():
+                            _log_action("latest_recompute", str(mode_dir),
+                                        "delete latest.json (index empty)")
+                            if not dry_run:
+                                try:
+                                    latest_path.unlink()
+                                except OSError:
+                                    pass
+                    except Exception as _exc:  # noqa: BLE001
+                        _log_error(str(mode_dir), f"latest_recompute: {_exc}")
+
+        # Action 8: SQLite backfill effective_analyzer_version (and md5s) on
+        # completed rows from their on-disk summaries.
+        try:
+            with store._connect() as _conn:
+                _rows = _conn.execute(
+                    """
+                    SELECT run_id, summary_file,
+                           rawdata_config_md5, rawdata_code_md5,
+                           effective_analyzer_version
+                    FROM runs
+                    WHERE status IN ('completed', 'cancelled')
+                      AND (effective_analyzer_version IS NULL
+                           OR rawdata_config_md5 IS NULL
+                           OR rawdata_code_md5 IS NULL)
+                    """
+                ).fetchall()
+            for _row in _rows:
+                _sf = _row["summary_file"]
+                if not _sf or not Path(_sf).exists():
+                    continue
+                try:
+                    _s = json.loads(Path(_sf).read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                _patch: dict[str, Any] = {}
+                if _row["effective_analyzer_version"] is None:
+                    _ev = _s.get("effective_analyzer_version")
+                    if _ev:
+                        _patch["effective_analyzer_version"] = str(_ev)
+                if _row["rawdata_config_md5"] is None:
+                    _cfg = _s.get("config_md5")
+                    if _cfg:
+                        _patch["rawdata_config_md5"] = str(_cfg)
+                if _row["rawdata_code_md5"] is None:
+                    _code = _s.get("code_md5")
+                    if _code:
+                        _patch["rawdata_code_md5"] = str(_code)
+                if _patch:
+                    _log_action("sqlite_backfill", str(_sf),
+                                f"run_id={_row['run_id']!r} fields={list(_patch.keys())}")
+                    if not dry_run:
+                        try:
+                            store.update_run(_row["run_id"], _patch)
+                        except Exception as _exc:  # noqa: BLE001
+                            _log_error(_row["run_id"], f"sqlite_backfill: {_exc}")
+        except Exception as _exc:  # noqa: BLE001
+            _log_error("sqlite", f"backfill query: {type(_exc).__name__}: {_exc}")
+
+        return result
+
+    @app.post("/api/maintenance/reconcile-reports")
+    def reconcile_reports_endpoint(req: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Repair report-store litter (F4, 2026-06-12).
+
+        Body: ``{"dry_run": true}`` — dry_run defaults to **true** so
+        the operator always sees what would happen before committing.
+        Pass ``{"dry_run": false}`` to execute.
+
+        Action classes: empty-dir delete, no-summary-dir delete (with
+        running-run + 1h-mtime guards), unindexed-summary append,
+        non-canonical path rewrite/copy-back/drop-zombie,
+        persist-backfill of missing fields, report_file key drop,
+        latest.json recompute, SQLite effective_analyzer_version backfill.
+
+        Returns a full action report (counts + per-action list).
+        Never silent (feedback_no_silent_swallow).
+        """
+        if not registry.try_acquire_global("reconcile_reports"):
+            raise HTTPException(status_code=409, detail="reconcile-reports already in progress")
+        try:
+            body = req or {}
+            dry_run = bool(body.get("dry_run", True))
+            return reconcile_reports(dry_run=dry_run)
+        finally:
+            registry.release_global("reconcile_reports")
 
     def _do_refresh_machines_md5(
         server_id: str = "dev", *, raise_on_error: bool = True,
@@ -10969,7 +11564,7 @@ def create_app(
         current.effective_versions[machine|mode] directly.
         ``current_analyzer_version`` is kept for display/back-compat.
         """
-        from fresh_slotlab.player_impact_analyzer import compute_analyzer_version
+        from fresh_slotlab.analyzer.versioning import compute_analyzer_version
         from src.web_console.backend.effective_version_cache import EffectiveVersionCache
         # Machine-level aggregate (used as response-level hint so
         # frontend can show "current cfg md5" at the card header).
@@ -12011,12 +12606,23 @@ def create_app(
                 ),
             }
 
+        # An idle payload returned (HTTP 200) when no fleet-refresh queue exists
+        # or the latest one can't be resolved. "No queue yet" is a NORMAL state,
+        # not an error — returning it as 200 (instead of 404) stops the frontend
+        # poll from logging a console error on every paint (the endpoint is hit
+        # on console load + on a timer). The frontend renders this as the idle
+        # state (start enabled, no progress bar).
+        _FLEET_REFRESH_IDLE: dict[str, Any] = {
+            "queue_id": None, "status": "idle", "total_items": 0,
+            "completed_items": 0, "failed_items": 0, "skipped_items": 0,
+        }
+
         @app.get("/api/fleet/refresh")
         def get_fleet_refresh() -> dict[str, Any]:
             """Poll current fleet refresh progress.
 
-            Returns the most recently started queue (running or completed).
-            404 if no queue has ever been created.
+            Returns the most recently started queue (running or completed), or an
+            idle payload (200) when no queue exists — "no queue" is not an error.
             """
             queue_id = fleet_mgr.get_running_queue_id()
             if queue_id is None:
@@ -12032,15 +12638,11 @@ def create_app(
                     queue_id = None
 
             if queue_id is None:
-                raise HTTPException(
-                    status_code=404, detail="no fleet refresh queue found"
-                )
+                return dict(_FLEET_REFRESH_IDLE)
 
             progress = fleet_mgr.get_queue_progress(queue_id)
             if progress is None:
-                raise HTTPException(
-                    status_code=404, detail=f"queue {queue_id} not found"
-                )
+                return dict(_FLEET_REFRESH_IDLE)
             return progress
 
         @app.delete("/api/fleet/refresh")

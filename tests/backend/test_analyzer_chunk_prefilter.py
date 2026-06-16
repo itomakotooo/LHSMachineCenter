@@ -34,7 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "fresh_slotlab"))
 
-import player_impact_analyzer as pia  # noqa: E402
+import analyzer.core.base_pipeline as pia  # noqa: E402
 
 
 def _entry(idx: int, cfg: str, code: str) -> dict:

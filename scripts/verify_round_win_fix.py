@@ -83,7 +83,7 @@ def verify_pair(args):
         return {"machine": machine, "mode": mode_dir, "class": "ERROR", "msg": "no response"}
     bet = int(envelope.get("_bet", 1000))
 
-    from fresh_slotlab.player_impact_analyzer import parse_chunk_response
+    from fresh_slotlab.analyzer.core.parser import parse_chunk_response
     from fresh_slotlab.round_win import load_rules_for_machine
 
     server = _server_total_win(resp)

@@ -12,14 +12,16 @@ Mechanism
 ---------
 This plugin replaces the PIA inline machine_mechanics block.  Instead of
 independent detection per mechanic (the root cause of gaps #1+#2), the plugin
-delegates ALL detection to the MechanismRegistry — the single source of truth
-built in PIA finalization (Phase C of the emit ordering contract).
+takes jackpot / free_spin applicability from the machine's DECLARED mechanism
+(the SpinType-native manifest), the single source of truth.
 
-For jackpot and free_spin, the plugin reads ctx.mechanism_registry for the
-authoritative applicable flag and PID set.  For the quantitative fields
-(trigger_spins, trigger_rate, total_win, rtp_contribution_pp) the plugin
-reads from its own extract() accumulator, which mirrors the existing inline
-aggregation but is now centralized here.
+For jackpot and free_spin, the plugin reads
+``machine_spec.derive_mechanism_flags(ctx.machine_spec_manifest)`` for the
+authoritative applicable flag and PID set (phase 5C: mechanism_registry deleted;
+mechanism is declared in the manifest's spin_types role/play, not detected at
+runtime).  For the quantitative fields (trigger_spins, trigger_rate, total_win,
+rtp_contribution_pp) the plugin reads from its own extract() accumulator, which
+mirrors the existing inline aggregation but is now centralized here.
 
 For lock_lines / lock_symbols / lock_reels / dollar_pick (not yet in the
 Mechanism Registry), the plugin continues to use the extract() accumulator
@@ -37,8 +39,8 @@ extract() reads from chunk_dict (parser output):
   dollar_pick_spins, dollar_pick_total_dollars, dollar_pick_win
 
 emit() reads:
-  ctx.mechanism_registry — jackpot_applicable, jackpot_pid_set,
-                           freespin_applicable, _detection_source
+  derive_mechanism_flags(ctx.machine_spec_manifest) — jackpot_applicable,
+                           jackpot_pid_set, freespin_applicable, detection_source
   ctx.effective_bet_for_rtp — RTP denominator
   ctx.total_spins — rate denominator
 
@@ -252,8 +254,8 @@ class MachineMechanics(AnalyzerFeature):
         """Build and write summary["player_impact"]["machine_mechanics"].
 
         Reads:
-          ctx.mechanism_registry — jackpot_applicable, jackpot_pid_set,
-                                   freespin_applicable, _detection_source
+          derive_mechanism_flags(ctx.machine_spec_manifest) — jackpot_applicable,
+                                   jackpot_pid_set, freespin_applicable, detection_source
           ctx.effective_bet_for_rtp — RTP denominator
           ctx.total_spins — rate denominator
           final_acc — accumulated mechanic counters from extract/reduce
@@ -263,9 +265,9 @@ class MachineMechanics(AnalyzerFeature):
           6-section schema (lock_lines / lock_symbols / lock_reels / jackpot /
           free_spin / dollar_pick) plus _detection_source on jackpot+free_spin.
 
-        Jackpot and free_spin applicable flags come from ctx.mechanism_registry
-        (Tier 1/2/3 detection), NOT from the raw counter > 0 test that the
-        old inline block used.  This closes gaps #1 and #2.
+        Jackpot and free_spin applicable flags come from the DECLARED mechanism
+        (manifest spin_types role/play via derive_mechanism_flags), NOT from the
+        raw counter > 0 test that the old inline block used.  This closes gaps #1 and #2.
 
         For lock_lines / lock_symbols / lock_reels / dollar_pick, the
         applicable flag is still counter > 0 (these mechanics are not yet
@@ -273,9 +275,29 @@ class MachineMechanics(AnalyzerFeature):
         """
         player_impact = summary.setdefault("player_impact", {})
         acc = final_acc or {}
-        reg = ctx.mechanism_registry
         ebet = ctx.effective_bet_for_rtp
         total_spins = ctx.total_spins
+
+        # Phase 5C: mechanism_registry removed. Manifest-only path.
+        # For non-registered machines (no machine_spec_manifest), all mechanism flags
+        # default to False — non-registered machines don't generate reports anyway.
+        if isinstance(ctx.machine_spec_manifest, dict) and ctx.machine_spec_manifest:
+            try:
+                from fresh_slotlab.analyzer.machine_spec import derive_mechanism_flags
+            except ImportError:
+                from analyzer.machine_spec import derive_mechanism_flags  # type: ignore[no-redef]
+            _mflags = derive_mechanism_flags(ctx.machine_spec_manifest)
+            _jp_applicable = _mflags["jackpot_applicable"]
+            _jp_pid_set_manifest = _mflags["jackpot_pid_set"]
+            _fs_applicable = _mflags["freespin_applicable"]
+            _detection_src_jp = _mflags["detection_source"]
+            _detection_src_fs = _mflags["detection_source"]
+        else:
+            _jp_applicable = False
+            _jp_pid_set_manifest = frozenset()
+            _fs_applicable = False
+            _detection_src_jp = "manifest_absent"
+            _detection_src_fs = "manifest_absent"
 
         def _rtp(win: float) -> float:
             return (win / ebet * 100) if ebet > 0 else 0.0
@@ -322,18 +344,18 @@ class MachineMechanics(AnalyzerFeature):
             "lock_rtp_contribution_pp": _rtp(lr_win),
         }
 
-        # Jackpot — DRIVEN BY MECHANISM REGISTRY (closes gap #1)
-        # applicable and jackpot_ids come from the registry (Tier 1/2/3).
-        # Quantitative fields (trigger_spins, total_win, rtp) come from
-        # the extract() accumulator (raw parser counts, unchanged semantics).
+        # Jackpot — DRIVEN BY MANIFEST (phase 3) or MECHANISM REGISTRY (legacy).
+        # applicable and jackpot_ids come from manifest spin_types (phase 3) or
+        # registry (Tier 1/2/3). Quantitative fields (trigger_spins, total_win, rtp)
+        # come from the extract() accumulator (raw parser counts, unchanged semantics).
         jp_spins = int(acc.get("jp_spins", 0))
         jp_ids_acc = sorted(acc.get("jp_ids") or set())  # from JackpotIds field only
         jp_win = float(acc.get("jp_win", 0.0))
 
-        # Registry-driven fields:
-        jp_applicable = reg.jackpot_applicable
-        jp_pid_set = sorted(reg.jackpot_pid_set)  # union of Path A + Path B
-        jp_detection_src = reg._detection_source.get("jackpot_applicable", "unknown")
+        # Manifest-driven fields (phase 3) or registry-driven (legacy):
+        jp_applicable = _jp_applicable
+        jp_pid_set = sorted(_jp_pid_set_manifest)  # from manifest spin_types
+        jp_detection_src = _detection_src_jp
 
         # jackpot_ids: prefer the registry's union result (more complete than
         # jp_ids_acc which only has IDs from the JackpotIds raw field).
@@ -382,16 +404,17 @@ class MachineMechanics(AnalyzerFeature):
             "_detection_source": jp_detection_src,  # C4 transparency field
         }
 
-        # Free spin — DRIVEN BY MECHANISM REGISTRY (closes gap #2)
-        # applicable comes from the registry (Tier 1/2 bonus_chain_lengths check).
-        # Quantitative fields come from extract() accumulator.
+        # Free spin — DRIVEN BY MANIFEST (phase 3) or MECHANISM REGISTRY (legacy).
+        # applicable comes from manifest spin_types play=="freespin" (phase 3) or
+        # registry (Tier 1/2 bonus_chain_lengths check). Quantitative fields come
+        # from extract() accumulator.
         fs_chain_spins = int(acc.get("fs_chain_spins", 0))
         fs_retriggers = int(acc.get("fs_retriggers", 0))
         fs_max_chain = int(acc.get("fs_max_chain", 0))
         fs_win = float(acc.get("fs_win", 0.0))
 
-        fs_applicable = reg.freespin_applicable
-        fs_detection_src = reg._detection_source.get("freespin_applicable", "unknown")
+        fs_applicable = _fs_applicable
+        fs_detection_src = _detection_src_fs
 
         # For machines like M275 where freespin chains are tracked via
         # bonus_chain_dynamics (ReMarks-based) rather than CurFreeSpin
@@ -414,6 +437,39 @@ class MachineMechanics(AnalyzerFeature):
                     _avg_len = _bcd.get("avg_chain_length", 0) or 0
                     if _avg_len:
                         fs_max_chain = round(_avg_len)
+
+        # Same fallback family for the WIN: on those role/play-declared
+        # machines the CurFreeSpin-based ``freespin_win`` accumulator stays 0
+        # while the free rounds' settled wins live in spin_type_breakdown
+        # (written inline by the engine before the emit loop). Without this,
+        # an APPLICABLE card renders rtp_contribution_pp 0.00 while the same
+        # report shows the real pp elsewhere (the M275 W5 breaker
+        # counterexample). Manifest-driven: sum total_win of the STs whose
+        # role/play is "freespin" — no machine-specific code.
+        if fs_win == 0.0 and fs_applicable and fs_chain_spins > 0:
+            _ms_manifest = getattr(ctx, "machine_spec_manifest", None) or {}
+            _fs_sts: set[str] = set()
+            for _st_key, _st_spec in (_ms_manifest.get("spin_types") or {}).items():
+                if not isinstance(_st_spec, dict):
+                    continue
+                if (str(_st_spec.get("role") or "").lower() == "freespin"
+                        or str(_st_spec.get("play") or "").lower() == "freespin"):
+                    _fs_sts.add(str(_st_key))
+            if _fs_sts:
+                _stb_rows = (
+                    summary.get("player_impact", {})
+                           .get("spin_type_breakdown") or []
+                )
+                _fb_win = 0.0
+                for _stb_row in _stb_rows:
+                    if str(_stb_row.get("spin_type")) in _fs_sts:
+                        _fb_win += float(_stb_row.get("total_win") or 0.0)
+                if _fb_win > 0:
+                    fs_win = _fb_win
+                    fs_detection_src = (
+                        f"{fs_detection_src}+stb_win_fallback"
+                        if fs_detection_src else "stb_win_fallback"
+                    )
 
         free_spin_block = {
             "applicable": fs_applicable,

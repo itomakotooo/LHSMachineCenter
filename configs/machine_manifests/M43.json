@@ -1,0 +1,54 @@
+{
+  "machine_id": "M43",
+  "schema": "spintype-native/1",
+  "modes": [1, 2, 5, 7],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 0.0588, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M43/mode_1 bucket b99e0b05/6e02924b 2026-06-12"
+    },
+    "50": {
+      "role": "respin",
+      "play": "WinRespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 0.0627, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M43/mode_1 bucket b99e0b05/6e02924b 2026-06-12"
+    },
+    "51": {
+      "role": "settlement",
+      "play": "WinMiniGame",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "IsLackCreditsSpin", "LastCredits"],
+      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "WinCredits"],
+      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M43/mode_1 bucket b99e0b05/6e02924b 2026-06-12"
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "ReSpin|MiniGame", "opens": "WinRespin|WinMiniGame", "note": "no round-level trigger pid; both features fire server-side (st50 win-gated, st51 per-spin random) — see analysis caveats"},
+  "validation": {
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {"mode": 1, "rawdata": "M43/mode_1", "cross_mode": [1, 7]},
+    "evidence": "session_artifacts/_onboard/M43/01_understanding_struct.md + 01_understanding_econ.md (ST roles from real fields; ST<->feature 0/338 mismatch; sum(WinCredits) 642,770,000 exact). st51 attribution via config-only SynthesizePayIdRule PROVEN in 02_reuse.md (_unattributed_st51 197,453,000 -> 0). All modes [1,2,5,7] share the SAME STRUCTURE (value-agnostic parser). CROSS-MODE: mode_1 (680k spins, RTP 93.15%) AND mode_7 (80k, RTP 78.48%) both generate clean reports (rtp_integrity passed, _unattributed share 0) from the SAME manifest — different skins, both correct (value-agnostic). USER SIGN-OFF 2026-06-10: regenerated the mode_1 report from cached rawdata and accepted the parsing structure; minigame trigger confirmed in-engine (NOT out-of-engine — out_of_engine_mechanics empty).",
+    "caveats": [
+      "st50 respin trigger gate (which winning configs open a respin) not in rawdata — grant-rate observed, gate rule not [struct 8.4].",
+      "st51 minigame trigger is in-engine per-spin random (USER signed off, NOT an M90 hidden mechanic); the exact trigger probability is rawdata-unobservable [struct 8.1].",
+      "st51 per-node prize table not derivable (path win != sum of node solo values; codes 101-105 never appear solo) [struct 8.2].",
+      "code_md5 drift: cache 6e02924b vs registry 473d1f54 — verdicts derived on cached generation; re-verify on a re-sample [struct 0].",
+      "chunk_0042 schema-fp divergence (sole carrier of GameplayTriggerType, always 0) — constant-0 artifact, no economy signal [econ 0/7].",
+      "ANALYZER DATA BOUNDARY: respin burst-length histogram + win-gating (M4), minigame surprise-on-loss rate (G3), and minigame node-count/node-code distributions (G4/G5) require per-round ReMarks / run-length accumulation that lives only in the parser (a base-closure file). respin_dynamics/minigame_dynamics compute every metric the frozen framework's accumulators expose (grant-rate, hit-rate uplift, multiplier distributions, continuation probability, trigger frequency, RTP concentration) and mark the parser-blind sub-metrics explicitly in their `parser_blind` field. The blind sub-metrics are framework-team work (parser accumulator), escalated to the coordinator."
+    ],
+    "date": "2026-06-10"
+  },
+  "out_of_engine_mechanics": [],
+  "round_win_rule": "m43_minigame_settlement (synthesize_pay_id, spin_types=[51], label_format=spin_type) — added to configs/machine_round_win_rules.json; PROVEN to zero _unattributed_st51.",
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

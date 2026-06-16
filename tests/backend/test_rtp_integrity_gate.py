@@ -216,6 +216,9 @@ class TestC1FileAndAPI:
         attribute assignment raises FrozenInstanceError. Note: object.__setattr__
         bypasses the frozen guard in CPython — must use direct attribute assignment
         to exercise the guard.
+
+        Updated 2026-06-11: constructor includes session-conservation fields added
+        in the session-dim fix (FRAMEWORK_PASS_2026-06-11.md §A).
         """
         from fresh_slotlab.analyzer.rtp_integrity import RTPIntegrityResult
         assert dataclasses.is_dataclass(RTPIntegrityResult)
@@ -236,13 +239,25 @@ class TestC1FileAndAPI:
             summary_message="OK",
             suggested_actions=[],
             completeness_declared=True,
+            session_conservation_ok=None,
+            session_conservation_level=None,
+            session_conservation_skip_reason="no manifest",
+            session_conservation_notes=[],
         )
         # Direct attribute assignment (not object.__setattr__) exercises frozen guard
         with pytest.raises((dataclasses.FrozenInstanceError, AttributeError, TypeError)):
             instance.passed = False  # type: ignore[misc]
 
     def test_rtp_integrity_result_has_15_fields(self):
-        """RTPIntegrityResult must have exactly 15 fields per §1 of the ticket."""
+        """RTPIntegrityResult must have the correct field set per the architecture spec.
+
+        Updated 2026-06-11 (FRAMEWORK_PASS_2026-06-11.md §A): four session-
+        conservation fields were added (session_conservation_ok,
+        session_conservation_level, session_conservation_skip_reason,
+        session_conservation_notes), bringing the total to 20.
+        The original 16-field spec (ticket §1) is superseded.
+        This test now validates presence of all named fields (both old and new).
+        """
         from fresh_slotlab.analyzer.rtp_integrity import RTPIntegrityResult
         fields = [f.name for f in dataclasses.fields(RTPIntegrityResult)]
         expected_fields = [
@@ -262,9 +277,14 @@ class TestC1FileAndAPI:
             "summary_message",
             "suggested_actions",
             "completeness_declared",
+            # Added 2026-06-11 (session-dim fix): session-conservation check fields.
+            "session_conservation_ok",
+            "session_conservation_level",
+            "session_conservation_skip_reason",
+            "session_conservation_notes",
         ]
-        assert len(fields) == 16, (
-            f"Expected 16 fields on RTPIntegrityResult per ticket §1. "
+        assert len(fields) == 20, (
+            f"Expected 20 fields on RTPIntegrityResult (16 original + 4 conservation). "
             f"Got {len(fields)}: {fields}"
         )
         for name in expected_fields:

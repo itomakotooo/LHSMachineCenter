@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from fresh_slotlab.player_impact_analyzer import parse_chunk_response
+from fresh_slotlab.analyzer.core.parser import parse_chunk_response
 from fresh_slotlab.round_win import (
     SettlementWinAmountRule,
     SynthesizePayIdRule,

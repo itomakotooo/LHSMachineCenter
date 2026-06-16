@@ -2,6 +2,23 @@
 
 Operational guide for local Slot Console usage.
 
+> **Status (2026-06-05): report GENERATION and live SAMPLING are OFFLINE.**
+> The report-production orchestrator (`fresh_slotlab/player_impact_analyzer.py`)
+> was deleted and is being rebuilt SpinType-native. The console boots and runs,
+> and **viewing existing reports works normally** (KPI cards, drilldowns,
+> versions, fleet management — all read from disk). What's currently broken:
+> - **Starting a sampling run** (`Start`/`开始采样`) fails with
+>   `500 "analyzer script not found"` — the console sampled *through* the
+>   removed orchestrator. (The standalone `fresh_slotlab/sampler.py` CLI still
+>   works outside the console.)
+> - **Regenerating a report from rawdata** (single or batch, §3a) fails —
+>   `503` for the single endpoint, per-item `"worker not initialized"` for the
+>   batch.
+>
+> Everything else below (health, cache/retention, locks, server/md5
+> management, model routing, recovery) is unaffected. Sampling + report
+> generation resume when the new engine lands.
+
 ## 1. Prerequisites
 
 - Python available in PATH
@@ -35,6 +52,13 @@ Stop:
 - terminate the running PowerShell/uvicorn process
 
 ## 3. Recommended Run Workflow
+
+> **OFFLINE while the analyzer is rebuilt.** Steps 5–7 (start run → review
+> report → interpret) cannot complete right now — starting a run 500s at
+> spawn. The workflow below documents the intended flow and the UI surfaces
+> that still render; it resumes when the SpinType-native engine lands. To
+> review *existing* reports, use Fleet Management / the runs table (read paths
+> are live).
 
 1. Select machine and mode.
    - hover/focus the `i` hint beside each field to view usage guidance
@@ -71,6 +95,13 @@ Stop:
    AND `cancelled` runs (LLM can comment on partial data).
 
 ## 3a. Regenerate Report from Rawdata
+
+> **OFFLINE.** Both the single-cell regen (`POST /api/rawdata/{machine}/generate-report`,
+> returns `503`) and the fleet batch (`POST /api/rawdata/batch-generate-report`,
+> every item errors `"worker not initialized"`) depend on the removed engine.
+> The staleness banner / badges below are read-only and still display, but the
+> regen buttons can't act on them yet. Cached rawdata is untouched and will
+> replay once the new engine lands.
 
 When the analyzer code changes (new surfaces, bug fixes, classification
 tweaks), you can regenerate a report from the same cached rawdata without
@@ -187,8 +218,15 @@ Fallback:
 
 ### Start run fails
 
-- verify analyzer script path: `fresh_slotlab/player_impact_analyzer.py`
-- verify machine/mode exists in `configs/machines.json`
+- **Expected right now:** starting any run returns
+  `500 "analyzer script not found"`. The report-production orchestrator
+  (`fresh_slotlab/player_impact_analyzer.py`) was deleted pending the
+  SpinType-native rebuild, and `RunManager.start_run` guards on its
+  existence before spawning. This is not a misconfiguration — sampling +
+  generation are offline until the new engine lands. Report **viewing**
+  still works.
+- (When generation is restored) verify machine/mode exists in
+  `configs/machines.json` (the downloaded, gitignored upstream roster).
 
 ### Auto tune fails with 409
 

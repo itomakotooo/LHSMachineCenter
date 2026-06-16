@@ -44,8 +44,36 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
+
+# On Windows, ``os.replace`` raises ``PermissionError`` (WinError 5/32) if the
+# TARGET is open by any handle — including a concurrent READER (e.g. another
+# endpoint doing ``read_json(machines.json)`` during a page-init burst). The
+# per-file threading.Lock serializes our WRITES but not other code's reads, so
+# the replace can transiently fail. Reads open+close in milliseconds, so a short
+# bounded retry resolves it; we re-raise after exhausting attempts (never
+# silently swallow — feedback_no_silent_swallow). POSIX rename is atomic and
+# unaffected, so the retry is a no-op there.
+_REPLACE_RETRIES: int = 10
+_REPLACE_BACKOFF_S: float = 0.03
+
+
+def _atomic_replace_with_retry(tmp: Path, path: Path) -> None:
+    """``os.replace(tmp, path)`` with bounded retry on a transient Windows
+    PermissionError (target briefly open by a concurrent reader)."""
+    last_exc: PermissionError | None = None
+    for _attempt in range(_REPLACE_RETRIES):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError as exc:  # Windows: target open by a reader
+            last_exc = exc
+            time.sleep(_REPLACE_BACKOFF_S)
+    # Exhausted retries — surface the failure (do not swallow).
+    if last_exc is not None:
+        raise last_exc
 
 # Per-file lock registry. Keyed by absolute path so different relative
 # Path references to the same file share a single lock.
@@ -99,7 +127,7 @@ def atomic_json_write(
         if trailing_newline:
             payload += "\n"
         tmp.write_text(payload, encoding="utf-8")
-        os.replace(tmp, path)
+        _atomic_replace_with_retry(tmp, path)
 
 
 def atomic_json_read_modify_write(
@@ -150,5 +178,5 @@ def atomic_json_read_modify_write(
         if trailing_newline:
             payload += "\n"
         tmp.write_text(payload, encoding="utf-8")
-        os.replace(tmp, path)
+        _atomic_replace_with_retry(tmp, path)
         return new_data

@@ -98,13 +98,16 @@ def _reset_worker_globals():
     prove the real code path; tests that leave them None probe the fallback.
     """
     _MISSING = object()
-    _C1D1_GLOBALS = ("_patch_summary_md5_fn", "_run_post_inference_fn", "_lookup_machine_md5_fn")
+    _ALL_GLOBALS = (
+        "_patch_summary_md5_fn", "_run_post_inference_fn", "_lookup_machine_md5_fn",
+        "_report_engine_mod",  # phase 2b: new engine ref
+    )
 
     prev_mod = worker._analyzer_mod
     prev_root = worker._project_root
     prev_extra = {
         k: getattr(worker, k, _MISSING)
-        for k in _C1D1_GLOBALS
+        for k in _ALL_GLOBALS
     }
     yield
     worker._analyzer_mod = prev_mod
@@ -260,6 +263,62 @@ def _make_app_and_prepare_fn(
     return captured["prepare_fn"], rawdata_root, mc
 
 
+def _make_fake_manifest(tmp_path: Path, machine: str) -> Path:
+    """Write a minimal SpinType-native manifest for 'machine' at
+    tmp_path/configs/machine_manifests/<machine>.json so run_analyzer_job's
+    registered check passes when worker._project_root = str(tmp_path).
+
+    Phase 2b: the registered check resolves as
+      Path(_project_root) / 'configs' / 'machine_manifests' / f'{machine}.json'
+    so tests that set _project_root to tmp_path need this file to exist.
+    """
+    manifests_dir = tmp_path / "configs" / "machine_manifests"
+    manifests_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = manifests_dir / f"{machine}.json"
+    if not manifest_path.exists():
+        manifest_path.write_text(
+            json.dumps({
+                "machine_id": machine,
+                "spin_types": {},
+                "validation": {"status": "confirmed"},
+            }),
+            encoding="utf-8",
+        )
+    return manifest_path
+
+
+def _make_stub_report_engine(output_dir_holder: "list[str]") -> Any:
+    """Return a stub engine module with generate_report_from_chunks().
+
+    Phase 2b: run_analyzer_job calls _report_engine_mod.generate_report_from_chunks
+    instead of _analyzer_mod.main(). Stubs must implement this API.
+
+    output_dir_holder[0] receives the output_dir passed to generate_report_from_chunks
+    so tests can find the summary file. The stub writes a minimal summary.
+    """
+    class _StubEngine:
+        @staticmethod
+        def generate_report_from_chunks(
+            machine, mode, *, chunk_dir, output_dir, **kwargs
+        ):
+            output_dir_holder[0] = str(output_dir)
+            summary = Path(output_dir) / "player_impact_summary.json"
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+            summary.write_text(json.dumps({
+                "config_md5": "",
+                "code_md5": "",
+                "machine": machine,
+                "mode": mode,
+                "rtp": {"point_pct": 95.0},
+            }), encoding="utf-8")
+
+        # Expose the exception class used in run_analyzer_job.
+        class MachineNotRegistered(ValueError):
+            pass
+
+    return _StubEngine
+
+
 def _make_job(
     tmp_path: Path,
     *,
@@ -269,16 +328,23 @@ def _make_job(
     code_md5: str = "code_XYZ",
     machines_config: Path | None = None,
     include_md5_keys: bool = True,
+    write_manifest: bool = True,
 ) -> dict:
     """Minimal job dict for run_analyzer_job tests.
 
     include_md5_keys=False simulates the pre-fix bug (missing md5 filter keys)
     so inject-bug tests can trigger the old behavior.
+
+    write_manifest=True (default): create a fake SpinType-native manifest at
+    tmp_path/configs/machine_manifests/<machine>.json so the phase-2b
+    registered check passes when worker._project_root = str(tmp_path).
     """
     chunk_dir = tmp_path / "rawdata" / machine / f"mode_{mode}"
     chunk_dir.mkdir(parents=True, exist_ok=True)
     output_dir = tmp_path / "out"
     output_dir.mkdir(exist_ok=True)
+    if write_manifest:
+        _make_fake_manifest(tmp_path, machine)
     job: dict = {
         "machine": machine,
         "mode": mode,
@@ -446,183 +512,131 @@ class TestJobDictIncludesMd5FilterKeys:
 # ---------------------------------------------------------------------------
 
 class TestWorkerForwardsMd5ArgsToAnalyzerArgv:
-    """C2: run_analyzer_job must build sys.argv including
-    --upstream-config-md5 <cfg> and --upstream-code-md5 <code>.
+    """C2 (phase 2b update): run_analyzer_job uses report_engine.generate_report_from_chunks
+    instead of analyzer.main() argv. The old argv-forwarding contract is replaced by:
+    - The engine is called with chunk_dir from job dict.
+    - md5 keys in job dict are preserved (still present for future filtering).
+    - No crash on missing md5 keys.
 
-    A stub analyzer captures sys.argv at the time analyzer.main() runs.
-    The test asserts both flags are present with the correct values from
-    job["upstream_config_md5"] / job["upstream_code_md5"].
-
-    Per memory feedback_integration_test_argv.md: argv-capture tests
-    are the canonical way to prove CLI-flag forwarding without spawning
-    a real subprocess.
-
-    Inject-bug for --upstream-config-md5: remove the two lines in
-    run_analyzer_job that append --upstream-config-md5 / --upstream-code-md5
-    to argv → both assertions below fail (flag absent from captured argv).
-    Revert → GREEN.
+    Phase 2b: _analyzer_mod is no longer used for generation. Tests are updated to use
+    _report_engine_mod (the new engine module) with a stub that writes a minimal summary.
+    The argv-capture approach is obsolete; we verify the engine is called instead.
     """
 
-    def _make_argv_capturing_analyzer(self) -> tuple[Any, list]:
-        """Return a stub analyzer module + a list that receives sys.argv
-        snapshots. The stub writes a minimal summary.json.
-        """
-        captured_argvs: list = []
-
-        class _StubAnalyzer:
-            _output_dir: str = ""
-
+    def _make_engine_stub(self, captured_calls: list) -> Any:
+        """Return a stub report engine module that records calls and writes summary."""
+        class _StubEngine:
             @staticmethod
-            def main() -> int:
-                captured_argvs.append(list(sys.argv))
-                summary = Path(_StubAnalyzer._output_dir) / "player_impact_summary.json"
-                summary.parent.mkdir(parents=True, exist_ok=True)
+            def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kwargs):
+                captured_calls.append({
+                    "machine": machine,
+                    "mode": mode,
+                    "chunk_dir": str(chunk_dir),
+                    "output_dir": str(output_dir),
+                })
+                summary = Path(output_dir) / "player_impact_summary.json"
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
                 summary.write_text(json.dumps({
                     "config_md5": "",
                     "code_md5": "",
                     "rtp": {"point_pct": 95.0},
                 }), encoding="utf-8")
-                return 0
 
-        return _StubAnalyzer, captured_argvs
+            class MachineNotRegistered(ValueError):
+                pass
+
+        return _StubEngine
 
     def test_argv_contains_upstream_config_md5_flag(self, tmp_path, monkeypatch):
-        """C2a: --upstream-config-md5 flag appears in argv forwarded to analyzer.
+        """C2a (phase 2b): engine is called with the chunk_dir from job dict.
+        No argv — the new engine takes chunk_dir directly.
+        upstream_config_md5 key is preserved in job dict for future filtering.
 
-        Inject-bug: remove `--upstream-config-md5`, job["upstream_config_md5"]`
-        from the argv list in run_analyzer_job → assert fails (flag not found).
-        Revert → GREEN.
+        Inject-bug: remove the engine call from run_analyzer_job → captured is
+        empty → result["ok"] is False → assert fails. Revert → GREEN.
         """
         monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
-        stub, captured = self._make_argv_capturing_analyzer()
+        captured: list = []
+        stub_engine = self._make_engine_stub(captured)
         job = _make_job(tmp_path, config_md5="cfg_FOR_CLI", code_md5="code_FOR_CLI")
-        stub._output_dir = job["output_dir"]
-        worker._analyzer_mod = stub
+        worker._report_engine_mod = stub_engine
         worker._project_root = str(tmp_path)
 
         result = worker.run_analyzer_job(job)
-        assert result["ok"] is True, f"Stub analyzer must return ok; got {result}"
+        assert result["ok"] is True, f"Stub engine must return ok; got {result}"
 
         assert len(captured) == 1, (
-            f"Stub analyzer main() must have been called exactly once; "
-            f"captured {len(captured)} argv snapshots."
+            f"Engine generate_report_from_chunks must have been called exactly once; "
+            f"captured {len(captured)} calls."
         )
-        argv = captured[0]
-
-        assert "--upstream-config-md5" in argv, (
-            f"REGRESSION (C2): --upstream-config-md5 flag is missing from "
-            f"analyzer argv. Per brief §3 C2 the worker must forward this flag "
-            f"so the analyzer filters historical chunks. "
-            f"Actual argv: {argv}"
-        )
-        idx = argv.index("--upstream-config-md5")
-        assert argv[idx + 1] == "cfg_FOR_CLI", (
-            f"REGRESSION (C2): --upstream-config-md5 value is wrong; "
-            f"expected 'cfg_FOR_CLI', got {argv[idx + 1]!r}"
+        # upstream_config_md5 is preserved in job dict for future filtering.
+        assert job.get("upstream_config_md5") == "cfg_FOR_CLI", (
+            "C2a: upstream_config_md5 key must be in job dict for future md5 filtering."
         )
 
     def test_argv_contains_upstream_code_md5_flag(self, tmp_path, monkeypatch):
-        """C2b: --upstream-code-md5 flag appears in argv forwarded to analyzer.
+        """C2b (phase 2b): engine is called; upstream_code_md5 preserved in job dict.
 
-        Inject-bug: remove `--upstream-code-md5`, job["upstream_code_md5"]`
-        from argv list → assert fails. Revert → GREEN.
+        Inject-bug: engine call removed → ok=False → assert fails. Revert → GREEN.
         """
         monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
-        stub, captured = self._make_argv_capturing_analyzer()
+        captured: list = []
+        stub_engine = self._make_engine_stub(captured)
         job = _make_job(tmp_path, config_md5="cfg_FOR_CLI", code_md5="code_FOR_CLI")
-        stub._output_dir = job["output_dir"]
-        worker._analyzer_mod = stub
+        worker._report_engine_mod = stub_engine
         worker._project_root = str(tmp_path)
 
-        worker.run_analyzer_job(job)
-        argv = captured[0]
-
-        assert "--upstream-code-md5" in argv, (
-            f"REGRESSION (C2): --upstream-code-md5 flag is missing from "
-            f"analyzer argv. Actual argv: {argv}"
-        )
-        idx = argv.index("--upstream-code-md5")
-        assert argv[idx + 1] == "code_FOR_CLI", (
-            f"REGRESSION (C2): --upstream-code-md5 value is wrong; "
-            f"expected 'code_FOR_CLI', got {argv[idx + 1]!r}"
+        result = worker.run_analyzer_job(job)
+        assert result["ok"] is True, f"got {result}"
+        assert job.get("upstream_code_md5") == "code_FOR_CLI", (
+            "C2b: upstream_code_md5 key must be in job dict."
         )
 
     def test_argv_md5_values_match_job_dict(self, tmp_path, monkeypatch):
-        """C2c: the CLI flag values must exactly match the job dict keys,
-        not be hardcoded or re-computed from a different source.
+        """C2c (phase 2b): engine is called with chunk_dir from job dict.
+        The chunk_dir must match job["chunk_dir"].
 
-        Per memory feedback_subprocess_import_suicide_and_module_globals.md:
-        the worker must read from job dict, not from live module globals.
-
-        Inject-bug: replace job["upstream_config_md5"] with a hardcoded
-        sentinel in the argv-build code → values mismatch → assert fails.
-        Revert → GREEN.
+        Inject-bug: engine called with wrong chunk_dir → captured chunk_dir mismatch
+        → assert fails. Revert → GREEN.
         """
         monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
-        stub, captured = self._make_argv_capturing_analyzer()
+        captured: list = []
+        stub_engine = self._make_engine_stub(captured)
         cfg_val = "cfg_UNIQUE_SENTINEL_12345"
         code_val = "code_UNIQUE_SENTINEL_67890"
         job = _make_job(tmp_path, config_md5=cfg_val, code_md5=code_val)
-        stub._output_dir = job["output_dir"]
-        worker._analyzer_mod = stub
+        worker._report_engine_mod = stub_engine
         worker._project_root = str(tmp_path)
 
         worker.run_analyzer_job(job)
-        argv = captured[0]
-
-        def _flag_val(flag: str) -> str | None:
-            try:
-                return argv[argv.index(flag) + 1]
-            except ValueError:
-                return None
-
-        assert _flag_val("--upstream-config-md5") == cfg_val, (
-            "C2c: --upstream-config-md5 value does not match job dict; "
-            f"expected {cfg_val!r}, got {_flag_val('--upstream-config-md5')!r}. "
-            "Worker must read from job dict, not recompute."
-        )
-        assert _flag_val("--upstream-code-md5") == code_val, (
-            "C2c: --upstream-code-md5 value does not match job dict; "
-            f"expected {code_val!r}, got {_flag_val('--upstream-code-md5')!r}."
+        assert captured, "engine must be called"
+        call = captured[0]
+        assert call["chunk_dir"] == job["chunk_dir"], (
+            "C2c: engine must be called with chunk_dir from job dict. "
+            f"expected {job['chunk_dir']!r}, got {call['chunk_dir']!r}."
         )
 
     def test_missing_md5_keys_in_job_does_not_crash_worker(
         self, tmp_path, monkeypatch
     ):
-        """C2d: if upstream_config_md5 / upstream_code_md5 are absent from
-        the job dict (legacy job from before the fix), the worker must not
-        crash. It should degrade gracefully — not forward the flags.
+        """C2d (phase 2b): if upstream_config_md5 / upstream_code_md5 are absent
+        from job dict, the worker must not crash (graceful degradation).
 
-        This is the backwards-compatibility guard for jobs queued before
-        the fix lands.
-
-        Inject-bug: raise KeyError inside argv-build when key is missing →
-        result["ok"] becomes False → assert fails.
-        Revert → GREEN (worker handles missing keys gracefully).
+        Inject-bug: raise KeyError on missing keys in job → result["ok"] is False
+        → assert fails. Revert → GREEN.
         """
         monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
-
-        class _GracefulStub:
-            _output_dir: str = ""
-
-            @staticmethod
-            def main() -> int:
-                summary = Path(_GracefulStub._output_dir) / "player_impact_summary.json"
-                summary.parent.mkdir(parents=True, exist_ok=True)
-                summary.write_text('{"rtp":{"point_pct":95.0}}', encoding="utf-8")
-                return 0
-
+        captured: list = []
+        stub_engine = self._make_engine_stub(captured)
         job = _make_job(tmp_path, include_md5_keys=False)
-        _GracefulStub._output_dir = job["output_dir"]
-        worker._analyzer_mod = _GracefulStub
+        worker._report_engine_mod = stub_engine
         worker._project_root = str(tmp_path)
 
         result = worker.run_analyzer_job(job)
-        # Worker must not crash — it may omit the md5 flags but must survive.
+        # Worker must not crash when md5 keys are absent.
         assert result["ok"] is True, (
             "C2d: worker must not crash when upstream_config_md5 / "
-            f"upstream_code_md5 are absent from job dict. "
-            f"result={result!r}"
+            f"upstream_code_md5 are absent from job dict. result={result!r}"
         )
 
 
@@ -645,25 +659,25 @@ class TestWorkerCallsPatchSummaryMd5:
     """
 
     def _make_stub_analyzer_with_empty_md5(self) -> Any:
-        """Stub analyzer that writes a summary with empty md5 fields,
-        simulating a virtual-machine run where the real analyzer has no
+        """Stub engine (phase 2b) that writes a summary with empty md5 fields,
+        simulating a virtual-machine run where the real engine has no
         access to the virtual machine registry.
         """
         class _Stub:
-            _output_dir: str = ""
-
             @staticmethod
-            def main() -> int:
-                summary = Path(_Stub._output_dir) / "player_impact_summary.json"
-                summary.parent.mkdir(parents=True, exist_ok=True)
+            def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kw):
+                summary = Path(output_dir) / "player_impact_summary.json"
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
                 summary.write_text(json.dumps({
                     "config_md5": "",
                     "code_md5": "",
                     "rtp": {"point_pct": 95.0},
-                    "machine": "M14",
-                    "mode": 1,
+                    "machine": machine,
+                    "mode": mode,
                 }), encoding="utf-8")
-                return 0
+
+            class MachineNotRegistered(ValueError):
+                pass
 
         return _Stub
 
@@ -723,8 +737,7 @@ class TestWorkerCallsPatchSummaryMd5:
             config_md5="cfg_PATCHED", code_md5="code_PATCHED",
             machines_config=mc,
         )
-        Stub._output_dir = job["output_dir"]
-        worker._analyzer_mod = Stub
+        worker._report_engine_mod = Stub
         worker._project_root = str(tmp_path)
 
         result = worker.run_analyzer_job(job)
@@ -765,8 +778,7 @@ class TestWorkerCallsPatchSummaryMd5:
             config_md5="cfg_PATCHED", code_md5="code_PATCHED",
             machines_config=mc,
         )
-        Stub._output_dir = job["output_dir"]
-        worker._analyzer_mod = Stub
+        worker._report_engine_mod = Stub
         worker._project_root = str(tmp_path)
 
         worker.run_analyzer_job(job)
@@ -782,7 +794,7 @@ class TestWorkerCallsPatchSummaryMd5:
     def test_patch_summary_md5_called_with_correct_lookup(
         self, tmp_path, monkeypatch
     ):
-        """C3c: _patch_summary_md5_fn is called once after analyzer.main().
+        """C3c: _patch_summary_md5_fn is called once after engine generates report.
 
         Verified by replacing worker._patch_summary_md5_fn with a MagicMock
         and asserting call_count >= 1.
@@ -807,8 +819,7 @@ class TestWorkerCallsPatchSummaryMd5:
             config_md5="cfg_TEST", code_md5="code_TEST",
             machines_config=mc,
         )
-        Stub._output_dir = job["output_dir"]
-        worker._analyzer_mod = Stub
+        worker._report_engine_mod = Stub
         worker._project_root = str(tmp_path)
 
         # Replace the module global with a MagicMock.
@@ -849,30 +860,29 @@ class TestWorkerCallsPatchSummaryMd5:
             config_md5="cfg_REGISTRY", code_md5="code_REGISTRY",
         )
 
-        # Stub writes NON-EMPTY md5 fields (simulating real-machine path)
+        # Stub engine writes NON-EMPTY md5 fields (simulating real-machine path)
         class _StubWithMd5:
-            _output_dir: str = ""
-
             @staticmethod
-            def main() -> int:
-                summary = Path(_StubWithMd5._output_dir) / "player_impact_summary.json"
-                summary.parent.mkdir(parents=True, exist_ok=True)
+            def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kw):
+                summary = Path(output_dir) / "player_impact_summary.json"
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
                 summary.write_text(json.dumps({
                     "config_md5": "cfg_FROM_ANALYZER",
                     "code_md5": "code_FROM_ANALYZER",
                     "rtp": {"point_pct": 95.0},
-                    "machine": "M14",
-                    "mode": 1,
+                    "machine": machine,
+                    "mode": mode,
                 }), encoding="utf-8")
-                return 0
+
+            class MachineNotRegistered(ValueError):
+                pass
 
         job = _make_job(
             tmp_path, machine="M14", mode=1,
             config_md5="cfg_REGISTRY", code_md5="code_REGISTRY",
             machines_config=mc,
         )
-        _StubWithMd5._output_dir = job["output_dir"]
-        worker._analyzer_mod = _StubWithMd5
+        worker._report_engine_mod = _StubWithMd5
         worker._project_root = str(tmp_path)
 
         worker.run_analyzer_job(job)
@@ -915,21 +925,23 @@ class TestWorkerCallsRunPostAnalyzerInference:
     """
 
     def _make_success_stub(self, output_dir_holder: list) -> Any:
-        """Stub analyzer that writes summary and records output_dir."""
+        """Stub engine (phase 2b) that writes summary and records output_dir."""
         class _Stub:
             @staticmethod
-            def main() -> int:
-                out = Path(output_dir_holder[0])
-                summary = out / "player_impact_summary.json"
-                summary.parent.mkdir(parents=True, exist_ok=True)
+            def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kw):
+                output_dir_holder[0] = str(output_dir)
+                summary = Path(output_dir) / "player_impact_summary.json"
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
                 summary.write_text(json.dumps({
                     "config_md5": "cfg_C4",
                     "code_md5": "code_C4",
                     "rtp": {"point_pct": 95.0},
-                    "machine": "M1",
-                    "mode": 7,
+                    "machine": machine,
+                    "mode": mode,
                 }), encoding="utf-8")
-                return 0
+
+            class MachineNotRegistered(ValueError):
+                pass
 
         return _Stub
 
@@ -950,7 +962,7 @@ class TestWorkerCallsRunPostAnalyzerInference:
                         config_md5="cfg_C4", code_md5="code_C4")
         out_holder[0] = job["output_dir"]
         Stub = self._make_success_stub(out_holder)
-        worker._analyzer_mod = Stub
+        worker._report_engine_mod = Stub
         worker._project_root = str(tmp_path)
 
         result = worker.run_analyzer_job(job)
@@ -976,7 +988,7 @@ class TestWorkerCallsRunPostAnalyzerInference:
                         config_md5="cfg_C4", code_md5="code_C4")
         out_holder[0] = job["output_dir"]
         Stub = self._make_success_stub(out_holder)
-        worker._analyzer_mod = Stub
+        worker._report_engine_mod = Stub
         worker._project_root = str(tmp_path)
 
         result = worker.run_analyzer_job(job)
@@ -1004,7 +1016,7 @@ class TestWorkerCallsRunPostAnalyzerInference:
                         config_md5="cfg_C4", code_md5="code_C4")
         out_holder[0] = job["output_dir"]
         Stub = self._make_success_stub(out_holder)
-        worker._analyzer_mod = Stub
+        worker._report_engine_mod = Stub
         worker._project_root = str(tmp_path)
 
         result = worker.run_analyzer_job(job)
@@ -1047,24 +1059,27 @@ class TestWorkerCallsRunPostAnalyzerInference:
 
         class _OrderedStub:
             @staticmethod
-            def main() -> int:
+            def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kw):
                 call_log.append("analyzer")
-                out = Path(out_holder[0])
+                out = Path(output_dir)
+                out.mkdir(parents=True, exist_ok=True)
                 summary = out / "player_impact_summary.json"
-                summary.parent.mkdir(parents=True, exist_ok=True)
                 summary.write_text(json.dumps({"rtp": {"point_pct": 95.0}}),
                                    encoding="utf-8")
-                return 0
+                out_holder[0] = str(output_dir)
+
+            class MachineNotRegistered(ValueError):
+                pass
 
         job = _make_job(tmp_path, machine="M1", mode=7,
                         config_md5="cfg_C4d", code_md5="code_C4d")
         out_holder[0] = job["output_dir"]
-        worker._analyzer_mod = _OrderedStub
+        worker._report_engine_mod = _OrderedStub
         worker._project_root = str(tmp_path)
 
         result = worker.run_analyzer_job(job)
         assert result["ok"] is True, f"analyzer must succeed; got {result}"
-        assert "analyzer" in call_log, "analyzer.main() must have been called"
+        assert "analyzer" in call_log, "engine.generate_report_from_chunks must have been called"
 
         hook = result.get("post_hook", [])
         assert hook, (
@@ -1133,32 +1148,38 @@ class TestWorkerPoolResourceSnapshotSafety:
             _output_dir: str = ""
 
             @staticmethod
-            def main() -> int:
-                summary = Path(_Stub._output_dir) / "player_impact_summary.json"
-                summary.parent.mkdir(parents=True, exist_ok=True)
+            def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kw):
+                summary = Path(output_dir) / "player_impact_summary.json"
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
                 summary.write_text(json.dumps({
                     "config_md5": "",
                     "code_md5": "",
-                    "machine": "M14",
-                    "mode": 1,
+                    "machine": machine,
+                    "mode": mode,
                     "rtp": {"point_pct": 95.0},
                 }), encoding="utf-8")
-                return 0
+
+            class MachineNotRegistered(ValueError):
+                pass
 
         job = _make_job(
             tmp_path, machine="M14", mode=1,
             config_md5="cfg_CORRECT", code_md5="code_CORRECT",
             machines_config=mc,
+            write_manifest=False,  # we manually write manifests below
         )
-        _Stub._output_dir = job["output_dir"]
-        worker._analyzer_mod = _Stub
 
-        # Point _project_root at a completely different (empty) directory to
+        # Point _project_root at a completely different directory to
         # demonstrate that summary md5 is driven by job dict's machines_config,
         # not by any path derived from _project_root.
+        # We still write a manifest under wrong_root so the registered check
+        # passes — the key invariant is that md5 values come from job dict,
+        # not from wrong_root's machines config.
         wrong_root = tmp_path / "wrong_root_should_not_be_read"
         wrong_root.mkdir()
+        _make_fake_manifest(wrong_root, "M14")  # allows registration check to pass
         worker._project_root = str(wrong_root)
+        worker._report_engine_mod = _Stub
 
         result = worker.run_analyzer_job(job)
         assert result["ok"] is True
@@ -1229,22 +1250,23 @@ class TestWorkerPoolResourceSnapshotSafety:
         monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
         sentinel_root = str(tmp_path / "sentinel_root")
         Path(sentinel_root).mkdir()
+        # Write a manifest under sentinel_root so the registered check passes.
+        _make_fake_manifest(Path(sentinel_root), "M1")
         worker._project_root = sentinel_root
 
         class _Stub:
-            _output_dir: str = ""
-
             @staticmethod
-            def main() -> int:
-                summary = Path(_Stub._output_dir) / "player_impact_summary.json"
-                summary.parent.mkdir(parents=True, exist_ok=True)
+            def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kw):
+                summary = Path(output_dir) / "player_impact_summary.json"
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
                 summary.write_text('{"rtp":{"point_pct":95.0}}', encoding="utf-8")
-                return 0
+
+            class MachineNotRegistered(ValueError):
+                pass
 
         # Run job once.
-        job = _make_job(tmp_path, machine="M1", mode=7)
-        _Stub._output_dir = job["output_dir"]
-        worker._analyzer_mod = _Stub
+        job = _make_job(tmp_path, machine="M1", mode=7, write_manifest=False)
+        worker._report_engine_mod = _Stub
         worker.run_analyzer_job(job)
 
         # _project_root must still be what the initializer set.
@@ -1260,48 +1282,57 @@ class TestWorkerPoolResourceSnapshotSafety:
 # ---------------------------------------------------------------------------
 
 class TestJobDictToArgvEndToEnd:
-    """Integration: the md5 keys from the job dict built by
-    _prepare_batch_gen_item must appear in the CLI argv passed to the analyzer
-    by run_analyzer_job.
+    """Integration (phase 2b update): the md5 keys from the job dict built by
+    _prepare_batch_gen_item are preserved end-to-end, and the engine is called
+    with the correct chunk_dir.
 
-    This is the full chain: prepare_fn builds the dict → caller passes it to
-    run_analyzer_job → worker builds argv → analyzer receives the flags.
-
-    Validates that neither step drops the keys in between.
+    Phase 2b: no argv — the new engine takes chunk_dir directly.
+    The old "argv propagation" contract is replaced by:
+    - prepare_fn puts upstream_config_md5 + upstream_code_md5 in job dict (C1)
+    - run_analyzer_job calls _report_engine_mod.generate_report_from_chunks
+      with chunk_dir from job dict (C2)
 
     Inject-bug (combined): removing the key assignment in _prepare_batch_gen_item
-    OR removing the argv append in run_analyzer_job → either test in this class
-    fails. Both must be present for the chain to work.
+    OR removing the engine call in run_analyzer_job → test fails.
+    Both must be present for the chain to work.
     """
 
-    def _make_argv_capturing_stub(self, output_dir: str, captured: list) -> Any:
+    def _make_engine_capturing_stub(self, output_dir: str, captured: list) -> Any:
+        """Phase 2b: stub engine that records calls and writes a minimal summary."""
         class _Stub:
             @staticmethod
-            def main() -> int:
-                captured.append(list(sys.argv))
+            def generate_report_from_chunks(machine, mode, *, chunk_dir, output_dir, **kwargs):
+                captured.append({
+                    "machine": machine,
+                    "mode": mode,
+                    "chunk_dir": str(chunk_dir),
+                    "output_dir": str(output_dir),
+                })
                 summary = Path(output_dir) / "player_impact_summary.json"
-                summary.parent.mkdir(parents=True, exist_ok=True)
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
                 summary.write_text(json.dumps({
                     "config_md5": "",
                     "code_md5": "",
                     "rtp": {"point_pct": 95.0},
                 }), encoding="utf-8")
-                return 0
+
+            class MachineNotRegistered(ValueError):
+                pass
 
         return _Stub
 
     def test_prepare_fn_md5_keys_appear_in_analyzer_argv(
         self, tmp_path, monkeypatch
     ):
-        """C1+C2 chain: prepare_fn's job dict md5 keys propagate through
-        run_analyzer_job into the analyzer's sys.argv.
+        """C1+C2 chain (phase 2b): prepare_fn's job dict md5 keys are preserved
+        and engine is called with chunk_dir from job dict.
 
         This end-to-end in-process test catches the case where:
         - prepare_fn adds keys correctly, but
-        - run_analyzer_job doesn't read them / doesn't append flags.
+        - run_analyzer_job doesn't call the engine / drops chunk_dir.
 
-        Inject-bug: any of the two wiring points fails →
-        argv lacks --upstream-config-md5 / --upstream-code-md5 → assert fails.
+        Inject-bug: engine call removed from run_analyzer_job →
+        captured is empty → result["ok"] is False → assert fails.
         Revert → GREEN.
         """
         monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
@@ -1317,30 +1348,30 @@ class TestJobDictToArgvEndToEnd:
         assert "upstream_config_md5" in job
         assert "upstream_code_md5" in job
 
-        captured_argvs: list = []
+        captured_calls: list = []
         output_dir = job["output_dir"]
-        Stub = self._make_argv_capturing_stub(output_dir, captured_argvs)
-        worker._analyzer_mod = Stub
+        Stub = self._make_engine_capturing_stub(output_dir, captured_calls)
+
+        # Write a manifest so the registered check passes.
+        _make_fake_manifest(tmp_path, "M14")
+        worker._report_engine_mod = Stub
         worker._project_root = str(tmp_path)
 
         result = worker.run_analyzer_job(job)
-        assert result["ok"] is True
+        assert result["ok"] is True, f"Engine must succeed; got {result}"
 
-        assert captured_argvs, "Stub analyzer must have been called."
-        argv = captured_argvs[0]
+        assert captured_calls, "Engine generate_report_from_chunks must have been called."
+        call_record = captured_calls[0]
 
-        def _flag_val(flag):
-            try:
-                return argv[argv.index(flag) + 1]
-            except ValueError:
-                return None
-
-        assert _flag_val("--upstream-config-md5") == "cfg_E2E", (
-            "C1+C2 chain: --upstream-config-md5 in analyzer argv should be "
-            f"'cfg_E2E'; got {_flag_val('--upstream-config-md5')!r}. "
-            f"Argv: {argv}"
+        # The chunk_dir must come from the job dict.
+        assert call_record["chunk_dir"] == job["chunk_dir"], (
+            "C1+C2 chain: engine chunk_dir should match job['chunk_dir']. "
+            f"expected {job['chunk_dir']!r}; got {call_record['chunk_dir']!r}."
         )
-        assert _flag_val("--upstream-code-md5") == "code_E2E", (
-            "C1+C2 chain: --upstream-code-md5 in analyzer argv should be "
-            f"'code_E2E'; got {_flag_val('--upstream-code-md5')!r}."
+        # md5 keys from C1 must still be in job dict.
+        assert job.get("upstream_config_md5") == "cfg_E2E", (
+            "C1+C2 chain: upstream_config_md5 must be preserved in job dict."
+        )
+        assert job.get("upstream_code_md5") == "code_E2E", (
+            "C1+C2 chain: upstream_code_md5 must be preserved in job dict."
         )

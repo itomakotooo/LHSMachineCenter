@@ -15,12 +15,14 @@ from pathlib import Path
 
 import pytest
 
-import fresh_slotlab.player_impact_analyzer as analyzer
-from fresh_slotlab.player_impact_analyzer import (
+import fresh_slotlab.analyzer.core.writer as analyzer
+from fresh_slotlab.analyzer.core.writer import (
     CHUNK_CACHE_VERSION,
+    _save_chunk_cache as _real_save_chunk_cache,
+)
+from fresh_slotlab.analyzer.core.parser import (
     ChunkIntegrityError,
     _payload_sha256,
-    _save_chunk_cache as _real_save_chunk_cache,
     load_chunk_envelope,
 )
 

@@ -29,6 +29,7 @@ Cross-refs:
 from __future__ import annotations
 
 import json
+import os
 import threading
 from pathlib import Path
 
@@ -38,6 +39,42 @@ from src.web_console.backend.config_writer import (
     atomic_json_read_modify_write,
     atomic_json_write,
 )
+from src.web_console.backend import config_writer as _cw
+
+
+class TestAtomicReplaceRetry:
+    """os.replace transiently fails with PermissionError on Windows when the
+    target is open by a concurrent reader; the write must retry, not 500."""
+
+    def test_retries_permission_error_then_succeeds(self, tmp_path: Path, monkeypatch):
+        p = tmp_path / "machines.json"
+        atomic_json_write(p, {"v": 0})  # seed
+        calls = {"n": 0}
+        real_replace = os.replace
+
+        def flaky_replace(src, dst):
+            calls["n"] += 1
+            if calls["n"] <= 3:  # fail the first 3, succeed on the 4th
+                raise PermissionError(13, "target open by reader")
+            return real_replace(src, dst)
+
+        monkeypatch.setattr(_cw.os, "replace", flaky_replace)
+        monkeypatch.setattr(_cw, "_REPLACE_BACKOFF_S", 0.0)  # no sleep in test
+        atomic_json_write(p, {"v": 1})  # must NOT raise
+        assert json.loads(p.read_text()) == {"v": 1}
+        assert calls["n"] == 4  # 3 retries + 1 success
+
+    def test_reraises_after_exhausting_retries(self, tmp_path: Path, monkeypatch):
+        p = tmp_path / "machines.json"
+        atomic_json_write(p, {"v": 0})
+
+        def always_fail(src, dst):
+            raise PermissionError(13, "perpetually locked")
+
+        monkeypatch.setattr(_cw.os, "replace", always_fail)
+        monkeypatch.setattr(_cw, "_REPLACE_BACKOFF_S", 0.0)
+        with pytest.raises(PermissionError):  # surfaced, never swallowed
+            atomic_json_write(p, {"v": 1})
 
 
 class TestAtomicJsonWrite:

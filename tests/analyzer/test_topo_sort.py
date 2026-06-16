@@ -181,31 +181,46 @@ def test_missing_dep_identifies_correct_plugin_and_dep():
 # ---------------------------------------------------------------------------
 
 def test_real_plugins_no_deps_alphabetical():
-    """All registered plugins have DECLARED_DEPS=() + REQUIRES=() → alphabetical.
+    """Explicitly imported no-dep plugins sort alphabetically under topo_sort.
 
     C3.5 update: was test_real_four_plugins_no_deps_alphabetical (C1 set of 4).
     C3.5 added multiplier_wild as a 5th plugin → test renamed + expected set
-    extended. Test logic unchanged: all registered plugins must alphabetize.
+    extended. structure_drift added as cross-cutting feature (structure-drift gate).
+
+    The test filters to only the explicitly-imported, dep-free features so that
+    other test modules importing dep-having features (freespin_dynamics, etc.)
+    do not pollute the alphabetical-order assertion.  The alphabetical claim is
+    about features with empty REQUIRES; dep-having features are topologically
+    constrained and intentionally appear after their deps.
     """
     import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
     import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
     import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
     import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
     import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  (C3.5 add)
+    import fresh_slotlab.analyzer.features.structure_drift  # noqa: F401  (structure-drift gate)
     from fresh_slotlab.analyzer.feature_registry import ALL_FEATURES
 
-    result = topological_sort(ALL_FEATURES)
-    fids = [f.FEATURE_ID for f in result]
-
-    # All 5 known plugins should be present (4 C1 + multiplier_wild from C3.5)
-    expected_set = {
+    # Use only the explicitly imported dep-free features so that other test
+    # modules' imports of dep-having features (freespin_dynamics REQUIRES
+    # payouts_by_spin_type + bonus_chain_dynamics, etc.) don't constrain order.
+    no_dep_ids = {
         "payouts_by_spin_type",
         "reel_marginal_by_spin_type",
         "bankruptcy_simulation",
         "multiplier_profile",
         "multiplier_wild",
+        "structure_drift",
     }
-    assert set(fids) >= expected_set, f"Missing plugins: {expected_set - set(fids)}"
+    no_dep_features = [f for f in ALL_FEATURES if f.FEATURE_ID in no_dep_ids]
+    assert len(no_dep_features) == len(no_dep_ids), (
+        f"Not all expected plugins are registered. "
+        f"Found: {[f.FEATURE_ID for f in no_dep_features]}. "
+        f"Missing: {no_dep_ids - {f.FEATURE_ID for f in no_dep_features}}"
+    )
 
-    # Alphabetical: bankruptcy < multiplier_profile < multiplier_wild < payouts < reel
+    result = topological_sort(no_dep_features)
+    fids = [f.FEATURE_ID for f in result]
+
+    # Alphabetical: all 6 no-dep plugins must sort lexicographically.
     assert fids == sorted(fids), f"Expected alphabetical, got {fids}"

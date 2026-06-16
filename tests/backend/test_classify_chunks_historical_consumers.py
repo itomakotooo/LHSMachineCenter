@@ -3,14 +3,14 @@
 Contracts tested (from 00_ticket.md §3):
 
   C2 — Historical-bucket chunks NEVER appear in the default (no-md5-filter)
-       analyzer execution paths. Mock _classify_chunks to return a synthetic
-       historical entry + real kept/deletable entries → assert historical chunk
-       response is NEVER passed to pia.post_json (the analyzer entry point).
-       Three code paths tested:
-         * _run_generate_report (~line 6789) via POST /api/rawdata/M14/generate-report
+       analyzer execution paths. Surviving code paths tested here:
          * direct filter logic verification at _classify_chunks output level
          * _prepare_batch_gen_item / run_analyzer_job batch path (R2 addition,
            xfail — current code passes raw chunk_dir to worker without md5 filter)
+       (The former POST /api/rawdata/M14/generate-report end-to-end test that
+       spied on what the analyzer ingested was removed: that orchestrator path
+       spawned the deleted player_impact_analyzer.py. The _classify_chunks
+       bucket-separation logic it depended on is still covered directly below.)
 
   C3 — md5-is-tag invariant: historical bucket chunks survive on disk after
        _classify_chunks and check_rawdata_status are called (read-only).
@@ -160,227 +160,6 @@ class TestCheckRawdataStatusSignature:
             f"check_rawdata_status has unexpected parameters: {unexpected}. "
             f"Expected only {allowed}. Any addition that triggers side-effects "
             f"(deletion, mutation) must be blocked."
-        )
-
-
-# ---------------------------------------------------------------------------
-# C2 — Historical never feeds default analyzer execution path
-#
-# Strategy: intercept pia.post_json to capture every response the analyzer
-# receives. Assert the historical sentinel response (_marker="HISTORICAL")
-# never appears among them.
-#
-# Two paths:
-#   Path A: _run_generate_report via POST /api/rawdata/{machine}/generate-report
-#   Path B: direct filter logic via _classify_chunks output inspection
-# ---------------------------------------------------------------------------
-
-class _AppFixtureMixin:
-    """Shared fixture creation for tests that need a full app."""
-
-    @pytest.fixture
-    def rawdata_root(self, tmp_path: Path) -> Path:
-        d = tmp_path / "rawdata"
-        d.mkdir()
-        return d
-
-    @pytest.fixture
-    def machines_config(self, tmp_path: Path) -> Path:
-        p = tmp_path / "machines.json"
-        p.write_text(json.dumps({"machines": [{
-            "machine": "M14", "modes": [1],
-            "configSummaryMd5": "cfg_CURRENT",
-            "codeSummaryMd5": "code_CURRENT",
-        }]}), encoding="utf-8")
-        return p
-
-    def _make_app(self, tmp_path: Path, rawdata_root: Path, machines_config: Path):
-        from src.web_console.backend.app import create_app
-        from fastapi.testclient import TestClient
-
-        fake_analyzer = tmp_path / "fake_analyzer.py"
-        fake_analyzer.write_text("import sys; sys.exit(0)\n", encoding="utf-8")
-        reports_root = tmp_path / "reports"
-        state_dir = tmp_path / "state"
-        (state_dir / "progress").mkdir(parents=True)
-
-        app = create_app(
-            state_dir=state_dir,
-            reports_root=reports_root,
-            cache_root=tmp_path / "cache",
-            machines_config=machines_config,
-            analyzer_path=fake_analyzer,
-            rawdata_root=rawdata_root,
-        )
-        return app
-
-    def _make_synthetic_classified(
-        self, rawdata_root: Path, machine: str = "M14", mode: int = 1,
-    ) -> dict[str, Any]:
-        """Write chunk files and return a _classify_chunks-shaped dict with
-        all three buckets populated. Historical chunk carries _HISTORICAL_RESPONSE
-        as marker so we can detect if it was passed to the analyzer.
-        """
-        mode_dir = rawdata_root / machine / f"mode_{mode}"
-        mode_dir.mkdir(parents=True, exist_ok=True)
-
-        kept_path = mode_dir / "chunk_0001.json"
-        _write_chunk_file(kept_path, config_md5="cfg_CURRENT", code_md5="code_CURRENT",
-                          response=_SENTINEL_RESPONSE)
-
-        deletable_path = mode_dir / "chunk_0002.json"
-        _write_chunk_file(deletable_path, config_md5="cfg_CURRENT", code_md5="code_CURRENT",
-                          response=_SENTINEL_RESPONSE)
-
-        historical_path = mode_dir / "chunk_0003.json"
-        _write_chunk_file(historical_path, config_md5="cfg_OLD", code_md5="code_OLD",
-                          response=_HISTORICAL_RESPONSE)
-
-        return {
-            "kept": [_make_chunk_entry(str(kept_path), config_md5="cfg_CURRENT", code_md5="code_CURRENT")],
-            "deletable": [_make_chunk_entry(str(deletable_path), config_md5="cfg_CURRENT", code_md5="code_CURRENT")],
-            "historical": [_make_chunk_entry(str(historical_path), config_md5="cfg_OLD", code_md5="code_OLD")],
-            "kept_spins": 10_000,
-            "deletable_spins": 10_000,
-            "historical_spins": 10_000,
-            "upstream_config_md5": "cfg_CURRENT",
-            "upstream_code_md5": "code_CURRENT",
-        }
-
-
-class TestHistoricalNeverFeedsDefaultAnalyzerPath(_AppFixtureMixin):
-    """C2: Historical-bucket chunks must be filtered before reaching the
-    analyzer in the default (no md5 filter) code path.
-
-    Verification strategy: wrap json.loads to capture every chunk response
-    the analyzer ingests via _cached_responses. The historical chunk writes
-    _HISTORICAL_RESPONSE (with _marker="HISTORICAL"). If the bug exists,
-    _HISTORICAL_RESPONSE appears in the captured calls.
-
-    Post-P2-B4 note: monkeypatching pia.post_json directly is no longer
-    sufficient because run_sampling_chunk now lives in
-    fresh_slotlab.analyzer.core.base_pipeline and reads post_json from
-    its own module namespace. _run_generate_report patches BOTH
-    pia.post_json AND _core_bp.post_json; intercepting only one site
-    misses the live lookup. This test bypasses the patch hazard
-    entirely by spying on the upstream json.loads.
-
-    C4 inject-bug documentation:
-      Bug location: src/web_console/backend/app.py inside _run_generate_report (line 6756)
-      Current correct code (inside the `else` branch, no md5 filter):
-        usable_entries = classified["kept"] + classified["deletable"]
-      Injected bug:
-        usable_entries = classified["kept"] + classified["deletable"] + classified["historical"]
-      Effect: test_run_generate_report_excludes_historical → RED
-        (historical response reaches pia.post_json)
-      Revert → GREEN
-    """
-
-    def test_run_generate_report_excludes_historical(
-        self, rawdata_root, machines_config, tmp_path,
-    ):
-        """C2 + C4: _run_generate_report default path must exclude historical
-        from usable_entries. The historical chunk response must NEVER be passed
-        to the analyzer (pia.post_json).
-
-        Inject-bug: change line 6756 to include classified["historical"] in
-        usable_entries → this test goes RED (HISTORICAL marker found).
-        Revert → GREEN.
-        """
-        import src.web_console.backend.app as app_mod
-        import fresh_slotlab.player_impact_analyzer as pia_real
-        from fastapi.testclient import TestClient
-
-        synthetic = self._make_synthetic_classified(rawdata_root)
-
-        # Track every response passed to pia.post_json by the analyzer.
-        # _run_generate_report sets pia.post_json to a lambda that pops from
-        # _cached_responses (the pre-loaded chunk data). By monkeypatching
-        # post_json BEFORE the endpoint runs, we intercept the iterator read.
-        # However, _run_generate_report replaces pia.post_json itself — we
-        # cannot intercept at the pia.post_json call site directly.
-        # Instead, we verify via the _cached_responses construction:
-        # chunk files with _HISTORICAL_RESPONSE will appear in _cached_responses
-        # ONLY if the historical path was included in usable_entries.
-        #
-        # We detect this by inspecting how many unique response markers the
-        # analyzer's mock receives. We wrap json.loads to intercept the
-        # chunk-file parsing that feeds _cached_responses.
-        observed_responses: list[Any] = []
-        _real_json_loads = json.loads
-
-        def _spy_json_loads(s, *a, **kw):
-            result = _real_json_loads(s, *a, **kw)
-            if isinstance(result, dict):
-                # Record marker field from chunk file responses.
-                # chunk files have shape: {"response": [{"_marker": "..."}]}
-                for item in result.get("response", []):
-                    if isinstance(item, dict) and "_marker" in item:
-                        observed_responses.append(item["_marker"])
-            return result
-
-        app = self._make_app(tmp_path, rawdata_root, machines_config)
-
-        with (
-            patch.object(app_mod, "_classify_chunks", return_value=synthetic),
-            patch("json.loads", _spy_json_loads),
-            patch("os._exit", lambda rc: None),
-        ):
-            with TestClient(app) as c:
-                resp = c.post(
-                    "/api/rawdata/M14/generate-report",
-                    json={"mode": 1},
-                )
-                # Status may be anything — we only care about what was READ.
-
-        historical_reached = "HISTORICAL" in observed_responses
-        assert not historical_reached, (
-            f"REGRESSION: historical chunk response reached the analyzer. "
-            f"observed markers: {observed_responses}. "
-            f"_run_generate_report must not include classified['historical'] "
-            f"in usable_entries when no md5 filter is active (line 6845)."
-        )
-
-    def test_run_generate_report_reads_current_chunks(
-        self, rawdata_root, machines_config, tmp_path,
-    ):
-        """C2 complement: kept and deletable chunks ARE read for analyzer input.
-
-        This sanity-checks the test mechanism: if the filter is working,
-        CURRENT markers must appear (kept + deletable chunks are read).
-        """
-        import src.web_console.backend.app as app_mod
-        import fresh_slotlab.player_impact_analyzer as pia_real
-
-        synthetic = self._make_synthetic_classified(rawdata_root)
-
-        observed_responses: list[Any] = []
-        _real_json_loads = json.loads
-
-        def _spy_json_loads2(s, *a, **kw):
-            result = _real_json_loads(s, *a, **kw)
-            if isinstance(result, dict):
-                for item in result.get("response", []):
-                    if isinstance(item, dict) and "_marker" in item:
-                        observed_responses.append(item["_marker"])
-            return result
-
-        from fastapi.testclient import TestClient
-        app = self._make_app(tmp_path, rawdata_root, machines_config)
-
-        with (
-            patch.object(app_mod, "_classify_chunks", return_value=synthetic),
-            patch("json.loads", _spy_json_loads2),
-            patch("os._exit", lambda rc: None),
-        ):
-            with TestClient(app) as c:
-                c.post("/api/rawdata/M14/generate-report", json={"mode": 1})
-
-        current_read = observed_responses.count("CURRENT")
-        assert current_read >= 2, (
-            f"Expected at least 2 CURRENT chunk reads (kept + deletable), "
-            f"got {current_read}. observed: {observed_responses}. "
-            f"If 0: test mechanism or app setup is broken."
         )
 
 
@@ -920,45 +699,20 @@ class TestBatchPathHistoricalFilterGap:
             f"Full job keys: {sorted(job.keys())}"
         )
 
-    @pytest.mark.xfail(
-        reason=(
-            "P1-D1 Fix B was applied: upstream_config_md5 + upstream_code_md5 "
-            "are now in the job dict and the worker forwards them as "
-            "--upstream-config-md5 / --upstream-code-md5 CLI flags. "
-            "Fix B does NOT clean up the physical chunk_dir — historical files "
-            "remain on disk (md5-is-tag invariant). This test asserts Fix A "
-            "(chunk_dir physically clean), which was not chosen. "
-            "The contract this test cares about (analyzer NOT reading historical "
-            "chunks) is now enforced at the CLI level (--upstream-config-md5 filter), "
-            "not at the directory level. Fix A (symlink temp dir) would require "
-            "additional work not in scope for P1-D1. "
-            "The *other* xfail (test_batch_job_dict_includes_md5_filter_keys) "
-            "was the correct regression guard and is now passing."
-        ),
-        strict=False,
-    )
     def test_batch_job_chunk_dir_does_not_contain_historical_chunks(
         self, _app_and_prepare_fn, tmp_path
     ):
-        """C2 batch path alternative assertion (xfail): even if the job uses
-        chunk_dir rather than per-chunk paths, the directory must not contain
-        any historical-md5 chunks at the time the job is built.
+        """C2 batch path: the directory the job hands the engine must not
+        contain any historical-md5 chunks at the time the job is built.
 
-        Today chunk_dir is the raw mode directory which contains both current
-        and historical chunks. max_chunks=len(usable) limits count but does NOT
-        guarantee md5-correctness: the analyzer sorts by filename and may read
-        historical chunks before current ones if chunk indices interleave.
-
-        Per 05_critique.md edge case 1: if historical chunks have earlier
-        indices than current chunks, the analyzer reads the historical ones first
-        within the max_chunks budget.
-
-        Fix A: job["chunk_dir"] becomes a temp dir containing ONLY current-md5
-        chunk files (symlinks or copies).
-        Fix B: job dict includes upstream_config_md5 + upstream_code_md5 for
-        worker-side CLI filtering (tested in test_batch_job_dict_includes_md5_filter_keys).
-
-        Regression comment: this is a known bug. When fixed, remove xfail.
+        FIXED (the long-deferred "Fix A"): since the batch md5-scope port of
+        fd6b507, _prepare_batch_gen_item hardlinks the usable (current-md5)
+        selection into cache/_gen_scope/<run_id> and puts THAT in
+        job["chunk_dir"] whenever the mode dir holds extra chunks — the
+        SpinType-native engine reads every chunk in chunk_dir and has no CLI
+        filter, so directory-level scoping is the only enforcement. The
+        xfail marker was removed when the fix landed (this test is now the
+        hard regression guard; see also tests/backend/test_batch_gen_md5_scope.py).
         """
         prepare_fn, rawdata_root, mode_dir = _app_and_prepare_fn
         prepared = prepare_fn("M14", 1)

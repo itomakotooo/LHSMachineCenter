@@ -30,7 +30,7 @@ from fresh_slotlab.rawdata_index import (
     remove_entry,
     update_entry,
 )
-from fresh_slotlab.player_impact_analyzer import _save_chunk_cache as _real_save_chunk_cache
+from fresh_slotlab.analyzer.core.writer import _save_chunk_cache as _real_save_chunk_cache
 
 
 def _stub_md5_lookup(_machine: str) -> tuple[str, str]:

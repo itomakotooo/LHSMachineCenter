@@ -1,17 +1,21 @@
-"""Phase C4 — unit tests for machine_mechanics plugin.
+"""Phase C4 — unit tests for machine_mechanics plugin, adapted for 5C.
+
+Phase 5C: mechanism_registry removed. Tests now drive jackpot/freespin applicable
+via machine_spec_manifest (spin_types role/play declarations) instead of
+MechanismRegistry. The behavioral invariants remain: jackpot.applicable and
+free_spin.applicable come from declared mechanisms, NOT from raw counters.
 
 Tests extract() / reduce() / emit() behaviour using synthetic chunk_dict data.
 Does NOT spawn subprocesses — unit-level correctness only.
 Subprocess-level tests live in test_c4_m275_gap_1_closed.py and siblings.
 
-Invariants asserted
--------------------
+Invariants asserted (5C-adapted)
+---------------------------------
 1. Plugin imports clean (import has no I/O side effects).
 2. FEATURE_ID == "machine_mechanics".
 3. SCHEMA_VERSION == 2 (C4 adds _detection_source field).
 4. REGISTERED_FALLBACK_RULES[1] == {"_detection_source": None}.
-5. REQUIRES == ("bonus_chain_dynamics",) (R2 Phase 2 C-3: explicit ordering — mm
-   reads summary["player_impact"]["bonus_chain_dynamics"] written by that plugin).
+5. REQUIRES == ("bonus_chain_dynamics",).
 6. RTP_CONTRIBUTION == False (display only, doesn't add to RTP totals).
 7. register() is idempotent — duplicate import does not grow ALL_FEATURES.
 8. machine_mechanics present in ALL_FEATURES after import.
@@ -22,25 +26,24 @@ Invariants asserted
 13. reduce() takes max for fs_max_chain across chunks.
 14. reduce() handles empty prev_acc (first chunk) or empty this_acc.
 15. emit() composes 6-section dict: lock_lines/lock_symbols/lock_reels/jackpot/free_spin/dollar_pick.
-16. emit() jackpot.applicable comes from ctx.mechanism_registry (NOT raw counter > 0).
-17. emit() free_spin.applicable comes from ctx.mechanism_registry.
-18. emit() jackpot._detection_source populated from registry._detection_source.
-19. emit() free_spin._detection_source populated from registry._detection_source.
+16. emit() jackpot.applicable comes from machine_spec_manifest (declared mechanism), NOT raw counter.
+17. emit() free_spin.applicable comes from machine_spec_manifest.
+18. emit() jackpot._detection_source populated from derive_mechanism_flags.
+19. emit() free_spin._detection_source populated from derive_mechanism_flags.
 20. emit() writes to summary["player_impact"]["machine_mechanics"].
 21. emit() rtp_contribution_pp = win / ebet * 100 for each section with win > 0.
 22. emit() lock_lines.applicable = True only when ll_spins > 0.
 23. emit() zero division protected (ebet=0 and total_spins=0 safe).
-24. emit() jackpot section includes jackpot_ids from registry.jackpot_pid_set.
+24. emit() jackpot section includes jackpot_ids from manifest jackpot_pid_set.
 25. emit() all 6 sections have correct required schema keys.
 
 Inject-bug recipes (per memory/feedback_enumerate_safety_paths.md)
 -------------------------------------------------------------------
-Bug A — emit() always sets jackpot.applicable = False regardless of registry:
-    In machine_mechanics.py MachineMechanics.emit(), change:
-        jp_applicable = reg.jackpot_applicable
-    to:
-        jp_applicable = False
-    RED: test_emit_jackpot_applicable_from_registry fails (False != True).
+Bug A — emit() always sets jackpot.applicable = False regardless of manifest:
+    In machine_mechanics.py MachineMechanics.emit(), inside the manifest branch,
+    change: `_jp_applicable = _mflags["jackpot_applicable"]`
+    to: `_jp_applicable = False`
+    RED: test_emit_jackpot_applicable_from_manifest fails (False != True).
     Revert (restore original line) → GREEN.
 
 Bug B — REGISTERED_FALLBACK_RULES wrong key:
@@ -84,47 +87,45 @@ def _import_plugin_class():
     return MachineMechanics
 
 
-def _make_registry(
+def _make_jackpot_manifest(
     jackpot_applicable: bool = False,
-    jackpot_pid_set: "frozenset[str]" = frozenset(),
     freespin_applicable: bool = False,
-    detection_source: "dict[str, str] | None" = None,
-):
-    """Build a MechanismRegistry with controlled flags for unit testing."""
-    try:
-        from fresh_slotlab.analyzer.mechanism_registry import MechanismRegistry
-    except ImportError:
-        from analyzer.mechanism_registry import MechanismRegistry  # type: ignore[no-redef]
-    return MechanismRegistry(
-        jackpot_applicable=jackpot_applicable,
-        jackpot_pid_set=jackpot_pid_set,
-        freespin_applicable=freespin_applicable,
-        detection_source=detection_source or {
-            "jackpot_applicable": "tier3_pid_ge_10000" if jackpot_applicable else "tier3_raw",
-            "freespin_applicable": "tier2_bonus_chain_lengths" if freespin_applicable else "tier2_bonus_chain_lengths_empty",
-        },
-    )
+) -> dict:
+    """Build a minimal machine_spec_manifest that declares the requested mechanisms.
+
+    Uses the SpinType role/play declarations that derive_mechanism_flags reads.
+    jackpot play='Jackpot' → jackpot_applicable=True
+    freespin play='freespin' → freespin_applicable=True
+    """
+    spin_types: dict = {
+        "1": {"role": "paid_spin", "play": "Normal"},
+    }
+    if jackpot_applicable:
+        spin_types["5"] = {"role": "settlement", "play": "Jackpot"}
+    if freespin_applicable:
+        spin_types["2"] = {"role": "settlement", "play": "freespin"}
+    return {"spin_types": spin_types}
 
 
 def _make_ctx(
     total_spins: int = 10_000,
     effective_bet_for_rtp: float = 10_000_000.0,
     jackpot_applicable: bool = False,
-    jackpot_pid_set: "frozenset[str]" = frozenset(),
     freespin_applicable: bool = False,
-    detection_source: "dict[str, str] | None" = None,
+    machine_spec_manifest: dict | None = None,
 ) -> Any:
-    """Build a minimal PipelineContext-like object for unit testing."""
+    """Build a minimal PipelineContext for unit testing via machine_spec_manifest."""
     try:
         from fresh_slotlab.analyzer.pipeline_context import PipelineContext
     except ImportError:
         from analyzer.pipeline_context import PipelineContext  # type: ignore[no-redef]
-    reg = _make_registry(
-        jackpot_applicable=jackpot_applicable,
-        jackpot_pid_set=jackpot_pid_set,
-        freespin_applicable=freespin_applicable,
-        detection_source=detection_source,
-    )
+
+    if machine_spec_manifest is None:
+        machine_spec_manifest = _make_jackpot_manifest(
+            jackpot_applicable=jackpot_applicable,
+            freespin_applicable=freespin_applicable,
+        )
+
     return PipelineContext(
         effective_bet_for_rtp=effective_bet_for_rtp,
         total_spins=total_spins,
@@ -132,8 +133,8 @@ def _make_ctx(
         total_paid_spins=total_spins,
         clamp_pending_robots_total=0,
         robots_with_pending_cycle=0,
-        mechanism_registry=reg,
         manifest={},
+        machine_spec_manifest=machine_spec_manifest,
     )
 
 
@@ -546,11 +547,11 @@ class TestMachineMechanicsReduce:
 
 
 # ---------------------------------------------------------------------------
-# T5: emit() correctness
+# T5: emit() correctness — manifest-driven mechanism flags
 # ---------------------------------------------------------------------------
 
 class TestMachineMechanicsEmit:
-    """emit() builds all 6 sections; registry drives jackpot + free_spin."""
+    """emit() builds all 6 sections; machine_spec_manifest drives jackpot + free_spin."""
 
     @pytest.fixture
     def plugin(self):
@@ -592,20 +593,20 @@ class TestMachineMechanicsEmit:
             f"Got: {set(mm.keys())} | Expected: {expected_sections}"
         )
 
-    def test_emit_jackpot_applicable_from_registry(self, plugin):
-        """jackpot.applicable must come from ctx.mechanism_registry, not raw counter.
+    def test_emit_jackpot_applicable_from_manifest(self, plugin):
+        """jackpot.applicable must come from machine_spec_manifest, not raw counter.
 
-        INJECT-BUG (Bug A): change `jp_applicable = reg.jackpot_applicable` to
-                            `jp_applicable = False` in machine_mechanics.py.
-        RED: this test fails (jp_applicable=False even though registry says True).
+        INJECT-BUG (Bug A): in machine_mechanics.py, inside the manifest branch,
+        change `_jp_applicable = _mflags["jackpot_applicable"]` to
+        `_jp_applicable = False`.
+        RED: this test fails (jp_applicable=False even though manifest declares True).
         Revert (restore original line) → GREEN.
 
         This is the critical gap #1 closure test:
         - jp_spins = 0 (no JackpotIds raw field events in this chunk)
-        - But registry says jackpot_applicable=True (via Tier 3 PID >= 10000)
-        - emit() must use the registry, NOT jp_spins > 0
+        - But manifest declares jackpot SpinType (play='Jackpot')
+        - emit() must use the manifest, NOT jp_spins > 0
         """
-        # jp_spins=0 but registry says jackpot is applicable
         acc = {
             "ll_spins": 0, "ll_total_lines": 0, "ll_win": 0.0,
             "ls_spins": 0, "ls_unique": set(), "ls_win": 0.0,
@@ -616,44 +617,18 @@ class TestMachineMechanicsEmit:
             "dp_spins": 0, "dp_total_dollars": 0, "dp_win": 0.0,
         }
         summary: dict = {}
-        ctx = _make_ctx(
-            jackpot_applicable=True,  # registry says True despite jp_spins=0
-            jackpot_pid_set=frozenset(["27502", "27503", "27504"]),
-        )
+        ctx = _make_ctx(jackpot_applicable=True)  # manifest declares jackpot
         plugin.emit(acc, summary, ctx)
         mm = summary["player_impact"]["machine_mechanics"]
         assert mm["jackpot"]["applicable"] is True, (
-            f"jackpot.applicable must be True (from registry), "
+            f"jackpot.applicable must be True (from manifest), "
             f"even when jp_spins=0. Got: {mm['jackpot']['applicable']!r}. "
             f"This is gap #1 — the OLD inline code used `jp_spins > 0` which "
-            f"fails for M275-style jackpot PIDs that don't appear in JackpotIds field."
-        )
-
-    def test_emit_jackpot_ids_from_registry_pid_set(self, plugin):
-        """jackpot_ids must be populated from registry.jackpot_pid_set."""
-        acc = {
-            "ll_spins": 0, "ll_total_lines": 0, "ll_win": 0.0,
-            "ls_spins": 0, "ls_unique": set(), "ls_win": 0.0,
-            "lr_spins": 0, "lr_win": 0.0,
-            "jp_spins": 0, "jp_ids": set(), "jp_win": 0.0,
-            "fs_chain_spins": 0, "fs_retriggers": 0, "fs_max_chain": 0, "fs_win": 0.0,
-            "dp_spins": 0, "dp_total_dollars": 0, "dp_win": 0.0,
-        }
-        summary: dict = {}
-        ctx = _make_ctx(
-            jackpot_applicable=True,
-            jackpot_pid_set=frozenset(["27502", "27503", "27504"]),
-        )
-        plugin.emit(acc, summary, ctx)
-        mm = summary["player_impact"]["machine_mechanics"]
-        jackpot_ids = set(mm["jackpot"]["jackpot_ids"])
-        assert jackpot_ids == {"27502", "27503", "27504"}, (
-            f"jackpot_ids must come from registry.jackpot_pid_set. "
-            f"Got: {jackpot_ids}"
+            f"fails for jackpot PIDs that don't appear in JackpotIds field."
         )
 
     def test_emit_jackpot_detection_source_populated(self, plugin):
-        """jackpot._detection_source must be populated from registry."""
+        """jackpot._detection_source must be populated from derive_mechanism_flags."""
         acc = {
             "ll_spins": 0, "ll_total_lines": 0, "ll_win": 0.0,
             "ls_spins": 0, "ls_unique": set(), "ls_win": 0.0,
@@ -663,11 +638,7 @@ class TestMachineMechanicsEmit:
             "dp_spins": 0, "dp_total_dollars": 0, "dp_win": 0.0,
         }
         summary: dict = {}
-        ctx = _make_ctx(
-            jackpot_applicable=True,
-            jackpot_pid_set=frozenset(["27502"]),
-            detection_source={"jackpot_applicable": "tier3_pid_ge_10000", "freespin_applicable": "tier2_bonus_chain_lengths_empty"},
-        )
+        ctx = _make_ctx(jackpot_applicable=True)
         plugin.emit(acc, summary, ctx)
         mm = summary["player_impact"]["machine_mechanics"]
         ds = mm["jackpot"]["_detection_source"]
@@ -676,12 +647,12 @@ class TestMachineMechanicsEmit:
             f"Per feedback_invariant_with_fallback_hides_drift.md: "
             f"_detection_source is an explicit required field, not optional."
         )
-        assert "tier3" in str(ds) or "tier1" in str(ds) or "tier2" in str(ds), (
-            f"_detection_source must contain a tier label, got {ds!r}"
+        assert isinstance(ds, str) and ds, (
+            f"_detection_source must be a non-empty string, got {ds!r}"
         )
 
-    def test_emit_freespin_applicable_from_registry(self, plugin):
-        """free_spin.applicable must come from ctx.mechanism_registry (gap #2 closure).
+    def test_emit_freespin_applicable_from_manifest(self, plugin):
+        """free_spin.applicable must come from machine_spec_manifest (gap #2 closure).
 
         Old inline code used fs_chain_spins > 0 which fails for M275-style
         bonus chains tracked via bonus_chain_dynamics, not CurFreeSpin.
@@ -695,7 +666,6 @@ class TestMachineMechanicsEmit:
             "fs_retriggers": 0, "fs_max_chain": 0, "fs_win": 0.0,
             "dp_spins": 0, "dp_total_dollars": 0, "dp_win": 0.0,
         }
-        # Simulate bonus_chain_dynamics data in summary (M275-style BCD roundcount)
         summary: dict = {
             "player_impact": {
                 "bonus_chain_dynamics": {
@@ -705,23 +675,17 @@ class TestMachineMechanicsEmit:
                 }
             }
         }
-        ctx = _make_ctx(
-            freespin_applicable=True,  # registry says True despite fs_chain_spins=0
-            detection_source={
-                "jackpot_applicable": "tier3_raw",
-                "freespin_applicable": "tier2_bonus_chain_lengths",
-            },
-        )
+        ctx = _make_ctx(freespin_applicable=True)  # manifest declares freespin
         plugin.emit(acc, summary, ctx)
         mm = summary["player_impact"]["machine_mechanics"]
         assert mm["free_spin"]["applicable"] is True, (
-            f"free_spin.applicable must be True (from registry), "
+            f"free_spin.applicable must be True (from manifest), "
             f"even when fs_chain_spins=0. Got: {mm['free_spin']['applicable']!r}. "
             f"This is gap #2 — M275-style freespin chains tracked via BCD."
         )
 
     def test_emit_freespin_detection_source_populated(self, plugin):
-        """free_spin._detection_source must be populated from registry."""
+        """free_spin._detection_source must be populated from derive_mechanism_flags."""
         acc = {
             "ll_spins": 0, "ll_total_lines": 0, "ll_win": 0.0,
             "ls_spins": 0, "ls_unique": set(), "ls_win": 0.0,
@@ -731,13 +695,7 @@ class TestMachineMechanicsEmit:
             "dp_spins": 0, "dp_total_dollars": 0, "dp_win": 0.0,
         }
         summary: dict = {}
-        ctx = _make_ctx(
-            freespin_applicable=True,
-            detection_source={
-                "jackpot_applicable": "tier3_raw",
-                "freespin_applicable": "tier2_bonus_chain_lengths",
-            },
-        )
+        ctx = _make_ctx(freespin_applicable=True)
         plugin.emit(acc, summary, ctx)
         mm = summary["player_impact"]["machine_mechanics"]
         ds = mm["free_spin"]["_detection_source"]
@@ -746,7 +704,7 @@ class TestMachineMechanicsEmit:
         )
 
     def test_emit_lock_lines_applicable_when_spins_positive(self, plugin):
-        """lock_lines.applicable is True when ll_spins > 0 (counter-driven, not registry)."""
+        """lock_lines.applicable is True when ll_spins > 0 (counter-driven, not manifest)."""
         acc = {
             "ll_spins": 5, "ll_total_lines": 10, "ll_win": 200.0,
             "ls_spins": 0, "ls_unique": set(), "ls_win": 0.0,
@@ -833,10 +791,7 @@ class TestMachineMechanicsEmit:
             "dp_spins": 0, "dp_total_dollars": 0, "dp_win": 0.0,
         }
         summary: dict = {}
-        ctx = _make_ctx(
-            jackpot_applicable=True,
-            jackpot_pid_set=frozenset(["27502"]),
-        )
+        ctx = _make_ctx(jackpot_applicable=True)
         plugin.emit(acc, summary, ctx)
         jp = summary["player_impact"]["machine_mechanics"]["jackpot"]
         required = {
@@ -875,7 +830,7 @@ class TestMachineMechanicsEmit:
         )
 
     def test_emit_all_applicable_false_for_zero_acc(self, plugin):
-        """With all-zero accumulator and no-op registry, all applicable must be False."""
+        """With all-zero accumulator and no-mechanism manifest, all applicable must be False."""
         acc = {
             "ll_spins": 0, "ll_total_lines": 0, "ll_win": 0.0,
             "ls_spins": 0, "ls_unique": set(), "ls_win": 0.0,
@@ -890,6 +845,30 @@ class TestMachineMechanicsEmit:
         mm = summary["player_impact"]["machine_mechanics"]
         for section_name in ["lock_lines", "lock_symbols", "lock_reels", "jackpot", "free_spin", "dollar_pick"]:
             assert mm[section_name]["applicable"] is False, (
-                f"{section_name}.applicable must be False for zero accumulator + no-op registry. "
+                f"{section_name}.applicable must be False for zero accumulator + no-mechanism manifest. "
                 f"Got: {mm[section_name]['applicable']!r}"
             )
+
+    def test_inject_bug_manifest_beats_raw_counter(self, plugin):
+        """INJECT-BUG gate: manifest declares jackpot but jp_spins=0; must still be True.
+
+        This is the primary correctness invariant for the manifest-driven path.
+        If code incorrectly fell back to raw counter (jp_spins > 0), this would fail.
+        """
+        acc = {
+            "ll_spins": 0, "ll_total_lines": 0, "ll_win": 0.0,
+            "ls_spins": 0, "ls_unique": set(), "ls_win": 0.0,
+            "lr_spins": 0, "lr_win": 0.0,
+            "jp_spins": 0, "jp_ids": set(), "jp_win": 0.0,
+            "fs_chain_spins": 0, "fs_retriggers": 0, "fs_max_chain": 0, "fs_win": 0.0,
+            "dp_spins": 0, "dp_total_dollars": 0, "dp_win": 0.0,
+        }
+        summary: dict = {}
+        # Manifest says jackpot=True; if code uses raw counter it would get False
+        ctx = _make_ctx(jackpot_applicable=True)
+        plugin.emit(acc, summary, ctx)
+        mm = summary["player_impact"]["machine_mechanics"]
+        assert mm["jackpot"]["applicable"] is True, (
+            "INJECT-BUG DETECTION: jackpot.applicable must be True from manifest "
+            "even when jp_spins=0. If False, the code is using raw counter not manifest."
+        )

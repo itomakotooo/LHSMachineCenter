@@ -1,0 +1,51 @@
+{
+  "machine_id": "M283",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "140": {
+      "role": "paid_spin",
+      "play": "NormalCollectionSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
+      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "observed_field_presence": {"AccCredits": 1.0, "BetAmount": 1.0, "CollectCount": 1.0, "CostCredits": 1.0, "CreditsSymbols": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "SymbolIndexToRewards": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M283/mode_1 bucket 048ef288/c7b4e153 2026-06-16"
+    },
+    "2": {
+      "role": "settlement",
+      "play": "Wheel",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"],
+      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M283/mode_1 bucket 048ef288/c7b4e153 2026-06-16",
+      "wheel_cells": {"spin_type": 2, "remarks_field": "ReMarks", "cell_pattern": "CellIndex\\s+(\\d+)", "cell_count": 12, "prize_basis": "win_over_bet"}
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "WheelSpin", "opens": "Wheel", "note": "no round-level trigger pid. Wheel (ST2) is the collect settlement, fired deterministically every 1000th paid spin (CollectCount metronome reaches cycle peak cc==1000, AccCredits==100000), NOT a payid scatter. SINGLE entry path (80/80, exhaustive, no discriminator) -> NO trigger_paths dimension. M283 = M279 minus the MoveSpin nudge (ST36)."},
+  "validation": {
+    "status": "confirmed",
+    "user_signed_off": true,
+    "gate8_signoff": "2026-06-16 user sign-off: FrameGame declared ABSENT per gate-8 default (structurally invisible in mode-1 data => default not present); CurJackpotStoreWin = established fleet test-interface-zeroed pattern (M279 precedent). M283 mode-1 = ST140 + ST2 only.",
+    "confirmed_against": {"mode": 1, "rawdata": "M283/mode_1"},
+    "evidence": "session_artifacts/_onboard/M283/01_understanding.md (W1, 80,080 rounds: 80,000 ST140 + 80 ST2; roles from real fields; pay_id IS winning symbol code 1-7; sum(PayoutIdToWinAmount)==WinCredits 80,000/80,000; ST2 CellIndex->WinCredits deterministic 11/12 cells, Cell 7 unobserved; our==server TotalWin delta 0; ST140 base RTP 96.82%, session 100.92%) + 02_reuse.md (W2: live engine on the real chunk; ST140 STRICT-REUSE 4 PER_SPINTYPE + collect_mechanic [detected_cycle_length=1000, estimated_correction_pp=0.0 correct on the clean 5x1000 sample]; ST2 NEW-EVENT config-only SynthesizePayIdRule PROVEN _unattributed_st2 3,280,000 -> real pid st2 exact; wheel_dynamics STRICT-REUSE structurally, prize ladder de-hardcoded (final form is per-cell via wheel_cells extractor -- see SHIPPED note); respin_dynamics correctly ABSENT, no ST36). W3 (03_design.md): attribution dim = single pid st2 (no native pid space; charter inv 4); NO trigger_paths (single exhaustive collect-peak path); wheel prize ladder. SHIPPED (supersedes the W3 interim band-derive): wheel_dynamics fully de-hardcoded to consume a NEW wheel_cells st_extract extractor (per-round ReMarks 'WheelSpin CellIndex <n>' -> prize=WinCredits/bet; full 12-cell map; base-EXCLUDED, base_hash c5d2199142c3 unchanged -- NOT a parser/base-closure change). M283 jackpot 200x@Cell10, distinct prizes {5,10,20,50,100,200}; cells un-merge EXACTLY (each cell -> one prize, deterministic on all 80 wheels, nondeterministic_cells empty); Cell 7 unobserved -> honestly null. W5 breaker HELD: cell-for-cell vs independent raw parse delta 0; sum(payid rtp_pp)==summary rtp; M279 (shared plugin) re-derives correctly from its own data.",
+    "caveats": [
+      "ST2 wheel prize ladder is DATA-DERIVED PER CELL via the wheel_cells st_extract extractor (per-round ReMarks 'WheelSpin CellIndex <n>' -> prize=WinCredits/bet) -- ZERO machine-specific module constants (wheel_dynamics fully de-hardcoded, base-EXCLUDED, base_hash c5d2199142c3 unchanged). M283: full 12-cell map, jackpot 200x@Cell10, distinct prizes {5,10,20,50,100,200}; the old 20x/30x band merge is MOOT (each cell un-merges to exactly one prize, verified deterministic on all 80 wheels). M279 (shared plugin) re-derives correctly from its OWN data (jackpot 100x@{8,10}, 30x@Cell5 restored as REAL data, all 12 observed); M279 golden legitimately changes (now cell-level, wheel_dynamics SCHEMA_VERSION 1->2), re-baselined.",
+      "The 12-cell landing map + cell->prize identity (jackpot CELL = Cell 10 -> 200x for M283 vs Cells 8&10 -> 100x for M279) are DELIVERED via the wheel_cells st_extract extractor (auto-discovered, DECLARED_IN_KEY='wheel_cells' on ST2; base-EXCLUDED -- NOT the base-closure parser change the W3 interim feared). Determinism verified: each cell maps to exactly one prize across all 80 wheels (nondeterministic_cells empty); a future disagreeing sample raises an alarm, never silently picks. 100% guaranteed hit-rate confirmed.",
+      "Wheel Cell 7 unobserved in the 80-wheel sample (n=0) -- the wheel_cells map marks it {prize_multiplier: null, observed: false} (HONEST, never fabricated/interpolated); more wheels would pin it. Not required to onboard mode 1.",
+      "collect_mechanic cosmetic imprecision (completed_cycles_total undercount by one cycle/robot -> avg_bonus_payout +25%; always-on clamp_warning) is fleet-wide on every 1000-spin-BCM machine (PROVEN identical on M275/M279), NOT M283-specific; estimated_correction_pp (the RTP-bearing output) is 0.0 / correct for the clean 5x1000 sample. Framework-team low-priority precision fix.",
+      "single config-md5 bucket 048ef288/c7b4e153 (first sample; no mixed-md5 pooling concern).",
+      "GameplayTriggerType is constant 0 on all 80,000 ST140 in mode 1 (NEW field on this machine; non-zero meaning undetermined from mode-1 data, possible trigger-type discriminator). Parse-as-is (constant 0); forward-compatible (in the ST140 signature).",
+      "FrameGame* roster mechanic is STRUCTURALLY ABSENT from mode-1 rawdata (W1 §7: zero token/byte; only ST140+ST2 fire) — out-of-mode candidate, DOMAIN-UNKNOWN pending coordinator gate-8 user declaration. NO FrameGame plugin. validation.status stays 'auto' until the declaration + user sign-off."
+    ],
+    "date": "2026-06-16"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST140 round but =0 on 100% of 80,000 in-sample records (W1 §2.3). Fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M279 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in the ST140 signature so parsing is FORWARD-COMPATIBLE (when the interface populates it, the existing parser picks it up unchanged). RTP 96.82% (ST140 base) excludes the progressive; it adds on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"},
+    {"name": "FrameGame (roster mechanic, NOT in mode-1 data)", "desc": "The roster names a FrameGame* mechanic (FrameGameDataGenerator/Model) for M283, but it is STRUCTURALLY ABSENT from mode-1 rawdata. W1 §7 exhaustively searched: zero frame/Frame/grid/Grid/map/Map/board/Board/prize/Prize token across every field of every round; raw-byte count Frame=0/FrameGame=0/FrameGameData=0/NewWheel=0/Grid=0; the only engine FeatureWin keys are NormalCollectionSpin, BuffCollectionMap, Wheel. The one NEW field GameplayTriggerType is constant 0 on all 80,000 ST140; SymbolIndexToRewards constant '{}'; CreditsSymbols constant '100:1000 | '. Only ST140 + ST2 fire in mode 1. Candidate: out-of-mode (fires only in another mode not sampled — M283 has only mode_1 cached). Cannot confirm presence/absence elsewhere from data on hand. Per the gate-8 ruling (invisible => default absent; ask once + platform declaration): asked once 2026-06-16, user declared DEFAULT ABSENT (no platform declaration that it exists). RESOLVED absent for M283 mode-1. NO FrameGame plugin. The manifest parses mode 1 correctly with only ST140 + ST2. If a future mode surfaces FrameGame, revisit then.", "rtp_impact": "none_declared", "source": "domain", "status": "confirmed_absent_gate8_2026_06_16"}
+  ],
+  "round_win_rule": "m283_wheel_settlement (synthesize_pay_id, spin_types=[2], label_format=spin_type, applies_to=[M283]) — added to configs/machine_round_win_rules.json; PROVEN in 02_reuse.md to zero _unattributed_st2 (3,280,000 -> real pid st2 exact). EXACT M279 precedent (m279_wheel_settlement).",
+  "rtp_integrity": {"paid_st": [140], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

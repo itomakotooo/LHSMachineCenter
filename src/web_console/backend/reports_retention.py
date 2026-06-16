@@ -29,6 +29,12 @@ import shutil
 from pathlib import Path
 from typing import Any, Protocol
 
+from src.web_console.backend.report_index import (
+    build_index_entry,
+    _atomic_write_json,
+    _report_index_lock,
+)
+
 
 # Version-dir names sort chronologically by their ISO timestamp prefix
 # (`rv_YYYYMMDDTHHMMSSZ_...`), so string-sort is effectively time-sort.
@@ -146,17 +152,32 @@ def prune_versions(
     return result
 
 
-def _refresh_mode_manifests(mode_dir: Path) -> None:
-    """Rebuild `index.json` + `latest.json` from the surviving version dirs.
+def _refresh_mode_manifests(mode_dir: Path, reports_root: Path | None = None) -> None:
+    """Rebuild ``index.json`` + ``latest.json`` from the surviving version dirs.
 
     Both files are derived state — the version dirs are authoritative.
-    Each index entry carries enough metadata for the UI's version picker
-    (report_version / run_id / created_at / rtp_point_pct / quality_label)
-    without re-reading the full summary at every list call.
+    Routes through ``build_index_entry`` so the rebuilt index always
+    carries the full shape (rawdata md5 / analyzer version / etc.), not
+    the minimal rtp_point_pct + quality_label subset the old in-place
+    implementation wrote.
+
+    ``reports_root`` is used by ``build_index_entry`` to form canonical
+    absolute paths.  When omitted the mode_dir is used as the fallback
+    anchor (correct when mode_dir is already under the canonical tree).
     """
     versions_dir = mode_dir / "versions"
     index_path = mode_dir / "index.json"
     latest_path = mode_dir / "latest.json"
+
+    # Derive machine / mode from the mode_dir path convention
+    # (<reports_root>/<machine>/mode_<N>/versions/).
+    mode_dir_parent = mode_dir.parent   # <reports_root>/<machine>/
+    machine_name = mode_dir_parent.name
+    try:
+        mode_int = int(mode_dir.name.split("_", 1)[1])
+    except (IndexError, ValueError):
+        mode_int = 0
+    rr = reports_root if reports_root is not None else mode_dir_parent.parent
 
     entries: list[dict[str, Any]] = []
     if versions_dir.is_dir():
@@ -172,49 +193,34 @@ def _refresh_mode_manifests(mode_dir: Path) -> None:
                 s = json.loads(summary_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
-            entries.append({
-                "report_version": vdir.name,
-                "run_id": str(s.get("run_id", "")),
-                "created_at": str(
-                    s.get("sampling", {}).get("finished_at")
-                    or s.get("sampling", {}).get("started_at")
-                    or ""
+            run_id = str(s.get("run_id") or "")
+            entry = build_index_entry(
+                rr,
+                machine_name,
+                mode_int,
+                vdir.name,
+                run_id,
+                summary=s,
+                summary_path=summary_path,
+            )
+            entries.append(entry)
+
+    with _report_index_lock(mode_dir):
+        _atomic_write_json(index_path, entries)
+        if entries:
+            latest = max(
+                enumerate(entries),
+                key=lambda ie: (
+                    str(ie[1].get("created_at") or ""),
+                    str(ie[1].get("report_version") or ""),
+                    ie[0],
                 ),
-                "summary_file": str(summary_path),
-                "report_file": str(vdir / "player_impact_report.md"),
-                "rtp_point_pct": (s.get("rtp", {}) or {}).get("point_pct"),
-                "quality_label": (
-                    s.get("guideline_assessment", {}).get("quality_label")
-                    or s.get("quality_label")
-                ),
-            })
-
-    _atomic_write_json(index_path, entries)
-    if entries:
-        _atomic_write_json(latest_path, entries[-1])
-    elif latest_path.exists():
-        try:
-            latest_path.unlink()
-        except OSError:
-            pass
+            )[1]
+            _atomic_write_json(latest_path, latest)
+        elif latest_path.exists():
+            try:
+                latest_path.unlink()
+            except OSError:
+                pass
 
 
-def _atomic_write_json(path: Path, payload: Any) -> None:
-    """`.tmp + os.replace` so a mid-write crash doesn't leave a broken
-    index/latest file (the UI would then show 0 versions until a
-    regen). Mirrors the chunk-cache atomicity pattern."""
-    import os
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    try:
-        tmp.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        os.replace(tmp, path)
-    except OSError:
-        try:
-            if tmp.exists():
-                tmp.unlink()
-        except OSError:
-            pass
-        raise

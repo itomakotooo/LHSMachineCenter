@@ -117,9 +117,8 @@ class AnalyzerFeature(ABC):
     dict.  The runner validates that each declared dep key is present before
     invoking emit().
 
-    Convention: dep keys use the ``_`` prefix (e.g. ``"_bankruptcy_rows"``,
-    ``"_mechanism_registry"``).  They are cleaned up by the emit loop after
-    all plugins have run.
+    Convention: dep keys use the ``_`` prefix (e.g. ``"_bankruptcy_rows"``).
+    They are cleaned up by the emit loop after all plugins have run.
 
     Subclasses that need no summary deps leave this as ``()`` (the default).
     """
@@ -221,7 +220,7 @@ class AnalyzerFeature(ABC):
         ctx:
             PipelineContext carrying effective_bet_for_rtp, total_spins,
             total_paid_sessions, total_paid_spins, clamp_pending_robots_total,
-            robots_with_pending_cycle, mechanism_registry, and manifest.
+            robots_with_pending_cycle, machine_spec_manifest, and manifest.
             None of the 4 existing Pattern-A plugins use ctx in C1.
         """
         ...

@@ -4268,6 +4268,155 @@ function escapeHtml(s) {
     .replace(/'/g, "&#39;");
 }
 
+function renderStructureDriftPanel(summary) {
+  // Surface summary.structure_drift (structure-drift gate, 2026-06-12).
+  // Badge: green ok / yellow warn / red fail / grey unaudited.
+  // Drill-down: undeclared STs + per-ST field drift.
+  // Self-hides when the block is absent (old reports / unregistered machines).
+  const el = byId("structureDriftPanel");
+  if (!el) return;
+  const drift = (summary || {}).structure_drift;
+  if (!drift || typeof drift !== "object") {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+    return;
+  }
+  el.classList.remove("hidden");
+  const lang = (typeof PURE !== "undefined" && PURE.currentLang) || state.lang || "zh";
+  const t = (key) => PURE.fmt(lang, key);
+  const fmtPct = (v) => (v == null ? "N/A" : `${(Number(v) * 100).toFixed(1)}%`);
+
+  const status = drift.status || "unaudited";
+  const toneMap = { ok: "sd-ok", warn: "sd-warn", fail: "sd-fail", unaudited: "sd-unaudited" };
+  const tone = toneMap[status] || "sd-unaudited";
+  el.className = `structure-drift-box structure-drift-${tone}`;
+
+  const statusLabelKey = {
+    ok: "sdStatusOk", warn: "sdStatusWarn", fail: "sdStatusFail", unaudited: "sdStatusUnaudited",
+  }[status] || "sdStatusUnaudited";
+  const icon = status === "ok" ? "✓" : status === "fail" ? "✗" : status === "warn" ? "⚠" : "·";
+
+  // Undeclared STs section.
+  const undecSts = Array.isArray(drift.undeclared_sts) ? drift.undeclared_sts : [];
+  let undecStHtml = "";
+  if (undecSts.length > 0) {
+    const rows = undecSts.map(e =>
+      `<tr><td>${escapeHtml(String(e.st))}</td><td>${escapeHtml(fInt(e.rounds))}</td>` +
+      `<td>${escapeHtml(fmtPct(e.share))}</td></tr>`
+    ).join("");
+    undecStHtml = `
+      <div class="sd-section">
+        <div class="sd-section-title">${escapeHtml(t("sdUndeclaredSts"))}</div>
+        <table class="sd-table">
+          <thead><tr>
+            <th>${escapeHtml(t("sdColSt"))}</th>
+            <th>${escapeHtml(t("sdColRounds"))}</th>
+            <th>${escapeHtml(t("sdColShare"))}</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  // Declared-absent STs (informational).
+  const declaredAbsent = Array.isArray(drift.declared_sts_absent) ? drift.declared_sts_absent : [];
+  let absentHtml = "";
+  if (declaredAbsent.length > 0) {
+    absentHtml = `
+      <div class="sd-section sd-info">
+        <div class="sd-section-title">${escapeHtml(t("sdDeclaredAbsent"))}</div>
+        <div class="sd-absent-list">${declaredAbsent.map(s => escapeHtml(String(s))).join(", ")}</div>
+      </div>`;
+  }
+
+  // Per-ST field drift detail.
+  const perSt = drift.per_st || {};
+  const perStKeys = Object.keys(perSt).sort();
+  let perStHtml = "";
+  if (perStKeys.length > 0) {
+    const stSections = perStKeys.map(st => {
+      const stData = perSt[st] || {};
+      // Keys MUST match the structure_drift plugin's emitted schema exactly:
+      // signature_fields_missing (dict), new_fields (dict), observed_fields_absent (list).
+      const missFields = stData.signature_fields_missing || {};
+      const newFields = stData.new_fields || {};
+      const absentFields = Array.isArray(stData.observed_fields_absent) ? stData.observed_fields_absent : [];
+      const missKeys = Object.keys(missFields).sort();
+      const newKeys = Object.keys(newFields).sort();
+      let inner = "";
+      if (missKeys.length > 0) {
+        const rows = missKeys.map(f =>
+          `<tr><td>${escapeHtml(f)}</td><td>${escapeHtml(fmtPct(missFields[f]))}</td></tr>`
+        ).join("");
+        inner += `<div class="sd-field-group">
+          <div class="sd-field-group-title">${escapeHtml(t("sdMissingDeclaredFields"))}</div>
+          <table class="sd-table"><thead><tr>
+            <th>${escapeHtml(t("sdColField"))}</th>
+            <th>${escapeHtml(t("sdColPresence"))}</th>
+          </tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+      if (newKeys.length > 0) {
+        const rows = newKeys.map(f =>
+          `<tr><td>${escapeHtml(f)}</td><td>${escapeHtml(fmtPct(newFields[f]))}</td></tr>`
+        ).join("");
+        inner += `<div class="sd-field-group">
+          <div class="sd-field-group-title">${escapeHtml(t("sdNewUndeclaredFields"))}</div>
+          <table class="sd-table"><thead><tr>
+            <th>${escapeHtml(t("sdColField"))}</th>
+            <th>${escapeHtml(t("sdColPresence"))}</th>
+          </tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+      if (absentFields.length > 0) {
+        // Informational only (optional-field presence is config-dependent).
+        inner += `<div class="sd-field-group sd-field-group-info">
+          <div class="sd-field-group-title">${escapeHtml(t("sdObservedAbsent"))}</div>
+          <div class="sd-absent-list">${absentFields.map(f => escapeHtml(f)).join(", ")}</div></div>`;
+      }
+      // unaudited_fields: ST has a signature but no observed_fields inventory →
+      // the envelope (new-field) audit cannot run. Surface it honestly — never
+      // silent (feedback_no_silent_swallow at the UI layer).
+      if (stData.observed_fields_status === "unaudited_fields") {
+        inner += `<div class="sd-field-group sd-field-group-info">
+          <div class="sd-field-group-title">${escapeHtml(t("sdUnauditedFields"))}</div></div>`;
+      }
+      return inner ? `<div class="sd-st-block"><strong>ST ${escapeHtml(st)}</strong>${inner}</div>` : "";
+    }).filter(Boolean).join("");
+    if (stSections) {
+      perStHtml = `
+        <div class="sd-section">
+          <div class="sd-section-title">${escapeHtml(t("sdPerStDrift"))}</div>
+          ${stSections}
+        </div>`;
+    }
+  } else if (status === "ok") {
+    perStHtml = `<div class="sd-section sd-ok-note">${escapeHtml(t("sdNoDrift"))}</div>`;
+  }
+
+  // Reason (for unaudited).
+  const reasonHtml = drift.reason
+    ? `<div class="sd-reason">${escapeHtml(t("sdReason"))}: ${escapeHtml(drift.reason)}</div>`
+    : "";
+
+  // Footer: audited rounds + source.
+  const footerHtml = `
+    <div class="sd-footer">
+      ${escapeHtml(t("sdAuditedRounds"))}: ${escapeHtml(fInt(drift.audited_rounds || 0))}
+      &nbsp;·&nbsp; ${escapeHtml(drift.source || "")}
+    </div>`;
+
+  el.innerHTML = `
+    <div class="sd-head">
+      <span class="sd-icon">${icon}</span>
+      <span class="sd-title">${escapeHtml(t(statusLabelKey))}</span>
+    </div>
+    ${reasonHtml}
+    ${undecStHtml}
+    ${absentHtml}
+    ${perStHtml}
+    ${footerHtml}
+  `;
+}
+
 function renderRtpClampWarning(summary) {
   // Show the operator a heads-up when the analyzer detected truncated
   // collect cycles in the sample (chunk_spin_times ran out before the
@@ -4360,6 +4509,20 @@ function renderSpinTypeBreakdown(summary) {
       const behavior = primary && primary.behavior_name
         ? fmt("spinTypeBehavior_" + primary.behavior_name)
         : "\u2014";
+      // ST x FeatureWin cross: tag the SpinType with the "\u73a9\u6cd5" (FeatureWin
+      // feature) it maps to, e.g. "ST=15  TopDollar". trigger_only events
+      // (fires>0/win==0, e.g. the ST=14 selector) get a "\u89e6\u53d1" marker so the
+      // player sees they cost a pick but pay nothing on their own.
+      let featureTag = "";
+      if (primary && primary.feature_name) {
+        const fname = escapeHtml(primary.feature_name);
+        const trig = primary.feature_trigger_only
+          ? ` \u00b7 ${escapeHtml(fmt("spinTypeFeatureTriggerOnly"))}`
+          : "";
+        featureTag =
+          ` <span class="st-feature-tag" title="${escapeHtml(fmt("spinTypeFeatureTitle"))}">` +
+          `${fname}${trig}</span>`;
+      }
       const rareFlag = (aIn && r.rare) || (bRow && bRow.rare);
       const rareClass = rareFlag ? ' class="rare-row"' : "";
 
@@ -4376,7 +4539,7 @@ function renderSpinTypeBreakdown(summary) {
 
       return (
         `<tr${rareClass}>` +
-        `<td>${stName}${rareFlag ? " \u26a0" : ""}${presence}</td>` +
+        `<td>${stName}${rareFlag ? " \u26a0" : ""}${featureTag}${presence}</td>` +
         `<td>${behavior}</td>` +
         `<td>${_cmpCell(!!cmpB, aShareFmt, bShareFmt, aShareRaw, bShareRaw, "pp")}</td>` +
         `<td>${_cmpCell(!!cmpB, aHitFmt, bHitFmt, aHitRaw, bHitRaw, "pp", 2)}</td>` +
@@ -4386,6 +4549,1050 @@ function renderSpinTypeBreakdown(summary) {
       );
     })
     .join("");
+}
+
+// ── Per-SpinType analysis — data-driven DIMENSION framework ──────────────────
+// The console organizes everything STRICTLY BY SpinType. Each ST section is
+// assembled from a declarative list of DIMENSION renderers (SPINTYPE_DIMENSIONS).
+// Each dimension is a pure fn (stCtx) -> html|"" that SELF-APPLIES iff its data
+// exists for that ST — there is NO machine/ST hardcoding. Adding a new dimension
+// (or supporting a new feature on a SpinType for another machine) = add/extend a
+// dimension fn keyed on the DATA SHAPE, not on "if ST14" / "if M15".
+//
+// stCtx = { row, label, outcome, payRows, summary, bet }
+//   row     — spin_type_breakdown row (overview + feature cross)
+//   label   — "ST{n}_{behavior}" (the payouts_by_spin_type / spin_type_outcomes key)
+//   outcome — spin_type_outcomes[label] (has_payouts, max_mult, ...)
+//   payRows — payouts_by_spin_type[label] (per-payid rows)
+//   summary — the full summary (for cross-feature blocks like topdollar_choice)
+//   bet     — sampling.bet (multiplier denominator)
+
+// Canonical multiplier buckets — same edges as the analyzer's global
+// RETURN_BUCKET_ORDER (aggregator.py) so the per-SpinType win distribution uses
+// the same fine granularity as the global multiplier-bucket table. [lo, hi).
+const _CANON_BUCKETS = [
+  ["gt0_lt1", 0, 1], ["ge1_lt5", 1, 5], ["ge5_lt10", 5, 10], ["ge10_lt20", 10, 20],
+  ["ge20_lt50", 20, 50], ["ge50_lt100", 50, 100], ["ge100_lt200", 100, 200],
+  ["ge200_lt500", 200, 500], ["ge500_lt1000", 500, 1000], ["ge1000_lt5000", 1000, 5000],
+  ["ge5000", 5000, Infinity],
+];
+
+// TopDollar behavior split across its two SpinTypes (the user's event model:
+// ST14 = the CHOICE/pick, ST15 = the SETTLEMENT). Built from topdollar_choice via
+// the shared _buildStatsSectionsHtml. The ST→block mapping is DATA-DRIVEN below
+// (trigger_only ST gets the pick block; the ST whose feature == the settlement
+// feature_name gets the settlement block) — not hardcoded to ST14/ST15.
+// ST14 (the CHOICE event) — all the per-draw distributions, as probability:
+// trigger/stop/forced/bad-gamble RATES + pick-count dist + denomination-chosen
+// dist + denomination-combination dist. No credit amounts (user: 倍率/概率/分布).
+const _TD_PICK_SECTIONS = [
+  { type: "kv", rows: [
+    { labelKey: "tdTotalSessions",  path: "total_sessions",     fmt: "int" },
+    { labelKey: "tdTriggerRate",    path: "trigger_rate",       fmt: "pct" },
+    { labelKey: "tdStoppedEarly",   path: "stopped_early_rate", fmt: "pct" },
+    { labelKey: "tdForced4th",      path: "forced_4th_rate",    fmt: "pct" },
+    { labelKey: "tdBadGamble",      path: "bad_gamble_rate",    fmt: "pct" },
+  ] },
+  // 选中次数的分布 (how many picks per session).
+  { type: "tally", titleKey: "tdPicksPerSession", path: "picks_per_session",
+    keyColKey: "tdColPicks", countColKey: "tdColSessions" },
+  // 面额被选的分布 (which denominations get chosen).
+  { type: "tally", titleKey: "tdDollarTiers", path: "dollar_tier_counts",
+    keyColKey: "tdColTier", countColKey: "tdColCount" },
+  // 一次抽取的面额组合分布 (the multi-denomination combo per draw).
+  { type: "tally", titleKey: "tdChosenCombos", path: "chosen_combo_counts",
+    keyColKey: "tdColCombo", countColKey: "tdColCount" },
+];
+// ST15 (the SETTLEMENT event) — the WHOLE mini-game's TOTAL MULTIPLIER
+// distribution (settled_win/bet, bucketed) + multiplier median/max. NO credit
+// amounts (user: 我对结算的金钱额度没有分析需求，我只对倍率/概率/分布).
+const _TD_SETTLE_SECTIONS = [
+  { type: "kv", rows: [
+    { labelKey: "tdTotalMultMedian", path: "total_mult_median", fmt: "mult" },
+    { labelKey: "tdTotalMultMax",    path: "total_mult_max",    fmt: "mult" },
+  ] },
+  { type: "mult_buckets", titleKey: "tdTotalMultDist", path: "total_mult_buckets" },
+];
+
+// Dimension: overview KV (share / hit / self-RTP / RTP contribution / feature).
+function _stDimOverview(stCtx) {
+  const r = stCtx.row;
+  const kv = [
+    [fmt("stoShare"), (Number(r.share_pct) || 0).toFixed(1) + "%"],
+    [fmt("stoHit"), PURE.fRate(r.hit_rate || 0)],
+    [fmt("stoSelfRtp"), r.rtp_pct == null ? "N/A" : Number(r.rtp_pct).toFixed(2) + "%"],
+    [fmt("stoRtpPp"), (Number(r.rtp_contribution_pp) || 0).toFixed(2) + "pp"],
+  ];
+  if (r.feature_name) {
+    const feat = escapeHtml(r.feature_name)
+      + (r.feature_trigger_only
+        ? " (" + escapeHtml(fmt("spinTypeFeatureTriggerOnly")) + ")"
+        : (r.feature_rtp_pp != null ? " " + Number(r.feature_rtp_pp).toFixed(2) + "pp" : ""));
+    kv.push([fmt("stoFeature"), feat]);
+  }
+  const cells = kv
+    .map(([k, v]) => `<div class="mech-stat"><span class="mech-label">${k}</span><span class="mech-value">${v}</span></div>`)
+    .join("");
+  return `<div class="mech-section"><div class="mech-grid">${cells}</div></div>`;
+}
+
+// Dimension: win distribution — per-SpinType RTP bucket distribution.
+// PREFERRED (Phase C): ROUND-LEVEL — each spin's total win/bet binned into the
+//   canonical buckets (spin_type_rtp_buckets, same as the global multiplier table).
+//   占比 = fraction of this ST's PAID spins in the bucket (so named buckets sum to
+//   the hit rate; the remainder are dead spins). This is "基于 spin 的 RTP 分桶".
+// FALLBACK (Phase A): PAYLINE-level re-bin of payid avg_win/bet — used only for
+//   old reports generated before spin_type_rtp_buckets existed.
+function _stDimWinDistribution(stCtx) {
+  const { summary, label, payRows, bet } = stCtx;
+
+  // ── Round-level (preferred) ──
+  const roundBuckets =
+    (((summary.player_impact || {}).spin_type_rtp_buckets) || {})[label];
+  if (Array.isArray(roundBuckets) && roundBuckets.length) {
+    const shown = roundBuckets.filter((b) => (Number(b.spin_count) || 0) > 0);
+    if (!shown.length) return "";
+    const maxShare = Math.max(...shown.map((b) => Number(b.spin_rate) || 0), 0.0001);
+    const rows = shown
+      .map((b) => {
+        const share = Number(b.spin_rate) || 0;
+        const barPct = (share / maxShare) * 100;
+        return (
+          `<tr><td>${PURE.prettyBucketLabel(b.bucket)}×</td>` +
+          `<td>${PURE.fInt(Number(b.spin_count) || 0)}</td>` +
+          `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${(share * 100).toFixed(2)}%</td>` +
+          `<td>${(Number(b.rtp_contribution_pp) || 0).toFixed(2)}</td></tr>`
+        );
+      })
+      .join("");
+    return (
+      `<p class="drilldown-hint">${fmt("stoBandsTitle")} · ${fmt("stoBandsRoundNote")}</p>` +
+      `<table class="drilldown-table"><thead><tr>` +
+      `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th>` +
+      `<th>${fmt("stoColShare")}</th><th>${fmt("stoColRtp")}</th>` +
+      `</tr></thead><tbody>${rows}</tbody></table>`
+    );
+  }
+
+  // ── Payline-level fallback (old reports) ──
+  if (!(bet > 0)) return "";
+  const real = payRows.filter((pr) => !String(pr.payout_id || "").startsWith("_"));
+  if (!real.length) return "";
+  const acc = _CANON_BUCKETS.map(([key, lo, hi]) => ({ key, lo, hi, hits: 0, rtp: 0 }));
+  let totalHits = 0;
+  for (const pr of real) {
+    const hits = Number(pr.hit_count) || 0;
+    const mult = (Number(pr.avg_win_when_hit) || 0) / bet;
+    const rtp = Number(pr.rtp_contribution_pp ?? pr.rtp_pp ?? 0);
+    let bi = acc.findIndex((b) => mult >= b.lo && mult < b.hi);
+    if (bi < 0) bi = acc.length - 1;
+    acc[bi].hits += hits;
+    acc[bi].rtp += rtp;
+    totalHits += hits;
+  }
+  const shown = acc.filter((b) => b.hits > 0);
+  if (!shown.length || totalHits <= 0) return "";
+  const maxShare = Math.max(...shown.map((b) => b.hits / totalHits), 0.0001);
+  const rows = shown
+    .map((b) => {
+      const share = b.hits / totalHits;
+      const barPct = (share / maxShare) * 100;
+      return (
+        `<tr><td>${PURE.prettyBucketLabel(b.key)}×</td>` +
+        `<td>${PURE.fInt(b.hits)}</td>` +
+        `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${(share * 100).toFixed(1)}%</td>` +
+        `<td>${b.rtp.toFixed(2)}</td></tr>`
+      );
+    })
+    .join("");
+  return (
+    `<p class="drilldown-hint">${fmt("stoBandsTitle")} · ${fmt("stoBandsPaylineNote")}</p>` +
+    `<table class="drilldown-table"><thead><tr>` +
+    `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th>` +
+    `<th>${fmt("stoColShare")}</th><th>${fmt("stoColRtp")}</th>` +
+    `</tr></thead><tbody>${rows}</tbody></table>`
+  );
+}
+
+// Dimension: payid breakdown (symbol combo + covered cols) via the shared
+// _renderPayoutRowsHtml — same renderer the Pay ID overview uses.
+function _stDimPayid(stCtx) {
+  const { payRows, bet, label } = stCtx;
+  if (!payRows.length) return "";
+  const m = /^ST\d+_(paid|free|mixed)$/.exec(label);
+  const category = m ? (m[1] === "free" ? "bonus" : m[1]) : null;
+  const ranked = [...payRows]
+    .map((pr) => (category && pr.spin_type_category == null
+      ? { ...pr, spin_type_category: category } : pr))
+    .sort((a, b) => Number(b.rtp_contribution_pp ?? b.rtp_pp ?? 0) - Number(a.rtp_contribution_pp ?? a.rtp_pp ?? 0))
+    .slice(0, 20);
+  const tableInner = _renderPayoutRowsHtml(ranked, {
+    shapeByPayId: null, cmpBMap: null, cmpB: false, bet, betB: bet,
+    includeShape: false, includeNotes: false, includeSubRows: false,
+  });
+  return `<p class="drilldown-hint">${fmt("stoPayidTitle")}</p>` +
+    `<table class="drilldown-table">${tableInner}</table>`;
+}
+
+// Dimension: selector/choice behavior — attaches to the CHOICE event (the
+// trigger_only ST). Data-driven: present iff a topdollar_choice-style section
+// exists. (Phase B4 generalizes the data side beyond topdollar_choice.)
+function _stDimSelectorChoice(stCtx) {
+  const td = stCtx.summary.topdollar_choice;
+  if (!td || !td.applicable) return "";
+  if (!stCtx.row.feature_trigger_only) return "";
+  return `<p class="drilldown-hint">${fmt("stoBehaviorTitle")}</p>` +
+    _buildStatsSectionsHtml(td, _TD_PICK_SECTIONS);
+}
+
+// Dimension: settlement outcome — attaches to the SETTLEMENT event (the ST whose
+// feature matches the settlement feature_name and is NOT trigger-only). This is
+// how ST=15 gets its OWN settlement analysis (not folded into ST=14).
+function _stDimSettlement(stCtx) {
+  const td = stCtx.summary.topdollar_choice;
+  if (!td || !td.applicable) return "";
+  const r = stCtx.row;
+  if (r.feature_trigger_only) return "";
+  if (!r.feature_name || r.feature_name !== td.feature_name) return "";
+  return `<p class="drilldown-hint">${fmt("stoSettlementTitle")}</p>` +
+    _buildStatsSectionsHtml(td, _TD_SETTLE_SECTIONS);
+}
+
+// Dimension: respin dynamics — attaches to the RESPIN event (the ST whose
+// spin_type matches respin_dynamics.respin_spin_type). Data-driven: returns ""
+// for every other ST so the analysis lives only inside the matching ST section.
+// Reuses the same mech-section/mech-grid KPI blocks + drilldown-table/bar-cell
+// markup that the former standalone renderRespinDynamics panel built.
+function _stDimRespin(stCtx) {
+  const rd = ((stCtx.summary || {}).player_impact || {}).respin_dynamics;
+  if (!rd || !rd.applicable) return "";
+  if (Number(rd.respin_spin_type) !== Number(stCtx.row.spin_type)) return "";
+
+  // Helper: format a probability value as a percentage string or "—".
+  const _pct = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+  // Helper: format a ratio/multiplier value or "—".
+  const _ratio = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${Number(v).toFixed(d)}×`;
+  // Helper: render a band distribution table (respin or base).
+  const _bandTable = (dist, titleKey) => {
+    if (!dist || !Array.isArray(dist.bands) || !dist.bands.length) return "";
+    const bands = dist.bands.filter((b) => b.prob != null && Number(b.prob) > 0);
+    if (!bands.length) return "";
+    const maxProb = Math.max(...bands.map((b) => Number(b.prob) || 0), 0.0001);
+    const rows = bands.map((b) => {
+      const prob = Number(b.prob) || 0;
+      const barPct = (prob / maxProb) * 100;
+      const winShare = b.win_share != null ? `${(Number(b.win_share) * 100).toFixed(1)}%` : "—";
+      return (
+        `<tr>` +
+        `<td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
+        `<td>${fInt(b.spin_count)}</td>` +
+        `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
+        `<td>${winShare}</td>` +
+        `</tr>`
+      );
+    }).join("");
+    const tail = dist.tail_ge20x_win_share != null
+      ? `<p class="drilldown-hint">${fmt("rdTailGe20")}: ${_pct(dist.tail_ge20x_win_share, 1)}</p>`
+      : "";
+    return (
+      `<p class="drilldown-hint"><strong>${fmt(titleKey)}</strong> · ${fInt(dist.total_spins)} 次 · ${fInt(dist.win_rounds)} 次赢钱</p>` +
+      `<table class="drilldown-table"><thead><tr>` +
+      `<th>${fmt("rdColBand")}</th><th>${fmt("stoColHits")}</th>` +
+      `<th>${fmt("rdColProb")}</th><th>${fmt("rdColWinShare")}</th>` +
+      `</tr></thead><tbody>${rows}</tbody></table>` +
+      tail
+    );
+  };
+
+  // ── M1 Grant-rate KPI block ──
+  const gr = rd.grant_rate || {};
+  const grantHtml = `<div class="mech-section">
+    <h3>${fmt("rdGrantRate")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantOpeners")}</span><span class="mech-value">${fInt(gr.openers)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantRatePerWin")}</span><span class="mech-value">${_pct(gr.per_winning_paid_spin, 2)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantRatePerSpin")}</span><span class="mech-value">${_pct(gr.per_paid_spin, 3)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantRateOnePerN")}</span><span class="mech-value">${gr.one_per_n_paid_spins != null ? Number(gr.one_per_n_paid_spins).toFixed(1) : "—"}</span></div>
+    </div>
+  </div>`;
+
+  // ── M2 Hit-rate uplift KPI block ──
+  const hru = rd.hit_rate_uplift || {};
+  const upliftHtml = `<div class="mech-section">
+    <h3>${fmt("rdHitRateUplift")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("rdRespinHitRate")}</span><span class="mech-value">${_pct(hru.respin_hit_rate, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdBaseHitRate")}</span><span class="mech-value">${_pct(hru.base_hit_rate, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdUpliftRatio")}</span><span class="mech-value">${_ratio(hru.uplift_ratio, 2)}</span></div>
+    </div>
+  </div>`;
+
+  // ── M2 Multiplier distributions (respin + base side by side) ──
+  const multHtml =
+    _bandTable(rd.respin_multiplier_distribution, "rdRespinMultDist") +
+    _bandTable(rd.base_multiplier_distribution, "rdBaseMultDist");
+
+  // ── M3 PayID mix (respin vs base) ──
+  const mix = rd.payid_mix || {};
+  const _payidRows = (shareMap) => {
+    const entries = Object.entries(shareMap || {});
+    if (!entries.length) return "<tr><td colspan='3'>—</td></tr>";
+    return entries
+      .sort((a, b) => Number(b[1].hit_share || 0) - Number(a[1].hit_share || 0))
+      .map(([pid, v]) =>
+        `<tr><td>${pid}</td>` +
+        `<td>${fInt(v.hit_count)}</td>` +
+        `<td>${_pct(v.hit_share, 1)}</td>` +
+        `<td>${_pct(v.win_share, 1)}</td></tr>`
+      ).join("");
+  };
+  const payidHtml = (mix.respin_payid_share || mix.base_payid_share)
+    ? (`<p class="drilldown-hint"><strong>${fmt("rdPayidMix")}</strong></p>` +
+       `<div style="display:flex;gap:1rem;flex-wrap:wrap;">` +
+       `<div><p class="drilldown-hint">Respin (ST${rd.respin_spin_type})</p>` +
+       `<table class="drilldown-table"><thead><tr><th>${fmt("rdColPayid")}</th><th>${fmt("stoColHits")}</th><th>${fmt("rdColHitShare")}</th><th>${fmt("rdColWinShare")}</th></tr></thead><tbody>${_payidRows(mix.respin_payid_share)}</tbody></table></div>` +
+       `<div><p class="drilldown-hint">Base (ST${rd.base_spin_type})</p>` +
+       `<table class="drilldown-table"><thead><tr><th>${fmt("rdColPayid")}</th><th>${fmt("stoColHits")}</th><th>${fmt("rdColHitShare")}</th><th>${fmt("rdColWinShare")}</th></tr></thead><tbody>${_payidRows(mix.base_payid_share)}</tbody></table></div>` +
+       `</div>` +
+       (mix.note ? `<p class="drilldown-hint">${fmt("rdPayidNote")}: ${_escHtml(mix.note)}</p>` : ""))
+    : "";
+
+  // ── M4 Continuity ──
+  const cont = rd.continuity || {};
+  const exitRows = Object.entries(cont.exit_breakdown || {})
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .map(([st, cnt]) => `<tr><td>ST${st}</td><td>${fInt(cnt)}</td></tr>`)
+    .join("");
+  const parserBlindItems = Array.isArray(cont.parser_blind) ? cont.parser_blind : [];
+  const parserBlindHtml = parserBlindItems.length
+    ? (`<p class="drilldown-hint"><em>${fmt("rdParserBlind")} (待 per-ST 提取层):</em></p>` +
+       `<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
+       parserBlindItems.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
+       `</ul>`)
+    : "";
+  const continuityHtml = `<div class="mech-section">
+    <h3>${fmt("rdContinuity")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("rdContinuationProb")}</span><span class="mech-value">${_pct(cont.continuation_prob, 2)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdRespinToRespin")}</span><span class="mech-value">${fInt(cont.respin_to_respin_transitions)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdExitTotal")}</span><span class="mech-value">${fInt(cont.respin_exit_transitions)}</span></div>
+    </div>
+    ${exitRows ? (`<p class="drilldown-hint">${fmt("rdExitBreakdown")}</p><table class="drilldown-table"><thead><tr><th>ST</th><th>${fmt("tdColCount")}</th></tr></thead><tbody>${exitRows}</tbody></table>`) : ""}
+    ${parserBlindHtml}
+  </div>`;
+
+  // ── M5 RTP concentration KPI block ──
+  const rtpC = rd.rtp_concentration || {};
+  const rtpHtml = `<div class="mech-section">
+    <h3>${fmt("rdRtpConcentration")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("rdRtpContrib")}</span><span class="mech-value">${rtpC.respin_rtp_contribution_pp != null ? Number(rtpC.respin_rtp_contribution_pp).toFixed(2) + "pp" : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdShareOfWin")}</span><span class="mech-value">${_pct(rtpC.share_of_all_win, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdFatTailShare")}</span><span class="mech-value">${_pct(rtpC.fat_tail_ge20x_win_share, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdLossRate")}</span><span class="mech-value">${_pct(rtpC.loss_rate, 1)}</span></div>
+    </div>
+    ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
+  </div>`;
+
+  return `<p class="drilldown-hint"><strong>${fmt("panelRespinDynamics")}</strong></p>` +
+    grantHtml + upliftHtml + multHtml + payidHtml + continuityHtml + rtpHtml;
+}
+
+// Dimension: minigame dynamics — attaches to the MINIGAME event (the ST whose
+// spin_type matches minigame_dynamics.minigame_spin_type). Returns "" for all
+// other STs so the analysis renders only inside the matching ST section.
+// Reuses the same mech-section/mech-grid KPI blocks + drilldown-table/bar-cell
+// markup that the former standalone renderMinigameDynamics panel built.
+function _stDimMinigame(stCtx) {
+  const mg = ((stCtx.summary || {}).player_impact || {}).minigame_dynamics;
+  if (!mg || !mg.applicable) return "";
+  if (Number(mg.minigame_spin_type) !== Number(stCtx.row.spin_type)) return "";
+
+  // Helper: format a probability value as a percentage string or "—".
+  const _pct = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+
+  // ── G1 Multiplier distribution ──
+  const dist = mg.multiplier_distribution || {};
+  const bands = Array.isArray(dist.bands) ? dist.bands.filter((b) => b.prob != null && Number(b.prob) > 0) : [];
+  const maxProb = Math.max(...bands.map((b) => Number(b.prob) || 0), 0.0001);
+  const bandRows = bands.map((b) => {
+    const prob = Number(b.prob) || 0;
+    const barPct = (prob / maxProb) * 100;
+    const winShare = b.win_share != null ? `${(Number(b.win_share) * 100).toFixed(1)}%` : "—";
+    return (
+      `<tr>` +
+      `<td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
+      `<td>${fInt(b.spin_count)}</td>` +
+      `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
+      `<td>${winShare}</td>` +
+      `</tr>`
+    );
+  }).join("");
+  const multHtml = bands.length
+    ? (`<p class="drilldown-hint"><strong>${fmt("mgMultDist")}</strong> · ${fInt(dist.total_events)} 次 · ${fmt("mgModalBand")}: ${dist.modal_band || "—"} · ${fmt("mgDominantShare")}: ${_pct(dist.dominant_band_share, 1)}</p>` +
+       `<table class="drilldown-table"><thead><tr>` +
+       `<th>${fmt("mgColBand")}</th><th>${fmt("mgColCount")}</th>` +
+       `<th>${fmt("mgColProb")}</th><th>${fmt("mgColWinShare")}</th>` +
+       `</tr></thead><tbody>${bandRows}</tbody></table>` +
+       (dist.source ? `<p class="drilldown-hint">${_escHtml(dist.source)}</p>` : ""))
+    : "";
+
+  // ── G2 Trigger frequency KPI block ──
+  const tf = mg.trigger_frequency || {};
+  const freqHtml = `<div class="mech-section">
+    <h3>${fmt("mgTriggerFreq")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("mgEvents")}</span><span class="mech-value">${fInt(tf.minigame_events)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgPerPaidSpin")}</span><span class="mech-value">${_pct(tf.per_paid_spin, 3)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgOnePerN")}</span><span class="mech-value">${tf.one_per_n_paid_spins != null ? Number(tf.one_per_n_paid_spins).toFixed(1) : "—"}</span></div>
+    </div>
+  </div>`;
+
+  // ── G3 Trigger context ──
+  const tc = mg.trigger_context || {};
+  const tcParserBlindItems = Array.isArray(tc.parser_blind) ? tc.parser_blind : [];
+  const tcParserBlindHtml = tcParserBlindItems.length
+    ? (`<p class="drilldown-hint"><em>${fmt("mgParserBlind")} (待 per-ST 提取层):</em></p>` +
+       `<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
+       tcParserBlindItems.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
+       `</ul>`)
+    : "";
+  const contextHtml = `<div class="mech-section">
+    <h3>${fmt("mgTriggerContext")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("mgFromBase")}</span><span class="mech-value">${fInt(tc.opener_from_base_spin)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgShareFromBase")}</span><span class="mech-value">${_pct(tc.share_from_base_spin, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgFromRespin")}</span><span class="mech-value">${fInt(tc.opener_from_respin_burst)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgShareFromRespin")}</span><span class="mech-value">${_pct(tc.share_from_respin_burst, 1)}</span></div>
+    </div>
+    ${tcParserBlindHtml}
+  </div>`;
+
+  // ── G4/G5 Node path analysis (parser-blind) ──
+  const npa = mg.node_path_analysis || {};
+  const npaItems = Array.isArray(npa.parser_blind) ? npa.parser_blind : [];
+  const nodeHtml = `<div class="mech-section">
+    <h3>${fmt("mgNodePath")}</h3>
+    <p class="drilldown-hint"><em>${fmt("mgNodePathNA")} (${fmt("mgParserBlind")}):</em></p>
+    ${npaItems.length
+      ? (`<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
+         npaItems.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
+         `</ul>`)
+      : ""}
+  </div>`;
+
+  // ── G6 RTP concentration KPI block ──
+  const rtpC = mg.rtp_concentration || {};
+  const rtpHtml = `<div class="mech-section">
+    <h3>${fmt("mgRtpConcentration")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("mgRtpContrib")}</span><span class="mech-value">${rtpC.minigame_rtp_contribution_pp != null ? Number(rtpC.minigame_rtp_contribution_pp).toFixed(2) + "pp" : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgShareOfWin")}</span><span class="mech-value">${_pct(rtpC.share_of_all_win, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgEventRate")}</span><span class="mech-value">${_pct(rtpC.event_rate, 3)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgHitRate")}</span><span class="mech-value">${_pct(rtpC.hit_rate, 1)}</span></div>
+    </div>
+    ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
+  </div>`;
+
+  return `<p class="drilldown-hint"><strong>${fmt("panelMinigameDynamics")}</strong></p>` +
+    multHtml + freqHtml + contextHtml + nodeHtml + rtpHtml;
+}
+
+// Dimension: wheel dynamics — attaches to the WHEEL settlement event (the ST
+// whose spin_type matches wheel_dynamics.wheel_spin_type, e.g. M279 ST2's
+// collect wheel). Returns "" for all other STs. Reuses the same
+// mech-section/mech-grid KPI blocks + drilldown-table/bar-cell markup as the
+// sibling respin/minigame dimensions.
+function _stDimWheel(stCtx) {
+  const wd = ((stCtx.summary || {}).player_impact || {}).wheel_dynamics;
+  if (!wd || !wd.applicable) return "";
+  if (Number(wd.wheel_spin_type) !== Number(stCtx.row.spin_type)) return "";
+
+  // Helper: format a probability value as a percentage string or "—".
+  const _pct = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+
+  // ── W1 Guaranteed payout / cadence KPI block ──
+  const gp = wd.guaranteed_payout || {};
+  const gpHtml = `<div class="mech-section">
+    <h3>${fmt("wdGuaranteed")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("wdEvents")}</span><span class="mech-value">${fInt(gp.events)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("wdHitRate")}</span><span class="mech-value">${_pct(gp.hit_rate, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgOnePerN")}</span><span class="mech-value">${gp.one_per_n_paid_spins != null ? Number(gp.one_per_n_paid_spins).toFixed(1) : "—"}</span></div>
+    </div>
+    ${gp.cadence_note ? `<p class="drilldown-hint">${_escHtml(gp.cadence_note)}</p>` : ""}
+  </div>`;
+
+  // ── W2 Discrete prize distribution — DISTINCT prizes (un-merged, data-derived
+  // from the exact cell map; no RETURN_BUCKET band merge, no hardcoded ladder). ──
+  const dist = wd.prize_distribution || {};
+  const prizes = (dist.available && Array.isArray(dist.prizes))
+    ? dist.prizes.filter((p) => p.prob != null && Number(p.prob) > 0)
+    : [];
+  const maxProb = Math.max(...prizes.map((p) => Number(p.prob) || 0), 0.0001);
+  const prizeRows = prizes.map((p) => {
+    const prob = Number(p.prob) || 0;
+    const barPct = (prob / maxProb) * 100;
+    const winShare = p.win_share != null ? `${(Number(p.win_share) * 100).toFixed(1)}%` : "—";
+    return (
+      `<tr>` +
+      `<td>${p.prize_multiplier != null ? `${p.prize_multiplier}×` : "—"}</td>` +
+      `<td>${fInt(p.hit_count)}</td>` +
+      `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
+      `<td>${winShare}</td>` +
+      `</tr>`
+    );
+  }).join("");
+  const multHtml = prizes.length
+    ? (`<p class="drilldown-hint"><strong>${fmt("wdPrizeDist")}</strong> · ${fInt(dist.total_events)} 次 · ${fmt("mgModalBand")}: ${dist.modal_prize_multiplier != null ? `${dist.modal_prize_multiplier}×` : "—"} · ${fmt("mgDominantShare")}: ${_pct(dist.dominant_prize_share, 1)}</p>` +
+       `<table class="drilldown-table"><thead><tr>` +
+       `<th>${fmt("wdColPrize")}</th><th>${fmt("wdColHitCount")}</th>` +
+       `<th>${fmt("rdColProb")}</th><th>${fmt("rdColWinShare")}</th>` +
+       `</tr></thead><tbody>${prizeRows}</tbody></table>`)
+    : "";
+
+  // ── W3 EXACT 12-cell wheel map (CellIndex → prize, data-derived). Jackpot
+  // cell(s) highlighted; unobserved cells marked; nondeterministic cells alarmed. ──
+  const cm = wd.cell_map || {};
+  const jackpotCells = Array.isArray(cm.jackpot_cells) ? cm.jackpot_cells : [];
+  const jackpotSet = new Set(jackpotCells.map(Number));
+  const dJackpot = cm.jackpot_prize_multiplier;
+  const cellList = (cm.available && Array.isArray(cm.cells)) ? cm.cells : [];
+  const cellRows = cellList.map((c) => {
+    const isJackpot = jackpotSet.has(Number(c.cell));
+    const isNondet = c.nondeterministic === true;
+    let prizeCell;
+    if (!c.observed) {
+      prizeCell = `<em>${fmt("wdUnobserved")}</em>`;
+    } else if (c.prize_multiplier == null) {
+      prizeCell = isNondet ? `<em>⚠ ${fmt("wdMergedTag")}</em>` : "—";
+    } else if (isJackpot) {
+      // Jackpot cell highlighted: star + bold (no new CSS dependency).
+      prizeCell = `<strong>★ ${c.prize_multiplier}×</strong>`;
+    } else {
+      prizeCell = `${c.prize_multiplier}×`;
+    }
+    return (
+      `<tr>` +
+      `<td>#${c.cell}</td>` +
+      `<td>${prizeCell}</td>` +
+      `<td>${fInt(c.hit_count)}</td>` +
+      `<td>${c.hit_prob != null ? _pct(c.hit_prob, 2) : "—"}</td>` +
+      `</tr>`
+    );
+  }).join("");
+  const cellGridHtml = cellList.length
+    ? (`<p class="drilldown-hint"><strong>${fmt("wdCellGrid")}</strong></p>` +
+       `<table class="drilldown-table"><thead><tr>` +
+       `<th>${fmt("wdColCell")}</th><th>${fmt("wdColPrize")}</th>` +
+       `<th>${fmt("wdColHitCount")}</th><th>${fmt("wdColHitRate")}</th>` +
+       `</tr></thead><tbody>${cellRows}</tbody></table>` +
+       (Array.isArray(cm.unobserved_cells) && cm.unobserved_cells.length
+         ? `<p class="drilldown-hint"><em>${fmt("wdUnobservedNote")}</em></p>` : "") +
+       ((cm.nondeterministic_cells && Object.keys(cm.nondeterministic_cells).length)
+         ? `<p class="drilldown-hint"><em>${fmt("wdNondetAlarm")}</em></p>` : ""))
+    : "";
+  const cellHtml = `<div class="mech-section">
+    <h3>${fmt("wdCellMap")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("wdCells")}</span><span class="mech-value">${fInt(cm.wheel_cell_count)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("wdObservedCells")}</span><span class="mech-value">${Array.isArray(cm.observed_cells) ? cm.observed_cells.length : "—"}/${fInt(cm.wheel_cell_count)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("wdJackpotPrize")}</span><span class="mech-value">${dJackpot != null ? `${dJackpot}×` : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("wdJackpotCells")}</span><span class="mech-value">${jackpotCells.length ? jackpotCells.map((c) => `#${c}`).join(" ") : "—"}</span></div>
+    </div>
+    ${cellGridHtml}
+  </div>`;
+
+  // ── W4 RTP concentration KPI block ──
+  const rtpC = wd.rtp_concentration || {};
+  const rtpHtml = `<div class="mech-section">
+    <h3>${fmt("mgRtpConcentration")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("wdRtpContrib")}</span><span class="mech-value">${rtpC.wheel_rtp_contribution_pp != null ? Number(rtpC.wheel_rtp_contribution_pp).toFixed(2) + "pp" : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgShareOfWin")}</span><span class="mech-value">${_pct(rtpC.share_of_all_win, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgEventRate")}</span><span class="mech-value">${_pct(rtpC.event_rate, 3)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgHitRate")}</span><span class="mech-value">${_pct(rtpC.hit_rate, 1)}</span></div>
+    </div>
+    ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
+  </div>`;
+
+  return `<p class="drilldown-hint"><strong>${fmt("panelWheelDynamics")}</strong></p>` +
+    gpHtml + multHtml + cellHtml + rtpHtml;
+}
+
+// Dimension: freespin dynamics — attaches to the FREESPIN event (the ST whose
+// spin_type matches freespin_dynamics.freespin_spin_type, e.g. M275 ST126's
+// NewFreespin granted 10-spin session). Returns "" for all other STs. Reuses
+// the same mech-section/mech-grid KPI blocks + drilldown-table/bar-cell markup
+// as the sibling respin/minigame/wheel dimensions.
+function _stDimFreespin(stCtx) {
+  const fd = ((stCtx.summary || {}).player_impact || {}).freespin_dynamics;
+  if (!fd || !fd.applicable) return "";
+  if (Number(fd.freespin_spin_type) !== Number(stCtx.row.spin_type)) return "";
+
+  // Helper: format a probability value as a percentage string or "—".
+  const _pct = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+  // Helper: format a ratio/multiplier value or "—".
+  const _ratio = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${Number(v).toFixed(d)}×`;
+  // Helper: render a band distribution table (same markup as _stDimRespin).
+  const _bandTable = (dist, titleKey) => {
+    if (!dist || !Array.isArray(dist.bands) || !dist.bands.length) return "";
+    const bands = dist.bands.filter((b) => b.prob != null && Number(b.prob) > 0);
+    if (!bands.length) return "";
+    const maxProb = Math.max(...bands.map((b) => Number(b.prob) || 0), 0.0001);
+    const rows = bands.map((b) => {
+      const prob = Number(b.prob) || 0;
+      const barPct = (prob / maxProb) * 100;
+      const winShare = b.win_share != null ? `${(Number(b.win_share) * 100).toFixed(1)}%` : "—";
+      return (
+        `<tr>` +
+        `<td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
+        `<td>${fInt(b.spin_count)}</td>` +
+        `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
+        `<td>${winShare}</td>` +
+        `</tr>`
+      );
+    }).join("");
+    const tail = dist.tail_ge20x_win_share != null
+      ? `<p class="drilldown-hint">${fmt("rdTailGe20")}: ${_pct(dist.tail_ge20x_win_share, 1)}</p>`
+      : "";
+    return (
+      `<p class="drilldown-hint"><strong>${fmt(titleKey)}</strong> · ${fInt(dist.total_spins)} 次 · ${fInt(dist.win_rounds)} 次赢钱</p>` +
+      `<table class="drilldown-table"><thead><tr>` +
+      `<th>${fmt("rdColBand")}</th><th>${fmt("stoColHits")}</th>` +
+      `<th>${fmt("rdColProb")}</th><th>${fmt("rdColWinShare")}</th>` +
+      `</tr></thead><tbody>${rows}</tbody></table>` +
+      tail
+    );
+  };
+  // Helper: a parser-blind bullet list (same markup as the sibling dims).
+  const _blindList = (items) => (Array.isArray(items) && items.length)
+    ? (`<p class="drilldown-hint"><em>${fmt("mgParserBlind")}:</em></p>` +
+       `<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
+       items.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
+       `</ul>`)
+    : "";
+
+  // ── F1 Session cadence KPI block ──
+  const sc = fd.session_cadence || {};
+  const cont = sc.continuation || {};
+  const corr = sc.chain_structure_corroboration || {};
+  const exitRows = Object.entries(cont.exit_breakdown || {})
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .map(([st, cnt]) => `<tr><td>ST${st}</td><td>${fInt(cnt)}</td></tr>`)
+    .join("");
+  const cadenceHtml = `<div class="mech-section">
+    <h3>${fmt("fsCadence")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("fsOpeners")}</span><span class="mech-value">${fInt(sc.openers)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantRatePerSpin")}</span><span class="mech-value">${_pct(sc.per_paid_spin, 3)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdGrantRateOnePerN")}</span><span class="mech-value">${sc.one_per_n_paid_spins != null ? Number(sc.one_per_n_paid_spins).toFixed(1) : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("fsAvgBlockLen")}</span><span class="mech-value">${sc.avg_block_length_rounds != null ? Number(sc.avg_block_length_rounds).toFixed(2) : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdContinuationProb")}</span><span class="mech-value">${_pct(cont.continuation_prob, 2)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("fsChainCount")}</span><span class="mech-value">${corr.chain_count != null ? fInt(corr.chain_count) : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("fsAvgChainLen")}</span><span class="mech-value">${corr.avg_chain_length != null ? Number(corr.avg_chain_length).toFixed(2) : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("fsRetriggersPerChain")}</span><span class="mech-value">${corr.avg_retriggers_per_chain != null ? Number(corr.avg_retriggers_per_chain).toFixed(3) : "—"}</span></div>
+    </div>
+    ${cont.note ? `<p class="drilldown-hint">${_escHtml(cont.note)}</p>` : ""}
+    ${exitRows ? (`<p class="drilldown-hint">${fmt("rdExitBreakdown")}</p><table class="drilldown-table"><thead><tr><th>ST</th><th>${fmt("tdColCount")}</th></tr></thead><tbody>${exitRows}</tbody></table>`) : ""}
+    ${corr.source ? `<p class="drilldown-hint">${_escHtml(corr.source)}</p>` : ""}
+  </div>`;
+
+  // ── F2 Hot-board uplift KPI block ──
+  const hbu = fd.hot_board_uplift || {};
+  const upliftHtml = `<div class="mech-section">
+    <h3>${fmt("rdHitRateUplift")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("fsFreespinHitRate")}</span><span class="mech-value">${_pct(hbu.freespin_hit_rate, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdBaseHitRate")}</span><span class="mech-value">${_pct(hbu.base_hit_rate, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdUpliftRatio")}</span><span class="mech-value">${_ratio(hbu.uplift_ratio, 2)}</span></div>
+    </div>
+  </div>`;
+
+  // ── F2 Multiplier distributions (freespin + base side by side) ──
+  const multHtml =
+    _bandTable(fd.freespin_multiplier_distribution, "fsFreespinMultDist") +
+    _bandTable(fd.base_multiplier_distribution, "rdBaseMultDist");
+
+  // ── F2 PayID mix (freespin vs base) ──
+  const mix = fd.payid_mix || {};
+  const _payidRows = (shareMap) => {
+    const entries = Object.entries(shareMap || {});
+    if (!entries.length) return "<tr><td colspan='3'>—</td></tr>";
+    return entries
+      .sort((a, b) => Number(b[1].hit_share || 0) - Number(a[1].hit_share || 0))
+      .map(([pid, v]) =>
+        `<tr><td>${pid}</td>` +
+        `<td>${fInt(v.hit_count)}</td>` +
+        `<td>${_pct(v.hit_share, 1)}</td>` +
+        `<td>${_pct(v.win_share, 1)}</td></tr>`
+      ).join("");
+  };
+  const payidHtml = (mix.freespin_payid_share || mix.base_payid_share)
+    ? (`<p class="drilldown-hint"><strong>${fmt("fsPayidMix")}</strong></p>` +
+       `<div style="display:flex;gap:1rem;flex-wrap:wrap;">` +
+       `<div><p class="drilldown-hint">Freespin (ST${fd.freespin_spin_type})</p>` +
+       `<table class="drilldown-table"><thead><tr><th>${fmt("rdColPayid")}</th><th>${fmt("stoColHits")}</th><th>${fmt("rdColHitShare")}</th><th>${fmt("rdColWinShare")}</th></tr></thead><tbody>${_payidRows(mix.freespin_payid_share)}</tbody></table></div>` +
+       `<div><p class="drilldown-hint">Base (ST${fd.base_spin_type})</p>` +
+       `<table class="drilldown-table"><thead><tr><th>${fmt("rdColPayid")}</th><th>${fmt("stoColHits")}</th><th>${fmt("rdColHitShare")}</th><th>${fmt("rdColWinShare")}</th></tr></thead><tbody>${_payidRows(mix.base_payid_share)}</tbody></table></div>` +
+       `</div>` +
+       (mix.note ? `<p class="drilldown-hint">${fmt("rdPayidNote")}: ${_escHtml(mix.note)}</p>` : ""))
+    : "";
+
+  // ── F6 Trigger-path dimension (side-by-side: one column per path) ──
+  const tp = fd.trigger_paths || {};
+  let pathsHtml = "";
+  if (tp.available && Array.isArray(tp.paths) && tp.paths.length) {
+    const paths = tp.paths;
+    const headCols = paths.map((p) => `<th>${_escHtml(p.label || p.path)}</th>`).join("");
+    const _metricRow = (labelKey, cellFn) =>
+      `<tr><td>${fmt(labelKey)}</td>` +
+      paths.map((p) => `<td>${cellFn(p)}</td>`).join("") + `</tr>`;
+    const metricRows =
+      _metricRow("fsRowSessions", (p) => fInt(p.session_count)) +
+      _metricRow("fsRowSessionShare", (p) => _pct(p.session_share, 1)) +
+      _metricRow("fsRowTriggerRate", (p) => _pct(p.trigger_rate_per_paid_spin, 3)) +
+      _metricRow("fsRowOnePerN", (p) => p.one_per_n_paid_spins != null ? Number(p.one_per_n_paid_spins).toFixed(1) : "—") +
+      _metricRow("fsRowRounds", (p) => fInt(p.round_count)) +
+      _metricRow("fsRowWinShare", (p) => _pct(p.win_share, 1)) +
+      _metricRow("fsRowRtpPp", (p) => p.rtp_contribution_pp_split != null ? Number(p.rtp_contribution_pp_split).toFixed(2) + "pp" : "—");
+    // Per-path round-level multiplier band histograms, side by side.
+    const _pathBandTable = (p) => {
+      const rows = (Array.isArray(p.win_band_hist) ? p.win_band_hist : [])
+        .filter((b) => (Number(b.round_count) || 0) > 0);
+      if (!rows.length) return "";
+      const maxProb = Math.max(...rows.map((b) => Number(b.prob) || 0), 0.0001);
+      const body = rows.map((b) => {
+        const prob = Number(b.prob) || 0;
+        const barPct = (prob / maxProb) * 100;
+        return (
+          `<tr><td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
+          `<td>${fInt(b.round_count)}</td>` +
+          `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td></tr>`
+        );
+      }).join("");
+      return (
+        `<div><p class="drilldown-hint">${_escHtml(p.label || p.path)}</p>` +
+        `<table class="drilldown-table"><thead><tr>` +
+        `<th>${fmt("rdColBand")}</th><th>${fmt("fsRowRounds")}</th><th>${fmt("rdColProb")}</th>` +
+        `</tr></thead><tbody>${body}</tbody></table></div>`
+      );
+    };
+    const bandTables = paths.map(_pathBandTable).filter(Boolean).join("");
+    // Surfaced alarm buckets (unknown discriminator values / multi-trigger).
+    const _alarmRows = (list) => (Array.isArray(list) ? list : [])
+      .map((p) =>
+        `<tr><td>${_escHtml(p.path)}</td><td>${fInt(p.session_count)}</td>` +
+        `<td>${fInt(p.round_count)}</td><td>${_pct(p.win_share, 1)}</td></tr>`)
+      .join("");
+    const unknownHtml = (tp.unknown_paths && tp.unknown_paths.length)
+      ? (`<p class="drilldown-hint"><strong>⚠ ${fmt("fsUnknownPaths")}</strong></p>` +
+         `<table class="drilldown-table"><thead><tr><th>${fmt("fsColPath")}</th><th>${fmt("fsRowSessions")}</th><th>${fmt("fsRowRounds")}</th><th>${fmt("rdColWinShare")}</th></tr></thead>` +
+         `<tbody>${_alarmRows(tp.unknown_paths)}</tbody></table>` +
+         (tp.unknown_paths_alarm ? `<p class="drilldown-hint">${_escHtml(tp.unknown_paths_alarm)}</p>` : ""))
+      : "";
+    const multiHtml = (tp.multi_buckets && tp.multi_buckets.length)
+      ? (`<p class="drilldown-hint"><strong>${fmt("fsMultiBuckets")}</strong></p>` +
+         `<table class="drilldown-table"><thead><tr><th>${fmt("fsColPath")}</th><th>${fmt("fsRowSessions")}</th><th>${fmt("fsRowRounds")}</th><th>${fmt("rdColWinShare")}</th></tr></thead>` +
+         `<tbody>${_alarmRows(tp.multi_buckets)}</tbody></table>` +
+         (tp.multi_buckets_note ? `<p class="drilldown-hint">${_escHtml(tp.multi_buckets_note)}</p>` : ""))
+      : "";
+    const errHtml = (tp.extraction_errors && tp.extraction_errors.length)
+      ? `<p class="drilldown-hint"><strong>⚠ extract errors:</strong> ${tp.extraction_errors.map(_escHtml).join("; ")}</p>`
+      : "";
+    pathsHtml = `<div class="mech-section">
+      <h3>${fmt("fsTriggerPaths")}</h3>
+      <p class="drilldown-hint">${fmt("fsTotalSessions")}: ${fInt(tp.total_sessions)}</p>
+      <table class="drilldown-table"><thead><tr><th>${fmt("fsColMetric")}</th>${headCols}</tr></thead><tbody>${metricRows}</tbody></table>
+      ${bandTables ? `<p class="drilldown-hint"><strong>${fmt("fsPathBands")}</strong></p><div style="display:flex;gap:1rem;flex-wrap:wrap;">${bandTables}</div>` : ""}
+      ${unknownHtml}${multiHtml}${errHtml}
+      ${tp.source ? `<p class="drilldown-hint">${_escHtml(tp.source)}</p>` : ""}
+    </div>`;
+  } else if (tp && tp.available === false) {
+    pathsHtml = `<div class="mech-section">
+      <h3>${fmt("fsTriggerPaths")}</h3>
+      <p class="drilldown-hint">${_escHtml(tp.reason || "—")}</p>
+      ${(tp.extraction_errors && tp.extraction_errors.length) ? `<p class="drilldown-hint"><strong>⚠</strong> ${tp.extraction_errors.map(_escHtml).join("; ")}</p>` : ""}
+    </div>`;
+  }
+
+  // ── RTP concentration KPI block ──
+  const rtpC = fd.rtp_concentration || {};
+  const rtpHtml = `<div class="mech-section">
+    <h3>${fmt("rdRtpConcentration")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("fsRtpContrib")}</span><span class="mech-value">${rtpC.freespin_rtp_contribution_pp != null ? Number(rtpC.freespin_rtp_contribution_pp).toFixed(2) + "pp" : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdShareOfWin")}</span><span class="mech-value">${_pct(rtpC.share_of_all_win, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdFatTailShare")}</span><span class="mech-value">${_pct(rtpC.fat_tail_ge20x_win_share, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdLossRate")}</span><span class="mech-value">${_pct(rtpC.zero_win_round_rate, 1)}</span></div>
+    </div>
+    ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
+  </div>`;
+
+  // ── Phase 3: freespin-progression sub-panels (ER ladder / FS arc / session
+  // tiers). These are freespin-SPECIFIC metrics no generic plugin can compute,
+  // so freespin_dynamics owns them + their per-path by_dim breakdown. Each
+  // section: aggregate (all paths) + one column per trigger-path value when
+  // by_dim has >=2 real values. Reuses fmt/fInt/_pct/_escHtml. Absent/
+  // unavailable -> the section is skipped (honest, no fabrication).
+  const _fsIdxKeys = (m) => Object.keys(m || {})
+    .filter(k => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+  const _dimCols = (sec) => {
+    // Returns [{key, label, data}] = aggregate + each real path value.
+    const cols = [{ key: "_agg", label: fmt("fsProgAggregate"), data: sec.aggregate || {} }];
+    const bd = (sec.by_dim || {});
+    const dimName = Object.keys(bd)[0];
+    if (dimName) {
+      const vals = Object.keys(bd[dimName] || {})
+        .filter(v => !String(v).startsWith("_unknown") && !String(v).startsWith("_multi")
+                  && !String(v).startsWith("unknown:") && !String(v).startsWith("multi:"));
+      if (vals.length >= 2) {
+        for (const v of vals) cols.push({ key: v, label: _escHtml(v), data: bd[dimName][v] || {} });
+      }
+    }
+    return cols;
+  };
+
+  // ER ladder — per-FS-index mean ExtraRatio (the climb), per path.
+  let erHtml = "";
+  const er = fd.er_ladder || {};
+  if (er.available && (er.aggregate && Object.keys(er.aggregate).length)) {
+    const cols = _dimCols(er);
+    const idxs = _fsIdxKeys(er.aggregate);
+    const head = cols.map(c => `<th>${c.label}</th>`).join("");
+    const rows = idxs.map(i => {
+      const cells = cols.map(c => {
+        const e = (c.data || {})[i] || {};
+        return `<td>${e.mean_er != null ? Number(e.mean_er).toFixed(0) : "—"}</td>`;
+      }).join("");
+      return `<tr><td>${_escHtml(i)}</td>${cells}</tr>`;
+    }).join("");
+    erHtml = `<div class="mech-section"><h3>${fmt("fsErLadder")}</h3>
+      <table class="drilldown-table"><thead><tr><th>${fmt("fsErColFsIdx")}</th>${head}</tr></thead><tbody>${rows}</tbody></table>
+      <p class="drilldown-hint">${fmt("fsErLadderNote")}</p>${er.source ? `<p class="drilldown-hint">${_escHtml(er.source)}</p>` : ""}</div>`;
+  }
+
+  // FS-index hit-rate arc — the cliff, per path.
+  let arcHtml = "";
+  const arc = fd.fs_index_arc || {};
+  if (arc.available && (arc.aggregate && Object.keys(arc.aggregate).length)) {
+    const cols = _dimCols(arc);
+    const idxs = _fsIdxKeys(arc.aggregate);
+    const head = cols.map(c => `<th>${c.label}</th>`).join("");
+    const rows = idxs.map(i => {
+      const cells = cols.map(c => {
+        const e = (c.data || {})[i] || {};
+        return `<td>${_pct(e.hit_rate, 1)}</td>`;
+      }).join("");
+      return `<tr><td>${_escHtml(i)}</td>${cells}</tr>`;
+    }).join("");
+    arcHtml = `<div class="mech-section"><h3>${fmt("fsFsArc")}</h3>
+      <table class="drilldown-table"><thead><tr><th>${fmt("fsErColFsIdx")}</th>${head}</tr></thead><tbody>${rows}</tbody></table>
+      <p class="drilldown-hint">${fmt("fsFsArcNote")}</p>${arc.note ? `<p class="drilldown-hint">${_escHtml(arc.note)}</p>` : ""}</div>`;
+  }
+
+  // Session-tier distribution — session win/bet band histogram.
+  let tierHtml = "";
+  const tier = fd.session_tier_distribution || {};
+  if (tier.available !== false && Array.isArray(tier.aggregate) && tier.aggregate.length) {
+    // Per-path columns when by_dim has >=2 real values: rows = bands (the
+    // aggregate's band order), columns = session count per path. Single/absent
+    // → aggregate session-count column only (today's view).
+    const tbd = (tier.by_dim || {});
+    const tdimName = Object.keys(tbd)[0];
+    const tpaths = tdimName ? Object.keys(tbd[tdimName] || {})
+      .filter(v => !String(v).startsWith("_unknown") && !String(v).startsWith("_multi")) : [];
+    const _bandLabel = (band) => _escHtml(PURE.prettyBucketLabel ? PURE.prettyBucketLabel(band) : band);
+    let head, rows;
+    if (tpaths.length >= 2) {
+      // Build per-path band→count maps.
+      const pmap = {};
+      for (const p of tpaths) {
+        pmap[p] = {};
+        for (const r of (tbd[tdimName][p].rows || [])) pmap[p][r.band] = r.session_count;
+      }
+      head = `<th>${fmt("fsProgAggregate")}</th>` + tpaths.map(p => `<th>${_escHtml(p)}</th>`).join("");
+      rows = tier.aggregate.map(b => {
+        const pcells = tpaths.map(p => `<td>${fInt(pmap[p][b.band] || 0)}</td>`).join("");
+        return `<tr><td>${_bandLabel(b.band)}</td><td>${fInt(b.session_count)}</td>${pcells}</tr>`;
+      }).join("");
+    } else {
+      head = `<th>${fmt("fsRowSessions")}</th><th>${fmt("stoColShare")}</th>`;
+      rows = tier.aggregate.map(b =>
+        `<tr><td>${_bandLabel(b.band)}</td><td>${fInt(b.session_count)}</td><td>${_pct(b.prob, 1)}</td></tr>`).join("");
+    }
+    tierHtml = `<div class="mech-section"><h3>${fmt("fsSessionTier")}</h3>
+      <p class="drilldown-hint">${fmt("fsSessionTierTotal")}: ${fInt(tier.total_sessions)}</p>
+      <table class="drilldown-table"><thead><tr><th>${fmt("rdColBand")}</th>${head}</tr></thead><tbody>${rows}</tbody></table>
+      ${tier.total_sessions_note ? `<p class="drilldown-hint">${_escHtml(tier.total_sessions_note)}</p>` : ""}
+      ${tier.source ? `<p class="drilldown-hint">${_escHtml(tier.source)}</p>` : ""}</div>`;
+  }
+
+  // ── F3a/F4/F5 honest parser-blind notice ──
+  const blindHtml = _blindList(fd.parser_blind) +
+    (fd.parser_blind_reason ? `<p class="drilldown-hint">${_escHtml(fd.parser_blind_reason)}</p>` : "");
+
+  return `<p class="drilldown-hint"><strong>${fmt("panelFreespinDynamics")}</strong></p>` +
+    cadenceHtml + upliftHtml + multHtml + payidHtml + pathsHtml + rtpHtml +
+    erHtml + arcHtml + tierHtml + blindHtml;
+}
+
+// Dimension: generic trigger-path dimension — side-by-side per-dim columns.
+// Phase 2 (dimension framework): reads spin_type_outcomes[label].by_dim and
+// payouts_by_spin_type["<label>__by_dim__<dimName>"] when present.
+//
+// Guards:
+// - by_dim absent (M15/M43/M279 — no dimensions declared) → returns ""
+//   (byte-identical rendering for those machines per BREAK-1 contract)
+// - by_dim present but only 1 real dim value → returns ""
+// - N >= 2 real values → renders side-by-side metric table (one column per value)
+//
+// Reuses: fmt(), fInt(), PURE.fRate, _escHtml — same helpers as sibling dims
+// (feedback_no_parallel_panel_impl.md). Reuses fsRowSessions/fsRowRounds/
+// fsColMetric i18n keys (already present in pure.js).
+function _stDimGenericDimension(stCtx) {
+  const { label, outcome, summary } = stCtx;
+  const pi = (summary || {}).player_impact || {};
+
+  // Guard: outcome (spin_type_outcomes entry) must exist and have by_dim.
+  if (!outcome || typeof outcome !== "object") return "";
+  const byDim = outcome.by_dim;
+  if (!byDim || typeof byDim !== "object") return "";
+
+  const dimNames = Object.keys(byDim).filter((k) => !k.startsWith("_"));
+  if (!dimNames.length) return "";
+
+  let html = "";
+  for (const dimName of dimNames) {
+    const dimMeta = byDim[dimName];
+    if (!dimMeta || typeof dimMeta !== "object") continue;
+
+    // _dim_values is the ordered list of real (non-unknown/non-multi) values.
+    const dimValues = Array.isArray(dimMeta._dim_values) ? dimMeta._dim_values : [];
+    const realVals = dimValues.filter(
+      (v) => !String(v).startsWith("unknown:") && !String(v).startsWith("multi:")
+    );
+    if (realVals.length < 2) continue;  // degenerate: no column split rendered
+
+    // Per-dim payid rows from payouts_by_spin_type sibling key.
+    const pbst = pi.payouts_by_spin_type || {};
+    const siblingKey = `${label}__by_dim__${dimName}`;
+    const payidByDv = pbst[siblingKey] || {};
+
+    // Section header: dim label (from _dim_label or dim_name).
+    const dimLabel = dimMeta._dim_label || dimName.replace(/_/g, " ");
+    const headCols = realVals.map((v) => `<th>${_escHtml(String(v))}</th>`).join("");
+
+    // Helper: format a value or "—".
+    const _fv = (v, decimals, suffix) =>
+      (v == null || !Number.isFinite(Number(v))) ? "—" : Number(v).toFixed(decimals) + (suffix || "");
+    const _pct = (v, d) => _fv(Number(v) * 100, d != null ? d : 2, "%");
+
+    // Metric rows: reuse existing i18n keys + new dim* keys.
+    const _row = (labelKey, cellFn) =>
+      `<tr><td>${fmt(labelKey)}</td>` +
+      realVals.map((v) => `<td>${cellFn(dimMeta[v] || {})}</td>`).join("") +
+      `</tr>`;
+
+    const metricRows =
+      _row("dimRowRounds", (d) => fInt(d.round_count)) +
+      _row("dimRowHitRate", (d) => d.hit_rate != null ? _pct(d.hit_rate, 1) : "—") +
+      _row("dimRowDeadSpinRate", (d) => d.dead_spin_rate != null ? _pct(d.dead_spin_rate, 1) : "—") +
+      _row("dimRowRtpPp", (d) => _fv(d.rtp_contribution_pp, 2, "pp"));
+
+    // Per-dim payid mini-table (top combos by rtp_contribution_pp).
+    const _payidMini = (dvRows) => {
+      const rows = (dvRows || [])
+        .filter((r) => !String(r.payout_id || "").startsWith("_"))
+        .sort((a, b) => Number(b.rtp_contribution_pp ?? b.rtp_pp ?? 0) - Number(a.rtp_contribution_pp ?? a.rtp_pp ?? 0))
+        .slice(0, 8);
+      if (!rows.length) return "—";
+      return rows.map((r) =>
+        `${_escHtml(String(r.payout_id || ""))} ${(Number(r.rtp_contribution_pp ?? r.rtp_pp ?? 0)).toFixed(2)}pp`
+      ).join(", ");
+    };
+    const payidCells = realVals
+      .map((v) => `<td><small>${_payidMini(payidByDv[v])}</small></td>`)
+      .join("");
+    const payidRow = payidByDv && Object.keys(payidByDv).length
+      ? `<tr><td>${fmt("stoPayidTitle")}</td>${payidCells}</tr>`
+      : "";
+
+    // Alarm rows: _unknown / _multi (if non-empty in by_dim).
+    const unknownVals = Object.keys(dimMeta).filter((k) => k.startsWith("unknown:") || k === "_unknown");
+    const multiVals = Object.keys(dimMeta).filter((k) => k.startsWith("multi:") || k === "_multi");
+    const alarmHtml = (unknownVals.length || multiVals.length)
+      ? `<p class="drilldown-hint"><em>${_escHtml("unknown/multi buckets: " + [...unknownVals, ...multiVals].filter(k=>k!=="$meta").join(", ") || "none")}</em></p>`
+      : "";
+
+    html += `<div class="mech-section">
+      <h3>${_escHtml(dimLabel)}</h3>
+      <table class="drilldown-table"><thead><tr>
+        <th>${fmt("dimColMetric")}</th>${headCols}
+      </tr></thead><tbody>${metricRows}${payidRow}</tbody></table>
+      ${alarmHtml}
+    </div>`;
+  }
+
+  return html;
+}
+
+// The dimension list (order = render order within each ST section).
+const SPINTYPE_DIMENSIONS = [
+  _stDimWinDistribution,
+  _stDimPayid,
+  _stDimSelectorChoice,
+  _stDimSettlement,
+  _stDimRespin,
+  _stDimMinigame,
+  _stDimWheel,
+  _stDimFreespin,
+  _stDimGenericDimension,
+];
+
+function renderSpinTypeOutcomes(summary) {
+  const panel = byId("spinTypeOutcomesPanel");
+  if (!panel) return;
+  const body = byId("spinTypeOutcomesBody");
+  const pi = (summary || {}).player_impact || {};
+  const stbRows = pi.spin_type_breakdown || [];
+  if (!stbRows.length) {
+    panel.classList.add("hidden");
+    if (body) body.innerHTML = "";
+    return;
+  }
+  const sto = pi.spin_type_outcomes || {};
+  const pbst = pi.payouts_by_spin_type || {};
+  const bet = Number((summary.sampling || {}).bet) || 1000;
+
+  let html = "";
+  for (const r of stbRows) {
+    const label = "ST" + r.spin_type + "_" + (r.behavior_name || "");
+    const stCtx = { row: r, label, outcome: sto[label] || {}, payRows: pbst[label] || [], summary, bet };
+
+    // Header (feature chip) + always-present overview KV.
+    const featChip = r.feature_name
+      ? ` <span class="st-feature-tag" title="${escapeHtml(fmt("spinTypeFeatureTitle"))}">${escapeHtml(r.feature_name)}` +
+        `${r.feature_trigger_only ? " · " + escapeHtml(fmt("spinTypeFeatureTriggerOnly")) : ""}</span>`
+      : "";
+    html += `<h3 class="drilldown-subhead">${_formatSpinTypeLabel(label)}${featChip}</h3>`;
+    html += _stDimOverview(stCtx);
+
+    // Detail dimensions — each self-applies by data present.
+    let detail = "";
+    for (const dim of SPINTYPE_DIMENSIONS) detail += dim(stCtx) || "";
+    if (detail) html += detail;
+    else html += `<p class="drilldown-hint">${fmt("stoNoPayouts")}</p>`;
+  }
+
+  body.innerHTML = html;
+  panel.classList.remove("hidden");
 }
 
 function renderMachineMechanics(summary) {
@@ -4398,7 +5605,13 @@ function renderMachineMechanics(summary) {
   const ls = mm.lock_symbols || {};
   const lr = mm.lock_reels || {};
   const jp = mm.jackpot || {};
-  const anyApplicable = ll.applicable || ls.applicable || lr.applicable || jp.applicable;
+  const fsMech = mm.free_spin || {};
+  const dpMech = mm.dollar_pick || {};
+  // Visibility gate must cover EVERY section the body below renders —
+  // free_spin/dollar_pick were missing, so a machine whose ONLY applicable
+  // mechanic is free_spin (M275) hid the whole panel (gate-7 finding).
+  const anyApplicable = ll.applicable || ls.applicable || lr.applicable ||
+    jp.applicable || fsMech.applicable || dpMech.applicable;
   if (!anyApplicable) { panel.classList.add("hidden"); return; }
 
   panel.classList.remove("hidden");
@@ -4822,58 +6035,13 @@ async function renderPayIdOverview(summary) {
     shapeByPayId.set(String(r.pay_id), r);
   }
 
-  // Virtual-console only: fetch the machine's declared paytable so
-  // the panel can render zero-hit rows for pay_ids that exist in
-  // the spec but never fired in this sample (typical case: rtp_
-  // excluded grand jackpots at ~1e-6 frequency on small chunk
-  // counts — user saw 12/13 pay_ids and flagged it as incomplete).
-  // Real console: endpoint 404s → declaredPays stays [] → observed-
-  // only rendering (existing behavior unchanged). Compare mode
-  // skips the declared-paytable fetch — diffing observed-vs-observed
-  // is the focus there; injecting "未命中" placeholder rows would
-  // look like B-only data that's actually just paytable padding.
-  // See slot_designer/backend/virtual_app._register_virtual_only_routes.
-  // Real ↔ virtual asymmetries catalogued in docs/PROD_VS_VIRTUAL_CONTRACT.md
-  let declaredPays = [];
-  if (!cmpB) {
-    try {
-      const decl = await apiGet(
-        `/api/virtual/paytable/${encodeURIComponent(machine)}`,
-      );
-      if (decl && Array.isArray(decl.pays)) {
-        declaredPays = decl.pays;
-      }
-    } catch (_err) {
-      declaredPays = [];
-    }
-  }
-  const observedPayIds = new Set(payoutRows.map((r) => String(r.payout_id)));
-  // Append synthetic zero-hit rows for declared pay_ids NOT in the
-  // observed list. Carries ``_declared_only`` so the renderer can
-  // style them differently (muted) and skip sub-row breakdown logic.
-  const _bet = Number(((summary || {}).sampling || {}).bet) || 1000;
-  for (const dp of declaredPays) {
-    const pid = String(dp.pay_id);
-    if (observedPayIds.has(pid)) continue;
-    payoutRows.push({
-      payout_id: pid,
-      hit_count: 0,
-      hit_rate: 0,
-      total_win: 0,
-      // Keep the multiplier column populated from the declared
-      // multiplier so operator can still see "pay_id 4 = 1000×" even
-      // though nobody hit it. Wild-group pays (multi-alt) carry no
-      // top-level multiplier → fmtMult will render "—".
-      avg_win_when_hit: dp.multiplier != null ? Number(dp.multiplier) * _bet : 0,
-      rtp_contribution_pp: 0,
-      spin_type_category: "paid",
-      dominant_spin_type: 1,
-      _declared_only: true,
-      _declared_kind: dp.kind || "",
-      _declared_grand_jackpot: !!dp.grand_jackpot,
-      _declared_rtp_excluded: !!dp.rtp_excluded,
-    });
-  }
+  // (Removed 2026-06-16) The virtual-console-only declared-paytable padding —
+  // a GET /api/virtual/paytable/<machine> probe that appended zero-hit rows for
+  // declared-but-unfired pay_ids — is gone. The slot_designer/virtual framework
+  // (and that endpoint) was deleted (commit 62fb3b6), so the probe 404'd on
+  // EVERY report paint fleet-wide. The real console renders observed pay_ids
+  // only (the fallback the probe collapsed to anyway), so removing it changes
+  // nothing visible and stops the per-paint 404.
   // In compare mode build B-side lookup + extend the row list with
   // B-only payout_ids appended at the end.
   const cmpBMap = new Map();
@@ -5094,10 +6262,11 @@ function _setAllPayIdSubrows(body, expand) {
 //   cmpB          {bool}       — true when compare mode is active
 //   bet           {number}     — A-side bet denominator for multiplier column
 //   betB          {number}     — B-side bet denominator
-//   includeShape  {bool}       — add Shape / Cols / Line columns (aggregate only)
-//   includeNotes  {bool}       — add Notes column (aggregate only)
-//   includeSubRows {bool}      — render composition breakdown sub-rows
-//   maxRtp        {number}     — bar scale; 0 → computed from rows
+//   includeShape      {bool}   — add Shape / Cols / Line columns (aggregate only)
+//   includeNotes      {bool}   — add Notes column (aggregate only)
+//   includeSubRows    {bool}   — render composition breakdown sub-rows
+//   includeLiveSymbols {bool}  — add Symbol combo + Covered cols from live data (default true)
+//   maxRtp            {number} — bar scale; 0 → computed from rows
 function _renderPayoutRowsHtml(payoutRows, opts) {
   const {
     shapeByPayId = null,
@@ -5108,6 +6277,7 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
     includeShape = true,
     includeNotes = true,
     includeSubRows = true,
+    includeLiveSymbols = true,
   } = opts || {};
   let { maxRtp = 0 } = opts || {};
 
@@ -5149,7 +6319,7 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
   const _stack = (aVal, bVal, aRaw, bRaw, kind, digits) =>
     _cmpCell(!!cmpB, aVal, bVal, aRaw, bRaw, kind, digits);
 
-  // thead — 7 base columns + optional shape (3) + optional notes (1)
+  // thead — 7 base columns + optional live-symbol (2) + optional shape (3) + optional notes (1)
   const thead =
     `<thead><tr>` +
     `<th>${_escHtml(fmt("payIdCol"))}</th>` +
@@ -5159,6 +6329,10 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
     `<th>${_escHtml(fmt("payIdMultCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdWinShareCol"))}</th>` +
     `<th>${_escHtml(fmt("payIdRtpCol"))}</th>` +
+    (includeLiveSymbols
+      ? `<th>${_escHtml(fmt("colSymbolCombo"))}</th>` +
+        `<th>${_escHtml(fmt("colCoveredCols"))}</th>`
+      : "") +
     (includeShape
       ? `<th>${_escHtml(fmt("payIdShapeCol"))}</th>` +
         `<th>${_escHtml(fmt("payIdColsCol"))}</th>` +
@@ -5256,6 +6430,37 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
       ? `<td class="cmp-text-bar-cell">${_cmpCell(true, rtpCellA, rtpCellB, rtpRawA, rtpRawB, "pp", 2, { aBarPct: aBar, bBarPct: bBar })}</td>`
       : `<td class="bar-cell" style="--bar:${aBar.toFixed(1)}%">${rtpPp.toFixed(2)}pp</td>`;
 
+    // Live-symbol columns: symbol_combo.dominant + covered_columns from live data.
+    // 1-indexed display for covered_columns so humans read "1,2,3" not "0,1,2".
+    const liveCombo = pr.symbol_combo;
+    const liveDominant = (liveCombo && liveCombo.dominant) ? _escHtml(liveCombo.dominant) : "—";
+    const liveCovCols = Array.isArray(pr.covered_columns) && pr.covered_columns.length
+      ? pr.covered_columns.map((c) => c + 1).join(",")
+      : "—";
+    // Phase B: symbol_combo.combos = full per-payid combo breakdown
+    // [{combo,count,is_wild}]. Render as a native <details> (expand/collapse, no
+    // JS wiring — same idiom as the wild-evidence panel) so wild-substituted
+    // combos (flagged ⚡) split out from direct combos. Falls back to plain
+    // dominant when combos absent (old reports).
+    const liveCombos = (liveCombo && Array.isArray(liveCombo.combos)) ? liveCombo.combos : [];
+    let comboCell = liveDominant;
+    if (liveCombos.length) {
+      const totalC = liveCombos.reduce((a, c) => a + (Number(c.count) || 0), 0) || 1;
+      const items = liveCombos
+        .map((c) => {
+          const pct = (((Number(c.count) || 0) / totalC) * 100).toFixed(0);
+          const wild = c.is_wild ? ` <span class="combo-wild" title="wild">⚡</span>` : "";
+          return `<div class="combo-item">${_escHtml(String(c.combo || "?"))}` +
+            ` <span class="combo-pct">${pct}%</span>${wild}</div>`;
+        })
+        .join("");
+      comboCell = `<details class="combo-details"><summary>${liveDominant}</summary>${items}</details>`;
+    }
+    const liveSymbolCols = includeLiveSymbols
+      ? `<td class="payid-symbol-combo">${comboCell}</td>` +
+        `<td class="payid-covered-cols">${_escHtml(liveCovCols)}</td>`
+      : "";
+
     // Extra columns that only appear in aggregate / shape-inclusive mode
     const shapeCols = includeShape
       ? `<td>${symDisplay}</td>` +
@@ -5263,8 +6468,8 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
         `<td>${lineBadge}</td>`
       : "";
     // Muted placeholders for sub-rows starting at the RTP bar column (col 7).
-    // Total trailing muted = 1 (RTP) + 3×shape + 1×notes when enabled.
-    const subRowMutedCount = 1 + (includeShape ? 3 : 0) + (includeNotes ? 1 : 0);
+    // Total trailing muted = 1 (RTP) + 2×live-symbol + 3×shape + 1×notes when enabled.
+    const subRowMutedCount = 1 + (includeLiveSymbols ? 2 : 0) + (includeShape ? 3 : 0) + (includeNotes ? 1 : 0);
     const noteCol = includeNotes
       ? `<td class="shape-notes">${cmpB ? cmpNote : (isDeclaredOnly ? _escHtml(declaredNote) : notes)}</td>`
       : "";
@@ -5278,6 +6483,7 @@ function _renderPayoutRowsHtml(payoutRows, opts) {
       `<td class="payid-mult">${_stack(mainMultA, mainMultB, multRawA, multRawB, "rel")}</td>` +
       `<td class="payid-winshare">—</td>` +
       barCell +
+      liveSymbolCols +
       shapeCols +
       noteCol +
       `</tr>`;
@@ -5377,131 +6583,9 @@ function _formatSpinTypeLabel(label) {
   return `SpinType ST${_escHtml(stNum)} · ${_escHtml(fmt(behaviorKey))}`;
 }
 
-function renderPayoutsBySpinType(summary) {
-  const panel = byId("payoutsBySpinTypePanel");
-  if (!panel) return;
-
-  const cmpB = state.compareMode && state.compareMode.b ? state.compareMode.b : null;
-  const aData = ((summary || {}).player_impact || {}).payouts_by_spin_type || null;
-  const bData = cmpB ? ((cmpB.player_impact || {}).payouts_by_spin_type || null) : null;
-
-  const aLabels = aData ? Object.keys(aData) : [];
-  const bLabels = bData ? Object.keys(bData) : [];
-  const hasA = aLabels.length > 0;
-  const hasB = bLabels.length > 0;
-
-  if (!hasA && !hasB) {
-    panel.classList.add("hidden");
-    return;
-  }
-  panel.classList.remove("hidden");
-
-  const body = byId("payoutsBySpinTypeBody");
-  if (!body) return;
-
-  const bet = Number(((summary || {}).sampling || {}).bet) || 1000;
-  const betB = cmpB ? Number((cmpB.sampling || {}).bet) || 1000 : bet;
-
-  // Union of all labels, A's order first then B-only additions.
-  const aLabelSet = new Set(aLabels);
-  const allLabels = [...aLabels];
-  for (const lb of bLabels) {
-    if (!aLabelSet.has(lb)) allLabels.push(lb);
-  }
-
-  const bOnlyNote = (cmpB && !hasB)
-    ? `<p class="drilldown-hint">B has no ST-split data (pre-field-rename report).</p>`
-    : "";
-
-  let html = bOnlyNote;
-
-  // Inner helper: render one ST block's table using the shared
-  // _renderPayoutRowsHtml. Shape columns and sub-rows are omitted
-  // (includeShape=false, includeSubRows=false) since ST-split rows
-  // don't carry per-machine shape data.
-  const _stBlockHtml = (rows, isCmpBSide) => {
-    if (!rows.length) return `<p class="drilldown-hint">— no data —</p>`;
-    const tableInner = _renderPayoutRowsHtml(rows, {
-      shapeByPayId: null,
-      cmpBMap: null,
-      cmpB: false,
-      bet: isCmpBSide ? betB : bet,
-      betB,
-      includeShape: false,
-      includeNotes: false,
-      includeSubRows: false,
-    });
-    return `<table class="drilldown-table">${tableInner}</table>`;
-  };
-
-  // Derive spin_type_category from the parent label (ST{N}_{behavior})
-  // so the "类型" column of each split row renders the same badge as
-  // aggregate (which has spin_type_category inline per row). Without this,
-  // split rows show "—" since payouts_by_spin_type rows don't carry the
-  // category field (it would be constant per parent label and therefore
-  // redundant in the analyzer schema; we derive it here at render time).
-  //
-  // Note: analyzer's behavior label uses "free" for FreeSpin / bonus
-  // rounds (per round_classification cost>0 vs cost=0). Aggregate's
-  // spin_type_category uses "bonus" terminology for the same concept.
-  // We translate "free" → "bonus" so _catBadge picks the existing
-  // pid-cat-bonus visual style + payIdCatBonus i18n string (no new
-  // badge style needed; align with aggregate vocabulary).
-  const _categoryFromLabel = (lb) => {
-    const m = /^ST\d+_(paid|free|mixed)$/.exec(String(lb || ""));
-    if (!m) return null;
-    return m[1] === "free" ? "bonus" : m[1];
-  };
-
-  for (const label of allLabels) {
-    const aRows = aData ? (aData[label] || []) : [];
-    const bRows = bData ? (bData[label] || []) : [];
-    const onlyA = aRows.length > 0 && bRows.length === 0;
-    const onlyB = aRows.length === 0 && bRows.length > 0;
-
-    // Sort each side by rtp desc, cap at 20. Tolerates both schemas
-    // (post-rename rtp_contribution_pp + pre-rename rtp_pp).
-    const _rtpForSort = (r) => Number(r.rtp_contribution_pp ?? r.rtp_pp ?? 0);
-    const category = _categoryFromLabel(label);
-    const augmentCategory = (r) => (
-      category && r.spin_type_category == null
-        ? { ...r, spin_type_category: category }
-        : r
-    );
-    const sortCap = (rows) =>
-      [...rows]
-        .map(augmentCategory)
-        .sort((a, b) => _rtpForSort(b) - _rtpForSort(a))
-        .slice(0, 20);
-    const aSorted = sortCap(aRows);
-    const bSorted = sortCap(bRows);
-
-    // Presence note appended to heading.
-    let presenceTag = "";
-    if (cmpB) {
-      if (onlyA) presenceTag = ` <span class="pid-presence-tag pid-presence-a">A only</span>`;
-      else if (onlyB) presenceTag = ` <span class="pid-presence-tag pid-presence-b">B only</span>`;
-    }
-
-    html += `<h3 class="drilldown-subhead">${_formatSpinTypeLabel(label)}${presenceTag}</h3>`;
-
-    if (cmpB) {
-      // Sequential A then B blocks. bData null means the whole field
-      // is absent on B — bOnlyNote above already tells the user; just
-      // render A and omit the B block.
-      html += `<p class="drilldown-hint">A</p>`;
-      html += _stBlockHtml(aSorted, false);
-      if (bData !== null) {
-        html += `<p class="drilldown-hint">B</p>`;
-        html += _stBlockHtml(bSorted, true);
-      }
-    } else {
-      html += _stBlockHtml(aSorted, false);
-    }
-  }
-
-  body.innerHTML = html;
-}
+// (renderPayoutsBySpinType removed — the per-ST payid breakdown is now the
+//  "payid dimension" inside renderSpinTypeOutcomes' per-SpinType sections,
+//  built from the same shared _renderPayoutRowsHtml.)
 
 // ── Per-reel Marginal by SpinType ──────────────────────────────────
 //
@@ -7005,7 +8089,8 @@ function _resetDebugPanelsToEmpty() {
     "fieldDiscoveryPanel", "machineMechanicsPanel",
     "bonusChainDynamicsPanel", "collectCyclePanel",
     "bankruptcyPanel",
-    "payoutsBySpinTypePanel", "reelMarginalBySpinTypePanel",
+    "reelMarginalBySpinTypePanel",
+    "spinTypeOutcomesPanel",  // unified per-SpinType panel (consolidates payouts-by-spintype + topdollar); self-hides on paint; reset here for the clean nothing-loaded state.
   ]) {
     const el = byId(id);
     if (el) el.classList.add("hidden");
@@ -7020,26 +8105,18 @@ function _resetDebugPanelsToEmpty() {
 }
 
 
-/** Render the analysis panels (KPI tiles, tail/big-win grids,
- *  bucket table, paylines, symbols, payouts, features, mechanics,
- *  bankruptcy, library ranking) from a given summary dict. Used by
- *  both refreshCurrentRun (after fetching from /api/runs/.../report)
- *  and _enterCompareMode (which has both summaries in memory and
- *  doesn't need an API round-trip). Compare-aware renderers branch
- *  on state.compareMode.b INSIDE this function — the caller just
- *  passes the primary summary as `s`.
- *
- *  Returns nothing. Async because applyLibraryRanking does its own
- *  /api/library/distributions fetch + several panel renderers are
- *  async on their own.
+// ── Extracted named panel render functions ─────────────────────────────────────
+// These were previously inline inside _paintAnalysisFromSummary. Extracted so
+// they can be referenced by PANEL_REGISTRY descriptors in panel_registry.js.
+// Each function produces BYTE-IDENTICAL DOM output to the original inline code.
+
+/**
+ * renderKpiTiles(s) — KPI card row (RTP, CI, Spins, Zero-win, Archetype,
+ * Loss-streak, Max-return). Compare-aware via state.compareMode.b.
+ * Extracted from _paintAnalysisFromSummary (was lines 7039-7086).
  */
-async function _paintAnalysisFromSummary(s) {
-  // Drive the KPI cards from a single pure helper so tone classification
-  // stays in one place (testable without DOM).
+function renderKpiTiles(s) {
   const cards = PURE.extractMetricCards(s, state.lang);
-  // Compare mode: extract a parallel "cardsB" so each KPI tile can
-  // also show B's value + Δ inline. The single-mode UI is unchanged
-  // when compareMode is null.
   const cardsB = state.compareMode && state.compareMode.b
     ? PURE.extractMetricCards(state.compareMode.b, state.lang)
     : null;
@@ -7061,8 +8138,6 @@ async function _paintAnalysisFromSummary(s) {
     let compareArg = null;
     if (cardsB) {
       const cB = cardsB[key] || { value: "N/A" };
-      // For RTP we have CI half-widths so we can flag significance;
-      // for other metrics we lean on the unknown-CI fallback.
       let deltaText = "";
       let deltaSig = "unknown";
       if (key === "rtp") {
@@ -7084,10 +8159,15 @@ async function _paintAnalysisFromSummary(s) {
       if (subEl) subEl.textContent = c.sub || "";
     }
   }
-  // Tail dependency 2×2 grid. Compare-aware: each .tail-cell
-  // shows A on top + B underneath with cmp-cell-a / cmp-cell-b
-  // styling when state.compareMode is active. Single-mode renders
-  // the same <b>{val}</b> shape as before.
+}
+
+/**
+ * renderTailDepGrid(s) — Tail-dependency 2x2 grid (#kpiTailGrid).
+ * Compare-aware via state.compareMode.b.
+ * Extracted from _paintAnalysisFromSummary (was lines 7091-7122).
+ */
+function renderTailDepGrid(s) {
+  const cards = PURE.extractMetricCards(s, state.lang);
   const tailGrid = byId("kpiTailGrid");
   if (tailGrid) {
     const td = cards.tailDep || {};
@@ -7095,7 +8175,7 @@ async function _paintAnalysisFromSummary(s) {
     const dmB = state.compareMode && state.compareMode.b
       ? (state.compareMode.b.guideline_assessment?.derived_metrics || {})
       : null;
-    const fmt1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(1) + "%";
+    const fmt1 = (v) => v == null ? "—" : (Number(v) * 100).toFixed(1) + "%";
     const tone = td.tone || "neutral";
     const _tcell = (label, key) => {
       const aRaw = dm[key];
@@ -7103,24 +8183,32 @@ async function _paintAnalysisFromSummary(s) {
       if (!dmB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
       const bRaw = dmB[key];
       const bV = fmt1(bRaw);
-      // Tail-dep raws are 0\u20131 fractions \u2192 render \u0394 in pp scale.
+      // Tail-dep raws are 0–1 fractions → render Δ in pp scale.
       const aN = aRaw == null ? NaN : Number(aRaw) * 100;
       const bN = bRaw == null ? NaN : Number(bRaw) * 100;
       return `<div class="tail-cell"><em>${label}</em><b>` +
         _cmpCell(true, aV, bV, aN, bN, "pp", 2) + `</b></div>`;
     };
     tailGrid.innerHTML =
-      _tcell("\u226510x", "tail_dependency_ge10x") +
-      _tcell("\u226520x", "tail_dependency_ge20x") +
-      _tcell("\u226550x", "tail_dependency_ge50x") +
-      _tcell("\u2265100x", "tail_dependency_ge100x");
+      _tcell("≥10x", "tail_dependency_ge10x") +
+      _tcell("≥20x", "tail_dependency_ge20x") +
+      _tcell("≥50x", "tail_dependency_ge50x") +
+      _tcell("≥100x", "tail_dependency_ge100x");
     const card = tailGrid.closest(".kpi");
     if (card) {
       card.classList.remove("kpi--good", "kpi--warn", "kpi--bad");
       if (tone === "good" || tone === "warn" || tone === "bad") card.classList.add(`kpi--${tone}`);
     }
   }
-  // Big-win rate 4-tile grid — same compare-aware shape as tail-dep.
+}
+
+/**
+ * renderBigWinGrid(s) — Big-win rate 4-tile grid (#kpiBigWinGrid).
+ * Compare-aware via state.compareMode.b.
+ * Extracted from _paintAnalysisFromSummary (was lines 7123-7148).
+ */
+function renderBigWinGrid(s) {
+  const cards = PURE.extractMetricCards(s, state.lang);
   const bigWinGrid = byId("kpiBigWinGrid");
   if (bigWinGrid) {
     const tiles = (cards.bigWin && cards.bigWin.tiles) || {};
@@ -7128,25 +8216,33 @@ async function _paintAnalysisFromSummary(s) {
       ? PURE.extractMetricCards(state.compareMode.b, state.lang)
       : null;
     const tilesB = cardsBLocal && cardsBLocal.bigWin ? cardsBLocal.bigWin.tiles : null;
-    const pct1 = (v) => v == null ? "\u2014" : (Number(v) * 100).toFixed(2) + "%";
+    const pct1 = (v) => v == null ? "—" : (Number(v) * 100).toFixed(2) + "%";
     const _bcell = (label, key) => {
       const aRaw = tiles[key];
       const aV = pct1(aRaw);
       if (!tilesB) return `<div class="tail-cell"><em>${label}</em><b>${aV}</b></div>`;
       const bRaw = tilesB[key];
       const bV = pct1(bRaw);
-      // Big-win tile raws are 0\u20131 fractions \u2192 render \u0394 in pp.
+      // Big-win tile raws are 0–1 fractions → render Δ in pp.
       const aN = aRaw == null ? NaN : Number(aRaw) * 100;
       const bN = bRaw == null ? NaN : Number(bRaw) * 100;
       return `<div class="tail-cell"><em>${label}</em><b>` +
         _cmpCell(true, aV, bV, aN, bN, "pp", 2) + `</b></div>`;
     };
     bigWinGrid.innerHTML =
-      _bcell("\u226510x", "ge10") +
-      _bcell("\u226520x", "ge20") +
-      _bcell("\u226550x", "ge50") +
-      _bcell("\u2265100x", "ge100");
+      _bcell("≥10x", "ge10") +
+      _bcell("≥20x", "ge20") +
+      _bcell("≥50x", "ge50") +
+      _bcell("≥100x", "ge100");
   }
+}
+
+/**
+ * renderLibraryRanking(s) — Across-library ranking fetch + apply.
+ * Async; registered as fireAndForget:true (non-blocking for the panel sequence).
+ * Extracted from _paintAnalysisFromSummary (was lines 7154-7164).
+ */
+async function renderLibraryRanking(s) {
   // Across-library ranking, filtered to the same mode so a mode 1
   // baseline machine isn't ranked against mode 5 bonus-mode reports
   // (their ranges are inherently different). Falls back to cross-mode
@@ -7162,6 +8258,14 @@ async function _paintAnalysisFromSummary(s) {
   } catch (_err) {
     // Non-fatal: leave sub-lines cleared.
   }
+}
+
+/**
+ * renderBucketDistribution(s) — Multiplier-bucket distribution table (#bucketTable tbody).
+ * Compare-aware via state.compareMode.b.
+ * Extracted from _paintAnalysisFromSummary (was lines 7166-7228).
+ */
+function renderBucketDistribution(s) {
   // Bucket distribution: table-based (replaces Chart.js canvas).
   const buckets = s.player_impact?.multiplier_profile?.buckets || [];
   const bucketBody = byId("bucketTable")?.querySelector("tbody");
@@ -7227,26 +8331,194 @@ async function _paintAnalysisFromSummary(s) {
       })
       .join("");
   }
-  renderRtpClampWarning(s);
-  renderReportSelfCheck(s);
-  renderSpinTypeBreakdown(s);
-  renderFeatureBreakdownPanel(s);
-  // Classifier panel needs its own API call; fire-and-forget so the
-  // rest of the debug tab isn't blocked on a second network round-
-  // trip. Hidden automatically when the classifier output doesn't
-  // cover this machine.
-  renderPaylineClassification(s);
-  renderPayIdOverview(s);
-  renderPayoutsBySpinType(s);
-  renderFieldDiscovery(s);
-  renderMachineMechanics(s);
-  renderBonusChainDynamicsPanel(s);
-  renderCollectCyclePanel(s);
-  renderPaylineDrilldown(s);
-  renderSymbolDrilldown(s);
-  renderReelMarginalBySpinType(s);
-  renderBankruptcyAnalysis(s);
 }
+
+// ── Generic spec-driven stats panel renderer (P2) ──────────────────────────────
+//
+// renderStatsPanel(ctx, spec) — builds a KV table + optional tally sub-tables
+// from a declarative spec. Zero bespoke render code per feature; add a spec,
+// get a panel.
+//
+// spec shape:
+//   {
+//     panelId:        string  — DOM id of the <section> container
+//     summaryKey:     string  — top-level key in ctx.a (e.g. "topdollar_choice")
+//     titleKey:       string  — i18n key for the panel title (written to h2[data-i18n])
+//     applicableField:string  — field inside the data obj that must be truthy
+//     sections: [
+//       { type:"kv", rows:[{labelKey, path, fmt}] }
+//         — KV table: one row per spec entry.
+//           fmt ∈ "int"  → PURE.fInt(v)
+//                "pct"   → PURE.fRate(v)          (fraction 0-1 → "X.XX%")
+//                "pp"    → v.toFixed(2) + "pp"     (already in pp units)
+//                "raw"   → String(v)
+//       { type:"tally", titleKey, path }
+//         — small two-column table: key → count, sourced from an object dict.
+//     ]
+//   }
+//
+// Single-mode for P2 (reads ctx.a only). Compare-mode: renders A's values, no Δ
+// column — P3 will add that. Does NOT break compare (panel is new; no prior DOM).
+//
+// Mirrors renderBonusChainDynamicsPanel conventions:
+//   - panel.classList.add/remove("hidden") gating
+//   - fmt() for i18n labels
+//   - PURE.fInt / PURE.fRate for values
+//   - .drilldown-table CSS (same as all sibling panels)
+//   - .mech-section / .mech-stat / .mech-label / .mech-value CSS for KV grid
+//
+// Build the inner HTML for a spec-driven stats block (KV grid + tally tables).
+// Extracted from renderStatsPanel so the SAME rendering can be (a) written to a
+// standalone panel by renderStatsPanel, OR (b) embedded inline inside another
+// panel (e.g. the TopDollar behavior under ST14 in the per-SpinType view).
+// Reuses .mech-section/.mech-grid/.mech-stat + .drilldown-table — parity with siblings.
+function _buildStatsSectionsHtml(data, sections) {
+  const _fmtVal = (v, fmtType) => {
+    if (v === null || v === undefined) return "N/A";
+    switch (fmtType) {
+      case "int": return fInt(v);
+      case "pct": return fRate(v);           // fraction 0–1 → "X.XX%"
+      case "pp":  return Number(v).toFixed(2) + "pp";
+      case "mult": return Number(v).toFixed(1) + "×";  // multiplier
+      case "raw": return String(v);
+      default:    return String(v);
+    }
+  };
+  const _resolve = (path) => {
+    let v = data;
+    for (const p of String(path).split(".")) { v = (v != null && typeof v === "object") ? v[p] : undefined; }
+    return v;
+  };
+  let html = "";
+  for (const section of (sections || [])) {
+    if (section.type === "kv") {
+      const rowsHtml = (section.rows || []).map((row) => (
+        `<div class="mech-stat">` +
+        `<span class="mech-label">${fmt(row.labelKey)}</span>` +
+        `<span class="mech-value">${_fmtVal(_resolve(row.path), row.fmt)}</span>` +
+        `</div>`
+      )).join("");
+      html += `<div class="mech-section"><div class="mech-grid">${rowsHtml}</div></div>`;
+    } else if (section.type === "tally") {
+      // Distribution table: key | count | 概率 (share). "_other" pinned last;
+      // numeric-string keys come out ascending (JS), combo keys preserve the
+      // analyzer's count-desc order.
+      const dict = _resolve(section.path);
+      let rowsHtml = "";
+      if (dict && typeof dict === "object") {
+        let keys = Object.keys(dict).filter((k) => k !== "_other");
+        if (Object.prototype.hasOwnProperty.call(dict, "_other")) keys.push("_other");
+        const total = keys.reduce((a, k) => a + (Number(dict[k]) || 0), 0) || 1;
+        rowsHtml = keys
+          .map((k) => {
+            const cnt = Number(dict[k]) || 0;
+            return `<tr><td>${escapeHtml(String(k))}</td><td>${fInt(cnt)}</td>` +
+              `<td>${((cnt / total) * 100).toFixed(1)}%</td></tr>`;
+          })
+          .join("");
+      }
+      html += (
+        `<div class="mech-section"><h3>${fmt(section.titleKey)}</h3>` +
+        `<table class="drilldown-table"><thead><tr>` +
+        `<th>${fmt(section.keyColKey || "tdColKey")}</th>` +
+        `<th>${fmt(section.countColKey || "tdColCount")}</th>` +
+        `<th>${fmt("stoColShare")}</th></tr></thead>` +
+        `<tbody>${rowsHtml}</tbody></table></div>`
+      );
+    } else if (section.type === "mult_buckets") {
+      // Multiplier bucket distribution: 倍率区间 | 次数 | 概率 (+bar). For the
+      // TopDollar total-mini-game multiplier (settled_win/bet) — 倍率/概率/分布.
+      const list = Array.isArray(_resolve(section.path)) ? _resolve(section.path) : [];
+      let rowsHtml = "";
+      if (list.length) {
+        const maxProb = Math.max(...list.map((b) => Number(b.prob) || 0), 0.0001);
+        rowsHtml = list
+          .map((b) => {
+            const prob = Number(b.prob) || 0;
+            const barPct = (prob / maxProb) * 100;
+            return `<tr><td>${PURE.prettyBucketLabel(b.bucket)}×</td>` +
+              `<td>${fInt(Number(b.count) || 0)}</td>` +
+              `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${(prob * 100).toFixed(1)}%</td></tr>`;
+          })
+          .join("");
+      }
+      html += (
+        `<div class="mech-section"><h3>${fmt(section.titleKey)}</h3>` +
+        `<table class="drilldown-table"><thead><tr>` +
+        `<th>${fmt("stoColBand")}</th><th>${fmt("stoColHits")}</th><th>${fmt("stoColShare")}</th>` +
+        `</tr></thead><tbody>${rowsHtml}</tbody></table></div>`
+      );
+    }
+  }
+  return html;
+}
+
+// (renderStatsPanel + TOPDOLLAR_CHOICE_SPEC removed — the per-SpinType view now
+//  builds the TopDollar pick/settlement blocks inline via _buildStatsSectionsHtml
+//  with _TD_PICK_SECTIONS / _TD_SETTLE_SECTIONS, split across ST=14 and ST=15.)
+
+// ── End extracted named panel render functions ──────────────────────────────────
+
+/** Render the analysis panels (KPI tiles, tail/big-win grids,
+ *  bucket table, paylines, symbols, payouts, features, mechanics,
+ *  bankruptcy, library ranking) from a given summary dict. Used by
+ *  both refreshCurrentRun (after fetching from /api/runs/.../report)
+ *  and _enterCompareMode (which has both summaries in memory and
+ *  doesn't need an API round-trip). Compare-aware renderers branch
+ *  on state.compareMode.b INSIDE this function — the caller just
+ *  passes the primary summary as `s`.
+ *
+ *  Returns nothing. Async because applyLibraryRanking does its own
+ *  /api/library/distributions fetch + several panel renderers are
+ *  async on their own.
+ */
+async function _paintAnalysisFromSummary(s) {
+  // Build the ctx object that PANEL_REGISTRY descriptors receive.
+  // P1: wrapped fns still read state.compareMode.b internally — no change to
+  // their bodies. ctx.b is wired for P2+ panels that accept it as a parameter.
+  const ctx = {
+    a: s,
+    b: (state.compareMode && state.compareMode.b) || null,
+    machine: s.machine,
+    mode: s.mode,
+    compare: !!state.compareMode,
+  };
+
+  // Iterate PANEL_REGISTRY in order-value order.
+  // fireAndForget descriptors are called WITHOUT await — matches the original
+  // dispatch, which called the 3 async panels (library-ranking,
+  // renderPaylineClassification, renderPayIdOverview) without await. The
+  // remaining panels are synchronous; awaiting a non-Promise is immediate, so
+  // the original sequencing is preserved exactly.
+  const _registry = window.PANEL_REGISTRY;
+  if (!Array.isArray(_registry) || _registry.length === 0) {
+    console.warn("PANEL_REGISTRY missing/empty — analysis panels will not render (panel_registry.js failed to load?)");
+  }
+  const sorted = (_registry || [])
+    .slice()
+    .sort((a, b) => a.order - b.order);
+  // Every descriptor's render() runs on each paint and SELF-HIDES when its data is
+  // absent (the P1 pattern). No present()/skip shortcut — skipping render would leave
+  // a panel showing stale data after a machine switch (the load path does not reset
+  // before painting). render() must be cheap + idempotent.
+  for (const descriptor of sorted) {
+    // Per-panel isolation: one panel throwing must NOT blank out the rest of the
+    // report. Without this, a single bad render() aborts the loop → every later
+    // panel (incl. the machine-general ones) vanishes and the report reads as
+    // "completely unreadable". Log + continue; the failed panel just self-hides.
+    try {
+      if (descriptor.fireAndForget) {
+        Promise.resolve(descriptor.render(ctx)).catch((e) =>
+          console.error(`panel '${descriptor.id}' render() failed:`, e));
+      } else {
+        await descriptor.render(ctx);
+      }
+    } catch (e) {
+      console.error(`panel '${descriptor.id}' render() failed:`, e);
+    }
+  }
+}
+
 
 async function refreshCurrentRun() {
   if (!state.currentRunId) {
@@ -8414,13 +9686,28 @@ async function refreshFleetRefreshPanel() {
   try {
     data = await apiGet("/api/fleet/refresh");
   } catch (e) {
-    // 404 = no queue yet OR virtual console (fleet disabled).
+    // Genuine error (network/5xx). "No queue" is no longer a 404 — the endpoint
+    // now returns a 200 idle payload (handled below), so this path only fires on
+    // a real failure.
     if (startBtn) startBtn.disabled = false;
     if (cancelBtn) cancelBtn.classList.add("hidden");
     if (statusEl) statusEl.textContent = fmt("fleetRefreshIdle");
     if (progressDiv) progressDiv.classList.add("hidden");
-    // Stop polling when there's nothing to track.
-    if (state.fleetRefreshPollTimer && (!data || data.status !== "running")) {
+    if (state.fleetRefreshPollTimer) {
+      clearInterval(state.fleetRefreshPollTimer);
+      state.fleetRefreshPollTimer = null;
+    }
+    return;
+  }
+
+  // Idle 200 payload (no queue ever / unresolvable): render the idle state —
+  // start enabled, no progress bar, polling stopped (same as the old 404 path).
+  if (!data || !data.queue_id || data.status === "idle") {
+    if (startBtn) startBtn.disabled = false;
+    if (cancelBtn) cancelBtn.classList.add("hidden");
+    if (statusEl) statusEl.textContent = fmt("fleetRefreshIdle");
+    if (progressDiv) progressDiv.classList.add("hidden");
+    if (state.fleetRefreshPollTimer) {
       clearInterval(state.fleetRefreshPollTimer);
       state.fleetRefreshPollTimer = null;
     }

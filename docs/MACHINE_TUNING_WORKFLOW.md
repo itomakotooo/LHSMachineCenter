@@ -3,6 +3,8 @@
 > 给 agent(我自己)冷启动用的**纯流程**文档:改本地配置 → 打表 → 真机采样 → 出报表 → 分析 → 迭代,全程我端到端驱动。
 > 与机台无关。具体机台的目标/约束由 user 在 session 里给。
 
+> **⚠ 现状(2026-06-05,先读)**:§5 采样 + §6 报表都靠 `fresh_slotlab/player_impact_analyzer.py`,它已被**删除**(analyzer 正在按 SpinType 重构)。所以这条 loop 的**采样和报表两步当前都离线**,直到新引擎落地——§5/§6 的命令形态**保留作为新引擎要复现的契约**(同一 CLI 标志 / 同一 `player_impact_summary.json` 输出 schema)。§1–4(理解机台 / 改配置 / 打表 / 订阅)和 §7 方法论**不受影响、照常可用**。新引擎恢复采样+报表后,把下面带「⚠ 离线」的命令换成新入口即可。
+
 ---
 
 ## 0. 前提 / 环境
@@ -15,7 +17,7 @@
   - 配置源(Excel):`Buffalo/Assets/Config/Excel/Machine/<M>/`
   - 打表产物:`Buffalo/Assets/Config/output/<M>Cfg.txt`
   - 订阅区(采样读这):`machineconfig/<M>Cfg.txt`
-  - analyzer:`fresh_slotlab/player_impact_analyzer.py`
+  - analyzer:`fresh_slotlab/player_impact_analyzer.py` —— ⚠ **已删除、SpinType 重构中**(§5/§6 据此暂离线,见顶部现状);core 原语仍在 `fresh_slotlab/analyzer/core/`
   - server 列表:`configs/servers.json`
   - rawdata 缓存:`rawdata/<M>/mode_<n>/`,报表:`reports/<M>/mode_<n>/versions/`
 
@@ -78,6 +80,8 @@ powershell -ExecutionPolicy Bypass -File Buffalo\BuildKit\sync_built_configs.ps1
 
 ## 5. 采样(真机)
 
+> ⚠ **离线**:下面的 `player_impact_analyzer.py` 调用当前跑不通(已删,重构中)。命令保留作契约;新引擎恢复后换入口、其余标志/流程不变。
+
 先算 localcfg md5(让 chunks 按本地 cfg 单独分桶,不污染服务端 baseline):
 
 ```powershell
@@ -118,6 +122,8 @@ python fresh_slotlab\player_impact_analyzer.py --machine <M> --rtp-mode <n> `
 ---
 
 ## 6. 出报表 + 分析
+
+> ⚠ **离线**:报表由 §5 的 analyzer 同一次调用产出,analyzer 已删 → 这步当前无产出。下列字段是 `player_impact_summary.json` 的**输出 schema 契约**(新引擎必须复现,前端面板也依赖它);见 `docs/REPORT_SPEC.md`。
 
 analyzer 自动写 `<report_dir>/player_impact_summary.json` + `player_impact_report.md`。用小 python 脚本提取关键维度:
 

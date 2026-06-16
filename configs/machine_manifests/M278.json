@@ -1,0 +1,68 @@
+{
+  "machine_id": "M278",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "140": {
+      "role": "paid_spin",
+      "play": "NormalCollectionSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
+      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "observed_fields_source": "01_understanding.md §2 (M278/mode_1 chunk_0001, md5 f33ddcf0, 2026-06-16; 80,000 ST140 rows, all 22 fields 100% present)"
+    },
+    "160": {
+      "role": "hold_respin",
+      "play": "JewelFeverRespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["CostCredits", "BetAmount", "ReMarks", "Settle", "LockReels", "AddExtraRatio", "PlayType", "ReelSkin", "CreditsBySymbol", "SymbolIndexToAbsorbDetail", "RewardLastNode", "GameplayTriggerType", "WinCredits"],
+      "observed_fields": ["AddExtraRatio", "BetAmount", "CostCredits", "CreditsBySymbol", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "LockReels", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "PlayType", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "Settle", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexRatio", "SymbolIndexToAbsorbDetail", "SymbolIndexToExtraRatio", "SymbolIndexToRewards", "UpgradeIndex", "WinCredits"],
+      "observed_fields_source": "01_understanding.md §3 (M278/mode_1 chunk_0001, md5 f33ddcf0, 2026-06-16; 5,594 ST160 rows, all 27 fields 100% present)",
+      "trigger_paths": {
+        "fallback": {
+          "kind": "trigger_anchor_walk",
+          "note": "NO round_field discriminator on M278: GameplayTriggerType is GTT=2 only on the 80 Path-A burst OPENERS (all 5,514 other ST160 rounds GTT=0, incl. the ~692 Path-A continuation rounds) so a round_field discriminator MISLABELS them; RewardLastNode is never on ST160 rounds (0/5,594). Omitting a usable round_field discriminator makes the extractor use the trigger_anchor_walk fallback. The walk reads the opening paid ST140 (round_ctx.last_paid_round): Path B = a 590x pid present in PayoutIdToWinAmount with win==0 (661/661 win==0, VERIFIED); Path A = CollectCount==1000 (80/80, VERIFIED). Disjoint+exhaustive: 80+659=739 bursts, 0 both, 0 neither."
+        },
+        "paths": {
+          "jewel_red": {"opened_by": {"payout_id": "5901"}, "label": "JewelFever — Red (premium tier)"},
+          "jewel_blue": {"opened_by": {"payout_id": "5902"}, "label": "JewelFever — Blue"},
+          "jewel_green": {"opened_by": {"payout_id": "5903"}, "label": "JewelFever — Green"},
+          "collect_peak": {"opened_by": {"counter": "CollectCount", "at_peak": 1000}, "label": "BuffCollection peak (pity timer)"}
+        },
+        "multi_trigger_policy": "additive_sessions"
+      }
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "Respin",
+    "opens": "JewelFeverRespin",
+    "note": "No single round-level trigger pid: ST160 JewelFeverRespin (cost=0, free hold-and-respin) is opened by TWO disjoint paths into the SAME ST160 event — (A) the BuffCollection peak (deterministic: CollectCount==1000 on the opening paid ST140, +1 every paid spin, ~0.10%/paid spin; ST140 carries NO 590x pid), and (B) a JewelFever jewel hit (random: the opening paid ST140 carries a 590x pid in PayoutIdToWinAmount with WIN==0 — a trigger marker that pays nothing; ~0.82%/paid spin), with 3 skin sub-paths (5901/5902/5903 <-> Red/Blue/Green). 739 bursts = 80 peak + 659 jewel, 0 ambiguous (VERIFIED). The per-round GameplayTriggerType is GTT=2 ONLY on the 80 Path-A openers (NOT a per-round discriminator — it mislabels the 692 Path-A continuation rounds), so the trigger_paths block uses the trigger_anchor_walk fallback, not a round_field discriminator. AccCredits (=10xCollectCount) is a derived metronome counter, not a payout pot, never paid as credits. ST160 settles ONCE per burst on the single Settle=True (always-last) round; all intermediate respins win 0 (win-INDEPENDENT hold-and-respin). ST160 carries NO natural payid (PayoutIdToWinAmount {} on 5,594/5,594) -> attributed by the m278_jewelfever_settlement SynthesizePayIdRule."
+  },
+  "validation": {
+    "status": "confirmed",
+    "user_signed_off": true,
+    "gate8_signoff": "2026-06-16 user sign-off: out-of-engine = CurJackpotStoreWin only (established fleet test-interface-zeroed pattern, M275/M279 precedent); nothing else declared, nothing else presumed hidden (gate-8 declaration protocol).",
+    "confirmed_against": {"mode": 1, "rawdata": "M278/mode_1"},
+    "evidence": "session_artifacts/_onboard/M278/01_understanding.md (W1: 85,594 rounds, 1 real v3 chunk, single md5 bucket f33ddcf0; ST140=paid NormalCollectionSpin, ST160=free JewelFeverRespin hold-and-respin; sum(WinCredits) ST140 98,295,630 + ST160 74,523,800 = 172,819,430 == server TotalWin == server SummaryWin exact; CollectCount 1->1000 each x80, AccCredits=10xCollectCount 0 exceptions; 739 bursts each exactly one Settle=True as last round, 0 intermediate non-zero wins; 739 = 80 collect-peak + 659 jewel, 0 ambiguous; 590x pids win==0 on ST140 openers) + 02_reuse.md (W2: live engine on the real chunk; ST140 STRICT-REUSE 4 PER_SPINTYPE + collect_mechanic [cycle 1000, correction_pp 0.0]; ST160 NEW-EVENT [no signature match — 10 extra fields vs M43 ST50] assembled with ZERO new plugin via the freespin-family role + the generic trigger_path anchor-walk extractor + a config-only SynthesizePayIdRule; PROVEN: trigger_path split classifies 5,594/5,594 rounds, freespin_total_win_share_covered=1.0, premium-Red 46.0% win-share / 42.86 rtp_pp; _unattributed_st160 74,523,800 -> 0, rtp_integrity passed). W3 (03_design.md): role 'hold_respin' NEW KNOWN_ROLES token derived from the machine's own JewelFeverRespin feature + the hold-and-respin structural kind (win-independent, variable-length, growing-LockReels, single-settlement — structurally distinct from both freespin and respin), wired to freespin_dynamics via ROLE_ANALYSES (freespin-family hook; freespin_dynamics role resolution extended to the {freespin,hold_respin} family; derive_mechanism_flags freespin_applicable extended to include hold_respin — all base-EXCLUDED edits). trigger_paths declarative block = the anchor-walk per-path dimension spec (3 jewel skins + collect_peak). m278_jewelfever_settlement SynthesizePayIdRule (spin_types=[160], label_format=spin_type) = the attribution. Burst-length->mult curve / per-symbol absorb map / AddExtraRatio ladder / a respin-index progression arc are parser_blind (framework-team).",
+    "caveats": [
+      "ROLE TOKEN: 'hold_respin' is a NEW KNOWN_ROLES token (the win-independent variable-length growing-lock single-settlement hold-and-respin archetype is structurally distinct from both M275's fixed-block freespin and M43's win-driven respin). It is wired to the PROVEN freespin_dynamics plugin (NOT a fork). IMPLEMENTER: machine_spec.py needs (1) 'hold_respin' in KNOWN_ROLES, (2) ROLE_ANALYSES['hold_respin']=('freespin_dynamics',), (3) derive_mechanism_flags freespin_applicable to include hold_respin (via FREESPIN_FAMILY_ROLES); AND freespin_dynamics._resolve_st_by_role must resolve the {freespin,hold_respin} family (it currently hardcodes 'freespin' — without this the mechanic view goes dark). All base-EXCLUDED (no base_hash flip). The W2 audit (run under role 'freespin') PROVES the plugin assembles M278 correctly; the hold_respin edit only changes which role string opens the same code path.",
+      "TRIGGER-PATH discriminator: M278 is the framework's FIRST trigger_anchor_walk (fallback-mode) consumer (M275 used a round_field discriminator). GameplayTriggerType is the WRONG discriminator (GTT=2 only on the 80 Path-A openers; mislabels the ~692 Path-A continuation rounds). The anchor walk reads the opening paid ST140: 590x pid win==0 (Path B) / CollectCount==1000 (Path A). VERIFIED disjoint+exhaustive.",
+      "SKIN<->PID label mapping: 5901/5902/5903 <-> Red/Blue/Green adopted from W1 §3 + W2 §dimension; it is a LABEL cosmetic — the trigger-path SPLIT (session/round/win/band per path) is correct regardless of which jewel-color label decorates which pid (the anchor match is purely 'payout_id present with win==0'). Breaker confirms the per-path skin tally; if a pid pairs with a different color, the labels (not the structure) are corrected.",
+      "DOUBLE-590 edge: a few opening ST140 rounds carry two 590x codes (661 code occurrences vs 659 bursts). Under additive_sessions the extractor routes them to a surfaced multi:<A>+<B> ALARM bucket (+1 session to each path), never silently merged. Identical to M275's 1-in-909 double-trigger edge.",
+      "ST160 ATTRIBUTION: NO natural payid (PayoutIdToWinAmount {} on 5,594/5,594 incl all settle rows). The config-only m278_jewelfever_settlement SynthesizePayIdRule (label_format=spin_type) attributes the whole ST160 win to pid 'st160' (43.1% of all payback); PROVEN _unattributed_st160 -> 0, rtp_integrity passed. EXACT M43/M279 precedent.",
+      "parser_blind (framework-team, NEVER fabricated): (a) NO freespin_progression FS-index arc on this machine — M278's progression axis is LockReels growth + AddExtraRatio (ReMarks 'Respin N'), NOT an ExtraRatio FS-index ladder; the freespin_progression extractor does not mine M278's fields, so the FS-arc/ER-ladder/session-tier-by-index sections report available:False honestly (a respin-index progression extractor is the analog, framework-team work); (b) burst-length -> settled-multiplier value-build curve (len 2->20, avg mult 73.8x->424x monotonic, VERIFIED) needs per-burst run-length accumulation in the parser — band-level per-path multiplier IS delivered, the length axis is parser_blind (same boundary as M279 move-burst-length); (c) per-symbol absorb/collect map (SymbolIndexToAbsorbDetail / CreditsBySymbol) — per-round JSON-string field; (d) AddExtraRatio ladder (non-zero on 286/5,594, weak observed correlation, exact application rule undetermined — a could-not-determine data fact, not a fabricated mechanic); (e) skin x burst-length matrix as an independent cross (the skin tier already rides the trigger-path labels).",
+      "collect_mechanic cosmetics (fleet-wide, M275/M279 precedent): completed_cycles_total counts resets (64 vs 80 true cycles); always-on clamp_warning. estimated_correction_pp (the RTP-bearing output) is 0.0 and correct. Framework-team precision item.",
+      "RTP magnitude: the dev-sample point RTP reads 216% (172,819,430 / (80,000 x 1000)) — correct arithmetic on a high-RTP 10k dev sample; server TotalWin/SummaryWin both == 172,819,430 exact. RTP magnitude is not an onboarding criterion (parse-correctness is). Per feedback_dev_ci_scope.md, dev does not chase CI; prod-side re-sample governs the production RTP read.",
+      "modes: [1] only — the only mode with cached rawdata. Extend on data, never by assumption (the M43/M279/M275 cross-mode pattern).",
+      "PROVENANCE: this design's evidence derives from the single md5 bucket f33ddcf0 (per-mode); structure claims are value-agnostic, every NUMBER belongs to that bucket. Any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s."
+    ],
+    "date": "2026-06-16"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' present on every ST140/ST160 round but =0 on 100% of 85,594 in-sample records (W1 §8). The fleet-wide pattern (user-confirmed 2026-06-12 on M275, gate-8): a real progressive jackpot store that the CURRENT testspin interface forces to 0; the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in both ST signatures, so parsing is FORWARD-COMPATIBLE — when the interface populates it, the parser picks it up unchanged. The reported RTP is the BASE RTP (excludes the progressive). Declaration-based out-of-engine protocol (gate-8): nothing else is declared for M278, so nothing else is presumed hidden.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": "m278_jewelfever_settlement (synthesize_pay_id, spin_types=[160], label_format=spin_type) — add to configs/machine_round_win_rules.json; PROVEN in 02_reuse.md to zero _unattributed_st160 (74,523,800 -> real pid st160). EXACT M43/M279 precedent.",
+  "rtp_integrity": {"paid_st": [140], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

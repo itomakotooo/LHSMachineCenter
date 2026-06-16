@@ -62,7 +62,7 @@ if str(_ROOT_FOR_IMPORT) not in sys.path:
 # a high-frequency mid-cycle feature (MoveSpin nudge, freespin)
 # dominates feature_win even though the actual BCM-cycle trigger is
 # a low-frequency Wheel ST=2.
-from fresh_slotlab.round_classification import (
+from fresh_slotlab.analyzer.play_types.bcm_cycle import (
     detect_cycle_peak,
     infer_bcm_target_spin_type,
 )
@@ -481,7 +481,7 @@ def main() -> int:
 
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
-    from fresh_slotlab.player_impact_analyzer import parse_chunk_response
+    from fresh_slotlab.analyzer.core.parser import parse_chunk_response
 
     all_results: dict[int, dict] = {}
     for mode in args.modes:

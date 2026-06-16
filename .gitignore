@@ -74,6 +74,12 @@ reports/M14/mode_1/versions/*_devcache/
 reports/M14/mode_2/
 reports/M14/mode_5/
 reports/M14/mode_7/
+# The mutable store files (index.json/latest.json) are RUNTIME state — every
+# generate/reconcile rewrites them, so tracking them keeps the tree perpetually
+# dirty. The baseline VERSION DIRS stay tracked; the reconcile endpoint
+# (POST /api/maintenance/reconcile-reports) rebuilds the index from dirs.
+reports/M14/mode_1/index.json
+reports/M14/mode_1/latest.json
 state/probes/
 dev_reports/_classify/
 
@@ -86,6 +92,15 @@ configs/machine_halls.json
 
 # Per-fleet static attributes cache (category / features / mechanics /
 # md5). Bootstrapped from reports + machines.json on first access;
+# Machine roster — DOWNLOADED from upstream, not source. The config/code summary
+# md5s are the server's own version tags (fetched via POST /MachineTest/MapMachineOrder
+# + MachineConfigMd5 through the console's refresh path), NOT locally computed; every
+# roster refresh rewrites this file wholesale (e.g. 393 -> 422 machines + a fleet
+# code-md5 bump), which is pure churn in git. It is a runtime cache of upstream state,
+# like machines_static.json below. Missing file => load_machines() falls back to an
+# M14-only roster until a refresh rebuilds it. Not versioned.
+configs/machines.json
+
 # auto-refreshed on every generate-report. Not versioned.
 configs/machines_static.json
 
@@ -94,23 +109,6 @@ configs/machines_static.json
 # auto-cleanup. Not versioned (operator preference, not config).
 configs/rawdata_locks.json
 
-# slot_designer sim outputs (rawdata-format chunks, regenerable)
-slot_designer/out/
-
-# slot_designer virtual console state / data (regenerable / per-operator)
-slot_designer/rawdata/
-slot_designer/reports/
-slot_designer/state/
-slot_designer/cache_chunks/
-slot_designer/dev_reports/
-slot_designer/configs/paytables_virtual/
-# slot_designer DEV scratch (simulate.py / tune.py ephemeral rawdata —
-# intentionally separate from slot_designer/rawdata/ above so developer
-# iteration never writes into the virtual console's data pool)
-slot_designer/_dev_scratch/
-# Per-fleet static attrs cache — auto-rebuilt from reports + machines_virtual.json
-slot_designer/configs/machines_static.json
-
 # Per-operator MachineConfig overrides for focused-machine A/B testing.
 # Operator drops ``<underlying>Cfg.txt`` files here (e.g. M15Cfg.txt);
 # the focused-machine detail panel auto-reveals a "use local cfg"
@@ -118,14 +116,3 @@ slot_designer/configs/machines_static.json
 # experimental weights → per-operator, not shared.
 machineconfig/
 
-# slot_designer per-mode weights rollback artifacts. Designer iteration
-# may drop `weights.json.<tag>.bak` next to live weights for one-shot
-# rollback; git history already records predecessor state, so these
-# scratch .bak files are not versioned.
-slot_designer/machines/*/weights/mode_*/weights.json*.bak
-
-# Designer Stage 4 scratch (probe / grid / lever scripts that feed
-# into design_v*.md but aren't part of the audit trail). Final design
-# scripts (v_<final>_*.py + empirical_*_subgate.* + sim_weights/)
-# stay tracked; scratch dirs are local.
-session_artifacts/*/_designer_scratch*/

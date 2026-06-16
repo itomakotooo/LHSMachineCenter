@@ -32,7 +32,10 @@ from pathlib import Path
 
 # Populated lazily in _pool_worker_init(); cached across jobs within
 # the same worker process so we only pay the analyzer-import cost once.
+# Phase 2b: _analyzer_mod is retained for signature compat but is no
+# longer used; generation goes through _report_engine_mod instead.
 _analyzer_mod = None
+_report_engine_mod = None  # fresh_slotlab.analyzer.report_engine (phase 2b)
 # Captured here (rather than read from sys.path[0] at job-time) because
 # third-party imports or analyzer.main() can reorder sys.path — the
 # post-analyzer hook needs a stable anchor to locate scripts/.
@@ -45,6 +48,7 @@ _project_root: str | None = None
 _patch_summary_md5_fn = None   # fresh_slotlab.summary_md5_patch.patch_summary_md5
 _run_post_inference_fn = None  # fresh_slotlab.post_inference.run_post_analyzer_inference
 _lookup_machine_md5_fn = None  # fresh_slotlab.machine_md5.lookup_machine_md5
+_extract_base_machine_name_fn = None  # machine_variants.extract_base_machine_name (variant→base)
 
 
 def _pool_worker_init(root_path: str) -> None:
@@ -58,14 +62,31 @@ def _pool_worker_init(root_path: str) -> None:
     Also pre-imports the P1-D1 canonical helpers (C3/C4) so they are
     available at job time without live module reads (per memory
     feedback_subprocess_import_suicide_and_module_globals.md §C6).
+
+    Phase 2b: imports report_engine (the new SpinType-native orchestrator)
+    instead of the deleted player_impact_analyzer. _analyzer_mod is kept
+    None (no longer used for generation) so existing callers that test
+    ``_analyzer_mod is None`` stay compatible.
     """
-    global _analyzer_mod, _project_root
+    global _analyzer_mod, _report_engine_mod, _project_root
     global _patch_summary_md5_fn, _run_post_inference_fn, _lookup_machine_md5_fn
+    global _extract_base_machine_name_fn
     _project_root = root_path
     if root_path not in sys.path:
         sys.path.insert(0, root_path)
-    import fresh_slotlab.player_impact_analyzer as _mod
-    _analyzer_mod = _mod
+    # _analyzer_mod: kept None — the deleted player_impact_analyzer is gone.
+    _analyzer_mod = None
+    # Phase 2b: pre-import the new report engine.
+    try:
+        import fresh_slotlab.analyzer.report_engine as _rem
+        _report_engine_mod = _rem
+    except Exception as _exc:
+        import sys as _sys
+        print(
+            f"batch_gen_worker: could not import report_engine: {_exc}",
+            file=_sys.stderr,
+        )
+        _report_engine_mod = None
     # C3 — canonical summary md5 patcher (P1-B2)
     from fresh_slotlab.summary_md5_patch import patch_summary_md5 as _psm
     _patch_summary_md5_fn = _psm
@@ -75,88 +96,117 @@ def _pool_worker_init(root_path: str) -> None:
     # C3 — canonical real-machine md5 lookup (P1-B1)
     from fresh_slotlab.machine_md5 import lookup_machine_md5 as _lmm
     _lookup_machine_md5_fn = _lmm
+    # Variant→base resolver, pre-imported per C6 (no live module read at job time).
+    # Graceful: if it cannot import, leave None → run_analyzer_job treats machine as
+    # its own base (non-variant behaviour, the pre-fix status quo).
+    try:
+        from src.web_console.backend.machine_variants import extract_base_machine_name as _ebm
+        _extract_base_machine_name_fn = _ebm
+    except Exception as _exc:  # noqa: BLE001
+        import sys as _sys
+        print(
+            f"batch_gen_worker: could not import extract_base_machine_name "
+            f"(variant resolution disabled for batch): {_exc}",
+            file=_sys.stderr,
+        )
+        _extract_base_machine_name_fn = None
 
 
 def run_analyzer_job(job: dict) -> dict:
-    """Run analyzer.main() for one (machine, mode). Writes outputs to
+    """Run report generation for one (machine, mode). Writes outputs to
     job['output_dir']. Returns a terse status dict; parent reads the
     actual summary.json from disk for final metrics + DB update.
+
+    Phase 2b: uses report_engine.generate_report_from_chunks for
+    registered machines (configs/machine_manifests/<M>.json exists).
+    Non-registered machines return a clear per-item "not registered" status.
 
     Expected job keys:
       machine (str), mode (int), chunk_dir (str), output_dir (str),
       run_id (str), progress_file (str), max_chunks (int),
-      chunk_spin_times (int), chunk_robot_count (int), bet (int),
+      chunk_spin_times (int), chunk_robot_count (int),
+      bet (int)                — FORWARDED to the engine (sampling.bet)
       upstream_config_md5 (str), upstream_code_md5 (str)  [P1-D1 C1/C2]
       machines_config (str)                               [P1-D1 C3]
+      source_config_md5 / source_code_md5 (str) — the SELECTED chunks' own
+        md5 pair; stamped onto the summary after generation (provenance,
+        mirrors fd6b507). chunk_dir may be a SCOPED hardlink dir containing
+        only the selected chunks (the engine has no md5 filter of its own).
+      rawdata_root (str) — the real rawdata root for the post-inference
+        hook (chunk_dir may be the scoped temp dir; never derive from it).
     """
-    if _analyzer_mod is None:
+    machine = job.get("machine") or ""
+    mode_raw = job.get("mode")
+    if not machine or mode_raw is None:
         return {
-            "machine": job.get("machine"),
-            "mode": job.get("mode"),
+            "machine": machine,
+            "mode": mode_raw,
             "ok": False,
-            "error": "worker not initialized",
+            "error": "job missing required 'machine' or 'mode' key",
             "elapsed_s": 0.0,
         }
-    machine = job["machine"]
-    mode = int(job["mode"])
+    mode = int(mode_raw)
     output_dir = Path(job["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    argv = [
-        "analyzer",
-        "--machine", str(machine),
-        "--rtp-mode", str(mode),
-        "--bet", str(job.get("bet", 1000)),
-        "--from-cache", str(job["chunk_dir"]),
-        "--output-dir", str(output_dir),
-        "--max-chunks", str(job["max_chunks"]),
-        "--chunk-spin-times", str(job["chunk_spin_times"]),
-        "--chunk-robot-count", str(job["chunk_robot_count"]),
-        "--batch-concurrency", "1",
-        # 0.001 keeps session-CI stop unreachable so max_chunks is
-        # the sole termination gate (same rationale as in-process
-        # _run_generate_report — see its comment for history).
-        "--target-halfwidth-pp", "0.001",
-        # 2026-04-22: disable Tier-2 non-convergence abort. With
-        # target=0.001pp the abort's (ci/target)² projection always
-        # overflows the chunks-budget ceiling and bails at the 20-
-        # chunk floor. Batch generate-report is exhaustive replay,
-        # never targeting a real CI — abort is user-facing sampling
-        # logic only. Mirrors the fix in in-process _run_generate_report.
-        "--disable-non-convergence-abort",
-        "--timeout", "30",
-        "--run-id", str(job["run_id"]),
-        "--progress-file", str(job["progress_file"]),
-        "--bankruptcy-session-spins", "10000",
-        "--bankruptcy-bankroll-multipliers", "10,100,200,500",
-    ]
-    # C2 (P1-D1 §3 C2): forward md5 filter flags so the analyzer
-    # subprocess only reads chunks whose envelope md5 matches the
-    # current-md5 baseline, filtering out historical-md5 chunks.
-    # Mirrors _run_generate_report lines 7185-7188 (in-process path).
-    # Keys are set by _prepare_batch_gen_item via _get_machine_md5.
-    upstream_cfg = job.get("upstream_config_md5") or ""
-    upstream_code = job.get("upstream_code_md5") or ""
-    if upstream_cfg:
-        argv.extend(["--upstream-config-md5", upstream_cfg])
-    if upstream_code:
-        argv.extend(["--upstream-code-md5", upstream_code])
-    orig_argv = sys.argv
-    sys.argv = argv
-    t0 = time.time()
-    try:
-        # analyzer.main() prints its summary JSON to stdout; silence it
-        # here — we read the summary from disk instead.
-        with contextlib.redirect_stdout(io.StringIO()):
-            rc = _analyzer_mod.main()
-        elapsed = round(time.time() - t0, 2)
-        summary_file = output_dir / "player_impact_summary.json"
-        if rc != 0:
+    # Phase 2b: use the new report engine for registered machines.
+    _rem = _report_engine_mod
+    if _rem is None:
+        # Engine not available — try lazy import (e.g. unit-test callers
+        # that bypass _pool_worker_init).
+        try:
+            import fresh_slotlab.analyzer.report_engine as _rem  # noqa: PLC0415
+        except Exception as _exc:
             return {
                 "machine": machine, "mode": mode, "ok": False,
-                "error": f"analyzer rc={rc}",
-                "elapsed_s": elapsed,
+                "error": f"report_engine not available: {_exc}",
+                "elapsed_s": 0.0,
             }
+
+    # Registered check: configs/machine_manifests/<machine>.json must exist.
+    # Resolve the manifests root relative to this worker's project root or
+    # fall back to repo-relative default from the engine module.
+    _root = Path(_project_root) if _project_root else Path(_rem.__file__).resolve().parent.parent.parent
+    _manifests_root = _root / "configs" / "machine_manifests"
+    # Variant resolution — MIRROR of app.py._run_generate_report: a variant
+    # (machine_id with a "$" selector suffix) shares the underlying base's parsing
+    # and has no manifest of its own. Resolve the base, register against it, and pass
+    # manifest_machine_id so the engine uses the base's manifest while keeping the
+    # variant's identity. Uses the resolver pre-imported in _pool_worker_init (C6 — no
+    # live module read at job time); if unavailable, machine is its own base (non-variant).
+    _base_machine = (
+        _extract_base_machine_name_fn(machine) if _extract_base_machine_name_fn else machine
+    )
+    if not (_manifests_root / f"{_base_machine}.json").exists():
+        return {
+            "machine": machine, "mode": mode, "ok": False,
+            "error": (
+                f"machine {machine} is not registered for the SpinType-native engine "
+                f"(no configs/machine_manifests/{_base_machine}.json); "
+                "see docs/ANALYZER_ARCHITECTURE.md"
+            ),
+            "elapsed_s": 0.0,
+        }
+
+    chunk_dir = Path(job["chunk_dir"])
+    run_id = str(job["run_id"])
+    t0 = time.time()
+    try:
+        # bet MUST be forwarded: the engine's default bet=1 lands in
+        # summary.sampling.bet, and the frontend divides every "× bet"
+        # multiplier column by it — dropping it rendered 1000× inflated
+        # multipliers (the fd6b507 trap; the job always carried "bet" but
+        # this call previously never passed it on).
+        _rem.generate_report_from_chunks(
+            machine, mode,
+            chunk_dir=chunk_dir,
+            output_dir=output_dir,
+            bet=int(job.get("bet") or 1),
+            run_id=run_id,
+            manifest_machine_id=_base_machine,
+        )
+        elapsed = round(time.time() - t0, 2)
+        summary_file = output_dir / "player_impact_summary.json"
         if not summary_file.exists():
             return {
                 "machine": machine, "mode": mode, "ok": False,
@@ -219,6 +269,43 @@ def run_analyzer_job(job: dict) -> dict:
                 file=sys.stderr,
             )
 
+        # PROVENANCE STAMP (mirror app.py _run_generate_report, fd6b507):
+        # the engine stamps the summary with the roster's CURRENT md5 pair
+        # regardless of which chunks it parsed. A report's md5 tag must be
+        # its SOURCE-chunk provenance (the rwtree buckets reports into
+        # rawdata cells by this pair). The job carries the selected chunks'
+        # own md5 (source_config_md5/source_code_md5, set by
+        # _prepare_batch_gen_item). Runs AFTER patch_summary_md5 so
+        # provenance wins. Atomic write (tmp + os.replace) — the parent
+        # reads this file in _finalize_batch_gen_item.
+        _src_cfg = str(job.get("source_config_md5") or "")
+        _src_code = str(job.get("source_code_md5") or "")
+        if (_src_cfg or _src_code) and summary_file.exists():
+            try:
+                import json as _json  # noqa: PLC0415
+                import os as _os  # noqa: PLC0415
+                _doc = _json.loads(summary_file.read_text(encoding="utf-8"))
+                if (
+                    (_doc.get("config_md5") or "") != _src_cfg
+                    or (_doc.get("code_md5") or "") != _src_code
+                ):
+                    _doc["config_md5"] = _src_cfg
+                    _doc["code_md5"] = _src_code
+                    _tmp = summary_file.with_suffix(".json.tmp")
+                    _tmp.write_text(
+                        _json.dumps(_doc, ensure_ascii=False), encoding="utf-8",
+                    )
+                    _os.replace(_tmp, summary_file)
+            except Exception as exc:  # noqa: BLE001
+                # Non-fatal but LOUD: a failed stamp means the report lands
+                # in the wrong rwtree cell (per feedback_no_silent_swallow).
+                print(
+                    f"batch_gen_worker: provenance stamp failed for "
+                    f"machine={machine!r} mode={mode!r}: "
+                    f"{type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
+
         # C4 (P1-D1 §3 C4): trigger offline inference scripts via the
         # canonical shared helper (P1-B5 dedup). Replaces the legacy
         # inline subprocess block that required script_root resolution
@@ -236,8 +323,15 @@ def run_analyzer_job(job: dict) -> dict:
             if _rpi is None:
                 from fresh_slotlab.post_inference import run_post_analyzer_inference as _rpi  # noqa: PLC0415
             import os as _os
-            chunk_dir = Path(job["chunk_dir"])
-            rawdata_root = chunk_dir.parent.parent if chunk_dir.is_dir() else None
+            # Prefer the job's explicit rawdata_root: chunk_dir may be the
+            # SCOPED hardlink dir (cache/_gen_scope/<run_id>) whose
+            # parent.parent is NOT the rawdata root.
+            _job_rd_root = job.get("rawdata_root")
+            if _job_rd_root:
+                rawdata_root = Path(_job_rd_root)
+            else:
+                _chunk_dir_for_infer = chunk_dir
+                rawdata_root = _chunk_dir_for_infer.parent.parent if _chunk_dir_for_infer.is_dir() else None
             env = dict(_os.environ)
             if rawdata_root is not None:
                 env.setdefault("SLOT_RAWDATA_ROOT", str(rawdata_root))
@@ -300,7 +394,7 @@ def run_analyzer_job(job: dict) -> dict:
             "post_hook": hook_results,
         }
     except SystemExit as exc:
-        # analyzer raises SystemExit on argparse / validation failures —
+        # report_engine raises SystemExit on hard errors (topo-sort failure, etc.)
         # treat as per-item failure, don't kill the worker.
         return {
             "machine": machine, "mode": mode, "ok": False,
@@ -313,5 +407,3 @@ def run_analyzer_job(job: dict) -> dict:
             "error": f"{type(exc).__name__}: {exc}",
             "elapsed_s": round(time.time() - t0, 2),
         }
-    finally:
-        sys.argv = orig_argv

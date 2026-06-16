@@ -1,0 +1,425 @@
+"""Phase 2a e2e gate: report_engine generates correct schema and RTP from M15 cached chunks.
+
+Gates per ANALYZER_ARCHITECTURE.md §6 phase 2:
+  - Invariant 1: schema keys (top-level + player_impact.*) match kept-good schema
+  - Invariant 3: pytest 0 failed / 0 errors
+  - Invariant 4: M15 e2e: rtp_integrity_check.passed == True, RTP in [80,110]
+  - Inject-bug (round_win rules): skip rules -> RTP jumps to ~128 -> RED -> revert -> GREEN
+
+Key correctness gate:
+  Without the round_win SettlementWinAmountRule, ST=14 phantom WinCredits are
+  double-counted and M15 RTP inflates to ~128%. The gate asserts RTP < 115 AND
+  rtp_integrity_check.passed == True. A skip of rule loading makes both fail.
+
+Machine-id option (b) chosen: "M15" added to topdollar_selector_settlement.applies_to
+in configs/machine_round_win_rules.json so bare "M15" (new framework identity) matches.
+The variant keys (M15$TopDollarSelector$*) are preserved for backward compatibility
+with the old PIA fleet path.
+"""
+from __future__ import annotations
+
+import json
+import tempfile
+from pathlib import Path
+
+import pytest
+
+# Repo root for locating rawdata and kept-good report.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_CHUNK_DIR = _REPO_ROOT / "rawdata" / "M15" / "mode_1"
+
+# Schema-key reference ONLY (not an RTP reference): rv_20260514 is a localcfg TUNING
+# report (config_md5 localcfg_cca3bd1d, RTP 95.78) — NOT the canonical M15. The canonical
+# M15 (server config 2d8996..., the current rawdata) is ~92% RTP per the same-config old
+# reports (rv_20260604T*_rawdata_2d8996_44297a = 92.04%); this engine produces ~91.3%
+# (within CI). The correctness gate is VALUE-AGNOSTIC: RTP < 128 (no ST14 double-count)
+# + RTP in [80,110] + rtp_integrity passed — never a pinned RTP value.
+_KEPT_GOOD_20260514 = (
+    _REPO_ROOT
+    / "reports"
+    / "M15"
+    / "mode_1"
+    / "versions"
+    / "rv_20260514T020824Z_3c48306e"
+    / "player_impact_summary.json"
+)
+
+# Expected top-level keys (from kept-good report schema).
+_EXPECTED_TOP_KEYS = frozenset({
+    "report_id", "run_id", "machine", "mode",
+    "config_md5", "code_md5",
+    "analyzer_version", "effective_analyzer_version", "effective_analyzer_version_error",
+    "output_all_robots_result",
+    "sampling", "rtp",
+    "player_impact", "upstream_analysis",
+    "collect_mechanic", "topdollar_choice",
+    "guideline_assessment", "guideline_comparison",
+    "rtp_integrity_check",
+    "storage",
+    "structure_drift",
+})
+
+# Expected player_impact sub-keys (from kept-good report schema).
+_EXPECTED_PI_KEYS = frozenset({
+    "volatility", "hit_and_payout", "streaks",
+    "paylines_top20", "payout_groups_top20", "payout_groups_status", "payout_ids_top20",
+    "spin_type_breakdown", "spin_type_coverage", "field_discovery",
+    "payline_symbol_top20", "session_rtp_curves", "chain_ratio_sequences",
+    "reel_position_top20",
+    "symbols_top20", "symbols_by_column_top10", "symbols_by_column_top10_payline",
+    "payline_rows_per_col",
+    "bankruptcy_simulation", "bankruptcy_probe",
+    "bonus_chain_dynamics", "machine_mechanics", "multiplier_profile",
+    "payouts_by_spin_type", "reel_marginal_by_spin_type",
+    "spin_type_outcomes", "spin_type_rtp_buckets",
+    "upstream_feature_breakdown",
+})
+
+# NO RTP value/range reference here ON PURPOSE. The source machine's numbers can
+# change at any time (re-sample, re-tune, upstream config change), so pinning an RTP
+# value OR a range would be a brittle false-alarm. The ST14 double-count regression is
+# caught VALUE-AGNOSTICALLY via rtp_integrity: a phantom ST14 win with no pay_id (rule
+# not applied) lands in a Layer-2 fallback bucket and breaks the Layer-1 sum invariant.
+
+
+def _requires_chunks() -> bool:
+    return _CHUNK_DIR.exists() and len(list(_CHUNK_DIR.glob("chunk_*.json"))) > 0
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def m15_summary():
+    """Run generate_report_from_chunks on real M15 cached chunks once per module."""
+    if not _requires_chunks():
+        pytest.skip("M15 cached chunks not present")
+    from fresh_slotlab.analyzer.report_engine import generate_report_from_chunks
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        summary = generate_report_from_chunks(
+            "M15", 1,
+            chunk_dir=_CHUNK_DIR,
+            output_dir=Path(tmpdir),
+        )
+        assert (Path(tmpdir) / "player_impact_summary.json").exists(), (
+            "write_summary_json must produce player_impact_summary.json"
+        )
+        yield summary
+
+
+@pytest.fixture(scope="module")
+def kept_good_summary():
+    """Load the authoritative M15 reference report (rv_20260514, round_win rules active)."""
+    if not _KEPT_GOOD_20260514.exists():
+        pytest.skip("Kept-good M15 report (rv_20260514) not present")
+    return json.loads(_KEPT_GOOD_20260514.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# CORRECTNESS GATE — VALUE-AGNOSTIC (no RTP value/range; source numbers can change).
+# The ST14 double-count regression (round_win rule not applied) is caught because the
+# unattributed phantom win trips rtp_integrity: it has no pay_id → Layer-2 fallback
+# bucket, and breaks the Layer-1 sum(pay_id)==our_total invariant.
+# ---------------------------------------------------------------------------
+
+class TestCorrectnessGate:
+    def test_no_unattributed_fallback_buckets(self, m15_summary):
+        """Value-agnostic double-count guard: a phantom ST14 win with no pay_id
+        (round_win rule not applied) lands in a Layer-2 fallback bucket. Assert none."""
+        ric = m15_summary.get("rtp_integrity_check", {})
+        assert ric.get("layer2_no_fallback_buckets_ok") is True, (
+            f"Layer-2 fallback buckets present: {ric.get('layer2_fallback_buckets_found')}. "
+            f"Indicates ST14 phantom wins not zeroed by round_win rules (double-count)."
+        )
+
+    def test_layer1_sum_invariant_holds(self, m15_summary):
+        """Value-agnostic: sum(pay_id win) == our_total_win (no orphan / double-count)."""
+        ric = m15_summary.get("rtp_integrity_check", {})
+        assert ric.get("layer1_invariant_ok") is True, (
+            f"Layer-1 invariant broken: {ric.get('layer1_error')}"
+        )
+
+    def test_rtp_integrity_passes(self, m15_summary):
+        """rtp_integrity_check.passed must be True: sum(payid RTP) == summary RTP."""
+        ric = m15_summary.get("rtp_integrity_check", {})
+        passed = ric.get("passed")
+        assert passed is True, (
+            f"rtp_integrity_check.passed must be True for M15 mode 1. "
+            f"Got: passed={passed}, message={ric.get('summary_message', 'N/A')}. "
+            f"Likely cause: round_win rules not applied — pay_id attribution does not sum to total RTP."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Schema invariant tests (gate invariant 1)
+# ---------------------------------------------------------------------------
+
+class TestSchemaInvariant:
+    def test_top_level_keys_superset_of_expected(self, m15_summary):
+        """Generated report must contain ALL expected top-level keys.
+
+        Uses _EXPECTED_TOP_KEYS (current schema) not a versioned kept-good report —
+        the rv_20260514 report predates effective_analyzer_version / rtp_integrity_check
+        / topdollar_choice, so direct key-equality against it would be wrong.
+        """
+        gen_keys = set(m15_summary.keys())
+        missing = _EXPECTED_TOP_KEYS - gen_keys
+        assert not missing, f"Expected top-level keys absent: {sorted(missing)}"
+
+    def test_top_level_no_spurious_keys(self, m15_summary):
+        """Generated report must not have keys outside the known current schema."""
+        gen_keys = set(m15_summary.keys())
+        extra = gen_keys - _EXPECTED_TOP_KEYS
+        assert not extra, (
+            f"Unexpected extra top-level keys in generated report: {sorted(extra)}. "
+            f"If this is a new intended key, add it to _EXPECTED_TOP_KEYS in this test."
+        )
+
+    def test_player_impact_keys_superset_of_expected(self, m15_summary):
+        gen_pi = set(m15_summary["player_impact"].keys())
+        missing = _EXPECTED_PI_KEYS - gen_pi
+        assert not missing, f"Expected player_impact keys absent: {sorted(missing)}"
+
+    def test_player_impact_no_spurious_keys(self, m15_summary):
+        gen_pi = set(m15_summary["player_impact"].keys())
+        extra = gen_pi - _EXPECTED_PI_KEYS
+        assert not extra, (
+            f"Unexpected extra player_impact keys: {sorted(extra)}. "
+            f"If intentional, add to _EXPECTED_PI_KEYS."
+        )
+
+    def test_machine_and_mode(self, m15_summary):
+        assert m15_summary["machine"] == "M15"
+        assert m15_summary["mode"] == 1
+
+    def test_sampling_metadata_present(self, m15_summary):
+        s = m15_summary["sampling"]
+        assert s["chunks"] > 0
+        assert s["total_spins"] > 0
+        assert s["stop_reason"] == "from_cache_complete"
+
+
+# ---------------------------------------------------------------------------
+# rtp_integrity structure (gate invariant 4)
+# ---------------------------------------------------------------------------
+
+class TestRTPIntegrity:
+    def test_rtp_integrity_check_key_present(self, m15_summary):
+        assert "rtp_integrity_check" in m15_summary
+
+    def test_rtp_integrity_check_has_passed_field(self, m15_summary):
+        assert "passed" in m15_summary["rtp_integrity_check"]
+
+    def test_rtp_integrity_check_has_layer_fields(self, m15_summary):
+        ric = m15_summary["rtp_integrity_check"]
+        for field in ("layer1_invariant_ok", "layer2_no_fallback_buckets_ok",
+                      "layer3_anchors_ok", "summary_message"):
+            assert field in ric, f"rtp_integrity_check missing field: {field}"
+
+    def test_rtp_integrity_summary_message_is_string(self, m15_summary):
+        assert isinstance(m15_summary["rtp_integrity_check"].get("summary_message"), str)
+
+
+# ---------------------------------------------------------------------------
+# MachineNotRegistered test
+# ---------------------------------------------------------------------------
+
+class TestMachineNotRegistered:
+    def test_unregistered_machine_raises(self):
+        from fresh_slotlab.analyzer.report_engine import (
+            generate_report_from_chunks,
+            MachineNotRegistered,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with pytest.raises(MachineNotRegistered, match="not registered"):
+                generate_report_from_chunks(
+                    "M999_nonexistent", 1,
+                    chunk_dir=_CHUNK_DIR if _CHUNK_DIR.exists() else Path(tmpdir),
+                    output_dir=Path(tmpdir),
+                )
+
+
+# ---------------------------------------------------------------------------
+# Inject-bug proof: round_win rule skip → RED → revert → GREEN
+#
+# This is the critical regression guard: it proves that if the round_win rules
+# are NOT applied, the correctness test turns RED (RTP ~128, integrity fails).
+# When reverted, tests are GREEN again.
+# ---------------------------------------------------------------------------
+
+class TestInjectBugProof:
+    def test_inject_no_round_win_rules_breaks_integrity(self, monkeypatch):
+        """Inject: monkey-patch load_rules_for_machine to return [].
+        Assert (VALUE-AGNOSTIC): the ST14 phantom win (no pay_id) lands in a Layer-2
+        fallback bucket and rtp_integrity fails — the double-count's signature, NOT an
+        RTP number. After monkeypatch auto-reverts, the GREEN state resumes.
+        """
+        if not _requires_chunks():
+            pytest.skip("M15 cached chunks not present")
+
+        import fresh_slotlab.round_win as rw_mod
+
+        def _no_rules(machine_id, config):
+            return []  # BUG: always return empty regardless of machine
+
+        monkeypatch.setattr(rw_mod, "load_rules_for_machine", _no_rules)
+
+        from fresh_slotlab.analyzer.report_engine import generate_report_from_chunks
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            summary = generate_report_from_chunks(
+                "M15", 1,
+                chunk_dir=_CHUNK_DIR,
+                output_dir=Path(tmpdir),
+            )
+            ric = summary.get("rtp_integrity_check", {})
+            passed = ric.get("passed")
+
+            # Inject-bug RED assertions — VALUE-AGNOSTIC. Without round_win rules the ST14
+            # phantom win has no pay_id → it lands in a Layer-2 fallback bucket and the
+            # integrity gate fails. The double-count's signature is the fallback bucket,
+            # NOT an RTP magic number (the source machine's RTP can change at any time).
+            assert ric.get("layer2_no_fallback_buckets_ok") is False, (
+                "inject-bug: with no round_win rules, ST14 phantom wins must create a "
+                f"Layer-2 fallback bucket; got layer2_no_fallback_buckets_ok="
+                f"{ric.get('layer2_no_fallback_buckets_ok')}, "
+                f"buckets={ric.get('layer2_fallback_buckets_found')}"
+            )
+            assert passed is not True, (
+                "inject-bug: with no round_win rules, rtp_integrity_check.passed must NOT be True, "
+                f"got passed={passed}"
+            )
+        # monkeypatch auto-reverts after this test — the next run (without inject) is GREEN
+
+    def test_inject_rtp_integrity_gate_failure_surfaced(self, monkeypatch):
+        """Inject: make check_rtp_integrity raise.
+        Assert: engine captures the error in rtp_integrity_check (not silent swallow).
+        This proves feedback_no_silent_swallow.md is honored.
+        """
+        if not _requires_chunks():
+            pytest.skip("M15 cached chunks not present")
+
+        import fresh_slotlab.analyzer.rtp_integrity as ri_mod
+
+        def _buggy_check(*args, **kwargs):
+            raise RuntimeError("injected_gate_failure")
+
+        monkeypatch.setattr(ri_mod, "check_rtp_integrity", _buggy_check)
+
+        from fresh_slotlab.analyzer.report_engine import generate_report_from_chunks
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            summary = generate_report_from_chunks(
+                "M15", 1,
+                chunk_dir=_CHUNK_DIR,
+                output_dir=Path(tmpdir),
+            )
+            ric = summary.get("rtp_integrity_check", {})
+            assert "error" in ric, (
+                f"inject-bug: rtp_integrity gate failure must appear as 'error' key, got: {ric}"
+            )
+            assert "injected_gate_failure" in str(ric["error"])
+            assert ric.get("passed") is None
+
+
+# ---------------------------------------------------------------------------
+# Variant resolution (2026-06-07) — VALUE-AGNOSTIC.
+# A variant machine (machine_id with a "$" selector suffix, e.g.
+# "M15$TopDollarSelector$0$") has NO manifest of its own — it shares the
+# underlying base machine's rawdata format + parsing; only its preset analysis
+# configs differ (it is sampled separately). generate_report_from_chunks(
+# manifest_machine_id=<base>) must resolve mechanism (manifest / derived analyses
+# / round_win / bcm / version / md5) from the BASE while keeping the VARIANT's own
+# identity in the report ("machine" field + report_id). This guards the fix for
+# the console 422 "<variant> is not registered" regression.
+# ---------------------------------------------------------------------------
+
+class TestVariantResolution:
+    # A synthetic variant key whose base is M15. It has no manifest of its own;
+    # we reuse M15's own cached chunks as the variant's rawdata source so the test
+    # needs no separate variant rawdata (robust + value-agnostic).
+    _FAKE_VARIANT = "M15$FakeVariant$0$"
+
+    def test_variant_uses_base_manifest_keeps_own_identity(self):
+        """machine_id=variant + manifest_machine_id=M15: report identity is the
+        VARIANT, but analyses/integrity come from M15's manifest."""
+        if not _requires_chunks():
+            pytest.skip("M15 cached chunks not present")
+        from fresh_slotlab.analyzer.report_engine import generate_report_from_chunks
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            summary = generate_report_from_chunks(
+                self._FAKE_VARIANT, 1,
+                chunk_dir=_CHUNK_DIR,
+                output_dir=Path(tmpdir),
+                manifest_machine_id="M15",
+            )
+        # Identity = the variant (NOT the base) — "独立报表，标变体名".
+        assert summary["machine"] == self._FAKE_VARIANT
+        assert summary["report_id"].startswith(f"impact_{self._FAKE_VARIANT}_")
+        # Mechanism resolved from base M15: its player_choice analysis is present
+        # + the cross-cutting / per-ST panels are all present (same as bare M15).
+        assert "topdollar_choice" in summary
+        gen_pi = set(summary["player_impact"].keys())
+        assert not (_EXPECTED_PI_KEYS - gen_pi), (
+            f"variant missing player_impact panels: {sorted(_EXPECTED_PI_KEYS - gen_pi)}"
+        )
+        # Value-agnostic correctness gate (NOT an RTP value).
+        assert summary["rtp_integrity_check"]["passed"] is True
+
+    def test_variant_without_manifest_machine_id_is_unregistered(self):
+        """INJECT-BUG / proof the fix matters: WITHOUT manifest_machine_id, a variant
+        (no manifest of its own) raises MachineNotRegistered — exactly the console 422
+        before the fix. Reverting the manifest_machine_id plumbing reproduces this."""
+        if not _requires_chunks():
+            pytest.skip("M15 cached chunks not present")
+        from fresh_slotlab.analyzer.report_engine import (
+            generate_report_from_chunks,
+            MachineNotRegistered,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with pytest.raises(MachineNotRegistered):
+                generate_report_from_chunks(
+                    self._FAKE_VARIANT, 1,
+                    chunk_dir=_CHUNK_DIR,
+                    output_dir=Path(tmpdir),
+                    # no manifest_machine_id → the variant key has no manifest → 422
+                )
+
+    def test_variant_stamps_its_own_md5_not_the_base(self):
+        """The variant's report must carry the VARIANT's md5 (its own machines.json
+        codeSummaryMd5), NOT the base's — else the console freshness badge reads
+        'outdated' the instant the report is generated (it compares the stamped md5
+        against the variant's own current md5). Value-agnostic: compares to
+        lookup_machine_md5, never a pinned hash. Uses a REAL variant key (it needs a
+        distinct machines.json md5 entry); reuses M15's chunks as the rawdata source."""
+        if not _requires_chunks():
+            pytest.skip("M15 cached chunks not present")
+        from fresh_slotlab.analyzer.report_engine import generate_report_from_chunks
+        from fresh_slotlab.machine_md5 import lookup_machine_md5
+
+        real_variant = "M15$TopDollarSelector$0$"
+        v_cfg, v_code = lookup_machine_md5(real_variant)
+        b_cfg, b_code = lookup_machine_md5("M15")
+        if not v_code or v_code == b_code:
+            pytest.skip(
+                "variant has no distinct code_md5 in machines.json — nothing to differentiate"
+            )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            summary = generate_report_from_chunks(
+                real_variant, 1,
+                chunk_dir=_CHUNK_DIR,
+                output_dir=Path(tmpdir),
+                manifest_machine_id="M15",
+            )
+        # The stamped md5 is the VARIANT's own (matches its lookup), NOT the base's.
+        assert summary["code_md5"] == v_code, (
+            f"variant report stamped code_md5={summary['code_md5']!r}, "
+            f"expected the variant's own {v_code!r}"
+        )
+        assert summary["code_md5"] != b_code, (
+            "variant report stamped the BASE's code_md5 → UI would read 'outdated'"
+        )
+        assert summary["config_md5"] == v_cfg

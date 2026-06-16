@@ -75,7 +75,11 @@ def _run_ps(extra_args: list[str], env: dict[str, str] | None = None,
         return subprocess.run(
             [_pwsh(), "-NoProfile", "-ExecutionPolicy", "Bypass",
              "-File", str(START_CONSOLE), "-NoBanner"] + extra_args,
-            capture_output=True, text=True, timeout=timeout,
+            # encoding pinned: locale-codepage decoding (GBK on zh-CN Windows)
+            # dies on non-GBK bytes -> stdout=None. ASCII assertions only, so
+            # utf-8 + replace is locale-independent.
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout,
             cwd=str(REPO_ROOT), env=proc_env,
         )
     except FileNotFoundError:

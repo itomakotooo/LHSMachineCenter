@@ -86,11 +86,11 @@ from typing import Any, Optional
 # changed. The self-referential inclusion is intentional and correct.
 #
 # Lazy imports inside main() (rtp_integrity, parse_state, pipeline_context,
-# topo_sort, mechanism_registry) ARE included because they execute on every
-# real report-production run.
+# topo_sort) ARE included because they execute on every real
+# report-production run.
 #
 # Modules intentionally NOT in the closure:
-#   - fresh_slotlab/analyzer/_stub_features.py   (test-only, never imported by PIA)
+#   - fresh_slotlab/analyzer/_stub_features.py   (deleted in 5B — was test-only)
 #   - fresh_slotlab/reporter.py                  (standalone script, not imported by PIA)
 #   - fresh_slotlab/analyzer/features/*.py       (registered plugins, excluded by R-4)
 #     EXCEPT _base.py and __init__.py which ARE in the closure (not registered plugins)
@@ -122,16 +122,38 @@ _CLOSURE_FILES: tuple[str, ...] = (
     "fresh_slotlab/analyzer/feature_registry.py",
     "fresh_slotlab/analyzer/features/__init__.py",
     "fresh_slotlab/analyzer/features/_base.py",
-    "fresh_slotlab/analyzer/manifest_loader.py",
-    "fresh_slotlab/analyzer/mechanism_registry.py",
+    # Sub-pass B: st_extract framework files (discovery + ABC) are in the
+    # closure.  Extractor modules (trigger_path.py etc.) are base-EXCLUDED —
+    # editing them changes only machines that declare the extractor, not fleet.
+    # Analogy: features/__init__.py + _base.py are in closure; plugin modules
+    # are excluded.
+    "fresh_slotlab/analyzer/st_extract/__init__.py",
+    "fresh_slotlab/analyzer/st_extract/_base.py",
+    # manifest_loader.py removed (5B): flat-manifest layer deleted.
+    # mechanism_registry.py removed (5C): MechanismRegistry deleted.
     "fresh_slotlab/analyzer/parse_state.py",
     "fresh_slotlab/analyzer/pipeline_context.py",
+    "fresh_slotlab/analyzer/report_engine.py",
+    # NOTE: play_types/{__init__,bcm_cycle,wild_nudge}.py are INTENTIONAL CARVES —
+    # base-EXCLUDED so editing a machine's mechanic logic does NOT re-flag the whole
+    # fleet (the core playtype-rearch goal). They must NOT be added here, even though
+    # parser.py imports them on the production path (the R-1 drift guard allowlists
+    # them; per-machine hashing is the tracked follow-up). Adding them broke
+    # test_{wild_nudge,bcm_cycle}_carve — see the carve-isolation tests.
+    #
+    # NOTE: st_extract/trigger_path.py (and future extractor modules) are
+    # INTENTIONAL CARVES — base-EXCLUDED so editing an extractor re-flags only
+    # machines that declare it, not the fleet.  Only st_extract/__init__.py and
+    # st_extract/_base.py (framework files) are in the closure above.
+    # parser.py imports st_extract extractor modules at parse time via the
+    # st_extractors parameter; the R-1 drift guard must allowlist
+    # "fresh_slotlab/analyzer/st_extract/trigger_path.py" the same way it
+    # allowlists play_types/ modules (if the guard is ever restored).
     "fresh_slotlab/analyzer/rtp_integrity.py",
     "fresh_slotlab/analyzer/topo_sort.py",
     "fresh_slotlab/analyzer/versioning.py",
     "fresh_slotlab/chunk_index.py",
     "fresh_slotlab/machine_md5.py",
-    "fresh_slotlab/player_impact_analyzer.py",
     "fresh_slotlab/rawdata_index.py",
     "fresh_slotlab/round_classification.py",
     "fresh_slotlab/round_win.py",
@@ -216,11 +238,30 @@ def compute_base_analyzer_version(
     return h.hexdigest()[:12]
 
 
+def compute_analyzer_version() -> str:
+    """Analyzer "version" tag stamped in summary.json for report freshness.
+
+    Historically this hashed ``player_impact_analyzer.py``'s own source. That
+    monolith has been removed (orchestrator rebuild); freshness now tracks the
+    report-production closure — the same hash that drives per-machine
+    ``effective_version`` — which is a strictly more honest signal (it flips
+    when any core/support module on the production path changes).
+
+    Returns "" (untagged) rather than crashing the console if the closure
+    can't be read, preserving the old never-crash contract.
+    """
+    try:
+        return compute_base_analyzer_version()
+    except OSError:
+        return ""
+
+
 def compute_effective_version_for_machine(
     machine_id: str,
     mode: Optional[int] = None,
     *,
     manifests_root: Optional[Path] = None,
+    new_manifests_root: Optional[Path] = None,
     registry: Optional[Any] = None,
     closure_files: Optional[tuple[str, ...]] = None,
     repo_root: Optional[Path] = None,
@@ -232,6 +273,12 @@ def compute_effective_version_for_machine(
     the report-production closure (R-1), and returns the 12-hex effective
     version.
 
+    Phase 1 (L5 rewire, 5B: flat-manifest layer deleted): when a SpinType-native
+    manifest exists at ``configs/machine_manifests/<M>.json``, the analysis set
+    is resolved via ``machine_spec.derive_analyses`` (the new path).  Otherwise
+    (non-registered machine, no manifest) returns base_hash with empty
+    machine_features — no flat manifest fallback (flat layer deleted in 5B).
+
     Parameters
     ----------
     machine_id:
@@ -239,9 +286,13 @@ def compute_effective_version_for_machine(
     mode:
         Integer mode. ``None`` to compute the mode-agnostic version (rare).
     manifests_root:
-        Manifests directory. Defaults to
-        ``slot_designer/configs/machine_manifests`` resolved relative to
-        this module's repo root.
+        Unused after 5B (flat-manifest layer deleted).  Kept so existing
+        test helpers that pass ``tmp_path`` manifests do not break; the
+        parameter is accepted but not read on any live code path.
+    new_manifests_root:
+        SpinType-native manifests directory (Phase 1 addition). Defaults to
+        ``configs/machine_manifests`` resolved relative to this module's repo
+        root. Override in tests to point at a synthetic directory.
     registry:
         Object exposing ``ALL_FEATURES``. Defaults to the package
         ``feature_registry`` module.
@@ -258,7 +309,7 @@ def compute_effective_version_for_machine(
     Raises
     ------
     FileNotFoundError
-        Manifest file missing, or a closure file is missing.
+        A closure file is missing (broken install).
     KeyError
         Manifest references a feature ID not registered.
     """
@@ -269,70 +320,84 @@ def compute_effective_version_for_machine(
     # who only need compute_base_analyzer_version. Dual-path covers
     # script-mode (cwd=fresh_slotlab/) per memory
     # feedback_subprocess_import_suicide_and_module_globals.md.
-    try:
-        from fresh_slotlab.analyzer.manifest_loader import (
-            load_manifest,
-            resolve_inheritance,
-            resolve_per_mode,
-        )
-    except ImportError:
-        from analyzer.manifest_loader import (  # type: ignore[no-redef]
-            load_manifest,
-            resolve_inheritance,
-            resolve_per_mode,
-        )
-
     if registry is None:
         try:
             from fresh_slotlab.analyzer import feature_registry as registry
         except ImportError:
             from analyzer import feature_registry as registry  # type: ignore[no-redef]
-        # Ensure all known universal feature modules are imported so they
-        # register themselves before we read ALL_FEATURES. Importing PIA
-        # as a subprocess does not auto-import features/* (no package-level
-        # __init__ side effects). Each register() is idempotent on
-        # duplicate FEATURE_ID per P2-A1, so double-import is safe.
-        try:
-            import fresh_slotlab.analyzer.features.payouts_by_spin_type  # noqa: F401
-            import fresh_slotlab.analyzer.features.reel_marginal_by_spin_type  # noqa: F401
-            import fresh_slotlab.analyzer.features.bankruptcy_simulation  # noqa: F401
-            import fresh_slotlab.analyzer.features.multiplier_profile  # noqa: F401
-            import fresh_slotlab.analyzer.features.multiplier_wild  # noqa: F401  # C3.5
-            import fresh_slotlab.analyzer.features.machine_mechanics  # noqa: F401  # C4
-            import fresh_slotlab.analyzer.features.upstream_feature_breakdown  # noqa: F401  # C5
-            import fresh_slotlab.analyzer.features.collect_mechanic  # noqa: F401  # C5
-            import fresh_slotlab.analyzer.features.bonus_chain_dynamics  # noqa: F401  # C6
-        except ImportError:
-            try:
-                import analyzer.features.payouts_by_spin_type  # type: ignore[no-redef]  # noqa: F401
-                import analyzer.features.reel_marginal_by_spin_type  # type: ignore[no-redef]  # noqa: F401
-                import analyzer.features.bankruptcy_simulation  # type: ignore[no-redef]  # noqa: F401
-                import analyzer.features.multiplier_profile  # type: ignore[no-redef]  # noqa: F401
-                import analyzer.features.multiplier_wild  # type: ignore[no-redef]  # noqa: F401  # C3.5
-                import analyzer.features.machine_mechanics  # type: ignore[no-redef]  # noqa: F401  # C4
-                import analyzer.features.upstream_feature_breakdown  # type: ignore[no-redef]  # noqa: F401  # C5
-                import analyzer.features.collect_mechanic  # type: ignore[no-redef]  # noqa: F401  # C5
-                import analyzer.features.bonus_chain_dynamics  # type: ignore[no-redef]  # noqa: F401  # C6
-            except ImportError:
-                pass
+        # Phase 4: auto-discover all plugin modules under features/ so each
+        # self-registers.  Replaces the old hardcoded import list — adding a
+        # new plugin no longer requires editing this closure file.
+        # discover_features() is idempotent (duplicate FEATURE_ID is a no-op).
+        registry.discover_features()
 
-    if manifests_root is None:
-        # Repo root: two parents up from this file (fresh_slotlab/analyzer/).
-        manifests_root = _REPO_ROOT / "slot_designer" / "configs" / "machine_manifests"
+    # Sub-pass B: discover extractor modules so their hashes can be folded
+    # into the effective_version for machines that declare extraction.
+    try:
+        from fresh_slotlab.analyzer.st_extract import (
+            discover_extractors as _discover_extractors,
+            get_extractors_for_manifest as _get_extractors_for_manifest,
+            extractor_hashes as _extractor_hashes,
+        )
+    except ImportError:
+        from analyzer.st_extract import (  # type: ignore[no-redef]
+            discover_extractors as _discover_extractors,
+            get_extractors_for_manifest as _get_extractors_for_manifest,
+            extractor_hashes as _extractor_hashes,
+        )
+    _discover_extractors()
+
+    # manifests_root kept as a parameter for callers that pass tmp manifests in
+    # tests, but the flat-manifest layer is deleted (5B) so real machines will
+    # not have files there.  new_manifests_root defaults to configs/machine_manifests.
+    if new_manifests_root is None:
+        new_manifests_root = _REPO_ROOT / "configs" / "machine_manifests"
 
     base_hash = compute_base_analyzer_version(
         closure_files=closure_files,
         repo_root=repo_root,
     )
 
-    manifest = load_manifest(machine_id, manifests_root)
-    if manifest.get("inherits_from"):
-        manifest = resolve_inheritance(manifest, manifests_root)
-    if mode is not None:
-        manifest = resolve_per_mode(manifest, mode)
+    # 5B: flat-manifest layer deleted.  Only the SpinType-native path is active.
+    # Non-registered machines (no new-schema manifest) resolve to base_hash with
+    # empty machine_features — graceful, no crash.
+    _new_manifest_path = Path(new_manifests_root) / f"{machine_id}.json"
+    _loaded_manifest: Optional[Any] = None
+    if _new_manifest_path.exists():
+        # New path: load SpinType-native manifest, derive analyses from spin_types.
+        try:
+            from fresh_slotlab.analyzer.machine_spec import (  # type: ignore[attr-defined]
+                load_manifest as ms_load_manifest,
+                derive_analyses,
+            )
+        except ImportError:
+            from analyzer.machine_spec import (  # type: ignore[no-redef]
+                load_manifest as ms_load_manifest,
+                derive_analyses,
+            )
+        _loaded_manifest = ms_load_manifest(machine_id, new_manifests_root)
+        machine_features = derive_analyses(_loaded_manifest)
+    else:
+        # Non-registered machine: no flat manifest (deleted in 5B), no new-schema
+        # manifest.  Return base_hash with empty feature set — not "unregistered
+        # error", just the version for a machine with no declared analyses.
+        machine_features = []
 
-    machine_features = list(manifest.get("analyzer_features") or [])
     feature_hashes = {f.FEATURE_ID: f.compute_hash() for f in registry.ALL_FEATURES}
+
+    # Sub-pass B: fold extractor pseudo-entries ("xt:<EXTRACTOR_ID>" -> hash)
+    # into machine_features + feature_hashes for machines whose manifest
+    # declares extraction.  No signature change to compute_effective_analyzer_version.
+    # Machines without extraction declarations: no pseudo-entries → unchanged.
+    if _loaded_manifest is not None:
+        _active_extractors = _get_extractors_for_manifest(_loaded_manifest)
+        _ext_hashes = _extractor_hashes()
+        for _ext in _active_extractors:
+            _pseudo_id = f"xt:{_ext.EXTRACTOR_ID}"
+            if _pseudo_id not in feature_hashes:
+                feature_hashes[_pseudo_id] = _ext_hashes.get(_ext.EXTRACTOR_ID, "")
+            if _pseudo_id not in machine_features:
+                machine_features = list(machine_features) + [_pseudo_id]
 
     return compute_effective_analyzer_version(
         base_hash=base_hash,

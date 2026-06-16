@@ -3,6 +3,18 @@
 This document defines the expected output contract of
 `player_impact_summary.json` and `player_impact_report.md`.
 
+> **Producer status (2026-06-05): generation is OFFLINE.** The report
+> orchestrator (`fresh_slotlab/player_impact_analyzer.py`) was removed and
+> is being rebuilt SpinType-native on the analyzer core
+> (`fresh_slotlab/analyzer/core/*`). `POST /api/batch-run` returns HTTP 503
+> and `scripts/batch_generate_reports.py` is a stub until the new engine
+> lands. **This schema remains the live contract**: existing reports on disk
+> are read and rendered unchanged (the frontend panel registry hard-depends
+> on these `player_impact.*` sections), and the new engine MUST reproduce the
+> schema below byte-for-byte in shape. Field names here were verified against
+> reports under `reports/M14/mode_1/versions/*/player_impact_summary.json`
+> and the emit code in `fresh_slotlab/analyzer/features/*`.
+
 ## Output Files
 
 For each report version:
@@ -30,14 +42,14 @@ Expected top-level fields:
 - `config_md5` / `code_md5` -- server-side machine fingerprint at
   sampling time (paytable / paylines / engine code on the server).
   Drift means rawdata is from an older server version → resample.
-- `analyzer_version` -- legacy 12-hex SHA of `player_impact_analyzer.py`
-  source. Kept for back-compat; no longer the freshness comparator.
+- `analyzer_version` -- legacy 12-hex source-hash field. Kept for
+  back-compat; no longer the freshness comparator (it hashed the now-removed
+  `player_impact_analyzer.py` monolith). Use `effective_analyzer_version`.
 - `effective_analyzer_version` -- per-(machine, mode) effective hash
   (honesty-3): `sha256(base ⊕ {declared feature hashes} ⊕ mode)[:12]`.
   This is the value the console compares for report freshness. Empty
-  string when the machine has no manifest / registry (e.g. virtual);
-  see `effective_analyzer_version_error` and (virtual only)
-  `effective_analyzer_version_kind = "virtual_base_only"`. Produced by
+  string when the machine has no manifest / registry; see
+  `effective_analyzer_version_error`. Produced by
   `fresh_slotlab/analyzer/versioning.py`
   `compute_effective_version_for_machine`.
 - `effective_analyzer_version_error` -- diagnostic; `null` on success,
@@ -54,25 +66,34 @@ Expected top-level fields:
 - `guideline_comparison`
 - `storage`
 
-### How sections are produced (post-unbundle, 2026-05-29/30)
+### How sections are produced (plugin model)
 
-The report CONTENT is **byte-identical** to the pre-unbundle monolith
-(numbers unchanged) — the schema below is unchanged. What changed is
-*how* sections are built: the 9 display features below are now produced
-by **plugins** under `fresh_slotlab/analyzer/features/`
-(`payouts_by_spin_type`, `reel_marginal_by_spin_type`,
-`bankruptcy_simulation`, `multiplier_profile`, `multiplier_wild`,
-`machine_mechanics`, `upstream_feature_breakdown`, `collect_mechanic`,
-`bonus_chain_dynamics`), each owning its own display compute. The
-analyzer no longer builds those sections inline in `main()`; it runs a
-topo-sorted feature-emit loop. Plugins register in
-`fresh_slotlab/analyzer/feature_registry.py` (`ALL_FEATURES`); each
-machine's manifest
-(`slot_designer/configs/machine_manifests/<machine>.json` →
-`analyzer_features`) declares which features it emits — so the exact set
-of populated sections is per-machine. A section absent from a machine's
-manifest is simply not emitted (distinct from `applicable=false`, which
-a declared feature emits when it has no data for that machine).
+Display sections are produced by **plugins** under
+`fresh_slotlab/analyzer/features/`, each owning its own compute/emit.
+Plugins register in `fresh_slotlab/analyzer/feature_registry.py`
+(`ALL_FEATURES` — empty at import, populated as plugin modules register
+themselves); a machine's manifest (`analyzer_features` list) declares which
+features it emits, so the exact set of populated sections is per-machine. A
+section absent from a machine's manifest is simply not emitted (distinct from
+`applicable=false`, which a declared feature emits when it has no data for
+that machine).
+
+The plugin modules present today are `payouts_by_spin_type`,
+`reel_marginal_by_spin_type`, `bankruptcy_simulation`, `multiplier_profile`,
+`multiplier_wild`, `machine_mechanics`, `upstream_feature_breakdown`,
+`collect_mechanic`, `bonus_chain_dynamics`, plus the SpinType-native
+`spin_type_outcomes`, `spin_type_rtp_buckets`, and `topdollar_choice`.
+
+Manifests come in two forms: legacy flat manifests under
+`slot_designer/configs/machine_manifests/<machine>.json` (read by
+`versioning.py` for the freshness hash) and the new SpinType-native schema
+under `configs/machine_manifests/<machine>.json` (e.g. `M15.json`, parsed by
+`fresh_slotlab/analyzer/machine_spec.py`).
+
+> The **top-level orchestration** that drove this emit loop (`main()` in
+> `player_impact_analyzer.py`) has been removed and is being rebuilt; see the
+> producer-status note at the top of this file. The plugins and the section
+> contract below survive and are what the new engine wires together.
 
 ## `sampling`
 
@@ -278,7 +299,7 @@ List entries by bankroll multiplier:
 - `bankruptcy_rate`
 - `bankrupt_robots`
 - `completed_robots`
-- `avg_spins_completed`
+- `median_spins_completed`
 - `robots`
 - `session_spins`
 - `init_credits`

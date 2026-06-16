@@ -183,10 +183,11 @@ def compute_trigger_sessions(
         sum of non-None WinCredits across eligible bonus rounds.
         Covers WheelSelector (M273) + CommonSelector (M201/M257).
 
-    Both rules apply the ``_round_has_credited_win`` filter — bonus
-    rounds whose WinCredits is already credited to pay_ids at round
-    level (non-empty PayoutIdToWinAmount with any nonzero value)
-    are EXCLUDED. This is the Iter 3 double-count correction: on
+    Both rules apply the ``_round_has_credited_win`` filter when
+    computing ``session_win`` (pid-attribution) — bonus rounds whose
+    WinCredits is already credited to pay_ids at round level
+    (non-empty PayoutIdToWinAmount with any nonzero value) are
+    EXCLUDED. This is the Iter 3 double-count correction: on
     M273/M257/M201-style machines every freespin round carries its
     own Payout entry, so the round-level aggregator already owns
     those credits. Iter 2 summed them into the trigger pay_id too,
@@ -195,16 +196,55 @@ def compute_trigger_sessions(
     empty dict, so the filter doesn't fire and Iter 1's attribution
     to pay_id 666 survives unchanged.
 
+    ``session_dim_win`` is computed WITHOUT the exclusion filter —
+    it represents the total WinCredits the player actually received
+    during the bonus block, for use in session-level KPI dimensions
+    (avg_return_x, winning-session rate, ≥10x rate). See the
+    two-dimension contract in the Returns section below.
+
     Verified live:
       - M15 $0$ (Type 1): sum(session_win) over 2238 sessions =
         105,665,000 == FeatureWin.TopDollar.total_win exactly —
-        unchanged from Iter 1.
+        unchanged from Iter 1.  session_dim_win == session_win
+        (filter never fires on Type 1 shapes).
       - M273 $0$ / M257 / M201 (Type 2): session_win ≈ 0 since
         every bonus round's WinCredits is already at pay_id level.
         The freespin-round pay_ids (6 / 101 / 1 / 7 / 20102 / ...)
         absorb the feature RTP naturally through the round-level
         loop. sum(payout_ids_top20.rtp_pp) reaches summary.rtp via
         those pay_ids, not via the trigger pay_id.
+        session_dim_win == actual bonus win (correct player view).
+
+    Two-dimension contract (2026-06-11, session-dim fix):
+
+      ``session_win`` (pid-attribution dimension) — the helper-computed
+      bonus win that is folded back onto the trigger pay_id for RTP
+      attribution.  The ``_round_has_credited_win`` exclusion APPLIES:
+      bonus rounds whose win is already credited at round level (non-empty
+      PayoutIdToWinAmount with nonzero values; rule-driven SynthesizePayId
+      output) are excluded to prevent double-counting.
+
+      On machines like M273/M257/M201 whose freespin rounds self-credit
+      at pay_id level, ``session_win ≈ 0`` — correct for pid attribution
+      (the freespin pay_ids absorb the RTP at round level).  But using
+      this number for the SESSION KPI dimension (avg_return_x / winning
+      sessions / ≥10x rate) is WRONG: it hides 100% of the bonus win from
+      the player-experienced session view.  Verified on M275 mode 1:
+      avg_return_x 0.483 (pid-attribution, using session_win) vs
+      0.892 (true player view — 45.8% of bonus win dropped).
+
+      ``session_dim_win`` (player-experience dimension) — the SAME win
+      rule (last_non_none / sum_all) applied WITHOUT the credited-win
+      exclusion.  Every bonus round's WinCredits contributes regardless
+      of whether the round also has pay_id-level attribution.  This is
+      what the player actually received from the bonus feature.
+
+      On Type-1 shapes (M15 TopDollar, M12, M132): bonus rounds carry
+      PayoutIdToWinAmount=None/empty → ``_round_has_credited_win``
+      never fires → ``session_dim_win == session_win`` exactly.
+      On Type-2 self-crediting shapes (M273, M257, M201, M275):
+      ``session_dim_win > session_win`` (often ``session_win == 0``
+      while ``session_dim_win == total bonus win``).
 
     Returns a list of session dicts, one per session:
 
@@ -214,7 +254,10 @@ def compute_trigger_sessions(
           trigger_spin_type: int|None,# SpinType of the trigger round
           session_end_idx: int,       # exclusive end (index of first
                                       # post-session round or len(rounds))
-          session_win: float,         # win per win_rule
+          session_win: float,         # win per win_rule (pid-attribution;
+                                      # credited-win exclusion APPLIED)
+          session_dim_win: float,     # win per win_rule (player-experience;
+                                      # credited-win exclusion NOT applied)
           win_rule: "last_non_none"|"sum_all",
           bonus_spin_types: [int|None, ...],  # SpinType sequence of
                                               # bonus rounds (double-check)
@@ -269,8 +312,18 @@ def compute_trigger_sessions(
         # ~24% pid over-attribution observed on M53/M27/M174/M196 etc
         # in the fleet payid invariant scan (2026-04-27). Fix: seed=0;
         # session_win counts only the bonus block's contribution.
+        #
+        # Two parallel accumulators (2026-06-11, session-dim fix):
+        #   last_nonnone_win / sum_win   — pid-attribution path
+        #     (excludes rounds already credited at round level).
+        #   dim_last_nonnone / dim_sum   — player-experience path
+        #     (NO exclusion; tracks what the player actually received).
+        # On Type-1 shapes the exclusion never fires, so dim == pid.
+        # On Type-2 self-crediting shapes (M273/M275 etc.) dim > pid.
         last_nonnone_win: float = 0.0
         sum_win: float = 0.0
+        dim_last_nonnone: float = 0.0  # session_dim_win: no exclusion
+        dim_sum: float = 0.0           # session_dim_win: no exclusion
         # Walk the bonus sequence. Rounds whose WinCredits is already
         # credited to pay_ids at round level (non-empty Payout with
         # any nonzero value) are EXCLUDED from last_non_none tracking
@@ -278,6 +331,7 @@ def compute_trigger_sessions(
         # (e.g. M273 freespin round Payout={'6':7000,'101':2000}:
         # round aggregator credits pay_id 6/101; session would
         # double-credit pay_id 5801 with the same 9000).
+        # dim_* accumulates every round regardless of credited status.
         j = i + 1
         bonus_sts: list = []
         while j < n:
@@ -288,6 +342,21 @@ def compute_trigger_sessions(
             if is_paid_round(nr):
                 break
             bonus_sts.append(nr.get("SpinType"))
+            # --- player-experience (dim) path: NO credited-win exclusion ---
+            # Always accumulate the raw WinCredits (or rule's view) for the
+            # session_dim_win dimension, regardless of whether the round
+            # is also attributed to a pay_id at round level.
+            if not round_win_rules:
+                _dw = nr.get("WinCredits")
+                if _dw is not None:
+                    _dw_f = _to_float_or_zero(_dw)
+                    dim_last_nonnone = _dw_f
+                    dim_sum += _dw_f
+            else:
+                _dw_f = extract_round_win(nr, rules=round_win_rules, ctx=ctx)
+                dim_last_nonnone = _dw_f
+                dim_sum += _dw_f
+            # --- pid-attribution path: applies credited-win exclusion ---
             # Skip rounds whose win is ALREADY credited at round level.
             # ``round_has_credited_win`` is rule-aware -- it checks the
             # union of:
@@ -327,7 +396,7 @@ def compute_trigger_sessions(
                     last_nonnone_win = w
                     sum_win += w
             j += 1
-        # Session-win selection.
+        # Session-win selection — pid-attribution dimension.
         #
         # Legacy path (no rules): respect the ReMarks-derived rule
         # classification -- "Trigger" -> last_non_none (selector
@@ -347,12 +416,24 @@ def compute_trigger_sessions(
             session_win = sum_win
         else:
             session_win = last_nonnone_win if rule == "last_non_none" else sum_win
+
+        # Session-dim-win selection — player-experience dimension.
+        # Same rule applied to the dim accumulators (no exclusion filter).
+        # On Type-1 shapes (M15/M12/M132) the exclusion never fires so
+        # dim == pid. On Type-2 self-crediting shapes (M273/M275) dim >
+        # pid (often dim = total bonus win while pid = 0).
+        if round_win_rules:
+            session_dim_win = dim_sum
+        else:
+            session_dim_win = dim_last_nonnone if rule == "last_non_none" else dim_sum
+
         sessions.append({
             "trigger_idx": i,
             "trigger_pay_ids": trigger_pids,
             "trigger_spin_type": trigger_st,
             "session_end_idx": j,
             "session_win": session_win,
+            "session_dim_win": session_dim_win,
             "win_rule": rule,
             "bonus_spin_types": bonus_sts,
         })

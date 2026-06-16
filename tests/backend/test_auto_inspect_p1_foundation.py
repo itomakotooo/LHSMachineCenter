@@ -30,6 +30,8 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
+# 5B: flat manifest layer deleted.  MANIFEST_ROOT kept for reference but the
+# directory no longer exists; no live tests use it.
 MANIFEST_ROOT = ROOT / "slot_designer" / "configs" / "machine_manifests"
 
 
@@ -601,82 +603,8 @@ class TestAutoInspectManagerSkeleton:
 
 
 class TestMF4ManifestLoaderWired:
-    def test_m272_manifest_file_exists(self):
-        """M272 manifest file exists at the expected path.
-
-        Inject-bug: delete M272.json -> FileNotFoundError -> assertion fails.
-        """
-        m272_manifest = MANIFEST_ROOT / "M272.json"
-        assert m272_manifest.exists(), (
-            f"M272 manifest not found at {m272_manifest}. "
-            "MF-4 prerequisite cannot be verified."
-        )
-
-    def test_m272_manifest_loadable(self):
-        """manifest_loader.load_manifest can parse M272.json without error.
-
-        Inject-bug: corrupt M272.json with invalid JSON ->
-        JSONDecodeError raised -> test fails.
-        """
-        from fresh_slotlab.analyzer.manifest_loader import load_manifest
-        manifest = load_manifest("M272", MANIFEST_ROOT)
-        assert isinstance(manifest, dict), "load_manifest must return dict"
-        assert manifest.get("machine_id") == "M272"
-
-    def test_m272_manifest_has_spin_type_convention(self):
-        """M272 manifest has spin_type_convention field.
-
-        The convention declares which SpinTypes are 'paid' — the
-        field is consumed by the pipeline's PipelineContext at
-        player_impact_analyzer.py main() via _c1_manifest.
-
-        Inject-bug: remove spin_type_convention from M272.json ->
-        KeyError or None -> assertion fails.
-        """
-        from fresh_slotlab.analyzer.manifest_loader import load_manifest
-        manifest = load_manifest("M272", MANIFEST_ROOT)
-        assert "spin_type_convention" in manifest, (
-            "M272 manifest missing spin_type_convention"
-        )
-        stc = manifest["spin_type_convention"]
-        assert isinstance(stc, dict), "spin_type_convention must be dict"
-        assert "paid" in stc, "spin_type_convention must have 'paid' list"
-
-    def test_manifest_loader_wired_into_analyzer_main_function(self):
-        """Verify that player_impact_analyzer.main() contains the manifest
-        loader call site (_c1_load_manifest / _c1_resolve_inheritance /
-        _c1_resolve_per_mode pattern).
-
-        This is a static analysis check — we parse the source and look for
-        the load_manifest call. A subprocess e2e test would be more robust
-        but requires cached fixture data for M272 mode 1.
-
-        Inject-bug: comment out the _c1_load_manifest call in main() ->
-        this assertion fails because the call is no longer in the AST.
-        """
-        # Use a text search rather than AST parse to avoid BOM/encoding issues.
-        # The file may have a UTF-8 BOM; read with utf-8-sig to strip it.
-        analyzer_src = (
-            ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
-        ).read_text(encoding="utf-8-sig")
-        assert "_c1_load_manifest" in analyzer_src or "load_manifest" in analyzer_src, (
-            "Manifest loader call not found in player_impact_analyzer.py. "
-            "MF-4 prerequisite: the manifest must be loaded during each analyzer run."
-        )
-
-    def test_manifest_loader_wired_into_analyzer_pipeline_context(self):
-        """Verify PipelineContext in player_impact_analyzer.py receives
-        manifest= argument from _c1_manifest.
-
-        Inject-bug: change manifest=_c1_manifest to manifest={} ->
-        PipelineContext always gets empty manifest -> MF-4 broken.
-        """
-        # Read with utf-8-sig to strip BOM if present.
-        analyzer_src = (
-            ROOT / "fresh_slotlab" / "player_impact_analyzer.py"
-        ).read_text(encoding="utf-8-sig")
-        # Check for PipelineContext( ... manifest=_c1_manifest ...) pattern.
-        assert "manifest=_c1_manifest" in analyzer_src, (
-            "PipelineContext is not receiving manifest=_c1_manifest in "
-            "player_impact_analyzer.py. MF-4 wiring is broken."
-        )
+    # 5B: flat-manifest layer (manifest_loader.py + slot_designer/configs/machine_manifests/)
+    # deleted.  M272.json no longer exists and manifest_loader is gone.
+    # These tests have been removed.  The manifest loading contract is now exercised
+    # by test_machine_spec.py (SpinType-native manifests via machine_spec.load_manifest).
+    pass

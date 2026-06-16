@@ -1,0 +1,58 @@
+{
+  "machine_id": "M275",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "140": {
+      "role": "paid_spin",
+      "play": "NormalCollectionSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
+      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "observed_fields_source": "st_inventory M275/mode_1 bucket 8c89bc95/9b453ffc 2026-06-12"
+    },
+    "126": {
+      "role": "freespin",
+      "play": "NewFreespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "ExtraRatio", "GameplayTriggerType", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "ExtraRatio", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_fields_source": "st_inventory M275/mode_1 bucket 8c89bc95/9b453ffc 2026-06-12",
+      "trigger_paths": {
+        "discriminator": {"kind": "round_field", "field": "GameplayTriggerType", "map": {"0": "scatter", "2": "collect_peak"}, "unmapped_value_policy": "surface_as_unknown_path"},
+        "fallback": {"kind": "trigger_anchor_walk", "note": "pid-666 anchor vs CollectCount-reset entry — the walk upstream_feature_breakdown's [via ...] split already implements; near-exact (1-in-909 double-trigger edge bins to the counter path, same merge the server's SummaryWin does)"},
+        "paths": {
+          "scatter": {"opened_by": {"payout_id": "666"}, "label": "scatter (3 bonus symbols)"},
+          "collect_peak": {"opened_by": {"counter": "CollectCount", "at_peak": 1000}, "label": "collect-peak (pity timer)"}
+        },
+        "multi_trigger_policy": "additive_sessions"
+      }
+    }
+  },
+  "trigger": {"payout_id": "666", "remarks": "Freespin", "opens": "NewFreespin", "note": "TWO trigger paths open the SAME NewFreespin 10-spin session: (a) scatter pid 666 = bonus on all 3 reels (win 0 marker; 1.036%/paid spin, random); (b) CollectCount==1000 (deterministic pity timer, +1 every paid spin; 0.100%). Per-round GameplayTriggerType on st126 discriminates them perfectly (0=scatter, 2=collect-peak); both-on-one-round grants BOTH sessions (peak first). AccCredits (=100xCC) is the BASIS-BET input for the BCM-freespin computation (user-confirmed 2026-06-12) - not a payout pot, no statistical dimension; it is never paid as credits directly. No retrigger is structurally possible (free skins 11/21/31 carry zero bonus symbols)."},
+  "validation": {
+    "status": "confirmed",
+    "user_signed_off": true,
+    "sign_off": "2026-06-12 user gate-8 rulings: (1) CurJackpotStoreWin zeroing = the test interface's behavior on ALL machines (fleet-wide, confirmed); (2) AccCredits = basis-bet input for the BCM-freespin computation, no statistical meaning, not a payout pot; (3) declaration-based out-of-engine protocol - nothing declared for M275 beyond the above => none exist ('M275 可以收官').",
+    "confirmed_against": {"mode": 1, "rawdata": "M275/mode_1"},
+    "evidence": "session_artifacts/_onboard/M275/01_understanding.md (W1: 89,090 rounds, 2 real chunks, single md5 bucket 8c89bc95/9b453ffc; ST roles from own fields; sum(payids)==WinCredits 89,090/89,090; 909 sessions = 829 scatter + 80 cc-peak, 0 orphans; GTT perfect discriminator; ER win law proven 0 violations; RTP 89.24 = 44.82 base + 44.41 freespin) + 02_reuse.md (W2: live engine on the 2 real chunks; st140 STRICT-REUSE 4 PER_SPINTYPE + collect_mechanic [cycle 1000, correction_pp 0.0 correct]; st126 PER_SPINTYPE strict-reuse exact, mechanic NEW-EVENT; NO attribution rule needed, parity EXACT 89.23625; ufb [via] split near-exact; W2 ABORT on the shared session-KPI fold — RESOLVED by the framework session-dim fix b8826c5, see caveats). W3 (03_design.md): role 'freespin' NEW KNOWN_ROLES token derived from the machine's own 'Freespin N' ReMarks / NewFreespin feature name; freespin_dynamics NEW role-keyed plugin (the one W2-allowed); trigger_paths declarative block = the per-path dimension spec. W4: the per-ST extraction layer landed (95ba119) — the trigger_paths declaration is LIVE (st_extract/trigger_path resolves it; the EXACT GTT-discriminated split is delivered, no longer coarse-only).",
+    "caveats": [
+      "SESSION-DIM FIX LANDED (provenance note; the W2 ABORT is RESOLVED): the shared _close_session fold previously dropped scatter-session freespin wins from the paid-round (session) KPI dimension on M275 (45.8% of all win; W2 held trace). Fixed framework-side in b8826c5 (session-dimension win fold for self-crediting trigger sessions + conservation alarm). Post-fix acceptance values (W2 held trace): volatility.avg_return_x~0.8924, win sessions 11,893/80,000, >=10x sessions 1,517/80,000, max session 338x.",
+      "parser_blind (remaining per-ST extraction items — the layer LANDED in 95ba119 with the generic trigger_path extractor; these need a freespin-progression extractor, now buildable on that layer; never fabricated): (a) ER ladder (ExtraRatio FIELD; chains_by_feature.extra_ratio_counts is ReMarks-regex-sourced and default-fills flat 100 on M275 — MUST NOT be cited as ER coverage); (b) FS-index x skin x outcome arc (41%->4.7% hit cliff); (c) per-path session-TIER distributions / per-path ER & FS arcs / the double-trigger un-merge at session level (the exact GTT round/win/session-count split IS delivered via st_extract.trigger_path); (d) server SummaryWin session-tier taxonomy (parser accumulates TotalWin+FeatureWin only); (e) st140 bonus-count near-miss ladder (2-of-3 = 11.4%); (f) per-round wild-count / wildNx-on-line crosses.",
+      "bonus_chain_dynamics.by_feature trigger-path labels use the prev-round-pids heuristic (841/67 vs GTT truth 829/80) and its pid-666 trigger_target label reads 'NormalCollectionSpin' — display-level legacy; the st_extract.trigger_path split (and the ufb [via ...] rows) are the correct path view. Framework-team display item (W2 notes 2/4).",
+      "collect_mechanic cosmetics (fleet-wide, M279-manifest precedent): completed_cycles_total counts resets (64 vs 80 true cycles); always-on clamp_warning; M275 sharpening — avg_bonus_payout divides the WHOLE NewFreespin win (92% scatter-path) by cycle count, ~15x the true per-BCM-cycle payout. estimated_correction_pp (the RTP-bearing output) is 0.0 and correct. Framework-team precision item.",
+      "machine_mechanics.free_spin.applicable: RESOLVED — derive_mechanism_flags now also derives the flag from role=='freespin' (machine_spec.py, base-excluded, landed with this manifest's KNOWN_ROLES extension); M275's play stays the literal 'NewFreespin' (W2 note 3).",
+      "PROVENANCE: this manifest's evidence derives ENTIRELY from the single HISTORICAL md5 bucket 8c89bc95.../9b453ffc... (roster current is 2c98ce05.../ebad1145...). Structure claims are value-agnostic; every NUMBER belongs to that bucket. Any SERVED report must go through the md5-scoped generate path (fd6b507/597e8bf) and be stamped with the chunk md5s, not the roster's current.",
+      "GameplayTriggerType vocabulary: only {0,2} observed in this bucket; the trigger_paths discriminator maps observed values only and surfaces any new value as an unknown path (signal, not residual).",
+      "wild10x all-wild line: 0 occurrences in 89,090 rounds — its special pid/prize is unknowable from this sample (re-sample-scale item, non-blocking).",
+      "modes: [1] only — the only mode with cached rawdata. Extend on data, never by assumption (the M43/M279 cross-mode pattern)."
+    ],
+    "date": "2026-06-12"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Present on every round of both STs, =0 on 100% of 89,090 in-sample records (W1 sections 1/9.4). User-confirmed 2026-06-12: this zeroing is the test interface's behavior on ALL machines (fleet-wide), not an M275 specialty. Parse-as-is at 0; parsing is FORWARD-COMPATIBLE when the interface populates the field. RTP 89.24% is the BASE RTP (excludes the progressive).", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [140], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

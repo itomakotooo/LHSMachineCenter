@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -68,11 +69,12 @@ except ImportError:  # running as a standalone script (fresh_slotlab/ on sys.pat
 # Now that the function lives here we must make the same imports explicit.
 try:
     from fresh_slotlab.trigger_sessions import compute_trigger_sessions
-    from fresh_slotlab.round_classification import (
+    from fresh_slotlab.round_classification import attribute_lines_to_pay_ids
+    from fresh_slotlab.analyzer.play_types.bcm_cycle import (
+        compute_robot_cycle_peaks,
         detect_cycle_peak,
-        is_wild_nudge_round,
-        attribute_lines_to_pay_ids,
     )
+    from fresh_slotlab.analyzer.play_types.wild_nudge import is_wild_nudge_round
     from fresh_slotlab.round_win import (
         RoundWinRule,
         extract_round_payouts,
@@ -80,17 +82,17 @@ try:
     )
 except ImportError:  # running as a standalone script
     from trigger_sessions import compute_trigger_sessions  # type: ignore[no-redef]
-    from round_classification import (  # type: ignore[no-redef]
+    from round_classification import attribute_lines_to_pay_ids  # type: ignore[no-redef]
+    from analyzer.play_types.bcm_cycle import (  # type: ignore[no-redef]
+        compute_robot_cycle_peaks,
         detect_cycle_peak,
-        is_wild_nudge_round,
-        attribute_lines_to_pay_ids,
     )
+    from analyzer.play_types.wild_nudge import is_wild_nudge_round  # type: ignore[no-redef]
     from round_win import (  # type: ignore[no-redef]
         RoundWinRule,
         extract_round_payouts,
         extract_round_win,
     )
-
 
 # Payline format ``"1:..2:.."`` — number followed by colon. Used by
 # parse_paylines to enumerate the payline indices a winning spin lit.
@@ -490,6 +492,7 @@ def parse_chunk_response(
     bankruptcy_session_spins: int = _DEFAULT_BANKRUPTCY_SESSION_SPINS,
     bankruptcy_bankroll_mults: tuple[int, ...] = _DEFAULT_BANKROLL_MULTIPLIERS,
     round_win_rules: list[RoundWinRule] | None = None,
+    st_extractors: list | None = None,
 ) -> dict[str, Any]:
     """Parse a raw API response (list of robot dicts) into chunk metrics.
 
@@ -506,6 +509,21 @@ def parse_chunk_response(
     contribution merged at finalize). Defaults produce the standard
     (100/200/500) × 500-spin ladder even when callers forget to plumb
     through the CLI value.
+
+    ``st_extractors`` is an optional list of STExtractor instances
+    (from fresh_slotlab.analyzer.st_extract).  Default None / empty list:
+    every legacy caller is byte-identical — no "st_extract" key is added to
+    the returned record.  When provided, each extractor receives begin_robot
+    before the per-round loop and observe_round for every round; finalize_chunk
+    is called once per chunk; the results are stored in rec["st_extract"] keyed
+    by EXTRACTOR_ID.  Per-extractor exceptions are caught and surfaced in the
+    record as "_extract_error_<EXTRACTOR_ID>" entries (never silently swallowed
+    per memory/feedback_no_silent_swallow.md), never killing the parse.
+
+    Phase D (2026-06-03): the play-type plugin framework (use_play_type_plugins /
+    machine_id / mode params) has been deleted.  The inline carve path
+    (bcm_cycle, wild_nudge) runs unconditionally — it was already the
+    flag-off golden path, so behavior is byte-identical.
     """
     if started is None:
         started = time.time()
@@ -676,6 +694,12 @@ def parse_chunk_response(
     dollar_pick_spins = 0
     dollar_pick_total_dollars = 0
     dollar_pick_win = 0.0
+
+    # TopDollar session accumulator (Phase E, topdollar_choice feature).
+    # Populated per-robot from _trig_sessions_for_robot when ST=14 picks are
+    # present.  Only non-empty for M15-family machines; transparent to others.
+    # Shape: list[dict] where each dict = one TopDollar session (see feature).
+    chunk_topdollar_sessions: list[dict] = []
 
     chunk_spins = 0
     chunk_bet = 0.0
@@ -868,6 +892,22 @@ def parse_chunk_response(
     spin_type_bucket_win: dict[int, dict[str, float]] = defaultdict(
         lambda: defaultdict(float)
     )
+    # Per-SpinType PAID-round-level return-bucket histograms.
+    # Mirrors spin_type_bucket_{spins,bet,win} but accumulates ONLY rounds
+    # where is_paid==True and bet_amt>0 (free/bonus rounds are excluded so
+    # win/bet ratios are well-defined and directly comparable to the global
+    # multiplier_profile buckets).  Used by the spin_type_rtp_buckets plugin
+    # to emit a per-SpinType round-level RTP distribution.
+    # Keys: sp_type (int) → bucket_label (str) → count/sum.
+    spin_type_paid_bucket_spins: dict[int, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+    spin_type_paid_bucket_bet: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    spin_type_paid_bucket_win: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
     # Iter 6 (2026-04-23): settlement-SpinType bucket histogram built
     # from TRIGGER SESSION wins rather than round-level WinCredits.
     # Settlement SpinTypes (M15 TopDollar's ST=15, QuickDollar family's
@@ -976,6 +1016,13 @@ def parse_chunk_response(
     # Used by plugin to distinguish pure-scatter pids (e.g. M275 pid 666)
     # from regular-line pids.
     payout_id_has_regular_line: dict[str, bool] = {}
+    # C4 symbol enrichment: per-pid symbol combination histogram.
+    # Key: pid_str → combo_str → count.
+    # combo_str = "|"-joined column-ordered symbol names (e.g. "cherry|cherry|35x_wild").
+    # Only populated when StopSymbolsByCol is present AND positions decode cleanly.
+    # Empty positions (scatter/feature pay, line_id==-1000/-1) → no combo entry.
+    # Missing StopSymbolsByCol on the round → no combo entry.
+    payout_id_symbol_combos: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
     # Bonus-chain dynamics (from ReMarks). A "chain" is a contiguous run
     # of Freespin-annotated rounds within one robot. We track per chain:
@@ -1132,6 +1179,9 @@ def parse_chunk_response(
         sess_state["bonus_win_from_helper"] = 0.0
         sess_state["is_trigger_session"] = False
 
+    _robot_idx_counter = 0  # 0-based index for st_extractors.begin_robot
+    _active_st_extractors: list = list(st_extractors) if st_extractors else []
+
     for robot in resp:
         if not isinstance(robot, dict):
             continue
@@ -1189,6 +1239,57 @@ def parse_chunk_response(
             int(s["trigger_idx"]): float(s.get("session_win", 0.0) or 0.0)
             for s in _trig_sessions_for_robot
         }
+        # 2026-06-11 (session-dim fix): parallel map for the player-experience
+        # dimension.  session_dim_win carries the full bonus win without the
+        # credited-win exclusion.  On Type-1 shapes (M15/M12/M132) the
+        # exclusion never fires, so session_dim_win == session_win and this
+        # map is byte-identical to session_win_by_trigger_idx.  On Type-2
+        # self-crediting shapes (M273/M275) session_dim_win > session_win
+        # (often session_win==0 while session_dim_win==total bonus win).
+        # Only _close_session's bonus_win_from_helper uses this map; every
+        # OTHER consumer (pid attribution fold, session_handled_bonus_indices,
+        # Pass-5 binding) stays on session_win_by_trigger_idx so pid parity
+        # is preserved.
+        session_dim_win_by_trigger_idx: dict[int, float] = {
+            int(s["trigger_idx"]): float(s.get("session_dim_win", 0.0) or 0.0)
+            for s in _trig_sessions_for_robot
+        }
+        # Sub-pass B: build trigger_round_idx -> session record map for
+        # st_extractors.begin_robot.  Allows extractors to look up which
+        # session (if any) a given round_idx belongs to without a linear
+        # scan of the session list per round.
+        _trig_sessions_by_idx: dict[int, dict] = {
+            int(s["trigger_idx"]): s for s in _trig_sessions_for_robot
+        }
+        # Build round_idx -> session record for bonus rounds (non-trigger
+        # rounds within a trigger session) for use in observe_round's
+        # round_ctx["session"].  This is the same map the TriggerPathExtractor
+        # builds in begin_robot, but materialised here for the inline hook
+        # so we don't depend on any extractor's internal state.
+        _round_to_session_for_ext: dict[int, dict] = {}
+        if _active_st_extractors:
+            for _s in _trig_sessions_for_robot:
+                _s_trig = int(_s.get("trigger_idx", -1))
+                _s_end = int(_s.get("session_end_idx", _s_trig + 1))
+                if _s_trig < 0:
+                    continue
+                for _sri in range(_s_trig + 1, _s_end):
+                    _round_to_session_for_ext[_sri] = _s
+        # Notify st_extractors for this robot.
+        if _active_st_extractors:
+            _robot_ctx = {
+                "robot_idx": _robot_idx_counter,
+                "trig_sessions": _trig_sessions_by_idx,
+                "cycle_peak": _cycle_peak_for_ctx,
+            }
+            for _ext in _active_st_extractors:
+                try:
+                    _ext.begin_robot(_robot_ctx)
+                except Exception as _ext_begin_err:
+                    # Record but do not kill the parse.
+                    _ext._begin_robot_error = (
+                        f"{type(_ext_begin_err).__name__}: {_ext_begin_err}"
+                    )
         trigger_session_paid_indices: set[int] = set(session_win_by_trigger_idx.keys())
         # 2026-04-27: bonus-round indices that are part of a trigger
         # session (i.e. their win is attributed via session_win on the
@@ -1210,8 +1311,27 @@ def parse_chunk_response(
         # round's SpinType in the session. Bet is pulled from the
         # trigger paid round's CostCredits / BetAmount (1 paid spin
         # per trigger session).
+        #
+        # 2026-06-11 (session-dim fix): use session_dim_win (the
+        # player-experience total) rather than session_win (the
+        # pid-attribution total which excludes credited rounds).
+        # This is a DISPLAY dimension — the correct seed for any
+        # future consumer of the settlement-ST bucket histogram.
+        # Practical effect of this switch:
+        #   Type-1 shapes (M15, TopDollar): session_dim_win ==
+        #     session_win (credited-win exclusion never fires on
+        #     phantom offer rounds) → byte-identical bucket data.
+        #   Type-2 shapes (M275-style, bonus rounds self-credit):
+        #     upstream_feature_breakdown's fallback guard
+        #     (feat_bucket_total_win==0 → keep existing bucket data)
+        #     means the bucket card is driven by the per-ST plugin,
+        #     NOT by this iter-6 feed — so the dim-switch does NOT
+        #     affect M275's session-level multiplier display.  That
+        #     display arrives via the per-ST extraction layer (sub-
+        #     pass B / W4 scope, not this pass).
+        #   M43/M279: no detected trigger sessions → loop no-op.
         for _s in _trig_sessions_for_robot:
-            _sess_win = float(_s.get("session_win", 0.0) or 0.0)
+            _sess_win = float(_s.get("session_dim_win", 0.0) or 0.0)
             _bonus_sts = _s.get("bonus_spin_types") or []
             if not _bonus_sts:
                 continue
@@ -1313,6 +1433,71 @@ def parse_chunk_response(
                         _trig_st = -1
                     payout_id_win_by_spin_type[_chosen][_trig_st] += _sess_win
 
+        # Phase E: TopDollar session behavioral accumulation.
+        # For each trigger session that contains ST=14 picks, extract the
+        # per-session behavioral data (picks, offers, chosen dollar strings,
+        # settled win).  The session dict structure matches what
+        # topdollar_choice.extract() expects from chunk_dict["topdollar_sessions"].
+        #
+        # Runs AFTER the trigger-session attribution loop so _trig_sessions_for_robot
+        # is already fully populated.  Operates on the raw `rounds` list using
+        # trigger_idx / session_end_idx as slice boundaries — no re-parsing.
+        #
+        # Non-TopDollar machines produce zero ST=14 rounds → this loop is a
+        # cheap no-op (each session's inner loop finds nothing and appends nothing).
+        for _td_s in _trig_sessions_for_robot:
+            _td_trig_i = int(_td_s.get("trigger_idx", -1))
+            _td_end_i = int(_td_s.get("session_end_idx", _td_trig_i + 1))
+            if _td_trig_i < 0 or _td_end_i <= _td_trig_i + 1:
+                continue
+            # Walk the bonus rounds in this session; collect ST=14 pick data.
+            _td_picks: list[dict] = []
+            _td_settled_win: int | None = None
+            for _td_ri in range(_td_trig_i + 1, _td_end_i):
+                if _td_ri >= len(rounds):
+                    break
+                _td_r = rounds[_td_ri]
+                if not isinstance(_td_r, dict):
+                    continue
+                _td_st = _td_r.get("SpinType")
+                try:
+                    _td_st_int = int(_td_st) if _td_st is not None else -1
+                except (TypeError, ValueError):
+                    _td_st_int = -1
+                if _td_st_int == 14:  # player-choice round
+                    _td_offer = _td_r.get("OfferValue")
+                    _td_dollar_count = _td_r.get("DollarCount")
+                    _td_chosen = _td_r.get("ChosenDollar")
+                    try:
+                        _td_offer_int = int(_td_offer) if _td_offer is not None else 0
+                    except (TypeError, ValueError):
+                        _td_offer_int = 0
+                    try:
+                        _td_dc_int = int(_td_dollar_count) if _td_dollar_count is not None else 0
+                    except (TypeError, ValueError):
+                        _td_dc_int = 0
+                    _td_picks.append({
+                        "offer": _td_offer_int,
+                        "dollar_count": _td_dc_int,
+                        "chosen": str(_td_chosen) if _td_chosen is not None else "",
+                    })
+                elif _td_st_int == 15:  # settlement round
+                    _td_wa = _td_r.get("WinAmount")
+                    try:
+                        _td_settled_win = int(_td_wa) if _td_wa is not None else None
+                    except (TypeError, ValueError):
+                        _td_settled_win = None
+            if _td_picks:
+                # Only record sessions with at least one ST=14 pick (i.e. actual
+                # TopDollar sessions; skip non-TD trigger sessions silently).
+                chunk_topdollar_sessions.append({
+                    "n_picks": len(_td_picks),
+                    "offers": [p["offer"] for p in _td_picks],
+                    "dollar_counts": [p["dollar_count"] for p in _td_picks],
+                    "chosen": [p["chosen"] for p in _td_picks],
+                    "settled_win": _td_settled_win,
+                })
+
         cur_loss = 0
         cur_win = 0
         # Per-robot collect tracking: max CollectCount + max AccCredits
@@ -1329,13 +1514,17 @@ def parse_chunk_response(
         robot_paid_spin_idx = 0
         robot_last_collect_paid_idx = 0
         robot_prev_collect_count = 0
-        # BuffCollectionMap cycle detection: track CC resets to find the
-        # cycle length (e.g., M272 mode 1 = 1000 paid spins). The cycle
-        # length varies per machine/mode and is NOT hardcoded. We detect
-        # it by observing when CC drops from a high value back to a low
-        # value (reset). The peak CC before each reset = cycle length.
-        robot_cycle_peaks: list[int] = []  # CC value just before each reset
-        robot_prev_cc_for_cycle = 0  # previous CC (for reset detection)
+        # BuffCollectionMap cycle detection: computed in ONE place via
+        # compute_robot_cycle_peaks(rounds) called after the per-round loop.
+        # robot_cycle_peaks is assigned there; declared here so later
+        # references (chunk_completed_cycles, chunk_cycle_peaks) are in scope
+        # even if the robot has zero rounds.
+        robot_cycle_peaks: list[int] = []  # assigned post-loop via helper
+        # robot_prev_cc_for_cycle is kept ONLY for the chain-flag clear
+        # predicate below (``if is_paid and cc_int == 0 and ...``).
+        # It is NOT used for cycle-peak detection any more; that logic
+        # lives in compute_robot_cycle_peaks (round_classification.py).
+        robot_prev_cc_for_cycle = 0  # only used for chain-flag clear check
         # 2026-04-28 chain-timing fix (Bug 4): pre-compute cycle peak
         # from this robot's full round list using observed-reset
         # detection. The OLD logic set _bonus_chain_last_cc_reset on
@@ -1375,6 +1564,13 @@ def parse_chunk_response(
         # don't cross robots -- each is an independent player trajectory).
         sess_state["cur_loss_streak"] = 0
         sess_state["cur_win_streak"] = 0
+
+        # Sub-pass B (defect fix): track last paid round for st_extractors
+        # round_ctx.  A "block" is the contiguous run of non-paid rounds that
+        # follow a paid round; block_id == that paid round's round_idx.
+        # None before the first paid round (no block has opened yet).
+        _last_paid_round_for_ext: dict | None = None
+        _last_paid_round_idx_for_ext: int | None = None
 
         for _round_idx_in_robot, r in enumerate(rounds):
             if not isinstance(r, dict):
@@ -1475,6 +1671,15 @@ def parse_chunk_response(
                 else:
                     is_paid = to_float(cost_credits_raw, default=0.0) > 0.0
 
+            # Sub-pass B (defect fix): update block-boundary reference for
+            # st_extractors.  A paid round opens a new block; subsequent
+            # non-paid rounds belong to that block (block_id == round_idx of
+            # the opening paid round).  Updated BEFORE observe_round so every
+            # round sees the current block_id.
+            if is_paid and _active_st_extractors:
+                _last_paid_round_for_ext = r
+                _last_paid_round_idx_for_ext = _round_idx_in_robot
+
             win_amt = extract_round_win(r, rules=round_win_rules)
             chunk_spins += 1
             chunk_bet += bet_amt
@@ -1497,10 +1702,21 @@ def parse_chunk_response(
                 # Non-trigger sessions keep naive accumulation —
                 # matches pre-iter-5 behavior for machines whose
                 # bonus flows aren't caught by the trigger detector.
+                #
+                # 2026-06-11 (session-dim fix): bonus_win_from_helper
+                # now uses session_dim_win_by_trigger_idx (player-
+                # experience dimension), NOT session_win_by_trigger_idx
+                # (pid-attribution dimension).  _close_session computes
+                # the session KPI value (avg_return_x, win hit-rate,
+                # ≥10x rate) from this, so it must reflect what the
+                # player actually received — not the pid-scoped subset.
+                # pid attribution (session_win_by_trigger_idx) is
+                # unchanged and still used in the payout_id_win fold
+                # below and in session_handled_bonus_indices.
                 if _round_idx_in_robot in trigger_session_paid_indices:
                     sess_state["is_trigger_session"] = True
                     sess_state["bonus_win_from_helper"] = (
-                        session_win_by_trigger_idx.get(_round_idx_in_robot, 0.0)
+                        session_dim_win_by_trigger_idx.get(_round_idx_in_robot, 0.0)
                     )
                 else:
                     sess_state["is_trigger_session"] = False
@@ -1598,6 +1814,16 @@ def parse_chunk_response(
             spin_type_bucket_spins[sp_type][bucket] += 1
             spin_type_bucket_bet[sp_type][bucket] += bet_amt
             spin_type_bucket_win[sp_type][bucket] += win_amt
+            # Per-SpinType PAID-round bucket: only when is_paid and bet>0
+            # so the win/bet ratio is meaningful (free rounds have bet==0).
+            # Uses the same `bucket` label already computed above via
+            # return_bucket(win_amt / bet_amt).  spin_type_rtp_buckets plugin
+            # reads spin_type_rtp_buckets from the chunk dict (see return dict
+            # below) to emit the per-ST round-level RTP distribution.
+            if is_paid and bet_amt > 0:
+                spin_type_paid_bucket_spins[sp_type][bucket] += 1
+                spin_type_paid_bucket_bet[sp_type][bucket] += bet_amt
+                spin_type_paid_bucket_win[sp_type][bucket] += win_amt
             # Bonus-chain trigger-path bookkeeping. A chain opens on
             # the first non-paid round after a paid run; it accrues
             # all subsequent non-paid rounds keyed to a stable
@@ -1768,11 +1994,10 @@ def parse_chunk_response(
                     and cc_int == robot_cycle_peak
                 ):
                     _bonus_chain_last_cc_reset = True
-                # Cycle-peak count tracking (used by clamp_warning +
-                # completed_cycles_total). Detected at cc-drop -- the
-                # round AFTER cycle completion sees prev_cc at peak.
-                if cc_int < robot_prev_cc_for_cycle and robot_prev_cc_for_cycle > 10:
-                    robot_cycle_peaks.append(robot_prev_cc_for_cycle)
+                # robot_cycle_peaks is built post-loop via
+                # compute_robot_cycle_peaks(rounds) — see below.
+                # robot_prev_cc_for_cycle is still updated here so the
+                # chain-flag clear predicate at line ~1940 has its value.
                 robot_prev_cc_for_cycle = cc_int
                 robot_final_cc = cc_int
             # On a paid round without a reset, clear any stale BCM
@@ -1860,6 +2085,22 @@ def parse_chunk_response(
             # This is the only call site; adds no duplicate logic.
             _pbp_c3 = r.get("PayoutByPayline")
             if _pbp_c3:
+                # C4 symbol decode: read StopSymbolsByCol once per round.
+                # Format: list of "s0-s1-s2-" strings (one per column).
+                # Absent or non-list → no symbol decode for this round.
+                _c4_ssbc = r.get("StopSymbolsByCol")
+                _c4_ssbc_cols: list[list[str]] | None = None
+                if isinstance(_c4_ssbc, list) and _c4_ssbc:
+                    try:
+                        # Split each column string by "-"; keep empty strings
+                        # so that index arithmetic (row = pos - col*100 + 1)
+                        # maps cleanly. Trailing dash produces a trailing empty
+                        # string — that's expected and harmless since we index
+                        # by the decoded row value, not by iteration.
+                        _c4_ssbc_cols = [str(col_txt).split("-") for col_txt in _c4_ssbc]
+                    except Exception:
+                        _c4_ssbc_cols = None
+
                 for _c3rec in attribute_lines_to_pay_ids(r):
                     _c3pid = _c3rec.get("pay_id")
                     if _c3pid is None:
@@ -1869,10 +2110,47 @@ def parse_chunk_response(
                     _c3lid_s = str(_c3lid)
                     payout_id_payline_hits[_c3pid_s][_c3lid_s] += 1
                     # Decode col indices from positions (all records incl line_id=-1)
-                    for _c3pos in _c3rec.get("positions", []):
+                    _c3positions = _c3rec.get("positions", [])
+                    for _c3pos in _c3positions:
                         _c3col = (_c3pos + 1) // 100 - 1
                         if _c3col >= 0:
                             payout_id_col_set[_c3pid_s].add(_c3col)
+                    # C4 symbol combo decode: per-position symbol lookup.
+                    # Only when StopSymbolsByCol is available and positions non-empty.
+                    # Decode formula (verified M14/M1/M275/M279/M268/M274):
+                    #   col_1indexed = (pos + 1) // 100
+                    #   col0idx = col_1indexed - 1
+                    #   row = pos - col_1indexed * 100 + 1
+                    #   symbol = StopSymbolsByCol[col0idx].split("-")[row]
+                    # Offset: row=0→top, row=1→middle(center), row=2→bottom.
+                    if _c4_ssbc_cols is not None and _c3positions:
+                        _c4_symbols: list[str] = []
+                        _c4_decode_ok = True
+                        for _c4pos in _c3positions:
+                            _c4col_1idx = (_c4pos + 1) // 100
+                            _c4col0 = _c4col_1idx - 1
+                            _c4row = _c4pos - _c4col_1idx * 100 + 1
+                            if _c4col0 < 0 or _c4col0 >= len(_c4_ssbc_cols):
+                                # Column index out of range for this machine's grid.
+                                # FAIL LOUD: record nothing for this round's combo
+                                # rather than mis-mapping. Per brief §decode.
+                                _c4_decode_ok = False
+                                break
+                            _c4col_syms = _c4_ssbc_cols[_c4col0]
+                            if _c4row < 0 or _c4row >= len(_c4col_syms):
+                                # Row index out of range.
+                                _c4_decode_ok = False
+                                break
+                            _c4sym = _c4col_syms[_c4row]
+                            if not _c4sym:
+                                # Empty string at this index (trailing dash artifact
+                                # or malformed data) — skip this combo.
+                                _c4_decode_ok = False
+                                break
+                            _c4_symbols.append(_c4sym)
+                        if _c4_decode_ok and _c4_symbols:
+                            _c4_combo = "|".join(_c4_symbols)
+                            payout_id_symbol_combos[_c3pid_s][_c4_combo] += 1
                     # match_count distribution only for non-trigger lines
                     if _c3lid != -1:
                         payout_id_has_regular_line[_c3pid_s] = True
@@ -2018,6 +2296,47 @@ def parse_chunk_response(
                         if col_decoded >= 0 and 0 <= row_decoded <= 2:
                             payline_rows_per_col[col_decoded].add(row_decoded)
 
+            # Sub-pass B: per-round hook for st_extractors.
+            # Runs after sp_type is assigned and win_amt is computed so
+            # observe_round sees both without re-parsing.  Per-extractor
+            # exceptions are caught here and surfaced as error entries in
+            # the chunk record; they do NOT kill the parse
+            # (feedback_no_silent_swallow: diagnosed, not silenced).
+            if _active_st_extractors:
+                _round_ctx_for_ext = {
+                    "robot_idx": _robot_idx_counter,
+                    "round_idx": _round_idx_in_robot,
+                    "session": _round_to_session_for_ext.get(_round_idx_in_robot),
+                    "bet": bet,
+                    # RISK-1 FIX: expose the rule-view win_amt so extractors
+                    # use the same attribution logic as the rest of the parser
+                    # (e.g. SynthesizePayIdRule, chunk-residual attribution).
+                    # Extractor helpers should read round_ctx["win"] when
+                    # present rather than re-parsing raw WinCredits.
+                    "win": win_amt,
+                    # Defect fix: generic block-boundary signal.
+                    # last_paid_round: reference to the most recent paid round
+                    #   dict (None before the first paid round in this robot).
+                    # block_id: that paid round's round_idx — identifies the
+                    #   contiguous non-paid block opened by it.  Paid rounds
+                    #   set their own block_id (their round IS the opener).
+                    "last_paid_round": _last_paid_round_for_ext,
+                    "block_id": _last_paid_round_idx_for_ext,
+                }
+                for _ext in _active_st_extractors:
+                    try:
+                        _ext.observe_round(r, sp_type, _round_ctx_for_ext)
+                    except Exception as _ext_obs_err:
+                        # Accumulate error into a per-extractor list so
+                        # finalize_chunk can surface it.
+                        _ext_obs_errors = getattr(_ext, "_obs_errors", None)
+                        if _ext_obs_errors is None:
+                            _ext._obs_errors = []
+                        _ext._obs_errors.append(
+                            f"robot={_robot_idx_counter} round={_round_idx_in_robot}: "
+                            f"{type(_ext_obs_err).__name__}: {_ext_obs_err}"
+                        )
+
             # Track previous round's PayIds for chain trigger
             # classification. MUST be the last thing inside the round
             # loop so every paid spin updates it before the next
@@ -2097,6 +2416,9 @@ def parse_chunk_response(
         # dynamically (not hardcoded); final_cc tells us how far into
         # the current incomplete cycle this robot was when the chunk
         # ended.
+        #
+        # Compute cycle peaks via the shared helper (single source of truth).
+        robot_cycle_peaks = compute_robot_cycle_peaks(rounds)
         if robot_cycle_peaks:
             chunk_cycle_peaks.extend(robot_cycle_peaks)
         if robot_final_cc > 0:
@@ -2107,6 +2429,7 @@ def parse_chunk_response(
         # their wins contribute to the NewFreespin expected payout.
         # For correction, we just need the cycle peaks + final CCs.
         chunk_completed_cycles += len(robot_cycle_peaks)
+        _robot_idx_counter += 1
 
     if chunk_spins <= 0 or chunk_bet <= 0:
         return {"ok": False, "index": chunk_index, "error": "parse_failed_zero_chunk"}
@@ -2138,6 +2461,55 @@ def parse_chunk_response(
         payout_id_win["_unattributed_residual"] += _residual
         # Don't add to payout_id_by_spin_type -- this delta isn't
         # tied to any single SpinType by definition.
+
+    # Sub-pass B: finalize extractors and collect results.
+    # finalize_chunk() is called once (after ALL robots in the chunk).
+    # Per-extractor exceptions are caught and surfaced as
+    # "_extract_error_<EXTRACTOR_ID>" entries — never silently swallowed
+    # (feedback_no_silent_swallow.md).  The "st_extract" key is OMITTED
+    # entirely when no extractors ran (inertness: old records remain valid).
+    _st_extract_result: dict | None = None
+    if _active_st_extractors:
+        _st_extract_result = {}
+        for _ext in _active_st_extractors:
+            _eid = _ext.EXTRACTOR_ID
+            # Snapshot error accumulators BEFORE finalize_chunk so they are
+            # never lost regardless of what finalize_chunk does internally.
+            # The parser then RESETS both attributes on the extractor instance
+            # before calling finalize_chunk — this is the authoritative reset
+            # for cross-chunk isolation and does NOT depend on extractor-author
+            # discipline (finalize_chunk's own resets are idempotent guards).
+            # Contract (see _base.py STExtractor.finalize_chunk docstring):
+            #   1. parser snapshots _obs_errors + _begin_robot_error
+            #   2. parser resets both to empty/None on the extractor
+            #   3. parser calls finalize_chunk() (resets payload state;
+            #      its own _obs_errors/_begin_robot_error resets are idempotent)
+            #   4. parser surfaces snapshots as _extract_error_<ID> if non-empty
+            _obs_errs = list(getattr(_ext, "_obs_errors", None) or [])
+            _begin_err = getattr(_ext, "_begin_robot_error", None)
+            _ext._obs_errors = []           # parser-side reset (authoritative)
+            _ext._begin_robot_error = None  # parser-side reset (authoritative)
+            try:
+                _chunk_data = _ext.finalize_chunk()
+                _st_extract_result[_eid] = _chunk_data
+            except Exception as _ext_fin_err:
+                _st_extract_result[f"_extract_error_{_eid}"] = (
+                    f"finalize_chunk: {type(_ext_fin_err).__name__}: {_ext_fin_err}"
+                )
+            # Surface any accumulated observe_round errors (snapshot taken above).
+            if _obs_errs:
+                existing = _st_extract_result.get(f"_extract_error_{_eid}", "")
+                _st_extract_result[f"_extract_error_{_eid}"] = (
+                    (existing + "; " if existing else "")
+                    + "observe_round errors: " + "; ".join(_obs_errs[:5])
+                )
+            # Surface begin_robot errors (snapshot taken above).
+            if _begin_err:
+                existing = _st_extract_result.get(f"_extract_error_{_eid}", "")
+                _st_extract_result[f"_extract_error_{_eid}"] = (
+                    (existing + "; " if existing else "")
+                    + f"begin_robot: {_begin_err}"
+                )
 
     return {
         "ok": True,
@@ -2239,6 +2611,21 @@ def parse_chunk_response(
         },
         "spin_type_bucket_win": {
             str(k): dict(v) for k, v in spin_type_bucket_win.items()
+        },
+        # Per-SpinType PAID-round-level bucket histogram.
+        # Consumed by spin_type_rtp_buckets plugin (extract/reduce/emit).
+        # Keys: str(sp_type) → {bucket_label: {"spins": int, "bet": float, "win": float}}
+        # Aggregated at emit() time (not here) to keep chunk dict compact.
+        "spin_type_rtp_buckets": {
+            str(st): {
+                b: {
+                    "spins": spin_type_paid_bucket_spins[st].get(b, 0),
+                    "bet": spin_type_paid_bucket_bet[st].get(b, 0.0),
+                    "win": spin_type_paid_bucket_win[st].get(b, 0.0),
+                }
+                for b in spin_type_paid_bucket_spins[st]
+            }
+            for st in spin_type_paid_bucket_spins
         },
         # Iter 6: session-level bucket histogram keyed by trigger
         # session's settlement SpinType. Finalize merges these across
@@ -2365,6 +2752,10 @@ def parse_chunk_response(
         "dollar_pick_spins": dollar_pick_spins,
         "dollar_pick_total_dollars": dollar_pick_total_dollars,
         "dollar_pick_win": dollar_pick_win,
+        # Phase E: TopDollar session behavioral data.
+        # Consumed by topdollar_choice.extract().  Empty list for non-TD machines
+        # (no ST=14 rounds → inner loop in the per-robot TD block appends nothing).
+        "topdollar_sessions": chunk_topdollar_sessions,
         # Rawdata-replay bankruptcy histogram: per-tier survival breakdown
         # derived from the robot round sequences. Merged at finalize;
         # replaces the old live HTTP `run_bankruptcy_probe` loop so
@@ -2402,4 +2793,19 @@ def parse_chunk_response(
             for pid_s, col_set in payout_id_col_set.items()
         },
         "payout_id_has_regular_line": dict(payout_id_has_regular_line),
+        # C4 symbol enrichment: per-pid symbol combination histogram.
+        # combo_str = "|"-joined column-ordered symbol names per winning line.
+        # payouts_by_spin_type plugin reads this in extract() to emit
+        # the dominant symbol_combo per (pid, spin_type).
+        # payout_ids_top20 aggregates across all STs for the overview table.
+        "payout_id_symbol_combos": {
+            pid_s: dict(combo_map)
+            for pid_s, combo_map in payout_id_symbol_combos.items()
+        },
+        # Sub-pass B: per-ST extraction layer output.
+        # Key is OMITTED entirely when no extractors ran (st_extractors=None
+        # or empty) to preserve byte-identical behavior for all existing
+        # callers and cached chunks.  Missing key == no extraction ran,
+        # which is a legitimate state.
+        **({} if _st_extract_result is None else {"st_extract": _st_extract_result}),
     }
