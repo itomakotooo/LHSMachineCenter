@@ -245,6 +245,24 @@ class TestFleetRefreshEndpoints:
         assert items[0]["machine"] == "M14"
         assert items[0]["mode"] == 1
 
+    def test_get_fleet_refresh_idle_200_when_no_queue(self, fleet_client):
+        """GET /api/fleet/refresh with NO queue ever created → 200 idle payload,
+        NOT 404. "No queue" is a normal state, not an error — returning it as a
+        404 made the frontend poll log a console error on every paint.
+
+        Inject-bug: revert get_fleet_refresh to `raise HTTPException(404, ...)`
+        in the no-queue branch → this asserts 200 → RED. Revert → GREEN.
+        """
+        c, _app = fleet_client
+        resp = c.get("/api/fleet/refresh")
+        assert resp.status_code == 200, (
+            f"no-queue GET must be 200 idle, got {resp.status_code}: {resp.text}"
+        )
+        body = resp.json()
+        assert body.get("status") == "idle", f"expected idle status, got {body}"
+        assert body.get("queue_id") is None
+        assert body.get("total_items") == 0
+
     def test_get_fleet_refresh_returns_progress(self, fleet_client, monkeypatch):
         """Start a queue; GET /api/fleet/refresh returns progress with counters.
 

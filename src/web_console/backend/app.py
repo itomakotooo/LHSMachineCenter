@@ -12606,12 +12606,23 @@ def create_app(
                 ),
             }
 
+        # An idle payload returned (HTTP 200) when no fleet-refresh queue exists
+        # or the latest one can't be resolved. "No queue yet" is a NORMAL state,
+        # not an error — returning it as 200 (instead of 404) stops the frontend
+        # poll from logging a console error on every paint (the endpoint is hit
+        # on console load + on a timer). The frontend renders this as the idle
+        # state (start enabled, no progress bar).
+        _FLEET_REFRESH_IDLE: dict[str, Any] = {
+            "queue_id": None, "status": "idle", "total_items": 0,
+            "completed_items": 0, "failed_items": 0, "skipped_items": 0,
+        }
+
         @app.get("/api/fleet/refresh")
         def get_fleet_refresh() -> dict[str, Any]:
             """Poll current fleet refresh progress.
 
-            Returns the most recently started queue (running or completed).
-            404 if no queue has ever been created.
+            Returns the most recently started queue (running or completed), or an
+            idle payload (200) when no queue exists — "no queue" is not an error.
             """
             queue_id = fleet_mgr.get_running_queue_id()
             if queue_id is None:
@@ -12627,15 +12638,11 @@ def create_app(
                     queue_id = None
 
             if queue_id is None:
-                raise HTTPException(
-                    status_code=404, detail="no fleet refresh queue found"
-                )
+                return dict(_FLEET_REFRESH_IDLE)
 
             progress = fleet_mgr.get_queue_progress(queue_id)
             if progress is None:
-                raise HTTPException(
-                    status_code=404, detail=f"queue {queue_id} not found"
-                )
+                return dict(_FLEET_REFRESH_IDLE)
             return progress
 
         @app.delete("/api/fleet/refresh")

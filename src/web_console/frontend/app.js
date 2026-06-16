@@ -9654,13 +9654,28 @@ async function refreshFleetRefreshPanel() {
   try {
     data = await apiGet("/api/fleet/refresh");
   } catch (e) {
-    // 404 = no queue yet OR virtual console (fleet disabled).
+    // Genuine error (network/5xx). "No queue" is no longer a 404 — the endpoint
+    // now returns a 200 idle payload (handled below), so this path only fires on
+    // a real failure.
     if (startBtn) startBtn.disabled = false;
     if (cancelBtn) cancelBtn.classList.add("hidden");
     if (statusEl) statusEl.textContent = fmt("fleetRefreshIdle");
     if (progressDiv) progressDiv.classList.add("hidden");
-    // Stop polling when there's nothing to track.
-    if (state.fleetRefreshPollTimer && (!data || data.status !== "running")) {
+    if (state.fleetRefreshPollTimer) {
+      clearInterval(state.fleetRefreshPollTimer);
+      state.fleetRefreshPollTimer = null;
+    }
+    return;
+  }
+
+  // Idle 200 payload (no queue ever / unresolvable): render the idle state —
+  // start enabled, no progress bar, polling stopped (same as the old 404 path).
+  if (!data || !data.queue_id || data.status === "idle") {
+    if (startBtn) startBtn.disabled = false;
+    if (cancelBtn) cancelBtn.classList.add("hidden");
+    if (statusEl) statusEl.textContent = fmt("fleetRefreshIdle");
+    if (progressDiv) progressDiv.classList.add("hidden");
+    if (state.fleetRefreshPollTimer) {
       clearInterval(state.fleetRefreshPollTimer);
       state.fleetRefreshPollTimer = null;
     }
