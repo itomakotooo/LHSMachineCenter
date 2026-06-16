@@ -883,19 +883,23 @@ class TestRealDataM275:
         )
 
     @SKIP_NO_M275
-    def test_freespin_dynamics_emits_no_by_dim(self, summary):
-        """ARCHITECTURE LOCK (Phase 2 critic fix): per-dimension breakdown is the
-        GENERIC per-ST layer's job (spin_type_outcomes / payouts via
-        _stDimGenericDimension) + the existing F6 trigger_paths table.
-        freespin_dynamics (a mechanic plugin) must NOT compute its own by_dim —
-        that was dead/unrendered + redundant JSON. This locks the removal so it
-        does not silently come back."""
+    def test_freespin_dynamics_by_dim_only_on_own_metrics(self, summary):
+        """ARCHITECTURE LOCK (Phase 2 critic fix, REFINED in Phase 3): the
+        per-dimension split of GENERIC per-ST metrics (hit-rate / RTP / payid /
+        reel) is the generic layer's job — freespin_dynamics must NOT re-derive
+        it on the generic-overlap sections. But freespin_dynamics MAY own the
+        by_dim of its OWN freespin-specific metrics that no generic plugin can
+        compute (ER ladder / FS-index arc / session tiers, added in Phase 3).
+        This locks the boundary: by_dim ALLOWED only on those 3 sections."""
         fsd = _fsd(summary)
+        _ALLOWED = {"er_ladder", "fs_index_arc", "session_tier_distribution"}
         offenders = [sec for sec, block in fsd.items()
-                     if isinstance(block, dict) and "by_dim" in block]
+                     if isinstance(block, dict) and "by_dim" in block
+                     and sec not in _ALLOWED]
         assert not offenders, (
-            f"freespin_dynamics must emit NO by_dim (per-dim is the generic "
-            f"layer's job). Found by_dim in sections: {offenders}"
+            f"freespin_dynamics emitted by_dim on a GENERIC-overlap section "
+            f"(that is the generic layer's job): {offenders}. by_dim is allowed "
+            f"only on freespin-specific sections {sorted(_ALLOWED)}."
         )
 
     @SKIP_NO_M275

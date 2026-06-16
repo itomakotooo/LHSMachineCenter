@@ -441,15 +441,17 @@ class TestRegistry:
         )
         result = get_extractors_for_manifest(manifest)
 
-        assert len(result) == 1, (
-            f"Expected exactly one extractor for trigger_paths manifest. Got {len(result)}."
-        )
-        assert isinstance(result[0], TriggerPathExtractor), (
-            f"Expected TriggerPathExtractor instance, got {type(result[0])}"
+        # Phase 3: freespin_progression also declares on "trigger_paths" (inert
+        # on non-freespin STs but still returned by the key-based registry), so
+        # assert exactly ONE trigger_path extractor rather than a total count.
+        tp_exts = [e for e in result if isinstance(e, TriggerPathExtractor)]
+        assert len(tp_exts) == 1, (
+            f"Expected exactly one TriggerPathExtractor for trigger_paths manifest. "
+            f"Got {[type(e).__name__ for e in result]}."
         )
         # Clone must be a different object from the registry prototype.
         prototype_ids = {id(ext) for ext in ALL_EXTRACTORS}
-        assert id(result[0]) not in prototype_ids, (
+        assert id(tp_exts[0]) not in prototype_ids, (
             "get_extractors_for_manifest must return a CLONE, not the registry prototype. "
             "Per-run state would leak across reports if the same object is shared."
         )
@@ -471,9 +473,12 @@ class TestRegistry:
             },
         }
         result = get_extractors_for_manifest(manifest)
-        assert len(result) == 1, (
-            f"Two STs declaring trigger_paths must still yield ONE extractor. "
-            f"Got {len(result)}. The extractor reads all STs from _st_declarations."
+        # Phase 3: count trigger_path specifically (freespin_progression also
+        # declares on the key but is inert on these non-freespin STs).
+        tp_count = len([e for e in result if e.EXTRACTOR_ID == "trigger_path"])
+        assert tp_count == 1, (
+            f"Two STs declaring trigger_paths must still yield ONE trigger_path "
+            f"extractor. Got {tp_count}. The extractor reads all STs from _st_declarations."
         )
 
 
@@ -717,7 +722,10 @@ class TestTriggerPathSemantics:
         from fresh_slotlab.analyzer.core.parser import parse_chunk_response
         discover_extractors()
         extractors = get_extractors_for_manifest(manifest)
-        assert len(extractors) == 1, f"Expected 1 extractor, got {len(extractors)}"
+        # Phase 3: freespin_progression also declares on trigger_paths (inert on
+        # non-freespin STs); assert trigger_path is present, not a total count.
+        assert any(e.EXTRACTOR_ID == "trigger_path" for e in extractors), \
+            f"trigger_path extractor missing, got {[e.EXTRACTOR_ID for e in extractors]}"
         rec = parse_chunk_response(
             [_robot(rounds)], chunk_index=1, bet=bet, st_extractors=extractors
         )
@@ -1306,7 +1314,7 @@ class TestM275CrossModeConsistency:
 
         discover_extractors()
         extractors = get_extractors_for_manifest(manifest)
-        assert len(extractors) == 1
+        assert any(e.EXTRACTOR_ID == "trigger_path" for e in extractors)
 
         env = json.loads(chunk_path.read_text(encoding="utf-8"))
         bet = int(env.get("_bet", 1000))
@@ -1715,7 +1723,7 @@ class TestCriticGaps:
         manifest = self._simple_manifest()
         # Get ONE extractor instance that will be reused across both chunks
         extractors = get_extractors_for_manifest(manifest)
-        assert len(extractors) == 1
+        assert any(e.EXTRACTOR_ID == "trigger_path" for e in extractors)
 
         call_count = [0]
         original_begin = TriggerPathExtractor.begin_robot
@@ -2078,8 +2086,9 @@ class TestCriticGaps:
             paths={"scatter": {"opened_by": {"payout_id": "666"}}},
         )
         extractors = get_extractors_for_manifest(manifest)
-        assert len(extractors) == 1
-        ext = extractors[0]
+        # Phase 3: select the trigger_path extractor by ID (freespin_progression
+        # also declares on the key); extractors[0] order is not guaranteed.
+        ext = next(e for e in extractors if e.EXTRACTOR_ID == "trigger_path")
 
         # Simulate begin_robot call
         ext.begin_robot({

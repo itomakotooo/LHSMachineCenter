@@ -173,12 +173,82 @@ class UpstreamFeatureBreakdown(AnalyzerFeature):
     REGISTERED_FALLBACK_RULES: ClassVar[dict[int, dict]] = {}
 
     def extract(self, parse_state: Any, chunk_dict: Any) -> dict:
-        """No-op — upstream_feature_breakdown uses the pre-emit stash pattern."""
-        return {}
+        """Lift dimensions data from st_extract for accurate path labeling (Phase 3).
+
+        The core computation still flows through the pre-emit stash pattern.
+        This extract() now additionally lifts the st_extract["trigger_path"]["dimensions"]
+        sub-key from each chunk so that emit() can use accurate per-path counts
+        (replacing the coarse chain_chunk_summaries heuristic for feature STs that have
+        a trigger_paths dimension declaration).
+
+        Fallback: if no st_extract dimensions data exists (old cached chunks / machines
+        without trigger_paths), returns an empty dict — emit() falls through to today's
+        coarse behavior (byte-identical, per feedback_respect_existing_codebase.md).
+        """
+        if not chunk_dict or not isinstance(chunk_dict, dict):
+            return {}
+        st_extract = chunk_dict.get("st_extract")
+        if not isinstance(st_extract, dict):
+            return {}
+        tp_data = st_extract.get("trigger_path")
+        if not isinstance(tp_data, dict):
+            return {}
+        # The dimensions sub-key is emitted by TriggerPathExtractor.finalize_chunk()
+        # as a sibling to the per-ST path data (within the "trigger_path" extractor output).
+        dimensions_raw = tp_data.get("dimensions")
+        if not isinstance(dimensions_raw, dict):
+            return {}
+        # Return the dimensions data as-is for merging in reduce().
+        return {"st_extract_dimensions": dimensions_raw}
 
     def reduce(self, prev_acc: dict, this_acc: dict) -> dict:
-        """No-op — no per-chunk accumulator."""
-        return {}
+        """Merge dimensions data across chunks (additive merge of count/sum fields)."""
+        if not prev_acc and not this_acc:
+            return {}
+        if not prev_acc:
+            return this_acc or {}
+        if not this_acc:
+            return prev_acc or {}
+
+        prev_dims = prev_acc.get("st_extract_dimensions") or {}
+        this_dims = this_acc.get("st_extract_dimensions") or {}
+        if not prev_dims and not this_dims:
+            return {}
+        if not prev_dims:
+            return {"st_extract_dimensions": this_dims}
+        if not this_dims:
+            return {"st_extract_dimensions": prev_dims}
+
+        # Merge {st_str: {dim_name: {path_label: {stats}}}} additively.
+        merged: dict[str, Any] = {}
+        all_sts = set(prev_dims) | set(this_dims)
+        for st_str in all_sts:
+            pa = prev_dims.get(st_str) or {}
+            pb = this_dims.get(st_str) or {}
+            merged[st_str] = {}
+            all_dims = set(pa) | set(pb)
+            for dim_name in all_dims:
+                da = pa.get(dim_name) or {}
+                db = pb.get(dim_name) or {}
+                merged[st_str][dim_name] = {}
+                all_paths = set(da) | set(db)
+                for path_label in all_paths:
+                    va = da.get(path_label) or {}
+                    vb = db.get(path_label) or {}
+                    # Additive merge of numeric stats.
+                    _int_keys = ("round_count", "paid_round_count", "win_round_count", "session_count")
+                    _float_keys = ("win_sum", "bet_sum")
+                    out_stats: dict[str, Any] = {}
+                    for k in _int_keys:
+                        out_stats[k] = int(va.get(k, 0)) + int(vb.get(k, 0))
+                    for k in _float_keys:
+                        out_stats[k] = float(va.get(k, 0.0)) + float(vb.get(k, 0.0))
+                    # Preserve non-numeric fields from either side.
+                    for k, v in va.items():
+                        if k not in out_stats:
+                            out_stats[k] = v
+                    merged[st_str][dim_name][path_label] = out_stats
+        return {"st_extract_dimensions": merged}
 
     def emit(self, final_acc: dict, summary: dict, ctx: "PipelineContext") -> None:
         """Build the upstream FeatureWin breakdown from raw stash; write it.
@@ -327,6 +397,97 @@ class UpstreamFeatureBreakdown(AnalyzerFeature):
             })
         for rows in sub_streams_by_feature.values():
             rows.sort(key=lambda r: -r["win_credits"])
+
+        # Phase 3 (04_dimension_framework.md §3.4.8): when the dimension
+        # extractor has accurate per-path counts for a feature's ST, replace
+        # the coarse chain_chunk_summaries heuristic split with the ACCURATE
+        # dimension labels from st_extract["trigger_path"]["dimensions"].
+        #
+        # The dimensions data is lifted from chunk records in extract() and
+        # merged across chunks in reduce() — stored in final_acc (the pattern-B
+        # accumulator, not the stash). This avoids touching report_engine.py
+        # (a closure file), keeping base_hash unchanged.
+        #
+        # Fallback (no dimensions data) = today's behavior (byte-identical).
+        _dimensions_data: dict[str, Any] = (final_acc or {}).get("st_extract_dimensions") or {}
+        if _dimensions_data:
+            # _dimensions_data shape: {st_str: {dim_name: {path_label: {session_count, win_sum, round_count, ...}}}}
+            # This is the "dimensions" sub-key from the trigger_path extractor's finalize_chunk output.
+            for feat_name in list(sub_streams_by_feature.keys()):
+                feat_resolved_st = feature_to_spin_type.get(feat_name)
+                if feat_resolved_st is None:
+                    continue
+                st_str = str(feat_resolved_st)
+                st_dim_data = _dimensions_data.get(st_str)
+                if not isinstance(st_dim_data, dict):
+                    continue
+                # Only apply when there is exactly one dimension (Phase 3 scope).
+                # Pick the first dimension name (should be "trigger_path").
+                dim_name = next(iter(st_dim_data), None)
+                if dim_name is None:
+                    continue
+                dim_vals: dict[str, Any] = st_dim_data[dim_name]
+                if not isinstance(dim_vals, dict):
+                    continue
+                # Collect real path labels (exclude unknown:* / multi:*).
+                real_dim_labels = [
+                    v for v in dim_vals
+                    if not v.startswith("unknown:") and not v.startswith("multi:")
+                ]
+                if len(real_dim_labels) < 2:
+                    # Single path or no real split: fall through to coarse behavior.
+                    continue
+                # Build accurate sub_stream rows from the dimension extractor data.
+                # These replace the coarse "via NormalCollectionSpin" / "via NewFreespin" rows.
+                accurate_rows: list[dict[str, Any]] = []
+                for path_label in real_dim_labels:
+                    dim_path_stats: dict[str, Any] = dim_vals.get(path_label) or {}
+                    path_session_count = int(dim_path_stats.get("session_count", 0))
+                    path_win_sum = float(dim_path_stats.get("win_sum", 0.0))
+                    path_rtp_pp = (
+                        path_win_sum / effective_bet_for_rtp * 100.0
+                        if effective_bet_for_rtp > 0 else 0.0
+                    )
+                    # Bucket histograms are not available per-path from the dimension
+                    # extractor in the sub_stream shape (those are per-round, not per-session).
+                    # We reuse the existing coarse bucket data for display but label correctly.
+                    # Find matching coarse row to borrow bucket data (by win_sum proximity).
+                    coarse_rows = sub_streams_by_feature.get(feat_name) or []
+                    bucket_spins: dict = {}
+                    bucket_bet: dict = {}
+                    bucket_win: dict = {}
+                    if coarse_rows:
+                        # Borrow the closest coarse row's bucket data as a proxy.
+                        # (Accurate per-path bucket histograms are a Phase 3+ item.)
+                        best_row = max(coarse_rows, key=lambda r: float(r.get("win_credits", 0)))
+                        bucket_spins = best_row.get("bucket_spins") or {}
+                        bucket_bet = best_row.get("bucket_bet") or {}
+                        bucket_win = best_row.get("bucket_win") or {}
+                    # Use "fires" = session_count from the dimension extractor.
+                    fires = path_session_count
+                    accurate_rows.append({
+                        "label": path_label,
+                        "fires": fires,
+                        "win_credits": path_win_sum,
+                        "rtp_contribution_pp": path_rtp_pp,
+                        "bucket_spins": bucket_spins,
+                        "bucket_bet": bucket_bet,
+                        "bucket_win": bucket_win,
+                        # The label/fires/win/rtp ARE accurate (from the dimension
+                        # extractor); the bucket_* histograms are BORROWED from the
+                        # highest-win coarse row as a proxy (per-path per-bucket
+                        # histograms are a Phase 3+ item). Surfaced, never hidden
+                        # (feedback_invariant_with_fallback_hides_drift): a consumer
+                        # must know the bucket columns are not yet per-path.
+                        "bucket_data_approximate": bool(coarse_rows),
+                        "_dimension_source": (
+                            f"st_extract.trigger_path.dimensions (accurate labels/"
+                            f"fires/win; bucket_* approximate; {dim_name}={path_label})"
+                        ),
+                    })
+                accurate_rows.sort(key=lambda r: -r["win_credits"])
+                if accurate_rows:
+                    sub_streams_by_feature[feat_name] = accurate_rows
 
         # Build a reverse SpinType transition table once (inbound edge
         # counts) so the per-feature loop below can compute BOTH the

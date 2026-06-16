@@ -774,17 +774,25 @@ class TestFreespinDynamicsDelivered:
         assert 0 < rc["share_of_all_win"] <= 1
         assert rc["zero_win_round_rate"] is None or 0 <= rc["zero_win_round_rate"] <= 1
 
-    def test_parser_blind_flags_f3a_f4_f5(self, fd):
-        """The honesty contract (M279 wheel_dynamics precedent): F3a/F4/F5 are
-        FLAGGED parser_blind, never fabricated. If a future change fakes the ER
-        ladder or silently drops the flags, this goes RED."""
+    def test_parser_blind_honesty_contract(self, fd):
+        """The honesty contract (M279 wheel_dynamics precedent), UPDATED for Phase 3:
+        F4 (ER ladder) + F5 (FS-index arc) are now DELIVERED by the
+        freespin_progression extractor → they must NOT be claimed parser_blind
+        anymore (claiming a delivered metric is blind would be a lie); the
+        corresponding sections must be available and the reason must document the
+        delivery. F3a (the server's OWN SummaryWin tier taxonomy — only a
+        return_bucket proxy is delivered) stays genuinely flagged."""
         blind = fd.get("parser_blind")
         assert isinstance(blind, list) and blind, "parser_blind must be a non-empty list"
         blob = " ".join(blind)
-        for token in ("F3a", "F4", "F5"):
-            assert token in blob, f"{token} must be flagged parser_blind; got {blind}"
-        assert isinstance(fd.get("parser_blind_reason"), str) and fd["parser_blind_reason"], (
-            "parser_blind_reason must explain WHY (escalation, not silence)"
+        assert "F3a" in blob, f"F3a must still be flagged parser_blind; got {blind}"
+        # F4/F5 DELIVERED (Phase 3): sections available + reason documents it.
+        assert fd.get("er_ladder", {}).get("available") is True, "F4 ER ladder must be delivered"
+        assert fd.get("fs_index_arc", {}).get("available") is True, "F5 FS arc must be delivered"
+        reason = fd.get("parser_blind_reason")
+        assert isinstance(reason, str) and reason, "parser_blind_reason must explain WHY"
+        assert "F4" in reason and "F5" in reason, (
+            "parser_blind_reason must document that F4/F5 are now delivered (Phase 3)"
         )
 
 

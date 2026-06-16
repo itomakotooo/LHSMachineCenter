@@ -109,6 +109,9 @@ except ImportError:  # running as standalone script
     from analyzer.feature_registry import register  # type: ignore[no-redef]
     from analyzer.core.aggregator import RETURN_BUCKET_ORDER  # type: ignore[no-redef]
 
+# Phase 3: freespin_progression extractor id.
+_FREESPIN_PROGRESSION_EXTRACTOR_ID: str = "freespin_progression"
+
 if TYPE_CHECKING:
     try:
         from fresh_slotlab.analyzer.pipeline_context import PipelineContext
@@ -175,6 +178,94 @@ def _merge_trigger_paths(
                 dest["win_band_hist"][band] = (
                     dest["win_band_hist"].get(band, 0) + int(cnt)
                 )
+    return out
+
+
+def _merge_progression(
+    prev: dict[str, Any],
+    this: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge two freespin_progression outputs across chunks.
+
+    Shape: {st_str: {dim_name: {path_label: {er_ladder, fs_arc, session_tier_hist}}}}
+
+    Per-FS-index counts/sums are additive. session_tier_hist bucket counts
+    are additive. er_distribution counts are additive.
+    """
+    out: dict[str, Any] = {}
+
+    def _merge_er_ladder(
+        a: dict[str, Any], b: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Merge two {fs_idx: {er_distribution, er_sum, round_count}} dicts."""
+        result: dict[str, Any] = {}
+        all_idxs = set(a) | set(b)
+        for fi in all_idxs:
+            ea = a.get(fi) or {}
+            eb = b.get(fi) or {}
+            merged_dist: dict[str, int] = {}
+            all_er_vals = set(ea.get("er_distribution") or {}) | set(eb.get("er_distribution") or {})
+            for er_val in all_er_vals:
+                merged_dist[er_val] = (
+                    int((ea.get("er_distribution") or {}).get(er_val, 0))
+                    + int((eb.get("er_distribution") or {}).get(er_val, 0))
+                )
+            result[fi] = {
+                "er_distribution": merged_dist,
+                "er_sum": float(ea.get("er_sum", 0.0)) + float(eb.get("er_sum", 0.0)),
+                "round_count": int(ea.get("round_count", 0)) + int(eb.get("round_count", 0)),
+            }
+        return result
+
+    def _merge_fs_arc(
+        a: dict[str, Any], b: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Merge two {fs_idx: {round_count, win_round_count, win_sum}} dicts."""
+        result: dict[str, Any] = {}
+        all_idxs = set(a) | set(b)
+        for fi in all_idxs:
+            ea = a.get(fi) or {}
+            eb = b.get(fi) or {}
+            result[fi] = {
+                "round_count": int(ea.get("round_count", 0)) + int(eb.get("round_count", 0)),
+                "win_round_count": int(ea.get("win_round_count", 0)) + int(eb.get("win_round_count", 0)),
+                "win_sum": float(ea.get("win_sum", 0.0)) + float(eb.get("win_sum", 0.0)),
+            }
+        return result
+
+    def _merge_hist(a: dict[str, int], b: dict[str, int]) -> dict[str, int]:
+        result: dict[str, int] = dict(a)
+        for k, v in b.items():
+            result[k] = result.get(k, 0) + int(v)
+        return result
+
+    all_sts = set(prev) | set(this)
+    for st_str in all_sts:
+        pa = prev.get(st_str) or {}
+        pb = this.get(st_str) or {}
+        out[st_str] = {}
+        all_dims = set(pa) | set(pb)
+        for dim_name in all_dims:
+            da = pa.get(dim_name) or {}
+            db = pb.get(dim_name) or {}
+            out[st_str][dim_name] = {}
+            all_paths = set(da) | set(db)
+            for path_label in all_paths:
+                va = da.get(path_label) or {}
+                vb = db.get(path_label) or {}
+                out[st_str][dim_name][path_label] = {
+                    "er_ladder": _merge_er_ladder(
+                        va.get("er_ladder") or {}, vb.get("er_ladder") or {}
+                    ),
+                    "fs_arc": _merge_fs_arc(
+                        va.get("fs_arc") or {}, vb.get("fs_arc") or {}
+                    ),
+                    "session_tier_hist": _merge_hist(
+                        va.get("session_tier_hist") or {},
+                        vb.get("session_tier_hist") or {},
+                    ),
+                    "_alarm": va.get("_alarm") or vb.get("_alarm"),
+                }
     return out
 
 
@@ -246,6 +337,9 @@ class FreespinDynamics(AnalyzerFeature):
             "next_counts": {}, "bucket_spins": {}, "bucket_win": {},
             "trigger_paths": {}, "trigger_path_errors": [],
             "chunks_with_extract": 0, "chunks_total": 0,
+            # Phase 3: freespin_progression extractor data.
+            "progression": {},  # {st_str: {dim_name: {path_label: {er_ladder, fs_arc, session_tier_hist}}}}
+            "progression_errors": [],
         }
         if not chunk_dict or not isinstance(chunk_dict, dict):
             return empty
@@ -298,6 +392,38 @@ class FreespinDynamics(AnalyzerFeature):
             if err:
                 trigger_path_errors.append(str(err))
 
+        # Phase 3: lift freespin_progression extractor output.
+        progression: dict[str, Any] = {}
+        progression_errors: list[str] = []
+        if isinstance(st_extract, dict):
+            prog_raw = st_extract.get(_FREESPIN_PROGRESSION_EXTRACTOR_ID)
+            if isinstance(prog_raw, dict):
+                # Copy the full structure (st_str -> dim_name -> path_label -> {er_ladder, fs_arc, session_tier_hist}).
+                for st_key, dim_data in prog_raw.items():
+                    if not isinstance(dim_data, dict):
+                        continue
+                    dest_dims: dict[str, Any] = {}
+                    for dim_name, path_data in dim_data.items():
+                        if not isinstance(path_data, dict):
+                            continue
+                        dest_paths: dict[str, Any] = {}
+                        for path_label, stats in path_data.items():
+                            if not isinstance(stats, dict):
+                                continue
+                            dest_paths[str(path_label)] = {
+                                "er_ladder": dict(stats.get("er_ladder") or {}),
+                                "fs_arc": dict(stats.get("fs_arc") or {}),
+                                "session_tier_hist": dict(stats.get("session_tier_hist") or {}),
+                                "_alarm": stats.get("_alarm"),
+                            }
+                        if dest_paths:
+                            dest_dims[str(dim_name)] = dest_paths
+                    if dest_dims:
+                        progression[str(st_key)] = dest_dims
+            err_prog = st_extract.get(f"_extract_error_{_FREESPIN_PROGRESSION_EXTRACTOR_ID}")
+            if err_prog:
+                progression_errors.append(str(err_prog))
+
         return {
             "next_counts": _coerce_nested(
                 chunk_dict.get("spin_type_next_counts"), as_int=True
@@ -312,16 +438,20 @@ class FreespinDynamics(AnalyzerFeature):
             "trigger_path_errors": trigger_path_errors,
             "chunks_with_extract": chunks_with_extract,
             "chunks_total": 1,
+            "progression": progression,
+            "progression_errors": progression_errors,
         }
 
     def reduce(self, prev_acc: dict, this_acc: dict) -> dict:
         """Additively merge all accumulators across chunks."""
+        _empty = {
+            "next_counts": {}, "bucket_spins": {}, "bucket_win": {},
+            "trigger_paths": {}, "trigger_path_errors": [],
+            "chunks_with_extract": 0, "chunks_total": 0,
+            "progression": {}, "progression_errors": [],
+        }
         if not prev_acc:
-            return this_acc if this_acc else {
-                "next_counts": {}, "bucket_spins": {}, "bucket_win": {},
-                "trigger_paths": {}, "trigger_path_errors": [],
-                "chunks_with_extract": 0, "chunks_total": 0,
-            }
+            return this_acc if this_acc else _empty
         if not this_acc:
             return prev_acc
 
@@ -350,6 +480,15 @@ class FreespinDynamics(AnalyzerFeature):
             "chunks_total": (
                 int(prev_acc.get("chunks_total") or 0)
                 + int(this_acc.get("chunks_total") or 0)
+            ),
+            # Phase 3: merge progression data.
+            "progression": _merge_progression(
+                prev_acc.get("progression") or {},
+                this_acc.get("progression") or {},
+            ),
+            "progression_errors": (
+                list(prev_acc.get("progression_errors") or [])
+                + list(this_acc.get("progression_errors") or [])
             ),
         }
 
@@ -451,6 +590,311 @@ class FreespinDynamics(AnalyzerFeature):
                     "unexpected_band": True,
                 })
         return rows
+
+    @staticmethod
+    def _build_er_ladder_section(
+        prog_by_path: dict[str, Any],
+        errors: list[str],
+    ) -> dict[str, Any]:
+        """Phase 3 — F4 ER ladder per FS-index, with by_dim breakdown.
+
+        Computes: aggregate (all-path) + per-path when multiple real paths exist.
+        Money-agnostic: hit_rate + mean_er + er_distribution per FS position.
+
+        Real paths = those whose label does NOT start with 'unknown:' or 'multi:'.
+        """
+        if not prog_by_path:
+            return {
+                "available": False,
+                "reason": "freespin_progression extractor output absent",
+                "extraction_errors": errors,
+            }
+
+        real_paths = {
+            label: data
+            for label, data in prog_by_path.items()
+            if not label.startswith("unknown:") and not label.startswith("multi:")
+        }
+        if not real_paths:
+            return {
+                "available": False,
+                "reason": "no real path data in freespin_progression output",
+                "extraction_errors": errors,
+            }
+
+        def _build_per_path_er(path_data: dict[str, Any]) -> dict[str, Any]:
+            """Build er_ladder rows for one path."""
+            er_ladder_raw: dict[str, Any] = path_data.get("er_ladder") or {}
+            fs_rows: dict[str, Any] = {}
+            for fs_idx_str in sorted(er_ladder_raw, key=lambda x: int(x)):
+                entry = er_ladder_raw[fs_idx_str]
+                rcount = int(entry.get("round_count", 0))
+                er_sum = float(entry.get("er_sum", 0.0))
+                er_dist = {str(k): int(v) for k, v in (entry.get("er_distribution") or {}).items()}
+                mean_er = er_sum / rcount if rcount > 0 else None
+                fs_rows[fs_idx_str] = {
+                    "round_count": rcount,
+                    "er_distribution": er_dist,
+                    "er_sum": er_sum,
+                    "mean_er": mean_er,
+                }
+            return fs_rows
+
+        # Aggregate across all real paths.
+        agg_ladder: dict[str, Any] = {}
+        all_fs_idxs: set[str] = set()
+        for path_data in real_paths.values():
+            all_fs_idxs.update((path_data.get("er_ladder") or {}).keys())
+        for fi in sorted(all_fs_idxs, key=lambda x: int(x)):
+            rcount = 0
+            er_sum = 0.0
+            er_dist_agg: dict[str, int] = {}
+            for path_data in real_paths.values():
+                entry = (path_data.get("er_ladder") or {}).get(fi) or {}
+                rcount += int(entry.get("round_count", 0))
+                er_sum += float(entry.get("er_sum", 0.0))
+                for er_val, cnt in (entry.get("er_distribution") or {}).items():
+                    er_dist_agg[str(er_val)] = er_dist_agg.get(str(er_val), 0) + int(cnt)
+            agg_ladder[fi] = {
+                "round_count": rcount,
+                "er_distribution": er_dist_agg,
+                "er_sum": er_sum,
+                "mean_er": er_sum / rcount if rcount > 0 else None,
+            }
+
+        section: dict[str, Any] = {
+            "available": True,
+            "source": "freespin_progression extractor (ExtraRatio field per round)",
+            "aggregate": agg_ladder,
+        }
+
+        # Per-path breakdown when multiple real paths exist.
+        if len(real_paths) >= 2:
+            by_dim: dict[str, Any] = {}
+            for path_label, path_data in real_paths.items():
+                by_dim[path_label] = _build_per_path_er(path_data)
+            section["by_dim"] = {"trigger_path": by_dim}
+
+        # Surface alarm buckets.
+        alarm_keys = [
+            label for label in prog_by_path
+            if label.startswith("unknown:") or label.startswith("multi:")
+        ]
+        if alarm_keys:
+            section["alarm_buckets"] = alarm_keys
+
+        if errors:
+            section["extraction_errors"] = errors
+
+        return section
+
+    @staticmethod
+    def _build_fs_arc_section(
+        prog_by_path: dict[str, Any],
+        errors: list[str],
+    ) -> dict[str, Any]:
+        """Phase 3 — F5 FS-index arc (hit rate cliff) per FS position, with by_dim.
+
+        Computes hit_rate + mean_win per FS position for aggregate and per-path.
+        The 41%→4.7% cliff is the signature of M275's skin-change mechanic.
+        Money-agnostic in structure; reports raw win_sum/round_count.
+        """
+        if not prog_by_path:
+            return {
+                "available": False,
+                "reason": "freespin_progression extractor output absent",
+                "extraction_errors": errors,
+            }
+
+        real_paths = {
+            label: data
+            for label, data in prog_by_path.items()
+            if not label.startswith("unknown:") and not label.startswith("multi:")
+        }
+        if not real_paths:
+            return {
+                "available": False,
+                "reason": "no real path data in freespin_progression output",
+                "extraction_errors": errors,
+            }
+
+        def _build_per_path_arc(path_data: dict[str, Any]) -> dict[str, Any]:
+            """Build fs_arc rows for one path."""
+            fs_arc_raw: dict[str, Any] = path_data.get("fs_arc") or {}
+            rows: dict[str, Any] = {}
+            for fs_idx_str in sorted(fs_arc_raw, key=lambda x: int(x)):
+                entry = fs_arc_raw[fs_idx_str]
+                rcount = int(entry.get("round_count", 0))
+                wcount = int(entry.get("win_round_count", 0))
+                wsum = float(entry.get("win_sum", 0.0))
+                hit_rate = wcount / rcount if rcount > 0 else None
+                mean_win = wsum / wcount if wcount > 0 else None
+                rows[fs_idx_str] = {
+                    "round_count": rcount,
+                    "win_round_count": wcount,
+                    "win_sum": wsum,
+                    "hit_rate": hit_rate,
+                    "mean_win_when_hit": mean_win,
+                }
+            return rows
+
+        # Aggregate across all real paths.
+        all_fs_idxs: set[str] = set()
+        for path_data in real_paths.values():
+            all_fs_idxs.update((path_data.get("fs_arc") or {}).keys())
+        agg_arc: dict[str, Any] = {}
+        for fi in sorted(all_fs_idxs, key=lambda x: int(x)):
+            rcount = 0
+            wcount = 0
+            wsum = 0.0
+            for path_data in real_paths.values():
+                entry = (path_data.get("fs_arc") or {}).get(fi) or {}
+                rcount += int(entry.get("round_count", 0))
+                wcount += int(entry.get("win_round_count", 0))
+                wsum += float(entry.get("win_sum", 0.0))
+            agg_arc[fi] = {
+                "round_count": rcount,
+                "win_round_count": wcount,
+                "win_sum": wsum,
+                "hit_rate": wcount / rcount if rcount > 0 else None,
+                "mean_win_when_hit": wsum / wcount if wcount > 0 else None,
+            }
+
+        section: dict[str, Any] = {
+            "available": True,
+            "source": "freespin_progression extractor (ReMarks Freespin N index per round)",
+            "note": (
+                "Hit rate declines as FS index increases (skin-change mechanic: "
+                "FS 1-3 skin 11 ~41% / FS 4-7 skin 21 ~28% / FS 8-10 skin 31 ~4.7%) "
+                "while ExtraRatio climbs monotonically — rare-but-large tail design."
+            ),
+            "aggregate": agg_arc,
+        }
+
+        if len(real_paths) >= 2:
+            by_dim: dict[str, Any] = {}
+            for path_label, path_data in real_paths.items():
+                by_dim[path_label] = _build_per_path_arc(path_data)
+            section["by_dim"] = {"trigger_path": by_dim}
+
+        alarm_keys = [
+            label for label in prog_by_path
+            if label.startswith("unknown:") or label.startswith("multi:")
+        ]
+        if alarm_keys:
+            section["alarm_buckets"] = alarm_keys
+
+        if errors:
+            section["extraction_errors"] = errors
+
+        return section
+
+    @staticmethod
+    def _build_session_tier_section(
+        prog_by_path: dict[str, Any],
+        errors: list[str],
+    ) -> dict[str, Any]:
+        """Phase 3 — session-tier distribution (return_bucket histogram per session win).
+
+        Merges per-path session_tier_hist dicts (additive across paths for aggregate).
+        Emits by_dim when multiple real paths exist.
+        """
+        if not prog_by_path:
+            return {
+                "available": False,
+                "reason": "freespin_progression extractor output absent",
+                "extraction_errors": errors,
+            }
+
+        real_paths = {
+            label: data
+            for label, data in prog_by_path.items()
+            if not label.startswith("unknown:") and not label.startswith("multi:")
+        }
+        if not real_paths:
+            return {
+                "available": False,
+                "reason": "no real path data in freespin_progression output",
+                "extraction_errors": errors,
+            }
+
+        # Aggregate histogram.
+        agg_hist: dict[str, int] = {}
+        for path_data in real_paths.values():
+            for bucket, cnt in (path_data.get("session_tier_hist") or {}).items():
+                agg_hist[str(bucket)] = agg_hist.get(str(bucket), 0) + int(cnt)
+
+        agg_total = sum(agg_hist.values())
+
+        def _hist_rows(hist: dict[str, int]) -> list[dict[str, Any]]:
+            """Order histogram into RETURN_BUCKET_ORDER rows."""
+            total = sum(hist.values())
+            rows: list[dict[str, Any]] = []
+            ordered = list(RETURN_BUCKET_ORDER) + (["eq0"] if "eq0" in hist else [])
+            for band in ordered:
+                cnt = int(hist.get(band, 0))
+                if cnt == 0:
+                    continue
+                rows.append({
+                    "band": band,
+                    "session_count": cnt,
+                    "prob": cnt / total if total > 0 else None,
+                })
+            # Surface any unexpected bucket.
+            for band, cnt in hist.items():
+                if band not in ordered and int(cnt) > 0:
+                    rows.append({
+                        "band": str(band),
+                        "session_count": int(cnt),
+                        "prob": int(cnt) / total if total > 0 else None,
+                        "unexpected_band": True,
+                    })
+            return rows
+
+        section: dict[str, Any] = {
+            "available": True,
+            "source": (
+                "freespin_progression extractor (per-session win_sum → "
+                "return_bucket proxy; unit = session win / bet)"
+            ),
+            "total_sessions": agg_total,
+            # Honesty caveat (mirrors _trigger_path_section): under the
+            # additive_sessions policy a double-trigger block is credited to
+            # EACH matched path, so the per-path session histograms (and thus
+            # this aggregate total, built by merging them) count such a block
+            # once per path — total_sessions may exceed the distinct block count.
+            "total_sessions_note": (
+                "additive_sessions: a multi-trigger block counts once per matched "
+                "path, so this total may exceed the distinct freespin-block count"
+            ),
+            "aggregate": _hist_rows(agg_hist),
+        }
+
+        if len(real_paths) >= 2:
+            by_dim: dict[str, Any] = {}
+            for path_label, path_data in real_paths.items():
+                hist = {
+                    str(k): int(v)
+                    for k, v in (path_data.get("session_tier_hist") or {}).items()
+                }
+                path_total = sum(hist.values())
+                by_dim[path_label] = {
+                    "total_sessions": path_total,
+                    "rows": _hist_rows(hist),
+                }
+            section["by_dim"] = {"trigger_path": by_dim}
+
+        alarm_keys = [
+            label for label in prog_by_path
+            if label.startswith("unknown:") or label.startswith("multi:")
+        ]
+        if alarm_keys:
+            section["alarm_buckets"] = alarm_keys
+
+        if errors:
+            section["extraction_errors"] = errors
+
+        return section
 
     def _trigger_path_section(
         self,
@@ -771,21 +1215,51 @@ class FreespinDynamics(AnalyzerFeature):
             final_acc, fs_st, manifest, fs_row, base_spins, effective_bet,
         )
 
-        # ── F3a / F4 / F5 — parser_blind (explicit; never fabricated) ──
-        parser_blind = [
-            "F3a server SummaryWin session-tier taxonomy (the machine's OWN "
-            "session multiplier distribution; parser accumulates "
-            "TotalWin+FeatureWin only)",
-            "F4 one-way ExtraRatio ladder (ER@FS1 distribution / per-spin step "
-            "distribution / monotone proof / ER@FS10; the per-round ExtraRatio "
-            "FIELD is not accumulated — chains_by_feature.extra_ratio_counts "
-            "is ReMarks-regex-sourced and default-fills flat-100 here)",
-            "F5 rise-then-cliff arc (per-FS-index hit/mean-multiplier table; "
-            "FS-index x outcome x per-round ReelSkin not accumulated)",
-            "per-path session-tier distributions / per-path ER & FS arcs / the "
-            "double-trigger session un-merge (the per-path round/win/session "
-            "COUNTS are delivered — see trigger_paths)",
-        ]
+        # ── Phase 3 — ER ladder / FS arc / session-tier from freespin_progression ──
+        progression: dict[str, Any] = final_acc.get("progression") or {}
+        progression_errors: list[str] = list(final_acc.get("progression_errors") or [])
+        fs_st_s_for_prog = str(fs_st)
+        prog_for_st: dict[str, Any] = progression.get(fs_st_s_for_prog) or {}
+        # The dimension name is "trigger_path" (produced by the extractor).
+        prog_dim_name = "trigger_path"
+        prog_by_path: dict[str, Any] = prog_for_st.get(prog_dim_name) or {}
+
+        # ── ER Ladder section ──
+        er_ladder_section = self._build_er_ladder_section(prog_by_path, progression_errors)
+
+        # ── FS Arc section ──
+        fs_arc_section = self._build_fs_arc_section(prog_by_path, progression_errors)
+
+        # ── Session-tier distribution section ──
+        session_tier_section = self._build_session_tier_section(prog_by_path, progression_errors)
+
+        # ── F3a / F4 / F5 — parser_blind (updated: F4/F5 now delivered) ──
+        parser_blind_remaining: list[str] = []
+        if not prog_by_path:
+            # No progression data: all items remain parser-blind.
+            parser_blind_remaining = [
+                "F3a server SummaryWin session-tier taxonomy (the machine's OWN "
+                "session multiplier distribution; parser accumulates "
+                "TotalWin+FeatureWin only)",
+                "F4 one-way ExtraRatio ladder (ExtraRatio FIELD not available in "
+                "freespin_progression extractor output for this run)",
+                "F5 rise-then-cliff arc (FS-index arc not available in "
+                "freespin_progression extractor output for this run)",
+                "per-path session-tier distributions / per-path ER & FS arcs "
+                "(freespin_progression extractor output absent for this run — "
+                "see trigger_paths for per-path round/win/session COUNTS)",
+            ]
+        else:
+            # F4 + F5 + session-tier are now delivered.
+            parser_blind_remaining = [
+                "F3a server SummaryWin session-tier taxonomy (the machine's OWN "
+                "session multiplier distribution; parser accumulates "
+                "TotalWin+FeatureWin only — the session_tier_distribution section "
+                "above uses return_bucket on our per-session win totals as a proxy)",
+                "FS-index x ReelSkin cross-dimension not accumulated (per-skin "
+                "hit rates are in the static M275 understanding doc; the FS arc "
+                "above is aggregated across all skin phases)",
+            ]
 
         player_impact["freespin_dynamics"] = {
             "applicable": True,
@@ -798,13 +1272,18 @@ class FreespinDynamics(AnalyzerFeature):
             "payid_mix": payid_mix,
             "rtp_concentration": rtp_concentration,
             "trigger_paths": trigger_paths_section,
-            "parser_blind": parser_blind,
+            # Phase 3 new sections.
+            "er_ladder": er_ladder_section,
+            "fs_index_arc": fs_arc_section,
+            "session_tier_distribution": session_tier_section,
+            "parser_blind": parser_blind_remaining,
             "parser_blind_reason": (
-                "these need per-round fields (ExtraRatio, FS-index, ReelSkin, "
-                "server SummaryWin tiers) the shared parser does not "
-                "accumulate. The per-ST extraction layer (st_extract/, landed "
-                "95ba119) makes them buildable as a freespin-progression "
-                "extractor — framework-team queue; flagged, never fabricated."
+                "F3a SummaryWin tiers need the server's own TierByWin taxonomy "
+                "(parser accumulates TotalWin+FeatureWin only). "
+                "F4 ER ladder + F5 FS arc are now delivered from the "
+                "freespin_progression extractor (Phase 3, 04_dimension_framework.md §6). "
+                "When the extractor is absent (old cached chunks without the "
+                "extractor wired in), all items revert to parser-blind."
             ),
         }
 

@@ -5303,12 +5303,112 @@ function _stDimFreespin(stCtx) {
     ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
   </div>`;
 
+  // ── Phase 3: freespin-progression sub-panels (ER ladder / FS arc / session
+  // tiers). These are freespin-SPECIFIC metrics no generic plugin can compute,
+  // so freespin_dynamics owns them + their per-path by_dim breakdown. Each
+  // section: aggregate (all paths) + one column per trigger-path value when
+  // by_dim has >=2 real values. Reuses fmt/fInt/_pct/_escHtml. Absent/
+  // unavailable -> the section is skipped (honest, no fabrication).
+  const _fsIdxKeys = (m) => Object.keys(m || {})
+    .filter(k => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+  const _dimCols = (sec) => {
+    // Returns [{key, label, data}] = aggregate + each real path value.
+    const cols = [{ key: "_agg", label: fmt("fsProgAggregate"), data: sec.aggregate || {} }];
+    const bd = (sec.by_dim || {});
+    const dimName = Object.keys(bd)[0];
+    if (dimName) {
+      const vals = Object.keys(bd[dimName] || {})
+        .filter(v => !String(v).startsWith("_unknown") && !String(v).startsWith("_multi")
+                  && !String(v).startsWith("unknown:") && !String(v).startsWith("multi:"));
+      if (vals.length >= 2) {
+        for (const v of vals) cols.push({ key: v, label: _escHtml(v), data: bd[dimName][v] || {} });
+      }
+    }
+    return cols;
+  };
+
+  // ER ladder — per-FS-index mean ExtraRatio (the climb), per path.
+  let erHtml = "";
+  const er = fd.er_ladder || {};
+  if (er.available && (er.aggregate && Object.keys(er.aggregate).length)) {
+    const cols = _dimCols(er);
+    const idxs = _fsIdxKeys(er.aggregate);
+    const head = cols.map(c => `<th>${c.label}</th>`).join("");
+    const rows = idxs.map(i => {
+      const cells = cols.map(c => {
+        const e = (c.data || {})[i] || {};
+        return `<td>${e.mean_er != null ? Number(e.mean_er).toFixed(0) : "—"}</td>`;
+      }).join("");
+      return `<tr><td>${_escHtml(i)}</td>${cells}</tr>`;
+    }).join("");
+    erHtml = `<div class="mech-section"><h3>${fmt("fsErLadder")}</h3>
+      <table class="drilldown-table"><thead><tr><th>${fmt("fsErColFsIdx")}</th>${head}</tr></thead><tbody>${rows}</tbody></table>
+      <p class="drilldown-hint">${fmt("fsErLadderNote")}</p>${er.source ? `<p class="drilldown-hint">${_escHtml(er.source)}</p>` : ""}</div>`;
+  }
+
+  // FS-index hit-rate arc — the cliff, per path.
+  let arcHtml = "";
+  const arc = fd.fs_index_arc || {};
+  if (arc.available && (arc.aggregate && Object.keys(arc.aggregate).length)) {
+    const cols = _dimCols(arc);
+    const idxs = _fsIdxKeys(arc.aggregate);
+    const head = cols.map(c => `<th>${c.label}</th>`).join("");
+    const rows = idxs.map(i => {
+      const cells = cols.map(c => {
+        const e = (c.data || {})[i] || {};
+        return `<td>${_pct(e.hit_rate, 1)}</td>`;
+      }).join("");
+      return `<tr><td>${_escHtml(i)}</td>${cells}</tr>`;
+    }).join("");
+    arcHtml = `<div class="mech-section"><h3>${fmt("fsFsArc")}</h3>
+      <table class="drilldown-table"><thead><tr><th>${fmt("fsErColFsIdx")}</th>${head}</tr></thead><tbody>${rows}</tbody></table>
+      <p class="drilldown-hint">${fmt("fsFsArcNote")}</p>${arc.note ? `<p class="drilldown-hint">${_escHtml(arc.note)}</p>` : ""}</div>`;
+  }
+
+  // Session-tier distribution — session win/bet band histogram.
+  let tierHtml = "";
+  const tier = fd.session_tier_distribution || {};
+  if (tier.available !== false && Array.isArray(tier.aggregate) && tier.aggregate.length) {
+    // Per-path columns when by_dim has >=2 real values: rows = bands (the
+    // aggregate's band order), columns = session count per path. Single/absent
+    // → aggregate session-count column only (today's view).
+    const tbd = (tier.by_dim || {});
+    const tdimName = Object.keys(tbd)[0];
+    const tpaths = tdimName ? Object.keys(tbd[tdimName] || {})
+      .filter(v => !String(v).startsWith("_unknown") && !String(v).startsWith("_multi")) : [];
+    const _bandLabel = (band) => _escHtml(PURE.prettyBucketLabel ? PURE.prettyBucketLabel(band) : band);
+    let head, rows;
+    if (tpaths.length >= 2) {
+      // Build per-path band→count maps.
+      const pmap = {};
+      for (const p of tpaths) {
+        pmap[p] = {};
+        for (const r of (tbd[tdimName][p].rows || [])) pmap[p][r.band] = r.session_count;
+      }
+      head = `<th>${fmt("fsProgAggregate")}</th>` + tpaths.map(p => `<th>${_escHtml(p)}</th>`).join("");
+      rows = tier.aggregate.map(b => {
+        const pcells = tpaths.map(p => `<td>${fInt(pmap[p][b.band] || 0)}</td>`).join("");
+        return `<tr><td>${_bandLabel(b.band)}</td><td>${fInt(b.session_count)}</td>${pcells}</tr>`;
+      }).join("");
+    } else {
+      head = `<th>${fmt("fsRowSessions")}</th><th>${fmt("stoColShare")}</th>`;
+      rows = tier.aggregate.map(b =>
+        `<tr><td>${_bandLabel(b.band)}</td><td>${fInt(b.session_count)}</td><td>${_pct(b.prob, 1)}</td></tr>`).join("");
+    }
+    tierHtml = `<div class="mech-section"><h3>${fmt("fsSessionTier")}</h3>
+      <p class="drilldown-hint">${fmt("fsSessionTierTotal")}: ${fInt(tier.total_sessions)}</p>
+      <table class="drilldown-table"><thead><tr><th>${fmt("rdColBand")}</th>${head}</tr></thead><tbody>${rows}</tbody></table>
+      ${tier.total_sessions_note ? `<p class="drilldown-hint">${_escHtml(tier.total_sessions_note)}</p>` : ""}
+      ${tier.source ? `<p class="drilldown-hint">${_escHtml(tier.source)}</p>` : ""}</div>`;
+  }
+
   // ── F3a/F4/F5 honest parser-blind notice ──
   const blindHtml = _blindList(fd.parser_blind) +
     (fd.parser_blind_reason ? `<p class="drilldown-hint">${_escHtml(fd.parser_blind_reason)}</p>` : "");
 
   return `<p class="drilldown-hint"><strong>${fmt("panelFreespinDynamics")}</strong></p>` +
-    cadenceHtml + upliftHtml + multHtml + payidHtml + pathsHtml + rtpHtml + blindHtml;
+    cadenceHtml + upliftHtml + multHtml + payidHtml + pathsHtml + rtpHtml +
+    erHtml + arcHtml + tierHtml + blindHtml;
 }
 
 // Dimension: generic trigger-path dimension — side-by-side per-dim columns.
