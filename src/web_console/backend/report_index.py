@@ -328,10 +328,20 @@ def rewrite_latest(mode_dir: Path) -> None:
     """Recompute ``<mode_dir>/latest.json`` from the current index.
 
     Latest = the entry with the newest sort key.  Primary: ``created_at``
-    (ISO string, lexicographic = chronological).  Secondary: ``report_version``
-    (rv_YYYYMMDDTHHMMSSZ… prefix, also lexicographic = chronological).
-    When both are equal the last element in the list wins (most recently
-    appended = most recently written run).
+    (ISO string, lexicographic = chronological = completion time).  Ties are
+    broken by append POSITION (last-appended wins = most recently written run).
+
+    ``report_version`` is deliberately NOT a sort key: it is
+    ``rv_<ts>_<random run_id hex>`` and the random-hex suffix is
+    non-chronological.  Two runs that complete in the SAME second share a
+    ``created_at`` second-tick; ordering them by ``report_version`` then
+    reduces to a coin-flip over the hex suffix (e.g. ``rv_..._c713`` >
+    ``rv_..._912b`` purely because 'c' > '9'), so the newer run could lose to
+    the older one — the ``test_run_lifecycle`` "latest points at the wrong
+    run" flake, which only surfaced under load (fast same-second completions).
+    Position is deterministic and chronological for sequential finalizes;
+    ``created_at`` (primary) still demotes historically-older reconcile /
+    migration appends regardless of their position.
 
     Deletes latest.json when the index is empty.
 
@@ -357,11 +367,7 @@ def rewrite_latest(mode_dir: Path) -> None:
             return
         latest = max(
             enumerate(index_payload),
-            key=lambda ie: (
-                str(ie[1].get("created_at") or ""),
-                str(ie[1].get("report_version") or ""),
-                ie[0],  # position as final tiebreaker
-            ),
+            key=lambda ie: (str(ie[1].get("created_at") or ""), ie[0]),
         )[1]
         _atomic_write_json(latest_path, latest)
 
@@ -398,17 +404,13 @@ def append_and_rewrite_latest(mode_dir: Path, entry: dict[str, Any]) -> None:
         # Append.
         index_payload.append(entry)
         _atomic_write_json(index_path, index_payload)
-        # Recompute latest = max over the full index (NOT blind copy of
-        # the just-appended entry).  Consistent with rewrite_latest.
-        # Tiebreaker: position (last element wins when created_at and
-        # report_version are identical) preserves the chronological
-        # invariant for normal sequential finalizes.
+        # Recompute latest = max over the full index (NOT blind copy of the
+        # just-appended entry).  Consistent with rewrite_latest: newest by
+        # created_at, ties broken by append POSITION (last wins).
+        # report_version is NOT a sort key — its random run_id-hex suffix is
+        # non-chronological and would mis-order same-second completions.
         latest = max(
             enumerate(index_payload),
-            key=lambda ie: (
-                str(ie[1].get("created_at") or ""),
-                str(ie[1].get("report_version") or ""),
-                ie[0],
-            ),
+            key=lambda ie: (str(ie[1].get("created_at") or ""), ie[0]),
         )[1]
         _atomic_write_json(latest_path, latest)

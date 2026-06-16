@@ -197,6 +197,59 @@ class TestAppendAndRewriteLatest:
             f"Expected {n_threads} entries, got {len(raw)} — lost-update race occurred"
         )
 
+    def test_latest_ties_break_by_position_not_report_version_hex(self, tmp_path: Path):
+        """Two runs finishing in the SAME second (equal created_at) must resolve
+        'latest' by append POSITION (last-appended = newest), NOT by the random
+        run_id-hex suffix baked into report_version.
+
+        Regression for the test_run_lifecycle flake: under load, run_a and run_b
+        completed in the same second, so created_at tied; the old sort key's
+        secondary term was report_version = ``rv_<ts>_<run_id[:8]>``, and the
+        random hex decided the winner (e.g. ``..._c713`` > ``..._912b`` because
+        'c' > '9'), so the OLDER run could win — latest pointed at the wrong run.
+
+        Deterministic here: the first-appended (OLDER) run is given the
+        LEXICOGRAPHICALLY LARGER report_version hex on purpose. The fix orders
+        by (created_at, position), so the LAST-appended run wins regardless.
+
+        INJECT-BUG: re-add ``str(ie[1].get("report_version") or "")`` to the
+        sort key (before the position term) in rewrite_latest AND
+        append_and_rewrite_latest -> this test RED (latest == 'run_older'
+        because 'zzzzzzzz' > 'aaaaaaaa'). Revert -> GREEN.
+        """
+        mode_dir = tmp_path / "mode_1"
+        mode_dir.mkdir()
+        same_created = "2026-06-16T08:27:07Z"
+        older = {
+            "machine": "M14", "mode": 1, "run_id": "run_older",
+            "report_version": "rv_20260616T082707Z_zzzzzzzz",  # LARGER hex
+            "created_at": same_created,
+        }
+        newer = {
+            "machine": "M14", "mode": 1, "run_id": "run_newer",
+            "report_version": "rv_20260616T082707Z_aaaaaaaa",  # SMALLER hex
+            "created_at": same_created,
+        }
+        append_and_rewrite_latest(mode_dir, older)   # position 0 (older)
+        append_and_rewrite_latest(mode_dir, newer)   # position 1 (newer)
+
+        latest = json.loads((mode_dir / "latest.json").read_text(encoding="utf-8"))
+        assert latest["run_id"] == "run_newer", (
+            f"latest must be the last-appended run (newest by position) on a "
+            f"created_at tie, not the larger report_version hex. "
+            f"Got {latest['run_id']!r}. INJECT-BUG: report_version back in the "
+            f"sort key -> picks 'run_older'."
+        )
+
+        # rewrite_latest (standalone) must agree with append_and_rewrite_latest.
+        (mode_dir / "latest.json").unlink()
+        rewrite_latest(mode_dir)
+        latest2 = json.loads((mode_dir / "latest.json").read_text(encoding="utf-8"))
+        assert latest2["run_id"] == "run_newer", (
+            f"rewrite_latest disagreed with append_and_rewrite_latest: "
+            f"got {latest2['run_id']!r}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # F3: TestReportCount — load_machines only counts dirs with summary
