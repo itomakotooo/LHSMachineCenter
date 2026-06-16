@@ -5311,6 +5311,106 @@ function _stDimFreespin(stCtx) {
     cadenceHtml + upliftHtml + multHtml + payidHtml + pathsHtml + rtpHtml + blindHtml;
 }
 
+// Dimension: generic trigger-path dimension — side-by-side per-dim columns.
+// Phase 2 (dimension framework): reads spin_type_outcomes[label].by_dim and
+// payouts_by_spin_type["<label>__by_dim__<dimName>"] when present.
+//
+// Guards:
+// - by_dim absent (M15/M43/M279 — no dimensions declared) → returns ""
+//   (byte-identical rendering for those machines per BREAK-1 contract)
+// - by_dim present but only 1 real dim value → returns ""
+// - N >= 2 real values → renders side-by-side metric table (one column per value)
+//
+// Reuses: fmt(), fInt(), PURE.fRate, _escHtml — same helpers as sibling dims
+// (feedback_no_parallel_panel_impl.md). Reuses fsRowSessions/fsRowRounds/
+// fsColMetric i18n keys (already present in pure.js).
+function _stDimGenericDimension(stCtx) {
+  const { label, outcome, summary } = stCtx;
+  const pi = (summary || {}).player_impact || {};
+
+  // Guard: outcome (spin_type_outcomes entry) must exist and have by_dim.
+  if (!outcome || typeof outcome !== "object") return "";
+  const byDim = outcome.by_dim;
+  if (!byDim || typeof byDim !== "object") return "";
+
+  const dimNames = Object.keys(byDim).filter((k) => !k.startsWith("_"));
+  if (!dimNames.length) return "";
+
+  let html = "";
+  for (const dimName of dimNames) {
+    const dimMeta = byDim[dimName];
+    if (!dimMeta || typeof dimMeta !== "object") continue;
+
+    // _dim_values is the ordered list of real (non-unknown/non-multi) values.
+    const dimValues = Array.isArray(dimMeta._dim_values) ? dimMeta._dim_values : [];
+    const realVals = dimValues.filter(
+      (v) => !String(v).startsWith("unknown:") && !String(v).startsWith("multi:")
+    );
+    if (realVals.length < 2) continue;  // degenerate: no column split rendered
+
+    // Per-dim payid rows from payouts_by_spin_type sibling key.
+    const pbst = pi.payouts_by_spin_type || {};
+    const siblingKey = `${label}__by_dim__${dimName}`;
+    const payidByDv = pbst[siblingKey] || {};
+
+    // Section header: dim label (from _dim_label or dim_name).
+    const dimLabel = dimMeta._dim_label || dimName.replace(/_/g, " ");
+    const headCols = realVals.map((v) => `<th>${_escHtml(String(v))}</th>`).join("");
+
+    // Helper: format a value or "—".
+    const _fv = (v, decimals, suffix) =>
+      (v == null || !Number.isFinite(Number(v))) ? "—" : Number(v).toFixed(decimals) + (suffix || "");
+    const _pct = (v, d) => _fv(Number(v) * 100, d != null ? d : 2, "%");
+
+    // Metric rows: reuse existing i18n keys + new dim* keys.
+    const _row = (labelKey, cellFn) =>
+      `<tr><td>${fmt(labelKey)}</td>` +
+      realVals.map((v) => `<td>${cellFn(dimMeta[v] || {})}</td>`).join("") +
+      `</tr>`;
+
+    const metricRows =
+      _row("dimRowRounds", (d) => fInt(d.round_count)) +
+      _row("dimRowHitRate", (d) => d.hit_rate != null ? _pct(d.hit_rate, 1) : "—") +
+      _row("dimRowDeadSpinRate", (d) => d.dead_spin_rate != null ? _pct(d.dead_spin_rate, 1) : "—") +
+      _row("dimRowRtpPp", (d) => _fv(d.rtp_contribution_pp, 2, "pp"));
+
+    // Per-dim payid mini-table (top combos by rtp_contribution_pp).
+    const _payidMini = (dvRows) => {
+      const rows = (dvRows || [])
+        .filter((r) => !String(r.payout_id || "").startsWith("_"))
+        .sort((a, b) => Number(b.rtp_contribution_pp ?? b.rtp_pp ?? 0) - Number(a.rtp_contribution_pp ?? a.rtp_pp ?? 0))
+        .slice(0, 8);
+      if (!rows.length) return "—";
+      return rows.map((r) =>
+        `${_escHtml(String(r.payout_id || ""))} ${(Number(r.rtp_contribution_pp ?? r.rtp_pp ?? 0)).toFixed(2)}pp`
+      ).join(", ");
+    };
+    const payidCells = realVals
+      .map((v) => `<td><small>${_payidMini(payidByDv[v])}</small></td>`)
+      .join("");
+    const payidRow = payidByDv && Object.keys(payidByDv).length
+      ? `<tr><td>${fmt("stoPayidTitle")}</td>${payidCells}</tr>`
+      : "";
+
+    // Alarm rows: _unknown / _multi (if non-empty in by_dim).
+    const unknownVals = Object.keys(dimMeta).filter((k) => k.startsWith("unknown:") || k === "_unknown");
+    const multiVals = Object.keys(dimMeta).filter((k) => k.startsWith("multi:") || k === "_multi");
+    const alarmHtml = (unknownVals.length || multiVals.length)
+      ? `<p class="drilldown-hint"><em>${_escHtml("unknown/multi buckets: " + [...unknownVals, ...multiVals].filter(k=>k!=="$meta").join(", ") || "none")}</em></p>`
+      : "";
+
+    html += `<div class="mech-section">
+      <h3>${_escHtml(dimLabel)}</h3>
+      <table class="drilldown-table"><thead><tr>
+        <th>${fmt("dimColMetric")}</th>${headCols}
+      </tr></thead><tbody>${metricRows}${payidRow}</tbody></table>
+      ${alarmHtml}
+    </div>`;
+  }
+
+  return html;
+}
+
 // The dimension list (order = render order within each ST section).
 const SPINTYPE_DIMENSIONS = [
   _stDimWinDistribution,
@@ -5321,6 +5421,7 @@ const SPINTYPE_DIMENSIONS = [
   _stDimMinigame,
   _stDimWheel,
   _stDimFreespin,
+  _stDimGenericDimension,
 ];
 
 function renderSpinTypeOutcomes(summary) {

@@ -227,16 +227,89 @@ class SpinTypeOutcomes(AnalyzerFeature):
     REGISTERED_FALLBACK_RULES: ClassVar[dict[int, dict]] = {}
 
     def extract(self, parse_state: Any, chunk_dict: Any) -> dict:
-        """No-op: all work is deferred to emit().
+        """Accumulate per-dim round stats from st_extract.trigger_path.dimensions.
 
-        Returns an empty dict. The emit() method reads from the already-built
-        summary sections rather than accumulating per-chunk data.
+        For STs with >=2 real dimension values (Phase 2), also accumulates:
+          dim_round_count[(st_str, dim_name, dim_value)] = int
+          dim_win_round_count[(st_str, dim_name, dim_value)] = int
+
+        These feed the "by_dim" sub-key in emit() for spin_type_outcomes.
+
+        GUARD: only on the precise "dimensions" sub-key inside "trigger_path"
+        (NOT on st_extract presence — per 05_breaker.md BREAK-1).
+        Machines with no declared dimensions → empty dicts → fallback path
+        in emit() → byte-identical output (per 04_dimension_framework.md §3.3).
         """
-        return {}
+        if not chunk_dict or not isinstance(chunk_dict, dict):
+            return {"dim_round_count": {}, "dim_win_round_count": {}}
+
+        dim_round_count: dict[tuple[str, str, str], int] = {}
+        dim_win_round_count: dict[tuple[str, str, str], int] = {}
+
+        _st_extract = chunk_dict.get("st_extract")
+        if isinstance(_st_extract, dict):
+            _tp_raw = _st_extract.get("trigger_path")
+            if isinstance(_tp_raw, dict):
+                _dims_raw = _tp_raw.get("dimensions")
+                if isinstance(_dims_raw, dict):
+                    for _st_str, _dim_data in _dims_raw.items():
+                        if not str(_st_str).isdigit():
+                            continue
+                        if not isinstance(_dim_data, dict):
+                            continue
+                        for _dim_name, _dim_vals in _dim_data.items():
+                            if not isinstance(_dim_vals, dict):
+                                continue
+                            _real_vals = [
+                                v for v in _dim_vals
+                                if not str(v).startswith("unknown:")
+                                and not str(v).startswith("multi:")
+                            ]
+                            if len(_real_vals) < 2:
+                                continue
+                            for _dim_value, _dim_stats in _dim_vals.items():
+                                if not isinstance(_dim_stats, dict):
+                                    continue
+                                _k = (str(_st_str), str(_dim_name), str(_dim_value))
+                                dim_round_count[_k] = (
+                                    dim_round_count.get(_k, 0)
+                                    + int(_dim_stats.get("round_count", 0))
+                                )
+                                dim_win_round_count[_k] = (
+                                    dim_win_round_count.get(_k, 0)
+                                    + int(_dim_stats.get("win_round_count", 0))
+                                )
+
+        return {
+            "dim_round_count": dim_round_count,
+            "dim_win_round_count": dim_win_round_count,
+        }
 
     def reduce(self, prev_acc: dict, this_acc: dict) -> dict:
-        """No-op: returns prev_acc unchanged (empty dict throughout)."""
-        return prev_acc if prev_acc is not None else {}
+        """Merge per-dim round stats additively across chunks."""
+        if not prev_acc:
+            return this_acc if this_acc else {
+                "dim_round_count": {}, "dim_win_round_count": {}
+            }
+        if not this_acc:
+            return prev_acc
+
+        prev_rc = prev_acc.get("dim_round_count") or {}
+        this_rc = this_acc.get("dim_round_count") or {}
+        merged_rc = dict(prev_rc)
+        for k, v in this_rc.items():
+            merged_rc[k] = merged_rc.get(k, 0) + v
+
+        prev_wrc = prev_acc.get("dim_win_round_count") or {}
+        this_wrc = this_acc.get("dim_win_round_count") or {}
+        merged_wrc = dict(prev_wrc)
+        for k, v in this_wrc.items():
+            merged_wrc[k] = merged_wrc.get(k, 0) + v
+
+        return {
+            "dim_round_count": merged_rc,
+            "dim_win_round_count": merged_wrc,
+        }
 
     def emit(self, final_acc: dict, summary: dict, ctx: "PipelineContext") -> None:
         """Build and write summary["player_impact"]["spin_type_outcomes"].
@@ -324,7 +397,11 @@ class SpinTypeOutcomes(AnalyzerFeature):
 
         # Process labels in the order they appear in payouts_by_spin_type
         # (which is already sorted by st_int ascending per PayoutsBySpinType.emit).
+        # Skip Phase 2 "__by_dim__" sibling keys (dict-valued, not list-valued).
         for label, payid_rows in pbst.items():
+            if "__by_dim__" in label:
+                # Phase 2 sibling key — not a per-ST payid list; skip.
+                continue
             # Parse ST int from label (e.g. "ST1_paid" -> 1).
             try:
                 st_part = label.split("_")[0]  # "ST1"
@@ -434,7 +511,126 @@ class SpinTypeOutcomes(AnalyzerFeature):
                     "covered_columns": list(r.get("covered_columns") or []),
                 })
 
-            result[label] = {
+            # --- Phase 2: by_dim sub-key ---
+            # Only emitted when the "__by_dim__<dim_name>" sibling key exists in
+            # payouts_by_spin_type AND there are >=2 real dim values.
+            # Basis: outcome/global-bet (same as rtp_pp_stb) per GAP-B fix.
+            # Per-dim rtp_pp = dim_win_sum / agg_total_win * rtp_pp_stb
+            # This ensures Σ(per-dim rtp_pp) == rtp_pp_stb exactly.
+            by_dim: dict[str, Any] | None = None
+            dim_round_count: dict[tuple[str, str, str], int] = (
+                (final_acc or {}).get("dim_round_count") or {}
+            )
+            dim_win_round_count: dict[tuple[str, str, str], int] = (
+                (final_acc or {}).get("dim_win_round_count") or {}
+            )
+            # Find __by_dim__ sibling keys for this label in payouts_by_spin_type.
+            _dim_prefix = f"{label}__by_dim__"
+            _dim_sibling_keys = [
+                k for k in pbst if k.startswith(_dim_prefix)
+            ]
+            for _sibling_key in _dim_sibling_keys:
+                _dim_name = _sibling_key[len(_dim_prefix):]
+                _dim_payid_dict = pbst.get(_sibling_key)  # {dim_value: [payid_rows]}
+                if not isinstance(_dim_payid_dict, dict):
+                    continue
+                # Only emit by_dim when >=2 real dim values.
+                _real_dim_vals = [
+                    v for v in _dim_payid_dict
+                    if not str(v).startswith("_unknown")
+                    and not str(v).startswith("_multi")
+                ]
+                if len(_real_dim_vals) < 2:
+                    continue
+
+                # Build by_dim sub-dict.
+                if by_dim is None:
+                    by_dim = {}
+
+                # _dim_label: use the dim_name as display label (generic).
+                _dim_data: dict[str, Any] = {
+                    "_dim_label": _dim_name,
+                    "_dim_values": _real_dim_vals,
+                }
+
+                # Per-dim rtp_pp uses outcome basis (global-bet denominator).
+                # Formula: (dim_win_sum / agg_total_win) * rtp_pp_stb
+                # dim_win_sum is available from the per-dim payid rows.
+                # agg_total_win = total_win_stb from stb_row.
+                for _dv in list(_dim_payid_dict.keys()):
+                    _dv_rows = _dim_payid_dict.get(_dv) or []
+                    _dv_total_win = sum(
+                        float(r.get("total_win", 0.0)) for r in _dv_rows
+                    )
+                    # Per-dim hit_rate and dead_spin_rate from extractor data.
+                    _k_rc = (str(st_int), _dim_name, _dv)
+                    _dv_round_count = int(dim_round_count.get(_k_rc, 0))
+                    _dv_win_round_count = int(dim_win_round_count.get(_k_rc, 0))
+                    _dv_hit_rate = (
+                        _dv_win_round_count / _dv_round_count
+                        if _dv_round_count > 0 else 0.0
+                    )
+                    _dv_dead_rate = 1.0 - _dv_hit_rate
+                    # rtp_pp: outcome basis — proportional to agg rtp_pp_stb.
+                    _dv_rtp_pp = (
+                        (_dv_total_win / total_win_stb) * rtp_pp_stb
+                        if total_win_stb > 0 else 0.0
+                    )
+                    # avg_win_when_hit: round-level (win / win_rounds).
+                    _dv_avg_win = (
+                        _dv_total_win / _dv_win_round_count
+                        if _dv_win_round_count > 0 else 0.0
+                    )
+                    # Build per-dim win_bands (payline-level from dim payid rows).
+                    _dv_real_rows = [
+                        r for r in _dv_rows
+                        if not str(r.get("payout_id") or "").startswith("_")
+                    ]
+                    _dv_bands: list[dict[str, Any]] = [
+                        {"band": name, "lo": lo, "hi": hi,
+                         "hit_count": 0, "rtp_pp": 0.0}
+                        for name, lo, hi in _BANDS
+                    ]
+                    _dv_max_mult: float = 0.0
+                    for _pr in _dv_real_rows:
+                        _pr_hits = int(_pr.get("hit_count") or 0)
+                        _pr_avg_win = float(_pr.get("avg_win_when_hit") or 0.0)
+                        _pr_rtp = float(_pr.get("rtp_contribution_pp") or 0.0)
+                        if bet > 0:
+                            _pr_mult = _pr_avg_win / bet
+                            _pr_bi = _classify_mult(_pr_mult)
+                            _dv_bands[_pr_bi]["hit_count"] += _pr_hits
+                            _dv_bands[_pr_bi]["rtp_pp"] += _pr_rtp
+                            _dv_max_mult = max(_dv_max_mult, _pr_mult)
+                    # Map unknown/multi display keys.
+                    _display_key = _dv
+                    if str(_dv).startswith("_unknown"):
+                        _display_key = "_unknown"
+                    elif str(_dv).startswith("_multi"):
+                        _display_key = "_multi"
+
+                    _dim_data[_display_key] = {
+                        "round_count": _dv_round_count,
+                        "win_sum": _dv_total_win,
+                        "hit_rate": _dv_hit_rate,
+                        "dead_spin_rate": _dv_dead_rate,
+                        "avg_win_when_hit": _dv_avg_win,
+                        "rtp_contribution_pp": _dv_rtp_pp,
+                        "max_mult": _dv_max_mult,
+                        "win_bands": [b for b in _dv_bands if b["hit_count"] > 0],
+                    }
+
+                # Alarm buckets.
+                _unknown_keys = [v for v in _dim_payid_dict if str(v).startswith("_unknown")]
+                _multi_keys = [v for v in _dim_payid_dict if str(v).startswith("_multi")]
+                if not _unknown_keys:
+                    _dim_data["_unknown"] = []
+                if not _multi_keys:
+                    _dim_data["_multi"] = []
+
+                by_dim[_dim_name] = _dim_data
+
+            st_result: dict[str, Any] = {
                 "spin_type": st_int,
                 "label": label,
                 # Round-level fields (from spin_type_breakdown):
@@ -457,6 +653,11 @@ class SpinTypeOutcomes(AnalyzerFeature):
                 # ST label was absent from spin_type_breakdown (not real data).
                 "round_stats_available": round_stats_available,
             }
+            # Phase 2: add by_dim sub-key when dimension data is available.
+            # Absent for M15/M43/M279 (no declared dimensions) — byte-identical.
+            if by_dim is not None:
+                st_result["by_dim"] = by_dim
+            result[label] = st_result
 
         player_impact["spin_type_outcomes"] = result
 

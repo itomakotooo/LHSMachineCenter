@@ -729,6 +729,12 @@ const I18N = {
     fsUnknownPaths: "未知触发路径（信号，需排查）",
     fsMultiBuckets: "多重触发合并桶",
     fsRtpContrib: "Freespin RTP 贡献（pp）",
+    // ── Dimension by_dim side-by-side (Phase 2) ──
+    dimColMetric: "指标",
+    dimRowHitRate: "命中率",
+    dimRowDeadSpinRate: "空转率",
+    dimRowRtpPp: "RTP 贡献（pp，回合/全局下注口径）",
+    dimRowRounds: "轮数",
     // ── Structure drift gate (2026-06-12) ──
     panelStructureDrift: "结构漂移检测",
     sdStatusOk: "结构契约 OK",
@@ -1468,6 +1474,12 @@ const I18N = {
     fsUnknownPaths: "Unknown trigger paths (signal — investigate)",
     fsMultiBuckets: "Multi-trigger combined buckets",
     fsRtpContrib: "Freespin RTP contribution (pp)",
+    // ── Dimension by_dim side-by-side (Phase 2) ──
+    dimColMetric: "Metric",
+    dimRowHitRate: "Hit rate",
+    dimRowDeadSpinRate: "Dead spin rate",
+    dimRowRtpPp: "RTP contribution (pp, round/global-bet basis)",
+    dimRowRounds: "Rounds",
     // ── Structure drift gate (2026-06-12) ──
     panelStructureDrift: "Structure Drift Check",
     sdStatusOk: "Structure contract OK",

@@ -142,16 +142,26 @@ class PayoutsBySpinType(AnalyzerFeature):
           payout_id_has_regular_line — dict[pid, bool]                      (C3)
           payout_id_symbol_combos  — dict[pid, dict[combo_str, int]]        (C4)
 
-        Returns accumulator dict with 7 keys:
+        Phase 2 — dimension-aware (04_dimension_framework.md §6 Phase 2):
+          Also reads chunk_dict["st_extract"]["trigger_path"]["dimensions"]
+          (produced by TriggerPathExtractor Phase 1 substrate) to accumulate
+          per-(pid, st_int, dim_name, dim_value) hit/win for STs with >=2 real
+          dimension values.  Carried in "dim_by_st_hits" / "dim_by_st_win" keys.
+          GUARD: only on the precise "dimensions" sub-key inside "trigger_path"
+          (NOT on st_extract presence — per 05_breaker.md BREAK-1).
+
+        Returns accumulator dict with 7 + 2 keys:
           by_st_hits, by_st_win  (C2)
           pid_payline_hits, pid_match_count_dist, pid_col_set,
           pid_has_regular_line   (C3)
           pid_symbol_combos      (C4)
+          dim_by_st_hits, dim_by_st_win  (Phase 2 dimension-aware)
 
         Handles:
           - None or non-dict chunk_dict: returns empty acc (C2 unchanged)
           - Missing C3/C4 keys: treated as empty dicts (old cached chunks)
           - Non-int st_key: int() conversion, falls back to -1 on failure
+          - Absent "dimensions" key (M15/M43/M279): dim_by_st_{hits,win} = {}
         """
         if not chunk_dict or not isinstance(chunk_dict, dict):
             return {
@@ -159,6 +169,7 @@ class PayoutsBySpinType(AnalyzerFeature):
                 "pid_payline_hits": {}, "pid_match_count_dist": {},
                 "pid_col_set": {}, "pid_has_regular_line": {},
                 "pid_symbol_combos": {},
+                "dim_by_st_hits": {}, "dim_by_st_win": {},
             }
 
         by_st_hits: dict[str, dict[int, int]] = {}
@@ -228,6 +239,109 @@ class PayoutsBySpinType(AnalyzerFeature):
                     if cnt
                 }
 
+        # Phase 2 — dimension-aware accumulation (GAP-B fix):
+        # Guard on the precise "dimensions" sub-key inside trigger_path
+        # (per 05_breaker.md BREAK-1 — st_extract is NON-empty fleet-wide).
+        # For each declared ST with >=2 real dim values, accumulate
+        # per-(pid, st_int, dim_name, dim_value) hit/win counts.
+        # These feed the "__by_dim__" sibling key in emit().
+        #
+        # Key structure:
+        #   dim_by_st_hits[(pid_str, st_int, dim_name, dim_value)] = int
+        #   dim_by_st_win[(pid_str, st_int, dim_name, dim_value)] = float
+        #
+        # The payout_id_by_spin_type accumulator does NOT break down hits
+        # per (pid, st, dim_value) — that is accumulated HERE from the
+        # per-round dimensions substrate (trigger_path.py Phase 1 output).
+        #
+        # IMPORTANT: the dimensions substrate carries round_count/win_sum
+        # per (st, dim_name, value) — NOT per-pid.  Per-pid breakdown within
+        # a dimension value is NOT available from the Phase 1 extractor
+        # (the extractor is pid-blind — it only sees SpinType + field values).
+        #
+        # Workaround (correct by GAP-B contract): we use the dimensions
+        # substrate to derive per-dim RTP SHARES, then split the per-ST
+        # per-pid wins proportionally.  Specifically:
+        #   dim_rtp_share[value] = dim_win_sum / st_total_win_from_extractor
+        # and per-pid per-dim win = pid_win_for_st * dim_rtp_share[value].
+        # Hit counts are split the same way (proportional allocation).
+        #
+        # This satisfies GAP-B: per-dim payid rows sum to the payid aggregate
+        # for the ST (same payid basis) because:
+        #   Σ(dim_pid_win) = pid_win * Σ(dim_rtp_share) = pid_win * 1.0
+        #
+        # The split is an approximation within each pid (assumes the pid's
+        # win distribution matches the ST-level win distribution by dim).
+        # For M275 ST126: scatter has 8290/9090=91.2% of rounds and
+        # collect_peak has 800/9090=8.8%.  This is the best split available
+        # without pid-level per-dim tracking in the parser.
+        #
+        # Phase-2 NOTE: "unknown:*" and "multi:*" values are INCLUDED in
+        # the sum for the share denominator but EXCLUDED from the dim_value
+        # breakdown emitted in __by_dim__ (they become _unknown/_multi in
+        # emit()).  Their share reduces the "real" dim values' proportions.
+        dim_by_st_hits: dict[tuple[str, int, str, str], float] = {}
+        dim_by_st_win: dict[tuple[str, int, str, str], float] = {}
+
+        _st_extract = chunk_dict.get("st_extract")
+        if isinstance(_st_extract, dict):
+            _tp_raw = _st_extract.get("trigger_path")
+            if isinstance(_tp_raw, dict):
+                _dims_raw = _tp_raw.get("dimensions")
+                if isinstance(_dims_raw, dict):
+                    for _st_str, _dim_data in _dims_raw.items():
+                        if not str(_st_str).isdigit():
+                            continue  # skip malformed keys
+                        try:
+                            _st_int = int(_st_str)
+                        except (TypeError, ValueError):
+                            continue
+                        if not isinstance(_dim_data, dict):
+                            continue
+                        for _dim_name, _dim_vals in _dim_data.items():
+                            if not isinstance(_dim_vals, dict):
+                                continue
+                            # Check >=2 real (non-unknown, non-multi) values.
+                            _real_vals = [
+                                v for v in _dim_vals
+                                if not str(v).startswith("unknown:")
+                                and not str(v).startswith("multi:")
+                            ]
+                            if len(_real_vals) < 2:
+                                continue  # single-value ST: no by_dim emitted
+                            # Compute total extractor win for this ST
+                            # (denominator for proportional split).
+                            _ext_total_win = sum(
+                                float((_dim_vals.get(v) or {}).get("win_sum", 0.0))
+                                for v in _dim_vals
+                            )
+                            # Now split per-pid hits/wins proportionally.
+                            for _dim_value, _dim_stats in _dim_vals.items():
+                                if not isinstance(_dim_stats, dict):
+                                    continue
+                                _dv_win = float(_dim_stats.get("win_sum", 0.0))
+                                _share = (
+                                    _dv_win / _ext_total_win
+                                    if _ext_total_win > 0 else 0.0
+                                )
+                                # Apply share to each pid's per-ST hits/wins.
+                                for _pid_str, _st_hits_map in by_st_hits.items():
+                                    _pid_hits = int(_st_hits_map.get(_st_int, 0))
+                                    if _pid_hits > 0:
+                                        _k = (_pid_str, _st_int, _dim_name, _dim_value)
+                                        dim_by_st_hits[_k] = (
+                                            dim_by_st_hits.get(_k, 0.0)
+                                            + _pid_hits * _share
+                                        )
+                                for _pid_str, _st_wins_map in by_st_win.items():
+                                    _pid_win = float(_st_wins_map.get(_st_int, 0.0))
+                                    if _pid_win != 0.0:
+                                        _k = (_pid_str, _st_int, _dim_name, _dim_value)
+                                        dim_by_st_win[_k] = (
+                                            dim_by_st_win.get(_k, 0.0)
+                                            + _pid_win * _share
+                                        )
+
         return {
             "by_st_hits": by_st_hits,
             "by_st_win": by_st_win,
@@ -236,6 +350,10 @@ class PayoutsBySpinType(AnalyzerFeature):
             "pid_col_set": pid_col_set,
             "pid_has_regular_line": pid_has_regular_line,
             "pid_symbol_combos": pid_symbol_combos,
+            # Phase 2: dim_by_st_{hits,win} keyed (pid_str, st_int, dim_name, dim_value).
+            # Empty for machines with no declared dimensions (M15/M43/M279).
+            "dim_by_st_hits": dim_by_st_hits,
+            "dim_by_st_win": dim_by_st_win,
         }
 
     def reduce(self, prev_acc: dict, this_acc: dict) -> dict:
@@ -253,6 +371,7 @@ class PayoutsBySpinType(AnalyzerFeature):
                 "pid_payline_hits": {}, "pid_match_count_dist": {},
                 "pid_col_set": {}, "pid_has_regular_line": {},
                 "pid_symbol_combos": {},
+                "dim_by_st_hits": {}, "dim_by_st_win": {},
             }
         if not this_acc:
             return prev_acc
@@ -349,6 +468,21 @@ class PayoutsBySpinType(AnalyzerFeature):
                 for combo, cnt in sc_map.items():
                     dest[combo] = dest.get(combo, 0) + cnt
 
+        # Phase 2: merge dim_by_st_{hits,win} (additive).
+        # Keys are (pid_str, st_int, dim_name, dim_value) tuples.
+        # Machines with no declared dimensions have empty dicts (no-op merge).
+        prev_dh = prev_acc.get("dim_by_st_hits") or {}
+        this_dh = this_acc.get("dim_by_st_hits") or {}
+        merged_dh: dict[tuple[str, int, str, str], float] = dict(prev_dh)
+        for k, v in this_dh.items():
+            merged_dh[k] = merged_dh.get(k, 0.0) + v
+
+        prev_dw = prev_acc.get("dim_by_st_win") or {}
+        this_dw = this_acc.get("dim_by_st_win") or {}
+        merged_dw: dict[tuple[str, int, str, str], float] = dict(prev_dw)
+        for k, v in this_dw.items():
+            merged_dw[k] = merged_dw.get(k, 0.0) + v
+
         return {
             "by_st_hits": merged_hits,
             "by_st_win": merged_wins,
@@ -357,6 +491,9 @@ class PayoutsBySpinType(AnalyzerFeature):
             "pid_col_set": merged_cs,
             "pid_has_regular_line": merged_hrl,
             "pid_symbol_combos": merged_sc,
+            # Phase 2: dim_by_st_{hits,win} — empty for non-dimension machines.
+            "dim_by_st_hits": merged_dh,
+            "dim_by_st_win": merged_dw,
         }
 
     @staticmethod
@@ -666,6 +803,107 @@ class PayoutsBySpinType(AnalyzerFeature):
             payouts_by_spin_type[label] = st_pid_rows
 
         player_impact["payouts_by_spin_type"] = payouts_by_spin_type
+
+        # --- Phase 2: emit per-dim payid sibling keys "__by_dim__<dim_name>" ---
+        # For each ST label that has dimension data (>=2 real dim values):
+        #   payouts_by_spin_type["<label>__by_dim__<dim_name>"] = {
+        #     dim_value: [payid_rows_with_same_schema_as_aggregate]
+        #   }
+        # The per-dim payid rows use the SAME payid-basis formula as the aggregate
+        # (GAP-B fix: basis = dim_win / effective_bet_for_rtp * 100).
+        # This ensures Σ(per-dim rtp_contribution_pp) == aggregate rtp_contribution_pp
+        # for this ST (by the proportional-split property: Σshares = 1).
+        #
+        # Guard: dim_by_st_{hits,win} is empty for machines with no declared
+        # dimensions (M15/M43/M279) → no __by_dim__ keys emitted → byte-identical.
+        # BREAK-1 guard is upstream in extract() (on "dimensions" sub-key).
+        dim_by_st_hits = (final_acc or {}).get("dim_by_st_hits") or {}
+        dim_by_st_win = (final_acc or {}).get("dim_by_st_win") or {}
+
+        if dim_by_st_hits or dim_by_st_win:
+            # Collect all (st_int, dim_name, dim_value) tuples.
+            all_dim_combos: set[tuple[int, str, str]] = set()
+            for (pid_str, st_int, dim_name, dim_value) in dim_by_st_hits:
+                all_dim_combos.add((st_int, dim_name, dim_value))
+            for (pid_str, st_int, dim_name, dim_value) in dim_by_st_win:
+                all_dim_combos.add((st_int, dim_name, dim_value))
+
+            # Group by (st_int, dim_name) to emit one sibling key per (label, dim).
+            from collections import defaultdict as _defaultdict
+            st_dim_values: dict[tuple[int, str], set[str]] = _defaultdict(set)
+            for (st_int, dim_name, dim_value) in all_dim_combos:
+                st_dim_values[(st_int, dim_name)].add(dim_value)
+
+            for (st_int, dim_name), dim_values_set in sorted(st_dim_values.items()):
+                label = _st_label.get(st_int)
+                if label is None:
+                    continue  # ST not in breakdown — skip
+                # Filter to real (non-unknown, non-multi) values for the guard.
+                real_dim_vals = sorted(
+                    v for v in dim_values_set
+                    if not str(v).startswith("unknown:")
+                    and not str(v).startswith("multi:")
+                )
+                if len(real_dim_vals) < 2:
+                    continue  # single-value: no by_dim emitted (byte-identical)
+
+                st_spins_count = _st_spins.get(st_int, 0)
+
+                # Build per-dim payid rows dict: {dim_value: [rows]}.
+                # Also include _unknown / _multi buckets when present.
+                dim_key_name = f"{label}__by_dim__{dim_name}"
+                by_dim_rows: dict[str, list[dict[str, Any]]] = {}
+
+                all_dim_values = sorted(dim_values_set)  # real + unknown + multi
+                for dim_value in all_dim_values:
+                    dv_pid_rows: list[dict[str, Any]] = []
+                    for pid_str, _total_win in sorted(
+                        pid_total_win.items(),
+                        key=lambda kv: kv[1],
+                        reverse=True,
+                    ):
+                        _k_hits = (pid_str, st_int, dim_name, dim_value)
+                        _k_wins = (pid_str, st_int, dim_name, dim_value)
+                        dv_hit_raw = dim_by_st_hits.get(_k_hits, 0.0)
+                        dv_win_raw = dim_by_st_win.get(_k_wins, 0.0)
+                        # Round hit_count to nearest int (proportional float).
+                        dv_hits = round(dv_hit_raw)
+                        dv_win = float(dv_win_raw)
+                        if dv_hits == 0 and dv_win == 0.0:
+                            continue
+                        dv_pid_rows.append({
+                            "payout_id": pid_str,
+                            "hit_count": dv_hits,
+                            "hit_rate": (
+                                (dv_hits / st_spins_count)
+                                if st_spins_count > 0 else 0.0
+                            ),
+                            "total_win": dv_win,
+                            "avg_win_when_hit": (
+                                (dv_win / dv_hits) if dv_hits > 0 else 0.0
+                            ),
+                            "rtp_contribution_pp": (
+                                (dv_win / effective_bet_for_rtp) * 100.0
+                                if effective_bet_for_rtp > 0 else 0.0
+                            ),
+                        })
+                    if dv_pid_rows:
+                        # Map "unknown:*" → "_unknown", "multi:*" → "_multi"
+                        # to avoid colon in the JSON key (per §3.3 _unknown/_multi).
+                        out_key = dim_value
+                        if str(dim_value).startswith("unknown:"):
+                            out_key = "_unknown"
+                        elif str(dim_value).startswith("multi:"):
+                            out_key = "_multi"
+                        existing = by_dim_rows.get(out_key)
+                        if existing is not None:
+                            # Multiple unknown:* values collapse into one _unknown bucket.
+                            existing.extend(dv_pid_rows)
+                        else:
+                            by_dim_rows[out_key] = dv_pid_rows
+
+                if by_dim_rows:
+                    payouts_by_spin_type[dim_key_name] = by_dim_rows
 
         # --- Phase B: mutate payout_ids_top20 to add symbol_combo.combos ---
         # payout_ids_top20 is written by the PIA F2 inline block BEFORE the

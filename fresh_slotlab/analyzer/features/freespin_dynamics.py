@@ -271,6 +271,7 @@ class FreespinDynamics(AnalyzerFeature):
         trigger_paths: dict[str, dict[str, dict[str, Any]]] = {}
         trigger_path_errors: list[str] = []
         chunks_with_extract = 0
+
         if isinstance(st_extract, dict):
             tp_raw = st_extract.get(_TRIGGER_PATH_EXTRACTOR_ID)
             if isinstance(tp_raw, dict):
@@ -292,6 +293,7 @@ class FreespinDynamics(AnalyzerFeature):
                                 for b, c in (stats.get("win_band_hist") or {}).items()
                             },
                         }
+
             err = st_extract.get(f"_extract_error_{_TRIGGER_PATH_EXTRACTOR_ID}")
             if err:
                 trigger_path_errors.append(str(err))
@@ -322,6 +324,7 @@ class FreespinDynamics(AnalyzerFeature):
             }
         if not this_acc:
             return prev_acc
+
         return {
             "next_counts": _merge_nested_counts(
                 prev_acc.get("next_counts") or {}, this_acc.get("next_counts") or {}
