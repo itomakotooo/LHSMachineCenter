@@ -50,9 +50,28 @@ SCHEMA_VERSION = "spintype-native/1"
 # same paid spin (that is "respin": nothing here is win-gated; the trigger round
 # typically wins 0). Data-grounded on M275's NewFreespin / ReMarks="Freespin N"
 # (token derived from the machine's own naming, branding prefix belongs to play).
+# "hold_respin" added 2026-06-16 (M278 onboarding): a GRANTED, win-INDEPENDENT,
+# variable-length HOLD-AND-RESPIN block (cost=0) where reels LOCK and accumulate
+# (LockReels grows each respin) and the block settles ONCE on a single Settle=True
+# (always-last) round; all intermediate respins win 0. Structurally distinct from
+# BOTH "freespin" (a fixed-length granted block of independent reel spins) AND
+# "respin" (a WIN-gated extension of the same paid spin). It belongs to the
+# granted-free-session FAMILY (FREESPIN_FAMILY_ROLES below) and is wired to the
+# SAME freespin_dynamics plugin — a role-table choice, not a plugin fork.
+# Data-grounded on M278's JewelFeverRespin / ReMarks="Respin N" (token derived
+# from the machine's own naming + the hold-and-respin structural kind).
 KNOWN_ROLES = frozenset({
     "paid_spin", "player_choice", "settlement", "state", "respin", "freespin",
+    "hold_respin",
 })
+
+# FREESPIN_FAMILY_ROLES: the set of role tokens that share the granted-free-session
+# MECHANIC and therefore resolve to the SAME freespin_dynamics analysis. A machine
+# declares ONE of these on its granted-session ST; freespin_dynamics treats them as
+# one family (session cadence / hot-board uplift / trigger-path split apply to all).
+# Adding a token here is additive: existing freespin-only machines (M275/M43) are
+# byte-identical because "freespin" is and remains the first member.
+FREESPIN_FAMILY_ROLES: frozenset[str] = frozenset({"freespin", "hold_respin"})
 
 # ── Analysis derivation (replaces the old hand-listed analyzer_features) ──────
 # CROSS_CUTTING: whole-session analyses that apply to every machine.
@@ -84,10 +103,18 @@ PER_SPINTYPE: tuple[str, ...] = (
 #                    across the freespin family; there is no role collision to
 #                    scope away (unlike WinMiniGame/Wheel on the shared
 #                    `settlement` role).
+#   hold_respin   -> freespin_dynamics (M278 ST160: the JewelFever hold-and-respin
+#                    granted block — the SAME granted-free-session MECHANIC, so it
+#                    rides the SAME plugin. ROLE hook: hold_respin is M278-exclusive
+#                    in this fleet, so a role hook cannot cross-fire onto any other
+#                    machine. freespin_dynamics resolves the FREESPIN_FAMILY_ROLES
+#                    family, so it attaches to a hold_respin ST exactly as it does a
+#                    freespin ST.)
 ROLE_ANALYSES: dict[str, tuple[str, ...]] = {
     "player_choice": ("topdollar_choice",),
     "respin": ("respin_dynamics",),
     "freespin": ("freespin_dynamics",),
+    "hold_respin": ("freespin_dynamics",),
 }
 
 # PLAY_ANALYSES: analyses attached to a specific SpinType PLAY (the rawdata
@@ -189,8 +216,16 @@ def derive_mechanism_flags(manifest: dict[str, Any]) -> dict[str, Any]:
     # Role-aware freespin derivation (M275, 2026-06-12): a machine whose
     # freespin feature carries a branded play name (e.g. "NewFreespin")
     # declares the structural kind via role == "freespin".
+    # Family-aware (M278, 2026-06-16): any role in FREESPIN_FAMILY_ROLES is a
+    # granted-free-session bonus (e.g. "hold_respin" = the JewelFever
+    # hold-and-respin). A hold-and-respin block IS a free-session bonus, so the
+    # machine_mechanics.free_spin.applicable / bonus_chain_dynamics flags must read
+    # True (else the report self-contradicts — bonus chains shown while free_spin
+    # reads "not applicable"). Additive: only manifests declaring a NEW family role
+    # change output; "freespin"-only machines (M275/M43) are byte-identical.
     freespin_applicable: bool = (
-        "freespin" in plays_lower or "freespin" in roles_lower
+        "freespin" in plays_lower
+        or bool(roles_lower & FREESPIN_FAMILY_ROLES)
     )
     jackpot_applicable: bool = "jackpot" in plays_lower
 

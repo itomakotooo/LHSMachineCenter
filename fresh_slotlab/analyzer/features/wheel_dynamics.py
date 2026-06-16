@@ -1,61 +1,66 @@
 """AnalyzerFeature: wheel_dynamics — the Wheel (st2) collect-settlement MECHANIC view.
 
-M279 onboarding (Wave 4). st2 has no reels/cost and no round-level PayoutId; its
-whole win is attributed to a single real pid `st2` by the config-only
-SynthesizePayIdRule (configs/machine_round_win_rules.json: m279_wheel_settlement)
+M279 onboarding (Wave 4), generalized M283 + wheel_cells extractor (Wave 3+). st2
+has no reels/cost and no round-level PayoutId; its whole win is attributed to a
+single real pid `st2` by the config-only SynthesizePayIdRule
+(configs/machine_round_win_rules.json: m279_wheel_settlement / m283_wheel_settlement)
 so the RTP-integrity gate passes (_unattributed_st2 -> 0). This feature quantifies
 the WHEEL MECHANIC's felt experience as rates / multipliers / probabilities /
 shares (money-agnostic; NO coin totals).
 
 What the player feels (design 03_design.md §ST2 "What the player FEELS at the
 wheel"): every 1000th paid spin a guaranteed prize wheel fires and ALWAYS pays —
-a scheduled lottery that resolves into a certain pop, possibly the 100x jackpot
-cell. Three distinct feelings, each made a number:
+a scheduled lottery that resolves into a certain pop, possibly the jackpot cell.
+Three distinct feelings, each made a number:
 
   1. A guaranteed, scheduled payout (hit-rate 1.0 + deterministic cadence).
   2. A prize-tier lottery (the discrete-prize probability / win-share shape).
-  3. The 100x jackpot-cell chance (the 12-cell landing map; cells 8 & 10 = 100x).
+  3. The jackpot-cell chance (the 12-cell landing map; M279 cells 8 & 10 = 100x,
+     M283 cell 10 = 200x).
 
 Mechanic metrics (design W1-W4)
 -------------------------------
-- W1 guaranteed-payout / cadence ⭐: the felt "certain scheduled reward." hit_rate
-    (1.0, from spin_type_breakdown — the server Wheel has NO -1/loss tier),
-    one_per_n_paid_spins (= base_spins / wheel_events ~ 1000, the metronome period),
-    events. Signal: spin_type_breakdown[ST2] + the base count.
-- W2 discrete prize-tier distribution ⭐ (the lottery): the wheel's OWN prize
-    taxonomy as {multiplier, prob, win_share}. The 6 raw prizes are 5x/10x/20x/30x/
-    50x/100x (W1 CROSS-4). DATA BOUNDARY: the only win-keyed per-ST data the frozen
-    parser hands a base-excluded plugin is the COARSE RETURN_BUCKET_ORDER histogram
-    (spin_type_bucket_{spins,win}), whose boundaries are .../10/20/50/100/...; the
-    20x AND 30x prizes BOTH fall in the single `ge20_lt50` band and are merged
-    irrecoverably (verified on the real cached chunks: ge20_lt50 = 20x + 30x, e.g.
-    chunk_0001 = 7 + 4 events in one band). So the BAND-level distribution (5 bands)
-    is base-derivable here; band -> prize-multiplier labels are exact for every band
-    EXCEPT `ge20_lt50` (the 20x/30x collision). The exact 6-prize un-merge needs a
-    per-round WinCredits-value tally that lives ONLY in parser.py (a base-closure
-    file) — flagged `parser_blind`, never fabricated.
-- W3 12-cell map + jackpot-cell probability ⭐ (the jackpot chance): the per-cell
-    landing distribution {cell: prob} + P(jackpot cell 8|10) + the fixed cell->prize
-    map (cells 8,10 = 100x). NEEDS the per-round ReMarks="WheelSpin CellIndex <n>;
-    WheelId 1;" cell index — NOT accumulated by parser.py (it keeps only 3 sample
-    ReMarks strings per SpinType, not a CellIndex distribution). Flagged
-    `parser_blind` (same boundary M43's minigame node-list G4/G5 declared).
+- W1 guaranteed-payout / cadence: hit_rate (1.0, from spin_type_breakdown — the
+    server Wheel has NO -1/loss tier), one_per_n_paid_spins (= base_spins /
+    wheel_events ~ 1000, the metronome period), events.
+- W2 discrete prize-tier distribution (the lottery): the wheel's OWN prize
+    taxonomy as {prize_multiplier, prob, hit_count, win_share}. EXACT, DATA-DERIVED
+    per machine from the wheel_cells extractor's per-round CellIndex->WinCredits
+    accumulation — NOT a hardcoded ladder (feedback_no_hardcode.md) and NO LONGER
+    a coarse RETURN_BUCKET banding that merged the 20x/30x prizes. For M279 this
+    RESTORES the 6 distinct prizes (incl. 30x @ cell 5) as a REAL data-derived
+    value; for M283 it gives 6 distinct prizes incl. the 200x jackpot tier and
+    correctly omits a fabricated 30x.
+- W3 wheel cell map + jackpot (the jackpot chance): the EXACT 12-cell landing
+    distribution {cell: {prize_multiplier, hit_count, hit_prob}}, the jackpot
+    cell(s) IDENTITY and prize multiplier, all DATA-DERIVED from the wheel_cells
+    extractor. An UNOBSERVED cell (M283 cell 7, n=0) is reported honestly with
+    prize_multiplier null + observed:false, NEVER fabricated
+    (feedback_invariant_with_fallback_hides_drift.md). A cell ever seen paying
+    >1 distinct prize is surfaced as a DATA ALARM (nondeterministic_cells), never
+    silently resolved.
 - W4 RTP-concentration: the felt "a rare guaranteed event carrying a few % of
-    payback." wheel_rtp_contribution_pp, share_of_all_win (W1 §9: Wheel
-    76,780,000 of 1,769,595,050 ~ 4.34%), event_rate (~0.09%). Signal:
+    payback." wheel_rtp_contribution_pp, share_of_all_win, event_rate. Signal:
     spin_type_breakdown.
 
 Data path (all base-EXCLUDED — no parser/closure dependency)
 ------------------------------------------------------------
-extract() reads one PER-CHUNK accumulator the parser already emits in the chunk
+extract() reads per-chunk accumulators the parser already emits in the chunk
 dict (rec) — accumulated OURSELVES (no stash-ordering dependency):
 
-  chunk_dict["spin_type_bucket_spins" | "spin_type_bucket_win"]
-      {str(st): {return_bucket_label: value}} — per-ST win/bet multiplier-band
-      histogram over ALL rounds. For st2 the bet defaults to the run bet (1000;
-      st2 carries NO BetAmount), so the bands are meaningful multipliers (W2).
-      "eq0" is the zero-win band (the wheel pays on 100% of rounds, so it is
-      empty here — the guaranteed-payout signal).
+  chunk_dict["st_extract"]["wheel_cells"]
+      {str(st): {cell_map, observed_cells, cell_count, unobserved_cells,
+      distinct_prizes, jackpot, total_wheel_spins, nondeterministic_cells,
+      skipped_rounds}} — the per-ST extraction layer's wheel cell-index
+      extractor output (st_extract/wheel_cells.py, declared by the manifest's
+      spin_types["<st>"].wheel_cells block). The EXACT cell map + distinct-prize
+      distribution (W2 + W3). Key is absent on chunks parsed without extractors
+      or on machines without the wheel_cells block — a legitimate state (the
+      feature then degrades gracefully, reporting source unavailable, never
+      fabricating).
+  chunk_dict["st_extract"]["_extract_error_wheel_cells"]
+      surfaced extractor errors — collected and re-surfaced (never dropped,
+      feedback_no_silent_swallow.md).
 
 emit() additionally reads the byte-stable summary["player_impact"]["spin_type_breakdown"]
 (per-ST round-level stats) for W1/W4 (spins, win_rounds, hit_rate, total_win,
@@ -73,21 +78,25 @@ NOT in fresh_slotlab/analyzer/core/ and NOT in versioning._CLOSURE_FILES — bas
 EXCLUDED (R-4). Auto-discovered via feature_registry.discover_features(). Editing
 it re-flags ONLY machines declaring "wheel_dynamics" (via play "Wheel" in
 machine_spec.PLAY_ANALYSES — NOT the shared `settlement` role, so it does NOT fire
-on M15's TopDollar settlement or M43's WinMiniGame settlement).
+on M15's TopDollar settlement or M43's WinMiniGame settlement). The wheel_cells
+extractor it consumes is likewise base-excluded (st_extract/wheel_cells.py).
 
 Memory feedback honored
 -----------------------
 - feedback_no_hardcode.md: the wheel ST is resolved from the manifest's spin_types
-  (play "Wheel"), NOT hardcoded "2".
+  (play "Wheel"), NOT hardcoded "2". The cell->prize map / band labels / jackpot
+  are DATA-DERIVED from the wheel_cells extractor, NOT hardcoded constants (the
+  prior interim _BAND_TO_PRIZE_MULT / merged_avg_multiplier de-hardcode is now
+  fully removed in favor of the exact extractor map).
 - feedback_no_silent_swallow.md: a missing spin_type_breakdown section RAISES.
-  The 6-prize un-merge (20x/30x) and the CellIndex landing map that the frozen
-  framework cannot expose are surfaced EXPLICITLY in `parser_blind` — never
-  fabricated as zeros or invented splits.
-- feedback_invariant_with_fallback_hides_drift.md: no catch-all bucket; rates with
-  a zero denominator are null, not a "0.0 with 0 denominator" lie.
-- feedback_no_parallel_panel_impl.md: mirrors minigame_dynamics / spin_type_rtp_buckets
-  / spin_type_outcomes pattern (extract/reduce/emit, ClassVar layout, dual-path
-  import, register()); reuses RETURN_BUCKET_ORDER.
+  The cell map degrades gracefully when the extractor is absent (available:false
+  with a reason), and surfaces extractor errors + nondeterministic-cell alarms.
+- feedback_invariant_with_fallback_hides_drift.md: no catch-all bucket; an
+  unobserved cell is null+observed:false (not a fabricated value); rates with a
+  zero denominator are null, not a "0.0 with 0 denominator" lie.
+- feedback_no_parallel_panel_impl.md: mirrors freespin_dynamics' consumption of
+  the st_extract layer (reads rec["st_extract"][<EXTRACTOR_ID>], merges across
+  chunks, surfaces errors), and minigame_dynamics' emit shape.
 - feedback_subprocess_import_suicide_and_module_globals.md: register() is a pure
   list-append; no I/O at import time.
 """
@@ -98,11 +107,9 @@ from typing import TYPE_CHECKING, Any, ClassVar
 try:
     from fresh_slotlab.analyzer.features._base import AnalyzerFeature
     from fresh_slotlab.analyzer.feature_registry import register
-    from fresh_slotlab.analyzer.core.aggregator import RETURN_BUCKET_ORDER
 except ImportError:  # running as standalone script
     from analyzer.features._base import AnalyzerFeature  # type: ignore[no-redef]
     from analyzer.feature_registry import register  # type: ignore[no-redef]
-    from analyzer.core.aggregator import RETURN_BUCKET_ORDER  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
     try:
@@ -111,43 +118,78 @@ if TYPE_CHECKING:
         from analyzer.pipeline_context import PipelineContext  # type: ignore[assignment]
 
 
-# Exact prize-multiplier label for each RETURN_BUCKET band the wheel lands in.
-# The wheel pays one of 6 discrete prizes (5/10/20/30/50/100x bet; W1 CROSS-4).
-# Mapping each prize onto RETURN_BUCKET_ORDER (boundaries .../10/20/50/100/...):
-#   5x   -> ge5_lt10      10x  -> ge10_lt20
-#   20x  -> ge20_lt50  ┐  30x  -> ge20_lt50  ┘  ← SAME band (the 20x/30x collision)
-#   50x  -> ge50_lt100    100x -> ge100_lt200
-# Every band below maps to exactly ONE prize EXCEPT `ge20_lt50`, which merges the
-# 20x and 30x prizes (the parser's coarse banding cannot separate them — the exact
-# split needs a per-round WinCredits-value tally in parser.py, a base-closure file).
-_BAND_TO_PRIZE_MULT: dict[str, int] = {
-    "ge5_lt10": 5,
-    "ge10_lt20": 10,
-    "ge50_lt100": 50,
-    "ge100_lt200": 100,
-}
-# The single band that the frozen banding cannot un-merge.
-_MERGED_BAND: str = "ge20_lt50"
-_MERGED_BAND_PRIZES: tuple[int, ...] = (20, 30)
-
-# The jackpot prize multiplier (top cell). Cells 8 & 10 land it (W1 CROSS-5).
-_JACKPOT_PRIZE_MULT: int = 100
-_JACKPOT_CELLS: tuple[int, ...] = (8, 10)
-_WHEEL_CELL_COUNT: int = 12
+# The extractor id whose chunk output W2/W3 consume (st_extract/wheel_cells.py).
+_WHEEL_CELLS_EXTRACTOR_ID: str = "wheel_cells"
 
 
-def _merge_nested_counts(
-    prev: dict[str, dict[str, float]],
-    this: dict[str, dict[str, float]],
-) -> dict[str, dict[str, float]]:
-    """Additively merge two {outer: {inner: number}} dicts."""
-    out: dict[str, dict[str, float]] = {}
-    for okey, imap in prev.items():
-        out[okey] = dict(imap)
-    for okey, imap in this.items():
-        dest = out.setdefault(okey, {})
-        for ikey, val in imap.items():
-            dest[ikey] = dest.get(ikey, 0) + val
+def _merge_cell_maps(prev: dict[str, Any], this: dict[str, Any]) -> dict[str, Any]:
+    """Merge two wheel_cells extractor outputs across chunks.
+
+    Shape: {st_str: {cell_map, observed_cells, cell_count, unobserved_cells,
+    distinct_prizes, jackpot, total_wheel_spins, nondeterministic_cells,
+    skipped_rounds}}.
+
+    Per-cell hit_count / total_wheel_spins / skipped_rounds are additive.
+    The cell->prize_multiplier is a DETERMINISTIC structural fact (the same in
+    every chunk); we keep the singleton but ESCALATE to a nondeterministic-cell
+    ALARM if two chunks ever disagree on a cell's prize
+    (feedback_invariant_with_fallback_hides_drift.md — drift must be a signal,
+    never silently merged). hit_prob is recomputed at emit() from the merged
+    totals, so it is NOT merged here.
+    """
+    out: dict[str, Any] = {}
+    all_sts = set(prev) | set(this)
+    for st in all_sts:
+        pa = prev.get(st) or {}
+        pb = this.get(st) or {}
+
+        # Merge per-cell hit_count + reconcile prize_multiplier.
+        cm_a: dict[str, Any] = pa.get("cell_map") or {}
+        cm_b: dict[str, Any] = pb.get("cell_map") or {}
+        nd: dict[str, Any] = {}
+        for k, v in (pa.get("nondeterministic_cells") or {}).items():
+            nd[str(k)] = list(v)
+        for k, v in (pb.get("nondeterministic_cells") or {}).items():
+            nd[str(k)] = sorted(set(nd.get(str(k), [])) | set(v))
+
+        merged_cm: dict[str, Any] = {}
+        all_cells = set(cm_a) | set(cm_b)
+        for cell in all_cells:
+            ea = cm_a.get(cell) or {}
+            eb = cm_b.get(cell) or {}
+            hits = int(ea.get("hit_count", 0)) + int(eb.get("hit_count", 0))
+            pa_mult = ea.get("prize_multiplier")
+            pb_mult = eb.get("prize_multiplier")
+            # Reconcile the singleton prize. None means "unobserved/alarmed in
+            # that chunk"; a real value from either chunk wins. Two DIFFERENT
+            # real values is a drift ALARM.
+            observed_mults = {m for m in (pa_mult, pb_mult) if m is not None}
+            if len(observed_mults) == 0:
+                prize = None
+            elif len(observed_mults) == 1:
+                prize = next(iter(observed_mults))
+            else:
+                prize = None
+                nd[str(cell)] = sorted(set(nd.get(str(cell), [])) | observed_mults)
+            merged_cm[str(cell)] = {
+                "prize_multiplier": prize,
+                "hit_count": hits,
+                # hit_prob recomputed at emit() from merged totals.
+                "hit_prob": None,
+            }
+
+        total = int(pa.get("total_wheel_spins", 0)) + int(pb.get("total_wheel_spins", 0))
+        skipped = int(pa.get("skipped_rounds", 0)) + int(pb.get("skipped_rounds", 0))
+        # cell_count: declared, identical across chunks; take the max (defensive).
+        cell_count = max(int(pa.get("cell_count", 0)), int(pb.get("cell_count", 0)))
+
+        out[str(st)] = {
+            "cell_map": merged_cm,
+            "cell_count": cell_count,
+            "total_wheel_spins": total,
+            "skipped_rounds": skipped,
+            "nondeterministic_cells": nd,
+        }
     return out
 
 
@@ -182,18 +224,26 @@ def _resolve_st_by_role(manifest: dict[str, Any] | None, role: str) -> int | Non
 
 
 class WheelDynamics(AnalyzerFeature):
-    """Pattern-B plugin: accumulate the per-ST bucket histogram per chunk; compute
-    the wheel-mechanic metrics in emit() (reading the byte-stable
+    """Pattern-B plugin: accumulate the per-ST wheel_cells extractor output per
+    chunk; compute the wheel-mechanic metrics in emit() (reading the byte-stable
     spin_type_breakdown section too).
 
     Accumulator structure
     ---------------------
-      bucket_spins / bucket_win: dict[str, dict[str, number]] — per-ST bands.
+      cell_data: dict[str, Any]
+          {st: {cell_map, cell_count, total_wheel_spins, skipped_rounds,
+          nondeterministic_cells}} from rec["st_extract"]["wheel_cells"],
+          merged across chunks.
+      cell_errors: list[str]
+          surfaced _extract_error_wheel_cells entries (never dropped).
+      chunks_with_extract / chunks_total: int
+          coverage counters — reports honestly when some chunks were parsed
+          without the extractor (e.g. a caller bypassing the extractor wiring).
     """
 
     FEATURE_ID: ClassVar[str] = "wheel_dynamics"
     SCHEMA_KEYS: ClassVar[tuple[str, ...]] = ("wheel_dynamics",)
-    SCHEMA_VERSION: ClassVar[int] = 1
+    SCHEMA_VERSION: ClassVar[int] = 2
     RTP_CONTRIBUTION: ClassVar[bool] = False  # win already attributed via synth rule
     DECLARED_DEPS: ClassVar[tuple[str, ...]] = ()
     # We read spin_type_breakdown in emit(); payouts_by_spin_type guarantees it is
@@ -202,126 +252,273 @@ class WheelDynamics(AnalyzerFeature):
     REGISTERED_FALLBACK_RULES: ClassVar[dict[int, dict]] = {}
 
     def extract(self, parse_state: Any, chunk_dict: Any) -> dict:
-        """Lift the per-chunk per-ST bucket histograms."""
-        if not chunk_dict or not isinstance(chunk_dict, dict):
-            return {"bucket_spins": {}, "bucket_win": {}}
+        """Lift the per-chunk wheel_cells extractor output.
 
-        def _coerce_nested(raw: Any, *, as_int: bool) -> dict[str, dict[str, float]]:
-            out: dict[str, dict[str, float]] = {}
-            if not isinstance(raw, dict):
-                return out
-            for okey, imap in raw.items():
-                if not isinstance(imap, dict):
-                    continue
-                inner: dict[str, float] = {}
-                for ikey, val in imap.items():
-                    try:
-                        inner[str(ikey)] = int(val or 0) if as_int else float(val or 0.0)
-                    except (TypeError, ValueError):
+        Absence of the OPTIONAL extractor (old cached records / machine without
+        a wheel_cells block) is a legitimate state, not an error — coverage is
+        tracked and reported (feedback_no_silent_swallow.md: extractor ERRORS,
+        by contrast, are collected and re-surfaced).
+        """
+        empty = {
+            "cell_data": {}, "cell_errors": [],
+            "chunks_with_extract": 0, "chunks_total": 0,
+        }
+        if not chunk_dict or not isinstance(chunk_dict, dict):
+            return empty
+
+        st_extract = chunk_dict.get("st_extract")
+        cell_data: dict[str, Any] = {}
+        cell_errors: list[str] = []
+        chunks_with_extract = 0
+
+        if isinstance(st_extract, dict):
+            wc_raw = st_extract.get(_WHEEL_CELLS_EXTRACTOR_ID)
+            if isinstance(wc_raw, dict):
+                chunks_with_extract = 1
+                for st_key, payload in wc_raw.items():
+                    if not str(st_key).isdigit():
                         continue
-                if inner:
-                    out[str(okey)] = inner
-            return out
+                    if not isinstance(payload, dict):
+                        continue
+                    cm_in = payload.get("cell_map") or {}
+                    cm_out: dict[str, Any] = {}
+                    for cell, entry in cm_in.items():
+                        if not isinstance(entry, dict):
+                            continue
+                        cm_out[str(cell)] = {
+                            "prize_multiplier": entry.get("prize_multiplier"),
+                            "hit_count": int(entry.get("hit_count") or 0),
+                            "hit_prob": None,  # recomputed at emit()
+                        }
+                    cell_data[str(st_key)] = {
+                        "cell_map": cm_out,
+                        "cell_count": int(payload.get("cell_count") or 0),
+                        "total_wheel_spins": int(payload.get("total_wheel_spins") or 0),
+                        "skipped_rounds": int(payload.get("skipped_rounds") or 0),
+                        "nondeterministic_cells": {
+                            str(k): list(v)
+                            for k, v in (payload.get("nondeterministic_cells") or {}).items()
+                        },
+                    }
+            err = st_extract.get(f"_extract_error_{_WHEEL_CELLS_EXTRACTOR_ID}")
+            if err:
+                cell_errors.append(str(err))
 
         return {
-            "bucket_spins": _coerce_nested(
-                chunk_dict.get("spin_type_bucket_spins"), as_int=True
-            ),
-            "bucket_win": _coerce_nested(
-                chunk_dict.get("spin_type_bucket_win"), as_int=False
-            ),
+            "cell_data": cell_data,
+            "cell_errors": cell_errors,
+            "chunks_with_extract": chunks_with_extract,
+            "chunks_total": 1,
         }
 
     def reduce(self, prev_acc: dict, this_acc: dict) -> dict:
-        """Additively merge bucket tallies across chunks."""
+        """Additively merge wheel_cells data across chunks."""
+        empty = {
+            "cell_data": {}, "cell_errors": [],
+            "chunks_with_extract": 0, "chunks_total": 0,
+        }
         if not prev_acc:
-            return this_acc if this_acc else {"bucket_spins": {}, "bucket_win": {}}
+            return this_acc if this_acc else empty
         if not this_acc:
             return prev_acc
         return {
-            "bucket_spins": _merge_nested_counts(
-                prev_acc.get("bucket_spins") or {}, this_acc.get("bucket_spins") or {}
+            "cell_data": _merge_cell_maps(
+                prev_acc.get("cell_data") or {}, this_acc.get("cell_data") or {}
             ),
-            "bucket_win": _merge_nested_counts(
-                prev_acc.get("bucket_win") or {}, this_acc.get("bucket_win") or {}
+            "cell_errors": (
+                list(prev_acc.get("cell_errors") or [])
+                + list(this_acc.get("cell_errors") or [])
+            ),
+            "chunks_with_extract": (
+                int(prev_acc.get("chunks_with_extract") or 0)
+                + int(this_acc.get("chunks_with_extract") or 0)
+            ),
+            "chunks_total": (
+                int(prev_acc.get("chunks_total") or 0)
+                + int(this_acc.get("chunks_total") or 0)
             ),
         }
 
     @staticmethod
-    def _prize_distribution(
-        bucket_spins: dict[str, int],
-        bucket_win: dict[str, float],
+    def _build_cell_map(
+        st_payload: dict[str, Any],
+        errors: list[str],
+        chunks_with_extract: int,
+        chunks_total: int,
     ) -> dict[str, Any]:
-        """Money-agnostic discrete-prize distribution for the wheel.
+        """Build the EXACT 12-cell wheel map from the merged wheel_cells data.
 
-        The wheel's 6 raw prizes (5/10/20/30/50/100x) banded by RETURN_BUCKET_ORDER.
-        Every band maps to exactly ONE prize multiplier EXCEPT `ge20_lt50`, which
-        merges 20x + 30x (the frozen banding cannot separate them — see the
-        `parser_blind` note returned by emit()).
+        Money-agnostic: per cell {prize_multiplier, observed, hit_count,
+        hit_prob}. Unobserved cells -> {prize_multiplier: null, observed: false}
+        (HONEST, never fabricated). hit_prob recomputed from the merged
+        total_wheel_spins. nondeterministic cells surfaced as a DATA ALARM.
 
-        Returns {bands:[{band, prize_multiplier|prize_multipliers_merged, spin_count,
-        prob, win_share}], total_events, modal_band, dominant_band_share,
-        band_count, distinct_prize_count, merged_band_present, source}. prob /
-        win_share over ALL wheel events.
+        Returns available:false (with a reason) when no extractor data is present
+        — the feature degrades gracefully, it does not fabricate the wheel face.
         """
-        total_spins = sum(int(v) for v in bucket_spins.values())
-        total_win = sum(float(v) for v in bucket_win.values())
-        bands: list[dict[str, Any]] = []
-        modal_band: str | None = None
-        modal_count = -1
-        merged_band_present = False
-        for band in RETURN_BUCKET_ORDER:
-            sc = int(bucket_spins.get(band, 0))
-            bw = float(bucket_win.get(band, 0.0))
-            if sc == 0 and bw == 0.0:
-                continue
-            row: dict[str, Any] = {
-                "band": band,
-                "spin_count": sc,
-                "prob": (sc / total_spins) if total_spins > 0 else None,
-                "win_share": (bw / total_win) if total_win > 0 else None,
+        if not st_payload:
+            return {
+                "available": False,
+                "reason": (
+                    "no st_extract.wheel_cells data in the parsed chunks "
+                    f"({chunks_with_extract}/{chunks_total} chunks carried the "
+                    "extractor output). The manifest declares wheel_cells on the "
+                    "wheel ST; the per-ST extraction layer resolves it at parse "
+                    "time — a caller that bypasses report_engine's extractor "
+                    "wiring, or a machine without the wheel_cells block, produces "
+                    "records without it."
+                ),
+                "extraction_errors": errors,
             }
-            if band == _MERGED_BAND:
-                merged_band_present = True
-                # Honest: this band carries TWO prizes the parser merged.
-                row["prize_multipliers_merged"] = list(_MERGED_BAND_PRIZES)
-                row["unmerge_blind"] = True
-            elif band in _BAND_TO_PRIZE_MULT:
-                row["prize_multiplier"] = _BAND_TO_PRIZE_MULT[band]
+
+        cm_raw: dict[str, Any] = st_payload.get("cell_map") or {}
+        total = int(st_payload.get("total_wheel_spins") or 0)
+        cell_count = int(st_payload.get("cell_count") or 0)
+        if cell_count <= 0 and cm_raw:
+            cell_count = max(int(c) for c in cm_raw)
+        nondeterministic = st_payload.get("nondeterministic_cells") or {}
+
+        cells_out: list[dict[str, Any]] = []
+        observed_cells: list[int] = []
+        unobserved_cells: list[int] = []
+        distinct_prizes_set: set = set()
+        for cell in range(1, cell_count + 1):
+            entry = cm_raw.get(str(cell)) or {}
+            hits = int(entry.get("hit_count") or 0)
+            prize = entry.get("prize_multiplier")
+            observed = hits > 0
+            if observed:
+                observed_cells.append(cell)
             else:
-                # A band outside the known 6-prize ladder — surface it, do NOT
-                # silently relabel (feedback_no_silent_swallow.md). Real data has
-                # never produced one (the wheel is a fixed 6-prize ladder), but if
-                # it ever appears it is a signal, not a residual.
-                row["prize_multiplier"] = None
-                row["unexpected_band"] = True
-            bands.append(row)
-            if sc > modal_count:
-                modal_count = sc
-                modal_band = band
-        # Distinct prizes the BANDS can resolve = one per non-merged band, plus the
-        # two prizes hidden inside the merged band (which the bands cannot split).
-        distinct_prize_count = sum(
-            1 for b in bands if b.get("band") != _MERGED_BAND
-        ) + (len(_MERGED_BAND_PRIZES) if merged_band_present else 0)
-        return {
-            "total_events": total_spins,
-            "bands": bands,
-            "band_count": len(bands),
-            "distinct_prize_count": distinct_prize_count,
-            "merged_band_present": merged_band_present,
-            "modal_band": modal_band,
-            "dominant_band_share": (
-                (modal_count / total_spins)
-                if (total_spins > 0 and modal_count > 0) else None
-            ),
+                unobserved_cells.append(cell)
+            if observed and prize is not None:
+                distinct_prizes_set.add(prize)
+            cells_out.append({
+                "cell": cell,
+                "prize_multiplier": prize if observed else None,
+                "observed": observed,
+                "hit_count": hits,
+                "hit_prob": (hits / total) if total > 0 else None,
+                **({"nondeterministic": True} if str(cell) in nondeterministic else {}),
+            })
+
+        # jackpot: max distinct prize + the observed cells that pay it.
+        if distinct_prizes_set:
+            jackpot_mult = max(distinct_prizes_set)
+            jackpot_cells = [
+                c["cell"] for c in cells_out
+                if c["observed"] and c["prize_multiplier"] == jackpot_mult
+            ]
+            jackpot = {"prize_multiplier": jackpot_mult, "cells": jackpot_cells}
+        else:
+            jackpot = {"prize_multiplier": None, "cells": []}
+
+        section: dict[str, Any] = {
+            "available": True,
             "source": (
-                "our win/bet banding (RETURN_BUCKET_ORDER). The wheel pays one of 6 "
-                "discrete prizes (5/10/20/30/50/100x); each RETURN_BUCKET band maps "
-                "to exactly one prize EXCEPT ge20_lt50, which MERGES 20x + 30x. The "
-                "band-level distribution is exact; the 20x/30x un-merge is "
-                "parser_blind (see parser_blind below)."
+                "st_extract.wheel_cells (per-ST extraction layer; per-round "
+                "ReMarks CellIndex -> WinCredits/bet). The cell->prize map is a "
+                "deterministic structural fact derived from data, not hardcoded."
             ),
+            "wheel_cell_count": cell_count,
+            "cells": cells_out,
+            "observed_cells": observed_cells,
+            "unobserved_cells": unobserved_cells,
+            "distinct_prizes": sorted(distinct_prizes_set),
+            "jackpot": jackpot,
+            # Backward-friendly flat aliases (mirror the old cell_map keys so the
+            # frontend KPI block can read them directly).
+            "jackpot_cells": jackpot["cells"],
+            "jackpot_prize_multiplier": jackpot["prize_multiplier"],
+            "total_wheel_spins": total,
+            "skipped_rounds": int(st_payload.get("skipped_rounds") or 0),
+            "extraction_coverage": {
+                "chunks_with_extract": chunks_with_extract,
+                "chunks_total": chunks_total,
+            },
+        }
+        if unobserved_cells:
+            section["unobserved_note"] = (
+                "cells with hit_count 0 in this sample have prize_multiplier null "
+                "and observed:false — the prize is NOT fabricated (more wheel "
+                "spins would pin it). feedback_invariant_with_fallback_hides_drift."
+            )
+        if nondeterministic:
+            section["nondeterministic_cells"] = nondeterministic
+            section["nondeterministic_alarm"] = (
+                "one or more cells paid >1 distinct prize multiplier — a DATA "
+                "ALARM (each wheel cell is meant to be deterministic). The cell's "
+                "prize_multiplier is null (NOT silently resolved). Investigate "
+                "before trusting the cell map."
+            )
+        if errors:
+            section["extraction_errors"] = errors
+        return section
+
+    @staticmethod
+    def _build_prize_distribution(cell_section: dict[str, Any]) -> dict[str, Any]:
+        """Money-agnostic discrete-prize distribution as DISTINCT prizes
+        (un-merged — derived from the exact cell map, NOT coarse RETURN_BUCKET
+        bands). For M279 this RESTORES the 6 distinct prizes incl. 30x as a REAL
+        data-derived value; for M283 it gives 6 distinct prizes incl. 200x and no
+        fabricated 30x.
+
+        Each prize: {prize_multiplier, prob, hit_count, win_share}.
+          prob       = hit_count / total_wheel_spins (the prize-tier probability)
+          win_share  = (prize_multiplier * hit_count) / sum(prize*hit) over prizes
+        Returns available:false when the cell section is unavailable.
+        """
+        if not cell_section.get("available"):
+            return {
+                "available": False,
+                "reason": cell_section.get("reason", "wheel_cells data unavailable"),
+            }
+
+        total = int(cell_section.get("total_wheel_spins") or 0)
+        # Aggregate hit_count per distinct prize across all observed cells.
+        prize_hits: dict[Any, int] = {}
+        for c in cell_section.get("cells") or []:
+            if not c.get("observed"):
+                continue
+            pm = c.get("prize_multiplier")
+            if pm is None:
+                continue
+            prize_hits[pm] = prize_hits.get(pm, 0) + int(c.get("hit_count") or 0)
+
+        total_win = sum(float(pm) * cnt for pm, cnt in prize_hits.items())
+        prizes: list[dict[str, Any]] = []
+        modal_prize: Any = None
+        modal_count = -1
+        for pm in sorted(prize_hits):
+            cnt = prize_hits[pm]
+            win = float(pm) * cnt
+            prizes.append({
+                "prize_multiplier": pm,
+                "prob": (cnt / total) if total > 0 else None,
+                "hit_count": cnt,
+                "win_share": (win / total_win) if total_win > 0 else None,
+            })
+            if cnt > modal_count:
+                modal_count = cnt
+                modal_prize = pm
+
+        jackpot = cell_section.get("jackpot") or {}
+        return {
+            "available": True,
+            "source": (
+                "st_extract.wheel_cells — each DISTINCT prize multiplier the wheel "
+                "pays (un-merged from the exact cell->prize map). prob = "
+                "hit_count/total wheel spins; win_share = prize*hit over all "
+                "prize*hit. NO hardcoded ladder, NO RETURN_BUCKET merge."
+            ),
+            "total_events": total,
+            "prizes": prizes,
+            "distinct_prize_count": len(prizes),
+            "modal_prize_multiplier": modal_prize,
+            "dominant_prize_share": (
+                (modal_count / total) if (total > 0 and modal_count > 0) else None
+            ),
+            "jackpot_prize_multiplier": jackpot.get("prize_multiplier"),
         }
 
     def emit(self, final_acc: dict, summary: dict, ctx: "PipelineContext") -> None:
@@ -347,8 +544,14 @@ class WheelDynamics(AnalyzerFeature):
             }
             return
 
-        bucket_spins: dict[str, dict[str, int]] = (final_acc or {}).get("bucket_spins") or {}
-        bucket_win: dict[str, dict[str, float]] = (final_acc or {}).get("bucket_win") or {}
+        final_acc = final_acc or {}
+        cell_data: dict[str, Any] = final_acc.get("cell_data") or {}
+        cell_errors: list[str] = list(final_acc.get("cell_errors") or [])
+        chunks_with_extract = int(final_acc.get("chunks_with_extract") or 0)
+        chunks_total = int(final_acc.get("chunks_total") or 0)
+
+        wheel_st_s = str(wheel_st)
+        st_payload = cell_data.get(wheel_st_s) or {}
 
         stb_rows: list[dict[str, Any]] = player_impact.get("spin_type_breakdown") or []
         stb_by_st: dict[int, dict[str, Any]] = {}
@@ -360,8 +563,6 @@ class WheelDynamics(AnalyzerFeature):
         wheel_row = stb_by_st.get(wheel_st) or {}
         base_row = stb_by_st.get(base_st) if base_st is not None else {}
         base_row = base_row or {}
-
-        wheel_st_s = str(wheel_st)
 
         # ── W1 — guaranteed-payout / cadence (the certain scheduled reward) ──
         wheel_events = int(wheel_row.get("spins") or 0)
@@ -385,50 +586,15 @@ class WheelDynamics(AnalyzerFeature):
             ),
         }
 
-        # ── W2 — discrete prize-tier distribution (the lottery) ──
-        prize_distribution = self._prize_distribution(
-            bucket_spins.get(wheel_st_s) or {}, bucket_win.get(wheel_st_s) or {}
-        )
-        prize_distribution["parser_blind"] = [
-            "exact_6_prize_unmerge (the 20x vs 30x split that RETURN_BUCKET's "
-            "ge20_lt50 band MERGES into one band)",
-        ]
-        prize_distribution["parser_blind_reason"] = (
-            "the only win-keyed per-ST data the frozen parser hands a base-excluded "
-            "plugin is the COARSE RETURN_BUCKET_ORDER histogram "
-            "(spin_type_bucket_{spins,win}), whose boundaries (.../10/20/50/100/...) "
-            "place the 20x AND 30x prizes in the SAME ge20_lt50 band (verified on the "
-            "real cached chunks). Separating them needs a per-round WinCredits-value "
-            "tally in parser.py (a base-closure file). The BAND-level distribution "
-            "(5 bands) and the 100% guaranteed hit-rate ARE base-derivable today; the "
-            "exact 6-prize un-merge is the honest parser boundary (same boundary M43's "
-            "minigame declared). Escalated to the framework team."
+        # ── W3 — EXACT 12-cell landing map + jackpot cell IDENTITY (data-derived) ──
+        cell_map = self._build_cell_map(
+            st_payload, cell_errors, chunks_with_extract, chunks_total
         )
 
-        # ── W3 — 12-cell landing map + jackpot-cell probability (parser-blind) ──
-        cell_map = {
-            "available": False,
-            "wheel_cell_count": _WHEEL_CELL_COUNT,
-            "jackpot_cells": list(_JACKPOT_CELLS),
-            "jackpot_prize_multiplier": _JACKPOT_PRIZE_MULT,
-            "parser_blind": [
-                "per_cell_landing_distribution ({cell_index: prob} over the 12 cells)",
-                "jackpot_cell_probability (P(land cell 8 or 10) = the 100x chance)",
-                "cell_to_prize_map (the fixed cell->prize ladder; cells 8 & 10 = 100x)",
-            ],
-            "parser_blind_reason": (
-                "the per-round ReMarks='WheelSpin CellIndex <n>; WheelId 1;' cell "
-                "index is NOT accumulated by parser.py (it keeps only 3 sample "
-                "ReMarks strings per SpinType, not a CellIndex distribution). "
-                "Computing the per-cell landing map / jackpot-cell probability / "
-                "cell->prize ladder needs a new per-round ReMarks CellIndex "
-                "accumulator in parser.py (a base-closure file). The 12-cell / "
-                "cells-8&10-are-100x structure (W1 CROSS-5) is recorded above as the "
-                "known fixed shape, but the in-sample landing FREQUENCIES are not "
-                "framework-derivable without the parser accumulator. Escalated to the "
-                "framework team (same boundary as M43's minigame node-list G4/G5)."
-            ),
-        }
+        # ── W2 — discrete prize-tier distribution (the lottery) ──
+        # DISTINCT prizes, un-merged, derived from the exact cell map (no
+        # hardcoded ladder, no RETURN_BUCKET merge).
+        prize_distribution = self._build_prize_distribution(cell_map)
 
         # ── W4 — RTP-concentration (a rare guaranteed event, a few % of payback) ──
         all_win = sum(float(r.get("total_win") or 0.0) for r in stb_rows)

@@ -671,8 +671,16 @@ class PayoutsBySpinType(AnalyzerFeature):
             # Sort pids by total win descending (matches inline block ordering).
             for pid_str, _total_win in sorted(
                 pid_total_win.items(),
-                key=lambda kv: kv[1],
-                reverse=True,
+                # Deterministic order: total_win descending, then pid ascending
+                # as tiebreak. `pid_total_win` is built from a set() (hash-order
+                # iteration), and a plain total_win sort is STABLE — so tied pids
+                # (notably the win==0 trigger-marker pids, all total_win=0.0)
+                # would permute across PYTHONHASHSEED and make the golden flaky.
+                # The pid tiebreak pins them. Mirrors the symbol_combo sort above
+                # (key=lambda kv: (-kv[1], kv[0])). The win==0 markers are not in
+                # payout_ids_top20 (inline block ranks non-zero distinct wins
+                # only), so this does not desync the ordering contract.
+                key=lambda kv: (-kv[1], kv[0]),
             ):
                 st_win_map = by_st_win.get(pid_str) or {}
                 st_win = float(st_win_map.get(st_int, 0.0))

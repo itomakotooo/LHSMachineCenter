@@ -35,9 +35,11 @@ Tests
    36 respin/MoveSpin, 2 settlement/Wheel) — verified from the manifest AND from how
    the role/play-keyed analyses resolve their SpinTypes in the report.
 3. schema / frontend-contract keys present (top-level + player_impact.*).
-4. wheel_dynamics present + its BASE-DERIVABLE fields populated; the parser_blind
-   sub-metrics (the 20×/30× 6-prize un-merge + the CellIndex landing map) FLAGGED
-   parser_blind, NOT fabricated.
+4. wheel_dynamics present + its fields populated; the cell→prize map + distinct
+   prize distribution are now DATA-DERIVED via the wheel_cells extractor (no longer
+   parser_blind): every cell observed + deterministic, jackpot == max(observed
+   prizes) @ argmax cells — asserted value-agnostically (populated/deterministic/
+   data-derived, NOT the literal prize values).
 5. respin_dynamics applicable (via the respin role) + grant_rate.openers present.
 6. collect_mechanic present (TOP-LEVEL) + detected_cycle_length present.
 7. NON-LEAK: M15 / M43 have NO wheel_dynamics (the `Wheel` PLAY scoping held);
@@ -340,73 +342,107 @@ class TestWheelDynamicsDelivered:
         )
         assert isinstance(gp["guaranteed"], bool), "guaranteed must be a bool flag"
 
-    def test_prize_distribution_band_level_populated(self, wd):
-        """W2 ⭐ the band-level prize distribution (BASE-DERIVABLE): non-empty bands +
-        modal band + dominant-band share. Value-agnostic — no probability is pinned."""
+    def test_prize_distribution_distinct_prizes_data_derived(self, wd):
+        """W2 ⭐ UPDATED (wheel_cells de-hardcode): the prize distribution is now the
+        DATA-DERIVED set of DISTINCT prizes (un-merged from the exact cell→prize map
+        via the wheel_cells extractor), NOT the old coarse RETURN_BUCKET banding that
+        merged 20×/30×. Each prize carries {prize_multiplier, prob, hit_count,
+        win_share}. Value-agnostic — no probability or multiplier VALUE is pinned;
+        we assert the SET STRUCTURE + cardinality logic + un-merge consistency."""
         pd = wd["prize_distribution"]
-        assert isinstance(pd.get("bands"), list) and len(pd["bands"]) > 0, (
-            "prize_distribution.bands must be a non-empty histogram (band-level is derivable)"
+        assert pd.get("available") is True, (
+            f"prize_distribution must be available (data-derived); got {pd.get('available')}"
         )
-        for k in ("total_events", "band_count", "distinct_prize_count",
-                  "merged_band_present", "modal_band", "dominant_band_share", "source"):
+        prizes = pd.get("prizes")
+        assert isinstance(prizes, list) and len(prizes) > 0, (
+            "prize_distribution.prizes must be a non-empty DISTINCT-prize list"
+        )
+        for k in ("total_events", "distinct_prize_count", "modal_prize_multiplier",
+                  "dominant_prize_share", "jackpot_prize_multiplier", "source"):
             assert k in pd, f"prize_distribution missing {k}"
-        assert pd["modal_band"] is not None
-        assert pd["dominant_band_share"] is not None
-        for band in pd["bands"]:
-            assert "band" in band and "spin_count" in band and "prob" in band, (
-                f"distribution band malformed: {band}"
+        assert pd["modal_prize_multiplier"] is not None
+        assert pd["dominant_prize_share"] is not None
+        for prize in prizes:
+            for k in ("prize_multiplier", "prob", "hit_count", "win_share"):
+                assert k in prize, f"distribution prize malformed (missing {k}): {prize}"
+        # The distribution's prize SET equals the cell-map distinct-prize SET, and
+        # its cardinality equals distinct_prize_count (un-merged EXACTLY — no merge,
+        # no fabricated split). This is the value-agnostic replacement for the old
+        # "merged_band_present" / parser_blind un-merge flag.
+        cm = wd["cell_map"]
+        cm_distinct = set(cm.get("distinct_prizes") or [])
+        pd_distinct = {p.get("prize_multiplier") for p in prizes}
+        assert pd_distinct == cm_distinct, (
+            f"the prize-distribution prize SET ({sorted(pd_distinct)}) must equal the "
+            f"cell-map distinct-prize SET ({sorted(cm_distinct)}) — un-merged exactly"
+        )
+        assert pd["distinct_prize_count"] == len(cm_distinct)
+        # The source must declare it data-derived (no hardcoded ladder, no merge).
+        src = str(pd.get("source", "")).lower()
+        assert "wheel_cells" in src, (
+            f"prize_distribution.source must cite the wheel_cells extractor; got {pd.get('source')!r}"
+        )
+
+    def test_cell_map_delivered_data_derived(self, wd):
+        """W3 ⭐ CONVERTED (was test_cell_map_flagged_parser_blind): the wheel_cells
+        extractor now DELIVERS M279's cell map data-derived — it is NO LONGER
+        parser_blind. The OLD reality (available:False + a parser_blind list + the
+        hardcoded {8,10} jackpot SHAPE) is replaced by the NEW reality: available
+        True, every cell observed + deterministic, jackpot data-derived (==max of
+        observed prizes / argmax cells). VALUE-AGNOSTIC: we assert it is POPULATED +
+        DETERMINISTIC + data-derived, NOT the literal prize values (100×, 30× etc.
+        drift on re-tune; the structure/derivation invariants do not)."""
+        cm = wd["cell_map"]
+        # NEW: the map is DELIVERED, not parser-blind.
+        assert cm.get("available") is True, (
+            "cell_map.available must now be True — the wheel_cells extractor DELIVERS "
+            f"M279's cell map data-derived. Got available={cm.get('available')} "
+            f"reason={cm.get('reason')}. (Old reality was parser_blind/False.)"
+        )
+        assert "parser_blind" not in cm, (
+            "the cell map is no longer parser_blind — the parser_blind list must be GONE"
+        )
+        # Data-derived source (not a hardcoded ladder).
+        src = str(cm.get("source", "")).lower()
+        assert "wheel_cells" in src and ("not hardcoded" in src or "derived" in src), (
+            f"cell_map.source must declare it data-derived; got {cm.get('source')!r}"
+        )
+        # The fixed physical wheel size (a manifest structural fact).
+        assert cm.get("wheel_cell_count") == 12, "the wheel's fixed cell count (12) is recorded"
+
+        # POPULATED: every observed cell maps to exactly one (non-null) prize.
+        observed = cm.get("observed_cells") or []
+        assert len(observed) > 0, "M279 has observed wheel cells"
+        cells = {int(c["cell"]): c for c in cm["cells"]}
+        for cell in observed:
+            assert cells[int(cell)]["prize_multiplier"] is not None, (
+                f"observed cell {cell} must map to exactly one (non-null) prize"
             )
 
-    def test_prize_distribution_unmerge_flagged_parser_blind(self, wd):
-        """W2 ⭐ the exact 6-prize un-merge (20× vs 30×, both in RETURN_BUCKET's
-        ge20_lt50 band) is parser-blind. The FLAG must EXIST under
-        prize_distribution.parser_blind — NOT a fabricated split. If a future change
-        fakes the un-merge (or silently drops the flag), this goes RED."""
-        pd = wd["prize_distribution"]
-        blind = pd.get("parser_blind")
-        assert isinstance(blind, list) and len(blind) > 0, (
-            "prize_distribution.parser_blind must list the 6-prize un-merge as blind"
-        )
-        assert any("unmerge" in str(x).lower() or "un-merge" in str(x).lower()
-                   or "20x" in str(x).lower() for x in blind), (
-            f"the 20×/30× 6-prize un-merge must be flagged parser_blind; got {blind}"
-        )
-        assert isinstance(pd.get("parser_blind_reason"), str) and pd["parser_blind_reason"], (
-            "prize_distribution.parser_blind_reason must explain WHY (escalation, not silence)"
-        )
-        # The merged band must be acknowledged honestly (the bands cannot split it).
-        assert pd.get("merged_band_present") is True, (
-            "the ge20_lt50 merged band IS present in M279's wheel — merged_band_present "
-            "must be True (the honest 'these two prizes are merged' signal)"
+        # DETERMINISTIC: no cell paid >1 distinct prize (the alarm is silent).
+        assert not cm.get("nondeterministic_cells"), (
+            f"M279's cells are deterministic; nondeterministic_cells must be empty, "
+            f"got {cm.get('nondeterministic_cells')}"
         )
 
-    def test_cell_map_flagged_parser_blind(self, wd):
-        """W3 ⭐ the 12-cell landing map + jackpot-cell probability is parser-blind:
-        available==False with parser_blind reasons + the fixed 12-cell / cells-8&10
-        jackpot SHAPE recorded (the known structure), NOT in-sample landing frequencies.
-        If a future change fakes the landing distribution, available flips True → RED."""
-        cm = wd["cell_map"]
-        assert cm.get("available") is False, (
-            "cell_map.available must be False (the per-cell landing FREQUENCIES are "
-            "parser-blind, NOT fabricated). If True, someone faked the CellIndex map."
+        # JACKPOT data-derived: == max(observed distinct prizes), cells == argmax.
+        distinct = cm.get("distinct_prizes") or []
+        assert len(distinct) > 0
+        jackpot = cm.get("jackpot") or {}
+        assert jackpot.get("prize_multiplier") == max(distinct), (
+            f"jackpot.prize_multiplier ({jackpot.get('prize_multiplier')}) must equal "
+            f"max(observed distinct prizes) ({max(distinct)}) — data-derived, not a literal"
         )
-        blind = cm.get("parser_blind")
-        assert isinstance(blind, list) and len(blind) > 0, (
-            "cell_map.parser_blind must list the blind sub-metrics"
+        max_prize = jackpot["prize_multiplier"]
+        expected_cells = sorted(
+            int(c["cell"]) for c in cm["cells"]
+            if c["observed"] and c["prize_multiplier"] == max_prize
         )
-        blind_blob = " ".join(blind).lower()
-        assert "landing" in blind_blob or "cell" in blind_blob, (
-            "the per-cell landing distribution must be flagged blind"
+        assert sorted(jackpot.get("cells") or []) == expected_cells, (
+            f"jackpot.cells must be exactly the cell(s) paying the max prize "
+            f"({expected_cells}); got {jackpot.get('cells')}"
         )
-        assert "jackpot" in blind_blob, "the jackpot-cell probability must be flagged blind"
-        assert isinstance(cm.get("parser_blind_reason"), str) and cm["parser_blind_reason"], (
-            "cell_map.parser_blind_reason must explain WHY"
-        )
-        # The fixed wheel SHAPE (structural identifiers, not drifting values) is recorded.
-        assert cm.get("wheel_cell_count") == 12, "the wheel's fixed cell count (12) is recorded"
-        assert set(cm.get("jackpot_cells") or []) == {8, 10}, (
-            "the fixed jackpot cells (8 & 10) are recorded as the known wheel layout"
-        )
+        assert len(expected_cells) > 0
 
     def test_rtp_concentration_populated(self, wd):
         """W4 RTP-concentration: contribution + share + event-rate + hit-rate present

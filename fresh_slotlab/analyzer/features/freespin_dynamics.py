@@ -269,16 +269,49 @@ def _merge_progression(
     return out
 
 
-def _resolve_st_by_role(manifest: dict[str, Any] | None, role: str) -> int | None:
-    """Return the first SpinType int whose spec.role == role. None if no match.
+# The granted-free-session role FAMILY (machine_spec.FREESPIN_FAMILY_ROLES).
+# freespin_dynamics resolves its target ST against ANY role in this family so the
+# SAME plugin serves both M275's fixed-block "freespin" and M278's variable-length
+# "hold_respin" hold-and-respin — they share the granted-free-session MECHANIC.
+# Inlined (NOT imported) to keep this plugin import-light and standalone (the
+# module is auto-discovered; importing machine_spec here would couple discovery to
+# it). Kept in sync with machine_spec.FREESPIN_FAMILY_ROLES by review.
+_FREESPIN_FAMILY_ROLES: frozenset[str] = frozenset({"freespin", "hold_respin"})
+
+
+def _resolve_st_by_role(
+    manifest: dict[str, Any] | None,
+    role: "str | frozenset[str] | set[str]",
+) -> int | None:
+    """Return the first SpinType int whose spec.role matches `role`. None if none.
+
+    `role` is either a single role string (exact match, the original behavior —
+    e.g. "paid_spin") OR a SET/frozenset of role tokens (match if spec.role is IN
+    the set — the freespin FAMILY, e.g. {"freespin", "hold_respin"}). The set form
+    is ADDITIVE: a manifest whose ST declares "freespin" resolves to the SAME int
+    whether `role` is the string "freespin" or the family set containing it (the
+    set still contains "freespin", and spin_types iteration order is unchanged), so
+    existing freespin-only machines (M275/M43) are byte-identical. The set form
+    lets a NEW family token ("hold_respin") open the SAME code path without a fork.
 
     No hardcoded ids (feedback_no_hardcode.md): the freespin/base STs are
     identified by their manifest role declarations.
     """
     if not isinstance(manifest, dict):
         return None
+    role_set: "frozenset[str] | set[str] | None"
+    if isinstance(role, (set, frozenset)):
+        role_set = role
+        target: str | None = None
+    else:
+        role_set = None
+        target = role
     for st_key, spec in (manifest.get("spin_types") or {}).items():
-        if isinstance(spec, dict) and str(spec.get("role", "")) == role:
+        if not isinstance(spec, dict):
+            continue
+        spec_role = str(spec.get("role", ""))
+        matched = (spec_role in role_set) if role_set is not None else (spec_role == target)
+        if matched:
             try:
                 return int(st_key)
             except (TypeError, ValueError):
@@ -1008,11 +1041,25 @@ class FreespinDynamics(AnalyzerFeature):
         ordered_labels += [p for p in sorted(real_paths) if p not in ordered_labels]
         path_rows = [_path_row(p, real_paths[p]) for p in ordered_labels]
 
+        # Describe the discriminator HONESTLY per machine: an explicit
+        # round_field discriminator (e.g. M275) vs the anchor-walk fallback
+        # (e.g. M278, which declares per-path opened_by anchors and NO
+        # round_field discriminator — discriminator.kind is absent). A static
+        # "round_field" label would mislabel anchor-walk machines.
+        _disc = declared.get("discriminator") or {}
+        _disc_kind = _disc.get("kind")
+        if _disc_kind:
+            _disc_phrase = f"manifest-declared {_disc_kind} discriminator"
+        else:
+            _disc_phrase = (
+                "anchor-walk fallback (per-path opened_by anchors; no "
+                "round_field discriminator)"
+            )
         section: dict[str, Any] = {
             "available": True,
             "source": (
-                "st_extract.trigger_path (per-ST extraction layer; "
-                "manifest-declared round_field discriminator). session_count = "
+                f"st_extract.trigger_path (per-ST extraction layer; {_disc_phrase}"
+                "). session_count = "
                 "distinct opened blocks per path; under the declared "
                 "additive_sessions policy a multi-trigger block counts once per "
                 "matched path, so path session counts may sum to more than the "
@@ -1071,13 +1118,20 @@ class FreespinDynamics(AnalyzerFeature):
             )
 
         manifest = getattr(ctx, "machine_spec_manifest", None)
-        fs_st = _resolve_st_by_role(manifest, "freespin")
+        # Resolve against the freespin FAMILY ({"freespin", "hold_respin"}) so the
+        # SAME plugin serves M275's fixed-block freespin AND M278's hold-and-respin.
+        # Byte-identical for freespin-only machines: the set still contains
+        # "freespin" and the spin_types iteration order is unchanged.
+        fs_st = _resolve_st_by_role(manifest, _FREESPIN_FAMILY_ROLES)
         base_st = _resolve_st_by_role(manifest, "paid_spin")
 
         if fs_st is None:
             player_impact["freespin_dynamics"] = {
                 "applicable": False,
-                "reason": "no SpinType with role 'freespin' in manifest",
+                "reason": (
+                    "no SpinType with a freespin-family role "
+                    f"({sorted(_FREESPIN_FAMILY_ROLES)}) in manifest"
+                ),
             }
             return
 

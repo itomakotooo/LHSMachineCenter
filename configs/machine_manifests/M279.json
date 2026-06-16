@@ -29,7 +29,8 @@
       "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"],
       "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
       "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
-      "observed_fields_source": "st_inventory M279/mode_1 bucket 39a01e76/ad58a26a 2026-06-12"
+      "observed_fields_source": "st_inventory M279/mode_1 bucket 39a01e76/ad58a26a 2026-06-12",
+      "wheel_cells": {"spin_type": 2, "remarks_field": "ReMarks", "cell_pattern": "CellIndex\\s+(\\d+)", "cell_count": 12, "prize_basis": "win_over_bet"}
     }
   },
   "trigger": {"payout_id": null, "remarks": "move|WheelSpin", "opens": "MoveSpin|Wheel", "note": "no round-level trigger pid. MoveSpin (ST36) is a win-driven server-side wild-nudge sharing the triggering paid spin's SpinTimes (cost=0). Wheel (ST2) is the collect settlement, fired deterministically every 1000th paid spin (CollectCount metronome), NOT a payid scatter — see analysis caveats."},

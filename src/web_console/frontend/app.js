@@ -5014,13 +5014,6 @@ function _stDimWheel(stCtx) {
   // Helper: format a probability value as a percentage string or "—".
   const _pct = (v, d = 2) =>
     (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
-  // Helper: a parser-blind bullet list (same markup as the sibling dims).
-  const _blindList = (items) => (Array.isArray(items) && items.length)
-    ? (`<p class="drilldown-hint"><em>${fmt("mgParserBlind")}:</em></p>` +
-       `<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
-       items.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
-       `</ul>`)
-    : "";
 
   // ── W1 Guaranteed payout / cadence KPI block ──
   const gp = wd.guaranteed_payout || {};
@@ -5034,45 +5027,84 @@ function _stDimWheel(stCtx) {
     ${gp.cadence_note ? `<p class="drilldown-hint">${_escHtml(gp.cadence_note)}</p>` : ""}
   </div>`;
 
-  // ── W2 Discrete prize distribution (band table + the exact prize × per band) ──
+  // ── W2 Discrete prize distribution — DISTINCT prizes (un-merged, data-derived
+  // from the exact cell map; no RETURN_BUCKET band merge, no hardcoded ladder). ──
   const dist = wd.prize_distribution || {};
-  const bands = Array.isArray(dist.bands) ? dist.bands.filter((b) => b.prob != null && Number(b.prob) > 0) : [];
-  const maxProb = Math.max(...bands.map((b) => Number(b.prob) || 0), 0.0001);
-  const bandRows = bands.map((b) => {
-    const prob = Number(b.prob) || 0;
+  const prizes = (dist.available && Array.isArray(dist.prizes))
+    ? dist.prizes.filter((p) => p.prob != null && Number(p.prob) > 0)
+    : [];
+  const maxProb = Math.max(...prizes.map((p) => Number(p.prob) || 0), 0.0001);
+  const prizeRows = prizes.map((p) => {
+    const prob = Number(p.prob) || 0;
     const barPct = (prob / maxProb) * 100;
-    const winShare = b.win_share != null ? `${(Number(b.win_share) * 100).toFixed(1)}%` : "—";
-    const prize = Array.isArray(b.prize_multipliers_merged)
-      ? `${b.prize_multipliers_merged.join("×/")}× <em>(${fmt("wdMergedTag")})</em>`
-      : (b.prize_multiplier != null ? `${b.prize_multiplier}×` : "—");
+    const winShare = p.win_share != null ? `${(Number(p.win_share) * 100).toFixed(1)}%` : "—";
     return (
       `<tr>` +
-      `<td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
-      `<td>${prize}</td>` +
-      `<td>${fInt(b.spin_count)}</td>` +
+      `<td>${p.prize_multiplier != null ? `${p.prize_multiplier}×` : "—"}</td>` +
+      `<td>${fInt(p.hit_count)}</td>` +
       `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
       `<td>${winShare}</td>` +
       `</tr>`
     );
   }).join("");
-  const multHtml = bands.length
-    ? (`<p class="drilldown-hint"><strong>${fmt("wdPrizeDist")}</strong> · ${fInt(dist.total_events)} 次 · ${fmt("mgModalBand")}: ${dist.modal_band || "—"} · ${fmt("mgDominantShare")}: ${_pct(dist.dominant_band_share, 1)}</p>` +
+  const multHtml = prizes.length
+    ? (`<p class="drilldown-hint"><strong>${fmt("wdPrizeDist")}</strong> · ${fInt(dist.total_events)} 次 · ${fmt("mgModalBand")}: ${dist.modal_prize_multiplier != null ? `${dist.modal_prize_multiplier}×` : "—"} · ${fmt("mgDominantShare")}: ${_pct(dist.dominant_prize_share, 1)}</p>` +
        `<table class="drilldown-table"><thead><tr>` +
-       `<th>${fmt("rdColBand")}</th><th>${fmt("wdColPrize")}</th><th>${fmt("mgColCount")}</th>` +
+       `<th>${fmt("wdColPrize")}</th><th>${fmt("wdColHitCount")}</th>` +
        `<th>${fmt("rdColProb")}</th><th>${fmt("rdColWinShare")}</th>` +
-       `</tr></thead><tbody>${bandRows}</tbody></table>` +
-       _blindList(dist.parser_blind))
+       `</tr></thead><tbody>${prizeRows}</tbody></table>`)
     : "";
 
-  // ── W3 Cell map (12-cell wheel; the landing distribution is parser-blind) ──
+  // ── W3 EXACT 12-cell wheel map (CellIndex → prize, data-derived). Jackpot
+  // cell(s) highlighted; unobserved cells marked; nondeterministic cells alarmed. ──
   const cm = wd.cell_map || {};
+  const jackpotCells = Array.isArray(cm.jackpot_cells) ? cm.jackpot_cells : [];
+  const jackpotSet = new Set(jackpotCells.map(Number));
+  const dJackpot = cm.jackpot_prize_multiplier;
+  const cellList = (cm.available && Array.isArray(cm.cells)) ? cm.cells : [];
+  const cellRows = cellList.map((c) => {
+    const isJackpot = jackpotSet.has(Number(c.cell));
+    const isNondet = c.nondeterministic === true;
+    let prizeCell;
+    if (!c.observed) {
+      prizeCell = `<em>${fmt("wdUnobserved")}</em>`;
+    } else if (c.prize_multiplier == null) {
+      prizeCell = isNondet ? `<em>⚠ ${fmt("wdMergedTag")}</em>` : "—";
+    } else if (isJackpot) {
+      // Jackpot cell highlighted: star + bold (no new CSS dependency).
+      prizeCell = `<strong>★ ${c.prize_multiplier}×</strong>`;
+    } else {
+      prizeCell = `${c.prize_multiplier}×`;
+    }
+    return (
+      `<tr>` +
+      `<td>#${c.cell}</td>` +
+      `<td>${prizeCell}</td>` +
+      `<td>${fInt(c.hit_count)}</td>` +
+      `<td>${c.hit_prob != null ? _pct(c.hit_prob, 2) : "—"}</td>` +
+      `</tr>`
+    );
+  }).join("");
+  const cellGridHtml = cellList.length
+    ? (`<p class="drilldown-hint"><strong>${fmt("wdCellGrid")}</strong></p>` +
+       `<table class="drilldown-table"><thead><tr>` +
+       `<th>${fmt("wdColCell")}</th><th>${fmt("wdColPrize")}</th>` +
+       `<th>${fmt("wdColHitCount")}</th><th>${fmt("wdColHitRate")}</th>` +
+       `</tr></thead><tbody>${cellRows}</tbody></table>` +
+       (Array.isArray(cm.unobserved_cells) && cm.unobserved_cells.length
+         ? `<p class="drilldown-hint"><em>${fmt("wdUnobservedNote")}</em></p>` : "") +
+       ((cm.nondeterministic_cells && Object.keys(cm.nondeterministic_cells).length)
+         ? `<p class="drilldown-hint"><em>${fmt("wdNondetAlarm")}</em></p>` : ""))
+    : "";
   const cellHtml = `<div class="mech-section">
     <h3>${fmt("wdCellMap")}</h3>
     <div class="mech-grid">
       <div class="mech-stat"><span class="mech-label">${fmt("wdCells")}</span><span class="mech-value">${fInt(cm.wheel_cell_count)}</span></div>
-      <div class="mech-stat"><span class="mech-label">${fmt("wdJackpotCells")}</span><span class="mech-value">${Array.isArray(cm.jackpot_cells) ? cm.jackpot_cells.map((c) => `#${c}`).join(" ") : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("wdObservedCells")}</span><span class="mech-value">${Array.isArray(cm.observed_cells) ? cm.observed_cells.length : "—"}/${fInt(cm.wheel_cell_count)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("wdJackpotPrize")}</span><span class="mech-value">${dJackpot != null ? `${dJackpot}×` : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("wdJackpotCells")}</span><span class="mech-value">${jackpotCells.length ? jackpotCells.map((c) => `#${c}`).join(" ") : "—"}</span></div>
     </div>
-    ${_blindList(cm.parser_blind)}
+    ${cellGridHtml}
   </div>`;
 
   // ── W4 RTP concentration KPI block ──

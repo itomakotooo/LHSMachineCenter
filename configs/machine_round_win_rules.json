@@ -4,7 +4,21 @@
   "_added_2026_05_12": "v2 BCM cycle anchor rule (bcm_cycle_anchor type). Machines using BuffCollectionMap fire a bonus feature when CollectCount reaches the cycle peak; the trigger paid round emits no win==0 PayoutIdToWinAmount key, so default trigger-session anchor extraction missed the entire bonus block. M274 mode 1 saw 8.25% of bonus rounds (4.87% RTP) leak into `_unattributed_st139` before this rule; fleet sweep across 117 cached BCM (machine, mode) pairs found 55 with similar leakage (M250 at 100% / M268/M260/M264 at 70-90% / M163/M147 around 35%). Rollout strategy: enable per-machine as cached data is validated -- the rule augments rather than replaces default extraction, so over-attributing on a machine that doesn't actually have this trigger mechanic is benign (the synthetic anchor loses anchor-selection to any real numeric pid present on the same trigger round).",
   "_added_2026_06_07": "v3 M43 minigame settlement rule (synthesize_pay_id type). M43 ST51 (WinMiniGame) carries WinCredits>0 on 100% of rounds but NO PayoutIdToWinAmount (no round-level pid), so the parser's universal fallback dumps its entire 197,453,000 (30.7% of all win) into _unattributed_st51 and the RTP-integrity gate FAILS. The config-only SynthesizePayIdRule attributes the whole ST51 win to a single real pid 'st51' (label_format=spin_type), zeroing the fallback. PROVEN on M43's 41 real v3 chunks (_tmp/m43_reuse_audit/test_synth_rule.py): _unattributed_st51 197,453,000 -> 0, real pid 'st51' == 197,453,000 exact. The minigame's multiplier distribution is surfaced by the minigame_dynamics analysis (its own win/bet banding), NOT spread across multiplier-tier pids in the payid table (which for ST1/ST50 means symbol pids 2-9 -- a different identifier space). One honest feature row keeps the payid table semantically clean.",
   "_added_2026_06_10": "v4 M279 Wheel settlement rule (synthesize_pay_id type — EXACT M43 precedent). M279 ST2 (Wheel) carries WinCredits>0 on 100% of rounds with NO PayoutIdToWinAmount (and no BetAmount), so without this rule the whole 76,780,000 wheel prize (4.34% of all payback) lands in _unattributed_st2 and the RTP-integrity gate FAILS (layer2_fallback_buckets_found=['_unattributed_st2']). The config-only SynthesizePayIdRule attributes the whole ST2 win to a single real pid 'st2' (label_format=spin_type), zeroing the fallback. PROVEN config-only in 02_reuse.md (6 real chunks: _unattributed_st2 9,400,000 -> 0, real pid 'st2' == 9,400,000 exact). The wheel's discrete prize-lottery shape (5/10/20/30/50/100x, 12 cells, jackpot cells 8&10) lives in the wheel_dynamics analysis (play-keyed to 'Wheel'), NOT spread across multiplier-tier pids (per charter invariant 4). One honest feature row keeps the payid table semantically clean.",
+  "_added_2026_06_16": "v5 M278 JewelFever (ST160) hold-and-respin settlement rule (synthesize_pay_id type — EXACT M43/M279 precedent). M278 ST160 (JewelFeverRespin, role hold_respin) settles ONCE per burst (single Settle=True, always-last round) but carries NO PayoutIdToWinAmount on 100% of 5,594 rows (incl. all 738 win-bearing settle rows — VERIFIED in 01_understanding.md). Without this rule the whole 74,523,800 ST160 prize (43.1% of all payback) lands in _unattributed_st160 and the RTP-integrity gate FAILS (layer2_fallback_buckets_found=['_unattributed_st160']). The config-only SynthesizePayIdRule attributes the whole ST160 win to a single real pid 'st160' (label_format=spin_type), zeroing the fallback. PROVEN config-only in 02_reuse.md (1 real chunk f33ddcf0: _unattributed_st160 74,523,800 -> 0, real pid 'st160' == 74,523,800 exact, rtp_integrity passed). The real felt shape — burst-length value-build, per-trigger-path split (3 jewel skins 5901/5902/5903 + collect_peak, premium-Red tier), settled multiplier banding — lives in the freespin_dynamics analysis (hold_respin role) + the trigger_paths anchor-walk dimension, NOT spread across multiplier-tier pids (per charter invariant 4). One honest feature row keeps the payid table semantically clean.",
   "rules": {
+    "m283_wheel_settlement": {
+      "_doc": "M283 Wheel (ST2) collect settlement: WinCredits>0 on 100% with no PayoutIdToWinAmount (and no BetAmount). Without this rule the whole 3,280,000 wheel prize (4.06% of all payback) lands in _unattributed_st2 and the RTP-integrity gate fails. label_format=spin_type attributes it to a single real pid 'st2' (the wheel as one honest feature row). The discrete prize-lottery shape (5/10/20/50/100/200x, 12 cells, jackpot cell 10) lives in the wheel_dynamics analysis (play-keyed to 'Wheel'), NOT spread across multiplier-tier pids (per charter invariant 4). PROVEN config-only in M283/02_reuse.md (_unattributed_st2 3,280,000 -> real pid st2 exact). M283 = M279 minus ST36; EXACT M279 precedent (m279_wheel_settlement).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M283"
+      ]
+    },
     "m279_wheel_settlement": {
       "_doc": "M279 Wheel (ST2) collect settlement: WinCredits>0 on 100% with no PayoutIdToWinAmount (and no BetAmount). Without this rule the whole 76,780,000 wheel prize (4.34% of all payback) lands in _unattributed_st2 and the RTP-integrity gate fails. label_format=spin_type attributes it to a single real pid 'st2' (the wheel as one honest feature row). The real discrete prize-lottery shape (5/10/20/30/50/100x, 12 cells, jackpot cells 8&10) lives in the wheel_dynamics analysis, NOT spread across multiplier-tier pids (per charter invariant 4). PROVEN config-only in 02_reuse.md (_unattributed_st2 -> 0, real pid st2 exact).",
       "type": "synthesize_pay_id",
@@ -29,6 +43,19 @@
       },
       "applies_to": [
         "M43"
+      ]
+    },
+    "m278_jewelfever_settlement": {
+      "_doc": "M278 JewelFever (ST160) hold-and-respin settlement: WinCredits>0 on the single Settle=True round per burst with NO PayoutIdToWinAmount on 100% of 5,594 rows (incl. all 738 win-bearing settle rows — VERIFIED). Without this rule the whole ST160 prize (43.1% of all payback) lands in _unattributed_st160 and the RTP-integrity gate fails (layer2_fallback_buckets_found=['_unattributed_st160']). label_format=spin_type attributes it to a single real pid 'st160' (the JewelFever respin as one honest feature row). The real felt shape — burst-length value-build, per-trigger-path split (3 jewel skins + collect_peak), premium-Red tier, settled multiplier banding — lives in the freespin_dynamics analysis (hold_respin role) + the trigger_paths anchor-walk dimension, NOT spread across multiplier-tier pids (charter invariant 4). PROVEN config-only in 02_reuse.md (_unattributed_st160 74,523,800 -> 0, real pid 'st160' == 74,523,800 exact, rtp_integrity passed). EXACT M43/M279 precedent (m43_minigame_settlement / m279_wheel_settlement).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          160
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M278"
       ]
     },
     "bcm_cycle_anchor_m274": {
