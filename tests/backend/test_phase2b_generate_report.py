@@ -69,8 +69,16 @@ def _m14_registered() -> bool:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def m15_app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """App fixture with real M15 rawdata (read-only), isolated reports/state."""
+def m15_app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                   isolated_rawdata_factory):
+    """App fixture with real M15 rawdata, isolated reports/state.
+
+    rawdata_root is an ISOLATED tmp tree holding only M15 (hardlinked from the
+    real rawdata/). The old ``rawdata_root=_REPO_ROOT / "rawdata"`` was NOT
+    actually read-only: generate triggers disk-space auto-cleanup that evicts
+    other machines' chunks across the whole root (the 2026-06-16 M43/mode_7
+    loss). See tests/backend/conftest.py::isolated_rawdata_factory.
+    """
     if not _m15_chunks_present():
         pytest.skip("M15 cached chunks not present")
 
@@ -93,7 +101,7 @@ def m15_app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         state_dir=state_dir,
         reports_root=reports_dir,
         machines_config=mc,
-        rawdata_root=_REPO_ROOT / "rawdata",  # real rawdata, read-only
+        rawdata_root=isolated_rawdata_factory("M15", [1]),
     )
     with TestClient(app) as client:
         yield client, reports_dir

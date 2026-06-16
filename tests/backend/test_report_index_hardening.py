@@ -378,14 +378,21 @@ class TestF2FailureHygiene:
     """
 
     @pytest.fixture
-    def f2_client(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """App with M15 rawdata but engine patched to raise before writing summary."""
+    def f2_client(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                  isolated_rawdata_factory):
+        """App with M15 rawdata but engine patched to raise before writing summary.
+
+        rawdata_root is an ISOLATED tmp tree holding only M15 (hardlinked from
+        the real rawdata/) — the real root would expose other machines' chunks
+        to generate's disk-space auto-cleanup (the 2026-06-16 M43/mode_7 loss).
+        See tests/backend/conftest.py::isolated_rawdata_factory.
+        """
         if not _m15_chunks_present():
             pytest.skip("M15 cached chunks not present")
         client, reports_dir, state_dir = _make_isolated_app(
             tmp_path, monkeypatch,
             machine="M15", modes=[1],
-            rawdata_root=_REPO_ROOT / "rawdata",
+            rawdata_root=isolated_rawdata_factory("M15", [1]),
         )
         yield client, reports_dir
         client.__exit__(None, None, None)

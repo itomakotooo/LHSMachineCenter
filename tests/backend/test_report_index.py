@@ -536,8 +536,15 @@ class TestReconcileReports:
 
 
 @pytest.fixture
-def m15_gen_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """App with real M15 rawdata; generates a report in-process."""
+def m15_gen_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                   isolated_rawdata_factory):
+    """App with real M15 rawdata; generates a report in-process.
+
+    rawdata_root is an ISOLATED tmp tree holding only M15 (hardlinked from the
+    real rawdata/). Pointing it at the real rawdata/ would let generate's
+    disk-space auto-cleanup evict other machines' chunks (the 2026-06-16
+    M43/mode_7 loss). See tests/backend/conftest.py::isolated_rawdata_factory.
+    """
     if not _m15_chunks_present():
         pytest.skip("M15 cached chunks not present")
     state_dir = tmp_path / "state"; state_dir.mkdir()
@@ -551,7 +558,7 @@ def m15_gen_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         state_dir=state_dir,
         reports_root=reports_dir,
         machines_config=mc,
-        rawdata_root=_REPO_ROOT / "rawdata",
+        rawdata_root=isolated_rawdata_factory("M15", [1]),
     )
     with TestClient(app) as client:
         yield client, reports_dir
