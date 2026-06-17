@@ -1093,6 +1093,11 @@ def parse_chunk_response(
         "open": False,
         "bet": 0.0,
         "win": 0.0,
+        # SpinTimes of the paid round that opened the session. Used to fold an
+        # in-line FREE continuation (a 2nd+ is_paid record sharing this SpinTimes,
+        # e.g. an M104 hold-respin) into the same paid bet instead of charging
+        # it again. None when no session is open.
+        "spin_times": None,
         "cur_loss_streak": 0,
         "cur_win_streak": 0,
     }
@@ -1173,6 +1178,7 @@ def parse_chunk_response(
         sess_state["open"] = False
         sess_state["bet"] = 0.0
         sess_state["win"] = 0.0
+        sess_state["spin_times"] = None
         # Iter 5: clear deferred helper-win + trigger-session flag so
         # the next session's paid round gets a clean slate (set by
         # the paid-round branch when opened).
@@ -1671,6 +1677,29 @@ def parse_chunk_response(
                 else:
                     is_paid = to_float(cost_credits_raw, default=0.0) > 0.0
 
+            # In-line FREE continuation (e.g. M104 hold-respin / LockSymbolSpin):
+            # an is_paid record that shares the OPEN session's SpinTimes is the
+            # SAME paid bet, not a new one. The wallet is charged ONCE per
+            # SpinTimes-group — proven by LastCredits (the 2nd+ record of a group
+            # leaves the balance unchanged); CostCredits=1000 is a per-record echo,
+            # NOT a second charge. Reclassify it as a FREE round so the wager
+            # denominator (chunk_bet) and the paid-session count reflect the true
+            # paid unit (the SpinTimes-group). BYTE-STABLE fleet-wide: no other
+            # machine emits two is_paid records sharing a SpinTimes (verified
+            # delta=0 on M14/M15/M43/M279/M275/M278/...); only M104-class in-line
+            # respins differ. The reel record is still counted in chunk_spins /
+            # spin_type_breakdown; only its cost + session-opening are dropped, and
+            # its win still accrues into the open session (the else branch below).
+            _cur_spin_times = r.get("SpinTimes")
+            if (
+                is_paid
+                and sess_state["open"]
+                and _cur_spin_times is not None
+                and sess_state.get("spin_times") == _cur_spin_times
+            ):
+                is_paid = False
+                bet_amt = 0.0
+
             # Sub-pass B (defect fix): update block-boundary reference for
             # st_extractors.  A paid round opens a new block; subsequent
             # non-paid rounds belong to that block (block_id == round_idx of
@@ -1692,6 +1721,10 @@ def parse_chunk_response(
                 sess_state["open"] = True
                 sess_state["bet"] = bet_amt
                 sess_state["win"] = win_amt
+                # Stamp the opening paid round's SpinTimes so a subsequent
+                # same-SpinTimes is_paid record is folded as a free continuation
+                # (the reclassification above) rather than charged again.
+                sess_state["spin_times"] = _cur_spin_times
                 # Iter 5: if this paid round opens a trigger session,
                 # mark the session as helper-tracked and record the
                 # helper-computed session_win. Bonus rounds belonging

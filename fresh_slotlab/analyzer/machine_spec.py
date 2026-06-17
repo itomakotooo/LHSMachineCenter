@@ -130,9 +130,41 @@ ROLE_ANALYSES: dict[str, tuple[str, ...]] = {
 #   (WinMiniGame) settlement use — so attaching wheel_dynamics by role would
 #   wrongly fire it on those machines. Keying on play "Wheel" scopes it to M279's
 #   wheel only (same role-vs-play discipline as WinMiniGame above).
+#   LockSymbolSpin -> lock_respin_dynamics (M104 ST96): the in-line hold-and-respin
+#   "Lock" mechanic carried INSIDE the single paid ST=96 (ReMarks discriminator),
+#   NOT a separate ST. Its role is `paid_spin` — the SAME role EVERY machine's base
+#   spin carries (M15 ST1, M43, M275/M278/M279 ST140, M283…) — so attaching
+#   lock_respin_dynamics by role would cross-fire it onto the ENTIRE fleet's base
+#   spin. Keying on the play "LockSymbolSpin" (M104-exclusive in this fleet) scopes
+#   it to M104 only (same role-vs-play discipline as WinMiniGame/Wheel above).
+#   NON-LEAK: no other manifest declares the "LockSymbolSpin" play, so
+#   derive_analyses attaches lock_respin_dynamics to M104 alone (the W5 tester
+#   locks this the same way test_m15_has_no_minigame_dynamics does).
 PLAY_ANALYSES: dict[str, tuple[str, ...]] = {
     "WinMiniGame": ("minigame_dynamics",),
     "Wheel": ("wheel_dynamics",),
+    "LockSymbolSpin": ("lock_respin_dynamics",),
+}
+
+# DIMENSION_ANALYSES: analyses attached to a specific SpinType DIMENSION-DECLARATION
+# KEY (a per-ST manifest sub-block), NOT its role and NOT its play. This is the
+# correct hook when an analysis's mechanic is an INTRA-ST sub-event whose ST's role
+# AND play are BOTH fleet-generic — so neither a role nor a play hook can scope the
+# analysis to the one machine that has the mechanic.
+#   crazy_reel -> nudge_dynamics (M63 ST1): the in-engine base-game reel NUDGE (the
+#   crazy_up/crazy/crazy_down vertical 3-stack that slides a single reel). It is
+#   INTRA-ST1 (no separate event ST). M63's only ST is role `paid_spin` (EVERY base
+#   game's role) and play `Normal` (13 base machines) — a ROLE_ANALYSES["paid_spin"]
+#   hook would cross-fire onto every base game in the fleet, and a
+#   PLAY_ANALYSES["Normal"] hook onto all 13 Normal bases. So the analysis is keyed
+#   on the manifest DIMENSION-DECLARATION key "crazy_reel" — the SAME isolation
+#   mechanism the crazy_reel_dim extractor uses (DECLARED_IN_KEY). Only M63 declares
+#   it. NON-LEAK: no other manifest carries a "crazy_reel" ST block, so
+#   derive_analyses attaches nudge_dynamics to M63 alone (the W4 tester locks this
+#   the same way test_m15_has_no_minigame_dynamics does). Purely additive: a machine
+#   that does not declare crazy_reel gets a byte-identical analysis set.
+DIMENSION_ANALYSES: dict[str, tuple[str, ...]] = {
+    "crazy_reel": ("nudge_dynamics",),
 }
 
 
@@ -141,21 +173,38 @@ def derive_analyses(manifest: dict[str, Any]) -> list[str]:
 
     = CROSS_CUTTING + PER_SPINTYPE
       + role-specific analyses for each ROLE present (ROLE_ANALYSES)
-      + play-specific analyses for each PLAY present (PLAY_ANALYSES).
+      + play-specific analyses for each PLAY present (PLAY_ANALYSES)
+      + dimension-specific analyses for each DIMENSION-DECLARATION key present on
+        any ST block (DIMENSION_ANALYSES).
 
     Reproduces the confirmed M15 set exactly (M15 has no `respin` role and no
     `WinMiniGame` play, so neither M43 analysis attaches to it — see
     test_machine_spec). For M43: ST50 role=`respin` adds respin_dynamics; ST51
-    play=`WinMiniGame` adds minigame_dynamics (NOT via its `settlement` role).
+    play=`WinMiniGame` adds minigame_dynamics (NOT via its `settlement` role). For
+    M63: ST1 declares the `crazy_reel` dimension block, adding nudge_dynamics (NOT
+    via its fleet-generic `paid_spin` role / `Normal` play).
+
+    The dimension branch is PURELY ADDITIVE: a machine whose ST blocks carry no
+    key in DIMENSION_ANALYSES gets a byte-identical analysis set (the loop body
+    never fires), so every non-declaring machine is unchanged.
     """
     out: set[str] = set(CROSS_CUTTING) | set(PER_SPINTYPE)
-    spin_types = (manifest.get("spin_types") or {}).values()
-    roles = {str(st.get("role", "")) for st in spin_types}
-    plays = {str(st.get("play", "")) for st in spin_types}
+    spin_type_specs = list((manifest.get("spin_types") or {}).values())
+    roles = {str(st.get("role", "")) for st in spin_type_specs}
+    plays = {str(st.get("play", "")) for st in spin_type_specs}
     for role in roles:
         out.update(ROLE_ANALYSES.get(role, ()))
     for play in plays:
         out.update(PLAY_ANALYSES.get(play, ()))
+    # Dimension-declaration hook: a per-ST manifest sub-block whose key is in
+    # DIMENSION_ANALYSES attaches its analyses. Scoped exactly like the
+    # corresponding STExtractor.DECLARED_IN_KEY — only a declaring machine fires.
+    for st_spec in spin_type_specs:
+        if not isinstance(st_spec, dict):
+            continue
+        for dim_key, analyses in DIMENSION_ANALYSES.items():
+            if dim_key in st_spec:
+                out.update(analyses)
     return sorted(out)
 
 

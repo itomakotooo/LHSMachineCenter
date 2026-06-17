@@ -1,0 +1,56 @@
+{
+  "machine_id": "M104",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "96": {
+      "role": "paid_spin",
+      "play": "LockSymbolSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "LockSymbols", "PrevLockSymbols", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "LockSymbols", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "PrevLockSymbols", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "LockSymbols": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "PrevLockSymbols": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "01_understanding.md §1/§2 (M104/mode_1 chunk_0001, md5 c2e3d2e5|bef72626, 2026-06-17; 42,374 ST96 rows, all 20 fields 100% present; ReMarks '' 40,000 / 'Lock' 2,374)",
+      "lock_mechanic": {
+        "discriminator": "ReMarks",
+        "lock_value": "Lock",
+        "settle_value": "",
+        "trigger_symbol": "35x",
+        "lock_position_token": "LockSymbols",
+        "group_unit": "SpinTimes",
+        "note": "In-line hold-and-respin carried INSIDE the single paid ST=96 (NOT a separate ST). The 35x symbol is the deterministic lock trigger (35x present <=> Lock chain, 0/40,000 exceptions). LockSymbols accumulates 'position:2' across the chain. One 1000 bet per SpinTimes group; lock respins are FREE (LastCredits invariant 40,000/40,000). Win is spread across the chain records (each Lock + the settle record can carry WinCredits/PayoutIdToWinAmount). This block is the dimension spec the lock_respin_dynamics plugin consumes; analog of M275's trigger_paths / M279's wheel_cells declarative blocks."
+      }
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "Lock",
+    "opens": "LockSymbolSpin",
+    "note": "No round-level trigger PID and no separate trigger SpinType. The Lock hold-and-respin is opened IN-LINE by a 35x symbol landing on the paid ST=96 board (deterministic: 35x present <=> Lock, 0/40,000 exceptions; VERIFIED). ReMarks flips '' -> 'Lock' on the respin records of the same SpinTimes group; the chain terminates on a ReMarks='' settle record. There is no scatter pid; trigger.payout_id is null. ST=96 carries a NATURAL payid (PayoutIdToWinAmount sum == WinCredits 0/42,374) so NO SynthesizePayIdRule is needed (sum(payid)==summary, fallback already 0)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M104/mode_1"},
+    "evidence": "session_artifacts/_onboard/M104/01_understanding.md (W1: 42,374 rounds, 1 real v3 chunk, integrity PASS, single md5 bucket c2e3d2e5|bef72626; ONE SpinType ST=96 100%; bet/settle unit = SpinTimes group, 1 bet/group, lock respins FREE [LastCredits invariant 40,000/40,000]; real win = WinCredits, sum(PayoutIdToWinAmount)==WinCredits 0/42,374, NO preview field; sum(payid RTP_pp)==summary RTP 82.344%; 35x <=> Lock chain 0 exceptions; per-group AND per-record tier dist match server SummaryWin/FeatureWin EXACTLY on all 8 tiers) + 02_reuse.md (W2: live engine on the real chunk; ST=96 dimension layer STRICT-REUSE 7 plugins [payouts_by_spin_type/reel_marginal_by_spin_type/spin_type_outcomes/spin_type_rtp_buckets/multiplier_profile/bankruptcy_simulation/upstream_feature_breakdown:applicable=False]; Lock mechanic NEW-EVENT [no signature match - LockSymbols/PrevLockSymbols + in-line ReMarks lock; respin_dynamics structurally blind, next_counts={96:{96:42366}}] -> ONE new plugin lock_respin_dynamics, NOT a fork; NO ABORT). W3 (03_design.md): role 'paid_spin' / play 'LockSymbolSpin' (machine's own feature name; NO new KNOWN_ROLES token - lock rides in-line, no separate ST); attribution = NATURAL per-payid map (NO SynthesizePayIdRule - sum(payid)==summary, fallback 0 already); NEW plugin lock_respin_dynamics keyed by PLAY 'LockSymbolSpin' via PLAY_ANALYSES (NOT role - paid_spin role would cross-fire fleet-wide); metrics L1 grant-rate / L2 chain-length x outcome ladder / L3 35x<=>Lock determinism / L4 multiplier-wild escalation ladder / L5 lock-RTP-concentration; per-record run-length histogram + win-gating proof + L4 base-excluded cross are parser_blind (framework-team, same boundary as M43/M279 burst-length).",
+    "caveats": [
+      "ROLE/PLAY: role 'paid_spin' (no new KNOWN_ROLES token) - the lock-respin is carried IN-LINE inside the single ST=96 (ReMarks discriminator), NOT a separate cost=0 ST like M278's ST160 hold_respin. play 'LockSymbolSpin' = the machine's OWN single feature name (server analysisResult, all 3 views). The lock MECHANIC is surfaced by the play-keyed lock_respin_dynamics plugin, not by a role.",
+      "HOOK = PLAY not role (charter 8a): PLAY_ANALYSES['LockSymbolSpin']=('lock_respin_dynamics',). A role hook on 'paid_spin' would cross-fire onto EVERY machine's base spin (M15/M43/M275/M278/M279/M283). The play 'LockSymbolSpin' is M104-exclusive -> scoped correctly. W5 tester locks non-leak (assert lock_respin_dynamics absent from all other manifests' derived analyses), same as test_m15_has_no_minigame_dynamics.",
+      "ATTRIBUTION = natural per-payid map, NO SynthesizePayIdRule: unlike M43/M279/M278 (empty PayoutIdToWinAmount on the bonus ST), M104 ST=96 settles via REAL payids on every win-bearing record (lock records included - VERIFIED: a Lock record carries {'10':11550,'5':30800}). sum(PayoutIdToWinAmount)==WinCredits 0/42,374; sum(payid rtp_pp)==82.344==summary; _unattributed_st96 would be 0. NO entry in configs/machine_round_win_rules.json for M104. Breaker: confirm layer2_fallback_buckets_found==[] WITHOUT any M104 rule.",
+      "NEW plugin lock_respin_dynamics is base-EXCLUDED (not in core/, not in versioning._CLOSURE_FILES; auto-discovered). RTP_CONTRIBUTION=False (re-presents already-attributed natural-payid wins). The L1/L5 lock-record metrics + the RTP-concentration framing are base-derivable from the parser's existing lock_symbols_* accumulators + the ST96 spin_type_breakdown / bucket histograms. The per-SpinTimes-group lock-COUNT ladder (nLock -> {groups, hit_groups, win}, the L2 group-level chain-length ladder) needs a per-group ReMarks-run tally that the current chunk accumulators do NOT expose base-excluded; wiring it would require either a parser.py change (base-closure) or a NEW st_extract extractor (st_extract/*.py) - both OUT of the new-plugin onboarding scope. So L2's group-level histogram + the per-record run-length histogram are flagged parser_blind (framework-team), SAME boundary respin_dynamics flags for M43/M279 burst-length. Framework substrate item, NOT a reuse/onboarding blocker (W2 §3).",
+      "parser_blind (framework-team, NEVER fabricated): (a) per-group chain-length (nLock 0/1/2/3) ladder + per-record lock-chain run-length histogram + the per-record win-gating / within-chain win-build curve - need per-round run-length accumulation per SpinTimes group in parser.py (base-closure) or a new st_extract extractor; same boundary as M43/M279 burst-length; the LOCK-RECORD-level rate + RTP concentration ARE delivered. (b) multiplier-wild x outcome ladder (L4) as a base-excluded per-record cross - needs a per-record 5x/7x/35x presence tally (StopSymbolsByCol); the ladder's EXISTENCE is verified, the base-excluded cross is the per-ST-extraction boundary (same as M279 per-skin breakout). (c) the ':2' LockSymbols token meaning (respins-remaining/level/sticky) - CONSTANT in this data, no variation to learn from; could-not-determine data fact (W1 §7.4). (d) jackpot reel symbol's purpose - lands 2,486x, never in a winning payline; plausibly feeds the test-zeroed jackpot store; testspin-blind (see out_of_engine).",
+      "under-sampled tail (NOT fetched, FLAGGED): single ~42k-round chunk under-samples chain-length 2 (111 groups) & 3 (8 groups), the 100x tier (17 groups), payids 2 (1 hit) & 3 (4 hits). Structure is solid; exact rates/contributions for these cells are low-confidence (W1 §7.6). Do NOT re-fetch (dev does not chase CI - feedback_dev_ci_scope.md).",
+      "STALE sidecar: rawdata/M104/mode_1/_chunks.json records spin_times:1000/robot_count:10/saved_at 2026-04-17, but the actual chunk envelope is 5000x8/saved_at 2026-06-17 (same cfg/code md5). The chunk envelope is authoritative (payload-hash-verified). md5 bucket consistent -> report scoping unaffected; flag for whoever consumes the sidecar (W1 §0).",
+      "RTP magnitude: dev-sample point RTP reads 82.344% (32,937,470 / (40,000 x 1000)) - matches server SummaryWin EXACTLY on all 8 tiers. RTP magnitude is not an onboarding criterion (parse-correctness is). Per feedback_dev_ci_scope.md, dev does not chase CI.",
+      "modes: [1] only - the only mode with cached rawdata (ReelSkin=1, RTPId=1). Extend on data, never by assumption (the M43/M279/M275/M278 cross-mode pattern).",
+      "PROVENANCE: this design's evidence derives from the single md5 bucket c2e3d2e5|bef72626 (per-mode); structure claims are value-agnostic, every NUMBER belongs to that bucket. Any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s. bet=1000 must be plumbed (the _bet trap)."
+    ],
+    "date": "2026-06-17"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' present on every ST96 round but =0 on 100% of 42,374 in-sample records (W1 §0/§7.1). The fleet-wide pattern (user-confirmed 2026-06-12 on M275, gate-8): a real progressive jackpot store that the CURRENT testspin interface forces to 0; the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in the ST96 signature, so parsing is FORWARD-COMPATIBLE - when the interface populates it, the parser picks it up unchanged. The reported RTP 82.344% is the BASE RTP (excludes the progressive). The 'jackpot' reel symbol (lands 2,486x, never in a winning payline) plausibly feeds this store - its award path is testspin-blind (consistent with the store being zeroed). Declaration-based out-of-engine protocol (gate-8): nothing else is declared for M104, so nothing else is presumed hidden.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [96], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}
