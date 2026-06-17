@@ -441,15 +441,19 @@ class CrazyReelDimExtractor(STExtractor):
     def _pos_to_col(pos: int, col_basis: str) -> int | None:
         """Map a payline position integer to a 0-based column.
 
-        "hundreds_digit": col = pos // 100 - 1.  On M63 the window cell positions
-        are {99,100,101} (col0), {199,200,201} (col1), {299,300,301} (col2); the
-        floor-decode places the lower boundary cell (99/199/299) in the LOWER
-        column — the data-verified mapping that reproduces the design's
-        win-through-nudge count (1,276/1,458).  A negative column (e.g. pos 99 ->
-        -1) is dropped (returns None) rather than mis-attributed.
+        "hundreds_digit": col = (pos + 1) // 100 - 1.  On M63 the window cell
+        positions are {99,100,101} (col0), {199,200,201} (col1), {299,300,301}
+        (col2) — the row offset is -1/0/+1 around the col centre (100/200/300).
+        The +1 before the floor-divide groups the LOWER boundary cell (99/199/299)
+        with its OWN column (99->col0, 199->col1, 299->col2) instead of dropping
+        it (99) or misattributing it to the column below (199->0, 299->1).
+        Fixes the W5 finding: the prior `pos//100-1` was curve-fit to a wrong
+        win-through-nudge target; the corrected decode yields N3=100% on this
+        3-reel all-column-payline game (any winning line spans all 3 reels, so a
+        single-reel nudge is ALWAYS on the winning line).
         """
         if col_basis == "hundreds_digit":
-            col = pos // 100 - 1
+            col = (pos + 1) // 100 - 1
             return col if col >= 0 else None
         # Unknown bases are rejected at clone time; defensive None here.
         return None
