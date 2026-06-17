@@ -12286,6 +12286,14 @@ def create_app(
         low_water = float(os.environ.get("SLOT_DISK_LOW_WATER_GB") or 5.0)
         target_free = float(os.environ.get("SLOT_DISK_TARGET_FREE_GB") or 10.0)
         interval = int(os.environ.get("SLOT_DISK_MONITOR_INTERVAL_S") or 60)
+        # interval <= 0 disables the monitor: the thread exits immediately
+        # instead of looping. Tests set SLOT_DISK_MONITOR_INTERVAL_S=0 so
+        # create_app spawns no leaked, cleanup-firing daemon (the suite-
+        # flakiness / cross-test-contamination root cause — see
+        # tests/backend/conftest.py::_no_disk_monitor_thread). Production
+        # leaves it unset (default 60 s) so the monitor runs normally.
+        if interval <= 0:
+            return
         while True:
             _time.sleep(interval)
             try:

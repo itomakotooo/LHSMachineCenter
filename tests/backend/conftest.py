@@ -30,6 +30,28 @@ def _disable_auto_inference_hook(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
 
 
+# Stop the disk-monitor DAEMON thread from spawning in backend tests.
+#
+# create_app() starts a `disk-monitor` daemon thread that, every
+# SLOT_DISK_MONITOR_INTERVAL_S seconds, calls _auto_cleanup_for_space when free
+# disk < SLOT_DISK_LOW_WATER_GB (default 5 GB), EVICTING deletable chunks across
+# the app's rawdata_root. The threads are daemon=True and never joined, so EVERY
+# create_app() in the suite LEAKS one; on a dev box near 5 GB free they fire
+# nondeterministically and a monitor from an early test evicts chunks a LATER
+# test is mid-generate on -> FileNotFoundError / report-md5 drift / a leaked
+# monitor's cleanup call landing in an unrelated test's _auto_cleanup_for_space
+# spy (same family as the M43/mode_7 data loss). Setting the monitor interval to
+# 0 makes create_app skip starting the thread entirely (guarded in app.py), so
+# no monitor leaks. This does NOT touch the BATCH generate path's own inline
+# disk-pressure loop (BatchRunManager._run_one), which tests like
+# test_rawdata_root_split_path drive directly with an explicit low-disk mock and
+# the default low-water — those stay green. Production leaves this env unset
+# (default 60 s) so the monitor runs normally.
+@pytest.fixture(autouse=True)
+def _no_disk_monitor_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SLOT_DISK_MONITOR_INTERVAL_S", "0")
+
+
 @pytest.fixture
 def isolated_rawdata_factory(tmp_path: Path) -> Callable[..., Path]:
     """Factory → an ISOLATED tmp rawdata root holding ONLY the requested
