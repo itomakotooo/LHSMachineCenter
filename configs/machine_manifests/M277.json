@@ -1,0 +1,65 @@
+{
+  "machine_id": "M277",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "140": {
+      "role": "paid_spin",
+      "play": "NormalCollectionSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
+      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "observed_fields_source": "01_understanding.md §2 (M277/mode_1 chunk_0002, md5 ed07416e, 2026-05-20; 40,000 ST140 rows, all 22 fields 100% present)"
+    },
+    "13": {
+      "role": "hold_respin",
+      "play": "LockReSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "LockLines", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "LockLines", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_fields_source": "01_understanding.md §2 (M277/mode_1 chunk_0002, md5 ed07416e, 2026-05-20; 10,145 ST13 rows, all 19 fields 100% present)",
+      "trigger_paths": {
+        "fallback": {
+          "kind": "trigger_anchor_walk",
+          "note": "NO usable round_field discriminator on M277 ST13: GameplayTriggerType=0 on all 10,145 ST13 rounds AND on all 40,000 ST140, so it cannot discriminate the trigger; RewardLastNode on ST13 is '[]'/['1-'] (the per-round win marker, NOT the trigger). The trigger lives on the OPENING paid ST140 (round_ctx.last_paid_round), so the extractor uses the trigger_anchor_walk fallback. Anchor reads the opening ST140: Path A (lockrespin_random) = pid '777' present in PayoutIdToWinAmount with win==0 (2,017/2,017 win==0, VERIFIED on chunk; co-occurs 1:1 with RewardLastNode '7771-'); Path B (collect_peak) = CollectCount==1000 (the metronome peak), no pid 777. Disjoint+exhaustive: 2,016 random-only + 39 collect-only + 1 both = 2,056 bursts, 0 neither (01 §5)."
+        },
+        "paths": {
+          "lockrespin_random": {"opened_by": {"payout_id": "777"}, "label": "Random trigger (LockReSpin)"},
+          "collect_peak": {"opened_by": {"counter": "CollectCount", "at_peak": 1000}, "label": "Collect-meter pity (BuffCollection peak)"}
+        },
+        "multi_trigger_policy": "additive_sessions"
+      }
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "null",
+    "opens": "LockReSpin",
+    "note": "No single round-level trigger pid: ST13 LockReSpin (CostCredits=0, free held-wild hold-and-respin, distinct ReelSkin=11) is opened by TWO disjoint paths into the SAME ST13 event off the opening paid ST140 — (A) lockrespin_random (RANDOM: the opening ST140 carries pid '777' in PayoutIdToWinAmount with WIN==0 — a trigger marker that pays nothing, co-occurring 1:1 with RewardLastNode '7771-'; ~5.0% of paid spins; the on-reel cause is a 'wildrespin' in the center reel) and (B) collect_peak (DETERMINISTIC/pity: CollectCount==1000 on the opening ST140, +1 every paid spin; ST140 carries NO pid 777). 2,056 bursts = 2,016 random-only + 39 collect-only + 1 both (VERIFIED). GameplayTriggerType=0 on every round (NOT a discriminator), so the trigger_paths block uses the trigger_anchor_walk fallback, not a round_field discriminator. AccCredits (=100xCollectCount) is a derived metronome counter, never paid as credits. ST13 is win-bearing PER ROUND (NO Settle field; 522 bursts have >=2 nonzero rounds; every burst ends on a win==0 round) and carries a NATURAL payid '1' whose value==WinCredits on 10,145/10,145 — NO SynthesizePayIdRule needed (the opposite of M278 ST160)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M277/mode_1"},
+    "evidence": "session_artifacts/_onboard/M277/01_understanding.md (W1: 50,145 rounds, 1 real v3 chunk chunk_0002.json, single md5 bucket ed07416e; ST140=paid NormalCollectionSpin [40,000], ST13=free LockReSpin held-wild hold-and-respin [10,145]; sum(WinCredits) ST140 59,511,000 + ST13 30,855,000 = 90,366,000 == server TotalWin == server SummaryWin == FeatureWin EXACT [§7]; CollectCount 1->1000 cyclic [32 resets, 40 peaks], AccCredits=100xCollectCount on 40,000/40,000 [§6]; 2,056 bursts, 13->13=8,089, ST13 never starts a robot [§3]; ST13 natural pid '1'==WinCredits on 10,145/10,145, 0 mismatch [§8]; trigger split 2,016 random + 39 collect + 1 both = 2,056, pid 777 win==0 on 2,017/2,017 [§5]; BuffCollectionMap NOT a SpinType — server per-cycle peak label Times=40 win 0 [§6]) + 02_reuse.md (W2: live generate_report_from_chunks on the real chunk; ST140 STRICT-REUSE 4 PER_SPINTYPE + collect_mechanic [cycle 1000, correction_pp 0.0]; ST13 NEW-EVENT [no signature match — has LockLines, lacks Settle/LockReels/AddExtraRatio/PlayType/CreditsBySymbol/SymbolIndexToAbsorbDetail/UpgradeIndex vs M278 ST160] assembled with ZERO new plugin via the committed hold_respin role + freespin_dynamics + the generic trigger_anchor_walk extractor; PROVEN: freespin_total_win_share_covered=1.0, lockrespin_random 98.84% win-share / 76.24 rtp_pp, collect_peak 1.16% / 0.89 rtp_pp; NO SynthesizePayIdRule [natural pid], layer2_fallback_buckets_found=[], 0 _unattributed, session_conservation_ok ratio 1.000000; needs_concurrent_dependency=FALSE, machine_spec_edit_needed=FALSE) + COORDINATOR RE-VERIFY (independent run of the W2 working manifest: RTP 225.915, all rtp_integrity layers pass, layer2_fallback_buckets_found=[], zero _unattributed) + 03_design.md (W3: attribution = native PayoutId space on BOTH STs, NO SynthesizePayIdRule, NO round_win_rules.json edit; role 'hold_respin' is the COMMITTED KNOWN_ROLES/FREESPIN_FAMILY_ROLES token [this worktree base], ROLE hook ROLE_ANALYSES['hold_respin']=('freespin_dynamics',) — NO machine_spec edit, NO new plugin; family role hook cannot cross-fire [only other consumer M278 legitimately wants the same plugin]; trigger_paths declarative block = the anchor-walk per-path dimension; held-wild multiplier upgrade ladder + respin-grant/refresh run-length + burst-length x path matrix are PARSER-BLIND framework-team, NOT fabricated into the manifest).",
+    "caveats": [
+      "ROLE TOKEN: 'hold_respin' is REUSED verbatim from the COMMITTED machine_spec.py (this worktree base): already in KNOWN_ROLES, in FREESPIN_FAMILY_ROLES={freespin,hold_respin}, with ROLE_ANALYSES['hold_respin']=('freespin_dynamics',) and freespin_dynamics._resolve_st_by_role resolving the family. NO machine_spec.py edit, NO base_hash flip. M277 makes hold_respin a SHARED token (M278+M277) — the intended family-additive design; both machines want the SAME freespin_dynamics analysis so the ROLE hook cannot mis-fire onto an unrelated mechanic (unlike the settlement-role minigame/wheel that had to use a PLAY hook).",
+      "ATTRIBUTION (both STs): native PayoutId space. ST140 pid '1' (real) + pid '777' (0-win LockReSpin trigger MARKER, 2,017/2,017 win==0, carried not dropped). ST13 pid '1'==WinCredits on 10,145/10,145, 0 mismatch -> NO SynthesizePayIdRule (it would be a no-op and would falsely imply an empty-payid problem). NO machine_round_win_rules.json edit. layer2_fallback_buckets_found=[], 0 _unattributed (W2 + coordinator re-verify).",
+      "TRIGGER-PATH discriminator: M277 ST13 uses the trigger_anchor_walk FALLBACK (M278 precedent), NOT a round_field discriminator — GameplayTriggerType=0 on every ST13 AND ST140 round, so it cannot discriminate; the trigger lives on the OPENING paid ST140 (pid 777 win==0 / CollectCount==1000). VERIFIED disjoint+exhaustive: 2,016 random + 39 collect + 1 both = 2,056, 0 neither.",
+      "DUAL-TRIGGER edge: 1 burst opened by BOTH pid 777 and CollectCount==1000. Under additive_sessions the extractor routes it to a surfaced multi:collect_peak+lockrespin_random ALARM bucket (+1 session to each path), never silently merged. Identical to M278's double-590 and M275's double-trigger edge.",
+      "parser_blind (framework-team, NEVER fabricated into the manifest): (a) held-wild multiplier UPGRADE ladder — the center 'wildrespin' powers up 2x->3x->5x->10x->20x within a burst; the OUTCOME distribution is measured (maxX x burst-win x avg-len strictly monotone, 01 §9) but the upgrade TRIGGER rule is not in the round fields -> needs a per-round StopSymbolsByCol accumulator scoped to ST13 (generic held_wild_multiplier st_extract; analog of M70 wild-density and M278 per-symbol absorb map); (b) respin-grant/refresh RUN-LENGTH law — chain always ends on win==0, min length 3 (hints >=3 granted respins) but the increment/refresh rule is UNDERDETERMINED (non-last rounds frequently win==0; no clean win-refreshes-N pattern) — a could-not-determine data fact, NOT a fabricated mechanic; per-burst respins-remaining is parser_blind (DIRECTION §3); (c) burst-length x per-path multiplier matrix needs the same per-burst run-length accumulation as (b); band-level per-path multiplier IS delivered, the length axis is parser_blind.",
+      "collect_mechanic cosmetics (fleet-wide, M275/M279/M278 precedent): completed_cycles_total counts resets (32) vs true cycles; always-on clamp_warning. estimated_correction_pp (the RTP-bearing output) is 0.0 and correct. Framework-team precision item, not an RTP error. NB: AccCredits=100xCollectCount on M277 (vs 10x on M278/M279) — a per-machine metronome constant, NOT a signature difference.",
+      "RTP magnitude: the dev-sample point RTP reads 225.915% (90,366,000 / (40,000 x 1000)) — correct arithmetic on a high-RTP 10k-style dev sample; server TotalWin/SummaryWin both == 90,366,000 EXACT. RTP magnitude is not an onboarding criterion (parse-correctness is). Per feedback_dev_ci_scope.md dev does not chase CI; prod-side re-sample governs the production RTP read.",
+      "modes: [1] only — the only mode with cached rawdata (one chunk). Extend on data, never by assumption (the M43/M279/M275/M278 cross-mode pattern). Other modes/skins MUST get their own W1 + reuse pass before any reuse claim.",
+      "SINGLE-CHUNK TAILS: 50,145 rounds / 8 robots / one md5 bucket. Rare tails are thin (per-burst band 500: 4 bursts; 20x held-wild: 9 bursts; collect_peak arm: 40 sessions). Distributions are point estimates on a dev sample; small-sample arms are DIRECTIONAL. NOT re-fetched (cache-only).",
+      "PROVENANCE: this design's evidence derives from the single md5 bucket ed07416e (per-mode); structure claims are value-agnostic, every NUMBER belongs to that bucket. Any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s."
+    ],
+    "date": "2026-06-17"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' present on every ST140/ST13 round but =0 on 100% of 50,145 in-sample records (W1 §10). The fleet-wide pattern (user-confirmed 2026-06-12 on M275, gate-8; M278/M279/M283 precedent): a real progressive jackpot store that the CURRENT testspin interface forces to 0; the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in both ST signatures so parsing is FORWARD-COMPATIBLE — when the interface populates it the existing parser picks it up unchanged. The reported RTP is the BASE RTP (excludes the progressive). Declaration-based out-of-engine protocol (gate-8): nothing else is declared for M277, so nothing else is presumed hidden. NOT a per-machine investigation — fleet pattern, one-time recorded; the single gate-8 declaration item to surface to the user.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": "NONE — ST13 carries a natural pid '1' (sum(pid)==WinCredits on 10,145/10,145, 0 mismatch) and ST140 carries native pids '1'/'777'; NO SynthesizePayIdRule and NO configs/machine_round_win_rules.json edit. layer2_fallback_buckets_found=[], 0 _unattributed (W2 + coordinator re-verify). The opposite of M278's m278_jewelfever_settlement (ST160 was empty-pid and needed synthesis).",
+  "rtp_integrity": {"paid_st": [140], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}
