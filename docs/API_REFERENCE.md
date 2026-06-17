@@ -1,23 +1,24 @@
 # API Reference
 
-> **Status (2026-06-05): report GENERATION + live SAMPLING are OFFLINE.**
-> The report-production orchestrator (`fresh_slotlab/player_impact_analyzer.py`)
-> was deleted and is being rebuilt SpinType-native. Its surviving primitives
-> live under `fresh_slotlab/analyzer/core/*` (parser / aggregator / base
-> pipeline), plus `fresh_slotlab/sampler.py`, `round_win`, `versioning`,
-> `machine_spec`, etc. Until the new engine lands:
-> - `POST /api/rawdata/{machine}/generate-report` returns **503** (sync + async).
-> - `POST /api/rawdata/batch-generate-report` accepts the batch but every item
->   fails with `"worker not initialized"` (the worker's analyzer module is `None`).
-> - `POST /api/runs` and `POST /api/batch-run` (live sampling) fail at spawn with
->   **500 "analyzer script not found"** — the console drove sampling *through*
->   the now-deleted orchestrator (`RunManager.start_run` spawns `ANALYZER` =
->   `fresh_slotlab/player_impact_analyzer.py`, which no longer exists). The
->   standalone `fresh_slotlab/sampler.py` CLI still works, but is not reachable
->   from these console endpoints.
+> **Status (2026-06-17): report generation + live sampling are ONLINE.**
+> The SpinType-native rebuild is complete; the **[OFFLINE]** annotations further
+> down this doc are superseded by this banner.
+> - **Analysis** — `fresh_slotlab/analyzer/report_engine.py::generate_report_from_chunks`
+>   (in-process, manifest-driven) powers `POST /api/rawdata/{machine}/generate-report`
+>   and `/api/rawdata/batch-generate-report` (from existing chunks).
+> - **Live sampling** — `fresh_slotlab/player_impact_analyzer.py` was rebuilt as a
+>   THIN orchestrator: the original sampling loop (CI-stop / resume / `--from-cache`
+>   / md5-filter / progress events / `--stop-flag-file` cancel, via
+>   `analyzer/core/base_pipeline` + `sampler.py`) is preserved verbatim; the
+>   analysis tail now delegates to `report_engine`. `RunManager.start_run` spawns
+>   it unchanged, so `POST /api/runs` and `POST /api/batch-run` work again. (This
+>   finished the wiring left incomplete by `c72b05a`, which decoupled the sampler
+>   + core but never re-pointed the console.)
+> - Only machines with a manifest (`configs/machine_manifests/<base>.json`)
+>   produce reports; unregistered machines fail with a clear error event.
 > - Report **VIEWING / management** is unaffected — `/api/reports/...`,
 >   `/api/runs/{id}/report`, delete/import/validate read `player_impact_summary.json`
->   straight off disk and do not touch the analyzer module.
+>   straight off disk.
 >
 > Endpoints below are annotated **[OFFLINE]** where they depend on the removed
 > engine. Everything else is live.
