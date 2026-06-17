@@ -28,6 +28,11 @@ _CONF_REPO_ROOT = Path(__file__).resolve().parents[2]
 @pytest.fixture(autouse=True)
 def _disable_auto_inference_hook(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SLOT_SKIP_AUTO_INFER", "1")
+    # Also disable the startup roster bootstrap: create_app spawns a
+    # `roster-bootstrap` daemon that, when machines.json is empty, fetches the
+    # fleet from the active UPSTREAM. Tests must never make that network call;
+    # the one test that exercises it delenv's this explicitly.
+    monkeypatch.setenv("SLOT_SKIP_ROSTER_BOOTSTRAP", "1")
 
 
 # Stop the disk-monitor DAEMON thread from spawning in backend tests.

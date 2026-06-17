@@ -12783,5 +12783,51 @@ def create_app(
 
     threading.Thread(target=_disk_monitor_loop, daemon=True, name="disk-monitor").start()
 
+    # Startup self-heal: if the machine roster (machines.json) is missing or
+    # empty, fetch it ONCE from the active upstream so the fleet list is
+    # populated with NO manual action — the operator's deploy flow is just
+    # "git pull + restart service". machines.json is a gitignored, runtime-
+    # fetched file (the downloaded upstream roster: load_machines() falls back
+    # to empty when it's absent); a fresh deploy or a wiped/rebuilt checkout
+    # would otherwise show an empty machine list until someone hits
+    # refresh-md5 or starts a batch. Defined here (end of create_app) so the
+    # nested _do_refresh_machines_md5 is already bound when the thread runs.
+    def _bootstrap_roster_if_empty() -> None:
+        """Fetch the roster once IFF machines.json is empty/missing. Never
+        overrides an existing roster (no upstream hammering every restart).
+        Best-effort: raise_on_error=False so a transient upstream hiccup never
+        blocks startup; outcome is logged (feedback_no_silent_swallow).
+        Disabled in tests via SLOT_SKIP_ROSTER_BOOTSTRAP=1."""
+        if os.environ.get("SLOT_SKIP_ROSTER_BOOTSTRAP"):
+            return
+        try:
+            existing = 0
+            if Path(mc).is_file():
+                try:
+                    _doc = json.loads(Path(mc).read_text(encoding="utf-8"))
+                    if isinstance(_doc, dict):
+                        existing = len(_doc.get("machines") or [])
+                except (OSError, json.JSONDecodeError):
+                    existing = 0
+            if existing > 0:
+                return  # roster already present — nothing to bootstrap
+            server_id = _resolve_active_server_id(settings_path=settings_path)
+            result = _do_refresh_machines_md5(server_id, raise_on_error=False)
+            print(
+                f"[startup] roster bootstrap (machines.json empty): "
+                f"server={server_id} ok={result.get('ok')} "
+                f"fetched={result.get('machines_fetched', 0)} "
+                f"discovered={result.get('discovered_machines', 0)}"
+                + ("" if result.get("ok") else f" error={result.get('error')!r}"),
+                file=sys.stderr,
+            )
+        except Exception:  # noqa: BLE001 — daemon; must never crash startup
+            import traceback
+            traceback.print_exc()
+
+    threading.Thread(
+        target=_bootstrap_roster_if_empty, daemon=True, name="roster-bootstrap"
+    ).start()
+
     return app
 
