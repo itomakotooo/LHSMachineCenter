@@ -1155,9 +1155,26 @@ class FreespinDynamics(AnalyzerFeature):
         base_st_s = str(base_st) if base_st is not None else None
 
         # ── F1 — session cadence (the grant) ──
-        openers = 0
-        if base_st_s is not None:
-            openers = int((next_counts.get(base_st_s) or {}).get(fs_st_s, 0))
+        # Openers = transitions INTO the freespin that START a new session — i.e.
+        # from a source that is NOT part of the same bonus episode. Excluded
+        # sources: the freespin itself (fs->fs re-triggers/continuations) AND any
+        # respin-role ST (a bonus-internal respin that RETURNS into the freespin
+        # mid-episode is a continuation, not a new opening — the M182 case:
+        # ST50 respin <-> ST126 freespin). Base / settlement openers DO count.
+        # Topology-aware: DIRECT base-opener machines (M275, M278) and the
+        # indirect wheel-entry freespin (M207 ST2->ST117) have no in-episode
+        # respin source, so this is BYTE-IDENTICAL to the prior base_st-only count
+        # there; only M182 (bonus-internal respin) is corrected.
+        _excluded_src = {fs_st_s} | {
+            str(st)
+            for st, spec in ((manifest or {}).get("spin_types") or {}).items()
+            if isinstance(spec, dict) and spec.get("role") == "respin"
+        }
+        openers = sum(
+            int(row.get(fs_st_s, 0))
+            for src_st, row in next_counts.items()
+            if src_st not in _excluded_src
+        )
         base_spins = int(base_row.get("spins") or 0)
         fs_spins = int(fs_row.get("spins") or 0)
         fs_out = next_counts.get(fs_st_s) or {}

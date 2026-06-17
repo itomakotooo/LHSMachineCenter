@@ -108,6 +108,19 @@
         "M132$TopDollarSelector$1$",
         "M132$TopDollarSelector$2$40"
       ]
+    },
+    "m207_wheel_settlement": {
+      "_doc": "M207 Wheel (ST2) settlement: WinCredits>0 with NO PayoutIdToWinAmount (0/263). Without this rule the 5,080,000 wheel prize (15.17% of all win) lands in _unattributed_st2 and the RTP-integrity gate fails. label_format=spin_type attributes it to a single real pid 'st2'; the 19-cell prize ladder (jackpot 110x) lives in wheel_dynamics (play-keyed 'Wheel'). PROVEN config-only in M207/02_reuse.md. EXACT M279/M283 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M207"
+      ]
     }
   }
 }

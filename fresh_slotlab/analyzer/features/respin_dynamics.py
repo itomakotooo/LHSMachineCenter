@@ -367,11 +367,19 @@ class RespinDynamics(AnalyzerFeature):
         base_st_s = str(base_st) if base_st is not None else None
 
         # ── M1 — grant-rate (opener transitions) ──
-        # Openers = transitions base_st -> respin_st (a winning paid spin that
-        # spawned a respin). Denominators: winning base spins, all base spins.
-        openers = 0
-        if base_st_s is not None:
-            openers = int((next_counts.get(base_st_s) or {}).get(respin_st_s, 0))
+        # Openers = transitions INTO the respin from ANY source ST except the
+        # respin itself (the exclusion drops respin->respin continuations).
+        # Topology-aware: a DIRECT base-opener machine (M43 ST1->ST50, M279
+        # ST140->ST36) has only the paid base ST transitioning into the respin,
+        # so this is BYTE-IDENTICAL to the prior base_st-only count; a
+        # BONUS-INTERNAL respin (M182 ST126->ST50, opened from inside the
+        # freespin) recovers the true opener count instead of a false 0.
+        # Denominators stay the paid base spins (per_paid_spin = respins/paid).
+        openers = sum(
+            int(row.get(respin_st_s, 0))
+            for src_st, row in next_counts.items()
+            if src_st != respin_st_s
+        )
         base_win_rounds = int(base_row.get("win_rounds") or 0)
         base_spins = int(base_row.get("spins") or 0)
         grant_rate = {
