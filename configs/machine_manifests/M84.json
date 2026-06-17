@@ -1,24 +1,81 @@
 {
   "machine_id": "M84",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "1": {
       "role": "paid_spin",
       "play": "Normal",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "01_understanding.md §1 (M84/mode_1 chunk_0002, config_md5 422cf4f6, code_md5 536fc5a2, saved 2026-05-20; 40,000 ST1 rows = 8 robots x 5000, all 18 fields 100% present, behavior in values only)"
     }
   },
-  "trigger": {"payout_id": null, "remarks": null, "opens": null, "note": "No trigger in mode_1. Single-ST machine: every round is an independent paid ST1 reel spin (W1 §1/§2/§8). GameplayTriggerType=0 and ReMarks='' on 100% of 40,000 rounds (W1 §1) — no event ever fires, no feature opened. No bonus/choice/respin/freespin/wheel/collect event exists in this mode."},
+  "trigger": {
+    "payout_id": null,
+    "remarks": null,
+    "opens": null,
+    "note": "No trigger in mode_1. Single-ST machine: every round is an independent paid ST1 reel spin (W1 §1/§2/§8). GameplayTriggerType=0 and ReMarks='' on 100% of 40,000 rounds (W1 §1) — no event ever fires, no feature opened. No bonus/choice/respin/freespin/wheel/collect event exists in this mode."
+  },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M84/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M84/mode_1"
+    },
     "evidence": "session_artifacts/_onboard/M84/01_understanding.md (W1: 40,000 rounds, 1 real v3 chunk, single config-md5 bucket 422cf4f6/536fc5a2 — no mixed-config pollution; ST1=paid_spin/Normal 100%, 18 fields all 100% present, behavior in VALUES only; RTP 88.0900% on three independent paths — round Σ WinCredits == server analysisResult TotalWin/FeatureWin/SummaryWin (byte-identical, single feature 'Normal') == Σ PayoutIdToWinAmount; hit-rate 10.4525%; payid invariant Σ payid == WinCredits 0 violations / 4,181 wins, exactly one payid per win, 0 multi-payid rounds; grid 3x3, single CENTER payline 1 PROVEN (244/5000 off-center seven lines pay 0); 5 colored sevens + 2 multiplicative wilds wild2x/wild3x + blank; core mechanic win = base_mult(symbol) x 2^#wild2x x 3^#wild3x x bet, 233/233 wild-boosted wins reconcile 0 mismatch; server taxonomy single feature 'Normal', 9 floor mult-tiers reconcile EXACTLY) + 02_reuse.md (W2: live engine on the real chunk; ST1 STRICT-REUSE the CONFIRMED M15 AND M43 paid_spin/Normal pipeline — 3-layer audited: 18-field signature byte-identical to M15 ST1 & M43 ST1 + read shared plugins assemble M84 generically with ZERO machine ids (derive_analyses(M84)==derive_analyses(M15) minus topdollar_choice) + ran engine -> RTP 88.09% / hit 10.4525% / per-payid hits EXACT vs W1 §6a (pid 8=3444, 9=413, 81=194, 2=28, 3=29, 21=7, 5=3) / Σ payid == WinCredits 35,236,000 exact 0 orphan 0 double / wilds decoded in symbol_combo / reel marginals match W1 §6c / multiplier_profile x5 bucket 43.05 pp matches / machine_mechanics all applicable=False / rtp_integrity_check passed=true layer2_fallback_buckets_found=[] / zero feature_errors; NO new plugin, NO fork, NO closure change). W3 (03_design.md): single-ST STRICT-REUSE; attribution = NATIVE payid (winning-symbol-group / color / wild-variant code), NO SynthesizePayIdRule (payid invariant already holds, fallback already 0); NO ROLE/PLAY hook (paid_spin & Normal both unkeyed -> exactly the M15/M43 derived set); NO new role token (paid_spin in KNOWN_ROLES); the exact (wild-factor x final-mult) per-round joint cross is parser_blind (framework-team enrichment, NOT fabricated, NOT an onboarding deliverable — player-felt volatility already surfaced by multiplier_profile/payouts_by_spin_type/reel_marginal/symbol_combo per W2 Layer-c).",
     "caveats": [
       "SINGLE-ST machine: mode_1 emits ONLY ST1 (paid_spin/Normal), 100% of 40,000 rounds (W1 §1). No choice/settlement/respin/freespin/wheel/state/collect ST exists. The trivial state machine ST1->ST1->ST1 (W1 §2/§8) means no chain/burst/sequence/predecessor/trigger-path dimension exists — those crosses are correctly ABSENT, not missing.",
@@ -31,11 +88,26 @@
       "GameplayTriggerType is constant 0 and ReMarks constant '' on all 40,000 ST1 (red-herring trigger fields; no event fires). Parse-as-is (constant); forward-compatible (in the ST1 signature).",
       "PROVENANCE: single config-md5 bucket 422cf4f6/536fc5a2 (per-mode); structure claims are value-agnostic, every NUMBER belongs to that bucket. mode_1 has a SINGLE chunk so no mixed-md5 pooling concern. Any SERVED report must go through the md5-scoped generate path, be stamped with the chunk md5s, and pass bet=1000 (read from the chunk _bet) so the '× bet' multiplier columns are not 1000x-inflated (W2 note 1: with default bet=1 spin_type_outcomes dumps all wins into the 100x+ band; bet=1000 yields sane bands while RTP/attribution stay correct either way)."
     ],
-    "date": "2026-06-17"
+    "date": "2026-06-17",
+    "signed_off_date": "2026-06-17",
+    "gate8_note": "user gate-8 domain sign-off 2026-06-17 (club batch): no hidden out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing; objective gates 1-7 pass."
   },
   "out_of_engine_mechanics": [
-    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST1 round but =0 on 100% of 40,000 in-sample records (W1 §1, §7.2). Fleet-wide test-interface-zeroing, declaration-confirmed (memory: gate-8 ruling 2026-06-12 + M275/M279/M278/M283 precedent — a real progressive jackpot store the CURRENT testspin interface forces to 0). Parse as-is at 0; the field is already in the ST1 signature so parsing is FORWARD-COMPATIBLE (when the interface populates it, the existing parser picks it up unchanged). RTP 88.0900% (ST1 base) excludes the progressive; it adds on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every ST1 round but =0 on 100% of 40,000 in-sample records (W1 §1, §7.2). Fleet-wide test-interface-zeroing, declaration-confirmed (memory: gate-8 ruling 2026-06-12 + M275/M279/M278/M283 precedent — a real progressive jackpot store the CURRENT testspin interface forces to 0). Parse as-is at 0; the field is already in the ST1 signature so parsing is FORWARD-COMPATIBLE (when the interface populates it, the existing parser picks it up unchanged). RTP 88.0900% (ST1 base) excludes the progressive; it adds on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
   ],
   "round_win_rule": "none — ST1 attributes natively via PayoutIdToWinAmount (exactly one pid per win, 0 multi-payid rounds; Σ payid == WinCredits 0 violations / 4,181 wins; W2 live engine fallback bucket already []). No {}-payid settlement event exists, so NO SynthesizePayIdRule is added to configs/machine_round_win_rules.json (the inverse of the M43/M279/M278/M283 no-payid-settlement pattern).",
-  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

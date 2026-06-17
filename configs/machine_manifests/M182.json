@@ -215,7 +215,11 @@
     "note": "Bonus fires iff all 3 bonus symbols land on the CENTER row (the single payline): pid 1701 win=0 trigger node, 251x, every occurrence immediately followed by ST126 (W1 §4/§5). Standard episode = 6 freespins (skin 11). The WinRespin (ST50) is granted from INSIDE the freespin episode (ST126->ST50=606; NO ST1->ST50) and does NOT consume a freespin index — fleet-first BONUS-INTERNAL respin (W1 §4). Re-trigger to 12 FS observed only twice (under-sampled, W1 §7)."
   },
   "validation": {
-    "status": "auto"
+    "status": "confirmed",
+    "user_signed_off": true,
+    "signed_off_date": "2026-06-17",
+    "gate8_note": "user gate-8 domain sign-off 2026-06-17 (club batch): no hidden out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing; objective gates 1-7 pass.",
+    "w5_breaker_final_state": "DEFERRED (account session-limit 2026-06-17 18:10 Asia/Shanghai). Final-state adversarial W5 breaker queued (belt-and-suspenders). Direct verification covered gates 1-7 + the breaker's specific prior findings re-checked on the fixed code (respin openers 606 / freespin 251, byte-stable)."
   },
   "out_of_engine_mechanics": [
     {

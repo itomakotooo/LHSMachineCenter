@@ -1,23 +1,79 @@
 {
   "machine_id": "M63",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "1": {
       "role": "paid_spin",
       "play": "Normal",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M63/mode_1 bucket 0935ed43/536fc5a2 2026-05-20",
       "crazy_reel": {
         "spin_type": 1,
         "reel_field": "StopSymbolsByCol",
         "reel_field_kind": "list_of_col_strings",
         "row_sep": "-",
-        "symbols": ["crazy_up", "crazy", "crazy_down"],
+        "symbols": [
+          "crazy_up",
+          "crazy",
+          "crazy_down"
+        ],
         "win_field": "WinCredits",
         "payline_field": "PayoutByPayline",
         "payline_col_basis": "hundreds_digit",
@@ -26,11 +82,19 @@
       }
     }
   },
-  "trigger": {"payout_id": null, "remarks": null, "opens": null, "note": "Single-SpinType base game; no separate feature/event ST fires in this mode (GameplayTriggerType constant 0, ReMarks empty). The crazy-reel nudge is INTRA-ST1 (no transition, no second ST) and is declared via the spin_types.1.crazy_reel dimension block, not as a trigger."},
+  "trigger": {
+    "payout_id": null,
+    "remarks": null,
+    "opens": null,
+    "note": "Single-SpinType base game; no separate feature/event ST fires in this mode (GameplayTriggerType constant 0, ReMarks empty). The crazy-reel nudge is INTRA-ST1 (no transition, no second ST) and is declared via the spin_types.1.crazy_reel dimension block, not as a trigger."
+  },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M63/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M63/mode_1"
+    },
     "evidence": "session_artifacts/_onboard/M63/01_understanding.md (W1: 40,000 rounds, single md5 bucket 0935ed43/536fc5a2; ST=1 paid_spin; Sum(PayoutIdToWinAmount)==Sum(WinCredits)==36,395,000 exact; RTP 90.9875; hit 19.445%; server SummaryWin = feature Normal x 8 multiplier bands, 0 reconstruction mismatches) + 02_reuse.md (W2: ST=1 STRICT-REUSE; Sigma(payid.rtp_pp)==summary.rtp 90.9875; no _unattributed bucket; no role/play plugin to fork; no attribution rule needed). W3 CORRECTION (03_design.md): crazy/crazy_up/crazy_down RE-CLASSIFIED as an IN-ENGINE base-game reel NUDGE (user domain confirmation 2026-06-17). RE-PARSED FRESH: crazy rounds 4,037 (10.09%); single-column 96.58%; 5 sliding arrangements (830/823/798[full block]/777/809); crazy never a pid (0); win-rate 36.12% vs 17.57% baseline (x2.055); win-through-nudge 1,276/1,458 (87.52%); crazy-round win share 25.62% (23.31 RTP pp); per-column col0 1,324/col1 1,243/col2 1,470. NEW base-excluded extractor crazy_reel_dim + consumer plugin nudge_dynamics + frontend _stDimNudge; attached via NEW DIMENSION_ANALYSES['crazy_reel'] hook (role paid_spin / play Normal are fleet-generic and cannot scope it). NO SynthesizePayIdRule (payids attribute 100%, fallback 0).",
     "caveats": [
       "AUTO (not user-confirmed sign-off): single 40,000-spin chunk; the two rarest server bands are under-sampled (band 100: 1 event; band 500: 7 events) -> their rtp_pp carry high variance (re-sample-scale item, non-blocking).",
@@ -41,11 +105,27 @@
       "PER-ROUND-BLIND (honest): the st_extract layer accumulates COUNTS not coin, so the nudge-vs-baseline win-AMOUNT split (the exact crazy-round win share / RTP pp) is per-round-blind; nudge_dynamics surfaces the nudge ST's totals + the felt event-rate and marks the amount split parser_blind. The win-THROUGH-nudge ROUND share (count-based) is exact.",
       "follow-on (optional, NOT wired here): wild2x-count x band is a true cross-dimension (monotone; all 7 jackpots at 3 wilds) -- a separate future dimension, deliberately not bundled with the nudge to keep the structure clean."
     ],
-    "date": "2026-06-17"
+    "date": "2026-06-17",
+    "signed_off_date": "2026-06-17",
+    "gate8_note": "user gate-8 domain sign-off 2026-06-17 (club batch): no hidden out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing + M63 crazy=in-engine nudge; objective gates 1-7 pass.",
+    "w5_breaker_final_state": "DEFERRED (account session-limit 2026-06-17 18:10 Asia/Shanghai). Final-state adversarial W5 breaker queued (belt-and-suspenders). Direct verification covered gates 1-7 + the breaker's specific prior findings re-checked on the fixed code (N6 nudge_share 0.2562 data-derived + gate-7 render)."
   },
   "out_of_engine_mechanics": [
-    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Present on every ST=1 round, =0 on 100% of 40,000 in-sample records. Fleet-wide ruling (user-confirmed 2026-06-12, M275 gate 8): this zeroing is the test interface's behavior on ALL machines, not an M63 specialty. Parse-as-is at 0; parsing is FORWARD-COMPATIBLE when the interface populates the field. RTP 90.9875% is the BASE RTP (excludes the progressive).", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Present on every ST=1 round, =0 on 100% of 40,000 in-sample records. Fleet-wide ruling (user-confirmed 2026-06-12, M275 gate 8): this zeroing is the test interface's behavior on ALL machines, not an M63 specialty. Parse-as-is at 0; parsing is FORWARD-COMPATIBLE when the interface populates the field. RTP 90.9875% is the BASE RTP (excludes the progressive).",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
   ],
   "round_win_rule": null,
-  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

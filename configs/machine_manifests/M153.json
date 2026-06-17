@@ -1,16 +1,79 @@
 {
   "machine_id": "M153",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "140": {
       "role": "paid_spin",
       "play": "NormalCollectionSpin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
-      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
-      "observed_field_presence": {"AccCredits": 1.0, "BetAmount": 1.0, "CollectCount": 1.0, "CostCredits": 1.0, "CreditsSymbols": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "SymbolIndexToRewards": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "CollectCount",
+        "AccCredits",
+        "CreditsSymbols",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "AccCredits",
+        "BetAmount",
+        "CollectCount",
+        "CostCredits",
+        "CreditsSymbols",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "SymbolIndexToRewards",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "AccCredits": 1.0,
+        "BetAmount": 1.0,
+        "CollectCount": 1.0,
+        "CostCredits": 1.0,
+        "CreditsSymbols": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "SymbolIndexToRewards": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "01_understanding.md §1 (M153/mode_1 chunk_0002, md5 3b832ba3/83a22cc6, 2026-05-20; 40,000 ST140 rows, all 22 fields 100% present) — EXACT signature match to M279/M278 st140 (02_reuse.md §1)"
     }
   },
@@ -21,9 +84,12 @@
     "note": "No second ST and no round-level feature trigger that opens a separate event. M153 mode_1 is a single self-settling paid base reel-spin (st140 NormalCollectionSpin). The only stateful mechanic is the CollectCount collect-WINDOW carried WITHIN st140 (a bonus symbol = pid 9 with WIN==0 arms CC=3, then CC decrements 3->2->1->0; the window spins CC=1/CC=2 pay ~132% RTP vs ~80.55% base — W1 §6, reproduced exactly in W3). This is an intra-ST state dimension, NOT a trigger into a new SpinType, so there is no opens/payid trigger. pid 9 is already a (zero-paying) row in st140's natural PayoutIdToWinAmount — no SynthesizePayIdRule needed (W3 §2)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M153/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M153/mode_1"
+    },
     "evidence": "session_artifacts/_onboard/M153/01_understanding.md (W1: 40,000 rounds, single real v3 chunk_0002, single md5 bucket 3b832ba3/83a22cc6; exactly ONE ST st140=paid NormalCollectionSpin; settlement self-contained — sum(WinCredits)==sum(PayoutIdToWinAmount)==sum(analysisResult SummaryWin)==34,189,300 exact; per-robot parse==analysisResult 8/8; hit 22.47%, RTP 85.47%; CollectCount 3->2->1->0 decrement window armed by pid 9 bonus (1878 triggers ⟺ pid9 ⟺ 1 bonus symbol, 1:1:1:1), window CC1/CC2 RTP ~132% vs base 80.55%) + 02_reuse.md (W2: live engine on the real chunk; st140 EXACT signature match to M279/M278 st140 -> STRICT-REUSE 4 PER_SPINTYPE plugins verbatim, 3-layer + gates PASS, feature_errors null, rtp_integrity passed, layer2_fallback_buckets_found []; collect_mechanic BCM heuristic false-positive on the decrement CollectCount but RTP-INERT [estimated_correction_pp=null, RTP_CONTRIBUTION=False] -> framework FLAG not ABORT; collect-WINDOW is genuinely-new mechanic, W3 to decide plugin). W3 (this 03_design.md): role 'paid_spin' (existing KNOWN_ROLES token, no extension), play 'NormalCollectionSpin'; ZERO new plugins — st140 fully covered by the strict-reused PER_SPINTYPE spine which IS the machine's own SummaryWin multiplier/payid taxonomy; attribution = st140's OWN PayoutIdToWinAmount (sum(payid)==summary==34,189,300, fallback 0, NO SynthesizePayIdRule); NO role/play analysis attaches (no player_choice/respin/freespin/hold_respin role, no WinMiniGame/Wheel play). The collect-WINDOW felt ladder (CC0 80.55% / CC1 133.78% / CC2 131.37% / CC3 87.74%, transition matrix, 132.55% window uplift) is PARSER-BLIND at the base-excluded layer (parser emits spin_type_bucket_* keyed by SpinType ONLY — keys ['140'] — NOT by CollectCount; spin_type_next_counts {'140':{'140':39992}} carries no window signal) -> a labeled CC-state x tier breakout needs a per-CC parser accumulator (base-closure, flips base_hash) = framework-team; its payback is ALREADY fully attributed inside st140 (no RTP orphaned), so no invariant cost.",
     "caveats": [
       "ZERO new plugins: st140 is a clean STRICT-REUSE of the 4 PER_SPINTYPE plugins (the machine's own SummaryWin tier x feature taxonomy). No role/play analysis attaches (roles={paid_spin}, plays={NormalCollectionSpin} — neither keys ROLE_ANALYSES/PLAY_ANALYSES). No KNOWN_ROLES extension. Simplest onboard in the fleet.",
@@ -38,11 +104,26 @@
       "modes: [1] only — the only mode analysed (modes 2/5/7 exist on disk but are OUT OF SCOPE for this mode-1 onboard, W1 §8.8). Extend on data, never by assumption.",
       "PROVENANCE: this design's evidence derives from the single md5 bucket 3b832ba3/83a22cc6 (per-mode); structure claims are value-agnostic, every NUMBER belongs to that bucket. Any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s, and be run with bet=1000 (the bet trap: dev chunk _bet=1000)."
     ],
-    "date": "2026-06-17"
+    "date": "2026-06-17",
+    "signed_off_date": "2026-06-17",
+    "gate8_note": "user gate-8 domain sign-off 2026-06-17 (club batch): no hidden out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing; objective gates 1-7 pass."
   },
   "out_of_engine_mechanics": [
-    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' present on every st140 round but =0 on 100% of 40,000 in-sample records (W1 §7, §8.4). The established fleet-wide pattern (user-confirmed 2026-06-12; M275/M279/M278 precedent, gate-8 declaration protocol): a real progressive jackpot store that the CURRENT testspin interface forces to 0; the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in the st140 signature, so parsing is FORWARD-COMPATIBLE — when the interface populates it, the parser picks it up unchanged. The reported RTP (85.47%) is the BASE RTP (excludes the progressive). Nothing else is declared hidden for M153 (gate-8: data-invisible defaults absent unless platform-declared).", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' present on every st140 round but =0 on 100% of 40,000 in-sample records (W1 §7, §8.4). The established fleet-wide pattern (user-confirmed 2026-06-12; M275/M279/M278 precedent, gate-8 declaration protocol): a real progressive jackpot store that the CURRENT testspin interface forces to 0; the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in the st140 signature, so parsing is FORWARD-COMPATIBLE — when the interface populates it, the parser picks it up unchanged. The reported RTP (85.47%) is the BASE RTP (excludes the progressive). Nothing else is declared hidden for M153 (gate-8: data-invisible defaults absent unless platform-declared).",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
   ],
   "round_win_rule": null,
-  "rtp_integrity": {"paid_st": [140], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      140
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

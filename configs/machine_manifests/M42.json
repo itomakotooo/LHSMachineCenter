@@ -1,33 +1,144 @@
 {
   "machine_id": "M42",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "1": {
       "role": "paid_spin",
       "play": "Normal",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 0.1461, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 0.1461, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 0.1461,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 0.1461,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M42/mode_1 bucket localcfg_c1b64b1b 2026-06-17 (W1 01_understanding.md)"
     },
     "50": {
       "role": "respin",
       "play": "WinRespin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 0.8101, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 0.8101, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 0.8101,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 0.8101,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M42/mode_1 bucket localcfg_c1b64b1b 2026-06-17 (W1 01_understanding.md)"
     }
   },
-  "trigger": {"payout_id": null, "remarks": "ReSpin", "opens": "WinRespin", "note": "no round-level trigger pid; respin fires server-side after a base WIN at a flat ~10% rate and chains on its own win (W1 §3). Win-gating rule not in rawdata (parser_blind)."},
+  "trigger": {
+    "payout_id": null,
+    "remarks": "ReSpin",
+    "opens": "WinRespin",
+    "note": "no round-level trigger pid; respin fires server-side after a base WIN at a flat ~10% rate and chains on its own win (W1 §3). Win-gating rule not in rawdata (parser_blind)."
+  },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M42/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M42/mode_1"
+    },
     "evidence": "session_artifacts/_onboard/M42/01_understanding.md (2.03M rounds, single config bucket localcfg_c1b64b1b, cache_version 3) + 02_reuse.md (STRICT-REUSE of confirmed M43 minus ST51; W2 layer-c audit: ST1 hit 14.610%/win 292,198, ST50 hit 81.007%/win 25,867, respin_dynamics openers 29,364 == SummaryWin RUNS, uplift 5.54x, fat_tail 0.887, zero _unattributed_*, rtp_integrity clean). Native numeric pid attribution complete — NO synthesize rule.",
     "caveats": [
       "ANALYZER DATA BOUNDARY (inherited from M43, already escalated): respin burst-length histogram + win-gating proof require per-round ReMarks run-length accumulation in the base-closure parser. respin_dynamics computes every metric the frozen accumulators expose; the two blind sub-metrics are flagged in its parser_blind field. Framework-team work, not an M42 reuse failure.",
@@ -35,8 +146,17 @@
       "modes 2/5/7 directories exist but have 0 cached chunks; manifest scoped to mode 1 (only sampled mode). Structure is value-agnostic and should extend to other modes if/when sampled.",
       "GameplayTriggerType=0 uniformly in mode 1 (single trigger context in this cache)."
     ],
-    "date": "2026-06-17"
+    "date": "2026-06-17",
+    "signed_off_date": "2026-06-17",
+    "gate8_note": "user gate-8 domain sign-off 2026-06-17 (club batch): no hidden out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing; objective gates 1-7 pass.",
+    "w5_breaker_final_state": "DEFERRED (account session-limit 2026-06-17 18:10 Asia/Shanghai). Final-state adversarial W5 breaker queued (belt-and-suspenders). Direct verification covered gates 1-7 + the breaker's specific prior findings re-checked on the fixed code (integrity + respin grant-rate sane; simplest reuse archetype)."
   },
   "out_of_engine_mechanics": [],
-  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

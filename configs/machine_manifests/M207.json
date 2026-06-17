@@ -200,8 +200,8 @@
     "note": "ST1 pid 667 / RewardLastNode '667-' / ReMarks ' Trigger Wheel' is a win-0 marker (263/40,000 = 0.6575% of paid spins) that opens the Wheel (ST2). The wheel then either pays direct credits (199/263) and returns to ST1, OR lands a freespin-entry cell (1/8/13 — 64/263) that opens an ST117 LockSymbolFreespin block of M spins (cell 1->20, cell 8->12, cell 13->8). The freespin is therefore opened INDIRECTLY (ST1 -> ST2 -> ST117); ST117 has NO direct base->freespin transition. The generative reel rule that mints pid 667 is NOT derivable from the testspin (spin-symbol presence is necessary-looking but not sufficient, W1 §7g) — 667 is an observed OUTCOME marker, not a grid rule."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M207/mode_1"
@@ -217,7 +217,10 @@
       "single config-md5 bucket 48369ee1/be500b36 (first sample; no mixed-md5 pooling concern). modes: [1] only — the only mode with cached rawdata (modes 2/5/7 have index-but-no-data). Extend on data, never by assumption (M43/M279/M275/M278 cross-mode pattern). PROVENANCE: every NUMBER belongs to this bucket; structure claims are value-agnostic; any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s.",
       "RTP magnitude: Sum(WinCredits)/Sum(CostCredits) = 33,497,600 / 40,000,000 = 83.74% (paid base = ST1 CostCredits only; ST2/ST117 cost 0). FLAG: ST117 carries BetAmount=1000 at CostCredits=0 — an RTP denominator built from BetAmount (not CostCredits) would over-count the paid base; the paid unit is ST1's CostCredits. RTP magnitude is not an onboarding criterion (parse-correctness is); per feedback_dev_ci_scope dev does not chase CI."
     ],
-    "date": "2026-06-17"
+    "date": "2026-06-17",
+    "signed_off_date": "2026-06-17",
+    "gate8_note": "user gate-8 domain sign-off 2026-06-17 (club batch): no hidden out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing; objective gates 1-7 pass.",
+    "w5_breaker_final_state": "DEFERRED (account session-limit 2026-06-17 18:10 Asia/Shanghai). Final-state adversarial W5 breaker queued (belt-and-suspenders). Direct verification covered gates 1-7 + the breaker's specific prior findings re-checked on the fixed code (freespin openers 64, byte-stable)."
   },
   "out_of_engine_mechanics": [
     {
