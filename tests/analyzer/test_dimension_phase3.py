@@ -1474,18 +1474,21 @@ class TestBaseHashUnchangedPhase3:
     """
 
     def test_base_hash_is_c5d2199142c3(self):
-        """compute_base_analyzer_version() must return c5d2199142c3.
+        """compute_base_analyzer_version() must return the current baseline
+        3ddaa183f38c (re-baselined 2026-06-17 by the DELIBERATE paid-unit closure
+        fix in core/parser.py — SpinTimes-group paid unit; was c5d2199142c3).
 
         If this fails, a closure file (_CLOSURE_FILES in versioning.py) was
-        accidentally modified — freespin_progression.py, freespin_dynamics.py,
+        accidentally modified (or a new deliberate closure change needs this
+        baseline updated) — freespin_progression.py, freespin_dynamics.py,
         upstream_feature_breakdown.py are all base-excluded.
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         bh = compute_base_analyzer_version()
-        assert bh == "c5d2199142c3", (
-            f"base_hash changed from c5d2199142c3 to {bh!r}. "
-            f"Phase 3 changes are base-EXCLUDED — a base_hash change means "
-            f"a closure file was accidentally modified."
+        assert bh == "3ddaa183f38c", (
+            f"base_hash changed from the 3ddaa183f38c baseline to {bh!r}. "
+            f"A base_hash change means a closure file was accidentally modified "
+            f"(or a deliberate closure change needs this updated)."
         )
 
 

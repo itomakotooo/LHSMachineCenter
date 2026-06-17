@@ -1055,18 +1055,21 @@ class TestBaseHashUnchanged:
     Expected base_hash: c5d2199142c3 (confirmed correct import path via test suite).
     """
 
-    def test_base_hash_is_c5d2199142c3(self):
-        """compute_base_analyzer_version() must return c5d2199142c3.
+    def test_base_hash_is_current_baseline(self):
+        """compute_base_analyzer_version() must return the current baseline
+        3ddaa183f38c (re-baselined 2026-06-17 by the DELIBERATE paid-unit closure
+        fix in core/parser.py — SpinTimes-group paid unit; was c5d2199142c3).
 
         If this fails, a closure file (_CLOSURE_FILES in versioning.py) was
-        accidentally modified by the Phase 2 implementation.
+        accidentally modified (or a new deliberate closure change needs this
+        baseline updated). Phase 2 plugin edits themselves are base-EXCLUDED.
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         bh = compute_base_analyzer_version()
-        assert bh == "c5d2199142c3", (
-            f"base_hash changed from c5d2199142c3 to {bh!r}. "
-            f"Phase 2 plugin edits are base-EXCLUDED — a base_hash change means "
-            f"a closure file (_CLOSURE_FILES) was accidentally modified."
+        assert bh == "3ddaa183f38c", (
+            f"base_hash changed from the 3ddaa183f38c baseline to {bh!r}. "
+            f"A base_hash change means a closure file (_CLOSURE_FILES) was "
+            f"accidentally modified (or a deliberate closure change needs this updated)."
         )
 
 
