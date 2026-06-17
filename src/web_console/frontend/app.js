@@ -5191,6 +5191,107 @@ function _stDimWheel(stCtx) {
     gpHtml + multHtml + cellHtml + rtpHtml;
 }
 
+// Dimension: nudge dynamics — attaches to the crazy-reel NUDGE ST (the paid base
+// spin whose spin_type matches nudge_dynamics.nudge_spin_type, e.g. M63 ST1 where
+// the crazy_up/crazy/crazy_down 3-stack slides a single reel). Returns "" for all
+// other STs and machines (same isolation as _stDimWheel — gates on applicable +
+// nudge_spin_type === row.spin_type). Reuses the same mech-section/mech-grid KPI
+// blocks + drilldown-table/bar-cell markup + helpers (fmt/fInt/_escHtml) as the
+// sibling respin/minigame/wheel/freespin dimensions — no new CSS, no parallel impl
+// (feedback_no_parallel_panel_impl.md).
+function _stDimNudge(stCtx) {
+  const nd = ((stCtx.summary || {}).player_impact || {}).nudge_dynamics;
+  if (!nd || !nd.applicable) return "";
+  if (Number(nd.nudge_spin_type) !== Number(stCtx.row.spin_type)) return "";
+
+  // Helper: format a probability value as a percentage string or "—".
+  const _pct = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+  // Helper: format a ratio/multiplier value or "—".
+  const _ratio = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${Number(v).toFixed(d)}×`;
+
+  // ── N1 Nudge cadence KPI block ──
+  const cad = nd.cadence || {};
+  const cadenceHtml = `<div class="mech-section">
+    <h3>${fmt("ndCadence")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("ndHitRate")}</span><span class="mech-value">${_pct(nd.hit_rate, 2)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("ndNudgeRounds")}</span><span class="mech-value">${fInt(cad.nudge_rounds)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("ndSingleColShare")}</span><span class="mech-value">${_pct(nd.single_col_share, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("ndOnePerN")}</span><span class="mech-value">${cad.one_per_n_paid_spins != null ? Number(cad.one_per_n_paid_spins).toFixed(1) : "—"}</span></div>
+    </div>
+  </div>`;
+
+  // ── N2 + N3 Win-rate uplift KPI block ──
+  const u = nd.win_rate_uplift || {};
+  const upliftHtml = `<div class="mech-section">
+    <h3>${fmt("ndUplift")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("ndNudgeWinRate")}</span><span class="mech-value">${_pct(u.nudge, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("ndBaselineWinRate")}</span><span class="mech-value">${_pct(u.baseline, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("ndUpliftRatio")}</span><span class="mech-value">${_ratio(u.ratio, 2)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("ndWinThrough")}</span><span class="mech-value">${_pct(nd.win_through_nudge_share, 1)}</span></div>
+    </div>
+  </div>`;
+
+  // ── N4 Slide-offset distribution (drilldown bar-table) ──
+  const slides = Array.isArray(nd.slide_distribution)
+    ? nd.slide_distribution.filter((s) => s.prob != null && Number(s.prob) > 0)
+    : [];
+  const maxSlideProb = Math.max(...slides.map((s) => Number(s.prob) || 0), 0.0001);
+  const slideRows = slides.map((s) => {
+    const prob = Number(s.prob) || 0;
+    const barPct = (prob / maxSlideProb) * 100;
+    return (
+      `<tr>` +
+      `<td>${_escHtml(String(s.offset_label))}</td>` +
+      `<td>${fInt(s.count)}</td>` +
+      `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
+      `</tr>`
+    );
+  }).join("");
+  const slideHtml = slides.length
+    ? (`<p class="drilldown-hint"><strong>${fmt("ndSlideDist")}</strong></p>` +
+       `<table class="drilldown-table"><thead><tr>` +
+       `<th>${fmt("ndColArrangement")}</th><th>${fmt("ndColCount")}</th>` +
+       `<th>${fmt("rdColProb")}</th>` +
+       `</tr></thead><tbody>${slideRows}</tbody></table>`)
+    : "";
+
+  // ── N5 Per-column distribution (drilldown table) ──
+  const cols = Array.isArray(nd.by_column) ? nd.by_column : [];
+  const colRows = cols.map((c) => (
+    `<tr>` +
+    `<td>${fmt("ndReelLabel")} ${_escHtml(String(c.col))}</td>` +
+    `<td>${fInt(c.count)}</td>` +
+    `<td>${_pct(c.share, 1)}</td>` +
+    `</tr>`
+  )).join("");
+  const colHtml = cols.length
+    ? (`<p class="drilldown-hint"><strong>${fmt("ndColDist")}</strong></p>` +
+       `<table class="drilldown-table"><thead><tr>` +
+       `<th>${fmt("ndColReel")}</th><th>${fmt("ndColCount")}</th>` +
+       `<th>${fmt("ndColShare")}</th>` +
+       `</tr></thead><tbody>${colRows}</tbody></table>`)
+    : "";
+
+  // ── N6 RTP concentration KPI block ──
+  const rtpC = nd.rtp_concentration || {};
+  const rtpHtml = `<div class="mech-section">
+    <h3>${fmt("mgRtpConcentration")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("mgShareOfWin")}</span><span class="mech-value">${_pct(rtpC.share_of_all_win, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("ndRtpContrib")}</span><span class="mech-value">${rtpC.nudge_rtp_contribution_pp != null ? Number(rtpC.nudge_rtp_contribution_pp).toFixed(2) + "pp" : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("mgEventRate")}</span><span class="mech-value">${_pct(rtpC.event_rate, 2)}</span></div>
+    </div>
+    ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
+  </div>`;
+
+  return `<p class="drilldown-hint"><strong>${fmt("panelNudgeDynamics")}</strong></p>` +
+    cadenceHtml + upliftHtml + slideHtml + colHtml + rtpHtml;
+}
+
 // Dimension: freespin dynamics — attaches to the FREESPIN event (the ST whose
 // spin_type matches freespin_dynamics.freespin_spin_type, e.g. M275 ST126's
 // NewFreespin granted 10-spin session). Returns "" for all other STs. Reuses
@@ -5610,6 +5711,110 @@ function _stDimGenericDimension(stCtx) {
   return html;
 }
 
+// Dimension: lock-respin dynamics — attaches to the LOCK event (the ST whose
+// spin_type matches lock_respin_dynamics.lock_spin_type, e.g. M104 ST96's
+// in-line LockSymbolSpin hold-and-respin). Returns "" for all other STs so the
+// analysis renders only inside the matching ST section. Reuses the same
+// mech-section/mech-grid KPI blocks + drilldown-table/bar-cell markup + the
+// shared rd*/sto* i18n keys as the sibling respin/minigame/wheel/freespin
+// dimensions (feedback_no_parallel_panel_impl.md — no parallel impl).
+function _stDimLockRespin(stCtx) {
+  const lr = ((stCtx.summary || {}).player_impact || {}).lock_respin_dynamics;
+  if (!lr || !lr.applicable) return "";
+  if (Number(lr.lock_spin_type) !== Number(stCtx.row.spin_type)) return "";
+
+  // Helper: format a probability value as a percentage string or "—".
+  const _pct = (v, d = 2) =>
+    (v == null || !Number.isFinite(Number(v))) ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+  // Helper: render a band distribution table (same markup as _stDimRespin).
+  const _bandTable = (dist, titleKey) => {
+    if (!dist || !Array.isArray(dist.bands) || !dist.bands.length) return "";
+    const bands = dist.bands.filter((b) => b.prob != null && Number(b.prob) > 0);
+    if (!bands.length) return "";
+    const maxProb = Math.max(...bands.map((b) => Number(b.prob) || 0), 0.0001);
+    const rows = bands.map((b) => {
+      const prob = Number(b.prob) || 0;
+      const barPct = (prob / maxProb) * 100;
+      const winShare = b.win_share != null ? `${(Number(b.win_share) * 100).toFixed(1)}%` : "—";
+      return (
+        `<tr>` +
+        `<td>${PURE.prettyBucketLabel ? PURE.prettyBucketLabel(b.band) : b.band}×</td>` +
+        `<td>${fInt(b.spin_count)}</td>` +
+        `<td class="bar-cell" style="--bar:${barPct.toFixed(1)}%">${_pct(prob, 2)}</td>` +
+        `<td>${winShare}</td>` +
+        `</tr>`
+      );
+    }).join("");
+    const tail = dist.tail_ge20x_win_share != null
+      ? `<p class="drilldown-hint">${fmt("rdTailGe20")}: ${_pct(dist.tail_ge20x_win_share, 1)}</p>`
+      : "";
+    return (
+      `<p class="drilldown-hint"><strong>${fmt(titleKey)}</strong> · ${fInt(dist.total_spins)} 次 · ${fInt(dist.win_rounds)} 次赢钱</p>` +
+      `<table class="drilldown-table"><thead><tr>` +
+      `<th>${fmt("rdColBand")}</th><th>${fmt("stoColHits")}</th>` +
+      `<th>${fmt("rdColProb")}</th><th>${fmt("rdColWinShare")}</th>` +
+      `</tr></thead><tbody>${rows}</tbody></table>` +
+      tail
+    );
+  };
+
+  // ── FD1 Lock grant-rate KPI block (record-level, base-derivable) ──
+  const gr = lr.grant_rate || {};
+  const grantHtml = `<div class="mech-section">
+    <h3>${fmt("lrGrantRate")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("lrLockRecords")}</span><span class="mech-value">${fInt(gr.lock_records)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("lrRecordRate")}</span><span class="mech-value">${_pct(gr.per_paid_spin_record_rate, 2)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("lrOnePerN")}</span><span class="mech-value">${gr.one_per_n_paid_spins_records != null ? Number(gr.one_per_n_paid_spins_records).toFixed(1) : "—"}</span></div>
+    </div>
+    ${gr.note ? `<p class="drilldown-hint">${_escHtml(gr.note)}</p>` : ""}
+  </div>`;
+
+  // ── FD3 35x ⟺ Lock determinism KPI block (declared structural fact) ──
+  const det = lr.determinism || {};
+  const detHtml = `<div class="mech-section">
+    <h3>${fmt("lrDeterminism")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("lrTriggerSymbol")}</span><span class="mech-value">${det.trigger_symbol != null ? _escHtml(String(det.trigger_symbol)) : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("lrPLockGivenTrig")}</span><span class="mech-value">${_pct(det.p_lock_given_trigger, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("lrPLockGivenNoTrig")}</span><span class="mech-value">${_pct(det.p_lock_given_no_trigger, 1)}</span></div>
+    </div>
+    ${det.source ? `<p class="drilldown-hint">${_escHtml(det.source)}</p>` : ""}
+  </div>`;
+
+  // ── FD5 Lock RTP-concentration KPI block (base-derivable) ──
+  const rtpC = lr.rtp_concentration || {};
+  const rtpHtml = `<div class="mech-section">
+    <h3>${fmt("rdRtpConcentration")}</h3>
+    <div class="mech-grid">
+      <div class="mech-stat"><span class="mech-label">${fmt("lrLockWinShareSt")}</span><span class="mech-value">${_pct(rtpC.lock_record_win_share_of_st, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdRtpContrib")}</span><span class="mech-value">${rtpC.st_rtp_contribution_pp != null ? Number(rtpC.st_rtp_contribution_pp).toFixed(2) + "pp" : "—"}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdFatTailShare")}</span><span class="mech-value">${_pct(rtpC.fat_tail_ge20x_win_share, 1)}</span></div>
+      <div class="mech-stat"><span class="mech-label">${fmt("rdLossRate")}</span><span class="mech-value">${_pct(rtpC.loss_rate, 1)}</span></div>
+    </div>
+    ${rtpC.note ? `<p class="drilldown-hint">${_escHtml(rtpC.note)}</p>` : ""}
+  </div>`;
+
+  // ── FD2/FD4 multiplier band shape (the lock-RTP framing of the ST band dist) ──
+  const multHtml = _bandTable(lr.multiplier_distribution, "lrMultDist");
+
+  // ── parser_blind (FD2 chain-length ladder / FD4 wild ladder — honest, never
+  //    fabricated; same boundary respin_dynamics flags for M43/M279). ──
+  const pbItems = Array.isArray(lr.parser_blind) ? lr.parser_blind : [];
+  const pbHtml = pbItems.length
+    ? (`<div class="mech-section"><h3>${fmt("lrParserBlind")}</h3>` +
+       `<p class="drilldown-hint"><em>${fmt("rdParserBlind")} (待 per-ST 提取层):</em></p>` +
+       `<ul class="drilldown-hint" style="margin:0 0 0 1em;padding:0;">` +
+       pbItems.map((s) => `<li>${_escHtml(s)}</li>`).join("") +
+       `</ul>` +
+       (lr.parser_blind_reason ? `<p class="drilldown-hint">${_escHtml(lr.parser_blind_reason)}</p>` : "") +
+       `</div>`)
+    : "";
+
+  return `<p class="drilldown-hint"><strong>${fmt("panelLockRespinDynamics")}</strong></p>` +
+    grantHtml + detHtml + multHtml + rtpHtml + pbHtml;
+}
+
 // The dimension list (order = render order within each ST section).
 const SPINTYPE_DIMENSIONS = [
   _stDimWinDistribution,
@@ -5620,6 +5825,8 @@ const SPINTYPE_DIMENSIONS = [
   _stDimMinigame,
   _stDimWheel,
   _stDimFreespin,
+  _stDimLockRespin,
+  _stDimNudge,
   _stDimGenericDimension,
 ];
 
