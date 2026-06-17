@@ -1,0 +1,38 @@
+{
+  "machine_id": "M155",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M155/mode_1 bucket 2617ac0e/536fc5a2 2026-05-20"
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": null, "opens": null, "note": "single-ST line-pays slot; no feature trigger (GameplayTriggerType=0 on all 40000, ReMarks empty on all 40000). No bonus/choice/respin/freespin/wheel exists."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M155/mode_1"},
+    "evidence": "session_artifacts/_onboard/M155/01_understanding.md (W1: 40000 rounds, 1 chunk, single md5 bucket 2617ac0e/536fc5a2; ST=1=100% paid_spin; WinCredits==Σ PayoutIdToWinAmount 40000/40000; RewardLastNode==payId keyset 40000/40000; no fallback/orphan; hit-rate 24.398%, RTP 79.756% reconciliation-only) + 02_reuse.md (W2: live engine on the real chunk; STRICT-REUSE shared paid_spin path; rtp_integrity passed, layer2_fallback_buckets_found [], zero _unattributed, feature_errors {}; multiplier_wild probe detects wild5x verbatim) + 03_design.md (this doc: attribution=PayoutIdToWinAmount payId, no synth rule, round_win_rule null; multiplier_wild via CROSS_CUTTING hook for the ×5-wild dimension).",
+    "caveats": [
+      "ATTRIBUTION CLEAN: WinCredits==Σ PayoutIdToWinAmount 40000/40000; no SynthesizePayIdRule needed (round_win_rule null). sum(payid)==summary, fallback 0.",
+      "multiplier_wild WIRING (W2 framing corrected in 03_design §3): the runtime gate is derive_analyses(), NOT a manifest analyzer_features field — surfacing the ×5-wild dimension needs multiplier_wild added to CROSS_CUTTING in machine_spec.py (base-excluded; data-self-gating via applicable=false so it cannot cross-fire onto wildNx-free machines). The plugin code is reused verbatim (no fork). Frontend per-ST dimension _stDimMultiplierWild is NET-NEW (no renderer exists today). OPTIONAL: M155 onboards cleanly without it (wild5x volatility is already pooled into ST=1's band distribution). DEFERRED this batch (REUSE-ONLY onboard); machine_spec.py and frontend untouched.",
+      "parser_blind (per-round extraction items, never fabricated; the 95ba119 layer makes them buildable): (a) wild5x-ON-winning-line true ×5-trigger rate (PROVEN derivable: 372/9759=3.81% of wins; needs a per-round PayoutByPayline×StopSymbolsByCol cross — the multiplier_wild plugin only reads grid-presence symbol_counts_by_col); (b) RTP routed through the ×5 multiplier (multiplier_wild.estimated_rtp_contribution_pp is deferred_v2, framework-team). These are the M279 skin-11/wheel-CellIndex boundary precedent.",
+      "UNDER-SAMPLED (W1 §6/§8): payId 15505 (3-wild line, 10× flat) = 2 occurrences in 40000. Structure observed and parsed correctly; its probability/variance is statistically unreliable at this sample. FLAGGED, not fetched (dev uses cache).",
+      "modes: [1] only (the only cached/analyzed mode; ReelSkin=1, RTPId=1). Extend on data, never assumption (the M43/M279 cross-mode pattern).",
+      "PROVENANCE: all numbers belong to the single md5 bucket 2617ac0e/536fc5a2; any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s. Config/code md5 drift vs roster not evaluated (value-agnostic)."
+    ],
+    "date": "2026-06-17"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' present on every ST=1 round but =0 on 100% of 40000 in-sample records (W1 §2/§8). Fleet-wide test-interface-zeroing pattern (gate-8 ruling 2026-06-12: the test interface zeroes this field on ALL machines; one-time recorded, no per-machine re-confirm). Parse-as-is at 0; the field is in the ST=1 signature observed_fields, so parsing is FORWARD-COMPATIBLE. RTP 79.756% is the BASE RTP (excludes any progressive). Whether a jackpot accumulator exists OUTSIDE the spin engine is testspin-blind and requires platform declaration — none declared for M155 beyond the fleet-wide zeroing, so per gate-8 declaration protocol => none exist.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}
