@@ -1902,6 +1902,20 @@ button:disabled {
 }
 .config-override-status.ok { color: #059669; }
 .config-override-status.err { color: #dc2626; }
+.config-override-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.config-override-title { font-weight: 600; }
+.config-override-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
 .detail-meta {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

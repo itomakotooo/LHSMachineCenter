@@ -455,14 +455,24 @@
                    ``machineconfig/<underlying>Cfg.txt`` on the backend
                    each time focus changes; if a file matches the
                    focused machine's underlying (via variants_map),
-                   the card is revealed with a checkbox that opts the
-                   next sampling run into the override. Hidden entirely
-                   when no file matches — no noisy "没有文件" copy. -->
+                   the card shows the cached-config status + an upload
+                   button so the client can place / replace the override
+                   on the (now remote) server; the checkbox opts the next
+                   sampling run into it. Shown whenever a machine is
+                   focused (whether or not a config is cached yet). -->
               <div id="machineConfigOverride" class="machine-config-override hidden">
-                <label class="config-override-toggle">
-                  <input type="checkbox" id="useLocalMachineConfig" />
-                  <span data-i18n="labelUseLocalMachineConfig">使用本地 cfg</span>
+                <div class="config-override-head">
+                  <span class="config-override-title" data-i18n="labelTestConfig">测试 Config</span>
                   <span id="machineConfigFileInfo" class="muted small"></span>
+                </div>
+                <div class="config-override-actions">
+                  <button id="uploadMachineConfigBtn" type="button" class="small-btn" data-i18n="btnUploadConfig">上传/替换</button>
+                  <button id="clearMachineConfigBtn" type="button" class="small-btn hidden" data-i18n="btnClearConfig">清除</button>
+                  <input type="file" id="machineConfigFileInput" accept=".json,.txt,application/json" style="display:none" />
+                </div>
+                <label class="config-override-toggle hidden" id="useLocalConfigToggle">
+                  <input type="checkbox" id="useLocalMachineConfig" />
+                  <span data-i18n="labelUseLocalMachineConfig">本次采样使用此 config</span>
                 </label>
                 <div id="machineConfigStatus" class="config-override-status muted small"></div>
               </div>

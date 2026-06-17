@@ -1223,31 +1223,98 @@ function renderMachineConfigOverride() {
   const panel = byId("machineConfigOverride");
   if (!panel) return;
   const checkbox = byId("useLocalMachineConfig");
+  const toggle = byId("useLocalConfigToggle");
+  const clearBtn = byId("clearMachineConfigBtn");
   const info = byId("machineConfigFileInfo");
   const status = byId("machineConfigStatus");
   const s = state.machineConfigState;
-  if (!s || !s.available) {
-    // Hide entirely when no file exists (or state not probed yet).
+  // Show whenever a machine is focused (probed). No focus → hide.
+  if (!s || !s.machine) {
     panel.classList.add("hidden");
     if (checkbox) checkbox.checked = false;
     return;
   }
   panel.classList.remove("hidden");
-  if (checkbox) checkbox.checked = !!s.useLocal;
-  if (info) {
+  if (s.available) {
+    // A config is cached server-side: status + clear + use-this toggle.
     const kb = (s.bytes / 1024).toFixed(1);
     const mtime = s.mtime_iso ? s.mtime_iso.substring(0, 16).replace("T", " ") : "?";
-    info.textContent = `${s.filename} · ${kb} KB · ${mtime}`;
+    if (info) info.textContent = `${s.filename} · ${kb} KB · ${mtime}`;
+    if (toggle) toggle.classList.remove("hidden");
+    if (clearBtn) clearBtn.classList.remove("hidden");
+    if (checkbox) checkbox.checked = !!s.useLocal;
+    if (status) {
+      if (s.useLocal) {
+        status.textContent = "✓ 下次采样将用这份 config 覆盖服务端全局";
+        status.className = "config-override-status ok small";
+      } else {
+        status.textContent = "已缓存，本次未启用（勾选上方使用）";
+        status.className = "config-override-status muted small";
+      }
+    }
+  } else {
+    // No config cached yet: just the upload button + a hint.
+    if (info) info.textContent = "未上传（采样用服务器全局 config）";
+    if (toggle) toggle.classList.add("hidden");
+    if (clearBtn) clearBtn.classList.add("hidden");
+    if (checkbox) checkbox.checked = false;
+    if (status) { status.textContent = ""; status.className = "config-override-status muted small"; }
   }
-  if (status) {
-    if (s.useLocal) {
-      status.textContent = "✓ 下次开始采样将用这份 cfg 覆盖服务端全局配置";
-      status.className = "config-override-status ok small";
-    } else {
-      status.textContent = "";
+}
+
+// Upload (replace) the focused machine's local MachineConfig override. Reads
+// the picked file as text, POSTs it; backend validates (machine match +
+// structure) and writes machineconfig/<underlying>Cfg.txt. On success, re-probe
+// and auto-enable "use this config". Validation errors surface inline.
+function _uploadMachineConfig(machine) {
+  const input = byId("machineConfigFileInput");
+  if (!input || !machine) return;
+  input.value = "";  // reset so re-picking the same file still fires change
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const status = byId("machineConfigStatus");
+    if (status) {
+      status.textContent = "上传中…";
       status.className = "config-override-status muted small";
     }
-  }
+    try {
+      const text = await file.text();
+      const r = await fetch(`/api/machines/${encodeURIComponent(machine)}/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        if (status) {
+          status.textContent = `✗ ${body.detail || ("上传失败 " + r.status)}`;
+          status.className = "config-override-status err small";
+        }
+        return;
+      }
+      await _refreshMachineConfigAvailability(machine);
+      if (state.machineConfigState && state.machineConfigState.machine === machine) {
+        state.machineConfigState.useLocal = true;  // default to using a fresh upload
+        renderMachineConfigOverride();
+      }
+    } catch (e) {
+      if (status) {
+        status.textContent = `✗ 上传出错: ${(e && e.message) || e}`;
+        status.className = "config-override-status err small";
+      }
+    }
+  };
+  input.click();
+}
+
+// Clear the focused machine's cached config → sampling reverts to global cfg.
+async function _clearMachineConfig(machine) {
+  if (!machine) return;
+  try {
+    await fetch(`/api/machines/${encodeURIComponent(machine)}/config`, { method: "DELETE" });
+  } catch (_e) { /* best-effort; re-probe reflects truth */ }
+  await _refreshMachineConfigAvailability(machine);
 }
 
 function _toggleMultiSelect(machine) {
@@ -9240,6 +9307,14 @@ function bindEvents() {
       state.machineConfigState.useLocal = !!e.target.checked;
       renderMachineConfigOverride();
     }
+  });
+  byId("uploadMachineConfigBtn")?.addEventListener("click", () => {
+    const m = state.machineConfigState?.machine || state.focusedMachine;
+    if (m) _uploadMachineConfig(m);
+  });
+  byId("clearMachineConfigBtn")?.addEventListener("click", () => {
+    const m = state.machineConfigState?.machine || state.focusedMachine;
+    if (m) _clearMachineConfig(m);
   });
   byId("addServerBtn").addEventListener("click", () => addServer());
   byId("refreshMd5Btn").addEventListener("click", async () => {

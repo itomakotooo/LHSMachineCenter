@@ -8005,6 +8005,85 @@ def create_app(
             ).isoformat(),
         }
 
+    @app.post("/api/machines/{machine}/config")
+    def upload_machine_config(machine: str, req: dict[str, Any]) -> dict[str, Any]:
+        """Upload (replace) the per-underlying local MachineConfig override that
+        sampling sends as the upstream ``MachineConfig`` field.
+
+        The old flow had the operator drop ``machineconfig/<underlying>Cfg.txt``
+        on the box by hand — impossible now that the service runs remotely. This
+        writes that file from a CLIENT upload after light validation. One file
+        per underlying (variants share it); replaces any existing file. The next
+        sampling run with ``use_local_machine_config`` picks it up via the
+        unchanged flow, and rawdata/reports version under ``localcfg_<hash>``
+        exactly as before.
+
+        Body: ``{content: <JSON object or string>}``.
+        Validation: valid JSON object; carries the machine-matching top-level
+        ``<underlying>Cfg`` section (an M283 config cannot be uploaded for M15);
+        carries the core ``BetCfg`` + ``RTPCfg`` sections.
+        """
+        raw = req.get("content")
+        if raw is None:
+            raise HTTPException(status_code=400, detail="content is required")
+        if isinstance(raw, dict):
+            doc = raw
+        elif isinstance(raw, str):
+            try:
+                doc = json.loads(raw)
+            except (json.JSONDecodeError, TypeError) as exc:
+                raise HTTPException(status_code=400, detail=f"config is not valid JSON: {exc}")
+        else:
+            raise HTTPException(status_code=400, detail="content must be a JSON object or string")
+        if not isinstance(doc, dict):
+            raise HTTPException(status_code=400, detail="config must be a JSON object")
+        underlying, _existing = _resolve_local_cfg_for_machine(machine)
+        cfg_key = f"{underlying}Cfg"
+        if cfg_key not in doc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"config does not match {underlying}: missing the top-level "
+                    f"'{cfg_key}' section (top-level keys present: {sorted(doc)[:12]})"
+                ),
+            )
+        missing = [k for k in ("BetCfg", "RTPCfg") if k not in doc]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"config structure invalid: missing required section(s) {missing}",
+            )
+        MACHINECONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        target = MACHINECONFIG_DIR / f"{underlying}Cfg.txt"
+        atomic_json_write(target, doc)  # atomic replace (Windows-safe retry)
+        st = target.stat()
+        return {
+            "ok": True,
+            "machine": machine,
+            "underlying": underlying,
+            "filename": target.name,
+            "bytes": st.st_size,
+            "mtime_iso": datetime.fromtimestamp(
+                st.st_mtime, tz=timezone.utc,
+            ).isoformat(),
+        }
+
+    @app.delete("/api/machines/{machine}/config")
+    def clear_machine_config(machine: str) -> dict[str, Any]:
+        """Remove the per-underlying local MachineConfig override so sampling
+        reverts to the server's global cfg. No-op (cleared=False) if none cached."""
+        underlying, path = _resolve_local_cfg_for_machine(machine)
+        cleared = False
+        if path is not None and path.exists():
+            try:
+                path.unlink()
+                cleared = True
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=500, detail=f"failed to remove config: {exc}",
+                )
+        return {"ok": True, "machine": machine, "underlying": underlying, "cleared": cleared}
+
     @app.get("/api/rawdata/{machine}")
     def get_rawdata_status(machine: str) -> dict[str, Any]:
         """Per-mode rawdata status for a machine.
