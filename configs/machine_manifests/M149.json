@@ -1,0 +1,44 @@
+{
+  "machine_id": "M149",
+  "schema": "spintype-native/1",
+  "modes": [1, 2, 5, 7],
+  "inherits_from": null,
+  "spin_types": {
+    "35": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "01_understanding.md §1 M149/mode_1 bucket d5419c89 2026-05-20"
+    },
+    "36": {
+      "role": "respin",
+      "play": "MoveSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "01_understanding.md §1 M149/mode_1 bucket d5419c89 2026-05-20"
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "trigger|move", "opens": "MoveSpin", "note": "no round-level trigger pid; the move lock fires server-side via the wild-nudge RandomLockRespinUntilLose postprocessor (ST35 ReMarks='trigger' -> ST36 ReMarks='move', 1032:1032 deterministic). Same null-pid trigger shape as M43; respin is win-gated continuation (runlen 1-2)."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M149/mode_1", "cross_mode": []},
+    "evidence": "session_artifacts/_onboard/M149/01_understanding.md (ST roles from real 18-field core; ST35=paid_spin cost>0, ST36=respin cost=0/ReMarks=move/win-gated; sum(WinCredits) ST35 22,476,186 + ST36 10,513,547 = server TotalWin 32,989,733 exact). 02_reuse.md: BOTH STs STRICT-REUSE shared plugins (3-layer audit, layer-c report run feature_errors={}, rtp_integrity passed, aggregator parity 82.4743 exact, zero fallback). 03_design W3 re-verified sum(payid)==WinCredits 41484/41484, zero no-payid settlements -> NO SynthesizePayIdRule.",
+    "caveats": [
+      "Move lock 'until lose' stopping rule (why 580 sessions stop at 1 move, 452 at 2) not in round fields — observed run-length distribution only [01 §2/§7].",
+      "Trigger condition data-inferred: ST35 'trigger' rounds carry wildup 47.9% / wilddown 52.7% vs normal 0.9% — wild-nudge lock, corroborated by roster postprocessor name RandomLockRespinUntilLose; exact lock probability rawdata-unobservable [01 §2].",
+      "CurJackpotStoreWin present 100% but test-interface-zeroed (0 on 41484 rounds) — fleet-wide test-interface behavior, parse-as-is forward-compatible, NOT out_of_engine [01 §4/§7].",
+      "Single ~40k chunk: under-sampled tails (TotalWin tier-100 n=2, prize 55554 n=11, high7_5x n=125, RewardLastNode len-5 n=1) — rates noisy, FLAGGED not re-fetched [01 §0/§7].",
+      "Modes [2,5,7] not analyzed (only mode_1 cached); whether they add STs or only change config VALUES undetermined [01 §7].",
+      "ANALYZER DATA BOUNDARY: respin burst-length histogram + win-gating (M4) and the per-line PayoutByPayline ladder require per-round run-length / line accumulation that lives only in the parser (a base-closure file). respin_dynamics computes every metric the frozen accumulators expose and marks the parser-blind sub-metrics explicitly in its parser_blind field — framework-team work, escalated to the coordinator [03 §4]."
+    ],
+    "date": "2026-06-17"
+  },
+  "out_of_engine_mechanics": [],
+  "rtp_integrity": {"paid_st": [35], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

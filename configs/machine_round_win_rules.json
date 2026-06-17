@@ -45,6 +45,19 @@
         "M43"
       ]
     },
+    "m44_minigame_settlement": {
+      "_doc": "M44 WinMiniGame (ST51) settlement: WinCredits>0 on 100% (286/286) with NO PayoutIdToWinAmount (286/286). Without this rule the whole 14,781,000 minigame prize (35.97 pp, ~43% of all payback) lands in _unattributed_st51 and the RTP-integrity gate fails (layer2_fallback_buckets_found=['_unattributed_st51']). label_format=spin_type attributes it to a single real pid 'st51' (the minigame as one honest feature row). The real multiplier shape (x21->x110, mean x51.68) lives in the minigame_dynamics analysis (win/bet banding), NOT spread across symbol-tier pids (charter invariant 4). PROVEN config-only in 02_reuse.md (negative control: _unattributed_st51 14,781,000 -> 0, real pid 'st51' exact, rtp_integrity passed). EXACT M43/M279/M283 precedent (m43_minigame_settlement).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          51
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M44"
+      ]
+    },
     "m278_jewelfever_settlement": {
       "_doc": "M278 JewelFever (ST160) hold-and-respin settlement: WinCredits>0 on the single Settle=True round per burst with NO PayoutIdToWinAmount on 100% of 5,594 rows (incl. all 738 win-bearing settle rows — VERIFIED). Without this rule the whole ST160 prize (43.1% of all payback) lands in _unattributed_st160 and the RTP-integrity gate fails (layer2_fallback_buckets_found=['_unattributed_st160']). label_format=spin_type attributes it to a single real pid 'st160' (the JewelFever respin as one honest feature row). The real felt shape — burst-length value-build, per-trigger-path split (3 jewel skins + collect_peak), premium-Red tier, settled multiplier banding — lives in the freespin_dynamics analysis (hold_respin role) + the trigger_paths anchor-walk dimension, NOT spread across multiplier-tier pids (charter invariant 4). PROVEN config-only in 02_reuse.md (_unattributed_st160 74,523,800 -> 0, real pid 'st160' == 74,523,800 exact, rtp_integrity passed). EXACT M43/M279 precedent (m43_minigame_settlement / m279_wheel_settlement).",
       "type": "synthesize_pay_id",

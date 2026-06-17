@@ -1,0 +1,36 @@
+{
+  "machine_id": "M78",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M78/mode_1 bucket af8e207c/536fc5a2 2026-05-20"
+    }
+  },
+  "trigger": null,
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M78/mode_1"},
+    "evidence": "session_artifacts/_onboard/M78/01_understanding.md (W1, 40,000 rounds = 8x5,000, single real chunk _cache_version:3, single config_md5 af8e207c; ST=1=paid self-settling base reel spin from real fields - cost==bet==1000 100%, ReMarks empty 100%, carries own win fields, SpinTimes contiguous 1..5000, no transitions; our-RTP==server-RTP exact 91.45365%; hit-rate 20.8075%) + 02_reuse.md (W2: live engine on the real chunk; ST1 STRICT-REUSE PER_SPINTYPE + CROSS_CUTTING; derive_analyses == M15 reference set, NO role/play plugin; parity Sigma(payid rtp_pp)==rtp; zero fallback rows; zero feature_errors; honest absent-mechanic reporting). W3 (this doc): attribution dim = native PayoutIdToWinAmount symbol-line pay-id space - sum(payid)==WinCredits==server TotalWin 36,581,460 EXACT, wins_with_empty_payid==0 -> fallback 0 natively, NO SynthesizePayIdRule needed; role paid_spin already in KNOWN_ROLES (no extension); no role/play hook (no cross-fire surface); single parser-blind dim (labeled per-column multiplier-symbol breakout) FLAGGED not built.",
+    "caveats": [
+      "Single mode (mode_1) onboarding. Modes 2/5/7 are empty index stubs (_chunks.json {}), no rounds cached - OUT OF SCOPE. ReelSkin constant 1, RTPId constant 1 -> no skin/rtp breakout possible in this mode.",
+      "Top-tail under-sampled (W1 6/8): the x300 and x500 server tiers + round-level pid 101 (top fixed prize, x500) and pid 102 fire EXACTLY ONCE each in 40,000 rounds. Structural existence confirmed; rate precision is single-event/statistically unreliable. FLAGGED, NOT re-sampled (feedback_no_proactive_fetch.md).",
+      "GameplayTriggerType is constant 0 on all 40,000 rounds in mode_1 (present but non-differentiating; not in _BASELINE_ROUND_FIELDS so it surfaces in field_discovery). Non-zero semantics undetermined from mode-1 data. Parse-as-is; forward-compatible (in observed_fields). PayLineGroupId / PayoutGroupId constant 0 likewise.",
+      "Labeled per-COLUMN multiplier-symbol breakout (W1 5/CROSS E: each reel column carries a distinct _Nx/wild variant set) is PARSER_BLIND (needs per-round StopSymbolsByCol per-column accumulation at the extraction layer; plugins get coarse per-ST histograms) - SAME boundary as M279 skin-11 labeled breakout / wheel CellIndex map. CONTRIBUTION already captured (pooled into ST1 multiplier distribution + volatility fat tail); a LABELED breakout is a framework-team item IF wanted, NOT built here, NOT a blocker.",
+      "single config-md5 bucket af8e207c/536fc5a2 (first sample; no mixed-md5 pooling concern). bet=1000 must be passed on any manual/console generate (avoids the x1000 multiplier-column inflation trap)."
+    ],
+    "date": "2026-06-17"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST=1 round but =0 on 100% of 40,000 in-sample records (W1 8). Established fleet-wide test-interface zeroing pattern (memory: gate-8 ruling + M279/M283 sign-off - a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in observed_fields so parsing is FORWARD-COMPATIBLE (when the interface populates it, the existing parser picks it up unchanged). RTP 91.45365% (ST=1 base) excludes the progressive; it would add on top once the interface enables it. NOT a per-machine investigation - fleet pattern, one-time recorded.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}
