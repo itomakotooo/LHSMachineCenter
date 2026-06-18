@@ -1,0 +1,105 @@
+{
+ "machine_id": "M194",
+ "schema": "spintype-native/1",
+ "modes": [
+  1
+ ],
+ "inherits_from": null,
+ "spin_types": {
+  "140": {
+   "role": "paid_spin",
+   "play": "NormalCollectionSpin",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "BetAmount",
+    "CostCredits",
+    "StopSymbolsByCol",
+    "ReelSkin",
+    "WinCredits",
+    "AccCredits",
+    "CollectCount"
+   ],
+   "observed_fields": [
+    "AccCredits",
+    "BetAmount",
+    "CollectCount",
+    "CostCredits",
+    "CreditsSymbols",
+    "CurJackpotStoreWin",
+    "GameplayTriggerType",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "PayLineGroupId",
+    "PayoutByPayline",
+    "PayoutGroupId",
+    "PayoutIdToWinAmount",
+    "RTPId",
+    "ReelSkin",
+    "RewardLastNode",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "AccCredits": 1.0,
+    "CollectCount": 1.0,
+    "CreditsSymbols": 0.9135,
+    "LastCredits": 1.0,
+    "CostCredits": 1.0,
+    "WinCredits": 1.0,
+    "BetAmount": 1.0,
+    "ReelSkin": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "PayoutGroupId": 1.0,
+    "PayLineGroupId": 1.0,
+    "CurJackpotStoreWin": 1.0,
+    "GameplayTriggerType": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0,
+    "RewardLastNode": 0.0569,
+    "PayoutByPayline": 0.0569,
+    "PayoutIdToWinAmount": 0.0569
+   },
+   "observed_fields_source": "st_inventory M194/mode_1 2026-06-18 (40000 ST140 rounds, agent-verdict role=paid_spin)"
+  }
+ },
+ "trigger": {
+  "payout_id": null,
+  "remarks": "",
+  "note": ""
+ },
+ "validation": {
+  "status": "auto",
+  "user_signed_off": false,
+  "confirmed_against": {
+   "mode": 1,
+   "rawdata": "M194/mode_1",
+   "cross_mode": [
+    1
+   ]
+  },
+  "evidence": "M194/mode_1 has ONLY ST140 (40000/40000 rounds, 100%; re-derived with parse_rounds over chunk_0002, 8 robots). ST140 is the cost-bearing base reel spin: CostCredits=1000 on 100% of rounds; 2276 winning rounds, ALL 2276 win via PayoutIdToWinAmount (nopayid_win=0; PayoutByPayline non-empty only co-present with payid, never payid-less). Play name 'NormalCollectionSpin' verified VERBATIM from server analysisResult.FeatureWin taxonomy — it is the SOLE top-level FeatureWin key, present across all 8 robots (not invented). CollectCount/AccCredits are in the signature so play=NormalCollectionSpin per role rule. Conservation proof: sum(PayoutIdToWinAmount)==sum(WinCredits) EXACT = 14,186,000 across all winning rounds, zero mismatches, zero residual. Collect audit: SymbolIndexToRewards='{}' 100%, CollectCount=0 100%, AccCredits=0 100%, CreditsSymbols is only the per-spin '<payid>:<bet> | ' echo — collect-coin channel DORMANT, no additive non-payid win (WinCredits>sum(payid) on 0 rounds). ReMarks empty 100% (no WheelSpin/FinalMinigame/Lock/Freespin/ReSpin/IndexToWheelCellData; raw-text scan = 0 occurrences). No ST14/15 TopDollar present. Signature byte-matches the validated M192/M279/M153 ST140 NormalCollectionSpin paid_spin precedent -> STRICT-REUSE generic PER_SPINTYPE plugin, no new code, no synth, no RoundWinRule. All five ABORT gates PASS.",
+  "caveats": [
+   "Single chunk (chunk_0002) only — a thin 40k-spin sample; structure is value-agnostic, report numbers should regenerate from a fuller cache when available.",
+   "CollectCount/AccCredits/CreditsSymbols collect-coin channel is DORMANT in this sample (CollectCount=0 100%, SymbolIndexToRewards empty 100%). If upstream later populates a live additive collect channel, re-evaluate for a collect-settlement ST — currently no live channel, no _unattributed residual.",
+   "CurJackpotStoreWin present on every ST140 round but =0 100% (fleet-wide test-interface-zeroed progressive, user-confirmed M275 gate-8). Parsed as-is contributing 0, forward-compatible; reported RTP is the BASE (excludes the progressive).",
+   "M194 is structurally a strict subset of the M192 precedent (same ST140 NormalCollectionSpin, but WITHOUT the ST139 ListRewardWheel settlement that M192 carries) — confirm via integrity/breaker that no ST139 settlement appears in a fuller cache before final gate-8 sign-off."
+  ],
+  "date": "2026-06-18"
+ },
+ "out_of_engine_mechanics": [],
+ "round_win_rule": null,
+ "rtp_integrity": {
+  "paid_st": [
+   140
+  ],
+  "fallback_warn": 0.5,
+  "fallback_fail": 5.0
+ }
+}

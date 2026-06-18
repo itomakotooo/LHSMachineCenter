@@ -1,0 +1,205 @@
+{
+ "machine_id": "M246",
+ "schema": "spintype-native/1",
+ "modes": [
+  1
+ ],
+ "inherits_from": null,
+ "spin_types": {
+  "140": {
+   "role": "paid_spin",
+   "play": "NormalCollectionSpin",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "BetAmount",
+    "CostCredits",
+    "StopSymbolsByCol",
+    "ReelSkin",
+    "WinCredits",
+    "AccCredits",
+    "CollectCount",
+    "CreditsSymbols"
+   ],
+   "observed_fields": [
+    "AccCredits",
+    "BetAmount",
+    "CollectCount",
+    "CostCredits",
+    "CreditsSymbols",
+    "CurJackpotStoreWin",
+    "GameplayTriggerType",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "PayLineGroupId",
+    "PayoutByPayline",
+    "PayoutGroupId",
+    "PayoutIdToWinAmount",
+    "RTPId",
+    "ReMarks",
+    "ReelSkin",
+    "RewardLastNode",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "AccCredits": 1.0,
+    "CollectCount": 1.0,
+    "CreditsSymbols": 1.0,
+    "LastCredits": 1.0,
+    "CostCredits": 1.0,
+    "WinCredits": 1.0,
+    "BetAmount": 1.0,
+    "ReelSkin": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "PayoutGroupId": 1.0,
+    "PayLineGroupId": 1.0,
+    "CurJackpotStoreWin": 1.0,
+    "GameplayTriggerType": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0,
+    "RewardLastNode": 0.2084,
+    "PayoutByPayline": 0.2084,
+    "PayoutIdToWinAmount": 0.2084,
+    "ReMarks": 0.0312
+   },
+   "observed_fields_source": "st_inventory M246/mode_1 2026-06-18 (40000 ST140 rounds, agent-verdict role=paid_spin)"
+  },
+  "13": {
+   "role": "hold_respin",
+   "play": "LockReSpin",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "BetAmount",
+    "CostCredits",
+    "StopSymbolsByCol",
+    "ReelSkin",
+    "WinCredits",
+    "ReMarks",
+    "LockLines"
+   ],
+   "observed_fields": [
+    "BetAmount",
+    "CostCredits",
+    "CurJackpotStoreWin",
+    "GameplayTriggerType",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "LockLines",
+    "PayLineGroupId",
+    "PayoutByPayline",
+    "PayoutGroupId",
+    "PayoutIdToWinAmount",
+    "RTPId",
+    "ReMarks",
+    "ReelSkin",
+    "RewardLastNode",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "LockLines": 1.0,
+    "ReMarks": 1.0,
+    "LastCredits": 1.0,
+    "CostCredits": 1.0,
+    "WinCredits": 1.0,
+    "BetAmount": 1.0,
+    "ReelSkin": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "PayoutGroupId": 1.0,
+    "PayLineGroupId": 1.0,
+    "CurJackpotStoreWin": 1.0,
+    "GameplayTriggerType": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0,
+    "RewardLastNode": 0.3245,
+    "PayoutByPayline": 0.3245,
+    "PayoutIdToWinAmount": 0.3245
+   },
+   "observed_fields_source": "st_inventory M246/mode_1 2026-06-18 (1248 ST13 rounds, agent-verdict role=hold_respin)"
+  },
+  "2": {
+   "role": "settlement",
+   "play": "Wheel",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "StopSymbolsByCol",
+    "WinCredits",
+    "ReMarks"
+   ],
+   "observed_fields": [
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "RTPId",
+    "ReMarks",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "ReMarks": 1.0,
+    "LastCredits": 1.0,
+    "WinCredits": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0
+   },
+   "observed_fields_source": "st_inventory M246/mode_1 2026-06-18 (3976 ST2 rounds, agent-verdict role=settlement)"
+  }
+ },
+ "trigger": {
+  "payout_id": null,
+  "remarks": "Single self-settling paid base reel-spin ST140 (NormalCollectionSpin) opens two events: (1) ST13 hold_respin/LockReSpin via ST140 ReMark 'TriggerRespin' (1248 arms == 1248 ST13 rounds; trigger_anchor_walk fallback, GameplayTriggerType=0 non-discriminating, no CollectCount-pity path); (2) ST2 settlement/Wheel via a ST140-opened run (357 entries, all preceded by ST140; 1-N wheel spins per burst, 3976 total). ST2 has NO native payid -> SynthesizePayIdRule (synth). No ST14/15 (no TopDollar). No live-collect residual (ST140 WinCredits==sum(payid) exact, SymbolIndexToRewards empty). No per-cell wheel JSON.",
+  "note": "Single self-settling paid base reel-spin ST140 (NormalCollectionSpin) opens two events: (1) ST13 hold_respin/LockReSpin via ST140 ReMark 'TriggerRespin' (1248 arms == 1248 ST13 rounds; trigger_anchor_walk fallback, GameplayTriggerType=0 non-discriminating, no CollectCount-pity path); (2) ST2 settlement/Wheel via a ST140-opened run (357 entries, all preceded by ST140; 1-N wheel spins per burst, 3976 total). ST2 has NO native payid -> SynthesizePayIdRule (synth). No ST14/15 (no TopDollar). No live-collect residual (ST140 WinCredits==sum(payid) exact, SymbolIndexToRewards empty). No per-cell wheel JSON."
+ },
+ "validation": {
+  "status": "auto",
+  "user_signed_off": false,
+  "confirmed_against": {
+   "mode": 1,
+   "rawdata": "M246/mode_1",
+   "cross_mode": [
+    1
+   ]
+  },
+  "evidence": "M246/mode_1, single config bucket 7cda1cc4/20707cb0, chunk_0002.json (8 robots; chunk_0001 referenced in sidecar but absent on disk — same md5 bucket, not refetched per cache-only rule). EXHAUSTIVE ST tally = {140:40000, 13:1248, 2:3976} (only 3 SpinTypes; no ST14/15). Server FeatureWin taxonomy = {NormalCollectionSpin, LockReSpin, Wheel, BuffCollectionMap}; per-play WinCredits/Times map EXACTLY to per-ST sums: NormalCollectionSpin 26,484,500/40000==ST140; LockReSpin 3,057,500/1248==ST13; Wheel 6,530,500/3976==ST2; BuffCollectionMap 0/40 is a zero-win analytic marker inside FeatureWin with NO distinct SpinType (no role). ST140 (paid_spin/NormalCollectionSpin): EXACT signature match to M153 ST140 (AccCredits/CollectCount/CreditsSymbols collect-window fields present 100%); CostCredits=BetAmount=1000 on 100% (cost_pos=40000=n); 7204 winning rounds ALL carry native PayoutIdToWinAmount, 0 empty-payid wins (ABORT-1=0); conservation exact: WinCredits==sum(payid) on every win (0 mismatches); ABORT-3 collect-coin residual = 0 (no win round has sum(payid)<WinCredits); SymbolIndexToRewards empty on 100% (no additive live-collect channel); AccCredits/CollectCount are inert progress counters (collect-map meter), not win sources. ST13 (hold_respin/LockReSpin): EXACT signature match to M201 ST13 (LockLines present 100%, 19-field set); CostCredits=0 free held-wild respin; ReMarks 'null'; play name from server SpinType-label 'LockReSpin' (LockReSpin fid-Times sum 851+12+191+81+84+28+1=1248==n); native payid, WinCredits==sum(payid) on all 397 wins; armed by ST140 ReMark 'TriggerRespin' (ST140 TriggerRespin count 1248 == ST13 n 1248; every ST13 burst preceded by ST140 1235/1235). ST2 (settlement/Wheel): EXACT signature match to M158 ST2 (8-field bare-settlement [IsLackCreditsSpin,LastCredits,RTPId,ReMarks,SpinTimes,SpinType,StopSymbolsByCol,WinCredits]); PayoutIdToWinAmount empty on 100% (3976/3976) -> goes in synth_sts (SynthesizePayIdRule), total 6,530,500 WinCredits to synth; ReMarks 'WheelSpin CellIndex n; WheelId k' -> wheel_cells extractor (cell_pattern CellIndex\\\\s+(\\\\d+), CellIndex 1-27, WheelId 1 or 8); ABORT-4=0 (no IndexToWheelCellData / per-cell wheel JSON); every ST2 burst preceded by ST140 357/357. Money-agnostic; all 3 roles already in KNOWN_ROLES; zero new code (manifest + SynthesizePayIdRule for ST2 only).",
+  "caveats": [
+   "chunk_0001.json absent on disk (sidecar references it, 1000 spins, same md5 bucket 7cda1cc4/20707cb0); analysis used chunk_0002's ~42,624 rounds only — provenance clean (single md5 bucket, no drift). Not refetched (cache-only rule).",
+   "ST13 ReMarks are 'null' (not 'Lock'); the hold_respin/LockReSpin classification is anchored on the field signature (LockLines present 100%) + server FeatureWin SpinType-label 'LockReSpin' + CostCredits=0 free held-wild respin + the ST140 'TriggerRespin' arming ReMark (1248==1248), exactly matching M201 ST13. ReMarks text is not the discriminator here.",
+   "ST13 trigger: GameplayTriggerType=0 on all ST13 AND ST140 rounds (not a discriminator); the lock-respin opens off the paid ST140 carrying ReMarks 'TriggerRespin' -> single trigger path via the trigger_anchor_walk fallback (M201/M277 precedent). No CollectCount-pity second path needed (the CollectCount field belongs to ST140's intra-ST collect window, not a ST13 trigger metronome).",
+   "ST2 Wheel WheelId takes values {1:3602, 8:374}; the per-round prize is still a simple bare WinCredits settlement (wheel_cells extractor derives prize=WinCredits/bet per CellIndex). WheelId selects the wheel layout/skin; cell_count and prize ladder are DATA-DERIVED from M246's own ST2 rounds, NOT copied from a precedent. Cell-x-WheelId felt breakout (if desired) is a parser-blind drilldown, not fabricated into the manifest.",
+   "ST140 carries a collect-WINDOW intra-ST state dimension (AccCredits/CollectCount accumulate; BuffCollectionMap is its zero-win progress marker). This is an INTRA-ST felt dimension already fully attributed inside ST140's PayoutIdToWinAmount (conservation exact, ABORT-3=0); the labeled CollectCount-state x tier ladder is parser-blind (framework-team, base_hash-flipping), NOT an onboarding deliverable and NOT fabricated. Same boundary as M153.",
+   "CurJackpotStoreWin present on the reel STs (140/13) but =0 on 100% of in-sample records — the established fleet-wide test-interface jackpot-store zeroing (gate-8 declaration-confirmed pattern). Parse-as-is at 0; forward-compatible (already in signatures). Reported RTP excludes the progressive.",
+   "Modes 2/5/7 exist on disk but are OUT OF SCOPE (mode-1-only onboarding). Each needs its own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off."
+  ],
+  "date": "2026-06-18"
+ },
+ "out_of_engine_mechanics": [],
+ "round_win_rule": null,
+ "rtp_integrity": {
+  "paid_st": [
+   140
+  ],
+  "fallback_warn": 0.5,
+  "fallback_fail": 5.0
+ }
+}

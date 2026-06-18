@@ -1,0 +1,104 @@
+{
+ "machine_id": "M10",
+ "schema": "spintype-native/1",
+ "modes": [
+  1
+ ],
+ "inherits_from": null,
+ "spin_types": {
+  "13": {
+   "role": "paid_spin",
+   "play": "LockReSpin",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "BetAmount",
+    "CostCredits",
+    "StopSymbolsByCol",
+    "ReelSkin",
+    "WinCredits"
+   ],
+   "observed_fields": [
+    "BetAmount",
+    "CostCredits",
+    "CurJackpotStoreWin",
+    "GameplayTriggerType",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "LockLines",
+    "PayLineGroupId",
+    "PayoutByPayline",
+    "PayoutGroupId",
+    "PayoutIdToWinAmount",
+    "RTPId",
+    "ReMarks",
+    "ReelSkin",
+    "RewardLastNode",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "LastCredits": 1.0,
+    "CostCredits": 1.0,
+    "WinCredits": 1.0,
+    "BetAmount": 1.0,
+    "ReelSkin": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "RewardLastNode": 0.2195,
+    "PayoutByPayline": 0.2195,
+    "PayoutGroupId": 1.0,
+    "PayLineGroupId": 1.0,
+    "PayoutIdToWinAmount": 0.2195,
+    "CurJackpotStoreWin": 1.0,
+    "GameplayTriggerType": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0,
+    "LockLines": 0.2835,
+    "ReMarks": 0.2835
+   },
+   "observed_fields_source": "st_inventory M10/mode_1 2026-06-18 (40000 ST13 rounds, agent-verdict role=paid_spin)"
+  }
+ },
+ "trigger": {
+  "payout_id": null,
+  "remarks": "No payout-id/ReMarks trigger opens a sub-session: single ST13 base game, lock feature fires inline (ReMarks 'trigger' == LockLines populated, 11,339 rounds). No trigger_paths dimension (single ST, no discriminator to reconstruct).",
+  "note": "No payout-id/ReMarks trigger opens a sub-session: single ST13 base game, lock feature fires inline (ReMarks 'trigger' == LockLines populated, 11,339 rounds). No trigger_paths dimension (single ST, no discriminator to reconstruct)."
+ },
+ "validation": {
+  "status": "auto",
+  "user_signed_off": false,
+  "confirmed_against": {
+   "mode": 1,
+   "rawdata": "M10/mode_1",
+   "cross_mode": [
+    1
+   ]
+  },
+  "evidence": "3-layer reuse audit passed for M10 ST13 -> STRICT-REUSE of M23 precedent (paid_spin/LockReSpin), manifest-only, no new code.",
+  "caveats": [
+   "Manifest-only onboard, NO new code: the frozen parser already names M10 in both the cost_credits_unreliable short-circuit (parser.py L645/L1668) and the LockLines accumulator (L1591-1593). Mirror M23.json EXACTLY (single paid_spin ST13, play LockReSpin, economy WinCredits/real); differs only that M10/mode_1 has 2 ReMarks groups (''/trigger) vs M23 (''/trigger) — same structure.",
+   "CostCredits=0 on 100% of mode-1 rounds; rtp_integrity.paid_st=[13] uses BetAmount as the per-round paid denominator (correct paid-round RTP). This is the intended legacy-LockReSpin handling, not a defect.",
+   "LockLines lines-lock feature is PARSER-BLIND for a per-round lock-pattern x outcome dimension (frozen parser accumulates coarse lock_lines_spins / lock_lines_total_lines / lock_lines_win only; no per-round LockLines geometry breakout). The felt LockReSpin experience is REAL but not fabricated into the manifest as a dimension. Same fleet-wide framework-team candidate (generic LockLines extractor) already logged for the LockReSpin machines M23/M131/M133; M10 onboards correctly without it.",
+   "CurJackpotStoreWin present and =0 on 100% of rounds: established fleet-wide test-interface zeroing (declaration-confirmed, gate-8 ruling). Parse-as-is at 0; field is in observed_fields so parsing is forward-compatible. Out-of-engine, current RTP impact 0.",
+   "GameplayTriggerType present and constant 0 on all 40,000 rounds (machine emits it); parse-as-is, forward-compatible.",
+   "Only mode_1 analyzed (mode-1-only onboarding). mode_2/mode_5/mode_7 dirs exist on disk and MUST each get their own W1 understanding + reuse pass before any reuse claim.",
+   "Single chunk on disk (chunk_0001.json, single config-md5 bucket per _config_md5/_code_md5); no mixed-md5 pooling concern. validation stays 'auto' until onboard-breaker (our==server) + gate-7 console render verify + user gate-8 sign-off."
+  ],
+  "date": "2026-06-18"
+ },
+ "out_of_engine_mechanics": [],
+ "round_win_rule": null,
+ "rtp_integrity": {
+  "paid_st": [
+   13
+  ],
+  "fallback_warn": 0.5,
+  "fallback_fail": 5.0
+ }
+}

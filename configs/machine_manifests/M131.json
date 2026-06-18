@@ -1,0 +1,102 @@
+{
+ "machine_id": "M131",
+ "schema": "spintype-native/1",
+ "modes": [
+  1
+ ],
+ "inherits_from": null,
+ "spin_types": {
+  "13": {
+   "role": "paid_spin",
+   "play": "LockReSpin",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "BetAmount",
+    "CostCredits",
+    "StopSymbolsByCol",
+    "ReelSkin",
+    "WinCredits"
+   ],
+   "observed_fields": [
+    "BetAmount",
+    "CostCredits",
+    "CurJackpotStoreWin",
+    "GameplayTriggerType",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "LockLines",
+    "PayLineGroupId",
+    "PayoutByPayline",
+    "PayoutGroupId",
+    "PayoutIdToWinAmount",
+    "RTPId",
+    "ReMarks",
+    "ReelSkin",
+    "RewardLastNode",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "LastCredits": 1.0,
+    "CostCredits": 1.0,
+    "WinCredits": 1.0,
+    "BetAmount": 1.0,
+    "ReelSkin": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "PayoutGroupId": 1.0,
+    "PayLineGroupId": 1.0,
+    "CurJackpotStoreWin": 1.0,
+    "GameplayTriggerType": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0,
+    "RewardLastNode": 0.1618,
+    "PayoutByPayline": 0.1618,
+    "PayoutIdToWinAmount": 0.1618,
+    "LockLines": 0.1188,
+    "ReMarks": 0.1188
+   },
+   "observed_fields_source": "st_inventory M131/mode_1 2026-06-18 (40000 ST13 rounds, agent-verdict role=paid_spin)"
+  }
+ },
+ "trigger": {
+  "payout_id": null,
+  "remarks": "Single-ST LockReSpin base game (mode 1): every round is SpinType=13, BetAmount=1000, CostCredits=0 (legacy LockReSpin shape M10/M23/M131/M133; frozen parser short-circuits to PAID via cost_credits_unreliable, parser.py L645/L1668 name M131). SpinTimes increments +1 per round (each round its own paid reel spin; no grouping). The lines-lock feature fires INLINE inside the same paid ST: ReMarks=='trigger' on 4,754/40,000 rounds (11.9%) exactly when LockLines is populated (e.g. '1-2-','1-','1-3-'), 100% overlap. NOT a granted free session and NOT a separate respin/settlement ST — the base reel spin carries a feature flag. Server FeatureWin taxonomy has a SINGLE key 'LockReSpin' (the whole base game is the LockReSpin feature). No trigger_paths dimension (single ST; the feature is parser-blind LockLines geometry, not a manifest-reconstructed discriminator). payout_id=null / remarks=null at the manifest trigger level (no granting event).",
+  "note": "Single-ST LockReSpin base game (mode 1): every round is SpinType=13, BetAmount=1000, CostCredits=0 (legacy LockReSpin shape M10/M23/M131/M133; frozen parser short-circuits to PAID via cost_credits_unreliable, parser.py L645/L1668 name M131). SpinTimes increments +1 per round (each round its own paid reel spin; no grouping). The lines-lock feature fires INLINE inside the same paid ST: ReMarks=='trigger' on 4,754/40,000 rounds (11.9%) exactly when LockLines is populated (e.g. '1-2-','1-','1-3-'), 100% overlap. NOT a granted free session and NOT a separate respin/settlement ST — the base reel spin carries a feature flag. Server FeatureWin taxonomy has a SINGLE key 'LockReSpin' (the whole base game is the LockReSpin feature). No trigger_paths dimension (single ST; the feature is parser-blind LockLines geometry, not a manifest-reconstructed discriminator). payout_id=null / remarks=null at the manifest trigger level (no granting event)."
+ },
+ "validation": {
+  "status": "auto",
+  "user_signed_off": false,
+  "confirmed_against": {
+   "mode": 1,
+   "rawdata": "M131/mode_1",
+   "cross_mode": [
+    1
+   ]
+  },
+  "evidence": "M131/mode_1 is a single-ST legacy LockReSpin base game. Re-derived with parse_rounds over the real chunk (rawdata/M131/mode_1/chunk_0001.json, 40,000 rounds): SpinType tally {13:40000} (genuinely single ST, no ST14/ST15 TopDollar). CostCredits==0 on 100% of rounds while BetAmount==1000 on 100% — the legacy LockReSpin shape (M10/M23/M131/M133). The frozen parser short-circuits these to PAID via cost_credits_unreliable (parser.py L651-666 detect all-zero-cost+any-positive-bet; L1668-1670 names M131 explicitly and forces is_paid=True), so every round is its own paid reel spin. SpinTimes increments +1 per round (1,2,3,...; verified monotonic) => no SpinTimes-grouping / no in-line free continuation. The lines-lock feature fires INLINE within the same paid ST13: ReMarks=='trigger' on 4,754/40,000 rounds (11.9%) exactly when LockLines is populated (e.g. '1-2-','1-','1-3-'), 100% overlap (lock rounds == trigger rounds == 4754); the parser recognizes+accumulates LockLines (parser.py L1591) -> lock_lines_spins=4754, lock_lines_total_lines=5275. NO separate respin/freespin/settlement/wheel ST. Play name 'LockReSpin' verified from the server analysisResult FeatureWin taxonomy (SINGLE key 'LockReSpin'; TotalWin SpinType 'Normal') and reproduced by the parser's upstream_feature_tally (single 'LockReSpin' key) — NOT invented. Conservation: PayoutIdToWinAmount sums EXACTLY to WinCredits on all 6,470/6,470 winning rounds (0 mismatch); aggregate sum(WinCredits)=34,283,000 == sum(payid)=34,283,000; parse_chunk_response gives spin_type_win[13]=34,283,000 == sum(payout_id_win_by_spin_type)=34,283,000 with ZERO fallback/_unattributed bucket. Collect audit: ABORT3 residual (WinCredits>0 AND payid present AND sum(payid)<WinCredits) = 0; CurJackpotStoreWin=0 on 100% (established test-interface-zeroed fleet pattern), no AccCredits/CollectCount fields => no live collect-coin. ABORT1 paid-win-with-no-payid=0; ABORT4 IndexToWheelCellData=0. Field signature is byte-identical to validated precedent M23 ST13 (paid_spin/LockReSpin), and M131 is named in M23's own manifest note as part of the M10/M23/M131/M133 group. paid_session_count=40000, paid_bet=40,000,000 (non-zero denominator), base RTP=85.71% (value-agnostic, not pinned). 3-layer audit PASS: (a) signature match to M23 ST13; (b) parser code reads (M131 named L645/L1668, LockLines L1591); (c) parse_chunk_response run on real data with correct semantic output. STRICT-REUSE: manifest-only onboard, mirroring M23.json shape; NO new code, NO synth pay-id rule, NO round_win_rule.",
+  "caveats": [
+   "Despite role being labelled paid_spin (matching the M23 precedent, not hold_respin), the win taxonomy is entirely 'LockReSpin' — the base game IS the lock-respin feature, paid via natural PayoutIdToWinAmount. This is the M23/M10/M133 archetype, distinct from M227/M277/M201-style machines where ST13 hold_respin is a free CostCredits=0 event granted off a SEPARATE paid base ST (ST140); M131 has no separate base ST.",
+   "CostCredits is 0 on 100% of rounds; the pre-scan's paid_frac:1 reflects BetAmount>0, not CostCredits. Paid classification relies entirely on the frozen parser's cost_credits_unreliable short-circuit (parser.py), which is a load-bearing precondition for this onboard. If that short-circuit were ever removed/altered, M131 would silently reclassify all 40,000 rounds as bonus and zero the paid denominator — but it is frozen and explicitly names M131.",
+   "CurJackpotStoreWin present on every round but =0 (test-interface-zeroed fleet pattern, declaration-confirmed per gate-8 ruling); parse as-is at 0, no progressive jackpot win visible in current testspin interface.",
+   "Money-agnostic: base RTP ~85.71% observed is descriptive only and must NOT be pinned/validated against a target.",
+   "Only mode_1 was audited (the onboarding scope). mode_2/5/7 chunks exist on disk but were not inspected; if onboarded later they should be re-scanned for signature drift (e.g. skin/feature changes by mode)."
+  ],
+  "date": "2026-06-18"
+ },
+ "out_of_engine_mechanics": [],
+ "round_win_rule": null,
+ "rtp_integrity": {
+  "paid_st": [
+   13
+  ],
+  "fallback_warn": 0.5,
+  "fallback_fail": 5.0
+ }
+}

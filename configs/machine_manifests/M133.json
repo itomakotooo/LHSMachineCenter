@@ -1,0 +1,102 @@
+{
+ "machine_id": "M133",
+ "schema": "spintype-native/1",
+ "modes": [
+  1
+ ],
+ "inherits_from": null,
+ "spin_types": {
+  "13": {
+   "role": "paid_spin",
+   "play": "Normal",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "BetAmount",
+    "CostCredits",
+    "StopSymbolsByCol",
+    "ReelSkin",
+    "WinCredits"
+   ],
+   "observed_fields": [
+    "BetAmount",
+    "CostCredits",
+    "CurJackpotStoreWin",
+    "GameplayTriggerType",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "LockLines",
+    "PayLineGroupId",
+    "PayoutByPayline",
+    "PayoutGroupId",
+    "PayoutIdToWinAmount",
+    "RTPId",
+    "ReMarks",
+    "ReelSkin",
+    "RewardLastNode",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "LockLines": 0.0843,
+    "ReMarks": 0.0843,
+    "LastCredits": 1.0,
+    "CostCredits": 1.0,
+    "WinCredits": 1.0,
+    "BetAmount": 1.0,
+    "ReelSkin": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "RewardLastNode": 0.1932,
+    "PayoutByPayline": 0.1932,
+    "PayoutGroupId": 1.0,
+    "PayLineGroupId": 1.0,
+    "PayoutIdToWinAmount": 0.1932,
+    "CurJackpotStoreWin": 1.0,
+    "GameplayTriggerType": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0
+   },
+   "observed_fields_source": "st_inventory M133/mode_1 2026-06-18 (40000 ST13 rounds, agent-verdict role=paid_spin)"
+  }
+ },
+ "trigger": {
+  "payout_id": null,
+  "remarks": "Lock-respin (server FeatureWin='LockReSpin') is in-line on ST=13: a base spin landing a full-wild column grants a free 'trigger' respin (LockLines records the locked column); chains up to 2 columns; resolves back to a '' base spin. Captured by shared parser lock_lines_* accumulator.",
+  "note": "Lock-respin (server FeatureWin='LockReSpin') is in-line on ST=13: a base spin landing a full-wild column grants a free 'trigger' respin (LockLines records the locked column); chains up to 2 columns; resolves back to a '' base spin. Captured by shared parser lock_lines_* accumulator."
+ },
+ "validation": {
+  "status": "auto",
+  "user_signed_off": false,
+  "confirmed_against": {
+   "mode": 1,
+   "rawdata": "M133/mode_1",
+   "cross_mode": [
+    1
+   ]
+  },
+  "evidence": "M133/mode_1 has a SINGLE SpinType (ST=13) across all 40,000 rounds (8 robots x 5000). ST=13 is the cost-bearing base reel spin paying via PayoutIdToWinAmount with an IN-LINE wild-lock respin feature carried on the same ST (ReMarks-discriminated), NOT a separate ST. SEQUENCE PROOF: ReMarks dist = {'' : 36626 (base spins), 'trigger' : 3374 (lock respins)}; the 'trigger' records carry a non-empty LockLines token (e.g. '1-','2-','3-','1-2-') recording which reel column(s) landed a full-wild column ('wild-wild-wild-'/'wild2x-wild2x-wild2x-') and locked; respin chains are bounded (chain-length dist {1:3028, 2:173}, max 2 locked columns) and every chain is preceded AND followed by a '' base spin (preceding ReMarks {'' :3200}, following {'' :3198}). PLAY-NAME SOURCE (server, not invented): per-robot analysisResult taxonomy declares base TotalWin SpinType='Normal' and FeatureWin='LockReSpin' (the in-line lock-respin feature); server FeatureWin LockReSpin total = 34,483,000 = full machine win. ECONOMY: CostCredits=0 on ALL records (a per-record echo, NOT the real cost); the true per-spin economy is captured by the identity LastCredits = 1e14 - 1000(bet) + WinCredits, which holds for ALL 40,000 records (implied per-record cost = 1000 for both '' and 'trigger'); win field = WinCredits. CONSERVATION (exact): for all 7728 winning rounds sum(PayoutIdToWinAmount values) == WinCredits with zero exceptions; global sum(WinCredits) == sum(payid) == 34,483,000. COLLECT AUDIT: 0 rounds with Win>0 AND payid present AND sum(payid)<Win (no additive non-payid residual). 3-LAYER REUSE AUDIT: (a) ST=13 signature [BetAmount,CostCredits,StopSymbolsByCol,PayoutByPayline,PayoutIdToWinAmount,RewardLastNode,ReelSkin,WinCredits] matches the validated single-ST paid_spin/Normal base-spin shared by 59 registered precedents (M1/M14/M105/M135/...), with the lock-respin riding the LockLines mechanic family. (b) Shared parser core/parser.py (lines 1591-1595) populates lock_lines_spins/lock_lines_total_lines/lock_lines_win from M133's LockLines field, and the registered fleet plugin features/machine_mechanics.py consumes it parser-blind into a lock_lines section; per-ST reel/payid/outcome/RTP-bucket dims are covered by the shared PER_SPINTYPE plugins. NO new code, NO fork. The M104-exclusive lock_respin_dynamics plugin is correctly NOT the target (it is LockSymbols-only and play-gated to 'LockSymbolSpin'; M133 has LockSymbols absent -> lock_symbols.applicable=False). (c) Ran the shared parser on M133's real chunk: lock_lines_spins=3374 (== independently derived 'trigger' count), lock_lines_total_lines=3650, lock_lines_win=11,263,000, lock_symbols_spins=0; drove machine_mechanics.emit -> lock_lines{applicable:true, lock_spins:3374, lock_rate:0.08435, avg_lines_per_lock:1.082, lock_win:11263000} — a sane, populated mechanic section assembled from real data. ABORT checklist: (1) nopayid_win/win=0/7728=0.0 PASS; (2) no ST14/ST15 TopDollar (only ST13) PASS; (3) additive collect residual=0 PASS; (4) no IndexToWheelCellData/wheel-cell JSON PASS; (5) role confidently mapped to validated paid_spin precedent PASS.",
+  "caveats": [
+   "Single-ST machine: ST=13 is the base paid spin (play 'Normal') with the LockReSpin feature carried IN-LINE on the same ST (ReMarks 'trigger' discriminator + LockLines token). There is NO separate hold_respin/respin ST; do NOT declare one. The lock-respin felt-experience is delivered by the shared parser's lock_lines accumulator -> machine_mechanics.lock_lines (verified populated), NOT by the M104 lock_respin_dynamics plugin (which is LockSymbols-only / play 'LockSymbolSpin' and would emit all-zeros if force-mapped to M133 — the exact mis-attribution failure this gate guards against).",
+   "CostCredits=0 on every record is a per-record echo, not free play. The real per-spin cost is the bet (1000), recovered from the LastCredits snapshot identity (LastCredits = 1e14 - 1000 + WinCredits, holds 40000/40000). Money is out of scope (charter), so this does not affect role mapping, but the manifest economy must use WinCredits as win_field.",
+   "Manifest should declare ST=13 as paid_spin/Normal with economy.win_field=WinCredits; NO synth_pay_id rule is needed (every win already has a conserving PayoutIdToWinAmount; no bare settlement). The lock mechanic needs NO special manifest block — the parser captures LockLines automatically and machine_mechanics renders it.",
+   "Audit was performed on mode_1 (the only mode with local cached rawdata). Modes 2/5/7 (skins) were not re-derived here; they are expected to share the ST=13 paid_spin/LockReSpin structure (skin = ReelSkin variant), but the onboarder/breaker should confirm modes 2/5/7 carry no additional ST before finalizing the multi-mode manifest.",
+   "No locally-cached rawdata exists for the other registered LockLines/LockReSpin precedents, so layer-(c) could not be run on a sibling machine; however the reuse target is the FROZEN shared parser path itself, which was verified directly against M133's own real data (3374 lock records, exact conservation)."
+  ],
+  "date": "2026-06-18"
+ },
+ "out_of_engine_mechanics": [],
+ "round_win_rule": null,
+ "rtp_integrity": {
+  "paid_st": [
+   13
+  ],
+  "fallback_warn": 0.5,
+  "fallback_fail": 5.0
+ }
+}

@@ -633,7 +633,34 @@
       "applies_to": [
         "M94"
       ]
+    },
+    "m242_st2_settlement": {
+      "_doc": "M242 ST2 settlement: bare WinCredits no payid -> synth real pid (agent-verdict 2026-06-18 resample wave2). Config-only.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M242"
+      ]
+    },
+    "m246_st2_settlement": {
+      "_doc": "M246 ST2 settlement: bare WinCredits no payid -> synth real pid (agent-verdict 2026-06-18 resample wave2). Config-only.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M246"
+      ]
     }
   },
-  "_added_2026_06_18": "resample-wave settlement synth rules (required: M147/M163/M239 ST2, M282 ST125; forward-compat: settlement-role STs paying 0 in cached bucket)"
+  "_added_2026_06_18": "resample-wave settlement synth rules (required: M147/M163/M239 ST2, M282 ST125; forward-compat: settlement-role STs paying 0 in cached bucket)",
+  "_added_2026_06_18_wave2": "resample wave2 settlement synth rules"
 }
